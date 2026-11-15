@@ -9,8 +9,8 @@ summary; [m0-key-capture](../specs/m0-key-capture.md),
 [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md) and
 [insert-focus](../specs/insert-focus.md) give the behaviour,
 [ADR-009](../adr/009-flush-only-ambiguous.md) and [ADR-024](../adr/024-keymap-contexts.md) the
-decisions, and [docs/security.md](../security.md) §13 (page modes) the rules with their tests. This
-page names the code that carries the key, in order.
+decisions, and [docs/security/13-page-modes.md](../security/13-page-modes.md) §13 (page modes) the
+rules with their tests. This page names the code that carries the key, in order.
 
 ```mermaid
 sequenceDiagram
@@ -20,7 +20,7 @@ sequenceDiagram
   participant Run as host/runners
   participant Act as actors/VimmaActors
   participant Child as actors/VimmaChild
-  participant Parent as actors/VimmaParent
+  participant Parent as host/VimmaParent
   Win->>Host: keydown, capture phase (_onKeyDown)
   Host->>Host: the questions and prompts first
   Host->>Host: chordFromEvent, then _mode
@@ -44,7 +44,7 @@ sequenceDiagram
 over the built-in one (`compileKeymap({})`) while `config.toml` has not been read yet;
 `VimmaHost.configure` replaces every window's when `ConfigHost` applies the file
 ([Config and theme](config-and-theme.md)). `compileKeymap` in
-`packages/vimma-core/src/keymap.mjs` builds the keymap in this order:
+`packages/vimma-core/src/keys/keymap.mjs` builds the keymap in this order:
 
 - `[keys]`: one entry per action, a list of key sequences that replaces the default list. A
   sequence that starts with the prefix (`ctrl+b` by default), or with a chord that holds ctrl,
@@ -79,10 +79,10 @@ order, and returns when one does:
 2. The agent question (`AgentUi.onKey`), the security update question (`UpdateUi.onKey`), an open
    permission prompt (`state.promptKeys`), and the built-in agent's window while no sequence is
    pending (`state.agentChat.onKey`).
-3. `chordFromEvent` (`packages/vimma-core/src/keys.mjs`) turns the event into a chord, or null for a
-   bare modifier. Shift is folded into printable characters other than letters (`?`, not `shift+/`),
-   and a character typed with AltGr or Option is that character without alt. `formatKey` gives the
-   canonical text the tries are keyed by.
+3. `chordFromEvent` (`packages/vimma-core/src/keys/keys.mjs`) turns the event into a chord, or null
+   for a bare modifier. Shift is folded into printable characters other than letters (`?`, not
+   `shift+/`), and a character typed with AltGr or Option is that character without alt.
+   `formatKey` gives the canonical text the tries are keyed by.
 4. Hints and element focus end when focus has left their page; the setup page keeps its plain
    keys.
 5. `_mode(state)` decides the mode: `help` while an overlay or picker is open, `command` with the
@@ -104,7 +104,7 @@ Tests: `records_ctrl_b_in_about_preferences`, `records_ctrl_b_in_url_bar` and
 `_dispatch` clears any pending timer, asks `PdfOps.context` for the keymap context of the
 selected tab (`pdf` in Firefox's PDF viewer, `page` elsewhere), and calls
 `state.dispatcher.dispatch(mode, chord, context)` (`createDispatcher` in
-`packages/vimma-core/src/dispatcher.mjs`). The dispatcher holds only a pending buffer: the trie
+`packages/vimma-core/src/keys/dispatcher.mjs`). The dispatcher holds only a pending buffer: the trie
 node reached so far, the labels for the status bar, a count, and an action waiting for its
 character (`f` then `x`). A change of mode or context drops the buffer, so a sequence started
 under one set of bindings never finishes under another. For each key it answers one of four
@@ -127,7 +127,7 @@ Tests: [dispatcher.test.mjs](../../packages/vimma-core/test/dispatcher.test.mjs)
 ## 3. The host acts on the answer
 
 `_dispatch` first logs the key and its result for `about:vimma` (`KeyLog.record` in
-`about/key-log.mjs`): never in a private window, and a plain key typed in insert or command mode
+`host/key-log.mjs`): never in a private window, and a plain key typed in insert or command mode
 is kept only as `·`. Then it handles each kind:
 
 - **`pass`.** The key goes on to Firefox and the page. Before that, `_editKey` looks for a
@@ -155,7 +155,7 @@ Tests: `g_as_the_first_key_of_gg_is_consumed` and `j_and_k_scroll_and_the_page_s
 
 Some chords Firefox lets a page override, and Vimma does the same
 ([firefox-keys](../specs/firefox-keys.md), decision 6): `pageFirst` in
-`packages/vimma-core/src/firefox-keys.mjs` says which, by Firefox's inventory, the mode, full
+`packages/vimma-core/src/keys/firefox-keys.mjs` says which, by Firefox's inventory, the mode, full
 screen and the fullscreen Keyboard Lock. `_pageFirst` makes the key Vimma's first after all when
 the site's "Override keyboard shortcuts" permission is Block, or when `[firefox] enable` keeps
 the chord for Firefox.
@@ -196,7 +196,8 @@ ops modules load without an import cycle. `j` is `scroll.down`, whose runner cal
 
 `VimmaActors.register` (called once per process from `vimma.js`, before `VimmaHost.init`) registers
 the JSWindowActor pair: `VimmaChild` in every frame (`allFrames`) of http, https, file, about and
-view-source documents and the start page, `VimmaParent` in the parent, marked
+view-source documents and the start page, `VimmaParent` in the parent (`host/VimmaParent.sys.mjs`,
+whose URL `vimma.js` passes in: `actors/` names no `host/` module), marked
 `safeForUntrustedWebProcess` because the parent trusts nothing from the child but a descriptor,
 which at worst flips that tab's mode, and checks every other reply. `VimmaActors.scroll` sends
 `Vimma:Scroll` with `sendQuery` to the focused frame's actor, and to the top frame when the focused
@@ -213,7 +214,7 @@ by which known editors are told apart) and send `Vimma:Focus` with that descript
 that leaves nothing focused sends a `recheck`, which can only leave insert. In the parent,
 `VimmaParent.receiveMessage` drops the report unless it comes from the frame that has focus
 (`Services.focus.focusedContentBrowsingContext`, except for parent-process pages such as Settings),
-and drops a descriptor that `parseDescriptor` (`packages/vimma-core/src/editable.mjs`) does not
+and drops a descriptor that `parseDescriptor` (`packages/vimma-core/src/keys/editable.mjs`) does not
 accept. `VimmaHost.onFocusReport` then applies the rules: `insertModeAfterFocus` and `isEditable`
 with the site's `[sites] insert` rule decide the tab's mode, after `i` or `gi` a page moving focus
 does not end insert, and after Esc a page's own script focusing a field does not start it. The next
@@ -231,7 +232,7 @@ security.md §13, among them `only_the_focused_frame_may_report` and
 - **The `:` command line.** `:` is `command.open`, whose runner opens `ui/cmdline.mjs`; while it
   is open `_mode` says `command` and its input takes the typed keys. Enter calls
   `CommandLine.submit`, which parses the line with core `parseCommandLine`
-  (`packages/vimma-core/src/cmdline.mjs`) into an action and its text, shows a parse error in
+  (`packages/vimma-core/src/keys/cmdline.mjs`) into an action and its text, shows a parse error in
   the line, or closes the line and calls `VimmaHost._runCommand`. That refuses an action core
   still lists as pending and calls the same `_run`. A `:` binding in the keymap takes the same
   path through `cmdline.run`. Tests:
@@ -253,6 +254,6 @@ security.md §13, among them `only_the_focused_frame_may_report` and
   in [The life of an agent call](agent-call.md).
 
 The time from key to action is gated twice: core's dispatch by the bench in `ci.yml` (under 50 µs a
-key, and no regression over 10 % against the baseline commit; docs/runbook.md, "Bench baseline"),
-and key-to-paint in a real window by
+key, and no regression over 10 % against the baseline commit; docs/runbook/ci-bench-baseline.md,
+"Bench baseline"), and key-to-paint in a real window by
 [browser_vimma_perf.js](../../tests/browser/browser_vimma_perf.js). See [Testing](testing.md).

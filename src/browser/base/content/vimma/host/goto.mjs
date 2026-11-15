@@ -9,18 +9,14 @@
 
 import { pickerItems } from "../core/picker.mjs";
 import { tabIds } from "../core/tabs.mjs";
-import { getTabLabel } from "./tab-labels.mjs";
+import { getTabLabel } from "../workspaces/tab-labels.mjs";
 import { selectableTabs } from "./tab-ops.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 
 /** @import { PickerItem } from "../core/picker.mjs" */
 /** @import { Workspaces } from "../core/workspaces.mjs" */
 
-/**
- * @typedef {Element & { linkedPanel: string | null, label: string,
- *   linkedBrowser: { contentTitle: string, currentURI: { spec: string } } }} Tab
- * @typedef {{ selectedTab: Tab, tabs: Tab[] }} TabBrowser
- */
+/** @typedef {MozTabbrowserTab} Tab */
 
 /**
  * The ids of a window without workspaces. One set for every window: tab search lists several
@@ -30,14 +26,13 @@ import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 const windowTabIds = tabIds();
 
 /** @param {BrowserWindow} win */
-function gBrowserOf(win) {
-  return /** @type {{ gBrowser: TabBrowser }} */ (/** @type {unknown} */ (win)).gBrowser;
-}
+const gBrowserOf = (win) => win.gBrowser;
 
 /**
  * The workspace model the picker lists: the window's workspaces (m3-workspaces 2b), every
  * workspace's tabs in the window's tab order; selecting one in another workspace switches to it
- * (WindowWorkspaces' TabSelect). A window without workspaces (private) lists its visible tabs.
+ * (WindowWorkspaces' TabSelect). A window without workspaces (a private window, a popup, or
+ * every window when containers are off) lists its visible tabs.
  * @param {BrowserWindow} win
  * @returns {Workspaces}
  */
@@ -45,7 +40,7 @@ export function pickerWorkspaces(win) {
   const ww = WindowWorkspaces.get(win);
   const model = ww?.model;
   if (ww && model) {
-    const order = new Map(gBrowserOf(win).tabs.map((t, i) => [ww.idOf(/** @type {any} */ (t)), i]));
+    const order = new Map(gBrowserOf(win).tabs.map((t, i) => [ww.idOf(t), i]));
     const at = (/** @type {string} */ id) => order.get(id) ?? Infinity;
     const panel = (/** @type {string} */ id) => ww.tabOf(id)?.linkedPanel || id;
     return {
@@ -58,16 +53,25 @@ export function pickerWorkspaces(win) {
       })),
     };
   }
-  const tabs = /** @type {Tab[]} */ (selectableTabs(win));
+  const tabs = selectableTabs(win);
   const workspace = {
     id: "window",
     name: "",
     container: "",
     tabs: tabs.map((t) => windowTabIds.idOf(t)),
-    activeTab: windowTabIds.idOf(gBrowserOf(win).selectedTab),
+    activeTab: selectedTabId(win),
     panes: null,
   };
   return { workspaces: [workspace], active: workspace.id, next: 1 };
+}
+
+/**
+ * The selected tab's id, as the picker's rows name it: its panel, the same in a window with
+ * workspaces or without, since the selected tab is loaded.
+ * @param {BrowserWindow} win
+ */
+export function selectedTabId(win) {
+  return windowTabIds.idOf(gBrowserOf(win).selectedTab);
 }
 
 /**
@@ -78,8 +82,7 @@ export function pickerWorkspaces(win) {
 export function tabById(win, tabId) {
   const tab = windowTabIds.find(gBrowserOf(win).tabs, tabId);
   if (tab) return tab;
-  const lazyTab = WindowWorkspaces.get(win)?.tabOf(tabId);
-  return /** @type {Tab | undefined} */ (/** @type {unknown} */ (lazyTab));
+  return WindowWorkspaces.get(win)?.tabOf(tabId) ?? undefined;
 }
 
 /**
@@ -110,13 +113,12 @@ export function gotoItems(win, { agentId = null, window, name } = {}) {
       const tab = tabById(win, id);
       if (!tab) return undefined;
       const browser = tab.linkedBrowser;
-      const t = /** @type {any} */ (tab);
       return {
         title: browser.contentTitle || tab.label,
         url: browser.currentURI?.spec ?? "",
-        playing: !!t.soundPlaying,
-        muted: !!t.muted,
-        pinned: !!t.pinned,
+        playing: !!tab.soundPlaying,
+        muted: !!tab.muted,
+        pinned: !!tab.pinned,
       };
     },
     labels,

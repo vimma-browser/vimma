@@ -7,5 +7,5 @@
     "allowImportingTsExtensions": true
   },
   "include": ["**/*.mjs", "**/*.ts"],
-  "exclude": ["**/test/**/*.mjs", "vimma-ctl/", "**/node_modules/**"]
+  "exclude": ["vimma-ctl/", "**/node_modules/**", "ci/test/key-guard.test.mjs"]
 }

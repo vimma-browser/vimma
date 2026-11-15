@@ -12,7 +12,7 @@
 
 "use strict";
 
-/* global focusContent -- from head.js */
+/* global focusContent, contextOf, windowGlobalOf, webProgressOf -- from head.js */
 /* global Client -- from head_vimma_control.js */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
@@ -21,7 +21,7 @@ const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 const { AgentDrive } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/AgentDrive.sys.mjs",
@@ -73,14 +73,19 @@ const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
-const ww = () => WindowWorkspaces.get(window);
-const activeName = () => ww().model.workspaces.find((w) => w.id === ww().model.active)?.name;
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
+const activeName = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === ww().model.active)?.name;
+const mainId = () =>
+  /** @type {string} */ (
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id
+  );
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
+/** @param {boolean} on */
 async function mcp(on) {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, on);
   await VimmaControl.settled();
@@ -164,12 +169,12 @@ async function agentClient(name = "example-agent") {
 /** The oldest waiting question, once there is one. */
 async function question() {
   await until(() => AgentGate.waiting.length > 0, "a question waits");
-  return AgentGate.waiting[0];
+  return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
 /**
  * `agent-keys` on `tab`, answered with `answer` (null: not asked, a grant runs it).
- * @param {any} c @param {any} tab @param {string} keys @param {object | null} [answer]
+ * @param {any} c @param {any} tab @param {string} keys @param {GateAnswer | null} [answer]
  */
 async function keys(c, tab, keys, answer = { kind: "once" }) {
   const id = c.request("agent-keys", { tab: idOf(tab), keys });
@@ -264,8 +269,8 @@ add_task(async function test_the_load_wait_passes_over_an_initial_document() {
   const tab = BrowserTestUtils.addTab(gBrowser);
   const browser = tab.linkedBrowser;
   await until(() => !!browser.browsingContext?.currentWindowGlobal, "the tab has a document");
-  Assert.ok(browser.browsingContext.currentWindowGlobal.isInitialDocument, "its initial one");
-  Assert.ok(!browser.webProgress.isLoadingDocument, "which is not loading");
+  Assert.ok(windowGlobalOf(contextOf(browser)).isInitialDocument, "its initial one");
+  Assert.ok(!webProgressOf(browser).isLoadingDocument, "which is not loading");
   // What the tab showed before the step: another document at another URL.
   const before = { doc: 0, url: LINKS };
   Assert.equal(
@@ -366,7 +371,7 @@ add_task(async function test_agent_hints_leave_the_users_hint_mode_alone() {
   const users = await VimmaActors.collectHints(mine.linkedBrowser, "hint.follow");
   await VimmaActors.collectHints(mine.linkedBrowser, "hint.follow", { agent: true });
   const same = users.find((t) => t.href === `${PAGE}?same`);
-  VimmaActors.activateHint(same);
+  VimmaActors.activateHint(/** @type {HintTarget} */ (same));
   await BrowserTestUtils.browserLoaded(mine.linkedBrowser, false, `${PAGE}?same`);
   Assert.ok(true, "the user's target still follows after an agent's collection there");
   c.close();
@@ -487,14 +492,14 @@ add_task(async function test_a_page_that_goes_away_ends_the_wait() {
   utils.advanceTimeAndRefresh(0);
   const tab = await openAgentTab();
   const browser = tab.linkedBrowser;
-  const pid = browser.browsingContext.currentWindowGlobal.osPid;
+  const pid = windowGlobalOf(contextOf(browser)).osPid;
   const collection = VimmaActors.collectHints(browser, "hint.follow", { agent: true });
   await TestUtils.waitForCondition(async () => (await sizeWaits(tab)) > 0, "it waits", 20, 250);
   const t0 = Date.now();
   BrowserTestUtils.startLoadingURIString(browser, PAGE);
   await BrowserTestUtils.browserLoaded(browser, false, PAGE);
   const found = await collection;
-  Assert.equal(browser.browsingContext.currentWindowGlobal.osPid, pid, "in the same process");
+  Assert.equal(windowGlobalOf(contextOf(browser)).osPid, pid, "in the same process");
   await TestUtils.waitForCondition(async () => (await sizeWaits(tab)) === 0, "it ends", 20, 250);
   const ms = Date.now() - t0;
   utils.restoreNormalRefresh();
@@ -539,7 +544,7 @@ add_task(async function test_cross_site_follow_asks_as_vimma_open() {
     () => noticeText().startsWith('claude-code followed a link to test1.example.com in "'),
     "its notice names the host it loaded (D14)",
   );
-  const row = AgentGate.log.find((e) => e.outcome === "followed");
+  const row = AgentGate.log.find((/** @type {GateLogRow} */ e) => e.outcome === "followed");
   Assert.equal(row?.detail, `f${LABEL.sub} → ${SUB}`, ":mcp log names the URL it loaded (M23)");
   Assert.equal(row?.tool, "vimma_keys", "as a vimma_keys row");
   // Under the grant, a follow to another site runs unasked too: the grant covers vimma_open
@@ -550,7 +555,9 @@ add_task(async function test_cross_site_follow_asks_as_vimma_open() {
   r = await keys(c, tab, `f${LABEL.other}`, null);
   Assert.equal(r.result.url, OTHER, "a cross-site follow runs under the grant");
   Assert.ok(
-    AgentGate.log.some((e) => e.outcome === "followed" && e.detail.endsWith(OTHER)),
+    AgentGate.log.some(
+      (/** @type {GateLogRow} */ e) => e.outcome === "followed" && e.detail.endsWith(OTHER),
+    ),
     "and the log names the other site",
   );
 

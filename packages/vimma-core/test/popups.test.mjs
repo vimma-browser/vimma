@@ -1,12 +1,12 @@
 import { describe, test, expect } from "vitest";
-import { parsePopupId, popupCue, popupItems } from "../src/popups.mjs";
-import { filterItems, itemId, openPicker, pickerKey } from "../src/picker.mjs";
-import { parseCommandLine } from "../src/cmdline.mjs";
-import { getAction } from "../src/actions.mjs";
-import { DEFAULT_CONFIG } from "../src/defaults.mjs";
-import { statusSegments } from "../src/statusbar.mjs";
+import { parsePopupId, popupCue, popupItems } from "../src/ui/popups.mjs";
+import { filterItems, itemId, openPicker, pickerKey } from "../src/ui/picker.mjs";
+import { parseCommandLine } from "../src/keys/cmdline.mjs";
+import { getAction } from "../src/keys/actions.mjs";
+import { DEFAULT_CONFIG } from "../src/config/defaults.mjs";
+import { statusSegments } from "../src/ui/statusbar.mjs";
 
-/** @import { BlockedPopups } from "../src/popups.mjs" */
+/** @import { BlockedPopups } from "../src/ui/popups.mjs" */
 
 /**
  * @param {Partial<BlockedPopups>} over

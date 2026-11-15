@@ -177,7 +177,7 @@ let replacement = { stage: "none", buildId: null, reason: null };
 /**
  * The build ID of the offer the last check in this process verified. Only such an offer is
  * installed: one restored from the pref `vimma.update.last`, which anyone can edit, waits for a
- * check (docs/security.md UP10).
+ * check (docs/security/16-update-check.md UP10).
  */
 let verifiedBuildId = /** @type {string | null} */ (null);
 /** The build ID the replacement under way is for. */

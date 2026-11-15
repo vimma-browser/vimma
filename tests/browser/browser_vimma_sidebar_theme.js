@@ -79,13 +79,16 @@ const LIGHT = {
 };
 
 /** "#rrggbb" → "rgb(r, g, b)", as getComputedStyle reports it. */
-function rgb(hex) {
+function rgb(/** @type {string} */ hex) {
   const n = parseInt(hex.slice(1), 16);
   return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`;
 }
 
 const token = (/** @type {string} */ name) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+/** The window of `el`'s document: every element checked here is in a document that shows. */
+const viewOf = (/** @type {Element} */ el) => /** @type {Window} */ (el.ownerDocument.defaultView);
 
 /**
  * A colour custom property as `el` sees it (inherited through shadow roots), resolved to the
@@ -94,8 +97,10 @@ const token = (/** @type {string} */ name) =>
  * @param {string} name  e.g. "--focus-outline-color"
  */
 function colourVar(el, name) {
-  const win = /** @type {Window} */ (el.ownerDocument.defaultView);
+  const win = viewOf(el);
   const value = win.getComputedStyle(el).getPropertyValue(name).trim();
+  // Without a value the probe would inherit the root's text colour, which a theme may match.
+  Assert.ok(value, `${name} is set on <${el.localName}>`);
   const probe = el.ownerDocument.createElementNS("http://www.w3.org/1999/xhtml", "div");
   probe.style.color = value;
   el.ownerDocument.documentElement.append(probe);
@@ -109,13 +114,14 @@ function backdrop(/** @type {Element} */ el) {
   /** @type {Element | null} */
   let node = el;
   while (node) {
-    const bg = node.ownerDocument.defaultView.getComputedStyle(node).backgroundColor;
+    const bg = viewOf(node).getComputedStyle(node).backgroundColor;
     if (bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") return bg;
-    node = node.parentElement ?? node.ownerDocument.defaultView.frameElement;
+    node = node.parentElement ?? viewOf(node).frameElement;
   }
   return "none";
 }
 
+/** @param {string} target @param {string} link */
 async function ln(target, link) {
   const command = await Subprocess.pathSearch("ln");
   const proc = await Subprocess.call({ command, arguments: ["-sfn", target, link] });
@@ -135,9 +141,13 @@ function waitForTheme(/** @type {string} */ hex, /** @type {string} */ msg) {
   return TestUtils.waitForCondition(() => token("--vimma-bg-dark") === hex, msg, 50, 100);
 }
 
-/** The first element under `root` (shadow roots included) matching `selector`. */
-function deepQuery(/** @type {Document | ShadowRoot} */ root, /** @type {string} */ selector) {
-  /** @type {Element | null} */
+/**
+ * The first element under `root` (shadow roots included) matching `selector`.
+ * @param {Document | ShadowRoot} root
+ * @param {string} selector
+ * @returns {Element | null}
+ */
+function deepQuery(root, selector) {
   const found = root.querySelector(selector);
   if (found) return found;
   for (const el of root.querySelectorAll("*")) {
@@ -154,7 +164,7 @@ function deepQuery(/** @type {Document | ShadowRoot} */ root, /** @type {string}
  * @param {Element} el
  */
 function ringColour(el) {
-  const style = el.ownerDocument.defaultView.getComputedStyle(el);
+  const style = viewOf(el).getComputedStyle(el);
   if (style.outlineStyle === "none") return "no ring";
   return style.outlineStyle === "auto" ? style.accentColor : style.outlineColor;
 }
@@ -164,10 +174,32 @@ function ringColour(el) {
  * tab list: the open panel's button is aria-selected (sidebar-main.mjs), not aria-pressed.
  */
 function pressedLauncherButton() {
-  return [...document.querySelector("sidebar-main").shadowRoot.querySelectorAll("moz-button")].find(
-    (b) => b.shadowRoot?.querySelector('button[aria-selected="true"]'),
+  return [...launcherRoot().querySelectorAll("moz-button")].find((b) =>
+    b.shadowRoot?.querySelector('button[aria-selected="true"]'),
   );
 }
+
+/** The launcher's shadow root: <sidebar-main> is in every browser window (browser.xhtml). */
+function launcherRoot() {
+  const launcher = /** @type {Element} */ (document.querySelector("sidebar-main"));
+  return /** @type {ShadowRoot} */ (launcher.shadowRoot);
+}
+
+/**
+ * The bookmarks sidebar's tree: a <tree is="places-tree">
+ * (engine/browser/components/places/content/places-tree.js: selectItems, selectedNode, and its
+ * `view`, a PlacesTreeView of treeView.js) over the toolkit's <tree>
+ * (engine/toolkit/content/widgets/tree.js: startEditing, stopEditing, and `columns`,
+ * engine/dom/chrome-webidl/TreeColumns.webidl).
+ * @typedef {Element & {
+ *   selectItems(guids: string[], openContainers?: boolean): void,
+ *   readonly selectedNode: object | null,
+ *   readonly view: { treeIndexForNode(node: object | null): number },
+ *   readonly columns: { getFirstColumn(): object | null },
+ *   startEditing(row: number, column: object | null): boolean,
+ *   stopEditing(accept: boolean): void,
+ * }} PlacesTree
+ */
 
 /**
  * Shows the launcher strip, whose theme the test checks. Up to Firefox 159 opening a panel showed
@@ -213,7 +245,7 @@ function assertSidebarFollowsTheTheme(label, doc) {
     `${label}: the theme has a focus colour`,
   );
   const $ = (/** @type {string} */ id) => /** @type {Element} */ (document.getElementById(id));
-  const style = (/** @type {Element} */ el) => el.ownerDocument.defaultView.getComputedStyle(el);
+  const style = (/** @type {Element} */ el) => viewOf(el).getComputedStyle(el);
 
   const launcher = $("sidebar-container");
   Assert.ok(BrowserTestUtils.isVisible(launcher), `${label}: the launcher strip shows`);
@@ -225,9 +257,7 @@ function assertSidebarFollowsTheTheme(label, doc) {
   Assert.equal(style(launcher).color, text, `${label}: the launcher's text is --vimma-fg`);
   Assert.equal(style(launcher).colorScheme, scheme, `${label}: the launcher's colour scheme`);
 
-  const button = /** @type {Element} */ (
-    document.querySelector("sidebar-main").shadowRoot.querySelector("moz-button[view]")
-  );
+  const button = /** @type {Element} */ (launcherRoot().querySelector("moz-button[view]"));
   Assert.equal(style(button).color, text, `${label}: a launcher button's text is --vimma-fg`);
   Assert.equal(
     colourVar(button, "--button-icon-fill"),
@@ -259,7 +289,7 @@ function assertSidebarFollowsTheTheme(label, doc) {
   const pressed = pressedLauncherButton();
   Assert.ok(pressed, `${label}: the open panel's launcher button is pressed`);
   const pressedFace = /** @type {Element} */ (
-    pressed.shadowRoot.querySelector(".button-background")
+    /** @type {ShadowRoot} */ (pressed.shadowRoot).querySelector(".button-background")
   );
   Assert.equal(
     style(pressedFace).backgroundColor,
@@ -304,7 +334,9 @@ function assertSidebarFollowsTheTheme(label, doc) {
   const search = /** @type {HTMLElement} */ (deepQuery(doc, "moz-input-search"));
   Assert.ok(search, `${label}: ${doc.location.href} has a search box`);
   search.focus();
-  const field = /** @type {HTMLInputElement} */ (search.shadowRoot.querySelector("input"));
+  const field = /** @type {HTMLInputElement} */ (
+    /** @type {ShadowRoot} */ (search.shadowRoot).querySelector("input")
+  );
   Assert.ok(field.matches(":focus"), `${label}: the search field has focus`);
   Assert.equal(
     ringColour(field),
@@ -326,10 +358,10 @@ function assertSidebarFollowsTheTheme(label, doc) {
   // The list's scrollbar: without a colour, the toolkit draws a white track on any theme. A XUL
   // tree (bookmarks) draws its own <scrollbar> element from its shadow root, which the UA sheet
   // resets to initial values (scrollbars.css): that element's colour is the one painted.
-  const tree = doc.getElementById("bookmarks-view");
+  const tree = /** @type {PlacesTree | null} */ (doc.getElementById("bookmarks-view"));
   const scroller = /** @type {Element} */ (
     tree
-      ? tree.shadowRoot.querySelector("scrollbar")
+      ? /** @type {ShadowRoot} */ (tree.shadowRoot).querySelector("scrollbar")
       : deepQuery(doc, ".sidebar-panel-scrollable-content")
   );
   Assert.ok(scroller, `${label}: ${doc.location.href} has a scrolling list`);
@@ -338,7 +370,7 @@ function assertSidebarFollowsTheTheme(label, doc) {
     `${border} ${surface}`,
     `${label}: ${doc.location.href} the list's scrollbar is --vimma-muted on --vimma-bg-dark`,
   );
-  if (tree) assertRenameFieldFollowsTheTheme(label, /** @type {any} */ (tree));
+  if (tree) assertRenameFieldFollowsTheTheme(label, tree);
 }
 
 /**
@@ -346,11 +378,11 @@ function assertSidebarFollowsTheTheme(label, doc) {
  * <input class="tree-input"> in the tree's shadow root, which no document sheet reaches and
  * which the UA fills with Field (grey #2b2a33 or white), its selected text in Highlight.
  * @param {string} label  which theme, for the messages
- * @param {any} tree  the bookmarks sidebar's places tree
+ * @param {PlacesTree} tree  the bookmarks sidebar's places tree
  */
 function assertRenameFieldFollowsTheTheme(label, tree) {
   const style = (/** @type {Element} */ el, /** @type {string} */ pseudo = "") =>
-    el.ownerDocument.defaultView.getComputedStyle(el, pseudo);
+    viewOf(el).getComputedStyle(el, pseudo);
   const t = (/** @type {string} */ name) => rgb(token(name));
   // Firefox's bookmarks sidebar tree is not editable by default (editBookmark.js's folder tree
   // is): opt in for the test, the field and its styles are the same.
@@ -359,7 +391,9 @@ function assertRenameFieldFollowsTheTheme(label, tree) {
   const row = tree.view.treeIndexForNode(tree.selectedNode);
   Assert.greater(row, -1, `${label}: the bookmark to rename shows`);
   Assert.ok(tree.startEditing(row, tree.columns.getFirstColumn()), `${label}: rename in place`);
-  const field = /** @type {HTMLInputElement} */ (tree.shadowRoot.querySelector(".tree-input"));
+  const field = /** @type {HTMLInputElement} */ (
+    /** @type {ShadowRoot} */ (tree.shadowRoot).querySelector(".tree-input")
+  );
   Assert.ok(!field.hidden && field.matches(":focus"), `${label}: the rename field has focus`);
   Assert.equal(style(field).backgroundColor, t("--vimma-bg"), `${label}: rename field surface`);
   Assert.equal(style(field).color, t("--vimma-fg"), `${label}: rename field text`);
@@ -379,11 +413,13 @@ function assertRenameFieldFollowsTheTheme(label, tree) {
 }
 
 add_task(async function setup() {
-  for (const [name, colours] of [
+  /** @type {[string, Parameters<typeof colorsToml>[0]][]} */
+  const themes = [
     ["one", DARK_ONE],
     ["two", DARK_TWO],
     ["light", LIGHT],
-  ]) {
+  ];
+  for (const [name, colours] of themes) {
     await IOUtils.makeDirectory(dir(name), { createAncestors: true });
     await IOUtils.writeUTF8(PathUtils.join(dir(name), "colors.toml"), colorsToml(colours));
   }
@@ -428,7 +464,8 @@ add_task(async function an_open_sidebar_follows_a_theme_switch() {
   const doc = SidebarController.browser.contentDocument;
   await ln(dir("two"), currentTheme);
   await waitForTheme(DARK_TWO.darkBg, "omarchy-theme-set's swap: theme two");
-  Assert.equal(SidebarController.browser.contentDocument, doc, "the same sidebar document");
+  Assert.ok(doc, "the History sidebar is still open");
+  Assert.strictEqual(SidebarController.browser.contentDocument, doc, "the same sidebar document");
   assertSidebarFollowsTheTheme("switched", doc);
 });
 

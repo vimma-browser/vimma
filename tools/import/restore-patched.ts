@@ -1,6 +1,7 @@
 /**
  * Restores the upstream files our `src/**\/*.patch` files touch, before `surfer import`
- * re-applies the patches (docs/runbook.md, "Re-importing after a patch changes").
+ * re-applies the patches (docs/runbook/re-importing-after-a-patch-changes.md, "Re-importing after a
+ * patch changes").
  *
  * Surfer applies each patch with `git apply -R` (ignoring failure) then `git apply`. When a
  * patch changed since the last import, the reverse of the new patch does not match what the old

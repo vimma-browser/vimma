@@ -25,8 +25,8 @@ import {
   repliesOk,
   splitReplies,
   workspaceTarget,
-} from "../src/hyprswap.mjs";
-/** @import { Client, Command, ShowPlan } from "../src/hyprswap.mjs" */
+} from "../src/workspaces/hyprswap.mjs";
+/** @import { Client, Command, ShowPlan } from "../src/workspaces/hyprswap.mjs" */
 
 // docs/specs/private-swap.md decisions 3, 4, 5, 6, 7 and 9; ADR-017.
 

@@ -1,35 +1,11 @@
 // The slice of Firefox chrome globals our code uses. Extend as needed; the engine tree is the
 // source of truth (e.g. engine/xpcom/base/nsIPrefBranch.idl).
 
-declare const Services: {
-  prefs: {
-    getBoolPref(name: string, defaultValue?: boolean): boolean;
-    getIntPref(name: string, defaultValue?: number): number;
-    getStringPref(name: string, defaultValue?: string): string;
-    setBoolPref(name: string, value: boolean): void;
-    setIntPref(name: string, value: number): void;
-    setStringPref(name: string, value: string): void;
-    prefHasUserValue(name: string): boolean;
-    prefIsLocked(name: string): boolean;
-    clearUserPref(name: string): void;
-    savePrefFile(file: null): void;
-    getDefaultBranch(root: string): {
-      setBoolPref(name: string, value: boolean): void;
-    };
-    addObserver(
-      name: string,
-      observer: (subject: unknown, topic: string, data: string) => void,
-    ): void;
-    removeObserver(
-      name: string,
-      observer: (subject: unknown, topic: string, data: string) => void,
-    ): void;
-  };
-  // engine/xpcom/base/nsIConsoleService.idl: its cached messages, of any kind (each use checks
-  // for nsIScriptError, engine/dom/bindings/nsIScriptError.idl).
-  console: {
-    getMessageArray(): any[] | null;
-  };
+// Services and its members are interfaces, so that the browser tests' declarations
+// (types/mochitest/) can add the members only the tests use.
+interface FirefoxServices {
+  prefs: nsIPrefBranch;
+  console: nsIConsoleService;
   // engine/netwerk/base/nsIIOService.idl
   io: {
     createExposableURI(uri: { spec: string }): { spec: string; displaySpec: string };
@@ -40,13 +16,7 @@ declare const Services: {
   eTLD: {
     getBaseDomain(uri: unknown, additionalParts?: number): string;
   };
-  // engine/dom/interfaces/base/nsIFocusManager.idl
-  focus: {
-    readonly focusedElement: Element | null;
-    readonly focusedContentBrowsingContext: any;
-    readonly activeWindow: Window | null;
-    clearFocus(window: Window): void;
-  };
+  focus: nsIFocusManager;
   // engine/caps/nsIScriptSecurityManager.idl
   scriptSecurityManager: {
     getSystemPrincipal(): unknown;
@@ -55,11 +25,7 @@ declare const Services: {
     principalWithOA(principal: unknown, originAttributes: object): unknown;
     checkLoadURIWithPrincipal(principal: unknown, uri: unknown, flags?: number): void;
   };
-  // engine/widget/nsIClipboard.idl
-  clipboard: {
-    readonly kGlobalClipboard: number;
-    getData(transferable: unknown, whichClipboard: number): void;
-  };
+  clipboard: nsIClipboard;
   // engine/dom/events/nsIEventListenerService.idl
   els: {
     hasListenersFor(target: EventTarget, type: string): boolean;
@@ -73,38 +39,8 @@ declare const Services: {
       flags: number,
     ): { readonly preferredURI: { spec: string } | null };
   };
-  // engine/xpcom/system/nsIXULRuntime.idl
-  appinfo: {
-    readonly processID: number;
-    readonly version: string;
-    readonly appBuildID: string;
-    readonly OS: string;
-    readonly XPCOMABI: string;
-    readonly isWayland: boolean;
-    readonly inSafeMode: boolean;
-  };
-  // engine/netwerk/base/nsIPermissionManager.idl
-  perms: {
-    readonly UNKNOWN_ACTION: number;
-    readonly ALLOW_ACTION: number;
-    readonly DENY_ACTION: number;
-    testPermissionFromPrincipal(principal: unknown, type: string): number;
-    testExactPermissionFromPrincipal(principal: unknown, type: string): number;
-    addFromPrincipal(
-      principal: unknown,
-      type: string,
-      permission: number,
-      expireType?: number,
-      expireTime?: number,
-    ): void;
-    addFromPrincipalForBrowser(
-      principal: unknown,
-      type: string,
-      permission: number,
-      browserId: number,
-      expireTimeMS?: number,
-    ): void;
-  };
+  appinfo: nsIXULRuntime;
+  perms: nsIPermissionManager;
   // engine/toolkit/components/startup/public/nsIAppStartup.idl
   startup: {
     readonly shuttingDown: boolean;
@@ -112,42 +48,17 @@ declare const Services: {
     quit(mode: number): void;
     restartInSafeMode(mode: number): void;
   };
-  // engine/toolkit/components/windowwatcher/nsIWindowWatcher.idl
-  ww: {
-    registerNotification(
-      observer: (subject: unknown, topic: string, data: string | null) => void,
-    ): void;
-    unregisterNotification(
-      observer: (subject: unknown, topic: string, data: string | null) => void,
-    ): void;
-  };
+  ww: nsIWindowWatcher;
   // engine/toolkit/components/cleardata/nsIClearDataService.idl
   clearData: {
     deleteDataFromOriginAttributesPattern(pattern: { userContextId?: number }): void;
   };
   // engine/toolkit/components/enterprisepolicies/nsIEnterprisePolicies.idl
   policies: { isAllowed(feature: string): boolean };
-  // engine/toolkit/components/passwordmgr/nsILoginManager.idl
-  logins: {
-    searchLoginsAsync(matchData: object): Promise<nsILoginInfo[]>;
-    addLoginAsync(login: nsILoginInfo): Promise<nsILoginInfo>;
-    modifyLoginAsync(oldLogin: nsILoginInfo, newLogin: nsILoginInfo): Promise<nsILoginInfo>;
-    removeLoginAsync(login: nsILoginInfo): Promise<void>;
-  };
+  logins: nsILoginManager;
   // engine/xpcom/base/nsIVersionComparator.idl
   vc: { compare(a: string, b: string): number };
-  // engine/xpcom/ds/nsIObserverService.idl
-  obs: {
-    addObserver(
-      observer: (subject: unknown, topic: string, data: string | null) => void,
-      topic: string,
-    ): void;
-    removeObserver(
-      observer: (subject: unknown, topic: string, data: string | null) => void,
-      topic: string,
-    ): void;
-    notifyObservers(subject: unknown, topic: string, data?: string): void;
-  };
+  obs: nsIObserverService;
   // engine/xpcom/base/nsIUUIDGenerator.idl
   uuid: { generateUUID(): { toString(): string } };
   // engine/xpcom/io/nsIDirectoryService.idl (nsIProperties)
@@ -165,22 +76,142 @@ declare const Services: {
     getEnumerator(type: "navigator:browser"): Iterable<BrowserWindow>;
     getEnumerator(type: string | null): Iterable<Window>;
   };
-  // engine/xpcom/ds/nsICategoryManager.idl
-  catMan: {
-    addCategoryEntry(
-      category: string,
-      entry: string,
-      value: string,
-      persist: boolean,
-      replace: boolean,
-    ): string;
-  };
-};
+  catMan: nsICategoryManager;
+}
+// engine/xpcom/components/nsICategoryManager.idl
+interface nsICategoryManager {
+  addCategoryEntry(
+    category: string,
+    entry: string,
+    value: string,
+    persist: boolean,
+    replace: boolean,
+  ): string;
+}
+declare const Services: FirefoxServices;
+
+// The members Vimma's code calls on a default branch.
+interface nsIPrefDefaultBranch {
+  setBoolPref(name: string, value: boolean): void;
+}
+
+// engine/modules/libpref/nsIPrefBranch.idl; a default branch has the same interface.
+interface nsIPrefBranch {
+  getBoolPref(name: string, defaultValue?: boolean): boolean;
+  getIntPref(name: string, defaultValue?: number): number;
+  getStringPref(name: string, defaultValue?: string): string;
+  setBoolPref(name: string, value: boolean): void;
+  setIntPref(name: string, value: number): void;
+  setStringPref(name: string, value: string): void;
+  prefHasUserValue(name: string): boolean;
+  prefIsLocked(name: string): boolean;
+  clearUserPref(name: string): void;
+  savePrefFile(file: null): void;
+  getDefaultBranch(root: string): nsIPrefDefaultBranch;
+  addObserver(
+    name: string,
+    observer: (subject: unknown, topic: string, data: string) => void,
+  ): void;
+  removeObserver(
+    name: string,
+    observer: (subject: unknown, topic: string, data: string) => void,
+  ): void;
+}
+
+// engine/xpcom/base/nsIConsoleService.idl: its cached messages, of any kind (each use checks
+// for nsIScriptError, engine/dom/bindings/nsIScriptError.idl).
+interface nsIConsoleService {
+  getMessageArray(): any[] | null;
+}
+
+// engine/dom/interfaces/base/nsIFocusManager.idl
+interface nsIFocusManager {
+  readonly focusedElement: Element | null;
+  /** Parent-process only: the content frame with focus, if any. */
+  readonly focusedContentBrowsingContext: CanonicalBrowsingContext | null;
+  readonly activeWindow: Window | null;
+  clearFocus(window: Window): void;
+}
+
+// engine/widget/nsIClipboard.idl
+interface nsIClipboard {
+  readonly kGlobalClipboard: number;
+  getData(transferable: unknown, whichClipboard: number): void;
+}
+
+// engine/xpcom/system/nsIXULRuntime.idl
+interface nsIXULRuntime {
+  readonly processID: number;
+  readonly version: string;
+  readonly appBuildID: string;
+  readonly OS: string;
+  readonly XPCOMABI: string;
+  readonly isWayland: boolean;
+  readonly inSafeMode: boolean;
+}
+
+// engine/netwerk/base/nsIPermissionManager.idl
+interface nsIPermissionManager {
+  readonly UNKNOWN_ACTION: number;
+  readonly ALLOW_ACTION: number;
+  readonly DENY_ACTION: number;
+  testPermissionFromPrincipal(principal: unknown, type: string): number;
+  testExactPermissionFromPrincipal(principal: unknown, type: string): number;
+  addFromPrincipal(
+    principal: unknown,
+    type: string,
+    permission: number,
+    expireType?: number,
+    expireTime?: number,
+  ): void;
+  addFromPrincipalForBrowser(
+    principal: unknown,
+    type: string,
+    permission: number,
+    browserId: number,
+    expireTimeMS?: number,
+  ): void;
+}
+
+// engine/xpcom/ds/nsIObserverService.idl
+interface nsIObserverService {
+  addObserver(
+    observer: (subject: unknown, topic: string, data: string | null) => void,
+    topic: string,
+  ): void;
+  removeObserver(
+    observer: (subject: unknown, topic: string, data: string | null) => void,
+    topic: string,
+  ): void;
+  notifyObservers(subject: unknown, topic: string, data?: string): void;
+}
+
+// engine/toolkit/components/windowwatcher/nsIWindowWatcher.idl
+interface nsIWindowWatcher {
+  registerNotification(
+    observer: (subject: unknown, topic: string, data: string | null) => void,
+  ): void;
+  unregisterNotification(
+    observer: (subject: unknown, topic: string, data: string | null) => void,
+  ): void;
+}
+
+// engine/toolkit/components/passwordmgr/nsILoginManager.idl
+interface nsILoginManager {
+  searchLoginsAsync(matchData: object): Promise<nsILoginInfo[]>;
+  addLoginAsync(login: nsILoginInfo): Promise<nsILoginInfo>;
+  modifyLoginAsync(oldLogin: nsILoginInfo, newLogin: nsILoginInfo): Promise<nsILoginInfo>;
+  removeLoginAsync(login: nsILoginInfo): Promise<void>;
+}
 
 // XPCOM component classes and results (engine/js/xpconnect). Untyped on purpose: each use
 // names its interface, and the IDL in the engine tree is the reference.
 declare const Cc: any;
-declare const Cr: Record<string, number>;
+// engine/xpcom/base/ErrorList.py: the codes Vimma names, and any other by name.
+declare const Cr: Record<string, number> & {
+  readonly NS_BINDING_ABORTED: number;
+  readonly NS_OK: number;
+};
 
 // engine/dom/chrome-webidl/PathUtils.webidl
 declare const PathUtils: {
@@ -194,7 +225,7 @@ declare const PathUtils: {
 };
 
 // engine/dom/chrome-webidl/IOUtils.webidl
-declare const IOUtils: {
+interface IOUtilsNamespace {
   createUniqueFile(parent: string, prefix: string, permissions?: number): Promise<string>;
   createUniqueDirectory(parent: string, prefix: string, permissions?: number): Promise<string>;
   writeUTF8(
@@ -226,11 +257,12 @@ declare const IOUtils: {
   copy(from: string, to: string): Promise<void>;
   move(from: string, to: string): Promise<void>;
   remove(path: string, options?: { ignoreAbsent?: boolean; recursive?: boolean }): Promise<void>;
-};
+}
+declare const IOUtils: IOUtilsNamespace;
 
 // engine/js/xpconnect/idl/xpccomponents.idl (nsIXPCComponents_Utils); the encoder is
 // engine/dom/serializers/nsIDocumentEncoder.idl.
-declare const Cu: {
+interface XPCComponentsUtils {
   readonly isInAutomation: boolean;
   createDocumentEncoder(type: string): {
     init(doc: Document, type: string, flags: number): void;
@@ -243,7 +275,8 @@ declare const Cu: {
   unwaiveXrays<T>(obj: T): any;
   exportFunction(fn: Function, target: object): Function;
   cloneInto<T>(obj: T, target: object, options?: { cloneFunctions?: boolean }): T;
-};
+}
+declare const Cu: XPCComponentsUtils;
 
 // XPCOM in system modules: interface constants and component constructors.
 declare const Ci: any;
@@ -252,22 +285,46 @@ declare const Components: {
   ID(id: string): unknown;
   readonly manager: any;
   isSuccessCode(code: number): boolean;
+  // The calling script's frame (xpccomponents.idl, nsIStackFrame): host/host-services.mjs checks
+  // that only vimma.js provides the host's services.
+  readonly stack: {
+    readonly filename: string;
+    readonly caller: { readonly filename: string } | null;
+  };
 };
 
 // engine/dom/chrome-webidl/BrowsingContext.webidl
 declare const BrowsingContext: {
-  get(id: number): any;
-  getCurrentTopByBrowserId(id: number): any;
+  /** Null when no context has the id; in the parent process a CanonicalBrowsingContext. */
+  get(id: number): BrowsingContext | null;
+  /** Called in the parent process, where a context is canonical. */
+  getCurrentTopByBrowserId(id: number): CanonicalBrowsingContext | null;
 };
 
 // engine/dom/webidl/URL.webidl (chrome-only)
 interface URL {
-  readonly URI: unknown;
+  readonly URI: nsIURI;
 }
+
+// Vimma's own modules by chrome:// URL, typed as their source modules. Empty here, so the
+// product's ChromeUtils.importESModule calls return `any` as before; the browser tests' program
+// (tests/tsconfig.json) fills it from the generated types/mochitest/modules.d.ts.
+interface VimmaModules {}
 
 // engine/dom/chrome-webidl/ChromeUtils.webidl
 declare const ChromeUtils: {
-  importESModule(url: string): any;
+  // A literal URL of one of VimmaModules gets that module's type; any other (Firefox's own
+  // modules, a URL held in a variable) stays `any`. Where VimmaModules is filled (the browser
+  // tests), a literal Vimma URL that is not one of them (a typo, a module jar.mn does not ship)
+  // matches neither and is an error; the product's program, with it empty, takes any URL.
+  importESModule<U extends keyof VimmaModules>(url: U): VimmaModules[U];
+  importESModule<S extends string>(
+    url: S extends `chrome://browser/content/vimma/${string}`
+      ? [keyof VimmaModules] extends [never]
+        ? S
+        : never
+      : S,
+  ): any;
   // `target` is a module's `lazy` object, typed with Lazy<…> below: its names and the module
   // map's must match.
   defineESModuleGetters<T extends object>(target: T, modules: { [K in keyof T]: string }): void;
@@ -275,6 +332,8 @@ declare const ChromeUtils: {
   generateQI(interfaces: string[]): (iid: unknown) => any;
   now(): number;
   getXPCOMErrorName(code: number): string;
+  /** The parent process first, then every live content process (nsIDOMProcessParent). */
+  getAllDOMProcesses(): { readonly remoteType: string | null; readonly childID: number }[];
 };
 
 // engine/dom/webidl/Window.webidl (chrome-only part)
@@ -284,11 +343,17 @@ interface Window {
 
 // engine/dom/chrome-webidl/JSWindowActor.webidl
 declare class JSWindowActorParent {
-  readonly browsingContext: any;
-  /** engine/dom/chrome-webidl/WindowGlobalActors.webidl (WindowGlobalParent) */
-  readonly manager: { readonly isInProcess: boolean; readonly innerWindowId: number };
+  /**
+   * The webidl says nullable, but the getter throws (InvalidStateError) while the actor has no
+   * manager, before it is set up and once it is cleared, rather than give null
+   * (engine/dom/ipc/jsactor/JSWindowActorParent.cpp, GetBrowsingContext).
+   */
+  readonly browsingContext: CanonicalBrowsingContext | null;
+  /** Its document's window global; null before the actor is set up and once it is cleared. */
+  readonly manager: WindowGlobalParent | null;
   sendAsyncMessage(name: string, data?: unknown): void;
-  sendQuery(name: string, data?: unknown): Promise<any>;
+  /** The child's answer, from a content process that may be compromised: checked by the caller. */
+  sendQuery(name: string, data?: unknown): Promise<unknown>;
 }
 // engine/dom/webidl/Worker.webidl (ChromeWorker): a Worker with chrome privileges (system modules)
 declare class ChromeWorker extends Worker {}
@@ -298,6 +363,9 @@ declare class JSWindowActorChild {
   readonly contentWindow: Window | null;
   // WindowGlobalChild: the other actors of this frame (spec m1-find: Firefox's FinderChild)
   readonly manager: {
+    // engine/toolkit/actors/FinderChild.sys.mjs, registered for every frame
+    // (engine/toolkit/modules/ActorManagerParent.sys.mjs)
+    getActor(name: "Finder"): FinderChildActor;
     getActor(name: string): any;
     readonly innerWindowId: number;
     readonly isCurrentGlobal: boolean;
@@ -335,38 +403,46 @@ interface Selection {
 
 // engine/dom/interfaces/base/nsIDOMWindowUtils.idl
 interface Window {
-  readonly windowUtils: {
-    readonly AGENT_SHEET: number;
-    readonly AUTHOR_SHEET: number;
-    loadSheetUsingURIString(sheetURI: string, type: number): void;
-    removeSheetUsingURIString(sheetURI: string, type: number): void;
-    suppressAnimation(suppress: boolean): void;
-    flushLayoutWithoutThrottledAnimations(): void;
-    /** True while an event the user caused (a key, a click) is being handled. */
-    readonly isHandlingUserInput: boolean;
-    nodesFromRect(
-      x: number,
-      y: number,
-      top: number,
-      right: number,
-      bottom: number,
-      left: number,
-      ignoreRootScrollFrame: boolean,
-      flushLayout: boolean,
-      onlyVisible: boolean,
-      transparencyThreshold?: number,
-    ): NodeList;
-  };
+  readonly windowUtils: nsIDOMWindowUtils;
+}
+interface nsIDOMWindowUtils {
+  readonly AGENT_SHEET: number;
+  readonly AUTHOR_SHEET: number;
+  loadSheetUsingURIString(sheetURI: string, type: number): void;
+  removeSheetUsingURIString(sheetURI: string, type: number): void;
+  suppressAnimation(suppress: boolean): void;
+  flushLayoutWithoutThrottledAnimations(): void;
+  /** True while an event the user caused (a key, a click) is being handled. */
+  readonly isHandlingUserInput: boolean;
+  nodesFromRect(
+    x: number,
+    y: number,
+    top: number,
+    right: number,
+    bottom: number,
+    left: number,
+    ignoreRootScrollFrame: boolean,
+    flushLayout: boolean,
+    onlyVisible: boolean,
+    transparencyThreshold?: number,
+  ): NodeList;
 }
 
 // engine/dom/webidl/Element.webidl, Node.webidl and Event.webidl (chrome-only members)
 interface Element {
   readonly openOrClosedShadowRoot: ShadowRoot | null;
+  /** The slot it is assigned to, in an open or a closed shadow tree. */
+  readonly openOrClosedAssignedSlot: HTMLSlotElement | null;
   readonly scrollTopMax: number;
   readonly scrollLeftMax: number;
 }
 interface Node {
-  readonly ownerGlobal: Window;
+  /** The global of the document the node lives in (Node.webidl, ChromeOnly). */
+  readonly documentGlobal: Window | null;
+}
+interface Text {
+  /** The slot it is assigned to, in an open or a closed shadow tree. */
+  readonly openOrClosedAssignedSlot: HTMLSlotElement | null;
 }
 interface Event {
   readonly originalTarget: EventTarget | null;
@@ -388,8 +464,28 @@ interface Document {
   consumeTransientUserGestureActivation(): boolean;
 }
 interface Node {
-  // engine/caps/nsIPrincipal.idl
-  readonly nodePrincipal: { readonly isSystemPrincipal: boolean };
+  readonly nodePrincipal: nsIPrincipal;
+}
+// engine/caps/nsIPrincipal.idl
+interface nsIPrincipal {
+  /** The origin with the host cut to its site (scheme and eTLD+1); the origin otherwise. */
+  readonly siteOrigin: string;
+  readonly isSystemPrincipal: boolean;
+  readonly isNullPrincipal: boolean;
+  readonly isContentPrincipal: boolean;
+  /** Null for a principal without one, as the system principal. */
+  readonly URI: nsIURI | null;
+  /** Webidl `jsval`: an OriginAttributesDictionary (OriginAttributes.webidl). */
+  readonly originAttributes: { readonly userContextId: number; readonly privateBrowsingId: number };
+  readonly originNoSuffix: string;
+  /** These three may throw where the principal's URI has no such part: read in a try. */
+  readonly host: string;
+  readonly asciiHost: string;
+  readonly baseDomain: string;
+  readonly exposablePrePath: string;
+  readonly privateBrowsingId: number;
+  schemeIs(scheme: string): boolean;
+  equals(other: nsIPrincipal): boolean;
 }
 
 // The exports Vimma's modules read through ChromeUtils.defineESModuleGetters, by export name (each
@@ -433,10 +529,16 @@ interface LazyModules {
     setCustomTabValue(tab: MozTabbrowserTab, key: string, value: string): void;
     getCustomWindowValue(win: Window, key: string): string;
     setCustomWindowValue(win: Window, key: string, value: string): void;
-    getClosedTabDataForWindow(win: Window): any[];
-    getClosedTabData(options?: { private?: boolean }): any[];
-    getClosedWindowData(): any[];
-    undoCloseById(closedId: number, includePrivate?: boolean, targetWindow?: Window): unknown;
+    getClosedTabDataForWindow(win: Window): SessionClosedTab[];
+    getClosedTabData(options?: { private?: boolean }): SessionClosedTab[];
+    getClosedWindowData(): SessionClosedWindow[];
+    /** The reopened tab (undoCloseTab) or window (undoCloseWindow); undefined for an id it no
+     * longer keeps. */
+    undoCloseById(
+      closedId: number,
+      includePrivate?: boolean,
+      targetWindow?: Window,
+    ): MozTabbrowserTab | ChromeWindow | undefined;
   };
   // engine/toolkit/modules/OSKeyStore.sys.mjs
   OSKeyStore: {
@@ -466,13 +568,16 @@ interface LazyModules {
     profileBeforeChange: { addBlocker(name: string, condition: () => unknown): void };
   };
   // engine/toolkit/modules/E10SUtils.sys.mjs
-  E10SUtils: { deserializePrincipal(base64: string): unknown };
+  // deserializePrincipal: null for a missing or empty one, else the principal (JSONToPrincipal
+  // may give null too).
+  E10SUtils: { deserializePrincipal(base64: string): nsIPrincipal | null };
 
   // Untyped: wide Firefox APIs Vimma drives in depth (downloads, add-ons, permissions, form
   // autofill, search, containers, js-ctypes and subprocesses).
   AboutNewTab: any;
   AddonManager: any;
-  AutofillFormFactory: any;
+  // engine/toolkit/components/formautofill/shared/AutofillFormFactory.sys.mjs
+  AutofillFormFactory: { createFromField(field: Element): FormLike };
   ContextualIdentityService: any;
   DownloadHistory: any;
   DownloadIntegration: any;
@@ -480,11 +585,20 @@ interface LazyModules {
   Downloads: any;
   DownloadsCommon: any;
   ExtensionPermissions: any;
-  FormAutofillHeuristics: any;
-  FormAutofillUtils: any;
+  // engine/toolkit/components/formautofill/shared/FormAutofillHeuristics.sys.mjs: undefined
+  // when the form has no field it reads.
+  FormAutofillHeuristics: {
+    getFormInfo(formLike: FormLike, ignoreInvisibleInput: boolean): FormAutofillField[] | undefined;
+  };
+  // engine/toolkit/components/formautofill/shared/FormAutofillUtils.sys.mjs
+  FormAutofillUtils: {
+    isCreditCardField(fieldName: unknown): boolean;
+    isAddressField(fieldName: unknown): boolean;
+  };
   Integration: any;
-  JSONFile: any;
-  PopupAndRedirectBlockerObserver: any;
+  // engine/toolkit/modules/JSONFile.sys.mjs (a constructor function)
+  JSONFile: new (config: JSONFileConfig) => JSONFileInstance;
+  PopupAndRedirectBlockerObserver: PopupAndRedirectBlockerObserver;
   SearchService: any;
   SitePermissions: any;
   Subprocess: any;
@@ -500,7 +614,7 @@ interface LazyModules {
   AgentChat: typeof import("../src/browser/base/content/vimma/agent/AgentChat.sys.mjs").AgentChat;
   AgentCli: typeof import("../src/browser/base/content/vimma/agent/AgentCli.sys.mjs").AgentCli;
   AgentDownloads: typeof import("../src/browser/base/content/vimma/ctl/AgentDownloads.sys.mjs").AgentDownloads;
-  AgentGate: typeof import("../src/browser/base/content/vimma/ctl/AgentGate.sys.mjs").AgentGate;
+  AgentGate: typeof import("../src/browser/base/content/vimma/host/AgentGate.sys.mjs").AgentGate;
   AgentKeys: typeof import("../src/browser/base/content/vimma/agent/AgentKeys.sys.mjs").AgentKeys;
   ConfigHost: typeof import("../src/browser/base/content/vimma/config/ConfigHost.sys.mjs").ConfigHost;
   McpHost: typeof import("../src/browser/base/content/vimma/host/mcp-ops.mjs").McpHost;
@@ -511,6 +625,19 @@ interface LazyModules {
 }
 
 /** A module's `lazy` object: the named exports ChromeUtils.defineESModuleGetters defines on it. */
+// engine/toolkit/modules/FormLikeFactory.sys.mjs: a form, or the fields around a field outside one.
+interface FormLike {
+  readonly rootElement: Element;
+  readonly elements: Element[];
+}
+// engine/toolkit/components/formautofill/shared/FieldScanner.sys.mjs (FieldDetail)
+interface FormAutofillField {
+  /** Held by a WeakRef: undefined once the element is collected. */
+  readonly element: Element | undefined;
+  /** The field name the heuristics inferred, null when none. */
+  readonly fieldName: string | null;
+}
+
 type Lazy<K extends keyof LazyModules> = { readonly [P in K]: LazyModules[P] };
 
 // engine/toolkit/components/passwordmgr/nsILoginInfo.idl
@@ -536,7 +663,42 @@ interface nsIURI {
   readonly scheme: string;
   /** Throws for a URI without a host (about:, data:); callers read it inside a try. */
   readonly host: string;
+  /** Throws as `host` does. */
+  readonly asciiHost: string;
+  /** The scheme, user, host and port: `https://example.com:8080`. */
+  readonly prePath: string;
+  /** The path without query and fragment (a simple URI's whole path: nsSimpleURI::GetFilePath). */
+  readonly filePath: string;
   schemeIs(scheme: string): boolean;
+}
+
+// engine/netwerk/protocol/http/nsIHttpChannel.idl, with nsIChannel's and nsIRequest's members
+// (engine/netwerk/base/): the members a form submission's request is checked by.
+interface nsIHttpChannel {
+  readonly URI: nsIURI;
+  readonly loadInfo: nsILoadInfo;
+  readonly requestMethod: string;
+  /** nsIRequest's: the request's result so far, a failure code once it failed. */
+  readonly status: number;
+  /** Throws while there is no response yet (a request that failed before one). */
+  readonly responseStatus: number;
+  /** Throws for a header the response does not have. */
+  getResponseHeader(header: string): string;
+  setResponseHeader(header: string, value: string, merge: boolean): void;
+  cancel(status: number): void;
+}
+// engine/netwerk/base/nsILoadInfo.idl
+interface nsILoadInfo {
+  readonly isFormSubmission: boolean;
+  readonly hasValidUserGestureActivation: boolean;
+  /** The frame the load is for; null once it is gone. In the parent, canonical. */
+  readonly browsingContext: CanonicalBrowsingContext | null;
+  /** nsIRedirectHistoryEntry objects, one a redirect so far (webidl `jsval`). */
+  readonly redirectChainIncludingInternalRedirects: readonly unknown[];
+  /** nsContentPolicyType: one of nsIContentPolicy's TYPE_ constants. */
+  readonly externalContentPolicyType: number;
+  /** Webidl `jsval`: an OriginAttributesDictionary. */
+  readonly originAttributes: { readonly userContextId: number; readonly privateBrowsingId: number };
 }
 
 // engine/dom/webidl/Window.webidl: every window's own constructors (a page's differ from
@@ -545,9 +707,14 @@ interface Window {
   readonly MutationObserver: typeof MutationObserver;
   readonly ResizeObserver: typeof ResizeObserver;
   readonly KeyboardEvent: typeof KeyboardEvent;
+  readonly MouseEvent: typeof MouseEvent;
   readonly Event: typeof Event;
+  readonly OffscreenCanvas: typeof OffscreenCanvas;
+  readonly CSS: typeof CSS;
   readonly docShell: any;
   fullScreen: boolean;
+  /** The page's own view of its window, without Xrays: what its scripts set (xpconnect). */
+  readonly wrappedJSObject: { readonly [name: string]: unknown };
 }
 
 // engine/dom/webidl/Window.webidl (the ChromeWindow part): a top-level chrome window.
@@ -561,32 +728,53 @@ interface ChromeWindow extends Window {
 
 // engine/toolkit/content/widgets/browser-custom-element.mjs (MozBrowser): a <browser>.
 interface MozBrowser extends Element {
-  readonly browsingContext: any;
+  /** Null without a frame loader (browser-custom-element.mjs, `get browsingContext`). */
+  readonly browsingContext: CanonicalBrowsingContext | null;
   /** Null while the browser has no docshell or remote navigation yet. */
   readonly currentURI: nsIURI | null;
   readonly documentURI: { readonly spec: string } | null;
   readonly contentTitle: string;
   readonly isRemoteBrowser: boolean;
-  readonly webProgress: any;
+  /** Its context's (browser-custom-element.mjs); undefined without a context, null without one. */
+  readonly webProgress: nsIWebProgress | null | undefined;
   readonly browserId: number;
   readonly documentContentType: string | null;
   /** Null for a non-remote browser without a docshell. */
   readonly finder: MozFinder | null;
-  // engine/caps/nsIPrincipal.idl; read through Vimma's own checks.
-  readonly contentPrincipal: any;
-  // engine/browser/modules/PopupAndRedirectBlocker.sys.mjs (untyped here)
-  readonly popupAndRedirectBlocker: any;
+  /** A remote browser's is null until its first page committed; a local one reads its document's. */
+  readonly contentPrincipal: nsIPrincipal | null;
+  /** engine/dom/chrome-webidl/MozFrameLoaderOwner.webidl; FrameLoader.remoteTab is the remote
+   * browser's nsIRemoteTab (engine/dom/interfaces/base/nsIRemoteTab.idl). */
+  readonly frameLoader: { readonly remoteTab: { priorityHint: boolean } | null } | null;
+  /** Its context is active: shown, or kept rendering. */
+  docShellIsActive: boolean;
+  gotoIndex(index: number): void;
+  // engine/toolkit/actors/PopupAndRedirectBlockingParent.sys.mjs, made on first read.
+  readonly popupAndRedirectBlocker: PopupAndRedirectBlocker;
   focus(): void;
   reload(): void;
-  loadURI(uri: nsIURI, params: { triggeringPrincipal: unknown }): void;
+  loadURI(uri: nsIURI, params: { triggeringPrincipal: unknown; referrerInfo?: unknown }): void;
+  /** The page's full zoom, 1 at 100 % (the fullZoom getter and setter). */
+  fullZoom: number;
+}
+
+// engine/dom/chrome-webidl/WindowGlobalActors.webidl (WindowGlobalParent): the parts Vimma uses
+// of a document's window global in the parent.
+interface WindowGlobalParent {
+  readonly innerWindowId: number;
+  getActor(name: string): JSWindowActorParent;
 }
 
 // A tab's <browser>. A lazy one answers currentURI from session data (Tabbrowser.sys.mjs,
-// createLazyBrowser's getters); a live one is remote or has a docshell. Either way currentURI
-// and finder are set.
+// createLazyBrowser's getters); a live one reads its webNavigation's. currentURI is assumed
+// non-null for a live tab, though the getter gives null without a webNavigation
+// (browser-custom-element.mjs, `get currentURI`); host/ reads it with `?.` all the same. The
+// finder is set either way.
 interface MozTabBrowser extends MozBrowser {
   readonly currentURI: nsIURI;
   readonly finder: MozFinder;
+  /** Tabbrowser makes it in its browser window's document. Null once that has no window. */
+  readonly documentGlobal: BrowserWindow | null;
 }
 
 // engine/browser/components/tabbrowser/content/tab.mjs (MozTabbrowserTab): a tab.
@@ -606,7 +794,9 @@ interface MozTabbrowserTab extends Element {
   readonly muted: boolean;
   readonly muteReason: string | null | undefined;
   readonly splitview: MozTabSplitViewWrapper | null;
-  readonly ownerGlobal: BrowserWindow;
+  /** The tab it was opened from, null when none (Tabbrowser addTab's `openerTab`); undefined
+   * for a tab addTab did not make, as the window's first. */
+  readonly openerTab: MozTabbrowserTab | null | undefined;
   toggleMuteAudio(muteReason?: string | null): void;
 }
 
@@ -614,7 +804,8 @@ interface MozTabbrowserTab extends Element {
 interface MozTabSplitViewWrapper extends Element {
   readonly splitViewId: number;
   readonly tabs: MozTabbrowserTab[];
-  unsplitTabs(): void;
+  /** `trigger` names what asked, for Firefox's telemetry (its menu passes "menu_separate"). */
+  unsplitTabs(trigger?: string | null): void;
 }
 
 // engine/browser/components/tabbrowser/Tabbrowser.sys.mjs: a browser window's gBrowser.
@@ -644,7 +835,8 @@ interface Tabbrowser {
   getCachedFindBar(tab?: MozTabbrowserTab): MozFindbar | undefined;
   /** Null when the window or the tab closes before the find bar is made. */
   getFindBar(tab?: MozTabbrowserTab): Promise<MozFindbar | null>;
-  readNotificationBox(browser?: MozBrowser): any;
+  /** The browser's notification box, null until a notification first needed one. */
+  readNotificationBox(browser?: MozBrowser): MozNotificationBox | null;
   moveTabForward(options?: { metricsContext?: unknown }): void;
   moveTabBackward(options?: { metricsContext?: unknown }): void;
   // engine/browser/components/tabbrowser/TabMetrics.sys.mjs
@@ -670,11 +862,37 @@ interface TabbrowserAddOptions {
   relatedToCurrent?: boolean;
 }
 
+/** One of the address bar controller's query notifications: the query's context, by its id. */
+interface UrlbarQueryListener {
+  onQueryStarted?(context: { id: unknown }): void;
+  onQueryFinished?(context: { id: unknown }): void;
+  onQueryCancelled?(context: { id: unknown }): void;
+}
+
+// The address bar, as `gURLBar` or `#urlbar`: engine/browser/components/urlbar/content/
+// UrlbarInputBase.mjs. `controller` is its UrlbarChildController (UrlbarChildController.mjs,
+// addListener and removeListener), one per element: connectedCallback makes it only when
+// there is none. `view` is its UrlbarView (UrlbarView.mjs: `isOpen`, and `queryContext`, the
+// context of the results it last drew). `lastSearchString` is set by startQuery as a query
+// starts; `lastQueryContextPromise` is the last query's, resolved when it ends (a resolved one
+// before any query).
+type UrlbarInput = HTMLElement & {
+  focused: boolean;
+  view: { isOpen: boolean; queryContext: { searchString: string } | null };
+  select(): void;
+  controller?: {
+    addListener(listener: UrlbarQueryListener): void;
+    removeListener(listener: UrlbarQueryListener): void;
+  };
+  readonly lastSearchString: string;
+  lastQueryContextPromise: Promise<unknown>;
+};
+
 // engine/browser/base/content/browser.js and the scripts browser.xhtml loads: a browser window.
 interface BrowserWindow extends ChromeWindow {
   readonly gBrowser: Tabbrowser;
   // engine/browser/components/urlbar/content/UrlbarInput.mjs
-  readonly gURLBar: HTMLElement & { focused: boolean; view: { isOpen: boolean }; select(): void };
+  readonly gURLBar: UrlbarInput;
   readonly gNavToolbox: Element;
   readonly BROWSER_NEW_TAB_URL: string;
   // browser-init.js
@@ -683,7 +901,7 @@ interface BrowserWindow extends ChromeWindow {
   // tab-bar-visibility.js
   readonly TabBarVisibility: { update(force?: boolean): void };
   // browser.js (a lazy getter: PopupNotifications.sys.mjs)
-  readonly PopupNotifications: { readonly panel: Element & { readonly state: string } };
+  readonly PopupNotifications: PopupNotificationsApi;
   UpdatePopupNotificationsVisibility(): void;
   isInitialPage(url: nsIURI | string): boolean;
   switchToTabHavingURI(
@@ -691,7 +909,8 @@ interface BrowserWindow extends ChromeWindow {
     openNew?: boolean,
     params?: { relatedToCurrent?: boolean; triggeringPrincipal?: unknown },
   ): boolean;
-  // utilityOverlay.js
+  // utilityOverlay.js (URILoadingHelper.sys.mjs openLinkIn: `params` are its many options)
+  openLinkIn(url: string, where: string, params: object): void;
   openTrustedLinkIn(
     url: string,
     where: string,
@@ -700,9 +919,14 @@ interface BrowserWindow extends ChromeWindow {
   // toolkit globalOverlay.js and contentAreaUtils.js
   goQuitApplication(event?: { ctrlKey?: boolean; metaKey?: boolean }): boolean;
   DownloadURL(url: string, fileName: string | null, initiatingDocument: Document): void;
-  // browser-addons.js: extension UI, untyped here (WebExtension internals)
-  readonly gUnifiedExtensions: any;
+  // browser-addons.js: the extensions button's code.
+  readonly gUnifiedExtensions: UnifiedExtensions;
   readonly BrowserAddonUI: { manageAddon(addonId: string, source?: string): Promise<void> };
+}
+
+// engine/toolkit/modules/PopupNotifications.sys.mjs (the members Vimma reads)
+interface PopupNotificationsApi {
+  readonly panel: Element & { readonly state: string };
 }
 
 // A browser window from its first script, before its body exists: browser-main.js creates
@@ -733,6 +957,763 @@ interface MozFinder {
   addResultListener(listener: object): void;
   removeResultListener(listener: object): void;
   findAgain(query: string, backward: boolean, linksOnly: boolean, outline: boolean): void;
+  fastFind(query: string, linksOnly: boolean, outline: boolean): void;
   requestMatchesCount(query: string, args: object): void;
   removeSelection(keepHighlight?: boolean): void;
+}
+
+// engine/dom/chrome-webidl/XULPopupElement.webidl: a <menupopup>, <panel> or <tooltip>
+// (engine/dom/xul/nsXULElement.cpp; XULTooltipElement extends it), the target of popupshowing
+// and popuphidden. `state` is one of the four the webidl's comment lists.
+interface XULPopupElement extends Element {
+  readonly state: "closed" | "showing" | "open" | "hiding";
+  readonly triggerNode: Node | null;
+  readonly anchorNode: Element | null;
+}
+
+// engine/dom/chrome-webidl/XULFrameElement.webidl: a XUL <browser>, <iframe> or <editor>
+// (nsXULElement.cpp). The members Vimma reads.
+interface XULFrameElement extends Element {
+  readonly contentDocument: Document | null;
+}
+
+// engine/dom/chrome-webidl/BrowsingContext.webidl (the members Vimma reads; a window's
+// `browsingContext` is still `any`).
+interface BrowsingContext {
+  // LoadContextMixin: webidl `any`, an OriginAttributesDictionary
+  // (engine/dom/chrome-webidl/OriginAttributes.webidl).
+  readonly originAttributes: { readonly userContextId: number; readonly privateBrowsingId: number };
+  readonly id: number;
+  readonly parent: BrowsingContext | null;
+  readonly top: BrowsingContext;
+  /** The frames of its current document (BrowsingContext::Children, its current WindowContext's). */
+  readonly children: readonly BrowsingContext[];
+  /** The frame element in its embedder's document, null when that is in another process. */
+  readonly embedderElement: Element | null;
+  readonly isDiscarded: boolean;
+  readonly browserId: number;
+  readonly isContent: boolean;
+  /** engine/dom/base/nsSandboxFlags.h; the setter throws on a discarded context. */
+  sandboxFlags: number;
+  /**
+   * The full zoom, 1 at 100 % (engine/dom/chrome-webidl/BrowsingContext.webidl, a synced float
+   * field; its setter throws on a discarded context).
+   */
+  fullZoom: number;
+  getAllBrowsingContextsInSubtree(): BrowsingContext[];
+}
+// The parent process's context (BrowsingContext.webidl). In the parent every context is one
+// (engine/docshell/base/BrowsingContext.cpp: CreateDetached and CreateFromIPC make a
+// CanonicalBrowsingContext there), so the contexts it reaches from one are too, though the webidl
+// types them as BrowsingContext.
+interface CanonicalBrowsingContext extends BrowsingContext {
+  readonly currentWindowGlobal: WindowGlobalParent | null;
+  readonly parent: CanonicalBrowsingContext | null;
+  readonly top: CanonicalBrowsingContext;
+  readonly children: readonly CanonicalBrowsingContext[];
+  /** Its embedder element, or one around it, is hidden or has no frame. */
+  readonly isUnderHiddenEmbedderElement: boolean;
+  readonly currentURI: nsIURI | null;
+  /** Top-level only; the setter throws on another. */
+  downloadFolderOverride: string;
+  /** The tab's back/forward list (engine/docshell/shistory/nsISHistory.idl), null for a context
+   * that keeps none. */
+  readonly sessionHistory: nsISHistory | null;
+  getAllBrowsingContextsInSubtree(): CanonicalBrowsingContext[];
+}
+// engine/dom/chrome-webidl/WindowGlobalActors.webidl (WindowContext's and WindowGlobalParent's
+// members). The principals are never null (webidl `Principal`, not nullable).
+interface WindowGlobalParent {
+  readonly innerWindowId: number;
+  /** The document's window has closed: it no longer shows in its frame. */
+  readonly isClosed: boolean;
+  readonly isInProcess: boolean;
+  readonly documentPrincipal: nsIPrincipal;
+  readonly documentStoragePrincipal: nsIPrincipal;
+  readonly documentURI: nsIURI | null;
+  /** WindowContext's: null once its context is gone. In the parent, canonical. */
+  readonly browsingContext: CanonicalBrowsingContext | null;
+  readonly isInitialDocument: boolean;
+  /** An image of its frame and the frames in it, drawn in the parent (`rect` null: the
+   * viewport). */
+  drawSnapshot(rect: DOMRect | null, scale: number, backgroundColor: string): Promise<ImageBitmap>;
+  /** engine/toolkit/components/pageextractor/PageExtractorParent.sys.mjs */
+  getActor(name: "PageExtractor"): PageExtractorParent;
+  /** engine/dom/interfaces/base/nsIDOMProcessParent.idl; null once the process is gone. */
+  readonly domProcess: { readonly remoteType: string | null } | null;
+}
+
+// engine/dom/webidl/MozFrameLoaderOwner.webidl, which both frame elements include: the frame's
+// context, null while it has none (an element not in a document).
+interface HTMLIFrameElement {
+  readonly browsingContext: BrowsingContext | null;
+}
+interface HTMLFrameElement {
+  readonly browsingContext: BrowsingContext | null;
+}
+
+// engine/dom/webidl/Node.webidl (ChromeOnly): a slotted node's slot, a shadow root's host, else
+// the parent node.
+interface Node {
+  readonly flattenedTreeParentNode: Node | null;
+}
+
+// engine/dom/webidl/HTMLInputElement.webidl, the MozEditableElement mixin (ChromeOnly), which
+// HTMLTextAreaElement includes too. Reading it makes the editor if the element can have one.
+interface HTMLInputElement {
+  readonly editor: nsIEditor | null;
+}
+interface HTMLTextAreaElement {
+  readonly editor: nsIEditor | null;
+}
+// The chrome-only members of the form controls that form autofill and Vimma's agent fills read
+// (engine/dom/webidl/HTMLInputElement.webidl, HTMLSelectElement.webidl,
+// HTMLTextAreaElement.webidl; AutocompleteInfo.webidl). `setUserInput` is the MozEditableElement
+// mixin's, which a text area includes.
+interface AutocompleteInfo {
+  readonly fieldName: string;
+}
+interface HTMLInputElement {
+  /** It is a password field, or was one at any time. */
+  readonly hasBeenTypePassword: boolean;
+  /** Form autofill's preview, shown before it is a value. */
+  readonly previewValue: string;
+  getAutocompleteInfo(): AutocompleteInfo | null;
+  setUserInput(input: string): void;
+}
+interface HTMLSelectElement {
+  getAutocompleteInfo(): AutocompleteInfo;
+  /** Ends a user's choice as the select's popup does: fires input and change when `changed`. */
+  userFinishedInteracting(changed: boolean): void;
+}
+interface HTMLTextAreaElement {
+  getAutocompleteInfo(): AutocompleteInfo;
+  setUserInput(input: string): void;
+}
+// engine/editor/nsIEditor.idl. EditorBase::GetSelectionController fails (the getter throws)
+// rather than give null.
+interface nsIEditor {
+  readonly selectionController: nsISelectionController;
+}
+// engine/dom/base/nsISelectionController.idl
+interface nsISelectionController {
+  repaintSelection(type: number): void;
+}
+
+// engine/browser/components/tabbrowser/Tabbrowser.sys.mjs (updateBrowserSharing and
+// resetBrowserSharing): a tab browser's sharing state, unset until a page first shares; webRTC
+// is WebRTCParent.sys.mjs's state (null once sharing stops), the others what PermissionUI and
+// SerialDeviceSharingHelper pass.
+interface MozTabBrowser {
+  readonly _sharingState?: {
+    webRTC?: { camera?: unknown; microphone?: unknown; screen?: unknown } | null;
+    geo?: unknown;
+    xr?: unknown;
+    serial?: unknown;
+  } | null;
+}
+
+// engine/toolkit/actors/FinderChild.sys.mjs: `finder` makes the frame's Finder on first read,
+// `_finder` is unset until then. engine/toolkit/modules/Finder.sys.mjs nulls `_fastFind` in
+// destroy().
+interface FinderChildActor {
+  readonly finder: FinderModule;
+  readonly _finder?: FinderModule | null;
+}
+interface FinderModule {
+  readonly _fastFind: nsITypeAheadFind | null;
+}
+// engine/toolkit/components/typeaheadfind/nsITypeAheadFind.idl
+interface nsITypeAheadFind {
+  readonly foundEditable: Element | null;
+  find(searchString: string, linksOnly: boolean, mode: number, dontIterateFrames: boolean): number;
+}
+
+// engine/uriloader/base/nsIWebProgress.idl (the members Vimma reads)
+interface nsIWebProgress {
+  readonly isTopLevel: boolean;
+  readonly isLoadingDocument: boolean;
+}
+
+// engine/docshell/shistory/nsISHistory.idl and nsISHEntry.idl (the members Vimma reads).
+// getEntryAtIndex throws for an index out of range.
+interface nsISHistory {
+  readonly count: number;
+  /** The current entry's index. */
+  readonly index: number;
+  getEntryAtIndex(index: number): nsISHEntry;
+}
+
+// engine/toolkit/components/pageextractor/PageExtractorParent.sys.mjs. Both answers come from
+// the page's process (sendQuery), or from the PDF viewer's: checked by the caller.
+interface PageExtractorParent {
+  getText(options: {
+    removeBoilerplate?: boolean;
+    useSimpleText?: boolean;
+    sufficientLength?: number;
+    sourceUrl?: string;
+  }): Promise<unknown>;
+  getPageMetadata(): Promise<unknown>;
+}
+
+// engine/dom/interfaces/base/nsIContentPermissionPrompt.idl (the members Vimma reads).
+interface nsIContentPermissionRequest {
+  readonly principal: nsIPrincipal;
+  readonly topLevelPrincipal: nsIPrincipal;
+  cancel(): void;
+}
+// engine/browser/components/permissions/ContentPermissionPrompt.sys.mjs: the integration point
+// `Integration.contentPermission` wraps; its prompt's prompt() shows it or decides at once.
+interface ContentPermissionIntegration {
+  createPermissionPrompt(
+    type: string,
+    request: nsIContentPermissionRequest,
+  ): { prompt(): void } | undefined;
+}
+
+// engine/toolkit/components/downloads/DownloadCore.sys.mjs: a Download, with the members of its
+// DownloadSource, DownloadTarget and DownloadSaver that Vimma's agent downloads read
+// (ctl/AgentDownloads.sys.mjs). The saver is a DownloadCopySaver or, for a helper-app download,
+// a DownloadLegacySaver, which alone has `request` (its channel, null until it starts) and
+// `deferExecuted`.
+interface FirefoxDownload {
+  readonly source: {
+    readonly url: string;
+    readonly originalUrl: string | null;
+    readonly userContextId?: number;
+    readonly browsingContextId?: number;
+  };
+  readonly target: { readonly path: string; readonly partFilePath: string | null };
+  readonly saver: {
+    readonly totalBytes?: number;
+    readonly request?: { readonly contentLength?: number } | null;
+    readonly deferExecuted?: { readonly promise: Promise<unknown> } | null;
+    cancel?(): void;
+  } | null;
+  readonly stopped: boolean;
+  readonly totalBytes: number;
+  readonly currentBytes: number;
+  readonly contentType: string | null;
+  launchWhenSucceeded: boolean;
+  launcherPath: string | null;
+  launcherId: string | null;
+  handleInternally: boolean;
+  finalize(removePartialData?: boolean): Promise<void>;
+  whenSucceeded(): Promise<void>;
+}
+// engine/toolkit/components/downloads/DownloadIntegration.sys.mjs: the hooks
+// `Integration.downloads` lets Vimma wrap (DownloadCore's Download.start and
+// _checkReputationAndMove call them).
+interface DownloadIntegrationBase {
+  shouldBlockForParentalControls(download: FirefoxDownload): Promise<boolean>;
+  shouldBlockForReputationCheck(
+    download: FirefoxDownload,
+  ): Promise<{ shouldBlock: boolean; verdict: unknown }>;
+  downloadDone(download: FirefoxDownload): Promise<unknown>;
+  launchDownload(download: FirefoxDownload, options: unknown): Promise<unknown>;
+}
+// engine/uriloader/exthandler/nsIExternalHelperAppService.idl (nsIHelperAppLauncher): the
+// members Vimma's download dialog reads. `file` is an nsIFile.
+interface nsIHelperAppLauncher {
+  readonly browsingContextId: number;
+  readonly contentLength: number;
+  promptForSaveDestination(): void;
+  saveDestinationAvailable(file: { readonly path: string } | null): void;
+}
+// engine/toolkit/modules/subprocess/Subprocess.sys.mjs (its Process, through the pipes Vimma
+// asked for): the scanner Vimma runs.
+interface ChildProcess {
+  readonly stdin: { close(): Promise<unknown> };
+  readonly stdout: { readString(): Promise<string> };
+  readonly stderr: { readString(): Promise<string> };
+  wait(): Promise<{ exitCode: number }>;
+  kill(): void;
+}
+// The modules ctl/AgentDownloads.sys.mjs reads lazily, named here and not there:
+// tools/security/test/chrome-source.test.ts pins every mention of the process module in it.
+type AgentDownloadsLazy = Lazy<
+  | "DownloadPaths"
+  | "Downloads"
+  | "FileUtils"
+  | "Integration"
+  | "Subprocess"
+  | "ctypes"
+  | "clearInterval"
+  | "clearTimeout"
+  | "setInterval"
+  | "setTimeout"
+  | "nsUnknownContentTypeDialog"
+>;
+
+// A control connection's socket and streams, as ctl/VimmaControl.sys.mjs reads them:
+// engine/netwerk/base/nsITransport.idl (nsISocketTransport), engine/xpcom/io/
+// nsIAsyncInputStream.idl and nsIAsyncOutputStream.idl. Named apart from the browser tests'
+// fuller declarations of those interfaces (types/mochitest/firefox.d.ts). QueryInterface gives
+// the stream as the interface asked for, or throws.
+interface ControlTransport {
+  openInputStream(
+    flags: number,
+    segmentSize: number,
+    segmentCount: number,
+  ): { QueryInterface(iid: unknown): ControlInputStream };
+  openOutputStream(
+    flags: number,
+    segmentSize: number,
+    segmentCount: number,
+  ): { QueryInterface(iid: unknown): ControlOutputStream };
+  close(reason: number): void;
+}
+interface ControlInputStream {
+  /** Throws at the end of the stream, or with NS_BASE_STREAM_WOULD_BLOCK. */
+  available(): number;
+  asyncWait(
+    callback: { onInputStreamReady(stream: unknown): void },
+    flags: number,
+    requestedCount: number,
+    target: unknown,
+  ): void;
+  close(): void;
+}
+interface ControlOutputStream {
+  /** The bytes of `buf` (a binary string) written; throws NS_BASE_STREAM_WOULD_BLOCK. */
+  write(buf: string, count: number): number;
+  asyncWait(
+    callback: { onOutputStreamReady(stream: unknown): void },
+    flags: number,
+    requestedCount: number,
+    target: unknown,
+  ): void;
+  close(): void;
+}
+
+// SpiderMonkey's built-ins newer than the type check's ES2022 library (engine/js/src/builtin/
+// String.cpp, ES2024; engine/js/src/vm/TypedArrayObject.cpp, ES2026).
+interface String {
+  toWellFormed(): string;
+}
+interface Uint8Array {
+  toBase64(options?: { alphabet?: "base64" | "base64url"; omitPadding?: boolean }): string;
+}
+
+// engine/toolkit/modules/JSONFile.sys.mjs: a JSON file kept in memory, saved after a delay.
+// Reading `data` throws until it is ready (load, ensureDataReady or a set); a missing file
+// reads as {}. finalize() rejects when called a second time.
+interface JSONFileConfig {
+  path: string;
+  backupTo?: string;
+  saveDelayMs?: number;
+  beforeSave?: () => unknown;
+}
+interface JSONFileInstance {
+  readonly path: string;
+  readonly dataReady: boolean;
+  data: unknown;
+  load(): Promise<void>;
+  ensureDataReady(): void;
+  saveSoon(): void;
+  finalize(): Promise<void>;
+}
+
+// engine/toolkit/components/commandlines/nsICommandLine.idl
+interface nsICommandLine {
+  /** Null (a void string) when the flag is absent; throws when it has no parameter. */
+  handleFlagWithParam(flag: string, caseSensitive: boolean): string | null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The members host/ reads (#938). Kept together so the other slices' additions merge cleanly;
+// a member another slice declares too is declared with the same type.
+
+// engine/toolkit/content/widgets/browser-custom-element.mjs
+interface MozBrowser {
+  goBack(requireUserInteraction?: boolean): void;
+  goForward(requireUserInteraction?: boolean): void;
+}
+// engine/dom/chrome-webidl/BrowsingContext.webidl
+interface CanonicalBrowsingContext {
+  /** Its current document's WindowContext, null while it has none; in the parent, a
+   * WindowGlobalParent. */
+  readonly currentWindowContext: WindowGlobalParent | null;
+}
+// engine/netwerk/base/nsIURI.idl
+interface nsIURI {
+  /** The host as shown to people (IDN decoded); throws as `host` does. */
+  readonly displayHost: string;
+}
+// engine/docshell/shistory/nsISHEntry.idl
+interface nsISHEntry {
+  readonly URI: nsIURI;
+  /** Both entries show the same document (a same-document navigation between them). */
+  sharesDocumentWith(entry: nsISHEntry): boolean;
+}
+// engine/dom/chrome-webidl/XULElement.webidl: a XUL element, as a `<command>` or a `<key>`.
+interface XULElement extends Element {
+  hidden: boolean;
+  click(): void;
+  focus(): void;
+  /** Runs its command: a `<command>`'s oncommand, a `<key>`'s command event. */
+  doCommand(): void;
+}
+// engine/toolkit/components/windowwatcher/nsIPromptService.idl (the members Vimma calls)
+interface nsIPromptService {
+  readonly STD_YES_NO_BUTTONS: number;
+  readonly BUTTON_POS_1_DEFAULT: number;
+  /** The index of the button pressed; `checkState.value` is the checkbox's state after. */
+  confirmEx(
+    parent: Window | null,
+    title: string | null,
+    text: string | null,
+    buttonFlags: number,
+    button0Title: string | null,
+    button1Title: string | null,
+    button2Title: string | null,
+    checkMsg: string | null,
+    checkState: { value: boolean },
+  ): number;
+}
+interface FirefoxServices {
+  prompt: nsIPromptService;
+}
+// engine/dom/webidl/Localization.webidl: a missing message formats as null.
+interface FirefoxLocalization {
+  formatValuesSync(keys: readonly string[]): (string | null)[];
+}
+// engine/browser/components/tabbrowser/Tabbrowser.sys.mjs
+interface Tabbrowser {
+  /** The tab strip's strings (browser/tabbrowser.ftl). */
+  readonly tabLocalization: FirefoxLocalization;
+}
+// engine/browser/base/content/browser-commands.js: the window's menu and key commands (the
+// ones Vimma runs; the browser tests' declarations add theirs).
+interface BrowserWindow {
+  readonly BrowserCommands: BrowserCommandsApi;
+}
+interface BrowserCommandsApi {
+  openTab(): void;
+  viewSource(browser: MozBrowser): void;
+}
+// engine/browser/components/tabbrowser/Tabbrowser.sys.mjs (removeTab's options): the
+// TabMetrics context of a user's close.
+interface TabbrowserRemoveOptions {
+  metricsContext?: unknown;
+}
+// engine/toolkit/actors/PopupAndRedirectBlockingParent.sys.mjs (PopupAndRedirectBlocker): a
+// <browser>'s blocked pop-ups and redirect. The URI specs and report indexes are the content
+// process's answers (its PopupAndRedirectBlockingChild), passed on unchecked.
+interface BlockedPopup {
+  readonly browsingContext: CanonicalBrowsingContext;
+  readonly innerWindowId: number;
+  readonly popupWindowURISpec: unknown;
+  readonly reportIndex: unknown;
+}
+interface BlockedRedirect {
+  readonly browsingContext: CanonicalBrowsingContext;
+  readonly innerWindowId: number;
+  readonly redirectURISpec: unknown;
+}
+interface PopupAndRedirectBlocker {
+  getBlockedPopups(): Promise<BlockedPopup[]>;
+  getBlockedRedirect(): Promise<BlockedRedirect | null>;
+  /** Nothing when the context shows another document than `innerWindowId` by now. */
+  unblockPopup(bc: CanonicalBrowsingContext, innerWindowId: number, reportIndex: unknown): void;
+  unblockRedirect(bc: CanonicalBrowsingContext, innerWindowId: number, spec: unknown): void;
+  unblockAllPopups(): Promise<void>;
+  unblockFirstRedirect(): Promise<void>;
+}
+// engine/browser/modules/PopupAndRedirectBlockerObserver.sys.mjs: the bar's menu commands. They
+// read only the event's window.
+interface PopupAndRedirectBlockerObserver {
+  toggleAllowPopupsForSite(event: { originalTarget: { documentGlobal: Window } }): Promise<void>;
+  dontShowMessage(event: { originalTarget: { documentGlobal: Window } }): void;
+  editPopupSettings(event: { originalTarget: { documentGlobal: Window } }): void;
+}
+// engine/toolkit/content/widgets/notificationbox.js (MozElements.NotificationBox)
+interface MozNotificationBox {
+  /** The last notification with that `value` attribute, or null. */
+  getNotificationWithValue(value: string): MozNotificationMessage | null;
+}
+// notificationbox.js (NotificationMessage): a notification bar.
+interface MozNotificationMessage extends HTMLElement {
+  /** Its buttons' container, made in connectedCallback: unset before. */
+  readonly buttonContainer?: HTMLElement;
+  dismiss(): void;
+}
+// engine/toolkit/content/widgets/popupnotification.js (MozPopupNotification): a prompt in the
+// doorhanger panel or the app menu's notice panel. connectedCallback finds its parts, from its
+// own markup: a prompt in a panel has them. The buttons are <moz-button>s.
+interface MozPopupNotification extends XULElement {
+  readonly button: HTMLElement;
+  readonly secondaryButton: HTMLElement;
+  readonly buttonGroup: Element;
+  /** The footer's buttons that take focus, in order (each <moz-button>'s inner <button>). */
+  readonly footerFocusableButtons: HTMLElement[];
+}
+// engine/dom/webidl/HTMLInputElement.webidl (ChromeOnly)
+interface HTMLInputElement {
+  mozIsTextField(excludePassword: boolean): boolean;
+}
+// An entry of a download list (engine/toolkit/components/downloads/DownloadList.sys.mjs): a
+// session download (DownloadCore.sys.mjs, Download), or in a normal window's list one from
+// history (DownloadHistory.sys.mjs, HistoryDownload), which has only the members marked optional
+// here, some of them unset, and `refresh`.
+interface DownloadListEntry {
+  readonly source: {
+    readonly url: string;
+    /** The container it came from; a history entry keeps none. */
+    readonly userContextId?: number;
+    readonly referrerInfo?: { readonly originalReferrer: nsIURI | null } | null;
+  };
+  readonly target: {
+    /** Unset for a history entry whose file Firefox does not know. */
+    readonly path?: string;
+    readonly exists?: boolean;
+    readonly partFileExists?: boolean;
+    readonly size?: number;
+  };
+  readonly stopped: boolean;
+  readonly succeeded?: boolean;
+  readonly canceled?: boolean;
+  readonly deleted?: boolean;
+  readonly hasProgress: boolean;
+  readonly hasPartialData: boolean;
+  readonly hasBlockedData?: boolean;
+  readonly currentBytes?: number;
+  readonly totalBytes?: number;
+  readonly speed?: number;
+  /** A session download's, null before it starts. */
+  readonly startTime?: Date | null;
+  /** A history entry's, in ms. */
+  readonly endTime?: number;
+  /** A history entry's Places node (`time` in microseconds). */
+  readonly placesNode?: { readonly time: number };
+  /** Downloads.sys.mjs's DownloadError, or a history entry's plain object like it. */
+  readonly error?: DownloadError | null;
+  /** Reads the disk again (the file's existence and size) and tells the list's views. */
+  refresh(): Promise<void>;
+}
+interface DownloadError {
+  readonly message?: string;
+  readonly becauseBlockedByParentalControls?: boolean;
+  readonly becauseBlockedByReputationCheck?: boolean;
+  readonly becauseBlockedByContentAnalysis?: boolean;
+  readonly reputationCheckVerdict?: string;
+}
+// DownloadCore.sys.mjs (Download): a session download, with the members a history entry lacks.
+interface SessionDownload extends DownloadListEntry {
+  readonly target: DownloadListEntry["target"] & { refresh(): Promise<void> };
+  launchWhenSucceeded: boolean;
+  start(): Promise<void>;
+  cancel(): Promise<void>;
+  removePartialData(): Promise<void>;
+  confirmBlock(): Promise<void>;
+  unblock(): Promise<void>;
+  showContainingDirectory(): Promise<void>;
+}
+// DownloadList.sys.mjs: a view hears of each entry, those already listed when it is added too.
+interface DownloadListView {
+  onDownloadAdded?(download: DownloadListEntry): void;
+  onDownloadChanged?(download: DownloadListEntry): void;
+  onDownloadRemoved?(download: DownloadListEntry): void;
+}
+interface DownloadList {
+  getAll(): Promise<DownloadListEntry[]>;
+  addView(view: DownloadListView): Promise<void>;
+  removeView(view: DownloadListView): Promise<void>;
+}
+// engine/dom/chrome-webidl/WebExtensionPolicy.webidl: an installed extension's policy; getByID is
+// null for an id that has none. `extension` is the Extension that registered it
+// (engine/toolkit/components/extensions/Extension.sys.mjs sets it, an expando of the policy
+// object): promiseBackgroundStarted is set on an extension with a background
+// (parent/ext-backgroundPage.js); backgroundContext is undefined while it has no background page
+// (Extension.sys.mjs), and the page's xulBrowser undefined without a message manager proxy
+// (ExtensionParent.sys.mjs).
+interface WebExtensionPolicy {
+  readonly id: string;
+  readonly extension: {
+    promiseBackgroundStarted(): Promise<void>;
+    readonly backgroundContext: { readonly xulBrowser: MozBrowser | undefined } | undefined;
+  };
+}
+declare var WebExtensionPolicy: {
+  prototype: WebExtensionPolicy;
+  getByID(id: string): WebExtensionPolicy | null;
+};
+// engine/browser/base/content/browser-addons.js (gUnifiedExtensions). browserActionFor gives the
+// extension's handler in engine/browser/components/extensions/parent/ext-browserAction.js:
+// undefined until an extension loaded that code, and for an extension without a button.
+interface UnifiedExtensions {
+  browserActionFor(policy: WebExtensionPolicy | null): ExtensionBrowserAction | null | undefined;
+}
+interface ExtensionBrowserAction {
+  /** engine/toolkit/components/extensions/ExtensionActions.sys.mjs: the popup's URL for the
+   * tab, empty or null without one. */
+  readonly action: { getPopupUrl(tab: MozTabbrowserTab | null, strict?: boolean): string | null };
+  /** As the button's click or its `_execute_action` shortcut. */
+  triggerAction(window: BrowserWindow): void;
+}
+// engine/toolkit/mozapps/extensions/AddonManager.sys.mjs: the members the add-on picker uses.
+// LazyModules leaves the module untyped (setup/ uses others); addon-ops.mjs reads it as this.
+interface AddonManagerApi {
+  getAddonsByTypes(types: readonly string[]): Promise<AddonWrapper[]>;
+  getAllInstalls(): Promise<AddonInstall[]>;
+  addAddonListener(listener: object): void;
+  readonly UPDATE_STATUS_NO_ERROR: number;
+  readonly UPDATE_WHEN_USER_REQUESTED: number;
+  // The bits of AddonWrapper.permissions the picker reads.
+  readonly PERM_CAN_UNINSTALL: number;
+  readonly PERM_CAN_ENABLE: number;
+  readonly PERM_CAN_DISABLE: number;
+  readonly PERM_CAN_UPGRADE: number;
+  readonly PERM_CAN_CHANGE_PRIVATEBROWSING_ACCESS: number;
+}
+// engine/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs (AddonWrapper): an installed
+// add-on.
+interface AddonWrapper {
+  readonly id: string;
+  readonly name: string | null;
+  readonly version: string | null;
+  readonly type: string;
+  readonly userDisabled: boolean;
+  readonly isSystem: boolean;
+  readonly isBuiltin: boolean;
+  readonly hidden: boolean;
+  /** "spanning", "not_allowed" or "private" (the manifest's `incognito`). */
+  readonly incognito: string;
+  /** The update waiting for a restart, null without one. */
+  readonly pendingUpgrade: object | null;
+  /** AddonManager's PERM_CAN_* bits. */
+  readonly permissions: number;
+  readonly optionsURL: string | null;
+  readonly isActive: boolean;
+  enable(): Promise<void>;
+  disable(): Promise<void>;
+  uninstall(): Promise<void>;
+  reload(): Promise<void>;
+  findUpdates(listener: AddonUpdateListener, reason: number): void;
+}
+interface AddonUpdateListener {
+  onUpdateAvailable?(addon: AddonWrapper, install: AddonInstall): void;
+  onNoUpdateAvailable?(addon: AddonWrapper): void;
+  onUpdateFinished?(addon: AddonWrapper, error: number): void;
+}
+// AddonManager.sys.mjs (AddonInstall): an install or update; `existingAddon` is the add-on it
+// updates, null for a new one.
+interface AddonInstall {
+  readonly existingAddon: AddonWrapper | null;
+  readonly version: string | null;
+}
+// engine/toolkit/components/extensions/ExtensionPermissions.sys.mjs; `extension` is the running
+// Extension, which then hears of the change (undefined for one not running).
+interface ExtensionPermissionsApi {
+  get(id: string): Promise<{ permissions: string[]; origins: string[] }>;
+  add(
+    id: string,
+    perms: { permissions: string[]; origins: string[] },
+    extension?: unknown,
+  ): Promise<void>;
+  remove(
+    id: string,
+    perms: { permissions: string[]; origins: string[] },
+    extension?: unknown,
+  ): Promise<void>;
+}
+// engine/toolkit/content/widgets/dialog.js (MozDialog): a XUL <dialog>. getButton gives its
+// button of that type ("accept", "cancel", ...), undefined for a type it has none of.
+interface MozDialog extends XULElement {
+  getButton(type: string): MozDialogButton | undefined;
+}
+// engine/toolkit/content/widgets/button.js: a XUL <button>.
+interface MozDialogButton extends XULElement {
+  readonly label: string;
+  disabled: boolean;
+}
+// engine/browser/components/sessionstore/SessionStore.sys.mjs: a closed tab's record and a
+// closed window's, as SessionStore keeps them (and reads them back from the session file). The
+// fields Vimma reads; each is read with a fallback.
+interface SessionClosedTab {
+  readonly closedId: number;
+  readonly title?: string;
+  /** When it closed, in ms since the epoch. */
+  readonly closedAt?: number;
+  readonly state?: SessionTabState;
+}
+interface SessionClosedWindow {
+  readonly closedId: number;
+  readonly title?: string;
+  readonly closedAt?: number;
+  readonly tabs?: readonly SessionTabState[];
+}
+// A tab's saved state: its history entries and the current one's index, 1-based.
+interface SessionTabState {
+  readonly entries?: readonly { readonly url?: string; readonly title?: string }[];
+  readonly index?: number;
+  readonly userContextId?: number;
+}
+// engine/toolkit/components/places/PlacesUtils.sys.mjs: the members the bookmarks panel uses.
+interface PlacesUtilsApi {
+  /** The item and everything under it; null for a guid that names no item. */
+  promiseBookmarksTree(guid?: string): Promise<PlacesTreeItem | null>;
+  readonly bookmarks: PlacesBookmarksApi;
+  // engine/dom/base/PlacesObservers.cpp (PlacesObservers.webidl)
+  readonly observers: {
+    addListener(types: string[], listener: (events: unknown[]) => void): void;
+    removeListener(types: string[], listener: (events: unknown[]) => void): void;
+  };
+}
+// promiseBookmarksTree's items; `title` and `uri` are unset where the item has none.
+interface PlacesTreeItem {
+  readonly guid: string;
+  readonly typeCode?: number;
+  readonly title?: string;
+  readonly uri?: string;
+  readonly children?: PlacesTreeItem[];
+}
+// engine/toolkit/components/places/Bookmarks.sys.mjs: a bookmark's info, and the calls on it.
+interface PlacesBookmarkInfo {
+  readonly guid: string;
+  readonly parentGuid: string;
+  readonly title: string;
+}
+interface PlacesBookmarksApi {
+  readonly TYPE_FOLDER: number;
+  readonly DEFAULT_INDEX: number;
+  /** The first bookmark that matches, null for none. */
+  fetch(guidOrInfo: string | { url: string }): Promise<PlacesBookmarkInfo | null>;
+  insert(info: {
+    parentGuid: string;
+    type?: number;
+    url?: string;
+    title?: string;
+  }): Promise<PlacesBookmarkInfo>;
+  update(info: {
+    guid: string;
+    parentGuid?: string;
+    index?: number;
+    title?: string;
+  }): Promise<PlacesBookmarkInfo>;
+  remove(guid: string): Promise<unknown>;
+}
+// engine/toolkit/modules/FinderParent.sys.mjs: the frame of the last match, null before one and
+// after close() forgets it.
+interface MozFinder {
+  _lastFoundBrowsingContext: CanonicalBrowsingContext | null;
+}
+// engine/dom/webidl/Document.webidl and DocumentL10n.webidl: a document's Fluent localization,
+// null for a document that does not support Fluent (DocumentSupportsL10n). getAttributes reads
+// an element's data-l10n-id and data-l10n-args (DOMLocalization.webidl).
+interface Document {
+  readonly l10n: DocumentL10n | null;
+}
+interface DocumentL10n {
+  getAttributes(element: Element): { id: string | null; args: L10nArgs | null };
+}
+/** Fluent's arguments (Fluent.webidl, L10nArgs). */
+type L10nArgs = Record<string, string | number | null>;
+// engine/browser/base/content/browser.js: opens a browser window, and gives it.
+interface BrowserWindow {
+  OpenBrowserWindow(options?: {
+    private?: boolean;
+    features?: string;
+    args?: unknown;
+  }): BrowserWindow;
 }

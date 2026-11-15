@@ -17,7 +17,7 @@ How to build, run and test Vimma, and how changes get in. For why Vimma exists, 
 - Python 3.10 to 3.14: the range `engine/mach` declares it supports. A newer Python breaks mach in
   places; Python 3.15 cannot parse the test manifests.
 - Time: the first full build took 39 min on a 16-thread Ryzen with 58 GB RAM. The Firefox source
-  download took 12.5 min. See [docs/runbook.md](docs/runbook.md).
+  download took 12.5 min. See [docs/runbook/](docs/runbook/README.md).
 
 ## Reporting bugs and requesting features
 
@@ -69,8 +69,8 @@ configure finds the compiler cache the mozconfig names.
 Google Safe Browsing (phishing and malware protection) needs an API key, which is not in this
 repository. A build without one works but shows the protection as off. To turn it on, get a free
 key from Google and save it as `~/.config/vimma/keys/safebrowsing` before building
-([runbook](docs/runbook.md#google-safe-browsing-key-spec-m0-safebrowsing-key)). Release packages
-are built with a key.
+([runbook](docs/runbook/ci-google-safe-browsing-key.md#google-safe-browsing-key-spec-m0-safebrowsing-key)).
+Release packages are built with a key.
 
 Run it, then press `ctrl+b ?` to see every binding:
 
@@ -81,7 +81,7 @@ npm start -- --import   # run `npm run import` first
 npm start -- --profile DIR -- --jsconsole   # another profile; after the second -- browser flags
 ```
 
-`npm start` (`tools/start.mjs`) passes its own profile, so it never touches your Firefox profile
+`npm start` (`tools/start.ts`) passes its own profile, so it never touches your Firefox profile
 (remoting is keyed by app name and profile: a `vimma` command line never reaches Firefox), and refuses to start a second instance on the same profile. It adds
 these lines to the profile's `user.js` (other lines are kept):
 `security.sandbox.content.read_path_whitelist` set to this checkout's `src/`, and
@@ -103,7 +103,7 @@ patch re-applies cleanly instead of failing on its old version; nothing else in 
 reset. After moving the checkout to another path, run
 `node tools/import/relocate-checkout.ts --from <old path>` before importing: it retargets
 `engine/`'s absolute symlinks and rewrites the old path in the objdir
-([runbook](docs/runbook.md#moving-the-checkout)).
+([runbook](docs/runbook/moving-the-checkout.md#moving-the-checkout)).
 
 ### vimma-ctl from source
 
@@ -129,21 +129,23 @@ and the SBOM entry. A Rust update that brings a new musl stops that step until t
 
 ```sh
 npm test                 # Vitest: vimma-core and tools (fast, no browser)
-npm run typecheck        # tsc --checkJs: browser code and packages, then tools/, then core tests
+npm run typecheck        # tsc --checkJs: browser code, tools/, core tests, then the mochitests
 npm run lint             # eslint, prettier, wording, spec, architecture and changelog checks
 npm run mochitest -- tests/browser/                       # browser tests on your full build
 npm run mochitest -- tests/browser/browser_vimma_tabstrip.js
-npm run sites -- --filter github                          # live sites, a report (docs/runbook.md)
+npm run sites -- --filter github                          # live sites, a report (docs/runbook/)
 npm run sites -- --offline --artifact                     # recorded pages, no network: the PR gate
 ```
 
 `npm run e2e -- --artifact --xvfb` runs the socket-driven e2e scenarios and compares their
 screenshots with baselines made on CI. On Linux it needs Xvfb (`xvfb` on Ubuntu,
 `xorg-server-xvfb` on Arch, `xorg-x11-server-Xvfb` on Fedora) and nothing else: the fonts the
-scenarios render with are in `tests/e2e/fonts/`, so the machine's own fonts do not matter. Two
-baselines, `m0-agent-cli-question` and `m0-agent-cli-stopped`, are older than the text they show
-and fail locally until they are re-recorded from CI (issue #953); the runbook's "Baselines"
-section says what else a local run differs by ([runbook](docs/runbook.md)).
+scenarios render with are in `tests/e2e/fonts/`, so the machine's own fonts do not matter, and
+the fixture pages are served on the fixed port 28471, so their URLs read as in the baselines. A
+second e2e run on the same machine finds that port taken and stops with a message
+(`--port N` or `VIMMA_E2E_PORT=N` runs it elsewhere, with a few digits of difference). Baselines
+come from CI, never from a local run; the runbook's "Baselines" section says how to re-record one
+and what a local run still differs by ([runbook](docs/runbook/README.md)).
 
 `npm run mochitest` runs mach with the first `python3`, then `python3.N`, on `PATH` whose
 version is inside the range `engine/mach` declares, and says which one it chose when it skipped
@@ -154,6 +156,17 @@ A test that needs a temp dir makes it with `tempDir(prefix)` from `tools/test/te
 which removes it when the test ends, also when it fails. `npm test` runs with a `TMPDIR` of its
 own and fails if a test leaves anything in it. A mochitest removes its temp files in
 `registerCleanupFunction`, and a Rust test drops its temp dir guard.
+
+`npm run typecheck` type-checks the mochitests as it does the rest (`tests/tsconfig.json`), so a
+new test file passes it from its first commit: give a helper's parameters JSDoc types, and where
+Firefox's type is wider than the test knows (an element `getElementById` returns, an about: page's
+document), cast it with `/** @type {...} */ (expr)` rather than adding a guard that changes what
+the test does. The files that still have errors are listed in `tools/test/mochitest-allowlist.txt`;
+fixing one takes it off. A Vimma module a test imports by its `chrome://` URL has the module's
+own types there, so a test that knows more than they say (a window whose workspaces are built, a
+workspace that has its container) casts to one of the named types in `types/mochitest/vimma.d.ts`.
+After changing a `tests/browser/head*.js` file, run `npm run gen-mochitest-head`; after adding,
+moving or removing a module, `npm run gen-mochitest-modules`.
 
 You can also test the front end without a full build. An artifact build puts our front end on
 top of Mozilla's compiled binaries for the same release, and is what PR CI uses
@@ -198,7 +211,7 @@ run". The artifact build's app is `engine/obj-artifact/dist/Vimma.app`.
 
 Pull requests run the same steps on a hosted Mac (`mochitest (artifact build, macOS)` in
 `e2e.yml`); that check is informational and does not block a merge
-([runbook](docs/runbook.md#macos-mochitests-e2eyml-spec-macos-build)).
+([runbook](docs/runbook/ci-macos-mochitests.md#macos-mochitests-e2eyml-spec-macos-build)).
 
 ## Project layout
 
@@ -206,16 +219,16 @@ Pull requests run the same steps on a hosted Mac (`mochitest (artifact build, ma
 processes and how they talk, a line for every folder, the dependencies between them and the trust
 boundaries. [docs/README.md](docs/README.md) says which document covers what. The top level:
 
-| Path                              | What                                                                                                                                                      |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/vimma-core/`            | Pure ES modules with no Firefox imports: keys, actions, keymap, dispatcher, config, theme, the browser model, the agent logic. Vitest.                    |
-| `src/browser/base/content/vimma/` | Our browser code: key host, actors, UI, workspaces, split panes, config, control socket, agents. `core/` is copied in by `sync-core`.                     |
-| `src/**/*.patch`                  | The small upstream patches, each listed in [ADR-003](docs/adr/003-own-files-minimal-patches.md).                                                          |
-| `configs/`                        | mozconfigs, branding inputs and the updater's certificates.                                                                                               |
-| `tests/`                          | Mochitests (`browser/`), socket-driven e2e scenarios (`e2e/`) and contract fixtures (`contract/`).                                                        |
-| `tools/`                          | vimma-ctl (Rust), the e2e harness, builds and packaging, the upstream autopilot, release and update tooling, and the lints.                               |
-| `.github/workflows/`              | CI, nightly and scheduled checks, the upstream autopilot, release and publishing.                                                                         |
-| `docs/`                           | [User guide](docs/guide.md), [bindings](docs/bindings.md), [limits](docs/limits.md), [roadmap](docs/roadmap.md), specs, ADRs, [runbook](docs/runbook.md). |
+| Path                              | What                                                                                                                                                             |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/vimma-core/`            | Pure ES modules with no Firefox imports: keys, actions, keymap, dispatcher, config, theme, the browser model, the agent logic. Vitest.                           |
+| `src/browser/base/content/vimma/` | Our browser code: key host, actors, UI, workspaces, split panes, config, control socket, agents. `core/` is copied in by `sync-core`.                            |
+| `src/**/*.patch`                  | The small upstream patches, each listed in [ADR-003](docs/adr/003-own-files-minimal-patches.md).                                                                 |
+| `configs/`                        | mozconfigs, branding inputs and the updater's certificates.                                                                                                      |
+| `tests/`                          | Mochitests (`browser/`), socket-driven e2e scenarios (`e2e/`) and contract fixtures (`contract/`).                                                               |
+| `tools/`                          | vimma-ctl (Rust), the e2e harness, builds and packaging, the upstream autopilot, release and update tooling, and the lints.                                      |
+| `.github/workflows/`              | CI, nightly and scheduled checks, the upstream autopilot, release and publishing.                                                                                |
+| `docs/`                           | [User guide](docs/guide.md), [bindings](docs/bindings.md), [limits](docs/limits.md), [roadmap](docs/roadmap.md), specs, ADRs, [runbook](docs/runbook/README.md). |
 
 ## TypeScript in tools/
 
@@ -260,7 +273,8 @@ stays `.mjs` (ADR-025 says why).
      (`git show "$BASE:tools/…" > "$RUNNER_TEMP/…"`): no setup-node or other action but the
      checkout, no `node`, `npm`, `npx` or `yarn` step. Those guards (`tools/ci/docs-only.mjs`,
      `tools/ci/key-guard.mjs` and its test) run on the runner's own Node and stay `.mjs` (ADR-025,
-     decision 7; docs/security.md, B18). `tools/test/runner-node.test.ts` checks the rule.
+     decision 7; docs/security/14-build-and-release-supply-chain.md, B18).
+     `tools/test/runner-node.test.ts` checks the rule.
    - A setup-node added to a job that runs on trusted refs (a push to `main`, a schedule, a
      dispatch) has no cache and says `package-manager-cache: false` and
      `env: YARN_IGNORE_PATH: "1"` when a guard or a tool with a write token runs after it.
@@ -273,9 +287,7 @@ stays `.mjs` (ADR-025 says why).
 5. **Types to syntax, nothing else.** `@param`/`@returns` types become annotations, `@typedef`
    an exported `type` or `interface`, `/** @type {T} */ (x)` becomes `x as T`, and
    `import("./x.mjs").T` an `import type`. Comments keep their words; logic does not change. A
-   `.ts` test that imports a `.mjs` helper from a `test/` folder brings that helper into the type
-   check, which skips `.mjs` tests (#947): fix what it reports, types only, or convert the helper
-   in the same pull request. A property a constructor assigns becomes a `declare` field
+   property a constructor assigns becomes a `declare` field
    (`declare keys: string[];`), which Node erases, as it does the cast.
 6. **Update every caller** from step 1, and take the area's files off
    `tools/test/mjs-allowlist.txt`. An implemented spec that names a renamed file gets a
@@ -303,7 +315,7 @@ stays `.mjs` (ADR-025 says why).
 ## How Vimma is built
 
 Features start as written specs, are built test-first, reviewed, and checked by CI and by the
-security model in [docs/security.md](docs/security.md). The author tries each change in daily
+security model in [docs/security/](docs/security/README.md). The author tries each change in daily
 use before it goes into a release.
 
 ## Workflow
@@ -322,7 +334,7 @@ Vimma follows a spec-first, test-first loop:
   Markdown file states decisions with their reasons, never who asked for them or when;
   `npm run lint` (`tools/md-wording`) fails on that kind of wording.
 - **Comments.** A comment says why: a constraint, a Firefox quirk with its source path, a
-  decision with its spec or `docs/security.md` rule. It does not restate the code or record who
+  decision with its spec or `docs/security/` rule. It does not restate the code or record who
   asked or which review found it; `npm run lint` (`npm run comment-wording`) checks the wording.
 - **Pull requests.** A pull request is only for work that is ready to merge. Work that waits on a
   decision is a question in its issue, not an open pull request.
@@ -350,14 +362,14 @@ Vimma follows a spec-first, test-first loop:
 - **Versioned formats.** A change to the config schema, the control protocol or a state file
   raises its version and adds valid and invalid fixtures for the new version in
   `tests/contract/`; a config schema change also adds a migration step (`MIGRATIONS` in
-  `packages/vimma-core/src/config.mjs`), so older files keep loading.
+  `packages/vimma-core/src/config/config.mjs`), so older files keep loading.
 - **Commits.** Use Conventional Commits with a body: the subject is the changelog line; the body
   explains why.
   `npx commitlint --from origin/main` checks this, and CI rejects `feat`, `fix` and `revert`
   commits without a body.
 - **Changelog.** release-please writes `CHANGELOG.md` from the Conventional Commits on `main`
-  ([docs/runbook.md](docs/runbook.md), Releases), so the squash commit's subject is the changelog
-  line; do not edit the file by hand.
+  ([docs/runbook/ci-releases.md](docs/runbook/ci-releases.md), Releases), so the squash commit's
+  subject is the changelog line; do not edit the file by hand.
 - **Screenshot baselines and snapshots.** Never change one without a commit body that says why
   it changed: an updated baseline is a visible change, and the body is how a reviewer knows it
   was meant. `npm run e2e -- --update-baselines` writes new baselines and reminds you of this.
@@ -468,7 +480,7 @@ A ruleset protects `main`:
   (`semgrep.yml`), "CodeQL (javascript-typescript)" and "CodeQL (rust)". A PR that changes only
   prose Markdown skips the build and the tests, and those checks still pass; prettier,
   commitlint, the Markdown checks, Semgrep and CodeQL run on every PR
-  ([runbook](docs/runbook.md#docs-only-pull-requests-issue-245)).
+  ([runbook](docs/runbook/ci-docs-only-pull-requests.md#docs-only-pull-requests-issue-245)).
 - **Code scanning gate.** A PR that adds a code-scanning alert of severity high or above
   cannot merge. Fix the alert; a false positive is dismissed on GitHub with a reason, never
   silenced in the code.
@@ -497,7 +509,7 @@ its Rust toolchain and the GitHub Actions current:
   tokens) get a comment and wait for a person to read the changelog, fix what breaks and merge.
 - **The release path is always reviewed.** The release build runs `@zen-browser/surfer` and
   `ajv`, and with them every package they depend on (about 220, listed by
-  `node tools/deps/release-path.mjs`). Surfer is pinned to an exact version, and no change to any
+  `node tools/deps/release-path.ts`). Surfer is pinned to an exact version, and no change to any
   release-path package auto-merges, security updates and transitive bumps in grouped updates
   included: the workflow's `classify` job compares the two lockfiles and holds the PR. Surfer and
   `ajv` come in their own `release-path` group, so a held update does not hold the others.
@@ -510,7 +522,7 @@ its Rust toolchain and the GitHub Actions current:
 - **No install scripts.** `.npmrc` sets `ignore-scripts=true`, so `npm ci` and `npm install` run
   no package's install scripts (`npm run` still runs ours). A new dependency that needs one is a
   security decision for its PR, not a reason to drop the setting.
-- **By hand.** Node in `.nvmrc` (see the bench baseline in [docs/runbook.md](docs/runbook.md)),
+- **By hand.** Node in `.nvmrc` (see the bench baseline in [docs/runbook/](docs/runbook/README.md)),
   with `@types/node`'s major, which follows it (Dependabot updates only its minor and patch),
   and the Semgrep image digest in `semgrep.yml` are not covered; bump them in their own PR.
 
@@ -522,7 +534,7 @@ Vimma.
 - The macOS build (Apple Silicon) is cross-compiled on Linux by `macos.yml`, weekly, by hand and
   on pull requests that touch `configs/macos/` or its scripts; a hosted Mac only runs the result
   ([ADR-018](docs/adr/018-macos-cross-build.md),
-  [runbook](docs/runbook.md#macos-build-macosyml)). To try it locally, run
+  [runbook](docs/runbook/ci-macos-build.md#macos-build-macosyml)). To try it locally, run
   `SURFER_PLATFORM=darwin npx surfer build` on Linux, then `tools/package/macos-dmg.sh` on the
   `.dmg` from `./mach package`.
 
@@ -530,26 +542,26 @@ Vimma.
   `--version` string, `MOZ_APP_NAME` and the crash-reporter flag
   ([ADR-010](docs/adr/010-pr-artifact-builds.md), Known gaps). PR CI's builds also have no Google
   Safe Browsing key, so Safe Browsing is off in them.
-- The nightly full build is live: `nightly.yml` builds `main` on a GitHub-hosted runner at
-  03:00 UTC (about 2 hours) and runs the whole mochitest suite on it, `skip-if = ["artifact"]`
-  tests included ([runbook](docs/runbook.md#full-builds-nightlyyml-releaseyml)). It sees a
+- The nightly full build is live: `nightly.yml` builds `main` on a GitHub-hosted runner in the
+  night (it starts at about 00:00 to 02:00 UTC and takes about 2 hours) and runs the whole
+  mochitest suite on it, `skip-if = ["artifact"]` tests included ([runbook](docs/runbook/ci-full-builds.md#full-builds-nightlyyml-releaseyml)). It sees a
   change only after the change has merged. `RELEASE_ENABLED` is set, but each
   release is a draft that runs no build until the maintainer publishes it
-  ([runbook](docs/runbook.md#releases-release-pleaseyml)). PRs that touch patches, `configs/`,
-  `moz.configure` or branding must report a full-build run
-  ([ADR-010](docs/adr/010-pr-artifact-builds.md), [runbook](docs/runbook.md)).
+  ([runbook](docs/runbook/ci-releases.md#releases-release-pleaseyml)). PRs that touch patches,
+  `configs/`, `moz.configure` or branding must report a full-build run
+  ([ADR-010](docs/adr/010-pr-artifact-builds.md), [runbook](docs/runbook/README.md)).
 - Nightly builds are not published as a release until the repository variable
   `NIGHTLY_RELEASE_ENABLED` is set: each one is a workflow artifact of its run, kept 7 days,
   with no release page or stable link. It is not private: the repository is public, so anyone
   signed in to GitHub can download it for those 7 days
-  ([runbook](docs/runbook.md#full-builds-nightlyyml-releaseyml);
+  ([runbook](docs/runbook/ci-full-builds.md#full-builds-nightlyyml-releaseyml);
   [build-supply-chain](docs/specs/build-supply-chain.md), decision 23). With the variable set,
   each nightly also goes to the rolling `nightly` pre-release with a signed MAR and update
   manifest ([m6a-updater](docs/specs/m6a-updater.md), decisions 42 and 43).
 - Artifact builds depend on Mozilla's Taskcluster index for the pinned release, which expires
   after a year ([ADR-010](docs/adr/010-pr-artifact-builds.md)).
 - PRs opened by `GITHUB_TOKEN` (upstream bumps, Claude, release-please) do not trigger CI by
-  themselves ([runbook](docs/runbook.md)).
+  themselves ([runbook](docs/runbook/README.md)).
 - Firefox bumps are meant to need no manual step: the upstream autopilot detects a release,
   dry-runs every patch, runs the suites and opens the bump PR
   ([rebase playbook](docs/rebase.md), [m7-upstream-autopilot](docs/specs/m7-upstream-autopilot.md)).
@@ -560,7 +572,7 @@ Vimma.
   [#224](https://github.com/vimma-browser/vimma/issues/224)).
 - The ASRouter `cfr` provider pref is a copy of upstream's value. The bump PR's suites fail when
   it is stale, but the refreshed line is pasted by hand
-  ([runbook](docs/runbook.md#upstream-bumps-upstreamyml-the-upstream-autopilot);
+  ([runbook](docs/runbook/ci-upstream-bumps.md#upstream-bumps-upstreamyml-the-upstream-autopilot);
   [#259](https://github.com/vimma-browser/vimma/issues/259)).
 - Mozilla's signature on `SHA512SUMS` proves Mozilla built and signed the tarball, not that it is
   the release: a superseded build candidate (`candidates/X-candidates/buildN/`) lists the same
@@ -575,10 +587,10 @@ Vimma.
   ([m0-app-version](docs/specs/m0-app-version.md)), 977 s
   ([m0-branding](docs/specs/m0-branding.md)), 1763 s
   ([m0-mozilla-services](docs/specs/m0-mozilla-services.md)) and 1805 s (`m0-updater`, PR #15).
-  The first full build took 39 min ([runbook](docs/runbook.md)).
+  The first full build took 39 min ([runbook](docs/runbook/README.md)).
 - Builds from before the app-version change report `0.1.0` instead of the Firefox version as
   their app version, so they see newer profiles as a downgrade and refuse them. Use a separate
-  `--profile` or `--allow-downgrade` ([runbook](docs/runbook.md#smoke-check)).
+  `--profile` or `--allow-downgrade` ([runbook](docs/runbook/smoke-check.md#smoke-check)).
 - `vimma-ctl` checks the discovery file's permissions on Unix only; on Windows `check_mode` does
   nothing (ACLs, not mode bits)
   ([m0-control-protocol-and-vimma-ctl](docs/specs/m0-control-protocol-and-vimma-ctl.md)).
@@ -589,11 +601,11 @@ Vimma.
 
 ## More
 
-- [docs/runbook.md](docs/runbook.md): builds, CI, e2e tests, parallel browser lanes and releases.
+- [docs/runbook/](docs/runbook/README.md): builds, CI, e2e tests, parallel browser lanes and
+  releases.
 - [docs/rebase.md](docs/rebase.md): moving to a new Firefox release.
 - [docs/review-checklist.md](docs/review-checklist.md): what a PR needs before merge.
-- [docs/security.md](docs/security.md): the security model, a rule per risky component with the
-  tests that enforce it. A change that touches one of those components keeps its rules true
+- [docs/security/](docs/security/README.md): the security model, a rule per risky component with the tests that enforce it. A change that touches one of those components keeps its rules true
   and its test links valid (CI checks them); vulnerabilities are reported as
   [SECURITY.md](SECURITY.md) says.
 - [docs/adr/](docs/adr/) and [docs/specs/](docs/specs/): decisions and feature specs.

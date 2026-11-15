@@ -13,8 +13,10 @@ import {
   LineFramer,
   UPDATE_OUTCOMES,
   UPDATE_STAGES,
+  CHAT_VIEWS,
+  DOWNLOAD_SEGMENTS,
   controlUpdateState,
-} from "../src/control.mjs";
+} from "../src/control/control.mjs";
 
 const FIXTURES = fileURLToPath(new URL("../../../tests/contract/control/v1/", import.meta.url));
 const files = readdirSync(FIXTURES).filter((f) => f.endsWith(".json"));
@@ -33,7 +35,7 @@ const req = (command, args = {}, id = 1) => ({ type: "request", id, command, arg
 const ok = (result, id = 1) => ({ type: "response", id, ok: true, result });
 /**
  * @param {unknown} message
- * @param {import("../src/control.mjs").ValidateOptions} [options]
+ * @param {import("../src/control/control.mjs").ValidateOptions} [options]
  */
 const errorsOf = (message, options) => validateMessage(message, options).errors;
 
@@ -375,6 +377,181 @@ describe("validateMessage: state", () => {
     expect(
       errorsOf(ok({ ...state, update: { ...update, checkedAt: 1.5 } }), { command: "state" }),
     ).toEqual(["result.update.checkedAt must be a non-negative integer or null"]);
+  });
+
+  // #981: what is on screen for a moment, as flags and counts, so a script waits for it rather
+  // than for a time; never text (security.md S9).
+  test("notice, prompt, chat and agent, when present, are flags and counts only", () => {
+    const chat = { view: "models", rows: 1, entries: 0, question: null };
+    expect(errorsOf(ok({ ...state, notice: true, chat }), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok({ ...state, notice: false, chat: null }), { command: "state" })).toEqual([]);
+    const asked = { ...chat, view: "chat", rows: 0, entries: 8, question: { armed: true } };
+    expect(errorsOf(ok({ ...state, chat: asked }), { command: "state" })).toEqual([]);
+    expect(
+      errorsOf(ok({ ...state, notice: "agent: found claude", chat: [] }), { command: "state" }),
+    ).toEqual(["result.notice must be a boolean", "result.chat must be an object or null"]);
+    const broken = { view: "page", rows: -1, entries: 1.5, question: { armed: "yes", text: "" } };
+    expect(errorsOf(ok({ ...state, chat: broken }), { command: "state" })).toEqual([
+      `result.chat.view must be one of ${CHAT_VIEWS.join(", ")}`,
+      "result.chat.rows must be a non-negative integer",
+      "result.chat.entries must be a non-negative integer",
+      'unknown field "result.chat.question.text"',
+      "result.chat.question.armed must be a boolean",
+    ]);
+    // An allow-list: a field added later (a row's label, the question's text) reaches the socket
+    // only by a change here.
+    expect(
+      errorsOf(ok({ ...state, chat: { ...chat, title: "Ostoskori" } }), { command: "state" }),
+    ).toEqual(['unknown field "result.chat.title"']);
+    // The prompt line (a y/N question, a rename, a line of text): open or not, never its text.
+    expect(errorsOf(ok({ ...state, prompt: true }), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok({ ...state, prompt: "y send · n cancel" }), { command: "state" })).toEqual([
+      "result.prompt must be a boolean",
+    ]);
+    // The status bar's agent segment: `◇ agent`, `◇ agent 2?`, `◇ agent ·` (vimma-mcp 24).
+    expect(errorsOf(ok({ ...state, agent: null }), { command: "state" })).toEqual([]);
+    expect(
+      errorsOf(ok({ ...state, agent: { waiting: 1, ran: false, armed: false } }), {
+        command: "state",
+      }),
+    ).toEqual([]);
+    expect(
+      errorsOf(ok({ ...state, agent: { waiting: "1?", ran: 1, armed: true, conn: "claude" } }), {
+        command: "state",
+      }),
+    ).toEqual([
+      'unknown field "result.agent.conn"',
+      "result.agent.waiting must be a non-negative integer",
+      "result.agent.ran must be a boolean",
+    ]);
+    expect(errorsOf(ok({ ...state, agent: [] }), { command: "state" })).toEqual([
+      "result.agent must be an object or null",
+    ]);
+    const hidden = {
+      ...state,
+      private: true,
+      tabs: [{ id: "1", url: null, title: null, selected: true }],
+    };
+    expect(errorsOf(ok({ ...hidden, notice: false, chat: null }), { command: "state" })).toEqual(
+      [],
+    );
+    expect(errorsOf(ok({ ...hidden, chat }), { command: "state" })).toEqual([
+      "result.chat must be null in a private window",
+    ]);
+  });
+
+  // #1006: the agent question line's armed hint and the status bar's `↓` segment, as a flag and
+  // a word from a closed list, so a script waits for them rather than for a time; never the
+  // question, a file's name or its site (security.md S9).
+  test("agent.armed is a flag, and downloads a word from a closed list or null", () => {
+    const agent = (/** @type {unknown} */ armed) => ({ waiting: 1, ran: false, armed });
+    expect(errorsOf(ok({ ...state, agent: agent(true) }), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok({ ...state, agent: agent("y allow") }), { command: "state" })).toEqual([
+      "result.agent.armed must be a boolean",
+    ]);
+    expect(
+      errorsOf(ok({ ...state, agent: { waiting: 1, ran: false } }), { command: "state" }),
+    ).toEqual(["result.agent.armed must be a boolean"]);
+
+    expect(DOWNLOAD_SEGMENTS).toEqual(["progress", "paused", "done", "failed", "blocked"]);
+    for (const downloads of [null, ...DOWNLOAD_SEGMENTS]) {
+      expect(errorsOf(ok({ ...state, downloads }), { command: "state" })).toEqual([]);
+    }
+    const word = `result.downloads must be null or one of ${DOWNLOAD_SEGMENTS.join(", ")}`;
+    for (const downloads of ["↓ done", "report.pdf", 1, true, { state: "done" }, []]) {
+      expect(errorsOf(ok({ ...state, downloads }), { command: "state" })).toEqual([word]);
+    }
+    // A private window's downloads are part of its browsing: withheld, as its URLs and titles.
+    const hidden = {
+      ...state,
+      private: true,
+      tabs: [{ id: "1", url: null, title: null, selected: true }],
+    };
+    expect(errorsOf(ok({ ...hidden, downloads: null }), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok({ ...hidden, downloads: "done" }), { command: "state" })).toEqual([
+      "result.downloads must be null in a private window",
+    ]);
+  });
+
+  // #1006: whether live grep and the address bar's suggestion list have drawn all they will for
+  // what was typed, as one flag each, so a script waits for them rather than for a time; never
+  // the query, a count of matches or results, or a row (security.md S9).
+  test("grep and urlbar are one flag each, or null", () => {
+    for (const grep of [null, { busy: true }, { busy: false }]) {
+      expect(errorsOf(ok({ ...state, grep }), { command: "state" })).toEqual([]);
+    }
+    for (const urlbar of [null, { settled: true }, { settled: false }]) {
+      expect(errorsOf(ok({ ...state, urlbar }), { command: "state" })).toEqual([]);
+    }
+    for (const grep of ["credit", 7, true, [], { busy: "yes" }, {}]) {
+      expect(errorsOf(ok({ ...state, grep }), { command: "state" })).not.toEqual([]);
+    }
+    expect(
+      errorsOf(ok({ ...state, grep: { busy: false, rows: 7 } }), { command: "state" }),
+    ).toEqual(['unknown field "result.grep.rows"']);
+    expect(errorsOf(ok({ ...state, grep: { busy: 0 } }), { command: "state" })).toEqual([
+      "result.grep.busy must be a boolean",
+    ]);
+    expect(errorsOf(ok({ ...state, grep: "credit" }), { command: "state" })).toEqual([
+      "result.grep must be an object or null",
+    ]);
+    expect(
+      errorsOf(ok({ ...state, urlbar: { settled: true, text: "about:blank" } }), {
+        command: "state",
+      }),
+    ).toEqual(['unknown field "result.urlbar.text"']);
+    expect(errorsOf(ok({ ...state, urlbar: { settled: 1 } }), { command: "state" })).toEqual([
+      "result.urlbar.settled must be a boolean",
+    ]);
+    expect(errorsOf(ok({ ...state, urlbar: 1 }), { command: "state" })).toEqual([
+      "result.urlbar must be an object or null",
+    ]);
+    // A private window's search and typing are part of its browsing: withheld, as its URLs.
+    const hidden = {
+      ...state,
+      private: true,
+      tabs: [{ id: "1", url: null, title: null, selected: true }],
+    };
+    expect(errorsOf(ok({ ...hidden, grep: null, urlbar: null }), { command: "state" })).toEqual([]);
+    expect(
+      errorsOf(ok({ ...hidden, grep: { busy: false }, urlbar: { settled: true } }), {
+        command: "state",
+      }),
+    ).toEqual([
+      "result.grep must be null in a private window",
+      "result.urlbar must be null in a private window",
+    ]);
+  });
+
+  // #1006: whether the selected tab's PDF viewer has drawn every page in view, as one flag, so a
+  // script waits for that rather than for a time; never the page, the page count, the title or
+  // the outline (security.md S9).
+  test("pdf is one flag, or null", () => {
+    for (const pdf of [null, { drawn: true }, { drawn: false }]) {
+      expect(errorsOf(ok({ ...state, pdf }), { command: "state" })).toEqual([]);
+    }
+    for (const pdf of ["report.pdf", 3, true, [], { drawn: "yes" }, {}]) {
+      expect(errorsOf(ok({ ...state, pdf }), { command: "state" })).not.toEqual([]);
+    }
+    expect(errorsOf(ok({ ...state, pdf: { drawn: true, page: 3 } }), { command: "state" })).toEqual(
+      ['unknown field "result.pdf.page"'],
+    );
+    expect(errorsOf(ok({ ...state, pdf: { drawn: 1 } }), { command: "state" })).toEqual([
+      "result.pdf.drawn must be a boolean",
+    ]);
+    expect(errorsOf(ok({ ...state, pdf: "Page three" }), { command: "state" })).toEqual([
+      "result.pdf must be an object or null",
+    ]);
+    // A private window's documents are part of its browsing: withheld, as its URLs.
+    const hidden = {
+      ...state,
+      private: true,
+      tabs: [{ id: "1", url: null, title: null, selected: true }],
+    };
+    expect(errorsOf(ok({ ...hidden, pdf: null }), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok({ ...hidden, pdf: { drawn: true } }), { command: "state" })).toEqual([
+      "result.pdf must be null in a private window",
+    ]);
   });
 
   test("controlUpdateState keeps only the fields the protocol names (m6a-updater 41)", () => {

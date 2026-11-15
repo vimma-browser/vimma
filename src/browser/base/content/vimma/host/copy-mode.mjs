@@ -74,13 +74,13 @@ export function yankedText(text) {
 /**
  * The runners, given how the host sets a tab's page mode and shows a notice in its window.
  * The mode changes before the frame is asked, so the next key is already dispatched in it.
- * @param {(browser: any, mode: "normal" | "visual") => void} setMode
- * @param {(browser: any, text: string) => void} notify
- * @returns {Record<string, (browser: any, action: Action) => void>}
+ * @param {(browser: MozBrowser, mode: "normal" | "visual") => void} setMode
+ * @param {(browser: MozBrowser, text: string) => void} notify
+ * @returns {Record<string, (browser: MozBrowser, action: Action) => void>}
  */
 export function copyModeRunners(setMode, notify) {
   /** Copy mode is over in the frame (no text, or it navigated): back to normal, told why. */
-  const leave = (/** @type {any} */ b, /** @type {string | null} */ why) => {
+  const leave = (/** @type {MozBrowser} */ b, /** @type {string | null} */ why) => {
     setMode(b, "normal");
     if (why) notify(b, why);
   };
@@ -90,12 +90,12 @@ export function copyModeRunners(setMode, notify) {
    */
   let lastFind = null;
   /** Runs a find in the focused frame. */
-  const find = async (/** @type {any} */ b, /** @type {Find | null} */ f, count = 1) => {
+  const find = async (/** @type {MozBrowser} */ b, /** @type {Find | null} */ f, count = 1) => {
     if (!f) return;
     const op = FIND_OPS[f.kind];
     if (!(await VimmaActors.caret(b, op, count === 1 ? undefined : count, f.char))) leave(b, null);
   };
-  /** @type {(b: any, op: "yank" | "yank_lines") => Promise<void>} */
+  /** @type {(b: MozBrowser, op: "yank" | "yank_lines") => Promise<void>} */
   const yank = async (b, op) => {
     setMode(b, "normal");
     const text = await VimmaActors.caret(b, op);
@@ -106,7 +106,7 @@ export function copyModeRunners(setMode, notify) {
     Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper).copyString(text);
     notify(b, yankedText(text));
   };
-  /** @type {Record<string, (browser: any, action: Action) => void>} */
+  /** @type {Record<string, (browser: MozBrowser, action: Action) => void>} */
   const runners = {
     "mode.visual": async (b) => {
       setMode(b, "visual");

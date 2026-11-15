@@ -2,8 +2,8 @@
 // Omarchy colors.toml files. A new schema version adds tests/contract/config/v<n>/.
 import { describe, test, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
-import { CONFIG_SCHEMA_VERSION, parseConfig } from "../src/config.mjs";
-import { parseOmarchyColors } from "../src/theme.mjs";
+import { CONFIG_SCHEMA_VERSION, parseConfig } from "../src/config/config.mjs";
+import { parseOmarchyColors } from "../src/config/theme.mjs";
 
 const contract = new URL("../../../tests/contract/", import.meta.url);
 

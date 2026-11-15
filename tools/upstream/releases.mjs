@@ -21,7 +21,8 @@ const ADVISORY_ORIGIN = "https://www.mozilla.org";
 
 /**
  * How long the shipped Firefox may stay behind a newer release before the drift check fails
- * (docs/security.md, rule G2). The clock starts at 00:00 UTC of the release date.
+ * (docs/security/10-firefox-updates.md, rule G2). The clock starts at 00:00 UTC of the release
+ * date.
  */
 export const DRIFT_LIMIT_DAYS = Object.freeze({
   /** a dot release (X.Y.Z) with an MFSA advisory: a few backported fixes, mechanical bump */

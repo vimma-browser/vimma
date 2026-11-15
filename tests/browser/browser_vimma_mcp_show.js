@@ -20,7 +20,7 @@ const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
@@ -62,27 +62,36 @@ registerCleanupFunction(async () => {
 });
 
 const agent = () => /** @type {any} */ (WorkspaceStore.agent);
-const agentTabs = (win = window) =>
+const agentTabs = (/** @type {BrowserWindow} */ win = window) =>
   win.gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
-const ww = (win = window) => WindowWorkspaces.get(win);
-const activeName = (win = window) =>
-  ww(win).model.workspaces.find((w) => w.id === ww(win).model.active)?.name;
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
-const noticeText = (win = window) => win.document.getElementById(NOTICE_ID)?.textContent ?? "";
-const line = () => document.getElementById("vimma-agent-prompt");
-const lineOpen = () => !!line() && !line().hidden;
+const ww = (/** @type {BrowserWindow} */ win = window) =>
+  /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(win));
+const activeName = (/** @type {BrowserWindow} */ win = window) =>
+  ww(win).model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === ww(win).model.active)
+    ?.name;
+const mainId = () =>
+  /** @type {string} */ (
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id
+  );
+const noticeText = (/** @type {BrowserWindow} */ win = window) =>
+  win.document.getElementById(NOTICE_ID)?.textContent ?? "";
+/** The line, or null while there is none. */
+const line = () =>
+  /** @type {HTMLElement | null} */ (document.getElementById("vimma-agent-prompt"));
+const lineOpen = () => !!line() && !(/** @type {HTMLElement} */ (line()).hidden);
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
+/** @param {boolean} on */
 async function mcp(on) {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, on);
   await VimmaControl.settled();
 }
 
 /** A tab in the agent workspace of `win`, loaded, hidden while the window shows `main`. */
-async function openAgentTab(win = window, url = PAGE) {
+async function openAgentTab(/** @type {BrowserWindow} */ win = window, url = PAGE) {
   const tab = win.gBrowser.addTab(url, {
     userContextId: agent().userContextId,
     triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
@@ -103,12 +112,12 @@ async function agentClient(name = "example-agent") {
 /** The oldest waiting question, once there is one. */
 async function question() {
   await until(() => AgentGate.waiting.length > 0, "a question waits");
-  return AgentGate.waiting[0];
+  return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
 /**
  * `agent-show` of `tab`, answered with `answer` through the gate.
- * @param {any} c @param {any} tab @param {object} [answer]
+ * @param {any} c @param {any} tab @param {GateAnswer} [answer]
  */
 async function show(c, tab, answer = { kind: "once" }) {
   const id = c.request("agent-show", { tab: idOf(tab) });
@@ -146,7 +155,7 @@ add_task(async function test_show_switches_to_the_agent_tab_and_ctrl_caret_retur
   const page = gBrowser.selectedTab;
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey("v");
-  const view = PaneViews.get(window);
+  const view = /** @type {PaneView} */ (PaneViews.get(window));
   await until(() => view.panes && leaves(view.panes).length === 2, "main has two panes");
   const pane = gBrowser.selectedTab;
   Assert.notEqual(pane, page, "the new pane has focus");
@@ -210,7 +219,7 @@ add_task(async function test_show_always_asks_even_under_a_grant() {
   Assert.equal(r.error?.reason, "user", "x is a plain no");
   Assert.equal(activeName(), "main", "and nothing was shown");
   Assert.deepEqual(
-    AgentGate.grants().map((g) => g.until),
+    AgentGate.grants().map((/** @type {GateGrant} */ g) => g.until),
     [granted.until],
     "and the grant is the one given before, unchanged",
   );
@@ -252,7 +261,7 @@ add_task(async function test_show_waits_while_the_user_types() {
 
   // Out of the field: the line opens on ctrl+b shift+a, and its keys are its own.
   await SpecialPowers.spawn(gBrowser.selectedBrowser, [], () => {
-    content.document.activeElement.blur();
+    /** @type {HTMLElement} */ (content.document.activeElement).blur();
   });
   await calmPage();
   EventUtils.synthesizeKey("b", { ctrlKey: true });
@@ -260,8 +269,17 @@ add_task(async function test_show_waits_while_the_user_types() {
   await until(lineOpen, "ctrl+b shift+a opens the question");
   // The hint is set when the line opens and shown once it is armed; a key before that only
   // arms it again (security.md M4).
-  await until(() => !!line().querySelector(".vimma-agent-prompt-hint:not([hidden])"), "armed");
-  Assert.ok(line().textContent.includes("y show it · n deny"), "the question offers y and n only");
+  await until(
+    () =>
+      !!(
+        /** @type {HTMLElement} */ (line()).querySelector(".vimma-agent-prompt-hint:not([hidden])")
+      ),
+    "armed",
+  );
+  Assert.ok(
+    /** @type {HTMLElement} */ (line()).textContent.includes("y show it · n deny"),
+    "the question offers y and n only",
+  );
   EventUtils.synthesizeKey("y");
   Assert.ok((await c.response(id)).ok, "y shows it");
   Assert.equal(activeName(), agent().name, "now the agent workspace is in front");
@@ -334,7 +352,7 @@ add_task(async function test_show_a_pane_of_an_agent_split_in_a_window_behind() 
   await focusContent(gBrowser.selectedBrowser);
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey("v");
-  const view = PaneViews.get(window);
+  const view = /** @type {PaneView} */ (PaneViews.get(window));
   await until(() => view.panes && leaves(view.panes).length === 2, "the agent split has two panes");
   const pane = gBrowser.selectedTab;
   Assert.notEqual(pane, tab, "the new pane has focus");

@@ -14,7 +14,12 @@ const { ThemeHost } = ChromeUtils.importESModule(
 );
 
 const START = "chrome://browser/content/vimma/start/start.html";
-const BASE = { source: "omarchy", name: "vimma", font: "monospace", colors: {} };
+const BASE = {
+  source: /** @type {const} */ ("omarchy"),
+  name: "vimma",
+  font: "monospace",
+  colors: {},
+};
 /** Two themes with colours no built-in palette has, so a match cannot be a coincidence. */
 const DARK = {
   ...BASE,
@@ -36,10 +41,15 @@ function rgb(/** @type {string} */ hex) {
 
 registerCleanupFunction(() => {
   ThemeHost.setConfig(BASE);
-  while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1) {
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
 });
 
-/** The logo's parts in `browser`'s page, with the page's own tokens to compare them with. */
+/**
+ * The logo's parts in `browser`'s page, with the page's own tokens to compare them with.
+ * @param {MozBrowser} browser
+ */
 function logoState(browser) {
   return SpecialPowers.spawn(browser, [], async () => {
     const doc = content.document;
@@ -48,7 +58,8 @@ function logoState(browser) {
       "the page has the logo",
     );
     const style = (/** @type {Element} */ el) => content.getComputedStyle(el);
-    const logo = doc.querySelector(".vimma-logo");
+    // The wait above found it; a read through a missing one throws.
+    const logo = /** @type {Element} */ (doc.querySelector(".vimma-logo"));
     const mark = logo.querySelector(".vimma-logo-mark");
     const wordmark = logo.querySelector(".vimma-logo-wordmark");
     // A probe resolves the tokens to rgb() the way the logo's colours compute.
@@ -76,19 +87,29 @@ function logoState(browser) {
   });
 }
 
-/** Sets `theme` and waits until `browser`'s logo shows its colours. */
+/**
+ * Sets `theme` and waits until `browser`'s logo shows its colours.
+ * @param {MozBrowser} browser
+ * @param {typeof DARK} theme
+ * @param {string} what
+ */
 async function applyTheme(browser, theme, what) {
   ThemeHost.setConfig(theme);
   const accent = rgb(theme.colors.accent);
+  /** @type {Awaited<ReturnType<typeof logoState>> | undefined} */
   let state;
   await TestUtils.waitForCondition(async () => {
     state = await logoState(browser);
     return state.accent === accent && state.mark === accent;
   }, `${what}: the mark turns the accent`);
-  return state;
+  // The wait resolved, so its condition set it.
+  return /** @type {Awaited<ReturnType<typeof logoState>>} */ (state);
 }
 
-/** Checks a page's logo under the dark theme, then live under the light one. */
+/**
+ * Checks a page's logo under the dark theme, then live under the light one.
+ * @param {string} url
+ */
 async function checkLogo(url) {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, url);
   const browser = tab.linkedBrowser;
@@ -97,8 +118,16 @@ async function checkLogo(url) {
   Assert.equal(dark.role, "img", "the logo is one image to assistive technology");
   Assert.equal(dark.label, "Vimma", "named Vimma");
   Assert.deepEqual(dark.hidden, ["true", "true"], "its two painted parts are hidden from it");
-  Assert.stringContains(dark.markMask, "vimma-logo-mark.png", "the mark is painted through a mask");
-  Assert.stringContains(dark.wordmarkMask, "vimma-logo-wordmark.png", "and so is the wordmark");
+  Assert.stringContains(
+    dark.markMask ?? "",
+    "vimma-logo-mark.png",
+    "the mark is painted through a mask",
+  );
+  Assert.stringContains(
+    dark.wordmarkMask ?? "",
+    "vimma-logo-wordmark.png",
+    "and so is the wordmark",
+  );
   Assert.ok(dark.size[0] > 0 && dark.size[1] > 0, "the logo takes up room");
   Assert.equal(dark.scheme, "dark", "the dark theme is shown");
   Assert.equal(dark.mark, rgb(DARK.colors.accent), "the mark is the dark theme's accent");
@@ -138,8 +167,10 @@ add_task(async function forced_colours_paint_both_parts_in_the_text_colour() {
     return {
       forced: content.matchMedia("(forced-colors: active)").matches,
       text: style(probe).color,
-      mark: style(doc.querySelector(".vimma-logo-mark")).backgroundColor,
-      wordmark: style(doc.querySelector(".vimma-logo-wordmark")).backgroundColor,
+      // getComputedStyle throws for a part the page does not have.
+      mark: style(/** @type {Element} */ (doc.querySelector(".vimma-logo-mark"))).backgroundColor,
+      wordmark: style(/** @type {Element} */ (doc.querySelector(".vimma-logo-wordmark")))
+        .backgroundColor,
     };
   });
   Assert.ok(state.forced, "forced colours are on");

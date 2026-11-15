@@ -11,7 +11,7 @@ import {
   checkEndpoint,
   parseReply,
   providerErrorText,
-} from "../src/agent-providers.mjs";
+} from "../src/agent/agent-providers.mjs";
 
 /** @param {string} name */
 const fixture = (name) =>
@@ -20,14 +20,14 @@ const fixture = (name) =>
   );
 
 const KEY = "sk-test-0123456789abcdefa1b2";
-/** @type {import("../src/agent-providers.mjs").ToolDef} */
+/** @type {import("../src/agent/agent-providers.mjs").ToolDef} */
 const OPEN_TOOL = {
   name: "vimma_open",
   description: "Open a URL.",
   inputSchema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
 };
 const TOOLS = [OPEN_TOOL];
-/** @typedef {import("../src/agent-providers.mjs").Provider} Provider */
+/** @typedef {import("../src/agent/agent-providers.mjs").Provider} Provider */
 /** @type {Provider} */
 const anthropic = {
   kind: "anthropic",
@@ -37,7 +37,7 @@ const anthropic = {
 /** @type {Provider} */
 const local = { kind: "openai", endpoint: "http://127.0.0.1:11434/v1", model: "qwen2.5:1.5b" };
 
-/** @type {import("../src/agent-providers.mjs").ChatMessage[]} */
+/** @type {import("../src/agent/agent-providers.mjs").ChatMessage[]} */
 const HISTORY = [
   { role: "user", text: "Open the shop" },
   {
@@ -435,7 +435,7 @@ describe("checkEndpoint (B11, Behaviour 9)", () => {
 });
 
 describe("edge shapes", () => {
-  /** @type {import("../src/agent-providers.mjs").ChatMessage[]} */
+  /** @type {import("../src/agent/agent-providers.mjs").ChatMessage[]} */
   const odd = [
     { role: "user", text: "go" },
     // A call whose arguments were broken goes back with empty arguments, beside its error.

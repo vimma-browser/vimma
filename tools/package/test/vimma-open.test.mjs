@@ -20,6 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { defined } from "../../test/defined.ts";
 
 const LAUNCHER = fileURLToPath(new URL("../vimma-open.sh", import.meta.url));
 
@@ -611,7 +612,7 @@ describe.skipIf(process.platform !== "linux" || !PYTHON)("vimma-open with real p
     writeFileSync(join(dir, "hold"), "");
     return new Promise((resolve) => {
       const child = spawn(
-        join(bin, stubs[0]),
+        join(bin, defined(stubs[0], "a stub")),
         [...stubs.slice(1).map((s) => join(bin, s)), ...command],
         {
           env: {

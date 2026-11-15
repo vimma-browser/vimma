@@ -6,7 +6,7 @@ import {
   refusedScheme,
   urlRoot,
   urlUp,
-} from "../src/pageurl.mjs";
+} from "../src/page/pageurl.mjs";
 
 // Spec: docs/specs/m1-actor-insert-scroll.md, "Follow-up: normal-mode extras" (gu, gU, p, P, gi).
 

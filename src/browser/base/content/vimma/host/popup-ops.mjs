@@ -20,6 +20,7 @@ import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { setSitePopups } from "./permission-ops.mjs";
 
 /** @import { PopupItem } from "../core/popups.mjs" */
+/** @import { AnyItem } from "../core/picker.mjs" */
 
 const lazy = /** @type {Lazy<"PopupAndRedirectBlockerObserver">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -35,7 +36,8 @@ const SHOW_PREF = "privacy.popups.showBrowserMessage";
  * What the picker last listed, per window: the browser it read, its page's principal and
  * Firefox's own records, which a row's id indexes. The picker closes when the tab changes but not
  * when the page navigates, so a row runs only while the principal is the one listed.
- * @type {WeakMap<BrowserWindow, { browser: any, principal: any, popups: any[], redirect: any }>}
+ * @type {WeakMap<BrowserWindow, { browser: MozBrowser, principal: nsIPrincipal,
+ *   popups: BlockedPopup[], redirect: BlockedRedirect | null }>}
  */
 const listed = new WeakMap();
 
@@ -54,7 +56,7 @@ const gBrowserOf = (win) => win.gBrowser;
 
 /**
  * Whether the selected tab is in the agent workspace, whose pages get no permissions
- * (docs/security.md M10).
+ * (docs/security/12-agents-mcp.md M10).
  * @param {BrowserWindow} win
  */
 export function inAgentTab(win) {
@@ -64,7 +66,7 @@ export function inAgentTab(win) {
 /**
  * The site's own pop-up permission, if it has one. Read exactly: SitePermissions reports a site
  * without one as blocked, Firefox's default for pop-ups.
- * @param {any} browser
+ * @param {MozBrowser} browser
  * @returns {"allow" | "block" | null}
  */
 function sitePermission(browser) {
@@ -78,7 +80,7 @@ function sitePermission(browser) {
 /**
  * Allows the site's pop-ups without the bar, as the bar's allow does: the permission, then what
  * was blocked opens. The bar's own path (toggleAllowPopupsForSite) needs the bar to remove.
- * @param {any} browser
+ * @param {MozBrowser} browser
  */
 function allowSite(browser) {
   if (!setSitePopups(browser, "allow")) return;
@@ -91,15 +93,17 @@ function allowSite(browser) {
 
 /**
  * The host the allow row names, as Firefox's options menu names it (onPopupShowing): the
- * principal's display host, else the address itself (about: pages).
- * @param {any} browser
+ * address's display host, else the address itself (about: pages). Firefox's menu means to
+ * prefer the principal's but reads `browser.isContentPrincipal`, which a <browser> does not
+ * have (PopupAndRedirectBlockerObserver.sys.mjs), so it always names the address; so does this.
+ * @param {MozBrowser} browser
  */
 function siteOf(browser) {
-  const source = browser.isContentPrincipal ? browser.contentPrincipal : browser.currentURI;
+  const uri = browser.currentURI;
   try {
-    return source.asciiHost ? source.displayHost : source.spec;
+    return uri?.asciiHost ? uri.displayHost : (uri?.spec ?? "");
   } catch {
-    return browser.currentURI?.spec ?? "";
+    return uri?.spec ?? "";
   }
 }
 
@@ -121,12 +125,13 @@ export async function popupPickerItems(win) {
     blocker.getBlockedRedirect(),
   ]);
   // The page navigated while Firefox answered: these records are no longer its own.
-  if (!browser.contentPrincipal?.equals(principal)) return [];
+  if (!principal || !browser.contentPrincipal?.equals(principal)) return [];
   listed.set(win, { browser, principal, popups, redirect });
   return popupItems({
     site: siteOf(browser),
-    popups: popups.map((/** @type {any} */ p) => p.popupWindowURISpec),
-    redirect: redirect?.redirectURISpec ?? null,
+    // The content process's answers: each shown as text, as a template string would.
+    popups: popups.map((p) => String(p.popupWindowURISpec)),
+    redirect: redirect?.redirectURISpec == null ? null : String(redirect.redirectURISpec),
     allowLocked: popupLocked(),
     showMessage: Services.prefs.getBoolPref(SHOW_PREF, true),
     permission: sitePermission(browser),
@@ -136,7 +141,7 @@ export async function popupPickerItems(win) {
 /**
  * Why the picker does not open on this page, or null when it has rows to show.
  * @param {BrowserWindow} win
- * @param {readonly PopupItem[]} items  popupPickerItems' answer
+ * @param {readonly AnyItem[]} items  the rows popupPickerItems gave
  * @returns {string | null}
  */
 export function popupRefusal(win, items) {
@@ -202,7 +207,7 @@ export function runPopupRow(win, id) {
  * The selected browser's pop-up blocked bar, or null (each split pane has its own notification
  * box; the focused pane's browser is the selected one).
  * @param {BrowserWindow} win
- * @returns {any}
+ * @returns {MozNotificationMessage | null}
  */
 export function popupBar(win) {
   const gBrowser = gBrowserOf(win);

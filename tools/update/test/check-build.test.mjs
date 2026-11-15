@@ -14,7 +14,8 @@ const URL_LINE =
   "URL=https://updates.vimma.dev/updates/browser/%BUILD_TARGET%/%CHANNEL%/update.xml";
 
 /**
- * @param {{ url?: string | null, channel?: string, updater?: string[], pref?: string }} [o]
+ * @typedef {"primary.der" | "secondary.der" | "dep1.der" | "dep2.der" | "release_primary.der"} Cert
+ * @param {{ url?: string | null, channel?: string, updater?: Cert[], pref?: string }} [o]
  *   updater: the certificate names whose bytes the fake updater binary carries
  */
 function fixture(o = {}) {
@@ -24,7 +25,7 @@ function fixture(o = {}) {
   const install = join(root, "vimma");
   for (const d of [certs, mozilla, join(install, "defaults/pref")])
     mkdirSync(d, { recursive: true });
-  /** @type {Record<string, Buffer>} */
+  /** @type {Record<Cert, Buffer>} */
   const bytes = {
     "primary.der": Buffer.from("vimma-primary-certificate-bytes"),
     "secondary.der": Buffer.from("vimma-primary-certificate-bytes"),
@@ -34,8 +35,10 @@ function fixture(o = {}) {
   };
   writeFileSync(join(certs, "primary.der"), bytes["primary.der"]);
   writeFileSync(join(certs, "secondary.der"), bytes["secondary.der"]);
+  /** @type {Partial<Record<string, Buffer>>} */
+  const byName = bytes;
   for (const f of MOZILLA_CERTS) {
-    writeFileSync(join(mozilla, f), bytes[f] ?? Buffer.from(`mozilla-${f}-bytes`));
+    writeFileSync(join(mozilla, f), byName[f] ?? Buffer.from(`mozilla-${f}-bytes`));
   }
   const url = o.url === undefined ? URL_LINE : o.url;
   writeFileSync(

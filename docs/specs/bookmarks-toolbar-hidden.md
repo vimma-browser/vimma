@@ -169,8 +169,9 @@ changes.
   with a pref, CSS and one patch. For the bookmarks toolbar Firefox already has the switch and a
   `"never"` state, so no CSS is needed.
 - **e2e** already runs with `browser.toolbars.bookmarks.visibility = "never"`
-  (`tools/e2e/launcher.mjs:107`), as Mozilla's web-platform test profile does
-  (`engine/testing/profiles/web-platform/user.js:21`). No baseline shows the toolbar.
+  (`tools/e2e/launcher.mjs:107`; since changed: `launcher.ts`, ADR-025), as Mozilla's
+  web-platform test profile does (`engine/testing/profiles/web-platform/user.js:21`). No
+  baseline shows the toolbar.
 - **Theme.** Vimma themes its own UI, Firefox's sidebar and the focus colour
   (`ui/theme-host.mjs:26–31`); the nav bar and the bookmarks toolbar follow Firefox's own theme
   (`browser.theme.toolbar-theme`, `theme-host.mjs:13`), so a shown bookmarks toolbar looks like the

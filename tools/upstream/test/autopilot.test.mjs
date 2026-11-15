@@ -75,7 +75,59 @@ function feeds({ advisory = true, advisoriesDown = false } = {}) {
 const now = new Date("2026-10-13T15:00:00Z");
 const securityRelease = await detect({ current: "157.0.1", fetchText: feeds(), now });
 
-/** A patch-check.py report (version 1): one patch clean, one that fails. */
+// A patch-check.py report (version 1): one patch clean, one that fails. Its patches and hunks
+// are named so the variants below build on them.
+const cleanPatch = {
+  patch: "src/browser/base/moz-build.patch",
+  files: ["browser/base/moz.build"],
+  status: "clean",
+  imports: true,
+  missing: [],
+  message: "",
+  hunks: [
+    {
+      file: "browser/base/moz.build",
+      index: 1,
+      of: 1,
+      header: "@@ -1,3 +1,4 @@",
+      old_start: 1,
+      status: "clean",
+      offset: 0,
+      fuzz: 0,
+    },
+  ],
+};
+const fuzzHunk = {
+  file: "browser/base/content/browser.xhtml",
+  index: 1,
+  of: 2,
+  header: "@@ -90,6 +90,7 @@ <html>",
+  old_start: 90,
+  status: "fuzz",
+  offset: 0,
+  fuzz: 1,
+  text: "@@ -90,6 +90,7 @@\n",
+};
+const failedHunk = {
+  file: "browser/base/content/browser.xhtml",
+  index: 2,
+  of: 2,
+  header: "@@ -120,6 +121,7 @@",
+  old_start: 120,
+  status: "failed",
+  offset: 0,
+  fuzz: 0,
+  text: "@@ -120,6 +121,7 @@\n",
+};
+const failedPatch = {
+  patch: "src/browser/base/content/browser-xhtml.patch",
+  files: ["browser/base/content/browser.xhtml"],
+  status: "failed",
+  imports: false,
+  missing: [],
+  message: "",
+  hunks: [fuzzHunk, failedHunk],
+};
 const failingReport = {
   version: 1,
   ran: true,
@@ -84,72 +136,19 @@ const failingReport = {
   source: "tarball (stdin)",
   ok: false,
   counts: { clean: 1, offset: 0, applied: 0, fuzz: 0, failed: 1 },
-  patches: [
-    {
-      patch: "src/browser/base/moz-build.patch",
-      files: ["browser/base/moz.build"],
-      status: "clean",
-      imports: true,
-      missing: [],
-      message: "",
-      hunks: [
-        {
-          file: "browser/base/moz.build",
-          index: 1,
-          of: 1,
-          header: "@@ -1,3 +1,4 @@",
-          old_start: 1,
-          status: "clean",
-          offset: 0,
-          fuzz: 0,
-        },
-      ],
-    },
-    {
-      patch: "src/browser/base/content/browser-xhtml.patch",
-      files: ["browser/base/content/browser.xhtml"],
-      status: "failed",
-      imports: false,
-      missing: [],
-      message: "",
-      hunks: [
-        {
-          file: "browser/base/content/browser.xhtml",
-          index: 1,
-          of: 2,
-          header: "@@ -90,6 +90,7 @@ <html>",
-          old_start: 90,
-          status: "fuzz",
-          offset: 0,
-          fuzz: 1,
-          text: "@@ -90,6 +90,7 @@\n",
-        },
-        {
-          file: "browser/base/content/browser.xhtml",
-          index: 2,
-          of: 2,
-          header: "@@ -120,6 +121,7 @@",
-          old_start: 120,
-          status: "failed",
-          offset: 0,
-          fuzz: 0,
-          text: "@@ -120,6 +121,7 @@\n",
-        },
-      ],
-    },
-  ],
+  patches: [cleanPatch, failedPatch],
 };
 const cleanReport = {
   ...failingReport,
   ok: true,
   counts: { clean: 1, offset: 1, applied: 0, fuzz: 0, failed: 0 },
   patches: [
-    failingReport.patches[0],
+    cleanPatch,
     {
-      ...failingReport.patches[1],
+      ...failedPatch,
       status: "offset",
       imports: true,
-      hunks: [{ ...failingReport.patches[1]?.hunks[0], status: "offset", offset: 3, fuzz: 0 }],
+      hunks: [{ ...fuzzHunk, status: "offset", offset: 3, fuzz: 0 }],
     },
   ],
 };
@@ -370,8 +369,8 @@ describe("autopilot body", () => {
       ...failingReport,
       patches: [
         {
-          ...failingReport.patches[1],
-          hunks: [{ ...failingReport.patches[1]?.hunks[1], header: "@@ -1 +1 @@ a`b\\` c|d" }],
+          ...failedPatch,
+          hunks: [{ ...failedHunk, header: "@@ -1 +1 @@ a`b\\` c|d" }],
         },
       ],
     };
@@ -385,7 +384,7 @@ describe("autopilot body", () => {
       patches: [
         ...failingReport.patches,
         {
-          ...failingReport.patches[0],
+          ...cleanPatch,
           patch: "src/x.patch",
           files: ["a/gone.js"],
           status: "failed",
@@ -717,13 +716,19 @@ describe("the bump PR and auto-merge", () => {
 
   it("is on for a green dot or major bump when AUTO_MERGE_UPSTREAM is all", () => {
     expect(autoMergeDecision(context(green))).toEqual({ on: true, reason: "on" });
-    const major = { ...securityRelease, release: { ...securityRelease.release, kind: "major" } };
+    const major = {
+      ...securityRelease,
+      release: { ...securityRelease.release, kind: /** @type {const} */ ("major") },
+    };
     expect(autoMergeDecision(context({ ...green, detection: major })).on).toBe(true);
   });
 
   it("dot allows dot releases only; unset or anything else allows none", () => {
     expect(autoMergeDecision(context({ ...green, autoMerge: "dot" })).on).toBe(true);
-    const major = { ...securityRelease, release: { ...securityRelease.release, kind: "major" } };
+    const major = {
+      ...securityRelease,
+      release: { ...securityRelease.release, kind: /** @type {const} */ ("major") },
+    };
     expect(autoMergeDecision(context({ ...green, autoMerge: "dot", detection: major }))).toEqual({
       on: false,
       reason: "off: AUTO_MERGE_UPSTREAM does not allow a major release",
@@ -751,7 +756,7 @@ describe("the bump PR and auto-merge", () => {
   it("never with patches that needed fuzz, were re-exported or are applied already", () => {
     const fuzz = {
       ...cleanReport,
-      patches: [{ ...cleanReport.patches[0], status: "applied", imports: true }],
+      patches: [{ ...cleanPatch, status: "applied", imports: true }],
     };
     expect(autoMergeDecision(context({ ...green, patchReport: fuzz })).reason).toBe(
       "off: a patch did not apply clean or with an offset",

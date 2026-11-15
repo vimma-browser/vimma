@@ -1,0 +1,120 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_face.js (docs/specs/mcp-consequence.md K2, K3): forms that send
+   - what a form-associated custom element (`<vimma-note>`) holds. The element copies the text of
+   - the input in its shadow root into its form value: as text, as a file (`kind="file"`) or as
+   - entries of a FormData (`kind="entries"`). Its `name` getter is the page's and says nothing,
+   - and the page replaces FormData and its iterators, so that only what the form really sends
+   - tells (that alone does not tell Vimma's own FormData from one built through an Xray of the
+   - page's, which would ignore the page's replacements too; it shows that neither is the page's).
+   - The "Update" form's own `formdata` listener adds an entry. The "Keep" form hides a component's
+   - entry behind a hidden field of the same name. With `?listen=slot`, `root`, `document` or
+   - `window`, the "Refresh" form is slotted into a closed shadow root, and a `formdata` listener
+   - on its slot, on that shadow root, as the document's `onformdata` or on the window adds an
+   - entry. Every listener counts its runs on the body. Every form is a GET to
+   - file_vimma_agent_page.html, so the address after a submission says what was sent. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Notes</title>
+  </head>
+  <body>
+    <h1>Notes</h1>
+    <form id="face" method="get" action="file_vimma_agent_page.html">
+      <input type="number" name="qty" value="1" aria-label="Quantity" />
+      <vimma-note name="note" label="Note text"></vimma-note>
+      <button type="submit">Send note</button>
+    </form>
+    <form id="noname" method="get" action="file_vimma_agent_page.html">
+      <input type="number" name="qty" value="2" aria-label="Amount" />
+      <vimma-note label="Draft text" value="typed by the agent"></vimma-note>
+      <button type="submit">Save</button>
+    </form>
+    <form id="file" method="get" action="file_vimma_agent_page.html">
+      <vimma-note
+        name="doc"
+        kind="file"
+        label="Attachment text"
+        value="typed by the agent"
+      ></vimma-note>
+      <button type="submit">Attach</button>
+    </form>
+    <form id="entries" method="get" action="file_vimma_agent_page.html">
+      <vimma-note kind="entries" label="Entry text" value="typed by the agent"></vimma-note>
+      <button type="submit">Continue</button>
+    </form>
+    <form id="hidden" method="get" action="file_vimma_agent_page.html">
+      <input type="hidden" name="note" value="" />
+      <vimma-note name="note" label="Kept text" value="typed by the agent"></vimma-note>
+      <button type="submit">Keep</button>
+    </form>
+    <div id="host">
+      <form id="slotted" method="get" action="file_vimma_agent_page.html">
+        <input type="number" name="qty" value="4" aria-label="Units" />
+        <button type="submit">Refresh</button>
+      </form>
+    </div>
+    <form id="listener" method="get" action="file_vimma_agent_page.html">
+      <input type="number" name="qty" value="3" aria-label="Count" />
+      <button type="submit">Update</button>
+    </form>
+    <script>
+      const PageFormData = FormData;
+      class VimmaNote extends HTMLElement {
+        static formAssociated = true;
+        constructor() {
+          super();
+          this.internals = this.attachInternals();
+          const root = this.attachShadow({ mode: "open" });
+          this.field = document.createElement("input");
+          this.field.setAttribute("aria-label", this.getAttribute("label") ?? "");
+          this.field.value = this.getAttribute("value") ?? "";
+          root.append(this.field);
+          this.field.addEventListener("input", () => this.sync());
+          this.sync();
+        }
+        sync() {
+          const text = this.field.value;
+          const kind = this.getAttribute("kind");
+          if (kind === "file") {
+            this.internals.setFormValue(new File([text], "note.txt"));
+          } else if (kind === "entries") {
+            const entries = new PageFormData();
+            entries.append("entry", text);
+            this.internals.setFormValue(entries);
+          } else {
+            this.internals.setFormValue(text);
+          }
+        }
+        get name() {
+          return "";
+        }
+      }
+      customElements.define("vimma-note", VimmaNote);
+      // A page that lies to anything reading its forms with its own FormData.
+      window.FormData = function () {
+        return new PageFormData();
+      };
+      PageFormData.prototype.entries = function* () {};
+      PageFormData.prototype[Symbol.iterator] = function* () {};
+      /** A page listener that adds an entry, counting its runs on the body. */
+      const adds = (e) => {
+        document.body.dataset.formdata = String(Number(document.body.dataset.formdata ?? 0) + 1);
+        e.formData.append("extra", "typed by the agent");
+      };
+      document.getElementById("listener").addEventListener("formdata", adds);
+      const listen = new URLSearchParams(location.search).get("listen");
+      if (listen) {
+        const root = document.getElementById("host").attachShadow({ mode: "closed" });
+        const slot = document.createElement("slot");
+        root.append(slot);
+        if (listen === "slot") slot.addEventListener("formdata", adds);
+        if (listen === "root") root.addEventListener("formdata", adds);
+        if (listen === "document") document.onformdata = adds;
+        if (listen === "window") window.addEventListener("formdata", adds);
+      }
+    </script>
+  </body>
+</html>

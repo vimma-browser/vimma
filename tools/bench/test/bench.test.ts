@@ -8,8 +8,8 @@ import { pathToFileURL } from "node:url";
 // make every dispatch() do extra work, as a slower dispatcher would; the bench cases build their
 // dispatcher through this module, so the injected cost lands in the measured hot path.
 const slow = vi.hoisted(() => ({ iterations: 0, sink: 0 }));
-vi.mock("../../../packages/vimma-core/src/dispatcher.mjs", async (importOriginal) => {
-  const real: typeof import("../../../packages/vimma-core/src/dispatcher.mjs") =
+vi.mock("../../../packages/vimma-core/src/keys/dispatcher.mjs", async (importOriginal) => {
+  const real: typeof import("../../../packages/vimma-core/src/keys/dispatcher.mjs") =
     await importOriginal();
   return {
     ...real,

@@ -10,7 +10,7 @@ import {
   setTabLabel,
   tabLabel,
   writeTabLabels,
-} from "../src/tablabels.mjs";
+} from "../src/workspaces/tablabels.mjs";
 
 describe("tab labels", () => {
   test("setTabLabel normalises whitespace and control characters", () => {

@@ -22,7 +22,7 @@ const cell = (s: string) => s.replaceAll("|", "\\|");
 const lines = [
   "# Default bindings",
   "",
-  "Generated from `packages/vimma-core/src/actions.mjs` and `defaults.mjs` by `npm run gen-docs`; do not edit.",
+  "Generated from `packages/vimma-core/src/keys/actions.mjs` and `config/defaults.mjs` by `npm run gen-docs`; do not edit.",
   "",
   `Keys as you press them, with the default keys filled in (\`${keyLegend(keymap)}\`).`,
   "A `[mode]` after a key means it works only in that mode. In `config.toml` the same bindings",

@@ -51,6 +51,9 @@ npm run e2e ─► tools/e2e/e2e.mjs (CLI: flags, signals, exit code)
 | `tools/e2e/screenshot.mjs` | capture from Xvfb, compare with a baseline (0.5 %), write diff images      |
 | `tools/e2e/e2e.mjs`        | the CLI                                                                    |
 
+(Since changed: these files, the harness's tests and fixtures, and `tools/start.mjs` are `.ts`,
+ADR-025, #946.)
+
 ### Launcher
 
 - **Build**, in order: `--build <binary or dist/bin dir>`; `--artifact`
@@ -165,6 +168,12 @@ One JSON file per scenario in `tests/e2e/scenarios/`, file name = `name`:
 - **Matching** is a subset match: every key in the expected object must match (recursively);
   extra keys in `state` are ignored (protocol v1 lets the server add fields). Arrays must have
   the same length and match element by element. `null` matches only `null`.
+  (Since changed: a screenshot waits for the state of what it photographs, never a fixed time
+  after a step: under load a `sleep` lets a notice or a half-filled list into the image (#981).
+  `state` reports the transient screen for this (`notice`, `prompt`, `chat`, `agent`,
+  `downloads`, `grep`, `urlbar`, `pdf`; protocol spec, "state"), and the harness's tests keep
+  the list of screenshots that still follow a `sleep`, which may only shrink; since #1006 it is
+  empty, and a screenshot after a `sleep` fails them.)
 - **Pending**: a non-empty `pending` string. The runner reports it as `PENDING (reason)`, never as
   passed, and does not launch the browser for it; `--run-pending` runs it anyway (to watch it
   fail while writing the server).
@@ -329,7 +338,10 @@ Supersedes the sections above where they differ.
   it that other users can write: the profile's `HOME` lies in the shared `/tmp`.) (Since changed:
   on Linux a scenario's browser renders with vendored fonts through its own fontconfig file and
   GTK settings, and the profile names the URL bar's engine from the start (issue #944); described
-  in `tests/e2e/fonts/README.md` and the runbook's "Baselines".)
+  in `tests/e2e/fonts/README.md` and the runbook's "Baselines".) (Since changed: the fixture pages
+  are served on the fixed port 28471, and a run whose port is taken stops with exit 2 instead of
+  taking another; a screenshot that differs no longer stops its scenario, which fails at its end;
+  the baselines were re-recorded from CI (issue #953).)
 - **`ready()` and a server still starting.** The first server build answers
   `failed: no browser window` until its first window exists (≈ 70 % of runs failed at 0.7 s).
   `ready()` retries that one message, within its deadline; any other `failed` and every

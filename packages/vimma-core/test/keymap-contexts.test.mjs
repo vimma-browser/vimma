@@ -1,16 +1,16 @@
 import { describe, test, expect } from "vitest";
-import { parseConfig } from "../src/config.mjs";
-import { DEFAULT_CONFIG, formatConfigTemplate } from "../src/defaults.mjs";
-import { createDispatcher } from "../src/dispatcher.mjs";
-import { boundChords } from "../src/firefox-keys.mjs";
-import { KeymapError, compileKeymap } from "../src/keymap.mjs";
-import { CONTEXTS, MODES } from "../src/modes.mjs";
-import { formatKey, parseBinding, parseKey } from "../src/keys.mjs";
+import { parseConfig } from "../src/config/config.mjs";
+import { DEFAULT_CONFIG, formatConfigTemplate } from "../src/config/defaults.mjs";
+import { createDispatcher } from "../src/keys/dispatcher.mjs";
+import { boundChords } from "../src/keys/firefox-keys.mjs";
+import { KeymapError, compileKeymap } from "../src/keys/keymap.mjs";
+import { CONTEXTS, MODES } from "../src/keys/modes.mjs";
+import { formatKey, parseBinding, parseKey } from "../src/keys/keys.mjs";
 
 // Keymap contexts (docs/specs/pdf-mode.md decision 4, docs/adr/024-keymap-contexts.md): the `pdf`
 // trie of normal mode is normal's bindings with [modal.pdf] merged over them.
 
-/** @param {import("../src/keymap.mjs").TrieNode} root @param {string} seq */
+/** @param {import("../src/keys/keymap.mjs").TrieNode} root @param {string} seq */
 function lookup(root, seq) {
   let node = root;
   for (const k of seq.split(" ")) {

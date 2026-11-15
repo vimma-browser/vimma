@@ -11,7 +11,7 @@ behaviour is in [m3-workspaces](../specs/m3-workspaces.md),
 [tiling-layouts](../specs/tiling-layouts.md), [workspace-routing](../specs/workspace-routing.md)
 and [private-workspace](../specs/private-workspace.md), the split view decision in
 [ADR-013](../adr/013-split-on-firefox-split-view.md), and the rules with their tests in
-[docs/security.md](../security.md) §2 (routing) and §3 (deletion and containers). How the key
+[docs/security/](../security/README.md) §2 (routing) and §3 (deletion and containers). How the key
 reaches its runner: [The life of a keypress](keypress.md).
 
 ```mermaid

@@ -16,7 +16,7 @@ new Firefox releases arrive as PRs.
 - `e2e.yml` (PR): skeleton job that runs only once the M0 build-strategy ADR picks
   UI-only vs artifact build; until then it is a no-op with a TODO naming the ADR. (ADR-010 and
   m0-build-strategy have since made it the artifact-build mochitest job.)
-- `nightly.yml` (03:00 UTC): full Linux x86_64 build via Surfer on a large or self-hosted runner,
+- `nightly.yml` (in the night): full Linux x86_64 build via Surfer on a large or self-hosted runner,
   publish rolling `nightly` release; on failure open an issue with logs. (Since changed: the
   nightly keeps its package as a 7-day workflow artifact and publishes no release until the
   release gate; spec build-supply-chain, decision 23. Since changed again: with the repository
@@ -43,8 +43,9 @@ new Firefox releases arrive as PRs.
 
 - **No branch protection while the repository was private**, because GitHub refused it on a free
   private repository (`gh api …/branches/main/protection` → 403 "Upgrade to GitHub Pro"). Since
-  the repository became public, the ruleset "main" protects it (`docs/runbook.md`, "Merging and
-  branch protection"). No required approvals.
+  the repository became public, the ruleset "main" protects it
+  (`docs/runbook/ci-merging-and-branch-protection.md`, "Merging and branch protection"). No required
+  approvals.
 - **nightly.yml runs on a self-hosted runner** labelled `vimma-build` (22 GB `engine/`, 39 min
   build: too big for hosted runners). The schedule is gated by `vars.NIGHTLY_ENABLED == 'true'`;
   `workflow_dispatch` bypasses the gate so the runner can be tested first. `clean: false` keeps
@@ -55,7 +56,7 @@ new Firefox releases arrive as PRs.
 - **e2e.yml** was a no-op job naming the build-strategy ADR until `docs/adr/010-*` and
   m0-build-strategy.
 - **claude.yml** follows anthropics/claude-code-action v1.0.247 (`examples/claude.yml`,
-  `docs/setup.md`, `docs/security.md`), hardened as follows:
+  `docs/setup.md`, `docs/security/`), hardened as follows:
   - `github_token: github.token` on every job, so the job `permissions:` block is the token Claude
     gets (otherwise the action uses the Claude app's installation token with contents,
     pull-requests and issues write). The Claude app is not needed.

@@ -11,7 +11,7 @@ import {
   zipEntryList,
   zipLocate,
   zipVerdict,
-} from "../../src/agent-downloads.mjs";
+} from "../../src/agent/agent-downloads.mjs";
 import { makeZip } from "../agent-downloads.test.mjs";
 import { FUZZ_TIMEOUT, fuzz, nastyString, within } from "./harness.mjs";
 

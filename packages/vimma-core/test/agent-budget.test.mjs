@@ -1,7 +1,7 @@
 // docs/specs/builtin-agent.md B10, Behaviour 34-35: a task's budget of steps, tokens and cost,
 // which the model cannot raise.
 import { describe, expect, test } from "vitest";
-import { Budget, DEFAULT_LIMITS, budgetLimitText } from "../src/agent-budget.mjs";
+import { Budget, DEFAULT_LIMITS, budgetLimitText } from "../src/agent/agent-budget.mjs";
 
 describe("Budget", () => {
   test("the defaults are those of [agent]", () => {
@@ -98,8 +98,9 @@ describe("Budget", () => {
 // gate's count; tokens and cost are the CLI's own report; wall-clock time is Vimma's.
 describe("an agent CLI's budget", () => {
   const MIN = 60_000;
-  const cli = (/** @type {Partial<import("../src/agent-budget.mjs").Limits>} */ limits = {}) =>
-    new Budget(limits, {}, { cli: "claude-code", maxMinutes: 30, start: 0 });
+  const cli = (
+    /** @type {Partial<import("../src/agent/agent-budget.mjs").Limits>} */ limits = {},
+  ) => new Budget(limits, {}, { cli: "claude-code", maxMinutes: 30, start: 0 });
 
   test("a cli task stops at max_minutes", () => {
     const b = cli();

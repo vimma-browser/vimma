@@ -8,7 +8,8 @@
 
 import { refusedScheme } from "../core/pageurl.mjs";
 import { tabTarget } from "../core/tabs.mjs";
-import { getTabLabel, setTabLabel } from "./tab-labels.mjs";
+import { getTabLabel, setTabLabel } from "../workspaces/tab-labels.mjs";
+import { xulElementById } from "./browser-ops.mjs";
 
 /** @import { Action } from "../core/dispatcher.mjs" */
 /** @import { WindowState } from "./VimmaHost.sys.mjs" */
@@ -19,27 +20,30 @@ ChromeUtils.defineESModuleGetters(lazy, {
 });
 
 /**
- * @typedef {object} TabBrowser  the part of gBrowser these keys use
- * @property {Element[]} visibleTabs
- * @property {Element & { pinned?: boolean }} selectedTab
- * @property {number} pinnedTabCount
- * @property {{ selectedIndex: number }} tabContainer
- * @property {(options?: object) => void} removeCurrentTab
- * @property {(tab: object, options?: object) => void} removeTab
- * @property {{ userTriggeredContext: (source: string) => object,
- *   METRIC_SOURCE: { KEYBOARD: string } }} TabMetrics
+ * The browser window `browser` is in, or null when its document has no window or is not a
+ * browser window's (a dialog's, a sidebar's).
+ * @param {MozBrowser | null | undefined} browser
+ * @returns {BrowserWindow | null}
  */
+export function browserWindowOf(browser) {
+  const win = browser?.ownerDocument?.defaultView;
+  return win && isBrowserWindowGlobal(win) ? win : null;
+}
+
+/**
+ * @param {Window} win
+ * @returns {win is BrowserWindow}
+ */
+const isBrowserWindowGlobal = (win) => "gBrowser" in win && "BrowserCommands" in win;
 
 /** @param {BrowserWindow} win */
-function gBrowserOf(win) {
-  return /** @type {{ gBrowser: TabBrowser }} */ (/** @type {unknown} */ (win)).gBrowser;
-}
+const gBrowserOf = (win) => win.gBrowser;
 
 /**
  * The tabs prefix+n/p and prefix+1..9 count through, in order. Firefox's visible tabs: hidden
  * tabs (an extension's, or another workspace's from M3) are skipped.
  * @param {BrowserWindow} win
- * @returns {Element[]}
+ * @returns {MozTabbrowserTab[]}
  */
 export function selectableTabs(win) {
   return gBrowserOf(win).visibleTabs;
@@ -50,9 +54,7 @@ export function selectableTabs(win) {
  * @param {BrowserWindow} win
  */
 export function newTab(win) {
-  /** @type {{ BrowserCommands: { openTab: () => void } }} */ (
-    /** @type {unknown} */ (win)
-  ).BrowserCommands.openTab();
+  win.BrowserCommands.openTab();
 }
 
 /**
@@ -81,7 +83,7 @@ export function closeTab(win) {
  * `x` in the side panel (docs/specs/key-handling-batch.md § 4): closes `tab` as the tab
  * strip's close button would, selected or not. A pinned tab stays (core refuses it first).
  * @param {BrowserWindow} win
- * @param {any} tab
+ * @param {MozTabbrowserTab} tab
  */
 export function closeTabById(win, tab) {
   if (tab.pinned) return;
@@ -99,9 +101,7 @@ export function closeTabById(win, tab) {
  * @param {BrowserWindow} win
  */
 export function restoreTab(win) {
-  /** @type {any} */ (
-    win.document.getElementById("History:RestoreLastClosedTabOrWindowOrSession")
-  )?.doCommand();
+  xulElementById(win, "History:RestoreLastClosedTabOrWindowOrSession")?.doCommand();
 }
 
 /**

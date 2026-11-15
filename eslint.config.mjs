@@ -108,12 +108,11 @@ export default [
     },
   },
   {
-    // JSWindowActor base classes, globals in the system modules that define actors.
+    // The JSWindowActor child's base class, a global in the system modules that define actors.
     files: ["src/**/vimma/actors/**"],
     languageOptions: {
       globals: {
         JSWindowActorChild: "readonly",
-        JSWindowActorParent: "readonly",
         // System-module globals the parent side uses to check and open `F` targets.
         BrowsingContext: "readonly",
         Ci: "readonly",
@@ -124,6 +123,11 @@ export default [
     },
   },
   {
+    // The parent side of the actor pair (ADR-026: it forwards page reports to the host).
+    files: ["src/**/vimma/host/VimmaParent.sys.mjs"],
+    languageOptions: { globals: { JSWindowActorParent: "readonly" } },
+  },
+  {
     // about:vimma registers its nsIAboutModule factory through the component registrar.
     files: ["src/**/vimma/about/**"],
     languageOptions: { globals: { Components: "readonly" } },
@@ -132,6 +136,11 @@ export default [
     // The -vimma-reload-theme command-line handler: registrar, and Cu.isInAutomation.
     files: ["src/**/vimma/omarchy/**"],
     languageOptions: { globals: { Components: "readonly", Cu: "readonly" } },
+  },
+  {
+    // Only vimma.js may provide the host's services: the caller's frame, Components.stack.
+    files: ["src/**/vimma/host/host-services.mjs"],
+    languageOptions: { globals: { Components: "readonly" } },
   },
   {
     // The first run creates config.toml, but never under a test harness: Cu.isInAutomation.
@@ -153,19 +162,19 @@ export default [
   },
   {
     // An agent submission's test hook is read only under a harness: Cu.isInAutomation
-    // (docs/security.md M28).
+    // (docs/security/12-agents-mcp.md M28).
     files: ["src/**/vimma/actors/VimmaChild.sys.mjs"],
     languageOptions: { globals: { Cu: "readonly" } },
   },
   {
     // The PDF viewer's adapter waives Xrays on pdf.js's application object after its principal
-    // check and hands it exported callbacks (docs/security.md section 20, V1 and V3).
+    // check and hands it exported callbacks (docs/security/20-pdf-viewer.md section 20, V1 and V3).
     files: ["src/**/vimma/actors/pdf-view.mjs"],
     languageOptions: { globals: { Cu: "readonly" } },
   },
   {
     // Agent pages launch no app: the component registrar wraps the external-protocol chooser
-    // (docs/security.md M10).
+    // (docs/security/12-agents-mcp.md M10).
     files: ["src/**/vimma/ctl/AgentPages.sys.mjs"],
     languageOptions: { globals: { Components: "readonly" } },
   },

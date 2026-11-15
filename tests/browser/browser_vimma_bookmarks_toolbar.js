@@ -38,27 +38,46 @@ const MIGRATION_NOTICE =
 const dir = PathUtils.join(PathUtils.tempDir, `vimma-bookmarks-toolbar-${Date.now()}`);
 const configFile = PathUtils.join(dir, "config.toml");
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => boolean} cond @param {string} msg @param {number} [tries] */
 function until(cond, msg, tries = 100) {
   return TestUtils.waitForCondition(cond, msg, 50, tries);
 }
 
+/**
+ * @param {string} id
+ * @param {Window} [win]
+ */
 const $ = (id, win = window) => win.document.getElementById(id);
-/** The Bookmarks Toolbar shows in `win`. */
+/**
+ * The Bookmarks Toolbar shows in `win`.
+ * @param {Window} [win]
+ */
 const shown = (win = window) => !!$("PersonalToolbar", win)?.checkVisibility(VISIBLE);
+/** @param {Window} [win] */
 const noticeText = (win = window) => $("vimma-notice-live", win)?.textContent ?? "";
-/** A refusal is spoken in the assertive region. */
+/**
+ * A refusal is spoken in the assertive region.
+ * @param {Window} [win]
+ */
 const alertText = (win = window) => $("vimma-notice-alert", win)?.textContent ?? "";
 const pref = () => Services.prefs.getCharPref(PREF);
 
-/** `:line` Enter, typed in `win`. */
+/**
+ * `:line` Enter, typed in `win`.
+ * @param {string} line
+ * @param {Window} [win]
+ */
 function runCommand(line, win = window) {
   EventUtils.synthesizeKey(":", { shiftKey: true }, win);
   EventUtils.sendString(line, win);
   EventUtils.synthesizeKey("KEY_Enter", {}, win);
 }
 
-/** A page, selected and focused in normal mode, so the command line and keys reach Vimma. */
+/**
+ * A page, selected and focused in normal mode, so the command line and keys reach Vimma.
+ * @param {BrowserWindow} [win]
+ * @param {string} [url]
+ */
 async function openPage(win = window, url = PAGE) {
   const tab = await BrowserTestUtils.openNewForegroundTab(win.gBrowser, url);
   await focusContent(tab.linkedBrowser);
@@ -66,7 +85,10 @@ async function openPage(win = window, url = PAGE) {
   return tab;
 }
 
-/** A new tab the way ctrl+t opens it: the start page. */
+/**
+ * A new tab the way ctrl+t opens it: the start page.
+ * @param {BrowserWindow} [win]
+ */
 async function openStartTab(win = window) {
   const loaded = BrowserTestUtils.waitForNewTab(win.gBrowser, START, true);
   win.BrowserCommands.openTab();
@@ -85,7 +107,9 @@ add_task(async function setup() {
   registerCleanupFunction(async () => {
     Services.prefs.clearUserPref(PREF);
     CustomizableUI.setToolbarVisibility("PersonalToolbar", "never");
-    while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+    while (gBrowser.tabs.length > 1) {
+      gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+    }
     await PlacesUtils.bookmarks.eraseEverything();
     await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true });
   });
@@ -117,7 +141,8 @@ add_task(async function start_page_hint_names_the_bookmarks_panel() {
   const hint = await SpecialPowers.spawn(
     tab.linkedBrowser,
     [],
-    () => content.document.querySelector(".hint").textContent,
+    // The start page has its hint; a missing one throws in the page, as before.
+    () => /** @type {Element} */ (content.document.querySelector(".hint")).textContent,
   );
   Assert.stringContains(hint.replace(/\s+/g, " "), "ctrl+b shift+b bookmarks", "the hint");
   BrowserTestUtils.removeTab(tab);
@@ -158,6 +183,7 @@ add_task(async function config_overrides_the_migration() {
   Services.prefs.clearUserPref(MIGRATED_PREF);
   CustomizableUI.setToolbarVisibility("PersonalToolbar", "always");
   Services.prefs.setCharPref(PREF, "always");
+  /** @type {string[]} */
   const said = [];
   BookmarksToolbar.migrate("shown", (text) => said.push(text));
   Assert.equal(pref(), "always", "the toolbar stays shown");
@@ -167,7 +193,10 @@ add_task(async function config_overrides_the_migration() {
   await reset();
 });
 
-/** Five bookmarks into the toolbar folder, as a browser import does. */
+/**
+ * Five bookmarks into the toolbar folder, as a browser import does.
+ * @param {string} tag
+ */
 async function importIntoToolbar(tag) {
   const bookmarks = [1, 2, 3, 4, 5].map((i) => ({
     url: `https://example.com/${tag}/${i}`,
@@ -199,9 +228,12 @@ add_task(async function import_keeps_it_hidden() {
 add_task(async function star_panel_does_not_show_it() {
   const tab = await openPage(window, `${PAGE}?star`);
   const shownPanel = BrowserTestUtils.waitForPopupEvent(StarUI.panel, "shown");
-  BookmarkingUI.star.click();
+  // Every browser window has the star; a missing one throws, as before.
+  /** @type {XULElement} */ (BookmarkingUI.star).click();
   await shownPanel;
-  let bm = null;
+  // A bookmark as Bookmarks.sys.mjs fetch() resolves it (toolkit/components/places): the field
+  // read here. Typed on the value, so that the null start does not narrow it: the wait sets it.
+  let bm = /** @type {{ parentGuid: string } | null} */ (null);
   await TestUtils.waitForCondition(async () => {
     bm = await PlacesUtils.bookmarks.fetch({ url: `${PAGE}?star` });
     return !!bm;
@@ -276,7 +308,7 @@ add_task(async function config_sets_it_in_every_window() {
     ],
   });
   let n = 0;
-  const write = (text) =>
+  const write = (/** @type {string} */ text) =>
     IOUtils.writeUTF8(configFile, `schema = 2\n${text}\n${"#".repeat(++n)}\n`);
   const win2 = await BrowserTestUtils.openNewBrowserWindow();
   await SimpleTest.promiseFocus(window);
@@ -304,6 +336,8 @@ add_task(async function config_sets_it_in_every_window() {
   await IOUtils.remove(configFile);
   await SpecialPowers.popPrefEnv();
   await ConfigHost.reload();
+  // Without a config in force, the check below passed on undefined == null.
+  Assert.ok(ConfigHost.config, "the reload put a config in force");
   Assert.equal(ConfigHost.config?.ui.bookmarksToolbar, null, "no config: no key");
   Assert.equal(pref(), "always", "and the pref keeps what it had");
   await BrowserTestUtils.closeWindow(win2);
@@ -313,7 +347,8 @@ add_task(async function config_sets_it_in_every_window() {
 
 // 9: Firefox's View > Toolbars > Bookmarks Toolbar > Always show, untouched by Vimma.
 add_task(async function firefox_menu_still_works() {
-  const item = document.createXULElement("menuitem");
+  // createXULElement makes a XUL element (engine/dom/webidl/Document.webidl).
+  const item = /** @type {XULElement} */ (document.createXULElement("menuitem"));
   item.dataset.bookmarksToolbarVisibility = "true";
   item.dataset.visibilityEnum = "always";
   // onViewToolbarCommand reads the menu's id three levels up.
@@ -340,9 +375,16 @@ add_task(async function hidden_with_the_nav_bar() {
   runCommand("bookmarkstoolbar show");
   await until(() => shown(), "shown");
   Services.prefs.setBoolPref(TOOLBAR_PREF, true);
-  await until(() => !$("nav-bar").checkVisibility(VISIBLE), "the nav bar is hidden");
+  // Every browser window has its nav bar; a missing one throws, as before.
+  await until(
+    () => !(/** @type {Element} */ ($("nav-bar")).checkVisibility(VISIBLE)),
+    "the nav bar is hidden",
+  );
   Assert.ok(!shown(), "the bookmarks toolbar hides with it");
-  const toolbar = VimmaHost._state(window).toolbar;
+  // VimmaHost started this window and made its toolbar; without one, `.hold` throws, as before.
+  const toolbar = /** @type {NonNullable<HostState["toolbar"]>} */ (
+    /** @type {HostState} */ (VimmaHost._state(window)).toolbar
+  );
   toolbar.hold("test", "minimal");
   Assert.ok(!shown(), "the minimal bar does not show it");
   toolbar.hold("test", "full");

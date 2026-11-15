@@ -27,13 +27,15 @@ import {
   RECONNECT_MS,
   UNTRUSTED_CLOSE,
   UNTRUSTED_OPEN,
+  FROZEN_COPY_DEPTH,
+  frozenCopy,
   grantLength,
   mcpActivity,
   parseMcpCommand,
   untrustedHeader,
   wrapUntrusted,
-} from "../src/agent.mjs";
-import { logCells, logRow } from "../src/agent-prompt.mjs";
+} from "../src/agent/agent.mjs";
+import { logCells, logRow } from "../src/agent/agent-prompt.mjs";
 
 const MIN = 60_000;
 const READ = "vimma_read_page";
@@ -42,7 +44,7 @@ const OPEN = "vimma_open";
 /**
  * The request `ask` queued; throws when it ran or was denied instead, so a test never answers a
  * request that does not exist.
- * @param {import("../src/agent.mjs").Admission | undefined} admission
+ * @param {import("../src/agent/agent.mjs").Admission | undefined} admission
  */
 function waiting(admission) {
   if (admission?.kind !== "wait") throw new Error(`not queued: ${JSON.stringify(admission)}`);
@@ -725,7 +727,7 @@ describe(":mcp log (mcp-drive D14)", () => {
     expect(plain(logRow({ ...open, outcome: "yes" }))).toBe(
       "17:05:09 claude-code vimma_open https://a.example/x · allowed",
     );
-    /** @type {[import("../src/agent.mjs").LogOutcome, string][]} */
+    /** @type {[import("../src/agent/agent.mjs").LogOutcome, string][]} */
     const outcomes = [
       ["user", "denied"],
       ["timeout", "no answer (denied)"],
@@ -1062,5 +1064,154 @@ describe("forms by consequence (mcp-consequence K1, K5)", () => {
     q.answer(asked.id, { kind: "here", key: "k" }, 1000);
     expect(q.ask(1, "vimma_show", 2000, { covered: true }).kind).toBe("wait");
     expect(q.ask(1, ACT, 2000, { always: true }).kind).toBe("wait");
+  });
+});
+
+// docs/security/12-agents-mcp.md M62 (issue #1018): what the gate keeps from a caller, and hands to
+// a reader, is its own frozen copy, so neither can change what a question showed, what it answers
+// or a row of `:mcp log` after the fact.
+describe("the gate's copies (security.md M62)", () => {
+  test("frozenCopy copies plain data deeply and freezes every level", () => {
+    const what = {
+      url: "https://a.example/",
+      here: { site: "a.example", key: "k" },
+      list: [1, { n: 2 }],
+    };
+    const copy = /** @type {any} */ (frozenCopy(what));
+    expect(copy).toEqual(what);
+    expect(copy).not.toBe(what);
+    expect(copy.here).not.toBe(what.here);
+    expect(Object.isFrozen(copy) && Object.isFrozen(copy.here)).toBe(true);
+    expect(Object.isFrozen(copy.list) && Object.isFrozen(copy.list[1])).toBe(true);
+    what.url = "https://b.example/";
+    what.here.key = "other";
+    /** @type {any} */ (what.list[1]).n = 3;
+    expect(copy.url).toBe("https://a.example/");
+    expect(copy.here.key).toBe("k");
+    expect(copy.list[1].n).toBe(2);
+    expect(Reflect.set(copy, "url", "https://c.example/")).toBe(false);
+    expect(Reflect.set(copy.here, "key", "x")).toBe(false);
+  });
+
+  test("frozenCopy reads a getter once, and drops functions and cycles", () => {
+    let n = 0;
+    const what = {
+      get url() {
+        n++;
+        return n === 1 ? "https://asked.example/" : "https://later.example/";
+      },
+      run: () => "x",
+    };
+    /** @type {any} */ (what).self = what;
+    const copy = /** @type {any} */ (frozenCopy(what));
+    expect(copy.url).toBe("https://asked.example/");
+    expect(copy.url).toBe("https://asked.example/");
+    expect(n).toBe(1);
+    expect(copy.run).toBeUndefined();
+    expect(copy.self).toBeNull();
+    expect(frozenCopy("text")).toBe("text");
+    expect(frozenCopy(null)).toBeNull();
+  });
+
+  test("frozenCopy survives any plain data", () => {
+    fc.assert(
+      fc.property(fc.jsonValue(), (v) => {
+        const copy = frozenCopy(v);
+        expect(copy).toEqual(v);
+        return true;
+      }),
+    );
+  });
+
+  test("frozenCopy keeps a __proto__ key as its own data, never as the copy's prototype", () => {
+    const what = JSON.parse('{"url":"x","__proto__":{"danger":"exe"}}');
+    const copy = /** @type {any} */ (frozenCopy(what));
+    expect(Object.keys(copy)).toEqual(["url", "__proto__"]);
+    expect(copy.danger).toBeUndefined();
+    expect(Object.getPrototypeOf(copy)).toBe(Object.prototype);
+    expect(Object.getOwnPropertyDescriptor(copy, "__proto__")?.value).toEqual({ danger: "exe" });
+    expect(JSON.stringify(copy)).toBe(JSON.stringify(what));
+    expect({ ...copy }).toEqual({ ...what });
+  });
+
+  test("frozenCopy refuses data nested deeper than FROZEN_COPY_DEPTH, with a clear error", () => {
+    /** @type {any} */
+    let deep = {};
+    for (let i = 0; i < 100_000; i++) deep = { deep };
+    expect(() => frozenCopy(deep)).toThrow(/deeper than 32 levels/);
+    /** @type {any} */
+    let ok = "leaf";
+    for (let i = 0; i < FROZEN_COPY_DEPTH; i++) ok = { ok };
+    expect(() => frozenCopy(ok)).not.toThrow();
+    expect(() => frozenCopy({ ok })).toThrow(/deeper than 32 levels/);
+  });
+
+  test("frozenCopy passes its own copy through, so an event around a request at the limit copies", () => {
+    /** @type {any} */
+    let asked = { url: "https://a.example/" };
+    for (let i = 1; i < FROZEN_COPY_DEPTH; i++) asked = { asked };
+    const what = frozenCopy(asked);
+    // The gate's events hold the request two and three levels down (issue #1027).
+    const ran = /** @type {any} */ (frozenCopy({ kind: "ran", what }));
+    expect(ran.what).toBe(what);
+    const question = Object.freeze({ id: 1, what });
+    const event = /** @type {any} */ (frozenCopy({ kind: "asked", question }));
+    expect(event.question).not.toBe(question);
+    expect(event.question.what).toBe(what);
+    expect(Object.isFrozen(event) && Object.isFrozen(event.question)).toBe(true);
+  });
+
+  test("frozenCopy still copies an object someone else froze", () => {
+    const inner = Object.freeze({ key: "k" });
+    const live = { here: inner, list: Object.freeze([inner]) };
+    Object.freeze(live);
+    const copy = /** @type {any} */ (frozenCopy(live));
+    expect(copy).not.toBe(live);
+    expect(copy.here).not.toBe(inner);
+    expect(copy.list).not.toBe(live.list);
+    expect(copy).toEqual(live);
+    // A frozen caller's object still counts toward the depth limit.
+    /** @type {any} */
+    let deep = Object.freeze({ url: "x" });
+    for (let i = 0; i < FROZEN_COPY_DEPTH; i++) deep = Object.freeze({ deep });
+    expect(() => frozenCopy(deep)).toThrow(/deeper than 32 levels/);
+  });
+
+  test("frozenCopy copies shared sub-objects in linear time, and a cycle still becomes null", () => {
+    /** @type {any} */
+    let shared = { leaf: 1 };
+    for (let i = 0; i < 22; i++) shared = { a: shared, b: shared };
+    const start = performance.now();
+    const copy = /** @type {any} */ (frozenCopy(shared));
+    expect(performance.now() - start).toBeLessThan(200);
+    /** @type {any} */
+    let walk = copy;
+    for (let i = 0; i < 22; i++) walk = i % 2 ? walk.a : walk.b;
+    expect(walk).toEqual({ leaf: 1 });
+    expect(copy.a).toBe(copy.b);
+    /** @type {any} */
+    const loop = { name: "x", list: [] };
+    loop.list.push(loop, { back: loop });
+    const c = /** @type {any} */ (frozenCopy(loop));
+    expect(c.list[0]).toBeNull();
+    expect(c.list[1].back).toBeNull();
+  });
+
+  test(":mcp log keeps its own row: the caller's object and a reader's row change nothing", () => {
+    const log = new AgentLog();
+    const row = {
+      at: 1,
+      client: "agent-a",
+      tool: "vimma_open",
+      title: "",
+      detail: "https://a.example/",
+      outcome: /** @type {const} */ ("yes"),
+    };
+    log.add(row);
+    row.client = "built-in agent";
+    const [read] = log.entries();
+    expect(read?.client).toBe("agent-a");
+    expect(Reflect.set(/** @type {object} */ (read), "detail", "https://b.example/")).toBe(false);
+    expect(log.entries()[0]).toMatchObject({ client: "agent-a", detail: "https://a.example/" });
   });
 });

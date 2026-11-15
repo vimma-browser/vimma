@@ -22,7 +22,7 @@ const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
@@ -62,12 +62,16 @@ const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
-const ww = () => WindowWorkspaces.get(window);
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
+const mainId = () =>
+  /** @type {string} */ (
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id
+  );
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
+/** @param {boolean} on */
 async function mcp(on) {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, on);
   await VimmaControl.settled();
@@ -112,7 +116,7 @@ async function agentClient(name = "example-agent") {
 /** The oldest waiting question, once there is one. */
 async function question() {
   await until(() => AgentGate.waiting.length > 0, "a question waits");
-  return AgentGate.waiting[0];
+  return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
 /** The list's elements by what they say. @param {any} c @param {any} tab */
@@ -134,7 +138,7 @@ async function labels(c, tab) {
 
 /**
  * `agent-activate` on `tab`, answered with `answer` (null: not asked, a grant runs it).
- * @param {any} c @param {any} tab @param {string} label @param {object | null} [answer]
+ * @param {any} c @param {any} tab @param {string} label @param {GateAnswer | null} [answer]
  */
 async function activate(c, tab, label, answer = { kind: "once" }) {
   const id = c.request("agent-activate", { tab: idOf(tab), label });
@@ -192,7 +196,7 @@ addTidyTask(async function test_submit_asks_under_a_grant() {
   Assert.equal(r.result.url, `${PAGE}?q=cats&from=fixture`, "to its destination");
   Assert.ok(!("blocked" in r.result), "the submission the user allowed was not stopped");
   Assert.ok(
-    AgentGate.grants().every((g) => g.until < Date.now() + 13 * 60_000),
+    AgentGate.grants().every((/** @type {GateGrant} */ g) => g.until < Date.now() + 13 * 60_000),
     "the yes to a submit made no grant of 60 min",
   );
   Assert.ok(
@@ -389,7 +393,7 @@ addTidyTask(async function test_a_page_submitting_with_no_agent_step_is_untouche
   const tab = await openAgentTab();
   const loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, `${PAGE}?draft`);
   await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
-    content.document.getElementById("draft").submit(),
+    /** @type {HTMLFormElement} */ (content.document.getElementById("draft")).submit(),
   );
   await loaded;
   Assert.ok(true, "a page's own submission, with no agent step, went through");

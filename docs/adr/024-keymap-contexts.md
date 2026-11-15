@@ -32,7 +32,7 @@ page. Only which binding a key has changes.
    sequence started under one set of bindings never finishes under another.
 4. **The host decides the context**, never the page: `pdf` only while the selected tab's top
    document has pdf.js's principal, as the parent sees it (pdf-mode decision 4 and
-   `docs/security.md` section 18).
+   `docs/security/` section 18).
 5. **Firefox's keys:** a chord bound only in `[modal.pdf]` counts as bound ("bound means off",
    [firefox-keys](../specs/firefox-keys.md) decision 2) in every tab, because the set of Firefox
    keys that are off is applied per window, not per tab.

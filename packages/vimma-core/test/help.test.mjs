@@ -1,15 +1,15 @@
 import { describe, test, expect } from "vitest";
-import { compileKeymap } from "../src/keymap.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
 import {
   bindingTable,
   bindingsJson,
   filterBindings,
   keyLegend,
   renderHelpText,
-} from "../src/help.mjs";
-import { MODES } from "../src/modes.mjs";
-import { ACTIONS } from "../src/actions.mjs";
-import { DEFAULT_CONFIG } from "../src/defaults.mjs";
+} from "../src/ui/help.mjs";
+import { MODES } from "../src/keys/modes.mjs";
+import { ACTIONS } from "../src/keys/actions.mjs";
+import { DEFAULT_CONFIG } from "../src/config/defaults.mjs";
 
 const DEFAULT_KEYS = DEFAULT_CONFIG.keys;
 if (!DEFAULT_KEYS) throw new Error("the defaults have no [keys]");

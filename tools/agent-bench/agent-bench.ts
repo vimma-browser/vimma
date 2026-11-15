@@ -45,13 +45,16 @@ import { join } from "node:path";
 import { cpus, release, totalmem } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { keepResultsFor } from "../../packages/vimma-core/src/agent-loop.mjs";
-import { agentTools, AGENT_INSTRUCTIONS } from "../../packages/vimma-core/src/agent-tools.mjs";
-import { ControlSessions } from "../e2e/control-client.mjs";
-import { findVimmaCtl } from "../e2e/driver.mjs";
-import { findBuild, launch, quitBrowser } from "../e2e/launcher.mjs";
-import { encodePng } from "../e2e/png.mjs";
-import { capture } from "../e2e/screenshot.mjs";
+import { keepResultsFor } from "../../packages/vimma-core/src/agent/agent-loop.mjs";
+import {
+  agentTools,
+  AGENT_INSTRUCTIONS,
+} from "../../packages/vimma-core/src/agent/agent-tools.mjs";
+import { ControlSessions } from "../e2e/control-client.ts";
+import { findVimmaCtl } from "../e2e/driver.ts";
+import { findBuild, launch, quitBrowser } from "../e2e/launcher.ts";
+import { encodePng } from "../e2e/png.ts";
+import { capture } from "../e2e/screenshot.ts";
 import { formatBreakdown } from "./breakdown.ts";
 import { httpFetch } from "./http-fetch.ts";
 import { loadLists } from "./lists.ts";
@@ -63,7 +66,7 @@ import { SCRIPTED_PROVIDER, scriptedFetch, shopper } from "./scripted.ts";
 import { OFFLINE_PREFS } from "../sites/sites.ts";
 import { startShop } from "./shop.ts";
 import { loadTwoShops, startTwoShops, twoShopShopper, twoShopsScenario } from "./two-shops.ts";
-import type { Provider } from "../../packages/vimma-core/src/agent-providers.mjs";
+import type { Provider } from "../../packages/vimma-core/src/agent/agent-providers.mjs";
 import type { Scenario } from "./run.ts";
 import type { ShoppingList } from "./score.ts";
 import type { Script } from "./scripted.ts";

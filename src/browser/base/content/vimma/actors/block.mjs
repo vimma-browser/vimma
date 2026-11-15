@@ -121,7 +121,7 @@ function textLength(el) {
   const stack = [el];
   while (stack.length) {
     const e = /** @type {Element} */ (stack.pop());
-    const root = /** @type {any} */ (e).openOrClosedShadowRoot;
+    const root = e.openOrClosedShadowRoot;
     for (let c = (root ?? e).firstChild; c; c = c.nextSibling) {
       if (c.nodeType === 3) n += /** @type {Text} */ (c).data.trim().length;
       else if (c.nodeType === 1) stack.push(/** @type {Element} */ (c));
@@ -383,7 +383,7 @@ function boxOf(el) {
 
 /** @param {Element} el */
 function onScreen(el) {
-  const win = el.ownerGlobal;
+  const win = el.ownerDocument.defaultView;
   const b = el.getBoundingClientRect();
   return !!win && b.bottom > 0 && b.top < win.innerHeight && b.width > 0 && b.height > 0;
 }

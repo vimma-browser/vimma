@@ -17,7 +17,7 @@ const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
@@ -27,6 +27,9 @@ const { CONTROL_UNTIL_PREF } = ChromeUtils.importESModule(
 );
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
+);
+const { validateMessage } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/index.mjs",
 );
 const { DEFAULT_HINT_CHARS } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/hints.mjs",
@@ -49,12 +52,16 @@ registerCleanupFunction(async () => {
   await VimmaControl.settled();
 });
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 500);
-const line = () => document.getElementById("vimma-agent-prompt");
-const lineOpen = () => !!line() && !line().hidden;
+/** The line, or null while there is none. */
+const line = () =>
+  /** @type {HTMLElement | null} */ (document.getElementById("vimma-agent-prompt"));
+const lineOpen = () => !!line() && !(/** @type {HTMLElement} */ (line()).hidden);
 const hintShown = () => {
-  const hint = line()?.querySelector(".vimma-agent-prompt-hint");
+  const hint = /** @type {HTMLElement | null | undefined} */ (
+    line()?.querySelector(".vimma-agent-prompt-hint")
+  );
   return !!hint && !hint.hidden && hint.textContent !== "";
 };
 const segment = () =>
@@ -141,7 +148,8 @@ add_task(async function test_other_ui_opened_over_the_line_gets_the_keys() {
   await armed();
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey("g");
-  const picker = () => document.getElementById("vimma-picker");
+  const picker = () =>
+    /** @type {HTMLDialogElement | null} */ (document.getElementById("vimma-picker"));
   await until(() => picker()?.open, "ctrl+b g opens the goto picker over the line");
   EventUtils.synthesizeKey("y");
   await new Promise((r) => setTimeout(r, 200));
@@ -213,15 +221,66 @@ add_task(async function test_names_titles_and_urls_are_bidi_isolates() {
   await calmPage();
   const id = c.request("agent-open", { url: "https://example.com/‮evil" });
   await armed();
-  const bdi = [...line().querySelectorAll("bdi")].map((b) => b.textContent);
+  const bdi = [.../** @type {HTMLElement} */ (line()).querySelectorAll("bdi")].map(
+    (b) => b.textContent,
+  );
   Assert.deepEqual(bdi, ["עברית agent"], "the client name is a <bdi>");
-  const ltr = [...line().querySelectorAll('[dir="ltr"]')];
+  const ltr = [.../** @type {HTMLElement} */ (line()).querySelectorAll('[dir="ltr"]')];
   Assert.ok(ltr.length > 0, "the URL is drawn left to right");
   for (const el of ltr) {
     Assert.equal(window.getComputedStyle(el).unicodeBidi, "isolate", "as an isolate");
   }
   EventUtils.synthesizeKey("n");
   await c.response(id);
+  c.close();
+  await setSwitches({});
+});
+
+// #1006: the control socket's `state.agent.armed` says whether the line is open with its keys
+// hint drawn, so that a script photographs the armed question rather than sleeping for it; a
+// flag, never the question (security.md S9).
+add_task(async function test_state_reports_the_line_armed_as_drawn() {
+  const state = () => {
+    const result = VimmaControl._commands.state();
+    const v = validateMessage(
+      { type: "response", id: 1, ok: true, result },
+      { kind: "response", command: "state" },
+    );
+    Assert.ok(v.valid, `the state follows the protocol: ${v.errors.join("; ")}`);
+    return result;
+  };
+  await setSwitches({ mcp: true });
+  Services.prefs.setIntPref(ARMING, 1000);
+  const c = await agentClient();
+  await until(() => segment() === "◇ agent", "the bar draws the agent segment");
+  Assert.deepEqual(state().agent, { waiting: 0, ran: false, armed: false }, "nothing asked");
+
+  await calmPage();
+  const id = c.request("agent-tabs");
+  await until(lineOpen, "the question opens by itself");
+  Assert.ok(!hintShown(), "sanity: its hint waits for the arming delay");
+  Assert.strictEqual(state().agent?.armed, false, "open, not yet armed");
+  await until(hintShown, "armed after the delay");
+  await until(() => segment() === "◇ agent 1?", "and the bar counts it");
+  Assert.deepEqual(state().agent, { waiting: 1, ran: false, armed: true }, "armed, as drawn");
+
+  // What is drawn, not the line's own flag: a hint hidden for any reason reads as not armed.
+  const host = VimmaHost._state(window);
+  Assert.ok(host, "sanity: the window's host state");
+  const prompt = /** @type {NonNullable<typeof host>} */ (host).agentPrompt;
+  const hint = /** @type {HTMLElement} */ (prompt.hint);
+  hint.hidden = true;
+  Assert.strictEqual(state().agent?.armed, false, "the hint hidden: not armed");
+  hint.hidden = false;
+  // A key before the line is armed starts the delay again (security.md M4): not armed meanwhile.
+  prompt.rearm(1000);
+  Assert.strictEqual(state().agent?.armed, false, "arming again: not armed");
+  await until(() => state().agent?.armed === true, "armed again after the delay");
+
+  EventUtils.synthesizeKey("y");
+  Assert.ok((await c.response(id)).ok, "y allows");
+  await until(() => !lineOpen(), "the line closes");
+  Assert.strictEqual(state().agent?.armed, false, "closed: not armed");
   c.close();
   await setSwitches({});
 });

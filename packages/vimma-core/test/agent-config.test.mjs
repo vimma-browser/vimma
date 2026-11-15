@@ -2,8 +2,8 @@
 // config.toml, and becomes `[agent] default` when none was set up, so it survives a restart.
 // The file's other lines stay as they are, and nothing secret is ever written.
 import { describe, expect, test } from "vitest";
-import { addAgentProviderText, parseConfig } from "../src/config.mjs";
-import { formatConfigTemplate } from "../src/defaults.mjs";
+import { addAgentProviderText, parseConfig } from "../src/config/config.mjs";
+import { formatConfigTemplate } from "../src/config/defaults.mjs";
 
 const ollama = {
   name: "ollama",

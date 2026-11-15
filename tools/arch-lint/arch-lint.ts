@@ -5,14 +5,16 @@
 
 // ARCHITECTURE.md keeps up with the tree (issue #931), checked by `npm run arch-lint` (part of
 // `npm run lint`) and by its own step in ci.yml, which runs on docs-only changes too: every
-// folder of src/browser/base/content/vimma/, every folder of tools/ and every workflow in
-// .github/workflows/ is named in it, and everything it names in those forms exists. An overview
-// that silently fell behind the code is the failure this prevents.
+// folder of src/browser/base/content/vimma/, every folder of tools/, every workflow in
+// .github/workflows/ and every folder of packages/vimma-core/src/ (#937) is named in it, and
+// everything it names in those forms exists. An overview that silently fell behind the code is
+// the failure this prevents.
 //
-// A name counts only in a code span, in one of three forms: `vimma/<folder>/`, `tools/<folder>/`
-// and `<workflow>.yml` (or `.yaml`). Deeper paths, files and bare prose are not entries, so the
-// document can mention them freely. The repository's side comes from `git ls-files`, so
-// git-ignored folders (vimma/core/, which sync-core copies in) and stray local files never count.
+// A name counts only in a code span, in one of four forms: `vimma/<folder>/`, `tools/<folder>/`,
+// `<workflow>.yml` (or `.yaml`) and `packages/vimma-core/src/<folder>/`. Deeper paths, files and
+// bare prose are not entries, so the document can mention them freely. The repository's side
+// comes from `git ls-files`, so git-ignored folders (vimma/core/, which sync-core copies in) and
+// stray local files never count.
 //
 //   node tools/arch-lint/arch-lint.ts
 
@@ -26,11 +28,13 @@ const DOC = "ARCHITECTURE.md";
 const VIMMA = "src/browser/base/content/vimma/";
 const TOOLS = "tools/";
 const WORKFLOWS = ".github/workflows/";
+const CORE = "packages/vimma-core/src/";
 
 export interface Entries {
   vimma: string[];
   tools: string[];
   workflows: string[];
+  core: string[];
 }
 
 /** Each kind: the code-span form that names an entry, the repository path and the form shown. */
@@ -53,11 +57,17 @@ const KINDS = [
     path: (n: string) => `${WORKFLOWS}${n}`,
     form: (n: string) => n,
   },
+  {
+    key: "core",
+    span: /^packages\/vimma-core\/src\/([\w.-]+)\/$/,
+    path: (n: string) => `${CORE}${n}/`,
+    form: (n: string) => `${CORE}${n}/`,
+  },
 ] as const;
 
 /** The folders and workflows a Markdown text names in its code spans, in order, each once. */
 export function namedEntries(md: string): Entries {
-  const named: Entries = { vimma: [], tools: [], workflows: [] };
+  const named: Entries = { vimma: [], tools: [], workflows: [], core: [] };
   for (const m of md.matchAll(/`([^`\n]+)`/g)) {
     for (const kind of KINDS) {
       const name = kind.span.exec(m[1] ?? "")?.[1];
@@ -93,7 +103,7 @@ export function archErrors(md: string, repo: Entries): string[] {
  * @param root  the checkout
  */
 export function listEntries(root: string): Entries {
-  const files = execFileSync("git", ["ls-files", "-z", "--", VIMMA, TOOLS, WORKFLOWS], {
+  const files = execFileSync("git", ["ls-files", "-z", "--", VIMMA, TOOLS, WORKFLOWS, CORE], {
     cwd: root,
     encoding: "utf8",
   })
@@ -114,6 +124,7 @@ export function listEntries(root: string): Entries {
     vimma: folders(VIMMA).sort(),
     tools: folders(TOOLS).sort(),
     workflows: workflows.sort(),
+    core: folders(CORE).sort(),
   };
 }
 
@@ -133,7 +144,9 @@ function main(): void {
     );
     process.exit(1);
   }
-  console.log("Architecture lint: every vimma/ folder, tools/ folder and workflow is described.");
+  console.log(
+    "Architecture lint: every vimma/ folder, tools/ folder, workflow and vimma-core folder is described.",
+  );
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

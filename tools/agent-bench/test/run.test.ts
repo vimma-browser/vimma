@@ -1,11 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { agentTools, AGENT_INSTRUCTIONS } from "../../../packages/vimma-core/src/agent-tools.mjs";
+import {
+  agentTools,
+  AGENT_INSTRUCTIONS,
+} from "../../../packages/vimma-core/src/agent/agent-tools.mjs";
 import { answerer, grantSession, parseArgs, runOne, waitOutRate } from "../run.ts";
-import { OPEN_RATE } from "../../../packages/vimma-core/src/agent.mjs";
+import { OPEN_RATE } from "../../../packages/vimma-core/src/agent/agent.mjs";
 import { RATE_PACE_MS, SCRIPTED_PROVIDER, scriptedFetch, shopper } from "../scripted.ts";
 import { loadLists } from "../lists.ts";
 import { loadCatalog, startShop } from "../shop.ts";
-import type { RunTool } from "../../../packages/vimma-core/src/agent-loop.mjs";
+import type { RunTool } from "../../../packages/vimma-core/src/agent/agent-loop.mjs";
 
 let shop: Awaited<ReturnType<typeof startShop>>;
 beforeAll(async () => {

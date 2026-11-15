@@ -2,7 +2,7 @@
 // #mainKeyset Vimma turns off.
 import { readFileSync } from "node:fs";
 import { describe, test, expect } from "vitest";
-import { parseConfig } from "../src/config.mjs";
+import { parseConfig } from "../src/config/config.mjs";
 import {
   FIREFOX_SHORTCUTS,
   FIREFOX_SHORTCUTS_MACOS,
@@ -14,16 +14,16 @@ import {
   planFirefoxKeys,
   planMenuKeys,
   xulKeyChord,
-} from "../src/firefox-keys.mjs";
-import { compileKeymap } from "../src/keymap.mjs";
-import { insertEditCommand } from "../src/editable.mjs";
-import { SUGGESTION_ACTIONS } from "../src/suggestions.mjs";
+} from "../src/keys/firefox-keys.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
+import { insertEditCommand } from "../src/keys/editable.mjs";
+import { SUGGESTION_ACTIONS } from "../src/keys/suggestions.mjs";
 
 /** The modes whose keys type into a text field (keymap.mjs TEXT_FIELD_MODES). */
 const TEXT_FIELD = new Set(["insert", "command", "help"]);
-import { getAction } from "../src/actions.mjs";
+import { getAction } from "../src/keys/actions.mjs";
 
-/** @import { Mode } from "../src/modes.mjs" */
+/** @import { Mode } from "../src/keys/modes.mjs" */
 
 /**
  * SUGGESTION_ACTIONS, asked about any action id.

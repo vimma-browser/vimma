@@ -138,7 +138,7 @@ describe("verifyMar", () => {
     const signed = insertSignature(placeholder, kmsSign(privateKey, signedBytes(placeholder)));
     expect(verifyMar(signed, [publicKey], { channel: "vimma" }).entries).toBe(3);
     const changed = Buffer.from(signed);
-    changed[changed.length - 20] ^= 1;
+    changed.writeUInt8(changed.readUInt8(changed.length - 20) ^ 1, changed.length - 20);
     expect(() => verifyMar(changed, [publicKey], { channel: "vimma" })).toThrow(/signature/);
   });
 
@@ -214,7 +214,7 @@ describe("mar.mjs, the commands the workflows run", () => {
     ]);
     expect(same.status, same.stderr).toBe(0);
     const other = Buffer.from(signmarSigned());
-    other[other.length - 1] ^= 1;
+    other.writeUInt8(other.readUInt8(other.length - 1) ^ 1, other.length - 1);
     writeFileSync(join(dir, "o.mar"), other);
     expect(
       run(["same-content", "--placeholder", join(dir, "p.mar"), "--signed", join(dir, "o.mar")])

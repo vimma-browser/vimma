@@ -33,7 +33,9 @@ const PAGES_MAX = 4;
 const BOOKMARKED = "https://example.com/vimmabird-bookmark";
 const OPEN = "https://example.org/?vimmabird";
 
+/** @type {MozTabbrowserTab} */
 let openTab;
+/** @type {unknown} the bookmark PlacesUtils made, for the cleanup to remove */
 let bookmark;
 
 add_task(async function setup() {
@@ -97,10 +99,13 @@ async function closeList() {
   gURLBar.handleRevert();
 }
 
-const isPage = (r) =>
+/** @typedef {{ heuristic: boolean, type: number }} ResultRow  a row of typed() */
+
+const isPage = (/** @type {ResultRow} */ r) =>
   !r.heuristic &&
   (r.type === UrlbarShared.RESULT_TYPE.URL || r.type === UrlbarShared.RESULT_TYPE.TAB_SWITCH);
-const isSuggestion = (r) => !r.heuristic && r.type === UrlbarShared.RESULT_TYPE.SEARCH;
+const isSuggestion = (/** @type {ResultRow} */ r) =>
+  !r.heuristic && r.type === UrlbarShared.RESULT_TYPE.SEARCH;
 
 add_task(async function pages_come_before_search_suggestions() {
   const rows = await typed();
@@ -111,7 +116,7 @@ add_task(async function pages_come_before_search_suggestions() {
   Assert.greaterOrEqual(suggestions.length, 1, "the engine's suggestions are listed");
   Assert.equal(pages[0].index, 1, "one tab from the input reaches the first page");
   Assert.less(
-    pages.at(-1).index,
+    /** @type {(typeof pages)[number]} */ (pages.at(-1)).index,
     suggestions[0].index,
     "every page comes before the first search suggestion",
   );
@@ -125,7 +130,10 @@ add_task(async function pages_come_before_search_suggestions() {
 
 add_task(async function no_group_is_headed_firefox() {
   const rows = await typed();
-  const pages = UrlbarTestUtils.getRowAt(window, rows.find(isPage).index);
+  const pages = UrlbarTestUtils.getRowAt(
+    window,
+    /** @type {(typeof rows)[number]} */ (rows.find(isPage)).index,
+  );
   await TestUtils.waitForCondition(() => pages.hasAttribute("label"), "the pages get a heading");
   Assert.equal(pages.getAttribute("label"), "Vimma", "the pages are headed with Vimma's name");
   const labels = rows
@@ -165,7 +173,8 @@ add_task(async function pages_are_capped_so_the_suggestions_stay_close() {
     "the first suggestion is five presses of tab away: one per page, then the suggestion",
   );
   Assert.equal(
-    gURLBar.view.selectedResult.payload.suggestion,
+    /** @type {NonNullable<typeof gURLBar.view.selectedResult>} */ (gURLBar.view.selectedResult)
+      .payload.suggestion,
     `${WORD} one`,
     "tab reaches the first suggestion",
   );
@@ -177,10 +186,18 @@ add_task(async function only_the_pages_first_layout_gets_four_to_five() {
     "chrome://browser/content/vimma/search/UrlbarRows.sys.mjs",
   );
   const { GENERAL_PARENT } = UrlbarShared.RESULT_GROUP;
-  const root = (first, second) => ({
+  /**
+   * The layout root() builds, which pagesFirstFlex hands back (the same object).
+   * @typedef {{ children: [UrlbarResultGroup, { children: UrlbarResultGroup[] }] }} Layout
+   */
+  const root = (
+    /** @type {UrlbarResultGroup} */ first,
+    /** @type {UrlbarResultGroup} */ second,
+  ) => ({
     children: [{ maxResultCount: 1 }, { flexChildren: true, children: [first, second] }],
   });
-  const flexes = (r) => r.children[1].children.map((c) => c.flex);
+  const flexes = (/** @type {UrlbarResultGroup} */ r) =>
+    /** @type {Layout} */ (r).children[1].children.map((c) => c.flex);
 
   const pagesFirst = root({ group: GENERAL_PARENT, flex: 2 }, { flex: 1 });
   Assert.deepEqual(

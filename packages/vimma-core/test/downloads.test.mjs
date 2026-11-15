@@ -16,10 +16,11 @@ import {
   downloadSegment,
   downloadEnds,
   nameFromUrl,
-} from "../src/downloads.mjs";
-import { statusSegments } from "../src/statusbar.mjs";
+} from "../src/ui/downloads.mjs";
+import { statusSegments } from "../src/ui/statusbar.mjs";
+import { DOWNLOAD_SEGMENTS } from "../src/control/control.mjs";
 
-/** @import { DownloadRecord } from "../src/downloads.mjs" */
+/** @import { DownloadRecord } from "../src/ui/downloads.mjs" */
 
 const MB = 1024 * 1024;
 
@@ -415,7 +416,7 @@ describe("downloadKey", () => {
     expect(long).toBe(`delete "${"x".repeat(79)}…" from disk? (y/N)`);
   });
 
-  test("a yes stands only for the download asked about (docs/security.md D5)", () => {
+  test("a yes stands only for the download asked about (docs/security/21-downloads-picker.md D5)", () => {
     // Unchanged, or only its bytes moved on: the answer stands.
     expect(downloadChanged(running(), running({ currentBytes: 4 * MB }), "cancel")).toBe(false);
     expect(downloadChanged(rec(), rec(), "delete")).toBe(false);
@@ -497,6 +498,30 @@ describe("downloadSegment", () => {
     const problem = status(at([], { state: "blocked", at: 0 }, 1));
     expect(problem).toMatchObject({ fg: "--vimma-text-error", priority: 3 });
     expect(statusSegments({ mode: "normal" }).some((s) => s.id === "downloads")).toBe(false);
+  });
+
+  // #1006: the control socket's state.downloads reports which of these the bar draws, from a
+  // closed list, never the text (security.md S9).
+  test("each segment names its kind from the control protocol's closed list", () => {
+    const kinds = [
+      at([running()]),
+      at([running(), running({ id: 2 })]),
+      at([running({ hasProgress: false, totalBytes: 0 })]),
+      at([paused()]),
+      at([], { state: "done", at: 0 }, 1),
+      at([], { state: "failed", at: 0 }, 1),
+      at([], { state: "blocked", at: 0 }, 1),
+    ].map((seg) => seg?.kind);
+    expect(kinds).toEqual([
+      "progress",
+      "progress",
+      "progress",
+      "paused",
+      "done",
+      "failed",
+      "blocked",
+    ]);
+    expect(new Set(kinds)).toEqual(new Set(DOWNLOAD_SEGMENTS));
   });
 
   test("the segment's accessible text has no arrow", () => {

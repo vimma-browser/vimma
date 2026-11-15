@@ -9,6 +9,8 @@
 // that submits no form; the question names the button, the site and the total the page states
 // (C7). Basket buttons with no such words run unasked.
 
+/* global contextOf -- from head.js */
+
 "use strict";
 
 /* global Client, tidyTask -- from head_vimma_control.js */
@@ -19,7 +21,7 @@ const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
@@ -58,13 +60,17 @@ const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
-const ww = () => WindowWorkspaces.get(window);
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
+const mainId = () =>
+  /** @type {string} */ (
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id
+  );
 const noticeText = () => document.getElementById("vimma-notice")?.textContent ?? "";
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
+/** @param {boolean} on */
 async function mcp(on) {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, on);
   await VimmaControl.settled();
@@ -108,7 +114,7 @@ async function agentClient(name = "claude-code") {
 /** The oldest waiting question, once there is one. */
 async function question() {
   await until(() => AgentGate.waiting.length > 0, "a question waits");
-  return AgentGate.waiting[0];
+  return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
 /**
@@ -213,7 +219,7 @@ addTidyTask(async function test_card_fields_in_a_cross_site_frame_make_a_pay_ste
   // The payment provider's frame of another site has loaded its card field.
   await until(
     () =>
-      tab.linkedBrowser.browsingContext.children[0]?.currentWindowGlobal?.documentURI?.host ===
+      contextOf(tab.linkedBrowser).children[0]?.currentWindowGlobal?.documentURI?.host ===
       "example.org",
     "the provider's frame loaded",
   );
@@ -236,11 +242,11 @@ addTidyTask(async function test_card_fields_in_a_cross_site_frame_make_a_pay_ste
 addTidyTask(async function test_a_pay_button_in_a_cross_site_frame_names_the_frames_site() {
   await mcp(true);
   const tab = await openAgentTab(`${CHECKOUT}?frame=hosted_pay`);
-  const frame = () => tab.linkedBrowser.browsingContext.children[0];
+  const frame = () => contextOf(tab.linkedBrowser).children[0];
   await until(
     () =>
       frame()?.currentWindowGlobal?.documentURI?.host === "example.org" &&
-      frame().currentWindowGlobal.documentURI.spec.endsWith("hosted_pay.html"),
+      !!frame()?.currentWindowGlobal?.documentURI?.spec.endsWith("hosted_pay.html"),
     "the provider's frame loaded",
   );
   const c = await agentClient();
@@ -254,7 +260,7 @@ addTidyTask(async function test_a_pay_button_in_a_cross_site_frame_names_the_fra
   );
   Assert.equal(
     questionLine(q, { grantMinutes: 10 })
-      .parts.map((p) => p.text)
+      .parts.map((/** @type {{ text: string }} */ p) => p.text)
       .join(""),
     '▲ claude-code wants to pay: "Pay 42.90 EUR" on example.org (in example.com) · the page says "Total 42.90 EUR"',
     "as the question shows it",
@@ -284,7 +290,7 @@ addTidyTask(async function test_a_pay_button_in_a_cross_site_frame_names_the_fra
 addTidyTask(async function test_a_followed_pay_link_in_a_cross_site_frame_names_the_frames_site() {
   await mcp(true);
   const tab = await openAgentTab(`${CHECKOUT}?frame=hosted_pay`);
-  const frame = () => tab.linkedBrowser.browsingContext.children[0];
+  const frame = () => contextOf(tab.linkedBrowser).children[0];
   await until(
     () => frame()?.currentWindowGlobal?.documentURI?.spec.endsWith("hosted_pay.html"),
     "the provider's frame loaded",
@@ -293,7 +299,9 @@ addTidyTask(async function test_a_followed_pay_link_in_a_cross_site_frame_names_
   await grantedLabels(c, tab);
   const list = await c.call("agent-keys", { tab: idOf(tab), keys: "f" });
   Assert.ok(list.ok, "f lists the links under the grant");
-  const line = list.result.links.split("\n").find((l) => l.includes('"Pay by bank"'));
+  const line = list.result.links
+    .split("\n")
+    .find((/** @type {string} */ l) => l.includes('"Pay by bank"'));
   Assert.ok(line, "the frame's link is listed");
   const id = c.request("agent-keys", { tab: idOf(tab), keys: `f${line.split(" ")[0]}` });
   const q = await question();
@@ -367,7 +375,7 @@ addTidyTask(async function test_a_key_that_acts_where_it_may_pay_asks() {
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, CHECKOUT);
   await until(
     () =>
-      tab.linkedBrowser.browsingContext.children[0]?.currentWindowGlobal?.documentURI?.host ===
+      contextOf(tab.linkedBrowser).children[0]?.currentWindowGlobal?.documentURI?.host ===
       "example.org",
     "the provider's frame loaded",
   );
@@ -448,7 +456,7 @@ async function backToBasket(c, tab) {
   return grantedLabels(c, tab);
 }
 
-/** The labels of the basket page's buttons, in order. @param {Record<string, string>} by */
+/** The labels of the basket page's buttons, in order. */
 const basketButtons = async (/** @type {any} */ c, /** @type {any} */ tab) => {
   const id = c.request("agent-elements", { tab: idOf(tab), full: true });
   const r = await c.response(id);
@@ -627,8 +635,9 @@ addTidyTask(async function test_a_long_button_value_or_chosen_option_asks() {
          <button type="submit">Valitse</button>
        </form>`,
     );
-    doc.querySelector('button[name="next"]').value = long;
-    doc.querySelectorAll('select[name="pick"] option')[1].value = long;
+    /** @type {HTMLButtonElement} */ (doc.querySelector('button[name="next"]')).value = long;
+    /** @type {HTMLOptionElement} */ (doc.querySelectorAll('select[name="pick"] option')[1]).value =
+      long;
   });
   const c = await agentClient();
   const by = await grantedLabels(c, tab);

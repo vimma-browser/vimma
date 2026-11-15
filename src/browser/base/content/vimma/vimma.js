@@ -48,11 +48,13 @@
   );
   UrlbarRows.init();
 
-  // Once per process, before the host dispatches page keys (m1-actor-insert-scroll).
+  // Once per process, before the host dispatches page keys (m1-actor-insert-scroll). The parent
+  // actor is the host's (ADR-026), and actors/ does not name host/'s modules: its URL comes from
+  // here.
   const { VimmaActors } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs",
   );
-  VimmaActors.register();
+  VimmaActors.register("chrome://browser/content/vimma/host/VimmaParent.sys.mjs");
 
   // The theme tokens, before any UI uses them (m5-omarchy-theme): the built-in palette now, the
   // Omarchy theme once read, then whatever omarchy-theme-set switches to.
@@ -71,6 +73,37 @@
   const { VimmaHost } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
   );
+  // The commands of higher folders the host runs (ADR-026): handed over before the host starts,
+  // since its first window follows the conversations from init. Once per process; a later
+  // window hands over the same ones, which changes nothing.
+  const { HostServices } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/host/host-services.mjs",
+  );
+  const { AgentChat } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
+  );
+  const { AgentDownloads } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/ctl/AgentDownloads.sys.mjs",
+  );
+  const { ConfigHost } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
+  );
+  const { AgentCli } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/agent/AgentCli.sys.mjs",
+  );
+  const { AgentKeys } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/agent/AgentKeys.sys.mjs",
+  );
+  HostServices.provide({
+    agentChat: AgentChat,
+    isAgentDownload: AgentDownloads.isAgentDownload,
+    addRoute: ConfigHost.addRoute,
+    // The chat window's, which the host hands it when it builds it.
+    agentCli: AgentCli,
+    agentKeys: AgentKeys,
+    configRefused: ConfigHost.refused,
+    addAgentProvider: ConfigHost.addAgentProvider,
+  });
   VimmaHost.init(window);
 
   // The workspace definitions, once per app (m3-workspaces, sub-spec 2a): Tabbrowser-sys-mjs.patch
@@ -96,9 +129,6 @@
 
   // config.toml (spec m5-config-load), once its users exist: the keymap, [panes] max, hints,
   // [sites] and [theme]. Read asynchronously; until then the built-in defaults apply.
-  const { ConfigHost } = ChromeUtils.importESModule(
-    "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
-  );
   ConfigHost.init(window);
 
   // The first-run setup (docs/specs/first-run-setup.md): about:vimma-setup once per process, and
@@ -144,9 +174,6 @@
   AgentConsole.init();
 
   // docs/specs/builtin-agent-cli.md C5: what Gemini CLI kept of runs a crash ended.
-  const { AgentCli } = ChromeUtils.importESModule(
-    "chrome://browser/content/vimma/agent/AgentCli.sys.mjs",
-  );
   AgentCli.init();
 
   // The private workspace in place of this window on Hyprland (spec private-swap): learns the

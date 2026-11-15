@@ -36,8 +36,8 @@ import type { Site } from "./site-list.ts";
 import { FOLLOW_TARGET, SNAPSHOT_CSP } from "./snapshot.ts";
 
 /**
- * Vimma's single normal-mode keys (packages/vimma-core/src/defaults.mjs, `modal.normal`), pressed
- * for the page alone (contentPressKey) to see which ones the site uses itself.
+ * Vimma's single normal-mode keys (packages/vimma-core/src/config/defaults.mjs, `modal.normal`),
+ * pressed for the page alone (contentPressKey) to see which ones the site uses itself.
  */
 export const SHORTCUT_KEYS = Object.freeze(
   "j k h l d u f F / ? n N I v : t x b r H L p P G y g".split(" "),

@@ -21,19 +21,27 @@ const { VimmaHost } = ChromeUtils.importESModule(
 const PAGE = "https://example.com/";
 const TITLES = ["Alpha", "Bravo", "Charlie"];
 
+/** The window's split view, which VimmaHost made when it started the window. */
 function view() {
-  return PaneViews.get(window);
+  return /** @type {PaneView} */ (PaneViews.get(window));
 }
 
+/** The split's panes, which a test reads while its panes are split. */
+function panes() {
+  return /** @type {Panes} */ (view().panes);
+}
+
+/** @param {string} pane */
 function tabOfPane(pane) {
-  const leaf = leaves(view().panes).find((l) => l.pane === pane);
+  const leaf = leaves(panes()).find((l) => l.pane === pane);
   return gBrowser.tabs.find((t) => t.linkedPanel === leaf?.tab);
 }
 
 function focusedTab() {
-  return tabOfPane(view().panes.focus);
+  return tabOfPane(panes().focus);
 }
 
+/** @param {string} id */
 function segText(id) {
   return (
     document.getElementById("vimma-statusbar")?.querySelector(`[data-segment="${id}"]`)
@@ -41,6 +49,10 @@ function segText(id) {
   );
 }
 
+/**
+ * @param {() => unknown} cond
+ * @param {string} msg
+ */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
@@ -48,15 +60,18 @@ function until(cond, msg) {
 /** Lets any late TabSelect or reconcile land before events are counted. */
 async function settle() {
   for (let i = 0; i < 3; i++) {
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await new Promise((r) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => r(undefined))),
+    );
     await TestUtils.waitForTick();
   }
 }
 
 /** TabSelect events from now on, by tab. */
 function countSelects() {
+  /** @type {(EventTarget | null)[]} */
   const seen = [];
-  const listener = (e) => seen.push(e.target);
+  const listener = (/** @type {Event} */ e) => seen.push(e.target);
   gBrowser.tabContainer.addEventListener("TabSelect", listener);
   registerCleanupFunction(() => gBrowser.tabContainer.removeEventListener("TabSelect", listener));
   return {
@@ -65,6 +80,10 @@ function countSelects() {
   };
 }
 
+/**
+ * @param {string} key
+ * @param {KeyEventOptions} [mods]
+ */
 function prefix(key, mods = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key, mods);
@@ -73,6 +92,7 @@ function prefix(key, mods = {}) {
 /** Three example.com panes side by side, titled Alpha | Bravo | Charlie; Alpha focused. */
 async function threePanes() {
   await reset(); // a failed task leaves its panes behind
+  /** @type {SplitTab[]} */
   const tabs = [];
   for (const [i, title] of TITLES.entries()) {
     const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?${i}`);
@@ -80,7 +100,7 @@ async function threePanes() {
       content.document.title = t;
     });
     await until(() => tab.linkedBrowser.contentTitle === title, `title ${title}`);
-    tabs.push(tab);
+    tabs.push(/** @type {SplitTab} */ (tab));
   }
   const [a, b, c] = tabs;
   await BrowserTestUtils.switchTab(gBrowser, a);
@@ -97,10 +117,15 @@ async function threePanes() {
   return tabs;
 }
 
-/** Core, Firefox, the URL bar and the status bar agree that `tab`'s pane (n of 3) has focus. */
+/**
+ * Core, Firefox, the URL bar and the status bar agree that `tab`'s pane (n of 3) has focus.
+ * @param {MozTabbrowserTab} tab
+ * @param {number} n
+ * @param {string} what
+ */
 async function assertFocused(tab, n, what) {
   Assert.equal(focusedTab(), tab, `${what}: core's focus is on the pane`);
-  Assert.equal(view().panes.mru[0], view().panes.focus, `${what}: it heads the MRU`);
+  Assert.equal(panes().mru[0], panes().focus, `${what}: it heads the MRU`);
   Assert.equal(gBrowser.selectedTab, tab, `${what}: its tab is selected`);
   Assert.equal(gURLBar.untrimmedValue, tab.linkedBrowser.currentURI.spec, `${what}: URL bar`);
   await until(() => segText("pane") === `pane ${n}/3`, `${what}: the status bar says pane ${n}/3`);
@@ -108,7 +133,9 @@ async function assertFocused(tab, n, what) {
 
 async function reset() {
   while (view().panes) view().close();
-  while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1) {
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
   await settle();
 }
 
@@ -135,7 +162,10 @@ add_task(async function the_picker_selecting_pane_2s_tab_focuses_pane_2() {
   const [, b] = await threePanes();
   const selects = countSelects();
   prefix("g");
-  await until(() => document.getElementById("vimma-picker")?.open, "the picker opens");
+  await until(
+    () => /** @type {HTMLDialogElement | null} */ (document.getElementById("vimma-picker"))?.open,
+    "the picker opens",
+  );
   for (const ch of "bravo") EventUtils.synthesizeKey(ch); // typing at once (tab-search)
   EventUtils.synthesizeKey("KEY_Enter");
   await until(() => gBrowser.selectedTab === b, "Enter selects Bravo's tab");
@@ -150,14 +180,14 @@ add_task(async function selecting_a_zoomed_away_panes_tab_unzooms_and_focuses_it
   const [a, b, c] = await threePanes();
   prefix("z");
   await settle();
-  Assert.equal(view().panes.zoom, view().panes.focus, "sanity: Alpha's pane is zoomed");
+  Assert.equal(panes().zoom, panes().focus, "sanity: Alpha's pane is zoomed");
   Assert.ok(!c.linkedBrowser.docShellIsActive, "sanity: Charlie's pane is asleep");
 
   const selects = countSelects();
   gBrowser.selectedTab = c; // ctrl+tab, alt+3, an extension: any selection outside Vimma
   await settle();
   await assertFocused(c, 3, "selecting a zoomed-away pane's tab");
-  Assert.equal(view().panes.zoom, null, "the zoom ends, as for a pane move");
+  Assert.equal(panes().zoom, null, "the zoom ends, as for a pane move");
   for (const t of [a, b, c]) Assert.ok(t.linkedBrowser.docShellIsActive, "every pane is live");
   selects.stop();
   Assert.deepEqual(selects.seen, [c], "one TabSelect, for Charlie: no loop");

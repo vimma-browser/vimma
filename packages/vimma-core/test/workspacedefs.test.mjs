@@ -24,7 +24,7 @@ import {
   userWorkspace,
   deleteBookmarksQuestion,
   AGENT_LOOKS,
-} from "../src/workspacedefs.mjs";
+} from "../src/workspaces/workspacedefs.mjs";
 
 const fixture = (/** @type {string} */ name) =>
   readFileSync(new URL(`../../../tests/contract/workspaces/v1/${name}`, import.meta.url), "utf8");
@@ -159,7 +159,7 @@ describe("readDefinitions", () => {
     expect(defsError(() => readDefinitions(doc)).path).toBe(path);
   });
 
-  // docs/security.md: container 0 is the default container, shared by every page outside a
+  // docs/security/: container 0 is the default container, shared by every page outside a
   // workspace. A file that names it must never make a workspace delete or close it.
   test("container 0 is never a workspace's: a stored id of 0 or below is refused", () => {
     for (const userContextId of [0, -1, 1.5, "3"]) {

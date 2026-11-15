@@ -28,15 +28,15 @@ import {
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { isBuiltinConn } from "../core/agent.mjs";
 import { builtinStatus } from "../core/agent-chat.mjs";
-import { AgentGate } from "../ctl/AgentGate.sys.mjs";
+import { AgentGate } from "./AgentGate.sys.mjs";
+import { fieldsOf } from "./browser-ops.mjs";
+import { HostServices } from "./host-services.mjs";
 import { McpHost } from "./mcp-ops.mjs";
 
-/** @import { Question, GateEvent } from "../ctl/AgentGate.sys.mjs" */
+/** @import { Question, GateEvent } from "./AgentGate.sys.mjs" */
 
-const lazy = /** @type {Lazy<"AgentChat" | "PrivateBrowsingUtils" | "setTimeout">} */ ({});
+const lazy = /** @type {Lazy<"PrivateBrowsingUtils" | "setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
-  // Lazily: AgentChat runs its tools through agent-commands, which imports this module.
-  AgentChat: "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
@@ -88,11 +88,11 @@ const lastKey = new WeakMap();
 let current = null;
 /** Questions a window not in front was told about already (decision 15: once each). */
 const alerted = new Set();
-let poll = /** @type {any} */ (null);
-let tick = /** @type {any} */ (null);
+let poll = /** @type {number | null} */ (null);
+let tick = /** @type {number | null} */ (null);
 /** A notice that waits until no question waits, and its timer. @type {string | null} */
 let held = null;
-let heldTimer = /** @type {any} */ (null);
+let heldTimer = /** @type {number | null} */ (null);
 /** Since when no question has waited (0 while one waits). */
 let freeSince = 0;
 let listening = false;
@@ -398,12 +398,9 @@ export const AgentUi = {
     const result = promptKey({ count: current.count }, formatKey(chord), {
       full: q.tool === FULL_CONTROL,
       noGrant: noGrant(q),
-      dangerous: !!(/** @type {any} */ (q.what)?.danger),
+      dangerous: !!fieldsOf(q.what).danger,
       // mcp-consequence K5: a form checkpoint under a grant may offer `a`; a payment never.
-      here:
-        isCheckpoint(q) &&
-        !!(/** @type {any} */ (q.what)?.here) &&
-        !(/** @type {any} */ (q.what)?.pay),
+      here: isCheckpoint(q) && !!fieldsOf(q.what).here && !fieldsOf(q.what).pay,
     });
     if (result.kind === "count") {
       current.count = result.count;
@@ -457,7 +454,7 @@ export const AgentUi = {
       return;
     }
     // The built-in agent's running tasks stop too (docs/specs/builtin-agent.md Behaviour 16).
-    lazy.AgentChat.stopAll();
+    HostServices.agentChat.stopAll();
     const ended = AgentGate.revoke();
     w.notice(
       ended
@@ -479,8 +476,10 @@ export const AgentUi = {
       now: Date.now(),
     });
     if (!state) return null;
-    const running = lazy.AgentChat.list().filter((/** @type {any} */ c) => c.running && c.budget);
-    return { ...state, builtin: builtinStatus(running.map((/** @type {any} */ c) => c.budget)) };
+    const running = HostServices.agentChat
+      .list()
+      .flatMap((c) => (c.running && c.budget ? [c.budget] : []));
+    return { ...state, builtin: builtinStatus(running) };
   },
 
   /**

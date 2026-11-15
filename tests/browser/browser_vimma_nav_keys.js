@@ -19,10 +19,14 @@ const { VimmaHost } = ChromeUtils.importESModule(
 );
 
 const url = (/** @type {string} */ name) => `https://example.com/?page=${name}`;
+/** The window's split view, which VimmaHost made when it started the window. */
+const paneView = () => /** @type {PaneView} */ (PaneViews.get(window));
 
 registerCleanupFunction(async () => {
-  while (PaneViews.get(window).panes) PaneViews.get(window).close();
-  while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  while (paneView().panes) paneView().close();
+  while (gBrowser.tabs.length > 1) {
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
   Services.prefs.clearUserPref("browser.tabs.splitview.hasUsed");
   Services.prefs.clearUserPref("sidebar.verticalTabs.dragToPinPromo.dismissed");
 });
@@ -82,7 +86,7 @@ async function tabWithHistory(/** @type {string[]} */ names) {
  * does not change within 5 s (a key that does nothing fails an assertion instead of timing out
  * the file).
  * @param {(string | [string, object])[]} keys a key, or [key, modifiers]
- * @param {XULBrowserElement} [browser]
+ * @param {MozTabBrowser} [browser]
  */
 async function navigateWith(keys, browser = gBrowser.selectedBrowser) {
   await focusContent(browser);
@@ -182,8 +186,11 @@ add_task(async function in_a_split_the_keys_act_on_the_focused_pane() {
   const left = await tabWithHistory(["la", "lb"]);
   const right = await tabWithHistory(["ra", "rb"]);
   await BrowserTestUtils.switchTab(gBrowser, left);
-  const view = PaneViews.get(window);
-  Assert.ok(view.split("vertical", { tab: right }).ok, "split left | right");
+  const view = paneView();
+  Assert.ok(
+    view.split("vertical", { tab: /** @type {PaneTab} */ (right) }).ok,
+    "split left | right",
+  );
   await TestUtils.waitForCondition(() => gBrowser.selectedTab === right, "the right pane focused");
   const [lb, rb] = [left.linkedBrowser, right.linkedBrowser];
 
@@ -218,7 +225,9 @@ add_task(async function in_insert_mode_the_keys_are_the_pages() {
     content.document.body.append(input);
   });
   await focusContent(browser);
-  await SpecialPowers.spawn(browser, [], () => content.document.querySelector("input").focus());
+  await SpecialPowers.spawn(browser, [], () =>
+    /** @type {HTMLInputElement} */ (content.document.querySelector("input")).focus(),
+  );
   await TestUtils.waitForCondition(
     () => VimmaHost._browserMode(browser) === "insert",
     "the field puts the page in insert mode",
@@ -229,12 +238,18 @@ add_task(async function in_insert_mode_the_keys_are_the_pages() {
       SpecialPowers.spawn(
         browser,
         [],
-        () => content.document.querySelector("input").value.length >= 3,
+        () =>
+          /** @type {HTMLInputElement} */ (content.document.querySelector("input")).value.length >=
+          3,
       ),
     "the field gets three keys",
   );
   Assert.equal(
-    await SpecialPowers.spawn(browser, [], () => content.document.querySelector("input").value),
+    await SpecialPowers.spawn(
+      browser,
+      [],
+      () => /** @type {HTMLInputElement} */ (content.document.querySelector("input")).value,
+    ),
     "HLr",
     "H, L and r are typed into the field",
   );

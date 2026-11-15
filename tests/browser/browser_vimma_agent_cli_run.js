@@ -24,7 +24,7 @@ const { AgentCli, CLI_ENABLED_PREF, VIMMA_CTL_PREF, pathPref } = ChromeUtils.imp
   "chrome://browser/content/vimma/agent/AgentCli.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 const { VimmaControl, ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
@@ -60,6 +60,9 @@ const { OSKeyStoreTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/OSKeyStoreTestUtils.sys.mjs",
 );
 
+const { Budget } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/agent-budget.mjs",
+);
 const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
 
 const DIR = getRootDirectory(gTestPath).replace(
@@ -67,6 +70,7 @@ const DIR = getRootDirectory(gTestPath).replace(
   "https://example.com",
 );
 const PAGE = `${DIR}file_vimma_agent_page.html`;
+/** @type {AgentProviderConfig} */
 const CLI = {
   name: "claude",
   kind: "cli",
@@ -77,17 +81,43 @@ const CLI = {
   maxMinutes: 30,
 };
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => boolean | undefined} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 500);
+
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+/**
+ * `[agent]` as config.toml resolves it with only `over` set: AGENT_DEFAULTS' budgets, no default
+ * provider, local_only off and no keep_days or keep_results (the product reads each of these
+ * with `??`, so a config that leaves them out works the same).
+ * @param {Partial<AgentConfig>} over
+ * @returns {AgentConfig}
+ */
+const agentConfig = (over) => ({
+  ...AGENT_DEFAULTS,
+  default: null,
+  localOnly: false,
+  keepDays: null,
+  keepResults: null,
+  providers: [],
+  ...over,
+});
+
 const agentTabs = () =>
-  gBrowser.tabs.filter(
-    (t) => t.userContextId === /** @type {any} */ (WorkspaceStore.agent)?.userContextId,
-  );
+  gBrowser.tabs.filter((t) => t.userContextId === WorkspaceStore.agent?.userContextId);
 
 /** This test's own folder in the repository, through `surfer import`'s symlink. */
 function repoFile(/** @type {string[]} */ ...parts) {
   const self = getChromeDir(getResolvedURI(gTestPath));
-  self.append(gTestPath.split("/").pop());
+  self.append(found(gTestPath.split("/").pop()));
   self.normalize();
   const repo = self.parent.parent.parent;
   return PathUtils.join(repo.path, ...parts);
@@ -146,7 +176,19 @@ async function installFake() {
   return { dir, bin, report };
 }
 
-/** @param {string} path */
+/**
+ * What the fake CLI wrote of its run (fake_vimma_agent_cli.py): its arguments, folder and
+ * environment's names, the lines on its input, each vimma-ctl call it made, its MCP
+ * configuration, and the times it ignored SIGTERM and saw its input close.
+ * @typedef {{ args: string[], cwd: string, env: string[],
+ *   lines: { message: { content: string } }[],
+ *   calls: { name: string, isError: boolean, text: string, at: number }[],
+ *   mcp_config_mode: string | null, dir_mode: string | null, mcp_servers: string[],
+ *   server_command: string, server_args: string[], server_env_keys: string[],
+ *   ignoring_term?: boolean, stdin_closed?: number }} FakeReport
+ */
+
+/** @param {string} path @returns {Promise<FakeReport>} */
 async function readReport(path) {
   return IOUtils.readJSON(path);
 }
@@ -172,7 +214,12 @@ const stepCount = (/** @type {number} */ id) =>
 const texts = (/** @type {number} */ id) =>
   entries(id).map((e) => `${e.kind}: ${e.text}${e.outcome ? ` — ${e.outcome}` : ""}`);
 
-let fake = /** @type {{ dir: string, bin: string, report: string }} */ (/** @type {any} */ (null));
+/**
+ * The fake CLI that setup installs.
+ * @type {{ dir: string, bin: string, report: string }}
+ */
+let fake;
+/** @type {AgentConfig | null} */
 let savedConfig = null;
 
 async function tidy() {
@@ -180,9 +227,10 @@ async function tidy() {
   for (const c of AgentChat.list()) await AgentChat.delete(c.id);
   for (const q of AgentGate.waiting) AgentGate.answer(q.id, { kind: "deny" });
   AgentGate.revoke();
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "claude", providers: [CLI] });
-  const ww = WindowWorkspaces.get(window);
-  ww.switchTo({ id: ww.model.workspaces.find((/** @type {any} */ w) => w.name === "main")?.id });
+  McpHost.configureAgent(agentConfig({ default: "claude", providers: [CLI] }));
+  // Every window of these tests has its workspaces, main among them.
+  const ww = /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
+  ww.switchTo({ id: found(ww.model.workspaces.find((w) => w.name === "main")).id });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
   await IOUtils.remove(fake.report, { ignoreAbsent: true });
@@ -205,7 +253,7 @@ add_setup(async () => {
   const ctl = await vimmaCtl();
   if (ctl) Services.prefs.setStringPref(VIMMA_CTL_PREF, ctl);
   savedConfig = McpHost.agentConfig;
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "claude", providers: [CLI] });
+  McpHost.configureAgent(agentConfig({ default: "claude", providers: [CLI] }));
   registerCleanupFunction(async () => {
     McpHost.configureAgent(savedConfig);
     Services.prefs.clearUserPref(pathPref("claude-code"));
@@ -250,8 +298,15 @@ addTidyTask(async function test_setup_lists_only_found_clis_and_stores_the_path(
 });
 
 const $ = (/** @type {string} */ id) => document.getElementById(id);
+/** The window's state: VimmaHost has started this window. */
+const hostState = () => found(VimmaHost._state(window));
 const notice = () => $("vimma-notice")?.textContent ?? "";
-const promptOpen = () => !!$("vimma-rename") && !$("vimma-rename").hidden;
+const promptOpen = () => {
+  const el = $("vimma-rename");
+  return !!el && !el.hidden;
+};
+/** The prompt line's text: it is open whenever this is read. */
+const promptText = () => found($("vimma-rename")).textContent;
 const promptInput = () => /** @type {HTMLInputElement} */ ($("vimma-rename-input"));
 const chatRows = () => [
   ...document.querySelectorAll("#vimma-agent-chat-log .vimma-agent-chat-row"),
@@ -272,14 +327,14 @@ async function inWindowSetup(task) {
   await SpecialPowers.pushPrefEnv({ set: [["vimma.config.path", path]] });
   try {
     await ConfigHost.reload();
-    McpHost.configureAgent({ ...AGENT_DEFAULTS, default: null, providers: [] });
+    McpHost.configureAgent(agentConfig({ default: null, providers: [] }));
     Services.prefs.clearUserPref(pathPref("claude-code"));
     const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
     await focusContent(tab.linkedBrowser);
     await until(() => VimmaHost.status(window).mode === "normal", "the page is in normal mode");
     await task(path);
   } finally {
-    VimmaHost._state(window).agentChat.close();
+    hostState().agentChat.close();
     Services.env.set("PATH", PATH);
     await SpecialPowers.popPrefEnv();
     await ConfigHost.reload();
@@ -290,7 +345,7 @@ async function inWindowSetup(task) {
 /** `:agent model`, then `add: agent CLI` and the CLI it lists first. */
 async function pickFoundCli() {
   // From the page, so `:` is Vimma's command line and not text in the window's input.
-  VimmaHost._state(window).agentChat.close();
+  hostState().agentChat.close();
   await focusContent(gBrowser.selectedBrowser);
   await until(() => VimmaHost.status(window).mode === "normal", "the page is in normal mode");
   EventUtils.synthesizeKey(":", { shiftKey: true });
@@ -326,7 +381,7 @@ addTidyTask(async function test_setup_asks_the_clis_model_and_saves_it() {
   await inWindowSetup(async (path) => {
     await pickFoundCli();
     await until(promptOpen, "picking a new CLI asks for its model on the prompt line");
-    Assert.equal($("vimma-rename").textContent.trim().startsWith("agent model:"), true);
+    Assert.equal(promptText().trim().startsWith("agent model:"), true);
     Assert.equal(promptInput().value, "sonnet", "suggesting Claude Code's model");
     Assert.equal(
       promptInput().placeholder,
@@ -350,7 +405,7 @@ addTidyTask(async function test_setup_asks_the_clis_model_and_saves_it() {
       () => notice().includes("agent: claude · opus · saved to config.toml as [agent] default"),
       `the notice names the model and where it went: ${notice()}`,
     );
-    const id = /** @type {number} */ (VimmaHost._state(window).agentChat.conversation);
+    const id = /** @type {number} */ (hostState().agentChat.conversation);
     Assert.equal(AgentChat.get(id).provider.model, "opus", "the conversation uses it");
     Assert.equal(
       Services.prefs.getStringPref(pathPref("claude-code"), "") !== "",
@@ -379,7 +434,7 @@ addTidyTask(async function test_setup_asks_the_clis_model_and_saves_it() {
 
 /** `:agent model` from the page, with the CLI's rows listed. */
 async function openModels() {
-  VimmaHost._state(window).agentChat.close();
+  hostState().agentChat.close();
   await focusContent(gBrowser.selectedBrowser);
   await until(() => VimmaHost.status(window).mode === "normal", "the page is in normal mode");
   EventUtils.synthesizeKey(":", { shiftKey: true });
@@ -436,7 +491,7 @@ addTidyTask(async function test_the_picker_lists_the_clis_models_and_uses_one() 
         ),
       `picking a model uses it for this session: ${notice()}`,
     );
-    const id = /** @type {number} */ (VimmaHost._state(window).agentChat.conversation);
+    const id = /** @type {number} */ (hostState().agentChat.conversation);
     Assert.equal(AgentChat.get(id).provider.model, "opus", "the conversation uses it");
     Assert.equal(AgentChat.get(id).provider.cli, "claude-code", "with the same CLI");
     Assert.equal(await IOUtils.readUTF8(path), text, "and config.toml is unchanged");
@@ -462,7 +517,7 @@ addTidyTask(async function test_the_picker_lists_the_clis_models_and_uses_one() 
     selectRow("claude · other model…");
     EventUtils.synthesizeKey("KEY_Enter");
     await until(promptOpen, "another model is asked by name");
-    Assert.equal($("vimma-rename").textContent.trim().startsWith("agent model:"), true);
+    Assert.equal(promptText().trim().startsWith("agent model:"), true);
     answerPrompt("--bare");
     await until(
       () => notice().includes('the model "--bare" is not a model name: it cannot start with "-"'),
@@ -474,7 +529,7 @@ addTidyTask(async function test_the_picker_lists_the_clis_models_and_uses_one() 
       () => notice().includes("agent: claude · claude-opus-4-1 until a restart"),
       `the typed model is used: ${notice()}`,
     );
-    const now = /** @type {number} */ (VimmaHost._state(window).agentChat.conversation);
+    const now = /** @type {number} */ (hostState().agentChat.conversation);
     Assert.equal(AgentChat.get(now).provider.model, "claude-opus-4-1");
   });
 });
@@ -488,7 +543,7 @@ addTidyTask(async function test_an_empty_model_leaves_it_to_the_cli() {
       () => notice().includes("agent: claude · Claude Code's own default model · saved"),
       `the notice says the CLI picks the model: ${notice()}`,
     );
-    const id = /** @type {number} */ (VimmaHost._state(window).agentChat.conversation);
+    const id = /** @type {number} */ (hostState().agentChat.conversation);
     Assert.equal(AgentChat.get(id).provider.model, "", "no model of Vimma's");
     Assert.ok(!(await IOUtils.readUTF8(path)).includes("model ="), "none in config.toml");
   });
@@ -671,7 +726,7 @@ addTidyTask(async function test_turned_off_starts_nothing() {
       state: {},
       text: "hello",
       messages: [],
-      budget: /** @type {any} */ ({ exceeded: () => null, step() {} }),
+      budget: new Budget(),
       onEvent() {},
     }).done;
     Assert.equal(direct.outcome, "error", "the runner refuses too");
@@ -736,7 +791,7 @@ addTidyTask(async function test_task_on_stdin_and_fixed_arguments() {
   );
   Assert.deepEqual(report.mcp_servers, ["vimma"], "one MCP server");
   Assert.ok(
-    !report.env.some((/** @type {string} */ k) => /^(MOZ_|VIMMA_)/.test(k)),
+    !report.env.some((k) => /^(MOZ_|VIMMA_)/.test(k)),
     "no MOZ_ or VIMMA_ variable reaches the CLI",
   );
 });
@@ -772,7 +827,10 @@ addTidyTask(async function test_a_run_folder_others_can_write_above_is_refused()
     const c = conversation();
     const result = await run(c.id, "hello");
     Assert.equal(result.outcome, "error");
-    Assert.ok(result.error.endsWith(`${base} is not a private folder of yours`), result.error);
+    Assert.ok(
+      found(result.error).endsWith(`${base} is not a private folder of yours`),
+      result.error,
+    );
     Assert.ok(!(await IOUtils.exists(fake.report)), "the CLI never ran");
   } finally {
     Services.env.set("XDG_RUNTIME_DIR", runtime);
@@ -791,10 +849,7 @@ addTidyTask(async function test_ticket_never_in_cmdline_prefs_or_log() {
     ["VIMMA_AGENT_PORT", "VIMMA_AGENT_TICKET"],
     "the ticket goes in vimma-ctl's own environment",
   );
-  Assert.ok(
-    !report.args.some((/** @type {string} */ a) => /[0-9a-f]{64}/.test(a)),
-    "and in no argument",
-  );
+  Assert.ok(!report.args.some((a) => /[0-9a-f]{64}/.test(a)), "and in no argument");
   Assert.deepEqual(report.server_args, ["mcp"]);
   const prefs = Services.prefs.getChildList("vimma.");
   for (const name of prefs) {
@@ -812,9 +867,12 @@ addTidyTask(async function test_enter_grant_covers_cli_steps_and_checkpoints_ask
   const c = conversation();
   const sent = await AgentChat.send(c.id, `[[open ${PAGE}]] [[tabs]] [[show]]`);
   Assert.ok("started" in sent);
-  const q = await TestUtils.waitForCondition(
-    () => AgentGate.waiting.find((w) => w.conn === c.conn && w.tool === "vimma_show"),
-    "vimma_show asks under the conversation grant",
+  // waitForCondition resolves with the question it found.
+  const q = found(
+    await TestUtils.waitForCondition(
+      () => AgentGate.waiting.find((w) => w.conn === c.conn && w.tool === "vimma_show"),
+      "vimma_show asks under the conversation grant",
+    ),
   );
   Assert.ok(q.label.client.startsWith("built-in"), `asked as the conversation: ${q.label.client}`);
   AgentGate.answer(q.id, { kind: "deny" });
@@ -830,7 +888,7 @@ addTidyTask(async function test_enter_grant_covers_cli_steps_and_checkpoints_ask
     `the show asked and was denied: ${lines.join(" | ")}`,
   );
   const report = await readReport(fake.report);
-  Assert.ok(report.calls.at(-1).isError, "the CLI read the no");
+  Assert.ok(report.calls.at(-1)?.isError, "the CLI read the no");
   Assert.equal(agentTabs().length, 1, "its tab is in the agent workspace");
 });
 
@@ -917,7 +975,8 @@ addTidyTask(async function test_max_cost_set_is_reported_as_not_applying() {
     ),
     `the first task says so: ${texts(c.id).join(" | ")}`,
   );
-  const budget = AgentChat.get(c.id).budget;
+  // The conversation's budget, from its first task.
+  const budget = found(AgentChat.get(c.id).budget);
   Assert.equal(budget.reportedCost, 0.41, "its reported cost is kept for the status bar");
   Assert.equal(budget.tokens, 1800, "and its tokens count");
   await run(c.id, "again");
@@ -1074,7 +1133,7 @@ addTidyTask(async function test_a_link_beside_the_binary_is_judged_where_it_lead
 
 addTidyTask(async function test_local_only_refuses_a_cli() {
   const c = conversation();
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, localOnly: true, providers: [CLI] });
+  McpHost.configureAgent(agentConfig({ localOnly: true, providers: [CLI] }));
   const sent = await AgentChat.send(c.id, "hello");
   Assert.deepEqual(sent, {
     refused: "an agent CLI may send page text off this machine ([agent] local_only)",
@@ -1098,7 +1157,7 @@ addTidyTask(async function test_local_only_refuses_a_cli() {
 
 addTidyTask(async function test_max_steps_counted_by_the_gate() {
   if (!(await needCtl())) return;
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, maxSteps: 2, default: "claude", providers: [CLI] });
+  McpHost.configureAgent(agentConfig({ maxSteps: 2, default: "claude", providers: [CLI] }));
   const c = conversation();
   AgentGate.grantConnection(c.conn);
   const result = await run(c.id, "[[tabs]] [[tabs]] [[tabs]] [[tabs]]");
@@ -1114,17 +1173,12 @@ addTidyTask(async function test_max_steps_counted_by_the_gate() {
 
 addTidyTask(async function test_max_tokens_stops_a_turn_before_it_ends() {
   if (!(await needCtl())) return;
-  McpHost.configureAgent({
-    ...AGENT_DEFAULTS,
-    maxTokens: 1000,
-    default: "claude",
-    providers: [CLI],
-  });
+  McpHost.configureAgent(agentConfig({ maxTokens: 1000, default: "claude", providers: [CLI] }));
   const c = conversation();
   const started = Date.now();
   const result = await run(c.id, "[[usage 1500]] [[sleep 30]]");
   Assert.equal(result.outcome, "budget", `stopped by its tokens: ${JSON.stringify(result)}`);
-  Assert.equal(result.exceeded.limit, "tokens");
+  Assert.equal(found(result.exceeded).limit, "tokens");
   Assert.less(Date.now() - started, 15000, "at the model call, not at the turn's end");
 });
 
@@ -1134,7 +1188,7 @@ addTidyTask(async function test_another_mcp_servers_tools_are_listed_as_its_own(
   try {
     const c = conversation();
     await run(c.id, "hello");
-    Assert.deepEqual(AgentChat.get(c.id).cli.tools, ["Bash", "mcp__other__fetch"]);
+    Assert.deepEqual(AgentChat.get(c.id).cli?.tools, ["Bash", "mcp__other__fetch"]);
   } finally {
     Services.env.set("FAKE_CLI_TOOLS", "");
   }
@@ -1146,7 +1200,7 @@ addTidyTask(async function test_max_minutes_stops_the_task() {
   const started = Date.now();
   const result = await run(c.id, "[[sleep 30]]");
   Assert.equal(result.outcome, "budget", `stopped by time: ${JSON.stringify(result)}`);
-  Assert.equal(result.exceeded.limit, "minutes");
+  Assert.equal(found(result.exceeded).limit, "minutes");
   Assert.less(Date.now() - started, 15000, "well before the CLI would have ended");
   Assert.ok(
     texts(c.id).at(-1)?.startsWith("end: stopped: 0.02 minutes, the limit of max_minutes"),
@@ -1189,10 +1243,10 @@ addTidyTask(async function test_cli_that_ignores_sigterm_is_killed_and_takes_no_
   Assert.lessOrEqual(stepCount(c.id), atStop + 1, "and took no step in the browser meanwhile");
   const report = await readReport(fake.report);
   Assert.ok(report.ignoring_term, "the fake ignored SIGTERM");
-  const after = report.calls.filter((/** @type {any} */ x) => x.at * 1000 > stoppedAt + 200);
+  const after = report.calls.filter((x) => x.at * 1000 > stoppedAt + 200);
   Assert.ok(after.length > 0, "it kept calling after the stop");
   Assert.ok(
-    after.every((/** @type {any} */ x) => x.isError),
+    after.every((x) => x.isError),
     "and every call after the stop failed",
   );
 });
@@ -1229,7 +1283,7 @@ addTidyTask(async function test_added_instruction_reaches_the_running_cli() {
   Assert.equal(result.outcome, "done");
   const report = await readReport(fake.report);
   Assert.deepEqual(
-    report.lines.map((/** @type {any} */ l) => l.message.content),
+    report.lines.map((l) => l.message.content),
     [`${CLIS["claude-code"].note}\n\n[[sleep 2]]`, "also this"],
     "written to the CLI's input, the added one as it was typed",
   );

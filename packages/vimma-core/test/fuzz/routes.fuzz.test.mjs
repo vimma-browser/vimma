@@ -12,7 +12,7 @@ import {
   resolveRoutes,
   routeDomainFor,
   validateRoutes,
-} from "../../src/routes.mjs";
+} from "../../src/config/routes.mjs";
 import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.mjs";
 
 /**

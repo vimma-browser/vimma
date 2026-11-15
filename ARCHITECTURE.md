@@ -47,20 +47,23 @@ what releases, the nightly and macOS ship. An **artifact build** puts Vimma's fr
 Mozilla's own compiled binaries for the same release, takes under a minute when warm, and is what
 pull requests test ([ADR-010](docs/adr/010-pr-artifact-builds.md)). A change to a `.patch`
 file, C++, `moz.build`, `configs/` or branding needs a full build to verify. Commands:
-[CONTRIBUTING.md](CONTRIBUTING.md) and [docs/runbook.md](docs/runbook.md).
+[CONTRIBUTING.md](CONTRIBUTING.md) and [docs/runbook/](docs/runbook/README.md).
 
 ## The running system
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diagrams/system-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="docs/assets/diagrams/system-light.svg">
-  <img src="docs/assets/diagrams/system-light.svg" alt="Vimma's processes and how they talk. Local programs (vimma-ctl, the e2e harness, vimma-ctl mcp started by an AI agent host or by an agent CLI) reach the control server and AgentGate in the parent process over TCP on 127.0.0.1. In the parent process the built-in agent goes through the same gate, the gate drives the window modules, and the window modules exchange actor messages with VimmaChild in the sandboxed content processes. The window modules read config.toml and the Omarchy theme, take theme reloads from Omarchy's hook and talk to Hyprland; the built-in agent calls model providers and starts agent CLIs; the update check reads updates.vimma.dev, where the release pipeline publishes.">
+  <img src="docs/assets/diagrams/system-light.svg" alt="Vimma's processes and how they talk. Local programs (vimma-ctl, the e2e harness, vimma-ctl mcp started by an AI agent host or by an agent CLI) reach the control server and agent commands (ctl/) in the parent process over TCP on 127.0.0.1. In the parent process the built-in agent runs the same agent commands in process, without the token. Every agent-role call asks the agent gate (host/AgentGate) before it drives the window modules; full-role commands reach the window modules on the token alone, after one question per connection while MCP is on, and the window modules exchange actor messages with VimmaChild in the sandboxed content processes. The window modules read config.toml and the Omarchy theme, take theme reloads from Omarchy's hook and talk to Hyprland; the built-in agent calls model providers and starts agent CLIs; the update check reads updates.vimma.dev, where the release pipeline publishes.">
 </picture>
 
 The picture is drawn from [docs/assets/diagrams/system.d2](docs/assets/diagrams/system.d2); the
 dashed boxes and the yellow content-process box are the trust boundaries, and the blue arrows
-reach `ctl/`: those from outside past the control socket's token, the built-in agent's in
-process through the agent gate. In words:
+cross a boundary: into `ctl/` past the control socket's token, and, for every call of the agent
+role, from `ctl/` past the agent gate, `host/AgentGate.sys.mjs`. The built-in agent runs the
+same agent commands in process, without the token, so its calls cross only the gate. A full-role
+connection passes the gate once, at its handshake and only while MCP is on (`AgentGate.askFull`);
+after that, and always while MCP is off, its commands reach the host on the token alone. In words:
 
 - **Parent process.** Firefox runs every browser window in one privileged process. `vimma.js` runs
   in each window and starts Vimma's modules there; most of them are one per app (the module is
@@ -68,8 +71,8 @@ process through the agent gate. In words:
   line, pickers, side panel, help overlay, agent prompt) is HTML and CSS in this process.
 - **Content processes.** Web pages run in sandboxed processes. Vimma reaches them only through
   one JSWindowActor pair: `VimmaChild` runs in every frame and reports focus changes, scrolls,
-  collects link hints, drives the caret, searches text; `VimmaParent` hands its reports to the
-  host, and the host sends commands through `actors/VimmaActors.sys.mjs`.
+  collects link hints, drives the caret, searches text; `VimmaParent` (`host/VimmaParent.sys.mjs`)
+  hands its reports to the host, and the host sends commands through `actors/VimmaActors.sys.mjs`.
 - **The control socket.** Off by default. A local TCP server on 127.0.0.1 and a random port,
   speaking JSON lines; a client proves it holds the token in `<profile>/vimma-control.json`
   (mode 0600) before any command ([ADR-007](docs/adr/007-control-socket.md),
@@ -106,11 +109,11 @@ process through the agent gate. In words:
 2. It turns the event into a chord (`ctrl+b`, `shift+t`) and asks vimma-core's dispatcher what it
    means in the current mode. The modes are `normal`, `insert`, `visual`, `command`, `hint`,
    `element`, `help`, `panel`, `resize` and `index`; a pending `ctrl+b` prefix is tracked by the
-   dispatcher itself (`packages/vimma-core/src/modes.mjs`).
+   dispatcher itself (`packages/vimma-core/src/keys/modes.mjs`).
 3. The dispatcher answers with an action, "pending" (more keys may follow), "cancel" (a pending
    sequence ends with no action, such as an unknown key after `ctrl+b`) or "pass". A key that
    passes reaches Firefox and the page untouched.
-4. An action is a name from the closed list in `packages/vimma-core/src/actions.mjs`.
+4. An action is a name from the closed list in `packages/vimma-core/src/keys/actions.mjs`.
    `host/runners.mjs` holds the action tables, which `VimmaHost.sys.mjs` dispatches to. A chrome
    action runs in the browser window (tab, pane, workspace, picker and others, through the
    `host/*-ops.mjs` modules); a page action goes to the focused page through the actor (scroll,
@@ -136,45 +139,51 @@ the Omarchy hook, the host, workspaces, split panes, `config.toml`, the first-ru
 update check, the control server, the agent modules and the private-workspace swap. `jar.mn` lists
 every file that ships; `moz.build` adds the folder to the build.
 
-| Folder              | Role                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vimma/host/`       | `VimmaHost.sys.mjs`: key capture, dispatch through vimma-core, modes and window state. `runners.mjs`: the action tables, what each action does. The `*-ops.mjs` files apply one area's actions to Firefox (tabs, panes, workspaces, bookmarks, downloads, permissions, PDF, MCP). `hypr/HyprIpc.sys.mjs` talks to Hyprland's IPC sockets, checked against core's whitelist ([ADR-017](docs/adr/017-window-manager-ipc.md)). |
-| `vimma/actors/`     | The JSWindowActor pair (`VimmaParent`, `VimmaChild`) and what runs in the page: hint collection, caret and text model, Enter key, the PDF viewer, live grep's matcher and its worker.                                                                                                                                                                                                                                       |
-| `vimma/ui/`         | Vimma's own UI in the browser window: status bar, command line, help overlay, hints overlay, pickers, side panel, bookmarks panel, prompts, notices, the agent chat window, the theme (`theme-host.mjs`).                                                                                                                                                                                                                   |
-| `vimma/workspaces/` | Workspaces as Firefox containers: the app's workspace definitions and their file, each window's tab membership and hidden tabs, and the `[[routes]]` rules that send a URL to a workspace.                                                                                                                                                                                                                                  |
-| `vimma/split/`      | Split panes on Firefox's own split view ([ADR-013](docs/adr/013-split-on-firefox-split-view.md)): the window's pane tree and the CSS geometry.                                                                                                                                                                                                                                                                              |
-| `vimma/config/`     | `ConfigHost.sys.mjs`: reads and polls `config.toml`, hands each validated part to the module that uses it, keeps the last good config on an error.                                                                                                                                                                                                                                                                          |
-| `vimma/ctl/`        | The control socket server (`VimmaControl.sys.mjs`), the agent gate (`AgentGate.sys.mjs`) and the agent commands: open, read, keys, elements, fill, activate, screenshot, console, downloads, page limits.                                                                                                                                                                                                                   |
-| `vimma/agent/`      | The built-in agent: conversations, agent CLI runs, API keys in the OS keyring, encrypted stored conversations.                                                                                                                                                                                                                                                                                                              |
-| `vimma/updates/`    | The update check and the AppImage's self-update ([m6a-updater](docs/specs/m6a-updater.md)).                                                                                                                                                                                                                                                                                                                                 |
-| `vimma/search/`     | `config.toml`'s `[search]` applied to Firefox's search engines, and how the address bar shares its rows.                                                                                                                                                                                                                                                                                                                    |
-| `vimma/omarchy/`    | The Omarchy theme-set hook script and the command-line handler that reloads the theme.                                                                                                                                                                                                                                                                                                                                      |
-| `vimma/services/`   | Process-wide adjustments to Firefox: the app launcher name, Mozilla service defaults, the wake lock for video, downloads that open in a tab.                                                                                                                                                                                                                                                                                |
-| `vimma/about/`      | `about:vimma`: mode, recent keys, config errors, versions, patch count, a redacted bug report.                                                                                                                                                                                                                                                                                                                              |
-| `vimma/setup/`      | `about:vimma-setup`, the first-run setup page and its privileged half.                                                                                                                                                                                                                                                                                                                                                      |
-| `vimma/start/`      | The start page used as the home and new-tab page.                                                                                                                                                                                                                                                                                                                                                                           |
-| `vimma/licence/`    | Vimma's parts of `about:license`, which the build merges into Firefox's licence page.                                                                                                                                                                                                                                                                                                                                       |
+| Folder              | Role                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `vimma/host/`       | `VimmaHost.sys.mjs`: key capture, dispatch through vimma-core, modes and window state. `runners.mjs`: the action tables, what each action does. The `*-ops.mjs` files apply one area's actions to Firefox (tabs, panes, workspaces, bookmarks, downloads, permissions, PDF, MCP). `AgentGate.sys.mjs`: the agent gate, which every agent command asks and whose questions the agent line shows. `VimmaParent.sys.mjs`: the parent side of the JSWindowActor pair, which hands page reports to the host and the PDF code. `hypr/HyprIpc.sys.mjs` talks to Hyprland's IPC sockets, checked against core's whitelist ([ADR-017](docs/adr/017-window-manager-ipc.md)). |
+| `vimma/actors/`     | The JSWindowActor pair's registration and child (`VimmaActors`, `VimmaChild`; the parent, `VimmaParent`, is in `host/`) and what runs in the page: hint collection, caret and text model, Enter key, the PDF viewer, live grep's matcher and its worker.                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `vimma/ui/`         | Vimma's own UI in the browser window: status bar, command line, help overlay, hints overlay, pickers, side panel, bookmarks panel, prompts, notices, the agent chat window, the theme (`theme-host.mjs`).                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `vimma/workspaces/` | Workspaces as Firefox containers: the app's workspace definitions and their file, each window's tab membership and hidden tabs, and the `[[routes]]` rules that send a URL to a workspace.                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `vimma/split/`      | Split panes on Firefox's own split view ([ADR-013](docs/adr/013-split-on-firefox-split-view.md)): the window's pane tree and the CSS geometry.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `vimma/config/`     | `ConfigHost.sys.mjs`: reads and polls `config.toml`, hands each validated part to the module that uses it, keeps the last good config on an error.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `vimma/ctl/`        | The control socket server (`VimmaControl.sys.mjs`) and the agent commands: open, read, keys, elements, fill, activate, screenshot, console, downloads, page limits. Each asks the agent gate in `host/` first.                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `vimma/agent/`      | The built-in agent: conversations, agent CLI runs, API keys in the OS keyring, encrypted stored conversations.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `vimma/updates/`    | The update check and the AppImage's self-update ([m6a-updater](docs/specs/m6a-updater.md)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `vimma/search/`     | `config.toml`'s `[search]` applied to Firefox's search engines, and how the address bar shares its rows.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `vimma/omarchy/`    | The Omarchy theme-set hook script and the command-line handler that reloads the theme.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `vimma/services/`   | Process-wide adjustments to Firefox: the app launcher name, Mozilla service defaults, the wake lock for video, downloads that open in a tab.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `vimma/about/`      | `about:vimma`: mode, recent keys, config errors, versions, patch count, a redacted bug report.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `vimma/setup/`      | `about:vimma-setup`, the first-run setup page and its privileged half.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `vimma/start/`      | The start page used as the home and new-tab page.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `vimma/licence/`    | Vimma's parts of `about:license`, which the build merges into Firefox's licence page.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ### `packages/vimma-core`
 
-Pure ES modules, about 80 of them in one flat `src/` folder, tested with Vitest in Node. No Firefox
-API and no Node built-in may be imported there; eslint enforces it. The areas:
+Pure ES modules, about 80 of them, tested with Vitest in Node. No Firefox API and no Node built-in
+may be imported there; eslint enforces it. `src/` groups them in folders by area; `npm run
+sync-core` copies them into the chrome tree as one flat `core/` folder, so browser code imports
+`../core/<name>.mjs` whichever folder holds the module, and module names stay unique across folders
+(`tools/test/sync-core.test.ts`). The tests stay in one flat `test/` folder, named after the module
+they test.
 
-- **Keys and modes:** key notation (`keys.mjs`), the action list (`actions.mjs`), default
-  bindings (`defaults.mjs`), keymap merge (`keymap.mjs`), the dispatcher, modes, Escape, the
-  command line, Firefox's own shortcuts, help.
-- **Browser model:** tabs, tab labels, workspaces and their definitions, panes and split plans,
-  layouts, the side panel, pickers, the status bar text, routing rules, private workspace rules.
-- **Page modes:** editable detection, hints, find, live grep, text blocks, motions, PDF.
-- **Config and theme:** the TOML parser (vendored smol-toml,
-  [ADR-012](docs/adr/012-toml-parser-smol-toml.md)), config validation and migrations, theme tokens, search engines, site permissions.
-- **Control and agents:** the control protocol validator, the agent gate's queue and grants, the
-  agent's tools, prompts, model providers and loop, agent CLIs, stored conversations.
-- **Updates and setup:** manifest checks and pinned update keys, update notices, the first-run
-  setup, add-ons.
+| Folder                                | Role                                                                                                                                                                                                                                         |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/vimma-core/src/keys/`       | Key notation (`keys.mjs`), modes, the action list (`actions.mjs`), keymap compilation, the dispatcher, Escape, the `:` command line, insert-mode detection, Firefox's own shortcuts, keys left to the page, prompt and suggestion-list keys. |
+| `packages/vimma-core/src/config/`     | `config.toml`: TOML (`toml.mjs`, on the vendored parser), validation and migrations (`config.mjs`), the defaults (`defaults.mjs`), theme tokens, `[search]`, `[[routes]]`.                                                                   |
+| `packages/vimma-core/src/workspaces/` | The workspace model and definitions, the switch planner, the state snapshot, tab labels and tab selection, the private workspace and its in-place swap on Hyprland and macOS.                                                                |
+| `packages/vimma-core/src/panes/`      | The pane tree, several splits per workspace, tiling layouts, the split reconcile planner.                                                                                                                                                    |
+| `packages/vimma-core/src/page/`       | What Vimma does in a page: hints, text blocks, copy-mode motions, find, page URLs, the PDF viewer's state.                                                                                                                                   |
+| `packages/vimma-core/src/ui/`         | Vimma's own surfaces as plain data: the status bar, the pickers (goto, tab search, add-ons, downloads, pop-ups, site permissions, PDF outline, live grep), the side panel, bookmarks, the help table, `about:vimma`'s report.                |
+| `packages/vimma-core/src/agent/`      | Local AI agents: the agent gate's queue and grants, checkpoints, the question line, page actions, `vimma_keys`, agent downloads, and the built-in agent's tools, providers, loop, chat, CLIs and stored conversations.                       |
+| `packages/vimma-core/src/control/`    | The control protocol validator (versions 1 and 2) and vimma-ctl's version check.                                                                                                                                                             |
+| `packages/vimma-core/src/updates/`    | The update manifest's checks, the pinned update keys, update notices, the AppImage's self-update, restart.                                                                                                                                   |
+| `packages/vimma-core/src/system/`     | Vimma on the desktop: the first-run setup's pure parts, whether Vimma is the default browser.                                                                                                                                                |
+| `packages/vimma-core/src/text/`       | Text helpers every area uses: linear-time string edits, terminal-width text measurement.                                                                                                                                                     |
+| `packages/vimma-core/src/vendor/`     | Vendored smol-toml ([ADR-012](docs/adr/012-toml-parser-smol-toml.md)), generated by `tools/vendor-smol-toml.ts`.                                                                                                                             |
 
-`index.mjs` re-exports the public part. Generated files: `agent-tools-data.mjs`
-(`npm run gen-agent-tools`) and `update-keys.mjs` (`npm run gen-update-keys`).
+`src/index.mjs` re-exports the public part. Generated files: `agent/agent-tools-data.mjs`
+(`npm run gen-agent-tools`) and `updates/update-keys.mjs` (`npm run gen-update-keys`).
 
 ### The rest of `src/`, and `configs/`
 
@@ -188,7 +197,8 @@ API and no Node built-in may be imported there; eslint enforces it. The areas:
 ### `tests/`
 
 - `tests/browser/`: mochitests (`browser_vimma_*.js`), Firefox's browser test framework, run on a
-  real build.
+  real build. `npm run typecheck` checks them too (`tests/tsconfig.json`, the harness's globals
+  in `types/mochitest/`), except the files `tools/test/mochitest-allowlist.txt` still lists.
 - `tests/e2e/`: scenarios driven through the control socket, with screenshot baselines.
 - `tests/contract/`: fixtures for each version of the control protocol, the config, the state
   file and the workspace file, and sample Omarchy themes; vimma-core's tests read them all, and
@@ -218,7 +228,7 @@ API and no Node built-in may be imported there; eslint enforces it. The areas:
 | `tools/arch-lint/`          | Checks that this page names every folder and workflow ("Keeping it current" below).                         |
 | `tools/layering/`           | Checks the import layering of the `vimma/` folders ([ADR-026](docs/adr/026-module-layering.md)).            |
 | `tools/diagrams/`           | The two pictures on this page: the module graph read from the imports, and the D2 render of both.           |
-| `tools/security/`           | Checks that every test link in [docs/security.md](docs/security.md) resolves.                               |
+| `tools/security/`           | Checks that every test link in [docs/security/](docs/security/README.md) resolves.                          |
 | `tools/license-check/`      | Licence checks of npm packages and Rust crates.                                                             |
 | `tools/deps/`               | Which npm packages the release build runs, so their updates wait for a person.                              |
 | `tools/commitlint/`         | The commitlint rule that a feature or fix commit has a body.                                                |
@@ -231,7 +241,7 @@ API and no Node built-in may be imported there; eslint enforces it. The areas:
 | `tools/safebrowsing-smoke/` | A manual check that a build's Safe Browsing key fetches lists.                                              |
 | `tools/claude-plugin/`      | The Claude Code plugin whose hooks enforce the repository's contributor rules.                              |
 
-The scripts at the top of `tools/` are the `npm run` entry points (`build.ts`, `start.mjs`,
+The scripts at the top of `tools/` are the `npm run` entry points (`build.ts`, `start.ts`,
 `mochitest.mjs`, `sync-core.mjs`, `gen-docs.ts` and others).
 
 ## Dependency direction
@@ -255,12 +265,15 @@ both on every import form (`import`, `ChromeUtils.importESModule`, lazy getter m
 ```
 
 A lower layer reaches a higher one through an observer topic, a callback or an interface object
-passed in, as `host/runners.mjs` is passed the host. Seventeen older imports still point upwards:
-the host reading the agent gate, running a few commands of `config/`, `agent/` and `ctl/`
-(`:route add`, `:agent give`, the downloads picker's agent mark) and recording keys for
-`about:vimma`; the workspace snapshot reading tab labels from `host/`; the parent actor
-reporting to the host; the agent chat window driving the agent. Each is listed with its reason
-in `tools/layering/layers.ts`, the list can only shrink, and ADR-026 says how each goes. Each folder's `README.md` says what it may import.
+passed in, as `host/runners.mjs` is passed the host. The commands of higher folders the host runs
+(`:route add`, `:agent give`, the agent line following the conversations, the downloads
+picker's agent mark) come from `host/host-services.mjs`, which `vimma.js` fills, once,
+before the first window's host starts; so do the agent CLIs, the API keys and `config.toml`'s
+refusal and setup write, which the host hands the agent chat window (`ui/agent-chat.mjs`) when
+it builds it, with the `[agent]` providers. No import points upwards: the agent gate
+(`host/AgentGate.sys.mjs`), which the host shows, sits in `host/`, below the control commands
+and the built-in agent that ask it. `tools/layering/layers.ts` lists no exception, and the check
+refuses one. Each folder's `README.md` says what it may import.
 
 The picture below is drawn from the same scan of the imports that `npm run layering` checks:
 `npm run diagrams` writes [docs/assets/diagrams/modules.d2](docs/assets/diagrams/modules.d2)
@@ -269,7 +282,7 @@ from it, so the picture, the rule and the code cannot disagree.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diagrams/modules-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="docs/assets/diagrams/modules-light.svg">
-  <img src="docs/assets/diagrams/modules-light.svg" alt="The imports between the folders under vimma/, each labelled with its ADR-026 layer and drawn in rows from layer 6 at the top to layer 1 at the bottom. Grey arrows point down the layers. Orange arrows are the upward imports ADR-026 still lists: actors/ and workspaces/ to host/, host/ to about/, ctl/, config/ and agent/, and ui/ to host/, config/ and agent/.">
+  <img src="docs/assets/diagrams/modules-light.svg" alt="The imports between the folders under vimma/, each labelled with its ADR-026 layer and drawn in rows from layer 6 at the top to layer 1 at the bottom. Every arrow is grey and points down the layers: no folder imports one of its own layer or a higher one.">
 </picture>
 
 In words, as the code stands:
@@ -280,15 +293,11 @@ In words, as the code stands:
 - Grey arrows go down the layers, as the rule allows. An importer that reaches two or more of
   layer 1's folders has one arrow to the layer, labelled with how many: `about/`, `config/` and
   `host/` import four of them, `ctl/` three.
-- Orange arrows are the upward imports the exception list keeps, folded into one arrow per pair of
-  folders: `actors/` and `workspaces/` import `host/`; `host/` imports `about/` and `ctl/`, and
-  `config/` and `agent/` lazily; `ui/` imports `host/`, `config/` and `agent/` lazily.
-- Folder by folder, `about/`, `actors/`, `config/`, `ctl/`, `host/` and `workspaces/` still form
-  one eager cycle, and every loop in it runs through an orange arrow. No two modules import each
-  other eagerly (`npm run layering` fails on that), so the cycle exists only between folders, and
-  it closes only through the listed exceptions. When issue
-  [#936](https://github.com/vimma-browser/vimma/issues/936) removes them, `npm run diagrams`
-  redraws the picture without them.
+- No arrow points up: the exception list is empty since issue
+  [#936](https://github.com/vimma-browser/vimma/issues/936), and `npm run layering` refuses an
+  entry in it. An upward import would be drawn in orange, and the check fails before that.
+- No two folders import each other eagerly, and no two modules either (`npm run layering` fails
+  on that).
 
 ## State and where it lives
 
@@ -310,8 +319,8 @@ are read and applied: [Config and theme](docs/architecture/config-and-theme.md).
 
 ## Trust boundaries
 
-[docs/security.md](docs/security.md) is the contract: one rule per risky component, each with the
-tests that enforce it. In short:
+[docs/security/](docs/security/README.md) is the contract: one rule per risky component, each with
+the tests that enforce it. In short:
 
 - **Pages** are untrusted. Vimma reaches them only through the actor pair, and what it takes from
   a page (a link, a title, text) is shown or opened under the rules of security.md §4, §6 and
@@ -345,15 +354,15 @@ tests that enforce it. In short:
 
 Tests are written before the code they test, and a baseline or snapshot changes only with a
 reason in the commit body ([CONTRIBUTING.md](CONTRIBUTING.md), "Workflow"). CI never retries a
-test: a flaky one gets an issue and a fix for its cause ([docs/runbook.md](docs/runbook.md),
-"Testing"). Each layer, where it runs and what no layer covers:
-[Testing](docs/architecture/testing.md).
+test: a flaky one gets an issue and a fix for its cause
+([docs/runbook/testing.md](docs/runbook/testing.md), "Testing"). Each layer, where it runs and what
+no layer covers: [Testing](docs/architecture/testing.md).
 
 ## Automation and release infrastructure
 
 Every workflow in `.github/workflows/`. Setup, secrets and recovery for each are in
-[docs/runbook.md](docs/runbook.md), "CI and automation"; the security rules for those that hold
-secrets are in security.md §10 and §14.
+[docs/runbook/ci.md](docs/runbook/ci.md), "CI and automation"; the security rules for those that
+hold secrets are in security.md §10 and §14.
 
 | Workflow                   | Runs on                     | What it does                                                                                                                          |
 | -------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
@@ -397,10 +406,11 @@ person acting; publishing the draft stays a person's click
 
 `npm run arch-lint` (part of `npm run lint`, and a step of its own in `ci.yml`, docs-only pull
 requests included) runs `tools/arch-lint/arch-lint.ts`, which fails when a folder under
-`src/browser/base/content/vimma/`, a folder under `tools/` or a workflow is not named here, or
-when this page names one that no longer exists. A name counts in a code span written as
-`` `vimma/<folder>/` ``, `` `tools/<folder>/` `` or `` `<workflow>.yml` `` (or `.yaml`). Adding a folder or a
-workflow therefore means adding its line here in the same pull request.
+`src/browser/base/content/vimma/`, a folder under `tools/`, a workflow or a folder under
+`packages/vimma-core/src/` is not named here, or when this page names one that no longer exists.
+A name counts in a code span written as `` `vimma/<folder>/` ``, `` `tools/<folder>/` ``,
+`` `<workflow>.yml` `` (or `.yaml`) or `` `packages/vimma-core/src/<folder>/` ``. Adding a folder or
+a workflow therefore means adding its line here in the same pull request.
 
 The two pictures follow the same rule. `npm run diagrams` regenerates the module graph's D2
 source from the imports and renders every source in `docs/assets/diagrams/` to a light and a
@@ -409,4 +419,6 @@ and downloads it into `~/.cache/vimma/` on first use). Each SVG records a hash o
 was drawn from and one of itself, so `npm run diagrams:check` (part of `npm run lint`, and a step of its own in
 `ci.yml`) fails without D2 when an import or a `.d2` file changed and the pictures were not
 rendered again, when an SVG was edited by hand, and when one holds a script or an outside
-address ([docs/security.md](docs/security.md), B17).
+address
+([docs/security/14-build-and-release-supply-chain.md](docs/security/14-build-and-release-supply-chain.md),
+B17).

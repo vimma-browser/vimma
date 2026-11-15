@@ -36,18 +36,42 @@ function overlay() {
   return /** @type {HTMLDialogElement | null} */ (document.getElementById(OVERLAY_ID));
 }
 
+/** The overlay while it is open; a read through a missing one throws, as it did before. */
+function shown() {
+  return /** @type {HTMLDialogElement} */ (overlay());
+}
+
 function isShown() {
   const o = overlay();
   return !!o && o.open && BrowserTestUtils.isVisible(o);
 }
 
+/** The filter field (help-overlay.mjs makes an <input>); null in an overlay without one. */
 function filterInput() {
-  return overlay().querySelector("input");
+  return shown().querySelector("input");
+}
+
+/**
+ * A node the test's own lookup found; a read through a missing one throws, as it did before.
+ * @template T
+ * @param {T | null} node
+ */
+function found(node) {
+  return /** @type {T} */ (node);
+}
+
+/**
+ * An action's row (help-overlay.mjs makes each a <div>).
+ * @param {Element} dialog
+ * @param {string} name
+ */
+function rowOf(dialog, name) {
+  return found(/** @type {HTMLElement | null} */ (dialog.querySelector(`[data-action="${name}"]`)));
 }
 
 /** Action names of the rows a user can see. */
 function visibleNames() {
-  return [...overlay().querySelectorAll("[data-action]")]
+  return [.../** @type {NodeListOf<HTMLElement>} */ (shown().querySelectorAll("[data-action]"))]
     .filter((row) => BrowserTestUtils.isVisible(row))
     .map((row) => row.dataset.action);
 }
@@ -67,7 +91,11 @@ async function closeHelp() {
   await TestUtils.waitForCondition(() => !isShown(), "help overlay closes on Esc");
 }
 
-/** Like pdfjs/test/head.js waitForPdfJS: resolves once the text layer has rendered. */
+/**
+ * Like pdfjs/test/head.js waitForPdfJS: resolves once the text layer has rendered.
+ * @param {XULBrowserElement} browser
+ * @param {string} url
+ */
 function loadPdf(browser, url) {
   const rendered = BrowserTestUtils.waitForContentEvent(
     browser,
@@ -86,7 +114,7 @@ add_task(async function shows_bindings_over_about_preferences() {
     await openHelp();
     Assert.ok(visibleNames().includes("new_tab"), "overlay lists new_tab");
     Assert.ok(
-      overlay().querySelector('[data-action="new_tab"]').textContent.includes("ctrl+b c"),
+      rowOf(shown(), "new_tab").textContent.includes("ctrl+b c"),
       "new_tab row shows its binding",
     );
     await closeHelp();
@@ -114,9 +142,14 @@ add_task(async function slash_filters_the_rows() {
     browser.focus();
     await openHelp();
     EventUtils.synthesizeKey("/");
-    Assert.equal(document.activeElement, filterInput(), "/ focuses the filter input");
+    // Strict: a window with nothing focused and an overlay without its field are both null.
+    Assert.strictEqual(document.activeElement, filterInput(), "/ focuses the filter input");
     EventUtils.sendString("rename");
-    Assert.equal(filterInput().value, "rename", "typed text lands in the filter, without the /");
+    Assert.equal(
+      found(filterInput()).value,
+      "rename",
+      "typed text lands in the filter, without the /",
+    );
 
     const expected = filterBindings(bindingTable(compileKeymap()), "rename").map((r) => r.name);
     Assert.ok(expected.includes("rename_tab"), "sanity: rename_tab matches rename");
@@ -128,16 +161,28 @@ add_task(async function slash_filters_the_rows() {
   });
 });
 
-/** The text of a row's keys column. */
+/**
+ * The text of a row's keys column.
+ * @param {Element} dialog
+ * @param {string} name
+ */
 function keysOf(dialog, name) {
-  return dialog.querySelector(`[data-action="${name}"] .vimma-help-keys`).textContent;
+  return found(dialog.querySelector(`[data-action="${name}"] .vimma-help-keys`)).textContent;
+}
+
+/**
+ * A HelpOverlay's dialog, which open() builds.
+ * @param {InstanceType<typeof HelpOverlay>} help
+ */
+function dialogOf(help) {
+  return found(help.dialog);
 }
 
 add_task(async function rows_show_the_keys_to_press_under_a_legend() {
   await BrowserTestUtils.withNewTab("https://example.com/", async (browser) => {
     browser.focus();
     await openHelp();
-    const legend = overlay().querySelector(".vimma-help-key-legend");
+    const legend = shown().querySelector(".vimma-help-key-legend");
     Assert.ok(legend && BrowserTestUtils.isVisible(legend), "a legend heads the overlay");
     Assert.equal(legend.textContent, keyLegend(compileKeymap()), "the legend of the live keymap");
     Assert.equal(
@@ -146,28 +191,28 @@ add_task(async function rows_show_the_keys_to_press_under_a_legend() {
       "the prefix; no default binding uses the leader",
     );
     Assert.equal(
-      overlay().querySelector("header").nextElementSibling,
+      found(shown().querySelector("header")).nextElementSibling,
       legend,
       "the legend comes right under the header",
     );
-    Assert.ok(keysOf(overlay(), "toggle_sidebar").startsWith("ctrl+b b"), "the sidebar keys");
-    Assert.equal(keysOf(overlay(), "close_tab"), "ctrl+b shift+x, ctrl+f4, x", "close_tab's keys");
+    Assert.ok(keysOf(shown(), "toggle_sidebar").startsWith("ctrl+b b"), "the sidebar keys");
+    Assert.equal(keysOf(shown(), "close_tab"), "ctrl+b shift+x, ctrl+f4, x", "close_tab's keys");
     // docs/specs/firefox-keys.md: Firefox's keys are listed next to Vimma's (history_back is
     // rebound in this file: bindUnbuiltPrefixKey), Firefox's macOS keys on macOS (macos-build
     // decision 29).
     Assert.equal(
-      keysOf(overlay(), "history_forward"),
+      keysOf(shown(), "history_forward"),
       Services.appinfo.OS === "Darwin"
         ? "meta+right, meta+], L, ctrl+i, ctrl+]"
         : "alt+right, L, ctrl+i, ctrl+]",
       "Go forward lists every key that goes forward",
     );
-    Assert.ok(!overlay().textContent.includes("prefix+"), "no prefix+ notation anywhere");
-    Assert.ok(!overlay().textContent.includes("<leader>"), "no <leader> notation anywhere");
+    Assert.ok(!shown().textContent.includes("prefix+"), "no prefix+ notation anywhere");
+    Assert.ok(!shown().textContent.includes("<leader>"), "no <leader> notation anywhere");
 
     for (const query of ["ctrl+b b", "sidebar"]) {
       EventUtils.synthesizeKey("/");
-      filterInput().value = "";
+      found(filterInput()).value = "";
       EventUtils.sendString(query);
       Assert.ok(visibleNames().includes("toggle_sidebar"), `"${query}" finds toggle_sidebar`);
     }
@@ -186,9 +231,9 @@ add_task(async function a_remapped_prefix_and_leader_show_in_the_rows_and_legend
   gBrowser.selectedBrowser.focus();
   help.open();
   try {
-    Assert.equal(keysOf(help.dialog, "toggle_sidebar"), "ctrl+a b, , n", "the remapped keys");
+    Assert.equal(keysOf(dialogOf(help), "toggle_sidebar"), "ctrl+a b, , n", "the remapped keys");
     Assert.equal(
-      help.dialog.querySelector(".vimma-help-key-legend").textContent,
+      found(dialogOf(help).querySelector(".vimma-help-key-legend")).textContent,
       "prefix = ctrl+a · leader = ,",
     );
   } finally {
@@ -199,8 +244,10 @@ add_task(async function a_remapped_prefix_and_leader_show_in_the_rows_and_legend
 
 add_task(async function the_legend_leaves_out_a_leader_nothing_uses() {
   // Every default list without its leader bindings, so no binding uses the leader.
+  const defaults = DEFAULT_CONFIG.keys;
+  Assert.ok(defaults, "the default config has keys");
   const keys = Object.fromEntries(
-    Object.entries(DEFAULT_CONFIG.keys)
+    Object.entries(defaults)
       .filter(([, v]) => [v].flat().some((b) => /<leader>/i.test(b)))
       .map(([k, v]) => [k, [v].flat().filter((b) => !/<leader>/i.test(b))]),
   );
@@ -208,9 +255,9 @@ add_task(async function the_legend_leaves_out_a_leader_nothing_uses() {
   gBrowser.selectedBrowser.focus();
   help.open();
   try {
-    Assert.equal(keysOf(help.dialog, "toggle_sidebar"), "ctrl+b b", "only the prefix binding");
+    Assert.equal(keysOf(dialogOf(help), "toggle_sidebar"), "ctrl+b b", "only the prefix binding");
     Assert.equal(
-      help.dialog.querySelector(".vimma-help-key-legend").textContent,
+      found(dialogOf(help).querySelector(".vimma-help-key-legend")).textContent,
       "prefix = ctrl+b",
     );
   } finally {
@@ -222,7 +269,9 @@ add_task(async function the_legend_leaves_out_a_leader_nothing_uses() {
 add_task(async function esc_closes_and_restores_focus() {
   await BrowserTestUtils.withNewTab("about:preferences", async (browser) => {
     await SimpleTest.promiseFocus(browser.contentWindow);
-    const searchInput = browser.contentDocument.getElementById("searchInput");
+    // about:preferences runs in the parent process and has #searchInput; a missing document or
+    // field throws on the next lines, as before.
+    const searchInput = found(found(browser.contentDocument).getElementById("searchInput"));
     searchInput.focus();
     const before = Services.focus.focusedElement;
     Assert.ok(
@@ -231,7 +280,7 @@ add_task(async function esc_closes_and_restores_focus() {
     );
 
     await openHelp();
-    Assert.ok(overlay().contains(Services.focus.focusedElement), "the overlay has focus");
+    Assert.ok(shown().contains(Services.focus.focusedElement), "the overlay has focus");
 
     await closeHelp();
     Assert.equal(Services.focus.focusedElement, before, "focus returns to the search box");
@@ -253,6 +302,7 @@ add_task(async function help_show_while_open_closes_it() {
  * ending with "z". A key that is not ours proves the listener works and flushes any in-flight
  * events. Gives up after 5 s, so a swallowed z fails the assertion instead of timing out the
  * whole file. (Not j: since M1 it scrolls in normal mode.)
+ * @param {XULBrowserElement} browser
  */
 async function pageKeysThenZ(browser) {
   EventUtils.synthesizeKey("z");
@@ -275,6 +325,7 @@ add_task(async function page_receives_no_keydown_for_the_chord() {
   });
 });
 
+/** @param {number} ms */
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -400,8 +451,10 @@ add_task(async function overrides_are_marked() {
   gBrowser.selectedBrowser.focus();
   help.open();
   try {
+    /** @param {string} name */
     const marker = (name) =>
-      help.dialog.querySelector(`[data-action="${name}"] .vimma-help-override`).textContent;
+      found(dialogOf(help).querySelector(`[data-action="${name}"] .vimma-help-override`))
+        .textContent;
     Assert.equal(marker("new_tab"), "*", "an overridden action is marked *");
     Assert.equal(marker("close_tab"), "", "a default one is not");
   } finally {
@@ -414,7 +467,8 @@ add_task(async function rows_mark_what_the_host_can_run() {
   await BrowserTestUtils.withNewTab("about:preferences", async (browser) => {
     await SimpleTest.promiseFocus(browser.contentWindow);
     await openHelp();
-    const row = (name) => overlay().querySelector(`[data-action="${name}"]`);
+    /** @param {string} name */
+    const row = (name) => rowOf(shown(), name);
     // Host actions and page actions (scroll, Esc/i) alike: the overlay is not about focus.
     for (const name of [
       "show_keybinds",
@@ -443,12 +497,15 @@ add_task(async function rows_mark_what_the_host_can_run() {
       Assert.equal(row(name).dataset.runnable, "false", `${name} is marked not yet`);
     }
     // Dimmed by colour, never by opacity, so the text keeps its contrast (spec m7-a11y).
-    const keys = (name) => getComputedStyle(row(name).querySelector(".vimma-help-keys")).color;
+    /** @param {string} name */
+    const keys = (name) =>
+      getComputedStyle(found(row(name).querySelector(".vimma-help-keys"))).color;
+    /** @param {string} name */
     const opacity = (name) => Number(getComputedStyle(row(name)).opacity);
     Assert.equal(opacity("new_tab"), 1, "an implemented row is not dimmed");
     Assert.equal(opacity("history_back"), 1, "a not-yet row keeps full opacity");
     Assert.notEqual(keys("history_back"), keys("new_tab"), "a not-yet row is dimmed");
-    const legend = overlay().querySelector(".vimma-help-legend");
+    const legend = shown().querySelector(".vimma-help-legend");
     Assert.ok(legend && BrowserTestUtils.isVisible(legend), "a legend explains the dimming");
     Assert.stringContains(legend.textContent, "not implemented yet");
     await closeHelp();
@@ -460,7 +517,8 @@ add_task(async function a_given_runnable_set_decides_the_marks() {
   gBrowser.selectedBrowser.focus();
   help.open();
   try {
-    const mark = (name) => help.dialog.querySelector(`[data-action="${name}"]`).dataset.runnable;
+    /** @param {string} name */
+    const mark = (name) => rowOf(dialogOf(help), name).dataset.runnable;
     Assert.equal(mark("rename_tab"), "true", "an id in the set is implemented");
     Assert.equal(mark("new_tab"), "false", "an id outside it is not");
   } finally {

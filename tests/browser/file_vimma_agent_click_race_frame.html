@@ -1,0 +1,20 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_agent_click_race.js: file_vimma_agent_click_race.html in a
+   - same-site frame, which runs in the top page's process. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Click race frame fixture</title>
+  </head>
+  <body>
+    <iframe
+      id="frame"
+      title="Race"
+      src="file_vimma_agent_click_race.html"
+      style="width: 400px; height: 160px"
+    ></iframe>
+  </body>
+</html>

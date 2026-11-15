@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * A merged Firefox security bump releases itself (spec firefox-versions, decisions 11 to 15;
- * ADR-020; docs/security.md G11 and G12). Run by the `security-release` job of
+ * ADR-020; docs/security/10-firefox-updates.md G11 and G12). Run by the `security-release` job of
  * release-please.yml on every push to `main`: when the pushed commit is the squash merge of the
  * upstream autopilot's PR labelled `security`, the open release PR is set to auto-merge, pinned
  * to its current head commit. GitHub then merges it once the `main` ruleset is satisfied; the
@@ -63,7 +63,7 @@ function gate(input) {
     return {
       action: "fail",
       reason:
-        "AUTO_SECURITY_RELEASE is on but RELEASE_PLEASE_TOKEN is not set (docs/runbook.md, Releases)",
+        "AUTO_SECURITY_RELEASE is on but RELEASE_PLEASE_TOKEN is not set (docs/runbook/ci-releases.md, Releases)",
     };
   }
   return null;
@@ -167,7 +167,7 @@ export function slowChecksStarted(runs) {
  * The ready_for_review event comes from RELEASE_PLEASE_TOKEN's user, so it starts the checks
  * that a draft skipped. The CLI below sets auto-merge only once `slowChecksStarted()` holds, and
  * the code scanning rule holds the merge until CodeQL has uploaded for that head
- * (docs/security.md G11).
+ * (docs/security/10-firefox-updates.md G11).
  * @param {Merge} decision
  * @returns {string[][]}
  */

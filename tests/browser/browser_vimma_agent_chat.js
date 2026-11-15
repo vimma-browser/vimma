@@ -29,12 +29,18 @@ const { AgentChat } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 const { AgentUi } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/agent-ui.mjs");
 const { McpHost } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/mcp-ops.mjs");
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
+);
+const { VimmaControl } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
+);
+const { validateMessage } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/index.mjs",
 );
 const { OSKeyStoreTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/OSKeyStoreTestUtils.sys.mjs",
@@ -62,24 +68,62 @@ const DIR = getRootDirectory(gTestPath).replace(
 const PAGE = `${DIR}file_vimma_agent_page.html`;
 const ARMING = "security.dialog_enable_delay";
 
-/** @param {() => boolean} cond @param {string} msg */
+/**
+ * `[agent]` as config.toml resolves it with only `over` set: AGENT_DEFAULTS' budgets, no default
+ * provider, local_only off and no keep_days or keep_results (the product reads each of these
+ * with `??`, so a config that leaves them out works the same).
+ * @param {Partial<AgentConfig>} over
+ * @returns {AgentConfig}
+ */
+const agentConfig = (over) => ({
+  ...AGENT_DEFAULTS,
+  default: null,
+  localOnly: false,
+  keepDays: null,
+  keepResults: null,
+  providers: [],
+  ...over,
+});
+
+/** @param {() => boolean | Promise<boolean>} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
+
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
 const $ = (/** @type {string} */ id) => document.getElementById(id);
-const box = () => $("vimma-agent-chat");
-const isOpen = () => !!box() && !box().hidden;
+/** Whether the element with `id` is there and shown. */
+const shown = (/** @type {string} */ id) => {
+  const el = $(id);
+  return !!el && !el.hidden;
+};
+/** The chat window, once it has been made. */
+const box = () => found($("vimma-agent-chat"));
+const isOpen = () => shown("vimma-agent-chat");
 const input = () => /** @type {HTMLTextAreaElement} */ ($("vimma-agent-chat-input"));
-const slot = () => $("vimma-agent-chat-slot");
-const slotOpen = () => !!slot() && !slot().hidden;
+/** The prompt slot, once the window has been made. */
+const slot = () => found($("vimma-agent-chat-slot"));
+const slotOpen = () => shown("vimma-agent-chat-slot");
 const header = () =>
   [...box().querySelectorAll(".vimma-agent-chat-head")].map((l) => l.textContent);
-const log = () => $("vimma-agent-chat-log");
-const logText = () => log()?.textContent ?? "";
+/** The transcript, once the window has been made. */
+const log = () => found($("vimma-agent-chat-log"));
+const logText = () => $("vimma-agent-chat-log")?.textContent ?? "";
 const statusText = (/** @type {string} */ id) =>
   $("vimma-statusbar")?.querySelector(`[data-segment="${id}"]`)?.textContent ?? "";
+/** The window's state: VimmaHost has started this window. */
+const hostState = () => found(VimmaHost._state(window));
 const agentTabs = () =>
-  gBrowser.tabs.filter(
-    (t) => t.userContextId === /** @type {any} */ (WorkspaceStore.agent).userContextId,
-  );
+  gBrowser.tabs.filter((t) => t.userContextId === found(WorkspaceStore.agent).userContextId);
+/** The prompt line's text: it is open whenever this is read. */
+const renameText = () => found($("vimma-rename")).textContent;
 
 /** `:line` Enter, typed in the window. */
 function runCommand(/** @type {string} */ line) {
@@ -123,12 +167,13 @@ async function finished() {
 }
 
 /** The open conversation's id. */
-const openId = () => /** @type {number} */ (VimmaHost._state(window).agentChat.conversation);
+const openId = () => /** @type {number} */ (hostState().agentChat.conversation);
 
+/** @type {AgentConfig | null} */
 let savedConfig = null;
 
 async function tidy() {
-  const chat = VimmaHost._state(window).agentChat;
+  const chat = hostState().agentChat;
   chat.close();
   // A draft left in the input would join the next test's message.
   if (input()) input().value = "";
@@ -140,8 +185,9 @@ async function tidy() {
   AgentGate.revoke();
   for (const release of held.values()) release();
   held.clear();
-  const ww = WindowWorkspaces.get(window);
-  ww.switchTo({ id: ww.model.workspaces.find((/** @type {any} */ w) => w.name === "main")?.id });
+  // Every window of these tests has its workspaces, main among them.
+  const ww = /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
+  ww.switchTo({ id: found(ww.model.workspaces.find((w) => w.name === "main")).id });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
   requests.length = 0;
@@ -160,7 +206,7 @@ add_setup(async () => {
   OSKeyStoreTestUtils.setup();
   registerCleanupFunction(() => OSKeyStoreTestUtils.cleanup());
   savedConfig = McpHost.agentConfig;
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+  McpHost.configureAgent(agentConfig({ default: "scripted", providers: [PROVIDER] }));
   registerCleanupFunction(() => McpHost.configureAgent(savedConfig));
 });
 
@@ -204,7 +250,7 @@ addTidyTask(async function test_a_refused_config_is_named_instead_of_setup() {
   const name = "vimma-agent-refused.toml";
   const file = PathUtils.join(PathUtils.tempDir, name);
   const error = `${name}:1: agent: is new in schema 2: put schema = 2 at the top of the file`;
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: null, providers: [] });
+  McpHost.configureAgent(agentConfig({ default: null, providers: [] }));
   await SpecialPowers.pushPrefEnv({ set: [["vimma.config.path", file]] });
   try {
     await IOUtils.writeUTF8(file, `[agent]\ndefault = "local"\n`);
@@ -217,7 +263,7 @@ addTidyTask(async function test_a_refused_config_is_named_instead_of_setup() {
       logText().includes(`has errors, so none of it applies, [agent] included.${error}`),
       `and so does the window, in place of the setup steps: ${logText()}`,
     );
-    VimmaHost._state(window).agentChat.give();
+    hostState().agentChat.give();
     await until(
       () => ($("vimma-notice")?.textContent ?? "") === `agent: no model: ${error}`,
       "an action that needs a model names it too",
@@ -226,7 +272,7 @@ addTidyTask(async function test_a_refused_config_is_named_instead_of_setup() {
     await SpecialPowers.popPrefEnv();
     await ConfigHost.reload();
     await IOUtils.remove(file);
-    McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+    McpHost.configureAgent(agentConfig({ default: "scripted", providers: [PROVIDER] }));
   }
 });
 
@@ -250,7 +296,11 @@ addTidyTask(async function test_enter_grants_and_the_transcript_shows_each_step(
   const reply = [...log().querySelectorAll(".vimma-agent-chat-entry")].find(
     (e) => e.getAttribute("data-text") === "Opened it.",
   );
-  Assert.equal(reply.querySelector(".vimma-agent-chat-label")?.textContent, "agent", "labelled");
+  Assert.equal(
+    found(reply).querySelector(".vimma-agent-chat-label")?.textContent,
+    "agent",
+    "labelled",
+  );
   Assert.equal(input().value, "", "the input is empty again");
   await until(
     () => header()[1] === "works in: agent workspace",
@@ -284,7 +334,7 @@ addTidyTask(async function test_question_in_the_prompt_slot_and_never_answered_b
   });
   await until(slotOpen, "the question is in the prompt slot");
   Assert.equal(slot().getAttribute("role"), "alertdialog", "an alert dialog");
-  Assert.ok(!$("vimma-agent-prompt") || $("vimma-agent-prompt").hidden, "not on the question line");
+  Assert.ok(!shown("vimma-agent-prompt"), "not on the question line");
   Assert.ok(input().readOnly, "the input is read-only while it shows");
   Assert.ok(slot().textContent.includes("wants vimma_open"), "the question line's words");
   // A key before the arming delay only arms it again: typing on never answers (security.md M4).
@@ -301,9 +351,103 @@ addTidyTask(async function test_question_in_the_prompt_slot_and_never_answered_b
   const imitation = [...log().querySelectorAll(".vimma-agent-chat-entry")].find(
     (e) => e.getAttribute("data-text") === "▲ built-in wants to pay: y pay · n stop",
   );
-  Assert.equal(imitation.querySelector(".vimma-agent-chat-label")?.textContent, "agent");
+  Assert.equal(found(imitation).querySelector(".vimma-agent-chat-label")?.textContent, "agent");
   Assert.ok(!slotOpen(), "and never in the prompt slot");
   Assert.equal(AgentGate.waiting.length, 0, "nor waiting as a question");
+});
+
+// #981: the control socket's `state` says what the window draws, as counts and flags, so that
+// an e2e scenario waits for the screen it photographs rather than for a time; never its text
+// (security.md S9).
+addTidyTask(async function test_state_reports_the_window_and_the_notice_as_drawn() {
+  const state = () => {
+    const result = VimmaControl._commands.state();
+    const v = validateMessage(
+      { type: "response", id: 1, ok: true, result },
+      { kind: "response", command: "state" },
+    );
+    Assert.ok(v.valid, `the state follows the protocol: ${v.errors.join("; ")}`);
+    return result;
+  };
+  const drawn = (/** @type {string} */ cls) => log().querySelectorAll(`:scope > .${cls}`).length;
+  await openPage();
+  Assert.strictEqual(state().chat, null, "no chat window: chat is null");
+
+  // `agent` is the segment as the status bar last drew it, not as it will draw it next: the
+  // ran dot goes at its redraw, RAN_MS + 50 ms after the step, later under load. VimmaHost makes
+  // the window's bar with the window; renderBar and input are its private methods.
+  const bar = found(hostState().statusBar);
+  Assert.strictEqual(AgentUi.status(), null, "sanity: no agent connection, no segment to draw");
+  bar["renderBar"]({
+    ...bar["input"](),
+    agent: { waiting: 0, minutes: null, ran: true, builtin: null },
+  });
+  Assert.equal(statusText("agent"), "◇ agent ·", "sanity: the bar draws the ran dot");
+  Assert.deepEqual(
+    state().agent,
+    { waiting: 0, ran: true, armed: false },
+    "state reports the dot drawn",
+  );
+  bar["renderBar"]({
+    ...bar["input"](),
+    agent: { waiting: 2, minutes: null, ran: true, builtin: null },
+  });
+  Assert.deepEqual(
+    state().agent,
+    { waiting: 2, ran: false, armed: false },
+    "a question hides the dot; it asks in the slot, not on the line",
+  );
+  bar["renderBar"](bar["input"]());
+  Assert.strictEqual(state().agent, null, "and no segment drawn: null");
+
+  const { notice } = hostState();
+  notice.show("agent: found claude 2.1.303 · /tmp/claude");
+  Assert.strictEqual(state().notice, true, "a notice is shown");
+  notice.hide();
+  Assert.strictEqual(state().notice, false, "and gone");
+  Assert.strictEqual(state().prompt, false, "no prompt line");
+  const asked = hostState().rename;
+  asked.ask("send to example.com? y/N", () => {});
+  Assert.strictEqual(state().prompt, true, "a question on the prompt line");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !asked.isOpen, "Esc says no");
+  Assert.strictEqual(state().prompt, false, "and it is gone");
+
+  runCommand("agent model");
+  await until(
+    () => logText().includes("add: OpenAI-compatible endpoint"),
+    "the picker lists its rows",
+  );
+  let chat = found(state().chat);
+  Assert.equal(chat.view, "models", "the model picker");
+  Assert.ok(chat.rows >= 3, `with its rows: ${chat.rows}`);
+  Assert.equal(chat.rows, drawn("vimma-agent-chat-row"), "as many as it draws");
+  Assert.equal(chat.entries, 0, "no transcript in the picker");
+  Assert.strictEqual(chat.question, null, "and no question");
+  Assert.deepEqual(
+    Object.keys(chat).sort(),
+    ["entries", "question", "rows", "view"],
+    "counts and flags, no text",
+  );
+  hostState().agentChat.close();
+  await until(() => !isOpen(), "the picker closed");
+  Assert.strictEqual(state().chat, null, "closed: null again");
+
+  await openChat();
+  send(script([openStep(PAGE), { reply: "done" }]), { ask: true });
+  await until(slotOpen, "the step asks in the prompt slot");
+  chat = found(state().chat);
+  Assert.equal(chat.view, "chat", "the transcript");
+  Assert.equal(chat.rows, 0, "lists no rows");
+  Assert.ok(chat.entries > 0, `draws its entries: ${chat.entries}`);
+  Assert.equal(chat.entries, drawn("vimma-agent-chat-entry"), "as many as it draws");
+  Assert.ok(chat.question, "a question waits in the slot");
+  await until(() => state().chat?.question?.armed === true, "the question arms");
+  const agent = found(state().agent);
+  Assert.equal(agent.waiting, AgentGate.waiting.length, "the status bar counts it waiting");
+  Assert.ok(agent.waiting >= 1, "as the status bar's ◇ agent 1? does");
+  Assert.deepEqual(Object.keys(agent).sort(), ["armed", "ran", "waiting"], "a count and flags");
+  Assert.strictEqual(agent.armed, false, "the slot's question is chat.question, not the line's");
 });
 
 addTidyTask(async function test_slot_arms_again_when_focus_comes_back_into_the_window() {
@@ -332,7 +476,7 @@ addTidyTask(async function test_question_on_the_question_line_when_closed() {
   await AgentChat.send(id, script([openStep(PAGE), { reply: "ok" }]), { ask: true });
   await until(() => AgentGate.waiting.length === 1, "the step asks");
   await until(() => !!AgentUi._current, "on the question line, by itself");
-  Assert.ok(!AgentUi._current.slot, "not in a slot: the window is closed");
+  Assert.ok(!found(AgentUi._current).slot, "not in a slot: the window is closed");
   AgentGate.answer(AgentGate.waiting[0].id, { kind: "deny" });
   await AgentChat.done(id);
 });
@@ -381,11 +525,9 @@ addTidyTask(async function test_give_moves_the_tab_after_y_and_makes_it_the_conv
   const tab = gBrowser.selectedTab;
   EventUtils.synthesizeKey("KEY_Escape");
   EventUtils.synthesizeKey("P", { shiftKey: true });
-  await until(() => !!$("vimma-rename") && !$("vimma-rename").hidden, "it asks first");
+  await until(() => shown("vimma-rename"), "it asks first");
   Assert.ok(
-    /Move this tab to "agent"\? Agents you allow can read it there/.test(
-      $("vimma-rename").textContent,
-    ),
+    /Move this tab to "agent"\? Agents you allow can read it there/.test(renameText()),
     "as the picker's m asks",
   );
   EventUtils.synthesizeKey("y");
@@ -397,17 +539,18 @@ addTidyTask(async function test_give_moves_the_tab_after_y_and_makes_it_the_conv
 });
 
 addTidyTask(async function test_external_provider_notice_before_first_task() {
+  /** @type {AgentProviderConfig} */
   const external = { ...PROVIDER, name: "far", endpoint: "https://example.com/v1" };
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "far", providers: [external] });
+  McpHost.configureAgent(agentConfig({ default: "far", providers: [external] }));
   // A hosted provider asks for its key first; this one has one.
   await AgentKeys.set("far", "sk-test-far", external.endpoint);
   try {
     await openChat();
     Assert.equal(header()[0], "far · scripted · page text sent to example.com");
     send("hello");
-    await until(() => !!$("vimma-rename") && !$("vimma-rename").hidden, "it asks first");
+    await until(() => shown("vimma-rename"), "it asks first");
     Assert.ok(
-      $("vimma-rename").textContent.includes("are sent to example.com. y send · n cancel"),
+      renameText().includes("are sent to example.com. y send · n cancel"),
       "naming where the page text goes (Behaviour 5)",
     );
     EventUtils.synthesizeKey("n");
@@ -420,7 +563,7 @@ addTidyTask(async function test_external_provider_notice_before_first_task() {
     Assert.ok(AgentChat.needsNotice(openId()), "a y to another endpoint confirms nothing");
   } finally {
     await AgentKeys.delete("far");
-    McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+    McpHost.configureAgent(agentConfig({ default: "scripted", providers: [PROVIDER] }));
   }
 });
 
@@ -428,12 +571,12 @@ const SECRET = "sk-test-SECRET-9f3a";
 
 /** The key field: masked, in the window, never the transcript. */
 const keyField = () => /** @type {HTMLInputElement} */ ($("vimma-agent-chat-key"));
-const keyOpen = () => !!keyField() && !keyField().parentElement.hidden;
+const keyOpen = () => !!keyField() && !found(keyField().parentElement).hidden;
 
 /** Nothing Vimma shows or keeps outside login storage holds the key (Behaviour 3, M40). */
 function assertKeyNowhere() {
   Assert.ok(!box().textContent.includes(SECRET), "not in the window");
-  Assert.ok(!$("vimma-statusbar").textContent.includes(SECRET), "not in the status bar");
+  Assert.ok(!found($("vimma-statusbar")).textContent.includes(SECRET), "not in the status bar");
   Assert.ok(!($("vimma-notice")?.textContent ?? "").includes(SECRET), "not in a notice");
   Assert.equal(keyField()?.value ?? "", "", "the field is emptied");
   const prefs = Services.prefs.getChildList("").filter((name) => {
@@ -451,7 +594,7 @@ function assertKeyNowhere() {
 }
 
 addTidyTask(async function test_hosted_openai_compatible_provider_set_up_in_the_window() {
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: null, providers: [] });
+  McpHost.configureAgent(agentConfig({ default: null, providers: [] }));
   const name = "127.0.0.1";
   try {
     await openPage();
@@ -464,10 +607,10 @@ addTidyTask(async function test_hosted_openai_compatible_provider_set_up_in_the_
     const at = rows.findIndex((r) => r.includes("add: OpenAI-compatible endpoint"));
     for (let i = 0; i < at; i++) EventUtils.synthesizeKey("j");
     EventUtils.synthesizeKey("KEY_Enter");
-    await until(() => !!$("vimma-rename") && !$("vimma-rename").hidden, "it asks the endpoint");
+    await until(() => shown("vimma-rename"), "it asks the endpoint");
     EventUtils.sendString(`http://127.0.0.1:${PORT}/v1`);
     EventUtils.synthesizeKey("KEY_Enter");
-    await until(() => /model/.test($("vimma-rename").textContent), "then the model");
+    await until(() => /model/.test(renameText()), "then the model");
     EventUtils.sendString("scripted");
     EventUtils.synthesizeKey("KEY_Enter");
     await until(keyOpen, "then the key, in the window");
@@ -489,15 +632,20 @@ addTidyTask(async function test_hosted_openai_compatible_provider_set_up_in_the_
       logText().includes("opened example.com — ran under grant"),
       `and the step: ${logText()}`,
     );
-    Assert.equal(requests.at(-1).authorization, `Bearer ${SECRET}`, "the key went to the endpoint");
+    Assert.equal(
+      requests.at(-1)?.authorization,
+      `Bearer ${SECRET}`,
+      "the key went to the endpoint",
+    );
     assertKeyNowhere();
   } finally {
     await AgentKeys.delete(name);
-    McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+    McpHost.configureAgent(agentConfig({ default: "scripted", providers: [PROVIDER] }));
   }
 });
 
 addTidyTask(async function test_hosted_anthropic_provider_asks_for_its_key_before_the_task() {
+  /** @type {AgentProviderConfig} */
   const anthropic = {
     name: "mock-anthropic",
     kind: "anthropic",
@@ -507,7 +655,7 @@ addTidyTask(async function test_hosted_anthropic_provider_asks_for_its_key_befor
     priceIn: 3,
     priceOut: 15,
   };
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: anthropic.name, providers: [anthropic] });
+  McpHost.configureAgent(agentConfig({ default: anthropic.name, providers: [anthropic] }));
   try {
     await openChat();
     send(script([openStep(PAGE), { reply: "Opened it." }]));
@@ -540,16 +688,17 @@ addTidyTask(async function test_hosted_anthropic_provider_asks_for_its_key_befor
     EventUtils.synthesizeKey("m");
     await until(() => logText().includes("key stored · ends …9f3a"), "the picker names the key");
     EventUtils.synthesizeKey("x");
-    await until(() => !!$("vimma-rename") && !$("vimma-rename").hidden, "it asks first");
+    await until(() => shown("vimma-rename"), "it asks first");
     EventUtils.synthesizeKey("y");
     await until(async () => !(await AgentKeys.has(anthropic.name)), "x deleted the key");
   } finally {
     await AgentKeys.delete(anthropic.name);
-    McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+    McpHost.configureAgent(agentConfig({ default: "scripted", providers: [PROVIDER] }));
   }
 });
 
 addTidyTask(async function test_a_key_typed_and_left_is_dropped_and_no_task_goes_keyless() {
+  /** @type {AgentProviderConfig} */
   const anthropic = {
     name: "mock-anthropic",
     kind: "anthropic",
@@ -557,7 +706,7 @@ addTidyTask(async function test_a_key_typed_and_left_is_dropped_and_no_task_goes
     model: "claude-mock",
     vision: true,
   };
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: anthropic.name, providers: [anthropic] });
+  McpHost.configureAgent(agentConfig({ default: anthropic.name, providers: [anthropic] }));
   try {
     await openChat();
     const sent = await AgentChat.send(openId(), "hello");
@@ -566,17 +715,18 @@ addTidyTask(async function test_a_key_typed_and_left_is_dropped_and_no_task_goes
     send("hello");
     await until(keyOpen, "the window asks for the key");
     EventUtils.sendString("half-a-key");
-    const chat = VimmaHost._state(window).agentChat;
+    const chat = hostState().agentChat;
     chat.close();
     Assert.equal(keyField().value, "", "closing the window drops what was typed");
     chat.askKey(anthropic);
     Assert.equal(keyField().value, "", "so the next key starts empty");
   } finally {
-    McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+    McpHost.configureAgent(agentConfig({ default: "scripted", providers: [PROVIDER] }));
   }
 });
 
 addTidyTask(async function test_an_entered_key_is_never_shown_again_nor_copied_out() {
+  /** @type {AgentProviderConfig} */
   const anthropic = {
     name: "mock-anthropic",
     kind: "anthropic",
@@ -584,18 +734,21 @@ addTidyTask(async function test_an_entered_key_is_never_shown_again_nor_copied_o
     model: "claude-mock",
     vision: true,
   };
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: anthropic.name, providers: [anthropic] });
+  McpHost.configureAgent(agentConfig({ default: anthropic.name, providers: [anthropic] }));
   try {
     await openChat();
-    const chat = VimmaHost._state(window).agentChat;
+    const chat = hostState().agentChat;
     chat.askKey(anthropic);
     await until(keyOpen, "the key field is open");
     EventUtils.sendString(SECRET);
     const field = keyField();
     // Chrome documents always get the password field's eye button (TextControlElement::
     // CreateButton); the key field must not draw it.
-    const eye = InspectorUtils.getChildrenForNode(field, true, false).find(
-      (n) => n.localName === "button",
+    // Its children are elements and text; only an element has a localName.
+    const eye = /** @type {Element | undefined} */ (
+      InspectorUtils.getChildrenForNode(field, true, false).find(
+        (n) => "localName" in n && n.localName === "button",
+      )
     );
     Assert.ok(!eye?.checkVisibility(), "no reveal button");
     field.revealPassword = true;
@@ -605,7 +758,8 @@ addTidyTask(async function test_an_entered_key_is_never_shown_again_nor_copied_o
     document.addEventListener("popupshowing", counted);
     field.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     document.removeEventListener("popupshowing", counted);
-    $("textbox-contextmenu")?.hidePopup();
+    // The text box context menu: a <menupopup> (editMenuOverlay.js).
+    /** @type {XULPopupElement | null} */ ($("textbox-contextmenu"))?.hidePopup();
     Assert.equal(menus, 0, "no context menu over the field");
     SpecialPowers.clipboardCopyString("unchanged");
     field.focus();
@@ -629,7 +783,7 @@ addTidyTask(async function test_an_entered_key_is_never_shown_again_nor_copied_o
     chat.cancelKey();
   } finally {
     await AgentKeys.delete(anthropic.name);
-    McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+    McpHost.configureAgent(agentConfig({ default: "scripted", providers: [PROVIDER] }));
   }
 });
 
@@ -638,12 +792,12 @@ addTidyTask(async function test_opened_from_another_workspace_reads_none_of_its_
   send(script([{ call: "vimma_tabs", args: {} }, { reply: "listed" }]));
   const result = await finished();
   const listed = result.messages
-    .filter((/** @type {any} */ m) => m.role === "tool")
-    .flatMap((/** @type {any} */ m) => m.results)
-    .map((/** @type {any} */ r) => r.content.map((/** @type {any} */ c) => c.text).join(""))
+    .filter((m) => m.role === "tool")
+    .flatMap((m) => m.results)
+    .map((r) => r.content.map((c) => (c.type === "text" ? c.text : "")).join(""))
     .join("");
   Assert.ok(!listed.includes("Agent fixture"), "the main workspace's page is not listed");
-  Assert.ok(gBrowser.selectedTab.userContextId !== WorkspaceStore.agent.userContextId);
+  Assert.ok(gBrowser.selectedTab.userContextId !== found(WorkspaceStore.agent).userContextId);
 });
 
 // agent-speed S7 (issue #601): a used-up rate is waited out for the built-in agent, which
@@ -667,9 +821,9 @@ addTidyTask(async function test_a_used_up_rate_is_waited_out_not_reported_as_que
   AgentChat.stop(openId());
   const result = await finished();
   const refusals = result.messages
-    .filter((/** @type {any} */ m) => m.role === "tool")
-    .flatMap((/** @type {any} */ m) => m.results)
-    .map((/** @type {any} */ r) => r.content.map((/** @type {any} */ c) => c.text).join(""));
+    .filter((m) => m.role === "tool")
+    .flatMap((m) => m.results)
+    .map((r) => r.content.map((c) => (c.type === "text" ? c.text : "")).join(""));
   Assert.ok(
     !refusals.some((t) => t.includes("waiting in Vimma")),
     "no result says that questions wait for the user",

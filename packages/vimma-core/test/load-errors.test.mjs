@@ -2,7 +2,7 @@
 // Vimma's fixed words, never the page's.
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-import { LOAD_ERRORS, loadErrorOf } from "../src/load-errors.mjs";
+import { LOAD_ERRORS, loadErrorOf } from "../src/agent/load-errors.mjs";
 
 describe("loadErrorOf", () => {
   test("Firefox's error pages give their e= code", () => {

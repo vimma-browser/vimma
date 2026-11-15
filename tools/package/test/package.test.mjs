@@ -3,7 +3,7 @@ import {
   PKGBUILD_INSTALL_COMMAND as CORE_PKGBUILD_INSTALL_COMMAND,
   installTypeFrom,
   updateSteps,
-} from "../../../packages/vimma-core/src/updates.mjs";
+} from "../../../packages/vimma-core/src/updates/updates.mjs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -48,6 +48,7 @@ import {
   sha256sums,
   srcinfo,
 } from "../package.mjs";
+import { defined } from "../../test/defined.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 
 const BRAND_DIR = fileURLToPath(new URL("../../../configs/branding/vimma/", import.meta.url));
@@ -62,7 +63,10 @@ const REPO = "vimma-browser/vimma";
 const DOCS = {
   "README.md": new URL("../../../README.md", import.meta.url),
   "docs/guide.md": new URL("../../../docs/guide.md", import.meta.url),
-  "docs/runbook.md": new URL("../../../docs/runbook.md", import.meta.url),
+  "docs/runbook/ci-release-packages.md": new URL(
+    "../../../docs/runbook/ci-release-packages.md",
+    import.meta.url,
+  ),
   "docs/specs/m6-packaging.md": new URL("../../../docs/specs/m6-packaging.md", import.meta.url),
   "docs/specs/m6a-updater.md": new URL("../../../docs/specs/m6a-updater.md", import.meta.url),
   ".github/workflows/aur.yml": new URL("../../../.github/workflows/aur.yml", import.meta.url),
@@ -642,6 +646,7 @@ describe("PKGBUILD and .SRCINFO", () => {
       detailsUrl: "https://github.com/vimma-browser/vimma/releases/tag/v0.3.1",
       urgent: false,
       advisories: [],
+      assets: {},
     };
     const where = { installDir: "/opt/vimma", appImage: null };
     expect(updateSteps("pkgbuild-release", offer, where).commands).toEqual([
@@ -775,7 +780,8 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     const dirs = ["vimma-tarball-", "vimma-tool-", "vimma-out-", "vimma-rt-", "vimma-work-"].map(
       (prefix) => mkdtempSync(join(tmpdir(), prefix)),
     );
-    const [tarDir, toolDir, outDir, rtDir, work] = /** @type {string[]} */ (dirs);
+    const [tarDir, toolDir, outDir, rtDir, work] =
+      /** @type {[string, string, string, string, string]} */ (dirs);
     tarball = fakeMachTarball({}, tarDir);
     ({ ctl, ctlLicenses } = fakeCtl(toolDir));
     tool = fakeAppimagetool(toolDir);
@@ -918,7 +924,7 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     expect(notes).toContain("`brew upgrade --cask vimma`");
     expect(notes).toContain("`vimma-0.1.0-macos-aarch64.dmg`");
     expect(notes).toContain(`https://github.com/${REPO}/blob/main/docs/guide.md#updates`);
-    expect(readFileSync(DOCS["docs/guide.md"], "utf8")).toMatch(/^## Updates$/m);
+    expect(readFileSync(defined(DOCS["docs/guide.md"]), "utf8")).toMatch(/^## Updates$/m);
   });
 
   it("runs appimagetool with the pinned runtime, no AppStream and ARCH=x86_64", () => {
@@ -1055,6 +1061,7 @@ describe("packageRelease on a fake ./mach package tarball", () => {
       detailsUrl: "https://github.com/vimma-browser/vimma/releases/tag/v0.3.1",
       urgent: false,
       advisories: [],
+      assets: {},
     };
     const read = (/** @type {string} */ root) =>
       readFileSync(join(root, "usr/lib/vimma/is-packaged-app"), "utf8");
@@ -1370,12 +1377,12 @@ describe("cosign identity", () => {
   });
 
   it.each([
-    "docs/runbook.md",
+    "docs/runbook/ci-release-packages.md",
     "docs/guide.md",
     ".github/workflows/aur.yml",
     ".github/workflows/homebrew.yml",
   ])("is the regexp %s tells users to verify with", (path) => {
-    const text = readFileSync(DOCS[path], "utf8");
+    const text = readFileSync(defined(DOCS[path], path), "utf8");
     expect(text).toContain(`--certificate-identity-regexp '${IDENTITY_REGEXP}'`);
     expect(text).toContain("--certificate-oidc-issuer https://token.actions.githubusercontent.com");
   });
@@ -1383,7 +1390,7 @@ describe("cosign identity", () => {
 
 describe("the documented Arch Linux command", () => {
   /** @param {string} path relative to the repository root */
-  const doc = (path) => readFileSync(DOCS[path], "utf8");
+  const doc = (path) => readFileSync(defined(DOCS[path], path), "utf8");
 
   it.each([
     "README.md",

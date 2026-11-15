@@ -33,7 +33,7 @@ const { AgentKeys } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/agent/AgentKeys.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 const { McpHost } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/mcp-ops.mjs");
 const { sinon } = ChromeUtils.importESModule("resource://testing-common/Sinon.sys.mjs");
@@ -67,20 +67,62 @@ const PAGE_TEXT = "framework for serializing";
 const CONFIG_PATH_PREF = "vimma.config.path";
 const DAY = 86_400_000;
 
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+/**
+ * `[agent]` as config.toml resolves it with only `over` set: AGENT_DEFAULTS' budgets, no default
+ * provider, local_only off and no keep_days or keep_results (the product reads each of these
+ * with `??`, so a config that leaves them out works the same).
+ * @param {Partial<AgentConfig>} over
+ * @returns {AgentConfig}
+ */
+const agentConfig = (over) => ({
+  ...AGENT_DEFAULTS,
+  default: null,
+  localOnly: false,
+  keepDays: null,
+  keepResults: null,
+  providers: [],
+  ...over,
+});
+
 /** @param {() => boolean | Promise<boolean>} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 const $ = (/** @type {string} */ id) => document.getElementById(id);
-const box = () => $("vimma-agent-chat");
-const isOpen = () => !!box() && !box().hidden;
+/** Whether the element with `id` is there and shown. */
+const shown = (/** @type {string} */ id) => {
+  const el = $(id);
+  return !!el && !el.hidden;
+};
+/** The chat window, once it has been made. */
+const box = () => found($("vimma-agent-chat"));
+const isOpen = () => shown("vimma-agent-chat");
 const input = () => /** @type {HTMLTextAreaElement} */ ($("vimma-agent-chat-input"));
 const log = () => $("vimma-agent-chat-log");
 const logText = () => log()?.textContent ?? "";
 const rows = () => [...(log()?.querySelectorAll(".vimma-agent-chat-row") ?? [])];
-const chat = () => VimmaHost._state(window).agentChat;
+/** The window's chat: VimmaHost has started this window. */
+const chat = () => found(VimmaHost._state(window)).agentChat;
+/** The open conversation's id: the window is on one whenever this is read. */
+const openId = () => /** @type {number} */ (chat().conversation);
+/** The prompt line's text: it is open whenever this is read. */
+const renameText = () => found($("vimma-rename")).textContent;
 const agentTabs = () =>
-  gBrowser.tabs.filter(
-    (t) => t.userContextId === /** @type {any} */ (WorkspaceStore.agent).userContextId,
-  );
+  gBrowser.tabs.filter((t) => t.userContextId === found(WorkspaceStore.agent).userContextId);
+
+/**
+ * A stored conversation's record, decrypted: its transcript's entries and its provider.
+ * @typedef {{ entries: { kind: string, text: string }[], provider: AgentProviderConfig }}
+ *   StoredRecord
+ */
 
 /** The conversation files there are. */
 async function storedFiles() {
@@ -142,11 +184,12 @@ async function tidy() {
   AgentGate.revoke();
   for (const release of held.values()) release();
   held.clear();
-  const ww = WindowWorkspaces.get(window);
-  ww.switchTo({ id: ww.model.workspaces.find((/** @type {any} */ w) => w.name === "main")?.id });
+  // Every window of these tests has its workspaces, main among them.
+  const ww = /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
+  ww.switchTo({ id: found(ww.model.workspaces.find((w) => w.name === "main")).id });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+  McpHost.configureAgent(agentConfig({ default: "scripted", providers: [PROVIDER] }));
   requests.length = 0;
 }
 
@@ -160,7 +203,7 @@ add_setup(async () => {
   OSKeyStoreTestUtils.setup();
   registerCleanupFunction(() => OSKeyStoreTestUtils.cleanup());
   const saved = McpHost.agentConfig;
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+  McpHost.configureAgent(agentConfig({ default: "scripted", providers: [PROVIDER] }));
   registerCleanupFunction(() => McpHost.configureAgent(saved));
 });
 
@@ -183,7 +226,7 @@ add_task(async function test_a_new_window_reads_no_stored_conversation() {
 
 addTidyTask(async function test_stored_file_is_encrypted_and_holds_no_tool_output() {
   const c = await ranTask();
-  const sent = requests.flatMap((r) => r.body.messages).map((m) => String(m.content));
+  const sent = requests.flatMap((r) => found(r.body).messages).map((m) => String(m.content));
   Assert.ok(
     sent.some((t) => t.includes(PAGE_TEXT)),
     "the model was sent the page's text while the task ran",
@@ -198,9 +241,10 @@ addTidyTask(async function test_stored_file_is_encrypted_and_holds_no_tool_outpu
   Assert.ok(!cipher.includes("Serde") && !cipher.includes("SCRIPT"), "nothing in clear");
   Assert.equal((await IOUtils.stat(files[0])).permissions, 0o600, "readable by the user only");
   Assert.equal((await IOUtils.stat(AgentStore.dir)).permissions, 0o700, "in a 0700 folder");
+  /** @type {StoredRecord} */
   const record = JSON.parse(plain);
   Assert.deepEqual(
-    record.entries.map((/** @type {any} */ e) => e.kind),
+    record.entries.map((e) => e.kind),
     ["user", "agent", "summary"],
     "the message, the reply and Vimma's summary",
   );
@@ -252,7 +296,7 @@ addTidyTask(async function test_reopened_conversation_starts_with_a_clean_contex
   Assert.equal(c.title, before.title, "with its title");
   Assert.deepEqual(c.provider, before.provider, "and its provider and model");
   Assert.ok(!c.granted, "and no grant: a restart ends every connection");
-  const entries = AgentChat.transcript(c.id).entries.map((/** @type {any} */ e) => e.text);
+  const entries = AgentChat.transcript(c.id).entries.map((e) => e.text);
   Assert.deepEqual(
     entries,
     [READ_TASK, "It is about Serde.", "task done · 2 steps · 330 tokens · hosts: example.com"],
@@ -261,10 +305,10 @@ addTidyTask(async function test_reopened_conversation_starts_with_a_clean_contex
   requests.length = 0;
   await AgentChat.send(c.id, script([{ reply: "Again." }]));
   await AgentChat.done(c.id);
-  const messages = requests[0].body.messages.map((/** @type {any} */ m) => m);
+  const messages = found(requests[0].body).messages.map((m) => m);
   const text = JSON.stringify(messages);
   Assert.ok(!text.includes(PAGE_TEXT), "the model is not sent the pages read before");
-  Assert.ok(!messages.some((/** @type {any} */ m) => m.role === "tool"), "nor any tool result");
+  Assert.ok(!messages.some((m) => m.role === "tool"), "nor any tool result");
   Assert.ok(text.includes("It is about Serde."), "but the reply");
   // The scripted server reads the body as bytes, so only the ASCII around the dots is compared.
   Assert.ok(/\(Vimma: an earlier task: task done \S+ 2 steps/.test(text), "and Vimma's summary");
@@ -275,14 +319,12 @@ addTidyTask(async function test_clear_context() {
   requests.length = 0;
   Assert.equal(AgentChat.clear(c.id), null, "cleared");
   Assert.ok(
-    AgentChat.transcript(c.id).entries.some((/** @type {any} */ e) =>
-      e.text.startsWith("context cleared"),
-    ),
+    AgentChat.transcript(c.id).entries.some((e) => e.text.startsWith("context cleared")),
     "the transcript marks the place",
   );
   await AgentChat.send(c.id, script([{ reply: "Fresh." }]));
   await AgentChat.done(c.id);
-  const text = JSON.stringify(requests[0].body.messages);
+  const text = JSON.stringify(found(requests[0].body).messages);
   Assert.ok(!text.includes(PAGE_TEXT), "no page read before the clear");
   Assert.ok(text.includes("It is about Serde.") && text.includes("an earlier task"), "kept");
   await AgentChat.flush();
@@ -299,9 +341,9 @@ addTidyTask(async function test_delete_and_forget_all_remove_files() {
   runCommand("agent list");
   await until(() => isOpen() && rows().length === 2, "the list shows both");
   EventUtils.synthesizeKey("d");
-  await until(() => !!$("vimma-rename") && !$("vimma-rename").hidden, "it asks first");
+  await until(() => shown("vimma-rename"), "it asks first");
   Assert.ok(
-    $("vimma-rename").textContent.includes(`Delete "${two.title}"? y/N`),
+    renameText().includes(`Delete "${two.title}"? y/N`),
     "naming the newest, which is first",
   );
   EventUtils.synthesizeKey("y");
@@ -334,7 +376,7 @@ addTidyTask(async function test_a_deleted_conversations_task_writes_nothing_afte
   const done = AgentChat.done(c.id).catch(() => {});
   await AgentChat.delete(c.id);
   Assert.deepEqual(await storedFiles(), [], "d removed the file");
-  held.get(task)();
+  found(held.get(task))();
   held.delete(task);
   await done;
   await TestUtils.waitForTick();
@@ -353,7 +395,7 @@ addTidyTask(async function test_only_the_final_reply_is_stored_and_temp_files_go
   await AgentChat.flush();
   const { plain } = await decrypted(AgentChat.get(c.id).uid);
   Assert.deepEqual(
-    JSON.parse(plain).entries.map((/** @type {any} */ e) => e.kind),
+    /** @type {StoredRecord} */ (JSON.parse(plain)).entries.map((e) => e.kind),
     ["user", "agent", "summary"],
     "the message, the final reply and the summary",
   );
@@ -369,20 +411,12 @@ addTidyTask(async function test_keep_days() {
   const recent = await ranTask();
   const oldFile = PathUtils.join(AgentStore.dir, `${old.uid}.conv`);
   await IOUtils.setModificationTime(oldFile, Date.now() - 31 * DAY);
-  McpHost.configureAgent({
-    ...AGENT_DEFAULTS,
-    default: "scripted",
-    providers: [PROVIDER],
-    keepDays: null,
-  });
+  McpHost.configureAgent(
+    agentConfig({ default: "scripted", providers: [PROVIDER], keepDays: null }),
+  );
   await AgentChat.prune();
   Assert.equal((await storedFiles()).length, 2, "without keep_days nothing is deleted");
-  McpHost.configureAgent({
-    ...AGENT_DEFAULTS,
-    default: "scripted",
-    providers: [PROVIDER],
-    keepDays: 30,
-  });
+  McpHost.configureAgent(agentConfig({ default: "scripted", providers: [PROVIDER], keepDays: 30 }));
   await AgentChat.prune();
   const left = await storedFiles();
   Assert.deepEqual(
@@ -391,7 +425,7 @@ addTidyTask(async function test_keep_days() {
     "keep_days deleted the conversation unused for longer",
   );
   Assert.deepEqual(
-    AgentChat.list().map((/** @type {any} */ c) => c.uid),
+    AgentChat.list().map((c) => c.uid),
     [recent.uid],
     "from memory too",
   );
@@ -415,7 +449,7 @@ addTidyTask(async function test_list_shows_stored_conversations_newest_first() {
   Assert.ok(text[0].includes("scripted · scripted · just now"), "provider, model, last use");
   // `/` filters by title.
   EventUtils.synthesizeKey("/");
-  await until(() => !!$("vimma-rename") && !$("vimma-rename").hidden, "it asks the filter");
+  await until(() => shown("vimma-rename"), "it asks the filter");
   EventUtils.sendString("week");
   EventUtils.synthesizeKey("KEY_Enter");
   await until(() => rows().length === 1, "one row matches");
@@ -424,7 +458,7 @@ addTidyTask(async function test_list_shows_stored_conversations_newest_first() {
   await until(() => chat().view === "chat", "Enter opens it");
   Assert.ok(logText().includes("ok"), "with its transcript");
   Assert.equal(
-    AgentChat.get(chat().conversation).title,
+    AgentChat.get(openId()).title,
     "Weekly groceries",
     "the window is on that conversation",
   );
@@ -448,16 +482,16 @@ addTidyTask(async function test_setup_writes_the_provider_and_default_to_config(
     const at = rows().findIndex((r) => r.textContent.includes("add: OpenAI-compatible endpoint"));
     for (let i = 0; i < at; i++) EventUtils.synthesizeKey("j");
     EventUtils.synthesizeKey("KEY_Enter");
-    await until(() => !!$("vimma-rename") && !$("vimma-rename").hidden, "it asks the endpoint");
+    await until(() => shown("vimma-rename"), "it asks the endpoint");
     EventUtils.sendString(`http://127.0.0.1:${PORT}/v1`);
     EventUtils.synthesizeKey("KEY_Enter");
-    await until(() => /model/.test($("vimma-rename").textContent), "then the model");
+    await until(() => /model/.test(renameText()), "then the model");
     EventUtils.sendString("scripted");
     EventUtils.synthesizeKey("KEY_Enter");
-    await until(
-      () => !!$("vimma-agent-chat-key") && !$("vimma-agent-chat-key").parentElement.hidden,
-      "then the key",
-    );
+    await until(() => {
+      const key = $("vimma-agent-chat-key");
+      return !!key && !found(key.parentElement).hidden;
+    }, "then the key");
     EventUtils.sendString("sk-test-0000-9f3a");
     EventUtils.synthesizeKey("KEY_Enter");
     await until(
@@ -468,7 +502,7 @@ addTidyTask(async function test_setup_writes_the_provider_and_default_to_config(
     Assert.ok(text.startsWith("schema = 2\n# mine\n[mcp]\nenabled = false\n"), "lines kept");
     Assert.ok(!text.includes("sk-test"), "no key in config.toml");
     Assert.deepEqual(
-      McpHost.agentConfig.providers,
+      McpHost.agentConfig?.providers,
       [
         {
           name,
@@ -487,7 +521,8 @@ addTidyTask(async function test_setup_writes_the_provider_and_default_to_config(
     // After a restart a new conversation gets it.
     chat().close();
     await AgentChat.forgetAll();
-    const fresh = chat().create();
+    // The provider is set up, so create() makes a conversation.
+    const fresh = /** @type {number} */ (chat().create());
     Assert.equal(AgentChat.get(fresh).provider.name, name, "a new conversation uses it");
   } finally {
     await AgentKeys.delete(name);
@@ -530,7 +565,7 @@ async function withConfig(/** @type {(path: string) => Promise<void>} */ task) {
   await SpecialPowers.pushPrefEnv({ set: [[CONFIG_PATH_PREF, path]] });
   try {
     await ConfigHost.reload();
-    McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+    McpHost.configureAgent(agentConfig({ default: "scripted", providers: [PROVIDER] }));
     await task(path);
   } finally {
     await SpecialPowers.popPrefEnv();
@@ -558,15 +593,15 @@ addTidyTask(async function test_the_picker_switches_the_model_for_this_session_o
     Assert.ok(header().startsWith("scripted · scripted-2 · "), `the header: ${header()}`);
     EventUtils.sendString(script([{ reply: "on the second model" }]));
     EventUtils.synthesizeKey("KEY_Enter");
-    const id = chat().conversation;
+    const id = openId();
     await until(() => AgentChat.get(id).last !== null, "the task ended");
-    Assert.equal(requests.at(-1).body.model, "scripted-2", "the task went to the chosen model");
+    Assert.equal(requests.at(-1)?.body?.model, "scripted-2", "the task went to the chosen model");
     Assert.equal(await IOUtils.readUTF8(path), "schema = 2\n# mine\n", "config.toml untouched");
-    Assert.equal(McpHost.agentConfig.default, "scripted", "[agent] default unchanged");
+    Assert.equal(McpHost.agentConfig?.default, "scripted", "[agent] default unchanged");
     chat().newConversation();
     await until(() => chat().conversation !== id, "a new conversation");
     Assert.equal(
-      AgentChat.get(chat().conversation).provider.model,
+      AgentChat.get(openId()).provider.model,
       "scripted-2",
       "a new conversation of this session uses the choice",
     );
@@ -575,7 +610,7 @@ addTidyTask(async function test_the_picker_switches_the_model_for_this_session_o
     chat().close();
     AgentChat.reset();
     await AgentChat.restore();
-    const back = AgentChat.list().find((/** @type {any} */ c) => c.uid === uid);
+    const back = AgentChat.list().find((c) => c.uid === uid);
     Assert.equal(back?.provider.model, "scripted-2", "after a restart the conversation keeps it");
     Assert.equal(
       AgentChat.get(/** @type {number} */ (chat().create())).provider.model,
@@ -597,14 +632,12 @@ addTidyTask(async function test_D_in_the_picker_makes_the_model_the_default() {
     const text = await IOUtils.readUTF8(path);
     Assert.ok(text.startsWith("schema = 2\n# mine\n"), "the file's lines kept");
     Assert.ok(text.includes('model = "scripted-2"'), `the model written: ${text}`);
-    await until(
-      () =>
-        McpHost.agentConfig.default ===
-        McpHost.agentConfig.providers.find((/** @type {any} */ p) => p.model === "scripted-2")
-          ?.name,
-      "[agent] default names it",
-    );
-    Assert.equal(AgentChat.get(chat().conversation).provider.model, "scripted-2", "and in use");
+    await until(() => {
+      // Read back from config.toml, which withConfig's test has.
+      const config = found(McpHost.agentConfig);
+      return config.default === config.providers.find((p) => p.model === "scripted-2")?.name;
+    }, "[agent] default names it");
+    Assert.equal(AgentChat.get(openId()).provider.model, "scripted-2", "and in use");
   });
 });
 
@@ -617,7 +650,7 @@ addTidyTask(async function test_a_send_while_a_task_starts_starts_no_second_task
     AgentChat.send(c.id, script([{ reply: "two" }])),
   ]);
   Assert.deepEqual(
-    both.map((r) => ("started" in r ? "started" : r.refused)),
+    both.map((r) => ("started" in r ? "started" : "refused" in r ? r.refused : undefined)),
     ["started", "a task is starting; s stops it"],
     "the second send is refused",
   );
@@ -639,19 +672,21 @@ addTidyTask(async function test_a_send_while_a_task_starts_starts_no_second_task
 // The session's choice is dropped when [agent]'s providers change, so a provider the user
 // removed or changed in config.toml is not used for new conversations.
 addTidyTask(async function test_the_session_choice_ends_when_the_providers_change() {
+  /** @type {AgentProviderConfig} */
   const other = { ...PROVIDER, model: "scripted-2" };
   AgentChat.choose(other);
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+  McpHost.configureAgent(agentConfig({ default: "scripted", providers: [PROVIDER] }));
   Assert.equal(AgentChat.chosen, other, "a read with the same providers keeps it");
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [other] });
+  McpHost.configureAgent(agentConfig({ default: "scripted", providers: [other] }));
   Assert.equal(AgentChat.chosen, null, "changed providers drop it");
 });
 
 // Behaviour 7: a conversation whose model its server no longer lists asks for another before
 // the task starts, instead of failing in its middle.
 addTidyTask(async function test_a_model_no_longer_there_asks_for_another() {
+  /** @type {AgentProviderConfig} */
   const gone = { ...PROVIDER, name: "gone", model: "removed-model" };
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "gone", providers: [gone, PROVIDER] });
+  McpHost.configureAgent(agentConfig({ default: "gone", providers: [gone, PROVIDER] }));
   await openPage();
   runCommand("agent");
   await until(() => document.activeElement === input(), "the window is open");
@@ -673,7 +708,7 @@ addTidyTask(async function test_a_model_no_longer_there_asks_for_another() {
   await until(() => document.activeElement === input(), "back in the input");
   Assert.equal(input().value, task, "with the task kept");
   EventUtils.synthesizeKey("KEY_Enter");
-  const id = chat().conversation;
+  const id = openId();
   await until(() => AgentChat.get(id).last !== null, "the task ran on the other model");
-  Assert.equal(AgentChat.get(id).last.outcome, "done");
+  Assert.equal(AgentChat.get(id).last?.outcome, "done");
 });

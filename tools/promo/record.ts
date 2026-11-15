@@ -36,7 +36,6 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
   renameSync,
   rmSync,
@@ -47,9 +46,9 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { Ctl, findVimmaCtl } from "../e2e/driver.mjs";
-import { findBuild, launch, quitBrowser, startXvfb } from "../e2e/launcher.mjs";
-import { startPageServer } from "../e2e/pages.mjs";
+import { Ctl, findVimmaCtl } from "../e2e/driver.ts";
+import { findBuild, launch, quitBrowser, startXvfb } from "../e2e/launcher.ts";
+import { startPageServer } from "../e2e/pages.ts";
 import { startShop } from "../agent-bench/shop.ts";
 import type { ScriptTurn } from "../agent-bench/scripted.ts";
 import {
@@ -60,7 +59,8 @@ import {
   startModelServer,
   textKeys,
 } from "./agent.ts";
-import { READ_PATH_PREF, devPrefs } from "../start.mjs";
+import { READ_PATH_PREF, devPrefs } from "../start.ts";
+import { flatCore } from "../sync-core.mjs";
 import {
   HOSTS,
   KeyTrack,
@@ -117,16 +117,22 @@ function writeTheme(dir: string, name: string) {
 
 /**
  * Serve vimma-core's `name`.mjs as `name`.js in `dir`, with the modules it imports, for
- * probe.js (fixtures/probe.js imports hints.js).
+ * probe.js (fixtures/probe.js imports hints.js). The modules come from sync-core's flat copy, in
+ * which each imports the others as `./name.mjs`, whichever folder of the package holds it.
  */
-function serveCore(dir: string, name: string, done: Set<string> = new Set()) {
+function serveCore(
+  dir: string,
+  name: string,
+  done: Set<string> = new Set(),
+  core: Map<string, string> = flatCore(join(REPO, "packages/vimma-core/src")),
+) {
   if (done.has(name)) return;
   done.add(name);
-  const { text, imports } = servedModule(
-    readFileSync(join(REPO, `packages/vimma-core/src/${name}.mjs`), "utf8"),
-  );
+  const source = core.get(`${name}.mjs`);
+  if (source === undefined) throw new Error(`vimma-core has no module ${name}.mjs`);
+  const { text, imports } = servedModule(source);
   writeFileSync(join(dir, `${name}.js`), text);
-  for (const dep of imports) serveCore(dir, dep, done);
+  for (const dep of imports) serveCore(dir, dep, done, core);
 }
 
 /** Replace config.toml whole (write, then rename), so Vimma's poll never reads half a file. */
@@ -178,7 +184,7 @@ async function promoLook(
 }
 
 /**
- * A local build's chrome files lead into its checkout's src/ (tools/start.mjs), which the
+ * A local build's chrome files lead into its checkout's src/ (tools/start.ts), which the
  * content sandbox must be allowed to read. The harness allows this checkout's; a build from
  * another checkout (--build ../vimma/engine/...) needs that one's too, or the content actors
  * (hints, scrolling) fail to load.

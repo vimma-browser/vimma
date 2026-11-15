@@ -35,7 +35,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { REPO } from "../repo.mjs";
-import { PKGBUILD_INSTALL_COMMAND } from "../../packages/vimma-core/src/updates.mjs";
+import { PKGBUILD_INSTALL_COMMAND } from "../../packages/vimma-core/src/updates/updates.mjs";
 import { addCtlComponent } from "./sbom.mjs";
 
 /** SemVer with an optional pre-release, as version-files.mjs accepts (plan §7). */
@@ -182,7 +182,7 @@ function aurVersion(version) {
  * cosign keyless identity of a genuine release signature: release.yml of this repo, run from
  * main. release.yml starts only by workflow_dispatch on main (release-please.yml's release-build
  * job, or a manual re-run), and v0.1.1, the first signed release, was signed the same way, so no
- * other ref is accepted. docs/runbook.md, docs/guide.md and aur.yml use it.
+ * other ref is accepted. docs/runbook/, docs/guide.md and aur.yml use it.
  */
 export const IDENTITY_REGEXP =
   "^https://github\\.com/vimma-browser/vimma/\\.github/workflows/release\\.yml@refs/heads/main$";
@@ -897,8 +897,11 @@ function installedKiB(dir) {
 }
 
 /**
+ * `ctl` and `ctlLicenses` are optional in the type only: packageRelease checks both itself and
+ * throws when either is missing, so a caller that lost one is refused rather than shipping a
+ * release without the client.
  * @typedef {{
- *   tarball: string, ctl: string, ctlLicenses: string, outDir: string, config: SurferConfig,
+ *   tarball: string, ctl?: string, ctlLicenses?: string, outDir: string, config: SurferConfig,
  *   maintainer: string, repo: string, brandDir: string, tag?: string, sbom?: string,
  *   ctlComponent?: string, appimagetool?: string,
  *   runtime?: string, buildDeb?: boolean, buildRpm?: boolean, workDir?: string,

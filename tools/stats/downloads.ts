@@ -4,11 +4,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Release download counts over time (#647, docs/runbook.md "Release download counts"). GitHub
- * keeps one running `download_count` per release asset and no history, so a jump cannot be told
- * apart from our own automation fetching an asset. downloads.yml records every asset's count once
- * a day into `downloads.csv` on the `stats` branch; this script takes the snapshot, adds it to
- * the history and summarises the daily changes.
+ * Release download counts over time (#647, docs/runbook/ci-release-download-counts-downloads-yml.md
+ * "Release download counts"). GitHub keeps one running `download_count` per release asset and no
+ * history, so a jump cannot be told apart from our own automation fetching an asset. downloads.yml
+ * records every asset's count once a day into `downloads.csv` on the `stats` branch; this script
+ * takes the snapshot, adds it to the history and summarises the daily changes.
  *
  *   node tools/stats/downloads.ts collect --repo <owner/name> [--date YYYY-MM-DD] > <day.csv>
  *       today's (UTC) count of every asset of every published release; GITHUB_TOKEN or GH_TOKEN

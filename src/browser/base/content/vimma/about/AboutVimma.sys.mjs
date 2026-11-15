@@ -29,7 +29,7 @@ import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceRouter } from "../workspaces/WorkspaceRouter.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
-import { KeyLog } from "./key-log.mjs";
+import { KeyLog } from "../host/key-log.mjs";
 
 /**
  * @typedef {"AppConstants" | "BrowserWindowTracker" | "PrivateBrowsingUtils"} LazyName
@@ -52,7 +52,7 @@ const CONTRACT = "@mozilla.org/network/protocol/about;1?what=vimma";
  * @property {{ vimma: string, firefox: string, buildId: string, channel: string }} version
  * @property {{ patches: { path: string, hunks: number }[], hunks: number } | null} patches
  * @property {{ window: number, current: boolean, mode: string }[]} modes
- * @property {import("./key-log.mjs").KeyEvent[]} keys
+ * @property {import("../host/key-log.mjs").KeyEvent[]} keys
  * @property {{ path: string, file: "pending" | "missing" | "read", schema: number | null,
  *   errors: string[], warnings: string[] }} config  `warnings`: what a loaded file left out
  * @property {{ name: string, group: string, bindings: string[], overridden: boolean }[]} bindings

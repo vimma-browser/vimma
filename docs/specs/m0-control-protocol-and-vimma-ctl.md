@@ -261,6 +261,83 @@ false` in place of `hidden`. `panes` keeps its meaning: the shown split, else th
   downloads or replaces the AppImage, `staged` once it applies at the next start). Added without
   a version bump; vimma-ctl accepts it when present and checks every field's type and the two
   lists.
+- `notice`, `prompt`, `chat` and `agent` (since #981, for the e2e harness's waits): what the
+  window shows for a moment, so that a script waits for the screen it photographs rather than for
+  a time. `notice`: `true` while a notice (the toast) is shown. `prompt`: `true` while the prompt
+  line (a y/N question, a rename or a line of text, such as a model's name) is open. `chat`:
+  `null` while the agent chat window is closed, else
+  `{ "view": "models", "rows": 1, "entries": 0, "question": { "armed": true } | null }`.
+  `view` is one of `chat` (the transcript), `models` (the model picker and setup's list), `list`
+  (the conversations) and `key` (the key field); `rows` and `entries` are how many list rows and
+  transcript entries it draws, counted from the window as drawn; `question` is the question
+  waiting in its slot, `armed` once its keys count and its hint shows. `agent`: the status bar's
+  agent segment ([vimma-mcp](vimma-mcp.md), decision 24) as the bar last drew it, `null` while
+  none is drawn, else `{ "waiting": 1, "ran": false }`: how many questions it shows waiting
+  (`◇ agent 1?`) and whether it shows the dot of a step that just ran (`◇ agent ·`). Flags and
+  counts only, never text (security.md S9); in a private window `notice`, `prompt` and `agent`
+  are kept, because they name nothing, and `chat` is `null`, because the chat window never opens
+  there. Added without a version bump; vimma-ctl passes them through, and vimma-core's validator
+  checks their types and refuses any other field in `chat` and `agent`. `chat` and `agent` exist
+  for test harnesses and scripts that wait on what is on screen: they may change shape without a
+  protocol bump, so a script matches only the keys it needs.
+- `agent.armed` and `downloads` (since #1006, for the same waits). `agent.armed`: `true` while
+  the agent question line at the window's foot ([vimma-mcp](vimma-mcp.md), decision 13) is open
+  and shows its keys hint, which it draws once armed (its keys count); `false` otherwise, and
+  for a question in the chat window's slot, which `chat.question.armed` reports. Read from the
+  hint as drawn. It is reported only while the status bar draws the agent segment: `agent` is
+  `null` otherwise (as on a bar too narrow for it), so a wait on `agent.armed` then times out. `downloads`: which `↓` segment the status bar draws
+  ([downloads](downloads.md), decision 9), `null` while none is drawn, else one word of
+  `progress` (downloads under way: `↓ 42%`, `↓ 3`), `paused`, `done`, `failed` or `blocked`;
+  never the segment's text, a file's name, size or site. It is `null` in a private window,
+  because a private window's downloads are part of its browsing, withheld as its URLs and titles
+  are. Added without a version bump; vimma-core's validator checks `armed`'s type and refuses
+  any other word in `downloads`, or any word at all in a private window.
+- `grep` and `urlbar` (since #1006, for the same waits). `grep`: `null` while live grep
+  ([live-grep](live-grep.md)) is closed, else `{ "busy": true | false }`: `true` while its search
+  has not heard from every tab (the rows on screen may still be an earlier query's) or the
+  selected result's preview is asked for and not yet drawn. A key that leaves a query to search
+  turns it `true` as the key is handled, so a read right after `send-keys` never sees the
+  previous query's `false`; a key that empties the query leaves nothing to search, and it is
+  `false` at once. `urlbar`: `null` while the address bar's suggestion list is closed, else
+  `{ "settled": true | false }`: `true` once no query of the field is under way and the list
+  draws the results of the text last searched. The queries are followed through Firefox's own
+  query notifications from the window's start, or from the first focus or `state` read when the
+  field did not exist yet; a query begun before that counts as under way until it ends. One
+  flag each, never the
+  query, the typed text, a count of matches or results, or a row; both are `null` in a private
+  window, because its searches and typing are part of its browsing. Added without a version
+  bump; vimma-core's validator checks each flag's type, refuses any other field in either, and
+  refuses either object in a private window.
+- `pdf`, and a jump in `grep` (since #1006, for the same waits). `grep` also covers a jump from
+  live grep or its list (Enter on a result, `]q`, `[q`): from the key until the result's frame
+  has selected and scrolled to the match, or failed to, it is `{ "busy": true }`, also after the
+  picker has closed, and `null` once the jump is over; a jump to another window is reported in
+  the window it started from. `pdf`: `null` unless the window's selected tab shows the PDF viewer
+  ([pdf-mode](pdf-mode.md)), else `{ "drawn": true | false }`: `true` once the viewer's last
+  report says every page in its view has finished drawing, that report came after every
+  operation Vimma sent the viewer (a page, zoom, layout or outline key; the operation's key
+  turns it `false` as the key is handled), and it was made at the size the tab has now, so a
+  resize under way (the outline opening beside the document) reads as not drawn until the
+  viewer has drawn at the new size. (Since changed:
+  [#1040](https://github.com/vimma-browser/vimma/issues/1040), the report must also have been
+  made at the tab's present full zoom. The viewer reports its browsing context's `fullZoom`, and
+  the parent takes the report as drawn only when it equals the tab's, exactly: both read the same
+  synced value. On each zoom change the parent marks the kept report not drawn and asks the
+  viewer for a new one, since a zoom that keeps the page's app units per device pixel brings no
+  resize and no report of the viewer's own; so a default, per-site or extension zoom just
+  applied, or a zoom and back, reads as not drawn until the viewer has reported at it. The
+  viewer counts no page as drawn until its resize listener has seen its present CSS size, since
+  pdf.js drops the pages drawn at the old zoom only in that refresh tick. A change of the
+  desktop's text scale is not compared: the report from before one can read as drawn until the
+  viewer's next report, which comes once the content process has the new text scale, one
+  refresh tick and up to 100 ms later.) Scroll keys (`j`, `k` and the like, and the page turns
+  they make in presentation mode) are not operations: right after one, `drawn` can still show the
+  report from before it, until the viewer reports the pages it starts drawing. The viewer reports
+  at most once per 100 ms (security.md section 20, V5), so `true` comes up to that long after the
+  drawing ends. One flag: never the page, the page count, the document's title or URL, or the
+  outline. It is `null` in a private window, because its documents are part of its browsing. Added
+  without a version bump; vimma-core's validator checks the flag's type, refuses any other field
+  in `pdf`, and refuses the object in a private window.
 
 **`open`.** `url` is an absolute URL whose scheme is `http`, `https`, `file` or `about`; anything
 else (notably `javascript:` and `data:`) is `invalid-args`. At most 65536 characters. `where`
@@ -310,7 +387,7 @@ Spec: [vimma-mcp](vimma-mcp.md) (decisions 2-4), ADR-019. Fixtures:
   `cancelled`; no other error has a `reason`. (Since changed: a `busy` denial for a used-up
   per-connection rate also carries `retryAfter`, the milliseconds until the next call is
   allowed, when the connection's vimma-ctl is at least as new as Vimma, and its message names
-  the limit; see [security.md](../security.md) M20 and M32.)
+  the limit; see [docs/security/12-agents-mcp.md](../security/12-agents-mcp.md) M20 and M32.)
 - **Agent commands** (role `agent` only; `agent-hello` must come first, and only once):
 
   | Command        | `args`                                                     | `result`                                                                         |
@@ -502,8 +579,8 @@ it was added.
 
 - `docs/guide.md`, "Scripting with vimma-ctl": the commands, the pref, exit codes; "Agents
   (MCP)" for protocol 2's agent side.
-- `docs/security.md` §1 holds the socket's rules to their tests; ADR-007, ADR-011 and
-  ADR-019 record the choices.
+- `docs/security/01-control-socket.md` §1 holds the socket's rules to their tests; ADR-007, ADR-011
+  and ADR-019 record the choices.
 - Each protocol change is a `CHANGELOG.md` line in the release that ships it.
 
 ## Delivery

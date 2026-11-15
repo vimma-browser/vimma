@@ -34,11 +34,11 @@ import {
   isSensitiveAutocomplete,
   labelAgentElements,
   parseAgentElement,
-} from "../src/agent-act.mjs";
-import { AGENT_LINKS } from "../src/agent-keys.mjs";
-import { parseHintReply } from "../src/hints.mjs";
-/** @import { AgentElementTarget } from "../src/agent-act.mjs" */
-/** @import { AgentElementInfo } from "../src/agent-element.mjs" */
+} from "../src/agent/agent-act.mjs";
+import { AGENT_LINKS } from "../src/agent/agent-keys.mjs";
+import { parseHintReply } from "../src/page/hints.mjs";
+/** @import { AgentElementTarget } from "../src/agent/agent-act.mjs" */
+/** @import { AgentElementInfo } from "../src/agent/agent-element.mjs" */
 
 const rect = { x: 10, y: 20, width: 30, height: 10 };
 /** @param {number} y @param {number} [x] */

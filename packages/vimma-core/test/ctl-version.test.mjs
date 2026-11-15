@@ -1,13 +1,13 @@
 // Spec: docs/specs/ship-vimma-ctl.md, behaviours 4-6: an agent connection names its vimma-ctl's
 // version, and a client older than Vimma gets a one-line notice, never a refusal.
 import { describe, expect, it } from "vitest";
-import { validateMessage } from "../src/control.mjs";
+import { validateMessage } from "../src/control/control.mjs";
 import {
   compareVersions,
   ctlIsCurrent,
   ctlVersionNotice,
   isCtlVersion,
-} from "../src/ctl-version.mjs";
+} from "../src/control/ctl-version.mjs";
 
 describe("compareVersions", () => {
   it("orders by major, minor and patch as numbers", () => {

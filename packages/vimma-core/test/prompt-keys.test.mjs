@@ -9,7 +9,7 @@ import {
   doorhangerKey,
   popupBarHint,
   popupBarKey,
-} from "../src/prompt-keys.mjs";
+} from "../src/keys/prompt-keys.mjs";
 
 /** An open, armed prompt, focus in the page (normal mode), no key sequence under way. */
 const base = { open: true, armed: true, inField: false, inPrompt: false, pending: false };

@@ -20,10 +20,10 @@ import {
   pruneGrepList,
   setGrepRows,
   stepGrepList,
-} from "../src/grep.mjs";
-import { BLOCK } from "../src/motions.mjs";
+} from "../src/ui/grep.mjs";
+import { BLOCK } from "../src/page/motions.mjs";
 
-/** @import { GrepList, GrepPickerState, GrepRow, GrepTab } from "../src/grep.mjs" */
+/** @import { GrepList, GrepPickerState, GrepRow, GrepTab } from "../src/ui/grep.mjs" */
 
 /** @param {string} q */
 const must = (q) => {
@@ -605,8 +605,8 @@ describe("grepPickerKey", () => {
  * @param {number} closedId
  * @param {string} title
  * @param {string} url
- * @param {Partial<import("../src/grep.mjs").GrepClosedEntry>} [extra]
- * @returns {import("../src/grep.mjs").GrepClosedEntry}
+ * @param {Partial<import("../src/ui/grep.mjs").GrepClosedEntry>} [extra]
+ * @returns {import("../src/ui/grep.mjs").GrepClosedEntry}
  */
 const closedTab = (closedId, title, url, extra = {}) => ({
   closedId,

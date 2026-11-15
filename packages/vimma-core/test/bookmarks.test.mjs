@@ -25,13 +25,13 @@ import {
   renderStart,
   resolveFolders,
   setBookmarksQuery,
-} from "../src/bookmarks.mjs";
-import { compileKeymap } from "../src/keymap.mjs";
-import { createDispatcher } from "../src/dispatcher.mjs";
-import { parseKey } from "../src/keys.mjs";
-import { parseCommandLine } from "../src/cmdline.mjs";
+} from "../src/ui/bookmarks.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
+import { createDispatcher } from "../src/keys/dispatcher.mjs";
+import { parseKey } from "../src/keys/keys.mjs";
+import { parseCommandLine } from "../src/keys/cmdline.mjs";
 
-/** @import { BookmarksState, Folder, PlacesItem } from "../src/bookmarks.mjs" */
+/** @import { BookmarksState, Folder, PlacesItem } from "../src/ui/bookmarks.mjs" */
 
 /** @param {string} guid @param {string} title @param {string} uri @returns {PlacesItem} */
 const bm = (guid, title, uri) => ({ guid, typeCode: 1, title, uri });
@@ -510,7 +510,7 @@ describe("renderStart", () => {
 describe("keymap and command line", () => {
   const keymap = compileKeymap();
   const run = (
-    /** @type {import("../src/modes.mjs").Mode} */ mode,
+    /** @type {import("../src/keys/modes.mjs").Mode} */ mode,
     /** @type {string[]} */ keys,
   ) => {
     const d = createDispatcher(keymap);

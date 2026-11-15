@@ -1,8 +1,9 @@
-// docs/specs/m6a-updater.md §6 ("Key ceremony"), decision 39, and docs/runbook.md step 5b: the
-// updater's certificates. The primary's private key cannot leave Cloud KMS, so its self-signed
-// certificate is made in two steps: tools/update/update-cert.mjs writes the to-be-signed part
-// and its SHA-384 DigestInfo, KMS signs that (raw PKCS#1), and the tool assembles and checks the
-// certificate. Here a key generated in the test stands in for KMS, signing exactly as it does.
+// docs/specs/m6a-updater.md §6 ("Key ceremony"), decision 39, and
+// docs/runbook/ci-update-keys-and-update-host.md step 5b: the updater's certificates. The primary's
+// private key cannot leave Cloud KMS, so its self-signed certificate is made in two steps:
+// tools/update/update-cert.mjs writes the to-be-signed part and its SHA-384 DigestInfo, KMS signs
+// that (raw PKCS#1), and the tool assembles and checks the certificate. Here a key generated in the
+// test stands in for KMS, signing exactly as it does.
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import {

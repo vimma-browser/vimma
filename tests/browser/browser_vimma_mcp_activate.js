@@ -25,7 +25,7 @@ const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
@@ -68,14 +68,19 @@ const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
-const ww = () => WindowWorkspaces.get(window);
-const activeName = () => ww().model.workspaces.find((w) => w.id === ww().model.active)?.name;
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
+const activeName = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === ww().model.active)?.name;
+const mainId = () =>
+  /** @type {string} */ (
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id
+  );
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
+/** @param {boolean} on */
 async function mcp(on) {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, on);
   await VimmaControl.settled();
@@ -126,7 +131,7 @@ async function agentClient(name = "example-agent") {
 /** The oldest waiting question, once there is one. */
 async function question() {
   await until(() => AgentGate.waiting.length > 0, "a question waits");
-  return AgentGate.waiting[0];
+  return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
 /** The list's elements by what they say. @param {any} c @param {any} tab */
@@ -147,7 +152,7 @@ async function labels(c, tab) {
 
 /**
  * `agent-activate` on `tab`, answered with `answer` (null: not asked, a grant runs it).
- * @param {any} c @param {any} tab @param {string} label @param {object | null} [answer]
+ * @param {any} c @param {any} tab @param {string} label @param {GateAnswer | null} [answer]
  */
 async function activate(c, tab, label, answer = { kind: "once" }) {
   const id = c.request("agent-activate", { tab: idOf(tab), label });
@@ -330,7 +335,7 @@ addTidyTask(async function test_element_labels_last_while_their_element_is_there
   Assert.ok(r.ok, `a label of the same page and element still clicks: ${r.error?.message}`);
   // What ends a label is its element leaving the page (F4), not the time.
   await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
-    content.document.getElementById("ask").remove(),
+    /** @type {HTMLElement} */ (content.document.getElementById("ask")).remove(),
   );
   const gone = await activate(c, tab, by.Remove, null);
   Assert.equal(gone.error?.message, "that element is gone: call vimma_elements again");
@@ -343,8 +348,11 @@ addTidyTask(async function test_element_labels_last_while_their_element_is_there
     const ready = new Promise((resolve) => frame.addEventListener("load", resolve, { once: true }));
     content.document.body.append(frame);
     await ready;
-    const doc = frame.contentDocument;
-    doc.body.append(doc.adoptNode(content.document.getElementById("add")));
+    // A same-origin srcdoc frame, loaded: it has its document.
+    const doc = /** @type {Document} */ (frame.contentDocument);
+    doc.body.append(
+      doc.adoptNode(/** @type {HTMLElement} */ (content.document.getElementById("add"))),
+    );
   });
   const moved = await activate(c, tab, by["Add to list"], null);
   Assert.equal(
@@ -398,7 +406,7 @@ addTidyTask(async function test_activate_in_use_while_the_user_types() {
   await until(() => gBrowser.selectedTab === tab, "the agent tab is in front");
   await focusContent(tab.linkedBrowser);
   await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
-    content.document.getElementById("field").focus(),
+    /** @type {HTMLElement} */ (content.document.getElementById("field")).focus(),
   );
   await until(() => VimmaHost.status(window).mode === "insert", "the user is in insert mode");
   const r = await c.call("agent-activate", { tab: idOf(tab), label: by["Add to list"] });

@@ -1,0 +1,1552 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/**
+ * config.toml: parse, validate schema v2, migrate, merge with defaults, keep the last good one.
+ * See docs/specs/m5-core-config-and-theme.md (v1) and docs/specs/m3-m4-core-prep.md (v2).
+ * Core does no I/O: the host passes file contents.
+ */
+import { closest, resolveActionName } from "../keys/actions.mjs";
+import { BOOKMARKS_TOOLBAR_SETTINGS } from "../ui/bookmarks-toolbar.mjs";
+import { DEFAULT_CONFIG, WORKSPACE_DEFAULTS, formatConfigTemplate } from "./defaults.mjs";
+import { INSERT_SITE_MODES } from "../keys/editable.mjs";
+import { DEFAULT_HINT_CHARS, hintLabels } from "../page/hints.mjs";
+import { KeymapError, compileKeymap } from "../keys/keymap.mjs";
+import { MODES, isKeymapTable } from "../keys/modes.mjs";
+import { PANES_MAX_DEFAULT, PANES_MAX_LIMIT } from "../panes/panes.mjs";
+import { MAX_SPLITS_DEFAULT, MAX_SPLITS_LIMIT } from "../panes/splits.mjs";
+import { MAIN_SIZE_DEFAULT } from "../panes/layouts.mjs";
+import {
+  APPEARANCES,
+  BUILTIN_THEMES,
+  THEME_COLOR_KEYS,
+  isHexColor,
+  normalizeHex,
+} from "./theme.mjs";
+import { resolveRoutes, validateRoutes } from "./routes.mjs";
+import { formatPath, locateKeys, parsePath, parseToml, setTomlKeys, tomlLiteral } from "./toml.mjs";
+import { canonicalChord, isShortcutChord } from "../keys/firefox-keys.mjs";
+import { KeyNotationError, formatKey, parseKey } from "../keys/keys.mjs";
+import { BOOKMARKS_ROOTS } from "../ui/bookmarks.mjs";
+import { PANEL_NUMBERS } from "../ui/sidepanel.mjs";
+import { quarantineProblem, resolveDownloadDir } from "../agent/agent-downloads.mjs";
+import { resolveSearch, validateSearch } from "./search.mjs";
+import { checkEndpoint } from "../agent/agent-providers.mjs";
+import {
+  CLI_IDS,
+  DEFAULT_MAX_MINUTES,
+  MAX_MINUTES,
+  MAX_MODEL,
+  modelProblem,
+} from "../agent/agent-cli.mjs";
+import { hasControl } from "../text/strings.mjs";
+
+/** @import { Keymap } from "../keys/keymap.mjs" */
+/** @import { UserConfig } from "./defaults.mjs" */
+/** @import { Path } from "./toml.mjs" */
+/** @import { ThemeConfig } from "./theme.mjs" */
+/** @import { InsertSiteMode, InsertSiteRule } from "../keys/editable.mjs" */
+/** @import { Route } from "./routes.mjs" */
+/** @import { BookmarksRoot } from "../ui/bookmarks.mjs" */
+/** @import { PanelNumbers } from "../ui/sidepanel.mjs" */
+/** @import { ResolvedSearch } from "./search.mjs" */
+
+/**
+ * @typedef {object} ConfigError
+ * @property {number} [line]         1-based; absent when nothing in the file locates it
+ * @property {number} [column]       syntax errors only
+ * @property {string} path           config path (`keys.new_tab[1]`); "" for syntax errors
+ * @property {string} message
+ * @property {string} [suggestion]
+ */
+
+/**
+ * @typedef {object} Workspace
+ * @property {string} name
+ * @property {string} color      canonical Firefox container colour
+ * @property {string} icon
+ * @property {string} [home]
+ * @property {boolean} autofill
+ */
+
+/**
+ * @typedef {object} ResolvedConfig
+ * @property {number} schema
+ * @property {Record<string, string | string[]>} keys     as written; compileKeymap merges
+ * @property {Record<string, unknown>} modal              as written; compileKeymap merges
+ * @property {Record<string, string[]>} unbind
+ * @property {Workspace[]} workspaces                     file order = workspace order
+ * @property {ThemeConfig} theme
+ * @property {{ max: number, layout: "dwindle" | "manual", mainSize: number, maxSplits: number }}
+ *   panes `[panes]` (schema 2); `mainSize` is `main_size` as a share (0.6),
+ *   docs/specs/tiling-layouts.md; `maxSplits` is `max_splits`, docs/specs/multiple-splits.md
+ * @property {string} hintChars                          `[modal] hint_chars` (schema 2)
+ * @property {InsertSiteRule[]} sites                    `[sites."<host>"]` in file order (schema 2)
+ * @property {Route[]} routes                            `[[routes]]` in file order (schema 2)
+ * @property {{ defaultWorkspace: string | null }} routing  `[routing]` (schema 2), app-routes
+ * @property {FirefoxKeySetting} firefox                 `[firefox]`, chords canonical (schema 2)
+ * @property {boolean} insertEditing                     `[modal] insert_editing` (schema 2)
+ * @property {{ root: BookmarksRoot }} bookmarks          `[bookmarks]` (schema 2)
+ * @property {{ numbers: PanelNumbers }} panel            `[panel]` (schema 2), side-panel-counts
+ * @property {{ placement: PrivatePlacement }} private    `[private]` (schema 2), private-swap
+ * @property {McpConfig} mcp                             `[mcp]` (schema 2), docs/specs/vimma-mcp.md
+ * @property {{ toolbar: ToolbarSetting, bookmarksToolbar: BookmarksToolbarSetting | null,
+ *   pdfOutline: ToolbarSetting }} ui
+ *   `[ui]` (schema 2): toolbar-toggle; `bookmarksToolbar` is null when unset
+ *   (docs/specs/bookmarks-toolbar-hidden.md decision 3: Firefox's pref decides); `pdfOutline`,
+ *   whether the PDF viewer opens with Vimma's outline shown (docs/specs/pdf-mode.md decision 19)
+ * @property {ResolvedSearch | null} search              `[search]` (schema 2), null without it;
+ *   docs/specs/search-engines.md
+ * @property {{ check: boolean }} updates                `[updates]` (schema 2),
+ *   docs/specs/m6a-updater.md
+ * @property {AgentConfig} agent                         `[agent]` (schema 2),
+ *   docs/specs/builtin-agent.md
+ */
+
+/**
+ * A model provider of `[[agent.providers]]`: where requests go and which model, never a key (B8).
+ * An agent CLI's (docs/specs/builtin-agent-cli.md C4) names which supported CLI it is, its
+ * model (empty: the CLI's own default) and its time limit; its endpoint is empty, since the
+ * CLI decides where its requests go, and its program's path is a pref setup writes.
+ * @typedef {{ name: string, kind: "openai" | "anthropic" | "cli", endpoint: string,
+ *   model: string, vision: boolean, priceIn?: number, priceOut?: number, cli?: string,
+ *   maxMinutes?: number }} AgentProviderConfig
+ */
+/**
+ * `[agent]` (docs/specs/builtin-agent.md Behaviour 8). `default` is a provider's name, or null.
+ * @typedef {{ default: string | null, localOnly: boolean, maxRunning: number, maxSteps: number,
+ *   maxTokens: number, maxCost: number, keepDays: number | null,
+ *   keepResults: number | null,
+ *   providers: AgentProviderConfig[] }} AgentConfig
+ */
+
+/**
+ * `[mcp]` (vimma-mcp decision 26). `enabled` is there only when the file sets it: then it wins
+ * over `:mcp on|off` (the pref), as `[theme] appearance` wins over `:theme`.
+ * @typedef {{ enabled?: boolean, workspace: string, askTimeout: number, grantMinutes: number,
+ *   grantMaxMinutes: number, maxReadChars: number, notify: boolean, downloadDir: string,
+ *   downloadMaxMb: number, clamavMaxAgeDays: number }} McpConfig  `downloadDir` as written (`~` not expanded yet)
+ */
+
+/** @typedef {"swap" | "window"} PrivatePlacement */
+/** @typedef {"shown" | "hidden"} ToolbarSetting */
+/** @typedef {import("../ui/bookmarks-toolbar.mjs").BookmarksToolbarSetting} BookmarksToolbarSetting */
+
+/**
+ * Which of Firefox's own shortcuts are off (docs/specs/key-handling-batch.md § 1).
+ * @typedef {{ disable: "all" | string[], enable: string[] }} FirefoxKeySetting
+ */
+
+/** @typedef {{ config: ResolvedConfig, keymap: Keymap }} ActiveConfig */
+/** @typedef {(config: Record<string, unknown>) => Record<string, unknown>} Migration */
+
+export const CONFIG_SCHEMA_VERSION = 2;
+
+/**
+ * Step `n` turns a schema-n object into a schema-(n+1) object. Pure; never mutates its input.
+ * @type {Readonly<Record<number, Migration>>}
+ */
+export const MIGRATIONS = Object.freeze({
+  // v0: configs without `schema`, written before M5. Same shape as v1.
+  0: (config) => ({ ...config, schema: 1 }),
+  // v1 → v2 only adds keys ([panes], [sites], [modal] hint_chars). A file must say schema = 2 to
+  // use them, so an older vimma reports "from a newer vimma" instead of an unknown key.
+  1: (config) => ({ ...config, schema: 2 }),
+});
+
+/**
+ * @param {Record<string, unknown>} raw
+ * @param {number} from
+ * @param {number} [to]
+ * @param {Readonly<Record<number, Migration>>} [registry]
+ * @returns {{ config: Record<string, unknown>, applied: string[] }}
+ */
+export function migrate(raw, from, to = CONFIG_SCHEMA_VERSION, registry = MIGRATIONS) {
+  if (from > to) throw new Error(`config schema ${from} is newer than ${to}`);
+  let config = raw;
+  /** @type {string[]} */
+  const applied = [];
+  for (let v = from; v < to; v++) {
+    const step = registry[v];
+    if (typeof step !== "function") throw new Error(`no migration from schema ${v} to ${v + 1}`);
+    config = step(config);
+    applied.push(`${v}→${v + 1}`);
+  }
+  return { config, applied };
+}
+
+// Firefox container colours and icons (ContextualIdentityService.sys.mjs); workspacedefs.mjs too.
+export const CONTAINER_COLORS = [
+  "gray",
+  "yellow",
+  "orange",
+  "red",
+  "pink",
+  "purple",
+  "violet",
+  "blue",
+  "cyan",
+  "green",
+];
+/** @type {Record<string, string>} */
+const COLOR_ALIASES = { turquoise: "cyan", toolbar: "gray" };
+export const CONTAINER_ICONS = [
+  "fingerprint",
+  "briefcase",
+  "dollar",
+  "cart",
+  "vacation",
+  "gift",
+  "food",
+  "fruit",
+  "pet",
+  "tree",
+  "chill",
+  "circle",
+  "fence",
+];
+const TOP_KEYS = [
+  "schema",
+  "keys",
+  "modal",
+  "unbind",
+  "workspaces",
+  "theme",
+  "panes",
+  "sites",
+  "routes",
+  "routing",
+  "firefox",
+  "bookmarks",
+  "private",
+  "mcp",
+  "ui",
+  "search",
+  "updates",
+  "agent",
+  "panel",
+];
+const KEYMAP_SECTIONS = new Set(["keys", "modal", "unbind", "firefox"]);
+const WORKSPACE_KEYS = ["color", "icon", "home", "autofill"];
+const THEME_KEYS = ["source", "name", "appearance", "font", "colors"];
+const THEME_NAMES = Object.keys(BUILTIN_THEMES);
+const THEME_SOURCES = ["omarchy", "file"];
+const PANES_KEYS = ["max", "layout", "main_size", "max_splits"];
+/** `[panes] layout` (docs/specs/tiling-layouts.md): where a pane opened without a direction goes. */
+export const PANES_LAYOUT_MODES = Object.freeze(["dwindle", "manual"]);
+/** `[panes] main_size` bounds, in percent. */
+export const MAIN_SIZE_MIN = 20;
+export const MAIN_SIZE_MAX = 80;
+const SITE_KEYS = ["insert"];
+const MODAL_KEYS = ["leader", "timeout_ms", "hint_chars", "insert_editing"];
+const FIREFOX_KEYS = ["disable", "enable"];
+const FIREFOX_DISABLE = 'must be "all" or a list of keys like "ctrl+w"';
+/** Keys a file may use only when it declares `schema = 2`, by config path. */
+const SCHEMA_2_KEYS = [
+  "panes",
+  "sites",
+  "modal.hint_chars",
+  "routes",
+  "routing",
+  "firefox",
+  "modal.insert_editing",
+  "bookmarks",
+  "theme.name",
+  "theme.appearance",
+  "private",
+  "mcp",
+  "ui",
+  "search",
+  "updates",
+  "agent",
+  "panel",
+];
+/** `[bookmarks]` (docs/specs/bookmarks.md, decision 2). */
+const BOOKMARKS_KEYS = ["root"];
+/** `[routing]` (docs/specs/app-routes.md, decision 16). */
+const ROUTING_KEYS = ["default_workspace"];
+/** `[panel]` (docs/specs/side-panel-counts.md, decision 6). */
+const PANEL_KEYS = ["numbers"];
+/** `[private] placement` (docs/specs/private-swap.md, decision 1). */
+export const PRIVATE_PLACEMENTS = Object.freeze(
+  /** @type {PrivatePlacement[]} */ (["swap", "window"]),
+);
+const PRIVATE_KEYS = ["placement"];
+/** `[ui] toolbar` (docs/specs/toolbar-toggle.md, decision 3). */
+export const TOOLBAR_SETTINGS = Object.freeze(
+  /** @type {ToolbarSetting[]} */ (["shown", "hidden"]),
+);
+const UI_KEYS = ["toolbar", "bookmarks_toolbar", "pdf_outline"];
+/** Firefox's words for the bookmarks toolbar's states, and the Vimma word each means. */
+const FIREFOX_VISIBILITY_WORDS = Object.freeze({ always: "shown", never: "hidden" });
+/** `[updates]` (docs/specs/m6a-updater.md, Security and privacy, "Off"). */
+const UPDATES_KEYS = ["check"];
+/** `[mcp]` (docs/specs/vimma-mcp.md, decision 26) and its bounds. */
+const MCP_KEYS = [
+  "enabled",
+  "workspace",
+  "ask_timeout",
+  "grant_minutes",
+  "grant_max_minutes",
+  "max_read_chars",
+  "notify",
+  "download_dir",
+  "download_max_mb",
+  "clamav_max_age_days",
+];
+export const MCP_BOUNDS = Object.freeze({
+  askTimeout: Object.freeze({ min: 10, max: 300 }),
+  grantMaxMinutes: Object.freeze({ min: 1, max: 1440 }),
+  maxReadChars: Object.freeze({ min: 1000, max: 500000 }),
+  downloadMaxMb: Object.freeze({ min: 1, max: 4096 }),
+  clamavMaxAgeDays: Object.freeze({ min: 1, max: 90 }),
+});
+
+/**
+ * `[agent]`'s defaults (docs/specs/builtin-agent.md B10, B17). Kept here rather than in
+ * DEFAULT_CONFIG while the built-in agent is unfinished, so defaults.toml does not list it.
+ * The budgets are agent-budget.mjs's DEFAULT_LIMITS. `keep_results` has no default here: unset
+ * (null), it depends on the provider (agent-loop.mjs, keepResultsFor).
+ */
+export const AGENT_DEFAULTS = Object.freeze({
+  maxRunning: 3,
+  maxSteps: 100,
+  maxTokens: 2_000_000,
+  maxCost: 2,
+});
+const AGENT_KEYS = [
+  "default",
+  "local_only",
+  "max_running",
+  "max_steps",
+  "max_tokens",
+  "max_cost",
+  "keep_days",
+  "keep_results",
+  "providers",
+];
+const AGENT_PROVIDER_KEYS = [
+  "name",
+  "kind",
+  "endpoint",
+  "model",
+  "vision",
+  "price_in",
+  "price_out",
+];
+/** An agent CLI provider's keys (docs/specs/builtin-agent-cli.md, Behaviour 2). */
+const AGENT_CLI_KEYS = ["name", "kind", "cli", "model", "max_minutes"];
+/**
+ * Keys that would make config.toml name a program, its arguments or its environment: a file
+ * users copy from others must never run a command (security.md F3; builtin-agent-cli C4).
+ */
+const PROGRAM_KEYS = new Set(["command", "path", "args", "env"]);
+const PROGRAM_IN_CONFIG =
+  "a CLI provider names no program, arguments or environment: setup confirms the program's path";
+const PROVIDER_KINDS = ["openai", "anthropic", "cli"];
+/** Fields that would hold a key or a password: config.toml is shared and kept in dotfiles (B8). */
+const SECRET_KEYS = new Set(["key", "api_key", "apikey", "token", "password", "secret"]);
+const SECRET_IN_CONFIG =
+  "an API key must not be in config.toml: Vimma keeps it in login storage, set in the agent's setup";
+const MAX_PROVIDER_NAME = 32;
+const MAX_PRICE = 1_000_000;
+
+/** The private workspace's name (privatews.mjs): never the agent workspace's. */
+const PRIVATE_WORKSPACE_NAME = "private";
+const NEEDS_SCHEMA_2 = "is new in schema 2: put schema = 2 at the top of the file";
+const LABEL = "[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?";
+const DOMAIN = new RegExp(`^(?=.{1,253}$)${LABEL}(?:\\.${LABEL})*\\.?$`, "i");
+// Hex digits, dots and colons, bracketed or not; with a colon (tested apart: a pattern placing
+// the colon inside the run backtracks quadratically on a long key).
+const IPV6 = /^(?:\[[0-9a-f:.]*\]|[0-9a-f:.]*)$/i;
+const BAD_HOST = 'must be a hostname like "docs.google.com", without scheme, port, path or *';
+const MAX_TIMEOUT_MS = 10000;
+export const MAX_WORKSPACE_NAME = 32;
+const MAX_FONT = 200;
+const FONT_FORBIDDEN = /["';{}\\<>]/;
+const HOME = /^(?:https?:\/\/|about:)\S+$/;
+
+/** @param {unknown} v */
+function typeName(v) {
+  if (Array.isArray(v)) return "an array";
+  if (v instanceof Date) return "a date";
+  if (typeof v === "object") return "a table";
+  // parsed with integersAsBigInt: TOML integers are BigInt, TOML floats are numbers
+  if (typeof v === "bigint") return "an integer";
+  if (typeof v === "number") return "a float";
+  return typeof v === "string" ? "a string" : "a boolean";
+}
+
+/**
+ * @param {unknown} v
+ * @returns {v is Record<string, unknown>}
+ */
+const isTable = (v) =>
+  typeof v === "object" && v !== null && !Array.isArray(v) && !(v instanceof Date);
+
+/** @typedef {{ path: Path, message: string, suggestion?: string }} Problem */
+
+/**
+ * A `[sites."<host>"]` key: a hostname as `URL.hostname` gives it (a domain, an IPv4 address or
+ * an IPv6 address, bracketed or not), optionally with a trailing dot.
+ * @param {string} host
+ */
+const isSiteHost = (host) => DOMAIN.test(host) || (host.includes(":") && IPV6.test(host));
+
+/**
+ * The same host as matchSiteRule compares it: case, a trailing dot and IPv6 brackets ignored.
+ * @param {string} host
+ */
+const siteKey = (host) =>
+  host
+    .toLowerCase()
+    .replace(/\.$/, "")
+    .replace(/^\[(.*)\]$/, "$1");
+
+/**
+ * What the user probably meant by a key that is not a hostname: the host of a URL, a host
+ * without its port, a wildcard domain without `*.` (a rule already covers subdomains).
+ * @param {string} key
+ * @returns {string | undefined}
+ */
+function hostSuggestion(key) {
+  const host = key
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+    .replace(/^\*\./, "")
+    .replace(/[/?#].*$/, "")
+    .replace(/:\d*$/, "");
+  return host !== key && isSiteHost(host) ? host : undefined;
+}
+
+/**
+ * @param {unknown} chars
+ * @returns {boolean}
+ */
+function isHintCharset(chars) {
+  try {
+    hintLabels(0, /** @type {string} */ (chars));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Checks the current schema and returns every problem; keymap contents are left to compileKeymap.
+ * @param {Record<string, unknown>} raw  migrated to the current schema
+ * @param {number} declared  the schema the file declared (0 without `schema`)
+ * @param {Problem[]} [warnings]  receives what is left out without failing the file
+ * @returns {Problem[]}
+ */
+function validate(raw, declared, warnings = []) {
+  /** @type {Problem[]} */
+  const problems = [];
+  /** @param {Path} path @param {string} message @param {string} [suggestion] */
+  const fail = (path, message, suggestion) =>
+    problems.push(suggestion ? { path, message, suggestion } : { path, message });
+  /** @param {Path} path @param {unknown} v @param {string} expected */
+  const typeError = (path, v, expected) => fail(path, `expected ${expected}, got ${typeName(v)}`);
+  /**
+   * @param {Path} path
+   * @param {unknown} v
+   * @returns {v is Record<string, unknown>}
+   */
+  const table = (path, v) => {
+    if (isTable(v)) return true;
+    typeError(path, v, "a table");
+    return false;
+  };
+  /** @param {Path} path @param {string} key @param {readonly string[]} known */
+  const unknownKey = (path, key, known) => fail(path, `unknown key "${key}"`, closest(key, known));
+
+  /**
+   * A schema-2 key in a file that declares an older schema: reported once, then skipped.
+   * @param {Path} path
+   */
+  const gated = (path) => {
+    if (declared >= 2 || !SCHEMA_2_KEYS.includes(path.join("."))) return false;
+    fail(path, NEEDS_SCHEMA_2);
+    return true;
+  };
+
+  for (const [key, v] of Object.entries(raw)) {
+    if (!TOP_KEYS.includes(key)) unknownKey([key], key, TOP_KEYS);
+    else if (key === "routes") {
+      // An array of tables (workspace-routing); routes.mjs checks it.
+      if (!gated([key])) {
+        for (const p of validateRoutes(v)) problems.push({ ...p, path: [key, ...p.path] });
+      }
+    } else if (key !== "schema" && !gated([key])) table([key], v);
+  }
+
+  if (isTable(raw.modal)) {
+    for (const [key, v] of Object.entries(raw.modal)) {
+      const path = ["modal", key];
+      if (key === "leader") {
+        if (typeof v !== "string") typeError(path, v, "a key string");
+      } else if (key === "timeout_ms") {
+        if (typeof v !== "bigint") typeError(path, v, "an integer");
+        else if (v < 0n || v > BigInt(MAX_TIMEOUT_MS)) {
+          fail(path, `must be an integer between 0 and ${MAX_TIMEOUT_MS}`);
+        }
+      } else if (key === "hint_chars") {
+        if (gated(path)) continue;
+        if (typeof v !== "string") typeError(path, v, "a string");
+        else if (!isHintCharset(v)) {
+          fail(path, "must be at least 2 distinct characters, none uppercase or whitespace");
+        }
+      } else if (key === "insert_editing") {
+        if (gated(path)) continue;
+        if (typeof v !== "boolean") typeError(path, v, "a boolean");
+      } else if (isKeymapTable(key)) {
+        table(path, v);
+      } else {
+        unknownKey(path, key, [...MODES, "pdf", ...MODAL_KEYS]);
+      }
+    }
+  }
+
+  if (declared >= 2 && isTable(raw.firefox)) {
+    for (const [key, v] of Object.entries(raw.firefox)) {
+      const path = ["firefox", key];
+      if (!FIREFOX_KEYS.includes(key)) {
+        unknownKey(path, key, FIREFOX_KEYS);
+        continue;
+      }
+      if (key === "disable" && v === "all") continue;
+      if (!Array.isArray(v)) {
+        if (key === "disable") fail(path, FIREFOX_DISABLE);
+        else typeError(path, v, "a list of key strings");
+        continue;
+      }
+      v.forEach((chord, i) => {
+        const at = [...path, i];
+        if (typeof chord !== "string") {
+          typeError(at, chord, "a key string");
+          return;
+        }
+        try {
+          const c = parseKey(chord);
+          // Firefox's stop (esc, shift+esc) is the inventory's only key without ctrl, alt or meta
+          // that `all` turns off and a user can want back (docs/specs/firefox-keys.md decision 9).
+          if (!isShortcutChord(c) && !["esc", "shift+esc"].includes(formatKey(c))) {
+            fail(
+              at,
+              "Firefox's shortcuts have ctrl, alt or meta, are function keys, or are esc or shift+esc",
+            );
+          }
+        } catch (e) {
+          /* c8 ignore next */
+          if (!(e instanceof KeyNotationError)) throw e;
+          fail(at, e.message);
+        }
+      });
+    }
+  }
+
+  if (isTable(raw.unbind)) {
+    for (const [mode, v] of Object.entries(raw.unbind)) {
+      if (!isKeymapTable(mode)) {
+        fail(["unbind", mode], `unknown mode "${mode}"`, closest(mode, [...MODES, "pdf"]));
+      } else if (!Array.isArray(v)) typeError(["unbind", mode], v, "a list of key strings");
+    }
+  }
+
+  if (isTable(raw.workspaces)) {
+    for (const [name, ws] of Object.entries(raw.workspaces)) {
+      const path = ["workspaces", name];
+      const length = [...name].length;
+      if (length < 1 || length > MAX_WORKSPACE_NAME) {
+        fail(path, `workspace name must be 1 to ${MAX_WORKSPACE_NAME} characters`);
+        continue;
+      }
+      if (hasControl(name)) {
+        fail(path, "workspace name must not contain control characters");
+        continue;
+      }
+      if (!table(path, ws)) continue;
+      for (const [key, v] of Object.entries(ws)) {
+        const at = [...path, key];
+        if (key === "color") {
+          if (typeof v !== "string") typeError(at, v, "a string");
+          else if (!CONTAINER_COLORS.includes(v) && !Object.hasOwn(COLOR_ALIASES, v)) {
+            fail(
+              at,
+              `unknown colour "${v}"`,
+              closest(v, [...CONTAINER_COLORS, ...Object.keys(COLOR_ALIASES)]),
+            );
+          }
+        } else if (key === "icon") {
+          if (typeof v !== "string") typeError(at, v, "a string");
+          else if (!CONTAINER_ICONS.includes(v))
+            fail(at, `unknown icon "${v}"`, closest(v, CONTAINER_ICONS));
+        } else if (key === "home") {
+          if (typeof v !== "string") typeError(at, v, "a string");
+          else if (!HOME.test(v))
+            fail(at, "must be an http://, https:// or about: URL without spaces");
+        } else if (key === "autofill") {
+          if (typeof v !== "boolean") typeError(at, v, "a boolean");
+        } else {
+          unknownKey(at, key, WORKSPACE_KEYS);
+        }
+      }
+    }
+  }
+
+  if (declared >= 2 && isTable(raw.panes)) {
+    for (const [key, v] of Object.entries(raw.panes)) {
+      const path = ["panes", key];
+      if (key === "layout") {
+        if (typeof v !== "string") typeError(path, v, "a string");
+        else if (!PANES_LAYOUT_MODES.includes(v)) {
+          fail(path, `must be "dwindle" or "manual"`, closest(v, PANES_LAYOUT_MODES));
+        }
+      } else if (key === "main_size") {
+        if (typeof v !== "bigint") typeError(path, v, "an integer");
+        else if (v < BigInt(MAIN_SIZE_MIN) || v > BigInt(MAIN_SIZE_MAX)) {
+          fail(path, `must be an integer between ${MAIN_SIZE_MIN} and ${MAIN_SIZE_MAX} (percent)`);
+        }
+      } else if (key === "max_splits") {
+        if (typeof v !== "bigint") typeError(path, v, "an integer");
+        else if (v < 1n || v > BigInt(MAX_SPLITS_LIMIT)) {
+          fail(path, `must be an integer between 1 and ${MAX_SPLITS_LIMIT}`);
+        }
+      } else if (key !== "max") unknownKey(path, key, PANES_KEYS);
+      else if (typeof v !== "bigint") typeError(path, v, "an integer");
+      else if (v < 1n || v > BigInt(PANES_MAX_LIMIT)) {
+        fail(path, `must be an integer between 1 and ${PANES_MAX_LIMIT}`);
+      }
+    }
+  }
+
+  if (declared >= 2 && isTable(raw.bookmarks)) {
+    for (const [key, v] of Object.entries(raw.bookmarks)) {
+      const path = ["bookmarks", key];
+      if (key !== "root") unknownKey(path, key, BOOKMARKS_KEYS);
+      else if (typeof v !== "string") typeError(path, v, "a string");
+      else if (!BOOKMARKS_ROOTS.includes(/** @type {BookmarksRoot} */ (v))) {
+        fail(path, 'must be "workspace", "toolbar" or "all"', closest(v, BOOKMARKS_ROOTS));
+      }
+    }
+  }
+
+  if (declared >= 2 && isTable(raw.routing)) {
+    for (const [key, v] of Object.entries(raw.routing)) {
+      const path = ["routing", key];
+      if (!ROUTING_KEYS.includes(key)) unknownKey(path, key, ROUTING_KEYS);
+      else if (typeof v !== "string") typeError(path, v, "a string");
+      else if ([...v].length < 1 || [...v].length > MAX_WORKSPACE_NAME) {
+        fail(path, `workspace name must be 1 to ${MAX_WORKSPACE_NAME} characters`);
+      } else if (hasControl(v)) fail(path, "workspace name must not contain control characters");
+    }
+  }
+
+  if (declared >= 2 && isTable(raw.panel)) {
+    for (const [key, v] of Object.entries(raw.panel)) {
+      const path = ["panel", key];
+      if (key !== "numbers") unknownKey(path, key, PANEL_KEYS);
+      else if (typeof v !== "string") typeError(path, v, "a string");
+      else if (!PANEL_NUMBERS.includes(/** @type {PanelNumbers} */ (v))) {
+        fail(path, 'must be "absolute", "relative" or "hybrid"', closest(v, PANEL_NUMBERS));
+      }
+    }
+  }
+
+  if (declared >= 2 && isTable(raw.private)) {
+    for (const [key, v] of Object.entries(raw.private)) {
+      const path = ["private", key];
+      if (key !== "placement") unknownKey(path, key, PRIVATE_KEYS);
+      else if (typeof v !== "string") typeError(path, v, "a string");
+      else if (!PRIVATE_PLACEMENTS.includes(/** @type {PrivatePlacement} */ (v))) {
+        fail(path, 'must be "swap" or "window"', closest(v, PRIVATE_PLACEMENTS));
+      }
+    }
+  }
+
+  if (declared >= 2 && isTable(raw.ui)) {
+    for (const [key, v] of Object.entries(raw.ui)) {
+      const path = ["ui", key];
+      if (!UI_KEYS.includes(key)) unknownKey(path, key, UI_KEYS);
+      else if (typeof v !== "string") typeError(path, v, "a string");
+      else if (key === "bookmarks_toolbar") {
+        if (!BOOKMARKS_TOOLBAR_SETTINGS.includes(/** @type {BookmarksToolbarSetting} */ (v))) {
+          const word = /** @type {Record<string, string>} */ (FIREFOX_VISIBILITY_WORDS)[v];
+          fail(
+            path,
+            'must be "shown", "hidden" or "newtab"',
+            word ?? closest(v, BOOKMARKS_TOOLBAR_SETTINGS),
+          );
+        }
+      } else if (!TOOLBAR_SETTINGS.includes(/** @type {ToolbarSetting} */ (v))) {
+        fail(path, 'must be "shown" or "hidden"', closest(v, TOOLBAR_SETTINGS));
+      }
+    }
+  }
+
+  if (declared >= 2 && isTable(raw.updates)) {
+    for (const [key, v] of Object.entries(raw.updates)) {
+      const path = ["updates", key];
+      if (key !== "check") unknownKey(path, key, UPDATES_KEYS);
+      else if (typeof v !== "boolean") typeError(path, v, "a boolean");
+    }
+  }
+
+  if (declared >= 2 && isTable(raw.mcp)) validateMcp(raw.mcp, { fail, typeError, unknownKey });
+
+  if (declared >= 2 && isTable(raw.agent)) {
+    validateAgent(raw.agent, { fail, typeError, unknownKey, warnings });
+  }
+
+  // docs/specs/search-engines.md, decision 2.
+  if (declared >= 2 && isTable(raw.search)) problems.push(...validateSearch(raw.search));
+
+  if (declared >= 2 && isTable(raw.sites)) {
+    /** @type {Map<string, string>} */
+    const seen = new Map();
+    for (const [host, site] of Object.entries(raw.sites)) {
+      const path = ["sites", host];
+      if (!isSiteHost(host)) {
+        fail(path, BAD_HOST, hostSuggestion(host));
+        continue;
+      }
+      const first = seen.get(siteKey(host));
+      if (first !== undefined) {
+        fail(path, `same host as ${JSON.stringify(first)}`);
+        continue;
+      }
+      seen.set(siteKey(host), host);
+      if (!table(path, site)) continue;
+      for (const [key, v] of Object.entries(site)) {
+        const at = [...path, key];
+        if (key !== "insert") unknownKey(at, key, SITE_KEYS);
+        else if (typeof v !== "string") typeError(at, v, "a string");
+        else if (!INSERT_SITE_MODES.includes(/** @type {InsertSiteMode} */ (v))) {
+          fail(at, 'must be "auto", "never" or "always"', closest(v, INSERT_SITE_MODES));
+        }
+      }
+    }
+  }
+
+  if (isTable(raw.theme)) {
+    for (const [key, v] of Object.entries(raw.theme)) {
+      const path = ["theme", key];
+      if (key === "source") {
+        if (typeof v !== "string") typeError(path, v, "a string");
+        else if (!THEME_SOURCES.includes(v)) {
+          fail(path, `must be "omarchy" or "file"`, closest(v, THEME_SOURCES));
+        }
+      } else if (key === "name") {
+        if (gated(path)) continue;
+        if (typeof v !== "string") typeError(path, v, "a string");
+        else if (!THEME_NAMES.includes(v)) {
+          const names = THEME_NAMES.map((n) => `"${n}"`).join(" or ");
+          fail(path, `must be ${names}`, closest(v, THEME_NAMES));
+        }
+      } else if (key === "appearance") {
+        // docs/specs/theme-appearance.md B1: left out, `:theme` (a pref) decides.
+        if (gated(path)) continue;
+        if (typeof v !== "string") typeError(path, v, "a string");
+        else if (!APPEARANCES.includes(/** @type {any} */ (v))) {
+          fail(path, `must be "system", "dark" or "light"`, closest(v, [...APPEARANCES]));
+        }
+      } else if (key === "font") {
+        if (typeof v !== "string") typeError(path, v, "a string");
+        else if (v.length < 1 || v.length > MAX_FONT)
+          fail(path, `must be 1 to ${MAX_FONT} characters`);
+        else if (FONT_FORBIDDEN.test(v) || hasControl(v)) {
+          fail(path, `must not contain quotes, ; { } \\ < > or control characters`);
+        }
+      } else if (key === "colors") {
+        if (!table(path, v)) continue;
+        for (const [name, c] of Object.entries(v)) {
+          const at = [...path, name];
+          if (!THEME_COLOR_KEYS.includes(name)) {
+            fail(at, `unknown colour key "${name}"`, closest(name, THEME_COLOR_KEYS));
+          } else if (name === "mode") {
+            if (c !== "dark" && c !== "light") fail(at, `must be "dark" or "light"`);
+          } else if (!isHexColor(c)) {
+            fail(at, `must be a hex colour like "#7aa2f7"`);
+          }
+        }
+      } else {
+        unknownKey(path, key, THEME_KEYS);
+      }
+    }
+  }
+  return problems;
+}
+
+/**
+ * `[mcp]` (vimma-mcp decision 26): every value bounded, `grant_minutes` at most the
+ * `grant_max_minutes` in force, `workspace` a workspace name that is not the private one's.
+ * @param {Record<string, unknown>} mcp
+ * @param {{ fail: (path: Path, message: string, suggestion?: string) => void,
+ *   typeError: (path: Path, v: unknown, expected: string) => void,
+ *   unknownKey: (path: Path, key: string, known: readonly string[]) => void }} report
+ */
+function validateMcp(mcp, { fail, typeError, unknownKey }) {
+  /** @param {Path} path @param {unknown} v @param {number} min @param {number} max */
+  const integer = (path, v, min, max, unit = "") => {
+    if (typeof v !== "bigint") typeError(path, v, "an integer");
+    else if (v < BigInt(min) || v > BigInt(max)) {
+      fail(path, `must be an integer between ${min} and ${max}${unit}`);
+    } else return true;
+    return false;
+  };
+  const max = mcp.grant_max_minutes;
+  const { grantMaxMinutes: g } = MCP_BOUNDS;
+  const maxValid = typeof max === "bigint" && max >= BigInt(g.min) && max <= BigInt(g.max);
+  const grantMax = maxValid ? Number(max) : DEFAULT_CONFIG.mcp?.grant_max_minutes;
+  for (const [key, v] of Object.entries(mcp)) {
+    const path = ["mcp", key];
+    if (key === "enabled" || key === "notify") {
+      if (typeof v !== "boolean") typeError(path, v, "a boolean");
+    } else if (key === "workspace") {
+      if (typeof v !== "string") typeError(path, v, "a string");
+      else if ([...v].length < 1 || [...v].length > MAX_WORKSPACE_NAME) {
+        fail(path, `must be 1 to ${MAX_WORKSPACE_NAME} characters`);
+      } else if (hasControl(v)) fail(path, "must not contain control characters");
+      else if (v === PRIVATE_WORKSPACE_NAME) {
+        fail(path, `must not be "${PRIVATE_WORKSPACE_NAME}", the private workspace's name`);
+      }
+    } else if (key === "ask_timeout") {
+      integer(path, v, MCP_BOUNDS.askTimeout.min, MCP_BOUNDS.askTimeout.max, " (seconds)");
+    } else if (key === "grant_max_minutes") {
+      integer(path, v, g.min, g.max, " (minutes)");
+    } else if (key === "grant_minutes") {
+      if (typeof v !== "bigint") typeError(path, v, "an integer");
+      // 0: a bare `a` grants the whole connection (docs/specs/mcp-session-grants.md S1).
+      else if (v < 0n || (grantMax !== undefined && v > BigInt(grantMax))) {
+        fail(path, `must be an integer between 0 and grant_max_minutes (${grantMax})`);
+      }
+    } else if (key === "max_read_chars") {
+      integer(path, v, MCP_BOUNDS.maxReadChars.min, MCP_BOUNDS.maxReadChars.max);
+    } else if (key === "download_max_mb") {
+      const { min, max: top } = MCP_BOUNDS.downloadMaxMb;
+      integer(path, v, min, top, " (MB)");
+    } else if (key === "clamav_max_age_days") {
+      const { min, max: top } = MCP_BOUNDS.clamavMaxAgeDays;
+      integer(path, v, min, top, " (days)");
+    } else if (key === "download_dir") {
+      const problem = downloadDirProblem(v);
+      if (problem === "type") typeError(path, v, "a string");
+      else if (problem) fail(path, problem);
+    } else unknownKey(path, key, MCP_KEYS);
+  }
+}
+
+/**
+ * `[agent]` (docs/specs/builtin-agent.md Behaviour 8-9): bounded numbers, providers by endpoint
+ * and model only, a key field an error whose message never repeats the value (B8), and every
+ * endpoint checked as each request is (B11), `local_only` included.
+ * @param {Record<string, unknown>} agent
+ * @param {{ fail: (path: Path, message: string, suggestion?: string) => void,
+ *   typeError: (path: Path, v: unknown, expected: string) => void,
+ *   unknownKey: (path: Path, key: string, known: readonly string[]) => void,
+ *   warnings: Problem[] }} report
+ */
+function validateAgent(agent, { fail, typeError, unknownKey, warnings }) {
+  /** @param {Path} path @param {unknown} v @param {number} min @param {number} max */
+  const integer = (path, v, min, max, unit = "") => {
+    if (typeof v !== "bigint") typeError(path, v, "an integer");
+    else if (v < BigInt(min) || v > BigInt(max)) {
+      fail(path, `must be an integer between ${min} and ${max}${unit}`);
+    }
+  };
+  /** @param {Path} path @param {unknown} v @param {number} max @returns {boolean} */
+  const text = (path, v, max) => {
+    if (typeof v !== "string") typeError(path, v, "a string");
+    else if ([...v].length < 1 || [...v].length > max) fail(path, `must be 1 to ${max} characters`);
+    else if (hasControl(v)) fail(path, "must not contain control characters");
+    else return true;
+    return false;
+  };
+  const localOnly = agent.local_only === true;
+  for (const [key, v] of Object.entries(agent)) {
+    const path = ["agent", key];
+    if (SECRET_KEYS.has(key.toLowerCase())) fail(path, SECRET_IN_CONFIG);
+    else if (key === "local_only") {
+      if (typeof v !== "boolean") typeError(path, v, "a boolean");
+    } else if (key === "default") text(path, v, MAX_PROVIDER_NAME);
+    else if (key === "max_running") integer(path, v, 1, 10);
+    else if (key === "max_steps") integer(path, v, 1, 1000);
+    else if (key === "max_tokens") integer(path, v, 1000, 100_000_000);
+    else if (key === "keep_days") integer(path, v, 1, 3650, " (days)");
+    else if (key === "keep_results") integer(path, v, 0, 1000);
+    else if (key === "max_cost") {
+      if (typeof v !== "number" && typeof v !== "bigint") typeError(path, v, "a number");
+      else if (!(Number(v) > 0 && Number(v) <= 1000)) {
+        fail(path, "must be a number above 0 and at most 1000");
+      }
+    } else if (key === "providers") {
+      if (!Array.isArray(v)) typeError(path, v, "[[agent.providers]] tables");
+    } else unknownKey(path, key, AGENT_KEYS);
+  }
+  const providers = Array.isArray(agent.providers) ? agent.providers : [];
+  /** @type {Set<string>} */
+  const names = new Set();
+  providers.forEach((p, i) => {
+    const at = ["agent", "providers", i];
+    if (!isTable(p)) {
+      typeError(at, p, "a table");
+      return;
+    }
+    if (p.kind === "cli") {
+      validateCliProvider(p, at, {
+        fail,
+        typeError,
+        unknownKey,
+        text,
+        localOnly,
+        names,
+        warnings,
+      });
+      return;
+    }
+    if (!("kind" in p && "endpoint" in p && "model" in p)) {
+      fail(at, 'a provider needs "kind", "endpoint" and "model"');
+    }
+    if ("price_in" in p !== "price_out" in p) fail(at, "price_in and price_out go together");
+    for (const [key, v] of Object.entries(p)) {
+      const path = [...at, key];
+      if (SECRET_KEYS.has(key.toLowerCase())) fail(path, SECRET_IN_CONFIG);
+      else if (key === "name") {
+        if (!text(path, v, MAX_PROVIDER_NAME)) continue;
+        if (names.has(/** @type {string} */ (v))) fail(path, `a second provider named "${v}"`);
+        names.add(/** @type {string} */ (v));
+      } else if (key === "kind") {
+        if (typeof v !== "string") typeError(path, v, "a string");
+        else if (!PROVIDER_KINDS.includes(v)) {
+          fail(path, 'must be "openai", "anthropic" or "cli"', closest(v, PROVIDER_KINDS));
+        }
+      } else if (key === "endpoint") {
+        if (typeof v !== "string") typeError(path, v, "a string");
+        else {
+          const refused = checkEndpoint(v, { localOnly });
+          if (refused) fail(path, refused);
+        }
+      } else if (key === "model") text(path, v, MAX_MODEL);
+      else if (key === "vision") {
+        if (typeof v !== "boolean") typeError(path, v, "a boolean");
+      } else if (key === "price_in" || key === "price_out") {
+        if (typeof v !== "number" && typeof v !== "bigint") typeError(path, v, "a number");
+        else if (!(Number(v) >= 0 && Number(v) <= MAX_PRICE)) {
+          fail(path, `must be a number from 0 to ${MAX_PRICE} (per million tokens)`);
+        }
+      } else unknownKey(path, key, AGENT_PROVIDER_KEYS);
+    }
+  });
+  if (typeof agent.default === "string" && !names.has(agent.default)) {
+    fail(["agent", "default"], `no provider is named "${agent.default}"`);
+  }
+}
+
+/**
+ * An agent CLI provider (docs/specs/builtin-agent-cli.md Behaviour 2, 6, C4, C10, C11): which
+ * supported CLI, its model and its time limit only. A program, its arguments or its
+ * environment is an error, and so is `local_only`, since Vimma cannot see where a CLI sends
+ * what it reads. A `cli` this build does not know is a warning and the provider is skipped
+ * (resolveAgent), because a newer build's file, or one shared in dotfiles between versions,
+ * must not take the rest of the file down with it; its other mistakes stay errors.
+ * @param {Record<string, unknown>} p @param {Path} at
+ * @param {{ fail: (path: Path, message: string, suggestion?: string) => void,
+ *   typeError: (path: Path, v: unknown, expected: string) => void,
+ *   unknownKey: (path: Path, key: string, known: readonly string[]) => void,
+ *   text: (path: Path, v: unknown, max: number) => boolean, localOnly: boolean,
+ *   names: Set<string>, warnings: Problem[] }} o
+ */
+function validateCliProvider(
+  p,
+  at,
+  { fail, typeError, unknownKey, text, localOnly, names, warnings },
+) {
+  if (!("cli" in p)) fail(at, 'a CLI provider needs "cli"');
+  for (const [key, v] of Object.entries(p)) {
+    const path = [...at, key];
+    if (SECRET_KEYS.has(key.toLowerCase())) fail(path, SECRET_IN_CONFIG);
+    else if (PROGRAM_KEYS.has(key)) fail(path, PROGRAM_IN_CONFIG);
+    else if (key === "kind") {
+      if (localOnly) {
+        fail(path, "an agent CLI may send page text off this machine ([agent] local_only)");
+      }
+    } else if (key === "name") {
+      if (!text(path, v, MAX_PROVIDER_NAME)) continue;
+      if (names.has(/** @type {string} */ (v))) fail(path, `a second provider named "${v}"`);
+      names.add(/** @type {string} */ (v));
+    } else if (key === "cli") {
+      if (typeof v !== "string") typeError(path, v, "a string");
+      else if (!CLI_IDS.includes(v)) {
+        const quoted = CLI_IDS.map((c) => `"${c}"`);
+        const ids =
+          quoted.length > 1 ? `${quoted.slice(0, -1).join(", ")} or ${quoted.at(-1)}` : quoted[0];
+        const suggestion = closest(v, [...CLI_IDS]);
+        warnings.push({
+          path,
+          message: `unknown agent CLI ${JSON.stringify(v)}: this provider is skipped (this version knows ${ids})`,
+          ...(suggestion ? { suggestion } : {}),
+        });
+      }
+    } else if (key === "model") {
+      // The rule the command line applies (C2), so a bad model is reported with its line.
+      const problem = text(path, v, MAX_MODEL) && modelProblem(/** @type {string} */ (v));
+      if (problem) fail(path, problem);
+    } else if (key === "max_minutes") {
+      if (typeof v !== "bigint") typeError(path, v, "an integer");
+      else if (v < 1n || v > BigInt(MAX_MINUTES)) {
+        fail(path, `must be an integer between 1 and ${MAX_MINUTES} (minutes)`);
+      }
+    } else if (key === "endpoint") {
+      fail(path, "a CLI provider has no endpoint: the CLI decides where it sends requests");
+    } else unknownKey(path, key, AGENT_CLI_KEYS);
+  }
+}
+
+/**
+ * `[agent]` with the defaults filled in (camelCase, as ResolvedConfig keeps it).
+ * @param {any} agent  valid
+ * @returns {AgentConfig}
+ */
+function resolveAgent(agent) {
+  /** @type {any[]} */
+  const listed = Array.isArray(agent?.providers) ? agent.providers : [];
+  const providers = listed.filter((p) => p.kind !== "cli" || CLI_IDS.includes(p.cli));
+  // A default that names a skipped provider (validateCliProvider) sets none.
+  const named = providers.some((p) => p.name === agent?.default);
+  const num = (/** @type {unknown} */ v, /** @type {number | null} */ d) =>
+    v === undefined ? d : Number(v);
+  return {
+    default: named ? agent.default : null,
+    localOnly: agent?.local_only ?? false,
+    maxRunning: /** @type {number} */ (num(agent?.max_running, AGENT_DEFAULTS.maxRunning)),
+    maxSteps: /** @type {number} */ (num(agent?.max_steps, AGENT_DEFAULTS.maxSteps)),
+    maxTokens: /** @type {number} */ (num(agent?.max_tokens, AGENT_DEFAULTS.maxTokens)),
+    maxCost: /** @type {number} */ (num(agent?.max_cost, AGENT_DEFAULTS.maxCost)),
+    keepDays: num(agent?.keep_days, null),
+    keepResults: num(agent?.keep_results, null),
+    providers: providers.map((p) =>
+      p.kind === "cli" ? resolveCliProvider(p) : resolveProvider(p),
+    ),
+  };
+}
+
+/** A model provider, resolved. @param {any} p  valid @returns {AgentProviderConfig} */
+function resolveProvider(p) {
+  return {
+    name: p.name,
+    kind: p.kind,
+    endpoint: p.endpoint,
+    model: p.model,
+    // B7: a model that sees images is the rule for Anthropic's, the exception for local ones.
+    vision: p.vision ?? p.kind === "anthropic",
+    ...(p.price_in === undefined
+      ? {}
+      : { priceIn: Number(p.price_in), priceOut: Number(p.price_out) }),
+  };
+}
+
+/**
+ * An agent CLI provider, resolved: no endpoint (the CLI decides), no vision of Vimma's (its
+ * screenshots go through vimma-ctl), and its time limit.
+ * @param {any} p  valid @returns {AgentProviderConfig}
+ */
+function resolveCliProvider(p) {
+  return {
+    name: p.name,
+    kind: "cli",
+    cli: p.cli,
+    endpoint: "",
+    model: p.model ?? "",
+    vision: false,
+    maxMinutes: Number(p.max_minutes ?? DEFAULT_MAX_MINUTES),
+  };
+}
+
+/**
+ * Why `[mcp] download_dir` is not a quarantine folder (decision 31 b), or null: `~/…` or an
+ * absolute path, never home, `/` or the Downloads folder itself. The browser checks the folder
+ * Firefox downloads to as well, when it uses it.
+ * @param {unknown} v
+ * @returns {string | null} `"type"` for a value that is not a string
+ */
+function downloadDirProblem(v) {
+  if (typeof v !== "string") return "type";
+  if (hasControl(v)) return "must not contain control characters";
+  if (v.startsWith("$")) return "must not start with $: write ~/ for your home folder";
+  if (!(v === "~" || v.startsWith("~/") || v.startsWith("/"))) return "must start with ~/ or /";
+  if (v.split("/").includes("..")) return "must not contain ..";
+  // `~` stands for a home folder no real path can be: the checks see `~/…` as under home.
+  const HOME = "/~";
+  return quarantineProblem(resolveDownloadDir(v, HOME), HOME);
+}
+
+/**
+ * `[mcp]` with the defaults filled in (camelCase, as ResolvedConfig keeps it).
+ * @param {UserConfig["mcp"]} mcp  valid
+ * @returns {McpConfig}
+ */
+function resolveMcp(mcp) {
+  const d = /** @type {Required<Omit<NonNullable<UserConfig["mcp"]>, "enabled">>} */ (
+    DEFAULT_CONFIG.mcp
+  );
+  return {
+    ...(mcp?.enabled === undefined ? {} : { enabled: mcp.enabled }),
+    workspace: mcp?.workspace ?? d.workspace,
+    askTimeout: mcp?.ask_timeout ?? d.ask_timeout,
+    grantMinutes: mcp?.grant_minutes ?? d.grant_minutes,
+    grantMaxMinutes: mcp?.grant_max_minutes ?? d.grant_max_minutes,
+    maxReadChars: mcp?.max_read_chars ?? d.max_read_chars,
+    notify: mcp?.notify ?? d.notify,
+    downloadDir: mcp?.download_dir ?? d.download_dir,
+    downloadMaxMb: mcp?.download_max_mb ?? d.download_max_mb,
+    clamavMaxAgeDays: mcp?.clamav_max_age_days ?? d.clamav_max_age_days,
+  };
+}
+
+/**
+ * TOML integers parsed as BigInt back to numbers, once validation has bounded them.
+ * @param {unknown} v
+ * @returns {any}
+ */
+function toNumbers(v) {
+  if (typeof v === "bigint") return Number(v);
+  if (Array.isArray(v)) return v.map(toNumbers);
+  if (!isTable(v)) return v;
+  /** @type {Record<string, unknown>} */
+  const out = {};
+  for (const [k, x] of Object.entries(v)) {
+    Object.defineProperty(out, k, { value: toNumbers(x), enumerable: true, writable: true });
+  }
+  return out;
+}
+
+/**
+ * `[firefox]` with the defaults filled in and every chord canonical, each once.
+ * @param {UserConfig["firefox"]} firefox  valid
+ * @returns {FirefoxKeySetting}
+ */
+function resolveFirefox(firefox) {
+  const disable = firefox?.disable ?? "all";
+  return {
+    disable: disable === "all" ? "all" : [...new Set(disable.map(canonicalChord))],
+    enable: [...new Set((firefox?.enable ?? []).map(canonicalChord))],
+  };
+}
+
+/**
+ * Fill every section of a valid config (as parsed) with defaults and normalise values.
+ * @param {UserConfig} user
+ * @param {string[]} [workspaceOrder]  workspace names in file order; JS objects list
+ *   number-like keys first, so parseConfig passes the order it read from the text
+ * @param {string[]} [siteOrder]  `[sites]` hosts in file order, for the same reason
+ * @returns {ResolvedConfig}
+ */
+export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
+  const theme = user.theme ?? {};
+  const defTheme = /** @type {Required<NonNullable<UserConfig["theme"]>>} */ (DEFAULT_CONFIG.theme);
+  /** @type {Record<string, string>} */
+  const colors = {};
+  for (const [k, v] of Object.entries(theme.colors ?? {}))
+    colors[k] = isHexColor(v) ? normalizeHex(v) : v;
+  return {
+    schema: CONFIG_SCHEMA_VERSION,
+    keys: user.keys ?? {},
+    modal: user.modal ?? {},
+    unbind: user.unbind ?? {},
+    workspaces: (workspaceOrder ?? Object.keys(user.workspaces ?? {})).map((name) => {
+      const w = /** @type {NonNullable<UserConfig["workspaces"]>} */ (user.workspaces)[name] ?? {};
+      const color = w.color ?? WORKSPACE_DEFAULTS.color;
+      return {
+        name,
+        color: (Object.hasOwn(COLOR_ALIASES, color) && COLOR_ALIASES[color]) || color,
+        icon: w.icon ?? WORKSPACE_DEFAULTS.icon,
+        ...(w.home === undefined ? {} : { home: w.home }),
+        autofill: w.autofill ?? WORKSPACE_DEFAULTS.autofill,
+      };
+    }),
+    theme: {
+      source: theme.source ?? defTheme.source,
+      name: theme.name ?? defTheme.name,
+      // Only when the file sets it: config.toml then wins over `:theme` (theme-appearance B4).
+      ...(theme.appearance === undefined ? {} : { appearance: theme.appearance }),
+      font: theme.font ?? defTheme.font,
+      colors,
+    },
+    panes: {
+      max: user.panes?.max ?? PANES_MAX_DEFAULT,
+      layout: user.panes?.layout ?? "dwindle",
+      mainSize: (user.panes?.main_size ?? MAIN_SIZE_DEFAULT * 100) / 100,
+      // Not in defaults.mjs' UserConfig yet: the key joins defaults.toml when several splits
+      // ship (docs/specs/multiple-splits.md, Delivery 6).
+      maxSplits:
+        /** @type {{ max_splits?: number }} */ (user.panes ?? {}).max_splits ?? MAX_SPLITS_DEFAULT,
+    },
+    hintChars: /** @type {string | undefined} */ (user.modal?.hint_chars) ?? DEFAULT_HINT_CHARS,
+    sites: (siteOrder ?? Object.keys(user.sites ?? {})).map((match) => ({
+      match,
+      insert: /** @type {NonNullable<UserConfig["sites"]>} */ (user.sites)[match]?.insert ?? "auto",
+    })),
+    routes: resolveRoutes(/** @type {Record<string, string>[]} */ (user.routes ?? [])),
+    routing: { defaultWorkspace: user.routing?.default_workspace ?? null },
+    firefox: resolveFirefox(user.firefox),
+    insertEditing: /** @type {boolean | undefined} */ (user.modal?.insert_editing) ?? true,
+    bookmarks: { root: user.bookmarks?.root ?? "workspace" },
+    panel: { numbers: user.panel?.numbers ?? "absolute" },
+    private: { placement: user.private?.placement ?? "swap" },
+    mcp: resolveMcp(user.mcp),
+    ui: {
+      toolbar: user.ui?.toolbar ?? "shown",
+      bookmarksToolbar: user.ui?.bookmarks_toolbar ?? null,
+      pdfOutline: user.ui?.pdf_outline ?? "shown",
+    },
+    search: resolveSearch(user.search),
+    updates: { check: user.updates?.check ?? true },
+    agent: resolveAgent(/** @type {any} */ (user).agent),
+  };
+}
+
+/**
+ * @typedef {object} ParseResult
+ * @property {ResolvedConfig | null} config   null whenever errors is non-empty
+ * @property {Keymap | null} keymap
+ * @property {ConfigError[]} errors           in file order
+ * @property {ConfigError[]} warnings         what was left out of a file that applies, in file
+ *   order: a provider whose `cli` this build does not know
+ * @property {number | null} migratedFrom     the file's schema when older than the current one
+ */
+
+/**
+ * @param {string} text  contents of config.toml
+ * @param {{ mac?: boolean }} [options]  compile over macOS's default keys (compileKeymap)
+ * @returns {ParseResult}
+ */
+export function parseConfig(text, { mac = false } = {}) {
+  /** @param {ConfigError[]} errors @returns {ParseResult} */
+  const failed = (errors) => ({
+    config: null,
+    keymap: null,
+    errors,
+    warnings: [],
+    migratedFrom: null,
+  });
+
+  const parsed = parseToml(text, { integersAsBigInt: true });
+  if (!parsed.ok) return failed([{ path: "", ...parsed.error }]);
+  const raw = parsed.value;
+  const lineOf = locateKeys(text);
+  /** @param {Problem[]} problems @returns {ConfigError[]} */
+  const located = (problems) =>
+    problems
+      .map(({ path, message, suggestion }) => {
+        const line = lineOf(path);
+        return {
+          ...(line === undefined ? {} : { line }),
+          path: formatPath(path),
+          message,
+          ...(suggestion ? { suggestion } : {}),
+        };
+      })
+      .sort((a, b) => (a.line ?? Infinity) - (b.line ?? Infinity));
+
+  const rawSchema = raw.schema ?? 0n;
+  if (typeof rawSchema === "number") {
+    return failed(located([{ path: ["schema"], message: "must be an integer, got a float" }]));
+  }
+  if (typeof rawSchema !== "bigint" || rawSchema < 0n) {
+    return failed(located([{ path: ["schema"], message: "must be a non-negative integer" }]));
+  }
+  const schema = rawSchema > BigInt(CONFIG_SCHEMA_VERSION) ? Infinity : Number(rawSchema);
+  if (schema > CONFIG_SCHEMA_VERSION) {
+    const message = `schema ${rawSchema} is from a newer vimma; this one reads up to ${CONFIG_SCHEMA_VERSION}`;
+    return failed(located([{ path: ["schema"], message }]));
+  }
+  const migrated = migrate(raw, schema).config;
+  /** @type {Problem[]} */
+  const warnings = [];
+  const problems = validate(migrated, schema, warnings);
+  const user = /** @type {UserConfig} */ (toNumbers(migrated));
+
+  /** @type {Keymap | null} */
+  let keymap = null;
+  if (!problems.some((p) => KEYMAP_SECTIONS.has(/** @type {string} */ (p.path[0])))) {
+    try {
+      keymap = compileKeymap(
+        { keys: user.keys, modal: user.modal, unbind: user.unbind, firefox: user.firefox },
+        { mac },
+      );
+    } catch (e) {
+      /* c8 ignore next */
+      if (!(e instanceof KeymapError)) throw e;
+      // compileKeymap names actions canonically; say what the user wrote (prev_workspace)
+      let path = parsePath(e.path);
+      let message = e.detail;
+      for (const written of Object.keys(user.keys ?? {})) {
+        const name = resolveActionName(written)?.name;
+        if (!name || name === written) continue;
+        if (path[0] === "keys" && path[1] === name) path = ["keys", written, ...path.slice(2)];
+        message = message.replace(new RegExp(`\\b${name}\\b`, "g"), written);
+      }
+      problems.push({ path, message, ...(e.suggestion ? { suggestion: e.suggestion } : {}) });
+    }
+  }
+  if (problems.length) return failed(located(problems));
+  /** @param {"workspaces" | "sites"} table */
+  const fileOrder = (table) =>
+    Object.keys(user[table] ?? {}).sort(
+      (a, b) =>
+        /** @type {number} */ (lineOf([table, a])) - /** @type {number} */ (lineOf([table, b])),
+    );
+  return {
+    config: mergeWithDefaults(user, fileOrder("workspaces"), fileOrder("sites")),
+    keymap,
+    errors: [],
+    warnings: located(warnings),
+    migratedFrom: schema === CONFIG_SCHEMA_VERSION ? null : schema,
+  };
+}
+
+/**
+ * Apply new config text atomically: on any error the previous config stays active (plan M5).
+ * @param {ActiveConfig | null} active  the config in use, null before the first load
+ * @param {string} text
+ * @param {{ mac?: boolean }} [options]  macOS's default keys (compileKeymap)
+ * @returns {{ active: ActiveConfig, errors: ConfigError[], warnings: ConfigError[],
+ *   kept: boolean }}
+ *   kept: the text was not applied; `active` is the previous config, or the defaults.
+ *   warnings: what an applied text left out (parseConfig)
+ */
+export function reloadConfig(active, text, { mac = false } = {}) {
+  const r = parseConfig(text, { mac });
+  if (r.config && r.keymap) {
+    return {
+      active: { config: r.config, keymap: r.keymap },
+      errors: [],
+      warnings: r.warnings,
+      kept: false,
+    };
+  }
+  const fallback = active ?? {
+    config: mergeWithDefaults({}),
+    keymap: compileKeymap({}, { mac }),
+  };
+  return { active: fallback, errors: r.errors, warnings: [], kept: true };
+}
+
+/**
+ * A boolean `check` in some table other than `[updates]`, such as `[ui.updates]` or `[ui]`: an
+ * opt-out written in the wrong place. No other section has a `check` key.
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function strayCheck(value) {
+  if (Array.isArray(value)) return value.some(strayCheck);
+  if (!isTable(value)) return false;
+  return Object.entries(value).some(
+    ([k, v]) => (k === "check" && typeof v === "boolean") || strayCheck(v),
+  );
+}
+
+/**
+ * `[updates] check` as the file says it, even when the file as a whole has errors elsewhere
+ * (docs/specs/m6a-updater.md decision 31): a boolean; "missing" when the TOML parses and says
+ * nothing about it; null when it cannot be read (the TOML does not parse, `updates` is not a
+ * table, `check` is not a boolean, `[updates]` has other keys but no `check`, such as a
+ * misspelt `chekc = false`, the file has a top-level key no section is named, such as
+ * `[update]`, or a boolean `check` sits in another table), since the file may then mean
+ * `check = false`.
+ * @param {string} text
+ * @returns {boolean | "missing" | null}
+ */
+export function rawUpdatesCheck(text) {
+  const parsed = parseToml(text, { integersAsBigInt: true });
+  if (!parsed.ok) return null;
+  const { updates, ...rest } = parsed.value;
+  if (Object.keys(rest).some((key) => !TOP_KEYS.includes(key)) || strayCheck(rest)) return null;
+  if (updates === undefined) return "missing";
+  if (!isTable(updates)) return null;
+  if (updates.check === undefined) return Object.keys(updates).length ? null : "missing";
+  return typeof updates.check === "boolean" ? updates.check : null;
+}
+
+/**
+ * `:route add` (spec workspace-routing): the text to append to config.toml for a `domain` rule,
+ * or the whole file to create when it is missing (`text` null: the template plus the rule).
+ * The result must parse: a file with errors now, an older schema or an inline `routes = [...]`
+ * is refused with the reason, and nothing is written.
+ * @param {string | null} text  config.toml as it is, null when missing
+ * @param {{ domain: string, workspace: string }} rule
+ * @param {{ mac?: boolean }} [options]  check it with macOS's default keys (compileKeymap)
+ * @returns {{ append: string } | { create: string } | { error: string }}
+ */
+export function appendRouteText(text, { domain, workspace }, { mac = false } = {}) {
+  const block = `[[routes]]\ndomain = ${JSON.stringify(domain)}\nworkspace = ${JSON.stringify(workspace)}\n`;
+  const base = text ?? formatConfigTemplate();
+  if (text !== null && parseConfig(text, { mac }).errors.length) {
+    return { error: "config.toml does not parse now; fix it first (:config shows it)" };
+  }
+  const glue = base === "" ? "" : base.endsWith("\n") ? "\n" : "\n\n";
+  const added = `${glue}${block}`;
+  const after = parseConfig(base + added, { mac });
+  const first = after.errors[0];
+  if (first) {
+    return {
+      error: `config.toml does not parse with the rule added: ${first.path ? `${first.path}: ` : ""}${first.message}`,
+    };
+  }
+  return text === null ? { create: base + added } : { append: added };
+}
+
+/**
+ * The first `[[agent.providers]]` header of `text`, as a line index, or -1. Where `[agent]` goes
+ * in a file that has only its providers: a table header after them would not parse in every
+ * TOML reader.
+ * @param {string[]} lines
+ */
+function firstProvidersHeader(lines) {
+  return lines.findIndex((l) => /^[ \t]*\[\[[ \t]*agent[ \t]*\.[ \t]*providers[ \t]*\]\]/.test(l));
+}
+
+/** @param {any} raw  parsed TOML @returns {string} everything but `[agent]`, comparable */
+const withoutAgent = (raw) => JSON.stringify({ ...raw, agent: undefined });
+
+/**
+ * The provider setup picked, added to config.toml text (docs/specs/builtin-agent.md Behaviour 2,
+ * B12) as `[[agent.providers]]` with its name, kind, endpoint, model, vision and prices only,
+ * and, with `makeDefault`, named by `[agent] default`. A provider the file has already (the same
+ * kind, endpoint and model) is not added again; a taken name gets a number. Every other line of
+ * the file stays as it is: the new table goes at the end, `default` is set by its line alone.
+ * Refused, with nothing to write, when the file does not parse now or would not with the edit.
+ * @param {string | null} text  config.toml, null when it does not exist (the template is used)
+ * @param {{ name: string, kind: string, endpoint: string, model: string, vision?: boolean,
+ *   priceIn?: number, priceOut?: number, cli?: string, maxMinutes?: number }} provider
+ * @param {{ makeDefault: boolean, mac?: boolean }} opts
+ * @returns {{ text: string, name: string } | { error: string }}
+ */
+export function addAgentProviderText(text, provider, { makeDefault, mac = false }) {
+  const base = text ?? formatConfigTemplate();
+  const before = parseConfig(base, { mac });
+  if (before.errors.length || !before.config) {
+    return { error: "config.toml does not parse now; fix it first (:config shows it)" };
+  }
+  const providers = before.config.agent.providers;
+  const known = providers.find(
+    (p) =>
+      p.kind === provider.kind &&
+      p.endpoint === provider.endpoint &&
+      p.model === provider.model &&
+      p.cli === provider.cli,
+  );
+  let name = known?.name ?? provider.name;
+  if (!known) {
+    const taken = new Set(providers.map((p) => p.name));
+    for (let n = 2; taken.has(name); n++) name = `${provider.name}-${n}`;
+  }
+  let out = base;
+  if (makeDefault && before.config.agent.default !== name) {
+    const r = setTomlKeys(out, [{ table: "agent", key: "default", value: name }]);
+    if (r.ok) out = r.text;
+    else {
+      // `agent` exists only through `[[agent.providers]]`: `[agent]` goes before them.
+      const lines = out.split("\n");
+      const at = firstProvidersHeader(lines);
+      if (at < 0) return { error: `config.toml cannot take [agent] default: ${r.error.message}` };
+      lines.splice(at, 0, "[agent]", `default = ${tomlLiteral(name)}`, "");
+      out = lines.join("\n");
+    }
+  }
+  if (!known) {
+    // An agent CLI by name, kind, cli, model and time limit only: its program's path is a pref
+    // (C4). A limit other than the default is kept, so that `D` on a model of a provider with
+    // its own `max_minutes` does not lose it after a restart.
+    const minutes = provider.maxMinutes;
+    const block =
+      provider.kind === "cli"
+        ? [
+            "[[agent.providers]]",
+            `name = ${tomlLiteral(name)}`,
+            `kind = "cli"`,
+            `cli = ${tomlLiteral(provider.cli ?? "")}`,
+            ...(provider.model ? [`model = ${tomlLiteral(provider.model)}`] : []),
+            ...(Number.isInteger(minutes) && minutes !== DEFAULT_MAX_MINUTES
+              ? [`max_minutes = ${minutes}`]
+              : []),
+          ]
+        : [
+            "[[agent.providers]]",
+            `name = ${tomlLiteral(name)}`,
+            `kind = ${tomlLiteral(provider.kind)}`,
+            `endpoint = ${tomlLiteral(provider.endpoint)}`,
+            `model = ${tomlLiteral(provider.model)}`,
+            `vision = ${provider.vision === true}`,
+            ...(typeof provider.priceIn === "number" && typeof provider.priceOut === "number"
+              ? [`price_in = ${provider.priceIn}`, `price_out = ${provider.priceOut}`]
+              : []),
+          ];
+    const glue = out === "" ? "" : out.endsWith("\n") ? "\n" : "\n\n";
+    out = `${out}${glue}${block.join("\n")}\n`;
+  }
+  const after = parseConfig(out, { mac });
+  const first = after.errors[0];
+  if (first || !after.config) {
+    const why = first ? `${first.path ? `${first.path}: ` : ""}${first.message}` : "";
+    return { error: `config.toml does not parse with the provider added: ${why}` };
+  }
+  const agent = after.config.agent;
+  const added = agent.providers.find((p) => p.name === name);
+  const rawBefore = parseToml(base);
+  const rawAfter = parseToml(out);
+  if (
+    !added ||
+    added.endpoint !== provider.endpoint ||
+    added.model !== provider.model ||
+    added.kind !== provider.kind ||
+    (makeDefault && agent.default !== name) ||
+    !rawBefore.ok ||
+    !rawAfter.ok ||
+    withoutAgent(rawBefore.value) !== withoutAgent(rawAfter.value)
+  ) {
+    return { error: "the edit would change other keys of config.toml; nothing written" };
+  }
+  return { text: out, name };
+}
+
+/**
+ * `config.toml:12:5: keys.new_tabb: unknown action "new_tabb" (did you mean "new_tab"?)`
+ * @param {ConfigError} e
+ * @param {string} file  as the user should see it, e.g. ~/.config/vimma/config.toml
+ */
+export function formatConfigError(e, file) {
+  const where = e.line ? `:${e.line}${e.column ? `:${e.column}` : ""}` : "";
+  const path = e.path ? `${e.path}: ` : "";
+  const hint = e.suggestion ? ` (did you mean "${e.suggestion}"?)` : "";
+  return `${file}${where}: ${path}${e.message}${hint}`;
+}
+
+/** `$HOME`, `$XDG_CONFIG_HOME`, `${HOME}`, `${XDG_CONFIG_HOME}` at the start of a path. */
+const LEADING_VAR = /^\$(?:\{(HOME|XDG_CONFIG_HOME)\}|(HOME|XDG_CONFIG_HOME)(?![A-Za-z0-9_]))/;
+
+/**
+ * `:source <path>` (spec m5-config-load): the file a typed path names. `~`, `~/…`, `$HOME` and
+ * `$XDG_CONFIG_HOME` (also as `${…}`) expand at the start; other variables and `~user` stay as
+ * typed. A relative path is taken from the folder config.toml is in. `.` and `..` are resolved.
+ * @param {string} arg
+ * @param {{ home: string, xdgConfigHome?: string, configDir: string }} env
+ *   `xdgConfigHome` unset, empty or relative means `~/.config`, as the XDG spec says
+ * @returns {string | null} null for an empty argument (plain `:source`)
+ */
+export function resolveSourcePath(arg, { home, xdgConfigHome = "", configDir }) {
+  let p = arg.trim();
+  if (!p) return null;
+  const xdg = xdgConfigHome.startsWith("/") ? xdgConfigHome : `${home}/.config`;
+  if (p === "~" || p.startsWith("~/")) p = home + p.slice(1);
+  p = p.replace(LEADING_VAR, (_m, braced, bare) => ((braced ?? bare) === "HOME" ? home : xdg));
+  if (!p.startsWith("/")) p = `${configDir}/${p}`;
+  /** @type {string[]} */
+  const out = [];
+  for (const seg of p.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") out.pop();
+    else out.push(seg);
+  }
+  return `/${out.join("/")}`;
+}

@@ -122,8 +122,8 @@ export function textAround(win, node, offset, reach) {
  * @returns {Element | null}
  */
 function renderedParent(n) {
-  const p = /** @type {any} */ (n).flattenedTreeParentNode ?? n.parentElement;
-  return p?.nodeType === 1 ? p : null;
+  const p = n.flattenedTreeParentNode ?? n.parentElement;
+  return p?.nodeType === 1 ? /** @type {Element} */ (p) : null;
 }
 
 /**

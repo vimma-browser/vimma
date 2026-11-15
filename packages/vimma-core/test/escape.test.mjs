@@ -1,12 +1,12 @@
 import { describe, test, expect } from "vitest";
-import { resolveEscape } from "../src/escape.mjs";
-import { MODES } from "../src/modes.mjs";
-import { createDispatcher } from "../src/dispatcher.mjs";
-import { compileKeymap } from "../src/keymap.mjs";
-import { parseKey } from "../src/keys.mjs";
+import { resolveEscape } from "../src/keys/escape.mjs";
+import { MODES } from "../src/keys/modes.mjs";
+import { createDispatcher } from "../src/keys/dispatcher.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
+import { parseKey } from "../src/keys/keys.mjs";
 
-/** @import { Mode } from "../src/modes.mjs" */
-/** @import { EscapeResult } from "../src/escape.mjs" */
+/** @import { Mode } from "../src/keys/modes.mjs" */
+/** @import { EscapeResult } from "../src/keys/escape.mjs" */
 
 /**
  * @param {string} id

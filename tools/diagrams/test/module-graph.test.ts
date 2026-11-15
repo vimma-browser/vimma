@@ -156,6 +156,14 @@ describe("toD2", () => {
     expect(d2).toContain("core/ is imported by every folder drawn here except start/.");
   });
 
+  test("with no exception, the legend says nothing points up instead of counting none", () => {
+    const down = [e("(root)", "host"), e("host", "ui"), e("ctl", "host"), e("ui", "core")];
+    const out = toD2(down, layers, []);
+    expect(out).toContain("No arrow points up: ADR-026 allows no upward import.");
+    expect(out).not.toContain("Orange");
+    expect(out).not.toContain("Eager cycle");
+  });
+
   test("imports into several folders of a band of three or more are one arrow to the band", () => {
     const wide = { ...layers, search: 1, updates: 1 };
     const more = [

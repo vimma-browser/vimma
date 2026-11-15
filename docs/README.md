@@ -15,8 +15,8 @@ Where to read about what. Users start with the guide; contributors with
 | Where the project stands and what comes next           | [roadmap.md](roadmap.md)                                                                      |
 | Why a past decision was made                           | [adr/](adr/), the decision records below                                                      |
 | How a feature behaves, in detail                       | [specs/](specs/), grouped below; [specs/README.md](specs/README.md) for how a spec is written |
-| What each risky component may and must never do        | [security.md](security.md); reporting a vulnerability: [SECURITY.md](../SECURITY.md)          |
-| Builds, CI, lanes, releases, signing keys and recovery | [runbook.md](runbook.md)                                                                      |
+| What each risky component may and must never do        | [security/](security/README.md); reporting a vulnerability: [SECURITY.md](../SECURITY.md)     |
+| Builds, CI, lanes, releases, signing keys and recovery | [runbook/](runbook/README.md)                                                                 |
 | Moving Vimma to a new Firefox release                  | [rebase.md](rebase.md)                                                                        |
 | What a pull request needs before it merges             | [review-checklist.md](review-checklist.md)                                                    |
 | How the built-in agent's models compare                | [agent-bench.md](agent-bench.md)                                                              |
@@ -138,5 +138,5 @@ section's content lives now (the original is in git history):
 | §4 Development life cycle   | [CONTRIBUTING.md](../CONTRIBUTING.md), "Workflow"; [specs/README.md](specs/README.md); [ARCHITECTURE.md](../ARCHITECTURE.md), "Automation and release infrastructure"                                             |
 | §5 TDD and the test pyramid | [ARCHITECTURE.md](../ARCHITECTURE.md), "Testing"; [CONTRIBUTING.md](../CONTRIBUTING.md), "Workflow"                                                                                                               |
 | §6 Roadmap, §9 Risks        | [roadmap.md](roadmap.md)                                                                                                                                                                                          |
-| §7 Versioning and release   | [specs/release-versioning.md](specs/release-versioning.md), [specs/firefox-versions.md](specs/firefox-versions.md), [runbook.md](runbook.md), "Releases"                                                          |
+| §7 Versioning and release   | [specs/release-versioning.md](specs/release-versioning.md), [specs/firefox-versions.md](specs/firefox-versions.md), [runbook/ci-releases.md](runbook/ci-releases.md), "Releases"                                  |
 | §8, §10 Coding agents       | <!-- process-wording: names the coding agents' rules file that replaced plan.md §8 --> [AGENTS.md](../AGENTS.md), the rules coding agents follow, and [CONTRIBUTING.md](../CONTRIBUTING.md), "Claude Code plugin" |

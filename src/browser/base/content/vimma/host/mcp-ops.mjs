@@ -30,7 +30,7 @@ export const AGENT_CONFIG_TOPIC = "vimma-agent-config";
 const lazy = /** @type {Lazy<"AgentGate">} */ ({});
 // Lazily, at call time: AgentGate reads `[mcp]` from this module too.
 ChromeUtils.defineESModuleGetters(lazy, {
-  AgentGate: "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  AgentGate: "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 });
 
 /** @type {McpConfig | null} config.toml's `[mcp]`, once read; until then the defaults apply. */

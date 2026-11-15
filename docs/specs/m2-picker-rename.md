@@ -39,7 +39,9 @@ foo`, the command line's text side channel) the label is set directly; without, 
   `normalizeTabLabel` (bidi and format characters stripped, whitespace collapsed, 100 clusters);
   an empty result deletes the value. SessionStore restores custom values with the tab (restart,
   undo close, `setTabState`). The status bar's `labelFor` reads it; it re-renders on
-  `SSTabRestoring` too, so a restored label shows without a tab switch.
+  `SSTabRestoring` too, so a restored label shows without a tab switch. (Since changed: the
+  labels are `workspaces/tab-labels.mjs`, in the folder of the snapshot that saves them,
+  ADR-026.)
 
 ## Tests (written first)
 

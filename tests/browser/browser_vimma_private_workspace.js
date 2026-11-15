@@ -10,7 +10,7 @@
 
 "use strict";
 
-/* global focusContent -- from head.js */
+/* global focusContent, webProgressOf -- from head.js */
 
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
@@ -28,7 +28,7 @@ const { validateMessage, PRIVATE_WORKSPACE_ID } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/index.mjs",
 );
 const { getTabLabel, setTabLabel } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/host/tab-labels.mjs",
+  "chrome://browser/content/vimma/workspaces/tab-labels.mjs",
 );
 const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
@@ -70,18 +70,25 @@ function workspace(name) {
   created.push(w.id);
   return w;
 }
-const main = () => WorkspaceStore.definitions.workspaces.find((w) => w.name === "main");
-const ww = (win = window) => WindowWorkspaces.get(win);
+const main = () =>
+  /** @type {ContainedWorkspace} */ (
+    WorkspaceStore.definitions.workspaces.find(
+      (/** @type {WorkspaceDefinition} */ w) => w.name === "main",
+    )
+  );
+const ww = (/** @type {BrowserWindow} */ win = window) =>
+  /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(win));
 
 registerCleanupFunction(async () => {
   for (const w of privateWindows()) await BrowserTestUtils.closeWindow(w);
   await SimpleTest.promiseFocus(window);
   ww().switchTo({ id: main().id });
   for (const id of created) await WorkspaceStore.deleteWorkspace(id, { confirmed: true });
-  while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1)
+    BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
 });
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
@@ -117,7 +124,10 @@ function namesNothingPrivate(text, what, { vimma = false } = {}) {
   for (const word of words) Assert.ok(!text.includes(word), `${what} does not contain ${word}`);
 }
 
-/** ctrl+b, then `key` with `mods`, in `win`. */
+/**
+ * ctrl+b, then `key` with `mods`, in `win`.
+ * @param {string} key @param {KeyEventOptions} [mods] @param {BrowserWindow} [win]
+ */
 function prefix(key, mods = {}, win = window) {
   EventUtils.synthesizeKey("b", { ctrlKey: true }, win);
   EventUtils.synthesizeKey(key, mods, win);
@@ -157,7 +167,7 @@ const promptText = (win) =>
 
 /**
  * Focuses `win`'s selected page (focusContent is this window's only).
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 async function focusPage(win) {
   if (win === window) {
@@ -172,7 +182,7 @@ async function focusPage(win) {
   );
 }
 
-/** `:line` Enter in `win`, from its selected page. */
+/** `:line` Enter in `win`, from its selected page. @param {string} line @param {BrowserWindow} [win] */
 async function runCommand(line, win = window) {
   await SimpleTest.promiseFocus(win);
   await focusPage(win);
@@ -181,18 +191,21 @@ async function runCommand(line, win = window) {
   EventUtils.synthesizeKey("KEY_Enter", {}, win);
 }
 
-/** Answers the open y/N prompt in `win`. */
+/** Answers the open y/N prompt in `win`. @param {BrowserWindow} win @param {string} key */
 async function answer(win, key) {
   await until(() => promptOpen(win), "the y/N prompt is open");
   EventUtils.synthesizeKey(key, {}, win);
 }
 
-/** The rows of the picker `id` in `win`: [title, right cell]. */
+/**
+ * The rows of the picker `id` in `win`: [title, right cell].
+ * @param {BrowserWindow} win @param {string} id
+ */
 function pickerRows(win, id) {
   return [...(win.document.getElementById(id)?.querySelectorAll(".vimma-picker-row") ?? [])].map(
     (r) => [
-      r.querySelector(".vimma-picker-title").textContent,
-      r.querySelector(".vimma-picker-host").textContent,
+      /** @type {Element} */ (r.querySelector(".vimma-picker-title")).textContent,
+      /** @type {Element} */ (r.querySelector(".vimma-picker-host")).textContent,
     ],
   );
 }
@@ -204,15 +217,15 @@ function pickerRows(win, id) {
  */
 function submitForm(browser, value) {
   return SpecialPowers.spawn(browser, [value], async (text) => {
-    const field = content.document.getElementById("field");
+    const field = /** @type {HTMLInputElement} */ (content.document.getElementById("field"));
     field.focus();
     field.setUserInput(text);
-    content.document.getElementById("submit").click();
+    /** @type {HTMLElement} */ (content.document.getElementById("submit")).click();
   });
 }
 
 /** The URL the fixture's form submits `value` to. */
-const submittedUrl = (value) => `${FORM}?vimmaprivatefield=${value}`;
+const submittedUrl = (/** @type {string} */ value) => `${FORM}?vimmaprivatefield=${value}`;
 
 add_task(async function prefix_shift_p_opens_one_private_window_and_toggles_back() {
   Assert.equal(privateWindows().length, 0, "no private window yet");
@@ -257,11 +270,12 @@ add_task(async function cycling_never_enters_private_and_leaves_to_the_ends() {
   const A = workspace("pw-a");
   const B = workspace("pw-b");
   // The agent workspace sorts last and is never cycled (docs/specs/vimma-mcp.md decision 9).
-  const all = () => ww().model.workspaces.map((w) => w.id);
+  const all = () => ww().model.workspaces.map((/** @type {WorkspaceState} */ w) => w.id);
   Assert.equal(all().at(-1), WorkspaceStore.agent?.id, "the agent workspace is the last one");
-  const order = () => all().filter((id) => id !== WorkspaceStore.agent?.id);
+  const order = () => all().filter((/** @type {string} */ id) => id !== WorkspaceStore.agent?.id);
   const first = () => order()[0];
-  const last = () => order().at(-1);
+  // The test made A and B, so the order is never empty (B is asserted last just below).
+  const last = () => /** @type {string} */ (order().at(-1));
   Assert.equal(last(), B.id, "B is the last cycled workspace");
 
   await SimpleTest.promiseFocus(window);
@@ -308,10 +322,11 @@ add_task(async function the_status_bar_and_side_panel_show_private() {
   await until(() => segText(priv, "workspace") === "◆ private", "the bar says ◆ private");
   const tab = await BrowserTestUtils.openNewForegroundTab(priv.gBrowser, `${FORM}?panel`);
   prefix("b", {}, priv);
-  const panel = priv.document.getElementById(PANEL_ID);
+  // The side panel; the wait below fails the test if it never appears.
+  const panel = /** @type {HTMLElement} */ (priv.document.getElementById(PANEL_ID));
   await until(() => panel && !panel.hidden, "ctrl+b b opens the side panel in private");
   Assert.equal(
-    panel.querySelector(".vimma-panel-name").textContent,
+    /** @type {Element} */ (panel.querySelector(".vimma-panel-name")).textContent,
     "private",
     "under a private head",
   );
@@ -321,12 +336,18 @@ add_task(async function the_status_bar_and_side_panel_show_private() {
   );
   // Every profile has the agent workspace (docs/specs/vimma-mcp.md decision 8), last in the
   // model; the cycle skips it (decision 9), so the head never names it.
-  const agent = WorkspaceStore.agent;
-  Assert.equal(ww().model.workspaces.at(-1).id, agent.id, "the agent workspace sorts last");
-  const cycled = ww().model.workspaces.filter((w) => w.id !== agent.id);
+  const agent = /** @type {WorkspaceDefinition} */ (WorkspaceStore.agent);
   Assert.equal(
-    panel.querySelector(".vimma-panel-neighbours").textContent,
-    `ctrl+b ( ${cycled.at(-1).name} · ctrl+b ) ${cycled[0].name}`,
+    /** @type {WorkspaceState} */ (ww().model.workspaces.at(-1)).id,
+    agent.id,
+    "the agent workspace sorts last",
+  );
+  const cycled = ww().model.workspaces.filter(
+    (/** @type {WorkspaceState} */ w) => w.id !== agent.id,
+  );
+  Assert.equal(
+    /** @type {Element} */ (panel.querySelector(".vimma-panel-neighbours")).textContent,
+    `ctrl+b ( ${/** @type {WorkspaceState} */ (cycled.at(-1)).name} · ctrl+b ) ${cycled[0].name}`,
     "its neighbours are the last and the first normal workspace, past the agent workspace",
   );
   EventUtils.synthesizeKey("KEY_Escape", {}, priv);
@@ -335,18 +356,23 @@ add_task(async function the_status_bar_and_side_panel_show_private() {
 
 add_task(async function a_normal_side_panel_names_the_cycles_targets_past_agent() {
   await SimpleTest.promiseFocus(window);
-  const agent = WorkspaceStore.agent;
-  const cycled = ww().model.workspaces.filter((w) => w.id !== agent.id);
+  const agent = /** @type {WorkspaceDefinition} */ (WorkspaceStore.agent);
+  const cycled = ww().model.workspaces.filter(
+    (/** @type {WorkspaceState} */ w) => w.id !== agent.id,
+  );
   Assert.greater(cycled.length, 1, "two normal workspaces and the agent workspace");
-  ww().switchTo({ id: cycled.at(-1).id });
-  await until(() => ww().model.active === cycled.at(-1).id, "on the last normal workspace");
+  ww().switchTo({ id: /** @type {WorkspaceState} */ (cycled.at(-1)).id });
+  await until(
+    () => ww().model.active === /** @type {WorkspaceState} */ (cycled.at(-1)).id,
+    "on the last normal workspace",
+  );
   await focusContent(gBrowser.selectedBrowser);
   prefix("b");
-  const panel = document.getElementById(PANEL_ID);
+  const panel = /** @type {HTMLElement} */ (document.getElementById(PANEL_ID));
   await until(() => panel && !panel.hidden, "ctrl+b b opens the side panel");
   Assert.equal(
-    panel.querySelector(".vimma-panel-neighbours").textContent,
-    `ctrl+b ( ${cycled.at(-2).name} · ctrl+b ) ${cycled[0].name}`,
+    /** @type {Element} */ (panel.querySelector(".vimma-panel-neighbours")).textContent,
+    `ctrl+b ( ${/** @type {WorkspaceState} */ (cycled.at(-2)).name} · ctrl+b ) ${cycled[0].name}`,
     "ctrl+b ) wraps to the first workspace, past the agent workspace",
   );
   EventUtils.synthesizeKey("KEY_Escape", {});
@@ -369,14 +395,18 @@ add_task(async function a_normal_window_never_shows_a_private_title_or_url() {
   EventUtils.synthesizeKey("KEY_Escape");
 
   prefix("g");
-  await until(() => window.document.getElementById(GOTO_ID)?.open, "the goto picker is open");
-  const goto = window.document.getElementById(GOTO_ID).textContent;
+  await until(
+    () => /** @type {HTMLDialogElement | null} */ (window.document.getElementById(GOTO_ID))?.open,
+    "the goto picker is open",
+  );
+  const goto = /** @type {HTMLDialogElement} */ (window.document.getElementById(GOTO_ID))
+    .textContent;
   Assert.ok(!goto.includes("vimma private page"), "the goto picker shows no private title");
   Assert.ok(!goto.includes("file_vimma_private_form"), "nor a private URL");
   EventUtils.synthesizeKey("KEY_Escape");
 
   prefix("b");
-  const panel = document.getElementById(PANEL_ID);
+  const panel = /** @type {HTMLElement} */ (document.getElementById(PANEL_ID));
   await until(() => panel && !panel.hidden, "the side panel is open");
   Assert.ok(!panel.textContent.includes("vimma private page"), "the side panel neither");
   EventUtils.synthesizeKey("KEY_Escape");
@@ -394,7 +424,11 @@ add_task(async function a_normal_window_never_shows_a_private_title_or_url() {
 // but never across the private line, in either direction.
 add_task(async function tab_search_keeps_private_and_normal_apart_both_ways() {
   const [priv] = privateWindows();
-  const titled = async (gB, url, title) => {
+  const titled = async (
+    /** @type {Tabbrowser} */ gB,
+    /** @type {string} */ url,
+    /** @type {string} */ title,
+  ) => {
     const tab = BrowserTestUtils.addTab(gB, url);
     await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
     await SpecialPowers.spawn(tab.linkedBrowser, [title], (t) => {
@@ -411,8 +445,8 @@ add_task(async function tab_search_keeps_private_and_normal_apart_both_ways() {
   const normal = await titled(gBrowser, `${PAGE}-ts-open`, "tsnormal-open");
   BrowserTestUtils.removeTab(await titled(gBrowser, `${PAGE}-ts-closed`, "tsnormal-closed"));
 
-  const listed = (win) => {
-    const dialog = win.document.getElementById(GOTO_ID);
+  const listed = (/** @type {BrowserWindow} */ win) => {
+    const dialog = /** @type {HTMLDialogElement} */ (win.document.getElementById(GOTO_ID));
     const names = [...dialog.querySelectorAll("[role=option]")].map((o) =>
       o.getAttribute("aria-label"),
     );
@@ -422,7 +456,10 @@ add_task(async function tab_search_keeps_private_and_normal_apart_both_ways() {
   await SimpleTest.promiseFocus(window);
   await focusPage(window);
   prefix("g");
-  await until(() => window.document.getElementById(GOTO_ID)?.open, "tab search in normal");
+  await until(
+    () => /** @type {HTMLDialogElement | null} */ (window.document.getElementById(GOTO_ID))?.open,
+    "tab search in normal",
+  );
   const fromNormal = listed(window);
   Assert.stringContains(fromNormal, "tsnormal-open", "sanity: it lists this window's tabs");
   Assert.stringContains(fromNormal, "tsnormal-closed", "and normal closed tabs");
@@ -433,7 +470,10 @@ add_task(async function tab_search_keeps_private_and_normal_apart_both_ways() {
   await SimpleTest.promiseFocus(priv);
   await focusPage(priv);
   prefix("g", {}, priv);
-  await until(() => priv.document.getElementById(GOTO_ID)?.open, "tab search in private");
+  await until(
+    () => /** @type {HTMLDialogElement | null} */ (priv.document.getElementById(GOTO_ID))?.open,
+    "tab search in private",
+  );
   const fromPrivate = listed(priv);
   Assert.stringContains(fromPrivate, `${MARK}-closed`, "the private window lists its closed tab");
   Assert.ok(!fromPrivate.includes("tsnormal"), "and no normal tab, open or closed");
@@ -450,7 +490,11 @@ add_task(async function a_tab_moves_in_after_y_and_never_out() {
   );
   prefix("w", {}, priv);
   await until(() => pickerRows(priv, PICKER_ID).length, "the picker opens in private");
-  Assert.deepEqual(pickerRows(priv, PICKER_ID).at(-1)[0], "◆ private", "with the private row");
+  Assert.deepEqual(
+    /** @type {(string | null)[]} */ (pickerRows(priv, PICKER_ID).at(-1))[0],
+    "◆ private",
+    "with the private row",
+  );
   EventUtils.synthesizeKey("k", {}, priv); // a normal row
   EventUtils.synthesizeKey("m", {}, priv);
   await until(
@@ -501,6 +545,13 @@ add_task(async function vimma_ctl_state_withholds_private_urls_and_titles() {
   const result = VimmaControl._commands.state();
   Assert.equal(result.private, true, "private: true");
   Assert.equal(result.workspace, "private", "workspace: private");
+  Assert.strictEqual(result.chat, null, "no agent chat window, which never opens there (#981)");
+  Assert.equal(typeof result.notice, "boolean", "whether a notice shows, a flag without its text");
+  Assert.equal(typeof result.prompt, "boolean", "whether the prompt line is open, likewise");
+  Assert.ok(
+    result.agent === null || Object.keys(result.agent).sort().join() === "ran,waiting",
+    "the status bar's agent segment as a count and a flag, naming nothing",
+  );
   Assert.ok(result.tabs.length, "the tabs are listed");
   for (const tab of result.tabs) {
     Assert.strictEqual(tab.url, null, "no url");
@@ -516,7 +567,7 @@ add_task(async function vimma_ctl_state_withholds_private_urls_and_titles() {
   const normal = VimmaControl._commands.state();
   Assert.ok(!("private" in normal) || normal.private === false, "a normal window is not private");
   Assert.ok(
-    normal.tabs.every((t) => typeof t.url === "string"),
+    normal.tabs.every((/** @type {{ url: unknown }} */ t) => typeof t.url === "string"),
     "and keeps its urls",
   );
 });
@@ -526,7 +577,7 @@ add_task(async function vimma_ctl_state_withholds_private_urls_and_titles() {
 add_task(async function the_private_workspace_keeps_two_splits_and_state_names_no_page() {
   const [priv] = privateWindows();
   await SimpleTest.promiseFocus(priv);
-  const view = PaneViews.get(priv);
+  const view = /** @type {PaneView} */ (PaneViews.get(priv));
   const tabs = [];
   for (const q of ["ps1", "ps2", "ps3", "ps4", "ps5"]) {
     const t = BrowserTestUtils.addTab(priv.gBrowser, `${PAGE}&${q}`);
@@ -534,22 +585,35 @@ add_task(async function the_private_workspace_keeps_two_splits_and_state_names_n
     tabs.push(t);
   }
   const [a, b, c, d, lone] = tabs;
-  Assert.ok(view.showTabs([a, b], a).ok, "S1: a | b");
+  // Loaded tabs, each with its panel: PaneView's own tab type.
+  Assert.ok(
+    view.showTabs(/** @type {PaneTab[]} */ ([a, b]), /** @type {PaneTab} */ (a)).ok,
+    "S1: a | b",
+  );
   priv.gBrowser.selectedTab = lone;
-  Assert.ok(view.showTabs([c, d], c).ok, "S2: c | d, made on a lone tab");
+  Assert.ok(
+    view.showTabs(/** @type {PaneTab[]} */ ([c, d]), /** @type {PaneTab} */ (c)).ok,
+    "S2: c | d, made on a lone tab",
+  );
   await until(() => view.splits.shown === 2, "S2 shows");
   priv.gBrowser.selectedTab = b;
   await until(() => view.splits.shown === 1, "picking b shows S1");
   Assert.deepEqual(
-    view.splits.splits.map((x) => x.number),
+    view.splits.splits.map((/** @type {{ number: number }} */ x) => x.number),
     [1, 2],
     "both splits are kept",
   );
 
   const result = VimmaControl._commands.state();
-  Assert.equal(result.splits.length, 2, "state lists both");
+  // With splits, state lists them.
+  Assert.equal(
+    /** @type {NonNullable<typeof result.splits>} */ (result.splits).length,
+    2,
+    "state lists both",
+  );
   // Only these fields, and every string a tab id from `tabs`: no room for a url or a title.
   const keys = new Set();
+  /** @type {string[]} */
   const strings = [];
   const walk = (/** @type {any} */ n) => {
     for (const [k, v] of Object.entries(n)) {
@@ -558,13 +622,13 @@ add_task(async function the_private_workspace_keeps_two_splits_and_state_names_n
       else if (v && typeof v === "object") walk(v);
     }
   };
-  for (const x of result.splits) walk(x);
+  for (const x of /** @type {NonNullable<typeof result.splits>} */ (result.splits)) walk(x);
   Assert.deepEqual(
     [...keys].filter((k) => !/^\d+$/.test(k)).sort(),
     ["axis", "children", "focus", "index", "number", "ratios", "root", "shown", "tab", "zoomed"],
     "splits carry structure only",
   );
-  const ids = new Set(result.tabs.map((t) => t.id));
+  const ids = new Set(result.tabs.map((/** @type {{ id: string }} */ t) => t.id));
   Assert.ok(
     strings.every((s) => ids.has(s) || s === "x" || s === "y"),
     "and no string but tab ids and axes: no url or title",
@@ -593,7 +657,10 @@ add_task(async function vimma_ctl_state_says_whether_a_private_tab_is_loading() 
     "the slow page is loading",
   );
   const id = String(tab.linkedBrowser.browserId);
-  const entry = () => VimmaControl._commands.state().tabs.find((t) => t.id === id);
+  const entry = () =>
+    /** @type {ReturnType<typeof VimmaControl._commands.state>["tabs"][number]} */ (
+      VimmaControl._commands.state().tabs.find((/** @type {{ id: string }} */ t) => t.id === id)
+    );
   Assert.strictEqual(entry().loading, true, "loading: true while the page loads");
   Assert.strictEqual(entry().url, null, "and still no url");
   tab.linkedBrowser.stop();
@@ -626,7 +693,7 @@ add_task(async function a_new_private_window_is_loading_until_its_start_page_has
     () =>
       browser.currentURI.spec === window.BROWSER_NEW_TAB_URL &&
       !win.gBrowser.selectedTab.hasAttribute("busy") &&
-      !browser.webProgress.isLoadingDocument,
+      !webProgressOf(browser).isLoadingDocument,
     "the start page has loaded",
   );
   Assert.strictEqual(
@@ -670,6 +737,7 @@ add_task(async function nothing_private_reaches_the_normal_profile() {
   const privateList = await Downloads.getList(Downloads.PRIVATE);
   const added = new Promise((resolve) => {
     const view = {
+      /** @param {unknown} d */
       onDownloadAdded(d) {
         privateList.removeView(view);
         resolve(d);
@@ -677,7 +745,9 @@ add_task(async function nothing_private_reaches_the_normal_profile() {
     };
     privateList.addView(view);
   });
-  await SpecialPowers.spawn(browser, [], () => content.document.getElementById("download").click());
+  await SpecialPowers.spawn(browser, [], () =>
+    /** @type {HTMLElement} */ (content.document.getElementById("download")).click(),
+  );
   const download = await added;
   await download.whenSucceeded().catch(() => {});
   // A tab label.
@@ -765,7 +835,7 @@ add_task(async function about_vimma_and_its_key_log_leave_private_windows_out() 
   const { AboutVimma } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/about/AboutVimma.sys.mjs",
   );
-  const { KeyLog } = ChromeUtils.importESModule("chrome://browser/content/vimma/about/key-log.mjs");
+  const { KeyLog } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/key-log.mjs");
   const { VimmaHost } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
   );
@@ -814,7 +884,10 @@ add_task(async function a_switching_follow_in_a_private_window_stays_private() {
   EventUtils.synthesizeKey("g", {}, priv);
   EventUtils.synthesizeKey("F", { shiftKey: true }, priv);
   await until(() => VimmaHost._hints(priv)?.hints.length, "gF labels the link");
-  const { label } = VimmaHost._hints(priv).hints.find((h) => h.target.href === target);
+  // gF's hints are up (above), and one is the link.
+  const { label } = /** @type {HostHint} */ (
+    /** @type {HostHints} */ (VimmaHost._hints(priv)).hints.find((h) => h.target.href === target)
+  );
   const opened = BrowserTestUtils.waitForNewTab(priv.gBrowser, target, true);
   for (const c of label.slice(0, -1)) EventUtils.synthesizeKey(c, {}, priv);
   EventUtils.synthesizeKey(label.slice(-1).toUpperCase(), { shiftKey: true }, priv);

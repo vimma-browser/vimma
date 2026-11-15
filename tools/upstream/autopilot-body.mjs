@@ -462,7 +462,7 @@ export function prBody(c) {
     out.push(
       "",
       `Security release: merge by ${d.drift.worst?.deadline ?? "the drift deadline"} ` +
-        "(docs/security.md, G2), or the drift check fails.",
+        "(docs/security/10-firefox-updates.md, G2), or the drift check fails.",
     );
   }
   if (autoMerge.on && c.head) out.push("", autoMergeMarker(c.head));
@@ -491,7 +491,7 @@ export function fallbackBody(c) {
   return [
     `The autopilot pushed \`${c.branch}\` but could not open the PR: Actions may not create ` +
       "pull requests in this repository (Settings → Actions → General → Workflow permissions → " +
-      '"Allow GitHub Actions to create and approve pull requests"; docs/runbook.md).',
+      '"Allow GitHub Actions to create and approve pull requests"; docs/runbook/).',
     "",
     `**Open it yourself:** [compare main...${c.branch}](${compare}) (title and \`Closes\` line ` +
       "filled in), then mark it ready.",
@@ -521,7 +521,7 @@ export function issueBody(c) {
     `The upstream autopilot ([run](${c.runUrl})) rebases our patches on it, runs the suites ` +
       `and opens a PR on \`${branchName(r.version)}\` that closes this issue (docs/rebase.md).`,
     deadline
-      ? `\nDrift limit: merged by ${deadline}, or the drift check fails (docs/security.md, G2).`
+      ? `\nDrift limit: merged by ${deadline}, or the drift check fails (docs/security/10-firefox-updates.md, G2).`
       : "",
     "",
     `Labels: ${labelsFor(r)
@@ -551,7 +551,7 @@ export function driftBody(c) {
     "",
     "Merge the open `upstream` PR, or follow docs/rebase.md. `upstream.yml` fails every run " +
       `until \`surfer.json\` on main is past these releases ([run](${c.runUrl})). ` +
-      "docs/security.md, G2.",
+      "docs/security/10-firefox-updates.md, G2.",
   ].join("\n");
 }
 

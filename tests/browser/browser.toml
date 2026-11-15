@@ -11,6 +11,8 @@ support-files = ["file_vimma_test.pdf"]
 
 ["browser_vimma_key_capture.js"]
 
+["browser_vimma_host_services.js"]
+
 ["browser_vimma_insert_scroll.js"]
 support-files = [
   "file_vimma_insert_scroll.html",
@@ -73,6 +75,12 @@ support-files = ["file_vimma_copy_motions.html"]
 ["browser_vimma_mozilla_services.js"]
 
 ["browser_vimma_firefox_surfaces_trim.js"]
+
+["browser_vimma_firefox_settings_trim.js"]
+
+["browser_vimma_firefox_settings_hidden.js"]
+
+["browser_vimma_firefox_page_process.js"]
 
 ["browser_vimma_settings_managed.js"]
 
@@ -210,6 +218,8 @@ support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 ["browser_vimma_mcp_prompt_guards.js"]
 support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 
+["browser_vimma_mcp_gate_copies.js"]
+
 ["browser_vimma_mcp_control.js"]
 support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 
@@ -246,6 +256,13 @@ support-files = [
 ["browser_vimma_mcp_activate_changes.js"]
 support-files = ["file_vimma_agent_basket.html", "head_vimma_control.js"]
 
+["browser_vimma_agent_click_race.js"]
+support-files = [
+  "file_vimma_agent_click_race.html",
+  "file_vimma_agent_click_race_frame.html",
+  "head_vimma_control.js",
+]
+
 ["browser_vimma_mcp_waits.js"]
 support-files = [
   "file_vimma_agent_page.html",
@@ -271,6 +288,13 @@ support-files = [
   "file_vimma_agent_page.html",
   "file_vimma_agent_shop.html",
   "file_vimma_agent_shot_card.html",
+  "head_vimma_control.js",
+]
+
+["browser_vimma_mcp_face.js"]
+support-files = [
+  "file_vimma_agent_face_form.html",
+  "file_vimma_agent_page.html",
   "head_vimma_control.js",
 ]
 
@@ -500,6 +524,11 @@ support-files = [
   "head_vimma_control.js",
 ]
 
+["browser_vimma_agent_host.js"]
+support-files = ["file_vimma_agent_page.html", "head_vimma_agent_model.js"]
+
+["browser_vimma_agent_picker_race.js"]
+
 ["browser_vimma_agent_keys.js"]
 
 ["browser_vimma_pdf_focus.js"]
@@ -524,3 +553,6 @@ support-files = ["file_vimma_outline.pdf"]
 
 ["browser_vimma_urlbar_suggestions.js"]
 support-files = ["file_vimma_urlbar_suggest.sjs"]
+
+["browser_vimma_state_waits.js"]
+support-files = ["file_vimma_grep.html", "file_vimma_outline.pdf"]

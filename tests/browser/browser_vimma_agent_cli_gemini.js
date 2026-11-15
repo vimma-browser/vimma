@@ -25,7 +25,7 @@ const { AgentCli, VIMMA_CTL_PREF, pathPref } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/agent/AgentCli.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 const { VimmaControl, ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
@@ -44,6 +44,7 @@ const { OSKeyStoreTestUtils } = ChromeUtils.importESModule(
 );
 const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
 
+/** @type {AgentProviderConfig} */
 const GEMINI = {
   name: "gemini",
   kind: "cli",
@@ -54,13 +55,40 @@ const GEMINI = {
   maxMinutes: 30,
 };
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 500);
+
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+/**
+ * `[agent]` as config.toml resolves it with only `over` set: AGENT_DEFAULTS' budgets, no default
+ * provider, local_only off and no keep_days or keep_results (the product reads each of these
+ * with `??`, so a config that leaves them out works the same).
+ * @param {Partial<AgentConfig>} over
+ * @returns {AgentConfig}
+ */
+const agentConfig = (over) => ({
+  ...AGENT_DEFAULTS,
+  default: null,
+  localOnly: false,
+  keepDays: null,
+  keepResults: null,
+  providers: [],
+  ...over,
+});
 
 /** This test's own folder in the repository, through `surfer import`'s symlink. */
 function repoFile(/** @type {string[]} */ ...parts) {
   const self = getChromeDir(getResolvedURI(gTestPath));
-  self.append(gTestPath.split("/").pop());
+  self.append(found(gTestPath.split("/").pop()));
   self.normalize();
   const repo = self.parent.parent.parent;
   return PathUtils.join(repo.path, ...parts);
@@ -90,9 +118,12 @@ async function needCtl() {
   return bin;
 }
 
-let fake = /** @type {{ dir: string, bin: string, report: string, home: string }} */ (
-  /** @type {any} */ (null)
-);
+/**
+ * The fake CLI that setup installs.
+ * @type {{ dir: string, bin: string, report: string, home: string }}
+ */
+let fake;
+/** @type {AgentConfig | null} */
 let savedConfig = null;
 
 /** Each run's report, in the order they ran; none before the first run. */
@@ -162,7 +193,7 @@ async function tidy() {
   for (const c of AgentChat.list()) await AgentChat.delete(c.id);
   for (const q of AgentGate.waiting) AgentGate.answer(q.id, { kind: "deny" });
   AgentGate.revoke();
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "gemini", providers: [GEMINI] });
+  McpHost.configureAgent(agentConfig({ default: "gemini", providers: [GEMINI] }));
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
   await IOUtils.remove(fake.report, { ignoreAbsent: true });
   await IOUtils.remove(PathUtils.join(fake.home, ".gemini"), {
@@ -215,11 +246,12 @@ add_setup(async () => {
   const ctl = await vimmaCtl();
   if (ctl) Services.prefs.setStringPref(VIMMA_CTL_PREF, ctl);
   savedConfig = McpHost.agentConfig;
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "gemini", providers: [GEMINI] });
+  McpHost.configureAgent(agentConfig({ default: "gemini", providers: [GEMINI] }));
   registerCleanupFunction(async () => {
     McpHost.configureAgent(savedConfig);
     Services.prefs.clearUserPref(pathPref("gemini"));
     Services.prefs.clearUserPref(VIMMA_CTL_PREF);
+    Services.prefs.clearUserPref(MCP_ENABLED_PREF);
     Services.env.set("FAKE_CLI_REPORT", "");
     Services.env.set("GEMINI_CLI_HOME", "");
     Services.env.set("FAKE_GEMINI_SERVERS", "");

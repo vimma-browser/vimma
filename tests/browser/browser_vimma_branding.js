@@ -25,9 +25,12 @@ function formatBrandTerms(terms) {
   /** @type {Record<string, string>} */
   const out = {};
   for (const t of terms) {
-    const msg = bundle.getMessage(`vimma-test-${t}`);
+    // The message the test added above, with a value; formatPattern throws for a null one.
+    const msg = /** @type {FluentMessage} */ (bundle.getMessage(`vimma-test-${t}`));
     // Strip Unicode isolation marks Fluent wraps placeables in.
-    out[t] = bundle.formatPattern(msg.value).replace(/[\u2068\u2069]/g, "");
+    out[t] = bundle
+      .formatPattern(/** @type {FluentPattern} */ (msg.value))
+      .replace(/[\u2068\u2069]/g, "");
   }
   return out;
 }
@@ -59,7 +62,9 @@ add_task(async function brand_strings_are_vimma() {
 });
 
 add_task(async function window_title_names_vimma() {
-  const defaultTitle = await document.l10n.formatValue("browser-main-window-default-title");
+  // A browser window's document is localized (browser.xhtml links its .ftl files).
+  const l10n = /** @type {DocumentL10n} */ (document.l10n);
+  const defaultTitle = await l10n.formatValue("browser-main-window-default-title");
   Assert.equal(defaultTitle, BRAND, "default window title");
 
   await BrowserTestUtils.withNewTab("data:text/html,<title>vimma-page</title>", async () => {
@@ -182,6 +187,9 @@ add_task(async function about_home_and_newtab_render() {
     set: [
       ["browser.newtab.preload", false],
       ["vimma.startpage.newtab", false],
+      // Firefox's pages keep the start page module on Firefox's while their privilegedabout
+      // process runs (#950): letting it end after the last tab gives later tests the start page.
+      ["dom.ipc.keepProcessesAlive.privilegedabout", 0],
     ],
   });
   NewTabPagePreloading.removePreloadedBrowser(window);
@@ -197,6 +205,12 @@ add_task(async function about_home_and_newtab_render() {
       Assert.ok(rendered, `${url} renders the new-tab page`);
     });
   }
+  await TestUtils.waitForCondition(
+    () => !ChromeUtils.getAllDOMProcesses().some((p) => p.remoteType === "privilegedabout"),
+    "the privilegedabout process ends",
+    100,
+    300,
+  );
   await SpecialPowers.popPrefEnv();
   Assert.deepEqual(errors, [], "no AboutNewTabRedirector errors");
 });

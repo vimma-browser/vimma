@@ -1,11 +1,16 @@
 import { describe, test, expect } from "vitest";
 import fc from "fast-check";
-import { planWorkspaceSwitch } from "../src/switchplan.mjs";
-import { PlanError } from "../src/splitplan.mjs";
-import { createWorkspaces, openTab, selectTab, switchWorkspace } from "../src/workspaces.mjs";
+import { planWorkspaceSwitch } from "../src/workspaces/switchplan.mjs";
+import { PlanError } from "../src/panes/splitplan.mjs";
+import {
+  createWorkspaces,
+  openTab,
+  selectTab,
+  switchWorkspace,
+} from "../src/workspaces/workspaces.mjs";
 
-/** @import { TabsState, SwitchPlan } from "../src/switchplan.mjs" */
-/** @import { Workspaces } from "../src/workspaces.mjs" */
+/** @import { TabsState, SwitchPlan } from "../src/workspaces/switchplan.mjs" */
+/** @import { Workspaces } from "../src/workspaces/workspaces.mjs" */
 
 const three = () =>
   createWorkspaces([

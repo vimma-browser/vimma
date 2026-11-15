@@ -6,13 +6,13 @@ import {
   bestAddon,
   isListedAddon,
   removeAddonQuestion,
-} from "../src/addons.mjs";
-import { filterItems, itemId, openPicker, pickerKey } from "../src/picker.mjs";
-import { parseCommandLine, completeCommandLine } from "../src/cmdline.mjs";
-import { getAction } from "../src/actions.mjs";
-import { DEFAULT_CONFIG } from "../src/defaults.mjs";
+} from "../src/ui/addons.mjs";
+import { filterItems, itemId, openPicker, pickerKey } from "../src/ui/picker.mjs";
+import { parseCommandLine, completeCommandLine } from "../src/keys/cmdline.mjs";
+import { getAction } from "../src/keys/actions.mjs";
+import { DEFAULT_CONFIG } from "../src/config/defaults.mjs";
 
-/** @import { AddonRecord } from "../src/addons.mjs" */
+/** @import { AddonRecord } from "../src/ui/addons.mjs" */
 
 /**
  * `value`, failing the test where it is missing.

@@ -24,23 +24,45 @@ const NOTICE_ID = "vimma-notice";
 const TOLERANCE = 1;
 const STEP = 0.05;
 
+/** The window's split view, which VimmaHost made when it started the window. */
 function view() {
-  return PaneViews.get(window);
+  return /** @type {PaneView} */ (PaneViews.get(window));
+}
+
+/** The split's panes, which a test reads while its panes are split. */
+function panes() {
+  return /** @type {Panes} */ (view().panes);
 }
 
 function tabpanels() {
-  return document.getElementById("tabbrowser-tabpanels");
+  return /** @type {Element} */ (document.getElementById("tabbrowser-tabpanels"));
 }
 
-/** A tab's panel rectangle relative to the content area. */
+/** @typedef {{ x: number, y: number, width: number, height: number }} Rect */
+
+/**
+ * A tab's panel rectangle relative to the content area.
+ * @param {SplitTab} tab
+ * @returns {Rect}
+ */
 function rectOf(tab) {
   const o = tabpanels().getBoundingClientRect();
-  const r = document.getElementById(tab.linkedPanel).getBoundingClientRect();
+  const r = /** @type {Element} */ (
+    document.getElementById(tab.linkedPanel)
+  ).getBoundingClientRect();
   return { x: r.x - o.x, y: r.y - o.y, width: r.width, height: r.height };
 }
 
+/**
+ * @param {Rect} a
+ * @param {Rect} b
+ */
 function maxDelta(a, b) {
-  return Math.max(...["x", "y", "width", "height"].map((k) => Math.abs(a[k] - b[k])));
+  return Math.max(
+    .../** @type {(keyof Rect)[]} */ (["x", "y", "width", "height"]).map((k) =>
+      Math.abs(a[k] - b[k]),
+    ),
+  );
 }
 
 /** The tab shown in each pane, in reading order. */
@@ -58,27 +80,41 @@ function focusedTab() {
 
 /** The root split's ratios (two side-by-side panes: [left, right]). */
 function ratios() {
-  return view().panes.root.ratios;
+  // The tests read it with two panes side by side, whose root is a split.
+  return /** @type {PaneSplit} */ (panes().root).ratios;
 }
 
+/**
+ * @param {string} key
+ * @param {KeyEventOptions} [mods]
+ */
 function prefix(key, mods = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key, mods);
 }
 
+/**
+ * @param {string} key
+ * @param {KeyEventOptions} [mods]
+ */
 function ctrlW(key, mods = {}) {
   EventUtils.synthesizeKey("w", { ctrlKey: true });
   EventUtils.synthesizeKey(key, mods);
 }
 
+/**
+ * @param {() => unknown} cond
+ * @param {string} msg
+ */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
 
 function nextFrame() {
-  return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(undefined))));
 }
 
+/** @param {string} id */
 function segText(id) {
   return (
     document.getElementById("vimma-statusbar")?.querySelector(`[data-segment="${id}"]`)
@@ -90,9 +126,10 @@ function notice() {
   return document.getElementById(NOTICE_ID);
 }
 
+/** @param {string} key */
 async function split(key) {
   prefix(key);
-  const tab = gBrowser.selectedTab;
+  const tab = /** @type {SplitTab} */ (gBrowser.selectedTab);
   await until(
     () =>
       tab.linkedBrowser.currentURI.spec === START &&
@@ -102,21 +139,28 @@ async function split(key) {
   return tab;
 }
 
+/** @param {string} name */
 async function openPage(name) {
-  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?${name}`);
+  const tab = /** @type {SplitTab} */ (
+    await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?${name}`)
+  );
   await recordPageKeys(tab.linkedBrowser);
   await focusContent(tab.linkedBrowser);
   await until(() => VimmaHost.status(window).mode === "normal", "the page is in normal mode");
   return tab;
 }
 
-/** Back on `tab`'s pane (ctrl+b h `times` times), its page focused and in normal mode. */
+/**
+ * Back on `tab`'s pane (ctrl+b h `times` times), its page focused and in normal mode.
+ * @param {MozTabbrowserTab} tab
+ */
 async function backTo(tab, times = 1) {
   for (let i = 0; i < times; i++) prefix("h");
   await until(() => document.activeElement === tab.linkedBrowser, "focus is back on the page");
   await until(() => VimmaHost.status(window).mode === "normal", "the page is in normal mode");
 }
 
+/** @param {MozTabbrowserTab} tab */
 async function pageKeysThenZ(tab) {
   await focusContent(tab.linkedBrowser);
   EventUtils.synthesizeKey("z");
@@ -124,20 +168,27 @@ async function pageKeysThenZ(tab) {
   return pageKeys(tab.linkedBrowser);
 }
 
-/** The panel of each listed tab sits at core layout()'s rect, ±1 px. */
+/**
+ * The panel of each listed tab sits at core layout()'s rect, ±1 px.
+ * @param {string} what
+ */
 function assertLayout(what) {
   const o = tabpanels().getBoundingClientRect();
   const area = { x: 0, y: 0, width: Math.round(o.width), height: Math.round(o.height) };
-  const byId = new Map(gBrowser.tabs.map((t) => [t.linkedPanel, t]));
-  for (const { tab, rect } of Panes.layout(view().panes, area)) {
-    const d = maxDelta(rectOf(byId.get(tab)), rect);
-    Assert.lessOrEqual(d, TOLERANCE, `${what}: ${byId.get(tab).label} is at its rect (Δ ${d})`);
+  // Each laid-out pane's tab is a tab of the window, with its panel.
+  const byId = new Map(gBrowser.tabs.map((t) => [t.linkedPanel, /** @type {SplitTab} */ (t)]));
+  for (const { tab, rect } of Panes.layout(panes(), area)) {
+    const shown = /** @type {SplitTab} */ (byId.get(tab));
+    const d = maxDelta(rectOf(shown), rect);
+    Assert.lessOrEqual(d, TOLERANCE, `${what}: ${shown.label} is at its rect (Δ ${d})`);
   }
 }
 
 async function reset() {
   while (view().panes) view().close();
-  while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1) {
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
   notice()?.hidePopover?.();
   await nextFrame();
 }
@@ -245,13 +296,13 @@ add_task(async function ctrl_w_greater_than_widens_directly_in_normal_mode() {
 
 add_task(async function a_restored_pane_tree_swaps_and_resizes() {
   const a = await openPage("a");
-  const b = BrowserTestUtils.addTab(gBrowser, `${PAGE}?b`);
+  const b = /** @type {SplitTab} */ (BrowserTestUtils.addTab(gBrowser, `${PAGE}?b`));
   await BrowserTestUtils.browserLoaded(b.linkedBrowser);
   // A tree as M3 persistence hands it over (WindowWorkspaces #restorePanes): a | b at .7 / .3,
   // focus on a.
   const one = Panes.createPanes(a.linkedPanel);
   let tree = Panes.split(one, one.focus, "vertical", b.linkedPanel);
-  tree = Panes.focusPane(tree, Panes.paneOfTab(tree, a.linkedPanel));
+  tree = Panes.focusPane(tree, /** @type {string} */ (Panes.paneOfTab(tree, a.linkedPanel)));
   tree = Panes.resize(tree, "wider", 0.2);
   const { WindowWorkspaces } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",

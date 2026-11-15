@@ -9,12 +9,12 @@ for the built-in label and the conversation grant; `config.mjs` for `[agent]`; `
 `defaults.mjs` for the key; `config.mjs` also for setup's edit of config.toml);
 `src/browser/base/content/vimma/` (new `agent/AgentChat.sys.mjs`,
 `agent/AgentKeys.sys.mjs`, `agent/AgentStore.sys.mjs`, `ui/agent-chat.mjs`;
-`ctl/agent-commands.mjs`, `ctl/AgentGate.sys.mjs`, `host/workspace-ops.mjs`, `host/mcp-ops.mjs`,
+`ctl/agent-commands.mjs`, `host/AgentGate.sys.mjs`, `host/workspace-ops.mjs`, `host/mcp-ops.mjs`,
 `ui/statusbar.mjs`, `ui/side-panel.mjs`, `host/agent-ui.mjs`, new `host/agent-chat-ops.mjs`,
 `config/ConfigHost.sys.mjs`);
 new `tools/agent-bench/`;
 `tests/e2e/fixtures/`;
-`docs/guide.md`, `docs/security.md`, `docs/limits.md`, README · Upstream patches: none · ADR: a
+`docs/guide.md`, `docs/security/`, `docs/limits.md`, README · Upstream patches: none · ADR: a
 [ADR-023](../adr/023-in-browser-model-client.md), an in-browser model client beside
 [ADR-019](../adr/019-agents-over-mcp.md) (B4). No new dependency (B6).
 
@@ -345,8 +345,9 @@ first, so that what the guide says a model can do is what the bench measured.
   in-process connection needs no socket. `wrapUntrusted` (`:508`) and `untrustedHeader`
   (`:517`) put page text between delimiters a page cannot close; the comment at `:432-434`
   calls this a mitigation, not a guarantee. `AgentQueue` keeps one grant per connection.
-- `ctl/AgentGate.sys.mjs`: an `AgentLabel` is `{ client, version?, via?, since }` (`:41`); the
-  gate keeps grants, the queue and `:mcp log` in memory only.
+- `ctl/AgentGate.sys.mjs` (since changed: `host/AgentGate.sys.mjs`, ADR-026): an `AgentLabel`
+  is `{ client, version?, via?, since }` (`:41`); the gate keeps grants, the queue and
+  `:mcp log` in memory only.
 - `host/workspace-ops.mjs`: `moveTabToWorkspace` (`:274`) and `moveTabFromPicker` (`:331`) move
   a tab to the agent workspace after a `y/N`, reopened there with that workspace's container and
   without its history; the guide calls this sharing a tab with an agent.
@@ -829,7 +830,7 @@ them; a deleted file is removed, not overwritten, so a disk recovery tool may fi
 any deleted file. A reopened conversation sends its stored text to its provider again, which,
 for a hosted provider, is said by the header as for any task.
 
-### `docs/security.md` changes, with the implementation
+### `docs/security/12-agents-mcp-built-in-agent.md` changes, with the implementation
 
 A new subsection of §12 for the built-in agent, with rules and their tests:
 
@@ -994,7 +995,7 @@ order and pay` is a payment checkpoint by its words. The search form is a real f
   questions in the window, giving a page, several conversations and their tabs, the conversation list, what is stored
   and how it is encrypted, budgets, stopping, how it differs from an MCP agent; "What Vimma
   protects, and what it does not" gains the built-in agent; the Features at a glance line.
-- `docs/security.md`: the §12 subsection above, with its tests.
+- `docs/security/12-agents-mcp-built-in-agent.md`: the §12 subsection above, with its tests.
 - `docs/limits.md`, "Agents (MCP)": a local server's tool calling depends on the server and the
   model; a local address may forward to a hosted model; token counts are the provider's or an
   estimate; cost only with prices the user enters; conversations share the agent workspace's

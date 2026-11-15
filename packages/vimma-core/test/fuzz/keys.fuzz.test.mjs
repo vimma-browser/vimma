@@ -11,7 +11,7 @@ import {
   formatKey,
   parseBinding,
   parseKey,
-} from "../../src/keys.mjs";
+} from "../../src/keys/keys.mjs";
 import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, throwsOnly, within } from "./harness.mjs";
 
 const MODS = ["ctrl", "control", "alt", "opt", "option", "shift", "meta", "cmd", "super", "win"];

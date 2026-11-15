@@ -7,9 +7,9 @@ import {
   displayBinding,
   chordFromEvent,
   KeyNotationError,
-} from "../src/keys.mjs";
+} from "../src/keys/keys.mjs";
 
-/** @import { Chord } from "../src/keys.mjs" */
+/** @import { Chord } from "../src/keys/keys.mjs" */
 
 /**
  * The chord a keydown makes, failing the test where it makes none.

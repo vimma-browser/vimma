@@ -10,6 +10,7 @@ const repo = {
   vimma: ["actors", "host"],
   tools: ["e2e", "vimma-ctl"],
   workflows: ["ci.yml", "e2e.yml"],
+  core: ["agent", "keys"],
 };
 
 /** A document naming every entry of `repo`. */
@@ -23,6 +24,7 @@ const complete = [
   "",
   "- `tools/e2e/` and `tools/vimma-ctl/`.",
   "- `ci.yml` and `e2e.yml`.",
+  "- `packages/vimma-core/src/keys/` and `packages/vimma-core/src/agent/`.",
 ].join("\n");
 
 describe("namedEntries", () => {
@@ -31,6 +33,7 @@ describe("namedEntries", () => {
       vimma: ["host", "actors"],
       tools: ["e2e", "vimma-ctl"],
       workflows: ["ci.yml", "e2e.yml"],
+      core: ["keys", "agent"],
     });
   });
 
@@ -44,8 +47,9 @@ describe("namedEntries", () => {
   test("a deeper path, a file or bare prose names no folder", () => {
     const md =
       "`vimma/host/VimmaHost.sys.mjs`, `tools/vimma-ctl/src/`, `.github/dependabot.yml`, " +
-      "vimma/ui/ and tools/e2e/ outside code, `src/browser/base/content/vimma/core/`.";
-    expect(namedEntries(md)).toEqual({ vimma: [], tools: [], workflows: [] });
+      "vimma/ui/ and tools/e2e/ outside code, `src/browser/base/content/vimma/core/`, " +
+      "`packages/vimma-core/src/keys/keys.mjs`, `packages/vimma-core/src/`.";
+    expect(namedEntries(md)).toEqual({ vimma: [], tools: [], workflows: [], core: [] });
   });
 });
 
@@ -71,16 +75,25 @@ describe("archErrors", () => {
     expect(errors).toEqual([".github/workflows/fuzz.yml is missing: describe it as `fuzz.yml`"]);
   });
 
+  test("a folder of vimma-core's src/ that the document leaves out fails", () => {
+    const errors = archErrors(complete, { ...repo, core: [...repo.core, "updates"] });
+    expect(errors).toEqual([
+      "packages/vimma-core/src/updates/ is missing: describe it as `packages/vimma-core/src/updates/`",
+    ]);
+  });
+
   test("an entry the repository no longer has fails, so a removed folder leaves no stale line", () => {
     const errors = archErrors(complete, {
       vimma: ["host"],
       tools: ["e2e"],
       workflows: ["ci.yml"],
+      core: ["keys"],
     });
     expect(errors).toEqual([
       "`vimma/actors/` names src/browser/base/content/vimma/actors/, which does not exist",
       "`tools/vimma-ctl/` names tools/vimma-ctl/, which does not exist",
       "`e2e.yml` names .github/workflows/e2e.yml, which does not exist",
+      "`packages/vimma-core/src/agent/` names packages/vimma-core/src/agent/, which does not exist",
     ]);
   });
 
@@ -120,6 +133,10 @@ describe("listEntries", () => {
         ".github/workflows/nightly.yaml",
         ".github/workflows/README.md",
         ".github/dependabot.yml",
+        "packages/vimma-core/src/index.mjs",
+        "packages/vimma-core/src/keys/keys.mjs",
+        "packages/vimma-core/src/vendor/smol-toml/smol-toml.mjs",
+        "packages/vimma-core/test/keys.test.mjs",
       ],
       [
         "src/browser/base/content/vimma/core/keys.mjs",
@@ -131,6 +148,7 @@ describe("listEntries", () => {
       vimma: ["host", "ui"],
       tools: ["e2e"],
       workflows: ["ci.yml", "nightly.yaml"],
+      core: ["keys", "vendor"],
     });
   });
 });

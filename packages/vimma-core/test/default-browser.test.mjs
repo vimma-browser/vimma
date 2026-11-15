@@ -11,7 +11,7 @@ import {
   isDefaultThroughRouter,
   mimeappsLists,
   routedBrowser,
-} from "../src/default-browser.mjs";
+} from "../src/system/default-browser.mjs";
 
 const OWN = "/opt/vimma/vimma-open";
 

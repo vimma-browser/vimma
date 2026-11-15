@@ -28,6 +28,7 @@ const RESUME = "browser.sessionstore.resume_session_once";
 const dir = PathUtils.join(PathUtils.tempDir, `vimma-restart-${Date.now()}`);
 const appImage = PathUtils.join(dir, "vimma-0.1.0-x86_64.AppImage");
 
+/** @param {() => boolean} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 50, 100);
 const noticeText = () => document.getElementById("vimma-notice")?.textContent ?? "";
 const promptOpen = () => document.getElementById("vimma-rename")?.hidden === false;
@@ -38,9 +39,12 @@ const promptText = () =>
   ).trim();
 
 /** What the fake startup was asked, and what it answers. */
+/** @type {(number | string)[]} */
 let quits = [];
+/** @type {{ program: string, args: string[] }[]} */
 let spawned = [];
 let refuse = false;
+/** @type {import("../../src/browser/base/content/vimma/host/restart.mjs").Startup} */
 const fakeStartup = {
   quit(mode) {
     quits.push(mode);
@@ -54,10 +58,12 @@ const fakeStartup = {
 };
 
 /** The restart requests other observers saw, by their data. */
+/** @type {(string | null)[]} */
 let requests = [];
+/** @param {nsISupports} _subject @param {string} _topic @param {string | null} data */
 const requestObserver = (_subject, _topic, data) => requests.push(data);
 
-/** @param {string} type */
+/** @param {import("../../src/browser/base/content/vimma/core/updates.mjs").InstallType} type */
 async function install(type) {
   await SpecialPowers.pushPrefEnv({ set: [["vimma.update.installType", type]] });
   VimmaUpdates._reset();
@@ -65,6 +71,7 @@ async function install(type) {
   Assert.equal(VimmaUpdates.installType, type, `the install type is ${type}`);
 }
 
+/** @param {string} line */
 async function runCommand(line) {
   await SimpleTest.promiseFocus(window);
   await focusContent(gBrowser.selectedBrowser);
@@ -106,7 +113,7 @@ add_task(async function setup() {
     Services.env.set("XRE_PROFILE_LOCAL_PATH", previous.local);
     Services.prefs.clearUserPref(RESUME);
     VimmaUpdates._reset();
-    while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+    for (const tab of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(tab);
     await IOUtils.remove(dir, { recursive: true });
   });
 });
@@ -169,7 +176,7 @@ add_task(async function a_refused_quit_starts_nothing_and_leaves_the_session_as_
 add_task(async function a_cancelled_request_quits_nothing() {
   fresh();
   await install("appimage");
-  const cancel = (subject) => {
+  const cancel = (/** @type {nsISupports} */ subject) => {
     subject.QueryInterface(Ci.nsISupportsPRBool).data = true;
   };
   Services.obs.addObserver(cancel, "quit-application-requested");

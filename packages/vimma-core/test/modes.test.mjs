@@ -2,7 +2,7 @@
 // the agent question and the update question answer `y` and `n`; a hint label (from any
 // `[modal] hint_chars`), copy mode's yank and element mode's yank type the same letters.
 import { describe, test, expect } from "vitest";
-import { MODES, KEY_KEEPING_MODES } from "../src/modes.mjs";
+import { MODES, KEY_KEEPING_MODES } from "../src/keys/modes.mjs";
 
 describe("KEY_KEEPING_MODES", () => {
   test("hint, copy (visual) and element mode keep their keys from a question", () => {

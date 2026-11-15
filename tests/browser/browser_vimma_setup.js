@@ -44,6 +44,24 @@ const UBLOCK = "uBlock0@raymondhill.net";
 const SETUP_URL = "about:vimma-setup";
 const OFFERED = "vimma.setup.offered";
 
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+/**
+ * The setup page's document. about:vimma-setup loads in the parent process (SetupHost.sys.mjs's
+ * getURIFlags has no URI_MUST_LOAD_IN_CHILD), so the browser has it; contentDocument is null only
+ * for a remote page, where a read through it throws.
+ * @param {MozTabbrowserTab} tab
+ */
+const docOf = (tab) => found(tab.linkedBrowser.contentDocument);
+
 // XDG_CONFIG_HOME first: the vimma.config.path change reloads the config at once, and would
 // otherwise read the developer's own ~/.config/vimma/config.toml.
 add_task(async () => {
@@ -86,20 +104,21 @@ async function removeConfig() {
 
 async function openSetup() {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, SETUP_URL);
-  const doc = tab.linkedBrowser.contentDocument;
+  const doc = docOf(tab);
   await TestUtils.waitForCondition(() => doc.documentElement.dataset.ready === "true");
   tab.linkedBrowser.focus();
   return { tab, doc };
 }
 
-/** @param {...string} keys  EventUtils key names */
+/** @param {Document} doc @param {...string} keys  EventUtils key names */
 async function press(doc, ...keys) {
   for (const k of keys) {
-    EventUtils.synthesizeKey(k, {}, doc.defaultView);
+    EventUtils.synthesizeKey(k, {}, found(doc.defaultView));
     await TestUtils.waitForTick();
   }
 }
 
+/** @param {Document} doc */
 const step = (doc) => doc.documentElement.dataset.step;
 
 add_task(async function automation_and_config_path_skip_setup() {
@@ -116,7 +135,7 @@ add_task(async function first_run_shows_welcome_once() {
   Assert.ok(SetupHost.offer(window), "offered on a fresh profile");
   const tab = await opened;
   Assert.equal(gBrowser.selectedTab, tab, "the welcome screen is the tab in front");
-  const doc = tab.linkedBrowser.contentDocument;
+  const doc = docOf(tab);
   await TestUtils.waitForCondition(() => doc.documentElement.dataset.ready === "true");
   Assert.equal(step(doc), "welcome");
   Assert.ok(doc.querySelector(".vimma-logo"), "the logo is shown");
@@ -160,11 +179,19 @@ add_task(async function esc_changes_no_pref_engine_or_addon() {
   Assert.ok(!(await IOUtils.exists(configFile())));
 });
 
-/** Through to the summary choosing the engine `n` rows below the current default. */
+/**
+ * Through to the summary choosing the engine `n` rows below the current default.
+ * @param {Document} doc
+ * @param {number} n
+ */
 async function chooseEngine(doc, n) {
   await press(doc, "KEY_Enter", "KEY_Enter", ...Array(n).fill("j"), "KEY_Enter");
   Assert.equal(step(doc), "summary");
-  return doc.querySelector("#setup-engines li[aria-current]")?.dataset.name;
+  // A row of the engine list: an <li> of setup.html.
+  const row = /** @type {HTMLElement | null} */ (
+    doc.querySelector("#setup-engines li[aria-current]")
+  );
+  return row?.dataset.name;
 }
 
 add_task(async function summary_creates_a_private_config_toml_when_absent() {
@@ -247,7 +274,10 @@ async function stubInstall() {
   return { asked, restore: () => (SetupHost.installFor = real) };
 }
 
-/** Step 1 with the local AMO answer, uBlock Origin marked. */
+/**
+ * Step 1 with the local AMO answer, uBlock Origin marked.
+ * @param {Document} doc
+ */
 async function markUblock(doc) {
   await press(doc, "KEY_Enter");
   await TestUtils.waitForCondition(() =>
@@ -255,7 +285,9 @@ async function markUblock(doc) {
   );
   await press(doc, " ");
   Assert.equal(
-    doc.querySelector(`#setup-addons li[data-guid="${UBLOCK}"]`).getAttribute("aria-selected"),
+    found(doc.querySelector(`#setup-addons li[data-guid="${UBLOCK}"]`)).getAttribute(
+      "aria-selected",
+    ),
     "true",
     "marked",
   );
@@ -283,10 +315,13 @@ add_task(async function install_shows_the_permission_prompt() {
   );
   Assert.ok(prompt, "Firefox's permission prompt, on the setup page's tab");
   Assert.equal(step(doc), "applying", "the page waits for the user's answer");
-  window.PopupNotifications.panel.firstElementChild.secondaryButton.click();
+  // The panel's notification is the prompt asserted above.
+  found(
+    /** @type {MozPopupNotification | null} */ (window.PopupNotifications.panel.firstElementChild),
+  ).secondaryButton.click();
   await TestUtils.waitForCondition(() => step(doc) === "done");
   Assert.equal(doc.querySelector("#setup-results li:last-child")?.className, "declined");
-  Assert.equal(await AddonManager.getAddonByID(UBLOCK), null, "declining installs nothing");
+  Assert.strictEqual(await AddonManager.getAddonByID(UBLOCK), null, "declining installs nothing");
   stub.restore();
   await removeConfig();
   BrowserTestUtils.removeTab(tab);
@@ -357,7 +392,7 @@ add_task(async function offered_is_on_disk_at_once_and_skip_never_offers_again()
     8,
   );
   const tab = await opened;
-  const doc = tab.linkedBrowser.contentDocument;
+  const doc = docOf(tab);
   await TestUtils.waitForCondition(() => doc.documentElement.dataset.ready === "true");
   tab.linkedBrowser.focus();
   const closed = BrowserTestUtils.waitForTabClosing(tab);

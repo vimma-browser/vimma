@@ -25,8 +25,8 @@ import {
   fillFits,
   ranNotice,
   shownNotice,
-} from "../src/agent-prompt.mjs";
-import { textWidth } from "../src/textwidth.mjs";
+} from "../src/agent/agent-prompt.mjs";
+import { textWidth } from "../src/text/textwidth.mjs";
 
 const MIN = 60_000;
 const label = { client: "example-agent", via: "example" };
@@ -510,6 +510,30 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     expect(line.parts.find((p) => p.text === "email")?.isolate).toBe("auto");
     expect(line.hint).toBe("y send it · n stop");
     expect(line.label).toBe(text(line));
+  });
+
+  test("a form checkpoint names an entry it did not read, and says when the page adds", () => {
+    const what = {
+      ...signup.what,
+      sent: {
+        fields: [
+          { name: "qty", value: "1" },
+          { name: "note", opaque: true },
+          { name: "doc", file: true, opaque: true },
+        ],
+        hidden: 1,
+        more: 0,
+        unread: true,
+      },
+    };
+    expect(text(questionLine({ ...signup, what }, { grantMinutes: 10 }))).toBe(
+      '▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup' +
+        '  qty "1", note (not read), doc (file), + 1 hidden, + what the page adds',
+    );
+    const bare = { ...signup.what, sent: { fields: [], hidden: 0, more: 0, unread: true } };
+    expect(text(questionLine({ ...signup, what: bare }, { grantMinutes: 10 }))).toContain(
+      "example.com/api/signup  + what the page adds",
+    );
   });
 
   test("a form checkpoint cleans the page's names and values and cuts them to fit", () => {
@@ -1045,7 +1069,7 @@ describe("vimma_show's question and notice (mcp-drive D2-D6)", () => {
 
 describe(":mcp log of a show that failed after the yes (mcp-drive D14)", () => {
   test("it reads as failed, not as allowed", () => {
-    /** @type {import("../src/agent.mjs").LogEntry} */
+    /** @type {import("../src/agent/agent.mjs").LogEntry} */
     const e = {
       at: 0,
       client: "claude-code",

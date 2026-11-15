@@ -1,5 +1,5 @@
 # vimma default configuration.
-# Generated from packages/vimma-core/src/defaults.mjs by `npm run gen-docs`; do not edit.
+# Generated from packages/vimma-core/src/config/defaults.mjs by `npm run gen-docs`; do not edit.
 # Copy any line into ~/.config/vimma/config.toml to change it.
 schema = 2
 

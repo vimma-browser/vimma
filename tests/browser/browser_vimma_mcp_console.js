@@ -18,7 +18,7 @@ const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 const { VimmaActors } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs",
@@ -64,13 +64,17 @@ const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
-const ww = () => WindowWorkspaces.get(window);
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
+const mainId = () =>
+  /** @type {string} */ (
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id
+  );
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
+/** @param {boolean} on */
 async function mcp(on) {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, on);
   await VimmaControl.settled();
@@ -98,12 +102,12 @@ async function agentClient(name = "example-agent") {
 /** The oldest waiting question, once there is one. */
 async function question() {
   await until(() => AgentGate.waiting.length > 0, "a question waits");
-  return AgentGate.waiting[0];
+  return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
 /**
  * `agent-console` on `tab`, answered with `answer` (null: not asked, a grant runs it).
- * @param {any} c @param {any} tab @param {object} [args] @param {object | null} [answer]
+ * @param {any} c @param {any} tab @param {object} [args] @param {GateAnswer | null} [answer]
  */
 async function readConsole(c, tab, args = {}, answer = { kind: "once" }) {
   const id = c.request("agent-console", { tab: idOf(tab), ...args });
@@ -217,8 +221,8 @@ add_task(async function test_console_returns_failed_requests_with_status() {
   });
   await until(
     () =>
-      AgentConsole._requestsForTests(tab.linkedBrowser.browserId).some((q) =>
-        q.url.includes("late=1"),
+      AgentConsole._requestsForTests(tab.linkedBrowser.browserId).some(
+        (/** @type {{ url: string }} */ q) => q.url.includes("late=1"),
       ),
     "the new failed request is logged",
   );
@@ -261,7 +265,8 @@ add_task(async function test_a_noisy_page_sends_one_replys_worth() {
   Assert.equal(top.entries.length, 100, "the top frame answers 100 entries");
   Assert.ok(top.omitted >= 300, `and counts the rest: ${top.omitted}`);
   Assert.ok(
-    top.entries.every((e) => e.message.length <= 1000),
+    // The child's own entries, unchecked by agentConsole.
+    /** @type {ConsoleEntry[]} */ (top.entries).every((e) => e.message.length <= 1000),
     "each message cut in the child",
   );
   const c = await agentClient();

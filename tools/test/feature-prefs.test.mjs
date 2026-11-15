@@ -25,8 +25,8 @@ describe("featurePrefDefaults", () => {
   });
 
   it("keeps a default that is not a literal so the check can reject it", () => {
-    expect(featurePrefDefaults('pref("vimma.feature.x", "false");')[0].value).toBe('"false"');
-    expect(featurePrefDefaults('pref("vimma.feature.x", 0);')[0].value).toBe("0");
+    expect(featurePrefDefaults('pref("vimma.feature.x", "false");')[0]?.value).toBe('"false"');
+    expect(featurePrefDefaults('pref("vimma.feature.x", 0);')[0]?.value).toBe("0");
   });
 
   it("finds sticky_pref and lockPref definitions too", () => {

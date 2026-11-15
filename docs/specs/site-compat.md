@@ -1,7 +1,8 @@
 # Spec: site-compat
 
 Status: implemented · Milestone: after private-swap (testing infrastructure, no
-user-visible change) · Area: `tools/sites/` (new), `tools/e2e/launcher.mjs` (one option),
+user-visible change) · Area: `tools/sites/` (new), `tools/e2e/launcher.mjs` (one option;
+since changed: `launcher.ts`, ADR-025),
 `.github/workflows/sites.yml` (new), `package.json` (one script), `.github/workflows/e2e.yml`
 (one step), `tests/e2e/fixtures/sites/` (new). No upstream patch, no product code, no new
 dependency.
@@ -309,7 +310,7 @@ needs no dependency.
     job's `results.json`, downloads the previous run's files and writes the diff and the issue
     text, with read permissions only (`actions` for the artifacts, `issues` to find the open
     issue). `issues: write` belongs to a third job that checks out nothing and runs only `gh` on
-    that text (docs/security.md, "Site compatibility workflow").
+    that text (docs/security/17-site-compatibility-workflow.md, "Site compatibility workflow").
 
 13. **Shortcut conflicts are reported, not acted on.** The `shortcuts` check stays `info`. A
     per-site pass-through list would be a user-facing configuration feature with its own design
@@ -382,7 +383,7 @@ selected pages, and fail the PR when a check that passed on the recording fails.
     requests per actor, `evaluationResult` matched by `resultID`, a closed socket rejects what is
     pending. Against a fake RDP server on a Unix socket.
   - `sites-data.test.mjs`: every entry has a unique `id`, an `https` URL, and only known fields.
-  - `tools/test/sites-workflow.test.mjs`: `sites.yml` runs on `schedule` and
+  - `tools/test/sites-workflow.test.ts`: `sites.yml` runs on `schedule` and
     `workflow_dispatch` only, on `ubuntu-24.04`, with `contents: read`, no secrets, every action
     pinned by SHA, and the report uploaded even when the run fails.
   - `tools/e2e/test/launcher.test.mjs`: `browserArgs` puts extra switches before the URL.
@@ -398,7 +399,7 @@ selected pages, and fail the PR when a check that passed on the recording fails.
   - `results.test.mjs`: which sites a retry runs (blocked only), and how a retry's result
     replaces the first while keeping its status, block and screenshots.
   - `report.test.mjs`: the retried sites' section.
-  - `sites-workflow.test.mjs`: `--retry-blocked` in `sites.yml` and not in `npm run sites`;
+  - `sites-workflow.test.ts`: `--retry-blocked` in `sites.yml` and not in `npm run sites`;
     the browser job's permissions are read-only, `issues: write` is only in a job with no
     checkout and no `node` or `npm`, and that job reaches the issue only through `gh` and
     files.
@@ -411,7 +412,7 @@ selected pages, and fail the PR when a check that passed on the recording fails.
     attributed in the README. The manifest's shape; which ids may be recorded; the gate (a check
     that passed on the recording and does not now fails it, as does a skipped one that fails, a
     snapshot that did not run or a harness error; `shortcuts` is ignored) and its summary.
-  - `sites-workflow.test.mjs`: e2e.yml runs the suite only with `--offline`, after the
+  - `sites-workflow.test.ts`: e2e.yml runs the suite only with `--offline`, after the
     scenarios, as a Beta-mode suite, and uploads its output when it fails.
 - Live: one local run over the full list under Xvfb from the maintainer's network; the summary
   table goes into the PR. Then one `workflow_dispatch` run after merge to compare the hosted
@@ -419,10 +420,10 @@ selected pages, and fail the PR when a check that passed on the recording fails.
 
 ## Docs to update
 
-- `docs/runbook.md`, "Actions minutes budget": one paragraph for `sites.yml` (≈ 15-20 min a
-  night, free, never on PRs).
+- `docs/runbook/ci-actions-minutes-budget.md`, "Actions minutes budget": one paragraph for
+  `sites.yml` (≈ 15-20 min a night, free, never on PRs).
 - `CONTRIBUTING.md`: `npm run sites` under the test commands.
-- `docs/security.md`: the site workflow's issue writes and how untrusted page text is written
+- `docs/security/`: the site workflow's issue writes and how untrusted page text is written
   into the issue (sub-PR 2).
 - No guide, README or changelog change: nothing user-visible changes.
 

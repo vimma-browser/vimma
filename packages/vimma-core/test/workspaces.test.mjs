@@ -26,10 +26,18 @@ import {
   setAlternate,
   leaveSkipped,
   splitsOf,
-} from "../src/workspaces.mjs";
-import { createSplits, newSplit } from "../src/splits.mjs";
-import { closePane, focus, leaves, resize, setPaneTab, swap, toggleZoom } from "../src/panes.mjs";
-import { toSnapshot, readSnapshot } from "../src/snapshot.mjs";
+} from "../src/workspaces/workspaces.mjs";
+import { createSplits, newSplit } from "../src/panes/splits.mjs";
+import {
+  closePane,
+  focus,
+  leaves,
+  resize,
+  setPaneTab,
+  swap,
+  toggleZoom,
+} from "../src/panes/panes.mjs";
+import { toSnapshot, readSnapshot } from "../src/workspaces/snapshot.mjs";
 
 /**
  * The workspace state a snapshot restores to, without its tab renames.
@@ -566,7 +574,7 @@ describe("workspace properties", () => {
             continue;
           }
           expect(w.panes).not.toBeNull();
-          const p = /** @type {import("../src/panes.mjs").Panes} */ (w.panes);
+          const p = /** @type {import("../src/panes/panes.mjs").Panes} */ (w.panes);
           expect(w.tabs).toContain(w.activeTab);
           const shown = leaves(p);
           expect(shown.find((l) => l.pane === p.focus)?.tab).toBe(w.activeTab);

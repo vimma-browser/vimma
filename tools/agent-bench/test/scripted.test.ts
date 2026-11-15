@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { callModel } from "../../../packages/vimma-core/src/agent-providers.mjs";
+import { callModel } from "../../../packages/vimma-core/src/agent/agent-providers.mjs";
 import { SCRIPTED_PROVIDER, scriptedFetch, shopper } from "../scripted.ts";
 import type { ScriptRequest } from "../scripted.ts";
 import type { Catalog } from "../shop.ts";

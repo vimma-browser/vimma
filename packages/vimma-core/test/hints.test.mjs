@@ -22,11 +22,11 @@ import {
   HINT_TOP_TIMEOUT_MS,
   HINT_AGENT_FRAMES_MS,
   HINT_SIZE_WAIT_MS,
-} from "../src/hints.mjs";
-import { ACTIONS } from "../src/actions.mjs";
-import { parseKey } from "../src/keys.mjs";
+} from "../src/page/hints.mjs";
+import { ACTIONS } from "../src/keys/actions.mjs";
+import { parseKey } from "../src/keys/keys.mjs";
 
-/** @import { HintState, ReplyTarget } from "../src/hints.mjs" */
+/** @import { HintState, ReplyTarget } from "../src/page/hints.mjs" */
 
 /**
  * `value`, failing the test where it is missing.

@@ -1,4 +1,4 @@
-// docs/security.md: rules about what Vimma's chrome code never does, checked over its source.
+// docs/security/: rules about what Vimma's chrome code never does, checked over its source.
 // Chrome code runs with full privileges, so these hold for every file, not one feature: a
 // string that reaches the DOM as HTML, code built from text, a process started or an add-on
 // installed would each turn a page title, a config value or a clipboard into an attack.
@@ -106,7 +106,10 @@ describe("chrome code", () => {
     );
     expect(text).not.toMatch(/lazy\s*\[|nsIProcess|\/bin\/sh|"sh"|"-c"/);
     // clamArguments: fixed, with the path last, after `--`.
-    const core = readFileSync(join(ROOT, "packages/vimma-core/src/agent-downloads.mjs"), "utf8");
+    const core = readFileSync(
+      join(ROOT, "packages/vimma-core/src/agent/agent-downloads.mjs"),
+      "utf8",
+    );
     expect(core).toMatch(/"--alert-exceeds-max=yes",\s*"--",\s*path,\s*\]/);
     expect(core).toContain(
       'return [`--config-file=${configFile}`, "--fdpass", "--no-summary", "--stdout", "--", path];',
@@ -169,7 +172,7 @@ describe("chrome code", () => {
     expect(text).toContain(
       "await proc.stdin.write(cli.input(taskPrompt(o.messages, o.text, cli.note)));",
     );
-    const core = readFileSync(join(ROOT, "packages/vimma-core/src/agent-cli.mjs"), "utf8");
+    const core = readFileSync(join(ROOT, "packages/vimma-core/src/agent/agent-cli.mjs"), "utf8");
     expect(core).toContain('versionArgs: Object.freeze(["--version"]),');
     expect(core).toContain("args: (/** @type {RunArgs} */ o) => claudeArguments(o),");
     expect(core).toContain("args: (/** @type {RunArgs} */ o) => codexArguments(o),");
@@ -215,7 +218,7 @@ describe("chrome code", () => {
     expect(text).toMatch(
       /const \{ program, args \} = relaunchCommand\(\{\s*pid: Services\.appinfo\.processID,\s*appImage: path,\s*\}\);\s*spawn\(program, args\);/,
     );
-    const core = readFileSync(join(ROOT, "packages/vimma-core/src/restart.mjs"), "utf8");
+    const core = readFileSync(join(ROOT, "packages/vimma-core/src/updates/restart.mjs"), "utf8");
     expect(core).toContain('program: "/bin/sh",');
     expect(core).toContain(
       'args: ["-c", RELAUNCH_SCRIPT, "vimma-restart", String(pid), appImage],',
@@ -312,7 +315,7 @@ describe("chrome code", () => {
     // allow, and only through this one call.
     const AGENT_PAGES = "src/browser/base/content/vimma/ctl/AgentPages.sys.mjs";
     expect(writes.filter((h) => !h.startsWith(`${OPS}:`))).toEqual([
-      `${AGENT_PAGES}:190: services.perms.addFromPrincipalForBrowser(`,
+      `${AGENT_PAGES}:195: services.perms.addFromPrincipalForBrowser(`,
     ]);
     const agentPages = readFileSync(join(ROOT, AGENT_PAGES), "utf8");
     expect(

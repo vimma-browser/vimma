@@ -2,7 +2,7 @@
 
 Status: implemented · Area: `packages/vimma-core/src/`
 (`agent-checkpoint.mjs`, `agent.mjs`, `agent-prompt.mjs`); `src/browser/base/content/vimma/`
-(`ctl/agent-commands.mjs`, `ctl/AgentGate.sys.mjs`, `actors/agent-fields.mjs`,
+(`ctl/agent-commands.mjs`, `host/AgentGate.sys.mjs`, `actors/agent-fields.mjs`,
 `host/agent-ui.mjs`, `agent/AgentChat.sys.mjs`); `tools/vimma-ctl` (`src/mcp.rs`: the
 instructions and `vimma_activate`'s description); `tools/agent-bench/` (the two-shop scenario) ·
 Upstream patches: none · ADR: [ADR-019](../adr/019-agents-over-mcp.md) (unchanged). No new
@@ -124,6 +124,17 @@ two-shop scenario.
    something malformed, the form sends more fields than the question can list, or a value is
    longer than the child reads of it, the submission asks, because a missed question can send a message or an order while a wrong one
    costs one key.
+   (Since changed: the child also reads what the form sends from the entry list the submission
+   builds (HTMLFormElement::ConstructEntryList), made with its own FormData, and an entry none
+   of the form's HTML fields accounts for, such as a form-associated custom element's, whose
+   name and value the page's script holds and an Xray hides, counts as not known whole: it is
+   named, its value never read, and the submission asks and offers no `a`. Building that list
+   fires `formdata` at the form, so the child builds it only when no `formdata` listener is on
+   the event's path (no page script runs, so the page can neither lie about the list nor change
+   it); a form whose page handles `formdata` may have entries added as it is sent, and it asks
+   too, as does a list the child fails to build. A component's text an agent typed was
+   otherwise sent unasked under a grant;
+   [#1053](https://github.com/vimma-browser/vimma/issues/1053).)
 4. **A fill that submits always asks (K4),** because it sends the values the agent has just
    typed, which is the content the user is asked to judge; a search goes by URL instead
    (agent-speed S2), so a fill that submits is rare in a granted task.
@@ -143,7 +154,7 @@ two-shop scenario.
    (Since changed: `a` is also neither offered nor applied for a form with a value cut to fit,
    the pressed button's and each chosen option's included, longer than the 1024 characters the
    child reads, as for the rest of what K3 counts as not known whole, because an allowance must
-   not rest on a form Vimma did not read whole; docs/security.md M28,
+   not rest on a form Vimma did not read whole; docs/security/12-agents-mcp.md M28,
    [#891](https://github.com/vimma-browser/vimma/issues/891).)
 6. **The pay words are only an extra signal (K6),** because a word list can never be complete,
    so it may add a question but never decide that a step is harmless. Card fields shown in any
@@ -165,9 +176,9 @@ one button on one site. What limits it:
 | **A page trains `a` on a harmless button, then reuses its destination for a consequential form.** | The allowance is checked on every click against K2's secrets and payment signals, and a different button text or path asks again; free text and identity fields under an allowed button are what `a` allows for that one button, by the answer on its question. |
 | **An allowance outlives the task.**                                                               | It ends with the grant and the connection, and is held in memory only.                                                                                                                                                                                          |
 
-`docs/security.md` M28 changes: a click that submits a form must ask under a grant when it is
-consequential (K2, K3) or not covered by an allowance (K5), and an unasked submission is the only
-one the guard lets through; M33 gains that its question never offers `a`.
+`docs/security/12-agents-mcp.md` M28 changes: a click that submits a form must ask under a grant
+when it is consequential (K2, K3) or not covered by an allowance (K5), and an unasked submission is
+the only one the guard lets through; M33 gains that its question never offers `a`.
 
 ## Tests
 
@@ -188,6 +199,9 @@ never offers a`, the allowance's notice and log outcome, the new grant notice.
   `test_a_is_not_offered_on_a_pay_step`.
 - `browser_vimma_mcp_submit.js`: the existing tests that a submission asks without a grant stay
   green.
+- `browser_vimma_mcp_face.js` (Since changed, #1053): a form-associated custom element's entry
+  asks and is named unread, one with no name sends nothing, a file or FormData value asks, and so
+  does a form whose page handles `formdata`, whose listener the check does not run.
 
 ### Bench (`tools/agent-bench`)
 
@@ -205,7 +219,7 @@ never offers a`, the allowance's notice and log outcome, the new grant notice.
 
 - `docs/guide.md`, "Checkpoints: sending a form and paying": which forms ask under a grant, and
   the `a` key.
-- `docs/security.md` M28 and M33.
+- `docs/security/12-agents-mcp.md` M28 and M33.
 - `CHANGELOG.md`: written by release-please from the commit.
 
 ## Delivery

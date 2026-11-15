@@ -17,7 +17,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { FIREFOX, surferVersions } from "../version-files/version-files.mjs";
+import { FIREFOX, surferVersions } from "../version-files/version-files.ts";
 
 /** Mozilla's advisory page for an ID such as `MFSA 2026-106` (tools/upstream/releases.mjs). */
 const ADVISORIES = "https://www.mozilla.org/en-US/security/advisories/";

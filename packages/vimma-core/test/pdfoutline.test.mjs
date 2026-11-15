@@ -10,9 +10,9 @@ import {
   parsePdfOutline,
   selectOutlinePage,
   setOutlineQuery,
-} from "../src/pdfoutline.mjs";
+} from "../src/ui/pdfoutline.mjs";
 
-// docs/specs/pdf-mode.md decision 10, docs/security.md section 20 (V8).
+// docs/specs/pdf-mode.md decision 10, docs/security/20-pdf-viewer.md section 20 (V8).
 
 /**
  * @param {string} title

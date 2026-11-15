@@ -16,7 +16,7 @@ import { tabById } from "./goto.mjs";
 
 /** @import { Action } from "../core/dispatcher.mjs" */
 /** @import { Direction, ResizeDirection } from "../core/panes.mjs" */
-/** @import { PaneResult } from "../split/PaneView.mjs" */
+/** @import { PaneResult, Tab as PaneTab } from "../split/PaneView.mjs" */
 /** @import { SplitItem } from "../core/splits.mjs" */
 /** @import { WindowState } from "./VimmaHost.sys.mjs" */
 
@@ -28,9 +28,7 @@ const TOGETHER = "Show together";
 
 /** @param {BrowserWindow} win */
 function gBrowserOf(win) {
-  return /** @type {{ gBrowser: { selectedBrowser: Element & { focus(): void } } }} */ (
-    /** @type {unknown} */ (win)
-  ).gBrowser;
+  return win.gBrowser;
 }
 
 /**
@@ -144,19 +142,20 @@ export function layoutPanes(win, action, text) {
  */
 export function showTabs(win, tabIds, focusId, aloneId) {
   const view = PaneViews.get(win);
-  const gBrowser = /** @type {{ insertBrowser(tab: Element): void }} */ (
-    /** @type {unknown} */ (gBrowserOf(win))
-  );
+  const gBrowser = gBrowserOf(win);
   const tabs = tabIds.map((id) => tabById(win, id));
+  const found = tabs.filter((t) => !!t);
   const focus = tabById(win, focusId);
   const alone = aloneId ? tabById(win, aloneId) : undefined;
-  if (!view || !focus || tabs.some((t) => !t) || alone === null) {
+  if (!view || !focus || found.length !== tabs.length || alone === null) {
     return `${TOGETHER}: a tab is gone`;
   }
-  const list = /** @type {any[]} */ (tabs);
-  for (const t of list) if (!t.linkedPanel) gBrowser.insertBrowser(t);
-  const result = view.showTabs(list, /** @type {any} */ (focus), {
-    alone: /** @type {any} */ (alone ?? undefined),
+  for (const t of found) if (!t.linkedPanel) gBrowser.insertBrowser(t);
+  // Each has its panel now (Tabbrowser.insertBrowser), as PaneView's tabs do; the focused and
+  // the alone tab are among them.
+  const list = /** @type {PaneTab[]} */ (found);
+  const result = view.showTabs(list, /** @type {PaneTab} */ (focus), {
+    alone: /** @type {PaneTab | undefined} */ (alone),
   });
   // A new split's refusal names itself (docs/specs/multiple-splits.md behaviour 5).
   if (!result.ok) {
@@ -176,7 +175,8 @@ export function showAlone(win, tabId) {
   const view = PaneViews.get(win);
   const tab = tabById(win, tabId);
   if (!view || !tab) return;
-  view.showAlone(/** @type {any} */ (tab));
+  // As PaneView's own Tab type (split/) names a tab of the window's strip.
+  view.showAlone(/** @type {PaneTab} */ (tab));
   focusPage(win);
 }
 
@@ -316,7 +316,7 @@ export function showSplit(win, number) {
   const id = view?.panes ? splitFocusTab(view.splits, number) : null;
   const tab = id ? tabById(win, id) : null;
   if (!tab) return;
-  /** @type {any} */ (gBrowserOf(win)).selectedTab = tab;
+  gBrowserOf(win).selectedTab = tab;
   focusPage(win);
 }
 

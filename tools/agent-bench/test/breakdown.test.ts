@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildRequest } from "../../../packages/vimma-core/src/agent-providers.mjs";
+import { buildRequest } from "../../../packages/vimma-core/src/agent/agent-providers.mjs";
 import { formatBreakdown, requestParts, timedFetch } from "../breakdown.ts";
-import type { ChatMessage, ToolDef } from "../../../packages/vimma-core/src/agent-providers.mjs";
+import type {
+  ChatMessage,
+  ToolDef,
+} from "../../../packages/vimma-core/src/agent/agent-providers.mjs";
 
 const TOOLS: ToolDef[] = [
   { name: "vimma_open", description: "Opens a page.", inputSchema: { type: "object" } },

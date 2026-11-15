@@ -13,14 +13,14 @@ import {
   statusWidth,
   textWidth,
   truncate,
-} from "../src/statusbar.mjs";
-import { THEME_TOKENS } from "../src/theme.mjs";
-import { hintKey, hintStatus, startHints } from "../src/hints.mjs";
-import { parseKey } from "../src/keys.mjs";
+} from "../src/ui/statusbar.mjs";
+import { THEME_TOKENS } from "../src/config/theme.mjs";
+import { hintKey, hintStatus, startHints } from "../src/page/hints.mjs";
+import { parseKey } from "../src/keys/keys.mjs";
 
 /**
  * @import { Announced, Segment, SecurityLevel, StatusInput, UrlOrigin }
- *   from "../src/statusbar.mjs"
+ *   from "../src/ui/statusbar.mjs"
  */
 
 const base = {
@@ -340,6 +340,23 @@ describe("status bar segments", () => {
     });
   });
 
+  // The control socket's state.agent.ran reads this mark from the drawn segment (#1006), not its
+  // background, so that a background for another reason never reads as the dot.
+  test("the agent segment marks the ran dot itself, and fitting keeps the mark", () => {
+    const at = (/** @type {StatusInput["agent"]} */ agent) =>
+      statusSegments({ ...base, agent }).find((s) => s.id === "agent");
+    expect(at({ waiting: 0, minutes: 14, ran: true })?.dot).toBe(true);
+    expect(at({ waiting: 0, minutes: 14, ran: false })?.dot).toBe(false);
+    expect(at({ waiting: 1, minutes: null, ran: true })?.dot).toBe(false);
+    expect(at({ waiting: 0, minutes: null, ran: true, builtin: "◇ built-in 1/60" })?.dot).toBe(
+      false,
+    );
+    const all = statusSegments({ ...base, agent: { waiting: 0, minutes: null, ran: true } });
+    const fitted = fitStatus(all, 30).find((s) => s.id === "agent");
+    expect(fitted?.dot).toBe(true);
+    expect(statusSegments(base).every((s) => s.id === "agent" || s.dot === undefined)).toBe(true);
+  });
+
   test("the agent segment gives way just after the workspace's", () => {
     const all = statusSegments({ ...base, agent: { waiting: 1, minutes: null, ran: false } });
     const p = (/** @type {string} */ id) => /** @type {Segment} */ (all.find((s) => s.id === id));
@@ -574,8 +591,8 @@ describe("status bar with the toolbar hidden", () => {
   });
 });
 
-// docs/security.md C3: with the toolbar hidden the status bar is the only origin
-// indicator, so the URL never loses its registrable domain to truncation.
+// docs/security/06-chrome-ui-rendering.md C3: with the toolbar hidden the status bar is the only
+// origin indicator, so the URL never loses its registrable domain to truncation.
 describe("the URL keeps its registrable domain while the toolbar is hidden", () => {
   const SPOOF =
     "https://accounts.google.com.secure-login-verification-session-0123456789.evil.example/signin/v2/identifier?continue=https%3A%2F%2Fmail.google.com%2Fmail%2F&service=mail&flowName=GlifWebSignIn";
@@ -892,7 +909,18 @@ describe("the security cues outrank the kept URL", () => {
 });
 
 describe("the PDF viewer's page (docs/specs/pdf-mode.md)", () => {
-  const pdf = { page: 4, pages: 120, label: "iv", find: { current: 0, total: 0 }, doc: 1 };
+  const pdf = {
+    page: 4,
+    pages: 120,
+    label: "iv",
+    find: { current: 0, total: 0 },
+    doc: 1,
+    drawn: true,
+    ops: 0,
+    width: 1280,
+    height: 760,
+    zoom: 1,
+  };
   test("page 3/12 and page iv (4/120) beside the tab, nothing outside a PDF", () => {
     expect(
       texts(statusSegments({ ...base, pdf: { ...pdf, page: 3, pages: 12, label: "" } })).page,

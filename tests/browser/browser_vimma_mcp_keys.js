@@ -20,7 +20,7 @@ const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 const { AgentDrive } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/AgentDrive.sys.mjs",
@@ -65,14 +65,19 @@ const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
-const ww = () => WindowWorkspaces.get(window);
-const activeName = () => ww().model.workspaces.find((w) => w.id === ww().model.active)?.name;
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
+const activeName = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === ww().model.active)?.name;
+const mainId = () =>
+  /** @type {string} */ (
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id
+  );
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
+/** @param {boolean} on */
 async function mcp(on) {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, on);
   await VimmaControl.settled();
@@ -105,12 +110,12 @@ async function agentClient(name = "example-agent") {
 /** The oldest waiting question, once there is one. */
 async function question() {
   await until(() => AgentGate.waiting.length > 0, "a question waits");
-  return AgentGate.waiting[0];
+  return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
 /**
  * `agent-keys` on `tab`, answered with `answer` (null: not asked, a grant runs it).
- * @param {any} c @param {any} tab @param {string} keys @param {object | null} [answer]
+ * @param {any} c @param {any} tab @param {string} keys @param {GateAnswer | null} [answer]
  */
 async function keys(c, tab, keys, answer = { kind: "once" }) {
   const id = c.request("agent-keys", { tab: idOf(tab), keys });
@@ -127,7 +132,10 @@ async function keys(c, tab, keys, answer = { kind: "once" }) {
   return r;
 }
 
-/** The agent tab's page: scroll position, selection, keys its listeners saw. */
+/**
+ * The agent tab's page: scroll position, selection, keys its listeners saw.
+ * @param {MozTabbrowserTab} tab
+ */
 function pageOf(tab) {
   return SpecialPowers.spawn(tab.linkedBrowser, [], () => ({
     y: content.scrollY,
@@ -201,7 +209,7 @@ add_task(async function test_keys_find_uses_the_tabs_finder() {
   await mcp(true);
   const tab = await openAgentTab();
   // The user's own search, in the window's find bar of their tab.
-  const findbar = await gBrowser.getFindBar(gBrowser.selectedTab);
+  const findbar = /** @type {MozFindbar} */ (await gBrowser.getFindBar(gBrowser.selectedTab));
   findbar.open();
   findbar._findField.value = "user query";
   const c = await agentClient();
@@ -297,7 +305,7 @@ add_task(async function test_keys_in_use_while_the_user_types_in_the_tab() {
   await until(() => gBrowser.selectedTab === tab, "the agent tab is in front");
   await focusContent(tab.linkedBrowser);
   await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
-    content.document.getElementById("field").focus(),
+    /** @type {HTMLElement} */ (content.document.getElementById("field")).focus(),
   );
   await until(() => VimmaHost.status(window).mode === "insert", "the user is in insert mode");
 
@@ -394,7 +402,7 @@ add_task(async function test_keys_stop_when_the_user_starts_using_the_tab() {
     await until(() => gBrowser.selectedTab === tab, "the agent tab is in front");
     await focusContent(tab.linkedBrowser);
     await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
-      content.document.getElementById("field").focus(),
+      /** @type {HTMLElement} */ (content.document.getElementById("field")).focus(),
     );
     await until(() => VimmaHost.status(window).mode === "insert", "the user types there");
   };
@@ -413,7 +421,7 @@ add_task(async function test_a_find_never_focuses_a_field_of_the_tab_the_user_is
   await mcp(true);
   const tab = await openAgentTab();
   await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
-    const field = content.document.getElementById("field");
+    const field = /** @type {HTMLInputElement} */ (content.document.getElementById("field"));
     field.value = "a pricing field";
     content.wrappedJSObject.focused = 0;
     field.addEventListener("focus", () => content.wrappedJSObject.focused++);

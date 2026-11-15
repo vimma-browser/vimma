@@ -1,4 +1,4 @@
-// npm start (tools/start.mjs): argument parsing, build selection, user.js merging, profile
+// npm start (tools/start.ts): argument parsing, build selection, user.js merging, profile
 // preparation and the already-running check. Nothing here launches a browser.
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -24,7 +24,7 @@ import {
   prepareProfile,
   profileInUse,
   selectBuild,
-} from "../start.mjs";
+} from "../start.ts";
 
 /** @type {string[]} */
 const dirs = [];

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { frameApplied, openFrame, planNativeShow } from "../src/nativeswap.mjs";
+import { frameApplied, openFrame, planNativeShow } from "../src/workspaces/nativeswap.mjs";
 
 // docs/specs/private-swap-macos.md decisions 2, 7 and 13: "show X in place of Y" on macOS,
 // planned from two plain frame records.

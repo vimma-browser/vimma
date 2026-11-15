@@ -5,9 +5,9 @@
 // docs/specs/downloads.md: the status bar's `↓` segment for downloads in progress and the last
 // end, announced once (Behaviour 12 and 13, decision 9); the `ctrl+b d` picker, its rows, live
 // updates and keys (Behaviour 1-11, 15; decisions 3-5, 8, 12, 13, 19); blocked downloads, allowed
-// or removed only through Firefox's own dialog (Behaviour 10, decision 7, docs/security.md D3);
-// and Firefox's downloads panel, which stays shut for an ordinary download and still opens for a
-// blocked one (Behaviour 14, decision 10). An
+// or removed only through Firefox's own dialog (Behaviour 10, decision 7,
+// docs/security/21-downloads-picker.md D3); and Firefox's downloads panel, which stays shut for an
+// ordinary download and still opens for a blocked one (Behaviour 14, decision 10). An
 // Integration.downloads override records what would reach the OS (launchFile,
 // confirmLaunchExecutable, showContainingDirectory) instead of reaching it.
 
@@ -20,7 +20,9 @@ requestLongerTimeout(3);
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
 /* global focusContent -- from head.js */
 
-const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs");
+const { Downloads } = /** @type {{ Downloads: DownloadsApi }} */ (
+  ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs")
+);
 const { Integration } = ChromeUtils.importESModule("resource://gre/modules/Integration.sys.mjs");
 const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
 const { DownloadIntegration } = ChromeUtils.importESModule(
@@ -31,6 +33,12 @@ const { WorkspaceStore } = ChromeUtils.importESModule(
 );
 const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
+);
+const { VimmaControl } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
+);
+const { validateMessage } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/index.mjs",
 );
 
 const HIDDEN = "vimma-toolbar-hidden";
@@ -94,7 +102,7 @@ async function held(name, { resumable = false } = {}) {
  * download is added to the window's list, as a session restore adds one.
  * @param {string} name
  * @param {{ dir?: string, source?: object, contentType?: string, bytes?: Uint8Array,
- *   list?: number, startTime?: Date }} [options]
+ *   list?: string, startTime?: Date }} [options]
  */
 async function finished(name, options = {}) {
   const path = PathUtils.join(options.dir ?? saveDir, name);
@@ -116,7 +124,7 @@ async function finished(name, options = {}) {
 /** @type {{ op: string, path: string, system?: boolean }[]} */
 const calls = [];
 /** Records the calls that would reach the OS, and reaches nothing. */
-const recorder = (/** @type {any} */ base) => ({
+const recorder = (/** @type {object} */ base) => ({
   __proto__: base,
   /** @param {nsIFile} file @param {nsIMIMEInfo} [mimeInfo] */
   launchFile(file, mimeInfo) {
@@ -290,6 +298,79 @@ add_task(async function test_a_private_window_counts_only_its_private_downloads(
   await clean();
 });
 
+// #1006: the control socket's `state.downloads` says which segment the focused window draws,
+// as a word from a closed list, so that a script waits for `↓ done` rather than for a time;
+// never a file's name, size or site, and `null` in a private window (security.md S9).
+add_task(async function test_state_reports_the_segment_as_drawn() {
+  const state = () => {
+    const result = VimmaControl._commands.state();
+    const v = validateMessage(
+      { type: "response", id: 1, ok: true, result },
+      { kind: "response", command: "state" },
+    );
+    Assert.ok(v.valid, `the state follows the protocol: ${v.errors.join("; ")}`);
+    return result;
+  };
+  // The picker clears the last end, which an earlier task's `↓ done` may still show.
+  await clean();
+  await openPicker();
+  await closePicker();
+  await until(() => segment() === null, "no segment");
+  Assert.strictEqual(state().downloads, null, "none drawn: null");
+
+  const one = await held("state.bin");
+  await until(() => shown() === "↓ 50%", "one download at half way");
+  Assert.equal(state().downloads, "progress", "in progress, never its percentage");
+  await release();
+  await one.done;
+  await until(() => shown() === "↓ done", "then done");
+  Assert.equal(state().downloads, "done", "done, as drawn");
+
+  const list = await Downloads.getList(Downloads.PUBLIC);
+  const bad = await Downloads.createDownload({
+    source: `${SJS}?short&run=${RUN}&name=state-short.bin`,
+    target: PathUtils.join(saveDir, "state-short.bin"),
+  });
+  await list.add(bad);
+  await bad.start().catch(() => {});
+  await until(() => shown() === "↓ failed", "a failed download");
+  Assert.equal(state().downloads, "failed", "failed, as drawn");
+  await openPicker();
+  await closePicker();
+  await until(() => segment() === null, "the picker has shown it: the segment goes");
+  Assert.strictEqual(state().downloads, null, "and null again");
+
+  // A private window draws its own downloads; the socket never hears of them.
+  const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  const privList = await Downloads.getList(Downloads.PRIVATE);
+  const download = await Downloads.createDownload({
+    source: { url: `${SJS}?hold&name=state-private.bin`, isPrivate: true },
+    target: PathUtils.join(saveDir, "state-private.bin"),
+  });
+  await privList.add(download);
+  const done = download.start();
+  await until(
+    () =>
+      priv.document.querySelector('#vimma-statusbar [data-segment="downloads"] [aria-hidden]')
+        ?.textContent === "↓ 50%",
+    "the private window draws its download",
+  );
+  const hidden = state();
+  Assert.strictEqual(hidden.private, true, "sanity: state reads the private window");
+  Assert.strictEqual(hidden.downloads, null, "a private window's downloads stay out of state");
+  // Back in the normal window, with the private download still running: state reports what
+  // this window draws, never the private window's progress.
+  await SimpleTest.promiseFocus(window);
+  await until(() => !state().private, "state reads the normal window again");
+  Assert.notEqual(state().downloads, "progress", "the private download is not counted here");
+  Assert.strictEqual(state().downloads, null, "this window draws no segment");
+  Assert.strictEqual(segment(), null, "sanity: nor does its status bar");
+  await release();
+  await done;
+  await BrowserTestUtils.closeWindow(priv);
+  await clean();
+});
+
 add_task(async function test_a_new_profiles_first_download_opens_no_panel() {
   // Firefox opens its panel on a profile's first download whatever alwaysOpenPanel says, unless
   // the panel has shown before (DownloadsCommon.sys.mjs, _notifyDownloadEvent); both are needed.
@@ -310,10 +391,11 @@ add_task(async function test_a_new_profiles_first_download_opens_no_panel() {
 
 /** @param {string} url */
 async function clickDownload(url) {
+  /** @type {Promise<FirefoxDownload>} */
   const added = new Promise((resolve) => {
     Downloads.getList(Downloads.ALL).then((list) => {
       const view = {
-        /** @param {any} d */
+        /** @param {FirefoxDownload} d */
         onDownloadAdded(d) {
           list.removeView(view);
           resolve(d);
@@ -329,7 +411,7 @@ async function clickDownload(url) {
     content.document.body.append(a);
     a.click();
   });
-  return /** @type {Promise<any>} */ (added);
+  return added;
 }
 
 add_task(async function test_starting_a_download_opens_no_panel_and_keeps_the_toolbar_hidden() {
@@ -359,7 +441,7 @@ add_task(async function test_a_blocked_download_still_opens_firefoxs_panel() {
   // An http: file from an https: page is blocked as Insecure (dom.block_download_insecure).
   const download = await clickDownload(`${SJS.replace("https://", "http://")}?now&name=bad.bin`);
   await until(() => !!download.error, "the download is blocked");
-  Assert.equal(download.error.reputationCheckVerdict, "Insecure", "blocked as Insecure");
+  Assert.equal(download.error?.reputationCheckVerdict, "Insecure", "blocked as Insecure");
   await until(() => DownloadsPanel.isPanelShowing, "Firefox's panel opens as its warning");
   const hidden = BrowserTestUtils.waitForEvent(DownloadsPanel.panel, "popuphidden");
   DownloadsPanel.hidePanel();
@@ -409,8 +491,10 @@ add_task(async function test_the_picker_is_on_by_default_in_help_and_the_command
   const tab = await pageTab();
   // Its help row is listed beside `downloads` (the Library).
   prefix("?", { shiftKey: true });
-  const help = () => document.getElementById("vimma-help");
-  await until(() => !!(/** @type {any} */ (help())?.open), "the help overlay opens");
+  // ui/help-overlay.mjs makes it a <dialog>.
+  const help = () =>
+    /** @type {HTMLDialogElement | null} */ (document.getElementById("vimma-help"));
+  await until(() => !!help()?.open, "the help overlay opens");
   const listed = (/** @type {string} */ name) =>
     BrowserTestUtils.isVisible(
       /** @type {Element} */ (help()?.querySelector(`[data-action="${name}"]`)),
@@ -418,7 +502,7 @@ add_task(async function test_the_picker_is_on_by_default_in_help_and_the_command
   Assert.ok(listed("downloads_picker"), "the downloads_picker row");
   Assert.ok(listed("downloads"), "and the Library's row");
   EventUtils.synthesizeKey("KEY_Escape");
-  await until(() => !(/** @type {any} */ (help())?.open), "the help overlay closes");
+  await until(() => !help()?.open, "the help overlay closes");
   // `:downloads` opens it too.
   EventUtils.synthesizeKey(":", { shiftKey: true });
   EventUtils.sendString("downloads");
@@ -561,8 +645,12 @@ add_task(async function test_a_pdf_opens_in_a_tab_and_O_uses_the_system_app() {
 
 add_task(async function test_o_on_another_workspaces_pdf_switches_to_it() {
   const tab = await pageTab();
-  const work = WorkspaceStore.addWorkspace({ name: "dlwork", color: "blue", icon: "briefcase" });
-  const main = WorkspaceStore.definitions.workspaces.find((w) => w.name === "main");
+  const work = /** @type {ContainedWorkspace} */ (
+    WorkspaceStore.addWorkspace({ name: "dlwork", color: "blue", icon: "briefcase" })
+  );
+  const main = /** @type {ContainedWorkspace} */ (
+    WorkspaceStore.definitions.workspaces.find((w) => w.name === "main")
+  );
   try {
     await finished("work.pdf", {
       bytes: await pdfBytes(),
@@ -582,7 +670,7 @@ add_task(async function test_o_on_another_workspaces_pdf_switches_to_it() {
     Assert.equal(gBrowser.selectedTab, pdfTab, "with the PDF selected");
     BrowserTestUtils.removeTab(pdfTab);
   } finally {
-    WorkspaceStore.setActive(window, /** @type {any} */ (main).id);
+    WorkspaceStore.setActive(window, main.id);
     await WorkspaceStore.deleteWorkspace(work.id, { confirmed: true });
     // The workspace's home tab, if switching made one.
     for (const t of [...gBrowser.tabs]) {
@@ -822,7 +910,7 @@ add_task(async function test_u_opens_the_referring_page() {
   EventUtils.synthesizeKey("u");
   const page = await opened;
   Assert.ok(!isOpen(), "the picker closed for the page");
-  const main = /** @type {any} */ (
+  const main = /** @type {ContainedWorkspace} */ (
     WorkspaceStore.definitions.workspaces.find((w) => w.name === "main")
   );
   Assert.equal(page.userContextId, main.userContextId, "a download with no container: main's");
@@ -830,8 +918,10 @@ add_task(async function test_u_opens_the_referring_page() {
   await clean();
 
   // A download from another workspace's container opens its page in that container, whatever
-  // workspace is on screen (docs/security.md D4).
-  const work = WorkspaceStore.addWorkspace({ name: "dlfrom", color: "blue", icon: "briefcase" });
+  // workspace is on screen (docs/security/21-downloads-picker.md D4).
+  const work = /** @type {ContainedWorkspace} */ (
+    WorkspaceStore.addWorkspace({ name: "dlfrom", color: "blue", icon: "briefcase" })
+  );
   try {
     await finished("from-work.bin", {
       source: { referrerInfo: referrerOf(from), userContextId: work.userContextId },
@@ -890,8 +980,9 @@ add_task(async function test_a_private_window_lists_only_private_downloads() {
   await SimpleTest.promiseFocus(privTab.linkedBrowser);
   EventUtils.synthesizeKey("b", { ctrlKey: true }, priv);
   EventUtils.synthesizeKey("d", {}, priv);
-  const privPicker = () => priv.document.getElementById(PICKER_ID);
-  await until(() => !!(/** @type {any} */ (privPicker())?.open), "the private window's picker");
+  const privPicker = () =>
+    /** @type {HTMLDialogElement | null} */ (priv.document.getElementById(PICKER_ID));
+  await until(() => !!privPicker()?.open, "the private window's picker");
   const privTitles = () =>
     [...(privPicker()?.querySelectorAll("[role=option] .vimma-picker-title") ?? [])].map(
       (t) => t.textContent,
@@ -910,7 +1001,7 @@ add_task(async function test_a_private_window_lists_only_private_downloads() {
 
 add_task(async function test_the_picker_never_opens_an_agent_download() {
   const tab = await pageTab();
-  // A path in the agent's folders makes it an agent download (docs/security.md M11).
+  // A path in the agent's folders makes it an agent download (docs/security/12-agents-mcp.md M11).
   const dir = PathUtils.join(PathUtils.profileDir, "vimma-agent-refused");
   await IOUtils.makeDirectory(dir, { ignoreExisting: true });
   const from = `${DIR}file_vimma_plain.html?agent`;
@@ -943,7 +1034,7 @@ const REP = Ci.nsIApplicationReputationService;
  */
 async function blockedDownload(name, { verdict = REP.VERDICT_UNCOMMON, by = "reputation" } = {}) {
   const safe = { shouldBlock: false, verdict: REP.VERDICT_SAFE };
-  const block = (/** @type {any} */ base) => ({
+  const block = (/** @type {object} */ base) => ({
     __proto__: base,
     async shouldBlockForReputationCheck() {
       return by === "reputation" ? { shouldBlock: true, verdict } : safe;
@@ -963,7 +1054,7 @@ async function blockedDownload(name, { verdict = REP.VERDICT_UNCOMMON, by = "rep
     await (await Downloads.getList(Downloads.PUBLIC)).add(download);
     const error = await download.start().then(
       () => null,
-      (/** @type {any} */ e) => e,
+      (/** @type {DownloadError} */ e) => e,
     );
     Assert.ok(error?.becauseBlocked, `${name} is blocked`);
     return download;
@@ -975,7 +1066,7 @@ async function blockedDownload(name, { verdict = REP.VERDICT_UNCOMMON, by = "rep
 /** Firefox's commonDialog window, once built (CommonDialog.onLoad). */
 const nextDialog = () => TestUtils.topicObserved("common-dialog-loaded").then(([w]) => w);
 
-/** @param {any} download */
+/** @param {FirefoxDownload} download */
 const partOf = (download) => /** @type {string} */ (download.target.partFilePath);
 
 add_task(async function test_enter_on_a_blocked_download_says_why_and_the_keys() {
@@ -1077,7 +1168,7 @@ add_task(async function test_no_unblock_when_allowOverride_is_false() {
 add_task(async function test_a_malware_verdict_can_only_be_removed() {
   const tab = await pageTab();
   const download = await blockedDownload("malware.bin", { verdict: REP.VERDICT_DANGEROUS });
-  Assert.equal(download.error.reputationCheckVerdict, "Malware", "a Malware verdict");
+  Assert.equal(download.error?.reputationCheckVerdict, "Malware", "a Malware verdict");
   await openPicker();
   await highlight("malware.bin");
   EventUtils.synthesizeKey("!", { shiftKey: true });
@@ -1158,7 +1249,7 @@ add_task(
       verdict: REP.VERDICT_DANGEROUS,
       by: "contentAnalysis",
     });
-    Assert.ok(download.error.becauseBlockedByContentAnalysis, "blocked by content analysis");
+    Assert.ok(download.error?.becauseBlockedByContentAnalysis, "blocked by content analysis");
     await openPicker();
     await highlight("scanned.bin");
     EventUtils.synthesizeKey("!", { shiftKey: true });

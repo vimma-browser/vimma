@@ -9,9 +9,9 @@ import {
   migrateSnapshot,
   canWrite,
   SnapshotError,
-} from "../src/snapshot.mjs";
-import { activeWorkspace, splitsOf } from "../src/workspaces.mjs";
-import { createRow } from "../src/panes.mjs";
+} from "../src/workspaces/snapshot.mjs";
+import { activeWorkspace, splitsOf } from "../src/workspaces/workspaces.mjs";
+import { createRow } from "../src/panes/panes.mjs";
 
 /**
  * A written snapshot's first workspace; throws when it has none, so no assertion reads past it.

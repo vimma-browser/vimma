@@ -35,7 +35,7 @@ const PICKER_ID = "vimma-workspace-picker";
 /** The normal window's frame before any switch. */
 const FRAME = { x: 40, y: 60, width: 900, height: 700 };
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 25, 200);
 }
@@ -47,7 +47,12 @@ function privateWindows() {
   );
 }
 
-/** ctrl+b, then `key` with `mods`, in `win`. */
+/**
+ * ctrl+b, then `key` with `mods`, in `win`.
+ * @param {string} key
+ * @param {KeyEventOptions} [mods]
+ * @param {Window} [win]
+ */
 function prefix(key, mods = {}, win = window) {
   EventUtils.synthesizeKey("b", { ctrlKey: true }, win);
   EventUtils.synthesizeKey(key, mods, win);
@@ -61,7 +66,7 @@ const frameOf = (win) => ({
   height: win.outerHeight,
 });
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 const hidden = (win) => NativeSwap._windowForTests(win).hidden;
 
 /**
@@ -85,7 +90,7 @@ async function place(win, f) {
 }
 
 /** Every visibility write since the reset, as [window, visible]. */
-/** @type {{ win: Window, visible: boolean }[]} */
+/** @type {{ win: BrowserWindow, visible: boolean }[]} */
 let log = [];
 
 /** @param {Window} win */
@@ -126,13 +131,15 @@ registerCleanupFunction(async () => {
     if (v === null) document.documentElement.removeAttribute(a);
     else document.documentElement.setAttribute(a, v);
   });
-  while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1) {
+    BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
 });
 
 /**
  * Counts focus() calls on `win` while Vimma has it hidden: a hidden window's focus() does
  * nothing on macOS (Research), so the swap must never rely on one.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 function spyHiddenFocus(win) {
   const real = win.focus;
@@ -144,7 +151,10 @@ function spyHiddenFocus(win) {
   return spy;
 }
 
-/** ctrl+b shift+p from `from`; the private window, once it is shown in `from`'s place. */
+/**
+ * ctrl+b shift+p from `from`; the private window, once it is shown in `from`'s place.
+ * @param {BrowserWindow} [from]
+ */
 async function enter(from = window) {
   await SimpleTest.promiseFocus(from);
   const opened = privateWindows().length ? null : BrowserTestUtils.waitForNewWindow();
@@ -161,7 +171,7 @@ add_task(async function entering_shows_private_at_the_frame_and_every_way_back_s
   const priv = await enter();
   Assert.equal(privateWindows().length, 1, "one private window");
   Assert.deepEqual(frameOf(priv), FRAME, "private has the normal window's position and size");
-  Assert.equal(priv.windowState, priv.STATE_NORMAL, "and its size mode");
+  Assert.strictEqual(priv.windowState, priv.STATE_NORMAL, "and its size mode");
   Assert.deepEqual(writes(priv), [true], "private was shown");
   Assert.deepEqual(writes(window), [false], "the normal window was hidden");
   Assert.ok(
@@ -169,7 +179,7 @@ add_task(async function entering_shows_private_at_the_frame_and_every_way_back_s
     "shown before the other is hidden, so nothing behind them shows through",
   );
   Assert.equal(Services.focus.activeWindow, priv, "the private window is active");
-  Assert.equal(PrivateSwap._pair, null, "Hyprland's backend has no pair");
+  Assert.strictEqual(PrivateSwap._pair, null, "Hyprland's backend has no pair");
   Assert.equal(NativeSwap._pair?.parked, "normal");
 
   // about:vimma (decision 11): no frame, title or window identifier.
@@ -177,6 +187,7 @@ add_task(async function entering_shows_private_at_the_frame_and_every_way_back_s
   Assert.equal(data.windowManager, "none needed (macOS), private placement: swap");
 
   // Back by each route, after moving and resizing the private window each time.
+  /** @type {[string, () => void | Promise<void>][]} */
   const routes = [
     ["the toggle", () => prefix("P", { shiftKey: true }, priv)],
     ["ctrl+^", () => prefix("^", { shiftKey: true, code: "Digit6" }, priv)],
@@ -187,7 +198,7 @@ add_task(async function entering_shows_private_at_the_frame_and_every_way_back_s
         prefix("w", {}, priv);
         const rows = () =>
           priv.document.getElementById(PICKER_ID)?.querySelectorAll(".vimma-picker-row");
-        await until(() => rows()?.length > 1, "the picker opens in private");
+        await until(() => (rows()?.length ?? 0) > 1, "the picker opens in private");
         EventUtils.synthesizeKey("k", {}, priv);
         EventUtils.synthesizeKey("KEY_Enter", {}, priv);
       },
@@ -246,7 +257,11 @@ add_task(async function a_zoomed_window_hands_its_zoom_and_its_restored_frame_on
   await SimpleTest.promiseFocus(priv);
   prefix("P", { shiftKey: true }, priv);
   await until(() => hidden(priv) && !hidden(window), "back");
-  Assert.equal(window.windowState, window.STATE_MAXIMIZED, "the normal window is zoomed again");
+  Assert.strictEqual(
+    window.windowState,
+    window.STATE_MAXIMIZED,
+    "the normal window is zoomed again",
+  );
   window.restore();
   await until(() => window.windowState === window.STATE_NORMAL, "un-zoomed");
 });
@@ -261,8 +276,8 @@ add_task(async function a_window_shown_at_another_size_is_active_and_laid_out_wh
   await start();
   /** @type {{ win: Window, active: boolean, width: number }[]} */
   const shown = [];
-  log.push = function (/** @type {{ win: Window, visible: boolean }} */ e) {
-    const w = /** @type {any} */ (e.win);
+  log.push = function (/** @type {{ win: BrowserWindow, visible: boolean }} */ e) {
+    const w = e.win;
     if (e.visible) {
       const root = w.document.documentElement;
       shown.push({
@@ -299,9 +314,9 @@ add_task(async function a_window_shown_at_another_size_is_active_and_laid_out_wh
     Assert.notEqual(laidOut(priv), privWidth, "entering: the private window has a new width");
     Assert.equal(shown[0].width, laidOut(priv), "entering: and is laid out at it when shown");
   } finally {
-    delete log.push;
+    Reflect.deleteProperty(log, "push");
     for (const w of [window, priv]) {
-      if (w && !w.closed) /** @type {any} */ (w).browsingContext.isActive = true;
+      if (w && !w.closed) w.browsingContext.isActive = true;
     }
   }
 });
@@ -319,7 +334,7 @@ add_task(async function a_shown_window_is_held_active_until_macos_reports_it_and
   NativeSwap._resetForTests({ force: true, log, occluded: () => occluded });
   await place(window, FRAME);
   /** @param {Window} w */
-  const forced = (w) => /** @type {any} */ (w).browsingContext.forceAppWindowActive;
+  const forced = (w) => w.browsingContext.forceAppWindowActive;
   /** @param {Window} w */
   const reported = (w) => w.dispatchEvent(new w.Event("occlusionstatechange"));
   let priv;
@@ -358,7 +373,7 @@ add_task(async function a_shown_window_is_held_active_until_macos_reports_it_and
     for (const w of [window, priv]) {
       if (!w || w.closed) continue;
       PictureInPicture.originatingWinWeakMap.delete(w);
-      /** @type {any} */ (w).browsingContext.forceAppWindowActive = false;
+      w.browsingContext.forceAppWindowActive = false;
     }
   }
 });
@@ -369,7 +384,7 @@ add_task(async function closing_the_private_window_any_way_brings_normal_back_fi
     const priv = await enter();
     const slot = { x: 70, y: 80, width: 850, height: 650 };
     await place(priv, slot);
-    let shownAtUnload = null;
+    let shownAtUnload = /** @type {boolean | null} */ (null);
     // Added after Vimma's own unload listener, so it runs after it, while the window unloads.
     const unloaded = new Promise((resolve) =>
       priv.addEventListener("unload", () => resolve((shownAtUnload = !hidden(window))), {
@@ -391,7 +406,7 @@ add_task(async function closing_the_private_window_any_way_brings_normal_back_fi
     Assert.strictEqual(shownAtUnload, true, `${how}: normal was shown before private unloaded`);
     Assert.ok(!hidden(window), `${how}: the normal window is shown`);
     Assert.deepEqual(frameOf(window), slot, `${how}: at the private window's frame`);
-    Assert.equal(NativeSwap._pair, null, `${how}: the pair is forgotten`);
+    Assert.strictEqual(NativeSwap._pair, null, `${how}: the pair is forgotten`);
   }
 });
 
@@ -412,7 +427,7 @@ add_task(async function a_link_from_another_app_brings_the_hidden_window_back() 
   Assert.ok(hidden(priv), "and private is hidden");
   Assert.deepEqual(frameOf(window), FRAME);
   Assert.equal(NativeSwap._pair?.parked, "private", "private waits, one key away");
-  gBrowser.removeTab(gBrowser.tabs.at(-1));
+  gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
 });
 
 add_task(async function the_hidden_window_activated_swaps_back() {
@@ -461,21 +476,24 @@ add_task(async function a_failed_swap_shows_both_windows_and_says_so_once() {
     throw new Error("a broken window");
   };
   // console.warn from a module goes to the console API storage, not nsIConsoleService.
+  /** @type {string[]} */
   const lines = [];
   const storage = Cc["@mozilla.org/consoleAPI-storage;1"].getService(Ci.nsIConsoleAPIStorage);
-  const onLog = (m) => lines.push((m.arguments ?? []).map(String).join(" "));
+  // A ConsoleEvent (dom/webidl/Console.webidl): the call's arguments.
+  const onLog = (/** @type {{ arguments?: unknown[] }} */ m) =>
+    lines.push((m.arguments ?? []).map(String).join(" "));
   storage.addLogEventListener(onLog, Services.scriptSecurityManager.getSystemPrincipal());
   await SimpleTest.promiseFocus(window);
   prefix("P", { shiftKey: true });
   await until(() => !hidden(priv), "private is shown again");
   Assert.ok(!hidden(window), "the normal window is never left hidden");
-  Assert.equal(NativeSwap._pair, null, "the pair is forgotten");
+  Assert.strictEqual(NativeSwap._pair, null, "the pair is forgotten");
   await until(
     () => priv.document.getElementById(NOTICE_ID)?.textContent.includes(SWAP_FAILED),
     "the notice says so",
   );
   // Window placement until the next config reload: no more visibility writes.
-  delete priv.moveTo;
+  Reflect.deleteProperty(priv, "moveTo");
   const count = log.length;
   await SimpleTest.promiseFocus(priv);
   prefix("P", { shiftKey: true }, priv);
@@ -519,7 +537,8 @@ add_task(async function nothing_is_written_to_the_profile() {
   await start();
   const names = () => {
     const out = [];
-    for (const f of Services.dirsvc.get("ProfD", Ci.nsIFile).directoryEntries) {
+    const profile = /** @type {nsIFile} */ (Services.dirsvc.get("ProfD", Ci.nsIFile));
+    for (const f of profile.directoryEntries) {
       out.push(f.leafName);
     }
     return out.sort();
@@ -537,7 +556,10 @@ add_task(async function nothing_is_written_to_the_profile() {
   Assert.deepEqual(names(), before, "the profile directory has no new file");
 });
 
-/** From the private window back to the normal one, by the toggle. */
+/**
+ * From the private window back to the normal one, by the toggle.
+ * @param {BrowserWindow} priv
+ */
 async function leave(priv) {
   await SimpleTest.promiseFocus(priv);
   prefix("P", { shiftKey: true }, priv);
@@ -546,7 +568,8 @@ async function leave(priv) {
 
 /** Two turns of the event loop: past every swap's frame check. */
 async function turns() {
-  for (let i = 0; i < 2; i++) await new Promise((r) => Services.tm.dispatchToMainThread(r));
+  for (let i = 0; i < 2; i++)
+    await new Promise((r) => Services.tm.dispatchToMainThread(() => r(undefined)));
 }
 
 /** @param {Window} win */
@@ -559,7 +582,7 @@ add_task(async function placement_window_from_a_reload_shows_a_hidden_private_wi
   // A config reload to "window" while the private window is hidden.
   PrivateSwap.configure("window");
   Assert.ok(!hidden(priv), "the hidden private window is shown again");
-  Assert.equal(NativeSwap._pair, null, "and the pair is forgotten");
+  Assert.strictEqual(NativeSwap._pair, null, "and the pair is forgotten");
   Assert.ok(!hidden(window), "the normal window stays shown");
   // Shown, the private window is raised: it must not come to the front by itself.
   await turns();
@@ -588,7 +611,7 @@ add_task(async function a_pop_up_never_swaps_or_hides() {
   );
   const popup = await opened;
   Assert.ok(!popup.toolbar.visible, "a pop-up");
-  Assert.equal(
+  Assert.strictEqual(
     PrivateSwap.openFeatures(popup),
     null,
     "a new private window takes no pop-up's place",
@@ -600,7 +623,7 @@ add_task(async function a_pop_up_never_swaps_or_hides() {
   await until(() => !hidden(priv), "the private workspace is shown, as a window");
   Assert.deepEqual(writes(popup), [], "the pop-up is never hidden");
   Assert.ok(!hidden(window), "nor is the normal window");
-  Assert.equal(NativeSwap._pair, null, "no pair with a pop-up");
+  Assert.strictEqual(NativeSwap._pair, null, "no pair with a pop-up");
   await BrowserTestUtils.closeWindow(popup);
 });
 
@@ -636,8 +659,8 @@ add_task(async function a_frame_that_does_not_apply_fails_the_swap() {
   prefix("P", { shiftKey: true });
   await until(() => !hidden(window) && !hidden(priv), "both windows are shown");
   await until(() => notice(priv).includes(SWAP_FAILED), "the notice says so");
-  Assert.equal(NativeSwap._pair, null, "the pair is forgotten");
-  delete priv.resizeTo;
+  Assert.strictEqual(NativeSwap._pair, null, "the pair is forgotten");
+  Reflect.deleteProperty(priv, "resizeTo");
 });
 
 add_task(async function a_fullscreen_window_is_never_hidden() {
@@ -650,7 +673,7 @@ add_task(async function a_fullscreen_window_is_never_hidden() {
   await until(() => priv.fullScreen, "private gets a full screen of its own");
   await turns();
   Assert.deepEqual(log, [], "nothing is hidden or shown");
-  Assert.equal(NativeSwap._pair, null, "no pair");
+  Assert.strictEqual(NativeSwap._pair, null, "no pair");
   Assert.ok(!notice(priv).includes(SWAP_FAILED), "not a failure");
   Assert.equal(NativeSwap.status, "none needed (macOS), private placement: swap", "swap stays on");
   priv.fullScreen = false;
@@ -669,13 +692,13 @@ add_task(async function going_back_before_a_new_window_starts_up_hides_nothing()
   await until(() => priv.gBrowserInit?.delayedStartupFinished, "the window started up");
   await turns();
   Assert.deepEqual(writes(window), [], "the normal window is never hidden");
-  Assert.equal(NativeSwap._pair, null, "no pair");
+  Assert.strictEqual(NativeSwap._pair, null, "no pair");
 });
 
 add_task(async function activations_and_new_tabs_during_a_swap_are_its_own() {
   await start();
   // As if macOS activated, or a tab opened in, a window in the middle of the swap that hid it.
-  log.push = function (/** @type {{ win: Window, visible: boolean }} */ e) {
+  log.push = function (/** @type {{ win: BrowserWindow, visible: boolean }} */ e) {
     const n = Array.prototype.push.call(this, e);
     if (!e.visible) {
       e.win.dispatchEvent(new e.win.Event("activate"));
@@ -689,7 +712,7 @@ add_task(async function activations_and_new_tabs_during_a_swap_are_its_own() {
   await leave(priv);
   await turns();
   Assert.ok(hidden(priv), "leaving: the private window stays hidden");
-  delete log.push;
+  Reflect.deleteProperty(log, "push");
 });
 
 add_task(async function nothing_swaps_while_vimma_quits() {
@@ -740,6 +763,6 @@ add_task(async function a_reload_while_a_new_window_starts_up_hides_nothing() {
   await until(() => priv.gBrowserInit?.delayedStartupFinished, "the window started up");
   await turns();
   Assert.deepEqual(writes(window), [], "the normal window is never hidden");
-  Assert.equal(NativeSwap._pair, null, "no pair");
+  Assert.strictEqual(NativeSwap._pair, null, "no pair");
   PrivateSwap.configure("swap");
 });

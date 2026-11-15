@@ -17,7 +17,7 @@ import {
   probeLocal,
   providerKey,
   unavailableText,
-} from "../src/agent-setup.mjs";
+} from "../src/agent/agent-setup.mjs";
 
 /**
  * A fake fetch: `routes` maps a URL to a reply body (an object, sent as JSON) or a status.

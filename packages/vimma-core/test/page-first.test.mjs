@@ -1,7 +1,7 @@
 import { describe, test, expect } from "vitest";
-import { PAGE_FIRST_MAX, PageFirstQueue } from "../src/page-first.mjs";
+import { PAGE_FIRST_MAX, PageFirstQueue } from "../src/keys/page-first.mjs";
 
-/** @import { Mode } from "../src/modes.mjs" */
+/** @import { Mode } from "../src/keys/modes.mjs" */
 
 /**
  * A queue with one deferred binding per key, its result named after the key and mode.

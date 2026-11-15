@@ -6,7 +6,7 @@ schedule. For each layer it says what the layer proves, where it runs, and how t
 locally, and it ends with what no layer covers. [ARCHITECTURE.md](../../ARCHITECTURE.md),
 "Testing", is the one-table summary and "Automation and release infrastructure" lists every
 workflow; the commands are in [CONTRIBUTING.md](../../CONTRIBUTING.md), "Testing", and the
-procedures, switches and recovery in [docs/runbook.md](../runbook.md), "Testing" and "CI and
+procedures, switches and recovery in [docs/runbook/](../runbook/README.md), "Testing" and "CI and
 automation". The specs are [m0-pipeline](../specs/m0-pipeline.md),
 [ci-quality-gates](../specs/ci-quality-gates.md), [m0-e2e-harness](../specs/m0-e2e-harness.md),
 [m7-fuzzing](../specs/m7-fuzzing.md) and [site-compat](../specs/site-compat.md), and the decision
@@ -45,7 +45,7 @@ or another alert at error level, and while a review thread is unresolved. A docs
 (`tools/ci/docs-only.mjs`, as the base branch has it) skips the steps Markdown cannot affect and the
 mochitest job, and each still reports success. The `opened` and `synchronize` events of a draft skip
 the three slow required checks, the mochitest job with the e2e scenarios, the Semgrep scan and both
-CodeQL analyses, until the pull request is marked ready. The details are in docs/runbook.md,
+CodeQL analyses, until the pull request is marked ready. The details are in docs/runbook/,
 "Docs-only pull requests", "Draft pull requests" and "Once per tree".
 
 ## 1. Unit tests: Vitest
@@ -81,7 +81,7 @@ more cases; a failure uploads the seed and the failing cases and opens or commen
 labelled `fuzz-failure`.
 
 **Locally.** `VIMMA_FUZZ_SEED=<seed> npx vitest run packages/vimma-core/test/fuzz`, and
-docs/runbook.md, "Fuzzing: reproducing a failing seed".
+docs/runbook/ci-fuzzing.md, "Fuzzing: reproducing a failing seed".
 
 ## 3. Contract fixtures
 
@@ -116,7 +116,8 @@ the suite no more than 10 % slower than the baseline commit, and no case more th
 **Where.** A step of the `check` job, `npm run bench -- --check` (`tools/bench/bench.ts`, cases
 in `packages/vimma-core/bench/cases.mjs`). It measures the working tree and the baseline commit
 named in `baseline.json` in the same processes, so the runner's speed cancels out. Why it does
-not flake and how to move the baseline on purpose: docs/runbook.md, "Bench baseline".
+not flake and how to move the baseline on purpose: docs/runbook/ci-bench-baseline.md, "Bench
+baseline".
 
 **Locally.** `npm run bench`.
 
@@ -141,10 +142,60 @@ a hosted Mac it runs `npm test` and the same suite, without `vimma-ctl` (so
 `browser_vimma_control.js` skips), and it has no draft skip.
 
 **Locally.** In a worktree, `npm run lane:setup` once (a copy of the primary checkout's engine,
-docs/runbook.md, "Parallel browser lanes"), then
+docs/runbook/parallel-browser-lanes.md, "Parallel browser lanes"), then
 `npm run mochitest -- --artifact tests/browser/browser_vimma_<name>.js`. A suspected race: the
-same file with `--repeat=N` on two busy CPUs (docs/runbook.md, "Mochitests that send keys to a
-page").
+same file with `--repeat=N` on two busy CPUs (docs/runbook/testing.md, "Mochitests that send keys to
+a page").
+
+**Time limit.** The harness stops a file after 45 s, and the rest of the suite with it. A file
+that runs about 15 s on a quiet runner can pass that on a loaded machine, so heavy pages get
+files of their own: each `about:preferences` tab builds its pane on the parent's main thread,
+which takes seconds under load, so the Settings tests are in
+`browser_vimma_firefox_settings_trim.js` and `browser_vimma_firefox_settings_hidden.js`, and a
+test opens each pane once (#992). `requestLongerTimeout(N)` is the last resort, with its reason
+in a comment; both files take `2` for their Settings tabs.
+
+**Hidden surfaces.** A test that Vimma hides one of Firefox's surfaces shows that Vimma's rule is
+what hides it: a bare `display: none` check passes whatever Vimma's rules say once Firefox hides
+the element itself (`hidden`, a group's `data-hidden-by-setting-group`, a pane not shown).
+`browser_vimma_firefox_settings_hidden.js` takes `firefox-pages.css` off the page, waits for
+Firefox to show the surface, then asserts `display: none` with the sheet back (#997);
+`browser_vimma_settings_managed.js` checks only an element with nothing on it or above it that
+Firefox hides.
+
+**Type checking.** `npm run typecheck` checks the mochitests and their helpers too, without a
+browser: `tests/tsconfig.json` with the harness's globals declared in `types/mochitest/`
+(`harness.d.ts` for `add_task`, `Assert`, `BrowserTestUtils`, `SpecialPowers` and the rest,
+`firefox.d.ts` for the Firefox members only tests use, `vimma.d.ts` for Vimma's types a test
+names, `head.d.ts`, which `npm run gen-mochitest-head` generates from the `head*.js` files, and
+`modules.d.ts`, which `npm run gen-mochitest-modules` generates from `jar.mn` and vimma-core's
+layout).
+`tools/mochitest-typecheck.ts` holds the program to `tools/test/mochitest-allowlist.txt`: a listed
+file may still have type errors, every other file, a new one included, may not, and a listed
+file that has none must come off the list. `Assert.equal` and its kin take an expected value of
+the actual one's type, and `Assert.ok` refuses a promise, so a test that compares a value with
+the wrong kind of thing, or asserts on a promise it forgot to await, fails the check.
+`ChromeUtils.importESModule` with a literal `chrome://browser/content/vimma/` URL returns the
+type of the module that URL serves (`modules.d.ts` maps each one to its source), so a call into
+one of Vimma's modules, the members a test reads from it and the JSDoc types a test gives those
+values are checked against the product's own JSDoc; a literal Vimma URL that `modules.d.ts`
+does not have (a typo) is an error. A head file's own imports reach the tests through
+`head.d.ts`, whose generator emits a destructured `importESModule` as `any`; a head file that
+shares a Vimma module with its tests types it by name instead (`/** @type
+{VimmaModules["<url>"]["<export>"]} */ const X = ChromeUtils.importESModule("<url>").X;`, as
+`head_vimma_grep.js` does), and `head.d.ts` keeps that type. The declarations themselves are
+checked too:
+`tests/tsconfig.json` turns off the root's `skipLibCheck`, because an error in a
+`types/mochitest/*.d.ts` file (a wrong import path, a member read off a type that may be null)
+would make the type it declares `any`, and every annotation naming that type would check
+nothing, with no error shown. Not checked: a module imported from a URL held in a variable,
+Firefox's own modules (`resource://`, `moz-src://`, other `chrome://` URLs), which still return
+`any`, and what the product itself types loosely: an agent question's `what` (a `Record`
+of `any`, as the question line reads it), a child's console entries before the parent checks
+them. A test that knows more than the product's type (a window whose workspaces are built, a
+workspace with its container, a check that was refused) casts to a named type from
+`vimma.d.ts`, such as `LiveWorkspaces`, `ContainedWorkspace` or `RefusedUpdate`, which says
+what it assumes.
 
 ## 7. End-to-end scenarios and screenshots
 
@@ -154,21 +205,25 @@ it photographs match their baselines.
 
 **Where.** In the same `e2e.yml` job: first the harness's own tests (`npx vitest run
 tools/e2e/`, with a real Xvfb and vimma-ctl), and after the mochitests the scenarios,
-`npm run e2e -- --artifact`. `tools/e2e/e2e.mjs` runs each JSON scenario in
+`npm run e2e -- --artifact`. `tools/e2e/e2e.ts` runs each JSON scenario in
 `tests/e2e/scenarios/` in its own temporary profile and browser under its own Xvfb, sends keys
 and reads state with vimma-ctl, and can restart the browser on the same profile, or kill it as a
-crash would. A screenshot is compared with `tests/e2e/baselines/<name>.png` (`screenshot.mjs`): a
+crash would. A screenshot is compared with `tests/e2e/baselines/<name>.png` (`screenshot.ts`): a
 pixel differs when a channel is more than 2 off, and more than 0.5 % of differing pixels fails.
 A scenario marked pending is reported as a notice and passes nothing; the suite has a 5-minute
 budget; `--update-baselines` is refused when `CI` is set, so a baseline changes only in a
 reviewed commit that says why.
 
-The browser gets an allowlisted environment (`browserEnv` in `launcher.mjs`): none of the
+The browser gets an allowlisted environment (`browserEnv` in `launcher.ts`): none of the
 desktop's scaling, theme, locale or Wayland variables, but fixed ones (`LANG=C.UTF-8`, `TZ=UTC`,
 `GTK_THEME=Adwaita`) and `HOME` inside the profile; the profile pins the pixel ratio and a light
 theme.
-The fonts are the system's, so a baseline made on another machine can differ; the runbook says
-to take CI's image in that case (docs/runbook.md, "End-to-end tests", "Baselines").
+On Linux the browser renders with the fonts vendored in `tests/e2e/fonts/`, and the fixture
+pages are served on the fixed port 28471 (a second run on the machine stops with a message
+rather than take another port), so two runs draw the same pixels. A baseline comes from CI's
+runner: CI compares with it at 0.00 %, and a local run at up to 0.13 % (the line under the
+toolbar, drawn in a GTK colour, and the system's FreeType). A scenario carries on past a screenshot that differs and fails at its end, so one CI run
+supplies every image of a re-record (docs/runbook/testing.md, "End-to-end tests", "Baselines").
 
 The same job then runs the site snapshot gate (section 8) and the agent bench with its scripted
 provider (`npm run agent-bench -- --artifact --check --lists L04 --two-shops`,
@@ -203,14 +258,14 @@ from scratch on the first Sunday of a month. Surviving mutants go into one issue
 `mutation`, rewritten by each run (`tools/mutation/report.ts`); they never fail the run, only a
 broken Stryker run does.
 
-**Locally.** `npm run mutation`; reading the report: docs/runbook.md, "Mutation testing".
+**Locally.** `npm run mutation`; reading the report: docs/runbook/ci-mutation-testing.md, "Mutation testing".
 
 ## 10. The rest of a pull request's checks
 
 The `check` job also runs eslint, prettier, the wording checks (`tools/md-wording/`), spec-lint,
 arch-lint, changelog-lint, a check that the generated docs are current (`npm run gen-docs`), the
 Python tests of the upstream tools (`npm run test:py`), the test links of
-[docs/security.md](../security.md) (`npm run security-links`), the npm and crate licence checks,
+[docs/security/](../security/README.md) (`npm run security-links`), the npm and crate licence checks,
 the MPL headers and commitlint. Semgrep and CodeQL scan the code. The workflows that build
 packages (`pkgbuild.yml`, `flatpak.yml`, `macos.yml`) have triggers of their own, listed in
 ARCHITECTURE.md.
@@ -221,14 +276,14 @@ ARCHITECTURE.md.
   change to a `.patch`, C++, `moz.build`, `configs/` or branding is compiled only by a full
   build: the nightly, the macOS build of `macos.yml`, a release, or the contributor's own full
   build, whose mochitest run the pull request must report
-  ([CONTRIBUTING.md](../../CONTRIBUTING.md), "Testing"). The nightly runs at 03:00 UTC only while
-  the repository variable `NIGHTLY_ENABLED` is `true`. Its `changes` job
+  ([CONTRIBUTING.md](../../CONTRIBUTING.md), "Testing"). The nightly runs in the night (about
+  00:00 to 02:00 UTC) only while the repository variable `NIGHTLY_ENABLED` is `true`. Its `changes` job
   (`tools/update/nightly-change.mjs`) skips a scheduled build only when public nightlies are on
   and the rolling release already records the same commit and Firefox version; anything else,
   a doubt included, builds.
 - **The updater end to end.** The e2e updater scenarios need a `VIMMA_UPDATES=1` build packaged
   with `mach package`, which no pull request job makes; they are reported pending in CI and run
-  by hand (docs/runbook.md, "End-to-end tests").
+  by hand (docs/runbook/testing.md, "End-to-end tests").
 - **macOS.** Its mochitest job reports without blocking, and its e2e runs headless, without
   screenshots, in the smoke jobs of `macos.yml` and `release.yml`.
 - **Window managers and desktops.** The e2e browser runs on X11 under Xvfb at one size and one pixel
@@ -244,4 +299,4 @@ ARCHITECTURE.md.
 - **Windows**, which is not a target.
 
 When a test fails on CI and passes locally, the rule is a fix for its cause, never a retry or a
-sleep: reproduce it in a lane first, then follow docs/runbook.md, "Testing".
+sleep: reproduce it in a lane first, then follow docs/runbook/testing.md, "Testing".

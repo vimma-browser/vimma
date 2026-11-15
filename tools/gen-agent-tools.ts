@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Regenerates packages/vimma-core/src/agent-tools-data.mjs from vimma-ctl's MCP tool fixture
+// Regenerates packages/vimma-core/src/agent/agent-tools-data.mjs from vimma-ctl's MCP tool fixture
 // and its INSTRUCTIONS (docs/specs/builtin-agent.md B6), so the built-in agent offers exactly
 // the tools and system text MCP agents get. vimma-core cannot read files at run time (it runs
 // in Firefox's parent process and in Node), hence a generated module; agent-tools.test.mjs
@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 const root = new URL("../", import.meta.url);
 const FIXTURE = "tools/vimma-ctl/tests/fixtures/mcp/tools-list.json";
 const MCP_RS = "tools/vimma-ctl/src/mcp/instructions.rs";
-const OUT = "packages/vimma-core/src/agent-tools-data.mjs";
+const OUT = "packages/vimma-core/src/agent/agent-tools-data.mjs";
 
 const ESCAPES: Record<string, string> = {
   n: "\n",

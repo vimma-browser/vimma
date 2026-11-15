@@ -1,6 +1,6 @@
 // docs/specs/m6a-updater.md "Delivery" (sub-PR 2) and decision 39: the manifest check's pinned
-// keys (packages/vimma-core/src/update-keys.mjs) are generated from the certificates Firefox's
-// updater embeds (configs/updater/*.der), so the two verifiers trust
+// keys (packages/vimma-core/src/updates/update-keys.mjs) are generated from the certificates
+// Firefox's updater embeds (configs/updater/*.der), so the two verifiers trust
 // the same keys from one source. Keys and certificates are generated in the test.
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
@@ -14,14 +14,14 @@ import {
   readCertificates,
   renderUpdateKeys,
 } from "../gen-update-keys.mjs";
-import { spkiKeyId } from "../../../packages/vimma-core/src/updates.mjs";
+import { spkiKeyId } from "../../../packages/vimma-core/src/updates/updates.mjs";
 
 const SCRIPT = new URL("../gen-update-keys.mjs", import.meta.url).pathname;
 const ROOT = new URL("../../../", import.meta.url).pathname;
 
 /**
  * A self-signed RSA-4096 certificate made with openssl, as the offline ceremony makes the
- * secondary (docs/runbook.md step 4).
+ * secondary (docs/runbook/ci-update-keys-and-update-host.md step 4).
  * @param {string} dir
  * @param {string} file
  * @param {string} cn
@@ -125,7 +125,7 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
     const dir = tempDir("vimma-update-keys-");
     const der = Buffer.from(certificate(dir, "primary.der", "Vimma update signing primary"));
     // The signature is the certificate's last bytes: flip one, so the key and the subject stay.
-    der[der.length - 1] ^= 0x01;
+    der.writeUInt8(der.readUInt8(der.length - 1) ^ 0x01, der.length - 1);
     writeFileSync(join(dir, "primary.der"), der);
     writeFileSync(join(dir, "secondary.der"), der);
     expect(() => readCertificates(dir)).toThrow(/self-signed/);
@@ -159,8 +159,8 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
 
   it("the repository: update-keys.mjs is what the committed certificates give", async () => {
     const certs = join(ROOT, CERT_DIR);
-    // The KMS-signed certificate is committed (docs/runbook.md step 5b): a missing one is a move
-    // that forgot this check, not a tree from before the ceremony.
+    // The KMS-signed certificate is committed (docs/runbook/ci-update-keys-and-update-host.md step
+    // 5b): a missing one is a move that forgot this check, not a tree from before the ceremony.
     for (const f of ["primary.der", "secondary.der"]) {
       expect(existsSync(join(certs, f)), f).toBe(true);
     }
@@ -169,6 +169,8 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
     const sha = createHash("sha256")
       .update(readFileSync(join(certs, "primary.der")))
       .digest("hex");
-    expect(readFileSync(join(ROOT, "docs/runbook.md"), "utf8")).toContain(sha);
+    expect(
+      readFileSync(join(ROOT, "docs/runbook/ci-update-keys-and-update-host.md"), "utf8"),
+    ).toContain(sha);
   }, 60_000);
 });

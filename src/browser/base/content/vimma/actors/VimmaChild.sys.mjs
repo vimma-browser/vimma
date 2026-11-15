@@ -29,6 +29,7 @@ import {
   describeAgentElements,
   fillField,
   fillTargetOf,
+  formOf,
   pageChanges,
   pageMarks,
   payInfoOf,
@@ -179,6 +180,9 @@ function canScroll(el, vertical) {
   return overflow === "auto" || overflow === "scroll" || overflow === "overlay";
 }
 
+/** @param {EventTarget | null} t @returns {t is Node} */
+const isNode = (t) => !!t && "nodeType" in t;
+
 /** At most this many elements are searched for the largest scrollable. */
 const SEARCH_LIMIT = 10000;
 /** A search that found nothing is not repeated for this long (holding j). */
@@ -230,11 +234,11 @@ function layerAtCentre(win, vertical) {
   const doc = win.document;
   let hit = doc.elementFromPoint(x, y);
   // elementFromPoint stops at a shadow host; the layer can be inside its tree, open or closed.
-  for (let root = /** @type {any} */ (hit)?.openOrClosedShadowRoot; root;) {
+  for (let root = hit?.openOrClosedShadowRoot; root;) {
     const inner = root.elementFromPoint(x, y);
     if (!inner || inner === hit) break;
     hit = inner;
-    root = /** @type {any} */ (hit).openOrClosedShadowRoot;
+    root = hit.openOrClosedShadowRoot;
   }
   /** @type {Element | null} */
   let inner = null;
@@ -303,6 +307,17 @@ const KEYS_KEPT = 16;
  */
 const isIndex = (n) => Number.isSafeInteger(n) && /** @type {number} */ (n) >= 0;
 
+/** The parent's number for an agent's step, or -1 without one. @param {{ step?: unknown }} asked */
+const stepOf = (asked) => (isIndex(asked.step) ? asked.step : -1);
+
+/**
+ * An agent's step that runs after the child's reply (VimmaChild #afterReply): the element of
+ * the agent's list it acts on, the parent's number for the step (-1 for a fill, which the
+ * parent does not number), and its outcome so far.
+ * @template {string} T
+ * @typedef {{ gen: number, id: number, step: number, outcome: "pending" | "skipped" | T }} AgentStep
+ */
+
 export class VimmaChild extends JSWindowActorChild {
   /**
    * Test-only (browser_vimma_mcp_fill.js): the name of a page function an agent's form
@@ -346,8 +361,9 @@ export class VimmaChild extends JSWindowActorChild {
   #agentEls = { gen: -1, els: /** @type {WeakRef<Element>[]} */ ([]) };
   /**
    * The agent's last click here (docs/specs/mcp-forms.md F8), or its fill's submission (F15): its
-   * element and whether it ran or was skipped because the page changed the element before it.
-   * @type {{ gen: number, id: number, outcome: "pending" | "clicked" | "skipped" } | null}
+   * element and whether it ran or was skipped because the page changed the element before it,
+   * or went away.
+   * @type {AgentStep<"clicked"> | null}
    */
   #agentClick = null;
   /**
@@ -359,10 +375,16 @@ export class VimmaChild extends JSWindowActorChild {
   /**
    * The agent's last fill of one field here (docs/specs/mcp-forms.md F12): its element and
    * whether it is still to run, kept its value, was put back by the page, or was skipped because
-   * the field changed before it.
-   * @type {{ gen: number, id: number, outcome: "pending" | "kept" | "reset" | "skipped" } | null}
+   * the field changed or its page went away before it.
+   * @type {AgentStep<"kept" | "reset"> | null}
    */
   #agentFill = null;
+  /**
+   * How to skip each agent step that is still to run after its reply here (#afterReply): the
+   * page's trusted `pagehide` skips them all.
+   * @type {Set<() => void>}
+   */
+  #toRun = new Set();
   /**
    * The requests this document had open just before the agent's last click or submission here
    * (issue #579): only the ones the step started keep its wait going, not a page's long poll.
@@ -370,7 +392,7 @@ export class VimmaChild extends JSWindowActorChild {
   #netBase = 0;
   /**
    * The changes to this document since the agent's last step here began (`#startStepWatch`).
-   * @type {{ doc: Document, at: number, last: number | null, observer: any } | null}
+   * @type {{ doc: Document, at: number, last: number | null, observer: MutationObserver | null } | null}
    */
   #stepWatch = null;
   /** When a search for the largest scrollable last found nothing (0: not since focus moved). */
@@ -381,6 +403,12 @@ export class VimmaChild extends JSWindowActorChild {
   #block = new BlockFocus();
   /** @type {PdfView | null} the pdf.js viewer's adapter, in its top document only */
   #pdf = null;
+  /**
+   * How many `Vimma:PdfOp` messages this actor has received, whether or not they reached the
+   * viewer: the state report carries it, so the parent knows which report came after an
+   * operation it sent (`state.pdf`, #1006).
+   */
+  #pdfOps = 0;
   /**
    * Live grep (docs/specs/live-grep.md decision 14): this document's text model while the
    * picker is open, marked stale by any change to the document until the next query rebuilds it.
@@ -533,6 +561,11 @@ export class VimmaChild extends JSWindowActorChild {
 
   /** @param {Event} event */
   handleEvent(event) {
+    if (event.type === "pagehide") {
+      // Registered for trusted events only; checked again, as a forged one could skip a step.
+      if (event.isTrusted) for (const skip of [...this.#toRun]) skip();
+      return;
+    }
     const doc = this.document;
     switch (event.type) {
       case "focusin": {
@@ -598,6 +631,7 @@ export class VimmaChild extends JSWindowActorChild {
             this,
             (state) => this.#sendPdf(state),
             (outline) => this.#sendPdf(outline, "Vimma:PdfOutline"),
+            () => this.#pdfOps,
           );
           if (this.#pdf) this.#askTheme();
         }
@@ -620,7 +654,7 @@ export class VimmaChild extends JSWindowActorChild {
   #foundEditable() {
     try {
       // Only a frame that has searched has a Finder; reading it must not create one.
-      const finder = /** @type {any} */ (this.manager.getActor("Finder"))._finder;
+      const finder = this.manager.getActor("Finder")._finder;
       return finder?._fastFind?.foundEditable ?? null;
     } catch {
       return null;
@@ -658,7 +692,7 @@ export class VimmaChild extends JSWindowActorChild {
    * @param {HTMLInputElement} el
    */
   #showFindMatch(el) {
-    const controller = /** @type {any} */ (el).editor?.selectionController;
+    const controller = el.editor?.selectionController;
     controller?.setDisplaySelection(Ci.nsISelectionController.SELECTION_ATTENTION);
     controller?.repaintSelection(Ci.nsISelectionController.SELECTION_NORMAL);
   }
@@ -714,7 +748,7 @@ export class VimmaChild extends JSWindowActorChild {
     if (!el || el === this.document.body || !isEditable(describe(el)).editable) return null;
     // The flattened tree: a click in a text field lands in its anonymous editor, which
     // contains() does not see, and in a shadow root, which it does not cross.
-    for (let n = /** @type {any} */ (target); n; n = n.flattenedTreeParentNode) {
+    for (let n = isNode(target) ? target : null; n; n = n.flattenedTreeParentNode) {
       if (n === el) return el;
     }
     return null;
@@ -773,9 +807,17 @@ export class VimmaChild extends JSWindowActorChild {
         this.#pdf?.setTheme(msg.data?.css);
         return undefined;
       case "Vimma:PdfOp":
-        // An operation name and a number (docs/security.md section 20, V7), checked again by
-        // the adapter; only the top-level viewer has one.
+        // An operation name and a number (docs/security/20-pdf-viewer.md section 20, V7), checked
+        // again by the adapter; only the top-level viewer has one. A report follows each, even when
+        // it changed nothing, so the parent hears that it was run (`state.pdf`).
+        this.#pdfOps++;
         this.#pdf?.run(msg.data);
+        this.#pdf?.schedule();
+        return undefined;
+      case "Vimma:PdfZoom":
+        // The tab's full zoom changed (#1040): a report at the new zoom, which a zoom that keeps
+        // the page's layout would not otherwise bring. No data, nothing run in the viewer.
+        this.#pdf?.schedule();
         return undefined;
       case "Vimma:PdfWhere":
         // Where the view is, for a mark (docs/specs/pdf-mode.md decision 11).
@@ -1069,14 +1111,24 @@ export class VimmaChild extends JSWindowActorChild {
   }
 
   /**
-   * Whether `el` is still in this frame's document. Connected alone is not enough: a page can
-   * adopt a listed element into another document (a frame of its own), where a click or fill
-   * would act outside the frame the parent checked (security.md M25).
+   * Whether `el` is still in this frame's document, and that document is still the frame's.
+   * Connected alone is not enough: a page can adopt a listed element into another document (a
+   * frame of its own), where a click or fill would act outside the frame the parent checked
+   * (security.md M25). Nor is this actor's document: once a navigation in this process has
+   * replaced the page, the actor keeps the old document until it is destroyed, while its
+   * window is no longer current (JSWindowActorChild::GetContentWindow returns null; issue
+   * #1028).
    * @param {Element | null | undefined} el
    * @returns {el is Element}
    */
   #onPage(el) {
-    return !!el?.isConnected && el.ownerDocument === this.document;
+    try {
+      return (
+        !!el?.isConnected && el.ownerDocument === this.document && !!this.manager?.isCurrentGlobal
+      );
+    } catch {
+      return false; // the actor was destroyed with its document
+    }
   }
 
   /**
@@ -1092,8 +1144,8 @@ export class VimmaChild extends JSWindowActorChild {
    * An element of the agent's last `vimma_elements` here (docs/specs/mcp-forms.md F4): `alive`
    * says whether it is still in the document, so a label never names an element the page has
    * replaced since.
-   * @param {{ op: string, gen: number, id: number, submit?: any, href?: unknown,
-   *   until?: unknown, value?: unknown, expect?: any, by?: unknown, skip?: unknown }} data
+   * @param {{ op: string, gen: number, id: number, submit?: unknown, href?: unknown,
+   *   until?: unknown, value?: unknown, expect?: unknown, by?: unknown, skip?: unknown }} data
    */
   #agentElement(data) {
     const known = isIndex(data?.gen) && isIndex(data?.id) && data.gen === this.#agentEls.gen;
@@ -1161,7 +1213,7 @@ export class VimmaChild extends JSWindowActorChild {
    * reply, so that a dialog the page opens in its `input` or `change` handler never holds the
    * parent's call. It is checked again just before the set, which is skipped if it changed.
    * @param {Element | undefined} el
-   * @param {{ gen: number, id: number, value?: unknown, expect?: any, until?: unknown }} asked
+   * @param {{ gen: number, id: number, value?: unknown, expect?: unknown, until?: unknown }} asked
    *   `expect`: how the field was to be set (`field`) and its type, when the question was asked
    * @returns {"ok" | "gone" | "changed"}
    */
@@ -1171,16 +1223,16 @@ export class VimmaChild extends JSWindowActorChild {
     const value = asked.value;
     if (typeof value !== "string" && typeof value !== "boolean") return "changed";
     if (!this.#fillAsAsked(el, asked)) return "changed";
-    const fill = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
+    /** @type {AgentStep<"kept" | "reset">} */
+    const fill = { gen: asked.gen, id: asked.id, step: -1, outcome: "pending" };
     this.#agentFill = fill;
     const until = asked.until;
-    Services.tm.dispatchToMainThread(() => {
+    this.#afterReply(fill, false, () => {
       // A busy page can delay this past the parent's wait: then nothing is set.
       if (Date.now() > until || !this.#onPage(el) || !this.#fillAsAsked(el, asked)) {
-        fill.outcome = "skipped";
-        return;
+        return "skipped";
       }
-      fill.outcome = fillField(el, value) ? "kept" : "reset";
+      return fillField(el, value) ? "kept" : "reset";
     });
     return "ok";
   }
@@ -1188,14 +1240,17 @@ export class VimmaChild extends JSWindowActorChild {
   /**
    * Whether `el` is still the field the agent's question showed: set the same way, of the same
    * type, not sensitive, disabled or read-only, and taking the value.
-   * @param {Element} el @param {{ value?: unknown, expect?: any }} asked
+   * @param {Element} el @param {{ value?: unknown, expect?: unknown }} asked
    */
   #fillAsAsked(el, asked) {
-    const now = /** @type {any} */ (fillTargetOf(el, asked.value));
+    const now = fillTargetOf(el, asked.value);
+    /** @type {{ field?: unknown, type?: unknown }} */
     const expect = asked.expect && typeof asked.expect === "object" ? asked.expect : {};
     if (!now.alive || now.secret || isSensitiveAutocomplete(now.autocomplete)) return false;
     if (now.disabled || now.readonly || now.accepts === false) return false;
-    if (!["text", "textarea", "select", "checkbox", "radio"].includes(now.field)) return false;
+    if (!["text", "textarea", "select", "checkbox", "radio"].includes(now.field ?? "")) {
+      return false;
+    }
     return now.field === expect.field && (now.type ?? null) === (expect.type ?? null);
   }
 
@@ -1205,27 +1260,32 @@ export class VimmaChild extends JSWindowActorChild {
    * named, by `requestSubmit`, after this reply. No user activation is given: the parent lets
    * through only the submission the question allowed.
    * @param {Element | undefined} el
-   * @param {{ gen: number, id: number, submit?: any, until?: unknown }} asked
+   * @param {{ gen: number, id: number, submit?: unknown, until?: unknown, step?: unknown }} asked
+   *   `step`: the parent's number for this step, said back if it is skipped
    * @returns {"ok" | "gone" | "changed"}
    */
   #agentSubmit(el, asked) {
     if (!this.#onPage(el)) return "gone";
     if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
-    const form = /** @type {any} */ (el).form;
+    const form = formOf(el);
     const now = form ? defaultSubmitOf(form) : null;
+    /** @type {{ method?: unknown, action?: unknown } | null} */
     const named = asked.submit && typeof asked.submit === "object" ? asked.submit : null;
     if (!now || !named || now.method !== named.method || now.action !== named.action) {
       return "changed";
     }
     // The parent's wait for a page counts from when this ran (`outcome`, as for a click).
-    const sent = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
+    /** @type {AgentStep<"clicked">} */
+    const sent = { gen: asked.gen, id: asked.id, step: stepOf(asked), outcome: "pending" };
     this.#agentClick = sent;
     const until = asked.until;
-    Services.tm.dispatchToMainThread(() => {
+    this.#afterReply(sent, true, () => {
       const test = Cu.isInAutomation ? VimmaChild._beforeSubmitCheckForTests : null;
       if (test) {
         try {
-          /** @type {any} */ (this.contentWindow)?.wrappedJSObject[test]?.();
+          const page = this.contentWindow?.wrappedJSObject;
+          const hook = page?.[test];
+          if (typeof hook === "function") hook.call(page);
         } catch {
           // the test's page function threw: the check below sees what it left
         }
@@ -1233,17 +1293,17 @@ export class VimmaChild extends JSWindowActorChild {
       const again = this.#onPage(form) ? defaultSubmitOf(form) : null;
       if (
         Date.now() > until ||
+        !form ||
         !again ||
         again.method !== named.method ||
         again.action !== named.action
       ) {
-        this.#skipped();
-        sent.outcome = "skipped";
-        return;
+        return "skipped";
       }
       sent.outcome = "clicked";
       this.#startStepWatch();
       form.requestSubmit(again.submitter ?? undefined);
+      return "clicked";
     });
     return "ok";
   }
@@ -1257,19 +1317,21 @@ export class VimmaChild extends JSWindowActorChild {
    * through the widget or nsIDOMWindowUtils, so the page gets no user activation. A request
    * whose time is up (`until`, ms since the epoch) clicks nothing: the parent stopped waiting.
    * @param {Element | undefined} el
-   * @param {{ gen: number, id: number, submit?: any, href?: unknown, until?: unknown }} asked
-   *   `submit`: the method and destination the question named, or null
+   * @param {{ gen: number, id: number, submit?: unknown, href?: unknown, until?: unknown,
+   *   step?: unknown }} asked  `submit`: the method and destination the question named, or
+   *   null; `step`: the parent's number for this step, said back if it is skipped
    * @returns {"ok" | "gone" | "changed"}
    */
   #agentActivate(el, asked) {
     if (!el || !actTargetOf(el).alive) return "gone";
     if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
     if (!this.#asAsked(el, asked)) return "changed";
-    const click = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
+    /** @type {AgentStep<"clicked">} */
+    const click = { gen: asked.gen, id: asked.id, step: stepOf(asked), outcome: "pending" };
     this.#agentClick = click;
     this.#agentWatch = null;
     const until = asked.until;
-    Services.tm.dispatchToMainThread(() => {
+    this.#afterReply(click, true, () => {
       try {
         if (Date.now() <= until && this.#onPage(el)) {
           this.#agentWatch = { gen: asked.gen, id: asked.id, before: this.#pageMarks(asked.id) };
@@ -1281,10 +1343,45 @@ export class VimmaChild extends JSWindowActorChild {
       // A busy page can delay this past the parent's wait: then nothing is clicked.
       const ran =
         Date.now() <= until && this.#onPage(el) && this.#press(el, () => this.#asAsked(el, asked));
-      if (!ran) this.#skipped();
-      click.outcome = ran ? "clicked" : "skipped";
+      return ran ? "clicked" : "skipped";
     });
     return "ok";
+  }
+
+  /**
+   * Runs an agent's step after this reply, so that a dialog the page opens never holds the
+   * parent's call, and keeps its outcome in `step` for the parent to ask (`outcome`,
+   * `fill-outcome`). No step stays "pending": one that throws is skipped, and so is one whose
+   * page is hidden before it runs (a navigation, or the back-forward cache; issue #1028). A
+   * navigation in this process can commit between the reply and the step, and from then on the
+   * page is no longer the frame's; the skip is decided on the old page's `pagehide`, while this
+   * actor can still message the parent, so a skipped click or submission (`tell`) reaches it
+   * ahead of the next document (#skipped).
+   * @template {string} T
+   * @param {AgentStep<T>} step @param {boolean} tell
+   * @param {() => T | "skipped"} run  the step; returns its outcome
+   */
+  #afterReply(step, tell, run) {
+    const skipped = () => {
+      step.outcome = "skipped";
+      if (tell) this.#skipped(step);
+    };
+    const skip = () => {
+      this.#toRun.delete(skip);
+      if (step.outcome === "pending") skipped();
+    };
+    this.#toRun.add(skip);
+    Services.tm.dispatchToMainThread(() => {
+      // From here on the step is running: a page hidden by what it does was not skipped.
+      if (!this.#toRun.delete(skip) || step.outcome !== "pending") return;
+      try {
+        step.outcome = run();
+      } catch {
+        // The page broke the step before it ran: nothing more of it runs.
+        if (step.outcome === "pending") step.outcome = "skipped";
+      }
+      if (step.outcome === "skipped" && tell) this.#skipped(step);
+    });
   }
 
   /**
@@ -1298,7 +1395,7 @@ export class VimmaChild extends JSWindowActorChild {
     const doc = this.document;
     const win = this.contentWindow;
     if (!doc || !win) return;
-    /** @type {{ doc: Document, at: number, last: number | null, observer: any }} */
+    /** @type {{ doc: Document, at: number, last: number | null, observer: MutationObserver | null }} */
     const watch = { doc, at: Date.now(), last: null, observer: null };
     try {
       watch.observer = new win.MutationObserver(() => {
@@ -1421,11 +1518,14 @@ export class VimmaChild extends JSWindowActorChild {
    * script runs again, so it reaches the parent ahead of every later navigation or request this
    * process starts for the page: the actor's messages and the page's loads (DocumentChannel)
    * go over the same PContent channel, in order. A page that puts the form back and submits by
-   * itself afterwards is then cancelled like any other submission.
+   * itself afterwards is then cancelled like any other submission. It names the step, so the
+   * parent can tell the agent its click was skipped after the page went away (issue #1028), and
+   * by the parent's own number for it, so that a late one is not taken for a later step's.
+   * @param {{ gen: number, id: number, step: number }} step
    */
-  #skipped() {
+  #skipped({ gen, id, step }) {
     try {
-      this.sendAsyncMessage("Vimma:AgentSkipped", {});
+      this.sendAsyncMessage("Vimma:AgentSkipped", { gen, id, step });
     } catch {
       // The actor is going away with its document. For the top frame the mark goes with the
       // page; for a subframe removed this way the allowance stays open until the call ends,
@@ -1436,20 +1536,24 @@ export class VimmaChild extends JSWindowActorChild {
   /**
    * Whether `el` is still what the agent's question showed: nothing an agent may not click, a
    * submit only if asked as one and to the same method and destination, the same link.
-   * @param {Element} el @param {{ submit?: any, href?: unknown }} asked
+   * @param {Element} el @param {{ submit?: unknown, href?: unknown }} asked
    */
   #asAsked(el, asked) {
-    const now = /** @type {any} */ (actTargetOf(el));
+    const now = actTargetOf(el);
     if (!now.alive || now.field || now.disabled) return false;
+    /** @type {{ method?: unknown, action?: unknown, check?: unknown } | null} */
     const named = asked.submit && typeof asked.submit === "object" ? asked.submit : null;
-    if (!!now.submit !== !!named) return false;
-    if (now.submit && (now.submit.method !== named.method || now.submit.action !== named.action)) {
+    if (!now.submit !== !named) return false;
+    if (
+      now.submit &&
+      (now.submit.method !== named?.method || now.submit.action !== named?.action)
+    ) {
       return false;
     }
     // mcp-consequence K1, K5: a form a grant runs unasked was judged by what it sent before the
     // click; another call (a fill) may have changed it since, so it is judged again here, just
     // before it is pressed, and skipped when it no longer passes.
-    if (now.submit && named.check) {
+    if (now.submit && named?.check) {
       const step = { pay: false, sent: parseSentFields(sentFieldsOf(el, "click", new Set())) };
       if (named.check === "harmless" && isConsequential(step)) return false;
       if (named.check === "allowed" && !mayAllowHere(step)) return false;
@@ -1525,7 +1629,8 @@ export class VimmaChild extends JSWindowActorChild {
     if (!isIndex(data?.gen) || !isIndex(data?.id) || data.gen !== this.#hints.gen) return false;
     const el = this.#hints.els[data.id]?.deref();
     this.#hints = { gen: -1, els: [] };
-    if (!el?.isConnected) return false;
+    // Not on a page this process has replaced since the labels were drawn (issue #1028).
+    if (!this.#onPage(el)) return false;
     const html = /** @type {HTMLElement} */ (el);
     if (el.localName !== "a" && isEditable(describe(el)).editable) {
       this.#focus(html);
@@ -1540,8 +1645,7 @@ export class VimmaChild extends JSWindowActorChild {
       }
       return true;
     }
-    this.#press(el);
-    return true;
+    return this.#press(el);
   }
 
   /**
@@ -1554,18 +1658,20 @@ export class VimmaChild extends JSWindowActorChild {
    * @returns {boolean} whether it clicked
    */
   #press(el, still = () => true) {
+    // A page this process has replaced since (#onPage): nothing to press.
+    const win = this.contentWindow;
+    if (!win || !this.#onPage(el)) return false;
     const html = /** @type {HTMLElement} */ (el);
     const r = el.getBoundingClientRect();
     const init = {
       bubbles: true,
       cancelable: true,
       composed: true,
-      view: this.contentWindow,
+      view: win,
       clientX: r.left + r.width / 2,
       clientY: r.top + r.height / 2,
       button: 0,
     };
-    const win = /** @type {any} */ (this.contentWindow);
     for (const type of ["mouseover", "mousedown", "mouseup"]) {
       const buttons = type === "mousedown" ? 1 : 0;
       el.dispatchEvent(new win.MouseEvent(type, { ...init, buttons }));

@@ -375,7 +375,15 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
     pref was off comes back under its about: URL, and the start page then replaces it with its own.
     A load of these pages triggered by a principal other than the system principal, such as an
     extension's `windows.create()` with one of them as the home page, is refused: the start page
-    is a chrome page, which such principals cannot load.)
+    is a chrome page, which such principals cannot load. Once the stand-in has handed out
+    Firefox's page, it keeps Firefox's module until the last privilegedabout process it saw start
+    (`ipc:content-created`) ends (`ipc:content-shutdown`), even with the pref back on: the parent
+    checks every principal that process sends against the module's flags of that moment, and the
+    start page's would get the process killed with every tab in it
+    ([#950](https://github.com/vimma-browser/vimma/issues/950)). A Firefox page still loading
+    when that process ends, its own process still launching, holds it too
+    ([#984](https://github.com/vimma-browser/vimma/issues/984)). New tabs still follow the pref at
+    once through `AboutNewTab.newTabURL`.)
 11. **Mozilla's own services keep their names and links.** AMO (installs, dictionaries), Safe
     Browsing (including Report Deceptive Site), `about:credits`, `about:policies` and the Mozilla
     root store wording stay, because they name or reach services Vimma uses unchanged, and
@@ -496,28 +504,35 @@ Written first and seen to fail, by step.
   `branding-prefs.test.ts`, ADR-025) asserts each value in the Design table.
   `browser_vimma_firefox_surfaces_trim.js` (new mochitest) asserts that `getHelpLinkURL("x")` and a
   Settings "Learn more" link start with the vimma.dev base and carry the version, OS and locale
-  (step 1), that the account panel's Monitor button and `#appMenu-fxa-sign-in-promo` are hidden,
-  that the content context menu has no chatbot or link-preview item, and that `Services.prefs`
-  reports each pref back at Firefox's value after a user reset is reverted.
+  (step 1) (Since changed: the tests that open Settings, this link among them, are in
+  `browser_vimma_firefox_settings_trim.js`, #992), that the account panel's Monitor button and
+  `#appMenu-fxa-sign-in-promo` are hidden, that the content context menu has no chatbot or
+  link-preview item, and that `Services.prefs` reports each pref back at Firefox's value after a
+  user reset is reverted.
 - **Branding** (step 3): a vitest that Vimma's `brand.ftl` defines `-brand-shortcut-name`, and
   `tools/branding/test/brandings.test.mjs` (Since changed: `brandings.test.ts`, ADR-025) for the
   generator (decision 14); the mochitest formats `desktop-entry-name` and
   `private-browsing-shortcut-text-2` and gets "Vimma" and "Vimma Private Browsing"; it loads each
   overridden chrome URL and asserts it is Vimma's file.
-- **Settings, menus, About dialog** (step 4): the mochitest opens `about:preferences` and asserts
+- **Settings, menus, About dialog** (step 4): the mochitest (Since changed: for Settings,
+  `browser_vimma_firefox_settings_trim.js` and, for what it hides,
+  `browser_vimma_firefox_settings_hidden.js`, #992) opens `about:preferences` and asserts
   the Labs, AI controls, Firefox Home and data collection groups and the connect.mozilla.org link
-  are not displayed, also with `prefers-contrast` forced; that a Settings card's computed
-  `border-radius` is `0px` and its `font-family` is the theme's; that the page, link and tab menus
-  show no Send to Device item, Tools no Tab Overview, the menu bar's Help menu and the app menu's
-  Help view no Switching to a New Device or Report Broken Site, and customize mode no Send to
+  are not displayed, also with `prefers-contrast` forced (Since changed, issue
+  [#997](https://github.com/vimma-browser/vimma/issues/997): each in the pane Firefox shows it in,
+  and only once Firefox is seen to show it with `firefox-pages.css` taken off the page, so a
+  surface Firefox hides itself fails the test rather than passing it); that a Settings card's
+  computed `border-radius` is `0px` and its `font-family` is the theme's; that the page, link and
+  tab menus show no Send to Device item, Tools no Tab Overview, the menu bar's Help menu and the app
+  menu's Help view no Switching to a New Device or Report Broken Site, and customize mode no Send to
   Device or Tab Overview widget, while Get Help, Share Ideas and Settings > Sync's sign-in show
   (step 4a); that the About dialog's `#contributeDesc` and mozilla.org bottom links are not
-  displayed while its licensing information link and `#communityDesc` (step 5's attribution
-  line, decision 16) are; that the link status panel and the account panel's sign-in box take the theme's
+  displayed while its licensing information link and `#communityDesc` (step 5's attribution line,
+  decision 16) are; that the link status panel and the account panel's sign-in box take the theme's
   colours; that the error page illustrations serve the empty SVG; and that typing `about:home`,
-  `about:newtab` and `about:welcome` ends on the start page, and `about:newtab` on Firefox's
-  page with `vimma.startpage.newtab` off. An e2e scenario types those URLs through the
-  control socket and checks the tab's URL.
+  `about:newtab` and `about:welcome` ends on the start page, and `about:newtab` on Firefox's page
+  with `vimma.startpage.newtab` off. An e2e scenario types those URLs through the control socket and
+  checks the tab's URL.
 - **Strings** (step 5): the mochitest formats each patched message and asserts it contains neither
   "Vimma" nor "Mozilla" where decision 4 says so, and that the About dialog and `about:vimma` show
   the attribution line.

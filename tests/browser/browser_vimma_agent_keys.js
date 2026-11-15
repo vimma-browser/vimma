@@ -24,11 +24,21 @@ const { AgentChat } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 
 const KEY = "sk-test-0123456789-a1b2";
 const ENDPOINT = "https://api.example.com/v1";
+
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
 
 add_setup(async () => {
   OSKeyStoreTestUtils.setup();
@@ -121,6 +131,7 @@ add_task(async function test_a_key_goes_only_to_the_endpoint_it_was_stored_for()
 });
 
 add_task(async function test_key_never_in_log_notice_or_error() {
+  /** @type {nsIHttpServer} */
   const server = new HttpServer();
   /** @type {string[]} */
   const auth = [];
@@ -134,7 +145,8 @@ add_task(async function test_key_never_in_log_notice_or_error() {
   await AgentKeys.set("hosted", KEY, endpoint);
   /** @type {string[]} */
   const notices = [];
-  const onGate = (/** @type {any} */ e) => {
+  /** @type {Parameters<typeof AgentGate.addListener>[0]} */
+  const onGate = (e) => {
     if (e?.kind === "notice") notices.push(e.text);
   };
   AgentGate.addListener(onGate);
@@ -150,11 +162,13 @@ add_task(async function test_key_never_in_log_notice_or_error() {
   await AgentChat.send(c.id, "hello");
   const result = await AgentChat.done(c.id);
   AgentGate.removeListener(onGate);
-  await new Promise((resolve) => server.stop(resolve));
+  await new Promise((resolve) => server.stop(() => resolve(undefined)));
   Assert.deepEqual(auth, [`Bearer ${KEY}`], "the key went only in the request header");
   Assert.equal(result.outcome, "error", "the provider refused it");
-  Assert.ok(!result.error.includes(KEY), "the error does not repeat the key");
-  Assert.ok(result.error.includes("•••"), "it says where the key was");
+  // An error result says what went wrong.
+  const error = found(result.error);
+  Assert.ok(!error.includes(KEY), "the error does not repeat the key");
+  Assert.ok(error.includes("•••"), "it says where the key was");
   const conversation = JSON.stringify(AgentChat.get(c.id));
   Assert.ok(!conversation.includes(KEY), "the conversation holds no key");
   Assert.ok(!JSON.stringify(AgentGate.log).includes(KEY), ":mcp log holds no key");

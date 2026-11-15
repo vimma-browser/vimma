@@ -93,6 +93,19 @@ export class StatusBar {
     this.column = 0;
     this.frame = 0;
     this.lastBar = "";
+    /**
+     * The agent segment as last drawn, for the control socket's `state.agent`: what is on
+     * screen, which lags the gate's own state until the next redraw (the ran dot goes at
+     * RAN_MS + 50 ms, later under load). Null when none is drawn.
+     * @type {{ waiting: number, ran: boolean } | null}
+     */
+    this.drawnAgent = null;
+    /**
+     * Which `↓` segment was last drawn, for the control socket's `state.downloads` (#1006): its
+     * kind, never its text; null when none is drawn, as when the bar is too narrow for it.
+     * @type {import("../core/downloads.mjs").DownloadSegment["kind"] | null}
+     */
+    this.drawnDownloads = null;
     /** @type {Announced} what the live region last said */
     this.announced = { mode: null, notFound: null };
     /** @type {ResizeObserver | null} */
@@ -293,7 +306,7 @@ export class StatusBar {
       input.toolbarHidden = true;
       input.security = securityOf(browser);
       input.privateWindow = root.hasAttribute("privatebrowsingmode");
-      input.sharing = sharingCues(/** @type {any} */ (browser)._sharingState);
+      input.sharing = sharingCues(browser._sharingState);
     }
     return input;
   }
@@ -314,6 +327,15 @@ export class StatusBar {
     // A badge (a segment with a background) has half a column of padding on each side.
     const badges = all.filter((s) => s.bg).length;
     const fitted = fitStatus(all, columns - badges);
+    const agent = fitted.find((s) => s.id === "agent");
+    // Core marks the ran dot on the segment (a waiting count wins over it): its colours may
+    // change without changing what state.agent.ran reports.
+    this.drawnAgent = agent
+      ? { waiting: input.agent?.waiting ?? 0, ran: agent.dot === true }
+      : null;
+    this.drawnDownloads = fitted.some((s) => s.id === "downloads")
+      ? (input.downloads?.kind ?? null)
+      : null;
     const key = JSON.stringify(fitted.map((s) => [s.id, s.text, s.fg, s.bg]));
     if (key !== this.lastBar) {
       this.lastBar = key;
@@ -369,7 +391,8 @@ export class StatusBar {
 
 /**
  * The host as the bar shows it and its registrable domain, for truncation that never cuts the
- * latter (docs/security.md C3). The base domain is counted in labels from the
+ * latter (docs/security/06-chrome-ui-rendering.md C3). The base domain is counted in labels from
+ * the
  * ASCII form Services.eTLD answers in, then taken from the display form, so an IDN host keeps
  * its Unicode. An IP address, or a host without a public suffix, is its own base.
  * @param {any} uri
@@ -398,7 +421,7 @@ function originOf(uri) {
  * The tab's address for the bar, and its origin. An initial page (about:blank, the start page)
  * shows no address only when Firefox's address bar would show none
  * (BrowserUIUtils.checkEmptyPageOrigin): an about:blank a page opened or wrote into reads
- * `about:blank from <the page that controls it>` (docs/security.md C3).
+ * `about:blank from <the page that controls it>` (docs/security/06-chrome-ui-rendering.md C3).
  * @param {BrowserWindow} win
  * @param {any} browser
  * @returns {{ url: string | null, origin: UrlOrigin | null }}
@@ -439,7 +462,7 @@ function barUrl(win, browser) {
 /**
  * The origin of a URL without a host of its own: a nested one's inner URL (view-source:), else
  * the page's principal (blob:, which carries its creator's origin), so the bar can still keep
- * that origin's domain whole (docs/security.md C3).
+ * that origin's domain whole (docs/security/06-chrome-ui-rendering.md C3).
  * @param {any} browser
  * @param {any} uri
  * @returns {UrlOrigin | null}
@@ -464,7 +487,7 @@ function innerOrigin(browser, uri) {
 /**
  * The selected page's connection, from the browser's security state as Firefox's identity
  * block reads it (browser-siteIdentity.js), never from the address bar, so an unsent edit in
- * the hidden address bar changes nothing (docs/security.md C3).
+ * the hidden address bar changes nothing (docs/security/06-chrome-ui-rendering.md C3).
  * @param {any} browser
  */
 function securityOf(browser) {

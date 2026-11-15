@@ -14,9 +14,9 @@ import {
   UPDATE_OUTCOMES,
   UPDATE_STAGES,
   validateMessage,
-} from "../../src/control.mjs";
-import { parseKey } from "../../src/keys.mjs";
-import { MODES } from "../../src/modes.mjs";
+} from "../../src/control/control.mjs";
+import { parseKey } from "../../src/keys/keys.mjs";
+import { MODES } from "../../src/keys/modes.mjs";
 import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.mjs";
 
 const FIELDS = [
@@ -48,7 +48,7 @@ const url = fc.oneof(
 
 /**
  * @typedef {{ m: { type?: string } & Record<string, unknown>,
- *   o: import("../../src/control.mjs").ValidateOptions }} ValidCase
+ *   o: import("../../src/control/control.mjs").ValidateOptions }} ValidCase
  */
 /**
  * Valid messages of every kind, each with the options its check needs.

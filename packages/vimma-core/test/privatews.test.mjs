@@ -10,14 +10,14 @@ import {
   privateNeighbours,
   privateReturn,
   privateToggle,
-} from "../src/privatews.mjs";
+} from "../src/workspaces/privatews.mjs";
 import {
   isWorkspaceId,
   lastWorkspace,
   nextWorkspace,
   previousWorkspace,
-} from "../src/workspaces.mjs";
-import { workspaceItems, pickerKey, openPicker } from "../src/picker.mjs";
+} from "../src/workspaces/workspaces.mjs";
+import { workspaceItems, pickerKey, openPicker } from "../src/ui/picker.mjs";
 
 const model = Object.freeze({
   active: "w2",

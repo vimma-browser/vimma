@@ -23,12 +23,16 @@ const INPUT_ID = "vimma-rename-input";
 
 registerCleanupFunction(() => {
   if (promptOpen()) EventUtils.synthesizeKey("KEY_Escape");
-  while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1) {
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
 });
 
+/** @param {string} id */
 const $ = (id) => document.getElementById(id);
-const input = () => $(INPUT_ID);
-const promptOpen = () => !!$(PROMPT_ID) && !$(PROMPT_ID).hidden;
+/** The prompt's field (rename-prompt.mjs makes an <input>), which a test reads while the prompt is open. */
+const input = () => /** @type {HTMLInputElement} */ ($(INPUT_ID));
+const promptOpen = () => !!$(PROMPT_ID) && !(/** @type {HTMLElement} */ ($(PROMPT_ID)).hidden);
 const titleSegment = () =>
   $("vimma-statusbar")?.querySelector('[data-segment="title"]')?.textContent ?? null;
 const storedLabel = (tab = gBrowser.selectedTab) => SessionStore.getCustomTabValue(tab, LABEL_KEY);
@@ -56,7 +60,10 @@ function renameKey() {
   EventUtils.synthesizeKey("T", { shiftKey: true });
 }
 
-/** Replaces the prompt's text with `text` and presses Enter. */
+/**
+ * Replaces the prompt's text with `text` and presses Enter.
+ * @param {string} text
+ */
 function submit(text) {
   input().select();
   EventUtils.synthesizeKey("KEY_Backspace");
@@ -64,6 +71,7 @@ function submit(text) {
   EventUtils.synthesizeKey("KEY_Enter");
 }
 
+/** @param {string} line */
 function runCommand(line) {
   EventUtils.synthesizeKey(":", { shiftKey: true });
   EventUtils.sendString(line);
@@ -86,10 +94,14 @@ add_task(async function prefix_shift_t_prompts_and_enter_sets_the_label() {
 
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey("g");
-  const picker = $("vimma-picker");
+  // picker.mjs makes a <dialog>. A missing picker, row or title throws below, as before.
+  const picker = /** @type {HTMLDialogElement} */ ($("vimma-picker"));
   Assert.ok(picker?.open, "the picker opens");
-  const row = picker.querySelector(`[role=option][data-tab-id="${tab.linkedPanel}"]`);
-  Assert.equal(row.querySelector(".vimma-picker-title").textContent, "Mail", "the picker shows it");
+  const row = /** @type {Element} */ (
+    picker.querySelector(`[role=option][data-tab-id="${tab.linkedPanel}"]`)
+  );
+  const title = /** @type {Element} */ (row.querySelector(".vimma-picker-title"));
+  Assert.equal(title.textContent, "Mail", "the picker shows it");
   EventUtils.synthesizeKey("KEY_Escape");
 
   renameKey();

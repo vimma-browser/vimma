@@ -54,12 +54,16 @@ const TEMPLATE = "https://example.com/?t=%s";
 const dir = PathUtils.join(PathUtils.tempDir, `vimma-search-${Date.now()}`);
 const file = PathUtils.join(dir, "config.toml");
 
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
 
 let writes = 0;
-/** Writes config.toml with a size of its own, so the poll always sees the change. */
+/**
+ * Writes config.toml with a size of its own, so the poll always sees the change.
+ * @param {string[]} lines
+ */
 async function writeConfig(...lines) {
   writes++;
   await IOUtils.writeUTF8(file, `schema = 2\n${lines.join("\n")}\n${"#".repeat(writes)}\n`);
@@ -68,11 +72,13 @@ async function writeConfig(...lines) {
 /** The state Vimma recorded, once the apply after a write has run. */
 const applied = () => JSON.parse(Services.prefs.getStringPref(STATE_PREF, "null"));
 
-const engineByAlias = (alias) => SearchService.getEngineByAlias(alias);
+const engineByAlias = (/** @type {string} */ alias) => SearchService.getEngineByAlias(alias);
 
-const input = (win = window) => win.document.getElementById("vimma-cmdline-input");
+/** @param {Window} [win] */
+const input = (win = window) =>
+  /** @type {HTMLInputElement | null} */ (win.document.getElementById("vimma-cmdline-input"));
 
-/** `:line` Enter, typed key by key. */
+/** `:line` Enter, typed key by key. @param {string} line @param {Window} [win] */
 function runCommand(line, win = window) {
   EventUtils.synthesizeKey(":", { shiftKey: true }, win);
   EventUtils.sendString(line, win);
@@ -99,7 +105,12 @@ async function openPage() {
   return tab;
 }
 
-/** `:line` in `tab`, and the URL its browser then loads. */
+/**
+ * `:line` in `tab`, and the URL its browser then loads.
+ * @param {MozTabbrowserTab} tab
+ * @param {string} line
+ * @param {string} url
+ */
 async function openFrom(tab, line, url) {
   const loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, url);
   runCommand(line);
@@ -115,7 +126,12 @@ const postEcho = () =>
     "https://example.com",
   )}file_vimma_search_post.sjs`;
 
-/** Bookmarks `url` under `keyword` (with `postData`, if any) until the file ends. */
+/**
+ * Bookmarks `url` under `keyword` (with `postData`, if any) until the file ends.
+ * @param {string} name
+ * @param {string} url
+ * @param {string} [postData]
+ */
 async function keyword(name, url, postData) {
   const bookmark = await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
@@ -129,10 +145,17 @@ async function keyword(name, url, postData) {
 }
 
 /** The text of `tab`'s page. */
-const pageText = (tab) =>
+const pageText = (/** @type {MozTabbrowserTab} */ tab) =>
   SpecialPowers.spawn(tab.linkedBrowser, [], () => content.document.body?.textContent.trim());
 
+/**
+ * nsISearchEngine, as far as this file reads it (SearchService is untyped here).
+ * @typedef {{ readonly id: string, readonly name: string, readonly alias: string }} SearchEngine
+ */
+
+/** @type {SearchEngine} */
 let installed;
+/** @type {SearchEngine} */
 let originalDefault;
 
 add_task(async function setup() {
@@ -162,7 +185,8 @@ add_task(async function setup() {
     ],
   });
   registerCleanupFunction(async () => {
-    while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+    while (gBrowser.tabs.length > 1)
+      gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
     await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true });
     await ConfigHost.reload();
     await until(() => applied() === null, "removing the file undoes everything Vimma did");
@@ -195,7 +219,7 @@ add_task(async function a_default_chosen_in_settings_since_is_kept() {
   await writeConfig("[search]", `default = "${INSTALLED}"`);
   await until(() => SearchService.defaultEngine.name === INSTALLED, "the default is set");
   const other = (await SearchService.getVisibleEngines()).find(
-    (e) => e.name !== INSTALLED && e.id !== originalDefault.id,
+    (/** @type {SearchEngine} */ e) => e.name !== INSTALLED && e.id !== originalDefault.id,
   );
   // Settings changes it once Vimma is done: a reconcile still due (engines added in setup)
   // would set the file's default again, as it should.
@@ -267,7 +291,7 @@ add_task(async function open_and_tabnew_resolve_aliases() {
   EventUtils.sendString("open @t");
   await until(() => {
     EventUtils.synthesizeKey("KEY_Tab");
-    return input().value === "open @t ";
+    return /** @type {HTMLInputElement} */ (input()).value === "open @t ";
   }, "Tab completes @t");
   EventUtils.synthesizeKey("KEY_Escape");
 
@@ -460,10 +484,11 @@ add_task(async function a_private_window_opens_aliases_too() {
  */
 function holdLookup() {
   const original = UrlbarUtils.getShortcutOrURIAndPostData;
+  /** @type {(value?: unknown) => void} */
   let release;
   const held = new Promise((resolve) => (release = resolve));
   let started = false;
-  UrlbarUtils.getShortcutOrURIAndPostData = async function (text) {
+  UrlbarUtils.getShortcutOrURIAndPostData = async function (/** @type {string} */ text) {
     started = true;
     await held;
     return original.call(this, text);
@@ -481,9 +506,10 @@ function holdLookup() {
 add_task(async function a_workspace_switch_during_the_lookup_keeps_the_query_where_it_was_typed() {
   await writeConfig("[search.aliases]", `t = "${TEMPLATE}"`);
   await until(() => engineByAlias("@t"), "the template's engine is made");
-  const ww = WindowWorkspaces.get(window);
-  const byName = (name) => WorkspaceStore.definitions.workspaces.find((w) => w.name === name);
-  const agent = byName("agent");
+  const ww = /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
+  const byName = (/** @type {string} */ name) =>
+    WorkspaceStore.definitions.workspaces.find((w) => w.name === name);
+  const agent = /** @type {ContainedWorkspace | undefined} */ (byName("agent"));
   Assert.ok(agent, "sanity: the agent workspace exists");
   const tab = await openPage();
   const typedIn = tab.userContextId;
@@ -509,7 +535,7 @@ add_task(async function a_workspace_switch_during_the_lookup_keeps_the_query_whe
   );
 
   // :tabnew: the new tab takes the container it was typed in.
-  ww.switchTo({ id: byName("main").id });
+  ww.switchTo({ id: /** @type {WorkspaceDefinition} */ (byName("main")).id });
   await until(() => gBrowser.selectedTab === tab, "back in the first workspace");
   await focusContent(tab.linkedBrowser);
   hold = holdLookup();
@@ -519,11 +545,11 @@ add_task(async function a_workspace_switch_during_the_lookup_keeps_the_query_whe
   await until(() => gBrowser.selectedTab !== tab, "the agent workspace is shown");
   const opened = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "TabOpen");
   hold.release();
-  const newTab = (await opened).target;
+  const newTab = /** @type {MozTabbrowserTab} */ ((await opened).target);
   Assert.equal(newTab.userContextId, typedIn, "in the container :tabnew was typed in");
   Assert.notEqual(newTab.userContextId, agent.userContextId, "never the agent workspace's");
 
-  ww.switchTo({ id: byName("main").id });
+  ww.switchTo({ id: /** @type {WorkspaceDefinition} */ (byName("main")).id });
   BrowserTestUtils.removeTab(newTab);
   BrowserTestUtils.removeTab(tab);
   await writeConfig("[search]");

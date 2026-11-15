@@ -1,0 +1,4 @@
+# The JavaScript files under tests/ that still have type errors in tests/tsconfig.json's program
+# (issue #959). Nothing is added here: a new test file is type-checked from its first commit.
+# Each pull request that fixes a file's errors takes it off, and tools/mochitest-typecheck.ts
+# (npm run typecheck) fails until it does.

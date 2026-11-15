@@ -8,8 +8,8 @@ import {
   parseOmarchyColors,
   resolveTheme,
   tokensToCss,
-} from "../../src/theme.mjs";
-import { parseConfig } from "../../src/config.mjs";
+} from "../../src/config/theme.mjs";
+import { parseConfig } from "../../src/config/config.mjs";
 import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.mjs";
 import { tomlDoc } from "./toml-arb.mjs";
 

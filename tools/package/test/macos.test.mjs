@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { defined } from "../../test/defined.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 import { jobs, parseWorkflow } from "../../test/workflow-runners.mjs";
 import { DMG_LAYOUT, FILES, catalogSummary, outDirOf } from "../macos-icons.mjs";
@@ -205,6 +206,7 @@ describe("macos-dmg.sh", () => {
       const tools = stubs(dir);
       mkdirSync(join(dir, "out"));
       const { VIMMA_CTL } = macCtl(dir);
+      /** @type {Record<string, string>} */
       const env = licenses ? { VIMMA_CTL, VIMMA_CTL_LICENSES: licenses } : { VIMMA_CTL };
       const { status, stderr } = sign(dir, tools, env);
       expect(status, String(licenses)).not.toBe(0);
@@ -299,7 +301,8 @@ describe("macos.yml", () => {
     expect(text).not.toContain("workflow_call");
   });
 
-  // Decision 14 and docs/security.md, B6: test builds are keyless; nothing here holds a secret.
+  // Decision 14 and docs/security/14-build-and-release-supply-chain.md, B6: test builds are
+  // keyless; nothing here holds a secret.
   it("reads no secret, deploys to no environment and only reads the repository", () => {
     expect(doc.permissions).toEqual({});
     expect(text).not.toMatch(/secrets\.|github\.token|GH_TOKEN/);
@@ -375,7 +378,7 @@ describe("macos.yml", () => {
     expect(e2e["timeout-minutes"]).toBeLessThanOrEqual(10);
     const run = e2e.run ?? "";
     expect(run).toContain("for scenario in m0-happy-path m0-content-actor; do");
-    expect(run).toContain('node tools/e2e/e2e.mjs --headless --build "$APP"');
+    expect(run).toContain('node tools/e2e/e2e.ts --headless --build "$APP"');
     expect(run).toContain("--vimma-ctl tools/vimma-ctl/target/release/vimma-ctl");
     expect(run).toContain('--filter "$scenario"');
     expect(index(smoke, "Build vimma-ctl")).toBeLessThan(index(smoke, "The e2e smoke scenarios"));
@@ -405,11 +408,13 @@ describe("macos.yml", () => {
   // files from their sources and fails if they drift. Xcode is pinned, as its actool writes the
   // catalog.
   it("regenerates the icon files on a Mac with a pinned Xcode and fails on drift", () => {
-    const icons = all.get("icons") ?? {};
+    const icons = defined(all.get("icons"), "the icons job");
     expect(icons["runs-on"]).toBe("macos-26");
-    expect(icons.env?.DEVELOPER_DIR).toMatch(
-      /^\/Applications\/Xcode_26\.\d+(\.\d+)?\.app\/Contents\/Developer$/,
-    );
+    expect(icons.env).toMatchObject({
+      DEVELOPER_DIR: expect.stringMatching(
+        /^\/Applications\/Xcode_26\.\d+(\.\d+)?\.app\/Contents\/Developer$/,
+      ),
+    });
     expect(icons["timeout-minutes"]).toBeLessThanOrEqual(15);
     const run = steps(icons)
       .map((s) => s.run ?? "")
@@ -417,7 +422,8 @@ describe("macos.yml", () => {
     expect(run).toContain("node tools/package/macos-icons.mjs --check");
   });
 
-  // The first green cross build's job took 133 minutes (docs/runbook.md, "macOS build").
+  // The first green cross build's job took 133 minutes (docs/runbook/ci-macos-build.md, "macOS
+  // build").
   it("stops itself at about 1.5 times the measured build, before GitHub's 6-hour job limit", () => {
     expect(build["timeout-minutes"]).toBeGreaterThanOrEqual(133 * 1.4);
     expect(build["timeout-minutes"]).toBeLessThanOrEqual(133 * 1.6);
@@ -757,7 +763,7 @@ describe("macos-icons.mjs catalogSummary", () => {
       catalogSummary(catalog("A", "AA", "N")),
     );
     const resized = catalog("A", "AA", "M");
-    resized[1].PixelWidth = 32;
+    defined(resized[1]).PixelWidth = 32;
     expect(catalogSummary(resized)).not.toBe(catalogSummary(catalog("A", "AA", "M")));
   });
 });

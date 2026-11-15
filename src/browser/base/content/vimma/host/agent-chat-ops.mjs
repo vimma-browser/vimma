@@ -11,13 +11,36 @@ import { parseAgentCommand } from "../core/agent-chat.mjs";
 import { moveTabQuestion } from "../core/workspacedefs.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
+import { HostServices } from "./host-services.mjs";
+import { McpHost } from "./mcp-ops.mjs";
 
-const lazy = /** @type {Lazy<"AgentChat">} */ ({});
-ChromeUtils.defineESModuleGetters(lazy, {
-  AgentChat: "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
+/** @import { AgentChatServices } from "../ui/agent-chat.mjs" */
+
+/**
+ * What the chat window (ui/agent-chat.mjs) uses of the agent, config.toml and `[agent]`, which
+ * the host hands it when it builds it: ui/ may import none of those folders (ADR-026). Each is
+ * read from the registry (or from McpHost, in host/) at the moment the window calls, never kept.
+ * @type {Readonly<AgentChatServices>}
+ */
+export const CHAT_SERVICES = Object.freeze({
+  get chat() {
+    return HostServices.agentChat;
+  },
+  get cli() {
+    return HostServices.agentCli;
+  },
+  get keys() {
+    return HostServices.agentKeys;
+  },
+  configRefused: () => HostServices.configRefused(),
+  addAgentProvider: (
+    /** @type {Parameters<AgentChatServices["addAgentProvider"]>[0]} */ provider,
+    /** @type {{ makeDefault: boolean }} */ opts,
+  ) => HostServices.addAgentProvider(provider, opts),
+  agentConfig: () => McpHost.agentConfig,
 });
 
-/** What a tab is called in the transcript: its label, on one line, cut. @param {any} tab */
+/** What a tab is called in the transcript: its label, on one line, cut. @param {MozTabbrowserTab} tab */
 const tabTitle = (tab) =>
   [
     ...String(tab.label ?? "")
@@ -45,12 +68,12 @@ export function giveSelectedTab(win, id, ask, say) {
   const gBrowser = win.gBrowser;
   const tab = gBrowser.selectedTab;
   const title = tabTitle(tab);
-  if (tab.userContextId === /** @type {any} */ (agent).userContextId && !ww.isForeign(tab)) {
-    const owner = lazy.AgentChat.ownerOf(tab);
+  if (tab.userContextId === agent.userContextId && !ww.isForeign(tab)) {
+    const owner = HostServices.agentChat.ownerOf(tab);
     if (owner === id) say("agent: that tab is this conversation's already");
     // Another conversation's tab stays its own: one model never reaches another's pages (B17).
     else if (owner !== null) say("agent: that tab is another conversation's");
-    else lazy.AgentChat.give(id, tab, title);
+    else HostServices.agentChat.give(id, tab, title);
     return;
   }
   ask(moveTabQuestion(agent.name, { agent: WorkspaceStore.agentName }), () => {
@@ -60,7 +83,7 @@ export function giveSelectedTab(win, id, ask, say) {
       return;
     }
     // A conversation deleted meanwhile gets nothing: the tab stays where it was.
-    if (!lazy.AgentChat.list().some((/** @type {any} */ c) => c.id === id)) {
+    if (!HostServices.agentChat.list().some((c) => c.id === id)) {
       say("agent: that conversation is gone; nothing was moved");
       return;
     }
@@ -72,7 +95,7 @@ export function giveSelectedTab(win, id, ask, say) {
         onMoved: (fresh) => {
           // Inside moveTab, before the old tab closes: a throw here would leave both open.
           try {
-            lazy.AgentChat.give(id, fresh, title);
+            HostServices.agentChat.give(id, fresh, title);
             given = true;
           } catch (e) {
             console.error("vimma agent: giving the tab failed", e);
@@ -113,7 +136,11 @@ export function runAgentCommand(chat, text, say) {
       chat.clear();
       return;
     case "give":
-      chat.open({ then: () => chat.give() });
+      chat.open({
+        then: () => chat.give(),
+        // Giving asks a y/N on the prompt line, which would take focus from where the user went.
+        ifMoved: () => say("agent: not given: focus moved while the conversations were read"),
+      });
       return;
     case "forget":
       chat.forgetAll();

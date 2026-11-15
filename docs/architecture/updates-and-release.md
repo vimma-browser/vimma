@@ -7,8 +7,8 @@ they run, and what can stop the release at each step.
 [m6-packaging](../specs/m6-packaging.md), [release-versioning](../specs/release-versioning.md),
 [m6a-updater](../specs/m6a-updater.md) and [update-notices](../specs/update-notices.md), the
 decision in [ADR-016](../adr/016-own-update-channel.md), the rules with their tests in
-[docs/security.md](../security.md) §14 (build and release) and §16 (update check), and setup,
-switches and recovery in [docs/runbook.md](../runbook.md), "Releases", "Release packages" and
+[docs/security/](../security/README.md) §14 (build and release) and §16 (update check), and setup,
+switches and recovery in [docs/runbook/](../runbook/README.md), "Releases", "Release packages" and
 "Update signing keys and the update host".
 
 ```mermaid
@@ -144,8 +144,9 @@ Two copies of the same trust anchor ship in every build, both made from
   build whose copies are missing or differ from the committed ones, since Firefox would otherwise
   fall back to Mozilla's test keys or embed other keys.
 - `npm run gen-update-keys` (`tools/update/gen-update-keys.mjs`) writes their public keys into
-  `packages/vimma-core/src/update-keys.mjs` (`UPDATE_KEYS`), which the manifest check uses. Until
-  the offline recovery key exists, only the primary is pinned and the secondary slot repeats it.
+  `packages/vimma-core/src/updates/update-keys.mjs` (`UPDATE_KEYS`), which the manifest check uses.
+  Until the offline recovery key exists, only the primary is pinned and the secondary slot repeats
+  it.
 
 ## 5. The client's check: `updates/VimmaUpdates.sys.mjs`
 
@@ -159,7 +160,7 @@ off, and a build run from source checks nothing.
 `%CHANNEL%` filled in and only `https`, with no cookies, no cache, no referrer, an empty
 `Accept-Language` and no redirects, and reads at most 256 KiB after decompression (`readCapped`).
 A host that does not answer is `unreachable`, logged and otherwise quiet. `judge` then applies
-core's rules (`packages/vimma-core/src/updates.mjs`):
+core's rules (`packages/vimma-core/src/updates/updates.mjs`):
 
 1. `verifyManifest` checks the signature line against `UPDATE_KEYS` (plus test keys only in
    automation). A missing, altered or foreign signature is `refused`.
@@ -200,5 +201,5 @@ signs the MAR on the nightly channel, `publish` uploads to the rolling `nightly`
 `…/vimma-nightly/update.xml`. On a day when `main` and the Firefox version did not change, the
 `changes` job skips the build and the manifest is re-signed under a new serial, so a nightly install
 never sees a feed older than its 7-day limit (45 days for releases). Tests:
-[nightly-workflow.test.mjs](../../tools/test/nightly-workflow.test.mjs) and
+[nightly-workflow.test.ts](../../tools/test/nightly-workflow.test.ts) and
 [nightly-manifest.test.mjs](../../tools/update/test/nightly-manifest.test.mjs).

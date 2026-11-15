@@ -30,18 +30,27 @@ const SCROLL_Y = 600;
 
 const Panes = ChromeUtils.importESModule("chrome://browser/content/vimma/core/panes.mjs");
 
-/** Pane trees use each tab's linkedPanel as its tab id. */
+/**
+ * Pane trees use each tab's linkedPanel as its tab id.
+ * @param {PaneTab} tab
+ */
 function idOf(tab) {
   return tab.linkedPanel;
 }
 
-/** x[a, y[b, c]]: split a right, then split the new pane down. */
+/**
+ * x[a, y[b, c]]: split a right, then split the new pane down.
+ * @param {SplitTab[]} tabs  a, b and c
+ */
 function lShape([a, b, c]) {
   const s = Panes.split(Panes.createPanes(idOf(a)), "p1", "vertical", idOf(b));
   return Panes.split(s, "p2", "horizontal", idOf(c));
 }
 
-/** a | b | c: split right twice (core halves the focused pane, so .5 / .25 / .25). */
+/**
+ * a | b | c: split right twice (core halves the focused pane, so .5 / .25 / .25).
+ * @param {SplitTab[]} tabs  a, b and c
+ */
 function row([a, b, c]) {
   const s = Panes.split(Panes.createPanes(idOf(a)), "p1", "vertical", idOf(b));
   return Panes.split(s, "p2", "vertical", idOf(c));
@@ -50,6 +59,7 @@ function row([a, b, c]) {
 /**
  * x[y[g1, g3], y[g2, g4]], resized to uneven ratios so the edges are rounded
  * (1280 × .37 = 473.6, 760 × .61 = 463.6).
+ * @param {SplitTab[]} tabs  g1 to g4
  */
 function grid([g1, g2, g3, g4]) {
   let s = Panes.split(Panes.createPanes(idOf(g1)), "p1", "vertical", idOf(g2));
@@ -62,33 +72,61 @@ function grid([g1, g2, g3, g4]) {
   return Panes.resize(s, "taller", 0.11);
 }
 
+/** @typedef {{ x: number, y: number, width: number, height: number }} Rect */
+
 /**
  * core layout() of a pane state over the content area, keyed by tab.
- * @returns {Map<object, {x: number, y: number, width: number, height: number}>}
+ * @param {Panes} state
+ * @param {SplitTab[]} tabs  the tabs of its panes
+ * @returns {Map<SplitTab, Rect>}
  */
 function rectsOf(state, tabs) {
   const byId = new Map(tabs.map((t) => [idOf(t), t]));
-  return new Map(Panes.layout(state, area()).map((r) => [byId.get(r.tab), r.rect]));
+  // Every pane of the state shows one of `tabs`.
+  return new Map(
+    Panes.layout(state, area()).map((r) => [/** @type {SplitTab} */ (byId.get(r.tab)), r.rect]),
+  );
+}
+
+/**
+ * The rect `rects` gives a tab, which rectsOf gives each tab of a pane.
+ * @param {Map<SplitTab, Rect>} rects
+ * @param {SplitTab} tab
+ */
+function rectOf(rects, tab) {
+  return /** @type {Rect} */ (rects.get(tab));
 }
 
 /**
  * Names for a list of tabs, panels or browsers: Assert.deepEqual compares DOM elements
  * structurally (any two are "equal"), so lists of elements are compared by name.
+ * @param {Iterable<Element>} els
  */
 function names(els) {
   return [...els].map((el) => {
-    if (el.localName === "tab") return el.label;
-    if (el.localName === "browser") return gBrowser.getTabForBrowser(el).label;
+    if (el.localName === "tab") return /** @type {MozTabbrowserTab} */ (el).label;
+    if (el.localName === "browser") {
+      // The browsers named here are tabs' browsers.
+      const browser = /** @type {MozBrowser} */ (el);
+      return /** @type {MozTabbrowserTab} */ (gBrowser.getTabForBrowser(browser)).label;
+    }
     return el.id;
   });
 }
 
 function tabpanels() {
-  return document.getElementById("tabbrowser-tabpanels");
+  return /** @type {Element} */ (document.getElementById("tabbrowser-tabpanels"));
 }
 
+/**
+ * A tab's panel, a XUL <hbox>: a tab of these tests is loaded, so it has one.
+ * @param {SplitTab} tab
+ */
 function panelOf(tab) {
-  return document.getElementById(tab.linkedPanel);
+  // getElementById types it as an HTML element.
+  return /** @type {XULElement} */ (
+    /** @type {Element} */ (document.getElementById(tab.linkedPanel))
+  );
 }
 
 /** The content area as an integer rect at 0,0, as the host passes it to layout(). */
@@ -97,19 +135,36 @@ function area() {
   return { x: 0, y: 0, width: Math.round(r.width), height: Math.round(r.height) };
 }
 
-/** An element's rect relative to #tabbrowser-tabpanels. */
+/**
+ * An element's rect relative to #tabbrowser-tabpanels.
+ * @param {Element} el
+ * @returns {Rect}
+ */
 function relRect(el) {
   const o = tabpanels().getBoundingClientRect();
   const r = el.getBoundingClientRect();
   return { x: r.x - o.x, y: r.y - o.y, width: r.width, height: r.height };
 }
 
+/**
+ * @param {Rect} a
+ * @param {Rect} b
+ */
 function maxDelta(a, b) {
-  return Math.max(...["x", "y", "width", "height"].map((k) => Math.abs(a[k] - b[k])));
+  return Math.max(
+    .../** @type {(keyof Rect)[]} */ (["x", "y", "width", "height"]).map((k) =>
+      Math.abs(a[k] - b[k]),
+    ),
+  );
 }
 
-/** Asserts panel and browser of every tab sit at their rect within ±1 px; returns the deltas. */
+/**
+ * Asserts panel and browser of every tab sit at their rect within ±1 px; returns the deltas.
+ * @param {Map<SplitTab, Rect>} rects
+ * @param {string} what
+ */
 function assertRects(rects, what) {
+  /** @type {number[]} */
   const deltas = [];
   for (const [tab, want] of rects) {
     const label = tab.linkedBrowser.currentURI.spec.match(/<title>(\w+)/)?.[1] ?? tab.label;
@@ -125,6 +180,10 @@ function assertRects(rects, what) {
   return Math.max(...deltas);
 }
 
+/**
+ * @param {SplitTab[]} tabs
+ * @param {string} what
+ */
 function assertActive(tabs, what) {
   for (const tab of tabs) {
     Assert.ok(tab.linkedBrowser.docShellIsActive, `${what}: ${tab.label}'s docshell is active`);
@@ -147,16 +206,23 @@ async function setWindowSize() {
   );
 }
 
+/** @param {string} name */
 function pageURL(name) {
   return `data:text/html,<title>${name}</title><body style="height:5000px">${name}</body>`;
 }
 
+/** @type {SplitTab[]} */
 const opened = [];
-/** Opens one loaded background tab per name. */
+/**
+ * Opens one loaded background tab per name.
+ * @param {string[]} names
+ */
 async function openTabs(...names) {
+  /** @type {SplitTab[]} */
   const tabs = [];
   for (const name of names) {
-    const tab = BrowserTestUtils.addTab(gBrowser, pageURL(name));
+    // A loaded tab has its panel.
+    const tab = /** @type {SplitTab} */ (BrowserTestUtils.addTab(gBrowser, pageURL(name)));
     await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
     tab.label = name;
     tabs.push(tab);
@@ -165,7 +231,10 @@ async function openTabs(...names) {
   return tabs;
 }
 
-/** Selects tabs[0], then puts every tab into one split view. */
+/**
+ * Selects tabs[0], then puts every tab into one split view.
+ * @param {SplitTab[]} tabs
+ */
 async function split(tabs) {
   await BrowserTestUtils.switchTab(gBrowser, tabs[0]);
   const activated = BrowserTestUtils.waitForEvent(window, "TabSplitViewActivate");
@@ -175,28 +244,39 @@ async function split(tabs) {
   return wrapper;
 }
 
+/** @param {SplitTab[]} tabs */
 function cleanup(tabs) {
   clearLayout(window, tabs);
   for (const tab of tabs) if (!tab.closing && tab.parentNode) gBrowser.removeTab(tab);
 }
 
+/**
+ * @param {MozBrowser} browser
+ * @param {number} y
+ */
 async function scrollPage(browser, y) {
   await SpecialPowers.spawn(browser, [y], (top) => {
     content.scrollTo(0, top);
   });
 }
 
+/** @param {MozBrowser} browser */
 function scrollYOf(browser) {
   return SpecialPowers.spawn(browser, [], () => content.scrollY);
 }
 
 /** Console errors (not warnings) while it runs. */
 function collectErrors() {
+  /** @type {string[]} */
   const errors = [];
   const listener = {
+    /** @param {nsIConsoleMessage} msg */
     observe(msg) {
-      if (msg instanceof Ci.nsIScriptError && !(msg.flags & Ci.nsIScriptError.warningFlag)) {
-        errors.push(`${msg.errorMessage} (${msg.sourceName}:${msg.lineNumber})`);
+      if (!(msg instanceof Ci.nsIScriptError)) return;
+      // The instanceof above: a script error.
+      const err = /** @type {nsIScriptError} */ (msg);
+      if (!(err.flags & Ci.nsIScriptError.warningFlag)) {
+        errors.push(`${err.errorMessage} (${err.sourceName}:${err.lineNumber})`);
       }
     },
   };
@@ -209,7 +289,10 @@ function collectErrors() {
   };
 }
 
-/** The computed colour of a CSS colour expression in the chrome document. */
+/**
+ * The computed colour of a CSS colour expression in the chrome document.
+ * @param {string} value
+ */
 function colourOf(value) {
   const probe = document.createElement("div");
   probe.style.color = value;
@@ -224,28 +307,50 @@ function focusWidth() {
   return getComputedStyle(tabpanels()).getPropertyValue("--vimma-pane-focus-width").trim();
 }
 
-/** The outline a tab's .browserContainer draws. */
+/**
+ * A tab's .browserContainer: every tab's panel has one.
+ * @param {SplitTab} tab
+ */
+function containerOf(tab) {
+  return /** @type {Element} */ (panelOf(tab).querySelector(".browserContainer"));
+}
+
+/**
+ * The outline a tab's .browserContainer draws.
+ * @param {SplitTab} tab
+ */
 function outlineOf(tab) {
-  const style = getComputedStyle(panelOf(tab).querySelector(".browserContainer"));
+  const style = getComputedStyle(containerOf(tab));
   return { color: style.outlineColor, width: style.outlineWidth, style: style.outlineStyle };
 }
 
-/** The frame a tab's .browserContainer::after draws over its page, or null when it has none. */
+/**
+ * The frame a tab's .browserContainer::after draws over its page, or null when it has none.
+ * @param {SplitTab} tab
+ */
 function frameOf(tab) {
-  const style = getComputedStyle(panelOf(tab).querySelector(".browserContainer"), "::after");
+  const style = getComputedStyle(containerOf(tab), "::after");
   if (style.content === "none" || style.borderTopStyle === "none") return null;
+  /** @type {("Top" | "Right" | "Bottom" | "Left")[]} */
   const sides = ["Top", "Right", "Bottom", "Left"];
   return {
-    widths: [...new Set(sides.map((s) => style[`border${s}Width`]))].join(" "),
+    widths: [...new Set(sides.map((s) => style[/** @type {const} */ (`border${s}Width`)]))].join(
+      " ",
+    ),
     style: style.borderTopStyle,
-    color: [...new Set(sides.map((s) => style[`border${s}Color`]))].join(" "),
+    color: [...new Set(sides.map((s) => style[/** @type {const} */ (`border${s}Color`)]))].join(
+      " ",
+    ),
     position: style.position,
     inset: [style.top, style.right, style.bottom, style.left].join(" "),
     pointerEvents: style.pointerEvents,
   };
 }
 
-/** Whether a tab's pane draws the focus border: a 3 px frame in the focus colour. */
+/**
+ * Whether a tab's pane draws the focus border: a 3 px frame in the focus colour.
+ * @param {SplitTab} tab
+ */
 function hasBorder(tab) {
   const f = frameOf(tab);
   return !!f && f.widths === "3px" && f.color === colourOf("var(--focus-outline-color)");
@@ -255,6 +360,9 @@ function hasBorder(tab) {
  * Asserts `focused` has the focus border (docs/specs/pane-focus-highlight.md: 3 px on all four
  * edges, inside its rect, in the theme's focus colour) and every other tab keeps the 1 px
  * separator outline in another colour and no frame.
+ * @param {SplitTab[]} tabs
+ * @param {SplitTab} focused
+ * @param {string} what
  */
 function assertBorders(tabs, focused, what) {
   const focusColor = colourOf("var(--focus-outline-color)");
@@ -288,6 +396,8 @@ function assertBorders(tabs, focused, what) {
  * The colour painted at a point of the window, in client CSS px, with the pages' remote content
  * composited in: what the user sees, which getComputedStyle cannot tell (a style on the
  * container can be covered by the page).
+ * @param {number} x
+ * @param {number} y
  */
 async function paintedAt(x, y) {
   const bitmap = await window.browsingContext.currentWindowGlobal.drawSnapshot(
@@ -296,7 +406,8 @@ async function paintedAt(x, y) {
     "black",
   );
   const canvas = new OffscreenCanvas(1, 1);
-  const ctx = canvas.getContext("2d");
+  // null only for a context type the canvas does not support, or a canvas with another context.
+  const ctx = /** @type {OffscreenCanvasRenderingContext2D} */ (canvas.getContext("2d"));
   ctx.drawImage(bitmap, 0, 0);
   const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
   return `rgb(${r}, ${g}, ${b})`;
@@ -305,6 +416,9 @@ async function paintedAt(x, y) {
 /**
  * Asserts the border is painted: 1 px inside the focused pane's left edge, halfway down, the
  * window shows the focus colour, and at the same place in every other pane it does not.
+ * @param {SplitTab[]} tabs
+ * @param {SplitTab} focused
+ * @param {string} what
  */
 async function assertPaintedBorder(tabs, focused, what) {
   const focusColor = colourOf("var(--focus-outline-color)");
@@ -324,11 +438,21 @@ function nextFrame() {
   return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 }
 
+/**
+ * A tab's find bar, which a test reads once gBrowser.isFindBarInitialized(tab) says it is made.
+ * @param {SplitTab} tab
+ */
+function madeFindBar(tab) {
+  return /** @type {MozFindbar} */ (gBrowser.getCachedFindBar(tab));
+}
+
 // This file pins Firefox's split view on its own. Vimma's PaneView adopts any split made with
-// Firefox's API (sub-spec 6), so its listeners are off while this file runs.
-const paneView = PaneViews.get(window);
+// Firefox's API (sub-spec 6), so its listeners are off while this file runs. VimmaHost made the
+// test window's PaneView when it started the window.
+const paneView = /** @type {PaneView} */ (PaneViews.get(window));
 for (const type of PANE_VIEW_EVENTS) window.removeEventListener(type, paneView);
 
+/** @type {[number, number]} */
 const startSize = [window.outerWidth, window.outerHeight];
 registerCleanupFunction(() => {
   for (const type of PANE_VIEW_EVENTS) window.addEventListener(type, paneView);
@@ -414,22 +538,23 @@ add_task(async function the_focus_outline_find_bar_and_notifications_belong_to_t
   // Find bar: the selected tab's find bar, as Firefox's accel+f opens it, is inside n3's panel.
   // Not the key itself: [firefox] disable = "all" turns accel+f off in insert mode
   // (docs/specs/firefox-keys.md decision 16).
-  (await gBrowser.getFindBar()).open();
+  // null only when the window or tab closes first.
+  /** @type {MozFindbar} */ (await gBrowser.getFindBar()).open();
   await TestUtils.waitForCondition(
-    () => gBrowser.isFindBarInitialized(n3) && !gBrowser.getCachedFindBar(n3).hidden,
+    () => gBrowser.isFindBarInitialized(n3) && !madeFindBar(n3).hidden,
     "n3's find bar opens",
   );
-  const findbar = gBrowser.getCachedFindBar(n3);
+  const findbar = madeFindBar(n3);
   Assert.ok(panelOf(n3).contains(findbar), "the find bar is inside n3's panel");
   for (const tab of [n1, n2]) {
     Assert.ok(
-      !gBrowser.isFindBarInitialized(tab) || gBrowser.getCachedFindBar(tab).hidden,
+      !gBrowser.isFindBarInitialized(tab) || madeFindBar(tab).hidden,
       `${tab.label} has no open find bar`,
     );
   }
   await nextFrame();
   const fb = relRect(findbar);
-  const want = rects.get(n3);
+  const want = rectOf(rects, n3);
   Assert.ok(
     fb.x >= want.x - TOLERANCE &&
       fb.y >= want.y - TOLERANCE &&
@@ -446,14 +571,16 @@ add_task(async function the_focus_outline_find_bar_and_notifications_belong_to_t
     label: "n2's notification",
     priority: box.PRIORITY_INFO_LOW,
   });
+  // appendNotification made the box's stack.
+  const stack = /** @type {Element} */ (box._stack);
   Assert.equal(
-    box._stack.parentNode,
+    stack.parentNode,
     gBrowser.getBrowserContainer(n2.linkedBrowser),
     "n2's notification box is inside n2's browserContainer",
   );
   await nextFrame();
-  const nb = relRect(box._stack);
-  const n2rect = rects.get(n2);
+  const nb = relRect(stack);
+  const n2rect = rectOf(rects, n2);
   Assert.ok(
     nb.height > 0 &&
       nb.x >= n2rect.x - TOLERANCE &&
@@ -486,7 +613,7 @@ add_task(
     Assert.lessOrEqual(fsDelta, TOLERANCE, `s2's panel fills the window (Δ ${fsDelta} px)`);
     // What the user sees where s3 was: the fullscreen s2. (Upstream hides the other panels with
     // -moz-subtree-hidden-only-visually, which getComputedStyle does not expose.)
-    const s3centre = rects.get(s3);
+    const s3centre = rectOf(rects, s3);
     const o = tabpanels().getBoundingClientRect();
     const hit = document.elementFromPoint(
       o.x + s3centre.x + s3centre.width / 2,
@@ -523,7 +650,7 @@ add_task(async function zoom_hides_the_other_panes_visually_and_unzoom_restores_
   // core's zoomed layout: one rectangle, the whole area.
   const zoomed = rectsOf(Panes.toggleZoom(Panes.focusPane(state, "p3")), tabs);
   Assert.deepEqual(names(zoomed.keys()), ["z3"], "core zooms z3 alone");
-  const full = zoomed.get(z3);
+  const full = rectOf(zoomed, z3);
   Assert.deepEqual(full, area(), "core gives the zoomed z3 the whole area");
   applyLayout(window, rects);
   await scrollPage(z1.linkedBrowser, SCROLL_Y);
@@ -536,10 +663,13 @@ add_task(async function zoom_hides_the_other_panes_visually_and_unzoom_restores_
   // cannot tell for z2.
   panelOf(z1).style.zIndex = "1";
   gBrowser.selectedTab = z2;
-  /** The element at the centre of a tab's unzoomed rect. */
+  /**
+   * The element at the centre of a tab's unzoomed rect.
+   * @param {SplitTab} tab
+   */
   const hitAt = (tab) => {
     const o = tabpanels().getBoundingClientRect();
-    const r = rects.get(tab);
+    const r = rectOf(rects, tab);
     return document.elementFromPoint(o.x + r.x + r.width / 2, o.y + r.y + r.height / 2);
   };
 
@@ -600,7 +730,7 @@ add_task(async function the_focused_pane_has_the_focus_border() {
   assertBorders(tabs, b1, "b1 picked");
   await assertPaintedBorder(tabs, b1, "b1 picked");
   Assert.equal(
-    getComputedStyle(panelOf(b1).querySelector(".browserContainer")).transitionDuration,
+    getComputedStyle(containerOf(b1)).transitionDuration,
     "0s",
     "the border does not animate",
   );
@@ -740,11 +870,19 @@ async function rebuild(hostDeactivates) {
   await scrollPage(a.linkedBrowser, SCROLL_Y);
   await scrollPage(c.linkedBrowser, SCROLL_Y);
   gBrowser.selectedTab = c;
+  /** @type {string[]} */
   const deactivates = [];
-  const onDeactivate = (e) => deactivates.push(e.detail.tabs.map((t) => t.label).join(","));
+  /** @param {Event} e  tabsplitview.mjs fires it as a CustomEvent with the wrapper's tabs */
+  const onDeactivate = (e) =>
+    deactivates.push(
+      /** @type {CustomEvent<{ tabs: MozTabbrowserTab[] }>} */ (e).detail.tabs
+        .map((t) => t.label)
+        .join(","),
+    );
   window.addEventListener("TabSplitViewDeactivate", onDeactivate);
   const errors = collectErrors();
   const states = () => tabs.map((t) => t.linkedBrowser.docShellIsActive);
+  /** @type {Record<string, boolean[]>} */
   const samples = {};
 
   wrapper.unsplitTabs();
@@ -837,7 +975,10 @@ add_task(
     await split(reading);
     const domOrder = () =>
       [...tabpanels().children].filter((p) => tabs.some((t) => panelOf(t) === p));
-    info(`DOM order: ${domOrder().map((p) => tabs.find((t) => panelOf(t) === p).label)}`);
+    // domOrder() holds the panels of `tabs` only.
+    const tabOfPanel = (/** @type {Element} */ p) =>
+      /** @type {SplitTab} */ (tabs.find((t) => panelOf(t) === p));
+    info(`DOM order: ${domOrder().map((p) => tabOfPanel(p).label)}`);
     Assert.notDeepEqual(
       names(domOrder()),
       names(reading.map(panelOf)),
@@ -848,8 +989,9 @@ add_task(
     for (let i = 1; i < reading.length; i++) {
       const prev = panelOf(reading[i - 1]);
       const panel = panelOf(reading[i]);
+      // A panel's parent is #tabbrowser-tabpanels.
       if (prev.nextElementSibling !== panel)
-        prev.parentNode.moveBefore(panel, prev.nextElementSibling);
+        /** @type {Element} */ (prev.parentNode).moveBefore(panel, prev.nextElementSibling);
     }
     Assert.deepEqual(
       names(domOrder()),

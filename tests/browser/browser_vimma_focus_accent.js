@@ -28,13 +28,13 @@ function until(cond, msg) {
 }
 
 /** "#rrggbb" → "rgb(r, g, b)", as getComputedStyle reports it. */
-function rgb(hex) {
+function rgb(/** @type {string} */ hex) {
   const n = parseInt(hex.slice(1), 16);
   return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`;
 }
 
 /** "rgb(r, g, b)" → "#rrggbb"; null for a colour with alpha. */
-function hex(css) {
+function hex(/** @type {string} */ css) {
   const m = /^rgb\((\d+), (\d+), (\d+)\)$/.exec(css);
   if (!m) return null;
   return `#${m
@@ -48,7 +48,7 @@ const token = (/** @type {string} */ name) =>
 
 let writes = 0;
 /** config.toml, with a unique trailer so the poll sees every write. */
-async function writeConfig(text) {
+async function writeConfig(/** @type {string} */ text) {
   writes++;
   await IOUtils.writeUTF8(file, `schema = 2\n${text}\n${"#".repeat(writes)}\n`);
   await ConfigHost.reload();
@@ -69,7 +69,10 @@ async function focusedUrlbarRing() {
 
 /** The selected (focused) pane's border colour, in a three-pane split. */
 function focusedPaneOutline() {
-  const panel = document.getElementById(gBrowser.selectedTab.linkedPanel);
+  // The selected tab has its panel; a read through a missing one throws.
+  const panel = /** @type {HTMLElement} */ (
+    document.getElementById(gBrowser.selectedTab.linkedPanel ?? "")
+  );
   Assert.ok(panel.classList.contains("deck-selected"), "the focused pane is the deck's");
   const container = /** @type {Element} */ (panel.querySelector(".browserContainer"));
   const style = getComputedStyle(container, "::after");
@@ -105,20 +108,24 @@ add_task(async function setup() {
       ["ui.systemUsesDarkTheme", 1],
     ],
   });
+  /** @type {SplitTab[]} */
   const tabs = [];
   for (const name of ["a", "b", "c"]) {
     const url = `data:text/html,<title>${name}</title>${name}`;
-    const tab = BrowserTestUtils.addTab(gBrowser, url);
+    const tab = /** @type {SplitTab} */ (BrowserTestUtils.addTab(gBrowser, url));
     await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
     tabs.push(tab);
   }
   gBrowser.selectedTab = tabs[0];
-  const view = PaneViews.get(window);
+  // Every browser window has its pane view; a read through a missing one throws.
+  const view = /** @type {PaneView} */ (PaneViews.get(window));
   Assert.deepEqual(view.split("vertical", { tab: tabs[1] }), { ok: true }, "split right");
   Assert.deepEqual(view.split("horizontal", { tab: tabs[2] }), { ok: true }, "then down");
   registerCleanupFunction(async () => {
     while (view.panes) view.close();
-    while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+    while (gBrowser.tabs.length > 1) {
+      gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+    }
     Services.prefs.clearUserPref("browser.tabs.splitview.hasUsed");
     await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true });
     await SpecialPowers.popPrefEnv();

@@ -13,9 +13,9 @@ import {
   parseAgentKeys,
   refusalReason,
   shownKeys,
-} from "../src/agent-keys.mjs";
-import { DEFAULT_HINT_CHARS, hintLabels } from "../src/hints.mjs";
-import { compileKeymap } from "../src/keymap.mjs";
+} from "../src/agent/agent-keys.mjs";
+import { DEFAULT_HINT_CHARS, hintLabels } from "../src/page/hints.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
 
 /** @param {string} keys */
 const ids = (keys) => {

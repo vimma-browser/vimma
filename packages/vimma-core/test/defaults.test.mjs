@@ -1,8 +1,8 @@
 import { test, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { formatDefaultsToml } from "../src/defaults.mjs";
-import { bindingsJson } from "../src/help.mjs";
-import { compileKeymap } from "../src/keymap.mjs";
+import { formatDefaultsToml } from "../src/config/defaults.mjs";
+import { bindingsJson } from "../src/ui/help.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
 
 test("defaults.toml matches the snapshot", () => {
   expect(formatDefaultsToml()).toMatchSnapshot();

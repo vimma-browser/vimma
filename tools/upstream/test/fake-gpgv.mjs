@@ -49,6 +49,7 @@ export function fakeSign(sums) {
 /**
  * An environment whose PATH finds the fake gpgv first.
  * @param {NodeJS.ProcessEnv} env
+ * @returns {NodeJS.ProcessEnv}
  */
 export function withFakeGpgv(env) {
   const bin = join(tempDir("fake-gpgv-"), "bin");

@@ -10,7 +10,7 @@
 
 import http from "node:http";
 import https from "node:https";
-import type { Fetch } from "../../packages/vimma-core/src/agent-providers.mjs";
+import type { Fetch } from "../../packages/vimma-core/src/agent/agent-providers.mjs";
 
 export function httpFetch(
   url: Parameters<Fetch>[0],

@@ -30,15 +30,15 @@ import {
   updatesCheckAfterRead,
   updatesEnabled,
   verifyManifest,
-} from "../src/updates.mjs";
-import { UPDATE_KEYS } from "../src/update-keys.mjs";
-import { parseConfig, rawUpdatesCheck } from "../src/config.mjs";
-import { DEFAULT_CONFIG, formatDefaultsToml } from "../src/defaults.mjs";
-import { parseCommandLine } from "../src/cmdline.mjs";
-import { getAction } from "../src/actions.mjs";
-import { compileKeymap } from "../src/keymap.mjs";
-import { statusSegments } from "../src/statusbar.mjs";
-import { THEME_TOKENS } from "../src/theme.mjs";
+} from "../src/updates/updates.mjs";
+import { UPDATE_KEYS } from "../src/updates/update-keys.mjs";
+import { parseConfig, rawUpdatesCheck } from "../src/config/config.mjs";
+import { DEFAULT_CONFIG, formatDefaultsToml } from "../src/config/defaults.mjs";
+import { parseCommandLine } from "../src/keys/cmdline.mjs";
+import { getAction } from "../src/keys/actions.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
+import { statusSegments } from "../src/ui/statusbar.mjs";
+import { THEME_TOKENS } from "../src/config/theme.mjs";
 
 const subtle = globalThis.crypto.subtle;
 const ALG = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-384" };
@@ -64,7 +64,7 @@ beforeAll(async () => {
   [primary, secondary, stranger] = await Promise.all([makeKey(), makeKey(), makeKey()]);
 });
 
-/** @returns {import("../src/updates.mjs").PinnedKey[]} */
+/** @returns {import("../src/updates/updates.mjs").PinnedKey[]} */
 const pinned = () => [
   { id: primary.id, slot: "primary", spki: primary.spki },
   { id: secondary.id, slot: "secondary", spki: secondary.spki },
@@ -232,7 +232,7 @@ describe("the manifest signature (spec §2, §4 rule 1)", () => {
   });
 
   test("a pinned key that is not a valid SPKI refuses, never throws", async () => {
-    /** @type {import("../src/updates.mjs").PinnedKey[]} */
+    /** @type {import("../src/updates/updates.mjs").PinnedKey[]} */
     const broken = [{ id: primary.id, slot: "primary", spki: "AAAA" }];
     const r = await verifyManifest(await signed(manifest(), primary), broken, subtle);
     expect(r).toEqual({ ok: false, reason: "signature: does not verify" });
@@ -275,8 +275,9 @@ describe("pinned keys (update-keys.mjs)", () => {
     }
   });
 
-  // The primary's SPKI SHA-256, as recorded in docs/runbook.md ("Pin the public keys"). A changed
-  // key has to change both, so a swapped key cannot pass review as a formatting edit.
+  // The primary's SPKI SHA-256, as recorded in docs/runbook/ci-update-keys-and-update-host.md ("Pin
+  // the public keys"). A changed key has to change both, so a swapped key cannot pass review as a
+  // formatting edit.
   const PRIMARY_SHA256 = "fb4d33b6ea54ddb81a6a40ce50a61a6f9383b5850f27e2218045f5d3a07dab9a";
 
   test("the shipped primary: exactly one, RSA-4096, the recorded key, verifies RSASSA-PKCS1-v1_5 SHA-384", async () => {
@@ -298,7 +299,10 @@ describe("pinned keys (update-keys.mjs)", () => {
   });
 
   test("the runbook records the pinned primary's id and SHA-256, and no secondary yet", () => {
-    const runbook = readFileSync(new URL("../../../docs/runbook.md", import.meta.url), "utf8");
+    const runbook = readFileSync(
+      new URL("../../../docs/runbook/ci-update-keys-and-update-host.md", import.meta.url),
+      "utf8",
+    );
     const row = runbook.split("\n").find((l) => /^\| primary\s*\|/.test(l));
     expect(row).toContain(`\`${PRIMARY_SHA256.slice(0, 8)}\``);
     expect(row).toContain(`\`${PRIMARY_SHA256}\``);
@@ -315,7 +319,7 @@ describe("pinned keys (update-keys.mjs)", () => {
       await import("node:crypto");
     const kms = generateKeyPairSync("rsa", { modulusLength: 4096 });
     const der = new Uint8Array(kms.publicKey.export({ type: "spki", format: "der" }));
-    /** @type {import("../src/updates.mjs").PinnedKey} */
+    /** @type {import("../src/updates/updates.mjs").PinnedKey} */
     const pin = { id: await spkiKeyId(subtle, der), slot: "primary", spki: base64Encode(der) };
     const body = manifest();
     const SHA384_DIGESTINFO = Buffer.from("3041300d060960864801650304020205000430", "hex");
@@ -945,7 +949,7 @@ describe("install type on macOS (macos-homebrew decisions 8 and 19)", () => {
 });
 
 describe("updateSteps (:update and about:vimma)", () => {
-  /** @type {import("../src/updates.mjs").Offer} */
+  /** @type {import("../src/updates/updates.mjs").Offer} */
   const offer = {
     appVersion: "158.0.1",
     buildId: "20261028031500",
@@ -956,7 +960,7 @@ describe("updateSteps (:update and about:vimma)", () => {
     assets: {},
   };
   const H = (/** @type {string} */ c) => c.repeat(128);
-  /** @type {import("../src/updates.mjs").Offer} */
+  /** @type {import("../src/updates/updates.mjs").Offer} */
   const hashed = {
     ...offer,
     assets: {

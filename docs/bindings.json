@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "Generated from packages/vimma-core/src/actions.mjs and defaults.mjs by npm run gen-docs; do not edit.",
+  "generated": "Generated from packages/vimma-core/src/keys/actions.mjs and config/defaults.mjs by npm run gen-docs; do not edit.",
   "prefix": "ctrl+b",
   "legend": "prefix = ctrl+b",
   "modes": [

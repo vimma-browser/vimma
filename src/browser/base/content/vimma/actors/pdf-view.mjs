@@ -3,10 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // The one module that touches Firefox's pdf.js viewer (docs/specs/pdf-mode.md decisions 2 and 3;
-// docs/security.md section 20). It runs in the viewer's content process, waives Xrays only after
-// the principal check (V1), passes pdf.js only exported functions (V3), keeps only primitives from
-// it (V4) and sends at most one state message per 100 ms (V5). Every pdf.js member it uses is in
-// PDFJS_CONTRACT, which a mochitest holds to the pdf.js this build ships.
+// docs/security/20-pdf-viewer.md section 20). It runs in the viewer's content process, waives Xrays
+// only after the principal check (V1), passes pdf.js only exported functions (V3), keeps only
+// primitives from it (V4) and sends at most one state message per 100 ms (V5). Every pdf.js member
+// it uses is in PDFJS_CONTRACT, which a mochitest holds to the pdf.js this build ships.
 
 import {
   PDF_MAX_LABEL,
@@ -91,15 +91,30 @@ export const PDFJS_CONTRACT = Object.freeze({
 
 /**
  * The viewer's elements the adapter measures, through Xrays: the scrolling container and a page,
- * `{n}` standing for its number. The contract mochitest finds them too.
+ * `{n}` standing for its number; and what a page that has finished drawing matches (`state.pdf`,
+ * #1006): pdf.js sets `data-loaded` as it starts drawing a page and removes it when it drops the
+ * drawing, and keeps `loadingIcon` on it from the start of a drawing to its end
+ * (viewer.mjs, PDFPageView's renderingState setter and reset). The contract mochitest finds them
+ * too.
  */
 export const PDFJS_DOM = Object.freeze({
   container: "#viewerContainer",
   page: '#viewer .page[data-page-number="{n}"]',
+  drawn: "[data-loaded]:not(.loadingIcon)",
 });
 
-/** pdf.js events after which the state is read again. */
-const EVENTS = ["pagesloaded", "pagechanging", "updatefindmatchescount", "updatefindcontrolstate"];
+/**
+ * pdf.js events after which the state is read again: a page that starts and ends drawing among
+ * them, for `drawn`.
+ */
+const EVENTS = [
+  "pagesloaded",
+  "pagechanging",
+  "pagerender",
+  "pagerendered",
+  "updatefindmatchescount",
+  "updatefindcontrolstate",
+];
 
 /**
  * The named actions an outline entry may run: pdf.js's navigation ones. Print and SaveAs from an
@@ -174,6 +189,10 @@ export class PdfView {
   #send;
   /** @type {(outline: object) => void} */
   #sendOutline;
+  /** @type {() => number} how many operations the actor has received from the parent */
+  #ops;
+  /** @type {(() => void) | null} the window's resize listener */
+  #onResize = null;
   /** @type {Window} the viewer's window, through Xrays: exported functions belong to it */
   #win;
   /**
@@ -194,15 +213,22 @@ export class PdfView {
   #themeUri = "";
   /** PDF_SHEET is loaded (once). */
   #sheetLoaded = false;
+  /**
+   * The window's CSS size as the last resize event left it (#scale). Until the resize event for
+   * a new size or zoom has run, pdf.js has not dropped the pages it drew at the old one, so no
+   * report then says drawn.
+   */
+  #seenScale = "";
 
   /**
    * The adapter for an actor's document, or null when it is not the top-level pdf.js viewer.
    * @param {any} actor   the VimmaChild
    * @param {(state: object) => void} send
    * @param {(outline: object) => void} [sendOutline]
+   * @param {() => number} [ops]  how many operations the actor has received
    * @returns {PdfView | null}
    */
-  static attach(actor, send, sendOutline = () => {}) {
+  static attach(actor, send, sendOutline = () => {}, ops = () => 0) {
     // Top level only: a PDF in a web page's frame keeps the page's keys (V2).
     if (actor.browsingContext.parent) return null;
     const doc = actor.document;
@@ -214,7 +240,7 @@ export class PdfView {
       return null;
     }
     if (!app || typeof app !== "object") return null;
-    return new PdfView(actor.contentWindow, app, send, sendOutline);
+    return new PdfView(actor.contentWindow, app, send, sendOutline, ops);
   }
 
   /**
@@ -222,13 +248,24 @@ export class PdfView {
    * @param {any} app
    * @param {(state: object) => void} send
    * @param {(outline: object) => void} sendOutline
+   * @param {() => number} ops
    */
-  constructor(win, app, send, sendOutline) {
+  constructor(win, app, send, sendOutline, ops) {
     this.#app = app;
     this.#win = win;
     this.#doc = win.document;
     this.#send = send;
     this.#sendOutline = sendOutline;
+    this.#ops = ops;
+    // A resize (the outline opening beside the document) redraws the pages at the new size: the
+    // report says which size it was made at (`state.pdf`). The window's own event, in Vimma's
+    // scope, so nothing of the viewer's script runs.
+    this.#seenScale = this.#scale();
+    this.#onResize = () => {
+      this.#seenScale = this.#scale();
+      this.schedule();
+    };
+    win.addEventListener("resize", this.#onResize);
     // pdf.js calls these with its own event objects; Cu.exportFunction keeps the arguments
     // behind Xrays (V3, V4).
     const onState = Cu.exportFunction(() => this.schedule(), win);
@@ -829,7 +866,85 @@ export class PdfView {
       label: str(() => app.pdfViewer.currentPageLabel).slice(0, PDF_MAX_LABEL + 1),
       find: { current: this.#find.current, total: this.#find.total },
       doc: this.#generation,
+      drawn: this.#drawn() && this.#scale() === this.#seenScale,
+      ops: this.#ops(),
+      ...this.#size(),
     };
+  }
+
+  /**
+   * The window's CSS size, which a resize and a full-zoom change that changes the page's layout
+   * both change. Such a zoom change reaches the viewer's window at once
+   * (BrowsingContext::DidSet recomputes its pres context), but pdf.js drops the pages it drew at
+   * the old zoom only in its `(resolution: …dppx)` media query listener (viewer.mjs,
+   * addWindowResolutionChange, then pdfViewer.refresh) and its resize handler, in the next
+   * refresh tick. That tick runs the resize steps, where this listener of Vimma's records the
+   * new size, and then the media query changes, before any timer can run; a report timer that
+   * fired between the zoom and that tick would have read the old pages as drawn (#1040). Not the
+   * pixel ratio: moving the window to a screen of another scale changes it with no resize event,
+   * and the parent compares the zoom itself.
+   */
+  #scale() {
+    const win = this.#win;
+    return `${win.innerWidth} ${win.innerHeight}`;
+  }
+
+  /**
+   * The viewer's size in whole device pixels, the one unit the parent can compare it in: a
+   * system caller gets the unrounded CSS size (nsGlobalWindowOuter's GetInnerSize), fractional
+   * at a fractional desktop scale or full zoom, and the content's scale is the desktop scale
+   * times the full zoom snapped to whole app units per device pixel, which the parent does not
+   * see. The full zoom goes too, so that the parent can tell a report from before a zoom
+   * change, which leaves the size in device pixels as it was (#1040): the browsing context's,
+   * the synced value the parent compares it with, exactly.
+   */
+  #size() {
+    const win = this.#win;
+    const ratio = win.devicePixelRatio;
+    let zoom = 0;
+    try {
+      zoom = win.browsingContext.fullZoom;
+    } catch {
+      // the browsing context went with the window: the parent reads the report as not drawn
+    }
+    return {
+      width: Math.round(win.innerWidth * ratio),
+      height: Math.round(win.innerHeight * ratio),
+      zoom,
+    };
+  }
+
+  /**
+   * Whether every page in the view has finished drawing (`state.pdf`, #1006), read from the
+   * viewer's DOM through Xrays: from the current page outward while the pages are in view, so a
+   * long document costs no more than the pages shown. False before the pages are laid out.
+   */
+  #drawn() {
+    const doc = this.#doc;
+    const page = num(() => this.#app.page);
+    const view = doc.querySelector(PDFJS_DOM.container)?.getBoundingClientRect();
+    if (!view || !Number.isSafeInteger(page) || page < 1) return false;
+    const pageDiv = (/** @type {number} */ n) =>
+      doc.querySelector(PDFJS_DOM.page.replace("{n}", String(n)));
+    const inView = (/** @type {Element | null} */ div) => {
+      const r = div?.getBoundingClientRect();
+      return (
+        !!r &&
+        r.width > 0 &&
+        r.height > 0 &&
+        r.bottom > view.top &&
+        r.top < view.bottom &&
+        r.right > view.left &&
+        r.left < view.right
+      );
+    };
+    if (!inView(pageDiv(page))) return false;
+    for (const step of [-1, 1]) {
+      for (let n = page, div = pageDiv(n); inView(div); n += step, div = pageDiv(n)) {
+        if (!div?.matches(PDFJS_DOM.drawn)) return false;
+      }
+    }
+    return true;
   }
 
   /** Sends the state once the burst it is part of is over (V5). */
@@ -837,13 +952,35 @@ export class PdfView {
     if (this.#timer) return;
     this.#timer = lazy.setTimeout(() => {
       this.#timer = null;
-      this.#send(this.read());
+      if (!this.#gone()) this.#send(this.read());
     }, PDF_STATE_MS);
+  }
+
+  /**
+   * Whether the viewer's window has gone, as it can between the timer's start and the actor's
+   * didDestroy (#1040): a window that is no longer current throws NS_ERROR_UNEXPECTED at its
+   * sizes (nsGlobalWindowInner, FORWARD_TO_OUTER_OR_THROW) but reads `closed` as true, and a
+   * window whose compartment was cut off throws at any access.
+   */
+  #gone() {
+    try {
+      return this.#win.closed;
+    } catch {
+      return true;
+    }
   }
 
   destroy() {
     if (this.#timer) lazy.clearTimeout(this.#timer);
     this.#timer = null;
+    if (this.#onResize) {
+      try {
+        this.#win.removeEventListener("resize", this.#onResize);
+      } catch {
+        // the window went with its document
+      }
+      this.#onResize = null;
+    }
     for (const [name, fn] of this.#listeners) {
       try {
         this.#app.eventBus.off(name, fn);

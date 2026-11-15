@@ -17,7 +17,7 @@ import { NOT_PDF, PdfOps } from "./pdf-ops.mjs";
  * What the outline needs from the host, which imports this module.
  * @typedef {object} OutlineHost
  * @property {(s: WindowState) => Mode} mode  the window's mode
- * @property {(s: WindowState) => any} selectedBrowser  the selected tab's <browser>
+ * @property {(s: WindowState) => MozTabBrowser | null} selectedBrowser  the selected tab's <browser>
  * @property {(s: WindowState) => boolean} surfaceOpen  one of Vimma's own surfaces holds the keys
  */
 
@@ -99,13 +99,13 @@ export function openOutline(s, host) {
     s.outline.focus();
     return;
   }
-  const outline = PdfOps.outline(browser);
-  if (outline) {
+  const outline = browser && PdfOps.outline(browser);
+  if (browser && outline) {
     showOutline(s, browser, outline);
     return;
   }
   dropOutlineAsk(s);
-  if (!PdfOps.askOutline(browser)) {
+  if (!browser || !PdfOps.askOutline(browser)) {
     s.notice.show(NOT_PDF);
     return;
   }
@@ -114,7 +114,7 @@ export function openOutline(s, host) {
 
 /**
  * @param {WindowState} s
- * @param {any} browser
+ * @param {MozBrowser} browser
  * @param {import("../core/pdfoutline.mjs").PdfOutline | null} outline  null: malformed
  */
 export function showOutline(s, browser, outline) {
@@ -134,7 +134,7 @@ export function showOutline(s, browser, outline) {
  * a layer change by the entry's index (V7); Vimma opens a URL entry under section 4 (http and
  * https only); an attachment is pdf.js's to open.
  * @param {WindowState} s
- * @param {any} browser
+ * @param {MozBrowser} browser
  * @param {number} index
  */
 export function followOutline(s, browser, index) {
@@ -149,7 +149,7 @@ export function followOutline(s, browser, index) {
 /**
  * The user closed the outline of `browser`'s document: it stays hidden until the tab shows
  * another (decision 19).
- * @param {any} browser
+ * @param {MozBrowser} browser
  */
 export function outlineClosed(browser) {
   const key = PdfOps.documentKey(browser);

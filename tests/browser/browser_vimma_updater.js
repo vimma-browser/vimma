@@ -118,7 +118,12 @@ add_task(async function about_dialog_never_asks_mozilla() {
       return;
     }
     const deck = doc.getElementById("updateDeck");
-    Assert.equal(deck, null, `no update panel (shown: ${deck?.selectedPanel?.id})`);
+    Assert.equal(
+      deck,
+      null,
+      // A XUL <deck> (engine/toolkit/content/widgets/deck.js).
+      `no update panel (shown: ${/** @type {{ selectedPanel?: Element } | null} */ (deck)?.selectedPanel?.id})`,
+    );
     Assert.equal(doc.getElementById("checkForUpdatesButton"), null, "no check-for-updates button");
     for (const id of ERROR_PANELS) {
       const panel = doc.getElementById(id);
@@ -142,14 +147,15 @@ add_task(async function settings_never_ask_mozilla() {
   const vimmaHost = holdVimmaUpdateHost();
   try {
     await BrowserTestUtils.withNewTab("about:preferences#general", async (browser) => {
-      const doc = browser.contentDocument;
+      // about:preferences loads in the parent process, so its browser has the document.
+      const doc = /** @type {Document} */ (browser.contentDocument);
       const group = await TestUtils.waitForCondition(
         () => doc.querySelector('setting-group[groupid="updates"]'),
         "updates group rendered",
       );
       // Wait for the group's controls, whichever of the two branches it shows. A setting whose
       // `visible` callback is false renders as a hidden setting-control.
-      const shown = (id) => {
+      const shown = (/** @type {string} */ id) => {
         const el = doc.getElementById(`setting-control-${id}`);
         return !!el && !el.hidden;
       };

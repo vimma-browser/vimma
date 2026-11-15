@@ -1,13 +1,13 @@
 import { describe, test, expect } from "vitest";
-import { createDispatcher } from "../src/dispatcher.mjs";
-import { compileKeymap } from "../src/keymap.mjs";
-import { parseKey } from "../src/keys.mjs";
-import { COUNT_MODES, MODES } from "../src/modes.mjs";
-import { resolveEscape } from "../src/escape.mjs";
-import { getAction } from "../src/actions.mjs";
-import { BADGES } from "../src/theme.mjs";
+import { createDispatcher } from "../src/keys/dispatcher.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
+import { parseKey } from "../src/keys/keys.mjs";
+import { COUNT_MODES, MODES } from "../src/keys/modes.mjs";
+import { resolveEscape } from "../src/keys/escape.mjs";
+import { getAction } from "../src/keys/actions.mjs";
+import { BADGES } from "../src/config/theme.mjs";
 
-/** @import { Mode } from "../src/modes.mjs" */
+/** @import { Mode } from "../src/keys/modes.mjs" */
 
 /**
  * Feed space-separated chords; return all results.

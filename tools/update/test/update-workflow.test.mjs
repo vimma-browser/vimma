@@ -1,5 +1,6 @@
-// update-publish.yml (docs/specs/m6a-updater.md §7; docs/runbook.md, "Update signing keys and
-// the update host"): a published release gets a signed update manifest on updates.vimma.dev.
+// update-publish.yml (docs/specs/m6a-updater.md §7; docs/runbook/ci-update-keys-and-update-host.md,
+// "Update signing keys and the update host"): a published release gets a signed update manifest on
+// updates.vimma.dev.
 // The workflow is read as text, as release-workflow.test.mjs reads release.yml, and its signing
 // step is run here with a stand-in for gcloud that signs the way Cloud KMS's raw PKCS#1 key
 // does, so the bytes it writes are checked by the verifier the browser runs.
@@ -14,7 +15,7 @@ import {
   base64Encode,
   spkiKeyId,
   verifyManifest,
-} from "../../../packages/vimma-core/src/updates.mjs";
+} from "../../../packages/vimma-core/src/updates/updates.mjs";
 import { buildManifest, buildNightlyManifest, serialAt } from "../manifest.mjs";
 import { addSignaturePlaceholder, insertSignature, readMar, verifyMar } from "../mar.mjs";
 
@@ -130,8 +131,9 @@ describe("update-publish.yml", () => {
   });
 
   it("builds a macOS manifest on macOS (hdiutil reads the app's build ID), signs on Linux", () => {
-    // A one-leg matrix, so that the runner check (docs/security.md, B5) sees every runner it
-    // can take; the exclude drops the other target's.
+    // A one-leg matrix, so that the runner check
+    // (docs/security/14-build-and-release-supply-chain.md, B5) sees every runner it can take; the
+    // exclude drops the other target's.
     expect(job("prepare")).toContain(
       "\n    runs-on: ${{ matrix.os }}\n    strategy:\n      matrix:\n" +
         "        os: [ubuntu-24.04, macos-15]\n        exclude:\n" +
@@ -760,94 +762,104 @@ esac
     expect(signed.status).toBe(0);
     const out = readFileSync(join(dir, "out", "update.xml"), "utf8");
     const subtle = globalThis.crypto.subtle;
-    const pin = { id: await spkiKeyId(subtle, der), slot: "primary", spki: base64Encode(der) };
-    expect(await verifyManifest(out, [/** @type {const} */ (pin)], subtle)).toEqual({
+    const pin = {
+      id: await spkiKeyId(subtle, der),
+      slot: /** @type {const} */ ("primary"),
+      spki: base64Encode(der),
+    };
+    expect(await verifyManifest(out, [pin], subtle)).toEqual({
       ok: true,
       body,
       key: { id: pin.id, slot: "primary" },
     });
   }, 60_000);
 
-  it.each([
-    ["a body already carrying a signature", (b) => b + "<!-- vimma-signature v1 -->\n", "release"],
-    [
-      "another channel",
-      (b) => b.replace('vimmaChannel="vimma"', 'vimmaChannel="vimma-nightly"'),
-      "release",
-    ],
-    [
-      "another version than the tag",
-      (b) => b.replace('displayVersion="0.3.1"', 'displayVersion="0.3.2"'),
-      "release",
-    ],
-    ["an offer when nothing was asked for", (b) => b, "nothing"],
-    [
-      "a serial far ahead of the clock",
-      (b) => b.replace(/vimmaSerial="\d{14}"/, 'vimmaSerial="29990101000000"'),
-      "release",
-    ],
-    [
-      "a serial from long ago",
-      (b) => b.replace(/vimmaSerial="\d{14}"/, 'vimmaSerial="20200101000000"'),
-      "release",
-    ],
-    ["text after </updates>", (b) => b + "<!-- x -->", "release"],
-    [
-      "more than 64 KiB",
-      (b) => b.replace("</updates>", `<!-- ${"x".repeat(70_000)} -->\n</updates>`),
-      "release",
-    ],
-    // GNU grep may end a line at a NUL byte in a file it takes for binary, so a line check alone
-    // would pass either half.
-    [
-      "a nightly root hidden before a NUL byte",
-      (b) =>
-        b.replace(
-          "<updates ",
-          '<updates vimmaChannel="vimma-nightly" vimmaTarget="Linux_x86_64-gcc3" vimmaSerial="20261112000000">\0<updates ',
-        ),
-      "release",
-      /not printable ASCII/,
-    ],
-    [
-      "a root for another target hidden before a NUL byte",
-      (b) =>
-        b.replace(
-          "<updates ",
-          '<updates vimmaChannel="vimma" vimmaTarget="Darwin_aarch64-gcc3" vimmaSerial="20261112000000">\0<updates ',
-        ),
-      "release",
-      /not printable ASCII/,
-    ],
-    [
-      "another tarball hidden after a NUL byte",
-      (b) =>
-        b.replace(
-          /(<vimmaTarball [^\n]*\/>)\n/,
-          `$1\0<vimmaTarball size="1" hashFunction="sha512" hashValue="${"f".repeat(128)}" URL="https://example.com/x.tar.xz"/>\n`,
-        ),
-      "release",
-      /not printable ASCII/,
-    ],
-    [
-      "a byte that is not ASCII",
-      (b) => b.replace("</updates>", "<!-- \u00e9 -->\n</updates>"),
-      "release",
-      /not printable ASCII/,
-    ],
-    [
-      "a carriage return",
-      (b) => b.replace("  </update>\n", "  </update>\r\n"),
-      "release",
-      /not printable ASCII/,
-    ],
-    [
-      "a body that does not end with a newline",
-      (b) => b.replace(/\n$/, ""),
-      "release",
-      /does not end with a newline/,
-    ],
-  ])(
+  it.each(
+    /** @type {[string, (body: string) => string, string, RegExp?][]} */ ([
+      [
+        "a body already carrying a signature",
+        (b) => b + "<!-- vimma-signature v1 -->\n",
+        "release",
+      ],
+      [
+        "another channel",
+        (b) => b.replace('vimmaChannel="vimma"', 'vimmaChannel="vimma-nightly"'),
+        "release",
+      ],
+      [
+        "another version than the tag",
+        (b) => b.replace('displayVersion="0.3.1"', 'displayVersion="0.3.2"'),
+        "release",
+      ],
+      ["an offer when nothing was asked for", (b) => b, "nothing"],
+      [
+        "a serial far ahead of the clock",
+        (b) => b.replace(/vimmaSerial="\d{14}"/, 'vimmaSerial="29990101000000"'),
+        "release",
+      ],
+      [
+        "a serial from long ago",
+        (b) => b.replace(/vimmaSerial="\d{14}"/, 'vimmaSerial="20200101000000"'),
+        "release",
+      ],
+      ["text after </updates>", (b) => b + "<!-- x -->", "release"],
+      [
+        "more than 64 KiB",
+        (b) => b.replace("</updates>", `<!-- ${"x".repeat(70_000)} -->\n</updates>`),
+        "release",
+      ],
+      // GNU grep may end a line at a NUL byte in a file it takes for binary, so a line check alone
+      // would pass either half.
+      [
+        "a nightly root hidden before a NUL byte",
+        (b) =>
+          b.replace(
+            "<updates ",
+            '<updates vimmaChannel="vimma-nightly" vimmaTarget="Linux_x86_64-gcc3" vimmaSerial="20261112000000">\0<updates ',
+          ),
+        "release",
+        /not printable ASCII/,
+      ],
+      [
+        "a root for another target hidden before a NUL byte",
+        (b) =>
+          b.replace(
+            "<updates ",
+            '<updates vimmaChannel="vimma" vimmaTarget="Darwin_aarch64-gcc3" vimmaSerial="20261112000000">\0<updates ',
+          ),
+        "release",
+        /not printable ASCII/,
+      ],
+      [
+        "another tarball hidden after a NUL byte",
+        (b) =>
+          b.replace(
+            /(<vimmaTarball [^\n]*\/>)\n/,
+            `$1\0<vimmaTarball size="1" hashFunction="sha512" hashValue="${"f".repeat(128)}" URL="https://example.com/x.tar.xz"/>\n`,
+          ),
+        "release",
+        /not printable ASCII/,
+      ],
+      [
+        "a byte that is not ASCII",
+        (b) => b.replace("</updates>", "<!-- \u00e9 -->\n</updates>"),
+        "release",
+        /not printable ASCII/,
+      ],
+      [
+        "a carriage return",
+        (b) => b.replace("  </update>\n", "  </update>\r\n"),
+        "release",
+        /not printable ASCII/,
+      ],
+      [
+        "a body that does not end with a newline",
+        (b) => b.replace(/\n$/, ""),
+        "release",
+        /does not end with a newline/,
+      ],
+    ]),
+  )(
     "refuses to sign %s",
     (_name, change, offer, error = /::error::/) => {
       const { dir } = setUp(change(offerBody()));
@@ -975,8 +987,12 @@ esac
     expect(signed.status).toBe(0);
     const out = readFileSync(join(dir, "out", "update.xml"), "utf8");
     const subtle = globalThis.crypto.subtle;
-    const pin = { id: await spkiKeyId(subtle, der), slot: "primary", spki: base64Encode(der) };
-    expect(await verifyManifest(out, [/** @type {const} */ (pin)], subtle)).toEqual({
+    const pin = {
+      id: await spkiKeyId(subtle, der),
+      slot: /** @type {const} */ ("primary"),
+      spki: base64Encode(der),
+    };
+    expect(await verifyManifest(out, [pin], subtle)).toEqual({
       ok: true,
       body,
       key: { id: pin.id, slot: "primary" },
@@ -1210,34 +1226,36 @@ esac
   /** @param {(b: Buffer) => Buffer} change */
   const changed = (change) => change(Buffer.from(addSignaturePlaceholder(fixture())));
 
-  it.each([
-    ["an unsigned MAR (no placeholder)", () => fixture(), {}],
-    ["a MAR already signed", () => changed((b) => (b.fill(7, 28, 540), b)), {}],
-    ["another channel", () => changed((b) => (b.write("vimmb", 552, "latin1"), b)), {}],
-    ["a channel with a space", () => changed((b) => (b.write("vi ma", 552, "latin1"), b)), {}],
-    [
-      "a product information block too short for its channel",
-      () => changed((b) => (b.writeUInt32BE(10, 544), b)),
-      {},
-    ],
-    ["no MAR at all", () => Buffer.from("XAR1".padEnd(1000, "x")), {}],
-    [
-      "a size field that is not the file's",
-      () => changed((b) => (b.writeBigUInt64BE(1n, 8), b)),
-      {},
-    ],
-    ["another algorithm", () => changed((b) => (b.writeUInt32BE(1, 20), b)), {}],
-    [
-      "a name that is not the tag's MAR",
-      () => addSignaturePlaceholder(fixture()),
-      { MAR: "vimma-0.3.2-linux-x86_64.complete.mar" },
-    ],
-    [
-      "a caller tag that is not vX.Y.Z",
-      () => addSignaturePlaceholder(fixture()),
-      { CALLER_TAG: "main" },
-    ],
-  ])(
+  it.each(
+    /** @type {[string, () => Buffer, Record<string, string>][]} */ ([
+      ["an unsigned MAR (no placeholder)", () => fixture(), {}],
+      ["a MAR already signed", () => changed((b) => (b.fill(7, 28, 540), b)), {}],
+      ["another channel", () => changed((b) => (b.write("vimmb", 552, "latin1"), b)), {}],
+      ["a channel with a space", () => changed((b) => (b.write("vi ma", 552, "latin1"), b)), {}],
+      [
+        "a product information block too short for its channel",
+        () => changed((b) => (b.writeUInt32BE(10, 544), b)),
+        {},
+      ],
+      ["no MAR at all", () => Buffer.from("XAR1".padEnd(1000, "x")), {}],
+      [
+        "a size field that is not the file's",
+        () => changed((b) => (b.writeBigUInt64BE(1n, 8), b)),
+        {},
+      ],
+      ["another algorithm", () => changed((b) => (b.writeUInt32BE(1, 20), b)), {}],
+      [
+        "a name that is not the tag's MAR",
+        () => addSignaturePlaceholder(fixture()),
+        { MAR: "vimma-0.3.2-linux-x86_64.complete.mar" },
+      ],
+      [
+        "a caller tag that is not vX.Y.Z",
+        () => addSignaturePlaceholder(fixture()),
+        { CALLER_TAG: "main" },
+      ],
+    ]),
+  )(
     "refuses to sign %s",
     (_name, mar, env) => {
       const { dir } = setUp(mar());

@@ -2,14 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/pdf-mode.md decisions 18 and 20, docs/security.md section 20 (V12): pdf.js's
-// own sidebar never shows, and the viewer's toolbar, menus and page gutter take Vimma's
-// theme tokens, in the built-in palette dark and light and in an Omarchy theme.
+// Spec: docs/specs/pdf-mode.md decisions 18 and 20, docs/security/20-pdf-viewer.md section 20
+// (V12): pdf.js's own sidebar never shows, and the viewer's toolbar, menus and page gutter take
+// Vimma's theme tokens, in the built-in palette dark and light and in an Omarchy theme.
 // file_vimma_outline_pagemode.pdf is file_vimma_outline.pdf with `/PageMode /UseOutlines` in its
 // catalog, which makes pdf.js open its sidebar on the outline by itself. In Firefox pdf.js finds
 // with the browser's find bar (firefox-surfaces-theme themes it), so it has no find bar of its own.
 
 /* global add_setup -- the browser-chrome harness (browser-test.js) */
+
+/* global contextOf -- from head.js */
 
 "use strict";
 
@@ -73,6 +75,7 @@ function rgb(/** @type {string} */ hex) {
 /** @param {() => boolean | Promise<boolean>} fn @param {string} what */
 const until = (fn, what) => TestUtils.waitForCondition(fn, what, 50, 100);
 
+/** @param {XULBrowserElement} browser @param {string} url */
 function loadPdf(browser, url) {
   const rendered = BrowserTestUtils.waitForContentEvent(
     browser,
@@ -105,14 +108,17 @@ async function withPdf(fn, url = PAGEMODE) {
 function viewer(browser) {
   return SpecialPowers.spawn(browser, [], async () => {
     const doc = content.document;
-    const app = content.wrappedJSObject.PDFViewerApplication;
+    const app = /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication;
     const cs = (/** @type {string} */ sel) => {
       const el = doc.querySelector(sel);
       return el ? content.getComputedStyle(el) : null;
     };
     return {
-      sidebarOpen: !!app.viewsManager?.isOpen,
-      outerOpen: doc.getElementById("outerContainer").classList.contains("viewsManagerOpen"),
+      // null for a viewer without pdf.js's sidebar object, which is not "closed".
+      sidebarOpen: app.viewsManager ? app.viewsManager.isOpen : null,
+      outerOpen: /** @type {HTMLElement} */ (
+        doc.getElementById("outerContainer")
+      ).classList.contains("viewsManagerOpen"),
       toggleDisplay: cs("#viewsManagerToggleButton")?.display,
       sidebarDisplay: cs("#viewsManager")?.display,
       viewerInset: cs("#viewerContainer")?.insetInlineStart,
@@ -134,12 +140,17 @@ add_task(async function pdfjs_sidebar_stays_closed() {
   await withPdf(async (browser) => {
     // pdf.js opens it on its own once the document is set up (setInitialView); give it the time.
     await SpecialPowers.spawn(browser, [], async () => {
-      const app = content.wrappedJSObject.PDFViewerApplication;
-      await ContentTaskUtils.waitForCondition(() => app.pdfViewer.pagesCount > 0, "pages");
+      const app = /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication;
+      const pdfViewer = /** @type {PdfJsViewer} */ (app.pdfViewer);
+      await ContentTaskUtils.waitForCondition(() => pdfViewer.pagesCount > 0, "pages");
       await new Promise((r) => content.requestAnimationFrame(() => content.setTimeout(r, 300)));
     });
     const v = await viewer(browser);
-    Assert.ok(!v.sidebarOpen, "pdf.js's sidebar does not open for a PDF that asks for it");
+    Assert.strictEqual(
+      v.sidebarOpen,
+      false,
+      "pdf.js's sidebar does not open for a PDF that asks for it",
+    );
     Assert.ok(!v.outerOpen, "and the viewer is not laid out for it");
     Assert.equal(v.toggleDisplay, "none", "its toggle button is not shown");
     Assert.equal(v.sidebarDisplay, "none", "nor the sidebar itself");
@@ -210,6 +221,10 @@ add_task(async function high_contrast_keeps_pdfjs_colours() {
   await SpecialPowers.pushPrefEnv({ set: [["ui.useAccessibilityTheme", 1]] });
   await withPdf(async (browser) => {
     const v = await viewer(browser);
+    // Neither side may be missing: a toolbar that is not there, or a token that is not set,
+    // would differ from anything.
+    Assert.stringMatches(v.toolbar ?? "", /^rgba?\(/, "the toolbar has a colour");
+    Assert.stringMatches(token("--vimma-bg-dark"), /^#[0-9a-f]{6}$/i, "--vimma-bg-dark is set");
     Assert.notEqual(v.toolbar, rgb(token("--vimma-bg-dark")), "pdf.js keeps its high contrast");
     Assert.equal(v.toggleDisplay, "none", "and the sidebar's toggle stays hidden");
   });
@@ -220,7 +235,9 @@ add_task(async function high_contrast_keeps_pdfjs_colours() {
 add_task(async function the_theme_reaches_only_the_viewer() {
   const ask = (/** @type {XULBrowserElement} */ browser) =>
     SpecialPowers.spawn(browser, [], () =>
-      content.windowGlobalChild.getActor("Vimma").sendQuery("Vimma:PdfTheme"),
+      /** @type {WindowGlobalChild} */ (content.windowGlobalChild)
+        .getActor("Vimma")
+        .sendQuery("Vimma:PdfTheme"),
     );
   await withPdf(async (browser) => {
     const css = await ask(browser);
@@ -228,7 +245,7 @@ add_task(async function the_theme_reaches_only_the_viewer() {
     Assert.ok(css.includes("--vimma-bg"), "with the tokens");
   });
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, ROOT + "file_vimma_plain.html");
-  Assert.equal(await ask(tab.linkedBrowser), null, "a web page gets nothing");
+  Assert.strictEqual(await ask(tab.linkedBrowser), null, "a web page gets nothing");
   // A viewer in a page's frame is not the viewer (V2): it gets nothing either.
   await SpecialPowers.spawn(tab.linkedBrowser, [PAGEMODE], (url) => {
     const el = content.document.createElement("iframe");
@@ -237,19 +254,23 @@ add_task(async function the_theme_reaches_only_the_viewer() {
     content.document.body.append(el);
   });
   const frame = await TestUtils.waitForCondition(() =>
-    tab.linkedBrowser.browsingContext.children.find((bc) =>
+    contextOf(tab.linkedBrowser).children.find((/** @type {CanonicalBrowsingContext} */ bc) =>
       bc.currentWindowGlobal?.documentPrincipal?.originNoSuffix?.startsWith("resource://pdf"),
     ),
   );
   const framed = await SpecialPowers.spawn(frame, [], () =>
-    content.windowGlobalChild.getActor("Vimma").sendQuery("Vimma:PdfTheme"),
+    /** @type {WindowGlobalChild} */ (content.windowGlobalChild)
+      .getActor("Vimma")
+      .sendQuery("Vimma:PdfTheme"),
   );
-  Assert.equal(framed, null, "a viewer in a frame gets nothing");
+  Assert.strictEqual(framed, null, "a viewer in a frame gets nothing");
   const sheets = await SpecialPowers.spawn(
     frame,
     [],
     () =>
-      content.getComputedStyle(content.document.getElementById("viewsManagerToggleButton")).display,
+      content.getComputedStyle(
+        /** @type {HTMLElement} */ (content.document.getElementById("viewsManagerToggleButton")),
+      ).display,
   );
   Assert.notEqual(sheets, "none", "and no sheet: its page's look is its own");
   BrowserTestUtils.removeTab(tab);

@@ -46,8 +46,8 @@ const FIND_NOTFOUND = 1;
 const FIND_WRAPPED = 2;
 
 /**
- * @typedef {any} Tab
- * @typedef {any} Browser
+ * @typedef {MozTabbrowserTab} Tab
+ * @typedef {MozTabBrowser} Browser
  * @typedef {{ keys: string, action: string, ok: boolean, note?: string }} StepResult
  * @typedef {{ query: string, found: boolean, wrapped: boolean }} FindResult
  * @typedef {{ url: string, title: string, loading: boolean, scroll: { y: number },
@@ -65,7 +65,8 @@ const FIND_WRAPPED = 2;
  *   at `until`; null when it may load, else the denial's reason
  * @property {(url: string, keys: string) => void} followed  a follow loaded `url`: into
  *   `:mcp log`, and a grant's notice names its host (D14, M23)
- * @property {(step: AgentStep, index: number, found: { target: any, elements: boolean } | null,
+ * @property {(step: AgentStep, index: number,
+ *   found: { target: import("../actors/VimmaActors.sys.mjs").HintTarget, elements: boolean } | null,
  *   until: number) => Promise<string | null>} askPay  a step that acts (a follow, `gu`, `gU`,
  *   `H`, `L`) on a page where it may pay asks as a payment, under any grant
  *   (docs/specs/mcp-checkpoints.md C1, C6), withdrawn at `until`; null when it may run (no
@@ -105,7 +106,7 @@ const NOT_PAID = /** @type {Record<string, string>} */ ({
 /**
  * A page links are listed and followed on: a web page (D12). A tab moved into the agent
  * workspace may show a file, about: or the start page, whose principals may load anything.
- * @param {any} principal nsIPrincipal
+ * @param {nsIPrincipal | null | undefined} principal
  */
 const onTheWeb = (principal) =>
   !!principal?.isContentPrincipal && (principal.schemeIs("http") || principal.schemeIs("https"));
@@ -116,7 +117,7 @@ const sessions = new Map();
 /**
  * A URI's site, its registrable domain (eTLD+1, D18); its host when it has none (an IP address,
  * localhost).
- * @param {any} uri nsIURI
+ * @param {nsIURI | null} uri
  */
 function siteOf(uri) {
   try {
@@ -155,7 +156,7 @@ function bounded(promise, fallback, deadline) {
 }
 
 /** @param {unknown} s  well-formed, so the reply is one line vimma-ctl's parser takes */
-const wf = (s) => /** @type {string} */ (/** @type {any} */ (String(s ?? "")).toWellFormed());
+const wf = (s) => String(s ?? "").toWellFormed();
 
 const SCROLLS = /** @type {Record<string, import("../actors/VimmaActors.sys.mjs").ScrollKind>} */ ({
   "scroll.down": "down",
@@ -190,7 +191,7 @@ function pageMark(browser) {
 function loaded(browser, mark, until) {
   return AgentAct.ready(
     browser,
-    (/** @type {any} */ wg) => {
+    (/** @type {WindowGlobalParent} */ wg) => {
       const now = pageMark(browser);
       return (now.doc !== mark.doc || now.url !== mark.url) && !wg.isInitialDocument;
     },
@@ -209,9 +210,13 @@ function findOnce(browser, query, again, backward) {
   return new Promise((resolve) => {
     let done = false;
     const listener = {
-      onFindResult(/** @type {any} */ data) {
-        if (done || String(data?.searchString ?? "") !== query) return;
-        finish(Number(data.result));
+      // FinderParent passes on the page's process's answer (Finder.sys.mjs onFindResult).
+      onFindResult(/** @type {unknown} */ data) {
+        if (typeof data !== "object" || data === null) return;
+        const { searchString, result } =
+          /** @type {{ searchString?: unknown, result?: unknown }} */ (data);
+        if (done || String(searchString ?? "") !== query) return;
+        finish(Number(result));
       },
       onMatchesCountResult() {},
       onHighlightFinished() {},
@@ -371,7 +376,8 @@ export const AgentDrive = {
      * A step that may pay asks first (mcp-checkpoints C1, C6): true when it may not run, its note
      * said and the call stopped.
      * @param {AgentStep} step @param {number} index
-     * @param {{ target: any, elements: boolean } | null} found @param {StepResult} result
+     * @param {{ target: import("../actors/VimmaActors.sys.mjs").HintTarget, elements: boolean }
+     *   | null} found @param {StepResult} result
      */
     const payStops = async (step, index, found, result) => {
       const refused = await askPay(step, index, found, deadline);
@@ -401,8 +407,10 @@ export const AgentDrive = {
       const count = step.count ?? 1;
       try {
         const id = step.action;
-        if (id in SCROLLS) {
-          const kind = /** @type {any} */ (SCROLLS)[id];
+        // An own key only: core's parse names no other action, and `in` would take an Object
+        // prototype's name too.
+        const kind = Object.hasOwn(SCROLLS, id) ? SCROLLS[id] : undefined;
+        if (kind) {
           const moved = await bounded(
             VimmaActors.scroll(browser, kind, count, { instant: true, top: true }),
             false,
@@ -552,7 +560,7 @@ export const AgentDrive = {
               // The question took a while: the call may have run out, or the tab moved on.
               Object.assign(result, { ok: false, note: "the call stopped while it was asked" });
               done.push(result);
-              stopped = /** @type {any} */ (halt());
+              stopped = halt() ?? undefined;
               break;
             } else if (!current(session) || target.bc.currentWindowGlobal !== wg) {
               Object.assign(result, { ok: false, note: "stale labels: send f again" });

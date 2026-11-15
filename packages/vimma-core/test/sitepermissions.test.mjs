@@ -4,13 +4,13 @@ import {
   permissionItems,
   permissionPlan,
   permissionTitle,
-} from "../src/sitepermissions.mjs";
-import { filterItems, itemId, openPicker, pickerKey } from "../src/picker.mjs";
-import { parseCommandLine } from "../src/cmdline.mjs";
-import { getAction } from "../src/actions.mjs";
-import { DEFAULT_CONFIG } from "../src/defaults.mjs";
+} from "../src/ui/sitepermissions.mjs";
+import { filterItems, itemId, openPicker, pickerKey } from "../src/ui/picker.mjs";
+import { parseCommandLine } from "../src/keys/cmdline.mjs";
+import { getAction } from "../src/keys/actions.mjs";
+import { DEFAULT_CONFIG } from "../src/config/defaults.mjs";
 
-/** @import { PermissionRecord } from "../src/sitepermissions.mjs" */
+/** @import { PermissionRecord } from "../src/ui/sitepermissions.mjs" */
 
 const { UNKNOWN, ALLOW, BLOCK, PROMPT } = PERMISSION_STATE;
 

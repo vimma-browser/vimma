@@ -13,15 +13,32 @@
 
 const { HttpServer } = ChromeUtils.importESModule("resource://testing-common/httpd.sys.mjs");
 
-/** What the scripted model was sent: path, the headers that matter, and the body. */
 /**
- * @type {{ path: string, cookie: string | null, authorization: string | null, body: any,
- *   apiKey?: string | null }[]}
+ * A message of a request to the model, in OpenAI's shape; an Anthropic request's `content` is a
+ * string or a list of blocks.
+ * @typedef {{ role: string, content?: unknown }} ModelMessage
+ */
+/**
+ * A request's JSON body: the model it asks for and the conversation so far.
+ * @typedef {{ model?: string, messages: ModelMessage[] }} ModelRequestBody
+ */
+/**
+ * A step of a script (see chatCompletions).
+ * @typedef {{ call?: string, args?: Record<string, unknown>, say?: string, reply?: string,
+ *   hold?: boolean }} ScriptStep
+ */
+
+/**
+ * What the scripted model was sent: path, the headers that matter, and the body (null for the
+ * paths that only record that they were asked).
+ * @type {{ path: string, cookie: string | null, authorization: string | null,
+ *   body: ModelRequestBody | null, apiKey?: string | null }[]}
  */
 const requests = [];
 /** Replies held back until the test releases them, by the task text that asked. */
 /** @type {Map<string, () => void>} */
 const held = new Map();
+/** @type {nsIHttpServer} */
 const server = new HttpServer();
 
 /**
@@ -33,39 +50,42 @@ const server = new HttpServer();
  * completions format, or in Anthropic's Messages format (`anthropic`), whose requests it reads
  * into the same shape first.
  */
-function chatCompletions(/** @type {any} */ req, /** @type {any} */ res) {
+function chatCompletions(/** @type {nsIHttpRequest} */ req, /** @type {nsIHttpResponse} */ res) {
   scripted(req, res, "openai");
 }
 
 /** Anthropic's Messages API, as the scripted model. */
-function anthropicMessages(/** @type {any} */ req, /** @type {any} */ res) {
+function anthropicMessages(/** @type {nsIHttpRequest} */ req, /** @type {nsIHttpResponse} */ res) {
   scripted(req, res, "anthropic");
 }
 
 /**
  * An Anthropic request's messages in OpenAI's shape: a tool result block becomes a `tool`
  * message with its text.
- * @param {any[]} messages
+ * @param {ModelMessage[]} messages
+ * @returns {ModelMessage[]}
  */
 const fromAnthropic = (messages) =>
   messages.flatMap((m) => {
     if (m.role === "assistant") return [{ role: "assistant" }];
     if (typeof m.content === "string") return [{ role: "user", content: m.content }];
-    return m.content
-      .filter((/** @type {any} */ b) => b.type === "tool_result")
-      .map((/** @type {any} */ b) => ({
+    // Anthropic's other content is a list of blocks.
+    return /** @type {{ type: string, content?: unknown }[]} */ (m.content)
+      .filter((b) => b.type === "tool_result")
+      .map((b) => ({
         role: "tool",
         content: (Array.isArray(b.content) ? b.content : [{ text: String(b.content) }])
-          .map((/** @type {any} */ c) => c.text ?? "")
+          .map((/** @type {{ text?: string }} */ c) => c.text ?? "")
           .join("\n"),
       }));
   });
 
 /**
- * @param {any} req @param {any} res @param {"openai" | "anthropic"} format
+ * @param {nsIHttpRequest} req @param {nsIHttpResponse} res @param {"openai" | "anthropic"} format
  */
 function scripted(req, res, format) {
   const stream = req.bodyInputStream;
+  /** @type {ModelRequestBody} */
   const body = JSON.parse(NetUtil.readInputStreamToString(stream, stream.available()));
   const header = (/** @type {string} */ h) => (req.hasHeader(h) ? req.getHeader(h) : null);
   requests.push({
@@ -75,16 +95,18 @@ function scripted(req, res, format) {
     apiKey: header("x-api-key"),
     body,
   });
-  /** @type {any[]} */
   const messages = format === "anthropic" ? fromAnthropic(body.messages) : body.messages;
   const at = messages.findLastIndex(
     (m) => m.role === "user" && String(m.content).startsWith("SCRIPT:"),
   );
-  const script = JSON.parse(messages[at].content.slice("SCRIPT:".length));
+  // The task's text: findLastIndex matched it as a string that starts with SCRIPT:.
+  const task = String(messages[at].content);
+  /** @type {ScriptStep[]} */
+  const script = JSON.parse(task.slice("SCRIPT:".length));
   const after = messages.slice(at + 1);
   const step = script[after.filter((m) => m.role === "assistant").length] ?? { reply: "done" };
   const results = after.filter((m) => m.role === "tool").map((m) => String(m.content));
-  const resolve = (/** @type {any} */ v) => {
+  const resolve = (/** @type {unknown} */ v) => {
     if (typeof v !== "string") return v;
     if (v === "$tab") {
       const ids = results.flatMap((t) => [...t.matchAll(/\btab (\d+)\b/g)].map((m) => m[1]));
@@ -140,7 +162,7 @@ function scripted(req, res, format) {
   };
   if (step.hold) {
     res.processAsync();
-    held.set(messages[at].content, () => {
+    held.set(task, () => {
       send();
       res.finish();
     });
@@ -168,14 +190,14 @@ server.start(-1);
 const PORT = server.identity.primaryPort;
 const PROVIDER = {
   name: "scripted",
-  kind: "openai",
+  kind: /** @type {"openai"} */ ("openai"),
   endpoint: `http://127.0.0.1:${PORT}/v1`,
   model: "scripted",
   vision: false,
 };
 
-/** @param {any[]} steps */
+/** @param {ScriptStep[]} steps */
 const script = (steps) => `SCRIPT:${JSON.stringify(steps)}`;
 const openStep = (/** @type {string} */ url) => ({ call: "vimma_open", args: { url } });
 
-registerCleanupFunction(() => new Promise((resolve) => server.stop(resolve)));
+registerCleanupFunction(() => new Promise((resolve) => server.stop(() => resolve(undefined))));

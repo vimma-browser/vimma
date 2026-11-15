@@ -31,10 +31,15 @@ const PROMPT_ID = "vimma-rename";
 const PICKER_ID = "vimma-workspace-picker";
 
 const def = (/** @type {string} */ name) =>
-  WorkspaceStore.definitions.workspaces.find((w) => w.name === name);
-const ww = () => WindowWorkspaces.get(window);
+  /** @type {ContainedWorkspace} */ (
+    WorkspaceStore.definitions.workspaces.find(
+      (/** @type {WorkspaceDefinition} */ w) => w.name === name,
+    )
+  );
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
 const active = () => ww().model.active;
-const activeName = () => ww().model.workspaces.find((w) => w.id === active())?.name;
+const activeName = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === active())?.name;
 const identity = (/** @type {number} */ id) =>
   ContextualIdentityService.getPublicIdentityFromId(id);
 const tabsOf = (/** @type {number} */ ucid) =>
@@ -45,9 +50,10 @@ const promptText = () =>
   (
     document.getElementById(PROMPT_ID)?.querySelector(".vimma-cmdline-prompt")?.textContent ?? ""
   ).trim();
-const picker = () => document.getElementById(PICKER_ID);
+const picker = () => /** @type {HTMLDialogElement | null} */ (document.getElementById(PICKER_ID));
 const rows = () => [...(picker()?.querySelectorAll("[role=option]") ?? [])];
-const cell = (row, name) => row.querySelector(`.vimma-picker-${name}`).textContent;
+const cell = (/** @type {Element} */ row, /** @type {string} */ name) =>
+  /** @type {Element} */ (row.querySelector(`.vimma-picker-${name}`)).textContent;
 const cookieCount = (/** @type {number} */ userContextId) =>
   Services.cookies.getCookiesWithOriginAttributes(JSON.stringify({ userContextId }), "example.com")
     .length;
@@ -69,6 +75,7 @@ function setCookie(/** @type {number} */ userContextId) {
 }
 
 /** Containers the temporary stores below made, removed at the end. */
+/** @type {number[]} */
 const madeContainers = [];
 
 registerCleanupFunction(async () => {
@@ -78,21 +85,23 @@ registerCleanupFunction(async () => {
   McpHost.configure(null);
   ww().switchTo({ id: def("main").id });
   for (const w of WorkspaceStore.definitions.workspaces.filter(
-    (d) => d.name !== "main" && d.id !== WorkspaceStore.agent?.id,
+    (/** @type {WorkspaceDefinition} */ d) =>
+      d.name !== "main" && d.id !== WorkspaceStore.agent?.id,
   )) {
     await WorkspaceStore.deleteWorkspace(w.id, { confirmed: true });
   }
   for (const ucid of madeContainers) ContextualIdentityService.remove(ucid);
   Services.cookies.removeAll();
-  while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1)
+    BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
 });
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
 
-/** ctrl+b, then `key`. */
+/** ctrl+b, then `key`. @param {string} key @param {KeyEventOptions} [mods] */
 function prefix(key, mods = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key, mods);
@@ -104,7 +113,7 @@ async function focusPage() {
   await focusContent(browser);
 }
 
-/** `:line` Enter, from the selected page in normal mode. */
+/** `:line` Enter, from the selected page in normal mode. @param {string} line */
 async function runCommand(line) {
   await focusPage();
   EventUtils.synthesizeKey(":", { shiftKey: true });
@@ -112,7 +121,11 @@ async function runCommand(line) {
   EventUtils.synthesizeKey("KEY_Enter");
 }
 
-/** A temporary definitions file with `doc`, and a store over it (not the app's). */
+/**
+ * A temporary definitions file with `doc`, and a store over it (not the app's).
+ * @param {{ workspaces?: { id: string, [field: string]: unknown }[], [key: string]: unknown } | null} doc
+ * @param {object} [options]
+ */
 async function tempStore(doc, options = {}) {
   const path = PathUtils.join(PathUtils.tempDir, `vimma-mcp-${Date.now()}-${Math.random()}.json`);
   if (doc) await IOUtils.writeJSON(path, doc);
@@ -132,7 +145,9 @@ async function tempStore(doc, options = {}) {
 
 add_task(async function a_fresh_profile_has_main_and_an_empty_agent_workspace() {
   await ww().ready;
-  const names = WorkspaceStore.definitions.workspaces.map((w) => w.name);
+  const names = WorkspaceStore.definitions.workspaces.map(
+    (/** @type {WorkspaceDefinition} */ w) => w.name,
+  );
   Assert.equal(names[0], "main", "main first");
   Assert.equal(names.at(-1), "agent", "the agent workspace last");
   const agent = def("agent");
@@ -176,7 +191,7 @@ add_task(async function a_profile_from_before_gets_agent_appended_at_its_next_st
   const store = await tempStore(before, { agent: "agent", agentPref: pref });
   const ws = store.definitions.workspaces;
   Assert.deepEqual(
-    ws.map((w) => [w.id, w.name]),
+    ws.map((/** @type {WorkspaceDefinition} */ w) => [w.id, w.name]),
     [
       ["ws-main", "main"],
       ["ws-work", "work"],
@@ -186,7 +201,7 @@ add_task(async function a_profile_from_before_gets_agent_appended_at_its_next_st
   );
   Assert.equal(store.definitions.lastActive, "ws-work", "and the active workspace stays");
   Assert.equal(Services.prefs.getStringPref(pref, ""), ws[2].id, "the made one is recorded");
-  for (const w of ws) madeContainers.push(w.userContextId);
+  for (const w of /** @type {ContainedWorkspace[]} */ (ws)) madeContainers.push(w.userContextId);
   await store.finalize();
   const again = await tempStore(store.definitions, { agent: "agent", agentPref: pref });
   Assert.deepEqual(
@@ -225,33 +240,44 @@ add_task(async function a_workspace_already_named_agent_is_adopted_not_duplicate
     },
     { agent: "agent", agentPref: pref },
   );
-  for (const w of store.definitions.workspaces) madeContainers.push(w.userContextId);
+  for (const w of /** @type {ContainedWorkspace[]} */ (store.definitions.workspaces))
+    madeContainers.push(w.userContextId);
   Assert.deepEqual(
-    store.definitions.workspaces.map((w) => w.id),
+    store.definitions.workspaces.map((/** @type {WorkspaceDefinition} */ w) => w.id),
     ["ws-main", "ws-mine"],
     "the user's agent is kept, last, and no second one is made",
   );
-  Assert.equal(store.agent.color, "red", "with its own looks");
+  Assert.equal(/** @type {WorkspaceDefinition} */ (store.agent).color, "red", "with its own looks");
   Assert.ok(!store.agentIsOurs(), "and is known as the user's own");
   Assert.equal(Services.prefs.getStringPref(pref, ""), "", "no id recorded");
 
   // [mcp] workspace = "bots": bots is ensured; the old agent stays, an ordinary workspace.
   await store.setConfig([], { agent: "bots" });
-  for (const w of store.definitions.workspaces) madeContainers.push(w.userContextId);
+  for (const w of /** @type {ContainedWorkspace[]} */ (store.definitions.workspaces))
+    madeContainers.push(w.userContextId);
   Assert.deepEqual(
-    store.definitions.workspaces.map((w) => w.name),
+    store.definitions.workspaces.map((/** @type {WorkspaceDefinition} */ w) => w.name),
     ["main", "agent", "bots"],
     "bots is appended and is the agent's now",
   );
-  Assert.equal(store.agent.name, "bots", "the store's agent workspace is bots");
+  Assert.equal(
+    /** @type {WorkspaceDefinition} */ (store.agent).name,
+    "bots",
+    "the store's agent workspace is bots",
+  );
   await store.finalize();
 });
 
 add_task(async function ctrl_b_paren_cycles_past_agent_and_ctrl_caret_never_lands_on_it() {
   WorkspaceStore.newWorkspace("work");
-  await until(() => def("work") && ww().model.workspaces.some((w) => w.name === "work"), "work");
+  await until(
+    () =>
+      def("work") &&
+      ww().model.workspaces.some((/** @type {WorkspaceState} */ w) => w.name === "work"),
+    "work",
+  );
   Assert.deepEqual(
-    ww().model.workspaces.map((w) => w.name),
+    ww().model.workspaces.map((/** @type {WorkspaceState} */ w) => w.name),
     ["main", "work", "agent"],
     "a new workspace goes before the agent workspace",
   );
@@ -366,7 +392,7 @@ add_task(async function mcp_forget_clears_its_site_data_and_the_workspace_stays(
   await until(promptOpen, "asked again");
   const cleared = TestUtils.topicObserved(
     "clear-origin-attributes-data",
-    (_s, data) => JSON.parse(data).userContextId === agent.userContextId,
+    (_s, data) => JSON.parse(/** @type {string} */ (data)).userContextId === agent.userContextId,
   );
   EventUtils.synthesizeKey("y");
   await cleared;
@@ -403,7 +429,13 @@ add_task(async function mcp_on_asks_off_does_not_and_config_wins() {
   await until(() => !Services.prefs.getBoolPref(MCP_ENABLED_PREF, true), ":mcp off, at once");
   Assert.ok(!promptOpen(), "without a question");
 
-  McpHost.configure({ ...McpHost.config, enabled: true, workspace: "agent" });
+  // `[mcp]` with `enabled` and `workspace` over what is in force (none of it when nothing is):
+  // :mcp off reads only `enabled`, the change's observers take a missing field as its default,
+  // and the reset below comes before any agent connects or is answered, which would read the
+  // rest (AgentGate, AgentDownloads, agent-ui).
+  McpHost.configure(
+    /** @type {McpConfig} */ ({ ...McpHost.config, enabled: true, workspace: "agent" }),
+  );
   await runCommand("mcp off");
   await until(
     () => noticeText() === "mcp: config.toml sets [mcp] enabled = true; change it there",

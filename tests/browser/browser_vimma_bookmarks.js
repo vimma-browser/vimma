@@ -36,37 +36,115 @@ const { PanelNumbers } = ChromeUtils.importESModule(
 const PAGE = "https://example.com/";
 const { menuGuid, toolbarGuid, unfiledGuid } = PlacesUtils.bookmarks;
 
-const panel = (win = window) => win.document.getElementById("vimma-bookmarks");
+/** @param {Window} [win] */
+const panel = (win = window) =>
+  /** @type {HTMLElement | null} */ (win.document.getElementById("vimma-bookmarks"));
+/**
+ * The bookmarks panel, which a test reads while it is open.
+ * @param {Window} [win]
+ */
+const shownPanel = (win = window) => /** @type {HTMLElement} */ (panel(win));
+/** @param {Window} [win] */
 const isOpen = (win = window) =>
-  !!panel(win) && !panel(win).hidden && BrowserTestUtils.isVisible(panel(win));
+  !!panel(win) && !shownPanel(win).hidden && BrowserTestUtils.isVisible(shownPanel(win));
 const sidePanel = () => document.getElementById("vimma-panel");
-const sideOpen = () => !!sidePanel() && !sidePanel().hidden;
-const rows = (win = window) => [...(panel(win)?.querySelectorAll("[role=treeitem]") ?? [])];
+const sideOpen = () => !!sidePanel() && !(/** @type {HTMLElement} */ (sidePanel()).hidden);
+/**
+ * The panel's rows (bookmarks-panel.mjs makes each an <li>).
+ * @param {Window} [win]
+ */
+const rows = (win = window) => [
+  .../** @type {NodeListOf<HTMLElement> | never[]} */ (
+    panel(win)?.querySelectorAll("[role=treeitem]") ?? []
+  ),
+];
+/** @param {Element | null | undefined} row */
 const title = (row) => row?.querySelector(".vimma-panel-title")?.textContent ?? "";
+/** @param {Window} [win] */
 const titles = (win = window) => rows(win).map(title);
+/**
+ * The highlighted row, or null.
+ * @param {Window} [win]
+ */
 const selected = (win = window) =>
-  panel(win)?.querySelector("[role=treeitem][aria-selected=true]") ?? null;
+  /** @type {HTMLElement | null} */ (
+    panel(win)?.querySelector("[role=treeitem][aria-selected=true]") ?? null
+  );
+/**
+ * The place of the highlighted row; -1 with none, as indexOf of null gave.
+ * @param {Window} [win]
+ */
+const selectedAt = (win = window) => rows(win).indexOf(/** @type {HTMLElement} */ (selected(win)));
 const noticeText = () => document.getElementById("vimma-notice")?.textContent ?? "";
 const promptEl = () => document.getElementById("vimma-rename");
-const promptInput = () => document.getElementById("vimma-rename-input");
-const promptOpen = () => !!promptEl() && !promptEl().hidden;
-const promptLabel = () => promptEl().querySelector(".vimma-cmdline-prompt").textContent;
-const filterInput = () => document.getElementById("vimma-bookmarks-filter");
-const main = () => WorkspaceStore.definitions.workspaces.find((w) => w.name === "main");
-const paneCount = () =>
-  PaneViews.get(window).panes ? leaves(PaneViews.get(window).panes).length : 1;
+/** The prompt, which a test reads while it is open. */
+const shownPrompt = () => /** @type {HTMLElement} */ (promptEl());
+/** The prompt's field, which a test reads while the prompt is open. */
+const promptInput = () =>
+  /** @type {HTMLInputElement} */ (document.getElementById("vimma-rename-input"));
+const promptOpen = () => !!promptEl() && !shownPrompt().hidden;
+// The open prompt has its label; a missing one throws, as before.
+const promptLabel = () =>
+  /** @type {Element} */ (shownPrompt().querySelector(".vimma-cmdline-prompt")).textContent;
+const filterInput = () =>
+  /** @type {HTMLInputElement | null} */ (document.getElementById("vimma-bookmarks-filter"));
+/**
+ * The main workspace, with its container: it always exists, and containers are on in the tests
+ * (t_opens_a_background_tab_in_the_workspaces_container checks that it has one).
+ */
+const main = () =>
+  /** @type {ContainedWorkspace} */ (
+    WorkspaceStore.definitions.workspaces.find((w) => w.name === "main")
+  );
+/** The window's split view, which VimmaHost made when it started the window. */
+const view = () => /** @type {PaneView} */ (PaneViews.get(window));
+const paneCount = () => {
+  const panes = view().panes;
+  return panes ? leaves(panes).length : 1;
+};
+
+/**
+ * A node of PlacesUtils.promiseBookmarksTree (toolkit/components/places/PlacesUtils.sys.mjs,
+ * its item info objects): the fields these tests read. A null title is left unset; `children`
+ * is set on a folder.
+ * @typedef {{ guid: string, title?: string, children?: BookmarkNode[] }} BookmarkNode
+ */
+/** @typedef {BookmarkNode & { children: BookmarkNode[] }} BookmarkFolder */
+/**
+ * A bookmark as PlacesUtils.bookmarks.fetch() resolves it with includePath (toolkit/components/
+ * places/Bookmarks.sys.mjs, fetch's item info plus `path`, [{ title, guid }] from the root): the
+ * fields these tests read.
+ * @typedef {{ guid: string, parentGuid: string, title: string,
+ *   path: { title: string, guid: string }[] }} FetchedBookmark
+ */
+
+/**
+ * The Bookmarks Toolbar's tree. The tasks that read it have seeded it, so it has children.
+ * @returns {Promise<BookmarkFolder>}
+ */
+function toolbarTree() {
+  return PlacesUtils.promiseBookmarksTree(toolbarGuid);
+}
 
 /** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
 
+/**
+ * @param {string} key
+ * @param {KeyEventOptions} [mods]
+ * @param {Window} [win]
+ */
 function prefix(key, mods = {}, win = window) {
   EventUtils.synthesizeKey("b", { ctrlKey: true }, win);
   EventUtils.synthesizeKey(key, mods, win);
 }
 
-/** Opens `${PAGE}?<query>`, titled `query`, focused in normal mode. */
+/**
+ * Opens `${PAGE}?<query>`, titled `query`, focused in normal mode.
+ * @param {string} query
+ */
 async function openPage(query) {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?${query}`);
   await SpecialPowers.spawn(tab.linkedBrowser, [query], (t) => {
@@ -93,7 +171,10 @@ async function openPanel() {
 const emptyState = () => panel()?.querySelector(".vimma-bookmarks-empty") ?? null;
 const header = () => panel()?.querySelector(".vimma-panel-name")?.textContent ?? "";
 
-/** `[bookmarks] root`, as config.toml sets it (ConfigHost calls configure). */
+/**
+ * `[bookmarks] root`, as config.toml sets it (ConfigHost calls configure).
+ * @param {"workspace" | "toolbar" | "all"} root
+ */
 function setRoot(root) {
   VimmaHost.configure({ bookmarksRoot: root });
 }
@@ -102,32 +183,54 @@ async function closePanel() {
   if (promptOpen()) EventUtils.synthesizeKey("KEY_Escape");
   while (isOpen()) {
     EventUtils.synthesizeKey("KEY_Escape");
-    await until(() => !isOpen() || !filterInput() || filterInput().hidden, "Esc");
+    await until(() => {
+      const filter = filterInput();
+      return !isOpen() || !filter || filter.hidden;
+    }, "Esc");
   }
 }
 
-/** j / k until the highlighted row is `name`. */
+/**
+ * j / k until the highlighted row is `name`.
+ * @param {string} name
+ */
 async function highlight(name) {
   await until(() => titles().includes(name), `${name} is listed`);
   const target = titles().indexOf(name);
-  const now = rows().indexOf(selected());
+  const now = selectedAt();
   const key = target > now ? "j" : "k";
   for (let i = 0; i < Math.abs(target - now); i++) EventUtils.synthesizeKey(key);
   await until(() => title(selected()) === name, `${name} is highlighted`);
 }
 
-/** Replaces the prompt's text and presses Enter. */
+/**
+ * Replaces the prompt's text and presses Enter.
+ * @param {string} text
+ */
 function answer(text) {
   promptInput().select();
   EventUtils.sendString(text);
   EventUtils.synthesizeKey("KEY_Enter");
 }
 
-/** The bookmark for `url` with its folder names from the menu, or null. */
+/**
+ * The bookmark for `url` with its folder names from the menu, or null.
+ * @param {string} url
+ */
 async function placeOf(url) {
+  /** @type {FetchedBookmark | null} */
   const bm = await PlacesUtils.bookmarks.fetch({ url }, null, { includePath: true });
   if (!bm) return null;
   return { ...bm, folders: bm.path.map((p) => p.title) };
+}
+
+/**
+ * The bookmark for `url`, which the test made or saw made; a missing one throws on its first
+ * read, as before.
+ * @param {string} url
+ */
+async function placed(url) {
+  return /** @type {NonNullable<Awaited<ReturnType<typeof placeOf>>>} */ (await placeOf(url));
 }
 
 const JIRA = `${PAGE}?jira`;
@@ -167,19 +270,21 @@ registerCleanupFunction(async () => {
   setRoot("workspace"); // the default
   PanelNumbers.set("absolute");
   await closePanel();
-  while (PaneViews.get(window).panes) PaneViews.get(window).close();
-  PaneViews.get(window).max = PANES_MAX_DEFAULT;
-  while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+  while (view().panes) view().close();
+  view().max = PANES_MAX_DEFAULT;
+  while (gBrowser.tabs.length > 1) {
+    BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
   await PlacesUtils.bookmarks.eraseEverything();
   await PlacesUtils.history.clear();
   // The panel keeps its open folders for the window's session; the next run starts afresh.
-  const bookmarks = VimmaHost._state(window).bookmarks;
+  const bookmarks = /** @type {HostState} */ (VimmaHost._state(window)).bookmarks;
   bookmarks.expanded = [];
   bookmarks.lastGuid = null;
 });
 
 add_task(async function setup_bookmarks() {
-  await WindowWorkspaces.get(window).ready;
+  await /** @type {WindowWorkspacesImpl} */ (WindowWorkspaces.get(window)).ready;
   // This file is the whole-toolbar view (root = "toolbar"); the default, a folder per
   // workspace, is browser_vimma_bookmarks_workspaces.js.
   setRoot("toolbar");
@@ -191,10 +296,11 @@ add_task(async function toggles_in_the_side_panels_slot_one_panel_at_a_time() {
   Assert.ok(!isOpen(), "closed at start");
   await openPanel();
   Assert.equal(VimmaHost.status(window).mode, "panel", "panel mode");
-  Assert.ok(panel().contains(document.activeElement), "focus is in the panel");
+  Assert.ok(shownPanel().contains(document.activeElement), "focus is in the panel");
   Assert.lessOrEqual(
-    panel().getBoundingClientRect().right,
-    document.getElementById("tabbrowser-tabbox").getBoundingClientRect().left,
+    shownPanel().getBoundingClientRect().right,
+    /** @type {Element} */ (document.getElementById("tabbrowser-tabbox")).getBoundingClientRect()
+      .left,
     "on the left, the pages to its right",
   );
   Assert.deepEqual(
@@ -204,7 +310,7 @@ add_task(async function toggles_in_the_side_panels_slot_one_panel_at_a_time() {
   );
   Assert.deepEqual(
     rows().map((r) => r.dataset.guid),
-    (await PlacesUtils.promiseBookmarksTree(toolbarGuid)).children.map((c) => c.guid),
+    (await toolbarTree()).children.map((c) => c.guid),
     "the first rows are the toolbar's own children, in order",
   );
   Assert.ok(
@@ -228,7 +334,7 @@ add_task(async function toggles_in_the_side_panels_slot_one_panel_at_a_time() {
     "every top row at depth 0, aria-level 1",
   );
   Assert.equal(header(), "Bookmarks Toolbar", "the header names the toolbar");
-  Assert.equal(panel().querySelector("img"), null, "a title is text, never HTML");
+  Assert.equal(shownPanel().querySelector("img"), null, "a title is text, never HTML");
   prefix("B", { shiftKey: true });
   await until(() => !isOpen(), "ctrl+b shift+b closes it");
   await focusPage();
@@ -257,7 +363,7 @@ add_task(async function x_does_nothing_in_the_bookmarks_panel() {
   const before = titles();
   EventUtils.synthesizeKey("x");
   EventUtils.synthesizeKey("j");
-  await until(() => rows().indexOf(selected()) === 1, "the key after x still moves");
+  await until(() => selectedAt() === 1, "the key after x still moves");
   Assert.ok(isOpen(), "the bookmarks panel stays open");
   Assert.ok(tab.isConnected, "no tab closed");
   Assert.equal(gBrowser.tabs.length, tabs, "the tabs are as they were");
@@ -281,7 +387,7 @@ add_task(async function quick_add_files_under_typed_folders_with_completion() {
   EventUtils.synthesizeKey("KEY_Enter");
   await until(() => !promptOpen(), "Enter saves");
   await until(async () => !!(await placeOf(url)), "bookmarked");
-  const bm = await placeOf(url);
+  const bm = await placed(url);
   Assert.deepEqual(
     bm.folders,
     ["toolbar", "work", "docs", "new", "deeper"],
@@ -300,9 +406,12 @@ add_task(async function quick_add_files_under_typed_folders_with_completion() {
   Assert.equal(promptInput().value, "work/docs/new/deeper/Quick", "from where it is");
   answer("misc/Renamed");
   await until(async () => (await placeOf(url))?.title === "Renamed", "renamed");
-  Assert.deepEqual((await placeOf(url)).folders, ["toolbar", "misc"], "and moved to toolbar/misc");
+  Assert.deepEqual((await placed(url)).folders, ["toolbar", "misc"], "and moved to toolbar/misc");
+  /** @type {Omit<FetchedBookmark, "path">[]} */
   const all = [];
-  await PlacesUtils.bookmarks.fetch({ url }, (b) => all.push(b));
+  await PlacesUtils.bookmarks.fetch({ url }, (/** @type {Omit<FetchedBookmark, "path">} */ b) =>
+    all.push(b),
+  );
   Assert.equal(all.length, 1, "no duplicate");
 
   await focusPage();
@@ -310,7 +419,7 @@ add_task(async function quick_add_files_under_typed_folders_with_completion() {
   await until(promptOpen, "once more");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !promptOpen(), "Esc cancels");
-  Assert.equal((await placeOf(url)).title, "Renamed", "nothing changed");
+  Assert.equal((await placed(url)).title, "Renamed", "nothing changed");
 
   // :bookmark with a path skips the prompt; the path is from the toolbar.
   const other = await openPage("Cmd");
@@ -319,7 +428,7 @@ add_task(async function quick_add_files_under_typed_folders_with_completion() {
   EventUtils.synthesizeKey("KEY_Enter");
   await until(async () => !!(await placeOf(`${PAGE}?Cmd`)), ":bookmark path adds at once");
   Assert.deepEqual(
-    (await placeOf(`${PAGE}?Cmd`)).folders,
+    (await placed(`${PAGE}?Cmd`)).folders,
     ["toolbar", "work", "docs"],
     "in toolbar/work/docs",
   );
@@ -377,8 +486,9 @@ add_task(async function h_l_enter_fold_and_open_in_this_tab() {
 add_task(async function counts_gg_G_and_relative_numbers_in_the_tree() {
   const tab = await openPage("counts");
   await openPanel();
-  const at = () => rows().indexOf(selected());
-  const number = (row) => row.querySelector(".vimma-panel-number")?.textContent ?? null;
+  const at = () => selectedAt();
+  const number = (/** @type {Element} */ row) =>
+    row.querySelector(".vimma-panel-number")?.textContent ?? null;
   Assert.equal(number(rows()[0]), null, "no numbers by default");
   await highlight("work");
   EventUtils.synthesizeKey("l");
@@ -459,7 +569,7 @@ add_task(async function javascript_and_data_bookmarks_refuse_with_a_notice() {
 });
 
 add_task(async function s_and_S_open_in_splits_up_to_the_pane_max() {
-  PaneViews.get(window).max = 4;
+  view().max = 4;
   const tab = await openPage("split");
   await openPanel();
   await highlight("Jira");
@@ -484,9 +594,11 @@ add_task(async function s_and_S_open_in_splits_up_to_the_pane_max() {
   Assert.equal(paneCount(), 4, "still four");
   Assert.equal(gBrowser.tabs.length, tabs, "no tab opened");
   await closePanel();
-  while (PaneViews.get(window).panes) PaneViews.get(window).close();
-  PaneViews.get(window).max = PANES_MAX_DEFAULT;
-  while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+  while (view().panes) view().close();
+  view().max = PANES_MAX_DEFAULT;
+  while (gBrowser.tabs.length > 1) {
+    BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
 });
 
 add_task(async function a_A_r_m_d_y_edit_like_neo_tree() {
@@ -503,8 +615,8 @@ add_task(async function a_A_r_m_d_y_edit_like_neo_tree() {
   EventUtils.sendString("sub/");
   EventUtils.synthesizeKey("KEY_Enter");
   await until(async () => !!(await placeOf(url)), "added");
-  Assert.deepEqual((await placeOf(url)).folders, ["toolbar", "work", "sub"], "under work/sub");
-  await until(() => panel().contains(document.activeElement), "focus is back in the panel");
+  Assert.deepEqual((await placed(url)).folders, ["toolbar", "work", "sub"], "under work/sub");
+  await until(() => shownPanel().contains(document.activeElement), "focus is back in the panel");
   Assert.equal(VimmaHost.status(window).mode, "panel", "in panel mode");
 
   // a with a trailing slash: folders only (neo-tree).
@@ -512,7 +624,9 @@ add_task(async function a_A_r_m_d_y_edit_like_neo_tree() {
   await until(promptOpen, "a again");
   answer("only/folders/");
   await until(async () => {
-    const kids = (await PlacesUtils.promiseBookmarksTree(toolbarGuid)).children[0].children;
+    // The toolbar's first child is the seeded folder work; without children, `.some` throws.
+    const work = /** @type {BookmarkFolder} */ ((await toolbarTree()).children[0]);
+    const kids = work.children;
     return kids.some((c) => c.title === "only" && c.children?.[0]?.title === "folders");
   }, "a trailing slash makes folders");
   let count = 0;
@@ -532,7 +646,7 @@ add_task(async function a_A_r_m_d_y_edit_like_neo_tree() {
   Assert.equal(promptInput().value, "Jira", "prefilled with the title");
   answer("Jira 2");
   await until(() => titles().includes("Jira 2"), "renamed");
-  Assert.equal((await placeOf(JIRA)).title, "Jira 2", "in Places");
+  Assert.equal((await placed(JIRA)).title, "Jira 2", "in Places");
 
   // m: move, with completion.
   await highlight("Jira 2");
@@ -545,7 +659,7 @@ add_task(async function a_A_r_m_d_y_edit_like_neo_tree() {
   Assert.equal(promptInput().value, "work/only/", "Tab completes a toolbar folder");
   EventUtils.synthesizeKey("KEY_Enter");
   await until(
-    async () => (await placeOf(JIRA)).folders.join("/") === "toolbar/work/only",
+    async () => (await placed(JIRA)).folders.join("/") === "toolbar/work/only",
     "moved to work/only",
   );
   EventUtils.synthesizeKey("m");
@@ -590,13 +704,14 @@ add_task(async function slash_filters_fuzzily_and_esc_clears_then_closes() {
   EventUtils.sendString("mdn");
   await until(() => titles().length === 1 && titles()[0] === "MDN", "fuzzy over every bookmark");
   Assert.equal(
-    rows()[0].querySelector(".vimma-panel-host").textContent,
+    // The filtered row has its folder path; a missing one throws, as before.
+    /** @type {Element} */ (rows()[0].querySelector(".vimma-panel-host")).textContent,
     "work/docs",
     "with its folder path",
   );
   EventUtils.synthesizeKey("KEY_Enter");
   await until(
-    () => panel().contains(document.activeElement) && document.activeElement !== filterInput(),
+    () => shownPanel().contains(document.activeElement) && document.activeElement !== filterInput(),
     "Enter returns the keys to the list",
   );
   EventUtils.synthesizeKey("KEY_Escape");
@@ -616,7 +731,7 @@ add_task(async function slash_filters_fuzzily_and_esc_clears_then_closes() {
 add_task(async function places_changes_show_live_and_the_observer_goes_on_close() {
   const tab = await openPage("live");
   await openPanel();
-  const state = VimmaHost._state(window);
+  const state = /** @type {HostState} */ (VimmaHost._state(window));
   Assert.ok(state.bookmarks.observing, "listening while open");
   await PlacesUtils.bookmarks.insert({ parentGuid: menuGuid, title: "Menu only", url: MENU });
   const added = await PlacesUtils.bookmarks.insert({
@@ -626,7 +741,8 @@ add_task(async function places_changes_show_live_and_the_observer_goes_on_close(
   });
   await until(() => titles().includes("From the Library"), "an insert elsewhere shows up");
   Assert.ok(!titles().includes("Menu only"), "one outside the toolbar does not");
-  const docs = (await PlacesUtils.promiseBookmarksTree(toolbarGuid)).children[0].children[0];
+  // work/docs, the seeded folders; a missing one throws, as before.
+  const docs = /** @type {BookmarkFolder} */ ((await toolbarTree()).children[0]).children[0];
   await PlacesUtils.bookmarks.update({ guid: added.guid, parentGuid: docs.guid, index: 0 });
   await until(() => !titles().includes("From the Library"), "a move within the toolbar shows");
   await PlacesUtils.bookmarks.update({
@@ -659,7 +775,7 @@ add_task(async function a_private_windows_load_leaves_no_history() {
     "the panel in the private window",
   );
   const target = titles(win).indexOf("Private");
-  for (let i = rows(win).indexOf(selected(win)); i < target; i++) {
+  for (let i = selectedAt(win); i < target; i++) {
     EventUtils.synthesizeKey("j", {}, win);
   }
   await until(() => title(selected(win)) === "Private", "highlighted");
@@ -692,7 +808,7 @@ add_task(async function two_thousand_bookmarks_stay_fast() {
   await until(() => titles().includes("item 0"), "the folder opens");
   const expandMs = performance.now() - t0;
   Assert.lessOrEqual(rows().length, RENDER_CAP, `at most ${RENDER_CAP} rows in the DOM`);
-  Assert.ok(panel().textContent.includes("more"), "with a 'more' marker for the rest");
+  Assert.ok(shownPanel().textContent.includes("more"), "with a 'more' marker for the rest");
   t0 = performance.now();
   for (let i = 0; i < 150; i++) EventUtils.synthesizeKey("j");
   await until(() => title(selected()) === "item 149", "j walks past the rendered window");
@@ -741,7 +857,7 @@ add_task(async function root_all_shows_the_whole_tree_from_the_menu() {
   EventUtils.sendString("bookmark other/All page");
   EventUtils.synthesizeKey("KEY_Enter");
   await until(async () => !!(await placeOf(`${PAGE}?all`)), ":bookmark with the other alias");
-  Assert.equal((await placeOf(`${PAGE}?all`)).parentGuid, unfiledGuid, "in Other Bookmarks");
+  Assert.equal((await placed(`${PAGE}?all`)).parentGuid, unfiledGuid, "in Other Bookmarks");
 
   // Switching back while open re-reads at the toolbar.
   await openPanel();
@@ -761,12 +877,17 @@ add_task(async function an_empty_toolbar_says_what_the_panel_shows() {
   prefix("B", { shiftKey: true });
   await until(() => isOpen() && emptyState(), "the empty state shows");
   Assert.equal(rows().length, 0, "no rows");
-  const text = emptyState().textContent;
+  // The wait above saw it.
+  const text = /** @type {Element} */ (emptyState()).textContent;
   Assert.stringContains(text, "This panel shows the Bookmarks Toolbar", "says what it shows");
   Assert.stringContains(text, "Press a to add the current page", "how to add");
   Assert.stringContains(text, 'root = "all"', "how to list every bookmark");
   Assert.stringContains(text, "[bookmarks]", "and where");
-  Assert.equal(emptyState().querySelector("kbd")?.textContent, "a", "the key stands out");
+  Assert.equal(
+    /** @type {Element} */ (emptyState()).querySelector("kbd")?.textContent,
+    "a",
+    "the key stands out",
+  );
 
   EventUtils.synthesizeKey("a");
   await until(promptOpen, "a asks");

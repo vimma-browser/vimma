@@ -1,11 +1,11 @@
 // Config schema 2 (spec m3-m4-core-prep): [panes] max, [modal] hint_chars, [sites."<host>"].
 import { describe, test, expect } from "vitest";
 import fc from "fast-check";
-import { CONFIG_SCHEMA_VERSION, MIGRATIONS, migrate, parseConfig } from "../src/config.mjs";
-import { DEFAULT_CONFIG, formatDefaultsToml } from "../src/defaults.mjs";
-import { DEFAULT_HINT_CHARS } from "../src/hints.mjs";
-import { PANES_MAX_DEFAULT, PANES_MAX_LIMIT } from "../src/panes.mjs";
-import { MAX_SPLITS_DEFAULT } from "../src/splits.mjs";
+import { CONFIG_SCHEMA_VERSION, MIGRATIONS, migrate, parseConfig } from "../src/config/config.mjs";
+import { DEFAULT_CONFIG, formatDefaultsToml } from "../src/config/defaults.mjs";
+import { DEFAULT_HINT_CHARS } from "../src/page/hints.mjs";
+import { PANES_MAX_DEFAULT, PANES_MAX_LIMIT } from "../src/panes/panes.mjs";
+import { MAX_SPLITS_DEFAULT } from "../src/panes/splits.mjs";
 
 /** @param {string[]} lines */
 const toml = (...lines) => lines.join("\n") + "\n";
@@ -16,7 +16,7 @@ const v2 = (...lines) => toml("schema = 2", ...lines);
 function ok(text) {
   const r = parseConfig(text);
   expect(r.errors).toEqual([]);
-  return /** @type {import("../src/config.mjs").ResolvedConfig} */ (r.config);
+  return /** @type {import("../src/config/config.mjs").ResolvedConfig} */ (r.config);
 }
 
 /** @param {string} text */

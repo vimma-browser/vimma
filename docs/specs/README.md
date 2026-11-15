@@ -68,6 +68,9 @@ written against.
   affected, the note is a paragraph starting "Since changed:" under the status line.
 - A part that was specified but never built is named on the status line with its issue, for
   example `implemented, except the leftovers in #<issue>`.
+- A change that moves paths named in many implemented specs is noted here once rather than at
+  each place. Since #937, `packages/vimma-core/src/<name>.mjs` in a spec means the module of that
+  name in one of the folders that `ARCHITECTURE.md`'s "Module map" lists.
 
 ### Keeping statuses current
 

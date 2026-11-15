@@ -128,7 +128,7 @@ The `.deb`, the `.rpm` and the Arch Linux package add Vimma to your application 
 but never make it your default browser on their own
 ([Making Vimma your default browser](#making-vimma-your-default-browser)). Next to the files are `SHA256SUMS`, a CycloneDX SBOM
 (`vimma-X.Y.Z.cdx.json`) and cosign signatures (`*.sigstore.json`); how to check them is in
-[runbook.md](runbook.md#release-packages-releaseyml-spec-m6-packaging) ("Verify a release").
+[the runbook](runbook/ci-release-packages.md#release-packages-releaseyml-spec-m6-packaging) ("Verify a release").
 
 **Updating.** Install the newer release the way you installed this one: on Arch Linux, run the
 install command again; otherwise, install the newer `.deb`, `.rpm`, AppImage or
@@ -158,7 +158,7 @@ It installs to `/usr/lib/vimma`, with `vimma`, `vimma-open` and `vimma-ctl` in `
 The package carries no OpenPGP signature, so dnf says it skipped the OpenPGP check and zypper
 needs `--allow-unsigned-rpm`. What vouches for it is the release's `SHA256SUMS` and its cosign
 signature; check them before installing ("Verify a release" in
-[runbook.md](runbook.md#release-packages-releaseyml-spec-m6-packaging)):
+[the runbook](runbook/ci-release-packages.md#release-packages-releaseyml-spec-m6-packaging)):
 
 ```sh
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
@@ -313,7 +313,7 @@ makepkg -si
 The `PKGBUILD` pins the SHA-256 of the tarball it downloads, so checking the `PKGBUILD` covers
 what it installs. Every Linux file of the release is in `SHA256SUMS`, and the macOS `.dmg` and
 Homebrew cask in `SHA256SUMS-macos` ("Verify a release" in
-[runbook.md](runbook.md#release-packages-releaseyml-spec-m6-packaging)).
+[the runbook](runbook/ci-release-packages.md#release-packages-releaseyml-spec-m6-packaging)).
 
 The package marks itself as installed by a package manager (`/opt/vimma/is-packaged-app`), as
 Firefox's own distribution packages do; the `.deb`, the `.rpm` and the AppImage carry the same
@@ -453,8 +453,11 @@ To change it back:
   windows", or set `browser.startup.homepage` in `about:config`. "Restore Defaults" there brings
   the start page back.
 - **New tabs:** set `vimma.startpage.newtab` to `false` in `about:config` (applies at once) for
-  Firefox's new tab page. Settings' "New tabs" menu does not change Vimma's start page. An
-  extension that sets its own new tab page takes precedence.
+  Firefox's new tab page. Set back to `true`, new tabs open the start page at once; if Firefox's
+  page was opened meanwhile, a typed `about:home`, `about:newtab` or `about:welcome` keeps
+  showing it until Vimma restarts, since switching a page Firefox has open would crash it.
+  Settings' "New tabs" menu does not change Vimma's start page. An extension that sets its own
+  new tab page takes precedence.
 
 ### Moving over from Firefox or Chrome
 
@@ -2073,7 +2076,7 @@ limit at about 90 seconds a step, and a 35B mixture-of-experts model completed t
 in a run of 35 steps and 17 minutes. The bench ran no model on a GPU and no hosted model,
 so it says nothing about them. To measure your own model on the same ten lists and local shop,
 run the bench from a checkout of the repository with a Vimma build and Xvfb
-([runbook](runbook.md#the-agent-model-bench-npm-run-agent-bench-spec-builtin-agent)), with the
+([runbook](runbook/testing.md#the-agent-model-bench-npm-run-agent-bench-spec-builtin-agent)), with the
 endpoint and model of your server:
 
 ```sh
@@ -2741,7 +2744,7 @@ with the rest of your computer.
   full-control connection asks you first, but the safe setting is off. Turn it on only for a
   while (`:control on 15`) when you script Vimma yourself.
 - **Malware running as you** can do the same, with or without agents
-  ([security model](security.md)).
+  ([security model](security/)).
 
 #### Moving around a page
 
@@ -3152,6 +3155,9 @@ grant it had:
   as an `Add to basket` button with a quantity, runs under the grant and shows a notice that
   names where it went (`… and sent the form to POST shop.example (grant)`). A fill that sends a
   form always asks, since it sends what the agent typed. Without a grant every form asks.
+  A value a page's own component sends (a web component that takes part in the form) is shown as
+  its name and `(not read)`, because Vimma does not read what the page keeps in it, and that form
+  asks; so does a form whose page script adds to what it sends (`+ what the page adds`).
 - **`a` for a button that keeps asking.** Under a grant, a form question that is not a payment,
   sends no password, card, one-time-code or file field and that Vimma read whole ends its hint
   with `a always here` (`y send it · a always here · n stop`). `a` sends this form and lets the same
@@ -3159,7 +3165,7 @@ grant it had:
   until the grant ends, for example a basket button whose form also sends a delivery postcode. The
   notice says `allowed "Lisää" on shop.example for this grant`, and `:mcp log` marks the row
   `allowed (checkpoint, for the grant)`. A payment never offers `a`, nor does a form with a value
-  too long for Vimma to read whole (over 1024 characters).
+  too long for Vimma to read whole (over 1024 characters) or one it did not read.
 
 - **It stands out.** A checkpoint starts with `▲` instead of `◇`, and its `▲` and verb are in
   your theme's warning colour, so it is not taken for a routine question.
@@ -4602,7 +4608,7 @@ and deceptive content". In `about:config` that is `browser.safebrowsing.phishing
 `browser.safebrowsing.malware.enabled` = `false`.
 
 A Vimma you build yourself has Safe Browsing only if you build it with a Google API key
-([runbook](runbook.md)). Without one it fetches no lists, and Settings shows the protection off.
+([runbook](runbook/)). Without one it fetches no lists, and Settings shows the protection off.
 
 Whether or not you use Safe Browsing, [uBlock Origin](https://ublockorigin.com/) from
 addons.mozilla.org adds a second line of protection: in its dashboard → Filter lists, keep "uBlock filters

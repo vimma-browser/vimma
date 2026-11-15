@@ -4,7 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Did a pull request already pass this workflow on the tree just pushed to main? (Issue #358,
-// docs/runbook.md "CI and automation".) A squash merge usually gives main a commit whose tree
+// docs/runbook/ci.md "CI and automation".) A squash merge usually gives main a commit whose tree
 // is the pull request head's tree, so the push run would check the same files again. The guard
 // job of ci.yml, semgrep.yml and pkgbuild.yml runs this on the push event; on a match the
 // workflow's checks skip with a notice naming the run that covered the tree. When main moved
@@ -55,7 +55,7 @@ export const GUARD_JOB = "tree already checked on a pull request?";
  * Whether a successful run checked anything: every job but the guard ran. A run also succeeds
  * when its checks were skipped by `if:`, as a draft pull request's Semgrep scan is (issue #443),
  * and such a run covers nothing. Steps skipped inside a job that ran, as on a docs-only pull
- * request, still count (docs/runbook.md, "Once per tree").
+ * request, still count (docs/runbook/ci-once-per-tree.md, "Once per tree").
  * @param {any} list the JSON of `actions/runs/{id}/jobs`
  */
 export function completeRun(list) {

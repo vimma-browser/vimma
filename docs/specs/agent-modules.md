@@ -12,7 +12,7 @@ for the `:module` commands and, in its own keymap PR, `defaults.mjs` for the req
 `host/VimmaHost.sys.mjs`, `host/addon-ops.mjs`, `ctl/VimmaControl.sys.mjs`,
 `ctl/agent-commands.mjs`, `vimma.js` for the sandbox flag, `ui/statusbar.mjs`);
 `tools/vimma-ctl/` (`vimma-ctl module`, new MCP tools); `tools/security/test/chrome-source.test.ts`;
-`docs/guide.md`, `docs/security.md`, `docs/limits.md`, README · Upstream patches: none ·
+`docs/guide.md`, `docs/security/`, `docs/limits.md`, README · Upstream patches: none ·
 ADR: ADR-024, the module format (new, written with delivery PR 1, decision 7); ADR-007 and
 ADR-019 gain a consequence line for the `sandbox` role (decision 26)
 
@@ -45,8 +45,8 @@ own reviewed pipeline.
 - **A missing feature means waiting or writing an add-on.** Neovim users turn a missing feature
   into a few lines of Lua in their config. A Vimma user who wants "dim everything but the
   article" has no such place: Vimma's `config.toml` holds settings and bindings, never code
-  ([security.md](../security.md) F3), and a WebExtension must be signed by Mozilla before a
-  release build loads it for good (Research, "Add-on signing").
+  ([docs/security/08-config-toml.md](../security/08-config-toml.md) F3), and a WebExtension must be
+  signed by Mozilla before a release build loads it for good (Research, "Add-on signing").
 - **Personal tools should be easy to build.** Most such wishes are small and personal: a page
   tweak, a binding, a floating video, reader-style dimming. A tool for them is worth having only
   if building it takes a sentence and one approval, refining it takes another sentence, and
@@ -89,7 +89,7 @@ none)`. By default the address is sent without its query and fragment, which can
 3. **What is already there is said first.** An agent whose request is served by an existing
    action answers with a config change (Behaviour 4), not a module. "A binding that pops the
    current video into a floating window" is Picture-in-Picture, already the action
-   `picture_in_picture` (`packages/vimma-core/src/actions.mjs:204`, `ctrl+}` by default in
+   `picture_in_picture` (`packages/vimma-core/src/keys/actions.mjs:204`, `ctrl+}` by default in
    `defaults.mjs:142`), so the proposal is one line under `[keys]`.
 
 ### The three tiers
@@ -260,10 +260,11 @@ recognise every such field.`; a permission an update adds is
 ### Vimma at `2a7a3b2`
 
 - **No code in config.** `config.toml` is parsed into a closed schema (`TOP_KEYS`,
-  `packages/vimma-core/src/config.mjs:167-184`) and never executed (security.md F3). It is read
-  from `$XDG_CONFIG_HOME/vimma/config.toml` (`config/ConfigHost.sys.mjs:65-73`) and polled every
-  2 s (`:58`). Vimma edits it only through `setTomlKeys` (`packages/vimma-core/src/toml.mjs:487`),
-  which keeps comments, and `:route add` (security.md F1).
+  `packages/vimma-core/src/config/config.mjs:167-184`) and never executed (security.md F3). It is
+  read from `$XDG_CONFIG_HOME/vimma/config.toml` (`config/ConfigHost.sys.mjs:65-73`) and polled
+  every 2 s (`:58`). Vimma edits it only through `setTomlKeys`
+  (`packages/vimma-core/src/config/toml.mjs:487`), which keeps comments, and `:route add`
+  (security.md F1).
 - **Chrome code never evaluates text.** The test `never builds code from text: no eval, Function
 or sandbox evaluation` scans every chrome source for `eval(`, `Function(`, `evalInSandbox` and
   `loadSubScript` (`tools/security/test/chrome-source.test.ts:57-58`, security.md C2).
@@ -279,17 +280,17 @@ setup page` allows `installTemporaryAddon` and the other install calls only in
   runs through `runAgentCommand` (`ctl/agent-commands.mjs:1348`), which confines it to the agent
   workspace (`isAgentTab`, `:154`; `agentTabs`, `:170`; `findAgentTab`, `:207`). Page text
   reaches the model inside delimiters a page cannot close (`wrapUntrusted`,
-  `packages/vimma-core/src/agent.mjs:508`), a mitigation and not a guarantee. `vimma_show` always
-  asks (`ALWAYS_ASK`, `agent.mjs:134`). The instructions every MCP agent gets are `INSTRUCTIONS`
-  (`tools/vimma-ctl/src/mcp/instructions.rs:9`).
+  `packages/vimma-core/src/agent/agent.mjs:508`), a mitigation and not a guarantee. `vimma_show`
+  always asks (`ALWAYS_ASK`, `agent.mjs:134`). The instructions every MCP agent gets are
+  `INSTRUCTIONS` (`tools/vimma-ctl/src/mcp/instructions.rs:9`).
 - **Sensitive fields.** The actors already tell whether a password, card or one-time-code field
   shows a value (`actors/agent-fields.mjs`, `plainlySensitive` at `:181`, `sensitiveValueShown`
   at `:232`), for agent screenshots (security.md M31).
-- **A throwaway instance is what the e2e harness starts.** `tools/e2e/launcher.mjs` makes a new
+- **A throwaway instance is what the e2e harness starts.** `tools/e2e/launcher.ts` makes a new
   profile in a temporary folder (`:137`), sets `vimma.control.enabled` (`:43`) and starts the
   build with `-no-remote -profile` (`:218-219`).
 - **Theme.** The palette is parsed and checked as `#rrggbb` values (`parseOmarchyColors`,
-  `packages/vimma-core/src/theme.mjs:481`) and turned into CSS custom properties on Vimma's
+  `packages/vimma-core/src/config/theme.mjs:481`) and turned into CSS custom properties on Vimma's
   chrome (`tokensToCss`, `:939`); page content cannot see those properties.
 - **A command-line flag of Vimma's own exists**: `-vimma-reload-theme` (`vimma.js:44`,
   security.md O3).
@@ -601,7 +602,7 @@ ctrl+b m ──▶ request (memory) ──▶ vimma_module_requests ──▶ us
     screen rejects its proposal, and with `:module cancel`. At most 8 wait at once.
 17. **The sandbox is a separate headless Vimma with an empty profile** (D17, Behaviour 14),
     started by `vimma-ctl` (a separate program, not chrome code: C2 holds) as the e2e harness
-    starts one (`tools/e2e/launcher.mjs:137`, `:218-219`), with `--headless`, `-no-remote`, a new
+    starts one (`tools/e2e/launcher.ts:137`, `:218-219`), with `--headless`, `-no-remote`, a new
     profile and the flag `-vimma-module-sandbox`. The module is unapproved, so it must not load
     in the user's own browser, even in the agent workspace: WebExtensions are not confined to a
     container, and a module loaded there would run in every workspace. Rejected: the agent
@@ -844,7 +845,7 @@ can be prepared for a public issue.
   GitHub (D27). A promoted issue is untrusted input to the project and is never acted on by its
   agents or autopilot without the maintainer's label.
 
-### What `docs/security.md` must say, with the implementation
+### What `docs/security/` must say, with the implementation
 
 A new section after pdf-mode's §18, "19. Modules (`modules/ModuleHost.sys.mjs`)", with rules and
 their tests:
@@ -1002,7 +1003,7 @@ and modules only from ModuleHost`.
   protects, and what it does not" gains modules; "Keeping agents out of your Vimma profile"
   gets the new deny rules (Security and privacy, "Tampering on disk"); Features at a glance
   gains a line.
-- `docs/security.md`: §19 above, with A1, A3 and C2's test updated.
+- `docs/security/`: §19 above, with A1, A3 and C2's test updated.
 - `docs/limits.md`: the sandbox sees the signed-out page; a module's changes to an open page stay
   until it reloads; modules do not run on page load (open question 2); the network paths
   ModuleNet cannot see (D21); module storage is shared by every workspace.

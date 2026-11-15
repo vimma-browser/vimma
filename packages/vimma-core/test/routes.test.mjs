@@ -1,8 +1,8 @@
 // Workspace routing rules (spec workspace-routing): `[[routes]]` in config.toml, matched by
 // domain, URL prefix or the application that opened the link; the first match wins.
 import { describe, expect, test } from "vitest";
-import { appendRouteText, parseConfig } from "../src/config.mjs";
-import { formatConfigTemplate } from "../src/defaults.mjs";
+import { appendRouteText, parseConfig } from "../src/config/config.mjs";
+import { formatConfigTemplate } from "../src/config/defaults.mjs";
 import {
   defaultWorkspaceFor,
   describeRoute,
@@ -13,7 +13,7 @@ import {
   routeDomainFor,
   shadowedBy,
   validateRoutes,
-} from "../src/routes.mjs";
+} from "../src/config/routes.mjs";
 
 /** @param {string[]} lines */
 const v2 = (...lines) => ["schema = 2", ...lines].join("\n") + "\n";
@@ -22,7 +22,7 @@ const v2 = (...lines) => ["schema = 2", ...lines].join("\n") + "\n";
 function config(text) {
   const r = parseConfig(text);
   expect(r.errors).toEqual([]);
-  return /** @type {import("../src/config.mjs").ResolvedConfig} */ (r.config);
+  return /** @type {import("../src/config/config.mjs").ResolvedConfig} */ (r.config);
 }
 
 /** @param {string} text */

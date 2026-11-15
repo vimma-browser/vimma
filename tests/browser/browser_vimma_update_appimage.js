@@ -45,10 +45,13 @@ async function partFiles() {
     .filter((n) => n.startsWith(".vimma-update-"));
 }
 
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 200);
 }
 
+/** @typedef {{ pair: CryptoKeyPair, spki: string, id: string }} TestKey A signing key. */
+/** @type {TestKey} */
 let key;
 let serial = Number(
   new Date(Date.now() + 6 * 3600 * 1000).toISOString().replace(/\D/g, "").slice(0, 14),
@@ -79,7 +82,7 @@ async function manifest({ file = NEW, size, url = `${FILES}?file`, urgency = "no
   return body + signatureComment([{ key: key.id, sig: base64Encode(sig) }]);
 }
 
-/** The manifest and the AppImage the hosts serve next. */
+/** The manifest and the AppImage the hosts serve next. @param {string} manifestText */
 async function serve(manifestText, file = NEW) {
   await fetch(`${HOST}?set`, { method: "POST", body: manifestText });
   await fetch(`${FILES}?set`, { method: "POST", body: file });
@@ -109,8 +112,11 @@ async function checkAndReplace() {
   return r;
 }
 
+/** The status bar's update segment, or null when it shows none. */
 function segment() {
-  return document.querySelector('#vimma-statusbar [data-segment="update"]');
+  return /** @type {HTMLElement | null} */ (
+    document.querySelector('#vimma-statusbar [data-segment="update"]')
+  );
 }
 
 add_task(async function setup() {
@@ -167,7 +173,7 @@ add_task(async function a_newer_appimage_replaces_the_file() {
   Assert.deepEqual(await partFiles(), [], "no part file is left behind");
   Assert.equal(VimmaUpdates.status().stage, "staged");
   await until(() => segment()?.textContent === "⇡ 9.9.9 on restart", "the status bar says so");
-  Assert.equal(segment().style.color, "var(--vimma-fg-dim)");
+  Assert.equal(/** @type {HTMLElement} */ (segment()).style.color, "var(--vimma-fg-dim)");
   const log = await downloads();
   Assert.deepEqual(
     log.map((l) => l.query),
@@ -195,8 +201,10 @@ add_task(async function a_replaced_security_update_asks_to_restart() {
   };
   Restart._reset();
   Restart._setStartup(startup, () => {});
-  const line = () => document.getElementById("vimma-update-prompt");
-  const lineShown = () => !!line() && !line().hidden;
+  /** The update question, or null while there is none. */
+  const line = () =>
+    /** @type {HTMLElement | null} */ (document.getElementById("vimma-update-prompt"));
+  const lineShown = () => !!line() && !(/** @type {HTMLElement} */ (line()).hidden);
   const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
   const armed = () => !!line()?.querySelector(".vimma-agent-prompt-hint:not([hidden])");
   try {
@@ -207,7 +215,7 @@ add_task(async function a_replaced_security_update_asks_to_restart() {
         () => segment()?.textContent === "⇡ 9.9.9 security: :restart",
         "a security update in the error colour, naming :restart",
       );
-      Assert.equal(segment().style.color, "var(--vimma-text-error)");
+      Assert.equal(/** @type {HTMLElement} */ (segment()).style.color, "var(--vimma-text-error)");
       UpdateUi._sync();
       await until(
         () => Services.prefs.getStringPref("vimma.update.announced", "") === "9.9.9",
@@ -215,7 +223,7 @@ add_task(async function a_replaced_security_update_asks_to_restart() {
       );
       // Announced once the file is replaced, never earlier with a command to run.
       Assert.equal(
-        document.getElementById("vimma-notice").textContent,
+        /** @type {HTMLElement} */ (document.getElementById("vimma-notice")).textContent,
         "Vimma 9.9.9 fixes security issues · restart Vimma to use it",
       );
       // The question is the restart, not the update command: the AppImage has none left to run.
@@ -242,7 +250,9 @@ add_task(async function a_replaced_security_update_asks_to_restart() {
       await until(() => restarts === 1, "y restarts");
       Assert.ok(!lineShown(), "answered");
       await until(
-        () => document.getElementById("vimma-notice").textContent === "restart cancelled",
+        () =>
+          /** @type {HTMLElement} */ (document.getElementById("vimma-notice")).textContent ===
+          "restart cancelled",
         "the fake refused the quit, and Vimma says so",
       );
     });
@@ -270,8 +280,10 @@ add_task(async function the_restart_question_says_what_a_restart_loses() {
     },
     () => {},
   );
-  const line = () => document.getElementById("vimma-update-prompt");
-  const lineShown = () => !!line() && !line().hidden;
+  /** The update question, or null while there is none. */
+  const line = () =>
+    /** @type {HTMLElement | null} */ (document.getElementById("vimma-update-prompt"));
+  const lineShown = () => !!line() && !(/** @type {HTMLElement} */ (line()).hidden);
   const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
   const armed = () => !!line()?.querySelector(".vimma-agent-prompt-hint:not([hidden])");
   const yN = () => document.getElementById("vimma-rename");
@@ -346,7 +358,7 @@ add_task(async function update_command_says_restart_once_replaced() {
   await freshInstall();
   await serve(await manifest());
   await checkAndReplace();
-  const info = await VimmaUpdates.describe();
+  const info = /** @type {AppImageOffer} */ (await VimmaUpdates.describe());
   Assert.equal(info.appImage.stage, "staged");
   Assert.equal(info.offer.steps.commands.length, 0, "nothing left to run");
   Assert.ok(info.offer.steps.text.includes("Restart Vimma"), info.offer.steps.text);
@@ -355,7 +367,10 @@ add_task(async function update_command_says_restart_once_replaced() {
       () => browser.contentDocument?.documentElement?.dataset.ready === "true",
       "rendered",
     );
-    const row = browser.contentDocument.getElementById("update-appimage");
+    // about:vimma loads in the parent process, so its browser has the document.
+    const row = /** @type {Element} */ (
+      /** @type {Document} */ (browser.contentDocument).getElementById("update-appimage")
+    );
     Assert.equal(row.textContent, "replaced: restart Vimma to run the new version");
   });
 });
@@ -371,7 +386,7 @@ add_task(async function a_wrong_hash_leaves_the_file_alone() {
   Assert.deepEqual(await partFiles(), [], "the part file is removed");
   const status = VimmaUpdates.status();
   Assert.equal(status.stage, "none");
-  const info = await VimmaUpdates.describe();
+  const info = /** @type {AppImageRefusal} */ (await VimmaUpdates.describe());
   Assert.equal(info.appImage.reason, "the AppImage's SHA-512 does not match the signed manifest");
   Assert.ok(info.offer.steps.commands[0].includes("sha512sum -c"), "the steps to do it by hand");
   await until(() => segment()?.textContent === "⇡ 9.9.9 available", "an offer, not staged");
@@ -383,7 +398,7 @@ add_task(async function a_larger_download_than_signed_is_refused() {
   await checkAndReplace();
   Assert.equal(await IOUtils.readUTF8(appImage), OLD, "the AppImage is unchanged");
   Assert.deepEqual(await partFiles(), [], "the part file is removed");
-  const info = await VimmaUpdates.describe();
+  const info = /** @type {AppImageRefusal} */ (await VimmaUpdates.describe());
   Assert.ok(/signed manifest says/.test(info.appImage.reason), info.appImage.reason);
 });
 
@@ -398,7 +413,7 @@ add_task(async function an_unwritable_directory_falls_back_to_the_steps() {
   }
   Assert.equal(await IOUtils.readUTF8(appImage), OLD, "the AppImage is unchanged");
   Assert.deepEqual(await downloads(), [], "nothing was downloaded");
-  const info = await VimmaUpdates.describe();
+  const info = /** @type {AppImageRefusal} */ (await VimmaUpdates.describe());
   Assert.ok(
     info.appImage.reason.startsWith("cannot write next to the AppImage"),
     info.appImage.reason,
@@ -490,7 +505,7 @@ add_task(async function a_symlinked_appimage_is_not_replaced() {
   }
   Assert.ok(file.isSymlink(), "the link is still a link");
   Assert.equal(await IOUtils.readUTF8(appImage), OLD, "the file it names is unchanged");
-  const info = await VimmaUpdates.describe();
+  const info = /** @type {AppImageRefusal} */ (await VimmaUpdates.describe());
   Assert.equal(info.appImage.reason, "cannot read $APPIMAGE: $APPIMAGE is a symbolic link");
   await IOUtils.remove(link);
 });

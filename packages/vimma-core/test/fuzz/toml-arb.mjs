@@ -8,7 +8,7 @@
  * often enough. A share of documents is then mangled (cut, a byte swapped) for the parser.
  */
 import fc from "fast-check";
-import { PALETTE_KEYS } from "../../src/theme.mjs";
+import { PALETTE_KEYS } from "../../src/config/theme.mjs";
 import { PROTO_NAMES, nastyString } from "./harness.mjs";
 
 const SCHEMA_KEYS = [

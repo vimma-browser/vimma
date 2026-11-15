@@ -18,8 +18,12 @@ let fileNo = 0;
 /** @type {string[]} */
 const files = [];
 /** @type {Set<number>} */
-const startIds = new Set(CIS.getPublicIdentities().map((i) => i.userContextId));
-const firefoxDefaults = JSON.stringify(CIS.getPublicIdentities().filter((i) => i.l10nId));
+const startIds = new Set(
+  CIS.getPublicIdentities().map((/** @type {ContextualIdentity} */ i) => i.userContextId),
+);
+const firefoxDefaults = JSON.stringify(
+  CIS.getPublicIdentities().filter((/** @type {ContextualIdentity} */ i) => i.l10nId),
+);
 
 /** A fresh definitions path in the profile, removed at the end with its backup. */
 function freshPath() {
@@ -34,14 +38,18 @@ registerCleanupFunction(async () => {
     if (!startIds.has(i.userContextId)) CIS.remove(i.userContextId);
   }
   Assert.equal(
-    JSON.stringify(CIS.getPublicIdentities().filter((i) => i.l10nId)),
+    JSON.stringify(
+      CIS.getPublicIdentities().filter((/** @type {ContextualIdentity} */ i) => i.l10nId),
+    ),
     firefoxDefaults,
     "Firefox's default containers are untouched",
   );
 });
 
 const publicCount = () => CIS.getPublicIdentities().length;
-const identity = (/** @type {number} */ id) => CIS.getPublicIdentityFromId(id);
+// A workspace's container id, null without one: then there is no container to find, and the
+// assertion that reads it fails.
+const identity = (/** @type {number | null} */ id) => CIS.getPublicIdentityFromId(id);
 
 /** @param {string} path @param {object} [options] */
 async function started(path, options = {}) {
@@ -50,11 +58,11 @@ async function started(path, options = {}) {
   return store;
 }
 
-const cookieCount = (/** @type {number} */ userContextId) =>
+const cookieCount = (/** @type {number | null} */ userContextId) =>
   Services.cookies.getCookiesWithOriginAttributes(JSON.stringify({ userContextId }), "example.com")
     .length;
 
-function setCookie(/** @type {number} */ userContextId) {
+function setCookie(/** @type {number | null} */ userContextId) {
   Services.cookies.add(
     "example.com",
     "/",
@@ -83,7 +91,11 @@ add_task(async function first_run_creates_main_the_file_and_the_container() {
   Assert.equal(publicCount(), before + 1, "exactly one new container");
   const c = identity(main.userContextId);
   Assert.deepEqual([c.name, c.color, c.icon], ["main", "gray", "circle"], "named and styled");
-  Assert.ok(!startIds.has(main.userContextId), "never one of the existing containers");
+  // A number: its container was found just above.
+  Assert.ok(
+    !startIds.has(/** @type {number} */ (main.userContextId)),
+    "never one of the existing containers",
+  );
   await store.finalize();
   const onDisk = await IOUtils.readJSON(path);
   Assert.deepEqual(onDisk, store.definitions, "the file holds the definitions");
@@ -127,7 +139,11 @@ add_task(async function reconcile_adopts_and_never_deletes_silently() {
   const path = freshPath();
   const adopted = CIS.create("adopted", "circle", "gray");
   const reused = CIS.create("someone else's", "fence", "red");
-  const def = (/** @type {string} */ id, /** @type {string} */ name, ucid) => ({
+  const def = (
+    /** @type {string} */ id,
+    /** @type {string} */ name,
+    /** @type {number | null} */ ucid,
+  ) => ({
     id,
     name,
     userContextId: ucid,
@@ -148,9 +164,11 @@ add_task(async function reconcile_adopts_and_never_deletes_silently() {
   const store = await started(path, {
     config: [{ name: "work", color: "blue", icon: "briefcase", autofill: true }],
   });
-  const byName = Object.fromEntries(store.definitions.workspaces.map((w) => [w.name, w]));
+  const byName = Object.fromEntries(
+    store.definitions.workspaces.map((/** @type {WorkspaceDefinition} */ w) => [w.name, w]),
+  );
   Assert.deepEqual(
-    store.definitions.workspaces.map((w) => [w.name, w.source]),
+    store.definitions.workspaces.map((/** @type {WorkspaceDefinition} */ w) => [w.name, w.source]),
     [
       ["work", "config"],
       ["adopted", "runtime"],
@@ -191,7 +209,7 @@ add_task(async function a_confirmed_delete_removes_the_container_and_its_cookies
 
   const cleared = TestUtils.topicObserved(
     "clear-origin-attributes-data",
-    (_s, data) => JSON.parse(data).userContextId === shop.userContextId,
+    (_s, data) => JSON.parse(/** @type {string} */ (data)).userContextId === shop.userContextId,
   );
   await store.deleteWorkspace(shop.id, { confirmed: true });
   await cleared;
@@ -200,13 +218,13 @@ add_task(async function a_confirmed_delete_removes_the_container_and_its_cookies
   Assert.equal(cookieCount(work.userContextId), 1, "work's cookie stays");
   Assert.ok(identity(work.userContextId), "and work's container");
   Assert.deepEqual(
-    store.definitions.workspaces.map((w) => w.name),
+    store.definitions.workspaces.map((/** @type {WorkspaceDefinition} */ w) => w.name),
     ["work"],
     "shop is no longer defined",
   );
   await store.finalize();
   Assert.deepEqual(
-    (await IOUtils.readJSON(path)).workspaces.map((w) => w.name),
+    (await IOUtils.readJSON(path)).workspaces.map((/** @type {WorkspaceDefinition} */ w) => w.name),
     ["work"],
     "nor in the file",
   );
@@ -241,7 +259,7 @@ add_task(async function private_windows_get_no_default_container() {
   await store.finalize();
 });
 
-// docs/security.md: the y/N answer stands only for the workspace the question described. A
+// docs/security/: the y/N answer stands only for the workspace the question described. A
 // config reload in between can turn a config workspace (close = its tabs) into a runtime one
 // (close = delete its site data), and a rename can put another workspace under the same id.
 add_task(async function a_stale_answer_closes_nothing() {
@@ -250,7 +268,9 @@ add_task(async function a_stale_answer_closes_nothing() {
     config: [{ name: "work", color: "blue", icon: "briefcase", autofill: true }],
   });
   const shop = store.addWorkspace({ name: "shop", color: "pink", icon: "cart" });
-  const work = store.definitions.workspaces.find((w) => w.name === "work");
+  const work = /** @type {WorkspaceDefinition} */ (
+    store.definitions.workspaces.find((/** @type {WorkspaceDefinition} */ w) => w.name === "work")
+  );
   setCookie(shop.userContextId);
   setCookie(work.userContextId);
   const asked = (/** @type {any} */ w) => ({
@@ -273,7 +293,8 @@ add_task(async function a_stale_answer_closes_nothing() {
   Assert.equal(askedWork.source, "config", "sanity: asked about a config workspace");
   await store.setConfig([]);
   Assert.equal(
-    store.definitions.workspaces.find((w) => w.id === work.id)?.source,
+    store.definitions.workspaces.find((/** @type {WorkspaceDefinition} */ w) => w.id === work.id)
+      ?.source,
     "runtime",
     "the reload made work a runtime workspace, whose close would delete its data",
   );

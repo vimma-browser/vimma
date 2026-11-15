@@ -7,7 +7,7 @@ import {
   needsMigration,
   settingFor,
   visibilityFor,
-} from "../src/bookmarks-toolbar.mjs";
+} from "../src/ui/bookmarks-toolbar.mjs";
 
 describe("Vimma's words and Firefox's values (decision 3)", () => {
   test("shown is always, hidden is never, newtab is newtab, both ways", () => {

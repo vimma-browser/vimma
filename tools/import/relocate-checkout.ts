@@ -1,5 +1,6 @@
 /**
- * Fixes a checkout after it moved on disk (docs/runbook.md, "Moving the checkout").
+ * Fixes a checkout after it moved on disk (docs/runbook/moving-the-checkout.md, "Moving the
+ * checkout").
  *
  * `surfer import` links engine/ to src/ with absolute symlinks, and an objdir records absolute
  * paths in Make dependency files, cargo files and the like. After `mv old new`, this:

@@ -3,7 +3,7 @@
 // the parser cannot drift apart.
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-import { parseConfig } from "../src/config.mjs";
+import { parseConfig } from "../src/config/config.mjs";
 
 const guide = readFileSync(new URL("../../../docs/guide.md", import.meta.url), "utf8");
 

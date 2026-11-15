@@ -13,7 +13,8 @@ tools/upstream/fixtures/surfer-*.json
 packages/vimma-core/src/vendor/smol-toml/smol-toml.mjs
 
 # release-please writes CHANGELOG.md and its manifest in its own style ("*" bullets); prettier
-# would fail lint on every release PR, and on main once one merges (docs/runbook.md, Releases)
+# would fail lint on every release PR, and on main once one merges (docs/runbook/ci-releases.md,
+# Releases)
 CHANGELOG.md
 .release-please-manifest.json
 

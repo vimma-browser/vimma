@@ -19,7 +19,7 @@ const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
@@ -32,6 +32,9 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
 );
 const { validateMessage } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/index.mjs",
+);
+const { AgentAct } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/AgentAct.sys.mjs",
 );
 
 const DIR = getRootDirectory(gTestPath).replace(
@@ -54,10 +57,13 @@ const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
-const ww = () => WindowWorkspaces.get(window);
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
+const mainId = () =>
+  /** @type {string} */ (
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id
+  );
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
 /** @param {boolean} on */
@@ -104,7 +110,7 @@ async function agentClient(name = "example-agent") {
 /** The oldest waiting question, once there is one. */
 async function question() {
   await until(() => AgentGate.waiting.length > 0, "a question waits");
-  return AgentGate.waiting[0];
+  return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
 /**
@@ -241,7 +247,9 @@ addTidyTask(async function test_reading_a_loading_page_waits_for_domcontentloade
   const c = await agentClient();
   const opened = await call(c, "agent-open", { url: SLOW });
   Assert.ok(opened.r.ok, "vimma_open ran");
-  const tab = agentTabs().find((t) => idOf(t) === opened.r.result.tab);
+  const tab = /** @type {MozTabbrowserTab} */ (
+    agentTabs().find((t) => idOf(t) === opened.r.result.tab)
+  );
   await until(() => tab.linkedBrowser.currentURI.spec === SLOW, "the slow page is in the tab");
   const start = Date.now();
   const { r, at } = await call(c, "agent-read", { tab: opened.r.result.tab });
@@ -257,7 +265,9 @@ addTidyTask(async function test_a_followed_link_by_keys_is_ready_at_domcontentlo
   const c = await agentClient();
   const list = await call(c, "agent-keys", { tab: idOf(tab), keys: "f" });
   Assert.ok(list.r.ok, "f lists the links");
-  const line = list.r.result.links.split("\n").find((l) => l.includes('"Slow page"'));
+  const line = list.r.result.links
+    .split("\n")
+    .find((/** @type {string} */ l) => l.includes('"Slow page"'));
   const label = line?.split(" ")[0];
   Assert.ok(label, "the slow page's link is listed");
   const start = Date.now();
@@ -350,4 +360,26 @@ addTidyTask(async function test_a_page_kept_busy_does_not_keep_the_allowance_ope
   Assert.ok(r.ok, "the click ran");
   Assert.equal(await sent, Cr.NS_BINDING_ABORTED, "the page's resubmission was cancelled");
   Assert.equal(tab.linkedBrowser.currentURI.spec, WAITS, "the page stayed");
+});
+
+// A wait wakes on the tab's own progress (a load starting, committing or stopping), not only on
+// its TICK_MS timer: it listens to its window's tab browser. Firefox renamed Node.ownerGlobal to
+// documentGlobal, and a read of the old name found no window, so the wait never listened.
+add_task(async function test_a_wait_listens_to_its_tab_progress() {
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
+  /** @type {object[]} */
+  const added = [];
+  const add = gBrowser.addTabsProgressListener;
+  gBrowser.addTabsProgressListener = function (/** @type {object} */ listener) {
+    added.push(listener);
+    return add.call(this, listener);
+  };
+  try {
+    // No page is the one waited for: the wait runs until its end, a few ticks.
+    await AgentAct.ready(tab.linkedBrowser, () => false, Date.now() + 300);
+  } finally {
+    gBrowser.addTabsProgressListener = add;
+    BrowserTestUtils.removeTab(tab);
+  }
+  Assert.greater(added.length, 0, "the wait listened to the tab's progress");
 });

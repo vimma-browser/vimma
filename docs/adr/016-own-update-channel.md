@@ -39,7 +39,8 @@ Mozilla's test-signing keys, whose private halves anyone can find in Mozilla's s
   channel, because every other channel embeds Mozilla's keys. The primary is the Cloud KMS key
   that also signs the manifest (spec decisions 12 and 16); until the offline ceremony makes the
   recovery key, the secondary slot holds the primary's certificate again (decision 39).
-- **One source for both verifiers.** `packages/vimma-core/src/update-keys.mjs`, the keys the
+- **One source for both verifiers.** `packages/vimma-core/src/update-keys.mjs` (Since changed:
+  `packages/vimma-core/src/updates/update-keys.mjs`, #937), the keys the
   manifest check pins, is generated from those certificates (`npm run gen-update-keys`), and a
   test fails when the two disagree, so the manifest check and the updater cannot drift apart.
 - **The updater is built only for releases and nightlies.** `configs/common/mozconfig` passes
@@ -77,10 +78,11 @@ loudly at `surfer import` when upstream moves the code around it.
 
 - A leaked primary can sign MARs that every install accepts; recovery needs the offline
   secondary (spec §6, "If the primary leaks"), and until it exists, installs must be updated by
-  hand. `docs/security.md` UP12 states the limit.
+  hand. `docs/security/16-update-check.md` UP12 states the limit.
 - The primary's certificate is self-signed by the KMS key, which only the maintainer's
-  credentials can ask to sign outside the release workflow (`docs/runbook.md`, "Update signing
-  keys and the update host", step 5b).
+  credentials can ask to sign outside the release workflow
+  (`docs/runbook/ci-update-keys-and-update-host.md`, "Update signing keys and the update host", step
+  5b).
 - Three upstream files carry Vimma's hunks for updates (`browser/moz.configure`,
   `toolkit/mozapps/update/updater/moz.build`, and with the manifest hook of sub-PR 3,
   `toolkit/mozapps/update/UpdateService.sys.mjs`); each has a line in ADR-003's register.

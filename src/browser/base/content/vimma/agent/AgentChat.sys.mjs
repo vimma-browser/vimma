@@ -52,7 +52,7 @@ import {
   forgetListedSites,
   runAgentCommand,
 } from "../ctl/agent-commands.mjs";
-import { AgentGate } from "../ctl/AgentGate.sys.mjs";
+import { AgentGate } from "../host/AgentGate.sys.mjs";
 import { AGENT_CONFIG_TOPIC, McpHost } from "../host/mcp-ops.mjs";
 import { AgentCli, CLI_ENABLED_PREF } from "./AgentCli.sys.mjs";
 import { AgentKeys } from "./AgentKeys.sys.mjs";
@@ -149,7 +149,7 @@ function changed() {
 /**
  * The gate's events about a conversation's connection go into its transcript (a step's words
  * and outcome, a checkpoint); every gate change may end or make a grant, so the window redraws.
- * @param {import("../ctl/AgentGate.sys.mjs").GateEvent} [event]
+ * @param {import("../host/AgentGate.sys.mjs").GateEvent} [event]
  */
 function onGate(event) {
   if (event && event.kind !== "notice") {

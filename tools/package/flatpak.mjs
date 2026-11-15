@@ -3,7 +3,8 @@
  * The Flatpak of Vimma (spec flatpak): a flatpak-builder manifest that repackages the release
  * tarball, as Flathub builds it, and the files it names (launcher, desktop file, AppStream
  * metainfo, the 512 px icon). flatpak.yml builds it with tools/package/flatpak-smoke.sh; the Flathub
- * submission (docs/runbook.md, "Flatpak") commits the same files to Flathub's repository.
+ * submission (docs/runbook/ci-flatpak.md, "Flatpak") commits the same files to Flathub's
+ * repository.
  *
  * Usage:
  *   node tools/package/flatpak.mjs --out <dir> --version X.Y.Z --date YYYY-MM-DD

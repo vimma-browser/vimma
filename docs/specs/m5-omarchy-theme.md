@@ -51,8 +51,8 @@ colors: {} }, omarchy, omarchyLightMode })` and `tokensToCss` (strict validation
 - **Hermetic tests:** `tests/browser/browser.toml` sets `vimma.theme.source=builtin` for the
   directory, so a developer's own Omarchy theme never reaches other tests' colour assertions;
   `browser_vimma_theme.js` turns it back on. The e2e harness gives the browser a `HOME` inside
-  its temp profile and sets `vimma.theme.source=builtin` (`tools/e2e/launcher.mjs`), so its
-  baselines use the built-in palette.
+  its temp profile and sets `vimma.theme.source=builtin` (`tools/e2e/launcher.mjs`; since
+  changed: `launcher.ts`, ADR-025), so its baselines use the built-in palette.
 
 ## Tests (written first)
 

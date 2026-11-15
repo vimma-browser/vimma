@@ -28,7 +28,12 @@ const APPEARANCE_PREF = "vimma.theme.appearance";
 /** The built-in vimma palette's dark_background (the status bar), dark and light. */
 const VIMMA_DARK_BAR = "#050c0d";
 const VIMMA_LIGHT_BAR = "#e7ecea";
-const DEFAULT_THEME = { source: "omarchy", name: "vimma", font: "monospace", colors: {} };
+const DEFAULT_THEME = {
+  source: /** @type {const} */ ("omarchy"),
+  name: "vimma",
+  font: "monospace",
+  colors: {},
+};
 
 const root = PathUtils.join(PathUtils.tempDir, `vimma-appearance-${Date.now()}`);
 /** A HOME without Omarchy, and one with it (an Omarchy 4 install's ~/.local/share/omarchy). */
@@ -42,8 +47,10 @@ function rgb(/** @type {string} */ hex) {
   return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`;
 }
 
+// The status bar is in every browser window; getComputedStyle throws without it.
 const barBackground = () =>
-  getComputedStyle(document.getElementById("vimma-statusbar")).backgroundColor;
+  getComputedStyle(/** @type {Element} */ (document.getElementById("vimma-statusbar")))
+    .backgroundColor;
 const notice = () => document.getElementById("vimma-notice")?.textContent ?? "";
 
 function waitForBar(/** @type {string} */ hex, /** @type {string} */ msg) {
@@ -79,7 +86,9 @@ add_task(async function setup() {
     ThemeHost.setConfig(DEFAULT_THEME);
     Services.prefs.clearUserPref(APPEARANCE_PREF);
     await ThemeHost.detectOmarchy(realHome);
-    while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+    while (gBrowser.tabs.length > 1) {
+      gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+    }
     await SpecialPowers.popPrefEnv();
     await IOUtils.remove(root, { recursive: true });
   });
@@ -198,6 +207,7 @@ add_task(async function the_start_page_shows_the_tip_only_off_omarchy() {
     const loaded = BrowserTestUtils.waitForNewTab(gBrowser, START, true);
     BrowserCommands.openTab();
     const tab = await loaded;
+    /** @type {boolean | undefined} */
     let shown;
     await TestUtils.waitForCondition(async () => {
       shown = await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
@@ -224,7 +234,9 @@ add_task(async function about_vimma_says_built_in_and_how_to_change_it() {
       () => browser.contentDocument?.documentElement?.dataset.ready === "true",
       "about:vimma rendered",
     );
-    const text = browser.contentDocument.getElementById("theme")?.textContent ?? "";
+    // The wait above read the document; a read through a missing one throws.
+    const doc = /** @type {Document} */ (browser.contentDocument);
+    const text = doc.getElementById("theme")?.textContent ?? "";
     BrowserTestUtils.removeTab(tab);
     return text;
   };

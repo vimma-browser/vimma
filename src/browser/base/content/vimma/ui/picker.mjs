@@ -395,7 +395,13 @@ export class GotoPicker {
       nodes.push(li);
     };
     if (start > 0) more(`… ${start} more above`);
-    let section = start > 0 ? sectionOf(/** @type {any} */ (state.matches[start - 1]).item) : null;
+    // rowRange keeps start within the matches, so with start > 0 the row above it exists.
+    let section =
+      start > 0
+        ? sectionOf(
+            /** @type {import("../core/picker.mjs").Match} */ (state.matches[start - 1]).item,
+          )
+        : null;
     for (let i = start; i < end; i++) {
       const m = /** @type {import("../core/picker.mjs").Match} */ (state.matches[i]);
       if (grouped && sectionOf(m.item) !== section) {

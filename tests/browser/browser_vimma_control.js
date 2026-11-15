@@ -4,7 +4,7 @@
 
 // Spec: docs/specs/m0-control-server.md (protocol: docs/specs/m0-control-protocol-and-vimma-ctl.md)
 
-/* global focusContent, recordPageKeys, pageKeys, waitForPageKey -- from head.js */
+/* global focusContent, recordPageKeys, pageKeys, waitForPageKey, contentPrincipalOf -- from head.js */
 
 "use strict";
 
@@ -30,9 +30,10 @@ const HELLO_TIMEOUT = "vimma.control.helloTimeoutMs";
 const IDLE_TIMEOUT = "vimma.control.idleTimeoutMs";
 const DISCOVERY = PathUtils.join(PathUtils.profileDir, "vimma-control.json");
 const OVERLAY_ID = "vimma-help";
+/** @typedef {{ id: string, url: string, selected: boolean }} StateTab A tab of the state command. */
 
 registerCleanupFunction(async () => {
-  document.getElementById(OVERLAY_ID)?.close();
+  /** @type {HTMLDialogElement | null} */ (document.getElementById(OVERLAY_ID))?.close();
   Services.prefs.clearUserPref(ENABLED);
   await VimmaControl.settled();
 });
@@ -86,8 +87,15 @@ class Client {
       this.wake();
       this.wait();
     } catch (e) {
-      if (e.result === Cr.NS_BASE_STREAM_WOULD_BLOCK) this.wait();
-      else this.end(e.result === Cr.NS_BASE_STREAM_CLOSED ? 0 : e.result);
+      // An XPCOM exception, whose nsresult is `result`.
+      if (/** @type {{ result: number }} */ (e).result === Cr.NS_BASE_STREAM_WOULD_BLOCK)
+        this.wait();
+      else
+        this.end(
+          /** @type {{ result: number }} */ (e).result === Cr.NS_BASE_STREAM_CLOSED
+            ? 0
+            : /** @type {{ result: number }} */ (e).result,
+        );
     }
   }
 
@@ -106,7 +114,7 @@ class Client {
   /** The next line as an object, or null once the server closed without one. */
   async read() {
     while (!this.lines.length && this.closedWith === null) {
-      await new Promise((resolve) => this.waiters.push(resolve));
+      await /** @type {Promise<void>} */ (new Promise((resolve) => this.waiters.push(resolve)));
     }
     const line = this.lines.shift();
     return line === undefined ? null : JSON.parse(line);
@@ -125,7 +133,7 @@ class Client {
         const n = this.output.write(data, data.length);
         data = data.slice(n);
       } catch (e) {
-        if (e.result !== Cr.NS_BASE_STREAM_WOULD_BLOCK) throw e;
+        if (/** @type {{ result: number }} */ (e).result !== Cr.NS_BASE_STREAM_WOULD_BLOCK) throw e;
       }
       if (data.length) {
         await new Promise((resolve) =>
@@ -163,6 +171,7 @@ class Client {
     return this.read();
   }
 
+  /** @param {number} id @param {string} command @param {object} [args] */
   async request(id, command, args = {}) {
     await this.send({ type: "request", id, command, args });
     const response = await this.read();
@@ -184,7 +193,10 @@ function randomHex() {
   ).join("");
 }
 
-/** HMAC-SHA256(key, message) over their UTF-8 bytes, as lowercase hex. */
+/**
+ * HMAC-SHA256(key, message) over their UTF-8 bytes, as lowercase hex.
+ * @param {string} key @param {string} message
+ */
 async function hmacHex(key, message) {
   const enc = new TextEncoder();
   const k = await crypto.subtle.importKey(
@@ -198,7 +210,10 @@ async function hmacHex(key, message) {
   return Array.from(mac, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Runs vimma-ctl with `args` against this profile: { exitCode, out }. */
+/**
+ * Runs vimma-ctl with `args` against this profile: { exitCode, out }.
+ * @param {string} bin @param {string[]} args
+ */
 async function runVimmaCtl(bin, args) {
   const proc = await Subprocess.call({
     command: bin,
@@ -238,7 +253,7 @@ async function session() {
 }
 
 function helpShown() {
-  const o = document.getElementById(OVERLAY_ID);
+  const o = /** @type {HTMLDialogElement | null} */ (document.getElementById(OVERLAY_ID));
   return !!o && o.open && BrowserTestUtils.isVisible(o);
 }
 
@@ -281,7 +296,7 @@ add_task(async function test_handshake() {
 
   const wrong = new Client(port);
   const bad = await wrong.hello(
-    token.replace(/^./, (c) => (c === "0" ? "1" : "0")),
+    token.replace(/^./, (/** @type {string} */ c) => (c === "0" ? "1" : "0")),
     { checkProof: false },
   );
   Assert.deepEqual(
@@ -363,13 +378,13 @@ add_task(async function test_send_keys_and_state() {
   Assert.equal(result.pending, null, "nothing pending");
   Assert.equal(
     result.workspace,
-    WindowWorkspaces.get(window).status().name,
+    /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window)).status().name,
     "the active workspace's name (m3-workspaces 7)",
   );
   Assert.equal(typeof result.workspace, "string", "a name, not null, now that workspaces exist");
   Assert.equal(result.panes, null, "one pane: no tree");
   Assert.equal(result.tabs.length, gBrowser.visibleTabs.length, "every visible tab");
-  const selected = result.tabs.filter((t) => t.selected);
+  const selected = result.tabs.filter((/** @type {StateTab} */ t) => t.selected);
   Assert.equal(selected.length, 1, "one selected tab");
   Assert.equal(selected[0].id, String(gBrowser.selectedBrowser.browserId), "id is the browserId");
   Assert.equal(selected[0].url, gBrowser.currentURI.spec, "url");
@@ -410,7 +425,7 @@ add_task(async function test_send_keys_and_state() {
 add_task(async function test_state_panes() {
   await enable();
   const client = await session();
-  const view = PaneViews.get(window);
+  const view = /** @type {PaneView} */ (PaneViews.get(window));
   const left = gBrowser.selectedTab;
   Assert.ok(view.split("vertical").ok, "split right");
   await TestUtils.waitForCondition(() => view.panes, "the split is laid out");
@@ -423,8 +438,9 @@ add_task(async function test_state_panes() {
     { kind: "response", command: "state" },
   );
   Assert.ok(v.valid, `the state is valid: ${v.errors.join("; ")}`);
-  const id = (tab) => String(tab.linkedBrowser.browserId);
-  const index = (tab) => result.tabs.findIndex((t) => t.id === id(tab));
+  const id = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
+  const index = (/** @type {MozTabbrowserTab} */ tab) =>
+    result.tabs.findIndex((/** @type {StateTab} */ t) => t.id === id(tab));
   Assert.ok(index(left) >= 0 && index(right) >= 0, "both panes' tabs are in tabs");
   Assert.deepEqual(
     result.panes,
@@ -452,13 +468,34 @@ add_task(async function test_state_panes() {
   Services.prefs.clearUserPref("browser.tabs.splitview.hasUsed");
 });
 
+// The validator lets unknown top-level fields through (protocol v1 lets the server add fields),
+// so `state` names each field it returns one by one, and this list is the check that nothing
+// else reaches the socket (security.md S9).
+add_task(async function test_state_names_each_top_level_field() {
+  await enable();
+  const client = await session();
+  const { result } = await client.request(1, "state");
+  Assert.deepEqual(
+    Object.keys(result).sort(),
+    [
+      ...["agent", "chat", "downloads", "grep", "mode", "notice", "panes", "pdf", "pending"],
+      ...["prompt", "splits", "tabs", "update", "urlbar", "workspace"],
+    ],
+    "a new state field: add it here, to the protocol spec's state section " +
+      "(docs/specs/m0-control-protocol-and-vimma-ctl.md) and to security.md S9, " +
+      "with a type check in vimma-core's validator",
+  );
+  client.close();
+  await disable();
+});
+
 // docs/specs/multiple-splits.md, "Control protocol": every split of the workspace in `splits`,
 // read-only; `panes` keeps its meaning (the shown split, else the one shown last, hidden).
 add_task(async function test_state_splits() {
   await enable();
   const client = await session();
-  const view = PaneViews.get(window);
-  const state = async (id) => {
+  const view = /** @type {PaneView} */ (PaneViews.get(window));
+  const state = async (/** @type {number} */ id) => {
     const { result } = await client.request(id, "state");
     const v = validateMessage(
       { type: "response", id, ok: true, result },
@@ -467,6 +504,7 @@ add_task(async function test_state_splits() {
     Assert.ok(v.valid, `the state is valid: ${v.errors.join("; ")}`);
     return result;
   };
+  /** @type {MozTabbrowserTab[]} */
   const tabs = [];
   for (const q of ["s1", "s2", "s3", "s4", "s5"]) {
     const t = BrowserTestUtils.addTab(gBrowser, `https://example.com/?${q}`);
@@ -476,9 +514,16 @@ add_task(async function test_state_splits() {
   const [a, b, c, d, lone] = tabs;
   Assert.deepEqual((await state(1)).splits, [], "splits is there, none yet");
 
-  Assert.ok(view.showTabs([a, b], a).ok, "S1: a | b");
+  // Loaded tabs, each with its panel: PaneView's own tab type.
+  Assert.ok(
+    view.showTabs(/** @type {PaneTab[]} */ ([a, b]), /** @type {PaneTab} */ (a)).ok,
+    "S1: a | b",
+  );
   gBrowser.selectedTab = lone;
-  Assert.ok(view.showTabs([c, d], d).ok, "S2: c | d, made on a lone tab");
+  Assert.ok(
+    view.showTabs(/** @type {PaneTab[]} */ ([c, d]), /** @type {PaneTab} */ (d)).ok,
+    "S2: c | d, made on a lone tab",
+  );
   await TestUtils.waitForCondition(() => view.splits.shown === 2, "S2 shows");
   const before = view.splits;
   const firefox = () => ({
@@ -489,9 +534,10 @@ add_task(async function test_state_splits() {
   const was = firefox();
   const result = await state(4);
   Assert.deepEqual(firefox(), was, "state changed no selection, wrapper or page (S9)");
-  const id = (tab) => String(tab.linkedBrowser.browserId);
-  const index = (tab) => result.tabs.findIndex((t) => t.id === id(tab));
-  const row = (x, y) => ({
+  const id = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
+  const index = (/** @type {MozTabbrowserTab} */ tab) =>
+    result.tabs.findIndex((/** @type {StateTab} */ t) => t.id === id(tab));
+  const row = (/** @type {MozTabbrowserTab} */ x, /** @type {MozTabbrowserTab} */ y) => ({
     axis: "x",
     ratios: [0.5, 0.5],
     children: [
@@ -518,7 +564,7 @@ add_task(async function test_state_splits() {
   gBrowser.selectedTab = lone;
   const hidden = await state(5);
   Assert.deepEqual(
-    hidden.splits.map((x) => [x.number, x.shown]),
+    hidden.splits.map((/** @type {{ number: number, shown: boolean }} */ x) => [x.number, x.shown]),
     [
       [1, false],
       [2, false],
@@ -556,7 +602,8 @@ add_task(async function test_state_update() {
     usable: true,
     canApply: true,
     busy: true,
-    staged: "staged",
+    staged: /** @type {UpdateStage} */ ("staged"),
+    /** @param {string} buildId */
     stage(buildId) {
       return buildId === "20991231000000" ? this.staged : "none";
     },
@@ -607,7 +654,7 @@ add_task(async function test_state_update() {
 
   await enable();
   const client = await session();
-  const state = async (id) => {
+  const state = async (/** @type {number} */ id) => {
     const { result } = await client.request(id, "state");
     const v = validateMessage(
       { type: "response", id, ok: true, result },
@@ -692,7 +739,7 @@ add_task(async function test_open() {
   Assert.equal(gBrowser.selectedTab, tab, "in the foreground");
   Assert.equal(r.result.tab, String(tab.linkedBrowser.browserId), "result names the tab");
   Assert.ok(
-    tab.linkedBrowser.contentPrincipal.isContentPrincipal,
+    contentPrincipalOf(tab.linkedBrowser).isContentPrincipal,
     "the page loads with its own content principal",
   );
 
@@ -711,17 +758,19 @@ add_task(async function test_open() {
   Assert.equal(r3.result.tab, String(blankTab.linkedBrowser.browserId), "result names it");
   const { result } = await client.request(7, "state");
   Assert.deepEqual(
-    result.tabs.filter((t) => t.selected).map((t) => t.url),
+    result.tabs
+      .filter((/** @type {StateTab} */ t) => t.selected)
+      .map((/** @type {StateTab} */ t) => t.url),
     ["about:blank"],
     "state shows it selected at about:blank",
   );
   BrowserTestUtils.removeTab(blankTab);
 
-  for (const [id, bad] of [
+  for (const [id, bad] of /** @type {[number, string][]} */ ([
     [3, "javascript:alert(1)"],
     [4, "data:text/html,<script>alert(1)</script>"],
     [5, "chrome://browser/content/browser.xhtml"],
-  ]) {
+  ])) {
     const refused = await client.request(id, "open", { url: bad });
     Assert.equal(refused.error?.code, "invalid-args", `${bad.split(":")[0]}: is refused`);
   }
@@ -734,6 +783,7 @@ add_task(async function test_limits() {
   const { port, token } = await enable();
 
   // Eight authenticated connections are allowed; the ninth's hello gets busy and a close.
+  /** @type {Client[]} */
   const open = [];
   for (let i = 0; i < 8; i++) open.push(await session());
   Assert.equal(VimmaControl.connections, 8, "8 authenticated");
@@ -743,7 +793,7 @@ add_task(async function test_limits() {
   Assert.equal(busy.id, null, "with id null");
   Assert.ok(!busy.error.message.startsWith("busy"), `no doubled code: ${busy.error.message}`);
   Assert.equal(await ninth.closed, 0, "and closed");
-  open.pop().close();
+  /** @type {Client} */ (open.pop()).close();
   await TestUtils.waitForCondition(() => VimmaControl.connections === 7, "one closed");
   const tenth = new Client(port);
   Assert.equal((await tenth.hello(token)).type, "welcome", "a freed slot is usable");
@@ -754,6 +804,7 @@ add_task(async function test_limits() {
   // Connections that never say hello cannot crowd out a client with the token: at most two wait
   // for a hello, and a new one evicts the oldest (security.md S5; a reconnect loop would otherwise
   // make every vimma-ctl call busy).
+  /** @type {Client[]} */
   const flood = [];
   for (let i = 0; i < 40; i++) flood.push(new Client(port));
   // All but the 2 newest are evicted: up to 16 linger 1 s to deliver their "busy", the rest
@@ -807,7 +858,7 @@ async function vimmaCtlPath() {
   const fromEnv = Services.env.get("VIMMA_CTL");
   if (fromEnv) return fromEnv;
   const self = getChromeDir(getResolvedURI(gTestPath));
-  self.append(gTestPath.split("/").pop());
+  self.append(/** @type {string} */ (gTestPath.split("/").pop()));
   self.normalize(); // resolves `surfer import`'s symlink into the repository
   const repo = self.parent.parent.parent; // tests/browser/<file>
   for (const profile of ["release", "debug"]) {
@@ -840,6 +891,7 @@ add_task(async function test_vimma_ctl_end_to_end() {
 
   // A flood of connections that never say hello does not lock vimma-ctl out.
   const { port } = await readDiscovery();
+  /** @type {Client[]} */
   const flood = [];
   for (let i = 0; i < 30; i++) flood.push(new Client(port));
   for (let i = 0; i < 5; i++) {
@@ -853,8 +905,10 @@ add_task(async function test_vimma_ctl_end_to_end() {
   // sends no command.
   const squatter = Cc["@mozilla.org/network/server-socket;1"].createInstance(Ci.nsIServerSocket);
   squatter.init(-1, true, 4);
+  /** @type {string[]} */
   const received = [];
   squatter.asyncListen({
+    /** @param {unknown} _s @param {any} transport an nsISocketTransport, through the untyped Ci */
     onSocketAccepted(_s, transport) {
       const input = transport.openInputStream(0, 0, 0);
       const output = transport.openOutputStream(0, 0, 0);
@@ -929,7 +983,8 @@ function rgb(/** @type {string} */ hex) {
 }
 
 const barBackground = () =>
-  getComputedStyle(document.getElementById("vimma-statusbar")).backgroundColor;
+  getComputedStyle(/** @type {HTMLElement} */ (document.getElementById("vimma-statusbar")))
+    .backgroundColor;
 
 add_task(async function test_reload_theme() {
   // Spec m5-omarchy-theme, "Instant reload": Omarchy's theme-set hook runs
@@ -969,7 +1024,7 @@ add_task(async function test_reload_theme() {
 
   const wrong = new Client(port);
   const refused = await wrong.hello(
-    token.replace(/^./, (c) => (c === "0" ? "1" : "0")),
+    token.replace(/^./, (/** @type {string} */ c) => (c === "0" ? "1" : "0")),
     { checkProof: false },
   );
   Assert.equal(refused?.error?.code, "unauthorized", "a wrong token is refused");
@@ -993,7 +1048,11 @@ add_task(async function test_reload_theme() {
     // the built-in vimma palette, in the variant the window's colour scheme picks
     const light = window.matchMedia("(prefers-color-scheme: light)").matches;
     const { dark, light: lightPalette } = BUILTIN_THEMES.vimma;
-    return barBackground() === rgb((light ? lightPalette : dark).dark_background);
+    // The vimma theme has a light variant.
+    return (
+      barBackground() ===
+      rgb((light ? /** @type {typeof dark} */ (lightPalette) : dark).dark_background)
+    );
   }, "back to the built-in theme");
   await IOUtils.remove(dir, { recursive: true });
 });
@@ -1005,7 +1064,7 @@ add_task(async function test_server_checks_the_scheme_itself() {
     try {
       VimmaControl._commands.open({ url });
     } catch (e) {
-      code = e.code;
+      code = /** @type {{ code: string }} */ (e).code;
     }
     Assert.equal(code, "invalid-args", `${url.split(":")[0]}: refused by the server itself`);
   }

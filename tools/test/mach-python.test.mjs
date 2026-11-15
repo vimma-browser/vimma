@@ -25,6 +25,7 @@ describe("machPythonBounds", () => {
 });
 
 describe("pickMachPython", () => {
+  /** @type {import("../mach-python.mjs").PythonBounds} */
   const BOUNDS = { min: [3, 10], max: [3, 14] };
   const PATH = "/mise/bin:/mise/shims:/usr/bin";
   const FILES = [
@@ -97,6 +98,7 @@ describe("pickMachPython", () => {
 });
 
 describe("pickReport", () => {
+  /** @type {import("../mach-python.mjs").PythonBounds} */
   const BOUNDS = { min: [3, 10], max: [3, 14] };
 
   it("names the range, what it found and VIMMA_MACH_PYTHON when nothing fits", () => {

@@ -70,7 +70,7 @@ export function cssWindow(screen: { width: number; height: number }, scale: numb
 }
 
 /**
- * Prefs over the e2e harness's throwaway profile (tools/e2e/launcher.mjs PROFILE_PREFS, which
+ * Prefs over the e2e harness's throwaway profile (tools/e2e/launcher.ts PROFILE_PREFS, which
  * already turns the control socket on): the fixture server as the HTTP proxy, so the address
  * bar shows handbook.example rather than a port; dark chrome and content; larger pixels for a
  * video; smooth scrolling; the theme read from `themeDir` (a temp copy of a colors.toml),

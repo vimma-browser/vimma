@@ -9,7 +9,7 @@ import {
   UNTRUSTED_CLOSE,
   UNTRUSTED_OPEN,
   wrapUntrusted,
-} from "../../src/agent.mjs";
+} from "../../src/agent/agent.mjs";
 import { FUZZ_TIMEOUT, fuzz, nastyString } from "./harness.mjs";
 
 /** Occurrences of `needle` in `text`. @param {string} text @param {string} needle */
@@ -102,7 +102,7 @@ describe("agent gate fuzzing", () => {
             /** @type {Set<number>} */
             const always = new Set();
             // The connections that answered a grantable question with a grant.
-            /** @type {Set<import("../../src/agent.mjs").ConnId>} */
+            /** @type {Set<import("../../src/agent/agent.mjs").ConnId>} */
             const granted = new Set();
             let now = 0;
             for (const e of events) {
@@ -117,7 +117,7 @@ describe("agent gate fuzzing", () => {
                 if (!waiting.length) continue;
                 const target = waiting[e.pick % waiting.length];
                 if (!target) continue;
-                /** @type {import("../../src/agent.mjs").Answer} */
+                /** @type {import("../../src/agent/agent.mjs").Answer} */
                 const answer =
                   e.kind === "grant" ? { kind: "grant", minutes: 5 } : { kind: e.kind };
                 const { resolved, grant } = q.answer(target.id, answer, now);
@@ -181,7 +181,7 @@ describe("agent gate fuzzing", () => {
               const target = ids[("pick" in e ? e.pick : 0) % ids.length] ?? -1;
               if (e.op === "ask") q.ask(e.conn, e.tool, now);
               else if (e.op === "answer") {
-                /** @type {import("../../src/agent.mjs").Answer} */
+                /** @type {import("../../src/agent/agent.mjs").Answer} */
                 const answer =
                   e.kind === "grant" ? { kind: "grant", minutes: e.minutes } : { kind: e.kind };
                 settle(q.answer(target, answer, now).resolved);

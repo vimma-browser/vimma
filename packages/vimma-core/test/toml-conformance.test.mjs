@@ -2,7 +2,7 @@
 // We own the vendored copy (ADR-008), so we test it like our own code: one valid and one invalid
 // document per feature, in the spirit of toml-lang/toml-test.
 import { describe, test, expect } from "vitest";
-import { parseToml } from "../src/toml.mjs";
+import { parseToml } from "../src/config/toml.mjs";
 
 /** @param {string} text */
 const value = (text) => {

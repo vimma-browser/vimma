@@ -1,16 +1,17 @@
 # Fonts for the e2e screenshots
 
-The e2e harness (`tools/e2e/launcher.mjs`) starts a scenario's browser with `FONTCONFIG_FILE`
+The e2e harness (`tools/e2e/launcher.ts`) starts a scenario's browser with `FONTCONFIG_FILE`
 set to `fonts.conf` in this folder, so on Linux every scenario renders with the fonts here only,
 drawn with the hinting and antialiasing settings of CI's ubuntu-24.04. The baselines in
 `tests/e2e/baselines/` come from CI, and with the fonts pinned a local run on any Linux
 distribution compares with them without installing a font package (issue #944). macOS runs the
 scenarios headless and takes no screenshots, so it does not use this folder.
 
-What a local run still differs by (about 0.1 to 0.4 %) is not the fonts: the fixture server's
-random port, the system's FreeType version (the browser does not bundle one), and baselines older
-than later product changes; the runbook's "Baselines" section has the numbers, and issue #953
-tracks re-recording the baselines from CI with a fixed port.
+With the fonts pinned and the fixture server on a fixed port (issue #953), a local run compares
+with CI's baselines at 0.00 to 0.13 %: the line under the toolbar, drawn in a GTK colour that
+differs between GTK versions (0.125 %), and a few pixels of the system's FreeType version (the
+browser does not bundle one) in the PDF page's text. The runbook's "Baselines" section has the
+numbers.
 
 ## Which fonts, and why
 
@@ -57,7 +58,7 @@ ship:
 | `DejaVuSerif-Bold.ttf`       | `c47b5527bcdc8dcf9ea8c77054454c5a884beaca2f44851a2a823ee639cbf07f` |
 | `LiberationSans-Regular.ttf` | `76d04c18ea243f426b7de1f3ad208e927008f961dc5945e5aad352d0dfde8ee8` |
 
-`tools/e2e/test/fonts.test.mjs` checks each file against this table.
+`tools/e2e/test/fonts.test.ts` checks each file against this table.
 
 ## Licences
 
@@ -75,4 +76,4 @@ The files are used by the test harness only and are not part of any Vimma packag
 
 Download the new release, check its checksum against a second source (a mirror or a
 distribution's package), replace the files, update the table, run
-`npm test -- tools/e2e/test/fonts.test.mjs`, then the e2e scenarios against CI's baselines.
+`npm test -- tools/e2e/test/fonts.test.ts`, then the e2e scenarios against CI's baselines.

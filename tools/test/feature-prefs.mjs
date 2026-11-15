@@ -1,6 +1,7 @@
 // Readers for the vimma.feature.* rule (docs/specs/firefox-versions.md, decision 16), kept apart
 // from the test so the parsing has its own cases.
 import { readdirSync } from "node:fs";
+import { defined } from "./defined.ts";
 
 // pref(), sticky_pref() and lockPref() are the forms a Firefox prefs file accepts
 // (modules/libpref/parser); the value is kept as written so a quoted "false" or a 0 fails too.
@@ -11,7 +12,7 @@ const DEFINITION =
 export function featurePrefDefaults(text) {
   return text.split("\n").flatMap((source, i) => {
     const m = DEFINITION.exec(source);
-    return m ? [{ name: m[1], value: m[2], line: i + 1 }] : [];
+    return m ? [{ name: defined(m[1]), value: defined(m[2]), line: i + 1 }] : [];
   });
 }
 
@@ -21,7 +22,7 @@ const TRUE_FALLBACK = /getBoolPref\(\s*["'](vimma\.feature\.[^"']+)["']\s*,\s*tr
 
 /** @param {string} text @returns {string[]} */
 export function featurePrefFallbacks(text) {
-  return [...text.matchAll(TRUE_FALLBACK)].map((m) => m[1]);
+  return [...text.matchAll(TRUE_FALLBACK)].map((m) => defined(m[1]));
 }
 
 /** @param {URL} dir @returns {URL[]} every .js and .mjs file under dir */

@@ -10,10 +10,10 @@
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { surferVersions } from "../version-files/version-files.mjs";
+import { surferVersions } from "../version-files/version-files.ts";
 
 /**
- * @param {import("../version-files/version-files.mjs").SurferConfig} surferJson parsed surfer.json
+ * @param {import("../version-files/version-files.ts").SurferConfig} surferJson parsed surfer.json
  * @returns {string} e.g. `Vimma 0.5.2 · Firefox 158.0`
  * @throws when either version is missing or malformed
  */

@@ -5,11 +5,11 @@
 
 /**
  * The self-signed certificate Firefox's updater embeds for an update key
- * (docs/specs/m6a-updater.md §6, "Key ceremony"; docs/runbook.md, "Update signing keys and the
- * update host", step 5b). The updater reads only the certificate's public key (NSS
- * CERT_NewTempCertificate, then CERT_ExtractPublicKey: modules/libmar/verify/cryptox.c), but the
- * certificate is still self-signed, so that anyone can check with openssl that it was made by
- * the key it names.
+ * (docs/specs/m6a-updater.md §6, "Key ceremony"; docs/runbook/ci-update-keys-and-update-host.md,
+ * "Update signing keys and the update host", step 5b). The updater reads only the certificate's
+ * public key (NSS CERT_NewTempCertificate, then CERT_ExtractPublicKey:
+ * modules/libmar/verify/cryptox.c), but the certificate is still self-signed, so that anyone can
+ * check with openssl that it was made by the key it names.
  *
  * The primary's private key never leaves Cloud KMS, so openssl cannot sign the certificate. This
  * tool splits the work: `request` writes the to-be-signed certificate and the SHA-384 DigestInfo
@@ -33,7 +33,7 @@ import { X509Certificate, createHash, createPublicKey } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { UPDATE_KEYS } from "../../packages/vimma-core/src/update-keys.mjs";
+import { UPDATE_KEYS } from "../../packages/vimma-core/src/updates/update-keys.mjs";
 
 /** DER of the SHA-384 DigestInfo up to the 48-byte hash (RFC 8017, section 9.2, note 1). */
 export const SHA384_DIGESTINFO_PREFIX = Uint8Array.from(
@@ -212,7 +212,7 @@ function main(argv) {
       const pinned = UPDATE_KEYS.find((k) => k.slot === "primary");
       if (!pinned || Buffer.from(pinned.spki, "base64").compare(Buffer.from(spki)) !== 0) {
         throw new Error(
-          "the key is not the pinned primary (packages/vimma-core/src/update-keys.mjs); " +
+          "the key is not the pinned primary (packages/vimma-core/src/updates/update-keys.mjs); " +
             "pass --any-key only for a throwaway test key",
         );
       }

@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/vimma-mcp.md, decision 42 (docs/security.md M24). A tab you did not open
-// inside the agent workspace never takes its container: a link from another app (the remote
-// command line, BrowserDOMWindow's external open, Firefox's container guess), a URL from the
-// control socket, a new window's first tab, and the container cached for the next start. Such
-// a link opens in the last workspace you used that is not the agent's, and a foreground open
-// switches to it. What you open yourself inside the agent workspace (ctrl+t) stays there.
+// Spec: docs/specs/vimma-mcp.md, decision 42 (docs/security/12-agents-mcp.md M24). A tab you did
+// not open inside the agent workspace never takes its container: a link from another app (the
+// remote command line, BrowserDOMWindow's external open, Firefox's container guess), a URL from the
+// control socket, a new window's first tab, and the container cached for the next start. Such a
+// link opens in the last workspace you used that is not the agent's, and a foreground open switches
+// to it. What you open yourself inside the agent workspace (ctrl+t) stays there.
 
 "use strict";
 
@@ -34,31 +34,71 @@ const { ConfigHost } = ChromeUtils.importESModule(
 const LOGIN = "https://example.com/?login-token=secret";
 const STARTUP_PREF = "vimma.workspaces.startupUserContextId";
 
-const def = (/** @type {string} */ name) =>
-  WorkspaceStore.definitions.workspaces.find((w) => w.name === name);
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
-const ww = (win = window) => WindowWorkspaces.get(win);
+/**
+ * A workspace definition these tests know exists, with its container (containers are on in the
+ * browser tests).
+ * @param {string} name
+ */
+const def = (name) =>
+  /** @type {ContainedWorkspace} */ (
+    WorkspaceStore.definitions.workspaces.find((w) => w.name === name)
+  );
+/** The agent workspace, which setup checks has its container. */
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
+/**
+ * A window's workspaces, built: every window of these tests has them.
+ * @param {BrowserWindow} [win]
+ */
+const ww = (win = window) => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(win));
+/**
+ * The name of the shown workspace, one of the window's.
+ * @param {BrowserWindow} [win]
+ */
 const activeName = (win = window) =>
-  ww(win).model.workspaces.find((w) => w.id === ww(win).model.active).name;
+  /** @type {WorkspaceState} */ (
+    ww(win).model.workspaces.find((w) => w.id === ww(win).model.active)
+  ).name;
+/**
+ * A workspace the test adds, with its container.
+ * @param {{ name: string, color: string, icon: string }} w
+ */
+const addWorkspace = (w) => /** @type {ContainedWorkspace} */ (WorkspaceStore.addWorkspace(w));
 
 /** @param {() => boolean} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 50, 100);
 
-/** Resolves with the next tab opened in `win`. */
+/**
+ * Resolves with the next tab opened in `win`.
+ * @param {BrowserWindow} [win]
+ */
 const nextTab = (win = window) =>
-  BrowserTestUtils.waitForEvent(win.gBrowser.tabContainer, "TabOpen").then((e) => e.target);
+  BrowserTestUtils.waitForEvent(win.gBrowser.tabContainer, "TabOpen").then(
+    // Tabbrowser fires TabOpen on the new tab.
+    (e) => /** @type {MozTabbrowserTab} */ (e.target),
+  );
 
-/** The workspace used before the agent's: `oo-home`. */
+/** Closes the last tab, while there is more than one. */
+const removeLastTab = () =>
+  BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+
+/**
+ * The workspace used before the agent's: `oo-home`.
+ * @type {ContainedWorkspace}
+ */
 let home;
 
 add_task(async function setup() {
-  home = WorkspaceStore.addWorkspace({ name: "oo-home", color: "green", icon: "tree" });
+  home = addWorkspace({ name: "oo-home", color: "green", icon: "tree" });
   registerCleanupFunction(async () => {
     ww().switchTo({ id: def("main").id });
-    while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+    while (gBrowser.tabs.length > 1) removeLastTab();
     await WorkspaceStore.deleteWorkspace(home.id, { confirmed: true });
   });
-  Assert.ok(agent()?.userContextId > 0, "the agent workspace has its container");
+  Assert.greater(
+    WorkspaceStore.agent?.userContextId ?? 0,
+    0,
+    "the agent workspace has its container",
+  );
 });
 
 /** Shows oo-home, then the agent workspace with one agent tab selected. */
@@ -75,7 +115,7 @@ async function inAgentAfterHome() {
 /** Closes every tab but the first, back to main. */
 function tidy() {
   ww().switchTo({ id: def("main").id });
-  while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1) removeLastTab();
 }
 
 /**
@@ -91,7 +131,8 @@ function runHandlers(cmdLine) {
     try {
       Cc[value].getService(Ci.nsICommandLineHandler).handle(cmdLine);
     } catch (e) {
-      if (e.result === Cr.NS_ERROR_ABORT) throw e;
+      // An XPCOM exception has its nsresult; anything else thrown has none.
+      if (/** @type {{ result?: number }} */ (e).result === Cr.NS_ERROR_ABORT) throw e;
     }
   }
 }
@@ -99,7 +140,9 @@ function runHandlers(cmdLine) {
 add_task(async function an_external_link_opens_in_the_last_normal_workspace_and_switches() {
   await inAgentAfterHome();
   const opened = nextTab();
-  const cmdLine = Cu.createCommandLine([LOGIN], null, Ci.nsICommandLine.STATE_REMOTE_AUTO);
+  const cmdLine = /** @type {nsICommandLine} */ (
+    Cu.createCommandLine([LOGIN], null, Ci.nsICommandLine.STATE_REMOTE_AUTO)
+  );
   runHandlers(cmdLine);
   const tab = await opened;
   Assert.notEqual(tab.userContextId, agent().userContextId, "never the agent container");
@@ -165,7 +208,7 @@ add_task(async function tabs_loaded_from_outside_skip_the_agent_container() {
 
 add_task(async function a_guess_for_another_workspace_still_counts() {
   // Firefox guesses from visible tabs only: oo-other is shown in a second window.
-  const other = WorkspaceStore.addWorkspace({ name: "oo-other", color: "red", icon: "circle" });
+  const other = addWorkspace({ name: "oo-other", color: "red", icon: "circle" });
   const second = await BrowserTestUtils.openNewBrowserWindow();
   ww(second).switchTo({ id: other.id });
   await until(() => activeName(second) === "oo-other", "the second window shows oo-other");
@@ -227,10 +270,8 @@ add_task(async function a_route_rule_naming_the_agent_workspace_is_not_followed_
  */
 async function fromPrograms(names, url) {
   const opened = nextTab();
-  const cmdLine = Cu.createCommandLine(
-    ["-vimma-from", names, url],
-    null,
-    Ci.nsICommandLine.STATE_REMOTE_AUTO,
+  const cmdLine = /** @type {nsICommandLine} */ (
+    Cu.createCommandLine(["-vimma-from", names, url], null, Ci.nsICommandLine.STATE_REMOTE_AUTO)
   );
   runHandlers(cmdLine);
   return opened;
@@ -238,7 +279,7 @@ async function fromPrograms(names, url) {
 
 // docs/specs/app-routes.md, decision 5.
 add_task(async function a_rule_after_one_naming_the_agent_workspace_applies() {
-  const other = WorkspaceStore.addWorkspace({ name: "oo-other", color: "red", icon: "fence" });
+  const other = addWorkspace({ name: "oo-other", color: "red", icon: "fence" });
   WorkspaceRouter.setRoutes(
     resolveRoutes([
       { domain: "example.com", workspace: agent().name },
@@ -257,7 +298,7 @@ add_task(async function a_rule_after_one_naming_the_agent_workspace_applies() {
 });
 
 add_task(async function an_agent_cli_link_skips_every_app_rule_after_an_agent_rule() {
-  const admin = WorkspaceStore.addWorkspace({ name: "oo-admin", color: "red", icon: "fence" });
+  const admin = addWorkspace({ name: "oo-admin", color: "red", icon: "fence" });
   WorkspaceRouter.setRoutes(
     resolveRoutes([
       { app: "claude", workspace: agent().name },
@@ -280,7 +321,7 @@ add_task(async function an_agent_cli_link_skips_every_app_rule_after_an_agent_ru
 
 add_task(
   async function a_child_named_after_the_terminal_under_an_agent_cli_never_reaches_the_terminals_rule() {
-    const admin = WorkspaceStore.addWorkspace({ name: "oo-admin", color: "red", icon: "fence" });
+    const admin = addWorkspace({ name: "oo-admin", color: "red", icon: "fence" });
     WorkspaceRouter.setRoutes(
       resolveRoutes([
         { app: "ghostty", workspace: "oo-admin" },
@@ -312,8 +353,9 @@ add_task(async function a_default_workspace_naming_the_agent_workspace_is_passed
   }
 });
 
-// docs/specs/app-routes.md, decision 14 (docs/security.md R10): a tab's recorded names never
-// pick a rule naming the agent workspace, for the hint, :route move or about:vimma.
+// docs/specs/app-routes.md, decision 14 (docs/security/02-workspace-routing.md R10): a tab's
+// recorded names never pick a rule naming the agent workspace, for the hint, :route move or
+// about:vimma.
 add_task(async function an_app_routed_tabs_names_never_pick_the_agent_workspace() {
   WorkspaceRouter.setRoutes(
     resolveRoutes([{ app: "testapp", domain: "example.com", workspace: "oo-home" }]),
@@ -358,7 +400,8 @@ add_task(async function about_vimma_marks_an_agent_rule_and_an_agent_default() {
       () => about.linkedBrowser.contentDocument?.documentElement.dataset.ready === "true",
       "about:vimma rendered",
     );
-    const doc = about.linkedBrowser.contentDocument;
+    // Rendered: the wait above read its document.
+    const doc = /** @type {Document} */ (about.linkedBrowser.contentDocument);
     const states = [...doc.querySelectorAll("#routes tbody tr td:last-child")].map(
       (td) => td.textContent,
     );
@@ -368,7 +411,7 @@ add_task(async function about_vimma_marks_an_agent_rule_and_an_agent_default() {
       "the agent rule is marked",
     );
     Assert.stringContains(
-      doc.getElementById("route-default").textContent,
+      doc.getElementById("route-default")?.textContent ?? "",
       "never for links from other apps: the agent workspace",
       "and so is a default workspace naming it",
     );
@@ -452,7 +495,7 @@ add_task(async function with_no_normal_workspace_used_yet_the_first_one_is_taken
   const tab = await opened;
   Assert.equal(
     tab.userContextId,
-    WorkspaceStore.definitions.workspaces[0].userContextId,
+    /** @type {ContainedWorkspace} */ (WorkspaceStore.definitions.workspaces[0]).userContextId,
     "the first workspace in order",
   );
   Assert.notEqual(tab.userContextId, agent().userContextId, "never the agent's");
@@ -466,8 +509,8 @@ add_task(async function the_agent_workspace_is_known_before_config_toml_names_it
   const CACHE_PREF = "vimma.workspaces.startupAgentUserContextId";
   const savedId = Services.prefs.getStringPref(ID_PREF, "");
   const savedCache = Services.prefs.getIntPref(CACHE_PREF, 0);
-  const bots = WorkspaceStore.addWorkspace({ name: "oo-bots", color: "cyan", icon: "circle" });
-  const robots = WorkspaceStore.addWorkspace({ name: "oo-robots", color: "cyan", icon: "circle" });
+  const bots = addWorkspace({ name: "oo-bots", color: "cyan", icon: "circle" });
+  const robots = addWorkspace({ name: "oo-robots", color: "cyan", icon: "circle" });
   try {
     ww().switchTo({ id: home.id });
     /** A save records the agent's container again: set both after each switch. */
@@ -503,7 +546,7 @@ add_task(async function config_toml_naming_the_agent_workspace_retires_the_recor
   // another name is an ordinary one again (decision 8): outside opens may land there.
   const ID_PREF = "vimma.mcp.agentWorkspaceId";
   const savedId = Services.prefs.getStringPref(ID_PREF, "");
-  const old = WorkspaceStore.addWorkspace({ name: "oo-old-agent", color: "cyan", icon: "circle" });
+  const old = addWorkspace({ name: "oo-old-agent", color: "cyan", icon: "circle" });
   const dir = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-outside");
   const file = PathUtils.join(dir, "config.toml");
   await IOUtils.writeUTF8(file, "schema = 2\n");

@@ -4,7 +4,7 @@
 
 // Spec: docs/specs/m1-copy-mode.md
 
-/* global focusContent, recordPageKeys, pageKeys, waitForPageKey -- from head.js */
+/* global focusContent, recordPageKeys, pageKeys, waitForPageKey, contextOf, windowGlobalOf -- from head.js */
 /* global docShell -- in SpecialPowers.spawn's content task scope */
 
 "use strict";
@@ -58,7 +58,8 @@ function waitForMode(browser, mode) {
  */
 function selectionIn(target) {
   return SpecialPowers.spawn(target, [], () => {
-    const sel = content.getSelection();
+    // A window with a document has a selection; were it missing, the reads below would throw.
+    const sel = /** @type {Selection} */ (content.getSelection());
     const selCon = docShell
       .QueryInterface(Ci.nsIInterfaceRequestor)
       .getInterface(Ci.nsISelectionDisplay)
@@ -76,34 +77,44 @@ function selectionIn(target) {
   });
 }
 
+/** @typedef {Awaited<ReturnType<typeof selectionIn>>} SelectionState */
+
 /**
  * Waits until the selection in `target` matches `want` (a subset of selectionIn's fields).
  * @param {BrowsingContext | XULBrowserElement} target
- * @param {object} want
+ * @param {Partial<SelectionState>} want
  * @param {string} what
  */
 async function waitForSelection(target, want, what) {
+  /** @type {SelectionState | undefined} */
   let last;
   try {
     await TestUtils.waitForCondition(async () => {
-      last = await selectionIn(target);
-      return Object.entries(want).every(([k, v]) => last[k] === v);
+      const read = await selectionIn(target);
+      last = read;
+      return Object.entries(want).every(
+        ([k, v]) => read[/** @type {keyof SelectionState} */ (k)] === v,
+      );
     }, what);
   } catch {
     // fall through to the assertion, which shows what was there
   }
-  for (const [k, v] of Object.entries(want)) Assert.equal(last[k], v, `${what}: ${k}`);
+  if (!last) throw new Error(`${what}: the selection was never read`);
+  for (const [k, v] of Object.entries(want)) {
+    Assert.equal(last[/** @type {keyof SelectionState} */ (k)], v, `${what}: ${k}`);
+  }
   return last;
 }
 
 /** ctrl+b, then `key`. */
-function prefix(key) {
+function prefix(/** @type {string} */ key) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key);
 }
 
+/** The status bar's notice, which Vimma's chrome always has. */
 function notice() {
-  return document.getElementById("vimma-notice");
+  return /** @type {HTMLElement} */ (document.getElementById("vimma-notice"));
 }
 
 add_task(async function v_places_a_visible_caret_at_the_top_of_the_viewport() {
@@ -236,7 +247,7 @@ add_task(async function the_page_gets_no_keys_in_copy_mode() {
 
 add_task(async function copy_mode_works_in_a_focused_cross_origin_frame() {
   await withPage(async (browser) => {
-    const frame = browser.browsingContext.children[0];
+    const frame = contextOf(browser).children[0];
     Assert.ok(frame, "the iframe has a browsing context");
     await SpecialPowers.spawn(frame, [], () => content.focus());
     await TestUtils.waitForCondition(
@@ -258,7 +269,7 @@ add_task(async function copy_mode_works_in_a_focused_cross_origin_frame() {
 
 add_task(async function malformed_or_unfocused_caret_messages_are_refused() {
   await withPage(async (browser) => {
-    const actor = browser.browsingContext.currentWindowGlobal.getActor("Vimma");
+    const actor = windowGlobalOf(contextOf(browser)).getActor("Vimma");
     const bad = [
       null,
       "enter",
@@ -274,8 +285,8 @@ add_task(async function malformed_or_unfocused_caret_messages_are_refused() {
     }
     Assert.equal((await selectionIn(browser)).caret, false, "no caret from them");
     // The frame does not have focus: it takes no caret.
-    const frame = browser.browsingContext.children[0];
-    const frameActor = frame.currentWindowGlobal.getActor("Vimma");
+    const frame = contextOf(browser).children[0];
+    const frameActor = windowGlobalOf(frame).getActor("Vimma");
     Assert.equal(await frameActor.sendQuery("Vimma:Caret", { op: "enter" }), false, "unfocused");
     Assert.equal(await actor.sendQuery("Vimma:Caret", { op: "enter" }), true, "focused: entered");
     Assert.equal(await actor.sendQuery("Vimma:Caret", { op: "exit" }), true, "and left");
