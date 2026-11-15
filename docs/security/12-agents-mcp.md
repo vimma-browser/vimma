@@ -861,7 +861,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   the step as done. A step that has started no load a second after it ran
   has its allowance withdrawn then, while the wait goes on, so a page that keeps itself busy
   (changing its document, holding a request open) never keeps the allowance open longer than
-  the second it had before; the parent bounds each of these answers itself, so a page that
+  that second, plus at most the 100 ms after an in-place address change; the parent bounds each of these answers itself, so a page that
   blocks its own process cannot hold the call either. A submission the page makes later, after
   the call, is outside the allowance and is cancelled while the mark stays, as any other, though
   the result can no longer name it. That wait is bounded: a child that does not answer

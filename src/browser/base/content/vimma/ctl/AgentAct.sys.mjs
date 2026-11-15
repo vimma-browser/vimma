@@ -590,8 +590,9 @@ export const AgentAct = {
           // The address changed in place (history.pushState) and nothing loads yet: the tab's
           // location change reaches the parent before the start of a load the same handler
           // goes on to make (a form.submit() after the pushState), and the allowance that ends
-          // with this wait must still be open for it. A tick later the load has said so. Counted
-          // once per wait, so a page that keeps changing its address cannot stretch it.
+          // with this wait must still be open for it. A load that starts later than a tick is
+          // cancelled, which fails closed. Counted once per wait, so a page that keeps changing
+          // its address cannot stretch it.
           if (!inPlaceAt) inPlaceAt = Date.now();
           const left = inPlaceAt + TICK_MS - Date.now();
           if (left <= 0) return undefined;
