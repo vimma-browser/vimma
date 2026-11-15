@@ -11,10 +11,10 @@
 // becomes anything but characters; agent-chat-view.mjs builds and draws the box from this
 // window's state, through its one text-only `el`. Keys reach it from VimmaHost's capture
 // listener while focus is inside it; they are fixed, as a picker's are, because the window's key
-// in the keymap comes in its own pull request (B13). The host that builds it hands it the agent's services (the
-// conversations, the agent CLIs, the API keys, config.toml's refusal, setup's write to it and
-// the [agent] providers): ui/ sits below agent/, config/ and host/, and reaches none of them
-// (ADR-026).
+// in the keymap comes in its own pull request (B13). The host that builds it hands it the
+// agent's services (the conversations, the agent CLIs, the API keys, config.toml's refusal,
+// setup's write to it and the [agent] providers): ui/ sits below agent/, config/ and host/, and
+// reaches none of them (ADR-026).
 
 import {
   chatKey,
