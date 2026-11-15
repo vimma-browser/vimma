@@ -71,8 +71,8 @@ node tools/package/package.mjs --tarball engine/obj-x86_64-pc-linux-gnu/dist/vim
   --out dist --maintainer 'Name <email>' --appimagetool /tmp/ait/appimagetool \
   --runtime /tmp/ait/runtime-x86_64 --no-deb   # dpkg-deb only exists on Debian/Ubuntu
 node tools/package/validate-sbom.mjs dist/vimma-*.cdx.json
-tools/package/arch-smoke.sh dist "$(node tools/release/version-line.mjs)"   # needs docker
-tools/package/rpm-smoke.sh dist "$(node tools/release/version-line.mjs)"    # needs docker
+tools/package/arch-smoke.sh dist "$(node tools/release/version-line.ts)"   # needs docker
+tools/package/rpm-smoke.sh dist "$(node tools/release/version-line.ts)"    # needs docker
 ```
 
 `package.mjs` builds the `.rpm` with `rpmbuild` (on Arch, the `rpm-tools` package; on

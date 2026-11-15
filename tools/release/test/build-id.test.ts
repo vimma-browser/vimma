@@ -4,14 +4,14 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildIdProblem, fullVersionBuildIds, iniBuildId } from "../build-id.mjs";
+import { buildIdProblem, fullVersionBuildIds, iniBuildId } from "../build-id.ts";
 
 // #563: the build ID compiled into a release (what Services.appinfo.appBuildID says) and the one
 // in its packaged application.ini (what tools/update/manifest.mjs offers) must be the same, or
 // the release offers itself to itself as an update.
 
-const SCRIPT = fileURLToPath(new URL("../build-id.mjs", import.meta.url));
-const INI = (/** @type {string} */ id) =>
+const SCRIPT = fileURLToPath(new URL("../build-id.ts", import.meta.url));
+const INI = (id: string) =>
   `; This file is not used.\n[App]\nVendor=Vimma\nName=Vimma\nVersion=159.0\nBuildID=${id}\n` +
   `[Gecko]\nMinVersion=159.0\n`;
 
@@ -54,7 +54,7 @@ describe("build IDs", () => {
         '#!/bin/sh\n[ "$1" = --full-version ] && echo "Vimma Vimma 0.1.10 20261027202113 20261027202113"\n',
       );
       chmodSync(bin, 0o755);
-      const run = (/** @type {string} */ id) => {
+      const run = (id: string) => {
         writeFileSync(join(dir, "application.ini"), INI(id));
         return spawnSync(
           process.execPath,

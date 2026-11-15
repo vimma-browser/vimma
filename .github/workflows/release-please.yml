@@ -48,8 +48,8 @@ jobs:
 
   # Issue #529: the hand-written `## [Unreleased]` lines move into the release PR's new entry,
   # above release-please's list, leaving an empty `## [Unreleased]` at the top
-  # (tools/release/changelog.mjs). Decision 7: that entry's heading gets ` · Firefox <version>`
-  # and each Firefox bump line its advisory links (tools/release/firefox-notes.mjs). Both edits are
+  # (tools/release/changelog.ts). Decision 7: that entry's heading gets ` · Firefox <version>`
+  # and each Firefox bump line its advisory links (tools/release/firefox-notes.ts). Both edits are
   # one commit on the release branch. "always-update" makes release-please rebuild the branch from
   # main on every run (a force-push that drops this commit), so the moved lines are always main's
   # and the PR never conflicts with main on CHANGELOG.md; this job applies the edits again in the
@@ -95,8 +95,8 @@ jobs:
           gh api "$api/CHANGELOG.md?ref=$BRANCH" > "$dir/changelog.json"
           sha=$(jq -r .sha "$dir/changelog.json")
           jq -r .content "$dir/changelog.json" | base64 -d > "$dir/CHANGELOG.md"
-          node tools/release/changelog.mjs move "$dir/CHANGELOG.md" > "$dir/moved.md"
-          node tools/release/firefox-notes.mjs "$dir/moved.md" --surfer "$dir/surfer.json" \
+          node tools/release/changelog.ts move "$dir/CHANGELOG.md" > "$dir/moved.md"
+          node tools/release/firefox-notes.ts "$dir/moved.md" --surfer "$dir/surfer.json" \
             > "$dir/new.md"
           if cmp -s "$dir/CHANGELOG.md" "$dir/new.md"; then
             echo "#$pr's changelog entry already has the unreleased lines and the Firefox version."
@@ -115,7 +115,7 @@ jobs:
             >> "$GITHUB_STEP_SUMMARY"
 
   # Decision 8: the release release-please just created is titled `Vimma <x> · Firefox <y>`
-  # (tools/release/version-line.mjs on the tag's surfer.json) and its notes' heading and bump
+  # (tools/release/version-line.ts on the tag's surfer.json) and its notes' heading and bump
   # lines get the same edit as the changelog. release-please writes the notes from the release
   # PR's body, which holds only its own list, so the hand-written lines of the tag's CHANGELOG.md
   # entry are added first (issue #529). The notes are transformed, never rewritten, so
@@ -143,7 +143,7 @@ jobs:
           TAG: ${{ needs.release-please.outputs.tag_name }}
         run: |
           set -euo pipefail
-          title=$(node tools/release/version-line.mjs)
+          title=$(node tools/release/version-line.ts)
           case "$title" in
             "Vimma ${TAG#v} · Firefox "*) ;;
             *) echo "::error::$TAG's surfer.json gives \"$title\""; exit 1 ;;
@@ -157,11 +157,11 @@ jobs:
           fi
           jq -j '.body // ""' "$dir/release.json" > "$dir/body.md"
           # Without the hand-written lines the release is still titled; the warning says to add them.
-          if ! node tools/release/changelog.mjs notes "$dir/body.md" --changelog CHANGELOG.md --version "${TAG#v}" > "$dir/hand.md"; then
+          if ! node tools/release/changelog.ts notes "$dir/body.md" --changelog CHANGELOG.md --version "${TAG#v}" > "$dir/hand.md"; then
             echo "::warning::$TAG's notes lack the hand-written CHANGELOG.md lines (docs/runbook/ci-releases.md, Releases)"
             cp "$dir/body.md" "$dir/hand.md"
           fi
-          node tools/release/firefox-notes.mjs "$dir/hand.md" --surfer surfer.json > "$dir/new.md"
+          node tools/release/firefox-notes.ts "$dir/hand.md" --surfer surfer.json > "$dir/new.md"
           if [ "$(jq -r .name "$dir/release.json")" = "$title" ] && cmp -s "$dir/body.md" "$dir/new.md"; then
             echo "$TAG is already titled \"$title\"."
             exit 0
@@ -211,7 +211,7 @@ jobs:
   # release PR is set to auto-merge, pinned to its head commit, so GitHub merges it once the main
   # ruleset is satisfied and no person stands between the bump and the release. It runs after
   # firefox-notes so the pinned head already carries that job's changelog commit. Every check is
-  # in tools/release/security-release.mjs decide(); off until AUTO_SECURITY_RELEASE is `true`
+  # in tools/release/security-release.ts decide(); off until AUTO_SECURITY_RELEASE is `true`
   # (docs/runbook/ci-releases.md, Releases). Reads and the merge go through the release-please token: a merge
   # made with GITHUB_TOKEN would push to main without starting release-please.yml, so no release
   # would follow. GITHUB_TOKEN only checks out main's code; the release branch is read as data.
@@ -233,4 +233,4 @@ jobs:
         env:
           AUTO_SECURITY_RELEASE: ${{ vars.AUTO_SECURITY_RELEASE }}
           RELEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
-        run: node tools/release/security-release.mjs
+        run: node tools/release/security-release.ts

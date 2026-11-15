@@ -64,7 +64,7 @@ tag whose commit is on main").
    against Mozilla's signed `SHA512SUMS` before extracting it
    ([ADR-021](../adr/021-mozilla-release-key.md)), restores nothing from the Actions cache, fixes
    `MOZ_BUILD_DATE` so the binary and `application.ini` carry one build ID
-   (`tools/release/build-id.mjs` fails a package where they differ), and builds with
+   (`tools/release/build-id.ts` fails a package where they differ), and builds with
    `VIMMA_UPDATES=1`: Firefox's updater with Vimma's channel, update host and certificates
    (`configs/common/mozconfig`). It then runs a smoke check, packages with mach, packs the MAR
    tools (`tools/update/mar-tools.mjs`) and writes the CycloneDX SBOM (`tools/package/sbom.mjs`).

@@ -37,7 +37,7 @@ export type SurferConfig = {
 
 /**
  * The two versions in surfer.json, checked: the Firefox version and the brand's display version.
- * tools/release/version-line.mjs uses the same check.
+ * tools/release/version-line.ts uses the same check.
  * @param config parsed surfer.json
  */
 export function surferVersions(

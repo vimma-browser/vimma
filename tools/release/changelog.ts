@@ -23,9 +23,9 @@
  * for byte.
  *
  * Usage:
- *   node tools/release/changelog.mjs move <CHANGELOG.md>
- *   node tools/release/changelog.mjs notes <notes.md> --changelog <CHANGELOG.md> --version <x.y.z>
- *   node tools/release/changelog.mjs check [CHANGELOG.md]
+ *   node tools/release/changelog.ts move <CHANGELOG.md>
+ *   node tools/release/changelog.ts notes <notes.md> --changelog <CHANGELOG.md> --version <x.y.z>
+ *   node tools/release/changelog.ts check [CHANGELOG.md]
  * move and notes print the result to stdout. Node built-ins only.
  */
 import { readFileSync } from "node:fs";
@@ -52,29 +52,25 @@ const ENTRY_SECTIONS = new Set([
 /** A release heading as release-please writes it, with or without a compare link. */
 const VERSION_HEADING = /^## \[?(\d+\.\d+\.\d+[^\]\s(]*)\]?[\s(]/;
 
-/**
- * @typedef {{ name: string, items: string[] }} Section  items: each a `- ` line plus its
- *   indented continuation lines, joined by "\n"
- */
+type Section = {
+  name: string;
+  /** each a `- ` line plus its indented continuation lines, joined by "\n" */
+  items: string[];
+};
 
-/** @param {string} line */
-const isHeading2 = (line) => line.startsWith("## ");
+const isHeading2 = (line: string) => line.startsWith("## ");
 
 /**
  * The hand-written items at the top of each section of `lines` (an entry without its heading).
- * @param {string[]} lines
- * @returns {Section[]}
  */
-function handItems(lines) {
-  /** @type {Section[]} */
-  const sections = [];
-  /** @type {Section | undefined} */
-  let current;
+function handItems(lines: string[]): Section[] {
+  const sections: Section[] = [];
+  let current: Section | undefined;
   for (let i = 0; i < lines.length; i++) {
-    const line = /** @type {string} */ (lines[i]);
+    const line = lines[i] as string;
     const heading = /^### (.+)$/.exec(line);
     if (heading) {
-      current = { name: /** @type {string} */ (heading[1]), items: [] };
+      current = { name: heading[1] as string, items: [] };
       sections.push(current);
     } else if (current && line.startsWith("- ")) {
       let item = line;
@@ -88,11 +84,8 @@ function handItems(lines) {
 /**
  * Adds `sections`' items to `entry`, the lines of one release entry from its heading up to (not
  * including) whatever follows it. Items already in the entry are skipped.
- * @param {string[]} entry
- * @param {Section[]} sections
- * @returns {string[]}
  */
-function mergeInto(entry, sections) {
+function mergeInto(entry: string[], sections: Section[]): string[] {
   let out = [...entry];
   const text = () => out.join("\n");
   for (const { name, items } of sections) {
@@ -141,43 +134,38 @@ function mergeInto(entry, sections) {
 /**
  * Where the newest release entry starts and ends in `lines`: from the first version heading up
  * to the next `## ` heading, a `---` rule or a heading that is not a changelog section.
- * @param {string[]} lines
- * @returns {{ start: number, end: number, version: string } | null}
  */
-function newestEntry(lines) {
+function newestEntry(lines: string[]): { start: number; end: number; version: string } | null {
   const start = lines.findIndex((l) => VERSION_HEADING.test(l));
   if (start === -1) return null;
   let end = start + 1;
   for (; end < lines.length; end++) {
-    const line = /** @type {string} */ (lines[end]);
+    const line = lines[end] as string;
     if (isHeading2(line) || line === "---") break;
     const h3 = /^### (.+)$/.exec(line);
-    if (h3 && !ENTRY_SECTIONS.has(/** @type {string} */ (h3[1]))) break;
+    if (h3 && !ENTRY_SECTIONS.has(h3[1] as string)) break;
   }
-  const version = /** @type {string} */ (VERSION_HEADING.exec(lines[start] ?? "")?.[1]);
+  const version = VERSION_HEADING.exec(lines[start] ?? "")?.[1] as string;
   return { start, end, version };
 }
 
 /**
  * Problems with the `[Unreleased]` section's body (`lines`, after its heading), as messages
  * with 1-based line numbers counted from `offset`.
- * @param {string[]} lines
- * @param {number} offset the 0-based index of the heading
- * @returns {string[]}
+ * @param offset the 0-based index of the heading
  */
-function unreleasedProblems(lines, offset) {
+function unreleasedProblems(lines: string[], offset: number): string[] {
   const problems = [];
-  /** @type {Set<string>} */
-  const seen = new Set();
+  const seen = new Set<string>();
   let inItem = false;
   for (let i = 0; i < lines.length; i++) {
-    const line = /** @type {string} */ (lines[i]);
+    const line = lines[i] as string;
     const n = offset + i + 2;
     const heading = /^### (.+)$/.exec(line);
     if (line === "") {
       inItem = false;
     } else if (heading) {
-      const name = /** @type {string} */ (heading[1]);
+      const name = heading[1] as string;
       if (!HAND_SECTIONS.has(name)) {
         problems.push(
           `line ${n}: \`${line}\` is not a Keep a Changelog section (${[...HAND_SECTIONS].join(", ")})`,
@@ -201,16 +189,15 @@ function unreleasedProblems(lines, offset) {
 }
 
 /**
- * @param {string} markdown a CHANGELOG.md
- * @returns {string[]} what is wrong with its `[Unreleased]` section; empty when nothing is
+ * @param markdown a CHANGELOG.md
+ * @returns what is wrong with its `[Unreleased]` section; empty when nothing is
  */
-export function checkChangelog(markdown) {
+export function checkChangelog(markdown: string): string[] {
   const lines = markdown.split("\n");
   const at = lines.flatMap((l, i) => (l === UNRELEASED ? [i] : []));
   const first = lines.findIndex(isHeading2);
   if (at.length === 0) return [`no \`${UNRELEASED}\` heading: add it above the newest release`];
-  /** @type {string[]} */
-  const problems = [];
+  const problems: string[] = [];
   if (first !== at[0]) {
     problems.push(
       `line ${first + 1}: \`${UNRELEASED}\` must be the first \`## \` heading, above \`${lines[first]}\``,
@@ -220,27 +207,26 @@ export function checkChangelog(markdown) {
     problems.push(`line ${i + 1}: \`${UNRELEASED}\` may appear only once`);
   }
   if (problems.length) return problems;
-  const start = /** @type {number} */ (at[0]);
+  const start = at[0] as number;
   let end = start + 1;
-  while (end < lines.length && !isHeading2(/** @type {string} */ (lines[end]))) end++;
+  while (end < lines.length && !isHeading2(lines[end] as string)) end++;
   return unreleasedProblems(lines.slice(start + 1, end), start);
 }
 
 /**
- * @param {string} markdown CHANGELOG.md on the release branch, with release-please's new entry
- * @returns {string} the same with the `[Unreleased]` items moved into the newest entry and an
+ * @param markdown CHANGELOG.md on the release branch, with release-please's new entry
+ * @returns the same with the `[Unreleased]` items moved into the newest entry and an
  *   empty `## [Unreleased]` right above it
  */
-export function moveUnreleased(markdown) {
+export function moveUnreleased(markdown: string): string {
   let lines = markdown.split("\n");
   const at = lines.flatMap((l, i) => (l === UNRELEASED ? [i] : []));
   if (at.length > 1) throw new Error(`more than one ${UNRELEASED} section`);
-  /** @type {Section[]} */
-  let sections = [];
+  let sections: Section[] = [];
   if (at.length === 1) {
-    const start = /** @type {number} */ (at[0]);
+    const start = at[0] as number;
     let end = start + 1;
-    while (end < lines.length && !isHeading2(/** @type {string} */ (lines[end]))) end++;
+    while (end < lines.length && !isHeading2(lines[end] as string)) end++;
     const body = lines.slice(start + 1, end);
     const problems = unreleasedProblems(body, start);
     if (problems.length) throw new Error(`cannot move [Unreleased] whole: ${problems.join("; ")}`);
@@ -260,16 +246,16 @@ export function moveUnreleased(markdown) {
 }
 
 /**
- * @param {string} notes a GitHub release's notes, release-please's entry for `version`
- * @param {string} changelog CHANGELOG.md at the release's tag
- * @param {string} version e.g. 0.1.9
- * @returns {string} the notes with the hand-written items of `version`'s changelog entry
+ * @param notes a GitHub release's notes, release-please's entry for `version`
+ * @param changelog CHANGELOG.md at the release's tag
+ * @param version e.g. 0.1.9
+ * @returns the notes with the hand-written items of `version`'s changelog entry
  */
-export function handWrittenNotes(notes, changelog, version) {
+export function handWrittenNotes(notes: string, changelog: string, version: string): string {
   const log = changelog.split("\n");
   const start = log.findIndex((l) => VERSION_HEADING.exec(l)?.[1] === version);
   if (start === -1) throw new Error(`CHANGELOG.md has no ${version} entry`);
-  const logEntry = /** @type {{ start: number, end: number }} */ (newestEntry(log.slice(start)));
+  const logEntry = newestEntry(log.slice(start)) as { start: number; end: number };
   const sections = handItems(log.slice(start + 1, start + logEntry.end));
 
   const lines = notes.split("\n");
@@ -287,7 +273,7 @@ function main() {
     options: { changelog: { type: "string" }, version: { type: "string" } },
   });
   const [command, file = "CHANGELOG.md"] = positionals;
-  const read = (/** @type {string} */ path) => readFileSync(path, "utf8");
+  const read = (path: string) => readFileSync(path, "utf8");
   if (command === "move") {
     process.stdout.write(moveUnreleased(read(file)));
   } else if (command === "notes" && values.changelog && values.version) {
@@ -299,7 +285,7 @@ function main() {
     console.log(`Changelog: ${file}'s [Unreleased] is the first heading, once, and movable.`);
   } else {
     throw new Error(
-      "usage: changelog.mjs move <file> | notes <file> --changelog <file> --version <x.y.z> | check [file]",
+      "usage: changelog.ts move <file> | notes <file> --changelog <file> --version <x.y.z> | check [file]",
     );
   }
 }

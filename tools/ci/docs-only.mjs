@@ -41,7 +41,7 @@ export const MARKDOWN_TESTS = Object.freeze([
   "packages/vimma-core/test/guide-agent-examples.test.mjs",
   "packages/vimma-core/test/updates.test.mjs",
   "tools/package/test/package.test.mjs",
-  "tools/release/test/changelog.test.mjs",
+  "tools/release/test/changelog.test.ts",
   "tools/security/test/check-doc-links.test.ts",
   "tools/security/test/doc-index.test.ts",
 ]);
