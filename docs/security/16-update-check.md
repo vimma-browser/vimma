@@ -393,9 +393,9 @@ _Pages_ and _extensions_ cannot reach it.
   self-signed by its own key is refused. The primary's certificate is made from the request
   `update-cert.mjs` builds for the pinned primary key; only `--any-key`, for throwaway test
   keys, takes another. The `tools/` update tests sign with two fixed RSA-4096 test keys whose
-  private halves are committed (`tools/test/fixtures/rsa-4096/`, so that no test waits on a
-  key's random prime search); a test fails if either is pinned or held by an updater
-  certificate. `check-build.mjs` checks a package (the URL, both channel files, and that its
+  private halves are committed (`tools/test/fixtures/rsa-4096/`, so that no test waits on an
+  RSA-4096 key's random prime search; only the refusals of other key sizes make a short
+  throwaway key); a test fails if either is pinned or held by an updater certificate. `check-build.mjs` checks a package (the URL, both channel files, and that its
   `updater` carries Vimma's certificates and none of Mozilla's): `release.yml`'s `package` job
   on the release tarball, and `nightly.yml` on its tarball once it is set to the
   `vimma-nightly` channel (UP14). Firefox's check runs Vimma's verifier first (UP13).
