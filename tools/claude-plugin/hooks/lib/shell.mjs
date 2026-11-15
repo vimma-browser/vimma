@@ -10,9 +10,9 @@
 
 /**
  * @typedef {{ text: string, dynamic: boolean }} Word
- * @typedef {{ words: Word[], subs: Segment[][], writes: Word[], op: string | null }} Segment
+ * @typedef {{ words: Word[], subs: Segment[][], writes: Word[], stdin: string[], op: string | null }} Segment
  *   a simple command, the commands of its substitutions, the files its output redirections
- *   write, and the operator after it
+ *   write, the text its here-strings and heredocs feed it, and the operator after it
  * @typedef {{ name: string, args: Word[] }} Command
  */
 
@@ -28,7 +28,7 @@ class Parser {
   constructor(src) {
     this.s = src;
     this.i = 0;
-    /** @type {{ delim: string, strip: boolean }[]} */
+    /** @type {{ delim: string, strip: boolean, into: string[] }[]} */
     this.heredocs = [];
   }
 
@@ -47,9 +47,11 @@ class Parser {
     let subs = [];
     /** @type {Word[]} */
     let writes = [];
+    /** @type {string[]} */
+    let stdin = [];
     /** @type {Word | null} */
     let word = null;
-    /** @type {"" | "in" | "out"} the next word is a redirection target, not an argument */
+    /** @type {"" | "in" | "out" | "here"} the next word is a redirection target or a here-string */
     let target = "";
     let depth = 0;
     const cur = () => (word ??= { text: "", dynamic: false });
@@ -58,6 +60,7 @@ class Parser {
     const endWord = () => {
       if (!word) return;
       if (target === "out") writes.push(word);
+      if (target === "here") stdin.push(word.text);
       if (target) target = "";
       else words.push(word);
       word = null;
@@ -65,10 +68,13 @@ class Parser {
     /** @param {string | null} op */
     const endSeg = (op) => {
       endWord();
-      if (words.length || subs.length || writes.length) segs.push({ words, subs, writes, op });
+      if (words.length || subs.length || writes.length || stdin.length) {
+        segs.push({ words, subs, writes, stdin, op });
+      }
       words = [];
       subs = [];
       writes = [];
+      stdin = [];
     };
 
     while (this.i < s.length) {
@@ -87,6 +93,12 @@ class Parser {
       } else if (c === "`") {
         subs.push(this.backtick());
         cur().dynamic = true;
+      } else if (c === "$" && s[this.i + 1] === "'") {
+        this.i++;
+        this.ansiC(cur());
+      } else if (c === "$" && s[this.i + 1] === '"') {
+        // A locale string reads like a double-quoted one.
+        this.i++;
       } else if (c === "$") {
         this.dollar(cur(), subs);
       } else if (c === " " || c === "\t") {
@@ -137,10 +149,10 @@ class Parser {
           subs.push(this.script(true));
         } else if (s.startsWith("<<<", this.i)) {
           this.i += 3;
-          target = "in";
+          target = "here";
         } else if (s.startsWith("<<", this.i)) {
           this.i += 2;
-          this.heredocStart();
+          this.heredocStart(stdin);
         } else {
           const start = this.i;
           while (this.i < s.length && "<>&|".includes(s[this.i] ?? "")) this.i++;
@@ -195,6 +207,48 @@ class Parser {
     }
   }
 
+  /**
+   * Reads `$'...'` from its opening quote, decoding the escapes bash decodes there, so that
+   * `$'n\x70m'` reads as the word it runs. An escape it does not know makes the word dynamic.
+   * @param {Word} word
+   */
+  ansiC(word) {
+    const s = this.s;
+    this.i++;
+    /** @type {Record<string, string>} */
+    const simple = { a: "\x07", b: "\b", e: "\x1b", E: "\x1b", f: "\f", n: "\n", r: "\r", t: "\t" };
+    Object.assign(simple, { v: "\v", "\\": "\\", "'": "'", '"': '"', "?": "?" });
+    while (this.i < s.length && s[this.i] !== "'") {
+      const c = s[this.i] ?? "";
+      if (c !== "\\") {
+        word.text += c;
+        this.i++;
+        continue;
+      }
+      const e = s[this.i + 1] ?? "";
+      const rest = s.slice(this.i + 1);
+      const code =
+        /^[0-7]{1,3}/.exec(rest) ??
+        /^x([0-9A-Fa-f]{1,2})/.exec(rest) ??
+        /^u([0-9A-Fa-f]{1,4})/.exec(rest) ??
+        /^U([0-9A-Fa-f]{1,8})/.exec(rest);
+      if (simple[e] !== undefined) {
+        word.text += simple[e];
+        this.i += 2;
+      } else if (code) {
+        const octal = /^[0-7]/.test(e);
+        const n = parseInt(octal ? code[0] : (code[1] ?? ""), octal ? 8 : 16);
+        word.text += n <= 0x10ffff ? String.fromCodePoint(n) : "";
+        this.i += 1 + code[0].length;
+      } else {
+        word.dynamic = true;
+        word.text += e;
+        this.i += 2;
+      }
+    }
+    this.i++;
+  }
+
   /** @returns {Segment[]} */
   backtick() {
     const s = this.s;
@@ -210,8 +264,11 @@ class Parser {
     return parseShell(body);
   }
 
-  /** Reads the delimiter after `<<` or `<<-`; the body starts at the next newline. */
-  heredocStart() {
+  /**
+   * Reads the delimiter after `<<` or `<<-`; the body starts at the next newline.
+   * @param {string[]} into the stdin of the command the heredoc feeds
+   */
+  heredocStart(into) {
     const s = this.s;
     const strip = s[this.i] === "-";
     if (strip) this.i++;
@@ -222,20 +279,27 @@ class Parser {
       if (c !== "'" && c !== '"' && c !== "\\") delim += c;
       this.i++;
     }
-    if (delim) this.heredocs.push({ delim, strip });
+    if (delim) this.heredocs.push({ delim, strip, into });
   }
 
-  /** Skips the bodies of the heredocs opened on the line just ended: they are data. */
+  /**
+   * Skips the bodies of the heredocs opened on the line just ended: they are data, kept as the
+   * stdin of their command, not parsed as commands.
+   */
   skipHeredocs() {
     const s = this.s;
-    for (const { delim, strip } of this.heredocs.splice(0)) {
+    for (const { delim, strip, into } of this.heredocs.splice(0)) {
+      const body = [];
       while (this.i < s.length) {
         const nl = s.indexOf("\n", this.i);
         const end = nl < 0 ? s.length : nl;
         const line = s.slice(this.i, end);
         this.i = end + 1;
-        if ((strip ? line.replace(/^\t+/, "") : line) === delim) break;
+        const text = strip ? line.replace(/^\t+/, "") : line;
+        if (text === delim) break;
+        body.push(text);
       }
+      into.push(body.join("\n"));
     }
   }
 }
@@ -257,7 +321,28 @@ const KEYWORDS = new Set([
 
 /** Wrappers that run the command after them, with their options that take a value. */
 const WRAPPERS = new Map([
-  ["sudo", ["-u", "-g", "-C", "-D", "-h", "-p", "-U", "-r", "-t"]],
+  [
+    "sudo",
+    [
+      "-u",
+      "--user",
+      "-g",
+      "--group",
+      "-C",
+      "-D",
+      "--chdir",
+      "-h",
+      "--host",
+      "-p",
+      "--prompt",
+      "-U",
+      "--other-user",
+      "-r",
+      "--role",
+      "-t",
+      "--type",
+    ],
+  ],
   ["doas", ["-u", "-C"]],
   ["env", ["-u", "-C", "-S"]],
   ["command", []],
@@ -269,7 +354,41 @@ const WRAPPERS = new Map([
   ["setsid", []],
   ["stdbuf", ["-i", "-o", "-e"]],
   ["timeout", ["-s", "-k"]],
-  ["xargs", ["-n", "-I", "-L", "-P", "-d", "-s", "-E", "-a"]],
+  [
+    "xargs",
+    [
+      "-n",
+      "-I",
+      "-L",
+      "-P",
+      "-d",
+      "-s",
+      "-E",
+      "-a",
+      "--max-args",
+      "--max-procs",
+      "--delimiter",
+      "--max-chars",
+      "--process-slot-var",
+      "--arg-file",
+    ],
+  ],
+  [
+    "parallel",
+    [
+      "-j",
+      "--jobs",
+      "-S",
+      "--sshlogin",
+      "-a",
+      "--arg-file",
+      "-d",
+      "--delimiter",
+      "-I",
+      "-C",
+      "--colsep",
+    ],
+  ],
 ]);
 
 /**
