@@ -500,7 +500,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_agent_hints_leave_the_users_hint_mode_alone`](../../tests/browser/browser_vimma_mcp_follow.js),
   [`test_links_only_on_web_pages`](../../tests/browser/browser_vimma_mcp_follow.js),
   [`f at the end lists the links; f<label> follows one`](../../packages/vimma-core/test/agent-keys.test.mjs),
-  [`a collection for an agent carries each link's text, capped, and only links`](../../packages/vimma-core/test/hints.test.mjs)
+  [`a collection for an agent carries each link's text, capped, and only links`](../../packages/vimma-core/test/hints.test.ts)
 - M19. `agent-show` (mcp-drive D2-D7) **must** always ask: no grant covers it, a
   grant given as its answer is refused and `x` is a plain no, so no grant of `vimma_show` ever
   exists (core's `ALWAYS_ASK`, whatever the caller passes). It **must** name only an agent tab
