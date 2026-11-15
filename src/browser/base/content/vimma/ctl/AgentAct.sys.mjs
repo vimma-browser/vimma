@@ -45,6 +45,7 @@ import { ELEMENT_REPLY_CAPS } from "../core/agent-element.mjs";
 import { cutTo, shown } from "../core/agent-keys.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
 import { NOT_LOADED, errorPageText, loadErrorOf } from "../core/load-errors.mjs";
+import { AgentActors } from "../actors/AgentActors.sys.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 
 /** @import { HintTarget } from "../actors/VimmaActors.sys.mjs" */
@@ -300,14 +301,14 @@ function afterStep(browser, before, dialog, blocked, stopped) {
 
 export const AgentAct = {
   /**
-   * Asks the top document of `browser` whether it is ready (VimmaActors.agentQuiet with
+   * Asks the top document of `browser` whether it is ready (AgentActors.agentQuiet with
    * `ready`), bounded in the parent as well: a page that busy-loops holds its own process, and
    * with it the child's limits, but never the call past `until`.
    * @param {MozTabBrowser} browser @param {number} until  ms since the epoch
    */
   askReady(browser, until) {
     return bounded(
-      VimmaActors.agentQuiet(browser.browsingContext, {
+      AgentActors.agentQuiet(browser.browsingContext, {
         ready: true,
         quiet: AGENT_WAITS.readyQuiet,
         still: 0,
@@ -377,11 +378,11 @@ export const AgentAct = {
    */
   async payment(browser, { target = null, by = "click", text = "", keys = "", frame = null }) {
     const [cards, info] = await Promise.all([
-      VimmaActors.agentCards(browser, COLLECT_TIMEOUT_MS),
+      AgentActors.agentCards(browser, COLLECT_TIMEOUT_MS),
       target
-        ? bounded(VimmaActors.agentPayInfo(target, by), null, COLLECT_TIMEOUT_MS)
+        ? bounded(AgentActors.agentPayInfo(target, by), null, COLLECT_TIMEOUT_MS)
         : bounded(
-            VimmaActors.agentPageTotal(browser).then((total) => ({
+            AgentActors.agentPageTotal(browser).then((total) => ({
               texts: [],
               ...(total ? { total } : {}),
             })),
@@ -416,7 +417,7 @@ export const AgentAct = {
    */
   async sent(target, by, skip = []) {
     const ids = skip.filter((t) => t.bc === target.bc && t.gen === target.gen).map((t) => t.id);
-    const sent = await bounded(VimmaActors.agentSent(target, by, ids), null, COLLECT_TIMEOUT_MS);
+    const sent = await bounded(AgentActors.agentSent(target, by, ids), null, COLLECT_TIMEOUT_MS);
     if (!sent) return null;
     return {
       ...sent,
@@ -438,7 +439,7 @@ export const AgentAct = {
     if (!onTheWeb(target.wg?.documentPrincipal) || !onTheWeb(browser.contentPrincipal)) {
       return { refused: "elements are clicked only on http and https pages" };
     }
-    const element = await bounded(VimmaActors.agentInspect(target), null, COLLECT_TIMEOUT_MS);
+    const element = await bounded(AgentActors.agentInspect(target), null, COLLECT_TIMEOUT_MS);
     if (!element) return { refused: "the page did not answer in time" };
     const refused = actRefusal(label, element, linkWhere(browser, element.href));
     if (refused) return { refused };
@@ -489,14 +490,14 @@ export const AgentAct = {
    */
   async activateNow(browser, target, { submit, href, inUse }) {
     const before = pageOf(browser);
-    const marked = await bounded(VimmaActors.agentMark(browser, submit), false, COLLECT_TIMEOUT_MS);
+    const marked = await bounded(AgentActors.agentMark(browser, submit), false, COLLECT_TIMEOUT_MS);
     if (!marked) return { refused: "the page did not answer in time" };
     const dialogs = watchDialogs(browser);
     try {
       // The child clicks nothing once this call has stopped waiting for its answer.
       const until = Date.now() + COLLECT_TIMEOUT_MS - 1000;
       const reply = await bounded(
-        VimmaActors.agentActivate(target, { submit, href, until }),
+        AgentActors.agentActivate(target, { submit, href, until }),
         "gone",
         COLLECT_TIMEOUT_MS,
       );
@@ -508,8 +509,8 @@ export const AgentAct = {
       const outcome =
         stopped === "skipped"
           ? "skipped"
-          : await bounded(VimmaActors.agentClickOutcome(target), "clicked", COLLECT_TIMEOUT_MS);
-      const blocked = VimmaActors.agentSettle(browser);
+          : await bounded(AgentActors.agentClickOutcome(target), "clicked", COLLECT_TIMEOUT_MS);
+      const blocked = AgentActors.agentSettle(browser);
       if (stopped === "skipped" || outcome === "skipped") {
         // The page's handlers of the mouse events ran: what they tried to submit is still said.
         return {
@@ -519,12 +520,12 @@ export const AgentAct = {
       }
       const changed = stopped ? null : await this.changesAfter(browser, before, dialogs, target);
       // A submission the page tried by itself during that wait was stopped too: it is said.
-      blocked.push(...VimmaActors.agentSettle(browser));
+      blocked.push(...AgentActors.agentSettle(browser));
       const after = afterStep(browser, before, dialogs.dialog, blocked, stopped);
       return after.navigated || after.loading || !changed ? after : { ...after, changed };
     } finally {
       // On every path: no allowance outlives its call.
-      VimmaActors.agentSettle(browser);
+      AgentActors.agentSettle(browser);
       dialogs.stop();
     }
   },
@@ -534,7 +535,7 @@ export const AgentAct = {
    * `ready`), a dialog it opened, or the user starting to use the tab (F11, F27). A step that
    * has started no load is done once its frame's page has settled (issue #579): it has not
    * changed for a quiet period and no request the step started is open, waited for in the
-   * page's process (VimmaActors.agentQuiet; core AGENT_WAITS). That wait begins once the step
+   * page's process (AgentActors.agentQuiet; core AGENT_WAITS). That wait begins once the step
    * ran there: the child clicks or submits after its reply, and a busy process runs it later.
    * Counted from the reply, the call could end before the click, and with it the one
    * submission the question allowed (security.md M28), which would then be cancelled as the
@@ -614,7 +615,7 @@ export const AgentAct = {
       } else if (!ranAt) {
         // A process that does not answer has its step taken as run, as a hung page's would be.
         const outcome = step
-          ? await bounded(VimmaActors.agentClickOutcome(step), "clicked", 1000)
+          ? await bounded(AgentActors.agentClickOutcome(step), "clicked", 1000)
           : "clicked";
         if (outcome === "skipped") return "skipped";
         if (outcome !== "pending" || Date.now() - start >= COLLECT_TIMEOUT_MS) ranAt = Date.now();
@@ -628,7 +629,7 @@ export const AgentAct = {
         // so a page that keeps the wait going does not keep it open (security.md M28).
         if (!withdrawn && Date.now() - ranAt >= ALLOW_MS) {
           withdrawn = true;
-          VimmaActors.agentWithdraw(browser);
+          AgentActors.agentWithdraw(browser);
         }
         if (!settling) {
           settling = this.settle(browser, step, deadline).then(() => {
@@ -653,7 +654,7 @@ export const AgentAct = {
     const bc = step && step.bc.currentWindowGlobal === step.wg ? step.bc : browser.browsingContext;
     // Bounded here too: the child's own limits hold only while its page lets its process run.
     const r = await bounded(
-      VimmaActors.agentQuiet(bc, {
+      AgentActors.agentQuiet(bc, {
         net: true,
         quiet: AGENT_WAITS.quiet,
         still: AGENT_WAITS.still,
@@ -681,7 +682,7 @@ export const AgentAct = {
     // A URL the page's script changed (history.pushState) loads nothing: its changes count.
     const moved = docOf(browser) !== before.doc;
     if (dialogs.dialog || moved || browser.webProgress?.isLoadingDocument) return null;
-    return bounded(VimmaActors.agentChanges(target), null, 1000);
+    return bounded(AgentActors.agentChanges(target), null, 1000);
   },
 
   /**
@@ -698,7 +699,7 @@ export const AgentAct = {
       return { refused: "fields are filled only on http and https pages" };
     }
     const field = await bounded(
-      VimmaActors.agentInspectFill(target, value),
+      AgentActors.agentInspectFill(target, value),
       null,
       COLLECT_TIMEOUT_MS,
     );
@@ -753,7 +754,7 @@ export const AgentAct = {
   async fillNow(browser, steps, { submit, inUse, still }) {
     const before = pageOf(browser);
     // No submission is allowed while the fields are set: only the last step's (F15, F16).
-    const marked = await bounded(VimmaActors.agentMark(browser, null), false, COLLECT_TIMEOUT_MS);
+    const marked = await bounded(AgentActors.agentMark(browser, null), false, COLLECT_TIMEOUT_MS);
     if (!marked) return { refused: "the page did not answer in time", filled: 0 };
     const dialogs = watchDialogs(browser);
     let filled = 0;
@@ -764,7 +765,7 @@ export const AgentAct = {
      * @param {string} why @param {string} [label]
      */
     const stop = (why, label) => {
-      const blocked = VimmaActors.agentSettle(browser);
+      const blocked = AgentActors.agentSettle(browser);
       const n = `${filled} of ${steps.length} field${steps.length === 1 ? " was" : "s were"}`;
       return {
         refused: `${label ? `field "${label}" ` : ""}${why}; ${n} filled, nothing more was done`,
@@ -789,7 +790,7 @@ export const AgentAct = {
         // The child sets nothing once this call has stopped waiting for its answer.
         const until = Date.now() + COLLECT_TIMEOUT_MS - 1000;
         const reply = await bounded(
-          VimmaActors.agentFill(step.target, { value: step.value, expect: step.expect, until }),
+          AgentActors.agentFill(step.target, { value: step.value, expect: step.expect, until }),
           "gone",
           COLLECT_TIMEOUT_MS,
         );
@@ -800,7 +801,7 @@ export const AgentAct = {
         while (outcome === "pending" && !dialogs.dialog) {
           if (Date.now() - start >= COLLECT_TIMEOUT_MS) break;
           await sleep(10);
-          outcome = await bounded(VimmaActors.agentFillOutcome(step.target), "pending", 1000);
+          outcome = await bounded(AgentActors.agentFillOutcome(step.target), "pending", 1000);
         }
         if (outcome === "skipped") return stop("changed since the user was asked", step.label);
         if (outcome === "gone") return stop("is gone: its page went away", step.label);
@@ -816,18 +817,18 @@ export const AgentAct = {
         if (reset.length) return stop("was put back by the page; the form was not sent", reset[0]);
         if (inUse()) stopped = "in-use";
         else if (!still()) return stop("the tab changed before the form was sent");
-        else if (!VimmaActors.agentAllow(browser, submit.submit)) {
+        else if (!AgentActors.agentAllow(browser, submit.submit)) {
           return stop("the page changed before the form was sent");
         } else {
           const until = Date.now() + COLLECT_TIMEOUT_MS - 1000;
           const reply = await bounded(
             submit.by === "click"
-              ? VimmaActors.agentActivate(submit.target, {
+              ? AgentActors.agentActivate(submit.target, {
                   submit: submit.submit,
                   href: null,
                   until,
                 })
-              : VimmaActors.agentSubmit(submit.target, { submit: submit.submit, until }),
+              : AgentActors.agentSubmit(submit.target, { submit: submit.submit, until }),
             "gone",
             COLLECT_TIMEOUT_MS,
           );
@@ -848,27 +849,27 @@ export const AgentAct = {
         now.url !== before.url ||
         (!sent &&
           !!last &&
-          (await bounded(VimmaActors.agentLoading(last), false, COLLECT_TIMEOUT_MS)));
+          (await bounded(AgentActors.agentLoading(last), false, COLLECT_TIMEOUT_MS)));
       const waited =
         sent || moving ? await this.waitForPage(browser, before, dialogs, inUse, sent) : undefined;
       // Asked again as a click's outcome is: a busy page can answer the wait's poll too late.
       const skipped =
         waited === "skipped" ||
         (sent !== null &&
-          (await bounded(VimmaActors.agentClickOutcome(sent), "clicked", COLLECT_TIMEOUT_MS)) ===
+          (await bounded(AgentActors.agentClickOutcome(sent), "clicked", COLLECT_TIMEOUT_MS)) ===
             "skipped");
       if (skipped) {
         return stop("the form changed since the user was asked; it was not sent");
       }
       stopped = waited ?? stopped;
-      const blocked = VimmaActors.agentSettle(browser);
+      const blocked = AgentActors.agentSettle(browser);
       return {
         filled,
         ...(reset.length ? { reset } : {}),
         ...afterStep(browser, before, dialogs.dialog, blocked, stopped),
       };
     } finally {
-      VimmaActors.agentSettle(browser);
+      AgentActors.agentSettle(browser);
       dialogs.stop();
     }
   },

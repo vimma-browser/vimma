@@ -8,6 +8,7 @@ import {
   dataDirs,
   defaultHandlers,
   desktopEntryExec,
+  handlersRun,
   isDefaultThroughRouter,
   mimeappsLists,
   routedBrowser,
@@ -296,5 +297,70 @@ describe("isDefaultThroughRouter", () => {
       }),
     ).toBe(true);
     expect(asked).not.toContain("../../x.desktop");
+  });
+});
+
+// #855: when something started Firefox's shell service before Vimma could name vimma-open as its
+// command (a dedicated profile made at startup, `vimma -setDefaultBrowser`), the service compares
+// GIO's handlers with the binary, so the package's own entry never counted as the default.
+describe("handlersRun", () => {
+  /** @param {Record<string, string>} found where `which` finds each program */
+  const which = (found) => (/** @type {string} */ program) => found[program] ?? "";
+  const both = (/** @type {string} */ command) => () => command;
+
+  test("says yes when GIO's http and https handlers both run the command", () => {
+    expect(
+      handlersRun({ commandFor: both(`${OWN} %u`), which: which({ [OWN]: OWN }), appPath: OWN }),
+    ).toBe(true);
+    expect(
+      handlersRun({
+        commandFor: both("vimma-open %u"),
+        which: which({ "vimma-open": OWN }),
+        appPath: OWN,
+      }),
+    ).toBe(true);
+  });
+
+  test("says no when one scheme has another handler, or none", () => {
+    const commands = /** @type {Record<string, string>} */ ({
+      http: `${OWN} %u`,
+      https: "/usr/lib/firefox/firefox %u",
+    });
+    const found = which({ [OWN]: OWN, "/usr/lib/firefox/firefox": "/usr/lib/firefox/firefox" });
+    expect(handlersRun({ commandFor: (s) => commands[s] ?? "", which: found, appPath: OWN })).toBe(
+      false,
+    );
+    expect(handlersRun({ commandFor: () => "", which: found, appPath: OWN })).toBe(false);
+  });
+
+  test("says no for a program that resolves elsewhere, or not at all", () => {
+    expect(handlersRun({ commandFor: both("vimma-open %u"), which: which({}), appPath: OWN })).toBe(
+      false,
+    );
+    expect(
+      handlersRun({
+        commandFor: both("vimma-open %u"),
+        which: which({ "vimma-open": "/home/u/bin/vimma-open" }),
+        appPath: OWN,
+      }),
+    ).toBe(false);
+  });
+
+  test("never counts a quoted or escaped program, which it does not parse", () => {
+    for (const command of [`"${OWN}" %u`, `'${OWN}' %u`, "/opt/vimma\\ x/vimma-open %u"]) {
+      expect(
+        handlersRun({ commandFor: both(command), which: (p) => p, appPath: OWN }),
+        command,
+      ).toBe(false);
+    }
+  });
+
+  test("needs an absolute command to compare with", () => {
+    expect(handlersRun({ commandFor: both("vimma-open %u"), which: (p) => p, appPath: "" })).toBe(
+      false,
+    );
+    expect(
+      handlersRun({ commandFor: both("vimma-open %u"), which: (p) => p, appPath: "vimma-open" }),
+    ).toBe(false);
   });
 });
