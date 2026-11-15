@@ -21,6 +21,7 @@ const PAGE = `<!doctype html>
 /** Timers kept alive until they fire: a collected nsITimer never fires. */
 const timers = new Set();
 
+/** @param {nsIHttpRequest} request @param {nsIHttpResponse} response */
 function handleRequest(request, response) {
   response.setHeader("Cache-Control", "no-store", false);
   const query = request.queryString;

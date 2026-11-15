@@ -10,7 +10,7 @@
 
 "use strict";
 
-/* global focusContent -- from head.js */
+/* global focusContent, webProgressOf -- from head.js */
 
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
@@ -693,7 +693,7 @@ add_task(async function a_new_private_window_is_loading_until_its_start_page_has
     () =>
       browser.currentURI.spec === window.BROWSER_NEW_TAB_URL &&
       !win.gBrowser.selectedTab.hasAttribute("busy") &&
-      !browser.webProgress.isLoadingDocument,
+      !webProgressOf(browser).isLoadingDocument,
     "the start page has loaded",
   );
   Assert.strictEqual(

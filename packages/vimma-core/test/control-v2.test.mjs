@@ -13,6 +13,7 @@ import {
   PROTOCOLS,
   ROLES,
   TICKET_CONTEXT,
+  parseAgentRequest,
   validateMessage,
 } from "../src/control/control.mjs";
 import { createHmac } from "node:crypto";
@@ -969,5 +970,136 @@ describe("auth's code", () => {
     for (const code of ["7f3k", "7F3", "7F3KK", "IO11", "7F 3", 1234, null]) {
       expect(errorsOf(auth({ code }), { kind: "auth" }).join(), String(code)).toMatch(/code/);
     }
+  });
+});
+
+// The browser's handlers read an agent command's arguments through parseAgentRequest
+// (ctl/agent-commands.mjs): it takes exactly what the request validator takes, in the shape the
+// handler reads, and nothing the validator refuses.
+describe("parseAgentRequest", () => {
+  const requests = files.filter((f) => /^request-agent-/.test(f));
+
+  test.each(requests)("%s: parsed when, and only when, the validator takes it", (name) => {
+    const { message } = fixture(name);
+    const valid = validateMessage({ ...message, id: 1 }, { kind: "request" }).valid;
+    const parsed = parseAgentRequest(message.command, message.args);
+    if (valid) expect(parsed).toEqual({ command: message.command, args: message.args });
+    else expect(parsed).toBeNull();
+  });
+
+  test("a copy: the parsed arguments share no object with the request's", () => {
+    const args = { tab: "12", fields: [{ label: "sd", value: "x" }], kinds: undefined };
+    delete args.kinds;
+    const parsed = parseAgentRequest("agent-fill", args);
+    expect(parsed?.args).toEqual(args);
+    expect(parsed?.args).not.toBe(args);
+    expect(parsed?.command === "agent-fill" && parsed.args.fields[0]).not.toBe(args.fields[0]);
+  });
+
+  test("no agent command, or arguments that are not an object, parse to null", () => {
+    expect(parseAgentRequest("send-keys", { keys: "j" })).toBeNull();
+    expect(parseAgentRequest("agent-nope", {})).toBeNull();
+    expect(parseAgentRequest("agent-ping", null)).toBeNull();
+    expect(parseAgentRequest("agent-ping", [])).toBeNull();
+    expect(parseAgentRequest("agent-ping", {})).toEqual({ command: "agent-ping", args: {} });
+  });
+
+  test("optional arguments stay absent, and those sent are kept", () => {
+    expect(parseAgentRequest("agent-read", { tab: "3" })).toEqual({
+      command: "agent-read",
+      args: { tab: "3" },
+    });
+    expect(parseAgentRequest("agent-read", { tab: "3", format: "text", max_chars: 10 })).toEqual({
+      command: "agent-read",
+      args: { tab: "3", format: "text", max_chars: 10 },
+    });
+    expect(
+      parseAgentRequest("agent-open", {
+        url: "https://a/",
+        elements: true,
+        query: "buy",
+        kinds: ["button"],
+      }),
+    ).toEqual({
+      command: "agent-open",
+      args: { url: "https://a/", elements: true, query: "buy", kinds: ["button"] },
+    });
+    expect(
+      parseAgentRequest("agent-hello", {
+        client: { name: "c", version: "1" },
+        via: "v",
+        ctl: "0.1.6",
+        session: "ab".repeat(16),
+      }),
+    ).toEqual({
+      command: "agent-hello",
+      args: {
+        client: { name: "c", version: "1" },
+        via: "v",
+        ctl: "0.1.6",
+        session: "ab".repeat(16),
+      },
+    });
+    expect(parseAgentRequest("agent-cancel", { id: 7 })).toEqual({
+      command: "agent-cancel",
+      args: { id: 7 },
+    });
+    expect(
+      parseAgentRequest("agent-fill", {
+        tab: "1",
+        fields: [{ label: "a", value: true }],
+        submit: "s",
+      }),
+    ).toEqual({
+      command: "agent-fill",
+      args: { tab: "1", fields: [{ label: "a", value: true }], submit: "s" },
+    });
+  });
+
+  test("what the validator refuses is null: a missing tab, a wrong type, an extra field", () => {
+    expect(parseAgentRequest("agent-read", {})).toBeNull();
+    expect(parseAgentRequest("agent-read", { tab: 3 })).toBeNull();
+    expect(parseAgentRequest("agent-close", { tab: "3", url: "https://a/" })).toBeNull();
+    expect(
+      parseAgentRequest("agent-fill", { tab: "1", fields: [{ label: "a", value: 1 }] }),
+    ).toBeNull();
+    expect(parseAgentRequest("agent-fill", { tab: "1", fields: [], submit: false })).toBeNull();
+    expect(parseAgentRequest("agent-hello", { client: { name: "" } })).toBeNull();
+    expect(parseAgentRequest("agent-console", { tab: "1", since: -1 })).toBeNull();
+  });
+
+  // An in-process caller could pass an object whose values change between reads: what is
+  // checked is a copy of its own data, read once, so the handler gets what was checked.
+  test("arguments are read once: a getter cannot change a value after the check", () => {
+    let reads = 0;
+    const args = {
+      get tab() {
+        reads += 1;
+        return reads === 1 ? "1" : "2";
+      },
+    };
+    expect(parseAgentRequest("agent-close", args)).toEqual({
+      command: "agent-close",
+      args: { tab: "1" },
+    });
+    expect(reads).toBe(1);
+    const fields = [{ label: "a", value: "x" }];
+    let fieldReads = 0;
+    const fill = {
+      tab: "1",
+      get fields() {
+        fieldReads += 1;
+        return fieldReads === 1 ? fields : [{ label: "a", value: 1 }];
+      },
+    };
+    expect(parseAgentRequest("agent-fill", fill)?.args).toEqual({ tab: "1", fields });
+    expect(fieldReads).toBe(1);
+  });
+
+  test("inherited properties are not arguments", () => {
+    const inherited = Object.create({ tab: "1" });
+    expect(parseAgentRequest("agent-close", inherited)).toBeNull();
+    const client = Object.create({ name: "c" });
+    expect(parseAgentRequest("agent-hello", { client })).toBeNull();
   });
 });

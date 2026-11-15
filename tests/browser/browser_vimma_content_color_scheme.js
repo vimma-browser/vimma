@@ -18,7 +18,12 @@ const { TOKYO_NIGHT } = ChromeUtils.importESModule("chrome://browser/content/vim
 
 const APPEARANCE_PREF = "vimma.theme.appearance";
 const CONTENT_OVERRIDE_PREF = "layout.css.prefers-color-scheme.content-override";
-const DEFAULT_THEME = { source: "omarchy", name: "vimma", font: "monospace", colors: {} };
+const DEFAULT_THEME = {
+  source: /** @type {const} */ ("omarchy"),
+  name: "vimma",
+  font: "monospace",
+  colors: {},
+};
 /** A page that styles itself by prefers-color-scheme, as most sites with a dark mode do. */
 const PAGE =
   "https://example.com/document-builder.sjs?html=" +
@@ -34,11 +39,15 @@ const omarchyDark = PathUtils.join(root, "omarchy-dark");
 const omarchyLight = PathUtils.join(root, "omarchy-light");
 const realHome = Services.dirsvc.get("Home", Ci.nsIFile).path;
 
-/** @type {any} */
+/** The page's tab, which the setup task opens. @type {MozTabbrowserTab | undefined} */
 let tab;
 
-/** What the page in `browser` reports for prefers-color-scheme: "dark" or "light". */
-function pageScheme(browser = tab.linkedBrowser) {
+/**
+ * What the page in `browser` (the setup task's tab without one) reports for
+ * prefers-color-scheme: "dark" or "light".
+ * @param {XULBrowserElement} [browser]
+ */
+function pageScheme(browser = /** @type {MozTabbrowserTab} */ (tab).linkedBrowser) {
   return SpecialPowers.spawn(browser, [], () => {
     const dark = content.matchMedia("(prefers-color-scheme: dark)").matches;
     const bg = content.getComputedStyle(content.document.body).backgroundColor;
@@ -89,7 +98,9 @@ add_task(async function setup() {
     ThemeHost.setConfig(DEFAULT_THEME);
     Services.prefs.clearUserPref(APPEARANCE_PREF);
     await ThemeHost.detectOmarchy(realHome);
-    while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+    while (gBrowser.tabs.length > 1) {
+      gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+    }
     await SpecialPowers.popPrefEnv();
     await IOUtils.remove(root, { recursive: true });
   });

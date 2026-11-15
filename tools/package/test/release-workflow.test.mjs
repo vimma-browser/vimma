@@ -8,11 +8,11 @@ import { fileURLToPath } from "node:url";
 import { CTL_LICENSE_FILES, IDENTITY_REGEXP, pkgbuild, srcinfo } from "../package.mjs";
 import { macosSignJobs, notariseJobProblems } from "./notarise-job.mjs";
 
-// release.yml's gates (spec m6-packaging; docs/runbook.md, "Release packages"). It starts only
-// by workflow_dispatch: release-please.yml's release-build job starts it for the draft release it
-// just created, and the maintainer re-runs it by hand. A workflow_dispatch run executes the
-// release.yml of the branch it was started on, so every job refuses anything but a run from
-// main. That guard stops accidental runs; what no other branch can obtain is the signature's
+// release.yml's gates (spec m6-packaging; docs/runbook/ci-release-packages.md, "Release packages").
+// It starts only by workflow_dispatch: release-please.yml's release-build job starts it for the
+// draft release it just created, and the maintainer re-runs it by hand. A workflow_dispatch run
+// executes the release.yml of the branch it was started on, so every job refuses anything but a run
+// from main. That guard stops accidental runs; what no other branch can obtain is the signature's
 // identity, release.yml at refs/heads/main.
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const text = readFileSync(
@@ -1356,8 +1356,9 @@ describe("homebrew.yml", () => {
 
   // A release event's ref is its tag, and anyone with write access can create a tag on an
   // unmerged commit with an edited copy of this file: the release event's run only starts main's
-  // copy, and only main's copy may reach the homebrew environment's key (docs/security.md, B6 and
-  // B11). The event is read only in the jobs' conditions, the env and the concurrency group.
+  // copy, and only main's copy may reach the homebrew environment's key
+  // (docs/security/14-build-and-release-supply-chain.md, B6 and B11). The event is read only in the
+  // jobs' conditions, the env and the concurrency group.
   it("reads the release event nowhere but the start condition, TAG and the concurrency group", () => {
     const outside = file
       .replace(/^ {2}TAG: .*$/m, "")
@@ -1961,7 +1962,7 @@ describe("release-please.yml", () => {
     expect(permissions("security-release")).toEqual(["contents: read"]);
   });
 
-  // Spec firefox-versions, decisions 11 to 15; docs/security.md G9 and G10.
+  // Spec firefox-versions, decisions 11 to 15; docs/security/10-firefox-updates.md G9 and G10.
   it("security-release runs only on a push to main of vimma-browser/vimma", () => {
     const release = job("security-release");
     expect(condition(release)).toBe(

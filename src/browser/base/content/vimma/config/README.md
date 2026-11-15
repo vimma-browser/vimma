@@ -11,7 +11,8 @@ asked ([ARCHITECTURE.md](../../../../../../ARCHITECTURE.md#module-map)).
 **May import (layer 4, [ADR-026](../../../../../../docs/adr/026-module-layering.md)):** `core/`, the layer 1
 and 2 folders, and `host/`. Not `ctl/` (same layer) or above.
 
-**Security:** [docs/security.md](../../../../../../docs/security.md) section 8.
+**Security:** [docs/security/08-config-toml.md](../../../../../../docs/security/08-config-toml.md)
+section 8.
 
 **Read more:** [Config and theme](../../../../../../docs/architecture/config-and-theme.md),
 [m5-config-load](../../../../../../docs/specs/m5-config-load.md).

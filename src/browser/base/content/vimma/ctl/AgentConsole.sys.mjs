@@ -82,19 +82,22 @@ const TYPES = (() => {
   /** @type {Map<number, string>} */
   const names = new Map();
   for (const word of words) {
-    const value = /** @type {any} */ (Ci.nsIContentPolicy)[`TYPE_${word}`];
+    const value = Ci.nsIContentPolicy[`TYPE_${word}`];
     if (typeof value === "number") names.set(value, word.toLowerCase());
   }
   return names;
 })();
 
-/** @param {any} subject  an nsIHttpChannel, stopped */
+/** @param {unknown} subject  an nsIHttpChannel, stopped */
 function onStopRequest(subject) {
   if (!McpHost.state.enabled) return;
-  /** @type {any} */
+  /** @type {nsIHttpChannel} */
   let channel;
   try {
-    channel = subject.QueryInterface(Ci.nsIHttpChannel);
+    // QueryInterface gives the object as the interface asked or throws, as a subject without it
+    // does: either way the catch below.
+    const qi = /** @type {{ QueryInterface(iid: unknown): nsIHttpChannel }} */ (subject);
+    channel = qi.QueryInterface(Ci.nsIHttpChannel);
   } catch {
     return;
   }
@@ -115,7 +118,7 @@ function onStopRequest(subject) {
   const error = Components.isSuccessCode(code) ? null : ChromeUtils.getXPCOMErrorName(code);
   const failed = requestFailure(status, error);
   if (!failed) return;
-  /** @type {any} */
+  /** @type {{ spec: string }} */
   let uri = channel.URI;
   try {
     // Without a user name and password a URL may carry.
@@ -150,13 +153,18 @@ function prune() {
   }
 }
 
-/** @param {any} subject @param {string} topic */
+/** @param {unknown} subject @param {string} topic */
 function observe(subject, topic) {
   if (topic === "http-on-stop-request") onStopRequest(subject);
   else if (topic === "browsing-context-discarded") {
     // A tab that closes discards its top context; a process switch replaces it under the same
-    // browser id, which then still has a current one.
-    if (!subject?.parent && logs.has(subject?.browserId)) Promise.resolve().then(prune);
+    // browser id, which then still has a current one. The subject is the context
+    // (BrowsingContext::Detach notifies with it).
+    const bc = /** @type {BrowsingContext | null} */ (subject);
+    const id = bc?.browserId;
+    if (!bc?.parent && id !== undefined && logs.has(id)) {
+      Promise.resolve().then(prune);
+    }
   } else if (!McpHost.state.enabled) logs.clear();
 }
 
@@ -165,7 +173,7 @@ function observe(subject, topic) {
  * each frame's child answers for its own document, at most a reply's worth, and the parent's
  * console service adds what Firefox logged there for those documents. A frame that has no actor,
  * fails or does not answer in time adds nothing. `omitted` counts what the frames left out.
- * @param {any} browser @param {number} since
+ * @param {MozBrowser} browser @param {number} since
  * @returns {Promise<{ errors: ConsoleEntry[], omitted: number }>}
  */
 async function pageErrors(browser, since) {
@@ -173,9 +181,7 @@ async function pageErrors(browser, since) {
     0,
     AGENT_CONSOLE.frames,
   );
-  const ids = new Set(
-    frames.map((/** @type {any} */ bc) => bc.currentWindowGlobal?.innerWindowId).filter(Boolean),
-  );
+  const ids = new Set(frames.map((bc) => bc.currentWindowGlobal?.innerWindowId).filter(Boolean));
   /** @type {ConsoleEntry[]} */
   const out = [];
   let omitted = 0;
@@ -223,7 +229,7 @@ async function pageErrors(browser, since) {
  * vimma-ctl's strict parser accepts (security.md M7).
  * @param {string} s
  */
-const wf = (s) => /** @type {string} */ (/** @type {any} */ (s).toWellFormed());
+const wf = (s) => s.toWellFormed();
 
 export const AgentConsole = {
   /** Once per app (vimma.js): the observers stay for the session. */
@@ -240,7 +246,7 @@ export const AgentConsole = {
    * The errors and failed requests of the agent tab `browser` after `since` (F22, F24): Vimma's
    * clock at the read, each list wrapped in the untrusted-content delimiters, and how many
    * entries were left out.
-   * @param {any} browser @param {number} since
+   * @param {MozBrowser} browser @param {number} since
    */
   async read(browser, since) {
     const time = Date.now();

@@ -7,8 +7,8 @@ a button that submits a form, because it passes every gate an agent call can mee
 gives the processes and the trust boundaries; [vimma-mcp](../specs/vimma-mcp.md),
 [mcp-forms](../specs/mcp-forms.md), [mcp-grants](../specs/mcp-grants.md),
 [mcp-checkpoints](../specs/mcp-checkpoints.md) and [mcp-consequence](../specs/mcp-consequence.md)
-give the behaviour, and [docs/security.md](../security.md) §1 (the control socket) and §12 (agents)
-the rules, each with its tests. This page names the code that carries the call, in order.
+give the behaviour, and [docs/security/](../security/README.md) §1 (the control socket) and §12
+(agents) the rules, each with its tests. This page names the code that carries the call, in order.
 
 ```mermaid
 sequenceDiagram

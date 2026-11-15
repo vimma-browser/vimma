@@ -26,7 +26,7 @@ under it.
   security dot release (7 for a major, 14 for a dot release without an advisory).
 
 A person still reviews and merges every bump. ADR-002's 7-day target becomes 3 days for security
-dot releases, enforced by the drift check (docs/security.md, G2).
+dot releases, enforced by the drift check (docs/security/10-firefox-updates.md, G2).
 
 ## Reasoning
 

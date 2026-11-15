@@ -89,8 +89,8 @@ let dismissed = {};
  *   said?: { privateTabs: boolean, tabsKept: boolean } } | null} */
 let current = null;
 /** Looks again when an answered restart question is due once more. */
-let reask = /** @type {any} */ (null);
-let poll = /** @type {any} */ (null);
+let reask = /** @type {number | null} */ (null);
+let poll = /** @type {number | null} */ (null);
 /** The delay of the pending poll. */
 let pollMs = POLL_MS;
 let listening = false;

@@ -27,7 +27,7 @@ export const CONTROL_ENABLED_PREF = "vimma.control.enabled";
  */
 export const CONTROL_UNTIL_PREF = "vimma.control.enabledUntilMs";
 
-let timer = /** @type {any} */ (null);
+let timer = /** @type {number | null} */ (null);
 let watching = false;
 
 /** The end time, read back: none, off (passed or not a valid one), or until when. */

@@ -2,10 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/pdf-mode.md (delivery PR 3, decision 21), docs/security.md section 20 (V7, V9): zathura's
-// page, zoom and layout keys in the PDF viewer, presentation mode, and jumps.
+// Spec: docs/specs/pdf-mode.md (delivery PR 3, decision 21), docs/security/20-pdf-viewer.md section
+// 20 (V7, V9): zathura's page, zoom and layout keys in the PDF viewer, presentation mode, and
+// jumps.
 
 /* global add_setup -- the browser-chrome harness (browser-test.js) */
+
+/* global contextOf, windowGlobalOf, historyOf -- from head.js */
 
 "use strict";
 
@@ -38,7 +41,11 @@ const segment = (id) =>
   document.getElementById("vimma-statusbar")?.querySelector(`[data-segment="${id}"]`)
     ?.textContent ?? "";
 
-/** Like pdfjs/test/head.js waitForPdfJS: resolves once the text layer has rendered. */
+/**
+ * Like pdfjs/test/head.js waitForPdfJS: resolves once the text layer has rendered.
+ * @param {XULBrowserElement} browser
+ * @param {string} url
+ */
 function loadPdf(browser, url) {
   const rendered = BrowserTestUtils.waitForContentEvent(
     browser,
@@ -82,10 +89,15 @@ async function withPdf(fn) {
  */
 function view(browser) {
   return SpecialPowers.spawn(browser, [], () => {
-    const app = content.wrappedJSObject.PDFViewerApplication;
-    const v = app.pdfViewer;
-    const container = content.document.getElementById("viewerContainer");
-    const page = content.document.querySelector(`#viewer .page[data-page-number="${app.page}"]`);
+    const app = /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication;
+    // Each of the three is there once a page has rendered; a read of a missing one throws.
+    const v = /** @type {PdfJsViewer} */ (app.pdfViewer);
+    const container = /** @type {HTMLElement} */ (
+      content.document.getElementById("viewerContainer")
+    );
+    const page = /** @type {Element} */ (
+      content.document.querySelector(`#viewer .page[data-page-number="${app.page}"]`)
+    );
     const box = page.getBoundingClientRect();
     const port = container.getBoundingClientRect();
     return {
@@ -104,21 +116,31 @@ function view(browser) {
   });
 }
 
+/** @typedef {Awaited<ReturnType<typeof view>>} View */
+/**
+ * The wanted fields of the view: each a value, or a test of the value.
+ * @typedef {{ [K in keyof View]?: View[K] | ((value: View[K]) => boolean) }} Want
+ */
+
 /**
  * Waits until pdf.js's view matches `want`.
  * @param {XULBrowserElement} browser
- * @param {object} want
+ * @param {Want} want
  * @param {string} what
  */
 async function until(browser, want, what) {
-  /** @type {any} */
+  /** @type {View | null} */
   let last = null;
   await TestUtils.waitForCondition(
     async () => {
-      last = await view(browser);
-      return Object.entries(want).every(([k, v]) =>
-        typeof v === "function" ? v(last[k]) : last[k] === v,
-      );
+      const now = await view(browser);
+      last = now;
+      return Object.entries(want).every(([k, v]) => {
+        const got = now[/** @type {keyof View} */ (k)];
+        return typeof v === "function"
+          ? /** @type {(value: unknown) => boolean} */ (v)(got)
+          : got === v;
+      });
     },
     `${what}: want ${JSON.stringify(want, (_k, v) => (typeof v === "function" ? "fn" : v))}`,
   ).catch((e) => {
@@ -248,7 +270,8 @@ add_task(async function zoom_and_fit() {
     await until(browser, { scaleValue: "page-width" }, "s fits the width");
     // pdf.js keeps a named fit across resizes, as zathura keeps its adjust mode.
     const wide = (await view(browser)).scale;
-    browser.style.maxWidth = "400px";
+    const { style } = /** @type {XULElement} */ (/** @type {Element} */ (browser));
+    style.maxWidth = "400px";
     try {
       await until(
         browser,
@@ -256,7 +279,7 @@ add_task(async function zoom_and_fit() {
         "the fit follows a resize",
       );
     } finally {
-      browser.style.maxWidth = "";
+      style.maxWidth = "";
     }
   });
 });
@@ -320,7 +343,7 @@ add_task(async function presentation_only_on_the_users_key() {
   await withPdf(async (browser) => {
     // The adapter takes operations from the parent only; a message the viewer's own process
     // sends to the parent is not an operation, and the parent sends one only for a key.
-    const actor = browser.browsingContext.currentWindowGlobal.getActor("Vimma");
+    const actor = windowGlobalOf(contextOf(browser)).getActor("Vimma");
     actor.receiveMessage({ name: "Vimma:PdfOp", data: { op: "presentation", n: 0 } });
     // An F5 the page itself dispatches is untrusted: Vimma's keys never see it.
     await SpecialPowers.spawn(browser, [], () => {
@@ -337,8 +360,10 @@ add_task(async function presentation_only_on_the_users_key() {
 
 add_task(async function the_parent_sends_only_operations_and_numbers() {
   await withPdf(async (browser) => {
+    /** @type {unknown[]} */
     const sent = [];
-    const wg = browser.browsingContext.currentWindowGlobal;
+    /** @type {WindowGlobalParent} */
+    const wg = windowGlobalOf(contextOf(browser));
     const actor = wg.getActor("Vimma");
     const orig = actor.sendAsyncMessage;
     actor.sendAsyncMessage = function (name, data) {
@@ -364,12 +389,16 @@ add_task(async function the_parent_sends_only_operations_and_numbers() {
     );
     // PdfOps refuses anything else before it reaches the child.
     Assert.ok(!PdfOps.run(browser, "eval", 0), "an unknown operation is not sent");
-    Assert.ok(!PdfOps.run(browser, "next", /** @type {any} */ ("1")), "text for a number");
+    Assert.ok(
+      !PdfOps.run(browser, "next", /** @type {number} */ (/** @type {unknown} */ ("1"))),
+      "text for a number",
+    );
     // And the child drops a malformed one without touching pdf.js.
     await SpecialPowers.spawn(browser, [], () => {
-      content.wrappedJSObject.PDFViewerApplication.pdfViewer.pagesRotation = 0;
+      const app = /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication;
+      /** @type {PdfJsViewer} */ (app.pdfViewer).pagesRotation = 0;
     });
-    const child = browser.browsingContext.currentWindowGlobal;
+    const child = windowGlobalOf(contextOf(browser));
     for (const data of [
       { op: "rotate", n: "1" },
       { op: "rotate", n: 1, x: 1 },
@@ -388,10 +417,10 @@ add_task(async function the_parent_sends_only_operations_and_numbers() {
 // so the frame cannot come between the keys, as on a loaded machine.
 add_task(async function a_zoom_right_after_a_page_key_keeps_the_new_page() {
   await withPdf(async (browser) => {
-    for (const [keys, want] of [
+    for (const [keys, want] of /** @type {[string, number][]} */ ([
       ["3J", 4],
       ["G", 6],
-    ]) {
+    ])) {
       await SpecialPowers.spawn(browser, [], () => content.windowUtils.advanceTimeAndRefresh(0));
       try {
         type(keys);
@@ -448,7 +477,7 @@ add_task(async function jumps_walk_back_one_at_a_time() {
     type("5G");
     await until(browser, { page: 5 }, "5G");
     // pdf.js's two history entries have reached the parent's session history.
-    const sh = browser.browsingContext.sessionHistory;
+    const sh = historyOf(browser);
     await TestUtils.waitForCondition(() => sh.count === 4 && sh.index === 3, "two jumps");
     EventUtils.synthesizeKey("o", { ctrlKey: true });
     await until(browser, { page: 2 }, "the first ctrl+o comes back to the last jump's start");
@@ -472,6 +501,7 @@ add_task(async function keys_on_web_pages_are_unchanged() {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "https://example.com/");
   try {
     Assert.equal(PdfOps.context(tab.linkedBrowser), "page", "a web page");
+    /** @type {string[]} */
     const notices = [];
     const orig = PdfOps.run;
     PdfOps.run = (...args) => {

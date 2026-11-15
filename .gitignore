@@ -30,6 +30,6 @@ e2e-output/
 site-compat-output/
 # the offline snapshot gate's output (npm run sites -- --offline)
 site-compat-offline/
-# semgrep.yml output when run locally (docs/runbook.md, "Security scanning")
+# semgrep.yml output when run locally (docs/runbook/ci-security-scanning.md, "Security scanning")
 semgrep.json
 semgrep.sarif

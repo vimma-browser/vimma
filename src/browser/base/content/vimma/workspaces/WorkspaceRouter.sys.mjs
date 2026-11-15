@@ -87,7 +87,7 @@ let coldStart = true;
  * a URL.
  * @typedef {{ names: readonly string[], host: string }} Placed
  */
-/** @type {WeakMap<any, Placed>} */
+/** @type {WeakMap<MozTabbrowserTab, Placed>} */
 const placed = new WeakMap();
 /**
  * The open an app rule just routed, until TabOpen adopts the tab openURI creates for it (in the
@@ -165,7 +165,7 @@ function readCache() {
   }
 }
 
-/** @param {any} win */
+/** @param {Window | null | undefined} win */
 function unroutable(win) {
   return !win || lazy.PrivateBrowsingUtils.isWindowPrivate(win) || win.toolbar?.visible === false;
 }
@@ -188,11 +188,11 @@ function fixup(url) {
 
 /**
  * A tab nothing has been loaded in yet: a new-tab page or blank, with no history.
- * @param {any} win
- * @param {any} tab
+ * @param {BrowserWindow} win
+ * @param {MozTabbrowserTab} tab
  */
 function untouched(win, tab) {
-  const browser = tab?.linkedBrowser;
+  const browser = tab.linkedBrowser;
   if (!browser || browser.canGoBack || tab.pinned) return false;
   const spec = browser.currentURI?.spec ?? "";
   return typeof win.isBlankPageURL === "function"
@@ -224,7 +224,7 @@ const handler = {
 };
 
 const factory = {
-  createInstance(/** @type {unknown} */ iid) {
+  createInstance(/** @type {nsIJSIID<unknown>} */ iid) {
     return handler.QueryInterface(iid);
   },
   QueryInterface: ChromeUtils.generateQI(["nsIFactory"]),
@@ -352,7 +352,7 @@ export const WorkspaceRouter = {
   /**
    * WindowWorkspaces, on TabOpen: the tab openURI created for the link an app rule just
    * routed takes that link's names (decision 14).
-   * @param {any} tab
+   * @param {MozTabbrowserTab} tab
    */
   adoptTab(tab) {
     const place = pendingPlace;
@@ -364,7 +364,7 @@ export const WorkspaceRouter = {
   /**
    * WindowWorkspaces, on a tab's top-level location change: a tab that left the host its app
    * rule placed it on is matched by the rules alone from then on (its own navigation).
-   * @param {any} tab
+   * @param {MozTabbrowserTab} tab
    * @param {string} url
    */
   noteLocation(tab, url) {
@@ -377,7 +377,7 @@ export const WorkspaceRouter = {
    * The rule for `tab`'s page (or `url`, the location it is changing to): with the names of the
    * link an app rule placed it for while it stays on that host, else with none, as what the
    * user opens (decision 14). For the hint, `:route move` and about:vimma.
-   * @param {any} tab
+   * @param {MozTabbrowserTab} tab
    * @param {string} [url]
    */
   matchTab(tab, url = tab?.linkedBrowser?.currentURI?.spec ?? "") {
@@ -432,12 +432,13 @@ export const WorkspaceRouter = {
    * a URL of its choosing with another workspace's cookies (spec workspace-routing, decision
    * 3). Never a private or popup window. A `current` load routed elsewhere becomes a new tab
    * (openLinkIn's own rule); an untouched new tab it leaves behind is closed.
-   * @param {any} win  the window the load starts from
+   * @param {Window | null} win  the window the load starts from
    * @param {string} url  as given, maybe not yet fixed up (`example.com`)
    * @param {string} where
-   * @param {any} params  openLinkIn's copy, changed in place
-   * @param {any} target  the window it loads in, null for a new one
-   * @returns {number | undefined} `params.userContextId` afterwards, for openLinkIn's own copy
+   * @param {OpenLinkInParams} params  openLinkIn's copy, changed in place
+   * @param {BrowserWindow | null} target  the window it loads in, null for a new one
+   * @returns {number | null | undefined} `params.userContextId` afterwards, for openLinkIn's own
+   *   copy
    */
   routeLinkIn(win, url, where, params, target) {
     this._routeLinkIn(win, url, where, params, target);
@@ -445,11 +446,11 @@ export const WorkspaceRouter = {
   },
 
   /**
-   * @param {any} win
+   * @param {Window | null} win
    * @param {string} url
    * @param {string} where
-   * @param {any} params
-   * @param {any} target
+   * @param {OpenLinkInParams} params
+   * @param {BrowserWindow | null} target
    */
   _routeLinkIn(win, url, where, params, target) {
     try {
@@ -462,7 +463,7 @@ export const WorkspaceRouter = {
         const browser = params.targetBrowser ?? target.gBrowser.selectedBrowser;
         if (browser.browsingContext?.originAttributes.userContextId === ucid) return;
         const tab = target.gBrowser.getTabForBrowser(browser);
-        if (untouched(target, tab)) {
+        if (tab && untouched(target, tab)) {
           target.setTimeout(() => {
             if (tab.isConnected && !tab.selected && untouched(target, tab)) {
               target.gBrowser.removeTab(tab);
@@ -482,8 +483,8 @@ export const WorkspaceRouter = {
    * else the window's workspace's; never the agent workspace's (vimma-mcp decision 42), so a
    * login link clicked in a mail app is never readable by an agent. Null where the workspace
    * default is null (a private window, containers off): addTab then does as upstream.
-   * @param {any} uri  nsIURI
-   * @param {any} win  the window it opens in
+   * @param {nsIURI} uri
+   * @param {BrowserWindow | null} win  the window it opens in
    * @param {boolean} guess  whether Firefox's guess from the open tabs is on
    * @returns {number | null}
    */
@@ -510,7 +511,7 @@ export const WorkspaceRouter = {
    * BrowserDOMWindow, for a link from another app once `aWhere` is resolved: "the current tab"
    * becomes a new tab when the selected tab is the agent workspace's (vimma-mcp decision 42).
    * @param {number} where  an nsIBrowserDOMWindow OPEN_* value
-   * @param {any} win
+   * @param {BrowserWindow} win
    * @returns {number}
    */
   externalWhere(where, win) {
@@ -531,7 +532,7 @@ export const WorkspaceRouter = {
    * once and cleared), or null. A window opened for another program's link (`fromExternal`)
    * routes as such a link does, `[routing] default_workspace` included; any other window by
    * rules alone, as what the user opens.
-   * @param {any} win
+   * @param {BrowserWindow | null} win
    * @returns {number | null}
    */
   firstTab(win) {
@@ -540,7 +541,7 @@ export const WorkspaceRouter = {
       const apps = this.takeStartupApps() ?? pendingApps;
       const first = coldStart;
       coldStart = false;
-      if ((!routes.length && defaultWorkspace === null) || unroutable(win)) return null;
+      if (!win || (!routes.length && defaultWorkspace === null) || unroutable(win)) return null;
       const url = singleUrl(win.arguments?.[0]);
       if (!url) return null;
       WorkspaceStore.ensureLoaded();
@@ -597,7 +598,7 @@ export const WorkspaceRouter = {
  * Whether `window.arguments[1]` marks a window BrowserContentHandler opened for one URL from a
  * command line (`fromExternal`, browser/components/BrowserContentHandler.sys.mjs
  * openBrowserWindow): a cold start's link or another program's link opened as a window.
- * @param {any} arg
+ * @param {unknown} arg
  */
 function fromExternal(arg) {
   try {
@@ -617,7 +618,7 @@ function agentNames() {
 /**
  * `window.arguments[0]` when it is one URL: a string, an nsISupportsString or an nsIArray of one
  * (browser-init.js `uriToLoadPromise`). A `|`-separated list is several pages: not routed.
- * @param {any} arg
+ * @param {unknown} arg
  * @returns {string | null}
  */
 function singleUrl(arg) {

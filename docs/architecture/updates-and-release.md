@@ -7,8 +7,8 @@ they run, and what can stop the release at each step.
 [m6-packaging](../specs/m6-packaging.md), [release-versioning](../specs/release-versioning.md),
 [m6a-updater](../specs/m6a-updater.md) and [update-notices](../specs/update-notices.md), the
 decision in [ADR-016](../adr/016-own-update-channel.md), the rules with their tests in
-[docs/security.md](../security.md) §14 (build and release) and §16 (update check), and setup,
-switches and recovery in [docs/runbook.md](../runbook.md), "Releases", "Release packages" and
+[docs/security/](../security/README.md) §14 (build and release) and §16 (update check), and setup,
+switches and recovery in [docs/runbook/](../runbook/README.md), "Releases", "Release packages" and
 "Update signing keys and the update host".
 
 ```mermaid
@@ -201,5 +201,5 @@ signs the MAR on the nightly channel, `publish` uploads to the rolling `nightly`
 `…/vimma-nightly/update.xml`. On a day when `main` and the Firefox version did not change, the
 `changes` job skips the build and the manifest is re-signed under a new serial, so a nightly install
 never sees a feed older than its 7-day limit (45 days for releases). Tests:
-[nightly-workflow.test.mjs](../../tools/test/nightly-workflow.test.mjs) and
+[nightly-workflow.test.ts](../../tools/test/nightly-workflow.test.ts) and
 [nightly-manifest.test.mjs](../../tools/update/test/nightly-manifest.test.mjs).

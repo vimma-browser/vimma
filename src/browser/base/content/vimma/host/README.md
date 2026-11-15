@@ -31,7 +31,7 @@ interface object from it, or observe a topic it sends; a command the host runs f
 folder comes through `host-services.mjs`.
 
 **Security:** `VimmaParent.sys.mjs` is where content-process messages enter the parent; what it
-takes from a page is checked as [docs/security.md](../../../../../../docs/security.md) sections 13
+takes from a page is checked as [docs/security/](../../../../../../docs/security/README.md) sections 13
 and 20 say. `AgentGate.sys.mjs` decides what an agent may do and asks you (section 12): a change
 to it gets a separate security review, as one to `ctl/` does. Only the modules `RESTRICTED` lists
 in `tools/layering/layers.ts` may import it (three here, three in `ctl/`, `agent/AgentChat.sys.mjs`),
@@ -39,9 +39,9 @@ and `npm run layering` fails on any other module or page that loads it or names 
 `VimmaParent.sys.mjs` included, and on a module that hands it on (exports, returns, passes or
 stores it, or takes a method of it without calling it, by a member read or by destructuring at
 any depth): a new caller needs a security review, then a line there.
-[docs/security.md](../../../../../../docs/security.md) section 12 lists everything the check
-reads, with its tests; what a call or a getter of the gate returns, and a function that calls it
-for someone else, are for that review (ADR-026, "Limits of the check").
+[docs/security/12-agents-mcp.md](../../../../../../docs/security/12-agents-mcp.md) section 12 lists
+everything the check reads, with its tests; what a call or a getter of the gate returns, and a
+function that calls it for someone else, are for that review (ADR-026, "Limits of the check").
 
 **Read more:** [The life of a keypress](../../../../../../docs/architecture/keypress.md),
 [Workspaces and panes](../../../../../../docs/architecture/workspaces-and-panes.md).

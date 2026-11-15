@@ -12,7 +12,7 @@
 
 "use strict";
 
-/* global focusContent, recordPageKeys, pageKeys -- from head.js */
+/* global focusContent, recordPageKeys, pageKeys, contextOf -- from head.js */
 /* global PrintUtils, BrowserWindowTracker -- browser.js, in the test's window */
 
 const { VimmaHost } = ChromeUtils.importESModule(
@@ -174,7 +174,7 @@ add_task(async function a_combobox_in_a_cross_origin_frame() {
       content.document.body.append(frame);
       await loaded;
     });
-    const frameBC = browser.browsingContext.children[0];
+    const frameBC = contextOf(browser).children[0];
     await focusContent(browser);
     await focusField(browser, frameBC, "combo");
     EventUtils.sendString("a");
@@ -193,7 +193,8 @@ add_task(async function a_combobox_in_a_cross_origin_frame() {
   });
 });
 
-// docs/security.md K6: the arrow key Vimma presses is the page's. With an insert-mode binding on
+// docs/security/13-page-modes.md K6: the arrow key Vimma presses is the page's. With an insert-mode
+// binding on
 // <Down> (here: new tab), the key still reaches the page and runs no binding.
 add_task(async function a_pressed_arrow_key_runs_no_vimma_binding() {
   const { compileKeymap } = ChromeUtils.importESModule(
@@ -236,8 +237,8 @@ add_task(async function a_page_that_takes_ctrl_n_keeps_it() {
   });
 });
 
-// docs/security.md K6: a busy page's late reply must not press an arrow key in the tab focused
-// since, nor run the fallback there.
+// docs/security/13-page-modes.md K6: a busy page's late reply must not press an arrow key in the
+// tab focused since, nor run the fallback there.
 add_task(async function a_late_reply_presses_no_arrow_key_in_another_tab() {
   const tabB = await BrowserTestUtils.openNewForegroundTab(
     gBrowser,

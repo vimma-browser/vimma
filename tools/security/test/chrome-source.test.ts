@@ -1,4 +1,4 @@
-// docs/security.md: rules about what Vimma's chrome code never does, checked over its source.
+// docs/security/: rules about what Vimma's chrome code never does, checked over its source.
 // Chrome code runs with full privileges, so these hold for every file, not one feature: a
 // string that reaches the DOM as HTML, code built from text, a process started or an add-on
 // installed would each turn a page title, a config value or a clipboard into an attack.
@@ -315,7 +315,7 @@ describe("chrome code", () => {
     // allow, and only through this one call.
     const AGENT_PAGES = "src/browser/base/content/vimma/ctl/AgentPages.sys.mjs";
     expect(writes.filter((h) => !h.startsWith(`${OPS}:`))).toEqual([
-      `${AGENT_PAGES}:190: services.perms.addFromPrincipalForBrowser(`,
+      `${AGENT_PAGES}:195: services.perms.addFromPrincipalForBrowser(`,
     ]);
     const agentPages = readFileSync(join(ROOT, AGENT_PAGES), "utf8");
     expect(

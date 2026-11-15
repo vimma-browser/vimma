@@ -3,17 +3,17 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /* Firefox's PDF viewer (pdf.js) in the theme's colours (docs/specs/pdf-mode.md decisions 18 and
- * 20; docs/security.md section 20, V12). Loaded by actors/pdf-view.mjs into the viewer's document
- * as an author sheet, with the token sheet ThemeHost builds; the viewer's own CSP does not apply
- * to such sheets. In Firefox pdf.js finds with the browser's find bar (firefox-chrome.css). CSS only: it changes no markup and runs nothing.
- * pdf.js draws its toolbar, menus and dialogs from its own custom properties on :root
- * (viewer.css), which with Firefox's Nova look read Firefox's design-system tokens
- * (tokens-brand.css, imported by viewer.css): both are pointed at Vimma's, laid out as the window
- * is: bars and menus on --vimma-bg-dark, the gutter around the pages and fields on --vimma-bg,
- * borders --vimma-muted, the accent the normal-mode badge's pair. The pages themselves are the
- * document's (decision 12). The colour scheme follows the theme, so a token left alone takes its
- * own light or dark value. Under prefers-contrast and forced colours pdf.js's own high-contrast
- * colours stay.
+ * 20; docs/security/20-pdf-viewer.md section 20, V12). Loaded by actors/pdf-view.mjs into the
+ * viewer's document as an author sheet, with the token sheet ThemeHost builds; the viewer's own CSP
+ * does not apply to such sheets. In Firefox pdf.js finds with the browser's find bar
+ * (firefox-chrome.css). CSS only: it changes no markup and runs nothing. pdf.js draws its toolbar,
+ * menus and dialogs from its own custom properties on :root (viewer.css), which with Firefox's Nova
+ * look read Firefox's design-system tokens (tokens-brand.css, imported by viewer.css): both are
+ * pointed at Vimma's, laid out as the window is: bars and menus on --vimma-bg-dark, the gutter
+ * around the pages and fields on --vimma-bg, borders --vimma-muted, the accent the normal-mode
+ * badge's pair. The pages themselves are the document's (decision 12). The colour scheme follows
+ * the theme, so a token left alone takes its own light or dark value. Under prefers-contrast and
+ * forced colours pdf.js's own high-contrast colours stay.
  * !important: pdf.js sets several of these again inside @media -moz-pref() blocks, which come
  * later in its sheet than this one is ordered. */
 

@@ -9,7 +9,8 @@ says when a newer version is out.
 
 **May import (layer 1, [ADR-026](../../../../../../docs/adr/026-module-layering.md)):** `core/` only.
 
-**Security:** a security-sensitive module; [docs/security.md](../../../../../../docs/security.md) section 16 is
+**Security:** a security-sensitive module;
+[docs/security/16-update-check.md](../../../../../../docs/security/16-update-check.md) section 16 is
 its contract.
 
 **Read more:** [Updates and release](../../../../../../docs/architecture/updates-and-release.md),

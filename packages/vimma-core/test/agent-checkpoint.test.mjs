@@ -186,6 +186,29 @@ describe("what the child says of a step (checked like any content reply)", () =>
     expect(parseSentFields(raw)).toEqual(raw);
   });
 
+  test("an entry not read is named without a value, and the page's additions are said", () => {
+    const raw = {
+      fields: [
+        { name: "note", opaque: true },
+        { name: "doc", file: true, opaque: true },
+      ],
+      hidden: 0,
+      more: 0,
+      unread: true,
+    };
+    expect(parseSentFields(raw)).toEqual(raw);
+    expect(
+      parseSentFields({
+        fields: [{ name: "note", opaque: true, value: "hi" }],
+        hidden: 0,
+        more: 0,
+      }),
+    ).toBe(null);
+    expect(parseSentFields({ fields: [{ name: "n", opaque: 1 }], hidden: 0, more: 0 })).toBe(null);
+    expect(parseSentFields({ fields: [], hidden: 0, more: 0, unread: "yes" })).toBe(null);
+    expect(parseSentFields({ fields: [], hidden: 0, more: 0, unread: false })).toBe(null);
+  });
+
   test("a malformed fields reply is refused, and a secret never carries a value", () => {
     expect(parseSentFields(null)).toBe(null);
     expect(parseSentFields({ fields: [], hidden: -1, more: 0 })).toBe(null);
@@ -254,6 +277,17 @@ describe("a consequential form (mcp-consequence K2, K3)", () => {
   test("an unknown or overflowing field list is consequential: a doubt asks (K3)", () => {
     expect(isConsequential({ pay: false, sent: null })).toBe(true);
     expect(isConsequential({ pay: false, sent: sent([], { more: 1 }) })).toBe(true);
+  });
+
+  // Issue #1053: what a form-associated custom element sends, and what a page's formdata
+  // listener may add, are not read.
+  test("an entry whose value is not read, or a list the page's script adds to, asks (K3)", () => {
+    expect(isConsequential({ pay: false, sent: sent([{ name: "note", opaque: true }]) })).toBe(
+      true,
+    );
+    expect(isConsequential({ pay: false, sent: sent([], { unread: true }) })).toBe(true);
+    expect(mayAllowHere({ pay: false, sent: sent([{ name: "note", opaque: true }]) })).toBe(false);
+    expect(mayAllowHere({ pay: false, sent: sent([], { unread: true }) })).toBe(false);
   });
 
   test("a payment step is consequential", () => {

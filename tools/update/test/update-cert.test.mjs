@@ -1,8 +1,9 @@
-// docs/specs/m6a-updater.md §6 ("Key ceremony"), decision 39, and docs/runbook.md step 5b: the
-// updater's certificates. The primary's private key cannot leave Cloud KMS, so its self-signed
-// certificate is made in two steps: tools/update/update-cert.mjs writes the to-be-signed part
-// and its SHA-384 DigestInfo, KMS signs that (raw PKCS#1), and the tool assembles and checks the
-// certificate. Here a key generated in the test stands in for KMS, signing exactly as it does.
+// docs/specs/m6a-updater.md §6 ("Key ceremony"), decision 39, and
+// docs/runbook/ci-update-keys-and-update-host.md step 5b: the updater's certificates. The primary's
+// private key cannot leave Cloud KMS, so its self-signed certificate is made in two steps:
+// tools/update/update-cert.mjs writes the to-be-signed part and its SHA-384 DigestInfo, KMS signs
+// that (raw PKCS#1), and the tool assembles and checks the certificate. Here a fixed test key
+// (tools/test/test-keys.ts) stands in for KMS, signing exactly as it does.
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import {
@@ -15,6 +16,7 @@ import {
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
+import { testKey } from "../../test/test-keys.ts";
 import {
   SHA384_DIGESTINFO_PREFIX,
   assembleCertificate,
@@ -24,9 +26,12 @@ import {
 
 const SCRIPT = new URL("../update-cert.mjs", import.meta.url).pathname;
 
-/** A 4096-bit key, as the KMS key and the offline secondary are. */
-function rsaKey() {
-  return generateKeyPairSync("rsa", { modulusLength: 4096 });
+/**
+ * A 4096-bit key, as the KMS key and the offline secondary are.
+ * @param {"a" | "b"} [name]
+ */
+function rsaKey(name = "a") {
+  return testKey(name);
 }
 
 /**
@@ -77,7 +82,7 @@ describe("update-cert: the updater's self-signed certificate", () => {
     );
     expect(text).toContain("sha384WithRSAEncryption");
     expect(text).toContain("Public-Key: (4096 bit)");
-  }, 60_000);
+  });
 
   it("is deterministic, so anyone can rebuild the request from the public key and compare", () => {
     const { publicKey } = rsaKey();
@@ -85,11 +90,11 @@ describe("update-cert: the updater's self-signed certificate", () => {
     const b = certificateRequest(spkiOf(publicKey), "primary");
     expect(a.tbs).toEqual(b.tbs);
     expect(certificateRequest(spkiOf(publicKey), "secondary").tbs).not.toEqual(a.tbs);
-  }, 60_000);
+  });
 
   it("refuses a signature that is not the key's own over this request", () => {
     const { publicKey, privateKey } = rsaKey();
-    const other = rsaKey();
+    const other = rsaKey("b");
     const req = certificateRequest(spkiOf(publicKey), "primary");
     expect(() =>
       assembleCertificate(req.tbs, kmsSign(other.privateKey, req.digestInfo), spkiOf(publicKey)),
@@ -98,15 +103,17 @@ describe("update-cert: the updater's self-signed certificate", () => {
     expect(() =>
       assembleCertificate(req.tbs, kmsSign(privateKey, another.digestInfo), spkiOf(publicKey)),
     ).toThrow(/signature/);
-  }, 60_000);
+  });
 
   it("refuses a key that is not RSA-4096", () => {
+    // RSA-2048: any length but 4096 is refused (CodeQL flags anything shorter as weak).
     const small = generateKeyPairSync("rsa", { modulusLength: 2048 });
     expect(() => certificateRequest(spkiOf(small.publicKey), "primary")).toThrow(/RSA-4096/);
     const ec = generateKeyPairSync("ec", { namedCurve: "P-256" });
     expect(() => certificateRequest(spkiOf(ec.publicKey), "primary")).toThrow(/RSA-4096/);
-  }, 60_000);
+  });
 
+  // Node starts four times: on a busy machine that alone can take most of 5 s.
   it("CLI: request, then assemble with a KMS signature, refusing a key other than the pinned primary", () => {
     const dir = tempDir("vimma-update-cert-cli-");
     const { publicKey, privateKey } = rsaKey();
@@ -148,5 +155,5 @@ describe("update-cert: the updater's self-signed certificate", () => {
     expect(() => run([...assemble, "--any-key"])).toThrow(/request/);
     const cert = new X509Certificate(readFileSync(join(dir, "primary.der")));
     expect(cert.verify(publicKey)).toBe(true);
-  }, 60_000);
+  }, 15_000);
 });

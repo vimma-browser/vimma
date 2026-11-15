@@ -70,18 +70,18 @@ function isAgentContainer(userContextId) {
   return typeof agent === "number" && agent > 0 && userContextId === agent;
 }
 
-/** @param {any} principal  nsIPrincipal, or null */
+/** @param {nsIPrincipal | null | undefined} principal */
 const isAgentPrincipal = (principal) =>
   !!principal && isAgentContainer(principal.originAttributes?.userContextId);
 
 /**
  * The prompt Firefox would show, unless the request comes from the agent container: then a
  * prompt that cancels the request at once (the page is told "denied").
- * @param {any} base  ContentPermissionIntegration
+ * @param {ContentPermissionIntegration} base
  */
 const permissionOverride = (base) => ({
   __proto__: base,
-  /** @param {string} type @param {any} request  nsIContentPermissionRequest */
+  /** @param {string} type @param {nsIContentPermissionRequest} request */
   createPermissionPrompt(type, request) {
     if (isAgentPrincipal(request.principal) || isAgentPrincipal(request.topLevelPrincipal)) {
       return { prompt: () => request.cancel() };
@@ -91,7 +91,7 @@ const permissionOverride = (base) => ({
 });
 
 /**
- * @param {any} bc  a top-level content BrowsingContext in the parent
+ * @param {CanonicalBrowsingContext} bc  a top-level content context
  * @returns {boolean} whether the flag was missing (and is set now)
  */
 function sandbox(bc) {
@@ -111,7 +111,7 @@ function sandbox(bc) {
  * The tab downloads into the quarantine folder (decision 31 b): nsExternalAppHandler puts its
  * `.part` file in a top browsing context's `downloadFolderOverride`. Not copied when the context
  * is replaced, so set at every attach.
- * @param {any} bc
+ * @param {CanonicalBrowsingContext} bc
  */
 function quarantine(bc) {
   try {
@@ -122,18 +122,23 @@ function quarantine(bc) {
   }
 }
 
-/** @param {any} subject  a BrowsingContext, just attached */
+/** @param {unknown} subject  a BrowsingContext, just attached */
 function onAttached(subject) {
-  const bc = subject;
+  // The topic's subject is the context (BrowsingContext::Attach notifies with it); in the parent
+  // every context is canonical.
+  const bc = /** @type {CanonicalBrowsingContext | null} */ (subject);
   if (!bc?.isContent || bc.parent) return;
   if (isAgentContainer(bc.originAttributes?.userContextId)) sandbox(bc);
 }
 
-/** @param {any} subject  an nsIHttpChannel with a response */
+/** @param {unknown} subject  an nsIHttpChannel with a response */
 function onResponse(subject) {
   let channel;
   try {
-    channel = subject.QueryInterface(Ci.nsIHttpChannel);
+    // QueryInterface gives the object as the interface asked or throws, as a subject without it
+    // does: either way the catch below.
+    const qi = /** @type {{ QueryInterface(iid: unknown): nsIHttpChannel }} */ (subject);
+    channel = qi.QueryInterface(Ci.nsIHttpChannel);
   } catch {
     return;
   }
@@ -163,7 +168,7 @@ function onResponse(subject) {
  * runs in its site's own process; it loses only `crossOriginIsolated` (SharedArrayBuffer). A
  * page a service worker serves reaches no observer and keeps its policy, and loads all the same:
  * InterceptedHttpChannel ignores that error.
- * @param {any} channel  nsIHttpChannel of a top-level document in the agent container
+ * @param {nsIHttpChannel} channel  of a top-level document in the agent container
  */
 function dropOpenerPolicy(channel) {
   try {
@@ -180,7 +185,7 @@ function dropOpenerPolicy(channel) {
 
 /**
  * A browser-scoped DENY for each WebRTC prompt on `uri`'s origin, in the agent tab `browserId`.
- * @param {any} uri @param {object} originAttributes @param {number} browserId
+ * @param {nsIURI | null | undefined} uri @param {object} originAttributes @param {number} browserId
  */
 function denyFor(uri, originAttributes, browserId) {
   if (!uri?.schemeIs("https") && !uri?.schemeIs("http")) return;
@@ -201,9 +206,10 @@ function denyFor(uri, originAttributes, browserId) {
  * A document's window global was created (security.md M10): whatever served it (the network,
  * a service worker, the cache, bfcache), a top-level agent document gets its WebRTC deny before
  * it can ask. Frames ask with the top-level principal (permission delegation).
- * @param {any} wgp  a WindowGlobalParent
+ * @param {unknown} subject  the WindowGlobalParent (WindowGlobalParent::Init notifies with it)
  */
-function onWindowGlobal(wgp) {
+function onWindowGlobal(subject) {
+  const wgp = /** @type {WindowGlobalParent} */ (subject);
   const bc = wgp?.browsingContext;
   if (!bc?.isContent || bc.parent || !bc.browserId) return;
   const principal = wgp.documentPrincipal;
@@ -233,7 +239,7 @@ function sweep() {
   }
 }
 
-/** @param {any} subject @param {string} topic */
+/** @param {unknown} subject @param {string} topic */
 function observe(subject, topic) {
   if (topic === "browsing-context-attached") onAttached(subject);
   else if (topic === "window-global-created") onWindowGlobal(subject);
@@ -262,12 +268,16 @@ function wrapChooser() {
   const registrar = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
   const factory = {
     QueryInterface: ChromeUtils.generateQI(["nsIFactory"]),
-    /** @param {any} iid */
+    /** @param {nsIJSIID<unknown>} iid @returns {unknown} */
     createInstance(iid) {
       const inner = AgentPages._chooserForTests ?? new lazy.nsContentDispatchChooser();
       const chooser = {
         QueryInterface: ChromeUtils.generateQI(["nsIContentDispatchChooser"]),
-        /** @param {any[]} args  handler, uri, principal, browsingContext, … */
+        /**
+         * nsIContentDispatchChooser.handleURI's: handler, uri, principal, browsingContext, …
+         * @param {[unknown, nsIURI | null, nsIPrincipal | null, BrowsingContext | null,
+         *   ...unknown[]]} args
+         */
         handleURI(...args) {
           const [, uri, principal, bc] = args;
           const context = bc?.top?.originAttributes?.userContextId;
@@ -290,7 +300,10 @@ function wrapChooser() {
 }
 
 export const AgentPages = {
-  /** Test-only: the chooser agent-free loads go to, in place of Firefox's. @type {any} */
+  /**
+   * Test-only: the chooser agent-free loads go to, in place of Firefox's.
+   * @type {{ QueryInterface?: unknown, handleURI(...args: never[]): unknown } | null}
+   */
   _chooserForTests: null,
 
   /** Once per app (vimma.js): the hooks stay for the session. */

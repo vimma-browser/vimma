@@ -37,7 +37,7 @@ local or CI build picks this brand without anyone remembering a flag.
 - **Vendor**: `src/browser/moz-configure.patch`, one line, `imply_option("MOZ_APP_VENDOR", "Vimma")`.
 - **Branding prefs**: `src/browser/branding/vimma/pref/firefox-branding.js` replaces the prefs
   file Surfer generates (which points the welcome/what's-new pages at zen-browser.app).
-- `docs/runbook.md`: new `--version` output, the branding symptoms removed.
+- `docs/runbook/`: new `--version` output, the branding symptoms removed.
 
 ## Tests (write first)
 

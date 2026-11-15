@@ -296,8 +296,8 @@ declare const content: Window &
     readonly wrappedJSObject: any;
   };
 /**
- * The frame's nsIDocShell, a global of the task's scope. The tests only QueryInterface it through
- * the untyped Ci (to its nsISelectionController), so it is an nsISupports here.
+ * The frame's nsIDocShell, a global of the task's scope. The tests only QueryInterface it (on
+ * the way to its nsISelectionController), so it is an nsISupports here.
  */
 declare const docShell: nsISupports;
 declare const ContentTaskUtils: {
@@ -327,6 +327,7 @@ declare var TabBarVisibility: BrowserWindow["TabBarVisibility"];
 declare var PopupNotifications: BrowserWindow["PopupNotifications"];
 declare var UpdatePopupNotificationsVisibility: BrowserWindow["UpdatePopupNotificationsVisibility"];
 declare var isInitialPage: BrowserWindow["isInitialPage"];
+declare var isBlankPageURL: BrowserWindow["isBlankPageURL"];
 declare var switchToTabHavingURI: BrowserWindow["switchToTabHavingURI"];
 declare var openTrustedLinkIn: BrowserWindow["openTrustedLinkIn"];
 declare var openLinkIn: BrowserWindow["openLinkIn"];
@@ -334,6 +335,7 @@ declare var goQuitApplication: BrowserWindow["goQuitApplication"];
 declare var DownloadURL: BrowserWindow["DownloadURL"];
 declare var gUnifiedExtensions: BrowserWindow["gUnifiedExtensions"];
 declare var BrowserAddonUI: BrowserWindow["BrowserAddonUI"];
+declare var browsingContext: ChromeWindow["browsingContext"];
 declare var windowState: ChromeWindow["windowState"];
 declare var STATE_MAXIMIZED: ChromeWindow["STATE_MAXIMIZED"];
 declare var STATE_NORMAL: ChromeWindow["STATE_NORMAL"];
@@ -344,6 +346,9 @@ declare var maximize: ChromeWindow["maximize"];
 declare var restore: ChromeWindow["restore"];
 declare var browserDOMWindow: BrowserWindow["browserDOMWindow"];
 declare var BrowserCommands: BrowserWindow["BrowserCommands"];
+// engine/dom/webidl/KeyEvent.webidl: the DOM_VK_* key codes (KeyEventMixin's constants), on a
+// global of every window. A name that is not one of them reads undefined.
+declare const KeyEvent: { readonly [name: `DOM_VK_${string}`]: number | undefined };
 // engine/browser/base/content/utilityOverlay.js
 declare function openAboutDialog(): void;
 // engine/browser/base/content/browser-places.js: `star` is the URL bar's star button, an <image>

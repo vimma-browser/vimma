@@ -114,7 +114,7 @@ function readList(path) {
   return text.length <= MAX_LIST_BYTES ? text : "";
 }
 
-/** @returns {any} the GIO service, or null where there is none */
+/** @returns {nsIGIOService | null} the GIO service, or null where there is none */
 function gioService() {
   try {
     return Cc[GIO_SERVICE]?.getService(Ci.nsIGIOService) ?? null;

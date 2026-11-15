@@ -50,7 +50,7 @@ let firefoxServed = false;
 // channels are dropped, so a page that has reached its process holds nothing. Firefox's wrapper
 // for the loads it holds until its newtab add-on starts (AboutNewTabRedirector's suspended
 // channels, SuspendableChannelWrapper::IsPending) counts as loading until then, opened or not.
-/** @type {Set<any>} */
+/** @type {Set<nsIChannel>} */
 const inFlight = new Set();
 
 /** Whether a Firefox channel handed out is still loading; drops the ones that finished. */
@@ -72,7 +72,7 @@ const privilegedAboutRuns = (except) =>
     (p) => p.remoteType === "privilegedabout" && p.childID !== except,
   );
 
-/** @param {any} process  an nsIDOMProcessParent */
+/** @param {nsIDOMProcessParent} process */
 function noteProcess(process) {
   if (process?.remoteType === "privilegedabout") aboutIDs.add(process.childID);
 }
@@ -110,11 +110,17 @@ const redirecting = () => Services.prefs.getBoolPref(NEWTAB_PREF, true) && !fire
  * @param {string} page
  */
 function standIn(page) {
+  /** @type {`@mozilla.org/network/protocol/about;1?what=${string}`} */
   const contract = `@mozilla.org/network/protocol/about;1?what=${page}`;
-  const firefox = /** @type {any} */ (Cc[contract].getService(Ci.nsIAboutModule));
+  const firefoxClass = Cc[contract];
+  if (!firefoxClass) throw new Error(`no about:${page} module to stand in for`);
+  // about:home's and about:newtab's module is JS (AboutNewTabRedirector.sys.mjs), with a
+  // wrappedJSObject; about:welcome's is C++ (AboutRedirector.cpp), without one.
+  /** @type {nsIAboutModule & { readonly wrappedJSObject?: unknown }} */
+  const firefox = firefoxClass.getService(Ci.nsIAboutModule);
   const startURI = () => Services.io.newURI(START_PAGE_URL);
-  const module = /** @type {any} */ ({
-    /** @param {any} uri */
+  const module = {
+    /** @param {nsIURI} uri */
     getURIFlags(uri) {
       // Without Firefox's URI_SAFE_FOR_UNTRUSTED_CONTENT and child-process flags the load stays
       // in the parent, where the system-principal start page belongs; without MAKE_LINKABLE the
@@ -130,8 +136,8 @@ function standIn(page) {
      * bar treats it as the new tab. A history load overrides that URI (start.mjs replaces the
      * page then). The final URI is checked against the load's triggering principal, so only the
      * user, Vimma and Firefox's own system-principal code reach the page this way.
-     * @param {any} uri
-     * @param {any} loadInfo
+     * @param {nsIURI} uri
+     * @param {nsILoadInfo} loadInfo
      */
     newChannel(uri, loadInfo) {
       if (!redirecting()) {
@@ -145,7 +151,7 @@ function standIn(page) {
       loadInfo.resultPrincipalURI = start;
       return Services.io.newChannelFromURIWithLoadInfo(start, loadInfo);
     },
-    /** @param {any} uri */
+    /** @param {nsIURI} uri */
     getChromeURI(uri) {
       return redirecting() ? startURI() : firefox.getChromeURI(uri);
     },
@@ -155,11 +161,11 @@ function standIn(page) {
     // without it those loads never start.
     wrappedJSObject: firefox.wrappedJSObject,
     QueryInterface: ChromeUtils.generateQI(["nsIAboutModule"]),
-  });
+  };
   Components.manager
     .QueryInterface(Ci.nsIComponentRegistrar)
     .registerFactory(Services.uuid.generateUUID(), `Vimma about:${page}`, contract, {
-      /** @param {any} iid */
+      /** @param {nsIJSIID<unknown>} iid @returns {unknown} */
       createInstance: (iid) => module.QueryInterface(iid),
       QueryInterface: ChromeUtils.generateQI(["nsIFactory"]),
     });
@@ -197,7 +203,8 @@ export const StartPage = {
     Services.obs.addObserver(apply, NEWTAB_TOPIC);
     for (const process of ChromeUtils.getAllDOMProcesses()) noteProcess(process);
     Services.obs.addObserver((subject) => {
-      noteProcess(/** @type {any} */ (subject).QueryInterface(Ci.nsIDOMProcessParent));
+      // The subject is the content process (ContentParent::Init).
+      noteProcess(/** @type {nsISupports} */ (subject).QueryInterface(Ci.nsIDOMProcessParent));
     }, "ipc:content-created");
     Services.obs.addObserver(processEnded, "ipc:content-shutdown");
   },

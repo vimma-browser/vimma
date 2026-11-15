@@ -9,6 +9,8 @@
 // refused while a password or payment card field on screen, in any frame, has a value, and at
 // most 12 are taken a connection a minute (F21; security.md M32).
 
+/* global contextOf -- from head.js */
+
 "use strict";
 
 /* global Client -- from head_vimma_control.js */
@@ -93,7 +95,7 @@ async function openAgentTab(url = SHOT) {
   if (url.startsWith(SHOT)) {
     await until(
       () =>
-        tab.linkedBrowser.browsingContext.children[0]?.currentWindowGlobal?.documentURI?.spec?.endsWith(
+        contextOf(tab.linkedBrowser).children[0]?.currentWindowGlobal?.documentURI?.spec?.endsWith(
           "file_vimma_agent_shot_card.html",
         ),
       "the payment frame loaded",

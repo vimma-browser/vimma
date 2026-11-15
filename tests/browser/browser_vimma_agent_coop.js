@@ -11,6 +11,7 @@
 "use strict";
 
 /* global Client -- from head_vimma_control.js */
+/* global contextOf -- from head.js */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
 
@@ -37,11 +38,24 @@ const DIR = getRootDirectory(gTestPath).replace(
 const COOP = `${DIR}file_vimma_agent_coop.sjs`;
 const SANDBOXED_AUXILIARY_NAVIGATION = 0x2;
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+/** The agent workspace, with its container (containers are on in the browser tests). */
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
+
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+/** The tab an open just named. */
 const tabById = (/** @type {string} */ id) =>
-  gBrowser.tabs.find((t) => String(t.linkedBrowser.browserId) === id);
+  found(gBrowser.tabs.find((t) => String(t.linkedBrowser.browserId) === id));
 
 /** @param {() => boolean} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
@@ -56,13 +70,17 @@ add_task(async function setup() {
   });
 });
 
-/** What the tab shows once it has loaded `url`: its document's URI and title, and whether window.open opened anything. */
+/**
+ * What the tab shows once it has loaded `url`: its document's URI and title, and whether
+ * window.open opened anything.
+ * @param {MozTabbrowserTab} tab @param {string} url
+ */
 async function shown(tab, url) {
   await until(
     () =>
       !tab.hasAttribute("busy") &&
       tab.linkedBrowser.currentURI.spec === url &&
-      !tab.linkedBrowser.browsingContext.currentWindowGlobal?.isInitialDocument,
+      !contextOf(tab.linkedBrowser).currentWindowGlobal?.isInitialDocument,
     `the tab is done loading ${url}`,
   );
   return SpecialPowers.spawn(tab.linkedBrowser, [], () => {
@@ -80,21 +98,21 @@ async function shown(tab, url) {
   });
 }
 
-/** @param {any} tab @param {string} policy @param {string} [url] */
+/** @param {MozTabbrowserTab} tab @param {string} policy @param {string} [url] */
 async function assertLoaded(tab, policy, url = `${COOP}?${policy.split(",")[0]}`) {
   const page = await shown(tab, url);
   Assert.ok(!page.uri.startsWith("about:neterror"), `${policy}: no network error (${page.uri})`);
   Assert.equal(page.title, "COOP page", `${policy}: the page loaded`);
   Assert.notEqual(page.popup, "true", `${policy}: the page still opens no pop-up`);
   Assert.ok(
-    tab.linkedBrowser.browsingContext.sandboxFlags & SANDBOXED_AUXILIARY_NAVIGATION,
+    contextOf(tab.linkedBrowser).sandboxFlags & SANDBOXED_AUXILIARY_NAVIGATION,
     `${policy}: the tab stays sandboxed against pop-ups`,
   );
 }
 
 add_task(async function test_builtin_agent_opens_coop_pages() {
   const conn = "builtin:coop-test";
-  /** @type {any} */
+  /** @type {Parameters<typeof builtinHello>[1]} */
   const state = {};
   builtinHello(conn, state, { client: "COOP test" });
   AgentGate.grantConnection(conn);
@@ -108,7 +126,10 @@ add_task(async function test_builtin_agent_opens_coop_pages() {
       Assert.ok(tab, `${policy}: the tab exists`);
       await assertLoaded(tab, policy);
       // A list of the page, not of an error page: a label listed by an earlier open of this
-      // connection comes back as `repeated` (issue #621).
+      // connection comes back as `repeated` (issue #621). An open without a page in its result
+      // fails here, as the read of its title would.
+      if (!("title" in r))
+        throw new Error(`${policy}: the open names no page: ${JSON.stringify(r)}`);
       Assert.equal(r.title, "COOP page", `${policy}: the open names the page`);
       Assert.ok(!("unlisted" in r), `${policy}: and lists it: ${JSON.stringify(r)}`);
       BrowserTestUtils.removeTab(tab);
@@ -147,7 +168,7 @@ add_task(async function test_mcp_agent_opens_coop_pages() {
   await c.call("agent-hello", { client: { name: "coop-agent" }, via: "example" });
   const id = c.request("agent-open", { url: `${COOP}?same-origin`, elements: true });
   await until(() => AgentGate.waiting.length > 0, "the open asks");
-  AgentGate.answer(AgentGate.waiting[0].id, { kind: "grant" });
+  AgentGate.answer(AgentGate.waiting[0].id, { kind: "grant", minutes: null });
   const r = await c.response(id);
   Assert.ok(r.result, `the open succeeds: ${JSON.stringify(r.error)}`);
   const tab = tabById(r.result.tab);
@@ -158,7 +179,7 @@ add_task(async function test_mcp_agent_opens_coop_pages() {
 
 add_task(async function test_another_workspace_keeps_the_policy() {
   const url = `${COOP}?same-origin&coep`;
-  const isolated = (/** @type {any} */ tab) =>
+  const isolated = (/** @type {MozTabbrowserTab} */ tab) =>
     SpecialPowers.spawn(tab.linkedBrowser, [], () => content.crossOriginIsolated);
   const mine = BrowserTestUtils.addTab(gBrowser, url);
   await BrowserTestUtils.browserLoaded(mine.linkedBrowser, false, url);

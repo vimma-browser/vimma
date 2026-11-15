@@ -30,7 +30,7 @@ installs) work as they do in Firefox, and I can turn any of these defaults back 
   resolves, and whenever `browser.urlbar.quicksuggest.migrationVersion` changes (Suggest's
   migrations, which run at browser-idle-startup after our first window, can clear the value).
   Registered in our `jar.mn`; no upstream file changes.
-- `docs/runbook.md`: crashes now leave a core dump (systemd-coredump), not a minidump.
+- `docs/runbook/`: crashes now leave a core dump (systemd-coredump), not a minidump.
 
 ## Services
 
@@ -176,8 +176,8 @@ ships.
 - **ASRouter provider pref.** Providers are JSON prefs; ours is a full copy of upstream's value
   with `"enabled":false`, so flipping it back in `about:config` gives a working provider (a bare
   `{"id":"cfr","enabled":false}` would leave a broken one). It shadows upstream's value, so each
-  rebase must refresh the copy from `firefox.js` (`docs/runbook.md`, Upstream bumps); the
-  mochitest checks only the id and `enabled`.
+  rebase must refresh the copy from `firefox.js` (`docs/runbook/ci-upstream-bumps.md`, Upstream
+  bumps); the mochitest checks only the id and `enabled`.
 - **Build cost**: after `npm run import`, `./mach build` with `--disable-crashreporter` took
   1763 s (29 min, reconfigure plus a large C++/Rust rebuild); no clobber. Prefs in the branding
   file alone need no build in a local tree (`dist/bin` symlinks it); `surfer build --ui` is not

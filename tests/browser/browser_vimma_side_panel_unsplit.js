@@ -10,7 +10,7 @@
 
 "use strict";
 
-/* global focusContent -- from head.js */
+/* global focusContent, contextOf, windowGlobalOf -- from head.js */
 
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
@@ -20,6 +20,7 @@ const { PaneViews } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/split/PaneView.mjs",
 );
 const Panes = ChromeUtils.importESModule("chrome://browser/content/vimma/core/panes.mjs");
+const PaneOps = ChromeUtils.importESModule("chrome://browser/content/vimma/host/pane-ops.mjs");
 const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
@@ -201,7 +202,7 @@ function identity(tabs) {
   return tabs.map((t) => ({
     browser: t.linkedBrowser,
     outerWindowID: t.linkedBrowser.outerWindowID,
-    innerWindowId: t.linkedBrowser.browsingContext.currentWindowGlobal.innerWindowId,
+    innerWindowId: windowGlobalOf(contextOf(t.linkedBrowser)).innerWindowId,
   }));
 }
 
@@ -701,5 +702,29 @@ add_task(async function splitting_the_lone_tab_is_refused_until_the_next_key() {
   Assert.equal(gBrowser.selectedTab, tab("d"), "and d still shows alone");
   EventUtils.synthesizeKey("j", {});
   await until(() => notice() === null, "the next key hides it");
+  await reset();
+});
+
+// Decision 25: Enter keeps the marked tabs as a hidden view and shows the highlighted tab
+// alone. When that tab closed before the command ran, it is refused like any other closed tab,
+// not run as a plain show-together that would put the split on screen.
+add_task(async function a_closed_alone_tab_is_refused_and_nothing_changes() {
+  await reset();
+  await split(["a", "b"], "a");
+  const gone = await page("gone");
+  const goneId = gone.linkedPanel;
+  gBrowser.removeTab(gone);
+  byName.delete("gone");
+  await until(() => !gone.parentNode, "the alone tab is closed");
+  const before = shape();
+  const refused = PaneOps.showTabs(
+    window,
+    ["a", "c"].map((n) => tab(n).linkedPanel),
+    tab("a").linkedPanel,
+    goneId,
+  );
+  Assert.equal(refused, "Show together: a tab is gone", "refused, naming the closed tab");
+  Assert.equal(shape(), before, "the split is unchanged");
+  Assert.ok(!hiddenView(), "and still shown");
   await reset();
 });

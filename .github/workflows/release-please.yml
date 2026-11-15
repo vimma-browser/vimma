@@ -4,7 +4,7 @@
 # the release: release-please tags vX.Y.Z and creates the GitHub Release as a draft, and
 # release-build starts release.yml, which uploads the packages to that draft; the maintainer
 # publishes it. Config:
-# release-please-config.json, .release-please-manifest.json; setup in docs/runbook.md (Releases).
+# release-please-config.json, .release-please-manifest.json; setup in docs/runbook/ci-releases.md (Releases).
 # The version's single source of truth is surfer.json brands.vimma.release.displayVersion,
 # bumped through extra-files; the Firefox pin (version.version) is never touched.
 # Two post-steps name the Firefox the release is built on (spec firefox-versions): firefox-notes
@@ -85,7 +85,7 @@ jobs:
             exit 0
           fi
           if [ -z "$PUSH_TOKEN" ]; then
-            echo "::notice::RELEASE_PLEASE_TOKEN is not set; #$pr's changelog entry lacks the unreleased lines and the Firefox version (docs/runbook.md, Releases)"
+            echo "::notice::RELEASE_PLEASE_TOKEN is not set; #$pr's changelog entry lacks the unreleased lines and the Firefox version (docs/runbook/ci-releases.md, Releases)"
             exit 0
           fi
           dir="$RUNNER_TEMP/firefox-notes"
@@ -158,7 +158,7 @@ jobs:
           jq -j '.body // ""' "$dir/release.json" > "$dir/body.md"
           # Without the hand-written lines the release is still titled; the warning says to add them.
           if ! node tools/release/changelog.mjs notes "$dir/body.md" --changelog CHANGELOG.md --version "${TAG#v}" > "$dir/hand.md"; then
-            echo "::warning::$TAG's notes lack the hand-written CHANGELOG.md lines (docs/runbook.md, Releases)"
+            echo "::warning::$TAG's notes lack the hand-written CHANGELOG.md lines (docs/runbook/ci-releases.md, Releases)"
             cp "$dir/body.md" "$dir/hand.md"
           fi
           node tools/release/firefox-notes.mjs "$dir/hand.md" --surfer surfer.json > "$dir/new.md"
@@ -181,7 +181,7 @@ jobs:
 
   # Starts release.yml for the draft release-please just created, so its packages are built,
   # signed and uploaded while it is still a draft and publishing it is one click on a finished
-  # release (docs/runbook.md, "Release packages"). A draft fires no `release` event and a
+  # release (docs/runbook/ci-release-packages.md, "Release packages"). A draft fires no `release` event and a
   # GITHUB_TOKEN tag push starts no workflow, but GITHUB_TOKEN may dispatch one; the dispatch
   # names main, so release.yml runs from main, the identity its signatures carry. It runs no
   # repository code. If it fails or never runs, the same dispatch by hand is the recovery:
@@ -212,7 +212,7 @@ jobs:
   # ruleset is satisfied and no person stands between the bump and the release. It runs after
   # firefox-notes so the pinned head already carries that job's changelog commit. Every check is
   # in tools/release/security-release.mjs decide(); off until AUTO_SECURITY_RELEASE is `true`
-  # (docs/runbook.md, Releases). Reads and the merge go through the release-please token: a merge
+  # (docs/runbook/ci-releases.md, Releases). Reads and the merge go through the release-please token: a merge
   # made with GITHUB_TOKEN would push to main without starting release-please.yml, so no release
   # would follow. GITHUB_TOKEN only checks out main's code; the release branch is read as data.
   security-release:

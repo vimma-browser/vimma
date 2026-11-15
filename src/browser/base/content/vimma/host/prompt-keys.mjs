@@ -45,6 +45,8 @@ import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { DialogKeys } from "./dialog-keys.mjs";
 import { answerPopupBar, inAgentTab, popupBar, popupLocked } from "./popup-ops.mjs";
 
+/** @import { Chord } from "../core/keys.mjs" */
+
 const DELAY_PREF = "security.notification_enable_delay";
 const DEFAULT_DELAY_MS = 500;
 const PANEL_ID = "notification-popup";
@@ -70,13 +72,37 @@ const EVENTS = ["popupshowing", "popupshown", "popuppositioned", "popuphidden", 
  * @property {() => void} changed  the pop-up blocked bar's keys line changed: redraw the status bar
  */
 
-/** @param {any} node  an element, possibly in a shadow root */
+/**
+ * `node` and the nodes around it, out through each shadow root to its host.
+ * @param {Node | null} node  an element, possibly in a shadow root
+ * @returns {Node[]}
+ */
 function hostChain(node) {
-  /** @type {any[]} */
+  /** @type {Node[]} */
   const chain = [];
-  for (let el = node; el; el = el.parentNode ?? el.host) chain.push(el);
+  for (let el = node; el; el = el.parentNode ?? hostOf(el)) chain.push(el);
   return chain;
 }
+
+/** @param {Node} node  a shadow root's host, else null */
+const hostOf = (node) => /** @type {Partial<ShadowRoot>} */ (node).host ?? null;
+
+/**
+ * A prompt (a <popupnotification>) of the panels the keys answer.
+ * @param {Element | null | undefined} el
+ * @returns {el is MozPopupNotification}
+ */
+const isPrompt = (el) => el?.localName === "popupnotification";
+
+/**
+ * The notification a prompt shows: PopupNotifications' in the doorhanger, whose `timeShown` is
+ * null until it shows; AppMenuNotifications' in the notice panel (panelUI.js), null once gone.
+ * @param {MozPopupNotification} n
+ * @returns {{ readonly timeShown?: unknown } | null}
+ */
+const notificationOf = (n) =>
+  /** @type {{ readonly notification?: { readonly timeShown?: unknown } | null }} */ (n)
+    .notification ?? null;
 
 export class PromptKeys {
   /**
@@ -95,7 +121,7 @@ export class PromptKeys {
     /** @type {MutationObserver | null} watches the notice panel's content change in place */
     this.noticeChanged = null;
     this.armTimer = 0;
-    /** @type {{ bar: any, at: number } | null} the bar last seen, and when it was first seen */
+    /** @type {{ bar: MozNotificationMessage, at: number } | null} the bar last seen, and when it was first seen */
     this.barSeen = null;
     /** the last key in the window, on ChromeUtils.now()'s clock */
     this.barKeyAt = 0;
@@ -124,12 +150,12 @@ export class PromptKeys {
     return Math.max(0, Services.prefs.getIntPref(DELAY_PREF, DEFAULT_DELAY_MS));
   }
 
-  /** The prompt shown in the open doorhanger panel, or null. @returns {any} */
+  /** The prompt shown in the open doorhanger panel, or null. */
   get notification() {
     return this.topmost("open");
   }
 
-  /** The prompt the keys answer: the doorhanger's first, then the add-on notice. @returns {any} */
+  /** The prompt the keys answer: the doorhanger's first, then the add-on notice. */
   get current() {
     return this.notification ?? this.noticeIn("open");
   }
@@ -137,30 +163,33 @@ export class PromptKeys {
   /**
    * The add-on notice while the app menu's notice panel is in `state`, or null.
    * @param {string} state
-   * @returns {any}
+   * @returns {MozPopupNotification | null}
    */
   noticeIn(state) {
-    const panel = /** @type {any} */ (this.win.document.getElementById(NOTICE_PANEL_ID));
+    const panel = /** @type {XULPopupElement | null} */ (
+      this.win.document.getElementById(NOTICE_PANEL_ID)
+    );
     if (panel?.state !== state) return null;
     for (const n of panel.children) {
-      if (!n.hidden && n.getAttribute("popupid") === NOTICE_ID) return n;
+      if (isPrompt(n) && !n.hidden && n.getAttribute("popupid") === NOTICE_ID) return n;
     }
     return null;
   }
 
-  /** @param {any} n */
+  /** @param {MozPopupNotification} n */
   isNotice(n) {
-    return n.getAttribute("popupid") === NOTICE_ID && n.parentNode?.id === NOTICE_PANEL_ID;
+    return n.getAttribute("popupid") === NOTICE_ID && n.parentElement?.id === NOTICE_PANEL_ID;
   }
 
   /**
    * The checkbox `p` toggles in `n` while it shows: the add-on notice's pin, else null.
-   * @param {any} n
-   * @returns {any}
+   * @param {MozPopupNotification} n
+   * @returns {XULElement | null}
    */
   toggleOf(n) {
     if (!this.isNotice(n)) return null;
-    const box = n.querySelector(`#${PIN_ID}`);
+    // A XUL <checkbox> (panelUI.inc.xhtml).
+    const box = /** @type {XULElement | null} */ (n.querySelector(`#${PIN_ID}`));
     return box && !box.hidden ? box : null;
   }
 
@@ -168,22 +197,24 @@ export class PromptKeys {
    * The topmost prompt, the one Firefox's own Esc answers (PopupNotifications), while the panel
    * is in `state`.
    * @param {string} state
-   * @returns {any}
+   * @returns {MozPopupNotification | null}
    */
   topmost(state) {
-    const panel = /** @type {any} */ (this.win.document.getElementById(PANEL_ID));
+    const panel = /** @type {XULPopupElement | null} */ (
+      this.win.document.getElementById(PANEL_ID)
+    );
     if (panel?.state !== state) return null;
     const n = panel.firstElementChild;
-    return n?.localName === "popupnotification" ? n : null;
+    return isPrompt(n) ? n : null;
   }
 
   /**
    * When `n` is armed, on ChromeUtils.now()'s clock: Firefox's delay from when it last showed
    * the prompt, and ours from the last key. Infinity while Firefox has not stamped it.
-   * @param {any} n
+   * @param {MozPopupNotification} n
    */
   armedAt(n) {
-    const shown = this.isNotice(n) ? this.noticeShownAt : n.notification?.timeShown;
+    const shown = this.isNotice(n) ? this.noticeShownAt : notificationOf(n)?.timeShown;
     if (typeof shown !== "number") return Infinity;
     return Math.max(shown, this.lastKeyAt) + this.delay;
   }
@@ -258,7 +289,7 @@ export class PromptKeys {
   noticeShown() {
     const n = this.noticeIn("open");
     this.noticeShownAt = n ? ChromeUtils.now() : Infinity;
-    this.noticeSeen = n?.notification ?? null;
+    this.noticeSeen = n ? notificationOf(n) : null;
     const current = this.current;
     if (current) this.arm(current);
   }
@@ -285,8 +316,8 @@ export class PromptKeys {
   /**
    * The keys line in `n`, made and labelled after its buttons if need be; hidden while it is
    * made.
-   * @param {any} n
-   * @returns {HTMLElement}
+   * @param {MozPopupNotification} n
+   * @returns {Element}
    */
   hintFor(n) {
     let hint = n.querySelector(`.${HINT_CLASS}`);
@@ -317,21 +348,22 @@ export class PromptKeys {
   /**
    * Where focus is, as `doorhangerKey` needs it: in a field (insert mode), inside the prompt `n`,
    * and in one of the prompt's own text fields.
-   * @param {any} n
+   * @param {MozPopupNotification} n
    */
   focusIn(n) {
-    const focused = /** @type {any} */ (this.win.document).commandDispatcher?.focusedElement;
+    const focused = this.win.document.commandDispatcher?.focusedElement ?? null;
     // A prompt opened with `autofocus` (the add-on install prompt, ExtensionsUI) focuses the
     // panel itself and no element in it, so no field has focus; PopupNotifications sets
     // `noautofocus` back on the panel when it closes.
-    const panelFocused = !focused && !n.parentNode?.hasAttribute("noautofocus");
+    const panelFocused = !focused && !n.parentElement?.hasAttribute("noautofocus");
     const inPrompt = panelFocused || hostChain(focused).includes(n);
     // The password prompt's fields keep their <input> in a shadow root.
     let inner = focused;
     while (inner?.shadowRoot?.activeElement) inner = inner.shadowRoot.activeElement;
+    const field = /** @type {Partial<HTMLInputElement> | null} */ (inner);
     const editable =
-      !!inner &&
-      (inner.mozIsTextField?.(false) || inner.localName === "textarea" || inner.isContentEditable);
+      !!field &&
+      (field.mozIsTextField?.(false) || field.localName === "textarea" || field.isContentEditable);
     return {
       inField: !panelFocused && this.host.inField(),
       inPrompt,
@@ -346,14 +378,14 @@ export class PromptKeys {
   refresh() {
     const n = this.current;
     const hint = n?.querySelector(`.${HINT_CLASS}`);
-    if (!hint) return;
+    if (!n || !hint) return;
     const before = hint.textContent;
     if (this.hintFor(n).textContent !== before) this.arm(n);
   }
 
   /**
    * Hides the keys line of `n` and shows it again once the prompt is armed.
-   * @param {any} n
+   * @param {MozPopupNotification} n
    */
   arm(n) {
     this.win.clearTimeout(this.armTimer);
@@ -374,7 +406,7 @@ export class PromptKeys {
   /**
    * The selected page's pop-up blocked bar, stamped with when it was first seen; null while a
    * permission prompt is open, whose keys come first.
-   * @returns {any}
+   * @returns {MozNotificationMessage | null}
    */
   bar() {
     const bar = this.current ? null : popupBar(this.win);
@@ -389,19 +421,20 @@ export class PromptKeys {
    * Redraws the status bar when the bar leaves its box. Its close button, the options menu and
    * a navigation remove it without an event Vimma hears: Firefox's own eventCallback is the only
    * hook (notificationbox.js, _removeNotificationElement).
-   * @param {any} bar
+   * @param {MozNotificationMessage | null} bar
    */
   watchBar(bar) {
     this.barGone?.disconnect();
     this.barGone = null;
-    if (!bar?.parentNode) return;
+    const box = bar?.parentNode;
+    if (!bar || !box) return;
     const observer = new this.win.MutationObserver(() => {
       if (bar.isConnected) return;
       observer.disconnect();
       if (this.barGone === observer) this.barGone = null;
       this.host.changed();
     });
-    observer.observe(bar.parentNode, { childList: true });
+    observer.observe(box, { childList: true });
     this.barGone = observer;
   }
 
@@ -449,9 +482,9 @@ export class PromptKeys {
    * The keys line in the pop-up blocked bar, made beside its button if need be. The bar's
    * buttons live in its light DOM, in the `actions` slot's container (notificationbox.js,
    * NotificationMessage.connectedCallback); null until the bar has made it.
-   * @param {any} bar
+   * @param {MozNotificationMessage} bar
    * @param {string} text
-   * @returns {HTMLElement | null}
+   * @returns {Element | null}
    */
   barHintFor(bar, text) {
     const box = bar.buttonContainer;
@@ -471,7 +504,7 @@ export class PromptKeys {
   /**
    * A keydown while no prompt is open: the bar's y, n or Esc.
    * @param {KeyboardEvent} e
-   * @param {any} chord
+   * @param {Chord} chord
    * @returns {boolean} whether it was the bar's key (consumed)
    */
   onBarKey(e, chord) {
@@ -518,7 +551,7 @@ export class PromptKeys {
     if (!n) return this.onBarKey(e, chord);
     // A notice whose content changed in place (another add-on's) unseen by the panel's watcher
     // is seen anew: its wait starts now.
-    if (this.isNotice(n) && n.notification !== this.noticeSeen) this.noticeShown();
+    if (this.isNotice(n) && notificationOf(n) !== this.noticeSeen) this.noticeShown();
     const now = ChromeUtils.now();
     const armed = now >= this.armedAt(n);
     this.lastKeyAt = now;
@@ -541,7 +574,7 @@ export class PromptKeys {
     if (result.kind === "allow") n.button?.click();
     else if (result.kind === "block") {
       if (!n.hasAttribute("secondarybuttonhidden")) n.secondaryButton?.click();
-    } else if (result.kind === "toggle") toggle.click();
+    } else if (result.kind === "toggle") toggle?.click();
     // The add-on notice's checkbox comes first: Space toggles it there, and Tab goes on to OK.
     else if (result.kind === "focus") (toggle ?? n.footerFocusableButtons?.[0])?.focus();
     return true;

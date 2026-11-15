@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { SLOW_CHECKS, commands, decide, gather, slowChecksStarted } from "../security-release.mjs";
 
-// Spec firefox-versions, decisions 11 to 15; docs/security.md G9 and G10. The fixtures are
-// recorded API responses: the merge of #186 (upstream: firefox 158.0, labelled security) and
-// release PR #347 while it was open.
+// Spec firefox-versions, decisions 11 to 15; docs/security/10-firefox-updates.md G9 and G10. The
+// fixtures are recorded API responses: the merge of #186 (upstream: firefox 158.0, labelled
+// security) and release PR #347 while it was open.
 /** @type {Record<string, any>} */
 const recorded = JSON.parse(
   readFileSync(new URL("fixtures/security-release.json", import.meta.url), "utf8"),

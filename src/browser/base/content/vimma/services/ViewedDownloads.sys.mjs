@@ -37,7 +37,7 @@ export const ViewedDownloads = {
     if (initialised) return;
     initialised = true;
     lazy.Downloads.getList(lazy.Downloads.ALL)
-      .then((/** @type {any} */ list) => list.addView(view))
+      .then((list) => list.addView(view))
       .catch(console.error);
   },
 };

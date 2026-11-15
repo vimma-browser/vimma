@@ -15,4 +15,6 @@ host that builds it (`AgentChatServices`: the conversations, the agent CLIs, the
 from `agent/`, `config/` or `host/`, and not `host/host-services.mjs` either.
 
 **Read more:** [Config and theme](../../../../../../docs/architecture/config-and-theme.md); the chrome UI rules
-in [docs/security.md](../../../../../../docs/security.md) section 6.
+in
+[docs/security/06-chrome-ui-rendering.md](../../../../../../docs/security/06-chrome-ui-rendering.md)
+section 6.

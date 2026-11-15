@@ -30,9 +30,14 @@ const FIELDS = `https://example.com/document-builder.sjs?html=${encodeURICompone
   <input type="search" id="c">`,
 )}`;
 
+/** This window's pane view, which PaneViews made when the window opened. */
+const paneView = () => /** @type {PaneView} */ (PaneViews.get(window));
+
 registerCleanupFunction(async () => {
-  while (PaneViews.get(window).panes) PaneViews.get(window).close();
-  while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  while (paneView().panes) paneView().close();
+  while (gBrowser.tabs.length > 1) {
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
   Services.prefs.clearUserPref("browser.tabs.splitview.hasUsed");
   Services.prefs.clearUserPref("sidebar.verticalTabs.dragToPinPromo.dismissed");
 });
@@ -44,7 +49,7 @@ function notice() {
 /** Waits for the notice to say `text`. */
 async function noticeSays(/** @type {string} */ text) {
   await TestUtils.waitForCondition(
-    () => notice()?.textContent === text && notice().matches(":popover-open"),
+    () => notice()?.textContent === text && notice()?.matches(":popover-open") === true,
     `the notice says ${JSON.stringify(text)}`,
   );
 }
@@ -68,7 +73,7 @@ function press(/** @type {string[]} */ keys) {
  * Presses `keys` in the focused page and resolves with where `browser` loads next, or null if
  * it does not load `url` within 5 s (a key that does nothing fails an assertion instead of
  * timing out the file).
- * @param {XULBrowserElement} browser
+ * @param {MozTabBrowser} browser
  * @param {string[]} keys
  * @param {string} url
  */
@@ -272,8 +277,11 @@ add_task(async function in_a_split_the_keys_act_on_the_focused_pane() {
   const left = await openPage(leftUrl);
   const right = await openPage(rightUrl);
   await BrowserTestUtils.switchTab(gBrowser, left);
-  const view = PaneViews.get(window);
-  Assert.ok(view.split("vertical", { tab: right }).ok, "split left | right");
+  const view = paneView();
+  Assert.ok(
+    view.split("vertical", { tab: /** @type {SplitTab} */ (right) }).ok,
+    "split left | right",
+  );
   await TestUtils.waitForCondition(() => gBrowser.selectedTab === right, "the right pane focused");
   const [lb, rb] = [left.linkedBrowser, right.linkedBrowser];
   await recordPageKeys(lb);
@@ -310,7 +318,9 @@ add_task(async function in_insert_mode_the_keys_are_typed() {
   await SpecialPowers.spawn(browser, [], () => {
     content.document.body.append(content.document.createElement("input"));
   });
-  await SpecialPowers.spawn(browser, [], () => content.document.querySelector("input").focus());
+  await SpecialPowers.spawn(browser, [], () =>
+    /** @type {HTMLInputElement} */ (content.document.querySelector("input")).focus(),
+  );
   await TestUtils.waitForCondition(
     () => VimmaHost._browserMode(browser) === "insert",
     "the field puts the page in insert mode",
@@ -320,7 +330,11 @@ add_task(async function in_insert_mode_the_keys_are_typed() {
   const typed = ["y", "y", "p", "P", "g", "i", "g", "u", "g", "U", "g", "f"];
   press(typed);
   const value = () =>
-    SpecialPowers.spawn(browser, [], () => content.document.querySelector("input").value);
+    SpecialPowers.spawn(
+      browser,
+      [],
+      () => /** @type {HTMLInputElement} */ (content.document.querySelector("input")).value,
+    );
   await TestUtils.waitForCondition(
     async () => (await value()).length >= typed.length,
     "the field gets every key",

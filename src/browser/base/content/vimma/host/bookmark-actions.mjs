@@ -149,7 +149,7 @@ function where(tree, guid) {
  * @param {"current" | "tab" | "vertical" | "horizontal"} at
  */
 function openBookmark(ctx, url, at) {
-  const win = /** @type {any} */ (ctx.win);
+  const win = ctx.win;
   if (at === "tab") {
     win.openTrustedLinkIn(url, "tab", { inBackground: true });
     return;

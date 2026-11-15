@@ -5,8 +5,8 @@ Status: implemented (Delivery 1 in #603, 2 in #611, 3 for #598, 4 in #713 withou
 breakdown); `packages/vimma-core/src/` (`agent-loop.mjs`, `agent-providers.mjs`,
 `agent-tools-data.mjs`, `agent-act.mjs`); `tools/vimma-ctl` (`src/mcp.rs`: tool descriptions and
 `INSTRUCTIONS`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
-`actors/VimmaChild.sys.mjs` for element lists); `docs/agent-bench.md`, `docs/runbook.md`,
-`docs/guide.md`, `docs/security.md` · Upstream patches: none · ADR: none. No new dependency.
+`actors/VimmaChild.sys.mjs` for element lists); `docs/agent-bench.md`, `docs/runbook/`,
+`docs/guide.md`, `docs/security/` · Upstream patches: none · ADR: none. No new dependency.
 
 Since changed: vimma-ctl's `src/mcp.rs` is now the `src/mcp/` module
 ([#934](https://github.com/vimma-browser/vimma/issues/934)), split with no change of behaviour:
@@ -325,8 +325,8 @@ a conversation's own tabs, and the per-conversation rates.
   security-sensitive: the delimiters, the URL and title line, M31's limits and escaping, and
   the rule that a sensitive field shows no value must hold for every list, and a list that
   leaves lines out must not become a way for a page to hide an element the model then clicks
-  by a stale label (labels stay those of the current page). docs/security.md M31 gains the
-  rules, and the change gets a fresh review.
+  by a stale label (labels stay those of the current page). docs/security/12-agents-mcp.md M31
+  gains the rules, and the change gets a fresh review.
 - **S5 (pruning)** removes page text from later requests and never adds any; the first line it
   keeps is Vimma's wording around the page's URL and title, already escaped and cut.
 - **S6 (several calls a turn)** changes no gate rule: each call is checked, rated and logged on
@@ -374,10 +374,10 @@ label, text, caption or name holds all its words`; `a sensitive field's value is
 ## Docs and changelog
 
 - `docs/agent-bench.md`: the breakdown table for each model, and where each model ran.
-- `docs/runbook.md`, "The agent model bench": the breakdown, pacing, and running Ollama on an
-  integrated GPU.
+- `docs/runbook/testing.md`, "The agent model bench": the breakdown, pacing, and running Ollama on
+  an integrated GPU.
 - `docs/guide.md`, "Built-in agent": running a local model on the GPU and `keep_results`.
-- `docs/security.md`: M31 for compact lists (S3, S4); §12 for pruning (S5).
+- `docs/security/`: M31 for compact lists (S3, S4); §12 for pruning (S5).
 - `CHANGELOG.md`: added at merge.
 
 ## Delivery

@@ -9,7 +9,9 @@ reloads the theme in every window.
 **May import (layer 6, [ADR-026](../../../../../../docs/adr/026-module-layering.md)):** every folder below it;
 today `core/` and `ui/theme-host.mjs`. Not `about/`, `setup/` or `start/` (same layer).
 
-**Security:** [docs/security.md](../../../../../../docs/security.md) section 7.
+**Security:**
+[docs/security/07-omarchy-hook-and-vimma-open.md](../../../../../../docs/security/07-omarchy-hook-and-vimma-open.md)
+section 7.
 
 **Read more:** [m5-omarchy-theme](../../../../../../docs/specs/m5-omarchy-theme.md),
 [Config and theme](../../../../../../docs/architecture/config-and-theme.md).

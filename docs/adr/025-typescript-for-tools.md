@@ -72,15 +72,20 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
    Copilot CLI run them on each contributor's own Node, which may be older than 22.18; there a
    `.ts` hook exits 1 with `ERR_UNKNOWN_FILE_EXTENSION`, and a hook that exits with anything but 2
    does not block, so the guard would stop guarding without a word. The plugin moves only with a
-   plan that fails closed on such a Node, after a security review.
+   plan that fails closed on such a Node, after a security review. (Since changed: the exception
+   now applies to the hooks only, `tools/claude-plugin/hooks/`. The plugin's tests are `.ts`: only
+   Vitest runs them, on the Node `.nvmrc` pins, and they still spawn the `.mjs` hooks.
+   `tools/test/mjs-ratchet.test.ts` fails on a file under `hooks/` that is not `.mjs` or
+   `hooks.json`.)
    A second exception: the guards that workflows run from the base branch, `tools/ci/docs-only.mjs`
    and `tools/ci/key-guard.mjs`, and key-guard's test, which the guard's `GUARD_PATHS` names, stay
    `.mjs`. They judge a pull request inside its checkout, so they run on the runner image's own
    Node with nothing of the pull request run first, and a `.ts` file would need a Node set up in
    that checkout: `actions/setup-node` runs `npm --version` and `yarn --version` there, and a
-   package manager reads its configuration from the current directory (docs/security.md, B18).
-   `tools/ci/tree-covered.mjs` runs only on pushes to `main`, from trusted files, and may move
-   with the rest of `tools/ci`. (Since changed: it moved, as `tools/ci/tree-covered.ts`, #946.)
+   package manager reads its configuration from the current directory
+   (docs/security/14-build-and-release-supply-chain.md, B18). `tools/ci/tree-covered.mjs` runs only
+   on pushes to `main`, from trusted files, and may move with the rest of `tools/ci`. (Since
+   changed: it moved, as `tools/ci/tree-covered.ts`, #946.)
 
 ## Reasoning
 
@@ -120,6 +125,10 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
   `covered`; semgrep.yml `covered`; dependabot-automerge.yml `classify`; downloads.yml `collect`;
   mutation.yml `report`; spec-status.yml `check`; upstream.yml `detect`, `track`, `publish`,
   `patch-issue` and `drift`; upstream-beta.yml `detect` and `render`; upstream-merge.yml `merge`.
+  `tools/test/runner-node.test.ts` also follows the `tools/**/*.sh` wrappers a step runs, and the
+  relative imports of a `.mjs` it runs: upstream.yml `patch-check` and upstream-beta.yml
+  `source-check` reached node through `tools/upstream/source-check.sh` and took the step before
+  `tools/artifact-build/` moved. None of the jobs still on the runner's Node may reach a `.ts`.
 - Every `actions/setup-node` step takes `node-version-file: .nvmrc`, never a bare major: a
   `node-version: 22` step gets the newest 22.x the runner has, not the version the tools were
   checked on. The last six such jobs (release.yml `ctl`, `package`, `mar`, `macos-ctl` and

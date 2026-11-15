@@ -215,8 +215,10 @@ const pageClean = (s) => clean(pageText(s));
 /**
  * What a form submission sends, as a checkpoint shows it (docs/specs/mcp-checkpoints.md
  * Behaviour 4): each field's name and value, cut as a fill's are; a sensitive field as its name
- * and `•••`, a file field as its name; hidden fields counted, not listed; the list cut with
- * `… (N more)` where the line ends. Empty when there is nothing to say.
+ * and `•••`, a file field as its name, an entry whose value is not read (a form-associated custom
+ * element's) as its name and `(not read)`; hidden fields counted, not listed; the list cut with
+ * `… (N more)` where the line ends; `+ what the page adds` when the page's script may add to it
+ * (docs/specs/mcp-consequence.md K3). Empty when there is nothing to say.
  * @param {Record<string, any>} sent @param {string} lead  what comes before the fields
  * @returns {Part[]}
  */
@@ -224,7 +226,8 @@ function sentParts(sent, lead) {
   const fields = Array.isArray(sent.fields) ? sent.fields : [];
   const hidden = Number(sent.hidden) || 0;
   let left = Number(sent.more) || 0;
-  if (!fields.length && !left && !hidden) return [];
+  const unread = sent.unread === true;
+  if (!fields.length && !left && !hidden && !unread) return [];
   /** @type {Part[]} */
   const parts = [{ text: lead }];
   let width = 0;
@@ -240,11 +243,13 @@ function sentParts(sent, lead) {
         ? [{ text: " •••" }]
         : f?.file
           ? [{ text: " (file)" }]
-          : [
-              { text: ' "' },
-              { text: value, isolate: /** @type {const} */ ("auto") },
-              { text: '"' },
-            ]),
+          : f?.opaque
+            ? [{ text: " (not read)" }]
+            : [
+                { text: ' "' },
+                { text: value, isolate: /** @type {const} */ ("auto") },
+                { text: '"' },
+              ]),
     ];
     const wide = textWidth(piece.map((p) => p.text).join(""));
     if (width + wide > FILL_COLUMNS) {
@@ -260,7 +265,11 @@ function sentParts(sent, lead) {
     parts.push({ text: `${said ? ", " : ""}… (${left} more)` });
     said = true;
   }
-  if (hidden) parts.push({ text: `${said ? ", " : ""}+ ${hidden} hidden` });
+  if (hidden) {
+    parts.push({ text: `${said ? ", " : ""}+ ${hidden} hidden` });
+    said = true;
+  }
+  if (unread) parts.push({ text: `${said ? ", " : ""}+ what the page adds` });
   return parts;
 }
 

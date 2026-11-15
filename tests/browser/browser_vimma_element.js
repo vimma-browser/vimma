@@ -5,7 +5,7 @@
 // Spec: docs/specs/element-focus.md (sub-PR 1: text blocks as hint targets; sub-PR 2: the
 // ELEMENT mode, v, y, +, -, j, k; sub-PR 3: ip and ap in copy mode)
 
-/* global focusContent, recordPageKeys, pageKeys, waitForPageKey -- from head.js */
+/* global focusContent, recordPageKeys, pageKeys, waitForPageKey, contextOf, windowGlobalOf -- from head.js */
 /* global docShell -- in SpecialPowers.spawn's content task scope */
 
 "use strict";
@@ -170,7 +170,7 @@ async function boxes(browser) {
     out.frame = { x: f.x, y: f.y };
     return out;
   });
-  const inner = await SpecialPowers.spawn(browser.browsingContext.children[0], [], () => {
+  const inner = await SpecialPowers.spawn(contextOf(browser).children[0], [], () => {
     const r = /** @type {HTMLElement} */ (
       content.document.getElementById("framed")
     ).getBoundingClientRect();
@@ -616,6 +616,37 @@ add_task(async function shift_v_selects_the_block_line_wise() {
   });
 });
 
+add_task(async function v_on_a_partly_visible_block_does_not_scroll_the_page() {
+  await SpecialPowers.pushPrefEnv({ set: [["general.smoothScroll", false]] });
+  await withPage(PAGE, async (browser) => {
+    await focusBlock(browser, "q");
+    await waitForRingOn(browser, "q");
+    // Half of the quote scrolled above the top: on screen, so v leaves the page where it is.
+    const scrolled = await SpecialPowers.spawn(browser, [], () => {
+      const r = /** @type {Element} */ (
+        content.document.getElementById("q")
+      ).getBoundingClientRect();
+      content.scrollBy(0, Math.round(r.top + r.height / 2));
+      const now = /** @type {Element} */ (
+        content.document.getElementById("q")
+      ).getBoundingClientRect();
+      return { y: content.scrollY, top: now.top, bottom: now.bottom };
+    });
+    Assert.ok(scrolled.top < 0 && scrolled.bottom > 0, "the quote is partly on screen");
+    EventUtils.synthesizeKey("v");
+    await waitForMode(browser, "visual");
+    await TestUtils.waitForCondition(
+      async () => (await selectionIn(browser)).text === "A quote with text of its own.",
+      "the quote is selected",
+    );
+    Assert.equal(
+      await SpecialPowers.spawn(browser, [], () => content.scrollY),
+      scrolled.y,
+      "the page did not scroll",
+    );
+  });
+});
+
 add_task(async function y_copies_the_block_without_selecting_it() {
   await withPage(PAGE, async (browser) => {
     const before = await selectionIn(browser);
@@ -768,7 +799,7 @@ add_task(async function blocks_in_open_and_closed_shadow_roots() {
 
 add_task(async function a_block_in_a_cross_origin_frame() {
   await withPage(PAGE, async (browser) => {
-    const frame = browser.browsingContext.children[0];
+    const frame = contextOf(browser).children[0];
     await focusBlock(browser, "framed");
     await waitForRingOn(browser, "framed");
     EventUtils.synthesizeKey("+");
@@ -875,8 +906,8 @@ add_task(async function no_element_hints_in_the_pdf_viewer() {
 
 add_task(async function malformed_block_messages_are_refused() {
   await withPage(PAGE, async (browser) => {
-    const top = browser.browsingContext.currentWindowGlobal.getActor("Vimma");
-    const inner = browser.browsingContext.children[0].currentWindowGlobal.getActor("Vimma");
+    const top = windowGlobalOf(contextOf(browser)).getActor("Vimma");
+    const inner = windowGlobalOf(contextOf(browser).children[0]).getActor("Vimma");
     for (const data of [
       null,
       "focus",
@@ -909,7 +940,7 @@ add_task(async function malformed_block_messages_are_refused() {
         });
     });
     // A report from a frame that is not the block's is not heard.
-    await SpecialPowers.spawn(browser.browsingContext.children[0], [gen], (g) => {
+    await SpecialPowers.spawn(contextOf(browser).children[0], [gen], (g) => {
       /** @type {WindowGlobalChild} */ (content.windowGlobalChild)
         .getActor("Vimma")
         .sendAsyncMessage("Vimma:BlockGone", { gen: g });

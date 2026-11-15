@@ -16,7 +16,7 @@ only forwards reports to the host, is `host/VimmaParent.sys.mjs`, and `vimma.js`
 to `register()`.
 
 **Security:** pages are untrusted; what the actors take from them is checked as
-[docs/security.md](../../../../../../docs/security.md) sections 13, 15 and 20 say.
+[docs/security/](../../../../../../docs/security/README.md) sections 13, 15 and 20 say.
 
 **Read more:** [The life of a keypress](../../../../../../docs/architecture/keypress.md), from "The actor pair"
 on.

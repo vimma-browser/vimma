@@ -77,7 +77,7 @@ import type { Scenario, UpdateServe } from "./scenario.ts";
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
 /** Why an update scenario does not run without --updater. */
 const NEEDS_UPDATER =
-  "needs a VIMMA_UPDATES=1 build: --updater <objdir> after ./mach package (docs/runbook.md)";
+  "needs a VIMMA_UPDATES=1 build: --updater <objdir> after ./mach package (docs/runbook/)";
 
 const OPTIONS = {
   filter: { type: "string" },

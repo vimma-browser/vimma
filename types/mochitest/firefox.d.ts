@@ -122,6 +122,8 @@ interface FirefoxServices {
   // engine/intl/locale/mozILocaleService.idl
   locale: { appLocaleAsBCP47: string };
   scriptloader: mozIJSSubScriptLoader;
+  // engine/intl/build/components.conf (js_name "strings")
+  strings: nsIStringBundleService;
 }
 
 // engine/dom/chrome-webidl/IOUtils.webidl
@@ -137,10 +139,70 @@ interface nsIDOMWindowUtils {
   restoreNormalRefresh(): void;
 }
 
-// engine/xpcom/base/nsISupports.idl: every XPCOM object. What QueryInterface returns depends on
-// the interface asked for, which the tests name through the untyped Ci, so it is untyped too.
-interface nsISupports {
-  QueryInterface(iid: unknown): any;
+// XPCOM (types/firefox.d.ts types the interfaces and classes the product uses): the tests name
+// many more, and those stay untyped.
+interface XPCOMInterfaces {
+  readonly [name: string]: any;
+}
+interface XPCOMClasses {
+  readonly [contract: string]: any;
+  // Firefox's own about:home module, which the start page stands in for.
+  "@mozilla.org/network/protocol/about;1?what=home": nsIJSCID;
+}
+// The members of the product's XPCOM interfaces that only the tests use (the IDL files are named
+// in types/firefox.d.ts). An update check's result has the updates it found; runAsync calls
+// `observer` once the process exits.
+interface nsIProcess {
+  run(blocking: boolean, args: string[], count: number): void;
+  runAsync(args: string[], count: number, observer?: nsIObserver | null): void;
+}
+interface nsISocketTransportService {
+  createTransport(
+    socketTypes: string[],
+    host: string,
+    port: number,
+    proxyInfo: unknown,
+    dnsRecord: unknown,
+  ): nsISocketTransport;
+}
+interface nsIScriptableInputStream {
+  available(): number;
+  /** `count` bytes as a binary string, NUL bytes included; throws when fewer are there. */
+  readBytes(count: number): string;
+}
+interface nsIBinaryInputStream {
+  /** `count` bytes as a binary string; throws when fewer are there. */
+  readBytes(count: number): string;
+}
+interface nsIPropertyBag2 {
+  hasKey(name: string): boolean;
+}
+interface nsIURI {
+  readonly query: string;
+}
+// engine/dom/console/nsIConsoleAPIStorage.idl: a listener gets each console.* call of a page
+// the principal may see, as a ConsoleEvent (dom/webidl/Console.webidl).
+interface nsIConsoleAPIStorage {
+  addLogEventListener(listener: (event: any) => void, principal: unknown): void;
+  removeLogEventListener(listener: (event: any) => void): void;
+}
+interface nsIUpdateCheckResult {
+  readonly succeeded: boolean;
+  readonly checksAllowed: boolean;
+  readonly updates: readonly { readonly displayVersion: string }[];
+}
+interface nsIUpdateChecker {
+  getUpdateURL(checkType: number): Promise<string | null>;
+}
+interface nsIApplicationUpdateService {
+  stopDownload(): Promise<void>;
+}
+interface nsIUpdateManager {
+  getReadyUpdate(): Promise<nsIUpdate | null>;
+  cleanupActiveUpdates(): Promise<void>;
+}
+interface nsISelectionController {
+  getCaretEnabled(): boolean;
 }
 
 // engine/dom/webidl/Event.webidl (chrome-only): the target inside a shadow tree or native anonymous
@@ -152,6 +214,8 @@ interface Event {
 // engine/caps/nsIPrincipal.idl
 interface nsIPrincipal {
   readonly origin: string;
+  /** The origin without its origin attributes' suffix. */
+  readonly originNoSuffix: string;
 }
 
 // engine/xpcom/ds/nsIObserver.idl and nsIObserverService.idl: the object form of an observer.
@@ -173,13 +237,6 @@ interface nsIObserverService {
 interface nsIWindowWatcher {
   registerNotification(observer: nsIObserver): void;
   unregisterNotification(observer: nsIObserver): void;
-}
-
-// engine/toolkit/content/widgets/browser-custom-element.mjs: a browser's document and window,
-// which only a browser in the parent process (about:preferences, about:addons) has.
-interface MozBrowser {
-  readonly contentDocument: Document | null;
-  readonly contentWindow: (Window & typeof globalThis) | null;
 }
 
 // engine/dom/webidl/Document.webidl
@@ -217,6 +274,22 @@ interface Tabbrowser {
     tab: MozTabbrowserTab,
     options?: { elementIndex?: number; tabIndex?: number; selectTab?: boolean },
   ): MozTabbrowserTab | null;
+  /**
+   * Opens a tab for each URI (or loads the first into `targetTab` or the selected tab with
+   * `replace`); the tabs opened or reused, in the order of `uris`.
+   */
+  loadTabs(
+    uris: string[],
+    options?: {
+      inBackground?: boolean;
+      replace?: boolean;
+      targetTab?: MozTabbrowserTab;
+      // An nsIPrincipal, as Services.scriptSecurityManager gives one (unknown in types/firefox.d.ts).
+      triggeringPrincipal?: unknown;
+      userContextId?: number;
+      fromExternal?: boolean;
+    },
+  ): MozTabbrowserTab[];
   // A browser's TabDialogBox (engine/browser/base/content/browser-tabdialogs.js), untyped here:
   // one test counts its content dialogs.
   getTabDialogBox(browser: MozBrowser): any;
@@ -233,10 +306,8 @@ interface nsIPermissionManager {
 interface MozBrowser {
   /** Its current window global's outer window id, undefined while it has none. */
   readonly outerWindowID: number | undefined;
-  docShellIsActive: boolean;
   fullZoom: number;
   stop(): void;
-  readonly frameLoader: { readonly remoteTab: { priorityHint: boolean } | null } | null;
 }
 
 // engine/toolkit/modules/PopupNotifications.sys.mjs (Notification): a browser's notification.
@@ -255,9 +326,11 @@ interface PopupNotificationsApi {
 }
 
 // engine/dom/webidl/HTMLInputElement.webidl and HTMLTextAreaElement.webidl (chrome-only): set the
-// value as the user's typing would, with input and change events.
+// value as the user's typing would, with input and change events. revealPassword is a password
+// field's reveal state.
 interface HTMLInputElement {
   setUserInput(value: string): void;
+  revealPassword: boolean;
 }
 interface HTMLTextAreaElement {
   setUserInput(value: string): void;
@@ -292,10 +365,13 @@ interface nsIBrowserDOMWindow {
 }
 
 // engine/browser/base/content/browser.js and browser-commands.js: members of a browser window
-// only the tests use. BrowserCommands is a large set of menu commands, untyped here.
+// only the tests use.
 interface BrowserWindow {
   readonly browserDOMWindow: nsIBrowserDOMWindow;
-  readonly BrowserCommands: any;
+}
+interface BrowserCommandsApi {
+  /** Closes the window as its close button does, unless WindowIsClosing says not to. */
+  tryToCloseWindow(event?: Event): void;
 }
 
 // engine/browser/components/tabbrowser/Tabbrowser.sys.mjs (addTab's options)
@@ -315,29 +391,25 @@ interface AutoCompletePopupElement extends XULPopupElement {
   readonly popupOpen: boolean;
 }
 
-// engine/dom/chrome-webidl/BrowsingContext.webidl: a frame's browsing context, which a test passes
-// to SpecialPowers.spawn. Firefox's own types read it as `any` (a browser's `browsingContext`), so
-// this names it for a test's JSDoc; the members are the ones the tests read.
-interface BrowsingContext {
-  readonly id: number;
-  readonly children: BrowsingContext[];
-}
-// The same webidl's CanonicalBrowsingContext: a browsing context as the parent process sees it,
-// the only side that has its document's global (WindowGlobalActors.webidl), once it has one.
-interface CanonicalBrowsingContext extends BrowsingContext {
-  readonly children: CanonicalBrowsingContext[];
-}
 // engine/dom/chrome-webidl/WindowGlobalActors.webidl: its document's global, once it has one.
 interface WindowGlobalParent {
-  readonly documentURI: { readonly spec: string } | null;
-  readonly isInitialDocument: boolean;
+  /** The id of the process the document is in. */
+  readonly osPid: number;
+  /**
+   * A snapshot of `rect` of the global's document (the whole viewport for null), at `scale`,
+   * over `backgroundColor`; the options are the webidl's DrawSnapshotOptions.
+   */
+  drawSnapshot(
+    rect: DOMRect | null,
+    scale: number,
+    backgroundColor: string,
+    options?: { resetScrollPosition?: boolean; drawView?: boolean },
+  ): Promise<ImageBitmap>;
 }
 
 // engine/xpcom/io/nsIFile.idl (the members the tests use)
 interface nsIFile {
-  readonly path: string;
   readonly leafName: string;
-  readonly parent: nsIFile;
   append(node: string): void;
   normalize(): void;
   clone(): nsIFile;
@@ -400,6 +472,11 @@ interface UrlbarInputTestMembers {
 interface nsIPromptService {
   /** Spins a nested event loop until the dialog closes: true for OK, false for Cancel. */
   confirm(parent: Window | null, title: string, text: string): boolean;
+  /**
+   * An alert for a browsing context; `modalType` is a MODAL_TYPE_* constant. Spins a nested
+   * event loop until it closes.
+   */
+  alertBC(browsingContext: BrowsingContext, modalType: number, title: string, text: string): void;
 }
 interface FirefoxServices {
   prompt: nsIPromptService;
@@ -411,6 +488,12 @@ interface MozDialogElement extends Element {
   getButton(type: "accept" | "cancel" | "extra1" | "extra2" | "help" | "disclosure"): Element & {
     disabled: boolean;
   };
+  /**
+   * Runs the accept button's command, as a click on it does: false when a "dialogaccept"
+   * listener cancelled it, true otherwise, also when the button is disabled and nothing ran
+   * (_doButtonCommand).
+   */
+  acceptDialog(): boolean;
 }
 
 // engine/toolkit/content/widgets/radio.js (MozRadiogroup): the selected <radio>, null for none.
@@ -436,6 +519,15 @@ interface Window {
 interface WindowGlobalChild {
   getActor(name: string): JSWindowActorChild;
 }
+// engine/dom/chrome-webidl/BrowsingContext.webidl: shown, or kept rendering (the tests set it).
+interface BrowsingContext {
+  isActive: boolean;
+}
+// engine/docshell/base/nsIDocShell.idl: the element the docshell's events go up to, null for a
+// top-level window's.
+interface nsIDocShell {
+  readonly chromeEventHandler: EventTarget | null;
+}
 
 // engine/dom/webidl/Document.webidl (chrome-only): a XUL element, as chrome code makes one.
 interface Document {
@@ -444,10 +536,12 @@ interface Document {
 
 // engine/dom/chrome-webidl/XULElement.webidl: a XUL element, such as a <command>, which runs its
 // command on doCommand. Like an HTML element, it has its inline style (XULElement includes
-// ElementCSSInlineStyle).
+// ElementCSSInlineStyle) and takes focus (it includes HTMLOrSVGOrMathMLElement, whose `focus`
+// is in engine/dom/webidl/Element.webidl).
 interface XULElement extends Element, ElementCSSInlineStyle {
   hidden: boolean;
   doCommand(): void;
+  focus(options?: FocusOptions): void;
 }
 // engine/browser/components/tabbrowser/AsyncTabSwitcher.sys.mjs: a tab switch in progress, which
 // shows the requested tab once its layers are ready.
@@ -461,18 +555,18 @@ interface AsyncTabSwitcher {
 // (MozXULElement).
 interface MozTabSplitViewWrapper extends XULElement {}
 
-// engine/xpcom/base/nsIConsoleMessage.idl: what a console listener gets (its `message` is the
-// text with its file and line).
-interface nsIConsoleMessage {
-  readonly message: string;
+// engine/xpfe/appshell/nsIAppShellService.idl: makes a browser with no window, here a document
+// whose window a test can close (nsIWindowlessBrowser.idl; `document` from nsIWebNavigation.idl,
+// which makes a blank one when there is none and is null only on an unexpected error).
+interface nsIWindowlessBrowser {
+  readonly document: Document | null;
+  close(): void;
 }
-// engine/dom/bindings/nsIScriptError.idl: a script error or warning (`flags` has warningFlag for
-// a warning).
-interface nsIScriptError extends nsIConsoleMessage {
-  readonly errorMessage: string;
-  readonly sourceName: string;
-  readonly lineNumber: number;
-  readonly flags: number;
+interface nsIAppShellService {
+  createWindowlessBrowser(isChrome?: boolean, chromeMask?: number): nsIWindowlessBrowser;
+}
+interface FirefoxServices {
+  appShell: nsIAppShellService;
 }
 
 // engine/toolkit/content/widgets/notificationbox.js: a button of a notification, as
@@ -503,6 +597,8 @@ interface MozNotificationBox {
   readonly PRIORITY_INFO_LOW: number;
   /** Its <vbox class="notificationbox-stack">, which its `stack` getter makes on first use. */
   readonly _stack: Element | undefined;
+  /** The <notification-message> elements it shows, without one that is closing. */
+  readonly allNotifications: Element[];
   /** Resolves with the <notification-message> it shows. */
   appendNotification(
     type: string,
@@ -541,10 +637,15 @@ interface MozTabSplitViewWrapper {
   ): void;
 }
 
-// engine/xpcom/threads/nsITimer.idl
+// engine/xpcom/threads/nsITimer.idl; nsITimerManager.getTimers(), in the same file, lists the
+// pending timers for tests.
 interface nsITimer {
   /** Its delay in ms; setting it on a pending timer reschedules it. */
   delay: number;
+  /** A TYPE_* constant (TYPE_ONE_SHOT, the repeating ones). */
+  type: number;
+  /** The callback's name, for logs. */
+  readonly name: string;
 }
 // engine/browser/components/tabbrowser/AsyncTabSwitcher.sys.mjs
 interface AsyncTabSwitcher {
@@ -572,6 +673,10 @@ interface nsICategoryManager {
 
 // engine/toolkit/components/commandlines/nsICommandLine.idl
 interface nsICommandLine extends nsISupports {
+  /** The arguments not handled yet. */
+  readonly length: number;
+  /** A handler set it: the browser's own handler opens nothing for the line. */
+  preventDefault: boolean;
   /** The flag's index among the arguments, -1 when it is not there. */
   findFlag(flag: string, caseSensitive: boolean): number;
 }
@@ -667,49 +772,13 @@ interface XPCComponentsUtils {
   forceCC(): void;
 }
 
-// engine/netwerk/base/nsIServerSocket.idl: a listening socket; initWithFilename makes it a Unix
-// domain socket at `path` (`backlog` -1: the default).
-interface nsIServerSocket {
-  initWithFilename(path: nsIFile, permissions: number, backlog: number): void;
-  asyncListen(listener: nsIServerSocketListener): void;
-  close(): void;
-}
-// engine/netwerk/base/nsIServerSocket.idl (nsIServerSocketListener)
-interface nsIServerSocketListener {
-  onSocketAccepted(server: nsIServerSocket, transport: nsISocketTransport): void;
-  onStopListening(server: nsIServerSocket, status: number): void;
-}
-// engine/netwerk/base/nsITransport.idl: a connection's two streams; `reason` is an nsresult.
-interface nsITransport {
-  openInputStream(flags: number, segmentSize: number, segmentCount: number): nsIInputStream;
-  openOutputStream(flags: number, segmentSize: number, segmentCount: number): nsIOutputStream;
-  close(reason: number): void;
-}
-// engine/netwerk/base/nsISocketTransport.idl
-interface nsISocketTransport extends nsITransport {}
-// engine/xpcom/io/nsIInputStream.idl
-interface nsIInputStream extends nsISupports {}
-// engine/xpcom/io/nsIAsyncInputStream.idl: `callback` (nsIInputStreamCallback) is called once,
-// on `target`, when the stream has data or is closed.
-interface nsIAsyncInputStream extends nsIInputStream {
-  asyncWait(
-    callback: { onInputStreamReady(stream: nsIAsyncInputStream): void },
-    flags: number,
-    requestedCount: number,
-    target: unknown,
-  ): void;
-}
-// engine/xpcom/io/nsIOutputStream.idl: write() returns the number of bytes written.
-interface nsIOutputStream extends nsISupports {
-  write(buf: string, count: number): number;
-  close(): void;
-}
-
 // engine/toolkit/components/urlformatter/nsIURLFormatter.idl: a URL pref's value with its
 // %VERSION%, %OS%, %LOCALE% and other variables filled in ("about:blank" for a pref without a
 // value); Services.urlFormatter is its service (the folder's components.conf, js_name).
 interface nsIURLFormatter {
   formatURLPref(pref: string): string;
+  /** The same for a URL given as a string. */
+  formatURL(format: string): string;
 }
 interface FirefoxServices {
   urlFormatter: nsIURLFormatter;
@@ -750,11 +819,9 @@ interface nsIAccessibilityService {
 }
 
 // engine/toolkit/content/widgets/popupnotification.js (MozPopupNotification): a prompt in the
-// notification panel. Its connectedCallback finds its two buttons, and PopupNotifications sets
-// `notification` when it shows one in it (PopupNotifications.sys.mjs, _refreshPanel).
-interface MozPopupNotification extends XULElement {
-  readonly button: XULElement;
-  readonly secondaryButton: XULElement;
+// notification panel; PopupNotifications sets `notification` when it shows one in it
+// (PopupNotifications.sys.mjs, _refreshPanel).
+interface MozPopupNotification {
   readonly notification: PopupNotification;
 }
 // engine/browser/base/content/browser-addons.js (MozAddonInstalledNotification): the app menu's
@@ -779,39 +846,423 @@ interface OverflowableToolbarElement extends XULElement {
   readonly overflowable: { isHandlingOverflow(): boolean } | null;
 }
 
-// engine/dom/chrome-webidl/WindowGlobalActors.webidl: a snapshot of `rect` of the global's
-// document (the whole viewport for null), at `scale`, over `backgroundColor`.
-interface WindowGlobalParent {
-  drawSnapshot(
-    rect: DOMRect | null,
-    scale: number,
-    backgroundColor: string,
-    options?: { resetScrollPosition?: boolean },
-  ): Promise<ImageBitmap>;
-}
-
-// engine/toolkit/components/windowwatcher/nsIPromptService.idl: an alert for a browsing
-// context; `modalType` is a MODAL_TYPE_* constant. Spins a nested event loop until it closes.
-interface nsIPromptService {
-  alertBC(browsingContext: unknown, modalType: number, title: string, text: string): void;
-}
-
-// engine/toolkit/content/widgets/dialog.js (MozDialog): runs the accept button's command, as a
-// click on it does; false when a "dialogaccept" listener cancelled it.
-interface MozDialogElement {
-  acceptDialog(): boolean;
-}
-
-// engine/xpcom/threads/nsITimer.idl: `type` is a TYPE_* constant (TYPE_ONE_SHOT, the repeating
-// ones); `name` is the callback's name, for logs. nsITimerManager.getTimers(), in the same file,
-// lists the pending timers for tests.
-interface nsITimer {
-  readonly type: number;
-  readonly name: string;
-}
-
 // engine/browser/components/tabbrowser/content/tab.mjs: the tab that opened this one, which
 // closing this one selects again; null without one, or once the owner is closing.
 interface MozTabbrowserTab {
   owner: MozTabbrowserTab | null;
 }
+
+// The pdf.js viewer's own objects, which a test reads past the Xray wrapper
+// (`content.wrappedJSObject`, untyped by nature): only the members the tests read, set or call.
+// Lines are those of engine/toolkit/components/pdfjs/content/web/viewer.mjs.
+
+/** `class EventBus` (line 1293): `dispatch` (1324) calls the listeners of `eventName`. */
+interface PdfJsEventBus {
+  dispatch(eventName: string, data?: object): void;
+}
+/** `class PDFViewer` (line 13365). */
+interface PdfJsViewer {
+  /** 13476: the page views it holds. */
+  readonly pagesCount: number;
+  /** 13547: the current page's label, null for a document without page labels. */
+  readonly currentPageLabel: string | null;
+  /** 13568: 1 while the scale is unknown. */
+  readonly currentScale: number;
+  /** 13582 and 13585: a number as text or a named fit; null until a scale is set (14122). */
+  get currentScaleValue(): string | null;
+  set currentScaleValue(value: string);
+  /** 13593 and 13596: 0, 90, 180 or 270. */
+  pagesRotation: number;
+  /** 14611 */
+  readonly isInPresentationMode: boolean;
+  /** 14754 and 14757: ScrollMode (VERTICAL 0, PAGE 3). */
+  scrollMode: number;
+  /** 14797 and 14800: SpreadMode (NONE 0, ODD 1, EVEN 2). */
+  spreadMode: number;
+}
+/**
+ * `class PDFDocumentProxy` (engine/toolkit/components/pdfjs/content/build/pdf.mjs, line 15353):
+ * `getOutline` (15421) resolves with the outline's top entries, null for a document without one;
+ * `getData` (15441) with the document's bytes.
+ */
+interface PdfJsDocument {
+  getOutline(): Promise<object[] | null>;
+  getData(): Promise<Uint8Array>;
+}
+/** `class ViewsManager` (line 17218), pdf.js's sidebar: `isOpen` is its own field (17255). */
+interface PdfJsViewsManager {
+  readonly isOpen: boolean;
+}
+/**
+ * `const PDFViewerApplication` (line 17587). Its parts are null (17594 to 17617) until the viewer
+ * has initialised them (`eventBus` 17785, `pdfViewer` 17933, `viewsManager` 18086, which a viewer
+ * without a sidebar never makes) or, for `pdfDocument`, while no document is open.
+ */
+interface PdfJsApplication {
+  readonly pdfDocument: PdfJsDocument | null;
+  readonly pdfViewer: PdfJsViewer | null;
+  readonly viewsManager: PdfJsViewsManager | null;
+  readonly eventBus: PdfJsEventBus | null;
+  /** 18197: 0 while no document is open. */
+  readonly pagesCount: number;
+  /** 18200 and 18203: the current page's number, from 1. */
+  page: number;
+  /** 18331: opens another document in the same viewer, here from its bytes. */
+  open(args: { data: Uint8Array }): Promise<void>;
+}
+/** The viewer's window (viewer.mjs sets `window.PDFViewerApplication`), with its own globals. */
+type PdfJsWindow = typeof globalThis & { readonly PDFViewerApplication: PdfJsApplication };
+
+// engine/js/xpconnect/idl/xpccomponents.idl: exportFunction returns a forwarder in the target's
+// compartment that calls `fn` with the same arguments (cloned) and hands back its result, so a
+// test that gives it to the page keeps the function's own signature. The forwarder leaves `this`
+// unbound: `fn` must not use it, which `F` cannot say. `defineAs` also sets the forwarder on
+// `target` under that name.
+interface XPCComponentsUtils {
+  exportFunction<F extends Function>(fn: F, target: object, options?: { defineAs?: string }): F;
+}
+
+// Firefox's import wizard, as Settings shows it in its <dialog id="migrationWizardDialog">
+// (engine/browser/components/preferences/preferences.xhtml): the parts of
+// engine/browser/components/migration/content/migration-wizard.mjs (MigrationWizard) that the
+// wizard tests reach through its shadow root.
+
+/**
+ * A browser and profile in the wizard's list: a <panel-item> the wizard gives the migrator's
+ * `profile` (migration-wizard.mjs line 686), null for a browser without profiles.
+ */
+interface MigrationWizardItem extends HTMLElement {
+  readonly profile?: { readonly id: string; readonly name: string } | null;
+}
+/**
+ * The wizard's <button id="browser-profile-selector">, which opens the list.
+ * #onBrowserProfileSelectionChanged (line 513) sets `selectedPanelItem`, so it is undefined
+ * until the wizard has chosen its first browser.
+ */
+interface MigrationWizardSelector extends HTMLButtonElement {
+  readonly selectedPanelItem?: MigrationWizardItem;
+}
+/**
+ * engine/toolkit/content/widgets/panel-list/panel-list.mjs (PanelList), the wizard's list of
+ * browsers, inside a XUL <panel> in a chrome document (migration-wizard.mjs line 493): `open`
+ * (line 80) is its `open` attribute.
+ */
+interface PanelListElement extends HTMLElement {
+  open: boolean;
+}
+/**
+ * Settings' window (engine/browser/components/preferences/main.js, `var gMainPane`, line 598):
+ * showMigrationWizardDialog (line 1498) opens the wizard's dialog, making the wizard on first
+ * use.
+ */
+type PreferencesWindow = Window &
+  typeof globalThis & {
+    readonly gMainPane: {
+      showMigrationWizardDialog(options?: { closeTabWhenDone?: boolean }): Promise<void>;
+    };
+  };
+
+// engine/browser/components/passwordmgr/content/login-doorhanger-username-field.mjs
+// (LoginDoorhangerUsernameField): the save-password prompt's username field, a MozInputText
+// (engine/toolkit/content/widgets/moz-input-text/moz-input-text.mjs), whose `value` is its
+// text (MozBaseInputElement's property, engine/toolkit/content/widgets/lit-utils.mjs).
+interface LoginDoorhangerUsernameField extends HTMLElement {
+  value: string;
+}
+
+// Fluent, as chrome code formats strings with it: engine/dom/webidl/Localization.webidl,
+// engine/dom/webidl/DOMLocalization.webidl, engine/dom/chrome-webidl/DocumentL10n.webidl,
+// engine/dom/chrome-webidl/L10nRegistry.webidl and engine/dom/chrome-webidl/Fluent.webidl.
+
+/** A resource's path, or the path and whether it may be missing (L10nRegistry.webidl). */
+type L10nResourceId = string | { path: string; _optional?: boolean };
+/** A message's id and arguments (Localization.webidl, L10nIdArgs); both are null by default. */
+interface L10nIdArgs {
+  id?: string | null;
+  args?: L10nArgs | null;
+}
+/** Localization.webidl (L10nMessage): `value` and `attributes` are null for a message without. */
+interface L10nMessage {
+  readonly value: string | null;
+  readonly attributes: { readonly name: string; readonly value: string }[] | null;
+}
+/**
+ * Localization.webidl: formats messages from `resourceIds`; `sync` true allows the *Sync
+ * methods. A message it cannot find is null in the lists it returns.
+ */
+interface Localization {
+  formatValue(id: string, args?: L10nArgs): Promise<string | null>;
+  formatMessages(keys: (string | L10nIdArgs)[]): Promise<(L10nMessage | null)[]>;
+  formatMessagesSync(keys: (string | L10nIdArgs)[]): (L10nMessage | null)[];
+}
+declare var Localization: {
+  prototype: Localization;
+  new (
+    resourceIds: L10nResourceId[],
+    sync?: boolean,
+    registry?: L10nRegistry,
+    locales?: string[],
+  ): Localization;
+};
+/** DOMLocalization.webidl: a Localization that translates elements by their data-l10n-id. */
+interface DOMLocalization extends Localization {
+  /** An element's data-l10n-id and data-l10n-args (L10nIdArgs). */
+  getAttributes(element: Element): { id: string | null; args: L10nArgs | null };
+  translateElements(elements: Element[]): Promise<void>;
+}
+/** DocumentL10n.webidl: a document's DOMLocalization (`document.l10n`). */
+interface DocumentL10n extends DOMLocalization {}
+/** Fluent.webidl: a message's pattern, which only FluentBundle.formatPattern reads. */
+interface FluentPattern {}
+/** Fluent.webidl (FluentMessage): `value` is null for a message with attributes only. */
+interface FluentMessage {
+  readonly value: FluentPattern | null;
+  readonly attributes: Record<string, FluentPattern>;
+}
+/** Fluent.webidl: a parsed .ftl source. */
+interface FluentResource {}
+declare var FluentResource: { prototype: FluentResource; new (source: string): FluentResource };
+/** Fluent.webidl: getMessage is null for an id the bundle does not have. */
+interface FluentBundle {
+  addResource(resource: FluentResource, options?: { allowOverrides?: boolean }): void;
+  getMessage(id: string): FluentMessage | null;
+  formatPattern(pattern: FluentPattern, args?: L10nArgs | null, errors?: object): string;
+}
+/** L10nRegistry.webidl (FluentBundleIterator): `value` is null once `done`. */
+interface FluentBundleIterator {
+  next(): { value: FluentBundle | null; done: boolean };
+}
+/** L10nRegistry.webidl */
+interface L10nRegistry {
+  generateBundlesSync(locales: string[], resourceIds: L10nResourceId[]): FluentBundleIterator;
+}
+declare var L10nRegistry: { getInstance(): L10nRegistry };
+
+// engine/intl/strres/nsIStringBundle.idl: a .properties bundle. GetStringFromName throws for a
+// name the bundle does not have; getSimpleEnumeration lists its strings as nsIPropertyElement
+// (engine/xpcom/ds/nsIPersistentProperties2.idl), iterable in JS
+// (engine/xpcom/ds/nsISimpleEnumerator.idl).
+interface nsIPropertyElement {
+  readonly key: string;
+  readonly value: string;
+}
+interface nsIStringBundle {
+  GetStringFromName(name: string): string;
+  getSimpleEnumeration(): Iterable<nsIPropertyElement>;
+}
+interface nsIStringBundleService {
+  createBundle(urlSpec: string): nsIStringBundle;
+}
+
+// engine/browser/components/tabbrowser/NewTabPagePreloading.sys.mjs, a browser window global
+// (engine/browser/base/content/browser.js): removes the window's preloaded new-tab browser, if
+// it has one.
+declare var NewTabPagePreloading: { removePreloadedBrowser(window: Window): void };
+
+// engine/browser/components/sidebar/sidebar-history.mjs (SidebarHistory): the History sidebar's
+// <sidebar-history>. Its constructor makes `controller`, so it is undefined until the element is
+// upgraded. engine/browser/components/firefoxview/HistoryController.sys.mjs: isHistoryPending is
+// true until the history has loaded; profileAge, in days, decides the import promo.
+interface SidebarHistoryElement extends HTMLElement {
+  readonly controller?: { readonly isHistoryPending: boolean; profileAge: number };
+}
+
+// engine/toolkit/components/extensions/ExtensionXPCShellUtils.sys.mjs (ExtensionWrapper): what
+// ExtensionTestUtils.loadExtension returns, a test extension. startup() and unload() reject when
+// the extension is not in the state they start from; awaitMessage resolves with the first
+// argument the extension sent with `msg` (browser.test.sendMessage), undefined without one.
+interface ExtensionWrapper {
+  startup(): Promise<unknown>;
+  unload(): Promise<void>;
+  awaitMessage(msg: string): Promise<unknown>;
+}
+// The WebExtension API a test extension's own scripts see as their global `browser`: the members
+// they call. runtime.getBrowserInfo resolves with a BrowserInfo
+// (engine/toolkit/components/extensions/schemas/runtime.json); test.sendMessage is
+// engine/toolkit/components/extensions/schemas/test.json's, which awaitMessage receives.
+interface WebExtensionApi {
+  readonly runtime: {
+    getBrowserInfo(): Promise<{ name: string; vendor: string; version: string; buildID: string }>;
+  };
+  readonly test: { sendMessage(msg: string, ...args: unknown[]): void };
+}
+
+// engine/netwerk/test/httpserver/nsIHttpServer.idl, as httpd.sys.mjs implements it (HttpServer of
+// resource://testing-common/httpd.sys.mjs): a test's HTTP server, a request it is handed and the
+// response a handler writes. httpd takes a plain function as the handler (it wraps one as
+// nsIHttpRequestHandler).
+interface nsIHttpRequest {
+  readonly method: string;
+  readonly path: string;
+  readonly queryString: string;
+  readonly httpVersion: string;
+  /** Throws NS_ERROR_NOT_AVAILABLE for a header the request does not have. */
+  getHeader(fieldName: string): string;
+  hasHeader(fieldName: string): boolean;
+  readonly bodyInputStream: nsIInputStream;
+}
+interface nsIHttpResponse {
+  setStatusLine(httpVersion: string, statusCode: number, description: string): void;
+  setHeader(name: string, value: string, merge?: boolean): void;
+  write(data: string): void;
+  /** The response is sent when the handler calls finish(), not when it returns. */
+  processAsync(): void;
+  finish(): void;
+}
+interface nsIHttpServerIdentity {
+  // Each throws NS_ERROR_NOT_INITIALIZED until the server is started.
+  readonly primaryScheme: string;
+  readonly primaryHost: string;
+  readonly primaryPort: number;
+}
+interface nsIHttpServer {
+  /** -1 picks a free port. */
+  start(port: number): void;
+  stop(callback: () => void): void;
+  registerPathHandler(
+    path: string,
+    handler: ((request: nsIHttpRequest, response: nsIHttpResponse) => void) | null,
+  ): void;
+  readonly identity: nsIHttpServerIdentity;
+}
+
+// engine/dom/chrome-webidl/InspectorUtils.webidl: a node's children, with its anonymous content
+// (a password field's reveal button) when `showingAnonymousContent` is true.
+declare var InspectorUtils: {
+  getChildrenForNode(
+    node: Node,
+    showingAnonymousContent: boolean,
+    includeAssignedNodes: boolean,
+  ): Node[];
+};
+
+// engine/toolkit/content/globalOverlay.js, loaded in the browser window: runs `command` on the
+// focused element's controller, if it has one that is enabled.
+declare function goDoCommand(command: string): void;
+
+// engine/dom/webidl/ServiceWorkerGlobalScope.webidl, Clients.webidl, ExtendableEvent.webidl and
+// FetchEvent.webidl: what a test's service worker uses of its global and of the events it gets
+// (TypeScript's DOM library has none of them). respondWith takes a Response or a promise of one:
+// WebIDL resolves a plain value.
+interface ServiceWorkerGlobalScope {
+  readonly clients: { claim(): Promise<void> };
+  skipWaiting(): Promise<void>;
+}
+interface ExtendableEvent extends Event {
+  waitUntil(promise: Promise<unknown>): void;
+}
+interface FetchEvent extends ExtendableEvent {
+  readonly request: Request;
+  respondWith(response: Response | Promise<Response>): void;
+}
+
+// engine/toolkit/content/widgets/moz-checkbox/moz-checkbox.mjs (MozCheckbox, a Lit element, as
+// Settings' checkboxes are): `updateComplete` is Lit's ReactiveElement promise, resolved once
+// the pending render is done.
+interface MozCheckboxElement extends HTMLElement {
+  checked: boolean;
+  readonly updateComplete: Promise<boolean>;
+}
+
+// engine/netwerk/base/nsIURI.idl: the path with its query and fragment.
+interface nsIURI {
+  readonly pathQueryRef: string;
+}
+
+// engine/dom/interfaces/base/nsIDOMProcessParent.idl: a content process, as a window global's
+// `domProcess` gives it (types/firefox.d.ts declares only its remote type there).
+interface DOMProcessParent {
+  readonly remoteType: string | null;
+  readonly childID: number;
+}
+
+// engine/dom/chrome-webidl/MessageManager.webidl (MessageBroadcaster): Services.ppmm, the parent
+// process's message manager. releaseCachedProcesses ends the content processes kept alive after
+// their last tab (dom.ipc.keepProcessesAlive.*).
+interface FirefoxServices {
+  readonly ppmm: { releaseCachedProcesses(): void };
+}
+
+// engine/toolkit/content/widgets/browser-custom-element.mjs: the remote type of the process the
+// browser's page runs in (its context's currentRemoteType, "" for a page in the parent; undefined
+// without a context), and its back button's command.
+interface MozBrowser {
+  readonly remoteType: string | undefined;
+  goBack(requireUserInteraction?: boolean): void;
+}
+
+// engine/netwerk/base/nsIRequest.idl: a load in progress; `status` is a failure code once it
+// failed (NS_OK until then).
+interface nsIRequest {
+  readonly status: number;
+  suspend(): void;
+  resume(): void;
+  cancel(status: number): void;
+}
+
+// engine/toolkit/components/downloads/Downloads.sys.mjs, DownloadList.sys.mjs and
+// DownloadCore.sys.mjs: the downloads module as the tests use it. A test file types its import
+// of the module with DownloadsApi (ChromeUtils.importESModule gives Firefox's modules as `any`).
+// The list kinds are strings ("{Downloads.PUBLIC}").
+interface DownloadsApi {
+  readonly PUBLIC: string;
+  readonly PRIVATE: string;
+  readonly ALL: string;
+  getList(kind: string): Promise<FirefoxDownloadList>;
+  /** `properties` as Download's serializable form: `source` and `target` are a URL or path
+   * string, or an object with one. */
+  createDownload(properties: object): Promise<FirefoxDownload>;
+}
+interface FirefoxDownloadList {
+  getAll(): Promise<FirefoxDownload[]>;
+  add(download: FirefoxDownload): Promise<void>;
+  remove(download: FirefoxDownload): Promise<void>;
+  /** Calls onDownloadAdded at once for every download already in the list. */
+  addView(view: DownloadListView): void;
+  removeView(view: DownloadListView): void;
+}
+interface DownloadListView {
+  onDownloadAdded?(download: FirefoxDownload): void;
+  onDownloadChanged?(download: FirefoxDownload): void;
+  onDownloadRemoved?(download: FirefoxDownload): void;
+}
+// The members the tests read beyond the product's (types/firefox.d.ts). `error` is a
+// DownloadError once the download failed.
+interface FirefoxDownload {
+  readonly succeeded: boolean;
+  readonly canceled: boolean;
+  readonly hasProgress: boolean;
+  readonly error: DownloadError | null;
+  /** A `.part` file holds bytes kept after a pause (tryToKeepPartialData). */
+  readonly hasPartialData: boolean;
+  /** Blocked by a verdict, with its bytes kept for the user to unblock. */
+  readonly hasBlockedData: boolean;
+  /** Its file was deleted through Firefox's "Delete" (DownloadsCommon). */
+  readonly deleted: boolean;
+  /** Resolves once it succeeded; rejects with its DownloadError when it fails. */
+  start(): Promise<void>;
+  cancel(): Promise<void>;
+  /** Lets a download blocked with its data kept finish; resolves once it succeeded. */
+  unblock(): Promise<void>;
+  refresh(): Promise<void>;
+}
+// The product declares DownloadError (types/firefox.d.ts); the tests also read becauseBlocked.
+interface DownloadError {
+  readonly becauseBlocked?: boolean;
+}
+
+// engine/uriloader/exthandler/nsIHandlerService.idl (nsIHandlerInfo) and nsIMIMEInfo.idl: how
+// Firefox handles a type; `preferredAction` is one of nsIHandlerInfo's action constants.
+interface nsIHandlerInfo {
+  preferredAction: number;
+  alwaysAskBeforeHandling: boolean;
+}
+interface nsIMIMEInfo extends nsIHandlerInfo {}
+
+// engine/toolkit/modules/FileUtils.sys.mjs, a global of the browser window (browser.js's lazy
+// getters): `File` makes an nsIFile for an absolute path.
+declare var FileUtils: { File: new (path: string) => nsIFile };
+
+// engine/toolkit/content/contentAreaUtils.js, loaded in the browser window: Save Page As for the
+// page in `browser`.
+declare function saveBrowser(browser: MozBrowser, skipPrompt?: boolean): void;

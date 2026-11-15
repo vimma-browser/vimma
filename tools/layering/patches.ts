@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Firefox patches (docs/security.md section 12): the added lines of the .patch files under src/,
-// which load Vimma modules from Firefox's own files that the module scan does not read.
+// Firefox patches (docs/security/12-agents-mcp.md section 12): the added lines of the .patch files
+// under src/, which load Vimma modules from Firefox's own files that the module scan does not read.
 
 import { posix } from "node:path";
 import { LAYERS_FILE, lettersOnly, type Restricted, WIDEN } from "./model.ts";

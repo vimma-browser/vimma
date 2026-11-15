@@ -11,7 +11,7 @@
 
 "use strict";
 
-/* global focusContent -- from head.js */
+/* global focusContent, contextOf -- from head.js */
 /* global Client -- from head_vimma_control.js */
 /* global saveBrowser, DownloadsPanel, FileUtils -- the browser window's */
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
@@ -37,7 +37,9 @@ const { AgentDownloads } = ChromeUtils.importESModule(
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
 );
-const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs");
+const { Downloads } = /** @type {{ Downloads: DownloadsApi }} */ (
+  ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs")
+);
 const { DownloadIntegration } = ChromeUtils.importESModule(
   "resource://gre/modules/DownloadIntegration.sys.mjs",
 );
@@ -67,7 +69,7 @@ const fileUrl = (q, base = HTTPS) =>
 /** @param {() => boolean | Promise<boolean>} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 500);
 const line = () => document.getElementById("vimma-agent-prompt");
-const lineOpen = () => !!line() && !line().hidden;
+const lineOpen = () => line()?.hidden === false;
 const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
 const hintText = () => line()?.querySelector(".vimma-agent-prompt-hint")?.textContent ?? "";
 const noticeText = () => document.getElementById("vimma-notice")?.textContent ?? "";
@@ -76,7 +78,10 @@ let quarantine = "";
 let normal = "";
 let clamDir = "";
 
-/** The `[mcp]` config in force, with the quarantine folder and `extra` set. */
+/**
+ * The `[mcp]` config in force, with the quarantine folder and `extra` set.
+ * @param {Partial<McpConfig>} [extra]
+ */
 function configure(extra = {}) {
   McpHost.configure({
     workspace: "agent",
@@ -87,6 +92,8 @@ function configure(extra = {}) {
     notify: false,
     downloadDir: quarantine,
     downloadMaxMb: 200,
+    // config.toml's default (core/defaults.mjs), as the config resolves a missing key.
+    clamavMaxAgeDays: 7,
     ...extra,
   });
 }
@@ -177,7 +184,8 @@ async function fakeClamd(mode, { defs = 0, conf } = {}) {
       ]
     ).join("\n"),
   );
-  const hook = /** @type {any} */ (AgentDownloads._clamForTests);
+  const hook = AgentDownloads._clamForTests;
+  if (!hook) throw new Error("fakeClam sets the hook first");
   hook.clamd = { paths: [script], conf: confPath };
   return { conf: confPath };
 }
@@ -228,8 +236,8 @@ add_task(async function setup() {
   await fakeClam("missing");
   registerCleanupFunction(async () => {
     AgentGate.removeListener(collect);
-    while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
-    const panel = document.getElementById("downloadsPanel");
+    for (const tab of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(tab);
+    const panel = /** @type {XULPopupElement | null} */ (document.getElementById("downloadsPanel"));
     if (panel?.state === "open" || panel?.state === "showing") {
       const hidden = BrowserTestUtils.waitForEvent(panel, "popuphidden");
       DownloadsPanel.hidePanel();
@@ -254,7 +262,7 @@ add_task(async function setup() {
 
 /** A tab in the agent workspace's container, loaded with PAGE. */
 async function agentTab() {
-  const agent = /** @type {any} */ (WorkspaceStore.agent);
+  const agent = /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
   const tab = gBrowser.addTab(PAGE, {
     userContextId: agent.userContextId,
     triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
@@ -271,13 +279,16 @@ async function agentClient(name = "example-agent") {
   return c;
 }
 
-/** The next download added to the list (addView reports those there already: not them). */
+/**
+ * The next download added to the list (addView reports those there already: not them).
+ * @returns {Promise<FirefoxDownload>}
+ */
 async function nextDownload() {
   const list = await Downloads.getList(Downloads.ALL);
   const before = new Set(await list.getAll());
   return new Promise((resolve) => {
     const view = {
-      onDownloadAdded(/** @type {any} */ d) {
+      onDownloadAdded(/** @type {FirefoxDownload} */ d) {
         if (before.has(d)) return;
         list.removeView(view);
         resolve(d);
@@ -290,14 +301,17 @@ async function nextDownload() {
 /** Every agent-download notice, in order (the notice line shows only the last). */
 /** @type {string[]} */
 const notices = [];
-/** @param {any} e */
+/** @param {Parameters<Parameters<AgentGateApi["addListener"]>[0]>[0]} e */
 const collect = (e) => {
   if (e?.kind === "notice") notices.push(e.text);
 };
 /** @param {string} part */
 const noticed = (part) => until(() => notices.some((n) => n.includes(part)), `a notice: ${part}`);
 
-/** A page in `tab` starts a download of `url`, as a link the user or a script follows. */
+/**
+ * A page in `tab` starts a download of `url`, as a link the user or a script follows.
+ * @param {MozTabbrowserTab} tab @param {string} url
+ */
 function startIn(tab, url) {
   return SpecialPowers.spawn(tab.linkedBrowser, [url], (href) => {
     const a = content.document.createElement("a");
@@ -313,7 +327,7 @@ async function downloadQuestion() {
     () => AgentGate.waiting.some((q) => q.tool === "vimma_download"),
     "a download question waits",
   );
-  return /** @type {any} */ (AgentGate.waiting.find((q) => q.tool === "vimma_download"));
+  return /** @type {AskedQuestion} */ (AgentGate.waiting.find((q) => q.tool === "vimma_download"));
 }
 
 /** The files in a folder, by name. @param {string} dir */
@@ -321,7 +335,7 @@ async function names(dir) {
   return (await IOUtils.getChildren(dir)).map((p) => PathUtils.filename(p)).sort();
 }
 
-/** Wait for `download` to stop; whether it succeeded. @param {any} download */
+/** Wait for `download` to stop; whether it succeeded. @param {FirefoxDownload} download */
 async function settled(download) {
   await until(() => download.stopped, "the download stopped");
   if (!download.succeeded) {
@@ -353,7 +367,7 @@ add_task(async function test_agent_tabs_may_download_again() {
   // Agent tabs have no SANDBOXED_DOWNLOADS flag; their browsing context's download folder is the
   // quarantine folder instead.
   const tab = await agentTab();
-  const bc = tab.linkedBrowser.browsingContext;
+  const bc = contextOf(tab.linkedBrowser);
   Assert.equal(bc.sandboxFlags & SANDBOXED_DOWNLOADS, 0, "agent tabs may start downloads");
   Assert.equal(
     bc.sandboxFlags & SANDBOXED_AUXILIARY_NAVIGATION,
@@ -362,7 +376,7 @@ add_task(async function test_agent_tabs_may_download_again() {
   );
   Assert.equal(bc.downloadFolderOverride, quarantine, "their downloads land in the quarantine");
   Assert.equal(
-    gBrowser.selectedBrowser.browsingContext.downloadFolderOverride,
+    contextOf(gBrowser.selectedBrowser).downloadFolderOverride,
     "",
     "another workspace's tab keeps Firefox's folder",
   );
@@ -545,7 +559,7 @@ add_task(async function test_the_size_cap() {
 
 /**
  * Download `name` in `tab`, allowed; if a second question asks to keep it unscanned, answer it.
- * @param {any} tab @param {string} name
+ * @param {MozTabbrowserTab} tab @param {string} name
  * @param {"once" | "deny" | null} [unscanned]  the answer if asked
  */
 async function scanRun(tab, name, unscanned = null) {
@@ -555,10 +569,10 @@ async function scanRun(tab, name, unscanned = null) {
   AgentGate.answer(q.id, { kind: "once" });
   let why = "";
   if (unscanned) {
-    const again = await until(
-      () => AgentGate.waiting.find((w) => /** @type {any} */ (w.what).unscanned),
-      "asks whether to keep it unscanned",
-    ).then(() => /** @type {any} */ (AgentGate.waiting[0]));
+    const unscannedQuestion = () =>
+      /** @type {AskedQuestion[]} */ (AgentGate.waiting).find((w) => w.what.unscanned);
+    await until(() => !!unscannedQuestion(), "asks whether to keep it unscanned");
+    const again = /** @type {AskedQuestion} */ (unscannedQuestion());
     why = again.what.unscanned;
     Assert.ok(why, `the question says why: ${why}`);
     AgentGate.answer(again.id, { kind: unscanned });
@@ -753,7 +767,7 @@ add_task(async function test_an_agents_download_is_its_and_a_grant_covers_it() {
   let added = nextDownload();
   const open = c.request("agent-open", { url });
   await until(() => AgentGate.waiting.length === 1, "the open asks");
-  AgentGate.answer(/** @type {any} */ (AgentGate.waiting[0]).id, { kind: "once" });
+  AgentGate.answer(/** @type {AskedQuestion} */ (AgentGate.waiting[0]).id, { kind: "once" });
   await c.response(open);
   let q = await downloadQuestion();
   Assert.equal(q.label.client, "example-agent", "the agent that opened the tab");
@@ -795,9 +809,9 @@ add_task(async function test_a_grant_never_covers_the_pages_own_downloads() {
     const id = c.request("agent-open", { url });
     if (asked) {
       await until(() => AgentGate.waiting.length === 1, "the open asks");
-      AgentGate.answer(/** @type {any} */ (AgentGate.waiting[0]).id, { kind: "once" });
+      AgentGate.answer(/** @type {AskedQuestion} */ (AgentGate.waiting[0]).id, { kind: "once" });
     }
-    return /** @type {any} */ (await c.response(id)).result.tab;
+    return /** @type {{ result: { tab: unknown } }} */ (await c.response(id)).result.tab;
   };
   let added = nextDownload();
   await open(fileUrl({ name: "first.txt", type: "text/plain" }));
@@ -811,7 +825,7 @@ add_task(async function test_a_grant_never_covers_the_pages_own_downloads() {
   await open(PAGE, false);
   const agentTabs = () =>
     gBrowser.tabs.filter((t) => t.userContextId === WorkspaceStore.agent?.userContextId);
-  const tab = /** @type {any} */ (
+  const tab = /** @type {MozTabbrowserTab} */ (
     agentTabs().find((t) => t.linkedBrowser.currentURI.spec === PAGE) ??
       (await until(
         () => agentTabs().some((t) => t.linkedBrowser.currentURI.spec === PAGE),
@@ -826,7 +840,8 @@ add_task(async function test_a_grant_never_covers_the_pages_own_downloads() {
       "the page has loaded",
     ),
   );
-  for (const [how, go] of [
+  /** @type {[string, (u: string) => string][]} */
+  const ways = [
     ["location=", (/** @type {string} */ u) => `location.href = ${JSON.stringify(u)}`],
     [
       "<a download>",
@@ -840,7 +855,8 @@ add_task(async function test_a_grant_never_covers_the_pages_own_downloads() {
         `{ const m = document.createElement("meta"); m.httpEquiv = "refresh"; ` +
         `m.content = "0;url=" + ${JSON.stringify(u)}; document.head.append(m); }`,
     ],
-  ]) {
+  ];
+  for (const [how, go] of ways) {
     // The grant is still in force and its connection still open: without them the page's
     // download would be asked anyway, and the check below would prove nothing.
     Assert.equal(AgentGate.grants().length, 1, `${how}: the agent's grant is in force`);
@@ -896,7 +912,7 @@ add_task(async function test_classified_by_tab_and_by_place_too() {
   let download = await Downloads.createDownload({
     source: {
       url: fileUrl({ name: "t.txt", type: "text/plain" }),
-      browsingContextId: tab.linkedBrowser.browsingContext.id,
+      browsingContextId: contextOf(tab.linkedBrowser).id,
     },
     target: PathUtils.join(normal, "t.txt"),
   });
@@ -962,9 +978,12 @@ add_task(async function test_the_dialog_the_launch_path_a_frame_and_a_blob() {
     f.src = page;
     content.document.body.append(f);
     await new Promise((r) => (f.onload = r));
-    const a = f.contentDocument.createElement("a");
+    // The frame's page is the same origin's: its document is reachable.
+    const doc = f.contentDocument;
+    if (!doc) throw new Error("the frame's document is out of reach");
+    const a = doc.createElement("a");
     a.href = url;
-    f.contentDocument.body.append(a);
+    doc.body.append(a);
     a.click();
   });
   q = await downloadQuestion();

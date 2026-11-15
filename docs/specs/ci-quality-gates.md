@@ -58,7 +58,7 @@ Two rows of plan §5 and issue #17:
   (mean latency, no baseline) is gone. (Since changed: issue
   [#667](https://github.com/vimma-browser/vimma/issues/667) gates the change paired sweep by sweep,
   the median of each sweep's head-over-baseline ratio, instead of each side's own median ratio; see
-  docs/runbook.md, "Bench baseline".)
+  docs/runbook/ci-bench-baseline.md, "Bench baseline".)
 - **The 10 % gate is on the suite.** Measured on a laptop pinned to 2 CPUs, 8 whole runs: single
   cases spread up to 14 % (max−min), the geometric mean of all cases 6 %. One process alone spread
   20–30 % (JIT modes), hence the 15 processes. So: fail when the geometric mean of the cases'
@@ -69,7 +69,7 @@ Two rows of plan §5 and issue #17:
   CPU models, and a ratio measured on one microarchitecture is not comparable with another.
   (Since changed: issue [#342](https://github.com/vimma-browser/vimma/issues/342) replaced the
   stored numbers with a baseline _commit_, whose cases every run measures in the same 15 processes
-  as the working tree's, sample by sample; see docs/runbook.md, "Bench baseline".)
+  as the working tree's, sample by sample; see docs/runbook/ci-bench-baseline.md, "Bench baseline".)
 - **A step in ci.yml, not nightly.** Nightly runs on the self-hosted build runner (not enabled
   yet, and a different machine class); the plan wants the gate on PRs. The step costs seconds and
   no extra job minute. (Since changed: no self-hosted runner is planned; the nightly moves
@@ -87,8 +87,8 @@ Two rows of plan §5 and issue #17:
   the fallback and its wider limits are gone.)
 - **Node pinned exactly** in `.nvmrc` (22.23.3, what CI recorded on); the baseline key carries
   the exact version; no Dependabot ecosystem covers `.nvmrc`, so it is bumped by hand
-  (docs/runbook.md, "Bench baseline"). (Since changed: the bench no longer keys on Node (#342);
-  the pin stays for reproducible CI.)
+  (docs/runbook/ci-bench-baseline.md, "Bench baseline"). (Since changed: the bench no longer keys on
+  Node (#342); the pin stays for reproducible CI.)
 - **Samples per entry:** `cases` is the per-case median of `samples` (in `baseline.json` now:
   EPYC 7763 30, EPYC 9V74 12, EPYC 9V45 11, Xeon 8573C 5, Xeon 8370C 2). (Since changed: no
   entries since #342; unchanged code read +11.6 % to +12.5 % on every 8370C run against its
@@ -109,9 +109,10 @@ Two rows of plan §5 and issue #17:
   in three tests (WARNING `contains-bidirectional-characters`). They are now `\u` escapes, and the
   tests are unchanged. Three INFO findings in vimma-ctl are left as they are: `temp_dir()` in two
   test helpers, and `std::env::args` in a CLI that reads its own arguments.
-- Details, licences and how to read the SARIF: docs/runbook.md, "Security scanning".
+- Details, licences and how to read the SARIF: docs/runbook/ci-security-scanning.md, "Security
+  scanning".
 
 ## Follow-up
 
 When the CI log of another runner CPU model prints "no baseline for machine",
-record it as in docs/runbook.md "Bench baseline".
+record it as in docs/runbook/ci-bench-baseline.md "Bench baseline".

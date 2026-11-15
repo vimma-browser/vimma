@@ -72,11 +72,14 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
  * @property {number} keyAt  the last key typed in it
  * @property {number} timer  shows the line once the keys count
  * @property {HTMLElement} line
- * @property {any} dialog  the document's <dialog>
+ * @property {MozDialog} dialog  the document's <dialog>
  * @property {Kind} kind
  */
 
-/** @param {any} button */
+/**
+ * @param {MozDialogButton | undefined} button
+ * @returns {button is MozDialogButton}
+ */
 const shown = (button) => !!button && !button.hidden;
 
 export class DialogKeys {
@@ -87,12 +90,14 @@ export class DialogKeys {
   constructor(win, host) {
     this.win = win;
     this.host = host;
-    /** @type {WeakMap<Document, Shown>} */
+    /** @type {WeakMap<object, Shown>} by the dialog's document */
     this.dialogs = new WeakMap();
     this.onFrame = (/** @type {Event} */ e) => this.frameLoaded(e);
     this.onOpen = (/** @type {Event} */ e) => this.dialogShown(e);
-    this.onWindow = (/** @type {any} */ subject, /** @type {string} */ topic) =>
-      topic === "domwindowopened" && this.windowOpened(subject);
+    // nsIWindowWatcher's notification: the subject is the window that opened.
+    this.onWindow = (/** @type {unknown} */ subject, /** @type {string} */ topic) => {
+      if (topic === "domwindowopened") this.windowOpened(/** @type {Window} */ (subject));
+    };
   }
 
   init() {
@@ -156,7 +161,11 @@ export class DialogKeys {
    * @param {Event} e
    */
   dialogShown(e) {
-    const doc = /** @type {any} */ (e).detail?.dialog?._frame?.contentDocument;
+    // SubDialog's CustomEvent: its `detail` names the SubDialog, whose frame holds the document.
+    const detail =
+      /** @type {CustomEvent<{ dialog?: { _frame?: XULFrameElement | null } } | null>} */ (e)
+        .detail;
+    const doc = detail?.dialog?._frame?.contentDocument;
     const state = doc && this.dialogs.get(doc);
     if (!state) return;
     state.at = ChromeUtils.now();
@@ -169,13 +178,13 @@ export class DialogKeys {
 
   /** @param {Event} e */
   frameLoaded(e) {
-    const frame = /** @type {any} */ (e.target);
+    const frame = /** @type {Partial<XULFrameElement> | null} */ (e.target);
     // Only SubDialog's frames (TabDialogBox, gDialogBox), never another frame of the window
     // that happens to load one of these documents.
     if (!frame?.classList?.contains("dialogFrame")) return;
     const doc = frame.contentDocument;
-    const kind = KINDS[doc?.documentURI];
-    if (kind && !kind.window) this.attach(doc, kind);
+    const kind = doc && KINDS[doc.documentURI];
+    if (doc && kind && !kind.window) this.attach(doc, kind);
   }
 
   /**
@@ -187,7 +196,7 @@ export class DialogKeys {
   attach(doc, kind) {
     const view = doc.defaultView;
     if (!view || this.dialogs.has(doc)) return false;
-    const dialog = /** @type {any} */ (doc.querySelector(kind.dialog));
+    const dialog = /** @type {MozDialog | null} */ (doc.querySelector(kind.dialog));
     const parent = doc.querySelector(kind.parent);
     if (!dialog || !parent) return false;
     const line = doc.createElementNS(HTML_NS, "div");
@@ -239,10 +248,11 @@ export class DialogKeys {
    * @param {Shown} state
    */
   label(doc, state) {
-    const { dialog } = state;
+    const accept = state.dialog.getButton("accept");
+    const cancel = state.dialog.getButton("cancel");
     state.line.textContent = dialogHint({
-      accept: shown(dialog.getButton("accept")) ? dialog.getButton("accept").label : "",
-      cancel: shown(dialog.getButton("cancel")) ? dialog.getButton("cancel").label : "",
+      accept: shown(accept) ? accept.label : "",
+      cancel: shown(cancel) ? cancel.label : "",
       field: (state.kind.fields ?? []).some((id) => doc.getElementById(id)?.hidden === false),
     });
   }
@@ -281,9 +291,12 @@ export class DialogKeys {
    * @returns {Document | null}
    */
   dialogOf(e) {
-    const target = /** @type {any} */ (e.target);
+    // An element's document, a window's, or the document itself.
+    const target = /** @type {(Partial<Node> & Partial<Window>) | null} */ (e.target);
     const doc = target?.ownerDocument ?? target?.document ?? target;
-    return doc && this.dialogs.has(doc) ? doc : null;
+    // Keyed by its document: the <dialog> found in it is in it.
+    const state = doc ? this.dialogs.get(doc) : undefined;
+    return state ? state.dialog.ownerDocument : null;
   }
 
   /**
@@ -303,7 +316,7 @@ export class DialogKeys {
     this.arm(state);
     const accept = state.dialog.getButton("accept");
     const cancel = state.dialog.getButton("cancel");
-    const focused = /** @type {any} */ (doc.activeElement);
+    const focused = /** @type {Partial<HTMLInputElement> | null} */ (doc.activeElement);
     const result = dialogKey(key, {
       // Firefox keeps the main button disabled until its window has had focus for a while
       // (PromptUtils.sys.mjs, EnableDelayHelper), or until an application is picked
@@ -324,8 +337,8 @@ export class DialogKeys {
     e.preventDefault();
     e.stopPropagation();
     // The buttons' own command: what a click, Enter and Esc run (dialog.js, _doButtonCommand).
-    if (result.kind === "accept") accept.click();
-    else if (result.kind === "cancel") cancel.click();
+    if (result.kind === "accept") accept?.click();
+    else if (result.kind === "cancel") cancel?.click();
     return true;
   }
 }

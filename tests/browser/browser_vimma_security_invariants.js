@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Cross-cutting rules of docs/security.md that no feature's own test file covers. Each task is
+// Cross-cutting rules of docs/security/ that no feature's own test file covers. Each task is
 // linked from that page by name (tools/security/check-doc-links.ts keeps the links honest).
 
 "use strict";
 
-/* global focusContent -- from head.js */
+/* global focusContent, contextOf, windowGlobalOf -- from head.js */
 /* global Client -- from head_vimma_control.js */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
@@ -258,7 +258,7 @@ add_task(async function a_tabs_focus_report_reaches_the_host_through_the_parent_
     await focusContent(browser);
     let actor = null;
     try {
-      actor = browser.browsingContext.currentWindowGlobal.getActor("Vimma");
+      actor = windowGlobalOf(contextOf(browser)).getActor("Vimma");
     } catch (e) {
       Assert.ok(false, `the parent actor loads from its registered URL: ${e}`);
     }
