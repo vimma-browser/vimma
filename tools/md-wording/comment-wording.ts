@@ -9,7 +9,8 @@
 // and pointers to the contributor instructions file among them), plus dated and quoted answers
 // ("user: '...'"). A reason from a review stays; its attribution goes. It also fails on a
 // reference to the retired plan.md ("plan §N"): docs/README.md, "The former plan.md", says where
-// each section went, and the comment cites that page instead.
+// each section went, and the comment cites that page instead. Like every phrase here, it is found
+// in comments only, so a test title or another string that cites the plan is not caught.
 //
 // Only comments are read: `//`, `/* */` (JavaScript, Rust, CSS) and `#` (shell, YAML, Python,
 // TOML), found by a line scan that does not parse strings. A comment block is a run of lines that
@@ -39,12 +40,13 @@ const CODE_PATTERNS = [
 ];
 
 /**
- * Files that still cite plan.md, left for a follow-up because open pull requests change them.
- * Remove each line with its fix; the check reads these files for everything else.
+ * Files whose comments still cite plan.md, left for a follow-up because open pull requests change
+ * them. Remove each line with its fix; the check reads these files for everything else. Only
+ * comments count: a reference in a test title or another string is not scanned, and is not here.
  */
 export const PLAN_REF_PENDING: ReadonlySet<string> = new Set([
-  "packages/vimma-core/test/actions.test.mjs",
   "src/browser/base/content/vimma/ui/theme-host.mjs",
+  "stryker.config.mjs",
   "tools/package/package.mjs",
 ]);
 
@@ -58,7 +60,8 @@ const SCOPE = [
   /^tools\//,
   /^tests\//,
   /^\.github\//,
-  /^eslint\.config\.mjs$/,
+  // the root's tool configs: eslint, stryker, vitest, commitlint and any added later
+  /^[^/]+\.config\.[cm]?[jt]s$/,
 ];
 /** The checks' own tests: their strings quote the phrases, and the line scan reads strings. */
 const OUT_OF_SCOPE = [/^tools\/md-wording\/test\//];
@@ -141,18 +144,15 @@ export function findCommentWording(
   return found;
 }
 
+/** Whether the check reads this repo-relative path by default. */
+export function inScope(path: string): boolean {
+  return SCOPE.some((re) => re.test(path)) && !OUT_OF_SCOPE.some((re) => re.test(path));
+}
+
 /** @returns the tracked files in SCOPE that have comments to read, repo-relative */
 function trackedSources(): string[] {
   const out = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" });
-  return out
-    .split("\0")
-    .filter(
-      (path) =>
-        path &&
-        SCOPE.some((re) => re.test(path)) &&
-        !OUT_OF_SCOPE.some((re) => re.test(path)) &&
-        commentStyle(path) !== null,
-    );
+  return out.split("\0").filter((path) => path && inScope(path) && commentStyle(path) !== null);
 }
 
 function main() {

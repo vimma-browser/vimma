@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { PLAN_REF_PENDING, commentStyle, findCommentWording } from "../comment-wording.ts";
+import { PLAN_REF_PENDING, commentStyle, findCommentWording, inScope } from "../comment-wording.ts";
 
 const phrases = (src: string, style: "slash" | "hash" = "slash") =>
   findCommentWording(src, style).map((f) => f.phrase.toLowerCase());
@@ -103,6 +103,22 @@ describe("references to the retired plan.md", () => {
 
   test("other plans and sections are not references to it", () => {
     expect(phrases("// The split plan (§3 of the spec) and a test plan.")).toEqual([]);
+  });
+});
+
+describe("inScope", () => {
+  test.each([
+    ["src/browser/base/content/vimma/host/VimmaHost.sys.mjs", true],
+    ["eslint.config.mjs", true],
+    ["stryker.config.mjs", true],
+    ["vitest.config.mjs", true],
+    ["commitlint.config.mjs", true],
+    ["some.config.ts", true],
+    ["tools/md-wording/test/comment-wording.test.ts", false],
+    ["engine/browser/base/content/browser.js", false],
+    ["build.mjs", false],
+  ])("%s is %s", (path, expected) => {
+    expect(inScope(path)).toBe(expected);
   });
 });
 
