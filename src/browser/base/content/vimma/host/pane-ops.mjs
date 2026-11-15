@@ -146,8 +146,9 @@ export function showTabs(win, tabIds, focusId, aloneId) {
   const tabs = tabIds.map((id) => tabById(win, id));
   const found = tabs.filter((t) => !!t);
   const focus = tabById(win, focusId);
+  // tabById answers undefined, never null, for a closed tab.
   const alone = aloneId ? tabById(win, aloneId) : undefined;
-  if (!view || !focus || found.length !== tabs.length || alone === null) {
+  if (!view || !focus || found.length !== tabs.length || (aloneId && !alone)) {
     return `${TOGETHER}: a tab is gone`;
   }
   for (const t of found) if (!t.linkedPanel) gBrowser.insertBrowser(t);
