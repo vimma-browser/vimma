@@ -6,11 +6,13 @@
 // and turns trusted keys and clicks into its keys. SetupHost does every request and change, and
 // only after the summary (decision 2).
 
+/** @import { AddonEntry, SetupPlan } from "../core/setup.mjs" */
+
 const { ThemeHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ui/theme-host.mjs",
 );
-const { SetupHost } = /** @type {typeof import("./SetupHost.sys.mjs")} */ (
-  ChromeUtils.importESModule("chrome://browser/content/vimma/setup/SetupHost.sys.mjs")
+const { SetupHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/setup/SetupHost.sys.mjs",
 );
 const { formatUsers, initialSetup, setupKey, withAddons } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/setup.mjs",
@@ -23,9 +25,8 @@ const search = /** @type {HTMLInputElement} */ ($("setup-search"));
 /** The page's own browser: the permission prompt anchors to it, and closing removes its tab. */
 const browser = () => SetupHost.browserFor(window);
 
-/** @type {any} */
 let state = initialSetup({ addons: [], engines: [], engine: null });
-/** @type {any[]} */
+/** @type {AddonEntry[]} */
 let curated = [];
 let curatedLoaded = false;
 /** "summary" until applied, then "applying", then "done" (enter closes). */
@@ -42,7 +43,7 @@ function el(tag, attrs = {}, ...kids) {
 function drawAddons() {
   const list = $("setup-addons");
   list.replaceChildren(
-    ...state.addons.map((/** @type {any} */ a, /** @type {number} */ i) => {
+    ...state.addons.map((a, i) => {
       const marked = state.marked.has(a.guid);
       const li = el(
         "li",
@@ -74,7 +75,7 @@ function drawAddons() {
 
 function drawEngines() {
   $("setup-engines").replaceChildren(
-    ...state.engines.map((/** @type {string} */ name, /** @type {number} */ i) => {
+    ...state.engines.map((name, i) => {
       const li = el(
         "li",
         { role: "option", "data-name": name },
@@ -89,14 +90,14 @@ function drawEngines() {
 }
 
 function drawSummary() {
-  const addons = [...state.marked.values()].map((/** @type {any} */ a) => a.name);
+  const addons = [...state.marked.values()].map((a) => a.name);
   $("setup-plan").replaceChildren(
     el("dt", {}, "Install"),
     el("dd", {}, addons.length ? addons.join(", ") : "no add-ons"),
     el("dt", {}, "Search with"),
     el("dd", {}, `${state.engine} (config.toml [search] default)`),
   );
-  SetupHost.configProblem().then((/** @type {string | null} */ problem) => {
+  SetupHost.configProblem().then((problem) => {
     const notice = $("setup-config-error");
     notice.hidden = !problem;
     notice.textContent = problem
@@ -145,7 +146,7 @@ async function runSearch() {
 }
 
 /** The summary's `enter` (behaviour 5): config.toml first, then each add-on, one at a time. */
-async function apply(/** @type {any} */ plan) {
+async function apply(/** @type {SetupPlan} */ plan) {
   phase = "applying";
   draw();
   const results = $("setup-results");
@@ -229,7 +230,7 @@ document.addEventListener("keydown", (e) => {
 $("setup-start").addEventListener("click", (e) => e.isTrusted && onKey("enter"));
 $("setup-skip").addEventListener("click", (e) => e.isTrusted && onKey("esc"));
 
-SetupHost.engines().then((/** @type {{ names: string[], current: string }} */ e) => {
+SetupHost.engines().then((e) => {
   state = { ...state, engines: e.names, engine: e.current };
   draw();
   root.dataset.ready = "true";
