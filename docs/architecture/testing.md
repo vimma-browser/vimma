@@ -168,9 +168,9 @@ Firefox hides.
 browser: `tests/tsconfig.json` with the harness's globals declared in `types/mochitest/`
 (`harness.d.ts` for `add_task`, `Assert`, `BrowserTestUtils`, `SpecialPowers` and the rest,
 `firefox.d.ts` for the Firefox members only tests use, `vimma.d.ts` for Vimma's types a test
-names, `head.d.ts`, which `npm run gen-mochitest-head` generates from the `head*.js` files, and
-`modules.d.ts`, which `npm run gen-mochitest-modules` generates from `jar.mn` and vimma-core's
-layout).
+names, and `head.d.ts`, which `npm run gen-mochitest-head` generates from the `head*.js` files),
+and `types/vimma-modules.d.ts`, which `npm run gen-vimma-modules` generates from `jar.mn` and
+vimma-core's layout.
 Every file in the program, a new one included, must be free of type errors. The `.sjs` handlers
 that httpd.js runs to serve test pages are checked by `tools/sjs-typecheck.ts`: tsc reads no
 `.sjs` file, so it checks byte-for-byte `.js` copies in a temporary folder with
@@ -182,10 +182,13 @@ sandbox lacks (`setTimeout`, `document`) is not caught; a handler that waits use
 the actual one's type, and `Assert.ok` refuses a promise, so a test that compares a value with
 the wrong kind of thing, or asserts on a promise it forgot to await, fails the check.
 `ChromeUtils.importESModule` with a literal `chrome://browser/content/vimma/` URL returns the
-type of the module that URL serves (`modules.d.ts` maps each one to its source), so a call into
-one of Vimma's modules, the members a test reads from it and the JSDoc types a test gives those
-values are checked against the product's own JSDoc; a literal Vimma URL that `modules.d.ts`
-does not have (a typo) is an error. A head file's own imports reach the tests through
+type of the module that URL serves (`types/vimma-modules.d.ts` maps each one to its source), so a
+call into one of Vimma's modules, the members a test reads from it and the JSDoc types a test
+gives those values are checked against the product's own JSDoc; a literal Vimma URL that the map
+does not have (a typo) is an error. Any other URL, a Firefox module's, gives `any` in the tests:
+their program leaves out `types/firefox-modules.d.ts`, which types the Firefox modules only as
+far as the product reads them, and where the product's own check gives `unknown` for a URL it
+does not map, `harness.d.ts` makes it `any`. A head file's own imports reach the tests through
 `head.d.ts`, whose generator emits a destructured `importESModule` as `any`; a head file that
 shares a Vimma module with its tests types it by name instead (`/** @type
 {VimmaModules["<url>"]["<export>"]} */ const X = ChromeUtils.importESModule("<url>").X;`, as

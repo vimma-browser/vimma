@@ -58,7 +58,7 @@ function isPrivate(win) {
   const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
     "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   );
-  return /** @type {boolean} */ (PrivateBrowsingUtils.isWindowPrivate(win));
+  return PrivateBrowsingUtils.isWindowPrivate(win);
 }
 
 /**

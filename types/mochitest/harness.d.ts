@@ -402,3 +402,13 @@ declare const E10SUtils: any;
 declare const NetUtil: any;
 declare const BrowserWindowTracker: any;
 declare const ExtensionTestUtils: any;
+
+// --- ChromeUtils.importESModule ---
+
+// The tests import many Firefox modules (test utilities among them) and read more of them than the
+// product does, so their program excludes types/firefox-modules.d.ts (tests/tsconfig.json) and
+// a URL that types/vimma-modules.d.ts does not map gives `any` here, where the product's own check
+// gets `unknown` (types/firefox.d.ts).
+interface UnmappedESModule {
+  readonly module: any;
+}
