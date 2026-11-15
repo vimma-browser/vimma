@@ -771,7 +771,7 @@ Spec: [m0-mozilla-services](specs/m0-mozilla-services.md),
   is true writes `devtools.selfxss.count` = 5 as a user value (upstream), so the guide says to
   reset it after turning the tools off.
   [`test_devtools_defaults_match_official_firefox`](../tests/browser/browser_vimma_mozilla_services.js),
-  [`startPrefs`](../tools/test/start.test.mjs)
+  [`startPrefs`](../tools/test/start.test.ts)
 
 ## 10. Firefox updates (the upstream autopilot, `upstream.yml`; the Beta canary, `upstream-beta.yml`)
 
@@ -879,7 +879,7 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`every action is pinned by a full commit SHA`](../tools/test/upstream-beta-workflow.test.mjs),
   [`mentions the owner only when it opens an issue`](../tools/upstream/test/canary.test.mjs),
   [`fences test output and cuts the body to 60,000 characters`](../tools/upstream/test/canary.test.mjs),
-  [`surfer.json on main pins a Firefox release, never a beta`](../tools/test/surfer-pin.test.mjs)
+  [`surfer.json on main pins a Firefox release, never a beta`](../tools/test/surfer-pin.test.ts)
 - G10. The Beta canary **must never** build from or report on a Beta source tarball whose SHA-512
   differs from that Beta's signed `SHA512SUMS` (B1): the source check fails the run before the
   suites or the issue (G4 for Betas).
@@ -4086,13 +4086,13 @@ _Pages_ and _extensions_ cannot reach it.
   `vimma-nightly` channel (UP14). Firefox's check runs Vimma's verifier first (UP13).
   **⚠ limit:** Artifact builds (ADR-010) run Mozilla's prebuilt updater, which trusts only
   Mozilla's keys, and keep `aus5.mozilla.org`; they are never shipped.
-  [`is not built without VIMMA_UPDATES (source and dev builds)`](../tools/test/mozconfig-updater.test.mjs),
-  [`refuses VIMMA_UPDATES=1 without Vimma's certificates, so no updater trusts Mozilla's test keys`](../tools/test/mozconfig-updater.test.mjs),
-  [`refuses any other value of VIMMA_UPDATES rather than guessing`](../tools/test/mozconfig-updater.test.mjs),
+  [`is not built without VIMMA_UPDATES (source and dev builds)`](../tools/test/mozconfig-updater.test.ts),
+  [`refuses VIMMA_UPDATES=1 without Vimma's certificates, so no updater trusts Mozilla's test keys`](../tools/test/mozconfig-updater.test.ts),
+  [`refuses any other value of VIMMA_UPDATES rather than guessing`](../tools/test/mozconfig-updater.test.ts),
   [`links both certificates into the engine and ignores them in its git`](../tools/import/test/link-update-certs.test.mjs),
   [`refuses a repository without a certificate, so no import leaves a half-set behind`](../tools/import/test/link-update-certs.test.mjs),
   [`refuses a certificate that is a link, which could lead to any file on the machine`](../tools/import/test/link-update-certs.test.mjs),
-  [`refuses VIMMA_UPDATES=1 when a certificate in the engine is not the committed one`](../tools/test/mozconfig-updater.test.mjs),
+  [`refuses VIMMA_UPDATES=1 when a certificate in the engine is not the committed one`](../tools/test/mozconfig-updater.test.ts),
   [`fails when the updater lacks Vimma's certificate or carries one of Mozilla's`](../tools/update/test/check-build.test.mjs),
   [`fails without the [AppUpdate] URL or with another host`](../tools/update/test/check-build.test.mjs),
   [`the repository: update-keys.mjs is what the committed certificates give`](../tools/update/test/gen-update-keys.test.mjs),

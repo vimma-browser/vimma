@@ -3,11 +3,10 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { isolateTmp, tempDir } from "./temp-dir.mjs";
-import guard from "./tmp-guard.mjs";
+import guard from "./tmp-guard.ts";
 
 describe("tempDir", () => {
-  /** @type {string} */
-  let failed = "";
+  let failed: string = "";
 
   it("makes a fresh dir under the OS temp dir with the prefix", () => {
     const dir = tempDir("vimma-tempdir-");
@@ -45,8 +44,7 @@ describe("isolateTmp", () => {
   });
 
   it("unsets TMPDIR again when it was not set", () => {
-    /** @type {Record<string, string | undefined>} */
-    const env = {};
+    const env: Record<string, string | undefined> = {};
     const finish = isolateTmp(env, parent());
     expect(env.TMPDIR).toBeDefined();
     finish();
@@ -56,7 +54,7 @@ describe("isolateTmp", () => {
   it("reports what a run left behind, and removes it anyway", () => {
     const env = {};
     const finish = isolateTmp(env, parent());
-    const run = /** @type {string} */ (/** @type {any} */ (env).TMPDIR);
+    const run = (env as any).TMPDIR as string;
     mkdirSync(join(run, "vimma-lanes-abc123", "main"), { recursive: true });
     writeFileSync(join(run, "stray"), "x");
     expect(finish()).toEqual(["stray", "vimma-lanes-abc123"]);
@@ -64,8 +62,7 @@ describe("isolateTmp", () => {
   });
 });
 
-/** @param {string | undefined} saved */
-function restore(saved) {
+function restore(saved: string | undefined) {
   if (saved === undefined) delete process.env.TMPDIR;
   else process.env.TMPDIR = saved;
 }
@@ -77,7 +74,7 @@ describe("the vitest global setup", () => {
     process.env.TMPDIR = outer;
     try {
       const teardown = guard();
-      const run = /** @type {string} */ (process.env.TMPDIR);
+      const run = process.env.TMPDIR as string;
       expect(dirname(run)).toBe(outer);
       mkdirSync(join(run, "vimma-out-x1y2z3"));
       expect(() => teardown()).toThrow(/left 1 entry .*vimma-out-x1y2z3/);
@@ -95,7 +92,7 @@ describe("the vitest global setup", () => {
     process.env.TMPDIR = outer;
     try {
       const teardown = guard();
-      mkdirSync(join(/** @type {string} */ (process.env.TMPDIR), "node-compile-cache"));
+      mkdirSync(join(process.env.TMPDIR as string, "node-compile-cache"));
       expect(() => teardown()).not.toThrow();
     } finally {
       restore(saved);

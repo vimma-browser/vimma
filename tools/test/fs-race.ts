@@ -8,21 +8,16 @@
 // and code that opens once and asks the descriptor sees one file throughout. In a test file:
 //
 //   vi.mock("node:fs", async (original) =>
-//     (await import("../../test/fs-race.mjs")).racyFs(await original()));
-//   import { beforeUse } from "../../test/fs-race.mjs";
+//     (await import("../../test/fs-race.ts")).racyFs(await original()));
+//   import { beforeUse } from "../../test/fs-race.ts";
 //   beforeUse(path, () => renameSync(other, path));
 
 import { resolve } from "node:path";
 
-/** @type {{ path: string, change: () => void } | null} */
-let pending = null;
+let pending: { path: string; change: () => void } | null = null;
 
-/**
- * Run `change` once, right before the next read, write or open of `path`.
- * @param {string} path
- * @param {() => void} change
- */
-export function beforeUse(path, change) {
+/** Run `change` once, right before the next read, write or open of `path`. */
+export function beforeUse(path: string, change: () => void) {
   pending = { path: resolve(path), change };
 }
 
@@ -31,16 +26,11 @@ export const fired = () => pending === null;
 
 const USES = ["readFileSync", "writeFileSync", "openSync", "appendFileSync"];
 
-/**
- * @template {Record<string, any>} T
- * @param {T} fs  the real node:fs
- * @returns {T}
- */
-export function racyFs(fs) {
-  /** @type {Record<string, any>} */
-  const out = { ...fs };
+/** @param fs  the real node:fs */
+export function racyFs<T extends Record<string, any>>(fs: T): T {
+  const out: Record<string, any> = { ...fs };
   for (const name of USES) {
-    out[name] = (/** @type {any[]} */ ...args) => {
+    out[name] = (...args: any[]) => {
       const p = args[0];
       if (pending && typeof p === "string" && resolve(p) === pending.path) {
         const { change } = pending;
@@ -51,5 +41,5 @@ export function racyFs(fs) {
     };
   }
   out.default = { ...fs.default, ...Object.fromEntries(USES.map((n) => [n, out[n]])) };
-  return /** @type {T} */ (out);
+  return out as T;
 }

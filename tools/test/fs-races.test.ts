@@ -1,6 +1,6 @@
 // The tools' check-then-use windows (CodeQL js/file-system-race): a file that changes between a
 // tool's check and its use must not get past the check. Each case changes the file right before
-// the tool's first read, write or open of it (fs-race.mjs).
+// the tool's first read, write or open of it (fs-race.ts).
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   chmodSync,
@@ -15,18 +15,17 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeUse, fired } from "./fs-race.mjs";
+import { beforeUse, fired } from "./fs-race.ts";
 import { prepareProfile } from "../start.ts";
 import { waitForDiscovery } from "../e2e/launcher.ts";
 import { relocate } from "../import/relocate-checkout.mjs";
 import { checkFile } from "../security/check-doc-links.ts";
 
 vi.mock("node:fs", async (original) =>
-  (await import("./fs-race.mjs")).racyFs(/** @type {any} */ (await original())),
+  (await import("./fs-race.ts")).racyFs((await original()) as any),
 );
 
-/** @type {string[]} */
-const dirs = [];
+const dirs: string[] = [];
 const tempDir = () => {
   const d = mkdtempSync(join(tmpdir(), "vimma-race-test-"));
   dirs.push(d);
@@ -51,7 +50,7 @@ describe("check-then-use races", () => {
   it("launcher: a discovery file swapped after its mode check is not trusted", async () => {
     const profile = tempDir();
     const path = join(profile, "vimma-control.json");
-    const body = (/** @type {number} */ pid) =>
+    const body = (pid: number) =>
       JSON.stringify({ protocol: 1, port: 4000, token: "ab".repeat(32), pid });
     writeFileSync(path, body(1), { mode: 0o600 });
     const loose = join(profile, "loose.json");

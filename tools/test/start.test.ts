@@ -26,8 +26,7 @@ import {
   selectBuild,
 } from "../start.ts";
 
-/** @type {string[]} */
-const dirs = [];
+const dirs: string[] = [];
 // The real path: on macOS tmpdir() is under /var, a link to /private/var.
 const tempDir = () => {
   const d = realpathSync(mkdtempSync(join(tmpdir(), "vimma-start-test-")));
@@ -69,8 +68,7 @@ describe("parseStartArgs", () => {
 
 describe("selectBuild", () => {
   const engine = "/repo/engine";
-  /** @param {string[]} present */
-  const exists = (present) => (/** @type {string} */ p) => present.includes(p);
+  const exists = (present: string[]) => (p: string) => present.includes(p);
   const full = "/repo/engine/obj-x86_64-pc-linux-gnu/dist/bin/vimma";
   const artifact = "/repo/engine/obj-artifact/dist/bin/vimma";
 
@@ -195,7 +193,7 @@ describe("startPrefs", () => {
 });
 
 describe("mergeUserJs", () => {
-  const prefs = /** @type {const} */ ([[READ_PATH_PREF, "/repo/src/"]]);
+  const prefs = [[READ_PATH_PREF, "/repo/src/"]] as const;
 
   it("keeps a config path the profile's user.js already names", () => {
     const mine = `user_pref("${CONFIG_PATH_PREF}", "~/vimma-dev.toml");\n`;
@@ -303,9 +301,8 @@ describe("profileInUse", () => {
     it("names the pid that has .parentlock open", () => {
       const profile = tempDir();
       writeFileSync(join(profile, ".parentlock"), "");
-      /** @type {string[]} */
-      const asked = [];
-      const openers = (/** @type {string} */ path) => {
+      const asked: string[] = [];
+      const openers = (path: string) => {
         asked.push(path);
         return [4242];
       };

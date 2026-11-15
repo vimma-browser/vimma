@@ -15,8 +15,8 @@ const sheets = readdirSync(cssDir)
 /** Text tokens picked for contrast against their own background (hint labels, mode badges). */
 const TEXT_ON = /^--vimma-(hint|mode-[a-z]+)-fg$/;
 
-/** @param {string} css  the declarations, comments dropped */
-const declarations = (css) =>
+/** @param css  the declarations, comments dropped */
+const declarations = (css: string) =>
   [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/(?:^|[;{\s])([a-z-]+)\s*:\s*([^;{}]+);/g)].map(
     (m) => ({ property: m[1] ?? "", value: (m[2] ?? "").trim() }),
   );

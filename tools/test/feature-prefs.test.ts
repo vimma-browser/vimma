@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { featurePrefDefaults, featurePrefFallbacks, listSourceFiles } from "./feature-prefs.mjs";
+import { featurePrefDefaults, featurePrefFallbacks, listSourceFiles } from "./feature-prefs.ts";
 
 // docs/specs/firefox-versions.md, decision 16: main stays releasable because a Firefox security
 // bump can release it with no person in the loop. A feature merged in parts lands behind

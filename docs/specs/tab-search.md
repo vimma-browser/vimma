@@ -375,7 +375,7 @@ one).
     is announced "playing").
 12. **Theme.** Existing tokens only: headings `--vimma-text-accent`; the muted cell
     `--vimma-fg-dim`, as the host cell (`--vimma-muted` is a border colour whose contrast as text
-    is not checked, `tools/test/chrome-css.test.mjs`); the `closed` tag in italics; `◇` in the agent's colour, `--vimma-text-cyan`
+    is not checked, `tools/test/chrome-css.test.ts`); the `closed` tag in italics; `◇` in the agent's colour, `--vimma-text-cyan`
     (vimma-mcp decision 24). No new token, so Omarchy and the built-in themes work unchanged.
 13. **Out of scope.** Tabs in other Firefox profiles; synced tabs from other devices (Firefox
     View has them; Vimma keeps Sync as Firefox has it, m0-mozilla-services); searching page

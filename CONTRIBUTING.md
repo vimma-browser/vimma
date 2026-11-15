@@ -306,7 +306,7 @@ stays `.mjs` (ADR-025 says why).
    show that removing a cast's parentheses kept the precedence. Vitest runs `.ts` through its own transform and resolves `./x.js` to `x.ts`, so a
    green test does not show that Node can run the file: running each command-line tool is that
    proof, and for a module that only others import, tsc and the import check in
-   `tools/test/typescript-tools.test.mjs` are. A tool that sends a function's source text
+   `tools/test/typescript-tools.test.ts` are. A tool that sends a function's source text
    elsewhere (`tools/sites/probes.ts` sends it to Firefox) is proved from a child Node, since
    Vitest strips types its own way: the text has no type syntax, and no function reads the
    module's scope.
@@ -351,7 +351,7 @@ Vimma follows a spec-first, test-first loop:
     setup that turns it on, and adds the docs and changelog line a user-visible change needs.
   - Try an unfinished feature by setting the pref to `true` in `about:config`.
 
-  `tools/test/feature-prefs.test.mjs` fails when a `vimma.feature.*` default is not `false`, or
+  `tools/test/feature-prefs.test.ts` fails when a `vimma.feature.*` default is not `false`, or
   when code reads one with a `true` fallback. A feature that fits in one pull request needs no
   pref.
 

@@ -48,7 +48,7 @@ const OPTIONS =
 
 /**
  * A specifier in double quotes. The fixtures build their relative imports with it, so that
- * tools/test/typescript-tools.test.mjs, which reads this file's own relative imports as text,
+ * tools/test/typescript-tools.test.ts, which reads this file's own relative imports as text,
  * does not take them for imports of this file.
  */
 const q = (spec: string) => JSON.stringify(spec);
