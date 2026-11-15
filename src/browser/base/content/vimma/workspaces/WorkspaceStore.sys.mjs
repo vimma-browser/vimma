@@ -199,11 +199,12 @@ export class WorkspaceStoreImpl {
    * if it was a workspace's, the workspace stays and gets a new, empty container at once, so its
    * new tabs never fall back to container 0. Vimma's own deleteWorkspace drops the definition
    * before it removes the container, so it never comes here.
-   * @param {any} subject  `{ wrappedJSObject: { userContextId, name, ... } }`
+   * @param {unknown} subject  a ContextualIdentityNotification
    */
   #onDeleted = (subject) => {
     if (this.disabled || this.readOnly || !this.#enabled()) return;
-    const ucid = subject?.wrappedJSObject?.userContextId;
+    const identity = /** @type {ContextualIdentityNotification | null} */ (subject);
+    const ucid = identity?.wrappedJSObject?.userContextId;
     const w = ucid ? this.definitions.workspaces.find((d) => d.userContextId === ucid) : null;
     if (!w) return;
     this.#createContainer(w);
@@ -566,7 +567,7 @@ export class WorkspaceStoreImpl {
    * windows and popups, and when workspaces are disabled, so upstream behaviour stays there.
    * Before init has loaded the file it reads it synchronously (as ContextualIdentityService does).
    * `fromExternal` (addTab's flag: the command line's URLs) gives nonAgentUserContextId's.
-   * @param {any} win
+   * @param {Window | null} win
    * @param {{ fromExternal?: boolean }} [options]
    * @returns {number | null}
    */
@@ -596,7 +597,7 @@ export class WorkspaceStoreImpl {
    * used that is not the agent's, else the first one. Never the agent's, whose pages agents read:
    * a login link landing there would hand them the session. Null where defaultUserContextId is;
    * 0 (no container) when no workspace but the agent's has one.
-   * @param {any} win
+   * @param {Window | null} win
    * @returns {number | null}
    */
   nonAgentUserContextId(win) {
@@ -666,7 +667,7 @@ export class WorkspaceStoreImpl {
    * rule gives the window's URL (spec workspace-routing), else nonAgentUserContextId's: a new
    * window never starts in the agent workspace. Null where that is null (private windows,
    * popups, containers off).
-   * @param {any} win  the window being set up
+   * @param {BrowserWindow | null} win  the window being set up
    * @returns {number | null}
    */
   firstTabUserContextId(win) {
