@@ -1,7 +1,8 @@
 // The npm packages the release build runs, computed from package-lock.json (spec
-// build-supply-chain, decisions 13 to 15; docs/security.md, B3). dependabot-automerge.yml's
-// `classify` job runs this from the pull request's base commit on the head commit's lockfile, read
-// as data, and holds the pull request for a person when any package on the release path changes.
+// build-supply-chain, decisions 13 to 15; docs/security/14-build-and-release-supply-chain.md, B3).
+// dependabot-automerge.yml's `classify` job runs this from the pull request's base commit on the
+// head commit's lockfile, read as data, and holds the pull request for a person when any package on
+// the release path changes.
 //
 //   node tools/deps/release-path.ts --diff <base lockfile> <head lockfile>
 //     prints {"decision":"merge"|"review","packages":[{name,key,old,new,diff}]}

@@ -1,12 +1,13 @@
 // What release.yml's macos-notarise job, the only one holding the Apple secrets, may be (spec
-// macos-build, decision 23; docs/security.md, B14). Parsing its shell to allowlist commands cannot
-// be made sound, so the job must equal a golden copy, macos-notarise.golden.txt beside this file,
-// line for line after trailing whitespace is trimmed; only the commits its actions are pinned to
-// may differ, and each must be a full commit SHA. Any other change, a command, a step key such as
-// `shell:`, `env:` or `working-directory:`, or a job key such as `defaults:` or `container:`, is a
-// change to the golden file, which review reads. The workflow's own top-level keys and `env:`,
-// which every job inherits, are fixed too. Returns the problems found, empty when all is as it
-// must be; release-workflow.test.mjs checks the job and mutations of it.
+// macos-build, decision 23; docs/security/14-build-and-release-supply-chain.md, B14). Parsing its
+// shell to allowlist commands cannot be made sound, so the job must equal a golden copy,
+// macos-notarise.golden.txt beside this file, line for line after trailing whitespace is trimmed;
+// only the commits its actions are pinned to may differ, and each must be a full commit SHA. Any
+// other change, a command, a step key such as `shell:`, `env:` or `working-directory:`, or a job
+// key such as `defaults:` or `container:`, is a change to the golden file, which review reads. The
+// workflow's own top-level keys and `env:`, which every job inherits, are fixed too. Returns the
+// problems found, empty when all is as it must be; release-workflow.test.mjs checks the job and
+// mutations of it.
 import { readFileSync } from "node:fs";
 import { CORE_SCHEMA, load } from "js-yaml";
 

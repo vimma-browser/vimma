@@ -29,6 +29,7 @@ import {
   describeAgentElements,
   fillField,
   fillTargetOf,
+  formOf,
   pageChanges,
   pageMarks,
   payInfoOf,
@@ -178,6 +179,9 @@ function canScroll(el, vertical) {
   const overflow = overflowOf(el, vertical);
   return overflow === "auto" || overflow === "scroll" || overflow === "overlay";
 }
+
+/** @param {EventTarget | null} t @returns {t is Node} */
+const isNode = (t) => !!t && "nodeType" in t;
 
 /** At most this many elements are searched for the largest scrollable. */
 const SEARCH_LIMIT = 10000;
@@ -388,7 +392,7 @@ export class VimmaChild extends JSWindowActorChild {
   #netBase = 0;
   /**
    * The changes to this document since the agent's last step here began (`#startStepWatch`).
-   * @type {{ doc: Document, at: number, last: number | null, observer: any } | null}
+   * @type {{ doc: Document, at: number, last: number | null, observer: MutationObserver | null } | null}
    */
   #stepWatch = null;
   /** When a search for the largest scrollable last found nothing (0: not since focus moved). */
@@ -744,7 +748,7 @@ export class VimmaChild extends JSWindowActorChild {
     if (!el || el === this.document.body || !isEditable(describe(el)).editable) return null;
     // The flattened tree: a click in a text field lands in its anonymous editor, which
     // contains() does not see, and in a shadow root, which it does not cross.
-    for (let n = /** @type {any} */ (target); n; n = n.flattenedTreeParentNode) {
+    for (let n = isNode(target) ? target : null; n; n = n.flattenedTreeParentNode) {
       if (n === el) return el;
     }
     return null;
@@ -803,11 +807,16 @@ export class VimmaChild extends JSWindowActorChild {
         this.#pdf?.setTheme(msg.data?.css);
         return undefined;
       case "Vimma:PdfOp":
-        // An operation name and a number (docs/security.md section 20, V7), checked again by
-        // the adapter; only the top-level viewer has one. A report follows each, even when it
-        // changed nothing, so the parent hears that it was run (`state.pdf`).
+        // An operation name and a number (docs/security/20-pdf-viewer.md section 20, V7), checked
+        // again by the adapter; only the top-level viewer has one. A report follows each, even when
+        // it changed nothing, so the parent hears that it was run (`state.pdf`).
         this.#pdfOps++;
         this.#pdf?.run(msg.data);
+        this.#pdf?.schedule();
+        return undefined;
+      case "Vimma:PdfZoom":
+        // The tab's full zoom changed (#1040): a report at the new zoom, which a zoom that keeps
+        // the page's layout would not otherwise bring. No data, nothing run in the viewer.
         this.#pdf?.schedule();
         return undefined;
       case "Vimma:PdfWhere":
@@ -945,7 +954,9 @@ export class VimmaChild extends JSWindowActorChild {
         // Only the frame with focus has the user's caret (the parent sends to that one).
         const win = this.contentWindow;
         if (!isCaretMessage(msg.data) || !win || !this.document.hasFocus()) return false;
-        return this.#caret.run(win, this.#selCon(), msg.data);
+        const selCon = this.#selCon();
+        if (!selCon) return false;
+        return this.#caret.run(win, selCon, msg.data);
       }
       case "Vimma:Block": {
         // Element focus (docs/specs/element-focus.md): the parent sends to the frame whose
@@ -962,6 +973,7 @@ export class VimmaChild extends JSWindowActorChild {
           // `v` on a block: copy mode starts with the block selected, as with a mouse selection.
           enterCopyMode: (line) => {
             const selCon = this.#selCon();
+            if (!selCon) return false;
             if (this.#caret.run(win, selCon, { op: "enter" }) !== true) return false;
             if (line) this.#caret.run(win, selCon, { op: "line" });
             return true;
@@ -973,12 +985,17 @@ export class VimmaChild extends JSWindowActorChild {
     return undefined;
   }
 
-  /** The frame's nsISelectionController, got as ViewSourcePageChild gets it. */
+  /**
+   * The frame's nsISelectionController, got as ViewSourcePageChild gets it; null once the frame
+   * has lost its docshell.
+   */
   #selCon() {
-    return this.docShell
-      .QueryInterface(Ci.nsIInterfaceRequestor)
-      .getInterface(Ci.nsISelectionDisplay)
-      .QueryInterface(Ci.nsISelectionController);
+    return (
+      this.docShell
+        ?.QueryInterface(Ci.nsIInterfaceRequestor)
+        .getInterface(Ci.nsISelectionDisplay)
+        .QueryInterface(Ci.nsISelectionController) ?? null
+    );
   }
 
   /**
@@ -1135,8 +1152,8 @@ export class VimmaChild extends JSWindowActorChild {
    * An element of the agent's last `vimma_elements` here (docs/specs/mcp-forms.md F4): `alive`
    * says whether it is still in the document, so a label never names an element the page has
    * replaced since.
-   * @param {{ op: string, gen: number, id: number, submit?: any, href?: unknown,
-   *   until?: unknown, value?: unknown, expect?: any, by?: unknown, skip?: unknown }} data
+   * @param {{ op: string, gen: number, id: number, submit?: unknown, href?: unknown,
+   *   until?: unknown, value?: unknown, expect?: unknown, by?: unknown, skip?: unknown }} data
    */
   #agentElement(data) {
     const known = isIndex(data?.gen) && isIndex(data?.id) && data.gen === this.#agentEls.gen;
@@ -1204,7 +1221,7 @@ export class VimmaChild extends JSWindowActorChild {
    * reply, so that a dialog the page opens in its `input` or `change` handler never holds the
    * parent's call. It is checked again just before the set, which is skipped if it changed.
    * @param {Element | undefined} el
-   * @param {{ gen: number, id: number, value?: unknown, expect?: any, until?: unknown }} asked
+   * @param {{ gen: number, id: number, value?: unknown, expect?: unknown, until?: unknown }} asked
    *   `expect`: how the field was to be set (`field`) and its type, when the question was asked
    * @returns {"ok" | "gone" | "changed"}
    */
@@ -1231,14 +1248,17 @@ export class VimmaChild extends JSWindowActorChild {
   /**
    * Whether `el` is still the field the agent's question showed: set the same way, of the same
    * type, not sensitive, disabled or read-only, and taking the value.
-   * @param {Element} el @param {{ value?: unknown, expect?: any }} asked
+   * @param {Element} el @param {{ value?: unknown, expect?: unknown }} asked
    */
   #fillAsAsked(el, asked) {
-    const now = /** @type {any} */ (fillTargetOf(el, asked.value));
+    const now = fillTargetOf(el, asked.value);
+    /** @type {{ field?: unknown, type?: unknown }} */
     const expect = asked.expect && typeof asked.expect === "object" ? asked.expect : {};
     if (!now.alive || now.secret || isSensitiveAutocomplete(now.autocomplete)) return false;
     if (now.disabled || now.readonly || now.accepts === false) return false;
-    if (!["text", "textarea", "select", "checkbox", "radio"].includes(now.field)) return false;
+    if (!["text", "textarea", "select", "checkbox", "radio"].includes(now.field ?? "")) {
+      return false;
+    }
     return now.field === expect.field && (now.type ?? null) === (expect.type ?? null);
   }
 
@@ -1248,15 +1268,16 @@ export class VimmaChild extends JSWindowActorChild {
    * named, by `requestSubmit`, after this reply. No user activation is given: the parent lets
    * through only the submission the question allowed.
    * @param {Element | undefined} el
-   * @param {{ gen: number, id: number, submit?: any, until?: unknown, step?: unknown }} asked
+   * @param {{ gen: number, id: number, submit?: unknown, until?: unknown, step?: unknown }} asked
    *   `step`: the parent's number for this step, said back if it is skipped
    * @returns {"ok" | "gone" | "changed"}
    */
   #agentSubmit(el, asked) {
     if (!this.#onPage(el)) return "gone";
     if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
-    const form = /** @type {any} */ (el).form;
+    const form = formOf(el);
     const now = form ? defaultSubmitOf(form) : null;
+    /** @type {{ method?: unknown, action?: unknown } | null} */
     const named = asked.submit && typeof asked.submit === "object" ? asked.submit : null;
     if (!now || !named || now.method !== named.method || now.action !== named.action) {
       return "changed";
@@ -1270,7 +1291,9 @@ export class VimmaChild extends JSWindowActorChild {
       const test = Cu.isInAutomation ? VimmaChild._beforeSubmitCheckForTests : null;
       if (test) {
         try {
-          /** @type {any} */ (this.contentWindow)?.wrappedJSObject[test]?.();
+          const page = this.contentWindow?.wrappedJSObject;
+          const hook = page?.[test];
+          if (typeof hook === "function") hook.call(page);
         } catch {
           // the test's page function threw: the check below sees what it left
         }
@@ -1278,6 +1301,7 @@ export class VimmaChild extends JSWindowActorChild {
       const again = this.#onPage(form) ? defaultSubmitOf(form) : null;
       if (
         Date.now() > until ||
+        !form ||
         !again ||
         again.method !== named.method ||
         again.action !== named.action
@@ -1301,7 +1325,7 @@ export class VimmaChild extends JSWindowActorChild {
    * through the widget or nsIDOMWindowUtils, so the page gets no user activation. A request
    * whose time is up (`until`, ms since the epoch) clicks nothing: the parent stopped waiting.
    * @param {Element | undefined} el
-   * @param {{ gen: number, id: number, submit?: any, href?: unknown, until?: unknown,
+   * @param {{ gen: number, id: number, submit?: unknown, href?: unknown, until?: unknown,
    *   step?: unknown }} asked  `submit`: the method and destination the question named, or
    *   null; `step`: the parent's number for this step, said back if it is skipped
    * @returns {"ok" | "gone" | "changed"}
@@ -1379,7 +1403,7 @@ export class VimmaChild extends JSWindowActorChild {
     const doc = this.document;
     const win = this.contentWindow;
     if (!doc || !win) return;
-    /** @type {{ doc: Document, at: number, last: number | null, observer: any }} */
+    /** @type {{ doc: Document, at: number, last: number | null, observer: MutationObserver | null }} */
     const watch = { doc, at: Date.now(), last: null, observer: null };
     try {
       watch.observer = new win.MutationObserver(() => {
@@ -1520,20 +1544,24 @@ export class VimmaChild extends JSWindowActorChild {
   /**
    * Whether `el` is still what the agent's question showed: nothing an agent may not click, a
    * submit only if asked as one and to the same method and destination, the same link.
-   * @param {Element} el @param {{ submit?: any, href?: unknown }} asked
+   * @param {Element} el @param {{ submit?: unknown, href?: unknown }} asked
    */
   #asAsked(el, asked) {
-    const now = /** @type {any} */ (actTargetOf(el));
+    const now = actTargetOf(el);
     if (!now.alive || now.field || now.disabled) return false;
+    /** @type {{ method?: unknown, action?: unknown, check?: unknown } | null} */
     const named = asked.submit && typeof asked.submit === "object" ? asked.submit : null;
-    if (!!now.submit !== !!named) return false;
-    if (now.submit && (now.submit.method !== named.method || now.submit.action !== named.action)) {
+    if (!now.submit !== !named) return false;
+    if (
+      now.submit &&
+      (now.submit.method !== named?.method || now.submit.action !== named?.action)
+    ) {
       return false;
     }
     // mcp-consequence K1, K5: a form a grant runs unasked was judged by what it sent before the
     // click; another call (a fill) may have changed it since, so it is judged again here, just
     // before it is pressed, and skipped when it no longer passes.
-    if (now.submit && named.check) {
+    if (now.submit && named?.check) {
       const step = { pay: false, sent: parseSentFields(sentFieldsOf(el, "click", new Set())) };
       if (named.check === "harmless" && isConsequential(step)) return false;
       if (named.check === "allowed" && !mayAllowHere(step)) return false;
@@ -1639,7 +1667,7 @@ export class VimmaChild extends JSWindowActorChild {
    */
   #press(el, still = () => true) {
     // A page this process has replaced since (#onPage): nothing to press.
-    const win = /** @type {any} */ (this.contentWindow);
+    const win = this.contentWindow;
     if (!win || !this.#onPage(el)) return false;
     const html = /** @type {HTMLElement} */ (el);
     const r = el.getBoundingClientRect();
@@ -1788,10 +1816,8 @@ export class VimmaChild extends JSWindowActorChild {
     if (!sel) return false;
     sel.removeAllRanges();
     sel.addRange(range);
-    const selCon = this.docShell
-      .QueryInterface(Ci.nsIInterfaceRequestor)
-      .getInterface(Ci.nsISelectionDisplay)
-      .QueryInterface(Ci.nsISelectionController);
+    const selCon = this.#selCon();
+    if (!selCon) return false;
     selCon.setDisplaySelection(DISPLAY_ATTENTION);
     selCon.repaintSelection(SELECTION_NORMAL);
     // After the next frame: a tab just selected gets its viewport's size first.

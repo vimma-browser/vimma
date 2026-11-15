@@ -122,8 +122,8 @@ function mcpOf() {
   };
 }
 
-/** An nsIAboutModule that is its own nsIFactory; XPCOM types are untyped here (types/). */
-const aboutModule = /** @type {any} */ ({
+/** An nsIAboutModule that is its own nsIFactory. */
+const aboutModule = {
   QueryInterface: ChromeUtils.generateQI(["nsIAboutModule", "nsIFactory"]),
   getURIFlags() {
     return Ci.nsIAboutModule.ALLOW_SCRIPT | Ci.nsIAboutModule.IS_SECURE_CHROME_UI;
@@ -131,7 +131,7 @@ const aboutModule = /** @type {any} */ ({
   getChromeURI() {
     return Services.io.newURI(PAGE_URL);
   },
-  /** @param {unknown} uri @param {unknown} loadInfo */
+  /** @param {nsIURI} uri @param {nsILoadInfo} loadInfo */
   newChannel(uri, loadInfo) {
     const channel = Services.io.newChannelFromURIWithLoadInfo(
       Services.io.newURI(PAGE_URL),
@@ -140,11 +140,11 @@ const aboutModule = /** @type {any} */ ({
     channel.originalURI = uri;
     return channel;
   },
-  /** @param {unknown} iid */
+  /** @param {nsIJSIID<unknown>} iid @returns {unknown} */
   createInstance(iid) {
     return aboutModule.QueryInterface(iid);
   },
-});
+};
 
 let registered = false;
 

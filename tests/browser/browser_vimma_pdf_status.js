@@ -5,13 +5,15 @@
 // Spec: docs/specs/pdf-mode.md (delivery PR 2), docs/security.md section 20: the PDF viewer's
 // adapter, the pdf context, and the page and match count in the status bar.
 
+/* global contextOf -- from head.js */
+
 "use strict";
 
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
 );
 const { PdfOps } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/pdf-ops.mjs");
-const { PDFJS_CONTRACT, PDFJS_DOM } = ChromeUtils.importESModule(
+const { PDFJS_CONTRACT, PDFJS_DOM, PdfView, PDF_STATE_MS } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/actors/pdf-view.mjs",
 );
 const { PDF_MAX_LABEL } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/pdf.mjs");
@@ -27,7 +29,11 @@ const segment = (id) =>
   document.getElementById("vimma-statusbar")?.querySelector(`[data-segment="${id}"]`)
     ?.textContent ?? "";
 
-/** Like pdfjs/test/head.js waitForPdfJS: resolves once the text layer has rendered. */
+/**
+ * Like pdfjs/test/head.js waitForPdfJS: resolves once the text layer has rendered.
+ * @param {XULBrowserElement} browser
+ * @param {string} url
+ */
 function loadPdf(browser, url) {
   const rendered = BrowserTestUtils.waitForContentEvent(
     browser,
@@ -60,19 +66,22 @@ async function withPdf(fn, { url = PDF, userContextId } = {}) {
 /** @param {XULBrowserElement} browser @param {number} page */
 function goToPage(browser, page) {
   return SpecialPowers.spawn(browser, [page], (p) => {
-    content.wrappedJSObject.PDFViewerApplication.page = p;
+    /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication.page = p;
   });
 }
 
 add_task(async function the_adapter_matches_the_shipped_pdfjs() {
   await withPdf(async (browser) => {
     const found = await SpecialPowers.spawn(browser, [PDFJS_CONTRACT], (contract) => {
+      /** @type {unknown} */
       const app = content.wrappedJSObject.PDFViewerApplication;
       /** @type {Record<string, string>} */
       const out = {};
       for (const path of Object.keys(contract)) {
         let v = app;
-        for (const k of path.split(".")) v = v == null ? undefined : v[k];
+        for (const k of path.split(".")) {
+          v = v == null ? undefined : /** @type {Record<string, unknown>} */ (v)[k];
+        }
         out[path] = v === null ? "object" : typeof v;
       }
       return out;
@@ -92,7 +101,7 @@ add_task(async function the_adapter_matches_the_shipped_pdfjs() {
         "the first page has finished drawing",
       );
       return {
-        container: content.document.querySelector(sel.container)?.scrollHeight > 0,
+        container: (content.document.querySelector(sel.container)?.scrollHeight ?? 0) > 0,
         page: !!page,
         drawn: !!page?.matches(sel.drawn),
         canvas: !!page?.querySelector("canvas"),
@@ -116,7 +125,8 @@ add_task(async function the_adapter_matches_the_shipped_pdfjs() {
       });
       if (page)
         watch.observe(page, { attributes: true, attributeFilter: ["class", "data-loaded"] });
-      content.wrappedJSObject.PDFViewerApplication.pdfViewer.currentScaleValue = "2";
+      const app = /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication;
+      /** @type {PdfJsViewer} */ (app.pdfViewer).currentScaleValue = "2";
       await ContentTaskUtils.waitForCondition(
         () => seen.length > 0 && page?.matches(sel.drawn),
         "the page draws again at the new zoom",
@@ -197,6 +207,7 @@ add_task(async function a_page_that_defines_PDFViewerApplication_gets_no_pdf_key
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "https://example.com/");
   const browser = tab.linkedBrowser;
   try {
+    /** @type {unknown[]} */
     const seen = [];
     const orig = PdfOps.onState;
     PdfOps.onState = (...args) => {
@@ -226,19 +237,22 @@ add_task(async function a_page_that_defines_PDFViewerApplication_gets_no_pdf_key
 });
 
 /**
- * Runs `fn` while recording every state message the parent receives.
- * @param {(seen: object[]) => Promise<void>} fn
+ * Runs `fn` while recording every state message the parent receives, and when it arrived.
+ * @param {(seen: unknown[], times: number[]) => Promise<void>} fn
  */
 async function recordingState(fn) {
-  /** @type {object[]} */
+  /** @type {unknown[]} */
   const seen = [];
+  /** @type {number[]} */
+  const times = [];
   const orig = PdfOps.onState;
   PdfOps.onState = (actor, data) => {
     seen.push(data);
+    times.push(ChromeUtils.now());
     return orig.call(PdfOps, actor, data);
   };
   try {
-    await fn(seen);
+    await fn(seen, times);
   } finally {
     PdfOps.onState = orig;
   }
@@ -250,29 +264,31 @@ add_task(async function a_pdf_in_a_frame_gets_no_pdf_context() {
     const browser = tab.linkedBrowser;
     try {
       // The framed viewer's own actor sends nothing (pdf-view.mjs checks for a top document).
-      // The framed viewer's own actor sends nothing (pdf-view.mjs checks for a top document).
-      /** @type {any} */
-      let frame = null;
+      /** @type {CanonicalBrowsingContext | undefined} */
+      let frame;
       let fromFrame = 0;
       await recordingState(async (seen) => {
         await SpecialPowers.spawn(browser, [PDF, tag], (url, t) => {
-          const el = content.document.createElement(t);
+          const el = /** @type {HTMLIFrameElement | HTMLEmbedElement} */ (
+            content.document.createElement(t)
+          );
           el.src = url;
           el.style.cssText = "width:600px;height:600px";
           content.document.body.append(el);
         });
         // The framed viewer exists and has a principal the parent recognises.
         frame = await TestUtils.waitForCondition(() =>
-          browser.browsingContext.children.find((bc) =>
+          contextOf(browser).children.find((/** @type {CanonicalBrowsingContext} */ bc) =>
             bc.currentWindowGlobal?.documentPrincipal?.originNoSuffix?.startsWith("resource://pdf"),
           ),
         );
         // pdf.js lays out its pages in the frame; a top viewer would have reported by now.
         await SpecialPowers.spawn(frame, [], () =>
-          ContentTaskUtils.waitForCondition(
-            () => content.wrappedJSObject.PDFViewerApplication?.pagesCount > 0,
-            "the framed viewer has its pages",
-          ),
+          ContentTaskUtils.waitForCondition(() => {
+            // The frame's window has no viewer yet while its document loads.
+            const w = /** @type {Partial<PdfJsWindow>} */ (content.wrappedJSObject);
+            return (w.PDFViewerApplication?.pagesCount ?? 0) > 0;
+          }, "the framed viewer has its pages"),
         );
         await new Promise((r) => setTimeout(r, 300));
         fromFrame = seen.length;
@@ -280,13 +296,17 @@ add_task(async function a_pdf_in_a_frame_gets_no_pdf_context() {
       Assert.equal(fromFrame, 0, `no state message from the ${tag}'s viewer`);
       Assert.equal(PdfOps.context(browser), "page", `a PDF in an ${tag} keeps the page context`);
       // A state message from the frame's actor is dropped.
-      const actor = frame.currentWindowGlobal.getActor("Vimma");
+      Assert.ok(frame, `the ${tag}'s viewer has a browsing context`);
+      const actor =
+        /** @type {import("../../src/browser/base/content/vimma/host/VimmaParent.sys.mjs").VimmaParent} */ (
+          /** @type {WindowGlobalParent} */ (frame.currentWindowGlobal).getActor("Vimma")
+        );
       actor.receiveMessage({
         name: "Vimma:PdfState",
         data: { page: 1, pages: 2, label: "", find: { current: 0, total: 0 } },
       });
       await new Promise((r) => setTimeout(r, 300));
-      Assert.equal(PdfOps.state(browser), null, `no state from an ${tag}`);
+      Assert.strictEqual(PdfOps.state(browser), null, `no state from an ${tag}`);
       Assert.equal(segment("page"), "", "no page segment");
     } finally {
       BrowserTestUtils.removeTab(tab);
@@ -302,33 +322,37 @@ add_task(async function a_hostile_viewer_gets_only_primitives_through() {
       // after recording starts (its 100 ms timer fires on its own schedule): make one do so.
       await SpecialPowers.spawn(browser, [], () => {
         // Well formed, as pdf.js's own listeners run before the adapter's.
-        content.wrappedJSObject.PDFViewerApplication.eventBus.dispatch(
+        const app = /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication;
+        /** @type {PdfJsEventBus} */ (app.eventBus).dispatch(
           "pagechanging",
           Cu.cloneInto({ source: null, pageNumber: 1, pageLabel: "i", previous: 1 }, content),
         );
       });
       await TestUtils.waitForCondition(() => seen.length > 0, "a state read before the change");
       await SpecialPowers.spawn(browser, [], () => {
+        /** @type {PdfJsWindow} */
         const w = content.wrappedJSObject;
         const app = w.PDFViewerApplication;
-        const fn = (/** @type {Function} */ f) => Cu.exportFunction(f, content);
+        const fn = (/** @type {() => unknown} */ f) => Cu.exportFunction(f, content);
         const obj = (/** @type {object} */ o) => Cu.cloneInto(o, content, { cloneFunctions: true });
         // Getters that hand back objects: a thenable with valueOf, one with toString.
         Object.defineProperty(app, "pagesCount", {
           configurable: true,
-          get: fn(() => obj({ valueOf: () => 6, then: (r) => r(6) })),
+          get: fn(() =>
+            obj({ valueOf: () => 6, then: (/** @type {(n: number) => void} */ r) => r(6) }),
+          ),
         });
-        Object.defineProperty(app.pdfViewer, "currentPageLabel", {
+        Object.defineProperty(/** @type {PdfJsViewer} */ (app.pdfViewer), "currentPageLabel", {
           configurable: true,
           get: fn(() => "x".repeat(1e6)),
         });
         // A count whose fields are a getter and an object.
-        const count = new w.Object();
+        const count = /** @type {{ total?: object }} */ (new w.Object());
         Object.defineProperty(count, "current", { get: fn(() => 1), enumerable: true });
         count.total = obj({ valueOf: () => 2 });
-        const evt = new w.Object();
+        const evt = /** @type {{ matchesCount?: object }} */ (new w.Object());
         evt.matchesCount = count;
-        app.eventBus.dispatch("updatefindmatchescount", evt);
+        /** @type {PdfJsEventBus} */ (app.eventBus).dispatch("updatefindmatchescount", evt);
       });
       await TestUtils.waitForCondition(
         () => seen.length > 0 && PdfOps.state(browser) === null,
@@ -339,10 +363,14 @@ add_task(async function a_hostile_viewer_gets_only_primitives_through() {
       // all of it (the "x" label): each kind is checked for what it can carry, and at least one
       // read after the change came through.
       let after = 0;
-      for (const data of seen) {
+      // Each message as the child sent it; the loop holds every field to a primitive.
+      const states = /** @type {{ label: string, pages: number, find: object }[]} */ (seen);
+      for (const data of states) {
         for (const [k, v] of Object.entries(data)) {
           if (k === "find") {
-            for (const n of Object.values(v)) Assert.equal(typeof n, "number", "find counts");
+            for (const n of Object.values(data.find)) {
+              Assert.equal(typeof n, "number", "find counts");
+            }
           } else {
             Assert.ok(["number", "string", "boolean"].includes(typeof v), `${k} is a primitive`);
           }
@@ -362,22 +390,74 @@ add_task(async function a_hostile_viewer_gets_only_primitives_through() {
   });
 });
 
-add_task(async function a_flood_of_pagesloaded_is_coalesced() {
+add_task(async function a_viewer_whose_pdfViewer_getter_throws_still_reports_each_operation() {
   await withPdf(async (browser) => {
     await TestUtils.waitForCondition(() => segment("page") === "page i (1/6)", "the page");
     await recordingState(async (seen) => {
+      // Each report carries how many operations the actor was sent (`state.pdf`); a viewer that
+      // throws from its own getter fails the operation, not the report that follows it.
+      await SpecialPowers.spawn(browser, [], () => {
+        const app = /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication;
+        Object.defineProperty(app, "pdfViewer", {
+          configurable: true,
+          get: Cu.exportFunction(() => {
+            throw new content.Error("hostile");
+          }, content),
+        });
+      });
+      const states = /** @type {{ ops: number }[]} */ (seen);
+      // Read from the messages themselves: with no page number (pdf.js's own page getter goes
+      // through pdfViewer) the parent keeps no state.
+      let sent = PdfOps.state(browser)?.ops ?? NaN;
+      Assert.ok(Number.isSafeInteger(sent), "the last report's operation count");
+      // A zoom, which the adapter runs on pdfViewer, and a jump, which goes through pdf.js's
+      // link service.
+      for (const op of ["zoom", "first"]) {
+        const before = states.length;
+        Assert.ok(PdfOps.run(browser, op, 1), `${op} is sent`);
+        await TestUtils.waitForCondition(
+          () => states.slice(before).some((s) => s.ops > sent),
+          `a report after ${op}`,
+        );
+        sent = Math.max(...states.map((s) => s.ops));
+      }
+    });
+  });
+});
+
+add_task(async function a_flood_of_pagesloaded_is_coalesced() {
+  // V5 bounds the rate, not the count: the viewer may still be laying out and drawing (a resize,
+  // `drawn` going false and true), and those changes are sent too, each after the one before.
+  const quiet = 3 * PDF_STATE_MS;
+  await withPdf(async (browser) => {
+    await TestUtils.waitForCondition(() => segment("page") === "page i (1/6)", "the page");
+    await recordingState(async (seen, times) => {
+      const since = ChromeUtils.now();
+      const settled = () => ChromeUtils.now() - (times.at(-1) ?? since) >= quiet;
+      // Nothing in flight from before the flood: no state for three coalescing windows.
+      await TestUtils.waitForCondition(settled, "the viewer settles", 50, 200);
+      const before = seen.length;
+      const start = ChromeUtils.now();
       // pdf.js's own event bus, and the chrome-only event the viewer can send at will.
       await SpecialPowers.spawn(browser, [], () => {
-        const app = content.wrappedJSObject.PDFViewerApplication;
+        const app = /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication;
+        const bus = /** @type {PdfJsEventBus} */ (app.eventBus);
         for (let i = 0; i < 1000; i++) {
-          app.eventBus.dispatch("pagesloaded", Cu.cloneInto({ pagesCount: i }, content));
+          bus.dispatch("pagesloaded", Cu.cloneInto({ pagesCount: i }, content));
           content.document.dispatchEvent(new content.CustomEvent("pagesloaded", { bubbles: true }));
         }
       });
-      await TestUtils.waitForCondition(() => seen.length > 0, "the burst sent state");
-      // Long enough for a second and third message, were the burst not coalesced (100 ms).
-      await new Promise((r) => setTimeout(r, 300));
-      Assert.lessOrEqual(seen.length, 2, `two thousand events, ${seen.length} messages`);
+      await TestUtils.waitForCondition(() => seen.length > before, "the burst sent state");
+      await TestUtils.waitForCondition(settled, "the burst and what it set off are over", 50, 200);
+      const sent = seen.length - before;
+      // Every message was sent after `start` and had reached the parent by the last one's arrival,
+      // so at most one per PDF_STATE_MS fits between them (less 1 ms: a Gecko timer may fire up
+      // to 250 us early, TimerThread.cpp). Two thousand events uncoalesced would send thousands.
+      const elapsed = /** @type {number} */ (times.at(-1)) - start;
+      const most = 1 + Math.floor(elapsed / (PDF_STATE_MS - 1));
+      const ms = Math.round(elapsed);
+      Assert.lessOrEqual(sent, most, `two thousand events, ${sent} messages in ${ms} ms`);
+      Assert.less(sent, 20, "two thousand events sent a handful of messages");
     });
   });
 });
@@ -426,10 +506,61 @@ add_task(async function pdf_mode_writes_no_pdfjs_prefs() {
   Assert.deepEqual(after, before, "opening a PDF in the PDF mode writes no pdfjs.* pref");
 });
 
+/**
+ * The tab's size in whole device pixels, as PdfOps.drawn reads it.
+ * @param {XULBrowserElement} browser
+ */
+function deviceSize(browser) {
+  const box = browser.getBoundingClientRect();
+  return [box.width, box.height].map((v) => Math.round(v * window.devicePixelRatio));
+}
+
+/**
+ * Makes the tab's size in device pixels other than a multiple of 5 in at least one direction,
+ * so that at devPixelsPerPx 1.5 and full zoom 1.1 the viewer's size is not whole CSS pixels.
+ * The chrome has round(60 / 1.5) = 40 app units per device pixel, the page round(40 / 1.1) =
+ * round(36.36) = 36 (nsDeviceContext::ApplyFullZoomToAPD), and a CSS pixel is 60 app units: the
+ * viewer's size is 36 / 60 = 3 / 5 of its size in device pixels, whole exactly when that is a
+ * multiple of 5. No zoom or scale avoids this for every window size (any whole number of app
+ * units makes some sizes whole), so the window is sized instead: one chrome pixel narrower is
+ * 1 or 2 device pixels narrower (1.5, rounded), and a multiple of 5 minus 1 or 2 is not one.
+ * The window is not put back here: the task restores the outer size it had before the scale
+ * changed (resizeWindow).
+ * @param {XULBrowserElement} browser
+ */
+async function offWholePixels(browser) {
+  const [width, height] = deviceSize(browser);
+  if (width % 5 || height % 5) return;
+  await resizeWindow(() => window.resizeBy(-1, 0));
+  const [now] = deviceSize(browser);
+  Assert.ok(now < width && now % 5 !== 0, `the tab is ${now} device pixels wide, not ${width}`);
+}
+
+/**
+ * Resizes the window with `resize` and waits for it. A maximized, full-screen or tiled window
+ * would never get its resize event, so the test says so instead of timing out.
+ * @param {() => void} resize
+ */
+async function resizeWindow(resize) {
+  Assert.equal(
+    window.windowState,
+    window.STATE_NORMAL,
+    "the test window can be resized (not maximized, full screen or tiled)",
+  );
+  const resized = BrowserTestUtils.waitForEvent(window, "resize");
+  resize();
+  await resized;
+}
+
 // At a fractional desktop scale and a full zoom other than 100 %, the viewer's size is not a
 // whole number of CSS pixels: PDF mode keeps its page state (the status bar's page, the
 // outline, `G`) and `state.pdf` still turns drawn (#1006).
 add_task(async function pdf_mode_at_a_fractional_size() {
+  // The outer size, in CSS pixels at the usual scale. resizeBy rounds the outer size to whole
+  // CSS pixels at scale 1.5 and changes both directions (nsGlobalWindowOuter::ResizeByOuter),
+  // so resizing back by one pixel would not always restore it: the size is restored as a whole
+  // once the scale is back, for the files that run after this one.
+  const outer = [window.outerWidth, window.outerHeight];
   await SpecialPowers.pushPrefEnv({
     set: [
       ["vimma.ui.pdf_outline.hidden", true],
@@ -438,6 +569,7 @@ add_task(async function pdf_mode_at_a_fractional_size() {
   });
   try {
     await withPdf(async (browser) => {
+      await offWholePixels(browser);
       browser.fullZoom = 1.1;
       const size = await SpecialPowers.spawn(browser, [], () => [
         content.innerWidth,
@@ -464,6 +596,131 @@ add_task(async function pdf_mode_at_a_fractional_size() {
       await TestUtils.waitForCondition(
         () => PdfOps.drawn(browser)?.drawn === true,
         "the last page is drawn",
+      );
+    });
+  } finally {
+    await SpecialPowers.popPrefEnv();
+    if (window.outerWidth !== outer[0] || window.outerHeight !== outer[1]) {
+      await resizeWindow(() => window.resizeTo(outer[0], outer[1]));
+    }
+    Assert.deepEqual(
+      [window.outerWidth, window.outerHeight],
+      outer,
+      "the window has its size from before the task",
+    );
+  }
+});
+
+// #1040: a report scheduled just before the viewer's window went away fires on a window that is
+// no longer current, whose sizes throw NS_ERROR_UNEXPECTED (FORWARD_TO_OUTER_OR_THROW).
+add_task(async function a_report_due_after_the_window_has_gone_is_dropped() {
+  const wb = Services.appShell.createWindowlessBrowser(false);
+  const win = /** @type {Window} */ (wb.document?.defaultView);
+  /** @type {string[]} */
+  const errors = [];
+  const listener = {
+    /** @param {nsIConsoleMessage} msg */
+    observe(msg) {
+      if (!(msg instanceof Ci.nsIScriptError)) return;
+      const err = /** @type {nsIScriptError} */ (msg);
+      const text = `${err.sourceName} ${err.errorMessage}`;
+      if (text.includes("pdf-view.mjs")) errors.push(text);
+    },
+  };
+  Services.console.registerListener(listener);
+  try {
+    /** @type {object[]} */
+    const sent = [];
+    const app = { eventBus: { on() {}, off() {} } };
+    // The constructor schedules the first report.
+    const view = new PdfView(
+      win,
+      app,
+      (/** @type {object} */ s) => sent.push(s),
+      () => {},
+      () => 0,
+    );
+    wb.close();
+    await new Promise((r) => setTimeout(r, PDF_STATE_MS * 3));
+    view.destroy();
+    Assert.deepEqual(sent, [], "no report from a window that has gone");
+    Assert.deepEqual(errors, [], "and no error");
+  } finally {
+    Services.console.unregisterListener(listener);
+  }
+});
+
+// #1040: a full-zoom change leaves the tab's size in device pixels as it was, so the report from
+// before it would read as drawn until pdf.js redraws. The parent reads the new zoom at once and
+// no report can come in the same tick, so `drawn` is false right after the zoom is set.
+add_task(async function a_full_zoom_change_is_not_drawn_until_the_viewer_redraws() {
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.ui.pdf_outline.hidden", true]] });
+  try {
+    await withPdf(async (browser) => {
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "the first page is drawn",
+      );
+      browser.fullZoom = 1.1;
+      Assert.deepEqual(PdfOps.drawn(browser), { drawn: false }, "not drawn at the new zoom yet");
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "drawn again once the viewer reports at the new zoom",
+      );
+      browser.fullZoom = 1;
+      Assert.deepEqual(PdfOps.drawn(browser), { drawn: false }, "and back at 100%");
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "drawn again at 100%",
+      );
+    });
+  } finally {
+    await SpecialPowers.popPrefEnv();
+  }
+});
+
+// A zoom change that keeps the page's app units per device pixel changes neither its size nor
+// its pixel ratio, so the viewer gets no resize or resolution event and sends no report of its
+// own (PresShell::ResizeReflow returns early on an unchanged size). At scale 1, 100% has
+// 60 app units per device pixel and 100.8% has round(60 / 1.008) = round(59.52) = 60 too
+// (nsDeviceContext::ApplyFullZoomToAPD); the browser's fullZoom setter ignores a change that
+// agrees to two decimals, so 100.5% would not apply. `drawn` still turns true at the new zoom:
+// the parent asks the viewer for a report when the zoom changes.
+add_task(async function a_zoom_change_that_keeps_the_layout_still_turns_drawn() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["vimma.ui.pdf_outline.hidden", true],
+      ["layout.css.devPixelsPerPx", "1"],
+    ],
+  });
+  try {
+    await withPdf(async (browser) => {
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "the first page is drawn",
+      );
+      const ratio = () => SpecialPowers.spawn(browser, [], () => content.devicePixelRatio);
+      const before = await ratio();
+      browser.fullZoom = 1.008;
+      Assert.deepEqual(PdfOps.drawn(browser), { drawn: false }, "not drawn at the new zoom yet");
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "drawn at 100.8%",
+      );
+      Assert.equal(await ratio(), before, "the page's pixel ratio did not change");
+      browser.fullZoom = 1;
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "drawn at 100% again",
+      );
+      // A zoom and back before any report: the report from before them is not taken for one
+      // at the zoom the tab is back to, which the viewer may not have drawn at yet.
+      browser.fullZoom = 1.1;
+      browser.fullZoom = 1;
+      Assert.deepEqual(PdfOps.drawn(browser), { drawn: false }, "not drawn after a zoom and back");
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "drawn once the viewer reports again",
       );
     });
   } finally {

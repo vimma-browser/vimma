@@ -32,7 +32,7 @@ function fileOf(path) {
   return f;
 }
 
-/** @param {any} transport */
+/** @param {nsISocketTransport} transport */
 function streams(transport) {
   // Unbuffered: a buffered stream is a pipe that the socket thread copies later, so a close
   // could overtake what was written.
@@ -49,12 +49,12 @@ function connect(path) {
   const sts = Cc["@mozilla.org/network/socket-transport-service;1"].getService(
     Ci.nsISocketTransportService,
   );
-  return /** @type {any} */ (sts).createUnixDomainTransport(fileOf(path));
+  return sts.createUnixDomainTransport(fileOf(path));
 }
 
 /**
  * Writes all of `bytes` to an async output stream once it can take them.
- * @param {any} output
+ * @param {nsIAsyncOutputStream} output
  * @param {Uint8Array} bytes
  * @returns {Promise<void>}
  */
@@ -85,7 +85,7 @@ function writeAll(output, bytes) {
 /**
  * Reads what is available: bytes, [] when nothing is there yet, null at the end of the stream.
  * A socket at its end reports 0 available until a read finds nothing, so 0 tries a read.
- * @param {any} input @param {any} binary
+ * @param {nsIInputStream} input @param {nsIBinaryInputStream} binary
  * @returns {Uint8Array | null}
  */
 function readAvailable(input, binary) {

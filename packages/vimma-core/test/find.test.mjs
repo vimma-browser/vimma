@@ -1,6 +1,11 @@
 import { describe, test, expect } from "vitest";
 import fc from "fast-check";
-import { findCountText, findStatusText, isCaseSensitive } from "../src/page/find.mjs";
+import {
+  findCountText,
+  findStatusText,
+  isCaseSensitive,
+  parseScrollPosition,
+} from "../src/page/find.mjs";
 import { statusSegments } from "../src/ui/statusbar.mjs";
 
 describe("smartcase", () => {
@@ -92,5 +97,44 @@ describe("status bar find segment", () => {
       text: "/x not found",
       fg: "--vimma-text-error",
     });
+  });
+});
+
+describe("parseScrollPosition", () => {
+  test("a fresh copy of a position with finite numbers", () => {
+    const raw = { x: 0, y: 1200.5 };
+    const parsed = parseScrollPosition(raw);
+    expect(parsed).toEqual({ x: 0, y: 1200.5 });
+    expect(parsed).not.toBe(raw);
+  });
+
+  test("extra fields are dropped", () => {
+    expect(parseScrollPosition({ x: 1, y: 2, z: 3 })).toEqual({ x: 1, y: 2 });
+  });
+
+  // The child's answer comes from a content process that may be compromised.
+  test.each([
+    [null],
+    [undefined],
+    [0],
+    ["0,0"],
+    [[0, 0]],
+    [{}],
+    [{ x: 1 }],
+    [{ x: "1", y: 2 }],
+    [{ x: 1, y: NaN }],
+    [{ x: Infinity, y: 0 }],
+    [{ x: 1, y: null }],
+  ])("%j is no position", (raw) => {
+    expect(parseScrollPosition(raw)).toBeNull();
+  });
+
+  test("never throws, and only ever returns finite numbers or null", () => {
+    fc.assert(
+      fc.property(fc.anything(), (raw) => {
+        const p = parseScrollPosition(raw);
+        return p === null || (Number.isFinite(p.x) && Number.isFinite(p.y));
+      }),
+    );
   });
 });

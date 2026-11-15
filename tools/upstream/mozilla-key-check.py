@@ -4,7 +4,8 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """Compares Mozilla's published release key with the pinned one and reports what changed.
 
-Spec build-supply-chain, decision 21; docs/security.md, B7. upstream.yml's detect job downloads
+Spec build-supply-chain, decision 21;
+docs/security/14-build-and-release-supply-chain.md, B7. upstream.yml's detect job downloads
 https://archive.mozilla.org/pub/firefox/nightly/latest-mozilla-central/KEY and passes it as
 --current. Reported, as an issue title and body written to --github-output (key-title,
 key-report) and the body to stdout:
@@ -14,7 +15,8 @@ key-report) and the body to stdout:
   - the pinned signing subkey expiring within 60 days of --today.
 
 Nothing to report writes nothing. The pinned keyring is only read, never edited: a new key
-lands through a reviewed pull request (docs/runbook.md, "Mozilla's release key").
+lands through a reviewed pull request
+(docs/runbook/ci-mozillas-release-key.md, "Mozilla's release key").
 Exit status: 0 checked (whether or not something was reported); 2 cannot check (no gpg, or a
 file that holds no public key).
 """
@@ -31,7 +33,7 @@ from pathlib import Path
 PINNED = Path(__file__).resolve().with_name("mozilla-release-key.asc")
 EXPIRY_WARNING_DAYS = 60
 CHANGED = "Mozilla's release key changed"
-RUNBOOK = "docs/runbook.md, \"Mozilla's release key\""
+RUNBOOK = "docs/runbook/ci-mozillas-release-key.md, \"Mozilla's release key\""
 
 
 class CannotCheck(Exception):
@@ -121,8 +123,9 @@ def report(current, pinned, today):
             return f"Mozilla's release signing subkey expires {date}", "\n".join([
                 f"The pinned signing subkey `{fpr}` expires {date}, in {left} days, and",
                 "Mozilla's `KEY` file has no newer one yet. Once it expires, every build fails",
-                "to verify Firefox source (docs/security.md, B1). Watch for Mozilla's",
-                f"announcement of the next subkey and update the pinned key ({RUNBOOK}).",
+                "to verify Firefox source (docs/security/14-build-and-release-supply-chain.md, B1).",
+                "Watch for Mozilla's announcement of the next subkey and update the pinned key",
+                f"({RUNBOOK}).",
             ])
     return None
 

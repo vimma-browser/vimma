@@ -62,7 +62,7 @@ if [ "${1:-}" = "--inside" ]; then
   rpm -V vimma
   if [ "$real" = 1 ]; then
     # As the .deb smoke in release.yml: the first run creates the profile, since --screenshot on
-    # a fresh profile races the bookmarks import (docs/runbook.md, Smoke check).
+    # a fresh profile races the bookmarks import (docs/runbook/smoke-check.md, Smoke check).
     p=$(mktemp -d)
     timeout 30 vimma --headless --no-remote --profile "$p" about:blank || true
     timeout 60 vimma --headless --no-remote --profile "$p" --screenshot /tmp/shot.png "data:text/html,<h1>ok</h1>"

@@ -38,11 +38,11 @@ pref("app.update.checkInstallTime.days", 2);
 // Give the user x seconds to reboot before showing a badge on the hamburger button.
 pref("app.update.badgeWaitTime", 0);
 
-// Developer tools as release Firefox ships them (docs/security.md, P8). MOZILLA_OFFICIAL stays
-// unset (configs/common/mozconfig), so all.js would give the local-build values: a Browser Console
-// that runs chrome-privileged code, remote debugging, and dump() from pages on stdout. npm start
-// turns these back on in its own profile (tools/start.mjs, DEVTOOLS_PREFS); anyone can in
-// about:config.
+// Developer tools as release Firefox ships them (docs/security/09-privacy-defaults.md, P8).
+// MOZILLA_OFFICIAL stays unset (configs/common/mozconfig), so all.js would give the local-build
+// values: a Browser Console that runs chrome-privileged code, remote debugging, and dump() from
+// pages on stdout. npm start turns these back on in its own profile (tools/start.mjs,
+// DEVTOOLS_PREFS); anyone can in about:config.
 pref("devtools.chrome.enabled", false);
 pref("devtools.debugger.remote-enabled", false);
 pref("browser.dom.window.dump.enabled", false);

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * `npm run lane:teardown` (docs/runbook.md, "Parallel browser lanes"): removes this worktree's
- * engine/ (its copy of the tree and its obj-artifact). Refuses in the main checkout, and refuses
- * an engine/ that is a symlink or resolves into the main checkout's engine (lanes.ts,
- * teardownTarget).
+ * `npm run lane:teardown` (docs/runbook/parallel-browser-lanes.md, "Parallel browser lanes"):
+ * removes this worktree's engine/ (its copy of the tree and its obj-artifact). Refuses in the main
+ * checkout, and refuses an engine/ that is a symlink or resolves into the main checkout's engine
+ * (lanes.ts, teardownTarget).
  */
 import { spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";

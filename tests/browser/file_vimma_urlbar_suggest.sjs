@@ -5,6 +5,7 @@
 // A search engine's suggestion endpoint for browser_vimma_urlbar_suggestions.js: answers
 // `?q=<terms>` with six suggestions in the OpenSearch JSON format Firefox reads.
 
+/** @param {nsIHttpRequest} request @param {nsIHttpResponse} response */
 function handleRequest(request, response) {
   const query = decodeURIComponent(
     (request.queryString.match(/(?:^|&)q=([^&]*)/)?.[1] ?? "").replace(/\+/g, " "),

@@ -5,7 +5,7 @@
 // The PDF viewer's outline panel (docs/specs/pdf-mode.md decision 10): a box in the side panel's
 // slot, built by its helpers (side-panel.mjs) and styled by side-panel.css, showing the outline
 // the host parsed (parsePdfOutline). Keys reach it only through VimmaHost (`action`) in `index`
-// mode; the logic is core pdfoutline.mjs. Titles are text only (docs/security.md section 20,
+// mode; the logic is core pdfoutline.mjs. Titles are text only (docs/security/ section 20,
 // V8; section 6, C1), and at most RENDER_CAP rows are in the DOM.
 
 import { RENDER_CAP, renderStart } from "../core/bookmarks.mjs";

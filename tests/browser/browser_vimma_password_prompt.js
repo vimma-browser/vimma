@@ -31,28 +31,33 @@ const VISIBLE = { visibilityProperty: true };
 function until(cond, msg, tries = 100) {
   return TestUtils.waitForCondition(cond, msg, 50, tries);
 }
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const wait = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
 const panel = () => PopupNotifications.panel;
-const hintOf = (n) => n.querySelector(".vimma-prompt-keys");
-const shows = (el) => !!el?.checkVisibility(VISIBLE);
+const hintOf = (/** @type {Element} */ n) => n.querySelector(".vimma-prompt-keys");
+const shows = (/** @type {Element | null} */ el) => el?.checkVisibility(VISIBLE) === true;
 const mode = () => VimmaHost.status(window).mode;
 const usernames = async () => (await Services.logins.getAllLogins()).map((l) => l.username).sort();
 
-/** The keys line of `n` once it is armed. */
+/** The keys line of `n` once it is armed. @param {Element} n */
 async function armedHint(n) {
   await until(() => shows(hintOf(n)), "the keys line shows once the prompt is armed");
-  return hintOf(n).textContent;
+  // The wait above saw the line.
+  return /** @type {Element} */ (hintOf(n)).textContent;
 }
 
 /**
  * Logs in on the fixture as `user`, typing as a user would, and resolves with the password prompt
  * once it shows. `stay`: the form posts into a frame and the page stays.
+ * @param {string} user
+ * @param {{ stay?: boolean }} [options]
  */
 async function logIn(user, { stay = false } = {}) {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, LOGIN + (stay ? "?stay" : ""));
   const browser = tab.linkedBrowser;
   await focusContent(browser);
-  await SpecialPowers.spawn(browser, [], () => content.document.getElementById("user").focus());
+  await SpecialPowers.spawn(browser, [], () =>
+    /** @type {HTMLElement} */ (content.document.getElementById("user")).focus(),
+  );
   await until(() => mode() === "insert", "insert mode in the username field");
   EventUtils.sendString(user);
   EventUtils.synthesizeKey("KEY_Tab");
@@ -60,7 +65,7 @@ async function logIn(user, { stay = false } = {}) {
   const shown = BrowserTestUtils.waitForEvent(panel(), "popupshown");
   EventUtils.synthesizeKey("KEY_Enter");
   await shown;
-  const n = /** @type {any} */ (panel().firstElementChild);
+  const n = /** @type {MozPopupNotification} */ (panel().firstElementChild);
   Assert.equal(n.id, "password-notification", "the save password prompt is up");
   return { tab, browser, n };
 }
@@ -114,7 +119,7 @@ add_task(async function from_a_page_field_esc_comes_first() {
   const value = await SpecialPowers.spawn(
     browser,
     [],
-    () => content.document.getElementById("pass").value,
+    () => /** @type {HTMLInputElement} */ (content.document.getElementById("pass")).value,
   );
   Assert.equal(value, "secret1yn", "they went into the field");
 
@@ -136,7 +141,9 @@ add_task(async function the_prompts_own_fields_take_their_keys() {
   const { tab, n } = await logIn("dave");
   await until(() => mode() === "normal", "normal mode");
   await armedHint(n);
-  const username = /** @type {any} */ (document.getElementById("password-notification-username"));
+  const username = /** @type {LoginDoorhangerUsernameField} */ (
+    document.getElementById("password-notification-username")
+  );
   username.focus();
   await until(() => !!username.shadowRoot?.activeElement, "focus in the prompt's username");
   EventUtils.synthesizeKey("KEY_End");

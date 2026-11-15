@@ -5,6 +5,7 @@
 // AMO's search API for browser_vimma_setup.js: one curated entry, so the page offers a real
 // install without reaching addons.mozilla.org.
 
+/** @param {nsIHttpRequest} request @param {nsIHttpResponse} response */
 function handleRequest(request, response) {
   response.setHeader("Content-Type", "application/json", false);
   response.write(

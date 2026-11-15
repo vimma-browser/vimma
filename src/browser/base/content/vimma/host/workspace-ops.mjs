@@ -324,7 +324,7 @@ export function workspacePickerItems(win) {
  * @param {string} id
  * @param {(question: string, yes: () => void) => void} ask
  * @param {(text: string) => void} say  the notice, after the answer
- * @param {any} [row]  a side-panel row's tab (`m` there) instead of the selected one; it need
+ * @param {MozTabbrowserTab} [row]  a side-panel row's tab (`m` there) instead of the selected one; it need
  *   not stay selected until the answer, only open
  * @returns {string | null} why not, before asking
  */

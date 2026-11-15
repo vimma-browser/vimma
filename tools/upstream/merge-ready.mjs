@@ -3,11 +3,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec upstream-bump-automation, Behaviour 5 (since changed), docs/security.md G13: whether the
-// upstream bump PR may be set to auto-merge, read by upstream-merge.yml each time a workflow on
-// the PR finishes. Ready only once every workflow run the PR started finished green or skipped,
-// so a check the ruleset does not require (the macOS mochitests, the package checks) still holds
-// the merge. Pure: the workflow fetches the JSON and passes it in.
+// Spec upstream-bump-automation, Behaviour 5 (since changed), docs/security/10-firefox-updates.md
+// G13: whether the upstream bump PR may be set to auto-merge, read by upstream-merge.yml each time
+// a workflow on the PR finishes. Ready only once every workflow run the PR started finished green
+// or skipped, so a check the ruleset does not require (the macOS mochitests, the package checks)
+// still holds the merge. Pure: the workflow fetches the JSON and passes it in.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

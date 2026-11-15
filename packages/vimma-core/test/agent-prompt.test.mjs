@@ -512,6 +512,30 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     expect(line.label).toBe(text(line));
   });
 
+  test("a form checkpoint names an entry it did not read, and says when the page adds", () => {
+    const what = {
+      ...signup.what,
+      sent: {
+        fields: [
+          { name: "qty", value: "1" },
+          { name: "note", opaque: true },
+          { name: "doc", file: true, opaque: true },
+        ],
+        hidden: 1,
+        more: 0,
+        unread: true,
+      },
+    };
+    expect(text(questionLine({ ...signup, what }, { grantMinutes: 10 }))).toBe(
+      '▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup' +
+        '  qty "1", note (not read), doc (file), + 1 hidden, + what the page adds',
+    );
+    const bare = { ...signup.what, sent: { fields: [], hidden: 0, more: 0, unread: true } };
+    expect(text(questionLine({ ...signup, what: bare }, { grantMinutes: 10 }))).toContain(
+      "example.com/api/signup  + what the page adds",
+    );
+  });
+
   test("a form checkpoint cleans the page's names and values and cuts them to fit", () => {
     const what = {
       ...signup.what,

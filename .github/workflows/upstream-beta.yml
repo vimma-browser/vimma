@@ -1,6 +1,6 @@
 # The Firefox Beta canary (spec upstream-beta-canary; ADR-002 as amended). It tests Vimma's main
 # against each Firefox Beta build, so that breakage a Firefox release brings is found while it is
-# still a Beta, about two weeks before the release and its security deadline (docs/security.md G2).
+# still a Beta, about two weeks before the release and its security deadline (docs/security/10-firefox-updates.md G2).
 #
 #   detect        every 6 h, < 1 min. The current Beta (product-details); tested on main in the
 #                 last 7 days (an artifact upstream-beta-<version>)? The previous result.
@@ -60,7 +60,14 @@ jobs:
           persist-credentials: false
           sparse-checkout: tools/upstream
 
-      # The runner's own Node: no setup-node, no npm ci (Node built-ins only). The version is
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        env:
+          YARN_IGNORE_PATH: "1" # its `yarn --version` ignores a .yarnrc yarn-path in the checkout
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false # no cache, even when package.json names npm
+
+      # .nvmrc's Node, set up above, and no npm ci (Node built-ins only). The version is
       # checked (^\d+\.0b\d+$) before it reaches any URL, argument or artifact name.
       - name: The current Beta, and whether main tested it in the last 7 days
         id: detect
@@ -109,8 +116,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
       # Shared with upstream.yml. Exits 1 on a SHA-512 mismatch: the job fails, nothing is
-      # tested or reported from that tarball (B3, docs/security.md G10).
+      # tested or reported from that tarball (B3, docs/security/10-firefox-updates.md G10).
       - name: Check the Beta's source (SHA-512, patches, audit, artifact preflight)
         id: check
         env:
@@ -157,6 +168,13 @@ jobs:
         with:
           persist-credentials: false
           sparse-checkout: tools/upstream
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        env:
+          YARN_IGNORE_PATH: "1" # its `yarn --version` ignores a .yarnrc yarn-path in the checkout
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false # no cache, even when package.json names npm
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:

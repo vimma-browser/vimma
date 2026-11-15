@@ -62,11 +62,12 @@ function holdVimmaUpdateHost() {
  * (waitForOtherInstances), which a developer's own browser makes nondeterministic.
  */
 async function appUpdateURL() {
-  if (!Ci.nsIUpdateChecker || !("@mozilla.org/updates/update-checker;1" in Cc)) {
+  const checkerClass = Cc["@mozilla.org/updates/update-checker;1"];
+  if (!Ci.nsIUpdateChecker || !checkerClass) {
     return null;
   }
   try {
-    const checker = Cc["@mozilla.org/updates/update-checker;1"].getService(Ci.nsIUpdateChecker);
+    const checker = checkerClass.getService(Ci.nsIUpdateChecker);
     return await checker.getUpdateURL(Ci.nsIUpdateChecker.BACKGROUND_CHECK);
   } catch (e) {
     info(`update checker unavailable: ${e}`);

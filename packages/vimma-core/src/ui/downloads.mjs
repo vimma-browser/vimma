@@ -371,7 +371,7 @@ export function downloadAsks(op) {
 
 /**
  * The `y/N` question for an op that asks (decision 6). The name is text the page chose; the
- * prompt sets it as text (docs/security.md D1).
+ * prompt sets it as text (docs/security/21-downloads-picker.md D1).
  * @param {DownloadRecord} r
  * @param {"cancel" | "delete"} op
  */
@@ -387,8 +387,9 @@ export function downloadQuestion(r, op) {
 
 /**
  * Whether the download is no longer the one the user answered for (decisions 6 and 7,
- * docs/security.md D3 and D5): gone from the list, in another state, its file at another path or
- * gone, or the op no longer applies. Bytes moving on while the question is open do not count.
+ * docs/security/21-downloads-picker.md D3 and D5): gone from the list, in another state, its file
+ * at another path or gone, or the op no longer applies. Bytes moving on while the question is open
+ * do not count.
  * @param {DownloadRecord} asked  the download as it was when the question showed
  * @param {DownloadRecord | null} now  as it is at the answer, or null when it has gone
  * @param {DownloadOp} op
@@ -440,7 +441,7 @@ function refusal(r, op, { allowOverride }) {
     case "retry":
       if (r.agent) return "agent downloads are never retried by Vimma";
       // A history entry with no path cannot be told apart from an agent download by its folder
-      // (docs/security.md D4), so it is not fetched again from here.
+      // (docs/security/21-downloads-picker.md D4), so it is not fetched again from here.
       if (!r.path) return "no file to retry; the Library (shift+l) can";
       return state === S.FAILED || state === S.CANCELED ? null : "only a failed or canceled one";
     case "referrer":

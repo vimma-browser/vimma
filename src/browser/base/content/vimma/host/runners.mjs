@@ -24,7 +24,7 @@ import { sayAddon, openAddonByName } from "./addon-ops.mjs";
 import { runAgentCommand } from "./agent-chat-ops.mjs";
 import { AgentUi } from "./agent-ui.mjs";
 import { bookmarkContext, quickAdd } from "./bookmark-actions.mjs";
-import { browserRunners, openSettings } from "./browser-ops.mjs";
+import { browserRunners, openSettings, xulElementById } from "./browser-ops.mjs";
 import { ControlHost } from "./control-ops.mjs";
 import { copyModeRunners } from "./copy-mode.mjs";
 import { McpHost } from "./mcp-ops.mjs";
@@ -83,15 +83,15 @@ import {
  * The host's module state the runners reach, through functions the host passes in.
  * @typedef {object} HostState
  * @property {(win: BrowserWindow) => WindowState | undefined} stateOf  a window's state
- * @property {(browser: any) => PageMode | undefined} browserMode  absent: normal
- * @property {(browser: any, mode: PageMode) => void} setBrowserMode
- * @property {(browser: any) => void} blurPage  Esc: focus out of the page, held in normal
- * @property {(browser: any) => void} enterExplicitInsert  `i`, `gi` (docs/specs/insert-focus.md)
- * @property {(browser: any) => { frame: any, windowId: number } | undefined} lastFieldFrame
+ * @property {(browser: MozBrowser) => PageMode | undefined} browserMode  absent: normal
+ * @property {(browser: MozBrowser, mode: PageMode) => void} setBrowserMode
+ * @property {(browser: MozBrowser) => void} blurPage  Esc: focus out of the page, held in normal
+ * @property {(browser: MozBrowser) => void} enterExplicitInsert  `i`, `gi` (docs/specs/insert-focus.md)
+ * @property {(browser: MozBrowser) => { frame: CanonicalBrowsingContext, windowId: number } | undefined} lastFieldFrame
  *   the frame whose text field last took focus
- * @property {(browser: any) => ElementFocus | null} elementOf  while in ELEMENT mode
- * @property {(browser: any) => Find | undefined} findOf  the window's find state
- * @property {(browser: any, text: string) => void} noticeFor  the owning window's notice
+ * @property {(browser: MozBrowser) => ElementFocus | null} elementOf  while in ELEMENT mode
+ * @property {(browser: MozBrowser) => Find | undefined} findOf  the window's find state
+ * @property {(browser: MozBrowser, text: string) => void} noticeFor  the owning window's notice
  * @property {OutlineHost} outline  what the PDF outline needs from the host
  */
 
@@ -239,7 +239,7 @@ function focusUrlbar(s, host, page) {
     VimmaActors.caret(browser, "exit");
     page.setBrowserMode(browser, "normal");
   }
-  /** @type {any} */ (s.win.document.getElementById("Browser:OpenLocation"))?.doCommand();
+  xulElementById(s.win, "Browser:OpenLocation")?.doCommand();
 }
 
 /**
@@ -642,7 +642,7 @@ export function hostRunners(host, page) {
  * runs right now is `VimmaHost._runnable(state, id)`.
  * @param {Host} host
  * @param {HostState} page
- * @returns {Readonly<Record<string, (browser: any, action: Action) => void>>}
+ * @returns {Readonly<Record<string, (browser: MozTabBrowser, action: Action) => void>>}
  */
 export function contentRunners(host, page) {
   return Object.freeze({

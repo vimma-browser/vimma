@@ -6,7 +6,7 @@ schedule. For each layer it says what the layer proves, where it runs, and how t
 locally, and it ends with what no layer covers. [ARCHITECTURE.md](../../ARCHITECTURE.md),
 "Testing", is the one-table summary and "Automation and release infrastructure" lists every
 workflow; the commands are in [CONTRIBUTING.md](../../CONTRIBUTING.md), "Testing", and the
-procedures, switches and recovery in [docs/runbook.md](../runbook.md), "Testing" and "CI and
+procedures, switches and recovery in [docs/runbook/](../runbook/README.md), "Testing" and "CI and
 automation". The specs are [m0-pipeline](../specs/m0-pipeline.md),
 [ci-quality-gates](../specs/ci-quality-gates.md), [m0-e2e-harness](../specs/m0-e2e-harness.md),
 [m7-fuzzing](../specs/m7-fuzzing.md) and [site-compat](../specs/site-compat.md), and the decision
@@ -45,7 +45,7 @@ or another alert at error level, and while a review thread is unresolved. A docs
 (`tools/ci/docs-only.mjs`, as the base branch has it) skips the steps Markdown cannot affect and the
 mochitest job, and each still reports success. The `opened` and `synchronize` events of a draft skip
 the three slow required checks, the mochitest job with the e2e scenarios, the Semgrep scan and both
-CodeQL analyses, until the pull request is marked ready. The details are in docs/runbook.md,
+CodeQL analyses, until the pull request is marked ready. The details are in docs/runbook/,
 "Docs-only pull requests", "Draft pull requests" and "Once per tree".
 
 ## 1. Unit tests: Vitest
@@ -81,7 +81,7 @@ more cases; a failure uploads the seed and the failing cases and opens or commen
 labelled `fuzz-failure`.
 
 **Locally.** `VIMMA_FUZZ_SEED=<seed> npx vitest run packages/vimma-core/test/fuzz`, and
-docs/runbook.md, "Fuzzing: reproducing a failing seed".
+docs/runbook/ci-fuzzing.md, "Fuzzing: reproducing a failing seed".
 
 ## 3. Contract fixtures
 
@@ -116,7 +116,8 @@ the suite no more than 10 % slower than the baseline commit, and no case more th
 **Where.** A step of the `check` job, `npm run bench -- --check` (`tools/bench/bench.ts`, cases
 in `packages/vimma-core/bench/cases.mjs`). It measures the working tree and the baseline commit
 named in `baseline.json` in the same processes, so the runner's speed cancels out. Why it does
-not flake and how to move the baseline on purpose: docs/runbook.md, "Bench baseline".
+not flake and how to move the baseline on purpose: docs/runbook/ci-bench-baseline.md, "Bench
+baseline".
 
 **Locally.** `npm run bench`.
 
@@ -141,10 +142,10 @@ a hosted Mac it runs `npm test` and the same suite, without `vimma-ctl` (so
 `browser_vimma_control.js` skips), and it has no draft skip.
 
 **Locally.** In a worktree, `npm run lane:setup` once (a copy of the primary checkout's engine,
-docs/runbook.md, "Parallel browser lanes"), then
+docs/runbook/parallel-browser-lanes.md, "Parallel browser lanes"), then
 `npm run mochitest -- --artifact tests/browser/browser_vimma_<name>.js`. A suspected race: the
-same file with `--repeat=N` on two busy CPUs (docs/runbook.md, "Mochitests that send keys to a
-page").
+same file with `--repeat=N` on two busy CPUs (docs/runbook/testing.md, "Mochitests that send keys to
+a page").
 
 **Time limit.** The harness stops a file after 45 s, and the rest of the suite with it. A file
 that runs about 15 s on a quiet runner can pass that on a loaded machine, so heavy pages get
@@ -169,9 +170,14 @@ browser: `tests/tsconfig.json` with the harness's globals declared in `types/moc
 names, `head.d.ts`, which `npm run gen-mochitest-head` generates from the `head*.js` files, and
 `modules.d.ts`, which `npm run gen-mochitest-modules` generates from `jar.mn` and vimma-core's
 layout).
-`tools/mochitest-typecheck.ts` holds the program to `tools/test/mochitest-allowlist.txt`: a listed
-file may still have type errors, every other file, a new one included, may not, and a listed
-file that has none must come off the list. `Assert.equal` and its kin take an expected value of
+Every file in the program, a new one included, must be free of type errors. The `.sjs` handlers
+that httpd.js runs to serve test pages are checked by `tools/sjs-typecheck.ts`: tsc reads no
+`.sjs` file, so it checks byte-for-byte `.js` copies in a temporary folder with
+`tests/tsconfig.json`'s options and reports each error at the `.sjs` file's own line. That
+program has Firefox's declarations and the sandbox's globals (`getState`, `setSharedState` and
+the rest, in `types/sjs/`), not the harness's. It also has the DOM lib, so a DOM global the
+sandbox lacks (`setTimeout`, `document`) is not caught; a handler that waits uses `nsITimer`.
+`Assert.equal` and its kin take an expected value of
 the actual one's type, and `Assert.ok` refuses a promise, so a test that compares a value with
 the wrong kind of thing, or asserts on a promise it forgot to await, fails the check.
 `ChromeUtils.importESModule` with a literal `chrome://browser/content/vimma/` URL returns the
@@ -222,7 +228,7 @@ pages are served on the fixed port 28471 (a second run on the machine stops with
 rather than take another port), so two runs draw the same pixels. A baseline comes from CI's
 runner: CI compares with it at 0.00 %, and a local run at up to 0.13 % (the line under the
 toolbar, drawn in a GTK colour, and the system's FreeType). A scenario carries on past a screenshot that differs and fails at its end, so one CI run
-supplies every image of a re-record (docs/runbook.md, "End-to-end tests", "Baselines").
+supplies every image of a re-record (docs/runbook/testing.md, "End-to-end tests", "Baselines").
 
 The same job then runs the site snapshot gate (section 8) and the agent bench with its scripted
 provider (`npm run agent-bench -- --artifact --check --lists L04 --two-shops`,
@@ -257,14 +263,14 @@ from scratch on the first Sunday of a month. Surviving mutants go into one issue
 `mutation`, rewritten by each run (`tools/mutation/report.ts`); they never fail the run, only a
 broken Stryker run does.
 
-**Locally.** `npm run mutation`; reading the report: docs/runbook.md, "Mutation testing".
+**Locally.** `npm run mutation`; reading the report: docs/runbook/ci-mutation-testing.md, "Mutation testing".
 
 ## 10. The rest of a pull request's checks
 
 The `check` job also runs eslint, prettier, the wording checks (`tools/md-wording/`), spec-lint,
 arch-lint, changelog-lint, a check that the generated docs are current (`npm run gen-docs`), the
 Python tests of the upstream tools (`npm run test:py`), the test links of
-[docs/security.md](../security.md) (`npm run security-links`), the npm and crate licence checks,
+[docs/security/](../security/README.md) (`npm run security-links`), the npm and crate licence checks,
 the MPL headers and commitlint. Semgrep and CodeQL scan the code. The workflows that build
 packages (`pkgbuild.yml`, `flatpak.yml`, `macos.yml`) have triggers of their own, listed in
 ARCHITECTURE.md.
@@ -282,7 +288,7 @@ ARCHITECTURE.md.
   a doubt included, builds.
 - **The updater end to end.** The e2e updater scenarios need a `VIMMA_UPDATES=1` build packaged
   with `mach package`, which no pull request job makes; they are reported pending in CI and run
-  by hand (docs/runbook.md, "End-to-end tests").
+  by hand (docs/runbook/testing.md, "End-to-end tests").
 - **macOS.** Its mochitest job reports without blocking, and its e2e runs headless, without
   screenshots, in the smoke jobs of `macos.yml` and `release.yml`.
 - **Window managers and desktops.** The e2e browser runs on X11 under Xvfb at one size and one pixel
@@ -298,4 +304,4 @@ ARCHITECTURE.md.
 - **Windows**, which is not a target.
 
 When a test fails on CI and passes locally, the rule is a fix for its cause, never a retry or a
-sleep: reproduce it in a lane first, then follow docs/runbook.md, "Testing".
+sleep: reproduce it in a lane first, then follow docs/runbook/testing.md, "Testing".

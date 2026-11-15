@@ -39,13 +39,30 @@ const POPUP = { id: "popup@vimma.test", name: "Popup <b>one</b>" };
 const OPTIONS = { id: "options@vimma.test", name: "Options two" };
 const PLAIN = { id: "plain@vimma.test", name: "Plain three" };
 
-const picker = () => document.getElementById(PICKER_ID);
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+// The picker is a modal <dialog> in the chrome document (ui/picker.mjs), its rows HTML elements.
+const picker = () => /** @type {HTMLDialogElement | null} */ (document.getElementById(PICKER_ID));
 const isOpen = () => !!picker()?.open;
-const rows = () => [...(picker()?.querySelectorAll("[role=option]") ?? [])];
-const cell = (row, name) => row.querySelector(`.vimma-picker-${name}`).textContent;
+const rows = () =>
+  /** @type {HTMLElement[]} */ ([...(picker()?.querySelectorAll("[role=option]") ?? [])]);
+/** @param {Element | undefined} row @param {string} name */
+const cell = (row, name) => found(found(row).querySelector(`.vimma-picker-${name}`)).textContent;
 const names = () => rows().map((r) => cell(r, "title"));
+/** @param {string} id */
 const rowOf = (id) => rows().find((r) => r.dataset.id === id);
-const selected = () => picker().querySelector("[role=option][aria-selected=true]");
+const selected = () =>
+  /** @type {HTMLElement | null} */ (
+    found(picker()).querySelector("[role=option][aria-selected=true]")
+  );
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 const promptOpen = () => document.getElementById(PROMPT_ID)?.hidden === false;
 const promptText = () =>
@@ -55,29 +72,44 @@ const promptText = () =>
 const popupFocused = () =>
   !!document.activeElement?.classList?.contains("webextension-popup-browser");
 
-/** @param {() => boolean} cond @param {string} msg */
+/**
+ * Resolves with the first truthy value of `cond`.
+ * @template T
+ * @param {() => T} cond
+ * @param {string} msg
+ */
 function until(cond, msg, tries = 100) {
   return TestUtils.waitForCondition(cond, msg, 50, tries);
 }
 
-/** ctrl+b, then `key`. */
+/**
+ * ctrl+b, then `key`.
+ * @param {string} key
+ * @param {KeyEventOptions} [mods]
+ */
 function prefix(key, mods = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key, mods);
 }
 
+/** @type {ExtensionWrapper[]} */
 const extensions = [];
 
 /** @param {object} manifest @param {Record<string, string>} [files] */
 async function install(manifest, files = {}) {
+  /** @type {ExtensionWrapper} */
   const ext = ExtensionTestUtils.loadExtension({ useAddonManager: "permanent", manifest, files });
   await ext.startup();
   extensions.push(ext);
   return ext;
 }
 
+// The setup task sets these before any other task runs.
+/** @type {ExtensionWrapper} */
 let popupExt;
+/** @type {ExtensionWrapper} */
 let optionsExt;
+/** @type {MozTabbrowserTab} */
 let tab;
 
 add_task(async function setup() {
@@ -125,7 +157,9 @@ registerCleanupFunction(async () => {
     const addon = await AddonManager.getAddonByID(id);
     await addon?.uninstall();
   }
-  while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1) {
+    BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
 });
 
 /** Focuses the test page, so keys reach Vimma in normal mode. */
@@ -144,7 +178,11 @@ async function openPicker() {
   await until(isOpen, "ctrl+b e opens the add-on picker");
 }
 
-/** Opens the picker and selects the add-on named `query` (/ filter, Esc back to browse). */
+/**
+ * Opens the picker and selects the add-on named `query` (/ filter, Esc back to browse).
+ * @param {string} query
+ * @param {string} id
+ */
 async function pick(query, id) {
   await openPicker();
   EventUtils.synthesizeKey("/");
@@ -160,8 +198,10 @@ add_task(async function lists_extensions_but_not_system_ones() {
   for (const { name } of [POPUP, OPTIONS, PLAIN]) {
     Assert.ok(listed.includes(name), `${name} is listed`);
   }
+  // Each is an AddonWrapper (engine/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs).
   const system = (await AddonManager.getAddonsByTypes(["extension"])).filter(
-    (a) => a.isSystem || a.hidden || a.isBuiltin,
+    (/** @type {{ isSystem: boolean, hidden: boolean, isBuiltin: boolean }} */ a) =>
+      a.isSystem || a.hidden || a.isBuiltin,
   );
   Assert.greater(system.length, 0, "sanity: the build has system add-ons");
   for (const a of system) {
@@ -179,9 +219,9 @@ add_task(async function lists_extensions_but_not_system_ones() {
 
 add_task(async function names_with_html_are_text() {
   await openPicker();
-  const title = rowOf(POPUP.id).querySelector(".vimma-picker-title");
+  const title = found(found(rowOf(POPUP.id)).querySelector(".vimma-picker-title"));
   Assert.equal(title.textContent, POPUP.name, "the name as written");
-  Assert.equal(title.querySelector("b"), null, "no markup was parsed");
+  Assert.strictEqual(title.querySelector("b"), null, "no markup was parsed");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !isOpen(), "closed");
 });
@@ -288,7 +328,8 @@ add_task(async function colon_addon_opens_a_popup_with_tab_completion() {
   EventUtils.synthesizeKey(":", { shiftKey: true });
   EventUtils.sendString("addon popu");
   EventUtils.synthesizeKey("KEY_Tab");
-  const input = document.getElementById(INPUT_ID);
+  // The command line's <input>; a read through a missing one throws, as it did before.
+  const input = /** @type {HTMLInputElement} */ (document.getElementById(INPUT_ID));
   await until(() => input.value === `addon ${POPUP.name}`, "Tab completes the add-on's name");
   const ready = popupExt.awaitMessage("popup-ready");
   EventUtils.synthesizeKey("KEY_Enter");

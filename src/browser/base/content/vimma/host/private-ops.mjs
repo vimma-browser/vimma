@@ -26,7 +26,7 @@ import { PrivateSwap, isBrowserWindow, startedUp } from "./private-swap.mjs";
 import { workspacePickerItems } from "./workspace-ops.mjs";
 
 /** @import { WorkspaceItem } from "../core/picker.mjs" */
-/** @import { Workspaces } from "../core/workspaces.mjs" */
+/** @import { WorkspaceState, Workspaces } from "../core/workspaces.mjs" */
 
 const lazy = /** @type {Lazy<"BrowserWindowTracker" | "PrivateBrowsingUtils">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -84,25 +84,21 @@ export function privateWindows() {
  * @returns {BrowserWindow[]}
  */
 function allPrivateWindows() {
-  return /** @type {any[]} */ (lazy.BrowserWindowTracker.orderedWindows).filter(
-    (w) => !w.closed && isPrivateWorkspace(w),
-  );
+  return lazy.BrowserWindowTracker.orderedWindows.filter((w) => !w.closed && isPrivateWorkspace(w));
 }
 
 /** The most recent normal browser window, or null. */
 function normalWindow() {
-  const recent = /** @type {BrowserWindow | null} */ (
-    lazy.BrowserWindowTracker.orderedWindows.find(
-      (/** @type {any} */ w) => isBrowserWindow(w) && !isPrivate(w),
-    ) ?? null
+  return (
+    lazy.BrowserWindowTracker.orderedWindows.find((w) => isBrowserWindow(w) && !isPrivate(w)) ??
+    null
   );
-  return recent;
 }
 
 /** Tabs in every private window, pop-ups included. */
 export function privateTabCount() {
   return allPrivateWindows().reduce(
-    (n, w) => n + w.gBrowser.tabs.filter((/** @type {any} */ t) => !t.closing).length,
+    (n, w) => n + w.gBrowser.tabs.filter((t) => !t.closing).length,
     0,
   );
 }
@@ -146,7 +142,7 @@ function showNormal(win, id) {
  */
 function openPrivate(from) {
   remember(from);
-  const f = /** @type {any} */ (from);
+  const f = from;
   const size = [`outerWidth=${f.outerWidth}`, `outerHeight=${f.outerHeight}`];
   const wayland = !!Services.appinfo.isWayland;
   if (!wayland) size.push(`screenX=${f.screenX}`, `screenY=${f.screenY}`);
@@ -326,7 +322,8 @@ export function pickerSelect(win, id) {
  * @param {string} id
  * @param {(question: string, yes: () => void) => void} ask
  * @param {(text: string) => void} say
- * @param {any} [row]  a side-panel row's tab instead of the selected one (moveTabFromPicker)
+ * @param {MozTabbrowserTab} [row]  a side-panel row's tab instead of the selected one
+ *   (moveTabFromPicker)
  * @returns {string | null | undefined} a refusal; undefined for a normal move (the caller's)
  */
 export function pickerMove(win, id, ask, say, row) {
@@ -361,15 +358,16 @@ export const MOVE_OUT_REFUSED = PRIVATE_REFUSALS["move-out-of-private"];
  * is the page's own with the private origin attributes (tab-context-menu.js reopenInContainer
  * does the same for a container), so nothing loads with more rights than the page had.
  * @param {BrowserWindow} win
- * @param {any} tab
+ * @param {MozTabbrowserTab} tab
  * @returns {Promise<string | null>} a refusal
  */
 async function moveIntoPrivate(win, tab) {
   const ssm = Services.scriptSecurityManager;
   const browser = tab.linkedBrowser;
-  const url = browser.currentURI.spec;
+  // The getter gives null for a browser without a webNavigation.
+  const url = browser.currentURI?.spec;
   const page = browser.contentPrincipal;
-  if (!page) return "this tab's page cannot be reopened";
+  if (!url || !page) return "this tab's page cannot be reopened";
   const attrs = { privateBrowsingId: 1, userContextId: 0 };
   const principal = page.isContentPrincipal
     ? ssm.principalWithOA(page, attrs)
@@ -377,7 +375,7 @@ async function moveIntoPrivate(win, tab) {
       ? ssm.createNullPrincipal(attrs)
       : page;
   const [existing] = privateWindows();
-  const priv = /** @type {any} */ (existing ?? openPrivate(win));
+  const priv = existing ?? openPrivate(win);
   if (!existing) await startedUp(priv);
   if (priv.closed) return "the private workspace closed meanwhile";
   const fresh = priv.gBrowser.addTab(url, { triggeringPrincipal: principal, skipAnimation: true });
@@ -390,7 +388,7 @@ async function moveIntoPrivate(win, tab) {
   const gBrowser = win.gBrowser;
   // The workspace keeps a tab: a start page, as a workspace left empty gets (WindowWorkspaces).
   // Before the swap: a new tab in a parked window brings it back (private-swap decision 7).
-  const others = gBrowser.visibleTabs.filter((/** @type {any} */ t) => t !== tab && !t.pinned);
+  const others = gBrowser.visibleTabs.filter((t) => t !== tab && !t.pinned);
   if (!others.length) {
     gBrowser.addTrustedTab(win.BROWSER_NEW_TAB_URL, {
       userContextId: tab.userContextId,
@@ -409,7 +407,12 @@ async function moveIntoPrivate(win, tab) {
  */
 export function privatePanel(model) {
   const [w] = model.workspaces;
-  const workspace = { .../** @type {any} */ (w), id: PRIVATE_WORKSPACE_ID, name: PRIVATE_NAME };
+  // pickerWorkspaces gives a window without workspaces its one.
+  const workspace = /** @type {WorkspaceState} */ ({
+    ...w,
+    id: PRIVATE_WORKSPACE_ID,
+    name: PRIVATE_NAME,
+  });
   const normal = normalWindow();
   const ww = normal ? WindowWorkspaces.get(normal) : undefined;
   // Past the agent workspace, as cycleOutOfPrivate goes (docs/specs/vimma-mcp.md, decision 9).

@@ -4,7 +4,7 @@
 
 // Spec: docs/specs/m0-control-server.md (protocol: docs/specs/m0-control-protocol-and-vimma-ctl.md)
 
-/* global focusContent, recordPageKeys, pageKeys, waitForPageKey -- from head.js */
+/* global focusContent, recordPageKeys, pageKeys, waitForPageKey, contentPrincipalOf -- from head.js */
 
 "use strict";
 
@@ -739,7 +739,7 @@ add_task(async function test_open() {
   Assert.equal(gBrowser.selectedTab, tab, "in the foreground");
   Assert.equal(r.result.tab, String(tab.linkedBrowser.browserId), "result names the tab");
   Assert.ok(
-    tab.linkedBrowser.contentPrincipal.isContentPrincipal,
+    contentPrincipalOf(tab.linkedBrowser).isContentPrincipal,
     "the page loads with its own content principal",
   );
 
@@ -860,7 +860,8 @@ async function vimmaCtlPath() {
   const self = getChromeDir(getResolvedURI(gTestPath));
   self.append(/** @type {string} */ (gTestPath.split("/").pop()));
   self.normalize(); // resolves `surfer import`'s symlink into the repository
-  const repo = self.parent.parent.parent; // tests/browser/<file>
+  const repo = self.parent?.parent?.parent; // tests/browser/<file>
+  if (!repo) throw new Error("the test file is not inside the repository");
   for (const profile of ["release", "debug"]) {
     const bin = PathUtils.join(repo.path, "tools", "vimma-ctl", "target", profile, "vimma-ctl");
     if (await IOUtils.exists(bin)) return bin;
@@ -908,7 +909,7 @@ add_task(async function test_vimma_ctl_end_to_end() {
   /** @type {string[]} */
   const received = [];
   squatter.asyncListen({
-    /** @param {unknown} _s @param {any} transport an nsISocketTransport, through the untyped Ci */
+    /** @param {unknown} _s @param {nsISocketTransport} transport */
     onSocketAccepted(_s, transport) {
       const input = transport.openInputStream(0, 0, 0);
       const output = transport.openOutputStream(0, 0, 0);

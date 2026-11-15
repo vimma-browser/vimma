@@ -23,29 +23,39 @@ function waitForMode(browser, mode) {
   );
 }
 
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
 /** Presses `f` and waits for the labels. */
 async function startHints() {
   EventUtils.synthesizeKey("f");
   await TestUtils.waitForCondition(() => VimmaHost._hints(window)?.hints.length, "hints are up");
-  return VimmaHost._hints(window);
+  return found(VimmaHost._hints(window));
 }
 
 /**
  * The label of the innermost hint whose target rect holds the point, or undefined.
- * @param {any} hints VimmaHost._hints(window)
+ * @param {HostHints} hints VimmaHost._hints(window)
  * @param {{ x: number, y: number }} c
  */
 function labelAt(hints, c) {
-  const area = (/** @type {any} */ h) => h.target.rect.width * h.target.rect.height;
+  const area = (/** @type {HostHint} */ h) => h.target.rect.width * h.target.rect.height;
   return hints.hints
     .filter(
-      (/** @type {any} */ h) =>
+      (h) =>
         c.x >= h.target.rect.x &&
         c.x <= h.target.rect.x + h.target.rect.width &&
         c.y >= h.target.rect.y &&
         c.y <= h.target.rect.y + h.target.rect.height,
     )
-    .sort((/** @type {any} */ a, /** @type {any} */ b) => area(a) - area(b))[0]?.label;
+    .sort((a, b) => area(a) - area(b))[0]?.label;
 }
 
 /** @param {string} label */
@@ -75,9 +85,9 @@ add_task(async function a_label_opens_the_import_wizards_browser_list() {
   const deviceName = Services.prefs.prefHasUserValue(DEVICE_PREF)
     ? Services.prefs.getStringPref(DEVICE_PREF)
     : null;
-  /** @type {any} */
+  /** @type {MozTabbrowserTab | undefined} */
   let from;
-  /** @type {any} */
+  /** @type {MozTabbrowserTab | undefined} */
   let tab;
   try {
     // Only the test migrator: the wizard would otherwise read the browsers installed here.
@@ -87,9 +97,12 @@ add_task(async function a_label_opens_the_import_wizards_browser_list() {
     sandbox
       .stub(proto, "getSourceProfiles")
       .resolves([InternalTestingProfileMigrator.testProfile, second]);
-    sandbox.stub(proto, "getResources").callsFake(function () {
-      return resources.call(this, InternalTestingProfileMigrator.testProfile);
-    });
+    sandbox.stub(proto, "getResources").callsFake(
+      /** @this {object} the migrator */
+      function () {
+        return resources.call(this, InternalTestingProfileMigrator.testProfile);
+      },
+    );
     await SpecialPowers.pushPrefEnv({ set: [["browser.migrate.internal-testing.enabled", true]] });
     // From a tab with a page: the wizard then opens Settings in a tab of its own.
     from = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
@@ -98,15 +111,22 @@ add_task(async function a_label_opens_the_import_wizards_browser_list() {
       url.startsWith("about:preferences"),
     );
     // The route of `:firefox cmd_file_importFromAnotherBrowser`.
-    document.getElementById("cmd_file_importFromAnotherBrowser").doCommand();
+    /** @type {XULElement} */ (
+      /** @type {Element} */ (document.getElementById("cmd_file_importFromAnotherBrowser"))
+    ).doCommand();
     tab = await opened;
     await ready;
     const browser = tab.linkedBrowser;
-    const wizard = browser.contentDocument.querySelector("#migrationWizardDialog migration-wizard");
-    const shadow = wizard.openOrClosedShadowRoot;
-    const selector = shadow.querySelector("#browser-profile-selector");
-    const list = shadow.querySelector("panel-list");
-    const panel = list.parentElement;
+    const wizard = found(
+      found(browser.contentDocument).querySelector("#migrationWizardDialog migration-wizard"),
+    );
+    const shadow = found(wizard.openOrClosedShadowRoot);
+    const selector = /** @type {MigrationWizardSelector} */ (
+      shadow.querySelector("#browser-profile-selector")
+    );
+    const list = /** @type {PanelListElement} */ (shadow.querySelector("panel-list"));
+    // In a chrome document the wizard puts its list in a XUL <panel> (migration-wizard.mjs).
+    const panel = /** @type {XULPopupElement} */ (/** @type {Element} */ (list.parentElement));
     await TestUtils.waitForCondition(
       () =>
         selector.selectedPanelItem?.profile?.id === InternalTestingProfileMigrator.testProfile.id,
@@ -117,7 +137,7 @@ add_task(async function a_label_opens_the_import_wizards_browser_list() {
     const r = selector.getBoundingClientRect();
     const label = labelAt(hints, { x: r.x + r.width / 2, y: r.y + r.height / 2 });
     Assert.ok(label, "the browser list's button has a label");
-    Assert.ok(!list.open, "the list is closed before the label");
+    Assert.strictEqual(list.open, false, "the list is closed before the label");
     // panel-list sends `shown` once its keys are listened for and its first entry has focus.
     const shown = BrowserTestUtils.waitForEvent(list, "shown");
     type(/** @type {string} */ (label));
@@ -126,7 +146,8 @@ add_task(async function a_label_opens_the_import_wizards_browser_list() {
     // The label's mousedown has no input source, which panel-list counts as the keyboard's: the
     // first entry has focus, so Down moves to the second.
     Assert.equal(
-      list.querySelector("panel-item:focus")?.profile?.id,
+      /** @type {MigrationWizardItem | null} */ (list.querySelector("panel-item:focus"))?.profile
+        ?.id,
       InternalTestingProfileMigrator.testProfile.id,
       "the first entry has focus",
     );

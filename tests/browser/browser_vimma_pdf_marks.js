@@ -2,12 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/pdf-mode.md (delivery PR 5, decisions 9, 11 and 16), docs/security.md
-// section 20 (V7, V11): marks with m and ', and the link keys F and c in the PDF viewer.
-// file_vimma_pdf_links.pdf has 4 pages; page 1 has three links: https://example.org/vimma-pdf,
-// an explicit destination on page 3, and the named destination chapter-two on page 4.
+// Spec: docs/specs/pdf-mode.md (delivery PR 5, decisions 9, 11 and 16),
+// docs/security/20-pdf-viewer.md section 20 (V7, V11): marks with m and ', and the link keys F and
+// c in the PDF viewer. file_vimma_pdf_links.pdf has 4 pages; page 1 has three links:
+// https://example.org/vimma-pdf, an explicit destination on page 3, and the named destination
+// chapter-two on page 4.
 
 /* global add_setup -- the browser-chrome harness (browser-test.js) */
+
+/* global historyOf -- from head.js */
 
 "use strict";
 
@@ -35,9 +38,14 @@ add_setup(async () => {
   });
 });
 
+/** @param {Window} [win] */
 const noticeText = (win = window) => win.document.getElementById("vimma-notice")?.textContent ?? "";
 
-/** Like pdfjs/test/head.js waitForPdfJS: resolves once the text layer has rendered. */
+/**
+ * Like pdfjs/test/head.js waitForPdfJS: resolves once the text layer has rendered.
+ * @param {XULBrowserElement} browser
+ * @param {string} url
+ */
 function loadPdf(browser, url) {
   const rendered = BrowserTestUtils.waitForContentEvent(
     browser,
@@ -61,9 +69,9 @@ async function focusNormal(browser) {
 }
 
 /**
- * @param {(browser: XULBrowserElement) => Promise<void>} fn
+ * @param {(browser: MozTabBrowser) => Promise<void>} fn
  * @param {string} [url]
- * @param {Window} [win]
+ * @param {BrowserWindow} [win]
  */
 async function withPdf(fn, url = PDF, win = window) {
   const tab = BrowserTestUtils.addTab(win.gBrowser, "about:blank");
@@ -82,29 +90,40 @@ async function withPdf(fn, url = PDF, win = window) {
 /** @param {XULBrowserElement} browser */
 function view(browser) {
   return SpecialPowers.spawn(browser, [], () => {
-    const app = content.wrappedJSObject.PDFViewerApplication;
-    return {
-      page: app.page,
-      scale: app.pdfViewer.currentScale,
-      scrollTop: content.document.getElementById("viewerContainer").scrollTop,
-    };
+    const app = /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication;
+    // Both are there once a page has rendered; a read of a missing one throws.
+    const viewer = /** @type {PdfJsViewer} */ (app.pdfViewer);
+    const container = /** @type {HTMLElement} */ (
+      content.document.getElementById("viewerContainer")
+    );
+    return { page: app.page, scale: viewer.currentScale, scrollTop: container.scrollTop };
   });
 }
 
+/** @typedef {Awaited<ReturnType<typeof view>>} View */
+/**
+ * The wanted fields of the view: each a value, or a test of the value.
+ * @typedef {{ [K in keyof View]?: View[K] | ((value: View[K]) => boolean) }} Want
+ */
+
 /**
  * @param {XULBrowserElement} browser
- * @param {object} want
+ * @param {Want} want
  * @param {string} what
  */
 async function until(browser, want, what) {
-  /** @type {any} */
+  /** @type {View | null} */
   let last = null;
   await TestUtils.waitForCondition(
     async () => {
-      last = await view(browser);
-      return Object.entries(want).every(([k, v]) =>
-        typeof v === "function" ? v(last[k]) : last[k] === v,
-      );
+      const now = await view(browser);
+      last = now;
+      return Object.entries(want).every(([k, v]) => {
+        const got = now[/** @type {keyof View} */ (k)];
+        return typeof v === "function"
+          ? /** @type {(value: unknown) => boolean} */ (v)(got)
+          : got === v;
+      });
     },
     `${what}: want ${JSON.stringify(want, (_k, v) => (typeof v === "function" ? "fn" : v))}`,
   ).catch((e) => {
@@ -125,7 +144,7 @@ const type = (keys, win = window) => EventUtils.sendString(keys, win);
  * @param {string} what
  */
 async function jump(browser, keys, page, what) {
-  const sh = browser.browsingContext.sessionHistory;
+  const sh = historyOf(browser);
   const before = sh.index;
   type(keys);
   await until(browser, { page }, what);
@@ -193,7 +212,8 @@ add_task(async function a_key_right_after_a_mark_is_not_undone_by_its_page_rende
       browser,
       "textlayerrendered",
       false,
-      (e) => e.detail?.pageNumber === 3,
+      // Sent to the content process as source, where the event is pdf.js's CustomEvent.
+      (e) => /** @type {CustomEvent<{ pageNumber?: number }>} */ (e).detail?.pageNumber === 3,
       true,
     );
     await SpecialPowers.spawn(browser, [], () => content.windowUtils.advanceTimeAndRefresh(0));
@@ -287,8 +307,9 @@ async function labelOf(key, which) {
     EventUtils.synthesizeKey("KEY_Enter");
   } else EventUtils.synthesizeKey(key, key === key.toUpperCase() ? { shiftKey: true } : {});
   await TestUtils.waitForCondition(() => VimmaHost._hints(window)?.hints.length, "hints");
-  const hints = VimmaHost._hints(window).hints;
-  const hit = hints.find((/** @type {any} */ h) => which(h.target.href ?? ""));
+  // The wait above saw them; a read of missing hints throws.
+  const hints = /** @type {HostHints} */ (VimmaHost._hints(window)).hints;
+  const hit = hints.find((h) => which(h.target.href ?? ""));
   Assert.ok(hit, "a label on the link");
   return hit.label;
 }
@@ -299,7 +320,9 @@ add_task(async function links() {
     EventUtils.synthesizeKey("f");
     await TestUtils.waitForCondition(() => VimmaHost._hints(window)?.hints.length, "f labels");
     // pdf.js's toolbar buttons get labels too, without an href.
-    const hrefs = VimmaHost._hints(window).hints.map((h) => h.target.href ?? "");
+    const hrefs = /** @type {HostHints} */ (VimmaHost._hints(window)).hints.map(
+      (h) => h.target.href ?? "",
+    );
     Assert.ok(
       hrefs.some((h) => h === EXTERNAL),
       "the external link",

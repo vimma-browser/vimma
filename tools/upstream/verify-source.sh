@@ -4,8 +4,9 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 # Checks the Firefox source tarball a local `npx surfer download` left in .surfer/engine/ against
-# Mozilla's signed SHA512SUMS (verify-sha512.py, ADR-021, docs/security.md B1), and records the
-# verified version and hash in engine/.git/vimma-source-verified. Surfer checks no
+# Mozilla's signed SHA512SUMS (verify-sha512.py, ADR-021,
+# docs/security/14-build-and-release-supply-chain.md B1), and records the verified version and hash
+# in engine/.git/vimma-source-verified. Surfer checks no
 # hash or signature, and a contributor's engine/ keeps Surfer's git history, which lanes and
 # restore-patched rely on, so local setup keeps `surfer download` and verifies afterwards; CI and
 # the builds use firefox-source.sh, which verifies before extracting.

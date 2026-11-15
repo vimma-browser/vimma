@@ -2,13 +2,14 @@
 // published at …/vimma-nightly/update.xml for the channel `vimma-nightly`, offers the build on
 // the rolling `nightly` release (its complete MAR as `<patch>` and its tarball), and names the
 // build as `X.Y.Z-nightly.<buildID>`. A nightly manifest is never accepted where a release one is
-// checked, nor the reverse. Keys are generated here; nothing is fetched.
+// checked, nor the reverse. The keys are tools/test/test-keys.ts's; nothing is fetched.
 import { beforeAll, describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { constants, createHash, generateKeyPairSync, privateEncrypt } from "node:crypto";
+import { constants, createHash, privateEncrypt } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
+import { testKey } from "../../test/test-keys.ts";
 import {
   base64Encode,
   judgeManifest,
@@ -40,8 +41,8 @@ const DL = "https://github.com/vimma-browser/vimma/releases/download/nightly";
 const MAR_URL = `${DL}/vimma-nightly-${BUILD}-linux-x86_64.complete.mar`;
 const TARBALL_URL = `${DL}/vimma-nightly-${BUILD}-linux-x86_64.tar.xz`;
 
-async function kmsKey() {
-  const pair = generateKeyPairSync("rsa", { modulusLength: 4096 });
+async function kmsKey(/** @type {"a" | "b"} */ name) {
+  const pair = testKey(name);
   const der = new Uint8Array(pair.publicKey.export({ type: "spki", format: "der" }));
   const pin = /** @type {const} */ ({
     id: await spkiKeyId(subtle, der),
@@ -67,8 +68,8 @@ function kmsSign(body, k) {
 /** @type {Awaited<ReturnType<typeof kmsKey>>} */ let key;
 /** @type {Awaited<ReturnType<typeof kmsKey>>} */ let stranger;
 beforeAll(async () => {
-  [key, stranger] = await Promise.all([kmsKey(), kmsKey()]);
-}, 60_000);
+  [key, stranger] = await Promise.all([kmsKey("a"), kmsKey("b")]);
+});
 
 const update = () => ({
   appVersion: "160.0",
@@ -356,7 +357,7 @@ describe("prepareNightly and checkSignedNightly (the nightly jobs' checks)", () 
   }, 30_000);
 });
 
-describe("the two channels never cross (docs/security.md UP2, UP14)", () => {
+describe("the two channels never cross (docs/security/16-update-check.md UP2, UP14)", () => {
   const now = new Date(Date.UTC(2026, 10, 12, 4, 12, 7));
 
   it("checkSigned, the release's check, refuses a nightly manifest", async () => {

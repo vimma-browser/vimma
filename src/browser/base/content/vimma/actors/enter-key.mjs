@@ -20,7 +20,7 @@ let pressing = false;
  * first, synchronously inside the processor's keydown and keyup, and must leave it to the page.
  * Otherwise a press that comes late could complete a Vimma sequence the user began meanwhile
  * (`ctrl+b`, resize mode's arrows), and a suggestion action bound to an arrow key would press
- * itself again (docs/security.md K6).
+ * itself again (docs/security/13-page-modes.md K6).
  */
 export const pressingKey = () => pressing;
 

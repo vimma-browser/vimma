@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { beforeUse, fired } from "./fs-race.ts";
 import { prepareProfile } from "../start.ts";
 import { waitForDiscovery } from "../e2e/launcher.ts";
-import { relocate } from "../import/relocate-checkout.mjs";
+import { relocate } from "../import/relocate-checkout.ts";
 import { checkFile } from "../security/check-doc-links.ts";
 
 vi.mock("node:fs", async (original) =>

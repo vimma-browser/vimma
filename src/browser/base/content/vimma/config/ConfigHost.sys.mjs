@@ -84,6 +84,11 @@ function configPath() {
 let active = null;
 /** The config in force is the defaults standing in for a file with errors, never applied. */
 let fallback = false;
+/**
+ * @type {{ check: boolean, held: boolean } | null} what the last read told VimmaUpdates: the
+ * setting in effect, which an unreadable `check` keeps (#967); null before the first read
+ */
+let updates = null;
 /** @type {ConfigError[]} the last read's errors; [] when it was applied */
 let errors = [];
 /** @type {ConfigError[]} what the last applied read left out (an unknown agent CLI, #742) */
@@ -235,16 +240,17 @@ function use(path, text) {
   if (active !== previous) apply(active, text);
   // A file with errors still decides update checks when its `check` can be read, as a valid file
   // does, so a value only a newer build accepts never keeps the user from that release; an
-  // unreadable `check` keeps the value of the config in force, or, when the defaults stand in,
-  // holds checks (`:update` aside) (docs/specs/m6a-updater.md decision 31 and its note, #741).
-  VimmaUpdates.configure(
-    updatesCheckAfterRead({
-      errors: r.errors.length,
-      inForce: active.config.updates.check,
-      raw: r.errors.length ? rawUpdatesCheck(text) : null,
-      hadConfig: previous !== null && !fallback,
-    }),
-  );
+  // unreadable `check` never turns checks on: it keeps the setting in effect (off when the config
+  // in force has them off), or, when the defaults stand in, holds checks (`:update` aside)
+  // (docs/specs/m6a-updater.md decision 31 and its note, #741, #967).
+  updates = updatesCheckAfterRead({
+    errors: r.errors.length,
+    inForce: active.config.updates.check,
+    raw: r.errors.length ? rawUpdatesCheck(text) : null,
+    hadConfig: previous !== null && !fallback,
+    previous: updates,
+  });
+  VimmaUpdates.configure(updates);
   fallback = previous === null ? r.errors.length > 0 : fallback && r.errors.length > 0;
   report(path, r.errors, previous !== null, r.warnings);
   return r.errors.length === 0;
@@ -264,7 +270,8 @@ async function check(force) {
     } catch (e) {
       if (!notFound(e)) {
         // An unreadable config.toml may say `[updates] check = false`: hold checks off.
-        VimmaUpdates.configure({ check: false, held: true });
+        updates = { check: false, held: true };
+        VimmaUpdates.configure(updates);
         throw e;
       }
       signature = "missing"; // removed between stat and read: the defaults, silently

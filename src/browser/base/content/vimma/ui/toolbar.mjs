@@ -336,8 +336,8 @@ export class Toolbar {
     this.anchoring = true;
     try {
       this.hold("doorhanger", this.sizeFor(anchor));
-      // A prompt must never open unanchored (docs/security.md C3): if its icon is still not
-      // visible, the toolbar comes back before Firefox picks a fallback anchor.
+      // A prompt must never open unanchored (docs/security/06-chrome-ui-rendering.md C3): if its
+      // icon is still not visible, the toolbar comes back before Firefox picks a fallback anchor.
       if (this.applies && !anchor.checkVisibility(VISIBLE)) this.revealFailed(PROMPT_REVEAL_FAILED);
     } finally {
       this.anchoring = false;

@@ -16,7 +16,7 @@
  *       the body for the release's files in DIR (the four Linux packages and SHA256SUMS, or
  *       with --target macos the .dmg and SHA256SUMS-macos)
  *   manifest.mjs build --offer nothing [--published FILE]... --out FILE
- *       a body that offers nothing (pulls an update; docs/runbook.md)
+ *       a body that offers nothing (pulls an update; docs/runbook/)
  *   manifest.mjs verify --signed FILE (--tag vX.Y.Z --assets DIR | --offer nothing)
  *       [--published FILE]...
  *       checks a signed manifest; prints serial=, version= and key= lines for $GITHUB_OUTPUT

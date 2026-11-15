@@ -44,6 +44,7 @@ export const KEEP: readonly string[] = Object.freeze([
   "-relay-brand-name",
   "-thunderbird-brand-name",
   "-fakespot-brand-full-name",
+  "-firefox-enterprise-brand-name",
 ]);
 
 const NOTICE =

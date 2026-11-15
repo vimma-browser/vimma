@@ -1,7 +1,6 @@
 // The update scenarios' harness pieces (docs/specs/m6a-updater.md, "Tests", e2e): the local
 // update host, the test-signed manifest and MAR, and the installs they update.
 import { afterEach, describe, expect, it } from "vitest";
-import { generateKeyPairSync } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { request } from "node:https";
 import {
@@ -39,6 +38,7 @@ import {
   verifyManifest,
 } from "../../../packages/vimma-core/src/updates/updates.mjs";
 import { addSignaturePlaceholder, readMar, verifyMar } from "../../update/mar.mjs";
+import { testKey } from "../../test/test-keys.ts";
 
 const dirs: string[] = [];
 const tmp = () => {
@@ -114,7 +114,7 @@ describe("the test-signed manifest", () => {
   const compare = (a: string, b: string) => a.localeCompare(b, "en", { numeric: true });
 
   it("offers the local MAR, signed by a key the build pins only in automation", async () => {
-    const key = await makeManifestKey();
+    const key = await makeManifestKey(testKey("a").privateKey);
     const text = signManifest(localManifest({ serial: "20261106110000", offer, mar }), key);
     const verified = await verifyManifest(text, [key], globalThis.crypto.subtle);
     expect(verified.ok).toBe(true);
@@ -128,15 +128,15 @@ describe("the test-signed manifest", () => {
   });
 
   it("is refused under any other key: the bad-signature case", async () => {
-    const key = await makeManifestKey();
-    const stranger = await makeManifestKey();
+    const key = await makeManifestKey(testKey("a").privateKey);
+    const stranger = await makeManifestKey(testKey("b").privateKey);
     const text = signManifest(localManifest({ serial: "20261106110000", offer, mar }), stranger);
     const verified = await verifyManifest(text, [key], globalThis.crypto.subtle);
     expect(verified).toMatchObject({ ok: false });
   });
 
   it("offers nothing for the running build's own build ID: the downgrade case", async () => {
-    const key = await makeManifestKey();
+    const key = await makeManifestKey(testKey("a").privateKey);
     const same = { ...offer, buildId: running.buildId, displayVersion: "0.4.4" };
     const text = signManifest(localManifest({ serial: "20261106110000", offer: same, mar }), key);
     const verified = (await verifyManifest(text, [key], globalThis.crypto.subtle)) as any;
@@ -181,8 +181,8 @@ describe("the test-signed MAR", () => {
   }
 
   it("verifies under the test key and under no other", () => {
-    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 4096 });
-    const other = generateKeyPairSync("rsa", { modulusLength: 4096 });
+    const { privateKey, publicKey } = testKey("a");
+    const other = testKey("b");
     const placed = addSignaturePlaceholder(unsignedMar());
     const signed = signMar(placed, privateKey);
     expect(readMar(signed).signatures).toHaveLength(1);

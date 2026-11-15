@@ -10,10 +10,11 @@
 // the model list again, a new picker) changes nothing they see, and Enter acts on the row shown.
 // Issue #1005: a pick, a send or a key's store that waits (for a key hint, a local model's
 // preparation, login storage) and finds the user gone elsewhere switches no view and leaves the
-// key field as the user has it; every way out of the key field empties it (docs/security.md M46).
-// Issue #1010: a second Enter while a send reads its key sends nothing twice; a message that was
-// not sent stays with its own conversation and never over what the user typed since; opening on
-// first use takes focus only from a user who stayed.
+// key field as the user has it; every way out of the key field empties it
+// (docs/security/12-agents-mcp-built-in-agent.md M46). Issue #1010: a second Enter while a send
+// reads its key sends nothing twice; a message that was not sent stays with its own conversation
+// and never over what the user typed since; opening on first use takes focus only from a user who
+// stayed.
 // The window is built with services of the test's own, whose answers the test gives when it
 // chooses, and is driven through its own entry points: open() and its keys.
 

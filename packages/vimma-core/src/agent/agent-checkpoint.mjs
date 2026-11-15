@@ -227,14 +227,18 @@ export function parsePayInfo(raw) {
 }
 
 /**
- * @typedef {{ name: string, value?: string, secret?: true, file?: true, text?: true,
- *   identity?: true, cut?: true }} SentField  one field a submission sends: its value, or `secret` (a
- *   password, card or one-time-code field, whose value is never read), or `file`; `text`: a
- *   field someone types into (a textarea, a text-like input), `identity`: a name, contact,
- *   address or birth-date field (docs/specs/mcp-consequence.md K2); `cut`: its value was longer
- *   than the child sends, so what it holds past the cut is not known (K3)
- * @typedef {{ fields: SentField[], hidden: number, more: number }} SentFields  `hidden`: hidden
- *   fields sent but not listed; `more`: fields past the cap
+ * @typedef {{ name: string, value?: string, secret?: true, file?: true, opaque?: true,
+ *   text?: true, identity?: true, cut?: true }} SentField  one field a submission sends: its
+ *   value, or `secret` (a password, card or one-time-code field, whose value is never read), or
+ *   `file`, or `opaque` (an entry none of the form's HTML fields accounts for, such as a
+ *   form-associated custom element's, whose value is never read; with `file` when it is a
+ *   file); `text`: a field someone types into (a textarea, a text-like input), `identity`: a
+ *   name, contact, address or birth-date field (docs/specs/mcp-consequence.md K2); `cut`: its
+ *   value was longer than the child sends, so what it holds past the cut is not known (K3)
+ * @typedef {{ fields: SentField[], hidden: number, more: number, unread?: true }} SentFields
+ *   `hidden`: hidden fields sent but not listed; `more`: fields past the cap; `unread`: the
+ *   page's script may add to what is sent as the form's entries are built (a `formdata`
+ *   listener), or the child could not build them, so what it sends is not known whole (K3)
  */
 
 /** @param {unknown} n */
@@ -251,24 +255,29 @@ export function parseSentFields(raw) {
   const v = /** @type {Record<string, unknown>} */ (raw);
   if (!Array.isArray(v.fields) || v.fields.length > CHECKPOINT_CAPS.fields) return null;
   if (!isCount(v.hidden) || !isCount(v.more)) return null;
+  if (v.unread !== undefined && v.unread !== true) return null;
   /** @type {SentField[]} */
   const fields = [];
   for (const f of v.fields) {
     if (!isRecord(f)) return null;
-    const { name, value, secret, file, text, identity, cut } =
+    const { name, value, secret, file, opaque, text, identity, cut } =
       /** @type {Record<string, unknown>} */ (f);
     if (!isText(name, CHECKPOINT_CAPS.name)) return null;
-    for (const mark of [secret, file, text, identity, cut]) {
+    for (const mark of [secret, file, opaque, text, identity, cut]) {
       if (mark !== undefined && mark !== true) return null;
     }
-    if (value !== undefined && (secret || file || !isText(value, CHECKPOINT_CAPS.value))) {
+    if (
+      value !== undefined &&
+      (secret || file || opaque || !isText(value, CHECKPOINT_CAPS.value))
+    ) {
       return null;
     }
     /** @type {SentField} */
     const out = { name: /** @type {string} */ (name) };
     if (secret) out.secret = true;
     else if (file) out.file = true;
-    else out.value = typeof value === "string" ? value : "";
+    else if (!opaque) out.value = typeof value === "string" ? value : "";
+    if (opaque) out.opaque = true;
     if (text) out.text = true;
     if (identity) out.identity = true;
     if (cut) out.cut = true;
@@ -278,6 +287,7 @@ export function parseSentFields(raw) {
     fields,
     hidden: /** @type {number} */ (v.hidden),
     more: /** @type {number} */ (v.more),
+    ...(v.unread ? { unread: /** @type {const} */ (true) } : {}),
   };
 }
 
@@ -337,15 +347,17 @@ const NUMBER_ONLY = /^[-+]?[0-9]{1,3}(?:[.,][0-9]{1,3})?$/;
  * Whether a form submission has a consequence the user has to judge under a grant
  * (docs/specs/mcp-consequence.md K2, K3): it pays, or it sends a secret, a file, an identity
  * field or free text (a typed value that is not empty and not only a quantity); or what it
- * sends is not known whole (`sent` null, fields past the cap, a value cut), because a doubt asks.
+ * sends is not known whole (`sent` null, fields past the cap, a value cut or not read, the
+ * page's script adding to it), because a doubt asks.
  * @param {{ pay: boolean, sent: SentFields | null }} step
  */
 export function isConsequential({ pay, sent }) {
-  if (pay || !sent || sent.more > 0) return true;
+  if (pay || !sent || sent.more > 0 || sent.unread) return true;
   return sent.fields.some(
     (f) =>
       f.secret ||
       f.file ||
+      f.opaque ||
       f.identity ||
       f.cut ||
       (f.text && !!pageText(f.value) && !NUMBER_ONLY.test(String(f.value ?? "").trim())),
@@ -355,13 +367,14 @@ export function isConsequential({ pay, sent }) {
 /**
  * Whether a form checkpoint may offer `a`, which allows its button on its site for the rest of
  * the grant (docs/specs/mcp-consequence.md K5): never for a payment, a secret or a file, nor
- * when what it sends is not known whole (`sent` null, fields past the cap, a value cut), since
- * an allowance must not rest on a form Vimma did not read whole.
+ * when what it sends is not known whole (`sent` null, fields past the cap, a value cut or not
+ * read, the page's script adding to it), since an allowance must not rest on a form Vimma did
+ * not read whole.
  * @param {{ pay: boolean, sent: SentFields | null }} step
  */
 export function mayAllowHere({ pay, sent }) {
-  if (pay || !sent || sent.more > 0) return false;
-  return !sent.fields.some((f) => f.secret || f.file || f.cut);
+  if (pay || !sent || sent.more > 0 || sent.unread) return false;
+  return !sent.fields.some((f) => f.secret || f.file || f.opaque || f.cut);
 }
 
 /**

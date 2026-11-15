@@ -1,7 +1,8 @@
 /**
- * Parallel browser lanes (docs/runbook.md, "Parallel browser lanes"): a git worktree with its
- * own engine/, reflink-copied from a source checkout's engine (default: the main checkout), so
- * several agents can run `npm run mochitest -- --artifact` at once without sharing a tree.
+ * Parallel browser lanes (docs/runbook/parallel-browser-lanes.md, "Parallel browser lanes"): a git
+ * worktree with its own engine/, reflink-copied from a source checkout's engine (default: the main
+ * checkout), so several agents can run `npm run mochitest -- --artifact` at once without sharing a
+ * tree.
  *
  * Everything here writes only under the lane's engine/; the source checkout is read, never
  * written. assertLane and teardownTarget are the guards; the CLIs are lane-setup.ts and

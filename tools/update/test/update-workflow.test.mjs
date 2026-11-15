@@ -1,14 +1,15 @@
-// update-publish.yml (docs/specs/m6a-updater.md §7; docs/runbook.md, "Update signing keys and
-// the update host"): a published release gets a signed update manifest on updates.vimma.dev.
+// update-publish.yml (docs/specs/m6a-updater.md §7; docs/runbook/ci-update-keys-and-update-host.md,
+// "Update signing keys and the update host"): a published release gets a signed update manifest on
+// updates.vimma.dev.
 // The workflow is read as text, as release-workflow.test.mjs reads release.yml, and its signing
 // step is run here with a stand-in for gcloud that signs the way Cloud KMS's raw PKCS#1 key
 // does, so the bytes it writes are checked by the verifier the browser runs.
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { generateKeyPairSync } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
+import { testKey } from "../../test/test-keys.ts";
 import { IDENTITY_REGEXP } from "../../package/package.mjs";
 import {
   base64Encode,
@@ -130,8 +131,9 @@ describe("update-publish.yml", () => {
   });
 
   it("builds a macOS manifest on macOS (hdiutil reads the app's build ID), signs on Linux", () => {
-    // A one-leg matrix, so that the runner check (docs/security.md, B5) sees every runner it
-    // can take; the exclude drops the other target's.
+    // A one-leg matrix, so that the runner check
+    // (docs/security/14-build-and-release-supply-chain.md, B5) sees every runner it can take; the
+    // exclude drops the other target's.
     expect(job("prepare")).toContain(
       "\n    runs-on: ${{ matrix.os }}\n    strategy:\n      matrix:\n" +
         "        os: [ubuntu-24.04, macos-15]\n        exclude:\n" +
@@ -672,7 +674,7 @@ describe.skipIf(process.platform !== "linux")("the signing job's steps, run", ()
    */
   function setUp(body) {
     const dir = tempDir("vimma-sign-");
-    const pair = generateKeyPairSync("rsa", { modulusLength: 4096 });
+    const pair = testKey("a");
     writeFileSync(join(dir, "kms.key"), pair.privateKey.export({ type: "pkcs8", format: "pem" }));
     mkdirSync(join(dir, "bin"));
     mkdirSync(join(dir, "out"));
@@ -1151,7 +1153,7 @@ describe.skipIf(process.platform !== "linux")("the MAR signing job's steps, run"
   /** @param {Buffer} mar */
   function setUp(mar) {
     const dir = tempDir("vimma-mar-sign-");
-    const pair = generateKeyPairSync("rsa", { modulusLength: 4096 });
+    const pair = testKey("a");
     writeFileSync(join(dir, "kms.key"), pair.privateKey.export({ type: "pkcs8", format: "pem" }));
     mkdirSync(join(dir, "bin"));
     mkdirSync(join(dir, "in"));

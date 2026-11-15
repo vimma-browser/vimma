@@ -259,7 +259,7 @@ add_task(async function private_windows_get_no_default_container() {
   await store.finalize();
 });
 
-// docs/security.md: the y/N answer stands only for the workspace the question described. A
+// docs/security/: the y/N answer stands only for the workspace the question described. A
 // config reload in between can turn a config workspace (close = its tabs) into a runtime one
 // (close = delete its site data), and a rename can put another workspace under the same id.
 add_task(async function a_stale_answer_closes_nothing() {

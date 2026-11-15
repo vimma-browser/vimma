@@ -54,7 +54,7 @@ export function survivorsReport(
       "",
       "A survivor is a change to the code that no test noticed. Add or sharpen a test that kills it " +
         "(red first), or mark it equivalent with a `// Stryker disable next-line <mutator>: reason` " +
-        "comment. This issue is rewritten by every run; see docs/runbook.md, “Mutation testing”.",
+        "comment. This issue is rewritten by every run; see docs/runbook/ci-mutation-testing.md, “Mutation testing”.",
       "",
     ].join("\n") + "\n";
   if (!survivors) return { body: `${head}No surviving mutants.\n`, score, survivors };

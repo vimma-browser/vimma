@@ -40,7 +40,7 @@ const FILE_MODE = 0o600;
 const DIR_MODE = 0o700;
 
 /** An nsIAboutModule that is its own nsIFactory, as about:vimma's (AboutVimma.sys.mjs). */
-const aboutModule = /** @type {any} */ ({
+const aboutModule = {
   QueryInterface: ChromeUtils.generateQI(["nsIAboutModule", "nsIFactory"]),
   getURIFlags() {
     return Ci.nsIAboutModule.ALLOW_SCRIPT | Ci.nsIAboutModule.IS_SECURE_CHROME_UI;
@@ -48,7 +48,7 @@ const aboutModule = /** @type {any} */ ({
   getChromeURI() {
     return Services.io.newURI(PAGE_URL);
   },
-  /** @param {any} uri @param {unknown} loadInfo */
+  /** @param {nsIURI} uri @param {nsILoadInfo} loadInfo */
   newChannel(uri, loadInfo) {
     const channel = Services.io.newChannelFromURIWithLoadInfo(
       Services.io.newURI(PAGE_URL),
@@ -57,11 +57,11 @@ const aboutModule = /** @type {any} */ ({
     channel.originalURI = uri;
     return channel;
   },
-  /** @param {unknown} iid */
+  /** @param {nsIJSIID<unknown>} iid @returns {unknown} */
   createInstance(iid) {
     return aboutModule.QueryInterface(iid);
   },
-});
+};
 
 /**
  * Every add-on the page has been shown, by GUID: an install is only ever for one of these, so a
@@ -72,7 +72,7 @@ const offered = new Map();
 
 /** @param {string} url @returns {Promise<unknown[] | null>} null offline or after 10 s */
 async function amoResults(url) {
-  /** @type {any} */
+  /** @type {number | undefined} */
   let timer;
   const timeout = new Promise((resolve) => {
     timer = lazy.setTimeout(() => resolve(null), AMO_TIMEOUT_MS);
@@ -90,7 +90,7 @@ async function amoResults(url) {
 
 async function installedIds() {
   const addons = await lazy.AddonManager.getAddonsByTypes(["extension"]);
-  return new Set(addons.map((/** @type {any} */ a) => a.id));
+  return new Set(addons.map((a) => a.id));
 }
 
 /** @param {import("../core/setup.mjs").AddonEntry[]} list */
@@ -135,7 +135,7 @@ export const SetupHost = {
   /**
    * Opens the welcome screen in front, once per profile. The pref is set before the page
    * loads, so a crash or a closed window never shows it twice.
-   * @param {any} win
+   * @param {BrowserWindow} win
    * @returns {boolean} whether it opened
    */
   offer(win) {
@@ -172,12 +172,9 @@ export const SetupHost = {
   async engines() {
     const s = lazy.SearchService;
     await s.init();
-    const visible = (await s.getVisibleEngines()).map((/** @type {any} */ e) => e.name);
-    const app = new Set((await s.getAppProvidedEngines()).map((/** @type {any} */ e) => e.name));
-    const names = [
-      ...visible.filter((/** @type {string} */ n) => app.has(n)),
-      ...visible.filter((/** @type {string} */ n) => !app.has(n)),
-    ];
+    const visible = (await s.getVisibleEngines()).map((e) => e.name);
+    const app = new Set((await s.getAppProvidedEngines()).map((e) => e.name));
+    const names = [...visible.filter((n) => app.has(n)), ...visible.filter((n) => !app.has(n))];
     const fromFile = /** @type {any} */ (ConfigHost.config)?.search?.default;
     const current = names.includes(fromFile) ? fromFile : (await s.getDefault()).name;
     return { names, current };
@@ -207,7 +204,7 @@ export const SetupHost = {
     const path = configFile();
     /** @type {string | null} */
     let text = null;
-    /** @type {any} */
+    /** @type {Awaited<ReturnType<IOUtilsNamespace["stat"]>> | null} */
     let before = null;
     try {
       before = await IOUtils.stat(path);
@@ -257,13 +254,15 @@ export const SetupHost = {
   /**
    * One add-on through Firefox's AMO path (decision 3): signature checks, enterprise policy and
    * the standard permission prompt are Firefox's own; Vimma never answers the prompt.
-   * @param {any} browser  the setup page's browser, which the prompt anchors to
+   * @param {MozBrowser | null} browser  the setup page's browser, which the prompt anchors to.
+   *   Without one, "failed": Firefox's permission prompt throws on a null anchor
+   *   (ExtensionsUI.sys.mjs getTabBrowser), and the page would stay at "applying".
    * @param {string} guid  one the page was shown
    * @returns {Promise<"installed" | "declined" | "failed">}
    */
   async install(browser, guid) {
     const entry = offered.get(guid);
-    if (!entry) return "failed";
+    if (!entry || !browser) return "failed";
     const AM = lazy.AddonManager;
     const install = await this.installFor(entry);
     return new Promise((resolve) => {
@@ -287,23 +286,24 @@ export const SetupHost = {
   /**
    * The <browser> showing `page`. Searched from the windows, because the page's
    * browsingContext.embedderElement is null once a process switch has replaced the context.
-   * @param {any} page  the setup page's window
+   * @param {Window} page  the setup page's window
+   * @returns {MozTabBrowser | null}
    */
   browserFor(page) {
     for (const win of Services.wm.getEnumerator("navigator:browser")) {
-      const found = win.gBrowser?.browsers.find((/** @type {any} */ b) => b.contentWindow === page);
+      const found = win.gBrowser?.browsers.find((b) => b.contentWindow === page);
       if (found) return found;
     }
     return null;
   },
 
-  /** @param {any} browser  closes the page's tab */
+  /** @param {MozBrowser | null} browser  closes the page's tab */
   close(browser) {
     // Through the window list, as browserFor: the browser's ownerGlobal seen from here has no
     // gBrowser.
     for (const win of Services.wm.getEnumerator("navigator:browser")) {
       const gBrowser = win.gBrowser;
-      const tab = gBrowser?.getTabForBrowser(browser);
+      const tab = browser && gBrowser?.getTabForBrowser(browser);
       if (tab) {
         gBrowser.removeTab(tab);
         return;

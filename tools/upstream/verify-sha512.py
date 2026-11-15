@@ -6,7 +6,8 @@ https://archive.mozilla.org/pub/firefox/releases/X.Y/SHA512SUMS and its detached
 SHA512SUMS.asc, hash the tarball with sha512sum, and call this script. It accepts the hash only
 when SHA512SUMS carries a good signature by a valid signing subkey of Mozilla's release key,
 pinned in mozilla-release-key.asc and by PINNED_FINGERPRINT below (spec build-supply-chain,
-decisions 1 and 2; ADR-021; docs/security.md B1). HTTPS is not the trust anchor.
+decisions 1 and 2; ADR-021; docs/security/14-build-and-release-supply-chain.md B1). HTTPS is not
+the trust anchor.
 
 The verdict comes from gpgv's machine-readable status lines, never its exit status: gpgv exits 0
 for a signature by a revoked subkey (REVKEYSIG) and for one by an unknown key (NO_PUBKEY).
@@ -30,9 +31,9 @@ from pathlib import Path
 # Releases" (2026-08-10), which gives "14F2 6682 D091 6CDD 81E3 7B6D 61B7 B526 D98F 0353"; equal to
 # the primary of https://archive.mozilla.org/pub/firefox/releases/158.0/KEY and of
 # keys.openpgp.org's copy (checked 2026-10-15). Mozilla rotates the signing subkey, not this
-# primary: a new subkey arrives as an update of mozilla-release-key.asc (docs/runbook.md,
-# "Mozilla's release key"). A change to this constant means Mozilla replaced its root of trust
-# and needs ADR-021 reviewed, never a routine update.
+# primary: a new subkey arrives as an update of mozilla-release-key.asc
+# (docs/runbook/ci-mozillas-release-key.md, "Mozilla's release key"). A change to this constant
+# means Mozilla replaced its root of trust and needs ADR-021 reviewed, never a routine update.
 PINNED_FINGERPRINT = "14F26682D0916CDD81E37B6D61B7B526D98F0353"
 KEY_FILE = Path(__file__).resolve().with_name("mozilla-release-key.asc")
 
