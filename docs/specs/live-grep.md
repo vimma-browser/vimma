@@ -302,7 +302,8 @@ context. The parent checks each reply with core `parseGrepReply`, merges the rep
 order and hands them to the picker as they arrive; stale generations are dropped. Moving the
 selection asks the frame for the lines around the match (`Vimma:GrepPreview`). `Enter` selects
 the tab and sends `Vimma:GrepJump { gen, match }` to the frame, which selects and scrolls to the
-match.
+match. (Since changed: the child hands these messages to its `GrepPage`, `actors/grep-page.mjs`,
+which holds the text model and the matcher key, issue #1109.)
 
 1. **A picker of its own, next to tab search.** Live grep is a second picker on its own key,
    not a mode of tab search. Telescope keeps `find_files` and `live_grep` apart for the same
