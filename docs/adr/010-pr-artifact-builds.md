@@ -20,7 +20,7 @@ would make every PR wait 2 hours.)
 
 `e2e.yml` runs on `ubuntu-24.04` (GitHub-hosted) for every PR that is not docs-only:
 `CI_SKIP_INIT=1 surfer download` (release tarball, no history) → `git init` of an empty
-`engine/.git` → `npm run import` → `node tools/artifact-build/artifact-build.mjs` →
+`engine/.git` → `npm run import` → `node tools/artifact-build/artifact-build.mjs` (Since changed: `artifact-build.ts`, ADR-025) →
 `npm run mochitest -- --artifact tests/browser/`.
 
 `tools/artifact-build` derives `engine/mozconfig.artifact` from `engine/mozconfig` and builds in
@@ -61,7 +61,7 @@ Measured on Firefox 157.0.1 (docs/specs/m0-build-strategy.md has the numbers):
   `pull_request_target`): a fork PR can run code only on GitHub's disposable VM.
 - **Free once public.** Standard hosted runners are unlimited for public repos.
 
-What an artifact build cannot carry, and how the tool adapts (each in `artifact-build.mjs`):
+What an artifact build cannot carry, and how the tool adapts (each in `artifact-build.mjs`; since changed: `artifact-build.ts`, ADR-025):
 
 | Full-build setting                              | In an artifact build                                                                     | Adaptation                                                                                    |
 | ----------------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
@@ -134,7 +134,7 @@ runtime only through `application.ini` on Linux (its C++ uses are Windows-only).
 
 The Firefox Beta canary ([upstream-beta-canary](../specs/upstream-beta-canary.md)) runs the same
 artifact build on a Firefox Beta source tarball, in its own CI checkout; `main` still pins a
-release. `tools/artifact-build/artifact-build.mjs` and `tools/upstream/artifact-preflight.mjs`
+release. `tools/artifact-build/artifact-build.mjs` (Since changed: `artifact-build.ts`, ADR-025) and `tools/upstream/artifact-preflight.mjs`
 read the tree from `sourcestamp.txt` and accept only `releases/mozilla-release` and
 `releases/mozilla-beta`. A release is unchanged (`MOZ_ARTIFACT_REVISION`). For a Beta the tool
 looks up `gecko.v2.mozilla-beta.shippable.revision.<rev>.firefox.linux64-opt` and passes the task

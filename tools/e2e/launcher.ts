@@ -233,7 +233,7 @@ export function findBuild({
   if (artifact) {
     if (!exists(artifactBin)) {
       throw new Error(
-        `no artifact build at ${artifactBin}: run node tools/artifact-build/artifact-build.mjs`,
+        `no artifact build at ${artifactBin}: run node tools/artifact-build/artifact-build.ts`,
       );
     }
     return artifactBuild;
