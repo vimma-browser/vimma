@@ -263,8 +263,7 @@ export const AppLauncher = {
   /**
    * Whether this process's shell service started with vimma-open as its command; false where
    * nothing was set, and when something had started it first (a profile service that makes a
-   * dedicated default profile at startup, `vimma -setDefaultBrowser`), which keeps Firefox's
-   * behaviour for that session.
+   * dedicated default profile at startup), when Make Default goes through wrapSetDefault.
    */
   startedFirst: false,
 
@@ -284,8 +283,32 @@ export const AppLauncher = {
   lateOwn: "",
 
   /**
-   * Once per process, from the first window's first script: before then only those two cases
-   * start the shell service, which DefaultBrowserCheck otherwise does once windows are restored.
+   * Who ran init first: "before-ui-startup" (beforeUIStartup), "window" (vimma.js, which only
+   * comes first where the category entry is missing), or "" before either.
+   *
+   * @type {"" | "before-ui-startup" | "window"}
+   */
+  firstCaller: "",
+
+  /**
+   * BrowserGlue's browser-before-ui-startup category (jar.mn), at final-ui-startup: after the
+   * profile is chosen but before the command line runs (nsAppRunner.cpp, XRE_mainRun), so before
+   * BrowserContentHandler handles `-setDefaultBrowser` with Firefox's Make Default, and before
+   * any window. Its arguments (the category's jsGlobal) are ignored.
+   *
+   * @returns {boolean} init's result
+   */
+  beforeUIStartup() {
+    if (!done) {
+      this.firstCaller = "before-ui-startup";
+    }
+    return this.init();
+  },
+
+  /**
+   * Once per process, first from beforeUIStartup, then again (a no-op) from the first window's
+   * first script: before then only the profile service starts the shell service, which
+   * DefaultBrowserCheck otherwise does once windows are restored.
    *
    * On a package (vimma-open next to the binary), the shell service starts with vimma-open's
    * path, however Vimma was started (its desktop entry, or `vimma` from a terminal); a value
@@ -304,6 +327,7 @@ export const AppLauncher = {
     }
     if (!done) {
       done = true;
+      this.firstCaller ||= "window";
       const { started, appPath, own } = start({});
       this.startedFirst = started;
       this.appPath = appPath;
@@ -364,7 +388,8 @@ export const AppLauncher = {
    * program is vimma-open's path (ownEntry: a user entry that runs it comes first), as it does when the shell service starts with that path
    * (nsGNOMEShellService::SetDefaultBrowser), for a shell service that started with another
    * command. Without such an entry, under Flatpak, or where a policy forbids Make Default,
-   * Firefox's own method runs. Only the user's press reaches it: Settings' button and the startup prompt's.
+   * Firefox's own method runs. Only an explicit request reaches it: Settings' button, the startup prompt's,
+   * and `vimma -setDefaultBrowser`.
    *
    * @param {{ setDefaultBrowser: Function, _attemptedSetDefaultThisSession?: boolean }} target
    *   ShellService, whose proxy returns its internal object's methods before the native service's

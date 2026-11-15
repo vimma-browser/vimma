@@ -7,26 +7,15 @@ import { resolveEscape } from "../src/keys/escape.mjs";
 import { getAction } from "../src/keys/actions.mjs";
 import { BADGES } from "../src/config/theme.mjs";
 
-/** @import { Mode } from "../src/keys/modes.mjs" */
+import type { Mode } from "../src/keys/modes.mjs";
 
-/**
- * Feed space-separated chords; return all results.
- * @param {ReturnType<typeof createDispatcher>} d
- * @param {Mode} mode
- * @param {string} keys
- */
-function feed(d, mode, keys) {
+/** Feed space-separated chords; return all results. */
+function feed(d: ReturnType<typeof createDispatcher>, mode: Mode, keys: string) {
   return keys.split(" ").map((k) => d.dispatch(mode, parseKey(k)));
 }
-/**
- * @template T
- * @param {T[]} arr
- */
-const last = (arr) => arr[arr.length - 1];
-/** @param {string} id */
-const act = (id, extra = {}) => ({ kind: "action", action: { id, ...extra } });
-/** @param {Parameters<typeof compileKeymap>[0]} [cfg] */
-const make = (cfg) => createDispatcher(compileKeymap(cfg));
+const last = <T>(arr: T[]) => arr[arr.length - 1];
+const act = (id: string, extra = {}) => ({ kind: "action", action: { id, ...extra } });
+const make = (cfg?: Parameters<typeof compileKeymap>[0]) => createDispatcher(compileKeymap(cfg));
 
 describe("resize mode (m4-split-panes sub-spec 5, ADR-014)", () => {
   test("resize is a mode, with counts, and has a status-bar badge", () => {

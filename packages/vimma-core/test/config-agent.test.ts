@@ -3,18 +3,17 @@
 import { describe, expect, test } from "vitest";
 import { AGENT_DEFAULTS, parseConfig, reloadConfig } from "../src/config/config.mjs";
 
-/** @param {...string} lines */
-const v2 = (...lines) => ["schema = 2", ...lines].join("\n") + "\n";
+import type { ResolvedConfig } from "../src/config/config.mjs";
 
-/** @param {string} text */
-function ok(text) {
+const v2 = (...lines: string[]) => ["schema = 2", ...lines].join("\n") + "\n";
+
+function ok(text: string) {
   const r = parseConfig(text);
   expect(r.errors).toEqual([]);
-  return /** @type {import("../src/config/config.mjs").ResolvedConfig} */ (r.config);
+  return r.config as ResolvedConfig;
 }
 
-/** @param {string} text */
-const errors = (text) => parseConfig(text).errors;
+const errors = (text: string) => parseConfig(text).errors;
 
 const LOCAL = [
   "[[agent.providers]]",
@@ -138,7 +137,7 @@ describe("[agent]", () => {
   });
 
   test("an endpoint off this machine must be https, and carry no user name", () => {
-    const at = (/** @type {string} */ url) =>
+    const at = (url: string) =>
       errors(v2(...LOCAL.slice(0, 3), `endpoint = "${url}"`, 'model = "m"'))[0]?.message;
     expect(at("http://llm.example/v1")).toBe(
       "an endpoint that is not on this machine must be https://",
@@ -153,7 +152,7 @@ describe("[agent]", () => {
   test("max_running and keep_days parse within their bounds", () => {
     expect(ok(v2("[agent]", "max_running = 1")).agent.maxRunning).toBe(1);
     expect(ok(v2("[agent]", "keep_days = 1")).agent.keepDays).toBe(1);
-    const at = (/** @type {string} */ line) => errors(v2("[agent]", line))[0]?.message;
+    const at = (line: string) => errors(v2("[agent]", line))[0]?.message;
     expect(at("max_running = 0")).toBe("must be an integer between 1 and 10");
     expect(at("max_running = 11")).toBe("must be an integer between 1 and 10");
     expect(at("keep_days = 0")).toBe("must be an integer between 1 and 3650 (days)");
