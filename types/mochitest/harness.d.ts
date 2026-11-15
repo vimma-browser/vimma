@@ -327,6 +327,7 @@ declare var TabBarVisibility: BrowserWindow["TabBarVisibility"];
 declare var PopupNotifications: BrowserWindow["PopupNotifications"];
 declare var UpdatePopupNotificationsVisibility: BrowserWindow["UpdatePopupNotificationsVisibility"];
 declare var isInitialPage: BrowserWindow["isInitialPage"];
+declare var isBlankPageURL: BrowserWindow["isBlankPageURL"];
 declare var switchToTabHavingURI: BrowserWindow["switchToTabHavingURI"];
 declare var openTrustedLinkIn: BrowserWindow["openTrustedLinkIn"];
 declare var openLinkIn: BrowserWindow["openLinkIn"];

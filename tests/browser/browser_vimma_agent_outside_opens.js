@@ -397,7 +397,7 @@ add_task(async function about_vimma_marks_an_agent_rule_and_an_agent_default() {
   try {
     const about = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:vimma");
     await until(
-      () => about.linkedBrowser.contentDocument?.documentElement.dataset.ready === "true",
+      () => about.linkedBrowser.contentDocument?.documentElement?.dataset.ready === "true",
       "about:vimma rendered",
     );
     // Rendered: the wait above read its document.

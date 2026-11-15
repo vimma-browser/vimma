@@ -9,8 +9,8 @@
 const { ThemeHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ui/theme-host.mjs",
 );
-const { SetupHost } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/setup/SetupHost.sys.mjs",
+const { SetupHost } = /** @type {typeof import("./SetupHost.sys.mjs")} */ (
+  ChromeUtils.importESModule("chrome://browser/content/vimma/setup/SetupHost.sys.mjs")
 );
 const { formatUsers, initialSetup, setupKey, withAddons } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/setup.mjs",
