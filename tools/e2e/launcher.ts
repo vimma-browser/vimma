@@ -24,6 +24,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { validateMessage } from "../../packages/vimma-core/src/control/control.mjs";
 import { CONFIG_PATH_PREF, READ_PATH_PREF, devPrefs } from "../start.ts";
+import { startupProbe } from "./startup-probe.ts";
 import type { ChildProcess } from "node:child_process";
 import type { Readable } from "node:stream";
 
@@ -61,6 +62,12 @@ export const ARTIFACT_OBJDIR = "obj-artifact";
 export const WINDOW = Object.freeze({ width: 1280, height: 800 });
 export const DISCOVERY_FILE = "vimma-control.json";
 export const DEFAULT_DISCOVERY_TIMEOUT_MS = 30_000;
+/**
+ * Issue #901: a launch whose control socket is not up after this long logs what start-up was
+ * doing at that time, even when the socket comes later. On CI a whole first scenario takes 3 to
+ * 22 s (median 7.5 s over 141 runs), the launch itself a few seconds.
+ */
+export const SLOW_LAUNCH_MS = 10_000;
 /** How many of the browser's last stderr lines a failed launch prints with their times. */
 export const STDERR_TIMELINE_LINES = 200;
 /** Longer stderr lines are cut to this many characters in that report. */
@@ -567,8 +574,9 @@ export function stderrTimeline({
 /**
  * Wait for the control server's discovery file: present, valid protocol v1, mode 0600. After a
  * crash-style kill the dead browser's file is still there: `stalePid` (its pid) makes the wait
- * skip it until the new browser replaces it. A failure ends with `stderrReport` (the timed lines
- * of stderrTimeline) when it is given, else with `stderrTail`.
+ * skip it until the new browser replaces it. A failure ends with `stderrReport` (the launcher's:
+ * the timed lines of stderrTimeline and the startup-probe.ts report) when it is given, else with
+ * `stderrTail`.
  */
 export async function waitForDiscovery(
   profile: string,
@@ -965,6 +973,7 @@ export async function launch({
   sessionBus = false,
   args = [],
   discoveryTimeoutMs = DEFAULT_DISCOVERY_TIMEOUT_MS,
+  slowLaunchMs = SLOW_LAUNCH_MS,
   graceMs = 5000,
   baseEnv = process.env,
   signal,
@@ -989,6 +998,7 @@ export async function launch({
   sessionBus?: boolean;
   args?: readonly string[];
   discoveryTimeoutMs?: number;
+  slowLaunchMs?: number;
   graceMs?: number;
   baseEnv?: Record<string, string | undefined>;
   signal?: AbortSignal;
@@ -1073,6 +1083,7 @@ export async function launch({
     }
     if (bus) env.DBUS_SESSION_BUS_ADDRESS = bus.address;
     lastEnv = env;
+    const spawnedAtMs = Date.now();
     const spawned = spawn(build.binary, browserArgs(profile, window, { url, extra: args }), {
       env,
       detached: true,
@@ -1092,18 +1103,53 @@ export async function launch({
       stderr = (stderr + d).slice(-8000);
       loadFailure ??= VIMMA_LOAD_FAILURE.exec(stderr)?.[0] ?? null;
     });
-    const discovery = await waitForDiscovery(profile, {
-      timeoutMs: discoveryTimeoutMs,
-      exited: () => {
-        const stopped = cancelled();
-        if (stopped) throw stopped;
-        if (spawnError)
-          throw new Error(`cannot start ${build.binary}: ${(spawnError as Error).message}`);
-        return exit;
-      },
-      stderrReport: timeline.format,
-      stalePid,
-    });
+    // Issue #901: where start-up got, read while the browser still runs: once when the socket is
+    // later than slowLaunchMs (a stall that does not reach the timeout shows too), and again when
+    // the wait fails (timeout or exit).
+    const probe = () => startupProbe({ profile, pid: spawned.pid, spawnedAtMs, tmp });
+    const slowAt = `${(slowLaunchMs / 1000).toFixed(1)} s`;
+    let slow: { stderr: string; probe: string } | null = null;
+    const slowTimer = setTimeout(
+      () => (slow = { stderr: timeline.format(), probe: probe() }),
+      slowLaunchMs,
+    );
+    let discovery;
+    try {
+      discovery = await waitForDiscovery(profile, {
+        timeoutMs: discoveryTimeoutMs,
+        exited: () => {
+          const stopped = cancelled();
+          if (stopped) throw stopped;
+          if (spawnError)
+            throw new Error(`cannot start ${build.binary}: ${(spawnError as Error).message}`);
+          return exit;
+        },
+        // The stderr lines once, at the end; the probe at slowLaunchMs too, when it was taken.
+        stderrReport: () =>
+          [
+            timeline.format(),
+            ...(slow
+              ? [
+                  `start-up at ${slowAt} since spawn:`,
+                  slow.probe,
+                  "start-up at the end of the wait:",
+                ]
+              : []),
+            probe(),
+          ].join("\n"),
+        stalePid,
+      });
+    } finally {
+      clearTimeout(slowTimer);
+    }
+    const late = slow as { stderr: string; probe: string } | null;
+    if (late) {
+      const took = ((Date.now() - spawnedAtMs) / 1000).toFixed(1);
+      log(
+        `launch: the control socket came ${took} s after spawn, later than ${slowAt} ` +
+          `(issue #901)\nstart-up at ${slowAt} since spawn:\n${late.stderr}\n${late.probe}`,
+      );
+    }
     return { spawned, discovery };
   };
 
