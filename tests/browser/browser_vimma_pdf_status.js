@@ -237,19 +237,22 @@ add_task(async function a_page_that_defines_PDFViewerApplication_gets_no_pdf_key
 });
 
 /**
- * Runs `fn` while recording every state message the parent receives.
- * @param {(seen: unknown[]) => Promise<void>} fn
+ * Runs `fn` while recording every state message the parent receives, and when it arrived.
+ * @param {(seen: unknown[], times: number[]) => Promise<void>} fn
  */
 async function recordingState(fn) {
   /** @type {unknown[]} */
   const seen = [];
+  /** @type {number[]} */
+  const times = [];
   const orig = PdfOps.onState;
   PdfOps.onState = (actor, data) => {
     seen.push(data);
+    times.push(ChromeUtils.now());
     return orig.call(PdfOps, actor, data);
   };
   try {
-    await fn(seen);
+    await fn(seen, times);
   } finally {
     PdfOps.onState = orig;
   }
@@ -388,9 +391,18 @@ add_task(async function a_hostile_viewer_gets_only_primitives_through() {
 });
 
 add_task(async function a_flood_of_pagesloaded_is_coalesced() {
+  // V5 bounds the rate, not the count: the viewer may still be laying out and drawing (a resize,
+  // `drawn` going false and true), and those changes are sent too, each after the one before.
+  const quiet = 3 * PDF_STATE_MS;
   await withPdf(async (browser) => {
     await TestUtils.waitForCondition(() => segment("page") === "page i (1/6)", "the page");
-    await recordingState(async (seen) => {
+    await recordingState(async (seen, times) => {
+      const since = ChromeUtils.now();
+      const settled = () => ChromeUtils.now() - (times.at(-1) ?? since) >= quiet;
+      // Nothing in flight from before the flood: no state for three coalescing windows.
+      await TestUtils.waitForCondition(settled, "the viewer settles", 50, 200);
+      const before = seen.length;
+      const start = ChromeUtils.now();
       // pdf.js's own event bus, and the chrome-only event the viewer can send at will.
       await SpecialPowers.spawn(browser, [], () => {
         const app = /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication;
@@ -400,10 +412,17 @@ add_task(async function a_flood_of_pagesloaded_is_coalesced() {
           content.document.dispatchEvent(new content.CustomEvent("pagesloaded", { bubbles: true }));
         }
       });
-      await TestUtils.waitForCondition(() => seen.length > 0, "the burst sent state");
-      // Long enough for a second and third message, were the burst not coalesced (100 ms).
-      await new Promise((r) => setTimeout(r, 300));
-      Assert.lessOrEqual(seen.length, 2, `two thousand events, ${seen.length} messages`);
+      await TestUtils.waitForCondition(() => seen.length > before, "the burst sent state");
+      await TestUtils.waitForCondition(settled, "the burst and what it set off are over", 50, 200);
+      const sent = seen.length - before;
+      // Every message was sent after `start` and had reached the parent by the last one's arrival,
+      // so at most one per PDF_STATE_MS fits between them (less 1 ms: a Gecko timer may fire up
+      // to 250 us early, TimerThread.cpp). Two thousand events uncoalesced would send thousands.
+      const elapsed = /** @type {number} */ (times.at(-1)) - start;
+      const most = 1 + Math.floor(elapsed / (PDF_STATE_MS - 1));
+      const ms = Math.round(elapsed);
+      Assert.lessOrEqual(sent, most, `two thousand events, ${sent} messages in ${ms} ms`);
+      Assert.less(sent, 20, "two thousand events sent a handful of messages");
     });
   });
 });
