@@ -925,6 +925,12 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     until the file is fixed. about:vimma says "off until config.toml's [updates] can be read
     (:update still checks)", or names the pref when it is off, since the pref stops `:update`
     too; [#741](https://github.com/vimma-browser/vimma/issues/741).)
+    (Since changed again: "the config in force before keeps its value" let an unreadable `check`
+    turn checks back on within a session after an earlier file with errors had stated
+    `check = false`, since the config in force is the last valid one. An unreadable `check` now
+    keeps the setting in effect and never turns checks on: held stays held, and checks stay on
+    only when both the setting in effect and the config in force have them on;
+    [#967](https://github.com/vimma-browser/vimma/issues/967).)
 32. **A manifest response may hold at most 256 KiB, counted after decompression**: a larger
     `Content-Length` is refused before reading, and the body is read as a stream and cancelled
     past the cap, because a compromised host could otherwise send a body or a gzip or brotli bomb
