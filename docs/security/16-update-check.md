@@ -386,11 +386,12 @@ _Pages_ and _extensions_ cannot reach it.
   same certificates, so the two verifiers trust the same keys, and a certificate that is not
   self-signed by its own key is refused. The primary's certificate is made from the request
   `update-cert.mjs` builds for the pinned primary key; only `--any-key`, for throwaway test
-  keys, takes another. The unit tests sign with two fixed RSA-4096 test keys whose private halves
-  are committed (`tools/test/fixtures/rsa-4096/`, so that no test waits on a key's random prime
-  search); a test fails if either is pinned or held by an updater certificate. `check-build.mjs` checks a package (the URL, both channel files, and
-  that its `updater` carries Vimma's certificates and none of Mozilla's): `release.yml`'s
-  `package` job on the release tarball, and `nightly.yml` on its tarball once it is set to the
+  keys, takes another. The `tools/` update tests sign with two fixed RSA-4096 test keys whose
+  private halves are committed (`tools/test/fixtures/rsa-4096/`, so that no test waits on a
+  key's random prime search); a test fails if either is pinned or held by an updater
+  certificate. `check-build.mjs` checks a package (the URL, both channel files, and that its
+  `updater` carries Vimma's certificates and none of Mozilla's): `release.yml`'s `package` job
+  on the release tarball, and `nightly.yml` on its tarball once it is set to the
   `vimma-nightly` channel (UP14). Firefox's check runs Vimma's verifier first (UP13).
   **⚠ limit:** Artifact builds (ADR-010) run Mozilla's prebuilt updater, which trusts only
   Mozilla's keys, and keep `aus5.mozilla.org`; they are never shipped.

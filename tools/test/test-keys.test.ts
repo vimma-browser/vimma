@@ -1,11 +1,11 @@
 // The fixed test keys (test-keys.ts) are public, so nothing may trust them.
 import { describe, expect, it } from "vitest";
-import { X509Certificate } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { TEST_KEY_NAMES, testKey } from "./test-keys.ts";
+import { CERT_DIR, readCertificates } from "../update/gen-update-keys.mjs";
 import { UPDATE_KEYS } from "../../packages/vimma-core/src/updates/update-keys.mjs";
 
-const UPDATER_CERTS = new URL("../../configs/updater/", import.meta.url);
+const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const spki = (key: ReturnType<typeof testKey>["publicKey"]) =>
   key.export({ type: "spki", format: "der" }).toString("base64");
 
@@ -21,14 +21,11 @@ describe("the fixed test keys", () => {
   });
 
   it("are neither pinned for the manifest nor in an updater certificate", () => {
-    const certs = readdirSync(UPDATER_CERTS).filter((f) => f.endsWith(".der"));
-    expect(certs.length).toBeGreaterThan(0);
     const trusted = new Set([
       ...UPDATE_KEYS.map((k) => k.spki),
-      ...certs.map((f) =>
-        spki(new X509Certificate(readFileSync(new URL(f, UPDATER_CERTS))).publicKey),
-      ),
+      ...readCertificates(`${ROOT}${CERT_DIR}`).map((c) => Buffer.from(c.spki).toString("base64")),
     ]);
+    expect(trusted.size).toBeGreaterThan(0);
     for (const { publicKey } of keys) expect(trusted.has(spki(publicKey))).toBe(false);
   });
 });
