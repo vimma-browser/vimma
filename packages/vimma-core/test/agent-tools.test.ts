@@ -25,8 +25,8 @@ describe("agent tools", () => {
   });
 
   test("screenshot is left out for a provider without vision", () => {
-    const names = (/** @type {boolean} */ vision) => agentTools({ vision }).map((t) => t.name);
-    expect(names(true)).toEqual(fixture.tools.map((/** @type {any} */ t) => t.name));
+    const names = (vision: boolean) => agentTools({ vision }).map((t) => t.name);
+    expect(names(true)).toEqual(fixture.tools.map((t: any) => t.name));
     expect(names(true)).toContain("vimma_screenshot");
     expect(names(false)).toEqual(names(true).filter((n) => n !== "vimma_screenshot"));
   });

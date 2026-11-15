@@ -22,13 +22,12 @@ import {
 } from "../src/agent/agent-chat.mjs";
 import { reloadConfig } from "../src/config/config.mjs";
 
-const call = (/** @type {string} */ name, args = {}, id = "c1") => ({ id, name, args });
+const call = (name: string, args = {}, id = "c1") => ({ id, name, args });
 const ok = { id: "c1", name: "vimma_activate", isError: false, content: [] };
 const failed = { id: "c1", name: "vimma_activate", isError: true, content: [] };
 const clickWhat = { kind: "button", text: "Lisää ostoskoriin", title: "Maito · Kauppa" };
 
-/** @param {Transcript} t */
-const texts = (t) =>
+const texts = (t: Transcript) =>
   t.entries.map((e) => `${e.kind}: ${e.text}${e.outcome ? ` · ${e.outcome}` : ""}`);
 
 describe("the transcript", () => {
@@ -460,7 +459,7 @@ describe("what leaves the machine with an agent CLI", () => {
 });
 
 describe("the status bar (Behaviour 35)", () => {
-  const s = (/** @type {any} */ o) => ({
+  const s = (o: any) => ({
     steps: 14,
     maxSteps: 60,
     tokens: 212_400,
@@ -514,7 +513,7 @@ describe(":agent (Behaviour 14)", () => {
 
 describe("the window's keys in normal mode (Behaviour 14)", () => {
   test("move, return to the input, and the window's commands", () => {
-    const k = (/** @type {string} */ key, pending = "") => chatKey(pending, key);
+    const k = (key: string, pending = "") => chatKey(pending, key);
     expect(k("j")).toEqual({ kind: "do", what: "down" });
     expect(k("k")).toEqual({ kind: "do", what: "up" });
     expect(k("ctrl+d")).toEqual({ kind: "do", what: "half-down" });
@@ -524,8 +523,7 @@ describe("the window's keys in normal mode (Behaviour 14)", () => {
     expect(k("x", "g")).toEqual({ kind: "none" });
     expect(k("G")).toEqual({ kind: "do", what: "bottom" });
     expect(k("shift+g")).toEqual({ kind: "do", what: "bottom" });
-    /** @type {[string, string][]} */
-    const verbs = [
+    const verbs: [string, string][] = [
       ["i", "insert"],
       ["a", "insert"],
       ["s", "stop"],

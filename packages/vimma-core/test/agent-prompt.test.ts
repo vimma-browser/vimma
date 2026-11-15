@@ -27,6 +27,7 @@ import {
   shownNotice,
 } from "../src/agent/agent-prompt.mjs";
 import { textWidth } from "../src/text/textwidth.mjs";
+import type { LogEntry } from "../src/agent/agent.mjs";
 
 const MIN = 60_000;
 const label = { client: "example-agent", via: "example" };
@@ -57,8 +58,7 @@ const keys = {
     keys: '3j /"pricing"⏎ gg',
   },
 };
-/** @param {{ parts: { text: string }[] }} line */
-const text = (line) => line.parts.map((p) => p.text).join("");
+const text = (line: { parts: { text: string }[] }) => line.parts.map((p) => p.text).join("");
 
 describe("when the question may open by itself (decision 14)", () => {
   const calm = { focused: true, inField: false, sinceKeyMs: 10_000, otherOpen: false };
@@ -173,10 +173,8 @@ describe("the question's text (decision 13)", () => {
   // Text an agent or a page chooses is isolated, so a right-to-left run
   // in a title or a client name cannot reorder the rest of the question.
   test("the client name and titles are isolated, URLs are isolated left to right", () => {
-    const iso = (/** @type {any} */ line) =>
-      line.parts
-        .filter((/** @type {any} */ p) => p.isolate)
-        .map((/** @type {any} */ p) => [p.text, p.isolate]);
+    const iso = (line: any) =>
+      line.parts.filter((p: any) => p.isolate).map((p: any) => [p.text, p.isolate]);
     expect(iso(questionLine(read, { grantMinutes: 10 }))).toEqual([
       ["example-agent", "auto"],
       ["Pull requests · vimma-browser/vimma", "auto"],
@@ -193,7 +191,7 @@ describe("the question's text (decision 13)", () => {
   test("a hostile title of 300 characters is literal text cut at 60 columns", () => {
     const title = `<img src=x onerror=alert(1)>${"x".repeat(272)}`;
     const line = questionLine({ ...read, what: { ...read.what, title } }, { grantMinutes: 10 });
-    const shown = /** @type {string} */ (/"(.*)"/.exec(text(line))?.[1]);
+    const shown = /"(.*)"/.exec(text(line))?.[1] as string;
     expect(shown.startsWith("<img src=x onerror=alert(1)>")).toBe(true);
     expect(textWidth(shown)).toBe(60);
     expect(shown.endsWith("…")).toBe(true);
@@ -228,7 +226,7 @@ describe("the keys (decisions 13 and 20)", () => {
     for (const d of ["1", "5"]) {
       const r = promptKey(s, d);
       expect(r.kind).toBe("count");
-      s = { count: /** @type {{ count: string }} */ (r).count };
+      s = { count: (r as { count: string }).count };
     }
     expect(s.count).toBe("15");
     expect(promptKey(s, "a")).toEqual({ kind: "answer", answer: { kind: "grant", minutes: 15 } });
@@ -1069,8 +1067,7 @@ describe("vimma_show's question and notice (mcp-drive D2-D6)", () => {
 
 describe(":mcp log of a show that failed after the yes (mcp-drive D14)", () => {
   test("it reads as failed, not as allowed", () => {
-    /** @type {import("../src/agent/agent.mjs").LogEntry} */
-    const e = {
+    const e: LogEntry = {
       at: 0,
       client: "claude-code",
       tool: "vimma_show",
@@ -1144,7 +1141,7 @@ describe("a form allowed for the grant (mcp-consequence K5)", () => {
       tool: "vimma_activate",
       title: "Kori",
       detail: "ad",
-      outcome: /** @type {const} */ ("checkpoint-here"),
+      outcome: "checkpoint-here" as const,
     };
     const row = logRow(entry);
     expect(row).toMatch(/allowed \(checkpoint, for the grant\)$/);

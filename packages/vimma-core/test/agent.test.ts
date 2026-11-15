@@ -47,7 +47,7 @@ describe(":mcp on|off (decision 26: config wins; the question only for the comma
   });
 
   test("with [mcp] enabled in config.toml, :mcp on|off changes nothing and says to edit it", () => {
-    for (const word of /** @type {const} */ (["on", "off"])) {
+    for (const word of ["on", "off"] as const) {
       for (const config of [true, false]) {
         expect(planMcpSwitch(word, { pref: false, config })).toEqual({
           kind: "say",
@@ -98,7 +98,7 @@ describe("the agent workspace's picker row (decision 9)", () => {
   };
 
   test("its row reads ◇ agent, keeps its place and is marked; the others are as before", () => {
-    const items = workspaceItems(/** @type {any} */ (model), () => false, "w2");
+    const items = workspaceItems(model as any, () => false, "w2");
     expect(items[1]).toEqual({
       kind: "workspace",
       workspaceId: "w2",
@@ -111,8 +111,8 @@ describe("the agent workspace's picker row (decision 9)", () => {
       agent: true,
     });
     expect(AGENT_GLYPH).toBe("◇");
-    expect(items[0]).toEqual(workspaceItems(/** @type {any} */ (model))[0]);
-    expect(workspaceItems(/** @type {any} */ (model))[1]?.display).toBe("agent");
+    expect(items[0]).toEqual(workspaceItems(model as any)[0]);
+    expect(workspaceItems(model as any)[1]?.display).toBe("agent");
   });
 });
 

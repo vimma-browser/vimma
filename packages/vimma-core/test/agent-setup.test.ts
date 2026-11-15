@@ -22,13 +22,10 @@ import { budget } from "./budget.mjs";
 
 /**
  * A fake fetch: `routes` maps a URL to a reply body (an object, sent as JSON) or a status.
- * @param {Record<string, any>} routes
  */
-function fake(routes) {
-  /** @type {{ url: string, init: any }[]} */
-  const calls = [];
-  /** @type {any} */
-  const fetch = async (/** @type {string} */ url, /** @type {any} */ init) => {
+function fake(routes: Record<string, any>) {
+  const calls: { url: string; init: any }[] = [];
+  const fetch: any = async (url: string, init: any) => {
     calls.push({ url, init });
     if (!(url in routes)) throw new TypeError("NetworkError when attempting to fetch resource.");
     const r = routes[url];
@@ -169,7 +166,7 @@ describe("the context length of a local Ollama model", () => {
 describe("where a local Ollama model runs", () => {
   const GENERATE = "http://127.0.0.1:11434/api/generate";
   const PS = "http://127.0.0.1:11434/api/ps";
-  const ps = (/** @type {any[]} */ models) => ({ models });
+  const ps = (models: any[]) => ({ models });
 
   test("loads the model with no prompt, then reads its GPU share and context from ps", async () => {
     const { fetch, calls } = fake({
@@ -235,9 +232,9 @@ describe("where a local Ollama model runs", () => {
 // gone asks for another before a task starts rather than failing in its middle.
 describe("whether a local model is still there", () => {
   const MODELS = "http://127.0.0.1:11434/v1/models";
-  const local = (/** @type {string} */ model) => ({
+  const local = (model: string) => ({
     name: "local",
-    kind: /** @type {const} */ ("openai"),
+    kind: "openai" as const,
     endpoint: "http://127.0.0.1:11434/v1",
     model,
     vision: false,
@@ -277,7 +274,7 @@ describe("whether a local model is still there", () => {
   test("an agent CLI whose program is gone is not available, and says how to find it again", () => {
     const claude = {
       name: "claude",
-      kind: /** @type {const} */ ("cli"),
+      kind: "cli" as const,
       cli: "claude-code",
       endpoint: "",
       model: "sonnet",
@@ -323,7 +320,7 @@ describe("whether a local model is still there", () => {
     const { fetch, calls } = fake({});
     const hosted = { ...local("m"), endpoint: "https://llm.example/v1" };
     expect(await localModelState(fetch, hosted)).toBe("unknown");
-    const anthropic = { ...local("m"), kind: /** @type {const} */ ("anthropic") };
+    const anthropic = { ...local("m"), kind: "anthropic" as const };
     expect(await localModelState(fetch, anthropic)).toBe("unknown");
     expect(calls).toHaveLength(0);
   });
@@ -331,17 +328,19 @@ describe("whether a local model is still there", () => {
 
 describe("the picker's entries", () => {
   const OLLAMA = "http://127.0.0.1:11434/v1";
-  const provider = (
-    /** @type {string} */ name,
-    /** @type {string} */ endpoint,
-    /** @type {string} */ model,
-  ) => ({ name, kind: /** @type {const} */ ("openai"), endpoint, model, vision: false });
+  const provider = (name: string, endpoint: string, model: string) => ({
+    name,
+    kind: "openai" as const,
+    endpoint,
+    model,
+    vision: false,
+  });
   const local = provider("local", OLLAMA, "qwen3:14b");
   const hosted = provider("hosted", "https://llm.example/v1", "big");
   const found = [{ server: "ollama", endpoint: OLLAMA, models: ["qwen3:14b", "llama3:8b"] }];
 
   test("configured providers first, then what the servers list that none names", () => {
-    const states = new Map([[providerKey(local), /** @type {const} */ ("available")]]);
+    const states = new Map([[providerKey(local), "available" as const]]);
     const entries = pickerEntries({ providers: [local, hosted], found, states, current: null });
     expect(entries).toEqual([
       { provider: local, state: "available", current: false },
@@ -360,7 +359,7 @@ describe("the picker's entries", () => {
   });
 
   test("a configured model its server no longer lists is shown as gone", () => {
-    const states = new Map([[providerKey(local), /** @type {const} */ ("gone")]]);
+    const states = new Map([[providerKey(local), "gone" as const]]);
     const entries = pickerEntries({ providers: [local], found: [], states, current: null });
     expect(entries).toEqual([{ provider: local, state: "gone", current: false }]);
   });
@@ -373,7 +372,7 @@ describe("the picker's entries", () => {
       ),
     ).toEqual([false, true]);
     const gone = provider("ollama", OLLAMA, "mistral:7b");
-    const states = new Map([[providerKey(gone), /** @type {const} */ ("gone")]]);
+    const states = new Map([[providerKey(gone), "gone" as const]]);
     expect(pickerEntries({ providers: [], found, states, current: gone })[0]).toEqual({
       provider: gone,
       state: "gone",
@@ -394,16 +393,16 @@ describe("the picker's entries", () => {
   describe("an agent CLI's models", () => {
     const claude = {
       name: "claude",
-      kind: /** @type {const} */ ("cli"),
+      kind: "cli" as const,
       cli: "claude-code",
       endpoint: "",
       model: "sonnet",
       vision: false,
     };
-    const as = (/** @type {string} */ model) => ({ ...claude, model });
+    const as = (model: string) => ({ ...claude, model });
 
     test("each model the CLI takes is a row after the configured one, then another model", () => {
-      const states = new Map([[providerKey(claude), /** @type {const} */ ("available")]]);
+      const states = new Map([[providerKey(claude), "available" as const]]);
       const entries = pickerEntries({ providers: [claude], found: [], states, current: null });
       expect(entries).toEqual([
         { provider: claude, state: "available", current: false },
@@ -445,8 +444,7 @@ describe("the picker's entries", () => {
     });
 
     test("another CLI's rows come from its CLIS entry alone", () => {
-      /** @type {any} */
-      const clis = {
+      const clis: any = {
         "made-up": {
           id: "made-up",
           bin: "mu",
