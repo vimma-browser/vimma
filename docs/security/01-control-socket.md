@@ -152,7 +152,7 @@ only the agent workspace, and every request asks you first (§12).
   [`test_full_control_asks_only_while_mcp_is_on`](../../tests/browser/browser_vimma_mcp_control.js),
   [`prints_and_sends_a_code_while_mcp_is_on`](../../tools/vimma-ctl/tests/cli.rs),
   [`the_code_is_shown_only_after_its_auth_was_sent`](../../tools/vimma-ctl/src/client.rs),
-  [`a time ahead, within 1440 minutes and a minute: control stays on until then`](../../packages/vimma-core/test/agent-prompt.test.mjs),
+  [`a time ahead, within 1440 minutes and a minute: control stays on until then`](../../packages/vimma-core/test/agent-prompt.test.ts),
   [`test_control_on_minutes_turns_itself_off`](../../tests/browser/browser_vimma_mcp_control.js),
   [`waits_for_the_users_answer_while_mcp_is_on`](../../tools/vimma-ctl/tests/cli.rs),
   [`reports_refused_full_control_with_exit_4`](../../tools/vimma-ctl/tests/cli.rs)

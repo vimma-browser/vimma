@@ -58,10 +58,10 @@ vision; its key stays in login storage.
   as a socket request's, so every rule of §12 applies to it; it **must** work with MCP off, and
   `:mcp off` **must not** end its grants.
   [`test_works_with_mcp_off_and_enter_grants_without_a_question`](../../tests/browser/browser_vimma_agent_conversations.js),
-  [`a built-in connection's grant does not cover another conversation`](../../packages/vimma-core/test/agent-gate.test.mjs),
-  [`:mcp off ends the MCP grants and leaves a conversation's`](../../packages/vimma-core/test/agent-gate.test.mjs),
-  [`the built-in connection ids are the only ones that say built-in`](../../packages/vimma-core/test/agent-gate.test.mjs),
-  [`every agent tool has its command, and nothing else does`](../../packages/vimma-core/test/agent-results.test.mjs)
+  [`a built-in connection's grant does not cover another conversation`](../../packages/vimma-core/test/agent-gate.test.ts),
+  [`:mcp off ends the MCP grants and leaves a conversation's`](../../packages/vimma-core/test/agent-gate.test.ts),
+  [`the built-in connection ids are the only ones that say built-in`](../../packages/vimma-core/test/agent-gate.test.ts),
+  [`every agent tool has its command, and nothing else does`](../../packages/vimma-core/test/agent-results.test.ts)
 - M36. A conversation **must** see and act only on the agent tabs it owns (opened, given, or
   opened from one it owns) and **must** be refused another tab with the error a tab outside the
   agent workspace gets; an MCP agent **must** see and act only on the agent tabs no conversation
@@ -71,8 +71,8 @@ vision; its key stays in login storage.
   [`test_an_unloaded_tab_stays_its_conversations`](../../tests/browser/browser_vimma_agent_conversations.js),
   [`test_tabs_opened_from_an_owned_tab_stay_owned`](../../tests/browser/browser_vimma_agent_conversations.js),
   [`test_mcp_agent_sees_only_unowned_tabs`](../../tests/browser/browser_vimma_agent_conversations.js),
-  [`a tab belongs to the conversation that opened it`](../../packages/vimma-core/test/agent-owners.test.mjs),
-  [`a tab a page opened belongs to its opener's conversation`](../../packages/vimma-core/test/agent-owners.test.mjs)
+  [`a tab belongs to the conversation that opened it`](../../packages/vimma-core/test/agent-owners.test.ts),
+  [`a tab a page opened belongs to its opener's conversation`](../../packages/vimma-core/test/agent-owners.test.ts)
 - M37. A conversation's grant **must** be made only by the user sending a task without asking
   every step (`Enter`) or by an answer to its question; it **must** have no timer, **must** end
   when the task it was made for ends (done, stopped, at its budget or on an error), on a send
@@ -83,15 +83,15 @@ vision; its key stays in login storage.
   [`test_ctrl_enter_asks_every_step_and_ends_the_grant`](../../tests/browser/browser_vimma_agent_conversations.js),
   [`test_grant_ends_with_its_task_and_enter_grants_again`](../../tests/browser/browser_vimma_agent_conversations.js),
   [`test_checkpoint_and_show_ask_under_the_conversation_grant`](../../tests/browser/browser_vimma_agent_conversations.js),
-  [`a conversation grant has no expiry and ends on stop`](../../packages/vimma-core/test/agent-gate.test.mjs),
-  [`a conversation grant leaves checkpoints asking`](../../packages/vimma-core/test/agent-gate.test.mjs),
-  [`:mcp revoke ends a conversation grant as any other`](../../packages/vimma-core/test/agent-gate.test.mjs)
+  [`a conversation grant has no expiry and ends on stop`](../../packages/vimma-core/test/agent-gate.test.ts),
+  [`a conversation grant leaves checkpoints asking`](../../packages/vimma-core/test/agent-gate.test.ts),
+  [`:mcp revoke ends a conversation grant as any other`](../../packages/vimma-core/test/agent-gate.test.ts)
 - M38. An `agent-hello` whose client name starts with `built-in` (in any case, with any
   separator or none, after invisible characters or in compatibility forms) **must** be shown
   with ` (mcp)` after it, so no other program passes as the built-in agent in a question, a
   notice or `:mcp log`. Look-alike letters of other scripts are not caught; the name is a label
   and grants nothing.
-  [`a client named built-in over MCP is shown with (mcp)`](../../packages/vimma-core/test/agent-gate.test.mjs),
+  [`a client named built-in over MCP is shown with (mcp)`](../../packages/vimma-core/test/agent-gate.test.ts),
   [`test_mcp_agent_sees_only_unowned_tabs`](../../tests/browser/browser_vimma_agent_conversations.js)
 - M39. Model requests **must** go only to the configured endpoint, `https://` unless on a
   loopback address, with `credentials: "omit"` and `redirect: "error"`; `[agent] local_only`
@@ -103,16 +103,16 @@ vision; its key stays in login storage.
   local model runs **must** ask only Ollama's port on this machine, once, after the pick, with a
   generate request that names the model and carries no prompt, then `/api/ps`.
   [`test_requests_only_to_the_endpoint_without_credentials_or_redirects`](../../tests/browser/browser_vimma_agent_conversations.js),
-  [`posts to the endpoint without credentials or redirects, and parses the reply`](../../packages/vimma-core/test/agent-providers.test.mjs),
-  [`a refused endpoint makes no request`](../../packages/vimma-core/test/agent-providers.test.mjs),
+  [`posts to the endpoint without credentials or redirects, and parses the reply`](../../packages/vimma-core/test/agent-providers.test.ts),
+  [`a refused endpoint makes no request`](../../packages/vimma-core/test/agent-providers.test.ts),
   [`local_only refuses a remote endpoint`](../../packages/vimma-core/test/config-agent.test.ts),
   [`an endpoint off this machine must be https, and carry no user name`](../../packages/vimma-core/test/config-agent.test.ts),
-  [`lists the models of the servers that answer, with no cookies and no redirects`](../../packages/vimma-core/test/agent-setup.test.mjs),
-  [`the probe also asks the configured local endpoints, once each, never a remote one`](../../packages/vimma-core/test/agent-setup.test.mjs),
-  [`a provider off this machine, or Anthropic's API, gets no request`](../../packages/vimma-core/test/agent-setup.test.mjs),
-  [`its server lists it, or no longer does`](../../packages/vimma-core/test/agent-setup.test.mjs),
-  [`loads the model with no prompt, then reads its GPU share and context from ps`](../../packages/vimma-core/test/agent-setup.test.mjs),
-  [`asks only Ollama on this machine`](../../packages/vimma-core/test/agent-setup.test.mjs),
+  [`lists the models of the servers that answer, with no cookies and no redirects`](../../packages/vimma-core/test/agent-setup.test.ts),
+  [`the probe also asks the configured local endpoints, once each, never a remote one`](../../packages/vimma-core/test/agent-setup.test.ts),
+  [`a provider off this machine, or Anthropic's API, gets no request`](../../packages/vimma-core/test/agent-setup.test.ts),
+  [`its server lists it, or no longer does`](../../packages/vimma-core/test/agent-setup.test.ts),
+  [`loads the model with no prompt, then reads its GPU share and context from ps`](../../packages/vimma-core/test/agent-setup.test.ts),
+  [`asks only Ollama on this machine`](../../packages/vimma-core/test/agent-setup.test.ts),
   [`test_probe_only_on_setup_and_only_loopback`](../../tests/browser/browser_vimma_agent_conversations.js)
 - M40. An API key **must** be stored only as a `chrome://vimma-agent` login holding the key and
   the endpoint origin it was entered for, encrypted with OSKeyStore, and **must** be sent only to
@@ -128,7 +128,7 @@ vision; its key stays in login storage.
   [`test_a_key_goes_only_to_the_endpoint_it_was_stored_for`](../../tests/browser/browser_vimma_agent_keys.js),
   [`a key field in [agent] is an error, with its line`](../../packages/vimma-core/test/config-agent.test.ts),
   [`the key's value never appears in the error`](../../packages/vimma-core/test/config-agent.test.ts),
-  [`a provider error is cut and never contains the key`](../../packages/vimma-core/test/agent-providers.test.mjs)
+  [`a provider error is cut and never contains the key`](../../packages/vimma-core/test/agent-providers.test.ts)
 - M41. At most `[agent] max_running` conversations (default 3) **must** run a task at once. A
   task **must** stop at its budget (`max_steps`, `max_tokens`, `max_cost`), which nothing the
   model writes raises, and after the same call has its arguments refused or is denied three
@@ -136,8 +136,8 @@ vision; its key stays in login storage.
   with no question waiting **must** stop every running task.
   [`test_max_running`](../../tests/browser/browser_vimma_agent_conversations.js),
   [`test_ctrl_b_shift_a_stops_every_task`](../../tests/browser/browser_vimma_agent_conversations.js),
-  [`a task stops at max_steps`](../../packages/vimma-core/test/agent-budget.test.mjs),
-  [`a task ends after the same call is refused three times in a row`](../../packages/vimma-core/test/agent-loop.test.mjs),
+  [`a task stops at max_steps`](../../packages/vimma-core/test/agent-budget.test.ts),
+  [`a task ends after the same call is refused three times in a row`](../../packages/vimma-core/test/agent-loop.test.ts),
   [`max_running and keep_days parse within their bounds`](../../packages/vimma-core/test/config-agent.test.ts)
 
 **The chat window** (`ui/agent-chat.mjs`, `host/agent-chat-ops.mjs`, `host/agent-ui.mjs`):
@@ -154,10 +154,10 @@ for the user.
   from the loop's and the gate's events, never from a tool's result, so no page text a result
   carries reaches the window, and a tool name the model made up is shown on one line, cut.
   [`test_reply_rendered_as_text`](../../tests/browser/browser_vimma_agent_chat.js),
-  [`bidi overrides and control characters go; line breaks and tabs stay`](../../packages/vimma-core/test/agent-chat.test.mjs),
-  [`a reply line starting with a question glyph is indented under the agent label`](../../packages/vimma-core/test/agent-chat.test.mjs),
-  [`a step the gate says nothing of shows the loop's own name for it`](../../packages/vimma-core/test/agent-chat.test.mjs),
-  [`a tool name the model made up stays on one line, cut short`](../../packages/vimma-core/test/agent-chat.test.mjs)
+  [`bidi overrides and control characters go; line breaks and tabs stay`](../../packages/vimma-core/test/agent-chat.test.ts),
+  [`a reply line starting with a question glyph is indented under the agent label`](../../packages/vimma-core/test/agent-chat.test.ts),
+  [`a step the gate says nothing of shows the loop's own name for it`](../../packages/vimma-core/test/agent-chat.test.ts),
+  [`a tool name the model made up stays on one line, cut short`](../../packages/vimma-core/test/agent-chat.test.ts)
 - M43. A question of the open conversation **must** show only in the window's prompt slot, an
   element outside the transcript that only `host/agent-ui.mjs` fills from `AgentGate`, and in
   one place at a time (the question line when the window is closed or open on another
@@ -202,7 +202,7 @@ for the user.
   [`test_a_message_edited_while_its_key_is_read_is_not_sent`](../../tests/browser/browser_vimma_agent_picker_race.js),
   [`test_a_conversation_deleted_while_its_key_is_read_takes_its_message`](../../tests/browser/browser_vimma_agent_picker_race.js),
   [`test_forget_all_leaves_no_text_for_the_next_conversation`](../../tests/browser/browser_vimma_agent_picker_race.js),
-  [`the notice before the first task names the host and, when known, who runs it`](../../packages/vimma-core/test/agent-chat.test.mjs)
+  [`the notice before the first task names the host and, when known, who runs it`](../../packages/vimma-core/test/agent-chat.test.ts)
 - M46. A hosted provider's key **must** be typed only into the window's password field, which
   hands it to `AgentKeys` (M40) and is emptied at once; the key **must not** be drawn in the
   window, the transcript, the status bar or a notice (which may show its last four characters),
@@ -269,7 +269,7 @@ for the user.
   [`test_forget_all_on_first_use_asks_only_a_user_who_stayed`](../../tests/browser/browser_vimma_agent_picker_race.js),
   [`test_a_key_asked_by_a_send_says_nothing_of_an_unchanged_model`](../../tests/browser/browser_vimma_agent_picker_race.js),
   [`test_a_refused_add_provider_leaves_a_waiting_pick_alone`](../../tests/browser/browser_vimma_agent_picker_race.js),
-  [`an endpoint with a query or a fragment is refused`](../../packages/vimma-core/test/agent-providers.test.mjs)
+  [`an endpoint with a query or a fragment is refused`](../../packages/vimma-core/test/agent-providers.test.ts)
 - M47. A stored conversation **must** hold only the user's messages, each task's final reply and
   Vimma's own task summaries (with its title, provider, model and times), never a tool result,
   page text, an element list, a screenshot, a step line or an API key, and **must** be written
@@ -285,13 +285,13 @@ for the user.
   [`test_reopened_conversation_starts_with_a_clean_context`](../../tests/browser/browser_vimma_agent_store.js),
   [`test_clear_context`](../../tests/browser/browser_vimma_agent_store.js),
   [`test_only_the_final_reply_is_stored_and_temp_files_go`](../../tests/browser/browser_vimma_agent_store.js),
-  [`a long conversation keeps its newest entries within MAX_RECORD_BYTES`](../../packages/vimma-core/test/agent-store.test.mjs),
-  [`a single entry over MAX_RECORD_BYTES is cut`](../../packages/vimma-core/test/agent-store.test.mjs),
-  [`a stored conversation holds messages, replies and summaries, never tool output`](../../packages/vimma-core/test/agent-store.test.mjs),
-  [`the provider keeps its prices and never a key`](../../packages/vimma-core/test/agent-store.test.mjs),
-  [`refuses another version, a bad provider or an unknown entry`](../../packages/vimma-core/test/agent-store.test.mjs),
-  [`a task summary names outcome, counts and hosts, and no page text`](../../packages/vimma-core/test/agent-store.test.mjs),
-  [`http and https hosts only, once each, in order`](../../packages/vimma-core/test/agent-store.test.mjs)
+  [`a long conversation keeps its newest entries within MAX_RECORD_BYTES`](../../packages/vimma-core/test/agent-store.test.ts),
+  [`a single entry over MAX_RECORD_BYTES is cut`](../../packages/vimma-core/test/agent-store.test.ts),
+  [`a stored conversation holds messages, replies and summaries, never tool output`](../../packages/vimma-core/test/agent-store.test.ts),
+  [`the provider keeps its prices and never a key`](../../packages/vimma-core/test/agent-store.test.ts),
+  [`refuses another version, a bad provider or an unknown entry`](../../packages/vimma-core/test/agent-store.test.ts),
+  [`a task summary names outcome, counts and hosts, and no page text`](../../packages/vimma-core/test/agent-store.test.ts),
+  [`http and https hosts only, once each, in order`](../../packages/vimma-core/test/agent-store.test.ts)
 - M48. `d` in the conversation list (after a `y`) **must** remove that conversation's file;
   `:agent forget all` (after a `y` naming the count) **must** stop running tasks and remove every
   file of the store, those it cannot read and a save's temporary files included; `[agent] keep_days` **must** remove the files
@@ -303,14 +303,14 @@ for the user.
   [`test_delete_and_forget_all_remove_files`](../../tests/browser/browser_vimma_agent_store.js),
   [`test_a_deleted_conversations_task_writes_nothing_after`](../../tests/browser/browser_vimma_agent_store.js),
   [`test_keep_days`](../../tests/browser/browser_vimma_agent_store.js),
-  [`only with keep_days, and only when unused for longer`](../../packages/vimma-core/test/agent-store.test.mjs)
+  [`only with keep_days, and only when unused for longer`](../../packages/vimma-core/test/agent-store.test.ts)
 - M49. Setup **must** write to `config.toml` only the provider's name, kind, endpoint, model,
   vision and prices, never its key, and only when the file parses before and after the edit, with
   every other key unchanged.
   [`test_setup_writes_the_provider_and_default_to_config`](../../tests/browser/browser_vimma_agent_store.js),
   [`test_setup_creates_a_missing_config_with_the_provider`](../../tests/browser/browser_vimma_agent_store.js),
-  [`never writes a key, and refuses a file that does not parse`](../../packages/vimma-core/test/agent-config.test.mjs),
-  [`keeps every other line of the file`](../../packages/vimma-core/test/agent-config.test.mjs)
+  [`never writes a key, and refuses a file that does not parse`](../../packages/vimma-core/test/agent-config.test.ts),
+  [`keeps every other line of the file`](../../packages/vimma-core/test/agent-config.test.ts)
 - M50. Shortening older results (`[agent] keep_results`) **must** only take text out of a
   request, never add page text or move it out of the untrusted-content delimiters: a shortened
   result keeps only its first text item's first line and Vimma's note that the rest was left
@@ -321,10 +321,10 @@ for the user.
   among them) **must** be sent whole, and a shortened result **must** keep its call's id, so each
   step stays paired with what it did. The gate's rules do not depend on what the model still
   sees: a refusal stays enforced after its result is shortened.
-  [`the loop leaves out results older than keep_results in blocks, keeping their first line`](../../packages/vimma-core/test/agent-loop.test.mjs),
-  [`a page's line keeps its warning even when the page's title breaks the line`](../../packages/vimma-core/test/agent-loop.test.mjs),
-  [`the user's messages, the replies and refusals, the user's no among them, stay whole`](../../packages/vimma-core/test/agent-loop.test.mjs),
-  [`a request's prefix changes only when a block is left out`](../../packages/vimma-core/test/agent-loop.test.mjs)
+  [`the loop leaves out results older than keep_results in blocks, keeping their first line`](../../packages/vimma-core/test/agent-loop.test.ts),
+  [`a page's line keeps its warning even when the page's title breaks the line`](../../packages/vimma-core/test/agent-loop.test.ts),
+  [`the user's messages, the replies and refusals, the user's no among them, stay whole`](../../packages/vimma-core/test/agent-loop.test.ts),
+  [`a request's prefix changes only when a block is left out`](../../packages/vimma-core/test/agent-loop.test.ts)
 
 **Agent CLIs** ([builtin-agent-cli](../specs/builtin-agent-cli.md), on by default;
 `vimma.agent.cli.enabled = false` turns them off): a conversation can run an agent CLI the user has, Claude Code
@@ -445,8 +445,8 @@ own process, not a process group.
   [`test_the_conversations_service_is_agentchat_without_tickets_or_reset`](../../tests/browser/browser_vimma_host_services.js),
   [`test_path_checks_refuse_a_file_others_can_write`](../../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_a_shim_runs_as_the_cli_it_is_named_after`](../../tests/browser/browser_vimma_agent_cli_run.js),
-  [`a link on the way to it is judged by its owner`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`a program that runs a tool by the name it is started as is a dispatcher`](../../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a link on the way to it is judged by its owner`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`a program that runs a tool by the name it is started as is a dispatcher`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`test_no_process_before_a_task`](../../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_task_on_stdin_and_fixed_arguments`](../../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_runs_in_an_empty_private_directory_removed_after`](../../tests/browser/browser_vimma_agent_cli_run.js),
@@ -454,20 +454,20 @@ own process, not a process group.
   [`test_the_picker_lists_the_clis_models_and_uses_one`](../../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_a_run_folder_others_can_write_above_is_refused`](../../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_a_child_holding_the_output_does_not_keep_the_run`](../../tests/browser/browser_vimma_agent_cli_run.js),
-  [`claude-code's arguments are the fixture, with the model only from the provider`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`the task is never an argument`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`codex's arguments are the fixture`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`vimma-ctl's path is a TOML string whatever it holds`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`the task is never an argument, and goes to stdin, which then closes`](../../packages/vimma-core/test/agent-cli.test.mjs),
+  [`claude-code's arguments are the fixture, with the model only from the provider`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`the task is never an argument`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`codex's arguments are the fixture`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`vimma-ctl's path is a TOML string whatever it holds`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`the task is never an argument, and goes to stdin, which then closes`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`test_task_on_stdin_which_closes_and_fixed_arguments`](../../tests/browser/browser_vimma_agent_cli_codex.js),
   [`test_setup_finds_codex_with_its_version`](../../tests/browser/browser_vimma_agent_cli_codex.js),
-  [`a model that looks like an option is refused, not passed`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`a typed model is checked with the rule the arguments use`](../../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a model that looks like an option is refused, not passed`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`a typed model is checked with the rule the arguments use`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`a cli provider's model is refused by the rule its run uses`](../../packages/vimma-core/test/config-agent.test.ts),
   [`test_setup_asks_the_clis_model_and_saves_it`](../../tests/browser/browser_vimma_agent_cli_run.js),
-  [`the environment is Vimma's, minus the variables Vimma and Firefox set`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`anything else is refused, with the reason`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`gemini's arguments are the fixture`](../../packages/vimma-core/test/agent-cli.test.mjs),
+  [`the environment is Vimma's, minus the variables Vimma and Firefox set`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`anything else is refused, with the reason`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`gemini's arguments are the fixture`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`test_setup_finds_gemini_with_its_version`](../../tests/browser/browser_vimma_agent_cli_gemini.js),
   [`test_task_on_stdin_fixed_arguments_and_the_folders_settings`](../../tests/browser/browser_vimma_agent_cli_gemini.js),
   [`test_gemini_keeps_nothing_of_the_run_after_it`](../../tests/browser/browser_vimma_agent_cli_gemini.js),
@@ -477,9 +477,9 @@ own process, not a process group.
   [`test_a_run_folder_a_crash_left_goes_with_its_records`](../../tests/browser/browser_vimma_agent_cli_gemini.js),
   [`test_a_linked_registry_is_left_a_link`](../../tests/browser/browser_vimma_agent_cli_gemini.js),
   [`test_a_lock_gemini_holds_is_waited_for_not_broken`](../../tests/browser/browser_vimma_agent_cli_gemini.js),
-  [`only a run folder of vimma's is one of its runs`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`the registry keeps every other project, and names the runs' folders`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`a slug that is not a plain folder name is never a folder to remove`](../../packages/vimma-core/test/agent-cli.test.mjs)
+  [`only a run folder of vimma's is one of its runs`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`the registry keeps every other project, and names the runs' folders`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`a slug that is not a plain folder name is never a folder to remove`](../../packages/vimma-core/test/agent-cli.test.ts)
 - M56. The ticket **must** reach the CLI's `vimma-ctl mcp` only through the MCP configuration's
   `env`, in a file that is 0600 in that 0700 folder (for Gemini CLI, `.gemini/settings.json`
   there, in a 0700 `.gemini` folder, which it reads from its working directory once
@@ -510,23 +510,23 @@ own process, not a process group.
   [`test_ticket_never_in_cmdline_prefs_or_log`](../../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_vimma_ctl_beside_the_binary_is_judged_as_the_binary_is`](../../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_a_link_beside_the_binary_is_judged_where_it_leads`](../../tests/browser/browser_vimma_agent_cli_run.js),
-  [`a link through a hop in another folder has that folder and link judged`](../../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a link through a hop in another folder has that folder and link judged`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`test_only_vimmas_mcp_server_is_given`](../../tests/browser/browser_vimma_agent_cli_run.js),
-  [`the mcp configuration names only vimma-ctl, with the ticket in its environment`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`the ticket reaches vimma-ctl through codex's environment, never its arguments`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`codex's own commands get the ticket's variables empty, the user's policy kept`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`every other mcp server of codex's configuration is off for the run`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`codex's features that add mcp servers are off, and fail the run once renamed`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`a server name that is not a plain word, or is vimma's own, refuses the run`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`codex's own mcp servers are read from its list`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`a call to any other mcp server ends the run`](../../packages/vimma-core/test/agent-cli.test.mjs),
+  [`the mcp configuration names only vimma-ctl, with the ticket in its environment`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`the ticket reaches vimma-ctl through codex's environment, never its arguments`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`codex's own commands get the ticket's variables empty, the user's policy kept`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`every other mcp server of codex's configuration is off for the run`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`codex's features that add mcp servers are off, and fail the run once renamed`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`a server name that is not a plain word, or is vimma's own, refuses the run`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`codex's own mcp servers are read from its list`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`a call to any other mcp server ends the run`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`test_ticket_by_name_in_codexs_environment_never_an_argument`](../../tests/browser/browser_vimma_agent_cli_codex.js),
   [`test_every_other_server_of_codexs_configuration_is_off`](../../tests/browser/browser_vimma_agent_cli_codex.js),
   [`test_a_server_named_as_vimmas_refuses_the_run`](../../tests/browser/browser_vimma_agent_cli_codex.js),
   [`test_a_call_to_a_server_not_vimmas_ends_the_run`](../../tests/browser/browser_vimma_agent_cli_codex.js),
-  [`vimma's server is in the run folder's settings file, the ticket in its env`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`gemini trusts the run folder from its environment, and keeps its reports there`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`a tool of another mcp server that ran ends the run; one never offered does not`](../../packages/vimma-core/test/agent-cli.test.mjs)
+  [`vimma's server is in the run folder's settings file, the ticket in its env`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`gemini trusts the run folder from its environment, and keeps its reports there`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`a tool of another mcp server that ran ends the run; one never offered does not`](../../packages/vimma-core/test/agent-cli.test.ts)
 - M57. A CLI's steps in the browser **must** be the conversation's: asked and granted as its
   own (the `Enter` grant covers them, checkpoints and `vimma_show` still ask), and shown from the
   gate's record, never from the CLI's account of them. A CLI's output **must** be rendered as
@@ -535,14 +535,14 @@ own process, not a process group.
   the browser.
   [`test_enter_grant_covers_cli_steps_and_checkpoints_ask`](../../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_own_tool_lines_are_marked`](../../tests/browser/browser_vimma_agent_cli_run.js),
-  [`mcp__vimma tool calls in the stream are not transcript steps`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`text is passed as written, and the window renders it as text`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`each gate event of the conversation is a step, asked or run under the grant`](../../packages/vimma-core/test/agent-chat.test.mjs),
-  [`an own-tool line is marked, muted, and says when the cli's settings refused it`](../../packages/vimma-core/test/agent-chat.test.mjs),
-  [`mcp tool calls of vimma's server are not transcript steps`](../../packages/vimma-core/test/agent-cli.test.mjs),
+  [`mcp__vimma tool calls in the stream are not transcript steps`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`text is passed as written, and the window renders it as text`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`each gate event of the conversation is a step, asked or run under the grant`](../../packages/vimma-core/test/agent-chat.test.ts),
+  [`an own-tool line is marked, muted, and says when the cli's settings refused it`](../../packages/vimma-core/test/agent-chat.test.ts),
+  [`mcp tool calls of vimma's server are not transcript steps`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`test_codexs_own_commands_and_files_are_its_own_lines`](../../tests/browser/browser_vimma_agent_cli_codex.js),
-  [`a recorded gemini stream maps to replies, own-tool lines and usage`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`a step its policy refuses is marked refused`](../../packages/vimma-core/test/agent-cli.test.mjs)
+  [`a recorded gemini stream maps to replies, own-tool lines and usage`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`a step its policy refuses is marked refused`](../../packages/vimma-core/test/agent-cli.test.ts)
 - M58. A CLI's own shell, file and web tools are **outside** Vimma's gate (above). Before a
   conversation's first task with a CLI (and after a provider change), the window **must** say
   where page text goes and that those tools are not confined, and send nothing without a `y`;
@@ -552,10 +552,10 @@ own process, not a process group.
   no tool list (Codex), it **must** say `as its configuration allows`, never a list.
   [`test_first_task_notice_says_the_clis_own_tools_are_not_confined`](../../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_header_lists_the_clis_own_tools_from_its_init`](../../tests/browser/browser_vimma_agent_cli_run.js),
-  [`an agent CLI: its name, the model it reported, and that it decides where data goes`](../../packages/vimma-core/test/agent-chat.test.mjs),
+  [`an agent CLI: its name, the model it reported, and that it decides where data goes`](../../packages/vimma-core/test/agent-chat.test.ts),
   [`test_another_mcp_servers_tools_are_listed_as_its_own`](../../tests/browser/browser_vimma_agent_cli_run.js),
-  [`tools of another mcp server are the cli's own, listed and marked, not hidden`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`a run with no reported tool list says its configuration decides`](../../packages/vimma-core/test/agent-cli.test.mjs),
+  [`tools of another mcp server are the cli's own, listed and marked, not hidden`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`a run with no reported tool list says its configuration decides`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`test_header_and_start_line_name_codexs_configuration`](../../tests/browser/browser_vimma_agent_cli_codex.js)
 - M59. A CLI task's steps **must** be counted where they reach the gate, and the next one
   refused at `max_steps`, so a CLI cannot under-report them; `max_minutes` (default 30)
@@ -567,20 +567,20 @@ own process, not a process group.
   [`test_max_steps_counted_by_the_gate`](../../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_max_minutes_stops_the_task`](../../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_max_tokens_stops_a_turn_before_it_ends`](../../tests/browser/browser_vimma_agent_cli_run.js),
-  [`each model call's usage counts as it comes, once, and the result adds only the rest`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`cached input counts as input, as a hosted provider's does`](../../packages/vimma-core/test/agent-cli.test.mjs),
+  [`each model call's usage counts as it comes, once, and the result adds only the rest`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`cached input counts as input, as a hosted provider's does`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`test_max_cost_set_is_reported_as_not_applying`](../../tests/browser/browser_vimma_agent_cli_run.js),
-  [`a cli task stops at max_minutes`](../../packages/vimma-core/test/agent-budget.test.mjs),
-  [`reported cost is shown and max_cost does not stop a cli task`](../../packages/vimma-core/test/agent-budget.test.mjs),
-  [`a line over 1 MiB ends the run`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`a run over 64 MiB of output is stopped`](../../packages/vimma-core/test/agent-cli.test.mjs)
+  [`a cli task stops at max_minutes`](../../packages/vimma-core/test/agent-budget.test.ts),
+  [`reported cost is shown and max_cost does not stop a cli task`](../../packages/vimma-core/test/agent-budget.test.ts),
+  [`a line over 1 MiB ends the run`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`a run over 64 MiB of output is stopped`](../../packages/vimma-core/test/agent-cli.test.ts)
 - M60. `local_only` **must** refuse every CLI provider, in `config.toml`, in the picker and at
   each task; a `command`, `path`, `args` or `env` key in a CLI provider **must** be a config
   error, and so is an `endpoint`.
   [`test_local_only_refuses_a_cli`](../../tests/browser/browser_vimma_agent_cli_run.js),
   [`local_only refuses a cli provider`](../../packages/vimma-core/test/config-agent.test.ts),
   [`command, path, args and env in a cli provider are errors with their line`](../../packages/vimma-core/test/config-agent.test.ts),
-  [`an agent cli is written by name, kind, cli and model, never its path`](../../packages/vimma-core/test/agent-config.test.mjs)
+  [`an agent cli is written by name, kind, cli and model, never its path`](../../packages/vimma-core/test/agent-config.test.ts)
 - M61. A stop (`s`, `:agent stop`, `ctrl+b shift+a`), a task's budget and its end **must**
   revoke the ticket, closing its connection, before the CLI is signalled; then `SIGTERM`, and
   `SIGKILL` after 3 s.
