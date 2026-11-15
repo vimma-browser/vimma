@@ -111,6 +111,13 @@ class Client {
     for (const w of this.waiters.splice(0)) w();
   }
 
+  /** Resolves once a line has come or the connection ended; takes no line. */
+  async heard() {
+    while (!this.lines.length && this.closedWith === null) {
+      await /** @type {Promise<void>} */ (new Promise((resolve) => this.waiters.push(resolve)));
+    }
+  }
+
   /** The next line as an object, or null once the server closed without one. */
   async read() {
     while (!this.lines.length && this.closedWith === null) {
@@ -531,6 +538,14 @@ add_task(async function test_state_splits() {
     wrappers: gBrowser.splitViews.map((w) => w.tabs.map((t) => t.linkedPanel)),
     active: tabs.map((t) => t.linkedBrowser.docShellIsActive),
   });
+  // The switch from `lone` to d is asynchronous: the tab switcher turns lone's page off only once
+  // d's has painted, maybe while `state` is on its way (#1139). Snapshot once it is done.
+  await TestUtils.waitForCondition(() => !gBrowser._switcher, "the switch to S2 is done");
+  Assert.deepEqual(
+    firefox().active,
+    [false, false, true, true, false],
+    "only S2's pages are live: S1 hidden, lone not selected",
+  );
   const was = firefox();
   const result = await state(4);
   Assert.deepEqual(firefox(), was, "state changed no selection, wrapper or page (S9)");
@@ -806,9 +821,15 @@ add_task(async function test_limits() {
   // make every vimma-ctl call busy).
   /** @type {Client[]} */
   const flood = [];
-  for (let i = 0; i < 40; i++) flood.push(new Client(port));
+  // Each connects once the server has taken the one before (taking one evicts the one two
+  // before it). A burst beyond the listen backlog left connects the kernel held back: they came
+  // in after the flood had closed, and waited for a hello past the test's wait (#1139).
+  for (let i = 0; i < 40; i++) {
+    flood.push(new Client(port));
+    await flood[i - 2]?.heard();
+  }
   // All but the 2 newest are evicted: up to 16 linger 1 s to deliver their "busy", the rest
-  // close at once. (Connects beyond the listen backlog may only arrive seconds later.)
+  // close at once.
   let maxClosing = 0;
   await TestUtils.waitForCondition(() => {
     maxClosing = Math.max(maxClosing, VimmaControl.closing);
