@@ -36,6 +36,7 @@ import {
   wrapUntrusted,
 } from "../src/agent/agent.mjs";
 import { logCells, logRow } from "../src/agent/agent-prompt.mjs";
+import { budget } from "./budget.mjs";
 
 const MIN = 60_000;
 const READ = "vimma_read_page";
@@ -1183,7 +1184,7 @@ describe("the gate's copies (security.md M62)", () => {
     for (let i = 0; i < 22; i++) shared = { a: shared, b: shared };
     const start = performance.now();
     const copy = /** @type {any} */ (frozenCopy(shared));
-    expect(performance.now() - start).toBeLessThan(200);
+    expect(performance.now() - start).toBeLessThan(budget(200));
     /** @type {any} */
     let walk = copy;
     for (let i = 0; i < 22; i++) walk = i % 2 ? walk.a : walk.b;

@@ -37,6 +37,7 @@ import {
 } from "../src/agent/agent-act.mjs";
 import { AGENT_LINKS } from "../src/agent/agent-keys.mjs";
 import { parseHintReply } from "../src/page/hints.mjs";
+import { budget } from "./budget.mjs";
 /** @import { AgentElementTarget } from "../src/agent/agent-act.mjs" */
 /** @import { AgentElementInfo } from "../src/agent/agent-element.mjs" */
 
@@ -1194,7 +1195,7 @@ describe("console reads: bounded work and URLs without credentials (F24, M30)", 
     };
     const started = Date.now();
     const parsed = parseConsoleEntry(entry);
-    expect(Date.now() - started).toBeLessThan(200);
+    expect(Date.now() - started).toBeLessThan(budget(200));
     expect([...(parsed?.message ?? "")]).toHaveLength(AGENT_CONSOLE.message);
   });
 

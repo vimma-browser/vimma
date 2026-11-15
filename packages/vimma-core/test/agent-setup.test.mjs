@@ -18,6 +18,7 @@ import {
   providerKey,
   unavailableText,
 } from "../src/agent/agent-setup.mjs";
+import { budget } from "./budget.mjs";
 
 /**
  * A fake fetch: `routes` maps a URL to a reply body (an object, sent as JSON) or a status.
@@ -81,7 +82,7 @@ describe("the probe", () => {
     const { fetch } = fake({ "http://127.0.0.1:8080/v1/models": "hang" });
     const started = Date.now();
     expect(await probeLocal(fetch, { timeoutMs: 50 })).toEqual([]);
-    expect(Date.now() - started).toBeLessThan(1000);
+    expect(Date.now() - started).toBeLessThan(budget(1000));
   });
 
   test("model names that are not plain text are dropped", async () => {
