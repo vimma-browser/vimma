@@ -162,9 +162,9 @@ npm run e2e -- --updater engine/obj-x86_64-pc-linux-gnu --filter m6a-update --xv
 The harness unpacks the tarball (N), points its `[AppUpdate] URL` at a host on `127.0.0.1` with
 https (a CA made for the run, trusted only in each scenario's profile with `certutil`), makes N+1
 (a build ID 60 s later and a marker file) and a downgrade build (later still, Firefox 100.0),
-builds their complete MARs with `tools/update/mar.mjs` and signs them with libmar's test key
+builds their complete MARs with `tools/update/mar.ts` and signs them with libmar's test key
 `mycert` (exported from `engine/modules/libmar/tests/unit/data` with `pk12util`). Manifests come
-from `tools/update/manifest.mjs`, signed with an RSA key generated for the run, which the browser
+from `tools/update/manifest.ts`, signed with an RSA key generated for the run, which the browser
 pins only in automation (`vimma.update.testKeys` with `MOZ_DISABLE_NONLOCAL_CONNECTIONS=1` and
 the automation pref). `m6a-update-n-to-n1`'s install carries `updater-xpcshell` (Mozilla's test
 updater, which trusts `mycert`) as `updater`; `m6a-update-bad-signature`'s keeps the shipped one,

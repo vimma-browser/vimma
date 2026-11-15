@@ -7,26 +7,27 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
-import { MOZILLA_CERTS, checkBuild } from "../check-build.mjs";
+import { MOZILLA_CERTS, checkBuild } from "../check-build.ts";
 
-const SCRIPT = new URL("../check-build.mjs", import.meta.url).pathname;
+const SCRIPT = new URL("../check-build.ts", import.meta.url).pathname;
 const URL_LINE =
   "URL=https://updates.vimma.dev/updates/browser/%BUILD_TARGET%/%CHANNEL%/update.xml";
 
+type Cert = "primary.der" | "secondary.der" | "dep1.der" | "dep2.der" | "release_primary.der";
+
 /**
- * @typedef {"primary.der" | "secondary.der" | "dep1.der" | "dep2.der" | "release_primary.der"} Cert
- * @param {{ url?: string | null, channel?: string, updater?: Cert[], pref?: string }} [o]
- *   updater: the certificate names whose bytes the fake updater binary carries
+ * @param o updater: the certificate names whose bytes the fake updater binary carries
  */
-function fixture(o = {}) {
+function fixture(
+  o: { url?: string | null; channel?: string; updater?: Cert[]; pref?: string } = {},
+) {
   const root = tempDir("vimma-check-build-");
   const certs = join(root, "certs");
   const mozilla = join(root, "mozilla");
   const install = join(root, "vimma");
   for (const d of [certs, mozilla, join(install, "defaults/pref")])
     mkdirSync(d, { recursive: true });
-  /** @type {Record<Cert, Buffer>} */
-  const bytes = {
+  const bytes: Record<Cert, Buffer> = {
     "primary.der": Buffer.from("vimma-primary-certificate-bytes"),
     "secondary.der": Buffer.from("vimma-primary-certificate-bytes"),
     "dep1.der": Buffer.from("mozilla-dep1-test-certificate"),
@@ -35,8 +36,7 @@ function fixture(o = {}) {
   };
   writeFileSync(join(certs, "primary.der"), bytes["primary.der"]);
   writeFileSync(join(certs, "secondary.der"), bytes["secondary.der"]);
-  /** @type {Partial<Record<string, Buffer>>} */
-  const byName = bytes;
+  const byName: Partial<Record<string, Buffer>> = bytes;
   for (const f of MOZILLA_CERTS) {
     writeFileSync(join(mozilla, f), byName[f] ?? Buffer.from(`mozilla-${f}-bytes`));
   }
@@ -100,7 +100,7 @@ describe("check-build: an updater-enabled package", () => {
 
   it("CLI: exit 0 with a summary, 1 with every problem listed", () => {
     const ok = fixture();
-    const args = (/** @type {typeof ok} */ f) => [
+    const args = (f: typeof ok) => [
       SCRIPT,
       f.install,
       "--certs",
@@ -114,7 +114,7 @@ describe("check-build: an updater-enabled package", () => {
     try {
       execFileSync(process.execPath, args(bad), { encoding: "utf8", stdio: "pipe" });
     } catch (e) {
-      err = String(/** @type {{ stderr: string }} */ (e).stderr);
+      err = String((e as { stderr: string }).stderr);
     }
     expect(err).toMatch(/AppUpdate/);
     expect(err).toMatch(/dep1\.der/);
@@ -127,7 +127,7 @@ describe("check-build: an updater-enabled package", () => {
       try {
         execFileSync(process.execPath, [SCRIPT, ok.install, flag], { stdio: "pipe" });
       } catch (e) {
-        err = String(/** @type {{ stderr: string }} */ (e).stderr);
+        err = String((e as { stderr: string }).stderr);
       }
       expect(err, flag).toContain(`${flag} needs a value`);
     }

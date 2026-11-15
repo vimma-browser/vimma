@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // The update scenarios of the e2e harness (docs/specs/m6a-updater.md, "Tests", e2e): a local
-// update host on 127.0.0.1 over https, manifests built by tools/update/manifest.mjs and signed
-// with a key generated for the run, complete MARs built by tools/update/mar.mjs and signed with
+// update host on 127.0.0.1 over https, manifests built by tools/update/manifest.ts and signed
+// with a key generated for the run, complete MARs built by tools/update/mar.ts and signed with
 // libmar's test key `mycert`, and the installs they update. Nothing here touches the real update
 // key or updates.vimma.dev: the browser trusts the manifest key only in automation
 // (vimma.update.testKeys), and `mycert` only through `updater-xpcshell`, Mozilla's test build of
@@ -44,8 +44,8 @@ import {
   signedBytes as manifestBytes,
   spkiKeyId,
 } from "../../packages/vimma-core/src/updates/updates.mjs";
-import { buildManifest, marName } from "../update/manifest.mjs";
-import { buildMarFromDir, insertSignature, signedBytes as marBytes } from "../update/mar.mjs";
+import { buildManifest, marName } from "../update/manifest.ts";
+import { buildMarFromDir, insertSignature, signedBytes as marBytes } from "../update/mar.ts";
 import type { KeyObject } from "node:crypto";
 import type { ExecFileSyncOptions } from "node:child_process";
 import type { InstallState, UpdateServe } from "./scenario.ts";
@@ -126,7 +126,7 @@ export async function makeManifestKey(privateKey?: KeyObject): Promise<{
     : generateKeyPairSync("rsa", { modulusLength: 3072 });
   const spki = new Uint8Array(pair.publicKey.export({ type: "spki", format: "der" }));
   // Node's global Web Crypto (the same object as node:crypto's webcrypto), typed as the DOM's
-  // SubtleCrypto that spkiKeyId takes, as tools/update/manifest.mjs passes it.
+  // SubtleCrypto that spkiKeyId takes, as tools/update/manifest.ts passes it.
   const id = await spkiKeyId(globalThis.crypto.subtle, spki);
   return { id, slot: "primary", spki: base64Encode(spki), privateKey: pair.privateKey };
 }
@@ -147,7 +147,7 @@ export function signManifest(body: string, key: { id: string; privateKey: KeyObj
 const NO_PACKAGE = Object.freeze({ size: 1, sha512: "0".repeat(128) });
 
 /**
- * A manifest body from tools/update/manifest.mjs offering `offer`, whose `<patch>` is the local
+ * A manifest body from tools/update/manifest.ts offering `offer`, whose `<patch>` is the local
  * MAR instead of the release's (the one thing the release manifest does not let a caller set).
  */
 export function localManifest({
@@ -171,15 +171,15 @@ export function localManifest({
     },
   });
   const v = offer.displayVersion;
-  // The release's MAR URL exactly as manifest.mjs writes it (marUrl there), as a plain string.
+  // The release's MAR URL exactly as manifest.ts writes it (marUrl there), as a plain string.
   const released = `URL="${RELEASES_URL}/download/v${v}/${marName(v)}"`;
   if (body.split(released).length !== 2) {
-    throw new Error("manifest.mjs wrote no single <patch> URL to replace");
+    throw new Error("manifest.ts wrote no single <patch> URL to replace");
   }
   return body.split(released).join(`URL="${mar.url}"`);
 }
 
-/** A MAR from mar.mjs's `build` (one zeroed placeholder) signed with `privateKey`. */
+/** A MAR from mar.ts's `build` (one zeroed placeholder) signed with `privateKey`. */
 export function signMar(buf: Buffer, privateKey: KeyObject) {
   const signature = sign("sha384", marBytes(buf), {
     key: privateKey,
@@ -249,7 +249,7 @@ export function installTree({
 /**
  * N+1 from N's tree: a later build ID (what Firefox's updater and rule 4 compare), the marker
  * file, and with `appVersion` another Firefox version (the downgrade MAR's product version comes
- * from it, mar.mjs).
+ * from it, mar.ts).
  */
 export function nextTree({
   from,

@@ -2,7 +2,7 @@
 
 Status: implemented · Area: `tools/package/package.mjs`, `tools/package/rpm-smoke.sh`,
 `.github/workflows/release.yml`, `.github/workflows/pkgbuild.yml`,
-`.github/workflows/update-publish.yml`, `tools/update/manifest.mjs`,
+`.github/workflows/update-publish.yml`, `tools/update/manifest.ts`,
 `packages/vimma-core/src/updates.mjs` · Upstream patches: none · ADR: none
 
 Issue: [#294](https://github.com/vimma-browser/vimma/issues/294)
@@ -141,7 +141,7 @@ check would`.
 - vitest, `packages/vimma-core/test/updates.test.mjs`: the install type for
   `vimma-package=rpm`, `refuses a <vimmaRpm> with %s`, `rpm: download and check it, then
 install it with dnf or zypper`.
-- vitest, `tools/update/test/manifest.test.mjs` and `update-workflow.test.mjs`: the manifest's
+- vitest, `tools/update/test/manifest.test.ts` and `update-workflow.test.ts`: the manifest's
   `<vimmaRpm>` and the downloaded file list.
 - vitest, `tools/package/test/rpm-smoke.test.mjs`: the smoke script and its wiring in
   `release.yml` and `pkgbuild.yml`.

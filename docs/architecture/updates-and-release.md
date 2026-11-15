@@ -67,15 +67,15 @@ tag whose commit is on main").
    (`tools/release/build-id.mjs` fails a package where they differ), and builds with
    `VIMMA_UPDATES=1`: Firefox's updater with Vimma's channel, update host and certificates
    (`configs/common/mozconfig`). It then runs a smoke check, packages with mach, packs the MAR
-   tools (`tools/update/mar-tools.mjs`) and writes the CycloneDX SBOM (`tools/package/sbom.mjs`).
+   tools (`tools/update/mar-tools.ts`) and writes the CycloneDX SBOM (`tools/package/sbom.mjs`).
 2. **`ctl`** builds `vimma-ctl` as a static musl binary and its licence notices.
 3. **`package`** runs `tools/package/package.mjs`, which turns the mach tarball into the release
    tarball, the AppImage, the `.deb`, the `.rpm`, the `vimma-bin` PKGBUILD and SRCINFO, and
    `SHA256SUMS`, each with `vimma-ctl` beside the browser. It smoke-tests the `.deb`, the AppImage,
    the `.rpm` (Fedora and openSUSE containers) and the PKGBUILD (an Arch container), and checks the
-   tarball's updater with `tools/update/check-build.mjs`: it asks `updates.vimma.dev`, both channel
+   tarball's updater with `tools/update/check-build.ts`: it asks `updates.vimma.dev`, both channel
    files say `vimma`, and it embeds Vimma's certificates and none of Mozilla's. With
-   `UPDATES_ENABLED`, `tools/update/mar.mjs build` makes the complete MAR from the release tarball
+   `UPDATES_ENABLED`, `tools/update/mar.ts build` makes the complete MAR from the release tarball
    with Mozilla's `make_full_update.sh` and a zeroed signature placeholder
    (`addSignaturePlaceholder`).
 4. **`mar-sign`** calls `update-publish.yml`'s job of that name. It runs no repository code: it
@@ -83,12 +83,12 @@ tag whose commit is on main").
    placeholder, signs the bytes around it with the update key in Google Cloud KMS through GitHub's
    OIDC token, checks the signature with `openssl` and writes it in. The key admits only a token
    that names `update-publish.yml` on `main`.
-5. **`mar`** checks the result with no secret: `mar.mjs same-content` (only the signature bytes
-   differ from the placeholder), `mar.mjs verify` against `configs/updater/primary.der` and
+5. **`mar`** checks the result with no secret: `mar.ts same-content` (only the signature bytes
+   differ from the placeholder), `mar.ts verify` against `configs/updater/primary.der` and
    `secondary.der`, Mozilla's own `signmar` against an NSS database of each certificate, and a
    file-by-file `diff` of the MAR's contents against the release tarball. Only then does
    `SHA256SUMS` list it. A skipped or failed `mar-sign` fails here, loudly. Tests:
-   [mar.test.mjs](../../tools/update/test/mar.test.mjs).
+   [mar.test.ts](../../tools/update/test/mar.test.ts).
 6. **`sign`** (`SIGNING_ENABLED`; `id-token: write` only, no repository code) signs every asset
    and `SHA256SUMS` with `cosign sign-blob` keyless, leaving a `.sigstore.json` bundle beside
    each. Its certificate names `release.yml` at `refs/heads/main`, the identity that
@@ -112,7 +112,7 @@ also starts `aur.yml` and `homebrew.yml`.
 
 1. **`prepare`** (no secret) checks that the release is published and its tag is on `main`,
    downloads the target's files, verifies `SHA256SUMS` against its cosign bundle with the
-   `release.yml@refs/heads/main` identity, and runs `tools/update/manifest.mjs`:
+   `release.yml@refs/heads/main` identity, and runs `tools/update/manifest.ts`:
    `commits` lists the commits since the previous release, whose types and labels make the update
    a security release (`urgencyOf`); `build` checks every file against the sums (`checkAssets`),
    reads the build ID from the tarball's `application.ini` (`releaseInfo`), and writes the
@@ -123,7 +123,7 @@ also starts `aur.yml` and `homebrew.yml`.
    the body's shape for this channel and target, signs `vimma-update-xml-v1` and a newline
    followed by the body with Cloud KMS (RSASSA-PKCS1-v1_5, SHA-384), and checks it with `openssl`.
 3. **`publish`** (environment `update-publish`, the deploy key of `vimma-updates` alone) checks
-   the signed file again with `manifest.mjs verify` under the key the browser pins and with
+   the signed file again with `manifest.ts verify` under the key the browser pins and with
    `openssl`, commits it to `vimma-updates` at
    `public/updates/browser/Linux_x86_64-gcc3/vimma/update.xml` (never forced), and waits until
    `updates.vimma.dev` serves it. Without `UPDATES_ENABLED`, or in a dry run, it signs and checks
@@ -131,8 +131,8 @@ also starts `aur.yml` and `homebrew.yml`.
 
 `-f offer=nothing` publishes a signed manifest that offers no update, which pulls a bad release
 back. The macOS `.dmg` gets its own manifest under `Darwin_aarch64-gcc3`. Tests:
-[update-workflow.test.mjs](../../tools/update/test/update-workflow.test.mjs) and
-[manifest.test.mjs](../../tools/update/test/manifest.test.mjs); rules UP7 and UP14.
+[update-workflow.test.ts](../../tools/update/test/update-workflow.test.ts) and
+[manifest.test.ts](../../tools/update/test/manifest.test.ts); rules UP7 and UP14.
 
 ## 4. The pinned keys
 
@@ -143,7 +143,7 @@ Two copies of the same trust anchor ship in every build, both made from
   `npm run import` links them in (`tools/import/`), and the mozconfig refuses a `VIMMA_UPDATES=1`
   build whose copies are missing or differ from the committed ones, since Firefox would otherwise
   fall back to Mozilla's test keys or embed other keys.
-- `npm run gen-update-keys` (`tools/update/gen-update-keys.mjs`) writes their public keys into
+- `npm run gen-update-keys` (`tools/update/gen-update-keys.ts`) writes their public keys into
   `packages/vimma-core/src/updates/update-keys.mjs` (`UPDATE_KEYS`), which the manifest check uses.
   Until the offline recovery key exists, only the primary is pinned and the secondary slot repeats
   it.
@@ -192,7 +192,7 @@ UP11 and UP13.
 ## The nightly channel
 
 `nightly.yml` builds `main` every day the same way, with three differences. The package is set to
-the `vimma-nightly` update channel (`tools/update/channel.mjs`) and checked with `check-build.mjs`
+the `vimma-nightly` update channel (`tools/update/channel.ts`) and checked with `check-build.ts`
 for that channel; the build's own channel stays `vimma`, which picks the updater's certificates. Its
 cosign identity is `nightly.yml`, which `release.yml`'s checks never accept. And only while
 `NIGHTLY_RELEASE_ENABLED` and `UPDATES_ENABLED` are both on does it publish: the same `mar-sign` job
@@ -202,4 +202,4 @@ signs the MAR on the nightly channel, `publish` uploads to the rolling `nightly`
 `changes` job skips the build and the manifest is re-signed under a new serial, so a nightly install
 never sees a feed older than its 7-day limit (45 days for releases). Tests:
 [nightly-workflow.test.ts](../../tools/test/nightly-workflow.test.ts) and
-[nightly-manifest.test.mjs](../../tools/update/test/nightly-manifest.test.mjs).
+[nightly-manifest.test.ts](../../tools/update/test/nightly-manifest.test.ts).

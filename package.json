@@ -47,7 +47,7 @@
     "gen-mochitest-head": "node tools/gen-mochitest-head.ts",
     "gen-mochitest-modules": "node tools/gen-mochitest-modules.ts",
     "gen-brandings": "node tools/branding/brandings.ts",
-    "gen-update-keys": "node tools/update/gen-update-keys.mjs"
+    "gen-update-keys": "node tools/update/gen-update-keys.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.4",

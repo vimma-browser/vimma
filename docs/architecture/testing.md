@@ -283,7 +283,7 @@ ARCHITECTURE.md.
   build, whose mochitest run the pull request must report
   ([CONTRIBUTING.md](../../CONTRIBUTING.md), "Testing"). The nightly runs in the night (about
   00:00 to 02:00 UTC) only while the repository variable `NIGHTLY_ENABLED` is `true`. Its `changes` job
-  (`tools/update/nightly-change.mjs`) skips a scheduled build only when public nightlies are on
+  (`tools/update/nightly-change.ts`) skips a scheduled build only when public nightlies are on
   and the rolling release already records the same commit and Firefox version; anything else,
   a doubt included, builds.
 - **The updater end to end.** The e2e updater scenarios need a `VIMMA_UPDATES=1` build packaged

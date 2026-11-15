@@ -32,32 +32,30 @@ import {
   nightlyVersion,
   prepareNightly,
   prepareRelease,
-} from "../manifest.mjs";
+} from "../manifest.ts";
 
 const subtle = globalThis.crypto.subtle;
-const HASH = (/** @type {string} */ c) => c.repeat(128);
+const HASH = (c: string) => c.repeat(128);
 const BUILD = "20261112030512";
 const DL = "https://github.com/vimma-browser/vimma/releases/download/nightly";
 const MAR_URL = `${DL}/vimma-nightly-${BUILD}-linux-x86_64.complete.mar`;
 const TARBALL_URL = `${DL}/vimma-nightly-${BUILD}-linux-x86_64.tar.xz`;
 
-async function kmsKey(/** @type {"a" | "b"} */ name) {
+async function kmsKey(name: "a" | "b") {
   const pair = testKey(name);
   const der = new Uint8Array(pair.publicKey.export({ type: "spki", format: "der" }));
-  const pin = /** @type {const} */ ({
+  const pin = {
     id: await spkiKeyId(subtle, der),
     slot: "primary",
     spki: base64Encode(der),
-  });
+  } as const;
   return { pair, pin };
 }
 
 /**
  * Signs as Cloud KMS's raw PKCS#1 key does, over the DigestInfo the sign job builds.
- * @param {string} body
- * @param {Awaited<ReturnType<typeof kmsKey>>} k
  */
-function kmsSign(body, k) {
+function kmsSign(body: string, k: Awaited<ReturnType<typeof kmsKey>>) {
   const raw = privateEncrypt(
     { key: k.pair.privateKey, padding: constants.RSA_PKCS1_PADDING },
     digestInfo(body),
@@ -65,8 +63,8 @@ function kmsSign(body, k) {
   return body + signatureComment([{ key: k.pin.id, sig: raw.toString("base64") }]);
 }
 
-/** @type {Awaited<ReturnType<typeof kmsKey>>} */ let key;
-/** @type {Awaited<ReturnType<typeof kmsKey>>} */ let stranger;
+let key: Awaited<ReturnType<typeof kmsKey>>;
+let stranger: Awaited<ReturnType<typeof kmsKey>>;
 beforeAll(async () => {
   [key, stranger] = await Promise.all([kmsKey("a"), kmsKey("b")]);
 });
@@ -82,9 +80,8 @@ const update = () => ({
 /**
  * The nightly release's files as the download step leaves them: the tarball (a real tar.xz
  * with vimma/application.ini), the MAR and SHA256SUMS listing both.
- * @param {{ ini?: string, buildId?: string }} [options]
  */
-function fakeNightly({ ini, buildId = BUILD } = {}) {
+function fakeNightly({ ini, buildId = BUILD }: { ini?: string; buildId?: string } = {}) {
   const dir = tempDir("vimma-nightly-");
   const names = nightlyNames(buildId);
   const src = join(dir, "src");
@@ -95,7 +92,7 @@ function fakeNightly({ ini, buildId = BUILD } = {}) {
   );
   execFileSync("tar", ["-cJf", join(dir, names.tarball), "-C", src, "vimma"]);
   writeFileSync(join(dir, names.mar), `MAR1 nightly ${buildId}`);
-  const sha = (/** @type {string} */ n) =>
+  const sha = (n: string) =>
     createHash("sha256")
       .update(readFileSync(join(dir, n)))
       .digest("hex");
@@ -147,7 +144,7 @@ describe("buildNightlyManifest (spec §2, decision 42)", () => {
     );
     const parsed = parseManifest(body);
     expect(parsed.ok).toBe(true);
-    const m = /** @type {any} */ (parsed).manifest;
+    const m = (parsed as any).manifest;
     expect(m.channel).toBe("vimma-nightly");
     expect(m.update).toMatchObject({
       displayVersion: `0.1.18-nightly.${BUILD}`,
@@ -159,8 +156,8 @@ describe("buildNightlyManifest (spec §2, decision 42)", () => {
   });
 
   it("is offered to a nightly install of an older build, and to no release install", () => {
-    const m = /** @type {any} */ (
-      parseManifest(buildNightlyManifest({ serial: "20261112041207", update: update() }))
+    const m = (
+      parseManifest(buildNightlyManifest({ serial: "20261112041207", update: update() })) as any
     ).manifest;
     const running = {
       target: "Linux_x86_64-gcc3",
@@ -170,8 +167,7 @@ describe("buildNightlyManifest (spec §2, decision 42)", () => {
       serial: null,
       now: Date.UTC(2026, 10, 12, 5),
     };
-    const compare = (/** @type {string} */ a, /** @type {string} */ b) =>
-      a === b ? 0 : a < b ? -1 : 1;
+    const compare = (a: string, b: string) => (a === b ? 0 : a < b ? -1 : 1);
     expect(judgeManifest(m, { ...running, channel: "vimma-nightly" }, compare)).toMatchObject({
       ok: true,
       offer: { displayVersion: `0.1.18-nightly.${BUILD}` },
@@ -208,7 +204,7 @@ describe("buildNightlyManifest (spec §2, decision 42)", () => {
 
 describe("prepareNightly and checkSignedNightly (the nightly jobs' checks)", () => {
   const now = new Date(Date.UTC(2026, 10, 12, 4, 12, 7));
-  const prepare = (/** @type {Partial<Parameters<typeof prepareNightly>[0]>} */ over = {}) =>
+  const prepare = (over: Partial<Parameters<typeof prepareNightly>[0]> = {}) =>
     prepareNightly({
       buildId: BUILD,
       version: "0.1.18",
@@ -222,7 +218,7 @@ describe("prepareNightly and checkSignedNightly (the nightly jobs' checks)", () 
     const dir = fakeNightly();
     const { body, version } = prepare({ dir });
     expect(version).toBe(`0.1.18-nightly.${BUILD}`);
-    const m = /** @type {any} */ (parseManifest(body)).manifest;
+    const m = (parseManifest(body) as any).manifest;
     expect(m.serial).toBe("20261112041207");
     expect(m.channel).toBe("vimma-nightly");
     const mar = readFileSync(join(dir, nightlyNames(BUILD).mar));
@@ -275,8 +271,7 @@ describe("prepareNightly and checkSignedNightly (the nightly jobs' checks)", () 
     for (const days of [1, 6, 8]) {
       const later = new Date(now.getTime() + days * day);
       const { body } = prepare({ dir, published: first, now: later });
-      const lines = (/** @type {string} */ t) =>
-        t.split("\n").filter((l) => !/vimma-signature/.test(l));
+      const lines = (t: string) => t.split("\n").filter((l) => !/vimma-signature/.test(l));
       const changed = lines(body).filter((l, i) => l !== lines(first)[i]);
       expect(changed).toEqual([expect.stringMatching(/^<updates .* vimmaSerial="\d{14}">$/)]);
       const signed = kmsSign(body, key);
@@ -290,7 +285,7 @@ describe("prepareNightly and checkSignedNightly (the nightly jobs' checks)", () 
       };
       const { serial } = await checkSignedNightly(signed, opts);
       expect(BigInt(serial)).toBeGreaterThan(BigInt("20261112041207"));
-      const m = /** @type {any} */ (parseManifest(body)).manifest;
+      const m = (parseManifest(body) as any).manifest;
       const running = {
         channel: "vimma-nightly",
         target: "Linux_x86_64-gcc3",
@@ -300,8 +295,7 @@ describe("prepareNightly and checkSignedNightly (the nightly jobs' checks)", () 
         serial: "20261112041207",
         now: later.getTime(),
       };
-      const compare = (/** @type {string} */ a, /** @type {string} */ b) =>
-        a === b ? 0 : a < b ? -1 : 1;
+      const compare = (a: string, b: string) => (a === b ? 0 : a < b ? -1 : 1);
       expect(judgeManifest(m, running, compare)).toEqual({ ok: true, serial, offer: null });
       expect(staleDays(serial, "vimma-nightly", later.getTime())).toBeNull();
     }
@@ -419,15 +413,15 @@ describe("the two channels never cross (docs/security/16-update-check.md UP2, UP
   });
 });
 
-describe("tools/update/manifest.mjs --channel nightly (the CLI nightly-prepare and nightly-publish run)", () => {
-  const cli = new URL("../manifest.mjs", import.meta.url).pathname;
+describe("tools/update/manifest.ts --channel nightly (the CLI nightly-prepare and nightly-publish run)", () => {
+  const cli = new URL("../manifest.ts", import.meta.url).pathname;
 
   it("build writes the nightly body; verify refuses it unsigned, and says why", () => {
     const dir = fakeNightly();
     const out = join(dir, "update.xml.body");
     const common = ["--channel", "nightly", "--build-id", BUILD, "--version", "0.1.18"];
     execFileSync("node", [cli, "build", ...common, "--assets", dir, "--out", out]);
-    const parsed = /** @type {any} */ (parseManifest(readFileSync(out, "utf8")));
+    const parsed = parseManifest(readFileSync(out, "utf8")) as any;
     expect(parsed.manifest.channel).toBe("vimma-nightly");
     expect(parsed.manifest.update.displayVersion).toBe(`0.1.18-nightly.${BUILD}`);
     let error = "";
@@ -436,7 +430,7 @@ describe("tools/update/manifest.mjs --channel nightly (the CLI nightly-prepare a
         stdio: "pipe",
       });
     } catch (e) {
-      error = String(/** @type {any} */ (e).stderr);
+      error = String((e as any).stderr);
     }
     expect(error).toMatch(/manifest: .*signature/);
   });

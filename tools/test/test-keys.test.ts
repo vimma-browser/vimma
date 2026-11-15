@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
 import { TEST_KEY_NAMES, testKey } from "./test-keys.ts";
-import { CERT_DIR, readCertificates } from "../update/gen-update-keys.mjs";
+import { CERT_DIR, readCertificates } from "../update/gen-update-keys.ts";
 import { UPDATE_KEYS } from "../../packages/vimma-core/src/updates/update-keys.mjs";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
