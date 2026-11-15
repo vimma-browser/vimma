@@ -178,6 +178,8 @@ add_task(async function agent_clicks_never_synthesise_input_or_user_activation()
   const base = "chrome://browser/content/vimma/";
   const files = [
     "ctl/agent-commands.mjs",
+    "ctl/agent-errors.mjs",
+    "ctl/agent-tabs.mjs",
     "ctl/AgentAct.sys.mjs",
     "ctl/AgentDrive.sys.mjs",
     "actors/VimmaActors.sys.mjs",
@@ -202,6 +204,8 @@ add_task(async function agent_fills_never_set_a_file() {
   const base = "chrome://browser/content/vimma/";
   const files = [
     "ctl/agent-commands.mjs",
+    "ctl/agent-errors.mjs",
+    "ctl/agent-tabs.mjs",
     "ctl/AgentAct.sys.mjs",
     "ctl/AgentDrive.sys.mjs",
     "actors/VimmaActors.sys.mjs",
