@@ -925,7 +925,7 @@ set`; `an update that adds a permission marks it new`; `a rollback to more permi
 review, to fewer does not`; `ten versions are kept`.
 - `module-requests.test.mjs`: `a private window's request carries no address`; `Tab leaves the
 address out`; `at most 8 requests wait`; `a refinement carries the module's files`.
-- `keymap.test.mjs`: `module keys sit under config.toml's`; `a module key that hides a binding is
+- `keymap.test.ts`: `module keys sit under config.toml's`; `a module key that hides a binding is
 refused`; `[modules.<name>] keys rebinds and [] unbinds`; `module.run carries module/command`.
 - `config.test.mjs`: `[modules] enabled parses`; `a tier-1 proposal outside the allowed tables
 is refused`; `a tier-1 proposal that does not parse is refused`; `a tier-1 proposal that binds

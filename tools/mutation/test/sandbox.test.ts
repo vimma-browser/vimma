@@ -23,7 +23,7 @@ function testFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) return skippedDirs.has(path) ? [] : testFiles(path);
-    return entry.name.endsWith(".mjs") ? [path] : [];
+    return /\.(?:mjs|ts)$/.test(entry.name) ? [path] : [];
   });
 }
 

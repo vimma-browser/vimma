@@ -2,8 +2,8 @@ import { describe, test, expect } from "vitest";
 import { compileKeymap, KeymapError } from "../src/keys/keymap.mjs";
 import { parsePath } from "../src/config/toml.mjs";
 
-/** @import { Mode } from "../src/keys/modes.mjs" */
-/** @import { TrieNode } from "../src/keys/keymap.mjs" */
+import type { Mode } from "../src/keys/modes.mjs";
+import type { TrieNode } from "../src/keys/keymap.mjs";
 
 describe("compileKeymap", () => {
   test("compiles defaults without errors", () => {
@@ -120,14 +120,9 @@ describe("compileKeymap", () => {
 });
 
 describe("normal-mode extras (yy, p, P, gi, gu, gU, gf)", () => {
-  /**
-   * The action a key sequence reaches in `mode`, or undefined.
-   * @param {Mode} mode
-   * @param {string[]} keys
-   */
-  const actionAt = (mode, keys) => {
-    /** @type {TrieNode | undefined} */
-    let node = compileKeymap().trie(mode);
+  /** The action a key sequence reaches in `mode`, or undefined. */
+  const actionAt = (mode: Mode, keys: string[]) => {
+    let node: TrieNode | undefined = compileKeymap().trie(mode);
     for (const k of keys) node = node?.children.get(k);
     return node?.action?.id;
   };
@@ -179,19 +174,12 @@ describe("normal-mode extras (yy, p, P, gi, gu, gU, gf)", () => {
 });
 
 describe("I focuses the address bar", () => {
-  /**
-   * The action one key reaches in `mode`, or undefined.
-   * @param {Mode} mode
-   * @param {string} key
-   */
-  const at = (mode, key) => compileKeymap().trie(mode).children.get(key)?.action?.id;
+  /** The action one key reaches in `mode`, or undefined. */
+  const at = (mode: Mode, key: string) => compileKeymap().trie(mode).children.get(key)?.action?.id;
 
-  test.each(/** @type {Mode[]} */ (["normal", "visual", "panel"]))(
-    "%s mode: I runs urlbar.focus",
-    (mode) => {
-      expect(at(mode, "shift+i")).toBe("urlbar.focus");
-    },
-  );
+  test.each(["normal", "visual", "panel"] as Mode[])("%s mode: I runs urlbar.focus", (mode) => {
+    expect(at(mode, "shift+i")).toBe("urlbar.focus");
+  });
 
   test("insert mode leaves I to the text field", () => {
     expect(at("insert", "shift+i")).toBeUndefined();
@@ -212,7 +200,7 @@ describe("I focuses the address bar", () => {
 describe("function keys in [keys]", () => {
   test("an f5 or shift+f12 binding works in every mode", () => {
     const km = compileKeymap({ keys: { goto_picker: ["f8", "shift+f8"] } });
-    for (const mode of /** @type {const} */ (["normal", "insert", "visual", "panel", "help"])) {
+    for (const mode of ["normal", "insert", "visual", "panel", "help"] as const) {
       expect(km.trie(mode).children.get("f8")?.action?.name, mode).toBe("goto_picker");
       expect(km.trie(mode).children.get("shift+f8")?.action?.name, mode).toBe("goto_picker");
     }
@@ -229,7 +217,7 @@ describe("function keys in [keys]", () => {
 describe("[firefox] enable in the keymap", () => {
   test("drops the chord's default bindings, in every mode", () => {
     const km = compileKeymap({ firefox: { enable: ["ctrl+t", "esc"] } });
-    for (const mode of /** @type {const} */ (["normal", "insert", "panel"])) {
+    for (const mode of ["normal", "insert", "panel"] as const) {
       expect(km.trie(mode).children.get("ctrl+t"), mode).toBeUndefined();
     }
     expect(km.keysFor("new_tab")).toEqual(["ctrl+b c", "t"]);
@@ -287,7 +275,7 @@ describe("suggestion keys in insert mode", () => {
     expect(km.trie("normal").children.get("ctrl+b")?.children.get("shift+c")?.action?.name).toBe(
       "new_window",
     );
-    for (const mode of /** @type {const} */ (["normal", "visual", "panel", "help", "command"]))
+    for (const mode of ["normal", "visual", "panel", "help", "command"] as const)
       expect(km.trie(mode).children.get("ctrl+n"), mode).toBeUndefined();
   });
 
@@ -358,22 +346,15 @@ describe(": bindings in [modal.*]", () => {
 describe("macOS defaults: Firefox's macOS chords for the alt keys", () => {
   const linux = compileKeymap();
   const mac = compileKeymap({}, { mac: true });
-  /**
-   * @param {ReturnType<typeof compileKeymap>} km
-   * @param {string} chord
-   * @param {Mode} [mode]
-   */
-  const at = (km, chord, mode = "normal") => km.trie(mode).children.get(chord)?.action?.name;
+  const at = (km: ReturnType<typeof compileKeymap>, chord: string, mode: Mode = "normal") =>
+    km.trie(mode).children.get(chord)?.action?.name;
 
-  /** @type {Array<[string, string]>} */
-  const MAC = [
+  const MAC: Array<[string, string]> = [
     ["meta+left", "history_back"],
     ["meta+right", "history_forward"],
     ["meta+[", "history_back"],
     ["meta+]", "history_forward"],
-    ...[1, 2, 3, 4, 5, 6, 7, 8].map(
-      /** @returns {[string, string]} */ (n) => [`meta+${n}`, `select_tab_${n}`],
-    ),
+    ...[1, 2, 3, 4, 5, 6, 7, 8].map((n): [string, string] => [`meta+${n}`, `select_tab_${n}`]),
     ["meta+9", "select_last_tab"],
     ["meta+l", "focus_urlbar"],
     // goHome is alt+home on every platform, and Option+Home types no character.
@@ -381,7 +362,7 @@ describe("macOS defaults: Firefox's macOS chords for the alt keys", () => {
   ];
 
   test.each(MAC)("%s runs %s on macOS, in every mode", (chord, action) => {
-    for (const mode of /** @type {const} */ (["normal", "insert", "visual", "panel", "help"])) {
+    for (const mode of ["normal", "insert", "visual", "panel", "help"] as const) {
       expect(at(mac, chord, mode), `${chord} in ${mode}`).toBe(action);
     }
   });
@@ -433,8 +414,7 @@ describe("macOS defaults: Firefox's macOS chords for the alt keys", () => {
 
 // docs/specs/key-handling-batch.md § 2: ctrl+j and ctrl+m are Enter in a text field, as in Vim.
 describe("text-field keys before default [keys] bindings", () => {
-  /** @param {any} km @param {string} mode @param {string} key */
-  const at = (km, mode, key) => km.trie(mode).children.get(key)?.action?.name;
+  const at = (km: any, mode: string, key: string) => km.trie(mode).children.get(key)?.action?.name;
 
   test("ctrl+j and ctrl+m are unbound where keys type into a field, bound elsewhere", () => {
     const km = compileKeymap();
