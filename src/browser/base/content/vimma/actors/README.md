@@ -13,6 +13,10 @@ submission blocker, `submit-marks.mjs` (security.md M28), which both import by r
 that its marks and its observer stay one instance. `actor-for.mjs` finds a frame's actor for
 both.
 
+The agent's page work in a frame (its listed elements, clicks, fills, submissions, waits and
+console reads) is `agent-page.mjs`, which only `VimmaChild` may import (`RESTRICTED` in
+`tools/layering/layers.ts`; security.md section 12).
+
 **May import (layer 2, [ADR-026](../../../../../../docs/adr/026-module-layering.md)):** `core/` and the layer 1
 folders. Nothing here names a `host/` module, not even in a string: the parent actor, which
 only forwards reports to the host, is `host/VimmaParent.sys.mjs`, and `vimma.js` passes its URL

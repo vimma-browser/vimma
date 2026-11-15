@@ -123,7 +123,8 @@ button that does not submit a form cannot pay unasked when either signal is ther
 - **Card fields in other sites' frames.** Payment providers often draw the card fields in a
   frame of their own site inside the shop's page. Vimma's child actor runs in every frame
   (`actors/VimmaActors.sys.mjs:229-232`, `allFrames: true`, on http, https and a few local pages), so each frame's
-  child can report its own card fields to the parent.
+  child can report its own card fields to the parent. (Since changed: each frame's child answers
+  through its `AgentPage`, `actors/agent-page.mjs`, issue #1109.)
 - **The Payment Request API is off.** `dom.payments.request.enabled` defaults to `false`
   (`modules/libpref/init/StaticPrefList.yaml:4183`), so `PaymentRequest` does not exist in
   Firefox pages and is no signal.
