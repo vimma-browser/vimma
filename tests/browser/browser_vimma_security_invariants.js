@@ -184,6 +184,7 @@ add_task(async function agent_clicks_never_synthesise_input_or_user_activation()
     "actors/VimmaChild.sys.mjs",
     "actors/agent-fields.mjs",
     "actors/hint-collect.mjs",
+    "actors/page-scroll.mjs",
   ];
   const forbidden =
     /\bsend(?:Native)?(?:Mouse|Touch|Wheel|Key|Pointer)\w*\b|\bsynthesize\w*|\bnotifyUserGestureActivation\b/g;
