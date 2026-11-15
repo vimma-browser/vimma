@@ -44,6 +44,19 @@ function nodeJavaScript(p: string): boolean {
   return /\.(?:mjs|cjs|js)$/.test(p);
 }
 
+const NOT_MJS = "is a hook file that is not .mjs: hooks stay .mjs (ADR-025, decision 7)";
+
+/**
+ * The plugin's hooks run on each contributor's own Node, where a .ts file fails open (decision 7):
+ * everything under hooks/ is .mjs, but for hooks.json, which tells Claude Code what to run.
+ */
+function hookErrors(tracked: string[]): string[] {
+  return tracked
+    .filter((p) => p.startsWith("tools/claude-plugin/hooks/"))
+    .filter((p) => !p.endsWith(".mjs") && p !== "tools/claude-plugin/hooks/hooks.json")
+    .map((p) => `${p} ${NOT_MJS}`);
+}
+
 /** What breaks the ratchet: Node JavaScript under tools/ off the list, a listed file gone. */
 function ratchetErrors(tracked: string[], listed: string[]): string[] {
   const mjs = tracked.filter(nodeJavaScript);
@@ -88,6 +101,32 @@ describe("the .mjs files left under tools/ (ADR-025, #946)", () => {
     expect(ratchetErrors(["tools/claude-plugin/test/plugin.test.mjs"], [])).toEqual([
       "tools/claude-plugin/test/plugin.test.mjs is new: write it as .ts (ADR-025)",
     ]);
+  });
+
+  it("fails on a hook file that is not .mjs, but not on hooks.json", () => {
+    expect(
+      hookErrors([
+        "tools/claude-plugin/hooks/lib/x.ts",
+        "tools/claude-plugin/hooks/x.js",
+        "tools/claude-plugin/hooks/hooks.json",
+        "tools/claude-plugin/hooks/lib/guard.mjs",
+        "tools/claude-plugin/test/plugin.test.ts",
+      ]),
+    ).toEqual([
+      `tools/claude-plugin/hooks/lib/x.ts ${NOT_MJS}`,
+      `tools/claude-plugin/hooks/x.js ${NOT_MJS}`,
+    ]);
+  });
+
+  it("finds only .mjs files and hooks.json under tools/claude-plugin/hooks", () => {
+    const tracked = execFileSync("git", ["ls-files", "-z", "--", "tools/claude-plugin/hooks"], {
+      cwd: ROOT,
+      encoding: "utf8",
+    })
+      .split("\0")
+      .filter(Boolean);
+    expect(tracked).toContain("tools/claude-plugin/hooks/hooks.json");
+    expect(hookErrors(tracked)).toEqual([]);
   });
 
   it("leaves the base-branch guards out: they stay .mjs (decision 7)", () => {

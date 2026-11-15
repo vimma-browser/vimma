@@ -17,6 +17,10 @@ const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 
 const json = (path: string) => JSON.parse(readFileSync(path, "utf8"));
 
+/** The script of a hook command that is exactly `node "${CLAUDE_PLUGIN_ROOT}/<x>.mjs"`. */
+const hookScript = (command: string) =>
+  command.match(/^node "\$\{CLAUDE_PLUGIN_ROOT\}\/([\w/.-]+\.mjs)"$/)?.[1];
+
 function runHook(script: string, payload: object) {
   const run = spawnSync(process.execPath, [join(PLUGIN, "hooks", script)], {
     input: JSON.stringify(payload),
@@ -51,10 +55,21 @@ describe("manifests", () => {
     expect(matchers).toEqual(["Bash", "Edit|Write|NotebookEdit"]);
     for (const group of hooks) {
       for (const hook of group.hooks) {
-        const script = hook.command.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/([\w/.-]+\.mjs)/)?.[1];
+        const script = hookScript(hook.command);
         expect(script && existsSync(join(PLUGIN, script))).toBeTruthy();
       }
     }
+  });
+
+  // A hook that is not .mjs fails open on an older Node (ADR-025, decision 7), so the whole
+  // command is matched, not a name that merely contains .mjs.
+  it("a hook command is node running one .mjs script, and nothing else", () => {
+    expect(hookScript('node "${CLAUDE_PLUGIN_ROOT}/hooks/bash-guard.mjs"')).toBe(
+      "hooks/bash-guard.mjs",
+    );
+    expect(hookScript('node "${CLAUDE_PLUGIN_ROOT}/hooks/bash-guard.mjs.ts"')).toBeUndefined();
+    expect(hookScript('node "${CLAUDE_PLUGIN_ROOT}/hooks/bash-guard.ts"')).toBeUndefined();
+    expect(hookScript('node "${CLAUDE_PLUGIN_ROOT}/hooks/a.mjs" && node x.ts')).toBeUndefined();
   });
 
   it("the agent definition names no local paths", () => {
