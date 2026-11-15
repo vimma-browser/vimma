@@ -116,8 +116,7 @@ actions that are not implemented yet (parallel spec).
   used, and insert from `i` or `gi` lasts until `Esc` or a new document whatever the page does
   with focus; [insert-focus](insert-focus.md).)
 - **Scrolling** runs in the focused frame's child (`Services.focus.focusedContentBrowsingContext`
-  when it belongs to the browser, else the top frame), in its `PageScroll` (`actors/page-scroll.mjs`,
-  since issue #1109); a frame with nothing to scroll answers
+  when it belongs to the browser, else the top frame); a frame with nothing to scroll answers
   false and the top frame scrolls instead. Target: the nearest scrollable ancestor of the
   focused element (through shadow hosts), else `document.scrollingElement` when it can scroll,
   else the largest visible scrollable element (app shells, pdf.js). Amounts: `j k h l` 60 px
@@ -128,7 +127,8 @@ actions that are not implemented yet (parallel spec).
   page that still scrolls: the scroller under that point inside the layer, else the layer's
   largest visible one. The layer is told by its `position: fixed`, because Cookiebot's is a
   `role=region` and Usercentrics' a dialog without `aria-modal` in a shadow root; tested in
-  `browser_vimma_insert_scroll.js`, issue #864.)
+  `browser_vimma_insert_scroll.js`, issue #864.) (Since changed: the child hands scrolling to its
+  `PageScroll`, `actors/page-scroll.mjs`, issue #1109.)
 - **"Pass if not runnable", revisited.** Unbound bare keys in normal mode pass to the page: plan §3
   ("keys the dispatcher returns `pass` for continue untouched") and plan §2's `[unbind]`, which
   would be pointless if unbound keys were swallowed; sites' own single-key shortcuts (GitHub `s`,
