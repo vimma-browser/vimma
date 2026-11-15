@@ -129,7 +129,8 @@ describe("TypeScript under tools/ (ADR-025)", () => {
 
   it("imports each relative module by the name of a file that exists, as Node needs", () => {
     // tsc accepts `./x.js` for x.ts and Vitest resolves it, but Node does not.
-    const files = execFileSync("git", ["ls-files", "-z", "tools/**/*.ts"], {
+    // The root configs too: commitlint.config.ts imports from tools/.
+    const files = execFileSync("git", ["ls-files", "-z", "tools/**/*.ts", ...ROOT_TS_CONFIGS], {
       cwd: ROOT,
       encoding: "utf8",
     })
