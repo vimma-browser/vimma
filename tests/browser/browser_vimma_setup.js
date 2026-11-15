@@ -328,6 +328,34 @@ add_task(async function install_shows_the_permission_prompt() {
   await SpecialPowers.popPrefEnv();
 });
 
+// The prompt anchors to the page's browser; without one (browserFor found none) the add-on is
+// reported failed and the page still finishes, rather than handing Firefox a null anchor.
+add_task(async function install_without_the_pages_browser_fails_and_finishes() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["vimma.setup.amoApi", AMO_LOCAL],
+      ["xpinstall.signatures.required", false],
+    ],
+  });
+  const stub = await stubInstall();
+  const realBrowserFor = SetupHost.browserFor;
+  SetupHost.browserFor = () => null;
+  registerCleanupFunction(() => (SetupHost.browserFor = realBrowserFor));
+  const { tab, doc } = await openSetup();
+  await markUblock(doc);
+  await press(doc, "KEY_Enter", "KEY_Enter");
+  Assert.equal(step(doc), "summary");
+  await press(doc, "KEY_Enter");
+  await TestUtils.waitForCondition(() => step(doc) === "done", "the page finishes");
+  Assert.equal(doc.querySelector("#setup-results li:last-child")?.className, "failed");
+  Assert.strictEqual(await AddonManager.getAddonByID(UBLOCK), null, "nothing installed");
+  SetupHost.browserFor = realBrowserFor;
+  stub.restore();
+  await removeConfig();
+  BrowserTestUtils.removeTab(tab);
+  await SpecialPowers.popPrefEnv();
+});
+
 add_task(async function closing_before_summary_changes_nothing() {
   await SpecialPowers.pushPrefEnv({ set: [["vimma.setup.amoApi", AMO_LOCAL]] });
   const stub = await stubInstall();

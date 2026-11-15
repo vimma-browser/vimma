@@ -254,13 +254,15 @@ export const SetupHost = {
   /**
    * One add-on through Firefox's AMO path (decision 3): signature checks, enterprise policy and
    * the standard permission prompt are Firefox's own; Vimma never answers the prompt.
-   * @param {any} browser  the setup page's browser, which the prompt anchors to
+   * @param {MozBrowser | null} browser  the setup page's browser, which the prompt anchors to.
+   *   Without one, "failed": Firefox's permission prompt throws on a null anchor
+   *   (ExtensionsUI.sys.mjs getTabBrowser) and the install would never end.
    * @param {string} guid  one the page was shown
    * @returns {Promise<"installed" | "declined" | "failed">}
    */
   async install(browser, guid) {
     const entry = offered.get(guid);
-    if (!entry) return "failed";
+    if (!entry || !browser) return "failed";
     const AM = lazy.AddonManager;
     const install = await this.installFor(entry);
     return new Promise((resolve) => {
