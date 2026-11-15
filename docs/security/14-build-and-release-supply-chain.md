@@ -720,17 +720,20 @@ of the same commit read it too, so a tree without it could not be released anywa
   install or update commands, in any spelling npm accepts and with any options before them, nor a
   command that fetches the package it names (create, init or link with a package). npx and
   `npm exec` run only a binary of a devDependency, as the lockfile records it, never with `--yes`
-  or `--package`, and never with a package the code fills in. npm and npx spawned from code are
-  read from their argument lists, in JavaScript and Python, under any path or `.cmd` name and on
-  either side of a ternary, and from every string literal: npx passes `--no` first, since without
-  a terminal npm assumes `--yes`, and a program name held in a variable or given arguments that
-  are not a literal list is refused, since what it runs cannot be read. Any other program spawned
-  with a literal list is read as a command with its arguments, and each literal argument as a
-  command of its own, so a shell given one with `-c` is read too. A workflow's or composite
-  action's `run:` is also read as the shell gets it, with continued lines and folded scalars
-  joined. Where the test can read them, Yarn, pnpm and Bun install nothing and run nothing they
-  fetch, and corepack, which downloads them, is not used; a deliberately hidden spelling, such as
-  a command name kept in a shell variable or a quoted verb, is out of its reach and left to
+  or `--package`, and never with a package the code fills in unless `--no` keeps npx to what is
+  installed. npm and npx spawned from code are read from their argument lists, in JavaScript
+  (`execFileSync("npm", ["ci"])`, `Bun.spawn(["npm", "ci"])`) and Python (`["npm", "ci"]`),
+  under any path or `.cmd` name and on either side of a ternary, and from every string literal: a
+  list item the code fills in after the literals counts as any word, npx passes `--no` first,
+  since without a terminal npm assumes `--yes`, and a program name held in a variable or given
+  arguments that are not a list starting with a literal is refused, since what it runs cannot be
+  read. Any other program spawned with a literal list is read as a command with its arguments,
+  and each literal argument as a command of its own, so a shell given one with `-c` is read too.
+  A script's line continued with a backslash is read with the lines it runs on to, and a
+  workflow's or composite action's `run:` as the shell gets it, with continued lines and folded
+  scalars joined. Where the test can read them, Yarn, pnpm and Bun install nothing and run nothing
+  they fetch, and corepack, which downloads them, is not used; a deliberately hidden spelling,
+  such as a command name kept in a shell variable or a quoted verb, is out of its reach and left to
   review. No download is run by a shell or an interpreter, whether piped to it or substituted into
   it. pip installs only with `--require-hashes`; a crate is installed only with `--locked`, from a
   git source only at a fixed `--rev`; Cargo.lock is never rewritten by a command, and every cargo
@@ -751,6 +754,7 @@ of the same commit read it too, so a tree without it could not be released anywa
   distribution (`apt-get`, `brew`, `dnf`) are signed by their distribution and outside this rule.
   [`no tracked file installs a package outside the lockfile or pipes a download to a shell`](../../tools/test/supply-chain.test.ts),
   [`reads an npx call from code whose arguments span lines`](../../tools/test/supply-chain.test.ts),
+  [`reports a joined run: command once, on the line it starts on`](../../tools/test/supply-chain.test.ts),
   [`finds the command in %s: %j`](../../tools/test/supply-chain.test.ts),
   [`leaves prose and safe commands in %s: %j`](../../tools/test/supply-chain.test.ts),
   [`refuses %s`](../../tools/test/supply-chain.test.ts),
