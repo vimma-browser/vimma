@@ -54,6 +54,13 @@ describe("generate", () => {
     expect(() => generate(text)).toThrow(/-firefox-new-thing-brand-name/);
   });
 
+  it("keeps the Mozilla products Firefox 161 adds", () => {
+    // Firefox 161's "More from Mozilla" settings pane names its enterprise browser.
+    const text = `${FIXTURE}-firefox-enterprise-brand-name = Firefox Enterprise\n`;
+    expect(undecidedTerms(text)).toEqual([]);
+    expect(generate(text)).toContain("-firefox-enterprise-brand-name = Firefox Enterprise\n");
+  });
+
   it("refuses a renamed term that upstream no longer has", () => {
     const text = FIXTURE.replace("-firefox-home-brand-name = Firefox Home\n", "");
     expect(() => generate(text)).toThrow(/-firefox-home-brand-name/);

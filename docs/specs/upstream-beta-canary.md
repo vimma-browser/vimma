@@ -397,7 +397,8 @@ The canary reads public Mozilla data and the repository, and writes only issues.
   blocks, so they cannot mention users or render links, and the body is cut to 60,000
   characters with a pointer to the run's artifact (GitHub's limit is 65,536).
 - **Supply chain.** Actions are pinned by commit SHA, as in every Vimma workflow. No new
-  dependency: `canary.mjs` uses Node built-ins on the runner's Node, like `detect.mjs`.
+  dependency: `canary.mjs` uses Node built-ins on the runner's Node, like `detect.mjs`. (Since
+  changed: on `.nvmrc`'s Node through `actions/setup-node`, which TypeScript tools need, #946.)
 - **Release path.** The Beta pin exists only in the `test` job's own checkout and is never
   committed. A vitest asserts that `surfer.json` on `main` pins a release (`^\d+\.\d+(\.\d+)?$`),
   and `bump-surfer-json.py` refuses a Beta without `--allow-beta`, which only `e2e.yml`'s Beta
