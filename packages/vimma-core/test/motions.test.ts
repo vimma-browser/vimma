@@ -9,7 +9,7 @@ import {
   isFindKind,
 } from "../src/page/motions.mjs";
 
-/** @import { FindKind } from "../src/page/motions.mjs" */
+import type { FindKind } from "../src/page/motions.mjs";
 
 // Caret positions are between characters: 0 is before the first, text.length after the last.
 // Spec: docs/specs/m1-copy-mode.md § Settled (motions).
@@ -99,8 +99,7 @@ describe("^: first non-blank", () => {
 describe("f / F / t / T: find a character on the line", () => {
   const L = "a.b.c\nd.e";
   //         01234 5678
-  /** @type {Array<[FindKind, number, number]>} */
-  const findChars = [
+  const findChars: Array<[FindKind, number, number]> = [
     ["f", 0, 2], // after the first "."
     ["f", 2, 4], // repeated from there: the next one
     ["t", 0, 1], // before the first "."

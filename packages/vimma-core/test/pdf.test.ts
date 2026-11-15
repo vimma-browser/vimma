@@ -84,7 +84,7 @@ describe("parsePdfState", () => {
       ["no height", { ...good, height: undefined }],
       ["no zoom", { ...good, zoom: undefined }],
       ["a zoom as a string", { ...good, zoom: "1" }],
-      ["a zoom as an object", { ...good, zoom: { valueOf: /** @returns {number} */ () => 1 } }],
+      ["a zoom as an object", { ...good, zoom: { valueOf: (): number => 1 } }],
       ["a zoom of NaN", { ...good, zoom: NaN }],
       ["an infinite zoom", { ...good, zoom: Infinity }],
       ["a zoom of 0", { ...good, zoom: 0 }],
@@ -168,11 +168,8 @@ describe("pdfPageText", () => {
 
 // Delivery PR 3: zathura's page, zoom and layout keys (decisions 6 to 8; security.md V7).
 describe("pdfPageTarget", () => {
-  /**
-   * @param {Parameters<typeof pdfPageTarget>[0]} op
-   * @param {number} count
-   */
-  const at = (op, count, page = 3, pages = 12) => pdfPageTarget(op, count, page, pages);
+  const at = (op: Parameters<typeof pdfPageTarget>[0], count: number, page = 3, pages = 12) =>
+    pdfPageTarget(op, count, page, pages);
   test("G and gg go to the last and first page, with a count to that page", () => {
     expect(at("last", 0)).toBe(12);
     expect(at("first", 0)).toBe(1);
@@ -259,7 +256,7 @@ describe("pdf marks", () => {
   test("a letter or a digit names a mark", () => {
     for (const c of ["a", "Z", "0", "9"]) expect(isPdfMarkChar(c)).toBe(true);
     for (const c of ["", "ab", "'", " ", "<Esc>", "ä", undefined]) {
-      expect(isPdfMarkChar(/** @type {any} */ (c))).toBe(false);
+      expect(isPdfMarkChar(c as any)).toBe(false);
     }
   });
   test("marks are kept per document, without the fragment", () => {

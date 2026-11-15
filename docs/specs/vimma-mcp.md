@@ -1085,7 +1085,7 @@ m7-a11y.
   unchanged; the cycle skips it and the picker lists it last; closing it keeps its container and
   a cookie set in it; `:mcp forget` clears the cookie; renaming is refused; `:mcp on` with an
   existing workspace `agent` names it and makes no second one.
-- `browser_vimma_mcp_agent.js`: the switches and `role-off`; each role runs only its commands;
+- `browser_vimma_mcp_agent.js` and `browser_vimma_mcp_agent_grants.js` (split by area, #1135): the switches and `role-off`; each role runs only its commands;
   the agent sees only the agent workspace (a `work` tab's id is `invalid-args` with no question;
   a private window's tab is never listed); opens are background and checked (`javascript:`,
   `data:`, `file:`, `about:config` are `invalid-args` before any question; no `[[routes]]` rule

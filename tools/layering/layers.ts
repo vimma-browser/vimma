@@ -91,4 +91,14 @@ export const RESTRICTED: Record<string, Restricted> = {
     review:
       "a new caller of the agent's page work needs a security review (docs/security/12-agents-mcp.md section 12, M25 to M28)",
   },
+  /**
+   * The chat window's API key entry (docs/security/12-agents-mcp-built-in-agent.md M46): the
+   * masked key field that never reveals the key, and the calls that store, clear and delete it.
+   * The chat window and its view, which builds the field, are its only callers.
+   */
+  "ui/agent-chat-key.mjs": {
+    importers: ["ui/agent-chat.mjs", "ui/agent-chat-view.mjs"],
+    review:
+      "a new caller of the API key entry or its masked field needs a security review (docs/security/12-agents-mcp-built-in-agent.md M46)",
+  },
 };

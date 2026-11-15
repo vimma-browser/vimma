@@ -9,9 +9,10 @@
 // AgentPrompt that only host/agent-ui.mjs fills, with a question of the gate) and the input.
 // Every value is set as text (security.md C1): no Markdown, HTML, image or link the model wrote
 // becomes anything but characters; agent-chat-view.mjs builds and draws the box from this
-// window's state, through its one text-only `el`. Keys reach it from VimmaHost's capture
-// listener while focus is inside it; they are fixed, as a picker's are, because the window's key
-// in the keymap comes in its own pull request (B13). The host that builds it hands it the
+// window's state, through its one text-only `el`, and agent-chat-key.mjs holds the API key entry
+// and its masked field (M46). Keys reach it from VimmaHost's capture listener while focus is
+// inside it; they are fixed, as a picker's are, because the window's key in the keymap comes in
+// its own pull request (B13). The host that builds it hands it the
 // agent's services (the conversations, the agent CLIs, the API keys, config.toml's refusal,
 // setup's write to it and the [agent] providers): ui/ sits below agent/, config/ and host/, and
 // reaches none of them (ADR-026).
@@ -33,7 +34,12 @@ import {
   modelPrompt,
 } from "../core/agent-cli.mjs";
 import { checkEndpoint, isLocalEndpoint } from "../core/agent-providers.mjs";
-import { pickerEntries, placementText, unavailableText } from "../core/agent-setup.mjs";
+import {
+  pickerEntries,
+  placementText,
+  sameProvider,
+  unavailableText,
+} from "../core/agent-setup.mjs";
 import { lastUseText } from "../core/agent-store.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { AgentPrompt } from "./agent-prompt.mjs";
@@ -44,14 +50,9 @@ import {
   refused,
   render as renderView,
 } from "./agent-chat-view.mjs";
+import { askKey, cancelKey, clearKey, deleteKey, storeKey } from "./agent-chat-key.mjs";
 
-export {
-  CHAT_ID,
-  CHAT_INPUT_ID,
-  CHAT_KEY_ID,
-  CHAT_LOG_ID,
-  CHAT_SLOT_ID,
-} from "./agent-chat-view.mjs";
+export { CHAT_ID, CHAT_INPUT_ID, CHAT_LOG_ID, CHAT_SLOT_ID } from "./agent-chat-view.mjs";
 
 const lazy = /** @type {Lazy<"PrivateBrowsingUtils">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -61,13 +62,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
 /** Anthropic's API, which setup's "add: Anthropic" uses (Behaviour 3). */
 const ANTHROPIC_ENDPOINT = "https://api.anthropic.com";
 const ANTHROPIC_MODEL = "claude-sonnet-4-5";
-
-/**
- * Whether two providers are the same model at the same endpoint under the same name.
- * @param {AgentProviderConfig} a @param {AgentProviderConfig} b
- */
-const sameProvider = (a, b) =>
-  a.endpoint === b.endpoint && a.model === b.model && a.name === b.name;
 
 /** Where a message that was not sent is when its conversation was deleted meanwhile. */
 const DROPPED = "its conversation was deleted, and the message with it";
@@ -1324,115 +1318,31 @@ export class AgentChatWindow {
   }
 
   /**
-   * The masked key field for `provider` (Behaviour 3): what is typed there goes only to login
-   * storage, encrypted with OSKeyStore (B8), and is never drawn, logged or kept by the window.
+   * The masked key field for `provider` (Behaviour 3); agent-chat-key.mjs.
    * @param {AgentProviderConfig} provider
    */
   askKey(provider) {
-    if (!this.opened) this.open();
-    this.clearKey();
-    this.keyFor = provider;
-    this.view = "key";
-    this.listed++;
-    this.render();
-    /** @type {HTMLInputElement} */ (this.keyInput).focus();
+    askKey(this, provider);
   }
 
-  /** Esc in the key field: back to the transcript, which empties the field. */
+  /** See agent-chat-key.mjs. */
   cancelKey() {
-    this.insert();
+    cancelKey(this);
   }
 
-  /** The field holds a key only while it is typed: any way out of it empties it (M46). */
+  /** See agent-chat-key.mjs. */
   clearKey() {
-    if (this.keyInput) this.keyInput.value = "";
-    this.keyFor = null;
+    clearKey(this);
   }
 
-  async storeKey() {
-    const field = /** @type {HTMLInputElement} */ (this.keyInput);
-    const provider = this.keyFor;
-    // Out of the field at once: it holds the key only while it is typed.
-    const key = field.value.trim();
-    field.value = "";
-    if (this.storing) {
-      this.host.say("agent: a key is still being stored; enter this one again once it is", true);
-      return undefined;
-    }
-    if (!provider) return this.insert();
-    if (!key) {
-      this.host.say(`agent: ${provider.name} needs an API key`, true);
-      return undefined;
-    }
-    // One store at a time: a second Enter while this one runs neither errs nor races it.
-    this.storing = true;
-    this.keyFor = null;
-    // Login storage can wait on the keyring. A user who leaves the field meanwhile still has
-    // the key stored, as Enter asked, but the view and the conversation's model stay as they
-    // are: they may be typing another provider's key, which the transcript would empty.
-    const shownAt = this.listed;
-    let hint;
-    try {
-      await this.services.keys.set(provider.name, key, provider.endpoint);
-      hint = await this.services.keys.hint(provider.name, provider.endpoint);
-    } catch (e) {
-      // The error's text is not shown: it could carry what was typed.
-      console.error("vimma agent: the key could not be stored", /** @type {any} */ (e)?.name);
-      this.host.say(`agent: the key for ${provider.name} could not be stored`, true);
-      // Typed again only by a user still in the field.
-      if (this.listed === shownAt) this.keyFor = provider;
-      return undefined;
-    } finally {
-      this.storing = false;
-    }
-    // A user who clicked away (a page, the address bar) keeps their focus, and the model too;
-    // the emptied key field, for no provider now, gives way to the transcript, unfocused.
-    const stayed = this.listed === shownAt && this.focused;
-    if (stayed) {
-      this.useProvider(provider);
-      this.insert();
-    } else if (this.listed === shownAt) {
-      this.toTranscript({ focus: false });
-    }
-    // Its provider is kept either way, so that the stored key has one after a restart.
-    const note = await this.remember(provider);
-    const failed = note.startsWith(";");
-    // The model and the key's end only, never the key (M46).
-    const what = `${provider.name} · ${provider.model}`;
-    // A key asked for the shown conversation's own model (a send's) leaves nothing to pick.
-    const own =
-      this.conversation !== null &&
-      sameProvider(this.services.chat.get(this.conversation).provider, provider);
-    const unchanged =
-      stayed || own
-        ? ""
-        : failed
-          ? `; the model was left as it was: add ${what} in :agent model again to use it`
-          : `; the model was left as it was: pick ${what} in :agent model to use it`;
-    this.host.say(`agent: ${provider.name}: ${hint ?? "key stored"}${note}${unchanged}`, failed);
-    return undefined;
+  /** See agent-chat-key.mjs. */
+  storeKey() {
+    return storeKey(this);
   }
 
-  /** `x` on a provider in the picker: its stored key goes, after a y (Behaviour 3). */
+  /** See agent-chat-key.mjs. */
   deleteKey() {
-    const p = this.rows[this.row]?.provider;
-    if (!p) return;
-    this.host.ask(`Delete the API key of ${p.name}? y/N`, () => {
-      this.services.keys.delete(p.name).then(
-        (/** @type {boolean} */ had) => {
-          this.host.say(
-            had ? `agent: deleted the key of ${p.name}` : `agent: ${p.name} has no key`,
-          );
-          // Any model list shown, a picker opened again since included, since its hints were
-          // read before the key went; setup's agent CLI list is left alone (issue #1001).
-          if (this.opened && this.view === "models" && this.listed === this.modelsAt) {
-            this.reloadedAt = this.listed;
-            this.loadModels();
-          }
-        },
-        (/** @type {any} */ e) => console.error("vimma agent: deleting the key failed", e?.name),
-      );
-    });
+    deleteKey(this);
   }
 
   deleteRow() {
