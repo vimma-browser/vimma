@@ -15,11 +15,9 @@ import { tempDir } from "../../test/temp-dir.mjs";
 const PLUGIN = fileURLToPath(new URL("..", import.meta.url));
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 
-/** @param {string} path */
-const json = (path) => JSON.parse(readFileSync(path, "utf8"));
+const json = (path: string) => JSON.parse(readFileSync(path, "utf8"));
 
-/** @param {string} script @param {object} payload */
-function runHook(script, payload) {
+function runHook(script: string, payload: object) {
   const run = spawnSync(process.execPath, [join(PLUGIN, "hooks", script)], {
     input: JSON.stringify(payload),
     encoding: "utf8",
@@ -31,7 +29,7 @@ describe("manifests", () => {
   it("the repository marketplace lists the plugin under its manifest name", () => {
     const manifest = json(join(PLUGIN, ".claude-plugin", "plugin.json"));
     const market = json(join(ROOT, ".claude-plugin", "marketplace.json"));
-    const entry = market.plugins.find((/** @type {any} */ p) => p.name === manifest.name);
+    const entry = market.plugins.find((p: any) => p.name === manifest.name);
     expect(entry?.source).toBe("./tools/claude-plugin");
     expect(market.owner?.name).toBeTruthy();
   });
@@ -42,14 +40,14 @@ describe("manifests", () => {
   it("neither manifest pins a version, so each commit is a new version", () => {
     const manifest = json(join(PLUGIN, ".claude-plugin", "plugin.json"));
     const market = json(join(ROOT, ".claude-plugin", "marketplace.json"));
-    const entry = market.plugins.find((/** @type {any} */ p) => p.name === manifest.name);
+    const entry = market.plugins.find((p: any) => p.name === manifest.name);
     expect(manifest).not.toHaveProperty("version");
     expect(entry).not.toHaveProperty("version");
   });
 
   it("every hook command runs a script that exists", () => {
     const hooks = json(join(PLUGIN, "hooks", "hooks.json")).hooks.PreToolUse;
-    const matchers = hooks.map((/** @type {any} */ h) => h.matcher).sort();
+    const matchers = hooks.map((h: any) => h.matcher).sort();
     expect(matchers).toEqual(["Bash", "Edit|Write|NotebookEdit"]);
     for (const group of hooks) {
       for (const hook of group.hooks) {
@@ -93,7 +91,7 @@ describe("bash-guard.mjs", () => {
 
   describe("runs the repository's commitlint on a merge message", () => {
     // One hook run (node, then the commitlint CLI) per test, so each has its own time budget.
-    const merge = (/** @type {string} */ subject) => {
+    const merge = (subject: string) => {
       const dir = tempDir("vimma-guard-msg-");
       writeFileSync(join(dir, "good.txt"), "Explains why.\n");
       return runHook("bash-guard.mjs", {
