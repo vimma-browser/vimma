@@ -15,6 +15,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/actors/caret.mjs": typeof import("../src/browser/base/content/vimma/actors/caret.mjs");
   "chrome://browser/content/vimma/actors/enter-key.mjs": typeof import("../src/browser/base/content/vimma/actors/enter-key.mjs");
   "chrome://browser/content/vimma/actors/grep-matcher.mjs": typeof import("../src/browser/base/content/vimma/actors/grep-matcher.mjs");
+  "chrome://browser/content/vimma/actors/grep-page.mjs": typeof import("../src/browser/base/content/vimma/actors/grep-page.mjs");
   "chrome://browser/content/vimma/actors/grep-worker.mjs": typeof import("../src/browser/base/content/vimma/actors/grep-worker.mjs");
   "chrome://browser/content/vimma/actors/hint-collect.mjs": typeof import("../src/browser/base/content/vimma/actors/hint-collect.mjs");
   "chrome://browser/content/vimma/actors/page-scroll.mjs": typeof import("../src/browser/base/content/vimma/actors/page-scroll.mjs");

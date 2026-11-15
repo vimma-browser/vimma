@@ -954,6 +954,90 @@ add_task(async function grep_end_resets_the_frames_generation() {
   await actor.sendQuery("Vimma:GrepEnd", {});
 });
 
+// The child hands live grep's messages to its GrepPage (actors/grep-page.mjs), which reads only
+// the document and window of the actor it is given: driven here with a stand-in actor.
+add_task(async function the_grep_page_helper_searches_the_document_it_is_given() {
+  await reset();
+  const tab = await openFixture({ title: "Helper", t: "first line|a needle here|last line" });
+  const seen = await SpecialPowers.spawn(tab.linkedBrowser, [], async () => {
+    const { GrepPage } = ChromeUtils.importESModule(
+      "chrome://browser/content/vimma/actors/grep-page.mjs",
+    );
+    const { GrepMatcher } = ChromeUtils.importESModule(
+      "chrome://browser/content/vimma/actors/grep-matcher.mjs",
+    );
+    const doc = content.document;
+    const field = doc.createElement("input");
+    doc.body.append(field);
+    field.focus();
+    const actor = /** @type {JSWindowActorChild} */ (
+      /** @type {unknown} */ ({
+        document: doc,
+        contentWindow: content,
+        browsingContext: { parent: null },
+      })
+    );
+    const selCon = docShell
+      .QueryInterface(Ci.nsIInterfaceRequestor)
+      .getInterface(Ci.nsISelectionDisplay)
+      .QueryInterface(Ci.nsISelectionController);
+    const grep = new GrepPage(actor, {
+      activeElement: () => doc.activeElement,
+      editable: (/** @type {Element} */ el) => el === field,
+      selCon: () => selCon,
+    });
+    const before = GrepMatcher.frames.length;
+    const badQuery = await grep.search({ query: "", gen: 1 });
+    const badGen = await grep.search({ query: "needle", gen: -1 });
+    const found = await grep.search({ query: "needle", gen: 3 });
+    const older = await grep.search({ query: "needle", gen: 2 });
+    const match = found.matches[0];
+    const preview = grep.preview({ start: match.start, end: match.end });
+    const badPreview = grep.preview({ start: match.end, end: match.start });
+    const jumped = await grep.jump({ query: "needle", ...match, text: "needle" });
+    const selected = content.getSelection()?.toString();
+    const blurred = doc.activeElement !== field;
+    const held = GrepMatcher.frames.length - before;
+    grep.end();
+    const dropped = GrepMatcher.frames.length - before;
+    // After end() a new session's first generation is answered again.
+    const again = (await grep.search({ query: "needle", gen: 0 }))?.count;
+    grep.end();
+    return {
+      badQuery,
+      badGen,
+      count: found.count,
+      older,
+      preview: preview && preview.lines[preview.line],
+      badPreview,
+      jumped,
+      selected,
+      blurred,
+      held,
+      dropped,
+      again,
+    };
+  });
+  Assert.deepEqual(
+    seen,
+    {
+      badQuery: null,
+      badGen: null,
+      count: 1,
+      older: null,
+      preview: "a needle here",
+      badPreview: null,
+      jumped: true,
+      selected: "needle",
+      blurred: true,
+      held: 1,
+      dropped: 0,
+      again: 1,
+    },
+    "searches, previews and jumps in its own document, and end() drops its text",
+  );
+});
+
 add_task(async function one_worker_a_process_and_none_for_a_blank_frame() {
   await reset();
   const tab = await openFixture({ title: "Workers", t: "top", frames: 3, blank: 1 });
