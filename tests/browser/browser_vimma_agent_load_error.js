@@ -23,6 +23,9 @@ const { AgentGate } = ChromeUtils.importESModule(
 const { builtinHello, forgetAgentConnection, runAgentCommand } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/agent-commands.mjs",
 );
+const { AgentAct } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/AgentAct.sys.mjs",
+);
 const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
 );
@@ -116,4 +119,20 @@ add_task(async function test_mcp_open_names_the_error_page() {
   Assert.equal(r.result.loadError, "deniedPortAccess");
   c.close();
   BrowserTestUtils.removeTab(tabById(r.result.tab));
+});
+
+// The top window global's document URI comes first; a window global that has none yet (its
+// documentURI is nullable in WindowGlobalActors.webidl) leaves the browser's copy to say.
+add_task(async function test_a_window_global_without_a_document_uri_falls_back() {
+  const error = Services.io.newURI("about:neterror?e=deniedPortAccess&u=http%3A//127.0.0.1%3A9/");
+  const standIn = (/** @type {nsIURI | null} */ wgUri) =>
+    /** @type {MozBrowser} */ (
+      /** @type {unknown} */ ({
+        browsingContext: { currentWindowGlobal: { documentURI: wgUri } },
+        documentURI: error,
+      })
+    );
+  Assert.equal(AgentAct.loadError(standIn(null)), "deniedPortAccess", "the browser's URI says");
+  const page = Services.io.newURI("https://example.com/");
+  Assert.equal(AgentAct.loadError(standIn(page)), null, "the window global's URI comes first");
 });
