@@ -12,22 +12,21 @@ import { compileKeymap } from "../src/keys/keymap.mjs";
 import { formatDefaultsToml } from "../src/config/defaults.mjs";
 import { MODES } from "../src/keys/modes.mjs";
 
-/** @param {string[]} lines */
-const toml = (...lines) => lines.join("\n") + "\n";
+import type { ConfigError } from "../src/config/config.mjs";
 
-/** @param {string} text */
-function errorsOf(text) {
+const toml = (...lines: string[]) => lines.join("\n") + "\n";
+
+function errorsOf(text: string) {
   const r = parseConfig(text);
   expect(r.config).toBeNull();
   expect(r.keymap).toBeNull();
   return r.errors;
 }
 
-/** @param {string} text */
-function oneError(text) {
+function oneError(text: string) {
   const errors = errorsOf(text);
   expect(errors).toHaveLength(1);
-  return /** @type {import("../src/config/config.mjs").ConfigError} */ (errors[0]);
+  return errors[0] as ConfigError;
 }
 
 describe("parseConfig: valid input", () => {
@@ -460,10 +459,9 @@ describe("migrate", () => {
   });
 
   test("a chain of steps runs in order", () => {
-    /** @type {Record<number, (c: Record<string, unknown>) => Record<string, unknown>>} */
-    const registry = {
+    const registry: Record<number, (c: Record<string, unknown>) => Record<string, unknown>> = {
       0: (c) => ({ ...c, schema: 1, trail: [0] }),
-      1: (c) => ({ ...c, schema: 2, trail: [.../** @type {number[]} */ (c.trail), 1] }),
+      1: (c) => ({ ...c, schema: 2, trail: [...(c.trail as number[]), 1] }),
     };
     const r = migrate({}, 0, 2, registry);
     expect(r.applied).toEqual(["0→1", "1→2"]);

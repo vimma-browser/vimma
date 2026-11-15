@@ -7,20 +7,18 @@ import { DEFAULT_HINT_CHARS } from "../src/page/hints.mjs";
 import { PANES_MAX_DEFAULT, PANES_MAX_LIMIT } from "../src/panes/panes.mjs";
 import { MAX_SPLITS_DEFAULT } from "../src/panes/splits.mjs";
 
-/** @param {string[]} lines */
-const toml = (...lines) => lines.join("\n") + "\n";
-/** @param {string[]} lines */
-const v2 = (...lines) => toml("schema = 2", ...lines);
+import type { ResolvedConfig } from "../src/config/config.mjs";
 
-/** @param {string} text */
-function ok(text) {
+const toml = (...lines: string[]) => lines.join("\n") + "\n";
+const v2 = (...lines: string[]) => toml("schema = 2", ...lines);
+
+function ok(text: string) {
   const r = parseConfig(text);
   expect(r.errors).toEqual([]);
-  return /** @type {import("../src/config/config.mjs").ResolvedConfig} */ (r.config);
+  return r.config as ResolvedConfig;
 }
 
-/** @param {string} text */
-function errors(text) {
+function errors(text: string) {
   const r = parseConfig(text);
   expect(r.config).toBeNull();
   return r.errors.map((e) => ({
@@ -826,7 +824,7 @@ describe("[mcp]", () => {
   });
 
   test("each bound is an error that says the range", () => {
-    const at = (/** @type {string} */ line) => errors(v2("[mcp]", line))[0];
+    const at = (line: string) => errors(v2("[mcp]", line))[0];
     expect(at("ask_timeout = 5")).toEqual({
       line: 3,
       path: "mcp.ask_timeout",
@@ -865,7 +863,7 @@ describe("[mcp]", () => {
 
   // Decision 31 b, f (sub-PR 2c): the quarantine folder and the size cap.
   test("download_dir is ~ or absolute, never home, / or the Downloads folder itself", () => {
-    const at = (/** @type {string} */ line) => errors(v2("[mcp]", line))[0];
+    const at = (line: string) => errors(v2("[mcp]", line))[0];
     expect(ok(v2("[mcp]", 'download_dir = "~/agent-files"')).mcp.downloadDir).toBe("~/agent-files");
     expect(at('download_dir = "agent-files"')).toEqual({
       line: 3,
@@ -884,7 +882,7 @@ describe("[mcp]", () => {
 
   // No hidden folder of home, nothing anyone can write (security.md M12).
   test("download_dir is never in a hidden folder of home or in /tmp, /var/tmp, /dev/shm", () => {
-    const at = (/** @type {string} */ line) => errors(v2("[mcp]", line))[0]?.message;
+    const at = (line: string) => errors(v2("[mcp]", line))[0]?.message;
     expect(at('download_dir = "~/.local/bin"')).toBe("must not be in a hidden folder (.local)");
     expect(at('download_dir = "~/a/.cache"')).toBe("must not be in a hidden folder (.cache)");
     for (const dir of ["/tmp/q", "/var/tmp", "/dev/shm/x", "/tmp"]) {
@@ -894,7 +892,7 @@ describe("[mcp]", () => {
   });
 
   test("download_max_mb is 1 to 4096", () => {
-    const at = (/** @type {string} */ line) => errors(v2("[mcp]", line))[0];
+    const at = (line: string) => errors(v2("[mcp]", line))[0];
     expect(ok(v2("[mcp]", "download_max_mb = 1")).mcp.downloadMaxMb).toBe(1);
     expect(at("download_max_mb = 0")).toEqual({
       line: 3,
@@ -906,7 +904,7 @@ describe("[mcp]", () => {
   });
 
   test("clamav_max_age_days is 1 to 90, 7 by default", () => {
-    const at = (/** @type {string} */ line) => errors(v2("[mcp]", line))[0];
+    const at = (line: string) => errors(v2("[mcp]", line))[0];
     expect(ok(v2("[mcp]", "notify = true")).mcp.clamavMaxAgeDays).toBe(7);
     expect(ok(v2("[mcp]", "clamav_max_age_days = 1")).mcp.clamavMaxAgeDays).toBe(1);
     expect(at("clamav_max_age_days = 0")).toEqual({
@@ -919,7 +917,7 @@ describe("[mcp]", () => {
   });
 
   test('workspace follows the workspace-name rules and is never "private"', () => {
-    const at = (/** @type {string} */ line) => errors(v2("[mcp]", line))[0];
+    const at = (line: string) => errors(v2("[mcp]", line))[0];
     expect(at('workspace = "private"')).toEqual({
       line: 3,
       path: "mcp.workspace",
