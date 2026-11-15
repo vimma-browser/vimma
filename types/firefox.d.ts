@@ -317,25 +317,23 @@ interface URL {
   readonly URI: nsIURI;
 }
 
-// Vimma's own modules by chrome:// URL, typed as their source modules. Empty here, so the
-// product's ChromeUtils.importESModule calls return `any` as before; the browser tests' program
-// (tests/tsconfig.json) fills it from the generated types/mochitest/modules.d.ts.
+// The modules Vimma imports by URL, typed as their exports: Vimma's own (types/vimma-modules.d.ts,
+// generated from jar.mn) and the Firefox modules the product imports (types/firefox-modules.d.ts).
 interface VimmaModules {}
+// What importESModule gives for any other URL: `unknown` here, so a product import of a module
+// the map lacks is an error where its exports are read; the browser tests' program, which imports
+// many Firefox modules the map does not type, declares it `any` (types/mochitest/harness.d.ts).
+interface UnmappedESModule {}
 
 // engine/dom/chrome-webidl/ChromeUtils.webidl
 declare const ChromeUtils: {
-  // A literal URL of one of VimmaModules gets that module's type; any other (Firefox's own
-  // modules, a URL held in a variable) stays `any`. Where VimmaModules is filled (the browser
-  // tests), a literal Vimma URL that is not one of them (a typo, a module jar.mn does not ship)
-  // matches neither and is an error; the product's program, with it empty, takes any URL.
+  // A literal URL of one of VimmaModules gets that module's type; a literal Vimma URL that is not
+  // one of them (a typo, a module jar.mn does not ship) matches neither and is an error; any other
+  // URL (a Firefox module the map lacks, a URL held in a variable) gets UnmappedESModule's type.
   importESModule<U extends keyof VimmaModules>(url: U): VimmaModules[U];
   importESModule<S extends string>(
-    url: S extends `chrome://browser/content/vimma/${string}`
-      ? [keyof VimmaModules] extends [never]
-        ? S
-        : never
-      : S,
-  ): any;
+    url: S extends `chrome://browser/content/vimma/${string}` ? never : S,
+  ): UnmappedESModule extends { readonly module: infer M } ? M : unknown;
   // `target` is a module's `lazy` object, typed with Lazy<…> below: its names and the module
   // map's must match.
   defineESModuleGetters<T extends object>(target: T, modules: { [K in keyof T]: string }): void;

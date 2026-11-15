@@ -170,7 +170,7 @@ gives a handler (`getState`, `setSharedState` and the rest) are declared in `typ
 DOM globals the handler's sandbox lacks (`setTimeout`, `document`) are not caught, so a handler
 that waits uses `nsITimer`.
 After changing a `tests/browser/head*.js` file, run `npm run gen-mochitest-head`; after adding,
-moving or removing a module, `npm run gen-mochitest-modules`.
+moving or removing a module, `npm run gen-vimma-modules`.
 
 You can also test the front end without a full build. An artifact build puts our front end on
 top of Mozilla's compiled binaries for the same release, and is what PR CI uses

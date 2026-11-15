@@ -89,7 +89,9 @@ describe("npm run typecheck", () => {
       "../types/*.d.ts",
       "../types/mochitest/*.d.ts",
     ]);
-    expect(browserTests.exclude).toEqual([]);
+    // Only the product's typing of Firefox's modules stays out: the tests read more of those
+    // modules, and get them as `any` (types/mochitest/harness.d.ts, UnmappedESModule).
+    expect(browserTests.exclude).toEqual(["../types/firefox-modules.d.ts"]);
     // The harness's declarations stay out of the browser code's check.
     expect(root.include).toContain("types/*.d.ts");
     expect(root.include.some((/** @type {string} */ g) => g.includes("mochitest"))).toBe(false);
