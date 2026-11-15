@@ -642,7 +642,11 @@ describe("restrictedErrors", () => {
   test("the gate's importers are exactly today's seven", () => {
     // Adding one is a security decision, not a list edit: review the new caller against
     // docs/security/12-agents-mcp.md section 12 first, then add it here and in layers.ts.
-    expect(Object.keys(RESTRICTED)).toEqual(["host/AgentGate.sys.mjs", "ctl/agent-tabs.mjs"]);
+    expect(Object.keys(RESTRICTED)).toEqual([
+      "host/AgentGate.sys.mjs",
+      "ctl/agent-tabs.mjs",
+      "actors/agent-page.mjs",
+    ]);
     expect(RESTRICTED["host/AgentGate.sys.mjs"]?.importers).toEqual([
       "agent/AgentChat.sys.mjs",
       "ctl/AgentDownloads.sys.mjs",
@@ -666,6 +670,19 @@ describe("restrictedErrors", () => {
     expect(errors[0]).toMatch(
       /^ctl\/AgentAct\.sys\.mjs:9: imports ctl\/agent-tabs\.mjs, which only/,
     );
+  });
+  test("the agent's page work has one importer, VimmaChild, and a new one fails", () => {
+    // actors/agent-page.mjs clicks, fills and submits in a page after the reply, each re-checked
+    // just before it runs (M25 to M28): another caller could act in a page without the parent's
+    // question or those checks.
+    const page = "actors/agent-page.mjs";
+    expect(RESTRICTED[page]?.importers).toEqual(["actors/VimmaChild.sys.mjs"]);
+    const errors = restrictedErrors(
+      [edge("actors/VimmaChild.sys.mjs", page), edge("actors/caret.mjs", page, "eager", 7)],
+      Object.fromEntries(Object.entries(RESTRICTED).filter(([module]) => module === page)),
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/^actors\/caret\.mjs:7: imports actors\/agent-page\.mjs, which only/);
   });
 });
 
