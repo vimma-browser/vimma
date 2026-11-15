@@ -32,7 +32,7 @@ export function readClipboard(win) {
     trans.addDataFlavor("text/plain");
     Services.clipboard.getData(trans, Services.clipboard.kGlobalClipboard);
     // An nsISupportsString (engine/xpcom/ds/nsISupportsPrimitives.idl) once there is text.
-    /** @type {{ value?: { QueryInterface(iid: unknown): { readonly data: string } } }} */
+    /** @type {{ value?: nsISupports }} */
     const data = {};
     trans.getTransferData("text/plain", data);
     return data.value?.QueryInterface(Ci.nsISupportsString).data ?? "";

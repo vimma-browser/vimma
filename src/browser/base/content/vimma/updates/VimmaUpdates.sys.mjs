@@ -670,7 +670,7 @@ function onMarRequest(subject, topic) {
 /**
  * Firefox's updater did something with an update: the status bars show it, and a finished
  * download needs no more anonymous URLs (decision 1).
- * @param {any} _subject @param {string} topic
+ * @param {unknown} _subject @param {string} topic
  */
 function onUpdaterTopic(_subject, topic) {
   if (topic === "update-downloaded" || topic === "update-staged") marUrls = new Set();
@@ -689,7 +689,7 @@ async function sha512File(path) {
   for (let offset = 0; ;) {
     const bytes = await IOUtils.read(path, { offset, maxBytes: WRITE_CHUNK });
     if (!bytes.byteLength) break;
-    hash.update(/** @type {any} */ (bytes), bytes.byteLength);
+    hash.update(bytes, bytes.byteLength);
     offset += bytes.byteLength;
   }
   const binary = hash.finish(false);

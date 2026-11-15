@@ -268,7 +268,7 @@ function wrapChooser() {
   const registrar = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
   const factory = {
     QueryInterface: ChromeUtils.generateQI(["nsIFactory"]),
-    /** @param {unknown} iid */
+    /** @param {nsIJSIID<unknown>} iid @returns {unknown} */
     createInstance(iid) {
       const inner = AgentPages._chooserForTests ?? new lazy.nsContentDispatchChooser();
       const chooser = {
