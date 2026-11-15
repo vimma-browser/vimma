@@ -139,10 +139,70 @@ interface nsIDOMWindowUtils {
   restoreNormalRefresh(): void;
 }
 
-// engine/xpcom/base/nsISupports.idl: every XPCOM object. What QueryInterface returns depends on
-// the interface asked for, which the tests name through the untyped Ci, so it is untyped too.
-interface nsISupports {
-  QueryInterface(iid: unknown): any;
+// XPCOM (types/firefox.d.ts types the interfaces and classes the product uses): the tests name
+// many more, and those stay untyped.
+interface XPCOMInterfaces {
+  readonly [name: string]: any;
+}
+interface XPCOMClasses {
+  readonly [contract: string]: any;
+  // Firefox's own about:home module, which the start page stands in for.
+  "@mozilla.org/network/protocol/about;1?what=home": nsIJSCID;
+}
+// The members of the product's XPCOM interfaces that only the tests use (the IDL files are named
+// in types/firefox.d.ts). An update check's result has the updates it found; runAsync calls
+// `observer` once the process exits.
+interface nsIProcess {
+  run(blocking: boolean, args: string[], count: number): void;
+  runAsync(args: string[], count: number, observer?: nsIObserver | null): void;
+}
+interface nsISocketTransportService {
+  createTransport(
+    socketTypes: string[],
+    host: string,
+    port: number,
+    proxyInfo: unknown,
+    dnsRecord: unknown,
+  ): nsISocketTransport;
+}
+interface nsIScriptableInputStream {
+  available(): number;
+  /** `count` bytes as a binary string, NUL bytes included; throws when fewer are there. */
+  readBytes(count: number): string;
+}
+interface nsIBinaryInputStream {
+  /** `count` bytes as a binary string; throws when fewer are there. */
+  readBytes(count: number): string;
+}
+interface nsIPropertyBag2 {
+  hasKey(name: string): boolean;
+}
+interface nsIURI {
+  readonly query: string;
+}
+// engine/dom/console/nsIConsoleAPIStorage.idl: a listener gets each console.* call of a page
+// the principal may see, as a ConsoleEvent (dom/webidl/Console.webidl).
+interface nsIConsoleAPIStorage {
+  addLogEventListener(listener: (event: any) => void, principal: unknown): void;
+  removeLogEventListener(listener: (event: any) => void): void;
+}
+interface nsIUpdateCheckResult {
+  readonly succeeded: boolean;
+  readonly checksAllowed: boolean;
+  readonly updates: readonly { readonly displayVersion: string }[];
+}
+interface nsIUpdateChecker {
+  getUpdateURL(checkType: number): Promise<string | null>;
+}
+interface nsIApplicationUpdateService {
+  stopDownload(): Promise<void>;
+}
+interface nsIUpdateManager {
+  getReadyUpdate(): Promise<nsIUpdate | null>;
+  cleanupActiveUpdates(): Promise<void>;
+}
+interface nsISelectionController {
+  getCaretEnabled(): boolean;
 }
 
 // engine/dom/webidl/Event.webidl (chrome-only): the target inside a shadow tree or native anonymous
@@ -353,9 +413,7 @@ interface WindowGlobalParent {
 
 // engine/xpcom/io/nsIFile.idl (the members the tests use)
 interface nsIFile {
-  readonly path: string;
   readonly leafName: string;
-  readonly parent: nsIFile;
   append(node: string): void;
   normalize(): void;
   clone(): nsIFile;
@@ -492,11 +550,6 @@ interface AsyncTabSwitcher {
 // (MozXULElement).
 interface MozTabSplitViewWrapper extends XULElement {}
 
-// engine/xpcom/base/nsIConsoleMessage.idl: what a console listener gets (its `message` is the
-// text with its file and line).
-interface nsIConsoleMessage {
-  readonly message: string;
-}
 // engine/xpfe/appshell/nsIAppShellService.idl: makes a browser with no window, here a document
 // whose window a test can close (nsIWindowlessBrowser.idl; `document` from nsIWebNavigation.idl,
 // which makes a blank one when there is none and is null only on an unexpected error).
@@ -509,14 +562,6 @@ interface nsIAppShellService {
 }
 interface FirefoxServices {
   appShell: nsIAppShellService;
-}
-// engine/dom/bindings/nsIScriptError.idl: a script error or warning (`flags` has warningFlag for
-// a warning).
-interface nsIScriptError extends nsIConsoleMessage {
-  readonly errorMessage: string;
-  readonly sourceName: string;
-  readonly lineNumber: number;
-  readonly flags: number;
 }
 
 // engine/toolkit/content/widgets/notificationbox.js: a button of a notification, as
@@ -720,46 +765,6 @@ interface nsIFile {
 interface XPCComponentsUtils {
   forceGC(): void;
   forceCC(): void;
-}
-
-// engine/netwerk/base/nsIServerSocket.idl: a listening socket; initWithFilename makes it a Unix
-// domain socket at `path` (`backlog` -1: the default).
-interface nsIServerSocket {
-  initWithFilename(path: nsIFile, permissions: number, backlog: number): void;
-  asyncListen(listener: nsIServerSocketListener): void;
-  close(): void;
-}
-// engine/netwerk/base/nsIServerSocket.idl (nsIServerSocketListener)
-interface nsIServerSocketListener {
-  onSocketAccepted(server: nsIServerSocket, transport: nsISocketTransport): void;
-  onStopListening(server: nsIServerSocket, status: number): void;
-}
-// engine/netwerk/base/nsITransport.idl: a connection's two streams; `reason` is an nsresult.
-interface nsITransport {
-  openInputStream(flags: number, segmentSize: number, segmentCount: number): nsIInputStream;
-  openOutputStream(flags: number, segmentSize: number, segmentCount: number): nsIOutputStream;
-  close(reason: number): void;
-}
-// engine/netwerk/base/nsISocketTransport.idl
-interface nsISocketTransport extends nsITransport {}
-// engine/xpcom/io/nsIInputStream.idl: available() is the number of bytes that can be read now.
-interface nsIInputStream extends nsISupports {
-  available(): number;
-}
-// engine/xpcom/io/nsIAsyncInputStream.idl: `callback` (nsIInputStreamCallback) is called once,
-// on `target`, when the stream has data or is closed.
-interface nsIAsyncInputStream extends nsIInputStream {
-  asyncWait(
-    callback: { onInputStreamReady(stream: nsIAsyncInputStream): void },
-    flags: number,
-    requestedCount: number,
-    target: unknown,
-  ): void;
-}
-// engine/xpcom/io/nsIOutputStream.idl: write() returns the number of bytes written.
-interface nsIOutputStream extends nsISupports {
-  write(buf: string, count: number): number;
-  close(): void;
 }
 
 // engine/toolkit/components/urlformatter/nsIURLFormatter.idl: a URL pref's value with its
@@ -1185,7 +1190,6 @@ interface MozBrowser {
 // failed (NS_OK until then).
 interface nsIRequest {
   readonly status: number;
-  isPending(): boolean;
   suspend(): void;
   resume(): void;
   cancel(status: number): void;

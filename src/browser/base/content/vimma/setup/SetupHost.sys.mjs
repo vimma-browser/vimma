@@ -57,7 +57,7 @@ const aboutModule = {
     channel.originalURI = uri;
     return channel;
   },
-  /** @param {unknown} iid @returns {unknown} */
+  /** @param {nsIJSIID<unknown>} iid @returns {unknown} */
   createInstance(iid) {
     return aboutModule.QueryInterface(iid);
   },

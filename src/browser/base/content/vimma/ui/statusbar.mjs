@@ -395,7 +395,7 @@ export class StatusBar {
  * the
  * ASCII form Services.eTLD answers in, then taken from the display form, so an IDN host keeps
  * its Unicode. An IP address, or a host without a public suffix, is its own base.
- * @param {any} uri
+ * @param {nsIURI} uri
  * @returns {UrlOrigin | null}
  */
 function originOf(uri) {
@@ -464,7 +464,7 @@ function barUrl(win, browser) {
  * the page's principal (blob:, which carries its creator's origin), so the bar can still keep
  * that origin's domain whole (docs/security/06-chrome-ui-rendering.md C3).
  * @param {any} browser
- * @param {any} uri
+ * @param {nsIURI} uri
  * @returns {UrlOrigin | null}
  */
 function innerOrigin(browser, uri) {

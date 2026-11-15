@@ -6,7 +6,8 @@
 // stores the manifest to serve (an empty body answers 404); GET ?log returns every manifest
 // request so far (its query, its headers, whether it carried a Cookie header); GET ?reset clears
 // both. ?redirect=http|host answers 302 to http:// or another host; ?big a 1 MiB body with its
-// length, ?bigstream 4 MiB with none.
+// length, ?bigstream 4 MiB with none. ?held is a download that stays under way: it answers
+// nothing for 30 s, then 404, and is not logged.
 
 const BinaryInputStream = Components.Constructor(
   "@mozilla.org/binaryinputstream;1",
@@ -16,6 +17,8 @@ const BinaryInputStream = Components.Constructor(
 
 const MANIFEST = "vimma-update-manifest";
 const LOG = "vimma-update-log";
+/** The ?held response's timer, kept alive until it fires. @type {unknown} */
+let held;
 
 /** @param {nsIHttpRequest} request @param {nsIHttpResponse} response */
 function handleRequest(request, response) {
@@ -38,6 +41,20 @@ function handleRequest(request, response) {
     setSharedState(MANIFEST, "");
     setSharedState(LOG, "[]");
     response.write("ok");
+    return;
+  }
+  if (query === "held") {
+    response.processAsync();
+    const timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+    held = timer;
+    timer.initWithCallback(
+      () => {
+        response.setStatusLine(request.httpVersion, 404, "Not Found");
+        response.finish();
+      },
+      30000,
+      Ci.nsITimer.TYPE_ONE_SHOT,
+    );
     return;
   }
   /** @type {Record<string, string>} */

@@ -92,7 +92,8 @@ function repoFile(/** @type {string[]} */ ...parts) {
   const self = getChromeDir(getResolvedURI(gTestPath));
   self.append(found(gTestPath.split("/").pop()));
   self.normalize();
-  const repo = self.parent.parent.parent;
+  const repo = self.parent?.parent?.parent;
+  if (!repo) throw new Error("the test file is not inside the repository");
   return PathUtils.join(repo.path, ...parts);
 }
 

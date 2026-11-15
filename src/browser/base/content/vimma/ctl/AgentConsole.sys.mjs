@@ -82,7 +82,7 @@ const TYPES = (() => {
   /** @type {Map<number, string>} */
   const names = new Map();
   for (const word of words) {
-    const value = /** @type {Record<string, unknown>} */ (Ci.nsIContentPolicy)[`TYPE_${word}`];
+    const value = Ci.nsIContentPolicy[`TYPE_${word}`];
     if (typeof value === "number") names.set(value, word.toLowerCase());
   }
   return names;

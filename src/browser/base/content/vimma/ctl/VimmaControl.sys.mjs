@@ -500,7 +500,7 @@ const COMMANDS = {
 class Connection {
   /**
    * @param {Server} server
-   * @param {ControlTransport} transport  an nsISocketTransport
+   * @param {nsISocketTransport} transport
    */
   constructor(server, transport) {
     this.server = server;
@@ -1114,10 +1114,10 @@ class Server {
     this.socket = Cc["@mozilla.org/network/server-socket;1"].createInstance(Ci.nsIServerSocket);
     this.socket.init(-1, true, BACKLOG);
     this.socket.asyncListen(this);
-    this.port = /** @type {number} */ (this.socket.port);
+    this.port = this.socket.port;
   }
 
-  /** nsIServerSocketListener @param {unknown} _socket @param {ControlTransport} transport */
+  /** nsIServerSocketListener @param {unknown} _socket @param {nsISocketTransport} transport */
   onSocketAccepted(_socket, transport) {
     const connection = new Connection(this, transport);
     if (this.waiting.size >= MAX_WAITING) {

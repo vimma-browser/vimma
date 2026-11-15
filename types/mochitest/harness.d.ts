@@ -296,8 +296,8 @@ declare const content: Window &
     readonly wrappedJSObject: any;
   };
 /**
- * The frame's nsIDocShell, a global of the task's scope. The tests only QueryInterface it through
- * the untyped Ci (to its nsISelectionController), so it is an nsISupports here.
+ * The frame's nsIDocShell, a global of the task's scope. The tests only QueryInterface it (on
+ * the way to its nsISelectionController), so it is an nsISupports here.
  */
 declare const docShell: nsISupports;
 declare const ContentTaskUtils: {

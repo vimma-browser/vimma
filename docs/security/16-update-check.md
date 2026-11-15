@@ -437,7 +437,10 @@ _Pages_ and _extensions_ cannot reach it.
   the URLs its anonymous requests are redirected to until the download ends, go without them;
   any other request is left as it is. The MAR's own signature is the
   updater's check (UP12). On a tarball Firefox's updater updates, Vimma's own fetch stays off,
-  so one check runs, and `:update` starts Firefox's.
+  so one check runs, and `:update` starts Firefox's. `:update` is held while Firefox's updater
+  has a download under way or a ready update (the update manager's `downloadingUpdate` and
+  `readyUpdate`), as Firefox's own check is (`CHK_HAS_ACTIVEUPDATE`); a download held at exit is
+  resumed or cleaned up at the next start.
   **⚠ limit:** XMLHttpRequest reports progress about every 50 ms, so beyond the cap the parent
   holds at most what arrives in one such interval before the request is cancelled. Firefox's
   timer, not Vimma's, decides when a tarball checks (`app.update.interval`, 12 hours). Turning
@@ -451,6 +454,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`an_oversized_or_compressed_body_is_refused`](../../tests/browser/browser_vimma_update_verify.js),
   [`the_mar_download_goes_without_cookies`](../../tests/browser/browser_vimma_update_verify.js),
   [`a_real_download_is_shown_on_restart`](../../tests/browser/browser_vimma_update_verify.js),
+  [`a_real_download_under_way_holds_the_next_check`](../../tests/browser/browser_vimma_update_verify.js),
   [`no_check_before_the_install_type_is_known`](../../tests/browser/browser_vimma_update_verify.js),
   [`update_checks_a_tarball_through_firefoxs_updater`](../../tests/browser/browser_vimma_update_verify.js),
   [`refuses two <patch> elements, so Firefox can pick no MAR the download rule misses`](../../packages/vimma-core/test/updates.test.mjs)
