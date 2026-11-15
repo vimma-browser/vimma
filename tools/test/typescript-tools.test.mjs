@@ -17,6 +17,9 @@ import vitestConfig from "../../vitest.config.ts";
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const FIXTURE = fileURLToPath(new URL("fixtures/ts-run/main.ts", import.meta.url));
 const ROOT_TS_CONFIGS = ["commitlint.config.ts", "vitest.config.ts"];
+// vimma-core's tests (ADR-025 decision 6, since changed; #1114): Vitest alone loads them, and
+// sync-core copies only the package's src/, which stays JavaScript.
+const CORE_TESTS = "packages/vimma-core/test/";
 
 /**
  * The modules a .ts file loads when Node runs it: its import and export declarations and its
@@ -80,8 +83,9 @@ describe("TypeScript under tools/ (ADR-025)", () => {
     expect(major > 22 || (major === 22 && minor >= 18)).toBe(true);
   });
 
-  it("Vitest runs tools/**/test/**/*.test.ts", () => {
+  it("Vitest runs tools/**/test/**/*.test.ts and vimma-core's .ts tests", () => {
     expect(vitestConfig.test?.include).toContain("tools/**/test/**/*.test.ts");
+    expect(vitestConfig.test?.include).toContain(`${CORE_TESTS}**/*.test.ts`);
   });
 
   describe("eslint", () => {
@@ -115,6 +119,14 @@ describe("TypeScript under tools/ (ADR-025)", () => {
       expect(await lint(code)).toEqual([]);
     });
 
+    it("lints a vimma-core test written as .ts as it lints tools/", async () => {
+      const code = "const unused: string = process.cwd();\nexport const n: number = 1;\n";
+      const messages = await lint(code, `${CORE_TESTS}sample.test.ts`);
+      expect(messages.map((m) => [m.ruleId, m.fatal ?? false])).toEqual([
+        ["no-unused-vars", false],
+      ]);
+    });
+
     it("fails on syntax Node cannot erase, at its line and column", async () => {
       const messages = await lint("const a = 1;\nexport enum E {\n  A,\n}\nexport { a };\n");
       expect(messages).toHaveLength(1);
@@ -130,10 +142,11 @@ describe("TypeScript under tools/ (ADR-025)", () => {
   it("imports each relative module by the name of a file that exists, as Node needs", () => {
     // tsc accepts `./x.js` for x.ts and Vitest resolves it, but Node does not.
     // The root configs too: commitlint.config.ts imports from tools/.
-    const files = execFileSync("git", ["ls-files", "-z", "tools/**/*.ts", ...ROOT_TS_CONFIGS], {
-      cwd: ROOT,
-      encoding: "utf8",
-    })
+    const files = execFileSync(
+      "git",
+      ["ls-files", "-z", "tools/**/*.ts", `${CORE_TESTS}**/*.ts`, ...ROOT_TS_CONFIGS],
+      { cwd: ROOT, encoding: "utf8" },
+    )
       .split("\0")
       .filter((p) => p && !p.endsWith(".d.ts"));
     expect(files.length).toBeGreaterThan(0);
@@ -161,7 +174,7 @@ describe("TypeScript under tools/ (ADR-025)", () => {
     expect(importSpecifiers(code)).toEqual(["./a.ts", "./b.ts", "./c.ts", "./e.ts"]);
   });
 
-  it("keeps TypeScript in tools/: Firefox and vimma-core load their files unbuilt", () => {
+  it("keeps TypeScript in tools/ and vimma-core's tests: Firefox loads the rest unbuilt", () => {
     const tracked = execFileSync("git", ["ls-files", "-z", "*.ts", "*.mts", "*.cts"], {
       cwd: ROOT,
       encoding: "utf8",
@@ -170,8 +183,9 @@ describe("TypeScript under tools/ (ADR-025)", () => {
       .filter((p) => p && !/\.d\.[mc]?ts$/.test(p));
     // The root configs whose tool loads TypeScript itself (Vite bundles vitest.config.ts,
     // commitlint loads its config through jiti) are Node-side tooling too (ADR-025).
-    expect(tracked.filter((p) => !p.startsWith("tools/") && !ROOT_TS_CONFIGS.includes(p))).toEqual(
-      [],
+    const outside = tracked.filter(
+      (p) => !p.startsWith("tools/") && !p.startsWith(CORE_TESTS) && !ROOT_TS_CONFIGS.includes(p),
     );
+    expect(outside).toEqual([]);
   });
 });

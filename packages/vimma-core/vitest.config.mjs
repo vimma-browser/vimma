@@ -8,7 +8,7 @@ import { configDefaults, defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     root: fileURLToPath(new URL(".", import.meta.url)),
-    include: ["test/**/*.test.mjs"],
+    include: ["test/**/*.test.mjs", "test/**/*.test.ts"],
     exclude: [...configDefaults.exclude, "test/fuzz/**"],
     // `timing`: a test that asserts a tight speed budget (a bench). Stryker's instrumented copy of
     // the code runs several times slower, so the budget would fail the dry run; this config, which

@@ -72,6 +72,18 @@ describe("npm run typecheck", () => {
     expect(root.include.some((/** @type {string} */ g) => g.includes("/test/"))).toBe(false);
   });
 
+  // The core's tests move to TypeScript (ADR-025 decision 6, since changed; #1114): Vitest runs
+  // them by erasing the types, so they get tools/'s rules for what Node can erase.
+  it("checks the core's .ts tests as Node runs them", () => {
+    expect(coreTests.include).toContain("**/*.ts");
+    expect(coreTests.compilerOptions).toEqual({
+      types: ["node"],
+      erasableSyntaxOnly: true,
+      verbatimModuleSyntax: true,
+      allowImportingTsExtensions: true,
+    });
+  });
+
   // Every core test file is checked: a new one is in the program as soon as it exists, and none
   // may be left out (issue #959).
   it("leaves no core test file out", () => {

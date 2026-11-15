@@ -5,7 +5,8 @@ export default defineConfig({
     include: [
       "packages/**/test/**/*.test.mjs",
       "tools/**/test/**/*.test.mjs",
-      // TypeScript tools (ADR-025)
+      // TypeScript tools and vimma-core's tests (ADR-025)
+      "packages/vimma-core/test/**/*.test.ts",
       "tools/**/test/**/*.test.ts",
     ],
     // A temp dir per run, removed after it; the run fails if a test left anything in it (#207).
