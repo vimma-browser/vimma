@@ -184,26 +184,25 @@ the wrong kind of thing, or asserts on a promise it forgot to await, fails the c
 type of the module that URL serves (`types/vimma-modules.d.ts` maps each one to its source), so a
 call into one of Vimma's modules, the members a test reads from it and the JSDoc types a test
 gives those values are checked against the product's own JSDoc; a literal Vimma URL that the map
-does not have (a typo) is an error. Any other URL, a Firefox module's, gives `any` in the tests:
-their program leaves out `types/firefox-modules.d.ts`, which types the Firefox modules only as
-far as the product reads them, and where the product's own check gives `unknown` for a URL it
-does not map, `harness.d.ts` makes it `any`. A head file's own imports reach the tests through
-`head.d.ts`, whose generator emits a destructured `importESModule` as `any`; a head file that
+does not have (a typo) is an error. A Firefox module's URL gives the members the product and
+the tests read of it: `types/firefox-modules.d.ts` for a module the product imports too,
+`types/mochitest/firefox-test-modules.d.ts` for one only the tests import. A URL neither map has
+gives `unknown`, as in the product's check, and `tools/test/vimma-modules.test.ts` fails on a
+literal one. A head file's own imports reach the tests through `head.d.ts`, whose generator
+emits a destructured `importESModule` as `any`; a head file that
 shares a Vimma module with its tests types it by name instead (`/** @type
 {VimmaModules["<url>"]["<export>"]} */ const X = ChromeUtils.importESModule("<url>").X;`, as
 `head_vimma_grep.js` does), and `head.d.ts` keeps that type. The declarations themselves are
 checked too:
 `tests/tsconfig.json` turns off the root's `skipLibCheck`, because an error in a
-`types/mochitest/*.d.ts` file (a wrong import path, a member read off a type that may be null)
-would make the type it declares `any`, and every annotation naming that type would check
-nothing, with no error shown. Not checked: a module imported from a URL held in a variable,
-Firefox's own modules (`resource://`, `moz-src://`, other `chrome://` URLs), which still return
-`any`, and what the product itself types loosely: an agent question's `what` (a `Record`
-of `any`, as the question line reads it), a child's console entries before the parent checks
-them. A test that knows more than the product's type (a window whose workspaces are built, a
-workspace with its container, a check that was refused) casts to a named type from
-`vimma.d.ts`, such as `LiveWorkspaces`, `ContainedWorkspace` or `RefusedUpdate`, which says
-what it assumes.
+`types/mochitest/*.d.ts` file (a wrong import path, a member read off a type that may be null) would
+make the type it declares `any`, and every annotation naming that type would check nothing, with no
+error shown. Not checked: a module imported from a URL held in a variable, and what the product
+itself types loosely: an agent question's `what` (a `Record` of `any`, as the question line reads
+it), a child's console entries before the parent checks them. A test that knows more than the
+product's type (a window whose workspaces are built, a workspace with its container, a check that
+was refused) casts to a named type from `vimma.d.ts`, such as `LiveWorkspaces`, `ContainedWorkspace`
+or `RefusedUpdate`, which says what it assumes.
 
 ## 7. End-to-end scenarios and screenshots
 

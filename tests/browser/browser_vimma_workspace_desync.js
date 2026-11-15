@@ -241,8 +241,11 @@ add_task(async function a_whole_window_restore_into_a_recovered_window_keeps_its
   ww0.switchTo({ id: B.id });
   await until(() => w0.gBrowser.selectedTab.userContextId === B.userContextId, "B's start tab");
   const b1 = await BrowserTestUtils.openNewForegroundTab(w0.gBrowser, `${PAGE}?dr-b1`);
-  const uuid = (/** @type {Element} */ t) => SessionStore.getCustomTabValue(t, "vimma-tab");
+  const uuid = (/** @type {MozTabbrowserTab} */ t) =>
+    SessionStore.getCustomTabValue(t, "vimma-tab");
   const uuids = new Map([a1, a2, b1].map((t) => [t, uuid(t)]));
+  /** The uuid recorded above for a tab of the list. */
+  const uuidOf = (/** @type {MozTabbrowserTab} */ t) => /** @type {string} */ (uuids.get(t));
   await TabStateFlusher.flushWindow(w0);
   await TestUtils.waitForTick();
   /** @typedef {{ tabs: { entries: { url: string }[] }[] }} SavedWindow SessionStore's JSON */
@@ -291,11 +294,11 @@ add_task(async function a_whole_window_restore_into_a_recovered_window_keeps_its
       );
     Assert.deepEqual(
       ws(A.id).tabs.slice(-2),
-      [uuids.get(a1), uuids.get(a2)],
+      [uuidOf(a1), uuidOf(a2)],
       "A's tabs come back with their uuids",
     );
-    Assert.equal(ws(A.id).activeTab, uuids.get(a1), "A's selected tab is remembered");
-    Assert.equal(ws(B.id).tabs.at(-1), uuids.get(b1), "B's page comes back with its uuid");
+    Assert.equal(ws(A.id).activeTab, uuidOf(a1), "A's selected tab is remembered");
+    Assert.equal(ws(B.id).tabs.at(-1), uuidOf(b1), "B's page comes back with its uuid");
     Assert.equal(model.active, B.id, "B is the active workspace");
     Assert.deepEqual(outOfStep(win), [], "every live tab is in the model, and back");
   });

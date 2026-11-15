@@ -280,7 +280,8 @@ add_task(async function a_session_restore_brings_back_every_workspaces_layout_an
   live(w1).switchTo({ id: A.id });
   await until(() => w1.gBrowser.selectedTab === a[0], "A shows again; B is parked");
 
-  const uuid = (/** @type {Element} */ t) => SessionStore.getCustomTabValue(t, "vimma-tab");
+  const uuid = (/** @type {MozTabbrowserTab} */ t) =>
+    SessionStore.getCustomTabValue(t, "vimma-tab");
   const aIds = a.map(uuid);
   const bIds = b.map(uuid);
   await TabStateFlusher.flushWindow(w1);
@@ -428,7 +429,8 @@ add_task(async function a_session_restore_keeps_a_hidden_view_hidden() {
   w1.gBrowser.selectedTab = a2;
   Assert.ok(isHiddenView(w1), "ha2 alone, the view hidden");
 
-  const uuid = (/** @type {Element} */ t) => SessionStore.getCustomTabValue(t, "vimma-tab");
+  const uuid = (/** @type {MozTabbrowserTab} */ t) =>
+    SessionStore.getCustomTabValue(t, "vimma-tab");
   const ids = [a0, a1, a2].map(uuid);
   await TabStateFlusher.flushWindow(w1);
   await TestUtils.waitForTick();

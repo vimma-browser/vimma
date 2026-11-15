@@ -793,7 +793,7 @@ add_task(async function test_confinement_edges() {
   };
 
   // A foreign tab: a container no workspace owns, adopted by the agent workspace while shown.
-  const stray = ContextualIdentityService.create("vimma-test-stray");
+  const stray = ContextualIdentityService.create("vimma-test-stray", "fingerprint", "blue");
   Assert.equal(ww().switchTo({ name: agent().name }), null, "show the agent workspace");
   const foreign = gBrowser.addTab(`${PAGE}?foreign`, {
     userContextId: stray.userContextId,

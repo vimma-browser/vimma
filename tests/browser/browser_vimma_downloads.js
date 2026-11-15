@@ -20,9 +20,7 @@ requestLongerTimeout(3);
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
 /* global focusContent -- from head.js */
 
-const { Downloads } = /** @type {{ Downloads: DownloadsApi }} */ (
-  ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs")
-);
+const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs");
 const { Integration } = ChromeUtils.importESModule("resource://gre/modules/Integration.sys.mjs");
 const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
 const { DownloadIntegration } = ChromeUtils.importESModule(

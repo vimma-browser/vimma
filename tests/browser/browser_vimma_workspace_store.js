@@ -47,9 +47,10 @@ registerCleanupFunction(async () => {
 });
 
 const publicCount = () => CIS.getPublicIdentities().length;
-// A workspace's container id, null without one: then there is no container to find, and the
-// assertion that reads it fails.
-const identity = (/** @type {number | null} */ id) => CIS.getPublicIdentityFromId(id);
+// A workspace's container id, null without one: then there is no container to find (undefined),
+// and the assertion that reads it fails.
+const identity = (/** @type {number | null} */ id) =>
+  /** @type {ContextualIdentity} */ (CIS.getPublicIdentityFromId(/** @type {number} */ (id)));
 
 /** @param {string} path @param {object} [options] */
 async function started(path, options = {}) {
