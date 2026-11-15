@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { buildIdProblem, fullVersionBuildIds, iniBuildId } from "../build-id.mjs";
 
 // #563: the build ID compiled into a release (what Services.appinfo.appBuildID says) and the one
-// in its packaged application.ini (what tools/update/manifest.mjs offers) must be the same, or
+// in its packaged application.ini (what tools/update/manifest.ts offers) must be the same, or
 // the release offers itself to itself as an update.
 
 const SCRIPT = fileURLToPath(new URL("../build-id.mjs", import.meta.url));
