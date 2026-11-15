@@ -11,6 +11,16 @@ import { type Edge, WIDEN } from "./model.ts";
 import { canonical, vimmaPath } from "./urls.ts";
 
 /**
+ * Manifest lines allowed word for word besides the .svg overrides. AppLauncher's: BrowserGlue
+ * calls it at final-ui-startup, before the command line runs, so Firefox's shell service knows
+ * vimma-open before `-setDefaultBrowser` reaches it (#855). It names a module by its own
+ * chrome:// URL (no second copy) and one method; any other category, module or method fails.
+ */
+const STARTUP_ENTRIES = new Set([
+  "% category browser-before-ui-startup chrome://browser/content/vimma/services/AppLauncher.sys.mjs AppLauncher.beforeUIStartup",
+]);
+
+/**
  * Where jar.mn packages a module somewhere other than its source path. The check reads a
  * module's folder from its chrome:// URL, which is right only while the two agree.
  * @param jar  jar.mn's text
@@ -34,7 +44,8 @@ export function jarErrors(jar: string): string[] {
     // A manifest line could override a module's or a page's URL with another file, or map a
     // new chrome or resource root onto Vimma's files: either loads code the check never reads,
     // or a second copy. Only what the tree has may stand: one .svg image over another, both
-    // outside Vimma's content.
+    // outside Vimma's content, and the exact startup entries above.
+    if (STARTUP_ENTRIES.has(text)) return;
     const manifest = /^%\s*(\S+)\s*(.*)$/.exec(text);
     if (manifest) {
       const [, directive = "", rest = ""] = manifest;

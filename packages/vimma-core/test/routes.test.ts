@@ -15,18 +15,17 @@ import {
   validateRoutes,
 } from "../src/config/routes.mjs";
 
-/** @param {string[]} lines */
-const v2 = (...lines) => ["schema = 2", ...lines].join("\n") + "\n";
+import type { ResolvedConfig } from "../src/config/config.mjs";
 
-/** @param {string} text */
-function config(text) {
+const v2 = (...lines: string[]) => ["schema = 2", ...lines].join("\n") + "\n";
+
+function config(text: string) {
   const r = parseConfig(text);
   expect(r.errors).toEqual([]);
-  return /** @type {import("../src/config/config.mjs").ResolvedConfig} */ (r.config);
+  return r.config as ResolvedConfig;
 }
 
-/** @param {string} text */
-function errors(text) {
+function errors(text: string) {
   const r = parseConfig(text);
   expect(r.config).toBeNull();
   return r.errors.map((e) => ({
@@ -37,19 +36,13 @@ function errors(text) {
   }));
 }
 
-/** @param {Record<string, string>[]} raw */
-const routes = (raw) => {
+const routes = (raw: Record<string, string>[]) => {
   expect(validateRoutes(raw)).toEqual([]);
   return resolveRoutes(raw);
 };
 
-/**
- * The workspace the first matching rule names, or null.
- * @param {Record<string, string>[]} raw
- * @param {string} url
- * @param {string | null} [app]
- */
-const target = (raw, url, app = null) =>
+/** The workspace the first matching rule names, or null. */
+const target = (raw: Record<string, string>[], url: string, app: string | null = null) =>
   matchRoute(routes(raw), { url, apps: app === null ? [] : [app] })?.workspace ?? null;
 
 describe("[[routes]] in config.toml", () => {
@@ -225,8 +218,7 @@ describe("domain rules", () => {
   });
 
   test("refuse what is not a hostname, with a suggestion", () => {
-    /** @param {string} domain */
-    const problem = (domain) => validateRoutes([{ domain, workspace: "w" }])[0];
+    const problem = (domain: string) => validateRoutes([{ domain, workspace: "w" }])[0];
     expect(problem("github.com:443")).toMatchObject({ suggestion: "github.com" });
     expect(problem("*github.com")).toMatchObject({ path: [0, "domain"] });
     expect(problem("a.*.com")).toBeDefined();
@@ -304,7 +296,7 @@ describe("app rules", () => {
     for (const bad of ["", "Slack", "my app", "../etc", "a/b", "-x", ".x", "a".repeat(65), "ä"]) {
       expect(isAppToken(bad)).toBe(false);
     }
-    expect(isAppToken(/** @type {any} */ (null))).toBe(false);
+    expect(isAppToken(null as any)).toBe(false);
   });
 
   test("a hint that is not a token never matches", () => {
@@ -314,8 +306,7 @@ describe("app rules", () => {
 
 describe("precedence", () => {
   test("file order: the first match wins, whatever its kind", () => {
-    /** @type {Record<string, string>[]} */
-    const appFirst = [
+    const appFirst: Record<string, string>[] = [
       { app: "slack", workspace: "work" },
       { domain: "youtube.com", workspace: "personal" },
     ];
@@ -381,7 +372,7 @@ describe("describing and adding rules", () => {
     expect(r).toEqual({
       append: '\n[[routes]]\ndomain = "github.com"\nworkspace = "work"\n',
     });
-    const after = config(before + /** @type {{ append: string }} */ (r).append);
+    const after = config(before + (r as { append: string }).append);
     expect(after.routes).toEqual([
       { index: 1, workspace: "work", domain: { host: "github.com", sub: false, ip: false } },
     ]);
@@ -411,9 +402,7 @@ describe("describing and adding rules", () => {
   });
 
   test("appendRouteText to a missing file: the template plus the rule", () => {
-    const r = /** @type {{ create: string }} */ (
-      appendRouteText(null, { domain: "a.com", workspace: "w" })
-    );
+    const r = appendRouteText(null, { domain: "a.com", workspace: "w" }) as { create: string };
     expect(r.create.startsWith(formatConfigTemplate())).toBe(true);
     expect(config(r.create).routes).toHaveLength(1);
   });
@@ -439,17 +428,14 @@ describe("describing and adding rules", () => {
 
 // docs/specs/app-routes.md: a link carries every program on the way, nearest first.
 describe("app names, nearest first (app-routes)", () => {
-  /**
-   * @param {Record<string, string>[]} raw
-   * @param {string} url
-   * @param {string} apps  comma-separated, as -vimma-from carries them
-   * @param {{ workspaces?: string[], skip?: string[] }} [options]
-   */
-  const pick = (raw, url, apps, options) =>
-    matchRoute(routes(raw), { url, apps: parseAppList(apps) }, options)?.workspace ?? null;
+  const pick = (
+    raw: Record<string, string>[],
+    url: string,
+    apps: string, // comma-separated, as -vimma-from carries them
+    options?: { workspaces?: string[]; skip?: string[] },
+  ) => matchRoute(routes(raw), { url, apps: parseAppList(apps) }, options)?.workspace ?? null;
   const signIn = "https://login.microsoftonline.com/common/oauth2/authorize";
-  /** @type {Record<string, string>[]} */
-  const worked = [
+  const worked: Record<string, string>[] = [
     { app: "herdr", domain: "login.microsoftonline.com", workspace: "admin" },
     { app: "ghostty", domain: "login.microsoftonline.com", workspace: "admin" },
     { app: "com.microsoft.teams2", workspace: "work" },
@@ -468,8 +454,7 @@ describe("app names, nearest first (app-routes)", () => {
   });
 
   test("the nearest name wins among app rules: az,herdr,ghostty picks herdr whatever the file order", () => {
-    /** @type {Record<string, string>[]} */
-    const herdrFirst = [
+    const herdrFirst: Record<string, string>[] = [
       { app: "herdr", workspace: "h" },
       { app: "ghostty", workspace: "g" },
     ];
@@ -478,8 +463,7 @@ describe("app names, nearest first (app-routes)", () => {
   });
 
   test("slack,ghostty picks the slack rule over the ghostty rule", () => {
-    /** @type {Record<string, string>[]} */
-    const rules = [
+    const rules: Record<string, string>[] = [
       { app: "ghostty", workspace: "admin" },
       { app: "slack", workspace: "chat" },
     ];
@@ -487,8 +471,7 @@ describe("app names, nearest first (app-routes)", () => {
   });
 
   test("an equal name is a tie: the earlier rule wins", () => {
-    /** @type {Record<string, string>[]} */
-    const rules = [
+    const rules: Record<string, string>[] = [
       { app: "ghostty", domain: "a.example", workspace: "one" },
       { app: "ghostty", workspace: "two" },
     ];
@@ -497,8 +480,7 @@ describe("app names, nearest first (app-routes)", () => {
   });
 
   test("a rule without app earlier in the file beats later app rules; a later one does not", () => {
-    /** @type {Record<string, string>[]} */
-    const domainFirst = [
+    const domainFirst: Record<string, string>[] = [
       { domain: "login.microsoftonline.com", workspace: "work" },
       { app: "ghostty", workspace: "admin" },
     ];
@@ -507,8 +489,7 @@ describe("app names, nearest first (app-routes)", () => {
   });
 
   test("an app rule below the first matching rule without app never applies", () => {
-    /** @type {Record<string, string>[]} */
-    const rules = [
+    const rules: Record<string, string>[] = [
       { app: "ghostty", domain: "login.microsoftonline.com", workspace: "admin" },
       { domain: "login.microsoftonline.com", workspace: "work" },
       { app: "herdr", workspace: "personal" },
@@ -518,8 +499,7 @@ describe("app names, nearest first (app-routes)", () => {
   });
 
   test("an agent workspace rule drops every name: claude,zsh,ghostty never reaches the ghostty rule", () => {
-    /** @type {Record<string, string>[]} */
-    const rules = [
+    const rules: Record<string, string>[] = [
       { app: "claude", workspace: "agent" },
       { app: "ghostty", domain: "login.microsoftonline.com", workspace: "admin" },
       { domain: "login.microsoftonline.com", workspace: "work" },
@@ -531,8 +511,7 @@ describe("app names, nearest first (app-routes)", () => {
   });
 
   test("a child named after the terminal under an agent CLI never reaches the terminal's rule", () => {
-    /** @type {Record<string, string>[]} */
-    const rules = [
+    const rules: Record<string, string>[] = [
       { app: "ghostty", workspace: "admin" },
       { app: "claude", workspace: "agent" },
     ];
@@ -540,8 +519,7 @@ describe("app names, nearest first (app-routes)", () => {
   });
 
   test("az login run by an agent never reaches a python3 sign-in rule", () => {
-    /** @type {Record<string, string>[]} */
-    const rules = [
+    const rules: Record<string, string>[] = [
       { app: "python3", domain: "login.microsoftonline.com", workspace: "admin" },
       { app: "claude", workspace: "agent" },
     ];
@@ -549,8 +527,7 @@ describe("app names, nearest first (app-routes)", () => {
   });
 
   test("the agent cut applies below the first rule without app too", () => {
-    /** @type {Record<string, string>[]} */
-    const rules = [
+    const rules: Record<string, string>[] = [
       { app: "ghostty", workspace: "admin" },
       { domain: "login.microsoftonline.com", workspace: "work" },
       { app: "claude", workspace: "agent" },
@@ -559,8 +536,7 @@ describe("app names, nearest first (app-routes)", () => {
   });
 
   test("an agent rule with a domain still drops the names for the agent's other links", () => {
-    /** @type {Record<string, string>[]} */
-    const rules = [
+    const rules: Record<string, string>[] = [
       { app: "claude", domain: "github.com", workspace: "agent" },
       { app: "ghostty", workspace: "admin" },
     ];
@@ -568,8 +544,7 @@ describe("app names, nearest first (app-routes)", () => {
   });
 
   test("a skipped workspace's rule is passed over and the next rule applies", () => {
-    /** @type {Record<string, string>[]} */
-    const rules = [
+    const rules: Record<string, string>[] = [
       { domain: "github.com", workspace: "agent" },
       { domain: "github.com", workspace: "work" },
     ];
@@ -578,8 +553,7 @@ describe("app names, nearest first (app-routes)", () => {
   });
 
   test("a shell in the chain matches only a rule that names it, and only when no nearer name matched", () => {
-    /** @type {Record<string, string>[]} */
-    const rules = [
+    const rules: Record<string, string>[] = [
       { app: "zsh", workspace: "shell" },
       { app: "python3", workspace: "py" },
     ];
@@ -589,8 +563,7 @@ describe("app names, nearest first (app-routes)", () => {
   });
 
   test("with no app known, app rules never match and domain rules still do", () => {
-    /** @type {Record<string, string>[]} */
-    const rules = [
+    const rules: Record<string, string>[] = [
       { app: "ghostty", workspace: "admin" },
       { domain: "login.microsoftonline.com", workspace: "work" },
     ];
@@ -614,7 +587,7 @@ describe("app names, nearest first (app-routes)", () => {
     expect(parseAppList("Slack,my app,../x,,nvim")).toEqual(["slack", "nvim"]);
     expect(parseAppList("a,bad name,a")).toEqual(["a"]);
     expect(parseAppList("")).toEqual([]);
-    expect(parseAppList(/** @type {any} */ (null))).toEqual([]);
+    expect(parseAppList(null as any)).toEqual([]);
     expect(parseAppList("com.mitchellh.ghostty,ghostty")).toEqual([
       "com.mitchellh.ghostty",
       "ghostty",
