@@ -908,7 +908,7 @@ function section(doc, id) {
 async function openAboutVimma() {
   const about = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:vimma");
   await until(
-    () => about.linkedBrowser.contentDocument?.documentElement.dataset.ready === "true",
+    () => about.linkedBrowser.contentDocument?.documentElement?.dataset.ready === "true",
     "about:vimma rendered",
   );
   return about;
@@ -1006,7 +1006,7 @@ add_task(async function route_add_writes_a_rule_and_route_lists_them() {
   await runCommand("route");
   const about = await opened;
   await until(
-    () => about.linkedBrowser.contentDocument?.documentElement.dataset.ready === "true",
+    () => about.linkedBrowser.contentDocument?.documentElement?.dataset.ready === "true",
     "about:vimma rendered",
   );
   const doc = aboutDoc(about);
