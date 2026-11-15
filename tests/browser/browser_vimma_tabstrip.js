@@ -99,6 +99,9 @@ add_task(async function pref_toggles_the_strip_live() {
 /**
  * Runs `fn` as if the browser draws the titlebar (GNOME/KDE with CSD). Headless and tiling WMs
  * have none, so set what CustomTitlebar sets; Firefox's own code paths then do the rest.
+ * On Linux it also shows GTK's close button, so the window controls have something to lay out:
+ * without GTK settings (headless) Firefox 161 shows no titlebar button at all, while Firefox 160's
+ * headless look-and-feel had a close button (Mozilla bug 2088285 removed it).
  * @param {() => Promise<void>} fn
  */
 async function withCustomTitlebar(fn) {
@@ -108,9 +111,19 @@ async function withCustomTitlebar(fn) {
     info("no browser-drawn titlebar here: simulating customtitlebar");
     root.setAttribute("customtitlebar", "true");
   }
+  let pushed = false;
   try {
+    if (AppConstants.platform == "linux") {
+      await SpecialPowers.pushPrefEnv({ set: [["ui.GtkCSDCloseButton", 1]] });
+      pushed = true;
+      await TestUtils.waitForCondition(
+        () => window.matchMedia("(-moz-gtk-csd-close-button)").matches,
+        "GTK shows a close button",
+      );
+    }
     await fn();
   } finally {
+    if (pushed) await SpecialPowers.popPrefEnv();
     if (simulated) root.removeAttribute("customtitlebar");
     window.TabBarVisibility.update(true);
   }

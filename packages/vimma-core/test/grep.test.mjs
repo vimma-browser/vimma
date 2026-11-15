@@ -138,7 +138,9 @@ describe("grepText", () => {
     expect(() => grepText("😀😀", must("x*"))).not.toThrow();
   });
 
-  test("bench: 1,000,000 characters under 50 ms", () => {
+  // Tagged `timing`: the budget is for the real code; Stryker's instrumented copy takes about
+  // 300 ms here (stryker.config.mjs leaves `timing` tests out of the mutation run).
+  test("bench: 1,000,000 characters under 50 ms", { tags: ["timing"] }, () => {
     const line = "the quick brown fox jumps over the lazy dog ";
     const big = Array.from({ length: Math.ceil(1e6 / (line.length + 1)) }, () => line).join(BLOCK);
     const q = must("lazy cat");

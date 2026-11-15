@@ -393,10 +393,6 @@ interface AutoCompletePopupElement extends XULPopupElement {
 
 // engine/dom/chrome-webidl/WindowGlobalActors.webidl: its document's global, once it has one.
 interface WindowGlobalParent {
-  /** Vimma's actor is host/VimmaParent.sys.mjs's class (actors/VimmaActors.sys.mjs register). */
-  getActor(
-    name: "Vimma",
-  ): import("../../src/browser/base/content/vimma/host/VimmaParent.sys.mjs").VimmaParent;
   /** The id of the process the document is in. */
   readonly osPid: number;
   /**
@@ -522,6 +518,15 @@ interface Window {
 // engine/dom/chrome-webidl/WindowGlobalActors.webidl
 interface WindowGlobalChild {
   getActor(name: string): JSWindowActorChild;
+}
+// engine/dom/chrome-webidl/BrowsingContext.webidl: shown, or kept rendering (the tests set it).
+interface BrowsingContext {
+  isActive: boolean;
+}
+// engine/docshell/base/nsIDocShell.idl: the element the docshell's events go up to, null for a
+// top-level window's.
+interface nsIDocShell {
+  readonly chromeEventHandler: EventTarget | null;
 }
 
 // engine/dom/webidl/Document.webidl (chrome-only): a XUL element, as chrome code makes one.
@@ -1196,8 +1201,8 @@ interface nsIRequest {
 }
 
 // engine/toolkit/components/downloads/Downloads.sys.mjs, DownloadList.sys.mjs and
-// DownloadCore.sys.mjs: the downloads module as the tests use it. A test file types its import
-// of the module with DownloadsApi (ChromeUtils.importESModule gives Firefox's modules as `any`).
+// DownloadCore.sys.mjs: the downloads module as the tests use it, which their import of it gives
+// (types/mochitest/firefox-test-modules.d.ts).
 // The list kinds are strings ("{Downloads.PUBLIC}").
 interface DownloadsApi {
   readonly PUBLIC: string;

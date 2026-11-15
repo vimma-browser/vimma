@@ -954,7 +954,9 @@ export class VimmaChild extends JSWindowActorChild {
         // Only the frame with focus has the user's caret (the parent sends to that one).
         const win = this.contentWindow;
         if (!isCaretMessage(msg.data) || !win || !this.document.hasFocus()) return false;
-        return this.#caret.run(win, this.#selCon(), msg.data);
+        const selCon = this.#selCon();
+        if (!selCon) return false;
+        return this.#caret.run(win, selCon, msg.data);
       }
       case "Vimma:Block": {
         // Element focus (docs/specs/element-focus.md): the parent sends to the frame whose
@@ -971,6 +973,7 @@ export class VimmaChild extends JSWindowActorChild {
           // `v` on a block: copy mode starts with the block selected, as with a mouse selection.
           enterCopyMode: (line) => {
             const selCon = this.#selCon();
+            if (!selCon) return false;
             if (this.#caret.run(win, selCon, { op: "enter" }) !== true) return false;
             if (line) this.#caret.run(win, selCon, { op: "line" });
             return true;
@@ -982,12 +985,17 @@ export class VimmaChild extends JSWindowActorChild {
     return undefined;
   }
 
-  /** The frame's nsISelectionController, got as ViewSourcePageChild gets it. */
+  /**
+   * The frame's nsISelectionController, got as ViewSourcePageChild gets it; null once the frame
+   * has lost its docshell.
+   */
   #selCon() {
-    return this.docShell
-      .QueryInterface(Ci.nsIInterfaceRequestor)
-      .getInterface(Ci.nsISelectionDisplay)
-      .QueryInterface(Ci.nsISelectionController);
+    return (
+      this.docShell
+        ?.QueryInterface(Ci.nsIInterfaceRequestor)
+        .getInterface(Ci.nsISelectionDisplay)
+        .QueryInterface(Ci.nsISelectionController) ?? null
+    );
   }
 
   /**
@@ -1808,10 +1816,8 @@ export class VimmaChild extends JSWindowActorChild {
     if (!sel) return false;
     sel.removeAllRanges();
     sel.addRange(range);
-    const selCon = this.docShell
-      .QueryInterface(Ci.nsIInterfaceRequestor)
-      .getInterface(Ci.nsISelectionDisplay)
-      .QueryInterface(Ci.nsISelectionController);
+    const selCon = this.#selCon();
+    if (!selCon) return false;
     selCon.setDisplaySelection(DISPLAY_ATTENTION);
     selCon.repaintSelection(SELECTION_NORMAL);
     // After the next frame: a tab just selected gets its viewport's size first.

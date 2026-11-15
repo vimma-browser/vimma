@@ -198,6 +198,7 @@ export function recordOf(d, win = null) {
  * The list a window shows (decision 3): a private window, its private session's downloads only;
  * a normal one, the profile's session downloads then the newest from history, as the Library.
  * @param {BrowserWindow} win
+ * @returns {Promise<DownloadList>}
  */
 function listFor(win) {
   if (lazy.PrivateBrowsingUtils.isWindowPrivate(win)) {

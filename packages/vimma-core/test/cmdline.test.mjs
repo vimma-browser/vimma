@@ -35,7 +35,7 @@ const run = (command, id, extra = {}) => ({
   ...(extra.text !== undefined ? { text: extra.text } : {}),
 });
 
-describe("parseCommandLine: plan §2 commands", () => {
+describe("parseCommandLine: the Vim-style commands", () => {
   test.each([
     [":tabnew", run("tabnew", "tab.new")],
     ["tabnew https://x.org/?q=1", run("tabnew", "tab.new", { text: "https://x.org/?q=1" })],
@@ -248,7 +248,7 @@ describe("command table", () => {
     }
   });
 
-  test(":q's action says the last pane closes the tab (plan §2)", () => {
+  test(":q's action says the last pane closes the tab", () => {
     expect(getAction("close_pane")?.description).toBe("Close pane; the last pane closes the tab");
   });
 

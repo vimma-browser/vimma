@@ -22,6 +22,7 @@ import {
 } from "../src/config/theme.mjs";
 import { mergeWithDefaults } from "../src/config/config.mjs";
 import { MODES } from "../src/keys/modes.mjs";
+import { budget } from "./budget.mjs";
 
 /** @param {string} name */
 const fixture = (name) =>
@@ -521,7 +522,7 @@ describe("untrusted input cannot inject CSS", () => {
     const font = `x${" ".repeat(200_000)}y`;
     const start = performance.now();
     const r = resolveTheme({ theme: themeCfg({ source: "file", font }) });
-    expect(performance.now() - start).toBeLessThan(1000);
+    expect(performance.now() - start).toBeLessThan(budget(1000));
     expect(r.tokens["--vimma-font"]).toBe(`"${font}", monospace`);
   });
 
