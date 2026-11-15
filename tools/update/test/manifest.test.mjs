@@ -6,11 +6,12 @@
 // manifest for those real files.
 import { describe, expect, it, beforeAll, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { createHash, generateKeyPairSync, privateEncrypt, constants } from "node:crypto";
+import { createHash, privateEncrypt, constants } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { defined } from "../../test/defined.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
+import { testKey } from "../../test/test-keys.ts";
 import {
   base64Encode,
   parseManifest,
@@ -48,8 +49,8 @@ const HASH = (/** @type {string} */ c) => c.repeat(128);
 const RELEASES = "https://github.com/vimma-browser/vimma/releases";
 
 /** An RSA-4096 key as Cloud KMS holds it, and the pin for it. */
-async function kmsKey() {
-  const pair = generateKeyPairSync("rsa", { modulusLength: 4096 });
+async function kmsKey(/** @type {"a" | "b"} */ name) {
+  const pair = testKey(name);
   const der = new Uint8Array(pair.publicKey.export({ type: "spki", format: "der" }));
   const pin = /** @type {const} */ ({
     id: await spkiKeyId(subtle, der),
@@ -90,7 +91,7 @@ const offer = () => ({
 /** @type {Awaited<ReturnType<typeof kmsKey>>} */ let key;
 /** @type {Awaited<ReturnType<typeof kmsKey>>} */ let stranger;
 beforeAll(async () => {
-  [key, stranger] = await Promise.all([kmsKey(), kmsKey()]);
+  [key, stranger] = await Promise.all([kmsKey("a"), kmsKey("b")]);
 }, 60_000);
 
 const DL = "https://github.com/vimma-browser/vimma/releases/download/v0.3.1";

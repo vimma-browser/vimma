@@ -386,7 +386,9 @@ _Pages_ and _extensions_ cannot reach it.
   same certificates, so the two verifiers trust the same keys, and a certificate that is not
   self-signed by its own key is refused. The primary's certificate is made from the request
   `update-cert.mjs` builds for the pinned primary key; only `--any-key`, for throwaway test
-  keys, takes another. `check-build.mjs` checks a package (the URL, both channel files, and
+  keys, takes another. The unit tests sign with two fixed RSA-4096 test keys whose private halves
+  are committed (`tools/test/fixtures/rsa-4096/`, so that no test waits on a key's random prime
+  search); a test fails if either is pinned or held by an updater certificate. `check-build.mjs` checks a package (the URL, both channel files, and
   that its `updater` carries Vimma's certificates and none of Mozilla's): `release.yml`'s
   `package` job on the release tarball, and `nightly.yml` on its tarball once it is set to the
   `vimma-nightly` channel (UP14). Firefox's check runs Vimma's verifier first (UP13).
@@ -403,6 +405,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`fails without the [AppUpdate] URL or with another host`](../../tools/update/test/check-build.test.mjs),
   [`the repository: update-keys.mjs is what the committed certificates give`](../../tools/update/test/gen-update-keys.test.mjs),
   [`pins the primary once when the secondary slot holds the primary again (decision 39)`](../../tools/update/test/gen-update-keys.test.mjs),
+  [`are neither pinned for the manifest nor in an updater certificate`](../../tools/test/test-keys.test.ts),
   [`refuses a signature that is not the key's own over this request`](../../tools/update/test/update-cert.test.mjs),
   [`refuses a certificate whose self-signature does not verify`](../../tools/update/test/gen-update-keys.test.mjs),
   [`fails when --mozilla-certs lacks Mozilla's certificates, rather than comparing nothing`](../../tools/update/test/check-build.test.mjs),

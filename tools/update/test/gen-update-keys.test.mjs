@@ -8,6 +8,7 @@ import { createHash, generateKeyPairSync } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
+import { testKey } from "../../test/test-keys.ts";
 import {
   CERT_DIR,
   UPDATE_KEYS_FILE,
@@ -21,14 +22,15 @@ const ROOT = new URL("../../../", import.meta.url).pathname;
 
 /**
  * A self-signed RSA-4096 certificate made with openssl, as the offline ceremony makes the
- * secondary (docs/runbook/ci-update-keys-and-update-host.md step 4).
+ * secondary (docs/runbook/ci-update-keys-and-update-host.md step 4), over a fixed test key: the
+ * secondary's differs from the others'.
  * @param {string} dir
  * @param {string} file
  * @param {string} cn
  */
 function certificate(dir, file, cn) {
   const key = join(dir, `${file}.key.pem`);
-  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 4096 });
+  const { privateKey } = testKey(file.startsWith("secondary") ? "b" : "a");
   writeFileSync(key, privateKey.export({ type: "pkcs8", format: "pem" }));
   execFileSync("openssl", [
     "req",

@@ -6,10 +6,10 @@
 // does, so the bytes it writes are checked by the verifier the browser runs.
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { generateKeyPairSync } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
+import { testKey } from "../../test/test-keys.ts";
 import { IDENTITY_REGEXP } from "../../package/package.mjs";
 import {
   base64Encode,
@@ -674,7 +674,7 @@ describe.skipIf(process.platform !== "linux")("the signing job's steps, run", ()
    */
   function setUp(body) {
     const dir = tempDir("vimma-sign-");
-    const pair = generateKeyPairSync("rsa", { modulusLength: 4096 });
+    const pair = testKey("a");
     writeFileSync(join(dir, "kms.key"), pair.privateKey.export({ type: "pkcs8", format: "pem" }));
     mkdirSync(join(dir, "bin"));
     mkdirSync(join(dir, "out"));
@@ -1153,7 +1153,7 @@ describe.skipIf(process.platform !== "linux")("the MAR signing job's steps, run"
   /** @param {Buffer} mar */
   function setUp(mar) {
     const dir = tempDir("vimma-mar-sign-");
-    const pair = generateKeyPairSync("rsa", { modulusLength: 4096 });
+    const pair = testKey("a");
     writeFileSync(join(dir, "kms.key"), pair.privateKey.export({ type: "pkcs8", format: "pem" }));
     mkdirSync(join(dir, "bin"));
     mkdirSync(join(dir, "in"));
