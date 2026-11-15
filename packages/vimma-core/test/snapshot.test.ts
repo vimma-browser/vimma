@@ -13,33 +13,26 @@ import {
 import { activeWorkspace, splitsOf } from "../src/workspaces/workspaces.mjs";
 import { createRow } from "../src/panes/panes.mjs";
 
-/**
- * A written snapshot's first workspace; throws when it has none, so no assertion reads past it.
- * @param {ReturnType<typeof toSnapshot>} snapshot
- */
-function firstOf(snapshot) {
+/** A written snapshot's first workspace; throws when it has none, so no assertion reads past it. */
+function firstOf(snapshot: ReturnType<typeof toSnapshot>) {
   const w = snapshot.workspaces[0];
   if (!w) throw new Error("the snapshot has no workspace");
   return w;
 }
 
-/**
- * The workspace state a snapshot restores to, without its tab renames.
- * @param {unknown} input
- * @param {Parameters<typeof readSnapshot>[1]} [options]
- */
-const stateOf = (input, options) => readSnapshot(input, options).state;
+/** The workspace state a snapshot restores to, without its tab renames. */
+const stateOf = (input: unknown, options?: Parameters<typeof readSnapshot>[1]) =>
+  readSnapshot(input, options).state;
 
-const fixture = (/** @type {string} */ name) =>
+const fixture = (name: string) =>
   readFileSync(new URL(`../../../tests/contract/state/v1/${name}`, import.meta.url), "utf8");
 
-/** @param {() => unknown} fn */
-function snapshotError(fn) {
+function snapshotError(fn: () => unknown) {
   try {
     fn();
   } catch (e) {
     expect(e).toBeInstanceOf(SnapshotError);
-    return /** @type {SnapshotError} */ (e);
+    return e as SnapshotError;
   }
   throw new Error("expected a SnapshotError");
 }
@@ -60,126 +53,119 @@ describe("contract fixtures, schema v1", () => {
   });
 });
 
-/** @param {(raw: any) => void} mutate */
-function mutated(mutate) {
+function mutated(mutate: (raw: any) => void) {
   const raw = JSON.parse(fixture("valid.json"));
   mutate(raw);
   return raw;
 }
 
 describe("validation", () => {
-  test.each(
-    /** @type {Array<[string, (raw: any) => void, string]>} */ ([
-      ["schema missing", (r) => delete r.schema, "schema"],
-      ["no workspaces", (r) => (r.workspaces = []), "workspaces"],
-      ["workspaces not an array", (r) => (r.workspaces = {}), "workspaces"],
-      ["unknown active", (r) => (r.active = "w9"), "active"],
-      ["next too small", (r) => (r.next = 3), "next"],
-      ["workspace not an object", (r) => (r.workspaces[2] = 7), "workspaces[2]"],
-      ["duplicate workspace id", (r) => (r.workspaces[1].id = "w1"), "workspaces[1].id"],
-      ["workspace id too long", (r) => (r.workspaces[1].id = "x".repeat(129)), "workspaces[1].id"],
-      ["workspace id with a space", (r) => (r.workspaces[1].id = "w 2"), "workspaces[1].id"],
-      ["duplicate name", (r) => (r.workspaces[1].name = "work"), "workspaces[1].name"],
-      ["empty name", (r) => (r.workspaces[1].name = " "), "workspaces[1].name"],
-      [
-        "duplicate container",
-        (r) => (r.workspaces[2].container = "vimma-work"),
-        "workspaces[2].container",
-      ],
-      ["tab in two workspaces", (r) => (r.workspaces[1].tabs = ["tab-a"]), "workspaces[1].tabs[0]"],
-      ["non-string tab", (r) => (r.workspaces[0].tabs[1] = 5), "workspaces[0].tabs[1]"],
-      [
-        "active tab not in tabs",
-        (r) => (r.workspaces[0].activeTab = "tab-z"),
-        "workspaces[0].activeTab",
-      ],
-      [
-        "active tab not focused",
-        (r) => (r.workspaces[0].activeTab = "tab-a"),
-        "workspaces[0].activeTab",
-      ],
-      [
-        "empty workspace with an active tab",
-        (r) => (r.workspaces[2].activeTab = "tab-x"),
-        "workspaces[2].activeTab",
-      ],
-      [
-        "empty workspace with panes",
-        (r) => (r.workspaces[2].panes = r.workspaces[1].panes),
-        "workspaces[2].panes",
-      ],
-      ["tabs without panes", (r) => (r.workspaces[1].panes = null), "workspaces[1].panes"],
-      [
-        "unknown node type",
-        (r) => (r.workspaces[1].panes.root.type = "tree"),
-        "workspaces[1].panes.root.type",
-      ],
-      ["bad axis", (r) => (r.workspaces[0].panes.root.axis = "z"), "workspaces[0].panes.root.axis"],
-      [
-        "one-child split",
-        (r) => r.workspaces[0].panes.root.children.pop(),
-        "workspaces[0].panes.root.children",
-      ],
-      [
-        "ratios count",
-        (r) => r.workspaces[0].panes.root.ratios.push(0),
-        "workspaces[0].panes.root.ratios",
-      ],
-      [
-        "negative ratio",
-        (r) => (r.workspaces[0].panes.root.ratios = [1.5, -0.5]),
-        "workspaces[0].panes.root.ratios",
-      ],
-      [
-        "nested split on the same axis",
-        (r) => (r.workspaces[0].panes.root.children[1].axis = "x"),
-        "workspaces[0].panes.root.children[1].axis",
-      ],
-      [
-        "pane tab not in the workspace",
-        (r) => (r.workspaces[0].panes.root.children[0].tab = "tab-d"),
-        "workspaces[0].panes.root.children[0].tab",
-      ],
-      [
-        "tab shown twice",
-        (r) => (r.workspaces[0].panes.root.children[0].tab = "tab-b"),
-        "workspaces[0].panes.root.children[1].children[0].tab",
-      ],
-      [
-        "duplicate pane id",
-        (r) => (r.workspaces[0].panes.root.children[0].pane = "p2"),
-        "workspaces[0].panes.root.children[1].children[0].pane",
-      ],
-      [
-        "name with surrounding spaces",
-        (r) => (r.workspaces[1].name = " personal"),
-        "workspaces[1].name",
-      ],
-      [
-        "mru missing a pane",
-        (r) => (r.workspaces[0].panes.mru = ["p3", "p2"]),
-        "workspaces[0].panes.mru",
-      ],
-      [
-        "mru not led by focus",
-        (r) => (r.workspaces[0].panes.mru = ["p2", "p3", "p1"]),
-        "workspaces[0].panes.mru",
-      ],
-      [
-        "mru repeats a pane",
-        (r) => (r.workspaces[0].panes.mru = ["p3", "p3", "p1"]),
-        "workspaces[0].panes.mru",
-      ],
-      [
-        "focus not a leaf",
-        (r) => (r.workspaces[0].panes.focus = "p9"),
-        "workspaces[0].panes.focus",
-      ],
-      ["zoom not a leaf", (r) => (r.workspaces[0].panes.zoom = "p9"), "workspaces[0].panes.zoom"],
-      ["pane next too small", (r) => (r.workspaces[0].panes.next = 2), "workspaces[0].panes.next"],
-      ["panes not an object", (r) => (r.workspaces[0].panes = "x"), "workspaces[0].panes"],
-    ]),
-  )("%s → %s", (_, mutate, path) => {
+  test.each([
+    ["schema missing", (r) => delete r.schema, "schema"],
+    ["no workspaces", (r) => (r.workspaces = []), "workspaces"],
+    ["workspaces not an array", (r) => (r.workspaces = {}), "workspaces"],
+    ["unknown active", (r) => (r.active = "w9"), "active"],
+    ["next too small", (r) => (r.next = 3), "next"],
+    ["workspace not an object", (r) => (r.workspaces[2] = 7), "workspaces[2]"],
+    ["duplicate workspace id", (r) => (r.workspaces[1].id = "w1"), "workspaces[1].id"],
+    ["workspace id too long", (r) => (r.workspaces[1].id = "x".repeat(129)), "workspaces[1].id"],
+    ["workspace id with a space", (r) => (r.workspaces[1].id = "w 2"), "workspaces[1].id"],
+    ["duplicate name", (r) => (r.workspaces[1].name = "work"), "workspaces[1].name"],
+    ["empty name", (r) => (r.workspaces[1].name = " "), "workspaces[1].name"],
+    [
+      "duplicate container",
+      (r) => (r.workspaces[2].container = "vimma-work"),
+      "workspaces[2].container",
+    ],
+    ["tab in two workspaces", (r) => (r.workspaces[1].tabs = ["tab-a"]), "workspaces[1].tabs[0]"],
+    ["non-string tab", (r) => (r.workspaces[0].tabs[1] = 5), "workspaces[0].tabs[1]"],
+    [
+      "active tab not in tabs",
+      (r) => (r.workspaces[0].activeTab = "tab-z"),
+      "workspaces[0].activeTab",
+    ],
+    [
+      "active tab not focused",
+      (r) => (r.workspaces[0].activeTab = "tab-a"),
+      "workspaces[0].activeTab",
+    ],
+    [
+      "empty workspace with an active tab",
+      (r) => (r.workspaces[2].activeTab = "tab-x"),
+      "workspaces[2].activeTab",
+    ],
+    [
+      "empty workspace with panes",
+      (r) => (r.workspaces[2].panes = r.workspaces[1].panes),
+      "workspaces[2].panes",
+    ],
+    ["tabs without panes", (r) => (r.workspaces[1].panes = null), "workspaces[1].panes"],
+    [
+      "unknown node type",
+      (r) => (r.workspaces[1].panes.root.type = "tree"),
+      "workspaces[1].panes.root.type",
+    ],
+    ["bad axis", (r) => (r.workspaces[0].panes.root.axis = "z"), "workspaces[0].panes.root.axis"],
+    [
+      "one-child split",
+      (r) => r.workspaces[0].panes.root.children.pop(),
+      "workspaces[0].panes.root.children",
+    ],
+    [
+      "ratios count",
+      (r) => r.workspaces[0].panes.root.ratios.push(0),
+      "workspaces[0].panes.root.ratios",
+    ],
+    [
+      "negative ratio",
+      (r) => (r.workspaces[0].panes.root.ratios = [1.5, -0.5]),
+      "workspaces[0].panes.root.ratios",
+    ],
+    [
+      "nested split on the same axis",
+      (r) => (r.workspaces[0].panes.root.children[1].axis = "x"),
+      "workspaces[0].panes.root.children[1].axis",
+    ],
+    [
+      "pane tab not in the workspace",
+      (r) => (r.workspaces[0].panes.root.children[0].tab = "tab-d"),
+      "workspaces[0].panes.root.children[0].tab",
+    ],
+    [
+      "tab shown twice",
+      (r) => (r.workspaces[0].panes.root.children[0].tab = "tab-b"),
+      "workspaces[0].panes.root.children[1].children[0].tab",
+    ],
+    [
+      "duplicate pane id",
+      (r) => (r.workspaces[0].panes.root.children[0].pane = "p2"),
+      "workspaces[0].panes.root.children[1].children[0].pane",
+    ],
+    [
+      "name with surrounding spaces",
+      (r) => (r.workspaces[1].name = " personal"),
+      "workspaces[1].name",
+    ],
+    [
+      "mru missing a pane",
+      (r) => (r.workspaces[0].panes.mru = ["p3", "p2"]),
+      "workspaces[0].panes.mru",
+    ],
+    [
+      "mru not led by focus",
+      (r) => (r.workspaces[0].panes.mru = ["p2", "p3", "p1"]),
+      "workspaces[0].panes.mru",
+    ],
+    [
+      "mru repeats a pane",
+      (r) => (r.workspaces[0].panes.mru = ["p3", "p3", "p1"]),
+      "workspaces[0].panes.mru",
+    ],
+    ["focus not a leaf", (r) => (r.workspaces[0].panes.focus = "p9"), "workspaces[0].panes.focus"],
+    ["zoom not a leaf", (r) => (r.workspaces[0].panes.zoom = "p9"), "workspaces[0].panes.zoom"],
+    ["pane next too small", (r) => (r.workspaces[0].panes.next = 2), "workspaces[0].panes.next"],
+    ["panes not an object", (r) => (r.workspaces[0].panes = "x"), "workspaces[0].panes"],
+  ] as Array<[string, (raw: any) => void, string]>)("%s → %s", (_, mutate, path) => {
     expect(snapshotError(() => stateOf(mutated(mutate))).path).toBe(path);
   });
 
@@ -202,16 +188,13 @@ describe("validation", () => {
 });
 
 describe("panes.layout (docs/specs/tiling-layouts.md): optional, no schema bump", () => {
-  /** @param {unknown} layout */
-  const withLayout = (layout) =>
+  const withLayout = (layout: unknown) =>
     mutated((r) => {
-      const w = r.workspaces.find((/** @type {any} */ x) => x.panes?.root.type === "split");
+      const w = r.workspaces.find((x: any) => x.panes?.root.type === "split");
       w.panes.layout = layout;
     });
-  const read = (/** @type {any} */ raw) =>
-    /** @type {any} */ (stateOf(raw)).workspaces.find(
-      (/** @type {any} */ w) => w.panes?.root.type === "split",
-    ).panes;
+  const read = (raw: any) =>
+    (stateOf(raw) as any).workspaces.find((w: any) => w.panes?.root.type === "split").panes;
 
   test("a preset name is kept and written back", () => {
     const raw = withLayout("tiled");
@@ -255,11 +238,10 @@ describe("migrations", () => {
       }
     });
     const migrations = {
-      /** @param {any} raw */
-      0: (raw) => ({
+      0: (raw: any) => ({
         ...raw,
         schema: 1,
-        workspaces: raw.workspaces.map((/** @type {any} */ { identity, ...w }) => ({
+        workspaces: raw.workspaces.map(({ identity, ...w }: any) => ({
           ...w,
           container: identity,
         })),
@@ -271,7 +253,7 @@ describe("migrations", () => {
 
   test("a migration that does not advance the schema throws instead of looping", () => {
     const v0 = mutated((r) => (r.schema = 0));
-    const stuck = { 0: (/** @type {any} */ raw) => raw };
+    const stuck = { 0: (raw: any) => raw };
     const e = snapshotError(() => migrateSnapshot(v0, stuck));
     expect(e.code).toBe("bad-migration");
     expect(e.path).toBe("schema");
@@ -303,7 +285,7 @@ describe("canWrite: never overwrite a file from a newer vimma", () => {
 // docs/specs/side-panel-unsplit.md decision 24: a hidden view and the tab shown alone over it.
 describe("panes.hidden and alone: optional, no schema bump", () => {
   /** w1's split hidden, tab-z shown alone; activeTab stays the focused pane's tab (tab-c). */
-  const hidden = (/** @type {(w: any) => void} */ more = () => {}) =>
+  const hidden = (more: (w: any) => void = () => {}) =>
     mutated((r) => {
       const w = r.workspaces[0];
       w.tabs.push("tab-z");
@@ -311,7 +293,7 @@ describe("panes.hidden and alone: optional, no schema bump", () => {
       w.alone = "tab-z";
       more(w);
     });
-  const w1 = (/** @type {any} */ raw) => /** @type {any} */ (stateOf(raw)).workspaces[0];
+  const w1 = (raw: any) => (stateOf(raw) as any).workspaces[0];
 
   test("a hidden view reads with the alone tab as the active one, and writes back", () => {
     const raw = hidden();
@@ -331,10 +313,10 @@ describe("panes.hidden and alone: optional, no schema bump", () => {
   });
 
   test.each([
-    ["no alone tab", (/** @type {any} */ w) => delete w.alone],
-    ["an alone tab not in the workspace", (/** @type {any} */ w) => (w.alone = "tab-d")],
-    ["an alone tab that is a pane's", (/** @type {any} */ w) => (w.alone = "tab-a")],
-    ["hidden not true", (/** @type {any} */ w) => (w.panes.hidden = "yes")],
+    ["no alone tab", (w: any) => delete w.alone],
+    ["an alone tab not in the workspace", (w: any) => (w.alone = "tab-d")],
+    ["an alone tab that is a pane's", (w: any) => (w.alone = "tab-a")],
+    ["hidden not true", (w: any) => (w.panes.hidden = "yes")],
   ])("%s: the view reads as shown, without failing", (_, change) => {
     const w = w1(hidden(change));
     expect("hidden" in w.panes).toBe(false);
@@ -345,7 +327,7 @@ describe("panes.hidden and alone: optional, no schema bump", () => {
     const raw = mutated((r) => {
       r.workspaces[1].panes.hidden = true;
     });
-    expect("hidden" in /** @type {any} */ (stateOf(raw)).workspaces[1].panes).toBe(false);
+    expect("hidden" in (stateOf(raw) as any).workspaces[1].panes).toBe(false);
   });
 
   test("a snapshot without them reads as before", () => {
@@ -358,9 +340,9 @@ describe("panes.hidden and alone: optional, no schema bump", () => {
 // docs/specs/multiple-splits.md decision 15: every split of a workspace, with the old fields kept.
 describe("splits: a list, with panes and activeTab kept for an older reader", () => {
   /** w1 (tabs a-c in valid.json's tree) gains tab-x and tab-y, a second split numbered 3. */
-  const several = (/** @type {{ shown?: number | null, alone?: string }} */ o = {}) => {
+  const several = (o: { shown?: number | null; alone?: string } = {}) => {
     const base = stateOf(fixture("valid.json"));
-    const w = /** @type {any} */ (base.workspaces[0]);
+    const w = base.workspaces[0] as any;
     const one = Object.freeze({ ...w.panes, number: 1 });
     const three = Object.freeze({
       ...createRow(["tab-x", "tab-y"], { focus: "tab-y" }),
@@ -378,14 +360,14 @@ describe("splits: a list, with panes and activeTab kept for an older reader", ()
     });
     return Object.freeze({ ...base, workspaces: Object.freeze([w1, ...base.workspaces.slice(1)]) });
   };
-  const w1 = (/** @type {any} */ s) => /** @type {any} */ (s).workspaces[0];
+  const w1 = (s: any) => (s as any).workspaces[0];
 
   test("several splits round-trip with their numbers and the shown one", () => {
     const written = toSnapshot(several());
-    expect(firstOf(written).splits.map((/** @type {any} */ x) => x.number)).toEqual([1, 3]);
+    expect(firstOf(written).splits.map((x: any) => x.number)).toEqual([1, 3]);
     expect(firstOf(written).shown).toBe(3);
     const back = stateOf(JSON.parse(JSON.stringify(written)));
-    expect(w1(back).splits.map((/** @type {any} */ x) => x.number)).toEqual([1, 3]);
+    expect(w1(back).splits.map((x: any) => x.number)).toEqual([1, 3]);
     expect(w1(back).shown).toBe(3);
     expect(w1(back).last).toBe(3);
     expect(w1(back).activeTab).toBe("tab-y");
@@ -431,7 +413,7 @@ describe("splits: a list, with panes and activeTab kept for an older reader", ()
     expect(one.splits.map((x) => x.number)).toEqual([1]);
     expect(one.shown).toBe(1);
     expect(one.splits[0]?.root).toEqual(w1(s).panes.root);
-    expect(splitsOf(/** @type {any} */ (s).workspaces[1]).splits).toEqual([]);
+    expect(splitsOf((s as any).workspaces[1]).splits).toEqual([]);
     expect(toSnapshot(s)).toEqual(JSON.parse(fixture("valid.json")));
   });
 
@@ -444,28 +426,24 @@ describe("splits: a list, with panes and activeTab kept for an older reader", ()
     expect(splitsOf(w1(stateOf(raw)))).toMatchObject({ shown: null, last: 1 });
   });
 
-  /** @param {(splits: any[]) => void} damage */
-  const damaged = (damage) => {
+  const damaged = (damage: (splits: any[]) => void) => {
     const raw = JSON.parse(JSON.stringify(toSnapshot(several())));
     damage(raw.workspaces[0].splits);
     return w1(stateOf(raw));
   };
 
   test.each([
-    ["a repeated number", (/** @type {any[]} */ x) => (x[1].number = 1)],
-    ["a number out of range", (/** @type {any[]} */ x) => (x[1].number = 10)],
-    ["a number that is not an integer", (/** @type {any[]} */ x) => (x[1].number = "3")],
-    [
-      "a tab of an earlier split",
-      (/** @type {any[]} */ x) => (x[1].root.children[0].tab = "tab-a"),
-    ],
-    ["a malformed tree", (/** @type {any[]} */ x) => (x[1].root.ratios = [0.9, 0.9])],
-    ["a tab not in the workspace", (/** @type {any[]} */ x) => (x[1].root.children[0].tab = "t-q")],
-    ["one pane only", (/** @type {any[]} */ x) => (x[1].root = x[1].root.children[0])],
-    ["not an object", (/** @type {any[]} */ x) => (x[1] = 7)],
+    ["a repeated number", (x: any[]) => (x[1].number = 1)],
+    ["a number out of range", (x: any[]) => (x[1].number = 10)],
+    ["a number that is not an integer", (x: any[]) => (x[1].number = "3")],
+    ["a tab of an earlier split", (x: any[]) => (x[1].root.children[0].tab = "tab-a")],
+    ["a malformed tree", (x: any[]) => (x[1].root.ratios = [0.9, 0.9])],
+    ["a tab not in the workspace", (x: any[]) => (x[1].root.children[0].tab = "t-q")],
+    ["one pane only", (x: any[]) => (x[1].root = x[1].root.children[0])],
+    ["not an object", (x: any[]) => (x[1] = 7)],
   ])("%s: that entry is dropped, the rest of the file reads", (_, damage) => {
     const w = damaged(damage);
-    expect(w.splits.map((/** @type {any} */ x) => x.number)).toEqual([1]);
+    expect(w.splits.map((x: any) => x.number)).toEqual([1]);
     expect(w.shown).toBeNull();
   });
 
@@ -489,13 +467,11 @@ describe("splits: a list, with panes and activeTab kept for an older reader", ()
             number: n,
           }));
           const w = w1(stateOf(raw));
-          const tabs = w.splits.flatMap((/** @type {any} */ x) =>
-            JSON.stringify(x.root).match(/tab-[a-z]/g),
-          );
+          const tabs = w.splits.flatMap((x: any) => JSON.stringify(x.root).match(/tab-[a-z]/g));
           expect(new Set(tabs).size).toBe(tabs.length);
-          const ns = w.splits.map((/** @type {any} */ x) => x.number);
+          const ns = w.splits.map((x: any) => x.number);
           expect(new Set(ns).size).toBe(ns.length);
-          expect(ns.every((/** @type {number} */ n) => n >= 1 && n <= 9)).toBe(true);
+          expect(ns.every((n: number) => n >= 1 && n <= 9)).toBe(true);
         },
       ),
     );

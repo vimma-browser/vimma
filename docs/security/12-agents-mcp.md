@@ -644,7 +644,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`a_control_socket_open_skips_the_agent_container`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`a_new_windows_first_tab_and_the_startup_cache_skip_the_agent`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`with_no_normal_workspace_used_yet_the_first_one_is_taken`](../../tests/browser/browser_vimma_agent_outside_opens.js),
-  [`never the agent workspace, even when it is all there is with a container`](../../packages/vimma-core/test/workspacedefs.test.mjs)
+  [`never the agent workspace, even when it is all there is with a container`](../../packages/vimma-core/test/workspacedefs.test.ts)
 - M25. `agent-elements` (mcp-forms F2-F4) **must** act only on an agent tab (M2), checked before
   the question, after the yes and again once the list is made, with the URL asked about, and in
   the background: it **never** selects, shows or focuses the tab or an element in it, and changes

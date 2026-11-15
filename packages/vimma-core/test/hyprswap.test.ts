@@ -26,19 +26,15 @@ import {
   splitReplies,
   workspaceTarget,
 } from "../src/workspaces/hyprswap.mjs";
-/** @import { Client, Command, ShowPlan } from "../src/workspaces/hyprswap.mjs" */
+import type { Client, Command, ShowPlan } from "../src/workspaces/hyprswap.mjs";
 
 // docs/specs/private-swap.md decisions 3, 4, 5, 6, 7 and 9; ADR-017.
 
 const A = "0x571e4538c0b0";
 const B = "0x571e44830ae0";
 
-/**
- * A client record as parseClients returns it.
- * @param {Partial<Client>} [over]
- * @returns {Client}
- */
-function client(over = {}) {
+/** A client record as parseClients returns it. */
+function client(over: Partial<Client> = {}): Client {
   return {
     address: A,
     pid: 4242,
@@ -54,11 +50,8 @@ function client(over = {}) {
   };
 }
 
-/**
- * A plan's commands; throws on a refusal, which has none.
- * @param {ShowPlan} plan
- */
-function commandsOf(plan) {
+/** A plan's commands; throws on a refusal, which has none. */
+function commandsOf(plan: ShowPlan) {
   if (plan.kind === "refuse") throw new Error(`refused: ${plan.reason}`);
   return plan.commands;
 }
@@ -92,7 +85,7 @@ describe("finding Hyprland (decision 3)", () => {
     [signature, "/run/../tmp"],
     [undefined, "/run/user/1000"],
   ])("refuses signature %j with runtime dir %j", (sig, dir) => {
-    expect(hyprSockets({ signature: /** @type {any} */ (sig), runtimeDir: dir })).toBeNull();
+    expect(hyprSockets({ signature: sig as any, runtimeDir: dir })).toBeNull();
   });
 });
 
@@ -145,8 +138,8 @@ describe("batch replies", () => {
 });
 
 describe("the encoder (decision 4)", () => {
-  const lua = (/** @type {Command} */ c) => encodeCommand("lua", c);
-  const legacy = (/** @type {Command} */ c) => encodeCommand("legacy", c);
+  const lua = (c: Command) => encodeCommand("lua", c);
+  const legacy = (c: Command) => encodeCommand("legacy", c);
 
   test("every verb in the Lua dialect", () => {
     expect(lua({ verb: "move", window: A, workspace: 3 })).toEqual([
@@ -245,12 +238,12 @@ describe("the encoder (decision 4)", () => {
     [{ verb: "exec", window: A }],
     [null],
   ])("refuses %j", (cmd) => {
-    expect(encodeCommand("lua", /** @type {any} */ (cmd))).toBeNull();
-    expect(encodeCommand("legacy", /** @type {any} */ (cmd))).toBeNull();
+    expect(encodeCommand("lua", cmd as any)).toBeNull();
+    expect(encodeCommand("legacy", cmd as any)).toBeNull();
   });
 
   test("an unknown dialect encodes nothing", () => {
-    expect(encodeCommand(/** @type {any} */ ("sway"), { verb: "focus", window: A })).toBeNull();
+    expect(encodeCommand("sway" as any, { verb: "focus", window: A })).toBeNull();
   });
 
   test("a batch joins the commands; one with a refused command is refused whole", () => {
@@ -311,7 +304,7 @@ describe("workspaceTarget: where a window's slot is", () => {
     expect(workspaceTarget({ id: -98, name: "special:scratchpad" })).toBeNull();
     expect(workspaceTarget({ id: -1337, name: 'a"b' })).toBeNull();
     expect(workspaceTarget({ id: 0, name: "" })).toBeNull();
-    expect(workspaceTarget(/** @type {any} */ (null))).toBeNull();
+    expect(workspaceTarget(null as any)).toBeNull();
   });
 });
 
@@ -672,7 +665,7 @@ describe("planShow: show X in Y's place (Design: the mechanism)", () => {
     const hex = fc.integer({ min: 1, max: 0xffffffffff }).map((n) => `0x${n.toString(16)}`);
     const coord = fc.integer({ min: -4000, max: 4000 });
     const size = fc.integer({ min: 1, max: 8000 });
-    const rec = (/** @type {fc.Arbitrary<{ id: number, name: string }>} */ ws) =>
+    const rec = (ws: fc.Arbitrary<{ id: number; name: string }>) =>
       fc.record({
         address: hex,
         pid: fc.nat(),
@@ -721,7 +714,7 @@ describe("the pair (decisions 6, 7)", () => {
   });
 
   test("leaving shows the normal window in the private one's place, and back", () => {
-    const shown = { normal: N, private: P, parked: /** @type {const} */ ("normal") };
+    const shown = { normal: N, private: P, parked: "normal" as const };
     const left = pairStep(shown, { type: "leave" });
     expect(left).toEqual({
       state: { normal: N, private: P, parked: "private" },
@@ -738,12 +731,12 @@ describe("the pair (decisions 6, 7)", () => {
 
   test("leaving with nothing parked does nothing", () => {
     expect(pairStep(null, { type: "leave" })).toEqual({ state: null, ops: [] });
-    const left = { normal: N, private: P, parked: /** @type {const} */ ("private") };
+    const left = { normal: N, private: P, parked: "private" as const };
     expect(pairStep(left, { type: "leave" })).toEqual({ state: left, ops: [] });
   });
 
   test("entering again while shown changes nothing", () => {
-    const shown = { normal: N, private: P, parked: /** @type {const} */ ("normal") };
+    const shown = { normal: N, private: P, parked: "normal" as const };
     expect(pairStep(shown, { type: "enter", normal: N, private: P })).toEqual({
       state: shown,
       ops: [],
@@ -751,7 +744,7 @@ describe("the pair (decisions 6, 7)", () => {
   });
 
   test("entering from a second normal window swaps the parked one back first", () => {
-    const shown = { normal: N, private: P, parked: /** @type {const} */ ("normal") };
+    const shown = { normal: N, private: P, parked: "normal" as const };
     expect(pairStep(shown, { type: "enter", normal: N2, private: P })).toEqual({
       state: { normal: N2, private: P, parked: "normal" },
       ops: [
@@ -759,7 +752,7 @@ describe("the pair (decisions 6, 7)", () => {
         { show: P, place: N2 },
       ],
     });
-    const left = { normal: N, private: P, parked: /** @type {const} */ ("private") };
+    const left = { normal: N, private: P, parked: "private" as const };
     expect(pairStep(left, { type: "enter", normal: N2, private: P })).toEqual({
       state: { normal: N2, private: P, parked: "normal" },
       ops: [{ show: P, place: N2 }],
@@ -767,12 +760,12 @@ describe("the pair (decisions 6, 7)", () => {
   });
 
   test("a new private window while one is parked: the new one takes the slot", () => {
-    const left = { normal: N, private: P, parked: /** @type {const} */ ("private") };
+    const left = { normal: N, private: P, parked: "private" as const };
     expect(pairStep(left, { type: "enter", normal: N, private: P2 })).toEqual({
       state: { normal: N, private: P2, parked: "normal" },
       ops: [{ show: P2, place: N }],
     });
-    const shown = { normal: N, private: P, parked: /** @type {const} */ ("normal") };
+    const shown = { normal: N, private: P, parked: "normal" as const };
     expect(pairStep(shown, { type: "enter", normal: N, private: P2 }).ops).toEqual([
       { show: N, place: P },
       { show: P2, place: N },
@@ -780,12 +773,12 @@ describe("the pair (decisions 6, 7)", () => {
   });
 
   test("the slot window closing shows the parked one in its place; never stranded", () => {
-    const shown = { normal: N, private: P, parked: /** @type {const} */ ("normal") };
+    const shown = { normal: N, private: P, parked: "normal" as const };
     expect(pairStep(shown, { type: "closing", window: P })).toEqual({
       state: null,
       ops: [{ show: N, place: P }],
     });
-    const left = { normal: N, private: P, parked: /** @type {const} */ ("private") };
+    const left = { normal: N, private: P, parked: "private" as const };
     expect(pairStep(left, { type: "closing", window: N })).toEqual({
       state: null,
       ops: [{ show: P, place: N }],
@@ -793,14 +786,14 @@ describe("the pair (decisions 6, 7)", () => {
   });
 
   test("the parked window closing (ctrl+b shift+d while away) just forgets the pair", () => {
-    const left = { normal: N, private: P, parked: /** @type {const} */ ("private") };
+    const left = { normal: N, private: P, parked: "private" as const };
     expect(pairStep(left, { type: "closing", window: P })).toEqual({ state: null, ops: [] });
     expect(pairStep(left, { type: "closing", window: "0x9" })).toEqual({ state: left, ops: [] });
     expect(pairStep(null, { type: "closing", window: P })).toEqual({ state: null, ops: [] });
   });
 
   test("the parked window activated (a link from another app) comes back in place", () => {
-    const shown = { normal: N, private: P, parked: /** @type {const} */ ("normal") };
+    const shown = { normal: N, private: P, parked: "normal" as const };
     expect(pairStep(shown, { type: "activated", window: N })).toEqual({
       state: { normal: N, private: P, parked: "private" },
       ops: [{ show: N, place: P }],
@@ -810,7 +803,7 @@ describe("the pair (decisions 6, 7)", () => {
   });
 
   test("the user moving the parked window out forgets the pair; no fight", () => {
-    const shown = { normal: N, private: P, parked: /** @type {const} */ ("normal") };
+    const shown = { normal: N, private: P, parked: "normal" as const };
     expect(pairStep(shown, { type: "moved", window: N, workspace: "2" })).toEqual({
       state: null,
       ops: [],
@@ -826,7 +819,7 @@ describe("the pair (decisions 6, 7)", () => {
   });
 
   test("a failure forgets the pair", () => {
-    const shown = { normal: N, private: P, parked: /** @type {const} */ ("normal") };
+    const shown = { normal: N, private: P, parked: "normal" as const };
     expect(pairStep(shown, { type: "failed" })).toEqual({ state: null, ops: [] });
   });
 
