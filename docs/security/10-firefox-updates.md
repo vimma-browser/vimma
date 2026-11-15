@@ -135,7 +135,7 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`firefox-notes reads the release branch as data and does nothing without the token`](../../tools/package/test/release-workflow.test.mjs),
   [`firefox-notes moves [Unreleased] into the new entry before naming the Firefox version`](../../tools/package/test/release-workflow.test.mjs),
   [`sets auto-merge only once the slow checks of the ready run have replaced the draft's`](../../tools/release/test/security-release.test.mjs),
-  [`finds no cover in a run whose checks were skipped, such as a draft's`](../../tools/ci/test/tree-covered.test.mjs),
+  [`finds no cover in a run whose checks were skipped, such as a draft's`](../../tools/ci/test/tree-covered.test.ts),
   [`marks a draft release PR ready for review, then sets it to auto-merge`](../../tools/release/test/security-release.test.mjs),
   [`the mochitests, Semgrep and CodeQL skip a draft and still report their required checks`](../../tools/test/draft-pull-requests.test.ts),
   [`CodeQL still uploads an analysis for every pull request that is not a draft`](../../tools/test/draft-pull-requests.test.ts),

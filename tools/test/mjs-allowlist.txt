@@ -5,7 +5,6 @@
 # (ADR-025, decision 7) and are not listed.
 tools/artifact-build/artifact-build.mjs
 tools/artifact-build/test/artifact-build.test.mjs
-tools/ci/test/tree-covered.test.mjs
 tools/package/cask.mjs
 tools/package/ctl-notices.mjs
 tools/package/flatpak.mjs
