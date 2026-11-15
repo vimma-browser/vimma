@@ -32,6 +32,9 @@ const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
 );
+const { AgentActors } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/actors/AgentActors.sys.mjs",
+);
 const { VimmaActors } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs",
 );
@@ -446,7 +449,7 @@ add_task(async function test_a_collection_that_waited_keeps_a_newer_ones_element
     Assert.greater(newer.length, 0, "the newer collection lists the page's elements");
     Assert.deepEqual(await older, [], "the older one is superseded");
     Assert.ok(
-      await VimmaActors.agentElementAlive(newer[0]),
+      await AgentActors.agentElementAlive(newer[0]),
       "the newer collection's elements are still the frame's",
     );
   } finally {
