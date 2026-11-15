@@ -9,8 +9,8 @@ import {
   switchWorkspace,
 } from "../src/workspaces/workspaces.mjs";
 
-/** @import { TabsState, SwitchPlan } from "../src/workspaces/switchplan.mjs" */
-/** @import { Workspaces } from "../src/workspaces/workspaces.mjs" */
+import type { TabsState, SwitchPlan } from "../src/workspaces/switchplan.mjs";
+import type { Workspaces } from "../src/workspaces/workspaces.mjs";
 
 const three = () =>
   createWorkspaces([
@@ -27,12 +27,10 @@ function model() {
   return s;
 }
 
-/**
- * @param {Array<[string, { hidden?: boolean, pinned?: boolean, group?: string }?]>} tabs
- * @param {string | null} selected
- * @returns {TabsState}
- */
-const state = (tabs, selected) => ({
+const state = (
+  tabs: Array<[string, { hidden?: boolean; pinned?: boolean; group?: string }?]>,
+  selected: string | null,
+): TabsState => ({
   tabs: tabs.map(([id, o = {}]) => ({
     id,
     hidden: o.hidden ?? false,
@@ -46,16 +44,13 @@ const state = (tabs, selected) => ({
  * Firefox, as far as a switch is concerned: selecting shows the tab; hideTab does nothing to a
  * pinned or selected tab and hides a split member's whole group (except a selected member);
  * showTab shows one tab.
- * @param {TabsState} st
- * @param {SwitchPlan} plan
- * @returns {TabsState}
  */
-function apply(st, plan) {
+function apply(st: TabsState, plan: SwitchPlan): TabsState {
   const tabs = st.tabs.map((t) => ({ ...t }));
-  const byId = (/** @type {string} */ id) => {
+  const byId = (id: string) => {
     const t = tabs.find((x) => x.id === id);
     expect(t).toBeDefined();
-    return /** @type {(typeof tabs)[number]} */ (t);
+    return t as (typeof tabs)[number];
   };
   let selected = st.selected;
   if (plan.select !== null) {
@@ -162,11 +157,11 @@ const modelArb = fc
     let s = three();
     IDS.forEach((id, i) => {
       s = openTab(s, id, {
-        workspace: { index: /** @type {number} */ (homes[i]) },
+        workspace: { index: homes[i] as number },
         activate: false,
       });
     });
-    for (const p of picks) s = selectTab(s, /** @type {string} */ (IDS[p]));
+    for (const p of picks) s = selectTab(s, IDS[p] as string);
     return switchWorkspace(s, { index: active });
   });
 
@@ -191,13 +186,12 @@ const tabsArb = fc
         group: pinned ? null : (groups[i] ?? null),
       };
     });
-    const sel = /** @type {(typeof tabs)[number]} */ (tabs[selected % tabs.length]);
+    const sel = tabs[selected % tabs.length] as (typeof tabs)[number];
     sel.hidden = false;
     return { tabs, selected: sel.id };
   });
 
-/** @param {Workspaces} s */
-const tabsOf = (s) => new Set(s.workspaces.find((w) => w.id === s.active)?.tabs);
+const tabsOf = (s: Workspaces) => new Set(s.workspaces.find((w) => w.id === s.active)?.tabs);
 
 describe("planWorkspaceSwitch properties", () => {
   test("afterwards exactly the target's tabs (and pinned, unknown, mixed-group ones) are visible", () => {
@@ -210,10 +204,10 @@ describe("planWorkspaceSwitch properties", () => {
         const active = s.workspaces.find((w) => w.id === s.active)?.activeTab ?? null;
         expect(plan.select).toBe(active);
         if (active) expect(after.selected).toBe(active);
-        /** @param {string | null} g */
-        const mixed = (g) => !!g && st.tabs.some((t) => t.group === g && mine.has(t.id));
+        const mixed = (g: string | null) =>
+          !!g && st.tabs.some((t) => t.group === g && mine.has(t.id));
         for (const t of after.tabs) {
-          const before = /** @type {any} */ (st.tabs.find((x) => x.id === t.id));
+          const before = st.tabs.find((x) => x.id === t.id) as any;
           if (mine.has(t.id)) expect(t.hidden).toBe(false);
           else if (t.pinned) expect(t.hidden).toBe(before.hidden);
           else if (mixed(t.group)) {

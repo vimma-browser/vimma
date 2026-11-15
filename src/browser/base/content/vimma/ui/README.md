@@ -12,7 +12,8 @@ renders what it is given and reports through the callbacks it is passed; it does
 into the host. The agent chat window (`agent-chat.mjs`) is passed the agent's services by the
 host that builds it (`AgentChatServices`: the conversations, the agent CLIs, the API keys,
 `config.toml`'s refusal and setup's write to it, the `[agent]` providers); it imports nothing
-from `agent/`, `config/` or `host/`, and not `host/host-services.mjs` either.
+from `agent/`, `config/` or `host/`, and not `host/host-services.mjs` either. Its box is built
+and drawn by `agent-chat-view.mjs`, which is handed the window and never imports it.
 
 **Read more:** [Config and theme](../../../../../../docs/architecture/config-and-theme.md); the chrome UI rules
 in

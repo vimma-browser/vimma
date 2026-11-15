@@ -132,7 +132,7 @@ export const HyprIpc = {
     const sockets = this.sockets;
     if (!sockets) return Promise.reject(new Error("no Hyprland socket"));
     return new Promise((resolve, reject) => {
-      /** @type {any} */
+      /** @type {nsISocketTransport} */
       let transport;
       try {
         transport = connect(sockets.request);

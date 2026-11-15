@@ -69,4 +69,15 @@ export const RESTRICTED: Record<string, Restricted> = {
     review:
       "a new caller of the agent gate needs a security review (docs/security/12-agents-mcp.md section 12)",
   },
+  /**
+   * The agent's reach (docs/security/12-agents-mcp.md M2, M8): which tabs an agent may name, who
+   * owns them, and the re-check after the yes. Only agent-commands.mjs, which asks the gate
+   * around these calls, uses them; the built-in agent reaches ownership through its
+   * AgentTabOwners.
+   */
+  "ctl/agent-tabs.mjs": {
+    importers: ["ctl/agent-commands.mjs"],
+    review:
+      "a new caller of the agent tab model needs a security review (docs/security/12-agents-mcp.md section 12, M2 and M8)",
+  },
 };

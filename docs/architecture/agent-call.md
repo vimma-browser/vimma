@@ -133,7 +133,8 @@ priority until the reply.
 
 `COMMANDS["agent-activate"]` then decides everything it can before the user is asked:
 
-- `agentWorkspace` fails when there is no agent workspace (containers off); `findAgentTab` answers
+- `agentWorkspace` (`ctl/agent-tabs.mjs`, with the rest of the tab model and `stillAsAsked`)
+  fails when there is no agent workspace (containers off); `findAgentTab` answers
   `invalid-args` for any tab outside it, in the same words whether the tab is in another
   workspace, another window or another conversation's, so nothing leaks (M2).
 - The click rate is taken first (`actCalls`, a `CallRate` of core `agent.mjs`), before anything

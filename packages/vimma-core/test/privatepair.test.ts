@@ -10,8 +10,11 @@ describe("the pair, with opaque identifiers (private-swap-macos decision 3)", ()
   const N2 = "2";
   const P = "3";
   const P2 = "window-4";
-  /** @param {"normal" | "private"} parked */
-  const pairOf = (parked, normal = N, priv = P) => ({ normal, private: priv, parked });
+  const pairOf = (parked: "normal" | "private", normal = N, priv = P) => ({
+    normal,
+    private: priv,
+    parked,
+  });
 
   test("entering hides the normal window and shows private in its place", () => {
     expect(pairStep(null, { type: "enter", normal: N, private: P })).toEqual({

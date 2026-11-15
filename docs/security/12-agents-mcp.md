@@ -1,8 +1,16 @@
-## 12. Agents (MCP) (`host/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`)
+## 12. Agents (MCP) (`host/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`, `ctl/agent-tabs.mjs`)
 
 Lets local AI agents (Claude Code, Codex, opencode, Copilot) list, read, open and close tabs of
 one workspace, **agent**, through the control socket's `agent` role. Spec:
 [vimma-mcp](../specs/vimma-mcp.md), [ADR-019](../adr/019-agents-over-mcp.md).
+
+`ctl/agent-commands.mjs` asks the gate and runs each command; `ctl/agent-tabs.mjs` decides which
+tabs an agent reaches (`isAgentTab`, `findAgentTab`, tab ownership; M2) and checks after the yes
+that the tab and URL are still those asked about (`stillAsAsked`; M8). `agent-tabs.mjs` and
+`ctl/agent-errors.mjs` (the refusals) never import the gate: they are called before and after the
+question, never in its place. `agent-tabs.mjs` is restricted too (`RESTRICTED` in
+`tools/layering/layers.ts`): `agent-commands.mjs` is its one importer and hands none of it on, so
+the built-in agent reaches tab ownership only through `AgentTabOwners` there.
 
 Only the seven modules that call the gate today may import it (ADR-026, `RESTRICTED` in
 `tools/layering/layers.ts`), so a new caller, such as the parent actor, is reviewed against this
@@ -636,7 +644,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`a_control_socket_open_skips_the_agent_container`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`a_new_windows_first_tab_and_the_startup_cache_skip_the_agent`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`with_no_normal_workspace_used_yet_the_first_one_is_taken`](../../tests/browser/browser_vimma_agent_outside_opens.js),
-  [`never the agent workspace, even when it is all there is with a container`](../../packages/vimma-core/test/workspacedefs.test.mjs)
+  [`never the agent workspace, even when it is all there is with a container`](../../packages/vimma-core/test/workspacedefs.test.ts)
 - M25. `agent-elements` (mcp-forms F2-F4) **must** act only on an agent tab (M2), checked before
   the question, after the yes and again once the list is made, with the URL asked about, and in
   the background: it **never** selects, shows or focuses the tab or an element in it, and changes

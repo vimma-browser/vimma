@@ -278,7 +278,7 @@ setup page` allows `installTemporaryAddon` and the other install calls only in
   (`host/browser-ops.mjs:32`).
 - **Agents.** `vimma-ctl mcp` holds an `agent`-role connection (ADR-019); every agent command
   runs through `runAgentCommand` (`ctl/agent-commands.mjs:1348`), which confines it to the agent
-  workspace (`isAgentTab`, `:154`; `agentTabs`, `:170`; `findAgentTab`, `:207`). Page text
+  workspace (`isAgentTab`, `agentTabs`, `findAgentTab`, in `ctl/agent-tabs.mjs`). Page text
   reaches the model inside delimiters a page cannot close (`wrapUntrusted`,
   `packages/vimma-core/src/agent/agent.mjs:508`), a mitigation and not a guarantee. `vimma_show`
   always asks (`ALWAYS_ASK`, `agent.mjs:134`). The instructions every MCP agent gets are

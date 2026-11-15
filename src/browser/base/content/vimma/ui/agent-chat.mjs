@@ -8,22 +8,18 @@
 // transcript (core agent-chat.mjs, from the loop's and the gate's events), the prompt slot (an
 // AgentPrompt that only host/agent-ui.mjs fills, with a question of the gate) and the input.
 // Every value is set as text (security.md C1): no Markdown, HTML, image or link the model wrote
-// becomes anything but characters. Keys reach it from VimmaHost's capture listener while focus
-// is inside it; they are fixed, as a picker's are, because the window's key in the keymap comes
-// in its own pull request (B13). The host that builds it hands it the agent's services (the
-// conversations, the agent CLIs, the API keys, config.toml's refusal, setup's write to it and
-// the [agent] providers): ui/ sits below agent/, config/ and host/, and reaches none of them
-// (ADR-026).
+// becomes anything but characters; agent-chat-view.mjs builds and draws the box from this
+// window's state, through its one text-only `el`. Keys reach it from VimmaHost's capture
+// listener while focus is inside it; they are fixed, as a picker's are, because the window's key
+// in the keymap comes in its own pull request (B13). The host that builds it hands it the
+// agent's services (the conversations, the agent CLIs, the API keys, config.toml's refusal,
+// setup's write to it and the [agent] providers): ui/ sits below agent/, config/ and host/, and
+// reaches none of them (ADR-026).
 
 import {
-  USER_LABEL,
-  chatHeader,
   chatKey,
-  entryView,
   needsKey,
-  noModelLines,
   noModelNotice,
-  noModelReason,
   noticeTarget,
   providerWhere,
   sendNotice,
@@ -41,37 +37,31 @@ import { pickerEntries, placementText, unavailableText } from "../core/agent-set
 import { lastUseText } from "../core/agent-store.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { AgentPrompt } from "./agent-prompt.mjs";
-import { buildPanelBox, giveFocusBack, rememberFocus } from "./side-panel.mjs";
+import { giveFocusBack, rememberFocus } from "./side-panel.mjs";
+import {
+  CHAT_SLOT_ID,
+  build as buildView,
+  refused,
+  render as renderView,
+} from "./agent-chat-view.mjs";
+
+export {
+  CHAT_ID,
+  CHAT_INPUT_ID,
+  CHAT_KEY_ID,
+  CHAT_LOG_ID,
+  CHAT_SLOT_ID,
+} from "./agent-chat-view.mjs";
 
 const lazy = /** @type {Lazy<"PrivateBrowsingUtils">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
 
-export const CHAT_ID = "vimma-agent-chat";
-export const CHAT_INPUT_ID = "vimma-agent-chat-input";
-export const CHAT_LOG_ID = "vimma-agent-chat-log";
-export const CHAT_SLOT_ID = "vimma-agent-chat-slot";
-export const CHAT_KEY_ID = "vimma-agent-chat-key";
 /** Anthropic's API, which setup's "add: Anthropic" uses (Behaviour 3). */
 const ANTHROPIC_ENDPOINT = "https://api.anthropic.com";
 const ANTHROPIC_MODEL = "claude-sonnet-4-5";
-const KEY_HINT = "Enter stores it, encrypted, in login storage · Esc cancels";
 
-const HTML_NS = "http://www.w3.org/1999/xhtml";
-// The key field's eye button: `::-moz-reveal` parses only in user-agent sheets, so this one rule
-// goes in as an agent sheet (an author sheet such as side-panel.css drops it).
-const NO_REVEAL_SHEET =
-  "data:text/css," + encodeURIComponent(`#${CHAT_KEY_ID}::-moz-reveal { display: none; }`);
-/** @type {WeakSet<BrowserWindow>} windows NO_REVEAL_SHEET is loaded into (a second load throws) */
-const noReveal = new WeakSet();
-
-const INSERT_HINT = "Enter sends · ctrl+Enter asks every step · shift+Enter new line · Esc";
-const NORMAL_HINT =
-  "i write · j k move · s stop · m model · n new · c list · P give · y copy · q close";
-const LIST_HINT = "j k move · Enter open · d delete · n new · / filter · Esc back";
-const MODELS_HINT = "j k move · Enter use · D default · x delete its key · Esc back";
-const SLOT_HINT = "a question waits: answer it here";
 /**
  * Whether two providers are the same model at the same endpoint under the same name.
  * @param {AgentProviderConfig} a @param {AgentProviderConfig} b
@@ -193,14 +183,6 @@ const DROPPED = "its conversation was deleted, and the message with it";
  *   the row asks for by name
  */
 
-/** @param {Document} doc @param {string} tag @param {string} className @param {string} [text] */
-const el = (doc, tag, className, text = "") => {
-  const node = /** @type {HTMLElement} */ (doc.createElementNS(HTML_NS, tag));
-  node.className = className;
-  node.textContent = text;
-  return node;
-};
-
 /**
  * A name for a provider set up in the window: `base`, or with a number when config.toml has a
  * provider of that name already, so its key (stored by name) and the file agree.
@@ -211,15 +193,6 @@ function freeName(services, base) {
   let name = base;
   for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
   return name;
-}
-
-/**
- * Why there is no model when config.toml was refused, else null (Behaviour 6).
- * @param {AgentChatServices} services
- */
-function refused(services) {
-  const { errors, file } = services.configRefused();
-  return noModelReason(errors, file);
 }
 
 /**
@@ -382,7 +355,7 @@ export class AgentChatWindow {
       const last = this.services.chat.list().at(-1);
       this.show(last ? last.id : this.create());
     }
-    const box = this.box ?? this.build();
+    const box = this.box ?? buildView(this);
     if (!this.opened) {
       this.opener = rememberFocus(this.win);
       this.opened = true;
@@ -1486,195 +1459,6 @@ export class AgentChatWindow {
   }
 
   render() {
-    if (!this.box || !this.opened) return;
-    const doc = this.win.document;
-    const c =
-      this.conversation === null
-        ? null
-        : this.services.chat.list().find((x) => x.id === this.conversation);
-    const config = this.services.agentConfig();
-    const lines = chatHeader({
-      provider: c?.provider ?? null,
-      granted: !!c?.granted,
-      asking: !!c?.asking,
-      localOnly: !!config?.localOnly,
-      budget: c?.running ? c.budget : null,
-      refused: c ? null : refused(this.services),
-      cli: c?.cli ?? null,
-    });
-    this.head.forEach((h, i) => (h.textContent = lines[i] ?? ""));
-    const log = /** @type {HTMLElement} */ (this.log);
-    const input = /** @type {HTMLTextAreaElement} */ (this.input);
-    input.hidden = this.view !== "chat";
-    const keyBox = /** @type {HTMLElement} */ (this.keyInput?.parentElement);
-    keyBox.hidden = this.view !== "key";
-    if (this.view === "key") {
-      /** @type {HTMLElement} */ (this.keyLabel).textContent =
-        `API key for ${this.keyFor?.name ?? ""} (${whereDataGoes(this.keyFor?.endpoint ?? "")})`;
-      /** @type {HTMLElement} */ (this.hint).textContent = KEY_HINT;
-      return;
-    }
-    if (this.view !== "chat") {
-      log.setAttribute("role", "listbox");
-      log.replaceChildren(
-        ...this.rows.map((r, i) => {
-          const row = el(doc, "div", "vimma-agent-chat-row");
-          row.setAttribute("role", "option");
-          row.setAttribute("aria-selected", String(i === this.row));
-          row.append(
-            el(doc, "span", "vimma-agent-chat-row-label", r.label),
-            el(doc, "span", "vimma-agent-chat-row-detail", r.detail),
-          );
-          return row;
-        }),
-      );
-      if (!this.rows.length) {
-        log.append(
-          el(
-            doc,
-            "div",
-            "vimma-agent-chat-empty",
-            this.view === "models" ? "looking for local model servers…" : "no conversations",
-          ),
-        );
-      }
-      this.drawn = -1;
-      /** @type {HTMLElement} */ (this.hint).textContent =
-        this.view === "list" ? LIST_HINT : MODELS_HINT;
-      return;
-    }
-    log.setAttribute("role", "log");
-    if (!c) {
-      const { file } = this.services.configRefused();
-      log.replaceChildren(
-        ...noModelLines(refused(this.services), file).map((line) =>
-          el(doc, "div", "vimma-agent-chat-empty", line),
-        ),
-      );
-      this.drawn = -1;
-    } else {
-      const t = this.services.chat.transcript(c.id);
-      const key = t.version * 1000 + Math.max(this.entry, -1) + 1;
-      if (key !== this.drawn || this.drawnId !== c.id) {
-        const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 4;
-        const selected = this.focusedLog() ? this.entry : -2;
-        log.replaceChildren(
-          ...t.entries.map((entry, i) =>
-            this.entryNode(
-              doc,
-              entry,
-              i === selected || (selected === -1 && i === t.entries.length - 1),
-            ),
-          ),
-        );
-        if (atEnd || this.drawnId !== c.id) log.scrollTop = log.scrollHeight;
-        this.drawn = key;
-        this.drawnId = c.id;
-      }
-    }
-    /** @type {HTMLElement} */ (this.hint).textContent = this.slot.isOpen
-      ? SLOT_HINT
-      : this.focusedLog()
-        ? NORMAL_HINT
-        : INSERT_HINT;
-  }
-
-  /** @private */
-  focusedLog() {
-    return this.win.document.activeElement === this.log;
-  }
-
-  /**
-   * One transcript entry, as text: a label line, then its lines, indented (B19).
-   * @param {Document} doc @param {import("../core/agent-chat.mjs").Entry} entry
-   * @param {boolean} selected
-   */
-  entryNode(doc, entry, selected) {
-    const view = entryView(entry);
-    const node = el(doc, "div", `vimma-agent-chat-entry vimma-agent-chat-${view.tone}`);
-    node.setAttribute("data-text", view.lines.join("\n"));
-    if (selected) node.setAttribute("aria-current", "true");
-    if (view.label) {
-      const label = el(doc, "div", "vimma-agent-chat-label", view.label);
-      if (view.label === USER_LABEL) label.classList.add("vimma-agent-chat-you");
-      node.append(label);
-    }
-    for (const line of view.lines) {
-      node.append(el(doc, "div", view.indent ? "vimma-agent-chat-line" : "", line));
-    }
-    return node;
-  }
-
-  /** @private */
-  build() {
-    const { box, header, list } = buildPanelBox(this.win, {
-      id: CHAT_ID,
-      label: "Built-in agent",
-      hint: INSERT_HINT,
-    });
-    const doc = this.win.document;
-    box.classList.add("vimma-agent-chat");
-    this.head = [el(doc, "div", "vimma-agent-chat-head"), el(doc, "div", "vimma-agent-chat-head")];
-    header.replaceChildren(...this.head);
-    // The transcript: a log, read by screen readers as it grows.
-    const log = el(doc, "div", "vimma-agent-chat-log");
-    log.id = CHAT_LOG_ID;
-    log.setAttribute("role", "log");
-    log.setAttribute("aria-live", "polite");
-    log.tabIndex = -1;
-    list.replaceWith(log);
-    const slotBox = el(doc, "div", "vimma-agent-chat-slotbox");
-    const input = /** @type {HTMLTextAreaElement} */ (doc.createElementNS(HTML_NS, "textarea"));
-    input.id = CHAT_INPUT_ID;
-    input.className = "vimma-agent-chat-input";
-    input.rows = 3;
-    input.setAttribute("aria-label", "Task for the agent");
-    input.placeholder = "Write a task for the agent";
-    // The masked key field (Behaviour 3): a password field, so the key is never drawn.
-    const keyBox = el(doc, "label", "vimma-agent-chat-keybox");
-    keyBox.hidden = true;
-    const keyLabel = el(doc, "div", "vimma-agent-chat-keylabel");
-    const keyInput = /** @type {HTMLInputElement} */ (doc.createElementNS(HTML_NS, "input"));
-    keyInput.id = CHAT_KEY_ID;
-    keyInput.type = "password";
-    keyInput.autocomplete = "off";
-    keyInput.className = "vimma-agent-chat-input";
-    if (!noReveal.has(this.win)) {
-      noReveal.add(this.win);
-      try {
-        this.win.windowUtils.loadSheetUsingURIString(
-          NO_REVEAL_SHEET,
-          this.win.windowUtils.AGENT_SHEET,
-        );
-      } catch (e) {
-        // The button would then show but do nothing: the listeners below still cancel it.
-        console.error("vimma agent: the key field's sheet did not load", e);
-      }
-    }
-    // An entered key is never shown again (M46). NO_REVEAL_SHEET hides the eye button, and every
-    // reveal a user can ask for (that button, the textbox context menu's item, `revealPassword`)
-    // goes through the cancelable MozWillToggleReveal; a masked field already refuses copy and cut. The context
-    // menu goes too, since its only use here would be that reveal item; ctrl+v still pastes.
-    for (const type of ["MozWillToggleReveal", "contextmenu", "copy", "cut", "dragstart"]) {
-      keyInput.addEventListener(type, (e) => e.preventDefault());
-    }
-    keyBox.append(keyLabel, keyInput);
-    log.after(slotBox, input, keyBox);
-    this.keyInput = keyInput;
-    this.keyLabel = keyLabel;
-    this.hint = /** @type {HTMLElement} */ (box.querySelector(".vimma-panel-hint"));
-    this.box = box;
-    this.log = log;
-    this.slotBox = slotBox;
-    this.input = input;
-    // Focus coming into the window from outside arms the slot's question again (security.md
-    // M4, M43): a key typed on the way in, meant for the input, never answers it.
-    box.addEventListener("focusin", (e) => {
-      const from = /** @type {Node | null} */ (e.relatedTarget);
-      if (!from || !box.contains(from)) this.host.rearm();
-    });
-    input.addEventListener("focus", () => this.render());
-    log.addEventListener("focus", () => this.render());
-    return box;
+    renderView(this);
   }
 }
