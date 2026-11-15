@@ -14,6 +14,7 @@ import { createRequire } from "node:module";
 import { isAbsolute, join, resolve } from "node:path";
 import { commandOf, parseShell } from "./shell.mjs";
 import {
+  applet,
   checkInstall,
   checkNpmConfig,
   INSTALL_REASONS,
@@ -96,7 +97,7 @@ function checkScript(segs, ctx) {
       if (found) return found;
     }
     // A here-string or heredoc that a shell reads as its script: `bash <<< '...'`.
-    if (SHELLS.has(cmd.name) && readsProgram(cmd)) {
+    if (SHELLS.has(applet(cmd).name) && readsProgram(cmd)) {
       for (const text of seg.stdin) {
         const found = checkScript(parseShell(text), { ...ctx, cwd });
         if (found) return found;
@@ -123,10 +124,11 @@ function checkScript(segs, ctx) {
   return null;
 }
 
-/** The script a `bash -c` or `eval` runs, or null. @param {Command} cmd */
-function innerScript(cmd) {
+/** The script a `bash -c` (also through busybox) or `eval` runs, or null. @param {Command} command */
+function innerScript(command) {
+  const cmd = applet(command);
   if (cmd.name === "eval") return cmd.args.map((w) => w.text).join(" ");
-  if (!["bash", "sh", "zsh", "dash", "ksh"].includes(cmd.name)) return null;
+  if (!SHELLS.has(cmd.name)) return null;
   const at = cmd.args.findIndex((w) => /^-[a-z]*c[a-z]*$/.test(w.text));
   if (at < 0) return null;
   const script = cmd.args[at + 1]?.text === "--" ? cmd.args[at + 2] : cmd.args[at + 1];

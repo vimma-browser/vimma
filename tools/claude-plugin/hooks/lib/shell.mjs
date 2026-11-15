@@ -93,6 +93,12 @@ class Parser {
       } else if (c === "`") {
         subs.push(this.backtick());
         cur().dynamic = true;
+      } else if (c === "$" && s[this.i + 1] === "'") {
+        this.i++;
+        this.ansiC(cur());
+      } else if (c === "$" && s[this.i + 1] === '"') {
+        // A locale string reads like a double-quoted one.
+        this.i++;
       } else if (c === "$") {
         this.dollar(cur(), subs);
       } else if (c === " " || c === "\t") {
@@ -201,6 +207,48 @@ class Parser {
     }
   }
 
+  /**
+   * Reads `$'...'` from its opening quote, decoding the escapes bash decodes there, so that
+   * `$'n\x70m'` reads as the word it runs. An escape it does not know makes the word dynamic.
+   * @param {Word} word
+   */
+  ansiC(word) {
+    const s = this.s;
+    this.i++;
+    /** @type {Record<string, string>} */
+    const simple = { a: "\x07", b: "\b", e: "\x1b", E: "\x1b", f: "\f", n: "\n", r: "\r", t: "\t" };
+    Object.assign(simple, { v: "\v", "\\": "\\", "'": "'", '"': '"', "?": "?" });
+    while (this.i < s.length && s[this.i] !== "'") {
+      const c = s[this.i] ?? "";
+      if (c !== "\\") {
+        word.text += c;
+        this.i++;
+        continue;
+      }
+      const e = s[this.i + 1] ?? "";
+      const rest = s.slice(this.i + 1);
+      const code =
+        /^[0-7]{1,3}/.exec(rest) ??
+        /^x([0-9A-Fa-f]{1,2})/.exec(rest) ??
+        /^u([0-9A-Fa-f]{1,4})/.exec(rest) ??
+        /^U([0-9A-Fa-f]{1,8})/.exec(rest);
+      if (simple[e] !== undefined) {
+        word.text += simple[e];
+        this.i += 2;
+      } else if (code) {
+        const octal = /^[0-7]/.test(e);
+        const n = parseInt(octal ? code[0] : (code[1] ?? ""), octal ? 8 : 16);
+        word.text += n <= 0x10ffff ? String.fromCodePoint(n) : "";
+        this.i += 1 + code[0].length;
+      } else {
+        word.dynamic = true;
+        word.text += e;
+        this.i += 2;
+      }
+    }
+    this.i++;
+  }
+
   /** @returns {Segment[]} */
   backtick() {
     const s = this.s;
@@ -273,7 +321,28 @@ const KEYWORDS = new Set([
 
 /** Wrappers that run the command after them, with their options that take a value. */
 const WRAPPERS = new Map([
-  ["sudo", ["-u", "-g", "-C", "-D", "-h", "-p", "-U", "-r", "-t"]],
+  [
+    "sudo",
+    [
+      "-u",
+      "--user",
+      "-g",
+      "--group",
+      "-C",
+      "-D",
+      "--chdir",
+      "-h",
+      "--host",
+      "-p",
+      "--prompt",
+      "-U",
+      "--other-user",
+      "-r",
+      "--role",
+      "-t",
+      "--type",
+    ],
+  ],
   ["doas", ["-u", "-C"]],
   ["env", ["-u", "-C", "-S"]],
   ["command", []],
@@ -285,7 +354,24 @@ const WRAPPERS = new Map([
   ["setsid", []],
   ["stdbuf", ["-i", "-o", "-e"]],
   ["timeout", ["-s", "-k"]],
-  ["xargs", ["-n", "-I", "-L", "-P", "-d", "-s", "-E", "-a"]],
+  [
+    "xargs",
+    [
+      "-n",
+      "-I",
+      "-L",
+      "-P",
+      "-d",
+      "-s",
+      "-E",
+      "-a",
+      "--max-args",
+      "--max-procs",
+      "--delimiter",
+      "--max-chars",
+      "--arg-file",
+    ],
+  ],
   [
     "parallel",
     [
