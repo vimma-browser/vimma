@@ -32,8 +32,11 @@ taskset -c 0,1 npm run mochitest -- --repeat=49 tests/browser/browser_vimma_<nam
 kill $(jobs -p)
 ```
 
-Pass `--repeat=N` with `=`: `tools/mochitest.mjs` treats a bare `N` as a test path. No
-retries in CI; a flaky test gets quarantined and an issue the same day.
+Pass `--repeat=N` with `=`: `tools/mochitest.mjs` treats a bare `N` as a test path. Under
+`--repeat`, the harness never resets a test's `unexpectedTimeouts`, so after one repetition runs
+over the limit every later one also reports "exceeded the timeout threshold": count overruns from
+the `Entering test`/`Leaving test` timestamps instead. No retries in CI; a flaky test gets
+quarantined and an issue the same day.
 
 ### The control socket (spec m0-control-server)
 

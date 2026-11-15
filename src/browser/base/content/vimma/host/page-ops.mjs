@@ -28,7 +28,9 @@ export const EMPTY_CLIPBOARD = "the clipboard is empty";
 export function readClipboard(win) {
   try {
     const trans = Cc["@mozilla.org/widget/transferable;1"].createInstance(Ci.nsITransferable);
-    trans.init(win.docShell.QueryInterface(Ci.nsILoadContext));
+    const shell = win.docShell;
+    if (!shell) return ""; // a closed window
+    trans.init(shell.QueryInterface(Ci.nsILoadContext));
     trans.addDataFlavor("text/plain");
     Services.clipboard.getData(trans, Services.clipboard.kGlobalClipboard);
     // An nsISupportsString (engine/xpcom/ds/nsISupportsPrimitives.idl) once there is text.

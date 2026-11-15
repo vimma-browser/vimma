@@ -743,7 +743,8 @@ at most eight, never two equal neighbours`.
     `--from refuses a URL that is a flag`
   - `returns before a cold-started vimma exits` (Linux `setsid`, macOS `open` stub)
   - the existing cases with their full lists.
-- **Mochitest, `tests/browser/browser_vimma_workspace_routes.js`:**
+- **Mochitest, `tests/browser/browser_vimma_workspace_routes.js`** (split into `_external.js` and
+  `_windows.js`, #1089):
   `an_external_link_matches_by_the_nearest_name`, `an_app_list_with_a_bad_name_routes_by_the_rest`,
   `the_startup_name_list_routes_the_first_tab`, `the_url_bar_ignores_app_rules`,
   `an_app_routed_tab_is_not_hinted_back_by_a_domain_rule`,

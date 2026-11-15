@@ -24,7 +24,8 @@ steps 2–8). No security classification, no drift check, and the PR job failed 
 One workflow, six jobs; the heavy ones run once per release (`upstream.yml` has the map).
 
 1. **Detect** (`detect`, every 4 h at :17, read-only, < 1 billed minute). `tools/upstream/detect.mjs`
-   (Node built-ins, the runner's own Node, no `npm ci`) reads three public feeds:
+   (Node built-ins, the runner's own Node, no `npm ci`; since changed: `.nvmrc`'s Node through
+   `actions/setup-node`, which TypeScript tools need, #946) reads three public feeds:
    - `firefox_versions.json` (product-details): `LATEST_FIREFOX_VERSION`;
    - `firefox.json` (product-details): every release with category and date;
    - the MFSA index, `https://www.mozilla.org/en-US/security/advisories/`. Mozilla publishes no
@@ -95,8 +96,9 @@ One workflow, six jobs; the heavy ones run once per release (`upstream.yml` has 
   (`release-please-config.json`), so a Firefox security bump would neither appear in the
   changelog nor trigger a release PR. `upstream` is a listed commitlint type shown under "Changed".
 - **Node, not Python**, for the new logic: tests in Vitest beside the other tools, and the
-  runner's Node needs no setup. `check-release.py` and its tests are gone (`detect.mjs` replaces
-  them); the Python tools for patches and hashes stay.
+  runner's Node needs no setup (since changed: `.nvmrc`'s Node is set up, #946).
+  `check-release.py` and its tests are gone (`detect.mjs` replaces them); the Python tools for
+  patches and hashes stay.
 - **Secrets:** none for detection, the patch check or the suites; `UPSTREAM_PR_TOKEN` is optional
   (the PR's own CI). The Safe Browsing key is only for the nightly and release builds: the
   artifact build is keyless by design (`e2e.yml`, spec m0-safebrowsing-key), and no autopilot job

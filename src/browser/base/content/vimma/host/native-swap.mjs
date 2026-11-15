@@ -184,7 +184,9 @@ function letGo(win) {
  * @param {boolean} visible
  */
 function setVisible(win, visible) {
-  const base = win.docShell.treeOwner.QueryInterface(Ci.nsIBaseWindow);
+  // Callers check `closed`, which is true exactly when the window has lost its docshell.
+  const base = win.docShell?.treeOwner?.QueryInterface(Ci.nsIBaseWindow);
+  if (!base) throw new Error("vimma: native swap: the window is closed");
   base.visibility = visible;
   if (visible) {
     hidden.delete(win);
