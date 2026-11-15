@@ -80,7 +80,11 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
    Copilot CLI run them on each contributor's own Node, which may be older than 22.18; there a
    `.ts` hook exits 1 with `ERR_UNKNOWN_FILE_EXTENSION`, and a hook that exits with anything but 2
    does not block, so the guard would stop guarding without a word. The plugin moves only with a
-   plan that fails closed on such a Node, after a security review.
+   plan that fails closed on such a Node, after a security review. (Since changed: the exception
+   now applies to the hooks only, `tools/claude-plugin/hooks/`. The plugin's tests are `.ts`: only
+   Vitest runs them, on the Node `.nvmrc` pins, and they still spawn the `.mjs` hooks.
+   `tools/test/mjs-ratchet.test.ts` fails on a file under `hooks/` that is not `.mjs` or
+   `hooks.json`.)
    A second exception: the guards that workflows run from the base branch, `tools/ci/docs-only.mjs`
    and `tools/ci/key-guard.mjs`, and key-guard's test, which the guard's `GUARD_PATHS` names, stay
    `.mjs`. They judge a pull request inside its checkout, so they run on the runner image's own

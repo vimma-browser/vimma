@@ -138,7 +138,7 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
 - `tools/`: e2e harness, artifact builds, upstream autopilot, packaging, lanes, bench, sites. New
   Node code under `tools/` is written as `.ts`; Rust, shell and Python stay as they are (ADR-025;
   `tools/test/mjs-ratchet.test.ts` fails on a new `.mjs`, `.js` or `.cjs` file).
-  `tools/claude-plugin` stays `.mjs`.
+  The hooks of `tools/claude-plugin` (`hooks/`) stay `.mjs`; its tests are `.ts`.
 - `tests/browser`: mochitests; `tests/e2e`: socket scenarios and baselines; `tests/contract`:
   protocol fixtures.
 - `docs/`: `README.md` (the index), `guide.md` (users), `security/`, `limits.md`, `runbook/`,

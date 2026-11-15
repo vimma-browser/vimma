@@ -642,7 +642,8 @@ function onDocumentInserted(subject) {
   if (frame) hideEmptyStatePictures(doc, frame.id === "sidebar");
   if (frame?.id === "sidebar") {
     const owner = frame.ownerDocument.defaultView;
-    if (owner && windows.has(owner)) attachSidebarPage(doc);
+    // A lookup: a window this module does not theme is simply not in the map.
+    if (owner && /** @type {Map<Window, string>} */ (windows).has(owner)) attachSidebarPage(doc);
     return;
   }
   if (isFirefoxPage(doc)) attachFirefoxPage(doc);
