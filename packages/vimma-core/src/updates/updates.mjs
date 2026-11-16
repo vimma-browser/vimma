@@ -692,6 +692,17 @@ function plainFilePath(path) {
 }
 
 /**
+ * `path` without its trailing slashes, in linear time: `$APPDIR` comes from the environment, and
+ * a regex like `/\/+$/` backtracks quadratically on many slashes that are not at the end.
+ * @param {string} path
+ */
+function trimTrailingSlashes(path) {
+  let end = path.length;
+  while (end > 0 && path.charCodeAt(end - 1) === 47) end--;
+  return path.slice(0, end);
+}
+
+/**
  * What a restart and the replacement both ask: whether this Vimma is the AppImage `$APPIMAGE`
  * names. `$APPIMAGE` is inherited by every program an AppImage starts: only the AppDir's own
  * marker and a GRE directory inside `$APPDIR` show that it is (decision 34).
@@ -709,7 +720,7 @@ export function appImageOwnership({ installType, marker, appImage, appDir, greDi
         why: "this Vimma is not an AppImage build (no vimma-package=appimage marker)",
       };
     }
-    if (!appDir || !greDir.startsWith(`${appDir.replace(/\/+$/, "")}/`)) {
+    if (!appDir || !greDir.startsWith(`${trimTrailingSlashes(appDir)}/`)) {
       return { ok: false, why: "this Vimma does not run from the AppImage's mount ($APPDIR)" };
     }
   }
