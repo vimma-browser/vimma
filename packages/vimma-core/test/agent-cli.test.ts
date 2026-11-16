@@ -1219,6 +1219,36 @@ describe("gemini's stream (C7, C8)", () => {
     expect(stream.failed).toBe(true);
   });
 
+  test("a tool of another mcp server called without an id ends the run (M56)", () => {
+    // Its result could never be matched to it, so the call itself ends the run.
+    for (const id of [undefined, 7, ""]) {
+      const use = JSON.stringify({
+        type: "tool_use",
+        tool_name: "mcp_other_read",
+        tool_id: id,
+        parameters: { command: "ls" },
+      });
+      const ran = JSON.stringify({ type: "tool_result", status: "success" });
+      const { out, stream } = geminiEvents(`${use}\n${ran}\n`);
+      expect(out).toEqual([
+        { type: "fail", error: "gemini called an MCP server that is not Vimma's: mcp_other_read" },
+      ]);
+      expect(stream.failed).toBe(true);
+    }
+    // Vimma's own and the CLI's own tools without an id still go on.
+    const own = [
+      { type: "tool_use", tool_name: "mcp_vimma_chat_vimma_tabs", parameters: {} },
+      { type: "tool_result", status: "success" },
+      { type: "tool_use", tool_name: "read_file", parameters: {} },
+      { type: "tool_result", status: "success" },
+    ];
+    const { out, stream } = geminiEvents(own.map((l) => JSON.stringify(l)).join("\n"));
+    expect(out).toEqual([
+      { type: "own-tool", id: "", text: "gemini ran its own tool: read_file {}" },
+    ]);
+    expect(stream.failed).toBe(false);
+  });
+
   test("a step its policy refuses is marked refused", () => {
     const lines = [
       { type: "tool_use", tool_name: "write_file", tool_id: "w", parameters: { file_path: "/a" } },
