@@ -1,0 +1,55 @@
+import { describe, expect, it } from "vitest";
+import { readFileSync, readdirSync } from "node:fs";
+import { jobs } from "./workflow-runners.ts";
+import type { Job } from "./workflow-types.ts";
+
+// Issue #1170: a step that asks api.github.com with curl and no token shares GitHub's
+// unauthenticated limit of 60 requests an hour per IP with every other job on that hosted
+// runner's address, and a 403 there is the rate limit, not the answer. Every such step sends the
+// job's own GITHUB_TOKEN, which needs `contents: read` to read a release. `gh api` authenticates
+// by itself; this checks the plain curl calls.
+const dir = new URL("../../.github/workflows/", import.meta.url);
+const workflows = readdirSync(dir)
+  .filter((f) => /\.ya?ml$/.test(f))
+  .map((name) => ({ name, text: readFileSync(new URL(name, dir), "utf8") }));
+
+const AUTH = '-H "Authorization: Bearer $GH_TOKEN"';
+
+/** @returns a run script without its comment lines */
+const code = (run: string) =>
+  run
+    .split("\n")
+    .filter((l) => !/^\s*#/.test(l))
+    .join("\n");
+
+/** Every step whose script asks api.github.com, as `<workflow> <job> "<step>"`. */
+const calls = workflows.flatMap(({ name, text }) =>
+  [...jobs(text)].flatMap(([id, raw]) => {
+    const job = raw as Job;
+    return (job.steps ?? [])
+      .filter((s) => typeof s.run === "string" && code(s.run).includes("api.github.com"))
+      .map((step) => ({ label: `${name} ${id} "${step.name ?? "?"}"`, job, step }));
+  }),
+);
+
+describe("steps that ask api.github.com authenticate (#1170)", () => {
+  it("finds the release-metadata checks", () => {
+    // release.yml's macos-tap (two), homebrew.yml's start, update-publish.yml's start
+    expect(calls.map((c) => c.label).sort()).toEqual([
+      'homebrew.yml start "Start the tap push on main"',
+      'release.yml macos-tap "Start homebrew.yml for a published release"',
+      'release.yml macos-tap "Start update-publish.yml for the macOS manifest"',
+      'update-publish.yml start "Start the manifest run on main"',
+    ]);
+  });
+
+  it.each(calls.map((c) => [c.label, c] as const))("%s sends the job's token", (_, c) => {
+    const script = code(c.step.run ?? "");
+    const curls = script.split(/(?=\bcurl )/).filter((p) => p.startsWith("curl "));
+    for (const curl of curls.filter((p) => p.includes("api.github.com"))) {
+      expect(curl).toContain(AUTH);
+    }
+    expect(c.step.env?.GH_TOKEN ?? c.job.env?.GH_TOKEN).toBe("${{ github.token }}");
+    expect(["read", "write"]).toContain(c.job.permissions?.contents);
+  });
+});

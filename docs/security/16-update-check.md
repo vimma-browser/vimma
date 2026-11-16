@@ -140,7 +140,8 @@ _Pages_ and _extensions_ cannot reach it.
 - UP7. A manifest is **only** signed by `update-publish.yml` run from `main`, and **only** for a
   release that is published (not a draft or a pre-release) and whose tag is on `main`, or as an
   empty manifest that offers nothing. Publishing a release starts a job that, as `main` has it,
-  holds only `actions: write` and runs no repository code; it starts the workflow again on
+  holds only `actions: write` and `contents: read` (to read the release's metadata with its
+  token, not under the unauthenticated rate limit) and runs no repository code; it starts the workflow again on
   `main`, so the file that signs is always `main`'s, never a tag's. That job runs the tag's copy
   of the file, which anyone with write access can edit on a tag of their own: an edited copy may
   ask for any permissions and read the repository's and organisation's secrets, but it gets

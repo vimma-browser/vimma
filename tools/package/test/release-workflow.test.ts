@@ -425,7 +425,9 @@ esac
     it("macos-tap starts homebrew.yml on main once the cask is on a published release", () => {
       const block = all.get("macos-tap") ?? "";
       expect(block).toMatch(/^ {4}needs: macos-publish$/m);
-      expect(block).toMatch(/^ {4}permissions:\n {6}actions: write(?: #.*)?\n {4}[a-z]/m);
+      expect(block).toMatch(
+        /^ {4}permissions:\n {6}actions: write(?: #.*)?\n {6}contents: read(?: #.*)?\n {4}[a-z]/m,
+      );
       expect(block).not.toMatch(/actions\/checkout|setup-node|node /);
       const start = runOf(block, "Start homebrew.yml for a published release");
       expect(start).toContain(
@@ -1393,7 +1395,9 @@ describe("homebrew.yml", () => {
     expect(condition(start)).toBe(
       "github.event_name == 'release' && github.repository == 'vimma-browser/vimma'",
     );
-    expect(start).toMatch(/^ {4}permissions:\n {6}actions: write(?: #.*)?\n {4}[a-z]/m);
+    expect(start).toMatch(
+      /^ {4}permissions:\n {6}actions: write(?: #.*)?\n {6}contents: read(?: #.*)?\n {4}[a-z]/m,
+    );
     expect(start).not.toMatch(/environment:|secrets\.|actions\/checkout|setup-node|node |npm /);
     const run = runOf(start, "Start the tap push on main");
     expect(run).toContain("[[ $TAG =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]");
@@ -1456,6 +1460,7 @@ describe("homebrew.yml", () => {
             MACOS_RELEASE_ENABLED: macos,
             GITHUB_STEP_SUMMARY: join(dir, "summary"),
             RUNNER_TEMP: dir,
+            GH_TOKEN: "ghs_stub",
           },
         },
       );
@@ -1469,7 +1474,7 @@ describe("homebrew.yml", () => {
     const result = startWith({});
     expect(result.status).toBe(0);
     expect(result.log).toBe(
-      "curl -sS --proto =https --retry 3 -o <RUNNER_TEMP>/release.json -w %{http_code} https://api.github.com/repos/vimma-browser/vimma/releases/tags/v0.1.11\n" +
+      "curl -sS --proto =https --retry 3 -o <RUNNER_TEMP>/release.json -w %{http_code} -H Authorization: Bearer ghs_stub https://api.github.com/repos/vimma-browser/vimma/releases/tags/v0.1.11\n" +
         "gh workflow run homebrew.yml --repo vimma-browser/vimma --ref main -f tag=v0.1.11\n",
     );
   });

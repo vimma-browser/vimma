@@ -376,13 +376,14 @@ of the same commit read it too, so a tree without it could not be released anywa
   its version against the tag, and with signing on checks `SHA256SUMS-macos` against
   `IDENTITY_REGEXP` before it pushes over SSH to github.com, whose host key is pinned. It pushes
   only `Casks/vimma.rb`, never with `--force`, and never replaces a newer cask with an older one.
-  Two jobs start it, each, as `main` has it, holding only `actions: write`, no environment and no
+  Two jobs start it, each, as `main` has it, holding only `actions: write` and `contents: read`, no environment and no
   secret, and running no repository code: `homebrew.yml`'s own `start` job, which a published release
   (`released`, never a pre-release) runs, and `release.yml`'s `macos-tap` job, which runs when the
   macOS files reach the release. Each starts `homebrew.yml` on `main` with the tag only once
   `vimma.rb` is on the published release, so whichever of the publish and the macOS files comes
-  last starts the push. Each learns that from the release's metadata, read without a token from
-  the API's `releases/tags/<tag>`, which answers 404 for a draft; it also requires `draft` to be
+  last starts the push. Each learns that from the release's metadata, read with the job's own
+  `GITHUB_TOKEN` (`contents: read`; without a token the runner shares GitHub's unauthenticated
+  limit of 60 requests an hour per IP, #1170) from the API's `releases/tags/<tag>`, which answers 404 for a draft; it also requires `draft` to be
   false and the file's upload to be complete, never requests the file itself (any request for a
   release file counts as a download, docs/runbook/ci-release-download-counts.md, "Release download counts"), and fails on
   any answer other than 200 or 404 and on a 200 that is not a release, so a rate limit or an outage never passes for a release
@@ -431,6 +432,7 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`refuses to install outside GitHub Actions`](../../tools/package/test/cask.test.ts),
   [`macos-smoke checks the cask with brew and installs the dmg through it`](../../tools/package/test/release-workflow.test.ts),
   [`macos-tap starts homebrew.yml on main once the cask is on a published release`](../../tools/package/test/release-workflow.test.ts),
+  [`%s sends the job's token`](../../tools/test/github-api-auth-workflow.test.ts),
   [`takes the cask from the published release only, with no GitHub token`](../../tools/package/test/release-workflow.test.ts),
   [`runs when a release is published, or by dispatch with a tag; never on a push or a PR`](../../tools/package/test/release-workflow.test.ts),
   [`reads the release event nowhere but the start condition, TAG and the concurrency group`](../../tools/package/test/release-workflow.test.ts),
