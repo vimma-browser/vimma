@@ -15,16 +15,24 @@ import { trimTrailing } from "../text/strings.mjs";
 const URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/\S*?(?=[\s,;)\]]|[.,;:!?]?(?:\s|$))/gi;
 
 /**
- * What ends a file name in the report (#1173): whitespace, a path separator, or punctuation that
- * the report or an error message puts around a path: `path:4:`, `(path)`, `"path"`, `'path'`,
- * `` `path` ``, `<path>`, `path,` and `path;`, any opening, closing, initial or final quotation
- * punctuation (`[path]`, `{path}`, `“path”`, `«path»`, `「path」`), and `…`, which also ends an
- * error that workspaceReport cut to length. Anything else continues the name, `+`, `~`, `@`,
- * emoji, joiners and connector punctuation included, so `/home/alice` is not the home in
- * `/home/alice+b`. `.`, `!` and `?` continue a name (`/home/alice.bak`) except when a run of
- * them closes a sentence, with whitespace or the end after it (`/home/alice... done`).
+ * A character that ends a file name in the report (#1173): whitespace, a path separator, the
+ * punctuation that the report or an error message puts around a path (`path:4:`, `"path"`,
+ * `'path'`, `` `path` ``, `<path>`, `path,`, `path;`), any opening, closing, initial or final
+ * punctuation (`(path)`, `[path]`, `“path”`, `«path»`, `「path」`), and past ASCII any dash or
+ * other punctuation (`—`, `…`, which also ends an error workspaceReport cut to length, `·`, `•`,
+ * `。`, `，`, `‼`), a zero-width space, a soft hyphen, arrows (`→`, `↔`, `⤴`: the arrow blocks,
+ * emoji among them, since `↮` is `↔` and a mark in NFD) and bullets (`∙`, `○`, `●`, `◦`). Anything else continues the name: letters, marks, digits, emoji,
+ * joiners, variation selectors, connector punctuation, symbols, and ASCII `-` `_` `+` `~` `@`
+ * `#` `=` `|` and the like, so `/home/alice` is not the home in `/home/alice+b`.
  */
-const ENDS_NAME = /[\s/\\:;,"'`<>…\p{Pi}\p{Pf}\p{Ps}\p{Pe}]|[.!?]+(?=\s|$)/uy;
+const END_CHAR = String.raw`(?:[\s/\\:;,"'${"`"}<>\p{Ps}\p{Pe}\p{Pi}\p{Pf}\u00AD\u200B]|(?![\0-\x7f])[\p{Pd}\p{Po}]|[\u2190-\u21FF\u27F0-\u27FF\u2900-\u297F\u2219\u25CB\u25CF\u25E6])`;
+
+/**
+ * What ends a name: an {@link END_CHAR}, or a run of `.`, `!` and `?` that closes a sentence,
+ * with the end or an END_CHAR after it (`/home/alice... done`, `(see /home/alice.)`). Otherwise
+ * they continue a name (`/home/alice.bak`, `/home/alice!x`).
+ */
+const ENDS_NAME = new RegExp(String.raw`${END_CHAR}|[.!?]+(?=$|${END_CHAR})`, "uy");
 
 /** {@link ENDS_NAME}'s answer for each non-ASCII BMP character seen: 0 not yet, 1 ends, 2 not. */
 const ENDS_BMP = new Uint8Array(0x10000);

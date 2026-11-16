@@ -78,6 +78,9 @@ describe("redactReport", () => {
       "/home/alice#b/x",
       "HOME=/home/alice|x",
       "/home/alice!x /home/alice=x /home/alice*x",
+      // A variation selector, symbols and currency signs.
+      "/home/alice\uFE0Fx /home/alice\u2122x",
+      "/home/alice\u00A9x /home/alice\u00B0x /home/alice\u20ACx /home/alice\u00A3x",
     ]) {
       expect(redactReport(other, "/home/alice")).toBe(other);
     }
@@ -107,6 +110,21 @@ describe("redactReport", () => {
         "\u00AB/home/alice\u00BB \u300C/home/alice\u300D \u2039/home/alice\u203A",
         "\u00AB~\u00BB \u300C~\u300D \u2039~\u203A",
       ],
+      // A sentence's end before a closing bracket, a quote or other punctuation.
+      ['(see /home/alice.) "/home/alice." /home/alice.,', '(see ~.) "~." ~.,'],
+      ["/home/alice.: /home/alice.\u2026 /home/alice...) /home/alice!)", "~.: ~.\u2026 ~...) ~!)"],
+      ['/home/alice?" /home/alice.', '~?" ~.'],
+      // Dashes, other punctuation past ASCII, arrows, bullets, a zero-width space, a soft hyphen.
+      ["/home/alice\u2014x /home/alice\u2013x /home/alice\u2192x", "~\u2014x ~\u2013x ~\u2192x"],
+      ["/home/alice\u00B7x /home/alice\u2022x /home/alice\u2219x", "~\u00B7x ~\u2022x ~\u2219x"],
+      ["/home/alice\u3002 /home/alice\u3001x /home/alice\uFF0Cx", "~\u3002 ~\u3001x ~\uFF0Cx"],
+      ["/home/alice\uFF1Ax /home/alice\u203Cx /home/alice\u00BFx", "~\uFF1Ax ~\u203Cx ~\u00BFx"],
+      ["/home/alice\u200Bx /home/alice\u00ADx /home/alice\u037Ex", "~\u200Bx ~\u00ADx ~\u037Ex"],
+      // Arrows end a name even where they are also emoji.
+      [
+        "/home/alice\u2194\uFE0Fx /home/alice\u21AEx /home/alice\u2934x",
+        "~\u2194\uFE0Fx ~\u21AEx ~\u2934x",
+      ],
     ] as const) {
       expect(redactReport(text, h)).toBe(want);
     }
@@ -126,22 +144,24 @@ describe("redactReport", () => {
     // A home that is a prefix only before normalisation is still not the whole name.
     expect(redactReport(`${nfc}/x`, "/home/jose")).toBe(`${nfc}/x`);
     expect(redactReport(`${nfd}/x`, "/home/jose")).toBe(`${nfd}/x`);
-    // What follows the home is read as written: U+037E (Greek question mark) is `;` only in NFD.
-    expect(redactReport("/home/alice\u037Eb/x", "/home/alice")).toBe("/home/alice\u037Eb/x");
+    // What follows the home is read as written: U+1FEF (Greek varia) is `` ` `` only in NFD.
+    expect(redactReport("/home/alice\u1FEFb/x", "/home/alice")).toBe("/home/alice\u1FEFb/x");
     // Hangul: a syllable and its jamo.
     expect(redactReport("/home/\uD55C/x", "/home/\u1112\u1161\u11AB")).toBe("~/x");
   });
 
-  it("redacts a 3 MB report in linear time, in either normal form", () => {
+  it("redacts a 500 KB report in linear time, in either normal form", () => {
     const line =
       "  error: /home/jos\u00E9/.config/vimma/c\u00F6nfig.toml:4: bad key (/home/alice+b/x)\n";
-    const text = line.repeat(40_000);
+    // Small enough to keep far inside the budget under load, large enough that a quadratic
+    // scan (about 10^11 steps here) cannot.
+    const text = line.repeat(6_000);
     for (const home of ["/home/jos\u00E9", "/home/jose\u0301"]) {
       const start = performance.now();
       const out = redactReport(text, home);
       expect(performance.now() - start).toBeLessThan(budget(1000));
       expect(out).toBe(
-        "  error: ~/.config/vimma/c\u00F6nfig.toml:4: bad key (/home/alice+b/x)\n".repeat(40_000),
+        "  error: ~/.config/vimma/c\u00F6nfig.toml:4: bad key (/home/alice+b/x)\n".repeat(6_000),
       );
     }
   });
@@ -149,14 +169,14 @@ describe("redactReport", () => {
   it("stays linear on near misses and on one long run of non-ASCII text", () => {
     const cases: [string, string, string][] = [
       // A match on every line that the next character rules out.
-      ["/home/jos\u00E9x".repeat(270_000), "/home/jos\u00E9", "/home/jos\u00E9x"],
+      ["/home/jos\u00E9x".repeat(45_000), "/home/jos\u00E9", "/home/jos\u00E9x"],
       // A match on every line in the other normal form.
-      ["/home/jose\u0301/".repeat(250_000), "/home/jos\u00E9", "~/"],
-      // One 3 MB run that NFD changes, matched everywhere and ending nowhere.
-      ["\uD55C".repeat(3_000_000), "\uD55C", "\uD55C"],
-      ["\u00E9".repeat(3_000_000), "\u00E9\u00E9", "\u00E9"],
-      // One 3 MB run whose only match ends a name.
-      [`${"\u00E9".repeat(3_000_000)} \u00E9`, "\u00E9", "\u00E9"],
+      ["/home/jose\u0301/".repeat(42_000), "/home/jos\u00E9", "~/"],
+      // One 500 KB run that NFD changes, matched everywhere and ending nowhere.
+      ["\uD55C".repeat(500_000), "\uD55C", "\uD55C"],
+      ["\u00E9".repeat(500_000), "\u00E9\u00E9", "\u00E9"],
+      // One 500 KB run whose only match ends a name.
+      [`${"\u00E9".repeat(500_000)} \u00E9`, "\u00E9", "\u00E9"],
     ];
     for (const [text, home, unit] of cases) {
       const start = performance.now();

@@ -33,17 +33,26 @@ const longRun = fc
  * redactReport does: after URLs become `<url>`, walk the text code point by code point and, at
  * each one, try every slice that starts there; a slice is the home when its NFD form is the
  * home's (trailing slashes dropped), and what follows it ends a name: the end, whitespace, `/`,
- * `\\`, a path delimiter, `…`, bracket or quotation punctuation, or a run of `.`, `!` and `?`
- * closing a sentence. A redacted slice is skipped whole.
+ * `\\`, a path delimiter, bracket or quotation punctuation, a dash or other punctuation past
+ * ASCII, an arrow or bullet, U+00AD or U+200B, or a run of `.`, `!` and `?` before one of those
+ * or the end. A redacted slice is skipped whole.
  */
 const URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/\S*?(?=[\s,;)\]]|[.,;:!?]?(?:\s|$))/gi;
+/** A code point that ends a name on its own, as docs/security/22-bug-report.md states the rule. */
+function endsAlone(c: string): boolean {
+  const cp = c.codePointAt(0) ?? 0;
+  if (/\s/u.test(c) || "/\\:;,\"'`<>\u00AD\u200B".includes(c)) return true;
+  if (/\p{Ps}|\p{Pe}|\p{Pi}|\p{Pf}/u.test(c)) return true;
+  if (cp > 0x7f && /\p{Pd}|\p{Po}/u.test(c)) return true;
+  const arrow = (cp >= 0x2190 && cp <= 0x21ff) || (cp >= 0x27f0 && cp <= 0x27ff);
+  return arrow || (cp >= 0x2900 && cp <= 0x297f) || [0x2219, 0x25cb, 0x25cf, 0x25e6].includes(cp);
+}
 function endsName(rest: string): boolean {
   const c = [...rest][0];
-  if (c === undefined || /\s/u.test(c) || "/\\:;,\"'`<>\u2026".includes(c)) return true;
-  if (/\p{Ps}|\p{Pe}|\p{Pi}|\p{Pf}/u.test(c)) return true;
+  if (c === undefined || endsAlone(c)) return true;
   let i = 0;
   while (".!?".includes(rest[i] ?? "x")) i++;
-  return i > 0 && (i === rest.length || /\s/u.test(rest[i] ?? ""));
+  return i > 0 && (i === rest.length || endsAlone([...rest.slice(i)][0] ?? ""));
 }
 function oracleRedact(text: string, home: string): string {
   const cps = [...text.replace(URL_RE, "<url>")];
@@ -94,6 +103,18 @@ const nameParts = fc.constantFrom(
   "!",
   "=",
   "\u00BB",
+  ".)",
+  '?"',
+  ".\u2026",
+  "\u2014",
+  "\u00B7",
+  "\u3002",
+  "\u2192",
+  "\u21AE",
+  "\u200B",
+  "\u00AD",
+  "\uFE0F",
+  "\u00A9",
   "\u00E9".repeat(40),
   "e\u0301".repeat(30),
   "\\",
