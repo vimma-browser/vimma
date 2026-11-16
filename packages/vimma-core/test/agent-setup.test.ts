@@ -497,3 +497,237 @@ describe("sameProvider", () => {
     expect(sameProvider(p, { ...p, model: "claude-opus-4-1" })).toBe(false);
   });
 });
+
+// Issue #1119: what the weekly mutation run left unpinned.
+describe("setup's edges", () => {
+  const OLLAMA = "http://127.0.0.1:11434/v1";
+  const SHOW = "http://127.0.0.1:11434/api/show";
+  const CREATE = "http://127.0.0.1:11434/api/create";
+  const MODELS = `${OLLAMA}/models`;
+  const openai = (model: string, endpoint = OLLAMA) => ({
+    name: "local",
+    kind: "openai" as const,
+    endpoint,
+    model,
+    vision: false,
+  });
+  /** A fetch that answers every request with `status` and `body`, and records the requests. */
+  const replying = (status: number, body: string) => {
+    const calls: { url: string; init: any }[] = [];
+    const fetch: any = async (url: string, init: any) => {
+      calls.push({ url, init });
+      return { ok: status < 400, status, text: async () => body };
+    };
+    return { fetch, calls };
+  };
+
+  test("a request with a body is a JSON POST; one without is a GET with no headers", async () => {
+    const { fetch, calls } = fake({
+      [SHOW]: { parameters: "" },
+      [`${OLLAMA}/models`]: { data: [] },
+    });
+    await ollamaContext(fetch, OLLAMA, "m");
+    expect(calls[0]?.init).toMatchObject({
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "m" }),
+    });
+    await probeLocal(fetch, { servers: [{ server: "ollama", port: 11434 }] });
+    expect(calls[1]?.init.method).toBe("GET");
+    expect(calls[1]?.init.headers).toEqual({});
+    expect(calls[1]?.init).not.toHaveProperty("body");
+  });
+
+  test("a server's error status is an error with the status", async () => {
+    await expect(ollamaContext(fake({ [SHOW]: 500 }).fetch, OLLAMA, "m")).rejects.toThrow("500");
+  });
+
+  test("the probe lists only model names a picker can show", async () => {
+    const long = "m".repeat(200);
+    const { fetch } = fake({
+      [MODELS]: {
+        data: [
+          { id: "" },
+          { id: long },
+          { id: `${long}m` },
+          { id: "with space" },
+          { id: "tab\u0009" },
+          { id: "unit\u001f" },
+          { id: "del\u007f" },
+          { id: 7 },
+        ],
+      },
+    });
+    const found = await probeLocal(fetch, { servers: [{ server: "ollama", port: 11434 }] });
+    expect(found).toEqual([{ server: "ollama", endpoint: OLLAMA, models: [long, "with space"] }]);
+  });
+
+  test("a configured endpoint's slashes at the end all go before /models", async () => {
+    const { fetch, calls } = fake({});
+    await probeLocal(fetch, {
+      servers: [],
+      extra: [{ server: "vllm", endpoint: "http://127.0.0.1:8000/v1//" }],
+    });
+    expect(calls.map((c) => c.url)).toEqual(["http://127.0.0.1:8000/v1/models"]);
+  });
+
+  test("a server answering null is listed, with no models", async () => {
+    const { fetch } = fake({ [MODELS]: null });
+    expect(await probeLocal(fetch, { servers: [{ server: "ollama", port: 11434 }] })).toEqual([
+      { server: "ollama", endpoint: OLLAMA, models: [] },
+    ]);
+  });
+
+  test("a provider's key is its kind, endpoint without end slashes, and model", () => {
+    expect(providerKey(openai("m", "http://127.0.0.1:1234/v1//"))).toBe(
+      "openai\nhttp://127.0.0.1:1234/v1\nm",
+    );
+  });
+
+  test("the model list is asked at the endpoint without its end slashes", async () => {
+    const { fetch, calls } = fake({ [MODELS]: { data: [{ id: "m" }] } });
+    expect(await localModelState(fetch, openai("m", `${OLLAMA}//`))).toBe("available");
+    expect(calls.map((c) => c.url)).toEqual([MODELS]);
+  });
+
+  test("a fetch that fails with no error object means nothing answers", async () => {
+    const fetch: any = async () => {
+      throw undefined;
+    };
+    expect(await localModelState(fetch, openai("m"))).toBe("down");
+  });
+
+  test("an error status is not judged, whatever its body lists", async () => {
+    const { fetch } = replying(500, JSON.stringify({ data: [{ id: "m" }] }));
+    expect(await localModelState(fetch, openai("m"))).toBe("unknown");
+  });
+
+  test("a list that is not an array, or a body that is not JSON, is not judged", async () => {
+    expect(await localModelState(fake({ [MODELS]: { data: {} } }).fetch, openai("m"))).toBe(
+      "unknown",
+    );
+    expect(await localModelState(replying(200, "<html>").fetch, openai("m"))).toBe("unknown");
+  });
+
+  test("one entry naming the model is enough, and a null entry is skipped", async () => {
+    const { fetch } = fake({ [MODELS]: { data: [null, { id: "other" }, { id: "m" }] } });
+    expect(await localModelState(fetch, openai("m"))).toBe("available");
+  });
+
+  test("an endpoint that does not parse is named by no host", () => {
+    expect(unavailableText(openai("m", "not a url"), "gone")).toBe(
+      "m is no longer available:  does not list it",
+    );
+  });
+
+  test("an OpenAI-compatible provider or an unknown CLI gets no CLI rows", () => {
+    const clis = { foo: { models: ["m1", "m2"] } };
+    const unknown = {
+      name: "x",
+      kind: "cli" as const,
+      endpoint: "",
+      model: "m",
+      vision: false,
+      cli: "nope",
+    };
+    const withCli = { ...openai("m"), cli: "foo" };
+    expect(
+      pickerEntries({
+        providers: [unknown, withCli],
+        found: null,
+        states: null,
+        current: null,
+        clis,
+      }),
+    ).toEqual([
+      { provider: unknown, state: null, current: false },
+      { provider: withCli, state: null, current: false },
+    ]);
+  });
+
+  test("a CLI's rows leave out only the models its own providers name", () => {
+    const clis = { foo: { models: ["m1", "m2", "m3"] }, bar: { models: [] } };
+    const cli = (name: string, id: string, model: string) => ({
+      name,
+      kind: "cli" as const,
+      endpoint: "",
+      model,
+      vision: false,
+      cli: id,
+    });
+    const foo = cli("Foo", "foo", "m1");
+    const bar = cli("Bar", "bar", "m2");
+    const entries = pickerEntries({
+      providers: [foo, bar, { ...openai("m3"), cli: "foo" }],
+      found: null,
+      states: null,
+      current: null,
+      clis,
+    });
+    expect(
+      entries.filter((e) => e.cliModel).map((e) => `${e.provider?.cli} ${e.provider?.model}`),
+    ).toEqual(["foo m2", "foo m3"]);
+  });
+
+  test("only a /v1 at the end of an Ollama endpoint is taken off for its own API", async () => {
+    const { fetch, calls } = fake({});
+    await expect(ollamaContext(fetch, "http://127.0.0.1:11434/v1beta/v1", "m")).rejects.toThrow();
+    expect(calls[0]?.url).toBe("http://127.0.0.1:11434/v1beta/api/show");
+  });
+
+  test("num_ctx is read after any spaces, and with any spaces before its value", async () => {
+    for (const parameters of ["  num_ctx 8192", "stop x\nnum_ctx      8192"]) {
+      const { fetch } = fake({ [SHOW]: { parameters } });
+      expect(await ollamaContext(fetch, OLLAMA, "m"), parameters).toBe(8192);
+    }
+    expect(await ollamaContext(fake({ [SHOW]: null }).fetch, OLLAMA, "m")).toBe(
+      OLLAMA_DEFAULT_CONTEXT,
+    );
+  });
+
+  test("preparing a model uses the caller's timeout for every request", async () => {
+    const asked: number[] = [];
+    const timeout = (ms: number) => {
+      asked.push(ms);
+      return new AbortController().signal;
+    };
+    const { fetch } = fake({ [SHOW]: { parameters: "" }, [CREATE]: { status: "success" } });
+    await prepareLocalModel(fetch, OLLAMA, "q", { timeout });
+    expect(asked).toEqual([10_000, 60_000]);
+  });
+
+  test("a copy Ollama did not make is an error naming it", async () => {
+    for (const reply of [{ status: "error" }, null]) {
+      const { fetch } = fake({ [SHOW]: { parameters: "" }, [CREATE]: reply });
+      await expect(prepareLocalModel(fetch, OLLAMA, "q"), JSON.stringify(reply)).rejects.toThrow(
+        `Ollama could not make ${ctxModelName("q", MIN_CONTEXT)}`,
+      );
+    }
+  });
+
+  test("Ollama's port on another machine is never asked where a model runs", async () => {
+    const { fetch, calls } = fake({});
+    expect(await ollamaPlacement(fetch, "https://llm.example:11434/v1", "m")).toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
+  test("ps's null entries are skipped, and a context that is not a positive integer is none", async () => {
+    const GENERATE = "http://127.0.0.1:11434/api/generate";
+    const PS = "http://127.0.0.1:11434/api/ps";
+    for (const [context_length, context] of [
+      [8192, 8192],
+      [0, null],
+      [1.5, null],
+      [-4, null],
+    ] as const) {
+      const { fetch } = fake({
+        [GENERATE]: { done: true },
+        [PS]: { models: [null, { model: "m", size: 10, size_vram: 10, context_length }] },
+      });
+      expect(await ollamaPlacement(fetch, OLLAMA, "m"), `${context_length}`).toEqual({
+        gpu: 1,
+        context,
+      });
+    }
+  });
+});
