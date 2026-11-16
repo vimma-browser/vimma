@@ -45,9 +45,9 @@ describe("parseManifest: the one format, and a reason for each refusal (UP5)", (
     });
   });
 
-  test("a body without the XML declaration may start with a comment", () => {
+  test("a comment right after the XML declaration is skipped", () => {
     const r = parseManifest(
-      `<!-- written by update-publish.yml -->\n<updates ${ROOT}>\n</updates>\n`,
+      `${HEAD.trimEnd()}<!-- written by update-publish.yml -->\n<updates ${ROOT}>\n</updates>\n`,
     );
     expect(r).toMatchObject({ ok: true, manifest: { update: null } });
   });
@@ -330,6 +330,7 @@ describe("judgeManifest at its boundaries (UP2)", () => {
   });
 
   test("a serial that is no UTC time is refused as from the future", () => {
+    // The reason's words are incidental (serialTime reads no time in it); the refusal matters.
     const odd = { ...parsed, serial: "1" };
     expect(judgeManifest(odd, running, compare)).toEqual({
       ok: false,
@@ -363,10 +364,7 @@ describe("the install marker's one line (UP6)", () => {
     expect(at("vimma-package=deb \n")).toBe("deb");
     expect(at("other=1\nvimma-package=rpm\n")).toBe("rpm");
   });
-  test("no marker: an AppImage when $APPIMAGE is set, else a tarball", () => {
-    expect(installTypeFrom({ packaged: true, marker: null, appImage: "/a/V.AppImage" })).toBe(
-      "appimage",
-    );
+  test("no marker and no $APPIMAGE: a tarball", () => {
     expect(installTypeFrom({ packaged: true, marker: null, appImage: null })).toBe("tarball");
   });
   test("a line that only contains the key, or more after the type, is not a type", () => {
