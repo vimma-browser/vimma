@@ -67,7 +67,7 @@ registerCleanupFunction(async () => {
 const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
-const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
+const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
 const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
 const activeName = () =>
   ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === ww().model.active)?.name;
@@ -458,4 +458,124 @@ addTidyTask(async function test_activate_under_a_grant_notice_log_and_rate() {
   Services.prefs.clearUserPref(ASK_TIMEOUT);
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
+});
+
+// Issue #1109: the agent's page work lives in AgentPage (actors/agent-page.mjs), which the child
+// builds with itself and three callbacks. Driven here with a stand-in actor: a listed element of
+// another generation is unknown, a click whose element is not as asked is refused, a click runs
+// after the reply through the child's press with the re-check (`still`, M26), a click whose
+// element changed before it is skipped and said back (M28), the page's pagehide skips a step
+// still to run, a fill sets the field after the reply (F12), and the console read finds this
+// document's own error (F22).
+add_task(async function the_agent_page_helper_acts_on_the_document_it_is_given() {
+  await BrowserTestUtils.withNewTab(PAGE, async (browser) => {
+    const seen = await SpecialPowers.spawn(browser, [], async () => {
+      const { AgentPage } = ChromeUtils.importESModule(
+        "chrome://browser/content/vimma/actors/agent-page.mjs",
+      );
+      const doc = content.document;
+      const button = doc.createElement("button");
+      button.textContent = "Go";
+      const field = doc.createElement("input");
+      doc.body.append(button, field);
+      /** @type {{ name: string, data: any }[]} */
+      const sent = [];
+      const actor = /** @type {JSWindowActorChild} */ (
+        /** @type {unknown} */ ({
+          document: doc,
+          contentWindow: content,
+          docShell: content.docShell,
+          manager: {
+            isCurrentGlobal: true,
+            innerWindowId: /** @type {any} */ (content.windowGlobalChild)?.innerWindowId,
+          },
+          sendAsyncMessage: (/** @type {string} */ name, /** @type {any} */ data) =>
+            sent.push({ name, data }),
+        })
+      );
+      /** @type {boolean[]} */
+      const pressed = [];
+      const agent = new AgentPage(actor, {
+        onPage: /** @type {(el: Element | null | undefined) => el is Element} */ (
+          (el) => !!el?.isConnected && el.ownerDocument === doc
+        ),
+        press: (_el, still = () => true) => {
+          const ok = still();
+          pressed.push(ok);
+          return ok;
+        },
+        beforeSubmitCheck: () => null,
+      });
+      agent.listed = { gen: 4, els: [new WeakRef(button), new WeakRef(field)] };
+      const tick = () =>
+        new Promise((resolve) => Services.tm.dispatchToMainThread(() => resolve(null)));
+      const until = Date.now() + 30000;
+      /** @type {any} */
+      const click = { op: "activate", gen: 4, id: 0, href: null, until };
+      const outcome = () => agent.element({ op: "outcome", gen: 4, id: 0 });
+      const unknown = agent.element({ op: "alive", gen: 3, id: 0 });
+      const alive = agent.element({ op: "alive", gen: 4, id: 0 });
+      const notAsAsked = agent.element({ ...click, href: "https://example.org/" });
+      const ok = agent.element({ ...click, step: 7 });
+      const before = outcome();
+      await tick();
+      const clicked = outcome();
+      agent.element({ ...click, step: 8 });
+      button.disabled = true;
+      await tick();
+      const changed = outcome();
+      button.disabled = false;
+      agent.element({ ...click, step: 9 });
+      agent.pageHidden();
+      await tick();
+      const hidden = outcome();
+      const target = /** @type {any} */ (
+        agent.element({ op: "inspect-fill", gen: 4, id: 1, value: "hi" })
+      );
+      const expect = { field: target.field, type: target.type };
+      const fill = agent.element({ op: "fill", gen: 4, id: 1, value: "hi", expect, until });
+      await tick();
+      const filled = agent.element({ op: "fill-outcome", gen: 4, id: 1 });
+      content.console.error("agent page helper");
+      const logged = agent
+        .consoleEntries({})
+        .entries.some((/** @type {any} */ e) => e.message.includes("agent page helper"));
+      return {
+        unknown,
+        alive,
+        notAsAsked,
+        ok,
+        before,
+        clicked,
+        changed,
+        hidden,
+        pressed,
+        skipped: sent.map((m) => `${m.name} ${m.data.step}`),
+        fill,
+        filled,
+        value: field.value,
+        logged,
+        cards: agent.cards(),
+        total: agent.total(),
+      };
+    });
+    Assert.deepEqual(seen, {
+      unknown: false,
+      alive: true,
+      notAsAsked: "changed",
+      ok: "ok",
+      before: "pending",
+      clicked: "clicked",
+      changed: "skipped",
+      hidden: "skipped",
+      pressed: [true, false],
+      skipped: ["Vimma:AgentSkipped 8", "Vimma:AgentSkipped 9"],
+      fill: "ok",
+      filled: "kept",
+      value: "hi",
+      logged: true,
+      cards: false,
+      total: null,
+    });
+  });
 });

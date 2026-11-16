@@ -10,9 +10,10 @@ new Firefox releases arrive as PRs.
 ## Scope
 
 - `ci.yml` (push + PR): `npm ci`, `npm run lint`, `npm run typecheck`, `npm run coverage`
-  (90 % gate in `vitest.config.mjs`), commitlint over the PR range, licence check of
-  `package-lock.json` (allowlist: MIT, ISC, BSD-2/3, Apache-2.0, MPL-2.0, PSF-2.0), and a custom
-  commitlint rule: `feat`/`fix` require a non-empty body.
+  (90 % gate in `vitest.config.mjs`; Since changed: `vitest.config.ts`, ADR-025), commitlint
+  over the PR range, licence check of `package-lock.json` (allowlist: MIT, ISC, BSD-2/3,
+  Apache-2.0, MPL-2.0, PSF-2.0), and a custom commitlint rule: `feat`/`fix` require a non-empty
+  body.
 - `e2e.yml` (PR): skeleton job that runs only once the M0 build-strategy ADR picks
   UI-only vs artifact build; until then it is a no-op with a TODO naming the ADR. (ADR-010 and
   m0-build-strategy have since made it the artifact-build mochitest job.)

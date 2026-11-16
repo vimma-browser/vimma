@@ -24,7 +24,7 @@ ThemeHost.attachDocument(document);
 // The way to switch the built-in palette, for a first-time user (docs/specs/theme-appearance.md
 // B6); left out when the colours are an Omarchy theme's, which `:theme` does not change.
 const tip = document.getElementById("vimma-theme-tip");
-ThemeHost.followsOmarchy().then((/** @type {boolean} */ omarchy) => {
+ThemeHost.followsOmarchy().then((omarchy) => {
   if (!tip) return;
   tip.hidden = omarchy;
   tip.dataset.ready = "true";

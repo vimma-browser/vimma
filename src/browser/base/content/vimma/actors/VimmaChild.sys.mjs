@@ -4,45 +4,22 @@
 
 // Child side of the Vimma actor (spec: docs/specs/m1-actor-insert-scroll.md). One per frame,
 // including out-of-process iframes: reports focus changes in its own document as an
-// EditableDescriptor (vimma-core editable.mjs) and runs scroll, blur and focus-input commands.
+// EditableDescriptor (vimma-core editable.mjs) and runs blur and focus-input commands; scroll
+// commands go to its PageScroll (page-scroll.mjs), live grep's to its GrepPage (grep-page.mjs),
+// an agent's clicks, fills and reads to its AgentPage (agent-page.mjs).
 
 import { INSERT_EDIT_COMMANDS, isEditable } from "../core/editable.mjs";
 import { inputIndex } from "../core/pageurl.mjs";
 import { suggestionListOpen } from "../core/suggestions.mjs";
-import { isSensitiveAutocomplete } from "../core/agent-element.mjs";
-import {
-  AGENT_CONSOLE,
-  consoleArgsText,
-  newestEntries,
-  scriptErrorLevel,
-  scriptErrorSource,
-} from "../core/agent-act.mjs";
-import { cutTo } from "../core/agent-keys.mjs";
-import { isConsequential, mayAllowHere, parseSentFields } from "../core/agent-checkpoint.mjs";
-import { quietVerdict } from "../core/agent-wait.mjs";
 import { HINT_SIZE_WAIT_MS } from "../core/hints.mjs";
 import { collectTargets, linkText, viewportSize } from "./hint-collect.mjs";
-import {
-  actTargetOf,
-  cardFieldShown,
-  defaultSubmitOf,
-  describeAgentElements,
-  fillField,
-  fillTargetOf,
-  formOf,
-  pageChanges,
-  pageMarks,
-  payInfoOf,
-  sensitiveValueShown,
-  sentFieldsOf,
-  totalBefore,
-} from "./agent-fields.mjs";
+import { describeAgentElements } from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
 import { BlockFocus } from "./block.mjs";
-import { GREP_CAPS, parseQuery, previewLines } from "../core/grep.mjs";
-import { textOfDocument } from "./text-model.mjs";
-import { GrepMatcher } from "./grep-matcher.mjs";
 import { PdfView } from "./pdf-view.mjs";
+import { PageScroll } from "./page-scroll.mjs";
+import { GrepPage } from "./grep-page.mjs";
+import { AgentPage } from "./agent-page.mjs";
 
 /** @import { EditableDescriptor } from "../core/editable.mjs" */
 
@@ -50,11 +27,6 @@ const lazy = /** @type {Lazy<"setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
-/** @import { ScrollKind } from "./VimmaActors.sys.mjs" */
-
-/** j/k/h/l step in CSS pixels (Vimium's scrollStepSize). */
-const STEP = 60;
-
 /** Focus on these moves into another document, whose own child reports. */
 const FRAMES = new Set(["iframe", "frame", "browser"]);
 
@@ -142,51 +114,9 @@ function describe(el) {
   return d;
 }
 
-/** Overflow values that lock an axis: a site's modal sets one on <html> or <body>. */
-const LOCKED = new Set(["hidden", "clip"]);
-
-/**
- * @param {Element} el
- * @param {boolean} vertical
- */
-function overflowOf(el, vertical) {
-  const style = el.ownerDocument.defaultView?.getComputedStyle(el);
-  return (vertical ? style?.overflowY : style?.overflowX) ?? "visible";
-}
-
-/**
- * Whether the page itself is scroll-locked on this axis. <body>'s overflow applies to the
- * viewport only while <html>'s is `visible` (CSS Overflow 3, § 3.3).
- * @param {Document} doc
- * @param {boolean} vertical
- */
-function documentLocked(doc, vertical) {
-  const html = doc.documentElement;
-  const root = html ? overflowOf(html, vertical) : "visible";
-  if (LOCKED.has(root)) return true;
-  return root === "visible" && !!doc.body && LOCKED.has(overflowOf(doc.body, vertical));
-}
-
-/**
- * @param {Element} el
- * @param {boolean} vertical
- */
-function canScroll(el, vertical) {
-  const max = vertical ? el.scrollTopMax : el.scrollLeftMax;
-  if (!(max > 0)) return false;
-  const doc = el.ownerDocument;
-  if (el === doc.scrollingElement) return !documentLocked(doc, vertical);
-  const overflow = overflowOf(el, vertical);
-  return overflow === "auto" || overflow === "scroll" || overflow === "overlay";
-}
-
 /** @param {EventTarget | null} t @returns {t is Node} */
 const isNode = (t) => !!t && "nodeType" in t;
 
-/** At most this many elements are searched for the largest scrollable. */
-const SEARCH_LIMIT = 10000;
-/** A search that found nothing is not repeated for this long (holding j). */
-const SEARCH_BACKOFF_MS = 1000;
 /** How often, in ms, a collection waiting for its page's first size looks again (#sized). */
 const SIZE_POLL_MS = 25;
 
@@ -194,75 +124,6 @@ const SIZE_POLL_MS = 25;
 function hasSize(win) {
   const { vw, vh } = viewportSize(win);
   return vw > 0 && vh > 0;
-}
-
-/**
- * The largest element of `all` (at most SEARCH_LIMIT of them) that scrolls on the axis, or null.
- * @param {HTMLCollectionOf<Element>} all  a live collection, read lazily
- * @param {boolean} vertical
- * @param {boolean} [visibleOnly]  skip what is hidden (a layer's other tab panels)
- */
-function largestScrollable(all, vertical, visibleOnly = false) {
-  let best = null;
-  let area = 0;
-  for (let i = 0; i < Math.min(all.length, SEARCH_LIMIT); i++) {
-    const el = /** @type {Element} */ (all[i]);
-    if (!canScroll(el, vertical)) continue;
-    if (visibleOnly && !el.checkVisibility({ visibilityProperty: true })) continue;
-    const r = el.getBoundingClientRect();
-    if (r.width * r.height > area) [best, area] = [el, r.width * r.height];
-  }
-  return best;
-}
-
-/**
- * The fixed layer under the middle of the viewport, and the scroller under that point inside it:
- * a cookie banner's settings, a modal or a lightbox drawn over a page that still scrolls (issue
- * #864). Cookiebot's layer is a `role=region`, Usercentrics' a dialog without `aria-modal` in a
- * shadow root, so the layer is told by its `position: fixed`, not by its ARIA. Null when the
- * middle of the viewport is the page's own: a fixed header or a chat widget in a corner is not
- * there.
- * @param {Window} win
- * @param {boolean} vertical
- * @returns {{ layer: Element, inner: Element | null } | null}
- */
-function layerAtCentre(win, vertical) {
-  const { vw, vh } = viewportSize(win);
-  if (!(vw > 0 && vh > 0)) return null;
-  const x = vw / 2;
-  const y = vh / 2;
-  const doc = win.document;
-  let hit = doc.elementFromPoint(x, y);
-  // elementFromPoint stops at a shadow host; the layer can be inside its tree, open or closed.
-  for (let root = hit?.openOrClosedShadowRoot; root;) {
-    const inner = root.elementFromPoint(x, y);
-    if (!inner || inner === hit) break;
-    hit = inner;
-    root = hit.openOrClosedShadowRoot;
-  }
-  /** @type {Element | null} */
-  let inner = null;
-  for (
-    let el = hit;
-    el && el !== doc.body && el !== doc.documentElement;
-    // Slotted content belongs to the layer its slot is in, not to its light-tree parents.
-    el = /** @type {Element | null} */ (el.assignedSlot) ?? parentOf(el)
-  ) {
-    if (!inner && canScroll(el, vertical)) inner = el;
-    if (win.getComputedStyle(el)?.position === "fixed") return { layer: el, inner };
-  }
-  return null;
-}
-
-/**
- * The parent element, stepping out of a shadow root to its host.
- * @param {Element} el
- * @returns {Element | null}
- */
-function parentOf(el) {
-  if (el.parentElement) return el.parentElement;
-  const root = el.getRootNode();
-  return "host" in root ? /** @type {ShadowRoot} */ (root).host : null;
 }
 
 /** A find text no page contains (a noncharacter): resets the find buffer without moving. */
@@ -281,19 +142,6 @@ function selectionOnScreen(sel, win) {
   return r.bottom > 0 && r.top < win.innerHeight;
 }
 
-/** nsISelectionController.SELECTION_NORMAL */
-const SELECTION_NORMAL = 1;
-
-/** nsISelectionController values for live grep's jump (docs/specs/live-grep.md decision 7). */
-const DISPLAY_ATTENTION = 4;
-const WHOLE_SELECTION = 2;
-const SCROLL_SYNCHRONOUS = 1 << 1;
-const SCROLL_VERTICAL_CENTER = 1 << 5;
-/** The longest query a frame accepts (the parent sends none longer). */
-const GREP_QUERY_MAX = GREP_CAPS.query;
-/** Text with something to find: a blank frame is answered without the worker. */
-const NOT_BLANK = /\S/;
-
 /** nsISelectionListener reasons (spec m1-copy-mode, mouse selection). */
 const MOUSEUP_REASON = 4;
 const JS_REASON = 256;
@@ -306,17 +154,6 @@ const KEYS_KEPT = 16;
  * @returns {n is number}
  */
 const isIndex = (n) => Number.isSafeInteger(n) && /** @type {number} */ (n) >= 0;
-
-/** The parent's number for an agent's step, or -1 without one. @param {{ step?: unknown }} asked */
-const stepOf = (asked) => (isIndex(asked.step) ? asked.step : -1);
-
-/**
- * An agent's step that runs after the child's reply (VimmaChild #afterReply): the element of
- * the agent's list it acts on, the parent's number for the step (-1 for a fill, which the
- * parent does not number), and its outcome so far.
- * @template {string} T
- * @typedef {{ gen: number, id: number, step: number, outcome: "pending" | "skipped" | T }} AgentStep
- */
 
 export class VimmaChild extends JSWindowActorChild {
   /**
@@ -342,61 +179,16 @@ export class VimmaChild extends JSWindowActorChild {
    */
   static _sizePollMsForTests = null;
 
-  /** @type {WeakRef<Element> | null} the last largest scrollable, reused while it can scroll */
-  #largest = null;
-  /**
-   * The last fixed layer's largest scrollable, reused while that layer is under the middle of
-   * the viewport and the element can scroll.
-   * `el` is null when the layer had nothing to scroll, and that search is not repeated for
-   * SEARCH_BACKOFF_MS (holding j over a fixed background).
-   * @type {{ layer: WeakRef<Element>, el: WeakRef<Element> | null, at: number } | null}
-   */
-  #layerScroller = null;
+  /** Scrolling in this frame (docs/specs/m1-actor-insert-scroll.md). */
+  #scroll = new PageScroll(this, () => deepActiveElement(this.document));
   /** The last hint collection (m1-hints): its generation and its elements, by target id. */
   #hints = { gen: -1, els: /** @type {WeakRef<Element>[]} */ ([]) };
-  /**
-   * An agent's last `vimma_elements` in this frame (docs/specs/mcp-forms.md F4): beside the
-   * user's collection, never in its place, so neither voids the other.
-   */
-  #agentEls = { gen: -1, els: /** @type {WeakRef<Element>[]} */ ([]) };
-  /**
-   * The agent's last click here (docs/specs/mcp-forms.md F8), or its fill's submission (F15): its
-   * element and whether it ran or was skipped because the page changed the element before it,
-   * or went away.
-   * @type {AgentStep<"clicked"> | null}
-   */
-  #agentClick = null;
-  /**
-   * The page as it was just before the agent's last click here (#510), for `changes`: what
-   * changed in place when the click loaded no page.
-   * @type {{ gen: number, id: number, before: ReturnType<typeof pageMarks> } | null}
-   */
-  #agentWatch = null;
-  /**
-   * The agent's last fill of one field here (docs/specs/mcp-forms.md F12): its element and
-   * whether it is still to run, kept its value, was put back by the page, or was skipped because
-   * the field changed or its page went away before it.
-   * @type {AgentStep<"kept" | "reset"> | null}
-   */
-  #agentFill = null;
-  /**
-   * How to skip each agent step that is still to run after its reply here (#afterReply): the
-   * page's trusted `pagehide` skips them all.
-   * @type {Set<() => void>}
-   */
-  #toRun = new Set();
-  /**
-   * The requests this document had open just before the agent's last click or submission here
-   * (issue #579): only the ones the step started keep its wait going, not a page's long poll.
-   */
-  #netBase = 0;
-  /**
-   * The changes to this document since the agent's last step here began (`#startStepWatch`).
-   * @type {{ doc: Document, at: number, last: number | null, observer: MutationObserver | null } | null}
-   */
-  #stepWatch = null;
-  /** When a search for the largest scrollable last found nothing (0: not since focus moved). */
-  #emptySearchAt = 0;
+  /** The agent's page work in this frame (docs/specs/mcp-forms.md, mcp-checkpoints.md). */
+  #agent = new AgentPage(this, {
+    onPage: (el) => this.#onPage(el),
+    press: (el, still) => this.#press(el, still),
+    beforeSubmitCheck: () => this.#beforeSubmitCheck(),
+  });
   /** Copy mode in this document (m1-copy-mode). */
   #caret = new Caret();
   /** Element focus in this document (docs/specs/element-focus.md). */
@@ -409,15 +201,12 @@ export class VimmaChild extends JSWindowActorChild {
    * operation it sent (`state.pdf`, #1006).
    */
   #pdfOps = 0;
-  /**
-   * Live grep (docs/specs/live-grep.md decision 14): this document's text model while the
-   * picker is open, marked stale by any change to the document until the next query rebuilds it.
-   * @type {{ model: ReturnType<typeof textOfDocument>, stale: boolean,
-   *   observer: MutationObserver | null }}
-   */
-  #grep = { model: null, stale: true, observer: null };
-  /** This frame's key in the process's matcher, and the newest search generation it saw. */
-  #matcher = { key: GrepMatcher.newKey(), gen: -1 };
+  /** Live grep in this frame (docs/specs/live-grep.md): its text model and matcher key. */
+  #grep = new GrepPage(this, {
+    activeElement: () => deepActiveElement(this.document),
+    editable: (el) => isEditable(describe(el)).editable,
+    selCon: () => this.#selCon(),
+  });
   /** The document's selection while a listener for mouse selections is on it. */
   /** @type {Selection | null} */
   #watched = null;
@@ -477,7 +266,7 @@ export class VimmaChild extends JSWindowActorChild {
   didDestroy() {
     this.#pdf?.destroy();
     this.#pdf = null;
-    this.#grepEnd();
+    this.#grep.end();
     this.#block.destroy();
     try {
       this.#watched?.removeSelectionListener(this.#selectionListener);
@@ -563,13 +352,13 @@ export class VimmaChild extends JSWindowActorChild {
   handleEvent(event) {
     if (event.type === "pagehide") {
       // Registered for trusted events only; checked again, as a forged one could skip a step.
-      if (event.isTrusted) for (const skip of [...this.#toRun]) skip();
+      if (event.isTrusted) this.#agent.pageHidden();
       return;
     }
     const doc = this.document;
     switch (event.type) {
       case "focusin": {
-        this.#emptySearchAt = 0;
+        this.#scroll.focusMoved();
         // Unretargeted: the element itself, also inside an open or closed shadow root.
         const target = /** @type {Element | null} */ (event.originalTarget);
         if (target && this.#focusedByFind(target)) {
@@ -602,7 +391,7 @@ export class VimmaChild extends JSWindowActorChild {
         // tab): the user is back on its focused element, which counts as a focusin. An editable
         // document root (designMode, contenteditable <body>) gets only this event.
         if (event.originalTarget !== this.contentWindow) return;
-        this.#emptySearchAt = 0;
+        this.#scroll.focusMoved();
         this.#report(deepActiveElement(doc) ?? doc.body, "focusin");
         return;
       }
@@ -801,7 +590,7 @@ export class VimmaChild extends JSWindowActorChild {
       case "Vimma:Scroll":
         // pdf.js's presentation mode shows one page at a time: the scroll keys turn pages.
         if (this.#pdf?.turnPage(msg.data.kind, msg.data.count)) return true;
-        return this.#scroll(msg.data.kind, msg.data.count, msg.data.instant === true);
+        return this.#scroll.scroll(msg.data.kind, msg.data.count, msg.data.instant === true);
       case "Vimma:PdfTheme":
         // A theme change (V12): the token sheet again.
         this.#pdf?.setTheme(msg.data?.css);
@@ -830,14 +619,9 @@ export class VimmaChild extends JSWindowActorChild {
         const pdf = this.#pdf;
         return el?.isConnected ? new Promise((resolve) => pdf.linkPage(el, resolve)) : 0;
       }
-      case "Vimma:ScrollFraction": {
-        // Where an agent tab is scrolled to (docs/specs/mcp-drive.md D16): the element `j`
-        // scrolls, as a fraction of how far it can go.
-        const el = this.#scrollTarget(true);
-        if (!el) return 0;
-        const max = el.scrollHeight - el.clientHeight;
-        return max > 0 ? Math.min(1, Math.max(0, el.scrollTop / max)) : 0;
-      }
+      case "Vimma:ScrollFraction":
+        // Where an agent tab is scrolled to (docs/specs/mcp-drive.md D16).
+        return this.#scroll.fraction();
       case "Vimma:Blur": {
         if (isIndex(msg.data?.gen)) this.#blurGen = msg.data.gen;
         const el = deepActiveElement(this.document);
@@ -863,10 +647,8 @@ export class VimmaChild extends JSWindowActorChild {
         if (this.document.hasFocus() && this.#inEditable()) this.docShell?.doCommand(command);
         return undefined;
       }
-      case "Vimma:ScrollPosition": {
-        const win = this.contentWindow;
-        return win ? { x: win.scrollX, y: win.scrollY } : null;
-      }
+      case "Vimma:ScrollPosition":
+        return this.#scroll.position();
       case "Vimma:FindAnchor":
         return this.#findAnchor();
       case "Vimma:FindClosed":
@@ -882,74 +664,34 @@ export class VimmaChild extends JSWindowActorChild {
         // By code point: a cut through a surrogate pair would leave half a character.
         return text ? [...text].slice(0, max).join("") : null;
       }
-      case "Vimma:ScrollTo": {
-        const x = Number(msg.data?.x);
-        const y = Number(msg.data?.y);
-        if (Number.isFinite(x) && Number.isFinite(y)) {
-          this.contentWindow?.scrollTo({ left: x, top: y, behavior: "instant" });
-        }
+      case "Vimma:ScrollTo":
+        this.#scroll.scrollTo(msg.data);
         return undefined;
-      }
       case "Vimma:Grep":
-        return this.#grepSearch(msg.data);
+        return this.#grep.search(msg.data);
       case "Vimma:GrepPreview":
-        return this.#grepPreview(msg.data);
+        return this.#grep.preview(msg.data);
       case "Vimma:GrepJump":
-        return this.#grepJump(msg.data);
+        return this.#grep.jump(msg.data);
       case "Vimma:GrepEnd":
-        this.#grepEnd();
+        this.#grep.end();
         return undefined;
       case "Vimma:CollectHints":
         return this.#collectHints(msg.data);
       case "Vimma:ActivateHint":
         return this.#activateHint(msg.data);
       case "Vimma:AgentElement":
-        return this.#agentElement(msg.data);
+        return this.#agent.element(msg.data);
       case "Vimma:AgentQuiet":
-        return this.#agentQuiet(msg.data);
+        return this.#agent.quiet(msg.data);
       case "Vimma:AgentConsole":
-        // An agent's vimma_console (docs/specs/mcp-forms.md F22, F23): this frame's own errors.
-        try {
-          return this.#agentConsole(msg.data);
-        } catch (e) {
-          console.error("vimma agent-console:", e);
-          return { entries: [], omitted: 0 };
-        }
-      case "Vimma:AgentCards": {
-        // A step that may pay (docs/specs/mcp-checkpoints.md C6): whether this frame shows a
-        // payment card field. A failure answers yes, so that a doubt asks.
-        const doc = this.document;
-        if (!doc) return false;
-        try {
-          return cardFieldShown(doc);
-        } catch (e) {
-          console.error("vimma agent checkpoint: card fields", e);
-          return true;
-        }
-      }
-      case "Vimma:AgentTotal": {
-        // A key step that may pay (mcp-checkpoints C7) has no control: the page's last total.
-        const doc = this.document;
-        try {
-          return (doc && totalBefore(doc, null)) || null;
-        } catch (e) {
-          console.error("vimma agent checkpoint: total", e);
-          return null;
-        }
-      }
-      case "Vimma:AgentSensitiveShown": {
-        // An agent's screenshot is about to be taken (docs/specs/mcp-forms.md F21): whether a
-        // sensitive field with a value is in this frame's viewport. A failure answers yes, so
-        // that it refuses rather than captures.
-        const win = this.contentWindow;
-        if (!win) return true;
-        try {
-          return sensitiveValueShown(win);
-        } catch (e) {
-          console.error("vimma agent-screenshot: sensitive fields", e);
-          return true;
-        }
-      }
+        return this.#agent.consoleEntries(msg.data);
+      case "Vimma:AgentCards":
+        return this.#agent.cards();
+      case "Vimma:AgentTotal":
+        return this.#agent.total();
+      case "Vimma:AgentSensitiveShown":
+        return this.#agent.sensitiveShown();
       case "Vimma:Caret": {
         // Only the frame with focus has the user's caret (the parent sends to that one).
         const win = this.contentWindow;
@@ -1054,7 +796,7 @@ export class VimmaChild extends JSWindowActorChild {
       // Collections that wait can end out of order. Generations only grow, so a stored newer
       // generation means a newer collection of the same kind answered meanwhile; the elements it
       // stored are the ones the parent acts on, and they stay.
-      const stored = elements ? this.#agentEls : texts ? null : this.#hints;
+      const stored = elements ? this.#agent.listed : texts ? null : this.#hints;
       if (stored && stored.gen > gen) return null;
     }
     const t0 = ChromeUtils.now();
@@ -1065,7 +807,7 @@ export class VimmaChild extends JSWindowActorChild {
     });
     // An agent's collection is never followed through the user's targets: the user's targets of
     // this frame stay as they were, and an agent's elements are kept apart.
-    if (elements) this.#agentEls = { gen, els: targets.map((t) => new WeakRef(t.el)) };
+    if (elements) this.#agent.listed = { gen, els: targets.map((t) => new WeakRef(t.el)) };
     else if (!texts) this.#hints = { gen, els: targets.map((t) => new WeakRef(t.el)) };
     const described = elements ? describeAgentElements(targets.map((t) => t.el)) : null;
     return {
@@ -1140,492 +882,12 @@ export class VimmaChild extends JSWindowActorChild {
   }
 
   /**
-   * The agent's listed element `id`, while it is in this frame's document (#onPage).
-   * @param {number} id
+   * The page function an agent's form submission calls just before its check, for a test
+   * (`_beforeSubmitCheckForTests`); null outside automation, whoever set it (security.md M28).
    */
-  #agentListed(id) {
-    const el = this.#agentEls.els[id]?.deref();
-    return el && this.#onPage(el) ? el : undefined;
-  }
-
-  /**
-   * An element of the agent's last `vimma_elements` here (docs/specs/mcp-forms.md F4): `alive`
-   * says whether it is still in the document, so a label never names an element the page has
-   * replaced since.
-   * @param {{ op: string, gen: number, id: number, submit?: unknown, href?: unknown,
-   *   until?: unknown, value?: unknown, expect?: unknown, by?: unknown, skip?: unknown }} data
-   */
-  #agentElement(data) {
-    const known = isIndex(data?.gen) && isIndex(data?.id) && data.gen === this.#agentEls.gen;
-    const el = known ? this.#agentListed(data.id) : undefined;
-    switch (data?.op) {
-      case "alive":
-        return this.#onPage(el);
-      case "inspect":
-        return actTargetOf(el);
-      case "activate":
-        return this.#agentActivate(el, data);
-      case "consume":
-        // An agent is about to act here (mcp-forms F16): the user's activation from before its
-        // step must not count as the user's for what the page does after it.
-        this.document?.consumeTransientUserGestureActivation();
-        return true;
-      case "outcome": {
-        const last = this.#agentClick;
-        return last && last.gen === data.gen && last.id === data.id ? last.outcome : "pending";
-      }
-      case "changes": {
-        const watch = this.#agentWatch;
-        // Against the same list as before the click: a newer `vimma_elements` here ends it.
-        if (!known || !watch || watch.gen !== data.gen || watch.id !== data.id) return null;
-        try {
-          return pageChanges(watch.before, this.#pageMarks(data.id));
-        } catch {
-          return null;
-        }
-      }
-      case "inspect-fill":
-        return fillTargetOf(el, data.value);
-      case "fill":
-        return this.#agentFillField(el, data);
-      case "loading":
-        // After a fill (issue #579): whether the fields' handlers started a load in this frame.
-        // Asked after their task, so a submission they queued has started by now.
-        return !!this.docShell?.isLoadingDocument;
-      case "fill-outcome": {
-        const last = this.#agentFill;
-        return last && last.gen === data.gen && last.id === data.id ? last.outcome : "pending";
-      }
-      case "submit":
-        return this.#agentSubmit(el, data);
-      case "pay":
-        // docs/specs/mcp-checkpoints.md C6, C7: what the pressed control says, the total before it.
-        return payInfoOf(el, data.by === "form" ? "form" : "click");
-      case "sent": {
-        // Behaviour 4: what the form sends, but for the fields the same call fills.
-        /** @type {Set<Element>} */
-        const skip = new Set();
-        for (const id of Array.isArray(data.skip) ? data.skip : []) {
-          const field = isIndex(id) ? this.#agentListed(id) : undefined;
-          if (field) skip.add(field);
-        }
-        return sentFieldsOf(el, data.by === "form" ? "form" : "click", skip);
-      }
-    }
-    return false;
-  }
-
-  /**
-   * An agent's fill of one field (docs/specs/mcp-forms.md F12, F13; security.md M27): the field
-   * must still be what the user was asked about and not sensitive, then it is set after this
-   * reply, so that a dialog the page opens in its `input` or `change` handler never holds the
-   * parent's call. It is checked again just before the set, which is skipped if it changed.
-   * @param {Element | undefined} el
-   * @param {{ gen: number, id: number, value?: unknown, expect?: unknown, until?: unknown }} asked
-   *   `expect`: how the field was to be set (`field`) and its type, when the question was asked
-   * @returns {"ok" | "gone" | "changed"}
-   */
-  #agentFillField(el, asked) {
-    if (!this.#onPage(el)) return "gone";
-    if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
-    const value = asked.value;
-    if (typeof value !== "string" && typeof value !== "boolean") return "changed";
-    if (!this.#fillAsAsked(el, asked)) return "changed";
-    /** @type {AgentStep<"kept" | "reset">} */
-    const fill = { gen: asked.gen, id: asked.id, step: -1, outcome: "pending" };
-    this.#agentFill = fill;
-    const until = asked.until;
-    this.#afterReply(fill, false, () => {
-      // A busy page can delay this past the parent's wait: then nothing is set.
-      if (Date.now() > until || !this.#onPage(el) || !this.#fillAsAsked(el, asked)) {
-        return "skipped";
-      }
-      return fillField(el, value) ? "kept" : "reset";
-    });
-    return "ok";
-  }
-
-  /**
-   * Whether `el` is still the field the agent's question showed: set the same way, of the same
-   * type, not sensitive, disabled or read-only, and taking the value.
-   * @param {Element} el @param {{ value?: unknown, expect?: unknown }} asked
-   */
-  #fillAsAsked(el, asked) {
-    const now = fillTargetOf(el, asked.value);
-    /** @type {{ field?: unknown, type?: unknown }} */
-    const expect = asked.expect && typeof asked.expect === "object" ? asked.expect : {};
-    if (!now.alive || now.secret || isSensitiveAutocomplete(now.autocomplete)) return false;
-    if (now.disabled || now.readonly || now.accepts === false) return false;
-    if (!["text", "textarea", "select", "checkbox", "radio"].includes(now.field ?? "")) {
-      return false;
-    }
-    return now.field === expect.field && (now.type ?? null) === (expect.type ?? null);
-  }
-
-  /**
-   * An agent's submission of a field's form with its default button (docs/specs/mcp-forms.md
-   * F15; security.md M28), after its fill: only to the method and destination the question
-   * named, by `requestSubmit`, after this reply. No user activation is given: the parent lets
-   * through only the submission the question allowed.
-   * @param {Element | undefined} el
-   * @param {{ gen: number, id: number, submit?: unknown, until?: unknown, step?: unknown }} asked
-   *   `step`: the parent's number for this step, said back if it is skipped
-   * @returns {"ok" | "gone" | "changed"}
-   */
-  #agentSubmit(el, asked) {
-    if (!this.#onPage(el)) return "gone";
-    if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
-    const form = formOf(el);
-    const now = form ? defaultSubmitOf(form) : null;
-    /** @type {{ method?: unknown, action?: unknown } | null} */
-    const named = asked.submit && typeof asked.submit === "object" ? asked.submit : null;
-    if (!now || !named || now.method !== named.method || now.action !== named.action) {
-      return "changed";
-    }
-    // The parent's wait for a page counts from when this ran (`outcome`, as for a click).
-    /** @type {AgentStep<"clicked">} */
-    const sent = { gen: asked.gen, id: asked.id, step: stepOf(asked), outcome: "pending" };
-    this.#agentClick = sent;
-    const until = asked.until;
-    this.#afterReply(sent, true, () => {
-      const test = Cu.isInAutomation ? VimmaChild._beforeSubmitCheckForTests : null;
-      if (test) {
-        try {
-          const page = this.contentWindow?.wrappedJSObject;
-          const hook = page?.[test];
-          if (typeof hook === "function") hook.call(page);
-        } catch {
-          // the test's page function threw: the check below sees what it left
-        }
-      }
-      const again = this.#onPage(form) ? defaultSubmitOf(form) : null;
-      if (
-        Date.now() > until ||
-        !form ||
-        !again ||
-        again.method !== named.method ||
-        again.action !== named.action
-      ) {
-        return "skipped";
-      }
-      sent.outcome = "clicked";
-      this.#startStepWatch();
-      form.requestSubmit(again.submitter ?? undefined);
-      return "clicked";
-    });
-    return "ok";
-  }
-
-  /**
-   * An agent's click (docs/specs/mcp-forms.md F8; security.md M26): the element must still be
-   * what the user was asked about, then the user's hint sequence runs on it, after this reply,
-   * so that a dialog the page opens in its handler never holds the parent's call. The page may
-   * change the element in its handlers of the untrusted mouse events, so it is checked again
-   * before click(), which is skipped if it changed. Nothing is focused, and no event goes
-   * through the widget or nsIDOMWindowUtils, so the page gets no user activation. A request
-   * whose time is up (`until`, ms since the epoch) clicks nothing: the parent stopped waiting.
-   * @param {Element | undefined} el
-   * @param {{ gen: number, id: number, submit?: unknown, href?: unknown, until?: unknown,
-   *   step?: unknown }} asked  `submit`: the method and destination the question named, or
-   *   null; `step`: the parent's number for this step, said back if it is skipped
-   * @returns {"ok" | "gone" | "changed"}
-   */
-  #agentActivate(el, asked) {
-    if (!el || !actTargetOf(el).alive) return "gone";
-    if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
-    if (!this.#asAsked(el, asked)) return "changed";
-    /** @type {AgentStep<"clicked">} */
-    const click = { gen: asked.gen, id: asked.id, step: stepOf(asked), outcome: "pending" };
-    this.#agentClick = click;
-    this.#agentWatch = null;
-    const until = asked.until;
-    this.#afterReply(click, true, () => {
-      try {
-        if (Date.now() <= until && this.#onPage(el)) {
-          this.#agentWatch = { gen: asked.gen, id: asked.id, before: this.#pageMarks(asked.id) };
-        }
-      } catch {
-        // The page's DOM broke the snapshot: the click and its outcome (M28) go on without it.
-      }
-      this.#startStepWatch();
-      // A busy page can delay this past the parent's wait: then nothing is clicked.
-      const ran =
-        Date.now() <= until && this.#onPage(el) && this.#press(el, () => this.#asAsked(el, asked));
-      return ran ? "clicked" : "skipped";
-    });
-    return "ok";
-  }
-
-  /**
-   * Runs an agent's step after this reply, so that a dialog the page opens never holds the
-   * parent's call, and keeps its outcome in `step` for the parent to ask (`outcome`,
-   * `fill-outcome`). No step stays "pending": one that throws is skipped, and so is one whose
-   * page is hidden before it runs (a navigation, or the back-forward cache; issue #1028). A
-   * navigation in this process can commit between the reply and the step, and from then on the
-   * page is no longer the frame's; the skip is decided on the old page's `pagehide`, while this
-   * actor can still message the parent, so a skipped click or submission (`tell`) reaches it
-   * ahead of the next document (#skipped).
-   * @template {string} T
-   * @param {AgentStep<T>} step @param {boolean} tell
-   * @param {() => T | "skipped"} run  the step; returns its outcome
-   */
-  #afterReply(step, tell, run) {
-    const skipped = () => {
-      step.outcome = "skipped";
-      if (tell) this.#skipped(step);
-    };
-    const skip = () => {
-      this.#toRun.delete(skip);
-      if (step.outcome === "pending") skipped();
-    };
-    this.#toRun.add(skip);
-    Services.tm.dispatchToMainThread(() => {
-      // From here on the step is running: a page hidden by what it does was not skipped.
-      if (!this.#toRun.delete(skip) || step.outcome !== "pending") return;
-      try {
-        step.outcome = run();
-      } catch {
-        // The page broke the step before it ran: nothing more of it runs.
-        if (step.outcome === "pending") step.outcome = "skipped";
-      }
-      if (step.outcome === "skipped" && tell) this.#skipped(step);
-    });
-  }
-
-  /**
-   * Starts watching for changes to this document as the agent's step runs here, for
-   * `#agentQuiet`, which the parent asks only once the step has run: the page's handlers may
-   * have changed it by then. Also notes the requests open before the step.
-   */
-  #startStepWatch() {
-    this.#endStepWatch();
-    this.#netBase = this.#openRequests();
-    const doc = this.document;
-    const win = this.contentWindow;
-    if (!doc || !win) return;
-    /** @type {{ doc: Document, at: number, last: number | null, observer: MutationObserver | null }} */
-    const watch = { doc, at: Date.now(), last: null, observer: null };
-    try {
-      watch.observer = new win.MutationObserver(() => {
-        watch.last = Date.now();
-      });
-      watch.observer.observe(doc, {
-        subtree: true,
-        childList: true,
-        attributes: true,
-        characterData: true,
-      });
-    } catch {
-      // no observer: the quiet wait sees only later changes
-    }
-    this.#stepWatch = watch;
-  }
-
-  #endStepWatch() {
-    this.#stepWatch?.observer?.disconnect();
-    this.#stepWatch = null;
-  }
-
-  /** How many requests this document has open: its loads, fetches and XHRs (its load group). */
-  #openRequests() {
-    try {
-      // Every request, not `activeCount`: that counts only foreground ones, and fetches and
-      // XHRs are background requests (nsLoadGroup::AddRequest, LOAD_BACKGROUND).
-      const group = this.document?.documentLoadGroup;
-      return group ? [...group.requests].length : 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  /**
-   * Waits until this frame's page has settled after an agent's step (docs/specs/mcp-forms.md
-   * F11, issue #579), so that the parent's call returns as soon as the page has, instead of
-   * after a fixed second. With `ready`, a new page waits for its DOMContentLoaded first, and a
-   * page already complete answers at once. Then it waits until the document has not changed
-   * for `quiet` ms (`still` ms when it has not changed at all), and, with `net`, until no
-   * request the step started is open, for at most `max` ms (core quietVerdict), and never
-   * past `until` (ms since the epoch). A MutationObserver sees the changes, which the page
-   * cannot hide from it; only whether the page changed is kept, none of what it shows.
-   * @param {{ ready?: unknown, net?: unknown, quiet?: unknown, still?: unknown, max?: unknown,
-   *   until?: unknown }} data
-   * @returns {Promise<{ settled: "quiet" | "busy", state: string } | null>} null: the
-   *   document went away, or its time ran out before its DOMContentLoaded
-   */
-  async #agentQuiet(data) {
-    /** @param {unknown} v @param {number} cap */
-    const ms = (v, cap) => (typeof v === "number" && v >= 0 ? Math.min(v, cap) : 0);
-    const limits = {
-      quiet: ms(data?.quiet, 5000),
-      still: ms(data?.still, 5000),
-      max: ms(data?.max, 10000),
-    };
-    const until = Math.min(typeof data?.until === "number" ? data.until : 0, Date.now() + 30000);
-    const doc = this.document;
-    const win = this.contentWindow;
-    if (!doc || !win) return null;
-    const gone = () => {
-      try {
-        return !this.manager?.isCurrentGlobal || this.document !== doc;
-      } catch {
-        return true;
-      }
-    };
-    // Chrome timers: a hidden tab's page timers are held to one a second, these are not.
-    const tick = () => new Promise((resolve) => lazy.setTimeout(resolve, 25));
-    if (data?.ready && doc.readyState === "complete")
-      return { settled: "quiet", state: "complete" };
-    while (data?.ready && doc.readyState === "loading") {
-      if (gone() || Date.now() > until) return null;
-      await tick();
-    }
-    if (gone()) return null;
-    // After a step, its own watch saw what the page did as it was pressed, before this call.
-    const step = !data?.ready && this.#stepWatch?.doc === doc ? this.#stepWatch : null;
-    this.#endStepWatch();
-    const start = step?.at ?? Date.now();
-    /** @type {number | null} */
-    let last = data?.ready ? start : (step?.last ?? null);
-    const observer = new win.MutationObserver(() => {
-      last = Date.now();
-    });
-    observer.observe(doc, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      characterData: true,
-    });
-    try {
-      for (;;) {
-        if (gone()) return null;
-        const now = Date.now();
-        const netBusy = !!data?.net && this.#openRequests() > this.#netBase;
-        const sinceChange = last === null ? null : now - last;
-        const verdict = quietVerdict({ elapsed: now - start, sinceChange, netBusy }, limits);
-        if (verdict) return { settled: verdict, state: doc.readyState };
-        if (now > until) return { settled: "busy", state: doc.readyState };
-        await tick();
-      }
-    } finally {
-      observer.disconnect();
-    }
-  }
-
-  /**
-   * This frame's page as a click on the listed element `id` could change it in place (#510).
-   * @param {number} id
-   */
-  #pageMarks(id) {
-    const listed = this.#agentEls.els.map((_, i) => this.#agentListed(i));
-    return pageMarks(/** @type {Document} */ (this.document), listed, id);
-  }
-
-  /**
-   * The agent's click or submission was skipped here: the parent withdraws the one submission
-   * the question allowed (security.md M28). Sent in the task that decided it, before any page
-   * script runs again, so it reaches the parent ahead of every later navigation or request this
-   * process starts for the page: the actor's messages and the page's loads (DocumentChannel)
-   * go over the same PContent channel, in order. A page that puts the form back and submits by
-   * itself afterwards is then cancelled like any other submission. It names the step, so the
-   * parent can tell the agent its click was skipped after the page went away (issue #1028), and
-   * by the parent's own number for it, so that a late one is not taken for a later step's.
-   * @param {{ gen: number, id: number, step: number }} step
-   */
-  #skipped({ gen, id, step }) {
-    try {
-      this.sendAsyncMessage("Vimma:AgentSkipped", { gen, id, step });
-    } catch {
-      // The actor is going away with its document. For the top frame the mark goes with the
-      // page; for a subframe removed this way the allowance stays open until the call ends,
-      // still only for the method and destination the question named.
-    }
-  }
-
-  /**
-   * Whether `el` is still what the agent's question showed: nothing an agent may not click, a
-   * submit only if asked as one and to the same method and destination, the same link.
-   * @param {Element} el @param {{ submit?: unknown, href?: unknown }} asked
-   */
-  #asAsked(el, asked) {
-    const now = actTargetOf(el);
-    if (!now.alive || now.field || now.disabled) return false;
-    /** @type {{ method?: unknown, action?: unknown, check?: unknown } | null} */
-    const named = asked.submit && typeof asked.submit === "object" ? asked.submit : null;
-    if (!now.submit !== !named) return false;
-    if (
-      now.submit &&
-      (now.submit.method !== named?.method || now.submit.action !== named?.action)
-    ) {
-      return false;
-    }
-    // mcp-consequence K1, K5: a form a grant runs unasked was judged by what it sent before the
-    // click; another call (a fill) may have changed it since, so it is judged again here, just
-    // before it is pressed, and skipped when it no longer passes.
-    if (now.submit && named?.check) {
-      const step = { pay: false, sent: parseSentFields(sentFieldsOf(el, "click", new Set())) };
-      if (named.check === "harmless" && isConsequential(step)) return false;
-      if (named.check === "allowed" && !mayAllowHere(step)) return false;
-    }
-    return (now.href ?? null) === (asked.href ?? null);
-  }
-
-  /**
-   * This frame's script errors and its page's console.error and console.warn calls, for an
-   * agent's `vimma_console` (docs/specs/mcp-forms.md F22, F23; security.md M30): read from this
-   * process's console service and ConsoleAPIStorage, both of which Firefox fills whether or not
-   * anyone asks, by this document's inner window id. Nothing runs in the page: a console call's
-   * arguments are read only with `typeof` (consoleArgsText), and of a script error only its text
-   * and position, never its exception or stack. Only the newest `max` entries after `since` are
-   * answered, each string cut, with how many more there are, so a noisy page cannot make the
-   * parent copy everything it logged.
-   * @param {{ since?: unknown, max?: unknown }} data
-   */
-  #agentConsole(data) {
-    const since = Number.isSafeInteger(data?.since) ? /** @type {number} */ (data.since) : 0;
-    const max = Math.min(
-      Number.isSafeInteger(data?.max) ? /** @type {number} */ (data.max) : AGENT_CONSOLE.errors,
-      AGENT_CONSOLE.errors,
-    );
-    /** A count from Firefox's event, else 0. @param {unknown} v */
-    const n = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
-    const id = this.manager?.innerWindowId;
-    if (!id) return { entries: [], omitted: 0 };
-    /** @param {unknown} s @param {number} most */
-    const cut = (s, most) => cutTo(String(s ?? "").slice(0, 4 * most), most);
-    const out = [];
-    for (const m of Services.console.getMessageArray() ?? []) {
-      if (!(m instanceof Ci.nsIScriptError) || m.innerWindowID !== id) continue;
-      const level = scriptErrorLevel(m.flags);
-      if (!level) continue;
-      out.push({
-        level,
-        source: scriptErrorSource(m.category),
-        message: cut(m.errorMessage, AGENT_CONSOLE.message),
-        file: cut(m.sourceName, AGENT_CONSOLE.url),
-        line: m.lineNumber,
-        column: m.columnNumber,
-        time: m.timeStamp,
-      });
-    }
-    const storage = Cc["@mozilla.org/consoleAPI-storage;1"].getService(Ci.nsIConsoleAPIStorage);
-    for (const event of storage.getEvents(String(id)) ?? []) {
-      // The event is Firefox's own object, made in a privileged scope (dom/console/Console.cpp);
-      // only its `arguments` are the page's.
-      const level = event?.level;
-      if (level !== "error" && level !== "warn") continue;
-      out.push({
-        level,
-        source: "console",
-        message: cut(consoleArgsText(event.arguments), AGENT_CONSOLE.message),
-        file: typeof event.filename === "string" ? cut(event.filename, AGENT_CONSOLE.url) : "",
-        line: n(event.lineNumber),
-        column: n(event.columnNumber),
-        time: n(event.timeStamp),
-      });
-    }
-    const after = out.filter((e) => e.time > since);
-    const entries = newestEntries(after, since, max);
-    return { entries, omitted: after.length - entries.length };
+  #beforeSubmitCheck() {
+    const test = Cu.isInAutomation ? VimmaChild._beforeSubmitCheckForTests : null;
+    return test;
   }
 
   /**
@@ -1691,152 +953,6 @@ export class VimmaChild extends JSWindowActorChild {
     return true;
   }
 
-  /** The text model, rebuilt when the document changed since it was built. */
-  #grepModel() {
-    const win = this.contentWindow;
-    if (!win) return null;
-    if (this.#grep.model && !this.#grep.stale) return this.#grep.model;
-    if (!this.#grep.observer) {
-      const observer = new win.MutationObserver(() => {
-        this.#grep.stale = true;
-      });
-      observer.observe(this.document, {
-        subtree: true,
-        childList: true,
-        characterData: true,
-        attributes: true,
-      });
-      this.#grep.observer = observer;
-    }
-    this.#grep.model = textOfDocument(win, GREP_CAPS.modelChars);
-    this.#grep.stale = false;
-    return this.#grep.model;
-  }
-
-  /** Drops the text model when the picker closes: no page text outlives the search. */
-  #grepEnd() {
-    this.#grep.observer?.disconnect();
-    this.#grep = { model: null, stale: true, observer: null };
-    // The next search may come from another window, whose generations start again.
-    this.#matcher.gen = -1;
-    GrepMatcher.drop(this.#matcher.key);
-  }
-
-  /**
-   * @param {unknown} query
-   * @returns {query is string}
-   */
-  #isQuery(query) {
-    return typeof query === "string" && query.length > 0 && query.length <= GREP_QUERY_MAX;
-  }
-
-  /**
-   * Live grep's query against this document (docs/specs/live-grep.md): its matches with their
-   * line of context. The parent checks the reply (core parseGrepReply).
-   * @param {{ query: string, gen: number }} data
-   */
-  async #grepSearch(data) {
-    if (!this.#isQuery(data?.query) || !isIndex(data.gen)) return null;
-    // An older search that was queued behind a newer one is dropped unrun.
-    if (data.gen < this.#matcher.gen) return null;
-    this.#matcher.gen = data.gen;
-    const parsed = parseQuery(data.query);
-    const model = this.#grepModel();
-    if (!parsed || !model) return { count: 0, matches: [] };
-    if (!NOT_BLANK.test(model.text)) return { count: 0, matches: [], cut: model.cut };
-    const result = await GrepMatcher.match(this.#matcher.key, model, data.query, false);
-    if (result === "timeout") return { count: 0, matches: [], timedOut: true, cut: model.cut };
-    if (!result) return null;
-    return { ...result, cut: model.cut };
-  }
-
-  /**
-   * The lines around a match of the last search, for the preview (decision 6).
-   * @param {{ start: number, end: number }} data
-   */
-  #grepPreview(data) {
-    const model = this.#grep.model ?? this.#grepModel();
-    if (!model || !isIndex(data?.start) || !isIndex(data?.end)) return null;
-    const { start, end } = data;
-    if (end < start || end > model.text.length) return null;
-    return previewLines(model.text, start, end);
-  }
-
-  /**
-   * Selects a match and scrolls it to the middle as find does (decision 7). When the document
-   * changed since the search, the query runs again and the match with the same ordinal and
-   * text is taken, else the nearest one with the same text.
-   * @param {{ query: string, start: number, end: number, ordinal: number, text: string }} data
-   * @returns {Promise<boolean>} whether a match is selected
-   */
-  async #grepJump(data) {
-    const win = this.contentWindow;
-    if (!win || !this.#isQuery(data?.query) || typeof data.text !== "string") return false;
-    if (!isIndex(data.start) || !isIndex(data.end) || !isIndex(data.ordinal)) return false;
-    const parsed = parseQuery(data.query);
-    if (!parsed) return false;
-    const fresh = !!this.#grep.model && !this.#grep.stale;
-    const model = this.#grepModel();
-    if (!model) return false;
-    let { start, end } = data;
-    if (!fresh || model.text.slice(start, end) !== data.text) {
-      const result = await GrepMatcher.match(this.#matcher.key, model, data.query, true);
-      if (!result || result === "timeout") return false;
-      /** @type {{ start: number, end: number, ordinal: number }[]} */
-      const all = result.matches.filter(
-        (/** @type {{ start: number, end: number }} */ m) =>
-          model.text.slice(m.start, m.end) === data.text,
-      );
-      const same = all.find((m) => m.ordinal === data.ordinal);
-      const near = all.reduce(
-        (best, m) =>
-          !best || Math.abs(m.ordinal - data.ordinal) < Math.abs(best.ordinal - data.ordinal)
-            ? m
-            : best,
-        /** @type {(typeof all)[number] | null} */ (null),
-      );
-      const pick = same ?? near;
-      if (!pick) return false;
-      ({ start, end } = pick);
-    }
-    const a = model.pointAt(start);
-    const b = model.pointAt(end, true);
-    if (!a || !b) return false;
-    const doc = this.document;
-    const range = doc.createRange();
-    range.setStart(a.node, a.offset);
-    range.setEnd(b.node, b.offset);
-    // Normal mode after the jump: a focused text field would keep the tab in insert.
-    const active = deepActiveElement(doc);
-    if (active && active !== doc.body && isEditable(describe(active)).editable) {
-      /** @type {HTMLElement} */ (active).blur();
-    }
-    if (this.browsingContext.parent) win.focus();
-    const sel = win.getSelection();
-    if (!sel) return false;
-    sel.removeAllRanges();
-    sel.addRange(range);
-    const selCon = this.#selCon();
-    if (!selCon) return false;
-    selCon.setDisplaySelection(DISPLAY_ATTENTION);
-    selCon.repaintSelection(SELECTION_NORMAL);
-    // After the next frame: a tab just selected gets its viewport's size first.
-    await new Promise((resolve) => {
-      const timer = win.setTimeout(resolve, 100);
-      win.requestAnimationFrame(() => {
-        win.clearTimeout(timer);
-        resolve(undefined);
-      });
-    });
-    if (!sel.rangeCount) return false;
-    selCon.scrollSelectionIntoView(
-      SELECTION_NORMAL,
-      WHOLE_SELECTION,
-      SCROLL_VERTICAL_CENTER | SCROLL_SYNCHRONOUS,
-    );
-    return true;
-  }
-
   /**
    * Focuses the text field that last took focus in this document, if it is still in it, visible
    * and editable (`i`, docs/specs/insert-focus.md).
@@ -1870,80 +986,5 @@ export class VimmaChild extends JSWindowActorChild {
     );
     if (el) this.#focus(el);
     return !!el;
-  }
-
-  /**
-   * @param {boolean} vertical
-   * @returns {Element | null}
-   */
-  #scrollTarget(vertical) {
-    const doc = this.document;
-    const root = doc.scrollingElement;
-    for (let el = deepActiveElement(doc); el && el !== root && el !== doc.body;) {
-      if (canScroll(el, vertical)) return el;
-      el = parentOf(el);
-    }
-    // A layer over the page (a cookie banner's settings) scrolls before the page behind it: the
-    // scroller under the middle of the viewport, else the layer's largest.
-    const win = /** @type {Window} */ (this.contentWindow);
-    const over = win && layerAtCentre(win, vertical);
-    if (over?.inner) return over.inner;
-    if (over) {
-      const c = this.#layerScroller?.layer.deref() === over.layer ? this.#layerScroller : null;
-      const kept = c?.el?.deref();
-      if (kept?.isConnected && canScroll(kept, vertical)) return kept;
-      if (!(c && !c.el && Date.now() - c.at < SEARCH_BACKOFF_MS)) {
-        const el = largestScrollable(over.layer.getElementsByTagName("*"), vertical, true);
-        this.#layerScroller = {
-          layer: new WeakRef(over.layer),
-          el: el ? new WeakRef(el) : null,
-          at: Date.now(),
-        };
-        if (el) return el;
-      }
-    }
-    if (root && canScroll(root, vertical)) return root;
-    // App shells, pdf.js and a locked page's modal scroll an inner element: take the largest
-    // visible one. Cached; a search is bounded, and one that found nothing is not repeated
-    // until focus moves or a second has passed.
-    const last = this.#largest?.deref();
-    if (last?.isConnected && canScroll(last, vertical)) return last;
-    const now = Date.now();
-    if (this.#emptySearchAt && now - this.#emptySearchAt < SEARCH_BACKOFF_MS) return null;
-    const best = largestScrollable(doc.getElementsByTagName("*"), vertical);
-    this.#largest = best ? new WeakRef(best) : null;
-    this.#emptySearchAt = best ? 0 : now;
-    return best;
-  }
-
-  /**
-   * @param {ScrollKind} kind
-   * @param {number} count
-   * @param {boolean} [instant]  no smooth scroll: an agent's tab in the background, whose
-   *   refresh driver is throttled (docs/specs/mcp-drive.md D8)
-   * @returns {boolean} whether this frame had something to scroll
-   */
-  #scroll(kind, count, instant = false) {
-    const vertical = kind !== "left" && kind !== "right";
-    const el = this.#scrollTarget(vertical);
-    if (!el) return false;
-    const behavior =
-      !instant && Services.prefs.getBoolPref("general.smoothScroll", true) ? "smooth" : "instant";
-    const n = Math.max(1, Number(count) || 1);
-    // Whole pixels, so d then u returns to the same place.
-    const half = Math.round(el.clientHeight / 2) * n;
-    /** @type {Record<ScrollKind, () => void>} */
-    const run = {
-      down: () => el.scrollBy({ top: STEP * n, behavior }),
-      up: () => el.scrollBy({ top: -STEP * n, behavior }),
-      right: () => el.scrollBy({ left: STEP * n, behavior }),
-      left: () => el.scrollBy({ left: -STEP * n, behavior }),
-      half_down: () => el.scrollBy({ top: half, behavior }),
-      half_up: () => el.scrollBy({ top: -half, behavior }),
-      top: () => el.scrollTo({ top: 0, behavior }),
-      bottom: () => el.scrollTo({ top: el.scrollHeight, behavior }),
-    };
-    run[kind]();
-    return true;
   }
 }

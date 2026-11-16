@@ -187,7 +187,7 @@ that it cannot click or fill, although the browser can.
 - cargo (`tools/vimma-ctl/tests/mcp.rs`): `agent_hello_names_this_vimma_ctl_version`,
   `an_older_client_says_so_in_its_first_tool_result`,
   `the_instructions_name_an_older_client_when_the_discovery_file_does`; `version.rs` unit tests.
-- mochitest (`tests/browser/browser_vimma_mcp_agent.js`):
+- mochitest (`tests/browser/browser_vimma_mcp_agent_grants.js`):
   `test_an_older_vimma_ctl_gets_a_notice_and_still_works`,
   `test_the_older_client_notice_waits_for_the_question_line`.
 - vitest (`tools/package/test/package.test.mjs`): `runs vimma-ctl when started through a link

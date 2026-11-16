@@ -28,9 +28,14 @@ export function copyName(path: string): string {
 /**
  * The program's tsconfig, written next to the copies. A handler runs in httpd.js's sandbox
  * (engine/netwerk/test/httpserver/httpd.sys.mjs), which has Firefox's globals and the state
- * functions declared in types/sjs/, and none of the mochitest harness's.
+ * functions declared in types/sjs/, and none of the mochitest harness's. It takes all of
+ * types/*.d.ts, types/firefox-modules.d.ts among them: as in the product's check and the tests',
+ * a module a handler imports gets its mapped type and any other `unknown`.
  */
-export function sjsConfig(root: string, dir: string): { extends: string; include: string[] } {
+export function sjsConfig(
+  root: string,
+  dir: string,
+): { extends: string; include: string[]; exclude: string[] } {
   return {
     extends: `${root}tests/tsconfig.json`,
     include: [
@@ -39,6 +44,7 @@ export function sjsConfig(root: string, dir: string): { extends: string; include
       `${root}types/mochitest/firefox.d.ts`,
       `${root}types/sjs/*.d.ts`,
     ],
+    exclude: [],
   };
 }
 

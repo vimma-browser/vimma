@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Perf timings (plan §5 "key-to-paint in the window", issue #17; m4-split-panes "Perf", m3's
-// 200-tab risk in plan §9): key to paint for ctrl+b l across two live panes, and ctrl+b ) / (
-// into and out of a workspace of 200 tabs. Read-only: it presses keys and listens for the
-// chrome window's MozAfterPaint; nothing in the product reports a timestamp.
+// Perf timings (key-to-paint in the window, ARCHITECTURE.md "Testing", issue #17; m4-split-panes
+// "Perf", the 200-tab risk in docs/roadmap.md): key to paint for ctrl+b l across two live panes,
+// and ctrl+b ) / ( into and out of a workspace of 200 tabs. Read-only: it presses keys and
+// listens for the chrome window's MozAfterPaint; nothing in the product reports a timestamp.
 //
 // Each case logs one `VIMMA_PERF {json}` line (median, p90, max over SAMPLES presses) and
 // checks the medians against BUDGETS, set from CI runs (docs/runbook/ci-key-to-paint-timings.md,

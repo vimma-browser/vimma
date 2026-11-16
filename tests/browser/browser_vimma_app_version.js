@@ -22,7 +22,7 @@ add_task(async function app_version_is_firefox_version() {
 
 add_task(async function display_version_is_vimma_version() {
   const display = AppConstants.MOZ_APP_VERSION_DISPLAY;
-  // surfer.json brands.vimma.release.displayVersion; plan §7: 0.x until M6.
+  // surfer.json brands.vimma.release.displayVersion; 0.x until 1.0.0 (spec release-versioning).
   Assert.ok(/^0\.\d+\.\d+$/.test(display), `MOZ_APP_VERSION_DISPLAY ${display} is 0.x`);
   Assert.notEqual(display, Services.appinfo.version, "display version is not the Firefox version");
 });

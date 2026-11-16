@@ -200,7 +200,8 @@ changes.
   page field (viewer.mjs:19525-19545, 19586-19665, 19686-19690). Today Vimma's `j`, `k`, `n`, `r`
   and `h` shadow those.
 - Scrolling: the child scrolls the largest scrollable element when the root does not scroll,
-  which in pdf.js is `#viewerContainer` (`actors/VimmaChild.sys.mjs:1167-1180`).
+  which in pdf.js is `#viewerContainer` (`actors/VimmaChild.sys.mjs:1167-1180`). (Since
+  changed: that lookup is `PageScroll.target` in `actors/page-scroll.mjs`, issue #1109.)
 - Find: pdf.js takes the find bar's events itself, so Vimma drives the find bar for a PDF
   (`host/find.mjs:72-73, 379-383`) and reads results from `browser.finder`, which pdf.js never
   reports to (`host/find.mjs:424-436`). That is why the count is missing. PdfJsParent sends the

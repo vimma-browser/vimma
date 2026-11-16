@@ -145,7 +145,7 @@ jobs:
             echo "and for vimma-ctl:"
             echo
             echo '```sh'
-            echo "cd tools/vimma-ctl && PROPTEST_RNG_SEED=${SEED} PROPTEST_CASES=200000 cargo test --release --test protocol_props --test mcp_props"
+            echo "cd tools/vimma-ctl && PROPTEST_RNG_SEED=${SEED} PROPTEST_CASES=200000 cargo test --locked --release --test protocol_props --test mcp_props"
             echo '```'
             for f in fuzz-failures/fuzz-failures/*.json fuzz-failures/*.json; do
               [ -f "$f" ] || continue

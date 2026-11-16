@@ -11,6 +11,11 @@
     "skipLibCheck": true,
     "types": []
   },
-  "include": ["packages/*/src/**/*.mjs", "src/**/vimma/**/*.mjs", "types/*.d.ts"],
+  "include": [
+    "packages/*/src/**/*.mjs",
+    "src/**/vimma/**/*.mjs",
+    "src/browser/base/content/vimma/vimma.js",
+    "types/*.d.ts"
+  ],
   "exclude": ["src/browser/base/content/vimma/core/", "packages/vimma-core/src/vendor/"]
 }

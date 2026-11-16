@@ -13,9 +13,12 @@ import { describe, expect, it } from "vitest";
 // off the list. Outside the rule: the hooks of tools/claude-plugin and the guards workflows run
 // from the base branch (BASE_GUARDS), which stay .mjs (decision 7), and a script a browser page
 // loads, which is a .js file in a fixtures/ folder. The plugin's tests are inside the rule: only
-// Vitest runs them, on the engines' Node.
+// Vitest runs them, on the engines' Node. So are vimma-core's tests (#1114): sync-core copies only
+// the package's src/, which stays JavaScript for Firefox (decision 6), and Vitest alone loads test/.
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const LIST = new URL("mjs-allowlist.txt", import.meta.url);
+/** vimma-core's tests: Vitest alone loads them; its src/ stays JavaScript (decision 6). */
+const CORE_TESTS = "packages/vimma-core/test/";
 
 /** The listed paths: one per line, `#` starts a comment line. */
 function readAllowlist(text: string): string[] {
@@ -36,8 +39,12 @@ const BASE_GUARDS = [
   "tools/ci/test/key-guard.test.mjs",
 ];
 
-/** Whether a tracked path is JavaScript that Node runs under tools/, which the rule covers. */
+/**
+ * Whether a tracked path is JavaScript that Node runs under tools/, or one of vimma-core's tests,
+ * which the rule covers.
+ */
 function nodeJavaScript(p: string): boolean {
+  if (p.startsWith(CORE_TESTS)) return /\.(?:mjs|cjs|js)$/.test(p);
   if (!p.startsWith("tools/") || p.startsWith("tools/claude-plugin/hooks/")) return false;
   if (BASE_GUARDS.includes(p)) return false;
   if (p.endsWith(".js") && p.includes("/fixtures/")) return false; // a script a page loads
@@ -68,7 +75,7 @@ function ratchetErrors(tracked: string[], listed: string[]): string[] {
   ];
 }
 
-describe("the .mjs files left under tools/ (ADR-025, #946)", () => {
+describe("the .mjs files left under tools/ and in vimma-core's tests (ADR-025, #946, #1114)", () => {
   it("fails on a new .mjs file and on a listed file that is gone", () => {
     const listed = ["tools/a/old.mjs", "tools/a/moved.mjs"];
     const tracked = ["tools/a/old.mjs", "tools/a/moved.ts", "tools/b/new.mjs", "src/x.mjs"];
@@ -129,6 +136,25 @@ describe("the .mjs files left under tools/ (ADR-025, #946)", () => {
     expect(hookErrors(tracked)).toEqual([]);
   });
 
+  it("sees vimma-core's tests: only Vitest runs them, on the engines' Node (decision 6)", () => {
+    expect(
+      ratchetErrors(
+        [
+          "packages/vimma-core/test/keys.test.mjs",
+          "packages/vimma-core/test/fuzz/harness.mjs",
+          "packages/vimma-core/test/keys.test.ts",
+          "packages/vimma-core/src/keys/keys.mjs",
+          "packages/vimma-core/bench/cases.mjs",
+          "packages/other/test/x.test.mjs",
+        ],
+        [],
+      ),
+    ).toEqual([
+      "packages/vimma-core/test/keys.test.mjs is new: write it as .ts (ADR-025)",
+      "packages/vimma-core/test/fuzz/harness.mjs is new: write it as .ts (ADR-025)",
+    ]);
+  });
+
   it("leaves the base-branch guards out: they stay .mjs (decision 7)", () => {
     expect(ratchetErrors(BASE_GUARDS, [])).toEqual([]);
     expect(ratchetErrors(["tools/ci/tree-covered.mjs"], [])).toEqual([
@@ -143,8 +169,8 @@ describe("the .mjs files left under tools/ (ADR-025, #946)", () => {
     ]);
   });
 
-  it("lists exactly the .mjs files git tracks under tools/, sorted", () => {
-    const tracked = execFileSync("git", ["ls-files", "-z", "--", "tools"], {
+  it("lists exactly the .mjs files git tracks under tools/ and vimma-core's tests, sorted", () => {
+    const tracked = execFileSync("git", ["ls-files", "-z", "--", "tools", CORE_TESTS], {
       cwd: ROOT,
       encoding: "utf8",
     })

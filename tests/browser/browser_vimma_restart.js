@@ -6,7 +6,7 @@
 // every install but the AppImage, which quits and starts its own file again through the fixed
 // relaunch script, so a replaced AppImage runs its new version. What quits and what starts the
 // script are fakes here (host/restart.mjs test hooks); the script itself runs under a real
-// /bin/sh in packages/vimma-core/test/restart.test.mjs.
+// /bin/sh in packages/vimma-core/test/restart.test.ts.
 
 "use strict";
 

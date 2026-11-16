@@ -402,3 +402,12 @@ declare const E10SUtils: any;
 declare const NetUtil: any;
 declare const BrowserWindowTracker: any;
 declare const ExtensionTestUtils: any;
+
+// --- ChromeUtils.importESModule ---
+
+// The Firefox modules the tests import are typed (types/firefox-modules.d.ts and
+// types/mochitest/firefox-test-modules.d.ts), so a URL neither map has gives `unknown` here, as
+// in the product's own check (types/firefox.d.ts).
+interface UnmappedESModule {
+  readonly module: unknown;
+}
