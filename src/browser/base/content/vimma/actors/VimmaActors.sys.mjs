@@ -16,6 +16,7 @@ import {
 } from "../core/hints.mjs";
 import { INSERT_ENTER } from "../core/editable.mjs";
 import { parseScrollPosition } from "../core/find.mjs";
+import { SCROLL_STEP_DEFAULT, scrollStep } from "../core/scroll.mjs";
 import { suggestionStep } from "../core/suggestions.mjs";
 import { NAME, actorFor } from "./actor-for.mjs";
 import { pressKeyLater } from "./enter-key.mjs";
@@ -157,6 +158,9 @@ function framesFor(browser) {
   return focused && focused !== top && focused.top === top ? [focused, top] : [top];
 }
 
+/** `[scroll] step` (docs/specs/m1-actor-insert-scroll.md, "Follow-up: scroll step"). */
+let step = SCROLL_STEP_DEFAULT;
+
 export const VimmaActors = {
   /**
    * Registers the actor pair once per process; vimma.js calls this before VimmaHost.init.
@@ -230,6 +234,15 @@ export const VimmaActors = {
   },
 
   /**
+   * The j/k/h/l step in CSS pixels, from config.toml's `[scroll] step`; it applies from the next
+   * scroll in every tab. A value config.toml could not set keeps the default.
+   * @param {number} next
+   */
+  setScrollStep(next) {
+    step = scrollStep(next);
+  },
+
+  /**
    * Scrolls the focused frame, or the top frame if the focused one has nothing to scroll.
    * @param {MozBrowser} browser
    * @param {ScrollKind} kind
@@ -242,7 +255,8 @@ export const VimmaActors = {
   async scroll(browser, kind, count = 1, { instant = false, top = false } = {}) {
     const frames = top ? [browser.browsingContext] : framesFor(browser);
     for (const bc of frames) {
-      if (await actorFor(bc)?.sendQuery("Vimma:Scroll", { kind, count, instant })) return true;
+      if (await actorFor(bc)?.sendQuery("Vimma:Scroll", { kind, count, instant, step }))
+        return true;
     }
     return false;
   },

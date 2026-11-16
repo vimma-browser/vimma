@@ -100,3 +100,7 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   `npm run layering` fails on a URL in the tree that names no tracked, packaged module.
   [`a_tabs_focus_report_reaches_the_host_through_the_parent_actor`](../../tests/browser/browser_vimma_security_invariants.js),
   [`the_parent_actors_url_is_checked_before_it_is_registered`](../../tests/browser/browser_vimma_security_invariants.js)
+- K10. The scroll step a `Vimma:Scroll` message carries (`[scroll] step`) **must** be checked
+  again in the child: only an integer from 1 to 2000 CSS pixels is taken, anything else scrolls
+  by the default 60.
+  [`the_child_ignores_a_step_config_toml_could_not_set`](../../tests/browser/browser_vimma_scroll_step.js)

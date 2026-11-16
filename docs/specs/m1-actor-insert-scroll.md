@@ -128,7 +128,8 @@ actions that are not implemented yet (parallel spec).
   largest visible one. The layer is told by its `position: fixed`, because Cookiebot's is a
   `role=region` and Usercentrics' a dialog without `aria-modal` in a shadow root; tested in
   `browser_vimma_insert_scroll.js`, issue #864.) (Since changed: the child hands scrolling to its
-  `PageScroll`, `actors/page-scroll.mjs`, issue #1109.)
+  `PageScroll`, `actors/page-scroll.mjs`, issue #1109.) (Since changed: the `j k h l` step is
+  `[scroll] step` in config.toml, default 60 px; "Follow-up: scroll step" below, issue #1074.)
 - **"Pass if not runnable", revisited.** Unbound bare keys in normal mode pass to the page: plan §3
   ("keys the dispatcher returns `pass` for continue untouched") and plan §2's `[unbind]`, which
   would be pointless if unbound keys were swallowed; sites' own single-key shortcuts (GitHub `s`,
@@ -225,6 +226,34 @@ unbound key eight mochitests and `dispatcher.test.mjs` press to prove a key reac
 moving all of them is churn across files other work touches. `ctrl+plus` / `ctrl+minus` /
 `ctrl+0` already zoom. Tests: `pageurl.test.mjs`, `keymap.test.mjs` (bindings, `y` prefix, `z`
 unbound) and `browser_vimma_normal_extras.js` (each key, refusals, a split, insert mode).
+
+## Follow-up: scroll step
+
+Issue #1074. `[scroll] step` in config.toml sets how far `j`, `k`, `h` and `l` scroll (and
+`ctrl+e` / `ctrl+y`, which run the same actions), in CSS pixels; a count still multiplies it.
+
+1. **One key, `[scroll] step`, an integer from 1 to 2000, default 60.** 60 keeps the behaviour
+   every user had, Vimium's `scrollStepSize`. 1 is the finest step there is. Above about a tall
+   screen's height in CSS pixels a step jumps past text never shown, and `d` / `G` already move
+   by the page, so 2000 is the cap. A float, a string or a value outside the range is an error at
+   its line, like `[panes] max`, and the file is not applied. The table is schema 2, as every
+   table added since schema 2 is. Core: `page/scroll.mjs` (the bounds and `scrollStep`) and
+   `config/config.mjs` (validation).
+2. **The step travels with each scroll.** ConfigHost hands the resolved step to
+   `VimmaActors.setScrollStep` whenever it applies a file; `VimmaActors.scroll` puts it in every
+   `Vimma:Scroll` message. A reload therefore applies from the next scroll in every tab, open
+   pages included, with no pref and no message to each child. An agent's `j` (`vimma_keys`) goes
+   through the same call, so it scrolls by the user's step too.
+3. **The child checks it again.** `PageScroll.scroll` takes the step only when it is an integer
+   in the same range (`scrollStep`) and uses 60 otherwise, so no message can make a key scroll
+   by a fraction, a negative or an unbounded amount.
+4. **Half-page and full-page amounts stay as they are.** `d` / `u` and `ctrl+d` / `ctrl+u` move
+   half the scroller's visible height, as in Vim and Vimium, which already adapts to the window;
+   Vimma has no full-page scroll key (`ctrl+f` is find). A setting for them waits for a request.
+
+Tests: `scroll-step.test.ts` (defaults, bounds, errors, `scrollStep`), `config-bounds.test.ts`
+(the table in a schema-1 file) and `browser_vimma_scroll_step.js` (a configured step, a reload
+applying to the open page, and the child ignoring a step no file could set).
 
 ## Limits
 

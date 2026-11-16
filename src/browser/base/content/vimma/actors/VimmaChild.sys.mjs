@@ -590,7 +590,12 @@ export class VimmaChild extends JSWindowActorChild {
       case "Vimma:Scroll":
         // pdf.js's presentation mode shows one page at a time: the scroll keys turn pages.
         if (this.#pdf?.turnPage(msg.data.kind, msg.data.count)) return true;
-        return this.#scroll.scroll(msg.data.kind, msg.data.count, msg.data.instant === true);
+        return this.#scroll.scroll(
+          msg.data.kind,
+          msg.data.count,
+          msg.data.instant === true,
+          msg.data.step,
+        );
       case "Vimma:PdfTheme":
         // A theme change (V12): the token sheet again.
         this.#pdf?.setTheme(msg.data?.css);

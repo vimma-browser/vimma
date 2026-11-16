@@ -38,6 +38,7 @@ const SCHEMA_2_TABLES = [
   "search",
   "sites",
   "agent",
+  "scroll",
 ];
 
 describe("schema-2 tables in a schema-1 file", () => {

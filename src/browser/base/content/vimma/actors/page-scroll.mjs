@@ -6,12 +6,10 @@
 // move, and the scroll position an agent or a mark reads and restores. VimmaChild owns one per
 // actor and hands it the `Vimma:Scroll*` messages; it reads only the actor's document and window.
 
+import { scrollStep } from "../core/scroll.mjs";
 import { viewportSize } from "./hint-collect.mjs";
 
 /** @import { ScrollKind } from "./VimmaActors.sys.mjs" */
-
-/** j/k/h/l step in CSS pixels (Vimium's scrollStepSize). */
-const STEP = 60;
 
 /** Overflow values that lock an axis: a site's modal sets one on <html> or <body>. */
 const LOCKED = new Set(["hidden", "clip"]);
@@ -239,23 +237,26 @@ export class PageScroll {
    * @param {number} count
    * @param {boolean} [instant]  no smooth scroll: an agent's tab in the background, whose
    *   refresh driver is throttled (docs/specs/mcp-drive.md D8)
+   * @param {unknown} [step]  j/k/h/l in CSS pixels, `[scroll] step` as the parent sends it;
+   *   checked again here, and the default unless config.toml could have set it
    * @returns {boolean} whether this frame had something to scroll
    */
-  scroll(kind, count, instant = false) {
+  scroll(kind, count, instant = false, step) {
     const vertical = kind !== "left" && kind !== "right";
     const el = this.target(vertical);
     if (!el) return false;
     const behavior =
       !instant && Services.prefs.getBoolPref("general.smoothScroll", true) ? "smooth" : "instant";
     const n = Math.max(1, Number(count) || 1);
+    const by = scrollStep(step) * n;
     // Whole pixels, so d then u returns to the same place.
     const half = Math.round(el.clientHeight / 2) * n;
     /** @type {Record<ScrollKind, () => void>} */
     const run = {
-      down: () => el.scrollBy({ top: STEP * n, behavior }),
-      up: () => el.scrollBy({ top: -STEP * n, behavior }),
-      right: () => el.scrollBy({ left: STEP * n, behavior }),
-      left: () => el.scrollBy({ left: -STEP * n, behavior }),
+      down: () => el.scrollBy({ top: by, behavior }),
+      up: () => el.scrollBy({ top: -by, behavior }),
+      right: () => el.scrollBy({ left: by, behavior }),
+      left: () => el.scrollBy({ left: -by, behavior }),
       half_down: () => el.scrollBy({ top: half, behavior }),
       half_up: () => el.scrollBy({ top: -half, behavior }),
       top: () => el.scrollTo({ top: 0, behavior }),
