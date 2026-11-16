@@ -2,7 +2,7 @@
 // S4, S5, S7, S10, S11; docs/security/12-agents-mcp.md for the agent commands): each boundary
 // and each refusal the mutation run (issue #1119) found unpinned. Accepted values sit exactly on
 // a limit; refused ones are one step past it, or of a type a loose check would coerce.
-import { describe, test, expect } from "vitest";
+import { describe, test, expect, vi } from "vitest";
 import {
   LineFramer,
   parseAgentRequest,
@@ -29,33 +29,34 @@ const response = (command: string, result: unknown) =>
   validateMessage({ type: "response", id: 1, ok: true, result }, { command });
 const fenced = (text: string) => `${UNTRUSTED_OPEN}\n${text}\n${UNTRUSTED_CLOSE}`;
 const named = (name: string) => req("agent-hello", { client: { name } });
+/** A code point as a test name shows it (U+202E), with the code point itself. */
+const hex = (cp: number): [string, number] => [cp.toString(16).toUpperCase().padStart(4, "0"), cp];
 
 describe("a label shown in the question: printable only (S11)", () => {
   // C0, DEL and C1, and the bidi marks, overrides and isolates, at both ends of each range.
-  test.each([0x00, 0x1f, 0x7f, 0x80, 0x9f, 0x200e, 0x200f, 0x202a, 0x202e, 0x2066, 0x2069])(
-    "U+%s in a client name is refused",
-    (cp) => {
-      expect(valid(named(`a${String.fromCodePoint(cp)}b`))).toBe(false);
-    },
-  );
+  test.each(
+    [0x00, 0x1f, 0x7f, 0x80, 0x9f, 0x200e, 0x200f, 0x202a, 0x202e, 0x2066, 0x2069].map(hex),
+  )("U+%s in a client name is refused", (_, cp) => {
+    expect(valid(named(`a${String.fromCodePoint(cp)}b`))).toBe(false);
+  });
 
   // One past each range, and letters well above the C1 block and the bidi ranges.
-  test.each([0x20, 0x7e, 0xa0, 0xe9, 0x2010, 0x2030, 0x20ac])(
+  test.each([0x20, 0x7e, 0xa0, 0xe9, 0x2010, 0x2030, 0x20ac].map(hex))(
     "U+%s in a client name is a printable character",
-    (cp) => {
+    (_, cp) => {
       expect(valid(named(`a${String.fromCodePoint(cp)}b`))).toBe(true);
     },
   );
 
   test("a name of 64 code points passes; 65 do not", () => {
-    expect(valid(named("é".repeat(64)))).toBe(true);
-    expect(valid(named("é".repeat(65)))).toBe(false);
+    expect(valid(named("\u00e9".repeat(64)))).toBe(true);
+    expect(valid(named("\u00e9".repeat(65)))).toBe(false);
   });
 
   test("client.version is held to the same rule as the name", () => {
     const hello = (version: unknown) => req("agent-hello", { client: { name: "agent", version } });
     expect(valid(hello("2.1.0"))).toBe(true);
-    expect(errorsOf(hello("2.1‮0"))).toEqual([
+    expect(errorsOf(hello("2.1\u202e0"))).toEqual([
       "client.version must be 1 to 64 printable characters",
     ]);
     expect(valid(hello(""))).toBe(false);
@@ -92,6 +93,10 @@ describe("handshake (S4)", () => {
       "code must be 4 characters of 2-9 and A-Z without I and O",
     ]);
     expect(valid({ type: "auth", token: TOKEN, code: 7234 })).toBe(false);
+    // I, O, 0 and 1 are left out of the alphabet: each reads as another character.
+    for (const code of ["7F3I", "7F3O", "7F30", "7F31"]) {
+      expect(valid({ type: "auth", token: TOKEN, code })).toBe(false);
+    }
   });
 
   test("a welcome's app is a string", () => {
@@ -146,6 +151,15 @@ describe("full-role commands (S7, S10)", () => {
     ]);
   });
 
+  test("open takes a URL of exactly MAX_URL (65536) characters, not one more", () => {
+    const at = (n: number) => `https://a.example/${"a".repeat(n - 18)}`;
+    expect(at(65536)).toHaveLength(65536);
+    expect(valid(req("open", { url: at(65536) }))).toBe(true);
+    expect(errorsOf(req("open", { url: at(65537) }))).toEqual([
+      "url must be at most 65536 characters",
+    ]);
+  });
+
   test("open's url must be a string", () => {
     expect(errorsOf(req("open", { url: 1 }))).toEqual(["url must be a string"]);
   });
@@ -188,8 +202,8 @@ describe("agent commands' arguments (12-agents-mcp)", () => {
   test("a list query is not blank, and at most 200 code points", () => {
     const list = (query: string) => req("agent-elements", { tab: "1", query });
     expect(valid(list("   "))).toBe(false);
-    expect(valid(list("é".repeat(200)))).toBe(true);
-    expect(valid(list("é".repeat(201)))).toBe(false);
+    expect(valid(list("\u00e9".repeat(200)))).toBe(true);
+    expect(valid(list("\u00e9".repeat(201)))).toBe(false);
   });
 
   test("every kind is an element kind: one good kind does not carry a bad one", () => {
@@ -550,6 +564,25 @@ describe("LineFramer and tokensEqual (S4, S5)", () => {
 
   test("two empty strings are not equal tokens", () => {
     expect(tokensEqual("", "")).toBe(false);
+  });
+
+  test("tokensEqual reads every character, wherever two tokens differ", () => {
+    const spy = vi.spyOn(String.prototype, "charCodeAt");
+    try {
+      const calls = (a: string, b: string) => {
+        spy.mockClear();
+        tokensEqual(a, b);
+        return spy.mock.calls.length;
+      };
+      const other = `f${TOKEN.slice(1)}`;
+      expect(other).toHaveLength(64);
+      expect(other[0]).not.toBe(TOKEN[0]);
+      expect(calls(TOKEN, TOKEN)).toBe(128);
+      expect(calls(TOKEN, other)).toBe(128);
+      expect(calls(TOKEN, `${TOKEN.slice(0, 63)}f`)).toBe(128);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   test("only strings are tokens, even an object that reads like one", () => {
