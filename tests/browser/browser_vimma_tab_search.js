@@ -37,7 +37,7 @@ const PICKER_ID = "vimma-picker";
 const created = [];
 registerCleanupFunction(async () => {
   for (const win of BrowserWindowTracker.orderedWindows) {
-    win.document.getElementById(PICKER_ID)?.close?.();
+    /** @type {HTMLDialogElement | null} */ (win.document.getElementById(PICKER_ID))?.close?.();
     if (win !== window) await BrowserTestUtils.closeWindow(win);
   }
   await SimpleTest.promiseFocus(window);
@@ -525,10 +525,7 @@ add_task(async function agent_tabs_are_marked_and_last_and_a_closed_one_reopens_
   await TabStateFlusher.flush(gone.linkedBrowser);
   BrowserTestUtils.removeTab(gone);
   await until(
-    () =>
-      SessionStore.getClosedTabDataForWindow(window).some(
-        (/** @type {{ title: string }} */ t) => t.title === "Robot closed",
-      ),
+    () => SessionStore.getClosedTabDataForWindow(window).some((t) => t.title === "Robot closed"),
     "closed",
   );
   await focusPage();

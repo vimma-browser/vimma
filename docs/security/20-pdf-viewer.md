@@ -64,9 +64,9 @@ bindings, so it is accepted here.
   drawn. On a zoom change the parent marks the kept report not drawn and sends the viewer's actor a
   `Vimma:PdfZoom` message with no data, which only asks for a report; the adapter reports no page as
   drawn until its resize listener has seen the window's present CSS size.
-  [`pdf state outside its bounds is dropped`](../../packages/vimma-core/test/pdf.test.mjs),
-  [`a page label cannot carry bidi or zero-width characters`](../../packages/vimma-core/test/pdf.test.mjs),
-  [`a report with no usable zoom is never drawn`](../../packages/vimma-core/test/pdf.test.mjs),
+  [`pdf state outside its bounds is dropped`](../../packages/vimma-core/test/pdf.test.ts),
+  [`a page label cannot carry bidi or zero-width characters`](../../packages/vimma-core/test/pdf.test.ts),
+  [`a report with no usable zoom is never drawn`](../../packages/vimma-core/test/pdf.test.ts),
   [`a_viewer_whose_pdfViewer_getter_throws_still_reports_each_operation`](../../tests/browser/browser_vimma_pdf_status.js),
   [`a_full_zoom_change_is_not_drawn_until_the_viewer_redraws`](../../tests/browser/browser_vimma_pdf_status.js),
   [`a_zoom_change_that_keeps_the_layout_still_turns_drawn`](../../tests/browser/browser_vimma_pdf_status.js)
@@ -86,9 +86,9 @@ bindings, so it is accepted here.
   document without Firefox's user-interaction check (decision 9), so a compromised viewer that
   pushes many same-document entries makes them step through each; a count (`9ctrl+o`) or the
   toolbar's back button still leaves, so it is a nuisance, not a trap.
-  [`the parent sends only operations and numbers`](../../packages/vimma-core/test/pdf.test.mjs),
+  [`the parent sends only operations and numbers`](../../packages/vimma-core/test/pdf.test.ts),
   [`the_parent_sends_only_operations_and_numbers`](../../tests/browser/browser_vimma_pdf_keys.js),
-  [`pdf marks`](../../packages/vimma-core/test/pdf.test.mjs),
+  [`pdf marks`](../../packages/vimma-core/test/pdf.test.ts),
   [`marks`](../../tests/browser/browser_vimma_pdf_marks.js)
 - V8. The adapter **must** read the outline only when the parent asks (the `outline` operation):
   for the user's `Tab` in the PDF viewer, and once per document when the viewer reports its first
@@ -120,9 +120,9 @@ bindings, so it is accepted here.
   [`the_outline_is_read_only_on_the_users_key`](../../tests/browser/browser_vimma_pdf_outline.js),
   [`the_outline_is_shown_when_a_pdf_with_one_opens`](../../tests/browser/browser_vimma_pdf_outline.js),
   [`pdf_outline_hidden_keeps_it_closed`](../../tests/browser/browser_vimma_pdf_outline.js),
-  [`an outline outside its bounds is dropped`](../../packages/vimma-core/test/pdfoutline.test.mjs),
+  [`an outline outside its bounds is dropped`](../../packages/vimma-core/test/pdfoutline.test.ts),
   [`each_kind_of_entry`](../../tests/browser/browser_vimma_pdf_outline.js),
-  [`outlineUrlAllowed`](../../packages/vimma-core/test/pdfoutline.test.mjs),
+  [`outlineUrlAllowed`](../../packages/vimma-core/test/pdfoutline.test.ts),
   [`links`](../../tests/browser/browser_vimma_pdf_marks.js)
 - V9. Presentation mode **may** go full screen without user activation, as Firefox allows the
   pdf.js principal (`dom/base/Element.cpp`); Vimma **must** request it only for the user's own

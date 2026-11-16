@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Page navigation keys in normal mode: H / ctrl+o back, L / ctrl+i forward (with counts), r
-// reload (plan §2, M1).
+// reload (docs/bindings.md, "Navigation").
 // They act on the focused page's <browser>: in a split, the focused pane's. In insert mode the
 // keys are the page's.
 

@@ -8,11 +8,12 @@
 // buttons, fields and links with labels (docs/specs/mcp-forms.md, `agent-elements`), click one
 // by its label (`agent-activate`), fill fields by their labels (`agent-fill`), take a screenshot
 // of one (`agent-screenshot`), read its script errors and failed requests (`agent-console`), and
-// nothing else. What an agent can reach is decided here, in
+// nothing else. What an agent can reach is decided in
 // the browser, when each command runs (decision 7): a tab of the agent workspace **and** of its
-// container, in a normal window (private windows have no workspaces and are never enumerated).
-// Every command but hello and ping asks through AgentGate first (decision 12), and after the
-// yes the tab and URL must still be the ones asked about, or nothing happens (decision 19).
+// container, in a normal window (private windows have no workspaces and are never enumerated);
+// agent-tabs.mjs holds that test. Every command but hello and ping asks through AgentGate first,
+// here (decision 12), and after the yes the tab and URL must still be the ones asked about, or
+// nothing happens (decision 19, agent-tabs.mjs's stillAsAsked, called by each handler here).
 
 import {
   ACT_RATE,
@@ -39,7 +40,6 @@ import {
   parseAgentRequest,
 } from "../core/control.mjs";
 import { ELEMENT_REPLY_CAPS } from "../core/agent-element.mjs";
-import { workspaceOfTab } from "../core/workspaces.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { AgentUi } from "../host/agent-ui.mjs";
 import { McpHost } from "../host/mcp-ops.mjs";
@@ -52,28 +52,56 @@ import { AgentDownloads } from "./AgentDownloads.sys.mjs";
 import { AgentDrive } from "./AgentDrive.sys.mjs";
 import { AgentGate } from "../host/AgentGate.sys.mjs";
 import { AgentShot } from "./AgentShot.sys.mjs";
+import { AgentError, denied } from "./agent-errors.mjs";
+import {
+  agentPrincipal,
+  agentTabs,
+  agentUri,
+  agentWorkspace,
+  describeTab,
+  findAgentTab,
+  forgetOwners,
+  isAgentTab,
+  normalWindows,
+  // Renamed: fill's handler has a local `own` (a form's own submit), which would shadow it.
+  own as ownTab,
+  ownerOf,
+  siteOfTab,
+  stillAsAsked,
+  tabId,
+  tabUrl,
+} from "./agent-tabs.mjs";
+import {
+  cut,
+  fieldOf,
+  firstActing,
+  jsonBytes,
+  linkOf,
+  payStep,
+  unmarked,
+  wf,
+} from "./agent-steps.mjs";
+import { LOAD_TIMEOUT_MS, docOf, notLoading, raisePriority, within } from "./agent-waits.mjs";
+
+export { AgentError };
 
 /** @import { ConnId, LogOutcome } from "../core/agent.mjs" */
 /** @import { AgentArgs, AgentCommand } from "../core/control.mjs" */
 /** @import { HintTarget } from "../actors/VimmaActors.sys.mjs" */
+/** @import { AgentWorkspace, Tab, Win } from "./agent-tabs.mjs" */
 import { allowanceKey, isConsequential, mayAllowHere } from "../core/agent-checkpoint.mjs";
 
 /**
- * @typedef {"AppConstants" | "BrowserWindowTracker" | "clearTimeout" | "PrivateBrowsingUtils"
- *   | "SessionStore" | "setTimeout"} LazyName
+ * @typedef {"AppConstants" | "BrowserWindowTracker" | "clearTimeout" | "setTimeout"} LazyName
  */
 const lazy = /** @type {Lazy<LazyName>} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
-  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
-  SessionStore: "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
-/** How long a read waits for a page (a lazy tab's first load) before it gives up. */
-const LOAD_TIMEOUT_MS = 20000;
 /** How long the extractor may take on a loaded page: a hostile page must not hold a read. */
 const EXTRACT_TIMEOUT_MS = 30000;
 /** Room in the 1 MiB reply line for everything but the text (protocol, decision 4). */
@@ -115,23 +143,6 @@ const KEYS_CALL_MS = 60000;
 const inUse = (browser) => VimmaHost.inUse(browser) || AgentShot.capturing(browser);
 
 /**
- * A refusal with a protocol error code (and, for `denied`, its reason; for a used-up rate, the
- * milliseconds until the next call is allowed, issue #592).
- */
-export class AgentError extends Error {
-  /**
-   * @param {string} code @param {string} message @param {string} [reason]
-   * @param {number} [retryAfter]
-   */
-  constructor(code, message, reason, retryAfter) {
-    super(message);
-    this.code = code;
-    this.reason = reason;
-    this.retryAfter = retryAfter;
-  }
-}
-
-/**
  * The connections whose vimma-ctl is at least as new as Vimma (agent-hello's `ctl`): only they
  * get a rate refusal's `retryAfter`, which an older client's strict parser would reject.
  * @type {Set<ConnId>}
@@ -151,193 +162,9 @@ function rateDenied(rate, conn, calls) {
   return new AgentError("denied", message, "busy", wait);
 }
 
-/** The denial texts, by reason (decision 4); the MCP layer words them for the model. */
-const DENIED = /** @type {Record<string, string>} */ ({
-  user: "the user denied this request in Vimma",
-  timeout: "no answer in Vimma in time; treated as denied",
-  busy: "too many agent requests are waiting in Vimma; try again later",
-  muted: "this agent connection is muted in Vimma after repeated denials",
-  changed: "the tab changed after the user was asked; nothing was done",
-  cancelled: "the request was cancelled",
-  "in-use": "the user is using this tab in Vimma; nothing was done",
-});
-
-/** @param {string} reason */
-const denied = (reason) => new AgentError("denied", DENIED[reason] ?? reason, reason);
-
 /**
- * @typedef {BrowserWindow} Win
- * @typedef {MozTabbrowserTab} Tab
- * @typedef {{ id: string, name: string, userContextId: number }} AgentWorkspace
  * @typedef {{ agent?: { client: string, via?: string }, cancels?: Map<number, () => void> }} AgentConn
  */
-
-/**
- * Which built-in conversation owns which agent tab (docs/specs/builtin-agent.md B17, Behaviour
- * 30), by the tab element: unloading a tab gives its browser a new id but keeps the element, and
- * a tab moved between workspaces is reopened as a new element, which belongs to none. In memory
- * only: after a restart no tab is owned.
- * @type {WeakMap<Tab, ConnId>}
- */
-const owners = new WeakMap();
-/** @type {Map<ConnId, Set<WeakRef<Tab>>>} each conversation's tabs, to let them go with it */
-const ownedBy = new Map();
-
-/** @param {Tab} tab @param {ConnId} conn */
-function own(tab, conn) {
-  owners.set(tab, conn);
-  let set = ownedBy.get(conn);
-  if (!set) ownedBy.set(conn, (set = new Set()));
-  set.add(new WeakRef(tab));
-}
-
-/**
- * The conversation `tab` belongs to, or null. A tab a page or the user opened from an owned tab
- * (its `openerTab`, set by tabbrowser's addTab), or from a tab opened so, belongs to that
- * conversation, even when the opener has closed since: the element and its owner stay known.
- * @param {Tab} tab
- * @returns {ConnId | null}
- */
-function ownerOf(tab) {
-  /** @type {Set<Tab>} */
-  const seen = new Set();
-  for (let t = /** @type {Tab | null | undefined} */ (tab); t && !seen.has(t); t = t.openerTab) {
-    seen.add(t);
-    const conn = owners.get(t);
-    if (conn !== undefined) {
-      if (t !== tab) own(tab, conn);
-      return conn;
-    }
-  }
-  return null;
-}
-
-/**
- * Whether connection `conn` may see `tab`: a conversation only its own tabs, an MCP connection
- * only those no conversation owns (B17).
- * @param {Tab} tab @param {ConnId} conn
- */
-const visibleTo = (tab, conn) => ownerOf(tab) === (isBuiltinConn(conn) ? conn : null);
-
-/** The agent workspace, or a refusal when there is none (containers off). */
-function agentWorkspace() {
-  const w = WorkspaceStore.agent;
-  if (!w || w.userContextId === null || w.userContextId === undefined) {
-    throw new AgentError("failed", "there is no agent workspace in Vimma (containers off?)");
-  }
-  return /** @type {AgentWorkspace} */ (/** @type {unknown} */ (w));
-}
-
-/** Normal browser windows: never a private one (decision 7). */
-function normalWindows() {
-  /** @type {Win[]} */
-  const out = [];
-  for (const win of Services.wm.getEnumerator("navigator:browser")) {
-    if (win.closed || !win.gBrowser || lazy.PrivateBrowsingUtils.isWindowPrivate(win)) continue;
-    out.push(win);
-  }
-  return out;
-}
-
-/**
- * Whether `tab` belongs to the agent: its container is the agent workspace's, and its window's
- * model has it in that workspace, not adopted there as a foreign tab (decision 7); and it is
- * one connection `conn` may see (B17).
- * @param {Win} win @param {Tab} tab @param {AgentWorkspace} agent @param {ConnId} conn
- */
-function isAgentTab(win, tab, agent, conn) {
-  if (tab.closing || tab.pinned || tab.userContextId !== agent.userContextId) return false;
-  const ww = WindowWorkspaces.get(win);
-  const model = ww?.model;
-  if (!ww || !model || ww.isForeign(tab)) return false;
-  if (workspaceOfTab(model, ww.idOf(tab))?.id !== agent.id) return false;
-  return visibleTo(tab, conn);
-}
-
-/**
- * The agent's tabs, in window and strip order. With `name`, after the user's yes to the list, a
- * lazy one (restored, or unloaded under memory pressure) gets its browser, which gives it the
- * id agents name it by; its page loads only when it is read (spec B2). Without, nothing is
- * touched: a lazy tab has no id yet, so no agent can name it.
- * @param {AgentWorkspace} agent @param {ConnId} conn @param {boolean} [name]
- * @returns {{ win: Win, tab: Tab }[]}
- */
-function agentTabs(agent, conn, name = false) {
-  return normalWindows().flatMap((win) =>
-    win.gBrowser.tabs
-      .filter((/** @type {Tab} */ t) => isAgentTab(win, t, agent, conn))
-      .flatMap((/** @type {Tab} */ tab) => {
-        if (name && !tab.linkedPanel) win.gBrowser.insertBrowser(tab);
-        return [{ win, tab }];
-      }),
-  );
-}
-
-/** @param {Tab} tab */
-const tabId = (tab) => String(tab.linkedBrowser.browserId);
-/**
- * The tab's URL. A tab not loaded yet (lazy, or restored and pending) shows about:blank in its
- * browser: its URL is in its session history, as SessionStore keeps it.
- * @param {Tab} tab
- */
-function tabUrl(tab) {
-  const uri = String(tab.linkedBrowser.currentURI?.spec ?? "about:blank");
-  if (uri !== "about:blank" || (tab.linkedPanel && !tab.hasAttribute("pending"))) return uri;
-  try {
-    const state = JSON.parse(lazy.SessionStore.getTabState(tab));
-    const entries = Array.isArray(state?.entries) ? state.entries : [];
-    const entry = entries[(Number(state.index) || entries.length) - 1];
-    if (typeof entry?.url === "string" && entry.url) return entry.url;
-  } catch {
-    // no session for it: what the browser says
-  }
-  return uri;
-}
-
-/**
- * The agent tab with id `id`, or invalid-args: a tab of any other workspace, container or
- * window is unknown to the agent (decision 7), and so is another conversation's tab, in the same
- * words, so that no connection learns which tabs the others have (B17). Nothing is asked.
- * @param {AgentWorkspace} agent @param {string} id @param {ConnId} conn
- */
-function findAgentTab(agent, id, conn) {
-  const all = agentTabs(agent, conn);
-  const index = all.findIndex(({ tab }) => tabId(tab) === id);
-  const found = all[index];
-  if (!found) {
-    throw new AgentError("invalid-args", `tab ${id} is not a tab of the agent workspace`);
-  }
-  return { ...found, index: index + 1 };
-}
-
-/** @param {Tab} tab */
-function describeTab(tab) {
-  return { tab: tabId(tab), title: String(tab.label ?? ""), url: tabUrl(tab) };
-}
-
-/**
- * The URL an agent may load: http or https, checked on what the URL parser made of the text too
- * (the validator checked the text).
- * @param {string} url
- */
-function agentUri(url) {
-  /** @type {nsIURI} */
-  let uri;
-  try {
-    uri = Services.io.newURI(url);
-  } catch {
-    throw new AgentError("invalid-args", "url is not a valid URL");
-  }
-  if (uri.scheme !== "http" && uri.scheme !== "https") {
-    throw new AgentError("invalid-args", "url scheme must be http or https");
-  }
-  return uri;
-}
-
-/** A principal for loads an agent asks for: no authority, in the agent's container. */
-function agentPrincipal(/** @type {number} */ userContextId) {
-  return Services.scriptSecurityManager.createNullPrincipal({ userContextId });
-}
 
 /**
  * Ask, and wait: resolves when allowed, throws `denied` otherwise. While the question waits,
@@ -370,128 +197,6 @@ async function ask(conn, command, what, state, rid, until, always = false, cover
     if (rid !== undefined) state.cancels?.delete(rid);
     if (timer !== null) lazy.clearTimeout(timer);
   }
-}
-
-/**
- * The site of the page in `tab`, its registrable domain, or its host when it has none
- * (mcp-drive D18): what an allowance of `a` is for (docs/specs/mcp-consequence.md K5).
- * @param {Tab} tab
- */
-function siteOfTab(tab) {
-  const uri = tab.linkedBrowser.currentURI;
-  try {
-    return Services.eTLD.getBaseDomain(uri);
-  } catch {
-    try {
-      return String(uri?.asciiHost ?? "");
-    } catch {
-      return "";
-    }
-  }
-}
-
-/**
- * What a submission sends, without the child's `text` and `identity` marks
- * (docs/specs/mcp-consequence.md K2), which decide whether it asks but are not shown.
- * @param {import("../core/agent-checkpoint.mjs").SentFields} sent
- */
-const unmarked = (sent) => ({
-  ...sent,
-  fields: sent.fields.map(({ text, identity, ...f }) => (void text, void identity, f)),
-});
-
-/** Whether the page in `tab` is loading no document now. @param {Tab} tab */
-const notLoading = (tab) => !(tab.linkedBrowser.webProgress?.isLoadingDocument ?? true);
-
-/** @param {MozBrowser} browser  the id of its top document */
-const docOf = (browser) => browser.browsingContext?.currentWindowGlobal?.innerWindowId ?? 0;
-
-/** Key steps that load a page: payment steps where the page may pay (mcp-checkpoints Behaviour 3). */
-const LOADS = new Set(["history.back", "history.forward", "page.url_up", "page.url_root"]);
-
-/**
- * The first step of a `vimma_keys` call that acts (a follow, `gu`, `gU`, `H` or `L`), when it
- * acts on the page in the tab now: only scrolls and finds come before it. An `f` before it lists
- * new labels, so its target is known only as the call runs.
- * @param {import("../core/agent-keys.mjs").AgentStep[]} list
- */
-function firstActing(list) {
-  for (const [index, step] of list.entries()) {
-    if (LOADS.has(step.action)) return { index, step };
-    if (step.action === "hint.follow") return step.label === undefined ? null : { index, step };
-  }
-  return null;
-}
-
-/**
- * The link a follow names now, in the connection's current labels of the page, or null.
- * @param {MozTabBrowser} browser @param {ConnId} conn
- * @param {import("../core/agent-keys.mjs").AgentStep} step
- */
-function linkOf(browser, conn, step) {
-  const session = AgentDrive.current(conn, browser);
-  const target = session?.byLabel.get(/** @type {string} */ (step.label));
-  return target ? { target, elements: session?.source === "elements" } : null;
-}
-
-/**
- * Whether a key step may pay, and its question's payment part (mcp-checkpoints C6, C7): a
- * follow by the link's words and the page's card fields, a load by the card fields.
- * @param {MozTabBrowser} browser @param {ConnId} conn
- * @param {import("../core/agent-keys.mjs").AgentStep} step
- * @param {{ target: HintTarget, elements: boolean } | null} [found]  the follow's link, as the run
- *   resolved it; else it is looked up in the connection's labels now
- */
-async function payStep(browser, conn, step, found = null) {
-  if (step.action !== "hint.follow") return AgentAct.payment(browser, { keys: step.keys });
-  const link = found ?? linkOf(browser, conn, step);
-  // No such link: the follow is refused as it runs, before anything loads.
-  if (!link) return null;
-  if (link.elements) {
-    return AgentAct.payment(browser, { target: link.target, text: link.target.info?.text ?? "" });
-  }
-  return AgentAct.payment(browser, {
-    text: link.target.text ?? "",
-    keys: step.keys,
-    frame: link.target.wg,
-  });
-}
-
-/**
- * After the yes: the tab must still be the agent's with the URL asked about (decision 19).
- * @param {AgentWorkspace} asked @param {string} id @param {string} url @param {ConnId} conn
- */
-function stillAsAsked(asked, id, url, conn) {
-  const agent = WorkspaceStore.agent;
-  if (!agent || agent.id !== asked.id || agent.userContextId !== asked.userContextId) {
-    throw denied("changed");
-  }
-  let found;
-  try {
-    found = findAgentTab(asked, id, conn);
-  } catch {
-    throw denied("changed");
-  }
-  if (tabUrl(found.tab) !== url) throw denied("changed");
-  return found;
-}
-
-/** @param {number} ms */
-const sleep = (ms) => new Promise((resolve) => lazy.setTimeout(resolve, ms));
-
-/**
- * `promise`, or a `failed` refusal after `ms`.
- * @template T
- * @param {number} ms @param {Promise<T>} promise
- * @returns {Promise<T>}
- */
-function within(ms, promise) {
-  return Promise.race([
-    promise,
-    sleep(ms).then(() => {
-      throw new AgentError("failed", "reading the page took too long");
-    }),
-  ]);
 }
 
 /**
@@ -620,61 +325,6 @@ async function stepList(conn, tool, what, agent, win, tab, ready, filters) {
 }
 
 /**
- * The agent tabs' browsers that commands are running on, and how many commands each.
- * @type {Map<MozBrowser, { count: number, ours: Set<{ priorityHint: boolean }>,
- *   apply: () => void }>}
- */
-const raised = new Map();
-
-/**
- * Runs the content process of `browser` at foreground priority until the returned release is
- * called. An agent works on hidden tabs, whose processes Firefox keeps at background priority,
- * and on macOS that also puts their main thread at the lowest QoS class
- * (threads.lower_mainthread_priority_in_background): a page then loads and answers many times
- * slower than a shown one (issue #605). The tab switcher raises a tab it is about to show the
- * same way, through nsIRemoteTab.priorityHint, which neither renders nor shows anything. A lazy
- * tab gets its process during the command, and a load can move the page to another process:
- * each new frame loader is raised too. Overlapping commands on one tab share the raise.
- * @param {MozBrowser} browser
- * @returns {() => void} release
- */
-function raisePriority(browser) {
-  let entry = raised.get(browser);
-  if (!entry) {
-    /** @type {{ count: number, ours: Set<{ priorityHint: boolean }>, apply: () => void }} */
-    const e = {
-      count: 0,
-      ours: new Set(),
-      apply() {
-        const remote = browser.frameLoader?.remoteTab;
-        // A hint that is already set belongs to the tab switcher: it stays as it is.
-        if (!remote || remote.priorityHint) return;
-        remote.priorityHint = true;
-        e.ours.add(remote);
-      },
-    };
-    entry = e;
-    raised.set(browser, e);
-    browser.addEventListener("XULFrameLoaderCreated", e.apply);
-    e.apply();
-  }
-  entry.count++;
-  const e = entry;
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    if (--e.count > 0) return;
-    raised.delete(browser);
-    browser.removeEventListener("XULFrameLoaderCreated", e.apply);
-    // A tab the user shows meanwhile is the tab switcher's to keep raised.
-    if (browser.docShellIsActive) return;
-    const remote = browser.frameLoader?.remoteTab;
-    if (remote && e.ours.has(remote)) remote.priorityHint = false;
-  };
-}
-
-/**
  * The release of a raise of the agent tab an agent names by `id`, or null when it names none
  * that `conn` may see: a command that refuses it then runs as it would.
  * @param {ConnId} conn @param {unknown} id
@@ -711,35 +361,6 @@ async function loadedPage(win, tab, url, userContextId) {
   if (!ready || !wg) throw new AgentError("failed", "the page did not load in time");
   return wg;
 }
-
-/**
- * Cut `text` to `max` code points.
- * @param {string} text @param {number} max
- */
-function cut(text, max) {
-  const chars = [...text];
-  return chars.length > max
-    ? { text: chars.slice(0, max).join(""), truncated: true }
-    : { text, truncated: false };
-}
-
-/**
- * `s` as well-formed Unicode: a lone surrogate (a page's title or text can hold one) becomes
- * U+FFFD, so the JSON line is one vimma-ctl's strict parser accepts (security.md M7).
- * @param {unknown} s
- */
-const wf = (s) => String(s).toWellFormed();
-
-/**
- * `v`'s property `key`, or undefined when `v` is no object: a reply from a page's process.
- * @param {unknown} v @param {string} key
- * @returns {unknown}
- */
-const fieldOf = (v, key) =>
-  typeof v === "object" && v !== null ? /** @type {unknown} */ (Reflect.get(v, key)) : undefined;
-
-/** UTF-8 length of `value` as JSON. @param {unknown} value */
-const jsonBytes = (value) => new TextEncoder().encode(JSON.stringify(value)).length;
 
 /** The clients (name and vimma-ctl version) told about once this session. */
 const ctlNoticed = new Set();
@@ -983,7 +604,7 @@ const COMMANDS = {
       }),
     );
     // Not for a conversation deleted while the open ran: its tab would belong to no one alive.
-    if (isBuiltinConn(conn) && AgentGate.isConnected(conn)) own(tab, conn);
+    if (isBuiltinConn(conn) && AgentGate.isConnected(conn)) AgentTabOwners.give(tab, conn);
     AgentDownloads.openedBy(tab.linkedBrowser, conn, uri.spec);
     if (!elements) return opened(win, tab, 0);
     // The page it waits for loads at foreground priority, as on a tab the command names.
@@ -1820,12 +1441,14 @@ export function builtinHello(conn, state, label) {
 
 /**
  * Tab ownership for the built-in agent (B17): giving a tab to a conversation (Behaviour 17),
- * and a deleted conversation's tabs going back to no one.
+ * and a deleted conversation's tabs going back to no one. It stays here, not in agent-tabs.mjs,
+ * so that the tab model has one importer (tools/layering/layers.ts, RESTRICTED): the built-in
+ * agent reaches ownership through these three calls only.
  */
 export const AgentTabOwners = {
   /** @param {Tab} tab @param {ConnId} conn */
   give(tab, conn) {
-    own(tab, conn);
+    ownTab(tab, conn);
   },
   /** @param {Tab} tab @returns {ConnId | null} */
   ownerOf(tab) {
@@ -1833,11 +1456,7 @@ export const AgentTabOwners = {
   },
   /** @param {ConnId} conn */
   forget(conn) {
-    for (const ref of ownedBy.get(conn) ?? []) {
-      const tab = ref.deref();
-      if (tab && owners.get(tab) === conn) owners.delete(tab);
-    }
-    ownedBy.delete(conn);
+    forgetOwners(conn);
   },
 };
 

@@ -505,7 +505,7 @@ export function mycertKey(engine: string, dir: string) {
 
 /**
  * Vimma's and Firefox's versions from the build's `--version` line (`Vimma 0.1.15 · Firefox
- * 159.0.1`, tools/release/version-line.mjs).
+ * 159.0.1`, tools/release/version-line.ts).
  */
 export function buildVersions(binary: string) {
   const line = execFileSync(binary, ["--version"], {

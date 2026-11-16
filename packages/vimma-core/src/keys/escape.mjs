@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * What Esc does, as a pure function of the mode and what is pending (plan §2).
+ * What Esc does, as a pure function of the mode and what is pending.
  * See docs/specs/m1-core-logic.md § Esc.
  */
 import { isMode } from "./modes.mjs";

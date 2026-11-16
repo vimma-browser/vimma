@@ -17,7 +17,7 @@ decisions 11 to 15, 17 and 18.
 - A job `security-release` in `release-please.yml` runs on every push to `main`, after
   `release-please` and `firefox-notes`, and only when the repository variable
   `AUTO_SECURITY_RELEASE` is `true`.
-- `tools/release/security-release.mjs` `decide()` sets the open release PR to auto-merge only
+- `tools/release/security-release.ts` `decide()` sets the open release PR to auto-merge only
   when all of these hold: the run is a push to `refs/heads/main` of `vimma-browser/vimma`; the
   pushed commit's subject starts `upstream: firefox `; the commit belongs to exactly one merged PR
   into `main` from this repository's `upstream/firefox-<version>` branch, labelled `upstream` and

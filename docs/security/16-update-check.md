@@ -39,7 +39,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`downgrade: an older or equal build is no offer, not an error`](../../packages/vimma-core/test/updates.test.mjs),
   [`the Vimma version already running is no offer, whatever its build ID`](../../packages/vimma-core/test/updates.test.mjs),
   [`the_vimma_version_running_is_never_offered`](../../tests/browser/browser_vimma_update_check.js),
-  [`a packaged build ID that differs from the binary's is a problem`](../../tools/release/test/build-id.test.mjs),
+  [`a packaged build ID that differs from the binary's is a problem`](../../tools/release/test/build-id.test.ts),
   [`release.yml's Linux and macOS builds fix MOZ_BUILD_DATE before they build`](../../tools/package/test/release-workflow.test.mjs),
   [`a release feed older than 45 days and a nightly one older than 7 are stale`](../../packages/vimma-core/test/updates.test.mjs),
   [`replay_is_refused_and_downgrade_offers_nothing`](../../tests/browser/browser_vimma_update_check.js),
@@ -71,8 +71,8 @@ _Pages_ and _extensions_ cannot reach it.
   send no burst of requests.
   [`off_by_pref_or_config_sends_nothing`](../../tests/browser/browser_vimma_update_check.js),
   [`nothing_at_all_with_checks_off`](../../tests/browser/browser_vimma_update_notices.js),
-  [`checks off or a source build: never due`](../../packages/vimma-core/test/update-notices.test.mjs),
-  [`a failed attempt does not count as a check, but is not retried within 10 minutes`](../../packages/vimma-core/test/update-notices.test.mjs),
+  [`checks off or a source build: never due`](../../packages/vimma-core/test/update-notices.test.ts),
+  [`a failed attempt does not count as a check, but is not retried within 10 minutes`](../../packages/vimma-core/test/update-notices.test.ts),
   [`startup_checks_when_due_and_not_when_fresh`](../../tests/browser/browser_vimma_update_notices.js),
   [`a_source_build_checks_nothing`](../../tests/browser/browser_vimma_update_check.js),
   [`a_config_with_errors_still_turns_checks_off`](../../tests/browser/browser_vimma_update_check.js),
@@ -133,8 +133,8 @@ _Pages_ and _extensions_ cannot reach it.
   [`flatpak: flatpak update, with no download (spec flatpak, decision 10)`](../../packages/vimma-core/test/updates.test.mjs),
   [`is flatpak, whose update hint is flatpak update, never the tarball's unpack`](../../tools/package/test/flatpak.test.mjs),
   [`flatpak_gets_flatpak_update`](../../tests/browser/browser_vimma_update_check.js),
-  [`a Flatpak names flatpak update, for an ordinary and a security release`](../../packages/vimma-core/test/update-notices.test.mjs),
-  [`not an AppImage install: nothing to replace`](../../packages/vimma-core/test/appimage-update.test.mjs),
+  [`a Flatpak names flatpak update, for an ordinary and a security release`](../../packages/vimma-core/test/update-notices.test.ts),
+  [`not an AppImage install: nothing to replace`](../../packages/vimma-core/test/appimage-update.test.ts),
   [`a_flatpak_is_told_to_run_flatpak_update`](../../tests/browser/browser_vimma_update_notices.js)
 
 - UP7. A manifest is **only** signed by `update-publish.yml` run from `main`, and **only** for a
@@ -304,7 +304,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`the_question_waits_while_the_user_types`](../../tests/browser/browser_vimma_update_notices.js),
   [`no_question_in_a_private_window`](../../tests/browser/browser_vimma_update_notices.js),
   [`a_new_version_is_announced_once`](../../tests/browser/browser_vimma_update_notices.js),
-  [`y or Y shows the steps; n, Esc, Enter and any other key dismiss`](../../packages/vimma-core/test/update-notices.test.mjs)
+  [`y or Y shows the steps; n, Esc, Enter and any other key dismiss`](../../packages/vimma-core/test/update-notices.test.ts)
 
 - UP10. The AppImage **only** replaces its own file (`$APPIMAGE`) with a download whose size
   and SHA-512 match a manifest verified by a check in the running process (an offer restored
@@ -335,10 +335,10 @@ _Pages_ and _extensions_ cannot reach it.
   [`a_saved_offer_is_installed_only_after_a_check`](../../tests/browser/browser_vimma_update_appimage.js),
   [`another_downloads_part_file_neither_blocks_nor_is_removed`](../../tests/browser/browser_vimma_update_appimage.js),
   [`a_symlinked_appimage_is_not_replaced`](../../tests/browser/browser_vimma_update_appimage.js),
-  [`without the AppDir's own appimage marker, $APPIMAGE is never replaced`](../../packages/vimma-core/test/appimage-update.test.mjs),
-  [`a Vimma that does not run from $APPDIR is not the AppImage $APPIMAGE names`](../../packages/vimma-core/test/appimage-update.test.mjs),
-  [`a download from %s is refused outside automation`](../../packages/vimma-core/test/appimage-update.test.mjs),
-  [`another size or hash: refused, with the reason`](../../packages/vimma-core/test/appimage-update.test.mjs)
+  [`without the AppDir's own appimage marker, $APPIMAGE is never replaced`](../../packages/vimma-core/test/appimage-update.test.ts),
+  [`a Vimma that does not run from $APPDIR is not the AppImage $APPIMAGE names`](../../packages/vimma-core/test/appimage-update.test.ts),
+  [`a download from %s is refused outside automation`](../../packages/vimma-core/test/appimage-update.test.ts),
+  [`another size or hash: refused, with the reason`](../../packages/vimma-core/test/appimage-update.test.ts)
 
 - UP11. Vimma **never** restarts by itself: only `:restart` (action `app.restart`), `y` in the
   restart question, or Firefox's own restart commands do. The restart question
@@ -373,12 +373,12 @@ _Pages_ and _extensions_ cannot reach it.
   [`a_replaced_security_update_asks_to_restart`](../../tests/browser/browser_vimma_update_appimage.js),
   [`a_staged_security_update_asks_to_restart`](../../tests/browser/browser_vimma_update_verify.js),
   [`an_ordinary_replaced_update_asks_nothing`](../../tests/browser/browser_vimma_update_appimage.js),
-  [`answered in this session: asked again 24 hours later, not sooner`](../../packages/vimma-core/test/update-notices.test.mjs),
+  [`answered in this session: asked again 24 hours later, not sooner`](../../packages/vimma-core/test/update-notices.test.ts),
   [`the_restart_question_says_what_a_restart_loses`](../../tests/browser/browser_vimma_update_appimage.js),
   [`history_cleared_on_close_asks_before_an_appimage_restart`](../../tests/browser/browser_vimma_restart.js),
-  [`history cleared on close: an AppImage's restart is a quit, so the session is purged`](../../packages/vimma-core/test/restart.test.mjs),
-  [`an AppImage without a usable $APPIMAGE falls back to Firefox's restart`](../../packages/vimma-core/test/restart.test.mjs),
-  [`gives up after RELAUNCH_WAIT_S when the old process never exits`](../../packages/vimma-core/test/restart.test.mjs)
+  [`history cleared on close: an AppImage's restart is a quit, so the session is purged`](../../packages/vimma-core/test/restart.test.ts),
+  [`an AppImage without a usable $APPIMAGE falls back to Firefox's restart`](../../packages/vimma-core/test/restart.test.ts),
+  [`gives up after RELAUNCH_WAIT_S when the old process never exits`](../../packages/vimma-core/test/restart.test.ts)
 - UP12. Firefox's updater is built **only** with `VIMMA_UPDATES=1` (the release and nightly
   jobs; source and dev builds keep `--disable-updater`), **only** for the update channel
   `vimma`, and such a binary **only** asks `updates.vimma.dev` and **only** applies a MAR signed

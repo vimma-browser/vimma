@@ -40,7 +40,7 @@ sequenceDiagram
 
 ## Before the key: the keymap
 
-`VimmaHost.init` gives each window a dispatcher over the keymap in force (`settings.keymap`), or
+`VimmaHost.init` gives each window (in `newWindowState`, `host/window-state.mjs`) a dispatcher over the keymap in force (`settings.keymap`), or
 over the built-in one (`compileKeymap({})`) while `config.toml` has not been read yet;
 `VimmaHost.configure` replaces every window's when `ConfigHost` applies the file
 ([Config and theme](config-and-theme.md)). `compileKeymap` in
@@ -63,8 +63,8 @@ over the built-in one (`compileKeymap({})`) while `config.toml` has not been rea
 It then builds one trie of chords per mode and one for the `pdf` context, and throws a
 `KeymapError` with the config path for a sequence bound twice in one mode. The modes are listed in
 `modes.mjs`; the prefix is not one of them, since the dispatcher tracks a pending prefix itself.
-Tests: [keymap.test.mjs](../../packages/vimma-core/test/keymap.test.mjs) and
-[keymap-contexts.test.mjs](../../packages/vimma-core/test/keymap-contexts.test.mjs).
+Tests: [keymap.test.ts](../../packages/vimma-core/test/keymap.test.ts) and
+[keymap-contexts.test.ts](../../packages/vimma-core/test/keymap-contexts.test.ts).
 
 ## 1. The window hears the key first
 
@@ -97,7 +97,7 @@ order, and returns when one does:
 Tests: `records_ctrl_b_in_about_preferences`, `records_ctrl_b_in_url_bar` and
 `records_an_unbound_key_in_content_and_page_still_receives_it` in
 [browser_vimma_key_capture.js](../../tests/browser/browser_vimma_key_capture.js), which read
-`_lastChords`; [keys.test.mjs](../../packages/vimma-core/test/keys.test.mjs) for the notation.
+`_lastChords`; [keys.test.ts](../../packages/vimma-core/test/keys.test.ts) for the notation.
 
 ## 2. The dispatcher answers
 
@@ -120,7 +120,7 @@ results:
 - **`cancel`**: Esc during a sequence, or a key that leads nowhere after a prefix or a count.
 - **`pass`**: nothing is pending and the key is not in the trie.
 
-Tests: [dispatcher.test.mjs](../../packages/vimma-core/test/dispatcher.test.mjs), for example
+Tests: [dispatcher.test.ts](../../packages/vimma-core/test/dispatcher.test.ts), for example
 "an ambiguous sequence followed by a non-continuing key runs the shorter and asks for replay" and
 "a count followed by an unbound key cancels".
 
@@ -171,7 +171,7 @@ parent-process page settles the key in `_onKeyPressAfter`, in the bubble phase. 
 `ctrl_m_mutes_unless_the_page_takes_it`, `a_blocked_shortcuts_permission_makes_the_key_vimmas_first`
 and `a_page_first_key_runs_in_a_tab_whose_process_is_still_starting` in
 [browser_vimma_browser_keys.js](../../tests/browser/browser_vimma_browser_keys.js);
-[page-first.test.mjs](../../packages/vimma-core/test/page-first.test.mjs).
+[page-first.test.ts](../../packages/vimma-core/test/page-first.test.ts).
 
 ## 5. The runner
 
@@ -201,8 +201,11 @@ whose URL `vimma.js` passes in: `actors/` names no `host/` module), marked
 `safeForUntrustedWebProcess` because the parent trusts nothing from the child but a descriptor,
 which at worst flips that tab's mode, and checks every other reply. `VimmaActors.scroll` sends
 `Vimma:Scroll` with `sendQuery` to the focused frame's actor, and to the top frame when the focused
-one has nothing to scroll. `VimmaChild`'s `receiveMessage` scrolls its own document (in the PDF
-viewer's presentation mode it turns pages), and answers whether anything moved. `_run` does not wait
+one has nothing to scroll. `VimmaChild`'s `receiveMessage` hands it to the frame's `PageScroll`
+(`actors/page-scroll.mjs`), which scrolls its own document (in the PDF viewer's presentation mode
+the child turns pages instead), and answers whether anything moved. In the same way the child hands
+live grep's messages to its `GrepPage` (`actors/grep-page.mjs`) and an agent's `Vimma:Agent*`
+messages to its `AgentPage` (`actors/agent-page.mjs`). `_run` does not wait
 for that answer: `_onKeyDown` calls `_emit` at once, and the window's listeners (the status bar
 among them) redraw from `VimmaHost.status`.
 
@@ -225,7 +228,7 @@ security.md §13, among them `only_the_focused_frame_may_report` and
 `malformed_descriptors_are_dropped` in
 [browser_vimma_insert_scroll.js](../../tests/browser/browser_vimma_insert_scroll.js);
 [browser_vimma_insert_focus.js](../../tests/browser/browser_vimma_insert_focus.js);
-[editable.test.mjs](../../packages/vimma-core/test/editable.test.mjs).
+[editable.test.ts](../../packages/vimma-core/test/editable.test.ts).
 
 ## Other ways in
 
@@ -237,7 +240,7 @@ security.md §13, among them `only_the_focused_frame_may_report` and
   still lists as pending and calls the same `_run`. A `:` binding in the keymap takes the same
   path through `cmdline.run`. Tests:
   [browser_vimma_cmdline.js](../../tests/browser/browser_vimma_cmdline.js),
-  [cmdline.test.mjs](../../packages/vimma-core/test/cmdline.test.mjs).
+  [cmdline.test.ts](../../packages/vimma-core/test/cmdline.test.ts).
 - **`vimma-ctl send-keys`.** The control socket's `send-keys` (`ctl/VimmaControl.sys.mjs`, full
   role only) parses each chord with `parseKey` and presses it into the top window with
   `nsITextInputProcessor` (`pressChords`), so the keys arrive as `keydown` events in the window
@@ -247,9 +250,9 @@ security.md §13, among them `only_the_focused_frame_may_report` and
 - **Agents.** An agent's `vimma_keys` takes a different path: `ctl/agent-commands.mjs` calls core
   `parseAgentKeys` (`agent-keys.mjs`), which parses the keys with a dispatcher of its own over the
   default keymap, never the user's, and keeps only whitelisted actions; `ctl/AgentDrive.sys.mjs`
-  then runs each step on the agent tab through `VimmaActors` and the tab's own `<browser>`
-  (history steps go through its session history, `gu` and `gU` load a URL), not through the
-  runner tables or the user's mode
+  then runs each step on the agent tab through `VimmaActors`, `AgentActors` and the tab's own
+  `<browser>` (history steps go through its session history, `gu` and `gU` load a URL), not
+  through the runner tables or the user's mode
   ([mcp-drive](../specs/mcp-drive.md), security.md M16, M20, M21). The rest of an agent call is
   in [The life of an agent call](agent-call.md).
 

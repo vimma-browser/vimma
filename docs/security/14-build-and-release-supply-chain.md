@@ -132,6 +132,20 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`the full builds install with npm ci --ignore-scripts and run Surfer with npx --no`](../../tools/test/build-supply-chain.test.ts),
   [`no workflow lets npx fetch a package`](../../tools/test/build-supply-chain.test.ts),
   [`surfer.json lists no add-ons`](../../tools/test/build-supply-chain.test.ts)
+  An agent running under the `vimma-guardrails` Claude Code plugin is held to the same lockfile:
+  its Bash guard (`tools/claude-plugin/hooks/lib/install-rules.mjs`) refuses npm's install,
+  update, dedupe and `audit fix` commands, an npx or `npm exec` that could fetch a package or run
+  a bin from outside the checkout (anything but `--no` or a bin already in `node_modules/.bin`;
+  never with a prefix, global, workspace, `--yes`, `--package` or `--call` setting, as a flag or an
+  `npm_config_` variable), the installs and runners of pnpm, Yarn, Bun and corepack, Python
+  packages without `--require-hashes`, a crate installed without `--locked`, and a download that a
+  shell or interpreter runs. It reads commands the way its other rules do, through quoting,
+  wrappers, `sh -c`, here-strings, `find -exec` and the command an npx runs; a name built at run
+  time, an alias or a script file the command runs is beyond it. It is a guardrail for agents,
+  and `npm ci` in CI is the check that holds.
+  [`installs outside the lockfile`](../../tools/claude-plugin/test/bash-guard.test.ts),
+  [`npx and npm exec`](../../tools/claude-plugin/test/bash-guard.test.ts),
+  [`Python packages, crates and piped downloads`](../../tools/claude-plugin/test/bash-guard.test.ts)
 - B5. A workflow **never** targets a self-hosted runner: every job runs on a standard
   GitHub-hosted image or calls a workflow file of this repository, and a `runs-on` expression
   that cannot be resolved to a hosted image fails. The test parses each workflow as YAML and
@@ -699,3 +713,58 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`every checkout a pull request runs sets persist-credentials: false, but the listed ones`](../../tools/test/checkout-credentials.test.ts),
   [`a listed checkout runs only after a job that no pull request event starts`](../../tools/test/checkout-credentials.test.ts),
   [`follows a reusable workflow that a pull request workflow calls`](../../tools/test/checkout-credentials.test.ts)
+- B20. Every dependency **must** come from a lockfile, by its hash. `npm ci` is the only npm
+  install that any tracked file runs or tells a person or an agent to run: workflows, scripts (an
+  extensionless file with a shebang and `mozconfig` included), `package.json`, runbooks,
+  contributor and agent instructions, code and the Claude plugin alike, and **never** npm's
+  install or update commands, in any spelling npm accepts and with any options before them, nor a
+  command that fetches the package it names (create, init or link with a package). npx and
+  `npm exec` run only a binary of a devDependency, as the lockfile records it, never with `--yes`
+  or `--package`, and never with a package the code fills in unless `--no` keeps npx to what is
+  installed. npm and npx spawned from code are read from their argument lists, in JavaScript
+  (`execFileSync("npm", ["ci"])`, `Bun.spawn(["npm", "ci"])`) and Python (`["npm", "ci"]`),
+  under any path or `.cmd` name and on either side of a ternary, and from every string literal: a
+  list item the code fills in after the literals counts as any word, npx passes `--no` first,
+  since without a terminal npm assumes `--yes`, and a program name held in a variable or given
+  arguments that are not a list starting with a literal is refused, since what it runs cannot be
+  read. Any other program spawned with a literal list is read as a command with its arguments,
+  and each literal argument as a command of its own, so a shell given one with `-c` is read too.
+  A script's line continued with a backslash is read with the lines it runs on to, and a
+  workflow's or composite action's `run:` as the shell gets it, with continued lines and folded
+  scalars joined. Where the test can read them, Yarn, pnpm and Bun install nothing and run nothing
+  they fetch, and corepack, which downloads them, is not used; a deliberately hidden spelling,
+  such as a command name kept in a shell variable or a quoted verb, is out of its reach and left to
+  review. No download is run by a shell or an interpreter, whether piped to it or substituted into
+  it. pip installs only with `--require-hashes`; a crate is installed only with `--locked`, from a
+  git source only at a fixed `--rev`; Cargo.lock is never rewritten by a command, and every cargo
+  command a workflow runs passes `--locked`. Every `uses:` of a workflow or composite action is a
+  file of this repository, an action at a full 40-character commit or a Docker image by digest,
+  and so is every job's container and service image. `package-lock.json` is version 3 and every
+  entry is resolved from `registry.npmjs.org` with a `sha512` integrity, but one: Surfer's
+  dependency `is-apple-silicon`, a git dependency pinned to commit `5f75501` without a hash (spec,
+  R5), which nothing in Surfer's `dist/` loads; the test fails if it moves off that commit. No
+  `package.json` names a dependency by git, URL, path, tag or a range wider than a caret, and the
+  repository holds one lockfile and one `.npmrc`, which sets nothing but `ignore-scripts`. The
+  test reads every file git tracks, so a new file is held to this without being listed. Its
+  exceptions are explicit and checked: lines that name a command only to forbid it, test names,
+  and two lines of a runbook that run wrangler in `vimma-browser/vimma-updates`, another
+  repository, are allowed by their exact text, and the test fails when an allowed line is gone or
+  no longer needs its allowance; the guard's own tests and the Claude plugin's Bash guard and its
+  tests mark their fixtures as blocks, which no other file may. System packages from the runner's
+  distribution (`apt-get`, `brew`, `dnf`) are signed by their distribution and outside this rule.
+  [`no tracked file installs a package outside the lockfile or pipes a download to a shell`](../../tools/test/supply-chain.test.ts),
+  [`reads an npx call from code whose arguments span lines`](../../tools/test/supply-chain.test.ts),
+  [`reports a joined run: command once, on the line it starts on`](../../tools/test/supply-chain.test.ts),
+  [`finds the command in %s: %j`](../../tools/test/supply-chain.test.ts),
+  [`leaves prose and safe commands in %s: %j`](../../tools/test/supply-chain.test.ts),
+  [`refuses %s`](../../tools/test/supply-chain.test.ts),
+  [`allows %s`](../../tools/test/supply-chain.test.ts),
+  [`each allowed line is still there and still faults without its allowance`](../../tools/test/supply-chain.test.ts),
+  [`every cargo command a workflow runs keeps to Cargo.lock`](../../tools/test/supply-chain.test.ts),
+  [`every action, reusable workflow and composite action step is pinned by full commit`](../../tools/test/supply-chain.test.ts),
+  [`every job's container and service image is pinned by digest`](../../tools/test/supply-chain.test.ts),
+  [`every package comes from registry.npmjs.org with a sha512 integrity, but the one listed`](../../tools/test/supply-chain.test.ts),
+  [`refuses an entry with %s`](../../tools/test/supply-chain.test.ts),
+  [`the git exception holds only while it stays at its commit`](../../tools/test/supply-chain.test.ts),
+  [`no package.json names a dependency by git, URL, path, tag or bundle`](../../tools/test/supply-chain.test.ts),
+  [`one lockfile and one .npmrc, which sets no other registry`](../../tools/test/supply-chain.test.ts)

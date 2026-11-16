@@ -43,11 +43,19 @@ export default [
   },
   js.configs.recommended,
   {
-    files: ["**/*.mjs", "**/*.js", "tools/**/*.ts"],
+    files: [
+      "**/*.mjs",
+      "**/*.js",
+      "tools/**/*.ts",
+      "packages/vimma-core/test/**/*.ts",
+      "*.config.ts",
+    ],
     languageOptions: { ecmaVersion: 2024, sourceType: "module", globals: globals.node },
   },
   {
-    files: ["tools/**/*.ts"],
+    // tools/, vimma-core's tests and the repository-root configs written as TypeScript (vitest,
+    // commitlint)
+    files: ["tools/**/*.ts", "packages/vimma-core/test/**/*.ts", "*.config.ts"],
     languageOptions: { parser: erasedTypes },
   },
   {

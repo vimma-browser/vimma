@@ -39,6 +39,7 @@ import { getAction } from "../src/keys/actions.mjs";
 import { compileKeymap } from "../src/keys/keymap.mjs";
 import { statusSegments } from "../src/ui/statusbar.mjs";
 import { THEME_TOKENS } from "../src/config/theme.mjs";
+import { budget } from "./budget.mjs";
 
 const subtle = globalThis.crypto.subtle;
 const ALG = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-384" };
@@ -555,7 +556,7 @@ describe("parseManifest", () => {
         reason: "manifest: <updates> has malformed attributes",
       });
     }
-    expect(performance.now() - started).toBeLessThan(2000);
+    expect(performance.now() - started).toBeLessThan(budget(2000));
     for (const bad of [
       manifest().replace('" vimmaTarget', '"vimmaTarget'),
       manifest().replace('vimmaTarget="', 'vimmaTarget = "'),

@@ -69,12 +69,12 @@ import {
 /** @import { NumberedSplit, Splits } from "../core/splits.mjs" */
 
 /**
- * @typedef {Element & { linkedPanel: string, label: string, pinned: boolean, closing?: boolean,
- *   selected: boolean, splitview: Wrapper | null, hidden: boolean,
- *   linkedBrowser: { docShellIsActive: boolean } }} Tab
+ * @typedef {MozTabbrowserTab & { linkedPanel: string, splitview: Wrapper | null }} Tab  a tab
+ *   the panes hold: loaded, so it has a panel
  * @typedef {Element & { tabs: Tab[], addTabs: (tabs: Tab[]) => void,
  *   unsplitTabs: () => void }} Wrapper
- * @typedef {{ tabs: Tab[], selectedTab: Tab, tabContainer: Element, splitViews: Wrapper[],
+ * @typedef {Pick<Tabbrowser, "tabpanels" | "_switcher"> & { tabs: Tab[], selectedTab: Tab,
+ *   tabContainer: Element, splitViews: Wrapper[],
  *   addTabSplitView: (tabs: Tab[], options?: object) => Wrapper,
  *   addTrustedTab: (url: string, options?: object) => Tab, unpinTab: (tab: Tab) => void }} TabBrowser
  * @typedef {{ ok: true } | { ok: false, reason: string }} PaneResult
@@ -538,16 +538,19 @@ export class PaneView {
 
   /**
    * Closes the pane showing `tab`, wherever focus is; its tab stays open (not shown). For a tab
-   * leaving the workspace (WindowWorkspaces' moveTab). No pane of `tab`: nothing.
-   * @param {Tab} tab
+   * leaving the workspace (WindowWorkspaces' moveTab). No pane of `tab`, as for a lazy tab (no
+   * panel): nothing.
+   * @param {MozTabbrowserTab} tab
    */
   release(tab) {
-    const other = this.#otherOf(tab.linkedPanel);
+    const panel = tab.linkedPanel;
+    if (!panel) return;
+    const other = this.#otherOf(panel);
     if (other !== undefined) {
-      this.#use(removeSplitTab(this.splits, tab.linkedPanel));
+      this.#use(removeSplitTab(this.splits, panel));
       return;
     }
-    const pane = this.#panes && paneOfTab(this.#panes, tab.linkedPanel);
+    const pane = this.#panes && paneOfTab(this.#panes, panel);
     if (this.#panes && pane) this.#set(closePane(this.#panes, pane));
   }
 
@@ -1040,6 +1043,13 @@ export class PaneView {
       this.#reconciling = false;
     }
     this.onChange?.();
+    for (const fn of watchers.get(this.#win) ?? []) {
+      try {
+        fn();
+      } catch (e) {
+        console.error("vimma: pane watcher failed", e);
+      }
+    }
   }
 
   #reconcile() {
@@ -1108,7 +1118,7 @@ export class PaneView {
     // Firefox suspends a split when a tab outside it is selected; a wrapper rebuilt while that tab
     // was already selected (the side panel's Enter) missed that TabSelect, so suspend it here
     // the same way (tabbox.js suspendSplitViewPanels: the panels keep their split-view class).
-    /** @type {any} */ (gBrowserOf(this.#win)).tabpanels?.suspendSplitViewPanels?.(tabs);
+    gBrowserOf(this.#win).tabpanels?.suspendSplitViewPanels?.(tabs);
     this.#asleep(tabs);
   }
 
@@ -1140,7 +1150,7 @@ export class PaneView {
    * @param {Tab} t
    */
   #unloadLoading(t) {
-    const switcher = /** @type {any} */ (gBrowserOf(this.#win))._switcher;
+    const switcher = gBrowserOf(this.#win)._switcher;
     if (!switcher || switcher._processing) return false;
     if (switcher.tabState?.get(t) !== switcher.STATE_LOADING) return false;
     switcher.setTabState(t, switcher.STATE_UNLOADING);
@@ -1218,7 +1228,7 @@ export class PaneView {
             doc.getElementById(members.at(-1)?.linkedPanel ?? "")?.nextElementSibling ?? null
           );
       if (ref === panel || panel.nextElementSibling === ref) continue;
-      /** @type {any} */ (parent).moveBefore(panel, ref);
+      parent.moveBefore(panel, ref);
     }
   }
 
@@ -1302,6 +1312,13 @@ export class PaneView {
 
 /** @type {WeakMap<BrowserWindow, PaneView>} */
 const views = new WeakMap();
+/**
+ * Told after every reconcile of a window's view, as `onChange` (which WindowWorkspaces owns).
+ * Kept apart from the view, so a watcher may start before PaneViews.init (vimma.js starts the
+ * host first).
+ * @type {WeakMap<BrowserWindow, Set<() => void>>}
+ */
+const watchers = new WeakMap();
 
 /**
  * The host API (sub-spec 3's keys call it): one PaneView per browser window.
@@ -1326,5 +1343,19 @@ export const PaneViews = Object.freeze({
    */
   get(win) {
     return views.get(win);
+  },
+
+  /**
+   * Calls `fn` after every reconcile of `win`'s view, which follows each change of its panes
+   * (a tab closed, a split hidden or shown). Returns the call that stops it.
+   * @param {BrowserWindow} win
+   * @param {() => void} fn
+   * @returns {() => void}
+   */
+  watch(win, fn) {
+    let set = watchers.get(win);
+    if (!set) watchers.set(win, (set = new Set()));
+    set.add(fn);
+    return () => set.delete(fn);
   },
 });

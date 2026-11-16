@@ -68,7 +68,10 @@ const cmd = (name, argument, action, description, { aliases = [], textAction, te
     description,
   });
 
-/** The commands of plan §2 (Neovim column). Any action name is a command too. */
+/**
+ * The Vim-style commands (docs/guide.md, "The command line"; spec m1-cmdline). Any action name is
+ * a command too.
+ */
 /** @type {readonly CommandDef[]} */
 export const COMMANDS = Object.freeze([
   cmd("open", "required", "page.open", "Open a URL in this tab"),

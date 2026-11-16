@@ -101,6 +101,9 @@ async function closeList() {
 
 /** @typedef {{ heuristic: boolean, type: number }} ResultRow  a row of typed() */
 
+/** The row of the list at `index`, one of the results typed() read. @param {number} index */
+const rowAt = (index) => /** @type {Element} */ (UrlbarTestUtils.getRowAt(window, index));
+
 const isPage = (/** @type {ResultRow} */ r) =>
   !r.heuristic &&
   (r.type === UrlbarShared.RESULT_TYPE.URL || r.type === UrlbarShared.RESULT_TYPE.TAB_SWITCH);
@@ -120,7 +123,7 @@ add_task(async function pages_come_before_search_suggestions() {
     suggestions[0].index,
     "every page comes before the first search suggestion",
   );
-  const first = UrlbarTestUtils.getRowAt(window, suggestions[0].index);
+  const first = rowAt(suggestions[0].index);
   await TestUtils.waitForCondition(
     () => first.getAttribute("label") === `${ENGINE} suggestions`,
     "the suggestions, after the pages, are headed with the engine's name",
@@ -130,15 +133,13 @@ add_task(async function pages_come_before_search_suggestions() {
 
 add_task(async function no_group_is_headed_firefox() {
   const rows = await typed();
-  const pages = UrlbarTestUtils.getRowAt(
-    window,
-    /** @type {(typeof rows)[number]} */ (rows.find(isPage)).index,
-  );
+  const pages = rowAt(/** @type {(typeof rows)[number]} */ (rows.find(isPage)).index);
   await TestUtils.waitForCondition(() => pages.hasAttribute("label"), "the pages get a heading");
   Assert.equal(pages.getAttribute("label"), "Vimma", "the pages are headed with Vimma's name");
-  const labels = rows
-    .map((r) => UrlbarTestUtils.getRowAt(window, r.index).getAttribute("label"))
-    .filter(Boolean);
+  // The rows with a heading (getAttribute gives null without one).
+  const labels = /** @type {string[]} */ (
+    rows.map((r) => rowAt(r.index).getAttribute("label")).filter(Boolean)
+  );
   info(`group labels: ${JSON.stringify(labels)}`);
   for (const label of labels) Assert.ok(!/Firefox/.test(label), `"${label}" names no Firefox`);
   await closeList();
