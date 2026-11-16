@@ -12,8 +12,8 @@ import {
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defined } from "../../test/defined.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
-import { jobs, parseWorkflow } from "../../test/workflow-runners.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
+import { jobs, parseWorkflow } from "../../test/workflow-runners.ts";
 import { DMG_LAYOUT, FILES, catalogSummary, outDirOf } from "../macos-icons.ts";
 import { readDsStore } from "./dsstore.ts";
 

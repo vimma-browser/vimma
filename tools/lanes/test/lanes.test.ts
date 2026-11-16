@@ -25,7 +25,7 @@ import {
 } from "../lanes.ts";
 import { execFileSync } from "node:child_process";
 import { readFileSync, rmSync } from "node:fs";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 /**
  * A main checkout with an imported engine, and a worktree under its .claude/worktrees/, the

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { tempDir } from "./temp-dir.mjs";
+import { tempDir } from "./temp-dir.ts";
 import { artifactMozconfig } from "../artifact-build/artifact-build.ts";
 
 const MOZCONFIG = readFileSync(new URL("../../configs/common/mozconfig", import.meta.url), "utf8");

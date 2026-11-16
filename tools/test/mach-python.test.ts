@@ -10,7 +10,7 @@ import {
   writePythonShim,
 } from "../mach-python.ts";
 import type { PythonBounds } from "../mach-python.ts";
-import { tempDir } from "./temp-dir.mjs";
+import { tempDir } from "./temp-dir.ts";
 
 // Mach declares the Python range it supports; outside it the manifest parser breaks (Python 3.15
 // rejects the capturing groups in manifestparser's re.Scanner), so the wrapper picks one inside it.

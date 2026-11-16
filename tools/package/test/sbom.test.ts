@@ -12,7 +12,7 @@ import {
 } from "../sbom.ts";
 import { cyclonedxValidator as validator } from "../validate-sbom.ts";
 import { defined } from "../../test/defined.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 

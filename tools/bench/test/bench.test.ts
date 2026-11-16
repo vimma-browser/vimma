@@ -31,7 +31,7 @@ const { CASES, reference } = await import("../../../packages/vimma-core/bench/ca
 const { childArgs, extractCommit, measure, PROCESSES, ROUNDS, run, SAMPLES, sides } =
   await import("../bench.ts");
 const { combinePaired, compare, formatTable } = await import("../compare.ts");
-const { tempDir } = await import("../../test/temp-dir.mjs");
+const { tempDir } = await import("../../test/temp-dir.ts");
 
 const MACHINE = "test machine | x64 | node 22.0.0";
 const BASELINE = new URL("../../../packages/vimma-core/bench/baseline.json", import.meta.url);

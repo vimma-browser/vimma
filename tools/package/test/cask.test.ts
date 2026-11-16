@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import { cask } from "../cask.ts";
 
 // Spec macos-homebrew, decisions 4 to 9: the Homebrew cask, a release asset that homebrew.yml

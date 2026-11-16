@@ -11,7 +11,7 @@ import {
   STEP_KINDS,
   validateScenario,
 } from "../scenario.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import type { InstallState } from "../scenario.ts";
 
 const SCENARIOS = fileURLToPath(new URL("../../../tests/e2e/scenarios/", import.meta.url));

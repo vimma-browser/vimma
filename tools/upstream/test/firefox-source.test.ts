@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import { fakeSign, fakeSignature, withFakeGpgv } from "./fake-gpgv.ts";
 
 // tools/upstream/firefox-source.sh: the only way a build gets its Firefox source (spec

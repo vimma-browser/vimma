@@ -102,7 +102,10 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
    package manager reads its configuration from the current directory
    (docs/security/14-build-and-release-supply-chain.md, B18). `tools/ci/tree-covered.mjs` runs only
    on pushes to `main`, from trusted files, and may move with the rest of `tools/ci`. (Since
-   changed: it moved, as `tools/ci/tree-covered.ts`, #946.)
+   changed: it moved, as `tools/ci/tree-covered.ts`, #946. Key-guard's test imports
+   `tools/test/temp-dir.ts`: no workflow runs that test from the base branch, only Vitest does,
+   on the Node `.nvmrc` pins, and the guard script itself imports nothing from `tools/test`. With
+   that, every other `.mjs` file has moved and `tools/test/mjs-allowlist.txt` is empty, #946.)
 
 ## Reasoning
 

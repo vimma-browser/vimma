@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { isolateTmp, tempDir } from "./temp-dir.mjs";
+import { isolateTmp, tempDir } from "./temp-dir.ts";
 import guard from "./tmp-guard.ts";
 
 describe("tempDir", () => {

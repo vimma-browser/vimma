@@ -34,30 +34,24 @@ const HOSTED_IMAGE =
 /** A workflow file of this repository: one name in .github/workflows, no other path segment. */
 const LOCAL_WORKFLOW = /^\.\/\.github\/workflows\/[\w-]+(?:\.[\w-]+)*\.ya?ml$/;
 
-/** @param {unknown} label */
-export const isHostedImage = (label) => typeof label === "string" && HOSTED_IMAGE.test(label);
+export const isHostedImage = (label: unknown): boolean =>
+  typeof label === "string" && HOSTED_IMAGE.test(label);
 
-/**
- * @param {unknown} v
- * @returns {v is Record<string, unknown>}
- */
-const isMap = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+const isMap = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
 
-/**
- * @param {string} text a workflow file
- * @returns {Record<string, unknown>}
- */
-export function parseWorkflow(text) {
+/** @param text  a workflow file */
+export function parseWorkflow(text: string): Record<string, unknown> {
   const doc = load(text, { schema: CORE_SCHEMA });
   if (!isMap(doc)) throw new Error("a workflow is a mapping");
   return doc;
 }
 
 /**
- * @param {string} text a workflow file
- * @returns {string[]} the events under its top-level `on:`
+ * @param text  a workflow file
+ * @returns the events under its top-level `on:`
  */
-export function triggers(text) {
+export function triggers(text: string): string[] {
   const on = parseWorkflow(text).on;
   if (typeof on === "string") return [on];
   if (Array.isArray(on) && on.every((t) => typeof t === "string")) return on;
@@ -66,14 +60,13 @@ export function triggers(text) {
 }
 
 /**
- * @param {string} text a workflow file
- * @returns {Map<string, Record<string, unknown>>} job id to the job
+ * @param text  a workflow file
+ * @returns job id to the job
  */
-export function jobs(text) {
+export function jobs(text: string): Map<string, Record<string, unknown>> {
   const all = parseWorkflow(text).jobs;
   if (!isMap(all)) throw new Error("`jobs:` is not a mapping");
-  /** @type {Map<string, Record<string, unknown>>} */
-  const out = new Map();
+  const out = new Map<string, Record<string, unknown>>();
   for (const [id, job] of Object.entries(all)) {
     if (!isMap(job)) throw new Error(`job ${id} is not a mapping`);
     out.set(id, job);
@@ -81,19 +74,15 @@ export function jobs(text) {
   return out;
 }
 
-/**
- * @typedef {{ kind: "labels", labels: unknown[] }
- *   | { kind: "expression", expression: string }
- *   | { kind: "object" }
- *   | { kind: "reusable", uses: string }
- *   | { kind: "missing" }} RunsOn
- */
+export type RunsOn =
+  | { kind: "labels"; labels: unknown[] }
+  | { kind: "expression"; expression: string }
+  | { kind: "object" }
+  | { kind: "reusable"; uses: string }
+  | { kind: "missing" };
 
-/**
- * @param {Record<string, unknown>} job a job from `jobs()`
- * @returns {RunsOn}
- */
-export function runsOn(job) {
+/** @param job  a job from `jobs()` */
+export function runsOn(job: Record<string, unknown>): RunsOn {
   const value = job["runs-on"];
   if (value === undefined) {
     return typeof job.uses === "string"
@@ -115,11 +104,12 @@ export function runsOn(job) {
  * `strategy.matrix`. Anything else (inputs, vars, event fields, conditionals, a matrix that is
  * itself an expression, or one with `include:`, which can add values the list does not show) is
  * unresolved: its value is not known from the file.
- * @param {string} expression
- * @param {Record<string, unknown>} job
- * @returns {unknown[] | null} every value it can take, or null when it cannot be resolved
+ * @returns every value it can take, or null when it cannot be resolved
  */
-export function resolveExpression(expression, job) {
+export function resolveExpression(
+  expression: string,
+  job: Record<string, unknown>,
+): unknown[] | null {
   const m = /^\$\{\{\s*matrix\.([\w-]+)\s*\}\}$/.exec(expression);
   if (!m?.[1]) return null;
   const strategy = job.strategy;
@@ -130,10 +120,10 @@ export function resolveExpression(expression, job) {
 }
 
 /**
- * @param {Record<string, unknown>} job a job from `jobs()`
- * @returns {string | null} why the job may not run on a standard GitHub-hosted runner, or null
+ * @param job  a job from `jobs()`
+ * @returns why the job may not run on a standard GitHub-hosted runner, or null
  */
-export function runnerProblem(job) {
+export function runnerProblem(job: Record<string, unknown>): string | null {
   const r = runsOn(job);
   if (r.kind === "reusable") {
     // A local workflow is a file in .github/workflows and is checked as such; any other is not.
@@ -155,12 +145,11 @@ export function runnerProblem(job) {
 }
 
 /**
- * @param {string} text a workflow file
- * @returns {string[]} one line per job that may not run on a standard GitHub-hosted runner
+ * @param text  a workflow file
+ * @returns one line per job that may not run on a standard GitHub-hosted runner
  */
-export function workflowRunnerProblems(text) {
-  /** @type {string[]} */
-  const out = [];
+export function workflowRunnerProblems(text: string): string[] {
+  const out: string[] = [];
   for (const [id, job] of jobs(text)) {
     const problem = runnerProblem(job);
     if (problem) out.push(`${id}: ${problem}`);

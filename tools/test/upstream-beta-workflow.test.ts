@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { tempDir } from "./temp-dir.mjs";
+import { tempDir } from "./temp-dir.ts";
 
 // Spec upstream-beta-canary, B8–B10 and "Security and privacy"; docs/security/10-firefox-updates.md
 // G9, G10. The Beta canary's workflow shape. Text checks, like upstream-workflow.test.ts: no YAML

@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import * as espree from "espree";
 import { describe, expect, it } from "vitest";
 import { coreLayout, importPositions, rewriteSpecifiers, syncCore } from "../sync-core.ts";
-import { tempDir } from "./temp-dir.mjs";
+import { tempDir } from "./temp-dir.ts";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const SRC = join(ROOT, "packages/vimma-core/src");

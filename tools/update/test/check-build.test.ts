@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import { MOZILLA_CERTS, checkBuild } from "../check-build.ts";
 
 const SCRIPT = new URL("../check-build.ts", import.meta.url).pathname;

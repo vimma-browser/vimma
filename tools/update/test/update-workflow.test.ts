@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import { testKey } from "../../test/test-keys.ts";
 import { IDENTITY_REGEXP } from "../../package/package.ts";
 import {

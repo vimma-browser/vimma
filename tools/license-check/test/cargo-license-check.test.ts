@@ -8,7 +8,7 @@ import {
   checkCargoMetadata,
   normaliseCargoLicense,
 } from "../cargo-license-check.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 const script = fileURLToPath(new URL("../cargo-license-check.ts", import.meta.url));
 

@@ -12,7 +12,7 @@ import {
   refreshPrefs,
   unifiedDiff,
 } from "../upstream-prefs.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 const OURS_PATH = "src/browser/branding/vimma/pref/firefox-branding.js";
 const script = fileURLToPath(new URL("../upstream-prefs.ts", import.meta.url));

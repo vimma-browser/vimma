@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import { decide, nightlyRecord, readRecord } from "../nightly-change.ts";
 
 const SCRIPT = new URL("../nightly-change.ts", import.meta.url).pathname;

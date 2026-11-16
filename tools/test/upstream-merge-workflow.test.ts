@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
-import { jobs, parseWorkflow, triggers } from "./workflow-runners.mjs";
+import { jobs, parseWorkflow, triggers } from "./workflow-runners.ts";
 import type { Job, Step } from "./workflow-types.ts";
 
 // Spec upstream-bump-automation, Behaviour 5 (since changed), docs/security/10-firefox-updates.md

@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ENGINE_CERT_DIR, linkUpdateCerts } from "../link-update-certs.ts";
 import { CERT_DIR } from "../../update/gen-update-keys.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const SLOTS = ["primary.der", "secondary.der"];

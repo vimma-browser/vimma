@@ -15,7 +15,7 @@ import {
   sourceStamp,
   uaName,
 } from "../artifact-build.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 const REV = "737ec77d798755890b062aab541a90d6c75afd19";
 /** Firefox 159.0b1's source tarball (docs/specs/upstream-beta-canary.md, R3). */

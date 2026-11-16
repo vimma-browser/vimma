@@ -134,7 +134,7 @@ export type Result = "success" | "failure" | "cancelled" | "skipped";
  * Runs a workflow's jobs in file order, as GitHub would for one event. A job that starts
  * succeeds unless `results` names another end for it; once one is cancelled, the run is. A job
  * whose `if:` names no status function gets GitHub's implicit `success() &&`.
- * @param jobs  from workflow-runners.mjs's `jobs`
+ * @param jobs  from workflow-runners.ts's `jobs`
  * @param run  outputs: what each job sets (also when it fails); results: how a job that starts
  *   ends, when not in success
  */

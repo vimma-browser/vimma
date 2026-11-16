@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { PR_TRIGGERS, concurrencyGroup, prConcurrencyProblem } from "./workflow-concurrency.ts";
-import { triggers } from "./workflow-runners.mjs";
+import { triggers } from "./workflow-runners.ts";
 
 // Every workflow a pull request triggers cancels the pull request's superseded run, and only
 // that run (workflow-concurrency.ts; docs/runbook/ci-superseded-pull-request-runs.md, "Superseded

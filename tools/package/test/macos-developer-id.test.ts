@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 // Spec macos-build, sub-PR 7: a release's Vimma.app signed with Vimma's Developer ID, under the
 // hardened runtime with Vimma's production entitlements, notarised and stapled, then packed into a
