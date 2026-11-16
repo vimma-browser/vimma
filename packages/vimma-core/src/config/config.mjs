@@ -791,8 +791,7 @@ function validateMcp(mcp, { fail, typeError, unknownKey }) {
     if (typeof v !== "bigint") typeError(path, v, "an integer");
     else if (v < BigInt(min) || v > BigInt(max)) {
       fail(path, `must be an integer between ${min} and ${max}${unit}`);
-    } else return true;
-    return false;
+    }
   };
   const max = mcp.grant_max_minutes;
   const { grantMaxMinutes: g } = MCP_BOUNDS;

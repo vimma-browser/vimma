@@ -695,3 +695,100 @@ describe("[routing] default_workspace (app-routes, decision 16)", () => {
     expect(defaultWorkspaceFor(null, { workspaces: ["work"] })).toBeNull();
   });
 });
+
+describe("rule values at their edges", () => {
+  const BAD_DOMAIN =
+    'must be a hostname like "github.com" or "*.corp.example", without scheme, port or path';
+  const BAD_URL = 'must be a URL like "file:///home/me/work/" or "about:preferences"';
+
+  test("each wrong type is named", () => {
+    expect(validateRoutes("x")).toEqual([
+      { path: [], message: "expected [[routes]] tables, got a string" },
+    ]);
+    expect(validateRoutes([[1], 1.5, new Date(0), true, "s", 1n])).toEqual([
+      { path: [0], message: "expected a table, got an array" },
+      { path: [1], message: "expected a table, got a float" },
+      { path: [2], message: "expected a table, got a date" },
+      { path: [3], message: "expected a table, got a boolean" },
+      { path: [4], message: "expected a table, got a string" },
+      { path: [5], message: "expected a table, got an integer" },
+    ]);
+    expect(validateRoutes([{ domain: {}, workspace: "w" }])).toEqual([
+      { path: [0, "domain"], message: "expected a string, got a table" },
+    ]);
+  });
+
+  test.each([
+    ["*.1.2.3.4", undefined],
+    ["*.::1", undefined],
+    ["*.[::1]", undefined],
+    ["a b", undefined],
+    // A port is taken off only at the end, a scheme only at the start.
+    ["a.com:8x", undefined],
+    ["1http://a.com", "1http"],
+    ["a.com/xy", "a.com"],
+    ["https://a.com:443/x", "a.com"],
+  ])("domain %j is refused, suggesting %j", (domain, suggestion) => {
+    expect(validateRoutes([{ domain, workspace: "w" }])).toEqual([
+      { path: [0, "domain"], message: BAD_DOMAIN, ...(suggestion ? { suggestion } : {}) },
+    ]);
+  });
+
+  test("a domain is compared trimmed, lower-case and without its final dot", () => {
+    expect(validateRoutes([{ domain: " Example.com. ", workspace: "w" }])).toEqual([]);
+    expect(resolveRoutes([{ domain: " Example.com. ", workspace: "w" }])[0]?.domain).toEqual({
+      host: "example.com",
+      sub: false,
+      ip: false,
+    });
+  });
+
+  test.each([
+    [" https://a.com/ ", []],
+    ["https://a.com/javascript:x", []],
+    ["\u0001https://a.com/", [{ path: [0, "url"], message: BAD_URL }]],
+    ["javascript:alert(1)", [{ path: [0, "url"], message: BAD_URL }]],
+  ])("url %j", (url, expected) => {
+    expect(validateRoutes([{ url, workspace: "w" }])).toEqual(expected);
+  });
+
+  test.each([
+    ["a".repeat(32), []],
+    ["a".repeat(33), "workspace name must be 1 to 32 characters"],
+    ["", "workspace name must be 1 to 32 characters"],
+    ["a\x7f", "workspace name must not contain control characters"],
+  ])("workspace %j", (workspace, expected) => {
+    expect(validateRoutes([{ domain: "a.com", workspace }])).toEqual(
+      typeof expected === "string" ? [{ path: [0, "workspace"], message: expected }] : expected,
+    );
+  });
+
+  test("IP rules are described as written, IPv6 in brackets, never as subdomains", () => {
+    const routes = resolveRoutes([
+      { domain: "1.2.3.4", workspace: "a" },
+      { domain: "::1", workspace: "b" },
+    ]);
+    expect(routes.map(describeRoute)).toEqual(["domain 1.2.3.4", "domain [::1]"]);
+  });
+
+  test("a domain rule takes only http and https links", () => {
+    const routes = resolveRoutes([{ domain: "a.com", workspace: "w" }]);
+    expect(matchRoute(routes, { url: "ftp://a.com/" })).toBeNull();
+    expect(matchRoute(routes, { url: "https://a.com/" })?.workspace).toBe("w");
+  });
+
+  test("a *. rule shadows the same *. rule below it; a rule past the end has no shadow", () => {
+    const routes = resolveRoutes([
+      { domain: "*.a.com", workspace: "one" },
+      { domain: "*.a.com", workspace: "two" },
+    ]);
+    expect(shadowedBy(routes, 1)?.index).toBe(1);
+    expect(shadowedBy(routes, 5)).toBeNull();
+  });
+
+  test("routeDomainFor drops www., a final dot and IPv6 brackets", () => {
+    expect(routeDomainFor("https://www.a.com./x")).toBe("a.com");
+    expect(routeDomainFor("http://[::1]:8/")).toBe("::1");
+    expect(routeDomainFor("ftp://a.com/")).toBeNull();
+  });
+});
