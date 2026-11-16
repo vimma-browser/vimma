@@ -485,13 +485,12 @@ describe("the picker's entries", () => {
 
 describe("sameProvider", () => {
   test("one model at one endpoint under one name; any of the three differing makes another", () => {
-    /** @type {import("../src/config/config.mjs").AgentProviderConfig} */
-    const p = /** @type {any} */ ({
+    const p = {
       name: "anthropic",
       kind: "anthropic",
       endpoint: "https://api.anthropic.com",
       model: "claude-sonnet-4-5",
-    });
+    } as import("../src/config/config.mjs").AgentProviderConfig;
     expect(sameProvider(p, { ...p })).toBe(true);
     expect(sameProvider(p, { ...p, name: "work" })).toBe(false);
     expect(sameProvider(p, { ...p, endpoint: "https://api.anthropic.com/" })).toBe(false);
