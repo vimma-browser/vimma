@@ -332,6 +332,8 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
    user's are; a label whose element is gone or disconnected is refused with
    `that element is gone: call vimma_elements again`, before a follow from that list as before
    a click or a fill, because the page may have replaced the element since it was listed.
+   (Since changed: the child keeps the agent's collection, and runs its clicks, fills,
+   submissions and console reads, in its `AgentPage`, `actors/agent-page.mjs`, issue #1109.)
 5. **What is listed.** Per target: `label`; `kind` (`link`, `button`, `field`, `checkbox`,
    `radio`, `select`, `click`); `text` (its rendered text, else `aria-label`, `title` or `alt`,
    cut at 80 characters); for links the `href`; and when it is in a frame of another site, that

@@ -178,12 +178,21 @@ add_task(async function agent_clicks_never_synthesise_input_or_user_activation()
   const base = "chrome://browser/content/vimma/";
   const files = [
     "ctl/agent-commands.mjs",
+    "ctl/agent-errors.mjs",
+    "ctl/agent-tabs.mjs",
+    "ctl/agent-waits.mjs",
+    "ctl/agent-steps.mjs",
     "ctl/AgentAct.sys.mjs",
     "ctl/AgentDrive.sys.mjs",
     "actors/VimmaActors.sys.mjs",
+    "actors/AgentActors.sys.mjs",
+    "actors/submit-marks.mjs",
+    "actors/actor-for.mjs",
     "actors/VimmaChild.sys.mjs",
+    "actors/agent-page.mjs",
     "actors/agent-fields.mjs",
     "actors/hint-collect.mjs",
+    "actors/page-scroll.mjs",
   ];
   const forbidden =
     /\bsend(?:Native)?(?:Mouse|Touch|Wheel|Key|Pointer)\w*\b|\bsynthesize\w*|\bnotifyUserGestureActivation\b/g;
@@ -202,10 +211,18 @@ add_task(async function agent_fills_never_set_a_file() {
   const base = "chrome://browser/content/vimma/";
   const files = [
     "ctl/agent-commands.mjs",
+    "ctl/agent-errors.mjs",
+    "ctl/agent-tabs.mjs",
+    "ctl/agent-waits.mjs",
+    "ctl/agent-steps.mjs",
     "ctl/AgentAct.sys.mjs",
     "ctl/AgentDrive.sys.mjs",
     "actors/VimmaActors.sys.mjs",
+    "actors/AgentActors.sys.mjs",
+    "actors/submit-marks.mjs",
+    "actors/actor-for.mjs",
     "actors/VimmaChild.sys.mjs",
+    "actors/agent-page.mjs",
     "actors/agent-fields.mjs",
   ];
   const forbidden = /\bmozSet\w*|\.files\s*=|\bmozFileOrDirectory\w*|\bDataTransfer\b/g;

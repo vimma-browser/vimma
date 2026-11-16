@@ -331,3 +331,33 @@ add_task(async function a_restored_pane_tree_swaps_and_resizes() {
   Assert.deepEqual(await pageKeysThenZ(a), ["z"], "a's page saw none of the keys");
   await reset();
 });
+
+add_task(async function resize_mode_ends_when_the_last_pane_closes_or_the_split_hides() {
+  const a = await openPage("a");
+  const b = await split("v");
+  await backTo(a);
+  prefix("r");
+  Assert.equal(VimmaHost.status(window).mode, "resize", "ctrl+b r enters resize mode");
+
+  gBrowser.removeTab(b);
+  await until(() => !view().panes, "one pane left");
+  await until(() => segText("mode") !== "RESIZE", "the status bar leaves RESIZE");
+  Assert.notEqual(VimmaHost.status(window).mode, "resize", "the last pane closed: mode over");
+  await focusContent(a.linkedBrowser);
+  await split("v");
+  await backTo(a);
+  Assert.notEqual(VimmaHost.status(window).mode, "resize", "a new split starts outside it");
+
+  prefix("r");
+  Assert.equal(VimmaHost.status(window).mode, "resize", "resize mode again");
+  const c = /** @type {SplitTab} */ (BrowserTestUtils.addTab(gBrowser, `${PAGE}?c`));
+  await BrowserTestUtils.browserLoaded(c.linkedBrowser);
+  gBrowser.selectedTab = c;
+  await until(() => view().hidden, "picking another tab hides the split");
+  Assert.notEqual(VimmaHost.status(window).mode, "resize", "a hidden split: mode over");
+  gBrowser.selectedTab = a;
+  await until(() => !view().hidden && !!view().panes, "the split shows again");
+  await focusContent(a.linkedBrowser);
+  await until(() => VimmaHost.status(window).mode === "normal", "back in normal mode, not resize");
+  await reset();
+});

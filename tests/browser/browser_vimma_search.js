@@ -148,10 +148,8 @@ async function keyword(name, url, postData) {
 const pageText = (/** @type {MozTabbrowserTab} */ tab) =>
   SpecialPowers.spawn(tab.linkedBrowser, [], () => content.document.body?.textContent.trim());
 
-/**
- * nsISearchEngine, as far as this file reads it (SearchService is untyped here).
- * @typedef {{ readonly id: string, readonly name: string, readonly alias: string }} SearchEngine
- */
+/** The default engine: there is one, as Vimma ships engines (SearchService's is null without). */
+const defaultEngine = () => /** @type {SearchEngine} */ (SearchService.defaultEngine);
 
 /** @type {SearchEngine} */
 let installed;
@@ -177,7 +175,7 @@ add_task(async function setup() {
     },
     { setAsDefault: true },
   );
-  originalDefault = SearchService.defaultEngine;
+  originalDefault = defaultEngine();
   await SpecialPowers.pushPrefEnv({
     set: [
       ["vimma.config.path", file],
@@ -201,25 +199,25 @@ add_task(async function setup() {
 
 add_task(async function default_sets_and_removing_it_restores_the_previous_one() {
   await writeConfig("[search]", `default = "${INSTALLED}"`);
-  await until(() => SearchService.defaultEngine.name === INSTALLED, "the default is set");
+  await until(() => defaultEngine().name === INSTALLED, "the default is set");
   Assert.equal(applied().default.previous, originalDefault.id, "the previous one is recorded");
 
   const tab = await openPage();
   await openFrom(tab, "open plain words", "https://example.com/?installed=plain+words");
 
   await writeConfig("[search]");
-  await until(
-    () => SearchService.defaultEngine.id === originalDefault.id,
-    "the previous default is back",
-  );
+  await until(() => defaultEngine().id === originalDefault.id, "the previous default is back");
   BrowserTestUtils.removeTab(tab);
 });
 
 add_task(async function a_default_chosen_in_settings_since_is_kept() {
   await writeConfig("[search]", `default = "${INSTALLED}"`);
-  await until(() => SearchService.defaultEngine.name === INSTALLED, "the default is set");
-  const other = (await SearchService.getVisibleEngines()).find(
-    (/** @type {SearchEngine} */ e) => e.name !== INSTALLED && e.id !== originalDefault.id,
+  await until(() => defaultEngine().name === INSTALLED, "the default is set");
+  // Another of the engines Vimma ships.
+  const other = /** @type {SearchEngine} */ (
+    (await SearchService.getVisibleEngines()).find(
+      (e) => e.name !== INSTALLED && e.id !== originalDefault.id,
+    )
   );
   // Settings changes it once Vimma is done: a reconcile still due (engines added in setup)
   // would set the file's default again, as it should.
@@ -228,14 +226,14 @@ add_task(async function a_default_chosen_in_settings_since_is_kept() {
 
   await writeConfig("[search]");
   await until(() => applied()?.default === null, "the apply without default ran");
-  Assert.equal(SearchService.defaultEngine.id, other.id, "the choice made in Settings stands");
+  Assert.equal(defaultEngine().id, other.id, "the choice made in Settings stands");
   await SearchService.setDefault(originalDefault, SearchService.CHANGE_REASON.UNKNOWN);
 });
 
 add_task(async function aliases_make_an_engine_and_alias_an_installed_one() {
   await writeConfig("[search.aliases]", `t = "${TEMPLATE}"`, `w = "${INSTALLED}"`);
   await until(() => engineByAlias("@t"), "the template's engine is made");
-  const t = await engineByAlias("@t");
+  const t = /** @type {TestSearchEngine} */ (await engineByAlias("@t"));
   Assert.equal(t.name, "example.com", "named after its host");
   Assert.ok(!t.supportsResponseType("application/x-suggestions+json"), "it has no suggestion URL");
   await until(() => installed.alias === "@w", "the installed engine gets @w");
@@ -272,7 +270,7 @@ add_task(async function open_and_tabnew_resolve_aliases() {
     `t = "${TEMPLATE}"`,
   );
   await until(() => engineByAlias("@t"), "the template's engine is made");
-  await until(() => SearchService.defaultEngine.name === INSTALLED, "the default is set");
+  await until(() => defaultEngine().name === INSTALLED, "the default is set");
   const tab = await openPage();
 
   await openFrom(tab, "open @t cats", "https://example.com/?t=cats");
@@ -387,7 +385,7 @@ add_task(async function the_bug_report_never_names_a_template_host() {
     'corp = "https://wiki.corp.example.net/search?q=%s"',
     'lan = "HTTP://searx.lan/?q=%s"',
   );
-  await until(() => SearchService.defaultEngine.name === "wiki.corp.example.net", "it applies");
+  await until(() => defaultEngine().name === "wiki.corp.example.net", "it applies");
   const data = await AboutVimma.collect(window);
   const report = AboutVimma.report(data);
   Assert.ok(!report.includes("corp.example"), "the report has no template host");
@@ -397,10 +395,7 @@ add_task(async function the_bug_report_never_names_a_template_host() {
     "an HTTP:// template is marked unencrypted, whatever its case",
   );
   await writeConfig("[search]");
-  await until(
-    () => SearchService.defaultEngine.id === originalDefault.id,
-    "the previous default is back",
-  );
+  await until(() => defaultEngine().id === originalDefault.id, "the previous default is back");
 });
 
 add_task(async function a_malformed_state_is_discarded_and_search_still_applies() {
@@ -449,16 +444,13 @@ add_task(async function an_unknown_engine_is_a_config_error_and_the_rest_applies
     ),
     "about:vimma lists it under Search",
   );
-  Assert.notEqual(SearchService.defaultEngine.name, INSTALLED, "the default is left alone");
+  Assert.notEqual(defaultEngine().name, INSTALLED, "the default is left alone");
 
   await writeConfig("[search]", `default = "${INSTALLED}"`);
-  await until(() => SearchService.defaultEngine.name === INSTALLED, "fixed, it applies");
+  await until(() => defaultEngine().name === INSTALLED, "fixed, it applies");
   await until(() => errorSegment() === null, "and the error clears");
   await writeConfig("[search]");
-  await until(
-    () => SearchService.defaultEngine.id === originalDefault.id,
-    "the previous default is back",
-  );
+  await until(() => defaultEngine().id === originalDefault.id, "the previous default is back");
 });
 
 add_task(async function a_private_window_opens_aliases_too() {

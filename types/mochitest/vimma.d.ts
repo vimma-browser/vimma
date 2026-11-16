@@ -1,9 +1,9 @@
 // Vimma's own types, for the browser tests to name a callback's parameter, a fixture or a cast.
-// ChromeUtils.importESModule types each Vimma module by its URL (modules.d.ts); these name what
-// a test writes down itself. Each is derived from a module under src/ (never from a vimma-core
-// path), so it follows the product's own JSDoc. The ones that narrow a product type (a `Live`,
-// `Contained`, `Refused` or `Offered` one) say what the test knows that the type does not: a
-// test casts to one only where that holds, and would fail on the value otherwise.
+// ChromeUtils.importESModule types each Vimma module by its URL (types/vimma-modules.d.ts);
+// these name what a test writes down itself. Each is derived from a module under src/ (never
+// from a vimma-core path), so it follows the product's own JSDoc. The ones that narrow a product
+// type (a `Live`, `Contained`, `Refused` or `Offered` one) say what the test knows that the type
+// does not: a test casts to one only where that holds, and would fail on the value otherwise.
 
 /** A window's workspace, as WindowWorkspaces models it (core/workspaces.mjs, WorkspaceState). */
 type WorkspaceState = NonNullable<
@@ -95,7 +95,7 @@ type VimmaActorsApi =
 type HintTarget = Parameters<VimmaActorsApi["activateHint"]>[0];
 /**
  * A frame's console error entry, as the child makes it (core/agent-act.mjs ConsoleEntry);
- * VimmaActors.agentConsole passes the child's entries on as `unknown` for its caller to check.
+ * AgentActors.agentConsole passes the child's entries on as `unknown` for its caller to check.
  */
 type ConsoleEntry = import("../../src/browser/base/content/vimma/core/agent-act.mjs").ConsoleEntry;
 /** `[mcp]` as the config resolves it (core/config.mjs McpConfig). */

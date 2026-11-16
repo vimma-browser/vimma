@@ -99,13 +99,13 @@ With any problem the result has no config, and each problem is located with `loc
 sorted by line. Otherwise `mergeWithDefaults` gives the resolved config, which keeps the file's
 order of `[workspaces]` and `[sites]`. `reloadConfig` then returns either the new config and
 keymap, or the one in force with the errors: the previous config, or the defaults when there was
-none (`kept: true`). Tests: [config.test.mjs](../../packages/vimma-core/test/config.test.mjs),
-[config-v2.test.mjs](../../packages/vimma-core/test/config-v2.test.mjs),
-[toml.test.mjs](../../packages/vimma-core/test/toml.test.mjs) and
-[toml-conformance.test.mjs](../../packages/vimma-core/test/toml-conformance.test.mjs); the
+none (`kept: true`). Tests: [config.test.ts](../../packages/vimma-core/test/config.test.ts),
+[config-v2.test.ts](../../packages/vimma-core/test/config-v2.test.ts),
+[toml.test.ts](../../packages/vimma-core/test/toml.test.ts) and
+[toml-conformance.test.ts](../../packages/vimma-core/test/toml-conformance.test.ts); the
 fixtures of each schema in `tests/contract/config/v<n>/` (a valid file, invalid ones and their
 expected errors), read by
-[contract.test.mjs](../../packages/vimma-core/test/contract.test.mjs); and the fast-check
+[contract.test.ts](../../packages/vimma-core/test/contract.test.ts); and the fast-check
 properties in [config.fuzz.test.mjs](../../packages/vimma-core/test/fuzz/config.fuzz.test.mjs).
 
 ## 3. Applying it, or keeping the last good one
@@ -183,7 +183,7 @@ so the test harness never blames a repeating timer on another test file. Without
 built-in palette, `[theme] name`, applies and nothing is polled. Vimma's CSS in
 `src/browser/themes/shared/vimma/` is written against the tokens, so the surfaces it styles change
 with the sheet. Tests:
-[theme.test.mjs](../../packages/vimma-core/test/theme.test.mjs), the sample themes in
+[theme.test.ts](../../packages/vimma-core/test/theme.test.ts), the sample themes in
 `tests/contract/theme/`,
 [theme.fuzz.test.mjs](../../packages/vimma-core/test/fuzz/theme.fuzz.test.mjs);
 `rewriting_the_file_updates_within_the_poll`, `broken_file_keeps_the_previous_colours` and

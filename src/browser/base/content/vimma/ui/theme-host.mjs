@@ -6,7 +6,7 @@
 // One per app: imported with ChromeUtils.importESModule, so every window shares this module.
 // It starts on the built-in palette (`[theme] name`, vimma by default) and swaps in the user's
 // Omarchy theme (colors.toml, light.mode) once the async read completes, then polls the file
-// (plan §3: Firefox has no portable file watcher). vimma-core parses and validates
+// (Firefox has no portable file watcher). vimma-core parses and validates
 // (themeStylesheet); this module only does the I/O and the injection. config.toml's `[theme]`
 // (source, name, font, colors) arrives through `setConfig` (spec m5-config-load). The built-in
 // vimma palette's sheet carries its light variant under @media (prefers-color-scheme: light):

@@ -185,8 +185,8 @@ multi-selection (decision 9).
   has its own child. Messages are handled in `VimmaChild.receiveMessage`
   (`actors/VimmaChild.sys.mjs:344`).
 - **The agent read path.** `agent-read` reads a page with Firefox's `PageExtractor` actor
-  (`ctl/agent-commands.mjs:316-345`; vimma-mcp, Research), and loads a lazy tab first with
-  `gBrowser.insertBrowser` and `browser.loadURI` (`loadedPage`, `:241-255`), which is acceptable
+  (`COMMANDS["agent-read"]` in `ctl/agent-commands.mjs`; vimma-mcp, Research), and loads a lazy
+  tab first with `gBrowser.insertBrowser` and `browser.loadURI` (`loadedPage`), which is acceptable
   for an agent's own tabs but replaces a restored tab's pending session.
 - **Copy mode.** `v` / `prefix+[` (`defaults.mjs:150`, `:192`) enter it; the caret's `enter`
   keeps a selection that is on screen and starts selecting from it (`actors/caret.mjs:180-193`).
@@ -302,7 +302,8 @@ context. The parent checks each reply with core `parseGrepReply`, merges the rep
 order and hands them to the picker as they arrive; stale generations are dropped. Moving the
 selection asks the frame for the lines around the match (`Vimma:GrepPreview`). `Enter` selects
 the tab and sends `Vimma:GrepJump { gen, match }` to the frame, which selects and scrolls to the
-match.
+match. (Since changed: the child hands these messages to its `GrepPage`, `actors/grep-page.mjs`,
+which holds the text model and the matcher key, issue #1109.)
 
 1. **A picker of its own, next to tab search.** Live grep is a second picker on its own key,
    not a mode of tab search. Telescope keeps `find_files` and `live_grep` apart for the same

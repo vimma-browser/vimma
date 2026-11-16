@@ -281,7 +281,7 @@ under a grant or makes a grant from one`.
 
 ### Mochitests (`tests/browser/`)
 
-- `browser_vimma_mcp_agent.js`: `test_one_grant_covers_every_tool_of_its_connection` (replaces
+- `browser_vimma_mcp_agent_grants.js`: `test_one_grant_covers_every_tool_of_its_connection` (replaces
   `test_grants_per_connection_and_tool`): a read granted for 15 minutes lets the tab list and
   an open of that connection run with log rows, while a second connection asks;
   `test_queued_calls_a_grant_releases_show_as_granted`: a waiting open released by a grant given

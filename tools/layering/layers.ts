@@ -69,4 +69,46 @@ export const RESTRICTED: Record<string, Restricted> = {
     review:
       "a new caller of the agent gate needs a security review (docs/security/12-agents-mcp.md section 12)",
   },
+  /**
+   * The agent's reach (docs/security/12-agents-mcp.md M2, M8): which tabs an agent may name, who
+   * owns them, and the re-check after the yes. Only agent-commands.mjs, which asks the gate
+   * around these calls, uses them; the built-in agent reaches ownership through its
+   * AgentTabOwners.
+   */
+  "ctl/agent-tabs.mjs": {
+    importers: ["ctl/agent-commands.mjs"],
+    review:
+      "a new caller of the agent tab model needs a security review (docs/security/12-agents-mcp.md section 12, M2 and M8)",
+  },
+  /**
+   * The agent's reach into a page (docs/security/12-agents-mcp.md M25 to M28): its clicks, fills
+   * and submissions, each run after the child's reply and checked again just before. Only
+   * VimmaChild, which hands it the parent's `Vimma:Agent*` messages, builds one; another module
+   * of the content process could act in a page without the parent's question.
+   */
+  "actors/agent-page.mjs": {
+    importers: ["actors/VimmaChild.sys.mjs"],
+    review:
+      "a new caller of the agent's page work needs a security review (docs/security/12-agents-mcp.md section 12, M25 to M28)",
+  },
+  /**
+   * The chat window's API key entry (docs/security/12-agents-mcp-built-in-agent.md M46): the
+   * masked key field that never reveals the key, and the calls that store, clear and delete it.
+   * The chat window and its view, which builds the field, are its only callers.
+   */
+  "ui/agent-chat-key.mjs": {
+    importers: ["ui/agent-chat.mjs", "ui/agent-chat-view.mjs"],
+    review:
+      "a new caller of the API key entry or its masked field needs a security review (docs/security/12-agents-mcp-built-in-agent.md M46)",
+  },
+  /**
+   * The chat window's model setup (docs/security/12-agents-mcp-built-in-agent.md, endpoint rules
+   * and B12): a hosted provider's endpoint checked by checkEndpoint, and a picked provider written
+   * to config.toml. The chat window is its only caller.
+   */
+  "ui/agent-chat-models.mjs": {
+    importers: ["ui/agent-chat.mjs"],
+    review:
+      "a new caller of the model setup needs a security review (docs/security/12-agents-mcp-built-in-agent.md endpoint rules, B12)",
+  },
 };

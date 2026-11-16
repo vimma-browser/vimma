@@ -19,7 +19,7 @@ Spec: [m3-workspaces](../specs/m3-workspaces.md).
   [`reconcile_adopts_and_never_deletes_silently`](../../tests/browser/browser_vimma_workspace_store.js)
 - W5. Container 0 (the default, shared by everything outside a workspace) is **never** a
   workspace's, so it is never closed or cleared.
-  [`container 0 is never a workspace's: a stored id of 0 or below is refused`](../../packages/vimma-core/test/workspacedefs.test.mjs)
+  [`container 0 is never a workspace's: a stored id of 0 or below is refused`](../../packages/vimma-core/test/workspacedefs.test.ts)
 - W6. Closing a config workspace **must** close its tabs only, never its data; the last
   workspace is never closed.
   [`closing_a_config_workspace_closes_its_tabs_only`](../../tests/browser/browser_vimma_workspace_ops.js),

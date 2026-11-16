@@ -105,7 +105,8 @@ The user is asked once, for minutes, and after that nothing confines what the ke
   command asks through `AgentGate.request` (`ask`, `:195-209`), then checks that the tab and URL
   are still as asked (`stillAsAsked`, `:215-228`; vimma-mcp decision 19). `agent-open` loads with
   a null principal in the agent container (`:184-186`, `:429-456`) and takes one slot of the
-  per-connection open rate (`:426-428`).
+  per-connection open rate (`:426-428`). (Since changed: the tab model, `stillAsAsked` and
+  `agentPrincipal` are in `ctl/agent-tabs.mjs`, issue #1108.)
 - **Agent pages** (`ctl/AgentPages.sys.mjs:5-21`): pages in the agent container get no
   permission prompt, no pop-up (`SANDBOXED_AUXILIARY_NAVIGATION`, `:34-39`), no external app,
   and their downloads are asked and quarantined (vimma-mcp decisions 30, 31). They apply to any
@@ -334,8 +335,9 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
       because each one loads a URL; a history step to an entry that is not http or https (one
       the user reached in that tab before) is refused.
 13. **Within one call.** Actions run in order. After an action that loads a page (a follow,
-    back, forward, `gu`, `gU`), the next one waits for that load, up to 20 s (`LOAD_TIMEOUT_MS`,
-    `agent-commands.mjs:33`). (Since changed: the page counts as loaded at its
+    back, forward, `gu`, `gU`), the next one waits for that load, up to 20 s (`LOAD_TIMEOUT_MS`).
+    (Since changed: `LOAD_TIMEOUT_MS` is in `ctl/agent-waits.mjs`, issue #1108.) (Since changed:
+    the page counts as loaded at its
     `DOMContentLoaded` and 200 ms without a change, at most 1 s, rather than at its load event,
     because a page's slow images and trackers held every step; the result's `loading` says
     whether it is still loading; issue

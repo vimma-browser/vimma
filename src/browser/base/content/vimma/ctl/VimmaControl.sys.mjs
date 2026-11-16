@@ -403,7 +403,7 @@ const COMMANDS = {
 
   state() {
     const win = topWindow();
-    const host = VimmaHost.status(win);
+    const host = VimmaHost.socketStatus(win);
     const { gBrowser } = win;
     const visible = gBrowser.visibleTabs;
     // docs/specs/private-workspace.md decision 8d: a private window's pages stay unnamed; the
@@ -415,7 +415,7 @@ const COMMANDS = {
     return {
       mode: host.mode,
       pending: host.pending.length ? host.pending.join(" ") : null,
-      workspace: host.workspace?.name ?? null,
+      workspace: host.workspace,
       ...(hidden ? { private: true } : {}),
       tabs: visible.map((tab, index) => ({
         id: String(tab.linkedBrowser.browserId),
