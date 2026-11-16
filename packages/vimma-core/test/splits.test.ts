@@ -498,3 +498,47 @@ describe("the split picker's rows (behaviour 7, decision 12)", () => {
     expect(splitFocusTab(s, 3)).toBeNull();
   });
 });
+
+describe("split edges", () => {
+  const thrown = (fn: () => unknown) => {
+    try {
+      fn();
+    } catch (e) {
+      return e as SplitsError;
+    }
+    throw new Error("expected a throw");
+  };
+  const one = () => newSplit(createSplits(), ["a", "b"]).splits;
+
+  test("errors carry their name and Vimma's message", () => {
+    const s = one();
+    const unknown = thrown(() => showSplit(s, 9));
+    expect([unknown.name, unknown.code, unknown.message]).toEqual([
+      "SplitsError",
+      "unknown-split",
+      "no split 9",
+    ]);
+    expect(thrown(() => newSplit(s, ["c", "d"], { max: 0 })).message).toBe(
+      `max splits must be an integer from 1 to ${MAX_SPLITS_LIMIT}, got 0`,
+    );
+    expect(thrown(() => newSplit(s, ["c"])).message).toBe(
+      "a new split needs two different tabs or more",
+    );
+    const two = newSplit(s, ["c", "d"]).splits;
+    expect(thrown(() => updateSplit(two, 2, createRow(["c", "a"]))).message).toBe(
+      'tab "a" is in split 1',
+    );
+  });
+
+  test("showing the split already shown changes nothing", () => {
+    const s = one();
+    expect(showSplit(s, 1)).toBe(s);
+    expect(showSplit({ ...s, last: null }, 1)).toEqual({ ...s, shown: 1, last: 1 });
+  });
+
+  test("a split whose focus names no pane has no tab to select", () => {
+    const s = one();
+    const lost = { ...s, splits: [{ ...(s.splits[0] as any), focus: "p9" }] };
+    expect(splitFocusTab(lost as any, 1)).toBeNull();
+  });
+});

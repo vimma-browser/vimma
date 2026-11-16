@@ -288,3 +288,60 @@ describe("pdf marks", () => {
     expect(parsePdfOp({ op: "next", n: 0, at })).toBeNull();
   });
 });
+
+describe("pdf edges", () => {
+  const { NONE, ODD, EVEN } = PDF_SPREAD;
+
+  test("a label of exactly the limit is kept, and trimmed", () => {
+    const label = "x".repeat(32);
+    expect(parsePdfState({ ...good, label })?.label).toBe(label);
+    expect(parsePdfState({ ...good, label: " iv​ " })?.label).toBe("iv");
+  });
+
+  test("a null find count drops the record", () => {
+    expect(parsePdfState({ ...good, find: null })).toBeNull();
+  });
+
+  test("the full zoom is a number from 1 % to 10000 %", () => {
+    const drawnAt = (zoom: unknown) => parsePdfState({ ...good, zoom })?.drawn;
+    expect(drawnAt(0.01)).toBe(true);
+    expect(drawnAt(100)).toBe(true);
+    expect(drawnAt(0.009)).toBe(false);
+    expect(drawnAt(100.5)).toBe(false);
+    expect(drawnAt("1")).toBe(false);
+  });
+
+  test("J with a count moves that many pages", () => {
+    expect(pdfPageTarget("next", 3, 1, 10)).toBe(4);
+    expect(pdfPageTarget("next", 0, 1, 10)).toBe(2);
+  });
+
+  test("d from a spread pdf.js does not have shows the last spread", () => {
+    expect(pdfSpread("dual", 7, ODD)).toEqual({ mode: ODD, last: ODD });
+    expect(pdfSpread("dual", 7, NONE)).toEqual({ mode: EVEN, last: EVEN });
+  });
+
+  test("D swaps the spread shown, not the one d returns to", () => {
+    expect(pdfSpread("first_alone", ODD, EVEN)).toEqual({ mode: EVEN, last: EVEN });
+    expect(pdfSpread("first_alone", EVEN, ODD)).toEqual({ mode: ODD, last: ODD });
+  });
+
+  test("a position's numbers are bounded, inclusive", () => {
+    const at = { page: 1, left: 0, top: 0, scale: 1 };
+    expect(parsePdfPosition({ ...at, left: -1e6, top: 1e6 })).toEqual({
+      ...at,
+      left: -1e6,
+      top: 1e6,
+    });
+    expect(parsePdfPosition({ ...at, left: -1e6 - 1 })).toBeNull();
+    expect(parsePdfPosition({ ...at, top: 1e6 + 1 })).toBeNull();
+    expect(parsePdfPosition({ ...at, left: "1" })).toBeNull();
+    expect(parsePdfPosition({ ...at, scale: 0.1 })).not.toBeNull();
+    expect(parsePdfPosition({ ...at, scale: 25 })).not.toBeNull();
+    expect(parsePdfPosition(null)).toBeNull();
+  });
+
+  test("a mark name is a string", () => {
+    expect(isPdfMarkChar(5 as any)).toBe(false);
+  });
+});

@@ -472,3 +472,118 @@ describe("blockAround / blockObject: ip and ap in copy mode", () => {
     expect(blockObject(t.descs, t.at("body"), true, () => true)).toBe(-1);
   });
 });
+
+describe("block edges", () => {
+  // Plain descriptor lists: parent links as a content process might send them.
+  const d = (tag: string, parent: number, props: Record<string, unknown> = {}) => ({
+    tag,
+    parent,
+    display: "block",
+    text: true,
+    onScreen: true,
+    ...props,
+  });
+
+  test("an element with no display, or display none, is not a block", () => {
+    expect(classifyBlock(d("div", -1, { directText: true, display: "" }))).toBeNull();
+    expect(classifyBlock(d("div", -1, { directText: true, display: "none" }))).toBeNull();
+    expect(classifyBlock(d("div", -1, { directText: true, display: "flex" }))).toBe("block");
+  });
+
+  test("an excluded tag block, or a role that is no block, needs no text read", () => {
+    expect(needsBlockText(d("p", -1, { hidden: true }))).toBe(false);
+    expect(needsBlockText(d("div", -1, { role: "button" }))).toBe(false);
+    expect(needsBlockText(d("div", -1, { role: "note" }))).toBe(true);
+  });
+
+  test("only role=code needs a block-level display; an inline role block is a block", () => {
+    expect(classifyBlock(d("span", -1, { role: "paragraph", display: "inline" }))).toBe(
+      "paragraph",
+    );
+    expect(classifyBlock(d("span", -1, { role: "code", display: "inline" }))).toBeNull();
+  });
+
+  test("an element that is no block does not seal what is inside it, even with a caption role", () => {
+    const descs = [d("tr", -1, { role: "caption" }), d("td", 0)];
+    expect(pickBlocks(descs)).toEqual([{ index: 1, kind: "cell" }]);
+  });
+
+  test("a role=caption block is taken whole", () => {
+    const descs = [d("div", -1, { role: "caption" }), d("p", 0)];
+    expect(pickBlocks(descs)).toEqual([{ index: 0, kind: "caption" }]);
+  });
+
+  test("a parent at index 0 counts", () => {
+    expect(pickBlocks([d("li", -1), d("p", 0)])).toEqual([{ index: 1, kind: "paragraph" }]);
+    expect(pickBlocks([d("pre", -1), d("p", 0)])).toEqual([{ index: 0, kind: "code" }]);
+  });
+
+  test("a parent link that is not earlier in the list is no parent", () => {
+    expect(pickBlocks([d("p", 1), d("li", -1)])).toEqual([
+      { index: 0, kind: "paragraph" },
+      { index: 1, kind: "list item" },
+    ]);
+    expect(pickBlocks([d("p", 0)])).toEqual([{ index: 0, kind: "paragraph" }]);
+    expect(pickBlocks([d("li", -1), d("p", 0.5)])).toEqual([
+      { index: 0, kind: "list item" },
+      { index: 1, kind: "paragraph" },
+    ]);
+  });
+
+  test("+ from no element, to a parent at index 0, and never to html", () => {
+    expect(parentBlock([], 0)).toBe(-1);
+    const descs = [d("div", -1, { textLength: 10 }), d("p", 0, { textLength: 5 })];
+    expect(parentBlock(descs, 1)).toBe(0);
+    const html = [d("html", -1, { textLength: 10 }), d("p", 0, { textLength: 5 })];
+    expect(parentBlock(html, 1)).toBe(-1);
+  });
+
+  test("+ through parent links in a circle ends", () => {
+    const circle = [
+      d("span", 1, { display: "inline", textLength: 1 }),
+      d("span", 0, { display: "inline", textLength: 1 }),
+    ];
+    expect(parentBlock(circle, 0)).toBe(-1);
+  });
+
+  test("- looks only after the element, and finds a child of the first element", () => {
+    expect(childBlock([d("p", 1), d("div", -1)], 1)).toBe(-1);
+    expect(childBlock([d("div", -1), d("p", 0)], 0)).toBe(1);
+  });
+
+  test("- through a parent link past the list or in a circle finds nothing", () => {
+    expect(childBlock([d("div", -1), d("div", -1), d("p", 99)], 1)).toBe(-1);
+    expect(childBlock([d("div", -1), d("p", 2), d("span", 1)], 0)).toBe(-1);
+  });
+
+  test("j and k need an element and a whole, non-zero count", () => {
+    const descs = [d("p", -1), d("p", -1), d("p", -1)];
+    expect(adjacentBlock(descs, 1, 1)).toBe(2);
+    expect(adjacentBlock(descs, -1, 1)).toBe(-1);
+    expect(adjacentBlock(descs, 1, 0)).toBe(-1);
+    expect(adjacentBlock(descs, 1, 1.5)).toBe(-1);
+  });
+
+  test("ip finds a code block at index 0 around the caret", () => {
+    expect(blockAround([d("pre", -1), d("span", 0)], 1)).toBe(0);
+  });
+
+  test("ip follows only parent links earlier in the list", () => {
+    expect(blockAround([d("p", 1), d("textarea", -1)], 0)).toBe(0);
+    expect(blockAround([d("p", 0.5), d("textarea", -1)], 0)).toBe(0);
+  });
+
+  test("ap climbs to a parent block at index 0", () => {
+    const descs = [d("div", -1, { textLength: 10 }), d("p", 0, { textLength: 5 })];
+    expect(blockObject(descs, 1, true, () => true)).toBe(0);
+  });
+
+  test("ap climbs from a block at index 0", () => {
+    const descs = [
+      d("p", 2, { textLength: 5 }),
+      d("span", -1, { display: "inline" }),
+      d("div", -1, { textLength: 10 }),
+    ];
+    expect(blockObject(descs, 0, true, () => true)).toBe(2);
+  });
+});

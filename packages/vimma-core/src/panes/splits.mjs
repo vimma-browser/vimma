@@ -246,11 +246,11 @@ export function selectSplitTab(s, tabId) {
 }
 
 /**
- * Behaviour 5's refusal at `max` splits.
+ * Behaviour 5's refusal at `max` splits; never at `max` 1, where the new split replaces the old.
  * @param {number} max
  */
 function maxRefusal(max) {
-  return `new split: at most ${max} split${max === 1 ? "" : "s"} in a workspace`;
+  return `new split: at most ${max} splits in a workspace`;
 }
 
 /**
