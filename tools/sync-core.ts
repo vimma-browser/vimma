@@ -14,14 +14,12 @@ import { fileURLToPath } from "node:url";
 /**
  * Where each file of the package lands in core/: a module at the top, whatever its folder; a
  * vendored file at its own path. Throws on two modules that would land on the same name.
- * @param {readonly string[]} files  paths relative to packages/vimma-core/src, with `/`
- * @returns {Map<string, string>}  source path -> path in core/
+ * @param files  paths relative to packages/vimma-core/src, with `/`
+ * @returns  source path -> path in core/
  */
-export function coreLayout(files) {
-  /** @type {Map<string, string>} */
-  const layout = new Map();
-  /** @type {Map<string, string>} */
-  const owner = new Map();
+export function coreLayout(files: readonly string[]): Map<string, string> {
+  const layout = new Map<string, string>();
+  const owner = new Map<string, string>();
   for (const file of files) {
     const to = file.startsWith("vendor/") ? file : posix.basename(file);
     const other = owner.get(to);
@@ -57,10 +55,8 @@ const PLAIN_ARGUMENT = /^\s*(["'])[^"'`\n]*\1\s*\)/;
 
 /**
  * True when `at` sits inside a string opened earlier on its line.
- * @param {string} text
- * @param {number} at
  */
-function inStringOnLine(text, at) {
+function inStringOnLine(text: string, at: number) {
   const line = text.slice(text.lastIndexOf("\n", at - 1) + 1, at);
   return [...line.matchAll(STRING_ON_LINE)].some((q) => q[2] === "");
 }
@@ -70,12 +66,9 @@ function inStringOnLine(text, at) {
  * each path's opening quote and the path. Pure and never throws; the rewrite edits exactly these
  * positions and no others, so test/sync-core.test.ts can hold them against a parser's view
  * of where the module's imports are.
- * @param {string} text
- * @returns {{ offset: number, spec: string }[]}
  */
-export function importPositions(text) {
-  /** @type {{ offset: number, spec: string }[]} */
-  const positions = [];
+export function importPositions(text: string): { offset: number; spec: string }[] {
+  const positions: { offset: number; spec: string }[] = [];
   for (const m of text.matchAll(IMPORT_SPECIFIER)) {
     if (!inStringOnLine(text, m.index)) {
       positions.push({ offset: m.index + (m[1] ?? "").length, spec: m[3] ?? "" });
@@ -98,14 +91,12 @@ export function importPositions(text) {
  * string or template literal that spans lines is not seen from its later lines, so an import's
  * words on such a later line would be taken for an import. No module has either today, and the
  * parser check in test/sync-core.test.ts fails on the second if one ever does.
- * @param {string} text
- * @param {string} file  the module's path relative to packages/vimma-core/src
- * @param {Map<string, string>} layout  from coreLayout
- * @returns {string}
+ * @param file  the module's path relative to packages/vimma-core/src
+ * @param layout  from coreLayout
  */
-export function rewriteSpecifiers(text, file, layout) {
-  /** @param {number} offset */
-  const where = (offset) => `sync-core: ${file}:${text.slice(0, offset).split("\n").length}:`;
+export function rewriteSpecifiers(text: string, file: string, layout: Map<string, string>): string {
+  const where = (offset: number) =>
+    `sync-core: ${file}:${text.slice(0, offset).split("\n").length}:`;
   for (const m of text.matchAll(DYNAMIC_IMPORT)) {
     if (!PLAIN_ARGUMENT.test(text.slice(m.index + m[0].length))) {
       throw new Error(
@@ -125,17 +116,20 @@ export function rewriteSpecifiers(text, file, layout) {
     }
   }
   const from = layout.get(file) ?? file;
-  return text.replace(IMPORT_SPECIFIER, (all, before, quote, spec, offset) => {
-    // Not an import (inside a string): the check above has already refused its path.
-    if (!imports.has(offset + before.length)) return all;
-    const target = posix.join(posix.dirname(file), spec);
-    const to = layout.get(target);
-    if (to === undefined) {
-      throw new Error(`${where(offset)} "${spec}" names ${target}, not a file of the package`);
-    }
-    const path = posix.relative(posix.dirname(from), to);
-    return `${before}${quote}${path.startsWith(".") ? path : `./${path}`}${quote}`;
-  });
+  return text.replace(
+    IMPORT_SPECIFIER,
+    (all: string, before: string, quote: string, spec: string, offset: number) => {
+      // Not an import (inside a string): the check above has already refused its path.
+      if (!imports.has(offset + before.length)) return all;
+      const target = posix.join(posix.dirname(file), spec);
+      const to = layout.get(target);
+      if (to === undefined) {
+        throw new Error(`${where(offset)} "${spec}" names ${target}, not a file of the package`);
+      }
+      const path = posix.relative(posix.dirname(from), to);
+      return `${before}${quote}${path.startsWith(".") ? path : `./${path}`}${quote}`;
+    },
+  );
 }
 
 /**
@@ -143,25 +137,23 @@ export function rewriteSpecifiers(text, file, layout) {
  * chrome code that imports theme.mjs or config.mjs sees the same types as packages/ (jar.mn does
  * not pack them). Vendored LICENSE/README stay in packages/ (the .mjs files carry their own
  * licence headers).
- * @param {string} path
  */
-const wanted = (path) => !path.endsWith(".test.mjs") && /\.(mjs|d\.mts)$/.test(path);
+const wanted = (path: string) => !path.endsWith(".test.mjs") && /\.(mjs|d\.mts)$/.test(path);
 
 /**
  * The flat copy of the package at `from`, without writing it: each file's path in core/ and its
  * text. The promo recorder serves modules from it too.
- * @param {string} from  packages/vimma-core/src
- * @returns {Map<string, string>}  path in core/ -> text
+ * @param from  packages/vimma-core/src
+ * @returns  path in core/ -> text
  */
-export function flatCore(from) {
+export function flatCore(from: string): Map<string, string> {
   const files = readdirSync(from, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile())
     .map((entry) => relative(from, join(entry.parentPath, entry.name)).split(sep).join("/"))
     .filter(wanted)
     .sort();
   const layout = coreLayout(files);
-  /** @type {Map<string, string>} */
-  const out = new Map();
+  const out = new Map<string, string>();
   for (const [file, dest] of layout) {
     const text = readFileSync(join(from, file), "utf8");
     // Vendored files keep their folder, so their own imports hold; upstream's text stays byte for
@@ -173,11 +165,11 @@ export function flatCore(from) {
 
 /**
  * Replaces `to` with the flat copy of the package at `from`.
- * @param {string} from  packages/vimma-core/src
- * @param {string} to  the chrome tree's core/
- * @returns {string[]}  the files written, relative to `to`
+ * @param from  packages/vimma-core/src
+ * @param to  the chrome tree's core/
+ * @returns  the files written, relative to `to`
  */
-export function syncCore(from, to) {
+export function syncCore(from: string, to: string): string[] {
   const core = flatCore(from);
   rmSync(to, { recursive: true, force: true });
   for (const [dest, text] of core) {

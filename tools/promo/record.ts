@@ -60,7 +60,7 @@ import {
   textKeys,
 } from "./agent.ts";
 import { READ_PATH_PREF, devPrefs } from "../start.ts";
-import { flatCore } from "../sync-core.mjs";
+import { flatCore } from "../sync-core.ts";
 import {
   HOSTS,
   KeyTrack,

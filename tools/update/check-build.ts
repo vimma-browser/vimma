@@ -15,7 +15,7 @@
  * - the `updater` binary carries the bytes of Vimma's certificates (moz-build.patch) and of
  *   none of Mozilla's (dep1.der, dep2.der and the release and nightly ones beside them).
  *
- *   check-build.mjs INSTALL_DIR [--certs DIR] [--mozilla-certs DIR] [--channel NAME]
+ *   check-build.ts INSTALL_DIR [--certs DIR] [--mozilla-certs DIR] [--channel NAME]
  *       --certs: Vimma's primary.der and secondary.der (default: configs/updater)
  *       --mozilla-certs: the engine's toolkit/mozapps/update/updater (default: under engine/)
  *
@@ -25,7 +25,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CERT_DIR } from "./cert-dir.mjs";
+import { CERT_DIR } from "./cert-dir.ts";
 
 /**
  * Mozilla's certificates beside the updater's moz.build (Firefox 159.0.1): each must be found,
@@ -45,12 +45,9 @@ export const UPDATE_URL =
   "https://updates.vimma.dev/updates/browser/%BUILD_TARGET%/%CHANNEL%/update.xml";
 
 /**
- * @param {string} text an ini file
- * @param {string} section
- * @param {string} key
- * @returns {string | null}
+ * @param text an ini file
  */
-function iniValue(text, section, key) {
+function iniValue(text: string, section: string, key: string): string | null {
   let current = "";
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
@@ -62,13 +59,21 @@ function iniValue(text, section, key) {
 }
 
 /**
- * @param {{ install: string, certs: string, mozilla: string, channel?: string }} o
- * @returns {string[]} the problems found; empty when the install passes
+ * @returns the problems found; empty when the install passes
  */
-export function checkBuild({ install, certs, mozilla, channel = "vimma" }) {
-  /** @type {string[]} */
-  const problems = [];
-  const read = (/** @type {string} */ f) => {
+export function checkBuild({
+  install,
+  certs,
+  mozilla,
+  channel = "vimma",
+}: {
+  install: string;
+  certs: string;
+  mozilla: string;
+  channel?: string;
+}): string[] {
+  const problems: string[] = [];
+  const read = (f: string) => {
     const p = join(install, f);
     if (!existsSync(p)) {
       problems.push(`${f}: missing`);
@@ -118,11 +123,9 @@ export function checkBuild({ install, certs, mozilla, channel = "vimma" }) {
   return problems;
 }
 
-/** @param {string[]} argv */
-function main(argv) {
+function main(argv: string[]) {
   const root = fileURLToPath(new URL("../../", import.meta.url));
-  /** @type {{ install?: string, certs: string, mozilla: string, channel: string }} */
-  const o = {
+  const o: { install?: string; certs: string; mozilla: string; channel: string } = {
     certs: join(root, CERT_DIR),
     mozilla: join(root, "engine/toolkit/mozapps/update/updater"),
     channel: "vimma",
@@ -141,8 +144,8 @@ function main(argv) {
     else throw new Error(`unexpected argument: ${a}`);
   }
   if (!o.install)
-    throw new Error("usage: check-build.mjs INSTALL_DIR [--certs DIR] [--mozilla-certs DIR]");
-  const problems = checkBuild(/** @type {Required<typeof o>} */ (o));
+    throw new Error("usage: check-build.ts INSTALL_DIR [--certs DIR] [--mozilla-certs DIR]");
+  const problems = checkBuild(o as Required<typeof o>);
   if (problems.length) {
     for (const p of problems) console.error(`check-build: ${p}`);
     process.exit(1);

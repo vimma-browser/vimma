@@ -8,10 +8,10 @@
  * way by release.yml and nightly.yml: the host `mar` and Mozilla's make_full_update.sh and
  * common.sh, which build the complete MAR; signmar with the libraries of the objdir it loads,
  * for Mozilla's own check of the signed MAR; and Mozilla's update certificates, which
- * check-build.mjs makes sure the updater does not embed.
+ * check-build.ts makes sure the updater does not embed.
  *
- *   mar-tools.mjs pack --objdir DIR --engine DIR --out DIR   pack into a fresh DIR, then check
- *   mar-tools.mjs check --dir DIR                           check a packed DIR
+ *   mar-tools.ts pack --objdir DIR --engine DIR --out DIR   pack into a fresh DIR, then check
+ *   mar-tools.ts check --dir DIR                           check a packed DIR
  *
  * The check runs the tools from the packed directory as the later jobs do (LD_LIBRARY_PATH set
  * to it): ldd finds every library, each library packed is the one loaded, and signmar and mar
@@ -38,10 +38,9 @@ const CERTS = "mozilla-certs";
 /**
  * The libraries ldd resolved: `name => /path (0x…)` lines. The vDSO and the loader, which have
  * no `=>`, and the libraries it did not find are left out.
- * @param {string} text ldd's output
- * @returns {{ name: string, path: string }[]}
+ * @param text ldd's output
  */
-export function librariesIn(text) {
+export function librariesIn(text: string): { name: string; path: string }[] {
   const found = [];
   for (const line of text.split("\n")) {
     const m = /^\s*(\S+) => (\/\S*) \(0x[0-9a-f]+\)\s*$/.exec(line);
@@ -51,10 +50,10 @@ export function librariesIn(text) {
 }
 
 /**
- * @param {string} text ldd's output
- * @returns {string[]} the names of the libraries ldd did not find
+ * @param text ldd's output
+ * @returns the names of the libraries ldd did not find
  */
-export function missingIn(text) {
+export function missingIn(text: string): string[] {
   const missing = [];
   for (const line of text.split("\n")) {
     const m = /^\s*(\S+) => not found\s*$/.exec(line);
@@ -66,37 +65,35 @@ export function missingIn(text) {
 /**
  * ldd's output for `file`. ldd prints absolute paths whatever path it is given, so every
  * comparison below is between real paths.
- * @param {string} file
- * @param {NodeJS.ProcessEnv} [env]
  */
-function ldd(file, env = process.env) {
+function ldd(file: string, env: NodeJS.ProcessEnv = process.env) {
   const r = spawnSync("ldd", [file], { encoding: "utf8", env });
   if (r.error) throw new Error(`ldd ${file}: ${r.error.message}`);
   if (r.status !== 0) throw new Error(`ldd ${file}: ${(r.stderr || r.stdout).trim()}`);
   return r.stdout;
 }
 
-/** @param {string[]} names */
-const unique = (names) => [...new Set(names)].join(", ");
+const unique = (names: string[]) => [...new Set(names)].join(", ");
 
-/** @param {string} path */
-const dirOf = (path) => realpathSync(resolve(path, ".."));
+const dirOf = (path: string) => realpathSync(resolve(path, ".."));
 
-/**
- * @param {boolean} ok
- * @param {string} message
- * @returns {asserts ok}
- */
-function need(ok, message) {
+function need(ok: boolean, message: string): asserts ok {
   if (!ok) throw new Error(message);
 }
 
 /**
  * Packs the MAR tools of `objdir` and `engine` into a fresh `out`, then checks them.
- * @param {{ objdir: string, engine: string, out: string }} o
- * @returns {string[]} the files packed, beside the certificates
+ * @returns the files packed, beside the certificates
  */
-export function pack({ objdir, engine, out }) {
+export function pack({
+  objdir,
+  engine,
+  out,
+}: {
+  objdir: string;
+  engine: string;
+  out: string;
+}): string[] {
   const bin = join(objdir, "dist/bin");
   const signmar = join(bin, "signmar");
   const tools = [
@@ -111,7 +108,7 @@ export function pack({ objdir, engine, out }) {
   const binDir = realpathSync(bin);
   // The objdir's own libraries, wherever ldd says they are: the paths are dist/bin's symlinks
   // to the objects, so their directory is compared, not their targets.
-  const ours = (/** @type {string} */ text) =>
+  const ours = (text: string) =>
     librariesIn(text)
       .filter((l) => dirOf(l.path) === binDir)
       .map((l) => join(bin, l.name));
@@ -154,9 +151,8 @@ export function pack({ objdir, engine, out }) {
 /**
  * Checks a packed directory as the later jobs use it: every tool and library present, ldd
  * finding each library and the packed copy where there is one, and both programs starting.
- * @param {string} dir
  */
-export function check(dir) {
+export function check(dir: string) {
   const real = realpathSync(dir);
   const files = readdirSync(real);
   for (const f of ["mar", "signmar", ...SCRIPTS, ...DLOPENED]) {
@@ -183,10 +179,10 @@ export function check(dir) {
   // Both print their usage and exit non-zero without arguments; a program the loader cannot
   // start exits 127 with "error while loading shared libraries". Each runs as the mar jobs run
   // it: signmar with LD_LIBRARY_PATH, mar without.
-  for (const [f, withEnv] of /** @type {const} */ ([
+  for (const [f, withEnv] of [
     ["signmar", env],
     ["mar", process.env],
-  ])) {
+  ] as const) {
     const r = spawnSync(join(real, f), [], { encoding: "utf8", env: withEnv, timeout: 30_000 });
     const output = `${r.stdout ?? ""}${r.stderr ?? ""}`;
     need(
@@ -196,8 +192,7 @@ export function check(dir) {
   }
 }
 
-/** @param {string[]} argv */
-function main(argv) {
+function main(argv: string[]) {
   const [command, ...rest] = argv;
   const { values } = parseArgs({
     args: rest,
@@ -220,7 +215,7 @@ function main(argv) {
     console.log(`${values.dir}: signmar and mar start with the packed libraries`);
   } else {
     throw new Error(
-      "usage: mar-tools.mjs pack --objdir DIR --engine DIR --out DIR | check --dir DIR",
+      "usage: mar-tools.ts pack --objdir DIR --engine DIR --out DIR | check --dir DIR",
     );
   }
 }
@@ -233,7 +228,7 @@ if (
   try {
     main(process.argv.slice(2));
   } catch (e) {
-    console.error(`mar-tools.mjs: ${e instanceof Error ? e.message : e}`);
+    console.error(`mar-tools.ts: ${e instanceof Error ? e.message : e}`);
     process.exit(1);
   }
 }

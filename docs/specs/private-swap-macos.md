@@ -236,7 +236,7 @@ browsing on macOS is always a separate window. No Firefox fork found does this.
   (`packages/vimma-core/src/config.mjs:215-219, 817`; `defaults.mjs:364`).
 - `privacy.exposeContentTitleInWindow.pbm` is `false`
   (`src/browser/branding/vimma/pref/firefox-branding.js:166`), on every platform.
-- Mochitests run headless (`tools/mochitest.mjs:41`), so on macOS too the windows are
+- Mochitests run headless (`tools/mochitest.mjs:41`; since changed: `tools/mochitest.ts`, ADR-025), so on macOS too the windows are
   `HeadlessWidget`s: `Show` records visibility and raises a shown toplevel, and `SetFocus` raises
   only a visible one (`widget/headless/HeadlessWidget.cpp:164-198`). AppKit's behaviour is not
   exercised by any CI job.

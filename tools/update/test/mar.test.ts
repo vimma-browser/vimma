@@ -1,4 +1,4 @@
-// tools/update/mar.mjs: the complete MAR of a release or nightly (docs/specs/m6a-updater.md §6
+// tools/update/mar.ts: the complete MAR of a release or nightly (docs/specs/m6a-updater.md §6
 // and §7). Cloud KMS cannot sign through `signmar -s` (its key never enters an NSS database), so
 // the MAR gets its signature block with a zeroed placeholder here, update-publish.yml's signing
 // job signs the bytes around it, and this file checks the result as the updater does.
@@ -11,6 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import { X509Certificate, constants, createHash, privateEncrypt, verify } from "node:crypto";
+import type { KeyObject } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
@@ -22,10 +23,10 @@ import {
   readMar,
   signedBytes,
   verifyMar,
-} from "../mar.mjs";
+} from "../mar.ts";
 
 const FIXTURES = new URL("fixtures/mar/", import.meta.url);
-const SCRIPT = new URL("../mar.mjs", import.meta.url).pathname;
+const SCRIPT = new URL("../mar.ts", import.meta.url).pathname;
 const unsigned = () => readFileSync(new URL("unsigned.mar", FIXTURES));
 const signmarSigned = () => readFileSync(new URL("signmar-signed.mar", FIXTURES));
 const testCert = () => readFileSync(new URL("test-cert.der", FIXTURES));
@@ -33,7 +34,7 @@ const testCert = () => readFileSync(new URL("test-cert.der", FIXTURES));
 const SHA384_DIGESTINFO = Buffer.from("3041300d060960864801650304020205000430", "hex");
 
 /** A signature made the way the KMS key makes one: PKCS#1 v1.5 over a DigestInfo it is sent. */
-function kmsSign(/** @type {import("node:crypto").KeyObject} */ key, /** @type {Buffer} */ data) {
+function kmsSign(key: KeyObject, data: Buffer) {
   const info = Buffer.concat([SHA384_DIGESTINFO, createHash("sha384").update(data).digest()]);
   return privateEncrypt({ key, padding: constants.RSA_PKCS1_PADDING }, info);
 }
@@ -58,11 +59,11 @@ describe("readMar", () => {
   });
 
   it.each([
-    ["no MAR ID", (/** @type {Buffer} */ b) => Buffer.concat([Buffer.from("XAR1"), b.subarray(4)])],
-    ["a cut file", (/** @type {Buffer} */ b) => b.subarray(0, b.length - 3)],
+    ["no MAR ID", (b: Buffer) => Buffer.concat([Buffer.from("XAR1"), b.subarray(4)])],
+    ["a cut file", (b: Buffer) => b.subarray(0, b.length - 3)],
     [
       "a size field that is not the file's",
-      (/** @type {Buffer} */ b) => {
+      (b: Buffer) => {
         const c = Buffer.from(b);
         c.writeBigUInt64BE(BigInt(c.length + 1), 8);
         return c;
@@ -70,7 +71,7 @@ describe("readMar", () => {
     ],
     [
       "an entry outside the content",
-      (/** @type {Buffer} */ b) => {
+      (b: Buffer) => {
         const c = Buffer.from(b);
         const index = c.readUInt32BE(4);
         c.writeUInt32BE(c.length, index + 4);
@@ -152,9 +153,8 @@ describe("verifyMar", () => {
   });
 });
 
-describe("mar.mjs, the commands the workflows run", () => {
-  /** @param {string[]} args */
-  const run = (args) => spawnSync("node", [SCRIPT, ...args], { encoding: "utf8" });
+describe("mar.ts, the commands the workflows run", () => {
+  const run = (args: string[]) => spawnSync("node", [SCRIPT, ...args], { encoding: "utf8" });
 
   it("placeholder, then verify with the certificates", () => {
     const dir = tempDir("vimma-mar-");

@@ -24,15 +24,15 @@
  * its length (u32) and per file its offset, size and mode (u32 each) and NUL-terminated name.
  * A signature covers every byte of the file except the signature bytes themselves.
  *
- *   mar.mjs build --tarball FILE --tools DIR --channel vimma|vimma-nightly --out FILE
+ *   mar.ts build --tarball FILE --tools DIR --channel vimma|vimma-nightly --out FILE
  *       the complete MAR of a `./mach package` tarball, with the signature placeholder; DIR
  *       holds the build's host `mar` and Mozilla's make_full_update.sh and common.sh
  *       (tools/update-packaging), which `./mach repackage mar` runs the same way
- *   mar.mjs placeholder --in FILE --out FILE
+ *   mar.ts placeholder --in FILE --out FILE
  *       the signature placeholder alone, for an unsigned MAR
- *   mar.mjs same-content --placeholder FILE --signed FILE
+ *   mar.ts same-content --placeholder FILE --signed FILE
  *       the signed MAR differs from the placeholder MAR only in the signature bytes
- *   mar.mjs verify --mar FILE --cert DER [--cert DER] --channel ID [--product-version V]
+ *   mar.ts verify --mar FILE --cert DER [--cert DER] --channel ID [--product-version V]
  *       one signature, by one of the certificates' keys, and the channel and version asked for
  *
  * Node built-ins only, so no job that runs it installs dependencies.
@@ -40,6 +40,7 @@
 
 import { execFileSync } from "node:child_process";
 import { X509Certificate, constants, verify as rsaVerify } from "node:crypto";
+import type { KeyObject } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -61,34 +62,26 @@ export const CHANNELS = Object.freeze(["vimma", "vimma-nightly"]);
 /** make_full_update.sh's xz filter for x86_64 (mozbuild/repackaging/mar.py, _BCJ_OPTIONS). */
 const BCJ_OPTIONS = "--x86";
 
-/**
- * @param {boolean} ok
- * @param {string} why
- * @returns {asserts ok}
- */
-function need(ok, why) {
+function need(ok: boolean, why: string): asserts ok {
   if (!ok) throw new Error(why);
 }
 
-/**
- * @typedef {object} Mar
- * @property {number} offsetToIndex
- * @property {{ algorithm: number, offset: number, length: number }[]} signatures
- *   offset: where the signature's bytes start
- * @property {string | null} channel         the product information block's MAR channel ID
- * @property {string | null} productVersion  and its product version
- * @property {{ name: string, offset: number, size: number, offsetAt: number }[]} entries
- *   offsetAt: where the entry's offset field is, in the index
- */
+type Mar = {
+  offsetToIndex: number;
+  /** offset: where the signature's bytes start */
+  signatures: { algorithm: number; offset: number; length: number }[];
+  /** the product information block's MAR channel ID */
+  channel: string | null;
+  /** and its product version */
+  productVersion: string | null;
+  /** offsetAt: where the entry's offset field is, in the index */
+  entries: { name: string; offset: number; size: number; offsetAt: number }[];
+};
 
 /**
  * A NUL-terminated string at `at`, no longer than `max` bytes before the NUL.
- * @param {Buffer} buf
- * @param {number} at
- * @param {number} end
- * @param {number} max
  */
-function cString(buf, at, end, max) {
+function cString(buf: Buffer, at: number, end: number, max: number) {
   const nul = buf.indexOf(0, at);
   need(nul >= 0 && nul < end && nul - at <= max, "a string with no NUL in its block");
   return { value: buf.toString("utf8", at, nul), next: nul + 1 };
@@ -97,10 +90,8 @@ function cString(buf, at, end, max) {
 /**
  * A MAR's header, signatures, product information and index, every offset checked against the
  * file. Only the format with a signature block, which Mozilla's `mar -c` writes.
- * @param {Buffer} buf
- * @returns {Mar}
  */
-export function readMar(buf) {
+export function readMar(buf: Buffer): Mar {
   need(buf.length >= 24 && buf.toString("latin1", 0, 4) === MAR_ID, "not a MAR (no MAR1)");
   need(buf.length <= MAX_MAR_SIZE, "larger than the updater accepts");
   const offsetToIndex = buf.readUInt32BE(4);
@@ -108,8 +99,7 @@ export function readMar(buf) {
   const count = buf.readUInt32BE(16);
   need(count <= MAX_SIGNATURES, `${count} signatures`);
   let at = 20;
-  /** @type {Mar["signatures"]} */
-  const signatures = [];
+  const signatures: Mar["signatures"] = [];
   for (let i = 0; i < count; i++) {
     need(at + 8 <= offsetToIndex, "a signature past the content");
     const algorithm = buf.readUInt32BE(at);
@@ -143,8 +133,7 @@ export function readMar(buf) {
   const indexLength = buf.readUInt32BE(offsetToIndex);
   const end = offsetToIndex + 4 + indexLength;
   need(end === buf.length, "the index does not end the file");
-  /** @type {Mar["entries"]} */
-  const entries = [];
+  const entries: Mar["entries"] = [];
   for (let p = offsetToIndex + 4; p < end;) {
     need(p + 12 < end, "a cut index entry");
     const offset = buf.readUInt32BE(p);
@@ -164,9 +153,9 @@ export function readMar(buf) {
 /**
  * The MAR with a signature block of one SHA-384 signature whose bytes are zero: the layout
  * `signmar -s` writes (mar_repackage_and_sign), so the bytes a signature covers are the same.
- * @param {Buffer} buf an unsigned MAR
+ * @param buf an unsigned MAR
  */
-export function addSignaturePlaceholder(buf) {
+export function addSignaturePlaceholder(buf: Buffer) {
   const mar = readMar(buf);
   need(mar.signatures.length === 0, "the MAR is already signed");
   const added = 8 + SIGNATURE_LENGTH;
@@ -186,13 +175,11 @@ export function addSignaturePlaceholder(buf) {
  * Every byte of the MAR but its signatures' bytes: what each signature covers (libmar's
  * mar_extract_and_verify_signatures). It starts with "MAR1", which keeps a MAR signature apart
  * from the manifest's (signed after `vimma-update-xml-v1\n`) under the one key (decision 12).
- * @param {Buffer} buf
  */
-export function signedBytes(buf) {
+export function signedBytes(buf: Buffer) {
   const { signatures } = readMar(buf);
   need(signatures.length > 0, "the MAR has no signature block");
-  /** @type {Buffer[]} */
-  const parts = [];
+  const parts: Buffer[] = [];
   let at = 0;
   for (const s of signatures) {
     parts.push(buf.subarray(at, s.offset));
@@ -204,10 +191,8 @@ export function signedBytes(buf) {
 
 /**
  * The MAR with `signature` written over its one zeroed placeholder.
- * @param {Buffer} buf
- * @param {Buffer} signature
  */
-export function insertSignature(buf, signature) {
+export function insertSignature(buf: Buffer, signature: Buffer) {
   const { signatures } = readMar(buf);
   need(signatures.length === 1, "not one signature placeholder");
   const [s] = signatures;
@@ -226,11 +211,13 @@ export function insertSignature(buf, signature) {
  * The checks the updater makes before it applies a MAR (mar_verify.c, the product information
  * block against update-settings.ini), with one signature: one key signs today; a rotation (§6)
  * adds the second signature and the second check with it.
- * @param {Buffer} buf
- * @param {readonly (import("node:crypto").KeyObject | X509Certificate)[]} keys  one must have made the signature
- * @param {{ channel: string, productVersion?: string }} want
+ * @param keys one must have made the signature
  */
-export function verifyMar(buf, keys, want) {
+export function verifyMar(
+  buf: Buffer,
+  keys: readonly (KeyObject | X509Certificate)[],
+  want: { channel: string; productVersion?: string },
+) {
   const mar = readMar(buf);
   need(mar.signatures.length === 1, `${mar.signatures.length} signatures, not 1`);
   const [s] = mar.signatures;
@@ -260,10 +247,8 @@ export function verifyMar(buf, keys, want) {
  * A key of application.ini's [App] section, as `./mach repackage mar` reads them: Version
  * (Firefox's version), which make_full_update.sh writes into the product information block, and
  * Name, whose lowercase form the script takes as APPNAME since Firefox 160.
- * @param {string} text
- * @param {"Version" | "Name"} key
  */
-function appValue(text, key) {
+function appValue(text: string, key: "Version" | "Name") {
   let section = "";
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
@@ -276,9 +261,18 @@ function appValue(text, key) {
 
 /**
  * The complete MAR of a `./mach package` tarball, with the signature placeholder.
- * @param {{ tarball: string, tools: string, channel: string, out: string }} o
  */
-export function buildMar({ tarball, tools, channel, out }) {
+export function buildMar({
+  tarball,
+  tools,
+  channel,
+  out,
+}: {
+  tarball: string;
+  tools: string;
+  channel: string;
+  out: string;
+}) {
   need(CHANNELS.includes(channel), `channel ${channel} is not ${CHANNELS.join(" or ")}`);
   const work = mkdtempSync(join(tmpdir(), "vimma-mar-"));
   try {
@@ -288,7 +282,7 @@ export function buildMar({ tarball, tools, channel, out }) {
     const tops = readdirSync(tree);
     need(tops.length === 1, `the tarball has ${tops.length} top-level entries, not one`);
     return buildMarFromDir({
-      dir: join(tree, /** @type {string} */ (tops[0])),
+      dir: join(tree, tops[0] as string),
       tools,
       channel,
       out,
@@ -300,10 +294,19 @@ export function buildMar({ tarball, tools, channel, out }) {
 
 /**
  * The same from an unpacked tree (`vimma/`), which the e2e's update scenarios change before
- * they make it a MAR (tools/e2e/update-host.mjs).
- * @param {{ dir: string, tools: string, channel: string, out: string }} o
+ * they make it a MAR (tools/e2e/update-host.ts).
  */
-export function buildMarFromDir({ dir, tools, channel, out }) {
+export function buildMarFromDir({
+  dir,
+  tools,
+  channel,
+  out,
+}: {
+  dir: string;
+  tools: string;
+  channel: string;
+  out: string;
+}) {
   need(CHANNELS.includes(channel), `channel ${channel} is not ${CHANNELS.join(" or ")}`);
   const work = mkdtempSync(join(tmpdir(), "vimma-mar-"));
   try {
@@ -407,7 +410,7 @@ function main() {
     }
     default:
       throw new Error(
-        "usage: mar.mjs build|placeholder|same-content|verify (see the file's header)",
+        "usage: mar.ts build|placeholder|same-content|verify (see the file's header)",
       );
   }
 }

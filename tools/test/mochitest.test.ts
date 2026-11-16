@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { childEnv, expectSafeBrowsingKey, mochitestCommand } from "../mochitest.mjs";
+import { childEnv, expectSafeBrowsingKey, mochitestCommand } from "../mochitest.ts";
 
 const ENGINE = "/repo/engine/";
 const TESTS = "browser/base/zen-components/tests/browser/";
@@ -89,8 +89,7 @@ describe("mochitestCommand on macOS", () => {
 describe("expectSafeBrowsingKey", () => {
   const HOME = "/home/u";
   const DEFAULT = "/home/u/.config/vimma/keys/safebrowsing";
-  /** @param {string[]} files */
-  const exists = (files) => (/** @type {string} */ p) => files.includes(p);
+  const exists = (files: string[]) => (p: string) => files.includes(p);
 
   it("expects a key when the default key file exists", () => {
     expect(expectSafeBrowsingKey({}, HOME, exists([DEFAULT]))).toBe(true);

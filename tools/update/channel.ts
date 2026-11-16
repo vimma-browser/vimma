@@ -12,7 +12,7 @@
  * applies). An update never rewrites either file, so a nightly install stays nightly and a
  * release install never applies a nightly MAR (the updater's error 22).
  *
- *   channel.mjs --tarball FILE --channel vimma-nightly --out FILE
+ *   channel.ts --tarball FILE --channel vimma-nightly --out FILE
  *
  * Node built-ins only, so no job that runs it installs dependencies.
  */
@@ -24,7 +24,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { packTarball } from "../package/package.mjs";
-import { CHANNELS } from "./mar.mjs";
+import { CHANNELS } from "./mar.ts";
 
 const PREFS = "defaults/pref/channel-prefs.js";
 const SETTINGS = "update-settings.ini";
@@ -32,12 +32,10 @@ const PREF_LINE = /^pref\("app\.update\.channel", "([^"]*)"\);$/gm;
 const SETTINGS_LINE = /^ACCEPTED_MAR_CHANNEL_IDS=(.*)$/gm;
 
 /**
- * @param {string} text
- * @param {RegExp} line  global and multiline, with the channel as its one group
- * @param {string} file  for messages
- * @param {(channel: string) => string} write
+ * @param line global and multiline, with the channel as its one group
+ * @param file for messages
  */
-function replaceOnce(text, line, file, write) {
+function replaceOnce(text: string, line: RegExp, file: string, write: (channel: string) => string) {
   const found = [...text.matchAll(line)];
   if (found.length !== 1) throw new Error(`${file}: ${found.length} channel lines, not one`);
   const was = found[0]?.[1];
@@ -47,10 +45,9 @@ function replaceOnce(text, line, file, write) {
 
 /**
  * Rewrites both channel files of an unpacked install from `vimma` to `channel`.
- * @param {string} dir  the install (the tarball's `vimma/`)
- * @param {string} channel
+ * @param dir the install (the tarball's `vimma/`)
  */
-export function setChannel(dir, channel) {
+export function setChannel(dir: string, channel: string) {
   if (!CHANNELS.includes(channel)) {
     throw new Error(`channel ${channel} is not ${CHANNELS.join(" or ")}`);
   }
@@ -72,10 +69,15 @@ export function setChannel(dir, channel) {
   writeFileSync(settingsPath, settings);
 }
 
-/**
- * @param {{ tarball: string, channel: string, out: string }} o
- */
-export function setTarballChannel({ tarball, channel, out }) {
+export function setTarballChannel({
+  tarball,
+  channel,
+  out,
+}: {
+  tarball: string;
+  channel: string;
+  out: string;
+}) {
   const work = mkdtempSync(join(tmpdir(), "vimma-channel-"));
   try {
     execFileSync("tar", ["-xJf", tarball, "-C", work]);
@@ -100,7 +102,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       },
     });
     if (!values.tarball || !values.channel || !values.out) {
-      throw new Error("usage: channel.mjs --tarball FILE --channel vimma-nightly --out FILE");
+      throw new Error("usage: channel.ts --tarball FILE --channel vimma-nightly --out FILE");
     }
     setTarballChannel({ tarball: values.tarball, channel: values.channel, out: values.out });
   } catch (e) {

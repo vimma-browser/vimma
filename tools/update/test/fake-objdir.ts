@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// A stand-in engine tree and objdir for tools/update/mar-tools.mjs and the workflow steps that
+// A stand-in engine tree and objdir for tools/update/mar-tools.ts and the workflow steps that
 // run it, compiled with the system C compiler (the runners' and a Linux developer's `cc`).
 import { execFileSync } from "node:child_process";
 import {
@@ -32,12 +32,7 @@ export const PACKED = [
   "signmar",
 ];
 
-/**
- * @param {string} out
- * @param {string} source
- * @param {string[]} args
- */
-export function cc(out, source, args = []) {
+export function cc(out: string, source: string, args: string[] = []) {
   const src = `${out}.c`;
   writeFileSync(src, source);
   // Ubuntu's toolchain links with --as-needed, which drops a library no symbol is taken from;
@@ -47,22 +42,21 @@ export function cc(out, source, args = []) {
 }
 
 /** The objdir's stand-in libraries, with the libraries each links to (-l names). */
-const LIBRARIES = /** @type {const} */ ([
+const LIBRARIES = [
   ["libmozsqlite3.so", []],
   ["libnss3.so", ["mozsqlite3"]],
   ["libsoftokn3.so", ["mozsqlite3"]],
   ["libfreeblpriv3.so", []],
   // A library of the objdir that signmar does not load: never packed.
   ["libxul.so", []],
-]);
+] as const;
 
 /**
  * Compiles the stand-in tree's libraries, signmar and mar into `dir`. Nothing compiled holds a
  * path (the libraries have no run path, signmar's is $ORIGIN), so the files can be copied into
  * any number of trees: a test file compiles them once instead of once per tree.
- * @param {string} dir
  */
-export function compileStandIns(dir) {
+export function compileStandIns(dir: string) {
   for (const [name, deps] of LIBRARIES) {
     cc(join(dir, name), `int ${name.replace(/\W/g, "_")}(void) { return 0; }\n`, [
       "-shared",
@@ -85,10 +79,9 @@ export function compileStandIns(dir) {
  * symlinks to the objects built elsewhere in the objdir; signmar finds its libraries through an
  * $ORIGIN run path, and the libraries, which have none as NSS's have none, find each other only
  * through LD_LIBRARY_PATH.
- * @param {string} root
- * @param {string} [standIns] a directory compileStandIns filled; without one, they are compiled
+ * @param standIns a directory compileStandIns filled; without one, they are compiled
  */
-export function fakeTree(root, standIns) {
+export function fakeTree(root: string, standIns?: string) {
   const obj = join(root, OBJ);
   const bin = join(obj, "dist/bin");
   const built = join(obj, "security");

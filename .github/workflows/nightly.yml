@@ -9,7 +9,7 @@
 # (workflow_dispatch) must also start from main. Measured time and disk, and how to switch it
 # on: docs/runbook/ci-full-builds.md, "Full builds".
 # Spec m6a-updater: the build has Firefox's updater (VIMMA_UPDATES=1), and the package is set to
-# the nightly update channel, vimma-nightly, and checked with tools/update/check-build.mjs. The
+# the nightly update channel, vimma-nightly, and checked with tools/update/check-build.ts. The
 # MAR step runs on every nightly as a check of the release's.
 #
 # Public nightlies (spec m6a-updater, decisions 42 and 43; build-supply-chain, decision 23's
@@ -52,7 +52,7 @@ concurrency:
 
 jobs:
   # Decision 44: whether tonight builds. No secret and no environment, a read-only token, and
-  # only `gh release view` and tools/update/nightly-change.mjs: it reads the rolling release's
+  # only `gh release view` and tools/update/nightly-change.ts: it reads the rolling release's
   # notes and file names and compares them with the commit checked out here. A doubt builds.
   changes:
     if: >-
@@ -90,11 +90,11 @@ jobs:
             release=(--release "$RUNNER_TEMP/release.json")
           fi
           firefox=$(node -p 'require("./surfer.json").version.version')
-          node tools/update/nightly-change.mjs --event "$EVENT" --public "$PUBLIC" --sha "$SHA" \
+          node tools/update/nightly-change.ts --event "$EVENT" --public "$PUBLIC" --sha "$SHA" \
             --firefox "$firefox" "${release[@]}" > "$RUNNER_TEMP/decision"
           # Exactly the two lines, or no output at all: an empty `build` would skip every job.
           grep -Exq 'build=true|build=false' <(head -n 1 "$RUNNER_TEMP/decision") \
-            || { echo "::error::nightly-change.mjs gave no decision"; exit 1; }
+            || { echo "::error::nightly-change.ts gave no decision"; exit 1; }
           cat "$RUNNER_TEMP/decision" >> "$GITHUB_OUTPUT"
 
   build:
@@ -262,11 +262,11 @@ jobs:
         run: |
           set -o pipefail
           tarball=$(echo dist/vimma-*.en-US.linux-x86_64.tar.xz)
-          node tools/update/channel.mjs --tarball "$tarball" --channel vimma-nightly --out "$tarball.new"
+          node tools/update/channel.ts --tarball "$tarball" --channel vimma-nightly --out "$tarball.new"
           mv "$tarball.new" "$tarball"
           unpacked=$(mktemp -d)
           tar -xJf "$tarball" -C "$unpacked"
-          node tools/update/check-build.mjs "$unpacked/vimma" --channel vimma-nightly 2>&1 | tee -a "$LOG"
+          node tools/update/check-build.ts "$unpacked/vimma" --channel vimma-nightly 2>&1 | tee -a "$LOG"
           rm -rf "$unpacked"
 
       # As release.yml's build, with the same script: the host mar, Mozilla's update scripts,
@@ -277,7 +277,7 @@ jobs:
       - name: MAR tools, packed and checked
         run: |
           set -o pipefail
-          node tools/update/mar-tools.mjs pack --objdir engine/obj-x86_64-pc-linux-gnu --engine engine --out mar-tools 2>&1 | tee -a "$LOG"
+          node tools/update/mar-tools.ts pack --objdir engine/obj-x86_64-pc-linux-gnu --engine engine --out mar-tools 2>&1 | tee -a "$LOG"
 
       # release.yml's MAR step, with this build's host mar and Mozilla's make_full_update.sh, so
       # a change that breaks it fails a nightly before it can fail a release. For a public nightly
@@ -297,7 +297,7 @@ jobs:
           firefox=$(tar -xJOf "$tarball" vimma/application.ini | sed -n 's/^Version=//p')
           mar="vimma-nightly-$build_id-linux-x86_64.complete.mar"
           mkdir -p mar
-          node tools/update/mar.mjs build --tarball "$tarball" --tools mar-tools --channel vimma-nightly --out "mar/$mar" 2>&1 | tee -a "$LOG"
+          node tools/update/mar.ts build --tarball "$tarball" --tools mar-tools --channel vimma-nightly --out "mar/$mar" 2>&1 | tee -a "$LOG"
           if [ "$PUBLIC" = true ]; then
             echo "mar=$mar" >> "$GITHUB_OUTPUT"
             echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
@@ -378,7 +378,7 @@ jobs:
       mar: ${{ needs.build.outputs.mar }}
 
   # As release.yml's mar job, with no secret and a read-only token: the signed MAR differs from
-  # the build's only in its signature, verifies under the committed certificates (mar.mjs and
+  # the build's only in its signature, verifies under the committed certificates (mar.ts and
   # Mozilla's signmar), is on the nightly channel and Firefox's version, and installs exactly the
   # nightly tarball's files. Then SHA256SUMS lists it and the tarball, both named by build ID.
   # It runs whenever the build succeeded and the run was not cancelled, so a skipped or failed
@@ -437,9 +437,9 @@ jobs:
           [ "$MAR" = "vimma-nightly-$BUILD_ID-linux-x86_64.complete.mar" ] \
             || { echo "::error::'$MAR' is not build $BUILD_ID's complete MAR"; exit 1; }
           [ -f "mar-signed/$MAR" ] || { echo "::error::mar-sign left no signed MAR"; exit 1; }
-          node tools/update/mar.mjs same-content --placeholder "mar-unsigned/$MAR" --signed "mar-signed/$MAR"
+          node tools/update/mar.ts same-content --placeholder "mar-unsigned/$MAR" --signed "mar-signed/$MAR"
           firefox=$(node -p 'require("./surfer.json").version.version')
-          node tools/update/mar.mjs verify --mar "mar-signed/$MAR" --cert configs/updater/primary.der --cert configs/updater/secondary.der --channel vimma-nightly --product-version "$firefox"
+          node tools/update/mar.ts verify --mar "mar-signed/$MAR" --cert configs/updater/primary.der --cert configs/updater/secondary.der --channel vimma-nightly --product-version "$firefox"
           sudo apt-get update -q
           sudo apt-get install -y -q libnss3-tools
           chmod 755 mar-tools/signmar
@@ -571,7 +571,7 @@ jobs:
       # one would be Latest. gh release view finds drafts too. A newer build already on the
       # release means this is a re-run of an older night: it must not replace that build's sums.
       # The notes' first sentence is the record the next night's `changes` compares main with
-      # (tools/update/nightly-change.mjs); it is written last, after the files are up.
+      # (tools/update/nightly-change.ts); it is written last, after the files are up.
       - name: Upload to the rolling nightly release
         run: |
           [[ $BUILD_ID =~ ^[0-9]{14}$ ]] || { echo "::error::'$BUILD_ID' is not a build ID"; exit 1; }

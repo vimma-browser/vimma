@@ -3,7 +3,7 @@
 `ci.yml`, `semgrep.yml` and `pkgbuild.yml` run on pull requests and on pushes to `main`. A
 squash merge usually gives `main` a commit whose tree is the pull request head's tree, so the
 push run would check the same files again. Their first job on a push, `covered`, runs
-`tools/ci/tree-covered.mjs`: it reads the pushed commit's tree and the last 50 successful
+`tools/ci/tree-covered.ts`: it reads the pushed commit's tree and the last 50 successful
 `pull_request` runs of the same workflow from the Actions API (both public; the job token holds
 `actions: read` and `contents: read`, nothing more), and compares each run's head tree. A run
 with the same tree counts only if every job but the guard ran (`actions/runs/<id>/jobs`): a
@@ -28,4 +28,4 @@ artifact of the run), so its push run has nothing to add. `e2e.yml` runs on pull
 and `release.yml` builds once per release, so neither was duplicated.
 
 To check a commit by hand:
-`GH_TOKEN=$(gh auth token) GITHUB_REPOSITORY=vimma-browser/vimma GITHUB_SHA=<sha> node tools/ci/tree-covered.mjs --workflow ci.yml`.
+`GH_TOKEN=$(gh auth token) GITHUB_REPOSITORY=vimma-browser/vimma GITHUB_SHA=<sha> node tools/ci/tree-covered.ts --workflow ci.yml`.

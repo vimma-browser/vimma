@@ -1,6 +1,6 @@
 // docs/specs/m6a-updater.md §7: release.yml and nightly.yml hand their build's MAR tools (the
 // host `mar`, Mozilla's update scripts, signmar with the NSS libraries it loads from beside it,
-// and Mozilla's update certificates) to later jobs, packed by tools/update/mar-tools.mjs and
+// and Mozilla's update certificates) to later jobs, packed by tools/update/mar-tools.ts and
 // checked to run from the packed directory before they are uploaded. The first public nightly
 // packed signmar without its libraries: the workflow's ldd filter compared ldd's absolute paths
 // with a relative objdir, matched none of them, and the mar job's signmar then failed to start
@@ -28,16 +28,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
-import { librariesIn, missingIn } from "../mar-tools.mjs";
-import { OBJ, PACKED, cc, compileStandIns, fakeTree } from "./fake-objdir.mjs";
+import { librariesIn, missingIn } from "../mar-tools.ts";
+import { OBJ, PACKED, cc, compileStandIns, fakeTree } from "./fake-objdir.ts";
 
-const SCRIPT = fileURLToPath(new URL("../mar-tools.mjs", import.meta.url));
+const SCRIPT = fileURLToPath(new URL("../mar-tools.ts", import.meta.url));
 
-/**
- * @param {string} cwd
- * @param {string[]} args
- */
-const run = (cwd, args) =>
+const run = (cwd: string, args: string[]) =>
   spawnSync(process.execPath, [SCRIPT, ...args], {
     cwd,
     encoding: "utf8",
@@ -71,7 +67,7 @@ afterAll(() => {
   if (standIns) rmSync(standIns, { recursive: true, force: true });
 });
 
-describe("mar-tools.mjs: reading ldd", () => {
+describe("mar-tools.ts: reading ldd", () => {
   const LDD = [
     "\tlinux-vdso.so.1 (0x00007ffd4b1f6000)",
     "\tlibnss3.so => /home/runner/work/vimma/vimma/engine/obj/dist/bin/libnss3.so (0x00007f1)",
@@ -99,7 +95,7 @@ describe("mar-tools.mjs: reading ldd", () => {
 });
 
 // ldd, ELF and $ORIGIN run paths: Linux, where the nightly and the release build their MAR tools.
-describe.skipIf(process.platform !== "linux")("mar-tools.mjs pack", () => {
+describe.skipIf(process.platform !== "linux")("mar-tools.ts pack", () => {
   it("packs signmar's libraries from a relative objdir, which ldd names by absolute path", () => {
     const root = tempDir("vimma-mar-tools-");
     fakeTree(root, standIns);
@@ -181,7 +177,7 @@ describe.skipIf(process.platform !== "linux")("mar-tools.mjs pack", () => {
   });
 });
 
-describe.skipIf(process.platform !== "linux")("mar-tools.mjs check", () => {
+describe.skipIf(process.platform !== "linux")("mar-tools.ts check", () => {
   /** A checkout whose mar-tools pack made from the stand-in tree; tests change copies of it. */
   let base = "";
   beforeAll(() => {
