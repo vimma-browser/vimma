@@ -154,9 +154,21 @@ const unitsCache = new Map();
 const UNITS_CACHE_MAX = 8192;
 let built = 0;
 
-/** How many texts have been segmented so far (the cache's misses), for the bench test. */
+/** How many texts have been segmented so far (the cache's misses), for the tests of decision 10. */
 export function unitsBuilt() {
   return built;
+}
+
+/**
+ * The matching work done so far, for the tests that pin decision 10 by counting work rather than
+ * timing it: `tried`, the fields scoreField was asked to match a term against; `full`, those that
+ * passed the letters-in-order check and went on to the tiers; `matched`, those that matched.
+ */
+const work = { tried: 0, full: 0, matched: 0 };
+
+/** A copy of the matching work counted so far (`work`). */
+export function matchWork() {
+  return { ...work };
 }
 
 /**
@@ -318,9 +330,11 @@ const run = (start, n) => Array.from({ length: n }, (_, k) => start + k);
  */
 export function scoreField(text, term, field = "display") {
   if (!term) return null;
+  work.tried++;
   const u = units(text);
   const qu = units(term);
   if (!mayMatch(u.foldedText, qu.foldedText)) return null;
+  work.full++;
   const q = qu.keys;
   const t = u.keys;
   /** @type {number} */
@@ -356,8 +370,10 @@ export function scoreField(text, term, field = "display") {
     if (!found) return null;
     tier = TIER.folded;
     positions = found.map((i) => /** @type {number} */ (idx[i]));
+    work.matched++;
     return { tier, score: score(tier, found, tf.length, field), ranges: toRanges(positions, u) };
   }
+  work.matched++;
   return { tier, score: score(tier, positions, t.length, field), ranges: toRanges(positions, u) };
 }
 

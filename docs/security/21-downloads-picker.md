@@ -99,5 +99,5 @@ referring pages are chosen by the sites the files came from.
 - D6. No agent role **may** reach the picker or the downloads list: `downloads.picker` is not
   one of `vimma_keys`' actions, no control or MCP command lists or opens a download, and no
   `ctl/` or `agent/` module imports the picker's ops.
-  [`downloads.picker is not an agent key action (docs/specs/downloads.md decision 16)`](../../packages/vimma-core/test/agent-keys.test.mjs),
+  [`downloads.picker is not an agent key action (docs/specs/downloads.md decision 16)`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`opens and reveals downloads only through Firefox's Download, from download-ops`](../../tools/security/test/chrome-source.test.ts)
