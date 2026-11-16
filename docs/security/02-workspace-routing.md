@@ -24,7 +24,7 @@ Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule na
   [`a hint that is not a token never matches`](../../packages/vimma-core/test/routes.test.ts),
   [`a rule naming a workspace that does not exist is skipped`](../../packages/vimma-core/test/routes.test.ts),
   [`parseAppList keeps at most eight names, drops non-tokens, keeps the rest`](../../packages/vimma-core/test/routes.test.ts),
-  [`parseAppList returns only tokens, at most eight, never two equal neighbours`](../../packages/vimma-core/test/fuzz/routes.fuzz.test.mjs),
+  [`parseAppList returns only tokens, at most eight, never two equal neighbours`](../../packages/vimma-core/test/fuzz/routes.fuzz.test.ts),
   [`an_app_list_with_a_bad_name_routes_by_the_rest`](../../tests/browser/browser_vimma_workspace_routes_external.js)
 - R5. `VIMMA_FROM` **must** be read once and cleared, so it never reaches a later window or a
   process Vimma starts.
@@ -32,8 +32,8 @@ Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule na
 - R6. A domain rule **never** matches a host outside its domain: not a lookalike
   (`evil-github.com`, `github.com.evil`, letters from another script), nor a disguise
   (`github.com@evil`, a path, query or fragment, `\`, `%2e`, the ideographic full stop).
-  [`a domain rule never matches a URL whose host is outside its domain`](../../packages/vimma-core/test/fuzz/routes.fuzz.test.mjs),
-  [`a domain rule matches its own host and subdomains, however written`](../../packages/vimma-core/test/fuzz/routes.fuzz.test.mjs)
+  [`a domain rule never matches a URL whose host is outside its domain`](../../packages/vimma-core/test/fuzz/routes.fuzz.test.ts),
+  [`a domain rule matches its own host and subdomains, however written`](../../packages/vimma-core/test/fuzz/routes.fuzz.test.ts)
 - R8. A rule naming the agent workspace **never** applies to a link from another program (the
   next rule does), and when its `app` equals one of the link's names, no rule with `app` applies
   to that link, so a prompt-injected agent CLI's link cannot reach the terminal's sign-in rules.

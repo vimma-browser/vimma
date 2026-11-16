@@ -37,7 +37,7 @@ import {
 } from "../src/agent/agent-act.mjs";
 import { AGENT_LINKS } from "../src/agent/agent-keys.mjs";
 import { parseHintReply } from "../src/page/hints.mjs";
-import { budget } from "./budget.mjs";
+import { budget } from "./budget.ts";
 import type { AgentElementTarget } from "../src/agent/agent-act.mjs";
 import type { AgentElementInfo } from "../src/agent/agent-element.mjs";
 

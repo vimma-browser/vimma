@@ -12,7 +12,7 @@ import {
   pushHistory,
 } from "../../src/keys/cmdline.mjs";
 import { ACTIONS } from "../../src/keys/actions.mjs";
-import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.mjs";
+import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.ts";
 
 const IDS = new Set([
   ...ACTIONS.map((a) => a.id),

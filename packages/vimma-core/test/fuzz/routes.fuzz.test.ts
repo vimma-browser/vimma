@@ -13,13 +13,10 @@ import {
   routeDomainFor,
   validateRoutes,
 } from "../../src/config/routes.mjs";
-import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.mjs";
+import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.ts";
 
-/**
- * The one route a valid rule resolves to; throws when it resolves to none.
- * @param {Record<string, string>} rule
- */
-const onlyRoute = (rule) => {
+/** The one route a valid rule resolves to; throws when it resolves to none. */
+const onlyRoute = (rule: Record<string, string>) => {
   const [route] = resolveRoutes([rule]);
   if (!route) throw new Error(`${JSON.stringify(rule)} resolved to no route`);
   return route;
@@ -46,10 +43,9 @@ const ruleDomain = fc.oneof(
 /**
  * Hosts that must never count as inside `domain`: lookalike names around it, and characters
  * from other scripts that IDNA does not map back to ASCII.
- * @param {string} domain
  */
 const CONFUSABLES = { a: "а", e: "е", o: "о", p: "р", c: "с", x: "х", i: "і", g: "ɡ" };
-const evilAround = (/** @type {string} */ domain) =>
+const evilAround = (domain: string) =>
   fc.oneof(
     label.map((l) => `${l}-${domain}`),
     label.map((l) => `${l}${domain}`),
@@ -62,7 +58,7 @@ const evilAround = (/** @type {string} */ domain) =>
       const at = chars.findIndex((c, i) => i >= n % chars.length && c in CONFUSABLES);
       const i = at >= 0 ? at : chars.findIndex((c) => c in CONFUSABLES);
       if (i < 0) return `x${domain}`;
-      chars[i] = CONFUSABLES[/** @type {keyof typeof CONFUSABLES} */ (chars[i])];
+      chars[i] = CONFUSABLES[chars[i] as keyof typeof CONFUSABLES];
       return chars.join("");
     }),
   );
@@ -70,10 +66,8 @@ const evilAround = (/** @type {string} */ domain) =>
 /**
  * URLs whose real host is `evil`, dressed up with `domain` where a careless matcher looks:
  * userinfo, path, query, fragment, backslashes, percent-encoding, ports.
- * @param {string} domain
- * @param {string} evil
  */
-const disguises = (domain, evil) => [
+const disguises = (domain: string, evil: string): string[] => [
   `https://${evil}/`,
   `https://${domain}@${evil}/`,
   `https://${domain}:443@${evil}/`,
@@ -100,11 +94,9 @@ const disguises = (domain, evil) => [
 
 /**
  * The real host's labels end with the domain's labels (the oracle, from the URL parser).
- * @param {string} url
- * @param {string} host  the rule's host as resolved (ASCII)
- * @param {boolean} sub  `*.` rules: strictly below
+ * `host` is the rule's host as resolved (ASCII); `sub`, for `*.` rules: strictly below.
  */
-function inside(url, host, sub) {
+function inside(url: string, host: string, sub: boolean): boolean {
   let u;
   try {
     u = new URL(url);
@@ -238,7 +230,7 @@ describe("routing rule fuzzing", () => {
             }
             if (problems.length === 0 && Array.isArray(value)) {
               // validateRoutes found no problem: an array of string tables.
-              const routes = resolveRoutes(/** @type {Record<string, string>[]} */ (value));
+              const routes = resolveRoutes(value as Record<string, string>[]);
               for (const r of routes) {
                 if ("domain" in r) expect(r.domain).not.toBeNull();
                 if ("url" in r) expect(r.url).not.toBeNull();
@@ -298,8 +290,7 @@ describe("routing rule fuzzing", () => {
     "very long rules and URLs are checked in bounded time",
     () => {
       const long = "a.".repeat(512 * 1024);
-      /** @type {Record<string, string>[]} */
-      const rules = [
+      const rules: Record<string, string>[] = [
         { domain: `${long}com`, workspace: "w" },
         { domain: `*.${"x".repeat(1024 * 1024)}`, workspace: "w" },
         { domain: `[${":".repeat(1024 * 1024)}g]`, workspace: "w" },

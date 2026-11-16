@@ -12,9 +12,7 @@ export const STRYKER_SLOWDOWN = 20;
 /**
  * The time a test may take, in milliseconds: `ms`, or STRYKER_SLOWDOWN times it under Stryker,
  * whose test runner processes have STRYKER_MUTATOR_WORKER set.
- * @param {number} ms
- * @returns {number}
  */
-export function budget(ms) {
+export function budget(ms: number): number {
   return process.env.STRYKER_MUTATOR_WORKER === undefined ? ms : ms * STRYKER_SLOWDOWN;
 }

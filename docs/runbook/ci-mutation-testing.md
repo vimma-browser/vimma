@@ -70,6 +70,6 @@ can see: a path written in a core test or in a module the test imports. A path b
 shows only in the dry run. Tests that assert a tight speed budget carry the Vitest tag `timing`,
 which the mutation run leaves out: Stryker's instrumented code runs several times slower.
 Linear-time checks (a 200,000-character input under 500 ms) stay in and take their limit from
-`budget()` in `packages/vimma-core/test/budget.mjs`, which is 20 times longer under Stryker, so
+`budget()` in `packages/vimma-core/test/budget.ts`, which is 20 times longer under Stryker, so
 a mutant that makes the code quadratic still fails them. To check the setup without testing any
 mutant: `npx stryker run --dryRunOnly` (about 5 minutes: the whole suite once, instrumented).

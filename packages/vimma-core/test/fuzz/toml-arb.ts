@@ -9,7 +9,7 @@
  */
 import fc from "fast-check";
 import { PALETTE_KEYS } from "../../src/config/theme.mjs";
-import { PROTO_NAMES, nastyString } from "./harness.mjs";
+import { PROTO_NAMES, nastyString } from "./harness.ts";
 
 const SCHEMA_KEYS = [
   "schema",
@@ -118,8 +118,7 @@ const scalar = fc.oneof(
   fc.string({ maxLength: 20 }).map((s) => `"""${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"""`),
 );
 
-/** @type {fc.LetrecTypedBuilder<{ value: string }>} */
-const valueBuilder = (tie) => ({
+const valueBuilder: fc.LetrecTypedBuilder<{ value: string }> = (tie) => ({
   value: fc.oneof(
     { depthSize: "small", withCrossShrink: true },
     { weight: 6, arbitrary: scalar },

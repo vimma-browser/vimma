@@ -1,6 +1,6 @@
-// The fuzz harness's own failure report (harness.mjs). Spec: docs/specs/m7-fuzzing.md.
+// The fuzz harness's own failure report (harness.ts). Spec: docs/specs/m7-fuzzing.md.
 import { describe, expect, test } from "vitest";
-import { replayCommand, within } from "./harness.mjs";
+import { replayCommand, within } from "./harness.ts";
 
 describe("fuzz harness", () => {
   // Regression (issue #134): the printed replay filtered with `-t "config-no-throw"`, the failure

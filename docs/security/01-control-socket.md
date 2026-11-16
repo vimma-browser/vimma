@@ -127,12 +127,12 @@ only the agent workspace, and every request asks you first (§12).
   command runs. It checks and copies one copy of the caller's own data, made as JSON makes it,
   so that an in-process caller's getter or inherited property cannot change a value between the
   check and the handler.
-  [`LineFramer gives back the lines sent, however the bytes are chunked`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
-  [`any line a client sends, decoded as the server does, validates without throwing`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
-  [`every valid message validates; one changed or added field makes it invalid`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
-  [`send-keys passes only keys the server can parse; open only short http(s), file and about URLs`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
+  [`LineFramer gives back the lines sent, however the bytes are chunked`](../../packages/vimma-core/test/fuzz/control.fuzz.test.ts),
+  [`any line a client sends, decoded as the server does, validates without throwing`](../../packages/vimma-core/test/fuzz/control.fuzz.test.ts),
+  [`every valid message validates; one changed or added field makes it invalid`](../../packages/vimma-core/test/fuzz/control.fuzz.test.ts),
+  [`send-keys passes only keys the server can parse; open only short http(s), file and about URLs`](../../packages/vimma-core/test/fuzz/control.fuzz.test.ts),
   [`a type that is not a string is an error, never a throw`](../../packages/vimma-core/test/control.test.ts),
-  [`agent-open passes only short http(s) URLs; agent labels never carry control or bidi characters`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
+  [`agent-open passes only short http(s) URLs; agent labels never carry control or bidi characters`](../../packages/vimma-core/test/fuzz/control.fuzz.test.ts),
   [`test_handshake`](../../tests/browser/browser_vimma_control.js),
   [`a copy: the parsed arguments share no object with the request's`](../../packages/vimma-core/test/control-v2.test.ts),
   [`what the validator refuses is null: a missing tab, a wrong type, an extra field`](../../packages/vimma-core/test/control-v2.test.ts),
