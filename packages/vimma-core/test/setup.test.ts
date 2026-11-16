@@ -337,14 +337,27 @@ describe("setup", () => {
     expect(formatUsers(999)).toBe("999 users");
     expect(formatUsers(1000)).toBe("1.0k users");
     expect(formatUsers(1234)).toBe("1.2k users");
-    expect(formatUsers(9_999)).toBe("10.0k users");
     expect(formatUsers(10_000)).toBe("10k users");
-    expect(formatUsers(999_999)).toBe("1000k users");
     expect(formatUsers(1_000_000)).toBe("1.0M users");
     expect(formatUsers(1_234_567)).toBe("1.2M users");
-    expect(formatUsers(9_999_999)).toBe("10.0M users");
     expect(formatUsers(10_000_000)).toBe("10M users");
     expect(formatUsers(12_345_678)).toBe("12M users");
+  });
+
+  test("a user count rounds first, so it never shows 10.0k, 1000k or 10.0M (#1190)", () => {
+    expect(formatUsers(9_949)).toBe("9.9k users");
+    expect(formatUsers(9_950)).toBe("9.9k users");
+    expect(formatUsers(9_951)).toBe("10k users");
+    expect(formatUsers(9_999)).toBe("10k users");
+    expect(formatUsers(10_499)).toBe("10k users");
+    expect(formatUsers(10_500)).toBe("11k users");
+    expect(formatUsers(999_499)).toBe("999k users");
+    expect(formatUsers(999_500)).toBe("1.0M users");
+    expect(formatUsers(999_999)).toBe("1.0M users");
+    expect(formatUsers(9_949_999)).toBe("9.9M users");
+    expect(formatUsers(9_950_000)).toBe("9.9M users");
+    expect(formatUsers(9_950_001)).toBe("10M users");
+    expect(formatUsers(9_999_999)).toBe("10M users");
   });
 
   test("space marks and unmarks, and never marks an installed add-on", () => {

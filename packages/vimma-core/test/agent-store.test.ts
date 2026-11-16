@@ -335,7 +335,15 @@ describe("taskSummary", () => {
     const summary = (tokens: number, outcome = "done") =>
       taskSummary({ outcome, checkpoint: false, steps: 2, tokens, hosts: [] });
     expect(summary(999_499)).toBe("task done · 2 steps · 999k tokens · no pages loaded");
+    expect(summary(999_500)).toBe("task done · 2 steps · 1M tokens · no pages loaded");
+    expect(summary(999_999)).toBe("task done · 2 steps · 1M tokens · no pages loaded");
     expect(summary(1_000_000)).toBe("task done · 2 steps · 1M tokens · no pages loaded");
+    expect(summary(999)).toBe("task done · 2 steps · 999 tokens · no pages loaded");
+    expect(summary(1_499)).toBe("task done · 2 steps · 1k tokens · no pages loaded");
+    expect(summary(1_500)).toBe("task done · 2 steps · 2k tokens · no pages loaded");
+    expect(summary(1_049_999)).toBe("task done · 2 steps · 1M tokens · no pages loaded");
+    expect(summary(1_050_000)).toBe("task done · 2 steps · 1.1M tokens · no pages loaded");
+    expect(summary(9_999_999)).toBe("task done · 2 steps · 10M tokens · no pages loaded");
     expect(summary(2_540_000)).toBe("task done · 2 steps · 2.5M tokens · no pages loaded");
     expect(summary(10, "exploded")).toBe("task failed · 2 steps · 10 tokens · no pages loaded");
   });

@@ -182,7 +182,9 @@ export function restoredEntries(entries) {
 /** @param {number} n */
 function tokens(n) {
   if (n < 1000) return String(n);
-  if (n < 1_000_000) return `${Math.round(n / 1000)}k`;
+  // Round first, then pick the unit, so 999_500 reads as 1M rather than 1000k (#1190).
+  const thousands = Math.round(n / 1000);
+  if (thousands < 1000) return `${thousands}k`;
   return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
 }
 
