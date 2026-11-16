@@ -180,7 +180,8 @@ const hasRoles = (m) => isInt(m.protocol, 2, MAX_ID);
 
 /** @param {Obj} m @param {string[]} errors */
 function checkRole(m, errors) {
-  if (!ROLES.includes(/** @type {any} */ (m.role))) errors.push('role must be "agent" or "full"');
+  if (!(/** @type {readonly unknown[]} */ (ROLES).includes(m.role)))
+    errors.push('role must be "agent" or "full"');
 }
 
 /**
@@ -807,7 +808,7 @@ function checkStepList(result, errors) {
     if (!isCount(result.dropped)) errors.push("result.dropped must be a non-negative integer");
   }
   if ("unlisted" in result) {
-    if (!STEP_UNLISTED.includes(/** @type {any} */ (result.unlisted))) {
+    if (!(/** @type {readonly unknown[]} */ (STEP_UNLISTED).includes(result.unlisted))) {
       errors.push(`result.unlisted must be one of ${STEP_UNLISTED.join(", ")}`);
     } else if (listed) errors.push("result.unlisted comes only without result.elements");
   }
@@ -884,7 +885,7 @@ function checkScreenshotResult(result, errors) {
     "result.",
   );
   checkFields(result, "result", { strings: ["url", "title"] }, errors);
-  if (!SCREENSHOT_TYPES.includes(/** @type {any} */ (result.mimeType))) {
+  if (!(/** @type {readonly unknown[]} */ (SCREENSHOT_TYPES).includes(result.mimeType))) {
     errors.push(`result.mimeType must be one of ${SCREENSHOT_TYPES.join(", ")}`);
   }
   const data = result.data;
@@ -954,7 +955,7 @@ function checkActivateResult(result, errors, extra = /** @type {string[]} */ ([]
     if (!isObject(d)) errors.push("result.dialog must be an object");
     else {
       noExtraFields(d, ["type", "text"], errors, "result.dialog.");
-      if (!DIALOG_TYPES.includes(/** @type {any} */ (d.type))) {
+      if (!(/** @type {readonly unknown[]} */ (DIALOG_TYPES).includes(d.type))) {
         errors.push(`result.dialog.type must be one of ${DIALOG_TYPES.join(", ")}`);
       }
       if (!insideDelimiters(d.text)) {
@@ -965,7 +966,10 @@ function checkActivateResult(result, errors, extra = /** @type {string[]} */ ([]
   if ("blocked" in result && !(typeof result.blocked === "string" && HOST.test(result.blocked))) {
     errors.push("result.blocked must be a host");
   }
-  if ("stopped" in result && !ACTIVATE_STOPS.includes(/** @type {any} */ (result.stopped))) {
+  if (
+    "stopped" in result &&
+    !(/** @type {readonly unknown[]} */ (ACTIVATE_STOPS).includes(result.stopped))
+  ) {
     errors.push(`result.stopped must be ${ACTIVATE_STOPS.join(" or ")}`);
   }
   if (
@@ -973,7 +977,7 @@ function checkActivateResult(result, errors, extra = /** @type {string[]} */ ([]
     !(
       Array.isArray(result.changed) &&
       new Set(result.changed).size === result.changed.length &&
-      result.changed.every((c) => ACTIVATE_CHANGES.includes(/** @type {any} */ (c)))
+      result.changed.every((c) => /** @type {readonly unknown[]} */ (ACTIVATE_CHANGES).includes(c))
     )
   ) {
     errors.push(`result.changed must be a list of distinct ${ACTIVATE_CHANGES.join(", ")}`);
@@ -1033,7 +1037,10 @@ function checkKeysResult(result, errors) {
       }
     });
   }
-  if ("stopped" in result && !KEYS_STOPS.includes(/** @type {any} */ (result.stopped))) {
+  if (
+    "stopped" in result &&
+    !(/** @type {readonly unknown[]} */ (KEYS_STOPS).includes(result.stopped))
+  ) {
     errors.push(`result.stopped must be one of ${KEYS_STOPS.join(", ")}`);
   }
   if ("links" in result !== "dropped" in result) {
@@ -1102,7 +1109,10 @@ function checkAgentResult(result, command, errors) {
 
 /** @param {Obj} result @param {string[]} errors */
 function checkStateResult(result, errors) {
-  if (typeof result.mode !== "string" || !MODES.includes(/** @type {any} */ (result.mode))) {
+  if (
+    typeof result.mode !== "string" ||
+    !(/** @type {readonly unknown[]} */ (MODES).includes(result.mode))
+  ) {
     errors.push(`result.mode must be one of ${MODES.join(", ")}`);
   }
   for (const key of ["pending", "workspace"]) {
@@ -1262,7 +1272,7 @@ function checkChat(chat, hidden, errors) {
   }
   if (hidden) errors.push("result.chat must be null in a private window");
   noExtraFields(chat, ["view", "rows", "entries", "question"], errors, "result.chat.");
-  if (!CHAT_VIEWS.includes(/** @type {any} */ (chat.view))) {
+  if (!(/** @type {readonly unknown[]} */ (CHAT_VIEWS).includes(chat.view))) {
     errors.push(`result.chat.view must be one of ${CHAT_VIEWS.join(", ")}`);
   }
   for (const key of ["rows", "entries"]) {
@@ -1314,7 +1324,7 @@ function checkUpdate(update, errors) {
   if (update.installType !== null && typeof update.installType !== "string") {
     errors.push("result.update.installType must be a string or null");
   }
-  if (!UPDATE_OUTCOMES.includes(/** @type {any} */ (update.outcome))) {
+  if (!(/** @type {readonly unknown[]} */ (UPDATE_OUTCOMES).includes(update.outcome))) {
     errors.push(`result.update.outcome must be one of ${UPDATE_OUTCOMES.join(", ")}`);
   }
   if (update.checkedAt !== null && !isInt(update.checkedAt, 0, Number.MAX_SAFE_INTEGER)) {
@@ -1332,7 +1342,7 @@ function checkUpdate(update, errors) {
       errors.push("result.update.offer.urgent must be a boolean");
     }
   }
-  if (!UPDATE_STAGES.includes(/** @type {any} */ (update.stage))) {
+  if (!(/** @type {readonly unknown[]} */ (UPDATE_STAGES).includes(update.stage))) {
     errors.push(`result.update.stage must be one of ${UPDATE_STAGES.join(", ")}`);
   }
 }
@@ -1408,7 +1418,7 @@ function checkResponse(m, command, errors) {
   if (typeof error.message !== "string") errors.push("error.message must be a string");
   // A denial says why (protocol 2); nothing else carries a reason.
   if (error.code === "denied") {
-    if (!DENY_REASONS.includes(/** @type {any} */ (error.reason))) {
+    if (!(/** @type {readonly unknown[]} */ (DENY_REASONS).includes(error.reason))) {
       errors.push(`error.reason must be one of ${DENY_REASONS.join(", ")}`);
     }
   } else if ("reason" in error) errors.push("error.reason is only for denied");

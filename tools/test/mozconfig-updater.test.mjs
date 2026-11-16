@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "./temp-dir.mjs";
-import { artifactMozconfig } from "../artifact-build/artifact-build.mjs";
+import { artifactMozconfig } from "../artifact-build/artifact-build.ts";
 
 const MOZCONFIG = readFileSync(new URL("../../configs/common/mozconfig", import.meta.url), "utf8");
 const CERT_DIR = "toolkit/mozapps/update/updater/vimma";

@@ -369,7 +369,12 @@ function same(/** @type {unknown} */ a, /** @type {unknown} */ b) {
   const kb = Object.keys(b);
   return (
     ka.length === kb.length &&
-    ka.every((k) => same(/** @type {any} */ (a)[k], /** @type {any} */ (b)[k]))
+    ka.every((k) =>
+      same(
+        /** @type {Record<string, unknown>} */ (a)[k],
+        /** @type {Record<string, unknown>} */ (b)[k],
+      ),
+    )
   );
 }
 

@@ -172,7 +172,8 @@ function onGate(event) {
 let gateListening = false;
 
 /** The parent process's fetch: requests from the system principal, with no page's cookies. */
-const parentFetch = (/** @type {string} */ url, /** @type {any} */ init) => fetch(url, init);
+const parentFetch = (/** @type {string} */ url, /** @type {RequestInit} */ init) =>
+  fetch(url, init);
 
 const config = () => McpHost.agentConfig;
 
@@ -206,7 +207,10 @@ function persist(c) {
   if (!c.stored.length || conversations.get(c.id) !== c) return;
   const save = AgentStore.save(storedRecord(c)).catch((e) => {
     // Only the error's name: its text could carry what was being written.
-    console.error("vimma agent: a conversation could not be stored", /** @type {any} */ (e)?.name);
+    console.error(
+      "vimma agent: a conversation could not be stored",
+      /** @type {Thrown} */ (e)?.name,
+    );
   });
   saves.add(save);
   save.finally(() => saves.delete(save));
@@ -303,7 +307,7 @@ function summarize(c, outcome) {
 
 /** `keep_days` in force when it last ran, so a changed value runs it again. */
 let prunedWith = /** @type {number | null | undefined} */ (undefined);
-let pruneTimer = /** @type {any} */ (null);
+let pruneTimer = /** @type {number | null} */ (null);
 
 /** config.toml was read: `keep_days` runs at start, when it changes, and once a day. */
 function onConfig() {
@@ -643,7 +647,7 @@ export const AgentChat = {
       changed();
       console.error(
         "vimma agent: the provider's key could not be read",
-        /** @type {any} */ (e)?.name,
+        /** @type {Thrown} */ (e)?.name,
       );
       return { refused: `the key of ${c.provider.name} could not be read` };
     }

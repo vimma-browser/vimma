@@ -105,7 +105,7 @@ const amoBase = () => Services.prefs.getStringPref(AMO_PREF, AMO_API);
 const configFile = () => ConfigHost.configFile;
 
 /** @param {unknown} e */
-const notFound = (e) => /** @type {any} */ (e)?.name === "NotFoundError";
+const notFound = (e) => /** @type {Thrown} */ (e)?.name === "NotFoundError";
 
 export const SetupHost = {
   /** Once per process (vimma.js): about:vimma-setup resolves from then on. */

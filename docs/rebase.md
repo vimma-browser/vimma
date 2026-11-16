@@ -294,7 +294,7 @@ PR CI (`e2e.yml`) does this once the PR is ready for review, because the bump ch
 `surfer.json`. Run it locally too, next to the full build (≈ 0.6 GB in `engine/obj-artifact`):
 
 ```sh
-node tools/artifact-build/artifact-build.mjs
+node tools/artifact-build/artifact-build.ts
 # → artifact-build: Mozilla binaries of <rev> (indexed until <date>), objdir engine/obj-artifact
 npm run mochitest -- --artifact tests/browser/
 ```

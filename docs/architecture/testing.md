@@ -133,7 +133,7 @@ also checks key-to-paint times against budgets set from CI runs.
 **Where.** The required `mochitest (artifact build)` job of `e2e.yml`, on a hosted Linux runner.
 It downloads Firefox's source for `surfer.json`'s release and checks it
 (`tools/upstream/firefox-source.sh`), runs `npm run import`, makes the artifact build
-(`tools/artifact-build/artifact-build.mjs`: Vimma's front end over Mozilla's compiled binaries
+(`tools/artifact-build/artifact-build.ts`: Vimma's front end over Mozilla's compiled binaries
 for the same release), and runs `npm run mochitest -- --artifact tests/browser/` with
 `VIMMA_REQUIRE_CTL=1`, so the vimma-ctl task fails rather than skips. Files that test
 compiled-in parts are marked `skip-if = ["artifact"]` in `browser.toml` (at present the crash

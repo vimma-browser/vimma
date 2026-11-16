@@ -65,7 +65,7 @@ const DIR_MODE = 0o700;
 const DEFAULT_POLL_MS = 2000;
 
 /** IOUtils rejects with a DOMException named NotFoundError for a missing file. */
-const notFound = (/** @type {unknown} */ e) => /** @type {any} */ (e)?.name === "NotFoundError";
+const notFound = (/** @type {unknown} */ e) => /** @type {Thrown} */ (e)?.name === "NotFoundError";
 
 const home = () => Services.dirsvc.get("Home", Ci.nsIFile).path;
 
@@ -604,7 +604,7 @@ export const ConfigHost = {
       try {
         link = file.isSymlink();
       } catch (e) {
-        if (/** @type {any} */ (e)?.result !== Cr.NS_ERROR_FILE_NOT_FOUND) throw e;
+        if (/** @type {Thrown} */ (e)?.result !== Cr.NS_ERROR_FILE_NOT_FOUND) throw e;
       }
       if (link) {
         // A link to nothing: writing would replace the user's link with a plain file.

@@ -213,6 +213,18 @@ declare const Cr: Record<string, number> & {
   readonly NS_OK: number;
 };
 
+// What a `catch` or a rejection handler gets in chrome code, read only through `?.`: an Error, a
+// DOMException (`name`, such as IOUtils' NotFoundError), an XPCOM exception (`result`, one of Cr),
+// or whatever else was thrown, null and undefined included. `message` is a string on all three.
+type Thrown =
+  | {
+      readonly name?: unknown;
+      readonly message?: string;
+      readonly result?: unknown;
+    }
+  | null
+  | undefined;
+
 // engine/dom/chrome-webidl/PathUtils.webidl
 declare const PathUtils: {
   readonly profileDir: string;

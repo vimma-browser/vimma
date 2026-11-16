@@ -6,7 +6,7 @@ variable to set up. Same thing locally, next to the full build (≈ 0.6 GB, `eng
 
 ```sh
 npm run import
-node tools/artifact-build/artifact-build.mjs     # ~25 s warm; first run downloads 163 MB
+node tools/artifact-build/artifact-build.ts     # ~25 s warm; first run downloads 163 MB
 npm run mochitest -- --artifact tests/browser/
 ```
 

@@ -16,6 +16,11 @@ import { checkEndpoint } from "./agent-providers.mjs";
 /** @typedef {import("./agent-providers.mjs").Fetch} Fetch */
 /** @typedef {{ server: string, endpoint: string, models: string[] }} LocalServer */
 /**
+ * An entry of a list in a local server's JSON answer, read only through `?.`: any JSON value,
+ * whose fields are unchecked.
+ * @typedef {{ readonly [field: string]: unknown } | null | undefined} JsonEntry
+ */
+/**
  * @typedef {(ms: number) => AbortSignal} Timeout  a signal that aborts after `ms`; the browser's
  *   parent process passes its own, since its module global has no AbortSignal.timeout
  */
@@ -89,7 +94,7 @@ export async function probeLocal(
       try {
         const json = await request(fetch, `${endpoint}/models`, timeout(timeoutMs));
         const data = Array.isArray(json?.data) ? json.data : [];
-        const models = data.map((/** @type {any} */ m) => m?.id).filter(isModelName);
+        const models = data.map((/** @type {JsonEntry} */ m) => m?.id).filter(isModelName);
         return [{ server, endpoint, models }];
       } catch {
         return [];
@@ -155,13 +160,17 @@ export async function localModelState(
       signal: timeout(timeoutMs),
     });
   } catch (e) {
-    return /** @type {any} */ (e)?.name === "AbortError" ? "unknown" : "down";
+    return /** @type {{ name?: unknown } | null | undefined} */ (e)?.name === "AbortError"
+      ? "unknown"
+      : "down";
   }
   if (!res.ok) return "unknown";
   try {
     const data = JSON.parse(await res.text())?.data;
     if (!Array.isArray(data)) return "unknown";
-    return data.some((/** @type {any} */ m) => m?.id === provider.model) ? "available" : "gone";
+    return data.some((/** @type {JsonEntry} */ m) => m?.id === provider.model)
+      ? "available"
+      : "gone";
   } catch {
     return "unknown";
   }
@@ -340,9 +349,10 @@ export async function ollamaPlacement(fetch, endpoint, model, { timeout = defaul
       stream: false,
     });
     const ps = await request(fetch, `${root}/api/ps`, timeout(10 * PROBE_TIMEOUT_MS));
+    /** @type {readonly unknown[]} */
     const names = model.includes(":") ? [model] : [model, `${model}:latest`];
     const loaded = (Array.isArray(ps?.models) ? ps.models : []).find(
-      (/** @type {any} */ m) => names.includes(m?.name) || names.includes(m?.model),
+      (/** @type {JsonEntry} */ m) => names.includes(m?.name) || names.includes(m?.model),
     );
     const size = Number(loaded?.size);
     if (!(size > 0)) return null;

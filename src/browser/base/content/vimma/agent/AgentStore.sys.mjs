@@ -51,7 +51,7 @@ async function files() {
   try {
     children = await IOUtils.getChildren(dir());
   } catch (e) {
-    if (/** @type {any} */ (e)?.name === "NotFoundError") return [];
+    if (/** @type {Thrown} */ (e)?.name === "NotFoundError") return [];
     throw e;
   }
   /** @type {{ id: string, path: string, modified: number, temp: boolean }[]} */
@@ -140,7 +140,7 @@ export const AgentStore = {
         // The error's text could carry the file's contents: only its name is logged.
         console.warn(
           `vimma agent: ${PathUtils.filename(f.path)} could not be read`,
-          /** @type {any} */ (e)?.name,
+          /** @type {Thrown} */ (e)?.name,
         );
       }
     }
