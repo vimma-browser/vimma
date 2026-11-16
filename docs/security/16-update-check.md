@@ -316,29 +316,29 @@ _Pages_ and _extensions_ cannot reach it.
   [`a_new_version_is_announced_once`](../../tests/browser/browser_vimma_update_notices.js),
   [`y or Y shows the steps; n, Esc, Enter and any other key dismiss`](../../packages/vimma-core/test/update-notices.test.ts)
 
-- UP10. The AppImage **only** replaces its own file (`$APPIMAGE`) with a download whose size
-  and SHA-512 match a manifest verified by a check in the running process (an offer restored
-  from the saved result, the pref `vimma.update.last`, waits for a check), checked on the file as written to disk, after every
-  write is synced, and before the rename; anything else leaves the file as it was and removes
-  the download. It replaces nothing unless its GRE directory carries the
+- UP10. The AppImage **only** replaces its own file (`$APPIMAGE`) with a download whose size and
+  SHA-512 match a manifest verified by a check in the running process (an offer restored from the
+  saved result, the pref `vimma.update.last`, waits for a check), checked on the file as written to
+  disk, after every write is synced, and before the rename; anything else leaves the file as it was
+  and removes the download. It replaces nothing unless its GRE directory carries the
   `vimma-package=appimage` marker and lies inside `$APPDIR`, so a program started from another
-  AppImage, which inherits that AppImage's `$APPIMAGE`, never overwrites it. The command
-  about:vimma and `:update` show for an AppImage names `$APPIMAGE` under the same check, and
-  otherwise the placeholder `Vimma.AppImage`, so a hand-extracted AppDir started from another
-  AppImage's process is never shown a command that renames over that file (#1196). Outside automation
-  the download **must** come from `https://github.com/vimma-browser/vimma/releases/download/`
-  (path segments only), so a leaked manifest key alone cannot point installs at a file of its
-  own. The download is anonymous (no cookies, no referrer, an empty `Accept-Language`), follows
-  GitHub's redirect to its asset host but must end on https, stops past the signed size or after
-  60 seconds without data or after 6 hours, and is written to a hidden file in the same
-  directory whose name no other file has, created by this process alone, so a second Vimma
-  never writes into it or removes it; part files left by a killed run are removed after a day.
-  A symbolic link at `$APPIMAGE` is refused. The file is made `0755` and renamed over
-  `$APPIMAGE`; the running Vimma keeps its mounted image, and nothing restarts it. Checks off
-  (UP4) download nothing, and turning them off stops a download under way. **⚠ limit:** the manifest's hash is the AppImage's only signature: an
-  AppImage carries no MAR signature the way Firefox's updater checks one, so a leaked primary key
-  together with any release asset of the project (an older AppImage included) can install that
-  asset; the replay and downgrade rules (UP2) compare the manifest's versions, not the file's.
+  AppImage, which inherits that AppImage's `$APPIMAGE`, never overwrites it. The command about:vimma
+  and `:update` show for an AppImage names `$APPIMAGE` under the same check, and otherwise the
+  placeholder `Vimma.AppImage`, so a hand-extracted AppDir started from another AppImage's process
+  is never shown a command that renames over that file (#1196). Outside automation the download
+  **must** come from `https://github.com/vimma-browser/vimma/releases/download/` (path segments
+  only), so a leaked manifest key alone cannot point installs at a file of its own. The download is
+  anonymous (no cookies, no referrer, an empty `Accept-Language`), follows GitHub's redirect to its
+  asset host but must end on https, stops past the signed size or after 60 seconds without data or
+  after 6 hours, and is written to a hidden file in the same directory whose name no other file has,
+  created by this process alone, so a second Vimma never writes into it or removes it; part files
+  left by a killed run are removed after a day. A symbolic link at `$APPIMAGE` is refused. The file
+  is made `0755` and renamed over `$APPIMAGE`; the running Vimma keeps its mounted image, and
+  nothing restarts it. Checks off (UP4) download nothing, and turning them off stops a download
+  under way. **⚠ limit:** the manifest's hash is the AppImage's only signature: an AppImage carries
+  no MAR signature the way Firefox's updater checks one, so a leaked primary key together with any
+  release asset of the project (an older AppImage included) can install that asset; the replay and
+  downgrade rules (UP2) compare the manifest's versions, not the file's.
   [`a_newer_appimage_replaces_the_file`](../../tests/browser/browser_vimma_update_appimage.js),
   [`a_wrong_hash_leaves_the_file_alone`](../../tests/browser/browser_vimma_update_appimage.js),
   [`a_larger_download_than_signed_is_refused`](../../tests/browser/browser_vimma_update_appimage.js),

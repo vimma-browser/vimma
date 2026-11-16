@@ -1077,7 +1077,9 @@ describe("updateSteps (:update and about:vimma)", () => {
           appDir: dir,
           marker: "vimma-package=appimage\n",
         }).commands;
+        // In the temp dir: a command with a relative path never writes into the checkout.
         return spawnSync("sh", ["-c", cmd], {
+          cwd: dir,
           env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, BODY: body },
         }).status;
       };
