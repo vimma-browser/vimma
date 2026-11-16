@@ -79,8 +79,7 @@ describe("key notation fuzzing", () => {
       fuzz(
         "keys-round-trip",
         fc.property(notation, (text) => {
-          /** @type {ReturnType<typeof parseKey> | undefined} */
-          let chord;
+          let chord: ReturnType<typeof parseKey> | undefined;
           try {
             chord = parseKey(text);
           } catch {

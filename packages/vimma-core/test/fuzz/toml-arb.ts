@@ -118,8 +118,7 @@ const scalar = fc.oneof(
   fc.string({ maxLength: 20 }).map((s) => `"""${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"""`),
 );
 
-/** @type {fc.LetrecTypedBuilder<{ value: string }>} */
-const valueBuilder = (tie) => ({
+const valueBuilder: fc.LetrecTypedBuilder<{ value: string }> = (tie) => ({
   value: fc.oneof(
     { depthSize: "small", withCrossShrink: true },
     { weight: 6, arbitrary: scalar },

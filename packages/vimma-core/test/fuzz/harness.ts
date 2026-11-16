@@ -23,8 +23,7 @@ import { expect } from "vitest";
 
 export const FIXED_SEED = 20261010;
 
-/** @param {string} name @param {number} fallback */
-function envInt(name, fallback) {
+function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
   const n = Number(raw);
@@ -46,12 +45,12 @@ export const FUZZ_TIMEOUT = (TIME_MS || 30_000) + 30_000;
  * that assigns `obj[key] = v` with a key from its input (`__proto__`, `constructor`) changes
  * one of these.
  */
-const PROTOTYPES = /** @type {const} */ ([
+const PROTOTYPES = [
   ["Object.prototype", Object.prototype],
   ["Array.prototype", Array.prototype],
   ["Function.prototype", Function.prototype],
   ["String.prototype", String.prototype],
-]);
+] as const;
 const SNAPSHOT = PROTOTYPES.map(([name, proto]) => ({
   name,
   proto,
@@ -79,13 +78,9 @@ export function expectNoPollution() {
 /**
  * Runs `fn` and fails when it took longer than `ms`: a hang on a small input shows as a slow
  * case long before it shows as a stuck job. Generous on purpose (shared CI runners).
- * @template T
- * @param {number} ms
- * @param {() => T} fn
- * @param {string} [label]  names the input in the failure message
- * @returns {T}
+ * `label` names the input in the failure message.
  */
-export function within(ms, fn, label) {
+export function within<T>(ms: number, fn: () => T, label?: string): T {
   const start = performance.now();
   const out = fn();
   const took = performance.now() - start;
@@ -97,37 +92,35 @@ export function within(ms, fn, label) {
 
 /**
  * Runs `fn`; anything it throws must be an instance of `allowed` (the parser's documented error).
- * @param {() => unknown} fn
- * @param {Function | null} allowed  null: nothing may be thrown
+ * `allowed` null: nothing may be thrown.
  */
-export function throwsOnly(fn, allowed) {
+export function throwsOnly<E extends Error>(
+  fn: () => unknown,
+  allowed: (abstract new (...args: never[]) => E) | null,
+): E | undefined {
   try {
     fn();
   } catch (e) {
     if (allowed && e instanceof allowed) return e;
-    throw new Error(
-      `threw ${String(e)} (${/** @type {any} */ (e)?.name}), not ${allowed?.name ?? "nothing"}`,
-      {
-        cause: e,
-      },
-    );
+    const name = e instanceof Error ? e.name : undefined;
+    throw new Error(`threw ${String(e)} (${name}), not ${allowed?.name ?? "nothing"}`, {
+      cause: e,
+    });
   }
   return undefined;
 }
 
 /** The running test's own title (vitest's current name ends with it, after the describes). */
-function testTitle() {
+function testTitle(): string {
   return (expect.getState().currentTestName ?? "").split(" > ").at(-1) ?? "";
 }
 
 /**
  * The shell command that replays one failing case. `-t` takes a pattern matched against test
  * titles, so the title is regex-escaped, and single-quoted so the shell passes it on as written.
- * @param {number} seed
- * @param {string | null} path  fast-check's counterexample path
- * @param {string} title  the failing test's title
+ * `path` is fast-check's counterexample path, `title` the failing test's title.
  */
-export function replayCommand(seed, path, title) {
+export function replayCommand(seed: number, path: string | null, title: string): string {
   const pattern = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replaceAll("'", "'\\''");
   return `VIMMA_FUZZ_SEED=${seed} VIMMA_FUZZ_PATH=${path} npx vitest run packages/vimma-core/test/fuzz -t '${pattern}'`;
 }
@@ -135,14 +128,16 @@ export function replayCommand(seed, path, title) {
 /**
  * Check `property` with the run's seed; on failure write the seed, the replay path and the
  * counterexample to VIMMA_FUZZ_OUT, then fail with fast-check's report.
- * @param {string} name   the test's name, for the failure file
- * @param {fc.IProperty<any>} property  a synchronous property: fc.check returns its details
- * @param {{ weight?: number }} [options]  weight: a share of RUNS (slow targets run fewer cases)
+ * `name` is the test's name, for the failure file; `property` a synchronous property, so
+ * fc.check returns its details; `weight` a share of RUNS (slow targets run fewer cases).
  */
-export function fuzz(name, property, { weight = 1 } = {}) {
+export function fuzz<Ts>(
+  name: string,
+  property: fc.IProperty<Ts>,
+  { weight = 1 }: { weight?: number } = {},
+): void {
   const numRuns = Math.max(1, Math.round(RUNS * weight));
-  /** @type {fc.Parameters<any>} */
-  const params = { seed: SEED, numRuns };
+  const params: fc.Parameters<Ts> = { seed: SEED, numRuns };
   if (PATH) Object.assign(params, { path: PATH, endOnFailure: true });
   if (TIME_MS)
     Object.assign(params, { interruptAfterTimeLimit: TIME_MS, markInterruptAsFailure: false });

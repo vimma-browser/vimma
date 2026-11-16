@@ -30,8 +30,7 @@ const longRun = fc
 
 /** report.mjs before the fix: the oracle for small inputs. */
 const URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/\S*?(?=[\s,;)\]]|[.,;:!?]?(?:\s|$))/gi;
-/** @param {string} text @param {string} home */
-function oldRedact(text, home) {
+function oldRedact(text: string, home: string): string {
   let out = text.replace(URL_RE, "<url>");
   const h = home.replace(/\/+$/, "");
   const esc = h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

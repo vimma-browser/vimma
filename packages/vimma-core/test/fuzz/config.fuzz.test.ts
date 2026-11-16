@@ -11,6 +11,7 @@ import {
   parseConfig,
   reloadConfig,
 } from "../../src/config/config.mjs";
+import type { ParseResult, ResolvedConfig } from "../../src/config/config.mjs";
 import { formatPath, parsePath, parseToml } from "../../src/config/toml.mjs";
 import { PALETTE_KEYS } from "../../src/config/theme.mjs";
 import { INSERT_SITE_MODES } from "../../src/keys/editable.mjs";
@@ -19,8 +20,7 @@ import { resolveDownloadDir } from "../../src/agent/agent-downloads.mjs";
 import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.ts";
 import { configText } from "./toml-arb.ts";
 
-/** @param {import("../../src/config/config.mjs").ParseResult} r */
-function expectWellFormed(r) {
+function expectWellFormed(r: ParseResult): void {
   expect(Array.isArray(r.errors)).toBe(true);
   expect(r.config === null).toBe(r.errors.length > 0);
   expect(r.keymap === null).toBe(r.errors.length > 0);
@@ -36,9 +36,8 @@ const HEX6 = /^#[0-9a-f]{6}$/;
 /**
  * Everything an accepted config may contain, checked independently of config.mjs: what the
  * schema allows and nothing else (no function, no prototype object, no stray type).
- * @param {import("../../src/config/config.mjs").ResolvedConfig} c
  */
-function expectInSchema(c) {
+function expectInSchema(c: ResolvedConfig): void {
   for (const w of c.workspaces) {
     expect(typeof w.name).toBe("string");
     expect([...w.name].length).toBeGreaterThanOrEqual(1);
@@ -52,9 +51,7 @@ function expectInSchema(c) {
   expect(typeof c.theme.font).toBe("string");
   expect(c.theme.font).not.toMatch(/["';{}\\<>]/);
   expect(
-    [...c.theme.font].some(
-      (ch) => /** @type {number} */ (ch.codePointAt(0)) < 0x20 || ch === "\x7f",
-    ),
+    [...c.theme.font].some((ch) => (ch.codePointAt(0) as number) < 0x20 || ch === "\x7f"),
   ).toBe(false);
   for (const [k, v] of Object.entries(c.theme.colors)) {
     expect(PALETTE_KEYS).toContain(k);
@@ -77,10 +74,8 @@ function expectInSchema(c) {
 /**
  * Values for a schema-checked field: mostly valid ones, so that whole documents often pass and
  * reach the in-schema checks, then near misses, prototype member names and random text.
- * @param {readonly string[]} valid
- * @param {string[]} [near]
  */
-const fieldValue = (valid, near = []) =>
+const fieldValue = (valid: readonly string[], near: string[] = []) =>
   fc.oneof(
     { weight: 40, arbitrary: fc.constantFrom(...valid).map((v) => JSON.stringify(v)) },
     ...(near.length
@@ -90,8 +85,7 @@ const fieldValue = (valid, near = []) =>
     { weight: 1, arbitrary: nastyString.map((v) => JSON.stringify(v)) },
     { weight: 1, arbitrary: fc.constantFrom("1", "true", "[]", "{}", "1.5", '["a"]') },
   );
-/** @param {string[]} valid @param {fc.Arbitrary<string>} other */
-const mostly = (valid, other) =>
+const mostly = (valid: string[], other: fc.Arbitrary<string>) =>
   fc.oneof({ weight: 20, arbitrary: fc.constantFrom(...valid) }, { weight: 1, arbitrary: other });
 
 /** Documents shaped like a real config.toml, with fuzzed values: they often validate. */
@@ -224,13 +218,12 @@ describe("config.toml fuzzing", () => {
   );
 
   // docs/specs/vimma-mcp.md (M7 fuzzing): any [mcp] values; an accepted one is in its bounds.
-  /**
-   * @param {number | string} minutes
-   * @param {number | string} max
-   * @param {number | string} chars
-   * @param {string} name
-   */
-  function checkMcpBounds(minutes, max, chars, name) {
+  function checkMcpBounds(
+    minutes: number | string,
+    max: number | string,
+    chars: number | string,
+    name: string,
+  ): void {
     const text = [
       "schema = 2",
       "[mcp]",
