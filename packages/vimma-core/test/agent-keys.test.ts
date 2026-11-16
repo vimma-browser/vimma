@@ -212,6 +212,7 @@ describe("links (D12)", () => {
   // Issue #1212: the action is looked up by its id, not its config name.
   test.each([
     ["Browser", "app.quit"],
+    ["Browser", "page.stop"],
     ["Developer tools", "devtools.toggle"],
     ["Bookmarks", "bookmark.add"],
     ["Config", "config.reload"],
@@ -220,6 +221,12 @@ describe("links (D12)", () => {
     ["Agents", "mcp.answer"],
   ])("an action of the %s group is refused as the user's own (M16)", (_group, id) => {
     expect(refusalReason(id)).toBe("the browser's own tools and settings are the user's");
+  });
+
+  test("esc (page.stop) is refused as the user's own", () => {
+    expect(refusal("esc")).toBe(
+      `key "<esc>" (page.stop) is refused: the browser's own tools and settings are the user's`,
+    );
   });
 
   test("an action of no user group, or no action, gets the generic reason", () => {
