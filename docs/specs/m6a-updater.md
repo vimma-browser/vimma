@@ -677,7 +677,9 @@ host", step 7, and docs/security/16-update-check.md UP7.)
   when any commit since the previous tag is an `upstream: firefox <version>` bump whose PR carried
   the `security` label, the same classification `tools/upstream/detect.mjs` applies (unknown
   counts as security, G3) and spec firefox-versions keys its automatic release on. The advisory
-  IDs in those subjects (firefox-versions decision 9) go into `vimmaAdvisories`.
+  IDs in those subjects (firefox-versions decision 9) go into `vimmaAdvisories`. (Since changed:
+  no `urgency.mjs` was written; `urgencyOf` in `tools/update/manifest.ts` computes it, in
+  update-publish.yml's `prepare` job, from the commits `manifest.ts commits` lists.)
 - **Direct push, not a PR**, to the manifest repository, because a PR would need a merge, a
   manual step. The deploy key can write only that repository, and the commit touches only the
   `updates/` tree. A CI check there cannot stop a bad push, because Cloudflare deploys without
