@@ -189,6 +189,7 @@ add_task(async function agent_clicks_never_synthesise_input_or_user_activation()
     "actors/submit-marks.mjs",
     "actors/actor-for.mjs",
     "actors/VimmaChild.sys.mjs",
+    "actors/agent-page.mjs",
     "actors/agent-fields.mjs",
     "actors/hint-collect.mjs",
     "actors/page-scroll.mjs",
@@ -221,6 +222,7 @@ add_task(async function agent_fills_never_set_a_file() {
     "actors/submit-marks.mjs",
     "actors/actor-for.mjs",
     "actors/VimmaChild.sys.mjs",
+    "actors/agent-page.mjs",
     "actors/agent-fields.mjs",
   ];
   const forbidden = /\bmozSet\w*|\.files\s*=|\bmozFileOrDirectory\w*|\bDataTransfer\b/g;
