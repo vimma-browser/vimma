@@ -366,3 +366,62 @@ describe("a consequential form (mcp-consequence K2, K3)", () => {
     ).toBe(null);
   });
 });
+
+// Issue #1119: edges the weekly mutation run found unpinned.
+describe("the checkpoint's edges (mutation-tested)", () => {
+  test("a page in capitals spells ß as SS, and the phrase with ß still matches", () => {
+    expect(hasPayPhrase("KAUF ABSCHLIESSEN")).toBe(true);
+    expect(hasPayPhrase("Kauf abschließen")).toBe(true);
+  });
+
+  test("pageText: spaces left next to a dropped character become one", () => {
+    expect(pageText("Pay \u200B now")).toBe("Pay now");
+    expect(pageText("Total \u0007 42 €")).toBe("Total 42 €");
+  });
+
+  test("a payment reply at its caps is taken; a list or function in place of text is not", () => {
+    const four = ["a", "b", "c", "d"];
+    expect(parsePayInfo({ texts: four })).toEqual({ texts: four });
+    const full = "x".repeat(512);
+    expect(parsePayInfo({ texts: [full], total: full })).toEqual({ texts: [full], total: full });
+    expect(parsePayInfo({ texts: [["Pay"]] })).toBe(null);
+    expect(parsePayInfo({ texts: [], total: ["Total 1 €"] })).toBe(null);
+    expect(parsePayInfo(Object.assign(() => {}, { texts: [] }))).toBe(null);
+  });
+
+  test("a fields reply at its caps is taken; a field that is null or a function is refused", () => {
+    const sixtyFour = Array.from({ length: 64 }, () => ({ name: "a", value: "" }));
+    expect(parseSentFields({ fields: sixtyFour, hidden: 0, more: 0 })?.fields).toHaveLength(64);
+    const name = "n".repeat(512);
+    const value = "v".repeat(1024);
+    expect(parseSentFields({ fields: [{ name, value }], hidden: 0, more: 0 })?.fields).toEqual([
+      { name, value },
+    ]);
+    expect(parseSentFields({ fields: [null], hidden: 0, more: 0 })).toBe(null);
+    expect(parseSentFields({ fields: [undefined], hidden: 0, more: 0 })).toBe(null);
+    // A function's own name is "", which would pass as a field's.
+    const fn = Object.assign(() => {}, { value: "" });
+    expect(parseSentFields({ fields: [fn], hidden: 0, more: 0 })).toBe(null);
+  });
+
+  test("a field sent without a value is sent empty", () => {
+    const parsed = parseSentFields({ fields: [{ name: "q" }], hidden: 0, more: 0 });
+    expect(parsed?.fields[0]?.value).toBe("");
+    expect(Object.hasOwn(parsed?.fields[0] ?? {}, "value")).toBe(true);
+  });
+
+  test("the allowance keeps the method in lower case", () => {
+    const key = allowanceKey({
+      site: "shop.example",
+      method: "POST",
+      action: "https://shop.example:8443/cart/add?id=1#top",
+      text: "Add",
+    });
+    expect(JSON.parse(key as string)).toEqual([
+      "shop.example",
+      "post",
+      "https://shop.example:8443/cart/add",
+      "Add",
+    ]);
+  });
+});

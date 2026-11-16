@@ -594,3 +594,283 @@ describe("the question and the notices (decision 31 a, g)", () => {
     expect(n.length).toBeLessThan(140);
   });
 });
+
+// Issue #1119: edges the weekly mutation run found unpinned.
+describe("the download checks' edges (mutation-tested)", () => {
+  /** One central directory record, as `zip` writes it, with an extra field and a comment. */
+  function cdRecord(name: string, { extra = 0, comment = 0, nameLength = -1 } = {}) {
+    const bytes = enc.encode(name);
+    const out = new Uint8Array(46 + bytes.length + extra + comment);
+    const view = new DataView(out.buffer);
+    view.setUint32(0, 0x02014b50, true);
+    view.setUint16(28, nameLength < 0 ? bytes.length : nameLength, true);
+    view.setUint16(30, extra, true);
+    view.setUint16(32, comment, true);
+    out.set(bytes, 46);
+    // The extra field and the comment hold bytes that look like the next record's start.
+    out.fill(0x50, 46 + bytes.length);
+    return out;
+  }
+  const join = (...parts: Uint8Array[]) => {
+    const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    let at = 0;
+    for (const p of parts) {
+      out.set(p, at);
+      at += p.length;
+    }
+    return out;
+  };
+  /** The offset of a zip's end record (no comment). */
+  const eocd = (zip: Uint8Array) => zip.length - 22;
+  const set16 = (zip: Uint8Array, at: number, n: number) =>
+    new DataView(zip.buffer).setUint16(at, n, true);
+  const set32 = (zip: Uint8Array, at: number, n: number) =>
+    new DataView(zip.buffer).setUint32(at, n, true);
+
+  test("each signature names what it found", () => {
+    const head = (...b: number[]) => new Uint8Array([...b, 0, 0, 0, 0, 0, 0]);
+    const tar = new Uint8Array(512);
+    tar.set(enc.encode("ustar"), 257);
+    expect(dangerousContent(head(0x7f, 0x45, 0x4c, 0x46))?.text).toBe("an executable (ELF)");
+    expect(dangerousContent(head(0x4d, 0x5a))?.text).toBe("an executable (PE)");
+    expect(dangerousContent(head(0xfe, 0xed, 0xfa, 0xce))?.text).toBe("an executable (Mach-O)");
+    expect(dangerousContent(enc.encode("#!/bin/sh"))?.text).toBe("a script (#!)");
+    const archive = "an archive Vimma cannot look inside";
+    expect(dangerousContent(head(0x1f, 0x8b))?.text).toBe(`${archive} (gzip)`);
+    expect(dangerousContent(head(0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00))?.text).toBe(
+      `${archive} (xz)`,
+    );
+    expect(dangerousContent(enc.encode("BZh9"))?.text).toBe(`${archive} (bzip2)`);
+    expect(dangerousContent(head(0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c))?.text).toBe(
+      `${archive} (7z)`,
+    );
+    expect(dangerousContent(enc.encode("Rar!\u001a\u0007"))?.text).toBe(`${archive} (rar)`);
+    expect(dangerousContent(head(0x28, 0xb5, 0x2f, 0xfd))?.text).toBe(`${archive} (zstd)`);
+    expect(dangerousContent(tar)?.text).toBe(`${archive} (tar)`);
+  });
+
+  test("a head exactly as long as a signature matches it; 512 zero bytes are no tar", () => {
+    expect(dangerousContent(new Uint8Array([0x4d, 0x5a]))?.kind).toBe("executable");
+    expect(dangerousContent(new Uint8Array(512))).toBe(null);
+  });
+
+  test("a name: trailing dots and spaces all go, and a bare word has no extension", () => {
+    expect(dangerousName("install.sh. .")?.kind).toBe("script");
+    expect(dangerousName("install.sh..")?.kind).toBe("script");
+    expect(dangerousName("sh")).toBe(null);
+    expect(dangerousName("exe")).toBe(null);
+    expect(dangerousName("dir/deb")).toBe(null);
+  });
+
+  test("Firefox's list is asked of an unlisted extension, with trailing dots and spaces gone", () => {
+    const asked: string[] = [];
+    const isExecutable = (n: string) => {
+      asked.push(n);
+      return n.endsWith(".pif");
+    };
+    expect(dangerousName("old.pif. ", { isExecutable })).toEqual({
+      kind: "executable",
+      text: "an executable",
+    });
+    expect(asked).toEqual(["old.pif"]);
+    // A name without an extension, or with nothing in it, is not asked about.
+    expect(dangerousName("README", { isExecutable: () => true })).toBe(null);
+    expect(dangerousName("", { isExecutable: () => true })).toBe(null);
+    expect(dangerousName("...", { isExecutable: () => true })).toBe(null);
+    // A check that throws leaves the name alone to decide.
+    const throws = () => {
+      throw new Error("no service");
+    };
+    expect(dangerousName("old.pif", { isExecutable: throws })).toBe(null);
+  });
+
+  test("a type: spaces before its parameters go; a name of Object's own is no type", () => {
+    expect(dangerousType("application/x-sh ; charset=utf-8")?.kind).toBe("script");
+    expect(dangerousType(" Application/X-Sh")?.kind).toBe("script");
+    for (const type of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      expect(dangerousType(type), type).toBe(null);
+    }
+  });
+
+  test("a zip: 22 zero bytes are not one, and a record faked in the comment is skipped", () => {
+    expect(zipLocate(new Uint8Array(22), 22)).toEqual({ kind: "none" });
+    // A comment that holds an end record of its own, followed by one more byte: its comment
+    // length does not reach the end of the file, so it is not the end record.
+    const fake = `PK\u0005\u0006${"\u0000".repeat(18)}x`;
+    const zip = makeZip(["a.txt"], { comment: fake });
+    expect(list(zip)).toEqual(["a.txt"]);
+  });
+
+  test("a zip whose directory runs one byte into its end record cannot be listed", () => {
+    const zip = makeZip(["a.txt"]);
+    const at = eocd(zip);
+    set32(zip, at + 16, new DataView(zip.buffer).getUint32(at + 16, true) + 1);
+    expect(list(zip)).toBe("unlistable");
+  });
+
+  test("zip64's markers each make a zip unlistable, also when nothing else is wrong", () => {
+    const entries = makeZip(["a.txt"]);
+    set16(entries, eocd(entries) + 8, 0xffff);
+    set16(entries, eocd(entries) + 10, 0xffff);
+    expect(list(entries)).toBe("unlistable");
+    // In a file past 4 GiB a directory at 0xffffffff would be inside it.
+    const offset = makeZip(["a.txt"]);
+    set32(offset, eocd(offset) + 16, 0xffffffff);
+    expect(zipLocate(offset, 5_000_000_000)).toEqual({ kind: "unlistable" });
+  });
+
+  test("a directory of 16 MiB is listed, one byte more is not; the two counts must agree", () => {
+    const big = 16 * 1024 * 1024;
+    const zip = makeZip(["a.txt"]);
+    set32(zip, eocd(zip) + 16, 0);
+    set32(zip, eocd(zip) + 12, big);
+    expect(zipLocate(zip, 5_000_000_000)).toMatchObject({ kind: "zip", length: big });
+    set32(zip, eocd(zip) + 12, big + 1);
+    expect(zipLocate(zip, 5_000_000_000)).toEqual({ kind: "unlistable" });
+    const counts = makeZip(["a.txt", "b.txt"]);
+    set16(counts, eocd(counts) + 8, 1);
+    expect(list(counts)).toBe("unlistable");
+  });
+
+  test("a directory: the most entries it lists, and every record checked", () => {
+    const record = cdRecord("");
+    const many = (n: number) => {
+      const cd = new Uint8Array(n * record.length);
+      for (let i = 0; i < n; i++) cd.set(record, i * record.length);
+      return cd;
+    };
+    expect(zipEntryList(many(65534), 65534)).toHaveLength(65534);
+    expect(zipEntryList(many(65535), 65535)).toBe(null);
+    // One record of exactly 46 bytes, with an empty name.
+    expect(zipEntryList(record, 1)).toEqual([{ name: "", mode: null }]);
+    // A record without its signature.
+    const unsigned = cdRecord("a.txt");
+    unsigned[0] = 0;
+    expect(zipEntryList(unsigned, 1)).toBe(null);
+    // A name longer than what is left.
+    expect(zipEntryList(cdRecord("a.txt", { nameLength: 6 }), 1)).toBe(null);
+  });
+
+  test("a directory: each record's extra field and comment are skipped to reach the next", () => {
+    const cd = join(
+      cdRecord("a.txt", { extra: 4, comment: 3 }),
+      cdRecord("b.txt", { extra: 2 }),
+      cdRecord("c.txt", { comment: 5 }),
+    );
+    expect(zipEntryNames(cd, 3)).toEqual(["a.txt", "b.txt", "c.txt"]);
+    expect(zipEntryNames(cd.subarray(0, cd.length - 1), 3)).toBe(null);
+  });
+
+  test("a name that is not UTF-8 is read with replacement characters, never a throw", () => {
+    const cd = cdRecord("ab");
+    cd[46] = 0xff;
+    expect(zipEntryNames(cd, 1)).toEqual(["\uFFFDb"]);
+  });
+
+  test("a zip's verdict: its kind, a colon inside a name, a folder with an exec bit", () => {
+    expect(zipVerdict(["../evil.txt"])).toEqual({
+      kind: "archive",
+      text: "a zip with a path outside its folder (../evil.txt)",
+    });
+    expect(zipVerdict([{ name: "docs", mode: 0o120777 }])?.kind).toBe("archive");
+    expect(zipVerdict(["notes/re:plan.txt"])).toBe(null);
+    expect(zipVerdict([{ name: "bin/", mode: 0o40755 }])).toBe(null);
+    expect(zipVerdict([{ name: "docs/a.pdf", mode: 0o100644 }, "img/b.png"])).toBe(null);
+    expect(zipVerdict(["nested.zip"])).toEqual({
+      kind: "archive",
+      text: "a zip holding an archive Vimma cannot look inside (nested.zip)",
+    });
+  });
+
+  test("ClamAV's FOUND lines: no space needed after the colon, FOUND ends the line", () => {
+    const run = (stdout: string) => clamVerdict({ exitCode: 1, stdout });
+    expect(run("/q/a:Eicar FOUND\n")).toEqual({ kind: "infected", signature: "Eicar" });
+    expect(run("/q/a: Eicar FOUND")).toEqual({ kind: "infected", signature: "Eicar" });
+    expect(run("/q/a: Eicar FOUND \n")).toEqual({ kind: "infected", signature: "Eicar" });
+    expect(run("/q/a: Eicar FOUND later\n")).toEqual({ kind: "infected", signature: "a virus" });
+    expect(run("/q/a:  FOUND\n")).toEqual({ kind: "infected", signature: "a virus" });
+  });
+
+  test("the definitions' date: each field in its range, and a day the month has", () => {
+    const date = (text: string) => clamDefinitionsDate(`ClamAV 1.5.4/28156/${text}`);
+    expect(date("Sat Oct 31 23:59:59 2026")).toBe(new Date(2026, 9, 31, 23, 59, 59).getTime());
+    // A leap second is read as the next minute.
+    expect(date("Sat Oct 17 09:25:60 2026")).toBe(new Date(2026, 9, 17, 9, 26, 0).getTime());
+    expect(date("Sat Foo 17 09:25:46 2026")).toBeNull();
+    expect(date("Sat Oct 0 09:25:46 2026")).toBeNull();
+    expect(date("Sat Oct 32 09:25:46 2026")).toBeNull();
+    expect(date("Sat Oct 17 24:25:46 2026")).toBeNull();
+    expect(date("Sat Oct 17 09:60:46 2026")).toBeNull();
+    expect(date("Sat Oct 17 09:25:61 2026")).toBeNull();
+    expect(date("Sat Nov 31 09:25:46 2026")).toBeNull();
+  });
+
+  test("the definitions' date: the version line alone, from its start to its end", () => {
+    const line = "ClamAV 1.5.4/28156/Sat Oct 17 09:25:46 2026";
+    const at = new Date(2026, 9, 17, 9, 25, 46).getTime();
+    expect(clamDefinitionsDate(line)).toBe(at);
+    expect(clamDefinitionsDate(`${line} \n`)).toBe(at);
+    expect(clamDefinitionsDate(`clamdscan: ${line}`)).toBeNull();
+    expect(clamDefinitionsDate(`${line} UTC`)).toBeNull();
+    expect(clamDefinitionsDate(`other output\n${line}\nmore`)).toBe(at);
+  });
+
+  test("clamd.conf: a key alone, a # after a value, a line broken by a carriage return", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    expect(clamdConfig([...good, "TCPSocket"].join("\n"))).toEqual({
+      problem: "clamd listens on TCP",
+    });
+    expect(clamdConfig([...good, "TCPSocket 3310 #"].join("\n"))).toEqual({
+      problem: "clamd listens on TCP",
+    });
+    // `.` stops at a carriage return, so such a line is not read: no socket of it.
+    expect(clamdConfig(["LocalSocket /run/a\r/b", ...good.slice(1)].join("\n"))).toEqual({
+      problem: "no LocalSocket",
+    });
+  });
+
+  test("a uid in /etc/passwd is digits only", () => {
+    expect(passwdUid("clamav:x:x64:64::/:/bin/false", "clamav")).toBeNull();
+    expect(passwdUid("clamav:x:64x:64::/:/bin/false", "clamav")).toBeNull();
+    expect(passwdUid("clamav", "clamav")).toBeNull();
+  });
+
+  test("download_dir: spaces around it go, and ~ alone is home", () => {
+    expect(resolveDownloadDir("  ~/q  ", "/home/u")).toBe("/home/u/q");
+    expect(resolveDownloadDir(" /srv/q ", "/home/u")).toBe("/srv/q");
+    expect(resolveDownloadDir("~", "/home/u")).toBe("/home/u");
+  });
+
+  test("a hidden folder is refused only below home, and home's own path is not read", () => {
+    expect(quarantineProblem("/srv/abc/.x", "/home/u")).toBe(null);
+    expect(quarantineProblem("/var/.home/u/q", "/var/.home/u")).toBe(null);
+    expect(quarantineProblem("/home/j./q", "/home/j.")).toBe(null);
+    expect(quarantineProblem("/home/j./q/.x", "/home/j.")).toBe(
+      "must not be in a hidden folder (.x)",
+    );
+  });
+
+  test("home itself is shown as ~", () => {
+    expect(displayDir("/home/u", "/home/u")).toBe("~");
+    expect(displayDir("/home/user", "/home/u")).toBe("/home/user");
+  });
+
+  test("sizes at each unit's edge", () => {
+    expect(formatBytes(1000)).toBe("1 kB");
+    expect(formatBytes(10_060)).toBe("10 kB");
+    expect(formatBytes(123_400)).toBe("123 kB");
+    expect(formatBytes(1_000_000)).toBe("1 MB");
+    expect(formatBytes(3_200_000_000_000)).toBe("3.2 TB");
+    expect(formatBytes(12.5)).toBe("12.5 B");
+  });
+
+  test("a notice's file name: one line, spaces collapsed and trimmed, cut at 60 with …", () => {
+    const refused = (name: unknown) =>
+      downloadRefusedNotice(name as string, { kind: "http" }).slice("refused download ".length);
+    expect(refused(" a\u202Eb\n c  d ")).toBe('"a b c d": not https');
+    expect(refused(undefined)).toBe('"": not https');
+    const sixty = "x".repeat(60);
+    expect(refused(sixty)).toBe(`"${sixty}": not https`);
+    expect(refused(`${sixty}y`)).toBe(`"${"x".repeat(59)}…": not https`);
+  });
+});

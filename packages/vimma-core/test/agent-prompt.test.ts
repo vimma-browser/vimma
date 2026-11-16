@@ -9,6 +9,7 @@ import {
   QUIET_MS,
   agentAlertText,
   checkpointNotice,
+  checkpointText,
   isCheckpoint,
   agentState,
   clientName,
@@ -18,6 +19,7 @@ import {
   grantNotice,
   mayOpenByItself,
   noGrant,
+  PAGE_CLIENT,
   parseControlCommand,
   promptKey,
   questionLine,
@@ -25,6 +27,7 @@ import {
   fillFits,
   ranNotice,
   shownNotice,
+  stepText,
 } from "../src/agent/agent-prompt.mjs";
 import { textWidth } from "../src/text/textwidth.mjs";
 import type { LogEntry } from "../src/agent/agent.mjs";
@@ -1153,5 +1156,449 @@ describe("a form allowed for the grant (mcp-consequence K5)", () => {
     expect(ranNotice({ ...form, what: rest }, Infinity, 0)).toBe(
       'claude-code clicked button "Lisää koriin" in "Kori · Kauppa" and sent the form to POST shop.example (grant)',
     );
+  });
+});
+
+// Issue #1119: edges the weekly mutation run found unpinned.
+describe("the question line's edges (mutation-tested)", () => {
+  type Line = { parts: unknown[] };
+  /** Every part of a line is an object with its text, nothing spread into it by mistake. */
+  const wellFormed = (line: Line) =>
+    line.parts.every(
+      (p) =>
+        typeof p === "object" && p !== null && typeof (p as { text: unknown }).text === "string",
+    );
+
+  test("spaces left around a control character become one", () => {
+    expect(clientName({ client: "a \u0007 b" })).toBe("a b");
+    expect(clientName({ client: "\u202E  b  " })).toBe("b");
+  });
+
+  test("a tab without a place in the workspace is named by its title alone", () => {
+    const { index, ...what } = read.what;
+    void index;
+    expect(text(questionLine({ ...read, what }, { grantMinutes: 15 }))).toBe(
+      '◇ example-agent wants vimma_read_page: "Pull requests · vimma-browser/vimma" ' +
+        "github.com/vimma-browser/vimma/pulls",
+    );
+  });
+
+  test("an open with no host, or a host not in its URL, bolds nothing", () => {
+    for (const host of [undefined, "", "example.org"]) {
+      const line = questionLine({ ...open, what: { ...open.what, host } }, { grantMinutes: 10 });
+      expect(line.parts.slice(-1)).toEqual([
+        { text: "https://docs.rs/serde/latest/serde/", isolate: "ltr" },
+      ]);
+      expect(line.parts.filter((p) => p.strong)).toEqual([]);
+    }
+    // A URL that ends with its host has no empty part after it.
+    const bare = questionLine(
+      { ...open, what: { url: "https://docs.rs", host: "docs.rs" } },
+      { grantMinutes: 10 },
+    );
+    expect(bare.parts.slice(-2)).toEqual([
+      { text: "https://", isolate: "ltr" },
+      { text: "docs.rs", strong: true, isolate: "ltr" },
+    ]);
+  });
+
+  test("a download without a size, a type or an extension says so; with one, its extension", () => {
+    const download = { tool: "vimma_download", label, what: { name: "blob", host: "example.com" } };
+    expect(text(questionLine(download, { grantMinutes: 10 }))).toBe(
+      '◇ example-agent wants vimma_download: "blob" unknown size unknown type from example.com',
+    );
+    const typed = {
+      ...download,
+      what: { ...download.what, size: 0, type: "text/csv", ext: "csv" },
+    };
+    expect(text(questionLine(typed, { grantMinutes: 10 }))).toBe(
+      '◇ example-agent wants vimma_download: "blob" 0 B text/csv (.csv) from example.com',
+    );
+  });
+
+  test("only a download can be a page's own; a question without a label or details is no checkpoint", () => {
+    const pageLabel = { client: PAGE_CLIENT };
+    expect(noGrant({ tool: "vimma_read_page", label: pageLabel, what: {} })).toBe(false);
+    expect(noGrant({ tool: "vimma_download", label: pageLabel, what: {} })).toBe(true);
+    const bare = { tool: "vimma_download", label: null } as unknown as Parameters<
+      typeof noGrant
+    >[0];
+    expect(noGrant(bare)).toBe(false);
+    expect(isCheckpoint(bare)).toBe(false);
+    expect(questionLine(bare, { grantMinutes: 10 }).hint).toBe(
+      "y once · 10a 10 min · n deny · x mute",
+    );
+  });
+
+  test("an activation names the element's label, kind and text in quotes", () => {
+    const click = {
+      tool: "vimma_activate",
+      label,
+      what: { ...read.what, label: "sd", kind: "button", text: "Merge" },
+    };
+    expect(text(questionLine(click, { grantMinutes: 10 }))).toBe(
+      '◇ example-agent wants vimma_activate: 2 "Pull requests · vimma-browser/vimma" ' +
+        'github.com/vimma-browser/vimma/pulls  sd button "Merge"',
+    );
+  });
+
+  test("a form checkpoint: fields past the cap, hidden ones, nothing to say", () => {
+    const form = (sent: unknown) => ({
+      tool: "vimma_activate",
+      label,
+      what: {
+        title: "Shop",
+        submit: { method: "post", action: "https://shop.example/cart", host: "shop.example" },
+        sent,
+      },
+    });
+    const ask = (sent: unknown) => questionLine(form(sent), { grantMinutes: 10 });
+    const head = '▲ example-agent wants to send a form: "Shop" → POST shop.example/cart';
+    expect(text(ask({ fields: [], hidden: 0, more: 3 }))).toBe(`${head}  … (3 more)`);
+    expect(text(ask({ hidden: 2 }))).toBe(`${head}  + 2 hidden`);
+    expect(text(ask({ fields: [], hidden: 0, more: 0 }))).toBe(head);
+    for (const sent of [
+      { fields: [], hidden: 0, more: 0 },
+      { fields: [{ name: "a", value: "1" }, { name: "b" }], hidden: 0, more: 0 },
+    ]) {
+      expect(wellFormed(ask(sent)), JSON.stringify(sent)).toBe(true);
+    }
+    // A field without a name or a value is shown empty, never "undefined".
+    expect(text(ask({ fields: [{}, null], hidden: 0, more: 0 }))).toBe(`${head}   "",  ""`);
+    // The field count without a list of what is sent.
+    const counted = questionLine(
+      {
+        ...form(undefined),
+        what: { ...form(undefined).what, submit: { ...form(undefined).what.submit, fields: 2 } },
+      },
+      { grantMinutes: 10 },
+    );
+    expect(text(counted)).toBe(`${head} (2 fields)`);
+    expect(wellFormed(counted)).toBe(true);
+  });
+
+  test("a form checkpoint's fields fill 160 columns exactly; past them, the rest are counted", () => {
+    // Each field is 40 columns wide: `n "…"` and the ", " before all but the first.
+    const field = (i: number) => ({ name: "n", value: "v".repeat(i ? 34 : 36) });
+    const ask = (n: number, rest: object = {}) =>
+      text(
+        questionLine(
+          {
+            tool: "vimma_activate",
+            label,
+            what: {
+              title: "Shop",
+              submit: { method: "post", action: "https://shop.example/cart", host: "shop.example" },
+              sent: {
+                fields: Array.from({ length: n }, (_, i) => field(i)),
+                hidden: 0,
+                more: 0,
+                ...rest,
+              },
+            },
+          },
+          { grantMinutes: 10 },
+        ),
+      );
+    expect(ask(4)).toMatch(/v" *$/);
+    expect(ask(4)).not.toContain("more");
+    expect(ask(5)).toMatch(/v", … \(1 more\)$/);
+    expect(ask(6, { more: 2, hidden: 1 })).toMatch(/v", … \(4 more\), \+ 1 hidden$/);
+  });
+
+  test("a fill's fields fill 160 columns exactly, and fit whole; past them, or cut, they do not", () => {
+    // Each field is 40 columns wide: `a n = "…"` and the ", " before all but the first.
+    const field = (i: number) => ({ label: "a", name: "n", value: "v".repeat(i ? 30 : 32) });
+    const what = (n: number) => ({
+      ...read.what,
+      fields: Array.from({ length: n }, (_, i) => field(i)),
+    });
+    const ask = (n: number) =>
+      questionLine({ tool: "vimma_fill", label, what: what(n) }, { grantMinutes: 10 });
+    expect(text(ask(4))).toMatch(/v"$/);
+    expect(fillFits(what(4))).toBe(true);
+    expect(text(ask(5))).toMatch(/v", … \(1 more\)$/);
+    expect(fillFits(what(5))).toBe(false);
+    expect(fillFits({ fields: [{ label: "a", name: "n", value: "v".repeat(41) }] })).toBe(false);
+    expect(fillFits({ fields: [{ label: "a", name: "n".repeat(25), value: "v" }] })).toBe(false);
+    expect(
+      fillFits({ fields: [{ label: "a", name: "n".repeat(24), value: "v".repeat(40) }] }),
+    ).toBe(true);
+  });
+
+  test("a fill: no fields, a field that is null, an unchecked box, a long name cut at its end", () => {
+    const ask = (fields: unknown) =>
+      questionLine(
+        { tool: "vimma_fill", label, what: { ...read.what, fields } },
+        { grantMinutes: 10 },
+      );
+    const tab =
+      '◇ example-agent wants vimma_fill: 2 "Pull requests · vimma-browser/vimma" github.com/vimma-browser/vimma/pulls';
+    expect(text(ask(undefined))).toBe(`${tab}  0 fields: `);
+    expect(text(ask([null]))).toBe(`${tab}   = ""`);
+    expect(text(ask([{ label: "a", name: "agree", value: false }]))).toBe(
+      `${tab}  a agree = unchecked`,
+    );
+    expect(text(ask([{ label: "a", name: `${"n".repeat(30)}`, value: "v" }]))).toBe(
+      `${tab}  a ${"n".repeat(23)}… = "v"`,
+    );
+    // A first field wider than the line is counted, with nothing before it.
+    expect(text(ask([{ label: "x".repeat(200), name: "n", value: "v" }]))).toBe(
+      `${tab}  … (1 more)`,
+    );
+    // No part of a field is empty text.
+    const parts = ask([{ label: "", name: "", value: "" }]).parts;
+    expect(
+      parts
+        .slice(parts.findIndex((p) => p.text === "github.com/vimma-browser/vimma/pulls") + 1)
+        .every((p) => p.text),
+    ).toBe(true);
+  });
+
+  test("a step whose payment detail is not an object asks as a form", () => {
+    const q = { tool: "vimma_activate", label, what: { title: "Shop", pay: true } };
+    expect(text(questionLine(q, { grantMinutes: 10 }))).toBe(
+      '▲ example-agent wants to send a form: "Shop"',
+    );
+    expect(questionLine(q, { grantMinutes: 10 }).hint).toBe("y send it · n stop");
+  });
+
+  test("the keys: N denies, shift+y allows, only a lone digit counts, backspace needs one", () => {
+    const none = { count: "" };
+    expect(promptKey(none, "N")).toEqual({ kind: "answer", answer: { kind: "deny" } });
+    expect(promptKey(none, "shift+y")).toEqual({ kind: "answer", answer: { kind: "once" } });
+    expect(promptKey(none, "5x")).toEqual({ kind: "ignore" });
+    expect(promptKey(none, "backspace")).toEqual({ kind: "ignore" });
+    expect(promptKey({ count: "12" }, "q")).toEqual({ kind: "ignore" });
+    expect(promptKey({ count: "123" }, "backspace")).toEqual({ kind: "count", count: "12" });
+  });
+
+  test("the time left counts from now, not from the epoch", () => {
+    const now = 1_800_000_000_000;
+    expect(ranNotice(read, now + 5 * MIN, now)).toBe(
+      'example-agent read "Pull requests · vimma-browser/vimma" (grant, 5m left)',
+    );
+    expect(controlStatus({ enabled: true, until: now + 5 * MIN, now })).toBe(
+      "full control on, 5m left",
+    );
+    const base = { connections: 1, waiting: 0, ranAt: null, now };
+    expect(agentState({ ...base, grants: [{ until: now + 5 * MIN }] })?.minutes).toBe(5);
+    expect(agentState({ ...base, grants: [], ranAt: now - 1000 })?.ran).toBe(true);
+    expect(agentState({ ...base, grants: [], ranAt: now - 3000 })?.ran).toBe(false);
+  });
+
+  test(":control: no text is the status; on takes one minute up; one word more refuses", () => {
+    expect(parseControlCommand(undefined)).toEqual({ kind: "status" });
+    expect(parseControlCommand("ON 1")).toEqual({ kind: "on", minutes: 1 });
+    for (const t of ["off now", "on 15 more", "15 on", "of"]) {
+      expect(parseControlCommand(t), t).toEqual({
+        kind: "refuse",
+        text: `:control takes on <minutes> (1 to ${CONTROL_MAX_MINUTES}) or off`,
+      });
+    }
+  });
+
+  test(":control's end time: digits alone, nothing around them", () => {
+    const now = 1_800_000_000_000;
+    const at = now + 15 * MIN;
+    expect(controlEnd(` ${at}`, now)).toEqual({ kind: "off" });
+    expect(controlEnd(`${at}\n`, now)).toEqual({ kind: "off" });
+    expect(controlEnd(`0x${at.toString(16)}`, now)).toEqual({ kind: "off" });
+  });
+});
+
+describe("notices, the transcript and :mcp log, at their edges (mutation-tested)", () => {
+  test("full control shows a code only when it is a string of the code's own characters", () => {
+    const ask = (code: unknown) =>
+      text(questionLine({ ...full, what: { code } }, { grantMinutes: 10 }));
+    expect(ask("K7Q2")).toMatch(/^◇ vimma-ctl with code K7Q2 wants full control/);
+    for (const code of [2345, "ABIO", "K7Q", "K7Q22", ["K7Q2"]]) {
+      expect(ask(code), String(code)).toMatch(/^◇ a client with no code wants full control/);
+    }
+  });
+
+  test(":control on takes plain digits only", () => {
+    for (const t of ["on 1e3", "on 0x10", "on +5"]) {
+      expect(parseControlCommand(t).kind, t).toBe("refuse");
+    }
+  });
+
+  test("a step of a tool with no words of its own is named by the tool", () => {
+    expect(stepText({ tool: "vimma_future", what: {} })).toBe("used vimma_future");
+    expect(stepText({ tool: "vimma_keys", what: { keys: "3j", title: "T" } })).toBe(
+      'pressed 3j in "T"',
+    );
+    // A click whose submit detail is not an object names no form.
+    expect(
+      stepText({
+        tool: "vimma_activate",
+        what: { kind: "button", text: "Go", title: "T", submit: true },
+      }),
+    ).toBe('clicked button "Go" in "T"');
+  });
+
+  test("a checkpoint in the transcript: a payment without a total, a form without a host", () => {
+    expect(checkpointText({ what: { pay: { site: "shop.example" } } })).toBe(
+      "▲ asked to pay on shop.example",
+    );
+    const long = `Total 42,90 € ${"incl. VAT ".repeat(6)}`;
+    expect(checkpointText({ what: { pay: { site: "shop.example", total: long } } })).toBe(
+      `▲ asked to pay on shop.example · the page says "${long.slice(0, 39)}…"`,
+    );
+    expect(checkpointText({ what: { pay: true, submit: { host: "shop.example" } } })).toBe(
+      "▲ asked to send a form to shop.example",
+    );
+    expect(checkpointText({ what: { submit: { action: "https://shop.example/cart?x=1" } } })).toBe(
+      "▲ asked to send a form to shop.example/cart?x=1",
+    );
+    expect(
+      checkpointText({ what: { submit: { host: "a.example", action: "https://b.example/" } } }),
+    ).toBe("▲ asked to send a form to a.example");
+  });
+
+  test("a checkpoint's yes without a host names the destination; without either, nothing", () => {
+    expect(
+      checkpointNotice({
+        tool: "vimma_activate",
+        label,
+        what: { submit: { action: "https://shop.example/cart" } },
+      }),
+    ).toBe("allowed sending the form to shop.example/cart");
+    expect(checkpointNotice({ tool: "vimma_activate", label, what: {} })).toBe(
+      "allowed sending the form to ",
+    );
+  });
+
+  test("a show in another window, of a window already on the agent workspace", () => {
+    const show = { tool: "vimma_show", label, what: {} };
+    expect(shownNotice(show, { otherWindow: true, switched: false })).toBe(
+      "showing example-agent's tab in the other window",
+    );
+  });
+
+  test("the notification of a question without details, or of a tool it does not know", () => {
+    expect(agentAlertText({ tool: "vimma_tabs", label } as never)).toBe(
+      "example-agent asks to use Vimma's agent workspace (list its tabs)",
+    );
+    expect(agentAlertText({ tool: "vimma_future", label, what: {} })).toBe(
+      "example-agent asks to use Vimma's agent workspace (use a tool)",
+    );
+  });
+
+  test(":mcp log: an empty detail adds nothing, a long one is cut at its end, a stop says why", () => {
+    const e: LogEntry = {
+      at: new Date(2026, 0, 1, 9, 5, 7).getTime(),
+      client: "claude-code",
+      tool: "vimma_keys",
+      title: "",
+      detail: "",
+      outcome: "yes",
+    };
+    expect(logRow(e)).toBe("09:05:07 \u2068claude-code\u2069 vimma_keys · allowed");
+    expect(logRow({ ...e, detail: "k".repeat(130) })).toBe(
+      `09:05:07 \u2068claude-code\u2069 vimma_keys \u2068${"k".repeat(119)}…\u2069 · allowed`,
+    );
+    expect(logRow({ ...e, outcome: "stopped" })).toBe(
+      "09:05:07 \u2068claude-code\u2069 vimma_keys · stopped (early)",
+    );
+    expect(logRow({ ...e, outcome: "stopped", why: "budget" } as LogEntry)).toBe(
+      "09:05:07 \u2068claude-code\u2069 vimma_keys · stopped (budget)",
+    );
+  });
+});
+
+// security.md M4: what an agent or a page chose is drawn as its own bidi run.
+describe("every chosen text is its own bidi run (mutation-tested)", () => {
+  const isolation = (line: { parts: { text: string; isolate?: string }[] }, t: string) =>
+    line.parts.find((p) => p.text === t)?.isolate;
+
+  test("a download's name, an element's text, a replaced tab's title and the host", () => {
+    const download = {
+      tool: "vimma_download",
+      label,
+      what: { name: "report.pdf", size: 1, type: "application/pdf", host: "example.com" },
+    };
+    const d = questionLine(download, { grantMinutes: 10 });
+    expect(isolation(d, "report.pdf")).toBe("auto");
+    expect(isolation(d, "example.com")).toBe("ltr");
+    const click = {
+      tool: "vimma_activate",
+      label,
+      what: { ...read.what, label: "sd", kind: "button", text: "Merge" },
+    };
+    expect(isolation(questionLine(click, { grantMinutes: 10 }), "Merge")).toBe("auto");
+    const fill = {
+      tool: "vimma_fill",
+      label,
+      what: { ...read.what, fields: [{ label: "sd", name: "Email", value: "a" }] },
+    };
+    expect(isolation(questionLine(fill, { grantMinutes: 10 }), "Email")).toBe("auto");
+    const into = { ...open, what: { ...open.what, tab: "7", title: "Old" } };
+    expect(isolation(questionLine(into, { grantMinutes: 10 }), "Old")).toBe("auto");
+  });
+
+  test("a checkpoint's client, title, keys and site", () => {
+    const form = {
+      tool: "vimma_activate",
+      label,
+      what: {
+        title: "Shop",
+        submit: { method: "post", action: "https://a.example/", host: "a.example" },
+      },
+    };
+    const f = questionLine(form, { grantMinutes: 10 });
+    expect(isolation(f, "example-agent")).toBe("auto");
+    expect(isolation(f, "Shop")).toBe("auto");
+    const keyed = {
+      ...keys,
+      what: { ...keys.what, keys: "3j H", pay: { site: "shop.example", keys: "H" } },
+    };
+    const k = questionLine(keyed, { grantMinutes: 10 });
+    expect(isolation(k, "H")).toBe("ltr");
+    expect(isolation(k, "shop.example")).toBe("ltr");
+    const followed = {
+      ...keys,
+      what: { ...keys.what, keys: "fsd", pay: { text: "Pay", site: "s.example" } },
+    };
+    expect(isolation(questionLine(followed, { grantMinutes: 10 }), "fsd")).toBe("ltr");
+  });
+
+  test("a click that pays shows no keys; a sent field's name and a total are cut at their end", () => {
+    const pay = {
+      tool: "vimma_activate",
+      label,
+      what: {
+        keys: "x",
+        pay: { text: "Pay", site: "shop.example", total: `Total ${"9".repeat(50)} €` },
+        submit: { method: "post", action: "https://shop.example/", host: "shop.example" },
+        sent: { fields: [{ name: "n".repeat(30), value: "v" }], hidden: 0, more: 0 },
+      },
+    };
+    const line = text(questionLine(pay, { grantMinutes: 10 }));
+    expect(line).not.toContain("keys");
+    expect(line).toContain(` · the page says "Total ${"9".repeat(33)}…"`);
+    expect(line).toContain(`  ${"n".repeat(23)}… "v"`);
+  });
+
+  test("a form's detail of what it sends that is not an object is not listed: the count is", () => {
+    const form = {
+      tool: "vimma_activate",
+      label,
+      what: {
+        title: "Shop",
+        submit: { method: "post", action: "https://a.example/", host: "a.example", fields: 2 },
+        sent: true,
+      },
+    };
+    expect(text(questionLine(form, { grantMinutes: 10 }))).toBe(
+      '▲ example-agent wants to send a form: "Shop" → POST a.example (2 fields)',
+    );
+  });
+
+  test("a step that followed no link is named as itself; :control on needs on first", () => {
+    expect(stepText({ tool: "vimma_elements", what: { title: "T", followed: "x.example" } })).toBe(
+      'listed the buttons and fields of "T"',
+    );
+    expect(parseControlCommand("at 15").kind).toBe("refuse");
   });
 });
