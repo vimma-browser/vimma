@@ -63,7 +63,7 @@ host -> layer1: "4" { class: down }
 host -> workspaces { class: down }
 omarchy -> layer1.ui { class: down-lazy }
 setup -> config { class: down }
-setup -> layer1.ui { class: down }
+setup -> layer1: "2" { class: down }
 start -> layer1.ui { class: down }
 workspaces -> layer1.split { class: down }
 

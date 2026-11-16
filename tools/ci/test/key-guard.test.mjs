@@ -11,7 +11,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import {
   APPROVAL_LABEL,
   GUARD_PATHS,

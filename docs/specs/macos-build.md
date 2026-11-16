@@ -424,7 +424,7 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     lists macOS manifests as out of scope and decides the rest.
 17. **Branding.** Superseded by spec [macos-homebrew](macos-homebrew.md), decisions 12 to 14:
     `configs/branding/vimma/` holds the compiled `Assets.car`, `firefox.icns` and
-    `document.icns`, generated from `logo-mac.png` by `tools/package/macos-icons.mjs`, because
+    `document.icns`, generated from `logo-mac.png` by `tools/package/macos-icons.ts`, because
     macOS reads the icon from `Assets.car` and the Linux cross build cannot compile it. The DMG
     window art is decision 14 there.
 
@@ -787,7 +787,7 @@ exactly the cmd keys it lists`.
 - e2e `m0-happy-path` and `m0-content-actor` under `MOZ_HEADLESS=1`; no screenshot baselines on
   macOS
 
-**Developer ID (sub-PR 7):** vitest in `tools/package/test/macos-developer-id.test.mjs`, with stub
+**Developer ID (sub-PR 7):** vitest in `tools/package/test/macos-developer-id.test.ts`, with stub
 `rcodesign` and disk-image tools:
 
 - `the browser gets Firefox's production entitlements without the restricted pair`
@@ -805,7 +805,7 @@ stapled and accepted`, and fails an ad hoc signature, no hardened runtime, no se
   nested binary of another team, another team's notarised app, Gatekeeper's rejection and no
   stapled ticket
 
-and in `tools/package/test/release-workflow.test.mjs`: `the Apple secrets come from the macos-sign
+and in `tools/package/test/release-workflow.test.ts`: `the Apple secrets come from the macos-sign
 environment, in macos-notarise alone`, `the macos-sign job runs no binary of the build: only the
 pinned rcodesign`, `writes the credentials to owner-only files and fails when one is missing`,
 `removes the credentials in an always() step before anything is uploaded`, `macos-smoke takes the
@@ -850,7 +850,7 @@ With the sub-PRs:
 Each sub-PR is independently mergeable and tested. Sub-PRs 1 and 2 need no Mac, no money and no
 full build.
 
-1. **`ci(macos): front-end tests on a mac runner`** (built). `artifact-build.mjs` picks the
+1. **`ci(macos): front-end tests on a mac runner`** (built). `artifact-build.mjs` (Since changed: `artifact-build.ts`, ADR-025) picks the
    namespace and `.app` layout by platform; `mochitest.mjs` and `start.mjs` learn the macOS paths and skip
    `/proc/locks` on macOS. A new `macos-15` job in `e2e.yml`: `npm ci`, Vitest, artifact build,
    the mochitests headless, and a `df` line recording the free disk. Not required at first

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { jobs, parseWorkflow } from "./workflow-runners.mjs";
+import { jobs, parseWorkflow } from "./workflow-runners.ts";
 import type { Job } from "./workflow-types.ts";
 
 // docs/security/14-build-and-release-supply-chain.md, B20 (docs/specs/build-supply-chain.md,

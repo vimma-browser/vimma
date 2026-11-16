@@ -26,7 +26,7 @@ tools/safebrowsing-smoke/safebrowsing-smoke.sh   # needs the network; prints tab
 ```
 
 The local artifact build copies the same mozconfig, so it is keyed too (rebuild it with
-`node tools/artifact-build/artifact-build.mjs`). `npm run mochitest` passes
+`node tools/artifact-build/artifact-build.ts`). `npm run mochitest` passes
 `VIMMA_EXPECT_SAFEBROWSING_KEY=1` when the key file exists, so a stale keyless build fails
 `browser_vimma_safebrowsing.js`; set `VIMMA_EXPECT_SAFEBROWSING_KEY=0` to test a keyless build
 on purpose.

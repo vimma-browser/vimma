@@ -23,7 +23,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { packTarball } from "../package/package.mjs";
+import { packTarball } from "../package/package.ts";
 import { CHANNELS } from "./mar.ts";
 
 const PREFS = "defaults/pref/channel-prefs.js";

@@ -4,12 +4,15 @@ Status: implemented · Area: `.github/workflows/upstream-beta.yml` (new), `.gith
 `.github/workflows/upstream.yml` (one step moves into a shared script),
 `tools/upstream/canary.mjs` (new), `tools/upstream/source-check.sh` (new),
 `tools/upstream/patch-check.py`, `tools/upstream/artifact-preflight.mjs`,
-`tools/upstream/bump-surfer-json.py`, `tools/artifact-build/artifact-build.mjs`,
+`tools/upstream/bump-surfer-json.py`, `tools/artifact-build/artifact-build.mjs` (Since changed: `artifact-build.ts`, ADR-025),
 `tools/version-files/version-files.mjs` (Since changed: `version-files.ts`, ADR-025),
 `tools/e2e/e2e.mjs` (Since changed: `e2e.ts`, ADR-025), `docs/rebase.md`, `docs/security/`,
 `docs/runbook/` · Upstream patches: none · ADR: amends
 [ADR-002](../adr/002-upstream-release-channel.md) and
 [ADR-010](../adr/010-pr-artifact-builds.md) (one paragraph each); no new ADR
+
+(Since changed: the `.mjs` files of `tools/upstream/` named here, and their tests, are `.ts`,
+ADR-025, #946.)
 
 Issue: [#218](https://github.com/vimma-browser/vimma/issues/218)
 
@@ -155,7 +158,7 @@ does not check the download's hash, which is why `e2e.yml` already checks it aga
   `tests/browser/browser_vimma_app_version.js` asserts that `Services.appinfo.version` equals
   `Services.appinfo.platformVersion`; with `159.0b1` that assertion would fail on every Beta run
   for a reason that is not a Firefox change.
-- `tools/artifact-build/artifact-build.mjs` looked Mozilla's build up only under
+- `tools/artifact-build/artifact-build.mjs` (Since changed: `artifact-build.ts`, ADR-025) looked Mozilla's build up only under
   `gecko.v2.mozilla-release.shippable.revision.<rev>.firefox.linux64-opt` (`indexNamespace`)
   and passed the revision to mach as `MOZ_ARTIFACT_REVISION`.
 
@@ -309,7 +312,7 @@ detect ──► source-check ──► test (e2e.yml) ──► render ──�
    in Mozilla's own Beta tree, R3), so `Services.appinfo.version` equals `platformVersion` and
    `browser_vimma_app_version.js` tests Firefox, not the pin's spelling. Vimma's display version is
    unchanged.
-6. **The artifact build takes the tree from `sourcestamp.txt`.** `artifact-build.mjs` and
+6. **The artifact build takes the tree from `sourcestamp.txt`.** `artifact-build.mjs` (Since changed: `artifact-build.ts`, ADR-025) and
    `artifact-preflight.mjs` read the tree from the `https://hg.mozilla.org/<tree>/rev/<rev>` line
    and accept exactly `releases/mozilla-release` and `releases/mozilla-beta`; anything else is an
    error. For a release nothing changes (`MOZ_ARTIFACT_REVISION`). For a Beta the tool looks up
@@ -462,7 +465,7 @@ Vitest, existing files:
   `finds Mozilla's 159.0b1 build in the mozilla-beta index` (fixture of the 2026-10-14 response).
 - `tools/version-files/test/version-files.test.mjs` (Since changed: `version-files.test.ts`,
   ADR-025): `a beta pin writes 159.0 to version.txt`.
-- `tools/test/surfer-pin.test.mjs`: `surfer.json on main pins a Firefox release, never a beta`.
+- `tools/test/surfer-pin.test.ts`: `surfer.json on main pins a Firefox release, never a beta`.
 - `tools/e2e/test`: `--report-json writes each failed scenario with its error`.
 
 Python:

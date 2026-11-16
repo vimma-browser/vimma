@@ -3,6 +3,9 @@
 Status: implemented · Milestone: M7 · Area: upstream (`tools/upstream/`,
 `.github/workflows/upstream.yml`, `.github/workflows/e2e.yml`, `docs/rebase.md`) · ADR-015
 
+(Since changed: the `.mjs` files of `tools/upstream/` named here, and their tests, are `.ts`,
+ADR-025, #946.)
+
 ## User story
 
 As the maintainer, when Firefox ships a release, and above all a security release, I get within

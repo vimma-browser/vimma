@@ -70,7 +70,7 @@ bump PR names the canary's issues for that version.
 `upstream.yml` runs every 4 h (`:17`) and on demand (`gh workflow run upstream.yml`; add
 `-f rebuild=true` to redo a release whose branch already exists). Its jobs:
 
-1. **`detect`** (read-only, < 1 min). `tools/upstream/detect.mjs` reads product-details
+1. **`detect`** (read-only, < 1 min). `tools/upstream/detect.ts` reads product-details
    (`firefox_versions.json` for `LATEST_FIREFOX_VERSION`, `firefox.json` for release dates) and
    Mozilla's [advisories index](https://www.mozilla.org/security/advisories/). It reports whether
    the latest release is newer than `surfer.json`, whether it is a major (X.0) or dot release
@@ -92,7 +92,7 @@ bump PR names the canary's issues for that version.
    (ADR-021, docs/security/14-build-and-release-supply-chain.md B1). **A bad or missing signature,
    or a mismatch, fails the run**:
    no PR. Then `patch-audit.py` (ADR-003 register) and the artifact preflight
-   (`artifact-preflight.mjs`: is Mozilla's build of the tarball's revision in the Taskcluster
+   (`artifact-preflight.ts`: is Mozilla's build of the tarball's revision in the Taskcluster
    index?). The reports are the run's `patch-check` artifact (30 days).
 4. **`test`** (read-only). Only when every patch applies and the artifacts exist: `e2e.yml`, called
    with the new version. It bumps `surfer.json` in its own checkout and does what PR CI does:
@@ -114,7 +114,7 @@ bump PR names the canary's issues for that version.
    and the tracking issue gets the whole summary plus a compare link with the title and
    `Closes #N` filled in: open the PR from it.
 
-The PR body (`tools/upstream/autopilot-body.mjs`) is a table (tarball hash, patches, register,
+The PR body (`tools/upstream/autopilot-body.ts`) is a table (tarball hash, patches, register,
 artifacts, suites), the advisories, a **Conflicts** section when a patch does not apply (the
 upstream files, and each failing hunk by header), what you do next, and the full patch check,
 collapsed.
@@ -294,7 +294,7 @@ PR CI (`e2e.yml`) does this once the PR is ready for review, because the bump ch
 `surfer.json`. Run it locally too, next to the full build (≈ 0.6 GB in `engine/obj-artifact`):
 
 ```sh
-node tools/artifact-build/artifact-build.mjs
+node tools/artifact-build/artifact-build.ts
 # → artifact-build: Mozilla binaries of <rev> (indexed until <date>), objdir engine/obj-artifact
 npm run mochitest -- --artifact tests/browser/
 ```
@@ -362,10 +362,10 @@ name that reads in the strings that use it, and a Mozilla product in `KEEP`. `e2
 ours and a CI engine has no history to read it from), so an autopilot PR whose new release changes
 `brandings.ftl` fails there until someone regenerates the file.
 
-**Upstream pref copies, checked.** `node tools/upstream/upstream-prefs.mjs` (after the import)
+**Upstream pref copies, checked.** `node tools/upstream/upstream-prefs.ts` (after the import)
 compares both copies below with the engine's and prints the line to paste for a stale one; exit
 1 then. `e2e.yml` runs it, so the autopilot's suites and PR CI catch a stale copy. The autopilot
-refreshes stale copies itself: `source-check.sh` runs `upstream-prefs.mjs --write-diff` on the
+refreshes stale copies itself: `source-check.sh` runs `upstream-prefs.ts --write-diff` on the
 verified tarball's prefs files, the suites run on the result, and the bump commit carries the new
 lines (the PR body lists old and new values). A pref gone upstream is never guessed: the PR is a
 draft that names it, and a person finds its new name. The details:
@@ -428,7 +428,7 @@ For a draft you fixed by hand, tick the rest:
       green (paste counts in the PR, as the PR template asks)
 - [ ] artifact build: preflight OK; `npm run mochitest -- --artifact tests/browser/` green
 - [ ] `npm run gen-brandings` committed; `npx vitest run tools/branding/` green;
-      `node tools/upstream/upstream-prefs.mjs` up to date
+      `node tools/upstream/upstream-prefs.ts` up to date
 - [ ] split-view contract green on both builds
 
 Then `gh pr ready <n>`, which starts `ci.yml` and `e2e.yml`. Merge when green. The nightly

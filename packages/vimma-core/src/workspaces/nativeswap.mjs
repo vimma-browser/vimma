@@ -33,6 +33,7 @@
  *   | { kind: "refuse", reason: string }} NativePlan
  */
 
+/** @type {ReadonlySet<unknown>} */
 const SIZEMODES = new Set(["normal", "maximized", "minimized", "fullscreen"]);
 /** Larger than any desktop; a coordinate past it is a broken read. */
 const MAX_COORD = 1e6;
@@ -52,7 +53,8 @@ function isRect(r) {
 }
 
 /** @param {unknown} f @returns {f is Frame} */
-const isFrame = (f) => isRect(f) && SIZEMODES.has(/** @type {any} */ (f).sizemode);
+const isFrame = (f) =>
+  isRect(f) && SIZEMODES.has(/** @type {{ sizemode?: unknown }} */ (f).sizemode);
 
 /** @param {Rect} r @returns {Rect} */
 const rectOf = ({ x, y, width, height }) => ({ x, y, width, height });

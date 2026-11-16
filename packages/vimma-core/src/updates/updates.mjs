@@ -35,7 +35,7 @@ export const RELEASES_URL = "https://github.com/vimma-browser/vimma/releases";
 /**
  * The one command that installs or updates Vimma on Arch Linux from the latest release (spec
  * m6a-updater decision 24): the pkgbuild-release hint, and the PKGBUILD's own header through
- * tools/package/package.mjs, which re-exports it. It builds in a fixed folder so it works from
+ * tools/package/package.ts, which re-exports it. It builds in a fixed folder so it works from
  * any directory and leaves nothing in the current one: ~/.cache is on disk (a build needs about
  * 450 MB, too much for a tmpfs), keeps the last package for a quick reinstall, and holds files
  * the user may delete.

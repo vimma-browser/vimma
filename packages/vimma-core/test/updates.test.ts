@@ -40,7 +40,7 @@ import { getAction } from "../src/keys/actions.mjs";
 import { compileKeymap } from "../src/keys/keymap.mjs";
 import { statusSegments } from "../src/ui/statusbar.mjs";
 import { THEME_TOKENS } from "../src/config/theme.mjs";
-import { budget } from "./budget.mjs";
+import { budget } from "./budget.ts";
 
 const subtle = globalThis.crypto.subtle;
 const ALG = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-384" };
@@ -863,7 +863,7 @@ describe("install type (§3)", () => {
     expect(installTypeFrom(input)).toBe(type);
   });
 
-  // The lines tools/package/package.mjs writes; only an unmarked install is a tarball, and only a
+  // The lines tools/package/package.ts writes; only an unmarked install is a tarball, and only a
   // tarball is told to unpack over its install directory (a .deb's belongs to dpkg).
   test.each([
     ["vimma-package=deb\n", null, "deb", /sudo apt install \.\/vimma_0\.3\.1_amd64\.deb$/],

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
-import { jobs, parseWorkflow } from "./workflow-runners.mjs";
+import { jobs, parseWorkflow } from "./workflow-runners.ts";
 import type { Job, Step } from "./workflow-types.ts";
 
 // Issue #443: release-please opens its release pull request as a draft, and the heavy required

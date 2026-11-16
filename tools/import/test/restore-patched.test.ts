@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { findPatches, patchedFiles, restorePatched } from "../restore-patched.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 const modify = `--- a/browser/base/moz.build
 +++ b/browser/base/moz.build

@@ -1,7 +1,7 @@
 # Spec: release-versioning
 
 Status: implemented · Area: CI (`release-please-config.json`, `docs/runbook/ci-releases.md`
-"Releases", `tools/package/test/release-workflow.test.mjs`). No upstream patch, no app code.
+"Releases", `tools/package/test/release-workflow.test.ts`). No upstream patch, no app code.
 
 ## Goal
 
@@ -52,7 +52,7 @@ Releases count up by the patch version: 0.1.1, 0.1.2, 0.1.3 and so on.
 - `release-please-config.json`: `"versioning": "always-bump-patch"` in place of
   `bump-minor-pre-major`; add `draft` and `force-tag-creation` (both `true`); remove
   `"release-as"`.
-- Tests (vitest, `tools/package/test/release-workflow.test.mjs`): the config has those options,
+- Tests (vitest, `tools/package/test/release-workflow.test.ts`): the config has those options,
   no `bump-*-pre-major` and no `release-as`; the manifest matches `surfer.json`'s
   `displayVersion`; `release.yml` has only the `published` release type.
 - Runbook "Releases": bumps, moving to 0.2.0, drafts, the first release, and how to switch drafts

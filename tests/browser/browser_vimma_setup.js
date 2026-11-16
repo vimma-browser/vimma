@@ -179,6 +179,30 @@ add_task(async function esc_changes_no_pref_engine_or_addon() {
   Assert.ok(!(await IOUtils.exists(configFile())));
 });
 
+add_task(async function engine_step_starts_on_the_config_toml_default() {
+  const original = await SearchService.getDefault();
+  const others = (await SearchService.getVisibleEngines()).filter((e) => e !== original);
+  Assert.greaterOrEqual(others.length, 2, "two engines besides the default");
+  const [wanted, other] = others;
+  // Written in another case: Vimma finds the engine as its [search] apply does.
+  await IOUtils.writeUTF8(
+    configFile(),
+    `schema = 2\n[search]\ndefault = ${JSON.stringify(wanted.name.toUpperCase())}\n`,
+  );
+  await ConfigHost.reload();
+  await TestUtils.waitForCondition(
+    async () => (await SearchService.getDefault()) === wanted,
+    "config.toml's default applied",
+  );
+  // Changed in Settings since: config.toml still names the engine setup offers as current.
+  await SearchService.setDefault(other, SearchService.CHANGE_REASON.USER);
+  const { current } = await SetupHost.engines();
+  Assert.equal(current, wanted.name, "config.toml's [search] default is the current engine");
+  await removeConfig();
+  await SearchService.setDefault(original, SearchService.CHANGE_REASON.UNKNOWN);
+  Assert.equal((await SetupHost.engines()).current, original.name, "else Firefox's default");
+});
+
 /**
  * Through to the summary choosing the engine `n` rows below the current default.
  * @param {Document} doc

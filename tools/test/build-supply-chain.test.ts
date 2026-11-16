@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { jobs, parseWorkflow } from "./workflow-runners.mjs";
+import { jobs, parseWorkflow } from "./workflow-runners.ts";
 import type { Job, Step } from "./workflow-types.ts";
 
 // docs/specs/build-supply-chain.md, decisions 12, 14, 16 and 17;

@@ -422,7 +422,7 @@ export const SURFACE_TOKENS = Object.freeze([
 
 /**
  * Every token Vimma's chrome draws text in, on any of SURFACE_TOKENS (spec m7-a11y). The CSS and
- * the status bar use no other colour for text (tools/test/chrome-css.test.mjs).
+ * the status bar use no other colour for text (tools/test/chrome-css.test.ts).
  */
 export const TEXT_TOKENS = Object.freeze([
   "--vimma-fg",

@@ -190,7 +190,7 @@ export function loadModels(chat) {
     ([found, states]) => {
       if (shown()) draw(found, states);
     },
-    (/** @type {any} */ e) => console.error("vimma agent: probe failed", e),
+    (/** @type {unknown} */ e) => console.error("vimma agent: probe failed", e),
   );
 }
 
@@ -285,7 +285,7 @@ export async function pick(chat, { makeDefault = false } = {}) {
     } catch (e) {
       // A later pick says its own; this one's failure is still the answer to its Enter.
       if (chat.picks === pickAt) {
-        chat.host.say(`agent: ${/** @type {any} */ (e)?.message ?? e}`, true);
+        chat.host.say(`agent: ${/** @type {Thrown} */ (e)?.message ?? e}`, true);
       }
       return;
     }
@@ -443,7 +443,7 @@ export function findClis(chat) {
       const first = found[0];
       if (first) chat.host.say(`agent: found ${first.label}`, !!first.problem);
     },
-    (/** @type {any} */ e) => console.error("vimma agent: looking for agent CLIs failed", e),
+    (/** @type {unknown} */ e) => console.error("vimma agent: looking for agent CLIs failed", e),
   );
 }
 

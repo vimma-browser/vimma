@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Run by typescript-tools.test.mjs with plain `node main.ts`: an import by its .ts name, a
+// Run by typescript-tools.test.ts with plain `node main.ts`: an import by its .ts name, a
 // type-only import, an interface, annotations and a cast, all erased by Node.
 
 import { double } from "./double.ts";

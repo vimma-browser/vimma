@@ -10,7 +10,7 @@ import { createHash, privateEncrypt, constants } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { defined } from "../../test/defined.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import { testKey } from "../../test/test-keys.ts";
 import {
   base64Encode,
@@ -206,7 +206,7 @@ describe("buildManifest (spec §2)", () => {
     },
   );
 
-  it("names the release's files as package.mjs does", () => {
+  it("names the release's files as package.ts does", () => {
     expect(assetNames("0.3.1")).toEqual({
       tarball: "vimma-0.3.1-linux-x86_64.tar.xz",
       appimage: "vimma-0.3.1-x86_64.AppImage",

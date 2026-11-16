@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import { exitCode, formatReport, githubAnnotations, runScenarios } from "../runner.ts";
 import { shotFailure } from "../screenshot.ts";
 

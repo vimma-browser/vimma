@@ -8,6 +8,7 @@
 // The page only draws and takes keys; nothing here is reachable from the control socket.
 
 import { ConfigHost } from "../config/ConfigHost.sys.mjs";
+import { SearchHost } from "../search/SearchHost.sys.mjs";
 import { formatConfigTemplate } from "../core/defaults.mjs";
 import { setTomlKeys } from "../core/toml.mjs";
 import {
@@ -105,7 +106,7 @@ const amoBase = () => Services.prefs.getStringPref(AMO_PREF, AMO_API);
 const configFile = () => ConfigHost.configFile;
 
 /** @param {unknown} e */
-const notFound = (e) => /** @type {any} */ (e)?.name === "NotFoundError";
+const notFound = (e) => /** @type {Thrown} */ (e)?.name === "NotFoundError";
 
 export const SetupHost = {
   /** Once per process (vimma.js): about:vimma-setup resolves from then on. */
@@ -178,8 +179,8 @@ export const SetupHost = {
     const visible = (await s.getVisibleEngines()).map((e) => e.name);
     const app = new Set((await s.getAppProvidedEngines()).map((e) => e.name));
     const names = [...visible.filter((n) => app.has(n)), ...visible.filter((n) => !app.has(n))];
-    const fromFile = /** @type {any} */ (ConfigHost.config)?.search?.default;
-    const current = names.includes(fromFile) ? fromFile : (await s.getDefault()).name;
+    // config.toml's [search] default, found as SearchHost applies it, else Firefox's default.
+    const current = SearchHost.configuredDefault(names) ?? (await s.getDefault()).name;
     return { names, current };
   },
 

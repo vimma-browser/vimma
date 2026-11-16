@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkFileChange } from "../hooks/lib/file-rules.mjs";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 /** A repository with one commit and a linked worktree under .claude/worktrees/item. */
 function repoWithWorktree() {

@@ -17,7 +17,7 @@ import {
 } from "../src/ui/picker.mjs";
 import { downloadSections } from "../src/ui/downloads.mjs";
 import { createSplits, newSplit, splitPickerItems } from "../src/panes/splits.mjs";
-import { budget } from "./budget.mjs";
+import { budget } from "./budget.ts";
 
 import type { AnyItem, Field, PickerState, PickerItem } from "../src/ui/picker.mjs";
 import type { Workspaces } from "../src/workspaces/workspaces.mjs";

@@ -54,7 +54,7 @@ runner is not used (decision 10).
 - `e2e.yml` (the required "mochitest (artifact build)" check) runs on `ubuntu-24.04`, a
   standard hosted runner. It builds `vimma-ctl` (`cargo build --locked`), downloads the Firefox
   source tarball (checked against Mozilla's `SHA512SUMS`), runs `npm run import`, makes an
-  **artifact build** (`tools/artifact-build/artifact-build.mjs`: our front end on Mozilla's
+  **artifact build** (`tools/artifact-build/artifact-build.mjs`, since changed: `artifact-build.ts`, ADR-025: our front end on Mozilla's
   compiled binaries for that exact release, ADR-010), then runs the mochitests and
   `npm run e2e -- --artifact` (`.github/workflows/e2e.yml:91-147`). No secret, read-only
   token.
@@ -559,5 +559,6 @@ What changed from the plan above, and why:
   from a developer's network on the live sites. The copies served no scripts, which the
   snapshot drops anyway.
 - **In e2e.yml** after the scenarios, as a Beta-mode suite (`sites-offline` in
-  `suite-results.mjs`): about 25 s for the four on a local machine. Screenshots are not
-  compared, as planned; they are uploaded with the report when the gate fails.
+  `suite-results.mjs`; since changed: `suite-results.ts`, ADR-025): about 25 s for the four on a
+  local machine. Screenshots are not compared, as planned; they are uploaded with the report when
+  the gate fails.

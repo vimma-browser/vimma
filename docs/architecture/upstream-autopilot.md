@@ -22,7 +22,7 @@ sequenceDiagram
   participant PR as Bump pull request
   participant M as upstream-merge.yml
   participant RP as release-please.yml
-  U->>Moz: detect.mjs reads product-details and advisories
+  U->>Moz: detect.ts reads product-details and advisories
   U->>U: track: tracking issue
   U->>Moz: source-check.sh streams the source tarball
   U->>U: patch-check.py, verify-sha512.py, artifact preflight
@@ -30,7 +30,7 @@ sequenceDiagram
   E-->>U: suites green or red
   U->>PR: publish: push upstream/firefox-X.Y.Z, open the PR
   PR->>M: each workflow on the PR completes
-  M->>M: merge-ready.mjs
+  M->>M: merge-ready.ts
   M->>PR: gh pr merge --auto at the marked head
   PR->>RP: squash merge on main
   RP->>RP: security-release.ts (security bumps)
@@ -45,8 +45,8 @@ token and no secret, and does three things:
   `tools/upstream/mozilla-release-key.asc` and reports a new subkey, a revocation or a key near
   expiry; the `key` job turns that into a `security` issue. A failed download only warns, so it
   never stops release detection.
-- `tools/upstream/detect.mjs` reads product-details (`firefox_versions.json`, `firefox.json`) and
-  Mozilla's advisories index through `releases.mjs`, and answers whether a release newer than
+- `tools/upstream/detect.ts` reads product-details (`firefox_versions.json`, `firefox.json`) and
+  Mozilla's advisories index through `releases.ts`, and answers whether a release newer than
   `surfer.json`'s pin exists, whether it is a major or a dot release (`classify`), whether an MFSA
   advisory names it, and how far behind `main` is (`drift`). An unreadable advisories page makes
   security "unknown", which counts as a security release (G3).
@@ -57,8 +57,8 @@ token and no secret, and does three things:
 `track` opens or labels the tracking issue "Firefox X.Y.Z released" (`upstream`, and `security`
 when it is or may be one). `drift`, when `main` is past its limit (3 days behind a security dot
 release, 7 for a major, 14 otherwise), opens an issue and fails the run (G2). Tests:
-[releases.test.mjs](../../tools/upstream/test/releases.test.mjs),
-[autopilot.test.mjs](../../tools/upstream/test/autopilot.test.mjs) and
+[releases.test.ts](../../tools/upstream/test/releases.test.ts),
+[autopilot.test.ts](../../tools/upstream/test/autopilot.test.ts) and
 [upstream-workflow.test.ts](../../tools/test/upstream-workflow.test.ts).
 
 ## 2. The source and the patches: `patch-check`
@@ -77,19 +77,19 @@ so that the two checks cannot drift apart. It accepts only a version of digits, 
    in `SHA512SUMS`. A bad signature, a mismatch or a file that cannot be fetched exits 1, and no
    report is uploaded: nothing is ever reported on or built from a tarball Mozilla did not publish
    (G4).
-3. From the verified tarball only, `upstream-prefs.mjs` computes the refresh of the prefs Vimma
+3. From the verified tarball only, `upstream-prefs.ts` computes the refresh of the prefs Vimma
    copies from upstream (`prefs-refresh.patch`) and `reexport.py` re-exports patches that applied
    only with fuzz. Then `patch-audit.py` measures every patch against ADR-003's register (a report
-   that never fails the check), and, when every patch applies, `artifact-preflight.mjs` asks
+   that never fails the check), and, when every patch applies, `artifact-preflight.ts` asks
    Mozilla's Taskcluster index whether compiled binaries for the release's revision exist
    ([ADR-010](../adr/010-pr-artifact-builds.md)).
 
 Its outputs (`result=ok|fail|norun`, `artifacts=yes|no|unknown`) decide the rest. A failed patch
 also starts `patch-issue`, which opens one triage issue per version with `GITHUB_TOKEN` only.
-Tests: [source-check.test.mjs](../../tools/upstream/test/source-check.test.mjs),
+Tests: [source-check.test.ts](../../tools/upstream/test/source-check.test.ts),
 [test_patch_check.py](../../tools/upstream/test_patch_check.py),
 [test_verify_sha512.py](../../tools/upstream/test_verify_sha512.py) and
-[artifact-preflight.test.mjs](../../tools/upstream/test/artifact-preflight.test.mjs).
+[artifact-preflight.test.ts](../../tools/upstream/test/artifact-preflight.test.ts).
 
 ## 3. The suites on the new release: `test`
 
@@ -115,27 +115,27 @@ token of the org's GitHub App when one is set up, because a pull request opened 
    second commit, copied only from `src/**/*.patch` paths. On a rebuild, auto-merge already set on
    the old head is turned off first. The branch `upstream/firefox-X.Y.Z` is then pushed; only this
    job writes `upstream/*` branches.
-2. **The allowlist.** `tools/upstream/bump-diff.mjs` reads the branch as pushed against its
+2. **The allowlist.** `tools/upstream/bump-diff.ts` reads the branch as pushed against its
    merge-base with `main` and answers whether the diff is a plain bump: `surfer.json` changes only
    `version.version`, and `firefox-branding.js`, if at all, only the copied pref lines. A new,
    deleted or renamed file, another line, or a re-exported patch is not. Any failure here leaves no
    verdict, which keeps auto-merge off.
-3. **The body and its decisions.** `tools/upstream/autopilot-body.mjs` writes the title and body
+3. **The body and its decisions.** `tools/upstream/autopilot-body.ts` writes the title and body
    from every report, and decides two things. `draftDecision`: a draft when a patch does not
    apply and none was re-exported, a copied pref is gone upstream, the suites did not pass, or no
    App token exists (G5).
    `autoMergeDecision`: on only when `AUTO_MERGE_UPSTREAM` allows the release kind (`dot`, or
    `all`), the run is on `main`, the App is set up, no patch was re-exported, the pull request is
    not a draft, every patch applied `clean` or with an `offset`, Mozilla's artifacts exist, and
-   `bump-diff.mjs` said yes. When it is on, the body carries a hidden marker naming the head
+   `bump-diff.ts` said yes. When it is on, the body carries a hidden marker naming the head
    commit that was checked (`autoMergeMarker`). `publish` itself never sets auto-merge.
 4. **The pull request.** `gh pr create`, or an edit of the open one; when the repository does not
    let Actions open pull requests, a comment with a prefilled compare link on the tracking issue
    instead (G1). Older bump pull requests and tracking issues are closed as superseded.
 
-Tests: [autopilot.test.mjs](../../tools/upstream/test/autopilot.test.mjs) ("a ready PR only when
+Tests: [autopilot.test.ts](../../tools/upstream/test/autopilot.test.ts) ("a ready PR only when
 patches apply, suites pass and a token starts CI", "names the first condition that did not hold"),
-[bump-diff.test.mjs](../../tools/upstream/test/bump-diff.test.mjs) and
+[bump-diff.test.ts](../../tools/upstream/test/bump-diff.test.ts) and
 [upstream-workflow.test.ts](../../tools/test/upstream-workflow.test.ts) ("the allowlist reads
 the branch as pushed", "rebuild disables auto-merge before the push").
 
@@ -145,7 +145,7 @@ The pull request runs every workflow an ordinary one does. Each time one of `CI`
 `flatpak`, `key-guard`, `macos`, `pkgbuild` or `Semgrep` completes, `workflow_run` starts
 `upstream-merge.yml` from `main`'s copy, never the branch's. Its job runs only for a pull-request
 run from this repository on an `upstream/firefox-*` branch with the App set up, and hands the
-pull request, every run on the head and every check to `tools/upstream/merge-ready.mjs`.
+pull request, every run on the head and every check to `tools/upstream/merge-ready.ts`.
 `mergeReady` answers no, with the first reason, unless:
 
 - the pull request was opened by `vimma-upstream-autopilot[bot]` and is not a draft;
@@ -159,7 +159,7 @@ When the answer is yes, the job runs `gh pr merge --auto --squash --match-head-c
 App's token, whose merge, unlike one made with `GITHUB_TOKEN`, starts the push workflows on
 `main`. GitHub's auto-merge still waits for every required check and code scanning. A red,
 cancelled or unapproved run leaves the bump for a person; re-running it green starts the decision
-again (G13). Tests: [merge-ready.test.mjs](../../tools/upstream/test/merge-ready.test.mjs) and
+again (G13). Tests: [merge-ready.test.ts](../../tools/upstream/test/merge-ready.test.ts) and
 [upstream-merge-workflow.test.ts](../../tools/test/upstream-merge-workflow.test.ts).
 
 ## 6. After the merge: a security release
@@ -186,4 +186,4 @@ pushes, commits, opens a pull request or changes the Firefox pin; its only outpu
 "Firefox N beta: canary findings" issue, which the bump's pull request names when the release
 arrives (G9, G10). Tests:
 [upstream-beta-workflow.test.ts](../../tools/test/upstream-beta-workflow.test.ts) and
-[canary.test.mjs](../../tools/upstream/test/canary.test.mjs).
+[canary.test.ts](../../tools/upstream/test/canary.test.ts).

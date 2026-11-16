@@ -3,7 +3,7 @@
 Status: implemented · Area: `ui/theme-host.mjs`,
 `browser/themes/shared/vimma/firefox-chrome.css` (new),
 `browser/themes/shared/vimma/firefox-pages.css` (new), `vimma/jar.mn`,
-`tests/browser/browser_vimma_firefox_surfaces_theme.js` (new), `tools/test/chrome-css.test.mjs` ·
+`tests/browser/browser_vimma_firefox_surfaces_theme.js` (new), `tools/test/chrome-css.test.ts` ·
 Upstream patches: none · ADR: none
 
 Issue: [#227](https://github.com/vimma-browser/vimma/issues/227)
@@ -224,7 +224,7 @@ contrast Firefox's own colours stay. Issue
   (computed and painted), cards, links, accent, selected and other navigation items and button
   tints, and the History sidebar's import promo, in the same three themes with Nova on; with
   high contrast both keep Firefox's colours.
-- `tools/test/chrome-css.test.mjs`: every Firefox text-colour token the sheets set
+- `tools/test/chrome-css.test.ts`: every Firefox text-colour token the sheets set
   (`--*text-color*`, `--*link-color*`, `--*icon-color*`, `--*icon-fill*`) is set to a Vimma
   text token whose contrast `packages/vimma-core/test/a11y.test.mjs` checks.
 

@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import { testKey } from "../../test/test-keys.ts";
 import {
   CERT_DIR,

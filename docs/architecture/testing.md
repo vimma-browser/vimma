@@ -56,9 +56,9 @@ queue, update manifests and the rest; and the Node tools under `tools/`, includi
 workflows themselves (`tools/test/`) and the e2e harness against a fake control server.
 
 **Where.** `vitest.config.ts` takes every `*.test.mjs` under `packages/**/test/` and
-`tools/**/test/`, and every `*.test.ts` under `tools/**/test/`, with a global setup
-(`tools/test/tmp-guard.mjs`) that fails a test leaving files in its temporary folder. The `check`
-job runs `npm run coverage`, which fails below 90 % of lines, functions, branches and statements
+`tools/**/test/`, and every `*.test.ts` under `packages/vimma-core/test/` and `tools/**/test/`,
+with a global setup (`tools/test/tmp-guard.ts`) that fails a test leaving files in its temporary
+folder. The `check` job runs `npm run coverage`, which fails below 90 % of lines, functions, branches and statements
 in `packages/vimma-core/src/` (the vendored smol-toml excluded).
 There is no coverage figure for the browser code.
 
@@ -72,7 +72,7 @@ vimma-ctl's JSON and protocol decoders) hold their invariants on generated input
 either well formed or a located error, never an exception, and an accepted value holds only what
 the schema allows.
 
-**Where.** The fast-check properties in `packages/vimma-core/test/fuzz/` go through `harness.mjs`:
+**Where.** The fast-check properties in `packages/vimma-core/test/fuzz/` go through `harness.ts`:
 in every Vitest run they use a fixed seed (`FIXED_SEED`), so a red run is red again on a re-run, and
 `RUNS` (100) cases times each property's `weight`, which takes most to 500, 1000 or 2000 cases and a
 slow one to 20. `properties.test.ts` holds more properties of the key notation and the dispatcher.
@@ -133,7 +133,7 @@ also checks key-to-paint times against budgets set from CI runs.
 **Where.** The required `mochitest (artifact build)` job of `e2e.yml`, on a hosted Linux runner.
 It downloads Firefox's source for `surfer.json`'s release and checks it
 (`tools/upstream/firefox-source.sh`), runs `npm run import`, makes the artifact build
-(`tools/artifact-build/artifact-build.mjs`: Vimma's front end over Mozilla's compiled binaries
+(`tools/artifact-build/artifact-build.ts`: Vimma's front end over Mozilla's compiled binaries
 for the same release), and runs `npm run mochitest -- --artifact tests/browser/` with
 `VIMMA_REQUIRE_CTL=1`, so the vimma-ctl task fails rather than skips. Files that test
 compiled-in parts are marked `skip-if = ["artifact"]` in `browser.toml` (at present the crash

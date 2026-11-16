@@ -5,6 +5,7 @@ import { completeCommandLine } from "../src/keys/cmdline.mjs";
 import { formatConfigTemplate, formatDefaultsToml } from "../src/config/defaults.mjs";
 import {
   appliedAliases,
+  configuredEngine,
   parseSearchState,
   planSearch,
   resolveSearch,
@@ -880,5 +881,38 @@ describe("parseSearchState: the reason a state is discarded", () => {
       state: null,
       problem: `vimma.search.applied ${why}; discarded`,
     });
+  });
+});
+
+describe("configuredEngine (the setup page's current engine)", () => {
+  const names = ["Google", "DuckDuckGo", "github.com"];
+  const state = {
+    created: [{ alias: "gh", id: "u1", name: "github.com", url: GH }],
+    aliased: [],
+    default: null,
+  };
+
+  test("an engine default names the installed engine, exact before ignoring case", () => {
+    expect(configuredEngine({ kind: "engine", name: "DuckDuckGo" }, names, null)).toBe(
+      "DuckDuckGo",
+    );
+    expect(configuredEngine({ kind: "engine", name: "duckduckgo" }, names, null)).toBe(
+      "DuckDuckGo",
+    );
+    expect(configuredEngine({ kind: "engine", name: "google" }, ["google", "Google"], null)).toBe(
+      "google",
+    );
+  });
+
+  test("a template default names the engine Vimma made for its alias", () => {
+    expect(configuredEngine({ kind: "template", alias: "gh" }, names, state)).toBe("github.com");
+  });
+
+  test("null when the file names no engine among them", () => {
+    expect(configuredEngine(null, names, state)).toBeNull();
+    expect(configuredEngine({ kind: "engine", name: "Bing" }, names, null)).toBeNull();
+    expect(configuredEngine({ kind: "template", alias: "gh" }, names, null)).toBeNull();
+    expect(configuredEngine({ kind: "template", alias: "x" }, names, state)).toBeNull();
+    expect(configuredEngine({ kind: "template", alias: "gh" }, ["Google"], state)).toBeNull();
   });
 });

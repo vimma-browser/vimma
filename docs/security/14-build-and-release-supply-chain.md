@@ -19,11 +19,11 @@ hold every rule below that the Linux jobs hold: the same tag checks, the `build`
 the key, cosign under the same identity, and the same refusal to replace a published release's
 files (B6, B9, B10). Apple's Developer ID signing and notarisation add the `macos-sign`
 environment and its secrets (B14). No Linux job needs them, so a macOS failure holds back no Linux release.
-[`no Linux job needs a macOS job`](../../tools/package/test/release-workflow.test.mjs),
-[`macos-build checks the tag like build, then cross-builds with the key`](../../tools/package/test/release-workflow.test.mjs),
+[`no Linux job needs a macOS job`](../../tools/package/test/release-workflow.test.ts),
+[`macos-build checks the tag like build, then cross-builds with the key`](../../tools/package/test/release-workflow.test.ts),
 [`the build jobs check out clean and restore nothing from the Actions cache`](../../tools/test/full-build-workflows.test.ts),
-[`reads no secret, deploys to no environment and only reads the repository`](../../tools/package/test/macos.test.mjs),
-[`pins one rcodesign release and its SHA-256, checked before the file is used`](../../tools/package/test/macos.test.mjs)
+[`reads no secret, deploys to no environment and only reads the repository`](../../tools/package/test/macos.test.ts),
+[`pins one rcodesign release and its SHA-256, checked before the file is used`](../../tools/package/test/macos.test.ts)
 
 Every job of these workflows that sets up Node takes the exact version in `.nvmrc` of the commit it
 checked out (`node-version-file: .nvmrc`), never a bare major such as `node-version: 22`, which
@@ -77,14 +77,14 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`test_one_changed_byte_in_sha512sums_fails_the_signature`](../../tools/upstream/test_verify_sha512.py),
   [`test_missing_signature_or_gpgv_cannot_check_and_exits_two`](../../tools/upstream/test_verify_sha512.py),
   [`test_pinned_key_is_mozillas_primary_with_the_compromised_subkey_revoked`](../../tools/upstream/test_verify_sha512.py),
-  [`a SHA512SUMS without a good signature fails before engine/ is touched`](../../tools/upstream/test/firefox-source.test.mjs),
-  [`the source check fails on a SHA512SUMS whose signature is not good`](../../tools/upstream/test/source-check.test.mjs),
+  [`a SHA512SUMS without a good signature fails before engine/ is touched`](../../tools/upstream/test/firefox-source.test.ts),
+  [`the source check fails on a SHA512SUMS whose signature is not good`](../../tools/upstream/test/source-check.test.ts),
   [`test_a_signed_message_in_place_of_a_detached_signature_fails`](../../tools/upstream/test_verify_sha512.py),
-  [`fails a tampered tarball`](../../tools/upstream/test/verify-source.test.mjs),
-  [`--require refuses an engine/ never verified, or verified for another version`](../../tools/upstream/test/verify-source.test.mjs),
+  [`fails a tampered tarball`](../../tools/upstream/test/verify-source.test.ts),
+  [`--require refuses an engine/ never verified, or verified for another version`](../../tools/upstream/test/verify-source.test.ts),
   [`npm run import refuses an engine/ whose source was never verified`](../../tools/test/upstream-workflow.test.ts),
   [`every verify-sha512.py call passes a signature`](../../tools/test/upstream-workflow.test.ts),
-  [`refuses a surfer.json with a version.candidate, before anything is fetched`](../../tools/upstream/test/firefox-source.test.mjs),
+  [`refuses a surfer.json with a version.candidate, before anything is fetched`](../../tools/upstream/test/firefox-source.test.ts),
   [`fails a changed key file without the label`](../../tools/ci/test/key-guard.test.mjs),
   [`fails a change to any of the guard's own files without the label, and passes it with`](../../tools/ci/test/key-guard.test.mjs),
   [`passes the pull request that first adds the guard to a base without one`](../../tools/ci/test/key-guard.test.mjs),
@@ -96,7 +96,7 @@ of the same commit read it too, so a tree without it could not be released anywa
   same job from the tarball it verified, and **never** restores a tree, an objdir or a compiler
   cache from the Actions cache; a release **must** build in a fresh objdir with an empty
   compiler cache.
-  [`a tarball already on disk is verified again and engine/ is extracted from it afresh`](../../tools/upstream/test/firefox-source.test.mjs),
+  [`a tarball already on disk is verified again and engine/ is extracted from it afresh`](../../tools/upstream/test/firefox-source.test.ts),
   [`no workflow reads or writes engine/.vimma-firefox-version`](../../tools/test/full-build-workflows.test.ts),
   [`the build jobs check out clean and restore nothing from the Actions cache`](../../tools/test/full-build-workflows.test.ts),
   [`a release builds in a fresh objdir with an empty compiler cache`](../../tools/test/full-build-workflows.test.ts)
@@ -295,28 +295,28 @@ of the same commit read it too, so a tree without it could not be released anywa
   every `actool` run, so the check compares only their names, pixel sizes and sizes on disk; a
   change to their pixels that keeps the size is left to review, which reads `Assets.car` as a
   binary to be regenerated, never edited.
-  [`writes SHA256SUMS that sha256sum -c accepts, for every release file`](../../tools/package/test/package.test.mjs),
-  [`signs and uploads the PKGBUILD and SRCINFO with the other assets`](../../tools/package/test/release-workflow.test.mjs),
-  [`macos-smoke runs the dmg on a hosted Mac and ties its version line to the tag`](../../tools/package/test/release-workflow.test.mjs),
-  [`macos-sign signs the dmg and its checksums, and runs no repository code`](../../tools/package/test/release-workflow.test.mjs),
-  [`macos-publish adds only the macOS files, and replaces them only when told`](../../tools/package/test/release-workflow.test.mjs),
-  [`regenerates the icon files on a Mac with a pinned Xcode and fails on drift`](../../tools/package/test/macos.test.mjs),
-  [`fails an app that still carries Firefox's unofficial icon`](../../tools/package/test/macos.test.mjs),
-  [`macos-smoke checks the mounted dmg's window art and volume icon`](../../tools/package/test/release-workflow.test.mjs),
-  [`macos-smoke runs the e2e smoke scenarios through the app's vimma-ctl`](../../tools/package/test/release-workflow.test.mjs),
-  [`fails a volume with other art, such as Firefox's`](../../tools/package/test/macos.test.mjs),
-  [`names no home directory or Firefox volume`](../../tools/package/test/macos.test.mjs),
-  [`builds and installs the release PKGBUILD on Arch Linux before anything is signed`](../../tools/package/test/release-workflow.test.mjs),
-  [`signs and uploads the .rpm with the other vimma* assets`](../../tools/package/test/rpm-smoke.test.mjs),
-  [`smoke-tests the .rpm on Fedora and openSUSE before the files are uploaded for signing`](../../tools/package/test/rpm-smoke.test.mjs),
-  [`pins a Fedora and an openSUSE image by digest`](../../tools/package/test/rpm-smoke.test.mjs),
-  [`refuses the stage path %j, which the shell or the macro expander would change`](../../tools/package/test/package.test.mjs),
-  [`refuses a bundled library name it could not quote`](../../tools/package/test/package.test.mjs),
-  [`refuses a maintainer with a %, which rpm would expand as a macro`](../../tools/package/test/package.test.mjs),
-  [`an output dir rpm's macro expander would change, before rpmbuild runs`](../../tools/package/test/package.test.mjs),
-  [`needs nothing but itself: the tarball is its only source`](../../tools/package/test/package.test.mjs),
-  [`refuses repo %j`](../../tools/package/test/package.test.mjs),
-  [`refuses desktop id %j`](../../tools/package/test/package.test.mjs)
+  [`writes SHA256SUMS that sha256sum -c accepts, for every release file`](../../tools/package/test/package.test.ts),
+  [`signs and uploads the PKGBUILD and SRCINFO with the other assets`](../../tools/package/test/release-workflow.test.ts),
+  [`macos-smoke runs the dmg on a hosted Mac and ties its version line to the tag`](../../tools/package/test/release-workflow.test.ts),
+  [`macos-sign signs the dmg and its checksums, and runs no repository code`](../../tools/package/test/release-workflow.test.ts),
+  [`macos-publish adds only the macOS files, and replaces them only when told`](../../tools/package/test/release-workflow.test.ts),
+  [`regenerates the icon files on a Mac with a pinned Xcode and fails on drift`](../../tools/package/test/macos.test.ts),
+  [`fails an app that still carries Firefox's unofficial icon`](../../tools/package/test/macos.test.ts),
+  [`macos-smoke checks the mounted dmg's window art and volume icon`](../../tools/package/test/release-workflow.test.ts),
+  [`macos-smoke runs the e2e smoke scenarios through the app's vimma-ctl`](../../tools/package/test/release-workflow.test.ts),
+  [`fails a volume with other art, such as Firefox's`](../../tools/package/test/macos.test.ts),
+  [`names no home directory or Firefox volume`](../../tools/package/test/macos.test.ts),
+  [`builds and installs the release PKGBUILD on Arch Linux before anything is signed`](../../tools/package/test/release-workflow.test.ts),
+  [`signs and uploads the .rpm with the other vimma* assets`](../../tools/package/test/rpm-smoke.test.ts),
+  [`smoke-tests the .rpm on Fedora and openSUSE before the files are uploaded for signing`](../../tools/package/test/rpm-smoke.test.ts),
+  [`pins a Fedora and an openSUSE image by digest`](../../tools/package/test/rpm-smoke.test.ts),
+  [`refuses the stage path %j, which the shell or the macro expander would change`](../../tools/package/test/package.test.ts),
+  [`refuses a bundled library name it could not quote`](../../tools/package/test/package.test.ts),
+  [`refuses a maintainer with a %, which rpm would expand as a macro`](../../tools/package/test/package.test.ts),
+  [`an output dir rpm's macro expander would change, before rpmbuild runs`](../../tools/package/test/package.test.ts),
+  [`needs nothing but itself: the tarball is its only source`](../../tools/package/test/package.test.ts),
+  [`refuses repo %j`](../../tools/package/test/package.test.ts),
+  [`refuses desktop id %j`](../../tools/package/test/package.test.ts)
 
 - B10. A release **must** be signed only by `release.yml` run from `main` through
   `workflow_dispatch`: `release-please.yml`'s `release-build` job dispatches it with
@@ -342,25 +342,25 @@ of the same commit read it too, so a tree without it could not be released anywa
   AUR key is a secret of the `aur` environment, which only `main` and `v*` tags may use. **⚠ limit:** a collaborator can publish a draft
   before its build has finished; the release is then public without its assets for that time,
   and `aur.yml` fails and opens a `release-failure` issue instead of pushing.
-  [`starts only by workflow_dispatch with a tag, so publishing a release rebuilds nothing`](../../tools/package/test/release-workflow.test.mjs),
-  [`job %s runs only when enabled, here, from main`](../../tools/package/test/release-workflow.test.mjs),
-  [`builds only a vX.Y.Z tag whose commit is on main`](../../tools/package/test/release-workflow.test.mjs),
-  [`macos-publish adds only the macOS files, and replaces them only when told`](../../tools/package/test/release-workflow.test.mjs),
-  [`release-build starts release.yml on main for the tag release-please just created`](../../tools/package/test/release-workflow.test.mjs),
-  [`accepts release.yml at refs/heads/main`](../../tools/package/test/package.test.mjs),
-  [`refuses %s`](../../tools/package/test/package.test.mjs),
-  [`never pushes to the AUR`](../../tools/package/test/release-workflow.test.mjs),
-  [`runs when a release is published, or by hand with a tag; never for a draft`](../../tools/package/test/release-workflow.test.mjs),
-  [`takes the PKGBUILD from the published release only, with no GitHub token`](../../tools/package/test/release-workflow.test.mjs),
-  [`checks the release's signature against the documented identity when signing is on`](../../tools/package/test/release-workflow.test.mjs),
-  [`uploads to the release by its tag and leaves the draft on that tag`](../../tools/package/test/release-workflow.test.mjs),
-  [`builds, packages and publishes the one commit it checked`](../../tools/package/test/release-workflow.test.mjs),
-  [`uploads only to a draft unless told to replace a published release`](../../tools/package/test/release-workflow.test.mjs),
-  [`takes the AUR key from the aur environment`](../../tools/package/test/release-workflow.test.mjs)
+  [`starts only by workflow_dispatch with a tag, so publishing a release rebuilds nothing`](../../tools/package/test/release-workflow.test.ts),
+  [`job %s runs only when enabled, here, from main`](../../tools/package/test/release-workflow.test.ts),
+  [`builds only a vX.Y.Z tag whose commit is on main`](../../tools/package/test/release-workflow.test.ts),
+  [`macos-publish adds only the macOS files, and replaces them only when told`](../../tools/package/test/release-workflow.test.ts),
+  [`release-build starts release.yml on main for the tag release-please just created`](../../tools/package/test/release-workflow.test.ts),
+  [`accepts release.yml at refs/heads/main`](../../tools/package/test/package.test.ts),
+  [`refuses %s`](../../tools/package/test/package.test.ts),
+  [`never pushes to the AUR`](../../tools/package/test/release-workflow.test.ts),
+  [`runs when a release is published, or by hand with a tag; never for a draft`](../../tools/package/test/release-workflow.test.ts),
+  [`takes the PKGBUILD from the published release only, with no GitHub token`](../../tools/package/test/release-workflow.test.ts),
+  [`checks the release's signature against the documented identity when signing is on`](../../tools/package/test/release-workflow.test.ts),
+  [`uploads to the release by its tag and leaves the draft on that tag`](../../tools/package/test/release-workflow.test.ts),
+  [`builds, packages and publishes the one commit it checked`](../../tools/package/test/release-workflow.test.ts),
+  [`uploads only to a draft unless told to replace a published release`](../../tools/package/test/release-workflow.test.ts),
+  [`takes the AUR key from the aur environment`](../../tools/package/test/release-workflow.test.ts)
 
 - B11. The Homebrew tap, `vimma-browser/homebrew-tap`, is public the moment a push lands, and
   `brew` runs a cask's Ruby on the user's Mac, so it **must** get only a cask that `release.yml`
-  built for a published release, as the AUR does (B10). `tools/package/cask.mjs` renders the cask
+  built for a published release, as the AUR does (B10). `tools/package/cask.ts` renders the cask
   in `macos-build` from the `.dmg`'s SHA-256, and accepts only an `X.Y.Z` release version, a
   lowercase SHA-256 and an `owner/name` repository, the values it places in Ruby strings. The
   cask has no `preflight`, `postflight`, `installer` or `script` stanza, runs nothing at install,
@@ -421,31 +421,31 @@ of the same commit read it too, so a tree without it could not be released anywa
   ad hoc signed and not notarised, so Gatekeeper cannot vouch for it; the cask's caveats then tell
   users to choose Open Anyway in System Settings, and never to remove the quarantine flag. A
   notarised release's cask has no caveats.
-  [`names the release dmg for the version and pins its sha256`](../../tools/package/test/cask.test.mjs),
-  [`refuses a pre-release, a version that is not SemVer, and a bad sha256`](../../tools/package/test/cask.test.mjs),
-  [`refuses repo %j`](../../tools/package/test/cask.test.mjs),
-  [`declares arm64, the minimum macOS, the app and the vimma binary, and no flight blocks`](../../tools/package/test/cask.test.mjs),
-  [`zaps Application Support and Caches, never ~/.config/vimma`](../../tools/package/test/cask.test.mjs),
-  [`caveats point to Open Anyway, never to xattr or --no-quarantine`](../../tools/package/test/cask.test.mjs),
-  [`checks the cask with brew style and an offline brew audit --cask --strict`](../../tools/package/test/cask.test.mjs),
-  [`refuses to install outside GitHub Actions`](../../tools/package/test/cask.test.mjs),
-  [`macos-smoke checks the cask with brew and installs the dmg through it`](../../tools/package/test/release-workflow.test.mjs),
-  [`macos-tap starts homebrew.yml on main once the cask is on a published release`](../../tools/package/test/release-workflow.test.mjs),
-  [`takes the cask from the published release only, with no GitHub token`](../../tools/package/test/release-workflow.test.mjs),
-  [`runs when a release is published, or by dispatch with a tag; never on a push or a PR`](../../tools/package/test/release-workflow.test.mjs),
-  [`reads the release event nowhere but the start condition, TAG and the concurrency group`](../../tools/package/test/release-workflow.test.mjs),
-  [`a published release only starts the tap push on main`](../../tools/package/test/release-workflow.test.mjs),
-  [`the start step dispatches main's copy once the cask is on the published release`](../../tools/package/test/release-workflow.test.mjs),
-  [`the start step refuses the tag %j before anything is fetched`](../../tools/package/test/release-workflow.test.mjs),
-  [`the homebrew job runs only by dispatch, when the macOS release is enabled, here, from main`](../../tools/package/test/release-workflow.test.mjs),
-  [`the failure report covers start and the push, when the macOS release is enabled, here`](../../tools/package/test/release-workflow.test.mjs),
-  [`a release without the cask is an error`](../../tools/package/test/release-workflow.test.mjs),
-  [`the download step refuses %s`](../../tools/package/test/release-workflow.test.mjs),
-  [`checks SHA256SUMS-macos's signature against the documented identity when signing is on`](../../tools/package/test/release-workflow.test.mjs),
-  [`takes the tap key from the homebrew environment`](../../tools/package/test/release-workflow.test.mjs),
-  [`the tap key reaches only the push step`](../../tools/package/test/release-workflow.test.mjs),
-  [`pushes Casks/vimma.rb to the tap over SSH with github.com's pinned host key`](../../tools/package/test/release-workflow.test.mjs),
-  [`never replaces a newer cask with an older one`](../../tools/package/test/release-workflow.test.mjs),
+  [`names the release dmg for the version and pins its sha256`](../../tools/package/test/cask.test.ts),
+  [`refuses a pre-release, a version that is not SemVer, and a bad sha256`](../../tools/package/test/cask.test.ts),
+  [`refuses repo %j`](../../tools/package/test/cask.test.ts),
+  [`declares arm64, the minimum macOS, the app and the vimma binary, and no flight blocks`](../../tools/package/test/cask.test.ts),
+  [`zaps Application Support and Caches, never ~/.config/vimma`](../../tools/package/test/cask.test.ts),
+  [`caveats point to Open Anyway, never to xattr or --no-quarantine`](../../tools/package/test/cask.test.ts),
+  [`checks the cask with brew style and an offline brew audit --cask --strict`](../../tools/package/test/cask.test.ts),
+  [`refuses to install outside GitHub Actions`](../../tools/package/test/cask.test.ts),
+  [`macos-smoke checks the cask with brew and installs the dmg through it`](../../tools/package/test/release-workflow.test.ts),
+  [`macos-tap starts homebrew.yml on main once the cask is on a published release`](../../tools/package/test/release-workflow.test.ts),
+  [`takes the cask from the published release only, with no GitHub token`](../../tools/package/test/release-workflow.test.ts),
+  [`runs when a release is published, or by dispatch with a tag; never on a push or a PR`](../../tools/package/test/release-workflow.test.ts),
+  [`reads the release event nowhere but the start condition, TAG and the concurrency group`](../../tools/package/test/release-workflow.test.ts),
+  [`a published release only starts the tap push on main`](../../tools/package/test/release-workflow.test.ts),
+  [`the start step dispatches main's copy once the cask is on the published release`](../../tools/package/test/release-workflow.test.ts),
+  [`the start step refuses the tag %j before anything is fetched`](../../tools/package/test/release-workflow.test.ts),
+  [`the homebrew job runs only by dispatch, when the macOS release is enabled, here, from main`](../../tools/package/test/release-workflow.test.ts),
+  [`the failure report covers start and the push, when the macOS release is enabled, here`](../../tools/package/test/release-workflow.test.ts),
+  [`a release without the cask is an error`](../../tools/package/test/release-workflow.test.ts),
+  [`the download step refuses %s`](../../tools/package/test/release-workflow.test.ts),
+  [`checks SHA256SUMS-macos's signature against the documented identity when signing is on`](../../tools/package/test/release-workflow.test.ts),
+  [`takes the tap key from the homebrew environment`](../../tools/package/test/release-workflow.test.ts),
+  [`the tap key reaches only the push step`](../../tools/package/test/release-workflow.test.ts),
+  [`pushes Casks/vimma.rb to the tap over SSH with github.com's pinned host key`](../../tools/package/test/release-workflow.test.ts),
+  [`never replaces a newer cask with an older one`](../../tools/package/test/release-workflow.test.ts),
   [`reads the release's metadata and never requests a release file`](../../tools/test/release-asset-checks.test.ts),
   [`starts nothing, green, when %s`](../../tools/test/release-asset-checks.test.ts),
   [`fails when the release API answers %i`](../../tools/test/release-asset-checks.test.ts),
@@ -468,14 +468,14 @@ of the same commit read it too, so a tree without it could not be released anywa
   only on a GitHub-hosted runner, which every job is held to (B5). **⚠
   limit:** Fedora's packages (`flatpak`, `flatpak-builder`) are installed at their current
   versions from Fedora's signed repositories; the digest fixes only the base image.
-  [`builds a published release from its download URL, checked against SHA256SUMS`](../../tools/package/test/flatpak.test.mjs),
-  [`checks the release's signature against the documented identity when signing is on`](../../tools/package/test/flatpak.test.mjs),
-  [`holds no secret and only reads the repository`](../../tools/package/test/flatpak.test.mjs),
-  [`passes event values to run: through env only`](../../tools/package/test/flatpak.test.mjs),
-  [`refuses %s`](../../tools/package/test/flatpak.test.mjs),
-  [`puts no input into a build command, so none can change what the build runs`](../../tools/package/test/flatpak.test.mjs),
-  [`pins the Fedora image by digest and the runtime and SDK by commit`](../../tools/package/test/flatpak.test.mjs),
-  [`grants Firefox's Flatpak permissions and the Omarchy theme read-only, never the home`](../../tools/package/test/flatpak.test.mjs)
+  [`builds a published release from its download URL, checked against SHA256SUMS`](../../tools/package/test/flatpak.test.ts),
+  [`checks the release's signature against the documented identity when signing is on`](../../tools/package/test/flatpak.test.ts),
+  [`holds no secret and only reads the repository`](../../tools/package/test/flatpak.test.ts),
+  [`passes event values to run: through env only`](../../tools/package/test/flatpak.test.ts),
+  [`refuses %s`](../../tools/package/test/flatpak.test.ts),
+  [`puts no input into a build command, so none can change what the build runs`](../../tools/package/test/flatpak.test.ts),
+  [`pins the Fedora image by digest and the runtime and SDK by commit`](../../tools/package/test/flatpak.test.ts),
+  [`grants Firefox's Flatpak permissions and the Omarchy theme read-only, never the home`](../../tools/package/test/flatpak.test.ts)
 - B13. `vimma-ctl` ships inside the release packages (spec
   [ship-vimma-ctl](../specs/ship-vimma-ctl.md)). `release.yml`'s `ctl` job builds it from the
   commit `build` checked, and `macos-ctl` from the commit it checks as `build` does; `macos-build`
@@ -485,17 +485,17 @@ of the same commit read it too, so a tree without it could not be released anywa
   runner's rustup at the version `rust-toolchain.toml` pins. The binary reaches users only inside
   the packages, which `SHA256SUMS` lists and the `sign` jobs sign (B9, B10); it is never an asset
   of its own. Its notices, and on Linux its SBOM entry, come from the same jobs, after the binary is
-  checked: `tools/package/ctl-notices.mjs` copies the notices from the toolchain's sysroot and
+  checked: `tools/package/ctl-notices.ts` copies the notices from the toolchain's sysroot and
   musl's `COPYRIGHT` from the repository (pinned by SHA-256 in `tools/package/vendor/README.md`),
   and reads every version from the build, so the SBOM names what is in the binary; `package`
   checks the merged SBOM against the CycloneDX schema before it is signed.
-  [`ctl builds the checked commit's vimma-ctl, static, without the build environment`](../../tools/package/test/release-workflow.test.mjs),
-  [`ctl gathers vimma-ctl's notices and SBOM entry from the toolchain that built it`](../../tools/package/test/release-workflow.test.mjs),
-  [`package ships vimma-ctl's notices, lists it in the SBOM and checks both`](../../tools/package/test/release-workflow.test.mjs),
-  [`refuses a musl version it has no COPYRIGHT for`](../../tools/package/test/ctl-notices.test.mjs),
-  [`macos-ctl builds vimma-ctl on a Mac from the commit it checked, like build`](../../tools/package/test/release-workflow.test.mjs),
-  [`macos-build signs the Mac vimma-ctl into the app, from the same commit`](../../tools/package/test/release-workflow.test.mjs),
-  [`package puts vimma-ctl into every package and checks it in each`](../../tools/package/test/release-workflow.test.mjs)
+  [`ctl builds the checked commit's vimma-ctl, static, without the build environment`](../../tools/package/test/release-workflow.test.ts),
+  [`ctl gathers vimma-ctl's notices and SBOM entry from the toolchain that built it`](../../tools/package/test/release-workflow.test.ts),
+  [`package ships vimma-ctl's notices, lists it in the SBOM and checks both`](../../tools/package/test/release-workflow.test.ts),
+  [`refuses a musl version it has no COPYRIGHT for`](../../tools/package/test/ctl-notices.test.ts),
+  [`macos-ctl builds vimma-ctl on a Mac from the commit it checked, like build`](../../tools/package/test/release-workflow.test.ts),
+  [`macos-build signs the Mac vimma-ctl into the app, from the same commit`](../../tools/package/test/release-workflow.test.ts),
+  [`package puts vimma-ctl into every package and checks it in each`](../../tools/package/test/release-workflow.test.ts)
 - B14. A macOS release is signed with Vimma's Apple Developer ID and notarised only while the
   repository variable `MACOS_SIGNING` is `developer-id` (spec
   [macos-build](../specs/macos-build.md), decisions 23 to 28). The four Apple secrets,
@@ -572,29 +572,29 @@ of the same commit read it too, so a tree without it could not be released anywa
   Integrations) and create a new one. The certificate's expiry is read from the certificate
   (its `notAfter` date, or the certificate list on developer.apple.com), not assumed, and it is
   renewed as the runbook's "Rotating" paragraph says, with a reminder 60 days before that date.
-  [`the Apple secrets come from the macos-sign environment, in macos-notarise alone`](../../tools/package/test/release-workflow.test.mjs),
-  [`the macos-sign job runs no binary of the build: only the pinned rcodesign`](../../tools/package/test/release-workflow.test.mjs),
-  [`runs rcodesign and no disk-image tool, mach, node or other program of the build`](../../tools/package/test/macos-developer-id.test.mjs),
-  [`refuses a symlink that leaves the app, before rcodesign runs`](../../tools/package/test/macos-developer-id.test.mjs),
-  [`refuses every symlink, even one that stays inside the app, and an app that is a link`](../../tools/package/test/macos-developer-id.test.mjs),
-  [`refuses a file name outside [A-Za-z0-9._+ -] in a path it scopes a setting to`](../../tools/package/test/macos-developer-id.test.mjs),
-  [`signs the released 0.1.10 bundle's layout, spaced helper names passed intact`](../../tools/package/test/macos-developer-id.test.mjs),
-  [`refuses a CFBundleExecutable with a / or .., and a binary Info.plist`](../../tools/package/test/macos-developer-id.test.mjs),
-  [`changes when a byte, an executable bit or a file name changes`](../../tools/package/test/macos-developer-id.test.mjs),
-  [`macos-notarise checks the app against macos-build's manifest hash before the credentials`](../../tools/package/test/release-workflow.test.mjs),
-  [`the check catches %s`](../../tools/package/test/release-workflow.test.mjs),
-  [`a manifest script that stops partway never passes the hash check`](../../tools/package/test/release-workflow.test.mjs),
-  [`refuses a name with a newline, a control character or a non-ASCII byte, printing nothing`](../../tools/package/test/macos-developer-id.test.mjs),
-  [`%s runs only when MACOS_SIGNING is developer-id, after %s`](../../tools/package/test/release-workflow.test.mjs),
-  [`writes the credentials to owner-only files and fails when one is missing`](../../tools/package/test/release-workflow.test.mjs),
-  [`removes the credentials in an always() step before anything is uploaded`](../../tools/package/test/release-workflow.test.mjs),
-  [`macos-smoke takes the ad hoc dmg only when Developer ID is off`](../../tools/package/test/release-workflow.test.mjs),
-  [`macos-smoke checks the Developer ID of Vimma's team, notarisation and Gatekeeper`](../../tools/package/test/release-workflow.test.mjs),
-  [`fails %s`](../../tools/package/test/macos-developer-id.test.mjs),
-  [`checks the certificate is a Developer ID Application of APPLE_TEAM_ID before signing`](../../tools/package/test/macos-developer-id.test.mjs),
-  [`passes the password and the API key as files, never on a command line`](../../tools/package/test/macos-developer-id.test.mjs),
-  [`signs in one rcodesign run, nested code inside-out with mach macos-sign's settings`](../../tools/package/test/macos-developer-id.test.mjs),
-  [`the browser gets Firefox's production entitlements without the restricted pair`](../../tools/package/test/macos-developer-id.test.mjs)
+  [`the Apple secrets come from the macos-sign environment, in macos-notarise alone`](../../tools/package/test/release-workflow.test.ts),
+  [`the macos-sign job runs no binary of the build: only the pinned rcodesign`](../../tools/package/test/release-workflow.test.ts),
+  [`runs rcodesign and no disk-image tool, mach, node or other program of the build`](../../tools/package/test/macos-developer-id.test.ts),
+  [`refuses a symlink that leaves the app, before rcodesign runs`](../../tools/package/test/macos-developer-id.test.ts),
+  [`refuses every symlink, even one that stays inside the app, and an app that is a link`](../../tools/package/test/macos-developer-id.test.ts),
+  [`refuses a file name outside [A-Za-z0-9._+ -] in a path it scopes a setting to`](../../tools/package/test/macos-developer-id.test.ts),
+  [`signs the released 0.1.10 bundle's layout, spaced helper names passed intact`](../../tools/package/test/macos-developer-id.test.ts),
+  [`refuses a CFBundleExecutable with a / or .., and a binary Info.plist`](../../tools/package/test/macos-developer-id.test.ts),
+  [`changes when a byte, an executable bit or a file name changes`](../../tools/package/test/macos-developer-id.test.ts),
+  [`macos-notarise checks the app against macos-build's manifest hash before the credentials`](../../tools/package/test/release-workflow.test.ts),
+  [`the check catches %s`](../../tools/package/test/release-workflow.test.ts),
+  [`a manifest script that stops partway never passes the hash check`](../../tools/package/test/release-workflow.test.ts),
+  [`refuses a name with a newline, a control character or a non-ASCII byte, printing nothing`](../../tools/package/test/macos-developer-id.test.ts),
+  [`%s runs only when MACOS_SIGNING is developer-id, after %s`](../../tools/package/test/release-workflow.test.ts),
+  [`writes the credentials to owner-only files and fails when one is missing`](../../tools/package/test/release-workflow.test.ts),
+  [`removes the credentials in an always() step before anything is uploaded`](../../tools/package/test/release-workflow.test.ts),
+  [`macos-smoke takes the ad hoc dmg only when Developer ID is off`](../../tools/package/test/release-workflow.test.ts),
+  [`macos-smoke checks the Developer ID of Vimma's team, notarisation and Gatekeeper`](../../tools/package/test/release-workflow.test.ts),
+  [`fails %s`](../../tools/package/test/macos-developer-id.test.ts),
+  [`checks the certificate is a Developer ID Application of APPLE_TEAM_ID before signing`](../../tools/package/test/macos-developer-id.test.ts),
+  [`passes the password and the API key as files, never on a command line`](../../tools/package/test/macos-developer-id.test.ts),
+  [`signs in one rcodesign run, nested code inside-out with mach macos-sign's settings`](../../tools/package/test/macos-developer-id.test.ts),
+  [`the browser gets Firefox's production entitlements without the restricted pair`](../../tools/package/test/macos-developer-id.test.ts)
 
 - B15. `site-dispatch.yml` (spec [site-keys-mirror](../specs/site-keys-mirror.md)) tells
   `vimma-browser/vimma-site` about a published release (`vimma-release`, never for a

@@ -27,7 +27,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import { librariesIn, missingIn } from "../mar-tools.ts";
 import { OBJ, PACKED, cc, compileStandIns, fakeTree } from "./fake-objdir.ts";
 

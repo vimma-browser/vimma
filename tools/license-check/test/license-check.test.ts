@@ -4,7 +4,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ALLOWED, checkLock, packageName, spdxAllowed } from "../license-check.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 const script = fileURLToPath(new URL("../license-check.ts", import.meta.url));
 

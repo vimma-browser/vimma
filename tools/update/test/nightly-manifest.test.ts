@@ -8,7 +8,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { constants, createHash, privateEncrypt } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import { testKey } from "../../test/test-keys.ts";
 import {
   base64Encode,

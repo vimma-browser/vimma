@@ -613,6 +613,9 @@ const NORMAL = Object.freeze({
 export function chatKey(pending, key) {
   if (pending === "g") return key === "g" ? { kind: "do", what: "top" } : { kind: "none" };
   if (key === "g") return { kind: "pending", pending: "g" };
-  const what = /** @type {Record<string, string>} */ (NORMAL)[key];
+  // Own keys only: "toString" is no key of the window.
+  const what = Object.hasOwn(NORMAL, key)
+    ? /** @type {Record<string, string>} */ (NORMAL)[key]
+    : undefined;
   return what ? { kind: "do", what } : { kind: "none" };
 }

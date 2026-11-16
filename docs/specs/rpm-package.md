@@ -1,6 +1,6 @@
 # Spec: rpm-package
 
-Status: implemented · Area: `tools/package/package.mjs`, `tools/package/rpm-smoke.sh`,
+Status: implemented · Area: `tools/package/package.ts`, `tools/package/rpm-smoke.sh`,
 `.github/workflows/release.yml`, `.github/workflows/pkgbuild.yml`,
 `.github/workflows/update-publish.yml`, `tools/update/manifest.ts`,
 `packages/vimma-core/src/updates.mjs` · Upstream patches: none · ADR: none
@@ -23,7 +23,7 @@ whose libraries they install by hand.
 
 ## Behaviour
 
-1. `tools/package/package.mjs` writes `vimma-X.Y.Z-1.x86_64.rpm` next to the other assets
+1. `tools/package/package.ts` writes `vimma-X.Y.Z-1.x86_64.rpm` next to the other assets
    (`vimma-X.Y.Z~pre-1.x86_64.rpm` for a pre-release), unless it is given `--no-rpm`.
 2. The package installs `/usr/lib/vimma`, `/usr/bin/vimma`, `/usr/bin/vimma-open`, the desktop
    file `vimma-vimma.desktop`, the hicolor icons and `/usr/share/doc/vimma/copyright`, the same
@@ -69,7 +69,7 @@ whose libraries they install by hand.
 
 ## Design
 
-1. **rpmbuild from a staged root, as the `.deb` is built with dpkg-deb.** `package.mjs` stages
+1. **rpmbuild from a staged root, as the `.deb` is built with dpkg-deb.** `package.ts` stages
    the `.deb`'s layout without `DEBIAN/` and writes a spec whose `%install` copies the staged
    root into the build root, then runs `rpmbuild -bb --target x86_64`. Reason: one packaging
    path, testable without a container, and the same files in both packages. Rejected: nfpm or
@@ -132,18 +132,18 @@ digest; none of them runs with a secret or a write token.
 
 ## Tests
 
-- vitest, `tools/package/test/package.test.mjs`: `maps a pre-release for rpm (~ sorts first
+- vitest, `tools/package/test/package.test.ts`: `maps a pre-release for rpm (~ sorts first
 there too)`, `names every artifact after the Vimma version, not Firefox's`, the `RPM spec`
   group, `stages the .rpm root as the .deb's, without dpkg's control files`, `builds an .rpm
 that rpm can read, owned by root` (where rpmbuild is installed), `every package type except
-the tarball carries the marker`, `install-type.mjs names each staged package as the update
+the tarball carries the marker`, `install-type.ts names each staged package as the update
 check would`.
 - vitest, `packages/vimma-core/test/updates.test.mjs`: the install type for
   `vimma-package=rpm`, `refuses a <vimmaRpm> with %s`, `rpm: download and check it, then
 install it with dnf or zypper`.
 - vitest, `tools/update/test/manifest.test.ts` and `update-workflow.test.ts`: the manifest's
   `<vimmaRpm>` and the downloaded file list.
-- vitest, `tools/package/test/rpm-smoke.test.mjs`: the smoke script and its wiring in
+- vitest, `tools/package/test/rpm-smoke.test.ts`: the smoke script and its wiring in
   `release.yml` and `pkgbuild.yml`.
 - CI: `pkgbuild.yml`'s `rpm` job (stub), `release.yml`'s "Smoke test the .rpm on Fedora and
   openSUSE" (release build).

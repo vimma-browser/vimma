@@ -186,11 +186,11 @@ for most of the 12.5 minutes `docs/runbook/` records for `surfer download`; with
 **R5. What runs in the release build job, and whether it needs install scripts.** From
 `package-lock.json` at `main` (7fc0226; the lockfile is unchanged since 30bf67e):
 
-- The build job runs `tools/package/package.mjs`, `tools/sync-core.mjs` (Since changed:
+- The build job runs `tools/package/package.ts`, `tools/sync-core.mjs` (Since changed:
   `sync-core.ts`, ADR-025), `tools/version-files/version-files.mjs` (Since changed:
   `version-files.ts`, ADR-025), `tools/import/restore-patched.mjs` (Since changed:
-  `restore-patched.ts`, ADR-025) and `tools/package/sbom.mjs` (Node built-ins only),
-  `tools/package/validate-sbom.mjs` (imports `ajv`), and Surfer (`download`, `config brand`,
+  `restore-patched.ts`, ADR-025) and `tools/package/sbom.ts` (Node built-ins only),
+  `tools/package/validate-sbom.ts` (imports `ajv`), and Surfer (`download`, `config brand`,
   `import`, `build`).
 - **Surfer 1.14.9** has 22 direct dependencies: `@resvg/resvg-js` 1.4.0, `async-icns` 1.0.2,
   `axios` 1.20.0, `chalk` 4.1.2, `cli-progress` 3.12.0, `commander` 6.2.1, `execa` 5.1.1,
@@ -810,9 +810,9 @@ same key without the 2026-08-06 subkey and revocation):
 - `test_a_signing_subkey_expiring_within_60_days_is_reported`
 - `test_an_unchanged_key_reports_nothing`
 
-**vitest, `tools/upstream/test/firefox-source.test.mjs`** (runs the script with
-`MOZILLA_RELEASES` pointing at a `file://` fixture directory and a stub `surfer` in the
-checkout's `node_modules/.bin`, where `npx --no` finds it):
+**vitest, `tools/upstream/test/firefox-source.test.mjs`** (since changed: `firefox-source.test.ts`,
+ADR-025; runs the script with `MOZILLA_RELEASES` pointing at a `file://` fixture directory and a
+stub `surfer` in the checkout's `node_modules/.bin`, where `npx --no` finds it):
 
 - `a tampered tarball fails before engine/ is touched`
 - `a SHA512SUMS without a good signature fails before engine/ is touched` (sub-PR 2)
@@ -826,19 +826,21 @@ checkout's `node_modules/.bin`, where `npx --no` finds it):
   a candidate from `candidates/` with no hash check, a file the script never verified)
 - `a SHA512SUMS that does not list the tarball exits 2, keeping the tarball and engine/`
 
-**vitest, `tools/upstream/test/source-check.test.mjs`** (extends the existing file):
+**vitest, `tools/upstream/test/source-check.test.mjs`** (extends the existing file; since changed:
+`source-check.test.ts`, ADR-025):
 
 - `the source check fails on a SHA512SUMS whose signature is not good`
 - `the source check fails when SHA512SUMS has no signature beside it`
 
 The script tests (`firefox-source`, `source-check`, `verify-source`) cannot carry Mozilla's real
 signature, because their tarballs are made by the test. They put a `gpgv` stub
-(`tools/upstream/test/fake-gpgv.mjs`) first on `PATH`, which answers like `gpgv` for a good
-signature by Mozilla's current subkey only when the `.asc` names the signed file's hash, and
-`BADSIG` otherwise. The scripts therefore keep no test override of the key or the fingerprint;
-the cryptography is tested by `test_verify_sha512.py` alone.
+(`tools/upstream/test/fake-gpgv.mjs`; since changed: `fake-gpgv.ts`, ADR-025) first on `PATH`, which
+answers like `gpgv` for a good signature by Mozilla's current subkey only when the `.asc` names the
+signed file's hash, and `BADSIG` otherwise. The scripts therefore keep no test override of the key
+or the fingerprint; the cryptography is tested by `test_verify_sha512.py` alone.
 
-**vitest, `tools/upstream/test/verify-source.test.mjs`** (sub-PR 2):
+**vitest, `tools/upstream/test/verify-source.test.mjs`** (sub-PR 2; since changed:
+`verify-source.test.ts`, ADR-025):
 
 - `passes the tarball surfer download left when Mozilla's signed SHA512SUMS lists it`
 - `fails a tampered tarball`
@@ -910,7 +912,7 @@ the `build` environment instead of a repository secret), `tools/test/upstream-wo
 `firefox-source.sh`), `tools/test/sites-workflow.test.ts` (the SHA512SUMS check is
 `firefox-source.sh`; its
 hosted-runner assertion moves into `self-hosted-runner.test.ts`),
-`tools/package/test/release-workflow.test.mjs` (the release build job's runner and checkout).
+`tools/package/test/release-workflow.test.ts` (the release build job's runner and checkout).
 
 No mochitest or e2e scenario: nothing in the browser changes.
 

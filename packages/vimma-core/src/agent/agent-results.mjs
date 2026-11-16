@@ -46,11 +46,15 @@ const FLAGS = new Set(["elements", "labels", "full"]);
  * @returns {{ command: string, args: Record<string, any> } | null}
  */
 export function toolCommand(name, args) {
-  const command = /** @type {Record<string, string>} */ (TOOL_COMMANDS)[name];
+  // Own keys only: a model's "toString" is no tool, and its "__proto__" argument stays a key
+  // (fromEntries defines it) for the command's validator to refuse.
+  const command = Object.hasOwn(TOOL_COMMANDS, name)
+    ? /** @type {Record<string, string>} */ (TOOL_COMMANDS)[name]
+    : undefined;
   if (!command) return null;
-  /** @type {Record<string, any>} */
-  const out = {};
-  for (const [k, v] of Object.entries(args)) if (!(FLAGS.has(k) && v === false)) out[k] = v;
+  const out = Object.fromEntries(
+    Object.entries(args).filter(([k, v]) => !(FLAGS.has(k) && v === false)),
+  );
   return { command, args: out };
 }
 
@@ -100,7 +104,7 @@ function wrappedList(list, dropped) {
  * @returns {ToolContent[]}
  */
 function listItems(tab, filtered, result) {
-  const list = wrappedList(result?.elements, result?.dropped);
+  const list = wrappedList(result.elements, result.dropped);
   if (!list) {
     throw new Broken("Vimma's element list is not inside the untrusted-content delimiters");
   }
@@ -327,8 +331,8 @@ const LOAD_FAILED_REFUSAL = `Vimma could not do it: ${NOT_LOADED}`;
  * @returns {string | null}
  */
 function loadFailed(args, result) {
-  if (result?.unlisted !== "error") {
-    if (result?.loadError !== undefined) {
+  if (result.unlisted !== "error") {
+    if (result.loadError !== undefined) {
       throw new Broken("Vimma's result has a load error without unlisted error");
     }
     return null;
@@ -379,7 +383,9 @@ function stepList(tab, asked, filtered, result) {
   if (!hasList && typeof unlisted === "string") {
     // Said first, by loadFailed, as the result's error.
     if (unlisted === "error") return { list: [], unlisted: null };
-    const why = /** @type {Record<string, string>} */ (UNLISTED)[unlisted];
+    const why = Object.hasOwn(UNLISTED, unlisted)
+      ? /** @type {Record<string, string>} */ (UNLISTED)[unlisted]
+      : null;
     if (!why) throw new Broken("Vimma's result has an unknown reason for no element list");
     return { list: [], unlisted: why };
   }
@@ -497,7 +503,7 @@ const LABEL = /^[asdfghjkl]{1,3}$/;
  * @param {any} result
  */
 function fillText(tab, asked, elements, filtered, result) {
-  const filled = result.filled;
+  const filled = result?.filled;
   if (!Number.isInteger(filled) || filled < 0 || filled > asked) {
     throw new Broken("Vimma's result has no count of filled fields");
   }
@@ -539,7 +545,10 @@ function inPlace(changed, listed) {
   /** @type {string[]} */
   const said = [];
   for (const word of changed) {
-    const what = typeof word === "string" ? /** @type {any} */ (CHANGES)[word] : undefined;
+    const what =
+      typeof word === "string" && Object.hasOwn(CHANGES, word)
+        ? /** @type {Record<string, string>} */ (CHANGES)[word]
+        : null;
     if (!what) throw new Broken("Vimma's result has an unknown change");
     if (said.includes(what)) throw new Broken("Vimma's result names a change twice");
     said.push(what);

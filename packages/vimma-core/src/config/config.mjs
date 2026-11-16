@@ -747,7 +747,7 @@ function validate(raw, declared, warnings = []) {
         // docs/specs/theme-appearance.md B1: left out, `:theme` (a pref) decides.
         if (gated(path)) continue;
         if (typeof v !== "string") typeError(path, v, "a string");
-        else if (!APPEARANCES.includes(/** @type {any} */ (v))) {
+        else if (!(/** @type {readonly unknown[]} */ (APPEARANCES).includes(v))) {
           fail(path, `must be "system", "dark" or "light"`, closest(v, [...APPEARANCES]));
         }
       } else if (key === "font") {
@@ -1200,7 +1200,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     },
     search: resolveSearch(user.search),
     updates: { check: user.updates?.check ?? true },
-    agent: resolveAgent(/** @type {any} */ (user).agent),
+    agent: resolveAgent(user.agent),
   };
 }
 

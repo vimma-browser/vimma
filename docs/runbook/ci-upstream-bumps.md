@@ -35,7 +35,7 @@ One-time setup:
    on vimma only. The variable `UPSTREAM_APP_ID` holds its client ID and the secret
    `UPSTREAM_APP_KEY`, of the `upstream-autopilot` environment (deployable only from `main`), its
    private key; each run mints a one-hour token, so nothing expires (docs/security/10-firefox-updates.md, G14).
-   `node tools/upstream/create-app.mjs` creates the environment (and stops if it already allows
+   `node tools/upstream/create-app.ts` creates the environment (and stops if it already allows
    another ref), then the App from a manifest, the variable and the secret: open the local
    address it prints, confirm on GitHub, then install the App on **Only select repositories →
    vimma** from the link it prints (GitHub has no API for that step). To rotate the key, generate a new one on the App's page,
@@ -63,7 +63,7 @@ or to GitHub Copilot coding agent; rebase the patches on the bump branch (docs/r
 Every bump: the copies of `browser.newtabpage.activity-stream.asrouter.providers.cfr` and
 `browser.safebrowsing.provider.google{4,5}.lists` in
 `src/browser/branding/vimma/pref/firefox-branding.js` must match the new engine's (specs
-m0-mozilla-services, m0-safebrowsing-key). `tools/upstream/upstream-prefs.mjs` checks both in
+m0-mozilla-services, m0-safebrowsing-key). `tools/upstream/upstream-prefs.ts` checks both in
 `e2e.yml` and prints the line to paste; the autopilot's bump PR already carries refreshed lines
 and lists them, so check only that the old and new values in its "Refreshed prefs" look right. A
 pref gone upstream leaves the PR a draft that names it. Before a release, run

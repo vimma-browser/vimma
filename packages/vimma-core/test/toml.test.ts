@@ -7,7 +7,7 @@ import {
   parseToml,
   setTomlKeys,
 } from "../src/config/toml.mjs";
-import { budget } from "./budget.mjs";
+import { budget } from "./budget.ts";
 
 describe("parseToml", () => {
   test("parses a TOML 1.0 document into plain values", () => {

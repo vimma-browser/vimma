@@ -120,7 +120,7 @@ Its version is Vimma's, read from `surfer.json`'s `displayVersion` by `build.rs`
 and a browser built from one checkout match and the agent notice for an older `vimma-ctl` stays
 quiet. Release builds are static Linux binaries (`--target x86_64-unknown-linux-musl`) and
 native arm64 ones on macOS; `release.yml`'s `ctl` and `macos-ctl` jobs build them, and
-`tools/package/ctl-notices.mjs` gathers the notices of what the toolchain links into them (Rust's
+`tools/package/ctl-notices.ts` gathers the notices of what the toolchain links into them (Rust's
 standard library, and musl and LLVM's libunwind on Linux) from that toolchain, for the packages,
 and the SBOM entry. A Rust update that brings a new musl stops that step until the new musl's
 `COPYRIGHT` is in `tools/package/notices/` (`tools/package/vendor/README.md`).
@@ -152,7 +152,7 @@ version is inside the range `engine/mach` declares, and says which one it chose 
 another. It stops with the interpreters it found when none fits. Set `VIMMA_MACH_PYTHON` to an
 interpreter's path to choose one yourself.
 
-A test that needs a temp dir makes it with `tempDir(prefix)` from `tools/test/temp-dir.mjs`,
+A test that needs a temp dir makes it with `tempDir(prefix)` from `tools/test/temp-dir.ts`,
 which removes it when the test ends, also when it fails. `npm test` runs with a `TMPDIR` of its
 own and fails if a test leaves anything in it. A mochitest removes its temp files in
 `registerCleanupFunction`, and a Rust test drops its temp dir guard.
@@ -178,7 +178,7 @@ top of Mozilla's compiled binaries for the same release, and is what PR CI uses
 
 ```sh
 npm run import
-node tools/artifact-build/artifact-build.mjs    # ~25 s warm; first run downloads 163 MB
+node tools/artifact-build/artifact-build.ts    # ~25 s warm; first run downloads 163 MB
 npm run mochitest -- --artifact tests/browser/
 ```
 
@@ -205,7 +205,7 @@ Mac is not supported.
 npm ci
 tools/upstream/firefox-source.sh                # download, verify, unpack into engine/
 npm run import
-node tools/artifact-build/artifact-build.mjs    # Mozilla's macosx64-aarch64 build
+node tools/artifact-build/artifact-build.ts    # Mozilla's macosx64-aarch64 build
 npm run mochitest -- --artifact tests/browser/  # headless
 ```
 
@@ -315,7 +315,7 @@ its tests are `.ts`.
    show that removing a cast's parentheses kept the precedence. Vitest runs `.ts` through its own transform and resolves `./x.js` to `x.ts`, so a
    green test does not show that Node can run the file: running each command-line tool is that
    proof, and for a module that only others import, tsc and the import check in
-   `tools/test/typescript-tools.test.mjs` are. A tool that sends a function's source text
+   `tools/test/typescript-tools.test.ts` are. A tool that sends a function's source text
    elsewhere (`tools/sites/probes.ts` sends it to Firefox) is proved from a child Node, since
    Vitest strips types its own way: the text has no type syntax, and no function reads the
    module's scope.
@@ -360,7 +360,7 @@ Vimma follows a spec-first, test-first loop:
     setup that turns it on, and adds the docs and changelog line a user-visible change needs.
   - Try an unfinished feature by setting the pref to `true` in `about:config`.
 
-  `tools/test/feature-prefs.test.mjs` fails when a `vimma.feature.*` default is not `false`, or
+  `tools/test/feature-prefs.test.ts` fails when a `vimma.feature.*` default is not `false`, or
   when code reads one with a `true` fallback. A feature that fits in one pull request needs no
   pref.
 
@@ -574,7 +574,7 @@ Vimma.
   dry-runs every patch, runs the suites and opens the bump PR
   ([rebase playbook](docs/rebase.md), [m7-upstream-autopilot](docs/specs/m7-upstream-autopilot.md)).
   Gaps that still need a person: merging a green bump PR, pasting a refreshed pref copy that
-  `upstream-prefs.mjs` reports, and re-exporting a patch that no longer applies
+  `upstream-prefs.ts` reports, and re-exporting a patch that no longer applies
   ([#259](https://github.com/vimma-browser/vimma/issues/259)); releasing the merged bump
   ([#220](https://github.com/vimma-browser/vimma/issues/220),
   [#224](https://github.com/vimma-browser/vimma/issues/224)).

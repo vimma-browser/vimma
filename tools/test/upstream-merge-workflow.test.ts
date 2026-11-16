@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
-import { jobs, parseWorkflow, triggers } from "./workflow-runners.mjs";
+import { jobs, parseWorkflow, triggers } from "./workflow-runners.ts";
 import type { Job, Step } from "./workflow-types.ts";
 
 // Spec upstream-bump-automation, Behaviour 5 (since changed), docs/security/10-firefox-updates.md
@@ -78,7 +78,7 @@ describe("upstream merge workflow (upstream-merge.yml)", () => {
     expect(run).not.toContain("${{");
     expect(run).toContain('actions/runs?head_sha=$HEAD&event=pull_request&per_page=100"');
     expect(run).toContain('commits/$HEAD/check-runs?per_page=100"');
-    expect(run).toContain("node tools/upstream/merge-ready.mjs");
+    expect(run).toContain("node tools/upstream/merge-ready.ts");
     expect(run).toContain(
       'gh pr merge "$number" --auto --squash --match-head-commit "$HEAD" ' +
         '--subject "$title (#$number)" --body-file "$RUNNER_TEMP/body.txt"',

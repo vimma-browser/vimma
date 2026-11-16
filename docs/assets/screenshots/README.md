@@ -12,7 +12,7 @@ built-in theme, on [vimma.dev](https://vimma.dev):
 | `grep.png`  | live grep through the workspace's tabs (`ctrl+b f g`) |
 | `help.png`  | the key bindings overlay (`ctrl+b ?`)                 |
 
-`tools/package/flatpak.mjs` links them as raw GitHub URLs at each release's tag (`vX.Y.Z`), so
+`tools/package/flatpak.ts` links them as raw GitHub URLs at each release's tag (`vX.Y.Z`), so
 the links of a release never change under Flathub. To replace one, commit the new file under the
 same name; the metainfo of the next release links it.
 

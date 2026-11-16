@@ -1,7 +1,7 @@
 # Spec: flatpak
 
 Status: accepted (sub-PR 1, and sub-PR 2's install type, guide, limits and metainfo screenshots
-implemented; the rest of sub-PR 2, the Flathub submission, in [#465](https://github.com/vimma-browser/vimma/issues/465)) · Area: `tools/package/flatpak.mjs`
+implemented; the rest of sub-PR 2, the Flathub submission, in [#465](https://github.com/vimma-browser/vimma/issues/465)) · Area: `tools/package/flatpak.ts`
 (new), `tools/package/flatpak-smoke.sh` (new), `.github/workflows/flatpak.yml` (new),
 `docs/runbook/`, `docs/security/` · Upstream patches: none · ADR: none
 
@@ -32,7 +32,7 @@ broke them.
 
 ## Behaviour
 
-1. `node tools/package/flatpak.mjs --out DIR --version X.Y.Z --date YYYY-MM-DD --sha256 HEX`
+1. `node tools/package/flatpak.ts --out DIR --version X.Y.Z --date YYYY-MM-DD --sha256 HEX`
    writes `dev.vimma.browser.json`, a flatpak-builder manifest that downloads
    `vimma-X.Y.Z-linux-x86_64.tar.xz` from the release `vX.Y.Z` and refuses it unless it has the
    given SHA-256, and the four files the manifest names: `vimma.sh`,
@@ -182,7 +182,7 @@ sandbox shares the host's loopback, so `vimma-ctl` on the host can reach it with
 
 ## Tests
 
-- vitest, `tools/package/test/flatpak.test.mjs`: the manifest group (`names the app surfer.json's
+- vitest, `tools/package/test/flatpak.test.ts`: the manifest group (`names the app surfer.json's
 appId and runs on the Freedesktop 25.08 runtime`, `takes the release tarball from the tag's
 download URL, pinned by SHA-256`, `refuses %s`, `grants Firefox's Flatpak permissions and the
 Omarchy theme read-only, never the home`, `installs Vimma in /app/lib/vimma with the flatpak

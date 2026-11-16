@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import {
   type Edge,
   type Exception,
@@ -48,7 +48,7 @@ const OPTIONS =
 
 /**
  * A specifier in double quotes. The fixtures build their relative imports with it, so that
- * tools/test/typescript-tools.test.mjs, which reads this file's own relative imports as text,
+ * tools/test/typescript-tools.test.ts, which reads this file's own relative imports as text,
  * does not take them for imports of this file.
  */
 const q = (spec: string) => JSON.stringify(spec);
