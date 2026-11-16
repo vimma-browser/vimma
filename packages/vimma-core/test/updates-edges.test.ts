@@ -131,6 +131,29 @@ describe("parseManifest: the one format, and a reason for each refusal (UP5)", (
     expect(reason(body("<updatesX/>\n"))).toBe("manifest: unexpected content in <updates>");
   });
 
+  test("a self-closing <updates/> is an empty manifest, with only whitespace after it", () => {
+    expect(parseManifest(`${HEAD}<updates ${ROOT}/>\n \t\n`)).toEqual({
+      ok: true,
+      manifest: {
+        channel: "vimma",
+        target: "Linux_x86_64-gcc3",
+        serial: "20261028041207",
+        update: null,
+      },
+    });
+  });
+
+  // #1185: the pipeline never writes anything after a self-closing root (UP5).
+  test.each([
+    ["an <update>", `<update ${UPDATE}>\n  ${PATCH}\n</update>\n`],
+    ["a stray </updates>", "</updates>\n"],
+    ["text", "hello\n"],
+  ])("anything after a self-closing <updates/> is refused: %s", (_name, after) => {
+    expect(reason(`${HEAD}<updates ${ROOT}/>\n${after}`)).toBe(
+      "manifest: content after a self-closing <updates/>",
+    );
+  });
+
   test("an <update> that never closes its tag is refused", () => {
     expect(reason(body(`<update ${UPDATE}\n`))).toBe("manifest: <update> is not closed");
     expect(reason(body(`<update ${UPDATE} <patch/>\n`))).toBe("manifest: <update> is not closed");

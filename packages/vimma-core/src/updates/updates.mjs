@@ -433,13 +433,18 @@ export function parseManifest(body) {
   const serial = rootAttrs.get("vimmaSerial");
   if (!channel || !target) return bad("no vimmaChannel or vimmaTarget");
   if (!serial || !SERIAL.test(serial)) return bad("vimmaSerial is not a UTC time (YYYYMMDDhhmmss)");
-  const inner = root[2] === "/" ? "" : (root[3] ?? "");
-  const closed = inner.trimEnd();
-  if (root[2] !== "/" && !closed.endsWith("</updates>")) return bad("<updates> is not closed");
+  const rest = root[3] ?? "";
+  if (root[2] === "/") {
+    // The pipeline writes nothing after a self-closing root, not even a second <update> (#1185).
+    if (rest.trim()) return bad("content after a self-closing <updates/>");
+    return { ok: true, manifest: { channel, target, serial, update: null } };
+  }
+  const closed = rest.trimEnd();
+  if (!closed.endsWith("</updates>")) return bad("<updates> is not closed");
   const content = closed.slice(0, -"</updates>".length);
   const updates = startTags(content, "update");
   if (!updates) return bad("<update> is not closed");
-  if (root[2] === "/" || updates.length === 0) {
+  if (updates.length === 0) {
     if (content.trim()) return bad("unexpected content in <updates>");
     return { ok: true, manifest: { channel, target, serial, update: null } };
   }

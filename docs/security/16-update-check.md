@@ -89,11 +89,13 @@ _Pages_ and _extensions_ cannot reach it.
   `Content-Length` is refused unread, and a longer body or a compression bomb is cancelled at the
   cap. Manifest text is parsed **only** after its signature verifies, and only in the one format
   the release pipeline writes: at most 64 KiB, no DTD or entity declarations, at most one
-  `<update>`. The commands about:vimma shows are built from a SemVer version and shell-quoted
+  `<update>`, and nothing but whitespace after a self-closing `<updates/>` (#1185). The commands about:vimma shows are built from a SemVer version and shell-quoted
   paths, never from free text in the manifest; a saved result (the pref `vimma.update.last`) is
   checked the same way when read back.
   [`an_oversized_or_compressed_bomb_response_is_refused`](../../tests/browser/browser_vimma_update_check.js),
   [`an oversized manifest is refused before any crypto`](../../packages/vimma-core/test/updates.test.ts),
+  [`anything after a self-closing <updates/> is refused: %s`](../../packages/vimma-core/test/updates-edges.test.ts),
+  [`a self-closing <updates/> is an empty manifest, with only whitespace after it`](../../packages/vimma-core/test/updates-edges.test.ts),
   [`shellQuote leaves plain paths alone and quotes the rest`](../../packages/vimma-core/test/updates.test.ts),
   [`tarball: quit, download and check it, then unpack over the install's parent, quoted`](../../packages/vimma-core/test/updates.test.ts),
   [`a pinned key that is not a valid SPKI refuses, never throws`](../../packages/vimma-core/test/updates.test.ts),
