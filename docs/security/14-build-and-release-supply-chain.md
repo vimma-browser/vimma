@@ -432,7 +432,7 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`refuses to install outside GitHub Actions`](../../tools/package/test/cask.test.ts),
   [`macos-smoke checks the cask with brew and installs the dmg through it`](../../tools/package/test/release-workflow.test.ts),
   [`macos-tap starts homebrew.yml on main once the cask is on a published release`](../../tools/package/test/release-workflow.test.ts),
-  [`%s sends the job's token`](../../tools/test/github-api-auth-workflow.test.ts),
+  [`every step that asks api.github.com sends the job's token`](../../tools/test/github-api-auth-workflow.test.ts),
   [`takes the cask from the published release only, with no GitHub token`](../../tools/package/test/release-workflow.test.ts),
   [`runs when a release is published, or by dispatch with a tag; never on a push or a PR`](../../tools/package/test/release-workflow.test.ts),
   [`reads the release event nowhere but the start condition, TAG and the concurrency group`](../../tools/package/test/release-workflow.test.ts),

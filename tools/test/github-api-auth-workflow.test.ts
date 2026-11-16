@@ -22,6 +22,25 @@ const code = (run: string) =>
     .filter((l) => !/^\s*#/.test(l))
     .join("\n");
 
+/**
+ * @param script a run script, comments dropped
+ * @returns each curl command in it, from `curl ` to the end of its last line (the first one that
+ *   does not end in a backslash), so a header in a later command never counts for this one
+ */
+function curlCommands(script: string): string[] {
+  const out: string[] = [];
+  const lines = script.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const at = lines[i]?.search(/\bcurl /) ?? -1;
+    if (at < 0) continue;
+    const parts = [lines[i]?.slice(at) ?? ""];
+    while (parts.at(-1)?.trimEnd().endsWith("\\") && i + 1 < lines.length)
+      parts.push(lines[++i] ?? "");
+    out.push(parts.join("\n"));
+  }
+  return out;
+}
+
 /** Every step whose script asks api.github.com, as `<workflow> <job> "<step>"`. */
 const calls = workflows.flatMap(({ name, text }) =>
   [...jobs(text)].flatMap(([id, raw]) => {
@@ -31,6 +50,27 @@ const calls = workflows.flatMap(({ name, text }) =>
       .map((step) => ({ label: `${name} ${id} "${step.name ?? "?"}"`, job, step }));
   }),
 );
+
+describe("curlCommands", () => {
+  it("runs a command over its continued lines", () => {
+    expect(
+      curlCommands('x=$(curl -sS \\\n  -H "A: b" \\\n  "https://api.github.com/x")\necho ok'),
+    ).toEqual(['curl -sS \\\n  -H "A: b" \\\n  "https://api.github.com/x")']);
+  });
+
+  it("does not count a header in a later command", () => {
+    const script =
+      'curl -sS "https://api.github.com/x"\ncurl -sS ' + AUTH + ' "https://example.org/"';
+    const [first, second] = curlCommands(script);
+    expect(first).not.toContain(AUTH);
+    expect(second).toContain(AUTH);
+    expect(
+      curlCommands('curl -sS "https://api.github.com/x"\necho ' + AUTH).filter((c) =>
+        c.includes(AUTH),
+      ),
+    ).toEqual([]);
+  });
+});
 
 describe("steps that ask api.github.com authenticate (#1170)", () => {
   it("finds the release-metadata checks", () => {
@@ -43,13 +83,14 @@ describe("steps that ask api.github.com authenticate (#1170)", () => {
     ]);
   });
 
-  it.each(calls.map((c) => [c.label, c] as const))("%s sends the job's token", (_, c) => {
-    const script = code(c.step.run ?? "");
-    const curls = script.split(/(?=\bcurl )/).filter((p) => p.startsWith("curl "));
-    for (const curl of curls.filter((p) => p.includes("api.github.com"))) {
-      expect(curl).toContain(AUTH);
+  it("every step that asks api.github.com sends the job's token", () => {
+    for (const c of calls) {
+      const script = code(c.step.run ?? "");
+      for (const curl of curlCommands(script).filter((p) => p.includes("api.github.com"))) {
+        expect(curl, c.label).toContain(AUTH);
+      }
+      expect(c.step.env?.GH_TOKEN ?? c.job.env?.GH_TOKEN, c.label).toBe("${{ github.token }}");
+      expect(["read", "write"], c.label).toContain(c.job.permissions?.contents);
     }
-    expect(c.step.env?.GH_TOKEN ?? c.job.env?.GH_TOKEN).toBe("${{ github.token }}");
-    expect(["read", "write"]).toContain(c.job.permissions?.contents);
   });
 });
