@@ -726,7 +726,8 @@ export function agentAlertText(q) {
   if (q.what?.pay) return `${who} asks to pay`;
   if (q.what?.submit) return `${who} asks to send a form`;
   const asks = /** @type {Record<string, string>} */ (ASKS);
-  return `${who} asks to use Vimma's agent workspace (${asks[q.tool] ?? "use a tool"})`;
+  const what = Object.hasOwn(asks, q.tool) ? asks[q.tool] : "use a tool";
+  return `${who} asks to use Vimma's agent workspace (${what})`;
 }
 
 /** What `:mcp log` says of each outcome (mcp-drive D14). */

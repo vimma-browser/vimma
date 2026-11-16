@@ -500,7 +500,7 @@ export function parseFillTarget(value) {
       out[key] = v[key];
     }
     if (v.secret !== undefined) {
-      if (typeof v.secret !== "string" || !(v.secret in SECRETS)) return null;
+      if (typeof v.secret !== "string" || !Object.hasOwn(SECRETS, v.secret)) return null;
       out.secret = v.secret;
     }
     for (const key of ["disabled", "readonly", "checked", "accepts"]) {
@@ -541,7 +541,8 @@ export function fillRefusal(label, t, value) {
   const secret =
     t.secret ?? secretOf(t.autocomplete) ?? (t.type === "password" ? "password" : undefined);
   if (secret) {
-    return `field "${label}" is a ${SECRETS[secret]} field; Vimma never fills it: ask the user to type it`;
+    const why = Object.hasOwn(SECRETS, secret) ? SECRETS[secret] : "sensitive";
+    return `field "${label}" is a ${why} field; Vimma never fills it: ask the user to type it`;
   }
   switch (t.field) {
     case "file":
