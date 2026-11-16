@@ -101,4 +101,14 @@ export const RESTRICTED: Record<string, Restricted> = {
     review:
       "a new caller of the API key entry or its masked field needs a security review (docs/security/12-agents-mcp-built-in-agent.md M46)",
   },
+  /**
+   * The chat window's model setup (docs/security/12-agents-mcp-built-in-agent.md, endpoint rules
+   * and B12): a hosted provider's endpoint checked by checkEndpoint, and a picked provider written
+   * to config.toml. The chat window is its only caller.
+   */
+  "ui/agent-chat-models.mjs": {
+    importers: ["ui/agent-chat.mjs"],
+    review:
+      "a new caller of the model setup needs a security review (docs/security/12-agents-mcp-built-in-agent.md endpoint rules, B12)",
+  },
 };

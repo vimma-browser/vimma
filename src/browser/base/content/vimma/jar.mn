@@ -127,6 +127,7 @@ browser.jar:
         content/browser/vimma/ui/agent-chat.mjs           (ui/agent-chat.mjs)
         content/browser/vimma/ui/agent-chat-view.mjs      (ui/agent-chat-view.mjs)
         content/browser/vimma/ui/agent-chat-key.mjs       (ui/agent-chat-key.mjs)
+        content/browser/vimma/ui/agent-chat-models.mjs    (ui/agent-chat-models.mjs)
         content/browser/vimma/ui/side-panel.mjs           (ui/side-panel.mjs)
         content/browser/vimma/ui/bookmarks-panel.mjs      (ui/bookmarks-panel.mjs)
         content/browser/vimma/ui/pdf-outline.mjs          (ui/pdf-outline.mjs)
