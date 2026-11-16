@@ -115,3 +115,16 @@ describe("the pair, with opaque identifiers (private-swap-macos decision 3)", ()
     expect(pairStep(pairOf("normal"), { type: "failed" })).toEqual({ state: null, ops: [] });
   });
 });
+
+// #1119: a mutant the tests above let through.
+describe("pairStep: the private window parked", () => {
+  const N = "1";
+  const P = "3";
+  const pairOf = (parked: "normal" | "private") => ({ normal: N, private: P, parked });
+  test("the parked private window activated comes back in place of the normal one", () => {
+    expect(pairStep(pairOf("private"), { type: "activated", window: P })).toEqual({
+      state: pairOf("normal"),
+      ops: [{ show: P, place: N }],
+    });
+  });
+});

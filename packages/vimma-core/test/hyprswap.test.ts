@@ -829,3 +829,138 @@ describe("the pair (decisions 6, 7)", () => {
     expect(isAddress("571e")).toBe(false);
   });
 });
+
+// #1119: mutants the tests above let through. Every check here is one the IPC relies on to keep
+// what reaches Hyprland in the closed set (decision 4), or titles out of Vimma (decision 8).
+describe("hyprswap: edges", () => {
+  const signature = "efb50993780079460b0cbed1363e2166a2de1d9f_1790951252_538312960";
+  const nonce = `vimma-${"ab".repeat(16)}`;
+
+  test("a runtime dir that is not a string, or holds a . part, names no socket", () => {
+    expect(hyprSockets({ signature, runtimeDir: undefined })).toBeNull();
+    expect(hyprSockets({ signature, runtimeDir: "/run/./user" })).toBeNull();
+    expect(hyprSockets({ signature, runtimeDir: "/run/user.d/1000" })?.request).toBe(
+      `/run/user.d/1000/hypr/${signature}/.socket.sock`,
+    );
+  });
+
+  test("the version is a whole dotted number; the probe reply's padding is ignored", () => {
+    const reply = (version: string) => JSON.stringify({ version });
+    expect(detectDialect(reply("v0.56.2"), "ok")).toEqual({ dialect: "lua", version: "unknown" });
+    expect(detectDialect(reply("10.1"), "ok")).toEqual({ dialect: "lua", version: "10.1" });
+    expect(detectDialect(reply("0.56.2"), " ok\n")).toEqual({ dialect: "lua", version: "0.56.2" });
+  });
+
+  test("only strings are addresses and nonce titles, whatever they turn into as text", () => {
+    expect(isAddress([A])).toBe(false);
+    expect(encodeCommand("lua", { verb: "focus", window: [A] as any })).toBeNull();
+    expect(isNonceTitle([nonce])).toBe(false);
+  });
+
+  test("coordinates stay under a billion; workspace ids within Hyprland's", () => {
+    expect(encodeCommand("lua", { verb: "position", window: A, x: 1e9, y: 0 })).toBeNull();
+    expect(encodeCommand("lua", { verb: "position", window: A, x: 0, y: -1e9 })).toBeNull();
+    expect(encodeCommand("lua", { verb: "resize", window: A, x: 1e9, y: 1 })).toBeNull();
+    expect(encodeCommand("legacy", { verb: "position", window: A, x: 999_999_999, y: 0 })).toEqual([
+      `dispatch movewindowpixel exact 999999999 0,address:${A}`,
+    ]);
+    const move = (workspace: unknown) =>
+      encodeCommand("legacy", { verb: "move", window: A, workspace: workspace as any });
+    expect(move(2147483647)).toEqual([`dispatch movetoworkspacesilent 2147483647,address:${A}`]);
+    expect(move(2147483648)).toBeNull();
+    expect(move(null)).toBeNull();
+    expect(move({ name: ["web"] })).toBeNull();
+  });
+
+  test("workspaceTarget: ids from 1 to Hyprland's largest; names only as strings", () => {
+    expect(workspaceTarget({ id: 1, name: "1" })).toBe(1);
+    expect(workspaceTarget({ id: 2147483647, name: "x" })).toBe(2147483647);
+    expect(workspaceTarget({ id: 2147483648, name: "big" })).toEqual({ name: "big" });
+    expect(workspaceTarget({ id: -1, name: ["web"] as any })).toBeNull();
+  });
+
+  test("a batch is allowed only when every command in it is", () => {
+    expect(isAllowedRequest(`[[BATCH]]${PROBE_LUA};${PROBE_LUA}`)).toBe(true);
+    expect(isAllowedRequest(`[[BATCH]]${PROBE_LUA};dispatch exec kitty`)).toBe(false);
+    expect(isAllowedRequest(`[[BATCH]]dispatch exec kitty;${PROBE_LUA}`)).toBe(false);
+  });
+
+  test("clients with a missing or malformed workspace, position or size are skipped", () => {
+    const good = {
+      address: A,
+      pid: 1,
+      workspace: { id: 3, name: "3" },
+      at: [0, 0],
+      size: [10, 10],
+    };
+    expect(parseClients(JSON.stringify([good]))).toHaveLength(1);
+    for (const over of [
+      { workspace: undefined },
+      { workspace: { id: "3", name: "3" } },
+      { workspace: { id: 3, name: 3 } },
+      { workspace: { id: 3 } },
+      { at: [0] },
+      { at: [0, 0, 0] },
+      { at: [0, "0"] },
+      { at: ["0", 0] },
+      { at: "00" },
+      { at: { 0: 0, 1: 0, length: 2 } },
+      { size: [10] },
+      { size: [10, "10"] },
+      { size: null },
+    ]) {
+      expect(parseClients(JSON.stringify([{ ...good, ...over }])), JSON.stringify(over)).toEqual(
+        [],
+      );
+    }
+  });
+
+  test("findNonce: only a nonce title, in a list, matched on title and pid; holes skipped", () => {
+    const hit = { address: B, title: nonce, pid: 7 };
+    const json = JSON.stringify([null, { address: A, title: "Bank", pid: 7 }, hit]);
+    expect(findNonce(json, nonce, 7)).toBe(B);
+    expect(
+      findNonce(JSON.stringify([{ address: A, title: "Bank", pid: 7 }]), "Bank", 7),
+    ).toBeNull();
+    expect(findNonce(JSON.stringify({ 0: hit, length: 1 }), nonce, 7)).toBeNull();
+    expect(findNonce(JSON.stringify([{ address: "nope", title: nonce, pid: 7 }]), nonce, 7)).toBe(
+      null,
+    );
+  });
+
+  test("nonceTitle names what it needs", () => {
+    expect(() => nonceTitle(new Uint8Array(15))).toThrow("a nonce takes 16 bytes");
+  });
+
+  test("events: an open with no workspace, a title with commas, a move with no name", () => {
+    const pending = new Set([nonce]);
+    const hex = A.slice(2);
+    expect(parseEvent(`openwindow>>${hex}`, pending)).toEqual({ type: "open", address: A });
+    // A title "vimma-<half>,<half>" is not the nonce "vimma-<half><half>".
+    const [half1, half2] = [nonce.slice(0, 22), nonce.slice(22)];
+    expect(parseEvent(`openwindow>>${hex},3,vimma-vimma,${half1},${half2}`, pending)).toEqual({
+      type: "open",
+      address: A,
+    });
+    expect(parseEvent(`movewindowv2>>${hex},3`, pending)).toBeNull();
+    expect(parseEvent(`urgent>>${hex}`, pending)).toBeNull();
+  });
+
+  test("planShow says why it refuses", () => {
+    const show = client({ address: B });
+    const place = client();
+    const reason = (s: Client, p: Client) => (planShow("lua", s, p) as { reason?: string }).reason;
+    expect(reason(client({ address: "nope" }), place)).toBe("bad address");
+    expect(reason(show, client({ address: "nope" }))).toBe("bad address");
+    expect(reason(place, place)).toBe("the same window");
+    expect(reason(show, client({ workspace: { id: -98, name: "special:scratchpad" } }))).toBe(
+      "the window is on a workspace Vimma does not move to",
+    );
+    // fullscreenClient of the shown window goes into no command: only the check refuses it.
+    expect(reason(client({ address: B, fullscreenClient: 5 }), place)).toBe("bad fullscreen state");
+    expect(reason(show, client({ fullscreen: 7 }))).toBe("bad fullscreen state");
+    expect(reason(show, client({ size: [0, 10], floating: true }))).toBe(
+      "a value outside the command set",
+    );
+  });
+});

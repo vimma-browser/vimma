@@ -696,3 +696,368 @@ describe("the workspace an outside open takes", () => {
     expect(userWorkspace(defs(), ["ws-2"])?.name).toBe("agent");
   });
 });
+
+// #1119: mutants the tests above let through.
+describe("readDefinitions: every rule, and what it says", () => {
+  /** One valid runtime workspace, changed by `over`. */
+  const doc = (over: Record<string, unknown> = {}, more: Record<string, unknown> = {}) => ({
+    schema: 1,
+    lastActive: null,
+    workspaces: [
+      {
+        id: "x",
+        name: "a",
+        userContextId: 5,
+        color: "gray",
+        icon: "circle",
+        source: "runtime",
+        ...over,
+      },
+    ],
+    ...more,
+  });
+  const second = (over: Record<string, unknown>) => ({
+    schema: 1,
+    lastActive: null,
+    workspaces: [
+      { id: "x", name: "a", userContextId: 5, color: "gray", icon: "circle", source: "runtime" },
+      {
+        id: "y",
+        name: "b",
+        userContextId: 6,
+        color: "gray",
+        icon: "circle",
+        source: "runtime",
+        ...over,
+      },
+    ],
+  });
+
+  test.each([
+    ["not an object", 5, "invalid", "", "must be a JSON object"],
+    ["an array", [], "invalid", "", "must be a JSON object"],
+    ["no schema", { workspaces: [] }, "invalid", "schema", "schema: missing or not an integer"],
+    [
+      "another schema",
+      doc({}, { schema: 2 }),
+      "unsupported-schema",
+      "schema",
+      "schema: schema 2 is not supported",
+    ],
+    [
+      "no workspaces list",
+      { schema: 1, lastActive: null },
+      "invalid",
+      "workspaces",
+      "workspaces: must be an array",
+    ],
+    [
+      "a workspace not an object",
+      { schema: 1, lastActive: null, workspaces: ["x"] },
+      "invalid",
+      "workspaces[0]",
+      "workspaces[0]: must be an object",
+    ],
+    [
+      "a bad id",
+      doc({ id: "a b" }),
+      "bad-id",
+      "workspaces[0].id",
+      "workspaces[0].id: not a valid id",
+    ],
+    [
+      "an id twice",
+      second({ id: "x" }),
+      "duplicate-id",
+      "workspaces[1].id",
+      'workspaces[1].id: "x" twice',
+    ],
+    [
+      "a name twice",
+      second({ name: "a" }),
+      "duplicate-name",
+      "workspaces[1].name",
+      'workspaces[1].name: "a" twice',
+    ],
+    [
+      "an empty name",
+      doc({ name: "" }),
+      "bad-name",
+      "workspaces[0].name",
+      "workspaces[0].name: 1 to 32 characters",
+    ],
+    [
+      "a name that is not a string",
+      doc({ name: ["a"] }),
+      "bad-name",
+      "workspaces[0].name",
+      "workspaces[0].name: 1 to 32 characters",
+    ],
+    [
+      "a name of 33 characters",
+      doc({ name: "n".repeat(33) }),
+      "bad-name",
+      "workspaces[0].name",
+      "workspaces[0].name: 1 to 32 characters",
+    ],
+    [
+      "a name with a control character",
+      doc({ name: "a\u0001" }),
+      "bad-name",
+      "workspaces[0].name",
+      "workspaces[0].name: 1 to 32 characters",
+    ],
+    [
+      "a name with a tab",
+      doc({ name: "a\tb" }),
+      "bad-name",
+      "workspaces[0].name",
+      "workspaces[0].name: 1 to 32 characters",
+    ],
+    [
+      "a name with DEL",
+      doc({ name: "a\u007f" }),
+      "bad-name",
+      "workspaces[0].name",
+      "workspaces[0].name: 1 to 32 characters",
+    ],
+    [
+      "a bad container",
+      doc({ userContextId: 0 }),
+      "invalid",
+      "workspaces[0].userContextId",
+      "workspaces[0].userContextId: a positive integer or null",
+    ],
+    [
+      "a bad colour",
+      doc({ color: "beige" }),
+      "bad-color",
+      "workspaces[0].color",
+      'workspaces[0].color: unknown colour "beige"',
+    ],
+    [
+      "a bad icon",
+      doc({ icon: "boat" }),
+      "bad-icon",
+      "workspaces[0].icon",
+      'workspaces[0].icon: unknown icon "boat"',
+    ],
+    [
+      "a javascript: home",
+      doc({ home: "javascript:alert(1)" }),
+      "invalid",
+      "workspaces[0].home",
+      "workspaces[0].home: an http(s) or about: URL",
+    ],
+    [
+      "a file: home",
+      doc({ home: "file:///etc/passwd" }),
+      "invalid",
+      "workspaces[0].home",
+      "workspaces[0].home: an http(s) or about: URL",
+    ],
+    [
+      "a home that is not a string",
+      doc({ home: 5 }),
+      "invalid",
+      "workspaces[0].home",
+      "workspaces[0].home: an http(s) or about: URL",
+    ],
+    [
+      "a bad source",
+      doc({ source: "file" }),
+      "invalid",
+      "workspaces[0].source",
+      'workspaces[0].source: "config" or "runtime"',
+    ],
+    [
+      "a bad bookmarks folder",
+      doc({ bookmarksFolder: "short" }),
+      "invalid",
+      "workspaces[0].bookmarksFolder",
+      "workspaces[0].bookmarksFolder: a Places guid",
+    ],
+    [
+      "an unknown lastActive",
+      doc({}, { lastActive: "nope" }),
+      "invalid",
+      "lastActive",
+      "lastActive: null or the id of a workspace",
+    ],
+  ] as Array<[string, unknown, string, string, string]>)("%s", (_, input, code, path, message) => {
+    const e = defsError(() => readDefinitions(input));
+    expect(e.name).toBe("DefinitionsError");
+    expect(e.code).toBe(code);
+    expect(e.path).toBe(path);
+    expect(e.message).toBe(message);
+  });
+
+  test("text that is not JSON says so", () => {
+    expect(defsError(() => readDefinitions("{")).message).toMatch(/^not JSON: ./);
+  });
+
+  test("a name of 32 characters, with spaces, reads; so does a workspace without home", () => {
+    const d = readDefinitions(doc({ name: `${"n".repeat(30)} n` }));
+    expect(d.workspaces[0]?.name).toHaveLength(32);
+    expect(d.workspaces[0]).not.toHaveProperty("home");
+    expect(d.workspaces[0]).not.toHaveProperty("bookmarksFolder");
+    expect(d.lastActive).toBeNull();
+  });
+});
+
+describe("workspace definitions: edges", () => {
+  const rt = (id: string, over: Record<string, unknown> = {}) => ({
+    id,
+    name: id,
+    userContextId: null as number | null,
+    color: "gray",
+    icon: "circle",
+    source: "runtime" as const,
+    ...over,
+  });
+  const defsOf = (...workspaces: any[]) => ({
+    schema: 1,
+    lastActive: workspaces[0]?.id ?? null,
+    workspaces,
+  });
+
+  test.each([
+    ["color", { color: "red" }],
+    ["icon", { icon: "cart" }],
+    ["home", { home: "https://example.org/" }],
+  ])("a reconcile that changes only the %s is a change", (_, looks) => {
+    const before = reconcileDefinitions(emptyDefinitions(), [cfg("work")], minter()).definitions;
+    const after = reconcileDefinitions(before, [cfg("work", looks)], minter());
+    expect(after.changed).toBe(true);
+    expect(after.definitions.workspaces[0]).toMatchObject(looks);
+  });
+
+  test("a reconcile that changes only lastActive or the schema is a change", () => {
+    const d = defsOf(rt("a"));
+    expect(reconcileDefinitions({ ...d, lastActive: "gone" }, [], minter())).toMatchObject({
+      changed: true,
+      definitions: { lastActive: "a" },
+    });
+    expect(reconcileDefinitions({ ...d, schema: 0 }, [], minter())).toMatchObject({
+      changed: true,
+      definitions: { schema: 1 },
+    });
+  });
+
+  test("a config workspace removed from config.toml becomes a runtime one", () => {
+    const before = reconcileDefinitions(emptyDefinitions(), [cfg("work")], minter()).definitions;
+    const after = reconcileDefinitions(before, [], minter()).definitions;
+    expect(after.workspaces[0]).toMatchObject({ name: "work", source: "runtime" });
+  });
+
+  test("planContainers updates a container whose colour alone drifted", () => {
+    const d = defsOf(rt("a", { userContextId: 6, color: "red" }));
+    expect(
+      planContainers(d as any, [{ userContextId: 6, name: "a", color: "gray", icon: "circle" }]),
+    ).toEqual({ adopt: ["a"], update: ["a"], create: [] });
+  });
+
+  test("the same container, folder or lastActive returns the input; an unknown id is refused", () => {
+    const d = defsOf(rt("a", { userContextId: 6 }), rt("b"));
+    expect(withContainer(d as any, "a", 6)).toBe(d);
+    expect(setLastActive(d as any, "a")).toBe(d);
+    expect(defsError(() => setLastActive(d as any, "nope")).message).toBe('no workspace "nope"');
+    expect(defsError(() => withBookmarksFolder(d as any, "a", "bad")).message).toBe(
+      "bookmarksFolder: a Places guid",
+    );
+  });
+
+  test("linking one workspace's folder leaves the others as they are", () => {
+    const d = defsOf(rt("a"), rt("b"));
+    const next = withBookmarksFolder(d as any, "b", "abcdefghijkl");
+    expect(next.workspaces[0]).toBe(d.workspaces[0]);
+    expect(next.workspaces[1]?.bookmarksFolder).toBe("abcdefghijkl");
+  });
+
+  test("addRuntimeWorkspace: refusals and what they say", () => {
+    const d = defsOf(rt("a"));
+    const add = (w: any, o?: any) => defsError(() => addRuntimeWorkspace(d as any, w, o));
+    const w = { id: "b", name: "b", color: "gray", icon: "circle" };
+    expect(add({ ...w, id: "a b" })).toMatchObject({
+      code: "bad-id",
+      path: "id",
+      message: "id: not a valid id",
+    });
+    expect(add({ ...w, id: "a" })).toMatchObject({
+      code: "duplicate-id",
+      message: 'id: "a" exists',
+    });
+    expect(add({ ...w, name: "a" })).toMatchObject({
+      code: "duplicate-name",
+      message: 'name: "a" exists',
+    });
+    expect(add({ ...w, name: "" })).toMatchObject({ message: "name: 1 to 32 characters" });
+    expect(add({ ...w, name: "2" })).toMatchObject({
+      code: "bad-name",
+      path: "name",
+      message: 'name: "2" is only digits, which name a workspace by its place',
+    });
+    expect(add({ ...w, color: "beige" })).toMatchObject({ code: "bad-color", path: "color" });
+  });
+
+  test("addRuntimeWorkspace: a name ending in digits is fine; home only when given", () => {
+    const d = defsOf(rt("a"));
+    const w = { id: "b", name: "a2", color: "gray", icon: "circle" };
+    expect(addRuntimeWorkspace(d as any, w).workspaces[1]).not.toHaveProperty("home");
+    expect(
+      addRuntimeWorkspace(d as any, { ...w, home: "https://example.org/" }).workspaces[1]?.home,
+    ).toBe("https://example.org/");
+  });
+
+  test("addRuntimeWorkspace goes before the agent workspace only when it is last", () => {
+    const w = { id: "n", name: "n", color: "gray", icon: "circle" };
+    const ids = (d: any) => d.workspaces.map((x: any) => x.id);
+    expect(
+      ids(addRuntimeWorkspace(defsOf(rt("agent"), rt("a")) as any, w, { agent: "agent" })),
+    ).toEqual(["agent", "a", "n"]);
+    expect(ids(addRuntimeWorkspace(emptyDefinitions(), w, { agent: "agent" }))).toEqual(["n"]);
+  });
+
+  test("removal: what each refusal says; an inactive one keeps lastActive", () => {
+    const config = { ...rt("c"), source: "config" as const };
+    const d = { ...defsOf(rt("a"), rt("b"), config, rt("agent")), lastActive: "b" };
+    expect(removeWorkspaceDefinition(d as any, "a").definitions.lastActive).toBe("b");
+    expect(
+      defsError(() => removeWorkspaceDefinition(d as any, "agent", { agent: "agent" })).message,
+    ).toBe('"agent" is the agent workspace; it is only emptied');
+    expect(defsError(() => removeWorkspaceDefinition(d as any, "c")).message).toBe(
+      '"c" is in config.toml',
+    );
+    expect(defsError(() => removeWorkspaceDefinition(defsOf(rt("a")) as any, "a")).message).toBe(
+      "cannot delete the last workspace",
+    );
+  });
+
+  test("rename: what each refusal says", () => {
+    const config = { ...rt("c"), source: "config" as const };
+    const d = defsOf(rt("a"), rt("b"), config);
+    expect(defsError(() => renameWorkspaceDefinition(d as any, "c", "z")).message).toBe(
+      '"c" is named in config.toml',
+    );
+    expect(defsError(() => renameWorkspaceDefinition(d as any, "a", "b")).message).toBe(
+      'name: "b" exists',
+    );
+  });
+
+  test("with every new colour taken, a new workspace's colour goes by count", () => {
+    const colors = [
+      "blue",
+      "green",
+      "orange",
+      "purple",
+      "red",
+      "yellow",
+      "pink",
+      "cyan",
+      "violet",
+      "gray",
+    ];
+    const d = defsOf(...colors.map((color, i) => rt(`w${i}`, { color })));
+    expect(newWorkspaceLooks(d as any)).toEqual({ color: "green", icon: "circle" });
+  });
+});

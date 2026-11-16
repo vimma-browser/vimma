@@ -128,3 +128,29 @@ describe("tab labels", () => {
     );
   });
 });
+
+// #1119: mutants the tests above let through.
+describe("tab labels: edges", () => {
+  test("a label cut just after a space loses that trailing space", () => {
+    expect(normalizeTabLabel(`${"a".repeat(99)} bcd`)).toBe("a".repeat(99));
+  });
+
+  test("clearing one tab's label keeps the others", () => {
+    const l = setTabLabel(setTabLabel({}, "t1", "mail"), "t2", "news");
+    const cleared = clearTabLabel(l, "t1");
+    expect(cleared).toEqual({ t2: "news" });
+    expect(Object.isFrozen(cleared)).toBe(true);
+  });
+
+  test("readTabLabels says why it dropped or changed each entry", () => {
+    const ids = new Set(["t1", "t2"]);
+    expect(readTabLabels([], ids).warnings).toEqual([
+      { path: "tabLabels", message: "not an object of tab id → label; ignored" },
+    ]);
+    expect(readTabLabels({ t9: "x", t1: "", t2: " y " }, ids).warnings).toEqual([
+      { path: 'tabLabels["t9"]', message: "not a tab of this snapshot; dropped" },
+      { path: 'tabLabels["t1"]', message: "not a non-empty string; dropped" },
+      { path: 'tabLabels["t2"]', message: "not normalised; normalised" },
+    ]);
+  });
+});

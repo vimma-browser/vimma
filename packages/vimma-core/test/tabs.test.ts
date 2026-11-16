@@ -148,3 +148,31 @@ describe("tabIds across windows", () => {
     expect(ids.find([b], bId)).toBe(b);
   });
 });
+
+// #1119: mutants the tests above let through.
+describe("tabTarget: edges", () => {
+  test("a current index at or past the last tab is unknown: null", () => {
+    expect(tabTarget({ id: "tab.next" }, 3, 3)).toBeNull();
+    expect(tabTarget({ id: "tab.previous" }, 3, 3)).toBeNull();
+    expect(tabTarget({ id: "tab.goto_last" }, 4, 3)).toBeNull();
+  });
+
+  test("tab 0 or a negative tab number names no tab", () => {
+    expect(tabTarget({ id: "tab.goto", arg: 0 }, 1, 3)).toBeNull();
+    expect(tabTarget({ id: "tab.goto", arg: -1 }, 1, 3)).toBeNull();
+    expect(tabTarget({ id: "tab.next", count: 0 }, 1, 3)).toBeNull();
+  });
+});
+
+describe("tabIds: the ids it makes", () => {
+  test("unloaded tabs are numbered from 1 after the lazy- prefix, apart from panel ids", () => {
+    const ids = tabIds();
+    expect(ids.idOf({ linkedPanel: null })).toBe("lazy-1");
+    expect(ids.idOf({ linkedPanel: null })).toBe("lazy-2");
+  });
+
+  test("a prefix of its own replaces lazy-", () => {
+    const ids = tabIds("tabsearch-");
+    expect(ids.idOf({ linkedPanel: null })).toBe("tabsearch-1");
+  });
+});
