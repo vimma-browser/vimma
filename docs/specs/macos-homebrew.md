@@ -58,7 +58,7 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
 6. The cask refuses to install on an Intel Mac and on a macOS older than the minimum (decision 6).
 7. Before Vimma is notarised, the cask's caveats tell the user how to open it the first time
    (decision 7); after notarisation, it opens like any app. (Since changed: a release signed with
-   the Developer ID gets a cask with no caveats, `cask.mjs --notarised`; spec
+   the Developer ID gets a cask with no caveats, `cask.ts --notarised`; spec
    [macos-build](macos-build.md), decisions 23 and 26.)
 8. Vimma on macOS shows the same update notices as on Linux when a newer release carries a
    `.dmg` (decisions 16 to 18). `:update` and `about:vimma` then suggest
@@ -307,7 +307,7 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
 9. **The cask is a release asset, and `homebrew.yml` pushes it,** as the `PKGBUILD` and
    `aur.yml` do, so that Mac users get a security release without a person and the tap only
    ever receives a file the signed release contains. `release.yml`'s `macos-build` job renders
-   `vimma.rb` with `tools/package/cask.mjs` from the `.dmg`'s SHA-256 and lists it in
+   `vimma.rb` with `tools/package/cask.ts` from the `.dmg`'s SHA-256 and lists it in
    `SHA256SUMS-macos`; `macos-smoke` checks it with `brew style` and an offline
    `brew audit --cask --strict` on `macos-15` and installs the `.dmg` through it; `macos-sign`
    signs it. `homebrew.yml` runs only by `workflow_dispatch` with a tag, from `main`, and
@@ -358,7 +358,7 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
     `firefox.icns` and `document.icns`, because Surfer's branding step copies that directory's
     top-level files into the engine's branding directory and the Linux cross-build cannot run
     `actool`. They live there rather than under `src/`, because every file under `src/` must
-    carry an MPL header, which a binary cannot. `tools/package/macos-icons.mjs` compiles them
+    carry an MPL header, which a binary cannot. `tools/package/macos-icons.ts` compiles them
     with `actool`, and `macos.yml`'s `icons` job, on a Mac with a pinned Xcode, regenerates them
     and fails if they differ from the committed files, so the binaries cannot drift from their
     source. The drift check normalises the fallback renditions `actool` writes into `Assets.car`
@@ -381,7 +381,7 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
     `mach package` and the released one differ.
     - **The layout.** A 640 × 400 point window, icons at 128 points, `Vimma.app` centred at
       (180, 190) and the Applications link at (460, 190), with toolbar, status bar and sidebar
-      hidden, as `DMG_LAYOUT` in `tools/package/macos-icons.mjs` states. `background.png` is
+      hidden, as `DMG_LAYOUT` in `tools/package/macos-icons.ts` states. `background.png` is
       1280 × 800 pixels at 144 dpi, so that Finder draws it at the window's size and sharp on a
       Retina display: the brand background (`surfer.json`'s `backgroundColor`) and an arrow from
       the app to the link in the mark's green, `#1afa80`. Rejected: Firefox's own artwork,
@@ -393,13 +393,13 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
     - **The volume icon is the mark,** the same file as `firefox.icns`, so that the mounted
       volume in Finder's sidebar and title bar shows the logo the app shows. Rejected: a drive
       with the logo on it, as Firefox's is, because it needs artwork Vimma does not have.
-    - **Generated where they can be.** `tools/package/macos-icons.mjs` renders `background.png`
+    - **Generated where they can be.** `tools/package/macos-icons.ts` renders `background.png`
       from an SVG with sharp and copies `disk.icns`, and `macos.yml`'s `icons` job checks both
       with the other icon files (decision 13). The `dsstore` is the `.DS_Store` Finder writes,
       as Firefox's is: `tools/package/macos-dsstore.sh` lays out a scratch disk image named
       Vimma through AppleScript and copies it, since the alias to the background must name the
       volume `make_dmg` creates. Finder records dates and the scratch image's path in it, so it
-      is not reproducible byte for byte, and `tools/package/test/macos.test.mjs` checks what it
+      is not reproducible byte for byte, and `tools/package/test/macos.test.ts` checks what it
       says instead: the two icon positions, the window size, the icon size, a background alias
       to `.background/background.png` on Vimma, and no home directory. The committed file is
       generated on a GitHub-hosted `macos-15` runner, not a developer's Mac, because Finder also
@@ -421,7 +421,7 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
     `configs/macos/mozconfig` sets the distribution id to `dev.vimma` and
     `src/browser/branding/vimma/configure.sh` sets `MOZ_MACBUNDLE_ID` to `browser`, so the bundle
     is `dev.vimma.browser`; both are macOS only, so Linux keeps Firefox's `org.mozilla`.
-    `tools/package/cask.mjs` reads `appId` from `surfer.json`, so the cask follows it. Rejected:
+    `tools/package/cask.ts` reads `appId` from `surfer.json`, so the cask follows it. Rejected:
     Surfer's default `org.mozilla.dev.vimma.browser`, because it carries "mozilla" and "dev".
 
 ### Update notices
@@ -549,7 +549,7 @@ Darwin target before signing, and runs prepare on macos-15 for it`
 published release`
 - `homebrew.yml runs on release and dispatch, verifies the cask against the signed
 SHA256SUMS-macos before pushing, runs no repository code, and holds the key only in the
-homebrew environment` (workflow wiring, as `release-workflow.test.mjs` does for `aur.yml`)
+homebrew environment` (workflow wiring, as `release-workflow.test.ts` does for `aur.yml`)
 - `macos-tap starts homebrew.yml on main once the cask is on a published release`
 - `the macOS icon files exist in configs/branding/vimma and nowhere in the Linux package
 inputs`
@@ -597,10 +597,10 @@ Each sub-PR is independently mergeable and leaves Linux unchanged. The macOS `.d
 joins a release behind `MACOS_RELEASE_ENABLED` (macos-build, #397 and #398).
 
 1. **`feat(macos): vimma app, document and fallback icons`** (#403). The Icon Composer source,
-   `macos-icons.mjs`, the committed `Assets.car`, `firefox.icns` and `document.icns`, the
+   `macos-icons.ts`, the committed `Assets.car`, `firefox.icns` and `document.icns`, the
    regeneration check in `macos.yml`'s `icons` job, and the bundle identifier (decision 15).
 2. **`feat(release): publish the homebrew cask to vimma-browser/homebrew-tap`** (#404). The cask
-   generator `tools/package/cask.mjs` and its Vitest tests, `tools/package/cask-check.sh`, the
+   generator `tools/package/cask.ts` and its Vitest tests, `tools/package/cask-check.sh`, the
    cask in `release.yml`'s macOS jobs and the `macos-tap` job, `homebrew.yml`, the `cask` job in
    `pkgbuild.yml`, and the guide, runbook and `docs/security/`. The tap repository, its
    ruleset, deploy key and the `homebrew` environment already exist and are documented in the

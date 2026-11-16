@@ -7,7 +7,7 @@
  * repository.
  *
  * Usage:
- *   node tools/package/flatpak.mjs --out <dir> --version X.Y.Z --date YYYY-MM-DD
+ *   node tools/package/flatpak.ts --out <dir> --version X.Y.Z --date YYYY-MM-DD
  *     (--sha256 <hex> | --tarball <file>)
  * With --sha256 the manifest downloads the release tarball of vX.Y.Z from GitHub; with
  * --tarball it is copied next to the manifest and named by file.
@@ -17,12 +17,12 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { REPO } from "../repo.ts";
-import { desktopEntry, sha256File } from "./package.mjs";
+import { desktopEntry, sha256File } from "./package.ts";
 
 const SURFER = JSON.parse(readFileSync(new URL("../../surfer.json", import.meta.url), "utf8"));
 
 /** The Flatpak app id: surfer.json's appId, the macOS bundle identifier too. */
-export const APP_ID = /** @type {string} */ (SURFER.appId);
+export const APP_ID = SURFER.appId as string;
 if (!/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*){2,}$/.test(APP_ID)) {
   throw new Error(`surfer.json appId is not a Flatpak app id: ${String(APP_ID)}`);
 }
@@ -95,25 +95,22 @@ const FILES = {
 /** Sizes of the PNG icons in the tarball's browser/chrome/icons/default/ (spec m0-branding). */
 const TARBALL_ICON_SIZES = [16, 32, 48, 64, 128];
 
-/** @param {string} version */
-const tarballName = (version) => `vimma-${version}-linux-x86_64.tar.xz`;
+const tarballName = (version: string) => `vimma-${version}-linux-x86_64.tar.xz`;
 
 /**
- * @typedef {{ url: true, sha256: string } | { path: string, sha256: string }} TarballSource
- *   `url`: the GitHub release download of the version; `path`: a file next to the manifest
+ * `url`: the GitHub release download of the version; `path`: a file next to the manifest
  */
+export type TarballSource = { url: true; sha256: string } | { path: string; sha256: string };
 
 /**
  * The flatpak-builder manifest. Build commands are fixed strings, so no input reaches a shell.
- * @param {{ version: string, source: TarballSource }} input
  */
-export function flatpakManifest({ version, source }) {
+export function flatpakManifest({ version, source }: { version: string; source: TarballSource }) {
   if (!SEMVER.test(version)) throw new Error(`version is not SemVer: ${JSON.stringify(version)}`);
   if (!SHA256.test(source.sha256)) {
     throw new Error(`sha256 must be 64 lower-case hex digits: ${JSON.stringify(source.sha256)}`);
   }
-  /** @type {{ type: string, url?: string, path?: string, sha256: string, dest: string }} */
-  let archive;
+  let archive: { type: string; url?: string; path?: string; sha256: string; dest: string };
   if ("path" in source) {
     if (!FILE_NAME.test(source.path)) {
       throw new Error(`tarball path must be a file name: ${JSON.stringify(source.path)}`);
@@ -197,16 +194,16 @@ export function flatpakLauncher() {
 
 /**
  * The AppStream metainfo Flathub requires.
- * @param {{ version: string, date: string }} input  date: the release's, YYYY-MM-DD
+ * @param input date: the release's, YYYY-MM-DD
  */
-export function metainfo({ version, date }) {
+export function metainfo({ version, date }: { version: string; date: string }) {
   if (!SEMVER.test(version)) throw new Error(`version is not SemVer: ${JSON.stringify(version)}`);
   if (!DATE.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) {
     throw new Error(`date must be YYYY-MM-DD: ${JSON.stringify(date)}`);
   }
   const site = `https://github.com/${REPO}`;
   return `<?xml version="1.0" encoding="UTF-8"?>
-<!-- Vimma's AppStream metainfo (spec flatpak); written by tools/package/flatpak.mjs. -->
+<!-- Vimma's AppStream metainfo (spec flatpak); written by tools/package/flatpak.ts. -->
 <component type="desktop-application">
   <id>${APP_ID}</id>
   <metadata_license>CC0-1.0</metadata_license>
@@ -268,29 +265,28 @@ ${SCREENSHOTS.map(
 `;
 }
 
-/**
- * @param {string} path
- * @param {string} text
- * @param {number} [mode]
- */
-function write(path, text, mode = 0o644) {
+function write(path: string, text: string, mode: number = 0o644) {
   writeFileSync(path, text, { mode });
 }
 
 /**
  * The manifest `<APP_ID>.json` and every file it names, in `out`.
- * @param {{ out: string, version: string, date: string, brandDir: string,
- *   tarball?: string, sha256?: string }} options  `tarball`: a local file, copied in;
+ * @param options `tarball`: a local file, copied in;
  *   else `sha256` of the release download
- * @returns {string[]} the files written
+ * @returns the files written
  */
-export function writeFlatpak(options) {
+export function writeFlatpak(options: {
+  out: string;
+  version: string;
+  date: string;
+  brandDir: string;
+  tarball?: string;
+  sha256?: string;
+}): string[] {
   const { out, version } = options;
   mkdirSync(out, { recursive: true });
-  /** @type {string[]} */
-  const files = [];
-  /** @type {TarballSource} */
-  let source;
+  const files: string[] = [];
+  let source: TarballSource;
   if (options.tarball) {
     const name = tarballName(version);
     copyFileSync(options.tarball, join(out, name));
@@ -301,7 +297,7 @@ export function writeFlatpak(options) {
   }
   const manifest = flatpakManifest({ version, source });
   const meta = metainfo({ version, date: options.date });
-  const add = (/** @type {string} */ name, /** @type {string} */ text, mode = 0o644) => {
+  const add = (name: string, text: string, mode = 0o644) => {
     write(join(out, name), text, mode);
     files.push(join(out, name));
   };
@@ -328,7 +324,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   });
   if (!values.out || !values.version || !values.date || !values.sha256 === !values.tarball) {
     console.error(
-      "usage: flatpak.mjs --out <dir> --version X.Y.Z --date YYYY-MM-DD (--sha256 <hex> | --tarball <file>)",
+      "usage: flatpak.ts --out <dir> --version X.Y.Z --date YYYY-MM-DD (--sha256 <hex> | --tarball <file>)",
     );
     process.exit(2);
   }

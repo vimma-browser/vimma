@@ -144,7 +144,7 @@ jobs:
       - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
         if: steps.cask.outputs.ready == 'true' && vars.SIGNING_ENABLED == 'true'
 
-      # The identity users verify (IDENTITY_REGEXP in tools/package/package.mjs; a test keeps
+      # The identity users verify (IDENTITY_REGEXP in tools/package/package.ts; a test keeps
       # the two equal), so the tap gets only what release.yml built and signed.
       - name: Verify the release's signature
         if: steps.cask.outputs.ready == 'true' && vars.SIGNING_ENABLED == 'true'

@@ -54,7 +54,7 @@ but no build starts: `release-build` and every job of `release.yml` require it.
 `release.yml` runs only by `workflow_dispatch`, and every job requires `refs/heads/main`. That is
 what makes its signatures mean something: the signing identity names `release.yml` on `main`,
 which no other branch can obtain. Tests:
-[release-workflow.test.mjs](../../tools/package/test/release-workflow.test.mjs) ("starts only by
+[release-workflow.test.ts](../../tools/package/test/release-workflow.test.ts) ("starts only by
 workflow_dispatch with a tag, so publishing a release rebuilds nothing", "builds only a vX.Y.Z
 tag whose commit is on main").
 
@@ -67,9 +67,9 @@ tag whose commit is on main").
    (`tools/release/build-id.ts` fails a package where they differ), and builds with
    `VIMMA_UPDATES=1`: Firefox's updater with Vimma's channel, update host and certificates
    (`configs/common/mozconfig`). It then runs a smoke check, packages with mach, packs the MAR
-   tools (`tools/update/mar-tools.ts`) and writes the CycloneDX SBOM (`tools/package/sbom.mjs`).
+   tools (`tools/update/mar-tools.ts`) and writes the CycloneDX SBOM (`tools/package/sbom.ts`).
 2. **`ctl`** builds `vimma-ctl` as a static musl binary and its licence notices.
-3. **`package`** runs `tools/package/package.mjs`, which turns the mach tarball into the release
+3. **`package`** runs `tools/package/package.ts`, which turns the mach tarball into the release
    tarball, the AppImage, the `.deb`, the `.rpm`, the `vimma-bin` PKGBUILD and SRCINFO, and
    `SHA256SUMS`, each with `vimma-ctl` beside the browser. It smoke-tests the `.deb`, the AppImage,
    the `.rpm` (Fedora and openSUSE containers) and the PKGBUILD (an Arch container), and checks the
@@ -92,7 +92,7 @@ tag whose commit is on main").
 6. **`sign`** (`SIGNING_ENABLED`; `id-token: write` only, no repository code) signs every asset
    and `SHA256SUMS` with `cosign sign-blob` keyless, leaving a `.sigstore.json` bundle beside
    each. Its certificate names `release.yml` at `refs/heads/main`, the identity that
-   `IDENTITY_REGEXP` in `package.mjs`, the guide and `aur.yml` check. There is no separate
+   `IDENTITY_REGEXP` in `package.ts`, the guide and `aur.yml` check. There is no separate
    provenance attestation; the Sigstore bundle is the signature users verify.
 7. **`publish`** (`contents: write` only) uploads to the draft. It refuses a release that is
    already published unless the run says `replace_published`, and a tag that no longer points to

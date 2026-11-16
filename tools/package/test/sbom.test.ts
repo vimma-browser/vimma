@@ -9,8 +9,8 @@ import {
   canonicalLicense,
   parseCargoLock,
   parseMozYaml,
-} from "../sbom.mjs";
-import { cyclonedxValidator as validator } from "../validate-sbom.mjs";
+} from "../sbom.ts";
+import { cyclonedxValidator as validator } from "../validate-sbom.ts";
 import { defined } from "../../test/defined.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 
@@ -94,12 +94,10 @@ origin:
 /**
  * An engine tree with Cargo.lock, vendored crates and moz.yaml files, in a temp dir the caller
  * removes.
- * @returns {string}
  */
-function fakeEngine() {
+function fakeEngine(): string {
   const root = mkdtempSync(join(tmpdir(), "vimma-engine-"));
-  /** @type {Record<string, string>} */
-  const files = {
+  const files: Record<string, string> = {
     "Cargo.lock": CARGO_LOCK,
     // two versions of a crate in the lock: cargo vendor suffixes the directory with the version
     "third_party/rust/base64/Cargo.toml":
@@ -169,8 +167,7 @@ describe("parseMozYaml", () => {
 describe("buildSbom", () => {
   // Built once while the describe is collected, outside any test: the engine goes right after.
   const engine = fakeEngine();
-  /** @type {ReturnType<typeof buildSbom>} */
-  let bom;
+  let bom: ReturnType<typeof buildSbom>;
   try {
     bom = buildSbom({
       engineDir: engine,
@@ -183,8 +180,7 @@ describe("buildSbom", () => {
   } finally {
     rmSync(engine, { recursive: true, force: true });
   }
-  /** @param {string} name */
-  const component = (name) => bom.components.find((c) => c.name === name);
+  const component = (name: string) => bom.components.find((c) => c.name === name);
 
   it("is a CycloneDX 1.6 document about Vimma", () => {
     expect(bom.bomFormat).toBe("CycloneDX");
@@ -299,7 +295,7 @@ describe("buildSbom", () => {
 });
 
 // Issue #516: the release packages ship vimma-ctl, so the release SBOM lists it with the libraries
-// its toolchain linked into it, as ctl-notices.mjs describes them in release.yml's ctl job.
+// its toolchain linked into it, as ctl-notices.ts describes them in release.yml's ctl job.
 describe("addCtlComponent", () => {
   const ctl = {
     type: "application",

@@ -47,7 +47,7 @@ describe("canonical repository", () => {
   });
 
   it("the release signing identity is the canonical repository's release.yml", () => {
-    const text = readFileSync(new URL("../package/package.mjs", import.meta.url), "utf8");
+    const text = readFileSync(new URL("../package/package.ts", import.meta.url), "utf8");
     expect(text).toContain(`"^https://github\\\\.com/${REPO}/\\\\.github/workflows/release`);
   });
 

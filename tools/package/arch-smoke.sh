@@ -6,7 +6,7 @@
 # served over HTTP instead of the GitHub Release, which does not exist yet when this runs.
 #
 #   tools/package/arch-smoke.sh <dist-dir> <expected `vimma --version` line>
-#       dist-dir holds package.mjs's output: PKGBUILD, SRCINFO and vimma-X.Y.Z-linux-x86_64.tar.xz.
+#       dist-dir holds package.ts's output: PKGBUILD, SRCINFO and vimma-X.Y.Z-linux-x86_64.tar.xz.
 #       release.yml's package job runs this on the release build.
 #   tools/package/arch-smoke.sh --stub
 #       packages a stub tarball (shell scripts for `vimma` and `vimma-ctl`) first; pkgbuild.yml
@@ -99,12 +99,12 @@ if [ "${1:-}" = "--stub" ]; then
   release=$(echo "$expected" | sed 's/^Vimma \([^ ]*\) .*/\1/')
   printf '#!/bin/sh\necho "vimma-ctl %s (protocol 2)"\n' "$release" > "$work/vimma-ctl"
   chmod 755 "$work/vimma-ctl"
-  # Stand-ins for what ctl-notices.mjs writes in the ctl job (#516).
+  # Stand-ins for what ctl-notices.ts writes in the ctl job (#516).
   mkdir "$work/vimma-ctl-licenses"
   echo stub > "$work/vimma-ctl-licenses/README.txt"
   echo stub > "$work/vimma-ctl-licenses/rust-std-COPYRIGHT.html"
   echo stub > "$work/vimma-ctl-licenses/musl-COPYRIGHT"
-  node "$here/package.mjs" --tarball "$work/vimma-stub.en-US.linux-x86_64.tar.xz" \
+  node "$here/package.ts" --tarball "$work/vimma-stub.en-US.linux-x86_64.tar.xz" \
     --ctl "$work/vimma-ctl" --ctl-licenses "$work/vimma-ctl-licenses" --out "$work/dist" \
     --maintainer 'Vimma CI <ci@example.invalid>' --no-deb --no-rpm
   dist="$work/dist"

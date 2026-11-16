@@ -47,7 +47,7 @@ import {
   rpmVersion,
   sha256sums,
   srcinfo,
-} from "../package.mjs";
+} from "../package.ts";
 import { defined } from "../../test/defined.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 
@@ -58,9 +58,8 @@ const REPO = "vimma-browser/vimma";
 /**
  * The Markdown files these tests read, as literal URLs so tools/ci/docs-only.mjs's check finds
  * this file among the tests a docs-only pull request runs.
- * @type {Record<string, URL>}
  */
-const DOCS = {
+const DOCS: Record<string, URL> = {
   "README.md": new URL("../../../README.md", import.meta.url),
   "docs/guide.md": new URL("../../../docs/guide.md", import.meta.url),
   "docs/runbook/ci-release-packages.md": new URL(
@@ -76,28 +75,19 @@ const DOCS = {
   ),
 };
 
-/** @param {string} cmd */
-const has = (cmd) => spawnSync("sh", ["-c", `command -v ${cmd}`]).status === 0;
-/** @param {string} path */
-const mode = (path) => statSync(path).mode & 0o777;
-/** @param {string | Buffer} data */
-const sha256 = (data) => createHash("sha256").update(data).digest("hex");
+const has = (cmd: string) => spawnSync("sh", ["-c", `command -v ${cmd}`]).status === 0;
+const mode = (path: string) => statSync(path).mode & 0o777;
+const sha256 = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
 /**
  * Asserts two files are byte-identical by digest. toEqual on Buffers deep-compares byte by byte:
  * on the ~560 KB of icons below that took seconds under a loaded coverage run (#200).
- * @param {string} actual
- * @param {string} expected
  */
-const expectSameBytes = (actual, expected) =>
+const expectSameBytes = (actual: string, expected: string) =>
   expect(sha256(readFileSync(actual)), `${actual} = ${expected}`).toBe(
     sha256(readFileSync(expected)),
   );
 
-/**
- * @param {string | undefined} display
- * @param {string} [firefox]
- */
-const surfer = (display, firefox = "157.0.1") => ({
+const surfer = (display: string | undefined, firefox: string = "157.0.1") => ({
   version: { product: "firefox", version: firefox },
   brands: { vimma: { release: { displayVersion: display } } },
 });
@@ -118,19 +108,21 @@ MaxVersion=157.0.1
 
 /**
  * A fake `./mach package` tarball: one top-level vimma/ dir, as the real one.
- * @param {{ name?: string, omit?: string, extra?: Record<string, string> }} [options]
  *   `extra`: more files under vimma/, path → content
- * @param {string} [dir] where to build it (default: a temp dir removed after the test)
- * @returns {string} the tarball's path
+ * @param dir where to build it (default: a temp dir removed after the test)
+ * @returns the tarball's path
  */
 function fakeMachTarball(
-  { name = "Vimma", omit, extra = {} } = {},
-  dir = tempDir("vimma-fake-dist-"),
-) {
+  {
+    name = "Vimma",
+    omit,
+    extra = {},
+  }: { name?: string; omit?: string; extra?: Record<string, string> } = {},
+  dir: string = tempDir("vimma-fake-dist-"),
+): string {
   const app = join(dir, "vimma");
   mkdirSync(join(app, "browser/chrome/icons/default"), { recursive: true });
-  /** @type {Record<string, [string, number]>} */
-  const files = {
+  const files: Record<string, [string, number]> = {
     vimma: ['#!/bin/sh\necho "Vimma Vimma 0.1.0"\n', 0o755],
     "vimma-bin": ['#!/bin/sh\necho "Vimma Vimma 0.1.0"\n', 0o755],
     "application.ini": [APP_INI.replace("Name=Vimma", `Name=${name}`), 0o644],
@@ -151,7 +143,7 @@ function fakeMachTarball(
   return tarball;
 }
 
-/** The notices ctl-notices.mjs writes for the static Linux vimma-ctl (#516). */
+/** The notices ctl-notices.ts writes for the static Linux vimma-ctl (#516). */
 const CTL_LICENSE_FILES = [
   "README.txt",
   "licenses/MIT.txt",
@@ -162,11 +154,14 @@ const CTL_LICENSE_FILES = [
 /**
  * A vimma-ctl stand-in and its notices, as release.yml's ctl job builds them (spec
  * ship-vimma-ctl, #516).
- * @param {string} [dir] where to put them (default: a temp dir removed after the test)
- * @param {{ omit?: string }} [options] a notices file to leave out
- * @returns {{ ctl: string, ctlLicenses: string }} their paths
+ * @param dir where to put them (default: a temp dir removed after the test)
+ * @param options a notices file to leave out
+ * @returns their paths
  */
-function fakeCtl(dir = tempDir("vimma-fake-ctl-"), { omit } = {}) {
+function fakeCtl(
+  dir: string = tempDir("vimma-fake-ctl-"),
+  { omit }: { omit?: string } = {},
+): { ctl: string; ctlLicenses: string } {
   const ctl = join(dir, "vimma-ctl");
   writeFileSync(ctl, '#!/bin/sh\necho "vimma-ctl 0.1.0 (protocol 2)"\n');
   chmodSync(ctl, 0o755);
@@ -180,10 +175,12 @@ function fakeCtl(dir = tempDir("vimma-fake-ctl-"), { omit } = {}) {
 
 /**
  * An appimagetool stand-in: records its arguments and ARCH, writes the output file.
- * @param {string} [dir] where to put it (default: a temp dir removed after the test)
- * @returns {{ tool: string, log: string }}
+ * @param dir where to put it (default: a temp dir removed after the test)
  */
-function fakeAppimagetool(dir = tempDir("vimma-fake-tool-")) {
+function fakeAppimagetool(dir: string = tempDir("vimma-fake-tool-")): {
+  tool: string;
+  log: string;
+} {
   const tool = join(dir, "appimagetool");
   const log = join(dir, "args.log");
   writeFileSync(
@@ -389,7 +386,7 @@ describe("AppRun", () => {
       { mode: 0o755 },
     );
     const env = { PATH: process.env.PATH ?? "", VIMMA_OPEN_PPID: "1" };
-    const run = (/** @type {string[]} */ args) => {
+    const run = (args: string[]) => {
       rmSync(out, { force: true });
       execFileSync(join(dir, "AppRun"), args, { env, encoding: "utf8" });
       for (let i = 0; i < 200 && !existsSync(out); i++) {
@@ -418,11 +415,8 @@ describe("AppRun", () => {
       mode: 0o755,
     });
     const env = { PATH: process.env.PATH ?? "" };
-    const run = (
-      /** @type {string} */ file,
-      /** @type {string[]} */ args,
-      /** @type {Record<string, string>} */ extra = {},
-    ) => execFileSync(file, args, { env: { ...env, ...extra }, encoding: "utf8" });
+    const run = (file: string, args: string[], extra: Record<string, string> = {}) =>
+      execFileSync(file, args, { env: { ...env, ...extra }, encoding: "utf8" });
     const appRun = join(dir, "AppRun");
     expect(run(appRun, ["mcp"], { ARGV0: "/home/u/.local/bin/vimma-ctl" })).toBe("ctl mcp\n");
     expect(run(appRun, ["--profile", "/p", "state"], { ARGV0: "vimma-ctl" })).toBe(
@@ -440,8 +434,7 @@ describe("AppRun", () => {
 
 describe("Debian control", () => {
   const control = debControl({ version: "0.2.0-rc.1", maintainer: MAINTAINER, installedKiB: 1234 });
-  /** @param {string} key */
-  const field = (key) => new RegExp(`^${key}: (.*)$`, "m").exec(control)?.[1];
+  const field = (key: string) => new RegExp(`^${key}: (.*)$`, "m").exec(control)?.[1];
 
   it("has the binary-package fields dpkg needs", () => {
     expect(field("Package")).toBe("vimma");
@@ -475,15 +468,12 @@ describe("RPM spec", () => {
     stage: "/tmp/vimma-package-x/rpm",
     bundled,
   });
-  /** @param {string} key */
-  const tag = (key) => new RegExp(`^${key}: (.*)$`, "m").exec(spec)?.[1];
-  /** @param {string} name */
-  const global = (name) => new RegExp(`^%global ${name} (.*)$`, "m").exec(spec)?.[1];
+  const tag = (key: string) => new RegExp(`^${key}: (.*)$`, "m").exec(spec)?.[1];
+  const global = (name: string) => new RegExp(`^%global ${name} (.*)$`, "m").exec(spec)?.[1];
   /**
    * The macro's regex as rpm compiles it: macro expansion turns each `\\` into one backslash.
-   * @param {string} name
    */
-  const regex = (name) => new RegExp((global(name) ?? "").replaceAll("\\\\", "\\"));
+  const regex = (name: string) => new RegExp((global(name) ?? "").replaceAll("\\\\", "\\"));
 
   it("has the header tags rpmbuild needs, with the pre-release mapped", () => {
     expect(tag("Name")).toBe("vimma");
@@ -589,17 +579,16 @@ describe("PKGBUILD and .SRCINFO", () => {
     desktop,
     desktopId: "vimma-vimma",
     launcher,
-    installSource: /** @type {"pkgbuild-release" | "aur"} */ ("pkgbuild-release"),
+    installSource: "pkgbuild-release" as "pkgbuild-release" | "aur",
   };
   const build = pkgbuild(input);
   const info = srcinfo(input);
 
   /**
    * What a quoted here-document in the PKGBUILD writes to `target`.
-   * @param {string} text the PKGBUILD
-   * @param {string} target
+   * @param text the PKGBUILD
    */
-  const heredoc = (text, target) => {
+  const heredoc = (text: string, target: string) => {
     const open = `cat > "${target}" <<'`;
     const at = text.indexOf(open);
     if (at < 0) throw new Error(`no here-document writes ${target}`);
@@ -689,9 +678,9 @@ describe("PKGBUILD and .SRCINFO", () => {
       `printf '%s\\n' 'vimma-package=aur' > "$pkgdir/opt/vimma/is-packaged-app"`,
     );
     expect(aur.replace("=aur'", "=pkgbuild-release'")).toBe(build);
-    expect(() =>
-      pkgbuild({ ...input, installSource: /** @type {"aur"} */ (/** @type {unknown} */ ("deb")) }),
-    ).toThrow(/install source/);
+    expect(() => pkgbuild({ ...input, installSource: "deb" as unknown as "aur" })).toThrow(
+      /install source/,
+    );
   });
 
   it("refuses inline content that would end its here-document early", () => {
@@ -760,18 +749,12 @@ describe("SHA256SUMS", () => {
 });
 
 describe("packageRelease on a fake ./mach package tarball", () => {
-  /** @type {ReturnType<typeof packageRelease>} */
-  let result;
-  /** @type {string} */
-  let tarball;
-  /** @type {{ tool: string, log: string }} */
-  let tool;
-  /** @type {string} */
-  let out;
-  /** @type {string} */
-  let ctl;
-  /** @type {string} */
-  let ctlLicenses;
+  let result: ReturnType<typeof packageRelease>;
+  let tarball: string;
+  let tool: { tool: string; log: string };
+  let out: string;
+  let ctl: string;
+  let ctlLicenses: string;
   const deb = has("dpkg-deb");
   const rpm = has("rpmbuild");
 
@@ -780,8 +763,7 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     const dirs = ["vimma-tarball-", "vimma-tool-", "vimma-out-", "vimma-rt-", "vimma-work-"].map(
       (prefix) => mkdtempSync(join(tmpdir(), prefix)),
     );
-    const [tarDir, toolDir, outDir, rtDir, work] =
-      /** @type {[string, string, string, string, string]} */ (dirs);
+    const [tarDir, toolDir, outDir, rtDir, work] = dirs as [string, string, string, string, string];
     tarball = fakeMachTarball({}, tarDir);
     ({ ctl, ctlLicenses } = fakeCtl(toolDir));
     tool = fakeAppimagetool(toolDir);
@@ -812,7 +794,7 @@ describe("packageRelease on a fake ./mach package tarball", () => {
   // Spec ship-vimma-ctl, behaviour 1: the release tarball is mach's with vimma-ctl added next
   // to vimma, so an update that unpacks it replaces both together.
   it("repacks the mach tarball under the release name with vimma-ctl next to vimma", () => {
-    const listing = (/** @type {string} */ file) =>
+    const listing = (file: string) =>
       execFileSync("tar", ["-tJf", file], { encoding: "utf8" })
         .trim()
         .split("\n")
@@ -844,7 +826,7 @@ describe("packageRelease on a fake ./mach package tarball", () => {
   });
 
   it("puts vimma-ctl next to vimma in the AppDir, and on PATH in the .deb and the .rpm", () => {
-    const lib = (/** @type {string} */ root) => join(root, "usr/lib/vimma/vimma-ctl");
+    const lib = (root: string) => join(root, "usr/lib/vimma/vimma-ctl");
     for (const root of [result.appDir, result.debRoot, result.rpmRoot]) {
       expectSameBytes(lib(root), ctl);
       expect(mode(lib(root))).toBe(0o755);
@@ -999,8 +981,7 @@ describe("packageRelease on a fake ./mach package tarball", () => {
 
   it.skipIf(!rpm)("builds an .rpm that rpm can read, owned by root", () => {
     const file = join(out, "vimma-0.1.0-1.x86_64.rpm");
-    const q = (/** @type {string[]} */ args) =>
-      execFileSync("rpm", ["-qp", ...args, file], { encoding: "utf8" });
+    const q = (args: string[]) => execFileSync("rpm", ["-qp", ...args, file], { encoding: "utf8" });
     expect(q(["--qf", "%{NAME} %{VERSION} %{RELEASE} %{ARCH} %{LICENSE}\n"])).toBe(
       "vimma 0.1.0 1 x86_64 MPL-2.0\n",
     );
@@ -1025,7 +1006,7 @@ describe("packageRelease on a fake ./mach package tarball", () => {
   // docs/specs/m6a-updater.md §3: Firefox only tests that the file exists; the line tells Vimma's
   // update check which hint to show. A .deb without it was told to untar over /usr/lib.
   it("every package type except the tarball carries the marker", () => {
-    const marker = (/** @type {string} */ root) => join(root, "usr/lib/vimma/is-packaged-app");
+    const marker = (root: string) => join(root, "usr/lib/vimma/is-packaged-app");
     expect(readFileSync(marker(result.appDir), "utf8")).toBe("vimma-package=appimage\n");
     expect(mode(marker(result.appDir))).toBe(0o644);
     expect(readFileSync(marker(result.debRoot), "utf8")).toBe("vimma-package=deb\n");
@@ -1063,7 +1044,7 @@ describe("packageRelease on a fake ./mach package tarball", () => {
       advisories: [],
       assets: {},
     };
-    const read = (/** @type {string} */ root) =>
+    const read = (root: string) =>
       readFileSync(join(root, "usr/lib/vimma/is-packaged-app"), "utf8");
     const deb = installTypeFrom({ packaged: true, marker: read(result.debRoot), appImage: null });
     expect(deb).toBe("deb");
@@ -1093,9 +1074,9 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     expect(installTypeFrom({ packaged: true, marker: null, appImage: null })).toBe("tarball");
   });
 
-  it("install-type.mjs names each staged package as the update check would", () => {
-    const script = fileURLToPath(new URL("../install-type.mjs", import.meta.url));
-    const type = (/** @type {string} */ dir, /** @type {Record<string, string>} */ env = {}) => {
+  it("install-type.ts names each staged package as the update check would", () => {
+    const script = fileURLToPath(new URL("../install-type.ts", import.meta.url));
+    const type = (dir: string, env: Record<string, string> = {}) => {
       // Not inherited: a test run from inside an AppImage would otherwise set it.
       const base = { ...process.env };
       delete base.APPIMAGE;
@@ -1117,7 +1098,7 @@ describe("packageRelease on a fake ./mach package tarball", () => {
 
   // #855: Firefox's shell service matches its own entry only by the Exec program's exact path.
   it("names each package's installed vimma-open by its absolute path in the desktop entry", () => {
-    const exec = (/** @type {string} */ text) => /^Exec=(\/\S+) %u$/m.exec(text)?.[1];
+    const exec = (text: string) => /^Exec=(\/\S+) %u$/m.exec(text)?.[1];
     for (const root of [result.debRoot, result.rpmRoot]) {
       const entry = readFileSync(join(root, "usr/share/applications/vimma-vimma.desktop"), "utf8");
       expect(exec(entry)).toBe("/usr/lib/vimma/vimma-open");
@@ -1199,8 +1180,7 @@ describe("packageRelease includes an SBOM given next to it", () => {
     name: "vimma-ctl",
     version: "0.1.0",
   };
-  /** @param {{ ctlComponent?: string }} extra */
-  const run = (extra) => {
+  const run = (extra: { ctlComponent?: string }) => {
     const out = tempDir("vimma-out-");
     const dir = tempDir("vimma-sbom-");
     const sbom = join(dir, "vimma-0.1.0.cdx.json");
@@ -1228,7 +1208,7 @@ describe("packageRelease includes an SBOM given next to it", () => {
     const out = run({ ctlComponent: component });
     expect(readFileSync(join(out, "SHA256SUMS"), "utf8")).toContain("  vimma-0.1.0.cdx.json\n");
     const written = JSON.parse(readFileSync(join(out, "vimma-0.1.0.cdx.json"), "utf8"));
-    expect(written.components.map((/** @type {{ name: string }} */ c) => c.name)).toEqual([
+    expect(written.components.map((c: { name: string }) => c.name)).toEqual([
       "firefox",
       "vimma-ctl",
     ]);
@@ -1242,7 +1222,7 @@ describe("packageRelease includes an SBOM given next to it", () => {
 describe("packageRelease cleans up after itself", () => {
   /** The tool's own scratch dirs in the temp dir. */
   const scratch = () => readdirSync(tmpdir()).filter((n) => n.startsWith("vimma-package-"));
-  const opts = (/** @type {string} */ tarball) => ({
+  const opts = (tarball: string) => ({
     tarball,
     outDir: tempDir("vimma-out-"),
     config: surfer("0.1.0"),
@@ -1297,8 +1277,7 @@ describe("packageRelease cleans up after itself", () => {
 });
 
 describe("packageRelease refuses bad input", () => {
-  /** @param {string} tarball */
-  const run = (tarball) => () =>
+  const run = (tarball: string) => () =>
     packageRelease({
       tarball,
       outDir: tempDir("vimma-out-"),
@@ -1389,8 +1368,8 @@ describe("cosign identity", () => {
 });
 
 describe("the documented Arch Linux command", () => {
-  /** @param {string} path relative to the repository root */
-  const doc = (path) => readFileSync(defined(DOCS[path], path), "utf8");
+  /** @param path relative to the repository root */
+  const doc = (path: string) => readFileSync(defined(DOCS[path], path), "utf8");
 
   it.each([
     "README.md",

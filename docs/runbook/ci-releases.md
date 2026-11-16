@@ -22,7 +22,7 @@ maintainer's one click.
   too, since `tools/vimma-ctl/build.rs` reads it (spec ship-vimma-ctl). The release
   PR bumps it through `extra-files` (jsonpath `$.brands.vimma.release.displayVersion`), plus
   `.release-please-manifest.json`, which must always match it (tested in
-  `tools/package/test/release-workflow.test.mjs`). The Firefox pin `version.version` is never
+  `tools/package/test/release-workflow.test.ts`). The Firefox pin `version.version` is never
   touched; `upstream.yml` owns it. Release type `simple`: there is no root `version.txt`, so
   nothing else is written.
 - **Bumps** (`release-please-config.json`, spec release-versioning): every release bumps the

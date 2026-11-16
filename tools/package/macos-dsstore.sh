@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Writes configs/branding/vimma/dsstore, the .DS_Store that lays out the mounted dmg's Finder
 # window (spec macos-homebrew, decision 14): its size, the background picture, the icon size and
-# where Vimma.app and the Applications link sit, from DMG_LAYOUT in tools/package/macos-icons.mjs.
+# where Vimma.app and the Applications link sit, from DMG_LAYOUT in tools/package/macos-icons.ts.
 # Finder is the only writer of the format that macOS documents nothing about, so Finder writes
 # it: this makes a read-write disk image named Vimma with the committed background.png, lays its
 # window out through AppleScript and copies the .DS_Store Finder saves. Firefox's own dsstore is
@@ -11,7 +11,7 @@
 # Needs macOS with a logged-in Finder; a Mac asks once to let the terminal control Finder, a
 # GitHub-hosted macos-15 runner does not. Not reproducible byte for byte, since Finder records
 # dates, the image's location and the machine's volume UUIDs, so the committed file is made on a
-# hosted runner (docs/runbook/) and tools/package/test/macos.test.mjs checks what it says.
+# hosted runner (docs/runbook/) and tools/package/test/macos.test.ts checks what it says.
 #
 #   tools/package/macos-dsstore.sh            write configs/branding/vimma/dsstore
 #   tools/package/macos-dsstore.sh --out FILE write FILE instead
@@ -28,7 +28,7 @@ if [ -e "$volume" ]; then
 fi
 
 layout=$(cd "$repo" && node --input-type=module -e '
-  import { DMG_LAYOUT as l } from "./tools/package/macos-icons.mjs";
+  import { DMG_LAYOUT as l } from "./tools/package/macos-icons.ts";
   const [app, link] = [l.icons["Vimma.app"], l.icons[" "]];
   console.log([l.window.width, l.window.height, l.iconSize, ...app, ...link].join(" "));')
 read -r width height icon app_x app_y link_x link_y <<< "$layout"

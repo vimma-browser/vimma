@@ -17,7 +17,7 @@
  *   at the LLVM version rustc reports. Apache-2.0 WITH LLVM-exception asks for no notice in a
  *   binary; it is named for completeness.
  *
- * Usage: node tools/package/ctl-notices.mjs --out <dir> [--target <triple>] [--binary <vimma-ctl>]
+ * Usage: node tools/package/ctl-notices.ts --out <dir> [--target <triple>] [--binary <vimma-ctl>]
  *          [--component <file.json>] [--repo vimma-browser/vimma]
  * rustc runs in tools/vimma-ctl, so rustup picks the toolchain its rust-toolchain.toml pins.
  */
@@ -35,23 +35,19 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { REPO } from "../repo.ts";
-import { canonicalLicense } from "./sbom.mjs";
-
-/** @typedef {import("./sbom.mjs").Component} Component */
+import { canonicalLicense } from "./sbom.ts";
+import type { Component } from "./sbom.ts";
 
 const NOTICES = fileURLToPath(new URL("notices/", import.meta.url));
 
 /**
  * The members of an ar archive (GNU names, long names through `//`, or BSD `#1/<n>` names).
- * @param {Buffer} archive
- * @returns {{ name: string, data: Buffer }[]}
  */
-export function arMembers(archive) {
+export function arMembers(archive: Buffer): { name: string; data: Buffer }[] {
   if (archive.subarray(0, 8).toString("latin1") !== "!<arch>\n") {
     throw new Error("not an ar archive");
   }
-  /** @type {{ name: string, data: Buffer }[]} */
-  const members = [];
+  const members: { name: string; data: Buffer }[] = [];
   let longNames = "";
   let offset = 8;
   while (offset + 60 <= archive.length) {
@@ -89,10 +85,8 @@ export function arMembers(archive) {
 /**
  * The musl version a static libc.a carries: musl builds `src/internal/version.c`, whose one
  * string is VERSION, into `version.lo`.
- * @param {Buffer} libc
- * @returns {string}
  */
-export function muslVersion(libc) {
+export function muslVersion(libc: Buffer): string {
   const member = arMembers(libc).find((m) => m.name === "version.lo" || m.name === "version.o");
   if (!member) throw new Error("libc.a has no version.lo: not musl's");
   const versions = [
@@ -106,16 +100,20 @@ export function muslVersion(libc) {
   if (versions.length !== 1) {
     throw new Error(`libc.a's version.lo has ${versions.length} versions: ${versions.join(", ")}`);
   }
-  return /** @type {string} */ (versions[0]);
+  return versions[0] as string;
 }
 
 /**
- * @param {string} text the output of `rustc -vV`
- * @returns {{ line: string, release: string, commit: string, host: string, llvm: string }}
+ * @param text the output of `rustc -vV`
  */
-export function parseRustcVersion(text) {
-  /** @param {string} key */
-  const field = (key) => new RegExp(`^${key}: (\\S+)$`, "m").exec(text)?.[1] ?? "";
+export function parseRustcVersion(text: string): {
+  line: string;
+  release: string;
+  commit: string;
+  host: string;
+  llvm: string;
+} {
+  const field = (key: string) => new RegExp(`^${key}: (\\S+)$`, "m").exec(text)?.[1] ?? "";
   const line = text.split("\n")[0] ?? "";
   const release = field("release");
   if (!/^rustc \d/.test(line) || !/^\d+\.\d+\.\d+/.test(release)) {
@@ -132,9 +130,8 @@ export function parseRustcVersion(text) {
 
 /**
  * The licence of the top directory in Rust's COPYRIGHT-library.html: the standard library's own.
- * @param {string} html
  */
-function rustLibraryLicense(html) {
+function rustLibraryLicense(html: string) {
   const license = /<code>\.<\/code>[\s\S]*?<b>License:<\/b>\s*([^<]+?)\s*</.exec(html)?.[1];
   if (!license) throw new Error("COPYRIGHT-library.html names no licence for its top directory");
   return license;
@@ -142,11 +139,9 @@ function rustLibraryLicense(html) {
 
 /**
  * Every SPDX id the `License:` lines of COPYRIGHT-library.html name.
- * @param {string} html
  */
-function licenseIds(html) {
-  /** @type {Set<string>} */
-  const ids = new Set();
+function licenseIds(html: string) {
+  const ids: Set<string> = new Set();
   for (const match of html.matchAll(/<b>License:<\/b>\s*([^<]+)</g)) {
     for (const token of (match[1] ?? "").split(/[\s()/]+/)) {
       if (token && !/^(OR|AND|WITH)$/i.test(token)) ids.add(token);
@@ -155,14 +150,23 @@ function licenseIds(html) {
   return ids;
 }
 
-/** @param {string} file */
-const sha256 = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
+const sha256 = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
 
-/**
- * @param {{ version: string, rustc: ReturnType<typeof parseRustcVersion>, target: string,
- *   ctlLicense: string, rustLicense: string, musl?: { version: string, license: string } }} input
- */
-function readme({ version, rustc, target, ctlLicense, rustLicense, musl }) {
+function readme({
+  version,
+  rustc,
+  target,
+  ctlLicense,
+  rustLicense,
+  musl,
+}: {
+  version: string;
+  rustc: ReturnType<typeof parseRustcVersion>;
+  target: string;
+  ctlLicense: string;
+  rustLicense: string;
+  musl?: { version: string; license: string };
+}) {
   const lines = [
     `vimma-ctl ${version}, the command-line client for Vimma's control socket,`,
     `is licensed under ${ctlLicense}. It was built with`,
@@ -190,14 +194,28 @@ function readme({ version, rustc, target, ctlLicense, rustLicense, musl }) {
 
 /**
  * Writes vimma-ctl's notices into `out` (which must not exist) and returns its SBOM component.
- * @param {{ sysroot: string, rustc: string, target?: string, out: string, cargoToml: string,
- *   config: { brands?: Record<string, { release?: { displayVersion?: unknown } }> },
- *   repo: string, binary?: string }} options
  *   rustc: `rustc -vV`'s output; target: the triple built for (default: rustc's host);
  *   cargoToml: tools/vimma-ctl/Cargo.toml; binary: the built vimma-ctl, hashed into the entry
- * @returns {Component & { components?: Component[], properties?: { name: string, value: string }[] }}
  */
-export function writeCtlNotices({ sysroot, rustc, target, out, cargoToml, config, repo, binary }) {
+export function writeCtlNotices({
+  sysroot,
+  rustc,
+  target,
+  out,
+  cargoToml,
+  config,
+  repo,
+  binary,
+}: {
+  sysroot: string;
+  rustc: string;
+  target?: string;
+  out: string;
+  cargoToml: string;
+  config: { brands?: Record<string, { release?: { displayVersion?: unknown } }> };
+  repo: string;
+  binary?: string;
+}): Component & { components?: Component[]; properties?: { name: string; value: string }[] } {
   const license = /^license = "([^"]+)"$/m.exec(cargoToml)?.[1];
   if (!license) throw new Error("tools/vimma-ctl/Cargo.toml has no license");
   const version = String(config.brands?.vimma?.release?.displayVersion ?? "");
@@ -211,8 +229,7 @@ export function writeCtlNotices({ sysroot, rustc, target, out, cargoToml, config
   const html = readFileSync(copyright, "utf8");
   const rustLicense = rustLibraryLicense(html);
 
-  /** @type {{ version: string, license: string, copyright: string } | undefined} */
-  let musl;
+  let musl: { version: string; license: string; copyright: string } | undefined;
   if (/-musl/.test(triple)) {
     const lib = join(sysroot, "lib/rustlib", triple, "lib/self-contained");
     const libc = join(lib, "libc.a");
@@ -252,8 +269,7 @@ export function writeCtlNotices({ sysroot, rustc, target, out, cargoToml, config
   );
 
   const stdPurl = `pkg:generic/rust-lang/rust-std@${toolchain.release}`;
-  /** @type {Component[]} */
-  const components = [
+  const components: Component[] = [
     {
       type: "library",
       "bom-ref": `${stdPurl}#vimma-ctl`,
@@ -321,14 +337,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   });
   if (!values.out) {
     console.error(
-      "usage: ctl-notices.mjs --out <dir> [--target <triple>] [--binary <vimma-ctl>] [--component <file>]",
+      "usage: ctl-notices.ts --out <dir> [--target <triple>] [--binary <vimma-ctl>] [--component <file>]",
     );
     process.exit(2);
   }
   const root = new URL("../../", import.meta.url);
   const crate = fileURLToPath(new URL("tools/vimma-ctl/", root));
-  /** @param {string[]} args */
-  const rustc = (args) => execFileSync("rustc", args, { cwd: crate, encoding: "utf8" });
+  const rustc = (args: string[]) => execFileSync("rustc", args, { cwd: crate, encoding: "utf8" });
   const component = writeCtlNotices({
     sysroot: rustc(["--print", "sysroot"]).trim(),
     rustc: rustc(["-vV"]),

@@ -3,17 +3,18 @@
 // one B-tree, "DSDB", whose records are (file name, four-letter code, typed value); it is
 // described at https://metacpan.org/dist/Mac-Finder-DSStore/view/DSStoreFormat.pod.
 
-/**
- * @typedef {{ name: string, code: string, type: string, value: Buffer | number | string }} DsRecord
- */
+export type DsRecord = {
+  name: string;
+  code: string;
+  type: string;
+  value: Buffer | number | string;
+};
 
 /**
  * Every record of a .DS_Store, in file order. A `blob` value is returned as its bytes, so a
  * caller reads an `Iloc` position or searches a property list itself.
- * @param {Buffer} file
- * @returns {DsRecord[]}
  */
-export function readDsStore(file) {
+export function readDsStore(file: Buffer): DsRecord[] {
   if (file.readUInt32BE(0) !== 1 || file.toString("latin1", 4, 8) !== "Bud1") {
     throw new Error("not a .DS_Store: no Bud1 header");
   }
@@ -21,8 +22,7 @@ export function readDsStore(file) {
   const buf = file.subarray(4);
   const rootOffset = buf.readUInt32BE(4);
   const count = buf.readUInt32BE(rootOffset);
-  /** @type {number[]} */
-  const addresses = [];
+  const addresses: number[] = [];
   for (let i = 0; i < count; i++) addresses.push(buf.readUInt32BE(rootOffset + 8 + 4 * i));
   let p = rootOffset + 8 + 4 * Math.ceil(count / 256) * 256;
   const dirs = new Map();
@@ -35,18 +35,15 @@ export function readDsStore(file) {
     dirs.set(name, buf.readUInt32BE(p));
     p += 4;
   }
-  /** @param {number} id */
-  const block = (id) => {
+  const block = (id: number) => {
     const address = addresses[id] ?? 0;
     const offset = address & ~0x1f;
     return buf.subarray(offset, offset + 2 ** (address & 0x1f));
   };
   if (!dirs.has("DSDB")) throw new Error("not a .DS_Store: no DSDB tree");
   const rootNode = block(dirs.get("DSDB")).readUInt32BE(0);
-  /** @type {DsRecord[]} */
-  const records = [];
-  /** @param {number} id */
-  const walk = (id) => {
+  const records: DsRecord[] = [];
+  const walk = (id: number) => {
     const node = block(id);
     const right = node.readUInt32BE(0);
     const n = node.readUInt32BE(4);
@@ -66,8 +63,7 @@ export function readDsStore(file) {
       const code = node.toString("latin1", q, q + 4);
       const type = node.toString("latin1", q + 4, q + 8);
       q += 8;
-      /** @type {Buffer | number | string} */
-      let value;
+      let value: Buffer | number | string;
       if (type === "blob") {
         const size = node.readUInt32BE(q);
         value = Buffer.from(node.subarray(q + 4, q + 4 + size));

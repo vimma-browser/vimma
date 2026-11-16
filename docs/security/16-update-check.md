@@ -40,7 +40,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`the Vimma version already running is no offer, whatever its build ID`](../../packages/vimma-core/test/updates.test.ts),
   [`the_vimma_version_running_is_never_offered`](../../tests/browser/browser_vimma_update_check.js),
   [`a packaged build ID that differs from the binary's is a problem`](../../tools/release/test/build-id.test.ts),
-  [`release.yml's Linux and macOS builds fix MOZ_BUILD_DATE before they build`](../../tools/package/test/release-workflow.test.mjs),
+  [`release.yml's Linux and macOS builds fix MOZ_BUILD_DATE before they build`](../../tools/package/test/release-workflow.test.ts),
   [`a release feed older than 45 days and a nightly one older than 7 are stale`](../../packages/vimma-core/test/updates.test.ts),
   [`replay_is_refused_and_downgrade_offers_nothing`](../../tests/browser/browser_vimma_update_check.js),
   [`a serial more than a day ahead of the clock is refused; up to a day is accepted`](../../packages/vimma-core/test/updates.test.ts),
@@ -106,11 +106,11 @@ _Pages_ and _extensions_ cannot reach it.
   tarball's command. The release workflow's smoke test checks the type of the installed `.deb`
   and, without `$APPIMAGE`, of the extracted AppImage, the marker of the `.rpm` installed on
   Fedora and openSUSE, and that the tarball has no marker.
-  [`every package type except the tarball carries the marker`](../../tools/package/test/package.test.mjs),
-  [`gives each package type its own update hint, and only the tarball an untar`](../../tools/package/test/package.test.mjs),
-  [`a tarball that already carries an install-source marker`](../../tools/package/test/package.test.mjs),
-  [`the .deb and AppImage smoke test checks each install type, and the tarball's lack of one`](../../tools/package/test/release-workflow.test.mjs),
-  [`checks the version line, the marker, the launcher, the desktop file and rpm -V`](../../tools/package/test/rpm-smoke.test.mjs)
+  [`every package type except the tarball carries the marker`](../../tools/package/test/package.test.ts),
+  [`gives each package type its own update hint, and only the tarball an untar`](../../tools/package/test/package.test.ts),
+  [`a tarball that already carries an install-source marker`](../../tools/package/test/package.test.ts),
+  [`the .deb and AppImage smoke test checks each install type, and the tarball's lack of one`](../../tools/package/test/release-workflow.test.ts),
+  [`checks the version line, the marker, the launcher, the desktop file and rpm -V`](../../tools/package/test/rpm-smoke.test.ts)
   On macOS ([macos-homebrew](../specs/macos-homebrew.md) decisions 8 and 19) no install is told to
   download or unpack anything: the app at `/Applications/Vimma.app` with
   `/opt/homebrew/Caskroom/vimma/` present gets `brew upgrade --cask vimma`, and any other copy
@@ -131,7 +131,7 @@ _Pages_ and _extensions_ cannot reach it.
   marker outranks `$APPIMAGE`, which a Flatpak started from an AppImage's process inherits, so a
   Flatpak is never handed the AppImage's replacement (UP10).
   [`flatpak: flatpak update, with no download (spec flatpak, decision 10)`](../../packages/vimma-core/test/updates.test.ts),
-  [`is flatpak, whose update hint is flatpak update, never the tarball's unpack`](../../tools/package/test/flatpak.test.mjs),
+  [`is flatpak, whose update hint is flatpak update, never the tarball's unpack`](../../tools/package/test/flatpak.test.ts),
   [`flatpak_gets_flatpak_update`](../../tests/browser/browser_vimma_update_check.js),
   [`a Flatpak names flatpak update, for an ordinary and a security release`](../../packages/vimma-core/test/update-notices.test.ts),
   [`not an AppImage install: nothing to replace`](../../packages/vimma-core/test/appimage-update.test.ts),
@@ -269,7 +269,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`runs one manifest per target at a time, never cancelling one half done`](../../tools/update/test/update-workflow.test.ts),
   [`refuses a .dmg that does not match SHA256SUMS-macos`](../../tools/update/test/manifest.test.ts),
   [`checkSigned takes the target: a Linux manifest is refused for macOS and back`](../../tools/update/test/manifest.test.ts),
-  [`macos-tap starts the macOS update manifest once the .dmg is on a published release`](../../tools/package/test/release-workflow.test.mjs),
+  [`macos-tap starts the macOS update manifest once the .dmg is on a published release`](../../tools/package/test/release-workflow.test.ts),
   [`a published release whose .dmg is already there starts the macOS manifest too`](../../tools/update/test/update-workflow.test.ts),
   [`fails when the release API answers %i`](../../tools/test/release-asset-checks.test.ts)
 - UP8. A command about:vimma shows **never** installs or replaces anything with a file it has not
