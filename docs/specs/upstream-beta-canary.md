@@ -4,7 +4,7 @@ Status: implemented · Area: `.github/workflows/upstream-beta.yml` (new), `.gith
 `.github/workflows/upstream.yml` (one step moves into a shared script),
 `tools/upstream/canary.mjs` (new), `tools/upstream/source-check.sh` (new),
 `tools/upstream/patch-check.py`, `tools/upstream/artifact-preflight.mjs`,
-`tools/upstream/bump-surfer-json.py`, `tools/artifact-build/artifact-build.mjs`,
+`tools/upstream/bump-surfer-json.py`, `tools/artifact-build/artifact-build.mjs` (Since changed: `artifact-build.ts`, ADR-025),
 `tools/version-files/version-files.mjs` (Since changed: `version-files.ts`, ADR-025),
 `tools/e2e/e2e.mjs` (Since changed: `e2e.ts`, ADR-025), `docs/rebase.md`, `docs/security/`,
 `docs/runbook/` · Upstream patches: none · ADR: amends
@@ -155,7 +155,7 @@ does not check the download's hash, which is why `e2e.yml` already checks it aga
   `tests/browser/browser_vimma_app_version.js` asserts that `Services.appinfo.version` equals
   `Services.appinfo.platformVersion`; with `159.0b1` that assertion would fail on every Beta run
   for a reason that is not a Firefox change.
-- `tools/artifact-build/artifact-build.mjs` looked Mozilla's build up only under
+- `tools/artifact-build/artifact-build.mjs` (Since changed: `artifact-build.ts`, ADR-025) looked Mozilla's build up only under
   `gecko.v2.mozilla-release.shippable.revision.<rev>.firefox.linux64-opt` (`indexNamespace`)
   and passed the revision to mach as `MOZ_ARTIFACT_REVISION`.
 
@@ -309,7 +309,7 @@ detect ──► source-check ──► test (e2e.yml) ──► render ──�
    in Mozilla's own Beta tree, R3), so `Services.appinfo.version` equals `platformVersion` and
    `browser_vimma_app_version.js` tests Firefox, not the pin's spelling. Vimma's display version is
    unchanged.
-6. **The artifact build takes the tree from `sourcestamp.txt`.** `artifact-build.mjs` and
+6. **The artifact build takes the tree from `sourcestamp.txt`.** `artifact-build.mjs` (Since changed: `artifact-build.ts`, ADR-025) and
    `artifact-preflight.mjs` read the tree from the `https://hg.mozilla.org/<tree>/rev/<rev>` line
    and accept exactly `releases/mozilla-release` and `releases/mozilla-beta`; anything else is an
    error. For a release nothing changes (`MOZ_ARTIFACT_REVISION`). For a Beta the tool looks up
