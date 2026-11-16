@@ -401,13 +401,13 @@ _Pages_ and _extensions_ cannot reach it.
   `vimma-nightly` channel (UP14). Firefox's check runs Vimma's verifier first (UP13).
   **⚠ limit:** Artifact builds (ADR-010) run Mozilla's prebuilt updater, which trusts only
   Mozilla's keys, and keep `aus5.mozilla.org`; they are never shipped.
-  [`is not built without VIMMA_UPDATES (source and dev builds)`](../../tools/test/mozconfig-updater.test.mjs),
-  [`refuses VIMMA_UPDATES=1 without Vimma's certificates, so no updater trusts Mozilla's test keys`](../../tools/test/mozconfig-updater.test.mjs),
-  [`refuses any other value of VIMMA_UPDATES rather than guessing`](../../tools/test/mozconfig-updater.test.mjs),
+  [`is not built without VIMMA_UPDATES (source and dev builds)`](../../tools/test/mozconfig-updater.test.ts),
+  [`refuses VIMMA_UPDATES=1 without Vimma's certificates, so no updater trusts Mozilla's test keys`](../../tools/test/mozconfig-updater.test.ts),
+  [`refuses any other value of VIMMA_UPDATES rather than guessing`](../../tools/test/mozconfig-updater.test.ts),
   [`links both certificates into the engine and ignores them in its git`](../../tools/import/test/link-update-certs.test.ts),
   [`refuses a repository without a certificate, so no import leaves a half-set behind`](../../tools/import/test/link-update-certs.test.ts),
   [`refuses a certificate that is a link, which could lead to any file on the machine`](../../tools/import/test/link-update-certs.test.ts),
-  [`refuses VIMMA_UPDATES=1 when a certificate in the engine is not the committed one`](../../tools/test/mozconfig-updater.test.mjs),
+  [`refuses VIMMA_UPDATES=1 when a certificate in the engine is not the committed one`](../../tools/test/mozconfig-updater.test.ts),
   [`fails when the updater lacks Vimma's certificate or carries one of Mozilla's`](../../tools/update/test/check-build.test.ts),
   [`fails without the [AppUpdate] URL or with another host`](../../tools/update/test/check-build.test.ts),
   [`the repository: update-keys.mjs is what the committed certificates give`](../../tools/update/test/gen-update-keys.test.ts),

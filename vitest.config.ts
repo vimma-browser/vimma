@@ -10,7 +10,7 @@ export default defineConfig({
       "tools/**/test/**/*.test.ts",
     ],
     // A temp dir per run, removed after it; the run fails if a test left anything in it (#207).
-    globalSetup: ["tools/test/tmp-guard.mjs"],
+    globalSetup: ["tools/test/tmp-guard.ts"],
     // Same tags as packages/vimma-core/vitest.config.mjs, which says what each is for.
     tags: [
       { name: "timing", description: "Asserts a speed budget of the real, uninstrumented code" },

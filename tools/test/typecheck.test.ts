@@ -5,8 +5,8 @@ import { readFileSync } from "node:fs";
 // options: the browser code without Node's types (issue #945), tools/ with them, tests included
 // (issue #947), the core's tests with them (issue #959), the browser tests under tests/ with the
 // mochitest harness's declarations (issue #959), and the tests' .sjs handlers (issue #1070).
-/** @param {string} path */
-const json = (path) => JSON.parse(readFileSync(new URL(`../../${path}`, import.meta.url), "utf8"));
+const json = (path: string) =>
+  JSON.parse(readFileSync(new URL(`../../${path}`, import.meta.url), "utf8"));
 
 describe("npm run typecheck", () => {
   const root = json("tsconfig.json");
@@ -69,7 +69,7 @@ describe("npm run typecheck", () => {
     expect(coreTests.extends).toBe("../../../tsconfig.json");
     expect(coreTests.compilerOptions.types).toEqual(["node"]);
     expect(coreTests.include).toEqual(expect.arrayContaining(["**/*.mjs", "../bench/**/*.mjs"]));
-    expect(root.include.some((/** @type {string} */ g) => g.includes("/test/"))).toBe(false);
+    expect(root.include.some((g: string) => g.includes("/test/"))).toBe(false);
   });
 
   // The core's tests move to TypeScript (ADR-025 decision 6, since changed; #1114): Vitest runs
@@ -107,7 +107,7 @@ describe("npm run typecheck", () => {
     expect(browserTests.exclude).toEqual([]);
     // The harness's declarations stay out of the browser code's check.
     expect(root.include).toContain("types/*.d.ts");
-    expect(root.include.some((/** @type {string} */ g) => g.includes("mochitest"))).toBe(false);
+    expect(root.include.some((g: string) => g.includes("mochitest"))).toBe(false);
   });
 
   // Each relaxed or added option has its reason; nothing else of the root's may change.

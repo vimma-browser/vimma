@@ -15,8 +15,8 @@ import { isolateTmp } from "./temp-dir.mjs";
  */
 const CACHES = new Set(["node-compile-cache"]);
 
-/** @returns {() => void} the global teardown */
-export default function setup() {
+/** @returns the global teardown */
+export default function setup(): () => void {
   const finish = isolateTmp(process.env, tmpdir());
   return () => {
     const left = finish().filter((name) => !CACHES.has(name));

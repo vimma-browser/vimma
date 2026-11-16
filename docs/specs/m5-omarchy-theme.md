@@ -185,7 +185,7 @@ temp HOMEs: no Omarchy, missing (written, 0644), unchanged (not rewritten), an o
 `tools/omarchy/test/theme-hook.test.mjs` (Since changed: `theme-hook.test.ts`, ADR-025) with fake
 `busctl`, `vimma-ctl` and `vimma`: the decoded `OpenURL` buffer to each `org.mozilla.vimma.*` name
 only, no Vimma (no call, `vimma` never run), both fallbacks, silence and exit 0.
-`tools/test/start.test.mjs`: no `--no-remote`. By hand, an artifact build with a temp HOME: the hook
+`tools/test/start.test.ts`: no `--no-remote`. By hand, an artifact build with a temp HOME: the hook
 appeared at startup; after a `colors.toml` change the installed hook (bus list narrowed to that
 instance) made a following `vimma-ctl reload-theme` answer `unchanged` (a control round answered
 `changed`), still one tab.

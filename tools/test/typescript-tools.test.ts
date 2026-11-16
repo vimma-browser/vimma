@@ -13,7 +13,7 @@ import * as espree from "espree";
 import vitestConfig from "../../vitest.config.ts";
 
 // ADR-025: tools/ may be TypeScript that Node runs as it is, by erasing the types. These pin what
-// that needs from Node, Vitest and eslint; tools/test/typecheck.test.mjs pins tsc's side.
+// that needs from Node, Vitest and eslint; tools/test/typecheck.test.ts pins tsc's side.
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const FIXTURE = fileURLToPath(new URL("fixtures/ts-run/main.ts", import.meta.url));
 const ROOT_TS_CONFIGS = ["commitlint.config.ts", "vitest.config.ts"];
@@ -24,9 +24,8 @@ const CORE_TESTS = "packages/vimma-core/test/";
 /**
  * The TypeScript files outside the places ADR-025 allows it: tools/, the root configs, and
  * vimma-core's tests (as `.ts` only, the one extension their tsconfig, eslint and Vitest read).
- * @param {string[]} paths
  */
-function outsideTypeScriptHomes(paths) {
+function outsideTypeScriptHomes(paths: string[]): string[] {
   return paths.filter(
     (p) =>
       !p.startsWith("tools/") &&
@@ -39,23 +38,23 @@ function outsideTypeScriptHomes(paths) {
  * The modules a .ts file loads when Node runs it: its import and export declarations and its
  * import() calls with a string, read from the program Node runs (types stripped as Node strips
  * them), so a module path in a string or a comment is not one. A type-only import is erased.
- * @param {string} code
- * @returns {string[]}
  */
-function importSpecifiers(code) {
+function importSpecifiers(code: string): string[] {
   const program = espree.parse(transformSync(code, { mode: "strip-only" }).code, {
     ecmaVersion: "latest",
     sourceType: "module",
   });
-  /** @type {string[]} */
-  const found = [];
-  /** @param {unknown} node */
-  const visit = (node) => {
+  const found: string[] = [];
+  const visit = (node: unknown): void => {
     if (!node || typeof node !== "object") return;
     if (Array.isArray(node)) return node.forEach(visit);
-    /** @typedef {{ type: string, value?: unknown, expressions?: unknown[],
-     *   quasis?: { value: { cooked: string } }[] }} Source */
-    const n = /** @type {{ type?: string, source?: Source }} */ (node);
+    type Source = {
+      type: string;
+      value?: unknown;
+      expressions?: unknown[];
+      quasis?: { value: { cooked: string } }[];
+    };
+    const n = node as { type?: string; source?: Source };
     const source = n.source;
     // import(`./x.ts`) without substitutions names its module as plainly as a string does
     const spec =
@@ -104,8 +103,7 @@ describe("TypeScript under tools/ (ADR-025)", () => {
 
   describe("eslint", () => {
     const eslint = new ESLint({ cwd: ROOT });
-    /** @param {string} code @param {string} [path] */
-    const lint = async (code, path = "tools/test/fixtures/ts-run/sample.ts") =>
+    const lint = async (code: string, path: string = "tools/test/fixtures/ts-run/sample.ts") =>
       (await eslint.lintText(code, { filePath: `${ROOT}${path}` }))[0]?.messages ?? [];
 
     it("lints a .ts file under tools/ with the rules a .mjs file gets", async () => {
@@ -171,7 +169,9 @@ describe("TypeScript under tools/ (ADR-025)", () => {
         .map((spec) => `${file}: ${spec}`),
     );
     expect(missing).toEqual([]);
-  });
+    // It parses every .ts file under tools/ and vimma-core's tests: about 4 s alone, more on a busy
+    // runner, so Vitest's 5 s default fails it under load.
+  }, 30_000);
 
   it("reads the imports from the program, not from strings or comments", () => {
     const code = [

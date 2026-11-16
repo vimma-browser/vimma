@@ -104,7 +104,7 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`every action is pinned by a full commit SHA`](../../tools/test/upstream-beta-workflow.test.ts),
   [`mentions the owner only when it opens an issue`](../../tools/upstream/test/canary.test.ts),
   [`fences test output and cuts the body to 60,000 characters`](../../tools/upstream/test/canary.test.ts),
-  [`surfer.json on main pins a Firefox release, never a beta`](../../tools/test/surfer-pin.test.mjs)
+  [`surfer.json on main pins a Firefox release, never a beta`](../../tools/test/surfer-pin.test.ts)
 - G10. The Beta canary **must never** build from or report on a Beta source tarball whose SHA-512
   differs from that Beta's signed `SHA512SUMS` (B1): the source check fails the run before the
   suites or the issue (G4 for Betas).

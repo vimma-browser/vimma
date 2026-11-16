@@ -4,18 +4,5 @@
 # tools/test/mjs-ratchet.test.ts fails until it does. The hooks of tools/claude-plugin and the
 # base-branch guards (tools/ci/docs-only.mjs, tools/ci/key-guard.mjs and its test) stay .mjs
 # (ADR-025, decision 7) and are not listed.
-tools/test/build.test.mjs
-tools/test/chrome-css.test.mjs
-tools/test/feature-prefs.mjs
-tools/test/feature-prefs.test.mjs
-tools/test/fs-race.mjs
-tools/test/fs-races.test.mjs
-tools/test/mozconfig-updater.test.mjs
-tools/test/start.test.mjs
-tools/test/surfer-pin.test.mjs
 tools/test/temp-dir.mjs
-tools/test/temp-dir.test.mjs
-tools/test/tmp-guard.mjs
-tools/test/typecheck.test.mjs
-tools/test/typescript-tools.test.mjs
 tools/test/workflow-runners.mjs

@@ -15,10 +15,10 @@ const CERT_DIR = "toolkit/mozapps/update/updater/vimma";
 /**
  * A topsrcdir (a repository's engine/) with the files the mozconfig checks for, and the
  * repository's committed certificates in configs/updater/ beside it.
- * @param {{ certs?: string[], stale?: string }} [opts] the certificate files to create under
- *   CERT_DIR, and one of them to give other bytes than the committed one
+ * @param opts the certificate files to create under CERT_DIR, and one of them to give other bytes
+ *   than the committed one
  */
-function srcdir({ certs = [], stale } = {}) {
+function srcdir({ certs = [], stale }: { certs?: string[]; stale?: string } = {}) {
   const repo = tempDir("vimma-mozconfig-");
   mkdirSync(join(repo, "configs/updater"), { recursive: true });
   for (const c of ["primary.der", "secondary.der"]) {
@@ -34,13 +34,8 @@ function srcdir({ certs = [], stale } = {}) {
   return dir;
 }
 
-/**
- * Sources `text` as mach would and returns the ac_add_options it passed.
- * @param {string} text
- * @param {string} topsrcdir
- * @param {Record<string, string>} env
- */
-function source(text, topsrcdir, env = {}) {
+/** Sources `text` as mach would and returns the ac_add_options it passed. */
+function source(text: string, topsrcdir: string, env: Record<string, string> = {}) {
   const dir = tempDir("vimma-mozconfig-run-");
   const file = join(dir, "mozconfig");
   writeFileSync(file, text);
@@ -66,7 +61,7 @@ function source(text, topsrcdir, env = {}) {
   return { status: r.status, options, stderr: r.stderr };
 }
 
-const updaterOptions = (/** @type {string[]} */ options) =>
+const updaterOptions = (options: string[]) =>
   options.filter((o) => /^--(enable|disable)-updater\b/.test(o));
 
 describe("configs/common/mozconfig: the updater", () => {

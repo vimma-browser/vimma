@@ -401,7 +401,7 @@ Written first and seen to fail.
 - `the PR title lists the advisories: "upstream: firefox 158.0 (MFSA 2026-106)"`
 - `the PR title passes commitlint with zero, one and three advisories`
 
-**vitest, `tools/test/feature-prefs.test.mjs`**
+**vitest, `tools/test/feature-prefs.test.ts`**
 
 - `every vimma.feature.* pref defaults to false`
 

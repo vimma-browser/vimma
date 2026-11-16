@@ -5,7 +5,7 @@
 /* about:vimma-setup (vimma/setup/setup.html, spec first-run-setup "Welcome screen"). Theme
    tokens only, the fallbacks the built-in dark theme's as in start.css, so Omarchy, light and
    dark need no rules of their own. Nothing moves (the spec allows one fade; Vimma's chrome CSS
-   animates nothing, tools/test/chrome-css.test.mjs), so reduced motion has nothing to turn off. */
+   animates nothing, tools/test/chrome-css.test.ts), so reduced motion has nothing to turn off. */
 
 :root {
   min-height: 100%;

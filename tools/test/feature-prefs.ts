@@ -8,8 +8,7 @@ import { defined } from "./defined.ts";
 const DEFINITION =
   /^\s*(?:pref|sticky_pref|lockPref)\s*\(\s*["'](vimma\.feature\.[^"']+)["']\s*,\s*([^)]*?)\s*\)/;
 
-/** @param {string} text @returns {{ name: string, value: string, line: number }[]} */
-export function featurePrefDefaults(text) {
+export function featurePrefDefaults(text: string): { name: string; value: string; line: number }[] {
   return text.split("\n").flatMap((source, i) => {
     const m = DEFINITION.exec(source);
     return m ? [{ name: defined(m[1]), value: defined(m[2]), line: i + 1 }] : [];
@@ -20,13 +19,12 @@ export function featurePrefDefaults(text) {
 // is missing, which bypasses the default-off rule.
 const TRUE_FALLBACK = /getBoolPref\(\s*["'](vimma\.feature\.[^"']+)["']\s*,\s*true\b/g;
 
-/** @param {string} text @returns {string[]} */
-export function featurePrefFallbacks(text) {
+export function featurePrefFallbacks(text: string): string[] {
   return [...text.matchAll(TRUE_FALLBACK)].map((m) => defined(m[1]));
 }
 
-/** @param {URL} dir @returns {URL[]} every .js and .mjs file under dir */
-export function listSourceFiles(dir) {
+/** @returns every .js and .mjs file under dir */
+export function listSourceFiles(dir: URL): URL[] {
   return readdirSync(dir, { withFileTypes: true, recursive: true })
     .filter((e) => e.isFile() && /\.m?js$/.test(e.name))
     .map((e) => new URL(`file://${e.parentPath}/${e.name}`));

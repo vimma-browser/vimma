@@ -35,4 +35,4 @@ Spec: [m0-mozilla-services](../specs/m0-mozilla-services.md),
   is true writes `devtools.selfxss.count` = 5 as a user value (upstream), so the guide says to
   reset it after turning the tools off.
   [`test_devtools_defaults_match_official_firefox`](../../tests/browser/browser_vimma_mozilla_services.js),
-  [`startPrefs`](../../tools/test/start.test.mjs)
+  [`startPrefs`](../../tools/test/start.test.ts)

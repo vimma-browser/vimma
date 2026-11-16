@@ -465,7 +465,7 @@ Vitest, existing files:
   `finds Mozilla's 159.0b1 build in the mozilla-beta index` (fixture of the 2026-10-14 response).
 - `tools/version-files/test/version-files.test.mjs` (Since changed: `version-files.test.ts`,
   ADR-025): `a beta pin writes 159.0 to version.txt`.
-- `tools/test/surfer-pin.test.mjs`: `surfer.json on main pins a Firefox release, never a beta`.
+- `tools/test/surfer-pin.test.ts`: `surfer.json on main pins a Firefox release, never a beta`.
 - `tools/e2e/test`: `--report-json writes each failed scenario with its error`.
 
 Python:
