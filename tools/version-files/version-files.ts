@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 
 /** A Firefox version as configure parses it: x.y or x.y.z, optionally a beta (`bN`). */
 export const FIREFOX = /^\d+\.\d+(?:\.\d+)?(?:[ab]\d+)?$/;
-/** SemVer with an optional pre-release (plan §7: `0.x.y`, nightlies `0.x.y-nightly.<date>`). */
+/** SemVer with an optional pre-release (a nightly: `X.Y.Z-nightly.<buildID>`, spec m6a-updater). */
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 /** configure reads only the last line (as with config/milestone.txt), so the header is free. */
@@ -37,7 +37,7 @@ export type SurferConfig = {
 
 /**
  * The two versions in surfer.json, checked: the Firefox version and the brand's display version.
- * tools/release/version-line.mjs uses the same check.
+ * tools/release/version-line.ts uses the same check.
  * @param config parsed surfer.json
  */
 export function surferVersions(

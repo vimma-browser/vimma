@@ -274,7 +274,7 @@ appVersion="1.23.2b" buildID=…>` with one complete MAR from the GitHub Release
   `AUTO_SECURITY_RELEASE` on, a merged security bump sets the open release PR to auto-merge, and
   the release carries whatever is on `main` (its decisions 11 to 17). Releases are titled
   `Vimma <vimma> · Firefox <firefox>`, the changelog heading is
-  `## [<vimma>](<compare>) · Firefox <firefox> (<date>)`, and `tools/release/version-line.mjs`
+  `## [<vimma>](<compare>) · Firefox <firefox> (<date>)`, and `tools/release/version-line.ts`
   writes the version line.
 - Releases are drafts until the maintainer has daily-driven Vimma (the release gate, spec
   release-versioning); `release.yml` runs on `release: published` only, so it does not run for a
@@ -375,7 +375,7 @@ download against that SHA-512 before installing it (docs/security/16-update-chec
   version, so that each build has its own (decision 40).
 - `appVersion` is Firefox's version and `displayVersion` Vimma's (What the design must add, 2);
   together they are the version line `Vimma 0.3.1 · Firefox 158.0.1` that about:vimma and
-  `:update` show, written by the same rule as `tools/release/version-line.mjs`.
+  `:update` show, written by the same rule as `tools/release/version-line.ts`.
 - `vimmaSerial` is the UTC time the manifest was generated (`YYYYMMDDhhmmss`, the build-ID
   format). `vimmaUrgency` is `security` or `normal`; `vimmaAdvisories` lists the MFSA IDs, if
   any.
@@ -1022,7 +1022,7 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     a security update on Linux and macOS, and an AppImage would replace itself with the same
     release again
     ([#563](https://github.com/vimma-browser/vimma/issues/563)). Fixing `MOZ_BUILD_DATE` once per
-    job, as Mozilla's release automation does, removes the cause; `tools/release/build-id.mjs`
+    job, as Mozilla's release automation does, removes the cause; `tools/release/build-id.ts`
     fails a release or nightly whose binary (`--full-version`) and `application.ini` disagree, so
     a mismatch cannot ship again; and the client rule removes the symptom for any build ID error
     that gets past both, because every release tag is a new Vimma version. Its cost: a rebuild of

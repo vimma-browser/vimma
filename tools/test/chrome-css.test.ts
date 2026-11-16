@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { TEXT_TOKENS } from "../../packages/vimma-core/src/config/theme.mjs";
 
 // Spec docs/specs/m7-a11y.md: Vimma's chrome CSS draws text only in tokens whose contrast
-// packages/vimma-core/test/a11y.test.mjs checks, dims nothing with opacity (which would undo
+// packages/vimma-core/test/a11y.test.ts checks, dims nothing with opacity (which would undo
 // that check), and moves nothing (prefers-reduced-motion then has nothing to turn off).
 
 const cssDir = new URL("../../src/browser/themes/shared/vimma/", import.meta.url);

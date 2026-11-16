@@ -642,7 +642,13 @@ describe("restrictedErrors", () => {
   test("the gate's importers are exactly today's seven", () => {
     // Adding one is a security decision, not a list edit: review the new caller against
     // docs/security/12-agents-mcp.md section 12 first, then add it here and in layers.ts.
-    expect(Object.keys(RESTRICTED)).toEqual(["host/AgentGate.sys.mjs"]);
+    expect(Object.keys(RESTRICTED)).toEqual([
+      "host/AgentGate.sys.mjs",
+      "ctl/agent-tabs.mjs",
+      "actors/agent-page.mjs",
+      "ui/agent-chat-key.mjs",
+      "ui/agent-chat-models.mjs",
+    ]);
     expect(RESTRICTED["host/AgentGate.sys.mjs"]?.importers).toEqual([
       "agent/AgentChat.sys.mjs",
       "ctl/AgentDownloads.sys.mjs",
@@ -652,6 +658,66 @@ describe("restrictedErrors", () => {
       "host/agent-ui.mjs",
       "host/mcp-ops.mjs",
     ]);
+  });
+  test("the agent tab model has one importer, agent-commands.mjs, and a new one fails", () => {
+    // ctl/agent-tabs.mjs decides which tabs an agent reaches and re-checks a tab after the yes
+    // (M2, M8): another caller could give a conversation a tab or skip the re-check.
+    const tabs = "ctl/agent-tabs.mjs";
+    expect(RESTRICTED[tabs]?.importers).toEqual(["ctl/agent-commands.mjs"]);
+    const errors = restrictedErrors(
+      [edge("ctl/agent-commands.mjs", tabs), edge("ctl/AgentAct.sys.mjs", tabs, "eager", 9)],
+      Object.fromEntries(Object.entries(RESTRICTED).filter(([module]) => module === tabs)),
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(
+      /^ctl\/AgentAct\.sys\.mjs:9: imports ctl\/agent-tabs\.mjs, which only/,
+    );
+  });
+  test("the agent's page work has one importer, VimmaChild, and a new one fails", () => {
+    // actors/agent-page.mjs clicks, fills and submits in a page after the reply, each re-checked
+    // just before it runs (M25 to M28): another caller could act in a page without the parent's
+    // question or those checks.
+    const page = "actors/agent-page.mjs";
+    expect(RESTRICTED[page]?.importers).toEqual(["actors/VimmaChild.sys.mjs"]);
+    const errors = restrictedErrors(
+      [edge("actors/VimmaChild.sys.mjs", page), edge("actors/caret.mjs", page, "eager", 7)],
+      Object.fromEntries(Object.entries(RESTRICTED).filter(([module]) => module === page)),
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/^actors\/caret\.mjs:7: imports actors\/agent-page\.mjs, which only/);
+  });
+
+  test("the API key entry has two importers, the chat window and its view, and a new one fails", () => {
+    // ui/agent-chat-key.mjs builds the masked key field and stores, clears and deletes a hosted
+    // provider's key (M46): another caller could reveal the field or reach the keys.
+    const key = "ui/agent-chat-key.mjs";
+    expect(RESTRICTED[key]?.importers).toEqual(["ui/agent-chat.mjs", "ui/agent-chat-view.mjs"]);
+    const errors = restrictedErrors(
+      [
+        edge("ui/agent-chat.mjs", key),
+        edge("ui/agent-chat-view.mjs", key),
+        edge("ui/agent-prompt.mjs", key, "eager", 4),
+      ],
+      Object.fromEntries(Object.entries(RESTRICTED).filter(([module]) => module === key)),
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(
+      /^ui\/agent-prompt\.mjs:4: imports ui\/agent-chat-key\.mjs, which only/,
+    );
+  });
+  test("the model setup has one importer, the chat window, and a new one fails", () => {
+    // ui/agent-chat-models.mjs adds hosted providers (checkEndpoint's endpoint rules) and writes
+    // a picked provider to config.toml (B12): another caller could skip the check or the write.
+    const models = "ui/agent-chat-models.mjs";
+    expect(RESTRICTED[models]?.importers).toEqual(["ui/agent-chat.mjs"]);
+    const errors = restrictedErrors(
+      [edge("ui/agent-chat.mjs", models), edge("ui/agent-chat-view.mjs", models, "eager", 5)],
+      Object.fromEntries(Object.entries(RESTRICTED).filter(([module]) => module === models)),
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(
+      /^ui\/agent-chat-view\.mjs:5: imports ui\/agent-chat-models\.mjs, which only/,
+    );
   });
 });
 
@@ -1098,6 +1164,32 @@ describe("jarErrors: manifest lines", () => {
         ].join("\n"),
       ),
     ).toEqual([MANIFEST(2), MANIFEST(3), MANIFEST(4), MANIFEST(5)]);
+  });
+
+  test("AppLauncher's startup entry passes, exactly as written, and nothing like it", () => {
+    const entry =
+      "% category browser-before-ui-startup chrome://browser/content/vimma/services/AppLauncher.sys.mjs AppLauncher.beforeUIStartup";
+    expect(jarErrors(["browser.jar:", entry].join("\n"))).toEqual([]);
+    expect(
+      jarErrors(
+        [
+          "browser.jar:",
+          `% category browser-before-ui-startup ${V}host/AgentGate.sys.mjs AgentGate.init`,
+          entry.replace("AppLauncher.beforeUIStartup", "AppLauncher.init"),
+          entry.replace("browser-before-ui-startup", "browser-idle-startup"),
+          entry.replace(
+            "chrome://browser/content/vimma/",
+            "resource:///chrome/browser/content/browser/vimma/",
+          ),
+          entry.replace("AppLauncher.sys.mjs", "AppLauncher.sys.mjs?x"),
+          `${entry} application=x`,
+          entry.replace("% category ", "%  category "),
+          `${entry} `,
+          entry.replace("AppLauncher.beforeUIStartup", "applauncher.beforeuistartup"),
+          entry.replace("browser-before-ui-startup", "Browser-Before-UI-Startup"),
+        ].join("\n"),
+      ),
+    ).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(MANIFEST));
   });
 
   test("an override of a page, or of a file with no extension, fails too", () => {

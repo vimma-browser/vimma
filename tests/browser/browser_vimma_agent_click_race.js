@@ -61,8 +61,8 @@ const { WorkspaceStore } = ChromeUtils.importESModule(
 const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
-const { VimmaActors } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs",
+const { AgentActors } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/actors/AgentActors.sys.mjs",
 );
 
 const DIR = getRootDirectory(gTestPath).replace(
@@ -81,7 +81,7 @@ const SKIPPED = "the element changed as it was clicked; nothing was clicked";
 const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
-const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
+const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
 const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
 const mainId = () =>
   /** @type {string} */ (
@@ -473,10 +473,10 @@ addTidyTask(async function test_a_page_that_stops_its_pagehide_still_has_the_cli
  * @returns {Promise<any>} HintTarget
  */
 async function targetOf(c, tab, label) {
-  const activate = VimmaActors.agentActivate;
+  const activate = AgentActors.agentActivate;
   /** @type {any} */
   let target = null;
-  VimmaActors.agentActivate = async (/** @type {any} */ t) => {
+  AgentActors.agentActivate = async (/** @type {any} */ t) => {
     target = t;
     return "changed";
   };
@@ -484,7 +484,7 @@ async function targetOf(c, tab, label) {
     const r = await askedOnce(c, "agent-activate", { tab: idOf(tab), label });
     Assert.ok(!r.ok, "the call that found the target clicked nothing");
   } finally {
-    VimmaActors.agentActivate = activate;
+    AgentActors.agentActivate = activate;
   }
   Assert.ok(target, "the target was found");
   return target;
@@ -527,12 +527,12 @@ addTidyTask(async function test_an_outcome_asked_as_the_page_goes_away_reads_the
     };
   });
   const loaded = BrowserTestUtils.browserLoaded(browser, false, NEXT);
-  const sent = VimmaActors.agentActivate(target, {
+  const sent = AgentActors.agentActivate(target, {
     submit: null,
     href: null,
     until: Date.now() + 10000,
   });
-  const outcome = VimmaActors.agentClickOutcome(target);
+  const outcome = AgentActors.agentClickOutcome(target);
   Assert.equal(await sent, "ok", "the child took the click");
   Assert.equal(await outcome, "skipped", "the outcome is the skip that came before the failure");
   await loaded;

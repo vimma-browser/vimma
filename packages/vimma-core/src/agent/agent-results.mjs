@@ -7,7 +7,7 @@
 // agents (tools/vimma-ctl/src/mcp/: `ToolCall::command` in command.rs, `success` and
 // `failure_text` in render.rs); the words here are its words, so that a model reads the same
 // results whichever way it reaches Vimma and what the bench measures over MCP is what the
-// built-in agent runs. agent-results.test.mjs fails when a sentence here is not in src/mcp/.
+// built-in agent runs. agent-results.test.ts fails when a sentence here is not in src/mcp/.
 
 import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN, untrustedHeader } from "./agent.mjs";
 import { MAX_RETRY_AFTER } from "../control/control.mjs";

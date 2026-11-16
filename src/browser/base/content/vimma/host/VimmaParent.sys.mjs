@@ -4,11 +4,11 @@
 
 // Parent side of the Vimma actor (spec: docs/specs/m1-actor-insert-scroll.md): hands focus
 // reports and mouse selections (m1-copy-mode) to the host for the tab's <browser>. Commands go
-// out through VimmaActors.
+// out through VimmaActors and, for an agent's, AgentActors.
 
 import { parseDescriptor } from "../core/editable.mjs";
 import { VimmaHost } from "./VimmaHost.sys.mjs";
-import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
+import { AgentActors } from "../actors/AgentActors.sys.mjs";
 import { PdfOps } from "./pdf-ops.mjs";
 import { fieldsOf } from "./browser-ops.mjs";
 
@@ -37,7 +37,7 @@ export class VimmaParent extends JSWindowActorParent {
       // security.md M28): the tab's allowed submission is withdrawn. From any frame of the tab,
       // a forged one can only take an allowance away, and say its own frame's click was skipped.
       // First, so that no check of the actor's own state comes before taking it away.
-      VimmaActors.agentSkipped(this.browsingContext, this.manager, msg.data);
+      AgentActors.agentSkipped(this.browsingContext, this.manager, msg.data);
       return undefined;
     }
     // An actor that gets a message has its manager, and browsingContext throws rather than give

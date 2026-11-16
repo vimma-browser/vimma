@@ -33,6 +33,9 @@ const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
 );
+const { AgentActors } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/actors/AgentActors.sys.mjs",
+);
 const { VimmaActors } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs",
 );
@@ -82,7 +85,7 @@ registerCleanupFunction(async () => {
 const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
-const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
+const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
 const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
 const activeName = () =>
   ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === ww().model.active)?.name;
@@ -911,7 +914,7 @@ addTidyTask(async function test_a_foreign_namespace_input_is_no_field() {
   const target = /** @type {HintTarget} */ (fake);
   Assert.equal(target.info?.kind, "click", "as a click target, not a field");
   Assert.equal(target.info?.type, undefined, "with no input type");
-  const inspected = await VimmaActors.agentInspect(target);
+  const inspected = await AgentActors.agentInspect(target);
   Assert.equal(inspected?.alive, true, "it is still there");
   Assert.equal(
     inspected && "field" in inspected ? inspected.field : undefined,
@@ -952,7 +955,7 @@ addTidyTask(async function test_a_foreign_input_in_a_label_inspects_as_its_contr
   });
   const fake = targets.find((t) => t.info?.text === "Show more" || t.info?.caption === "Show more");
   Assert.ok(fake, "the element in the label is listed");
-  const inspected = await VimmaActors.agentInspect(/** @type {HintTarget} */ (fake));
+  const inspected = await AgentActors.agentInspect(/** @type {HintTarget} */ (fake));
   Assert.equal(inspected?.alive, true, "it is still there");
   const submit = inspected && "submit" in inspected ? inspected.submit : undefined;
   Assert.equal(submit?.action, "https://example.com/collect", "a click on it submits the form");
@@ -1023,7 +1026,7 @@ addTidyTask(async function test_a_link_in_a_label_keeps_its_click() {
   });
   const link = targets.find((t) => t.info?.text === "Continue");
   Assert.ok(link, "the link in the label is listed");
-  const inspected = await VimmaActors.agentInspect(/** @type {HintTarget} */ (link));
+  const inspected = await AgentActors.agentInspect(/** @type {HintTarget} */ (link));
   Assert.equal(inspected?.alive, true, "it is still there");
   Assert.ok(!(inspected && "submit" in inspected), "an a with an href keeps the click: no submit");
   BrowserTestUtils.removeTab(tab);

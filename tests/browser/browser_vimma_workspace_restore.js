@@ -191,8 +191,11 @@ add_task(async function gate_2_workspaces_tabs_panes_labels_and_scroll_come_back
   Assert.equal(workspaceOf(w1, b1), B.id, "b1 is in B");
 
   // A tab the model names; SessionStore has no value for undefined, which no uuid equals.
-  const uuid = (/** @type {Element | undefined} */ t) => SessionStore.getCustomTabValue(t, TAB_KEY);
+  const uuid = (/** @type {Element | undefined} */ t) =>
+    SessionStore.getCustomTabValue(/** @type {MozTabbrowserTab} */ (t), TAB_KEY);
   const uuids = new Map([a1, a2, b0, b1].map((t) => [t, uuid(t)]));
+  /** The uuid recorded above for a tab of the list. */
+  const uuidOf = (/** @type {MozTabbrowserTab} */ t) => /** @type {string} */ (uuids.get(t));
   Assert.ok(
     [...uuids.values()].every((u) => /^[0-9a-f-]{36}$/.test(u)),
     "every tab has a uuid in its vimma-tab value",
@@ -221,21 +224,21 @@ add_task(async function gate_2_workspaces_tabs_panes_labels_and_scroll_come_back
   Assert.equal(ids(A.id).length, 3, "A has its three tabs");
   Assert.deepEqual(
     ids(A.id).slice(1),
-    [uuids.get(a1), uuids.get(a2)],
+    [uuidOf(a1), uuidOf(a2)],
     "A's tabs come back, in order, with their uuids",
   );
-  Assert.deepEqual(ids(B.id), [uuids.get(b0), uuids.get(b1)], "B's tabs come back");
+  Assert.deepEqual(ids(B.id), [uuidOf(b0), uuidOf(b1)], "B's tabs come back");
   Assert.equal(model.active, B.id, "B is the active workspace");
 
   const byUuid = (/** @type {string} */ u) => w2.gBrowser.tabs.find((t) => uuid(t) === u);
   // Each restored tab, found by its uuid: a missing one throws below.
   const restored = (/** @type {MozTabbrowserTab} */ t) =>
-    /** @type {MozTabbrowserTab} */ (byUuid(uuids.get(t)));
+    /** @type {MozTabbrowserTab} */ (byUuid(uuidOf(t)));
   const [r1, r2] = [a1, a2].map(restored);
   // B's tabs show in its split, so they have their panels.
   const [rb0, rb1] = [b0, b1].map((t) => /** @type {SplitTab} */ (restored(t)));
   Assert.equal(w2.gBrowser.selectedTab, rb1, "B's selected tab is selected");
-  Assert.equal(workspaceIn(model, A.id).activeTab, uuids.get(a2), "A's selected tab is remembered");
+  Assert.equal(workspaceIn(model, A.id).activeTab, uuidOf(a2), "A's selected tab is remembered");
   Assert.ok(r1.hidden && r2.hidden, "A's tabs are hidden");
   Assert.ok(!rb0.hidden && !rb1.hidden, "B's tabs are shown");
   Assert.equal(getTabLabel(r2), "notes", "the renamed tab keeps its label");
@@ -491,6 +494,8 @@ async function wholeWindowRestore() {
 
   const uuid = (/** @type {MozTabbrowserTab} */ t) => SessionStore.getCustomTabValue(t, TAB_KEY);
   const uuids = new Map([a1, a2, foreign, b0, b1].map((t) => [t, uuid(t)]));
+  /** The uuid recorded above for a tab of the list. */
+  const uuidOf = (/** @type {MozTabbrowserTab} */ t) => /** @type {string} */ (uuids.get(t));
   await TabStateFlusher.flushWindow(w1);
   await TestUtils.waitForTick();
   const winState = browserState().windows.find((w) =>
@@ -506,11 +511,11 @@ async function wholeWindowRestore() {
   const ws = (/** @type {string} */ id) => workspaceIn(model, id);
   Assert.deepEqual(
     ws(A.id).tabs.slice(1),
-    [uuids.get(a1), uuids.get(a2), uuids.get(foreign)],
+    [uuidOf(a1), uuidOf(a2), uuidOf(foreign)],
     "A's tabs, the foreign one too, come back with their uuids",
   );
-  Assert.equal(ws(A.id).activeTab, uuids.get(a1), "A's selected tab is remembered");
-  Assert.deepEqual(ws(B.id).tabs, [uuids.get(b0), uuids.get(b1)], "B's tabs come back");
+  Assert.equal(ws(A.id).activeTab, uuidOf(a1), "A's selected tab is remembered");
+  Assert.deepEqual(ws(B.id).tabs, [uuidOf(b0), uuidOf(b1)], "B's tabs come back");
   Assert.equal(model.active, B.id, "B is the active workspace");
   // B's tabs, which show in its split: a missing one throws.
   const byUuid = (/** @type {string} */ u) =>
@@ -518,7 +523,7 @@ async function wholeWindowRestore() {
   const panes2 = view(w2).panes;
   Assert.deepEqual(
     panes2 ? leaves(panes2).map((l) => l.tab) : [],
-    [byUuid(uuids.get(b0)).linkedPanel, byUuid(uuids.get(b1)).linkedPanel],
+    [byUuid(uuidOf(b0)).linkedPanel, byUuid(uuidOf(b1)).linkedPanel],
     "B's pane tree comes back",
   );
   Assert.equal(ww2.health().recovered, null, "no restore was taken as stuck");

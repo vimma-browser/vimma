@@ -361,7 +361,10 @@ one).
     most a few hundred items. Each text's grapheme units are cached, so a key segments only the
     query, not every title and URL again, and a field whose letters cannot occur in order is
     skipped before any tier is tried. Budget: 500 open and 25 closed items, a 22-key sequence,
-    each key under 8 ms in Vitest (a test in `picker.test.mjs`). At most 200 rows are rendered,
+    each key under 8 ms in Vitest (a test in `picker.test.mjs`). (Since changed: the test
+    counts the work a key does instead of timing it, since a wall-clock budget failed on loaded
+    machines, #1144: each field matched once per term in one pass, and only fields whose letters
+    occur in order reach the tiers.) At most 200 rows are rendered,
     a window that follows the selection with `… N more` rows above and below, so `ctrl+n` and
     `Tab` still reach every row. Chromium answers the same problem with a virtualised list
     (`selectable_lazy_list.ts`); a fixed window is simpler and enough for a list one narrows by
@@ -412,7 +415,8 @@ Written first and seen to fail.
     stay in search; type-first: every letter types, `Esc` closes, `ctrl+n` / `ctrl+p` and the
     arrows move; `openPicker(items, { typeFirst, query })` starts typing with the query applied.
   - The budget of decision 10: 500 + 25 items, 22 keys after warm-up passes, each key's fastest
-    of five passes under 8 ms, and no text segmented again (`unitsBuilt`).
+    of five passes under 8 ms, and no text segmented again (`unitsBuilt`). (Since changed: the
+    8 ms check is now a count of fields matched per key, `matchWork`, #1144.)
   - The workspace picker's `m` still moves, and the goto picker's `m` does nothing.
 - `tabsearch.test.mjs` (new, pure): the order (this window, other windows, closed tabs newest
   first, closed windows); the private filter in both directions; the caps (25 and 5); a closed

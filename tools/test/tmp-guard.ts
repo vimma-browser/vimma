@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Vitest global setup (vitest.config.mjs): every test file and every tool it spawns gets a temp
+// Vitest global setup (vitest.config.ts): every test file and every tool it spawns gets a temp
 // dir of its own for the run, and the run fails if anything is left in it. The dir is removed
 // either way, so a leak fails CI loudly but never piles up in /tmp (#207).
 

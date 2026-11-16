@@ -43,7 +43,7 @@ registerCleanupFunction(async () => {
 const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
-const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
+const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
 const logPicker = () => /** @type {any} */ (document.getElementById(LOG_ID));
 /** Each row's cells, joined as `:mcp log`'s one-line form: time, what was called, outcome. */
 const rows = () =>

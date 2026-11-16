@@ -7,7 +7,10 @@
 // it is, for readers who were not part of the work. This check (npm run lint, and CI) fails on a
 // comment that records the process instead: the Markdown check's phrases (review attributions
 // and pointers to the contributor instructions file among them), plus dated and quoted answers
-// ("user: '...'"). A reason from a review stays; its attribution goes.
+// ("user: '...'"). A reason from a review stays; its attribution goes. It also fails on a
+// reference to the retired plan.md ("plan §N"): docs/README.md, "The former plan.md", says where
+// each section went, and the comment cites that page instead. Like every phrase here, it is found
+// in comments only, so a test title or another string that cites the plan is not caught.
 //
 // Only comments are read: `//`, `/* */` (JavaScript, Rust, CSS) and `#` (shell, YAML, Python,
 // TOML), found by a line scan that does not parse strings. A comment block is a run of lines that
@@ -24,13 +27,24 @@ import { PATTERNS, matchPatterns } from "./process-wording.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
+/** A section of plan.md, which docs/ and ARCHITECTURE.md replaced. */
+const PLAN_REF = /\bplan(?:\.md)?\s*§/gi;
+
 const CODE_PATTERNS = [
   ...PATTERNS,
+  PLAN_REF,
   // a dated answer: "The user (2026-10-12): ..." (process-wording: quotes the match)
   /\buser\s+\(20\d\d-/gi,
   // a quoted answer: user: "agent should be able to …" (process-wording: quotes the match)
   /\buser:\s*["'“‘]/gi,
 ];
+
+/**
+ * Files whose comments still cite plan.md, left for a follow-up because open pull requests change
+ * them. Remove each line with its fix; the check reads these files for everything else. Only
+ * comments count: a reference in a test title or another string is not scanned, and is not here.
+ */
+export const PLAN_REF_PENDING: ReadonlySet<string> = new Set(["tools/package/package.mjs"]);
 
 const MARKER = /\bprocess-wording:\s*\S/;
 
@@ -42,7 +56,8 @@ const SCOPE = [
   /^tools\//,
   /^tests\//,
   /^\.github\//,
-  /^eslint\.config\.mjs$/,
+  // the root's tool configs: eslint, stryker, vitest, commitlint and any added later
+  /^[^/]+\.config\.[cm]?[jt]s$/,
 ];
 /** The checks' own tests: their strings quote the phrases, and the line scan reads strings. */
 const OUT_OF_SCOPE = [/^tools\/md-wording\/test\//];
@@ -95,11 +110,19 @@ function commentText(src: string, style: "slash" | "hash"): (string | null)[] {
   });
 }
 
-/** Process wording in a source file's comments, outside blocks exempted by a marker with a reason. */
+/**
+ * Process wording in a source file's comments, outside blocks exempted by a marker with a reason.
+ * `path`, repo-relative, lets a file in PLAN_REF_PENDING keep its plan.md references for now.
+ */
 export function findCommentWording(
   src: string,
   style: "slash" | "hash",
+  path?: string,
 ): { line: number; phrase: string }[] {
+  const patterns =
+    path !== undefined && PLAN_REF_PENDING.has(path)
+      ? CODE_PATTERNS.filter((re) => re !== PLAN_REF)
+      : CODE_PATTERNS;
   const texts = commentText(src, style);
   const found = [];
   let start = 0;
@@ -111,25 +134,21 @@ export function findCommentWording(
     let end = start;
     while (end < texts.length && texts[end] !== null) end++;
     const block = texts.slice(start, end) as string[];
-    if (!MARKER.test(block.join(" ")))
-      found.push(...matchPatterns(block, start + 1, CODE_PATTERNS));
+    if (!MARKER.test(block.join(" "))) found.push(...matchPatterns(block, start + 1, patterns));
     start = end;
   }
   return found;
 }
 
+/** Whether the check reads this repo-relative path by default. */
+export function inScope(path: string): boolean {
+  return SCOPE.some((re) => re.test(path)) && !OUT_OF_SCOPE.some((re) => re.test(path));
+}
+
 /** @returns the tracked files in SCOPE that have comments to read, repo-relative */
 function trackedSources(): string[] {
   const out = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" });
-  return out
-    .split("\0")
-    .filter(
-      (path) =>
-        path &&
-        SCOPE.some((re) => re.test(path)) &&
-        !OUT_OF_SCOPE.some((re) => re.test(path)) &&
-        commentStyle(path) !== null,
-    );
+  return out.split("\0").filter((path) => path && inScope(path) && commentStyle(path) !== null);
 }
 
 function main() {
@@ -140,7 +159,7 @@ function main() {
     const style = commentStyle(path);
     if (style === null) continue;
     const src = readFileSync(resolve(ROOT, path), "utf8");
-    for (const { line, phrase } of findCommentWording(src, style)) {
+    for (const { line, phrase } of findCommentWording(src, style, path)) {
       console.error(`${path}:${line}: process wording in a comment "${phrase}"`);
       problems++;
     }

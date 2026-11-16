@@ -206,3 +206,36 @@ export function isDefaultThroughRouter({ defaultFor, lists, entryFor, resolves, 
     return id !== null && programOf(id) === appPath;
   });
 }
+
+/** A command line whose program needs the shell's quoting rules, which this does not parse. */
+const QUOTED = /["'\\]/;
+
+/**
+ * True when GIO's handler for both http and https runs exactly `appPath`, as Firefox's shell
+ * service checks its own command (CheckHandlerMatchesAppName): the command line's program, found
+ * as the shell finds it, must be that absolute path. Vimma asks this only for vimma-open's path
+ * when something started the shell service before Vimma could name it, so the service took the
+ * binary instead. A program written with quotes or backslashes never counts, which can only give
+ * Firefox's "not default".
+ *
+ * @param {{
+ *   commandFor: (scheme: string) => string,
+ *   which: (program: string) => string,
+ *   appPath: string,
+ * }} options `commandFor` gives GIO's handler's command line for a scheme ("" for none);
+ *   `which` the absolute path the shell runs for a program ("" when it finds none)
+ * @returns {boolean}
+ */
+export function handlersRun({ commandFor, which, appPath }) {
+  if (!appPath.startsWith("/")) {
+    return false;
+  }
+  return BROWSER_SCHEMES.every((scheme) => {
+    const command = commandFor(scheme);
+    if (!command || QUOTED.test(command)) {
+      return false;
+    }
+    const program = commandProgram(command);
+    return program !== "" && which(program) === appPath;
+  });
+}

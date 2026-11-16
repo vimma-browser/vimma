@@ -25,7 +25,7 @@ import {
 } from "../core/agent-act.mjs";
 import { cutTo } from "../core/agent-keys.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
-import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
+import { AgentActors } from "../actors/AgentActors.sys.mjs";
 import { MCP_CHANGED_TOPIC, MCP_ENABLED_PREF, McpHost } from "../host/mcp-ops.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 
@@ -185,7 +185,7 @@ async function pageErrors(browser, since) {
   /** @type {ConsoleEntry[]} */
   const out = [];
   let omitted = 0;
-  const answers = await VimmaActors.agentConsole(browser, FRAME_TIMEOUT_MS, {
+  const answers = await AgentActors.agentConsole(browser, FRAME_TIMEOUT_MS, {
     since,
     max: AGENT_CONSOLE.errors,
     frames: AGENT_CONSOLE.frames,

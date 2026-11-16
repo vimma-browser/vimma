@@ -137,7 +137,7 @@ describe("findBuild", () => {
     });
   });
 
-  it("uses the artifact objdir with XUL_APP_FILE, as tools/mochitest.mjs does", () => {
+  it("uses the artifact objdir with XUL_APP_FILE, as tools/mochitest.ts does", () => {
     expect(findBuild({ artifact: true, engine, exists: exists([art, artIni]) })).toEqual({
       binary: art,
       env: { XUL_APP_FILE: artIni },

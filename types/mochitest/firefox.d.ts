@@ -254,8 +254,6 @@ interface Window {
 
 // engine/browser/components/tabbrowser/Tabbrowser.sys.mjs
 interface Tabbrowser {
-  /** The tab switch in progress, null when none is (`new AsyncTabSwitcher(this)` while one is). */
-  readonly _switcher: AsyncTabSwitcher | null;
   readonly splitViews: MozTabSplitViewWrapper[];
   pinTab(tab: MozTabbrowserTab, options?: { metricsContext?: unknown }): void;
   discardBrowser(tab: MozTabbrowserTab, forceDiscard?: boolean): boolean;
@@ -543,14 +541,6 @@ interface XULElement extends Element, ElementCSSInlineStyle {
   doCommand(): void;
   focus(options?: FocusOptions): void;
 }
-// engine/browser/components/tabbrowser/AsyncTabSwitcher.sys.mjs: a tab switch in progress, which
-// shows the requested tab once its layers are ready.
-interface AsyncTabSwitcher {
-  /** The tab whose layers it waits for, null while it waits for none. */
-  readonly loadingTab: MozTabbrowserTab | null;
-  /** Its events, such as a browser's MozLayerTreeReady (`originalTarget` is the <browser>). */
-  handleEvent(event: { type: string; originalTarget?: EventTarget }, delayed?: boolean): void;
-}
 // engine/browser/components/tabbrowser/content/tabsplitview.mjs: the wrapper is a XUL element
 // (MozXULElement).
 interface MozTabSplitViewWrapper extends XULElement {}
@@ -669,6 +659,8 @@ interface nsICategoryEntry {
 }
 interface nsICategoryManager {
   enumerateCategory(category: string): Iterable<nsICategoryEntry>;
+  /** Throws NS_ERROR_NOT_AVAILABLE when there is no such entry. */
+  getCategoryEntry(category: string, entry: string): string;
 }
 
 // engine/toolkit/components/commandlines/nsICommandLine.idl
@@ -1201,8 +1193,8 @@ interface nsIRequest {
 }
 
 // engine/toolkit/components/downloads/Downloads.sys.mjs, DownloadList.sys.mjs and
-// DownloadCore.sys.mjs: the downloads module as the tests use it. A test file types its import
-// of the module with DownloadsApi (ChromeUtils.importESModule gives Firefox's modules as `any`).
+// DownloadCore.sys.mjs: the downloads module as the tests use it, which their import of it gives
+// (types/mochitest/firefox-test-modules.d.ts).
 // The list kinds are strings ("{Downloads.PUBLIC}").
 interface DownloadsApi {
   readonly PUBLIC: string;

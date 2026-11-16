@@ -33,7 +33,7 @@ let worker = null;
 const texts = new Map();
 /** @type {Job[]} */
 let queue = [];
-/** @type {{ id: number, job: Job, timer: unknown } | null} */
+/** @type {{ id: number, job: Job, timer: number } | null} */
 let running = null;
 let lastId = 0;
 let lastKey = 0;
