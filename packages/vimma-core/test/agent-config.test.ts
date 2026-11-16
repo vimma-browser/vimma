@@ -20,11 +20,10 @@ const anthropic = {
   vision: true,
 };
 
-/** @param {string} text */
-const agentOf = (text) => {
+const agentOf = (text: string) => {
   const r = parseConfig(text);
   expect(r.errors).toEqual([]);
-  return /** @type {any} */ (r.config).agent;
+  return (r.config as any).agent;
 };
 
 describe("addAgentProviderText", () => {
@@ -91,10 +90,7 @@ describe("addAgentProviderText", () => {
     );
     if (!("text" in r)) throw new Error(r.error);
     expect(r.name).toBe("ollama-2");
-    expect(agentOf(r.text).providers.map((/** @type {any} */ p) => p.name)).toEqual([
-      "ollama",
-      "ollama-2",
-    ]);
+    expect(agentOf(r.text).providers.map((p: any) => p.name)).toEqual(["ollama", "ollama-2"]);
   });
 
   test("a model name with quotes, backslashes and DEL stays one string", () => {
@@ -111,7 +107,7 @@ describe("addAgentProviderText", () => {
   test("never writes a key, and refuses a file that does not parse", () => {
     const r = addAgentProviderText(
       null,
-      /** @type {any} */ ({ ...anthropic, key: "sk-secret", apiKey: "sk-secret" }),
+      { ...anthropic, key: "sk-secret", apiKey: "sk-secret" } as any,
       { makeDefault: true },
     );
     if (!("text" in r)) throw new Error(r.error);
@@ -132,7 +128,7 @@ describe("addAgentProviderText", () => {
     if (!("text" in r)) throw new Error(r.error);
     const agent = agentOf(r.text);
     expect(agent.default).toBe("ollama");
-    expect(agent.providers.map((/** @type {any} */ p) => p.name)).toEqual(["lm", "ollama"]);
+    expect(agent.providers.map((p: any) => p.name)).toEqual(["lm", "ollama"]);
   });
 
   // docs/specs/builtin-agent-cli.md Behaviour 2, C4: an agent CLI setup picked goes in by name,
@@ -187,7 +183,7 @@ describe("addAgentProviderText", () => {
     expect(r.text.split("[[agent.providers]]")[2]).toBe(
       '\nname = "claude-2"\nkind = "cli"\ncli = "claude-code"\nmodel = "opus"\nmax_minutes = 5\n',
     );
-    const added = agentOf(r.text).providers.find((/** @type {any} */ p) => p.name === "claude-2");
+    const added = agentOf(r.text).providers.find((p: any) => p.name === "claude-2");
     expect(added.maxMinutes).toBe(5);
   });
 });

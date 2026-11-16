@@ -4,25 +4,6 @@
 # tools/test/mjs-ratchet.test.ts fails until it does. The hooks of tools/claude-plugin and the
 # base-branch guards (tools/ci/docs-only.mjs, tools/ci/key-guard.mjs and its test) stay .mjs
 # (ADR-025, decision 7) and are not listed.
-packages/vimma-core/test/agent-act.test.mjs
-packages/vimma-core/test/agent-budget.test.mjs
-packages/vimma-core/test/agent-chat.test.mjs
-packages/vimma-core/test/agent-checkpoint.test.mjs
-packages/vimma-core/test/agent-cli.test.mjs
-packages/vimma-core/test/agent-config.test.mjs
-packages/vimma-core/test/agent-downloads.test.mjs
-packages/vimma-core/test/agent-gate.test.mjs
-packages/vimma-core/test/agent-keys.test.mjs
-packages/vimma-core/test/agent-loop.test.mjs
-packages/vimma-core/test/agent-owners.test.mjs
-packages/vimma-core/test/agent-prompt.test.mjs
-packages/vimma-core/test/agent-providers.test.mjs
-packages/vimma-core/test/agent-results.test.mjs
-packages/vimma-core/test/agent-setup.test.mjs
-packages/vimma-core/test/agent-store.test.mjs
-packages/vimma-core/test/agent-tools.test.mjs
-packages/vimma-core/test/agent-wait.test.mjs
-packages/vimma-core/test/agent.test.mjs
 packages/vimma-core/test/budget.mjs
 packages/vimma-core/test/firefox-keys.test.mjs
 packages/vimma-core/test/fuzz/agent-downloads.fuzz.test.mjs
@@ -39,7 +20,6 @@ packages/vimma-core/test/fuzz/strings.fuzz.test.mjs
 packages/vimma-core/test/fuzz/theme.fuzz.test.mjs
 packages/vimma-core/test/fuzz/toml-arb.mjs
 packages/vimma-core/test/guide-agent-examples.test.mjs
-packages/vimma-core/test/load-errors.test.mjs
 packages/vimma-core/test/updates.test.mjs
 tools/artifact-build/artifact-build.mjs
 tools/artifact-build/test/artifact-build.test.mjs

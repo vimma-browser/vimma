@@ -12,33 +12,32 @@ import {
   parseReply,
   providerErrorText,
 } from "../src/agent/agent-providers.mjs";
+import type { ChatMessage, Provider, ToolDef } from "../src/agent/agent-providers.mjs";
 
-/** @param {string} name */
-const fixture = (name) =>
+const fixture = (name: string) =>
   JSON.parse(
     readFileSync(new URL(`fixtures/agent-providers/${name}.json`, import.meta.url), "utf8"),
   );
 
 const KEY = "sk-test-0123456789abcdefa1b2";
-/** @type {import("../src/agent/agent-providers.mjs").ToolDef} */
-const OPEN_TOOL = {
+const OPEN_TOOL: ToolDef = {
   name: "vimma_open",
   description: "Open a URL.",
   inputSchema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
 };
 const TOOLS = [OPEN_TOOL];
-/** @typedef {import("../src/agent/agent-providers.mjs").Provider} Provider */
-/** @type {Provider} */
-const anthropic = {
+const anthropic: Provider = {
   kind: "anthropic",
   endpoint: "https://api.anthropic.com/",
   model: "claude-sonnet-4-5",
 };
-/** @type {Provider} */
-const local = { kind: "openai", endpoint: "http://127.0.0.1:11434/v1", model: "qwen2.5:1.5b" };
+const local: Provider = {
+  kind: "openai",
+  endpoint: "http://127.0.0.1:11434/v1",
+  model: "qwen2.5:1.5b",
+};
 
-/** @type {import("../src/agent/agent-providers.mjs").ChatMessage[]} */
-const HISTORY = [
+const HISTORY: ChatMessage[] = [
   { role: "user", text: "Open the shop" },
   {
     role: "assistant",
@@ -351,11 +350,9 @@ describe("errors", () => {
 
 describe("callModel", () => {
   test("posts to the endpoint without credentials or redirects, and parses the reply", async () => {
-    /** @type {any[]} */
-    const calls = [];
+    const calls: any[] = [];
     const signal = new AbortController().signal;
-    /** @type {any} */
-    const fetch = async (/** @type {string} */ url, /** @type {any} */ init) => {
+    const fetch: any = async (url: string, init: any) => {
       calls.push({ url, init });
       return { ok: true, status: 200, text: async () => JSON.stringify(fixture("ollama-text")) };
     };
@@ -379,16 +376,14 @@ describe("callModel", () => {
   });
 
   test("an HTTP error is a ProviderError without the key", async () => {
-    /** @type {any} */
-    const fetch = async () => ({ ok: false, status: 401, text: async () => `bad key ${KEY}` });
+    const fetch: any = async () => ({ ok: false, status: 401, text: async () => `bad key ${KEY}` });
     const call = callModel(anthropic, { fetch, key: KEY, system: "", tools: [], messages: [] });
     await expect(call).rejects.toThrow(ProviderError);
     await expect(call).rejects.toThrow("401: bad key •••");
   });
 
   test("a reply that is not JSON is a ProviderError", async () => {
-    /** @type {any} */
-    const fetch = async () => ({ ok: true, status: 200, text: async () => "<html>" });
+    const fetch: any = async () => ({ ok: true, status: 200, text: async () => "<html>" });
     await expect(
       callModel(local, { fetch, key: "", system: "", tools: [], messages: [] }),
     ).rejects.toThrow(/not JSON/);
@@ -396,8 +391,7 @@ describe("callModel", () => {
 
   test("a refused endpoint makes no request", async () => {
     let called = false;
-    /** @type {any} */
-    const fetch = async () => {
+    const fetch: any = async () => {
       called = true;
     };
     await expect(
@@ -435,8 +429,7 @@ describe("checkEndpoint (B11, Behaviour 9)", () => {
 });
 
 describe("edge shapes", () => {
-  /** @type {import("../src/agent/agent-providers.mjs").ChatMessage[]} */
-  const odd = [
+  const odd: ChatMessage[] = [
     { role: "user", text: "go" },
     // A call whose arguments were broken goes back with empty arguments, beside its error.
     {

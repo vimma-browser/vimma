@@ -15,6 +15,7 @@ import {
   storedRecord,
   taskSummary,
 } from "../src/agent/agent-store.mjs";
+import type { StoredEntry } from "../src/agent/agent-store.mjs";
 
 const provider = {
   name: "ollama",
@@ -24,8 +25,7 @@ const provider = {
   vision: false,
 };
 
-/** @type {import("../src/agent/agent-store.mjs").StoredEntry[]} */
-const stored = [
+const stored: StoredEntry[] = [
   { kind: "user", text: "buy milk" },
   { kind: "agent", text: "I'll open the shop." },
   { kind: "summary", text: "task done · 4 steps · 12k tokens · hosts: shop.example" },

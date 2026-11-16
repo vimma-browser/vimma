@@ -38,12 +38,11 @@ import {
 import { AGENT_LINKS } from "../src/agent/agent-keys.mjs";
 import { parseHintReply } from "../src/page/hints.mjs";
 import { budget } from "./budget.mjs";
-/** @import { AgentElementTarget } from "../src/agent/agent-act.mjs" */
-/** @import { AgentElementInfo } from "../src/agent/agent-element.mjs" */
+import type { AgentElementTarget } from "../src/agent/agent-act.mjs";
+import type { AgentElementInfo } from "../src/agent/agent-element.mjs";
 
 const rect = { x: 10, y: 20, width: 30, height: 10 };
-/** @param {number} y @param {number} [x] */
-const at = (y, x = 0) => ({ x, y, width: 10, height: 10 });
+const at = (y: number, x: number = 0) => ({ x, y, width: 10, height: 10 });
 
 describe("sensitive fields (F6)", () => {
   test("passwords, one-time codes and every cc-* name are sensitive; email is not", () => {
@@ -159,7 +158,7 @@ describe("the child's description of an element (F5)", () => {
 
 describe("a hint reply for vimma_elements (F2)", () => {
   const info = { kind: "button", text: "Sign up" };
-  const one = (/** @type {object} */ t, /** @type {unknown[]} */ forms = []) => ({
+  const one = (t: object, forms: unknown[] = []) => ({
     targets: [t],
     frames: [],
     forms,
@@ -185,7 +184,7 @@ describe("a hint reply for vimma_elements (F2)", () => {
   });
 
   test("a target without a description, or with a bad one, or a bad form drops the frame", () => {
-    for (const [t, forms] of /** @type {[object, unknown[]][]} */ ([
+    for (const [t, forms] of [
       [{ id: 0, rect, kind: "click" }, []],
       [{ id: 0, rect, kind: "click", agent: { kind: "nope", text: "" } }, []],
       [{ id: 0, rect, kind: "click", agent: { ...info, form: 0 } }, []],
@@ -196,7 +195,7 @@ describe("a hint reply for vimma_elements (F2)", () => {
         { id: 0, rect, kind: "click", agent: info },
         Array.from({ length: 65 }, () => ({ method: "get", action: "https://a/" })),
       ],
-    ])) {
+    ] as [object, unknown[]][]) {
       expect(parseHintReply(one(t, forms), { elements: true }), JSON.stringify(t)).toBeNull();
     }
   });
@@ -222,8 +221,7 @@ describe("labels (F5)", () => {
 describe("the element list (F5; security.md M31)", () => {
   const signup = { key: "1:0", method: "post", action: "https://example.com/api/signup" };
   const search = { key: "1:1", method: "get", action: "https://example.com/search" };
-  /** @param {string} label @param {AgentElementInfo} info @param {Partial<AgentElementTarget>} [more] */
-  const el = (label, info, more = {}) => ({
+  const el = (label: string, info: AgentElementInfo, more: Partial<AgentElementTarget> = {}) => ({
     label,
     target: { rect, kind: "click", info, ...more },
   });
@@ -404,8 +402,7 @@ describe("the element list (F5; security.md M31)", () => {
 // labels; the labels stay those of the page now (security.md M31).
 describe("compact element lists (agent-speed S4)", () => {
   const basket = { key: "1:0", method: "post", action: "https://shop.example/basket" };
-  /** @param {string} label @param {AgentElementInfo} info @param {Partial<AgentElementTarget>} [more] */
-  const el = (label, info, more = {}) => ({
+  const el = (label: string, info: AgentElementInfo, more: Partial<AgentElementTarget> = {}) => ({
     label,
     target: { rect, kind: "click", info, ...more },
   });
@@ -502,8 +499,10 @@ describe("compact element lists (agent-speed S4)", () => {
 // builtin-agent B2 (agent-speed Behaviour 4): `query` and `kinds` narrow a list to the elements
 // an agent asks for.
 describe("element list filters (builtin-agent B2)", () => {
-  /** @param {string} label @param {AgentElementInfo} info */
-  const el = (label, info) => ({ label, target: { rect, kind: "click", info } });
+  const el = (label: string, info: AgentElementInfo) => ({
+    label,
+    target: { rect, kind: "click", info },
+  });
   const page = [
     el("aa", { kind: "link", text: "Dairy" }),
     el("as", { kind: "field", text: "", type: "search", caption: "Search the shop" }),
@@ -511,7 +510,7 @@ describe("element list filters (builtin-agent B2)", () => {
     el("af", { kind: "button", text: "Add Oat flakes to basket" }),
     el("ag", { kind: "field", text: "", type: "number", name: "qty" }),
   ];
-  const labels = (/** @type {{ label: string }[]} */ list) => list.map((e) => e.label);
+  const labels = (list: { label: string }[]) => list.map((e) => e.label);
 
   test("no filter keeps every element", () => {
     expect(labels(filterAgentElements(page, {}))).toEqual(["aa", "as", "ad", "af", "ag"]);
@@ -985,7 +984,7 @@ describe("console reads (F22-F24)", () => {
     expect(scriptErrorLevel(8)).toBe(null);
     expect(scriptErrorLevel(9)).toBe("warn");
     expect(scriptErrorLevel(Number.NaN)).toBe(null);
-    expect(scriptErrorLevel(/** @type {any} */ ("0"))).toBe(null);
+    expect(scriptErrorLevel("0" as any)).toBe(null);
   });
 
   test("an nsIScriptError's source, from Firefox's category", () => {
@@ -1008,7 +1007,7 @@ describe("console reads (F22-F24)", () => {
     expect(scriptErrorSource("Security")).toBe("network");
     expect(scriptErrorSource("HTTPS-Only Mode")).toBe("network");
     expect(scriptErrorSource("DOM")).toBe("other");
-    expect(scriptErrorSource(/** @type {any} */ (null))).toBe("other");
+    expect(scriptErrorSource(null as any)).toBe("other");
   });
 
   test("a console call's arguments: primitives as text, anything else as its type", () => {
@@ -1030,7 +1029,7 @@ describe("console reads (F22-F24)", () => {
       "[object] [function] [symbol] [object]",
     );
     expect(ran).toBe(false);
-    expect(consoleArgsText(/** @type {any} */ ("not an array"))).toBe("");
+    expect(consoleArgsText("not an array" as any)).toBe("");
     expect(consoleArgsText([])).toBe("");
   });
 
@@ -1089,16 +1088,16 @@ describe("console reads (F22-F24)", () => {
   });
 
   test("the lists: newest first, only after since, at most 100 each, within the bytes", () => {
-    const err = (/** @type {number} */ time, message = `e${time}`) => ({
-      level: /** @type {const} */ ("error"),
-      source: /** @type {const} */ ("script"),
+    const err = (time: number, message = `e${time}`) => ({
+      level: "error" as const,
+      source: "script" as const,
       message,
       file: "https://example.com/app.js",
       line: 1,
       column: 1,
       time,
     });
-    const req = (/** @type {number} */ time) => ({
+    const req = (time: number) => ({
       method: "GET",
       url: `https://example.com/api/${time}`,
       status: 500,
