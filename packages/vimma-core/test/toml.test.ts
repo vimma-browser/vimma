@@ -263,28 +263,34 @@ describe("setTomlKeys", () => {
 describe("parseToml: the unclosed-bracket hint", () => {
   // The parser reports an unterminated array where it notices; the hint names where it opened,
   // skipping brackets inside comments and strings, and only for brackets opened on earlier lines.
-  test.each([
-    ["a = [\n1,\n[t]\n", 3, 'invalid value (unclosed "[" opened at line 1?)'],
-    ["x = 1\na = [\n1,\n[t]\n", 4, 'invalid value (unclosed "[" opened at line 2?)'],
-    ["a = [\n[\n[t]\n", 3, 'invalid value (unclosed "[" opened at line 2?)'],
-    ["a = [[1], \n[t]\n", 2, 'invalid value (unclosed "[" opened at line 1?)'],
-    [
-      "a = { b = [1] \n[t]\n",
-      2,
-      'expected comma or end of structure (unclosed "{" opened at line 1?)',
-    ],
-    ["a = [ # [ {\n1,\n[t]\n", 3, 'invalid value (unclosed "[" opened at line 1?)'],
-    ["a = [ \"[\" , '{',\n1,\n[t]\n", 3, 'invalid value (unclosed "[" opened at line 1?)'],
-    ['a = [ "x\\"[",\n1,\n[t]\n', 3, 'invalid value (unclosed "[" opened at line 1?)'],
-    ['a = [ """\n[\n""",\n1,\n[t]\n', 5, 'invalid value (unclosed "[" opened at line 1?)'],
-    ["a = [ '''\n[\n''',\n1,\n[t]\n", 5, 'invalid value (unclosed "[" opened at line 1?)'],
-    ['a = """\nx\n"""\nb = [\n[t]\n', 5, 'invalid value (unclosed "[" opened at line 4?)'],
-    ["a = [\n1 1 ]\n", 2, 'expected comma or end of structure (unclosed "[" opened at line 1?)'],
-    ["a = [ #x\n1 1\n", 2, 'expected comma or end of structure (unclosed "[" opened at line 1?)'],
-    ["a = [ \r\n1 1\n", 2, 'expected comma or end of structure (unclosed "[" opened at line 1?)'],
-  ])("%j fails at line %i: %s", (text, line, message) => {
+  // The parser's own wording and columns are smol-toml's: only Vimma's hint is pinned here.
+  const syntaxError = (text: string) => {
     const r = parseToml(text);
-    expect(!r.ok && r.error).toMatchObject({ line, message });
+    if (r.ok) throw new Error(`parsed: ${text}`);
+    expect(r.error.column).toBeGreaterThan(0);
+    return r.error;
+  };
+
+  test.each([
+    ["a = [\n1,\n[t]\n", 3, '(unclosed "[" opened at line 1?)'],
+    ["x = 1\na = [\n1,\n[t]\n", 4, '(unclosed "[" opened at line 2?)'],
+    ["a = [\n[\n[t]\n", 3, '(unclosed "[" opened at line 2?)'],
+    ["a = [[1], \n[t]\n", 2, '(unclosed "[" opened at line 1?)'],
+    ["a = { b = [1] \n[t]\n", 2, '(unclosed "{" opened at line 1?)'],
+    ["a = [ # [ {\n1,\n[t]\n", 3, '(unclosed "[" opened at line 1?)'],
+    ["a = [ \"[\" , '{',\n1,\n[t]\n", 3, '(unclosed "[" opened at line 1?)'],
+    ['a = [ "x\\"[",\n1,\n[t]\n', 3, '(unclosed "[" opened at line 1?)'],
+    ['a = [ """\n[\n""",\n1,\n[t]\n', 5, '(unclosed "[" opened at line 1?)'],
+    ["a = [ '''\n[\n''',\n1,\n[t]\n", 5, '(unclosed "[" opened at line 1?)'],
+    ['a = """\nx\n"""\nb = [\n[t]\n', 5, '(unclosed "[" opened at line 4?)'],
+    ["a = [\n1 1 ]\n", 2, '(unclosed "[" opened at line 1?)'],
+    ["a = [ #x\n1 1\n", 2, '(unclosed "[" opened at line 1?)'],
+    ["a = [ \r\n1 1\n", 2, '(unclosed "[" opened at line 1?)'],
+  ])("%j fails at line %i, ending %s", (text, line, hint) => {
+    const error = syntaxError(text);
+    expect(error.line).toBe(line);
+    expect(error.message.endsWith(` ${hint}`)).toBe(true);
+    expect(error.message.indexOf("(unclosed")).toBe(error.message.length - hint.length);
   });
 
   test.each([
@@ -296,22 +302,13 @@ describe("parseToml: the unclosed-bracket hint", () => {
     "a = '''\n[\n'''\nb = 1 1\n",
     "a = [1]\nb = 1 1\n",
     "a = {b = 1}\nb = 1 1\n",
-  ])("%j: brackets in comments, strings or closed ones give no hint", (text) => {
-    const r = parseToml(text);
-    expect(!r.ok && r.error).toEqual({
-      line: text.split("\n").length - 1,
-      column: 7,
-      message: "each key-value declaration must be followed by an end-of-line",
-    });
-  });
-
-  test("a bracket opened on the error's own line gives no hint", () => {
-    const r = parseToml("a = [1 1]\n");
-    expect(!r.ok && r.error).toEqual({
-      line: 1,
-      column: 8,
-      message: "expected comma or end of structure",
-    });
+    // A bracket opened on the error's own line.
+    "a = [1 1]\n",
+  ])("%j: brackets in comments, strings, closed or on the error's line give no hint", (text) => {
+    const error = syntaxError(text);
+    expect(error.line).toBe(text.split("\n").length - 1);
+    expect(error.message.length).toBeGreaterThan(0);
+    expect(error.message).not.toContain("(unclosed");
   });
 });
 
@@ -337,7 +334,8 @@ describe("locateKeys: whitespace, comments, strings and nesting", () => {
     'w = "s#" # x', // 18
     "z = 1", // 19
   ].join("\n");
-  const lineOf = locateKeys(text);
+  // Built inside each test, so per-test coverage (Stryker) sees the scan.
+  const lineOf = (path: (string | number)[]) => locateKeys(text)(path);
 
   test("the fixture parses", () => {
     expect(parseToml(text)).toMatchObject({
@@ -468,9 +466,8 @@ describe("setTomlKeys: what a line edit may change", () => {
   });
 
   test("a syntax error is returned as the parser reports it", () => {
-    expect(set("[bad\n", "search", "default", 1)).toEqual({
-      ok: false,
-      error: { line: 1, column: 5, message: "illegal character in key" },
-    });
+    const parsed = parseToml("[bad\n");
+    expect(parsed.ok).toBe(false);
+    expect(set("[bad\n", "search", "default", 1)).toEqual(parsed);
   });
 });

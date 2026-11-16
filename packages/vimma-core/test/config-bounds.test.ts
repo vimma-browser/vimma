@@ -499,8 +499,13 @@ describe("config edges", () => {
 
   test("keys left out of a workspace or [theme] are absent, not undefined", () => {
     const c = parseConfig('[workspaces.w]\ncolor = "blue"\n').config;
-    expect(Object.keys(c?.workspaces[0] ?? {})).toEqual(["name", "color", "icon", "autofill"]);
-    expect(Object.keys(c?.theme ?? {})).toEqual(["source", "name", "font", "colors"]);
+    expect(Object.keys(c?.workspaces[0] ?? {}).sort()).toEqual([
+      "autofill",
+      "color",
+      "icon",
+      "name",
+    ]);
+    expect(Object.keys(c?.theme ?? {}).sort()).toEqual(["colors", "font", "name", "source"]);
   });
 
   test("a file that does not parse has no warnings", () => {
