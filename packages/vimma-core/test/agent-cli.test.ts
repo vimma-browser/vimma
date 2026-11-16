@@ -1249,6 +1249,77 @@ describe("gemini's stream (C7, C8)", () => {
     expect(stream.failed).toBe(false);
   });
 
+  test("a call to another mcp server left unanswered ends the run (M56)", () => {
+    // Gemini CLI answers every call before its `result`, so one still open there, or at the
+    // stream's end with no `result`, was never matched: neither refused nor known to be safe.
+    const use = JSON.stringify({
+      type: "tool_use",
+      tool_name: "mcp_other_read",
+      tool_id: "a",
+      parameters: {},
+    });
+    const done = JSON.stringify({ type: "result", status: "success", stats: {} });
+    const answers = [
+      "",
+      JSON.stringify({ type: "tool_result", tool_id: "b", status: "success" }),
+      JSON.stringify({ type: "tool_result", status: "success" }),
+      JSON.stringify({ type: "tool_result", tool_id: "", status: "success" }),
+    ];
+    for (const answer of answers) {
+      for (const tail of [`\n${done}\n`, "\n"]) {
+        const { out, stream } = geminiEvents(`${use}\n${answer}${tail}`);
+        expect(out).toEqual([
+          { type: "own-tool", id: "a", text: "gemini ran its own tool: mcp_other_read {}" },
+          {
+            type: "fail",
+            error: "gemini called an MCP server that is not Vimma's: mcp_other_read",
+          },
+        ]);
+        expect(stream.failed).toBe(true);
+      }
+    }
+    // A guess refused by its id, and Vimma's or the CLI's own calls left open, still end well.
+    const refused = JSON.stringify({
+      type: "tool_result",
+      tool_id: "a",
+      status: "error",
+      error: { type: "tool_not_registered", message: "not found" },
+    });
+    const own = [
+      { type: "tool_use", tool_name: "mcp_vimma_chat_vimma_tabs", tool_id: "v", parameters: {} },
+      { type: "tool_use", tool_name: "read_file", tool_id: "r", parameters: {} },
+    ].map((l) => JSON.stringify(l));
+    const { out, stream } = geminiEvents([use, refused, ...own, done].join("\n"));
+    expect(out.map((e) => e.type)).toEqual(["own-tool", "own-tool-refused", "own-tool", "result"]);
+    expect(out.at(-1)).toMatchObject({ type: "result", ok: true });
+    expect(stream.failed).toBe(false);
+  });
+
+  test("an id reused while its call is open ends the run (M56)", () => {
+    // The later call would take the earlier one's result: another server's read as Vimma's.
+    const use = (name: string, id: string) =>
+      JSON.stringify({ type: "tool_use", tool_name: name, tool_id: id, parameters: {} });
+    const ran = (id: string) =>
+      JSON.stringify({ type: "tool_result", tool_id: id, status: "success" });
+    const reused = { type: "fail", error: "gemini gave two open tool calls one id: a" };
+    for (const first of ["mcp_other_read", "read_file", "mcp_vimma_chat_vimma_tabs"]) {
+      const { out, stream } = geminiEvents(
+        [use(first, "a"), use("mcp_vimma_chat_vimma_tabs", "a"), ran("a")].join("\n"),
+      );
+      expect(out.at(-1)).toEqual(reused);
+      expect(out.filter((e) => e.type === "fail")).toHaveLength(1);
+      expect(stream.failed).toBe(true);
+    }
+    // An id used again once its call is answered is a new call.
+    const { out, stream } = geminiEvents(
+      [use("mcp_vimma_chat_vimma_tabs", "a"), ran("a"), use("read_file", "a"), ran("a")].join("\n"),
+    );
+    expect(out).toEqual([
+      { type: "own-tool", id: "a", text: "gemini ran its own tool: read_file {}" },
+    ]);
+    expect(stream.failed).toBe(false);
+  });
+
   test("a step its policy refuses is marked refused", () => {
     const lines = [
       { type: "tool_use", tool_name: "write_file", tool_id: "w", parameters: { file_path: "/a" } },
