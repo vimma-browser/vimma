@@ -167,7 +167,9 @@ shift is already folded for printable characters:
   ASCII letter (Latvian ergonomic, Esperanto nativo, Vietnamese aderty, Kikuyu, Kurdish F,
   `ru(ruintl_ru)`, `hr(us)`) gets the `ctrl+alt` chord from Windows' left ctrl+alt and the `alt`
   chord from macOS Option instead of the bare letter. An unbound chord passes to the page, so the
-  letter still types unless the chord is bound. Linux AltGr reports no alt, so it is unaffected.
+  letter still types unless the chord is bound; only `hr(us)` (AltGr+`KeyY`) and `vn(aderty)`
+  (AltGr+`KeyW`) put a letter of a default chord there, z, so `ctrl+alt+z` would toggle the
+  sidebar instead. Linux AltGr reports no alt, so it is unaffected.
 
 Then alt is dropped, and ctrl too when ctrl and alt were both down. So Finnish AltGr+7 is `{`,
 AltGr+4 is `$` (US shift+4 is also `$`, but shift is up), Mac Option+shift+8 is `{`. A genuine
