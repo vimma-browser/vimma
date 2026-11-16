@@ -355,15 +355,11 @@ pub(super) fn open_args(arguments: &BTreeMap<String, Value>) -> Result<ToolCall,
     })
 }
 
-/// C0 but the tab, DEL, C1, and the bidirectional and invisible characters (vimma-core's
-/// `agent-keys` check): the question in Vimma must show the keys that run.
+/// C0 but the tab, DEL, C1, and the bidirectional and invisible characters of
+/// `FILL_INVISIBLE` (vimma-core's `agent-keys` check): the question in Vimma must show the keys
+/// that run.
 fn keys_control(c: char) -> bool {
-    (c <= '\u{1f}' && c != '\t')
-        || ('\u{7f}'..='\u{9f}').contains(&c)
-        || matches!(c, '\u{ad}' | '\u{61c}' | '\u{feff}')
-        || ('\u{200b}'..='\u{200f}').contains(&c)
-        || ('\u{2028}'..='\u{202e}').contains(&c)
-        || ('\u{2060}'..='\u{2069}').contains(&c)
+    c != '\t' && (c <= '\u{1f}' || !fill_char_ok(c))
 }
 
 /// `vimma_keys`'s arguments (mcp-drive D15): the size and characters of the keys, each find
@@ -667,6 +663,36 @@ mod tests {
             assert_eq!(at(&r, &["id"]), &Value::Number(5.0));
             let text = tool_error_text(&r);
             assert!(text.contains(says), "{name} {arguments}: {text}");
+        }
+    }
+
+    // mcp-drive D15 (security.md M16): every character a fill refuses as invisible is refused
+    // in keys and in an element list's query, as vimma-core refuses it: U+206A to U+206F among
+    // them (#1205), which drew nothing, so "/foo\u{206a}bar<CR>" was asked as a find of "foobar".
+    #[test]
+    fn keys_with_any_invisible_character_are_tool_errors() {
+        let mut p = Protocol::new();
+        reply(&mut p, INIT);
+        for cp in FILL_INVISIBLE.iter().flat_map(|&(a, b)| [a, b]) {
+            if cp == 0x9 {
+                continue;
+            }
+            // A JSON escape, as an agent would send it: two UTF-16 units past the BMP.
+            let c = char::from_u32(cp).expect("a scalar value");
+            let escaped: String = c
+                .encode_utf16(&mut [0; 2])
+                .iter()
+                .map(|u| format!("\\u{u:04x}"))
+                .collect();
+            let arguments = format!(r#"{{"tab":"1","keys":"/foo{escaped}bar<CR>"}}"#);
+            let r = reply(&mut p, &call_line(5, "vimma_keys", &arguments));
+            assert!(
+                tool_error_text(&r).contains("control characters"),
+                "{cp:x}: {r}"
+            );
+            let arguments = format!(r#"{{"tab":"1","query":"a{escaped}b"}}"#);
+            let r = reply(&mut p, &call_line(5, "vimma_elements", &arguments));
+            assert!(tool_error_text(&r).contains("query must be"), "{cp:x}: {r}");
         }
     }
 
