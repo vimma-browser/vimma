@@ -76,7 +76,8 @@ import {
  * @typedef {Pick<Tabbrowser, "tabpanels" | "_switcher"> & { tabs: Tab[], selectedTab: Tab,
  *   tabContainer: Element, splitViews: Wrapper[],
  *   addTabSplitView: (tabs: Tab[], options?: object) => Wrapper,
- *   addTrustedTab: (url: string, options?: object) => Tab, unpinTab: (tab: Tab) => void }} TabBrowser
+ *   addTrustedTab: (url: string, options?: object) => Tab, unpinTab: (tab: Tab) => void,
+ *   moveTabAfter: (tab: Tab, target: Tab) => void }} TabBrowser
  * @typedef {{ ok: true } | { ok: false, reason: string }} PaneResult
  * @typedef {object} Adoption  how splits made outside Vimma map onto workspaces (WindowWorkspaces)
  * @property {(tab: Tab) => string | undefined} workspaceOf  the tab's workspace id; undefined:
@@ -198,6 +199,12 @@ export class PaneView {
   #ended = [];
   /** config `[panes] max_splits` (docs/specs/multiple-splits.md decision 7) */
   maxSplits = MAX_SPLITS_DEFAULT;
+  /**
+   * Config `[panes] new_tab`: a new foreground tab while the view shows goes alone beside it
+   * ("alone") or into the focused pane ("pane"), docs/specs/new-tab-in-split.md.
+   * @type {"alone" | "pane"}
+   */
+  newTab = mergeWithDefaults({}).panes.newTab;
   /**
    * @type {Map<string, Slot & { number: number, others: Map<number, Slot> }>}
    */
@@ -962,10 +969,31 @@ export class PaneView {
     const { panes: next, change } = pickTab(panes, tab.linkedPanel || "", {
       opened,
       canJoin: this.#canShow(tab),
+      newTab: this.newTab,
     });
     if (change === "none") return;
+    if (change === "beside") this.#placeBeside(tab, panes);
     this.#panes = next;
     this.reconcile();
+  }
+
+  /**
+   * Moves a new tab shown alone right after the split's tabs (docs/specs/new-tab-in-split.md
+   * decision 3), so it sits next to the work it came from. A tab opened from a link keeps
+   * Firefox's place for it: with `browser.tabs.insertRelatedAfterCurrent` that is after the
+   * split's wrapper already, chained after earlier tabs from the same page
+   * (Tabbrowser.sys.mjs `#insertTabAtIndex`), whose order a move would break. `moveTabAfter` on
+   * a split's tab moves past its wrapper, never into it (`#moveTabNextTo`).
+   * @param {Tab} tab
+   * @param {Panes} panes
+   */
+  #placeBeside(tab, panes) {
+    if (tab.openerTab) return;
+    const gBrowser = gBrowserOf(this.#win);
+    const ids = new Set(leaves(panes).map((l) => l.tab));
+    const last = gBrowser.tabs.filter((t) => ids.has(t.linkedPanel)).at(-1);
+    if (!last || gBrowser.tabs.indexOf(tab) === gBrowser.tabs.indexOf(last) + 1) return;
+    gBrowser.moveTabAfter(tab, last);
   }
 
   /**

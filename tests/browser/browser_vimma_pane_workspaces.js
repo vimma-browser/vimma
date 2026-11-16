@@ -6,8 +6,9 @@
 // its own pane layout and focused pane across ctrl+b ) / ctrl+b (, and a switch leaves the other
 // workspace's layout alone; a session restore brings back every workspace's layout (the shown
 // one and the parked ones) and focus. A tab picked from outside the split shows alone and the
-// split waits as a hidden view until one of its tabs is picked; a new foreground tab still opens in
-// the focused pane (docs/specs/side-panel-unsplit.md decisions 20-24).
+// split waits as a hidden view until one of its tabs is picked (docs/specs/side-panel-unsplit.md
+// decisions 20-24); a new foreground tab shows alone right after the split, or opens in the
+// focused pane with [panes] new_tab = "pane" (docs/specs/new-tab-in-split.md).
 
 "use strict";
 
@@ -374,7 +375,31 @@ add_task(async function a_tab_picked_from_outside_the_split_shows_alone_and_the_
     "at its sizes (±1 px across)",
   );
 
-  // A new foreground tab (a link, ctrl+t) still opens in the focused pane (decision 22).
+  // A new foreground tab (a link, ctrl+t) shows alone right after the split's tabs, and the split
+  // waits hidden as it was ([panes] new_tab = "alone", docs/specs/new-tab-in-split.md).
+  Assert.equal(view.newTab, "alone", 'new_tab is "alone" by default');
+  const beside = await BrowserTestUtils.openNewForegroundTab(gB, `${PAGE}?beside`);
+  Assert.equal(gB.selectedTab, beside, "the new tab is selected");
+  Assert.ok(isHiddenView(win), "the split waits hidden");
+  Assert.deepEqual(names(shown(win).tabs), names([a0, a1]), "with its panes");
+  Assert.equal(shown(win).focus, a0, "and its focused pane");
+  Assert.ok(!beside.splitview, "the new tab joined no split");
+  Assert.ok(a0.splitview && a0.splitview === a1.splitview, "the split's tabs stay together");
+  Assert.equal(
+    gB.tabs.indexOf(beside),
+    Math.max(gB.tabs.indexOf(a0), gB.tabs.indexOf(a1)) + 1,
+    "the new tab sits right after the split's tabs",
+  );
+  await until(() => rect(win, beside).width > rect(win, a1).width, "it fills the content area");
+  gB.selectedTab = a1;
+  Assert.ok(!isHiddenView(win), "a split tab brings the split back");
+  await assertLive(win, [a0, a1], "the split after a new tab");
+  gB.selectedTab = a0;
+  Assert.equal(shown(win).focus, a0, "a0's pane focused again");
+  gB.removeTab(beside);
+
+  // With [panes] new_tab = "pane" it opens in the focused pane instead (decision 22).
+  view.newTab = "pane";
   const fresh = await BrowserTestUtils.openNewForegroundTab(gB, `${PAGE}?fresh`);
   Assert.ok(!isHiddenView(win), "the view stays shown");
   Assert.deepEqual(names(shown(win).tabs), names([fresh, a1]), "fresh takes a0's pane");

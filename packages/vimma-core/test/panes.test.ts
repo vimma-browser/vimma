@@ -818,21 +818,44 @@ describe("hidden views and pickTab", () => {
     expect(r.panes).toEqual(hideView(s));
   });
 
-  test("a new foreground tab replaces the focused pane's tab while the view shows", () => {
+  // docs/specs/new-tab-in-split.md: [panes] new_tab, "alone" by default.
+  test("a new foreground tab shows alone beside the view, which waits hidden as it was", () => {
     const s = view();
     const r = pickTab(s, "t9", { opened: true });
+    expect(r.change).toBe("beside");
+    expect(r.panes).toEqual(hideView(s));
+    expect(pickTab(s, "t9", { opened: true, newTab: "alone" })).toEqual(r);
+  });
+
+  test('with new_tab = "pane" a new foreground tab replaces the focused pane\'s tab', () => {
+    const s = view();
+    const r = pickTab(s, "t9", { opened: true, newTab: "pane" });
     expect(r.change).toBe("replace");
     expect(r.panes).toEqual(setPaneTab(s, "p2", "t9"));
   });
 
-  test("a new tab that cannot join (pinned) hides the view instead", () => {
-    expect(pickTab(view(), "t9", { opened: true, canJoin: false }).change).toBe("hide");
+  test("an existing tab picked is not a new tab, whatever new_tab says", () => {
+    const s = view();
+    expect(pickTab(s, "t9", { newTab: "pane" }).change).toBe("hide");
+    expect(pickTab(s, "t9", { newTab: "alone" }).change).toBe("hide");
   });
+
+  test.each([["alone"], ["pane"]] as const)(
+    "a new tab that cannot join (pinned) hides the view (new_tab = %s)",
+    (newTab) => {
+      const r = pickTab(view(), "t9", { opened: true, canJoin: false, newTab });
+      expect(r.change).toBe("hide");
+    },
+  );
 
   test("anything outside a hidden view leaves it hidden", () => {
     const h = hideView(view());
     expect(pickTab(h, "t9")).toEqual({ panes: h, change: "none" });
     expect(pickTab(h, "t9", { opened: true })).toEqual({ panes: h, change: "none" });
+    expect(pickTab(h, "t9", { opened: true, newTab: "pane" })).toEqual({
+      panes: h,
+      change: "none",
+    });
   });
 });
 

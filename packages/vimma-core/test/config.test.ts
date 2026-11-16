@@ -402,7 +402,7 @@ describe("mergeWithDefaults", () => {
       unbind: {},
       workspaces: [],
       theme: { source: "omarchy", name: "vimma", font: "monospace", colors: {} },
-      panes: { max: 8, layout: "dwindle", mainSize: 0.6, maxSplits: 9 },
+      panes: { max: 8, layout: "dwindle", mainSize: 0.6, maxSplits: 9, newTab: "alone" },
       hintChars: "asdfghjkl",
       sites: [],
       routes: [],

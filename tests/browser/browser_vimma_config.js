@@ -416,6 +416,16 @@ add_task(async function panes_max_refuses_a_third_split() {
   Assert.equal(paneView().max, 8, "the default comes back without the file");
 });
 
+// docs/specs/new-tab-in-split.md behaviour 5: [panes] new_tab applies live.
+add_task(async function panes_new_tab_reaches_the_pane_view() {
+  const paneView = () => found(PaneViews.get(window));
+  Assert.equal(paneView().newTab, "alone", "alone without the file");
+  await writeConfig(`schema = 2\n[panes]\nnew_tab = "pane"`);
+  await until(() => paneView().newTab === "pane", "[panes] new_tab reaches the pane view");
+  await resetConfig();
+  Assert.equal(paneView().newTab, "alone", "the default comes back without the file");
+});
+
 add_task(async function theme_source_and_colors_feed_the_theme() {
   // An Omarchy theme with its own status bar colour, followed as by default.
   const palette = { ...TOKYO_NIGHT, dark_background: "#405060" };

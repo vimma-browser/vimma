@@ -656,16 +656,18 @@ export function showView(s) {
 
 /**
  * What selecting `tabId` does to the view (docs/specs/side-panel-unsplit.md decisions 21-23).
- * A pane's tab: that pane gets focus, and a hidden view shows again ("show"). Any other tab: a
- * new foreground tab (`opened`) that may join takes the focused pane's place while the view
- * shows ("replace", m4-split-panes' user story); anything else hides the view ("hide") and shows
- * alone. Outside a hidden view nothing changes.
+ * A pane's tab: that pane gets focus, and a hidden view shows again ("show"). Any other tab
+ * hides the view, kept as it was, and shows alone ("hide"), except a new foreground tab
+ * (`opened`) that may join while the view shows: with config `[panes] new_tab = "pane"` it takes
+ * the focused pane's place ("replace", m4-split-panes' user story), and with the default
+ * "alone" it shows alone and the caller puts it beside the split ("beside",
+ * docs/specs/new-tab-in-split.md). Outside a hidden view nothing changes.
  * @param {Panes} s
  * @param {string} tabId
- * @param {{ opened?: boolean, canJoin?: boolean }} [options]
- * @returns {{ panes: Panes, change: "none" | "focus" | "show" | "replace" | "hide" }}
+ * @param {{ opened?: boolean, canJoin?: boolean, newTab?: "alone" | "pane" }} [options]
+ * @returns {{ panes: Panes, change: "none" | "focus" | "show" | "replace" | "beside" | "hide" }}
  */
-export function pickTab(s, tabId, { opened = false, canJoin = true } = {}) {
+export function pickTab(s, tabId, { opened = false, canJoin = true, newTab = "alone" } = {}) {
   const pane = paneOfTab(s, tabId);
   if (pane !== undefined) {
     if (isHidden(s)) return { panes: focusPane(showView(s), pane), change: "show" };
@@ -673,6 +675,8 @@ export function pickTab(s, tabId, { opened = false, canJoin = true } = {}) {
     return { panes: focusPane(s, pane), change: "focus" };
   }
   if (isHidden(s)) return { panes: s, change: "none" };
-  if (opened && canJoin) return { panes: setPaneTab(s, s.focus, tabId), change: "replace" };
-  return { panes: hideView(s), change: "hide" };
+  if (opened && canJoin && newTab === "pane") {
+    return { panes: setPaneTab(s, s.focus, tabId), change: "replace" };
+  }
+  return { panes: hideView(s), change: opened && canJoin ? "beside" : "hide" };
 }

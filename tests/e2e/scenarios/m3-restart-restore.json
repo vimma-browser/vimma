@@ -1,8 +1,11 @@
 {
   "name": "m3-restart-restore",
-  "description": "M3 gate 2 on a real restart (m3-workspaces sub-spec 7): three workspaces, a cookie in each one's container and a split in one; ctrl+q, then a start on the same profile with Vimma's own browser.startup.page (3) brings back the workspaces in order, the active one, each one's tabs, the split and the cookies, each only in its own container.",
+  "description": "M3 gate 2 on a real restart (m3-workspaces sub-spec 7): three workspaces, a cookie in each one's container and a split in one; ctrl+q, then a start on the same profile with Vimma's own browser.startup.page (3) brings back the workspaces in order, the active one, each one's tabs, the split and the cookies, each only in its own container. config.toml: tests/e2e/fixtures/new-tab-pane.toml ([panes] new_tab = \"pane\"), so the last fresh tab in work opens in the focused pane.",
   "timeoutSeconds": 120,
-  "prefs": { "browser.startup.page": null },
+  "prefs": {
+    "browser.startup.page": null,
+    "vimma.config.path": "checkout:tests/e2e/fixtures/new-tab-pane.toml"
+  },
   "steps": [
     { "wait-for-state": { "workspace": "main" }, "timeoutSeconds": 20 },
     { "open": "fixture:cookie.html#main" },
