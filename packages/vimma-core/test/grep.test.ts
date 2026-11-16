@@ -1,4 +1,4 @@
-import { describe, test, expect } from "vitest";
+import { describe, test, expect, vi } from "vitest";
 import {
   GREP_CAPS,
   GREP_SCOPE_NAMES,
@@ -30,6 +30,30 @@ import type {
   GrepRow,
   GrepTab,
 } from "../src/ui/grep.mjs";
+
+/**
+ * The characters `run`'s regular expressions read: for each exec, from where it starts (lastIndex
+ * for a global or sticky one) to the end of its match, or to the end of the text without one.
+ */
+const charsRead = (run: () => void) => {
+  const exec = RegExp.prototype.exec;
+  let read = 0;
+  const spy = vi.spyOn(RegExp.prototype, "exec").mockImplementation(function (
+    this: RegExp,
+    s: string,
+  ) {
+    const from = this.global || this.sticky ? this.lastIndex : 0;
+    const m = exec.call(this, s);
+    read += (m ? m.index + m[0].length : s.length) - from;
+    return m;
+  });
+  try {
+    run();
+  } finally {
+    spy.mockRestore();
+  }
+  return read;
+};
 
 const must = (q: string) => {
   const parsed = parseQuery(q);
@@ -143,16 +167,25 @@ describe("grepText", () => {
     expect(() => grepText("😀😀", must("x*"))).not.toThrow();
   });
 
-  // Tagged `timing`: the budget is for the real code; Stryker's instrumented copy takes about
-  // 300 ms here (stryker.config.mjs leaves `timing` tests out of the mutation run).
-  test("bench: 1,000,000 characters under 50 ms", { tags: ["timing"] }, () => {
+  // The spec's budget (1,000,000 characters under 50 ms) is pinned by the work grepText does, not
+  // by timing it: a wall-clock budget in the unit suite measures the runner, and failed on loaded
+  // ones (issue #1144). The characters its regular expressions read are the same on any machine,
+  // and per character the same for any length, so 100,000 show what 1,000,000 would, and a
+  // quadratic change fails here in seconds instead of running for minutes.
+  test("100,000 characters: each character is read twice", () => {
     const line = "the quick brown fox jumps over the lazy dog ";
-    const big = Array.from({ length: Math.ceil(1e6 / (line.length + 1)) }, () => line).join(BLOCK);
-    const q = must("lazy cat");
-    grepText(big, q);
-    const start = performance.now();
-    grepText(big, q);
-    expect(performance.now() - start).toBeLessThan(50);
+    const lines = Math.ceil(1e5 / (line.length + 1));
+    const big = Array.from({ length: lines }, () => line).join(BLOCK);
+    let result: ReturnType<typeof grepText> | undefined;
+    const read = charsRead(() => {
+      result = grepText(big, must("lazy cat"));
+    });
+    expect(result?.count).toBe(0);
+    // Once to find its line's end and once by the query, and the blank check stops at a line's
+    // first character. A second pass over a line, or a line read again from the text's start
+    // (quadratic), reads more.
+    expect(read).toBeGreaterThanOrEqual(2 * big.length - lines);
+    expect(read).toBeLessThanOrEqual(2 * big.length + lines);
   });
 });
 
