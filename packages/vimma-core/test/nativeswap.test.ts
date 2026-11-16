@@ -165,3 +165,42 @@ describe("frameApplied: the shown window reports what it was given (decision 9)"
     expect(frameApplied(zoom, frame())).toBe(false);
   });
 });
+
+// #1119: mutants the tests above let through.
+describe("native frames: edges", () => {
+  test("a coordinate must be under a million; a size of one pixel is a size", () => {
+    expect(planNativeShow(frame(), frame({ x: 1e6 }))).toEqual({
+      kind: "refuse",
+      reason: "a bad frame",
+    });
+    expect(planNativeShow(frame(), frame({ y: -1e6 }))).toEqual({
+      kind: "refuse",
+      reason: "a bad frame",
+    });
+    expect(openFrame(frame({ x: 999_999, width: 1, height: 1 }))).toEqual({
+      x: 999_999,
+      y: 80,
+      width: 1,
+      height: 1,
+    });
+  });
+
+  test("a normal window's stale restored frame is not its slot", () => {
+    expect(openFrame(frame({ restored: RESTORED }))).toEqual({
+      x: 120,
+      y: 80,
+      width: 1280,
+      height: 800,
+    });
+  });
+
+  test("a zoom plan is not applied by a broken frame, zoomed or not", () => {
+    const zoom = {
+      kind: "swap",
+      frame: { x: 120, y: 80, width: 1280, height: 800 },
+      restoreFirst: false,
+      zoom: true,
+    } as const;
+    expect(frameApplied(zoom, frame({ ...ZOOMED, sizemode: "maximized", width: 0 }))).toBe(false);
+  });
+});

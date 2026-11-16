@@ -477,3 +477,292 @@ describe("splits: a list, with panes and activeTab kept for an older reader", ()
     );
   });
 });
+
+// #1119: mutants the tests above let through.
+describe("validation: what each refusal says", () => {
+  test.each([
+    ["schema missing", (r) => delete r.schema, "schema: missing or not an integer"],
+    ["next too small", (r) => (r.next = 3), "next: must be an integer above 3"],
+    ["no workspaces", (r) => (r.workspaces = []), "workspaces: need at least one workspace"],
+    ["workspace not an object", (r) => (r.workspaces[2] = 7), "workspaces[2]: must be an object"],
+    [
+      "duplicate workspace id",
+      (r) => (r.workspaces[1].id = "w1"),
+      "workspaces[1].id: missing, malformed or duplicate",
+    ],
+    [
+      "empty name",
+      (r) => (r.workspaces[1].name = ""),
+      "workspaces[1].name: empty, duplicate or with surrounding spaces",
+    ],
+    [
+      "name not a string",
+      (r) => (r.workspaces[1].name = 5),
+      "workspaces[1].name: empty, duplicate or with surrounding spaces",
+    ],
+    [
+      "empty container",
+      (r) => (r.workspaces[2].container = ""),
+      "workspaces[2].container: empty or duplicate",
+    ],
+    [
+      "container not a string",
+      (r) => (r.workspaces[2].container = ["vimma-admin"]),
+      "workspaces[2].container: empty or duplicate",
+    ],
+    [
+      "tabs not an array",
+      (r) => (r.workspaces[2].tabs = {}),
+      "workspaces[2].tabs: must be an array",
+    ],
+    [
+      "an empty tab id",
+      (r) => (r.workspaces[0].tabs[1] = ""),
+      "workspaces[0].tabs[1]: empty or already open",
+    ],
+    [
+      "a tab id that is not a string",
+      (r) => (r.workspaces[0].tabs[1] = ["tab-b"]),
+      "workspaces[0].tabs[1]: empty or already open",
+    ],
+    [
+      "empty workspace with an active tab",
+      (r) => (r.workspaces[2].activeTab = "tab-x"),
+      "workspaces[2].activeTab: must be null without tabs",
+    ],
+    [
+      "empty workspace with panes",
+      (r) => (r.workspaces[2].panes = r.workspaces[1].panes),
+      "workspaces[2].panes: must be null without tabs",
+    ],
+    [
+      "active tab not in tabs",
+      (r) => (r.workspaces[0].activeTab = "tab-z"),
+      "workspaces[0].activeTab: must be one of the tabs",
+    ],
+    [
+      "tabs without panes",
+      (r) => (r.workspaces[1].panes = null),
+      "workspaces[1].panes: a workspace with tabs needs a layout",
+    ],
+    [
+      "active tab not focused",
+      (r) => (r.workspaces[0].activeTab = "tab-a"),
+      "workspaces[0].activeTab: must be the focused pane's tab",
+    ],
+    [
+      "panes not an object",
+      (r) => (r.workspaces[0].panes = "x"),
+      "workspaces[0].panes: must be an object or null",
+    ],
+    [
+      "a node that is not an object",
+      (r) => (r.workspaces[0].panes.root.children[0] = 7),
+      "workspaces[0].panes.root.children[0]: a pane node must be an object",
+    ],
+    [
+      "duplicate pane id",
+      (r) => (r.workspaces[0].panes.root.children[0].pane = "p2"),
+      "workspaces[0].panes.root.children[1].children[0].pane: missing or duplicate",
+    ],
+    [
+      "pane tab not in the workspace",
+      (r) => (r.workspaces[0].panes.root.children[0].tab = "tab-d"),
+      "workspaces[0].panes.root.children[0].tab: not a tab of this workspace",
+    ],
+    [
+      "tab shown twice",
+      (r) => (r.workspaces[0].panes.root.children[0].tab = "tab-b"),
+      "workspaces[0].panes.root.children[1].children[0].tab: tab shown in two panes",
+    ],
+    [
+      "unknown node type",
+      (r) => (r.workspaces[1].panes.root.type = "tree"),
+      'workspaces[1].panes.root.type: must be "leaf" or "split"',
+    ],
+    [
+      "bad axis",
+      (r) => (r.workspaces[0].panes.root.axis = "z"),
+      'workspaces[0].panes.root.axis: must be "x" or "y"',
+    ],
+    [
+      "one-child split",
+      (r) => r.workspaces[0].panes.root.children.pop(),
+      "workspaces[0].panes.root.children: a split needs at least two children",
+    ],
+    [
+      "ratios not an array",
+      (r) => (r.workspaces[0].panes.root.ratios = null),
+      "workspaces[0].panes.root.ratios: one positive ratio per child, summing to 1",
+    ],
+    [
+      "three ratios summing to 1 for two children",
+      (r) => (r.workspaces[0].panes.root.ratios = [0.5, 0.25, 0.25]),
+      "workspaces[0].panes.root.ratios: one positive ratio per child, summing to 1",
+    ],
+    [
+      "a zero ratio",
+      (r) => (r.workspaces[0].panes.root.ratios = [1, 0]),
+      "workspaces[0].panes.root.ratios: one positive ratio per child, summing to 1",
+    ],
+    [
+      "a nested same-axis split whose smallest pane is exactly MIN_RATIO when flattened",
+      (r) => {
+        const inner = r.workspaces[0].panes.root.children[1];
+        inner.axis = "x";
+        inner.ratios = [0.2, 0.8]; // 0.2 × 0.5 = MIN_RATIO: flattening keeps every pane
+      },
+      "workspaces[0].panes.root.children[1].axis: same axis as the parent split",
+    ],
+    [
+      "focus not a leaf",
+      (r) => (r.workspaces[0].panes.focus = "p9"),
+      "workspaces[0].panes.focus: must name a pane",
+    ],
+    [
+      "mru with a pane that is not one",
+      (r) => (r.workspaces[0].panes.mru = ["p3", "p2", "p9"]),
+      "workspaces[0].panes.mru: every pane once, most recently focused first, starting with focus",
+    ],
+    [
+      "zoom not a leaf",
+      (r) => (r.workspaces[0].panes.zoom = "p9"),
+      "workspaces[0].panes.zoom: must be null or a pane",
+    ],
+    ["unknown active", (r) => (r.active = "w9"), "active: must name a workspace"],
+  ] as Array<[string, (raw: any) => void, string]>)("%s", (_, mutate, message) => {
+    const e = snapshotError(() => stateOf(mutated(mutate)));
+    expect(e.message).toBe(message);
+    expect(e.name).toBe("SnapshotError");
+    expect(e.code).toBe("invalid");
+  });
+
+  test("broken JSON names the whole document as <root>", () => {
+    const e = snapshotError(() => stateOf("{"));
+    expect(e.message).toMatch(/^<root>: not JSON: ./);
+    expect(snapshotError(() => stateOf("[]")).message).toBe(
+      "<root>: a snapshot must be a JSON object",
+    );
+  });
+
+  test("schema refusals name the schema", () => {
+    expect(snapshotError(() => stateOf(mutated((r) => (r.schema = 2)))).message).toBe(
+      "schema: schema 2 is not supported",
+    );
+    const v0 = mutated((r) => (r.schema = 0));
+    expect(snapshotError(() => migrateSnapshot(v0, { 0: (raw: any) => raw })).message).toBe(
+      "schema: the migration from schema 0 did not produce 1",
+    );
+  });
+
+  test("a newer schema is unsupported even when a migration step is given for it", () => {
+    const v2 = mutated((r) => (r.schema = 2));
+    const e = snapshotError(() =>
+      migrateSnapshot(v2, { 2: (raw: any) => ({ ...raw, schema: 3 }) }),
+    );
+    expect(e.code).toBe("unsupported-schema");
+  });
+});
+
+describe("readSnapshot: the state it returns", () => {
+  test("is a copy: the input's arrays are not frozen or shared", () => {
+    const raw = JSON.parse(fixture("valid.json"));
+    const w = stateOf(raw).workspaces[0] as any;
+    expect(Object.isFrozen(raw.workspaces[0].tabs)).toBe(false);
+    expect(Object.isFrozen(raw.workspaces[0].panes.mru)).toBe(false);
+    expect(Object.isFrozen(raw.workspaces[0].panes.root.ratios)).toBe(false);
+    expect(w.tabs).not.toBe(raw.workspaces[0].tabs);
+  });
+
+  test("has no alternate key when the file has none", () => {
+    expect(stateOf(fixture("valid.json"))).not.toHaveProperty("alternate");
+  });
+
+  test("a one-pane tree with an alone tab is still never hidden", () => {
+    const raw = mutated((r) => {
+      r.workspaces[1].tabs.push("tab-e");
+      r.workspaces[1].panes.hidden = true;
+      r.workspaces[1].alone = "tab-e";
+    });
+    const w = (stateOf(raw) as any).workspaces[1];
+    expect("hidden" in w.panes).toBe(false);
+    expect(w.activeTab).toBe("tab-d");
+  });
+});
+
+describe("toSnapshot: plain JSON", () => {
+  test("its arrays and trees are copies, not the frozen state", () => {
+    const s = stateOf(fixture("valid.json"));
+    const w = firstOf(toSnapshot(s));
+    expect(Object.isFrozen(w.tabs)).toBe(false);
+    expect(Object.isFrozen(w.panes)).toBe(false);
+  });
+});
+
+describe("splits: edges", () => {
+  /** valid.json's w1 with a second split (tab-x, tab-y), as a written file's splits. */
+  const withSplits = (splits: (one: any, two: any) => any[], extra: (w: any) => void = () => {}) =>
+    mutated((r) => {
+      const w = r.workspaces[0];
+      w.tabs.push("tab-x", "tab-y");
+      const one = { ...JSON.parse(JSON.stringify(w.panes)), number: 1 };
+      const two = {
+        root: {
+          type: "split",
+          axis: "x",
+          ratios: [0.5, 0.5],
+          children: [
+            { type: "leaf", pane: "p1", tab: "tab-x" },
+            { type: "leaf", pane: "p2", tab: "tab-y" },
+          ],
+        },
+        focus: "p2",
+        mru: ["p2", "p1"],
+        zoom: null,
+        next: 3,
+        number: 2,
+      };
+      w.splits = splits(one, two);
+      extra(w);
+    });
+  const numbers = (raw: any) =>
+    ((stateOf(raw) as any).workspaces[0].splits as any[]).map((x) => x.number);
+
+  test("splits read in number order, whatever the file's order", () => {
+    expect(numbers(withSplits((one, two) => [{ ...two, number: 9 }, one]))).toEqual([1, 9]);
+  });
+
+  test("a null entry is dropped like any other that is not an object", () => {
+    expect(numbers(withSplits((one) => [null, one]))).toEqual([1]);
+  });
+
+  test("an entry of one valid pane is dropped: a split has two", () => {
+    const lone = (two: any) => ({
+      root: two.root.children[1],
+      focus: "p2",
+      mru: ["p2"],
+      zoom: null,
+      next: 3,
+      number: 2,
+    });
+    expect(numbers(withSplits((one, two) => [one, lone(two)]))).toEqual([1]);
+  });
+
+  test("on a lone tab, the older view is the split shown last, not the first", () => {
+    // tab-z alone; the file's activeTab (tab-y) says split 2 showed last.
+    const raw = withSplits(
+      (one, two) => [one, two],
+      (w) => {
+        w.tabs.push("tab-z");
+        w.panes = JSON.parse(JSON.stringify({ ...w.splits[1], number: undefined, hidden: true }));
+        w.activeTab = "tab-y";
+        w.alone = "tab-z";
+      },
+    );
+    const s = stateOf(raw);
+    expect((s as any).workspaces[0]).toMatchObject({ shown: null, last: 2, activeTab: "tab-z" });
+    const written = firstOf(toSnapshot(s));
+    expect(written.panes.root).toEqual(written.splits[1].root);
+    expect(written.panes.hidden).toBe(true);
+  });
+});
