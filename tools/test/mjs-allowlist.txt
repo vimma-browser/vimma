@@ -49,17 +49,6 @@ tools/package/test/rpm-smoke.test.mjs
 tools/package/test/sbom.test.mjs
 tools/package/test/vimma-open.test.mjs
 tools/package/validate-sbom.mjs
-tools/release/build-id.mjs
-tools/release/changelog.mjs
-tools/release/firefox-notes.mjs
-tools/release/security-release.mjs
-tools/release/test/build-id.test.mjs
-tools/release/test/changelog.test.mjs
-tools/release/test/firefox-notes.test.mjs
-tools/release/test/security-release.test.mjs
-tools/release/test/smoke-check.test.mjs
-tools/release/test/version-line.test.mjs
-tools/release/version-line.mjs
 tools/repo.mjs
 tools/sync-core.mjs
 tools/test/build.test.mjs

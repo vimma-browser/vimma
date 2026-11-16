@@ -1,7 +1,7 @@
 # Spec: firefox-versions
 
-Status: implemented · Area: `tools/release/` (new: `version-line.mjs`, `firefox-notes.mjs`,
-`security-release.mjs`), `.github/workflows/release-please.yml`, `nightly.yml`, `release.yml`,
+Status: implemented · Area: `tools/release/` (new: `version-line.ts`, `firefox-notes.ts`,
+`security-release.ts`), `.github/workflows/release-please.yml`, `nightly.yml`, `release.yml`,
 `tools/upstream/autopilot-body.mjs`, `src/browser/branding/vimma/pref/firefox-branding.js`,
 `docs/runbook/`, `docs/security/`, `docs/review-checklist.md`, `CONTRIBUTING.md` · Upstream
 patches: `src/toolkit/xre/nsAppRunner-cpp.patch` (new; ADR-003 register line: "1 hunk, 11 lines:
@@ -192,7 +192,7 @@ MOZ_APP_VERSION)` and keeps the copyright suffix. Both macros are already define
 2. **`MOZ_APP_VERSION` is the Firefox number**, not `GRE_MILESTONE`, so `--version` agrees with
    `Services.appinfo.version`, which the start page and about:vimma show. The two are equal on a
    Firefox release (m0-app-version's test).
-3. **One function writes the line for scripts.** `tools/release/version-line.mjs` exports
+3. **One function writes the line for scripts.** `tools/release/version-line.ts` exports
    `versionLine(surferJson)` → `Vimma 0.5.2 · Firefox 158.0`, throwing on a missing or malformed
    version (it reuses `tools/version-files`' patterns). `nightly.yml` and `release.yml` compare the
    binary's output with it; the release title uses it. The string is defined once in JavaScript
@@ -210,7 +210,7 @@ MOZ_APP_VERSION)` and keeps the copyright suffix. Both macros are already define
    as a library with a registered notes type (replaces a pinned action with our own runner holding
    a write token); `pull-request-title-pattern` (only the PR title, and the parser would swallow
    any suffix); a fork of the action.
-6. **One pure module, two callers.** `tools/release/firefox-notes.mjs` exports
+6. **One pure module, two callers.** `tools/release/firefox-notes.ts` exports
    `firefoxNotes(markdown, { firefox })`, which (a) inserts ` · Firefox <firefox>` after the
    compare link of the first `## [x.y.z]` heading, unless it is already there, and (b) rewrites
    `upstream` lines of the form `firefox <v> (MFSA a, MFSA b)` into `Firefox <v> ([MFSA a](url),
@@ -249,7 +249,7 @@ MOZ_APP_VERSION)` and keeps the copyright suffix. Both macros are already define
     merge); `workflow_run` chains (harder to reason about and to test); creating a release without
     the release PR (no version bump, no changelog).
 12. **What it checks, all of which must hold** (pure function `decide()` in
-    `tools/release/security-release.mjs`, given the API responses):
+    `tools/release/security-release.ts`, given the API responses):
     - the variable `AUTO_SECURITY_RELEASE` is `true`, the repository is `vimma-browser/vimma`, the event
       is `push` and the ref `refs/heads/main`;
     - the pushed commit's subject starts `upstream: firefox ` and the commit belongs to exactly one
@@ -354,12 +354,12 @@ there, because G9 and G10 were taken by the Beta canary before this spec's sub-P
 
 Written first and seen to fail.
 
-**vitest, `tools/release/test/version-line.test.mjs`**
+**vitest, `tools/release/test/version-line.test.ts`**
 
 - `versionLine gives "Vimma 0.5.2 · Firefox 158.0" from surfer.json`
 - `versionLine throws on a missing or non-SemVer display version or a malformed Firefox version`
 
-**vitest, `tools/release/test/firefox-notes.test.mjs`**
+**vitest, `tools/release/test/firefox-notes.test.ts`**
 
 - `adds the Firefox version after the compare link of the newest heading`
 - `leaves older headings and [Unreleased] alone`
@@ -370,7 +370,7 @@ Written first and seen to fail.
 - `the rewritten heading still matches release-please 17.6.0's heading patterns` (both regexes,
   copied with their source line)
 
-**vitest, `tools/release/test/security-release.test.mjs`** (`decide()` on recorded API fixtures)
+**vitest, `tools/release/test/security-release.test.ts`** (`decide()` on recorded API fixtures)
 
 - `auto-merges the release PR after a merged security bump`
 - `does nothing when AUTO_SECURITY_RELEASE is off`

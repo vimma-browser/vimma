@@ -39,7 +39,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`downgrade: an older or equal build is no offer, not an error`](../../packages/vimma-core/test/updates.test.mjs),
   [`the Vimma version already running is no offer, whatever its build ID`](../../packages/vimma-core/test/updates.test.mjs),
   [`the_vimma_version_running_is_never_offered`](../../tests/browser/browser_vimma_update_check.js),
-  [`a packaged build ID that differs from the binary's is a problem`](../../tools/release/test/build-id.test.mjs),
+  [`a packaged build ID that differs from the binary's is a problem`](../../tools/release/test/build-id.test.ts),
   [`release.yml's Linux and macOS builds fix MOZ_BUILD_DATE before they build`](../../tools/package/test/release-workflow.test.mjs),
   [`a release feed older than 45 days and a nightly one older than 7 are stale`](../../packages/vimma-core/test/updates.test.mjs),
   [`replay_is_refused_and_downgrade_offers_nothing`](../../tests/browser/browser_vimma_update_check.js),

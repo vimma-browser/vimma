@@ -17,7 +17,7 @@
     "md-wording": "node tools/md-wording/process-wording.ts",
     "comment-wording": "node tools/md-wording/comment-wording.ts",
     "spec-lint": "node tools/spec-lint/spec-lint.ts",
-    "changelog-lint": "node tools/release/changelog.mjs check CHANGELOG.md",
+    "changelog-lint": "node tools/release/changelog.ts check CHANGELOG.md",
     "arch-lint": "node tools/arch-lint/arch-lint.ts",
     "layering": "node tools/layering/layering.ts",
     "diagrams": "node tools/diagrams/module-graph.ts && node tools/diagrams/render.ts",

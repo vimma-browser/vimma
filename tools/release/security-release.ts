@@ -27,33 +27,45 @@ const BUMP_SUBJECT = /^upstream: firefox (\d+(?:\.\d+)+)(?: |$)/;
 const RELEASE_TITLE = /^chore\(main\): release \d+\.\d+\.\d+$/;
 const SHA = /^[0-9a-f]{40}$/;
 
-/**
- * @typedef {{ name: string }} Label
- * @typedef {{ ref: string, sha?: string, repo?: { full_name: string } | null }} Ref
- * @typedef {{ number: number, state?: string, merged_at?: string | null, title?: string,
- *   draft?: boolean | null, base: Ref, head: Ref, labels: Label[], user?: { login: string } }} Pull
- * @typedef {{
- *   enabled: string | undefined, hasToken: boolean, repository: string | undefined,
- *   event: string | undefined, ref: string | undefined, sha: string | undefined,
- *   subject?: string, bumpPulls?: Pull[], releasePulls?: Pull[], user?: { login: string },
- *   compare?: { status?: string }, releases?: unknown[],
- * }} Input
- * @typedef {{ action: "merge", release: number, head: string, bump: number, ready: boolean }} Merge
- * @typedef {Merge | { action: "skip", reason: string } | { action: "fail", reason: string }} Decision
- */
+type Label = { name: string };
+type Ref = { ref: string; sha?: string; repo?: { full_name: string } | null };
+type Pull = {
+  number: number;
+  state?: string;
+  merged_at?: string | null;
+  title?: string;
+  draft?: boolean | null;
+  base: Ref;
+  head: Ref;
+  labels: Label[];
+  user?: { login: string };
+};
+type Input = {
+  enabled: string | undefined;
+  hasToken: boolean;
+  repository: string | undefined;
+  event: string | undefined;
+  ref: string | undefined;
+  sha: string | undefined;
+  subject?: string;
+  bumpPulls?: Pull[];
+  releasePulls?: Pull[];
+  user?: { login: string };
+  compare?: { status?: string };
+  releases?: unknown[];
+};
+type Merge = { action: "merge"; release: number; head: string; bump: number; ready: boolean };
+type Decision = Merge | { action: "skip"; reason: string } | { action: "fail"; reason: string };
 
-/** @param {string} reason @returns {Decision} */
-const skip = (reason) => ({ action: "skip", reason });
+const skip = (reason: string): Decision => ({ action: "skip", reason });
 
-/** @param {Pull} pull @param {string} name */
-const hasLabel = (pull, name) => pull.labels.some((l) => l.name === name);
+const hasLabel = (pull: Pull, name: string) => pull.labels.some((l) => l.name === name);
 
 /**
  * Whether the run's own context allows the job at all; checked before any API call.
- * @param {Input} input
- * @returns {Decision | null} a skip or fail, or null to go on
+ * @returns a skip or fail, or null to go on
  */
-function gate(input) {
+function gate(input: Input): Decision | null {
   if (input.enabled !== "true") return skip("AUTO_SECURITY_RELEASE is not true");
   if (input.repository !== REPOSITORY)
     return skip(`repository ${input.repository} is not ${REPOSITORY}`);
@@ -71,10 +83,8 @@ function gate(input) {
 
 /**
  * Every check of decision 12; all must hold for a merge.
- * @param {Input} input
- * @returns {Decision}
  */
-export function decide(input) {
+export function decide(input: Input): Decision {
   const stop = gate(input);
   if (stop) return stop;
 
@@ -83,7 +93,7 @@ export function decide(input) {
 
   const bumps = input.bumpPulls ?? [];
   if (bumps.length !== 1) return skip(`the commit belongs to ${bumps.length} PRs, not exactly one`);
-  const bump = /** @type {Pull} */ (bumps[0]);
+  const bump = bumps[0] as Pull;
   if (!bump.merged_at) return skip(`bump PR #${bump.number} is not merged`);
   if (bump.base.ref !== "main") return skip(`bump PR #${bump.number}'s base is not main`);
   if (bump.head.ref !== `upstream/firefox-${version}` || bump.head.repo?.full_name !== REPOSITORY) {
@@ -94,7 +104,7 @@ export function decide(input) {
 
   const releases = input.releasePulls ?? [];
   if (releases.length !== 1) return skip(`${releases.length} open release PRs, not exactly one`);
-  const release = /** @type {Pull} */ (releases[0]);
+  const release = releases[0] as Pull;
   const author = input.user?.login;
   const problem =
     release.state !== "open"
@@ -124,7 +134,7 @@ export function decide(input) {
   return {
     action: "merge",
     release: release.number,
-    head: /** @type {string} */ (release.head.sha),
+    head: release.head.sha as string,
     bump: bump.number,
     // Issue #443: release-please opens the release PR as a draft, and GitHub never merges a
     // draft, auto-merge or not. Marking it ready starts its full required checks.
@@ -146,17 +156,15 @@ export const SLOW_CHECKS = [
  * Whether the run that "ready for review" started has replaced the draft run's skipped
  * successes on the head: the newest check run of each slow check is not a skip. Until then,
  * auto-merge could take the skips for passes.
- * @param {{ id: number, name: string, status?: string, conclusion?: string | null }[]} runs
- *   the head commit's check runs
+ * @param runs the head commit's check runs
  */
-export function slowChecksStarted(runs) {
+export function slowChecksStarted(
+  runs: { id: number; name: string; status?: string; conclusion?: string | null }[],
+) {
   return SLOW_CHECKS.every((name) => {
     const newest = runs
       .filter((r) => r.name === name)
-      .reduce(
-        (a, r) => (a && a.id > r.id ? a : r),
-        /** @type {(typeof runs)[number] | null} */ (null),
-      );
+      .reduce((a, r) => (a && a.id > r.id ? a : r), null as (typeof runs)[number] | null);
     return newest !== null && newest.conclusion !== "skipped";
   });
 }
@@ -168,10 +176,8 @@ export function slowChecksStarted(runs) {
  * that a draft skipped. The CLI below sets auto-merge only once `slowChecksStarted()` holds, and
  * the code scanning rule holds the merge until CodeQL has uploaded for that head
  * (docs/security/10-firefox-updates.md G11).
- * @param {Merge} decision
- * @returns {string[][]}
  */
-export function commands({ release, head, bump, ready }) {
+export function commands({ release, head, bump, ready }: Merge): string[][] {
   const pr = ["--repo", REPOSITORY];
   const body =
     `Security bump merged: release PR #${release} is set to auto-merge at ${head} and merges ` +
@@ -187,13 +193,13 @@ export function commands({ release, head, bump, ready }) {
 
 /**
  * Reads what `decide()` needs. Asks nothing when the run's context already rules the job out.
- * @param {Record<string, string | undefined>} env
- * @param {(path: string) => Promise<any>} api a GET of the REST API, with RELEASE_PLEASE_TOKEN
- * @returns {Promise<Input>}
+ * @param api a GET of the REST API, with RELEASE_PLEASE_TOKEN
  */
-export async function gather(env, api) {
-  /** @type {Input} */
-  const input = {
+export async function gather(
+  env: Record<string, string | undefined>,
+  api: (path: string) => Promise<any>,
+): Promise<Input> {
+  const input: Input = {
     enabled: env.AUTO_SECURITY_RELEASE,
     hasToken: Boolean(env.RELEASE_TOKEN),
     repository: env.GITHUB_REPOSITORY,
@@ -222,14 +228,12 @@ export async function gather(env, api) {
 /* c8 ignore start: the CLI around the tested functions, exercised by the dry run */
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const env = { ...process.env, GH_TOKEN: process.env.RELEASE_TOKEN ?? "" };
-  /** @param {string[]} args */
-  const gh = (args) => execFileSync("gh", args, { env, encoding: "utf8" });
+  const gh = (args: string[]) => execFileSync("gh", args, { env, encoding: "utf8" });
   /**
    * Polls the head's check runs for up to 3 minutes (the job has 5). On a timeout the job fails
    * before auto-merge is set: the release PR is ready, and a person merges it once green.
-   * @param {string} head
    */
-  const waitForSlowChecks = async (head) => {
+  const waitForSlowChecks = async (head: string) => {
     const path = `repos/${REPOSITORY}/commits/${head}/check-runs?per_page=100`;
     for (let i = 0; i < 18; i++) {
       if (slowChecksStarted(JSON.parse(gh(["api", path])).check_runs ?? [])) return;

@@ -1799,7 +1799,7 @@ describe("release-please-config.json", () => {
 });
 
 // `vimma --version` prints `Vimma <vimma> · Firefox <firefox>` (spec firefox-versions): every smoke
-// check takes the expected line from tools/release/version-line.mjs, never its own copy of it.
+// check takes the expected line from tools/release/version-line.ts, never its own copy of it.
 describe("--version smoke checks", () => {
   /** @param {string} name */
   const workflow = (name) =>
@@ -1826,7 +1826,7 @@ describe("--version smoke checks", () => {
       step(release, "Smoke test the .deb and the AppImage"),
     ];
     for (const check of checks) {
-      expect(check).toContain("node tools/release/version-line.mjs");
+      expect(check).toContain("node tools/release/version-line.ts");
       expect(check).toMatch(/--version/);
     }
     // the .deb and the AppImage are each compared with the line
@@ -1888,14 +1888,14 @@ describe("one build ID per build", () => {
       "Package with mach (dist/vimma-<firefox>.en-US.linux-x86_64.tar.xz)",
     );
     expect(run).toContain(
-      'node tools/release/build-id.mjs --binary "$unpacked/vimma/vimma" --ini "$unpacked/vimma/application.ini"',
+      'node tools/release/build-id.ts --binary "$unpacked/vimma/vimma" --ini "$unpacked/vimma/application.ini"',
     );
   });
 
   it("the macOS smoke job checks the app from the dmg the same way", () => {
     const run = runOf(all.get("macos-smoke") ?? "", "Smoke check");
     expect(run).toContain(
-      'node tools/release/build-id.mjs --binary "$APP/Contents/MacOS/vimma" --ini "$APP/Contents/Resources/application.ini"',
+      'node tools/release/build-id.ts --binary "$APP/Contents/MacOS/vimma" --ini "$APP/Contents/Resources/application.ini"',
     );
   });
 
@@ -1904,7 +1904,7 @@ describe("one build ID per build", () => {
     const start = file.indexOf("- name: Package\n");
     const step = file.slice(start, file.indexOf("\n      - name:", start + 1));
     expect(step).toContain(
-      'node tools/release/build-id.mjs --binary "$unpacked/vimma/vimma" --ini "$unpacked/vimma/application.ini"',
+      'node tools/release/build-id.ts --binary "$unpacked/vimma/vimma" --ini "$unpacked/vimma/application.ini"',
     );
   });
 });
@@ -1971,7 +1971,7 @@ describe("release-please.yml", () => {
     );
     // decide() checks the same again from the step's environment
     expect(release).toContain("AUTO_SECURITY_RELEASE: ${{ vars.AUTO_SECURITY_RELEASE }}");
-    expect(release).toContain("run: node tools/release/security-release.mjs");
+    expect(release).toContain("run: node tools/release/security-release.ts");
     // main's code runs, never the release branch's
     expect(release).not.toMatch(/^ {10}ref:/m);
     expect(release).not.toMatch(/gh pr merge|--admin/);
@@ -2043,7 +2043,7 @@ describe("release-please.yml", () => {
     // main's code runs; the release branch's files come through the contents API only
     expect(notes).not.toMatch(/^ {10}ref:/m);
     expect(notes).toContain("BRANCH: release-please--branches--main");
-    expect(notes).toContain("node tools/release/firefox-notes.mjs");
+    expect(notes).toContain("node tools/release/firefox-notes.ts");
     expect(notes).toMatch(/if \[ -z "\$PUSH_TOKEN" \]; then\n\s+echo "::notice::/);
     expect(notes).toContain(
       "chore(release): unreleased lines and firefox $firefox in the changelog entry",
@@ -2057,10 +2057,10 @@ describe("release-please.yml", () => {
   it("firefox-notes moves [Unreleased] into the new entry before naming the Firefox version", () => {
     const notes = job("firefox-notes");
     const move = notes.indexOf(
-      'node tools/release/changelog.mjs move "$dir/CHANGELOG.md" > "$dir/moved.md"',
+      'node tools/release/changelog.ts move "$dir/CHANGELOG.md" > "$dir/moved.md"',
     );
     const name = notes.indexOf(
-      'node tools/release/firefox-notes.mjs "$dir/moved.md" --surfer "$dir/surfer.json"',
+      'node tools/release/firefox-notes.ts "$dir/moved.md" --surfer "$dir/surfer.json"',
     );
     expect(move).toBeGreaterThan(-1);
     expect(name).toBeGreaterThan(move);
@@ -2069,16 +2069,16 @@ describe("release-please.yml", () => {
   it("release-title adds the tag's hand-written lines to the release notes", () => {
     const title = job("release-title");
     const add = title.indexOf(
-      'node tools/release/changelog.mjs notes "$dir/body.md" --changelog CHANGELOG.md --version "${TAG#v}" > "$dir/hand.md"',
+      'node tools/release/changelog.ts notes "$dir/body.md" --changelog CHANGELOG.md --version "${TAG#v}" > "$dir/hand.md"',
     );
     const name = title.indexOf(
-      'node tools/release/firefox-notes.mjs "$dir/hand.md" --surfer surfer.json > "$dir/new.md"',
+      'node tools/release/firefox-notes.ts "$dir/hand.md" --surfer surfer.json > "$dir/new.md"',
     );
     expect(add).toBeGreaterThan(-1);
     expect(name).toBeGreaterThan(add);
     // a changelog the step cannot read never leaves the release untitled
     expect(title).toMatch(
-      /if ! node tools\/release\/changelog\.mjs notes [^\n]*; then\n\s+echo "::warning::[^\n]*"\n\s+cp "\$dir\/body\.md" "\$dir\/hand\.md"\n\s+fi\n/,
+      /if ! node tools\/release\/changelog\.ts notes [^\n]*; then\n\s+echo "::warning::[^\n]*"\n\s+cp "\$dir\/body\.md" "\$dir\/hand\.md"\n\s+fi\n/,
     );
   });
 
@@ -2086,8 +2086,8 @@ describe("release-please.yml", () => {
     const title = job("release-title");
     expect(condition(title)).toBe("needs.release-please.outputs.release_created == 'true'");
     expect(title).toContain("ref: refs/tags/${{ needs.release-please.outputs.tag_name }}");
-    expect(title).toContain("node tools/release/version-line.mjs");
-    expect(title).toContain("node tools/release/firefox-notes.mjs");
+    expect(title).toContain("node tools/release/version-line.ts");
+    expect(title).toContain("node tools/release/firefox-notes.ts");
     expect(title).toContain('"Vimma ${TAG#v} · Firefox "');
     expect(title).toMatch(
       /gh api --method PATCH "repos\/\$GITHUB_REPOSITORY\/releases\/\$RELEASE_ID"/,
