@@ -18,8 +18,6 @@ packages/vimma-core/test/fuzz/routes.fuzz.test.mjs
 packages/vimma-core/test/fuzz/strings.fuzz.test.mjs
 packages/vimma-core/test/fuzz/theme.fuzz.test.mjs
 packages/vimma-core/test/fuzz/toml-arb.mjs
-tools/artifact-build/artifact-build.mjs
-tools/artifact-build/test/artifact-build.test.mjs
 tools/test/build.test.mjs
 tools/test/chrome-css.test.mjs
 tools/test/feature-prefs.mjs

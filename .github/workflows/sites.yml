@@ -76,7 +76,7 @@ jobs:
         run: npm run import
 
       - name: Artifact build (tools/artifact-build)
-        run: node tools/artifact-build/artifact-build.mjs
+        run: node tools/artifact-build/artifact-build.ts
 
       # Exits 0 whenever it wrote a report, whatever the sites did; 1 only when the harness
       # itself failed. It appends the Markdown report to the job summary. Blocked sites get one

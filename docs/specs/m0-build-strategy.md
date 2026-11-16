@@ -11,7 +11,7 @@ from forks once the repo is public.
 
 ## Scope
 
-- `tools/artifact-build/artifact-build.mjs`: artifact build in `engine/obj-artifact` (ADR-010).
+- `tools/artifact-build/artifact-build.mjs` (Since changed: `artifact-build.ts`, ADR-025): artifact build in `engine/obj-artifact` (ADR-010).
   Writes `engine/mozconfig.artifact` from `engine/mozconfig`, runs `mach build` with
   `MOZ_ARTIFACT_REVISION` from `engine/sourcestamp.txt`, links `dist/bin/<binaryName>` to the
   `firefox` launcher, writes `dist/bin/browser/application.ini` (ours plus `UAName`).
@@ -28,7 +28,7 @@ from forks once the repo is public.
 
 ## Tests (write first)
 
-- `tools/artifact-build/test/artifact-build.test.mjs`: dropped options (`--enable-optimize`,
+- `tools/artifact-build/test/artifact-build.test.mjs` (Since changed: `artifact-build.test.ts`, ADR-025): dropped options (`--enable-optimize`,
   `--enable-hardening`, `--disable-crashreporter`, `--with-ccache`) and the kept ones; artifact
   options and objdir; refuses an already-artifact mozconfig; `sourceRevision` reads the
   40-hex revision and throws on empty, missing or short; `uaName` from `moz.configure`;

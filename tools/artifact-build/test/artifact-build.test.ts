@@ -14,7 +14,7 @@ import {
   refreshAppIni,
   sourceStamp,
   uaName,
-} from "../artifact-build.mjs";
+} from "../artifact-build.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 
 const REV = "737ec77d798755890b062aab541a90d6c75afd19";
@@ -46,8 +46,7 @@ const GENERATED = [
   "",
 ].join("\n");
 
-/** @param {string} text */
-const options = (text) =>
+const options = (text: string) =>
   text
     .split("\n")
     .filter((l) => /^\s*(ac|mk)_add_options\b/.test(l))
@@ -326,14 +325,12 @@ describe("refreshAppIni", () => {
     );
     return dir;
   };
-  /** @param {string} dir @param {string} buildId */
-  const build = (dir, buildId) =>
+  const build = (dir: string, buildId: string) =>
     writeFileSync(
       join(dir, ARTIFACT_OBJDIR, "dist", "bin", "application.ini"),
       `[App]\nName=Vimma\nBuildID=${buildId}\n`,
     );
-  /** @param {string} dir */
-  const copy = (dir) =>
+  const copy = (dir: string) =>
     readFileSync(join(dir, ARTIFACT_OBJDIR, "dist", "bin", "browser", "application.ini"), "utf8");
 
   it("writes the test app file from the current build every time", () => {

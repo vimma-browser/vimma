@@ -38,7 +38,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { refreshAppIni } from "./artifact-build/artifact-build.mjs";
+import { refreshAppIni } from "./artifact-build/artifact-build.ts";
 
 const REPO = fileURLToPath(new URL("../", import.meta.url));
 export const READ_PATH_PREF = "security.sandbox.content.read_path_whitelist";
@@ -113,7 +113,7 @@ export function selectBuild({
   }
   throw new Error(
     `no Vimma build: neither ${full} nor ${artifact} exists. Build one with ` +
-      "`npx surfer build` (full) or `node tools/artifact-build/artifact-build.mjs` (artifact).",
+      "`npx surfer build` (full) or `node tools/artifact-build/artifact-build.ts` (artifact).",
   );
 }
 

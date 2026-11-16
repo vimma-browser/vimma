@@ -33,7 +33,7 @@ locale on the add-on manager's daily timer.
   setting, so they go too.
 - **System add-on updates off**: `extensions.systemAddon.update.enabled` false and
   `extensions.systemAddon.update.url` "" in `firefox-branding.js`, as defaults (not locked).
-- **Artifact build** (`tools/artifact-build/artifact-build.mjs`) drops `--disable-updater`, as it
+- **Artifact build** (`tools/artifact-build/artifact-build.mjs`; since changed: `artifact-build.ts`, ADR-025) drops `--disable-updater`, as it
   drops `--disable-crashreporter`; ADR-010 gets the row and the known gap.
 - No upstream patch, no new dependency.
 
@@ -98,7 +98,7 @@ false; each task clears them first.
 
 Both share `tests/browser/head_vimma_aus.js` (the request watcher).
 
-`tools/artifact-build/test/artifact-build.test.mjs`: the generated artifact mozconfig drops
+`tools/artifact-build/test/artifact-build.test.mjs` (Since changed: `artifact-build.test.ts`, ADR-025): the generated artifact mozconfig drops
 `--disable-updater` (fixture updated: our mozconfig no longer has `--enable-updater`).
 
 ## Out of scope
@@ -114,7 +114,7 @@ Both share `tests/browser/head_vimma_aus.js` (the request watcher).
 
 PR CI cannot see this spec's app-updater half: Mozilla's libxul in the artifact build aborts on
 startup without `UpdateServiceStub.sys.mjs` ("Missing chrome or resource URLs"), so
-`artifact-build.mjs` drops `--disable-updater` and that build keeps Mozilla's updater, aus5 URL
+`artifact-build.mjs` (Since changed: `artifact-build.ts`, ADR-025) drops `--disable-updater` and that build keeps Mozilla's updater, aus5 URL
 and update UI. `browser_vimma_updater.js` runs only on full builds (locally, and in the nightly
 once live). ADR-010 lists it. The system add-on half is prefs and runs in CI.
 

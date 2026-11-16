@@ -1,11 +1,11 @@
 // Runs our mochitests through mach. `surfer import` symlinks tests/ under this engine path.
-// --artifact: against the artifact build (ADR-010, tools/artifact-build/artifact-build.mjs).
+// --artifact: against the artifact build (ADR-010, tools/artifact-build/artifact-build.ts).
 import { spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { refreshAppIni } from "./artifact-build/artifact-build.mjs";
+import { refreshAppIni } from "./artifact-build/artifact-build.ts";
 import { machPythonOrExit } from "./mach-python.ts";
 
 const ENGINE_TESTS = "browser/base/zen-components/";
