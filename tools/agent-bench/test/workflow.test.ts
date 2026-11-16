@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { STEPS } from "../../upstream/suite-results.mjs";
+import { STEPS } from "../../upstream/suite-results.ts";
 
 const e2e = readFileSync(new URL("../../../.github/workflows/e2e.yml", import.meta.url), "utf8");
 

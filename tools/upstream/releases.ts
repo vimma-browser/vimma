@@ -4,7 +4,7 @@
 
 /**
  * Firefox release and security-advisory logic for the upstream autopilot (spec
- * m7-upstream-autopilot, ADR-015). Pure: no network, no files. detect.mjs feeds it Mozilla's
+ * m7-upstream-autopilot, ADR-015). Pure: no network, no files. detect.ts feeds it Mozilla's
  * product-details JSON and the security advisories index; tests feed it fixtures.
  *
  * Three feeds:
@@ -55,10 +55,8 @@ const MONTHS = [
  * Comparable parts of a Firefox release version: "157.0.1" → [157, 0, 1], "157.0" → [157].
  * Trailing zeros go so that "157" and "157.0" are the same release (the MFSA index writes
  * "Firefox 157" for 157.0).
- * @param {unknown} version
- * @returns {number[]}
  */
-export function versionKey(version) {
+export function versionKey(version: unknown): number[] {
   if (typeof version !== "string" || !RELEASE.test(version)) {
     throw new Error(`not a Firefox release version: ${JSON.stringify(version)}`);
   }
@@ -68,11 +66,9 @@ export function versionKey(version) {
 }
 
 /**
- * @param {string} a
- * @param {string} b
- * @returns {number} <0, 0 or >0 as a is older than, the same as, or newer than b
+ * @returns <0, 0 or >0 as a is older than, the same as, or newer than b
  */
-export function compareVersions(a, b) {
+export function compareVersions(a: string, b: string): number {
   const ka = versionKey(a);
   const kb = versionKey(b);
   for (let i = 0; i < Math.max(ka.length, kb.length); i++) {
@@ -84,18 +80,18 @@ export function compareVersions(a, b) {
 
 /**
  * "major" for X.0 (the 4-weekly release), "dot" for X.Y.Z (a point release).
- * @param {string} version
- * @returns {"major" | "dot"}
  */
-export function releaseKind(version) {
+export function releaseKind(version: string): "major" | "dot" {
   return versionKey(version).length === 1 ? "major" : "dot";
 }
 
 /**
- * @param {string} text firefox_versions.json
- * @returns {{ latest: string, lastReleaseDate: string | null }}
+ * @param text firefox_versions.json
  */
-export function parseVersionsFeed(text) {
+export function parseVersionsFeed(text: string): {
+  latest: string;
+  lastReleaseDate: string | null;
+} {
   const data = parseJson(text, "firefox_versions.json");
   const latest = data.LATEST_FIREFOX_VERSION;
   if (latest === undefined) throw new Error("firefox_versions.json has no LATEST_FIREFOX_VERSION");
@@ -104,22 +100,19 @@ export function parseVersionsFeed(text) {
   return { latest, lastReleaseDate: typeof date === "string" && isDate(date) ? date : null };
 }
 
-/**
- * @typedef {{ version: string, kind: "major" | "dot", date: string }} Release
- */
+export type Release = { version: string; kind: "major" | "dot"; date: string };
 
 /**
  * Release-channel releases (categories major and stability; not dev, esr or aurora).
- * @param {string} text firefox.json
- * @returns {Release[]} oldest first
+ * @param text firefox.json
+ * @returns oldest first
  */
-export function parseReleasesFeed(text) {
+export function parseReleasesFeed(text: string): Release[] {
   const data = parseJson(text, "firefox.json");
   const releases = data.releases;
   if (!releases || typeof releases !== "object") throw new Error("firefox.json has no releases");
-  /** @type {Release[]} */
-  const out = [];
-  for (const r of Object.values(releases)) {
+  const out: Release[] = [];
+  for (const r of Object.values(releases) as Record<string, any>[]) {
     if (!r || typeof r !== "object") continue;
     if (r.category !== "major" && r.category !== "stability") continue;
     if (typeof r.version !== "string" || !RELEASE.test(r.version) || !isDate(r.date)) continue;
@@ -128,22 +121,25 @@ export function parseReleasesFeed(text) {
   return out.sort((a, b) => compareVersions(a.version, b.version));
 }
 
-/**
- * @typedef {{ id: string, url: string, severity: string, title: string, date: string | null,
- *   versions: string[] }} Advisory
- */
+export type Advisory = {
+  id: string;
+  url: string;
+  severity: string;
+  title: string;
+  date: string | null;
+  versions: string[];
+};
 
 /**
  * Firefox (desktop, release channel) advisories in the MFSA index page. Thunderbird, ESR,
  * Firefox for iOS/Android and old one-bug advisories without "fixed in Firefox N" are skipped.
- * @param {string} html https://www.mozilla.org/en-US/security/advisories/
- * @returns {Advisory[]} as listed, newest first
+ * @param html https://www.mozilla.org/en-US/security/advisories/
+ * @returns as listed, newest first
  */
-export function parseAdvisories(html) {
+export function parseAdvisories(html: string): Advisory[] {
   const re =
     /<h2>([^<]+)<\/h2>|<a href="([^"]*\/advisories\/mfsa\d{4}-\d+\/)"><span class="level ([a-z]+)">(MFSA [\d-]+)<\/span>\s*([^<]+)<\/a>/g;
-  /** @type {Advisory[]} */
-  const out = [];
+  const out: Advisory[] = [];
   let date = null;
   let links = 0;
   for (const m of html.matchAll(re)) {
@@ -152,18 +148,18 @@ export function parseAdvisories(html) {
       continue;
     }
     links++;
-    const title = decodeEntities(/** @type {string} */ (m[5]).trim());
+    const title = decodeEntities((m[5] as string).trim());
     const fixed = /\bfixed in (.+)$/i.exec(title);
     if (!fixed?.[1]) continue;
     const versions = [...fixed[1].matchAll(/\bFirefox (\d+(?:\.\d+)*)\b/g)].map(
-      (v) => /** @type {string} */ (v[1]),
+      (v) => v[1] as string,
     );
     if (versions.length === 0) continue;
-    const href = /** @type {string} */ (m[2]);
+    const href = m[2] as string;
     out.push({
-      id: /** @type {string} */ (m[4]),
+      id: m[4] as string,
       url: href.startsWith("/") ? ADVISORY_ORIGIN + href : href,
-      severity: /** @type {string} */ (m[3]),
+      severity: m[3] as string,
       title,
       date,
       versions,
@@ -174,21 +170,14 @@ export function parseAdvisories(html) {
   return out;
 }
 
-/**
- * @param {string} version
- * @param {Advisory[]} advisories
- * @returns {Advisory[]}
- */
-export function advisoriesFor(version, advisories) {
+export function advisoriesFor(version: string, advisories: Advisory[]): Advisory[] {
   return advisories.filter((a) => a.versions.some((v) => compareVersions(v, version) === 0));
 }
 
 /**
  * The highest severity, by Mozilla's impact key (critical > high > moderate > low).
- * @param {Advisory[]} advisories
- * @returns {string | null}
  */
-export function maxSeverity(advisories) {
+export function maxSeverity(advisories: Advisory[]): string | null {
   let best = null;
   let rank = -2; // an unknown level (-1) still beats nothing; any known level beats it
   for (const a of advisories) {
@@ -201,20 +190,27 @@ export function maxSeverity(advisories) {
   return best;
 }
 
-/**
- * @typedef {{ version: string, kind: "major" | "dot", date: string | null,
- *   security: boolean | null, severity: string | null,
- *   advisories: { id: string, url: string, severity: string }[] }} Classification
- */
+export type Classification = {
+  version: string;
+  kind: "major" | "dot";
+  date: string | null;
+  security: boolean | null;
+  severity: string | null;
+  advisories: { id: string; url: string; severity: string }[];
+};
 
 /**
  * Is this release a security release? Yes when an MFSA advisory names it ("fixed in Firefox
  * X.Y.Z"). null when the advisories could not be read: unknown, never silently "no".
- * @param {string} version
- * @param {{ releases: Release[], advisories: Advisory[] | null, fallbackDate?: string | null }} feeds
- * @returns {Classification}
  */
-export function classify(version, { releases, advisories, fallbackDate = null }) {
+export function classify(
+  version: string,
+  {
+    releases,
+    advisories,
+    fallbackDate = null,
+  }: { releases: Release[]; advisories: Advisory[] | null; fallbackDate?: string | null },
+): Classification {
   const release = releases.find((r) => compareVersions(r.version, version) === 0);
   const found = advisories ? advisoriesFor(version, advisories) : [];
   return {
@@ -230,37 +226,51 @@ export function classify(version, { releases, advisories, fallbackDate = null })
 /**
  * Days a release may stay unshipped (DRIFT_LIMIT_DAYS). An unknown security status counts as
  * a security release: the check fails loudly rather than late.
- * @param {"major" | "dot"} kind
- * @param {boolean | null} security
  */
-export function driftLimitDays(kind, security) {
+export function driftLimitDays(kind: "major" | "dot", security: boolean | null) {
   if (kind === "major") return DRIFT_LIMIT_DAYS.major;
   return security === false ? DRIFT_LIMIT_DAYS.other : DRIFT_LIMIT_DAYS.securityDot;
 }
 
-/**
- * @typedef {Classification & { limitDays: number, deadline: string, ageHours: number,
- *   overdueHours: number }} Unshipped
- * @typedef {{ status: "current" | "behind" | "overdue", current: string,
- *   unshipped: Unshipped[], worst: Unshipped | null }} Drift
- */
+export type Unshipped = Classification & {
+  limitDays: number;
+  deadline: string;
+  ageHours: number;
+  overdueHours: number;
+};
+export type Drift = {
+  status: "current" | "behind" | "overdue";
+  current: string;
+  unshipped: Unshipped[];
+  worst: Unshipped | null;
+};
 
 /**
  * How far the shipped Firefox (surfer.json on main) is behind: every newer release-channel
  * release, each with the deadline its limit sets. "overdue" once any deadline has passed;
  * `worst` is the release whose deadline is earliest (the one that fails first, or failed).
- * @param {{ current: string, latest: string, releases: Release[], advisories: Advisory[] | null,
- *   now: Date, fallbackDate?: string | null }} input
- * @returns {Drift}
  */
-export function drift({ current, latest, releases, advisories, now, fallbackDate = null }) {
+export function drift({
+  current,
+  latest,
+  releases,
+  advisories,
+  now,
+  fallbackDate = null,
+}: {
+  current: string;
+  latest: string;
+  releases: Release[];
+  advisories: Advisory[] | null;
+  now: Date;
+  fallbackDate?: string | null;
+}): Drift {
   const newer = releases.filter((r) => compareVersions(r.version, current) > 0);
   // product-details can list the latest version before firefox.json has its entry.
   if (compareVersions(latest, current) > 0 && !newer.some((r) => sameVersion(r.version, latest))) {
     newer.push({ version: latest, kind: releaseKind(latest), date: fallbackDate ?? isoDay(now) });
   }
-  /** @type {Unshipped[]} */
-  const unshipped = newer.map((r) => {
+  const unshipped: Unshipped[] = newer.map((r) => {
     const c = classify(r.version, { releases: newer, advisories });
     const limitDays = driftLimitDays(c.kind, c.security);
     const start = Date.parse(`${r.date}T00:00:00Z`);
@@ -286,17 +296,11 @@ export function drift({ current, latest, releases, advisories, now, fallbackDate
   return { status, current, unshipped, worst };
 }
 
-/** @param {string} a @param {string} b */
-function sameVersion(a, b) {
+function sameVersion(a: string, b: string) {
   return compareVersions(a, b) === 0;
 }
 
-/**
- * @param {string} text
- * @param {string} name
- * @returns {Record<string, any>}
- */
-function parseJson(text, name) {
+function parseJson(text: string, name: string): Record<string, any> {
   let data;
   try {
     data = JSON.parse(text);
@@ -311,30 +315,26 @@ function parseJson(text, name) {
   return data;
 }
 
-/** @param {unknown} s */
-function isDate(s) {
+function isDate(s: unknown) {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
 }
 
-/** @param {Date} d */
-function isoDay(d) {
+function isoDay(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
 /**
  * "October  6, 2026" → "2026-10-06"; null if it is not such a date.
- * @param {string} text
  */
-export function parseLongDate(text) {
+export function parseLongDate(text: string) {
   const m = /^\s*([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})\s*$/.exec(text);
   if (!m) return null;
-  const month = MONTHS.indexOf(/** @type {string} */ (m[1]).toLowerCase());
+  const month = MONTHS.indexOf((m[1] as string).toLowerCase());
   if (month < 0) return null;
   return isoDay(new Date(Date.UTC(Number(m[3]), month, Number(m[2]))));
 }
 
-/** @param {string} s */
-function decodeEntities(s) {
+function decodeEntities(s: string) {
   return s
     .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
     .replace(/&quot;/g, '"')

@@ -16,8 +16,8 @@ step. Spec [upstream-bump-automation](../specs/upstream-bump-automation.md) desi
   `--match-head-commit`) when the repository variable `AUTO_MERGE_UPSTREAM` allows the release
   kind (`all`: dot and major releases; `dot`: dot releases; unset: none), `UPSTREAM_PR_TOKEN` is
   set, the PR is not a draft, every patch applied clean or with an offset, Mozilla's artifacts
-  existed, the suites passed, and `tools/upstream/bump-diff.mjs` finds only the version and the
-  copied pref lines changed.
+  existed, the suites passed, and `tools/upstream/bump-diff.mjs` (Since changed: `bump-diff.ts`,
+  ADR-025) finds only the version and the copied pref lines changed.
 - The `main` ruleset's required checks still decide the merge. (Since changed: auto-merge is set
   by `upstream-merge.yml` only once every workflow run on the PR's head is green, so checks the
   ruleset does not require, such as the macOS mochitests, hold the merge too.)

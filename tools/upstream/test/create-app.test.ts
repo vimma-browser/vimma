@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from "vitest";
-import { formPage, manifest, otherPolicies } from "../create-app.mjs";
+import { formPage, manifest, otherPolicies } from "../create-app.ts";
 
 // docs/security/10-firefox-updates.md, G14: the upstream App can write contents, pull requests and
 // issues, nothing else; it has no webhook and is private to the organisation.

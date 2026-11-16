@@ -5,13 +5,13 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync }
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
-import { fakeSign, fakeSignature, withFakeGpgv } from "./fake-gpgv.mjs";
+import { fakeSign, fakeSignature, withFakeGpgv } from "./fake-gpgv.ts";
 
 // tools/upstream/firefox-source.sh: the only way a build gets its Firefox source (spec
 // build-supply-chain, decisions 3 to 5, rules B1 and B2). The archive is a file:// directory laid
 // out as archive.mozilla.org's; Surfer is a stub in the checkout's node_modules/.bin that extracts
 // the tarball as Surfer does, records each call, and fails if asked to download. gpgv is a stub
-// (fake-gpgv.mjs): the real signature check is test_verify_sha512.py's. No network.
+// (fake-gpgv.ts): the real signature check is test_verify_sha512.py's. No network.
 const SCRIPT = fileURLToPath(new URL("../firefox-source.sh", import.meta.url));
 const VERSION = "158.0";
 const NAME = `source/firefox-${VERSION}.source.tar.xz`;
@@ -29,10 +29,8 @@ tar --strip-components=1 -xJf "$tarball" -C engine
 
 /**
  * A tarball of `files` with Firefox's top-level directory.
- * @param {string} path
- * @param {Record<string, string>} files
  */
-function makeTarball(path, files) {
+function makeTarball(path: string, files: Record<string, string>) {
   const src = tempDir("firefox-source-tree-");
   const top = join(src, `firefox-${VERSION}`);
   for (const [file, text] of Object.entries(files)) {
@@ -46,14 +44,14 @@ function makeTarball(path, files) {
   if (tar.status !== 0) throw new Error(tar.stderr);
 }
 
-/** @param {string} path */
-const sha512 = (path) => createHash("sha512").update(readFileSync(path)).digest("hex");
+const sha512 = (path: string) => createHash("sha512").update(readFileSync(path)).digest("hex");
 
 /**
  * An archive whose SHA512SUMS lists the genuine tarball, and a checkout to run the script in.
- * @param {{ served?: "genuine" | "tampered" | "none", signature?: "good" | "bad" | "none" }} [opts]
  */
-function setup(opts = {}) {
+function setup(
+  opts: { served?: "genuine" | "tampered" | "none"; signature?: "good" | "bad" | "none" } = {},
+) {
   const root = tempDir("firefox-source-");
   const releases = join(root, "releases");
   const dir = join(releases, VERSION);
@@ -93,21 +91,19 @@ function setup(opts = {}) {
   return { base: `file://${releases}`, work, genuine };
 }
 
-/** @param {{ base: string, work: string }} where */
-function run({ base, work }) {
+function run({ base, work }: { base: string; work: string }) {
   const env = withFakeGpgv({ ...process.env, MOZILLA_RELEASES: base });
   delete env.CI_SKIP_INIT;
   return spawnSync("bash", [SCRIPT], { cwd: work, env, encoding: "utf8" });
 }
 
-/** @param {string} work */
-const surferCalls = (work) =>
+const surferCalls = (work: string) =>
   existsSync(join(work, "surfer-calls.log"))
     ? readFileSync(join(work, "surfer-calls.log"), "utf8").trim().split("\n")
     : [];
 
-/** A stale engine/ from an earlier run, which the script must never build from. @param {string} work */
-function staleEngine(work) {
+/** A stale engine/ from an earlier run, which the script must never build from. */
+function staleEngine(work: string) {
   mkdirSync(join(work, "engine", "browser"), { recursive: true });
   writeFileSync(join(work, "engine", "browser", "stale.txt"), "left by an earlier build\n");
   writeFileSync(join(work, "engine", ".vimma-firefox-version"), `${VERSION}\n`);

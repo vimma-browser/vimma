@@ -7,7 +7,7 @@
  * The Firefox Beta canary (spec upstream-beta-canary, upstream-beta.yml): which Beta to test, and
  * what its issue says.
  *
- *   node tools/upstream/canary.mjs detect [--version 159.0b2] [--versions firefox_versions.json]
+ *   node tools/upstream/canary.ts detect [--version 159.0b2] [--versions firefox_versions.json]
  *        [--repo OWNER/NAME] [--now ISO] [--github-output FILE]
  *
  * B1, B2: reads product-details (or --versions) for the current Beta and asks the Actions API
@@ -17,7 +17,7 @@
  * closed, B7) and previous-artifact/previous-run (the newest result of main for the same Firefox
  * version, for B6). A manual --version is always tested and must be a Beta.
  *
- *   node tools/upstream/canary.mjs render --version 159.0b1 --repo OWNER/NAME --sha SHA
+ *   node tools/upstream/canary.ts render --version 159.0b1 --repo OWNER/NAME --sha SHA
  *        --run-url URL --owner LOGIN --patch-check patch-check.json --source-result ok|fail|norun
  *        --artifacts yes|no|unknown [--artifacts-note TEXT] --test-result success|failure|skipped
  *        --suite-results suite-results.json --previous state.json --out-dir DIR
@@ -33,8 +33,8 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { githubOutputText } from "./detect.mjs";
-import { VERSIONS_URL } from "./releases.mjs";
+import { githubOutputText } from "./detect.ts";
+import { VERSIONS_URL } from "./releases.ts";
 
 export const LABEL = "upstream-beta";
 /** GitHub refuses a body over 65,536 characters; this leaves room for the mention line. */
@@ -43,13 +43,10 @@ export const BODY_LIMIT = 60_000;
 export const RETEST_DAYS = 7;
 const BETA = /^(\d+)\.0b(\d+)$/;
 
-/** @param {number} major */
-export const title = (major) => `Firefox ${major} beta: canary findings`;
-/** @param {string} version */
-export const artifactName = (version) => `upstream-beta-${version}`;
+export const title = (major: number) => `Firefox ${major} beta: canary findings`;
+export const artifactName = (version: string) => `upstream-beta-${version}`;
 
-/** @param {string} version @returns {{ major: number, build: number }} */
-function parseBeta(version) {
+function parseBeta(version: string): { major: number; build: number } {
   const m = BETA.exec(version);
   if (!m) throw new Error(`not a Firefox Beta version: ${JSON.stringify(version)}`);
   return { major: Number(m[1]), build: Number(m[2]) };
@@ -57,10 +54,14 @@ function parseBeta(version) {
 
 /**
  * B1: the Beta product-details names, unless its Firefox version is already released.
- * @param {string} versionsText firefox_versions.json
- * @returns {{ version: string, major: number, releasedMajor: number, reason: string }}
+ * @param versionsText firefox_versions.json
  */
-export function currentBeta(versionsText) {
+export function currentBeta(versionsText: string): {
+  version: string;
+  major: number;
+  releasedMajor: number;
+  reason: string;
+} {
   const feed = JSON.parse(versionsText);
   const latest = String(feed.LATEST_FIREFOX_VERSION ?? "");
   const rm = /^(\d+)\.\d+(\.\d+)?$/.exec(latest);
@@ -88,19 +89,25 @@ export function currentBeta(versionsText) {
   return { version: devel, major, releasedMajor, reason: `Firefox ${devel} is the current Beta` };
 }
 
-/**
- * @typedef {{ id: number, name: string, expired: boolean, created_at: string,
- *   workflow_run?: { id?: number, head_branch?: string, head_repository_id?: number,
- *   repository_id?: number } }} Artifact
- * @typedef {(name: string) => Promise<Artifact[]>} ListArtifacts
- */
+export type Artifact = {
+  id: number;
+  name: string;
+  expired: boolean;
+  created_at: string;
+  workflow_run?: {
+    id?: number;
+    head_branch?: string;
+    head_repository_id?: number;
+    repository_id?: number;
+  };
+};
+export type ListArtifacts = (name: string) => Promise<Artifact[]>;
 
 /**
  * The newest unexpired artifact of that name from a run on main of this repository. A manual run
  * on a branch, or a fork's, never counts as main's result.
- * @param {Artifact[]} artifacts @param {number} repositoryId
  */
-function newestOnMain(artifacts, repositoryId) {
+function newestOnMain(artifacts: Artifact[], repositoryId: number) {
   return (
     artifacts
       .filter(
@@ -116,11 +123,20 @@ function newestOnMain(artifacts, repositoryId) {
 
 /**
  * B1, B2: the detect job's outputs.
- * @param {{ versionsText: string, manualVersion: string, repositoryId: number, now: Date,
- *   listArtifacts: ListArtifacts }} input
- * @returns {Promise<Record<string, string>>}
  */
-export async function decide({ versionsText, manualVersion, repositoryId, now, listArtifacts }) {
+export async function decide({
+  versionsText,
+  manualVersion,
+  repositoryId,
+  now,
+  listArtifacts,
+}: {
+  versionsText: string;
+  manualVersion: string;
+  repositoryId: number;
+  now: Date;
+  listArtifacts: ListArtifacts;
+}): Promise<Record<string, string>> {
   const current = currentBeta(versionsText);
   let { version, reason } = current;
   if (manualVersion) {
@@ -142,10 +158,8 @@ export async function decide({ versionsText, manualVersion, repositoryId, now, l
   out.major = String(major);
 
   // B6: the newest result of main for this Firefox version, from this build down to b1.
-  /** @type {Artifact | null} */
-  let previous = null;
-  /** @type {Artifact | null} */
-  let thisBuild = null;
+  let previous: Artifact | null = null;
+  let thisBuild: Artifact | null = null;
   for (let b = build; b >= 1 && !previous; b--) {
     previous = newestOnMain(await listArtifacts(artifactName(`${major}.0b${b}`)), repositoryId);
     if (b === build) thisBuild = previous;
@@ -166,50 +180,72 @@ export async function decide({ versionsText, manualVersion, repositoryId, now, l
 
 // --- render ------------------------------------------------------------------------------------
 
-/**
- * @typedef {{ key: string, label: string }} Item a finding: its stable key, and one line for the
- *   progress comment
- * @typedef {{ version: string, major: number, sha: string, runUrl: string, items: Item[] }} State
- * @typedef {{ patch: string, status: string, imports: boolean, missing: string[], message: string,
- *   hunks: Array<{ file: string, index: number, of: number, status: string, fuzz: number,
- *   text?: string }> }} PatchRow
- * @typedef {{ ran?: boolean, ok?: boolean, error?: string, tree?: string | null,
- *   revision?: string | null, patches: PatchRow[] }} PatchCheck
- * @typedef {{ version: string, ok: boolean, steps: Record<string, string>,
- *   mochitest: { log: boolean, failures: Array<{ status: string, test: string, message: string }> },
- *   e2e: { passed: number, failed: Array<{ name: string, status: string, error: string }>,
- *   pending: unknown[] } | null }} SuiteResults
- */
+/** A finding: its stable key, and one line for the progress comment. */
+export type Item = { key: string; label: string };
+export type State = { version: string; major: number; sha: string; runUrl: string; items: Item[] };
+export type PatchRow = {
+  patch: string;
+  status: string;
+  imports: boolean;
+  missing: string[];
+  message: string;
+  hunks: Array<{
+    file: string;
+    index: number;
+    of: number;
+    status: string;
+    fuzz: number;
+    text?: string;
+  }>;
+};
+export type PatchCheck = {
+  ran?: boolean;
+  ok?: boolean;
+  error?: string;
+  tree?: string | null;
+  revision?: string | null;
+  patches: PatchRow[];
+};
+export type SuiteResults = {
+  version: string;
+  ok: boolean;
+  steps: Record<string, string>;
+  mochitest: { log: boolean; failures: Array<{ status: string; test: string; message: string }> };
+  e2e: {
+    passed: number;
+    failed: Array<{ name: string; status: string; error: string }>;
+    pending: unknown[];
+  } | null;
+};
 
 /** The checks e2e.yml runs besides the suites, as the issue names them. */
-const CHECKS = /** @type {Record<string, string>} */ ({
-  brandings: "product names (`tools/branding/brandings.mjs`)",
+const CHECKS = {
+  brandings: "product names (`tools/branding/brandings.ts`)",
   import: "patches and sources import (`npm run import`)",
   branding: "branding prefs (`tools/branding/`)",
-  "upstream-prefs": "upstream pref copies (`tools/upstream/upstream-prefs.mjs`)",
+  "upstream-prefs": "upstream pref copies (`tools/upstream/upstream-prefs.ts`)",
   "artifact-build": "artifact build (`tools/artifact-build/`)",
   mochitest: "mochitests (no unexpected result was logged)",
   e2e: "e2e scenarios (no failed scenario was reported)",
-});
+} as Record<string, string>;
 
-/** @param {string} text @returns {string} a fence longer than any backtick run in text */
-function fence(text) {
+/** @returns a fence longer than any backtick run in text */
+function fence(text: string): string {
   const longest = Math.max(0, ...[...text.matchAll(/`+/g)].map((m) => m[0].length));
   return "`".repeat(Math.max(4, longest + 1));
 }
 
-/** @param {string} text @returns {string} a fenced block: nothing in it mentions or links */
-function fenced(text) {
+/** @returns a fenced block: nothing in it mentions or links */
+function fenced(text: string): string {
   const f = fence(text);
   return `${f}text\n${text.replace(/\n+$/, "")}\n${f}`;
 }
 
-/** @param {string} message @returns {string} a message without its timings, for comparing runs */
-const stable = (message) => message.replace(/\d+(\.\d+)?\s?ms\b/g, "N ms");
+/** @returns a message without its timings, for comparing runs */
+const stable = (message: string): string => message.replace(/\d+(\.\d+)?\s?ms\b/g, "N ms");
 const FINISHED = /^finished in \d+(\.\d+)?\s?ms$/;
 
-/** @param {PatchRow} p */
-function hunkSummary(p) {
+function hunkSummary(p: PatchRow) {
   if (p.missing.length) return p.missing.map((m) => `\`${m}\` is gone upstream`).join("; ");
   return p.hunks
     .filter((h) => h.status === "failed" || h.status === "fuzz")
@@ -223,15 +259,17 @@ function hunkSummary(p) {
 
 /**
  * The run's findings, each with its section of the body.
- * @param {RenderInput} input
- * @returns {{ items: Item[], sections: string[][], suites: string, patches: string }}
  */
-function findings(input) {
+function findings(input: RenderInput): {
+  items: Item[];
+  sections: string[][];
+  suites: string;
+  patches: string;
+} {
   const { patchCheck, sourceResult, artifacts, artifactsNote, testResult, suiteResults } = input;
-  /** @type {Item[]} */
-  const items = [];
-  /** @type {string[][]} body sections, each a list of blocks that are cut as a whole */
-  const sections = [];
+  const items: Item[] = [];
+  /** body sections, each a list of blocks that are cut as a whole */
+  const sections: string[][] = [];
   const rows = patchCheck?.patches ?? [];
   const failing = rows.filter((p) => !p.imports);
   let patches = `${rows.length} checked, every one applies`;
@@ -250,8 +288,7 @@ function findings(input) {
     const n = failing.length;
     patches = `${n} of ${rows.length} do not apply`;
     suites = `did not run: ${n} patch${n === 1 ? " does" : "es do"} not apply`;
-    /** @type {string[]} */
-    const blocks = [
+    const blocks: string[] = [
       "### Patches that do not apply",
       'Re-export each on the Beta tree (docs/rebase.md, "A patch does not apply"). A patch ' +
         "applies to one tree: prepare the re-export now and land it with the release bump.",
@@ -282,8 +319,7 @@ function findings(input) {
   if (suiteResults) {
     const mochi = suiteResults.mochitest?.failures ?? [];
     const scenarios = suiteResults.e2e?.failed ?? [];
-    /** @type {string[]} */
-    const checks = [];
+    const checks: string[] = [];
     for (const [id, outcome] of Object.entries(suiteResults.steps ?? {})) {
       if (outcome === "success" || outcome === "skipped") continue;
       if (id === "mochitest" && mochi.length) continue;
@@ -293,11 +329,9 @@ function findings(input) {
     }
     if (checks.length) sections.push(["### Checks", checks.join("\n")]);
 
-    /** @type {Map<string, string[]>} */
-    const byTest = new Map();
+    const byTest = new Map<string, string[]>();
     for (const f of mochi) byTest.set(f.test, [...(byTest.get(f.test) ?? []), f.message]);
-    /** @type {string[]} */
-    const blocks = [];
+    const blocks: string[] = [];
     let count = 0;
     for (const [test, all] of byTest) {
       // Each failed file adds a test-level "finished in N ms" line: the file's own failures say
@@ -335,9 +369,8 @@ function findings(input) {
 
 /**
  * Joins blocks up to the limit; a cut ends with a pointer to the run's artifact.
- * @param {string} head @param {string[][]} sections @param {string} tail @param {string} cutNote
  */
-function fit(head, sections, tail, cutNote) {
+function fit(head: string, sections: string[][], tail: string, cutNote: string) {
   let body = head;
   const room = BODY_LIMIT - tail.length - cutNote.length - 4;
   for (const blocks of sections) {
@@ -360,16 +393,27 @@ function fit(head, sections, tail, cutNote) {
 
 /**
  * `ref` is the branch tested, `main` but for a manual run on a branch (whose report job is skipped).
- * @typedef {{ version: string, repo: string, ref?: string, sha: string, runUrl: string, owner: string,
- *   patchCheck: PatchCheck | null, sourceResult: string, artifacts: string, artifactsNote: string,
- *   testResult: string, suiteResults: SuiteResults | null, previous: State | null }} RenderInput
  */
+export type RenderInput = {
+  version: string;
+  repo: string;
+  ref?: string;
+  sha: string;
+  runUrl: string;
+  owner: string;
+  patchCheck: PatchCheck | null;
+  sourceResult: string;
+  artifacts: string;
+  artifactsNote: string;
+  testResult: string;
+  suiteResults: SuiteResults | null;
+  previous: State | null;
+};
 
 /**
  * B5–B7: the issue for this run, and the state the next run compares with.
- * @param {RenderInput} input
  */
-export function render(input) {
+export function render(input: RenderInput) {
   const { version, repo, sha, runUrl, owner, previous, ref = "main" } = input;
   const { major } = parseBeta(version);
   // Only a GitHub login, a repository and a commit go into the Markdown outside a fence.
@@ -408,8 +452,7 @@ export function render(input) {
   const cut = `**Cut to fit an issue.** Every finding is in the run's artifact \`${artifactName(version)}\`.`;
   const body = fit(head, sections, tail, cut);
 
-  /** @type {State} */
-  const state = { version, major, sha, runUrl, items };
+  const state: State = { version, major, sha, runUrl, items };
   const had = previous !== null && previous.major === major && previous.items.length > 0;
   const action = items.length ? (had ? "update" : "open") : had ? "close" : "none";
 
@@ -422,8 +465,7 @@ export function render(input) {
     if (added.length || fixed.length) {
       const prevSha = /^[0-9a-f]{40}$/.test(previous.sha) ? previous.sha.slice(0, 12) : "?";
       const prevVersion = BETA.test(previous.version) ? previous.version : "?";
-      /** @type {string[][]} */
-      const lists = [];
+      const lists: string[][] = [];
       if (added.length) {
         lists.push([`**New** (${added.length})`, fenced(added.map((i) => i.label).join("\n"))]);
       }
@@ -459,8 +501,7 @@ export function render(input) {
 
 // --- CLI ---------------------------------------------------------------------------------------
 
-/** @param {string} url @param {Record<string, string>} headers */
-async function fetchJson(url, headers = {}) {
+async function fetchJson(url: string, headers: Record<string, string> = {}) {
   let last;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -475,13 +516,12 @@ async function fetchJson(url, headers = {}) {
   throw last instanceof Error ? last : new Error(String(last));
 }
 
-/** @param {string} path @returns {any} the parsed file, or null when it does not exist */
-function readJsonIf(path) {
+/** @returns the parsed file, or null when it does not exist */
+function readJsonIf(path: string): any {
   return path && existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null;
 }
 
-/** @param {string[]} argv */
-async function main(argv) {
+async function main(argv: string[]) {
   const [command, ...rest] = argv;
   const { values } = parseArgs({
     args: rest,
@@ -566,7 +606,7 @@ async function main(argv) {
     for (const i of state.items) console.log(`  ${i.label}`);
     return 0;
   }
-  process.stderr.write("usage: canary.mjs detect|render [options] (see the file's header)\n");
+  process.stderr.write("usage: canary.ts detect|render [options] (see the file's header)\n");
   return 2;
 }
 

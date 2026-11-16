@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { commitlint } from "../../commitlint/test/repo-commitlint.ts";
-import { detect, driftLine, githubOutputText, labelsFor, outputs, summary } from "../detect.mjs";
+import { detect, driftLine, githubOutputText, labelsFor, outputs, summary } from "../detect.ts";
 import {
   BODY_LIMIT,
   auditLine,
@@ -25,21 +25,24 @@ import {
   prBody,
   prTitle,
   testsLine,
-} from "../autopilot-body.mjs";
-import { ADVISORIES_URL, RELEASES_URL, VERSIONS_URL } from "../releases.mjs";
+} from "../autopilot-body.ts";
+import type { Context } from "../autopilot-body.ts";
+import { ADVISORIES_URL, RELEASES_URL, VERSIONS_URL } from "../releases.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 
 const fixtures = fileURLToPath(new URL("fixtures/", import.meta.url));
-const read = (/** @type {string} */ name) => readFileSync(join(fixtures, name), "utf8");
-const detectScript = fileURLToPath(new URL("../detect.mjs", import.meta.url));
-const bodyScript = fileURLToPath(new URL("../autopilot-body.mjs", import.meta.url));
+const read = (name: string) => readFileSync(join(fixtures, name), "utf8");
+const detectScript = fileURLToPath(new URL("../detect.ts", import.meta.url));
+const bodyScript = fileURLToPath(new URL("../autopilot-body.ts", import.meta.url));
 
 /**
  * Feeds as on the day Firefox 157.0.2 ships with MFSA 2026-105 (critical): the real fixtures
  * plus that release. No network.
- * @param {{ advisory?: boolean, advisoriesDown?: boolean }} [opts]
  */
-function feeds({ advisory = true, advisoriesDown = false } = {}) {
+function feeds({
+  advisory = true,
+  advisoriesDown = false,
+}: { advisory?: boolean; advisoriesDown?: boolean } = {}) {
   const versions = JSON.parse(read("firefox_versions.json"));
   versions.LATEST_FIREFOX_VERSION = "157.0.2";
   versions.LAST_RELEASE_DATE = "2026-10-13";
@@ -58,13 +61,12 @@ function feeds({ advisory = true, advisoriesDown = false } = {}) {
         "Vulnerabilities fixed in Firefox 157.0.2</a></li></ul>\n",
     );
   }
-  /** @type {Record<string, string>} */
-  const byUrl = {
+  const byUrl: Record<string, string> = {
     [VERSIONS_URL]: JSON.stringify(versions),
     [RELEASES_URL]: JSON.stringify(releases),
     [ADVISORIES_URL]: html,
   };
-  return async (/** @type {string} */ url) => {
+  return async (url: string) => {
     if (url === ADVISORIES_URL && advisoriesDown) throw new Error("HTTP 503 from " + url);
     const text = byUrl[url];
     if (text === undefined) throw new Error(`unexpected fetch ${url}`);
@@ -153,9 +155,8 @@ const cleanReport = {
   ],
 };
 
-/** @param {Partial<import("../autopilot-body.mjs").Context>} over */
-const context = (over = {}) =>
-  /** @type {import("../autopilot-body.mjs").Context} */ ({
+const context = (over: Partial<Context> = {}) =>
+  ({
     detection: securityRelease,
     patchReport: cleanReport,
     patchMarkdown: "### Patch check against Firefox 157.0.2\n",
@@ -173,7 +174,7 @@ const context = (over = {}) =>
     error: "",
     betaIssues: [],
     ...over,
-  });
+  }) as Context;
 
 describe("detect", () => {
   it("finds 157.0.2 as a critical security dot release, 3 days to merge", () => {
@@ -296,7 +297,7 @@ describe("autopilot body", () => {
   // Spec firefox-versions, decision 9: the subject is the changelog line, so it names the
   // advisories; tools/release/firefox-notes.ts capitalises Firefox and links them.
   it('the PR title lists the advisories: "upstream: firefox 158.0 (MFSA 2026-106)"', () => {
-    const a = (/** @type {string} */ id) => ({ id, url: "", severity: "high" });
+    const a = (id: string) => ({ id, url: "", severity: "high" });
     expect(prTitle("158.0", [a("MFSA 2026-106")])).toBe("upstream: firefox 158.0 (MFSA 2026-106)");
     expect(prTitle("157.0.3", [a("MFSA 2026-104"), a("MFSA 2026-105")])).toBe(
       "upstream: firefox 157.0.3 (MFSA 2026-104, MFSA 2026-105)",
@@ -310,7 +311,7 @@ describe("autopilot body", () => {
   });
 
   it("the PR title passes commitlint with zero, one and three advisories", async () => {
-    const a = (/** @type {string} */ id) => ({ id, url: "", severity: "high" });
+    const a = (id: string) => ({ id, url: "", severity: "high" });
     const titles = [
       prTitle("157.0.2", []),
       prTitle("158.0", [a("MFSA 2026-106")]),
@@ -553,7 +554,7 @@ describe("autopilot body", () => {
     const dir = tempDir("body-");
     const det = join(dir, "d.json");
     writeFileSync(det, JSON.stringify(securityRelease));
-    const run = (/** @type {string[]} */ args) =>
+    const run = (args: string[]) =>
       spawnSync(process.execPath, [bodyScript, ...args, "--detection", det], { encoding: "utf8" });
     expect(run(["title"]).stdout).toBe("upstream: firefox 157.0.2 (MFSA 2026-105)\n");
     expect(run(["pr", "--draft-only", "--patch-result", "ok", "--tests", "success"]).stdout).toBe(
@@ -718,7 +719,7 @@ describe("the bump PR and auto-merge", () => {
     expect(autoMergeDecision(context(green))).toEqual({ on: true, reason: "on" });
     const major = {
       ...securityRelease,
-      release: { ...securityRelease.release, kind: /** @type {const} */ ("major") },
+      release: { ...securityRelease.release, kind: "major" as const },
     };
     expect(autoMergeDecision(context({ ...green, detection: major })).on).toBe(true);
   });
@@ -727,7 +728,7 @@ describe("the bump PR and auto-merge", () => {
     expect(autoMergeDecision(context({ ...green, autoMerge: "dot" })).on).toBe(true);
     const major = {
       ...securityRelease,
-      release: { ...securityRelease.release, kind: /** @type {const} */ ("major") },
+      release: { ...securityRelease.release, kind: "major" as const },
     };
     expect(autoMergeDecision(context({ ...green, autoMerge: "dot", detection: major }))).toEqual({
       on: false,
@@ -739,7 +740,7 @@ describe("the bump PR and auto-merge", () => {
   });
 
   it("names the first condition that did not hold", () => {
-    const off = (/** @type {object} */ over) => autoMergeDecision(context({ ...green, ...over }));
+    const off = (over: object) => autoMergeDecision(context({ ...green, ...over }));
     expect(off({ ref: "refs/heads/x" }).reason).toBe("off: the run is not on main");
     expect(off({ hasToken: false }).reason).toBe("off: the upstream App is not set up");
     expect(off({ tests: "failure" }).reason).toBe(
@@ -852,7 +853,7 @@ describe("the failing-patches issue", () => {
       "--patch-check",
       join(dir, "patch.json"),
     ];
-    const run = (/** @type {string[]} */ a) =>
+    const run = (a: string[]) =>
       spawnSync(process.execPath, [bodyScript, ...a], { encoding: "utf8" });
     const body = run(["patch-issue", ...args, "--patch-result", "fail", "--pr", "#9"]);
     expect(body.stderr).toBe("");

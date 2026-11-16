@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from "vitest";
-import { BOT, mergeReady, markerSha } from "../merge-ready.mjs";
-import { autoMergeMarker } from "../autopilot-body.mjs";
+import { BOT, mergeReady, markerSha } from "../merge-ready.ts";
+import { autoMergeMarker } from "../autopilot-body.ts";
 
 const head = "a".repeat(40);
 const pr = {
@@ -16,8 +16,7 @@ const pr = {
   body: `Opened by the upstream autopilot.\n\n${autoMergeMarker(head)}\n`,
   auto_merge: null,
 };
-/** @param {string} name @param {object} [over] */
-const run = (name, over = {}) => ({
+const run = (name: string, over: object = {}) => ({
   name,
   event: "pull_request",
   head_sha: head,
@@ -25,8 +24,12 @@ const run = (name, over = {}) => ({
   conclusion: "success",
   ...over,
 });
-/** @param {string} name @param {object} [over] */
-const check = (name, over = {}) => ({ name, status: "completed", conclusion: "success", ...over });
+const check = (name: string, over: object = {}) => ({
+  name,
+  status: "completed",
+  conclusion: "success",
+  ...over,
+});
 const runs = [
   run("CI"),
   run("e2e"),
@@ -91,8 +94,7 @@ describe("merge-ready: every check on the bump's head", () => {
   });
 
   it("only for the App's own non-draft PR at the head the autopilot allowed", () => {
-    const off = (/** @type {object} */ over) =>
-      mergeReady({ ...green, pr: { ...pr, ...over } }).reason;
+    const off = (over: object) => mergeReady({ ...green, pr: { ...pr, ...over } }).reason;
     expect(mergeReady({ ...green, pr: null }).reason).toBe("no open pull request");
     expect(off({ user: { login: "someone" } })).toBe("not opened by the upstream App");
     expect(off({ draft: true })).toBe("a draft");

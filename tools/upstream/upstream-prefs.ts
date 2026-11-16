@@ -10,8 +10,8 @@
  * - the google4/google5 Safe Browsing lists (spec m0-safebrowsing-key): upstream's lists minus
  *   the two that only Mozilla's key may fetch.
  *
- *   node tools/upstream/upstream-prefs.mjs [--engine engine] [--ours FILE]
- *   node tools/upstream/upstream-prefs.mjs --firefox-js F --all-js F --write-diff PATCH
+ *   node tools/upstream/upstream-prefs.ts [--engine engine] [--ours FILE]
+ *   node tools/upstream/upstream-prefs.ts --firefox-js F --all-js F --write-diff PATCH
  *     [--json FILE] [--github-output FILE] [--ours FILE]
  *
  * Check mode exits 0 up to date, 1 stale or missing (each with the line to paste), 2 unreadable.
@@ -39,15 +39,12 @@ export const SB_LISTS = [
 export const MOZILLA_KEY_LISTS = ["goog-badbinurl-proto", "goog-downloadwhite-proto"];
 const OURS = "src/browser/branding/vimma/pref/firefox-branding.js";
 
-/** @param {string} s */
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
  * The string value of `pref("name", "…")` in a prefs file, or null when there is none.
- * @param {string} text
- * @param {string} name
  */
-export function readPref(text, name) {
+export function readPref(text: string, name: string) {
   const m = new RegExp(`^\\s*pref\\("${escapeRe(name)}",\\s*("(?:[^"\\\\]|\\\\.)*")\\);`, "m").exec(
     text,
   );
@@ -55,33 +52,38 @@ export function readPref(text, name) {
 }
 
 /**
- * @param {string} name
- * @param {string} value
- * @returns {string} a prefs-file line setting it
+ * @returns a prefs-file line setting it
  */
-export function prefLine(name, value) {
+export function prefLine(name: string, value: string): string {
   return `pref("${name}", ${JSON.stringify(value)});`;
 }
 
-/**
- * @typedef {{ pref: string, ours: string | null, want: string | null,
- *   missing?: "upstream" | "ours" }} Problem
- */
+export type Problem = {
+  pref: string;
+  ours: string | null;
+  want: string | null;
+  missing?: "upstream" | "ours";
+};
 
 /**
- * @param {{ firefoxJs: string, allJs: string, ours: string }} files
- * @returns {Problem[]} empty when every copy is current
+ * @returns empty when every copy is current
  */
-export function checkPrefs({ firefoxJs, allJs, ours }) {
-  /** @type {Problem[]} */
-  const problems = [];
-  /**
-   * @param {string} pref
-   * @param {string | null} upstream
-   * @param {(v: string) => string} derive
-   * @param {(a: string, b: string) => boolean} same
-   */
-  const check = (pref, upstream, derive, same) => {
+export function checkPrefs({
+  firefoxJs,
+  allJs,
+  ours,
+}: {
+  firefoxJs: string;
+  allJs: string;
+  ours: string;
+}): Problem[] {
+  const problems: Problem[] = [];
+  const check = (
+    pref: string,
+    upstream: string | null,
+    derive: (v: string) => string,
+    same: (a: string, b: string) => boolean,
+  ) => {
     const mine = readPref(ours, pref);
     if (upstream === null) {
       problems.push({ pref, ours: mine, want: null, missing: "upstream" });
@@ -112,24 +114,23 @@ export function checkPrefs({ firefoxJs, allJs, ours }) {
   return problems;
 }
 
-/**
- * @typedef {{ state: "current" | "refreshed" | "unresolved", text: string,
- *   refreshed: { pref: string, old: string, new: string }[], unresolved: string[] }} Refresh
- */
+export type Refresh = {
+  state: "current" | "refreshed" | "unresolved";
+  text: string;
+  refreshed: { pref: string; old: string; new: string }[];
+  unresolved: string[];
+};
 
 /**
  * Our branding file with every stale copy replaced by the value derived from upstream's.
- * @param {{ firefoxJs: string, allJs: string, ours: string }} files
- * @returns {Refresh}
  */
-export function refreshPrefs(files) {
+export function refreshPrefs(files: { firefoxJs: string; allJs: string; ours: string }): Refresh {
   const problems = checkPrefs(files);
   const unresolved = problems.filter((p) => p.missing).map((p) => p.pref);
   if (unresolved.length)
     return { state: "unresolved", text: files.ours, refreshed: [], unresolved };
   let text = files.ours;
-  /** @type {Refresh["refreshed"]} */
-  const refreshed = [];
+  const refreshed: Refresh["refreshed"] = [];
   for (const p of problems) {
     const want = p.want ?? "";
     const re = new RegExp(`^\\s*pref\\("${escapeRe(p.pref)}",.*$`, "m");
@@ -142,11 +143,9 @@ export function refreshPrefs(files) {
 /**
  * A `git diff` of two versions of a file that differ only in replaced lines (what refreshPrefs
  * makes), with three lines of context like `surfer export`; "" when they are equal.
- * @param {string} path repository-relative
- * @param {string} before
- * @param {string} after
+ * @param path repository-relative
  */
-export function unifiedDiff(path, before, after) {
+export function unifiedDiff(path: string, before: string, after: string) {
   const a = before.split("\n");
   const b = after.split("\n");
   if (a.length !== b.length) throw new Error("unifiedDiff: only line replacements are supported");
@@ -154,8 +153,7 @@ export function unifiedDiff(path, before, after) {
   if (!changed.length) return "";
   // A trailing newline leaves an empty last element, which is not a line.
   const n = before.endsWith("\n") ? a.length - 1 : a.length;
-  /** @type {[number, number][]} */
-  const hunks = [];
+  const hunks: [number, number][] = [];
   for (const i of changed) {
     const lo = Math.max(0, i - 3);
     const hi = Math.min(n - 1, i + 3);
@@ -175,15 +173,13 @@ export function unifiedDiff(path, before, after) {
   return out.join("\n") + "\n";
 }
 
-/** @param {string | undefined} path */
-const readOrEmpty = (path) => (path && existsSync(path) ? readFileSync(path, "utf8") : "");
+const readOrEmpty = (path: string | undefined) =>
+  path && existsSync(path) ? readFileSync(path, "utf8") : "";
 
 /**
  * Refresh mode: see the header.
- * @param {Record<string, string | undefined>} values
- * @param {string} oursPath
  */
-function refreshMain(values, oursPath) {
+function refreshMain(values: Record<string, string | undefined>, oursPath: string) {
   const r = refreshPrefs({
     firefoxJs: readOrEmpty(values["firefox-js"]),
     allJs: readOrEmpty(values["all-js"]),

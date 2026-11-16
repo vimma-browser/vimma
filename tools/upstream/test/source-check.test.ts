@@ -5,22 +5,24 @@ import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
-import { fakeSign, fakeSignature, withFakeGpgv } from "./fake-gpgv.mjs";
+import { fakeSign, fakeSignature, withFakeGpgv } from "./fake-gpgv.ts";
 
 // tools/upstream/source-check.sh: the source check upstream.yml runs on a release and the Beta
 // canary runs on a Beta (spec upstream-beta-canary, B3 and Design step 2). The archive is a
 // file:// directory laid out as archive.mozilla.org's; no network. The fixture tree does not have
 // the files our real patches touch, so the patches fail and the preflight (network) never runs.
-// gpgv is a stub (fake-gpgv.mjs): the real signature check is test_verify_sha512.py's.
+// gpgv is a stub (fake-gpgv.ts): the real signature check is test_verify_sha512.py's.
 const SCRIPT = fileURLToPath(new URL("../source-check.sh", import.meta.url));
 const TREE = fileURLToPath(new URL("../fixtures/patch-check/tree", import.meta.url));
 
-/**
- * @param {string} version
- * @param {{ sums?: (hash: string, name: string) => string, signature?: "good" | "bad" | "none",
- *   tree?: string }} [opts]
- */
-function archive(version, opts = {}) {
+function archive(
+  version: string,
+  opts: {
+    sums?: (hash: string, name: string) => string;
+    signature?: "good" | "bad" | "none";
+    tree?: string;
+  } = {},
+) {
   const root = tempDir("source-check-");
   const dir = join(root, "releases", version);
   mkdirSync(join(dir, "source"), { recursive: true });
@@ -45,7 +47,7 @@ function archive(version, opts = {}) {
   const hash = createHash("sha512")
     .update(readFileSync(join(dir, name)))
     .digest("hex");
-  const sums = opts.sums ?? ((/** @type {string} */ h, /** @type {string} */ n) => `${h}  ${n}\n`);
+  const sums = opts.sums ?? ((h: string, n: string) => `${h}  ${n}\n`);
   writeFileSync(join(dir, "SHA512SUMS"), sums(hash, name));
   const signature = opts.signature ?? "good";
   if (signature === "good") fakeSign(join(dir, "SHA512SUMS"));
@@ -58,8 +60,7 @@ function archive(version, opts = {}) {
   return { base: `file://${join(root, "releases")}`, work };
 }
 
-/** @param {string} version @param {{ base: string, work: string }} where */
-function run(version, { base, work }) {
+function run(version: string, { base, work }: { base: string; work: string }) {
   const output = join(work, "github-output");
   writeFileSync(output, "");
   const env = withFakeGpgv({ ...process.env, MOZILLA_RELEASES: base, GITHUB_OUTPUT: output });
@@ -121,7 +122,7 @@ describe("source-check.sh", () => {
       new URL("../../../src/browser/branding/vimma/pref/firefox-branding.js", import.meta.url),
       "utf8",
     );
-    const line = (/** @type {string} */ name) =>
+    const line = (name: string) =>
       ours.split("\n").find((l) => l.startsWith(`pref("${name}"`)) ?? "";
     const cfr = line("browser.newtabpage.activity-stream.asrouter.providers.cfr")
       .replace('\\"enabled\\":false', '\\"enabled\\":true')

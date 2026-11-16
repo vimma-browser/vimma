@@ -17,27 +17,43 @@ export const BOT = "vimma-upstream-autopilot[bot]";
 const GREEN = new Set(["success", "skipped", "neutral"]);
 
 /**
- * The commit the autopilot allowed to merge itself (autoMergeMarker in autopilot-body.mjs).
- * @param {string} body
- * @returns {string | null}
+ * The commit the autopilot allowed to merge itself (autoMergeMarker in autopilot-body.ts).
  */
-export function markerSha(body) {
+export function markerSha(body: string): string | null {
   const m = /<!-- upstream-auto-merge: ([0-9a-f]{40}) -->/.exec(body ?? "");
   return m?.[1] ?? null;
 }
 
-/**
- * @typedef {{ number: number, title: string, user: { login: string }, draft: boolean,
- *   head: { sha: string }, body: string | null, auto_merge: unknown }} Pull
- * @typedef {{ name: string, event: string, head_sha: string, status: string,
- *   conclusion: string | null }} Run
- * @typedef {{ name: string, status: string, conclusion: string | null }} Check
- * @param {{ pr: Pull | null, runs: Run[], checks: Check[], head: string }} input
- * @returns {{ ready: boolean, reason: string }}
- */
-export function mergeReady({ pr, runs, checks, head }) {
-  /** @param {string} reason */
-  const no = (reason) => ({ ready: false, reason });
+export type Pull = {
+  number: number;
+  title: string;
+  user: { login: string };
+  draft: boolean;
+  head: { sha: string };
+  body: string | null;
+  auto_merge: unknown;
+};
+export type Run = {
+  name: string;
+  event: string;
+  head_sha: string;
+  status: string;
+  conclusion: string | null;
+};
+export type Check = { name: string; status: string; conclusion: string | null };
+
+export function mergeReady({
+  pr,
+  runs,
+  checks,
+  head,
+}: {
+  pr: Pull | null;
+  runs: Run[];
+  checks: Check[];
+  head: string;
+}): { ready: boolean; reason: string } {
+  const no = (reason: string) => ({ ready: false, reason });
   if (!pr) return no("no open pull request");
   if (pr.user?.login !== BOT) return no("not opened by the upstream App");
   if (pr.draft) return no("a draft");
@@ -61,10 +77,10 @@ export function mergeReady({ pr, runs, checks, head }) {
 }
 
 /**
- * @param {string} file `gh api --paginate --slurp` output: an array of pages
- * @param {string} key the list in each page
+ * @param file `gh api --paginate --slurp` output: an array of pages
+ * @param key the list in each page
  */
-function pages(file, key) {
+function pages(file: string, key: string) {
   const data = JSON.parse(readFileSync(file, "utf8"));
   return (Array.isArray(data) ? data : [data]).flatMap((p) => p[key] ?? []);
 }
