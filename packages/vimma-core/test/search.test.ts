@@ -634,6 +634,256 @@ describe("parseSearchState", () => {
   });
 });
 
+describe("[search] values at their edges", () => {
+  test.each([
+    ["x = 1.5", "expected a string, got a float"],
+    ["x = true", "expected a string, got a boolean"],
+    ["x = [1]", "expected a string, got an array"],
+    ["x = { a = 1 }", "expected a string, got a table"],
+    // A template's scheme is at the start; %s in the host is a host of its own.
+    ['x = "xhttps://a.example/?q=%s"', TEMPLATE_ERROR],
+  ])("[search.aliases] %s: %s", (line, message) => {
+    expect(errors(v2("[search.aliases]", line))).toEqual([
+      { line: 3, path: "search.aliases.x", message },
+    ]);
+  });
+
+  test("aliases must be a table, named with its type", () => {
+    expect(errors(v2("[search]", "aliases = 1"))).toEqual([
+      { line: 3, path: "search.aliases", message: "expected a table, got an integer" },
+    ]);
+  });
+
+  test("a one-character engine name is a name; a control character is not", () => {
+    expect(ok(v2("[search]", 'default = "G"')).search?.default).toEqual({
+      kind: "engine",
+      name: "G",
+    });
+    expect(errors(v2("[search]", 'default = "G\\u0001"'))).toEqual([
+      {
+        line: 3,
+        path: "search.default",
+        message: "an engine name is 1 to 100 characters without control characters",
+      },
+    ]);
+  });
+
+  test("a template's host is read with %s as a word", () => {
+    expect(resolveSearch({ aliases: { s: "https://%s.example.com/" } })?.aliases).toEqual([
+      {
+        alias: "s",
+        kind: "template",
+        url: "https://{searchTerms}.example.com/",
+        host: "x.example.com",
+      },
+    ]);
+  });
+
+  test("aliases are sorted whatever order the file has", () => {
+    const r = resolveSearch({ aliases: { c: "C", a: "A", b: "B" } });
+    expect(r?.aliases.map((a) => a.alias)).toEqual(["a", "b", "c"]);
+  });
+
+  test(":open @ completion is sorted by alias", () => {
+    expect(
+      searchCompletions([
+        { alias: "@b", engine: "B" },
+        { alias: "@a", engine: "A" },
+        { alias: "@c", engine: "C" },
+      ]).map((c) => c.name),
+    ).toEqual(["@a", "@b", "@c"]);
+  });
+});
+
+describe("planSearch at its edges", () => {
+  const profile = (engines: InstalledEngine[], defaultId = "google") => ({ engines, defaultId });
+
+  test("a hidden engine is not suggested for a name not installed", () => {
+    const plan = planSearch(
+      null,
+      searchOf("[search]", 'default = "DuckDuckGoo"'),
+      profile([GOOGLE, { ...DDG, hidden: true }]),
+    );
+    expect(plan.problems).toEqual([
+      { path: ["search", "default"], message: 'no search engine named "DuckDuckGoo"' },
+    ]);
+  });
+
+  test("an exact name wins over a case-insensitive one", () => {
+    const lower = engine({ id: "g2", name: "google" });
+    const plan = planSearch(
+      null,
+      searchOf("[search]", 'default = "google"'),
+      profile([GOOGLE, lower]),
+    );
+    expect(plan.steps).toEqual([{ op: "set-default", id: "g2" }]);
+  });
+
+  test("the alias an engine has already is not taken for another's", () => {
+    const wiki = { ...WIKI, alias: "@w", aliases: ["@w", "@wikipedia"] };
+    const plan = planSearch(
+      null,
+      searchOf("[search.aliases]", 'w = "Wikipedia (en)"'),
+      profile([GOOGLE, DDG, wiki]),
+    );
+    expect(plan).toEqual({
+      steps: [],
+      problems: [],
+      state: { created: [], aliased: [{ alias: "w", id: "wiki", replaced: "@w" }], default: null },
+    });
+  });
+
+  test("a template alias turned into an installed engine's moves without a conflict", () => {
+    const state = {
+      created: [{ alias: "gh", id: "u1", name: "github.com", url: GH }],
+      aliased: [],
+      default: null,
+    };
+    const u1 = engine({ id: "u1", name: "github.com", alias: "@gh", aliases: ["@gh"], url: GH });
+    const plan = planSearch(state, searchOf("[search.aliases]", 'gh = "Google"'), {
+      engines: [...INSTALLED, u1],
+      defaultId: "google",
+    });
+    expect(plan.problems).toEqual([]);
+    expect(plan.steps).toEqual([
+      { op: "remove", id: "u1" },
+      { op: "set-alias", id: "google", alias: "@gh" },
+    ]);
+  });
+
+  test.each([
+    // Vimma gave @w to another engine; the user gave it to Wikipedia in Settings since.
+    [[{ alias: "w", id: "ddg", replaced: "" }], { alias: "@w", aliases: ["@w"] }],
+    // Vimma gave Wikipedia @q; the user changed it to @w in Settings since.
+    [[{ alias: "q", id: "wiki", replaced: "" }], { alias: "@w", aliases: ["@w"] }],
+    // Wikipedia still has Vimma's @q, and @w of its own.
+    [[{ alias: "q", id: "wiki", replaced: "" }], { alias: "@q", aliases: ["@q", "@w"] }],
+  ])("an alias the user gave an engine is not taken from it (%j)", (aliased, wiki) => {
+    const plan = planSearch(
+      { created: [], aliased, default: null },
+      searchOf("[search.aliases]", 'w = "Google"'),
+      profile([GOOGLE, DDG, { ...WIKI, ...wiki }]),
+    );
+    expect(plan.problems).toEqual([
+      { path: ["search", "aliases", "w"], message: "@w is already Wikipedia (en)'s alias" },
+    ]);
+  });
+
+  test("an engine keeps the alias it had before Vimma's, whatever else was aliased", () => {
+    const state = {
+      created: [],
+      aliased: [
+        { alias: "g", id: "google", replaced: "gg" },
+        { alias: "w", id: "wiki", replaced: "wp" },
+      ],
+      default: null,
+    };
+    const plan = planSearch(
+      state,
+      searchOf("[search.aliases]", 'g = "Google"', 'w = "Wikipedia (en)"'),
+      profile([{ ...GOOGLE, alias: "@g" }, DDG, { ...WIKI, alias: "@w" }]),
+    );
+    expect(plan.steps).toEqual([]);
+    expect(plan.state?.aliased).toEqual(state.aliased);
+  });
+
+  test("two templates on one host get distinct names", () => {
+    const plan = planSearch(
+      null,
+      searchOf(
+        "[search.aliases]",
+        'gh = "https://github.com/search?q=%s"',
+        'gi = "https://github.com/issues?q=%s"',
+      ),
+      profile(INSTALLED),
+    );
+    expect(plan.steps).toEqual([
+      { op: "create", alias: "gh", name: "github.com", url: GH },
+      {
+        op: "create",
+        alias: "gi",
+        name: "github.com (@gi)",
+        url: "https://github.com/issues?q={searchTerms}",
+      },
+    ]);
+  });
+
+  test("each managed engine is matched by its own alias, and gets it back", () => {
+    const GL = "https://gitlab.com/search?q={searchTerms}";
+    const state = {
+      created: [
+        { alias: "gh", id: "u1", name: "github.com", url: GH },
+        { alias: "gl", id: "u2", name: "gitlab.com", url: GL },
+      ],
+      aliased: [],
+      default: null,
+    };
+    const engines = [
+      ...INSTALLED,
+      engine({ id: "u1", name: "github.com", alias: "@gh", url: GH }),
+      engine({ id: "u2", name: "gitlab.com", alias: "", url: GL }),
+    ];
+    const plan = planSearch(
+      state,
+      searchOf(
+        "[search.aliases]",
+        'gh = "https://github.com/search?q=%s"',
+        'gl = "https://gitlab.com/search?q=%s"',
+      ),
+      profile(engines),
+    );
+    expect(plan.steps).toEqual([{ op: "set-alias", id: "u2", alias: "@gl" }]);
+    expect(plan.state?.created).toEqual(state.created);
+  });
+
+  test("a managed engine deleted in Settings is not removed again", () => {
+    const state = {
+      created: [{ alias: "gh", id: "u1", name: "github.com", url: GH }],
+      aliased: [],
+      default: null,
+    };
+    expect(planSearch(state, null, profile(INSTALLED))).toEqual({
+      steps: [],
+      problems: [],
+      state: null,
+    });
+  });
+
+  test("a default that was already Firefox's is not set again when it goes", () => {
+    const state = { created: [], aliased: [], default: { set: "google", previous: "google" } };
+    expect(planSearch(state, searchOf("[search]"), profile(INSTALLED)).steps).toEqual([]);
+  });
+
+  test("problems are listed default first, then by alias", () => {
+    const plan = planSearch(
+      null,
+      searchOf("[search]", 'default = "Nope"', "[search.aliases]", 'a = "Nada"'),
+      profile(INSTALLED),
+    );
+    expect(plan.problems.map((p) => p.path)).toEqual([
+      ["search", "default"],
+      ["search", "aliases", "a"],
+    ]);
+  });
+});
+
+describe("parseSearchState: the reason a state is discarded", () => {
+  const good = { created: [], aliased: [], default: null };
+  test.each([
+    ["{", "is not JSON"],
+    ["[]", "is not an object"],
+    ["1", "is not an object"],
+    [JSON.stringify({ ...good, created: "x" }), 'has a malformed "created" list'],
+    [JSON.stringify({ ...good, aliased: {} }), 'has a malformed "aliased" list'],
+    [JSON.stringify({ ...good, default: "u1" }), 'has a malformed "default"'],
+  ])("%s: %s", (text, why) => {
+    expect(parseSearchState(text)).toEqual({
+      state: null,
+      problem: `vimma.search.applied ${why}; discarded`,
+    });
+  });
+});
+
 describe("configuredEngine (the setup page's current engine)", () => {
   const names = ["Google", "DuckDuckGo", "github.com"];
   const state = {
