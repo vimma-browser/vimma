@@ -859,8 +859,9 @@ function withoutUserinfo(text, cut, depth) {
   if (!m) return s;
   const name = /** @type {string} */ (m[1]).toLowerCase();
   const rest = s.slice(m[0].length);
-  if (NESTED_SCHEMES.has(name) && depth < NESTED_MAX) {
-    return m[0] + withoutUserinfo(rest, cut, depth + 1);
+  if (NESTED_SCHEMES.has(name)) {
+    // Past NESTED_MAX the rest is not read, so it is dropped: it may hold a user name.
+    return depth < NESTED_MAX ? m[0] + withoutUserinfo(rest, cut, depth + 1) : `${m[0]}\u2026`;
   }
   const special = SPECIAL_SCHEMES.has(name);
   const lead = special ? (/^[/\\]*/.exec(rest)?.[0] ?? "") : rest.startsWith("//") ? "//" : null;

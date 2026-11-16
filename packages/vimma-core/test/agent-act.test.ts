@@ -1396,6 +1396,17 @@ describe("console reads: bounded work and URLs without credentials (F24, M30)", 
     expect(once("view-source:jar:https://a@b@ada:secret@example.com/a.jar!/x.js")).toBe(
       "view-source:jar:https://example.com/a.jar!/x.js",
     );
+    // Past the nesting it reads, the rest is dropped, not shown as it came.
+    for (const url of [
+      "view-source:".repeat(5) + "https://ada:secret@example.com/a.js",
+      "blob:".repeat(5) + "https://ada:secret@example.com/a.js",
+      "jar:view-source:blob:jar:view-source:https://ada:secret@example.com/a.js",
+    ]) {
+      const out = once(url);
+      expect(out.endsWith(":\u2026")).toBe(true);
+      expect(out).not.toContain("secret");
+      expect(out).not.toContain("ada");
+    }
     const long = "view-source:https://ada:" + "s".repeat(5000) + "@example.com/a.js";
     expect(once(long)).not.toContain("ada");
     expect(once(long)).not.toContain("sss");

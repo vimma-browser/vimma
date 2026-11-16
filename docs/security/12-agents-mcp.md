@@ -1011,7 +1011,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   request URL reaches the agent: each is removed, up to the authority's last `@` where a URL
   parser ends the authority, from the URL and from any URL inside a `view-source:`, `jar:` or
   `blob:` one, before the URL is cut to length; an authority longer than what is read is dropped
-  whole. Failed requests (HTTP status 400 and above, or a channel error other than a
+  whole, and so is everything past the fourth URL nested in another. Failed requests (HTTP status 400 and above, or a channel error other than a
   cancel, a redirect or a load turned download) **must** be logged only for channels whose top
   browsing context is a live tab of the agent workspace's container outside private windows,
   only while MCP is on, the last
