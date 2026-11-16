@@ -81,6 +81,17 @@ export const RESTRICTED: Record<string, Restricted> = {
       "a new caller of the agent tab model needs a security review (docs/security/12-agents-mcp.md section 12, M2 and M8)",
   },
   /**
+   * The agent's reach into a page (docs/security/12-agents-mcp.md M25 to M28): its clicks, fills
+   * and submissions, each run after the child's reply and checked again just before. Only
+   * VimmaChild, which hands it the parent's `Vimma:Agent*` messages, builds one; another module
+   * of the content process could act in a page without the parent's question.
+   */
+  "actors/agent-page.mjs": {
+    importers: ["actors/VimmaChild.sys.mjs"],
+    review:
+      "a new caller of the agent's page work needs a security review (docs/security/12-agents-mcp.md section 12, M25 to M28)",
+  },
+  /**
    * The chat window's API key entry (docs/security/12-agents-mcp-built-in-agent.md M46): the
    * masked key field that never reveals the key, and the calls that store, clear and delete it.
    * The chat window and its view, which builds the field, are its only callers.

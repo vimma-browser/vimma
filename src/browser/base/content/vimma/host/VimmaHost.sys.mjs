@@ -215,6 +215,7 @@ const isRemoteBrowserTarget = (target) =>
  *   bar redraws
  * @property {Find} find  `/`, `?`, `n`, `N` over Firefox's find bar (m1-find)
  * @property {() => void} stopPdf  ends the PDF state subscription (pdf-ops.mjs)
+ * @property {() => void} stopPanes  ends the pane watch that ends resize mode (PaneView.mjs)
  * @property {boolean} private  a private window: its keys are not logged (private-workspace)
  * @property {boolean} resize  in resize mode (`prefix+r`, m4-split-panes sub-spec 5, ADR-014)
  */
@@ -791,9 +792,39 @@ export const VimmaHost = {
     state.find.destroy();
     state.stopPdf();
     state.stopOutline();
+    state.stopPanes();
     state.listeners.clear();
     states.delete(win);
     windows.delete(win);
+  },
+
+  /**
+   * What the control socket's `state` reports of the status bar: the mode, the keys of a
+   * pending sequence and the workspace's name, as status() has them. Only these, so that the
+   * socket's read runs none of the status bar's own bookkeeping (the update segment's timer):
+   * `state` changes nothing (security.md S9).
+   * @param {BrowserWindow} win
+   * @returns {{ mode: Mode, pending: string[], workspace: string | null }}
+   */
+  socketStatus(win) {
+    const state = states.get(win);
+    if (!state) return { mode: "insert", pending: [], workspace: null };
+    return {
+      mode: this._shownMode(state),
+      pending: state.dispatcher.pending(),
+      workspace: (privateStatus(win) ?? WindowWorkspaces.get(win)?.status())?.name ?? null,
+    };
+  },
+
+  /**
+   * The mode the status bar names: `command` while a `/` or `?` search is typed, the chat
+   * window's normal mode while its transcript has focus (docs/specs/builtin-agent.md 14), else
+   * the mode keys are dispatched in.
+   * @param {WindowState} state
+   * @returns {Mode}
+   */
+  _shownMode(state) {
+    return state.find.typing ? "command" : state.agentChat.inNormal ? "normal" : this._mode(state);
   },
 
   /**
@@ -818,8 +849,7 @@ export const VimmaHost = {
     if (!state) return { mode: "insert", pending: [] };
     const browser = win.gBrowser?.selectedBrowser;
     return {
-      // The chat window's transcript has focus: its normal mode (docs/specs/builtin-agent.md 14).
-      mode: state.find.typing ? "command" : state.agentChat.inNormal ? "normal" : this._mode(state),
+      mode: this._shownMode(state),
       pending: state.dispatcher.pending(),
       find: browser ? pdfFindStatus(state.find.status(browser), PdfOps.state(browser)) : null,
       // docs/specs/pdf-mode.md decision 13: `page 3/12` while the selected tab shows a PDF.
@@ -1148,9 +1178,9 @@ export const VimmaHost = {
     if (state.rename.isOpen) return "insert";
     if (state.outline.isActive) return "index";
     if (state.panel.isOpen || state.bookmarks.isOpen) return "panel";
-    // Resize mode ends by itself when the window is down to one pane (a tab closed meanwhile).
-    if (state.resize && !hasPanes(state.win)) state.resize = false;
-    if (state.resize) return "resize";
+    // Only while the window shows two panes: the flag itself is cleared where the panes go
+    // (window-state.mjs stopPanes), never here, so reading the mode changes nothing (S9).
+    if (state.resize && hasPanes(state.win)) return "resize";
     const browser = this._focusedBrowser(state.win);
     if (state.hint && state.hint.browser === browser) return "hint";
     if (browser && state.element.browser === browser) return "element";

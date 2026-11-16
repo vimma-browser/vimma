@@ -163,6 +163,9 @@ support-files = [
 
 ["browser_vimma_control.js"]
 
+["browser_vimma_control_state_read.js"]
+support-files = ["head_vimma_control.js"]
+
 ["browser_vimma_statusbar.js"]
 support-files = ["file_vimma_title.html"]
 

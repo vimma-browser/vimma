@@ -1043,6 +1043,13 @@ export class PaneView {
       this.#reconciling = false;
     }
     this.onChange?.();
+    for (const fn of watchers.get(this.#win) ?? []) {
+      try {
+        fn();
+      } catch (e) {
+        console.error("vimma: pane watcher failed", e);
+      }
+    }
   }
 
   #reconcile() {
@@ -1305,6 +1312,13 @@ export class PaneView {
 
 /** @type {WeakMap<BrowserWindow, PaneView>} */
 const views = new WeakMap();
+/**
+ * Told after every reconcile of a window's view, as `onChange` (which WindowWorkspaces owns).
+ * Kept apart from the view, so a watcher may start before PaneViews.init (vimma.js starts the
+ * host first).
+ * @type {WeakMap<BrowserWindow, Set<() => void>>}
+ */
+const watchers = new WeakMap();
 
 /**
  * The host API (sub-spec 3's keys call it): one PaneView per browser window.
@@ -1329,5 +1343,19 @@ export const PaneViews = Object.freeze({
    */
   get(win) {
     return views.get(win);
+  },
+
+  /**
+   * Calls `fn` after every reconcile of `win`'s view, which follows each change of its panes
+   * (a tab closed, a split hidden or shown). Returns the call that stops it.
+   * @param {BrowserWindow} win
+   * @param {() => void} fn
+   * @returns {() => void}
+   */
+  watch(win, fn) {
+    let set = watchers.get(win);
+    if (!set) watchers.set(win, (set = new Set()));
+    set.add(fn);
+    return () => set.delete(fn);
   },
 });

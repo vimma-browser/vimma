@@ -193,10 +193,16 @@ export function fetchingNpx(text: string, bins: ReadonlySet<string>): string[] {
 
 /** @returns whether npx with these arguments could fetch a package */
 function badArgs(args: string[], bins: ReadonlySet<string>): boolean {
+  let no = false;
   for (const a of args) {
+    if (a === "--no" || a === "--no-install") no = true;
     if (a === "--no" || a === "--no-install" || a === "--") continue;
     if (/^(?:-y|-yes|--yes|-p|--package|-c|--call)(?:=.*)?$/.test(a)) return true;
     if (a.startsWith("-")) continue; // npm's own options, such as --offline
+    // Told --no, npx runs only what is installed: whatever the code fills in, it fetches nothing.
+    if (no) return false;
+    // An argument the code fills in, by a template or by joining strings, could be any package.
+    if (a === "" || a.startsWith("${")) return true;
     // A bin name; anything else (`|`, `<`, a closing quote) ends the command.
     if (!/^[\w@][\w@./-]*$/.test(a)) return false;
     return !bins.has(a);
@@ -211,12 +217,24 @@ function badArgs(args: string[], bins: ReadonlySet<string>): boolean {
 function literalList(list: string): string[] | null {
   const out: string[] = [];
   for (const item of list.split(",").map((t) => t.trim())) {
+    if (item === "") continue; // a trailing comma
     const m = /^(["'`])([^"'`]*)\1$/.exec(item);
-    if (!m) break;
-    out.push(m[2] ?? "");
+    // What the code fills in, after the first literal, stands as `${}`: it could be any word.
+    if (!m && out.length === 0) return null;
+    out.push(m ? (m[2] ?? "") : "${}");
   }
   return out.length > 0 ? out : null;
 }
+
+/** A string literal in code, without its quotes as a group: a non-capturing pattern. */
+const LIT = String.raw`(?:"[^"\n]*"|'[^'\n]*'|\`[^\`\n]*\`)`;
+/** Each string literal: its quote, then its text. */
+const LITERAL = /(["'`])((?:(?!\1)[^\n])*)\1/g;
+/** A program expression that is a ternary of two literals: `win ? "npx.cmd" : "npx"`. */
+const TERNARY = new RegExp(String.raw`\?\s*(${LIT})\s*:\s*(${LIT})$`);
+/** npm or npx as a program: by a path, or as Windows' `.cmd` shim. */
+const NPM_NAME = String.raw`(?:[\w./-]*\/)?(?:npx|npm)(?:\.cmd)?`;
+const NPM_PROGRAM = /^(?:[\w./-]*\/)?(npx|npm)(?:\.cmd)?$/;
 
 // supply-chain-guard: fixtures
 /**
@@ -224,25 +242,57 @@ function literalList(list: string): string[] | null {
  * JavaScript, ["npm", "ci"] in Python. A spawned npx has no terminal, so npm takes `--yes` unless
  * told `--no`: its first argument must say so. The arguments must be a literal list this can
  * read, and a name held in a variable (`const r = "npx"`) is refused, since its call cannot be.
+ * npm and npx are known by a path (`/usr/bin/npx`), by Windows' `npx.cmd` and on either side of a
+ * ternary. Any program spawned with a literal list is checked as a command with its arguments
+ * (`spawn("pnpm", ["install"])`), and so is each literal argument (`spawn("sh", ["-c", …])`).
  * @returns each refused spawn, with its offset in `text`
  */
 function spawnFaults(text: string, bins: ReadonlySet<string>): Array<[number, string]> {
   const out: Array<[number, string]> = [];
   const add = (at: number, call: string) => out.push([at, call.replace(/\s+/g, " ")]);
-  const check = (at: number, call: string, prog: string, args: string[] | null) => {
-    if (args === null) return add(at, call);
-    const line = `${prog} ${args.join(" ")}`;
-    if (prog === "npx" && !["--no", "--no-install"].includes(args[0] ?? "")) return add(at, call);
-    if (commandFaults(line, bins).length > 0) add(at, call);
+  /**
+   * Checks one spawn: each program it may run (both sides of a ternary), with its arguments, and
+   * every literal argument on its own, as a shell given `-c` would run it.
+   */
+  const check = (at: number, call: string, progs: string[], list: string | undefined) => {
+    const literals = [...(list ?? "").matchAll(LITERAL)].map((l) => l[2] ?? "");
+    const args = list === undefined ? null : literalList(list);
+    for (const prog of progs) {
+      const npm = NPM_PROGRAM.exec(prog)?.[1];
+      if (npm && args === null) return add(at, call);
+      const name = npm ?? prog;
+      if (npm === "npx" && !["--no", "--no-install"].includes(args?.[0] ?? ""))
+        return add(at, call);
+      if (args !== null && commandFaults(`${name} ${args.join(" ")}`, bins).length > 0)
+        return add(at, call);
+    }
+    if (literals.some((l) => commandFaults(l, bins).length > 0)) add(at, call);
   };
-  // spawn("npx", [ … ]), ["npm", [ … ]]: the program, then its arguments as a list.
-  for (const m of text.matchAll(/[([]\s*(["'`])(npx|npm)\1\s*,\s*\[([^\]]*)\]/g))
-    check(m.index ?? 0, m[0], m[2] ?? "", literalList(m[3] ?? ""));
-  // [ "npm", "install", … ]: a list that starts with the program.
-  for (const m of text.matchAll(/\[\s*(["'])(npx|npm)\1\s*,((?:\s*(["'])[^"'\n]*\4\s*,?)+)\s*\]/g))
-    check(m.index ?? 0, m[0], m[2] ?? "", literalList(m[3] ?? ""));
-  // The program's name held in a variable, or passed with arguments that are not a list.
-  const held = /\(\s*(["'])(npx|npm)\1\s*,\s*(?![\s[])|=\s*(["'])(npx|npm)\3\s*[;,)\n]/g;
+  /** The programs of a program expression: a literal, or both sides of a ternary. */
+  const progsOf = (expr: string) => {
+    const t = TERNARY.exec(expr);
+    return (t ? [t[1] ?? "", t[2] ?? ""] : [expr]).map((l) => l.slice(1, -1));
+  };
+  // spawn("npx", [ … ]), spawn(win ? "npx.cmd" : "npx", args), ["npm", [ … ]]: the program, then
+  // its arguments, which must be a list to be read.
+  const call = new RegExp(
+    String.raw`([([])\s*((?:[^,?;\n]*?\?\s*${LIT}\s*:\s*)?${LIT})\s*,\s*(?:\[([^\]]*)\]|(?=\S))`,
+    "g",
+  );
+  for (const m of text.matchAll(call)) {
+    // ["npm", "ci"] is a list of literals, read below.
+    if (m[1] === "[" && m[3] === undefined) continue;
+    check(m.index ?? 0, m[0], progsOf((m[2] ?? "").trim()), m[3]);
+  }
+  // [ "npm", "install", … ]: a list that starts with the program and its literal arguments; what
+  // follows them (`pkg`, `out`) is read as a word the code fills in.
+  const list = new RegExp(String.raw`\[\s*(${LIT})\s*,((?:\s*${LIT}\s*,?)+[^\]\n]*)`, "g");
+  for (const m of text.matchAll(list)) check(m.index ?? 0, m[0], progsOf(m[1] ?? ""), m[2]);
+  // The program's name held in a variable, or first in a list whose next item is not a literal.
+  const held = new RegExp(
+    String.raw`=\s*(["'\`])${NPM_NAME}\1\s*[;,)\n]|\[\s*(["'\`])${NPM_NAME}\2\s*,\s*(?![\s"'\`[\]])`,
+    "g",
+  );
   for (const m of text.matchAll(held)) add(m.index ?? 0, m[0]);
   return out;
 }
@@ -350,7 +400,11 @@ export function fileFaults(
     if (fence || (fixtures && FIXTURE_FILES.has(path))) return void skip.add(i + 1);
     if (allow && ALLOWED.some(([p, l]) => p === path && l === t)) return void skip.add(i + 1);
     const faults = new Set(anywhereFaults(line));
-    for (const piece of commandPieces(path, line, shell, fenced))
+    // In a script, a line continued with a backslash is read with the lines it runs on to.
+    let command = line;
+    for (let j = i; shell && /\\\s*$/.test(lines[j] ?? "") && j + 1 < lines.length; j++)
+      command = `${command.replace(/\s*\\\s*$/, "")} ${(lines[j + 1] ?? "").trim()}`;
+    for (const piece of commandPieces(path, command, shell, fenced))
       for (const f of commandFaults(piece, bins)) faults.add(f);
     for (const f of faults) out.push([i + 1, f]);
   });
@@ -359,7 +413,49 @@ export function fileFaults(
     const line = text.slice(0, at).split("\n").length;
     if (!skip.has(line)) out.push([line, `spawned npm: ${call}`]);
   }
+  // A step's command as the shell gets it: a block's continued lines and a folded scalar joined.
+  const seen = new Set(out.map(([n, f]) => `${n}:${f}`));
+  for (const run of stepRuns(path, text)) {
+    for (const command of run.replace(/\\\n\s*/g, " ").split("\n")) {
+      const at = lineOf(lines, command);
+      for (const f of commandFaults(command.replace(/(?:^|\s)#.*$/, ""), bins)) {
+        if (skip.has(at) || seen.has(`${at}:${f}`)) continue;
+        seen.add(`${at}:${f}`);
+        out.push([at, f]);
+      }
+    }
+  }
   return out;
+}
+
+/** @returns every step's `run:` of a workflow or a composite action, as YAML parses it */
+function stepRuns(path: string, text: string): string[] {
+  const steps: unknown[] = [];
+  try {
+    if (/(?:^|\/)action\.ya?ml$/.test(path)) {
+      const doc = parseWorkflow(text) as { runs?: { steps?: unknown } } | null;
+      if (Array.isArray(doc?.runs?.steps)) steps.push(...doc.runs.steps);
+    } else if (/^\.github\/workflows\/[^/]+\.ya?ml$/.test(path)) {
+      for (const job of (jobs(text) as Map<string, Job>).values()) steps.push(...(job.steps ?? []));
+    }
+  } catch {
+    return []; // not YAML a runner reads: its lines are still read one by one
+  }
+  return steps
+    .map((s) => (s as { run?: unknown } | null)?.run)
+    .filter((r): r is string => typeof r === "string");
+}
+
+/** @returns the number of the first line a command starts on, or 1 if none can be told */
+function lineOf(lines: string[], command: string): number {
+  const at = lines.findIndex((l) => {
+    const t = l
+      .trim()
+      .replace(/^-?\s*run:\s*(?:[|>][+-]?|["'])?\s*/, "")
+      .replace(/\s*\\$/, "");
+    return t !== "" && command.trim().startsWith(t);
+  });
+  return at + 1 || 1;
 }
 
 /** @returns `path:line: fault` for every fault in every tracked file but the allowed lines */
@@ -482,6 +578,9 @@ export function specFaults(pkg: Record<string, unknown>, file: string): string[]
 
 describe("supply chain: what installs and runs packages", () => {
   const bins = lockedBins();
+  /** A workflow whose one step is `step`, its later lines indented as a step's keys. */
+  const WORKFLOW = (step: string) =>
+    `on: push\njobs:\n  a:\n    runs-on: ubuntu-24.04\n    steps:\n      - ${step}\n`;
 
   // Reads every tracked file: about two seconds, more on a loaded machine.
   it(
@@ -515,8 +614,32 @@ describe("supply chain: what installs and runs packages", () => {
     ["docs/x.md", "Run `yarn add x` first."],
     ["docs/x.md", "Or install it with npm install x."],
     ["tools/x.ts", "// supply-chain-guard: fixtures\nnpm i x"],
+    // npx with an argument the code fills in: it could be any package.
+    ["tools/x.ts", "execSync(`npx ${pkg}`);"],
+    ["tools/x.ts", 'execSync("npx " + pkg);'],
+    ["tools/x.ts", 'execSync(["npx", pkg].join(" "));'],
+    ["tools/x.py", 'subprocess.run(["npx.cmd", "left-pad"])'],
+    ["tools/x.py", 'subprocess.run(["pnpm", "install"])'],
+    // A command split over lines of a run: block or a folded scalar.
+    [".github/workflows/x.yml", WORKFLOW("run: |\n          npm \\\n            install")],
+    [".github/workflows/x.yml", WORKFLOW("run: >-\n          npx\n          left-pad")],
+    [".github/workflows/x.yml", WORKFLOW("run: npx\n          left-pad")],
+    // A shell script's line continued with a backslash.
+    ["tools/x.sh", "#!/bin/sh\nnpm \\\n  install x"],
+    ["Makefile", "deps:\n\tnpm \\\n\t  i x"],
+    [
+      "tools/x/action.yml",
+      "runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: >\n        npm\n        install",
+    ],
   ])("finds the command in %s: %j", (path, text) => {
     expect(fileFaults(path, text, bins, false)).not.toEqual([]);
+  });
+
+  it("reports a joined run: command once, on the line it starts on", () => {
+    const text = WORKFLOW('run: "npm \\\n          install"');
+    expect(fileFaults(".github/workflows/x.yml", text, bins, false)).toEqual([
+      [6, "npm install: npm install"],
+    ]);
   });
 
   it.each([
@@ -526,6 +649,10 @@ describe("supply chain: what installs and runs packages", () => {
     ["docs/x.md", "A job that runs `node`, `npm` or `npx` before setup-node."],
     ["docs/x.md", "Corepack, pnpm and bun are package managers."],
     ["tools/x.sh", "# yarn add x in a comment\nnpm ci"],
+    ["tools/x.ts", 'runsNode({ run: "cat x | npx" });'],
+    ["tools/x.ts", 'execFileSync(win ? "npx.cmd" : "npx", ["--no", "--", "prettier"]);'],
+    [".github/workflows/x.yml", WORKFLOW("run: |\n          npm \\\n            ci")],
+    [".github/workflows/x.yml", WORKFLOW("run: >-\n          npx --no --\n          prettier")],
   ])("leaves prose and safe commands in %s: %j", (path, text) => {
     expect(fileFaults(path, text, bins, false)).toEqual([]);
   });
@@ -599,6 +726,30 @@ describe("supply chain: what installs and runs packages", () => {
     "npm init react-app x",
     "npm innit react-app",
     "npm link left-pad",
+    // Spawned under another spelling of npm or npx.
+    'execFileSync("npx.cmd", ["left-pad"])',
+    'execFileSync("/usr/bin/npx", ["left-pad"])',
+    'execFileSync("node_modules/.bin/npm", ["install"])',
+    'execFileSync(win ? "npx.cmd" : "npx", ["left-pad"])',
+    'execFileSync(win ? "npx.cmd" : "npx", args)',
+    // Other package managers, and a shell running a command, spawned from code.
+    'spawn("pnpm", ["install"])',
+    'spawn("yarn", ["install"])',
+    'spawn("bun", ["install"])',
+    'spawn("sh", ["-c", "npx left-pad"])',
+    'spawn("bash", ["-c", "npm i x"])',
+    // A list of literals that ends with what the code fills in.
+    'subprocess.run(["npm", "install", pkg])',
+    'subprocess.run(["npx", "left-pad", out])',
+    'Bun.spawn(["npm", "i", pkg])',
+    // A package the code fills in, after the literals that name the command.
+    'execFileSync("npm", ["exec", pkg])',
+    'execFileSync("npm", ["exec", "--", pkg])',
+    'execFileSync("npm", ["x", tool])',
+    'subprocess.run(["npm", "exec", tool])',
+    'spawn("npm", ["--prefix", dir, "install"])',
+    // A ternary whose condition is a call.
+    'spawn(isWin() ? "npx.cmd" : "npx", ["left-pad"])',
   ])("refuses %s", (line) => {
     expect(lineFaults(line, bins)).not.toEqual([]);
   });
@@ -630,6 +781,14 @@ describe("supply chain: what installs and runs packages", () => {
     "npm --global ls",
     "cargo install --git https://github.com/o/r --rev 0123456789abcdef0123456789abcdef01234567 --locked",
     "cargo fetch --locked",
+    'execFileSync(win ? "npx.cmd" : "npx", ["--no", "--", "prettier"])',
+    'execFileSync("/usr/bin/npm", ["ci"])',
+    'spawn("pnpm", ["run", "build"])',
+    'spawn("sh", ["-c", "npm ci"])',
+    'subprocess.run(["npx", "--no", "--", "prettier", out])',
+    'execFileSync("npx", ["--no", "--", tool])',
+    'spawn(isWin() ? "npx.cmd" : "npx", ["--no", "--", "prettier"])',
+    'execFileSync("npm", ["run", script])',
   ])("allows %s", (line) => {
     expect(lineFaults(line, bins)).toEqual([]);
   });

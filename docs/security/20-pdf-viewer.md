@@ -120,9 +120,9 @@ bindings, so it is accepted here.
   [`the_outline_is_read_only_on_the_users_key`](../../tests/browser/browser_vimma_pdf_outline.js),
   [`the_outline_is_shown_when_a_pdf_with_one_opens`](../../tests/browser/browser_vimma_pdf_outline.js),
   [`pdf_outline_hidden_keeps_it_closed`](../../tests/browser/browser_vimma_pdf_outline.js),
-  [`an outline outside its bounds is dropped`](../../packages/vimma-core/test/pdfoutline.test.mjs),
+  [`an outline outside its bounds is dropped`](../../packages/vimma-core/test/pdfoutline.test.ts),
   [`each_kind_of_entry`](../../tests/browser/browser_vimma_pdf_outline.js),
-  [`outlineUrlAllowed`](../../packages/vimma-core/test/pdfoutline.test.mjs),
+  [`outlineUrlAllowed`](../../packages/vimma-core/test/pdfoutline.test.ts),
   [`links`](../../tests/browser/browser_vimma_pdf_marks.js)
 - V9. Presentation mode **may** go full screen without user activation, as Firefox allows the
   pdf.js principal (`dom/base/Element.cpp`); Vimma **must** request it only for the user's own

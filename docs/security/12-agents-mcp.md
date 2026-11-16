@@ -1,4 +1,4 @@
-## 12. Agents (MCP) (`host/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`, `ctl/agent-tabs.mjs`)
+## 12. Agents (MCP) (`host/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`, `ctl/agent-tabs.mjs`, `actors/agent-page.mjs`)
 
 Lets local AI agents (Claude Code, Codex, opencode, Copilot) list, read, open and close tabs of
 one workspace, **agent**, through the control socket's `agent` role. Spec:
@@ -16,6 +16,15 @@ the built-in agent reaches tab ownership only through `AgentTabOwners` there.
 question says so, mcp-checkpoints C6 and C7; what a submission shows; the cuts of a reply) import
 neither the gate nor the tab model: `agent-commands.mjs` finds the tab, asks, re-checks, and
 passes them the tab.
+
+In each frame, the agent's page work is `actors/agent-page.mjs` (`AgentPage`): its listed
+elements (M25), its clicks, fills and submissions, run after the child's reply and checked again
+just before (M26 to M28), the wait for the page to settle, the in-place changes after a click
+(M26) and the console read (M30). The frame's child, `actors/VimmaChild.sys.mjs`, builds one and hands
+it the parent's `Vimma:Agent*` messages, and keeps what it shares with your hints: whether an
+element is still on the frame's page (M25) and the click itself, the same press your `f` sends
+(M26). `agent-page.mjs` is restricted too: `VimmaChild` is its one importer, so no other module
+of the content process acts in a page for an agent.
 
 Only the seven modules that call the gate today may import it (ADR-026, `RESTRICTED` in
 `tools/layering/layers.ts`), so a new caller, such as the parent actor, is reviewed against this
