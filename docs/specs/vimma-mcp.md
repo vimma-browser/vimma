@@ -954,7 +954,10 @@ outdated definitions (ClamAV)`. An infected verdict is refused however old the d
     decision 43 applied to clamscan's own definitions. This is so because every failure path
     still ends in a full clamscan, so clamd can only make a scan faster, never weaker; the
     socket owner check is there because a socket the user (or a process of theirs) owns could
-    be a fake clamd that answers clean.
+    be a fake clamd that answers clean. (Since changed: clamd.conf is read as clamd's own parser
+    reads it, and a file Vimma could read otherwise is not used: a control character on any
+    line, CRLF included, a line clamd would read in two parts, an option spelt in another case
+    or set twice, or a quoted or commented socket path; security M13.)
 
 ## Security and privacy
 
