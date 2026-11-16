@@ -13,7 +13,7 @@ export default defineConfig({
     // `timing`: a test that asserts a tight speed budget (a bench). Stryker's instrumented copy of
     // the code runs several times slower, so the budget would fail the dry run; this config, which
     // Stryker's vitest runner reads (it takes no command line), leaves them out. Linear-time
-    // checks stay in, with a budget that grows under Stryker (test/budget.mjs). The instrumented
+    // checks stay in, with a budget that grows under Stryker (test/budget.ts). The instrumented
     // code also runs the slowest property tests (about 2 s each on the real code) past Vitest's
     // 5 s default, hence the 60 s; a mutant that hangs still ends at Stryker's own timeout.
     tagsFilter: ["!timing"],

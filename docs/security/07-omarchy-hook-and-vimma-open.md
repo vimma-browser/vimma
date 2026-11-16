@@ -41,9 +41,9 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   [`a name that is not a token never hides the names beyond it`](../../tools/package/test/vimma-open.test.mjs)
 - O7. A theme's `colors.toml` (anyone can publish a theme) **must** give only `#rrggbb` colours
   and one CSS rule, and be read in bounded time however deep or large it is.
-  [`parseOmarchyColors never throws; a palette has every key, as #rrggbb or a mode`](../../packages/vimma-core/test/fuzz/theme.fuzz.test.mjs),
-  [`any theme file and any accepted font give CSS that tokensToCss accepts`](../../packages/vimma-core/test/fuzz/theme.fuzz.test.mjs),
-  [`a hostile theme file is read in bounded time: deep, huge, many keys`](../../packages/vimma-core/test/fuzz/theme.fuzz.test.mjs)
+  [`parseOmarchyColors never throws; a palette has every key, as #rrggbb or a mode`](../../packages/vimma-core/test/fuzz/theme.fuzz.test.ts),
+  [`any theme file and any accepted font give CSS that tokensToCss accepts`](../../packages/vimma-core/test/fuzz/theme.fuzz.test.ts),
+  [`a hostile theme file is read in bounded time: deep, huge, many keys`](../../packages/vimma-core/test/fuzz/theme.fuzz.test.ts)
 - O8. `--from` **must** take exactly one app token and one URL that does not start with `-`
   (else exit 64): it names a program, never a workspace, so the choice stays with config.toml.
   [`--from refuses a name that is not a token`](../../tools/package/test/vimma-open.test.mjs),

@@ -72,7 +72,7 @@ vimma-ctl's JSON and protocol decoders) hold their invariants on generated input
 either well formed or a located error, never an exception, and an accepted value holds only what
 the schema allows.
 
-**Where.** The fast-check properties in `packages/vimma-core/test/fuzz/` go through `harness.mjs`:
+**Where.** The fast-check properties in `packages/vimma-core/test/fuzz/` go through `harness.ts`:
 in every Vitest run they use a fixed seed (`FIXED_SEED`), so a red run is red again on a re-run, and
 `RUNS` (100) cases times each property's `weight`, which takes most to 500, 1000 or 2000 cases and a
 slow one to 20. `properties.test.ts` holds more properties of the key notation and the dispatcher.

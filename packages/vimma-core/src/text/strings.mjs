@@ -5,7 +5,7 @@
 /**
  * Linear-time string edits that stand in for regular expressions a backtracking engine runs in
  * quadratic time on long runs of one character (CodeQL js/polynomial-redos). Each one's doc
- * names the expression it replaces; test/fuzz/strings.fuzz.test.mjs checks them against it.
+ * names the expression it replaces; test/fuzz/strings.fuzz.test.ts checks them against it.
  */
 
 /** @param {string} c  one UTF-16 code unit */

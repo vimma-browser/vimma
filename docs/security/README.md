@@ -14,7 +14,7 @@ routing rules, key notation, the command line, a theme's `colors.toml`) is fuzze
 property-based tests: a fixed seed on every PR, a random seed and many more cases nightly
 (`.github/workflows/fuzz.yml`, spec [m7-fuzzing](../specs/m7-fuzzing.md)). Rules S11, U7, R6, F5 and
 O7 rest on them.
-[`parseKey and parseBinding throw nothing but KeyNotationError, on any text`](../../packages/vimma-core/test/fuzz/keys.fuzz.test.mjs),
+[`parseKey and parseBinding throw nothing but KeyNotationError, on any text`](../../packages/vimma-core/test/fuzz/keys.fuzz.test.ts),
 [`json_parse_never_panics`](../../tools/vimma-ctl/tests/protocol_props.rs),
 [`decoders_never_panic_and_accept_only_the_schema`](../../tools/vimma-ctl/tests/protocol_props.rs)
 

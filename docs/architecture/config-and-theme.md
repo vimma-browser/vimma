@@ -106,7 +106,7 @@ none (`kept: true`). Tests: [config.test.ts](../../packages/vimma-core/test/conf
 fixtures of each schema in `tests/contract/config/v<n>/` (a valid file, invalid ones and their
 expected errors), read by
 [contract.test.ts](../../packages/vimma-core/test/contract.test.ts); and the fast-check
-properties in [config.fuzz.test.mjs](../../packages/vimma-core/test/fuzz/config.fuzz.test.mjs).
+properties in [config.fuzz.test.ts](../../packages/vimma-core/test/fuzz/config.fuzz.test.ts).
 
 ## 3. Applying it, or keeping the last good one
 
@@ -185,7 +185,7 @@ built-in palette, `[theme] name`, applies and nothing is polled. Vimma's CSS in
 with the sheet. Tests:
 [theme.test.ts](../../packages/vimma-core/test/theme.test.ts), the sample themes in
 `tests/contract/theme/`,
-[theme.fuzz.test.mjs](../../packages/vimma-core/test/fuzz/theme.fuzz.test.mjs);
+[theme.fuzz.test.ts](../../packages/vimma-core/test/fuzz/theme.fuzz.test.ts);
 `rewriting_the_file_updates_within_the_poll`, `broken_file_keeps_the_previous_colours` and
 `swapping_the_symlink_follows_the_new_theme` and
 `the_poll_is_not_a_repeating_timer_a_test_could_be_blamed_for` in
