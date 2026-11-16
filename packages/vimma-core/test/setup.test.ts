@@ -340,4 +340,31 @@ describe("setup", () => {
     expect(formatUsers(10_000_000)).toBe("10M users");
     expect(formatUsers(12_345_678)).toBe("12M users");
   });
+
+  test("space marks and unmarks, and never marks an installed add-on", () => {
+    let r = keys(fresh(), "enter", "space", "space");
+    expect(r.state.marked.size).toBe(0);
+    r = keys(r.state, "space");
+    expect([...r.state.marked.keys()]).toEqual(["x@example.com"]);
+    const addons = amoEntries([amo({ guid: "in@e" })], { installed: new Set(["in@e"]) });
+    const s = keys(initialSetup({ addons, engines, engine: null }), "enter", "space").state;
+    expect(s.marked.size).toBe(0);
+  });
+
+  test("a curated GUID answered under another slug is dropped too", () => {
+    const [first] = CURATED;
+    if (!first) throw new Error("no curated add-on");
+    expect(amoEntries([amo({ slug: "lookalike", guid: first.guid })], { curated: true })).toEqual(
+      [],
+    );
+  });
+
+  test("the file and its hash must be a JSON object and a string, not an array", () => {
+    const url = "https://addons.mozilla.org/f.xpi";
+    const listed = Object.assign([], { url, hash: "sha256:ab" });
+    expect(amoEntries([amo({ current_version: { file: listed } })])).toEqual([]);
+    expect(amoEntries([amo({ current_version: { file: { url, hash: ["sha256:ab"] } } })])).toEqual(
+      [],
+    );
+  });
 });
