@@ -383,6 +383,27 @@ export function planSearch(previous, next, { engines, defaultId }) {
 }
 
 /**
+ * The engine config.toml's `[search] default` names among `names`, found as planSearch finds
+ * it: an engine by its name (exact, else ignoring case), a template by the engine Vimma made for
+ * its alias. The setup page shows it as the current engine (docs/specs/first-run-setup.md).
+ * @param {ResolvedSearch["default"]} wanted
+ * @param {readonly string[]} names  the profile's visible engines
+ * @param {SearchState | null} state  what the last apply recorded
+ * @returns {string | null} null when it names none of them
+ */
+export function configuredEngine(wanted, names, state) {
+  if (!wanted) return null;
+  if (wanted.kind === "template") {
+    const made = state?.created.find((c) => c.alias === wanted.alias)?.name;
+    return made !== undefined && names.includes(made) ? made : null;
+  }
+  const lower = wanted.name.toLowerCase();
+  return (
+    names.find((n) => n === wanted.name) ?? names.find((n) => n.toLowerCase() === lower) ?? null
+  );
+}
+
+/**
  * The aliases about:vimma lists (decision 14): those the last apply recorded, so an alias it
  * skipped (an engine not installed, an alias already taken) shows only as its error.
  * @param {readonly SearchAlias[]} aliases  `[search.aliases]`, resolved
