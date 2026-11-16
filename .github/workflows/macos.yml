@@ -191,7 +191,7 @@ jobs:
       - name: The version line
         run: |
           version=$("$APP/Contents/MacOS/vimma" --version)
-          expected=$(node tools/release/version-line.mjs)
+          expected=$(node tools/release/version-line.ts)
           [ "$version" = "$expected" ] || { echo "::error::--version is '$version', want '$expected'"; exit 1; }
 
       # The first start creates the profile; the screenshot proves a content process renders a

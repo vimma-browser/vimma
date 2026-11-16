@@ -25,7 +25,7 @@ async function runApp(args) {
 }
 
 add_task(async function test_version_flag_prints_vimma_and_firefox() {
-  // tools/release/version-line.mjs writes the same line from surfer.json for the release scripts.
+  // tools/release/version-line.ts writes the same line from surfer.json for the release scripts.
   const expected = `Vimma ${AppConstants.MOZ_APP_VERSION_DISPLAY} · Firefox ${Services.appinfo.version}\n`;
   for (const flag of ["--version", "-v"]) {
     const { exitCode, out } = await runApp([flag]);

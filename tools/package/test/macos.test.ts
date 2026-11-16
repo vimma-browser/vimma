@@ -367,7 +367,7 @@ describe("macos.yml", () => {
       .join("\n");
     expect(run).toContain("hdiutil attach");
     expect(run).toContain("codesign --verify --deep --strict");
-    expect(run).toContain("node tools/release/version-line.mjs");
+    expect(run).toContain("node tools/release/version-line.ts");
     expect(run).toContain("--screenshot");
   });
 

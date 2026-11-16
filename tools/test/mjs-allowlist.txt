@@ -1,21 +1,25 @@
-# The .mjs files under tools/ that have not moved to .ts yet (ADR-025, #946). Nothing is added
-# here: new Node code under tools/ is .ts. Each pull request that moves an area takes its files off,
-# and tools/test/mjs-ratchet.test.ts fails until it does. The hooks of tools/claude-plugin and the
+# The .mjs files under tools/ and packages/vimma-core/test/ that have not moved to .ts yet
+# (ADR-025, #946 and #1114). Nothing is added here: new Node code under tools/ and new core tests
+# are .ts. Each pull request that moves an area takes its files off, and
+# tools/test/mjs-ratchet.test.ts fails until it does. The hooks of tools/claude-plugin and the
 # base-branch guards (tools/ci/docs-only.mjs, tools/ci/key-guard.mjs and its test) stay .mjs
 # (ADR-025, decision 7) and are not listed.
+packages/vimma-core/test/budget.mjs
+packages/vimma-core/test/fuzz/agent-downloads.fuzz.test.mjs
+packages/vimma-core/test/fuzz/agent-keys.fuzz.test.mjs
+packages/vimma-core/test/fuzz/agent.fuzz.test.mjs
+packages/vimma-core/test/fuzz/cmdline.fuzz.test.mjs
+packages/vimma-core/test/fuzz/config.fuzz.test.mjs
+packages/vimma-core/test/fuzz/control.fuzz.test.mjs
+packages/vimma-core/test/fuzz/harness.mjs
+packages/vimma-core/test/fuzz/harness.test.mjs
+packages/vimma-core/test/fuzz/keys.fuzz.test.mjs
+packages/vimma-core/test/fuzz/routes.fuzz.test.mjs
+packages/vimma-core/test/fuzz/strings.fuzz.test.mjs
+packages/vimma-core/test/fuzz/theme.fuzz.test.mjs
+packages/vimma-core/test/fuzz/toml-arb.mjs
 tools/artifact-build/artifact-build.mjs
 tools/artifact-build/test/artifact-build.test.mjs
-tools/release/build-id.mjs
-tools/release/changelog.mjs
-tools/release/firefox-notes.mjs
-tools/release/security-release.mjs
-tools/release/test/build-id.test.mjs
-tools/release/test/changelog.test.mjs
-tools/release/test/firefox-notes.test.mjs
-tools/release/test/security-release.test.mjs
-tools/release/test/smoke-check.test.mjs
-tools/release/test/version-line.test.mjs
-tools/release/version-line.mjs
 tools/test/build.test.mjs
 tools/test/chrome-css.test.mjs
 tools/test/feature-prefs.mjs

@@ -1,0 +1,542 @@
+// docs/specs/builtin-agent.md B9, B19, Behaviour 6, 12-17, 34-35: the chat window's pure side.
+// The transcript is built from the loop's task events and the gate's events for the
+// conversation, never from a tool's own result format; every value is plain text.
+import { describe, expect, test } from "vitest";
+import {
+  Transcript,
+  builtinStatus,
+  chatHeader,
+  chatKey,
+  chatText,
+  entryView,
+  externalNotice,
+  isLocalEndpoint,
+  needsKey,
+  noModelLines,
+  noModelNotice,
+  noModelReason,
+  noticeTarget,
+  parseAgentCommand,
+  providerWhere,
+  sendNotice,
+} from "../src/agent/agent-chat.mjs";
+import { reloadConfig } from "../src/config/config.mjs";
+
+const call = (name: string, args = {}, id = "c1") => ({ id, name, args });
+const ok = { id: "c1", name: "vimma_activate", isError: false, content: [] };
+const failed = { id: "c1", name: "vimma_activate", isError: true, content: [] };
+const clickWhat = { kind: "button", text: "Lisää ostoskoriin", title: "Maito · Kauppa" };
+
+const texts = (t: Transcript) =>
+  t.entries.map((e) => `${e.kind}: ${e.text}${e.outcome ? ` · ${e.outcome}` : ""}`);
+
+describe("the transcript", () => {
+  test("transcript entries for a step, a checkpoint and a gate notice", () => {
+    const t = new Transcript();
+    t.user("Buy milk");
+    t.task({ type: "call", call: call("vimma_activate") });
+    t.gate({ kind: "ran", tool: "vimma_activate", what: clickWhat });
+    t.task({ type: "result", call: call("vimma_activate"), result: ok });
+    t.task({ type: "call", call: call("vimma_activate", {}, "c2") });
+    t.gate({
+      kind: "asked",
+      tool: "vimma_activate",
+      what: { pay: { site: "shop.example", total: "Total 42,90 €", text: "Pay" } },
+    });
+    t.gate({
+      kind: "answered",
+      tool: "vimma_activate",
+      what: { pay: { site: "shop.example", total: "Total 42,90 €", text: "Pay" } },
+      answer: "deny",
+    });
+    t.task({ type: "result", call: call("vimma_activate", {}, "c2"), result: failed });
+    t.notice("granted: this conversation may use the agent workspace until stopped");
+    expect(texts(t)).toEqual([
+      "user: Buy milk",
+      'step: clicked button "Lisää ostoskoriin" in "Maito · Kauppa" · ran under grant',
+      'checkpoint: ▲ asked to pay on shop.example · the page says "Total 42,90 €" · → you said no',
+      "notice: granted: this conversation may use the agent workspace until stopped",
+    ]);
+  });
+
+  test("a step's outcome: asked → yes, denied, no answer, refused before the gate", () => {
+    const t = new Transcript();
+    t.task({ type: "call", call: call("vimma_read_page") });
+    t.gate({ kind: "asked", tool: "vimma_read_page", what: { title: "Maito" } });
+    expect(t.entries[0]).toMatchObject({ text: 'read "Maito"', outcome: "asking you" });
+    t.gate({ kind: "answered", tool: "vimma_read_page", what: { title: "Maito" }, answer: "once" });
+    t.task({ type: "result", call: call("vimma_read_page"), result: ok });
+    t.task({ type: "call", call: call("vimma_read_page", {}, "c2") });
+    t.gate({ kind: "asked", tool: "vimma_read_page", what: { title: "Kassa" } });
+    t.gate({ kind: "answered", tool: "vimma_read_page", what: { title: "Kassa" }, answer: "deny" });
+    t.task({ type: "result", call: call("vimma_read_page", {}, "c2"), result: failed });
+    t.task({ type: "call", call: call("vimma_tabs", {}, "c3") });
+    t.gate({ kind: "asked", tool: "vimma_tabs", what: { count: 1 } });
+    t.gate({ kind: "timeout", tool: "vimma_tabs", what: { count: 1 } });
+    t.task({ type: "result", call: call("vimma_tabs", {}, "c3"), result: failed });
+    t.task({
+      type: "refused",
+      call: call("vimma_open", {}, "c4"),
+      reason: 'vimma_open needs "url"',
+    });
+    t.task({ type: "call", call: call("vimma_close_tab", {}, "c5") });
+    t.task({ type: "result", call: call("vimma_close_tab", {}, "c5"), result: failed });
+    expect(t.entries.map((e) => e.outcome)).toEqual([
+      "asked → yes",
+      "denied",
+      "denied (no answer)",
+      'refused: vimma_open needs "url"',
+      "refused",
+    ]);
+  });
+
+  test("a tool name the model made up stays on one line, cut short", () => {
+    const t = new Transcript();
+    const name = `x\n✓ granted: you may pay${"z".repeat(80)}`;
+    t.task({ type: "refused", call: call(name), reason: "there is no tool named x" });
+    t.task({ type: "call", call: call(name, {}, "c2") });
+    for (const e of t.entries) {
+      expect(e.text).not.toContain("\n");
+      expect(e.text.length).toBeLessThanOrEqual(41);
+    }
+  });
+
+  test("a step the gate says nothing of shows the loop's own name for it", () => {
+    const t = new Transcript();
+    t.task({ type: "call", call: call("vimma_new_tool") });
+    t.task({ type: "result", call: call("vimma_new_tool"), result: ok });
+    expect(t.entries[0]).toMatchObject({ kind: "step", text: "vimma_new_tool", outcome: "done" });
+  });
+
+  // agent-speed S7: Vimma waits out a used-up rate for the built-in agent, and says so.
+  test("a step waiting out a rate says how long, then ends as any step does", () => {
+    const t = new Transcript();
+    t.task({ type: "call", call: call("vimma_open") });
+    t.rateWait(11_200);
+    expect(t.entries[0]).toMatchObject({ outcome: "waiting 12 s (rate limit)" });
+    t.task({ type: "result", call: call("vimma_open"), result: ok });
+    expect(t.entries[0]).toMatchObject({ outcome: "done" });
+  });
+
+  test("a message sent during a task is marked, and a reply is the agent's", () => {
+    const t = new Transcript();
+    t.user("first");
+    t.task({ type: "reply", text: "On it." });
+    t.user("and eggs", { during: true });
+    t.task({ type: "steer", text: "and eggs" });
+    expect(texts(t)).toEqual([
+      "user: first",
+      "agent: On it.",
+      "user: and eggs (added during the task)",
+    ]);
+  });
+
+  test("a message held for the next run of a cli without a live input is marked", () => {
+    const t = new Transcript();
+    t.user("first");
+    t.user("and eggs", { after: true });
+    expect(texts(t)).toEqual(["user: first", "user: and eggs (sent after the running task)"]);
+  });
+
+  test("a task's end: stopped after the last step, the budget's limit, an error, done", () => {
+    const t = new Transcript();
+    t.task({ type: "call", call: call("vimma_activate") });
+    t.gate({ kind: "ran", tool: "vimma_activate", what: clickWhat });
+    t.task({ type: "result", call: call("vimma_activate"), result: ok });
+    t.end({ outcome: "stopped", after: call("vimma_activate") });
+    t.end({ outcome: "budget", exceeded: { limit: "steps", used: 60, max: 60 } });
+    t.end({ outcome: "error", error: "HTTP 401: bad key" });
+    t.end({ outcome: "done" });
+    expect(t.entries.slice(1).map((e) => e.text)).toEqual([
+      'stopped after "clicked button "Lisää ostoskoriin" in "Maito · Kauppa""',
+      "stopped: 60 steps, the limit of [agent] max_steps",
+      "stopped: HTTP 401: bad key",
+      "done",
+    ]);
+    expect(t.entries.at(-2)?.warn).toBe(true);
+  });
+
+  // docs/specs/builtin-agent-cli.md Behaviour 15: the cost an agent CLI reported stays on the
+  // task's end line, named as its own estimate, after the status bar has cleared.
+  test("an agent CLI's reported cost is on the end line, as its estimate", () => {
+    const t = new Transcript();
+    t.end({ outcome: "done", cost: { usd: 0.4123, cli: "claude-code" } });
+    t.end({ outcome: "stopped", cost: { usd: 1.5, cli: "claude-code" } });
+    t.end({ outcome: "done" });
+    t.end({ outcome: "done", cost: { usd: 0.02, cli: "made-up" } });
+    expect(texts(t)).toEqual([
+      "end: done · ≈ $0.41 (claude-code estimate)",
+      "end: stopped · ≈ $1.50 (claude-code estimate)",
+      "end: done",
+      "end: done · ≈ $0.02 (made-up estimate)",
+    ]);
+  });
+
+  test("a server error is a notice; usage adds nothing", () => {
+    const t = new Transcript();
+    t.task({ type: "usage", usage: { input: 1, output: 1, estimated: false } });
+    t.task({ type: "server-error", error: "HTTP 500" });
+    expect(texts(t)).toEqual(["notice: the model server failed (HTTP 500); it is asked again"]);
+  });
+
+  test("a step still running when the task stops says so", () => {
+    const t = new Transcript();
+    t.task({ type: "call", call: call("vimma_tabs") });
+    t.gate({ kind: "asked", tool: "vimma_tabs", what: { count: 1 } });
+    t.end({ outcome: "stopped", after: null });
+    expect(texts(t)).toEqual(["step: listed the agent tabs · withdrawn", "end: stopped"]);
+  });
+
+  test("version counts every change, for the window to redraw", () => {
+    const t = new Transcript();
+    const v = t.version;
+    t.user("x");
+    expect(t.version).toBeGreaterThan(v);
+  });
+});
+
+// docs/specs/builtin-agent-cli.md Behaviour 9: an agent CLI's own tool, marked and muted.
+describe("an agent CLI's own tools in the transcript", () => {
+  test("an own-tool line is marked, muted, and says when the cli's settings refused it", () => {
+    const t = new Transcript();
+    t.ownTool("t1", 'claude-code ran its own tool: Bash "ls ~/Downloads"');
+    t.ownTool("t2", 'claude-code ran its own tool: Read "/etc/hosts"‮');
+    t.ownToolRefused("t1");
+    t.ownToolRefused("nope");
+    expect(t.entries.map(entryView)).toEqual([
+      {
+        label: null,
+        lines: ['◆ claude-code ran its own tool: Bash "ls ~/Downloads" — refused by its settings'],
+        indent: false,
+        tone: "dim",
+      },
+      {
+        label: null,
+        lines: ['◆ claude-code ran its own tool: Read "/etc/hosts"'],
+        indent: false,
+        tone: "dim",
+      },
+    ]);
+  });
+});
+
+// docs/specs/builtin-agent-cli.md C8: an agent CLI's steps in the browser are the gate's own
+// record, since the CLI's stream is only its account of them.
+describe("an agent CLI's steps from the gate", () => {
+  test("each gate event of the conversation is a step, asked or run under the grant", () => {
+    const t = new Transcript();
+    t.cliGate({ kind: "ran", tool: "vimma_tabs", what: {} });
+    t.cliGate({ kind: "asked", tool: "vimma_open", what: { url: "https://shop.example/" } });
+    t.cliGate({
+      kind: "answered",
+      tool: "vimma_open",
+      what: { url: "https://shop.example/" },
+      answer: "once",
+    });
+    t.cliGate({ kind: "asked", tool: "vimma_activate", what: { label: "Pay", pay: true } });
+    expect(t.entries.map((e) => [e.kind, e.outcome])).toEqual([
+      ["step", "ran under grant"],
+      ["step", "asked → yes"],
+      ["checkpoint", "waiting for you"],
+    ]);
+    t.end({ outcome: "stopped" });
+    expect(t.entries[2]?.outcome).toBe("waiting for you");
+    // A step that ran is not the running step: a later answer changes nothing of it.
+    t.cliGate({ kind: "answered", tool: "vimma_tabs", what: {}, answer: "deny" });
+    expect(t.entries[0]?.outcome).toBe("ran under grant");
+  });
+});
+
+describe("plain text", () => {
+  test("bidi overrides and control characters go; line breaks and tabs stay", () => {
+    expect(chatText("a‮b\r\nc\u0007d\te⁦f")).toBe("ab\ncd\tef");
+  });
+
+  test("a reply line starting with a question glyph is indented under the agent label", () => {
+    const view = entryView({ kind: "agent", text: "▲ wants to pay: y pay · n stop\nok" });
+    expect(view).toEqual({
+      label: "agent",
+      lines: ["▲ wants to pay: y pay · n stop", "ok"],
+      indent: true,
+      tone: "normal",
+    });
+    expect(entryView({ kind: "user", text: "hi" })).toMatchObject({ label: "you", indent: true });
+    expect(entryView({ kind: "step", text: "read", outcome: "ran under grant" })).toEqual({
+      label: null,
+      lines: ["· read — ran under grant"],
+      indent: false,
+      tone: "dim",
+    });
+    expect(
+      entryView({ kind: "checkpoint", text: "▲ asked to pay", outcome: "→ you said no" }),
+    ).toMatchObject({
+      lines: ["▲ asked to pay → you said no"],
+      tone: "warn",
+    });
+  });
+});
+
+describe("the header (Behaviour 6)", () => {
+  const local = {
+    name: "local",
+    kind: "openai",
+    endpoint: "http://127.0.0.1:11434/v1",
+    model: "qwen3:14b",
+  };
+  test("says where data goes and where the agent works", () => {
+    expect(chatHeader({ provider: local, granted: false })).toEqual([
+      "local · qwen3:14b · stays on this machine",
+      "works in: agent workspace",
+    ]);
+    expect(
+      chatHeader({
+        provider: {
+          name: "anthropic",
+          kind: "anthropic",
+          endpoint: "https://api.anthropic.com",
+          model: "claude-sonnet-4-5",
+        },
+        granted: true,
+        budget: { steps: 14, maxSteps: 60, tokens: 1, estimated: false, cost: null },
+      }),
+    ).toEqual([
+      "anthropic · claude-sonnet-4-5 · page text sent to api.anthropic.com",
+      "works in: agent workspace · granted · 14/60 steps",
+    ]);
+  });
+
+  test("asks every step only for a task sent with ctrl+Enter (Behaviour 24-25)", () => {
+    // Before any task nothing is granted or asked: sending with Enter will be the grant.
+    expect(chatHeader({ provider: local, granted: false, asking: false })[1]).toBe(
+      "works in: agent workspace",
+    );
+    expect(chatHeader({ provider: local, granted: false, asking: true })[1]).toBe(
+      "works in: agent workspace · asks every step",
+    );
+    // A grant given in answer to one of those questions shows as a grant.
+    expect(chatHeader({ provider: local, granted: true, asking: true })[1]).toBe(
+      "works in: agent workspace · granted",
+    );
+  });
+
+  test("a local address that was not probed is named, not called private", () => {
+    const vllm = { ...local, endpoint: "http://127.0.0.1:8000/v1" };
+    expect(chatHeader({ provider: vllm, granted: false })[0]).toBe(
+      "local · qwen3:14b · local endpoint 127.0.0.1:8000",
+    );
+    expect(chatHeader({ provider: local, granted: false, localOnly: true })[0]).toBe(
+      "local · qwen3:14b · stays on this machine · local only",
+    );
+  });
+
+  test("without a provider it says so", () => {
+    expect(chatHeader({ provider: null, granted: false })[0]).toBe("no model set up");
+  });
+
+  // docs/specs/builtin-agent-cli.md Behaviour 5, C7.
+  const claude = { name: "claude", kind: "cli", cli: "claude-code", endpoint: "", model: "" };
+  test("an agent CLI: its name, the model it reported, and that it decides where data goes", () => {
+    expect(chatHeader({ provider: claude, granted: false })).toEqual([
+      "claude-code · sent where Claude Code sends it",
+      "works in: agent workspace · its own tools: as its configuration allows",
+    ]);
+    // A task sent with ctrl+Enter asks every step, and the header says so.
+    expect(chatHeader({ provider: claude, granted: false, asking: true })[1]).toBe(
+      "works in: agent workspace · asks every step · its own tools: as its configuration allows",
+    );
+    expect(
+      chatHeader({
+        provider: { ...claude, model: "sonnet" },
+        granted: true,
+        cli: {
+          model: "claude-sonnet-4-5",
+          tools: ["Bash", "Read", "Write", "WebFetch", "A", "B", "C"],
+        },
+      }),
+    ).toEqual([
+      "claude-code · claude-sonnet-4-5 · sent where Claude Code sends it",
+      "works in: agent workspace · granted · its own tools: Bash, Read, Write, WebFetch +3",
+    ]);
+    // Before its first run, the model the provider names.
+    expect(chatHeader({ provider: { ...claude, model: "opus" }, granted: false })[0]).toBe(
+      "claude-code · opus · sent where Claude Code sends it",
+    );
+    expect(chatHeader({ provider: claude, granted: true, cli: { model: "m", tools: [] } })[1]).toBe(
+      "works in: agent workspace · granted · its own tools: none",
+    );
+  });
+
+  test("a refused config.toml is named, with its line, instead of the setup hint", () => {
+    const toml = '[agent]\ndefault = "local"\n\n[[agent.providers]]\nname = "local"\n';
+    const { errors } = reloadConfig(null, toml);
+    const refused = noModelReason(errors, "config.toml");
+    expect(refused).toBe(
+      "config.toml:1: agent: is new in schema 2: put schema = 2 at the top of the file",
+    );
+    expect(chatHeader({ provider: null, granted: false, refused })[0]).toBe(`no model: ${refused}`);
+    expect(noModelNotice(refused)).toBe(`agent: no model: ${refused}`);
+  });
+
+  test("an [agent] error is named before the file's first error, with the count", () => {
+    const errors = [
+      { line: 2, path: "keys.x", message: "unknown action" },
+      { line: 9, path: "agent.providers[0].endpoint", message: "is not a URL" },
+    ];
+    expect(noModelReason(errors, "config.toml")).toBe(
+      "2 errors: config.toml:9: agent.providers[0].endpoint: is not a URL",
+    );
+    expect(noModelReason(errors.slice(0, 1), "x.toml")).toBe("x.toml:2: keys.x: unknown action");
+  });
+
+  test("the window's body names the refused file's error in place of the setup steps", () => {
+    const refused =
+      "config.toml:1: agent: is new in schema 2: put schema = 2 at the top of the file";
+    expect(noModelLines(refused, "config.toml")).toEqual([
+      "No model: config.toml has errors, so none of it applies, [agent] included.",
+      refused,
+      "Fix it and save the file, then press Esc, then n for a new conversation.",
+    ]);
+    expect(noModelLines("2 errors: x.toml:4: keys.a: unknown action", "x.toml")[0]).toBe(
+      "No model: x.toml has errors, so none of it applies, [agent] included.",
+    );
+    expect(noModelLines(null, "config.toml")).toEqual([
+      "No model is set up for the built-in agent.",
+      "Add a provider under [agent] in config.toml, or press Esc, then m to look for a " +
+        "local model server (Ollama, LM Studio, llama.cpp) on this machine.",
+    ]);
+  });
+
+  test("with config.toml applied, the hint points to setup", () => {
+    expect(noModelReason([], "config.toml")).toBeNull();
+    expect(noModelNotice(null)).toBe(
+      "agent: no model is set up; add one under [agent] in config.toml",
+    );
+  });
+});
+
+describe("what leaves the machine (Behaviour 5)", () => {
+  test("only a loopback endpoint is local", () => {
+    expect(isLocalEndpoint("http://127.0.0.1:11434/v1")).toBe(true);
+    expect(isLocalEndpoint("http://[::1]:8000/v1")).toBe(true);
+    expect(isLocalEndpoint("http://localhost:1234/v1")).toBe(true);
+    expect(isLocalEndpoint("https://api.anthropic.com")).toBe(false);
+    expect(isLocalEndpoint("not a url")).toBe(false);
+  });
+
+  test("the notice before the first task names the host and, when known, who runs it", () => {
+    // A configured provider, its name included; the notice reads the endpoint.
+    const anthropic = { kind: "anthropic", endpoint: "https://api.anthropic.com", name: "a" };
+    const hosted = { kind: "openai", endpoint: "https://llm.example.com/v1", name: "x" };
+    expect(externalNotice(anthropic)).toBe(
+      "Page text the agent reads, field values it sees, screenshots and your messages are " +
+        "sent to api.anthropic.com (Anthropic). y send · n cancel",
+    );
+    expect(externalNotice(hosted)).toBe(
+      "Page text the agent reads, field values it sees, screenshots and your messages are " +
+        "sent to llm.example.com. y send · n cancel",
+    );
+  });
+});
+
+// docs/specs/builtin-agent-cli.md Behaviour 4: an agent CLI needs no key and is never local.
+describe("what leaves the machine with an agent CLI", () => {
+  const claude = { name: "claude", kind: "cli", cli: "claude-code", endpoint: "", model: "" };
+  test("a cli takes no key, always asks first, and names the cli as where data goes", () => {
+    expect(needsKey(claude)).toBe(false);
+    expect(noticeTarget(claude)).toBe("cli:claude-code");
+    expect(noticeTarget({ ...claude, kind: "openai", endpoint: "https://x.example/v1" })).toBe(
+      "https://x.example/v1",
+    );
+    expect(sendNotice(claude)).toContain("Vimma does not confine them");
+    expect(sendNotice({ kind: "anthropic", endpoint: "https://api.anthropic.com" })).toContain(
+      "api.anthropic.com (Anthropic)",
+    );
+    expect(providerWhere(claude)).toBe("sent where Claude Code sends it");
+    expect(providerWhere({ ...claude, kind: "openai", endpoint: "https://x.example/v1" })).toBe(
+      "page text sent to x.example",
+    );
+  });
+});
+
+describe("the status bar (Behaviour 35)", () => {
+  const s = (o: any) => ({
+    steps: 14,
+    maxSteps: 60,
+    tokens: 212_400,
+    estimated: false,
+    cost: null,
+    ...o,
+  });
+  test("one task: steps and tokens, cost with prices; several: how many", () => {
+    expect(builtinStatus([])).toBe(null);
+    expect(builtinStatus([s({})])).toBe("◇ built-in 14/60 · 212k tok");
+    expect(builtinStatus([s({ cost: 0.414 })])).toBe("◇ built-in 14/60 · 212k tok · 0.41");
+    expect(builtinStatus([s({ tokens: 1_250_000, estimated: true })])).toBe(
+      "◇ built-in 14/60 · ~1.3M tok",
+    );
+    expect(builtinStatus([s({ tokens: 950 })])).toBe("◇ built-in 14/60 · 950 tok");
+    expect(builtinStatus([s({}), s({})])).toBe("◇ 2 agents");
+  });
+
+  // docs/specs/builtin-agent-cli.md Behaviour 15, C13.
+  test("an agent CLI: its reported cost as its estimate, or steps and time only", () => {
+    expect(
+      builtinStatus([
+        s({ cli: "claude-code", tokensReported: true, reportedCost: 0.414, minutes: 6 }),
+      ]),
+    ).toBe("◇ built-in 14/60 · 212k tok · ≈ $0.41 (claude-code)");
+    expect(
+      builtinStatus([
+        s({ cli: "codex", tokens: 0, tokensReported: false, reportedCost: null, minutes: 6 }),
+      ]),
+    ).toBe("◇ built-in 14/60 · 6 min");
+  });
+});
+
+describe(":agent (Behaviour 14)", () => {
+  test("its words", () => {
+    expect(parseAgentCommand(undefined)).toEqual({ kind: "open" });
+    expect(parseAgentCommand(" stop ")).toEqual({ kind: "stop" });
+    for (const w of ["new", "model", "list", "clear", "give"])
+      expect(parseAgentCommand(w)).toEqual({ kind: w });
+    expect(parseAgentCommand("forget all")).toEqual({ kind: "forget" });
+    expect(parseAgentCommand("forget")).toMatchObject({
+      kind: "refuse",
+      text: expect.stringContaining('"forget all"'),
+    });
+    expect(parseAgentCommand("stpo")).toMatchObject({
+      kind: "refuse",
+      text: expect.stringContaining('did you mean "stop"?'),
+    });
+  });
+});
+
+describe("the window's keys in normal mode (Behaviour 14)", () => {
+  test("move, return to the input, and the window's commands", () => {
+    const k = (key: string, pending = "") => chatKey(pending, key);
+    expect(k("j")).toEqual({ kind: "do", what: "down" });
+    expect(k("k")).toEqual({ kind: "do", what: "up" });
+    expect(k("ctrl+d")).toEqual({ kind: "do", what: "half-down" });
+    expect(k("ctrl+u")).toEqual({ kind: "do", what: "half-up" });
+    expect(k("g")).toEqual({ kind: "pending", pending: "g" });
+    expect(k("g", "g")).toEqual({ kind: "do", what: "top" });
+    expect(k("x", "g")).toEqual({ kind: "none" });
+    expect(k("G")).toEqual({ kind: "do", what: "bottom" });
+    expect(k("shift+g")).toEqual({ kind: "do", what: "bottom" });
+    const verbs: [string, string][] = [
+      ["i", "insert"],
+      ["a", "insert"],
+      ["s", "stop"],
+      ["m", "model"],
+      ["n", "new"],
+      ["c", "list"],
+      ["C", "clear"],
+      ["P", "give"],
+      ["y", "yank"],
+      ["q", "close"],
+    ];
+    for (const [key, what] of verbs) expect(k(key)).toEqual({ kind: "do", what });
+    expect(k("z")).toEqual({ kind: "none" });
+    expect(k("esc")).toEqual({ kind: "none" });
+  });
+});

@@ -84,7 +84,7 @@ describe("selectBuild", () => {
     });
   });
 
-  it("falls back to the artifact build with XUL_APP_FILE, as tools/mochitest.mjs runs it", () => {
+  it("falls back to the artifact build with XUL_APP_FILE, as tools/mochitest.ts runs it", () => {
     expect(selectBuild({ engine, exists: exists([artifact]), ...linux })).toEqual({
       kind: "artifact",
       binary: artifact,

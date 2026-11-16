@@ -131,30 +131,30 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   `main` rebuilds the release PR, and auto-merge then merges the newest head once its required
   checks pass. A head that release-please pushed without the `firefox-notes` commit fails CI's
   `changelog-lint` step (its `[Unreleased]` is not the first heading), so it cannot merge.
-  [`fails when [Unreleased] is not the first version heading`](../../tools/release/test/changelog.test.mjs),
+  [`fails when [Unreleased] is not the first version heading`](../../tools/release/test/changelog.test.ts),
   [`firefox-notes reads the release branch as data and does nothing without the token`](../../tools/package/test/release-workflow.test.ts),
   [`firefox-notes moves [Unreleased] into the new entry before naming the Firefox version`](../../tools/package/test/release-workflow.test.ts),
-  [`sets auto-merge only once the slow checks of the ready run have replaced the draft's`](../../tools/release/test/security-release.test.mjs),
+  [`sets auto-merge only once the slow checks of the ready run have replaced the draft's`](../../tools/release/test/security-release.test.ts),
   [`finds no cover in a run whose checks were skipped, such as a draft's`](../../tools/ci/test/tree-covered.test.ts),
-  [`marks a draft release PR ready for review, then sets it to auto-merge`](../../tools/release/test/security-release.test.mjs),
+  [`marks a draft release PR ready for review, then sets it to auto-merge`](../../tools/release/test/security-release.test.ts),
   [`the mochitests, Semgrep and CodeQL skip a draft and still report their required checks`](../../tools/test/draft-pull-requests.test.ts),
   [`CodeQL still uploads an analysis for every pull request that is not a draft`](../../tools/test/draft-pull-requests.test.ts),
-  [`auto-merges the release PR after a merged security bump`](../../tools/release/test/security-release.test.mjs),
-  [`does nothing for an upstream bump without the security label`](../../tools/release/test/security-release.test.mjs),
-  [`does nothing for a security-labelled PR from another branch or a fork`](../../tools/release/test/security-release.test.mjs),
-  [`does nothing for a commit whose subject is not an upstream bump`](../../tools/release/test/security-release.test.mjs),
-  [`refuses a release PR with another author, branch, base, label or title`](../../tools/release/test/security-release.test.mjs),
-  [`refuses when the release PR does not contain the bump commit`](../../tools/release/test/security-release.test.mjs),
-  [`pins the merge to the release PR's head commit`](../../tools/release/test/security-release.test.mjs),
+  [`auto-merges the release PR after a merged security bump`](../../tools/release/test/security-release.test.ts),
+  [`does nothing for an upstream bump without the security label`](../../tools/release/test/security-release.test.ts),
+  [`does nothing for a security-labelled PR from another branch or a fork`](../../tools/release/test/security-release.test.ts),
+  [`does nothing for a commit whose subject is not an upstream bump`](../../tools/release/test/security-release.test.ts),
+  [`refuses a release PR with another author, branch, base, label or title`](../../tools/release/test/security-release.test.ts),
+  [`refuses when the release PR does not contain the bump commit`](../../tools/release/test/security-release.test.ts),
+  [`pins the merge to the release PR's head commit`](../../tools/release/test/security-release.test.ts),
   [`security-release runs only on a push to main of vimma-browser/vimma`](../../tools/package/test/release-workflow.test.ts),
   [`RELEASE_PLEASE_TOKEN reaches only release-please, the changelog push and the auto-merge`](../../tools/package/test/release-workflow.test.ts),
   [`release-please.yml grants nothing by default and each job only what it needs`](../../tools/package/test/release-workflow.test.ts)
 - G12. The automatic path **must never** merge the first release PR, and **must** stop when the
   variable is unset; with the variable on and no `RELEASE_PLEASE_TOKEN` it fails the run.
-  [`refuses before the first release exists`](../../tools/release/test/security-release.test.mjs),
-  [`does nothing when AUTO_SECURITY_RELEASE is off`](../../tools/release/test/security-release.test.mjs),
-  [`asks the API nothing while the variable is off or outside main`](../../tools/release/test/security-release.test.mjs),
-  [`fails when the variable is on and RELEASE_PLEASE_TOKEN is missing`](../../tools/release/test/security-release.test.mjs)
+  [`refuses before the first release exists`](../../tools/release/test/security-release.test.ts),
+  [`does nothing when AUTO_SECURITY_RELEASE is off`](../../tools/release/test/security-release.test.ts),
+  [`asks the API nothing while the variable is off or outside main`](../../tools/release/test/security-release.test.ts),
+  [`fails when the variable is on and RELEASE_PLEASE_TOKEN is missing`](../../tools/release/test/security-release.test.ts)
 
 - G13. An upstream bump PR **must** be allowed to auto-merge only by `publish` run on `main`, only
   when `AUTO_MERGE_UPSTREAM` allows its release kind, only for a non-draft PR whose every patch

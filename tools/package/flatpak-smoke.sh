@@ -88,7 +88,7 @@ today=$(date -u +%F)
 case "${1:-}" in
   --stub)
     version=$(node -p 'require(process.argv[1]).brands.vimma.release.displayVersion' "$here/../../surfer.json")
-    expected=$(node "$here/../release/version-line.mjs")
+    expected=$(node "$here/../release/version-line.ts")
     app="$work/stub/vimma"
     mkdir -p "$app/browser/chrome/icons/default"
     printf '#!/bin/sh\necho "%s"\n' "$expected" > "$app/vimma"

@@ -67,7 +67,7 @@ describe("release.yml runs it on the release build", () => {
   });
 
   it("smoke-tests the .rpm on Fedora and openSUSE before the files are uploaded for signing", () => {
-    const run = 'tools/package/rpm-smoke.sh dist "$(node tools/release/version-line.mjs)"';
+    const run = 'tools/package/rpm-smoke.sh dist "$(node tools/release/version-line.ts)"';
     expect(pkg).toContain(run);
     expect(pkg.indexOf(run)).toBeLessThan(pkg.indexOf("actions/upload-artifact"));
   });

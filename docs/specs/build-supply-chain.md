@@ -97,7 +97,11 @@ The change is to CI; its observable behaviour is what the workflows accept, refu
    packages of the old and the new version.
 7. **No install scripts.** No `npm ci` or `npm install` in the repository runs package
    install scripts; `release.yml` and `nightly.yml` also pass `--ignore-scripts` explicitly.
-   They run Surfer only from `node_modules` and fail if it is missing.
+   They run Surfer only from `node_modules` and fail if it is missing. (Since changed: one
+   repository-wide test also refuses npm's install and update commands in any tracked script,
+   workflow or instruction, an npx that could fetch a package, an action not pinned by commit
+   and a lockfile entry outside the npm registry, so a new file is held to this without being
+   listed; [security §14](../security/14-build-and-release-supply-chain.md), B20.)
 8. **Nothing outsiders can trigger runs on a self-hosted runner.** No job of a workflow that a
    pull request, a comment, an issue or another workflow run can trigger names a self-hosted
    runner. The nightly and the release build run on GitHub-hosted runners.

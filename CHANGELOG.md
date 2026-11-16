@@ -4,6 +4,34 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.20](https://github.com/vimma-browser/vimma/compare/v0.1.19...v0.1.20) · Firefox 160.0 (2026-11-15)
+
+
+### Fixed
+
+* :wsmove reopens the tab in its place, and a model set up with its key keeps vision ([#957](https://github.com/vimma-browser/vimma/issues/957)) ([84b2507](https://github.com/vimma-browser/vimma/commit/84b2507a8197cb76116324f8184ead9428e59785))
+* **agent:** a double Enter no longer sends twice, and unsent text stays in its conversation ([#1016](https://github.com/vimma-browser/vimma/issues/1016)) ([2d0d811](https://github.com/vimma-browser/vimma/commit/2d0d81176b12a7c2bc7a048db98b0228f89fde3b)), closes [#1010](https://github.com/vimma-browser/vimma/issues/1010)
+* **agent:** a late probe no longer replaces the list the agent picker is showing ([#1002](https://github.com/vimma-browser/vimma/issues/1002)) ([c197beb](https://github.com/vimma-browser/vimma/commit/c197beb7509d7e615f98eed43d17cfd08af0a4e5)), closes [#1001](https://github.com/vimma-browser/vimma/issues/1001)
+* **agent:** a slow model pick no longer switches the view or leaves a typed key behind ([#1008](https://github.com/vimma-browser/vimma/issues/1008)) ([7902c4a](https://github.com/vimma-browser/vimma/commit/7902c4af61192f1d1a62e7f20996c783c52d5468)), closes [#1005](https://github.com/vimma-browser/vimma/issues/1005)
+* **agent:** copy a request at the limit into the gate's events ([#1032](https://github.com/vimma-browser/vimma/issues/1032)) ([df22966](https://github.com/vimma-browser/vimma/commit/df22966b453e51f45913ebf2bf3257bb4de4ed7e)), closes [#1027](https://github.com/vimma-browser/vimma/issues/1027)
+* **agent:** judge a control's form past a shadow root's reference target ([#1085](https://github.com/vimma-browser/vimma/issues/1085)) ([eee712e](https://github.com/vimma-browser/vimma/commit/eee712e4ca555a7c2d502eb98eb989f6b6e06ea8)), closes [#1079](https://github.com/vimma-browser/vimma/issues/1079)
+* **agent:** keep a click's allowance open across a pushstate before its load ([#1076](https://github.com/vimma-browser/vimma/issues/1076)) ([90211e7](https://github.com/vimma-browser/vimma/commit/90211e742865a810615df9d4a871a4f62c275c65))
+* **agent:** skip a click or fill whose page a navigation hides before it runs ([#1036](https://github.com/vimma-browser/vimma/issues/1036)) ([473043d](https://github.com/vimma-browser/vimma/commit/473043db2531412985aa45f1c8b852f71ee4f616)), closes [#1028](https://github.com/vimma-browser/vimma/issues/1028)
+* **agent:** the agent gate keeps and hands out only its own frozen copies ([#1020](https://github.com/vimma-browser/vimma/issues/1020)) ([5c3b834](https://github.com/vimma-browser/vimma/commit/5c3b83483c9d9fc53ae9f2ea579acf97f0280f5c)), closes [#1018](https://github.com/vimma-browser/vimma/issues/1018)
+* **branding:** keep firefox 161's enterprise browser name ([#1093](https://github.com/vimma-browser/vimma/issues/1093)) ([2df83b2](https://github.com/vimma-browser/vimma/commit/2df83b2d60f2c5d46e2b4e6046af3057d942d20f))
+* **element:** v and V no longer scroll a block that is already on screen ([#1068](https://github.com/vimma-browser/vimma/issues/1068)) ([8acdec9](https://github.com/vimma-browser/vimma/commit/8acdec9525e2ff361dec1d4889c0d2f8903486fd)), closes [#1061](https://github.com/vimma-browser/vimma/issues/1061)
+* **mcp:** a form checkpoint counts what a form-associated custom element sends ([#1058](https://github.com/vimma-browser/vimma/issues/1058)) ([013cdab](https://github.com/vimma-browser/vimma/commit/013cdab9bdf4ff5082cfea94cd8a4697cf49edcf)), closes [#1053](https://github.com/vimma-browser/vimma/issues/1053)
+* **mcp:** judge a label's control past a shadow root's reference target ([#1077](https://github.com/vimma-browser/vimma/issues/1077)) ([b1ff89c](https://github.com/vimma-browser/vimma/commit/b1ff89cffac989329ba68c98f47f42aae114358f))
+* **mcp:** pass a label's click on to its control as Gecko does ([#1073](https://github.com/vimma-browser/vimma/issues/1073)) ([436dca7](https://github.com/vimma-browser/vimma/commit/436dca7b3bacc318843346216e8d6517ffb139ef)), closes [#1055](https://github.com/vimma-browser/vimma/issues/1055)
+* **panes:** refuse show-together when the tab to show alone has closed ([#1075](https://github.com/vimma-browser/vimma/issues/1075)) ([8640336](https://github.com/vimma-browser/vimma/commit/86403366236b5cb2df953161bfcb5bc01e448745))
+* **pdf:** report each operation even when the viewer's pdfViewer getter throws ([71ff415](https://github.com/vimma-browser/vimma/commit/71ff4155944411c6aede4df475ffa48ca42c1efb))
+* **pdf:** state.pdf reads not drawn right after a full-zoom change ([#1049](https://github.com/vimma-browser/vimma/issues/1049)) ([d15bc00](https://github.com/vimma-browser/vimma/commit/d15bc0099dc9cc61c1758a199a467b6e36a1c8bf))
+* pickers tell unloaded tabs apart in private windows, popups and with containers off ([#968](https://github.com/vimma-browser/vimma/issues/968)) ([6dcd228](https://github.com/vimma-browser/vimma/commit/6dcd22845247b6dff021e377667a3ef25258d01e)), closes [#958](https://github.com/vimma-browser/vimma/issues/958)
+* **start:** keep Firefox's new tab process alive when the start page is turned back on ([#978](https://github.com/vimma-browser/vimma/issues/978)) ([e51ee9d](https://github.com/vimma-browser/vimma/commit/e51ee9d273682b2b1cc786f61ca54296de482bb6)), closes [#950](https://github.com/vimma-browser/vimma/issues/950)
+* **start:** keep the Firefox-page latch when a new About process starts as the last one ends ([#991](https://github.com/vimma-browser/vimma/issues/991)) ([5df17ff](https://github.com/vimma-browser/vimma/commit/5df17ff6fd5137a95c38e7a8c0c153ef8c3cfa73)), closes [#984](https://github.com/vimma-browser/vimma/issues/984)
+* **updater:** hold :update while firefox downloads an update ([0b46713](https://github.com/vimma-browser/vimma/commit/0b467130dc6f8b51114517e01b54ab3d08b50bf4))
+* **updates:** keep update checks off when an unreadable check follows an opt-out ([#1080](https://github.com/vimma-browser/vimma/issues/1080)) ([4f9d7fd](https://github.com/vimma-browser/vimma/commit/4f9d7fd026e0f5eaf7b3804edcebaf5bb9bd0937))
+
 ## [0.1.19](https://github.com/vimma-browser/vimma/compare/v0.1.18...v0.1.19) · Firefox 160.0 (2026-11-12)
 
 

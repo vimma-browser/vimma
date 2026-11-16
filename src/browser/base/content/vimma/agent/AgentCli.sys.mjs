@@ -408,7 +408,7 @@ async function deadRun(dir) {
 
 /**
  * Reads a pipe to its end, keeping its last `keep` characters.
- * @param {any} pipe @param {number} [keep]
+ * @param {SubprocessInputPipe} pipe @param {number} [keep]
  */
 async function tail(pipe, keep = CLI_STREAM_LIMITS.stderr) {
   let text = "";
@@ -431,9 +431,9 @@ async function tail(pipe, keep = CLI_STREAM_LIMITS.stderr) {
  *   | null>}
  */
 async function runFixed(path, args, { workdir, keep, ms = VERSION_MS }) {
-  /** @type {any} */
+  /** @type {ChildProcess} */
   let proc;
-  /** @type {any} */
+  /** @type {number | undefined} */
   let timer;
   try {
     proc = await lazy.Subprocess.call({
@@ -454,7 +454,9 @@ async function runFixed(path, args, { workdir, keep, ms = VERSION_MS }) {
       proc.kill();
       return { stdout: "", stderr: "", exitCode: null, late: true };
     }
-    const [stdout, stderr, { exitCode }] = /** @type {[string, string, any]} */ (done);
+    const [stdout, stderr, { exitCode }] = /** @type {[string, string, { exitCode: number }]} */ (
+      done
+    );
     return { stdout, stderr, exitCode };
   } catch {
     return null;
@@ -701,7 +703,7 @@ export const AgentCli = {
   start(o) {
     const id = o.provider.cli ?? "";
     const cli = Object.hasOwn(CLIS, id) ? CLIS[id] : null;
-    /** @type {any} */
+    /** @type {ChildProcess | null} */
     let proc = null;
     let ticket = "";
     let stopped = false;
@@ -758,9 +760,9 @@ export const AgentCli = {
       if ("problem" in ctl) return { outcome: "error", error: ctl.problem, messages: [] };
       if (stopped) return { outcome: "stopped", messages: [] };
       const dir = await IOUtils.createUniqueDirectory(await runBase(), "vimma-agent-cli", 0o700);
-      /** @type {any} */
+      /** @type {number | null} */
       let tick = null;
-      /** @type {any} */
+      /** @type {number | null} */
       let limit = null;
       liveRuns.add(dir);
       try {
@@ -976,7 +978,7 @@ export const AgentCli = {
         if (!cli?.live) return;
         const line = cli.input(text);
         if (!inputOpen) return;
-        if (live) proc.stdin.write(line).catch(() => {});
+        if (live) proc?.stdin.write(line).catch(() => {});
         else pending.push(line);
       },
       done: /** @type {Promise<TaskResult>} */ (done),

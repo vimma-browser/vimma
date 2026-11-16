@@ -86,7 +86,7 @@ real=1
 if [ "${1:-}" = "--stub" ]; then
   work=$(mktemp -d)
   trap 'rm -rf "$work"' EXIT
-  expected=$(node "$repo/tools/release/version-line.mjs")
+  expected=$(node "$repo/tools/release/version-line.ts")
   app="$work/stub/vimma"
   mkdir -p "$app/browser/chrome/icons/default"
   printf '#!/bin/sh\necho "%s"\n' "$expected" > "$app/vimma"

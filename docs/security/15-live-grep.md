@@ -1,4 +1,4 @@
-## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-matcher.mjs`)
+## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-page.mjs`, `actors/grep-matcher.mjs`)
 
 `ctrl+b f g` searches the text of the tabs in its scope: the parent sends the query to each
 frame's own content process, which builds a text model of its own document on the page's thread,
@@ -35,12 +35,12 @@ Rules:
   copy it field by field, cut to the limits (100 listed and 1,000 counted matches a frame, lines
   of 162 characters, 21 preview lines of 302 characters, a preview's match within its line),
   and drop a malformed one.
-  [`a good reply is copied`](../../packages/vimma-core/test/grep.test.mjs),
-  [`drops %j`](../../packages/vimma-core/test/grep.test.mjs),
-  [`cuts overlong contexts and too many matches`](../../packages/vimma-core/test/grep.test.mjs),
-  [`a reply's timedOut and cut flags are kept as booleans`](../../packages/vimma-core/test/grep.test.mjs),
-  [`parsePreviewReply checks and cuts the preview`](../../packages/vimma-core/test/grep.test.mjs),
-  [`parsePreviewReply clips the match to its line`](../../packages/vimma-core/test/grep.test.mjs)
+  [`a good reply is copied`](../../packages/vimma-core/test/grep.test.ts),
+  [`drops %j`](../../packages/vimma-core/test/grep.test.ts),
+  [`cuts overlong contexts and too many matches`](../../packages/vimma-core/test/grep.test.ts),
+  [`a reply's timedOut and cut flags are kept as booleans`](../../packages/vimma-core/test/grep.test.ts),
+  [`parsePreviewReply checks and cuts the preview`](../../packages/vimma-core/test/grep.test.ts),
+  [`parsePreviewReply clips the match to its line`](../../packages/vimma-core/test/grep.test.ts)
 - L3. Rows, the preview and its title **must** show page text, titles and URLs, recently closed
   ones included, as text nodes and `<mark>` elements made in chrome, **never** parsed as HTML
   (C1).
@@ -51,8 +51,8 @@ Rules:
   a recently closed tab or window is the agent's when the tab its row shows was in the agent
   workspace's container.
   [`agent_tabs_only_in_window_scope_marked_and_last`](../../tests/browser/browser_vimma_live_grep_windows.js),
-  [`agent workspace rows are marked and come last`](../../packages/vimma-core/test/grep.test.mjs),
-  [`a closed window takes the agent marking of the tab it shows`](../../packages/vimma-core/test/grep.test.mjs)
+  [`agent workspace rows are marked and come last`](../../packages/vimma-core/test/grep.test.ts),
+  [`a closed window takes the agent marking of the tab it shows`](../../packages/vimma-core/test/grep.test.ts)
 - L5. Page text **must not** outlive the picker: when it closes, every frame the query was sent
   to is told to drop its text model, its observer and its worker, whether or not it answered;
   the parent keeps no rows; the grep list holds only the lines it shows, in memory, never on
@@ -66,7 +66,7 @@ Rules:
   [`a_step_whose_tab_switch_ends_after_grep_reopens_stops_there`](../../tests/browser/browser_vimma_live_grep.js),
   [`a_reply_held_past_close_still_gets_grep_end`](../../tests/browser/browser_vimma_live_grep.js),
   [`the_grep_list_steps_with_bracket_q_and_grep_resumes`](../../tests/browser/browser_vimma_live_grep.js),
-  [`pruneGrepList drops a closed tab's rows and keeps its place`](../../packages/vimma-core/test/grep.test.mjs),
+  [`pruneGrepList drops a closed tab's rows and keeps its place`](../../packages/vimma-core/test/grep.test.ts),
   [`the_grep_list_drops_a_closed_windows_lines`](../../tests/browser/browser_vimma_live_grep_windows.js),
   [`the_closed_titles_have_one_matcher_key_until_close`](../../tests/browser/browser_vimma_live_grep_windows.js)
 - L6. A regular expression **must** run on page text only in a worker thread of the page's
@@ -84,7 +84,7 @@ Rules:
   [`one_worker_a_process_and_none_for_a_blank_frame`](../../tests/browser/browser_vimma_live_grep.js),
   [`an_over_long_query_says_so_and_is_not_sent`](../../tests/browser/browser_vimma_live_grep.js),
   [`a_catastrophic_pattern_on_closed_titles_never_freezes_the_browser`](../../tests/browser/browser_vimma_live_grep_windows.js),
-  [`a match never spans two lines`](../../packages/vimma-core/test/grep.test.mjs)
+  [`a match never spans two lines`](../../packages/vimma-core/test/grep.test.ts)
 - L7. A page **must not** be able to make the parent hold an unbounded search: at most 100
   frames are searched in a tab, and at most 2,000 matches are held, those of the replies first
   in the list, the last that fits cut to fill the 2,000; the rest keep only their counts. At
@@ -93,13 +93,13 @@ Rules:
   the count for the rest. A row's host is cut to 64 characters, and a URL without a host gives
   none, never the URL; a tab's title is cut to 300 characters.
   [`frames_past_the_cap_are_not_searched`](../../tests/browser/browser_vimma_live_grep.js),
-  [`matches are kept until 2,000 are held; past that only counts`](../../packages/vimma-core/test/grep.test.mjs),
-  [`the last reply that fits only in part is cut, so exactly 2,000 are held`](../../packages/vimma-core/test/grep.test.mjs),
-  [`newest first, at most 25 tabs and 5 windows, as Firefox keeps`](../../packages/vimma-core/test/grep.test.mjs),
-  [`a closed window's tabs past 20 and fields past 1,000 characters are not matched`](../../packages/vimma-core/test/grep.test.mjs),
-  [`one closed title matching a thousand times cannot crowd out the rest`](../../packages/vimma-core/test/grep.test.mjs),
-  [`a host-less URL gives no host, and a closed row's URL and host are cut`](../../packages/vimma-core/test/grep.test.mjs),
-  [`a better-ranked reply that arrives last still keeps its matches`](../../packages/vimma-core/test/grep.test.mjs)
+  [`matches are kept until 2,000 are held; past that only counts`](../../packages/vimma-core/test/grep.test.ts),
+  [`the last reply that fits only in part is cut, so exactly 2,000 are held`](../../packages/vimma-core/test/grep.test.ts),
+  [`newest first, at most 25 tabs and 5 windows, as Firefox keeps`](../../packages/vimma-core/test/grep.test.ts),
+  [`a closed window's tabs past 20 and fields past 1,000 characters are not matched`](../../packages/vimma-core/test/grep.test.ts),
+  [`one closed title matching a thousand times cannot crowd out the rest`](../../packages/vimma-core/test/grep.test.ts),
+  [`a host-less URL gives no host, and a closed row's URL and host are cut`](../../packages/vimma-core/test/grep.test.ts),
+  [`a better-ranked reply that arrives last still keeps its matches`](../../packages/vimma-core/test/grep.test.ts)
 - L8. A jump, from the picker or `]q` / `[q`, **must** go only to the document that was searched:
   a frame that has navigated since gets nothing, and the notice says the match is gone.
   [`a_jump_never_reaches_a_document_the_frame_navigated_to`](../../tests/browser/browser_vimma_live_grep.js)

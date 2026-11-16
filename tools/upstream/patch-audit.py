@@ -2,7 +2,8 @@
 """Patch-size audit: every src/**/*.patch with its files, hunks and changed lines, against the
 ADR-003 patch register.
 
-Plan §4 (the Sunday maintenance run): review patch sizes and move code out of .patch files.
+Run by the quarterly patch-audit.yml (ARCHITECTURE.md): review patch sizes and move code out of
+.patch files.
 Flags a patch missing from the register (ADR-003: every .patch needs a line there) and a
 register line whose patch no longer exists. `large` marks a patch at or over 8000 characters,
 the size at which `surfer export` warns.

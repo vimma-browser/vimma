@@ -2,11 +2,16 @@
 # packages/vimma-core/src, weekly. Survivors become ONE tracking issue (label `mutation`), rewritten by every run; they never
 # fail the workflow. Only a broken run (Stryker or the dry run erroring) is red.
 #
-# Minutes: incremental mode reuses the previous run's results (artifact `mutation-report`), so a
-# weekly run re-tests only mutants in changed core files. The first Sunday of each month (or a manual
-# run with `full`) re-tests everything, so survivors killed by new tests drop off the issue.
-# Two jobs, so the step running repository code (npm ci, Stryker, the tests) never holds a token
-# that can write issues; the report job costs one extra billed minute a week.
+# Shards (#975): one Stryker run over the whole core takes many runner-hours, so the `mutate` list
+# is split into 10 jobs by tools/mutation/shard.ts (balanced by file size, deterministic), each
+# within the 180-minute job limit. The report job merges their reports (tools/mutation/merge.ts).
+#
+# Minutes: incremental mode reuses the previous run's results (artifacts `mutation-report-<k>`), so
+# a weekly run re-tests only mutants in changed core files. The first Sunday of each month (or a
+# manual run with `full`) re-tests everything, so survivors killed by new tests drop off the issue.
+# The steps running repository code (npm ci, Stryker, the tests, the merge, the issue body) hold
+# no token: GH_TOKEN reaches only the step that downloads the previous results (actions: read)
+# and the step that runs gh on the issue. The report job costs one extra billed minute a week.
 name: mutation
 
 on:
@@ -27,12 +32,21 @@ concurrency:
 
 jobs:
   stryker:
-    name: Stryker on vimma-core
+    name: Stryker on vimma-core (shard ${{ matrix.shard }} of 10)
     runs-on: ubuntu-latest
     timeout-minutes: 180
     permissions:
       contents: read
-      actions: read # download the previous run's incremental file
+      actions: read # download the previous run's incremental files
+    strategy:
+      fail-fast: false # one shard failing or timing out must not cancel the others
+      matrix:
+        # Keep in step with MUTATION_SHARDS below and the job name: 10 shards of about 132 KB of
+        # source each (docs/runbook/ci-mutation-testing.md, "Shards", has the estimate).
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    env:
+      MUTATION_SHARD: ${{ matrix.shard }}
+      MUTATION_SHARDS: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -62,19 +76,35 @@ jobs:
             --branch main --status success --limit 20 --json databaseId,event \
             --jq '[.[] | select(.event == "schedule" or .event == "workflow_dispatch")]
               | .[0].databaseId // empty')
+          # Every shard's results: the split moves a file to another shard when files change.
           if [ -n "$run_id" ] && gh run download "$run_id" --repo "$GITHUB_REPOSITORY" \
-            --name mutation-report --dir reports/mutation; then
+            --pattern 'mutation-report-*' --dir previous; then
             echo "Reusing results of run $run_id."
           else
             echo "No previous results; this is a full run."
           fi
 
+      - name: Merge the previous shards' incremental files
+        run: |
+          shopt -s nullglob
+          files=(previous/*/stryker-incremental.json)
+          if [ "${#files[@]}" -gt 0 ]; then
+            mkdir -p reports/mutation
+            # --shard: only this shard's files (MUTATION_SHARD, MUTATION_SHARDS from the job).
+            # An empty GITHUB_STEP_SUMMARY keeps the old scores off this job's summary.
+            GITHUB_STEP_SUMMARY="" node tools/mutation/merge.ts --shard \
+              --out reports/mutation/stryker-incremental.json "${files[@]}" > /dev/null
+          fi
+
       - name: Stryker
         run: npx --no -- stryker run $STRYKER_FORCE # empty or --force, from the step above
 
+      - name: Shard score # a table in this job's summary
+        run: node tools/mutation/merge.ts reports/mutation/mutation.json
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: mutation-report
+          name: mutation-report-${{ matrix.shard }}
           path: |
             reports/mutation/mutation.html
             reports/mutation/mutation.json
@@ -89,8 +119,6 @@ jobs:
     permissions:
       contents: read
       issues: write # create, edit or close the one `mutation` issue, and its label
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -108,18 +136,24 @@ jobs:
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: mutation-report
-          path: reports/mutation
+          pattern: mutation-report-*
+          path: reports/shards
+
+      # tools/mutation/merge.ts and the shard.ts it imports are in the sparse checkout above.
+      - name: Merge the shards
+        run: |
+          node tools/mutation/merge.ts --out reports/mutation.json reports/shards/*/mutation.json
 
       - name: Issue body
         id: body
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           COMMIT: ${{ github.sha }}
-        run: node tools/mutation/report.ts reports/mutation/mutation.json > body.md
+        run: node tools/mutation/report.ts reports/mutation.json > body.md
 
       - name: Create, update or close the tracking issue
         env:
+          GH_TOKEN: ${{ github.token }} # this step only: the steps above run repository code
           SCORE: ${{ steps.body.outputs.score }}
           SURVIVORS: ${{ steps.body.outputs.survivors }}
         run: |

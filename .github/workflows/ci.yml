@@ -181,7 +181,7 @@ jobs:
         if: steps.classify.outputs.docs-only != 'true'
         run: npm run typecheck
 
-      - name: Vitest with coverage gate (vitest.config.mjs)
+      - name: Vitest with coverage gate (vitest.config.ts)
         if: steps.classify.outputs.docs-only != 'true'
         run: npm run coverage
 

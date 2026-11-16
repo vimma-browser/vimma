@@ -56,16 +56,25 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   [`a daemonised tmux server ends the list at tmux, whatever its clients`](../../tools/package/test/vimma-open.test.ts)
 
 - O10. Settings' Make default button **must** register only the package's own desktop entry,
-  never a command another program chose. On Linux, the first window's first script
-  (`services/AppLauncher.sys.mjs`) starts Firefox's shell service with `MOZ_APP_LAUNCHER` set to
-  the `vimma-open` next to the binary, replacing any value inherited from the caller, and then
+  never a command another program chose. On Linux, BrowserGlue's `browser-before-ui-startup`
+  category runs `services/AppLauncher.sys.mjs` (before the command line runs, so before Firefox
+  handles `vimma -setDefaultBrowser`, and before the first window), which starts Firefox's shell
+  service with `MOZ_APP_LAUNCHER` set to the `vimma-open` next to the binary, replacing any value
+  inherited from the caller, and then
   sets it to empty, so no program Vimma starts inherits it (a Firefox started from one would take
   `vimma-open` as itself, bug 1494436). An AppImage, known by its own `is-packaged-app` marker
   and never by the caller's `APPDIR`, keeps `AppRun`'s value (the `.AppImage`); without a
-  `vimma-open` next to the binary (the tarball, a build from source) nothing is set. **⚠ limit:**
-  when something starts the shell service first (the profile service making a dedicated default
-  profile on a first start, `vimma -setDefaultBrowser`), that session keeps Firefox's behaviour,
-  which Vimma reports in the console. A program that can write `~/.local/share/applications` or
+  `vimma-open` next to the binary (the tarball, a build from source) nothing is set. When something
+  starts the shell service first (the profile service making a dedicated default profile on a
+  first start), it has taken another command; Vimma reports that in
+  the console, and Make default then asks GIO for the first desktop entry it lists whose `Exec` program is
+  that `vimma-open` (usually the package's; a user entry in `~/.local/share/applications` that
+  runs it, with any arguments, comes first, as for Firefox's own button, see §11) and sets it, for what Firefox's own button sets, or runs Firefox's method
+  when there is none, under Flatpak, or when a policy forbids it. The default-browser check then also counts that
+  entry when GIO names it for both http and https, by the same exact-path match, with a quoted
+  or escaped program never matching. `vimma -setDefaultBrowser` is the same explicit request as
+  the button and takes the same path, on time or late. A program that can write
+  `~/.local/share/applications` or
   `mimeapps.list` can choose the default browser itself, so a desktop entry there that also runs
   `vimma-open` is outside this boundary (§11). On Omarchy, where GIO names Omarchy's router
   (`omarchy-browser.desktop`) as the http and https handler, Vimma also counts itself the
@@ -78,14 +87,21 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   the router.
   [`test_omarchy_s_router_to_vimma_counts_as_default`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_without_omarchy_s_router_nothing_is_read`](../../tests/browser/browser_vimma_app_launcher.js),
-  [`a quoted Exec never counts, since Omarchy's launcher cannot run it`](../../packages/vimma-core/test/default-browser.test.mjs),
-  [`matches the program by its exact absolute path, never by name or a relative one`](../../packages/vimma-core/test/default-browser.test.mjs),
+  [`a quoted Exec never counts, since Omarchy's launcher cannot run it`](../../packages/vimma-core/test/default-browser.test.ts),
+  [`matches the program by its exact absolute path, never by name or a relative one`](../../packages/vimma-core/test/default-browser.test.ts),
   [`test_the_shell_service_starts_with_the_launcher_next_to_the_binary`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_an_inherited_value_never_picks_another_program`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_an_inherited_appdir_never_keeps_another_program`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_a_shell_service_already_running_is_reported_and_the_value_emptied`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_startup_named_the_launcher_before_anything_else_started_the_service`](../../tests/browser/browser_vimma_app_launcher.js),
+  [`test_the_launcher_is_named_before_the_command_line_runs`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_an_appimage_keeps_apprun_s_value`](../../tests/browser/browser_vimma_app_launcher.js),
+  [`test_make_default_sets_the_package_entry_after_a_late_start`](../../tests/browser/browser_vimma_app_launcher.js),
+  [`test_without_the_package_entry_make_default_keeps_firefox_s_way`](../../tests/browser/browser_vimma_app_launcher.js),
+  [`test_a_policy_against_make_default_is_left_to_firefox`](../../tests/browser/browser_vimma_app_launcher.js),
+  [`test_under_flatpak_make_default_is_left_to_firefox`](../../tests/browser/browser_vimma_app_launcher.js),
+  [`test_a_late_start_counts_the_package_entry_as_the_default`](../../tests/browser/browser_vimma_app_launcher.js),
+  [`never counts a quoted or escaped program, which it does not parse`](../../packages/vimma-core/test/default-browser.test.ts),
   [`names each package's installed vimma-open by its absolute path in the desktop entry`](../../tools/package/test/package.test.ts)
 
 Allowed: two or more arguments (other than `--from`) pass through unchanged; a local app that
