@@ -70,7 +70,7 @@ function writeAll(output, bytes) {
           if (n < chunk.length) break;
         }
       } catch (e) {
-        if (/** @type {any} */ (e)?.result !== Cr.NS_BASE_STREAM_WOULD_BLOCK) {
+        if (/** @type {Thrown} */ (e)?.result !== Cr.NS_BASE_STREAM_WOULD_BLOCK) {
           reject(e);
           return;
         }
@@ -93,7 +93,8 @@ function readAvailable(input, binary) {
     const n = input.available();
     return new Uint8Array(binary.readByteArray(n || 1));
   } catch (e) {
-    if (/** @type {any} */ (e)?.result === Cr.NS_BASE_STREAM_WOULD_BLOCK) return new Uint8Array();
+    if (/** @type {Thrown} */ (e)?.result === Cr.NS_BASE_STREAM_WOULD_BLOCK)
+      return new Uint8Array();
     return null; // closed, reset or at its end
   }
 }

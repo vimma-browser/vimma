@@ -814,7 +814,7 @@ export function parseConsoleEntry(raw) {
   if (!raw || typeof raw !== "object") return null;
   const r = /** @type {Record<string, unknown>} */ (raw);
   if (r.level !== "error" && r.level !== "warn") return null;
-  if (!CONSOLE_SOURCES.includes(/** @type {any} */ (r.source))) return null;
+  if (!(/** @type {readonly unknown[]} */ (CONSOLE_SOURCES).includes(r.source))) return null;
   if (typeof r.message !== "string" || typeof r.file !== "string") return null;
   if (!isCountOf(r.line) || !isCountOf(r.column) || !isCountOf(r.time)) return null;
   return {

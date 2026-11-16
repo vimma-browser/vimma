@@ -378,7 +378,7 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
       if (
         e.layer === "keys" ||
         firefoxActions.has(e.action.name) ||
-        SUGGESTION_ACTIONS.has(/** @type {any} */ (e.action.id))
+        /** @type {ReadonlySet<unknown>} */ (SUGGESTION_ACTIONS).has(e.action.id)
       ) {
         e.modes.clear();
         e.shadowed?.clear();

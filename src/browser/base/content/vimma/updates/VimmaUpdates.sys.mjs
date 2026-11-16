@@ -560,7 +560,7 @@ async function runCheck(asked) {
     if (body === null) return refuse(TOO_LARGE);
     text = body;
   } catch (e) {
-    const why = /** @type {any} */ (e)?.message ?? String(e);
+    const why = /** @type {Thrown} */ (e)?.message ?? String(e);
     return finish({ outcome: "unreachable", reason: `the update host did not answer: ${why}` });
   } finally {
     lazy.clearTimeout(timer);
@@ -839,7 +839,7 @@ async function replaceAppImage(decided) {
       return;
     }
   } catch (e) {
-    const why = /** @type {any} */ (e)?.message ?? String(e);
+    const why = /** @type {Thrown} */ (e)?.message ?? String(e);
     setReplacement({
       stage: "none",
       buildId: offer.buildId,
@@ -859,7 +859,7 @@ async function replaceAppImage(decided) {
       0o600,
     );
   } catch (e) {
-    const why = /** @type {any} */ (e)?.message ?? String(e);
+    const why = /** @type {Thrown} */ (e)?.message ?? String(e);
     setReplacement({
       stage: "none",
       buildId: offer.buildId,
@@ -884,7 +884,7 @@ async function replaceAppImage(decided) {
     ours = false;
     setReplacement({ stage: "staged", buildId: offer.buildId, reason: null });
   } catch (e) {
-    const why = /** @type {any} */ (e)?.message ?? String(e);
+    const why = /** @type {Thrown} */ (e)?.message ?? String(e);
     setReplacement({ stage: "none", buildId: offer.buildId, reason: why });
   } finally {
     if (ours) await IOUtils.remove(part).catch(() => {});

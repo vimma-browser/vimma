@@ -46,6 +46,8 @@ import { DEFAULT_THEME_NAME } from "./theme.mjs";
  *   clamav_max_age_days?: number }} [mcp]  local AI agents and the agent workspace (docs/specs/vimma-mcp.md)
  * @property {{ default?: string, aliases?: Record<string, string> }} [search]  the default
  *   search engine and `@alias` keywords (docs/specs/search-engines.md)
+ * @property {Record<string, unknown>} [agent]  the built-in agent (docs/specs/builtin-agent.md),
+ *   checked field by field by config.mjs before it is resolved
  */
 
 /**

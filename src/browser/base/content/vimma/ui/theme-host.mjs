@@ -163,7 +163,7 @@ function appearance() {
 }
 
 /** IOUtils rejects with a DOMException named NotFoundError for a missing file. */
-const notFound = (/** @type {unknown} */ e) => /** @type {any} */ (e)?.name === "NotFoundError";
+const notFound = (/** @type {unknown} */ e) => /** @type {Thrown} */ (e)?.name === "NotFoundError";
 
 /** @type {string[]} the applied theme's warnings (contrast), for about:vimma */
 let warnings = [];
