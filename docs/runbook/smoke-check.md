@@ -2,7 +2,7 @@
 
 ```sh
 bin=engine/obj-x86_64-pc-linux-gnu/dist/bin/vimma
-$bin --version   # "Vimma 0.1.0 · Firefox 158.0" (node tools/release/version-line.mjs prints the same)
+$bin --version   # "Vimma 0.1.0 · Firefox 158.0" (node tools/release/version-line.ts prints the same)
 grep '^Version=' engine/obj-x86_64-pc-linux-gnu/dist/bin/application.ini
                  # "Version=158.0": appinfo.version is the Firefox version (spec m0-app-version)
 # navigator.userAgent stays Firefox's: "Mozilla/5.0 (X11; Linux x86_64; rv:158.0) Gecko/20100101
@@ -15,7 +15,7 @@ $bin --headless --no-remote --profile "$p" --screenshot /tmp/shot.png "data:text
 Where unprivileged user namespaces are denied (ubuntu-24.04 runners, through AppArmor), `--version`
 also writes `Sandbox: CanCreateUserNamespace() ... EPERM` to stderr. The version line is on stdout,
 so scripts compare stdout alone; release.yml and nightly.yml do
-(tools/release/test/smoke-check.test.mjs).
+(tools/release/test/smoke-check.test.ts).
 
 The brand is `vimma` (spec m0-branding): `npm run import` selects it (`surfer config brand vimma`)
 and rewrites `engine/mozconfig`, so `npm run import && (cd engine && ./mach build)` builds it.

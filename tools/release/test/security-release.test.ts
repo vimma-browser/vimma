@@ -1,20 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { SLOW_CHECKS, commands, decide, gather, slowChecksStarted } from "../security-release.mjs";
+import { SLOW_CHECKS, commands, decide, gather, slowChecksStarted } from "../security-release.ts";
 
 // Spec firefox-versions, decisions 11 to 15; docs/security/10-firefox-updates.md G9 and G10. The
 // fixtures are recorded API responses: the merge of #186 (upstream: firefox 158.0, labelled
 // security) and release PR #347 while it was open.
-/** @type {Record<string, any>} */
-const recorded = JSON.parse(
+const recorded: Record<string, any> = JSON.parse(
   readFileSync(new URL("fixtures/security-release.json", import.meta.url), "utf8"),
 );
 
 /**
  * The inputs of a run started by #186's merge with the variable on, with `change` applied.
- * @param {(input: any) => void} [change]
  */
-function input(change) {
+function input(change?: (input: any) => void) {
   const value = structuredClone({
     enabled: "true",
     hasToken: true,
@@ -33,8 +31,8 @@ function input(change) {
   return value;
 }
 
-/** @param {ReturnType<typeof decide>} decision */
-const skipped = (decision) => (decision.action === "skip" ? decision.reason : decision.action);
+const skipped = (decision: ReturnType<typeof decide>) =>
+  decision.action === "skip" ? decision.reason : decision.action;
 
 describe("decide", () => {
   it("auto-merges the release PR after a merged security bump", () => {
@@ -52,7 +50,7 @@ describe("decide", () => {
   it("marks a draft release PR ready for review, then sets it to auto-merge", () => {
     const decision = decide(input((i) => (i.releasePulls[0].draft = true)));
     expect(decision).toMatchObject({ action: "merge", release: 347, ready: true });
-    const [ready, merge, comment] = commands(/** @type {any} */ (decision));
+    const [ready, merge, comment] = commands(decision as any);
     expect(ready).toEqual(["pr", "ready", "347", "--repo", "vimma-browser/vimma"]);
     expect(merge).toEqual([
       "pr",
@@ -75,9 +73,13 @@ describe("decide", () => {
       "mochitest (artifact build)",
       "semgrep (javascript, typescript, rust, secrets, github-actions)",
     ]);
-    /** @param {number} id @param {string} name @param {string} status @param {string | null} conclusion */
-    const c = (id, name, status, conclusion) => ({ id, name, status, conclusion });
-    const [mochitest, semgrep] = /** @type {[string, string]} */ (SLOW_CHECKS);
+    const c = (id: number, name: string, status: string, conclusion: string | null) => ({
+      id,
+      name,
+      status,
+      conclusion,
+    });
+    const [mochitest, semgrep] = SLOW_CHECKS as [string, string];
     const draft = [c(1, mochitest, "completed", "skipped"), c(2, semgrep, "completed", "skipped")];
     expect(slowChecksStarted(draft)).toBe(false);
     expect(slowChecksStarted([...draft, c(3, mochitest, "queued", null)])).toBe(false);
@@ -109,7 +111,7 @@ describe("decide", () => {
     for (const draft of [false, undefined]) {
       const decision = decide(input((i) => (i.releasePulls[0].draft = draft)));
       expect(decision).toMatchObject({ action: "merge", ready: false });
-      const run = commands(/** @type {any} */ (decision));
+      const run = commands(decision as any);
       expect(run.map((args) => args[1])).toEqual(["merge", "comment"]);
     }
   });
@@ -146,14 +148,14 @@ describe("decide", () => {
 
   it("does nothing for a security-labelled PR from another branch or a fork", () => {
     const cases = [
-      (/** @type {any} */ i) => (i.bumpPulls[0].head.ref = "feature/firefox-158.0"),
-      (/** @type {any} */ i) => (i.bumpPulls[0].head.ref = "upstream/firefox-158.0.1"),
-      (/** @type {any} */ i) => (i.bumpPulls[0].head.repo.full_name = "someone/vimma"),
-      (/** @type {any} */ i) => (i.bumpPulls[0].head.repo = null),
-      (/** @type {any} */ i) => (i.bumpPulls[0].base.ref = "other"),
-      (/** @type {any} */ i) => (i.bumpPulls[0].merged_at = null),
-      (/** @type {any} */ i) => (i.bumpPulls = []),
-      (/** @type {any} */ i) => i.bumpPulls.push({ ...i.bumpPulls[0], number: 187 }),
+      (i: any) => (i.bumpPulls[0].head.ref = "feature/firefox-158.0"),
+      (i: any) => (i.bumpPulls[0].head.ref = "upstream/firefox-158.0.1"),
+      (i: any) => (i.bumpPulls[0].head.repo.full_name = "someone/vimma"),
+      (i: any) => (i.bumpPulls[0].head.repo = null),
+      (i: any) => (i.bumpPulls[0].base.ref = "other"),
+      (i: any) => (i.bumpPulls[0].merged_at = null),
+      (i: any) => (i.bumpPulls = []),
+      (i: any) => i.bumpPulls.push({ ...i.bumpPulls[0], number: 187 }),
     ];
     for (const change of cases) expect(decide(input(change)).action, String(change)).toBe("skip");
   });
@@ -172,16 +174,16 @@ describe("decide", () => {
 
   it("refuses a release PR with another author, branch, base, label or title", () => {
     const cases = [
-      (/** @type {any} */ i) => (i.releasePulls[0].user.login = "github-actions[bot]"),
-      (/** @type {any} */ i) => (i.releasePulls[0].head.ref = "release-please--branches--other"),
-      (/** @type {any} */ i) => (i.releasePulls[0].head.repo.full_name = "someone/vimma"),
-      (/** @type {any} */ i) => (i.releasePulls[0].base.ref = "other"),
-      (/** @type {any} */ i) => (i.releasePulls[0].labels = [{ name: "autorelease: tagged" }]),
-      (/** @type {any} */ i) => (i.releasePulls[0].title = "chore(main): release 0.1.5 and more"),
-      (/** @type {any} */ i) => (i.releasePulls[0].title = "feat: release 0.1.5"),
-      (/** @type {any} */ i) => (i.releasePulls[0].state = "closed"),
-      (/** @type {any} */ i) => (i.releasePulls = []),
-      (/** @type {any} */ i) => i.releasePulls.push({ ...i.releasePulls[0], number: 348 }),
+      (i: any) => (i.releasePulls[0].user.login = "github-actions[bot]"),
+      (i: any) => (i.releasePulls[0].head.ref = "release-please--branches--other"),
+      (i: any) => (i.releasePulls[0].head.repo.full_name = "someone/vimma"),
+      (i: any) => (i.releasePulls[0].base.ref = "other"),
+      (i: any) => (i.releasePulls[0].labels = [{ name: "autorelease: tagged" }]),
+      (i: any) => (i.releasePulls[0].title = "chore(main): release 0.1.5 and more"),
+      (i: any) => (i.releasePulls[0].title = "feat: release 0.1.5"),
+      (i: any) => (i.releasePulls[0].state = "closed"),
+      (i: any) => (i.releasePulls = []),
+      (i: any) => i.releasePulls.push({ ...i.releasePulls[0], number: 348 }),
     ];
     for (const change of cases) {
       expect(skipped(decide(input(change))), String(change)).toMatch(/release PR/);
@@ -217,8 +219,7 @@ describe("decide", () => {
 });
 
 describe("gather", () => {
-  /** @type {Record<string, unknown>} */
-  const responses = {
+  const responses: Record<string, unknown> = {
     [`repos/vimma-browser/vimma/commits/${recorded.sha}`]: recorded.commit,
     [`repos/vimma-browser/vimma/commits/${recorded.sha}/pulls`]: recorded.bumpPulls,
     "repos/vimma-browser/vimma/pulls?state=open&base=main&head=vimma-browser%3Arelease-please--branches--main":
@@ -238,9 +239,8 @@ describe("gather", () => {
   };
 
   it("reads the API responses decide() needs and leads to the merge", async () => {
-    /** @type {string[]} */
-    const asked = [];
-    const api = async (/** @type {string} */ path) => {
+    const asked: string[] = [];
+    const api = async (path: string) => {
       asked.push(path);
       if (!(path in responses)) throw new Error(`unexpected ${path}`);
       return responses[path];

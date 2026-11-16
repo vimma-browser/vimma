@@ -4,18 +4,17 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { advisoryUrl, firefoxNotes } from "../firefox-notes.mjs";
+import { advisoryUrl, firefoxNotes } from "../firefox-notes.ts";
 
 // Spec firefox-versions, decisions 6 to 10: the newest changelog entry names the Firefox it is
 // built on, and each Firefox bump links its Mozilla advisories.
 
 const compare = "https://github.com/vimma-browser/vimma/compare/v0.5.1...v0.5.2";
 const older = "https://github.com/vimma-browser/vimma/compare/v0.5.0...v0.5.1";
-const commit = (/** @type {string} */ sha) =>
+const commit = (sha: string) =>
   `([${sha}](https://github.com/vimma-browser/vimma/commit/${sha}${"0".repeat(33)}))`;
-const issue = (/** @type {number} */ n) =>
-  `([#${n}](https://github.com/vimma-browser/vimma/issues/${n}))`;
-const mfsa = (/** @type {string} */ id) =>
+const issue = (n: number) => `([#${n}](https://github.com/vimma-browser/vimma/issues/${n}))`;
+const mfsa = (id: string) =>
   `[MFSA ${id}](https://www.mozilla.org/en-US/security/advisories/mfsa${id}/)`;
 
 /** A CHANGELOG.md as release-please writes it on the release branch. */
@@ -146,14 +145,14 @@ describe("firefoxNotes", () => {
   const VERSION_REGEX =
     /(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(-(?<preRelease>[^+]+))?(\+(?<build>.*))?/;
   /** extractSingleRelease, then Version.parse, then Version.toString */
-  const releaseVersion = (/** @type {string} */ body) => {
+  const releaseVersion = (body: string) => {
     const v = body.trim().match(COMPARE_REGEX)?.groups?.version ?? "";
     const g = v.match(VERSION_REGEX)?.groups;
     return g && `${g.major}.${g.minor}.${g.patch}${g.preRelease ? `-${g.preRelease}` : ""}`;
   };
 
   it("the rewritten heading still matches release-please 17.6.0's heading patterns", () => {
-    const heading = /** @type {string} */ (lines[4]);
+    const heading = lines[4] as string;
     expect(heading.match(COMPARE_REGEX)?.groups?.version).toBe("0.5.2");
     expect(releaseVersion(heading)).toBe("0.5.2");
     // Without a compare link COMPARE_REGEX runs to the end of the line (as it does for
@@ -169,15 +168,14 @@ describe("firefoxNotes", () => {
   });
 });
 
-describe("firefox-notes.mjs CLI", () => {
-  const script = fileURLToPath(new URL("../firefox-notes.mjs", import.meta.url));
+describe("firefox-notes.ts CLI", () => {
+  const script = fileURLToPath(new URL("../firefox-notes.ts", import.meta.url));
   const dir = mkdtempSync(join(tmpdir(), "firefox-notes-"));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
   const surfer = join(dir, "surfer.json");
   const notes = join(dir, "CHANGELOG.md");
   writeFileSync(notes, changelog);
-  /** @param {unknown} firefox */
-  const run = (firefox) => {
+  const run = (firefox: unknown) => {
     writeFileSync(
       surfer,
       JSON.stringify({

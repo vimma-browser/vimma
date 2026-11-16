@@ -11,7 +11,7 @@
  * heading up to the next `## `) is touched; text after it, such as the third-party notice
  * release.yml appends to a release, is kept byte for byte.
  *
- * Usage: node tools/release/firefox-notes.mjs <markdown file> --surfer <surfer.json>
+ * Usage: node tools/release/firefox-notes.ts <markdown file> --surfer <surfer.json>
  * Prints the result to stdout. Node built-ins only.
  */
 import { readFileSync } from "node:fs";
@@ -35,25 +35,24 @@ const BUMP =
   /^\* firefox (\d+\.\d+(?:\.\d+)?(?:[ab]\d+)?)(?: \((MFSA \d{4}-\d+(?:, MFSA \d{4}-\d+)*)\))?(?= |$)/gm;
 
 /**
- * @param {string} id e.g. `MFSA 2026-106`
- * @returns {string} e.g. https://www.mozilla.org/en-US/security/advisories/mfsa2026-106/
+ * @param id e.g. `MFSA 2026-106`
+ * @returns e.g. https://www.mozilla.org/en-US/security/advisories/mfsa2026-106/
  */
-export function advisoryUrl(id) {
+export function advisoryUrl(id: string): string {
   const m = MFSA_ID.exec(id);
   if (!m) throw new Error(`not an MFSA ID: ${id}`);
   return `${ADVISORIES}mfsa${m[1]}/`;
 }
 
 /**
- * @param {string} section the `### Changed` section of the newest entry
- * @returns {string}
+ * @param section the `### Changed` section of the newest entry
  */
-function linkBumps(section) {
-  return section.replace(BUMP, (_, version, ids) => {
+function linkBumps(section: string): string {
+  return section.replace(BUMP, (_, version: string, ids: string | undefined) => {
     const links = ids
       ? ` (${ids
           .split(", ")
-          .map((/** @type {string} */ id) => `[${id}](${advisoryUrl(id)})`)
+          .map((id) => `[${id}](${advisoryUrl(id)})`)
           .join(", ")})`
       : "";
     return `* Firefox ${version}${links}`;
@@ -61,11 +60,10 @@ function linkBumps(section) {
 }
 
 /**
- * @param {string} markdown a CHANGELOG.md, or a release's notes
- * @param {{ firefox: string }} options the Firefox version the release is built on
- * @returns {string}
+ * @param markdown a CHANGELOG.md, or a release's notes
+ * @param options the Firefox version the release is built on
  */
-export function firefoxNotes(markdown, { firefox }) {
+export function firefoxNotes(markdown: string, { firefox }: { firefox: string }): string {
   if (!FIREFOX.test(firefox)) throw new Error(`not a Firefox version: ${firefox}`);
   const heading = HEADING.exec(markdown);
   if (!heading) return markdown;
@@ -87,7 +85,7 @@ function main() {
   });
   const [file] = positionals;
   if (!file || !values.surfer) {
-    throw new Error("usage: firefox-notes.mjs <markdown file> --surfer <surfer.json>");
+    throw new Error("usage: firefox-notes.ts <markdown file> --surfer <surfer.json>");
   }
   const { firefox } = surferVersions(JSON.parse(readFileSync(values.surfer, "utf8")));
   process.stdout.write(firefoxNotes(readFileSync(file, "utf8"), { firefox }));

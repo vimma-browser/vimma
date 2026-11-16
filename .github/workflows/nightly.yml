@@ -214,7 +214,7 @@ jobs:
           # which goes to the log. pipefail fails the step on a failing or crashing binary.
           version=$(engine/obj-x86_64-pc-linux-gnu/dist/bin/vimma --version 2>>"$LOG" | tee -a "$LOG")
           # "Vimma <vimma> · Firefox <firefox>" from surfer.json (spec firefox-versions).
-          expected=$(node tools/release/version-line.mjs)
+          expected=$(node tools/release/version-line.ts)
           # A nightly that lost the Vimma brand (e.g. built `unofficial`) must not be published.
           [ "$version" = "$expected" ] || { echo "::error::--version is '$version', want '$expected'"; exit 1; }
           # appinfo.version is the Firefox version (spec m0-app-version); --version shows Vimma's.
@@ -245,7 +245,7 @@ jobs:
           # the build ID the binary runs with is the one its application.ini names (#563)
           unpacked=$(mktemp -d)
           tar -xJf dist/vimma-*.en-US.linux-x86_64.tar.xz -C "$unpacked"
-          node tools/release/build-id.mjs --binary "$unpacked/vimma/vimma" --ini "$unpacked/vimma/application.ini"
+          node tools/release/build-id.ts --binary "$unpacked/vimma/vimma" --ini "$unpacked/vimma/application.ini"
           rm -rf "$unpacked"
 
       # The last mach call is behind: the key file goes before any step runs the build's tools.

@@ -23,17 +23,13 @@ import { SUGGESTION_ACTIONS } from "../src/keys/suggestions.mjs";
 const TEXT_FIELD = new Set(["insert", "command", "help"]);
 import { getAction } from "../src/keys/actions.mjs";
 
-/** @import { Mode } from "../src/keys/modes.mjs" */
+import type { Mode } from "../src/keys/modes.mjs";
 
-/**
- * SUGGESTION_ACTIONS, asked about any action id.
- * @type {ReadonlySet<string | undefined>}
- */
-const SUGGESTION_IDS = SUGGESTION_ACTIONS;
+/** SUGGESTION_ACTIONS, asked about any action id. */
+const SUGGESTION_IDS: ReadonlySet<string | undefined> = SUGGESTION_ACTIONS;
 
 describe("xulKeyChord", () => {
-  /** @type {Array<[Parameters<typeof xulKeyChord>[0], string, { mac?: boolean }?]>} */
-  const xulKeys = [
+  const xulKeys: Array<[Parameters<typeof xulKeyChord>[0], string, { mac?: boolean }?]> = [
     [{ key: "W", modifiers: "accel" }, "ctrl+w"],
     [{ key: "w", modifiers: "accel" }, "ctrl+w"],
     [{ key: "T", modifiers: "accel,shift" }, "ctrl+shift+t"],
@@ -94,8 +90,7 @@ const KEYS = [
   { id: "key_restoreLastClosedTabOrWindowOrSession", chord: "ctrl+shift+t" },
   { id: "", chord: "ctrl+minus" },
 ];
-/** @param {{ off: readonly { id: string }[] }} plan */
-const ids = (plan) => plan.off.map((k) => k.id);
+const ids = (plan: { off: readonly { id: string }[] }) => plan.off.map((k) => k.id);
 
 describe("planFirefoxKeys", () => {
   test("the default list is exactly the chords Vimma or Vim use", () => {
@@ -167,7 +162,7 @@ describe("planFirefoxKeys", () => {
       { id: "key_newNavigatorTab", chord: "meta+t" },
       { id: "plain", chord: "x" },
     ];
-    const all = { disable: /** @type {"all"} */ ("all"), enable: [] };
+    const all = { disable: "all" as const, enable: [] };
     expect(ids(planFirefoxKeys(keys, all, { mac: true }))).toEqual([
       "toggleSidebarKb",
       "viewGenaiChatSidebarKb",
@@ -228,8 +223,7 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
   });
 
   test("no chord is listed twice with different actions", () => {
-    /** @type {Map<string, string>} */
-    const seen = new Map();
+    const seen: Map<string, string> = new Map();
     for (const r of rows) {
       if (!r.action || r.unbound) continue;
       const prev = seen.get(r.chord);
@@ -334,8 +328,7 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
   test("every a/b row with an action is bound to it by the default keymap, in its modes", () => {
     for (const r of rows) {
       if (!r.action || r.unbound) continue;
-      /** @type {Mode[]} */
-      const modes =
+      const modes: Mode[] =
         r.modes === "all" ? ["normal", "insert", "visual", "panel", "help"] : ["normal"];
       for (const mode of modes) {
         const node = keymap.trie(mode, r.context).children.get(r.chord);
@@ -414,7 +407,7 @@ describe("pageFirst (who goes first: decision 6)", () => {
   test("a normal-mode row is the page's first in normal mode only: Esc leaves insert at once", () => {
     expect(pageFirst("esc", { mode: "normal" })).toBe(true);
     expect(pageFirst("ctrl+[", { mode: "normal" })).toBe(true);
-    for (const mode of /** @type {const} */ (["insert", "visual", "command", "hint"])) {
+    for (const mode of ["insert", "visual", "command", "hint"] as const) {
       expect(pageFirst("esc", { mode }), mode).toBe(false);
       expect(pageFirst("ctrl+[", { mode }), mode).toBe(false);
     }
@@ -429,13 +422,13 @@ describe("pageFirst (who goes first: decision 6)", () => {
     expect(pageFirst("meta+l", { mac: true })).toBe(true);
     expect(pageFirst("meta+[", { mac: true, mode: "insert" })).toBe(true);
     // The rest of the keymap is Linux's on both, and so is who goes first on it.
-    for (const [chord, want] of /** @type {const} */ ([
+    for (const [chord, want] of [
       ["ctrl+s", true],
       ["ctrl+l", true],
       ["ctrl+t", false],
       ["ctrl+u", false],
       ["alt+home", true],
-    ])) {
+    ] as const) {
       expect(pageFirst(chord, { mac: true }), chord).toBe(want);
     }
     expect(pageFirst("f11", { mac: true, fullScreen: true })).toBe(false);
@@ -649,8 +642,7 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
   test("every a/b row with an action is bound to it by the default keymap, in its modes", () => {
     for (const r of rows) {
       if (!r.action || r.unbound) continue;
-      /** @type {Mode[]} */
-      const modes =
+      const modes: Mode[] =
         r.modes === "all" ? ["normal", "insert", "visual", "panel", "help"] : ["normal"];
       for (const mode of modes) {
         const node = keymap.trie(mode, r.context).children.get(r.chord);
@@ -685,14 +677,14 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
 describe("macOS: the guide's [firefox] enable example", () => {
   const guide = readFileSync(new URL("../../../docs/guide.md", import.meta.url), "utf8");
   const examples = [...guide.matchAll(/```toml\n([\s\S]*?)```/g)]
-    .map((m) => /** @type {string} */ (m[1]))
+    .map((m) => m[1] as string)
     .filter((text) => text.includes("[firefox]") && text.includes('"meta+'));
   /** Every key of a macOS window's keysets, as the host reads them. */
   const keys = FIREFOX_SHORTCUTS_MACOS.filter(
     (r) => r.id && (r.source === "main" || r.source === "devtools"),
   ).map((r) => ({ id: r.id, chord: r.chord, fate: r.fate }));
-  /** @param {string} text config.toml */
-  const onWith = (text) => {
+  /** `text`: a config.toml. */
+  const onWith = (text: string) => {
     const { config, keymap, errors } = parseConfig(text, { mac: true });
     expect(errors).toEqual([]);
     if (!config || !keymap) throw new Error("the config did not parse");
@@ -708,13 +700,13 @@ describe("macOS: the guide's [firefox] enable example", () => {
   // '"all" on macOS keeps cmd+q and reads the macOS fates' and "cmd+q quits as macOS runs it".
   test("the guide's example parses on macOS and re-enables exactly the cmd keys it lists", () => {
     expect(examples, "one [firefox] example with meta+ keys in docs/guide.md").toHaveLength(1);
-    const text = /** @type {string} */ (examples[0]);
+    const text = examples[0] as string;
     const { config } = parseConfig(text, { mac: true });
     if (!config) throw new Error("the example did not parse");
     const firefox = config.firefox;
     expect(firefox.disable).toBe("all");
     expect(firefox.enable).toContain("meta+t");
-    expect(firefox.enable.every((/** @type {string} */ c) => c.includes("meta+"))).toBe(true);
+    expect(firefox.enable.every((c: string) => c.includes("meta+"))).toBe(true);
     // Only the listed chords come back; Firefox's fate d keys (cmd+q, the editor's) stay on.
     const on = onWith(text);
     const back = new Set(on.filter((k) => k.fate !== "d").map((k) => k.chord));
@@ -728,12 +720,12 @@ describe("macOS: the guide's [firefox] enable example", () => {
   // Decision 30 covers only the cmd keys Vimma does not bind: an example that enabled one of
   // decision 29's (cmd+l, cmd+1, cmd+[, cmd+left) would take a Vimma key away from the user.
   test("the guide's example enables no chord the macOS keymap binds", () => {
-    const text = /** @type {string} */ (examples[0]);
+    const text = examples[0] as string;
     const { config, keymap } = parseConfig(text, { mac: true });
     if (!config || !keymap) throw new Error("the example did not parse");
     const enable = config.firefox.enable;
     for (const bound of [boundChords(keymap), boundChords(compileKeymap({}, { mac: true }))]) {
-      expect(enable.filter((/** @type {string} */ c) => bound.has(c))).toEqual([]);
+      expect(enable.filter((c: string) => bound.has(c))).toEqual([]);
     }
   });
 });
@@ -742,8 +734,7 @@ describe("macOS: the guide's [firefox] enable example", () => {
 // native menu bar whatever the key's `disabled` says, so a menu item of a key that is off loses
 // its `key` attribute until the key is on again.
 describe("planMenuKeys (macOS menu items of the keys that are off)", () => {
-  /** @param {string | null} key @param {string | null} [stripped] */
-  const item = (key, stripped = null) => ({ key, stripped });
+  const item = (key: string | null, stripped: string | null = null) => ({ key, stripped });
 
   test("a menu item of a key that is off loses its key, and remembers it", () => {
     const newTab = item("key_newNavigatorTab");

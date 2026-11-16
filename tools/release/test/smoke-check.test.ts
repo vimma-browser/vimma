@@ -4,7 +4,7 @@ import { chmodSync, cpSync, mkdirSync, readFileSync, writeFileSync } from "node:
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
-import { versionLine } from "../version-line.mjs";
+import { versionLine } from "../version-line.ts";
 
 // The "Smoke check" steps of release.yml and nightly.yml, run as GitHub runs them (`bash -e`)
 // against a stub `vimma`. On ubuntu-24.04 AppArmor denies unprivileged user namespaces, and
@@ -23,16 +23,14 @@ const DIAGNOSTIC = "[157746] Sandbox: CanCreateUserNamespace() unshare(CLONE_NEW
 
 /**
  * The run block of the step named `name` in a workflow.
- * @param {string} workflow file name under .github/workflows
- * @param {string} name
- * @returns {string}
+ * @param workflow file name under .github/workflows
  */
-function stepScript(workflow, name) {
+function stepScript(workflow: string, name: string): string {
   const text = readFileSync(join(repo, ".github/workflows", workflow), "utf8");
   const head = `      - name: ${name}\n        run: |\n`;
   const start = text.indexOf(head);
   expect(start, `${workflow}: step ${name}`).toBeGreaterThan(-1);
-  const lines = [];
+  const lines: string[] = [];
   for (const l of text.slice(start + head.length).split("\n")) {
     if (l !== "" && !l.startsWith("          ")) break;
     lines.push(l.slice(10));
@@ -42,10 +40,10 @@ function stepScript(workflow, name) {
 
 /**
  * A stub `vimma` at `path` and the files the smoke checks read next to it.
- * @param {string} bin dist/bin directory
- * @param {string} body shell for the stub, run for `vimma --version`
+ * @param bin dist/bin directory
+ * @param body shell for the stub, run for `vimma --version`
  */
-function stub(bin, body) {
+function stub(bin: string, body: string) {
   mkdirSync(join(bin, "modules"), { recursive: true });
   writeFileSync(join(bin, "vimma"), `#!/bin/bash\n${body}\n`);
   chmodSync(join(bin, "vimma"), 0o755);
@@ -58,12 +56,11 @@ function stub(bin, body) {
 
 /**
  * A working directory with the files of the checkout the steps read.
- * @returns {string}
  */
-function workdir() {
+function workdir(): string {
   const dir = tempDir("vimma-smoke-");
-  // Copies, not symlinks: version-line.mjs runs only when argv[1] is its own (real) path.
-  for (const sub of ["tools/release/version-line.mjs", "tools/version-files/version-files.ts"]) {
+  // Copies, not symlinks: version-line.ts runs only when argv[1] is its own (real) path.
+  for (const sub of ["tools/release/version-line.ts", "tools/version-files/version-files.ts"]) {
     mkdirSync(dirname(join(dir, sub)), { recursive: true });
     cpSync(join(repo, sub), join(dir, sub));
   }
@@ -71,12 +68,7 @@ function workdir() {
   return dir;
 }
 
-/**
- * @param {string} script
- * @param {string} cwd
- * @param {Record<string, string>} env
- */
-function run(script, cwd, env) {
+function run(script: string, cwd: string, env: Record<string, string>) {
   const r = spawnSync("bash", ["-e", "-c", script], {
     cwd,
     env: { ...process.env, ...env },
@@ -85,8 +77,10 @@ function run(script, cwd, env) {
   return { status: r.status, output: r.stdout + r.stderr };
 }
 
-/** @type {Record<string, (body: string) => { status: number | null, output: string, log: string }>} */
-const steps = {
+const steps: Record<
+  string,
+  (body: string) => { status: number | null; output: string; log: string }
+> = {
   "release.yml build": (body) => {
     const dir = workdir();
     const objdir = join(dir, "obj-release");
