@@ -28,13 +28,18 @@ const longRun = fc
   )
   .map(([c, n, before, after]) => `${before}${c.repeat(n)}${after}x`);
 
-/** report.mjs before the fix: the oracle for small inputs. */
+/**
+ * The oracle for small inputs: report.mjs's old regular expression, its `\b` and `\w` read as
+ * Unicode word characters (a letter, mark or digit in any script, or `_`), as redactReport does.
+ */
 const URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/\S*?(?=[\s,;)\]]|[.,;:!?]?(?:\s|$))/gi;
+const WORD = "\\p{L}\\p{M}\\p{N}_";
 function oldRedact(text: string, home: string): string {
   let out = text.replace(URL_RE, "<url>");
   const h = home.replace(/\/+$/, "");
   const esc = h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  if (h) out = out.replace(new RegExp(`${esc}(?=/|\\b|$)(?![\\w.-])`, "g"), "~");
+  const end = `(?=/|$|(?<=[${WORD}]))(?![${WORD}.-])`;
+  if (h) out = out.replace(new RegExp(`${esc}${end}`, "gu"), "~");
   return out;
 }
 

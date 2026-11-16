@@ -39,6 +39,35 @@ describe("redactReport", () => {
     expect(redactReport("/home/alice/x", "/home/alice///")).toBe("~/x");
   });
 
+  it("ends $HOME at a slash, the end, or a character that cannot continue a name", () => {
+    expect(redactReport("/home/alice: no such file", "/home/alice")).toBe("~: no such file");
+    expect(redactReport("(/home/alice)", "/home/alice")).toBe("(~)");
+    expect(redactReport("/home/alice.bak /home/alice-2 /home/alice_x", "/home/alice")).toBe(
+      "/home/alice.bak /home/alice-2 /home/alice_x",
+    );
+  });
+
+  it("reads letters past ASCII as part of a name", () => {
+    // /home/jos is not the home in /home/josé, and /home/josé is a whole home before a colon.
+    expect(redactReport("/home/josé/notes.txt", "/home/jos")).toBe("/home/josé/notes.txt");
+    expect(redactReport("/home/josé: denied, /home/josé/x", "/home/josé")).toBe("~: denied, ~/x");
+    expect(redactReport("/home/ali/x", "/home/ali")).toBe("~/x");
+    expect(redactReport("/é: denied", "/é")).toBe("~: denied");
+    // A letter outside the Basic Multilingual Plane is one character, on either side.
+    expect(redactReport("/home/a\u{1D49C}/x", "/home/a")).toBe("/home/a\u{1D49C}/x");
+    expect(redactReport("/home/\u{1D49C}: denied", "/home/\u{1D49C}")).toBe("~: denied");
+  });
+
+  it("a home that ends in a character outside a word needs a slash or the end after it", () => {
+    expect(redactReport("/home/al-/x and /home/al-", "/home/al-")).toBe("~/x and ~");
+    expect(redactReport("/home/al- x", "/home/al-")).toBe("/home/al- x");
+  });
+
+  it("does not redact inside a home it has already replaced", () => {
+    // The second /home/home starts inside the first one's match.
+    expect(redactReport("/home/home/home/x", "/home/home")).toBe("~/home/x");
+  });
+
   it("does nothing special without a home", () => {
     expect(redactReport("/home/alice/x", "")).toBe("/home/alice/x");
   });
@@ -50,6 +79,11 @@ describe("describeOutcome", () => {
     expect(describeOutcome({ kind: "pass" })).toBe("pass");
     expect(describeOutcome({ kind: "cancel" })).toBe("cancel");
     expect(describeOutcome({ kind: "pending" })).toBe("…");
+  });
+
+  it("names the kind when an action result has no action, or another kind carries one", () => {
+    expect(describeOutcome({ kind: "action" })).toBe("action");
+    expect(describeOutcome({ kind: "pass", action: { id: "scroll.down" } })).toBe("pass");
   });
 });
 
@@ -102,6 +136,21 @@ describe("workspaceReport", () => {
     expect(workspaceReport({ ...base, window: [], live: null })).toEqual([
       "Workspaces: 2; this window: none",
     ]);
+    expect(workspaceReport({ ...base, window: [], live: 3 })).toEqual([
+      "Workspaces: 2; this window: none",
+    ]);
+    expect(workspaceReport({ ...base, live: null })).toEqual([
+      "Workspaces: 2; this window: main 1t/1p, agent 0t/1p",
+    ]);
+  });
+
+  it("flattens an error's white space and keeps one of 200 characters whole", () => {
+    expect(workspaceReport({ ...base, lastError: "  a \n\t b  " })[1]).toBe("  error: a b");
+    const exact = "x".repeat(200);
+    expect(workspaceReport({ ...base, lastError: exact })[1]).toBe(`  error: ${exact}`);
+    expect(workspaceReport({ ...base, lastError: `${exact}y` })[1]).toBe(
+      `  error: ${"x".repeat(199)}…`,
+    );
   });
 });
 
