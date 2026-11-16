@@ -156,3 +156,12 @@ describe("restartConfirmation (the y/N :restart asks before tabs are lost)", () 
     }
   });
 });
+
+describe("relaunchCommand's refusals name what is wrong", () => {
+  test("the pid and the path each have their own message", () => {
+    expect(() => relaunchCommand({ pid: 0, appImage: APPIMAGE })).toThrow("not a process id: 0");
+    expect(() => relaunchCommand({ pid: 7, appImage: "vimma.AppImage" })).toThrow(
+      "the AppImage path must be absolute",
+    );
+  });
+});

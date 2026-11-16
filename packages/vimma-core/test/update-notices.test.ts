@@ -278,3 +278,49 @@ describe("the restart question", () => {
     }
   });
 });
+
+// Edges the weekly mutation run (#1119) found unpinned (UP4: no burst of requests, and a wrong
+// clock never stops checks or silences the restart question).
+describe("checkDue and shouldAskRestart at their boundaries", () => {
+  const due = {
+    enabled: true,
+    installType: "tarball" as const,
+    okAt: null,
+    triedAt: null,
+    now: NOW,
+    intervalSeconds: 43200,
+  };
+
+  test("an attempt this very moment holds the next; exactly CHECK_RETRY_MS later, one is due", () => {
+    expect(checkDue({ ...due, triedAt: NOW })).toBe(false);
+    expect(checkDue({ ...due, triedAt: NOW - CHECK_RETRY_MS })).toBe(true);
+  });
+
+  test("a successful check this very moment: not due; one in the future: due", () => {
+    expect(checkDue({ ...due, okAt: NOW })).toBe(false);
+    expect(checkDue({ ...due, okAt: NOW + HOUR })).toBe(true);
+  });
+
+  test("with no attempt at all a check is due, even with a clock near the epoch", () => {
+    expect(checkDue({ ...due, now: 1000 })).toBe(true);
+  });
+
+  const ask = {
+    enabled: true,
+    installType: "appimage" as const,
+    offer: offer({ urgent: true }),
+    stage: "staged" as const,
+    now: NOW,
+    privateWindow: false,
+  };
+
+  test("not answered in this session: ask, even for a version named like an object key", () => {
+    expect(shouldAskRestart({ ...ask, dismissed: {} })).toBe(true);
+    const named = offer({ urgent: true, displayVersion: "constructor" });
+    expect(shouldAskRestart({ ...ask, offer: named, dismissed: {} })).toBe(true);
+  });
+
+  test("answered at this very moment: not again yet", () => {
+    expect(shouldAskRestart({ ...ask, dismissed: { "0.1.3": NOW } })).toBe(false);
+  });
+});
