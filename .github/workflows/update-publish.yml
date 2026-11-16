@@ -11,7 +11,7 @@
 #   prepare  no secret; reads only public data: checks the release is published and on main,
 #            downloads the target's files, checks them against SHA256SUMS or SHA256SUMS-macos
 #            (and its cosign signature), and builds the unsigned manifest with
-#            tools/update/manifest.mjs.
+#            tools/update/manifest.ts.
 #   sign     environment update-signing, id-token: write and nothing else; runs no repository
 #            code: checks the body's shape, signs it with Cloud KMS (raw PKCS#1 over a SHA-384
 #            DigestInfo) and checks the signature with openssl against KMS's public key.
@@ -27,7 +27,7 @@
 #
 # The complete MAR (spec m6a-updater §6 and §7): release.yml and nightly.yml call this workflow
 # (workflow_call) to sign the MAR their build made with a zeroed signature placeholder
-# (tools/update/mar.mjs).
+# (tools/update/mar.ts).
 #
 #   mar-sign  environment update-signing, id-token: write and nothing else; runs no repository
 #             code: checks that the file is the caller's MAR for the caller's channel (vimma for
@@ -43,7 +43,7 @@
 #
 #   nightly-prepare  no secret: checks the nightly release is a public pre-release, downloads its
 #                    files, checks SHA256SUMS against nightly.yml's cosign signature and the MAR's
-#                    channel, and builds the unsigned body (manifest.mjs --channel nightly).
+#                    channel, and builds the unsigned body (manifest.ts --channel nightly).
 #   nightly-sign     as sign, with a check that admits only that body for that build.
 #   nightly-publish  as publish, for …/vimma-nightly/update.xml alone.
 #
@@ -255,7 +255,7 @@ jobs:
           curl -fsSL --proto =https --retry 3 -o "$SUMS.sigstore.json" "$base/$SUMS.sigstore.json" \
             || { echo "::error::$TAG has no $SUMS.sigstore.json; an unsigned release gets no update manifest"; exit 1; }
           # The complete MAR, which a release built with Firefox's updater lists in SHA256SUMS;
-          # manifest.mjs offers it to that updater (<patch>), and releases from before have none.
+          # manifest.ts offers it to that updater (<patch>), and releases from before have none.
           mar="vimma-$v-linux-x86_64.complete.mar"
           if [ "$TARGET_OS" = linux ] && awk -v f="$mar" '$2 == f { found = 1 } END { exit !found }' "$SUMS"; then
             curl -fsSL --proto =https --retry 3 -o "$mar" "$base/$mar" \
@@ -266,7 +266,7 @@ jobs:
         if: env.OFFER == 'release'
 
       # The identity users verify (IDENTITY_REGEXP in tools/package/package.mjs), so the
-      # manifest names only files release.yml built and signed; manifest.mjs then checks each
+      # manifest names only files release.yml built and signed; manifest.ts then checks each
       # file against these sums, and the .dmg before it mounts it.
       - name: Verify the release's signature
         if: env.OFFER == 'release'
@@ -278,7 +278,7 @@ jobs:
 
       - name: Commits since the previous release
         if: env.OFFER == 'release'
-        run: node tools/update/manifest.mjs commits --tag "$TAG" --repo "$GITHUB_REPOSITORY" > commits.json
+        run: node tools/update/manifest.ts commits --tag "$TAG" --repo "$GITHUB_REPOSITORY" > commits.json
 
       # Both copies, since the host can lag the repository while Cloudflare deploys: the new
       # serial must be newer than either. A 404 means none is published yet.
@@ -300,10 +300,10 @@ jobs:
         run: |
           mkdir -p out
           if [ "$OFFER" = nothing ]; then
-            node tools/update/manifest.mjs build --offer nothing --target "$TARGET_OS" \
+            node tools/update/manifest.ts build --offer nothing --target "$TARGET_OS" \
               --published served.xml --published repo.xml --out out/update.xml.body
           else
-            node tools/update/manifest.mjs build --tag "$TAG" --assets assets --commits commits.json \
+            node tools/update/manifest.ts build --tag "$TAG" --assets assets --commits commits.json \
               --target "$TARGET_OS" --published served.xml --published repo.xml --out out/update.xml.body
           fi
           cat out/update.xml.body
@@ -467,13 +467,13 @@ jobs:
         id: verify
         run: |
           if [ "$OFFER" = nothing ]; then
-            node tools/update/manifest.mjs verify --signed signed/update.xml --offer nothing \
+            node tools/update/manifest.ts verify --signed signed/update.xml --offer nothing \
               --target "$TARGET_OS" >> "$GITHUB_OUTPUT"
           else
-            node tools/update/manifest.mjs verify --signed signed/update.xml --tag "$TAG" --assets assets \
+            node tools/update/manifest.ts verify --signed signed/update.xml --tag "$TAG" --assets assets \
               --target "$TARGET_OS" >> "$GITHUB_OUTPUT"
           fi
-          node tools/update/manifest.mjs pem > pinned.pem
+          node tools/update/manifest.ts pem > pinned.pem
           head -n -1 signed/update.xml > body
           { printf 'vimma-update-xml-v1\n'; cat body; } > signed.bin
           tail -n 1 signed/update.xml \
@@ -518,10 +518,10 @@ jobs:
           git clone -q --depth 1 --branch main git@github.com:vimma-browser/vimma-updates.git updates
           dest=updates/public/updates/browser/$BUILD_TARGET/vimma/update.xml
           if [ "$OFFER" = nothing ]; then
-            node tools/update/manifest.mjs verify --signed signed/update.xml --offer nothing \
+            node tools/update/manifest.ts verify --signed signed/update.xml --offer nothing \
               --target "$TARGET_OS" --published "$dest"
           else
-            node tools/update/manifest.mjs verify --signed signed/update.xml --tag "$TAG" --assets assets \
+            node tools/update/manifest.ts verify --signed signed/update.xml --tag "$TAG" --assets assets \
               --target "$TARGET_OS" --published "$dest"
           fi
           mkdir -p "$(dirname "$dest")"
@@ -596,7 +596,7 @@ jobs:
       # entry: RSA-PKCS#1 v1.5 with SHA-384 (algorithm 2), 512 bytes, all zero. Then what is
       # signed starts with "MAR1", which the manifest's signed bytes never do (decision 12). The
       # offsets are mar_sign.c's: the entry's header at 20, its bytes at 28 to 539, the product
-      # information block's header at 544 and its channel ID at 552 (tools/update/mar.mjs). The
+      # information block's header at 544 and its channel ID at 552 (tools/update/mar.ts). The
       # channel is in the signed bytes, so a nightly MAR never installs on a release install, nor
       # the reverse (the updater's error 22).
       - name: Check the MAR placeholder
@@ -743,7 +743,7 @@ jobs:
       - name: The MAR is the nightly channel's, signed by the update key
         run: |
           firefox=$(node -p 'require("./surfer.json").version.version')
-          node tools/update/mar.mjs verify --mar "assets/vimma-nightly-$BUILD_ID-linux-x86_64.complete.mar" \
+          node tools/update/mar.ts verify --mar "assets/vimma-nightly-$BUILD_ID-linux-x86_64.complete.mar" \
             --cert configs/updater/primary.der --cert configs/updater/secondary.der \
             --channel vimma-nightly --product-version "$firefox"
 
@@ -768,7 +768,7 @@ jobs:
         run: |
           version=$(node -p 'require("./surfer.json").brands.vimma.release.displayVersion')
           mkdir -p out
-          node tools/update/manifest.mjs build --channel nightly --build-id "$BUILD_ID" --version "$version" \
+          node tools/update/manifest.ts build --channel nightly --build-id "$BUILD_ID" --version "$version" \
             --assets assets --published served.xml --published repo.xml --out out/update.xml.body
           cat out/update.xml.body
 
@@ -920,9 +920,9 @@ jobs:
         id: verify
         run: |
           version=$(node -p 'require("./surfer.json").brands.vimma.release.displayVersion')
-          node tools/update/manifest.mjs verify --channel nightly --signed signed/update.xml --build-id "$BUILD_ID" --version "$version" --assets assets \
+          node tools/update/manifest.ts verify --channel nightly --signed signed/update.xml --build-id "$BUILD_ID" --version "$version" --assets assets \
             >> "$GITHUB_OUTPUT"
-          node tools/update/manifest.mjs pem > pinned.pem
+          node tools/update/manifest.ts pem > pinned.pem
           head -n -1 signed/update.xml > body
           { printf 'vimma-update-xml-v1\n'; cat body; } > signed.bin
           tail -n 1 signed/update.xml \
@@ -958,7 +958,7 @@ jobs:
           git clone -q --depth 1 --branch main git@github.com:vimma-browser/vimma-updates.git updates
           dest=updates/public/updates/browser/$BUILD_TARGET/vimma-nightly/update.xml
           version=$(node -p 'require("./surfer.json").brands.vimma.release.displayVersion')
-          node tools/update/manifest.mjs verify --channel nightly --signed signed/update.xml --build-id "$BUILD_ID" --version "$version" --assets assets \
+          node tools/update/manifest.ts verify --channel nightly --signed signed/update.xml --build-id "$BUILD_ID" --version "$version" --assets assets \
             --published "$dest"
           mkdir -p "$(dirname "$dest")"
           cp signed/update.xml "$dest"

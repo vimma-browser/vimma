@@ -104,7 +104,7 @@ describe("release.yml", () => {
       );
       expect(block.includes("contents: write"), id).toBe(["publish", "macos-publish"].includes(id));
       // mar-sign's is a ceiling for the workflow it calls, whose start job never runs in a call
-      // (pipeline-workflows.test.mjs).
+      // (pipeline-workflows.test.ts).
       expect(block.includes("actions: write"), id).toBe(["macos-tap", "mar-sign"].includes(id));
     }
     expect(text).toMatch(/^permissions: \{\}$/m);

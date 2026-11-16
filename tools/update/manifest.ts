@@ -10,25 +10,25 @@
  * checks the signed file here, with the verifier the browser runs
  * (packages/vimma-core/src/updates/updates.mjs) and the keys the browser pins, before it is pushed.
  *
- *   manifest.mjs commits --tag vX.Y.Z --repo owner/name  > commits.json
+ *   manifest.ts commits --tag vX.Y.Z --repo owner/name  > commits.json
  *       the subjects and pull-request labels since the previous published release (git, gh)
- *   manifest.mjs build --tag vX.Y.Z --assets DIR --commits FILE [--published FILE]... --out FILE
+ *   manifest.ts build --tag vX.Y.Z --assets DIR --commits FILE [--published FILE]... --out FILE
  *       the body for the release's files in DIR (the four Linux packages and SHA256SUMS, or
  *       with --target macos the .dmg and SHA256SUMS-macos)
- *   manifest.mjs build --offer nothing [--published FILE]... --out FILE
+ *   manifest.ts build --offer nothing [--published FILE]... --out FILE
  *       a body that offers nothing (pulls an update; docs/runbook/)
- *   manifest.mjs verify --signed FILE (--tag vX.Y.Z --assets DIR | --offer nothing)
+ *   manifest.ts verify --signed FILE (--tag vX.Y.Z --assets DIR | --offer nothing)
  *       [--published FILE]...
  *       checks a signed manifest; prints serial=, version= and key= lines for $GITHUB_OUTPUT
  *   build and verify take --target linux|macos (linux when absent): the manifest's build
  *   target, its files and its path (spec macos-homebrew, decisions 16 to 18)
- *   manifest.mjs build --channel nightly --build-id ID --version X.Y.Z --assets DIR
+ *   manifest.ts build --channel nightly --build-id ID --version X.Y.Z --assets DIR
  *       [--published FILE]... --out FILE
- *   manifest.mjs verify --channel nightly --signed FILE --build-id ID --version X.Y.Z
+ *   manifest.ts verify --channel nightly --signed FILE --build-id ID --version X.Y.Z
  *       --assets DIR [--published FILE]...
  *       the nightly channel's manifest (decisions 42 and 43): the build on the rolling `nightly`
  *       release, its MAR and tarball in DIR with SHA256SUMS; Linux only
- *   manifest.mjs pem
+ *   manifest.ts pem
  *       the pinned primary key as PEM, for openssl
  *
  * Node built-ins only, so no job that runs it installs dependencies.
@@ -50,10 +50,11 @@ import {
   verifyManifest,
 } from "../../packages/vimma-core/src/updates/updates.mjs";
 import { UPDATE_KEYS } from "../../packages/vimma-core/src/updates/update-keys.mjs";
+import type { Assets, PinnedKey } from "../../packages/vimma-core/src/updates/updates.mjs";
 
 /** The release channel (`app.update.channel` in channel-prefs.js). */
 export const CHANNEL = "vimma";
-/** The nightly's channel, which `tools/update/channel.mjs` writes into its package. */
+/** The nightly's channel, which `tools/update/channel.ts` writes into its package. */
 export const NIGHTLY_CHANNEL = "vimma-nightly";
 /** The rolling GitHub Release every nightly is uploaded to. */
 export const NIGHTLY_TAG = "nightly";
@@ -65,25 +66,23 @@ export const NIGHTLY_TAG = "nightly";
 export const TARGETS = Object.freeze({
   linux: {
     target: "Linux_x86_64-gcc3",
-    kinds: /** @type {AssetKind[]} */ (["tarball", "appimage", "deb", "rpm"]),
+    kinds: ["tarball", "appimage", "deb", "rpm"] as AssetKind[],
     sums: "SHA256SUMS",
   },
   macos: {
     target: "Darwin_aarch64-gcc3",
-    kinds: /** @type {AssetKind[]} */ (["dmg"]),
+    kinds: ["dmg"] as AssetKind[],
     sums: "SHA256SUMS-macos",
   },
 });
-/** @typedef {keyof typeof TARGETS} Os */
+type Os = keyof typeof TARGETS;
 export const TARGET = TARGETS.linux.target;
 /**
  * Where a target's manifest lives in vimma-browser/vimma-updates: the Worker serves `public/`,
  * at the path Firefox's update URL template gives (`/updates/browser/%BUILD_TARGET%/%CHANNEL%/…`).
  * The nightly is built for Linux alone.
- * @param {Os} os
- * @param {"release" | "nightly"} [channel]
  */
-export function manifestPath(os, channel = "release") {
+export function manifestPath(os: Os, channel: "release" | "nightly" = "release") {
   need(channel === "release" || os === "linux", `no ${channel} channel for ${os}`);
   const id = channel === "nightly" ? NIGHTLY_CHANNEL : CHANNEL;
   return `public/updates/browser/${targetOf(os).target}/${id}/update.xml`;
@@ -100,38 +99,36 @@ const SERIAL = /^\d{14}$/;
 const ADVISORY = /^MFSA \d{4}-\d{1,4}$/;
 const SHA512_HEX = /^[0-9a-f]{128}$/;
 
-/** @typedef {import("../../packages/vimma-core/src/updates/updates.mjs").Assets} Assets */
-/** @typedef {keyof typeof ASSET_ELEMENTS} AssetKind */
-/**
- * @typedef {object} Release
- * @property {string} appVersion      Firefox's version (application.ini `Version`)
- * @property {string} buildId         application.ini `BuildID`
- * @property {string} displayVersion  Vimma's version
- * @property {"normal" | "security"} urgency
- * @property {string[]} advisories    MFSA IDs
- * @property {Assets} assets        the target's kinds (TARGETS); buildManifest checks each is there
- * @property {{ size: number, sha512: string }} [mar]  the complete MAR (Linux only), offered to
- *   Firefox's updater as `<patch>`; a release built before the updater has none
- */
+type AssetKind = keyof typeof ASSET_ELEMENTS;
+type Release = {
+  /** Firefox's version (application.ini `Version`) */
+  appVersion: string;
+  /** application.ini `BuildID` */
+  buildId: string;
+  /** Vimma's version */
+  displayVersion: string;
+  urgency: "normal" | "security";
+  /** MFSA IDs */
+  advisories: string[];
+  /** the target's kinds (TARGETS); buildManifest checks each is there */
+  assets: Assets;
+  /**
+   * the complete MAR (Linux only), offered to Firefox's updater as `<patch>`; a release built
+   * before the updater has none
+   */
+  mar?: { size: number; sha512: string };
+};
 
-/**
- * @param {string} os
- * @returns {(typeof TARGETS)[Os]}
- */
-function targetOf(os) {
+function targetOf(os: string): (typeof TARGETS)[Os] {
   if (!Object.hasOwn(TARGETS, os)) throw new Error(`no target ${os} (linux or macos)`);
-  return TARGETS[/** @type {Os} */ (os)];
+  return TARGETS[os as Os];
 }
 
 /**
  * A target's release file names, as tools/package/package.mjs and release.yml write them.
- * @param {string} version
- * @param {Os} [os]
- * @returns {Partial<Record<AssetKind, string>>}
  */
-export function assetNames(version, os = "linux") {
-  /** @type {Record<AssetKind, string>} */
-  const all = {
+export function assetNames(version: string, os: Os = "linux"): Partial<Record<AssetKind, string>> {
+  const all: Record<AssetKind, string> = {
     tarball: `vimma-${version}-linux-x86_64.tar.xz`,
     appimage: `vimma-${version}-x86_64.AppImage`,
     deb: `vimma_${version.replace("-", "~")}_amd64.deb`,
@@ -143,33 +140,29 @@ export function assetNames(version, os = "linux") {
 
 /**
  * The complete MAR's file name, as release.yml uploads it.
- * @param {string} version
  */
-export const marName = (version) => `vimma-${version}-linux-x86_64.complete.mar`;
-/** @param {string} version */
-const marUrl = (version) => `${RELEASES_URL}/download/v${version}/${marName(version)}`;
+export const marName = (version: string) => `vimma-${version}-linux-x86_64.complete.mar`;
+const marUrl = (version: string) => `${RELEASES_URL}/download/v${version}/${marName(version)}`;
 
-/**
- * @param {Partial<Record<AssetKind, string>>} names
- * @param {AssetKind} kind
- */
-const nameOf = (names, kind) => names[kind] ?? kind;
+const nameOf = (names: Partial<Record<AssetKind, string>>, kind: AssetKind) => names[kind] ?? kind;
 
-/**
- * @param {boolean} ok
- * @param {string} why
- * @returns {asserts ok}
- */
-function need(ok, why) {
+function need(ok: boolean, why: string): asserts ok {
   if (!ok) throw new Error(why);
 }
 
 /**
  * The manifest body: everything the signature covers (spec §2). Every value is checked against
  * the format the client accepts, so none needs escaping and none can add markup.
- * @param {{ serial: string, update: Release | null, os?: Os }} input
  */
-export function buildManifest({ serial, update, os = "linux" }) {
+export function buildManifest({
+  serial,
+  update,
+  os = "linux",
+}: {
+  serial: string;
+  update: Release | null;
+  os?: Os;
+}) {
   need(SERIAL.test(serial), `serial ${serial} is not a UTC time (YYYYMMDDhhmmss)`);
   const { target, kinds } = targetOf(os);
   let body =
@@ -221,19 +214,16 @@ export function buildManifest({ serial, update, os = "linux" }) {
 
 /**
  * The serial for a manifest made at `now`: its UTC time, YYYYMMDDhhmmss.
- * @param {Date} now
  */
-export function serialAt(now) {
+export function serialAt(now: Date) {
   return now.toISOString().replace(/\D/g, "").slice(0, 14);
 }
 
 /**
  * The serial for a manifest made at `now`, which must be newer than the published one: the
  * replay rule (spec §4 rule 3) makes every client refuse anything older than it has accepted.
- * @param {Date} now
- * @param {string | null} published
  */
-export function nextSerial(now, published) {
+export function nextSerial(now: Date, published: string | null) {
   const serial = serialAt(now);
   if (published !== null && BigInt(serial) <= BigInt(published)) {
     throw new Error(
@@ -245,13 +235,11 @@ export function nextSerial(now, published) {
 
 /**
  * SHA256SUMS (or SHA256SUMS-macos) as `sha256sum` writes it.
- * @param {string} text
- * @param {string} [file] the sums file's name, for messages
- * @returns {Map<string, string>} file name -> SHA-256
+ * @param file the sums file's name, for messages
+ * @returns file name -> SHA-256
  */
-export function parseSums(text, file = "SHA256SUMS") {
-  /** @type {Map<string, string>} */
-  const sums = new Map();
+export function parseSums(text: string, file: string = "SHA256SUMS"): Map<string, string> {
+  const sums: Map<string, string> = new Map();
   for (const line of text.split("\n")) {
     if (!line) continue;
     const m = /^([0-9a-f]{64}) [ *]([^/\s]+)$/.exec(line);
@@ -265,11 +253,13 @@ export function parseSums(text, file = "SHA256SUMS") {
 
 /**
  * Every asset must be in the sums file with the SHA-256 of the file that was downloaded.
- * @param {Map<string, string>} sums
- * @param {Partial<Record<AssetKind | "mar", { name: string, sha256: string }>>} files
- * @param {string} [file] the sums file's name, for messages
+ * @param file the sums file's name, for messages
  */
-export function checkAssets(sums, files, file = "SHA256SUMS") {
+export function checkAssets(
+  sums: Map<string, string>,
+  files: Partial<Record<AssetKind | "mar", { name: string; sha256: string }>>,
+  file: string = "SHA256SUMS",
+) {
   for (const f of Object.values(files)) {
     const { name, sha256 } = f;
     const listed = sums.get(name);
@@ -286,12 +276,12 @@ export function checkAssets(sums, files, file = "SHA256SUMS") {
  * whose pull request carries the `security` label (the autopilot labels a bump whose advisories
  * it could not read as security, G3), a `fix(security)` commit, or any change whose pull
  * request carries the `security` label.
- * @param {readonly { subject: string, labels: readonly string[] }[]} commits
- * @returns {{ urgency: "normal" | "security", advisories: string[] }}
  */
-export function urgencyOf(commits) {
-  /** @type {string[]} */
-  const advisories = [];
+export function urgencyOf(commits: readonly { subject: string; labels: readonly string[] }[]): {
+  urgency: "normal" | "security";
+  advisories: string[];
+} {
+  const advisories: string[] = [];
   let security = false;
   for (const { subject, labels } of commits) {
     const bump = /^upstream(?:\([^)]*\))?!?: firefox /i.test(subject);
@@ -304,21 +294,17 @@ export function urgencyOf(commits) {
   return { urgency: security ? "security" : "normal", advisories };
 }
 
-/** @param {string} tag */
-const semver = (tag) => TAG.exec(tag)?.[1]?.split(".").map(Number) ?? null;
+const semver = (tag: string) => TAG.exec(tag)?.[1]?.split(".").map(Number) ?? null;
 
 /**
  * The newest release tag below `current`, from the published releases' tags; null for the first.
- * @param {readonly string[]} tags
- * @param {string} current
  */
-export function previousRelease(tags, current) {
+export function previousRelease(tags: readonly string[], current: string) {
   const now = semver(current);
   if (!now) throw new Error(`${current} is not a vX.Y.Z tag`);
-  /** @param {number[]} a @param {number[]} b */
-  const cmp = (a, b) =>
+  const cmp = (a: number[], b: number[]) =>
     (a[0] ?? 0) - (b[0] ?? 0) || (a[1] ?? 0) - (b[1] ?? 0) || (a[2] ?? 0) - (b[2] ?? 0);
-  let best = /** @type {string | null} */ (null);
+  let best = null as string | null;
   for (const tag of tags) {
     const v = semver(tag);
     if (!v || cmp(v, now) >= 0) continue;
@@ -331,9 +317,8 @@ export function previousRelease(tags, current) {
 /**
  * The SHA-384 DigestInfo of the prefixed body: what Cloud KMS's raw PKCS#1 key signs (the sign
  * job builds the same bytes with printf and openssl; its test compares them).
- * @param {string} body
  */
-export function digestInfo(body) {
+export function digestInfo(body: string) {
   const hash = createHash("sha384").update(signedBytes(body)).digest();
   return Buffer.concat([SHA384_DIGESTINFO, hash]);
 }
@@ -350,9 +335,8 @@ export function pinnedPem() {
  * Firefox's version and the build ID, from `vimma/application.ini` in the tarball: what
  * `Services.appinfo.version` and `appBuildID` say in the installed build, which the client
  * compares an offer against (spec §4 rule 4).
- * @param {string} tarball
  */
-export function releaseInfo(tarball) {
+export function releaseInfo(tarball: string) {
   return iniInfo(
     execFileSync("tar", ["-xJOf", tarball, "vimma/application.ini"], {
       encoding: "utf8",
@@ -364,9 +348,8 @@ export function releaseInfo(tarball) {
 /**
  * hdiutil with its output captured: the calls are not `-quiet`, so a failure's error carries
  * hdiutil's reason, where `-quiet` leaves exit status 1 and nothing else (#715).
- * @param {string[]} args
  */
-const runHdiutil = (args) =>
+const runHdiutil = (args: string[]) =>
   execFileSync("hdiutil", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 
 /**
@@ -374,10 +357,9 @@ const runHdiutil = (args) =>
  * another job), so the Linux tarball's would not match it. hdiutil is macOS's, so this runs on
  * a macOS runner; the image is mounted read-only and not browsed. The mount point is removed
  * with rmdir, which never reaches into a volume a failed detach left mounted.
- * @param {string} dmg
- * @param {(args: string[]) => string} [hdiutil]  runs hdiutil; the default is the real one
+ * @param hdiutil runs hdiutil; the default is the real one
  */
-export function dmgInfo(dmg, hdiutil = runHdiutil) {
+export function dmgInfo(dmg: string, hdiutil: (args: string[]) => string = runHdiutil) {
   const mount = mkdtempSync(join(dirname(dmg), ".vimma-dmg-"));
   try {
     hdiutil(["attach", "-nobrowse", "-readonly", "-mountpoint", mount, dmg]);
@@ -413,9 +395,8 @@ export function dmgInfo(dmg, hdiutil = runHdiutil) {
 
 /**
  * Firefox's version and the build ID from application.ini's `[App]` section.
- * @param {string} ini
  */
-function iniInfo(ini) {
+function iniInfo(ini: string) {
   const app = /^\[App\]$([\s\S]*?)(?=^\[|(?![\s\S]))/m.exec(ini)?.[1] ?? "";
   const appVersion = /^Version=(.*)$/m.exec(app)?.[1]?.trim() ?? "";
   const buildId = /^BuildID=(.*)$/m.exec(app)?.[1]?.trim() ?? "";
@@ -426,9 +407,8 @@ function iniInfo(ini) {
 
 /**
  * A file's size and hashes. The packages are about 100 MB each, which one read handles.
- * @param {string} path
  */
-function hashFile(path) {
+function hashFile(path: string) {
   const data = readFileSync(path);
   return {
     size: data.length,
@@ -441,10 +421,10 @@ function hashFile(path) {
  * The published manifest's serial, offered version and build ID (read, not verified: it only
  * sets the floor the new manifest must clear). A file that is there but unreadable stops the
  * run: the floor would be unknown.
- * @param {string | null} text
- * @returns {{ serial: string, version: string | null, buildId?: string | null } | null}
  */
-export function publishedState(text) {
+export function publishedState(
+  text: string | null,
+): { serial: string; version: string | null; buildId?: string | null } | null {
   if (text === null || text === "") return null;
   const split = splitManifest(text);
   if (!split.ok) throw new Error(`the published manifest: ${split.reason}`);
@@ -460,13 +440,9 @@ export function publishedState(text) {
 /**
  * The highest floor among the published copies (the update host and the repository can differ
  * for a moment while Cloudflare deploys).
- * @param {readonly (string | null)[]} texts
  */
-function floorOf(texts) {
-  let floor =
-    /** @type {{ serial: string, version: string | null, buildId?: string | null } | null} */ (
-      null
-    );
+function floorOf(texts: readonly (string | null)[]) {
+  let floor = null as { serial: string; version: string | null; buildId?: string | null } | null;
   for (const t of texts) {
     const s = publishedState(t);
     if (s && (!floor || BigInt(s.serial) > BigInt(floor.serial))) floor = s;
@@ -474,8 +450,8 @@ function floorOf(texts) {
   return floor;
 }
 
-/** @param {string} a @param {string} b X.Y.Z */
-function versionOrder(a, b) {
+/** @param b X.Y.Z */
+function versionOrder(a: string, b: string) {
   const pa = a.split(".").map(Number);
   const pb = b.split(".").map(Number);
   for (let i = 0; i < 3; i++) {
@@ -485,11 +461,7 @@ function versionOrder(a, b) {
   return 0;
 }
 
-/**
- * @param {string} version
- * @param {{ version: string | null } | null} floor
- */
-function noOlderThan(version, floor) {
+function noOlderThan(version: string, floor: { version: string | null } | null) {
   if (floor?.version && versionOrder(version, floor.version) < 0) {
     throw new Error(
       `${version} is older than ${floor.version}, which the published manifest offers`,
@@ -501,20 +473,34 @@ function noOlderThan(version, floor) {
  * The unsigned manifest for a published release: its files (checked against the target's sums
  * file), the Firefox version and build ID inside the tarball or the .dmg, the urgency from its
  * commits, and a serial newer than the published one.
- * @param {{ tag: string, dir: string, commits: readonly { subject: string, labels: readonly string[] }[],
- *   published: string | readonly (string | null)[] | null, now: Date, os?: Os,
- *   appInfo?: (path: string) => { appVersion: string, buildId: string } }} input
- *   `appInfo` reads the version and build ID from the package (releaseInfo or dmgInfo)
+ * @param input `appInfo` reads the version and build ID from the package (releaseInfo or dmgInfo)
  */
-export function prepareRelease({ tag, dir, commits, published, now, os = "linux", appInfo }) {
+export function prepareRelease({
+  tag,
+  dir,
+  commits,
+  published,
+  now,
+  os = "linux",
+  appInfo,
+}: {
+  tag: string;
+  dir: string;
+  commits: readonly { subject: string; labels: readonly string[] }[];
+  published: string | readonly (string | null)[] | null;
+  now: Date;
+  os?: Os;
+  appInfo?: (path: string) => { appVersion: string; buildId: string };
+}) {
   const version = TAG.exec(tag)?.[1];
   if (!version) throw new Error(`${tag} is not a vX.Y.Z release tag`);
   const { kinds, sums } = targetOf(os);
-  const floor = floorOf(Array.isArray(published) ? published : [/** @type {any} */ (published)]);
+  const floor = floorOf(Array.isArray(published) ? published : [published as any]);
   noOlderThan(version, floor);
   const names = assetNames(version, os);
-  /** @type {Partial<Record<AssetKind, { name: string, size: number, sha256: string, sha512: string }>>} */
-  const files = {};
+  const files: Partial<
+    Record<AssetKind, { name: string; size: number; sha256: string; sha512: string }>
+  > = {};
   for (const kind of kinds) {
     const name = nameOf(names, kind);
     const path = join(dir, name);
@@ -534,11 +520,9 @@ export function prepareRelease({ tag, dir, commits, published, now, os = "linux"
   const { appVersion, buildId } = info(
     join(dir, nameOf(names, os === "macos" ? "dmg" : "tarball")),
   );
-  const assets = /** @type {Required<Assets>} */ (
-    Object.fromEntries(
-      kinds.map((k) => [k, { size: files[k]?.size ?? 0, sha512: files[k]?.sha512 ?? "" }]),
-    )
-  );
+  const assets = Object.fromEntries(
+    kinds.map((k) => [k, { size: files[k]?.size ?? 0, sha512: files[k]?.sha512 ?? "" }]),
+  ) as Required<Assets>;
   const body = buildManifest({
     serial: nextSerial(now, floor?.serial ?? null),
     update: {
@@ -559,12 +543,26 @@ export function prepareRelease({ tag, dir, commits, published, now, os = "linux"
  * channel and target, a serial newer than the published one and not ahead of the clock, and for
  * a release, its version, its details page and every file's size and SHA-512; with no tag, an
  * offer of nothing.
- * @param {string} text  the signed manifest
- * @param {{ keys: readonly import("../../packages/vimma-core/src/updates/updates.mjs").PinnedKey[],
- *   tag: string | null, dir: string | null, published: string | readonly (string | null)[] | null,
- *   now: Date, os?: Os }} options
+ * @param text the signed manifest
  */
-export async function checkSigned(text, { keys, tag, dir, published, now, os = "linux" }) {
+export async function checkSigned(
+  text: string,
+  {
+    keys,
+    tag,
+    dir,
+    published,
+    now,
+    os = "linux",
+  }: {
+    keys: readonly PinnedKey[];
+    tag: string | null;
+    dir: string | null;
+    published: string | readonly (string | null)[] | null;
+    now: Date;
+    os?: Os;
+  },
+) {
   const { target, kinds } = targetOf(os);
   const verified = await verifyManifest(text, keys, globalThis.crypto.subtle);
   if (!verified.ok) throw new Error(verified.reason);
@@ -572,7 +570,7 @@ export async function checkSigned(text, { keys, tag, dir, published, now, os = "
   if (!parsed.ok) throw new Error(parsed.reason);
   const m = parsed.manifest;
   need(m.channel === CHANNEL && m.target === target, `for ${m.channel} ${m.target}, not ${target}`);
-  const floor = floorOf(Array.isArray(published) ? published : [/** @type {any} */ (published)]);
+  const floor = floorOf(Array.isArray(published) ? published : [published as any]);
   if (floor && BigInt(m.serial) <= BigInt(floor.serial)) {
     throw new Error(`serial ${m.serial} is not newer than the published ${floor.serial}`);
   }
@@ -617,9 +615,8 @@ export async function checkSigned(text, { keys, tag, dir, published, now, os = "
 
 /**
  * The size and SHA-512 of a verified manifest's `<patch>`, in the one form buildManifest writes.
- * @param {string} body
  */
-function patchOf(body) {
+function patchOf(body: string) {
   const m =
     /<patch type="complete" size="(\d{1,15})" hashFunction="sha512" hashValue="([0-9a-f]{128})" URL="[^"]*"\/>/.exec(
       body,
@@ -632,9 +629,8 @@ function patchOf(body) {
  * The nightly's file names on the rolling `nightly` release: by build ID, because the release
  * replaces its assets with each build, and a client that read the previous manifest must still
  * find the previous MAR (spec §7).
- * @param {string} buildId
  */
-export function nightlyNames(buildId) {
+export function nightlyNames(buildId: string) {
   need(BUILD_ID.test(buildId), `${buildId} is not a build ID`);
   return {
     tarball: `vimma-nightly-${buildId}-linux-x86_64.tar.xz`,
@@ -645,10 +641,9 @@ export function nightlyNames(buildId) {
 /**
  * A nightly's displayVersion: the release version it was built from, then its build ID, so that
  * each build has its own (spec §2, decision 40).
- * @param {string} version  X.Y.Z, surfer.json's displayVersion
- * @param {string} buildId
+ * @param version X.Y.Z, surfer.json's displayVersion
  */
-export function nightlyVersion(version, buildId) {
+export function nightlyVersion(version: string, buildId: string) {
   need(VERSION.test(version), `${version} is not a Vimma version (X.Y.Z)`);
   need(BUILD_ID.test(buildId), `${buildId} is not a build ID`);
   return `${version}-nightly.${buildId}`;
@@ -657,23 +652,30 @@ export function nightlyVersion(version, buildId) {
 const NIGHTLY_URL = `${RELEASES_URL}/download/${NIGHTLY_TAG}`;
 const NIGHTLY_DETAILS = `${RELEASES_URL}/tag/${NIGHTLY_TAG}`;
 
-/**
- * @typedef {object} Nightly
- * @property {string} appVersion  Firefox's version (application.ini `Version`)
- * @property {string} buildId     application.ini `BuildID`
- * @property {string} version     the Vimma release version it was built from (X.Y.Z)
- * @property {{ size: number, sha512: string }} tarball
- * @property {{ size: number, sha512: string }} mar
- */
+type Nightly = {
+  /** Firefox's version (application.ini `Version`) */
+  appVersion: string;
+  /** application.ini `BuildID` */
+  buildId: string;
+  /** the Vimma release version it was built from (X.Y.Z) */
+  version: string;
+  tarball: { size: number; sha512: string };
+  mar: { size: number; sha512: string };
+};
 
 /**
  * The nightly channel's manifest body (decision 42): one `<update>` with the complete MAR as
  * `<patch>`, which Firefox's updater applies to a tarball install, and the tarball, whose hash
  * the commands for an install Vimma cannot write use. Both on the `nightly` release. A nightly
  * is always `normal`: it has no previous release to count security commits from (decision 43).
- * @param {{ serial: string, update: Nightly | null }} input
  */
-export function buildNightlyManifest({ serial, update }) {
+export function buildNightlyManifest({
+  serial,
+  update,
+}: {
+  serial: string;
+  update: Nightly | null;
+}) {
   need(SERIAL.test(serial), `serial ${serial} is not a UTC time (YYYYMMDDhhmmss)`);
   let body =
     '<?xml version="1.0"?>\n' +
@@ -703,10 +705,8 @@ export function buildNightlyManifest({ serial, update }) {
 /**
  * A nightly is never older than the one the published nightly manifest offers. The same build
  * again is a re-run of its run, which publishes it under a newer serial.
- * @param {string} buildId
- * @param {{ buildId?: string | null } | null} floor
  */
-function noOlderBuild(buildId, floor) {
+function noOlderBuild(buildId: string, floor: { buildId?: string | null } | null) {
   if (floor?.buildId && BigInt(buildId) < BigInt(floor.buildId)) {
     throw new Error(
       `build ${buildId} is older than ${floor.buildId}, which the published manifest offers`,
@@ -719,17 +719,29 @@ function noOlderBuild(buildId, floor) {
  * nightly.yml's cosign signature covers; the job checks that before this runs), Firefox's version
  * and the build ID from the tarball, which must be the build asked for, and a serial newer than
  * the published one.
- * @param {{ buildId: string, version: string, dir: string,
- *   published: string | readonly (string | null)[] | null, now: Date }} input
  */
-export function prepareNightly({ buildId, version, dir, published, now }) {
+export function prepareNightly({
+  buildId,
+  version,
+  dir,
+  published,
+  now,
+}: {
+  buildId: string;
+  version: string;
+  dir: string;
+  published: string | readonly (string | null)[] | null;
+  now: Date;
+}) {
   const display = nightlyVersion(version, buildId);
   const names = nightlyNames(buildId);
-  const floor = floorOf(Array.isArray(published) ? published : [/** @type {any} */ (published)]);
+  const floor = floorOf(Array.isArray(published) ? published : [published as any]);
   noOlderBuild(buildId, floor);
-  /** @type {Record<"tarball" | "mar", { name: string, size: number, sha256: string, sha512: string }>} */
-  const files = /** @type {any} */ ({});
-  for (const kind of /** @type {const} */ (["tarball", "mar"])) {
+  const files: Record<
+    "tarball" | "mar",
+    { name: string; size: number; sha256: string; sha512: string }
+  > = {} as any;
+  for (const kind of ["tarball", "mar"] as const) {
     const path = join(dir, names[kind]);
     if (!existsSync(path)) throw new Error(`${names[kind]} was not downloaded`);
     files[kind] = { name: names[kind], ...hashFile(path) };
@@ -758,12 +770,26 @@ export function prepareNightly({ buildId, version, dir, published, now }) {
  * pinned key, the nightly channel and the Linux target, a serial newer than the published one
  * and not ahead of the clock, the build and version asked for, and exactly the MAR and tarball
  * on the `nightly` release, each matching the file downloaded again.
- * @param {string} text  the signed manifest
- * @param {{ keys: readonly import("../../packages/vimma-core/src/updates/updates.mjs").PinnedKey[],
- *   buildId: string, version: string, dir: string,
- *   published: string | readonly (string | null)[] | null, now: Date }} options
+ * @param text the signed manifest
  */
-export async function checkSignedNightly(text, { keys, buildId, version, dir, published, now }) {
+export async function checkSignedNightly(
+  text: string,
+  {
+    keys,
+    buildId,
+    version,
+    dir,
+    published,
+    now,
+  }: {
+    keys: readonly PinnedKey[];
+    buildId: string;
+    version: string;
+    dir: string;
+    published: string | readonly (string | null)[] | null;
+    now: Date;
+  },
+) {
   const display = nightlyVersion(version, buildId);
   const names = nightlyNames(buildId);
   const verified = await verifyManifest(text, keys, globalThis.crypto.subtle);
@@ -775,7 +801,7 @@ export async function checkSignedNightly(text, { keys, buildId, version, dir, pu
     m.channel === NIGHTLY_CHANNEL && m.target === TARGET,
     `for ${m.channel} ${m.target}, not ${NIGHTLY_CHANNEL} ${TARGET}`,
   );
-  const floor = floorOf(Array.isArray(published) ? published : [/** @type {any} */ (published)]);
+  const floor = floorOf(Array.isArray(published) ? published : [published as any]);
   if (floor && BigInt(m.serial) <= BigInt(floor.serial)) {
     throw new Error(`serial ${m.serial} is not newer than the published ${floor.serial}`);
   }
@@ -806,17 +832,16 @@ export async function checkSignedNightly(text, { keys, buildId, version, dir, pu
     [names.tarball, { size: tarball.size, sha512: tarball.sha512 }],
     [names.mar, patchOf(verified.body)],
   ]) {
-    const path = join(dir, /** @type {string} */ (name));
+    const path = join(dir, name as string);
     need(existsSync(path), `${name} was not downloaded`);
     const f = hashFile(path);
-    const w = /** @type {{ size: number, sha512: string }} */ (want);
+    const w = want as { size: number; sha512: string };
     need(f.size === w.size && f.sha512 === w.sha512, `${name} does not match the manifest`);
   }
   return { serial: m.serial, version: display, key: verified.key.id };
 }
 
-/** @param {string} path */
-const readOrNull = (path) => (existsSync(path) ? readFileSync(path, "utf8") : null);
+const readOrNull = (path: string) => (existsSync(path) ? readFileSync(path, "utf8") : null);
 
 /** How often a gh read is tried, and the waits between the tries. */
 const GH_WAITS_MS = [2000, 4000, 8000];
@@ -827,36 +852,33 @@ const GH_WAITS_MS = [2000, 4000, 8000];
 const TRANSIENT =
   /HTTP 5\d\d|unexpected end of JSON input|invalid character|unexpected EOF|connection reset|i\/o timeout|TLS handshake timeout|dial tcp|ECONNRESET|ETIMEDOUT/i;
 
-/**
- * @typedef {{ run?: (args: string[]) => string, sleep?: (ms: number) => Promise<void> }} Gh
- * how gh is run and how a retry waits; the defaults run the real gh and wait
- */
+/** How gh is run and how a retry waits; the defaults run the real gh and wait. */
+type Gh = { run?: (args: string[]) => string; sleep?: (ms: number) => Promise<void> };
 
-/** @param {string[]} args */
-const runGh = (args) => execFileSync("gh", args, { encoding: "utf8", maxBuffer: 64 << 20 });
-/** @param {number} ms */
-const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+const runGh = (args: string[]) =>
+  execFileSync("gh", args, { encoding: "utf8", maxBuffer: 64 << 20 });
+const wait = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
 
 /**
  * gh's raw JSON response, parsed, and the result of `check` on it. A failed call or a body that
  * is not JSON is tried again after 2, 4 and 8 s while it looks transient. Any other failure,
  * the last transient one, and a response `check` rejects throw: the caller never reads a
  * failure or an unexpected shape as an empty answer.
- * @template T
- * @param {string[]} args
- * @param {string} what  what is read, for the error
- * @param {(data: unknown) => T} check  throws unless `data` has the shape the caller reads
- * @param {Gh} [gh]
- * @returns {Promise<T>}
+ * @param what what is read, for the error
+ * @param check throws unless `data` has the shape the caller reads
  */
-async function ghRead(args, what, check, { run = runGh, sleep = wait } = {}) {
+async function ghRead<T>(
+  args: string[],
+  what: string,
+  check: (data: unknown) => T,
+  { run = runGh, sleep = wait }: Gh = {},
+): Promise<T> {
   for (let attempt = 1; ; attempt++) {
-    /** @type {unknown} */
-    let data;
+    let data: unknown;
     try {
       data = JSON.parse(run(args));
     } catch (e) {
-      const err = /** @type {{ message?: string, stderr?: unknown }} */ (e);
+      const err = e as { message?: string; stderr?: unknown };
       const detail = `${String(err.stderr ?? "").trim()} ${err.message ?? ""}`.trim();
       const transient = e instanceof SyntaxError || TRANSIENT.test(detail);
       const delay = GH_WAITS_MS[attempt - 1];
@@ -873,25 +895,22 @@ async function ghRead(args, what, check, { run = runGh, sleep = wait } = {}) {
     try {
       return check(data);
     } catch (e) {
-      throw new Error(`${what}: unexpected response: ${/** @type {Error} */ (e).message}`, {
+      throw new Error(`${what}: unexpected response: ${(e as Error).message}`, {
         cause: e,
       });
     }
   }
 }
 
-/** @param {unknown} v */
-const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+const isObject = (v: unknown) => typeof v === "object" && v !== null && !Array.isArray(v);
 
 /**
  * The label names in a commits/<sha>/pulls response. Anything but a list of pull requests, each
  * with a list of named labels, throws: jq would read `{}` as a list with no labels.
- * @param {unknown} data
  */
-function pullLabels(data) {
+function pullLabels(data: unknown) {
   need(Array.isArray(data), "not a list of pull requests");
-  /** @type {Set<string>} */
-  const names = new Set();
+  const names: Set<string> = new Set();
   for (const pr of data) {
     need(isObject(pr) && Array.isArray(pr.labels), "a pull request without a list of labels");
     for (const label of pr.labels) {
@@ -907,12 +926,8 @@ function pullLabels(data) {
  * labels that cannot be read, or a response of another shape, throw instead of counting as none.
  * One page is enough: for a commit on the default branch GitHub lists only the pull request
  * that merged it, and `--paginate --slurp` would change the shape to a list of pages.
- * @param {string} sha
- * @param {string} repo
- * @param {Gh} [gh]
- * @returns {Promise<string[]>}
  */
-export function commitLabels(sha, repo, gh) {
+export function commitLabels(sha: string, repo: string, gh?: Gh): Promise<string[]> {
   return ghRead(
     ["api", `repos/${repo}/commits/${sha}/pulls`],
     `the labels of ${sha}`,
@@ -926,19 +941,14 @@ export function commitLabels(sha, repo, gh) {
  * a list without it is malformed or cut short, and counting from it could widen the range of
  * commits to the whole history. A wider range only adds labels, so it can raise the urgency but
  * never lower it; the check keeps a broken list from costing hundreds of label reads.
- * @param {string} tag
- * @param {string} repo
- * @param {Gh} [gh]
- * @returns {Promise<string[]>}
  */
-export function publishedTags(tag, repo, gh) {
+export function publishedTags(tag: string, repo: string, gh?: Gh): Promise<string[]> {
   return ghRead(
     ["api", `repos/${repo}/releases`, "--paginate", "--slurp"],
     "the published releases",
     (pages) => {
       need(Array.isArray(pages) && pages.length > 0, "not a list of pages");
-      /** @type {string[]} */
-      const tags = [];
+      const tags: string[] = [];
       for (const page of pages) {
         need(Array.isArray(page), "a page that is not a list of releases");
         for (const r of page) {
@@ -961,10 +971,8 @@ export function publishedTags(tag, repo, gh) {
 
 /**
  * The subjects since the previous published release, each with its pull request's labels.
- * @param {string} tag
- * @param {string} repo
  */
-async function commitsSince(tag, repo) {
+async function commitsSince(tag: string, repo: string) {
   const previous = previousRelease(await publishedTags(tag, repo), tag);
   const range = previous ? `${previous}..${tag}` : tag;
   const log = execFileSync("git", ["log", "--format=%H%x09%s", range], {
@@ -998,7 +1006,7 @@ async function main() {
       version: { type: "string" },
     },
   });
-  const os = /** @type {Os} */ (values.target ?? "linux");
+  const os = (values.target ?? "linux") as Os;
   targetOf(os);
   const published = (values.published ?? []).map(readOrNull);
   const nothing = values.offer === "nothing";
@@ -1068,7 +1076,7 @@ async function main() {
         os,
       });
       writeFileSync(values.out, body);
-      const offer = /** @type {any} */ (parseManifest(body)).manifest.update;
+      const offer = (parseManifest(body) as any).manifest.update;
       console.error(
         `manifest: Vimma ${offer.displayVersion} · Firefox ${offer.appVersion}, build ${offer.buildId}, ` +
           `${offer.urgent ? `security (${offer.advisories.join(", ") || "no advisory ID"})` : "normal"}`,
@@ -1096,7 +1104,7 @@ async function main() {
       process.stdout.write(pinnedPem());
       return;
     default:
-      throw new Error("usage: manifest.mjs commits|build|verify|pem (see the file's header)");
+      throw new Error("usage: manifest.ts commits|build|verify|pem (see the file's header)");
   }
 }
 

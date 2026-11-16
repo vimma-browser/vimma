@@ -16,7 +16,7 @@
  * the recorded build's. Building is what every night did before, so a doubt costs runner time,
  * never a stale or wrong offer.
  *
- *   nightly-change.mjs --event schedule --public true --sha SHA --firefox X.Y [--release FILE]
+ *   nightly-change.ts --event schedule --public true --sha SHA --firefox X.Y [--release FILE]
  *
  * FILE is `gh release view nightly --json body,isDraft,isPrerelease,assets`; leave it out when
  * there is no release or it could not be read. Prints `build=true|false` and `build_id=<ID or
@@ -35,39 +35,41 @@ const FILE = /^vimma-nightly-(\d{14})-linux-x86_64\.(?:tar\.xz|complete\.mar)$/;
 
 /**
  * The record's sentence, as nightly.yml's publish job writes it first in the notes.
- * @param {string} buildId @param {string} sha @param {string} firefox
  */
-export function nightlyRecord(buildId, sha, firefox) {
+export function nightlyRecord(buildId: string, sha: string, firefox: string) {
   return `Nightly build ${buildId} of main at ${sha}, Firefox ${firefox}.`;
 }
 
 /**
  * The record at the start of the notes, or null when they do not start with one.
- * @param {string} body
- * @returns {{ buildId: string, sha: string, firefox: string } | null}
  */
-export function readRecord(body) {
+export function readRecord(body: string): { buildId: string; sha: string; firefox: string } | null {
   const m = RECORD.exec(String(body ?? ""));
   if (!m) return null;
   return { buildId: String(m[1]), sha: String(m[2]), firefox: String(m[3]) };
 }
 
-/**
- * @typedef {{ body?: unknown, isDraft?: unknown, isPrerelease?: unknown,
- *   assets?: unknown }} Release
- * @typedef {{ build: true, reason: string } |
- *   { build: false, buildId: string, reason: string }} Decision
- */
+type Release = { body?: unknown; isDraft?: unknown; isPrerelease?: unknown; assets?: unknown };
+type Decision = { build: true; reason: string } | { build: false; buildId: string; reason: string };
 
 /**
- * @param {{ event: string, isPublic: boolean, sha: string, firefox: string,
- *   release: Release | null }} input  `sha` and `firefox`: main's commit, and the Firefox
+ * @param input `sha` and `firefox`: main's commit, and the Firefox
  *   version its surfer.json names
- * @returns {Decision}
  */
-export function decide({ event, isPublic, sha, firefox, release }) {
-  /** @param {string} reason @returns {Decision} */
-  const build = (reason) => ({ build: true, reason });
+export function decide({
+  event,
+  isPublic,
+  sha,
+  firefox,
+  release,
+}: {
+  event: string;
+  isPublic: boolean;
+  sha: string;
+  firefox: string;
+  release: Release | null;
+}): Decision {
+  const build = (reason: string): Decision => ({ build: true, reason });
   if (event !== "schedule") return build(`a ${event} run always builds`);
   if (!isPublic) return build("public nightlies are off, so no release records a build");
   if (!SHA.test(sha)) return build(`'${sha}' is not a commit`);
@@ -79,13 +81,13 @@ export function decide({ event, isPublic, sha, firefox, release }) {
   const record = readRecord(typeof release.body === "string" ? release.body : "");
   if (!record) return build("the nightly release's notes name no build, commit and Firefox");
   const names = Array.isArray(release.assets)
-    ? release.assets.map((/** @type {any} */ a) => String(a?.name ?? ""))
+    ? release.assets.map((a: any) => String(a?.name ?? ""))
     : [];
   const newest = names
     .flatMap((n) => FILE.exec(n)?.[1] ?? [])
     .sort()
     .at(-1);
-  const has = (/** @type {string} */ n) => names.includes(n);
+  const has = (n: string) => names.includes(n);
   if (
     newest !== record.buildId ||
     !has(`vimma-nightly-${newest}-linux-x86_64.tar.xz`) ||
@@ -122,11 +124,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const { event, sha, firefox } = values;
     if (!event || !values.public || !sha || !firefox) {
       throw new Error(
-        "usage: nightly-change.mjs --event E --public true|false --sha SHA --firefox X.Y [--release FILE]",
+        "usage: nightly-change.ts --event E --public true|false --sha SHA --firefox X.Y [--release FILE]",
       );
     }
-    /** @type {Release | null} */
-    let release = null;
+    let release: Release | null = null;
     if (values.release) {
       try {
         const parsed = JSON.parse(readFileSync(values.release, "utf8"));

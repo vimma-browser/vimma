@@ -56,9 +56,9 @@ queue, update manifests and the rest; and the Node tools under `tools/`, includi
 workflows themselves (`tools/test/`) and the e2e harness against a fake control server.
 
 **Where.** `vitest.config.ts` takes every `*.test.mjs` under `packages/**/test/` and
-`tools/**/test/`, and every `*.test.ts` under `packages/vimma-core/test/` and `tools/**/test/`, with a global setup
-(`tools/test/tmp-guard.ts`) that fails a test leaving files in its temporary folder. The `check`
-job runs `npm run coverage`, which fails below 90 % of lines, functions, branches and statements
+`tools/**/test/`, and every `*.test.ts` under `packages/vimma-core/test/` and `tools/**/test/`,
+with a global setup (`tools/test/tmp-guard.ts`) that fails a test leaving files in its temporary
+folder. The `check` job runs `npm run coverage`, which fails below 90 % of lines, functions, branches and statements
 in `packages/vimma-core/src/` (the vendored smol-toml excluded).
 There is no coverage figure for the browser code.
 
@@ -286,7 +286,7 @@ ARCHITECTURE.md.
   build, whose mochitest run the pull request must report
   ([CONTRIBUTING.md](../../CONTRIBUTING.md), "Testing"). The nightly runs in the night (about
   00:00 to 02:00 UTC) only while the repository variable `NIGHTLY_ENABLED` is `true`. Its `changes` job
-  (`tools/update/nightly-change.mjs`) skips a scheduled build only when public nightlies are on
+  (`tools/update/nightly-change.ts`) skips a scheduled build only when public nightlies are on
   and the rolling release already records the same commit and Firefox version; anything else,
   a doubt included, builds.
 - **The updater end to end.** The e2e updater scenarios need a `VIMMA_UPDATES=1` build packaged

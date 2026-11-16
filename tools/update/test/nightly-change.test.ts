@@ -8,16 +8,15 @@ import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
-import { decide, nightlyRecord, readRecord } from "../nightly-change.mjs";
+import { decide, nightlyRecord, readRecord } from "../nightly-change.ts";
 
-const SCRIPT = new URL("../nightly-change.mjs", import.meta.url).pathname;
+const SCRIPT = new URL("../nightly-change.ts", import.meta.url).pathname;
 const BUILD = "20261112030512";
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 const OTHER = "89abcdef0123456789abcdef0123456789abcdef";
 const FIREFOX = "160.0";
 const NOTES = `${nightlyRecord(BUILD, SHA, FIREFOX)} Built from main on each night it changed.`;
-/** @param {string} id */
-const files = (id) => [
+const files = (id: string) => [
   { name: `vimma-nightly-${id}-linux-x86_64.tar.xz` },
   { name: `vimma-nightly-${id}-linux-x86_64.complete.mar` },
 ];
@@ -117,12 +116,8 @@ describe("decide", () => {
   });
 });
 
-describe("nightly-change.mjs, run as the changes job runs it", () => {
-  /**
-   * @param {string[]} args
-   * @param {unknown} [release]
-   */
-  function run(args, release) {
+describe("nightly-change.ts, run as the changes job runs it", () => {
+  function run(args: string[], release?: unknown) {
     const dir = tempDir("vimma-nightly-change-");
     const extra = [];
     if (release !== undefined) {

@@ -14,21 +14,18 @@ import {
   UPDATE_KEYS_FILE,
   readCertificates,
   renderUpdateKeys,
-} from "../gen-update-keys.mjs";
+} from "../gen-update-keys.ts";
 import { spkiKeyId } from "../../../packages/vimma-core/src/updates/updates.mjs";
 
-const SCRIPT = new URL("../gen-update-keys.mjs", import.meta.url).pathname;
+const SCRIPT = new URL("../gen-update-keys.ts", import.meta.url).pathname;
 const ROOT = new URL("../../../", import.meta.url).pathname;
 
 /**
  * A self-signed RSA-4096 certificate made with openssl, as the offline ceremony makes the
  * secondary (docs/runbook/ci-update-keys-and-update-host.md step 4), over a fixed test key: the
  * secondary's differs from the others'.
- * @param {string} dir
- * @param {string} file
- * @param {string} cn
  */
-function certificate(dir, file, cn) {
+function certificate(dir: string, file: string, cn: string) {
   const key = join(dir, `${file}.key.pem`);
   const { privateKey } = testKey(file.startsWith("secondary") ? "b" : "a");
   writeFileSync(key, privateKey.export({ type: "pkcs8", format: "pem" }));
@@ -52,14 +49,14 @@ function certificate(dir, file, cn) {
 }
 
 /** Imports a generated module from a file and returns its UPDATE_KEYS. */
-async function load(/** @type {string} */ text) {
+async function load(text: string) {
   const dir = tempDir("vimma-update-keys-mod-");
   const file = join(dir, "update-keys.mjs");
   writeFileSync(file, text);
   return (await import(file)).UPDATE_KEYS;
 }
 
-const spkiB64 = (/** @type {Uint8Array} */ cert) =>
+const spkiB64 = (cert: Uint8Array) =>
   Buffer.from(
     execFileSync("openssl", ["x509", "-inform", "DER", "-noout", "-pubkey"], { input: cert }),
   )
@@ -85,10 +82,7 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
     const primary = certificate(dir, "primary.der", "Vimma update signing primary");
     const secondary = certificate(dir, "secondary.der", "Vimma update signing secondary");
     const keys = await load(await renderUpdateKeys(readCertificates(dir)));
-    expect(keys.map((/** @type {{ slot: string }} */ k) => k.slot)).toEqual([
-      "primary",
-      "secondary",
-    ]);
+    expect(keys.map((k: { slot: string }) => k.slot)).toEqual(["primary", "secondary"]);
     expect(keys[0].spki).toBe(spkiB64(primary));
     expect(keys[1].spki).toBe(spkiB64(secondary));
   });
@@ -140,7 +134,7 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
     const primary = certificate(dir, "primary.der", "Vimma update signing primary");
     writeFileSync(join(dir, "secondary.der"), primary);
     const out = join(dir, "update-keys.mjs");
-    const run = (/** @type {string[]} */ args) =>
+    const run = (args: string[]) =>
       execFileSync(process.execPath, [SCRIPT, "--certs", dir, "--out", out, ...args], {
         encoding: "utf8",
         stdio: "pipe",
