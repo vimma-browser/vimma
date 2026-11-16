@@ -142,11 +142,8 @@ export function planSplit(workspace, current) {
   const isMember = new Set(current.members);
   const leave = current.members.filter((t) => !inTarget.has(t));
   const join = target.filter((t) => !isMember.has(t));
-  let after = current.members;
-  if (leave.length || join.length) {
-    after = [...current.members.filter((t) => inTarget.has(t)), ...join];
-    if (after.length < 2) after = [];
-  }
+  // The members that stay, then those that join: the target's tabs, so never just one.
+  const after = [...current.members.filter((t) => inTarget.has(t)), ...join];
 
   const isActive = new Set(current.active);
   const isLive = new Set(live);

@@ -305,3 +305,40 @@ describe("planSplit properties", () => {
     );
   });
 });
+
+describe("split plan edges", () => {
+  const thrown = (fn: () => unknown) => {
+    try {
+      fn();
+    } catch (e) {
+      return e as PlanError;
+    }
+    throw new Error("expected a throw");
+  };
+
+  test("errors carry their name and say what was wrong", () => {
+    const twice = thrown(() => planSplit(ws(null), group({ members: ["a", "a"] })));
+    expect([twice.name, twice.code, twice.message]).toEqual([
+      "PlanError",
+      "bad-state",
+      'members lists a tab twice: ["a","a"]',
+    ]);
+    const stray = thrown(() => planSplit({ tabs: ["a"], panes: across(["a", "b", "c"]) }, group()));
+    expect([stray.code, stray.message]).toEqual([
+      "cross-workspace",
+      "panes show tabs of another workspace: b, c",
+    ]);
+  });
+
+  test("a member out of order at the front moves before its successor", () => {
+    const p = across(["a", "b", "c"]);
+    const plan = planSplit(ws(p), group({ members: ["b", "c", "a"], active: ["a", "b", "c"] }));
+    expect(plan.order).toEqual([{ tab: "a", before: "b" }]);
+  });
+
+  test("a zoom on a pane the tree does not have hides nothing", () => {
+    const p = { ...across(["a", "b"]), zoom: "p9" };
+    const plan = planSplit(ws(p), group({ members: ["a", "b"], active: ["a", "b"] }));
+    expect(plan).toEqual(EMPTY);
+  });
+});

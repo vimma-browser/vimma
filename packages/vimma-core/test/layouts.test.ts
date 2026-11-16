@@ -692,3 +692,76 @@ describe("togetherRefusal", () => {
     expect(togetherRefusal(["a", "b", "c", "d", "e"])).toBeNull();
   });
 });
+
+describe("layout edges", () => {
+  const tabs = (n: number) => Array.from({ length: n }, (_, i) => `t${i + 1}`);
+  const thrown = (fn: () => unknown) => {
+    try {
+      fn();
+    } catch (e) {
+      return e as { name: string; code: string; message: string };
+    }
+    throw new Error("expected a throw");
+  };
+
+  test("an action id names a layout only with the pane.layout_ prefix", () => {
+    expect(layoutOfAction("xxxx.layout_tiled")).toBeUndefined();
+    expect(layoutOfAction("pane.layout_tiled")).toBe("tiled");
+  });
+
+  test("dwindle's direction uses the pane's exact size, not a rounded one", () => {
+    const s = createRow(tabs(3), { focus: "t2" });
+    expect(dwindleDirection(s, { x: 0, y: 0, width: 10, height: 3.4 })).toBe("horizontal");
+  });
+
+  test("dwindle splits a square area side by side", () => {
+    const s = arrange(createRow(tabs(2)), "dwindle", {
+      area: { x: 0, y: 0, width: 10, height: 10 },
+    });
+    expect(s.root).toMatchObject({ type: "split", axis: "x" });
+  });
+
+  test("dwindle halves the area at each step", () => {
+    const three = arrange(createRow(tabs(3)), "dwindle") as any;
+    expect(three.root.axis).toBe("x");
+    expect(three.root.children[1].axis).toBe("y");
+    const four = arrange(createRow(tabs(4)), "dwindle") as any;
+    expect(four.root.children[1].children[1].axis).toBe("x");
+  });
+
+  test("an unknown layout and a main size out of bounds are refused with their reasons", () => {
+    const s = createRow(tabs(2));
+    expect(thrown(() => layoutRefusal(s, "nope" as any)).message).toBe('unknown layout "nope"');
+    expect(thrown(() => arrange(s, "main-vertical", { mainSize: 0.05 })).message).toBe(
+      "main size must be between 0.1 and 0.9",
+    );
+  });
+
+  test("the main size may be its bounds exactly", () => {
+    const s = createRow(tabs(3));
+    expect((arrange(s, "main-vertical", { mainSize: 0.1 }).root as any).ratios[0]).toBe(0.1);
+    expect((arrange(s, "main-vertical", { mainSize: 0.9 }).root as any).ratios[0]).toBe(0.9);
+  });
+
+  test("the max-panes refusal counts panes in the singular and the plural", () => {
+    expect(togetherRefusal(tabs(2), { max: 1 })?.message).toBe("at most 1 pane");
+    expect(togetherRefusal(tabs(3), { max: 2 })?.message).toBe("at most 2 panes");
+  });
+
+  test("showing fewer than two tabs together is refused", () => {
+    const e = thrown(() => showTogether(["a"]));
+    expect([e.code, e.message]).toEqual(["bad-tabs", "showing tabs together needs two"]);
+    const r = thrown(() => repane(null, ["a"]));
+    expect([r.code, r.message]).toEqual(["bad-tabs", "a split needs two tabs"]);
+  });
+
+  test("showing tabs together checks room in the preset asked for", () => {
+    const e = thrown(() => showTogether(tabs(11), { preset: "even-horizontal" }));
+    expect([e.code, e.message]).toEqual(["bad-amount", "no space for 11 panes in even-horizontal"]);
+  });
+
+  test("re-paning keeps the tree's preset when none is asked for", () => {
+    const s = arrange(createRow(tabs(2)), "even-horizontal");
+    expect(repaneRefusal(s, tabs(11))?.message).toBe("no space for 11 panes in even-horizontal");
+  });
+});

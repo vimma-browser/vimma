@@ -710,3 +710,163 @@ describe("hintCollectReason: which exit of a collection gave its result", () => 
     ).toBe("ok");
   });
 });
+
+describe("hint edges", () => {
+  const chord = (k: string, shift = false) => ({
+    key: k,
+    shift,
+    ctrl: false,
+    alt: false,
+    meta: false,
+  });
+  const at = (id: number, x: number, y: number, width = 40, height = 16) => ({
+    id,
+    rect: { x, y, width, height },
+  });
+
+  test("errors carry their name and say what was wrong", () => {
+    const err = (fn: () => unknown) => {
+      try {
+        fn();
+      } catch (e) {
+        return e as HintError;
+      }
+      throw new Error("expected a throw");
+    };
+    const charset = err(() => hintLabels(3, "a"));
+    expect(charset.name).toBe("HintError");
+    expect(charset.message).toBe(
+      'hint characters must be at least 2 distinct lowercase characters, got "a"',
+    );
+    expect(err(() => hintLabels(-1)).message).toBe(
+      "hint count must be a non-negative integer, got -1",
+    );
+    expect(err(() => startHints(twelve, { action: "nope" })).message).toBe(
+      'not a hint action: "nope"',
+    );
+    expect(err(() => startHints([], { action: "hint.follow" })).message).toBe("no hint targets");
+  });
+
+  test("targets at the same place go smaller first, by height then width", () => {
+    const tall = at(0, 10, 10, 40, 30);
+    const short = at(1, 10, 10, 40, 20);
+    expect(orderTargets([tall, short]).map((t) => t.id)).toEqual([1, 0]);
+    expect(orderTargets([short, tall]).map((t) => t.id)).toEqual([1, 0]);
+    const wide = at(2, 10, 10, 60, 20);
+    const narrow = at(3, 10, 10, 30, 20);
+    expect(orderTargets([wide, narrow]).map((t) => t.id)).toEqual([3, 2]);
+    expect(orderTargets([narrow, wide]).map((t) => t.id)).toEqual([3, 2]);
+  });
+
+  test("a target whose top is at the row's centre starts a new row", () => {
+    const first = at(0, 100, 0, 40, 20);
+    const lower = at(1, 0, 10, 40, 20);
+    expect(orderTargets([first, lower]).map((t) => t.id)).toEqual([0, 1]);
+    const higher = at(2, 0, 9, 40, 20);
+    expect(orderTargets([first, higher]).map((t) => t.id)).toEqual([2, 0]);
+  });
+
+  test("upperLast of nothing, of a digit and of a longer label", () => {
+    expect(upperLast("")).toBeNull();
+    expect(upperLast("a1")).toBeNull();
+    expect(upperLast("ab")).toBe("aB");
+  });
+
+  test("the status of a session with no hint left on screen has no label", () => {
+    const state = startHints(twelve, { action: "hint.follow" });
+    expect(hintStatus({ ...state, typed: "zz" })).toEqual({ action: "hint.follow", label: null });
+  });
+
+  test("gF switches only on a key Shift makes upper case", () => {
+    const state = startHints(twelve.slice(0, 2), { action: "hint.follow_new_tab", chars: "12" });
+    const out = hintKey(state, chord("1", true)).result;
+    expect(out).toMatchObject({ kind: "select", label: "1", switch: false });
+  });
+
+  test("backspace drops only the last typed character", () => {
+    const five = twelve.slice(0, 5);
+    const state = startHints(five, { action: "hint.follow", chars: "ab" });
+    expect(state.hints.map((h) => h.label)).toEqual(["aa", "ab", "ba", "bba", "bbb"]);
+    let s = hintKey(state, chord("b")).state;
+    s = hintKey(s, chord("b")).state;
+    const back = hintKey(s, chord("backspace"));
+    expect(back.state.typed).toBe("b");
+    expect(back.result).toEqual({ kind: "narrow", visible: 3 });
+  });
+
+  test("a key of more than one character is ignored even when the charset holds it", () => {
+    const state = startHints(twelve.slice(0, 5), { action: "hint.follow", chars: "ab" });
+    expect(hintKey(state, chord("ab"))).toEqual({ state, result: { kind: "ignored" } });
+  });
+
+  test("a frame that never answered is no reply", () => {
+    expect(hintCollectReason({ queried: true, raw: undefined, reply: null, live: true })).toBe(
+      "no-reply",
+    );
+  });
+});
+
+describe("hint reply edges", () => {
+  const rect = { x: 0, y: 0, width: 1, height: 1 };
+  const link = (id: number) => ({ id, rect, kind: "link" });
+  const base = { targets: [link(0)], frames: [], ms: 0 };
+
+  test("coordinates are numbers under a million", () => {
+    expect(
+      parseHintReply({ ...base, targets: [{ ...link(0), rect: { ...rect, x: "5" } }] }),
+    ).toBeNull();
+    expect(
+      parseHintReply({ ...base, targets: [{ ...link(0), rect: { ...rect, x: 1e6 } }] }),
+    ).toBeNull();
+    expect(
+      parseHintReply({ ...base, targets: [{ ...link(0), rect: { ...rect, x: 1e6 - 1 } }] }),
+    ).not.toBeNull();
+    expect(
+      parseHintReply({ ...base, targets: [{ ...link(0), rect: { ...rect, height: 0 } }] }),
+    ).toBeNull();
+  });
+
+  test("an element collection without forms is dropped, even with no targets", () => {
+    expect(parseHintReply({ targets: [], frames: [], ms: 0 }, { elements: true })).toBeNull();
+    expect(
+      parseHintReply({ targets: [], frames: [], ms: 0, forms: [] }, { elements: true }),
+    ).toEqual({
+      targets: [],
+      frames: [],
+      ms: 0,
+      forms: [],
+    });
+  });
+
+  test("the caps are inclusive", () => {
+    const targets = Array.from({ length: HINT_REPLY_MAX_TARGETS }, (_, i) => link(i));
+    expect(parseHintReply({ ...base, targets })?.targets).toHaveLength(HINT_REPLY_MAX_TARGETS);
+    const frames = Array.from({ length: HINT_REPLY_MAX_FRAMES }, (_, id) => ({ id, rect }));
+    expect(parseHintReply({ ...base, frames })?.frames).toHaveLength(HINT_REPLY_MAX_FRAMES);
+    const href = "h".repeat(HINT_REPLY_MAX_HREF);
+    expect(parseHintReply({ ...base, targets: [{ ...link(0), href }] })?.targets[0]?.href).toBe(
+      href,
+    );
+    const text = "t".repeat(HINT_REPLY_MAX_TEXT);
+    expect(
+      parseHintReply({ ...base, targets: [{ ...link(0), text }] }, { texts: true })?.targets[0]
+        ?.text,
+    ).toBe(text);
+  });
+
+  test("a block reply's length and yanked text may reach the cap", () => {
+    const box = { x: 0, y: 0, width: 10, height: 10 };
+    expect(
+      parseBlockReply({ kind: "paragraph", length: BLOCK_REPLY_MAX_TEXT, box }, "focus"),
+    ).toEqual({
+      kind: "paragraph",
+      length: BLOCK_REPLY_MAX_TEXT,
+      box,
+    });
+    const text = "y".repeat(BLOCK_REPLY_MAX_TEXT);
+    expect(parseBlockReply({ text, unselectable: false }, "yank")).toEqual({
+      text,
+      unselectable: false,
+    });
+  });
+});
