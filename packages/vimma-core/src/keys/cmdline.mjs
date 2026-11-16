@@ -537,11 +537,12 @@ function argumentCandidates(command, kind, text, names) {
   const t = text.trim();
   const ranked = t
     ? names
-        .flatMap((name, i) => {
+        .flatMap((name) => {
           const m = scoreField(name, t);
-          return m ? [{ name, i, score: m.score }] : [];
+          return m ? [{ name, score: m.score }] : [];
         })
-        .sort((a, b) => b.score - a.score || a.i - b.i)
+        // Array.prototype.sort is stable: equal scores keep the order of `names`.
+        .sort((a, b) => b.score - a.score)
         .map((r) => r.name)
     : [...names];
   return ranked.map((name) =>
@@ -618,18 +619,19 @@ export function completeCommandLine(line, { limit = 20, args = {}, hidden = [] }
   const exact = [];
   /** @type {Candidate[]} */
   const prefix = [];
-  /** @type {Array<{ c: Candidate, span: number, start: number, i: number }>} */
+  /** @type {Array<{ c: Candidate, span: number, start: number }>} */
   const loose = [];
-  CANDIDATES.forEach((c, i) => {
+  CANDIDATES.forEach((c) => {
     if (isHidden(c.value, hidden, c.kind === "action" ? "action" : "command")) return;
     if (c.value === word) exact.push(c);
     else if (c.value.startsWith(word)) prefix.push(c);
     else {
       const f = fuzzy(word, c.value);
-      if (f) loose.push({ c, ...f, i });
+      if (f) loose.push({ c, ...f });
     }
   });
-  loose.sort((a, b) => a.span - b.span || a.start - b.start || a.i - b.i);
+  // Array.prototype.sort is stable: ties keep CANDIDATES' order.
+  loose.sort((a, b) => a.span - b.span || a.start - b.start);
   return { word, candidates: [...exact, ...prefix, ...loose.map((l) => l.c)].slice(0, limit) };
 }
 

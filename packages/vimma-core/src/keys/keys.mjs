@@ -211,7 +211,6 @@ function parseAngle(inner) {
     if (!m || mods[m]) return null;
     mods[m] = true;
   }
-  if (rawKey === "") return null;
   const norm = normaliseKey(rawKey, !!mods.shift);
   if (!norm) return null;
   return makeChord(norm.key, { ...mods, shift: norm.shift });
@@ -360,15 +359,18 @@ const US_CODES = {
 
 /**
  * Whether `key`, one character, is what its physical key types without Option/AltGr, judged by
- * a US layout at the same shift state; a letter key typing its own letter. An unknown `code`
- * (a synthesized event) counts only letters and digits as the key's own.
+ * a US layout at the same shift state. A letter key typing any ASCII letter types its own:
+ * layouts move letters between the letter keys (AZERTY's `KeyQ` types `a`, QWERTZ's `KeyY`
+ * types `z`, Dvorak moves most of them), while Option and AltGr compose other characters on them
+ * (`å`, `@`). An unknown `code` (a synthesized event) counts only letters and digits as the
+ * key's own.
  * @param {string} key
  * @param {string | undefined} code
  * @param {boolean} shift
  */
 function ownCharacter(key, code, shift) {
   const letter = code?.match(/^Key([A-Z])$/)?.[1];
-  if (letter) return key.toLowerCase() === letter.toLowerCase();
+  if (letter) return /^[a-z]$/i.test(key);
   const us = code ? own(US_CODES, code) : undefined;
   if (us) return key === us[shift ? 1 : 0];
   return /^[a-z0-9]$/i.test(key);
