@@ -823,19 +823,41 @@ export function parseConsoleEntry(raw) {
     source: /** @type {ConsoleEntry["source"]} */ (r.source),
     // Sliced first: a content process's string of any size is never spread whole.
     message: cutTo(r.message.slice(0, 4 * AGENT_CONSOLE.message), AGENT_CONSOLE.message),
-    file: cutTo(r.file.slice(0, 4 * AGENT_CONSOLE.url), AGENT_CONSOLE.url),
+    file: agentUrl(r.file),
     line: /** @type {number} */ (r.line),
     column: /** @type {number} */ (r.column),
     time: /** @type {number} */ (r.time),
   };
 }
 
+/** A URL's scheme and its `//`, at the start of its shown text. */
+const URL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
+
 /**
- * `url` without a user name and password, which a script's or request's URL may carry and which
- * are never the agent's (security.md M30).
- * @param {string} url
+ * A script's, file's or request's URL as the agent may see it (F24, security.md M30): as shown
+ * (NFKC, no invisible characters, no white space), without the user name and password it may
+ * carry, then cut at `max` code points. The user name and password go before the cut, so that no
+ * cut can take their `@` and leave them in (#1198): everything of the authority up to its last
+ * `@`, as a URL parser reads it. Only the first `4 * max` code units are read, so the work is
+ * bounded however long the URL; an authority that runs past them may hide a user name and
+ * password, so it is dropped whole and only its scheme kept.
+ * @param {unknown} url @param {number} [max]
  */
-const withoutUserinfo = (url) => url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/?#@]*@/i, "$1");
+export function agentUrl(url, max = AGENT_CONSOLE.url) {
+  const raw = String(url ?? "");
+  const read = raw.slice(0, 4 * max);
+  const text = shown(read).replace(/\s/g, "");
+  const scheme = URL_SCHEME.exec(text)?.[0];
+  if (!scheme) return cutTo(text, max);
+  const rest = text.slice(scheme.length);
+  let end = rest.search(/[/?#]/);
+  if (end < 0) {
+    if (read.length < raw.length) return `${scheme}\u2026`;
+    end = rest.length;
+  }
+  const at = rest.lastIndexOf("@", end);
+  return cutTo(scheme + rest.slice(at + 1), max);
+}
 
 /**
  * A frame's entries as it answers them (F24): only those after `since`, newest first, at most
@@ -857,7 +879,7 @@ const errorLine = (e) =>
     level: e.level,
     source: e.source,
     message: valueText(e.message, AGENT_CONSOLE.message),
-    file: cutTo(withoutUserinfo(shown(e.file).replace(/\s/g, "")), AGENT_CONSOLE.url),
+    file: agentUrl(e.file),
     line: e.line,
     column: e.column,
     time: e.time,
@@ -867,7 +889,7 @@ const errorLine = (e) =>
 const requestLine = (r) =>
   jsonLine({
     method: line(r.method, 16),
-    url: cutTo(withoutUserinfo(shown(r.url).replace(/\s/g, "")), AGENT_CONSOLE.url),
+    url: agentUrl(r.url),
     ...(r.status !== undefined ? { status: r.status } : {}),
     ...(r.error !== undefined ? { error: line(r.error, 64) } : {}),
     type: line(r.type, 32),
