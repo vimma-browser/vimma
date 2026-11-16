@@ -1397,6 +1397,12 @@ describe("the words' edges", () => {
     );
   });
 
+  test("a model with the Arabic letter mark is refused like the other bidi controls", () => {
+    expect(modelProblem("gpt\u061c5")).toBe(
+      'the model "gpt5" is not a model name: it has control characters',
+    );
+  });
+
   test("a CLI the table does not know is named by its id", () => {
     expect(modelPrompt("nope", {})).toEqual({
       label: "agent model: ",

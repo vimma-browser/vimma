@@ -126,13 +126,17 @@ only the agent workspace, and every request asks you first (§12).
   built-in agent's tool calls); any other arguments are refused (`invalid-args`) before the
   command runs. It checks and copies one copy of the caller's own data, made as JSON makes it,
   so that an in-process caller's getter or inherited property cannot change a value between the
-  check and the handler.
+  check and the handler. An agent's labels (`agent-hello`'s client name and version, `via`)
+  **never** carry a control character, a bidirectional control (Unicode's Bidi_Control, the
+  Arabic letter mark U+061C among them), a deprecated format character (U+206A to U+206F) or a
+  line or paragraph separator.
   [`LineFramer gives back the lines sent, however the bytes are chunked`](../../packages/vimma-core/test/fuzz/control.fuzz.test.ts),
   [`any line a client sends, decoded as the server does, validates without throwing`](../../packages/vimma-core/test/fuzz/control.fuzz.test.ts),
   [`every valid message validates; one changed or added field makes it invalid`](../../packages/vimma-core/test/fuzz/control.fuzz.test.ts),
   [`send-keys passes only keys the server can parse; open only short http(s), file and about URLs`](../../packages/vimma-core/test/fuzz/control.fuzz.test.ts),
   [`a type that is not a string is an error, never a throw`](../../packages/vimma-core/test/control.test.ts),
   [`agent-open passes only short http(s) URLs; agent labels never carry control or bidi characters`](../../packages/vimma-core/test/fuzz/control.fuzz.test.ts),
+  [`a label with a bidi control, a deprecated format character or a separator is refused`](../../packages/vimma-core/test/control.test.ts),
   [`test_handshake`](../../tests/browser/browser_vimma_control.js),
   [`a copy: the parsed arguments share no object with the request's`](../../packages/vimma-core/test/control-v2.test.ts),
   [`what the validator refuses is null: a missing tab, a wrong type, an extra field`](../../packages/vimma-core/test/control-v2.test.ts),
