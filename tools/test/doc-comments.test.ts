@@ -18,10 +18,10 @@ function tsFiles(dir: string): string[] {
   });
 }
 
-/** The 1-based lines where a doc comment starts directly below another comment's end. */
+/** The 1-based lines where a doc comment starts directly below another doc comment's end. */
 function stackedDocComments(text: string): number[] {
-  return [...text.matchAll(/\*\/[ \t]*\r?\n[ \t]*\/\*\*/g)].map(
-    (m) => text.slice(0, m.index).split("\n").length + 1,
+  return [...text.matchAll(/\/\*\*(?:(?!\*\/)[\s\S])*\*\/[ \t]*\r?\n[ \t]*\/\*\*/g)].map(
+    (m) => text.slice(0, m.index + m[0].length).split("\n").length,
   );
 }
 
@@ -29,6 +29,9 @@ describe("doc comments in tools/", () => {
   it("finds a doc comment stacked on another", () => {
     expect(stackedDocComments("/** a */\n/** b */\nf();\n")).toEqual([2]);
     expect(stackedDocComments("/** a */\n\n/** b */\nf();\n")).toEqual([]);
+    expect(stackedDocComments("x;\n/**\n * a\n */\n/** b */\nf();\n")).toEqual([5]);
+    expect(stackedDocComments("/* eslint-disable no-x */\n/** b */\nf();\n")).toEqual([]);
+    expect(stackedDocComments("// a\n/** b */\nf();\n")).toEqual([]);
   });
 
   it("no declaration carries two doc comments", () => {
