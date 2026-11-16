@@ -328,7 +328,9 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
    release, as `update-publish.yml` does. A draft published after its macOS files had needed a
    manual run, and 0.1.9 and 0.1.10 missed the tap. The push itself still runs only by
    `workflow_dispatch` from `main`, and a failed `start` opens the `release-failure` issue as a
-   failed push does.)
+   failed push does.) (Since changed: `macos-tap` and `start` also hold `contents: read`, to read
+   the release's metadata with the job's token rather than under the unauthenticated rate limit,
+   #1170.)
 10. **The tap's credential is a deploy key held by a `homebrew` environment,** limited to `main`,
     so that only a workflow file reviewed onto `main` can write to the tap, and a missing key
     skips the job instead of failing it. No tag may deploy to it, because a tag ruleset restricts

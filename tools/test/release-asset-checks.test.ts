@@ -103,6 +103,7 @@ cat "${join(dir, "body.json")}" > "$out"
       TAG: "v0.1.11",
       GITHUB_REPOSITORY: "vimma-browser/vimma",
       RUNNER_TEMP: dir,
+      GH_TOKEN: "ghs_stub",
       // Homebrew's jq on a macOS runner refuses to run without HOME
       HOME: dir,
       GITHUB_STEP_SUMMARY: join(dir, "summary"),
@@ -146,7 +147,7 @@ describe.each(CHECKS)("%s %s: %s", (file, job, step, asset, dispatch) => {
     expect(result.status).toBe(0);
     expect(result.curl).toEqual([
       expect.stringMatching(
-        /^curl -sS --proto =https --retry 3 -o \S+ -w %\{http_code\} https:\/\/api\.github\.com\/repos\/vimma-browser\/vimma\/releases\/tags\/v0\.1\.11$/,
+        /^curl -sS --proto =https --retry 3 -o \S+ -w %\{http_code\} -H Authorization: Bearer ghs_stub https:\/\/api\.github\.com\/repos\/vimma-browser\/vimma\/releases\/tags\/v0\.1\.11$/,
       ),
     ]);
     expect(result.gh.join("\n")).toContain(dispatch);

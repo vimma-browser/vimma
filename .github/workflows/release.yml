@@ -1470,7 +1470,7 @@ jobs:
   # macOS files, publishing starts homebrew.yml, whose start job then finds the cask. Likewise the macOS
   # update manifest (spec macos-homebrew, decision 16): update-publish.yml for target macos,
   # which update-publish.yml itself starts when a draft is published after its .dmg.
-  # No repository code, and no token beyond starting a workflow.
+  # No repository code, and no token beyond starting a workflow and reading the release (#1170).
   macos-tap:
     needs: macos-publish
     # as macos-sign: an ad hoc release skips the signing jobs, its ancestors
@@ -1483,6 +1483,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       actions: write # start homebrew.yml and update-publish.yml (workflow_dispatch)
+      contents: read # the release's metadata, read with this job's token
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -1491,7 +1492,10 @@ jobs:
           # The release's metadata, never the file: GitHub counts any request for a release file,
           # a HEAD too, as a download (docs/runbook/ci-release-download-counts.md, "Release download counts"). A draft
           # answers 404 here, as at its download URLs.
+          # With the job's token: without one, the runner shares GitHub's 60 requests an hour per IP,
+          # and a 403 is that limit, not the answer (#1170). curl --retry waits out a 429.
           code=$(curl -sS --proto =https --retry 3 -o "$RUNNER_TEMP/release.json" -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG") || true
           case "$code" in
             200) jq -e '.assets | type == "array"' "$RUNNER_TEMP/release.json" > /dev/null 2>&1 \
@@ -1515,7 +1519,10 @@ jobs:
           # The release's metadata, never the file: GitHub counts any request for a release file,
           # a HEAD too, as a download (docs/runbook/ci-release-download-counts.md, "Release download counts"). A draft
           # answers 404 here, as at its download URLs.
+          # With the job's token: without one, the runner shares GitHub's 60 requests an hour per IP,
+          # and a 403 is that limit, not the answer (#1170). curl --retry waits out a 429.
           code=$(curl -sS --proto =https --retry 3 -o "$RUNNER_TEMP/release.json" -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG") || true
           case "$code" in
             200) jq -e '.assets | type == "array"' "$RUNNER_TEMP/release.json" > /dev/null 2>&1 \
