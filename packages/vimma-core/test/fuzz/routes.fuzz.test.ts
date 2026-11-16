@@ -13,7 +13,7 @@ import {
   routeDomainFor,
   validateRoutes,
 } from "../../src/config/routes.mjs";
-import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.mjs";
+import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.ts";
 
 /**
  * The one route a valid rule resolves to; throws when it resolves to none.

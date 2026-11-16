@@ -16,8 +16,8 @@ import { PALETTE_KEYS } from "../../src/config/theme.mjs";
 import { INSERT_SITE_MODES } from "../../src/keys/editable.mjs";
 import { PANES_MAX_LIMIT } from "../../src/panes/panes.mjs";
 import { resolveDownloadDir } from "../../src/agent/agent-downloads.mjs";
-import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.mjs";
-import { configText } from "./toml-arb.mjs";
+import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.ts";
+import { configText } from "./toml-arb.ts";
 
 /** @param {import("../../src/config/config.mjs").ParseResult} r */
 function expectWellFormed(r) {

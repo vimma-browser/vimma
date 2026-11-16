@@ -40,7 +40,7 @@ import { getAction } from "../src/keys/actions.mjs";
 import { compileKeymap } from "../src/keys/keymap.mjs";
 import { statusSegments } from "../src/ui/statusbar.mjs";
 import { THEME_TOKENS } from "../src/config/theme.mjs";
-import { budget } from "./budget.mjs";
+import { budget } from "./budget.ts";
 
 const subtle = globalThis.crypto.subtle;
 const ALG = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-384" };

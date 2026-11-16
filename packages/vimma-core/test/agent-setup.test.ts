@@ -19,7 +19,7 @@ import {
   sameProvider,
   unavailableText,
 } from "../src/agent/agent-setup.mjs";
-import { budget } from "./budget.mjs";
+import { budget } from "./budget.ts";
 
 /**
  * A fake fetch: `routes` maps a URL to a reply body (an object, sent as JSON) or a status.

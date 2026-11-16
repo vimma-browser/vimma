@@ -22,7 +22,7 @@ import {
 } from "../src/config/theme.mjs";
 import { mergeWithDefaults } from "../src/config/config.mjs";
 import { MODES } from "../src/keys/modes.mjs";
-import { budget } from "./budget.mjs";
+import { budget } from "./budget.ts";
 
 const fixture = (name: string) =>
   readFileSync(new URL(`../../../tests/contract/theme/${name}`, import.meta.url), "utf8");

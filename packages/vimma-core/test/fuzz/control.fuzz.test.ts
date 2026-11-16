@@ -17,7 +17,7 @@ import {
 } from "../../src/control/control.mjs";
 import { parseKey } from "../../src/keys/keys.mjs";
 import { MODES } from "../../src/keys/modes.mjs";
-import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.mjs";
+import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.ts";
 
 const FIELDS = [
   "type",

@@ -9,7 +9,7 @@
  */
 import fc from "fast-check";
 import { PALETTE_KEYS } from "../../src/config/theme.mjs";
-import { PROTO_NAMES, nastyString } from "./harness.mjs";
+import { PROTO_NAMES, nastyString } from "./harness.ts";
 
 const SCHEMA_KEYS = [
   "schema",

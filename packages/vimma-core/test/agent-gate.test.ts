@@ -36,7 +36,7 @@ import {
   wrapUntrusted,
 } from "../src/agent/agent.mjs";
 import { logCells, logRow } from "../src/agent/agent-prompt.mjs";
-import { budget } from "./budget.mjs";
+import { budget } from "./budget.ts";
 import type { Admission, LogOutcome } from "../src/agent/agent.mjs";
 
 const MIN = 60_000;

@@ -10,7 +10,7 @@ import {
   UNTRUSTED_OPEN,
   wrapUntrusted,
 } from "../../src/agent/agent.mjs";
-import { FUZZ_TIMEOUT, fuzz, nastyString } from "./harness.mjs";
+import { FUZZ_TIMEOUT, fuzz, nastyString } from "./harness.ts";
 
 /** Occurrences of `needle` in `text`. @param {string} text @param {string} needle */
 const count = (text, needle) => text.split(needle).length - 1;
