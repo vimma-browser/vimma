@@ -1,5 +1,5 @@
 // docs/specs/m6a-updater.md §7, sub-PR 4: release.yml and nightly.yml build Firefox's updater in
-// (VIMMA_UPDATES=1) and check what they packaged with tools/update/check-build.mjs; a release
+// (VIMMA_UPDATES=1) and check what they packaged with tools/update/check-build.ts; a release
 // also ships a complete MAR, signed by update-publish.yml's mar-sign job (the one place the
 // update key signs), checked with the committed certificates and Mozilla's signmar, and listed
 // in SHA256SUMS, which release.yml's cosign signature covers. The nightly builds its MAR too, as
@@ -13,35 +13,29 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
 
-/** @param {string} name */
-const workflow = (name) =>
+const workflow = (name: string) =>
   readFileSync(new URL(`../../../.github/workflows/${name}`, import.meta.url), "utf8");
 
 /**
- * @param {string} text
- * @returns {Map<string, string>} job id -> its YAML block
+ * @returns job id -> its YAML block
  */
-function jobsOf(text) {
+function jobsOf(text: string): Map<string, string> {
   const body = text.slice(text.indexOf("\njobs:\n") + 7);
   const parts = body.split(/^ {2}([a-z][a-z0-9-]*):\n/m).slice(1);
-  /** @type {Map<string, string>} */
-  const map = new Map();
+  const map: Map<string, string> = new Map();
   for (let i = 0; i < parts.length; i += 2) map.set(parts[i] ?? "", parts[i + 1] ?? "");
   return map;
 }
 
-/** @param {string} block */
-function condition(block) {
+function condition(block: string) {
   const match = /^ {4}if: (>-\n(?: {6}.*\n)+|.*\n)/m.exec(block);
   return (match?.[1] ?? "").replace(/^>-\n/, "").replace(/\s+/g, " ").trim();
 }
 
 /**
  * One step of `block`, from its `- name:` line up to the next step.
- * @param {string} block
- * @param {string} name
  */
-function stepOf(block, name) {
+function stepOf(block: string, name: string) {
   const start = block.indexOf(`- name: ${name}\n`);
   expect(start, name).toBeGreaterThan(-1);
   const rest = block.slice(start + 1);
@@ -49,19 +43,15 @@ function stepOf(block, name) {
   return end === -1 ? rest : rest.slice(0, end);
 }
 
-/**
- * @param {string} block
- * @param {string} name
- */
-function runOf(block, name) {
+function runOf(block: string, name: string) {
   const step = stepOf(block, name);
   const lines = step.slice(step.indexOf("run: |\n") + 8).split("\n");
   while (lines.length > 0 && /^ {6}#|^\s*$/.test(lines.at(-1) ?? "")) lines.pop();
   return lines.map((l) => l.replace(/^ {10}/, "")).join("\n");
 }
 
-/** The `permissions:` lines of a job. @param {string} block */
-function permissionsOf(block) {
+/** The `permissions:` lines of a job. */
+function permissionsOf(block: string) {
   const m = /^ {4}permissions:\n((?: {6}.*\n)+)/m.exec(block);
   return (m?.[1] ?? "")
     .split("\n")
@@ -78,7 +68,7 @@ const MAR_DONE =
 
 describe("release.yml: the updater and the complete MAR", () => {
   const all = jobsOf(workflow("release.yml"));
-  const job = (/** @type {string} */ id) => all.get(id) ?? "";
+  const job = (id: string) => all.get(id) ?? "";
 
   it("builds Firefox's updater in, for every mach call of the Linux build", () => {
     expect(job("build")).toMatch(/^ {4}env:\n(?: {6}#.*\n)* {6}VIMMA_UPDATES: "1"\n/m);
@@ -88,11 +78,11 @@ describe("release.yml: the updater and the complete MAR", () => {
 
   it("hands this build's MAR tools to the later jobs, and nothing that holds a secret", () => {
     const run = runOf(job("build"), "MAR tools for the package and mar jobs");
-    // tools/update/mar-tools.mjs packs the host mar, make_full_update.sh and common.sh, signmar
+    // tools/update/mar-tools.ts packs the host mar, make_full_update.sh and common.sh, signmar
     // with its libraries and Mozilla's certificates, then checks that they start from mar-tools
-    // (tools/update/test/mar-tools.test.mjs); nightly.yml runs the same script.
+    // (tools/update/test/mar-tools.test.ts); nightly.yml runs the same script.
     expect(run.trim()).toBe(
-      'node tools/update/mar-tools.mjs pack --objdir "$MOZ_OBJDIR" --engine engine --out mar-tools',
+      'node tools/update/mar-tools.ts pack --objdir "$MOZ_OBJDIR" --engine engine --out mar-tools',
     );
     expect(run).not.toMatch(/safebrowsing|SAFEBROWSING/);
     const build = job("build");
@@ -106,7 +96,7 @@ describe("release.yml: the updater and the complete MAR", () => {
     const step = stepOf(job("package"), "Check the updater in the release tarball");
     expect(step).not.toMatch(/^ {8}if:/m);
     expect(step).toContain(
-      'node tools/update/check-build.mjs "$unpacked/vimma" --mozilla-certs mar-tools/mozilla-certs',
+      'node tools/update/check-build.ts "$unpacked/vimma" --mozilla-certs mar-tools/mozilla-certs',
     );
     expect(step).toContain('tar -xJf "dist/vimma-${TAG#v}-linux-x86_64.tar.xz" -C "$unpacked"');
   });
@@ -117,7 +107,7 @@ describe("release.yml: the updater and the complete MAR", () => {
     const run = runOf(job("package"), "Build the complete MAR (unsigned, with its placeholder)");
     expect(run).toContain('mar="vimma-${TAG#v}-linux-x86_64.complete.mar"');
     expect(run).toContain(
-      'node tools/update/mar.mjs build --tarball "dist/vimma-${TAG#v}-linux-x86_64.tar.xz" --tools mar-tools --channel vimma --out "mar/$mar"',
+      'node tools/update/mar.ts build --tarball "dist/vimma-${TAG#v}-linux-x86_64.tar.xz" --tools mar-tools --channel vimma --out "mar/$mar"',
     );
     expect(run).toContain('echo "mar=$mar" >> "$GITHUB_OUTPUT"');
     expect(job("package")).toMatch(
@@ -145,8 +135,7 @@ describe("release.yml: the updater and the complete MAR", () => {
   // are the union of what update-publish.yml's jobs ask for; each job still gets only its own.
   it("mar-sign's permissions are the ceiling update-publish.yml's jobs need, no more", () => {
     const called = jobsOf(workflow("update-publish.yml"));
-    /** @type {Set<string>} */
-    const union = new Set();
+    const union: Set<string> = new Set();
     for (const block of called.values()) for (const p of permissionsOf(block)) union.add(p);
     expect(new Set(permissionsOf(job("mar-sign")))).toEqual(union);
     expect(permissionsOf(called.get("mar-sign") ?? "")).toEqual(["id-token: write"]);
@@ -193,10 +182,10 @@ describe("release.yml: the updater and the complete MAR", () => {
     expect(run).toContain('[ "$MAR" = "vimma-${TAG#v}-linux-x86_64.complete.mar" ]');
     expect(run).toContain('[ -f "mar-signed/$MAR" ]');
     expect(run).toContain(
-      'node tools/update/mar.mjs same-content --placeholder "mar-unsigned/$MAR" --signed "mar-signed/$MAR"',
+      'node tools/update/mar.ts same-content --placeholder "mar-unsigned/$MAR" --signed "mar-signed/$MAR"',
     );
     expect(run).toContain(
-      'node tools/update/mar.mjs verify --mar "mar-signed/$MAR" --cert configs/updater/primary.der --cert configs/updater/secondary.der --channel vimma --product-version "$firefox"',
+      'node tools/update/mar.ts verify --mar "mar-signed/$MAR" --cert configs/updater/primary.der --cert configs/updater/secondary.der --channel vimma --product-version "$firefox"',
     );
     // One NSS database per slot: until the cold secondary exists both slots hold the same
     // certificate (decision 39), and NSS keeps one nickname per certificate in a database, so
@@ -232,7 +221,7 @@ describe("release.yml: the updater and the complete MAR", () => {
     const dir = tempDir("vimma-mar-sums-");
     for (const d of ["dist", "mar-signed"]) mkdirSync(join(dir, d));
     const files = { "vimma-0.3.1-linux-x86_64.tar.xz": "t", "vimma-0.3.1-x86_64.AppImage": "a" };
-    const sum = (/** @type {string} */ s) => createHash("sha256").update(s).digest("hex");
+    const sum = (s: string) => createHash("sha256").update(s).digest("hex");
     for (const [f, c] of Object.entries(files)) writeFileSync(join(dir, "dist", f), c);
     writeFileSync(
       join(dir, "dist", "SHA256SUMS"),
@@ -298,12 +287,12 @@ describe("nightly.yml: the updater, its channel, and the MAR step", () => {
   it("packages for the nightly channel and checks the updater before the upload", () => {
     const run = runOf(build, "Nightly update channel, and the updater checked");
     expect(run).toContain(
-      'node tools/update/channel.mjs --tarball "$tarball" --channel vimma-nightly --out "$tarball.new"',
+      'node tools/update/channel.ts --tarball "$tarball" --channel vimma-nightly --out "$tarball.new"',
     );
     expect(run).toContain(
-      'node tools/update/check-build.mjs "$unpacked/vimma" --channel vimma-nightly',
+      'node tools/update/check-build.ts "$unpacked/vimma" --channel vimma-nightly',
     );
-    const at = (/** @type {string} */ name) => build.indexOf(`- name: ${name}\n`);
+    const at = (name: string) => build.indexOf(`- name: ${name}\n`);
     expect(at("Nightly update channel, and the updater checked")).toBeGreaterThan(at("Package"));
     expect(at("Nightly update channel, and the updater checked")).toBeLessThan(
       at("Upload the package"),
@@ -313,7 +302,7 @@ describe("nightly.yml: the updater, its channel, and the MAR step", () => {
   it("runs the release's MAR step for the nightly channel, and keeps it only for a public nightly", () => {
     const run = runOf(build, "Complete MAR, for the nightly channel");
     expect(run).toContain("--channel vimma-nightly");
-    expect(run).toContain("node tools/update/mar.mjs build");
+    expect(run).toContain("node tools/update/mar.ts build");
     expect(run).toContain('--out "mar/$mar"');
     expect(run).not.toMatch(/--out "?dist/);
     // Without public nightly releases (decision 42) the MAR is a check and is thrown away.

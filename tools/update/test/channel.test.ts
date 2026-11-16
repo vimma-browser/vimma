@@ -1,4 +1,4 @@
-// tools/update/channel.mjs (docs/specs/m6a-updater.md §1): the compile-time channel stays
+// tools/update/channel.ts (docs/specs/m6a-updater.md §1): the compile-time channel stays
 // `vimma`, which picks the updater's certificates, and the nightly tarball gets its own update
 // channel when it is packaged. Both channel files must change together: channel-prefs.js picks
 // the manifest URL, update-settings.ini the MAR channel the updater accepts.
@@ -7,15 +7,15 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
-import { setChannel } from "../channel.mjs";
+import { setChannel } from "../channel.ts";
 
-const SCRIPT = new URL("../channel.mjs", import.meta.url).pathname;
+const SCRIPT = new URL("../channel.ts", import.meta.url).pathname;
 const PREFS = '/* comment */\npref("app.update.channel", "vimma");\n';
 const SETTINGS =
   "; If you modify this file updates may fail.\n[Settings]\nACCEPTED_MAR_CHANNEL_IDS=vimma\n";
 
 /** An unpacked install with both channel files, as `./mach package` writes them. */
-function install(/** @type {{ prefs?: string, settings?: string }} */ o = {}) {
+function install(o: { prefs?: string; settings?: string } = {}) {
   const root = tempDir("vimma-channel-");
   const dir = join(root, "vimma");
   mkdirSync(join(dir, "defaults/pref"), { recursive: true });
@@ -53,7 +53,7 @@ describe("setChannel", () => {
   });
 });
 
-describe("channel.mjs --tarball", () => {
+describe("channel.ts --tarball", () => {
   it("writes a tarball whose install says vimma-nightly in both files", () => {
     const { root } = install();
     const tarball = join(root, "in.tar.xz");

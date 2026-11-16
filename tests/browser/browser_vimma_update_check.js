@@ -376,7 +376,7 @@ add_task(async function a_source_build_checks_nothing() {
 });
 
 add_task(async function update_command_opens_the_steps() {
-  // The tarball's SHA-512, as the release pipeline signs it (tools/update/manifest.mjs).
+  // The tarball's SHA-512, as the release pipeline signs it (tools/update/manifest.ts).
   const sha512 = "5".repeat(128);
   await serve(
     await manifest({

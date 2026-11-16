@@ -37,7 +37,7 @@ import {
   parseManifest,
   verifyManifest,
 } from "../../../packages/vimma-core/src/updates/updates.mjs";
-import { addSignaturePlaceholder, readMar, verifyMar } from "../../update/mar.mjs";
+import { addSignaturePlaceholder, readMar, verifyMar } from "../../update/mar.ts";
 import { testKey } from "../../test/test-keys.ts";
 
 const dirs: string[] = [];

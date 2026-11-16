@@ -163,7 +163,7 @@ _Pages_ and _extensions_ cannot reach it.
   a label read that fails transiently (an HTTP 5xx, a body that is not JSON, a network error) is
   tried four times in all, 2, 4 and 8 s apart, and a commit whose labels still cannot be read
   **must** fail the run, never count as unlabelled, so a security release is never published as
-  a normal one. The responses are parsed as raw JSON in `manifest.mjs`, not through jq, and their
+  a normal one. The responses are parsed as raw JSON in `manifest.ts`, not through jq, and their
   shape is checked: a pulls response that is not a list of pull requests, each with a list of
   labels with string names, fails the run (jq would read `{}` as no labels), and so does a
   releases list that does not contain the tag being published (such a list is malformed or cut
@@ -211,7 +211,7 @@ _Pages_ and _extensions_ cannot reach it.
   lives only in the `update-publish` environment; a repository or organisation secret of that
   name, readable from any branch, would also flow into the call, and none may exist
   (`gh api repos/vimma-browser/vimma/actions/secrets`). The release
-  jobs refuse a body for any channel but `vimma`, `manifest.mjs` checks each channel before a
+  jobs refuse a body for any channel but `vimma`, `manifest.ts` checks each channel before a
   push, and the client refuses a manifest for another channel (UP2), so a nightly offer never
   reaches a release install, nor a release offer a nightly install. Each channel's serials and
   offers only grow: an offer of an older build than the published nightly manifest's is
@@ -227,50 +227,50 @@ _Pages_ and _extensions_ cannot reach it.
   **⚠ limit:** without a required reviewer on `update-signing`, anyone with write access can
   start a run on `main` that re-signs a published release or offers nothing (withholding
   updates).
-  [`grants nothing by default, and each job only what it needs`](../../tools/update/test/update-workflow.test.mjs),
-  [`an unchanged day's re-sign offers the same build under a newer serial, and installs stay current`](../../tools/update/test/nightly-manifest.test.mjs),
-  [`only sign, mar-sign and nightly-sign mint an OIDC token or name the signing environment`](../../tools/update/test/update-workflow.test.mjs),
-  [`%s runs only in nightly.yml's call on main, with UPDATES_ENABLED and NIGHTLY_RELEASE_ENABLED`](../../tools/update/test/update-workflow.test.mjs),
-  [`nightly-prepare reads the public nightly pre-release and its nightly.yml signature`](../../tools/update/test/update-workflow.test.mjs),
-  [`nightly-prepare checks the MAR's channel and builds the nightly channel's manifest`](../../tools/update/test/update-workflow.test.mjs),
-  [`nightly-publish checks the signed file, then pushes only the nightly channel's path`](../../tools/update/test/update-workflow.test.mjs),
-  [`the release jobs never write the nightly path, nor the nightly jobs the release path`](../../tools/update/test/update-workflow.test.mjs),
-  [`nightly-sign signs the nightly's body so that the browser's verifier accepts it`](../../tools/update/test/update-workflow.test.mjs),
-  [`nightly-sign refuses to sign %s`](../../tools/update/test/update-workflow.test.mjs),
-  [`sign, the release's check, refuses the nightly's body`](../../tools/update/test/update-workflow.test.mjs),
-  [`checkSigned, the release's check, refuses a nightly manifest`](../../tools/update/test/nightly-manifest.test.mjs),
-  [`checkSignedNightly refuses a release manifest, whatever it offers`](../../tools/update/test/nightly-manifest.test.mjs),
-  [`checkSignedNightly refuses another key, a changed file, another build and a moved MAR`](../../tools/update/test/nightly-manifest.test.mjs),
-  [`refuses an older build than the published nightly manifest offers, and an old serial`](../../tools/update/test/nightly-manifest.test.mjs),
-  [`is offered to a nightly install of an older build, and to no release install`](../../tools/update/test/nightly-manifest.test.mjs),
-  [`the signing job %s runs no repository code: no checkout, no node, no npm`](../../tools/update/test/update-workflow.test.mjs),
-  [`a published release only starts the run on main, and only with UPDATES_ENABLED`](../../tools/update/test/update-workflow.test.mjs),
-  [`%s runs only by hand on main, here, and with UPDATES_ENABLED or as a dry run`](../../tools/update/test/update-workflow.test.mjs),
-  [`checks that the release is published, not a pre-release, and on main`](../../tools/update/test/update-workflow.test.mjs),
-  [`checks SHA256SUMS against release.yml's signature, and refuses an unsigned release`](../../tools/update/test/update-workflow.test.mjs),
-  [`the publish job verifies with the browser's verifier and with openssl before any push`](../../tools/update/test/update-workflow.test.mjs),
-  [`the deploy key lives in its own environment and reaches only the push steps`](../../tools/update/test/update-workflow.test.mjs),
-  [`a call receives the deploy key only by name, optional, and only nightly.yml's manifest passes it`](../../tools/update/test/update-workflow.test.mjs),
-  [`pushes one commit naming the version to main, never forced, to a pinned host key`](../../tools/update/test/update-workflow.test.mjs),
-  [`a push the other target's run beat rebases and lands, with no git identity configured`](../../tools/update/test/update-workflow.test.mjs),
-  [`signs the body so that the browser's verifier accepts it under the KMS key`](../../tools/update/test/update-workflow.test.mjs),
-  [`refuses to sign %s`](../../tools/update/test/update-workflow.test.mjs),
-  [`every asset must be listed with the hash of the file that was downloaded`](../../tools/update/test/manifest.test.mjs),
-  [`must be newer than the published manifest's; equal or older is refused`](../../tools/update/test/manifest.test.mjs),
-  [`checkSigned refuses another key, a changed file, an older serial and another version`](../../tools/update/test/manifest.test.mjs),
-  [`refuses to offer an older version than the published manifest does`](../../tools/update/test/manifest.test.mjs),
-  [`retries a transient failure, then reads the labels`](../../tools/update/test/manifest.test.mjs),
-  [`throws after four attempts that all fail, never answering no labels`](../../tools/update/test/manifest.test.mjs),
-  [`throws at once on a failure that is not transient`](../../tools/update/test/manifest.test.mjs),
-  [`throws at once on %s instead of answering no labels`](../../tools/update/test/manifest.test.mjs),
-  [`throws at once on %s instead of widening the range`](../../tools/update/test/manifest.test.mjs),
-  [`downloads the target's files and sums, and passes the target to manifest.mjs`](../../tools/update/test/update-workflow.test.mjs),
-  [`checks a macOS body against the macOS target, and refuses a Linux one there`](../../tools/update/test/update-workflow.test.mjs),
-  [`runs one manifest per target at a time, never cancelling one half done`](../../tools/update/test/update-workflow.test.mjs),
-  [`refuses a .dmg that does not match SHA256SUMS-macos`](../../tools/update/test/manifest.test.mjs),
-  [`checkSigned takes the target: a Linux manifest is refused for macOS and back`](../../tools/update/test/manifest.test.mjs),
+  [`grants nothing by default, and each job only what it needs`](../../tools/update/test/update-workflow.test.ts),
+  [`an unchanged day's re-sign offers the same build under a newer serial, and installs stay current`](../../tools/update/test/nightly-manifest.test.ts),
+  [`only sign, mar-sign and nightly-sign mint an OIDC token or name the signing environment`](../../tools/update/test/update-workflow.test.ts),
+  [`%s runs only in nightly.yml's call on main, with UPDATES_ENABLED and NIGHTLY_RELEASE_ENABLED`](../../tools/update/test/update-workflow.test.ts),
+  [`nightly-prepare reads the public nightly pre-release and its nightly.yml signature`](../../tools/update/test/update-workflow.test.ts),
+  [`nightly-prepare checks the MAR's channel and builds the nightly channel's manifest`](../../tools/update/test/update-workflow.test.ts),
+  [`nightly-publish checks the signed file, then pushes only the nightly channel's path`](../../tools/update/test/update-workflow.test.ts),
+  [`the release jobs never write the nightly path, nor the nightly jobs the release path`](../../tools/update/test/update-workflow.test.ts),
+  [`nightly-sign signs the nightly's body so that the browser's verifier accepts it`](../../tools/update/test/update-workflow.test.ts),
+  [`nightly-sign refuses to sign %s`](../../tools/update/test/update-workflow.test.ts),
+  [`sign, the release's check, refuses the nightly's body`](../../tools/update/test/update-workflow.test.ts),
+  [`checkSigned, the release's check, refuses a nightly manifest`](../../tools/update/test/nightly-manifest.test.ts),
+  [`checkSignedNightly refuses a release manifest, whatever it offers`](../../tools/update/test/nightly-manifest.test.ts),
+  [`checkSignedNightly refuses another key, a changed file, another build and a moved MAR`](../../tools/update/test/nightly-manifest.test.ts),
+  [`refuses an older build than the published nightly manifest offers, and an old serial`](../../tools/update/test/nightly-manifest.test.ts),
+  [`is offered to a nightly install of an older build, and to no release install`](../../tools/update/test/nightly-manifest.test.ts),
+  [`the signing job %s runs no repository code: no checkout, no node, no npm`](../../tools/update/test/update-workflow.test.ts),
+  [`a published release only starts the run on main, and only with UPDATES_ENABLED`](../../tools/update/test/update-workflow.test.ts),
+  [`%s runs only by hand on main, here, and with UPDATES_ENABLED or as a dry run`](../../tools/update/test/update-workflow.test.ts),
+  [`checks that the release is published, not a pre-release, and on main`](../../tools/update/test/update-workflow.test.ts),
+  [`checks SHA256SUMS against release.yml's signature, and refuses an unsigned release`](../../tools/update/test/update-workflow.test.ts),
+  [`the publish job verifies with the browser's verifier and with openssl before any push`](../../tools/update/test/update-workflow.test.ts),
+  [`the deploy key lives in its own environment and reaches only the push steps`](../../tools/update/test/update-workflow.test.ts),
+  [`a call receives the deploy key only by name, optional, and only nightly.yml's manifest passes it`](../../tools/update/test/update-workflow.test.ts),
+  [`pushes one commit naming the version to main, never forced, to a pinned host key`](../../tools/update/test/update-workflow.test.ts),
+  [`a push the other target's run beat rebases and lands, with no git identity configured`](../../tools/update/test/update-workflow.test.ts),
+  [`signs the body so that the browser's verifier accepts it under the KMS key`](../../tools/update/test/update-workflow.test.ts),
+  [`refuses to sign %s`](../../tools/update/test/update-workflow.test.ts),
+  [`every asset must be listed with the hash of the file that was downloaded`](../../tools/update/test/manifest.test.ts),
+  [`must be newer than the published manifest's; equal or older is refused`](../../tools/update/test/manifest.test.ts),
+  [`checkSigned refuses another key, a changed file, an older serial and another version`](../../tools/update/test/manifest.test.ts),
+  [`refuses to offer an older version than the published manifest does`](../../tools/update/test/manifest.test.ts),
+  [`retries a transient failure, then reads the labels`](../../tools/update/test/manifest.test.ts),
+  [`throws after four attempts that all fail, never answering no labels`](../../tools/update/test/manifest.test.ts),
+  [`throws at once on a failure that is not transient`](../../tools/update/test/manifest.test.ts),
+  [`throws at once on %s instead of answering no labels`](../../tools/update/test/manifest.test.ts),
+  [`throws at once on %s instead of widening the range`](../../tools/update/test/manifest.test.ts),
+  [`downloads the target's files and sums, and passes the target to manifest.ts`](../../tools/update/test/update-workflow.test.ts),
+  [`checks a macOS body against the macOS target, and refuses a Linux one there`](../../tools/update/test/update-workflow.test.ts),
+  [`runs one manifest per target at a time, never cancelling one half done`](../../tools/update/test/update-workflow.test.ts),
+  [`refuses a .dmg that does not match SHA256SUMS-macos`](../../tools/update/test/manifest.test.ts),
+  [`checkSigned takes the target: a Linux manifest is refused for macOS and back`](../../tools/update/test/manifest.test.ts),
   [`macos-tap starts the macOS update manifest once the .dmg is on a published release`](../../tools/package/test/release-workflow.test.ts),
-  [`a published release whose .dmg is already there starts the macOS manifest too`](../../tools/update/test/update-workflow.test.mjs),
+  [`a published release whose .dmg is already there starts the macOS manifest too`](../../tools/update/test/update-workflow.test.ts),
   [`fails when the release API answers %i`](../../tools/test/release-asset-checks.test.ts)
 - UP8. A command about:vimma shows **never** installs or replaces anything with a file it has not
   checked: every download uses `curl -f` (an HTTP error stops it) and `--proto =https`, and when
@@ -391,11 +391,11 @@ _Pages_ and _extensions_ cannot reach it.
   other channel embeds Mozilla's. The manifest check's pinned keys (UP1) are generated from the
   same certificates, so the two verifiers trust the same keys, and a certificate that is not
   self-signed by its own key is refused. The primary's certificate is made from the request
-  `update-cert.mjs` builds for the pinned primary key; only `--any-key`, for throwaway test
+  `update-cert.ts` builds for the pinned primary key; only `--any-key`, for throwaway test
   keys, takes another. The `tools/` update tests sign with two fixed RSA-4096 test keys whose
   private halves are committed (`tools/test/fixtures/rsa-4096/`, so that no test waits on an
   RSA-4096 key's random prime search; only the refusals of other key sizes make a short
-  throwaway key); a test fails if either is pinned or held by an updater certificate. `check-build.mjs` checks a package (the URL, both channel files, and that its
+  throwaway key); a test fails if either is pinned or held by an updater certificate. `check-build.ts` checks a package (the URL, both channel files, and that its
   `updater` carries Vimma's certificates and none of Mozilla's): `release.yml`'s `package` job
   on the release tarball, and `nightly.yml` on its tarball once it is set to the
   `vimma-nightly` channel (UP14). Firefox's check runs Vimma's verifier first (UP13).
@@ -408,18 +408,18 @@ _Pages_ and _extensions_ cannot reach it.
   [`refuses a repository without a certificate, so no import leaves a half-set behind`](../../tools/import/test/link-update-certs.test.ts),
   [`refuses a certificate that is a link, which could lead to any file on the machine`](../../tools/import/test/link-update-certs.test.ts),
   [`refuses VIMMA_UPDATES=1 when a certificate in the engine is not the committed one`](../../tools/test/mozconfig-updater.test.mjs),
-  [`fails when the updater lacks Vimma's certificate or carries one of Mozilla's`](../../tools/update/test/check-build.test.mjs),
-  [`fails without the [AppUpdate] URL or with another host`](../../tools/update/test/check-build.test.mjs),
-  [`the repository: update-keys.mjs is what the committed certificates give`](../../tools/update/test/gen-update-keys.test.mjs),
-  [`pins the primary once when the secondary slot holds the primary again (decision 39)`](../../tools/update/test/gen-update-keys.test.mjs),
+  [`fails when the updater lacks Vimma's certificate or carries one of Mozilla's`](../../tools/update/test/check-build.test.ts),
+  [`fails without the [AppUpdate] URL or with another host`](../../tools/update/test/check-build.test.ts),
+  [`the repository: update-keys.mjs is what the committed certificates give`](../../tools/update/test/gen-update-keys.test.ts),
+  [`pins the primary once when the secondary slot holds the primary again (decision 39)`](../../tools/update/test/gen-update-keys.test.ts),
   [`are neither pinned for the manifest nor in an updater certificate`](../../tools/test/test-keys.test.ts),
-  [`refuses a signature that is not the key's own over this request`](../../tools/update/test/update-cert.test.mjs),
-  [`refuses a certificate whose self-signature does not verify`](../../tools/update/test/gen-update-keys.test.mjs),
-  [`fails when --mozilla-certs lacks Mozilla's certificates, rather than comparing nothing`](../../tools/update/test/check-build.test.mjs),
-  [`CLI: request, then assemble with a KMS signature, refusing a key other than the pinned primary`](../../tools/update/test/update-cert.test.mjs),
-  [`package checks the release tarball's updater, whether or not updates are on`](../../tools/update/test/pipeline-workflows.test.mjs),
-  [`packages for the nightly channel and checks the updater before the upload`](../../tools/update/test/pipeline-workflows.test.mjs),
-  [`rewrites both channel files, and nothing else in them`](../../tools/update/test/channel.test.mjs)
+  [`refuses a signature that is not the key's own over this request`](../../tools/update/test/update-cert.test.ts),
+  [`refuses a certificate whose self-signature does not verify`](../../tools/update/test/gen-update-keys.test.ts),
+  [`fails when --mozilla-certs lacks Mozilla's certificates, rather than comparing nothing`](../../tools/update/test/check-build.test.ts),
+  [`CLI: request, then assemble with a KMS signature, refusing a key other than the pinned primary`](../../tools/update/test/update-cert.test.ts),
+  [`package checks the release tarball's updater, whether or not updates are on`](../../tools/update/test/pipeline-workflows.test.ts),
+  [`packages for the nightly channel and checks the updater before the upload`](../../tools/update/test/pipeline-workflows.test.ts),
+  [`rewrites both channel files, and nothing else in them`](../../tools/update/test/channel.test.ts)
 
 - UP13. Firefox's update check **never** hands Firefox's update parser (`#parseUpdates`) or its
   choice of an update a manifest that Vimma's rules (UP1, UP2) have not accepted:
@@ -484,9 +484,9 @@ _Pages_ and _extensions_ cannot reach it.
   a manifest's signed bytes start with `vimma-update-xml-v1\n`, so under the one key (spec decision 12) a MAR signature can never pass as a manifest's or back. It checks KMS's signature with openssl
   and writes in only the signature bytes. The MAR is built in `package`, a job with no secret, from
   the release tarball with the build's own host `mar` and Mozilla's `make_full_update.sh`
-  (`tools/update/mar.mjs build`). Then `mar`, a job with no secret and a read-only token, checks
+  (`tools/update/mar.ts build`). Then `mar`, a job with no secret and a read-only token, checks
   that the signed MAR differs from the one `package` built only in its signature bytes, that the
-  signature verifies under the committed certificates with `mar.mjs` and with Mozilla's `signmar`
+  signature verifies under the committed certificates with `mar.ts` and with Mozilla's `signmar`
   (the updater's own verification code, from this release's build), that its channel is the release
   channel and its product version the build's Firefox version, and that it installs exactly the
   release tarball's files, byte for byte; only then does `SHA256SUMS` list it, so cosign signs it
@@ -505,7 +505,7 @@ _Pages_ and _extensions_ cannot reach it.
   `NIGHTLY_RELEASE_ENABLED` the nightly builds its MAR as a check and keeps none
   ([m6a-updater](../specs/m6a-updater.md), decision 42). Both workflows' build jobs pack the MAR
   tools the `mar` job runs (`signmar`, the NSS libraries of the objdir it loads, the host `mar`)
-  with one script, `tools/update/mar-tools.mjs`, which fails the build, before anything is
+  with one script, `tools/update/mar-tools.ts`, which fails the build, before anything is
   uploaded, unless `signmar` and `mar` start from the packed directory with every library of
   the objdir that ldd lists found there; a pack that missed a library would otherwise surface only in `mar`, after
   `mar-sign` had signed. It runs the build's own tools only in the build job, which built them and
@@ -526,38 +526,38 @@ _Pages_ and _extensions_ cannot reach it.
   `update-publish.yml@main` and its token then names that file too, the condition's
   `assertion.repository` clause and the IAM member's subject, which names the repository by its ID,
   **must** never be dropped.
-  [`is called by release.yml and nightly.yml alone, and mar-sign signs only for those two`](../../tools/update/test/update-workflow.test.mjs),
-  [`only sign, mar-sign and nightly-sign mint an OIDC token or name the signing environment`](../../tools/update/test/update-workflow.test.mjs),
-  [`signs a nightly's MAR for nightly.yml on main, on the nightly channel`](../../tools/update/test/update-workflow.test.mjs),
+  [`is called by release.yml and nightly.yml alone, and mar-sign signs only for those two`](../../tools/update/test/update-workflow.test.ts),
+  [`only sign, mar-sign and nightly-sign mint an OIDC token or name the signing environment`](../../tools/update/test/update-workflow.test.ts),
+  [`signs a nightly's MAR for nightly.yml on main, on the nightly channel`](../../tools/update/test/update-workflow.test.ts),
   [`the MAR is signed by update-publish.yml's mar-sign, with this run's MAR`](../../tools/test/nightly-workflow.test.ts),
   [`the mar job checks the signed MAR for the nightly channel, against the tarball`](../../tools/test/nightly-workflow.test.ts),
   [`the mar job fails, loudly, when the MAR was not signed`](../../tools/test/nightly-workflow.test.ts),
-  [`the signing job %s runs no repository code: no checkout, no node, no npm`](../../tools/update/test/update-workflow.test.mjs),
-  [`signs the placeholder so that the updater's check accepts it under the KMS key`](../../tools/update/test/update-workflow.test.mjs),
-  [`refuses to sign %s`](../../tools/update/test/update-workflow.test.mjs),
-  [`refuses a <patch> %s`](../../tools/update/test/update-workflow.test.mjs),
-  [`refuses a <patch> in the macOS manifest`](../../tools/update/test/update-workflow.test.mjs),
-  [`downloads the MAR SHA256SUMS lists, and the one the signed manifest offers`](../../tools/update/test/update-workflow.test.mjs),
-  [`writes signmar's layout byte for byte, with the signature zeroed`](../../tools/update/test/mar.test.mjs),
-  [`signmar's signature verifies over the bytes around the placeholder`](../../tools/update/test/mar.test.mjs),
-  [`the signed bytes start with the MAR ID, so no manifest signature can pass as a MAR's`](../../tools/update/test/mar.test.mjs),
-  [`accepts a MAR signed the way the KMS key signs, and refuses one byte changed`](../../tools/update/test/mar.test.mjs),
-  [`refuses a MAR no given key signed`](../../tools/update/test/mar.test.mjs),
-  [`mar-sign calls update-publish.yml, the one workflow the key signs for`](../../tools/update/test/pipeline-workflows.test.mjs),
-  [`mar-sign's permissions are the ceiling update-publish.yml's jobs need, no more`](../../tools/update/test/pipeline-workflows.test.mjs),
-  [`mar fails, loudly, when the MAR was not signed, so a release never stops silently`](../../tools/update/test/pipeline-workflows.test.mjs),
-  [`%s runs only by hand on main, here, and with UPDATES_ENABLED or as a dry run`](../../tools/update/test/update-workflow.test.mjs),
-  [`mar checks the signed MAR with no secret: same content, the certificates, signmar`](../../tools/update/test/pipeline-workflows.test.mjs),
+  [`the signing job %s runs no repository code: no checkout, no node, no npm`](../../tools/update/test/update-workflow.test.ts),
+  [`signs the placeholder so that the updater's check accepts it under the KMS key`](../../tools/update/test/update-workflow.test.ts),
+  [`refuses to sign %s`](../../tools/update/test/update-workflow.test.ts),
+  [`refuses a <patch> %s`](../../tools/update/test/update-workflow.test.ts),
+  [`refuses a <patch> in the macOS manifest`](../../tools/update/test/update-workflow.test.ts),
+  [`downloads the MAR SHA256SUMS lists, and the one the signed manifest offers`](../../tools/update/test/update-workflow.test.ts),
+  [`writes signmar's layout byte for byte, with the signature zeroed`](../../tools/update/test/mar.test.ts),
+  [`signmar's signature verifies over the bytes around the placeholder`](../../tools/update/test/mar.test.ts),
+  [`the signed bytes start with the MAR ID, so no manifest signature can pass as a MAR's`](../../tools/update/test/mar.test.ts),
+  [`accepts a MAR signed the way the KMS key signs, and refuses one byte changed`](../../tools/update/test/mar.test.ts),
+  [`refuses a MAR no given key signed`](../../tools/update/test/mar.test.ts),
+  [`mar-sign calls update-publish.yml, the one workflow the key signs for`](../../tools/update/test/pipeline-workflows.test.ts),
+  [`mar-sign's permissions are the ceiling update-publish.yml's jobs need, no more`](../../tools/update/test/pipeline-workflows.test.ts),
+  [`mar fails, loudly, when the MAR was not signed, so a release never stops silently`](../../tools/update/test/pipeline-workflows.test.ts),
+  [`%s runs only by hand on main, here, and with UPDATES_ENABLED or as a dry run`](../../tools/update/test/update-workflow.test.ts),
+  [`mar checks the signed MAR with no secret: same content, the certificates, signmar`](../../tools/update/test/pipeline-workflows.test.ts),
   [`packs with the script release.yml uses, on every nightly`](../../tools/test/nightly-workflow.test.ts),
   [`packs after the key file is gone, before the MAR is built and anything is uploaded`](../../tools/test/nightly-workflow.test.ts),
-  [`packs signmar's libraries from a relative objdir, which ldd names by absolute path`](../../tools/update/test/mar-tools.test.mjs),
-  [`fails, naming it, when a library signmar loads is missing`](../../tools/update/test/mar-tools.test.mjs),
-  [`cosign signs the MAR with the other assets, after it is checked`](../../tools/update/test/pipeline-workflows.test.mjs),
-  [`publish uploads the MAR and the new SHA256SUMS, never a release that lost its MAR`](../../tools/update/test/pipeline-workflows.test.mjs),
-  [`runs the release's MAR step for the nightly channel, and keeps it only for a public nightly`](../../tools/update/test/pipeline-workflows.test.mjs),
-  [`prepareRelease offers the MAR SHA256SUMS lists, with its size and SHA-512`](../../tools/update/test/manifest.test.mjs),
-  [`checkSigned checks the MAR the manifest offers against the downloaded file`](../../tools/update/test/manifest.test.mjs),
-  [`checkSigned refuses a <patch> at any URL but the release's MAR`](../../tools/update/test/manifest.test.mjs)
+  [`packs signmar's libraries from a relative objdir, which ldd names by absolute path`](../../tools/update/test/mar-tools.test.ts),
+  [`fails, naming it, when a library signmar loads is missing`](../../tools/update/test/mar-tools.test.ts),
+  [`cosign signs the MAR with the other assets, after it is checked`](../../tools/update/test/pipeline-workflows.test.ts),
+  [`publish uploads the MAR and the new SHA256SUMS, never a release that lost its MAR`](../../tools/update/test/pipeline-workflows.test.ts),
+  [`runs the release's MAR step for the nightly channel, and keeps it only for a public nightly`](../../tools/update/test/pipeline-workflows.test.ts),
+  [`prepareRelease offers the MAR SHA256SUMS lists, with its size and SHA-512`](../../tools/update/test/manifest.test.ts),
+  [`checkSigned checks the MAR the manifest offers against the downloaded file`](../../tools/update/test/manifest.test.ts),
+  [`checkSigned refuses a <patch> at any URL but the release's MAR`](../../tools/update/test/manifest.test.ts)
 
 **Key custody** (spec §6, decisions 16 and 17): the primary manifest key is a non-exportable
 Google Cloud KMS key that only `update-publish.yml`'s signing jobs on `main`, in the `update-signing` environment, can

@@ -49,7 +49,7 @@ Mozilla's test-signing keys, whose private halves anyone can find in Mozilla's s
   Mozilla's test keys. A source or dev build keeps `--disable-updater` (spec m0-updater): its
   build ID is newer than every release's, so it would never be offered anything useful, and its
   checks would only add traffic to the host.
-- **Before a package is signed or published**, `tools/update/check-build.mjs` checks it: the
+- **Before a package is signed or published**, `tools/update/check-build.ts` checks it: the
   `[AppUpdate] URL` is the host's, both channel files say `vimma`, and the `updater` binary
   carries the bytes of Vimma's certificates and of none of Mozilla's.
 

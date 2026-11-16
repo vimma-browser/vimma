@@ -171,16 +171,16 @@ links to `engine/toolkit/mozapps/update/updater/vimma/` (`tools/import/link-upda
 and a `VIMMA_UPDATES=1` build stops without them or when they differ from `configs/updater/`.
 They are outside `src/` because `npx surfer license-check` reads every file there for an MPL
 header, which a DER file cannot carry. The primary's certificate is self-signed by the KMS key,
-which signs only a DigestInfo it is sent, so `tools/update/update-cert.mjs` builds the certificate around one KMS signature. Every field is
+which signs only a DigestInfo it is sent, so `tools/update/update-cert.ts` builds the certificate around one KMS signature. Every field is
 fixed, so the request is the same each time and a reviewer can rebuild it from the public key.
 With `update-primary.pem` from step 3 and the maintainer's own `gcloud` credentials, as in
 step 6:
 
 ```sh
-node tools/update/update-cert.mjs request --public-key update-primary.pem --slot primary --out-dir cert
+node tools/update/update-cert.ts request --public-key update-primary.pem --slot primary --out-dir cert
 gcloud kms asymmetric-sign --version 1 --key update-primary --keyring vimma-updates \
   --location "$LOCATION" --input-file cert/primary.digestinfo.bin --signature-file cert/primary.sig.bin
-node tools/update/update-cert.mjs assemble --dir cert --slot primary --signature cert/primary.sig.bin \
+node tools/update/update-cert.ts assemble --dir cert --slot primary --signature cert/primary.sig.bin \
   --out configs/updater/primary.der
 cp configs/updater/primary.der configs/updater/secondary.der
 openssl x509 -inform DER -in configs/updater/primary.der -noout -subject -pubkey \
@@ -201,7 +201,7 @@ disagree, or when the primary certificate's hash is missing from this file.
 | `primary.der`   | `CN=Vimma update signing primary`       | `88b4deaa74ba83b0132b85f9ecc2736bec2916700064792e30d0d2224f7ff6e8` |
 | `secondary.der` | the primary's certificate (decision 39) | `88b4deaa74ba83b0132b85f9ecc2736bec2916700064792e30d0d2224f7ff6e8` |
 
-Before a package with the updater is signed or published, `tools/update/check-build.mjs
+Before a package with the updater is signed or published, `tools/update/check-build.ts
 <unpacked tarball>` checks that it asks `updates.vimma.dev`, that both channel files say
 `vimma`, and that its `updater` binary carries these certificates and none of Mozilla's.
 
@@ -233,7 +233,7 @@ until the release gate lifts: an accepted serial is remembered, so a later manif
 only there. `prepare` (no secret) checks that the release is published, not a pre-release and on
 `main`, downloads its tarball, AppImage, `.deb` and `.rpm`, checks them against `SHA256SUMS` and
 `SHA256SUMS` against release.yml's cosign signature (an unsigned release gets no manifest), and builds the manifest
-with `tools/update/manifest.mjs`: Firefox's version and the build ID from the tarball's
+with `tools/update/manifest.ts`: Firefox's version and the build ID from the tarball's
 `application.ini`, each file's size and SHA-512, the urgency, and a serial (the UTC time) that
 must be newer than the one `updates.vimma.dev` and `vimma-updates` have. `sign` (environment
 `update-signing`, `id-token: write` only, no repository code) checks the body's shape, signs it
@@ -370,12 +370,12 @@ replace_published=true` changed its files, whose hashes the old manifest no long
 **8. Signing MARs** (spec §7, sub-PR 4). Tarball installs from a release built with Firefox's
 updater update through a complete MAR, `vimma-X.Y.Z-linux-x86_64.complete.mar`, a release
 asset like the others. `release.yml` builds every Linux release with the updater
-(`VIMMA_UPDATES=1`) and checks the release tarball with `tools/update/check-build.mjs`; while
+(`VIMMA_UPDATES=1`) and checks the release tarball with `tools/update/check-build.ts`; while
 `UPDATES_ENABLED` is `true` it also builds and ships the MAR:
 
 - `package` (no secret) builds the MAR from the release tarball with the build's host `mar` and
   Mozilla's `make_full_update.sh`, as `./mach repackage mar` does, and gives it a signature block
-  whose one 512-byte SHA-384 signature is zero (`tools/update/mar.mjs build`). `signmar -s`
+  whose one 512-byte SHA-384 signature is zero (`tools/update/mar.ts build`). `signmar -s`
   signs only with a key held in an NSS database, which the KMS key never is.
 - `mar-sign` calls `update-publish.yml`, whose `mar-sign` job (environment `update-signing`,
   `id-token: write` only, no repository code) checks with the shell that the file is the tag's
@@ -390,7 +390,7 @@ asset like the others. `release.yml` builds every Linux release with the updater
 - `mar` (no secret) checks that the signed MAR differs from package's only in the signature,
   that it installs exactly the release tarball's files (extracted with the build's `mar` and
   compared with `diff -r`),
-  that it verifies under `configs/updater/primary.der` and `secondary.der` with `mar.mjs` and
+  that it verifies under `configs/updater/primary.der` and `secondary.der` with `mar.ts` and
   with the build's `signmar` (Mozilla's own check), and that its channel is `vimma` and its
   version Firefox's; then it adds the MAR to `SHA256SUMS`, which `sign` signs with cosign and
   `publish` uploads with the other files. While `UPDATES_ENABLED` is `true`, `sign` and
@@ -405,12 +405,12 @@ release's MAR by hand, with `signmar` from a `VIMMA_UPDATES=1` build (`dist/bin/
 db=$(mktemp -d) && certutil -N -d "sql:$db" --empty-password
 certutil -A -n primary -t ,, -i configs/updater/primary.der -d "sql:$db"
 LD_LIBRARY_PATH=<objdir>/dist/bin <objdir>/dist/bin/signmar -d "sql:$db" -n primary -v vimma-X.Y.Z-linux-x86_64.complete.mar
-node tools/update/mar.mjs verify --mar vimma-X.Y.Z-linux-x86_64.complete.mar \
+node tools/update/mar.ts verify --mar vimma-X.Y.Z-linux-x86_64.complete.mar \
   --cert configs/updater/primary.der --channel vimma
 ```
 
 The nightly is built with the updater too, set to its own update channel `vimma-nightly`
-(`tools/update/channel.mjs`) and checked with `check-build.mjs`; it builds its MAR as a check of
+(`tools/update/channel.ts`) and checked with `check-build.ts`; it builds its MAR as a check of
 the release's MAR step and, unless public nightlies are on, keeps it nowhere. Nightly MARs are signed and offered only once
 public nightly releases start (spec decisions 23 and 42). With `NIGHTLY_RELEASE_ENABLED` set
 ("Full builds", "Public nightlies"), `nightly.yml` calls `mar-sign` as `release.yml` does: the job

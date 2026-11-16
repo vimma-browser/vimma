@@ -16,9 +16,9 @@
  * over it, KMS signs the DigestInfo (the key is RSA_SIGN_RAW_PKCS1_4096, which signs exactly the
  * bytes it is sent), and `assemble` joins the two and checks the signature and the key.
  *
- *   update-cert.mjs request --public-key update-primary.pem --slot primary --out-dir DIR
+ *   update-cert.ts request --public-key update-primary.pem --slot primary --out-dir DIR
  *       writes DIR/primary.tbs.der and DIR/primary.digestinfo.bin; prints the gcloud command
- *   update-cert.mjs assemble --dir DIR --slot primary --signature sig.bin --out primary.der
+ *   update-cert.ts assemble --dir DIR --slot primary --signature sig.bin --out primary.der
  *       [--any-key]
  *       the certificate; refuses a signature that does not verify, and (without --any-key, for
  *       throwaway test keys) a key other than the primary pinned in update-keys.mjs
@@ -30,6 +30,7 @@
  */
 
 import { X509Certificate, createHash, createPublicKey } from "node:crypto";
+import type { KeyObject } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,18 +48,12 @@ const SHA384_WITH_RSA = Buffer.from("300d06092a864886f70d01010c0500", "hex");
 const NOT_BEFORE = "261101000000Z"; // UTCTime, 2026-11-01
 const NOT_AFTER = "99991231235959Z"; // GeneralizedTime
 
-/** @typedef {"primary" | "secondary"} Slot */
+type Slot = "primary" | "secondary";
 
-/**
- * @param {number} tag
- * @param {...Uint8Array} parts
- * @returns {Buffer}
- */
-function tlv(tag, ...parts) {
+function tlv(tag: number, ...parts: Uint8Array[]): Buffer {
   const body = Buffer.concat(parts);
   const n = body.length;
-  /** @type {number[]} */
-  let len;
+  let len: number[];
   if (n < 0x80) len = [n];
   else {
     const bytes = [];
@@ -68,18 +63,16 @@ function tlv(tag, ...parts) {
   return Buffer.concat([Buffer.from([tag, ...len]), body]);
 }
 
-/** @param {string} cn */
-const name = (cn) =>
+const name = (cn: string) =>
   tlv(
     0x30,
     tlv(0x31, tlv(0x30, Buffer.from("0603550403", "hex"), tlv(0x0c, Buffer.from(cn, "utf8")))),
   );
 
 /**
- * @param {Uint8Array} spki DER SubjectPublicKeyInfo
- * @returns {import("node:crypto").KeyObject}
+ * @param spki DER SubjectPublicKeyInfo
  */
-function rsa4096(spki) {
+function rsa4096(spki: Uint8Array): KeyObject {
   const key = createPublicKey({ key: Buffer.from(spki), format: "der", type: "spki" });
   if (key.asymmetricKeyType !== "rsa" || key.asymmetricKeyDetails?.modulusLength !== 4096) {
     throw new Error("update keys are RSA-4096 (docs/specs/m6a-updater.md §6)");
@@ -89,11 +82,12 @@ function rsa4096(spki) {
 
 /**
  * The to-be-signed certificate for an update key and the DigestInfo KMS signs.
- * @param {Uint8Array} spki DER SubjectPublicKeyInfo of an RSA-4096 key
- * @param {Slot} slot
- * @returns {{ tbs: Uint8Array, digestInfo: Uint8Array }}
+ * @param spki DER SubjectPublicKeyInfo of an RSA-4096 key
  */
-export function certificateRequest(spki, slot) {
+export function certificateRequest(
+  spki: Uint8Array,
+  slot: Slot,
+): { tbs: Uint8Array; digestInfo: Uint8Array } {
   rsa4096(spki);
   const subject = name(`Vimma update signing ${slot}`);
   // A positive 16-byte serial derived from the key and slot: unique per certificate, and the
@@ -118,12 +112,15 @@ export function certificateRequest(spki, slot) {
 
 /**
  * The DER certificate, after checking that `signature` is the key's own over `tbs`.
- * @param {Uint8Array} tbs from certificateRequest
- * @param {Uint8Array} signature the raw RSA signature KMS returned
- * @param {Uint8Array} spki the key the certificate must name
- * @returns {Uint8Array}
+ * @param tbs from certificateRequest
+ * @param signature the raw RSA signature KMS returned
+ * @param spki the key the certificate must name
  */
-export function assembleCertificate(tbs, signature, spki) {
+export function assembleCertificate(
+  tbs: Uint8Array,
+  signature: Uint8Array,
+  spki: Uint8Array,
+): Uint8Array {
   const key = rsa4096(spki);
   const der = tlv(
     0x30,
@@ -142,21 +139,16 @@ export function assembleCertificate(tbs, signature, spki) {
 }
 
 /**
- * @param {Uint8Array} der a certificate
- * @returns {Uint8Array} its DER SubjectPublicKeyInfo
+ * @param der a certificate
+ * @returns its DER SubjectPublicKeyInfo
  */
-export function certificateSpki(der) {
+export function certificateSpki(der: Uint8Array): Uint8Array {
   const cert = new X509Certificate(Buffer.from(der));
   return new Uint8Array(cert.publicKey.export({ type: "spki", format: "der" }));
 }
 
-/**
- * @param {string[]} argv
- * @returns {Record<string, string | boolean>}
- */
-function parseArgs(argv) {
-  /** @type {Record<string, string | boolean>} */
-  const out = {};
+function parseArgs(argv: string[]): Record<string, string | boolean> {
+  const out: Record<string, string | boolean> = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i] ?? "";
     if (!a.startsWith("--")) throw new Error(`unexpected argument: ${a}`);
@@ -170,20 +162,17 @@ function parseArgs(argv) {
   return out;
 }
 
-/** @param {string | boolean | undefined} v */
-const slotOf = (v) => {
+const slotOf = (v: string | boolean | undefined) => {
   if (v !== "primary" && v !== "secondary") throw new Error("--slot is primary or secondary");
-  return /** @type {Slot} */ (v);
+  return v as Slot;
 };
 
-/** @param {string | boolean | undefined} v @param {string} flag */
-const str = (v, flag) => {
+const str = (v: string | boolean | undefined, flag: string) => {
   if (typeof v !== "string") throw new Error(`${flag} is required`);
   return v;
 };
 
-/** @param {string[]} argv */
-function main(argv) {
+function main(argv: string[]) {
   const [cmd, ...rest] = argv;
   const args = parseArgs(rest);
   const slot = slotOf(args.slot);
@@ -232,7 +221,7 @@ function main(argv) {
     console.log(`${out}: sha256 ${createHash("sha256").update(der).digest("hex")}`);
     return;
   }
-  throw new Error("usage: update-cert.mjs request|assemble ... (see the header)");
+  throw new Error("usage: update-cert.ts request|assemble ... (see the header)");
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
