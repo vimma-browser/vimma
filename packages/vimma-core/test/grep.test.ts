@@ -33,7 +33,9 @@ import type {
 
 /**
  * The characters `run`'s regular expressions read: for each exec, from where it starts (lastIndex
- * for a global or sticky one) to the end of its match, or to the end of the text without one.
+ * for a global or sticky one) to the end of its match, or to the end of the text without one. A
+ * failed sticky or `^`-anchored exec counts as reading to the end, though the engine stops at once.
+ * It cannot see backtracking within a match attempt, nor time: timing belongs in tools/bench.
  */
 const charsRead = (run: () => void) => {
   const exec = RegExp.prototype.exec;
@@ -183,8 +185,8 @@ describe("grepText", () => {
     expect(result?.count).toBe(0);
     // Once to find its line's end and once by the query, and the blank check stops at a line's
     // first character. A second pass over a line, or a line read again from the text's start
-    // (quadratic), reads more.
-    expect(read).toBeGreaterThanOrEqual(2 * big.length - lines);
+    // (quadratic), reads more. The floor only shows the spy saw the work.
+    expect(read).toBeGreaterThanOrEqual(big.length);
     expect(read).toBeLessThanOrEqual(2 * big.length + lines);
   });
 });

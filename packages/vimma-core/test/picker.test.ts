@@ -621,10 +621,24 @@ describe("tab search (docs/specs/tab-search.md)", () => {
     const { big, start, keys } = bigSearch();
     // The fields matchItem reads of a tab row: display, url and workspace, and title and markers
     // when set.
-    const fields = big.reduce(
-      (n, item) => n + 3 + (item.label ? 1 : 0) + (item.markers ? 1 : 0),
-      0,
-    );
+    const fieldsOf = (item: PickerItem) => 3 + (item.label ? 1 : 0) + (item.markers ? 1 : 0);
+    /**
+     * The fields one pass over the list tries for `query`: every item's fields for the first
+     * term, and for each later term only the items that matched every earlier one.
+     */
+    const onePass = (query: string) => {
+      const terms = query.trim().split(/\s+/).filter(Boolean);
+      let n = 0;
+      for (const item of big) {
+        for (let k = 0; k < terms.length; k++) {
+          n += fieldsOf(item);
+          if (!matchItem(item, terms.slice(0, k + 1).join(" "))) break;
+        }
+      }
+      return n;
+    };
+    // The counts cannot see the work after the match (sorting, the rows shown) or how long each
+    // field takes; timing belongs in tools/bench, which measures against a baseline on one machine.
     let s = start;
     let scored = 0;
     for (const key of keys) {
@@ -632,11 +646,8 @@ describe("tab search (docs/specs/tab-search.md)", () => {
       s = pickerKey(s, key).state;
       const work = matchWork();
       const tried = work.tried - before.tried;
-      const terms = s.query.trim().split(/\s+/).filter(Boolean).length;
-      // One pass over the list: every item's fields for the first term, and for each later term
-      // only the items that matched every earlier one.
-      if (terms === 1) expect(tried, key).toBe(fields);
-      expect(tried, key).toBeLessThanOrEqual(fields * terms);
+      const expected = onePass(s.query);
+      expect(tried, key).toBe(expected);
       // A field whose letters do not occur in order is dropped before any tier is tried.
       expect(work.full - before.full, key).toBe(work.matched - before.matched);
       if (tried) scored++;
