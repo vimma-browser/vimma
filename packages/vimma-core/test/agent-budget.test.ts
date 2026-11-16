@@ -82,6 +82,24 @@ describe("Budget", () => {
     expect(b.exceeded()).toEqual({ limit: "steps", used: 2, max: 2 });
   });
 
+  test("max_cost stops at the limit itself, counted from the last continue", () => {
+    // priceIn 1 per million: 1000 input tokens cost exactly 0.001.
+    const b = new Budget({ maxCost: 0.001 }, { priceIn: 1, priceOut: 0 });
+    b.addUsage({ input: 999, output: 0, estimated: false });
+    expect(b.exceeded()).toBe(null);
+    b.addUsage({ input: 1, output: 0, estimated: false });
+    expect(b.exceeded()).toEqual({ limit: "cost", used: 0.001, max: 0.001 });
+    b.renew();
+    expect(b.exceeded()).toBe(null);
+    b.addUsage({ input: 500, output: 0, estimated: false });
+    // 0.0015 spent in all, 0.0005 of it since the continue: under the limit.
+    expect(b.exceeded()).toBe(null);
+    b.addUsage({ input: 500, output: 0, estimated: false });
+    const e = b.exceeded();
+    expect(e).toMatchObject({ limit: "cost", max: 0.001 });
+    expect(e?.used).toBeCloseTo(0.001, 12);
+  });
+
   test("the transcript names the limit", () => {
     expect(budgetLimitText({ limit: "steps", used: 60, max: 60 })).toBe(
       "stopped: 60 steps, the limit of [agent] max_steps",
@@ -137,6 +155,17 @@ describe("an agent CLI's budget", () => {
     b.step();
     b.step();
     expect(b.exceeded(MIN)).toEqual({ limit: "steps", used: 2, max: 2 });
+  });
+
+  test("minutes count from the run's start, or from now when it gives none", () => {
+    const late = new Budget({}, {}, { cli: "codex", maxMinutes: 30, start: 1000 * MIN });
+    expect(late.minutes(1000 * MIN)).toBe(0);
+    expect(late.exceeded(1029 * MIN)).toBe(null);
+    expect(late.exceeded(1030 * MIN)).toEqual({ limit: "minutes", used: 30, max: 30 });
+    const before = Date.now();
+    const now = new Budget({}, {}, { cli: "codex", maxMinutes: 30 });
+    expect(now.minutes(before + 5 * MIN + 59_000)).toBe(5);
+    expect(now.exceeded(before + 29 * MIN)).toBe(null);
   });
 
   test("no report shows steps and time only", () => {

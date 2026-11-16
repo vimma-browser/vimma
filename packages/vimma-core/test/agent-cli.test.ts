@@ -1332,3 +1332,510 @@ describe("gemini's records of vimma's runs (C5)", () => {
     });
   });
 });
+
+// Issue #1119: the edges of the words, the helpers and the three readers that the tests above
+// leave open. Each stream is built here from its JSON objects.
+const lines = (...objects: unknown[]) => objects.map((o) => JSON.stringify(o)).join("\n");
+const CLAUDE_INIT = {
+  type: "system",
+  subtype: "init",
+  claude_code_version: "2.1.303",
+  model: "claude-sonnet-5-5",
+  tools: ["Bash", "mcp__vimma__vimma_tabs"],
+  mcp_servers: [{ name: "vimma", status: "connected" }],
+};
+const claudeResult = (extra: Record<string, unknown> = {}) => ({
+  type: "result",
+  subtype: "success",
+  is_error: false,
+  result: "Done.",
+  ...extra,
+});
+
+describe("the words' edges", () => {
+  const claude = cliOf("claude-code");
+
+  test("a model with a tab, a C1 control or a bidi control is refused, named in one line", () => {
+    expect(modelProblem("a\tb")).toBe(
+      'the model "a b" is not a model name: it has control characters',
+    );
+    expect(modelProblem("gpt\u202E5")).toBe(
+      'the model "gpt5" is not a model name: it has control characters',
+    );
+    expect(modelProblem("gpt\u00855")).toBe(
+      'the model "gpt5" is not a model name: it has control characters',
+    );
+  });
+
+  test("a CLI the table does not know is named by its id", () => {
+    expect(modelPrompt("nope", {})).toEqual({
+      label: "agent model: ",
+      value: "",
+      placeholder: "empty: nope's own default model",
+    });
+    expect(cliModelText("nope", "", {})).toBe("nope's own default model");
+  });
+
+  test("a line of exactly LINE_CHARS is not cut", () => {
+    const head = "claude-code exited (1): ";
+    const exact = "e".repeat(200 - head.length);
+    expect(exitText(claude, 1, "", exact)).toBe(`${head}${exact}`);
+    expect(exitText(claude, 1, "", `${exact}f`)).toBe(`${head}${exact.slice(1)}…`);
+  });
+
+  test("an exit names the program run, an unknown code and plain error lines", () => {
+    expect(exitText(claude, 127, "", "", "/usr/bin/fake")).toBe(
+      "claude-code at /usr/bin/fake exited (127)",
+    );
+    expect(exitText(claude, null, "first\nbad\u0007 line\n")).toBe(
+      "claude-code exited (?): bad line",
+    );
+  });
+
+  test("own tools: whitespace collapses, four or sixty are shown whole", () => {
+    expect(ownToolsText(["a\n\tb", "c"])).toBe("a b, c");
+    expect(ownToolsText(["a", "b", "c", "d"])).toBe("a, b, c, d");
+    const many = (n: number) => Array.from({ length: n }, (_, i) => `t${i}`);
+    expect(runStartedText(claude, "", "", many(60)).endsWith("t58, t59")).toBe(true);
+    expect(runStartedText(claude, "", "", many(61)).endsWith("t59 +1")).toBe(true);
+    expect(runStartedText(claude, "", "", ["x\n\t y"])).toBe(
+      "run started: claude-code · its default model · its own tools: x y",
+    );
+  });
+
+  test("an own tool's line: its name trimmed, its subject a string field or the input", () => {
+    expect(ownToolText(claude, " Bash\n", { command: "ls  \n -la" })).toBe(
+      'claude-code ran its own tool: Bash "ls -la"',
+    );
+    expect(ownToolText(claude, "Bash", "ls")).toBe("claude-code ran its own tool: Bash {}");
+    expect(ownToolText(claude, "Bash", { command: 5 })).toBe(
+      'claude-code ran its own tool: Bash {"command":5}',
+    );
+  });
+
+  test("the conversation is labelled by who said it, tool turns and empty texts left out", () => {
+    expect(
+      taskPrompt(
+        [
+          { role: "user", text: "Find the shop." },
+          { role: "tool" },
+          { role: "assistant", text: "" },
+          { role: "assistant", text: "Found it." },
+          { role: "system", text: "SYS" },
+        ],
+        "Buy milk.",
+      ),
+    ).toBe(
+      "Earlier in this conversation (from Vimma's stored copy):\n\n" +
+        "User: Find the shop.\n\nYou: Found it.\n\nThe user's new message:\n\nBuy milk.",
+    );
+  });
+
+  test("a version line's spaces and its last bracket only are taken off", () => {
+    const at = "/usr/bin/claude";
+    expect(versionText(claude, "  2.1.303 (Claude Code)  \n", at)).toBe(`claude 2.1.303 · ${at}`);
+    expect(versionText(claude, "2.1.303(Claude Code)\n", at)).toBe(`claude 2.1.303 · ${at}`);
+    expect(versionText(claude, "2.1 (beta) build\n", at)).toBe(`claude 2.1 (beta) build · ${at}`);
+    expect(versionText(claude, "2.1 (beta)x\n", at)).toBe(`claude 2.1 (beta)x · ${at}`);
+  });
+
+  test("a file named by a whole version or with an extension is the CLI", () => {
+    for (const name of ["10.2.0", "v2.1.0-beta.1", "2.1.0+build", "cli.mjs"]) {
+      expect(dispatcherOf(claude, name), name).toBe(null);
+    }
+    for (const name of ["mise2.1", "2mise", "2.1.0-", "mise.d-shim", "2.1-b@d"]) {
+      expect(dispatcherOf(claude, name), name).toBe(name);
+    }
+  });
+
+  test("only the browser's own variables leave the environment", () => {
+    expect(cliEnvironment({ HOME: "/home/u", NOT_MOZ_ONLY: "1", MOZ_X: "1", XUL_Y: "1" })).toEqual({
+      HOME: "/home/u",
+      NOT_MOZ_ONLY: "1",
+    });
+  });
+
+  test("codex lists at most MAX_SERVERS servers", () => {
+    const list = (n: number) =>
+      JSON.stringify(Array.from({ length: n }, (_, i) => ({ name: `s${i}` })));
+    expect(codexServers(list(200))).toHaveLength(200);
+    expect(codexServers(list(201))).toEqual({
+      problem: "codex listed its MCP servers in a form Vimma does not read",
+    });
+  });
+
+  test("gemini's registry: a run folder at the root, or a registry out of shape, is not ours", () => {
+    expect(geminiLeftover("/vimma-agent-cli", [""])).toBe(false);
+    const none = { text: null, removed: [] };
+    expect(geminiProjects("null", () => true)).toEqual(none);
+    expect(geminiProjects('{"projects":"abc"}', () => true)).toEqual(none);
+    expect(geminiProjects('{"projects":{"/a":"a","/b":5}}', () => true)).toEqual(none);
+  });
+});
+
+describe("a CLI's stream, line by line", () => {
+  const MiB = 1024 * 1024;
+
+  test("output of exactly the limits is read; one more character fails the run", () => {
+    const s = new ClaudeStream();
+    const line = `${" ".repeat(MiB - 1)}\n`;
+    for (let i = 0; i < 64; i++) expect(s.push(line)).toEqual([]);
+    expect(s.push(" ")).toEqual([{ type: "fail", error: "claude-code wrote over 64 MiB" }]);
+    expect(CLI_STREAM_LIMITS).toMatchObject({ line: MiB, total: 64 * MiB });
+  });
+
+  test("a line of exactly 1 MiB is read, whole or still unfinished", () => {
+    const s = new ClaudeStream();
+    expect(s.push(" ".repeat(MiB))).toEqual([]);
+    expect(s.push("\n")).toEqual([]);
+    expect(s.push(`${" ".repeat(MiB)}\n`)).toEqual([]);
+    expect(s.failed).toBe(false);
+  });
+
+  test("after a fail nothing more is read, in the same chunk or later", () => {
+    const s = new ClaudeStream();
+    const reply = {
+      type: "assistant",
+      message: { id: "m1", content: [{ type: "text", text: "hi" }] },
+    };
+    const out = s.push(`${lines(CLAUDE_INIT, claudeResult({ is_error: "no" }), reply)}\n`);
+    expect(out.map((e) => e.type)).toEqual(["init", "fail"]);
+    expect(out[1]).toEqual({
+      type: "fail",
+      error: "claude-code 2.1.303 speaks a stream Vimma does not read",
+    });
+    expect(s.push(`${JSON.stringify(reply)}\n`)).toEqual([]);
+    expect(s.end()).toEqual([]);
+  });
+
+  test("a line after an empty one is read as it comes; blank lines are not counted", () => {
+    const s = new ClaudeStream();
+    expect(s.push(`\n \n${JSON.stringify(CLAUDE_INIT)}\n`).map((e) => e.type)).toEqual(["init"]);
+    expect(s.ignored).toBe(0);
+  });
+});
+
+describe("claude-code's stream, event by event", () => {
+  const run = (...objects: unknown[]) => events(lines(CLAUDE_INIT, ...objects));
+
+  test("only a system init is the init", () => {
+    const { out } = events(lines({ ...CLAUDE_INIT, type: "other" }));
+    expect(out).toEqual([]);
+  });
+
+  test("a denial of vimma's tool, or one without its id, is not the CLI's refusal", () => {
+    const denied = (extra: Record<string, unknown>) => ({
+      type: "system",
+      subtype: "permission_denied",
+      tool_use_id: "t1",
+      tool_name: "Bash",
+      ...extra,
+    });
+    const { out, stream } = run(
+      denied({ tool_name: "mcp__vimma__vimma_open" }),
+      denied({ tool_use_id: 5 }),
+      denied({ type: "user" }),
+      denied({ tool_name: "Read" }),
+    );
+    expect(out.slice(1)).toEqual([{ type: "own-tool-refused", id: "t1" }]);
+    expect(stream.ignored).toBe(3);
+  });
+
+  test("an init's version, model and servers out of shape", () => {
+    const init = (extra: Record<string, unknown>) =>
+      events(lines({ ...CLAUDE_INIT, ...extra })).out;
+    expect(init({ claude_code_version: 5, model: 5 })).toEqual([
+      { type: "init", model: "", version: "", tools: ["Bash"] },
+    ]);
+    const unreadable = [
+      { type: "fail", error: "claude-code 2.1.303 speaks a stream Vimma does not read" },
+    ];
+    expect(init({ tools: "Bash" })).toEqual(unreadable);
+    expect(init({ tools: ["Bash", 5] })).toEqual(unreadable);
+    expect(init({ mcp_servers: "vimma" })).toEqual(unreadable);
+    expect(init({ tools: "Bash", claude_code_version: undefined })).toEqual([
+      { type: "fail", error: "claude-code speaks a stream Vimma does not read" },
+    ]);
+    const notStarted = [{ type: "fail", error: "claude-code could not start vimma-ctl" }];
+    expect(init({ mcp_servers: [{ name: "other", status: "connected" }] })).toEqual(notStarted);
+    expect(
+      init({ mcp_servers: [null, "vimma", { name: "vimma", status: "connected" }] })[0],
+    ).toMatchObject({ type: "init" });
+  });
+
+  test("an assistant message's usage counts once per call id, and only in its shape", () => {
+    const message = (extra: Record<string, unknown>) => ({
+      type: "assistant",
+      message: { content: [], ...extra },
+    });
+    const { out, stream } = run(
+      message({ id: 5, usage: { input_tokens: 1, output_tokens: 1 } }),
+      message({ id: "m0", usage: "many" }),
+      message({
+        id: "m1",
+        usage: {
+          input_tokens: -1,
+          cache_creation_input_tokens: Number.POSITIVE_INFINITY,
+          cache_read_input_tokens: "5",
+          output_tokens: Number.NaN,
+        },
+      }),
+      message({ id: "m2", usage: { cache_read_input_tokens: 7, output_tokens: 2 } }),
+      { type: "assistant", error: "rate_limit", message: { content: [] } },
+    );
+    expect(out.slice(1)).toEqual([
+      { type: "usage", input: 0, output: 0 },
+      { type: "usage", input: 7, output: 2 },
+    ]);
+    expect(stream.ignored).toBe(1);
+  });
+
+  test("an assistant message's blocks: text with words, tools by name, the rest left out", () => {
+    const { out } = run({
+      type: "assistant",
+      message: {
+        id: "m1",
+        content: [
+          null,
+          { type: "text", text: "  \n" },
+          { type: "text", text: 5 },
+          { type: "thinking", text: "hmm" },
+          { type: "tool_use", name: 5, id: "x" },
+          { type: "made_up_block", name: "Bash", id: "y", input: { command: "ls" } },
+          { type: "tool_use", name: "Bash", id: 7, input: { command: "ls" } },
+          { type: "text", text: "Done." },
+        ],
+      },
+    });
+    expect(out.slice(1)).toEqual([
+      { type: "own-tool", id: "", text: 'claude-code ran its own tool: Bash "ls"' },
+      { type: "reply", text: "Done." },
+    ]);
+  });
+
+  test("a result: its error, and its usage when there is one", () => {
+    const result = (extra: Record<string, unknown>) => run(claudeResult(extra)).out[1];
+    expect(result({})).toEqual({
+      type: "result",
+      ok: true,
+      error: null,
+      usage: null,
+      rest: null,
+      cost: null,
+      queued: 0,
+    });
+    expect(result({ usage: { output_tokens: 3 } })).toMatchObject({
+      usage: { input: 0, output: 3 },
+      rest: { input: 0, output: 3 },
+    });
+    expect(result({ usage: { input_tokens: 4 } })).toMatchObject({
+      usage: { input: 4, output: 0 },
+    });
+    expect(result({ is_error: true, result: "", subtype: "error_max_turns" })).toMatchObject({
+      ok: false,
+      error: "error_max_turns",
+    });
+    expect(result({ is_error: true, result: 5, subtype: undefined })).toMatchObject({
+      error: "error",
+    });
+    expect(result({ is_error: true, result: "bad\u0007 key" })).toMatchObject({
+      error: "bad key",
+    });
+    const unreadable = {
+      type: "fail",
+      error: "claude-code 2.1.303 speaks a stream Vimma does not read",
+    };
+    expect(result({ is_error: "yes" })).toEqual(unreadable);
+    expect(result({ usage: "lots" })).toEqual(unreadable);
+    expect(result({ usage: null })).toEqual(unreadable);
+  });
+});
+
+describe("codex's stream, event by event", () => {
+  const run = (...objects: unknown[]) => codexEvents(lines(...objects));
+
+  test("a turn without usage, and a failed turn with or without its message", () => {
+    expect(run({ type: "turn.completed" }).out).toEqual([
+      { type: "result", ok: true, error: null, usage: null, rest: null, cost: null, queued: 0 },
+    ]);
+    expect(run({ type: "turn.failed", error: { message: "bad\u0007 key" } }).out).toEqual([
+      {
+        type: "result",
+        ok: false,
+        error: "bad key",
+        usage: null,
+        rest: null,
+        cost: null,
+        queued: 0,
+      },
+    ]);
+    for (const error of [{ message: "" }, { message: 5 }, "boom"]) {
+      expect(run({ type: "turn.failed", error }).out).toMatchObject([
+        { type: "result", ok: false, error: "the turn failed" },
+      ]);
+    }
+  });
+
+  test("only an error event's message is the run's error at its end", () => {
+    expect(run({ type: "warning", message: "slow" }, { type: "error", message: 5 }).out).toEqual(
+      [],
+    );
+    expect(run({ type: "error", message: "reconnecting" }).out).toMatchObject([
+      { type: "result", ok: false, error: "reconnecting" },
+    ]);
+  });
+
+  test("items out of shape are skipped; a reply only when completed with words", () => {
+    const { out, stream } = run(
+      { type: "item.completed", item: null },
+      { type: "item.started", item: { id: "r", type: "agent_message", text: "Hel" } },
+      { type: "item.completed", item: { id: "r", type: "agent_message", text: "  " } },
+      { type: "item.completed", item: { id: "r", type: "agent_message", text: 5 } },
+      { type: "item.completed", item: { id: "f", type: "file_change", changes: "a.md" } },
+      { type: "item.completed", item: { id: "g", type: "reasoning", changes: [] } },
+      { type: "item.completed", item: { id: "r", type: "agent_message", text: "Hello" } },
+    );
+    expect(out).toEqual([{ type: "reply", text: "Hello" }]);
+    expect(stream.ignored).toBe(6);
+  });
+
+  test("own-tool items without an id are each shown; a file change names its files", () => {
+    const shell = { type: "command_execution", command: "ls" };
+    const { out } = run(
+      { type: "item.started", item: { ...shell, id: 7 } },
+      { type: "item.started", item: shell },
+      {
+        type: "item.completed",
+        item: {
+          id: "p",
+          type: "file_change",
+          changes: [null, { path: "a.md" }, { kind: "update", path: "b.md" }],
+        },
+      },
+    );
+    expect(out).toEqual([
+      { type: "own-tool", id: "", text: 'codex ran its own tool: shell "ls"' },
+      { type: "own-tool", id: "", text: 'codex ran its own tool: shell "ls"' },
+      {
+        type: "own-tool",
+        id: "p",
+        text: 'codex ran its own tool: apply_patch "a.md, update b.md"',
+      },
+    ]);
+  });
+});
+
+describe("gemini's stream, event by event", () => {
+  const run = (...objects: unknown[]) => geminiEvents(lines(...objects));
+  const use = (name: unknown, id?: unknown) => ({
+    type: "tool_use",
+    tool_name: name,
+    tool_id: id,
+    parameters: { command: "ls" },
+  });
+  const result = (id: unknown, status: string, type?: string) => ({
+    type: "tool_result",
+    tool_id: id,
+    status,
+    ...(type ? { error: { type, message: "no" } } : {}),
+  });
+
+  test("only the assistant's text pieces make a reply, and only with words", () => {
+    const { out } = run(
+      { type: "message", role: "user", content: "the task" },
+      { type: "message", role: "assistant", content: 5 },
+      { type: "message", role: "assistant", content: " \n" },
+      { type: "init" },
+    );
+    expect(out).toEqual([{ type: "init", model: "", version: "", tools: null }]);
+  });
+
+  test("a shell command's result is no refusal and no fail", () => {
+    const { out } = run(use("run_shell_command", "a"), result("a", "success"));
+    expect(out).toEqual([
+      { type: "own-tool", id: "a", text: 'gemini ran its own tool: run_shell_command "ls"' },
+    ]);
+  });
+
+  test("vimma's own tools are never the CLI's refusal or another server", () => {
+    const { out, stream } = run(
+      use(`mcp_${GEMINI_SERVER}_vimma_open`, "v"),
+      result("v", "error", "policy_violation"),
+      use(`mcp_${GEMINI_SERVER}_vimma_tabs`, "w"),
+      result("w", "success"),
+    );
+    expect(out).toEqual([]);
+    expect(stream.ignored).toBe(4);
+  });
+
+  test("only an error of a refused kind is a refusal", () => {
+    const { out } = run(
+      use("read_file", "a"),
+      result("a", "error", "file_not_found"),
+      use("read_file", "b"),
+      result("b", "success", "policy_violation"),
+      use("read_file", "c"),
+      result("c", "error", "tool_not_registered"),
+    );
+    expect(out.filter((e) => e.type === "own-tool-refused")).toEqual([
+      { type: "own-tool-refused", id: "c" },
+    ]);
+  });
+
+  test("a call without a name is skipped; one without an id is never matched to a result", () => {
+    const { out, stream } = run(
+      use(5, "x"),
+      use("read_file"),
+      result(undefined, "success"),
+      result(7, "success"),
+    );
+    expect(out).toEqual([
+      {
+        type: "own-tool",
+        id: "",
+        text: 'gemini ran its own tool: read_file {"command":"ls"}',
+      },
+    ]);
+    expect(stream.ignored).toBe(3);
+  });
+
+  test("a result: its stats, its error, and one result however the run ends", () => {
+    const end = (extra: Record<string, unknown>) => run({ type: "result", ...extra }).out;
+    expect(end({ status: "success" })).toEqual([
+      { type: "result", ok: true, error: null, usage: null, rest: null, cost: null, queued: 0 },
+    ]);
+    expect(end({ status: "success", stats: { output_tokens: 3 } })).toMatchObject([
+      { usage: { input: 0, output: 3 } },
+    ]);
+    expect(end({ status: "success", stats: { input_tokens: 4 } })).toMatchObject([
+      { usage: { input: 4, output: 0 } },
+    ]);
+    expect(end({ status: "error", error: { message: "" } })).toMatchObject([
+      { ok: false, error: "the run failed" },
+    ]);
+    expect(end({ status: "error", error: { message: 5 } })).toMatchObject([
+      { ok: false, error: "the run failed" },
+    ]);
+    expect(end({ status: "error", error: { message: "quota\u0007 gone" } })).toMatchObject([
+      { ok: false, error: "quota gone" },
+    ]);
+    expect(end({ status: "success", stats: "many" })).toEqual([
+      { type: "fail", error: "gemini speaks a stream Vimma does not read" },
+    ]);
+    const after = run(
+      { type: "error", message: "retrying" },
+      { type: "result", status: "success" },
+    );
+    expect(after.out).toHaveLength(1);
+    expect(run({ type: "warning", message: "slow" }).out).toEqual([]);
+  });
+
+  test("after a fail, the reply's pieces so far are not shown", () => {
+    const s = new GeminiStream({ model: "" });
+    s.push(`${lines({ type: "message", role: "assistant", content: "Half a reply" })}\n`);
+    expect(s.push("x".repeat(CLI_STREAM_LIMITS.line + 1))).toEqual([
+      { type: "fail", error: "gemini wrote a line over 1 MiB" },
+    ]);
+    expect(s.end()).toEqual([]);
+  });
+});
