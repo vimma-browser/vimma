@@ -857,6 +857,13 @@ describe("readDefinitions: every rule, and what it says", () => {
       "workspaces[0].home: an http(s) or about: URL",
     ],
     [
+      "a home in an array",
+      doc({ home: ["https://example.com/"] }),
+      "invalid",
+      "workspaces[0].home",
+      "workspaces[0].home: an http(s) or about: URL",
+    ],
+    [
       "a home that is not a string",
       doc({ home: 5 }),
       "invalid",
@@ -950,8 +957,11 @@ describe("workspace definitions: edges", () => {
     expect(after.workspaces[0]).toMatchObject({ name: "work", source: "runtime" });
   });
 
-  test("planContainers updates a container whose colour alone drifted", () => {
-    const d = defsOf(rt("a", { userContextId: 6, color: "red" }));
+  test.each([
+    ["colour", { color: "red" }],
+    ["icon", { icon: "cart" }],
+  ])("planContainers updates a container whose %s alone drifted", (_, drift) => {
+    const d = defsOf(rt("a", { userContextId: 6, ...drift }));
     expect(
       planContainers(d as any, [{ userContextId: 6, name: "a", color: "gray", icon: "circle" }]),
     ).toEqual({ adopt: ["a"], update: ["a"], create: [] });
@@ -1022,6 +1032,7 @@ describe("workspace definitions: edges", () => {
     const config = { ...rt("c"), source: "config" as const };
     const d = { ...defsOf(rt("a"), rt("b"), config, rt("agent")), lastActive: "b" };
     expect(removeWorkspaceDefinition(d as any, "a").definitions.lastActive).toBe("b");
+    expect(removeWorkspaceDefinition(d as any, "agent").definitions.lastActive).toBe("b");
     expect(
       defsError(() => removeWorkspaceDefinition(d as any, "agent", { agent: "agent" })).message,
     ).toBe('"agent" is the agent workspace; it is only emptied');
