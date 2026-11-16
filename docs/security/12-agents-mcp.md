@@ -301,6 +301,7 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_other_ui_opened_over_the_line_gets_the_keys`](../../tests/browser/browser_vimma_mcp_prompt_guards.js),
   [`test_hint_and_copy_mode_keep_their_keys`](../../tests/browser/browser_vimma_mcp_prompt_guards.js),
   [`test_names_titles_and_urls_are_bidi_isolates`](../../tests/browser/browser_vimma_mcp_prompt_guards.js),
+  [`every bidi control leaves a label, the Arabic letter mark among them`](../../packages/vimma-core/test/agent-prompt.test.ts),
   [`test_typing_in_a_field_waits_for_ctrl_b_shift_a`](../../tests/browser/browser_vimma_mcp_prompt.js),
   [`test_a_window_not_in_front_gets_attention_and_a_notification`](../../tests/browser/browser_vimma_mcp_control.js),
   [`any other key neither allows nor denies`](../../packages/vimma-core/test/agent-prompt.test.ts),

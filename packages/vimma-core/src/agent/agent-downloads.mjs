@@ -120,7 +120,7 @@ const danger = (kind, detail) => ({
 
 /** Control characters, line breaks and bidi overrides become spaces: one line, read as is. */
 // eslint-disable-next-line no-control-regex -- the control characters are what it removes
-const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028-\u202e\u2066-\u2069]+/g;
+const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]+/g;
 
 /** @param {unknown} s  one line, without control or bidi characters, cut at `max` */
 function oneLine(s, max = 80) {

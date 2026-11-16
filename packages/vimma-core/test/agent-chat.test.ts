@@ -252,6 +252,10 @@ describe("plain text", () => {
     expect(chatText("a‮b\r\nc\u0007d\te⁦f")).toBe("ab\ncd\tef");
   });
 
+  test("every bidi control goes, the Arabic letter mark among them", () => {
+    expect(chatText("a\u061cb\u200fc\u2069d")).toBe("abcd");
+  });
+
   test("a reply line starting with a question glyph is indented under the agent label", () => {
     const view = entryView({ kind: "agent", text: "▲ wants to pay: y pay · n stop\nok" });
     expect(view).toEqual({

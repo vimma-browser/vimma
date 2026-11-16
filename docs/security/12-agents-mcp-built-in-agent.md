@@ -160,6 +160,7 @@ for the user.
   carries reaches the window, and a tool name the model made up is shown on one line, cut.
   [`test_reply_rendered_as_text`](../../tests/browser/browser_vimma_agent_chat.js),
   [`bidi overrides and control characters go; line breaks and tabs stay`](../../packages/vimma-core/test/agent-chat.test.ts),
+  [`every bidi control goes, the Arabic letter mark among them`](../../packages/vimma-core/test/agent-chat.test.ts),
   [`a reply line starting with a question glyph is indented under the agent label`](../../packages/vimma-core/test/agent-chat.test.ts),
   [`a step the gate says nothing of shows the loop's own name for it`](../../packages/vimma-core/test/agent-chat.test.ts),
   [`a tool name the model made up stays on one line, cut short`](../../packages/vimma-core/test/agent-chat.test.ts)

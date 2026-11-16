@@ -486,6 +486,11 @@ describe("ClamAV's answer (decision 31 g)", () => {
       expect(v.signature.length).toBeLessThanOrEqual(60);
     }
   });
+
+  test("a signature name loses every bidi control, the Arabic letter mark among them", () => {
+    const v = clamVerdict({ exitCode: 1, stdout: "/q/a: Evil\u061cName\u2066X FOUND\n" });
+    expect(v).toEqual({ kind: "infected", signature: "Evil Name X" });
+  });
 });
 
 describe("the quarantine folder (decision 31 b)", () => {
