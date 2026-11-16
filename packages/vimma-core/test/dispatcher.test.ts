@@ -639,3 +639,103 @@ describe("dispatcher hot path", () => {
     });
   });
 });
+
+describe("dispatcher: the pending buffer", () => {
+  test("a new dispatcher has nothing pending", () => {
+    expect(make().pending()).toEqual([]);
+  });
+
+  test("an unbound function key is not a count digit", () => {
+    const d = make();
+    expect(d.dispatch("normal", parseKey("f1"))).toEqual({ kind: "pass" });
+    expect(d.pending()).toEqual([]);
+  });
+
+  test("a count cancelled by an unbound key leaves no count for the next key", () => {
+    const d = make();
+    expect(last(feed(d, "normal", "3 z"))).toEqual({ kind: "cancel" });
+    expect(d.dispatch("normal", parseKey("j"))).toStrictEqual({
+      kind: "action",
+      action: { id: "scroll.down" },
+    });
+  });
+
+  test("flush on a lone count cancels it", () => {
+    const d = make();
+    feed(d, "normal", "3");
+    expect(d.flush()).toEqual({ kind: "cancel" });
+    expect(d.pending()).toEqual([]);
+  });
+
+  test("an action carries only the fields it has", () => {
+    const d = make();
+    const r = d.dispatch("normal", parseKey("j"));
+    expect(r).toStrictEqual({ kind: "action", action: { id: "scroll.down" } });
+  });
+
+  test("a : binding carries its command line", () => {
+    const d = make({ modal: { normal: { gd: ":firefox Tools:Downloads" } } });
+    expect(last(feed(d, "normal", "g d"))).toStrictEqual({
+      kind: "action",
+      action: { id: "cmdline.run", line: "firefox Tools:Downloads" },
+    });
+  });
+});
+
+describe("dispatcher: Esc while something is pending", () => {
+  const d = () =>
+    make({
+      modal: {
+        normal: {
+          g: "tab.new",
+          "g<C-Esc>": "scroll.top",
+          "g<A-Esc>": "scroll.bottom",
+          "g<S-Esc>": "scroll.down",
+          "g<D-Esc>": "scroll.up",
+        },
+      },
+    });
+
+  test("Esc after a prefix that is itself a binding cancels rather than running it", () => {
+    expect(last(feed(d(), "normal", "g esc"))).toEqual({ kind: "cancel" });
+  });
+
+  test("Esc after a count cancels rather than running Esc's binding with the count", () => {
+    const dd = make();
+    expect(last(feed(dd, "normal", "3 esc"))).toEqual({ kind: "cancel" });
+    expect(dd.pending()).toEqual([]);
+  });
+
+  test.each([
+    ["ctrl+esc", "scroll.top"],
+    ["alt+esc", "scroll.bottom"],
+    ["shift+esc", "scroll.down"],
+    ["meta+esc", "scroll.up"],
+  ])("Esc with a modifier (%s) is an ordinary key that continues the sequence", (key, id) => {
+    expect(last(feed(d(), "normal", `g ${key}`))).toEqual({ kind: "action", action: { id } });
+  });
+});
+
+describe("dispatcher: a prefix that also takes a character", () => {
+  const d = () => make({ modal: { normal: { f: "caret.find_forward", fz: "tab.new" } } });
+
+  test("a key that continues the sequence runs the longer binding", () => {
+    expect(last(feed(d(), "normal", "f z"))).toEqual({
+      kind: "action",
+      action: { id: "tab.new" },
+    });
+  });
+
+  test("any other typed key is the character", () => {
+    expect(last(feed(d(), "normal", "f x"))).toStrictEqual({
+      kind: "action",
+      action: { id: "caret.find_forward", char: "x" },
+    });
+  });
+
+  test("a key that types no character cancels", () => {
+    const dd = d();
+    expect(last(feed(dd, "normal", "f ctrl+x"))).toEqual({ kind: "cancel" });
+    expect(dd.pending()).toEqual([]);
+  });
+});

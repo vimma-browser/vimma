@@ -325,3 +325,135 @@ describe("chordFromEvent: Option and AltGr characters", () => {
     expect(text(e)).toBe(want);
   });
 });
+
+// The messages are what a config error shows (keymap.mjs wraps them with the config path).
+describe("key notation errors", () => {
+  test("KeyNotationError is named as such", () => {
+    expect(new KeyNotationError("x").name).toBe("KeyNotationError");
+  });
+
+  test.each([
+    ["", "empty key"],
+    ["ctrl+", 'missing key in "ctrl+"'],
+    ["+b", 'unknown modifier "" in "+b"'],
+    ["+ctrl++", 'unknown modifier "" in "+ctrl++"'],
+    ["hyper+k", 'unknown modifier "hyper" in "hyper+k"'],
+    ["ctrl+Control+k", 'modifier "Control" repeated in "ctrl+Control+k"'],
+    ["ctrl+foo", 'unknown key "foo" in "ctrl+foo"'],
+  ])("parseKey(%j) says %s", (text, message) => {
+    expect(() => parseKey(text)).toThrow(new KeyNotationError(message));
+  });
+
+  test.each([
+    ["", "empty binding"],
+    [" \t ", "empty binding"],
+    ["prefix", '"prefix" needs a key: prefix+c'],
+    ["g<leader", 'unclosed "<" in "g<leader"'],
+    ["g<Foo>x", 'unknown key "<Foo>"'],
+    ["<C-C-x>", 'unknown key "<C-C-x>"'],
+    ["<Q-x>", 'unknown key "<Q-x>"'],
+    ["<C->", 'unknown key "<C->"'],
+  ])("parseBinding(%j) says %s", (text, message) => {
+    expect(() => parseBinding(text)).toThrow(new KeyNotationError(message));
+  });
+});
+
+describe("the + key", () => {
+  test.each([
+    ["+", chord("+")],
+    ["++", chord("+")],
+    ["ctrl++", chord("+", { ctrl: true })],
+    ["ctrl+alt++", chord("+", { ctrl: true, alt: true })],
+    [" ", chord("space")],
+  ])("parseKey(%j) is the chord it names", (text, expected) => {
+    expect(parseKey(text)).toEqual(expected);
+  });
+
+  test("ctrl+- in Vim notation is <C-->", () => {
+    expect(parseBinding("<C-->")).toEqual([chord("-", { ctrl: true })]);
+  });
+
+  test("a bare plus shows as the character, and ctrl with it as ctrl+plus", () => {
+    const keys = { prefix: parseKey("ctrl+b"), leader: parseKey("space") };
+    expect(displayBinding("prefix+plus", keys)).toBe("ctrl+b +");
+    expect(displayBinding("ctrl++", keys)).toBe("ctrl+plus");
+  });
+});
+
+describe("formatKey of non-canonical chords", () => {
+  test("shift on a character that carries it is dropped, and a capital is shift+letter", () => {
+    expect(formatKey(chord("?", { shift: true }))).toBe("?");
+    expect(formatKey(chord("T"))).toBe("shift+t");
+  });
+
+  test("a key it cannot name is written as given", () => {
+    expect(formatKey(chord("nokey", { ctrl: true }))).toBe("ctrl+nokey");
+  });
+});
+
+describe("formatBinding of bare specials", () => {
+  test("a prefix with no chord after it stays a word of its own", () => {
+    expect(formatBinding([{ special: "prefix" }])).toBe("prefix");
+    expect(formatBinding([{ special: "prefix" }, { special: "leader" }, chord("x")])).toBe(
+      "prefix <leader> x",
+    );
+  });
+});
+
+describe("displayBinding: runs and angle tokens", () => {
+  const keys = { prefix: parseKey("ctrl+b"), leader: parseKey("space") };
+
+  test("plain characters before an angle token stay a run of their own", () => {
+    expect(displayBinding("g<C-w>", keys)).toBe("g ctrl+w");
+    expect(displayBinding("gg<leader>x", keys)).toBe("gg space x");
+  });
+
+  test("a > that closes no < is a plain character", () => {
+    expect(displayBinding("a>b", keys)).toBe("a>b");
+  });
+
+  test("an unknown angle token is a notation error", () => {
+    expect(() => displayBinding("g<Foo>", keys)).toThrow(
+      new KeyNotationError('unknown key "<Foo>"'),
+    );
+  });
+});
+
+describe("chordFromEvent: events without a code", () => {
+  // A synthesized event (a test harness, an extension) may carry no `code`: only letters and
+  // digits count as the key's own character.
+  const synthetic = (key: string, mods: object) => ({
+    key,
+    ctrlKey: false,
+    altKey: false,
+    shiftKey: false,
+    metaKey: false,
+    ...mods,
+  });
+
+  test("alt with a letter or digit is a real alt chord", () => {
+    expect(formatKey(made(chordFromEvent(synthetic("a", { altKey: true }))))).toBe("alt+a");
+    expect(formatKey(made(chordFromEvent(synthetic("7", { altKey: true }))))).toBe("alt+7");
+  });
+
+  test("alt with any other character is a composed character", () => {
+    expect(formatKey(made(chordFromEvent(synthetic("@", { altKey: true }))))).toBe("@");
+    const altGraph = { getModifierState: (m: string) => m === "AltGraph" };
+    expect(formatKey(made(chordFromEvent(synthetic("@", altGraph))))).toBe("@");
+  });
+});
+
+describe("chordFromEvent: space is never a composed character", () => {
+  test("ctrl+alt+space keeps its modifiers", () => {
+    const e = {
+      key: " ",
+      code: "Space",
+      ctrlKey: true,
+      altKey: true,
+      shiftKey: false,
+      metaKey: false,
+      getModifierState: () => false,
+    };
+    expect(formatKey(made(chordFromEvent(e)))).toBe("ctrl+alt+space");
+  });
+});

@@ -449,3 +449,221 @@ describe("text-field keys before default [keys] bindings", () => {
     expect(at(modal, "insert", "ctrl+j")).toBe("web_search");
   });
 });
+
+/** The message compileKeymap fails with, or undefined when it compiles. */
+function failure(user: Parameters<typeof compileKeymap>[0]): string | undefined {
+  try {
+    compileKeymap(user);
+  } catch (e) {
+    if (!(e instanceof KeymapError)) throw e;
+    return e.message;
+  }
+  return undefined;
+}
+
+describe("compileKeymap: what each config error says", () => {
+  test("KeymapError names itself and adds its path and suggestion", () => {
+    const e = new KeymapError("unknown action", "keys.x", "new_tab");
+    expect(e.name).toBe("KeymapError");
+    expect(e.message).toBe('keys.x: unknown action (did you mean "new_tab"?)');
+    expect(new KeymapError("bad", "keys.x").message).toBe("keys.x: bad");
+  });
+
+  test.each<[string, Parameters<typeof compileKeymap>[0], string]>([
+    ["a bad prefix", { keys: { prefix: "ctrl+" } }, 'keys.prefix: missing key in "ctrl+"'],
+    ["a bad leader", { modal: { leader: "ctrl+" } }, 'modal.leader: missing key in "ctrl+"'],
+    [
+      "a list holding a non-string",
+      { keys: { new_tab: ["c", 5] as never } },
+      "keys.new_tab: expected a key string or a list of key strings",
+    ],
+    [
+      "bad notation in a list",
+      { keys: { new_tab: ["ctrl+alt+c", "ctrl+"] } },
+      'keys.new_tab[1]: missing key in "ctrl+"',
+    ],
+    [
+      "bad notation in a single string",
+      { keys: { new_tab: "ctrl+" } },
+      'keys.new_tab: missing key in "ctrl+"',
+    ],
+    [
+      "an unknown modal table",
+      { modal: { hnt: {} } },
+      'modal.hnt: unknown mode "hnt" (did you mean "hint"?)',
+    ],
+    [
+      "a modal value that is not a string",
+      { modal: { normal: { j: 5 } } as never },
+      'modal.normal."j": expected an action name',
+    ],
+    [
+      "a bare : binding",
+      { modal: { normal: { gd: ":" } } },
+      'modal.normal."gd": expected a command after :',
+    ],
+    [
+      "the prefix in [modal.pdf]",
+      { modal: { pdf: { "<C-b>x": "scroll.down" } } },
+      'modal.pdf."<C-b>x": [modal.pdf] cannot bind the prefix',
+    ],
+    ["an unknown [unbind] table", { unbind: { nrml: ["j"] } }, 'unbind.nrml: unknown mode "nrml"'],
+    [
+      "bad notation in [unbind]",
+      { unbind: { normal: ["ctrl+"] } },
+      'unbind.normal[0]: missing key in "ctrl+"',
+    ],
+    [
+      "a [firefox] enable that is not a list",
+      { firefox: { enable: 5 } } as never,
+      "firefox.enable: expected a key string or a list of key strings",
+    ],
+  ])("%s", (_name, user, message) => {
+    expect(failure(user)).toBe(message);
+  });
+
+  test.each([["100"], [Infinity], [NaN], [-1]])("timeout_ms %j is refused", (timeout) => {
+    expect(failure({ modal: { timeout_ms: timeout as never } })).toBe(
+      "modal.timeout_ms: must be a non-negative number of milliseconds",
+    );
+  });
+
+  test("a conflict names the mode", () => {
+    expect(failure({ keys: { new_tab: ["ctrl+alt+c"], quit: ["ctrl+alt+c"] } })).toBe(
+      'keys.quit: "ctrl+alt+c" is already bound to new_tab in normal mode',
+    );
+  });
+});
+
+describe("compileKeymap: : bindings", () => {
+  test("the command line drops the colons and white space around it", () => {
+    for (const value of [
+      ":firefox Tools:Downloads ",
+      "::firefox Tools:Downloads",
+      ": firefox Tools:Downloads",
+    ]) {
+      const node = compileKeymap({ modal: { normal: { gd: value } } })
+        .trie("normal")
+        .children.get("g")
+        ?.children.get("d");
+      expect(node?.action).toMatchObject({ id: "cmdline.run", line: "firefox Tools:Downloads" });
+    }
+  });
+
+  test("one command line bound twice is one Commands row with both bindings", () => {
+    const km = compileKeymap({
+      modal: {
+        normal: { gd: ":firefox Tools:Downloads" },
+        visual: { gd: ":firefox Tools:Downloads" },
+      },
+    });
+    expect(km.commands()).toEqual([
+      {
+        line: ":firefox Tools:Downloads",
+        bindings: ["gd", "gd [visual]"],
+        name: ":firefox Tools:Downloads",
+      },
+    ]);
+    const node = km.trie("normal").children.get("g")?.children.get("d");
+    expect(node?.action).toMatchObject({ group: "Commands" });
+    expect(km.trie("visual").children.get("g")?.children.get("d")?.action).toBe(node?.action);
+  });
+
+  test("a : binding on the prefix shows the prefix's keys", () => {
+    const km = compileKeymap({ modal: { normal: { "prefix+d": ":firefox Tools:Downloads" } } });
+    expect(km.commands()[0]?.bindings).toEqual(["ctrl+b d"]);
+  });
+
+  test("a : binding unbound everywhere leaves the Commands group", () => {
+    const km = compileKeymap({
+      modal: { normal: { gd: ":firefox Tools:Downloads" } },
+      unbind: { normal: ["gd"] },
+    });
+    expect(km.commands()).toEqual([]);
+  });
+});
+
+describe("compileKeymap: the modes a [keys] binding reaches", () => {
+  const has = (km: ReturnType<typeof compileKeymap>, mode: Mode, seq: string, pdf = false) =>
+    km.sequences(mode, pdf ? "pdf" : "page").some((s) => s.seq === seq);
+
+  test("a leader binding reaches normal mode, the side panel and the pdf context only", () => {
+    const km = compileKeymap({ keys: { toggle_sidebar: ["<leader>n"] } });
+    expect(has(km, "normal", "space n")).toBe(true);
+    expect(has(km, "panel", "space n")).toBe(true);
+    expect(has(km, "normal", "space n", true)).toBe(true);
+    expect(has(km, "insert", "space n")).toBe(false);
+  });
+
+  test("a plain binding reaches normal mode and the pdf context, not the side panel", () => {
+    const km = compileKeymap({ keys: { new_tab: ["Q"] } });
+    expect(has(km, "normal", "shift+q")).toBe(true);
+    expect(has(km, "normal", "shift+q", true)).toBe(true);
+    expect(has(km, "panel", "shift+q")).toBe(false);
+  });
+
+  test.each(["f1", "f10"])("a function key (%s) works in every mode", (key) => {
+    const km = compileKeymap({ keys: { new_tab: [key] } });
+    expect(has(km, "insert", key)).toBe(true);
+  });
+
+  test("the prefix may be bound in a mode's own table outside the pdf context", () => {
+    expect(failure({ modal: { visual: { "<C-b>": "scroll.down" } } })).toBeUndefined();
+  });
+
+  test("the same binding listed twice for one action is no conflict and lists once", () => {
+    const km = compileKeymap({ keys: { new_tab: ["ctrl+alt+c", "ctrl+alt+c"] } });
+    expect(km.bindingsFor("new_tab").filter((b) => b.startsWith("ctrl"))).toEqual(["ctrl+alt+c"]);
+  });
+
+  test("of two spellings of one binding, the first names the pending keys", () => {
+    const leader = compileKeymap({ keys: { new_tab: ["<leader>c", "space c"] } });
+    expect(leader.trie("normal").children.get("space")?.label).toBe("leader");
+    const plain = compileKeymap({ keys: { new_tab: ["space c", "<leader>c"] } });
+    expect(plain.trie("normal").children.get("space")?.label).toBe("space");
+  });
+
+  test("a [keys] binding left only outside normal mode carries no mode in listings", () => {
+    const km = compileKeymap({
+      keys: { new_tab: ["ctrl+alt+c"] },
+      unbind: { normal: ["ctrl+alt+c"] },
+    });
+    expect(km.bindingsFor("new_tab").filter((b) => b.startsWith("ctrl"))).toEqual(["ctrl+alt+c"]);
+  });
+});
+
+describe("compileKeymap: overrides, unbinding and Firefox's keys", () => {
+  test("a user modal binding marks its action, and the one it replaced, as overridden", () => {
+    const km = compileKeymap({ modal: { normal: { j: "scroll.up" } } });
+    expect(km.isOverridden("scroll_up")).toBe(true);
+    expect(km.isOverridden("scroll_down")).toBe(true);
+    expect(compileKeymap().isOverridden("scroll_down")).toBe(false);
+  });
+
+  test("unbinding in normal mode unbinds the pdf context too, and in another mode only there", () => {
+    const km = compileKeymap({ unbind: { normal: ["j"], insert: ["ctrl+t"] } });
+    expect(km.sequences("normal", "pdf").some((s) => s.seq === "j")).toBe(false);
+    expect(km.sequences("normal", "pdf").some((s) => s.seq === "ctrl+t")).toBe(true);
+    expect(km.sequences("insert").some((s) => s.seq === "ctrl+t")).toBe(false);
+    expect(km.isOverridden("scroll_down")).toBe(true);
+  });
+
+  test("[firefox] enable drops a default [keys] binding whatever its action", () => {
+    const km = compileKeymap({ firefox: { enable: ["ctrl+shift+a"] } });
+    expect(km.sequences("normal").some((s) => s.seq === "ctrl+shift+a")).toBe(false);
+  });
+
+  test("[firefox] enable passes over a user binding that is unbound everywhere", () => {
+    expect(
+      failure({
+        modal: { visual: { "<C-e>": "scroll.down" } },
+        unbind: { visual: ["ctrl+e"] },
+        firefox: { enable: ["ctrl+e"] },
+      }),
+    ).toBeUndefined();
+  });
+
+  test("fallback is null for a [keys] binding nothing shadows", () => {
+    expect(compileKeymap().fallback("normal", "ctrl+t")).toBeNull();
+  });
+});
