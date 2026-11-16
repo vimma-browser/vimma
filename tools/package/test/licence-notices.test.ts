@@ -11,11 +11,10 @@ const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const LICENCE_DIR = "browser/base/content/vimma/licence";
 const SMOL = join(ROOT, "packages/vimma-core/src/vendor/smol-toml");
 
-/** @param {string} s */
-const squash = (s) => s.replace(/\s+/g, " ").trim();
+const squash = (s: string) => s.replace(/\s+/g, " ").trim();
 
-/** @param {string} path relative to the repository */
-const read = (path) => readFileSync(join(ROOT, path), "utf8");
+/** @param path relative to the repository */
+const read = (path: string) => readFileSync(join(ROOT, path), "utf8");
 
 describe("about:license notices", () => {
   it("moz-build.patch passes the product-specific licence blocks to license.html, in order", () => {

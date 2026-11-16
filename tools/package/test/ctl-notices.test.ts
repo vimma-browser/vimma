@@ -1,5 +1,5 @@
 // Issue #516: every package ships vimma-ctl (spec ship-vimma-ctl), and the libraries its toolchain
-// links into it come with their notices. ctl-notices.mjs gathers them from the toolchain that
+// links into it come with their notices. ctl-notices.ts gathers them from the toolchain that
 // built the binary (and musl's COPYRIGHT, which rustup does not ship, from tools/package/notices/)
 // and describes the binary for the release SBOM.
 import { describe, expect, it } from "vitest";
@@ -15,11 +15,11 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { arMembers, muslVersion, parseRustcVersion, writeCtlNotices } from "../ctl-notices.mjs";
+import { arMembers, muslVersion, parseRustcVersion, writeCtlNotices } from "../ctl-notices.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
-const SCRIPT = fileURLToPath(new URL("../ctl-notices.mjs", import.meta.url));
+const SCRIPT = fileURLToPath(new URL("../ctl-notices.ts", import.meta.url));
 const MUSL_COPYRIGHT = join(ROOT, "tools/package/notices/musl-1.2.5/COPYRIGHT");
 const MUSL = "x86_64-unknown-linux-musl";
 
@@ -48,20 +48,14 @@ const COPYRIGHT_LIBRARY = `<html><body>
 
 /**
  * A GNU ar archive, as musl's libc.a: a symbol table, long names for members over 15 characters.
- * @param {[string, Buffer | string][]} members
  */
-function ar(members) {
+function ar(members: [string, Buffer | string][]) {
   const longNames = members
     .filter(([name]) => name.length > 15)
     .map(([name]) => `${name}/\n`)
     .join("");
-  /** @type {Buffer[]} */
-  const parts = [Buffer.from("!<arch>\n", "latin1")];
-  /**
-   * @param {string} name
-   * @param {Buffer} data
-   */
-  const member = (name, data) => {
+  const parts: Buffer[] = [Buffer.from("!<arch>\n", "latin1")];
+  const member = (name: string, data: Buffer) => {
     const header =
       name.padEnd(16) +
       "0".padEnd(12) +
@@ -83,21 +77,19 @@ function ar(members) {
 }
 
 /** An object file whose .rodata holds musl's version string among others. */
-const versionObject = (/** @type {string} */ version) =>
+const versionObject = (version: string) =>
   Buffer.from(`\x7fELF\0\0\0junk\0${version}\0GCC: (GNU) 13.2.0\0`, "latin1");
 
 /**
  * A rustup sysroot as `rustc --print sysroot` names it, with the musl target when asked.
- * @param {{ musl?: string | null, copyright?: string | null, licenses?: string[] }} [options]
  */
 function fakeSysroot({
   musl = "1.2.5",
   copyright = COPYRIGHT_LIBRARY,
   licenses = ["Apache-2.0", "MIT", "LLVM-exception", "Unicode-3.0", "GPL-3.0-or-later"],
-} = {}) {
+}: { musl?: string | null; copyright?: string | null; licenses?: string[] } = {}) {
   const sysroot = tempDir("vimma-sysroot-");
-  /** @type {Record<string, string | Buffer>} */
-  const files = {};
+  const files: Record<string, string | Buffer> = {};
   if (copyright !== null) files["share/doc/rust/COPYRIGHT-library.html"] = copyright;
   for (const id of licenses) files[`share/doc/rust/licenses/${id}.txt`] = `${id} licence text\n`;
   if (musl !== null) {
@@ -119,8 +111,7 @@ function fakeSysroot({
 const CONFIG = { brands: { vimma: { release: { displayVersion: "0.1.8" } } } };
 const CARGO_TOML = '[package]\nname = "vimma-ctl"\nversion = "0.1.0"\nlicense = "MPL-2.0"\n';
 
-/** @param {Partial<Parameters<typeof writeCtlNotices>[0]>} [options] */
-function notices(options = {}) {
+function notices(options: Partial<Parameters<typeof writeCtlNotices>[0]> = {}) {
   const out = join(tempDir("vimma-ctl-notices-"), "vimma-ctl-licenses");
   const component = writeCtlNotices({
     sysroot: fakeSysroot(),
@@ -135,8 +126,7 @@ function notices(options = {}) {
   return { out, component };
 }
 
-/** @param {string} dir */
-const listing = (dir) =>
+const listing = (dir: string) =>
   readdirSync(dir, { recursive: true, withFileTypes: true })
     .filter((e) => e.isFile())
     .map((e) => join(e.parentPath, e.name).slice(dir.length + 1))
@@ -373,7 +363,7 @@ describe("the vendored musl COPYRIGHT", () => {
   });
 });
 
-describe("ctl-notices.mjs", () => {
+describe("ctl-notices.ts", () => {
   it("asks the pinned toolchain in tools/vimma-ctl for its sysroot and version", () => {
     const dir = tempDir("vimma-ctl-notices-cli-");
     const sysroot = fakeSysroot();

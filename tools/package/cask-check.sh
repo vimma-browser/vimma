@@ -81,7 +81,7 @@ if [ "${1:-}" = "--stub" ]; then
   dmg="$work/vimma-macos-aarch64.dmg"
   hdiutil create -quiet -volname Vimma -srcfolder "$work/stage" -format UDZO "$dmg"
   cask="$work/vimma.rb"
-  node "$repo/tools/package/cask.mjs" --dmg "$dmg" --out "$cask"
+  node "$repo/tools/package/cask.ts" --dmg "$dmg" --out "$cask"
 else
   [ $# = 1 ] || [ $# = 2 ] || die "usage: cask-check.sh <vimma.rb> [<dmg>] | --stub"
   cask=$1

@@ -19,7 +19,7 @@ on:
       - tools/package/macos-app-check.sh
       - tools/package/macos-dmg-check.sh
       - tools/package/macos-dmg.sh
-      - tools/package/macos-icons.mjs
+      - tools/package/macos-icons.ts
       - tools/package/render-icon.swift
 
 permissions: {}
@@ -270,7 +270,7 @@ jobs:
         run: |
           xcrun actool --version
           out="$RUNNER_TEMP/icons"
-          node tools/package/macos-icons.mjs --out "$out"
+          node tools/package/macos-icons.ts --out "$out"
           app="$RUNNER_TEMP/Preview.app"
           mkdir -p "$app/Contents/Resources" "$app/Contents/MacOS"
           cp "$out/Assets.car" "$out/firefox.icns" "$app/Contents/Resources/"
@@ -295,4 +295,4 @@ jobs:
           if-no-files-found: error
 
       - name: The committed icon files match their sources
-        run: node tools/package/macos-icons.mjs --check
+        run: node tools/package/macos-icons.ts --check

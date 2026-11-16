@@ -98,7 +98,7 @@ case "${1:-}" in
       cp "$here/../../configs/branding/vimma/logo$size.png" "$app/browser/chrome/icons/default/default$size.png"
     done
     tar -cJf "$work/stub.tar.xz" -C "$work/stub" vimma
-    node "$here/flatpak.mjs" --out "$work/manifest" --version "$version" --date "$today" \
+    node "$here/flatpak.ts" --out "$work/manifest" --version "$version" --date "$today" \
       --tarball "$work/stub.tar.xz" > /dev/null
     real=0
     ;;
@@ -107,7 +107,7 @@ case "${1:-}" in
     sha=${3:?usage: flatpak-smoke.sh --release <tag> <sha256> <version line>}
     expected=${4:?usage: flatpak-smoke.sh --release <tag> <sha256> <version line>}
     echo "$tag" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+' || { echo "flatpak-smoke: '$tag' is not vX.Y.Z"; exit 2; }
-    node "$here/flatpak.mjs" --out "$work/manifest" --version "${tag#v}" --date "$today" \
+    node "$here/flatpak.ts" --out "$work/manifest" --version "${tag#v}" --date "$today" \
       --sha256 "$sha" > /dev/null
     real=1
     ;;

@@ -5,16 +5,16 @@
  * omni.ja is there, the `is-packaged-app` marker, and `$APPIMAGE`. release.yml's smoke test
  * runs it on the installed .deb and the extracted AppImage.
  *
- *   node tools/package/install-type.mjs <gre-dir>
+ *   node tools/package/install-type.ts <gre-dir>
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { installTypeFrom } from "../../packages/vimma-core/src/updates/updates.mjs";
-import { PACKAGED_APP_FILE } from "./package.mjs";
+import { PACKAGED_APP_FILE } from "./package.ts";
 
 const dir = process.argv[2];
 if (!dir) {
-  console.error("usage: install-type.mjs <gre-dir>");
+  console.error("usage: install-type.ts <gre-dir>");
   process.exit(64);
 }
 const markerPath = join(dir, PACKAGED_APP_FILE);

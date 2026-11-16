@@ -3,7 +3,7 @@
 Unchanged copies, pinned by version and SHA-256. Used at release time and in tests only; none of
 it ships in a package. Update by downloading the same paths at a new tag, updating this table,
 and keeping the SPDX list at the version the CycloneDX schema's `spdx.schema.json` enumerates
-(its `$comment`), so every id `sbom.mjs` emits is one the schema accepts.
+(its `$comment`), so every id `sbom.ts` emits is one the schema accepts.
 
 | File                                       | Source                                                                                       | Version | Licence                    | SHA-256                                                            |
 | ------------------------------------------ | -------------------------------------------------------------------------------------------- | ------- | -------------------------- | ------------------------------------------------------------------ |
@@ -16,10 +16,10 @@ and keeping the SPDX list at the version the CycloneDX schema's `spdx.schema.jso
 | `../notices/musl-1.2.5/COPYRIGHT`          | `COPYRIGHT` in `https://musl.libc.org/releases/musl-1.2.5.tar.gz` (signature checked)        | 1.2.5   | MIT                        | `f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af` |
 
 The notices files ship: the AppImage carries `LGPL-2.1.txt`, and every package carries musl's
-`COPYRIGHT` with `vimma-ctl` (`ctl-notices.mjs`, which picks it by the musl version in the Rust
+`COPYRIGHT` with `vimma-ctl` (`ctl-notices.ts`, which picks it by the musl version in the Rust
 toolchain's `libc.a`; rustup ships no copy). For a new musl, add `notices/musl-<version>/COPYRIGHT`
 from that release's tarball, after checking the tarball's `.asc` against musl's key
 (`https://musl.libc.org/musl.pub`).
 
 The schemas are validated with ajv 8 (MIT, a direct devDependency; it was already in the lockfile
-through commitlint): `node tools/package/validate-sbom.mjs <sbom>`.
+through commitlint): `node tools/package/validate-sbom.ts <sbom>`.

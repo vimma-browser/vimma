@@ -5,7 +5,7 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
-import { cask } from "../cask.mjs";
+import { cask } from "../cask.ts";
 
 // Spec macos-homebrew, decisions 4 to 9: the Homebrew cask, a release asset that homebrew.yml
 // pushes to vimma-browser/homebrew-tap as Casks/vimma.rb.
@@ -83,10 +83,10 @@ describe("cask", () => {
   });
 });
 
-describe("cask.mjs", () => {
-  const script = join(repo, "tools/package/cask.mjs");
-  /** @param {string[]} args */
-  const run = (args) => spawnSync(process.execPath, [script, ...args], { encoding: "utf8" });
+describe("cask.ts", () => {
+  const script = join(repo, "tools/package/cask.ts");
+  const run = (args: string[]) =>
+    spawnSync(process.execPath, [script, ...args], { encoding: "utf8" });
 
   it("writes the cask for surfer.json's version with the dmg's SHA-256", () => {
     const dir = tempDir("vimma-cask-");
@@ -170,12 +170,14 @@ describe("cask-check.sh", () => {
   // included. The script trusts only the cask in the throwaway tap it made, and only on a
   // Homebrew that has `brew trust`; a stub brew on the PATH records what the script asks of it.
   /**
-   * @param {boolean} hasTrust whether the stub brew knows `brew trust` and `brew untrust`
-   * @param {boolean} [longList] whether `brew commands` lists many more commands after `trust`,
+   * @param hasTrust whether the stub brew knows `brew trust` and `brew untrust`
+   * @param longList whether `brew commands` lists many more commands after `trust`,
    *   more than a pipe holds, and fails when its reader stops reading, as brew does on SIGPIPE
-   * @returns {{ status: number | null, stderr: string, calls: string[] }}
    */
-  function runWithStubBrew(hasTrust, longList = false) {
+  function runWithStubBrew(
+    hasTrust: boolean,
+    longList: boolean = false,
+  ): { status: number | null; stderr: string; calls: string[] } {
     const dir = tempDir("vimma-cask-check-brew-");
     const bin = join(dir, "bin");
     const tapRepo = join(dir, "tap");

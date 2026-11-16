@@ -4,27 +4,6 @@
 # tools/test/mjs-ratchet.test.ts fails until it does. The hooks of tools/claude-plugin and the
 # base-branch guards (tools/ci/docs-only.mjs, tools/ci/key-guard.mjs and its test) stay .mjs
 # (ADR-025, decision 7) and are not listed.
-tools/package/cask.mjs
-tools/package/ctl-notices.mjs
-tools/package/flatpak.mjs
-tools/package/install-type.mjs
-tools/package/macos-icons.mjs
-tools/package/package.mjs
-tools/package/sbom.mjs
-tools/package/test/cask.test.mjs
-tools/package/test/ctl-notices.test.mjs
-tools/package/test/dsstore.mjs
-tools/package/test/flatpak.test.mjs
-tools/package/test/licence-notices.test.mjs
-tools/package/test/macos-developer-id.test.mjs
-tools/package/test/macos.test.mjs
-tools/package/test/notarise-job.mjs
-tools/package/test/package.test.mjs
-tools/package/test/release-workflow.test.mjs
-tools/package/test/rpm-smoke.test.mjs
-tools/package/test/sbom.test.mjs
-tools/package/test/vimma-open.test.mjs
-tools/package/validate-sbom.mjs
 tools/test/build.test.mjs
 tools/test/chrome-css.test.mjs
 tools/test/feature-prefs.mjs

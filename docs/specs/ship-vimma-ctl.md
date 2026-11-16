@@ -1,7 +1,7 @@
 # Spec: ship-vimma-ctl
 
-Status: implemented · Area: `.github/workflows/release.yml`, `tools/package/package.mjs`,
-`tools/package/cask.mjs`, `tools/package/macos-dmg.sh`, `tools/package/arch-smoke.sh`,
+Status: implemented · Area: `.github/workflows/release.yml`, `tools/package/package.ts`,
+`tools/package/cask.ts`, `tools/package/macos-dmg.sh`, `tools/package/arch-smoke.sh`,
 `tools/package/rpm-smoke.sh`, `tools/package/cask-check.sh`, `tools/vimma-ctl/` (`build.rs`,
 `src/version.rs`, `src/mcp.rs`, `src/mcp_serve.rs`), `packages/vimma-core/src/ctl-version.mjs`,
 `packages/vimma-core/src/control.mjs`, `src/browser/base/content/vimma/ctl/agent-commands.mjs`,
@@ -42,7 +42,7 @@ that it cannot click or fill, although the browser can.
    `/usr/bin/vimma-ctl` link in the `.deb` and the `.rpm`, and `/opt/vimma/vimma-ctl` with a
    `/usr/bin/vimma-ctl` link from the `PKGBUILD`. The macOS `.dmg` carries
    `Vimma.app/Contents/MacOS/vimma-ctl`, and the Homebrew cask links it into Homebrew's `bin`.
-   `package.mjs` refuses to package without it.
+   `package.ts` refuses to package without it.
 2. An AppImage started through a link named `vimma-ctl` runs the `vimma-ctl` inside it, with
    its arguments; under any other name it starts Vimma as before.
 3. `vimma-ctl --version` prints `vimma-ctl X.Y.Z (protocol 2)`, where `X.Y.Z` is the Vimma
@@ -64,12 +64,12 @@ that it cannot click or fill, although the browser can.
 
 - **The AppImage runtime sets `ARGV0`.** The type-2 runtime release `20251108` that
   `tools/package/fetch-appimagetool.sh` pins was run with a link named `vimma-ctl` pointing at
-  an AppImage packaged by `package.mjs`, both mounted through FUSE and with
+  an AppImage packaged by `package.ts`, both mounted through FUSE and with
   `APPIMAGE_EXTRACT_AND_RUN=1`: in both, `AppRun` saw the link's name in `$ARGV0` and ran
   `usr/lib/vimma/vimma-ctl` (checked on 2026-10-22 on Linux 7.2).
 - **glibc.** `vimma-ctl` built for `x86_64-unknown-linux-gnu` on `ubuntu:24.04` (glibc 2.39)
   with Rust 1.99.1 requires the symbol version `GLIBC_2.34` (`objdump -T`). The `.deb` declares
-  `libc6 (>= 2.31)` (`DEB_DEPENDS` in `tools/package/package.mjs`), the floor of the browser
+  `libc6 (>= 2.31)` (`DEB_DEPENDS` in `tools/package/package.ts`), the floor of the browser
   itself. Built for `x86_64-unknown-linux-musl` in the same container, it is one
   `static-pie linked` file of 873 KiB that needs no system library.
 - **No crate is downloaded.** The crate has no dependencies (ADR-011); with an empty
@@ -108,7 +108,7 @@ that it cannot click or fill, although the browser can.
    file. Rejected: bumping `Cargo.toml`'s version with release-please, because `Cargo.lock`
    repeats it and `cargo build --locked` fails when the two drift; and setting the version only
    in the release job, because a source build would then claim an old version and always warn.
-5. **The release tarball is mach's, repacked with `vimma-ctl`.** `package.mjs` copies the
+5. **The release tarball is mach's, repacked with `vimma-ctl`.** `package.ts` copies the
    binary into the unpacked `vimma/` before it builds anything, so the tarball, the AppImage, the
    `.deb`, the `.rpm` and the `PKGBUILD` (which installs the tarball) carry the same file, and
    every update path replaces it with the browser. The tarball is packed with owner and group 0
@@ -171,7 +171,7 @@ that it cannot click or fill, although the browser can.
   listing `vimma-ctl` in the release SBOM is tracked in
   [#516](https://github.com/vimma-browser/vimma/issues/516). (Since changed: every package
   carries `vimma-ctl-licenses/` next to `vimma-ctl`, in `Vimma.app/Contents/Resources` on
-  macOS, from `tools/package/ctl-notices.mjs`, and the release SBOM lists `vimma-ctl` with
+  macOS, from `tools/package/ctl-notices.ts`, and the release SBOM lists `vimma-ctl` with
   musl, Rust's standard library and LLVM's libunwind; docs/runbook/ci-release-packages.md, "Release
   packages", and docs/security/14-build-and-release-supply-chain.md, B13.)
 
@@ -190,13 +190,13 @@ that it cannot click or fill, although the browser can.
 - mochitest (`tests/browser/browser_vimma_mcp_agent_grants.js`):
   `test_an_older_vimma_ctl_gets_a_notice_and_still_works`,
   `test_the_older_client_notice_waits_for_the_question_line`.
-- vitest (`tools/package/test/package.test.mjs`): `runs vimma-ctl when started through a link
+- vitest (`tools/package/test/package.test.ts`): `runs vimma-ctl when started through a link
 named vimma-ctl`, `repacks the mach tarball under the release name with vimma-ctl next to
 vimma`, `puts vimma-ctl next to vimma in the AppDir, and on PATH in the .deb and the .rpm`,
   `puts the tarball's vimma-ctl on PATH`, `refuses to package without an executable vimma-ctl`;
   the `.deb` and `.rpm` contents tests check the binary and its link.
-- vitest (`tools/package/test/release-workflow.test.mjs`, the `vimma-ctl` group): the `ctl`,
-  `macos-ctl`, `package`, `macos-build` and `macos-smoke` jobs; `cask.test.mjs`: the cask links
+- vitest (`tools/package/test/release-workflow.test.ts`, the `vimma-ctl` group): the `ctl`,
+  `macos-ctl`, `package`, `macos-build` and `macos-smoke` jobs; `cask.test.ts`: the cask links
   `vimma-ctl` and `cask-check.sh` checks the link.
 - `tools/package/arch-smoke.sh`, `rpm-smoke.sh` and `cask-check.sh`, on pull requests with stub
   binaries and in `release.yml` with the real ones: `vimma-ctl --version` on `PATH` names the

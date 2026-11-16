@@ -19,8 +19,8 @@ import {
   flatpakManifest,
   metainfo,
   writeFlatpak,
-} from "../flatpak.mjs";
-import { IDENTITY_REGEXP, checkDesktopEntry } from "../package.mjs";
+} from "../flatpak.ts";
+import { IDENTITY_REGEXP, checkDesktopEntry } from "../package.ts";
 
 // Spec flatpak: the Flatpak manifest built from the release tarball, as Flathub would build it,
 // and the CI that builds and runs it (flatpak.yml, tools/package/flatpak-smoke.sh).
@@ -30,19 +30,16 @@ const surfer = JSON.parse(readFileSync(join(repo, "surfer.json"), "utf8"));
 const SHA = "a".repeat(64);
 const brandDir = join(repo, "configs/branding/vimma");
 
-/** @param {Partial<Parameters<typeof flatpakManifest>[0]>} [over] */
-const manifest = (over = {}) =>
+const manifest = (over: Partial<Parameters<typeof flatpakManifest>[0]> = {}) =>
   flatpakManifest({ version: "0.1.6", source: { url: true, sha256: SHA }, ...over });
 
-/** @param {ReturnType<typeof flatpakManifest>} m */
-const vimmaModule = (m) => {
+const vimmaModule = (m: ReturnType<typeof flatpakManifest>) => {
   const mod = m.modules.find((x) => x.name === "vimma");
   if (!mod) throw new Error("no vimma module");
   return mod;
 };
 
-/** @param {ReturnType<typeof flatpakManifest>} m */
-const vimmaArchive = (m) => {
+const vimmaArchive = (m: ReturnType<typeof flatpakManifest>) => {
   const src = vimmaModule(m).sources[0];
   if (!src || !("sha256" in src))
     throw new Error("the vimma module does not start with its archive");
@@ -91,7 +88,7 @@ describe("Flatpak manifest", () => {
     ["a path outside the manifest's directory", { source: { path: "../x.tar.xz", sha256: SHA } }],
     ["an absolute path", { source: { path: "/tmp/x.tar.xz", sha256: SHA } }],
   ])("refuses %s", (_name, over) => {
-    expect(() => manifest(/** @type {any} */ (over))).toThrow();
+    expect(() => manifest(over as any)).toThrow();
   });
 
   it("grants Firefox's Flatpak permissions and the Omarchy theme read-only, never the home", () => {
@@ -241,8 +238,7 @@ describe("Flatpak metainfo", () => {
     // loadScenarios validates each file as the e2e runner does: CI's e2e jobs never load these,
     // since they reach the live site.
     const scenarios = loadScenarios(join(repo, "tools/package/screenshots"));
-    /** @type {any[]} */
-    const steps = scenarios.flatMap((s) => s.steps);
+    const steps: any[] = scenarios.flatMap((s) => s.steps);
     // No step that types, runs a program or reaches the browser other than by keys and URLs.
     const kinds = ["open", "keys", "wait-for-state", "sleep", "screenshot"];
     for (const step of steps) {
@@ -379,8 +375,7 @@ describe("flatpak-smoke.sh", () => {
 
 describe("flatpak.yml", () => {
   const text = readFileSync(join(repo, ".github/workflows/flatpak.yml"), "utf8");
-  /** @type {any} */
-  const wf = load(text, { schema: CORE_SCHEMA });
+  const wf: any = load(text, { schema: CORE_SCHEMA });
   const on = wf.on;
 
   it("runs on pull requests that touch packaging, on a published release, and by hand", () => {
@@ -396,15 +391,15 @@ describe("flatpak.yml", () => {
     expect(wf.permissions).toEqual({});
     expect(text).not.toMatch(/secrets\.|environment:|GITHUB_TOKEN|github\.token/);
     for (const [id, job] of Object.entries(wf.jobs)) {
-      expect(/** @type {any} */ (job).permissions, id).toEqual({ contents: "read" });
-      expect(/** @type {any} */ (job)["runs-on"], id).toBe("ubuntu-24.04");
+      expect((job as any).permissions, id).toEqual({ contents: "read" });
+      expect((job as any)["runs-on"], id).toBe("ubuntu-24.04");
     }
   });
 
   it("builds a stub tarball on pull requests", () => {
     const stub = wf.jobs.stub;
     expect(stub.if).toBe("github.event_name == 'pull_request'");
-    expect(stub.steps.map((/** @type {any} */ s) => s.run).filter(Boolean)).toContain(
+    expect(stub.steps.map((s: any) => s.run).filter(Boolean)).toContain(
       "tools/package/flatpak-smoke.sh --stub",
     );
   });
@@ -414,7 +409,7 @@ describe("flatpak.yml", () => {
     expect(job.if).toContain("vars.RELEASE_ENABLED == 'true'");
     expect(job.if).toContain("github.repository == 'vimma-browser/vimma'");
     expect(job.if).toContain("github.event_name == 'release' || github.ref == 'refs/heads/main'");
-    const run = job.steps.map((/** @type {any} */ s) => s.run ?? "").join("\n");
+    const run = job.steps.map((s: any) => s.run ?? "").join("\n");
     expect(run).toContain("https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG");
     expect(run).toMatch(/grep -Eqx 'v\[0-9\]\+\\\.\[0-9\]\+\\\.\[0-9\]\+'/);
     expect(run).toContain(
@@ -426,7 +421,7 @@ describe("flatpak.yml", () => {
 
   it("checks the release's signature against the documented identity when signing is on", () => {
     const steps = wf.jobs.release.steps;
-    const verify = steps.find((/** @type {any} */ s) => /cosign verify-blob/.test(s.run ?? ""));
+    const verify = steps.find((s: any) => /cosign verify-blob/.test(s.run ?? ""));
     expect(verify.if).toBe("vars.SIGNING_ENABLED == 'true'");
     expect(verify.run).toContain(`--certificate-identity-regexp '${IDENTITY_REGEXP}'`);
     expect(verify.run).toContain(
@@ -436,7 +431,7 @@ describe("flatpak.yml", () => {
 
   it("passes event values to run: through env only", () => {
     for (const job of Object.values(wf.jobs)) {
-      for (const step of /** @type {any} */ (job).steps) {
+      for (const step of (job as any).steps) {
         expect(step.run ?? "", step.name).not.toMatch(/\$\{\{/);
       }
     }

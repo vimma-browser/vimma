@@ -24,7 +24,7 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   copy is yours and never touched. [`test_installer`](../../tests/browser/browser_vimma_omarchy_hook.js)
 - O5. `vimma-open` **never** passes a single argument that starts with `-`, so a crafted link
   cannot become a browser flag (`-profile`, `--remote-debugging-port`).
-  [`refuses a single argument that is a flag: %u must never smuggle one in`](../../tools/package/test/vimma-open.test.mjs)
+  [`refuses a single argument that is a flag: %u must never smuggle one in`](../../tools/package/test/vimma-open.test.ts)
 - O6. The names **must** be at most eight lower-case tokens of at most 64 characters each,
   separated by commas (the seven nearest and the farthest); a name that is not a token is
   passed over, never passed on, so a child that renames itself cannot hide an agent CLI's name
@@ -32,13 +32,13 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   only when the walk could not see the terminal (it passed a name that is not a token, or hit
   the 32-step limit), so a job an agent CLI left behind, reparented to pid 1, does not take the
   terminal's name.
-  [`never passes a name that is not a simple token, and keeps the names before it`](../../tools/package/test/vimma-open.test.mjs),
-  [`refuses a name with a newline in it`](../../tools/package/test/vimma-open.test.mjs),
-  [`never passes a VIMMA_FROM it did not set`](../../tools/package/test/vimma-open.test.mjs),
-  [`keeps the seven nearest names and the farthest past eight`](../../tools/package/test/vimma-open.test.mjs),
-  [`a_detached_child_under_an_agent_cli_gets_no_TERM_PROGRAM_name`](../../tools/package/test/vimma-open.test.mjs),
-  [`stops at the compositor without naming it`](../../tools/package/test/vimma-open.test.mjs),
-  [`a name that is not a token never hides the names beyond it`](../../tools/package/test/vimma-open.test.mjs)
+  [`never passes a name that is not a simple token, and keeps the names before it`](../../tools/package/test/vimma-open.test.ts),
+  [`refuses a name with a newline in it`](../../tools/package/test/vimma-open.test.ts),
+  [`never passes a VIMMA_FROM it did not set`](../../tools/package/test/vimma-open.test.ts),
+  [`keeps the seven nearest names and the farthest past eight`](../../tools/package/test/vimma-open.test.ts),
+  [`a_detached_child_under_an_agent_cli_gets_no_TERM_PROGRAM_name`](../../tools/package/test/vimma-open.test.ts),
+  [`stops at the compositor without naming it`](../../tools/package/test/vimma-open.test.ts),
+  [`a name that is not a token never hides the names beyond it`](../../tools/package/test/vimma-open.test.ts)
 - O7. A theme's `colors.toml` (anyone can publish a theme) **must** give only `#rrggbb` colours
   and one CSS rule, and be read in bounded time however deep or large it is.
   [`parseOmarchyColors never throws; a palette has every key, as #rrggbb or a mode`](../../packages/vimma-core/test/fuzz/theme.fuzz.test.ts),
@@ -46,14 +46,14 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   [`a hostile theme file is read in bounded time: deep, huge, many keys`](../../packages/vimma-core/test/fuzz/theme.fuzz.test.ts)
 - O8. `--from` **must** take exactly one app token and one URL that does not start with `-`
   (else exit 64): it names a program, never a workspace, so the choice stays with config.toml.
-  [`--from refuses a name that is not a token`](../../tools/package/test/vimma-open.test.mjs),
-  [`--from refuses a URL that is a flag`](../../tools/package/test/vimma-open.test.mjs),
-  [`--from names the app and skips the walk`](../../tools/package/test/vimma-open.test.mjs)
+  [`--from refuses a name that is not a token`](../../tools/package/test/vimma-open.test.ts),
+  [`--from refuses a URL that is a flag`](../../tools/package/test/vimma-open.test.ts),
+  [`--from names the app and skips the walk`](../../tools/package/test/vimma-open.test.ts)
 - O9. `vimma-open` **never** runs a command of a multiplexer it passes (`tmux`, `herdr`,
   `zellij`): asking a server for its client would run your tmux hooks on every link, and could
   name the wrong terminal. Its server ends the list instead.
-  [`never runs tmux or herdr`](../../tools/package/test/vimma-open.test.mjs),
-  [`a daemonised tmux server ends the list at tmux, whatever its clients`](../../tools/package/test/vimma-open.test.mjs)
+  [`never runs tmux or herdr`](../../tools/package/test/vimma-open.test.ts),
+  [`a daemonised tmux server ends the list at tmux, whatever its clients`](../../tools/package/test/vimma-open.test.ts)
 
 - O10. Settings' Make default button **must** register only the package's own desktop entry,
   never a command another program chose. On Linux, BrowserGlue's `browser-before-ui-startup`
@@ -102,7 +102,7 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   [`test_under_flatpak_make_default_is_left_to_firefox`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_a_late_start_counts_the_package_entry_as_the_default`](../../tests/browser/browser_vimma_app_launcher.js),
   [`never counts a quoted or escaped program, which it does not parse`](../../packages/vimma-core/test/default-browser.test.ts),
-  [`names each package's installed vimma-open by its absolute path in the desktop entry`](../../tools/package/test/package.test.mjs)
+  [`names each package's installed vimma-open by its absolute path in the desktop entry`](../../tools/package/test/package.test.ts)
 
 Allowed: two or more arguments (other than `--from`) pass through unchanged; a local app that
 runs `vimma-open` with its own flags could run `vimma` with them directly. Any local program can
@@ -111,4 +111,4 @@ forges (a renamed, detached process): the names are a hint that only selects a w
 already routes to (R4), the boundary §11 accepts for programs running as you. For the same
 reason `VIMMA_BIN`, `VIMMA_OPEN_PROC` and `VIMMA_OPEN_PPID`, which the tests use, are honoured:
 they give the caller no more than `--from`, and what they point at comes out only as token names.
-[`passes anything but one URL through unchanged`](../../tools/package/test/vimma-open.test.mjs)
+[`passes anything but one URL through unchanged`](../../tools/package/test/vimma-open.test.ts)
