@@ -38,7 +38,7 @@ ran out. An A/B run of the same commit had 15 failures with the default and 1 wi
 Two changes follow from it:
 
 - Agent commands raise the content process of the tab they work on to foreground priority while
-  they run (`raisePriority` in `agent-commands.mjs`, through `nsIRemoteTab.priorityHint`, as the
+  they run (`raisePriority` in `ctl/agent-waits.mjs`, through `nsIRemoteTab.priorityHint`, as the
   tab switcher does for a tab about to be shown), so an agent on a real Mac is not slowed by
   this either. `browser_vimma_mcp_agent.js` checks it on every platform.
 - The job runs the mochitests with

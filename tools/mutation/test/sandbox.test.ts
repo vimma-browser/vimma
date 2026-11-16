@@ -23,7 +23,7 @@ function testFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) return skippedDirs.has(path) ? [] : testFiles(path);
-    return entry.name.endsWith(".mjs") ? [path] : [];
+    return /\.(?:mjs|ts)$/.test(entry.name) ? [path] : [];
   });
 }
 
@@ -170,7 +170,7 @@ describe("Stryker's sandbox (stryker.config.mjs)", () => {
     // tools/gen-agent-tools.ts reads vimma-ctl's MCP sources through `new URL(path, root)`.
     const via = reached.get(join(root, "tools/vimma-ctl/src/mcp/instructions.rs"));
     expect([...(via ?? [])]).toContain(
-      "packages/vimma-core/test/agent-tools.test.mjs via tools/gen-agent-tools.ts",
+      "packages/vimma-core/test/agent-tools.test.ts via tools/gen-agent-tools.ts",
     );
   });
 

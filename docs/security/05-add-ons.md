@@ -12,13 +12,13 @@ The add-on picker lists, enables, disables and removes extensions. Spec:
   update goes through about:addons, where Firefox asks about new permissions.
   [`u_reports_the_update_check`](../../tests/browser/browser_vimma_addons.js),
   [`installs an add-on only from the setup page`](../../tools/security/test/chrome-source.test.ts),
-  [`an AMO result off addons.mozilla.org or without a sha256 hash is dropped`](../../packages/vimma-core/test/setup.test.mjs)
+  [`an AMO result off addons.mozilla.org or without a sha256 hash is dropped`](../../packages/vimma-core/test/setup.test.ts)
 - A2. Removal **must** ask y/N, and a y stands only for the add-on and version asked about.
   [`d_removes_after_yes_and_keeps_after_no`](../../tests/browser/browser_vimma_addons.js),
   [`a_stale_yes_removes_nothing`](../../tests/browser/browser_vimma_addons.js)
 - A3. System, built-in and hidden add-ons are **never** listed or acted on, by the picker or by
   `:addon name`.
   [`lists_extensions_but_not_system_ones`](../../tests/browser/browser_vimma_addons.js),
-  [`:addon never reaches a hidden or system add-on`](../../packages/vimma-core/test/addons.test.mjs)
+  [`:addon never reaches a hidden or system add-on`](../../packages/vimma-core/test/addons.test.ts)
 
 Allowed without a question, as in about:addons: enable, disable, and private-window access.

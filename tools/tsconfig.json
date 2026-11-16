@@ -6,6 +6,6 @@
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["**/*.mjs", "**/*.ts"],
+  "include": ["**/*.mjs", "**/*.ts", "../vitest.config.ts", "../commitlint.config.ts"],
   "exclude": ["vimma-ctl/", "**/node_modules/**", "ci/test/key-guard.test.mjs"]
 }

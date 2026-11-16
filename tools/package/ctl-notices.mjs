@@ -34,7 +34,7 @@ import {
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { REPO } from "../repo.mjs";
+import { REPO } from "../repo.ts";
 import { canonicalLicense } from "./sbom.mjs";
 
 /** @typedef {import("./sbom.mjs").Component} Component */

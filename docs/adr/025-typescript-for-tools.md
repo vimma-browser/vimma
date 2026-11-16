@@ -68,6 +68,23 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
 6. JavaScript with JSDoc stays, as ADR-004 decided, for everything Firefox loads
    (`src/browser/base/content/vimma/`) and for `packages/vimma-core`, which `npm run sync-core`
    copies into the browser unbuilt. A test fails when a `.ts` file is tracked outside `tools/`.
+   (Since changed: two repository-root configs are TypeScript too, and the test names them.
+   `vitest.config.ts` is bundled by Vite and `commitlint.config.ts` is loaded through jiti, a
+   dependency of `@commitlint/load`, so neither needs Node's type stripping; `tools/tsconfig.json`
+   type-checks both and eslint lints them as it lints `tools/`. `eslint.config.mjs` stays: eslint
+   10 loads a TypeScript config only through jiti, which it lists as an optional peer the
+   repository does not declare, or behind its `unstable_native_nodejs_ts_config` flag, which every
+   command and editor would have to pass. `stryker.config.mjs` stays: Stryker 10 finds and reads
+   only `.json`, `.js`, `.mjs` and `.cjs` configs.)
+   (Since changed: vimma-core's tests, `packages/vimma-core/test/`, move to TypeScript, one group
+   per pull request (#1114), and its `src/` stays JavaScript. `tools/sync-core.ts` copies only
+   `src/`, and Vitest alone loads `test/`, on the Node `.nvmrc` pins, so a test file never reaches
+   Firefox. `packages/vimma-core/test/tsconfig.json` checks them with `erasableSyntaxOnly` and
+   `verbatimModuleSyntax`, eslint reads them through amaro, Stryker's suite
+   (`packages/vimma-core/vitest.config.mjs`) collects `test/**/*.test.ts`, and
+   `tools/test/mjs-ratchet.test.ts` counts `packages/vimma-core/test/` against the same allowlist.
+   `packages/vimma-core/bench/cases.mjs` stays: `tools/bench/bench.ts` also loads it from the
+   baseline commit's checkout.)
 7. One exception inside `tools/`: the hooks of `tools/claude-plugin` stay `.mjs`. Claude Code and
    Copilot CLI run them on each contributor's own Node, which may be older than 22.18; there a
    `.ts` hook exits 1 with `ERR_UNKNOWN_FILE_EXTENSION`, and a hook that exits with anything but 2
@@ -84,7 +101,8 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
    that checkout: `actions/setup-node` runs `npm --version` and `yarn --version` there, and a
    package manager reads its configuration from the current directory
    (docs/security/14-build-and-release-supply-chain.md, B18). `tools/ci/tree-covered.mjs` runs only
-   on pushes to `main`, from trusted files, and may move with the rest of `tools/ci`.
+   on pushes to `main`, from trusted files, and may move with the rest of `tools/ci`. (Since
+   changed: it moved, as `tools/ci/tree-covered.ts`, #946.)
 
 ## Reasoning
 
@@ -134,7 +152,8 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
   `macos-smoke`, macos.yml `smoke`) moved to `.nvmrc` in their own pull request, before the
   last group's tools (#946); `tools/test/runner-node.test.ts` keeps it so.
 - A job that checks out only some paths (`sparse-checkout: tools/ci/tree-covered.mjs` in
-  pkgbuild.yml and semgrep.yml) names the new file when it moves.
+  pkgbuild.yml and semgrep.yml) names the new file when it moves. (Since changed: both name
+  `tools/ci/tree-covered.ts`, #946.)
 - A step that runs the base branch's copy of a tool (`git show "$BASE:tools/…"`: ci.yml and
   e2e.yml for `docs-only.mjs`, key-guard.yml for `key-guard.mjs`) runs it on the runner's own
   Node, so those tools stay `.mjs` (decision 7, second exception). (Since changed: an earlier

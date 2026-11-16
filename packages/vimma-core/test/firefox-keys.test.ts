@@ -1,0 +1,782 @@
+// Firefox's own shortcuts (docs/specs/key-handling-batch.md § 1): which <key> elements of
+// #mainKeyset Vimma turns off.
+import { readFileSync } from "node:fs";
+import { describe, test, expect } from "vitest";
+import { parseConfig } from "../src/config/config.mjs";
+import {
+  FIREFOX_SHORTCUTS,
+  FIREFOX_SHORTCUTS_MACOS,
+  OVERLAP_CHORDS,
+  boundChords,
+  canonicalChord,
+  firefoxShortcuts,
+  pageFirst,
+  planFirefoxKeys,
+  planMenuKeys,
+  xulKeyChord,
+} from "../src/keys/firefox-keys.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
+import { insertEditCommand } from "../src/keys/editable.mjs";
+import { SUGGESTION_ACTIONS } from "../src/keys/suggestions.mjs";
+
+/** The modes whose keys type into a text field (keymap.mjs TEXT_FIELD_MODES). */
+const TEXT_FIELD = new Set(["insert", "command", "help"]);
+import { getAction } from "../src/keys/actions.mjs";
+
+import type { Mode } from "../src/keys/modes.mjs";
+
+/** SUGGESTION_ACTIONS, asked about any action id. */
+const SUGGESTION_IDS: ReadonlySet<string | undefined> = SUGGESTION_ACTIONS;
+
+describe("xulKeyChord", () => {
+  const xulKeys: Array<[Parameters<typeof xulKeyChord>[0], string, { mac?: boolean }?]> = [
+    [{ key: "W", modifiers: "accel" }, "ctrl+w"],
+    [{ key: "w", modifiers: "accel" }, "ctrl+w"],
+    [{ key: "T", modifiers: "accel,shift" }, "ctrl+shift+t"],
+    [{ key: "1", modifiers: "alt" }, "alt+1"],
+    [{ key: "M", modifiers: "control" }, "ctrl+m"],
+    [{ key: "Z", modifiers: "control,alt" }, "ctrl+alt+z"],
+    [{ key: "+", modifiers: "accel" }, "ctrl+plus"],
+    [{ key: "-", modifiers: "accel" }, "ctrl+minus"],
+    [{ key: "[", modifiers: "accel" }, "ctrl+["],
+    [{ key: "]", modifiers: "accel,shift" }, "ctrl+}"],
+    [{ key: "4", modifiers: "control,shift" }, "ctrl+$"],
+    [{ keycode: "VK_F5" }, "f5"],
+    [{ keycode: "VK_F5", modifiers: "accel" }, "ctrl+f5"],
+    [{ keycode: "VK_LEFT", modifiers: "alt" }, "alt+left"],
+    [{ keycode: "VK_TAB", modifiers: "control,shift" }, "ctrl+shift+tab"],
+    [{ keycode: "VK_ESCAPE", modifiers: "shift" }, "shift+esc"],
+    [{ keycode: "VK_DELETE", modifiers: "accel,shift" }, "ctrl+shift+delete"],
+    [{ keycode: "VK_BACK" }, "backspace"],
+    [{ key: "W", modifiers: "accel" }, "meta+w", { mac: true }],
+    // macOS's Nightly window-recording key: control,shift with 4, which a US keyboard types as $.
+    [{ key: "4", modifiers: "control,shift" }, "ctrl+$", { mac: true }],
+    [{ key: "M", modifiers: "control" }, "ctrl+m", { mac: true }],
+    [{ key: "Q", modifiers: "meta" }, "meta+q"],
+    [{ key: "R", modifiers: "os, accel" }, "ctrl+meta+r"],
+  ];
+  test.each(xulKeys)("<key %j> is %s", (el, chord, opts = {}) => {
+    expect(xulKeyChord(el, opts)).toBe(chord);
+  });
+
+  test.each([
+    [{ key: "", modifiers: "accel" }],
+    [{}],
+    [{ keycode: "VK_NOT_A_KEY" }],
+    [{ key: "ab", modifiers: "accel" }],
+  ])("<key %j> has no chord (not localized yet, or not one we can name)", (el) => {
+    expect(xulKeyChord(el)).toBeNull();
+  });
+});
+
+/** The Linux #mainKeyset keys the tests need, as the host reads them. */
+const KEYS = [
+  { id: "key_newNavigatorTab", chord: "ctrl+t" },
+  { id: "focusURLBar", chord: "ctrl+l" },
+  { id: "key_search", chord: "ctrl+k" },
+  { id: "key_search2", chord: "ctrl+j" },
+  { id: "openFileKb", chord: "ctrl+o" },
+  { id: "key_close", chord: "ctrl+w" },
+  { id: "key_viewSource", chord: "ctrl+u" },
+  { id: "key_viewInfo", chord: "ctrl+i" },
+  { id: "addBookmarkAsKb", chord: "ctrl+d" },
+  { id: "viewBookmarksSidebarKb", chord: "ctrl+b" },
+  { id: "key_gotoHistory", chord: "ctrl+h" },
+  { id: "key_quitApplication", chord: "ctrl+q" },
+  { id: "key_copy", chord: "ctrl+c", internal: true },
+  { id: "key_reload2", chord: "f5" },
+  { id: "key_stop", chord: "esc" },
+  { id: "key_selectTab1", chord: "alt+1" },
+  { id: "key_restoreLastClosedTabOrWindowOrSession", chord: "ctrl+shift+t" },
+  { id: "", chord: "ctrl+minus" },
+];
+const ids = (plan: { off: readonly { id: string }[] }) => plan.off.map((k) => k.id);
+
+describe("planFirefoxKeys", () => {
+  test("the default list is exactly the chords Vimma or Vim use", () => {
+    expect([...OVERLAP_CHORDS]).toEqual([
+      "ctrl+b",
+      "ctrl+d",
+      "ctrl+e",
+      "ctrl+h",
+      "ctrl+i",
+      "ctrl+k",
+      "ctrl+o",
+      "ctrl+u",
+      "ctrl+w",
+      "ctrl+y",
+    ]);
+  });
+
+  test("the default turns off the overlapping keys and says which chords match nothing", () => {
+    const plan = planFirefoxKeys(KEYS, { disable: OVERLAP_CHORDS, enable: [] });
+    expect(ids(plan)).toEqual([
+      "key_search",
+      "openFileKb",
+      "key_close",
+      "key_viewSource",
+      "key_viewInfo",
+      "addBookmarkAsKb",
+      "viewBookmarksSidebarKb",
+      "key_gotoHistory",
+    ]);
+    expect(plan.unmatched).toEqual(["ctrl+e", "ctrl+y"]);
+  });
+
+  test("enable keeps a listed chord Firefox's", () => {
+    const plan = planFirefoxKeys(KEYS, { disable: OVERLAP_CHORDS, enable: ["ctrl+w", "ctrl+k"] });
+    expect(ids(plan)).not.toContain("key_close");
+    expect(ids(plan)).not.toContain("key_search");
+    expect(ids(plan)).toContain("key_viewSource");
+  });
+
+  // Decision 9: "all" is the whole inventory but fate d, plain and function keys included, and
+  // ctrl+q is no longer kept (it is Vimma's quit, which asks as Firefox did).
+  test('"all" turns off every inventory key and every chord with ctrl, alt or meta', () => {
+    const plan = planFirefoxKeys(KEYS, { disable: "all", enable: [] });
+    expect(ids(plan)).toEqual(KEYS.filter((k) => !k.internal).map((k) => k.id));
+    expect(plan.unmatched).toEqual([]);
+  });
+
+  test('"all" leaves fate d keys and unlisted plain keys alone', () => {
+    const keys = [
+      { id: "key_fullScreen", chord: "f6" },
+      { id: "plain", chord: "x" },
+      { id: "key_aboutProcesses", chord: "shift+esc" },
+      { id: "key_quitApplication", chord: "meta+q" },
+    ];
+    expect(ids(planFirefoxKeys(keys, { disable: "all", enable: [] }))).toEqual([
+      "key_aboutProcesses",
+      "key_quitApplication",
+    ]);
+  });
+
+  // docs/specs/macos-build.md behaviour 4: accel is cmd, and "all" keeps cmd+q.
+  test('"all" on macOS keeps cmd+q and reads the macOS fates', () => {
+    const keys = [
+      { id: "key_quitApplication", chord: "meta+q" },
+      { id: "key_undo", chord: "meta+z", internal: true },
+      { id: "toggleSidebarKb", chord: "ctrl+z" },
+      { id: "viewGenaiChatSidebarKb", chord: "ctrl+x" },
+      { id: "key_enterFullScreen_compat", chord: "f11" },
+      { id: "key_newNavigatorTab", chord: "meta+t" },
+      { id: "plain", chord: "x" },
+    ];
+    const all = { disable: "all" as const, enable: [] };
+    expect(ids(planFirefoxKeys(keys, all, { mac: true }))).toEqual([
+      "toggleSidebarKb",
+      "viewGenaiChatSidebarKb",
+      "key_enterFullScreen_compat",
+      "key_newNavigatorTab",
+    ]);
+    // Linux's table: ctrl+z and ctrl+x are the editor's (fate d), and meta+q is any meta chord.
+    expect(ids(planFirefoxKeys(keys, all))).toEqual([
+      "key_quitApplication",
+      "key_enterFullScreen_compat",
+      "key_newNavigatorTab",
+    ]);
+  });
+
+  test('"all" with enable keeps those', () => {
+    const plan = planFirefoxKeys(KEYS, { disable: "all", enable: ["ctrl+t", "alt+1"] });
+    expect(ids(plan)).not.toContain("key_newNavigatorTab");
+    expect(ids(plan)).not.toContain("key_selectTab1");
+    expect(ids(plan)).toContain("key_close");
+  });
+
+  test("a list turns off only its chords, every key with that chord", () => {
+    const keys = [...KEYS, { id: "goBackKb2", chord: "ctrl+[" }, { id: "x", chord: "ctrl+[" }];
+    const plan = planFirefoxKeys(keys, { disable: ["ctrl+[", "f5"], enable: [] });
+    expect(ids(plan)).toEqual(["key_reload2", "goBackKb2", "x"]);
+  });
+
+  test("an internal key is never turned off, even when listed", () => {
+    const plan = planFirefoxKeys(KEYS, { disable: ["ctrl+c"], enable: [] });
+    expect(ids(plan)).toEqual([]);
+    expect(plan.unmatched).toEqual(["ctrl+c"]);
+  });
+
+  test("a key without a chord yet is left alone", () => {
+    const plan = planFirefoxKeys([{ id: "late", chord: null }], { disable: "all", enable: [] });
+    expect(ids(plan)).toEqual([]);
+  });
+});
+
+// docs/specs/firefox-keys.md sub-PR 1: Firefox's keys are Vimma bindings.
+describe("FIREFOX_SHORTCUTS (the inventory)", () => {
+  const keymap = compileKeymap();
+  const rows = FIREFOX_SHORTCUTS;
+
+  test("is well formed: canonical chords, fates a-d, a/b rows name an existing action", () => {
+    expect(rows.length).toBeGreaterThan(100);
+    for (const r of rows) {
+      const where = `${r.chord} ${r.id}`;
+      expect(canonicalChord(r.chord), where).toBe(r.chord);
+      expect(["a", "b", "c", "d"], where).toContain(r.fate);
+      expect(r.does, where).toBeTruthy();
+      if (r.action) expect(getAction(r.action), where).toBeDefined();
+      if (r.fate === "b") expect(r.action, where).toBeTruthy();
+      if (r.action) expect(["all", "normal"], where).toContain(r.modes);
+      if (r.fate === "a" || r.fate === "b") expect(["P", "V"], where).toContain(r.first);
+      else expect(r.first, where).toBeUndefined();
+    }
+  });
+
+  test("no chord is listed twice with different actions", () => {
+    const seen: Map<string, string> = new Map();
+    for (const r of rows) {
+      if (!r.action || r.unbound) continue;
+      const prev = seen.get(r.chord);
+      if (prev) expect(r.action, r.chord).toBe(prev);
+      seen.set(r.chord, r.action);
+    }
+  });
+
+  test("has every row of the spec's tables it names", () => {
+    const byId = new Map(rows.filter((r) => r.id).map((r) => [r.id, r]));
+    expect(byId.get("key_newNavigatorTab")).toMatchObject({ chord: "ctrl+t", fate: "a" });
+    expect(byId.get("key_privatebrowsing")).toMatchObject({
+      chord: "ctrl+shift+p",
+      fate: "a",
+      action: "private_workspace",
+      first: "V",
+    });
+    expect(byId.get("key_toggleToolboxF12")).toMatchObject({ chord: "f12", action: "devtools" });
+    expect(byId.get("key_dom")).toMatchObject({
+      chord: "ctrl+shift+w",
+      fate: "b",
+      action: "devtools_dom",
+    });
+    expect(byId.get("key_find")).toMatchObject({
+      chord: "ctrl+f",
+      fate: "a",
+      action: "find_forward",
+      first: "P",
+    });
+    expect(rows.filter((r) => r.source === "devtools" && !r.conditional)).toHaveLength(14);
+    expect(rows.filter((r) => /^alt\+[1-9]$/.test(r.chord))).toHaveLength(9);
+    expect(rows.filter((r) => r.source === "menubar")).toHaveLength(8);
+    for (const r of rows.filter((r) => r.source === "menubar")) expect(r.fate, r.chord).toBe("d");
+  });
+
+  // Firefox 159's ctrl+shift+a searches tabs; Vimma's own tab search is the goto picker.
+  test("Firefox 159 moved Add-ons to ctrl+shift+f and gave ctrl+shift+a to tab search", () => {
+    const byId = new Map(rows.filter((r) => r.id).map((r) => [r.id, r]));
+    expect(byId.get("key_openAddons")).toMatchObject({
+      chord: "ctrl+shift+f",
+      command: "Tools:Addons",
+      fate: "b",
+      action: "addons_manager",
+      first: "P",
+    });
+    expect(byId.get("key_searchTabs")).toMatchObject({
+      chord: "ctrl+shift+a",
+      command: "Browser:SearchTabs",
+      fate: "a",
+      action: "goto_picker",
+      first: "P",
+    });
+    expect(getAction("search_tabs")).toBeUndefined();
+  });
+
+  // Decision 16: every Firefox key is a Vimma binding on Firefox's own chord.
+  test.each([
+    ["ctrl+shift+f", "addons_manager"],
+    ["ctrl+shift+a", "goto_picker"],
+    ["ctrl+j", "web_search"],
+    ["ctrl+f", "find_forward"],
+    ["ctrl+shift+d", "bookmark_all_tabs"],
+    ["ctrl+shift+b", "toggle_bookmarks_toolbar"],
+    ["ctrl+alt+u", "open_tabs_sidebar"],
+    ["ctrl+alt+z", "toggle_firefox_sidebar"],
+    ["ctrl+shift+x", "switch_text_direction"],
+    ["f7", "caret_browsing"],
+  ])("%s runs %s by default, after the page", (chord, action) => {
+    expect(keymap.trie("normal").children.get(chord)?.action?.name).toBe(action);
+    // In a text field ctrl+j and ctrl+m are Enter (key-handling-batch § 2), the field's key.
+    expect(keymap.trie("insert").children.get(chord)?.action?.name).toBe(
+      insertEditCommand(chord) ? undefined : action,
+    );
+    expect(pageFirst(chord)).toBe(true);
+  });
+
+  // Decision 17: shift+esc has no modifier that makes a chord global, so a text field keeps it.
+  test("shift+esc runs about_processes in normal mode only, after the page", () => {
+    expect(keymap.trie("normal").children.get("shift+esc")?.action?.name).toBe("about_processes");
+    expect(keymap.trie("insert").children.get("shift+esc")).toBeUndefined();
+    expect(pageFirst("shift+esc")).toBe(true);
+  });
+
+  // ' was one of them until the PDF viewer bound it to its marks (docs/specs/pdf-mode.md).
+  // ctrl+alt+x lost its action with Firefox's chatbot (firefox-surfaces-trim decision 12).
+  test("the only unbound c keys are the conditional ones, the alt tap and ctrl+alt+x", () => {
+    const left = rows.filter((r) => r.fate === "c" && !r.conditional).map((r) => r.chord);
+    expect(left).toEqual([
+      "ctrl+alt+x",
+      "ctrl+f7",
+      "alt+f7",
+      "ctrl+alt+f7",
+      "meta+f7",
+      "ctrl+meta+f7",
+      "alt+meta+f7",
+      "ctrl+alt+meta+f7",
+    ]);
+    expect(getAction("devtools_dom")).toBeDefined();
+    expect(keymap.trie("normal").children.get("ctrl+shift+w")?.action?.name).toBe("close_window");
+  });
+
+  test("every a/b row with an action is bound to it by the default keymap, in its modes", () => {
+    for (const r of rows) {
+      if (!r.action || r.unbound) continue;
+      const modes: Mode[] =
+        r.modes === "all" ? ["normal", "insert", "visual", "panel", "help"] : ["normal"];
+      for (const mode of modes) {
+        const node = keymap.trie(mode, r.context).children.get(r.chord);
+        // ctrl+j and ctrl+m are Enter where keys type into a field (key-handling-batch § 2).
+        if (TEXT_FIELD.has(mode) && insertEditCommand(r.chord)) {
+          expect(node, `${r.chord} in ${mode} is the field's`).toBeUndefined();
+          continue;
+        }
+        // ctrl+n and ctrl+p move through a page's suggestion list in insert mode, and run the
+        // row's action outside one (page-suggestions decision 6).
+        if (mode === "insert" && SUGGESTION_IDS.has(node?.action?.id)) {
+          expect(keymap.fallback("insert", r.chord)?.name, `${r.chord} in insert`).toBe(r.action);
+          continue;
+        }
+        expect(node?.action?.name, `${r.chord} in ${mode}`).toBe(r.action);
+        expect(node?.children.size, `${r.chord} in ${mode} is a whole binding`).toBe(0);
+      }
+    }
+  });
+
+  test("normal-only rows are not bound in insert mode", () => {
+    for (const chord of ["ctrl+[", "ctrl+]", "esc"]) {
+      const row = rows.find((r) => r.chord === chord && r.action);
+      expect(row?.modes, chord).toBe("normal");
+      expect(keymap.trie("insert").children.get(chord)?.action?.name, chord).not.toBe(row?.action);
+    }
+  });
+
+  test("every c chord (but the conditional ones) is unbound by default", () => {
+    const bound = boundChords(keymap);
+    for (const r of rows) {
+      if (r.fate !== "c" || r.conditional) continue;
+      // ctrl+shift+w is close_window; the DOM panel's key on it is the one that stays off.
+      if (rows.some((o) => o.chord === r.chord && o.action)) continue;
+      expect(bound.has(r.chord), `${r.chord} (${r.id})`).toBe(false);
+    }
+  });
+
+  // 47 until ai_chatbot_sidebar went (firefox-surfaces-trim decision 12).
+  test("the 46 new actions are named, and firefox_command runs any other (sub-PR 2)", () => {
+    const actions = new Set(rows.filter((r) => r.fate === "b").map((r) => r.action));
+    expect(actions.size).toBe(46);
+    expect(getAction("firefox_command")).toMatchObject({ id: "firefox.command", group: "Browser" });
+    expect(getAction("new_private_window")).toBeUndefined();
+  });
+});
+
+describe("pageFirst (who goes first: decision 6)", () => {
+  test.each([
+    ["ctrl+s", true],
+    ["ctrl+plus", true],
+    ["alt+left", true],
+    ["f5", true],
+    ["esc", true],
+    ["ctrl+shift+z", true],
+    ["ctrl+t", false],
+    ["ctrl+n", false],
+    ["ctrl+tab", false],
+    ["ctrl+shift+p", false],
+    ["ctrl+q", false],
+    ["ctrl+w", false],
+    ["ctrl+o", false],
+    ["alt+j", false],
+    ["ctrl+f", true],
+  ])("%s: page first %s", (chord, want) => {
+    expect(pageFirst(chord)).toBe(want);
+  });
+
+  test("with the fullscreen Keyboard Lock on, Firefox's keys go to the page, but F11", () => {
+    expect(pageFirst("ctrl+t", { keyboardLock: true })).toBe(true);
+    expect(pageFirst("ctrl+tab", { keyboardLock: true })).toBe(true);
+    expect(pageFirst("f11", { fullScreen: true, keyboardLock: true })).toBe(false);
+    expect(pageFirst("alt+j", { keyboardLock: true })).toBe(false);
+  });
+
+  test("a normal-mode row is the page's first in normal mode only: Esc leaves insert at once", () => {
+    expect(pageFirst("esc", { mode: "normal" })).toBe(true);
+    expect(pageFirst("ctrl+[", { mode: "normal" })).toBe(true);
+    for (const mode of ["insert", "visual", "command", "hint"] as const) {
+      expect(pageFirst("esc", { mode }), mode).toBe(false);
+      expect(pageFirst("ctrl+[", { mode }), mode).toBe(false);
+    }
+    expect(pageFirst("ctrl+s", { mode: "insert" })).toBe(true);
+  });
+
+  test("on macOS Firefox's macOS chords Vimma binds are the page's first, as Firefox let them", () => {
+    for (const chord of ["meta+left", "meta+right", "meta+[", "meta+]", "meta+1", "meta+9"]) {
+      expect(pageFirst(chord, { mac: true }), chord).toBe(true);
+      expect(pageFirst(chord), `${chord} on Linux`).toBe(false);
+    }
+    expect(pageFirst("meta+l", { mac: true })).toBe(true);
+    expect(pageFirst("meta+[", { mac: true, mode: "insert" })).toBe(true);
+    // The rest of the keymap is Linux's on both, and so is who goes first on it.
+    for (const [chord, want] of [
+      ["ctrl+s", true],
+      ["ctrl+l", true],
+      ["ctrl+t", false],
+      ["ctrl+u", false],
+      ["alt+home", true],
+    ] as const) {
+      expect(pageFirst(chord, { mac: true }), chord).toBe(want);
+    }
+    expect(pageFirst("f11", { mac: true, fullScreen: true })).toBe(false);
+  });
+
+  test("f11 is the page's first, but Firefox's own in full screen", () => {
+    expect(pageFirst("f11")).toBe(true);
+    expect(pageFirst("f11", { fullScreen: true })).toBe(false);
+  });
+});
+
+describe("bound means off (decision 2)", () => {
+  test("boundChords: the first chord of every binding, in any mode", () => {
+    const bound = boundChords(compileKeymap());
+    for (const chord of ["ctrl+t", "ctrl+b", "ctrl+w", "alt+left", "ctrl+[", "esc", "f12"]) {
+      expect(bound.has(chord), chord).toBe(true);
+    }
+    // ' is bound in the PDF viewer only (marks); its Firefox key is off by its pref anyway.
+    for (const chord of ["ctrl+f", "ctrl+j", "f7", "ctrl+shift+b", "'"]) {
+      expect(bound.has(chord), chord).toBe(true);
+    }
+    for (const chord of ["alt+f", "alt+h"]) {
+      expect(bound.has(chord), chord).toBe(false);
+    }
+  });
+
+  test("a bound chord is off whatever disable says, an enabled one stays on", () => {
+    const bound = new Set(["ctrl+t", "f5", "ctrl+w"]);
+    const plan = planFirefoxKeys(KEYS, { disable: [], enable: ["ctrl+w"] }, { bound });
+    expect(ids(plan)).toEqual(["key_newNavigatorTab", "key_reload2"]);
+    expect(plan.unmatched).toEqual([]);
+  });
+
+  // docs/specs/page-suggestions.md decisions 7 and 8: new_window left ctrl+n, but ctrl+n is still
+  // the insert-mode suggestion key, so Firefox's new window stays off until [firefox] enable.
+  test("Firefox's ctrl+n stays off after new_window moved, until enable gives it back", () => {
+    const newWindow = [{ id: "key_newNavigator", chord: "ctrl+n" }];
+    const row = FIREFOX_SHORTCUTS.find((r) => r.id === "key_newNavigator");
+    expect(row).toMatchObject({ action: "new_window", unbound: true, first: "V" });
+    const bound = boundChords(compileKeymap());
+    expect(bound.has("ctrl+n")).toBe(true);
+    expect(ids(planFirefoxKeys(newWindow, { disable: [], enable: [] }, { bound }))).toEqual([
+      "key_newNavigator",
+    ]);
+    const enabled = boundChords(compileKeymap({ firefox: { enable: ["ctrl+n"] } }));
+    expect(enabled.has("ctrl+n")).toBe(false);
+    const plan = planFirefoxKeys(
+      newWindow,
+      { disable: [], enable: ["ctrl+n"] },
+      { bound: enabled },
+    );
+    expect(ids(plan)).toEqual([]);
+  });
+
+  test("an internal key stays the editor's even when bound", () => {
+    const plan = planFirefoxKeys(KEYS, { disable: [], enable: [] }, { bound: new Set(["ctrl+c"]) });
+    expect(ids(plan)).toEqual([]);
+  });
+});
+
+// Issue #384, docs/specs/macos-build.md: Firefox 158's keys in a macOS browser window.
+describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
+  const keymap = compileKeymap({}, { mac: true });
+  const rows = FIREFOX_SHORTCUTS_MACOS;
+  const keyRows = rows.filter((r) => r.id && (r.source === "main" || r.source === "devtools"));
+  const byId = new Map(keyRows.map((r) => [r.id, r]));
+
+  test("firefoxShortcuts picks the platform's table, Linux's by default", () => {
+    expect(firefoxShortcuts()).toBe(FIREFOX_SHORTCUTS);
+    expect(firefoxShortcuts({ mac: false })).toBe(FIREFOX_SHORTCUTS);
+    expect(firefoxShortcuts({ mac: true })).toBe(FIREFOX_SHORTCUTS_MACOS);
+  });
+
+  test("is well formed: canonical chords, fates a-d, a/b rows name an existing action", () => {
+    expect(rows.length).toBeGreaterThan(100);
+    for (const r of rows) {
+      const where = `${r.chord} ${r.id}`;
+      expect(canonicalChord(r.chord), where).toBe(r.chord);
+      expect(["a", "b", "c", "d"], where).toContain(r.fate);
+      expect(r.does, where).toBeTruthy();
+      if (r.action) expect(getAction(r.action), where).toBeDefined();
+      if (r.fate === "b") expect(r.action, where).toBeTruthy();
+      if (r.action) expect(["all", "normal"], where).toContain(r.modes);
+      if (r.fate === "a" || r.fate === "b") expect(["P", "V"], where).toContain(r.first);
+      else expect(r.first, where).toBeUndefined();
+    }
+    expect(byId.size, "each <key> id is one row").toBe(keyRows.length);
+  });
+
+  test.each([
+    ["key_newNavigatorTab", "meta+t"],
+    ["key_close", "meta+w"],
+    ["key_search2", "alt+meta+f"],
+    ["key_openDownloads", "meta+j"],
+    ["showAllHistoryKb", "meta+y"],
+    ["key_gotoHistory", "shift+meta+h"],
+    ["key_enterFullScreen", "ctrl+meta+f"],
+    ["key_enterFullScreen_old", "shift+meta+f"],
+    ["key_togglePictureInPicture", "alt+meta+}"],
+    ["viewGenaiChatSidebarKb", "ctrl+x"],
+    ["toggleSidebarKb", "ctrl+z"],
+    ["key_toggleToolbox", "alt+meta+i"],
+    ["key_browserToolbox", "alt+shift+meta+i"],
+    ["key_inspector", "alt+meta+c"],
+    ["key_inspectorMac", "shift+meta+c"],
+    ["key_dom", "alt+meta+w"],
+    ["key_openAddons", "shift+meta+e"],
+    ["key_searchTabs", "shift+meta+a"],
+  ])("accel is cmd: %s is %s, unbound and off", (id, chord) => {
+    const row = byId.get(id);
+    expect(row).toMatchObject({ chord, fate: "c" });
+    expect(row?.action).toBeUndefined();
+  });
+
+  // Issue #386: Vimma's macOS defaults bind these instead of Linux's alt keys (decision 29).
+  test.each([
+    ["goBackKb", "meta+left", "history_back", "a"],
+    ["goForwardKb", "meta+right", "history_forward", "a"],
+    ["goBackKb2", "meta+[", "history_back", "a"],
+    ["goForwardKb2", "meta+]", "history_forward", "a"],
+    ["focusURLBar", "meta+l", "focus_urlbar", "a"],
+    ["key_selectTab1", "meta+1", "select_tab_1", "a"],
+    ["key_selectTab8", "meta+8", "select_tab_8", "a"],
+    ["key_selectLastTab", "meta+9", "select_last_tab", "b"],
+    ["goHome", "alt+home", "go_home", "b"],
+  ])("accel is cmd: %s is %s, Vimma's %s in every mode, page first", (id, chord, action, f) => {
+    expect(byId.get(id)).toMatchObject({ chord, fate: f, action, modes: "all", first: "P" });
+  });
+
+  test("keys on the same chord as on Linux keep their Vimma action", () => {
+    expect(byId.get("key_reload2")).toMatchObject({ chord: "f5", action: "reload" });
+    expect(byId.get("key_toggleMute")).toMatchObject({ chord: "ctrl+m", action: "mute_tab" });
+    expect(byId.get("key_toggleToolboxF12")).toMatchObject({ chord: "f12", action: "devtools" });
+    expect(byId.get("key_enterFullScreen_compat")).toMatchObject({
+      chord: "f11",
+      action: "toggle_fullscreen",
+    });
+    // The open-tabs sidebar is ctrl+u on macOS, which is Vimma's half-page scroll there too.
+    expect(byId.get("viewOpenTabsSidebarKb")).toMatchObject({
+      chord: "ctrl+u",
+      fate: "a",
+      action: "scroll_half_up",
+      modes: "normal",
+      first: "V",
+    });
+  });
+
+  test('cmd+q quits as macOS runs it: fate d, so "all" keeps it', () => {
+    expect(byId.get("key_quitApplication")).toMatchObject({ chord: "meta+q", fate: "d" });
+    // Fate d keeps it even if a later Firefox drops `internal` from the key.
+    const keys = [{ id: "key_quitApplication", chord: "meta+q" }];
+    const plan = planFirefoxKeys(keys, { disable: "all", enable: [] }, { mac: true });
+    expect(ids(plan)).toEqual([]);
+  });
+
+  test("the Nightly-only conditional keys keep Linux's chords in Vimma's notation", () => {
+    // browser-sets.inc.xhtml: macOS's key_windowRecordingCmd is control,shift with 4 (ctrl+$),
+    // and browser-graphics-utils.js gives the WebRender keys control,shift with 3 and 6.
+    expect(byId.get("key_windowRecordingCmd")).toMatchObject({
+      chord: "ctrl+$",
+      conditional: true,
+    });
+    expect(byId.get("key_wrCaptureCmd")).toMatchObject({ chord: "ctrl+#", conditional: true });
+    expect(byId.get("key_wrToggleCaptureSequenceCmd")).toMatchObject({ chord: "ctrl+^" });
+  });
+
+  test("the macOS-only keys are rows; the Linux-only ones and the menu bar's are not", () => {
+    for (const id of [
+      "key_viewSourceSafari",
+      "key_findSelection",
+      "key_stop_mac",
+      "key_sanitize_mac",
+      "key_minimizeWindow",
+      "key_preferencesCmdMac",
+      "key_hideThisAppCmdMac",
+      "key_hideOtherAppsCmdMac",
+      "key_exitFullScreen_old",
+      "key_exitFullScreen_compat",
+    ]) {
+      expect(byId.has(id), id).toBe(true);
+    }
+    for (const id of ["focusURLBar2", "key_reload_skip_cache2"]) {
+      expect(byId.has(id), id).toBe(false);
+    }
+    const chords = new Set(rows.map((r) => r.chord));
+    for (const chord of ["alt+d", "ctrl+f5", "ctrl+}", "ctrl+f4", "f10", "alt+f"]) {
+      expect(chords.has(chord), chord).toBe(false);
+    }
+    expect(rows.filter((r) => r.source === "menubar")).toEqual([]);
+    expect(rows.filter((r) => r.source === "devtools" && !r.conditional)).toHaveLength(15);
+  });
+
+  test("ShortcutUtils' macOS tab keys are chrome rows, unbound", () => {
+    const chrome = rows.filter((r) => r.source === "chrome");
+    for (const chord of [
+      "alt+meta+left",
+      "alt+meta+up",
+      "alt+meta+right",
+      "alt+meta+down",
+      "meta+{",
+      "meta+}",
+      // ShortcutUtils reads cmd+{ and cmd+} by charCode without looking at ctrl.
+      "ctrl+meta+{",
+      "ctrl+meta+}",
+    ]) {
+      expect(chrome.find((r) => r.chord === chord)?.fate, chord).toBe("c");
+    }
+    expect(chrome.find((r) => r.chord === "ctrl+tab")?.action).toBe("next_tab");
+  });
+
+  test("every a/b row with an action is bound to it by the default keymap, in its modes", () => {
+    for (const r of rows) {
+      if (!r.action || r.unbound) continue;
+      const modes: Mode[] =
+        r.modes === "all" ? ["normal", "insert", "visual", "panel", "help"] : ["normal"];
+      for (const mode of modes) {
+        const node = keymap.trie(mode, r.context).children.get(r.chord);
+        // ctrl+j and ctrl+m are Enter where keys type into a field (key-handling-batch § 2).
+        if (TEXT_FIELD.has(mode) && insertEditCommand(r.chord)) {
+          expect(node, `${r.chord} in ${mode} is the field's`).toBeUndefined();
+          continue;
+        }
+        // ctrl+n and ctrl+p move through a page's suggestion list in insert mode, and run the
+        // row's action outside one (page-suggestions decision 6).
+        if (mode === "insert" && SUGGESTION_IDS.has(node?.action?.id)) {
+          expect(keymap.fallback("insert", r.chord)?.name, `${r.chord} in insert`).toBe(r.action);
+          continue;
+        }
+        expect(node?.action?.name, `${r.chord} in ${mode}`).toBe(r.action);
+      }
+    }
+  });
+
+  test("every c chord (but the conditional ones) is unbound by default", () => {
+    const bound = boundChords(keymap);
+    for (const r of rows) {
+      if (r.fate !== "c" || r.conditional) continue;
+      expect(bound.has(r.chord), `${r.chord} (${r.id})`).toBe(false);
+    }
+  });
+});
+
+// Issue #385, docs/specs/macos-build.md decision 30: on macOS, "all" keeps Firefox's cmd keys
+// that Vimma does not bind off, as on Linux, and the guide's `[firefox] enable` example is how
+// a user gets some back.
+describe("macOS: the guide's [firefox] enable example", () => {
+  const guide = readFileSync(new URL("../../../docs/guide.md", import.meta.url), "utf8");
+  const examples = [...guide.matchAll(/```toml\n([\s\S]*?)```/g)]
+    .map((m) => m[1] as string)
+    .filter((text) => text.includes("[firefox]") && text.includes('"meta+'));
+  /** Every key of a macOS window's keysets, as the host reads them. */
+  const keys = FIREFOX_SHORTCUTS_MACOS.filter(
+    (r) => r.id && (r.source === "main" || r.source === "devtools"),
+  ).map((r) => ({ id: r.id, chord: r.chord, fate: r.fate }));
+  /** `text`: a config.toml. */
+  const onWith = (text: string) => {
+    const { config, keymap, errors } = parseConfig(text, { mac: true });
+    expect(errors).toEqual([]);
+    if (!config || !keymap) throw new Error("the config did not parse");
+    const plan = planFirefoxKeys(keys, config.firefox, {
+      bound: boundChords(keymap),
+      mac: true,
+    });
+    const off = new Set(plan.off);
+    return keys.filter((k) => !off.has(k));
+  };
+
+  // The default itself ("all" turns cmd+t off and keeps cmd+q on macOS) is pinned above, in
+  // '"all" on macOS keeps cmd+q and reads the macOS fates' and "cmd+q quits as macOS runs it".
+  test("the guide's example parses on macOS and re-enables exactly the cmd keys it lists", () => {
+    expect(examples, "one [firefox] example with meta+ keys in docs/guide.md").toHaveLength(1);
+    const text = examples[0] as string;
+    const { config } = parseConfig(text, { mac: true });
+    if (!config) throw new Error("the example did not parse");
+    const firefox = config.firefox;
+    expect(firefox.disable).toBe("all");
+    expect(firefox.enable).toContain("meta+t");
+    expect(firefox.enable.every((c: string) => c.includes("meta+"))).toBe(true);
+    // Only the listed chords come back; Firefox's fate d keys (cmd+q, the editor's) stay on.
+    const on = onWith(text);
+    const back = new Set(on.filter((k) => k.fate !== "d").map((k) => k.chord));
+    expect([...back].sort()).toEqual([...firefox.enable].sort());
+    expect(on.map((k) => k.chord)).toContain("meta+q");
+    // Without the example, the same keys are off.
+    const byDefault = onWith("schema = 2\n").map((k) => k.chord);
+    for (const chord of firefox.enable) expect(byDefault, chord).not.toContain(chord);
+  });
+
+  // Decision 30 covers only the cmd keys Vimma does not bind: an example that enabled one of
+  // decision 29's (cmd+l, cmd+1, cmd+[, cmd+left) would take a Vimma key away from the user.
+  test("the guide's example enables no chord the macOS keymap binds", () => {
+    const text = examples[0] as string;
+    const { config, keymap } = parseConfig(text, { mac: true });
+    if (!config || !keymap) throw new Error("the example did not parse");
+    const enable = config.firefox.enable;
+    for (const bound of [boundChords(keymap), boundChords(compileKeymap({}, { mac: true }))]) {
+      expect(enable.filter((c: string) => bound.has(c))).toEqual([]);
+    }
+  });
+});
+
+// docs/specs/macos-build.md decision 22: on macOS a menu item copies its <key>'s chord into the
+// native menu bar whatever the key's `disabled` says, so a menu item of a key that is off loses
+// its `key` attribute until the key is on again.
+describe("planMenuKeys (macOS menu items of the keys that are off)", () => {
+  const item = (key: string | null, stripped: string | null = null) => ({ key, stripped });
+
+  test("a menu item of a key that is off loses its key, and remembers it", () => {
+    const newTab = item("key_newNavigatorTab");
+    const quit = item("key_quitApplication");
+    expect(planMenuKeys([newTab, quit], new Set(["key_newNavigatorTab"]))).toEqual([
+      { item: newTab, key: null, stripped: "key_newNavigatorTab" },
+    ]);
+  });
+
+  test("every menu item of the key is stripped (the menu bar's and a context menu's)", () => {
+    const a = item("key_gotoHistory");
+    const b = item("key_gotoHistory");
+    expect(planMenuKeys([a, b], new Set(["key_gotoHistory"])).map((t) => t.item)).toEqual([a, b]);
+  });
+
+  test("a key turned back on gives its menu items their key back, exactly", () => {
+    const close = item(null, "key_close");
+    expect(planMenuKeys([close], new Set())).toEqual([
+      { item: close, key: "key_close", stripped: null },
+    ]);
+  });
+
+  test("what is already as planned is left alone", () => {
+    expect(
+      planMenuKeys(
+        [item(null, "key_close"), item("key_find"), item(null, null)],
+        new Set(["key_close"]),
+      ),
+    ).toEqual([]);
+  });
+
+  test("a key Firefox set again on a stripped item is the one that counts", () => {
+    // DevTools and others set `key` themselves: the attribute present wins over the remembered.
+    const on = item("key_find", "key_close");
+    const off = item("key_close", "key_find");
+    expect(planMenuKeys([on, off], new Set(["key_close"]))).toEqual([
+      { item: on, key: "key_find", stripped: null },
+      { item: off, key: null, stripped: "key_close" },
+    ]);
+  });
+
+  test("an empty key is not a key", () => {
+    expect(planMenuKeys([item("")], new Set([""]))).toEqual([]);
+  });
+});

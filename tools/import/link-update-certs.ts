@@ -27,7 +27,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CERT_DIR } from "../update/cert-dir.mjs";
+import { CERT_DIR } from "../update/cert-dir.ts";
 
 /** Relative to engine/; moz-build.patch reads `vimma/<slot>.der` beside the updater's moz.build. */
 export const ENGINE_CERT_DIR = "toolkit/mozapps/update/updater/vimma";

@@ -33,7 +33,7 @@ sequenceDiagram
   M->>M: merge-ready.ts
   M->>PR: gh pr merge --auto at the marked head
   PR->>RP: squash merge on main
-  RP->>RP: security-release.mjs (security bumps)
+  RP->>RP: security-release.ts (security bumps)
 ```
 
 ## 1. Detection: `detect`
@@ -166,7 +166,7 @@ again (G13). Tests: [merge-ready.test.ts](../../tools/upstream/test/merge-ready.
 
 The squash merge is a push to `main`, so `release-please.yml` runs and adds the bump to the open
 release pull request. While the repository variable `AUTO_SECURITY_RELEASE` is on, its
-`security-release` job runs on every push to `main` and calls `tools/release/security-release.mjs`.
+`security-release` job runs on every push to `main` and calls `tools/release/security-release.ts`.
 `decide()` checks every condition on what `gather()` read from the API and skips, with a notice,
 unless the pushed commit is the squash merge of exactly one autopilot pull request from this
 repository's `upstream/firefox-X.Y.Z`, labelled `upstream` and `security`, and exactly one release
@@ -174,7 +174,7 @@ pull request is open (never the first release). Then it sets the release pull re
 auto-merge, pinned to its head, through the release-please token. The release then follows
 [From a release tag to an offered update](updates-and-release.md); publishing its draft stays a
 person's click ([ADR-020](../adr/020-security-release-without-a-person.md), G11, G12). Tests:
-[security-release.test.mjs](../../tools/release/test/security-release.test.mjs).
+[security-release.test.ts](../../tools/release/test/security-release.test.ts).
 
 ## The Beta canary
 

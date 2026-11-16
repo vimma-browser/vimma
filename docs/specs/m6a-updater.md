@@ -175,7 +175,7 @@ hashValue size/></update></updates>`. Unknown attributes are kept in the propert
   `tools/update-packaging/make_full_update.sh` with `MOZ_PRODUCT_VERSION` from the tarball's
   `application.ini` (lines 60-65). (Since changed: Firefox 160's script also takes the
   lowercase `[App] Name` from `application.ini` as a third argument, `APPNAME`, and exits
-  without it; `mar.mjs build` passes `vimma`.) The host `mar` is built with `NO_SIGN_VERIFY`
+  without it; `mar.ts build` passes `vimma`.) The host `mar` is built with `NO_SIGN_VERIFY`
   (`modules/libmar/tool/moz.build:21`); signing is `signmar` (links NSS):
   `signmar -d <nssdb> -n <nickname> -s in out`, and `-X`/`-I` extract and import a detached
   signature. Partial MARs (`make_incremental_update.sh`, zucchini) need the previous build.
@@ -275,7 +275,7 @@ appVersion="1.23.2b" buildID=…>` with one complete MAR from the GitHub Release
   `AUTO_SECURITY_RELEASE` on, a merged security bump sets the open release PR to auto-merge, and
   the release carries whatever is on `main` (its decisions 11 to 17). Releases are titled
   `Vimma <vimma> · Firefox <firefox>`, the changelog heading is
-  `## [<vimma>](<compare>) · Firefox <firefox> (<date>)`, and `tools/release/version-line.mjs`
+  `## [<vimma>](<compare>) · Firefox <firefox> (<date>)`, and `tools/release/version-line.ts`
   writes the version line.
 - Releases are drafts until the maintainer has daily-driven Vimma (the release gate, spec
   release-versioning); `release.yml` runs on `release: published` only, so it does not run for a
@@ -368,7 +368,7 @@ nightly --prerelease`), and its schedule does nothing until the repository varia
 no `<patch>`; it carries `<vimmaTarball>`, `<vimmaAppImage>` and `<vimmaDeb>`, each with `size`,
 `hashFunction="sha512"`, `hashValue` and `URL`, and the commands `:update` shows check the
 download against that SHA-512 before installing it (docs/security/16-update-check.md UP8);
-`tools/update/manifest.mjs`.)
+`tools/update/manifest.ts`.)
 
 - One `<update>`, the newest build of the channel; an `<updates>` with no `<update>` (still
   signed, still with its channel, target and serial) means "nothing offered". The channel,
@@ -376,7 +376,7 @@ download against that SHA-512 before installing it (docs/security/16-update-chec
   version, so that each build has its own (decision 40).
 - `appVersion` is Firefox's version and `displayVersion` Vimma's (What the design must add, 2);
   together they are the version line `Vimma 0.3.1 · Firefox 158.0.1` that about:vimma and
-  `:update` show, written by the same rule as `tools/release/version-line.mjs`.
+  `:update` show, written by the same rule as `tools/release/version-line.ts`.
 - `vimmaSerial` is the UTC time the manifest was generated (`YYYYMMDDhhmmss`, the build-ID
   format). `vimmaUrgency` is `security` or `normal`; `vimmaAdvisories` lists the MFSA IDs, if
   any.
@@ -618,7 +618,7 @@ being configured). Every job below also keeps m6-packaging's gate (`release` eve
 | ---------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `build` (changed)      | the full-build runner (decision 4) | `contents: read`; no update secret                                                                                | `VIMMA_UPDATES=1`; after `./mach package`: `./mach repackage mar … --mar-channel-id vimma` → unsigned `vimma-V-linux-x86_64.complete.mar`; uploads it with `mar-tools` (`signmar` and its NSS libraries from `dist/bin`) and `update-meta.json` (build ID, Firefox version, Vimma version)          |
 | `package` (changed)    | `ubuntu-24.04`                     | `contents: read`                                                                                                  | `is-packaged-app` into AppDir, `.deb`, PKGBUILD; checks that the tarball has none and that `update-settings.ini` says `vimma`                                                                                                                                                                       |
-| `update-sign` (new)    | `ubuntu-24.04`                     | environment `update-signing`; C: `id-token: write`; A: the key secret                                             | signs the MAR (`signmar -s`), verifies it against the committed DERs (`signmar -v`), runs `tools/update/manifest.mjs` (XML from `update-meta.json`, MAR and AppImage size/SHA-512, urgency), signs the XML, verifies it with the core verifier                                                      |
+| `update-sign` (new)    | `ubuntu-24.04`                     | environment `update-signing`; C: `id-token: write`; A: the key secret                                             | signs the MAR (`signmar -s`), verifies it against the committed DERs (`signmar -v`), runs `tools/update/manifest.ts` (XML from `update-meta.json`, MAR and AppImage size/SHA-512, urgency), signs the XML, verifies it with the core verifier                                                       |
 | `sign` (unchanged)     | `ubuntu-24.04`                     | `id-token: write`                                                                                                 | cosign bundles, now also for the signed MAR                                                                                                                                                                                                                                                         |
 | `publish` (changed)    | `ubuntu-24.04`                     | `contents: write`                                                                                                 | uploads the signed MAR with the other assets                                                                                                                                                                                                                                                        |
 | `update-publish` (new) | `ubuntu-24.04`                     | environment `update-site`; `SITE_DEPLOY_KEY` (write deploy key for the manifest repository only); no GitHub token | downloads the MAR and AppImage **from the release URLs** and checks size and hash against the signed XML, then commits `…/updates/browser/Linux_x86_64-gcc3/vimma/update.xml` to the manifest repository's `main` and pushes; polls the update host until the new serial is served (10 min timeout) |
@@ -640,17 +640,17 @@ manifest's `sign` does.
 The MAR is built in `package`, not `build`, from the release tarball, because `package` adds
 `vimma-ctl` to that tarball after the build and the MAR must install what the tarball does; the
 build hands over its host `mar`, Mozilla's `make_full_update.sh` and `signmar`
-(`tools/update/mar.mjs build` runs the script as `./mach repackage mar` does), packed by
-`tools/update/mar-tools.mjs` in both `release.yml` and `nightly.yml`, which checks that they
+(`tools/update/mar.ts build` runs the script as `./mach repackage mar` does), packed by
+`tools/update/mar-tools.ts` in both `release.yml` and `nightly.yml`, which checks that they
 start from the packed directory before the upload, because the first public nightly's own copy
-of that step packed `signmar` without its libraries and failed only after the MAR was signed. `mar.mjs` gives
+of that step packed `signmar` without its libraries and failed only after the MAR was signed. `mar.ts` gives
 the MAR a signature block whose one signature is zero, laid out as `signmar -s` lays it out,
 and `mar-sign` signs every byte but those: the bytes start with `MAR1`, so the manifest's
 domain prefix keeps the two uses apart (decision 12). A job with no secret, `mar`, then checks
-that only the signature changed and that `signmar -v` and `mar.mjs verify` accept it under the
+that only the signature changed and that `signmar -v` and `mar.ts verify` accept it under the
 committed certificates, and adds it to `SHA256SUMS`, which cosign signs as before; the
 manifest's `<patch>` follows the release's `SHA256SUMS`, so a release from before the MAR keeps
-its manifest. The nightly sets its channel with `tools/update/channel.mjs` rather than
+its manifest. The nightly sets its channel with `tools/update/channel.ts` rather than
 `package.mjs --channel`, because it uploads `./mach package`'s tarball and runs none of the
 packaging, and it builds its MAR as a check of the release's step but signs, keeps and offers
 none until public nightly releases (decision 23). docs/runbook/ci-update-keys-and-update-host.md,
@@ -666,7 +666,7 @@ step never leaves installs with a MAR that is gone.)
 sub-PR 2. The published release's run only starts the workflow on `main`, so the
 `update-signing` environment admits `main` alone and a `v*` tag pushed on another commit cannot
 reach the key. Its jobs are `prepare` (no secret: release checks, `SHA256SUMS` and cosign, the
-body from `tools/update/manifest.mjs`, which also holds the urgency rule), `sign` (no repository
+body from `tools/update/manifest.ts`, which also holds the urgency rule), `sign` (no repository
 code) and `publish`, whose deploy key is `UPDATES_DEPLOY_KEY` in the environment `update-publish`
 rather than `SITE_DEPLOY_KEY` in `update-site`, names that cannot be confused with
 `vimma-browser/vimma-site`'s. The urgency also counts a `fix(security)` commit and any pull
@@ -679,7 +679,9 @@ host", step 7, and docs/security/16-update-check.md UP7.)
   the `security` label, the same classification `tools/upstream/detect.mjs` (since changed:
   `detect.ts`, ADR-025) applies (unknown counts as security, G3) and spec firefox-versions keys its
   automatic release on. The advisory IDs in those subjects (firefox-versions decision 9) go into
-  `vimmaAdvisories`.
+  `vimmaAdvisories`. (Since changed: no `urgency.mjs` was written; `urgencyOf` in
+  `tools/update/manifest.ts` computes it, in update-publish.yml's `prepare` job, from the commits
+  `manifest.ts commits` lists.)
 - **Direct push, not a PR**, to the manifest repository, because a PR would need a merge, a
   manual step. The deploy key can write only that repository, and the commit touches only the
   `updates/` tree. A CI check there cannot stop a bad push, because Cloudflare deploys without
@@ -705,7 +707,7 @@ as a private workflow artifact (`docs/runbook/`). The nightly manifest jobs
 above therefore start only when public nightly releases do (decision 23).
 
 (Since changed: delivered as decisions 42 and 43 say, behind the repository variable
-`NIGHTLY_RELEASE_ENABLED`. The nightly keeps `./mach package` and `channel.mjs` rather than
+`NIGHTLY_RELEASE_ENABLED`. The nightly keeps `./mach package` and `channel.ts` rather than
 `package.mjs --channel nightly`, as the note on `mar-sign` above says. Its `build` job keeps the
 MAR, with a zeroed placeholder, named `vimma-nightly-<buildID>-linux-x86_64.complete.mar`;
 `mar-sign` (the job `release.yml` calls) signs it, choosing the channel `vimma-nightly` from its
@@ -1024,14 +1026,14 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     a security update on Linux and macOS, and an AppImage would replace itself with the same
     release again
     ([#563](https://github.com/vimma-browser/vimma/issues/563)). Fixing `MOZ_BUILD_DATE` once per
-    job, as Mozilla's release automation does, removes the cause; `tools/release/build-id.mjs`
+    job, as Mozilla's release automation does, removes the cause; `tools/release/build-id.ts`
     fails a release or nightly whose binary (`--full-version`) and `application.ini` disagree, so
     a mismatch cannot ship again; and the client rule removes the symptom for any build ID error
     that gets past both, because every release tag is a new Vimma version. Its cost: a rebuild of
     one Vimma version is never offered to an install of that version, which no release does (a
     fix is a new version). It holds only while each build of a feed has its own
     `displayVersion`, so a nightly's carries its build ID (§2): with the day alone, two nightlies
-    of one day would hide each other's fixes. Rejected: reading the build ID from the binary in `manifest.mjs`,
+    of one day would hide each other's fixes. Rejected: reading the build ID from the binary in `manifest.ts`,
     because the macOS binary cannot run on the Linux job that builds the manifest; and comparing
     Vimma versions instead of build IDs in rule 4, because Firefox's updater, which tarball
     installs are to use (sub-PRs 2 and 5), selects by build ID, and the two must agree.
@@ -1093,7 +1095,7 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     and apply it as an update, and it costs about two hours of runner time. The record is the
     first sentence of the release notes, which the `publish` job writes after the files are up:
     `Nightly build <buildID> of main at <commit>, Firefox <version>.` A job with `contents: read`,
-    no secret and no environment (`changes`, `tools/update/nightly-change.mjs`) compares it with
+    no secret and no environment (`changes`, `tools/update/nightly-change.ts`) compares it with
     `main`. Firefox's version is in the commit too; it is compared as well, so that a record in
     another shape, or a build of another Firefox, never passes. Anything the record cannot vouch
     for builds: no release, a draft or full release, notes without the record, or a release whose
@@ -1177,12 +1179,12 @@ Written first and seen to fail.
   `config.test.mjs`: `[updates] check`, wrong type, schema 1 → "is new in schema 2";
   `cmdline.test.mjs`: `:update`, `:restart`; `actions.test.mjs`: both actions have no default key
   and appear in help. Snapshots (`defaults.toml`, help) are re-recorded with a changelog line.
-- **Tools** `tools/update/test/manifest.test.mjs`: XML from fixtures (attributes, sizes, hashes,
+- **Tools** `tools/update/test/manifest.test.ts`: XML from fixtures (attributes, sizes, hashes,
   nightly names, empty `<updates/>`), urgency from fixture commit logs (a `security`-labelled bump,
   an unknown-advisory bump, none), signing round trip with a test key, the deploy commit touching
   only `updates/**`. `tools/package/test/package.test.mjs`: `is-packaged-app` and its content in
   AppDir, `.deb` and PKGBUILD, absent from the tarball; `--channel nightly` rewrites both channel
-  files. `release-workflow.test.mjs` / a new `update-workflow.test.mjs`: gates, environments, that
+  files. `release-workflow.test.mjs` / a new `update-workflow.test.ts`: gates, environments, that
   only `update-sign` gets the key or `id-token` among the new jobs, only `update-publish` the site
   key, the build job gets neither, no pull-request trigger.
   `tools/branding/test/branding-prefs.test.mjs` (Since changed: `branding-prefs.test.ts`, ADR-025):
@@ -1214,7 +1216,7 @@ Written first and seen to fail.
      `MOZ_DISABLE_NONLOCAL_CONNECTIONS=1`, the automation pref and `vimma.update.testKeys`;
   2. N+1 = N's tarball with a later `BuildID` in `application.ini` and a marker file, made into a
      complete MAR with `./mach repackage mar` and signed with `mycert`; the XML is generated by
-     `tools/update/manifest.mjs`, signed with the test manifest key and served by a local HTTP
+     `tools/update/manifest.ts`, signed with the test manifest key and served by a local HTTP
      server;
   3. build a profile: two workspaces, tabs, a split, a scroll position; `:update`; wait (control
      `state.update`) until staged; the status bar shows `⇡ … on restart`;
@@ -1234,7 +1236,7 @@ Written first and seen to fail.
   a build, the nightly is off until public nightly releases (decision 23), and decision 23 names
   exit test 1 a local test. N is the objdir's tarball; the host is https on 127.0.0.1, because the
   manifest and the browser accept only an https MAR URL, with a CA made for the run that only the
-  scenario's profile trusts. The MAR is built by `tools/update/mar.mjs`, as the release's is,
+  scenario's profile trusts. The MAR is built by `tools/update/mar.ts`, as the release's is,
   instead of `./mach repackage mar`, and signed with `mycert`'s key, exported from libmar's test
   database. The browser runs with `XUL_APP_FILE` naming the install's `browser/application.ini`,
   because Firefox's binary carries its application.ini compiled in and reads a file only when told
@@ -1322,9 +1324,9 @@ tested:
    channel), because every other channel embeds Mozilla's keys; an artifact build, which
    compiles no updater, takes neither branch and needs no certificate.
    `update-keys.mjs` is generated from the certificates by `npm run gen-update-keys`
-   (`tools/update/gen-update-keys.mjs`); the primary's certificate is self-signed through one
-   Cloud KMS signature by `tools/update/update-cert.mjs` (runbook step 5b), and
-   `tools/update/check-build.mjs` checks a package against the done criteria above. ADR-016
+   (`tools/update/gen-update-keys.ts`); the primary's certificate is self-signed through one
+   Cloud KMS signature by `tools/update/update-cert.ts` (runbook step 5b), and
+   `tools/update/check-build.ts` checks a package against the done criteria above. ADR-016
    records the channel, host and certificates. The rpath question is answered: Firefox 159.0.1's
    Linux `updater` already has `RUNPATH $ORIGIN`, and the `updater` of an installed
    `VIMMA_UPDATES=1` tarball, run with an empty environment, applied a complete MAR signed with a

@@ -33,7 +33,8 @@ function gBrowserOf(win) {
 
 /**
  * Whether the window shows two panes or more: the <C-w> family is runnable only then, so with
- * one pane the first ctrl+w still passes to Firefox and closes the tab (plan §2).
+ * one pane the first ctrl+w still passes to the page (Firefox's ctrl+w close tab is off,
+ * key-handling-batch).
  * @param {BrowserWindow} win
  */
 export function hasPanes(win) {

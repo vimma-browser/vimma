@@ -1,13 +1,23 @@
-# The .mjs files under tools/ that have not moved to .ts yet (ADR-025, #946). Nothing is added
-# here: new Node code under tools/ is .ts. Each pull request that moves an area takes its files off,
-# and tools/test/mjs-ratchet.test.ts fails until it does. The hooks of tools/claude-plugin and the
+# The .mjs files under tools/ and packages/vimma-core/test/ that have not moved to .ts yet
+# (ADR-025, #946 and #1114). Nothing is added here: new Node code under tools/ and new core tests
+# are .ts. Each pull request that moves an area takes its files off, and
+# tools/test/mjs-ratchet.test.ts fails until it does. The hooks of tools/claude-plugin and the
 # base-branch guards (tools/ci/docs-only.mjs, tools/ci/key-guard.mjs and its test) stay .mjs
 # (ADR-025, decision 7) and are not listed.
-tools/ci/test/docs-only.test.mjs
-tools/ci/test/tree-covered.test.mjs
-tools/ci/tree-covered.mjs
-tools/mach-python.mjs
-tools/mochitest.mjs
+packages/vimma-core/test/budget.mjs
+packages/vimma-core/test/fuzz/agent-downloads.fuzz.test.mjs
+packages/vimma-core/test/fuzz/agent-keys.fuzz.test.mjs
+packages/vimma-core/test/fuzz/agent.fuzz.test.mjs
+packages/vimma-core/test/fuzz/cmdline.fuzz.test.mjs
+packages/vimma-core/test/fuzz/config.fuzz.test.mjs
+packages/vimma-core/test/fuzz/control.fuzz.test.mjs
+packages/vimma-core/test/fuzz/harness.mjs
+packages/vimma-core/test/fuzz/harness.test.mjs
+packages/vimma-core/test/fuzz/keys.fuzz.test.mjs
+packages/vimma-core/test/fuzz/routes.fuzz.test.mjs
+packages/vimma-core/test/fuzz/strings.fuzz.test.mjs
+packages/vimma-core/test/fuzz/theme.fuzz.test.mjs
+packages/vimma-core/test/fuzz/toml-arb.mjs
 tools/package/cask.mjs
 tools/package/ctl-notices.mjs
 tools/package/flatpak.mjs
@@ -29,29 +39,13 @@ tools/package/test/rpm-smoke.test.mjs
 tools/package/test/sbom.test.mjs
 tools/package/test/vimma-open.test.mjs
 tools/package/validate-sbom.mjs
-tools/release/build-id.mjs
-tools/release/changelog.mjs
-tools/release/firefox-notes.mjs
-tools/release/security-release.mjs
-tools/release/test/build-id.test.mjs
-tools/release/test/changelog.test.mjs
-tools/release/test/firefox-notes.test.mjs
-tools/release/test/security-release.test.mjs
-tools/release/test/smoke-check.test.mjs
-tools/release/test/version-line.test.mjs
-tools/release/version-line.mjs
-tools/repo.mjs
-tools/sync-core.mjs
 tools/test/build.test.mjs
 tools/test/chrome-css.test.mjs
 tools/test/feature-prefs.mjs
 tools/test/feature-prefs.test.mjs
 tools/test/fs-race.mjs
 tools/test/fs-races.test.mjs
-tools/test/mach-python.test.mjs
-tools/test/mochitest.test.mjs
 tools/test/mozconfig-updater.test.mjs
-tools/test/repo.test.mjs
 tools/test/start.test.mjs
 tools/test/surfer-pin.test.mjs
 tools/test/temp-dir.mjs
@@ -60,24 +54,3 @@ tools/test/tmp-guard.mjs
 tools/test/typecheck.test.mjs
 tools/test/typescript-tools.test.mjs
 tools/test/workflow-runners.mjs
-tools/update/cert-dir.mjs
-tools/update/channel.mjs
-tools/update/check-build.mjs
-tools/update/gen-update-keys.mjs
-tools/update/manifest.mjs
-tools/update/mar-tools.mjs
-tools/update/mar.mjs
-tools/update/nightly-change.mjs
-tools/update/test/channel.test.mjs
-tools/update/test/check-build.test.mjs
-tools/update/test/fake-objdir.mjs
-tools/update/test/gen-update-keys.test.mjs
-tools/update/test/manifest.test.mjs
-tools/update/test/mar-tools.test.mjs
-tools/update/test/mar.test.mjs
-tools/update/test/nightly-change.test.mjs
-tools/update/test/nightly-manifest.test.mjs
-tools/update/test/pipeline-workflows.test.mjs
-tools/update/test/update-cert.test.mjs
-tools/update/test/update-workflow.test.mjs
-tools/update/update-cert.mjs

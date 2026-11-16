@@ -32,7 +32,7 @@ taskset -c 0,1 npm run mochitest -- --repeat=49 tests/browser/browser_vimma_<nam
 kill $(jobs -p)
 ```
 
-Pass `--repeat=N` with `=`: `tools/mochitest.mjs` treats a bare `N` as a test path. Under
+Pass `--repeat=N` with `=`: `tools/mochitest.ts` treats a bare `N` as a test path. Under
 `--repeat`, the harness never resets a test's `unexpectedTimeouts`, so after one repetition runs
 over the limit every later one also reports "exceeded the timeout threshold": count overruns from
 the `Entering test`/`Leaving test` timestamps instead. No retries in CI; a flaky test gets
@@ -70,7 +70,7 @@ cleanly, send `ctrl+q` (with `browser.warnOnQuitShortcut` = `false` in `user.js`
 ### Running a local build (`npm start`)
 
 `npm start` runs the full build (`engine/obj-x86_64-pc-linux-gnu`) if present, else the artifact
-build with `XUL_APP_FILE` as `tools/mochitest.mjs` does, with
+build with `XUL_APP_FILE` as `tools/mochitest.ts` does, with
 `~/.cache/vimma-dev-profile` (`--profile DIR`, `--fresh` for a temp profile, `--import` to run
 `npm run import` first, browser flags after a second `--`). It refuses a profile in use: a POSIX
 lock on `<profile>/.parentlock` (`/proc/locks`) or a `lock` symlink whose pid is alive (the link
@@ -165,9 +165,9 @@ npm run e2e -- --updater engine/obj-x86_64-pc-linux-gnu --filter m6a-update --xv
 The harness unpacks the tarball (N), points its `[AppUpdate] URL` at a host on `127.0.0.1` with
 https (a CA made for the run, trusted only in each scenario's profile with `certutil`), makes N+1
 (a build ID 60 s later and a marker file) and a downgrade build (later still, Firefox 100.0),
-builds their complete MARs with `tools/update/mar.mjs` and signs them with libmar's test key
+builds their complete MARs with `tools/update/mar.ts` and signs them with libmar's test key
 `mycert` (exported from `engine/modules/libmar/tests/unit/data` with `pk12util`). Manifests come
-from `tools/update/manifest.mjs`, signed with an RSA key generated for the run, which the browser
+from `tools/update/manifest.ts`, signed with an RSA key generated for the run, which the browser
 pins only in automation (`vimma.update.testKeys` with `MOZ_DISABLE_NONLOCAL_CONNECTIONS=1` and
 the automation pref). `m6a-update-n-to-n1`'s install carries `updater-xpcshell` (Mozilla's test
 updater, which trusts `mycert`) as `updater`; `m6a-update-bad-signature`'s keeps the shipped one,

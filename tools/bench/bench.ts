@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Key-to-action bench for vimma-core (spec ci-quality-gates, plan §5 "Performance", issues #17
+ * Key-to-action bench for vimma-core (spec ci-quality-gates, ARCHITECTURE.md "Testing", issues #17
  * and #342). Measures each case in packages/vimma-core/bench/cases.mjs twice, as the working tree
  * has it and as the baseline commit (baseline.json) has it, in the same processes, and gates the
  * working tree against the baseline commit (tools/bench/compare.ts).

@@ -43,11 +43,11 @@ CycloneDX schema; installs the `.deb` and starts it headless, installs the `.rpm
 dnf in a Fedora container and with zypper in an openSUSE container and starts it headless there
 with `tools/package/rpm-smoke.sh`, and runs `makepkg -si` on the `PKGBUILD` in an Arch Linux
 container with `tools/package/arch-smoke.sh`; checks the release tarball's updater with
-`tools/update/check-build.mjs`, and while `UPDATES_ENABLED` is `true` builds the complete MAR
-from it with a zeroed signature placeholder, `tools/update/mar.mjs build`) → `mar-sign` (calls
+`tools/update/check-build.ts`, and while `UPDATES_ENABLED` is `true` builds the complete MAR
+from it with a zeroed signature placeholder, `tools/update/mar.ts build`) → `mar-sign` (calls
 `update-publish.yml`, whose job of that name signs the MAR with the Cloud KMS update key; see
 "Update signing keys and the update host", step 8) → `mar` (no secret: the signed MAR differs
-from package's only in its signature, verifies under `configs/updater/` with `mar.mjs` and with
+from package's only in its signature, verifies under `configs/updater/` with `mar.ts` and with
 the build's own `signmar`, and joins `SHA256SUMS`) → `sign` (cosign; with `mar-sign`, the only
 jobs with `id-token: write`) → `publish` (only job with `contents: write`; uploads to the draft by its tag
 and checks that the draft is still on that tag after the notes edit) → `failure` (opens a
@@ -71,8 +71,8 @@ node tools/package/package.mjs --tarball engine/obj-x86_64-pc-linux-gnu/dist/vim
   --out dist --maintainer 'Name <email>' --appimagetool /tmp/ait/appimagetool \
   --runtime /tmp/ait/runtime-x86_64 --no-deb   # dpkg-deb only exists on Debian/Ubuntu
 node tools/package/validate-sbom.mjs dist/vimma-*.cdx.json
-tools/package/arch-smoke.sh dist "$(node tools/release/version-line.mjs)"   # needs docker
-tools/package/rpm-smoke.sh dist "$(node tools/release/version-line.mjs)"    # needs docker
+tools/package/arch-smoke.sh dist "$(node tools/release/version-line.ts)"   # needs docker
+tools/package/rpm-smoke.sh dist "$(node tools/release/version-line.ts)"    # needs docker
 ```
 
 `package.mjs` builds the `.rpm` with `rpmbuild` (on Arch, the `rpm-tools` package; on
@@ -312,7 +312,10 @@ built, release a patch version instead. A manual run, `gh workflow run release.y
 runs the workflow file from `main` (the jobs refuse any other branch) but checks out and builds
 the tag's source: a fix to the workflow file reaches the re-run, while a fix to the source or to a
 script under `tools/` does not, and needs a patch release (leave the failed draft unpublished;
-delete it once the patch release is out). An `aur.yml` failure also opens the issue; re-run it
+delete it once the patch release is out). For the same reason a tag whose tree predates a tool
+`main`'s workflow now calls cannot be rebuilt at all: tags before #988 lack `tools/e2e/e2e.ts`, and
+tags up to v0.1.20 lack the `tools/release/*.ts` names (#946); release a patch version instead.
+An `aur.yml` failure also opens the issue; re-run it
 with `gh workflow run aur.yml -f tag=vX.Y.Z`. That manual run uses `main`'s `aur.yml`, while the
 run started by publishing uses the `aur.yml` at the release's tag, so a fix to `aur.yml` reaches
 an already tagged release only through the manual run. A `homebrew.yml` failure opens it as

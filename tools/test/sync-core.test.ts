@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// tools/sync-core.mjs copies packages/vimma-core/src, grouped in folders by area (#937), into the
+// tools/sync-core.ts copies packages/vimma-core/src, grouped in folders by area (#937), into the
 // chrome tree as one flat folder, so the browser's `../core/<name>.mjs` imports and the
 // mochitests' chrome:// URLs do not depend on where a module sits inside the package.
 import { execFileSync } from "node:child_process";
@@ -11,7 +11,7 @@ import { join, posix, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as espree from "espree";
 import { describe, expect, it } from "vitest";
-import { coreLayout, importPositions, rewriteSpecifiers, syncCore } from "../sync-core.mjs";
+import { coreLayout, importPositions, rewriteSpecifiers, syncCore } from "../sync-core.ts";
 import { tempDir } from "./temp-dir.mjs";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));

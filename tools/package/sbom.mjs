@@ -13,7 +13,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { REPO } from "../repo.mjs";
+import { REPO } from "../repo.ts";
 
 /** @typedef {{ name: string, version: string, source?: string, checksum?: string }} CargoPackage */
 /** @typedef {{ name: string, url?: string, release?: string, revision?: string, licenses: string[] }} MozYaml */

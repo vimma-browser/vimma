@@ -175,7 +175,7 @@ describe("XWD (Xvfb -fbdir)", () => {
   });
 });
 
-describe("diffImages (plan §4: 0.5 % tolerance)", () => {
+describe("diffImages (0.5 % tolerance)", () => {
   const W = 100;
   const H = 100; // 10 000 pixels: 0.5 % is exactly 50
   const base = image(W, H, () => [200, 200, 200, 255]);

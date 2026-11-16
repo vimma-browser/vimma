@@ -191,7 +191,7 @@ jobs:
           version=$("$MOZ_OBJDIR/dist/bin/vimma" --version)
           # "Vimma <vimma> · Firefox <firefox>" from surfer.json (spec firefox-versions), and the
           # tag must be its Vimma version.
-          expected=$(node tools/release/version-line.mjs)
+          expected=$(node tools/release/version-line.ts)
           case "$expected" in "Vimma ${TAG#v} · Firefox "*) ;; *) echo "::error::surfer.json gives '$expected', tag is $TAG"; exit 1 ;; esac
           [ "$version" = "$expected" ] || { echo "::error::--version is '$version', want '$expected'"; exit 1; }
           # appinfo.version is the Firefox version (spec m0-app-version); --version shows Vimma's.
@@ -216,7 +216,7 @@ jobs:
           # the build ID the binary runs with is the one its application.ini gives the manifest
           unpacked=$(mktemp -d)
           tar -xJf release/vimma-*.en-US.linux-x86_64.tar.xz -C "$unpacked"
-          node tools/release/build-id.mjs --binary "$unpacked/vimma/vimma" --ini "$unpacked/vimma/application.ini"
+          node tools/release/build-id.ts --binary "$unpacked/vimma/vimma" --ini "$unpacked/vimma/application.ini"
           rm -rf "$unpacked"
 
       - name: Delete the Safe Browsing key file
@@ -226,14 +226,14 @@ jobs:
       # This build's own MAR tools for the jobs after it (spec m6a-updater §7): the host `mar`
       # and Mozilla's make_full_update.sh and common.sh, which `./mach repackage mar` runs;
       # signmar with the NSS libraries it loads from beside it, for Mozilla's own check of the
-      # signature; and Mozilla's update certificates, which check-build.mjs makes sure the
-      # updater does not embed. tools/update/mar-tools.mjs packs them, as nightly.yml's build
+      # signature; and Mozilla's update certificates, which check-build.ts makes sure the
+      # updater does not embed. tools/update/mar-tools.ts packs them, as nightly.yml's build
       # does, and checks that signmar and mar start from mar-tools, so a broken pack fails here,
       # before the upload. Only this job runs them, which built them and already runs the build's
       # code, after the key file is deleted; no other job that holds a secret runs them.
       - name: MAR tools for the package and mar jobs
         run: |
-          node tools/update/mar-tools.mjs pack --objdir "$MOZ_OBJDIR" --engine engine --out mar-tools
+          node tools/update/mar-tools.ts pack --objdir "$MOZ_OBJDIR" --engine engine --out mar-tools
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -388,7 +388,7 @@ jobs:
       - name: Smoke test the .deb and the AppImage
         run: |
           v=${TAG#v}
-          line=$(node tools/release/version-line.mjs)
+          line=$(node tools/release/version-line.ts)
           sudo apt-get install -y -q "./dist/vimma_${v}_amd64.deb"
           [ "$(vimma --version)" = "$line" ] || { echo "::error::.deb: $(vimma --version)"; exit 1; }
           # vimma-ctl ships in every package with the browser's version (spec ship-vimma-ctl).
@@ -431,7 +431,7 @@ jobs:
       # rpm-package): the requirements rpmbuild read from the binaries resolve on both, and the
       # installed Vimma starts.
       - name: Smoke test the .rpm on Fedora and openSUSE
-        run: tools/package/rpm-smoke.sh dist "$(node tools/release/version-line.mjs)"
+        run: tools/package/rpm-smoke.sh dist "$(node tools/release/version-line.ts)"
 
       # docs/specs/m6a-updater.md, sub-PR 2's done criteria, on the tarball users download: it asks
       # updates.vimma.dev, both channel files say vimma, and its updater embeds Vimma's
@@ -440,7 +440,7 @@ jobs:
         run: |
           unpacked=$(mktemp -d)
           tar -xJf "dist/vimma-${TAG#v}-linux-x86_64.tar.xz" -C "$unpacked"
-          node tools/update/check-build.mjs "$unpacked/vimma" --mozilla-certs mar-tools/mozilla-certs
+          node tools/update/check-build.ts "$unpacked/vimma" --mozilla-certs mar-tools/mozilla-certs
           rm -rf "$unpacked"
 
       # From the release tarball, so the MAR installs exactly what the tarball does, vimma-ctl
@@ -453,7 +453,7 @@ jobs:
           chmod 755 mar-tools/mar mar-tools/make_full_update.sh
           mar="vimma-${TAG#v}-linux-x86_64.complete.mar"
           mkdir -p mar
-          node tools/update/mar.mjs build --tarball "dist/vimma-${TAG#v}-linux-x86_64.tar.xz" --tools mar-tools --channel vimma --out "mar/$mar"
+          node tools/update/mar.ts build --tarball "dist/vimma-${TAG#v}-linux-x86_64.tar.xz" --tools mar-tools --channel vimma --out "mar/$mar"
           echo "mar=$mar" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -468,7 +468,7 @@ jobs:
       # (the draft has no assets yet, and a draft's download URLs answer 404 to anyone); the
       # PKGBUILD's pinned SHA-256 still checks the bytes.
       - name: Smoke test the PKGBUILD on Arch Linux
-        run: tools/package/arch-smoke.sh dist "$(node tools/release/version-line.mjs)"
+        run: tools/package/arch-smoke.sh dist "$(node tools/release/version-line.ts)"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -487,7 +487,7 @@ jobs:
   # `permissions:` asks for, within them. GitHub refuses a call whose jobs ask for more than the
   # caller allows, skipped jobs included, so the ceiling covers the manifest's jobs too. None of
   # them runs in a call: `start` needs the release event, and prepare, sign, publish and failure
-  # need no `mar` input (tools/update/test/update-workflow.test.mjs). The one job that runs,
+  # need no `mar` input (tools/update/test/update-workflow.test.ts). The one job that runs,
   # mar-sign, asks only for its OIDC token.
   mar-sign:
     needs: package
@@ -507,7 +507,7 @@ jobs:
 
   # The signed MAR, checked with no secret before anything lists it: only its signature bytes
   # differ from the MAR package built; its signature verifies under the committed certificates
-  # (tools/update/mar.mjs, and Mozilla's signmar, the check the updater itself runs); its
+  # (tools/update/mar.ts, and Mozilla's signmar, the check the updater itself runs); its
   # channel is the release's and its version Firefox's. Then SHA256SUMS lists it.
   #
   # It runs whenever package succeeded, so a mar-sign that was skipped or failed fails here,
@@ -566,9 +566,9 @@ jobs:
           [ "$MAR" = "vimma-${TAG#v}-linux-x86_64.complete.mar" ] \
             || { echo "::error::'$MAR' is not $TAG's complete MAR"; exit 1; }
           [ -f "mar-signed/$MAR" ] || { echo "::error::mar-sign left no signed MAR"; exit 1; }
-          node tools/update/mar.mjs same-content --placeholder "mar-unsigned/$MAR" --signed "mar-signed/$MAR"
+          node tools/update/mar.ts same-content --placeholder "mar-unsigned/$MAR" --signed "mar-signed/$MAR"
           firefox=$(node -p 'require("./surfer.json").version.version')
-          node tools/update/mar.mjs verify --mar "mar-signed/$MAR" --cert configs/updater/primary.der --cert configs/updater/secondary.der --channel vimma --product-version "$firefox"
+          node tools/update/mar.ts verify --mar "mar-signed/$MAR" --cert configs/updater/primary.der --cert configs/updater/secondary.der --channel vimma --product-version "$firefox"
           # Mozilla's signmar, from this release's build: the verification code the updater runs
           # (libmar's mar_verify.c), against an NSS database holding each certificate.
           sudo apt-get update -q
@@ -1331,11 +1331,11 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$APP"
           lipo -archs "$APP/Contents/MacOS/vimma" | grep -qx arm64
           version=$("$APP/Contents/MacOS/vimma" --version)
-          expected=$(node tools/release/version-line.mjs)
+          expected=$(node tools/release/version-line.ts)
           case "$expected" in "Vimma ${TAG#v} · Firefox "*) ;; *) echo "::error::surfer.json gives '$expected', tag is $TAG"; exit 1 ;; esac
           [ "$version" = "$expected" ] || { echo "::error::--version is '$version', want '$expected'"; exit 1; }
           # the build ID the app runs with is the one its application.ini gives the manifest (#563)
-          node tools/release/build-id.mjs --binary "$APP/Contents/MacOS/vimma" --ini "$APP/Contents/Resources/application.ini"
+          node tools/release/build-id.ts --binary "$APP/Contents/MacOS/vimma" --ini "$APP/Contents/Resources/application.ini"
           ctl=$("$APP/Contents/MacOS/vimma-ctl" --version)
           [ "$ctl" = "vimma-ctl ${TAG#v} (protocol 2)" ] || { echo "::error::vimma-ctl --version is '$ctl'"; exit 1; }
           test -s "$APP/Contents/Resources/vimma-ctl-licenses/rust-std-COPYRIGHT.html"

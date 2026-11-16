@@ -5,7 +5,7 @@ files, new), `configs/macos/AppIcon.icon/` (icon source, new), `configs/macos/mo
 `src/browser/branding/vimma/configure.sh`, `tools/package/` (cask generator and icon
 generator, new), `packages/vimma-core/src/updates.mjs`,
 `src/browser/base/content/vimma/updates/VimmaUpdates.sys.mjs`, `vimma/about/`,
-`tools/update/manifest.mjs`, `.github/workflows/release.yml`, `update-publish.yml`,
+`tools/update/manifest.ts`, `.github/workflows/release.yml`, `update-publish.yml`,
 `homebrew.yml` (new), `macos.yml`; the
 `vimma-browser/homebrew-tap` repository (new); `docs/guide.md`, `docs/security/`,
 `docs/runbook/`, `README.md` · Upstream patches: none (decision 9) · ADR: none
@@ -541,7 +541,7 @@ agent before merging.
 - `installTypeFrom on macOS ignores an is-packaged-app marker`
 - `updateSteps for dmg links the release page and gives no command`
 - `parseManifest reads <vimmaDmg>, and refuses a second one, a bad hash or an http URL`
-- `manifest.mjs builds the Darwin_aarch64-gcc3 manifest from the dmg, SHA256SUMS-macos and the
+- `manifest.ts builds the Darwin_aarch64-gcc3 manifest from the dmg, SHA256SUMS-macos and the
 app's application.ini` (`tools/update/test/`)
 - `update-publish.yml signs and publishes the macOS manifest at its own path, checks the
 Darwin target before signing, and runs prepare on macos-15 for it`
@@ -608,7 +608,7 @@ joins a release behind `MACOS_RELEASE_ENABLED` (macos-build, #397 and #398).
    cask's `uninstall quit:` and `zap` name the bundle identifier it sets.
 3. **`feat(updates): update notices on macos`.** Decisions 8 and 16 to 21: the `homebrew` and
    `dmg` install types and their steps in `packages/vimma-core`, `<vimmaDmg>`, the host's
-   Caskroom check, the macOS manifest in `tools/update/manifest.mjs` and `update-publish.yml`,
+   Caskroom check, the macOS manifest in `tools/update/manifest.ts` and `update-publish.yml`,
    its start from `release.yml`'s `macos-tap`, and the guide, runbook and `docs/security/`.
    Closes the feature's issue; sub-PRs 4 and 5 then have issues of their own.
 4. **`build(macos): dmg window art`** (#408). Decision 14: `background.png`, `dsstore` and

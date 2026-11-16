@@ -97,7 +97,11 @@ The change is to CI; its observable behaviour is what the workflows accept, refu
    packages of the old and the new version.
 7. **No install scripts.** No `npm ci` or `npm install` in the repository runs package
    install scripts; `release.yml` and `nightly.yml` also pass `--ignore-scripts` explicitly.
-   They run Surfer only from `node_modules` and fail if it is missing.
+   They run Surfer only from `node_modules` and fail if it is missing. (Since changed: one
+   repository-wide test also refuses npm's install and update commands in any tracked script,
+   workflow or instruction, an npx that could fetch a package, an action not pinned by commit
+   and a lockfile entry outside the npm registry, so a new file is held to this without being
+   listed; [security §14](../security/14-build-and-release-supply-chain.md), B20.)
 8. **Nothing outsiders can trigger runs on a self-hosted runner.** No job of a workflow that a
    pull request, a comment, an issue or another workflow run can trigger names a self-hosted
    runner. The nightly and the release build run on GitHub-hosted runners.
@@ -182,11 +186,12 @@ for most of the 12.5 minutes `docs/runbook/` records for `surfer download`; with
 **R5. What runs in the release build job, and whether it needs install scripts.** From
 `package-lock.json` at `main` (7fc0226; the lockfile is unchanged since 30bf67e):
 
-- The build job runs `tools/package/package.mjs`, `tools/sync-core.mjs`,
-  `tools/version-files/version-files.mjs` (Since changed: `version-files.ts`, ADR-025),
-  `tools/import/restore-patched.mjs` (Since changed: `restore-patched.ts`, ADR-025) and
-  `tools/package/sbom.mjs` (Node built-ins only), `tools/package/validate-sbom.mjs` (imports
-  `ajv`), and Surfer (`download`, `config brand`, `import`, `build`).
+- The build job runs `tools/package/package.mjs`, `tools/sync-core.mjs` (Since changed:
+  `sync-core.ts`, ADR-025), `tools/version-files/version-files.mjs` (Since changed:
+  `version-files.ts`, ADR-025), `tools/import/restore-patched.mjs` (Since changed:
+  `restore-patched.ts`, ADR-025) and `tools/package/sbom.mjs` (Node built-ins only),
+  `tools/package/validate-sbom.mjs` (imports `ajv`), and Surfer (`download`, `config brand`,
+  `import`, `build`).
 - **Surfer 1.14.9** has 22 direct dependencies: `@resvg/resvg-js` 1.4.0, `async-icns` 1.0.2,
   `axios` 1.20.0, `chalk` 4.1.2, `cli-progress` 3.12.0, `commander` 6.2.1, `execa` 5.1.1,
   `fast-extract` 1.14.11, `fs-extra` 10.1.0, `ini` 3.0.1, `is-apple-silicon` 1.0.1, `kleur`

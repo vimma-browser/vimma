@@ -19,12 +19,12 @@ _Pages_ and _extensions_ cannot reach it.
   (`core/update-keys.mjs`); keys from the pref `vimma.update.testKeys` count only when
   `Cu.isInAutomation`. An unsigned, altered or otherwise signed manifest offers nothing, and a
   build with no pinned key refuses every manifest.
-  [`a key that is not pinned is refused, even with a valid signature`](../../packages/vimma-core/test/updates.test.mjs),
-  [`one flipped byte in the body fails`](../../packages/vimma-core/test/updates.test.mjs),
-  [`a signature over the body without the domain prefix fails`](../../packages/vimma-core/test/updates.test.mjs),
-  [`no pinned key at all refuses every manifest (before the key ceremony)`](../../packages/vimma-core/test/updates.test.mjs),
-  [`every pinned key is an RSA-4096 SPKI whose id matches, one per slot`](../../packages/vimma-core/test/updates.test.mjs),
-  [`a signature made as Cloud KMS makes it (raw PKCS#1 over a SHA-384 DigestInfo) verifies`](../../packages/vimma-core/test/updates.test.mjs),
+  [`a key that is not pinned is refused, even with a valid signature`](../../packages/vimma-core/test/updates.test.ts),
+  [`one flipped byte in the body fails`](../../packages/vimma-core/test/updates.test.ts),
+  [`a signature over the body without the domain prefix fails`](../../packages/vimma-core/test/updates.test.ts),
+  [`no pinned key at all refuses every manifest (before the key ceremony)`](../../packages/vimma-core/test/updates.test.ts),
+  [`every pinned key is an RSA-4096 SPKI whose id matches, one per slot`](../../packages/vimma-core/test/updates.test.ts),
+  [`a signature made as Cloud KMS makes it (raw PKCS#1 over a SHA-384 DigestInfo) verifies`](../../packages/vimma-core/test/updates.test.ts),
   [`refusals_show_after_three_in_a_row`](../../tests/browser/browser_vimma_update_check.js)
 - UP2. A verified manifest is **never** accepted for another channel or platform, with a serial
   older than one this profile accepted or than the running build's ID (replay), or with a serial
@@ -34,16 +34,16 @@ _Pages_ and _extensions_ cannot reach it.
   `MOZ_BUILD_DATE` and fail a package whose two differ. Withholding updates or serving an old
   manifest for long is what a compromised host can still do; the feed's age shows after 45 days
   (7 for nightly).
-  [`channel and target mismatches are refused`](../../packages/vimma-core/test/updates.test.mjs),
-  [`replay: a serial below the one accepted, or below this build, is refused; equal is accepted`](../../packages/vimma-core/test/updates.test.mjs),
-  [`downgrade: an older or equal build is no offer, not an error`](../../packages/vimma-core/test/updates.test.mjs),
-  [`the Vimma version already running is no offer, whatever its build ID`](../../packages/vimma-core/test/updates.test.mjs),
+  [`channel and target mismatches are refused`](../../packages/vimma-core/test/updates.test.ts),
+  [`replay: a serial below the one accepted, or below this build, is refused; equal is accepted`](../../packages/vimma-core/test/updates.test.ts),
+  [`downgrade: an older or equal build is no offer, not an error`](../../packages/vimma-core/test/updates.test.ts),
+  [`the Vimma version already running is no offer, whatever its build ID`](../../packages/vimma-core/test/updates.test.ts),
   [`the_vimma_version_running_is_never_offered`](../../tests/browser/browser_vimma_update_check.js),
-  [`a packaged build ID that differs from the binary's is a problem`](../../tools/release/test/build-id.test.mjs),
+  [`a packaged build ID that differs from the binary's is a problem`](../../tools/release/test/build-id.test.ts),
   [`release.yml's Linux and macOS builds fix MOZ_BUILD_DATE before they build`](../../tools/package/test/release-workflow.test.mjs),
-  [`a release feed older than 45 days and a nightly one older than 7 are stale`](../../packages/vimma-core/test/updates.test.mjs),
+  [`a release feed older than 45 days and a nightly one older than 7 are stale`](../../packages/vimma-core/test/updates.test.ts),
   [`replay_is_refused_and_downgrade_offers_nothing`](../../tests/browser/browser_vimma_update_check.js),
-  [`a serial more than a day ahead of the clock is refused; up to a day is accepted`](../../packages/vimma-core/test/updates.test.mjs),
+  [`a serial more than a day ahead of the clock is refused; up to a day is accepted`](../../packages/vimma-core/test/updates.test.ts),
   [`a_serial_from_the_future_is_refused`](../../tests/browser/browser_vimma_update_check.js)
 - UP3. A check **never** sends cookies, a referrer, the user's languages or anything that
   identifies the install: the request is an anonymous, uncached GET with an empty
@@ -71,17 +71,17 @@ _Pages_ and _extensions_ cannot reach it.
   send no burst of requests.
   [`off_by_pref_or_config_sends_nothing`](../../tests/browser/browser_vimma_update_check.js),
   [`nothing_at_all_with_checks_off`](../../tests/browser/browser_vimma_update_notices.js),
-  [`checks off or a source build: never due`](../../packages/vimma-core/test/update-notices.test.mjs),
-  [`a failed attempt does not count as a check, but is not retried within 10 minutes`](../../packages/vimma-core/test/update-notices.test.mjs),
+  [`checks off or a source build: never due`](../../packages/vimma-core/test/update-notices.test.ts),
+  [`a failed attempt does not count as a check, but is not retried within 10 minutes`](../../packages/vimma-core/test/update-notices.test.ts),
   [`startup_checks_when_due_and_not_when_fresh`](../../tests/browser/browser_vimma_update_notices.js),
   [`a_source_build_checks_nothing`](../../tests/browser/browser_vimma_update_check.js),
   [`a_config_with_errors_still_turns_checks_off`](../../tests/browser/browser_vimma_update_check.js),
-  [`a file with errors: a readable check = false holds; else the config in force, or held`](../../packages/vimma-core/test/updates.test.mjs),
-  [`an unreadable check keeps the setting in effect, never a stated opt-out undone (#967)`](../../packages/vimma-core/test/updates.test.mjs),
+  [`a file with errors: a readable check = false holds; else the config in force, or held`](../../packages/vimma-core/test/updates.test.ts),
+  [`an unreadable check keeps the setting in effect, never a stated opt-out undone (#967)`](../../packages/vimma-core/test/updates.test.ts),
   [`an_unreadable_check_never_undoes_an_opt_out_stated_in_a_broken_file`](../../tests/browser/browser_vimma_update_check.js),
-  [`a file that parses but has errors checks as a valid file would (#741)`](../../packages/vimma-core/test/updates.test.mjs),
-  [`:update runs while checks are held, never past a stated opt-out`](../../packages/vimma-core/test/updates.test.mjs),
-  [`an opt-out under a misspelt or misplaced table may mean check = false`](../../packages/vimma-core/test/updates.test.mjs),
+  [`a file that parses but has errors checks as a valid file would (#741)`](../../packages/vimma-core/test/updates.test.ts),
+  [`:update runs while checks are held, never past a stated opt-out`](../../packages/vimma-core/test/updates.test.ts),
+  [`an opt-out under a misspelt or misplaced table may mean check = false`](../../packages/vimma-core/test/updates.test.ts),
   [`an_opt_out_under_a_misspelt_table_never_turns_checks_on`](../../tests/browser/browser_vimma_update_check.js),
   [`a_config_that_parses_with_errors_still_checks`](../../tests/browser/browser_vimma_update_check.js),
   [`update_runs_while_checks_are_held`](../../tests/browser/browser_vimma_update_check.js)
@@ -93,10 +93,10 @@ _Pages_ and _extensions_ cannot reach it.
   paths, never from free text in the manifest; a saved result (the pref `vimma.update.last`) is
   checked the same way when read back.
   [`an_oversized_or_compressed_bomb_response_is_refused`](../../tests/browser/browser_vimma_update_check.js),
-  [`an oversized manifest is refused before any crypto`](../../packages/vimma-core/test/updates.test.mjs),
-  [`shellQuote leaves plain paths alone and quotes the rest`](../../packages/vimma-core/test/updates.test.mjs),
-  [`tarball: quit, download and check it, then unpack over the install's parent, quoted`](../../packages/vimma-core/test/updates.test.mjs),
-  [`a pinned key that is not a valid SPKI refuses, never throws`](../../packages/vimma-core/test/updates.test.mjs),
+  [`an oversized manifest is refused before any crypto`](../../packages/vimma-core/test/updates.test.ts),
+  [`shellQuote leaves plain paths alone and quotes the rest`](../../packages/vimma-core/test/updates.test.ts),
+  [`tarball: quit, download and check it, then unpack over the install's parent, quoted`](../../packages/vimma-core/test/updates.test.ts),
+  [`a pinned key that is not a valid SPKI refuses, never throws`](../../packages/vimma-core/test/updates.test.ts),
   [`a_damaged_saved_result_is_dropped_not_thrown`](../../tests/browser/browser_vimma_update_check.js)
 - UP6. A package manager's install (the `.deb`, the `.rpm`, the release `PKGBUILD`, the AUR's
   `vimma-bin`)
@@ -119,9 +119,9 @@ _Pages_ and _extensions_ cannot reach it.
   **⚠ limit:** Vimma 0.1.6 on a Mac calls itself a tarball install and shows the Linux tarball
   command for a macOS offer, without a hash (the macOS manifest names no tarball); the guide
   tells those users not to run it (decision 21).
-  [`homebrew: brew upgrade --cask vimma (macos-homebrew decision 8)`](../../packages/vimma-core/test/updates.test.mjs),
-  [`dmg: the release page and the drag, with no command (macos-homebrew decision 19)`](../../packages/vimma-core/test/updates.test.mjs),
-  [`a Caskroom and an /Applications path change nothing on Linux`](../../packages/vimma-core/test/updates.test.mjs),
+  [`homebrew: brew upgrade --cask vimma (macos-homebrew decision 8)`](../../packages/vimma-core/test/updates.test.ts),
+  [`dmg: the release page and the drag, with no command (macos-homebrew decision 19)`](../../packages/vimma-core/test/updates.test.ts),
+  [`a Caskroom and an /Applications path change nothing on Linux`](../../packages/vimma-core/test/updates.test.ts),
   [`macos_installs_get_their_own_steps`](../../tests/browser/browser_vimma_update_check.js)
   The Flatpak ([flatpak](../specs/flatpak.md) decision 10; marker `vimma-package=flatpak`) gets
   only `flatpak update dev.vimma.browser`, in `:update`, the security question's steps and the
@@ -130,11 +130,11 @@ _Pages_ and _extensions_ cannot reach it.
   its `/app` is read-only and Flathub's build, not the release's files, is what it runs. The
   marker outranks `$APPIMAGE`, which a Flatpak started from an AppImage's process inherits, so a
   Flatpak is never handed the AppImage's replacement (UP10).
-  [`flatpak: flatpak update, with no download (spec flatpak, decision 10)`](../../packages/vimma-core/test/updates.test.mjs),
+  [`flatpak: flatpak update, with no download (spec flatpak, decision 10)`](../../packages/vimma-core/test/updates.test.ts),
   [`is flatpak, whose update hint is flatpak update, never the tarball's unpack`](../../tools/package/test/flatpak.test.mjs),
   [`flatpak_gets_flatpak_update`](../../tests/browser/browser_vimma_update_check.js),
-  [`a Flatpak names flatpak update, for an ordinary and a security release`](../../packages/vimma-core/test/update-notices.test.mjs),
-  [`not an AppImage install: nothing to replace`](../../packages/vimma-core/test/appimage-update.test.mjs),
+  [`a Flatpak names flatpak update, for an ordinary and a security release`](../../packages/vimma-core/test/update-notices.test.ts),
+  [`not an AppImage install: nothing to replace`](../../packages/vimma-core/test/appimage-update.test.ts),
   [`a_flatpak_is_told_to_run_flatpak_update`](../../tests/browser/browser_vimma_update_notices.js)
 
 - UP7. A manifest is **only** signed by `update-publish.yml` run from `main`, and **only** for a
@@ -163,7 +163,7 @@ _Pages_ and _extensions_ cannot reach it.
   a label read that fails transiently (an HTTP 5xx, a body that is not JSON, a network error) is
   tried four times in all, 2, 4 and 8 s apart, and a commit whose labels still cannot be read
   **must** fail the run, never count as unlabelled, so a security release is never published as
-  a normal one. The responses are parsed as raw JSON in `manifest.mjs`, not through jq, and their
+  a normal one. The responses are parsed as raw JSON in `manifest.ts`, not through jq, and their
   shape is checked: a pulls response that is not a list of pull requests, each with a list of
   labels with string names, fails the run (jq would read `{}` as no labels), and so does a
   releases list that does not contain the tag being published (such a list is malformed or cut
@@ -211,7 +211,7 @@ _Pages_ and _extensions_ cannot reach it.
   lives only in the `update-publish` environment; a repository or organisation secret of that
   name, readable from any branch, would also flow into the call, and none may exist
   (`gh api repos/vimma-browser/vimma/actions/secrets`). The release
-  jobs refuse a body for any channel but `vimma`, `manifest.mjs` checks each channel before a
+  jobs refuse a body for any channel but `vimma`, `manifest.ts` checks each channel before a
   push, and the client refuses a manifest for another channel (UP2), so a nightly offer never
   reaches a release install, nor a release offer a nightly install. Each channel's serials and
   offers only grow: an offer of an older build than the published nightly manifest's is
@@ -227,50 +227,50 @@ _Pages_ and _extensions_ cannot reach it.
   **⚠ limit:** without a required reviewer on `update-signing`, anyone with write access can
   start a run on `main` that re-signs a published release or offers nothing (withholding
   updates).
-  [`grants nothing by default, and each job only what it needs`](../../tools/update/test/update-workflow.test.mjs),
-  [`an unchanged day's re-sign offers the same build under a newer serial, and installs stay current`](../../tools/update/test/nightly-manifest.test.mjs),
-  [`only sign, mar-sign and nightly-sign mint an OIDC token or name the signing environment`](../../tools/update/test/update-workflow.test.mjs),
-  [`%s runs only in nightly.yml's call on main, with UPDATES_ENABLED and NIGHTLY_RELEASE_ENABLED`](../../tools/update/test/update-workflow.test.mjs),
-  [`nightly-prepare reads the public nightly pre-release and its nightly.yml signature`](../../tools/update/test/update-workflow.test.mjs),
-  [`nightly-prepare checks the MAR's channel and builds the nightly channel's manifest`](../../tools/update/test/update-workflow.test.mjs),
-  [`nightly-publish checks the signed file, then pushes only the nightly channel's path`](../../tools/update/test/update-workflow.test.mjs),
-  [`the release jobs never write the nightly path, nor the nightly jobs the release path`](../../tools/update/test/update-workflow.test.mjs),
-  [`nightly-sign signs the nightly's body so that the browser's verifier accepts it`](../../tools/update/test/update-workflow.test.mjs),
-  [`nightly-sign refuses to sign %s`](../../tools/update/test/update-workflow.test.mjs),
-  [`sign, the release's check, refuses the nightly's body`](../../tools/update/test/update-workflow.test.mjs),
-  [`checkSigned, the release's check, refuses a nightly manifest`](../../tools/update/test/nightly-manifest.test.mjs),
-  [`checkSignedNightly refuses a release manifest, whatever it offers`](../../tools/update/test/nightly-manifest.test.mjs),
-  [`checkSignedNightly refuses another key, a changed file, another build and a moved MAR`](../../tools/update/test/nightly-manifest.test.mjs),
-  [`refuses an older build than the published nightly manifest offers, and an old serial`](../../tools/update/test/nightly-manifest.test.mjs),
-  [`is offered to a nightly install of an older build, and to no release install`](../../tools/update/test/nightly-manifest.test.mjs),
-  [`the signing job %s runs no repository code: no checkout, no node, no npm`](../../tools/update/test/update-workflow.test.mjs),
-  [`a published release only starts the run on main, and only with UPDATES_ENABLED`](../../tools/update/test/update-workflow.test.mjs),
-  [`%s runs only by hand on main, here, and with UPDATES_ENABLED or as a dry run`](../../tools/update/test/update-workflow.test.mjs),
-  [`checks that the release is published, not a pre-release, and on main`](../../tools/update/test/update-workflow.test.mjs),
-  [`checks SHA256SUMS against release.yml's signature, and refuses an unsigned release`](../../tools/update/test/update-workflow.test.mjs),
-  [`the publish job verifies with the browser's verifier and with openssl before any push`](../../tools/update/test/update-workflow.test.mjs),
-  [`the deploy key lives in its own environment and reaches only the push steps`](../../tools/update/test/update-workflow.test.mjs),
-  [`a call receives the deploy key only by name, optional, and only nightly.yml's manifest passes it`](../../tools/update/test/update-workflow.test.mjs),
-  [`pushes one commit naming the version to main, never forced, to a pinned host key`](../../tools/update/test/update-workflow.test.mjs),
-  [`a push the other target's run beat rebases and lands, with no git identity configured`](../../tools/update/test/update-workflow.test.mjs),
-  [`signs the body so that the browser's verifier accepts it under the KMS key`](../../tools/update/test/update-workflow.test.mjs),
-  [`refuses to sign %s`](../../tools/update/test/update-workflow.test.mjs),
-  [`every asset must be listed with the hash of the file that was downloaded`](../../tools/update/test/manifest.test.mjs),
-  [`must be newer than the published manifest's; equal or older is refused`](../../tools/update/test/manifest.test.mjs),
-  [`checkSigned refuses another key, a changed file, an older serial and another version`](../../tools/update/test/manifest.test.mjs),
-  [`refuses to offer an older version than the published manifest does`](../../tools/update/test/manifest.test.mjs),
-  [`retries a transient failure, then reads the labels`](../../tools/update/test/manifest.test.mjs),
-  [`throws after four attempts that all fail, never answering no labels`](../../tools/update/test/manifest.test.mjs),
-  [`throws at once on a failure that is not transient`](../../tools/update/test/manifest.test.mjs),
-  [`throws at once on %s instead of answering no labels`](../../tools/update/test/manifest.test.mjs),
-  [`throws at once on %s instead of widening the range`](../../tools/update/test/manifest.test.mjs),
-  [`downloads the target's files and sums, and passes the target to manifest.mjs`](../../tools/update/test/update-workflow.test.mjs),
-  [`checks a macOS body against the macOS target, and refuses a Linux one there`](../../tools/update/test/update-workflow.test.mjs),
-  [`runs one manifest per target at a time, never cancelling one half done`](../../tools/update/test/update-workflow.test.mjs),
-  [`refuses a .dmg that does not match SHA256SUMS-macos`](../../tools/update/test/manifest.test.mjs),
-  [`checkSigned takes the target: a Linux manifest is refused for macOS and back`](../../tools/update/test/manifest.test.mjs),
+  [`grants nothing by default, and each job only what it needs`](../../tools/update/test/update-workflow.test.ts),
+  [`an unchanged day's re-sign offers the same build under a newer serial, and installs stay current`](../../tools/update/test/nightly-manifest.test.ts),
+  [`only sign, mar-sign and nightly-sign mint an OIDC token or name the signing environment`](../../tools/update/test/update-workflow.test.ts),
+  [`%s runs only in nightly.yml's call on main, with UPDATES_ENABLED and NIGHTLY_RELEASE_ENABLED`](../../tools/update/test/update-workflow.test.ts),
+  [`nightly-prepare reads the public nightly pre-release and its nightly.yml signature`](../../tools/update/test/update-workflow.test.ts),
+  [`nightly-prepare checks the MAR's channel and builds the nightly channel's manifest`](../../tools/update/test/update-workflow.test.ts),
+  [`nightly-publish checks the signed file, then pushes only the nightly channel's path`](../../tools/update/test/update-workflow.test.ts),
+  [`the release jobs never write the nightly path, nor the nightly jobs the release path`](../../tools/update/test/update-workflow.test.ts),
+  [`nightly-sign signs the nightly's body so that the browser's verifier accepts it`](../../tools/update/test/update-workflow.test.ts),
+  [`nightly-sign refuses to sign %s`](../../tools/update/test/update-workflow.test.ts),
+  [`sign, the release's check, refuses the nightly's body`](../../tools/update/test/update-workflow.test.ts),
+  [`checkSigned, the release's check, refuses a nightly manifest`](../../tools/update/test/nightly-manifest.test.ts),
+  [`checkSignedNightly refuses a release manifest, whatever it offers`](../../tools/update/test/nightly-manifest.test.ts),
+  [`checkSignedNightly refuses another key, a changed file, another build and a moved MAR`](../../tools/update/test/nightly-manifest.test.ts),
+  [`refuses an older build than the published nightly manifest offers, and an old serial`](../../tools/update/test/nightly-manifest.test.ts),
+  [`is offered to a nightly install of an older build, and to no release install`](../../tools/update/test/nightly-manifest.test.ts),
+  [`the signing job %s runs no repository code: no checkout, no node, no npm`](../../tools/update/test/update-workflow.test.ts),
+  [`a published release only starts the run on main, and only with UPDATES_ENABLED`](../../tools/update/test/update-workflow.test.ts),
+  [`%s runs only by hand on main, here, and with UPDATES_ENABLED or as a dry run`](../../tools/update/test/update-workflow.test.ts),
+  [`checks that the release is published, not a pre-release, and on main`](../../tools/update/test/update-workflow.test.ts),
+  [`checks SHA256SUMS against release.yml's signature, and refuses an unsigned release`](../../tools/update/test/update-workflow.test.ts),
+  [`the publish job verifies with the browser's verifier and with openssl before any push`](../../tools/update/test/update-workflow.test.ts),
+  [`the deploy key lives in its own environment and reaches only the push steps`](../../tools/update/test/update-workflow.test.ts),
+  [`a call receives the deploy key only by name, optional, and only nightly.yml's manifest passes it`](../../tools/update/test/update-workflow.test.ts),
+  [`pushes one commit naming the version to main, never forced, to a pinned host key`](../../tools/update/test/update-workflow.test.ts),
+  [`a push the other target's run beat rebases and lands, with no git identity configured`](../../tools/update/test/update-workflow.test.ts),
+  [`signs the body so that the browser's verifier accepts it under the KMS key`](../../tools/update/test/update-workflow.test.ts),
+  [`refuses to sign %s`](../../tools/update/test/update-workflow.test.ts),
+  [`every asset must be listed with the hash of the file that was downloaded`](../../tools/update/test/manifest.test.ts),
+  [`must be newer than the published manifest's; equal or older is refused`](../../tools/update/test/manifest.test.ts),
+  [`checkSigned refuses another key, a changed file, an older serial and another version`](../../tools/update/test/manifest.test.ts),
+  [`refuses to offer an older version than the published manifest does`](../../tools/update/test/manifest.test.ts),
+  [`retries a transient failure, then reads the labels`](../../tools/update/test/manifest.test.ts),
+  [`throws after four attempts that all fail, never answering no labels`](../../tools/update/test/manifest.test.ts),
+  [`throws at once on a failure that is not transient`](../../tools/update/test/manifest.test.ts),
+  [`throws at once on %s instead of answering no labels`](../../tools/update/test/manifest.test.ts),
+  [`throws at once on %s instead of widening the range`](../../tools/update/test/manifest.test.ts),
+  [`downloads the target's files and sums, and passes the target to manifest.ts`](../../tools/update/test/update-workflow.test.ts),
+  [`checks a macOS body against the macOS target, and refuses a Linux one there`](../../tools/update/test/update-workflow.test.ts),
+  [`runs one manifest per target at a time, never cancelling one half done`](../../tools/update/test/update-workflow.test.ts),
+  [`refuses a .dmg that does not match SHA256SUMS-macos`](../../tools/update/test/manifest.test.ts),
+  [`checkSigned takes the target: a Linux manifest is refused for macOS and back`](../../tools/update/test/manifest.test.ts),
   [`macos-tap starts the macOS update manifest once the .dmg is on a published release`](../../tools/package/test/release-workflow.test.mjs),
-  [`a published release whose .dmg is already there starts the macOS manifest too`](../../tools/update/test/update-workflow.test.mjs),
+  [`a published release whose .dmg is already there starts the macOS manifest too`](../../tools/update/test/update-workflow.test.ts),
   [`fails when the release API answers %i`](../../tools/test/release-asset-checks.test.ts)
 - UP8. A command about:vimma shows **never** installs or replaces anything with a file it has not
   checked: every download uses `curl -f` (an HTTP error stops it) and `--proto =https`, and when
@@ -281,11 +281,11 @@ _Pages_ and _extensions_ cannot reach it.
   digits, and a saved result keeps only well-formed ones. **⚠ limit:** the release `PKGBUILD`'s
   command still fetches `latest/download/PKGBUILD` without a hash of its own; `makepkg` checks
   the tarball against the SHA-256 that `PKGBUILD` pins.
-  [`every download fails on an HTTP error and refuses anything but https (V-07)`](../../packages/vimma-core/test/updates.test.mjs),
-  [`rpm: download and check it, then install it with dnf or zypper`](../../packages/vimma-core/test/updates.test.mjs),
-  [`the checked commands run: a matching file installs, a different one stops before`](../../packages/vimma-core/test/updates.test.mjs),
-  [`reads each package's size and SHA-512 (the release pipeline's asset elements)`](../../packages/vimma-core/test/updates.test.mjs),
-  [`offerAssets keeps only well-formed entries (a saved result read back)`](../../packages/vimma-core/test/updates.test.mjs),
+  [`every download fails on an HTTP error and refuses anything but https (V-07)`](../../packages/vimma-core/test/updates.test.ts),
+  [`rpm: download and check it, then install it with dnf or zypper`](../../packages/vimma-core/test/updates.test.ts),
+  [`the checked commands run: a matching file installs, a different one stops before`](../../packages/vimma-core/test/updates.test.ts),
+  [`reads each package's size and SHA-512 (the release pipeline's asset elements)`](../../packages/vimma-core/test/updates.test.ts),
+  [`offerAssets keeps only well-formed entries (a saved result read back)`](../../packages/vimma-core/test/updates.test.ts),
   [`update_command_opens_the_steps`](../../tests/browser/browser_vimma_update_check.js)
 - UP9. The security update question (`Show the update command? (y/N)`) is **never** answered by
   a key pressed before it armed: keys count only `security.dialog_enable_delay` (1,000 ms) after
@@ -304,7 +304,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`the_question_waits_while_the_user_types`](../../tests/browser/browser_vimma_update_notices.js),
   [`no_question_in_a_private_window`](../../tests/browser/browser_vimma_update_notices.js),
   [`a_new_version_is_announced_once`](../../tests/browser/browser_vimma_update_notices.js),
-  [`y or Y shows the steps; n, Esc, Enter and any other key dismiss`](../../packages/vimma-core/test/update-notices.test.mjs)
+  [`y or Y shows the steps; n, Esc, Enter and any other key dismiss`](../../packages/vimma-core/test/update-notices.test.ts)
 
 - UP10. The AppImage **only** replaces its own file (`$APPIMAGE`) with a download whose size
   and SHA-512 match a manifest verified by a check in the running process (an offer restored
@@ -335,10 +335,10 @@ _Pages_ and _extensions_ cannot reach it.
   [`a_saved_offer_is_installed_only_after_a_check`](../../tests/browser/browser_vimma_update_appimage.js),
   [`another_downloads_part_file_neither_blocks_nor_is_removed`](../../tests/browser/browser_vimma_update_appimage.js),
   [`a_symlinked_appimage_is_not_replaced`](../../tests/browser/browser_vimma_update_appimage.js),
-  [`without the AppDir's own appimage marker, $APPIMAGE is never replaced`](../../packages/vimma-core/test/appimage-update.test.mjs),
-  [`a Vimma that does not run from $APPDIR is not the AppImage $APPIMAGE names`](../../packages/vimma-core/test/appimage-update.test.mjs),
-  [`a download from %s is refused outside automation`](../../packages/vimma-core/test/appimage-update.test.mjs),
-  [`another size or hash: refused, with the reason`](../../packages/vimma-core/test/appimage-update.test.mjs)
+  [`without the AppDir's own appimage marker, $APPIMAGE is never replaced`](../../packages/vimma-core/test/appimage-update.test.ts),
+  [`a Vimma that does not run from $APPDIR is not the AppImage $APPIMAGE names`](../../packages/vimma-core/test/appimage-update.test.ts),
+  [`a download from %s is refused outside automation`](../../packages/vimma-core/test/appimage-update.test.ts),
+  [`another size or hash: refused, with the reason`](../../packages/vimma-core/test/appimage-update.test.ts)
 
 - UP11. Vimma **never** restarts by itself: only `:restart` (action `app.restart`), `y` in the
   restart question, or Firefox's own restart commands do. The restart question
@@ -373,12 +373,12 @@ _Pages_ and _extensions_ cannot reach it.
   [`a_replaced_security_update_asks_to_restart`](../../tests/browser/browser_vimma_update_appimage.js),
   [`a_staged_security_update_asks_to_restart`](../../tests/browser/browser_vimma_update_verify.js),
   [`an_ordinary_replaced_update_asks_nothing`](../../tests/browser/browser_vimma_update_appimage.js),
-  [`answered in this session: asked again 24 hours later, not sooner`](../../packages/vimma-core/test/update-notices.test.mjs),
+  [`answered in this session: asked again 24 hours later, not sooner`](../../packages/vimma-core/test/update-notices.test.ts),
   [`the_restart_question_says_what_a_restart_loses`](../../tests/browser/browser_vimma_update_appimage.js),
   [`history_cleared_on_close_asks_before_an_appimage_restart`](../../tests/browser/browser_vimma_restart.js),
-  [`history cleared on close: an AppImage's restart is a quit, so the session is purged`](../../packages/vimma-core/test/restart.test.mjs),
-  [`an AppImage without a usable $APPIMAGE falls back to Firefox's restart`](../../packages/vimma-core/test/restart.test.mjs),
-  [`gives up after RELAUNCH_WAIT_S when the old process never exits`](../../packages/vimma-core/test/restart.test.mjs)
+  [`history cleared on close: an AppImage's restart is a quit, so the session is purged`](../../packages/vimma-core/test/restart.test.ts),
+  [`an AppImage without a usable $APPIMAGE falls back to Firefox's restart`](../../packages/vimma-core/test/restart.test.ts),
+  [`gives up after RELAUNCH_WAIT_S when the old process never exits`](../../packages/vimma-core/test/restart.test.ts)
 - UP12. Firefox's updater is built **only** with `VIMMA_UPDATES=1` (the release and nightly
   jobs; source and dev builds keep `--disable-updater`), **only** for the update channel
   `vimma`, and such a binary **only** asks `updates.vimma.dev` and **only** applies a MAR signed
@@ -391,11 +391,11 @@ _Pages_ and _extensions_ cannot reach it.
   other channel embeds Mozilla's. The manifest check's pinned keys (UP1) are generated from the
   same certificates, so the two verifiers trust the same keys, and a certificate that is not
   self-signed by its own key is refused. The primary's certificate is made from the request
-  `update-cert.mjs` builds for the pinned primary key; only `--any-key`, for throwaway test
+  `update-cert.ts` builds for the pinned primary key; only `--any-key`, for throwaway test
   keys, takes another. The `tools/` update tests sign with two fixed RSA-4096 test keys whose
   private halves are committed (`tools/test/fixtures/rsa-4096/`, so that no test waits on an
   RSA-4096 key's random prime search; only the refusals of other key sizes make a short
-  throwaway key); a test fails if either is pinned or held by an updater certificate. `check-build.mjs` checks a package (the URL, both channel files, and that its
+  throwaway key); a test fails if either is pinned or held by an updater certificate. `check-build.ts` checks a package (the URL, both channel files, and that its
   `updater` carries Vimma's certificates and none of Mozilla's): `release.yml`'s `package` job
   on the release tarball, and `nightly.yml` on its tarball once it is set to the
   `vimma-nightly` channel (UP14). Firefox's check runs Vimma's verifier first (UP13).
@@ -408,18 +408,18 @@ _Pages_ and _extensions_ cannot reach it.
   [`refuses a repository without a certificate, so no import leaves a half-set behind`](../../tools/import/test/link-update-certs.test.ts),
   [`refuses a certificate that is a link, which could lead to any file on the machine`](../../tools/import/test/link-update-certs.test.ts),
   [`refuses VIMMA_UPDATES=1 when a certificate in the engine is not the committed one`](../../tools/test/mozconfig-updater.test.mjs),
-  [`fails when the updater lacks Vimma's certificate or carries one of Mozilla's`](../../tools/update/test/check-build.test.mjs),
-  [`fails without the [AppUpdate] URL or with another host`](../../tools/update/test/check-build.test.mjs),
-  [`the repository: update-keys.mjs is what the committed certificates give`](../../tools/update/test/gen-update-keys.test.mjs),
-  [`pins the primary once when the secondary slot holds the primary again (decision 39)`](../../tools/update/test/gen-update-keys.test.mjs),
+  [`fails when the updater lacks Vimma's certificate or carries one of Mozilla's`](../../tools/update/test/check-build.test.ts),
+  [`fails without the [AppUpdate] URL or with another host`](../../tools/update/test/check-build.test.ts),
+  [`the repository: update-keys.mjs is what the committed certificates give`](../../tools/update/test/gen-update-keys.test.ts),
+  [`pins the primary once when the secondary slot holds the primary again (decision 39)`](../../tools/update/test/gen-update-keys.test.ts),
   [`are neither pinned for the manifest nor in an updater certificate`](../../tools/test/test-keys.test.ts),
-  [`refuses a signature that is not the key's own over this request`](../../tools/update/test/update-cert.test.mjs),
-  [`refuses a certificate whose self-signature does not verify`](../../tools/update/test/gen-update-keys.test.mjs),
-  [`fails when --mozilla-certs lacks Mozilla's certificates, rather than comparing nothing`](../../tools/update/test/check-build.test.mjs),
-  [`CLI: request, then assemble with a KMS signature, refusing a key other than the pinned primary`](../../tools/update/test/update-cert.test.mjs),
-  [`package checks the release tarball's updater, whether or not updates are on`](../../tools/update/test/pipeline-workflows.test.mjs),
-  [`packages for the nightly channel and checks the updater before the upload`](../../tools/update/test/pipeline-workflows.test.mjs),
-  [`rewrites both channel files, and nothing else in them`](../../tools/update/test/channel.test.mjs)
+  [`refuses a signature that is not the key's own over this request`](../../tools/update/test/update-cert.test.ts),
+  [`refuses a certificate whose self-signature does not verify`](../../tools/update/test/gen-update-keys.test.ts),
+  [`fails when --mozilla-certs lacks Mozilla's certificates, rather than comparing nothing`](../../tools/update/test/check-build.test.ts),
+  [`CLI: request, then assemble with a KMS signature, refusing a key other than the pinned primary`](../../tools/update/test/update-cert.test.ts),
+  [`package checks the release tarball's updater, whether or not updates are on`](../../tools/update/test/pipeline-workflows.test.ts),
+  [`packages for the nightly channel and checks the updater before the upload`](../../tools/update/test/pipeline-workflows.test.ts),
+  [`rewrites both channel files, and nothing else in them`](../../tools/update/test/channel.test.ts)
 
 - UP13. Firefox's update check **never** hands Firefox's update parser (`#parseUpdates`) or its
   choice of an update a manifest that Vimma's rules (UP1, UP2) have not accepted:
@@ -457,7 +457,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`a_real_download_under_way_holds_the_next_check`](../../tests/browser/browser_vimma_update_verify.js),
   [`no_check_before_the_install_type_is_known`](../../tests/browser/browser_vimma_update_verify.js),
   [`update_checks_a_tarball_through_firefoxs_updater`](../../tests/browser/browser_vimma_update_verify.js),
-  [`refuses two <patch> elements, so Firefox can pick no MAR the download rule misses`](../../packages/vimma-core/test/updates.test.mjs)
+  [`refuses two <patch> elements, so Firefox can pick no MAR the download rule misses`](../../packages/vimma-core/test/updates.test.ts)
 
 - UP14. A complete MAR is **only** signed by `update-publish.yml`'s `mar-sign` job, which
   `release.yml` or `nightly.yml` run from `main` calls (`workflow_call`), and **only** for that
@@ -484,9 +484,9 @@ _Pages_ and _extensions_ cannot reach it.
   a manifest's signed bytes start with `vimma-update-xml-v1\n`, so under the one key (spec decision 12) a MAR signature can never pass as a manifest's or back. It checks KMS's signature with openssl
   and writes in only the signature bytes. The MAR is built in `package`, a job with no secret, from
   the release tarball with the build's own host `mar` and Mozilla's `make_full_update.sh`
-  (`tools/update/mar.mjs build`). Then `mar`, a job with no secret and a read-only token, checks
+  (`tools/update/mar.ts build`). Then `mar`, a job with no secret and a read-only token, checks
   that the signed MAR differs from the one `package` built only in its signature bytes, that the
-  signature verifies under the committed certificates with `mar.mjs` and with Mozilla's `signmar`
+  signature verifies under the committed certificates with `mar.ts` and with Mozilla's `signmar`
   (the updater's own verification code, from this release's build), that its channel is the release
   channel and its product version the build's Firefox version, and that it installs exactly the
   release tarball's files, byte for byte; only then does `SHA256SUMS` list it, so cosign signs it
@@ -505,7 +505,7 @@ _Pages_ and _extensions_ cannot reach it.
   `NIGHTLY_RELEASE_ENABLED` the nightly builds its MAR as a check and keeps none
   ([m6a-updater](../specs/m6a-updater.md), decision 42). Both workflows' build jobs pack the MAR
   tools the `mar` job runs (`signmar`, the NSS libraries of the objdir it loads, the host `mar`)
-  with one script, `tools/update/mar-tools.mjs`, which fails the build, before anything is
+  with one script, `tools/update/mar-tools.ts`, which fails the build, before anything is
   uploaded, unless `signmar` and `mar` start from the packed directory with every library of
   the objdir that ldd lists found there; a pack that missed a library would otherwise surface only in `mar`, after
   `mar-sign` had signed. It runs the build's own tools only in the build job, which built them and
@@ -526,38 +526,38 @@ _Pages_ and _extensions_ cannot reach it.
   `update-publish.yml@main` and its token then names that file too, the condition's
   `assertion.repository` clause and the IAM member's subject, which names the repository by its ID,
   **must** never be dropped.
-  [`is called by release.yml and nightly.yml alone, and mar-sign signs only for those two`](../../tools/update/test/update-workflow.test.mjs),
-  [`only sign, mar-sign and nightly-sign mint an OIDC token or name the signing environment`](../../tools/update/test/update-workflow.test.mjs),
-  [`signs a nightly's MAR for nightly.yml on main, on the nightly channel`](../../tools/update/test/update-workflow.test.mjs),
+  [`is called by release.yml and nightly.yml alone, and mar-sign signs only for those two`](../../tools/update/test/update-workflow.test.ts),
+  [`only sign, mar-sign and nightly-sign mint an OIDC token or name the signing environment`](../../tools/update/test/update-workflow.test.ts),
+  [`signs a nightly's MAR for nightly.yml on main, on the nightly channel`](../../tools/update/test/update-workflow.test.ts),
   [`the MAR is signed by update-publish.yml's mar-sign, with this run's MAR`](../../tools/test/nightly-workflow.test.ts),
   [`the mar job checks the signed MAR for the nightly channel, against the tarball`](../../tools/test/nightly-workflow.test.ts),
   [`the mar job fails, loudly, when the MAR was not signed`](../../tools/test/nightly-workflow.test.ts),
-  [`the signing job %s runs no repository code: no checkout, no node, no npm`](../../tools/update/test/update-workflow.test.mjs),
-  [`signs the placeholder so that the updater's check accepts it under the KMS key`](../../tools/update/test/update-workflow.test.mjs),
-  [`refuses to sign %s`](../../tools/update/test/update-workflow.test.mjs),
-  [`refuses a <patch> %s`](../../tools/update/test/update-workflow.test.mjs),
-  [`refuses a <patch> in the macOS manifest`](../../tools/update/test/update-workflow.test.mjs),
-  [`downloads the MAR SHA256SUMS lists, and the one the signed manifest offers`](../../tools/update/test/update-workflow.test.mjs),
-  [`writes signmar's layout byte for byte, with the signature zeroed`](../../tools/update/test/mar.test.mjs),
-  [`signmar's signature verifies over the bytes around the placeholder`](../../tools/update/test/mar.test.mjs),
-  [`the signed bytes start with the MAR ID, so no manifest signature can pass as a MAR's`](../../tools/update/test/mar.test.mjs),
-  [`accepts a MAR signed the way the KMS key signs, and refuses one byte changed`](../../tools/update/test/mar.test.mjs),
-  [`refuses a MAR no given key signed`](../../tools/update/test/mar.test.mjs),
-  [`mar-sign calls update-publish.yml, the one workflow the key signs for`](../../tools/update/test/pipeline-workflows.test.mjs),
-  [`mar-sign's permissions are the ceiling update-publish.yml's jobs need, no more`](../../tools/update/test/pipeline-workflows.test.mjs),
-  [`mar fails, loudly, when the MAR was not signed, so a release never stops silently`](../../tools/update/test/pipeline-workflows.test.mjs),
-  [`%s runs only by hand on main, here, and with UPDATES_ENABLED or as a dry run`](../../tools/update/test/update-workflow.test.mjs),
-  [`mar checks the signed MAR with no secret: same content, the certificates, signmar`](../../tools/update/test/pipeline-workflows.test.mjs),
+  [`the signing job %s runs no repository code: no checkout, no node, no npm`](../../tools/update/test/update-workflow.test.ts),
+  [`signs the placeholder so that the updater's check accepts it under the KMS key`](../../tools/update/test/update-workflow.test.ts),
+  [`refuses to sign %s`](../../tools/update/test/update-workflow.test.ts),
+  [`refuses a <patch> %s`](../../tools/update/test/update-workflow.test.ts),
+  [`refuses a <patch> in the macOS manifest`](../../tools/update/test/update-workflow.test.ts),
+  [`downloads the MAR SHA256SUMS lists, and the one the signed manifest offers`](../../tools/update/test/update-workflow.test.ts),
+  [`writes signmar's layout byte for byte, with the signature zeroed`](../../tools/update/test/mar.test.ts),
+  [`signmar's signature verifies over the bytes around the placeholder`](../../tools/update/test/mar.test.ts),
+  [`the signed bytes start with the MAR ID, so no manifest signature can pass as a MAR's`](../../tools/update/test/mar.test.ts),
+  [`accepts a MAR signed the way the KMS key signs, and refuses one byte changed`](../../tools/update/test/mar.test.ts),
+  [`refuses a MAR no given key signed`](../../tools/update/test/mar.test.ts),
+  [`mar-sign calls update-publish.yml, the one workflow the key signs for`](../../tools/update/test/pipeline-workflows.test.ts),
+  [`mar-sign's permissions are the ceiling update-publish.yml's jobs need, no more`](../../tools/update/test/pipeline-workflows.test.ts),
+  [`mar fails, loudly, when the MAR was not signed, so a release never stops silently`](../../tools/update/test/pipeline-workflows.test.ts),
+  [`%s runs only by hand on main, here, and with UPDATES_ENABLED or as a dry run`](../../tools/update/test/update-workflow.test.ts),
+  [`mar checks the signed MAR with no secret: same content, the certificates, signmar`](../../tools/update/test/pipeline-workflows.test.ts),
   [`packs with the script release.yml uses, on every nightly`](../../tools/test/nightly-workflow.test.ts),
   [`packs after the key file is gone, before the MAR is built and anything is uploaded`](../../tools/test/nightly-workflow.test.ts),
-  [`packs signmar's libraries from a relative objdir, which ldd names by absolute path`](../../tools/update/test/mar-tools.test.mjs),
-  [`fails, naming it, when a library signmar loads is missing`](../../tools/update/test/mar-tools.test.mjs),
-  [`cosign signs the MAR with the other assets, after it is checked`](../../tools/update/test/pipeline-workflows.test.mjs),
-  [`publish uploads the MAR and the new SHA256SUMS, never a release that lost its MAR`](../../tools/update/test/pipeline-workflows.test.mjs),
-  [`runs the release's MAR step for the nightly channel, and keeps it only for a public nightly`](../../tools/update/test/pipeline-workflows.test.mjs),
-  [`prepareRelease offers the MAR SHA256SUMS lists, with its size and SHA-512`](../../tools/update/test/manifest.test.mjs),
-  [`checkSigned checks the MAR the manifest offers against the downloaded file`](../../tools/update/test/manifest.test.mjs),
-  [`checkSigned refuses a <patch> at any URL but the release's MAR`](../../tools/update/test/manifest.test.mjs)
+  [`packs signmar's libraries from a relative objdir, which ldd names by absolute path`](../../tools/update/test/mar-tools.test.ts),
+  [`fails, naming it, when a library signmar loads is missing`](../../tools/update/test/mar-tools.test.ts),
+  [`cosign signs the MAR with the other assets, after it is checked`](../../tools/update/test/pipeline-workflows.test.ts),
+  [`publish uploads the MAR and the new SHA256SUMS, never a release that lost its MAR`](../../tools/update/test/pipeline-workflows.test.ts),
+  [`runs the release's MAR step for the nightly channel, and keeps it only for a public nightly`](../../tools/update/test/pipeline-workflows.test.ts),
+  [`prepareRelease offers the MAR SHA256SUMS lists, with its size and SHA-512`](../../tools/update/test/manifest.test.ts),
+  [`checkSigned checks the MAR the manifest offers against the downloaded file`](../../tools/update/test/manifest.test.ts),
+  [`checkSigned refuses a <patch> at any URL but the release's MAR`](../../tools/update/test/manifest.test.ts)
 
 **Key custody** (spec §6, decisions 16 and 17): the primary manifest key is a non-exportable
 Google Cloud KMS key that only `update-publish.yml`'s signing jobs on `main`, in the `update-signing` environment, can
@@ -565,7 +565,7 @@ ask to sign, through GitHub OIDC: `sign` and `nightly-sign` for manifests (UP7) 
 setup is in [docs/runbook/ci-update-keys-and-update-host.md](../runbook/ci-update-keys-and-update-host.md#update-signing-keys-and-the-update-host-spec-m6a-updater).
 The primary's public key is pinned in `update-keys.mjs` (its SHA-256 is recorded in the runbook
 and checked by
-[`the shipped primary: exactly one, RSA-4096, the recorded key, verifies RSASSA-PKCS1-v1_5 SHA-384`](../../packages/vimma-core/test/updates.test.mjs));
+[`the shipped primary: exactly one, RSA-4096, the recorded key, verifies RSASSA-PKCS1-v1_5 SHA-384`](../../packages/vimma-core/test/updates.test.ts));
 the secondary is pinned in a later release, an ordinary one whose manifest the primary signs.
 Firefox's updater embeds the same keys as self-signed certificates, the secondary slot holding the
 primary's again until then (decision 39; runbook step 5b, UP12).

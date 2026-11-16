@@ -128,7 +128,7 @@ needs no dependency.
 - **Scrolling.** `j`/`k` step 60 px, `ctrl+d`/`ctrl+u` half a page, `gg`/`G` top and bottom
   (`packages/vimma-core/src/defaults.mjs:105-121`). The actor scrolls the document's scrolling
   element, or the largest scrollable inner element when the page is an app shell or locked
-  (`actors/VimmaChild.sys.mjs:457-510`). The probe lists the scrolling element and every inner
+  (`PageScroll.target` in `actors/page-scroll.mjs`). The probe lists the scrolling element and every inner
   element that can scroll, so a check sees which one moved.
 - **Find.** `VimmaHost.status(win).find` (`host/VimmaHost.sys.mjs:1091-1106`) holds the query,
   `notFound`, `current` and `total` once the find bar reports (live on GitHub: "neovim",

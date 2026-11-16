@@ -295,7 +295,7 @@ describe("autopilot body", () => {
   });
 
   // Spec firefox-versions, decision 9: the subject is the changelog line, so it names the
-  // advisories; tools/release/firefox-notes.mjs capitalises Firefox and links them.
+  // advisories; tools/release/firefox-notes.ts capitalises Firefox and links them.
   it('the PR title lists the advisories: "upstream: firefox 158.0 (MFSA 2026-106)"', () => {
     const a = (id: string) => ({ id, url: "", severity: "high" });
     expect(prTitle("158.0", [a("MFSA 2026-106")])).toBe("upstream: firefox 158.0 (MFSA 2026-106)");

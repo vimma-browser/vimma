@@ -118,7 +118,7 @@ Tests: `test_handshake` in [browser_vimma_control.js](../../tests/browser/browse
 `mcp_off_says_to_run_mcp_on_without_connecting` in
 [tests/mcp.rs](../../tools/vimma-ctl/tests/mcp.rs); `refuses_a_file_others_can_read` in
 `discovery.rs`; `test_agents_cannot_take_every_connection` in
-[browser_vimma_mcp_agent.js](../../tests/browser/browser_vimma_mcp_agent.js). The rules are S1 to
+[browser_vimma_mcp_agent_grants.js](../../tests/browser/browser_vimma_mcp_agent_grants.js). The rules are S1 to
 S14 in security.md §1.
 
 ## 4. The request reaches the agent commands
@@ -129,11 +129,12 @@ connection run only its role's commands: an agent connection asking for `send-ke
 (`test_each_role_runs_only_its_commands`). `agentRequest` validates the arguments again, refuses a
 fifth request in flight (an `agent-cancel` is not counted) as `denied` with reason `busy`, and calls
 `runAgentCommand`, which requires `agent-hello` first and raises the named tab to foreground
-priority until the reply.
+priority until the reply (`raiseNamedTab`, through `raisePriority` of `ctl/agent-waits.mjs`).
 
 `COMMANDS["agent-activate"]` then decides everything it can before the user is asked:
 
-- `agentWorkspace` fails when there is no agent workspace (containers off); `findAgentTab` answers
+- `agentWorkspace` (`ctl/agent-tabs.mjs`, with the rest of the tab model and `stillAsAsked`)
+  fails when there is no agent workspace (containers off); `findAgentTab` answers
   `invalid-args` for any tab outside it, in the same words whether the tab is in another
   workspace, another window or another conversation's, so nothing leaks (M2).
 - The click rate is taken first (`actCalls`, a `CallRate` of core `agent.mjs`), before anything
@@ -174,10 +175,10 @@ makes no grant, and `a` makes an allowance for that button on that site for the 
 `settle` logs the call and resolves the waiting promise; a grant can release other waiting calls
 of the same connection, which run under it. A no, a timeout or a closed connection reach the
 command as an `AgentError` with code `denied` and a reason (`user`, `timeout`, `busy`, `muted`,
-`cancelled`). Tests: [agent-gate.test.mjs](../../packages/vimma-core/test/agent-gate.test.mjs),
-[agent-checkpoint.test.mjs](../../packages/vimma-core/test/agent-checkpoint.test.mjs),
+`cancelled`). Tests: [agent-gate.test.ts](../../packages/vimma-core/test/agent-gate.test.ts),
+[agent-checkpoint.test.ts](../../packages/vimma-core/test/agent-checkpoint.test.ts),
 `test_denials_timeouts_queue_and_mute` and `test_one_grant_covers_every_tool_of_its_connection` in
-[browser_vimma_mcp_agent.js](../../tests/browser/browser_vimma_mcp_agent.js),
+[browser_vimma_mcp_agent_grants.js](../../tests/browser/browser_vimma_mcp_agent_grants.js),
 `test_submit_asks_under_a_grant` in
 [browser_vimma_mcp_submit.js](../../tests/browser/browser_vimma_mcp_submit.js), and
 `test_a_allows_that_button_on_that_site` in
@@ -191,10 +192,11 @@ workspace was replaced, the tab left it, or the tab's URL differs from the one i
 
 `AgentAct.activate`, wrapped in `AgentShot.acting`, marks the page so that a form submission the
 page's own script starts after the click is cancelled unless it is the one asked about
-(`VimmaActors.agentMark`), then calls `VimmaActors.agentActivate`
-(`actors/VimmaActors.sys.mjs`). That sends `Vimma:AgentElement` with `op: "activate"` to the
-frame's `VimmaChild`, which looks the element up by the list's generation and id. Its
-`#agentActivate` answers `gone` for an element no longer on the page or a request past its time,
+(`AgentActors.agentMark`; the marks and the observer that cancels the submission are in
+`actors/submit-marks.mjs`), then calls `AgentActors.agentActivate`
+(`actors/AgentActors.sys.mjs`). That sends `Vimma:AgentElement` with `op: "activate"` to the
+frame's `VimmaChild`, whose `AgentPage` (`actors/agent-page.mjs`) looks the element up by the
+list's generation and id. Its `#agentActivate` answers `gone` for an element no longer on the page or a request past its time,
 `changed` for one that no longer submits to the method and address the question named, and
 otherwise `ok`, then clicks with the element's own `click()`, never synthesised input, so the page
 gets no user activation (M26). Tests:

@@ -3,7 +3,11 @@
 The orchestrator of each browser window: key capture and dispatch in `VimmaHost.sys.mjs`, the
 action tables in `runners.mjs`, one area's actions per `*-ops.mjs` module
 ([ARCHITECTURE.md](../../../../../../ARCHITECTURE.md#module-map)). `key-log.mjs` keeps the last
-key events the host dispatched, which `about:vimma` shows. `VimmaParent.sys.mjs` is the parent
+key events the host dispatched, which `about:vimma` shows. `window-state.mjs` builds a window's
+widgets (help, command line, pickers, prompts, panels, element focus, the agent chat) and wires
+their callbacks to the host, which it takes as an argument; `VimmaHost.init` then adds the
+listeners and registrations whose order matters. `urlbar-queries.mjs` follows the address
+bar's queries for the control socket's `state.urlbar`. `VimmaParent.sys.mjs` is the parent
 side of the JSWindowActor pair `actors/` registers: it checks the page reports (focus, clicks,
 mouse selections, text blocks, the PDF viewer's state and outline) and hands them to the host
 and `pdf-ops.mjs`. `AgentGate.sys.mjs` is the agent gate: every agent command of `ctl/` and
@@ -17,7 +21,8 @@ them (the agent CLIs, the API keys, `config.toml`'s refusal and setup's write to
 which serves the agent's objects narrowed to the members used (no key, no CLI start, no ticket).
 
 **Entry points:** `VimmaHost.init(win)` and `VimmaHost.uninit(win)`, called by `vimma.js`;
-`runners.mjs`, which takes the host as an argument instead of importing it; `VimmaParent`,
+`runners.mjs` and `window-state.mjs`, which take the host as an argument instead of importing
+it; `VimmaParent`,
 which Firefox loads from the URL `vimma.js` hands `VimmaActors.register()`;
 `HostServices.provide`, which `vimma.js`, the window script, calls before the first window's
 host starts. Each service is provided once and never replaced; one asked for before that gives

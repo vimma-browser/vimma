@@ -12,7 +12,7 @@ all work with a notice.
 3. Use `@claude` in an issue, comment or review (only from the owner, members or collaborators).
    Claude answers, reviews and comments; it cannot push in this mode.
 4. For code: add `claude:go` to a `spec` issue yourself (the job checks that the label was added
-   by the maintainer, `MAINTAINER` in `tools/repo.mjs`, so a bot or a `@claude` request cannot chain into it). Claude
+   by the maintainer, `MAINTAINER` in `tools/repo.ts`, so a bot or a `@claude` request cannot chain into it). Claude
    implements and commits on a runner with a read-only token; a separate job without Claude
    applies the patch, pushes `claude/spec-<issue>` and opens a draft PR labelled `bot`.
 5. CI does not start on that PR by itself (GITHUB_TOKEN PRs trigger no workflows): mark it ready
@@ -26,3 +26,5 @@ write, actions read. `spec` (Claude): contents and issues read; tools limited to
 log/status` and `gh issue view`. Tests Claude writes still run as code on that runner, which is
 why its token is read-only. `spec-pr` (no Claude): contents and pull-requests write;
 GITHUB_TOKEN cannot change `.github/workflows`. No other secret is passed.
+Both Claude jobs pass `--permission-mode acceptEdits`: since action 1.0.273 a session otherwise
+starts in auto mode, where a safety review can allow a tool call no allow rule covers.

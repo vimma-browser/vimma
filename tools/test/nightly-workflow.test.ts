@@ -7,8 +7,8 @@ import { jobs, parseWorkflow } from "./workflow-runners.mjs";
 import { tempDir } from "./temp-dir.mjs";
 import { runJobs } from "./workflow-if.ts";
 import type { Job, Step } from "./workflow-types.ts";
-import { readRecord } from "../update/nightly-change.mjs";
-import { PACKED, fakeTree } from "../update/test/fake-objdir.mjs";
+import { readRecord } from "../update/nightly-change.ts";
+import { PACKED, fakeTree } from "../update/test/fake-objdir.ts";
 
 // Spec build-supply-chain, decision 23, and spec m6a-updater, decisions 42 and 43: the nightly's
 // build job keeps the package as a short-lived workflow artifact and holds no write token. Only
@@ -191,10 +191,10 @@ describe("nightly.yml: a workflow artifact, and a public nightly only when switc
     const run = String(step("mar", "Check the signed MAR").run);
     expect(run).toContain('[ "$MAR" = "vimma-nightly-$BUILD_ID-linux-x86_64.complete.mar" ]');
     expect(run).toContain(
-      'node tools/update/mar.mjs same-content --placeholder "mar-unsigned/$MAR" --signed "mar-signed/$MAR"',
+      'node tools/update/mar.ts same-content --placeholder "mar-unsigned/$MAR" --signed "mar-signed/$MAR"',
     );
     expect(run).toContain(
-      'node tools/update/mar.mjs verify --mar "mar-signed/$MAR" --cert configs/updater/primary.der --cert configs/updater/secondary.der --channel vimma-nightly --product-version "$firefox"',
+      'node tools/update/mar.ts verify --mar "mar-signed/$MAR" --cert configs/updater/primary.der --cert configs/updater/secondary.der --channel vimma-nightly --product-version "$firefox"',
     );
     expect(run).toContain('mar-tools/signmar -d "sql:$db" -n "$slot" -v "mar-signed/$MAR"');
     const files = String(step("mar", "The MAR installs the nightly tarball's files").run);
@@ -701,7 +701,7 @@ printf '%s' ${code}
   });
 });
 
-// Spec m6a-updater §7: the build packs the MAR tools with tools/update/mar-tools.mjs, as
+// Spec m6a-updater §7: the build packs the MAR tools with tools/update/mar-tools.ts, as
 // release.yml's build does, so the two cannot drift apart again: the first public nightly packed
 // signmar without its NSS libraries (an ldd filter of its own, against a relative objdir), and
 // its mar job failed after the MAR had been signed. The pack checks that signmar and mar start
@@ -723,10 +723,10 @@ describe("nightly.yml: the MAR tools, packed and checked as release.yml's", () =
     const pack = step("build", PACK);
     expect(pack.if).toBeUndefined();
     expect(oneLine(pack.run)).toContain(
-      "node tools/update/mar-tools.mjs pack --objdir engine/obj-x86_64-pc-linux-gnu --engine engine --out mar-tools",
+      "node tools/update/mar-tools.ts pack --objdir engine/obj-x86_64-pc-linux-gnu --engine engine --out mar-tools",
     );
     expect(oneLine(releaseStep("MAR tools for the package and mar jobs").run)).toContain(
-      'node tools/update/mar-tools.mjs pack --objdir "$MOZ_OBJDIR" --engine engine --out mar-tools',
+      'node tools/update/mar-tools.ts pack --objdir "$MOZ_OBJDIR" --engine engine --out mar-tools',
     );
     // Neither workflow filters ldd's output itself any more.
     expect(TEXT).not.toContain("ldd");
@@ -750,7 +750,7 @@ describe("nightly.yml: the MAR tools, packed and checked as release.yml's", () =
   it("builds the nightly's MAR with the packed tools", () => {
     const run = String(step("build", "Complete MAR, for the nightly channel").run);
     expect(oneLine(run)).toContain(
-      'node tools/update/mar.mjs build --tarball "$tarball" --tools mar-tools --channel vimma-nightly --out "mar/$mar"',
+      'node tools/update/mar.ts build --tarball "$tarball" --tools mar-tools --channel vimma-nightly --out "mar/$mar"',
     );
   });
 

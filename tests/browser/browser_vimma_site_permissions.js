@@ -116,7 +116,10 @@ function pageInfoList() {
         SitePermissions.getPermissionLabel(id) && id !== "open-protocol-handler",
     )
     .sort((/** @type {string} */ a, /** @type {string} */ b) =>
-      SitePermissions.getPermissionLabel(a).localeCompare(SitePermissions.getPermissionLabel(b)),
+      // Each has a label: the filter above keeps only those.
+      /** @type {string} */ (SitePermissions.getPermissionLabel(a)).localeCompare(
+        /** @type {string} */ (SitePermissions.getPermissionLabel(b)),
+      ),
     );
 }
 
@@ -458,7 +461,7 @@ add_task(async function test_the_agent_workspace_refuses_and_grants_nothing() {
     "the refusal",
   );
   Assert.ok(!isOpen(), "no picker");
-  const principal = tab.linkedBrowser.contentPrincipal;
+  const principal = contentPrincipalOf(tab.linkedBrowser);
   Assert.equal(
     SitePermissions.getForPrincipal(principal, "camera").state,
     SitePermissions.UNKNOWN,

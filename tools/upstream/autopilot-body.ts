@@ -95,7 +95,7 @@ export type BetaIssue = { number: number; state: "OPEN" | "CLOSED" };
 /**
  * The bump PR's title, and so its squash commit's subject and changelog line (spec
  * firefox-versions, decision 9): `upstream: firefox 158.0 (MFSA 2026-106)`. Lowercase for
- * commitlint's subject-case; tools/release/firefox-notes.mjs capitalises it and links the IDs.
+ * commitlint's subject-case; tools/release/firefox-notes.ts capitalises it and links the IDs.
  * Only IDs of the form `MFSA YYYY-N` reach the subject.
  * @param advisories the advisories that name this release
  */

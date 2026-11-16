@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Turns Stryker's JSON report (mutation-testing-report-schema) into the body of the one tracking
- * issue that .github/workflows/mutation.yml keeps up to date (spec ci-quality-gates; plan §5:
- * "survivors become issues"). Usage:
+ * issue that .github/workflows/mutation.yml keeps up to date (spec ci-quality-gates;
+ * docs/architecture/testing.md, "Mutation testing"). Usage:
  *   RUN_URL=… COMMIT=… node tools/mutation/report.ts reports/mutation/mutation.json > body.md
  * Writes `score` and `survivors` to $GITHUB_OUTPUT when set. Exit 0, or 2 on unreadable input.
  */
