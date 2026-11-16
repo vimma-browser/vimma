@@ -3,6 +3,8 @@ import fc from "fast-check";
 import {
   TIER,
   filterItems,
+  itemId,
+  markerWords,
   matchItem,
   openPicker,
   pickerItems,
@@ -10,6 +12,7 @@ import {
   pickerSelection,
   scoreField,
   sectionOf,
+  typedChar,
   setPickerItems,
   matchWork,
   unitsBuilt,
@@ -786,5 +789,338 @@ describe("split picker (docs/specs/multiple-splits.md behaviour 7)", () => {
     // In search mode a digit is typed, not a split picked.
     expect(pickerKey(s, "2").effect).toBeNull();
     expect(pickerKey(s, "enter").effect).toEqual({ type: "select", id: "3" });
+  });
+});
+
+// Issue #1119: the behaviours below were not pinned by any test, so mutation testing could change
+// them unnoticed.
+describe("scores and highlights, exactly", () => {
+  test("a score adds the tier band, the field's weight and three bonuses that never go negative", () => {
+    // exact, display: 5000 + 300 + 200 (start 0) + 200 (no gaps) + 188 (6 clusters)
+    expect(scoreField("GitHub", "github")?.score).toBe(5888);
+    // word, url: 3000 + 150 + 170 (start 3) + 200 + 182 (9 clusters)
+    expect(scoreField("my-github", "git", "url")?.score).toBe(3702);
+    // subsequence, title: 1000 + 250 + 200 + 125 (3 gaps) + 188
+    expect(scoreField("GitHub", "ghb", "title")?.score).toBe(1763);
+    // start 30, 10 gaps, 122 clusters: each bonus stops at 0
+    const far = `${"-".repeat(30)}a${"-".repeat(10)}b${"-".repeat(80)}`;
+    expect(scoreField(far, "ab", "markers")).toEqual({
+      tier: TIER.subsequence,
+      score: 1050,
+      ranges: [
+        [30, 31],
+        [41, 42],
+      ],
+    });
+  });
+
+  test("a folded match is scored on the folded text", () => {
+    // 0 + 300 + 200 + 200 + 182 (9 folded clusters)
+    expect(scoreField("Käyttäjät", "ka")?.score).toBe(882);
+    // a folded subsequence: k, a, t with one gap
+    expect(scoreField("Käyttäjät", "kat")).toEqual({
+      tier: TIER.folded,
+      score: 857,
+      ranges: [
+        [0, 2],
+        [3, 4],
+      ],
+    });
+    // A lone combining mark folds to nothing: it is skipped, not matched, and not counted.
+    expect(scoreField("́éa", "ea")).toEqual({ tier: TIER.folded, score: 896, ranges: [[1, 3]] });
+    // A query of marks alone has nothing to match.
+    expect(scoreField("abc", "́")).toBeNull();
+    // A Hangul syllable folds to its jamo, but one jamo is not a match.
+    expect(scoreField("각", "ᄀ")).toBeNull();
+  });
+
+  test("word starts: after a non-letter, and an upper-case letter after a lower-case one", () => {
+    // A cluster that starts with a format character is not a letter, even with a digit in it.
+    expect(scoreField("؀1abc", "abc")).toMatchObject({ tier: TIER.word, ranges: [[2, 5]] });
+    // Upper after upper, upper after a digit, a digit after a lower-case letter: no word start.
+    expect(scoreField("GITHUB", "hub")?.tier).toBe(TIER.substring);
+    expect(scoreField("git2Hub", "hub")?.tier).toBe(TIER.substring);
+    expect(scoreField("git2go", "2go")?.tier).toBe(TIER.substring);
+    // A title-case letter (ǅ) is neither upper nor lower case.
+    expect(scoreField("ǅHub", "hub")?.tier).toBe(TIER.substring);
+    expect(scoreField("aǅb", "ǆb")?.tier).toBe(TIER.substring);
+    expect(scoreField("gitHub", "hub")?.tier).toBe(TIER.word);
+  });
+
+  test("subsequence: each letter after the last, the tightest span, the earliest on a tie", () => {
+    expect(scoreField("abxb", "abb")?.ranges).toEqual([
+      [0, 2],
+      [3, 4],
+    ]);
+    expect(scoreField("ayb axxb", "ab")?.ranges).toEqual([
+      [0, 1],
+      [2, 3],
+    ]);
+    expect(scoreField("ayb azb", "ab")?.ranges).toEqual([
+      [0, 1],
+      [2, 3],
+    ]);
+    expect(scoreField("abxxxc a-b-c", "abc")?.ranges).toEqual([
+      [7, 8],
+      [9, 10],
+      [11, 12],
+    ]);
+  });
+
+  test("a field whose letters are not all there in order is dropped before any tier", () => {
+    const before = matchWork();
+    // Texts no other test uses, so that their units are built here.
+    expect(scoreField("zq order 1119", "qz")).toBeNull();
+    expect(scoreField("abc", "xyz")).toBeNull();
+    const after = matchWork();
+    expect(after.tried - before.tried).toBe(2);
+    expect(after.full - before.full).toBe(0);
+    expect(after.matched - before.matched).toBe(0);
+    expect(scoreField("abc", "b")).not.toBeNull();
+    expect(matchWork().matched - after.matched).toBe(1);
+    expect(scoreField("Käyttäjät 1119", "ka")?.tier).toBe(TIER.folded);
+    expect(matchWork().matched - after.matched).toBe(2);
+  });
+
+  test("a term's highlights in one field merge when they touch, and stay apart otherwise", () => {
+    const tab = (display: string) =>
+      ({
+        ...(items[0] as PickerItem),
+        display,
+        title: "",
+        url: "",
+        workspaceName: "",
+      }) as PickerItem;
+    expect(matchItem(tab("GitHub"), "hub git")?.highlights).toEqual({ display: [[0, 6]] });
+    expect(matchItem(tab("GitHub"), "git hub")?.highlights).toEqual({ display: [[0, 6]] });
+    expect(matchItem(tab("abc xyz"), "xyz abc")?.highlights).toEqual({
+      display: [
+        [0, 3],
+        [4, 7],
+      ],
+    });
+    expect(matchItem(tab("abcdef"), "bcd abcdef")?.highlights).toEqual({ display: [[0, 6]] });
+  });
+
+  test("each field highlights under its own name; a tie keeps the earlier field", () => {
+    const base = items[0] as PickerItem;
+    const row = (over: Partial<PickerItem>) => ({ ...base, ...over }) as PickerItem;
+    const plain = row({
+      display: "Zed",
+      title: "Zed",
+      label: null,
+      url: "u",
+      workspaceName: "home",
+    });
+    expect(matchItem(plain, "home")?.highlights).toEqual({ workspace: [[0, 4]] });
+    // An unlabelled tab without markers has no title or marker field to match "t" in.
+    expect(matchItem(plain, "t")).toBeNull();
+    expect(matchItem(row({ ...plain, markers: "pinned" }), "pin")?.highlights).toEqual({
+      markers: [[0, 3]],
+    });
+    // display "abc" + 26 more (29 clusters) and title "abcd" both score 4842
+    const tie = row({ ...plain, label: "x", display: `abc${"-".repeat(26)}`, title: "abcd" });
+    expect(matchItem(tie, "abc")).toMatchObject({ score: 4842, highlights: { display: [[0, 3]] } });
+    // A blank query matches with no terms.
+    expect(matchItem(plain, "   ")).toEqual({ item: plain, score: 0, highlights: {} });
+  });
+
+  test("a workspace row matches its name only; a download its name, host, state and workspace", () => {
+    const ws = workspaceItems(
+      fixture({
+        active: "w1",
+        workspaces: [{ id: "w1", name: "home", tabs: [], activeTab: null }],
+      }),
+    );
+    const before = matchWork().tried;
+    expect(matchItem(ws[0] as AnyItem, "ho")?.highlights).toEqual({ display: [[0, 2]] });
+    expect(matchWork().tried - before).toBe(1);
+    const download = {
+      kind: "download",
+      downloadId: "9",
+      section: "recent",
+      display: "report.pdf",
+      host: "files.example.com",
+      state: "done",
+      workspace: null,
+    } as unknown as AnyItem;
+    expect(matchItem(download, "example")?.highlights).toEqual({ markers: [[17, 24]] });
+  });
+
+  test("ids and sections of every kind of row", () => {
+    expect(itemId({ kind: "log", logId: "L1" } as unknown as AnyItem)).toBe("L1");
+    expect(
+      markerWords({ playing: true, muted: true, pinned: true, agent: true, closed: true }),
+    ).toBe("playing muted pinned agent closed");
+    expect(markerWords({})).toBe("");
+    expect(sectionOf({ kind: "workspace", workspaceId: "w1" } as unknown as AnyItem)).toBe("1/w1");
+    expect(sectionOf({ kind: "addon", addonId: "a" } as unknown as AnyItem)).toBe("");
+  });
+});
+
+describe("the units cache (decision 10)", () => {
+  test("is cleared when it holds 8192 texts, so the next new text starts it again", () => {
+    // Each new text is built once, and the term "q" too when the cache was just cleared.
+    let n = 0;
+    const step = () => {
+      const before = unitsBuilt();
+      scoreField(`cache text ${n++}`, "q");
+      return unitsBuilt() - before;
+    };
+    // The term is in the cache from here on, until a clear.
+    step();
+    // Wherever the cache stands now, it is cleared within 8193 new texts.
+    let k = 0;
+    while (step() === 1) if (++k > 8193) throw new Error("the cache was never cleared");
+    // It then holds that text and the term; 8190 more fill it, and the next clears it again.
+    for (let i = 0; i < 8190; i++) expect(step()).toBe(1);
+    expect(step()).toBe(2);
+    // A text met again is not built again.
+    const before = unitsBuilt();
+    scoreField(`cache text ${n - 1}`, "q");
+    expect(unitsBuilt()).toBe(before);
+  });
+});
+
+describe("rows and keys, built inside each test", () => {
+  // Built here rather than at the top of the file: a mutation tool runs only the tests that reach
+  // a line, and code run while a file loads is reached by none of them.
+  const model = () =>
+    fixture({
+      active: "w2",
+      workspaces: [
+        { id: "w1", name: "work", tabs: ["t1", "t2"], activeTab: "t2" },
+        { id: "w2", name: "home", tabs: ["t3", "t4"], activeTab: "t4" },
+        { id: "w3", name: "misc", tabs: ["t5"], activeTab: "t5" },
+      ],
+    });
+  const tabInfo = (id: string) =>
+    ({
+      t1: { title: "One", url: "https://one.test/", playing: true, muted: true, pinned: true },
+      t2: { title: "Two", url: "https://two.test/" },
+      t3: { title: "Three", url: "https://three.test/" },
+      t4: { title: "Four", url: "https://four.test/" },
+      t5: { title: "Five", url: "https://five.test/" },
+    })[id];
+
+  test("a tab row: its place, flags, markers and label", () => {
+    const rows = pickerItems(model(), tabInfo, { t3: "renamed" });
+    expect(rows.map((r) => r.tabId)).toEqual(["t3", "t4", "t1", "t2", "t5"]);
+    expect(rows.filter((r) => r.active).map((r) => r.tabId)).toEqual(["t4"]);
+    expect(rows.find((r) => r.tabId === "t1")).toStrictEqual({
+      tabId: "t1",
+      workspaceId: "w1",
+      workspaceName: "work",
+      workspaceIndex: 1,
+      tabIndex: 1,
+      title: "One",
+      url: "https://one.test/",
+      label: null,
+      display: "One",
+      active: false,
+      markers: "playing muted pinned",
+      playing: true,
+      muted: true,
+      pinned: true,
+    });
+    expect(rows.find((r) => r.tabId === "t3")).toMatchObject({
+      label: "renamed",
+      display: "renamed",
+    });
+    expect(rows.find((r) => r.tabId === "t5")).toMatchObject({ workspaceIndex: 3, tabIndex: 1 });
+    expect(Object.keys(rows.find((r) => r.tabId === "t2") ?? {})).not.toContain("markers");
+    // Another window lists its workspaces in their own order, the agent's last.
+    const other = pickerItems(model(), tabInfo, {}, { window: 3, agentId: "w1" });
+    expect(other.map((r) => r.tabId)).toEqual(["t3", "t4", "t5", "t1", "t2"]);
+    expect(other.find((r) => r.tabId === "t1")?.markers).toBe("playing muted pinned agent");
+  });
+
+  test("another window lists its workspaces in their order", () => {
+    const five = fixture({
+      active: "w3",
+      workspaces: ["w1", "w2", "w3", "w4", "w5"].map((id) => ({
+        id,
+        name: id,
+        tabs: [`${id}t`],
+        activeTab: `${id}t`,
+      })),
+    });
+    const rows = pickerItems(five, () => undefined, {}, { window: 2 });
+    expect(rows.map((r) => r.workspaceId)).toEqual(["w1", "w2", "w3", "w4", "w5"]);
+    expect(rows.filter((r) => r.active).map((r) => r.workspaceId)).toEqual(["w3"]);
+  });
+
+  test("a workspace row: active, agent and foreign counts", () => {
+    const rows = workspaceItems(model(), undefined, "w3");
+    expect(rows.map((r) => [r.workspaceId, r.active, r.agent ?? false, r.foreignCount])).toEqual([
+      ["w1", false, false, 0],
+      ["w2", true, false, 0],
+      ["w3", false, true, 0],
+    ]);
+  });
+
+  test("a blank query opens on the active item; a query on the best", () => {
+    const rows = pickerItems(model(), tabInfo, {});
+    expect(selectedTab(openPicker(rows, { activeId: "t4", query: " " }))).toBe("t4");
+    expect(selectedTab(openPicker(rows, { activeId: "t5", query: "f" }))).toBe("t4");
+  });
+
+  test("left and right with a query of spaces still jump sections", () => {
+    const rows = pickerItems(model(), tabInfo, {});
+    const spaced = press(openPicker(rows, { activeId: "t3" }), ["/", "space", "esc"]).state;
+    expect(spaced.query).toBe(" ");
+    expect(selectedTab(press(spaced, ["right"]).state)).toBe("t1");
+    expect(selectedTab(press(spaced, ["right", "right", "left"]).state)).toBe("t1");
+    // Shift+tab with a blank query goes to the start of the section first.
+    expect(selectedTab(press(spaced, ["right", "j", "shift+tab"]).state)).toBe("t1");
+    const empty = openPicker([]);
+    expect(pickerKey(empty, "right").state).toBe(empty);
+    expect(pickerKey(empty, "left").state).toBe(empty);
+  });
+
+  test("tab with a query: to the next section with a match, and no further than the ends", () => {
+    const rows = pickerItems(model(), tabInfo, {});
+    // "f" matches Four (home) and Five (misc), not work.
+    const s = press(openPicker(rows, { activeId: "t4" }), ["/", "f"]).state;
+    expect(s.matches.map((m) => tabIdOf(m.item))).toEqual(["t4", "t5"]);
+    const next = press(s, ["tab"]).state;
+    expect(selectedTab(next)).toBe("t5");
+    expect(pickerKey(next, "tab").state).toBe(next);
+    expect(selectedTab(press(next, ["shift+tab"]).state)).toBe("t4");
+    expect(pickerKey(s, "shift+tab").state).toBe(s);
+    const none = press(s, ["z", "z"]).state;
+    expect(none.matches).toEqual([]);
+    expect(pickerKey(none, "tab").state).toBe(none);
+  });
+
+  test("up moves in browse mode", () => {
+    const rows = pickerItems(model(), tabInfo, {});
+    expect(selectedTab(press(openPicker(rows, { activeId: "t4" }), ["up"]).state)).toBe("t3");
+  });
+
+  test("shifted keys type one upper-case letter, nothing longer", () => {
+    expect(typedChar("shift+a")).toBe("A");
+    expect(typedChar("shift+ab")).toBeNull();
+    expect(typedChar("ctrl+shift+a")).toBeNull();
+  });
+
+  test("m moves only a workspace; the permission keys act only on a permission", () => {
+    const ws = workspaceItems(model());
+    expect(pickerKey(openPicker(ws), "x").effect).toBeNull();
+    const addon = { kind: "addon", addonId: "a1", display: "Add-on", active: false } as AnyItem;
+    const permission = {
+      kind: "permission",
+      permissionId: "p1",
+      display: "Camera",
+      active: false,
+    } as unknown as AnyItem;
+    expect(pickerKey(openPicker([addon]), "m").effect).toBeNull();
+    expect(pickerKey(openPicker([addon]), "a").effect).toBeNull();
+    expect(pickerKey(openPicker([permission]), "x").effect).toBeNull();
+    expect(pickerKey(openPicker([permission]), "a").effect).toEqual({
+      type: "permission",
+      op: "allow",
+      id: "p1",
+    });
   });
 });

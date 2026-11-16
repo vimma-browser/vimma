@@ -925,3 +925,471 @@ describe("the PDF viewer's page (docs/specs/pdf-mode.md)", () => {
     expect(texts(statusSegments({ ...base, pdf: null })).page).toBeUndefined();
   });
 });
+
+// Issue #1119: the behaviours below were not pinned by any test, so mutation testing could change
+// them unnoticed.
+describe("truncateUrl: finding the host, exactly", () => {
+  const www: UrlOrigin = { host: "www.example.com", base: "example.com" };
+  const example: UrlOrigin = { host: "example.com", base: "example.com" };
+
+  test("the host is the first one after the scheme, or the first in a URL without one", () => {
+    expect(truncateUrl("https://a.com/a.com/x/y/z", 15, { host: "a.com", base: "a.com" })).toBe(
+      "https://a.com/…",
+    );
+    expect(truncateUrl("example.com/path/example.com/more", 20, example)).toBe(
+      "example.com/path/ex…",
+    );
+  });
+
+  test("an origin whose host is not in the text cuts the end, as without one", () => {
+    expect(truncateUrl("https://other.org/long/path", 12, example)).toBe("https://oth…");
+    expect(truncateUrl("about:blank", 3, null)).toBe("ab…");
+    expect(truncateUrl("about:blank", 0, null)).toBeNull();
+  });
+
+  test("an IPv6 host is kept with its brackets", () => {
+    const ip = { host: "::1", base: "::1" };
+    expect(truncateUrl("http://[::1]:8080/very/long/path", 14, ip)).toBe("http://[::1]:…");
+    expect(truncateUrl("http://[::1]:8080/very/long/path", 5, ip)).toBe("…[::…");
+  });
+
+  test("a URL exactly as wide as the room is whole; no room at all is nothing", () => {
+    expect(truncateUrl("https://www.example.com/path", 28, www)).toBe(
+      "https://www.example.com/path",
+    );
+    expect(truncateUrl("https://www.example.com/path", 27, www)).toBe(
+      "https://www.example.com/pa…",
+    );
+    expect(truncateUrl("https://www.example.com/path", 0, www)).toBeNull();
+    expect(truncateUrl("https://www.example.com/path", 5, www)).toBe("…exa…");
+  });
+
+  test("the host's leftmost labels go one at a time, marked; nothing after it, no mark", () => {
+    expect(truncateUrl("https://www.example.com", 14, www)).toBe("…example.com");
+    expect(truncateUrl("https://www.example.com/x", 14, www)).toBe("…example.com…");
+    const deep = { host: "a.b.example.com", base: "example.com" };
+    expect(truncateUrl("https://a.b.example.com/x", 14, deep)).toBe("…example.com…");
+    expect(truncateUrl("https://a.b.example.com/x", 17, deep)).toBe("…a.b.example.com…");
+    // A host outside its stated base domain is never split into labels.
+    const odd = { host: "sub.other.org", base: "example.com" };
+    expect(truncateUrl("https://sub.other.org/x", 12, odd)).toBe("…sub.other.…");
+  });
+});
+
+describe("the URL segment's narrowest width", () => {
+  const url = (text: string, origin: UrlOrigin | null) =>
+    statusSegments({
+      mode: "normal",
+      toolbarHidden: true,
+      tab: { index: 1, count: 1, title: "T", url: text, origin },
+    }).find((s) => s.id === "url");
+  const www = { host: "www.example.com", base: "example.com" };
+
+  test("the base domain with its marks, or 12 columns without a host to keep", () => {
+    expect(url("https://www.example.com/path", www)?.min).toBe(13);
+    expect(url("https://www.example.com", www)?.min).toBe(12);
+    expect(
+      url("https://other.org/path/long", { host: "example.com", base: "example.com" })?.min,
+    ).toBe(12);
+    expect(url("https://www.example.com/path/that/is/long", null)?.min).toBe(12);
+    expect(url("https://a.io", null)?.min).toBe(4);
+  });
+
+  test("the whole segment: on the right, dim, cut as a URL, never dropped", () => {
+    expect(url("https://www.example.com/path", www)).toEqual({
+      id: "url",
+      text: "www.example.com/path",
+      fg: "--vimma-fg-dim",
+      bg: null,
+      side: "right",
+      priority: 4.9,
+      min: 13,
+      cut: "url",
+      origin: www,
+      keep: true,
+    });
+  });
+});
+
+describe("displayUrl and the segments, exactly", () => {
+  test("only a URL that starts with http(s):// loses it, and only when it is the whole text", () => {
+    expect(displayUrl("view-source:https://example.com/")).toBe("view-source:https://example.com/");
+    expect(displayUrl("xhttp://a.com/", { keepHttp: true })).toBe("xhttp://a.com/");
+    expect(displayUrl("https://a.com/\nx")).toBe("https://a.com/\nx");
+    expect(displayUrl("https://a.com/\nx", { keepHttp: true })).toBe("https://a.com/\nx");
+  });
+
+  test("no segments are no width", () => {
+    expect(statusWidth([])).toBe(0);
+  });
+
+  test("a pane without a split number shows only its place", () => {
+    const segs = statusSegments({ mode: "normal", pane: { index: 1, count: 2, splits: 3 } });
+    expect(texts(segs).pane).toBe("pane 1/2");
+  });
+
+  test("the element segment only in ELEMENT mode", () => {
+    const element = { kind: "paragraph", length: 3, seq: 1 };
+    expect(statusSegments({ mode: "normal", element }).map((s) => s.id)).toEqual(["mode"]);
+  });
+
+  test("every segment's place, priority, floor and cut", () => {
+    const segs = statusSegments({
+      mode: "element",
+      element: { kind: "paragraph", length: 1, seq: 1 },
+      pending: ["g"],
+      workspace: { name: "work", index: 1 },
+      tab: { index: 1, count: 2, title: "Title", url: "https://example.com/a" },
+      pdf: {
+        page: 3,
+        pages: 12,
+        label: "",
+        find: { current: 0, total: 0 },
+        doc: 1,
+        drawn: true,
+        ops: 0,
+        width: 1280,
+        height: 760,
+        zoom: 1,
+      },
+      loading: true,
+      configErrors: [{ line: 3, path: "keys.x", message: "bad" }],
+      alerts: ["one", "two"],
+      find: { query: "x", current: 1, total: 2, notFound: false },
+      update: { text: "update", tone: "info" },
+      popups: "1 pop-up",
+      downloads: { text: "↓ 1", label: "1 download", problem: false, kind: "progress" },
+    } as StatusInput);
+    expect(segs.map((s) => [s.id, s.side, s.priority, s.min, s.cut])).toEqual([
+      ["mode", "left", 0, 1, "end"],
+      ["element", "left", 1, 4, "end"],
+      ["pending", "left", 1, 0, "none"],
+      ["workspace", "left", 3, 6, "end"],
+      ["tab", "left", 4, 0, "none"],
+      ["page", "left", 4, 0, "none"],
+      ["title", "left", 5, 8, "end"],
+      ["loading", "right", 6, 0, "none"],
+      ["error", "right", 2, 16, "end"],
+      ["alert", "right", 2, 16, "end"],
+      ["find", "right", 3, 8, "end"],
+      ["update", "right", 6.5, 8, "end"],
+      ["popups", "right", 4.5, 14, "end"],
+      ["downloads", "right", 6.5, 0, "none"],
+      ["url", "right", 8, 12, "middle"],
+    ]);
+    expect(texts(segs).alert).toBe("one · two");
+    expect(texts(segs).element).toBe("paragraph · 1 char");
+    expect(segs.find((s) => s.id === "url")?.fg).toBe("--vimma-fg-dim");
+  });
+
+  test("with the toolbar hidden and no origin, the URL keeps 12 columns at least", () => {
+    const segs = statusSegments({
+      mode: "normal",
+      toolbarHidden: true,
+      tab: { index: 1, count: 1, title: "T", url: "http://example.com/a/long/path" },
+    });
+    expect(segs.find((s) => s.id === "url")).toMatchObject({
+      text: "http://example.com/a/long/path",
+      min: 12,
+      side: "right",
+      fg: "--vimma-fg-dim",
+      origin: null,
+    });
+  });
+});
+
+describe("fitStatus: the order things give way in, column by column", () => {
+  // docs/security/06-chrome-ui-rendering.md C3: the mode's full word gives way first, then the
+  // kept URL (down to nothing), and only then the cues that outrank it.
+  test("toolbar hidden: an insecure page with its URL kept", () => {
+    const segs = statusSegments({
+      mode: "normal",
+      toolbarHidden: true,
+      security: "insecure",
+      workspace: { name: "work", index: 1 },
+      tab: {
+        index: 1,
+        count: 2,
+        title: "A page title",
+        url: "http://www.example.com/path",
+        origin: { host: "www.example.com", base: "example.com" },
+      },
+    });
+    const at = (width: number) => fitStatus(segs, width).map((s) => s.text);
+    expect(at(60)).toEqual([
+      "NORMAL",
+      "● 1:work",
+      "tab 1/2",
+      "not secure",
+      "http://www.example.com/p…",
+    ]);
+    expect(at(50)).toEqual(["NORMAL", "● 1:work", "tab 1/2", "not secure", "…example.com…"]);
+    expect(at(45)).toEqual(["NORMAL", "● 1:work", "not secure", "…www.example.com…"]);
+    expect(at(40)).toEqual(["NORMAL", "● 1:work", "not secure", "…example.com…"]);
+    expect(at(36)).toEqual(["NORMAL", "not secure", "…www.example.com…"]);
+    expect(at(33)).toEqual(["NORMAL", "not secure", "…example.com…"]);
+    expect(at(30)).toEqual(["NORM…", "not secure", "…example.com…"]);
+    expect(at(28)).toEqual(["NO…", "not secure", "…example.com…"]);
+    expect(at(26)).toEqual(["N", "not secure", "…example.com…"]);
+    expect(at(24)).toEqual(["N", "not secure", "…example.c…"]);
+    expect(at(16)).toEqual(["N", "not secure", "…e…"]);
+    expect(at(14)).toEqual(["N", "not secure", "…"]);
+    expect(at(12)).toEqual(["N", "not secure"]);
+    expect(at(10)).toEqual(["N", "…exampl…"]);
+    expect(at(6)).toEqual(["N", "…ex…"]);
+    expect(at(2)).toEqual(["N…"]);
+    expect(at(1)).toEqual(["N"]);
+  });
+
+  const seg = (s: Partial<Segment> & Pick<Segment, "id" | "text" | "priority">): Segment => ({
+    fg: "--vimma-fg-dim",
+    bg: null,
+    side: "left",
+    min: 0,
+    cut: "none",
+    ...s,
+  });
+
+  test("a URL cut as a URL without being kept, a title cut at its end, a mode at its middle", () => {
+    const segs = [
+      seg({ id: "mode", text: "ABCDEFG", priority: 0, min: 1, cut: "middle" }),
+      seg({
+        id: "url",
+        text: "https://www.example.com/path",
+        priority: 6,
+        min: 13,
+        cut: "url",
+        origin: { host: "www.example.com", base: "example.com" },
+      }),
+      seg({ id: "title", text: "A long page title", priority: 5, min: 8, cut: "end" }),
+      seg({ id: "info", text: "info", priority: 7 }),
+    ];
+    const at = (width: number) => fitStatus(segs, width).map((s) => s.text);
+    expect(fitStatus(segs, 60)).toBe(segs);
+    expect(at(50)).toEqual(["ABCDEFG", "https://www.example.com…", "A long page title"]);
+    expect(at(45)).toEqual(["ABCDEFG", "…www.example.com…", "A long page title"]);
+    expect(at(40)).toEqual(["ABCDEFG", "…example.com…", "A long page title"]);
+    expect(at(30)).toEqual(["ABCDEFG", "A long page title"]);
+    expect(at(22)).toEqual(["ABCDEFG", "A long page t…"]);
+    expect(at(20)).toEqual(["ABCDEFG", "A long page…"]);
+    expect(at(15)).toEqual(["ABCDEFG"]);
+    expect(at(5)).toEqual(["AB…FG"]);
+    expect(at(3)).toEqual(["A…G"]);
+  });
+});
+
+describe("statusAnnouncement: what is said, and when it is said again", () => {
+  const quiet: Announced = { mode: "normal", notFound: null };
+
+  test("a failed search in command mode is not said, and is still remembered", () => {
+    const find = { query: "x", current: 0, total: 0, notFound: true };
+    const r = statusAnnouncement({ ...quiet, notFound: "k" }, { mode: "command", find });
+    expect(r).toEqual({
+      text: null,
+      last: { mode: "normal", notFound: "k", agentWaiting: 0, element: null, hintTold: false },
+    });
+    // Without a URL the search is remembered by its query alone.
+    expect(statusAnnouncement(quiet, { mode: "normal", find }).last.notFound).toBe("\nx");
+  });
+
+  test("a focused block is said only in ELEMENT mode", () => {
+    const element = { kind: "paragraph", length: 12, seq: 3 };
+    const r = statusAnnouncement({ ...quiet, element: 5 }, { mode: "normal", element });
+    expect(r.text).toBeNull();
+    expect(r.last.element).toBeNull();
+  });
+
+  test("a hint's outcomes are said only in hint mode", () => {
+    const hint = { action: "hint.follow_new_tab" as const, label: "a" };
+    expect(statusAnnouncement(quiet, { mode: "normal", hint }).text).toBeNull();
+  });
+
+  test("an agent question already said is not said again", () => {
+    const r = statusAnnouncement(
+      { ...quiet, agentWaiting: 1 },
+      { mode: "normal", agentWaiting: 1 },
+    );
+    expect(r.text).toBeNull();
+    expect(statusAnnouncement(quiet, { mode: "normal", agentWaiting: 2 }).text).toBe(
+      "2 agent requests waiting",
+    );
+  });
+});
+
+describe("fitStatus: every width from 1 to 90 columns, with every cue", () => {
+  // The order of docs/security/06-chrome-ui-rendering.md C3, one column at a time: the title,
+  // loading and the tab's place go first; then the workspace; then the mode's full word, then the
+  // kept URL down to nothing; then the cues themselves, the least important first. The URL takes
+  // back each column the others free, and the mode its word.
+  test("insert mode, an insecure private page with the camera in use, its URL kept", () => {
+    const segs = statusSegments({
+      mode: "insert",
+      toolbarHidden: true,
+      security: "insecure",
+      privateWindow: true,
+      sharing: ["camera"],
+      workspace: { name: "work", index: 1 },
+      loading: true,
+      tab: {
+        index: 1,
+        count: 2,
+        title: "A page title",
+        url: "http://www.example.com/path",
+        origin: { host: "www.example.com", base: "example.com" },
+      },
+    });
+    const widths = Array.from({ length: 90 }, (_, i) => i + 1);
+    expect(
+      widths.map((w) =>
+        fitStatus(segs, w)
+          .map((s) => s.text)
+          .join("|"),
+      ),
+    ).toEqual([
+      "I",
+      "I…",
+      "I|…",
+      "I|……",
+      "I|…e…",
+      "I|…ex…",
+      "I|…exa…",
+      "I|…exam…",
+      "I|…examp…",
+      "I|…exampl…",
+      "I|…example…",
+      "I|not secure",
+      "I…|not secure",
+      "I|not secure|…",
+      "I|not secure|……",
+      "I|not secure|…e…",
+      "I|not secure|…ex…",
+      "I|not secure|…exa…",
+      "I|not secure|…exam…",
+      "I|not secure|…examp…",
+      "I|not secure|…exampl…",
+      "I|not secure|…example…",
+      "I|not secure|…example.…",
+      "I|not secure|…example.c…",
+      "I|not secure|using camera",
+      "I…|not secure|using camera",
+      "I|not secure|using camera|…",
+      "I|not secure|using camera|……",
+      "I|not secure|using camera|…e…",
+      "I|not secure|using camera|…ex…",
+      "I|not secure|using camera|…exa…",
+      "I|not secure|using camera|…exam…",
+      "I|not secure|using camera|private",
+      "I…|not secure|using camera|private",
+      "I|not secure|using camera|private|…",
+      "I|not secure|using camera|private|……",
+      "I|not secure|using camera|private|…e…",
+      "I|not secure|using camera|private|…ex…",
+      "I|not secure|using camera|private|…exa…",
+      "I|not secure|using camera|private|…exam…",
+      "I|not secure|using camera|private|…examp…",
+      "I|not secure|using camera|private|…exampl…",
+      "I|not secure|using camera|private|…example…",
+      "I|not secure|using camera|private|…example.…",
+      "I|not secure|using camera|private|…example.c…",
+      "I|not secure|using camera|private|…example.co…",
+      "I|not secure|using camera|private|…example.com…",
+      "I…|not secure|using camera|private|…example.com…",
+      "IN…|not secure|using camera|private|…example.com…",
+      "INS…|not secure|using camera|private|…example.com…",
+      "INSE…|not secure|using camera|private|…example.com…",
+      "INSERT|not secure|using camera|private|…example.com…",
+      "INSERT|not secure|using camera|private|…example.com…",
+      "INSERT|not secure|using camera|private|…example.com…",
+      "INSERT|not secure|using camera|private|…example.com…",
+      "INSERT|not secure|using camera|private|…www.example.com…",
+      "INSERT|not secure|using camera|private|…www.example.com…",
+      "INSERT|not secure|using camera|private|…www.example.com…",
+      "INSERT|● 1:w…|not secure|using camera|private|…example.com…",
+      "INSERT|● 1:wo…|not secure|using camera|private|…example.com…",
+      "INSERT|● 1:work|not secure|using camera|private|…example.com…",
+      "INSERT|● 1:work|not secure|using camera|private|…example.com…",
+      "INSERT|● 1:work|not secure|using camera|private|…example.com…",
+      "INSERT|● 1:work|not secure|using camera|private|…example.com…",
+      "INSERT|● 1:work|not secure|using camera|private|…www.example.com…",
+      "INSERT|● 1:work|not secure|using camera|private|…www.example.com…",
+      "INSERT|● 1:work|not secure|using camera|private|…www.example.com…",
+      "INSERT|● 1:work|not secure|using camera|private|…www.example.com…",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|…example.com…",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|…example.com…",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|…example.com…",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|…example.com…",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|…www.example.com…",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|…www.example.com…",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|…www.example.com…",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|…www.example.com…",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|…www.example.com…",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|…www.example.com…",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|http://www.example.com…",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|http://www.example.com/…",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|http://www.example.com/p…",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|http://www.example.com/pa…",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|http://www.example.com/path",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|http://www.example.com/path",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|http://www.example.com/path",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|http://www.example.com/path",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|http://www.example.com/path",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|http://www.example.com/path",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|http://www.example.com/path",
+      "INSERT|● 1:work|tab 1/2|not secure|using camera|private|http://www.example.com/path",
+    ]);
+  });
+});
+
+describe("statusSegments and truncateUrl: small cases", () => {
+  test("a URL without a scheme keeps its base domain unmarked at the start", () => {
+    const origin = { host: "example.com", base: "example.com" };
+    expect(truncateUrl("example.com/path/long", 11, origin)).toBe("…example.c…");
+    expect(truncateUrl("example.com/path/long", 12, origin)).toBe("example.com…");
+  });
+
+  test("keepHttp drops https:// only at the start", () => {
+    expect(displayUrl("xhttps://a.com/", { keepHttp: true })).toBe("xhttps://a.com/");
+    expect(displayUrl("https://a.com/", { keepHttp: true })).toBe("a.com");
+  });
+
+  test("the private cues: the workspace's cut at its end, the window's on the right", () => {
+    const ws = statusSegments({
+      mode: "normal",
+      workspace: { name: "p", index: 9, private: true },
+    });
+    expect(ws.find((s) => s.id === "workspace")).toMatchObject({
+      cut: "end",
+      min: 6,
+      side: "left",
+    });
+    const win = statusSegments({ mode: "normal", toolbarHidden: true, privateWindow: true });
+    expect(win.find((s) => s.id === "private")).toMatchObject({ side: "right", priority: 2 });
+  });
+
+  test("the PDF page segment is drawn in the bar's colour", () => {
+    const pdf = {
+      page: 1,
+      pages: 2,
+      label: "",
+      find: { current: 0, total: 0 },
+      doc: 1,
+      drawn: true,
+      ops: 0,
+      width: 1,
+      height: 1,
+      zoom: 1,
+    };
+    expect(statusSegments({ mode: "normal", pdf }).find((s) => s.id === "page")?.fg).toBe(
+      "--vimma-statusbar-fg",
+    );
+  });
+
+  test("with the toolbar hidden, no URL is no URL segment", () => {
+    expect(statusSegments({ mode: "normal", toolbarHidden: true }).map((s) => s.id)).toEqual([
+      "mode",
+    ]);
+    const tab = { index: 1, count: 1, title: "T", url: null };
+    const ids = statusSegments({ mode: "normal", toolbarHidden: true, tab }).map((s) => s.id);
+    expect(ids).not.toContain("url");
+  });
+});
