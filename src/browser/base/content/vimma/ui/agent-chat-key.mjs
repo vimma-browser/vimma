@@ -118,7 +118,7 @@ export async function storeKey(chat) {
     hint = await chat.services.keys.hint(provider.name, provider.endpoint);
   } catch (e) {
     // The error's text is not shown: it could carry what was typed.
-    console.error("vimma agent: the key could not be stored", /** @type {any} */ (e)?.name);
+    console.error("vimma agent: the key could not be stored", /** @type {Thrown} */ (e)?.name);
     chat.host.say(`agent: the key for ${provider.name} could not be stored`, true);
     // Typed again only by a user still in the field.
     if (chat.listed === shownAt) chat.keyFor = provider;
@@ -172,7 +172,7 @@ export function deleteKey(chat) {
           chat.loadModels();
         }
       },
-      (/** @type {any} */ e) => console.error("vimma agent: deleting the key failed", e?.name),
+      (/** @type {Thrown} */ e) => console.error("vimma agent: deleting the key failed", e?.name),
     );
   });
 }
