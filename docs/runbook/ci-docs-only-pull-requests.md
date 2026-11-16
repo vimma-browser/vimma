@@ -40,7 +40,7 @@ minutes (Rust), so it sets how long a docs-only pull request waits.
 A skipped job or step reports success, so the required checks pass. If the classifier fails,
 the gated jobs run (`!cancelled()`, not `success()`). Adding a Vitest file that reads a
 Markdown file of the repo through `new URL("../…/x.md", import.meta.url)` means adding it to
-`MARKDOWN_TESTS`; `tools/ci/test/docs-only.test.mjs` fails until then. The same test pins the
+`MARKDOWN_TESTS`; `tools/ci/test/docs-only.test.ts` fails until then. The same test pins the
 `if:` wiring of each required job.
 
 The gen-docs freshness step runs on every pull request: `npm run gen-docs`, then `git diff

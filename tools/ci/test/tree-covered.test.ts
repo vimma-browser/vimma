@@ -4,14 +4,15 @@
 
 // Issue #358: a push to main whose tree a successful pull_request run of the same workflow
 // already checked (the usual squash merge) skips that workflow's checks once more.
-// tools/ci/tree-covered.mjs answers; ci.yml, semgrep.yml and pkgbuild.yml gate their jobs on it.
+// tools/ci/tree-covered.ts answers; ci.yml, semgrep.yml and pkgbuild.yml gate their jobs on it.
 // codeql.yml stays ungated: code scanning's default-branch alerts come only from analyses of
 // main (docs/runbook/ci.md, "CI and automation").
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { createServer } from "node:http";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -25,15 +26,15 @@ import {
   githubApi,
   report,
   workflowFile,
-} from "../tree-covered.mjs";
+} from "../tree-covered.ts";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
-const SCRIPT = fileURLToPath(new URL("../tree-covered.mjs", import.meta.url));
+const SCRIPT = fileURLToPath(new URL("../tree-covered.ts", import.meta.url));
 
 const TREE = "d0af22264eb389dd91ce42e3bdab437b3ab93f91";
 const OTHER = "1111111111111111111111111111111111111111";
-const sha = (/** @type {string} */ c) => c.repeat(40);
-const run = (/** @type {number} */ id, /** @type {string} */ head) => ({
+const sha = (c: string) => c.repeat(40);
+const run = (id: number, head: string) => ({
   id,
   head_sha: head,
   html_url: `https://github.com/o/r/actions/runs/${id}`,
@@ -41,7 +42,7 @@ const run = (/** @type {number} */ id, /** @type {string} */ head) => ({
 
 describe("coveringRun", () => {
   it("returns the newest run whose head commit has the pushed tree, and stops there", async () => {
-    const asked = /** @type {string[]} */ ([]);
+    const asked: string[] = [];
     const trees = { [sha("a")]: OTHER, [sha("b")]: TREE, [sha("c")]: TREE };
     const found = await coveringRun({
       tree: TREE,
@@ -62,7 +63,7 @@ describe("coveringRun", () => {
   });
 
   it("asks for each head commit once, however many runs it has", async () => {
-    const asked = /** @type {string[]} */ ([]);
+    const asked: string[] = [];
     await coveringRun({
       tree: TREE,
       runs: [run(3, sha("a")), run(2, sha("a")), run(1, sha("a"))],
@@ -76,8 +77,7 @@ describe("coveringRun", () => {
 // as a cover only if no job but the guard was skipped: a draft from a fork whose tree matches a
 // later squash merge must not let main's push run skip the only scan of that tree.
 describe("completeRun", () => {
-  /** @param {string} name @param {string} conclusion */
-  const j = (name, conclusion) => ({ name, conclusion });
+  const j = (name: string, conclusion: string) => ({ name, conclusion });
 
   it("covers when every job but the guard ran", () => {
     expect(GUARD_JOB).toBe("tree already checked on a pull request?");
@@ -112,9 +112,8 @@ describe("completeRun", () => {
 
 describe("findCover", () => {
   it("lists this workflow's successful pull_request runs and reads each head's tree", async () => {
-    const paths = /** @type {string[]} */ ([]);
-    /** @type {(path: string) => Promise<unknown>} */
-    const api = async (path) => {
+    const paths: string[] = [];
+    const api = async (path: string): Promise<unknown> => {
       paths.push(path);
       if (path.startsWith("repos/o/r/actions/workflows/ci.yml/runs?"))
         return { workflow_runs: [run(7, sha("a"))] };
@@ -135,8 +134,7 @@ describe("findCover", () => {
   });
 
   it("finds no cover in a run whose checks were skipped, such as a draft's", async () => {
-    /** @type {(path: string) => Promise<unknown>} */
-    const api = async (path) => {
+    const api = async (path: string): Promise<unknown> => {
       if (path.startsWith("repos/o/r/actions/workflows/semgrep.yml/runs?"))
         return { workflow_runs: [run(7, sha("a"))] };
       if (path.startsWith("repos/o/r/git/commits/")) return { tree: { sha: TREE } };
@@ -192,15 +190,16 @@ describe("report", () => {
 
 describe("githubApi", () => {
   it("sends the token, returns null for 404 and throws on other errors", async () => {
-    const calls = /** @type {{ url: string, auth: string | undefined }[]} */ ([]);
-    /** @type {(status: number, body: unknown) => typeof fetch} */
-    const fake = (status, body) => async (url, init) => {
-      calls.push({
-        url: String(url),
-        auth: new Headers(init?.headers).get("authorization") ?? undefined,
-      });
-      return new Response(JSON.stringify(body), { status });
-    };
+    const calls: { url: string; auth: string | undefined }[] = [];
+    const fake =
+      (status: number, body: unknown): typeof fetch =>
+      async (url, init) => {
+        calls.push({
+          url: String(url),
+          auth: new Headers(init?.headers).get("authorization") ?? undefined,
+        });
+        return new Response(JSON.stringify(body), { status });
+      };
     const ok = githubApi({ token: "t", base: "https://api.example", fetch: fake(200, { a: 1 }) });
     expect(await ok("repos/o/r/git/commits/x")).toEqual({ a: 1 });
     expect(calls[0]).toEqual({
@@ -215,14 +214,10 @@ describe("githubApi", () => {
 });
 
 describe("the command", () => {
-  /** @type {import("node:http").Server} */
-  let server;
-  /** @type {string} */
-  let base;
-  /** @type {Record<string, { status?: number, body: unknown }>} */
-  let routes;
-  /** @type {string[]} */
-  let seen;
+  let server: Server;
+  let base: string;
+  let routes: Record<string, { status?: number; body: unknown }>;
+  let seen: string[];
 
   beforeEach(async () => {
     routes = {};
@@ -234,15 +229,14 @@ describe("the command", () => {
       res.end(JSON.stringify(hit ? hit.body : { message: "Not Found" }));
     });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
-    const address = /** @type {import("node:net").AddressInfo} */ (server.address());
+    const address = server.address() as AddressInfo;
     base = `http://127.0.0.1:${address.port}`;
   });
   afterEach(() => server.close());
 
   // Async, not spawnSync: the fake API answers from this process's event loop, which a blocking
   // spawn would hold while the child waits for it.
-  /** @param {Record<string, string>} env */
-  async function runScript(env) {
+  async function runScript(env: Record<string, string>) {
     const dir = tempDir("vimma-tree-covered-");
     const output = join(dir, "output");
     const res = await promisify(execFile)(process.execPath, [SCRIPT], {
@@ -321,27 +315,24 @@ describe("the command", () => {
 });
 
 describe("workflow wiring", () => {
-  /** @param {string} name */
-  const workflow = (name) => readFileSync(join(ROOT, ".github", "workflows", name), "utf8");
+  const workflow = (name: string) => readFileSync(join(ROOT, ".github", "workflows", name), "utf8");
 
-  /** @param {string} text @param {string} id */
-  function job(text, id) {
+  function job(text: string, id: string) {
     const body = text.slice(text.indexOf("\njobs:\n") + 7);
     const parts = body.split(/^ {2}([a-z][a-z0-9-]*):\n/m).slice(1);
     for (let i = 0; i < parts.length; i += 2) if (parts[i] === id) return parts[i + 1] ?? "";
     throw new Error(`no job ${id}`);
   }
 
-  /** @param {string} block */
-  const jobIf = (block) => /^ {4}if: (.*)/m.exec(block)?.[1] ?? "";
+  const jobIf = (block: string) => /^ {4}if: (.*)/m.exec(block)?.[1] ?? "";
 
-  const GATED = /** @type {const} */ ([
+  const GATED = [
     ["ci.yml", "check"],
     ["semgrep.yml", "scan"],
     ["pkgbuild.yml", "arch"],
     ["pkgbuild.yml", "cask"],
     ["pkgbuild.yml", "rpm"],
-  ]);
+  ] as const;
 
   it.each(GATED)(
     "%s: a read-only guard job on push, and %s runs unless it found a cover",
@@ -355,7 +346,7 @@ describe("workflow wiring", () => {
       );
       expect(covered).toContain("skip: ${{ steps.tree.outputs.skip }}");
       const step = covered.split(/^ {6}- /m).find((s) => s.includes("id: tree"));
-      expect(step).toContain("node tools/ci/tree-covered.mjs");
+      expect(step).toContain("node tools/ci/tree-covered.ts");
       expect(step).toContain("GH_TOKEN: ${{ github.token }}");
       // The workflow file comes from GITHUB_WORKFLOW_REF: a name typed here could be another's.
       expect(step).not.toContain("WORKFLOW");
@@ -366,7 +357,7 @@ describe("workflow wiring", () => {
       expect(main).toMatch(/^ {4}needs: covered$/m);
       // !cancelled(), not success(): a failed guard runs the checks instead of skipping them; on a
       // pull request the guard is skipped, its output is empty and the checks run.
-      // Semgrep also skips a draft pull request (issue #443, tools/test/draft-pull-requests.test.mjs).
+      // Semgrep also skips a draft pull request (issue #443, tools/test/draft-pull-requests.test.ts).
       const draft =
         name === "semgrep.yml"
           ? " && !(github.event.pull_request.draft == true && (github.event.action == 'opened' || github.event.action == 'synchronize'))"

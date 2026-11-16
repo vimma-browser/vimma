@@ -122,9 +122,10 @@ screenshot baselines (the e2e harness).
   no page-load fraction, so the segment reads `loading`.
 - **Tab labels.** `StatusBar` takes a `labelFor(tab)` option (default: none), which the tab
   rename spec fills from its label store; core's `displayLabel` already prefers it.
-- **Typecheck.** `tools/sync-core.mjs` now also copies the vendored `smol-toml.d.mts` into the
-  chrome copy of core (jar.mn packs only `*.mjs`), since `ui/statusbar.mjs` is the first chrome
-  module to import `theme.mjs`, which reaches the vendored TOML parser.
+- **Typecheck.** `tools/sync-core.mjs` (Since changed: `sync-core.ts`, ADR-025) now also copies the
+  vendored `smol-toml.d.mts` into the chrome copy of core (jar.mn packs only `*.mjs`), since
+  `ui/statusbar.mjs` is the first chrome module to import `theme.mjs`, which reaches the vendored
+  TOML parser.
 - **Hardening (after #32 and #28 merged):** red for the new tests: 7 unexpected (no emit on
   a focus report, no re-measure on a font change, notice over the bar and the strip, no clipped
   hint). Green: both files 80/0.

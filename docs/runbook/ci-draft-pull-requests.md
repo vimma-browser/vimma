@@ -28,7 +28,7 @@ security release waits for them before it sets auto-merge ("Releases" below). Co
 pull request to a draft (`gh pr ready --undo <n>`) starts no run and leaves its results as
 they are.
 
-`tools/ci/tree-covered.mjs` takes no run as a cover when a job other than its guard was
+`tools/ci/tree-covered.ts` takes no run as a cover when a job other than its guard was
 skipped, so a draft's Semgrep run, which scanned nothing, never lets a push to `main` skip its
 scan ("Once per tree" below).
 

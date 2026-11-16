@@ -6,7 +6,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { refreshAppIni } from "./artifact-build/artifact-build.mjs";
-import { machPythonOrExit } from "./mach-python.mjs";
+import { machPythonOrExit } from "./mach-python.ts";
 
 const ENGINE_TESTS = "browser/base/zen-components/";
 
@@ -14,12 +14,12 @@ const ENGINE_TESTS = "browser/base/zen-components/";
  * Whether the build under test should have a Google Safe Browsing key (spec m0-safebrowsing-key):
  * VIMMA_EXPECT_SAFEBROWSING_KEY if set (the nightly deletes its key file after packaging), else
  * whether the key file configs/common/mozconfig reads exists.
- * @param {Record<string, string | undefined>} env
- * @param {string} home
- * @param {(path: string) => boolean} exists
- * @returns {boolean}
  */
-export function expectSafeBrowsingKey(env, home, exists) {
+export function expectSafeBrowsingKey(
+  env: Record<string, string | undefined>,
+  home: string,
+  exists: (path: string) => boolean,
+): boolean {
   const explicit = env.VIMMA_EXPECT_SAFEBROWSING_KEY;
   if (explicit === "1" || explicit === "0") return explicit === "1";
   const keyfile =
@@ -28,13 +28,18 @@ export function expectSafeBrowsingKey(env, home, exists) {
 }
 
 /**
- * @param {string[]} argv arguments after `npm run mochitest --`
- * @param {string} engine absolute path of engine/, with a trailing slash
- * @param {boolean} [expectKey] passed to the tests as VIMMA_EXPECT_SAFEBROWSING_KEY
- * @param {{ platform?: string, src?: string }} [host] the OS, and the real path of the repo's src/
- * @returns {{ args: string[], env: Record<string, string> }} mach arguments and extra env
+ * @param argv arguments after `npm run mochitest --`
+ * @param engine absolute path of engine/, with a trailing slash
+ * @param expectKey passed to the tests as VIMMA_EXPECT_SAFEBROWSING_KEY
+ * @param host the OS, and the real path of the repo's src/
+ * @returns mach arguments and extra env
  */
-export function mochitestCommand(argv, engine, expectKey, host = {}) {
+export function mochitestCommand(
+  argv: string[],
+  engine: string,
+  expectKey?: boolean,
+  host: { platform?: string; src?: string } = {},
+): { args: string[]; env: Record<string, string> } {
   const { platform = process.platform } = host;
   const flags = argv.filter((a) => a.startsWith("-"));
   const paths = argv.filter((a) => !a.startsWith("-"));
@@ -70,10 +75,8 @@ export function mochitestCommand(argv, engine, expectKey, host = {}) {
 /**
  * The test browser's environment: ours plus `extra`, without HYPRLAND_INSTANCE_SIGNATURE, so no
  * test (even --headed) talks to the developer's own Hyprland (docs/specs/private-swap.md).
- * @param {Record<string, string | undefined>} env
- * @param {Record<string, string>} extra
  */
-export function childEnv(env, extra) {
+export function childEnv(env: Record<string, string | undefined>, extra: Record<string, string>) {
   const out = { ...env, ...extra };
   delete out.HYPRLAND_INSTANCE_SIGNATURE;
   return out;
@@ -86,8 +89,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   // A bare `./mach build` since the artifact build regenerates application.ini, not our copy.
   if (env.MOZCONFIG) refreshAppIni(engine);
   const python = machPythonOrExit(engine, "npm run mochitest");
-  /** @type {[string, ...string[]]} */
-  const command = python ? [python, "./mach"] : ["./mach"];
+  const command: [string, ...string[]] = python ? [python, "./mach"] : ["./mach"];
   const res = spawnSync(command[0], [...command.slice(1), ...args], {
     cwd: engine,
     stdio: "inherit",
