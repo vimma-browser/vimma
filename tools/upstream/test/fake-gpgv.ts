@@ -33,25 +33,23 @@ else
 fi
 `;
 
-/** The fake signature packet over `data` that the stub accepts. @param {Buffer | string} data */
-export function fakeSignature(data) {
+/** The fake signature packet over `data` that the stub accepts. */
+export function fakeSignature(data: Buffer | string) {
   const body = Buffer.from(
     `fake-signature sha512:${createHash("sha512").update(data).digest("hex")}`,
   );
   return Buffer.concat([Buffer.from([0xc2, body.length]), body]);
 }
 
-/** Writes `<sums>.asc` with the fake signature over the file `sums`. @param {string} sums */
-export function fakeSign(sums) {
+/** Writes `<sums>.asc` with the fake signature over the file `sums`. */
+export function fakeSign(sums: string) {
   writeFileSync(`${sums}.asc`, fakeSignature(readFileSync(sums)));
 }
 
 /**
  * An environment whose PATH finds the fake gpgv first.
- * @param {NodeJS.ProcessEnv} env
- * @returns {NodeJS.ProcessEnv}
  */
-export function withFakeGpgv(env) {
+export function withFakeGpgv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const bin = join(tempDir("fake-gpgv-"), "bin");
   mkdirSync(bin);
   writeFileSync(join(bin, "gpgv"), STUB);

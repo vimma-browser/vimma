@@ -13,10 +13,10 @@ import {
   parseVersionsFeed,
   releaseKind,
   versionKey,
-} from "../releases.mjs";
+} from "../releases.ts";
 
 // Real feeds of 2026-10-10, trimmed (tools/upstream/test/fixtures). No network in tests.
-const fixture = (/** @type {string} */ name) =>
+const fixture = (name: string) =>
   readFileSync(new URL(`fixtures/${name}`, import.meta.url), "utf8");
 const versionsText = fixture("firefox_versions.json");
 const releasesText = fixture("firefox.json");
@@ -25,7 +25,7 @@ const releases = parseReleasesFeed(releasesText);
 const advisories = parseAdvisories(advisoriesText);
 
 /** An advisories page with one more entry on top, as Mozilla would add it. */
-const withAdvisory = (/** @type {string} */ level, /** @type {string} */ title) =>
+const withAdvisory = (level: string, title: string) =>
   advisoriesText.replace(
     "<main>\n",
     `<main>\n<h2>October 13, 2026</h2>\n<ul><li class="level-item">\n` +
@@ -34,11 +34,7 @@ const withAdvisory = (/** @type {string} */ level, /** @type {string} */ title) 
   );
 
 /** firefox.json with an extra release. */
-const withRelease = (
-  /** @type {string} */ version,
-  /** @type {string} */ date,
-  category = "stability",
-) => {
+const withRelease = (version: string, date: string, category = "stability") => {
   const data = JSON.parse(releasesText);
   data.releases[`firefox-${version}`] = { category, date, version, product: "firefox" };
   return parseReleasesFeed(JSON.stringify(data));
@@ -174,7 +170,7 @@ describe("classify", () => {
   });
 
   it("severity is the highest by Mozilla's impact key", () => {
-    const a = (/** @type {string} */ severity) => ({
+    const a = (severity: string) => ({
       id: "x",
       url: "u",
       severity,
@@ -190,7 +186,7 @@ describe("classify", () => {
 });
 
 describe("drift", () => {
-  const at = (/** @type {string} */ iso) => new Date(iso);
+  const at = (iso: string) => new Date(iso);
 
   it("is current when surfer.json pins the latest release", () => {
     const d = drift({

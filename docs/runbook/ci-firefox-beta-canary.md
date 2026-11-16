@@ -7,7 +7,7 @@ Schedule: `41 */6 * * *`. `detect` reads product-details' `LATEST_FIREFOX_DEVEL_
 does nothing unless it is a Beta (`N.0bM`) of an unreleased Firefox, or when `main` tested that
 Beta build in the last 7 days (an artifact `upstream-beta-<version>` of a run on `main`). Then
 `source-check` (`tools/upstream/source-check.sh`, as `upstream.yml`), `test` (`e2e.yml` in Beta
-mode with `fail-on-findings: false`), `render` (`tools/upstream/canary.mjs render`, uploads
+mode with `fail-on-findings: false`), `render` (`tools/upstream/canary.ts render`, uploads
 `upstream-beta-<version>` for 30 days: `issue.json`, `state.json`, the patch check and the suite
 results) and, on `main` only, `report`, which opens, updates or closes `Firefox N beta: canary
 findings` (label `upstream-beta`) and closes the issues of released versions.

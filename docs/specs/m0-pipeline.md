@@ -26,7 +26,8 @@ new Firefox releases arrive as PRs.
 - `upstream.yml` (every 6 h): `tools/upstream/check-release.py` polls
   `https://product-details.mozilla.org/1.0/firefox_versions.json` (`LATEST_FIREFOX_VERSION`);
   on change, `bump-surfer-json.py` + PR `chore(upstream): Firefox X.Y`. (Since replaced by the
-  upstream autopilot, spec m7-upstream-autopilot: `tools/upstream/detect.mjs` every 4 h.)
+  upstream autopilot, spec m7-upstream-autopilot: `tools/upstream/detect.mjs` every 4 h; since
+  changed: `detect.ts`, ADR-025.)
 - `claude.yml`: `@claude` mentions; `spec` + `claude:go` labelled issues → draft PR. Scoped token.
 - `renovate.json`: npm + GitHub Actions; automerge patch/minor after CI. (Since replaced by
   Dependabot: `.github/dependabot.yml` and `dependabot-automerge.yml`.)

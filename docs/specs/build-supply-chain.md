@@ -810,9 +810,9 @@ same key without the 2026-08-06 subkey and revocation):
 - `test_a_signing_subkey_expiring_within_60_days_is_reported`
 - `test_an_unchanged_key_reports_nothing`
 
-**vitest, `tools/upstream/test/firefox-source.test.mjs`** (runs the script with
-`MOZILLA_RELEASES` pointing at a `file://` fixture directory and a stub `surfer` in the
-checkout's `node_modules/.bin`, where `npx --no` finds it):
+**vitest, `tools/upstream/test/firefox-source.test.mjs`** (since changed: `firefox-source.test.ts`,
+ADR-025; runs the script with `MOZILLA_RELEASES` pointing at a `file://` fixture directory and a
+stub `surfer` in the checkout's `node_modules/.bin`, where `npx --no` finds it):
 
 - `a tampered tarball fails before engine/ is touched`
 - `a SHA512SUMS without a good signature fails before engine/ is touched` (sub-PR 2)
@@ -826,19 +826,21 @@ checkout's `node_modules/.bin`, where `npx --no` finds it):
   a candidate from `candidates/` with no hash check, a file the script never verified)
 - `a SHA512SUMS that does not list the tarball exits 2, keeping the tarball and engine/`
 
-**vitest, `tools/upstream/test/source-check.test.mjs`** (extends the existing file):
+**vitest, `tools/upstream/test/source-check.test.mjs`** (extends the existing file; since changed:
+`source-check.test.ts`, ADR-025):
 
 - `the source check fails on a SHA512SUMS whose signature is not good`
 - `the source check fails when SHA512SUMS has no signature beside it`
 
 The script tests (`firefox-source`, `source-check`, `verify-source`) cannot carry Mozilla's real
 signature, because their tarballs are made by the test. They put a `gpgv` stub
-(`tools/upstream/test/fake-gpgv.mjs`) first on `PATH`, which answers like `gpgv` for a good
-signature by Mozilla's current subkey only when the `.asc` names the signed file's hash, and
-`BADSIG` otherwise. The scripts therefore keep no test override of the key or the fingerprint;
-the cryptography is tested by `test_verify_sha512.py` alone.
+(`tools/upstream/test/fake-gpgv.mjs`; since changed: `fake-gpgv.ts`, ADR-025) first on `PATH`, which
+answers like `gpgv` for a good signature by Mozilla's current subkey only when the `.asc` names the
+signed file's hash, and `BADSIG` otherwise. The scripts therefore keep no test override of the key
+or the fingerprint; the cryptography is tested by `test_verify_sha512.py` alone.
 
-**vitest, `tools/upstream/test/verify-source.test.mjs`** (sub-PR 2):
+**vitest, `tools/upstream/test/verify-source.test.mjs`** (sub-PR 2; since changed:
+`verify-source.test.ts`, ADR-025):
 
 - `passes the tarball surfer download left when Mozilla's signed SHA512SUMS lists it`
 - `fails a tampered tarball`

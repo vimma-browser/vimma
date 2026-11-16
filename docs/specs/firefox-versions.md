@@ -9,6 +9,9 @@ patches: `src/toolkit/xre/nsAppRunner-cpp.patch` (new; ADR-003 register line: "1
 (firefox-versions)") · ADR: ADR-020 (new, "A security release needs no person"), ADR-015 and
 ADR-003 (register line)
 
+(Since changed: the `.mjs` files of `tools/upstream/` named here, and their tests, are `.ts`,
+ADR-025, #946.)
+
 Issues: [#220](https://github.com/vimma-browser/vimma/issues/220)
 
 ## Summary

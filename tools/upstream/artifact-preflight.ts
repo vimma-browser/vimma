@@ -8,7 +8,7 @@
  * Taskcluster index (ADR-010)? If yes, upstream.yml runs the suites on an artifact build; if no,
  * the PR says so and names the full-build path. Same lookup as tools/artifact-build.
  *
- *   node tools/upstream/artifact-preflight.mjs patch-check.json [--github-output FILE]
+ *   node tools/upstream/artifact-preflight.ts patch-check.json [--github-output FILE]
  *
  * Reads `tree` and `revision` from patch-check.py's report and prints `artifacts=yes|no|unknown`
  * and a note. The tree is mozilla-release for a release and mozilla-beta for a Beta (the Beta
@@ -20,21 +20,20 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { TREES, indexNamespace, indexTask } from "../artifact-build/artifact-build.ts";
-import { githubOutputText } from "./detect.mjs";
+import { githubOutputText } from "./detect.ts";
 
 const INDEX_URL = "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/";
 
-/**
- * @typedef {(url: string) => Promise<{ status: number, json: () => Promise<unknown> }>} FetchJson
- */
+export type FetchJson = (url: string) => Promise<{ status: number; json: () => Promise<unknown> }>;
 
 /**
- * @param {{ tree: unknown, revision: unknown }} report patch-check.py's `tree` and `revision`
- * @param {FetchJson} fetchJson
- * @param {Date} now
- * @returns {Promise<{ artifacts: "yes" | "no" | "unknown", note: string }>}
+ * @param report patch-check.py's `tree` and `revision`
  */
-export async function preflight({ tree, revision }, fetchJson, now) {
+export async function preflight(
+  { tree, revision }: { tree: unknown; revision: unknown },
+  fetchJson: FetchJson,
+  now: Date,
+): Promise<{ artifacts: "yes" | "no" | "unknown"; note: string }> {
   if (!revision) return { artifacts: "unknown", note: "no revision in the source tarball" };
   // Only the two trees whose builds an artifact build can take go into the index URL.
   if (typeof tree !== "string" || !TREES.includes(tree)) {
@@ -79,7 +78,7 @@ async function main() {
     allowPositionals: true,
     options: { "github-output": { type: "string" } },
   });
-  if (!positionals[0]) throw new Error("usage: artifact-preflight.mjs patch-check.json");
+  if (!positionals[0]) throw new Error("usage: artifact-preflight.ts patch-check.json");
   const report = JSON.parse(readFileSync(positionals[0], "utf8"));
   const r = await preflight(
     { tree: report.tree ?? null, revision: report.revision ?? null },

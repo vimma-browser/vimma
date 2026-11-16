@@ -5,12 +5,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
-import { fakeSign, fakeSignature, withFakeGpgv } from "./fake-gpgv.mjs";
+import { fakeSign, fakeSignature, withFakeGpgv } from "./fake-gpgv.ts";
 
 // tools/upstream/verify-source.sh (`npm run verify-source`): checks the tarball a local
 // `npx surfer download` left in .surfer/engine/ against Mozilla's signed SHA512SUMS (spec
 // build-supply-chain, B1), since Surfer checks nothing. The archive is a file:// directory; gpgv
-// is a stub (fake-gpgv.mjs). No network.
+// is a stub (fake-gpgv.ts). No network.
 const SCRIPT = fileURLToPath(new URL("../verify-source.sh", import.meta.url));
 const VERSION = "158.0";
 const NAME = `source/firefox-${VERSION}.source.tar.xz`;
@@ -19,9 +19,10 @@ const MARKER = join("engine", ".git", "vimma-source-verified");
 
 /**
  * A checkout after `npx surfer download` (engine/ with its own repository) and an archive.
- * @param {{ tarball?: string | null, signature?: "good" | "bad", engine?: boolean }} [opts]
  */
-function prepare(opts = {}) {
+function prepare(
+  opts: { tarball?: string | null; signature?: "good" | "bad"; engine?: boolean } = {},
+) {
   const root = tempDir("verify-source-");
   const dir = join(root, "releases", VERSION);
   mkdirSync(dir, { recursive: true });
@@ -48,14 +49,12 @@ function prepare(opts = {}) {
     ...process.env,
     MOZILLA_RELEASES: `file://${join(root, "releases")}`,
   });
-  /** @param {string[]} args */
-  const run = (...args) =>
+  const run = (...args: string[]) =>
     spawnSync("bash", [SCRIPT, ...args], { cwd: work, env, encoding: "utf8" });
   return { work, hash, run };
 }
 
-/** @param {Parameters<typeof prepare>[0]} [opts] */
-const setup = (opts) => prepare(opts).run();
+const setup = (opts?: Parameters<typeof prepare>[0]) => prepare(opts).run();
 
 describe("verify-source.sh", () => {
   it("passes the tarball surfer download left when Mozilla's signed SHA512SUMS lists it", () => {

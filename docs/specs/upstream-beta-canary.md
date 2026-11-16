@@ -11,6 +11,9 @@ Status: implemented · Area: `.github/workflows/upstream-beta.yml` (new), `.gith
 [ADR-002](../adr/002-upstream-release-channel.md) and
 [ADR-010](../adr/010-pr-artifact-builds.md) (one paragraph each); no new ADR
 
+(Since changed: the `.mjs` files of `tools/upstream/` named here, and their tests, are `.ts`,
+ADR-025, #946.)
+
 Issue: [#218](https://github.com/vimma-browser/vimma/issues/218)
 
 ## Summary

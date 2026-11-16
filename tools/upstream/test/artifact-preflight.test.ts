@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { preflight } from "../artifact-preflight.mjs";
+import { preflight } from "../artifact-preflight.ts";
 
 const rev = "b".repeat(40);
 const release = "releases/mozilla-release";
@@ -9,8 +9,7 @@ const beta159 = JSON.parse(
   readFileSync(new URL("fixtures/index-159.0b1.json", import.meta.url), "utf8"),
 );
 const now = new Date("2026-10-13T12:00:00Z");
-/** @param {number} status @param {unknown} body */
-const answer = (status, body) => async () => ({ status, json: async () => body });
+const answer = (status: number, body: unknown) => async () => ({ status, json: async () => body });
 
 describe("artifact preflight", () => {
   it("yes when Mozilla's release build of the revision is indexed and not expired", async () => {
@@ -47,9 +46,8 @@ describe("artifact preflight", () => {
 
   it("a revision that is not 40 hex is never put in a request", async () => {
     for (const bad of ["../../secrets", "b".repeat(39), `${rev}/x`, `${rev}?q`, "B".repeat(40)]) {
-      /** @type {string[]} */
-      const asked = [];
-      const fetchJson = async (/** @type {string} */ url) => {
+      const asked: string[] = [];
+      const fetchJson = async (url: string) => {
         asked.push(url);
         return { status: 200, json: async () => ({}) };
       };
@@ -61,9 +59,8 @@ describe("artifact preflight", () => {
 
   it("finds Mozilla's 159.0b1 build in the mozilla-beta index", async () => {
     const revision = "c0c03f3f899017ae4b7e56c0713f1ada51173c41";
-    /** @type {string[]} */
-    const asked = [];
-    const fetchJson = async (/** @type {string} */ url) => {
+    const asked: string[] = [];
+    const fetchJson = async (url: string) => {
       asked.push(url);
       return { status: 200, json: async () => beta159 };
     };
@@ -80,9 +77,8 @@ describe("artifact preflight", () => {
 
   it("a tree other than mozilla-release or mozilla-beta is never put in a request", async () => {
     for (const tree of ["mozilla-central", "releases/mozilla-esr140", "../x", null]) {
-      /** @type {string[]} */
-      const asked = [];
-      const fetchJson = async (/** @type {string} */ url) => {
+      const asked: string[] = [];
+      const fetchJson = async (url: string) => {
         asked.push(url);
         return { status: 200, json: async () => ({}) };
       };

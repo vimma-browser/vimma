@@ -4,7 +4,7 @@
  * mode the checks and suites run with continue-on-error, so every one of them runs; this records
  * what each step did and what failed, for the Beta canary's issue.
  *
- *   STEPS='${{ toJSON(steps) }}' node tools/upstream/suite-results.mjs --version 159.0b1 \
+ *   STEPS='${{ toJSON(steps) }}' node tools/upstream/suite-results.ts --version 159.0b1 \
  *     --mochitest-log mochitest.tbpl.log --e2e-report e2e-report.json --out suite-results.json
  *
  * The mochitest failures are the `TEST-UNEXPECTED-* | test | message` lines of the TBPL log
@@ -31,26 +31,23 @@ export const STEPS = [
   "agent-bench",
 ];
 
-/** @typedef {{ status: string, test: string, message: string }} MochitestFailure */
-/**
- * @typedef {{
- *   passed: number,
- *   failed: Array<{ name: string, status: string, error: string }>,
- *   pending: Array<{ name: string, reason: string }>,
- * }} E2eReport
- */
+export type MochitestFailure = { status: string; test: string; message: string };
+export type E2eReport = {
+  passed: number;
+  failed: Array<{ name: string; status: string; error: string }>;
+  pending: Array<{ name: string; reason: string }>;
+};
 
 // eslint-disable-next-line no-control-regex -- a log copied from a terminal carries colour escapes
 const ANSI = /\u001b\[[0-9;]*m/g;
 const UNEXPECTED = /(TEST-UNEXPECTED-[A-Z-]+) \| (.+?) \| (.*)$/;
 
 /**
- * @param {string} log a mochitest run's TBPL log
- * @returns {MochitestFailure[]} each unexpected result once, in order
+ * @param log a mochitest run's TBPL log
+ * @returns each unexpected result once, in order
  */
-export function mochitestFailures(log) {
-  /** @type {Map<string, MochitestFailure>} */
-  const seen = new Map();
+export function mochitestFailures(log: string): MochitestFailure[] {
+  const seen = new Map<string, MochitestFailure>();
   for (const raw of log.split("\n")) {
     const m = UNEXPECTED.exec(raw.replace(ANSI, ""));
     if (!m) continue;
@@ -62,16 +59,20 @@ export function mochitestFailures(log) {
 }
 
 /**
- * @param {{
- *   version: string,
- *   steps: Record<string, { outcome?: string | null }>,
- *   mochitestLog: string | null,
- *   e2eReport: E2eReport | null,
- * }} input `steps` is GitHub's steps context; a step that did not run is not in it
+ * @param input `steps` is GitHub's steps context; a step that did not run is not in it
  */
-export function suiteResults({ version, steps, mochitestLog, e2eReport }) {
-  /** @type {Record<string, string>} */
-  const outcomes = {};
+export function suiteResults({
+  version,
+  steps,
+  mochitestLog,
+  e2eReport,
+}: {
+  version: string;
+  steps: Record<string, { outcome?: string | null }>;
+  mochitestLog: string | null;
+  e2eReport: E2eReport | null;
+}) {
+  const outcomes: Record<string, string> = {};
   for (const id of STEPS) outcomes[id] = steps[id]?.outcome || "skipped";
   return {
     version,
@@ -85,14 +86,13 @@ export function suiteResults({ version, steps, mochitestLog, e2eReport }) {
   };
 }
 
-/** @param {string} message */
-function usage(message) {
+function usage(message: string) {
   process.stderr.write(`suite-results: ${message}\n`);
   return 2;
 }
 
-/** @param {string} path @returns {string | null} */
-const readIf = (path) => (existsSync(path) ? readFileSync(path, "utf8") : null);
+const readIf = (path: string): string | null =>
+  existsSync(path) ? readFileSync(path, "utf8") : null;
 
 function main() {
   let values;
@@ -106,7 +106,7 @@ function main() {
       },
     }));
   } catch (e) {
-    return usage(/** @type {Error} */ (e).message);
+    return usage((e as Error).message);
   }
   const { version, out } = values;
   const log = values["mochitest-log"];
@@ -121,14 +121,11 @@ function main() {
     return usage("STEPS must hold the steps context as JSON (${{ toJSON(steps) }})");
   }
   const reportText = readIf(report);
-  /** @type {E2eReport | null} */
-  let e2eReport = null;
+  let e2eReport: E2eReport | null = null;
   try {
     e2eReport = reportText === null ? null : JSON.parse(reportText);
   } catch (e) {
-    process.stderr.write(
-      `suite-results: ${report} is not JSON: ${/** @type {Error} */ (e).message}\n`,
-    );
+    process.stderr.write(`suite-results: ${report} is not JSON: ${(e as Error).message}\n`);
   }
   const results = suiteResults({ version, steps, mochitestLog: readIf(log), e2eReport });
   writeFileSync(out, `${JSON.stringify(results, null, 2)}\n`);

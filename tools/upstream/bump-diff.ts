@@ -6,10 +6,10 @@
 /**
  * The diff an upstream bump may auto-merge with (spec upstream-bump-automation, decision 8):
  * `surfer.json` changes only `version.version`, and `firefox-branding.js`, if changed at all,
- * changes only the lines of the prefs copied from upstream (upstream-prefs.mjs). Anything else,
+ * changes only the lines of the prefs copied from upstream (upstream-prefs.ts). Anything else,
  * a re-exported patch included, needs a person.
  *
- *   node tools/upstream/bump-diff.mjs --diff FILE --base-surfer FILE --head-surfer FILE
+ *   node tools/upstream/bump-diff.ts --diff FILE --base-surfer FILE --head-surfer FILE
  *
  * FILE for --diff is `git diff --unified=0 base...head`. Prints {"ok": bool, "reason": text}.
  */
@@ -17,7 +17,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { CFR, SB_LISTS } from "./upstream-prefs.mjs";
+import { CFR, SB_LISTS } from "./upstream-prefs.ts";
 
 const SURFER = "surfer.json";
 const OURS = "src/browser/branding/vimma/pref/firefox-branding.js";
@@ -28,15 +28,17 @@ const PREF_LINE = /^[+-]pref\("([a-z0-9._-]+)", "(?:[^"\\]|\\.)*"\);$/;
  * files add others and are refused. */
 const HEADER = /^(?:index [0-9a-f]+\.\.[0-9a-f]+ 100644|--- a\/\S+|\+\+\+ b\/\S+)$/;
 
-/**
- * @param {{ diff: string, baseSurfer: string, headSurfer: string }} input
- * @returns {{ ok: boolean, reason: string }}
- */
-export function checkBumpDiff({ diff, baseSurfer, headSurfer }) {
-  /** @type {Map<string, string[]>} */
-  const files = new Map();
-  /** @type {string[] | null} */
-  let lines = null;
+export function checkBumpDiff({
+  diff,
+  baseSurfer,
+  headSurfer,
+}: {
+  diff: string;
+  baseSurfer: string;
+  headSurfer: string;
+}): { ok: boolean; reason: string } {
+  const files = new Map<string, string[]>();
+  let lines: string[] | null = null;
   let inHunk = false;
   for (const line of diff.split("\n")) {
     // Every file header must parse: an unparsed one (a path with a space, a quoted path) would
@@ -69,10 +71,8 @@ export function checkBumpDiff({ diff, baseSurfer, headSurfer }) {
     lines.push(line);
   }
   if (!files.has(SURFER)) return { ok: false, reason: "surfer.json is not changed" };
-  /** @type {any} */
-  let base;
-  /** @type {any} */
-  let head;
+  let base: any;
+  let head: any;
   try {
     base = JSON.parse(baseSurfer);
     head = JSON.parse(headSurfer);

@@ -8,6 +8,9 @@ Status: implemented · Area: `.github/workflows/upstream.yml`, `.github/workflow
 `docs/limits.md` · Upstream patches: none · ADR: ADR-022 (new, "A green Firefox bump merges
 itself"), which amends [ADR-015](../adr/015-upstream-autopilot.md)
 
+(Since changed: the `.mjs` files of `tools/upstream/` named here, and their tests, are `.ts`,
+ADR-025, #946.)
+
 Issue: [#259](https://github.com/vimma-browser/vimma/issues/259)
 
 ## Summary

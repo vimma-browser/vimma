@@ -574,7 +574,7 @@ Vimma.
   dry-runs every patch, runs the suites and opens the bump PR
   ([rebase playbook](docs/rebase.md), [m7-upstream-autopilot](docs/specs/m7-upstream-autopilot.md)).
   Gaps that still need a person: merging a green bump PR, pasting a refreshed pref copy that
-  `upstream-prefs.mjs` reports, and re-exporting a patch that no longer applies
+  `upstream-prefs.ts` reports, and re-exporting a patch that no longer applies
   ([#259](https://github.com/vimma-browser/vimma/issues/259)); releasing the merged bump
   ([#220](https://github.com/vimma-browser/vimma/issues/220),
   [#224](https://github.com/vimma-browser/vimma/issues/224)).

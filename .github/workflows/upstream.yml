@@ -90,7 +90,7 @@ jobs:
       - name: Detect a newer Firefox release, classify it, measure drift
         id: detect
         run: |
-          node tools/upstream/detect.mjs --github-output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
+          node tools/upstream/detect.ts --github-output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: What is already done for this release
         id: state
@@ -220,10 +220,10 @@ jobs:
           printf '%s' "$DETECTION" > detection.json
           gh label create upstream --color 1D76DB --description "Firefox upstream release" --force
           gh label create security --color B60205 --description "Security: act within days" --force
-          node tools/upstream/autopilot-body.mjs issue --detection detection.json \
+          node tools/upstream/autopilot-body.ts issue --detection detection.json \
             --run-url "$RUN_URL" --owner "$OWNER" > issue.md
           if [ -z "$ISSUE" ]; then
-            title=$(node tools/upstream/autopilot-body.mjs issue-title --detection detection.json)
+            title=$(node tools/upstream/autopilot-body.ts issue-title --detection detection.json)
             url=$(gh issue create --title "$title" --label "$LABELS" --body-file issue.md)
             ISSUE=${url##*/}
           else
@@ -419,7 +419,7 @@ jobs:
             git diff --unified=0 "origin/main...$head" > "$RUNNER_TEMP/bump.diff" &&
             git show "$base:surfer.json" > "$RUNNER_TEMP/base-surfer.json" &&
             git show "$head:surfer.json" > "$RUNNER_TEMP/head-surfer.json" &&
-            node tools/upstream/bump-diff.mjs --diff "$RUNNER_TEMP/bump.diff" \
+            node tools/upstream/bump-diff.ts --diff "$RUNNER_TEMP/bump.diff" \
               --base-surfer "$RUNNER_TEMP/base-surfer.json" \
               --head-surfer "$RUNNER_TEMP/head-surfer.json" > "$RUNNER_TEMP/bump-diff.json"; then
             :
@@ -428,7 +428,7 @@ jobs:
             rm -f "$RUNNER_TEMP/bump-diff.json"
           fi
           body() {
-            node tools/upstream/autopilot-body.mjs "$@" --detection "$RUNNER_TEMP/detection.json" \
+            node tools/upstream/autopilot-body.ts "$@" --detection "$RUNNER_TEMP/detection.json" \
               --patch-check "$pc/patch-check.json" --patch-markdown "$pc/patch-check.md" \
               --audit "$pc/patch-audit.txt" --patch-result "$PATCH_RESULT" \
               --artifacts "$ARTIFACTS" --artifacts-note "$ARTIFACTS_NOTE" --tests "$TESTS" \
@@ -531,9 +531,9 @@ jobs:
             --patch-check "$RUNNER_TEMP/patch-check/patch-check.json" --patch-result fail)
           pr=""
           if [[ "$PR" =~ ^[0-9]+$ ]]; then pr="#$PR"; fi
-          node tools/upstream/autopilot-body.mjs patch-issue "${args[@]}" --pr "$pr" \
+          node tools/upstream/autopilot-body.ts patch-issue "${args[@]}" --pr "$pr" \
             --run-url "$RUN_URL" > "$RUNNER_TEMP/patch-issue.md"
-          title=$(node tools/upstream/autopilot-body.mjs patch-issue-title "${args[@]}")
+          title=$(node tools/upstream/autopilot-body.ts patch-issue-title "${args[@]}")
           # Search is fuzzy; the exact title picks the one issue for this version.
           n=$(gh issue list --state open --label upstream --search "$title in:title" \
             --json number,title | jq -r --arg t "$title" \
@@ -577,12 +577,12 @@ jobs:
           OWNER: JRanne # tools/repo.ts MAINTAINER: an organization cannot be @-mentioned
         run: |
           printf '%s' "$DETECTION" > detection.json
-          title=$(node tools/upstream/autopilot-body.mjs drift-title --detection detection.json)
+          title=$(node tools/upstream/autopilot-body.ts drift-title --detection detection.json)
           gh label create security --color B60205 --description "Security: act within days" --force
           open=$(gh issue list --state open --label security --search "\"$title\" in:title" \
             --json number,title --jq "[.[] | select(.title == \"$title\")][0].number // empty")
           if [ -z "$open" ]; then
-            node tools/upstream/autopilot-body.mjs drift --detection detection.json \
+            node tools/upstream/autopilot-body.ts drift --detection detection.json \
               --run-url "$RUN_URL" --owner "$OWNER" > drift.md
             gh issue create --title "$title" --label security --body-file drift.md
           fi
