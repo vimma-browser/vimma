@@ -26,3 +26,5 @@ write, actions read. `spec` (Claude): contents and issues read; tools limited to
 log/status` and `gh issue view`. Tests Claude writes still run as code on that runner, which is
 why its token is read-only. `spec-pr` (no Claude): contents and pull-requests write;
 GITHUB_TOKEN cannot change `.github/workflows`. No other secret is passed.
+Both Claude jobs pass `--permission-mode acceptEdits`: since action 1.0.273 a session otherwise
+starts in auto mode, where a safety review can allow a tool call no allow rule covers.

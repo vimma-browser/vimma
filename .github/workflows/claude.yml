@@ -69,7 +69,8 @@ jobs:
           github_token: ${{ github.token }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          claude_args: --max-turns 40
+          # claude-code-action 1.0.273 made auto mode the default; keep tool calls to allow rules.
+          claude_args: --max-turns 40 --permission-mode acceptEdits
 
   spec:
     if: |
