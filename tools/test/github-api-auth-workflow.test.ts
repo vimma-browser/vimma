@@ -41,12 +41,15 @@ function curlCommands(script: string): string[] {
   return out;
 }
 
+/** A GitHub API address in a script: the https scheme, then exactly that host and a path. */
+const API = /https:\/\/api\.github\.com\//;
+
 /** Every step whose script asks api.github.com, as `<workflow> <job> "<step>"`. */
 const calls = workflows.flatMap(({ name, text }) =>
   [...jobs(text)].flatMap(([id, raw]) => {
     const job = raw as Job;
     return (job.steps ?? [])
-      .filter((s) => typeof s.run === "string" && code(s.run).includes("api.github.com"))
+      .filter((s) => typeof s.run === "string" && API.test(code(s.run)))
       .map((step) => ({ label: `${name} ${id} "${step.name ?? "?"}"`, job, step }));
   }),
 );
@@ -86,7 +89,7 @@ describe("steps that ask api.github.com authenticate (#1170)", () => {
   it("every step that asks api.github.com sends the job's token", () => {
     for (const c of calls) {
       const script = code(c.step.run ?? "");
-      for (const curl of curlCommands(script).filter((p) => p.includes("api.github.com"))) {
+      for (const curl of curlCommands(script).filter((p) => API.test(p))) {
         expect(curl, c.label).toContain(AUTH);
       }
       expect(c.step.env?.GH_TOKEN ?? c.job.env?.GH_TOKEN, c.label).toBe("${{ github.token }}");
