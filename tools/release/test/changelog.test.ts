@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkChangelog, handWrittenNotes, moveUnreleased } from "../changelog.mjs";
+import { checkChangelog, handWrittenNotes, moveUnreleased } from "../changelog.ts";
 
 // Issue #529: the hand-written `## [Unreleased]` lines move into the release's own entry when
 // release-please opens or updates its release pull request, above release-please's commit list,
@@ -12,7 +12,7 @@ import { checkChangelog, handWrittenNotes, moveUnreleased } from "../changelog.m
 
 const compare = "https://github.com/vimma-browser/vimma/compare/v0.5.1...v0.5.2";
 const older = "https://github.com/vimma-browser/vimma/compare/v0.5.0...v0.5.1";
-const commit = (/** @type {string} */ sha) =>
+const commit = (sha: string) =>
   `([${sha}](https://github.com/vimma-browser/vimma/commit/${sha}${"0".repeat(33)}))`;
 
 const header = [
@@ -268,7 +268,7 @@ describe("checkChangelog", () => {
   it("runs in npm run lint", () => {
     const pkg = JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8"));
     expect(pkg.scripts["changelog-lint"]).toBe(
-      "node tools/release/changelog.mjs check CHANGELOG.md",
+      "node tools/release/changelog.ts check CHANGELOG.md",
     );
     expect(pkg.scripts.lint).toMatch(/&& npm run changelog-lint(?: |$)/);
     // CI runs lint's parts as steps; this one also on a docs-only pull request, which is how a
@@ -285,17 +285,17 @@ describe("checkChangelog", () => {
   });
 });
 
-describe("changelog.mjs CLI", () => {
-  const script = fileURLToPath(new URL("../changelog.mjs", import.meta.url));
+describe("changelog.ts CLI", () => {
+  const script = fileURLToPath(new URL("../changelog.ts", import.meta.url));
   const dir = mkdtempSync(join(tmpdir(), "changelog-"));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
-  const file = (/** @type {string} */ name, /** @type {string} */ text) => {
+  const file = (name: string, text: string) => {
     const path = join(dir, name);
     writeFileSync(path, text);
     return path;
   };
-  /** @param {string[]} args */
-  const run = (...args) => spawnSync(process.execPath, [script, ...args], { encoding: "utf8" });
+  const run = (...args: string[]) =>
+    spawnSync(process.execPath, [script, ...args], { encoding: "utf8" });
 
   it("move prints the changelog with [Unreleased] moved into the new version", () => {
     const res = run("move", file("branch.md", onBranch));

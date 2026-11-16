@@ -31,6 +31,7 @@ import {
   updatesEnabled,
   verifyManifest,
 } from "../src/updates/updates.mjs";
+import type { Offer, PinnedKey } from "../src/updates/updates.mjs";
 import { UPDATE_KEYS } from "../src/updates/update-keys.mjs";
 import { parseConfig, rawUpdatesCheck } from "../src/config/config.mjs";
 import { DEFAULT_CONFIG, formatDefaultsToml } from "../src/config/defaults.mjs";
@@ -44,61 +45,59 @@ import { budget } from "./budget.mjs";
 const subtle = globalThis.crypto.subtle;
 const ALG = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-384" };
 
-/** @returns {Promise<{ pair: CryptoKeyPair, spki: string, id: string }>} */
-async function makeKey() {
-  const pair = /** @type {CryptoKeyPair} */ (
-    await subtle.generateKey(
-      { ...ALG, modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]) },
-      true,
-      ["sign", "verify"],
-    )
-  );
+async function makeKey(): Promise<{ pair: CryptoKeyPair; spki: string; id: string }> {
+  const pair = (await subtle.generateKey(
+    { ...ALG, modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]) },
+    true,
+    ["sign", "verify"],
+  )) as CryptoKeyPair;
   const der = new Uint8Array(await subtle.exportKey("spki", pair.publicKey));
   return { pair, spki: base64Encode(der), id: await spkiKeyId(subtle, der) };
 }
 
-/** @type {Awaited<ReturnType<typeof makeKey>>} */ let primary;
-/** @type {Awaited<ReturnType<typeof makeKey>>} */ let secondary;
-/** @type {Awaited<ReturnType<typeof makeKey>>} */ let stranger;
+let primary: Awaited<ReturnType<typeof makeKey>>;
+let secondary: Awaited<ReturnType<typeof makeKey>>;
+let stranger: Awaited<ReturnType<typeof makeKey>>;
 
 beforeAll(async () => {
   [primary, secondary, stranger] = await Promise.all([makeKey(), makeKey(), makeKey()]);
 });
 
-/** @returns {import("../src/updates/updates.mjs").PinnedKey[]} */
-const pinned = () => [
+const pinned = (): PinnedKey[] => [
   { id: primary.id, slot: "primary", spki: primary.spki },
   { id: secondary.id, slot: "secondary", spki: secondary.spki },
 ];
 
-/**
- * @param {string} body
- * @param {Awaited<ReturnType<typeof makeKey>>} key
- * @param {Uint8Array<ArrayBuffer>} [bytes]  what is signed, when not signedBytes(body)
- */
-async function sig(body, key, bytes = signedBytes(body)) {
+/** `bytes`: what is signed, when not signedBytes(body). */
+async function sig(
+  body: string,
+  key: Awaited<ReturnType<typeof makeKey>>,
+  bytes: Uint8Array<ArrayBuffer> = signedBytes(body),
+) {
   return {
     key: key.id,
     sig: base64Encode(new Uint8Array(await subtle.sign(ALG, key.pair.privateKey, bytes))),
   };
 }
 
-/** @param {string} body @param {...Awaited<ReturnType<typeof makeKey>>} keys */
-async function signed(body, ...keys) {
+async function signed(body: string, ...keys: Awaited<ReturnType<typeof makeKey>>[]) {
   const sigs = await Promise.all(keys.map((k) => sig(body, k)));
   return body + signatureComment(sigs);
 }
 
 /**
  * The manifest of spec §2 (channel, target and serial on <updates>, decision 25).
- * @param {{ serial?: string, channel?: string, target?: string, update?: Record<string, string>
- *   | null }} [o]
  */
 function manifest({
   serial = "20261028041207",
   channel = "vimma",
   target = "Linux_x86_64-gcc3",
   update = {},
+}: {
+  serial?: string;
+  channel?: string;
+  target?: string;
+  update?: Record<string, string> | null;
 } = {}) {
   const head =
     '<?xml version="1.0"?>\n' +
@@ -197,7 +196,7 @@ describe("the manifest signature (spec §2, §4 rule 1)", () => {
     for (const c of cases) {
       const r = await verifyManifest(c, pinned(), subtle);
       expect(r.ok, c.slice(-80)).toBe(false);
-      expect(/** @type {any} */ (r).reason).toMatch(/^unsigned/);
+      expect((r as any).reason).toMatch(/^unsigned/);
     }
   });
 
@@ -233,8 +232,7 @@ describe("the manifest signature (spec §2, §4 rule 1)", () => {
   });
 
   test("a pinned key that is not a valid SPKI refuses, never throws", async () => {
-    /** @type {import("../src/updates/updates.mjs").PinnedKey[]} */
-    const broken = [{ id: primary.id, slot: "primary", spki: "AAAA" }];
+    const broken: PinnedKey[] = [{ id: primary.id, slot: "primary", spki: "AAAA" }];
     const r = await verifyManifest(await signed(manifest(), primary), broken, subtle);
     expect(r).toEqual({ ok: false, reason: "signature: does not verify" });
   });
@@ -244,10 +242,7 @@ describe("the manifest signature (spec §2, §4 rule 1)", () => {
     const text = await signed(body, primary, secondary);
     const r = splitManifest(text);
     expect(r).toMatchObject({ ok: true, body });
-    expect(/** @type {any} */ (r).signatures.map((/** @type {any} */ s) => s.key)).toEqual([
-      primary.id,
-      secondary.id,
-    ]);
+    expect((r as any).signatures.map((s: any) => s.key)).toEqual([primary.id, secondary.id]);
   });
 
   test("base64 round trip and the key id (first 8 hex of the SPKI's SHA-256)", async () => {
@@ -272,7 +267,7 @@ describe("pinned keys (update-keys.mjs)", () => {
       const der = base64Decode(k.spki);
       expect(await spkiKeyId(subtle, der)).toBe(k.id);
       const key = await subtle.importKey("spki", der, ALG, true, ["verify"]);
-      expect(/** @type {any} */ (key.algorithm).modulusLength).toBe(4096);
+      expect((key.algorithm as any).modulusLength).toBe(4096);
     }
   });
 
@@ -321,8 +316,7 @@ describe("pinned keys (update-keys.mjs)", () => {
     const { createHash, createPrivateKey, privateEncrypt, constants } = await import("node:crypto");
     const pkcs8 = Buffer.from(await subtle.exportKey("pkcs8", primary.pair.privateKey));
     const privateKey = createPrivateKey({ key: pkcs8, format: "der", type: "pkcs8" });
-    /** @type {import("../src/updates/updates.mjs").PinnedKey} */
-    const pin = { id: primary.id, slot: "primary", spki: primary.spki };
+    const pin: PinnedKey = { id: primary.id, slot: "primary", spki: primary.spki };
     const body = manifest();
     const SHA384_DIGESTINFO = Buffer.from("3041300d060960864801650304020205000430", "hex");
     const digestInfo = Buffer.concat([
@@ -369,12 +363,12 @@ describe("parseManifest", () => {
   // The complete MAR Firefox's updater downloads for a tarball (spec §2, decision 5); its URL is
   // what decision 1 downloads without cookies.
   const PATCH = / {4}<patch [^\n]*\n/;
-  const mar = (/** @type {string} */ attrs) => manifest().replace(PATCH, `    <patch ${attrs}/>\n`);
+  const mar = (attrs: string) => manifest().replace(PATCH, `    <patch ${attrs}/>\n`);
   const MAR = "https://github.com/vimma-browser/vimma/releases/download/v0.3.1/x.mar";
   const good = `type="complete" size="98113536" hashFunction="sha512" hashValue="ab" URL="${MAR}"`;
 
   test("an <update> without a <patch> has no MAR", () => {
-    const r = /** @type {any} */ (parseManifest(manifest().replace(PATCH, "")));
+    const r = parseManifest(manifest().replace(PATCH, "")) as any;
     expect(r.ok).toBe(true);
     expect(r.manifest.update.marUrl).toBeNull();
   });
@@ -387,7 +381,7 @@ describe("parseManifest", () => {
   ])("refuses a <patch> with %s", (_name, attrs) => {
     const r = parseManifest(mar(attrs));
     expect(r.ok).toBe(false);
-    expect(/** @type {any} */ (r).reason).toMatch(/^manifest: .*<patch>/);
+    expect((r as any).reason).toMatch(/^manifest: .*<patch>/);
   });
 
   // Firefox's parser reads elements by local name: a prefixed <x:update> or <x:patch> would be an
@@ -395,24 +389,21 @@ describe("parseManifest", () => {
   test.each([
     [
       "a prefixed <update>",
-      (/** @type {string} */ m) =>
+      (m: string) =>
         m.replace(/<(\/?)update /g, "<$1x:update ").replace("</update>", "</x:update>"),
     ],
-    [
-      "a prefixed <patch>",
-      (/** @type {string} */ m) => m.replace("<patch ", '<x:patch xmlns:x="urn:x" '),
-    ],
+    ["a prefixed <patch>", (m: string) => m.replace("<patch ", '<x:patch xmlns:x="urn:x" ')],
   ])("refuses %s", (_name, change) => {
     const r = parseManifest(change(manifest()));
     expect(r.ok).toBe(false);
-    expect(/** @type {any} */ (r).reason).toMatch(/prefixed/);
+    expect((r as any).reason).toMatch(/prefixed/);
   });
 
   test("refuses two <patch> elements, so Firefox can pick no MAR the download rule misses", () => {
     const two = manifest().replace(PATCH, (line) => line + line);
     const r = parseManifest(two);
     expect(r.ok).toBe(false);
-    expect(/** @type {any} */ (r).reason).toMatch(/more than one <patch>/);
+    expect((r as any).reason).toMatch(/more than one <patch>/);
   });
 
   test("an empty <updates> offers nothing but still carries its serial", () => {
@@ -425,24 +416,23 @@ describe("parseManifest", () => {
     expect(parseManifest(selfClosing)).toMatchObject({ ok: true, manifest: { update: null } });
   });
 
-  const H = (/** @type {string} */ c) => c.repeat(128);
+  const H = (c: string) => c.repeat(128);
   const DL = "https://github.com/vimma-browser/vimma/releases/download/v0.3.1";
-  /** @param {string} children */
-  const withAssets = (children) => manifest().replace(/ {4}<patch [^\n]*\n/, children);
+  const withAssets = (children: string) => manifest().replace(/ {4}<patch [^\n]*\n/, children);
   const tarball = `    <vimmaTarball size="86804240" hashFunction="sha512" hashValue="${H("a")}" URL="${DL}/vimma-0.3.1-linux-x86_64.tar.xz"/>\n`;
   const appimage = `    <vimmaAppImage size="111966712" hashFunction="sha512" hashValue="${H("b")}" URL="${DL}/vimma-0.3.1-x86_64.AppImage"/>\n`;
   const deb = `    <vimmaDeb size="87718612" hashFunction="sha512" hashValue="${H("c")}" URL="${DL}/vimma_0.3.1_amd64.deb"/>\n`;
   const rpm = `    <vimmaRpm size="87921340" hashFunction="sha512" hashValue="${H("f")}" URL="${DL}/vimma-0.3.1-1.x86_64.rpm"/>\n`;
 
   test("reads each package's size and SHA-512 (the release pipeline's asset elements)", () => {
-    const r = /** @type {any} */ (parseManifest(withAssets(tarball + appimage + deb + rpm)));
+    const r = parseManifest(withAssets(tarball + appimage + deb + rpm)) as any;
     expect(r.manifest.update.assets).toEqual({
       tarball: { size: 86804240, sha512: H("a"), url: `${DL}/vimma-0.3.1-linux-x86_64.tar.xz` },
       appimage: { size: 111966712, sha512: H("b"), url: `${DL}/vimma-0.3.1-x86_64.AppImage` },
       deb: { size: 87718612, sha512: H("c"), url: `${DL}/vimma_0.3.1_amd64.deb` },
       rpm: { size: 87921340, sha512: H("f"), url: `${DL}/vimma-0.3.1-1.x86_64.rpm` },
     });
-    const one = /** @type {any} */ (parseManifest(withAssets(deb)));
+    const one = parseManifest(withAssets(deb)) as any;
     expect(one.manifest.update.assets).toEqual({
       deb: { size: 87718612, sha512: H("c"), url: `${DL}/vimma_0.3.1_amd64.deb` },
     });
@@ -455,7 +445,7 @@ describe("parseManifest", () => {
   ])("refuses a <vimmaRpm> with %s", (_name, children) => {
     const r = parseManifest(withAssets(children));
     expect(r.ok).toBe(false);
-    expect(/** @type {any} */ (r).reason).toMatch(/^manifest: .*<vimmaRpm>/);
+    expect((r as any).reason).toMatch(/^manifest: .*<vimmaRpm>/);
   });
 
   test.each([
@@ -469,13 +459,13 @@ describe("parseManifest", () => {
   ])("refuses an asset with %s", (_name, children) => {
     const r = parseManifest(withAssets(children));
     expect(r.ok).toBe(false);
-    expect(/** @type {any} */ (r).reason).toMatch(/^manifest: /);
+    expect((r as any).reason).toMatch(/^manifest: /);
   });
 
   const dmg = `    <vimmaDmg size="110809760" hashFunction="sha512" hashValue="${H("e")}" URL="${DL}/vimma-0.3.1-macos-aarch64.dmg"/>\n`;
 
   test("reads the macOS manifest's <vimmaDmg> (macos-homebrew decision 18)", () => {
-    const r = /** @type {any} */ (parseManifest(withAssets(dmg)));
+    const r = parseManifest(withAssets(dmg)) as any;
     expect(r.manifest.update.assets).toEqual({
       dmg: { size: 110809760, sha512: H("e"), url: `${DL}/vimma-0.3.1-macos-aarch64.dmg` },
     });
@@ -488,7 +478,7 @@ describe("parseManifest", () => {
   ])("refuses a <vimmaDmg> with %s", (_name, children) => {
     const r = parseManifest(withAssets(children));
     expect(r.ok).toBe(false);
-    expect(/** @type {any} */ (r).reason).toMatch(/^manifest: .*<vimmaDmg>/);
+    expect((r as any).reason).toMatch(/^manifest: .*<vimmaDmg>/);
   });
 
   test("offerAssets keeps only well-formed entries (a saved result read back)", () => {
@@ -521,7 +511,7 @@ describe("parseManifest", () => {
         update: { detailsURL: "https://github.com/vimma-browser/vimma/releases?a=1&amp;b=2" },
       }),
     );
-    expect(/** @type {any} */ (r).manifest.update.detailsUrl).toBe(
+    expect((r as any).manifest.update.detailsUrl).toBe(
       "https://github.com/vimma-browser/vimma/releases?a=1&b=2",
     );
   });
@@ -586,12 +576,12 @@ describe("parseManifest", () => {
   ])("refuses %s", (_name, body) => {
     const r = parseManifest(body);
     expect(r.ok).toBe(false);
-    expect(/** @type {any} */ (r).reason).toMatch(/^manifest: /);
+    expect((r as any).reason).toMatch(/^manifest: /);
   });
 });
 
 /** A Firefox-like version comparison for the tests (the host passes Services.vc.compare). */
-const compare = (/** @type {string} */ a, /** @type {string} */ b) => {
+const compare = (a: string, b: string) => {
   const pa = a.split(".").map(Number);
   const pb = b.split(".").map(Number);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
@@ -608,14 +598,14 @@ describe("judgeManifest (§4 rules 2 to 4)", () => {
     appVersion: "158.0",
     buildId: "20261020000000",
     displayVersion: "0.3.0",
-    serial: /** @type {string | null} */ (null),
+    serial: null as string | null,
     now: Date.parse("2026-10-29T00:00:00Z"),
   };
-  /** @param {Parameters<typeof manifest>[0]} [o] */
-  const parsed = (o) => /** @type {any} */ (parseManifest(manifest(o))).manifest;
+  const parsed = (o?: Parameters<typeof manifest>[0]) =>
+    (parseManifest(manifest(o)) as any).manifest;
 
   test("a serial more than a day ahead of the clock is refused; up to a day is accepted", () => {
-    const at = (/** @type {string} */ iso) => ({ ...running, now: Date.parse(iso) });
+    const at = (iso: string) => ({ ...running, now: Date.parse(iso) });
     // serial 2026-10-28 04:12:07 UTC
     expect(judgeManifest(parsed(), at("2026-10-27T04:12:08Z"), compare).ok).toBe(true);
     expect(judgeManifest(parsed(), at("2026-10-27T04:12:06Z"), compare)).toEqual({
@@ -664,8 +654,7 @@ describe("judgeManifest (§4 rules 2 to 4)", () => {
     const older = parsed({ update: { appVersion: "157.0.1" } });
     expect(judgeManifest(older, running, compare)).toMatchObject({ ok: true, offer: null });
     const sameFx = { ...running, appVersion: "158.0.1" };
-    const at = (/** @type {string} */ buildID) =>
-      judgeManifest(parsed({ update: { buildID } }), sameFx, compare);
+    const at = (buildID: string) => judgeManifest(parsed({ update: { buildID } }), sameFx, compare);
     expect(at("20261019000000")).toMatchObject({ ok: true, offer: null });
     expect(at("20261020000000")).toMatchObject({ ok: true, offer: null });
     expect(at("20261021000000")).toMatchObject({ ok: true, offer: { buildId: "20261021000000" } });
@@ -699,7 +688,7 @@ describe("judgeManifest (§4 rules 2 to 4)", () => {
 });
 
 describe("staleDays (§4 rule 5)", () => {
-  const at = (/** @type {string} */ iso) => Date.parse(iso);
+  const at = (iso: string) => Date.parse(iso);
   test("a release feed older than 45 days and a nightly one older than 7 are stale", () => {
     const serial = "20261001000000";
     expect(staleDays(serial, "vimma", at("2026-11-15T00:00:00Z"))).toBeNull();
@@ -713,10 +702,10 @@ describe("updateNotice (§5, the rows delivery 1 has)", () => {
   const offer = { displayVersion: "0.3.1", urgent: false };
   const state = {
     enabled: true,
-    installType: /** @type {const} */ ("tarball"),
-    offer: /** @type {{ displayVersion: string, urgent: boolean } | null} */ (null),
+    installType: "tarball" as const,
+    offer: null as { displayVersion: string; urgent: boolean } | null,
     refusals: 0,
-    staleDays: /** @type {number | null} */ (null),
+    staleDays: null as number | null,
   };
 
   test("nothing when up to date, before any check, or when the host did not answer", () => {
@@ -782,7 +771,7 @@ describe("updateNotice (§5, the rows delivery 1 has)", () => {
 });
 
 describe("offNotice (decision 38: updates: off for a few seconds, once per session)", () => {
-  const off = { enabled: false, installType: /** @type {const} */ ("tarball") };
+  const off = { enabled: false, installType: "tarball" as const };
 
   test("the first time checks are seen off, the clock starts and the notice shows", () => {
     expect(offNotice({ ...off, since: null, now: 1000 })).toEqual({ since: 1000, shown: true });
@@ -791,7 +780,7 @@ describe("offNotice (decision 38: updates: off for a few seconds, once per sessi
   test("it shows for OFF_NOTICE_MS, then hides for the rest of the session", () => {
     expect(OFF_NOTICE_MS).toBeGreaterThanOrEqual(3000);
     expect(OFF_NOTICE_MS).toBeLessThanOrEqual(10000);
-    const at = (/** @type {number} */ now) => offNotice({ ...off, since: 1000, now });
+    const at = (now: number) => offNotice({ ...off, since: 1000, now });
     expect(at(1000 + OFF_NOTICE_MS - 1)).toEqual({ since: 1000, shown: true });
     expect(at(1000 + OFF_NOTICE_MS)).toEqual({ since: 1000, shown: false });
     expect(at(1000 + 86400000)).toEqual({ since: 1000, shown: false });
@@ -811,7 +800,7 @@ describe("offNotice (decision 38: updates: off for a few seconds, once per sessi
   });
 
   test("a source build or an install type not known yet: no clock", () => {
-    for (const installType of /** @type {const} */ (["source", null])) {
+    for (const installType of ["source", null] as const) {
       expect(offNotice({ ...off, installType, since: null, now: 5 })).toEqual({
         since: null,
         shown: false,
@@ -821,13 +810,13 @@ describe("offNotice (decision 38: updates: off for a few seconds, once per sessi
 });
 
 describe("the status-bar segment", () => {
-  const base = { mode: /** @type {const} */ ("normal") };
+  const base = { mode: "normal" as const };
   test("the notice is a right-side segment in its tone's colour, a theme token", () => {
-    const tones = /** @type {const} */ ([
+    const tones = [
       ["info", "--vimma-fg-dim"],
       ["urgent", "--vimma-text-error"],
       ["warn", "--vimma-text-yellow"],
-    ]);
+    ] as const;
     for (const [tone, fg] of tones) {
       const s = statusSegments({ ...base, update: { text: "⇡ 0.3.1 available", tone } }).find(
         (x) => x.id === "update",
@@ -839,10 +828,10 @@ describe("the status-bar segment", () => {
   });
 
   test("an urgent notice outlasts the title; a plain one gives way before it", () => {
-    const seg = (/** @type {"info" | "urgent"} */ tone) =>
-      /** @type {any} */ (
-        statusSegments({ ...base, update: { text: "x", tone } }).find((s) => s.id === "update")
-      );
+    const seg = (tone: "info" | "urgent") =>
+      statusSegments({ ...base, update: { text: "x", tone } }).find(
+        (s) => s.id === "update",
+      ) as any;
     expect(seg("urgent").priority).toBeLessThan(5);
     expect(seg("info").priority).toBeGreaterThan(5);
   });
@@ -951,8 +940,7 @@ describe("install type on macOS (macos-homebrew decisions 8 and 19)", () => {
 });
 
 describe("updateSteps (:update and about:vimma)", () => {
-  /** @type {import("../src/updates/updates.mjs").Offer} */
-  const offer = {
+  const offer: Offer = {
     appVersion: "158.0.1",
     buildId: "20261028031500",
     displayVersion: "0.3.1",
@@ -961,9 +949,8 @@ describe("updateSteps (:update and about:vimma)", () => {
     advisories: [],
     assets: {},
   };
-  const H = (/** @type {string} */ c) => c.repeat(128);
-  /** @type {import("../src/updates/updates.mjs").Offer} */
-  const hashed = {
+  const H = (c: string) => c.repeat(128);
+  const hashed: Offer = {
     ...offer,
     assets: {
       tarball: { size: 3, sha512: H("a") },
@@ -1058,7 +1045,7 @@ describe("updateSteps (:update and about:vimma)", () => {
   });
 
   test("every download fails on an HTTP error and refuses anything but https (V-07)", () => {
-    for (const type of /** @type {const} */ (["deb", "rpm", "tarball", "appimage"])) {
+    for (const type of ["deb", "rpm", "tarball", "appimage"] as const) {
       for (const o of [offer, hashed]) {
         for (const command of updateSteps(type, o, where).commands) {
           expect(command.startsWith(`${curl} -o `), `${type}: ${command}`).toBe(true);
@@ -1091,7 +1078,7 @@ describe("updateSteps (:update and about:vimma)", () => {
         `#!/bin/sh\nwhile [ "$1" != -o ]; do shift; done\nprintf '%s' "$BODY" > "$2"\n`,
         { mode: 0o755 },
       );
-      const run = (/** @type {string} */ hash) => {
+      const run = (hash: string) => {
         const o = { ...offer, assets: { appimage: { size: body.length, sha512: hash } } };
         const [cmd = ""] = updateSteps("appimage", o, { installDir: dir, appImage: file }).commands;
         return spawnSync("sh", ["-c", cmd], {
@@ -1140,7 +1127,7 @@ describe("updateSteps (:update and about:vimma)", () => {
   test("an unknown package and a source build: words and the release page only", () => {
     expect(updateSteps("packaged", offer, where)).toMatchObject({ commands: [] });
     expect(updateSteps("source", offer, where).text).toMatch(/rebuild/);
-    for (const t of /** @type {const} */ (["packaged", "source", "deb", "tarball"])) {
+    for (const t of ["packaged", "source", "deb", "tarball"] as const) {
       expect(updateSteps(t, offer, where).link).toBe(offer.detailsUrl);
     }
   });
@@ -1165,8 +1152,7 @@ describe("the version line", () => {
 });
 
 describe("[updates] check (config.toml, schema 2) and the pref", () => {
-  /** @param {string[]} lines */
-  const v2 = (...lines) => ["schema = 2", ...lines].join("\n") + "\n";
+  const v2 = (...lines: string[]) => ["schema = 2", ...lines].join("\n") + "\n";
 
   test("defaults to on; false turns it off", () => {
     expect(parseConfig(v2()).config?.updates).toEqual({ check: true });
@@ -1178,7 +1164,7 @@ describe("[updates] check (config.toml, schema 2) and the pref", () => {
   });
 
   test("a wrong type, an unknown key and schema 1 are errors", () => {
-    const errs = (/** @type {string} */ t) =>
+    const errs = (t: string) =>
       parseConfig(t).errors.map((e) => ({ line: e.line, path: e.path, message: e.message }));
     expect(errs(v2("[updates]", 'check = "no"'))).toEqual([
       { line: 3, path: "updates.check", message: "expected a boolean, got a string" },
@@ -1333,7 +1319,7 @@ describe("[updates] check (config.toml, schema 2) and the pref", () => {
           { check: false, held: true },
           { check: false, held: false },
         ]) {
-          for (const raw of [/** @type {const} */ ("missing"), true]) {
+          for (const raw of ["missing" as const, true]) {
             expect(updatesCheckAfterRead({ errors: 1, inForce, raw, hadConfig, previous })).toEqual(
               { check: true, held: false },
             );

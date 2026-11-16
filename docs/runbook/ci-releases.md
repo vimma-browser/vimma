@@ -63,7 +63,7 @@ maintainer's one click.
 - **A release shows the hand-written lines first, then release-please's list** (issue #529).
   `CHANGELOG.md` on `main` starts with `## [Unreleased]`, whose `- ` items under `### Added`,
   `### Changed`, `### Fixed` (or another Keep a Changelog heading) say what users see.
-  release-please puts its new entry above that heading, so `tools/release/changelog.mjs` moves
+  release-please puts its new entry above that heading, so `tools/release/changelog.ts` moves
   the items in two places:
   - `move`, in the `firefox-notes` job, on every rebuild of the release PR: each item goes into
     the same section of the new entry, above release-please's `* ` items (a section release-please
@@ -81,18 +81,18 @@ maintainer's one click.
   `npm run changelog-lint` (part of `npm run lint`) fails when `## [Unreleased]` is not the first
   `## ` heading, appears twice, or holds anything but those headings and `- ` items (an item may
   continue on lines indented by two spaces), since `move` refuses what it cannot carry whole.
-  Check by hand: `node tools/release/changelog.mjs move CHANGELOG.md` on the release branch's file
+  Check by hand: `node tools/release/changelog.ts move CHANGELOG.md` on the release branch's file
   prints the edited file. The release PR's head without the `firefox-notes` commit fails CI's
   `changelog-lint` step, so it cannot be merged by hand or by auto-merge. If the job failed (a
   `move` error, or a 409 because release-please rebuilt the branch meanwhile), fix `[Unreleased]`
   on `main` if `move` named a line, then run release-please again: `gh workflow run
 release-please.yml`. If `release-title` warns that a release's notes lack the hand-written
-  lines, add them by hand: `node tools/release/changelog.mjs notes <notes.md> --changelog
+  lines, add them by hand: `node tools/release/changelog.ts notes <notes.md> --changelog
 CHANGELOG.md --version X.Y.Z` on the tag's checkout prints the notes to paste.
 
 - **The Firefox version in titles and headings** (spec firefox-versions). release-please can only
   title a release `vX.Y.Z` and head its entry `## [X.Y.Z](compare) (date)`, so two jobs after it
-  edit both with `tools/release/firefox-notes.mjs` (idempotent: a second pass changes nothing):
+  edit both with `tools/release/firefox-notes.ts` (idempotent: a second pass changes nothing):
   - `firefox-notes`, on every run while the release PR is open: reads `CHANGELOG.md` and
     `surfer.json` from `release-please--branches--main` through the API, and when the newest
     heading lacks it, pushes one `chore(release)` commit that makes it
@@ -103,7 +103,7 @@ CHANGELOG.md --version X.Y.Z` on the tag's checkout prints the notes to paste.
     on every run, and the job then adds it back in the same run. The PR body keeps
     release-please's heading.
   - `release-title`, when a release was created: checks out its tag, titles it with
-    `node tools/release/version-line.mjs` (`Vimma X.Y.Z · Firefox <version>`, which must start
+    `node tools/release/version-line.ts` (`Vimma X.Y.Z · Firefox <version>`, which must start
     with the tag's version) and applies the same edit to its notes, through `GITHUB_TOKEN`
     (`contents: write`). It changes only the name and the notes; a draft stays a draft. The
     edit resends the tag it verified (`tag_name`): GitHub detaches a draft from its tag when an
@@ -113,8 +113,8 @@ CHANGELOG.md --version X.Y.Z` on the tag's checkout prints the notes to paste.
     its id with `gh api repos/vimma-browser/vimma/releases --jq '.[] | [.id, .tag_name]'` and run
     `gh api --method PATCH repos/vimma-browser/vimma/releases/<id> -f tag_name=vX.Y.Z`.
 
-  Check either by hand: `node tools/release/firefox-notes.mjs CHANGELOG.md --surfer surfer.json`
-  prints the edited file, and `node tools/release/version-line.mjs` the title.
+  Check either by hand: `node tools/release/firefox-notes.ts CHANGELOG.md --surfer surfer.json`
+  prints the edited file, and `node tools/release/version-line.ts` the title.
 
 - **First release (one-time).** No `v0.1.0` tag exists, and the manifest's `0.1.0` (what every
   build so far shows) counts as released, so the first release is **0.1.1**: the release PR
@@ -129,7 +129,7 @@ CHANGELOG.md --version X.Y.Z` on the tag's checkout prints the notes to paste.
 - **A merged security bump releases itself** (`security-release`, spec firefox-versions,
   ADR-020), once `AUTO_SECURITY_RELEASE` is `true`. After a push to `main` that is the squash
   merge of the autopilot's `upstream/firefox-<version>` PR labelled `upstream` and `security`,
-  `tools/release/security-release.mjs` sets the open release PR to auto-merge with
+  `tools/release/security-release.ts` sets the open release PR to auto-merge with
   `RELEASE_PLEASE_TOKEN`, pinned to its head commit (`--match-head-commit`), and comments on the
   bump PR. A draft release PR is first marked ready for review through the same token, since
   GitHub never merges a draft; that starts the full checks the draft skipped, and the job sets

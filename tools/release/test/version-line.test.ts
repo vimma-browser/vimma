@@ -2,15 +2,11 @@ import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { versionLine } from "../version-line.mjs";
+import { versionLine } from "../version-line.ts";
 
 // Spec firefox-versions, decision 3: the line `vimma --version` prints, written once for scripts.
 
-/**
- * @param {unknown} firefox
- * @param {unknown} display
- */
-const surfer = (firefox, display) => ({
+const surfer = (firefox: unknown, display: unknown) => ({
   version: { product: "firefox", version: firefox },
   brands: { vimma: { release: { displayVersion: display } } },
 });
@@ -36,7 +32,7 @@ describe("versionLine", () => {
     const config = JSON.parse(readFileSync(new URL("surfer.json", root), "utf8"));
     const res = spawnSync(
       process.execPath,
-      [fileURLToPath(new URL("tools/release/version-line.mjs", root))],
+      [fileURLToPath(new URL("tools/release/version-line.ts", root))],
       { cwd: fileURLToPath(root), encoding: "utf8" },
     );
     expect(res.status).toBe(0);

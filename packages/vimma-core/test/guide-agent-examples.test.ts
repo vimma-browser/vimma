@@ -7,17 +7,14 @@ import { parseConfig } from "../src/config/config.mjs";
 
 const guide = readFileSync(new URL("../../../docs/guide.md", import.meta.url), "utf8");
 
-/**
- * The fenced toml blocks of `text` that configure the agent.
- * @param {string} text
- */
-const agentExamples = (text) =>
+/** The fenced toml blocks of `text` that configure the agent. */
+const agentExamples = (text: string) =>
   [...text.matchAll(/```toml\n([\s\S]*?)```/g)]
-    .map((m) => /** @type {string} */ (m[1]))
+    .map((m) => m[1] as string)
     .filter((block) => /^\[\[?agent[\].]/m.test(block));
 
 /** The guide's section under `heading`, up to the next heading of its level or above. */
-function section(/** @type {string} */ heading) {
+function section(heading: string) {
   const start = guide.indexOf(`\n${heading}\n`);
   if (start < 0) return "";
   const hashes = /^#+/.exec(heading);
@@ -42,8 +39,7 @@ describe("the guide's [agent] examples", () => {
   test("the model section has one for each local server and each hosted kind", () => {
     const examples = agentExamples(section("#### Choosing a model for the agent chat"));
     const providers = examples.flatMap((block) => parseConfig(block).config?.agent.providers ?? []);
-    const at = (/** @type {string} */ origin) =>
-      providers.filter((p) => p.endpoint.startsWith(origin));
+    const at = (origin: string) => providers.filter((p) => p.endpoint.startsWith(origin));
     // Ollama, LM Studio, the llama.cpp server and vLLM, on their default ports.
     for (const port of [11434, 1234, 8080, 8000]) {
       expect(at(`http://127.0.0.1:${port}/`), `port ${port}`).toHaveLength(1);

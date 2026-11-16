@@ -6,18 +6,18 @@
  * `<firefox>` is version.version; the separator is U+00B7 MIDDLE DOT with a space on each side.
  * The string is written here and once in C++; browser_vimma_version_line.js (full build) holds
  * the two together.
- * Usage: node tools/release/version-line.mjs   (prints the line for ./surfer.json)
+ * Usage: node tools/release/version-line.ts   (prints the line for ./surfer.json)
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { surferVersions } from "../version-files/version-files.ts";
+import { type SurferConfig, surferVersions } from "../version-files/version-files.ts";
 
 /**
- * @param {import("../version-files/version-files.ts").SurferConfig} surferJson parsed surfer.json
- * @returns {string} e.g. `Vimma 0.5.2 · Firefox 158.0`
+ * @param surferJson parsed surfer.json
+ * @returns e.g. `Vimma 0.5.2 · Firefox 158.0`
  * @throws when either version is missing or malformed
  */
-export function versionLine(surferJson) {
+export function versionLine(surferJson: SurferConfig): string {
   const { firefox, display } = surferVersions(surferJson, "vimma");
   return `Vimma ${display} · Firefox ${firefox}`;
 }

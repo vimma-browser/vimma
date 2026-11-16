@@ -11,7 +11,7 @@ on:
   pull_request:
     paths:
       - tools/package/**
-      - tools/release/version-line.mjs
+      - tools/release/version-line.ts
       - tools/version-files/version-files.ts
       - tools/repo.ts
       - configs/branding/vimma/**
@@ -45,7 +45,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # flatpak.mjs and version-line.mjs use Node's built-in modules only: no npm install.
+      # flatpak.mjs and version-line.ts use Node's built-in modules only: no npm install.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
@@ -118,7 +118,7 @@ jobs:
           git show "$TAG:surfer.json" > "$RUNNER_TEMP/surfer.json"
           expected=$(node --input-type=module -e '
             import { readFileSync } from "node:fs";
-            import { versionLine } from "./tools/release/version-line.mjs";
+            import { versionLine } from "./tools/release/version-line.ts";
             console.log(versionLine(JSON.parse(readFileSync(process.argv[1], "utf8"))));
           ' "$RUNNER_TEMP/surfer.json")
           case "$expected" in "Vimma ${TAG#v} · Firefox "*) ;; *) echo "::error::surfer.json gives '$expected', tag is $TAG"; exit 1 ;; esac
