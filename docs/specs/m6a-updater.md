@@ -268,7 +268,7 @@ appVersion="1.23.2b" buildID=…>` with one complete MAR from the GitHub Release
   a bump whose patches had to be re-exported always waits for a person (its Behaviour 5 and 6, and
   its decisions 10 and 15). A bump for a Firefox release with an advisory, or whose advisories
   could not be read, carries the labels `upstream` and `security` (`tools/upstream/detect.mjs:87`,
-  since changed: `detect.ts`, ADR-025, G3: unknown counts as security), and its subject lists the
+  G3: unknown counts as security; since changed: `detect.ts`, ADR-025), and its subject lists the
   advisories, `upstream: firefox 158.0
 (MFSA 2026-106)` (firefox-versions decision 9).
 - Spec firefox-versions (merged) owns the release half of the security path: with
