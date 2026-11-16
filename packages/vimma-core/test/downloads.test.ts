@@ -596,3 +596,247 @@ describe("downloadEnds", () => {
     expect(out.end).toBe("blocked");
   });
 });
+
+// Each case below pins one reading of the code that the tests above leave open (issue #1119).
+describe("rows, sizes and times in detail", () => {
+  test("a blocked state reads blocked whatever blocked it; a download not started reads starting", () => {
+    const parental = blocked({ error: { kind: "parental", verdict: "", reason: "" } });
+    expect(downloadRow(parental, 0).state).toBe("blocked");
+    const notStarted = rec({ succeeded: false, targetExists: false });
+    expect(downloadRow(notStarted, 0)).toMatchObject({ state: "starting", section: "active" });
+  });
+
+  test("a running download with a known size of 0 bytes shows no percent", () => {
+    expect(downloadRow(running({ totalBytes: 0 }), 0).state).toBe("downloading");
+    expect(downloadProgress(running({ totalBytes: 0 }))).toBe("3.1 MB · 1.2 MB/s");
+    // A total without hasProgress is not trusted either.
+    expect(downloadProgress(running({ hasProgress: false }))).toBe("3.1 MB · 1.2 MB/s");
+  });
+
+  test("a paused download never shows a speed or the time left", () => {
+    expect(downloadProgress(paused({ speed: 1.2 * MB }))).toBe("3.1 / 7.4 MB");
+  });
+
+  test("an hour or more left reads h:mm:ss", () => {
+    expect(downloadProgress(running({ speed: 1156 }))).toBe(
+      "3.1 / 7.4 MB · 1.1 KB/s · 1:05:00 left",
+    );
+    expect(downloadProgress(running({ speed: 1000 }))).toBe(
+      "3.1 / 7.4 MB · 1000 B/s · 1:15:09 left",
+    );
+  });
+
+  test("sizes past the largest unit stay in terabytes", () => {
+    expect(downloadProgress(rec({ size: 2 * 1024 ** 5 }))).toBe("2048.0 TB");
+  });
+
+  test("a finished download of no known size, and a stopped one, show no detail", () => {
+    expect(downloadProgress(rec({ size: 0 }))).toBe("");
+    expect(downloadProgress(failed())).toBe("");
+    expect(downloadProgress(canceled())).toBe("");
+  });
+
+  test("a download that has not ended has no end time; hours and minutes have two digits", () => {
+    expect(downloadRow(running(), 0).ended).toBe("");
+    const end = new Date(2026, 10, 5, 9, 5).getTime();
+    expect(downloadRow(rec({ endTime: end }), end).ended).toBe("09:05");
+  });
+
+  test("a URL that does not parse has no host", () => {
+    expect(downloadRow(rec({ url: "not a url" }), 0).host).toBe("");
+  });
+
+  test("a name from a URL: web and ftp paths, a trailing slash, a bad escape", () => {
+    expect(nameFromUrl("http://files.example.com/a.txt")).toBe("a.txt");
+    expect(nameFromUrl("ftp://files.example.com/pub/b.iso")).toBe("b.iso");
+    expect(nameFromUrl("https://files.example.com/dir/")).toBe("dir");
+    expect(nameFromUrl("https://files.example.com/bad%E0%A4%A")).toBe("bad%E0%A4%A");
+  });
+
+  test("the filter's text leaves out an empty host and no workspace", () => {
+    const row = downloadRow(rec({ url: "data:text/plain,hi" }), 0);
+    expect(downloadSearchText(row)).toBe("report.pdf done");
+  });
+
+  test("a name of exactly 80 characters is kept whole in the question", () => {
+    const name = "x".repeat(80);
+    expect(downloadQuestion(rec({ name }), "delete")).toBe(`delete "${name}" from disk? (y/N)`);
+  });
+});
+
+describe("a yes stands only for the download asked about, field by field", () => {
+  test("another download in the same place", () => {
+    expect(downloadChanged(rec(), rec({ id: 2 }), "remove")).toBe(true);
+  });
+
+  test("the file deleted, or its blocked data gone, also for an op that still applies", () => {
+    expect(downloadChanged(rec(), rec({ targetExists: false }), "remove")).toBe(true);
+    expect(downloadChanged(rec(), rec({ deleted: true }), "remove")).toBe(true);
+    expect(downloadChanged(blocked(), blocked({ hasBlockedData: false }), "remove")).toBe(true);
+    expect(downloadChanged(rec(), rec(), "remove")).toBe(false);
+  });
+
+  test("without a context, allowing blocked downloads counts as off", () => {
+    expect(downloadChanged(blocked(), blocked(), "unblock")).toBe(true);
+  });
+});
+
+describe("the reason each key gives when it does not apply", () => {
+  const why = (r: DownloadRecord, key: string, c = ctx) => {
+    const k = downloadKey(r, key, c);
+    return k.type === "refuse" ? k.text : k.type === "run" ? `run ${k.op}` : k.type;
+  };
+
+  test("o and shift+o", () => {
+    expect(why(rec({ viewsInternally: false }), "shift+o")).toBe(
+      "only for a file Firefox shows itself; o opens it",
+    );
+    expect(why(rec({ viewsInternally: false }), "o")).toBe("run open");
+  });
+
+  test("s, y, shift+y, p and c", () => {
+    expect(why(rec({ targetExists: false }), "s")).toBe("the file is missing");
+    expect(why(rec({ deleted: true }), "s")).toBe("the file is missing");
+    expect(why(rec({ url: "" }), "y")).toBe("no link");
+    expect(why(rec({ targetExists: false }), "shift+y")).toBe("the file is missing");
+    expect(why(rec(), "p")).toBe("cannot pause this download");
+    expect(why(canceled(), "c")).toBe("not in progress");
+  });
+
+  test("r", () => {
+    expect(why(failed({ agent: true }), "r")).toBe("agent downloads are never retried by Vimma");
+    expect(why(failed({ path: "" }), "r")).toBe("no file to retry; the Library (shift+l) can");
+    expect(why(rec(), "r")).toBe("only a failed or canceled one");
+  });
+
+  test("u takes only a referrer that starts with http or https", () => {
+    expect(why(rec({ referrer: null }), "u")).toBe("no page it came from");
+    expect(why(rec({ referrer: "view-source:https://example.com/" }), "u")).toBe(
+      "no page it came from",
+    );
+  });
+
+  test("d and shift+d", () => {
+    expect(why(running(), "d")).toBe("still downloading; c cancels it");
+    expect(why(caMalware(), "shift+d")).toBe("your organization's scanner keeps this download");
+    expect(why(caMalware({ targetExists: true }), "shift+d")).toBe(
+      "your organization's scanner keeps this download",
+    );
+    expect(why(rec({ targetExists: false }), "shift+d")).toBe("the file is missing");
+  });
+
+  test("!", () => {
+    expect(why(blocked({ agent: true }), "!")).toBe("agent downloads are never allowed by Vimma");
+    expect(why(rec(), "!")).toBe("nothing blocked to allow");
+    // As Firefox's isCommandEnabled: blocked data is what unblock needs.
+    expect(why(rec({ hasBlockedData: true }), "!")).toBe("run unblock");
+  });
+
+  test("Enter on an agent download says Vimma never opens it; r says it never retries it", () => {
+    expect(why(failed({ agent: true }), "enter")).toBe("agent downloads are never opened by Vimma");
+    expect(why(failed({ path: "" }), "enter")).toBe("no file to retry; the Library (shift+l) can");
+  });
+
+  test("Enter on a blocked download without Firefox's reason", () => {
+    expect(
+      downloadKey(
+        blocked({ error: { kind: "reputation", verdict: "", reason: "" } }),
+        "enter",
+        ctx,
+      ),
+    ).toEqual({
+      type: "notice",
+      text: "blocked: blocked by Firefox · ! allow or remove · d remove · shift+d delete",
+    });
+  });
+});
+
+describe("the segment in detail", () => {
+  const at = (
+    list: readonly DownloadRecord[],
+    ends: Parameters<typeof downloadSegment>[1] = null,
+    now = 0,
+  ) => downloadSegment(downloadSummary(list), ends, now);
+
+  test("every segment, whole", () => {
+    expect(at([running()])).toEqual({
+      text: "↓ 41%",
+      label: "downloading 41%",
+      problem: false,
+      kind: "progress",
+    });
+    expect(at([running({ hasProgress: false })])).toEqual({
+      text: "↓ 1",
+      label: "1 download",
+      problem: false,
+      kind: "progress",
+    });
+    expect(at([running({ hasProgress: false }), running({ id: 2, hasProgress: false })])).toEqual({
+      text: "↓ 2",
+      label: "2 downloads",
+      problem: false,
+      kind: "progress",
+    });
+    expect(at([running(), running({ id: 2 })])).toEqual({
+      text: "↓ 2 · 41%",
+      label: "2 downloads, 41%",
+      problem: false,
+      kind: "progress",
+    });
+    expect(at([paused()])).toEqual({
+      text: "↓ paused",
+      label: "download paused",
+      problem: false,
+      kind: "paused",
+    });
+    expect(at([paused(), paused({ id: 2 })])).toEqual({
+      text: "↓ paused",
+      label: "2 downloads paused",
+      problem: false,
+      kind: "paused",
+    });
+    expect(at([], { state: "done", at: 5_000 }, 14_999)).toEqual({
+      text: "↓ done",
+      label: "download finished",
+      problem: false,
+      kind: "done",
+    });
+    expect(at([], { state: "failed", at: 0 }, 1)).toEqual({
+      text: "↓ failed",
+      label: "download failed",
+      problem: true,
+      kind: "failed",
+    });
+  });
+
+  test("done lasts DONE_MS from when it ended", () => {
+    expect(at([], { state: "done", at: 5_000 }, 15_000)).toBe(null);
+  });
+
+  test("the percent counts only downloads whose size is known", () => {
+    expect(at([running({ totalBytes: 0 }), running({ id: 2 })])?.text).toBe("↓ 2 · 41%");
+  });
+});
+
+describe("downloadEnds in detail", () => {
+  test("the worst end wins in any order", () => {
+    const out = downloadEnds(new Map(), [blocked({ id: 1 }), rec({ id: 2 })]);
+    expect(out.end).toBe("blocked");
+  });
+
+  test("a download last seen canceled is not announced when it then ends", () => {
+    const seen = new Map([[1, DOWNLOAD_STATE.CANCELED]]);
+    expect(downloadEnds(seen, [failed()]).texts).toEqual([]);
+  });
+
+  test("the seed's time applies only to downloads first seen ended", () => {
+    const seen = new Map([[1, DOWNLOAD_STATE.DOWNLOADING]]);
+    expect(downloadEnds(seen, [rec({ startTime: 500 })], { since: 1000 }).texts).toEqual([
+      "download finished: report.pdf",
+    ]);
+    // One that started at the seed's own time is new.
+    expect(downloadEnds(new Map(), [rec({ startTime: 1000 })], { since: 1000 }).texts).toEqual([
+      "download finished: report.pdf",
+    ]);
+  });
+});

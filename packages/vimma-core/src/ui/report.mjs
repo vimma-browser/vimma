@@ -14,22 +14,31 @@ import { trimTrailing } from "../text/strings.mjs";
 /** Any `scheme://…` up to whitespace: web pages, file:///, extensions. */
 const URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/\S*?(?=[\s,;)\]]|[.,;:!?]?(?:\s|$))/gi;
 
-/** A character `\w` matches. @param {string | undefined} c */
-const isWordChar = (c) => c !== undefined && /\w/.test(c);
+/**
+ * Whether a character (one code point) can be part of a word: a letter or a digit in any script,
+ * a combining mark, or `_`. ASCII `\w` alone took the `é` of `/home/josé` for the end of a name,
+ * so a home of `/home/jos` redacted it to `~é`.
+ * @param {string} c
+ */
+const isWordChar = (c) => /^[\p{L}\p{M}\p{N}_]$/u.test(c);
 
 /**
  * Whether `home`, found at `at` in `text`, ends a whole path component there: what follows is
  * the end, a `/`, or a character that cannot continue a file name (`/home/alice` is not the home
- * in `/home/alicebob` or `/home/alice.bak`).
+ * in `/home/alicebob`, `/home/alice.bak` or `/home/aliceé`).
  * @param {string} text
  * @param {number} at
  * @param {string} home
  */
 function homeEndsAt(text, at, home) {
-  const next = text[at + home.length];
-  if (next === undefined || next === "/") return true;
+  const code = text.codePointAt(at + home.length);
+  if (code === undefined) return true;
+  const next = String.fromCodePoint(code);
+  if (next === "/") return true;
   if (isWordChar(next) || next === "." || next === "-") return false;
-  return isWordChar(home.at(-1)); // the word boundary a `\b` would want
+  // The word boundary a `\b` would want: the home's last code point is a word character.
+  const tail = home.slice(-2);
+  return isWordChar([...tail].at(-1) ?? "");
 }
 
 /**
@@ -84,7 +93,7 @@ export function formatAge(ms) {
   if (first === -1) return "0s";
   return units
     .slice(first, first + 2)
-    .filter(([n], i) => i === 0 || n > 0)
+    .filter(([n]) => n > 0)
     .map(([n, u]) => `${n}${u}`)
     .join(" ");
 }
