@@ -17,12 +17,17 @@ const URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/\S*?(?=[\s,;)\]]|[.,;:!?]?(?:\s|$))/gi;
 /**
  * What ends a file name in the report (#1173): whitespace, a path separator, or punctuation that
  * the report or an error message puts around a path: `path:4:`, `(path)`, `"path"`, `'path'`,
- * `` `path` ``, `[path]`, `{path}`, `<path>`, `path,` and `path;`. Anything else continues the
- * name, `+`, `~`, `@`, emoji, joiners and connector punctuation included, so `/home/alice` is not
- * the home in `/home/alice+b`. `.`, `!` and `?` continue a name (`/home/alice.bak`) except when
- * they close a sentence, with whitespace or the end after them.
+ * `` `path` ``, `<path>`, `path,` and `path;`, any opening, closing, initial or final quotation
+ * punctuation (`[path]`, `{path}`, `“path”`, `«path»`, `「path」`), and `…`, which also ends an
+ * error that workspaceReport cut to length. Anything else continues the name, `+`, `~`, `@`,
+ * emoji, joiners and connector punctuation included, so `/home/alice` is not the home in
+ * `/home/alice+b`. `.`, `!` and `?` continue a name (`/home/alice.bak`) except when a run of
+ * them closes a sentence, with whitespace or the end after it (`/home/alice... done`).
  */
-const ENDS_NAME = /[\s/\\:;,"'`()[\]{}<>]|[.!?](?=\s|$)/y;
+const ENDS_NAME = /[\s/\\:;,"'`<>…\p{Pi}\p{Pf}\p{Ps}\p{Pe}]|[.!?]+(?=\s|$)/uy;
+
+/** {@link ENDS_NAME}'s answer for each non-ASCII BMP character seen: 0 not yet, 1 ends, 2 not. */
+const ENDS_BMP = new Uint8Array(0x10000);
 
 /**
  * Whether the text at `at` ends a name: the end, or a character of {@link ENDS_NAME}.
@@ -31,8 +36,17 @@ const ENDS_NAME = /[\s/\\:;,"'`()[\]{}<>]|[.!?](?=\s|$)/y;
  */
 function endsName(text, at) {
   if (at === text.length) return true;
+  // Most of what follows a near miss is an ASCII letter or digit: no need for the expression.
+  const code = text.charCodeAt(at);
+  const c = code | 0x20;
+  if ((c >= 0x61 && c <= 0x7a) || (c >= 0x30 && c <= 0x39)) return false;
+  // A character past ASCII decides alone (`.!?` need what follows): remember each answer.
+  const memo = code >= 0x80 && (code < 0xd800 || code > 0xdfff);
+  if (memo && ENDS_BMP[code]) return ENDS_BMP[code] === 1;
   ENDS_NAME.lastIndex = at;
-  return ENDS_NAME.test(text);
+  const ends = ENDS_NAME.test(text);
+  if (memo) ENDS_BMP[code] = ends ? 1 : 2;
+  return ends;
 }
 
 /**
@@ -69,6 +83,8 @@ function clusterOffsets(run) {
     text.push(t);
     nfd.push(d);
   }
+  // Unreachable with the Unicode data Node ships (no non-mark reorders past a cluster's edge,
+  // checked over every code point); kept so a future Unicode cannot map an offset wrongly.
   return d === run.normalize("NFD").length ? { text, nfd } : { text: [0], nfd: [0] };
 }
 
@@ -81,36 +97,44 @@ function clusterOffsets(run) {
  */
 
 /**
+ * The next stretch of the text: ASCII, which is its own NFD and never reorders with its
+ * neighbours, or up to 64 other code points and the marks after them. A cut before a non-mark
+ * leaves NFD unchanged (no non-mark reorders past a cluster's edge), so the NFD of the whole
+ * text is the stretches' NFDs end to end, and clusterOffsets walks one short stretch at most.
+ */
+const STRETCH = /[\0-\x7f]+|[^\0-\x7f]{1,64}\p{M}*/uy;
+
+/**
  * `text` in NFD with a way back to `text`'s offsets, so a home and a path written in different
  * normal forms still match (an NFD $HOME is common on macOS) while the output keeps the text's
- * own characters. ASCII is its own NFD and never reorders with its neighbours, so the text is
- * decomposed one run of other characters at a time, and a run's clusters are worked out only
- * when a match ends inside it: a large report costs about two copies of it.
+ * own characters. The NFD is one native call; the way back is built only as far as the matches
+ * that need it, which arrive in order, one {@link STRETCH} at a time.
  * @param {string} text
  * @returns {{ nfd: string, toText: (at: number) => number | undefined }}
  */
 function decomposed(text) {
+  const nfd = text.normalize("NFD");
   /** @type {Piece[]} */
   const pieces = [{ text: 0, nfd: 0 }];
   /** @type {number[]} */
   const starts = [0];
-  let nfd = "";
-  let last = 0;
-  for (const match of text.matchAll(/[^\0-\x7f]+/g)) {
-    const run = match[0];
-    nfd += text.slice(last, match.index);
-    const d = run.normalize("NFD");
-    if (d !== run) {
-      pieces.push({ text: match.index, nfd: nfd.length, run });
-      pieces.push({ text: match.index + run.length, nfd: nfd.length + d.length });
-      starts.push(nfd.length, nfd.length + d.length);
-    }
-    nfd += d;
-    last = match.index + run.length;
-  }
-  nfd += text.slice(last);
+  // Where the walk has got to, in step in both strings.
+  let t = 0;
+  let d = 0;
   /** @param {number} n */
   const toText = (n) => {
+    while (d <= n && t < text.length) {
+      STRETCH.lastIndex = t;
+      const stretch = STRETCH.exec(text)?.[0] ?? text.slice(t);
+      const decomposedStretch = stretch.charCodeAt(0) < 0x80 ? stretch : stretch.normalize("NFD");
+      if (decomposedStretch !== stretch) {
+        pieces.push({ text: t, nfd: d, run: stretch });
+        pieces.push({ text: t + stretch.length, nfd: d + decomposedStretch.length });
+        starts.push(d, d + decomposedStretch.length);
+      }
+      t += stretch.length;
+      d += decomposedStretch.length;
+    }
     const piece = pieces[lastAtMost(starts, n)] ?? { text: 0, nfd: 0 };
     const offset = n - piece.nfd;
     if (offset === 0 || piece.run === undefined) return piece.text + offset;
@@ -141,6 +165,9 @@ export function redactReport(text, home) {
   let redacted = "";
   let from = 0;
   for (let at = nfd.indexOf(h); at !== -1; at = nfd.indexOf(h, at + 1)) {
+    // Cheap first: the NFD of a character that ends a name ends one too (checked over every
+    // code point), so a match that NFD says goes on is never mapped back.
+    if (!endsName(nfd, at + h.length)) continue;
     const start = toText(at);
     const end = toText(at + h.length);
     // What ends the name is judged on the text as written: U+037E is `;` only in NFD.

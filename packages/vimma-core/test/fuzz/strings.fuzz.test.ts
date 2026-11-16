@@ -33,10 +33,18 @@ const longRun = fc
  * redactReport does: after URLs become `<url>`, walk the text code point by code point and, at
  * each one, try every slice that starts there; a slice is the home when its NFD form is the
  * home's (trailing slashes dropped), and what follows it ends a name: the end, whitespace, `/`,
- * `\\`, a path delimiter, or `.`, `!` or `?` closing a sentence. A redacted slice is skipped whole.
+ * `\\`, a path delimiter, `…`, bracket or quotation punctuation, or a run of `.`, `!` and `?`
+ * closing a sentence. A redacted slice is skipped whole.
  */
 const URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/\S*?(?=[\s,;)\]]|[.,;:!?]?(?:\s|$))/gi;
-const ENDS_NAME = /^(?:$|[\s/\\:;,"'`()[\]{}<>]|[.!?](?:\s|$))/u;
+function endsName(rest: string): boolean {
+  const c = [...rest][0];
+  if (c === undefined || /\s/u.test(c) || "/\\:;,\"'`<>\u2026".includes(c)) return true;
+  if (/\p{Ps}|\p{Pe}|\p{Pi}|\p{Pf}/u.test(c)) return true;
+  let i = 0;
+  while (".!?".includes(rest[i] ?? "x")) i++;
+  return i > 0 && (i === rest.length || /\s/u.test(rest[i] ?? ""));
+}
 function oracleRedact(text: string, home: string): string {
   const cps = [...text.replace(URL_RE, "<url>")];
   const h = home.replace(/\/+$/, "").normalize("NFD");
@@ -45,9 +53,13 @@ function oracleRedact(text: string, home: string): string {
   let i = 0;
   while (i < cps.length) {
     let end = -1;
+    // A longer slice never has a shorter NFD, so stop once it is longer than the home's.
+    let slice = "";
     for (let j = i + 1; j <= cps.length && end === -1; j++) {
-      const rest = cps.slice(j).join("");
-      if (cps.slice(i, j).join("").normalize("NFD") === h && ENDS_NAME.test(rest)) end = j;
+      slice += cps[j - 1];
+      const d = slice.normalize("NFD");
+      if (d.length > h.length) break;
+      if (d === h && endsName(cps.slice(j).join(""))) end = j;
     }
     if (end === -1) {
       out += cps[i];
@@ -74,6 +86,16 @@ const nameParts = fc.constantFrom(
   ",",
   ".",
   "?",
+  "...",
+  "\u2026",
+  "\u201C",
+  "\u2019",
+  "\u300D",
+  "!",
+  "=",
+  "\u00BB",
+  "\u00E9".repeat(40),
+  "e\u0301".repeat(30),
   "\\",
   "\u00E9",
   "e\u0301",
@@ -125,12 +147,16 @@ describe("linear-time string edits", () => {
             ),
             { maxLength: 6 },
           ),
-          (home, parts) => {
-            const text = parts.join(parts.length % 2 ? "/" : " ");
+          fc.constantFrom("", " ", "/"),
+          fc.array(nameParts, { minLength: 1, maxLength: 3 }),
+          (home, parts, sep, after) => {
+            const text = parts.join(sep);
             expect(redactReport(text, home)).toBe(oracleRedact(text, home));
             for (const t of [
               `${home}/x ${home}`,
               `${home.normalize("NFC")}: ${home.normalize("NFD")}`,
+              // The home right before the characters the rule is about.
+              `${home}${after.join("")} x ${home.normalize("NFD")}${after.join("")}`,
             ]) {
               expect(redactReport(t, home)).toBe(oracleRedact(t, home));
             }

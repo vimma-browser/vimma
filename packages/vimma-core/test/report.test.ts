@@ -76,6 +76,8 @@ describe("redactReport", () => {
       "/home/alice~b/x",
       "/home/alice@b/x",
       "/home/alice#b/x",
+      "HOME=/home/alice|x",
+      "/home/alice!x /home/alice=x /home/alice*x",
     ]) {
       expect(redactReport(other, "/home/alice")).toBe(other);
     }
@@ -96,6 +98,15 @@ describe("redactReport", () => {
       ["/home/alice; /home/alice, /home/alice:4", "~; ~, ~:4"],
       ["home is /home/alice. Or /home/alice? No, /home/alice!", "home is ~. Or ~? No, ~!"],
       ["/home/alice.", "~."],
+      ["/home/alice... done, /home/alice?! ok", "~... done, ~?! ok"],
+      [
+        "/home/alice\u2026 \u201C/home/alice\u201D \u2018/home/alice\u2019",
+        "~\u2026 \u201C~\u201D \u2018~\u2019",
+      ],
+      [
+        "\u00AB/home/alice\u00BB \u300C/home/alice\u300D \u2039/home/alice\u203A",
+        "\u00AB~\u00BB \u300C~\u300D \u2039~\u203A",
+      ],
     ] as const) {
       expect(redactReport(text, h)).toBe(want);
     }
@@ -135,6 +146,26 @@ describe("redactReport", () => {
     }
   });
 
+  it("stays linear on near misses and on one long run of non-ASCII text", () => {
+    const cases: [string, string, string][] = [
+      // A match on every line that the next character rules out.
+      ["/home/jos\u00E9x".repeat(270_000), "/home/jos\u00E9", "/home/jos\u00E9x"],
+      // A match on every line in the other normal form.
+      ["/home/jose\u0301/".repeat(250_000), "/home/jos\u00E9", "~/"],
+      // One 3 MB run that NFD changes, matched everywhere and ending nowhere.
+      ["\uD55C".repeat(3_000_000), "\uD55C", "\uD55C"],
+      ["\u00E9".repeat(3_000_000), "\u00E9\u00E9", "\u00E9"],
+      // One 3 MB run whose only match ends a name.
+      [`${"\u00E9".repeat(3_000_000)} \u00E9`, "\u00E9", "\u00E9"],
+    ];
+    for (const [text, home, unit] of cases) {
+      const start = performance.now();
+      const out = redactReport(text, home);
+      expect(performance.now() - start).toBeLessThan(budget(1500));
+      expect(out.startsWith(unit)).toBe(true);
+    }
+  });
+
   it("does not redact inside a home it has already replaced", () => {
     // The second /home/home starts inside the first one's match.
     expect(redactReport("/home/home/home/x", "/home/home")).toBe("~/home/x");
@@ -156,6 +187,23 @@ describe("describeOutcome", () => {
   it("names the kind when an action result has no action, or another kind carries one", () => {
     expect(describeOutcome({ kind: "action" })).toBe("action");
     expect(describeOutcome({ kind: "pass", action: { id: "scroll.down" } })).toBe("pass");
+  });
+});
+
+describe("redactReport on a workspace error cut to length", () => {
+  it("redacts a home the cut leaves right before its …", () => {
+    // workspaceReport cuts a long error with … and the cut can fall right after the home.
+    const error = `${"e".repeat(187)} /home/alice/.config/vimma/workspaces.json: bad`;
+    const [, line] = workspaceReport({
+      count: 1,
+      window: [],
+      live: 0,
+      pendingMs: null,
+      recovered: null,
+      lastError: error,
+    });
+    expect(line).toMatch(/ \/home\/alice…$/);
+    expect(redactReport(line ?? "", "/home/alice")).toBe(`  error: ${"e".repeat(187)} ~…`);
   });
 });
 

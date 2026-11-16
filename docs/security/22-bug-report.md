@@ -15,11 +15,14 @@ errors.
   [`bug_copies_a_redacted_report`](../../tests/browser/browser_vimma_about.js)
 - BG2. Every path under `$HOME` **must** start with `~`, with the home matched as a whole name:
   what follows it in the report is the end, whitespace, `/`, `\`, the punctuation around a path
-  in the report or an error message (`:` `;` `,` `"` `'` `` ` `` `(` `)` `[` `]` `{` `}` `<`
-  `>`), or `.`, `!` or `?` closing a sentence.
+  in the report or an error message (`:` `;` `,` `"` `'` `` ` `` `<` `>`), any opening,
+  closing or quotation punctuation (`(` `)` `[` `]` `{` `}` `“` `”` `‘` `’` `«` `»` `「` `」`
+  …), `…` (which also ends an error the report cut to length), or a run of `.`, `!` and `?`
+  closing a sentence (`/home/alice... done`).
   [`turns paths under $HOME into ~`](../../packages/vimma-core/test/report.test.ts),
   [`ends a home at whitespace, a path separator or the punctuation that delimits a path`](../../packages/vimma-core/test/report.test.ts),
-  [`a home that ends in punctuation is whole before a slash, a space or the end`](../../packages/vimma-core/test/report.test.ts)
+  [`a home that ends in punctuation is whole before a slash, a space or the end`](../../packages/vimma-core/test/report.test.ts),
+  [`redacts a home the cut leaves right before its …`](../../packages/vimma-core/test/report.test.ts)
 - BG3. The home **must** match whatever Unicode normal form the home and the path are written
   in (an NFD `$HOME` is common on macOS), and the rest of the report keeps its own characters.
   [`matches a home and a path in different Unicode normal forms (#1173)`](../../packages/vimma-core/test/report.test.ts),
@@ -35,6 +38,7 @@ errors.
   `js/polynomial-redos`): a scan, not a regular expression built from `$HOME`.
   [`strips a home's trailing slashes in linear time (CodeQL js/polynomial-redos)`](../../packages/vimma-core/test/report.test.ts),
   [`redacts a 3 MB report in linear time, in either normal form`](../../packages/vimma-core/test/report.test.ts),
+  [`stays linear on near misses and on one long run of non-ASCII text`](../../packages/vimma-core/test/report.test.ts),
   [`each runs in bounded time on long runs of one character`](../../packages/vimma-core/test/fuzz/strings.fuzz.test.ts)
 - BG6. The control socket's token **never** appears in `about:vimma` or the report.
   [`the_control_token_never_appears`](../../tests/browser/browser_vimma_about.js)
@@ -49,3 +53,7 @@ errors.
   sibling named `/home/alice,old` becomes `~,old`.
 - A name that ends in `.`, `!` or `?` before a space is read as a sentence's end (`/home/alice.`
   is the home).
+- Everything else continues a name (#1173): ASCII `=` `|` `*` `&` `%` `$` `^` `#` `@` `~` `+`,
+  and `.`, `!` or `?` with no whitespace after them, so the home is not found in
+  `HOME=/home/alice|x` or `/home/alice!x`, and those stay as written. The other side of the
+  trade: a sibling such as `/home/alice+b` is never partly redacted (BG4).
