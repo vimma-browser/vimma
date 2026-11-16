@@ -182,7 +182,7 @@ What happens to an offer depends on the install type (`installInfo`, core `insta
 - **Package managers** (`.deb`, `.rpm`, PKGBUILD, Flatpak, Homebrew) install nothing: Vimma shows
   the command that updates them (`updateSteps`).
 
-Tests: [updates.test.mjs](../../packages/vimma-core/test/updates.test.mjs),
+Tests: [updates.test.ts](../../packages/vimma-core/test/updates.test.ts),
 [browser_vimma_update_check.js](../../tests/browser/browser_vimma_update_check.js),
 [browser_vimma_update_verify.js](../../tests/browser/browser_vimma_update_verify.js),
 [browser_vimma_update_appimage.js](../../tests/browser/browser_vimma_update_appimage.js) and
