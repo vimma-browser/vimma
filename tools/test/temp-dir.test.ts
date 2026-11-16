@@ -52,9 +52,9 @@ describe("isolateTmp", () => {
   });
 
   it("reports what a run left behind, and removes it anyway", () => {
-    const env = {};
+    const env: Record<string, string | undefined> = {};
     const finish = isolateTmp(env, parent());
-    const run = (env as any).TMPDIR as string;
+    const run = env.TMPDIR as string;
     mkdirSync(join(run, "vimma-lanes-abc123", "main"), { recursive: true });
     writeFileSync(join(run, "stray"), "x");
     expect(finish()).toEqual(["stray", "vimma-lanes-abc123"]);
