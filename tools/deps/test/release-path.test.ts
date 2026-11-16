@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { ROOTS, classify, releasePath } from "../release-path.ts";
 import type { Entry } from "../release-path.ts";
 import { defined } from "../../test/defined.ts";
-import { jobs } from "../../test/workflow-runners.mjs";
+import { jobs } from "../../test/workflow-runners.ts";
 
 // docs/specs/build-supply-chain.md, decisions 13 to 15;
 // docs/security/14-build-and-release-supply-chain.md, B3. Every package the release build runs is

@@ -16,7 +16,7 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { arMembers, muslVersion, parseRustcVersion, writeCtlNotices } from "../ctl-notices.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const SCRIPT = fileURLToPath(new URL("../ctl-notices.ts", import.meta.url));

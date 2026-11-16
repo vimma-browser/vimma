@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { delimiter, join } from "node:path";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 // A stand-in for gpgv in the tests of the shell scripts that call verify-sha512.py
 // (source-check.sh, firefox-source.sh). Their fixture tarballs are made by the test, so no

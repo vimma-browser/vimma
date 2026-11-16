@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import { fakeSign, fakeSignature, withFakeGpgv } from "./fake-gpgv.ts";
 
 // tools/upstream/verify-source.sh (`npm run verify-source`): checks the tarball a local

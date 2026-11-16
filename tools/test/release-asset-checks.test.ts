@@ -12,7 +12,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CORE_SCHEMA, load } from "js-yaml";
-import { tempDir } from "./temp-dir.mjs";
+import { tempDir } from "./temp-dir.ts";
 
 const WORKFLOWS = new URL("../../.github/workflows/", import.meta.url);
 

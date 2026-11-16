@@ -28,7 +28,7 @@ import {
 } from "../autopilot-body.ts";
 import type { Context } from "../autopilot-body.ts";
 import { ADVISORIES_URL, RELEASES_URL, VERSIONS_URL } from "../releases.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 const fixtures = fileURLToPath(new URL("fixtures/", import.meta.url));
 const read = (name: string) => readFileSync(join(fixtures, name), "utf8");

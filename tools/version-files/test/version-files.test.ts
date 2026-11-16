@@ -9,7 +9,7 @@ import {
   writeVersionFiles,
 } from "../version-files.ts";
 import type { SurferConfig } from "../version-files.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 /** configure (`milestone()`) reads only the last line, as with config/milestone.txt. */
 const lastLine = (file: string) => file.trimEnd().split("\n").at(-1);

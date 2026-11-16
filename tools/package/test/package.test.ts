@@ -49,7 +49,7 @@ import {
   srcinfo,
 } from "../package.ts";
 import { defined } from "../../test/defined.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 const BRAND_DIR = fileURLToPath(new URL("../../../configs/branding/vimma/", import.meta.url));
 const MAINTAINER = "Test Maintainer <test@example.invalid>";

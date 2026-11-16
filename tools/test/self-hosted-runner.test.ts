@@ -6,7 +6,7 @@ import {
   runsOn,
   triggers,
   workflowRunnerProblems,
-} from "./workflow-runners.mjs";
+} from "./workflow-runners.ts";
 
 // js-yaml 5 loads `<<:` as a plain key, as GitHub does: a runs-on that only a merge key supplies
 // is no runs-on, and fails here.

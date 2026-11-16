@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mochitestFailures, suiteResults } from "../suite-results.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 // tools/upstream/suite-results.ts: e2e.yml's Beta mode writes suite-results.json from each
 // step's outcome, the mochitest log and the e2e harness's --report-json (spec

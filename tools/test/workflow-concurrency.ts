@@ -4,7 +4,7 @@
 // checks belong to a commit, so the run of the newest head still reports every one of them. A
 // push to main, a schedule, a manual run or a workflow_call never cancels a run in progress: those
 // runs are the record of main and of the upstream autopilot, and none supersedes another.
-import { parseWorkflow, triggers } from "./workflow-runners.mjs";
+import { parseWorkflow, triggers } from "./workflow-runners.ts";
 
 /** Events whose runs belong to one pull request. */
 export const PR_TRIGGERS = new Set(["pull_request", "pull_request_target"]);

@@ -10,7 +10,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 const PLUGIN = fileURLToPath(new URL("..", import.meta.url));
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));

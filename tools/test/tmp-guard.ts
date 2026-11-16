@@ -7,7 +7,7 @@
 // either way, so a leak fails CI loudly but never piles up in /tmp (#207).
 
 import { tmpdir } from "node:os";
-import { isolateTmp } from "./temp-dir.mjs";
+import { isolateTmp } from "./temp-dir.ts";
 
 /**
  * Caches made under the temp dir on purpose and reused across runs, not leaks: Node's module
@@ -24,7 +24,7 @@ export default function setup(): () => void {
     const shown = left.slice(0, 20).join(", ") + (left.length > 20 ? ", ..." : "");
     throw new Error(
       `tests left ${left.length} ${left.length === 1 ? "entry" : "entries"} in the temp dir: ` +
-        `${shown}. Make them with tempDir() from tools/test/temp-dir.mjs, or remove them in an ` +
+        `${shown}. Make them with tempDir() from tools/test/temp-dir.ts, or remove them in an ` +
         "afterEach/afterAll.",
     );
   };

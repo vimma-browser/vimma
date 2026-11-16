@@ -16,7 +16,7 @@ import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import {
   PER_PAGE,
   GUARD_JOB,

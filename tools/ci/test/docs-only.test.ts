@@ -20,7 +20,7 @@ import {
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CORE_SCHEMA, load } from "js-yaml";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import { GENERATED_MARKDOWN, MARKDOWN_TESTS, classify, isDocsOnly } from "../docs-only.mjs";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));

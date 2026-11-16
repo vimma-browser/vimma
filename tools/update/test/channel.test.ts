@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import { setChannel } from "../channel.ts";
 
 const SCRIPT = new URL("../channel.ts", import.meta.url).pathname;

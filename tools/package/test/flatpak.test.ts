@@ -8,7 +8,7 @@ import { CORE_SCHEMA, load } from "js-yaml";
 import { installTypeFrom, updateSteps } from "../../../packages/vimma-core/src/updates/updates.mjs";
 import { loadScenarios } from "../../e2e/scenario.ts";
 import { defined } from "../../test/defined.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 import {
   APP_ID,
   FINISH_ARGS,

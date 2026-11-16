@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mergeReports, onlyFiles, scoreOf, scoreTable, type ShardReport } from "../merge.ts";
 import { coreFiles, partition } from "../shard.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 const script = fileURLToPath(new URL("../merge.ts", import.meta.url));
 

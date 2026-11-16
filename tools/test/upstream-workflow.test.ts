@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { tempDir } from "./temp-dir.mjs";
+import { tempDir } from "./temp-dir.ts";
 
 // Spec m7-upstream-autopilot, docs/security/10-firefox-updates.md §10: the upstream autopilot's
 // workflow shape.

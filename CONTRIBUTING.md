@@ -152,7 +152,7 @@ version is inside the range `engine/mach` declares, and says which one it chose 
 another. It stops with the interpreters it found when none fits. Set `VIMMA_MACH_PYTHON` to an
 interpreter's path to choose one yourself.
 
-A test that needs a temp dir makes it with `tempDir(prefix)` from `tools/test/temp-dir.mjs`,
+A test that needs a temp dir makes it with `tempDir(prefix)` from `tools/test/temp-dir.ts`,
 which removes it when the test ends, also when it fails. `npm test` runs with a `TMPDIR` of its
 own and fails if a test leaves anything in it. A mochitest removes its temp files in
 `registerCleanupFunction`, and a Rust test drops its temp dir guard.

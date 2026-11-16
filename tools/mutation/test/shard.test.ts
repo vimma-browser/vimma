@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CORE_MUTATE, coreFiles, mutateFor, partition, type SizedFile } from "../shard.ts";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 

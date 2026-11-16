@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkBash, runCommitlint } from "../hooks/lib/bash-rules.mjs";
-import { tempDir } from "../../test/temp-dir.mjs";
+import { tempDir } from "../../test/temp-dir.ts";
 
 /** A commitlint stand-in: passes every message, and records what it was given. */
 function passingLint() {
