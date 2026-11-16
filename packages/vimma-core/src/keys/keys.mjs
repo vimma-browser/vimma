@@ -358,22 +358,22 @@ const US_CODES = {
 };
 
 /**
- * Whether `key`, one character, is what its physical key types without Option/AltGr, judged by
- * a US layout at the same shift state. A letter key typing any ASCII letter types its own:
- * layouts move letters between the letter keys (AZERTY's `KeyQ` types `a`, QWERTZ's `KeyY`
- * types `z`, Dvorak moves most of them), while Option and AltGr compose other characters on them
- * (`å`, `@`). An unknown `code` (a synthesized event) counts only letters and digits as the
- * key's own.
+ * Whether `key`, one character, is what its physical key types without Option/AltGr. Any ASCII
+ * letter counts, on whatever key: layouts move letters between keys and onto punctuation keys
+ * (AZERTY's `KeyQ` types `a` and its `Semicolon` `m`, Dvorak's `Slash` types `z`), while Option
+ * and AltGr compose other characters (`å`, `€`, `@`). Any other character on a letter key is
+ * composed; on another key it is judged by a US layout at the same shift state. An unknown
+ * `code` (a synthesized event) counts digits as the key's own too.
  * @param {string} key
  * @param {string | undefined} code
  * @param {boolean} shift
  */
 function ownCharacter(key, code, shift) {
-  const letter = code?.match(/^Key([A-Z])$/)?.[1];
-  if (letter) return /^[a-z]$/i.test(key);
+  if (/^[a-z]$/i.test(key)) return true;
+  if (code && /^Key[A-Z]$/.test(code)) return false;
   const us = code ? own(US_CODES, code) : undefined;
   if (us) return key === us[shift ? 1 : 0];
-  return /^[a-z0-9]$/i.test(key);
+  return /^[0-9]$/.test(key);
 }
 
 /**

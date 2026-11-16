@@ -1452,8 +1452,9 @@ and it matches a `{` binding (copy mode's `{` and `}`) the same as on a US layou
 a character typed with AltGr or Option as that character, the way `shift` is already part of
 `?` or `G`. A real `alt` chord stays one: `alt+1` is still `alt+1`, and a `ctrl` or `ctrl+alt`
 chord on a key that types its own character (`ctrl+w`, `ctrl+alt+]` on a US layout) keeps its
-modifiers. Windows' `ctrl+alt` stand-in for AltGr counts as AltGr when it types another
-character.
+modifiers. A letter is always its key's own, so `ctrl+alt+letter` works on AZERTY, QWERTZ and
+Dvorak too (`ctrl+alt+z` shows Firefox's sidebar wherever the z is). Windows' `ctrl+alt` stand-in
+for AltGr counts as AltGr when it types another character.
 
 A dead key (`^`, `¨`, `´` on a Finnish layout) types nothing by itself, so it matches no
 binding: GTK reports it as `Dead`. Bindings that use one have a second key for those layouts,

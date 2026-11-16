@@ -5,7 +5,11 @@ import { completeCommandLine } from "../src/keys/cmdline.mjs";
 
 // Issue #1175: what the mutation tests of keys/ left unpinned.
 
-const ev = (key: string, code: string, mods: Partial<Record<string, boolean>> = {}) => ({
+const ev = (
+  key: string,
+  code: string,
+  { altGraph, ...mods }: Partial<Record<string, boolean>> = {},
+) => ({
   key,
   code,
   ctrlKey: false,
@@ -13,8 +17,10 @@ const ev = (key: string, code: string, mods: Partial<Record<string, boolean>> = 
   shiftKey: false,
   metaKey: false,
   ...mods,
-  getModifierState: () => false,
+  getModifierState: (m: string) => m === "AltGraph" && !!altGraph,
 });
+const ctrlAlt = { ctrlKey: true, altKey: true };
+const ctrlAltShift = { ctrlKey: true, altKey: true, shiftKey: true };
 const text = (e: Parameters<typeof chordFromEvent>[0]) => {
   const c = chordFromEvent(e);
   if (!c) throw new Error("no chord");
@@ -22,8 +28,8 @@ const text = (e: Parameters<typeof chordFromEvent>[0]) => {
 };
 
 // docs/specs/key-handling-batch.md § 3: "every ctrl+letter chord keep their modifiers", on any
-// layout. A layout moves letters between the letter keys, so the letter's own key is not judged
-// by the US letter on it.
+// layout. A layout moves letters between keys, onto punctuation keys too (Dvorak's z is on
+// Slash), so a letter is not judged by the US character of the key it is on.
 describe("chordFromEvent: ctrl+alt+letter on non-US layouts", () => {
   test.each([
     ["AZERTY ctrl+alt+a (KeyQ)", ev("a", "KeyQ", { ctrlKey: true, altKey: true }), "ctrl+alt+a"],
@@ -34,6 +40,20 @@ describe("chordFromEvent: ctrl+alt+letter on non-US layouts", () => {
       "AZERTY ctrl+alt+shift+a (KeyQ)",
       ev("A", "KeyQ", { ctrlKey: true, altKey: true, shiftKey: true }),
       "ctrl+alt+shift+a",
+    ],
+    ["Dvorak ctrl+alt+z (Slash)", ev("z", "Slash", ctrlAlt), "ctrl+alt+z"],
+    ["Dvorak ctrl+alt+s (Semicolon)", ev("s", "Semicolon", ctrlAlt), "ctrl+alt+s"],
+    ["Dvorak ctrl+alt+w (Comma)", ev("w", "Comma", ctrlAlt), "ctrl+alt+w"],
+    ["Dvorak ctrl+alt+v (Period)", ev("v", "Period", ctrlAlt), "ctrl+alt+v"],
+    ["Dvorak ctrl+alt+u (KeyF)", ev("u", "KeyF", ctrlAlt), "ctrl+alt+u"],
+    ["Dvorak ctrl+alt+shift+i (KeyG)", ev("I", "KeyG", ctrlAltShift), "ctrl+alt+shift+i"],
+    ["AZERTY ctrl+alt+m (Semicolon)", ev("m", "Semicolon", ctrlAlt), "ctrl+alt+m"],
+    ["Colemak ctrl+alt+shift+i (KeyL)", ev("I", "KeyL", ctrlAltShift), "ctrl+alt+shift+i"],
+    ["Colemak ctrl+alt+o (Semicolon)", ev("o", "Semicolon", ctrlAlt), "ctrl+alt+o"],
+    [
+      "Mac AZERTY ctrl+Option+a (AltGraph set)",
+      ev("a", "KeyQ", { ...ctrlAlt, altGraph: true }),
+      "ctrl+alt+a",
     ],
   ])("%s keeps its modifiers", (_name, e, want) => {
     expect(text(e)).toBe(want);
