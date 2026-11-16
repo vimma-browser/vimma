@@ -22,6 +22,7 @@ import {
   screenshotLabels,
   screenshotScale,
 } from "../core/agent-act.mjs";
+import { AgentActors } from "../actors/AgentActors.sys.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 
 /** @import { HintTarget } from "../actors/VimmaActors.sys.mjs" */
@@ -237,7 +238,7 @@ export const AgentShot = {
     const scale = fit * zoom;
     /** Checked before and again after the drawing: a value typed meanwhile is not sent. */
     const secret = async () => {
-      const found = await VimmaActors.agentSensitiveShown(browser, FRAME_TIMEOUT_MS);
+      const found = await AgentActors.agentSensitiveShown(browser, FRAME_TIMEOUT_MS);
       if (found === "shown") return SHOT_REFUSALS.sensitive;
       return found === "unchecked" ? SHOT_REFUSALS.unchecked : null;
     };

@@ -105,8 +105,8 @@ vision; its key stays in login storage.
   [`test_requests_only_to_the_endpoint_without_credentials_or_redirects`](../../tests/browser/browser_vimma_agent_conversations.js),
   [`posts to the endpoint without credentials or redirects, and parses the reply`](../../packages/vimma-core/test/agent-providers.test.mjs),
   [`a refused endpoint makes no request`](../../packages/vimma-core/test/agent-providers.test.mjs),
-  [`local_only refuses a remote endpoint`](../../packages/vimma-core/test/config-agent.test.mjs),
-  [`an endpoint off this machine must be https, and carry no user name`](../../packages/vimma-core/test/config-agent.test.mjs),
+  [`local_only refuses a remote endpoint`](../../packages/vimma-core/test/config-agent.test.ts),
+  [`an endpoint off this machine must be https, and carry no user name`](../../packages/vimma-core/test/config-agent.test.ts),
   [`lists the models of the servers that answer, with no cookies and no redirects`](../../packages/vimma-core/test/agent-setup.test.mjs),
   [`the probe also asks the configured local endpoints, once each, never a remote one`](../../packages/vimma-core/test/agent-setup.test.mjs),
   [`a provider off this machine, or Anthropic's API, gets no request`](../../packages/vimma-core/test/agent-setup.test.mjs),
@@ -126,8 +126,8 @@ vision; its key stays in login storage.
   [`test_key_never_in_log_notice_or_error`](../../tests/browser/browser_vimma_agent_keys.js),
   [`test_key_deleted`](../../tests/browser/browser_vimma_agent_keys.js),
   [`test_a_key_goes_only_to_the_endpoint_it_was_stored_for`](../../tests/browser/browser_vimma_agent_keys.js),
-  [`a key field in [agent] is an error, with its line`](../../packages/vimma-core/test/config-agent.test.mjs),
-  [`the key's value never appears in the error`](../../packages/vimma-core/test/config-agent.test.mjs),
+  [`a key field in [agent] is an error, with its line`](../../packages/vimma-core/test/config-agent.test.ts),
+  [`the key's value never appears in the error`](../../packages/vimma-core/test/config-agent.test.ts),
   [`a provider error is cut and never contains the key`](../../packages/vimma-core/test/agent-providers.test.mjs)
 - M41. At most `[agent] max_running` conversations (default 3) **must** run a task at once. A
   task **must** stop at its budget (`max_steps`, `max_tokens`, `max_cost`), which nothing the
@@ -138,9 +138,14 @@ vision; its key stays in login storage.
   [`test_ctrl_b_shift_a_stops_every_task`](../../tests/browser/browser_vimma_agent_conversations.js),
   [`a task stops at max_steps`](../../packages/vimma-core/test/agent-budget.test.mjs),
   [`a task ends after the same call is refused three times in a row`](../../packages/vimma-core/test/agent-loop.test.mjs),
-  [`max_running and keep_days parse within their bounds`](../../packages/vimma-core/test/config-agent.test.mjs)
+  [`max_running and keep_days parse within their bounds`](../../packages/vimma-core/test/config-agent.test.ts)
 
-**The chat window** (`ui/agent-chat.mjs`, `host/agent-chat-ops.mjs`, `host/agent-ui.mjs`):
+**The chat window** (`ui/agent-chat.mjs`; `ui/agent-chat-view.mjs`, which builds its box and
+draws every value in it as text; `ui/agent-chat-key.mjs`, the API key entry and its masked field;
+`ui/agent-chat-models.mjs`, the model picker and setup, which checks a new endpoint with
+`checkEndpoint` and asks for its key only through the window, and whose `RESTRICTED` entry in
+`tools/layering/layers.ts` lets only `ui/agent-chat.mjs` import it; `host/agent-chat-ops.mjs`,
+`host/agent-ui.mjs`):
 Vimma's own chrome, a box in the side panel's slot, never a page. It shows the user's messages,
 the model's replies, a line per step and the gate's questions of its open conversation, so it
 holds text a page may have written (a reply quoting it, a tab's title or a button's words in a
@@ -203,8 +208,10 @@ for the user.
   [`test_a_conversation_deleted_while_its_key_is_read_takes_its_message`](../../tests/browser/browser_vimma_agent_picker_race.js),
   [`test_forget_all_leaves_no_text_for_the_next_conversation`](../../tests/browser/browser_vimma_agent_picker_race.js),
   [`the notice before the first task names the host and, when known, who runs it`](../../packages/vimma-core/test/agent-chat.test.mjs)
-- M46. A hosted provider's key **must** be typed only into the window's password field, which
-  hands it to `AgentKeys` (M40) and is emptied at once; the key **must not** be drawn in the
+- M46. A hosted provider's key **must** be typed only into the window's password field
+  (`ui/agent-chat-key.mjs` builds it and stores, clears and deletes the key; its `RESTRICTED`
+  entry in `tools/layering/layers.ts` lets only `ui/agent-chat.mjs` and `ui/agent-chat-view.mjs`
+  import it), which hands it to `AgentKeys` (M40) and is emptied at once; the key **must not** be drawn in the
   window, the transcript, the status bar or a notice (which may show its last four characters),
   nor kept in a pref or the conversation, and an error storing it **must not** be shown with its
   text, nor recorded in Vimma's key log or its debug output. The field **must not** reveal the
@@ -463,7 +470,7 @@ own process, not a process group.
   [`test_setup_finds_codex_with_its_version`](../../tests/browser/browser_vimma_agent_cli_codex.js),
   [`a model that looks like an option is refused, not passed`](../../packages/vimma-core/test/agent-cli.test.mjs),
   [`a typed model is checked with the rule the arguments use`](../../packages/vimma-core/test/agent-cli.test.mjs),
-  [`a cli provider's model is refused by the rule its run uses`](../../packages/vimma-core/test/config-agent.test.mjs),
+  [`a cli provider's model is refused by the rule its run uses`](../../packages/vimma-core/test/config-agent.test.ts),
   [`test_setup_asks_the_clis_model_and_saves_it`](../../tests/browser/browser_vimma_agent_cli_run.js),
   [`the environment is Vimma's, minus the variables Vimma and Firefox set`](../../packages/vimma-core/test/agent-cli.test.mjs),
   [`anything else is refused, with the reason`](../../packages/vimma-core/test/agent-cli.test.mjs),
@@ -578,8 +585,8 @@ own process, not a process group.
   each task; a `command`, `path`, `args` or `env` key in a CLI provider **must** be a config
   error, and so is an `endpoint`.
   [`test_local_only_refuses_a_cli`](../../tests/browser/browser_vimma_agent_cli_run.js),
-  [`local_only refuses a cli provider`](../../packages/vimma-core/test/config-agent.test.mjs),
-  [`command, path, args and env in a cli provider are errors with their line`](../../packages/vimma-core/test/config-agent.test.mjs),
+  [`local_only refuses a cli provider`](../../packages/vimma-core/test/config-agent.test.ts),
+  [`command, path, args and env in a cli provider are errors with their line`](../../packages/vimma-core/test/config-agent.test.ts),
   [`an agent cli is written by name, kind, cli and model, never its path`](../../packages/vimma-core/test/agent-config.test.mjs)
 - M61. A stop (`s`, `:agent stop`, `ctrl+b shift+a`), a task's budget and its end **must**
   revoke the ticket, closing its connection, before the CLI is signalled; then `SIGTERM`, and

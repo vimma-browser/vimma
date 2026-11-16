@@ -55,11 +55,12 @@ theme parsing, the workspace and pane models, the control protocol validator, th
 queue, update manifests and the rest; and the Node tools under `tools/`, including tests of the
 workflows themselves (`tools/test/`) and the e2e harness against a fake control server.
 
-**Where.** `vitest.config.mjs` takes every `*.test.mjs` under `packages/**/test/` and
-`tools/**/test/`, with a global setup (`tools/test/tmp-guard.mjs`) that fails a test leaving
-files in its temporary folder. The `check` job runs `npm run coverage`, which fails below 90 %
-of lines, functions, branches and statements in `packages/vimma-core/src/` (the vendored
-smol-toml excluded). There is no coverage figure for the browser code.
+**Where.** `vitest.config.ts` takes every `*.test.mjs` under `packages/**/test/` and
+`tools/**/test/`, and every `*.test.ts` under `tools/**/test/`, with a global setup
+(`tools/test/tmp-guard.mjs`) that fails a test leaving files in its temporary folder. The `check`
+job runs `npm run coverage`, which fails below 90 % of lines, functions, branches and statements
+in `packages/vimma-core/src/` (the vendored smol-toml excluded).
+There is no coverage figure for the browser code.
 
 **Locally.** `npm test`, or `npx vitest run <file>`.
 
@@ -74,7 +75,7 @@ the schema allows.
 **Where.** The fast-check properties in `packages/vimma-core/test/fuzz/` go through `harness.mjs`:
 in every Vitest run they use a fixed seed (`FIXED_SEED`), so a red run is red again on a re-run, and
 `RUNS` (100) cases times each property's `weight`, which takes most to 500, 1000 or 2000 cases and a
-slow one to 20. `properties.test.mjs` holds more properties of the key notation and the dispatcher.
+slow one to 20. `properties.test.ts` holds more properties of the key notation and the dispatcher.
 On the Rust side, `tools/vimma-ctl/tests/protocol_props.rs` and `mcp_props.rs` use proptest and run
 with `cargo test`. `fuzz.yml` runs both sets every night (02:41 UTC) from a random seed with many
 more cases; a failure uploads the seed and the failing cases and opens or comments on one issue
@@ -91,7 +92,7 @@ and that the browser and `vimma-ctl` agree on the protocol.
 **Where.** `tests/contract/` holds the fixtures by version: `config/v1/` and `v2/` (a valid file,
 invalid ones and their expected errors), `control/v1/` and `v2/`, `state/v1/` (the window snapshot),
 `workspaces/v1/` (the definitions file), and sample Omarchy themes in `theme/`. vimma-core's tests
-read them all (for example [contract.test.mjs](../../packages/vimma-core/test/contract.test.mjs)),
+read them all (for example [contract.test.ts](../../packages/vimma-core/test/contract.test.ts)),
 and vimma-ctl's tests in `tools/vimma-ctl/src/protocol.rs` and `src/mcp/` read the `control/` ones,
 so both sides of the socket check the same lines. A new schema version adds a folder.
 
@@ -167,9 +168,9 @@ Firefox hides.
 browser: `tests/tsconfig.json` with the harness's globals declared in `types/mochitest/`
 (`harness.d.ts` for `add_task`, `Assert`, `BrowserTestUtils`, `SpecialPowers` and the rest,
 `firefox.d.ts` for the Firefox members only tests use, `vimma.d.ts` for Vimma's types a test
-names, `head.d.ts`, which `npm run gen-mochitest-head` generates from the `head*.js` files, and
-`modules.d.ts`, which `npm run gen-mochitest-modules` generates from `jar.mn` and vimma-core's
-layout).
+names, and `head.d.ts`, which `npm run gen-mochitest-head` generates from the `head*.js` files),
+and `types/vimma-modules.d.ts`, which `npm run gen-vimma-modules` generates from `jar.mn` and
+vimma-core's layout.
 Every file in the program, a new one included, must be free of type errors. The `.sjs` handlers
 that httpd.js runs to serve test pages are checked by `tools/sjs-typecheck.ts`: tsc reads no
 `.sjs` file, so it checks byte-for-byte `.js` copies in a temporary folder with
@@ -181,26 +182,28 @@ sandbox lacks (`setTimeout`, `document`) is not caught; a handler that waits use
 the actual one's type, and `Assert.ok` refuses a promise, so a test that compares a value with
 the wrong kind of thing, or asserts on a promise it forgot to await, fails the check.
 `ChromeUtils.importESModule` with a literal `chrome://browser/content/vimma/` URL returns the
-type of the module that URL serves (`modules.d.ts` maps each one to its source), so a call into
-one of Vimma's modules, the members a test reads from it and the JSDoc types a test gives those
-values are checked against the product's own JSDoc; a literal Vimma URL that `modules.d.ts`
-does not have (a typo) is an error. A head file's own imports reach the tests through
-`head.d.ts`, whose generator emits a destructured `importESModule` as `any`; a head file that
+type of the module that URL serves (`types/vimma-modules.d.ts` maps each one to its source), so a
+call into one of Vimma's modules, the members a test reads from it and the JSDoc types a test
+gives those values are checked against the product's own JSDoc; a literal Vimma URL that the map
+does not have (a typo) is an error. A Firefox module's URL gives the members the product and
+the tests read of it: `types/firefox-modules.d.ts` for a module the product imports too,
+`types/mochitest/firefox-test-modules.d.ts` for one only the tests import. A URL neither map has
+gives `unknown`, as in the product's check, and `tools/test/vimma-modules.test.ts` fails on a
+literal one. A head file's own imports reach the tests through `head.d.ts`, whose generator
+emits a destructured `importESModule` as `any`; a head file that
 shares a Vimma module with its tests types it by name instead (`/** @type
 {VimmaModules["<url>"]["<export>"]} */ const X = ChromeUtils.importESModule("<url>").X;`, as
 `head_vimma_grep.js` does), and `head.d.ts` keeps that type. The declarations themselves are
 checked too:
 `tests/tsconfig.json` turns off the root's `skipLibCheck`, because an error in a
-`types/mochitest/*.d.ts` file (a wrong import path, a member read off a type that may be null)
-would make the type it declares `any`, and every annotation naming that type would check
-nothing, with no error shown. Not checked: a module imported from a URL held in a variable,
-Firefox's own modules (`resource://`, `moz-src://`, other `chrome://` URLs), which still return
-`any`, and what the product itself types loosely: an agent question's `what` (a `Record`
-of `any`, as the question line reads it), a child's console entries before the parent checks
-them. A test that knows more than the product's type (a window whose workspaces are built, a
-workspace with its container, a check that was refused) casts to a named type from
-`vimma.d.ts`, such as `LiveWorkspaces`, `ContainedWorkspace` or `RefusedUpdate`, which says
-what it assumes.
+`types/mochitest/*.d.ts` file (a wrong import path, a member read off a type that may be null) would
+make the type it declares `any`, and every annotation naming that type would check nothing, with no
+error shown. Not checked: a module imported from a URL held in a variable, and what the product
+itself types loosely: an agent question's `what` (a `Record` of `any`, as the question line reads
+it), a child's console entries before the parent checks them. A test that knows more than the
+product's type (a window whose workspaces are built, a workspace with its container, a check that
+was refused) casts to a named type from `vimma.d.ts`, such as `LiveWorkspaces`, `ContainedWorkspace`
+or `RefusedUpdate`, which says what it assumes.
 
 ## 7. End-to-end scenarios and screenshots
 

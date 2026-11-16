@@ -71,6 +71,8 @@ written against.
 - A change that moves paths named in many implemented specs is noted here once rather than at
   each place. Since #937, `packages/vimma-core/src/<name>.mjs` in a spec means the module of that
   name in one of the folders that `ARCHITECTURE.md`'s "Module map" lists.
+- Since #1114, `packages/vimma-core/test/<name>.test.mjs` in a spec may now be
+  `<name>.test.ts` ([ADR-025](../adr/025-typescript-for-tools.md) decision 6).
 
 ### Keeping statuses current
 

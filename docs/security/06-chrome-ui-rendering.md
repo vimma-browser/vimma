@@ -51,8 +51,8 @@ text that pages, add-ons and bookmarks choose.
   [`never starts a process, but ClamAV, an AppImage's restart and an agent CLI`](../../tools/security/test/chrome-source.test.ts),
   [`starts an agent CLI only from its checked path, with fixed arguments and no shell`](../../tools/security/test/chrome-source.test.ts),
   [`restarts an AppImage through one fixed script, with its path never shell text`](../../tools/security/test/chrome-source.test.ts),
-  [`/bin/sh runs a fixed script; the pid and the path are arguments, never script text`](../../packages/vimma-core/test/restart.test.mjs),
-  [`starts the AppImage only once the old process has exited, with no arguments`](../../packages/vimma-core/test/restart.test.mjs),
+  [`/bin/sh runs a fixed script; the pid and the path are arguments, never script text`](../../packages/vimma-core/test/restart.test.ts),
+  [`starts the AppImage only once the old process has exited, with no arguments`](../../packages/vimma-core/test/restart.test.ts),
   [`never calls native code, but statx, lstat or readlink for a file's owner, mode or link`](../../tools/security/test/chrome-source.test.ts),
   [`opens and reveals downloads only through Firefox's Download, from download-ops`](../../tools/security/test/chrome-source.test.ts),
   [`test_enter_and_o_open_through_launchDownload`](../../tests/browser/browser_vimma_downloads.js),
@@ -69,16 +69,16 @@ text that pages, add-ons and bookmarks choose.
   is cut to `…<domain>…` while the rest gives way, and cut further, its domain's end as the
   last resort, rather than push a cue or the mode's short form off the bar. An about:blank a page opened or controls **must** read
   `about:blank from <the origin that wrote it>`, never nothing.
-  [`the URL keeps its registrable domain while the toolbar is hidden`](../../packages/vimma-core/test/statusbar.test.mjs),
+  [`the URL keeps its registrable domain while the toolbar is hidden`](../../packages/vimma-core/test/statusbar.test.ts),
   [`the_status_bar_keeps_the_registrable_domain`](../../tests/browser/browser_vimma_toolbar.js),
   [`an_about_blank_a_page_wrote_says_so`](../../tests/browser/browser_vimma_toolbar.js),
   [`a_blob_page_shows_its_origin`](../../tests/browser/browser_vimma_toolbar.js),
   [`an_about_blank_names_its_writer_after_the_opener_leaves`](../../tests/browser/browser_vimma_toolbar.js),
-  [`the security cues outrank the kept URL`](../../packages/vimma-core/test/statusbar.test.mjs)
+  [`the security cues outrank the kept URL`](../../packages/vimma-core/test/statusbar.test.ts)
 - It **must** say `not secure` wherever Firefox's address bar would warn (plain http, a
   certificate error page or exception, mixed content), read from the browser's security state,
   never from the hidden address bar, and `private` in a private window.
-  [`securityFromState`](../../packages/vimma-core/test/statusbar.test.mjs),
+  [`securityFromState`](../../packages/vimma-core/test/statusbar.test.ts),
   [`not_secure_comes_from_the_browser_state`](../../tests/browser/browser_vimma_toolbar.js),
   [`the_status_bar_says_not_secure_and_private`](../../tests/browser/browser_vimma_toolbar.js)
 - It **must** say which devices the selected page uses (camera, microphone, screen, location,
@@ -87,7 +87,7 @@ text that pages, add-ons and bookmarks choose.
   tab is read, and the tab strip is hidden), nor Firefox's camera and microphone grace period
   after a stream ends; on Linux the desktop's global WebRTC indicator still shows background
   capture.
-  [`sharing: devices in use while the toolbar is hidden`](../../packages/vimma-core/test/statusbar.test.mjs),
+  [`sharing: devices in use while the toolbar is hidden`](../../packages/vimma-core/test/statusbar.test.ts),
   [`the_status_bar_shows_camera_and_mic_in_use`](../../tests/browser/browser_vimma_toolbar.js)
 - A permission prompt **must** hang from its own icon in the address bar, next to the site's
   identity and address, as with the toolbar shown (the prompt bar), and **never** open
@@ -125,11 +125,11 @@ text that pages, add-ons and bookmarks choose.
   add-on's button between the toolbar and the extensions menu, and private-window access is
   asked in the install prompt, not here. No other notice of that panel takes the keys (the
   update notices' main button restarts the browser).
-  [`doorhangerKey`](../../packages/vimma-core/test/prompt-keys.test.mjs),
+  [`doorhangerKey`](../../packages/vimma-core/test/prompt-keys.test.ts),
   [`permission_prompts_answer_y_and_n`](../../tests/browser/browser_vimma_toolbar.js),
   [`prompt_keys_arm_on_firefoxs_own_delay`](../../tests/browser/browser_vimma_toolbar.js),
   [`prompt_keys_leave_live_grep_and_find_their_keys`](../../tests/browser/browser_vimma_toolbar.js),
-  [`KEY_KEEPING_MODES`](../../packages/vimma-core/test/modes.test.mjs),
+  [`KEY_KEEPING_MODES`](../../packages/vimma-core/test/modes.test.ts),
   [`prompt_keys_leave_hint_copy_and_element_mode_their_keys`](../../tests/browser/browser_vimma_toolbar.js),
   [`the_addon_install_prompt_answers_y_and_n`](../../tests/browser/browser_vimma_toolbar.js),
   [`the_addon_installed_notice_answers_p_and_y`](../../tests/browser/browser_vimma_toolbar.js),
@@ -153,7 +153,7 @@ text that pages, add-ons and bookmarks choose.
   `Services.perms.addFromPrincipal` (SitePermissions removes a block instead of recording it),
   which keeps it for the private session only in a private window (PermissionManager forces
   `EXPIRE_SESSION` for private principals).
-  [`popupBarKey`](../../packages/vimma-core/test/prompt-keys.test.mjs),
+  [`popupBarKey`](../../packages/vimma-core/test/prompt-keys.test.ts),
   [`y_answers_only_once_the_bar_is_armed_and_allows_the_site`](../../tests/browser/browser_vimma_popups.js),
   [`n_blocks_the_site_and_esc_only_closes_the_bar`](../../tests/browser/browser_vimma_popups.js),
   [`keys_typed_in_a_field_or_the_command_line_are_theirs`](../../tests/browser/browser_vimma_popups.js),
@@ -168,7 +168,7 @@ text that pages, add-ons and bookmarks choose.
   nothing. They **never** answer from the dialog's own text fields, and press Firefox's own
   buttons, so a button Firefox keeps disabled stays so. A page can open a dialog under a typing
   hand; the wait is what keeps that typing from answering it.
-  [`dialogKey`](../../packages/vimma-core/test/prompt-keys.test.mjs),
+  [`dialogKey`](../../packages/vimma-core/test/prompt-keys.test.ts),
   [`leave_page_n_stays_y_leaves`](../../tests/browser/browser_vimma_dialog_keys.js),
   [`prompt_field_types`](../../tests/browser/browser_vimma_dialog_keys.js)
 - The external protocol questions over a tab (`permissionDialog.xhtml`, "Allow this site to

@@ -6,9 +6,16 @@ model, text blocks, live grep's matcher and worker, the PDF viewer adapter, the 
 reads and fills). `VimmaParent`, in `host/`, receives its reports in the parent process.
 
 **Entry points:** `VimmaActors.sys.mjs`: `VimmaActors.register(parentURI)` (called by `vimma.js`
-with the parent actor's URL) and
-the functions the host and the agent commands use to send a request to a page and await its
-answer.
+with the parent actor's URL) and the functions the host uses to send a request to a page and
+await its answer. `AgentActors.sys.mjs`: the same for the agent commands of `ctl/` (`agent*`:
+inspect, click, fill, submit, wait, checkpoints, console, screenshots), with the agent's
+submission blocker, `submit-marks.mjs` (security.md M28), which both import by relative path so
+that its marks and its observer stay one instance. `actor-for.mjs` finds a frame's actor for
+both.
+
+The agent's page work in a frame (its listed elements, clicks, fills, submissions, waits and
+console reads) is `agent-page.mjs`, which only `VimmaChild` may import (`RESTRICTED` in
+`tools/layering/layers.ts`; security.md section 12).
 
 **May import (layer 2, [ADR-026](../../../../../../docs/adr/026-module-layering.md)):** `core/` and the layer 1
 folders. Nothing here names a `host/` module, not even in a string: the parent actor, which

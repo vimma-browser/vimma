@@ -960,7 +960,8 @@ add_task(async function the_addon_installed_notice_answers_p_and_y() {
     manifest: { browser_action: {}, browser_specific_settings: { gecko: { id: ID } } },
   });
   await ext.startup();
-  const addon = await AddonManager.getAddonByID(ID);
+  // Installed by the startup above.
+  const addon = /** @type {TestAddon} */ (await AddonManager.getAddonByID(ID));
   const widget = `${ID.replace(/[^a-z0-9_-]/g, "_")}-browser-action`;
   const area = () => CustomizableUI.getPlacementOfWidget(widget)?.area;
   const tab = await openPage();

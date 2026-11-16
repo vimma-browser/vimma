@@ -35,28 +35,28 @@ only the agent workspace, and every request asks you first (§12).
   HMAC-SHA256(ticket, `vimma-ticket` NUL), and the ticket is sent only after the server's proof;
   an auth carries a token or a ticket, never both.
   [`test_handshake`](../../tests/browser/browser_vimma_control.js),
-  [`challenge.valid's proof is HMAC-SHA256(token, vimma-server NUL nonce)`](../../packages/vimma-core/test/control.test.mjs),
+  [`challenge.valid's proof is HMAC-SHA256(token, vimma-server NUL nonce)`](../../packages/vimma-core/test/control.test.ts),
   [`a_squatter_gets_neither_the_token_nor_a_command`](../../tools/vimma-ctl/tests/cli.rs),
-  [`an agent hello with a ticket validates; a ticket and a token together do not`](../../packages/vimma-core/test/control-v2.test.mjs),
+  [`an agent hello with a ticket validates; a ticket and a token together do not`](../../packages/vimma-core/test/control-v2.test.ts),
   [`a_ticket_handshake_proves_the_server_first`](../../tools/vimma-ctl/tests/mcp.rs)
 - S5. It **must** cap connections (8 open, of which at most 4 agents; 2 waiting for a hello),
   line length (1 MiB) and handshake and idle time. A ticket's connection counts toward the 8
   but not the 4 agents, so MCP agents cannot keep out a task Vimma started; a ticket has one
   connection at a time (M51).
   [`test_limits`](../../tests/browser/browser_vimma_control.js),
-  [`test_agents_cannot_take_every_connection`](../../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_agents_cannot_take_every_connection`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`test_mcp_agents_cannot_keep_out_a_ticket`](../../tests/browser/browser_vimma_agent_cli.js)
 - S6. A token file left by a crash **must** be removed at start; a symlink or directory in its
   place is never followed. [`test_stale_discovery_file_removed_at_start`](../../tests/browser/browser_vimma_control.js)
 - S7. Only the commands of the connection's role **must** run (`full`: the four of protocol 1;
   `agent`: the seven agent commands); anything else, and any unknown argument, is refused.
   [`test_handshake`](../../tests/browser/browser_vimma_control.js),
-  [`protocol version 1 with the commands of ADR-007`](../../packages/vimma-core/test/control.test.mjs),
-  [`protocols 1 and 2, two roles, the agent commands apart from v1's`](../../packages/vimma-core/test/control-v2.test.mjs),
+  [`protocol version 1 with the commands of ADR-007`](../../packages/vimma-core/test/control.test.ts),
+  [`protocols 1 and 2, two roles, the agent commands apart from v1's`](../../packages/vimma-core/test/control-v2.test.ts),
   [`test_each_role_runs_only_its_commands`](../../tests/browser/browser_vimma_mcp_agent.js)
 - S8. `reload-theme` **never** takes an argument; it reads only the theme folder Vimma's own
   prefs name. [`test_reload_theme`](../../tests/browser/browser_vimma_control.js),
-  [`takes no args`](../../packages/vimma-core/test/control.test.mjs)
+  [`takes no args`](../../packages/vimma-core/test/control.test.ts)
 - S9. `state` **must** be read-only: it changes no tab, selection, mode or workspace, and never
   gives an unloaded tab its browser. In a private window it **never** reports a tab's URL or
   title; it keeps each tab's id, place, selection, pinning and whether its page is still loading,
@@ -82,28 +82,37 @@ only the agent workspace, and every request asks you first (§12).
   `null` unless that tab shows the viewer; it **never** carries the page, the page count, the
   document's title or URL, or the outline, and is `null` in a private window. The viewer's own
   report of its drawing (section 20, V6) only ever turns that flag; a viewer that lies about it
-  (its drawing, size or zoom) changes when a script's wait ends, nothing else.
+  (its drawing, size or zoom) changes when a script's wait ends, nothing else. Reading the mode
+  writes nothing: a resize mode left with no panes is reported as the mode it would be without
+  resize, and its flag is cleared where the panes change (the last pane closes, the split hides),
+  never by a read; the status bar's own bookkeeping (the update segment's timer) does not run for
+  `state`. The one write left on the path is bookkeeping that changes no selection, mode, focus,
+  page activity or split wrapper: in a window whose address bar has not been focused yet, the
+  first `state` read starts listening to the bar's query controller, as that first focus would,
+  so that `state.urlbar` can tell a query under way; reading starts no query and changes no text.
+  [`state_leaves_a_stale_resize_mode_as_it_found_it`](../../tests/browser/browser_vimma_control_state_read.js),
+  [`resize_mode_ends_when_the_last_pane_closes_or_the_split_hides`](../../tests/browser/browser_vimma_pane_swap_resize.js),
   [`control_state_is_read_only`](../../tests/browser/browser_vimma_security_invariants.js),
   [`test_state_splits`](../../tests/browser/browser_vimma_control.js),
   [`test_state_update`](../../tests/browser/browser_vimma_control.js),
-  [`controlUpdateState keeps only the fields the protocol names (m6a-updater 41)`](../../packages/vimma-core/test/control.test.mjs),
+  [`controlUpdateState keeps only the fields the protocol names (m6a-updater 41)`](../../packages/vimma-core/test/control.test.ts),
   [`the_private_workspace_keeps_two_splits_and_state_names_no_page`](../../tests/browser/browser_vimma_private_workspace.js),
   [`control_state_never_inserts_a_lazy_tab`](../../tests/browser/browser_vimma_security_invariants.js),
   [`vimma_ctl_state_withholds_private_urls_and_titles`](../../tests/browser/browser_vimma_private_workspace.js),
   [`vimma_ctl_state_says_whether_a_private_tab_is_loading`](../../tests/browser/browser_vimma_private_workspace.js),
-  [`notice, prompt, chat and agent, when present, are flags and counts only`](../../packages/vimma-core/test/control.test.mjs),
+  [`notice, prompt, chat and agent, when present, are flags and counts only`](../../packages/vimma-core/test/control.test.ts),
   [`test_state_reports_the_window_and_the_notice_as_drawn`](../../tests/browser/browser_vimma_agent_chat.js),
   [`test_state_names_each_top_level_field`](../../tests/browser/browser_vimma_control.js),
-  [`agent.armed is a flag, and downloads a word from a closed list or null`](../../packages/vimma-core/test/control.test.mjs),
+  [`agent.armed is a flag, and downloads a word from a closed list or null`](../../packages/vimma-core/test/control.test.ts),
   [`test_state_reports_the_line_armed_as_drawn`](../../tests/browser/browser_vimma_mcp_prompt_guards.js),
   [`test_state_reports_the_segment_as_drawn`](../../tests/browser/browser_vimma_downloads.js),
-  [`grep and urlbar are one flag each, or null`](../../packages/vimma-core/test/control.test.mjs),
+  [`grep and urlbar are one flag each, or null`](../../packages/vimma-core/test/control.test.ts),
   [`test_state_reports_live_grep_as_drawn`](../../tests/browser/browser_vimma_state_waits.js),
   [`test_state_reports_the_suggestion_list_as_drawn`](../../tests/browser/browser_vimma_state_waits.js),
   [`test_a_query_under_way_is_not_settled_even_heard_late`](../../tests/browser/browser_vimma_state_waits.js),
   [`test_state_reports_a_grep_jump_until_it_has_drawn`](../../tests/browser/browser_vimma_state_waits.js),
-  [`pdf is one flag, or null`](../../packages/vimma-core/test/control.test.mjs),
-  [`pdfDrawn`](../../packages/vimma-core/test/pdf.test.mjs),
+  [`pdf is one flag, or null`](../../packages/vimma-core/test/control.test.ts),
+  [`pdfDrawn`](../../packages/vimma-core/test/pdf.test.ts),
   [`test_state_reports_the_pdf_viewer_as_drawn`](../../tests/browser/browser_vimma_state_waits.js)
 - S10. `open` **must** load only http, https, file and about URLs of at most 64 KiB, checked by
   the server itself, never only by the client.
@@ -122,13 +131,13 @@ only the agent workspace, and every request asks you first (§12).
   [`any line a client sends, decoded as the server does, validates without throwing`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
   [`every valid message validates; one changed or added field makes it invalid`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
   [`send-keys passes only keys the server can parse; open only short http(s), file and about URLs`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
-  [`a type that is not a string is an error, never a throw`](../../packages/vimma-core/test/control.test.mjs),
+  [`a type that is not a string is an error, never a throw`](../../packages/vimma-core/test/control.test.ts),
   [`agent-open passes only short http(s) URLs; agent labels never carry control or bidi characters`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
   [`test_handshake`](../../tests/browser/browser_vimma_control.js),
-  [`a copy: the parsed arguments share no object with the request's`](../../packages/vimma-core/test/control-v2.test.mjs),
-  [`what the validator refuses is null: a missing tab, a wrong type, an extra field`](../../packages/vimma-core/test/control-v2.test.mjs),
-  [`arguments are read once: a getter cannot change a value after the check`](../../packages/vimma-core/test/control-v2.test.mjs),
-  [`inherited properties are not arguments`](../../packages/vimma-core/test/control-v2.test.mjs)
+  [`a copy: the parsed arguments share no object with the request's`](../../packages/vimma-core/test/control-v2.test.ts),
+  [`what the validator refuses is null: a missing tab, a wrong type, an extra field`](../../packages/vimma-core/test/control-v2.test.ts),
+  [`arguments are read once: a getter cannot change a value after the check`](../../packages/vimma-core/test/control-v2.test.ts),
+  [`inherited properties are not arguments`](../../packages/vimma-core/test/control-v2.test.ts)
 - S12. The `full` role **must** run only with `vimma.control.enabled`, and the `agent` role only
   with MCP on; a hello for a role that is off is refused (`role-off`) and closed, and turning a
   switch off closes that role's connections. An agent connection **never** reaches `send-keys`,

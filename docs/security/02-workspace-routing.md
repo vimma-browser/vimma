@@ -21,9 +21,9 @@ Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule na
 - R4. The names (`-vimma-from`, `VIMMA_FROM`) are at most eight tokens of at most 64 characters
   each, and **must** only select a workspace that a rule in config.toml names and that exists;
   a name that is not a token once lower-cased is dropped. Spec: [app-routes](../specs/app-routes.md).
-  [`a hint that is not a token never matches`](../../packages/vimma-core/test/routes.test.mjs),
-  [`a rule naming a workspace that does not exist is skipped`](../../packages/vimma-core/test/routes.test.mjs),
-  [`parseAppList keeps at most eight names, drops non-tokens, keeps the rest`](../../packages/vimma-core/test/routes.test.mjs),
+  [`a hint that is not a token never matches`](../../packages/vimma-core/test/routes.test.ts),
+  [`a rule naming a workspace that does not exist is skipped`](../../packages/vimma-core/test/routes.test.ts),
+  [`parseAppList keeps at most eight names, drops non-tokens, keeps the rest`](../../packages/vimma-core/test/routes.test.ts),
   [`parseAppList returns only tokens, at most eight, never two equal neighbours`](../../packages/vimma-core/test/fuzz/routes.fuzz.test.mjs),
   [`an_app_list_with_a_bad_name_routes_by_the_rest`](../../tests/browser/browser_vimma_workspace_routes_external.js)
 - R5. `VIMMA_FROM` **must** be read once and cleared, so it never reaches a later window or a
@@ -40,8 +40,8 @@ Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule na
   [`a_rule_after_one_naming_the_agent_workspace_applies`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`an_agent_cli_link_skips_every_app_rule_after_an_agent_rule`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`a_child_named_after_the_terminal_under_an_agent_cli_never_reaches_the_terminals_rule`](../../tests/browser/browser_vimma_agent_outside_opens.js),
-  [`an agent workspace rule drops every name: claude,zsh,ghostty never reaches the ghostty rule`](../../packages/vimma-core/test/routes.test.mjs),
-  [`the agent cut applies below the first rule without app too`](../../packages/vimma-core/test/routes.test.mjs)
+  [`an agent workspace rule drops every name: claude,zsh,ghostty never reaches the ghostty rule`](../../packages/vimma-core/test/routes.test.ts),
+  [`the agent cut applies below the first rule without app too`](../../packages/vimma-core/test/routes.test.ts)
 - R9. `[routing] default_workspace` applies **only** to links from other programs that no rule
   matches (a remote command line, or a window opened for one), never to what you type, never to
   the agent workspace, and never in a private window.

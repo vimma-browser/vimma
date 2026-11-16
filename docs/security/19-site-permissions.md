@@ -27,7 +27,7 @@ which Firefox's site information panel shows already, and stores nothing of its 
   **must** show the new state after a change.
   [`test_lists_every_permission_with_its_real_state`](../../tests/browser/browser_vimma_site_permissions.js),
   [`test_keys_change_it_through_firefox_and_the_row_follows`](../../tests/browser/browser_vimma_site_permissions.js),
-  [`one row per permission, by Firefox's label, with its real state`](../../packages/vimma-core/test/sitepermissions.test.mjs)
+  [`one row per permission, by Firefox's label, with its real state`](../../packages/vimma-core/test/sitepermissions.test.ts)
 - SP4. A change **must** go through Firefox's own code paths: one
   `SitePermissions.setForPrincipal` or `SitePermissions.removeFromPrincipal` call, the calls
   Page Info makes, and only in `host/permission-ops.mjs`; no other Vimma code changes a site
@@ -46,8 +46,8 @@ which Firefox's site information panel shows already, and stores nothing of its 
   [`test_popups_can_be_allowed_blocked_and_reset`](../../tests/browser/browser_vimma_site_permissions.js),
   [`test_site_and_popups_share_one_popup_permission`](../../tests/browser/browser_vimma_site_permissions.js),
   [`test_a_private_window_keeps_a_popup_block_for_its_session`](../../tests/browser/browser_vimma_site_permissions.js),
-  [`a state Firefox does not offer for the permission is refused`](../../packages/vimma-core/test/sitepermissions.test.mjs),
-  [`a locked row changes nothing`](../../packages/vimma-core/test/sitepermissions.test.mjs),
+  [`a state Firefox does not offer for the permission is refused`](../../packages/vimma-core/test/sitepermissions.test.ts),
+  [`a locked row changes nothing`](../../packages/vimma-core/test/sitepermissions.test.ts),
   [`test_a_state_firefox_does_not_offer_is_refused`](../../tests/browser/browser_vimma_site_permissions.js),
   [`test_a_locked_default_makes_the_row_read_only`](../../tests/browser/browser_vimma_site_permissions.js)
 - SP5. No control, MCP or agent code **must** reach it: nothing under `ctl/` or `agent/` imports

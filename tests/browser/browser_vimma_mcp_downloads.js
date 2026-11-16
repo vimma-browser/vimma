@@ -37,9 +37,7 @@ const { AgentDownloads } = ChromeUtils.importESModule(
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
 );
-const { Downloads } = /** @type {{ Downloads: DownloadsApi }} */ (
-  ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs")
-);
+const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs");
 const { DownloadIntegration } = ChromeUtils.importESModule(
   "resource://gre/modules/DownloadIntegration.sys.mjs",
 );

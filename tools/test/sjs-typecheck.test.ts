@@ -42,6 +42,9 @@ describe("the .sjs type check (#1070)", () => {
       "/repo/types/mochitest/firefox.d.ts",
       "/repo/types/sjs/*.d.ts",
     ]);
+    // Nothing left out, as in tests/tsconfig.json: the product modules types/vimma-modules.d.ts
+    // brings in need types/firefox-modules.d.ts.
+    expect(config.exclude).toEqual([]);
     expect(config.include.some((glob) => /harness|head|vimma\.d/.test(glob))).toBe(false);
   });
 

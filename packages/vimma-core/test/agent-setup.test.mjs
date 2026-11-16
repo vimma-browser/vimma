@@ -16,8 +16,10 @@ import {
   prepareLocalModel,
   probeLocal,
   providerKey,
+  sameProvider,
   unavailableText,
 } from "../src/agent/agent-setup.mjs";
+import { budget } from "./budget.mjs";
 
 /**
  * A fake fetch: `routes` maps a URL to a reply body (an object, sent as JSON) or a status.
@@ -81,7 +83,7 @@ describe("the probe", () => {
     const { fetch } = fake({ "http://127.0.0.1:8080/v1/models": "hang" });
     const started = Date.now();
     expect(await probeLocal(fetch, { timeoutMs: 50 })).toEqual([]);
-    expect(Date.now() - started).toBeLessThan(1000);
+    expect(Date.now() - started).toBeLessThan(budget(1000));
   });
 
   test("model names that are not plain text are dropped", async () => {
@@ -480,5 +482,21 @@ describe("the picker's entries", () => {
       });
       expect(entries[0]).toEqual({ provider: typed, state: null, current: true });
     });
+  });
+});
+
+describe("sameProvider", () => {
+  test("one model at one endpoint under one name; any of the three differing makes another", () => {
+    /** @type {import("../src/config/config.mjs").AgentProviderConfig} */
+    const p = /** @type {any} */ ({
+      name: "anthropic",
+      kind: "anthropic",
+      endpoint: "https://api.anthropic.com",
+      model: "claude-sonnet-4-5",
+    });
+    expect(sameProvider(p, { ...p })).toBe(true);
+    expect(sameProvider(p, { ...p, name: "work" })).toBe(false);
+    expect(sameProvider(p, { ...p, endpoint: "https://api.anthropic.com/" })).toBe(false);
+    expect(sameProvider(p, { ...p, model: "claude-opus-4-1" })).toBe(false);
   });
 });

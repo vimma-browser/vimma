@@ -19,11 +19,11 @@ interface FirefoxServices {
   focus: nsIFocusManager;
   // engine/caps/nsIScriptSecurityManager.idl
   scriptSecurityManager: {
-    getSystemPrincipal(): unknown;
-    createNullPrincipal(originAttributes: object): unknown;
-    createContentPrincipal(uri: nsIURI, originAttributes: object): unknown;
-    principalWithOA(principal: unknown, originAttributes: object): unknown;
-    checkLoadURIWithPrincipal(principal: unknown, uri: unknown, flags?: number): void;
+    getSystemPrincipal(): nsIPrincipal;
+    createNullPrincipal(originAttributes: object): nsIPrincipal;
+    createContentPrincipal(uri: nsIURI, originAttributes: object): nsIPrincipal;
+    principalWithOA(principal: nsIPrincipal, originAttributes: object): nsIPrincipal;
+    checkLoadURIWithPrincipal(principal: nsIPrincipal, uri: nsIURI, flags?: number): void;
   };
   clipboard: nsIClipboard;
   // engine/dom/events/nsIEventListenerService.idl
@@ -209,6 +209,7 @@ declare const Cc: XPCOMClasses;
 // XPCOM results (engine/xpcom/base/ErrorList.py): the codes Vimma names, and any other by name.
 declare const Cr: Record<string, number> & {
   readonly NS_BINDING_ABORTED: number;
+  readonly NS_ERROR_FILE_TOO_BIG: number;
   readonly NS_OK: number;
 };
 
@@ -319,28 +320,29 @@ interface URL {
   readonly URI: nsIURI;
 }
 
-// Vimma's own modules by chrome:// URL, typed as their source modules. Empty here, so the
-// product's ChromeUtils.importESModule calls return `any` as before; the browser tests' program
-// (tests/tsconfig.json) fills it from the generated types/mochitest/modules.d.ts.
+// The modules Vimma imports by URL, typed as their exports: Vimma's own (types/vimma-modules.d.ts,
+// generated from jar.mn) and the Firefox modules the product imports (types/firefox-modules.d.ts).
 interface VimmaModules {}
+// What importESModule gives for any other URL: `unknown`, so an import of a module the map lacks
+// is an error where its exports are read (the browser tests' program says the same in
+// types/mochitest/harness.d.ts, and maps their Firefox modules in firefox-test-modules.d.ts).
+interface UnmappedESModule {}
 
 // engine/dom/chrome-webidl/ChromeUtils.webidl
 declare const ChromeUtils: {
-  // A literal URL of one of VimmaModules gets that module's type; any other (Firefox's own
-  // modules, a URL held in a variable) stays `any`. Where VimmaModules is filled (the browser
-  // tests), a literal Vimma URL that is not one of them (a typo, a module jar.mn does not ship)
-  // matches neither and is an error; the product's program, with it empty, takes any URL.
+  // A literal URL of one of VimmaModules gets that module's type; a literal Vimma URL that is not
+  // one of them (a typo, a module jar.mn does not ship) matches neither and is an error; any other
+  // URL (a Firefox module the map lacks, a URL held in a variable) gets UnmappedESModule's type.
   importESModule<U extends keyof VimmaModules>(url: U): VimmaModules[U];
   importESModule<S extends string>(
-    url: S extends `chrome://browser/content/vimma/${string}`
-      ? [keyof VimmaModules] extends [never]
-        ? S
-        : never
-      : S,
-  ): any;
+    url: S extends `chrome://browser/content/vimma/${string}` ? never : S,
+  ): UnmappedESModule extends { readonly module: infer M } ? M : unknown;
   // `target` is a module's `lazy` object, typed with Lazy<…> below: its names and the module
-  // map's must match.
-  defineESModuleGetters<T extends object>(target: T, modules: { [K in keyof T]: string }): void;
+  // map's must match, and each URL must be one LazyModuleUrl allows for its name.
+  defineESModuleGetters<T extends object, const M extends { [K in keyof T]: string }>(
+    target: T,
+    modules: M & { [K in keyof M]: K extends keyof T ? LazyModuleUrl<T[K], K, M[K]> : never },
+  ): void;
   registerWindowActor(name: string, options: object): void;
   /** A QueryInterface for a JS object that implements `interfaces` (and nsISupports). */
   generateQI(interfaces: (keyof XPCOMInterfaces)[]): nsISupports["QueryInterface"];
@@ -538,8 +540,7 @@ interface nsIPrincipal {
 // name is exported by one module). A module's `lazy` object is
 // `/** @type {Lazy<"setTimeout" | "PrivateBrowsingUtils">} */ ({})`: the getters fill it on the
 // next line, which is why the empty object may be asserted to the full shape. Firefox modules
-// list only the members Vimma calls; `any` marks a module Vimma uses beyond a few members whose
-// shape is not typed here yet.
+// list only the members Vimma calls.
 interface LazyModules {
   // engine/toolkit/modules/Timer.sys.mjs: ids are numbers; clearing an unknown id (null, a
   // finished timer) does nothing. The callback gets the extra arguments (a promise's resolve
@@ -618,8 +619,6 @@ interface LazyModules {
   // may give null too).
   E10SUtils: { deserializePrincipal(base64: string): nsIPrincipal | null };
 
-  // Untyped: wide Firefox APIs Vimma drives in depth (the agent's downloads and dialogs,
-  // js-ctypes and subprocesses).
   // engine/browser/modules/AboutNewTab.sys.mjs: setting the URL overrides it until the reset.
   AboutNewTab: {
     newTabURL: string;
@@ -638,7 +637,7 @@ interface LazyModules {
   // engine/toolkit/components/downloads/DownloadIntegration.sys.mjs, as
   // `Integration.downloads.getCombined` takes it.
   DownloadIntegration: object;
-  DownloadPaths: any;
+  DownloadPaths: DownloadPathsModule;
   Downloads: DownloadsModule;
   DownloadsCommon: DownloadsCommonApi;
   ExtensionPermissions: ExtensionPermissionsApi;
@@ -652,21 +651,24 @@ interface LazyModules {
     isCreditCardField(fieldName: unknown): boolean;
     isAddressField(fieldName: unknown): boolean;
   };
-  Integration: any;
+  Integration: IntegrationModule;
   // engine/toolkit/modules/JSONFile.sys.mjs (a constructor function)
   JSONFile: new (config: JSONFileConfig) => JSONFileInstance;
   PopupAndRedirectBlockerObserver: PopupAndRedirectBlockerObserver;
   SearchService: SearchServiceApi;
   SitePermissions: SitePermissionsApi;
-  Subprocess: any;
+  Subprocess: SubprocessModule;
   // engine/browser/components/urlbar/UrlbarSearchUtils.sys.mjs: the visible engines with an
   // `@` alias, each with those aliases (an empty list when the search service fails to start).
   UrlbarSearchUtils: {
     tokenAliasEngines(): Promise<{ engine: SearchEngine; tokenAliases: string[] }[]>;
   };
-  ctypes: any;
-  nsContentDispatchChooser: any;
-  nsUnknownContentTypeDialog: any;
+  // The agent's downloads and the agent pages' hooks: types/firefox-downloads.d.ts.
+  ctypes: CtypesModule;
+  // engine/uriloader/exthandler/ContentDispatchChooser.sys.mjs and toolkit/mozapps/downloads/
+  // HelperAppDlg.sys.mjs: the classes the agent's wrappers construct and fall back to.
+  nsContentDispatchChooser: new () => ContentDispatchChooser;
+  nsUnknownContentTypeDialog: new () => HelperAppLauncherDialog;
   // engine/toolkit/components/pictureinpicture/PictureInPicture.sys.mjs: its per-window count of
   // PiP windows; a window without one has no entry.
   PictureInPicture: { readonly originatingWinWeakMap: WeakMap<Window, number> };
@@ -700,6 +702,24 @@ interface FormAutofillField {
 }
 
 type Lazy<K extends keyof LazyModules> = { readonly [P in K]: LazyModules[P] };
+
+// A URL a lazy getter `Name` of type `T` may load. A module VimmaModules maps must export `Name`;
+// Vimma's own (its exports' types are the source's) must export it as `T` or a narrower type,
+// while a Firefox module's entry is hand-written like LazyModules and the browser tests' map
+// declares some apart from it (types/mochitest/firefox-test-modules.d.ts), so only the name is
+// checked. A Vimma URL the map lacks (a typo, a module jar.mn does not ship) is an error, as for
+// importESModule; any other Firefox URL is taken as written.
+type LazyModuleUrl<T, Name, U> = U extends keyof VimmaModules
+  ? Name extends keyof VimmaModules[U]
+    ? U extends `chrome://browser/content/vimma/${string}`
+      ? VimmaModules[U][Name] extends T
+        ? U
+        : never
+      : U
+    : never
+  : U extends `chrome://browser/content/vimma/${string}`
+    ? never
+    : U;
 
 // engine/toolkit/components/passwordmgr/nsILoginInfo.idl
 interface nsILoginInfo {
@@ -853,7 +873,8 @@ interface MozTabbrowserTab extends Element {
   readonly linkedPanel: string | null;
   /** The tab's position among all tabs (Tabbrowser `tabIndex` options take it). */
   readonly index: number;
-  readonly label: string;
+  /** Its `label` attribute (customElements.js BaseText): setting it sets the attribute. */
+  label: string;
   readonly pinned: boolean;
   readonly hidden: boolean;
   readonly closing: boolean;
@@ -867,6 +888,33 @@ interface MozTabbrowserTab extends Element {
    * for a tab addTab did not make, as the window's first. */
   readonly openerTab: MozTabbrowserTab | null | undefined;
   toggleMuteAudio(muteReason?: string | null): void;
+}
+
+// engine/browser/components/tabbrowser/Tabbrowser.sys.mjs and AsyncTabSwitcher.sys.mjs
+interface Tabbrowser {
+  /** The tab switch in progress, null when none is (`new AsyncTabSwitcher(this)` while one is). */
+  readonly _switcher: AsyncTabSwitcher | null;
+  /** `#tabbrowser-tabpanels`, the panels of the tabs' browsers. */
+  readonly tabpanels: MozTabpanels;
+}
+// A tab switch in progress, which shows the requested tab once its layers are ready. A tab's
+// state is one of the STATE_* numbers; a tab it has no state for is unloaded.
+interface AsyncTabSwitcher {
+  /** The tab whose layers it waits for, null while it waits for none. */
+  readonly loadingTab: MozTabbrowserTab | null;
+  /** True while it runs its postActions, which a change of state must not reenter. */
+  readonly _processing: boolean;
+  readonly tabState: Map<MozTabbrowserTab, number>;
+  readonly STATE_LOADING: number;
+  readonly STATE_UNLOADING: number;
+  setTabState(tab: MozTabbrowserTab, state: number): void;
+  /** Its events, such as a browser's MozLayerTreeReady (`originalTarget` is the <browser>). */
+  handleEvent(event: { type: string; originalTarget?: EventTarget }, delayed?: boolean): void;
+}
+// engine/toolkit/content/widgets/tabbox.js (MozTabpanels)
+interface MozTabpanels extends XULElement {
+  /** Hides the panels of a split whose tabs are not shown; they keep their split-view class. */
+  suspendSplitViewPanels(tabs: MozTabbrowserTab[]): void;
 }
 
 // engine/browser/components/tabbrowser/content/tabsplitview.mjs
@@ -1250,15 +1298,18 @@ interface ContentPermissionIntegration {
 // DownloadSource, DownloadTarget and DownloadSaver that Vimma's agent downloads read
 // (ctl/AgentDownloads.sys.mjs). The saver is a DownloadCopySaver or, for a helper-app download,
 // a DownloadLegacySaver, which alone has `request` (its channel, null until it starts) and
-// `deferExecuted`.
-interface FirefoxDownload {
+// `deferExecuted`. It is what Downloads.getList's lists hold: a session download.
+interface FirefoxDownload extends SessionDownload {
   readonly source: {
     readonly url: string;
     readonly originalUrl: string | null;
     readonly userContextId?: number;
     readonly browsingContextId?: number;
   };
-  readonly target: { readonly path: string; readonly partFilePath: string | null };
+  readonly target: SessionDownload["target"] & {
+    readonly path: string;
+    readonly partFilePath: string | null;
+  };
   readonly saver: {
     readonly totalBytes?: number;
     readonly request?: { readonly contentLength?: number } | null;
@@ -1294,15 +1345,6 @@ interface nsIHelperAppLauncher {
   readonly contentLength: number;
   promptForSaveDestination(): void;
   saveDestinationAvailable(file: { readonly path: string } | null): void;
-}
-// engine/toolkit/modules/subprocess/Subprocess.sys.mjs (its Process, through the pipes Vimma
-// asked for): the scanner Vimma runs.
-interface ChildProcess {
-  readonly stdin: { close(): Promise<unknown> };
-  readonly stdout: { readString(): Promise<string> };
-  readonly stderr: { readString(): Promise<string> };
-  wait(): Promise<{ exitCode: number }>;
-  kill(): void;
 }
 // The modules ctl/AgentDownloads.sys.mjs reads lazily, named here and not there:
 // tools/security/test/chrome-source.test.ts pins every mention of the process module in it.
@@ -1544,17 +1586,18 @@ interface SessionDownload extends DownloadListEntry {
   showContainingDirectory(): Promise<void>;
 }
 // DownloadList.sys.mjs: a view hears of each entry, those already listed when it is added too.
-interface DownloadListView {
-  onDownloadAdded?(download: DownloadListEntry): void;
-  onDownloadChanged?(download: DownloadListEntry): void;
-  onDownloadRemoved?(download: DownloadListEntry): void;
+// Downloads.getList's lists hold session downloads (FirefoxDownload), the agent's among them;
+// DownloadHistory.getList's, history entries too.
+interface DownloadListView<D extends DownloadListEntry = DownloadListEntry> {
+  onDownloadAdded?(download: D): void;
+  onDownloadChanged?(download: D): void;
+  onDownloadRemoved?(download: D): void;
 }
-interface DownloadList {
-  getAll(): Promise<DownloadListEntry[]>;
-  /** The ALL list also holds the agent's downloads (ctl/AgentDownloads.sys.mjs). */
-  remove(download: DownloadListEntry | FirefoxDownload): Promise<void>;
-  addView(view: DownloadListView): Promise<void>;
-  removeView(view: DownloadListView): Promise<void>;
+interface DownloadList<D extends DownloadListEntry = DownloadListEntry> {
+  getAll(): Promise<D[]>;
+  remove(download: D): Promise<void>;
+  addView(view: DownloadListView<D>): Promise<void>;
+  removeView(view: DownloadListView<D>): Promise<void>;
 }
 // engine/dom/chrome-webidl/WebExtensionPolicy.webidl: an installed extension's policy; getByID is
 // null for an id that has none. `extension` is the Extension that registered it
@@ -1811,7 +1854,7 @@ interface DownloadsModule {
   readonly PUBLIC: string;
   readonly PRIVATE: string;
   readonly ALL: string;
-  getList(type: string): Promise<DownloadList>;
+  getList(type: string): Promise<DownloadList<FirefoxDownload>>;
   createDownload(properties: { source: string; target: string }): Promise<SessionDownload>;
 }
 // engine/browser/components/downloads/DownloadsCommon.sys.mjs: the downloads panel's commands.
@@ -2179,6 +2222,11 @@ interface nsIRequest extends nsISupports {
   loadFlags: number;
   isPending(): boolean;
 }
+// engine/dom/webidl/XMLHttpRequest.webidl: chrome-only, the request's channel (MozChannel, an
+// nsIChannel); null until open() makes it.
+interface XMLHttpRequest {
+  readonly channel: nsIChannel | null;
+}
 interface nsIChannel extends nsIRequest {
   originalURI: nsIURI;
   readonly URI: nsIURI;
@@ -2445,4 +2493,15 @@ interface nsIBrowserDOMWindow extends nsISupports {}
 interface nsICommandLine extends nsISupports {
   /** One of the STATE_ constants: the first launch, or a remote one. */
   readonly state: number;
+}
+// engine/xpcom/system/nsIGIOService.idl, the members Make Default uses (AppLauncher.sys.mjs,
+// #855); merged into the declarations above. findAppFromCommand throws when no entry runs it.
+interface nsIGIOService {
+  findAppFromCommand(command: string): nsIGIOMimeApp;
+}
+interface nsIGIOMimeApp {
+  readonly command: string;
+  setAsDefaultForURIScheme(scheme: string): void;
+  setAsDefaultForMimeType(mimeType: string): void;
+  setAsDefaultForFileExtensions(extensions: string): void;
 }
