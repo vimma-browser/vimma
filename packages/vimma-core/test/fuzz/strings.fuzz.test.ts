@@ -29,19 +29,61 @@ const longRun = fc
   .map(([c, n, before, after]) => `${before}${c.repeat(n)}${after}x`);
 
 /**
- * The oracle for small inputs: report.mjs's old regular expression, its `\b` and `\w` read as
- * Unicode word characters (a letter, mark or digit in any script, or `_`), as redactReport does.
+ * The oracle for small inputs, a brute-force reading of the rule (#1173) rather than the scan
+ * redactReport does: after URLs become `<url>`, walk the text code point by code point and, at
+ * each one, try every slice that starts there; a slice is the home when its NFD form is the
+ * home's (trailing slashes dropped), and what follows it ends a name: the end, whitespace, `/`,
+ * `\\`, a path delimiter, or `.`, `!` or `?` closing a sentence. A redacted slice is skipped whole.
  */
 const URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/\S*?(?=[\s,;)\]]|[.,;:!?]?(?:\s|$))/gi;
-const WORD = "\\p{L}\\p{M}\\p{N}_";
-function oldRedact(text: string, home: string): string {
-  let out = text.replace(URL_RE, "<url>");
-  const h = home.replace(/\/+$/, "");
-  const esc = h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const end = `(?=/|$|(?<=[${WORD}]))(?![${WORD}.-])`;
-  if (h) out = out.replace(new RegExp(`${esc}${end}`, "gu"), "~");
+const ENDS_NAME = /^(?:$|[\s/\\:;,"'`()[\]{}<>]|[.!?](?:\s|$))/u;
+function oracleRedact(text: string, home: string): string {
+  const cps = [...text.replace(URL_RE, "<url>")];
+  const h = home.replace(/\/+$/, "").normalize("NFD");
+  if (!h) return cps.join("");
+  let out = "";
+  let i = 0;
+  while (i < cps.length) {
+    let end = -1;
+    for (let j = i + 1; j <= cps.length && end === -1; j++) {
+      const rest = cps.slice(j).join("");
+      if (cps.slice(i, j).join("").normalize("NFD") === h && ENDS_NAME.test(rest)) end = j;
+    }
+    if (end === -1) {
+      out += cps[i];
+      i += 1;
+    } else {
+      out += "~";
+      i = end;
+    }
+  }
   return out;
 }
+
+/** Characters that sit on either side of the rule: name characters, delimiters, both forms. */
+const nameParts = fc.constantFrom(
+  "+",
+  "\u{1F600}",
+  "\u200D",
+  "\u203F",
+  "~",
+  ":",
+  '"',
+  "(",
+  "]",
+  ",",
+  ".",
+  "?",
+  "\\",
+  "\u00E9",
+  "e\u0301",
+  "\u0301",
+  "\u0316",
+  "\u037E",
+  "\u212A",
+  "\uD55C",
+  "\u1112\u1161\u11AB",
+);
 
 describe("linear-time string edits", () => {
   test(
@@ -60,22 +102,38 @@ describe("linear-time string edits", () => {
   );
 
   test(
-    "redactReport redacts exactly what the regular expression did",
+    "redactReport redacts exactly what the brute-force rule does",
     () =>
       fuzz(
         "strings-redact-oracle",
         fc.property(
-          fc.oneof(runs, fc.constantFrom("/home/alice", "/home/al.ice/", "/h-1/", "/x/é", "/a+b")),
+          fc.oneof(
+            runs,
+            fc.constantFrom("/home/alice", "/home/al.ice/", "/h-1/", "/x/é", "/a+b", "/jose\u0301"),
+            fc
+              .array(fc.oneof(nameParts, fc.constantFrom("/h", "a")), {
+                minLength: 1,
+                maxLength: 4,
+              })
+              .map((p) => `/${p.join("")}`),
+          ),
           fc.array(
-            fc.oneof(runs, fc.constantFrom("/home/alice", "/home/alicebob", "/home/al.ice", "~")),
+            fc.oneof(
+              runs,
+              nameParts,
+              fc.constantFrom("/home/alice", "/home/alicebob", "/home/al.ice", "~", "/jos\u00E9"),
+            ),
             { maxLength: 6 },
           ),
           (home, parts) => {
             const text = parts.join(parts.length % 2 ? "/" : " ");
-            expect(redactReport(text, home)).toBe(oldRedact(text, home));
-            expect(redactReport(`${home}/x ${home}`, home)).toBe(
-              oldRedact(`${home}/x ${home}`, home),
-            );
+            expect(redactReport(text, home)).toBe(oracleRedact(text, home));
+            for (const t of [
+              `${home}/x ${home}`,
+              `${home.normalize("NFC")}: ${home.normalize("NFD")}`,
+            ]) {
+              expect(redactReport(t, home)).toBe(oracleRedact(t, home));
+            }
           },
         ),
         { weight: 10 },

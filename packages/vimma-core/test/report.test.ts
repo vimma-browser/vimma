@@ -58,9 +58,81 @@ describe("redactReport", () => {
     expect(redactReport("/home/\u{1D49C}: denied", "/home/\u{1D49C}")).toBe("~: denied");
   });
 
-  it("a home that ends in a character outside a word needs a slash or the end after it", () => {
+  it("a home that ends in punctuation is whole before a slash, a space or the end", () => {
     expect(redactReport("/home/al-/x and /home/al-", "/home/al-")).toBe("~/x and ~");
-    expect(redactReport("/home/al- x", "/home/al-")).toBe("/home/al- x");
+    expect(redactReport("/home/al- x", "/home/al-")).toBe("~ x");
+  });
+
+  it("reads +, emoji, joiners and connector punctuation as part of a name (#1173)", () => {
+    // Each is another user's home that starts with alice's: none of it is hers.
+    for (const other of [
+      "/home/alice+b/x",
+      "/home/alice\u{1F600}/x",
+      "/home/alice\u200Dx/x",
+      "/home/alice\u{1F469}\u200D\u{1F4BB}/x",
+      "/home/alice\u203Fb/x",
+      "/home/alice\uFE4Fb/x",
+      "/home/alice\u2040b/x",
+      "/home/alice~b/x",
+      "/home/alice@b/x",
+      "/home/alice#b/x",
+    ]) {
+      expect(redactReport(other, "/home/alice")).toBe(other);
+    }
+    // And a home made of them is redacted whole.
+    expect(redactReport("/home/a+\u{1F600}\u200D\u203F/x", "/home/a+\u{1F600}\u200D\u203F")).toBe(
+      "~/x",
+    );
+  });
+
+  it("ends a home at whitespace, a path separator or the punctuation that delimits a path", () => {
+    const h = "/home/alice";
+    for (const [text, want] of [
+      ["/home/alice\\AppData", "~\\AppData"],
+      ["/home/alice\tx", "~\tx"],
+      ["/home/alice\u3000x", "~\u3000x"],
+      ["\"/home/alice\" '/home/alice' `/home/alice`", "\"~\" '~' `~`"],
+      ["[/home/alice] {/home/alice} </home/alice>", "[~] {~} <~>"],
+      ["/home/alice; /home/alice, /home/alice:4", "~; ~, ~:4"],
+      ["home is /home/alice. Or /home/alice? No, /home/alice!", "home is ~. Or ~? No, ~!"],
+      ["/home/alice.", "~."],
+    ] as const) {
+      expect(redactReport(text, h)).toBe(want);
+    }
+  });
+
+  it("matches a home and a path in different Unicode normal forms (#1173)", () => {
+    const nfc = "/home/jos\u00E9";
+    const nfd = "/home/jose\u0301";
+    // NFD $HOME (macOS) against an NFC path, and the reverse, keeping the rest of the text as is.
+    expect(redactReport(`${nfc}/caf\u00E9: x`, nfd)).toBe("~/caf\u00E9: x");
+    expect(redactReport(`${nfd}/cafe\u0301: x`, nfc)).toBe("~/cafe\u0301: x");
+    // The accent at the start of the name as well as the end.
+    expect(redactReport("/home/\u00C9mile/x", "/home/E\u0301mile")).toBe("~/x");
+    expect(redactReport("/home/E\u0301mile/x", "/home/\u00C9mile")).toBe("~/x");
+    // Text before the home in the other form stays in its own form.
+    expect(redactReport(`\u00E9 e\u0301 ${nfd}/x`, nfc)).toBe("\u00E9 e\u0301 ~/x");
+    // A home that is a prefix only before normalisation is still not the whole name.
+    expect(redactReport(`${nfc}/x`, "/home/jose")).toBe(`${nfc}/x`);
+    expect(redactReport(`${nfd}/x`, "/home/jose")).toBe(`${nfd}/x`);
+    // What follows the home is read as written: U+037E (Greek question mark) is `;` only in NFD.
+    expect(redactReport("/home/alice\u037Eb/x", "/home/alice")).toBe("/home/alice\u037Eb/x");
+    // Hangul: a syllable and its jamo.
+    expect(redactReport("/home/\uD55C/x", "/home/\u1112\u1161\u11AB")).toBe("~/x");
+  });
+
+  it("redacts a 3 MB report in linear time, in either normal form", () => {
+    const line =
+      "  error: /home/jos\u00E9/.config/vimma/c\u00F6nfig.toml:4: bad key (/home/alice+b/x)\n";
+    const text = line.repeat(40_000);
+    for (const home of ["/home/jos\u00E9", "/home/jose\u0301"]) {
+      const start = performance.now();
+      const out = redactReport(text, home);
+      expect(performance.now() - start).toBeLessThan(budget(1000));
+      expect(out).toBe(
+        "  error: ~/.config/vimma/c\u00F6nfig.toml:4: bad key (/home/alice+b/x)\n".repeat(40_000),
+      );
+    }
   });
 
   it("does not redact inside a home it has already replaced", () => {

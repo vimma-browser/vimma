@@ -4215,7 +4215,9 @@ Refresh for the current state. It is an ordinary page, so `j` / `k` scroll it.
 
 **Copy redacted report** (or `:bug`) copies all of that as text, without the binding table's
 defaults, with every URL replaced by `<url>` and your home directory by `~`. It never contains
-page titles or addresses.
+page titles or addresses. Read it before you paste it in a public issue: your user name can still
+be in a path outside your home or in a workspace name
+([what it redacts and its limits](security/22-bug-report.md)).
 
 The licences of Firefox's third-party code are in `about:license`; the third-party code Vimma
 adds (the smol-toml TOML parser, BSD-3-Clause) is listed there too, under Vimma. `vimma-ctl` is

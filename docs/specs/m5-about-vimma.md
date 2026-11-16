@@ -67,7 +67,9 @@ IS_SECURE_CHROME_UI`; no `URI_*_IN_CHILD` flag, so it loads in the parent proces
   `CommandDef.text`), so they need no new action and no host runner: `about:vimma` and
   `about:vimma#bug`. On `#bug` the page copies `AboutVimma.report(data)` with
   `nsIClipboardHelper`: plain text, the binding table reduced to the overrides, through core's
-  `redactReport` (every `scheme://…` becomes `<url>`, `$HOME` becomes `~`). The page has a
+  `redactReport` (every `scheme://…` becomes `<url>`, `$HOME` becomes `~`; Since changed: the
+  home matches as a whole name in either Unicode normal form, #1173, rules and limits in
+  [security §22](../security/22-bug-report.md)). The page has a
   "Copy redacted report" button for the same.
 
 ## Tests (written first)
@@ -80,7 +82,7 @@ overridden row; the workspace count and the last three keys after `j k j` on a p
 (`j → scroll.down`…) and the window's mode; with the control socket on, its port shows and the
 token (from the discovery file) is nowhere in the page's HTML; `:bug` puts a report on the
 clipboard with the Firefox version and no `$HOME/` path or URL; `j` / `k` scroll the page.
-Vitest: `report.test.mjs` (redaction, outcomes), `cmdline.test.mjs` (`:about`, `:vimma`, `:bug`, no
+Vitest: `report.test.mjs` (Since changed: `report.test.ts`, ADR-025) (redaction, outcomes), `cmdline.test.mjs` (`:about`, `:vimma`, `:bug`, no
 argument), `version-files.test.mjs` (Since changed: `version-files.test.ts`, ADR-025)
 (`patchManifest` on fixtures and on the repository).
 
