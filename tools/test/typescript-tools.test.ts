@@ -24,9 +24,8 @@ const CORE_TESTS = "packages/vimma-core/test/";
 /**
  * The TypeScript files outside the places ADR-025 allows it: tools/, the root configs, and
  * vimma-core's tests (as `.ts` only, the one extension their tsconfig, eslint and Vitest read).
- * @param {string[]} paths
  */
-function outsideTypeScriptHomes(paths) {
+function outsideTypeScriptHomes(paths: string[]): string[] {
   return paths.filter(
     (p) =>
       !p.startsWith("tools/") &&
@@ -170,7 +169,9 @@ describe("TypeScript under tools/ (ADR-025)", () => {
         .map((spec) => `${file}: ${spec}`),
     );
     expect(missing).toEqual([]);
-  });
+    // It parses every .ts file under tools/ and vimma-core's tests: about 4 s alone, more on a busy
+    // runner, so Vitest's 5 s default fails it under load.
+  }, 30_000);
 
   it("reads the imports from the program, not from strings or comments", () => {
     const code = [
