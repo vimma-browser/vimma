@@ -645,7 +645,9 @@ describe("restrictedErrors", () => {
     expect(Object.keys(RESTRICTED)).toEqual([
       "host/AgentGate.sys.mjs",
       "ctl/agent-tabs.mjs",
+      "actors/agent-page.mjs",
       "ui/agent-chat-key.mjs",
+      "ui/agent-chat-models.mjs",
     ]);
     expect(RESTRICTED["host/AgentGate.sys.mjs"]?.importers).toEqual([
       "agent/AgentChat.sys.mjs",
@@ -671,6 +673,20 @@ describe("restrictedErrors", () => {
       /^ctl\/AgentAct\.sys\.mjs:9: imports ctl\/agent-tabs\.mjs, which only/,
     );
   });
+  test("the agent's page work has one importer, VimmaChild, and a new one fails", () => {
+    // actors/agent-page.mjs clicks, fills and submits in a page after the reply, each re-checked
+    // just before it runs (M25 to M28): another caller could act in a page without the parent's
+    // question or those checks.
+    const page = "actors/agent-page.mjs";
+    expect(RESTRICTED[page]?.importers).toEqual(["actors/VimmaChild.sys.mjs"]);
+    const errors = restrictedErrors(
+      [edge("actors/VimmaChild.sys.mjs", page), edge("actors/caret.mjs", page, "eager", 7)],
+      Object.fromEntries(Object.entries(RESTRICTED).filter(([module]) => module === page)),
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/^actors\/caret\.mjs:7: imports actors\/agent-page\.mjs, which only/);
+  });
+
   test("the API key entry has two importers, the chat window and its view, and a new one fails", () => {
     // ui/agent-chat-key.mjs builds the masked key field and stores, clears and deletes a hosted
     // provider's key (M46): another caller could reveal the field or reach the keys.
@@ -687,6 +703,20 @@ describe("restrictedErrors", () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatch(
       /^ui\/agent-prompt\.mjs:4: imports ui\/agent-chat-key\.mjs, which only/,
+    );
+  });
+  test("the model setup has one importer, the chat window, and a new one fails", () => {
+    // ui/agent-chat-models.mjs adds hosted providers (checkEndpoint's endpoint rules) and writes
+    // a picked provider to config.toml (B12): another caller could skip the check or the write.
+    const models = "ui/agent-chat-models.mjs";
+    expect(RESTRICTED[models]?.importers).toEqual(["ui/agent-chat.mjs"]);
+    const errors = restrictedErrors(
+      [edge("ui/agent-chat.mjs", models), edge("ui/agent-chat-view.mjs", models, "eager", 5)],
+      Object.fromEntries(Object.entries(RESTRICTED).filter(([module]) => module === models)),
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(
+      /^ui\/agent-chat-view\.mjs:5: imports ui\/agent-chat-models\.mjs, which only/,
     );
   });
 });
