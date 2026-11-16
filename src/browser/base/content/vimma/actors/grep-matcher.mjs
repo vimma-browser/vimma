@@ -45,7 +45,7 @@ function kill() {
 }
 
 /** Stops the running query: it answers `reply`, and the next one starts. */
-function stopRunning(/** @type {any} */ reply) {
+function stopRunning(/** @type {"timeout" | null} */ reply) {
   if (!running) return;
   clearTimeout(running.timer);
   const { job } = running;

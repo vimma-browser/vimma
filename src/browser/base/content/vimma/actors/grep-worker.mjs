@@ -9,7 +9,11 @@
 
 import { CLOSED_MATCH_CAPS, GREP_CAPS, grepText, parseQuery } from "../core/grep.mjs";
 
-const scope = /** @type {any} */ (globalThis);
+/**
+ * The worker's global, a DedicatedWorkerGlobalScope (which the DOM library does not declare).
+ * @typedef {{ onmessage: ((event: MessageEvent) => void) | null, postMessage(message: unknown): void }} WorkerScope
+ */
+const scope = /** @type {WorkerScope} */ (globalThis);
 /** @type {Map<string, string>} each frame's text, by key */
 const texts = new Map();
 

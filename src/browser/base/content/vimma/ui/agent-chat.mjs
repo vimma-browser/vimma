@@ -506,7 +506,7 @@ export class AgentChatWindow {
       if (this.opened) this.close();
       this.services.chat.forgetAll().then(
         () => this.host.say(`agent: deleted ${n} conversation${n === 1 ? "" : "s"}`),
-        (/** @type {any} */ e) => {
+        (/** @type {Thrown} */ e) => {
           console.error("vimma agent: forget all failed", e?.name);
           this.host.say("agent: some conversation files could not be deleted", true);
         },
@@ -674,7 +674,7 @@ export class AgentChatWindow {
             this.host.say(`agent: ${r.refused}${kept}`, true);
           }
         },
-        (/** @type {any} */ e) => {
+        (/** @type {Thrown} */ e) => {
           console.error("vimma agent: send failed", e);
           const { where, plain } = this.keepUnsent(id, text);
           this.host.say(`agent: ${e?.message ?? e}${plain ? "" : `; ${where}`}`, true);
@@ -713,7 +713,7 @@ export class AgentChatWindow {
             );
           } else this.afterKey(id, go);
         },
-        (/** @type {any} */ e) => {
+        (/** @type {Thrown} */ e) => {
           console.error("vimma agent: the key could not be read", e?.name);
           if (!left()) this.askKey(chosen);
         },
