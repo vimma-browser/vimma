@@ -553,6 +553,8 @@ which holds the text model and the matcher key, issue #1109.)
       closing the picker drops them. A window SessionStore does not track yet (one that has only
       just opened) is skipped, because SessionStore throws for it and it has nothing closed.
     - Budget, measured in a test: matching a query against 1,000,000 characters under 50 ms.
+      (Since changed: the test counts the characters read instead, each one twice, since a
+      wall-clock budget failed on loaded machines, #1144.)
     - The parent holds only what it shows: a context line per listed match (at most 160
       characters) and the preview's lines. Page text is not written anywhere.
 15. **Accessibility.** The list is a `role=listbox` with `role=option` rows, each option's
@@ -665,7 +667,8 @@ Written first and seen to fail.
   - `grepScopeText`: one workspace; windows grouped with their workspaces and counts, the agent
     marked; the closed line; past five windows one summed line; no tabs.
   - `ctrl+s` cycles workspace → window → all windows → closed → workspace.
-  - bench: `grepText` over 1,000,000 characters under 50 ms.
+  - bench: `grepText` over 1,000,000 characters under 50 ms. (Since changed: 100,000
+    characters, each read twice, counted rather than timed, #1144.)
 - `keymap.test.mjs`: the `prefix+f` node has no action and has the child `g`; `ctrl+b f g`
   dispatches `live_grep` and `ctrl+b f` followed by an unbound key cancels.
 - `actions.test.mjs`, `defaults.test.mjs`, `cmdline.test.mjs`, `help.test.mjs`: `live_grep` on
