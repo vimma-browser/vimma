@@ -45,19 +45,6 @@ const BINDING_KEYS: Record<string, string[]> = {
 };
 
 /**
- * Every hand-on of a restricted module (Scan.handOns). Each name that holds the module, or its
- * namespace, or a lazy getter object that loads it, is followed through local aliases (by name,
- * across the whole module: a shadowing name only adds errors, it never hides one). Each read of
- * such a name must be a call of one of its members (`AgentGate.request(…)`), a member read
- * (`AgentGate.waiting`: allowed when it is a getter, restrictedErrors decides), a local alias
- * (a declaration, or an assignment to a declared name), or the lazy object passed to Firefox's
- * own ChromeUtils.defineESModuleGetters or defineLazyGetter. Anything else lets it out: an
- * export, a return, an argument, an element, a field, a property, a store, also on an
- * undeclared name; and so does one name given two different holds. A function
- * that calls the module is a caller, not a hand-on: what it does for its own caller is the
- * security review's to judge.
- */
-/**
  * Scopes as the language defines them: for each name read or written, the reference that says
  * which declaration, if any, it resolves to. A name no scope declares is a property of the
  * shared global.
@@ -83,6 +70,19 @@ export function constString(id: AstNode, refs: Map<unknown, Reference>): string 
   return isNode(init) ? fixedString(init) : null;
 }
 
+/**
+ * Every hand-on of a restricted module (Scan.handOns). Each name that holds the module, or its
+ * namespace, or a lazy getter object that loads it, is followed through local aliases (by name,
+ * across the whole module: a shadowing name only adds errors, it never hides one). Each read of
+ * such a name must be a call of one of its members (`AgentGate.request(…)`), a member read
+ * (`AgentGate.waiting`: allowed when it is a getter, restrictedErrors decides), a local alias
+ * (a declaration, or an assignment to a declared name), or the lazy object passed to Firefox's
+ * own ChromeUtils.defineESModuleGetters or defineLazyGetter. Anything else lets it out: an
+ * export, a return, an argument, an element, a field, a property, a store, also on an
+ * undeclared name; and so does one name given two different holds. A function
+ * that calls the module is a caller, not a hand-on: what it does for its own caller is the
+ * security review's to judge.
+ */
 export function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): HandOn[] {
   const out: HandOn[] = [];
   if (!watched.size) return out;
