@@ -499,7 +499,8 @@ own process, not a process group.
   only through the gate: `--strict-mcp-config`; for Gemini CLI `--allowed-mcp-server-names`
   naming its server alone (`vimma_chat`, whose entry in the run folder's settings replaces a
   user's entry of that name whole), its extensions off (`-e none`), and a tool of any other MCP
-  server that ran ending the run; or for Codex each server its own list names
+  server that ran ending the run, as does a call to one that has no id to match its result by;
+  or for Codex each server its own list names
   turned off by name, its apps, plugins and a skill's MCP server installs off with
   `--disable` (which fails on a feature name the version does not know), its server named apart from any the user may
   have (`vimma_chat`, whose name in the list refuses the run, as does a name that is not
@@ -533,7 +534,8 @@ own process, not a process group.
   [`test_a_call_to_a_server_not_vimmas_ends_the_run`](../../tests/browser/browser_vimma_agent_cli_codex.js),
   [`vimma's server is in the run folder's settings file, the ticket in its env`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`gemini trusts the run folder from its environment, and keeps its reports there`](../../packages/vimma-core/test/agent-cli.test.ts),
-  [`a tool of another mcp server that ran ends the run; one never offered does not`](../../packages/vimma-core/test/agent-cli.test.ts)
+  [`a tool of another mcp server that ran ends the run; one never offered does not`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`a tool of another mcp server called without an id ends the run (M56)`](../../packages/vimma-core/test/agent-cli.test.ts)
 - M57. A CLI's steps in the browser **must** be the conversation's: asked and granted as its
   own (the `Enter` grant covers them, checkpoints and `vimma_show` still ask), and shown from the
   gate's record, never from the CLI's account of them. A CLI's output **must** be rendered as

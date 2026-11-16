@@ -1131,7 +1131,11 @@ const GEMINI_REFUSED = new Set(["tool_not_registered", "policy_violation"]);
  * comes as pieces (`delta`), joined until the next event. A server that did not start is not in
  * the stream (Research): the run goes on without Vimma's tools. A tool of an MCP server that is
  * not Vimma's that ran ends the run, as for Codex; a call to one never offered (the model's own
- * guess at a name) comes back refused, as any tool it was not given.
+ * guess at a name) comes back refused, as any tool it was not given. A call to one without an
+ * id ends the run at once, since its result could not be matched to it. Vimma's tools are told
+ * by their `mcp_vimma_chat_` prefix: a tool's name does not say where its server's name ends,
+ * so a server named `vimma_chat_x` would pass as Vimma's, but `--allowed-mcp-server-names`
+ * starts the server named exactly `vimma_chat` alone, with extensions off.
  */
 export class GeminiStream extends JsonLines {
   /** @param {{ model?: string }} [o]  the provider's model, "" for Gemini CLI's own default */
@@ -1192,6 +1196,9 @@ export class GeminiStream extends JsonLines {
     if (id) this.calls.set(id, name);
     // A step in the browser is the gate's to show, not the CLI's account of it (C8).
     if (name.startsWith(`mcp_${GEMINI_SERVER}_`)) return this.skip();
+    // Without an id its result cannot be told from another's, refused or ran, so the call to
+    // another server ends the run itself (M56): fail closed, as Codex does on any such call.
+    if (!id && name.startsWith("mcp_")) return this.otherServer(name);
     return [{ type: "own-tool", id, text: ownToolText(GEMINI, name, m.parameters) }];
   }
 
@@ -1203,12 +1210,15 @@ export class GeminiStream extends JsonLines {
     const kind = isObject(m.error) ? m.error.type : null;
     const refused = m.status === "error" && GEMINI_REFUSED.has(kind);
     if (refused) return [{ type: "own-tool-refused", id }];
-    if (name.startsWith("mcp_")) {
-      return this.fail(
-        `${GEMINI.id} called an MCP server that is not Vimma's: ${cut(plain(name), 40)}`,
-      );
-    }
+    if (name.startsWith("mcp_")) return this.otherServer(name);
     return this.skip();
+  }
+
+  /** @private @param {string} name  the tool's name as Gemini CLI gives it @returns {CliEvent[]} */
+  otherServer(name) {
+    return this.fail(
+      `${GEMINI.id} called an MCP server that is not Vimma's: ${cut(plain(name), 40)}`,
+    );
   }
 
   /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
