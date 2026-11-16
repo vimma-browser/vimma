@@ -1359,7 +1359,7 @@ describe("the words' edges", () => {
     expect(modelProblem("a\tb")).toBe(
       'the model "a b" is not a model name: it has control characters',
     );
-    expect(modelProblem("gpt‮5")).toBe(
+    expect(modelProblem("gpt\u202E5")).toBe(
       'the model "gpt5" is not a model name: it has control characters',
     );
     expect(modelProblem("gpt\u00855")).toBe(
@@ -1601,7 +1601,7 @@ describe("claude-code's stream, event by event", () => {
           { type: "text", text: 5 },
           { type: "thinking", text: "hmm" },
           { type: "tool_use", name: 5, id: "x" },
-          { type: "server_tool_use", name: "Bash", id: "y", input: { command: "ls" } },
+          { type: "made_up_block", name: "Bash", id: "y", input: { command: "ls" } },
           { type: "tool_use", name: "Bash", id: 7, input: { command: "ls" } },
           { type: "text", text: "Done." },
         ],
@@ -1785,7 +1785,7 @@ describe("gemini's stream, event by event", () => {
   test("a call without a name is skipped; one without an id is never matched to a result", () => {
     const { out, stream } = run(
       use(5, "x"),
-      use("mcp_other_read"),
+      use("read_file"),
       result(undefined, "success"),
       result(7, "success"),
     );
@@ -1793,7 +1793,7 @@ describe("gemini's stream, event by event", () => {
       {
         type: "own-tool",
         id: "",
-        text: 'gemini ran its own tool: mcp_other_read {"command":"ls"}',
+        text: 'gemini ran its own tool: read_file {"command":"ls"}',
       },
     ]);
     expect(stream.ignored).toBe(3);
