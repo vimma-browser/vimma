@@ -46,20 +46,18 @@ import { parseToml } from "../src/config/toml.mjs";
 
 /**
  * The CLIS entry `id`; throws when there is none, so a test never reads one that is missing.
- * @param {string} id
  */
-function cliOf(id) {
+function cliOf(id: string) {
   const cli = CLIS[id];
   if (!cli) throw new Error(`no CLI ${id}`);
   return cli;
 }
 
-/** @param {string} name */
-const fixture = (name) =>
+const fixture = (name: string) =>
   readFileSync(new URL(`fixtures/agent-cli/${name}.jsonl`, import.meta.url), "utf8");
 
 /** Every event of a whole stream, fed in chunks that cut lines in two. */
-function events(/** @type {string} */ text, chunk = 97) {
+function events(text: string, chunk = 97) {
   const s = new ClaudeStream();
   const out = [];
   for (let i = 0; i < text.length; i += chunk) out.push(...s.push(text.slice(i, i + chunk)));
@@ -327,10 +325,10 @@ describe("claude-code's stream (C7, C8)", () => {
 
   test("claude-code's init tools become the header's list, without mcp__vimma", () => {
     const [init] = events(fixture("claude-code-2.1.303-task")).out;
-    const tools = /** @type {any} */ (init).tools;
+    const tools = (init as any).tools;
     expect(tools).toContain("Bash");
     expect(tools).toContain("WebFetch");
-    expect(tools.some((/** @type {string} */ t) => t.startsWith("mcp__"))).toBe(false);
+    expect(tools.some((t: string) => t.startsWith("mcp__"))).toBe(false);
     expect(ownToolsText(["Bash", "Read", "Write", "WebFetch", "Edit", "Glob", "Grep"])).toBe(
       "Bash, Read, Write, WebFetch +3",
     );
@@ -400,7 +398,7 @@ describe("claude-code's stream (C7, C8)", () => {
       usage: { input: 2400, output: 80 },
       rest: { input: 0, output: 78 },
     });
-    const call = (/** @type {string} */ id, /** @type {number} */ input) =>
+    const call = (id: string, input: number) =>
       JSON.stringify({
         type: "assistant",
         message: { id, content: [{ type: "text", text: "x" }], usage: { input_tokens: input } },
@@ -620,9 +618,9 @@ describe("the program's path (C4)", () => {
     absolute: true,
     regular: true,
     executable: true,
-    owner: /** @type {const} */ ("user"),
+    owner: "user" as const,
     othersWrite: false,
-    dirOwner: /** @type {const} */ ("user"),
+    dirOwner: "user" as const,
     dirOthersWrite: false,
   };
   test("an absolute, regular, executable file of the user or root, that others cannot write", () => {
@@ -656,7 +654,7 @@ describe("the program's path (C4)", () => {
       const walk = {
         realDir: "/Apps/V/MacOS",
         dirs: ["/", "/Apps", "/Apps/V", "/Apps/V/MacOS"],
-        links: [{ dir: "/Apps/V/MacOS", owner: /** @type {const} */ ("other") }],
+        links: [{ dir: "/Apps/V/MacOS", owner: "other" as const }],
       };
       expect(besideBinary(walk, trusted)).toEqual({ dirs: [], linkOwner: "user" });
     });
@@ -665,8 +663,8 @@ describe("the program's path (C4)", () => {
         realDir: "/Apps/V/MacOS",
         dirs: ["/", "/Apps", "/Apps/V", "/Apps/V/MacOS", "/shared", "/shared/dir"],
         links: [
-          { dir: "/Apps/V/MacOS", owner: /** @type {const} */ ("user") },
-          { dir: "/shared/dir", owner: /** @type {const} */ ("other") },
+          { dir: "/Apps/V/MacOS", owner: "user" as const },
+          { dir: "/shared/dir", owner: "other" as const },
         ],
       };
       expect(besideBinary(walk, trusted)).toEqual({
@@ -678,7 +676,7 @@ describe("the program's path (C4)", () => {
       const walk = {
         realDir: "/Apps/shared",
         dirs: ["/", "/Apps", "/Apps/V", "/Apps/V/MacOS", "/Apps/shared"],
-        links: [{ dir: "/Apps/V/MacOS", owner: /** @type {const} */ ("other") }],
+        links: [{ dir: "/Apps/V/MacOS", owner: "other" as const }],
       };
       expect(besideBinary(walk, trusted)).toEqual({ dirs: walk.dirs, linkOwner: "other" });
     });
@@ -686,7 +684,7 @@ describe("the program's path (C4)", () => {
       const walk = {
         realDir: "/Apps/V/MacOS",
         dirs: ["/", "/Apps/V/MacOS"],
-        links: [{ dir: "/Apps/V/MacOS", owner: /** @type {const} */ ("root") }],
+        links: [{ dir: "/Apps/V/MacOS", owner: "root" as const }],
       };
       expect(besideBinary(walk, null)).toEqual({ dirs: walk.dirs, linkOwner: "user" });
     });
@@ -773,8 +771,7 @@ describe("every CLIS entry supplies the whole interface", () => {
 });
 
 describe("a CLI's words come from its entry alone", () => {
-  /** @type {any} */
-  const made = {
+  const made: any = {
     "made-up": {
       id: "made-up",
       bin: "mu",
@@ -800,7 +797,7 @@ describe("a CLI's words come from its entry alone", () => {
 // config.toml also had an MCP server named `other`, and a one-tool MCP server for Vimma's. Its
 // model was unknown to Codex, hence the first item, a warning about the model's metadata.
 /** Every event of a whole Codex stream, fed in chunks that cut lines in two. */
-function codexEvents(/** @type {string} */ text, chunk = 97) {
+function codexEvents(text: string, chunk = 97) {
   const s = new CodexStream({ model: "" });
   const out = [];
   for (let i = 0; i < text.length; i += chunk) out.push(...s.push(text.slice(i, i + chunk)));
@@ -888,7 +885,7 @@ describe("codex's command line (C2, C3, C7)", () => {
   test("vimma-ctl's path is a TOML string whatever it holds", () => {
     const odd = '/home/u/a "b" \\c\u007fd\ne/vimma-ctl';
     const args = codexArguments({ mcpConfig: "", vimmaCtl: odd, dir: RUN, model: "", others: [] });
-    const parsed = /** @type {any} */ (parseToml(args[7] ?? "")).value;
+    const parsed = (parseToml(args[7] ?? "") as any).value;
     expect(parsed.mcp_servers.vimma_chat.command).toBe(odd);
     expect(parsed.mcp_servers.vimma_chat.env_vars).toEqual([
       "VIMMA_AGENT_TICKET",
@@ -916,7 +913,7 @@ describe("codex's command line (C2, C3, C7)", () => {
     const values = args.filter((_, i) => args[i - 1] === "-c");
     for (const name of ["VIMMA_AGENT_TICKET", "VIMMA_AGENT_PORT"]) {
       const v = values.find((x) => x.startsWith(`shell_environment_policy.set.${name}=`));
-      const parsed = /** @type {any} */ (parseToml(v ?? "")).value;
+      const parsed = (parseToml(v ?? "") as any).value;
       expect(parsed.shell_environment_policy.set[name]).toBe("");
     }
     expect(values.some((x) => /^shell_environment_policy\.(exclude|inherit)/.test(x))).toBe(false);
@@ -1036,7 +1033,7 @@ describe("codex's stream (C7, C8)", () => {
 
   test("a key the provider refuses ends in an error result, after the cli's retries", () => {
     const { out } = codexEvents(fixture("codex-0.163.0-bad-key"));
-    const result = /** @type {any} */ (out.at(-1));
+    const result = out.at(-1) as any;
     expect(result).toMatchObject({ type: "result", ok: false, usage: null, cost: null });
     expect(result.error).toMatch(/^unexpected status 401 Unauthorized: Incorrect API key/);
     expect(out.filter((e) => e.type === "result")).toHaveLength(1);
@@ -1082,7 +1079,7 @@ describe("codex's stream (C7, C8)", () => {
 // for a shell command, which headless Gemini CLI does not offer; the bad-key run had the server
 // answer 401.
 /** Every event of a whole Gemini CLI stream, fed in chunks that cut lines in two. */
-function geminiEvents(/** @type {string} */ text, chunk = 97) {
+function geminiEvents(text: string, chunk = 97) {
   const s = new GeminiStream({ model: "" });
   const out = [];
   for (let i = 0; i < text.length; i += chunk) out.push(...s.push(text.slice(i, i + chunk)));
@@ -1196,7 +1193,7 @@ describe("gemini's stream (C7, C8)", () => {
   });
 
   test("a tool of another mcp server that ran ends the run; one never offered does not", () => {
-    const use = (/** @type {string} */ id) =>
+    const use = (id: string) =>
       JSON.stringify({
         type: "tool_use",
         tool_name: "mcp_other_read",
@@ -1236,7 +1233,7 @@ describe("gemini's stream (C7, C8)", () => {
 
   test("a key the provider refuses ends in an error result", () => {
     const { out } = geminiEvents(fixture("gemini-0.66.0-bad-key"));
-    const result = /** @type {any} */ (out.at(-1));
+    const result = out.at(-1) as any;
     expect(result).toMatchObject({ type: "result", ok: false, cost: null });
     expect(result.error).toMatch(/API key not valid/);
     expect(out.filter((e) => e.type === "result")).toHaveLength(1);
@@ -1303,7 +1300,7 @@ describe("gemini's records of vimma's runs (C5)", () => {
     expect(r.removed).toEqual([
       { path: "/run/user/1000/vimma-agent-cli-2", slug: "vimma-agent-cli-2" },
     ]);
-    expect(JSON.parse(/** @type {string} */ (r.text))).toEqual({
+    expect(JSON.parse(r.text as string)).toEqual({
       projects: {
         "/home/u/code/app": "app",
         "/run/user/1000/vimma-agent-cli": "vimma-agent-cli",
@@ -1321,7 +1318,7 @@ describe("gemini's records of vimma's runs (C5)", () => {
     });
     const r = geminiProjects(registry, () => true);
     expect(r.removed.map((x) => x.slug)).toEqual([null, null, null]);
-    expect(JSON.parse(/** @type {string} */ (r.text))).toEqual({ projects: {} });
+    expect(JSON.parse(r.text as string)).toEqual({ projects: {} });
   });
 
   test("a registry it cannot read is left as it is", () => {

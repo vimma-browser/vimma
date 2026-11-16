@@ -37,6 +37,7 @@ import {
 } from "../src/agent/agent.mjs";
 import { logCells, logRow } from "../src/agent/agent-prompt.mjs";
 import { budget } from "./budget.mjs";
+import type { Admission, LogOutcome } from "../src/agent/agent.mjs";
 
 const MIN = 60_000;
 const READ = "vimma_read_page";
@@ -45,9 +46,8 @@ const OPEN = "vimma_open";
 /**
  * The request `ask` queued; throws when it ran or was denied instead, so a test never answers a
  * request that does not exist.
- * @param {import("../src/agent/agent.mjs").Admission | undefined} admission
  */
-function waiting(admission) {
+function waiting(admission: Admission | undefined) {
   if (admission?.kind !== "wait") throw new Error(`not queued: ${JSON.stringify(admission)}`);
   return admission;
 }
@@ -180,8 +180,7 @@ describe("answers", () => {
 
   test("a yes between denials starts the count again", () => {
     const q = queue();
-    const say = (/** @type {"once" | "deny"} */ kind) =>
-      q.answer(waiting(q.ask(1, READ, 0)).id, { kind }, 0);
+    const say = (kind: "once" | "deny") => q.answer(waiting(q.ask(1, READ, 0)).id, { kind }, 0);
     say("deny");
     say("deny");
     say("once");
@@ -592,7 +591,7 @@ describe("checkpoints (mcp-checkpoints C1, C4)", () => {
     const q = new AgentQueue();
     q.connect(1);
     q.answer(waiting(q.ask(1, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
-    const no = (/** @type {number} */ at) =>
+    const no = (at: number) =>
       q.answer(waiting(q.ask(1, "vimma_fill", at, { always: true })).id, { kind: "deny" }, at);
     no(1000);
     expect(q.grants(1000)).toEqual([{ conn: 1, until: 10 * MIN }]);
@@ -604,11 +603,9 @@ describe("checkpoints (mcp-checkpoints C1, C4)", () => {
 
   test("property: no answer to a checkpoint makes, lengthens or ends a grant", () => {
     const answer = fc.oneof(
-      fc.constant(/** @type {const} */ ({ kind: "once" })),
-      fc.constant(/** @type {const} */ ({ kind: "deny" })),
-      fc
-        .integer({ min: 1, max: 1440 })
-        .map((minutes) => ({ kind: /** @type {const} */ ("grant"), minutes })),
+      fc.constant({ kind: "once" } as const),
+      fc.constant({ kind: "deny" } as const),
+      fc.integer({ min: 1, max: 1440 }).map((minutes) => ({ kind: "grant" as const, minutes })),
     );
     fc.assert(
       fc.property(fc.boolean(), fc.array(answer, { maxLength: 8 }), (granted, answers) => {
@@ -704,7 +701,7 @@ describe(":mcp log (mcp-drive D14)", () => {
     tool: "vimma_keys",
     title: "Pricing · Example",
     detail: '3j /"pricing"⏎',
-    outcome: /** @type {const} */ ("grant"),
+    outcome: "grant" as const,
   });
 
   test("keeps the last 100, newest first", () => {
@@ -720,7 +717,7 @@ describe(":mcp log (mcp-drive D14)", () => {
   });
 
   test("a row: time, client, tool, tab title, keys or URL, outcome", () => {
-    const plain = (/** @type {string} */ t) => t.replace(/[\u2068\u2069]/g, "");
+    const plain = (t: string) => t.replace(/[\u2068\u2069]/g, "");
     expect(plain(logRow(entry()))).toBe(
       '17:05:09 claude-code vimma_keys "Pricing · Example" 3j /"pricing"⏎ · ran under a grant',
     );
@@ -728,8 +725,7 @@ describe(":mcp log (mcp-drive D14)", () => {
     expect(plain(logRow({ ...open, outcome: "yes" }))).toBe(
       "17:05:09 claude-code vimma_open https://a.example/x · allowed",
     );
-    /** @type {[import("../src/agent/agent.mjs").LogOutcome, string][]} */
-    const outcomes = [
+    const outcomes: [LogOutcome, string][] = [
       ["user", "denied"],
       ["timeout", "no answer (denied)"],
       ["busy", "denied (busy)"],
@@ -749,7 +745,7 @@ describe(":mcp log (mcp-drive D14)", () => {
 
   test("the log picker's cells: the time, what was called, the outcome", () => {
     // Text an agent or a page chose is its own bidi run (FSI…PDI), as in the question line.
-    const iso = (/** @type {string} */ t) => `\u2068${t}\u2069`;
+    const iso = (t: string) => `\u2068${t}\u2069`;
     expect(logCells(entry())).toEqual({
       time: "17:05:09",
       text: `${iso("claude-code")} vimma_keys "${iso("Pricing · Example")}" ${iso('3j /"pricing"⏎')}`,
@@ -1033,9 +1029,9 @@ describe("forms by consequence (mcp-consequence K1, K5)", () => {
 
   test("an allowance ends with the grant: its end, revoke, endGrant", () => {
     for (const end of [
-      (/** @type {AgentQueue} */ q) => q.ask(1, READ, 11 * MIN),
-      (/** @type {AgentQueue} */ q) => q.revoke(5000),
-      (/** @type {AgentQueue} */ q) => q.endGrant(1),
+      (q: AgentQueue) => q.ask(1, READ, 11 * MIN),
+      (q: AgentQueue) => q.revoke(5000),
+      (q: AgentQueue) => q.endGrant(1),
     ]) {
       const q = granted();
       const asked = waiting(q.ask(1, ACT, 1000, { always: true, covered: "k" }));
@@ -1078,7 +1074,7 @@ describe("the gate's copies (security.md M62)", () => {
       here: { site: "a.example", key: "k" },
       list: [1, { n: 2 }],
     };
-    const copy = /** @type {any} */ (frozenCopy(what));
+    const copy = frozenCopy(what) as any;
     expect(copy).toEqual(what);
     expect(copy).not.toBe(what);
     expect(copy.here).not.toBe(what.here);
@@ -1086,7 +1082,7 @@ describe("the gate's copies (security.md M62)", () => {
     expect(Object.isFrozen(copy.list) && Object.isFrozen(copy.list[1])).toBe(true);
     what.url = "https://b.example/";
     what.here.key = "other";
-    /** @type {any} */ (what.list[1]).n = 3;
+    (what.list[1] as any).n = 3;
     expect(copy.url).toBe("https://a.example/");
     expect(copy.here.key).toBe("k");
     expect(copy.list[1].n).toBe(2);
@@ -1103,8 +1099,8 @@ describe("the gate's copies (security.md M62)", () => {
       },
       run: () => "x",
     };
-    /** @type {any} */ (what).self = what;
-    const copy = /** @type {any} */ (frozenCopy(what));
+    (what as any).self = what;
+    const copy = frozenCopy(what) as any;
     expect(copy.url).toBe("https://asked.example/");
     expect(copy.url).toBe("https://asked.example/");
     expect(n).toBe(1);
@@ -1126,7 +1122,7 @@ describe("the gate's copies (security.md M62)", () => {
 
   test("frozenCopy keeps a __proto__ key as its own data, never as the copy's prototype", () => {
     const what = JSON.parse('{"url":"x","__proto__":{"danger":"exe"}}');
-    const copy = /** @type {any} */ (frozenCopy(what));
+    const copy = frozenCopy(what) as any;
     expect(Object.keys(copy)).toEqual(["url", "__proto__"]);
     expect(copy.danger).toBeUndefined();
     expect(Object.getPrototypeOf(copy)).toBe(Object.prototype);
@@ -1136,27 +1132,24 @@ describe("the gate's copies (security.md M62)", () => {
   });
 
   test("frozenCopy refuses data nested deeper than FROZEN_COPY_DEPTH, with a clear error", () => {
-    /** @type {any} */
-    let deep = {};
+    let deep: any = {};
     for (let i = 0; i < 100_000; i++) deep = { deep };
     expect(() => frozenCopy(deep)).toThrow(/deeper than 32 levels/);
-    /** @type {any} */
-    let ok = "leaf";
+    let ok: any = "leaf";
     for (let i = 0; i < FROZEN_COPY_DEPTH; i++) ok = { ok };
     expect(() => frozenCopy(ok)).not.toThrow();
     expect(() => frozenCopy({ ok })).toThrow(/deeper than 32 levels/);
   });
 
   test("frozenCopy passes its own copy through, so an event around a request at the limit copies", () => {
-    /** @type {any} */
-    let asked = { url: "https://a.example/" };
+    let asked: any = { url: "https://a.example/" };
     for (let i = 1; i < FROZEN_COPY_DEPTH; i++) asked = { asked };
     const what = frozenCopy(asked);
     // The gate's events hold the request two and three levels down (issue #1027).
-    const ran = /** @type {any} */ (frozenCopy({ kind: "ran", what }));
+    const ran = frozenCopy({ kind: "ran", what }) as any;
     expect(ran.what).toBe(what);
     const question = Object.freeze({ id: 1, what });
-    const event = /** @type {any} */ (frozenCopy({ kind: "asked", question }));
+    const event = frozenCopy({ kind: "asked", question }) as any;
     expect(event.question).not.toBe(question);
     expect(event.question.what).toBe(what);
     expect(Object.isFrozen(event) && Object.isFrozen(event.question)).toBe(true);
@@ -1166,34 +1159,30 @@ describe("the gate's copies (security.md M62)", () => {
     const inner = Object.freeze({ key: "k" });
     const live = { here: inner, list: Object.freeze([inner]) };
     Object.freeze(live);
-    const copy = /** @type {any} */ (frozenCopy(live));
+    const copy = frozenCopy(live) as any;
     expect(copy).not.toBe(live);
     expect(copy.here).not.toBe(inner);
     expect(copy.list).not.toBe(live.list);
     expect(copy).toEqual(live);
     // A frozen caller's object still counts toward the depth limit.
-    /** @type {any} */
-    let deep = Object.freeze({ url: "x" });
+    let deep: any = Object.freeze({ url: "x" });
     for (let i = 0; i < FROZEN_COPY_DEPTH; i++) deep = Object.freeze({ deep });
     expect(() => frozenCopy(deep)).toThrow(/deeper than 32 levels/);
   });
 
   test("frozenCopy copies shared sub-objects in linear time, and a cycle still becomes null", () => {
-    /** @type {any} */
-    let shared = { leaf: 1 };
+    let shared: any = { leaf: 1 };
     for (let i = 0; i < 22; i++) shared = { a: shared, b: shared };
     const start = performance.now();
-    const copy = /** @type {any} */ (frozenCopy(shared));
+    const copy = frozenCopy(shared) as any;
     expect(performance.now() - start).toBeLessThan(budget(200));
-    /** @type {any} */
-    let walk = copy;
+    let walk: any = copy;
     for (let i = 0; i < 22; i++) walk = i % 2 ? walk.a : walk.b;
     expect(walk).toEqual({ leaf: 1 });
     expect(copy.a).toBe(copy.b);
-    /** @type {any} */
-    const loop = { name: "x", list: [] };
+    const loop: any = { name: "x", list: [] };
     loop.list.push(loop, { back: loop });
-    const c = /** @type {any} */ (frozenCopy(loop));
+    const c = frozenCopy(loop) as any;
     expect(c.list[0]).toBeNull();
     expect(c.list[1].back).toBeNull();
   });
@@ -1206,13 +1195,13 @@ describe("the gate's copies (security.md M62)", () => {
       tool: "vimma_open",
       title: "",
       detail: "https://a.example/",
-      outcome: /** @type {const} */ ("yes"),
+      outcome: "yes" as const,
     };
     log.add(row);
     row.client = "built-in agent";
     const [read] = log.entries();
     expect(read?.client).toBe("agent-a");
-    expect(Reflect.set(/** @type {object} */ (read), "detail", "https://b.example/")).toBe(false);
+    expect(Reflect.set(read as object, "detail", "https://b.example/")).toBe(false);
     expect(log.entries()[0]).toMatchObject({ client: "agent-a", detail: "https://a.example/" });
   });
 });
