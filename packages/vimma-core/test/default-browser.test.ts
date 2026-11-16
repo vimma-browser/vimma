@@ -84,6 +84,14 @@ describe("mimeappsLists", () => {
         currentDesktop: "../../x:GNOME",
       }),
     ).toEqual(["/etc/xdg/gnome-mimeapps.list", "/etc/xdg/mimeapps.list"]);
+    expect(
+      mimeappsLists({
+        home: "",
+        configHome: "",
+        configDirs: "/etc/xdg",
+        currentDesktop: ".:..:KDE",
+      }),
+    ).toEqual(["/etc/xdg/kde-mimeapps.list", "/etc/xdg/mimeapps.list"]);
   });
 });
 
@@ -134,6 +142,18 @@ describe("defaultHandlers", () => {
         "x-scheme-handler/http",
       ),
     ).toEqual([" vimma-vimma.desktop"]);
+  });
+
+  test("reads nothing before a group header, nor in a group that only ends with the name", () => {
+    expect(defaultHandlers("x-scheme-handler/http=a.desktop\n", "x-scheme-handler/http")).toEqual(
+      [],
+    );
+    expect(
+      defaultHandlers(
+        "[Added Associations][Default Applications]\nx-scheme-handler/http=a.desktop\n",
+        "x-scheme-handler/http",
+      ),
+    ).toEqual([]);
   });
 
   test("ignores comments, other sections and other types", () => {
@@ -272,6 +292,29 @@ describe("isDefaultThroughRouter", () => {
     expect(check({ appPath: "" })).toBe(false);
   });
 
+  test("needs an absolute command even when a relative program resolves", () => {
+    const exec = () => "[Desktop Entry]\nExec=vimma-open %u\n";
+    expect(check({ entryFor: exec, resolves: () => true, appPath: "vimma-open" })).toBe(false);
+  });
+
+  test("an entry without an Exec line is not installed, so the router goes past it", () => {
+    const text = `[Default Applications]\nx-scheme-handler/http=noexec.desktop;vimma-vimma.desktop\nx-scheme-handler/https=vimma-vimma.desktop\n`;
+    const entryFor = (id: string) =>
+      id === "noexec.desktop" ? "[Desktop Entry]\nName=No Exec\n" : (entries[id] ?? null);
+    expect(check({ lists: [HYPRLAND_LIST, text], entryFor, resolves: () => true })).toBe(true);
+  });
+
+  test("reads each desktop entry once, however many lists and schemes name it", () => {
+    const asked: string[] = [];
+    expect(
+      check({
+        lists: [HYPRLAND_LIST, plainList("vimma-vimma.desktop"), plainList("vimma-vimma.desktop")],
+        entryFor: (id) => (asked.push(id), entries[id] ?? null),
+      }),
+    ).toBe(true);
+    expect(asked).toEqual(["vimma-vimma.desktop"]);
+  });
+
   test("a quoted Exec never counts, since Omarchy's launcher cannot run it", () => {
     expect(
       check({ entryFor: () => `[Desktop Entry]\nExec="${OWN}" %u\n`, resolves: () => true }),
@@ -349,6 +392,21 @@ describe("handlersRun", () => {
         command,
       ).toBe(false);
     }
+  });
+
+  test("never counts a quoted program, even where the shell would find it", () => {
+    const shell = (p: string) => (p.replace(/["'\\]/g, "") === OWN ? OWN : "");
+    for (const command of [`"${OWN}" %u`, `'${OWN}' %u`, `\\${OWN} %u`]) {
+      expect(handlersRun({ commandFor: both(command), which: shell, appPath: OWN }), command).toBe(
+        false,
+      );
+    }
+  });
+
+  test("a command line that starts with a space names no program", () => {
+    expect(handlersRun({ commandFor: both(` ${OWN} %u`), which: () => OWN, appPath: OWN })).toBe(
+      false,
+    );
   });
 
   test("needs an absolute command to compare with", () => {
