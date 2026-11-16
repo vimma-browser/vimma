@@ -203,7 +203,9 @@ which at worst flips that tab's mode, and checks every other reply. `VimmaActors
 `Vimma:Scroll` with `sendQuery` to the focused frame's actor, and to the top frame when the focused
 one has nothing to scroll. `VimmaChild`'s `receiveMessage` hands it to the frame's `PageScroll`
 (`actors/page-scroll.mjs`), which scrolls its own document (in the PDF viewer's presentation mode
-the child turns pages instead), and answers whether anything moved. `_run` does not wait
+the child turns pages instead), and answers whether anything moved. In the same way the child hands
+live grep's messages to its `GrepPage` (`actors/grep-page.mjs`) and an agent's `Vimma:Agent*`
+messages to its `AgentPage` (`actors/agent-page.mjs`). `_run` does not wait
 for that answer: `_onKeyDown` calls `_emit` at once, and the window's listeners (the status bar
 among them) redraw from `VimmaHost.status`.
 

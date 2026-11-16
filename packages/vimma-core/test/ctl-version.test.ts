@@ -91,8 +91,7 @@ describe("ctlIsCurrent", () => {
 });
 
 describe("agent-hello's ctl", () => {
-  /** @param {Record<string, unknown>} args */
-  const hello = (args) =>
+  const hello = (args: Record<string, unknown>) =>
     validateMessage(
       { type: "request", id: 1, command: "agent-hello", args: { client: { name: "a" }, ...args } },
       { kind: "request" },

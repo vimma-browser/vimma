@@ -142,7 +142,10 @@ vision; its key stays in login storage.
 
 **The chat window** (`ui/agent-chat.mjs`; `ui/agent-chat-view.mjs`, which builds its box and
 draws every value in it as text; `ui/agent-chat-key.mjs`, the API key entry and its masked field;
-`host/agent-chat-ops.mjs`, `host/agent-ui.mjs`):
+`ui/agent-chat-models.mjs`, the model picker and setup, which checks a new endpoint with
+`checkEndpoint` and asks for its key only through the window, and whose `RESTRICTED` entry in
+`tools/layering/layers.ts` lets only `ui/agent-chat.mjs` import it; `host/agent-chat-ops.mjs`,
+`host/agent-ui.mjs`):
 Vimma's own chrome, a box in the side panel's slot, never a page. It shows the user's messages,
 the model's replies, a line per step and the gate's questions of its open conversation, so it
 holds text a page may have written (a reply quoting it, a tab's title or a button's words in a

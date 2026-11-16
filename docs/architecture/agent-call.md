@@ -195,8 +195,8 @@ page's own script starts after the click is cancelled unless it is the one asked
 (`AgentActors.agentMark`; the marks and the observer that cancels the submission are in
 `actors/submit-marks.mjs`), then calls `AgentActors.agentActivate`
 (`actors/AgentActors.sys.mjs`). That sends `Vimma:AgentElement` with `op: "activate"` to the
-frame's `VimmaChild`, which looks the element up by the list's generation and id. Its
-`#agentActivate` answers `gone` for an element no longer on the page or a request past its time,
+frame's `VimmaChild`, whose `AgentPage` (`actors/agent-page.mjs`) looks the element up by the
+list's generation and id. Its `#agentActivate` answers `gone` for an element no longer on the page or a request past its time,
 `changed` for one that no longer submits to the method and address the question named, and
 otherwise `ok`, then clicks with the element's own `click()`, never synthesised input, so the page
 gets no user activation (M26). Tests:
