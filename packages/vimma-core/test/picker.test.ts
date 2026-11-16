@@ -11,6 +11,7 @@ import {
   scoreField,
   sectionOf,
   setPickerItems,
+  matchWork,
   unitsBuilt,
   workspaceItems,
 } from "../src/ui/picker.mjs";
@@ -599,18 +600,14 @@ describe("tab search (docs/specs/tab-search.md)", () => {
     const start = press(openPicker(big, {}), ["/"]).state;
     const keys = [..."abc", "space", ..."def", "ctrl+w", ..."jira", "ctrl+u", ..."docs"];
     keys.push("space", ..."wiki", "backspace", "backspace");
-    /** One pass over `keys`: each key's time in ms. */
-    const pass = () => {
-      let s = start;
-      return keys.map((key) => {
-        const t0 = performance.now();
-        s = pickerKey(s, key).state;
-        return performance.now() - t0;
-      });
-    };
-    return { keys, pass };
+    /** One pass over `keys`. */
+    const pass = () => keys.reduce((s, key) => pickerKey(s, key).state, start);
+    return { big, start, keys, pass };
   };
 
+  // Decision 10's budget (each key under 8 ms) is pinned by the work a key does, not by timing
+  // it: a wall-clock budget in the unit suite measures the runner, and failed on loaded ones
+  // (issue #1144). These counts are the same on any machine.
   test("500 open and 25 closed items: each text's units are built once", () => {
     const { pass } = bigSearch();
     pass();
@@ -620,18 +617,43 @@ describe("tab search (docs/specs/tab-search.md)", () => {
     expect(unitsBuilt() - before).toBe(0);
   });
 
-  // Tagged `timing`: the budget is for the real matcher, and the mutation run (stryker.config.mjs)
-  // leaves it out, since Stryker's instrumented copy runs several times slower.
-  test("500 open and 25 closed items: each key well under 8 ms", { tags: ["timing"] }, () => {
-    const { keys, pass } = bigSearch();
-    // Warm-up passes let the JIT optimise the matcher, as it is after the first few keys in a
-    // browser; each key's time is then its fastest of five passes, so a GC pause or a busy
-    // neighbour in one pass is not counted as its cost.
-    for (let i = 0; i < 3; i++) pass();
-    const runs = Array.from({ length: 5 }, pass);
-    const times = keys.map((_, k) => Math.min(...runs.map((r) => r[k] as number)));
-    expect(times.length).toBeGreaterThanOrEqual(20);
-    expect(Math.max(...times)).toBeLessThan(8);
+  test("500 open and 25 closed items: a key matches each field once per term, in one pass", () => {
+    const { big, start, keys } = bigSearch();
+    // The fields matchItem reads of a tab row: display, url and workspace, and title and markers
+    // when set.
+    const fieldsOf = (item: PickerItem) => 3 + (item.label ? 1 : 0) + (item.markers ? 1 : 0);
+    /**
+     * The fields one pass over the list tries for `query`: every item's fields for the first
+     * term, and for each later term only the items that matched every earlier one.
+     */
+    const onePass = (query: string) => {
+      const terms = query.trim().split(/\s+/).filter(Boolean);
+      let n = 0;
+      for (const item of big) {
+        for (let k = 0; k < terms.length; k++) {
+          n += fieldsOf(item);
+          if (!matchItem(item, terms.slice(0, k + 1).join(" "))) break;
+        }
+      }
+      return n;
+    };
+    // The counts cannot see the work after the match (sorting, the rows shown) or how long each
+    // field takes; timing belongs in tools/bench, which measures against a baseline on one machine.
+    let s = start;
+    let scored = 0;
+    for (const key of keys) {
+      const before = matchWork();
+      s = pickerKey(s, key).state;
+      const work = matchWork();
+      const tried = work.tried - before.tried;
+      const expected = onePass(s.query);
+      expect(tried, key).toBe(expected);
+      // A field whose letters do not occur in order is dropped before any tier is tried.
+      expect(work.full - before.full, key).toBe(work.matched - before.matched);
+      if (tried) scored++;
+    }
+    // Most keys of the sequence change the query and match the list again.
+    expect(scored).toBeGreaterThanOrEqual(20);
   });
 });
 

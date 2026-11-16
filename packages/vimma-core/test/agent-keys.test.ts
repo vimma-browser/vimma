@@ -17,15 +17,13 @@ import {
 import { DEFAULT_HINT_CHARS, hintLabels } from "../src/page/hints.mjs";
 import { compileKeymap } from "../src/keys/keymap.mjs";
 
-/** @param {string} keys */
-const ids = (keys) => {
+const ids = (keys: string) => {
   const r = parseAgentKeys(keys);
   if (!r.ok) throw new Error(r.error);
   return r.steps.map((s) => (s.count ? `${s.count}${s.action}` : s.action));
 };
 
-/** @param {string} keys */
-const refusal = (keys) => {
+const refusal = (keys: string) => {
   const r = parseAgentKeys(keys);
   if (r.ok) throw new Error(`${keys} was accepted: ${JSON.stringify(r.steps)}`);
   return r.error;
@@ -174,8 +172,7 @@ describe("the whitelist (D9)", () => {
 });
 
 describe("links (D12)", () => {
-  /** @param {string} keys */
-  const steps = (keys) => {
+  const steps = (keys: string) => {
     const r = parseAgentKeys(keys);
     if (!r.ok) throw new Error(r.error);
     return r.steps;
@@ -247,8 +244,12 @@ describe("links (D12)", () => {
 });
 
 describe("link lists (D12, D16; security.md M21)", () => {
-  /** @param {number} x @param {number} y @param {string} [href] @param {string} [text] */
-  const at = (x, y, href = `https://a.example/${x}-${y}`, text = `${x},${y}`) => ({
+  const at = (
+    x: number,
+    y: number,
+    href: string = `https://a.example/${x}-${y}`,
+    text: string = `${x},${y}`,
+  ) => ({
     rect: { x, y, width: 10, height: 10 },
     href,
     text,
@@ -403,21 +404,21 @@ describe("the keys as the question shows them (D14)", () => {
 describe("how long labels last (D12; mcp-forms F3; issue #591)", () => {
   const mark = { doc: 7, url: "https://example.com/a" };
   const at = 1_000_000;
-  const later = (/** @type {number} */ ms) => ({ now: at + ms, mark });
+  const later = (ms: number) => ({ now: at + ms, mark });
 
   test("f's links last AGENT_LINKS.ttlMs on their page", () => {
-    const links = { mark, at, source: /** @type {const} */ ("links") };
+    const links = { mark, at, source: "links" as const };
     expect(labelsCurrent(links, later(AGENT_LINKS.ttlMs - 1))).toBe(true);
     expect(labelsCurrent(links, later(AGENT_LINKS.ttlMs))).toBe(false);
   });
 
   test("an element list's labels last as long as their page, however slow the agent", () => {
-    const elements = { mark, at, source: /** @type {const} */ ("elements") };
+    const elements = { mark, at, source: "elements" as const };
     expect(labelsCurrent(elements, later(AGENT_LINKS.ttlMs * 100))).toBe(true);
   });
 
   test("another document or URL ends either list, and no list is never current", () => {
-    for (const source of /** @type {const} */ (["links", "elements"])) {
+    for (const source of ["links", "elements"] as const) {
       const session = { mark, at, source };
       expect(labelsCurrent(session, { now: at, mark: { ...mark, doc: 8 } })).toBe(false);
       expect(labelsCurrent(session, { now: at, mark: { ...mark, url: `${mark.url}#b` } })).toBe(

@@ -38,19 +38,18 @@ const enc = new TextEncoder();
  * A zip with these entries (stored, empty files): local headers, the central directory and the
  * end-of-central-directory record, as `zip -0` writes them. An entry is a name, or a name with
  * the Unix mode `zip` records in the external attributes (version made by: Unix).
- * @param {(string | { name: string, mode: number })[]} entries
- * @param {{ comment?: string }} [options]
  */
-export function makeZip(entries, { comment = "" } = {}) {
+export function makeZip(
+  entries: (string | { name: string; mode: number })[],
+  { comment = "" }: { comment?: string } = {},
+) {
   const names = entries.map((e) => (typeof e === "string" ? e : e.name));
   const modes = entries.map((e) => (typeof e === "string" ? null : e.mode));
-  /** @type {number[]} */
-  const out = [];
-  const u16 = (/** @type {number} */ n) => out.push(n & 0xff, (n >> 8) & 0xff);
-  const u32 = (/** @type {number} */ n) =>
+  const out: number[] = [];
+  const u16 = (n: number) => out.push(n & 0xff, (n >> 8) & 0xff);
+  const u32 = (n: number) =>
     out.push(n & 0xff, (n >>> 8) & 0xff, (n >>> 16) & 0xff, (n >>> 24) & 0xff);
-  /** @type {number[]} */
-  const offsets = [];
+  const offsets: number[] = [];
   for (const name of names) {
     offsets.push(out.length);
     const bytes = enc.encode(name);
@@ -85,7 +84,7 @@ export function makeZip(entries, { comment = "" } = {}) {
     u16(0);
     u16(0);
     u32(mode === null || mode === undefined ? 0 : (mode << 16) >>> 0); // external attributes
-    u32(/** @type {number} */ (offsets[i]));
+    u32(offsets[i] as number);
     out.push(...bytes);
   });
   const cdSize = out.length - cdStart;
@@ -103,7 +102,7 @@ export function makeZip(entries, { comment = "" } = {}) {
 }
 
 /** The names in a zip, as the browser reads it: the tail, then the central directory. */
-function list(/** @type {Uint8Array} */ zip) {
+function list(zip: Uint8Array) {
   const tail = zip.subarray(Math.max(0, zip.length - ZIP_TAIL_BYTES));
   const at = zipLocate(tail, zip.length);
   if (at.kind !== "zip") return at.kind;
@@ -154,7 +153,7 @@ describe("dangerous by name (decision 31 d)", () => {
   );
 
   test("Firefox's own executable list (nsIApplicationReputationService.isExecutable) counts", () => {
-    const isExecutable = (/** @type {string} */ n) => n.endsWith(".scr");
+    const isExecutable = (n: string) => n.endsWith(".scr");
     expect(dangerousName("screen.scr", { isExecutable })?.kind).toBe("executable");
     expect(dangerousName("report.pdf", { isExecutable })).toBe(null);
   });
@@ -204,7 +203,7 @@ describe("dangerous by type", () => {
 });
 
 describe("dangerous by the first bytes (decision 31 d)", () => {
-  const bytes = (/** @type {number[]} */ ...b) => new Uint8Array([...b, 0, 0, 0, 0, 0, 0]);
+  const bytes = (...b: number[]) => new Uint8Array([...b, 0, 0, 0, 0, 0, 0]);
   test.each([
     ["ELF", bytes(0x7f, 0x45, 0x4c, 0x46), "executable"],
     ["PE (MZ)", bytes(0x4d, 0x5a), "executable"],
@@ -293,7 +292,7 @@ describe("a zip's names, from its central directory (never extracted)", () => {
   });
 
   test("names inside are checked with Firefox's list too", () => {
-    const isExecutable = (/** @type {string} */ n) => n.endsWith(".scr");
+    const isExecutable = (n: string) => n.endsWith(".scr");
     expect(zipVerdict(["x.scr"], { isExecutable })?.kind).toBe("archive");
   });
 });
@@ -333,13 +332,11 @@ describe("a zip entry's mode and path", () => {
   });
 });
 
-/** A zip's entries, as the browser reads them. @param {Uint8Array} zip */
-function zipEntries(zip) {
+/** A zip's entries, as the browser reads them. */
+function zipEntries(zip: Uint8Array) {
   const at = zipLocate(zip.subarray(Math.max(0, zip.length - ZIP_TAIL_BYTES)), zip.length);
   if (at.kind !== "zip") throw new Error("expected a zip");
-  return /** @type {any[]} */ (
-    zipEntryList(zip.subarray(at.offset, at.offset + at.length), at.entries)
-  );
+  return zipEntryList(zip.subarray(at.offset, at.offset + at.length), at.entries) as any[];
 }
 
 describe("ClamAV's definitions and clamd (decision 31 g, decisions 43-45)", () => {
@@ -390,7 +387,7 @@ describe("ClamAV's definitions and clamd (decision 31 g, decisions 43-45)", () =
   });
 
   test("clamd.conf: a local socket, no TCP, alerting as clamscan is asked to", () => {
-    const conf = (/** @type {string[]} */ ...lines) => clamdConfig(lines.join("\n"));
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
     const good = [
       "# comment",
       "LocalSocket /run/clamav/clamd.ctl",

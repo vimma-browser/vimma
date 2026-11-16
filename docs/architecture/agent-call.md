@@ -175,8 +175,8 @@ makes no grant, and `a` makes an allowance for that button on that site for the 
 `settle` logs the call and resolves the waiting promise; a grant can release other waiting calls
 of the same connection, which run under it. A no, a timeout or a closed connection reach the
 command as an `AgentError` with code `denied` and a reason (`user`, `timeout`, `busy`, `muted`,
-`cancelled`). Tests: [agent-gate.test.mjs](../../packages/vimma-core/test/agent-gate.test.mjs),
-[agent-checkpoint.test.mjs](../../packages/vimma-core/test/agent-checkpoint.test.mjs),
+`cancelled`). Tests: [agent-gate.test.ts](../../packages/vimma-core/test/agent-gate.test.ts),
+[agent-checkpoint.test.ts](../../packages/vimma-core/test/agent-checkpoint.test.ts),
 `test_denials_timeouts_queue_and_mute` and `test_one_grant_covers_every_tool_of_its_connection` in
 [browser_vimma_mcp_agent_grants.js](../../tests/browser/browser_vimma_mcp_agent_grants.js),
 `test_submit_asks_under_a_grant` in

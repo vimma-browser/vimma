@@ -17,7 +17,7 @@ import {
   statedTotal,
 } from "../src/agent/agent-checkpoint.mjs";
 import { textWidth } from "../src/text/textwidth.mjs";
-/** @import { SentField, SentFields } from "../src/agent/agent-checkpoint.mjs" */
+import type { SentField, SentFields } from "../src/agent/agent-checkpoint.mjs";
 
 describe("a payment step (C5, C6)", () => {
   test("card fields alone, and a pay phrase alone, make a payment step; neither makes none", () => {
@@ -144,7 +144,7 @@ describe("the total the page states (C7)", () => {
     expect(statedTotal("  Total\n  42,90 € ")).toBe("Total 42,90 €");
     expect(statedTotal("Total ‮42,90 €")).toBe("Total 42,90 €");
     const long = statedTotal(`Total 42,90 € ${"incl. VAT and shipping ".repeat(4)}`);
-    expect(textWidth(/** @type {string} */ (long))).toBe(TOTAL_COLUMNS);
+    expect(textWidth(long as string)).toBe(TOTAL_COLUMNS);
     expect(long?.endsWith("…")).toBe(true);
     expect(statedTotal("Free shipping over 50 €")).toBe(null);
     expect(statedTotal(undefined)).toBe(null);
@@ -229,8 +229,12 @@ describe("what the child says of a step (checked like any content reply)", () =>
 // docs/specs/mcp-consequence.md: under a grant a click's form asks by what it sends (K1-K3), and
 // `a` allows one button on one site for the rest of the grant (K5).
 describe("a consequential form (mcp-consequence K2, K3)", () => {
-  /** @param {SentField[]} fields @param {Partial<SentFields>} [rest] @returns {SentFields} */
-  const sent = (fields, rest = {}) => ({ fields, hidden: 2, more: 0, ...rest });
+  const sent = (fields: SentField[], rest: Partial<SentFields> = {}): SentFields => ({
+    fields,
+    hidden: 2,
+    more: 0,
+    ...rest,
+  });
 
   test("a form of hidden fields, numbers and choices is not consequential", () => {
     const basket = sent([
@@ -259,8 +263,7 @@ describe("a consequential form (mcp-consequence K2, K3)", () => {
   });
 
   test("a value cut to fit, digits in other scripts or forms, or a long number is free text", () => {
-    /** @param {object} f */
-    const one = (f) =>
+    const one = (f: object) =>
       isConsequential({ pay: false, sent: sent([{ name: "m", text: true, ...f }]) });
     expect(one({ value: "1".repeat(1024), cut: true })).toBe(true);
     expect(one({ value: "\u{1D7CF}\u{1D7CF}" })).toBe(true);
@@ -324,7 +327,7 @@ describe("a consequential form (mcp-consequence K2, K3)", () => {
   });
 
   test("the allowance: site, method, destination without its query, and the button's text", () => {
-    const key = (/** @type {object} */ o) =>
+    const key = (o: object) =>
       allowanceKey({
         site: "shop.example",
         method: "post",
