@@ -69,6 +69,38 @@ describe("setup", () => {
     expect(got[0]).toMatchObject({ name: "X", author: "Ann", summary: "Does x", users: 1200 });
   });
 
+  test("malformed AMO answers are dropped or read as empty, never thrown on", () => {
+    expect(amoEntries(null as unknown as unknown[])).toEqual([]);
+    expect(amoEntries({ length: 1, 0: amo() } as unknown as unknown[])).toEqual([]);
+    const dropped = amoEntries([
+      null,
+      "x",
+      42,
+      [amo()],
+      amo({ guid: 1 }),
+      amo({ slug: null }),
+      amo({ current_version: null }),
+      amo({ current_version: "v1" }),
+      amo({ current_version: { file: null } }),
+      amo({ current_version: { file: [] } }),
+      amo({ current_version: { file: { url: 7, hash: "sha256:ab" } } }),
+    ]);
+    expect(dropped).toEqual([]);
+    const [odd] = amoEntries([
+      amo({
+        name: null,
+        summary: 5,
+        // Not an array: AMO's authors list is read only as one.
+        authors: { 0: { name: "Mallory" } },
+        average_daily_users: "1200",
+      }),
+    ]);
+    expect(odd).toMatchObject({ name: "x", author: "", summary: "", users: 0 });
+    for (const authors of [null, "Ann", [], [null], ["Ann"], [{ name: 3 }]]) {
+      expect(amoEntries([amo({ authors })])[0]?.author, JSON.stringify(authors)).toBe("");
+    }
+  });
+
   test("a curated slug answered with another guid is dropped", () => {
     const [first] = CURATED;
     if (!first) throw new Error("no curated add-on");

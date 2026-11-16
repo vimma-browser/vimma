@@ -93,6 +93,15 @@ function text(/** @type {unknown} */ v) {
   return "";
 }
 
+/**
+ * A JSON object (not null, not an array): AMO's answer is read one level at a time.
+ * @param {unknown} v
+ * @returns {v is Record<string, unknown>}
+ */
+function isRecord(v) {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
 /** Only an https file on addons.mozilla.org itself (decision 4). */
 function amoFile(/** @type {unknown} */ url) {
   if (typeof url !== "string") return false;
@@ -115,24 +124,29 @@ function amoFile(/** @type {unknown} */ url) {
 export function amoEntries(results, { curated = false, installed = new Set() } = {}) {
   /** @type {AddonEntry[]} */
   const out = [];
-  for (const raw of Array.isArray(results) ? results : []) {
-    const r = /** @type {any} */ (raw);
-    if (!r || typeof r !== "object" || r.type !== "extension") continue;
-    if (typeof r.guid !== "string" || typeof r.slug !== "string") continue;
-    const file = r.current_version?.file;
-    if (!amoFile(file?.url)) continue;
-    if (typeof file.hash !== "string" || !/^sha256:[0-9a-f]+$/i.test(file.hash)) continue;
-    if (curated && !CURATED.some((c) => c.slug === r.slug && c.guid === r.guid)) continue;
+  for (const r of Array.isArray(results) ? results : []) {
+    if (!isRecord(r) || r.type !== "extension") continue;
+    const { guid, slug } = r;
+    if (typeof guid !== "string" || typeof slug !== "string") continue;
+    const version = r.current_version;
+    const file = isRecord(version) && isRecord(version.file) ? version.file : undefined;
+    const url = file?.url;
+    const hash = file?.hash;
+    if (typeof url !== "string" || !amoFile(url)) continue;
+    if (typeof hash !== "string" || !/^sha256:[0-9a-f]+$/i.test(hash)) continue;
+    if (curated && !CURATED.some((c) => c.slug === slug && c.guid === guid)) continue;
+    const first = Array.isArray(r.authors) ? r.authors[0] : undefined;
+    const users = r.average_daily_users;
     out.push({
-      guid: r.guid,
-      slug: r.slug,
-      name: text(r.name) || r.slug,
-      author: text(r.authors?.[0]?.name),
+      guid,
+      slug,
+      name: text(r.name) || slug,
+      author: isRecord(first) ? text(first.name) : "",
       summary: text(r.summary),
-      users: Number.isFinite(r.average_daily_users) ? r.average_daily_users : 0,
-      url: file.url,
-      hash: file.hash,
-      installed: installed.has(r.guid),
+      users: typeof users === "number" && Number.isFinite(users) ? users : 0,
+      url,
+      hash,
+      installed: installed.has(guid),
     });
   }
   if (curated) out.sort((a, b) => curatedIndex(a.guid) - curatedIndex(b.guid));
