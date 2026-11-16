@@ -116,7 +116,7 @@ async function main(root: string) {
   });
   await phase("import", () => run("npm", ["run", "import"], root));
   await phase("artifact build", () =>
-    run("node", ["tools/artifact-build/artifact-build.mjs"], root),
+    run("node", ["tools/artifact-build/artifact-build.ts"], root),
   );
 
   const stray = foreignLinks(engine, sources, root);

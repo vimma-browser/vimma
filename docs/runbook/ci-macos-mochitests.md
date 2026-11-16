@@ -4,7 +4,7 @@ The job `mochitest (artifact build, macOS)` runs the front-end tests on a hosted
 Mac (`macos-15`), as sub-PR 1 of [macos-build](../specs/macos-build.md) describes. Its steps: `npm
 ci`; the whole Vitest suite (`npm test`); GNU tar and `gpgv` from Homebrew when the image lacks
 them; `tools/upstream/firefox-source.sh`; `npm run import`;
-`node tools/artifact-build/artifact-build.mjs`, which fetches Mozilla's `macosx64-aarch64-opt`
+`node tools/artifact-build/artifact-build.ts`, which fetches Mozilla's `macosx64-aarch64-opt`
 build of the same release; and `npm run mochitest -- --artifact tests/browser/`, headless, with
 one pref set (below). `df
 -k .` records the free disk before the download, after the unpack and after the tests, because
