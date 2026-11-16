@@ -1,5 +1,17 @@
 import { describe, test, expect } from "vitest";
-import { CURATED, amoEntries, initialSetup, planSetup, setupKey } from "../src/system/setup.mjs";
+import {
+  AMO_API,
+  CURATED,
+  amoCuratedUrl,
+  amoEntries,
+  amoSearchUrl,
+  curatedOffline,
+  formatUsers,
+  initialSetup,
+  planSetup,
+  setupKey,
+  withAddons,
+} from "../src/system/setup.mjs";
 import type { SetupState } from "../src/system/setup.mjs";
 
 /** An AMO search result as the v5 API returns it. */
@@ -135,5 +147,197 @@ describe("setup", () => {
     r = keys(r.state, "esc");
     expect(r.state.step).toBe("engine");
     expect(r.effect).toBeNull();
+  });
+
+  test("the curated list offline has no file, so it shows but cannot be marked", () => {
+    expect(curatedOffline().map((a) => a.installed)).toEqual([false, false, false]);
+    const [ublock, adguard] = CURATED;
+    const offline = curatedOffline(new Set([adguard?.guid ?? ""]));
+    expect(offline[0]).toEqual({ ...ublock, users: 0, url: "", hash: "", installed: false });
+    expect(offline.map((a) => a.installed)).toEqual([false, true, false]);
+    const s = initialSetup({ addons: offline, engines, engine: null });
+    expect(keys(s, "enter", "space").state.marked.size).toBe(0);
+  });
+
+  test("searches AMO's public API for extensions by users, and the curated GUIDs in one request", () => {
+    expect(AMO_API).toBe("https://addons.mozilla.org/api/v5/addons/");
+    expect(amoSearchUrl("dark mode")).toBe(
+      "https://addons.mozilla.org/api/v5/addons/search/?q=dark+mode&app=firefox&type=extension&sort=users",
+    );
+    expect(amoSearchUrl("a&b", "http://127.0.0.1:1/")).toBe(
+      "http://127.0.0.1:1/search/?q=a%26b&app=firefox&type=extension&sort=users",
+    );
+    expect(amoCuratedUrl()).toBe(
+      "https://addons.mozilla.org/api/v5/addons/search/?guid=" +
+        encodeURIComponent(CURATED.map((c) => c.guid).join(",")) +
+        "&app=firefox",
+    );
+    expect(amoCuratedUrl("http://127.0.0.1:1/")).toMatch(
+      /^http:\/\/127\.0\.0\.1:1\/search\/\?guid=/,
+    );
+  });
+
+  test("an AMO file on another port, or a URL that does not parse, is dropped", () => {
+    const at = (url: string) => amo({ current_version: { file: { url, hash: "sha256:ab" } } });
+    expect(amoEntries([at("https://addons.mozilla.org:8443/f.xpi")])).toEqual([]);
+    expect(amoEntries([at("not a url")])).toEqual([]);
+    expect(amoEntries([at("https://addons.mozilla.org:443/f.xpi")])).toHaveLength(1);
+  });
+
+  test("the hash is the whole value: sha256 and hex digits, any case", () => {
+    const hashed = (hash: string) =>
+      amoEntries([
+        amo({ current_version: { file: { url: "https://addons.mozilla.org/f.xpi", hash } } }),
+      ]).length;
+    expect(hashed("SHA256:AB09")).toBe(1);
+    for (const hash of ["sha256:", "xsha256:ab", "sha256:abz", "sha256:ab ", " sha256:ab"]) {
+      expect(hashed(hash), hash).toBe(0);
+    }
+  });
+
+  test("names are read in en-US, else the first language, and users must be a finite number", () => {
+    const [e] = amoEntries([
+      amo({ name: { fr: "Le X", "en-US": "X en" }, summary: { de: "Macht x", fr: "Fait x" } }),
+    ]);
+    expect(e).toMatchObject({ name: "X en", summary: "Macht x" });
+    expect(amoEntries([amo({ name: { de: 1 } })])[0]?.name).toBe("x");
+    expect(amoEntries([amo({ name: "", authors: [{ name: "Bo" }] })])[0]).toMatchObject({
+      name: "x",
+      author: "Bo",
+    });
+    for (const users of [Infinity, Number.NaN]) {
+      expect(amoEntries([amo({ average_daily_users: users })])[0]?.users).toBe(0);
+    }
+    expect(amoEntries([amo({ average_daily_users: 0.5 })])[0]?.users).toBe(0.5);
+    expect(amoEntries([amo({ current_version: { file: [] } })])).toEqual([]);
+    expect(amoEntries([amo({ current_version: [{ file: {} }] })])).toEqual([]);
+  });
+
+  test("an entry keeps AMO's file and marks what is installed", () => {
+    const [e] = amoEntries([amo()], { installed: new Set(["x@example.com"]) });
+    expect(e).toEqual({
+      guid: "x@example.com",
+      slug: "x",
+      name: "X",
+      author: "Ann",
+      summary: "Does x",
+      users: 1200,
+      url: "https://addons.mozilla.org/firefox/downloads/file/1/x.xpi",
+      hash: "sha256:ab",
+      installed: true,
+    });
+    expect(amoEntries([amo()])[0]?.installed).toBe(false);
+  });
+
+  test("curated answers come back in the curated order, whatever order AMO sends", () => {
+    const answer = [...CURATED].reverse().map((c) => amo({ slug: c.slug, guid: c.guid }));
+    const got = amoEntries(answer, { curated: true });
+    expect(got.map((a) => a.guid)).toEqual(CURATED.map((c) => c.guid));
+    const search = amoEntries(answer);
+    expect(search.map((a) => a.guid)).toEqual(answer.map((a) => a.guid));
+  });
+
+  test("a new list puts the cursor back on its first entry", () => {
+    const r = keys(fresh(), "enter", "j");
+    expect(r.state.cursor).toBe(1);
+    const s = withAddons(r.state, []);
+    expect(s).toEqual({ ...r.state, addons: [], cursor: 0 });
+    expect(initialSetup({ addons: [], engines, engine: "Bing" })).toEqual({
+      step: "welcome",
+      cursor: 0,
+      addons: [],
+      marked: new Map(),
+      engines,
+      engine: "Bing",
+    });
+  });
+
+  test("the arrows move like j and k, and the cursor stays inside the list", () => {
+    let r = keys(fresh(), "enter", "down");
+    expect(r.state.cursor).toBe(1);
+    r = keys(r.state, "down", "j");
+    expect(r.state.cursor).toBe(1);
+    r = keys(r.state, "up", "up", "k");
+    expect(r.state.cursor).toBe(0);
+    r = keys(r.state, "enter", "down", "down", "down", "j");
+    expect(r.state).toMatchObject({ step: "engine", cursor: 2 });
+    r = keys(r.state, "up");
+    expect(r.state.cursor).toBe(1);
+    r = keys(r.state, "enter");
+    expect(planSetup(r.state)?.engine).toBe("DuckDuckGo");
+  });
+
+  test("an empty list does not move the cursor, nor mark anything", () => {
+    const s = initialSetup({ addons: [], engines: [], engine: "Google" });
+    let r = keys(s, "enter");
+    for (const k of ["j", "down", "k", "up", "space"]) {
+      const next = setupKey(r.state, k);
+      expect(next.state, k).toBe(r.state);
+      expect(next.effect, k).toBeNull();
+    }
+    r = keys(r.state, "enter");
+    for (const k of ["j", "down", "k", "up"]) expect(setupKey(r.state, k).state, k).toBe(r.state);
+    r = keys(r.state, "enter");
+    expect(r.state.step).toBe("summary");
+    expect(planSetup(r.state)).toEqual({ addons: [], engine: "Google" });
+  });
+
+  test("other keys do nothing on any step, and a closed page takes no keys", () => {
+    const steps = [[], ["enter"], ["enter", "enter"], ["enter", "enter", "enter"], ["q"]];
+    for (const before of steps) {
+      const s = keys(fresh(), ...before).state;
+      for (const k of ["x", "space", "/", "h", "l"]) {
+        if (s.step === "addons" && (k === "space" || k === "/")) continue;
+        const r = setupKey(s, k);
+        expect(r.state, `${before} ${k}`).toBe(s);
+        expect(r.effect, `${before} ${k}`).toBeNull();
+      }
+    }
+    const closed = keys(fresh(), "q").state;
+    expect(closed.step).toBe("closed");
+    for (const k of ["enter", "esc", "q"]) expect(setupKey(closed, k).state).toBe(closed);
+    const summary = keys(fresh(), "enter", "enter", "enter").state;
+    expect(setupKey(summary, "q").state).toBe(summary);
+  });
+
+  test("the engine step starts on the current default, or the first when it is not listed", () => {
+    const at = (engine: string | null) =>
+      keys(initialSetup({ addons: [], engines, engine }), "enter", "enter").state.cursor;
+    expect(at("Bing")).toBe(2);
+    expect(at("Ecosia")).toBe(0);
+    expect(at(null)).toBe(0);
+    const back = keys(initialSetup({ addons: [], engines, engine: "Bing" }), "enter", "enter");
+    const r = keys(back.state, "enter", "esc");
+    expect(r.state).toMatchObject({ step: "engine", cursor: 2 });
+    const none = { ...keys(fresh(), "enter", "enter", "enter").state, engine: null };
+    expect(setupKey(none, "esc").state).toMatchObject({ step: "engine", cursor: 0 });
+    const gone = { ...none, engine: "Ecosia" };
+    expect(setupKey(gone, "esc").state).toMatchObject({ step: "engine", cursor: 0 });
+  });
+
+  test("the plan leaves out a marked add-on that got installed meanwhile", () => {
+    const r = keys(fresh(), "enter", "space", "j", "space", "enter", "enter");
+    const [x, y] = r.state.addons;
+    if (!x || !y) throw new Error("no add-ons");
+    const marked = new Map([
+      [x.guid, { ...x, installed: true }],
+      [y.guid, y],
+    ]);
+    expect(planSetup({ ...r.state, marked })?.addons).toEqual([y]);
+  });
+
+  test("user counts read as 999, 1.2k, 12k, 1.2M and 12M", () => {
+    expect(formatUsers(0)).toBe("0 users");
+    expect(formatUsers(999)).toBe("999 users");
+    expect(formatUsers(1000)).toBe("1.0k users");
+    expect(formatUsers(1234)).toBe("1.2k users");
+    expect(formatUsers(9_999)).toBe("10.0k users");
+    expect(formatUsers(10_000)).toBe("10k users");
+    expect(formatUsers(999_999)).toBe("1000k users");
+    expect(formatUsers(1_000_000)).toBe("1.0M users");
+    expect(formatUsers(1_234_567)).toBe("1.2M users");
+    expect(formatUsers(9_999_999)).toBe("10.0M users");
+    expect(formatUsers(10_000_000)).toBe("10M users");
+    expect(formatUsers(12_345_678)).toBe("12M users");
   });
 });
