@@ -714,6 +714,37 @@ add_task(async function a_switching_follow_with_new_tab_pane_takes_the_focused_p
   gBrowser.removeTab(followed);
 });
 
+// docs/specs/new-tab-in-split.md decision 3: only a tab Firefox put at the end of the strip moves
+// beside the split. A closed tab reopened (ctrl+shift+t) during a split goes back to its own
+// place, as SessionStore's undoCloseTab puts it there; it still shows alone.
+add_task(async function a_reopened_tab_keeps_its_place_during_a_split() {
+  await reset();
+  const { SessionStore } = ChromeUtils.importESModule(
+    "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
+  );
+  const { TabStateFlusher } = ChromeUtils.importESModule(
+    "moz-src:///browser/components/sessionstore/TabStateFlusher.sys.mjs",
+  );
+  const closing = tab("a");
+  const index = gBrowser.tabs.indexOf(closing);
+  Assert.ok(index < gBrowser.tabs.length - 1, "a is not the last tab");
+  await TabStateFlusher.flush(closing.linkedBrowser);
+  const slot = opened.indexOf(closing);
+  BrowserTestUtils.removeTab(closing);
+  await until(() => !closing.parentNode, "a is closed");
+  await split(["b", "c"], "b");
+  const restored = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "SSTabRestored");
+  const reopened = /** @type {SplitTab} */ (SessionStore.undoCloseTab(window, 0));
+  byName.set("a", reopened);
+  opened[slot] = reopened;
+  await restored;
+  await until(() => gBrowser.selectedTab === reopened, "the reopened tab is selected");
+  Assert.equal(gBrowser.tabs.indexOf(reopened), index, "it is back at its own index");
+  Assert.ok(hiddenView(), "it shows alone, the split waits hidden");
+  Assert.equal(shape(), "x[b,c]", "with its panes");
+  await reset();
+});
+
 // docs/specs/multiple-splits.md behaviour 4 and decision 4: the refusal to split a tab shown
 // alone stays until the next key, and says how to get back.
 add_task(async function splitting_the_lone_tab_is_refused_until_the_next_key() {

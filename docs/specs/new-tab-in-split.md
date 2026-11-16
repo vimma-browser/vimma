@@ -33,7 +33,9 @@ Example: tabs `wiki`, `google | youtube` (a split, `youtube` focused), `github`.
    zoom and focused pane. `]s`, `ctrl+b S` or selecting any of its tabs brings it back whole.
 2. As a Vimma user, the new tab sits right after the split's tabs in the tab strip and the side
    panel. A tab opened from a link on one of the split's pages goes where Firefox puts a tab opened
-   from a link: after the split, following the tabs already opened from that page.
+   from a link: after the split, following the tabs already opened from that page. A tab that
+   comes with its own place keeps it: a closed tab reopened with `ctrl+shift+t` goes back to its
+   old index.
 3. As a Vimma user who sets `[panes] new_tab = "pane"`, a new foreground tab opens in the focused
    pane instead, as before: the split stays, and the tab that pane showed stays open in the
    workspace.
@@ -85,7 +87,11 @@ before it reconciles.
    the tab strip, in the side panel and for `gt` / `gT` and `alt+1..9`, and `gT` from it shows the
    split again. A tab opened from a link keeps Firefox's placement (after the split already, and
    after earlier tabs from the same page), so that several links opened from one page keep their
-   order. Rejected: the end of the tab strip (Firefox's place for `ctrl+t`), because with several
+   order. Only a tab Firefox put at the end of the strip is moved, since that is Firefox's place
+   for a tab with no index and no opener; a tab given its own index keeps it (SessionStore's
+   `undoCloseTab` passes the closed tab's old index, and `browser.tabs.insertAfterCurrent`
+   places new tabs after the current one), so the move never undoes a place that was set on
+   purpose. Rejected: the end of the tab strip (Firefox's place for `ctrl+t`), because with several
    splits and many tabs the new tab ends up far from the split it belongs with.
 4. **The option is `[panes] new_tab`, with `"alone"` and `"pane"`.** It sits with the other split
    settings in `[panes]`, its values name what the new tab does, and it is validated like
@@ -120,7 +126,8 @@ workspace routing (docs/security/02-workspace-routing.md) and links from other a
   brings it back; with `"pane"` the new tab takes the focused pane.
 - mochitest, `browser_vimma_side_panel_unsplit.js`:
   `a_switching_follow_in_a_split_shows_alone_beside_it` and
-  `a_switching_follow_with_new_tab_pane_takes_the_focused_pane`.
+  `a_switching_follow_with_new_tab_pane_takes_the_focused_pane`;
+  `a_reopened_tab_keeps_its_place_during_a_split`.
 - e2e: `m4-split-panes`, `issue-362-pane-focus-highlight` and `m3-restart-restore` fill a new
   pane with `vimma-ctl open`, so they run with `tests/e2e/fixtures/new-tab-pane.toml`
   (`new_tab = "pane"`).

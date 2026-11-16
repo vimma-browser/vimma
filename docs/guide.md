@@ -1340,7 +1340,8 @@ opened in a new foreground tab, also with `f`, or a link from another app) shows
 after the split's tabs, so the split you arranged is never broken up: it waits hidden, with its
 panes, sizes and focused pane, until `]s`, `ctrl+b S` or any of its tabs brings it back. A tab
 opened from a link on one of the split's pages goes where Firefox puts it, after the split and
-after the tabs already opened from that page. To open new tabs in the focused pane instead, set
+after the tabs already opened from that page, and a closed tab you reopen with `ctrl+shift+t`
+goes back to its old place. To open new tabs in the focused pane instead, set
 `[panes] new_tab = "pane"` in [config.toml](#configtoml): the new tab then takes that pane's
 place, the split stays, and the tab that pane showed stays open in the workspace.
 
@@ -1360,9 +1361,9 @@ A workspace can keep several splits, up to 9, and shows one at a time: an editor
 docs, and a second comparison of two pages, without breaking up the first.
 
 - **Starting another split.** Go to a tab that is in no split, or open a new one, so it shows
-  alone and the split waits hidden. Open the side panel (`ctrl+b b`): on a tab shown alone nothing starts marked.
-  Mark two or more tabs with `space` or `V` and press `Enter`; they become a new split, shown at
-  once, and the split you had before waits hidden. A marked tab that was in another split leaves
+  alone and the split waits hidden. Open the side panel (`ctrl+b b`): on a tab shown alone
+  nothing starts marked. Mark two or more tabs with `space` or `V` and press `Enter`; they become
+  a new split, shown at once, and the split you had before waits hidden. A marked tab that was in another split leaves
   it, as `ctrl+b x` would close its pane there; a split left with one pane ends.
 - **Numbers and colours.** Each split has a number, `S1` to `S9`, which it keeps while it exists,
   and the colour of that number from the theme. In the side panel each split's tabs carry a
