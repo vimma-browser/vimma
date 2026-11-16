@@ -510,28 +510,124 @@ export function clamdArguments(configFile, path) {
 }
 
 /**
- * The clamd.conf options Vimma reads, by every name clamd accepts for them in the file (clamd
- * also takes an option's command-line name there), case as clamd matches it.
- */
-const CLAMD_NAMES = new Map([
-  ["LocalSocket", "LocalSocket"],
-  ["TCPSocket", "TCPSocket"],
-  ["TCPAddr", "TCPAddr"],
-  ["AlertEncrypted", "AlertEncrypted"],
-  ["alert-encrypted", "AlertEncrypted"],
-  ["AlertExceedsMax", "AlertExceedsMax"],
-  ["alert-exceeds-max", "AlertExceedsMax"],
-]);
-const CLAMD_NAMES_LOWER = new Set([...CLAMD_NAMES.keys()].map((k) => k.toLowerCase()));
-
-/** Options clamd allows more than once (FLAG_MULTIPLE); any other is refused when repeated. */
-const CLAMD_MULTIPLE = new Set(["TCPAddr"]);
-
-/**
  * clamd's true, after it has dropped an inline comment: its optparser checks a boolean against
  * `^(yes|true|1|no|false|0)(( +)?#(.*))?$` (any case) and takes yes, true and 1 as true.
  */
 const CLAMD_TRUE = /^(yes|true|1) *(#.*)?$/i;
+/** clamd's false, read the same way. */
+const CLAMD_FALSE = /^(no|false|0) *(#.*)?$/i;
+
+/** @param {string} value */
+const scanOn = (value) => CLAMD_TRUE.test(value);
+/** @param {string} value */
+const scanOff = (value) => CLAMD_FALSE.test(value);
+/**
+ * A size limit of 0, which clamd reads as no limit (optparser.c turns a size of 0 into the
+ * largest it can hold). Any other size is refused: clamscan's own limits are libclamav's
+ * CLI_DEFAULT_* values, defined outside optparser.c, so no size can be compared with them.
+ * clamd matches a size with `^[0-9]+[KMG]?(( +)?#(.*))?$`, any case.
+ * @param {string} value
+ */
+const sizeUnlimited = (value) => /^0+[kmg]? *(#.*)?$/i.test(value);
+/**
+ * A number limit of 0, for the limits optparser.c says 0 disables. clamd matches a number with
+ * `^[0-9]+((( +)?#(.*))?)$` and reads it with atoi.
+ * @param {string} value
+ */
+const numberUnlimited = (value) => /^0+ *(#.*)?$/.test(value);
+/** A limit whose default is not in optparser.c and that 0 is not said to disable: never set. */
+const neverSet = () => false;
+/**
+ * BytecodeTimeout: at least optparser.c's default, 10000 ms, and small enough for clamd's atoi
+ * to read as written.
+ * @param {string} value
+ */
+const bytecodeTimeout = (value) => {
+  const n = Number(/^(\d+) *(#.*)?$/.exec(value)?.[1] ?? Number.NaN);
+  return n >= 10_000 && n <= 2_147_483_647;
+};
+/**
+ * ExcludePath: clamdscan skips a path that matches it and calls it clean, while clamscan as
+ * Vimma runs it excludes nothing. Only optparser.c's own examples are taken, written exactly so:
+ * no download can be under /proc or /sys.
+ * @param {string} value
+ */
+const systemExclude = (value) => value === "^/proc/" || value === "^/sys/";
+
+/**
+ * @typedef {object} ClamdOption
+ * @property {string} [alias]  the command-line name clamd also reads in the file
+ * @property {boolean} [multiple]  clamd allows it more than once (FLAG_MULTIPLE)
+ * @property {(value: string) => boolean} [scans]  the values with which clamd scans at least as
+ *   much as clamscan with its defaults; left unset, the option has the same default in both
+ */
+
+/**
+ * The clamd.conf options Vimma reads, with their names, command-line names and defaults from
+ * ClamAV's common/optparser.c. An option not FLAG_MULTIPLE is refused when set twice.
+ * @type {Map<string, ClamdOption>}
+ */
+const CLAMD_OPTIONS = new Map([
+  ["LocalSocket", {}],
+  ["TCPSocket", {}],
+  ["TCPAddr", { multiple: true }],
+  ["AlertEncrypted", { alias: "alert-encrypted" }],
+  ["AlertExceedsMax", { alias: "alert-exceeds-max" }],
+  // On by default; off, clamd skips what clamscan looks into.
+  ["ScanPE", { alias: "scan-pe", scans: scanOn }],
+  ["ScanELF", { alias: "scan-elf", scans: scanOn }],
+  ["ScanMail", { alias: "scan-mail", scans: scanOn }],
+  ["PhishingSignatures", { alias: "phishing-sigs", scans: scanOn }],
+  ["PhishingScanURLs", { alias: "phishing-scan-urls", scans: scanOn }],
+  ["HeuristicAlerts", { alias: "heuristic-alerts", scans: scanOn }],
+  ["ScanHTML", { alias: "scan-html", scans: scanOn }],
+  ["ScanOLE2", { alias: "scan-ole2", scans: scanOn }],
+  ["ScanPDF", { alias: "scan-pdf", scans: scanOn }],
+  ["ScanSWF", { alias: "scan-swf", scans: scanOn }],
+  ["ScanXMLDOCS", { alias: "scan-xmldocs", scans: scanOn }],
+  ["ScanHWP3", { alias: "scan-hwp3", scans: scanOn }],
+  ["ScanOneNote", { alias: "scan-onenote", scans: scanOn }],
+  ["ScanArchive", { alias: "scan-archive", scans: scanOn }],
+  ["ScanImage", { alias: "scan-image", scans: scanOn }],
+  ["ScanImageFuzzyHash", { alias: "scan-image-fuzzy-hash", scans: scanOn }],
+  ["Bytecode", { alias: "bytecode", scans: scanOn }],
+  ["AlgorithmicDetection", { alias: "algorithmic-detection", scans: scanOn }],
+  // Off by default; on, clamd loads fewer signatures or skips a check.
+  ["OfficialDatabaseOnly", { alias: "official-db-only", scans: scanOff }],
+  ["DisableCertCheck", { alias: "nocerts", scans: scanOff }],
+  // Limits: lower than clamscan's, clamd stops looking sooner.
+  ["MaxScanSize", { alias: "max-scansize", scans: sizeUnlimited }],
+  ["MaxFileSize", { alias: "max-filesize", scans: sizeUnlimited }],
+  ["MaxEmbeddedPE", { alias: "max-embeddedpe", scans: sizeUnlimited }],
+  ["MaxHTMLNormalize", { alias: "max-htmlnormalize", scans: sizeUnlimited }],
+  ["MaxHTMLNoTags", { alias: "max-htmlnotags", scans: sizeUnlimited }],
+  ["MaxScriptNormalize", { alias: "max-scriptnormalize", scans: sizeUnlimited }],
+  ["MaxZipTypeRcg", { alias: "max-ziptypercg", scans: sizeUnlimited }],
+  ["PCREMaxFileSize", { alias: "pcre-max-filesize", scans: sizeUnlimited }],
+  ["MaxScanTime", { alias: "max-scantime", scans: numberUnlimited }],
+  ["MaxRecursion", { alias: "max-recursion", scans: numberUnlimited }],
+  ["MaxFiles", { alias: "max-files", scans: numberUnlimited }],
+  ["MaxPartitions", { alias: "max-partitions", scans: neverSet }],
+  ["MaxIconsPE", { alias: "max-iconspe", scans: neverSet }],
+  ["MaxRecHWP3", { alias: "max-rechwp3", scans: neverSet }],
+  ["PCREMatchLimit", { alias: "pcre-match-limit", scans: neverSet }],
+  ["PCRERecMatchLimit", { alias: "pcre-recmatch-limit", scans: neverSet }],
+  ["BytecodeTimeout", { alias: "bytecode-timeout", scans: bytecodeTimeout }],
+  ["ExcludePath", { multiple: true, scans: systemExclude }],
+]);
+
+/** Every name clamd reads for those options in the file, case as clamd matches it. */
+const CLAMD_NAMES = new Map(
+  [...CLAMD_OPTIONS].flatMap(([option, { alias }]) =>
+    alias
+      ? [
+          [option, option],
+          [alias, option],
+        ]
+      : [[option, option]],
+  ),
+);
+const CLAMD_NAMES_LOWER = new Set([...CLAMD_NAMES.keys()].map((k) => k.toLowerCase()));
 
 /**
  * clamd reads a line with fgets into 1024 bytes (512 in older releases) and parses what is left
@@ -556,14 +652,15 @@ function hasControl(line) {
  * What clamd.conf says that matters here: the local socket, or why clamd is not used. clamd
  * must not listen on TCP (anyone on the network could answer), and must alert on encrypted
  * files and files over its limits, as `clamscan` is asked to, or such a file would scan clean.
- * It reads the file as clamd's optparser does (ClamAV common/optparser.c), and wherever the
+ * Nor may it scan less than clamscan with its defaults: a scan turned off, fewer signatures, a
+ * lower limit or an excluded path (CLAMD_OPTIONS). It reads the file as clamd's optparser does (ClamAV common/optparser.c), and wherever the
  * two readings could differ for these options it refuses the file instead: clamd is then not
  * used and clamscan scans.
  * @param {string} text
  * @returns {{ socket: string } | { problem: string }}
  */
 export function clamdConfig(text) {
-  /** @type {Map<string, string>} */
+  /** @type {Map<string, string[]>} */
   const keys = new Map();
   const lines = String(text ?? "").split("\n");
   const encoder = new TextEncoder();
@@ -589,21 +686,29 @@ export function clamdConfig(text) {
       continue;
     }
     // clamd keeps the first setting and ignores later ones: a second one is refused.
-    if (keys.has(option) && !CLAMD_MULTIPLE.has(option)) {
+    const values = keys.get(option) ?? [];
+    if (values.length && !CLAMD_OPTIONS.get(option)?.multiple) {
       return { problem: `clamd.conf sets ${option} twice` };
     }
-    keys.set(option, m?.[2] ?? "");
+    keys.set(option, [...values, m?.[2] ?? ""]);
   }
   if (keys.has("TCPSocket")) return { problem: "clamd listens on TCP" };
-  const socket = keys.get("LocalSocket") ?? "";
+  const socket = keys.get("LocalSocket")?.[0] ?? "";
   // clamd unquotes a value and drops an inline comment; a socket path written so is not used.
   if (/["#]/.test(socket)) return { problem: "LocalSocket has a quote or a #" };
   if (!socket.startsWith("/")) return { problem: "no LocalSocket" };
-  if (!CLAMD_TRUE.test(keys.get("AlertEncrypted") ?? "")) {
+  if (!CLAMD_TRUE.test(keys.get("AlertEncrypted")?.[0] ?? "")) {
     return { problem: "clamd does not alert on encrypted files" };
   }
-  if (!CLAMD_TRUE.test(keys.get("AlertExceedsMax") ?? "")) {
+  if (!CLAMD_TRUE.test(keys.get("AlertExceedsMax")?.[0] ?? "")) {
     return { problem: "clamd does not alert on files over its limits" };
+  }
+  // Decision 45: clamd may make a scan faster, never weaker than clamscan's with its defaults.
+  for (const [option, values] of keys) {
+    const scans = CLAMD_OPTIONS.get(option)?.scans;
+    if (scans && !values.every(scans)) {
+      return { problem: `clamd would scan less than clamscan (${option})` };
+    }
   }
   return { socket };
 }
