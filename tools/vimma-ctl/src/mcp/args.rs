@@ -696,6 +696,19 @@ mod tests {
         }
     }
 
+    // mcp-drive D15: a tab between keys is white space, as vimma-core's agent-keys reads it
+    // (only the browser's find query check refuses it), so keys_control must not refuse it.
+    #[test]
+    fn keys_separated_by_a_tab_reach_vimma() {
+        let mut p = Protocol::new();
+        reply(&mut p, INIT);
+        let line = call_line(5, "vimma_keys", r#"{"tab":"1","keys":"j\tk"}"#);
+        let Action::Call(call) = handle(&mut p, &line) else {
+            panic!("keys with a tab did not reach Vimma");
+        };
+        assert_eq!(call.tool.command().0, "agent-keys");
+    }
+
     // mcp-forms F14 (security.md M27): characters that draw nothing could hide text in the
     // question, so a value holding one never reaches Vimma.
     #[test]
