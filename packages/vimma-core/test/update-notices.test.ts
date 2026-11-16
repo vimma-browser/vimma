@@ -14,12 +14,12 @@ import {
   shouldAsk,
   shouldAskRestart,
 } from "../src/updates/update-notices.mjs";
+import type { Offer } from "../src/updates/updates.mjs";
 
 const HOUR = 3_600_000;
 const NOW = Date.UTC(2026, 9, 17, 12);
 
-/** @param {Partial<import("../src/updates/updates.mjs").Offer>} [o] */
-const offer = (o = {}) => ({
+const offer = (o: Partial<Offer> = {}) => ({
   appVersion: "158.0.2",
   buildId: "20261017000000",
   displayVersion: "0.1.3",
@@ -33,7 +33,7 @@ const offer = (o = {}) => ({
 describe("checkDue (a check at startup and on the hourly timer)", () => {
   const base = {
     enabled: true,
-    installType: /** @type {const} */ ("tarball"),
+    installType: "tarball" as const,
     okAt: null,
     triedAt: null,
     now: NOW,
@@ -82,7 +82,7 @@ describe("checkDue (a check at startup and on the hourly timer)", () => {
 describe("announcement (the one-time message per new version)", () => {
   const base = {
     enabled: true,
-    installType: /** @type {const} */ ("deb"),
+    installType: "deb" as const,
     offer: offer(),
     announced: "",
   };
@@ -111,7 +111,7 @@ describe("announcement (the one-time message per new version)", () => {
   });
 
   test("an AppImage that is downloading its update waits; once replaced, it says restart", () => {
-    const appimage = { ...base, installType: /** @type {const} */ ("appimage") };
+    const appimage = { ...base, installType: "appimage" as const };
     expect(announcement({ ...appimage, stage: "pending" })).toBeNull();
     expect(announcement({ ...appimage, stage: "staged" })).toBe(
       "Vimma 0.1.3 is installed · restart Vimma to use it",
@@ -127,7 +127,7 @@ describe("announcement (the one-time message per new version)", () => {
 
   // Spec flatpak, decision 10: the command is fixed and short, so the message names it.
   test("a Flatpak names flatpak update, for an ordinary and a security release", () => {
-    const flatpak = { ...base, installType: /** @type {const} */ ("flatpak") };
+    const flatpak = { ...base, installType: "flatpak" as const };
     expect(announcement(flatpak)).toBe(
       "Vimma 0.1.3 is available · run flatpak update dev.vimma.browser",
     );
@@ -146,9 +146,9 @@ describe("announcement (the one-time message per new version)", () => {
 describe("shouldAsk (the security question, once per session)", () => {
   const base = {
     enabled: true,
-    installType: /** @type {const} */ ("tarball"),
+    installType: "tarball" as const,
     offer: offer({ urgent: true }),
-    asked: /** @type {string[]} */ ([]),
+    asked: [] as string[],
     privateWindow: false,
   };
 
@@ -203,10 +203,10 @@ describe("the question and its keys", () => {
 describe("shouldAskRestart (the restart question for an installed security update)", () => {
   const base = {
     enabled: true,
-    installType: /** @type {const} */ ("appimage"),
+    installType: "appimage" as const,
     offer: offer({ urgent: true }),
-    stage: /** @type {const} */ ("staged"),
-    dismissed: /** @type {Record<string, number>} */ ({}),
+    stage: "staged" as const,
+    dismissed: {} as Record<string, number>,
     now: NOW,
     privateWindow: false,
   };
@@ -249,8 +249,8 @@ describe("shouldAskRestart (the restart question for an installed security updat
   });
 
   test("the restart question replaces the steps question once the update is in place", () => {
-    const asked = /** @type {string[]} */ ([]);
-    const steps = { ...base, asked, stage: /** @type {const} */ ("staged") };
+    const asked = [] as string[];
+    const steps = { ...base, asked, stage: "staged" as const };
     expect(shouldAsk(steps)).toBe(false);
     expect(shouldAskRestart(base)).toBe(true);
   });

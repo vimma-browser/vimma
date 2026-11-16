@@ -25,8 +25,7 @@ const HYPRLAND_LIST = [
   "",
 ].join("\n");
 
-/** @param {string} id */
-const plainList = (id) =>
+const plainList = (id: string) =>
   [
     "[Added Associations]",
     "x-scheme-handler/http=firefox.desktop;",
@@ -146,7 +145,7 @@ describe("defaultHandlers", () => {
 });
 
 describe("routedBrowser", () => {
-  const installed = (/** @type {string} */ id) => id !== "gone.desktop";
+  const installed = (id: string) => id !== "gone.desktop";
 
   test("skips Omarchy's router and takes the browser mimeapps.list names", () => {
     expect(
@@ -220,8 +219,7 @@ describe("desktopEntryExec", () => {
 });
 
 describe("isDefaultThroughRouter", () => {
-  /** @type {Record<string, string>} */
-  const entries = {
+  const entries: Record<string, string> = {
     "vimma-vimma.desktop": `[Desktop Entry]\nExec=${OWN} %u\n`,
     "firefox.desktop": "[Desktop Entry]\nExec=/usr/lib/firefox/firefox %u\n",
     "gone.desktop": "[Desktop Entry]\nExec=/opt/gone/gone %u\n",
@@ -229,8 +227,7 @@ describe("isDefaultThroughRouter", () => {
   };
   const onDisk = new Set([OWN, "/usr/lib/firefox/firefox", "/usr/bin/firefox"]);
 
-  /** @param {Partial<Parameters<typeof isDefaultThroughRouter>[0]>} over */
-  const check = (over = {}) =>
+  const check = (over: Partial<Parameters<typeof isDefaultThroughRouter>[0]> = {}) =>
     isDefaultThroughRouter({
       defaultFor: () => OMARCHY_ROUTER,
       lists: [HYPRLAND_LIST, plainList("vimma-vimma.desktop")],
@@ -268,7 +265,7 @@ describe("isDefaultThroughRouter", () => {
   });
 
   test("matches the program by its exact absolute path, never by name or a relative one", () => {
-    const exec = (/** @type {string} */ line) => () => `[Desktop Entry]\nExec=${line}\n`;
+    const exec = (line: string) => () => `[Desktop Entry]\nExec=${line}\n`;
     expect(check({ entryFor: exec("vimma-open %u"), appPath: "vimma-open" })).toBe(false);
     expect(check({ entryFor: exec("/usr/bin/vimma-open %u") })).toBe(false);
     expect(check({ entryFor: exec(`${OWN}x %u`), resolves: () => true })).toBe(false);
@@ -287,8 +284,7 @@ describe("isDefaultThroughRouter", () => {
   });
 
   test("never looks up an entry id that is not a plain file name", () => {
-    /** @type {string[]} */
-    const asked = [];
+    const asked: string[] = [];
     const text = `[Default Applications]\nx-scheme-handler/http=../../x.desktop;vimma-vimma.desktop\nx-scheme-handler/https=vimma-vimma.desktop\n`;
     expect(
       check({
@@ -304,9 +300,9 @@ describe("isDefaultThroughRouter", () => {
 // command (a dedicated profile made at startup, `vimma -setDefaultBrowser`), the service compares
 // GIO's handlers with the binary, so the package's own entry never counted as the default.
 describe("handlersRun", () => {
-  /** @param {Record<string, string>} found where `which` finds each program */
-  const which = (found) => (/** @type {string} */ program) => found[program] ?? "";
-  const both = (/** @type {string} */ command) => () => command;
+  /** `found`: where `which` finds each program. */
+  const which = (found: Record<string, string>) => (program: string) => found[program] ?? "";
+  const both = (command: string) => () => command;
 
   test("says yes when GIO's http and https handlers both run the command", () => {
     expect(
@@ -322,10 +318,10 @@ describe("handlersRun", () => {
   });
 
   test("says no when one scheme has another handler, or none", () => {
-    const commands = /** @type {Record<string, string>} */ ({
+    const commands = {
       http: `${OWN} %u`,
       https: "/usr/lib/firefox/firefox %u",
-    });
+    } as Record<string, string>;
     const found = which({ [OWN]: OWN, "/usr/lib/firefox/firefox": "/usr/lib/firefox/firefox" });
     expect(handlersRun({ commandFor: (s) => commands[s] ?? "", which: found, appPath: OWN })).toBe(
       false,
