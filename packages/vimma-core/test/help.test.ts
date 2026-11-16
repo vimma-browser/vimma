@@ -246,3 +246,43 @@ describe("the Commands and Firefox (on in config.toml) groups", () => {
     expect(groups.has("Firefox (on in config.toml)")).toBe(false);
   });
 });
+
+describe("rows the host adds, and keys that only look like a mode", () => {
+  test("a : binding's row runs cmdline.run, is never an override, and greys out without it", () => {
+    const km = compileKeymap({ modal: { normal: { "<C-S-y>": ":firefox Tools:Downloads" } } });
+    const commands = (runnable?: ReadonlySet<string>) =>
+      bindingTable(km, { ...(runnable ? { runnable } : {}) }).filter((r) => r.group === "Commands");
+    expect(commands(new Set(["cmdline.run"]))).toEqual([
+      expect.objectContaining({ id: "cmdline.run", overridden: false, runnable: true }),
+    ]);
+    expect(commands(new Set())).toEqual([expect.objectContaining({ runnable: false })]);
+  });
+
+  test("a Firefox key that is on is runnable and not an override, whatever the host runs", () => {
+    const rows = bindingTable(compileKeymap(), {
+      runnable: new Set(),
+      firefox: [{ chord: "ctrl+j", id: "key_search2", label: "Search" }],
+    });
+    expect(rows.at(-1)).toMatchObject({ id: "key_search2", overridden: false, runnable: true });
+  });
+
+  test("bindings.json gives a key no mode unless its last word is a mode", () => {
+    const km = compileKeymap({
+      modal: { normal: { "<leader>[x]": "goto.picker", "<leader>[help]x": "goto.picker" } },
+    });
+    const keys = bindingsJson(km)
+      .groups.flatMap((g) => g.actions)
+      .find((a) => a.name === "goto_picker")?.keys;
+    expect(keys?.slice(-2)).toStrictEqual([
+      { keys: "space [x]", chords: ["space", "[x]"] },
+      { keys: "space [help]x", chords: ["space", "[help]x"] },
+    ]);
+    // No mode key at all on a binding without one, not one set to undefined.
+    expect(keys?.[0]).toStrictEqual({ keys: "ctrl+b g", chords: ["ctrl+b", "g"] });
+  });
+
+  test("the filter ignores spaces around the query", () => {
+    const rows = bindingTable(compileKeymap());
+    expect(filterBindings(rows, "  RENAME_TAB  ").map((r) => r.name)).toEqual(["rename_tab"]);
+  });
+});

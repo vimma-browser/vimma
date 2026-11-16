@@ -218,3 +218,89 @@ describe("sections, names and the row cap", () => {
     expect(rowRange(500, 499)).toEqual({ start: 300, end: 500 });
   });
 });
+
+describe("closed rows in full, window numbers and the agent marker", () => {
+  test("a closed tab's item: an id of its own, no workspace slot, its label from title and URL", () => {
+    expect(closedTabItem(closedTab(4, { title: "" }))).toStrictEqual({
+      tabId: "closed:4",
+      workspaceId: "",
+      workspaceName: "work",
+      workspaceIndex: 0,
+      tabIndex: 0,
+      title: "",
+      url: "https://c4.example.com/",
+      label: null,
+      display: "https://c4.example.com/",
+      active: false,
+      markers: "closed",
+      closed: true,
+    });
+  });
+
+  test("a closed window's item", () => {
+    expect(
+      closedWindowItem({ closedId: 7, title: "Mail", tabCount: 1, closedAt: 3 }),
+    ).toStrictEqual({
+      tabId: "closedwin:7",
+      workspaceId: "",
+      workspaceName: "",
+      workspaceIndex: 0,
+      tabIndex: 0,
+      title: "Mail",
+      url: "",
+      label: null,
+      display: "Mail",
+      active: false,
+      markers: "closed window",
+      closed: true,
+      closedWindow: true,
+      tabCount: 1,
+    });
+  });
+
+  test("this window's tabs carry no window number; the next one is window 2", () => {
+    const local = pickerItems(model, info, {});
+    const items = tabSearchItems({
+      private: false,
+      windows: [
+        { private: false, items: local },
+        { private: false, items: local },
+      ],
+      closedTabs: [],
+      closedWindows: [],
+    });
+    expect(items.map((i) => i.window)).toEqual([undefined, undefined, undefined, 2, 2, 2]);
+    expect(items.slice(0, 3).some((i) => "window" in i)).toBe(false);
+  });
+
+  test("a section without a workspace name is headed tabs", () => {
+    const first = pickerItems(model, info, {})[0];
+    if (!first) throw new Error("no item");
+    expect(sectionHeading({ ...first, workspaceName: "" }, 3)).toBe("tabs · 3");
+  });
+
+  test("a closed window of one tab says tab", () => {
+    const win = closedWindowItem({ closedId: 1, title: "Mail", tabCount: 1, closedAt: 0 });
+    expect(accessibleName(win)).toBe("Mail, closed window, 1 tab");
+  });
+
+  test("a closed tab with no workspace names none", () => {
+    const item = closedTabItem(closedTab(2, { workspaceName: "" }));
+    expect(accessibleName(item)).toBe("Closed 2, recently closed");
+  });
+
+  test("the agent marker is said unless the workspace name says it already", () => {
+    const named = closedTabItem(closedTab(3, { workspaceName: "agent", agent: true }));
+    expect(accessibleName(named)).toBe("Closed 3, agent, recently closed");
+    const renamed = closedTabItem(closedTab(3, { workspaceName: "bots", agent: true }));
+    expect(accessibleName(renamed)).toBe("Closed 3, bots, recently closed, agent");
+    // A workspace called agent that is not the agent workspace has no marker to drop.
+    const plain = closedTabItem(closedTab(3, { workspaceName: "agent" }));
+    expect(accessibleName(plain)).toBe("Closed 3, agent, recently closed");
+    // Only the agent marker is dropped there: the others are still said.
+    const first = pickerItems(model, info, {})[0];
+    if (!first) throw new Error("no item");
+    const playing = { ...first, workspaceName: "agent", markers: "agent playing" };
+    expect(accessibleName(playing)).toBe("Title t1, agent, playing");
+  });
+});

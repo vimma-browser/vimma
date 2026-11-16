@@ -182,3 +182,30 @@ describe("keys and commands", () => {
     expect(completeCommandLine(":addon b").candidates).toEqual([]);
   });
 });
+
+describe("row order and fields, whatever order AddonManager reports them in", () => {
+  test("equal names go by id, also when the larger id comes first", () => {
+    const ids = ["h@x", "g@x", "f@x", "e@x", "d@x", "c@x", "b@x", "a@x"];
+    const items = addonItems(ids.map((id) => rec({ id, name: "Same" })));
+    expect(items.map((i) => i.addonId)).toEqual([...ids].reverse());
+  });
+
+  test("names compare lower-cased: ß is not SS", () => {
+    // Upper-cased, "Straße" and "Strasse" would tie and go by id (a@x first); lower-cased they
+    // differ, and the collator puts "strasse" first.
+    const items = addonItems([
+      rec({ id: "a@x", name: "Straße" }),
+      rec({ id: "b@x", name: "Strasse" }),
+    ]);
+    expect(items.map((i) => i.addonId)).toEqual(["b@x", "a@x"]);
+  });
+
+  test("an item is never the active one", () => {
+    const items = addonItems([rec({ enabled: true }), rec({ id: "b@x", enabled: false })]);
+    expect(items.map((i) => i.active)).toEqual([false, false]);
+  });
+
+  test(":addon with only spaces picks nothing", () => {
+    expect(bestAddon(addonItems([rec({ name: "A b" })]), "   ")).toBeNull();
+  });
+});
