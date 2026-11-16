@@ -53,4 +53,4 @@ which Firefox's site information panel shows already, and stores nothing of its 
 - SP5. No control, MCP or agent code **must** reach it: nothing under `ctl/` or `agent/` imports
   the picker's ops, and the agent's keys are the spec's fixed list.
   [`changes a site permission only from the site permissions picker`](../../tools/security/test/chrome-source.test.ts),
-  [`the whitelist is the spec's table`](../../packages/vimma-core/test/agent-keys.test.mjs)
+  [`the whitelist is the spec's table`](../../packages/vimma-core/test/agent-keys.test.ts)

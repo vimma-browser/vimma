@@ -55,15 +55,20 @@ test("defaults bind no sequence twice in any mode", () => {
 
 test("defaults contain no ambiguous sequences (none is a proper prefix of another), so no timeout is needed", () => {
   const km = compileKeymap();
+  const ambiguous: string[] = [];
   for (const mode of MODES) {
-    const seqs = km.sequences(mode).map((e) => e.seq);
-    for (const a of seqs) {
-      for (const b of seqs) {
-        if (a !== b)
-          expect(b.startsWith(a + " "), `${mode}: "${a}" is a prefix of "${b}"`).toBe(false);
+    const seqs = new Set(km.sequences(mode).map((e) => e.seq));
+    // Every proper prefix of a sequence ends at a space between its keys: looking each one up
+    // checks every pair, in time linear in the sequences rather than one expect per pair, which
+    // took over 5 s on a loaded machine (issue #1144).
+    for (const b of seqs) {
+      for (let at = b.indexOf(" "); at >= 0; at = b.indexOf(" ", at + 1)) {
+        const a = b.slice(0, at);
+        if (seqs.has(a)) ambiguous.push(`${mode}: "${a}" is a prefix of "${b}"`);
       }
     }
   }
+  expect(ambiguous).toEqual([]);
 });
 
 test("user keymaps: any set of distinct single-key modal bindings dispatches each to its action", () => {

@@ -5,7 +5,7 @@
 // Regenerates packages/vimma-core/src/agent/agent-tools-data.mjs from vimma-ctl's MCP tool fixture
 // and its INSTRUCTIONS (docs/specs/builtin-agent.md B6), so the built-in agent offers exactly
 // the tools and system text MCP agents get. vimma-core cannot read files at run time (it runs
-// in Firefox's parent process and in Node), hence a generated module; agent-tools.test.mjs
+// in Firefox's parent process and in Node), hence a generated module; agent-tools.test.ts
 // fails when it drifts from either source.
 //
 //   npm run gen-agent-tools
