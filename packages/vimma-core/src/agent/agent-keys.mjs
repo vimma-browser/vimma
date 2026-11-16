@@ -10,7 +10,7 @@
  * link list `f` returns: its labels and its lines.
  */
 
-import { getAction } from "../keys/actions.mjs";
+import { ACTIONS } from "../keys/actions.mjs";
 import { DEFAULT_CONFIG } from "../config/defaults.mjs";
 import { createDispatcher } from "../keys/dispatcher.mjs";
 import { DEFAULT_HINT_CHARS, hintLabels, orderTargets } from "../page/hints.mjs";
@@ -127,6 +127,9 @@ const USER_GROUPS = new Set([
   "Agents",
 ]);
 
+/** Each action id's group: getAction looks actions up by config name, not by id. */
+const GROUP_BY_ID = new Map(ACTIONS.map((a) => [a.id, a.group]));
+
 /**
  * Why `vimma_keys` refuses the action `id`.
  * @param {string} id
@@ -135,7 +138,7 @@ export function refusalReason(id) {
   for (const [names, why] of REASONS) {
     if (names.some((n) => (n.endsWith(".") ? id.startsWith(n) : id === n))) return why;
   }
-  const group = getAction(id)?.group;
+  const group = GROUP_BY_ID.get(id);
   if (group && USER_GROUPS.has(group)) return "the browser's own tools and settings are the user's";
   return "it is not one of the keys vimma_keys runs";
 }

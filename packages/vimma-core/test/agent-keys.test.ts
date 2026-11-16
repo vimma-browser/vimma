@@ -209,6 +209,24 @@ describe("links (D12)", () => {
     expect(refusalReason("hint.follow_new_tab_fg")).toBe(refusalReason("hint.follow_new_tab"));
   });
 
+  // Issue #1212: the action is looked up by its id, not its config name.
+  test.each([
+    ["Browser", "app.quit"],
+    ["Developer tools", "devtools.toggle"],
+    ["Bookmarks", "bookmark.add"],
+    ["Config", "config.reload"],
+    ["Add-ons", "addons.picker"],
+    ["Help", "help.show"],
+    ["Agents", "mcp.answer"],
+  ])("an action of the %s group is refused as the user's own (M16)", (_group, id) => {
+    expect(refusalReason(id)).toBe("the browser's own tools and settings are the user's");
+  });
+
+  test("an action of no user group, or no action, gets the generic reason", () => {
+    expect(refusalReason("site.permissions")).toBe("it is not one of the keys vimma_keys runs");
+    expect(refusalReason("no.such_action")).toBe("it is not one of the keys vimma_keys runs");
+  });
+
   test("an upper-case character after f is not part of the label", () => {
     expect(steps("fsG")).toEqual([
       { keys: "fs", action: "hint.follow", label: "s" },
