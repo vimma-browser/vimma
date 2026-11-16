@@ -1046,22 +1046,18 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     };
     const read = (root: string) =>
       readFileSync(join(root, "usr/lib/vimma/is-packaged-app"), "utf8");
-    const deb = installTypeFrom({ packaged: true, marker: read(result.debRoot), appImage: null });
+    const deb = installTypeFrom({ packaged: true, marker: read(result.debRoot) });
     expect(deb).toBe("deb");
     const debSteps = updateSteps(deb, offer, { installDir: "/usr/lib/vimma", appImage: null });
     expect(debSteps.commands.join("\n")).toMatch(/sudo apt install \.\/vimma_0\.3\.1_amd64\.deb$/);
-    const rpmType = installTypeFrom({
-      packaged: true,
-      marker: read(result.rpmRoot),
-      appImage: null,
-    });
+    const rpmType = installTypeFrom({ packaged: true, marker: read(result.rpmRoot) });
     expect(rpmType).toBe("rpm");
     const rpmSteps = updateSteps(rpmType, offer, { installDir: "/usr/lib/vimma", appImage: null });
     expect(rpmSteps.commands.join("\n")).toMatch(
       /sudo dnf install \.\/vimma-0\.3\.1-1\.x86_64\.rpm$/m,
     );
     const appImage = "/home/u/Apps/vimma-0.1.0-x86_64.AppImage";
-    const app = installTypeFrom({ packaged: true, marker: read(result.appDir), appImage });
+    const app = installTypeFrom({ packaged: true, marker: read(result.appDir) });
     expect(app).toBe("appimage");
     const appSteps = updateSteps(app, offer, {
       installDir: "/tmp/.mount_x/usr/lib/vimma",
@@ -1071,7 +1067,7 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     for (const steps of [debSteps, rpmSteps, appSteps]) {
       expect(steps.commands.join("\n")).not.toMatch(/\btar\b/);
     }
-    expect(installTypeFrom({ packaged: true, marker: null, appImage: null })).toBe("tarball");
+    expect(installTypeFrom({ packaged: true, marker: null })).toBe("tarball");
   });
 
   it("install-type.ts names each staged package as the update check would", () => {
@@ -1093,6 +1089,8 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     const unpacked = tempDir("vimma-unpacked-");
     execFileSync("tar", ["-xJf", join(out, "vimma-0.1.0-linux-x86_64.tar.xz"), "-C", unpacked]);
     expect(type(join(unpacked, "vimma"))).toBe("tarball\n");
+    // #1188: a tarball started from another AppImage's process inherits its $APPIMAGE.
+    expect(type(join(unpacked, "vimma"), appImage)).toBe("tarball\n");
     expect(spawnSync(process.execPath, [script]).status).toBe(64);
   });
 

@@ -408,7 +408,8 @@ Firefox only tests that the file exists; the `vimma-package=` line is for Vimma'
 Detection order in `VimmaUpdates.sys.mjs`: no `omni.ja` in the GRE directory (a build run from
 its objdir) → source build (decision 28; once sub-PR 2 builds the updater in, `AppConstants.MOZ_UPDATER`
 false also means a source build);
-`isPackagedApp` and `$APPIMAGE` set → AppImage; `isPackagedApp` → read the file's package name;
+`isPackagedApp` → read the file's package name (`vimma-package=appimage` is the AppImage; `$APPIMAGE`
+alone decides nothing, decision 34);
 else Firefox's updater, and `aus.canUsuallyApplyUpdates` (`UpdateService.sys.mjs:4156`) tells
 writable from read-only.
 
@@ -949,8 +950,8 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     detection require the AppDir's own `vimma-package=appimage` before it offers to replace
     `$APPIMAGE`; today `installTypeFrom` still accepts `$APPIMAGE` without a marker, and making
     the marker required is a separate change (since changed: replacing the file requires the
-    marker and a GRE directory inside `$APPDIR`; the install type shown and the manual steps
-    still accept `$APPIMAGE` alone). The cost is that Firefox, which reads the marker
+    marker and a GRE directory inside `$APPDIR`, and since #1188 the install type and the manual
+    steps no longer read `$APPIMAGE` at all: an install without a marker is a tarball). The cost is that Firefox, which reads the marker
     as "packaged app" (`isPackagedApp`), stops showing its warning that the content sandbox runs
     without unprivileged user namespaces (`security/sandbox/common/SandboxUtils.sys.mjs:25`,
     Firefox 158.0), as it already does for the `.deb` and the PKGBUILD; `docs/limits.md` states

@@ -433,13 +433,18 @@ export function parseManifest(body) {
   const serial = rootAttrs.get("vimmaSerial");
   if (!channel || !target) return bad("no vimmaChannel or vimmaTarget");
   if (!serial || !SERIAL.test(serial)) return bad("vimmaSerial is not a UTC time (YYYYMMDDhhmmss)");
-  const inner = root[2] === "/" ? "" : (root[3] ?? "");
-  const closed = inner.trimEnd();
-  if (root[2] !== "/" && !closed.endsWith("</updates>")) return bad("<updates> is not closed");
+  const rest = root[3] ?? "";
+  if (root[2] === "/") {
+    // The pipeline writes nothing after a self-closing root, not even a second <update> (#1185).
+    if (rest.trim()) return bad("content after a self-closing <updates/>");
+    return { ok: true, manifest: { channel, target, serial, update: null } };
+  }
+  const closed = rest.trimEnd();
+  if (!closed.endsWith("</updates>")) return bad("<updates> is not closed");
   const content = closed.slice(0, -"</updates>".length);
   const updates = startTags(content, "update");
   if (!updates) return bad("<update> is not closed");
-  if (root[2] === "/" || updates.length === 0) {
+  if (updates.length === 0) {
     if (content.trim()) return bad("unexpected content in <updates>");
     return { ok: true, manifest: { channel, target, serial, update: null } };
   }
@@ -620,22 +625,24 @@ export function updateNotice(state) {
 }
 
 /**
- * `vimma-package=<type>` in the `is-packaged-app` marker (spec §3), with `$APPIMAGE`; `packaged`
- * is false for a build that runs from its objdir (no omni.ja). On macOS no build has a marker:
+ * `vimma-package=<type>` in the `is-packaged-app` marker (spec §3); `packaged` is false for a build that runs from its objdir (no omni.ja). On macOS no build has a marker:
  * the cask's app beside its Caskroom is `homebrew`, any other `dmg` (spec macos-homebrew,
  * decisions 8 and 19).
- * @param {{ packaged: boolean, marker: string | null, appImage: string | null,
- *   platform?: string, appPath?: string | null, caskroom?: boolean }} input
+ * `$APPIMAGE` never decides the type: every program an AppImage starts inherits it, so only the
+ * AppDir's own `vimma-package=appimage` makes an AppImage, and no marker is a tarball (decision
+ * 34, #1188).
+ * @param {{ packaged: boolean, marker: string | null, platform?: string,
+ *   appPath?: string | null, caskroom?: boolean }} input
  *   `marker`: the file's text, null when there is none; `platform`: AppConstants.platform;
  *   `appPath`: the running app bundle (appBundleOf); `caskroom`: HOMEBREW_CASKROOM exists
  * @returns {InstallType}
  */
-export function installTypeFrom({ packaged, marker, appImage, platform, appPath, caskroom }) {
+export function installTypeFrom({ packaged, marker, platform, appPath, caskroom }) {
   if (!packaged) return "source";
   if (platform === "macosx") {
     return appPath === HOMEBREW_APP && caskroom === true ? "homebrew" : "dmg";
   }
-  if (marker === null) return appImage ? "appimage" : "tarball";
+  if (marker === null) return "tarball";
   const m = /^vimma-package=([a-z-]+)\s*$/m.exec(marker);
   const name = m?.[1];
   if (
@@ -648,7 +655,7 @@ export function installTypeFrom({ packaged, marker, appImage, platform, appPath,
   ) {
     return name;
   }
-  return appImage ? "appimage" : "packaged";
+  return "packaged";
 }
 
 /**

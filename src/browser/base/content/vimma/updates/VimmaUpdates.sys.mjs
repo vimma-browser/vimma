@@ -275,7 +275,7 @@ async function detectInstall() {
   const mac = platform === "macosx";
   const appPath = mac ? appBundleOf(gre) : null;
   const caskroom = mac ? await IOUtils.exists(HOMEBREW_CASKROOM).catch(() => false) : false;
-  const type = installTypeFrom({ packaged, marker, appImage, platform, appPath, caskroom });
+  const type = installTypeFrom({ packaged, marker, platform, appPath, caskroom });
   return { type, installDir: gre, appImage, appDir, marker, forced: false };
 }
 
