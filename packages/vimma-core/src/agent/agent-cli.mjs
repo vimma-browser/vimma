@@ -656,7 +656,9 @@ const SUBJECT = Object.freeze({
  */
 export function ownToolText(cli, name, input) {
   const tool = plain(name).replace(/\s+/g, " ").trim();
-  const field = /** @type {Record<string, string>} */ (SUBJECT)[tool];
+  const field = Object.hasOwn(SUBJECT, tool)
+    ? /** @type {Record<string, string>} */ (SUBJECT)[tool]
+    : undefined;
   const args = /** @type {Record<string, unknown>} */ (
     input && typeof input === "object" ? input : {}
   );

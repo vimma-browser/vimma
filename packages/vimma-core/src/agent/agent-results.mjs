@@ -46,11 +46,15 @@ const FLAGS = new Set(["elements", "labels", "full"]);
  * @returns {{ command: string, args: Record<string, any> } | null}
  */
 export function toolCommand(name, args) {
-  const command = /** @type {Record<string, string>} */ (TOOL_COMMANDS)[name];
+  // Own keys only: a model's "toString" is no tool, and its "__proto__" argument stays a key
+  // (fromEntries defines it) for the command's validator to refuse.
+  const command = Object.hasOwn(TOOL_COMMANDS, name)
+    ? /** @type {Record<string, string>} */ (TOOL_COMMANDS)[name]
+    : undefined;
   if (!command) return null;
-  /** @type {Record<string, any>} */
-  const out = {};
-  for (const [k, v] of Object.entries(args)) if (!(FLAGS.has(k) && v === false)) out[k] = v;
+  const out = Object.fromEntries(
+    Object.entries(args).filter(([k, v]) => !(FLAGS.has(k) && v === false)),
+  );
   return { command, args: out };
 }
 

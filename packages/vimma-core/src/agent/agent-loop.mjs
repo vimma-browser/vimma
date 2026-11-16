@@ -174,9 +174,10 @@ export function checkToolCall(call, tools) {
   const schema = tool.inputSchema;
   const props = schema.properties ?? {};
   for (const name of schema.required ?? [])
-    if (!(name in args)) return `${call.name} needs ${JSON.stringify(name)}`;
+    if (!Object.hasOwn(args, name)) return `${call.name} needs ${JSON.stringify(name)}`;
   for (const [name, value] of Object.entries(args)) {
-    const prop = props[name];
+    // Own keys only: an argument named "toString" is no property of the schema.
+    const prop = Object.hasOwn(props, name) ? props[name] : undefined;
     if (!prop) {
       if (schema.additionalProperties === false)
         return `${call.name} takes no ${JSON.stringify(name)}`;
