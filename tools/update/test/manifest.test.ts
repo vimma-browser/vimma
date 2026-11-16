@@ -1,5 +1,5 @@
 // docs/specs/m6a-updater.md §2 and §7: the update manifest a published release gets, built by
-// tools/update/manifest.mjs, signed in update-publish.yml's `sign` job and checked before the
+// tools/update/manifest.ts, signed in update-publish.yml's `sign` job and checked before the
 // push with the verifier the browser runs (packages/vimma-core/src/updates/updates.mjs). The keys
 // are tools/test/test-keys.ts's; nothing is fetched. A run with VIMMA_UPDATE_ASSETS=<dir> (a
 // release's tarball, AppImage, .deb and SHA256SUMS, downloaded by hand) also builds, signs and
@@ -42,31 +42,29 @@ import {
   releaseInfo,
   serialAt,
   urgencyOf,
-} from "../manifest.mjs";
+} from "../manifest.ts";
 
 const subtle = globalThis.crypto.subtle;
-const HASH = (/** @type {string} */ c) => c.repeat(128);
+const HASH = (c: string) => c.repeat(128);
 const RELEASES = "https://github.com/vimma-browser/vimma/releases";
 
 /** An RSA-4096 key as Cloud KMS holds it, and the pin for it. */
-async function kmsKey(/** @type {"a" | "b"} */ name) {
+async function kmsKey(name: "a" | "b") {
   const pair = testKey(name);
   const der = new Uint8Array(pair.publicKey.export({ type: "spki", format: "der" }));
-  const pin = /** @type {const} */ ({
+  const pin = {
     id: await spkiKeyId(subtle, der),
     slot: "primary",
     spki: base64Encode(der),
-  });
+  } as const;
   return { pair, pin };
 }
 
 /**
  * Signs as RSA_SIGN_RAW_PKCS1_4096 does: PKCS#1 v1.5 type-1 padding over the DigestInfo the
  * caller sends, nothing hashed by the key.
- * @param {string} body
- * @param {Awaited<ReturnType<typeof kmsKey>>} key
  */
-function kmsSign(body, key) {
+function kmsSign(body: string, key: Awaited<ReturnType<typeof kmsKey>>) {
   const raw = privateEncrypt(
     { key: key.pair.privateKey, padding: constants.RSA_PKCS1_PADDING },
     digestInfo(body),
@@ -78,8 +76,8 @@ const offer = () => ({
   appVersion: "158.0.1",
   buildId: "20261028031500",
   displayVersion: "0.3.1",
-  urgency: /** @type {"normal" | "security"} */ ("normal"),
-  advisories: /** @type {string[]} */ ([]),
+  urgency: "normal" as "normal" | "security",
+  advisories: [] as string[],
   assets: {
     tarball: { size: 86804240, sha512: HASH("a") },
     appimage: { size: 111966712, sha512: HASH("b") },
@@ -88,8 +86,8 @@ const offer = () => ({
   },
 });
 
-/** @type {Awaited<ReturnType<typeof kmsKey>>} */ let key;
-/** @type {Awaited<ReturnType<typeof kmsKey>>} */ let stranger;
+let key: Awaited<ReturnType<typeof kmsKey>>;
+let stranger: Awaited<ReturnType<typeof kmsKey>>;
 beforeAll(async () => {
   [key, stranger] = await Promise.all([kmsKey("a"), kmsKey("b")]);
 });
@@ -159,7 +157,7 @@ describe("buildManifest (spec §2)", () => {
     expect(body).toContain(
       'vimmaUrgency="security" vimmaAdvisories="MFSA 2026-110, MFSA 2026-111"',
     );
-    const parsed = /** @type {any} */ (parseManifest(body));
+    const parsed = parseManifest(body) as any;
     expect(parsed.manifest.update.urgent).toBe(true);
     expect(parsed.manifest.update.advisories).toEqual(["MFSA 2026-110", "MFSA 2026-111"]);
   });
@@ -174,38 +172,39 @@ describe("buildManifest (spec §2)", () => {
     expect(parseManifest(body)).toMatchObject({ ok: true, manifest: { update: null } });
   });
 
-  it.each(
-    /** @type {[string, { serial?: string, update?: Record<string, unknown> }][]} */ ([
-      ["a serial that is not a UTC time", { serial: "2026" }],
-      ["a version that is not X.Y.Z", { update: { displayVersion: '0.3.1" x="' } }],
-      ["a Firefox version with a quote", { update: { appVersion: '158.0"' } }],
-      ["a build ID that is not digits", { update: { buildId: "2026-10-28" } }],
-      ["an unknown urgency", { update: { urgency: "panic" } }],
-      ["an advisory that is not an MFSA ID", { update: { advisories: ["CVE-2026-1"] } }],
-      [
-        "a hash that is not SHA-512 hex",
-        { update: { assets: { ...offer().assets, deb: { size: 1, sha512: "ab" } } } },
-      ],
-      [
-        "a size that is not a whole number",
-        { update: { assets: { ...offer().assets, deb: { size: 1.5, sha512: HASH("c") } } } },
-      ],
-      [
-        "a missing asset",
-        {
-          update: {
-            assets: { tarball: offer().assets.tarball, appimage: offer().assets.appimage },
-          },
+  it.each([
+    ["a serial that is not a UTC time", { serial: "2026" }],
+    ["a version that is not X.Y.Z", { update: { displayVersion: '0.3.1" x="' } }],
+    ["a Firefox version with a quote", { update: { appVersion: '158.0"' } }],
+    ["a build ID that is not digits", { update: { buildId: "2026-10-28" } }],
+    ["an unknown urgency", { update: { urgency: "panic" } }],
+    ["an advisory that is not an MFSA ID", { update: { advisories: ["CVE-2026-1"] } }],
+    [
+      "a hash that is not SHA-512 hex",
+      { update: { assets: { ...offer().assets, deb: { size: 1, sha512: "ab" } } } },
+    ],
+    [
+      "a size that is not a whole number",
+      { update: { assets: { ...offer().assets, deb: { size: 1.5, sha512: HASH("c") } } } },
+    ],
+    [
+      "a missing asset",
+      {
+        update: {
+          assets: { tarball: offer().assets.tarball, appimage: offer().assets.appimage },
         },
-      ],
-    ]),
-  )("refuses %s rather than writing it", (_name, change) => {
-    const input = {
-      serial: change.serial ?? "20261028041207",
-      update: { ...offer(), ...change.update },
-    };
-    expect(() => buildManifest(/** @type {any} */ (input))).toThrow();
-  });
+      },
+    ],
+  ] as [string, { serial?: string; update?: Record<string, unknown> }][])(
+    "refuses %s rather than writing it",
+    (_name, change) => {
+      const input = {
+        serial: change.serial ?? "20261028041207",
+        update: { ...offer(), ...change.update },
+      };
+      expect(() => buildManifest(input as any)).toThrow();
+    },
+  );
 
   it("names the release's files as package.mjs does", () => {
     expect(assetNames("0.3.1")).toEqual({
@@ -270,8 +269,7 @@ describe("SHA256SUMS", () => {
 });
 
 describe("urgency (spec §7)", () => {
-  /** @param {string} subject @param {string[]} [labels] */
-  const c = (subject, labels = []) => ({ subject, labels });
+  const c = (subject: string, labels: string[] = []) => ({ subject, labels });
 
   it("a Firefox bump with advisories is a security release and lists them", () => {
     expect(
@@ -335,26 +333,25 @@ describe("urgency (spec §7)", () => {
 });
 
 /** An error as execFileSync throws it when gh exits non-zero. */
-const ghError = (/** @type {string} */ stderr) =>
-  Object.assign(new Error("Command failed: gh api"), { stderr });
+const ghError = (stderr: string) => Object.assign(new Error("Command failed: gh api"), { stderr });
 /** A gh that answers with `replies` in turn (an Error is thrown), and the waits it was given. */
-const fake = (/** @type {(string | Error)[]} */ ...replies) => {
-  const calls = /** @type {string[][]} */ ([]);
-  const waits = /** @type {number[]} */ ([]);
-  const run = (/** @type {string[]} */ args) => {
+const fake = (...replies: (string | Error)[]) => {
+  const calls = [] as string[][];
+  const waits = [] as number[];
+  const run = (args: string[]) => {
     calls.push(args);
     const r = replies[Math.min(calls.length, replies.length) - 1];
     if (r instanceof Error) throw r;
     return r ?? "";
   };
-  return { run, sleep: async (/** @type {number} */ ms) => void waits.push(ms), calls, waits };
+  return { run, sleep: async (ms: number) => void waits.push(ms), calls, waits };
 };
 
 describe("reading a commit's labels (spec §7: urgency fails closed)", () => {
   const HTTP_500 = ghError("unexpected end of JSON input\n");
 
   /** The commits/<sha>/pulls response for pull requests carrying these labels. */
-  const pulls = (/** @type {string[][]} */ ...labels) =>
+  const pulls = (...labels: string[][]) =>
     JSON.stringify(
       labels.map((names, i) => ({ number: i + 1, labels: names.map((name) => ({ name })) })),
     );
@@ -424,13 +421,13 @@ describe("reading a commit's labels (spec §7: urgency fails closed)", () => {
 
 describe("reading the published releases (spec §7: the range of commits)", () => {
   /** One entry of the releases list. */
-  const release = (/** @type {string} */ tag_name, draft = false, prerelease = false) => ({
+  const release = (tag_name: string, draft = false, prerelease = false) => ({
     tag_name,
     draft,
     prerelease,
   });
   /** The releases list as `gh api --paginate --slurp` prints it: a list of pages. */
-  const pages = (/** @type {object[][]} */ ...p) => JSON.stringify(p);
+  const pages = (...p: object[][]) => JSON.stringify(p);
 
   it("reads the published releases' tags from every page", async () => {
     const gh = fake(
@@ -508,10 +505,8 @@ describe("signing round trip (the verifier the browser runs)", () => {
 /**
  * A release directory as the download step leaves it: the three assets (a real tar.xz with
  * vimma/application.ini, as `./mach package` makes) and SHA256SUMS.
- * @param {string} version
- * @param {{ ini?: string, mar?: boolean }} [options]
  */
-function fakeRelease(version, { ini, mar = false } = {}) {
+function fakeRelease(version: string, { ini, mar = false }: { ini?: string; mar?: boolean } = {}) {
   const dir = tempDir("vimma-release-");
   const names = assetNames(version);
   const src = join(dir, "src");
@@ -529,7 +524,7 @@ function fakeRelease(version, { ini, mar = false } = {}) {
     writeFileSync(join(dir, marName(version)), `MAR1 ${version}`);
     listed.push(marName(version));
   }
-  const sha = (/** @type {string} */ n) =>
+  const sha = (n: string) =>
     createHash("sha256")
       .update(readFileSync(join(dir, n)))
       .digest("hex");
@@ -555,7 +550,7 @@ describe("prepareRelease and checkSigned (the jobs' checks)", () => {
     const dir = fakeRelease("0.3.1");
     const { body, version } = prepareRelease({ tag: "v0.3.1", dir, commits, published: null, now });
     expect(version).toBe("0.3.1");
-    const m = /** @type {any} */ (parseManifest(body)).manifest;
+    const m = (parseManifest(body) as any).manifest;
     expect(m.serial).toBe("20261028041207");
     expect(m.update).toMatchObject({
       appVersion: "158.0",
@@ -693,7 +688,7 @@ describe("the complete MAR (<patch>)", () => {
     expect(body).toContain(
       `    <patch type="complete" size="98113536" hashFunction="sha512" hashValue="${HASH("e")}" URL="${MAR_URL}"/>\n`,
     );
-    const m = /** @type {any} */ (parseManifest(body)).manifest;
+    const m = (parseManifest(body) as any).manifest;
     expect(m.update.marUrl).toBe(MAR_URL);
     expect(m.update.assets.tarball.url).toBe(`${DL}/vimma-0.3.1-linux-x86_64.tar.xz`);
   });
@@ -705,7 +700,7 @@ describe("the complete MAR (<patch>)", () => {
       mar: { size: 1, sha512: HASH("e") },
     };
     expect(() =>
-      buildManifest({ serial: "20261028041207", update: /** @type {any} */ (mac), os: "macos" }),
+      buildManifest({ serial: "20261028041207", update: mac as any, os: "macos" }),
     ).toThrow(/MAR/);
     expect(() =>
       buildManifest({
@@ -779,14 +774,13 @@ describe("the complete MAR (<patch>)", () => {
 /**
  * A macOS release directory as the download step leaves it: the .dmg and SHA256SUMS-macos, which
  * also lists the cask (release.yml's macos-package job).
- * @param {string} version
  */
-function fakeMacRelease(version) {
+function fakeMacRelease(version: string) {
   const dir = tempDir("vimma-release-macos-");
   const dmg = defined(assetNames(version, "macos").dmg);
   writeFileSync(join(dir, dmg), `dmg ${version}`);
   writeFileSync(join(dir, "vimma.rb"), "cask");
-  const sha = (/** @type {string} */ n) =>
+  const sha = (n: string) =>
     createHash("sha256")
       .update(readFileSync(join(dir, n)))
       .digest("hex");
@@ -843,7 +837,7 @@ describe("the macOS manifest (spec macos-homebrew, decisions 16 to 18)", () => {
       os: "macos",
       appInfo: macInfo,
     });
-    const m = /** @type {any} */ (parseManifest(body)).manifest;
+    const m = (parseManifest(body) as any).manifest;
     expect(m.target).toBe("Darwin_aarch64-gcc3");
     expect(m.update).toMatchObject({ appVersion: "158.0", buildId: "20261019132138" });
     expect(Object.keys(m.update.assets)).toEqual(["dmg"]);
@@ -935,8 +929,7 @@ describe("the macOS manifest (spec macos-homebrew, decisions 16 to 18)", () => {
     const dir = tempDir("vimma-dmg-");
     const dmg = join(dir, "v.dmg");
     writeFileSync(dmg, "");
-    /** @param {string[]} args */
-    const hdiutil = (args) => {
+    const hdiutil = (args: string[]) => {
       writeFileSync(join(defined(args[args.indexOf("-mountpoint") + 1]), "mounted"), "");
       // as execFileSync reports a failure: the command, then hdiutil's stderr
       const stderr = "hdiutil: attach failed - Resource temporarily unavailable\n";
@@ -950,13 +943,10 @@ describe("the macOS manifest (spec macos-homebrew, decisions 16 to 18)", () => {
 
   /**
    * An hdiutil whose attach mounts an app with `ini` (none when null) and whose detach fails.
-   * @param {string | null} ini
    */
-  const failingDetach = (ini) => {
-    /** @type {string[]} */
-    const mounts = [];
-    /** @param {string[]} args */
-    const hdiutil = (args) => {
+  const failingDetach = (ini: string | null) => {
+    const mounts: string[] = [];
+    const hdiutil = (args: string[]) => {
       if (args[0] === "attach") {
         const mount = defined(args[args.indexOf("-mountpoint") + 1], "-mountpoint's value");
         mounts.push(mount);
@@ -1014,11 +1004,11 @@ describe("the macOS manifest (spec macos-homebrew, decisions 16 to 18)", () => {
 const REAL = process.env.VIMMA_UPDATE_ASSETS;
 describe.runIf(REAL && existsSync(REAL))("a real release's files (VIMMA_UPDATE_ASSETS)", () => {
   it("builds, signs with a throwaway RSA-4096 key in raw PKCS#1 and verifies", async () => {
-    const dir = /** @type {string} */ (REAL);
+    const dir = REAL as string;
     const tar = execFileSync("ls", [dir], { encoding: "utf8" }).match(
       /^vimma-(\d+\.\d+\.\d+)-linux-x86_64\.tar\.xz$/m,
     );
-    const version = /** @type {string} */ (tar?.[1]);
+    const version = tar?.[1] as string;
     const now = new Date();
     const { body } = prepareRelease({ tag: `v${version}`, dir, commits: [], published: null, now });
     process.stdout.write(body);

@@ -16,39 +16,34 @@ import {
   spkiKeyId,
   verifyManifest,
 } from "../../../packages/vimma-core/src/updates/updates.mjs";
-import { buildManifest, buildNightlyManifest, serialAt } from "../manifest.mjs";
-import { addSignaturePlaceholder, insertSignature, readMar, verifyMar } from "../mar.mjs";
+import { buildManifest, buildNightlyManifest, serialAt } from "../manifest.ts";
+import { addSignaturePlaceholder, insertSignature, readMar, verifyMar } from "../mar.ts";
 
 const text = readFileSync(
   new URL("../../../.github/workflows/update-publish.yml", import.meta.url),
   "utf8",
 );
 
-/** @returns {Map<string, string>} job id -> its YAML block */
-function jobs() {
+/** @returns job id -> its YAML block */
+function jobs(): Map<string, string> {
   const body = text.slice(text.indexOf("\njobs:\n") + 7);
   const parts = body.split(/^ {2}([a-z][a-z0-9-]*):\n/m).slice(1);
-  /** @type {Map<string, string>} */
-  const map = new Map();
+  const map: Map<string, string> = new Map();
   for (let i = 0; i < parts.length; i += 2) map.set(parts[i] ?? "", parts[i + 1] ?? "");
   return map;
 }
 const all = jobs();
-/** @param {string} id */
-const job = (id) => all.get(id) ?? "";
+const job = (id: string) => all.get(id) ?? "";
 
-/** @param {string} block */
-function condition(block) {
+function condition(block: string) {
   const match = /^ {4}if: (>-\n(?: {6}.*\n)+|.*\n)/m.exec(block);
   return (match?.[1] ?? "").replace(/^>-\n/, "").replace(/\s+/g, " ").trim();
 }
 
 /**
  * One step of `block`, from its `- name:` line up to the next step.
- * @param {string} block
- * @param {string} name
  */
-function stepOf(block, name) {
+function stepOf(block: string, name: string) {
   const start = block.indexOf(`- name: ${name}\n`);
   expect(start, name).toBeGreaterThan(-1);
   const rest = block.slice(start + 1);
@@ -58,17 +53,15 @@ function stepOf(block, name) {
 
 /**
  * The `run:` script of the step called `name`, unindented.
- * @param {string} block
- * @param {string} name
  */
-function runOf(block, name) {
+function runOf(block: string, name: string) {
   const step = stepOf(block, name);
   const lines = step.slice(step.indexOf("run: |\n") + 8).split("\n");
   return lines.map((l) => l.replace(/^ {10}/, "")).join("\n");
 }
 
-/** The `permissions:` lines of a job, as `name: value`. @param {string} block */
-function permissionsOf(block) {
+/** The `permissions:` lines of a job, as `name: value`. */
+function permissionsOf(block: string) {
   const m = /^ {4}permissions:(?: (\{\})\n|\n((?: {6}.*\n)+))/m.exec(block);
   if (!m) return null;
   if (m[1]) return [];
@@ -143,7 +136,7 @@ describe("update-publish.yml", () => {
     expect(job("publish")).toContain("\n    runs-on: ubuntu-24.04\n");
   });
 
-  it("downloads the target's files and sums, and passes the target to manifest.mjs", () => {
+  it("downloads the target's files and sums, and passes the target to manifest.ts", () => {
     for (const id of ["prepare", "publish"]) {
       const run = runOf(job(id), "Download the release's files");
       expect(run, id).toContain('macos) files=("vimma-$v-macos-aarch64.dmg") ;;');
@@ -385,7 +378,7 @@ describe("update-publish.yml", () => {
   it("nightly-prepare checks the MAR's channel and builds the nightly channel's manifest", () => {
     const prepare = job("nightly-prepare");
     const mar = runOf(prepare, "The MAR is the nightly channel's, signed by the update key");
-    expect(mar).toContain("node tools/update/mar.mjs verify");
+    expect(mar).toContain("node tools/update/mar.ts verify");
     expect(mar).toContain("--channel vimma-nightly");
     expect(mar).toContain(
       "--cert configs/updater/primary.der --cert configs/updater/secondary.der",
@@ -394,7 +387,7 @@ describe("update-publish.yml", () => {
     expect(published).toContain("path=updates/browser/$BUILD_TARGET/vimma-nightly/update.xml");
     const build = runOf(prepare, "Build the nightly manifest");
     expect(build).toContain(
-      'node tools/update/manifest.mjs build --channel nightly --build-id "$BUILD_ID" --version "$version"',
+      'node tools/update/manifest.ts build --channel nightly --build-id "$BUILD_ID" --version "$version"',
     );
     expect(prepare.indexOf("- name: Verify the nightly's signature")).toBeLessThan(
       prepare.indexOf("- name: Build the nightly manifest"),
@@ -406,7 +399,7 @@ describe("update-publish.yml", () => {
     const publish = job("nightly-publish");
     const verify = runOf(publish, "Verify the signed manifest");
     expect(verify).toContain(
-      'node tools/update/manifest.mjs verify --channel nightly --signed signed/update.xml --build-id "$BUILD_ID" --version "$version" --assets assets',
+      'node tools/update/manifest.ts verify --channel nightly --signed signed/update.xml --build-id "$BUILD_ID" --version "$version" --assets assets',
     );
     expect(verify).toContain("openssl dgst -sha384 -verify pinned.pem");
     const download = runOf(publish, "Download the nightly's files");
@@ -533,7 +526,7 @@ describe("update-publish.yml", () => {
   it("the publish job verifies with the browser's verifier and with openssl before any push", () => {
     const publish = job("publish");
     const verify = runOf(publish, "Verify the signed manifest");
-    expect(verify).toContain("node tools/update/manifest.mjs verify");
+    expect(verify).toContain("node tools/update/manifest.ts verify");
     expect(verify).toContain("openssl dgst -sha384 -verify pinned.pem");
     expect(publish.indexOf("- name: Verify the signed manifest")).toBeLessThan(
       publish.indexOf("- name: Push to vimma-updates"),
@@ -561,7 +554,7 @@ describe("update-publish.yml", () => {
   it("pushes one commit naming the version to main, never forced, to a pinned host key", () => {
     const run = runOf(job("publish"), "Push to vimma-updates");
     expect(run).toContain("StrictHostKeyChecking=yes");
-    expect(run).toContain("node tools/update/manifest.mjs verify");
+    expect(run).toContain("node tools/update/manifest.ts verify");
     expect(run).toContain('commit -q -m "$message"');
     expect(run).toMatch(/message="vimma \$version: update manifest, serial \$serial"/);
     const pushes = run
@@ -583,8 +576,7 @@ describe("update-publish.yml", () => {
   // the step's env must give the rebase one, as it gives the commit.
   it("a push the other target's run beat rebases and lands, with no git identity configured", () => {
     const step = stepOf(job("publish"), "Push to vimma-updates");
-    /** @type {Record<string, string>} */
-    const stepEnv = {};
+    const stepEnv: Record<string, string> = {};
     for (const m of step.matchAll(/^ {10}(GIT_[A-Z_]+): (.+)$/gm)) {
       stepEnv[m[1] ?? ""] = (m[2] ?? "").replace(/^"(.*)"$/, "$1");
     }
@@ -612,8 +604,7 @@ describe("update-publish.yml", () => {
       GIT_CONFIG_KEY_1: "init.defaultBranch",
       GIT_CONFIG_VALUE_1: "main",
     };
-    /** @param {string[]} args @param {string} cwd @param {Record<string, string>} [env] */
-    const git = (args, cwd, env = { ...base, ...who }) =>
+    const git = (args: string[], cwd: string, env: Record<string, string> = { ...base, ...who }) =>
       execFileSync("git", args, { cwd, env, stdio: "pipe" });
     git(["init", "-q", "--bare", "origin.git"], dir);
     git(["clone", "-q", "origin.git", "seed"], dir);
@@ -670,9 +661,8 @@ describe.skipIf(process.platform !== "linux")("the signing job's steps, run", ()
   /**
    * A directory holding the prepare job's artifact and a stand-in `gcloud` that signs the way
    * RSA_SIGN_RAW_PKCS1_4096 does: PKCS#1 v1.5 type-1 padding over the bytes it is sent.
-   * @param {string} body
    */
-  function setUp(body) {
+  function setUp(body: string) {
     const dir = tempDir("vimma-sign-");
     const pair = testKey("a");
     writeFileSync(join(dir, "kms.key"), pair.privateKey.export({ type: "pkcs8", format: "pem" }));
@@ -704,12 +694,9 @@ esac
   }
 
   /**
-   * @param {string} dir
-   * @param {string} name
-   * @param {Record<string, string>} env
-   * @param {string} [id] the job
+   * @param id the job
    */
-  const run = (dir, name, env, id = "sign") =>
+  const run = (dir: string, name: string, env: Record<string, string>, id: string = "sign") =>
     spawnSync("bash", ["-e", "-o", "pipefail", "-c", runOf(job(id), name)], {
       cwd: dir,
       encoding: "utf8",
@@ -746,7 +733,7 @@ esac
     appVersion: "158.0",
     buildId: "20261019132138",
     displayVersion: "0.3.1",
-    urgency: /** @type {const} */ ("normal"),
+    urgency: "normal" as const,
     advisories: [],
     assets: { dmg: { size: 4, sha512: "d".repeat(128) } },
   });
@@ -764,7 +751,7 @@ esac
     const subtle = globalThis.crypto.subtle;
     const pin = {
       id: await spkiKeyId(subtle, der),
-      slot: /** @type {const} */ ("primary"),
+      slot: "primary" as const,
       spki: base64Encode(der),
     };
     expect(await verifyManifest(out, [pin], subtle)).toEqual({
@@ -774,92 +761,86 @@ esac
     });
   }, 60_000);
 
-  it.each(
-    /** @type {[string, (body: string) => string, string, RegExp?][]} */ ([
-      [
-        "a body already carrying a signature",
-        (b) => b + "<!-- vimma-signature v1 -->\n",
-        "release",
-      ],
-      [
-        "another channel",
-        (b) => b.replace('vimmaChannel="vimma"', 'vimmaChannel="vimma-nightly"'),
-        "release",
-      ],
-      [
-        "another version than the tag",
-        (b) => b.replace('displayVersion="0.3.1"', 'displayVersion="0.3.2"'),
-        "release",
-      ],
-      ["an offer when nothing was asked for", (b) => b, "nothing"],
-      [
-        "a serial far ahead of the clock",
-        (b) => b.replace(/vimmaSerial="\d{14}"/, 'vimmaSerial="29990101000000"'),
-        "release",
-      ],
-      [
-        "a serial from long ago",
-        (b) => b.replace(/vimmaSerial="\d{14}"/, 'vimmaSerial="20200101000000"'),
-        "release",
-      ],
-      ["text after </updates>", (b) => b + "<!-- x -->", "release"],
-      [
-        "more than 64 KiB",
-        (b) => b.replace("</updates>", `<!-- ${"x".repeat(70_000)} -->\n</updates>`),
-        "release",
-      ],
-      // GNU grep may end a line at a NUL byte in a file it takes for binary, so a line check alone
-      // would pass either half.
-      [
-        "a nightly root hidden before a NUL byte",
-        (b) =>
-          b.replace(
-            "<updates ",
-            '<updates vimmaChannel="vimma-nightly" vimmaTarget="Linux_x86_64-gcc3" vimmaSerial="20261112000000">\0<updates ',
-          ),
-        "release",
-        /not printable ASCII/,
-      ],
-      [
-        "a root for another target hidden before a NUL byte",
-        (b) =>
-          b.replace(
-            "<updates ",
-            '<updates vimmaChannel="vimma" vimmaTarget="Darwin_aarch64-gcc3" vimmaSerial="20261112000000">\0<updates ',
-          ),
-        "release",
-        /not printable ASCII/,
-      ],
-      [
-        "another tarball hidden after a NUL byte",
-        (b) =>
-          b.replace(
-            /(<vimmaTarball [^\n]*\/>)\n/,
-            `$1\0<vimmaTarball size="1" hashFunction="sha512" hashValue="${"f".repeat(128)}" URL="https://example.com/x.tar.xz"/>\n`,
-          ),
-        "release",
-        /not printable ASCII/,
-      ],
-      [
-        "a byte that is not ASCII",
-        (b) => b.replace("</updates>", "<!-- \u00e9 -->\n</updates>"),
-        "release",
-        /not printable ASCII/,
-      ],
-      [
-        "a carriage return",
-        (b) => b.replace("  </update>\n", "  </update>\r\n"),
-        "release",
-        /not printable ASCII/,
-      ],
-      [
-        "a body that does not end with a newline",
-        (b) => b.replace(/\n$/, ""),
-        "release",
-        /does not end with a newline/,
-      ],
-    ]),
-  )(
+  it.each([
+    ["a body already carrying a signature", (b) => b + "<!-- vimma-signature v1 -->\n", "release"],
+    [
+      "another channel",
+      (b) => b.replace('vimmaChannel="vimma"', 'vimmaChannel="vimma-nightly"'),
+      "release",
+    ],
+    [
+      "another version than the tag",
+      (b) => b.replace('displayVersion="0.3.1"', 'displayVersion="0.3.2"'),
+      "release",
+    ],
+    ["an offer when nothing was asked for", (b) => b, "nothing"],
+    [
+      "a serial far ahead of the clock",
+      (b) => b.replace(/vimmaSerial="\d{14}"/, 'vimmaSerial="29990101000000"'),
+      "release",
+    ],
+    [
+      "a serial from long ago",
+      (b) => b.replace(/vimmaSerial="\d{14}"/, 'vimmaSerial="20200101000000"'),
+      "release",
+    ],
+    ["text after </updates>", (b) => b + "<!-- x -->", "release"],
+    [
+      "more than 64 KiB",
+      (b) => b.replace("</updates>", `<!-- ${"x".repeat(70_000)} -->\n</updates>`),
+      "release",
+    ],
+    // GNU grep may end a line at a NUL byte in a file it takes for binary, so a line check alone
+    // would pass either half.
+    [
+      "a nightly root hidden before a NUL byte",
+      (b) =>
+        b.replace(
+          "<updates ",
+          '<updates vimmaChannel="vimma-nightly" vimmaTarget="Linux_x86_64-gcc3" vimmaSerial="20261112000000">\0<updates ',
+        ),
+      "release",
+      /not printable ASCII/,
+    ],
+    [
+      "a root for another target hidden before a NUL byte",
+      (b) =>
+        b.replace(
+          "<updates ",
+          '<updates vimmaChannel="vimma" vimmaTarget="Darwin_aarch64-gcc3" vimmaSerial="20261112000000">\0<updates ',
+        ),
+      "release",
+      /not printable ASCII/,
+    ],
+    [
+      "another tarball hidden after a NUL byte",
+      (b) =>
+        b.replace(
+          /(<vimmaTarball [^\n]*\/>)\n/,
+          `$1\0<vimmaTarball size="1" hashFunction="sha512" hashValue="${"f".repeat(128)}" URL="https://example.com/x.tar.xz"/>\n`,
+        ),
+      "release",
+      /not printable ASCII/,
+    ],
+    [
+      "a byte that is not ASCII",
+      (b) => b.replace("</updates>", "<!-- \u00e9 -->\n</updates>"),
+      "release",
+      /not printable ASCII/,
+    ],
+    [
+      "a carriage return",
+      (b) => b.replace("  </update>\n", "  </update>\r\n"),
+      "release",
+      /not printable ASCII/,
+    ],
+    [
+      "a body that does not end with a newline",
+      (b) => b.replace(/\n$/, ""),
+      "release",
+      /does not end with a newline/,
+    ],
+  ] as [string, (body: string) => string, string, RegExp?][])(
     "refuses to sign %s",
     (_name, change, offer, error = /::error::/) => {
       const { dir } = setUp(change(offerBody()));
@@ -889,7 +870,7 @@ esac
 
   const MAR_URL =
     "https://github.com/vimma-browser/vimma/releases/download/v0.3.1/vimma-0.3.1-linux-x86_64.complete.mar";
-  const withPatch = (/** @type {string} */ url = MAR_URL) =>
+  const withPatch = (url: string = MAR_URL) =>
     offerBody().replace(
       "    <vimmaTarball ",
       `    <patch type="complete" size="5" hashFunction="sha512" hashValue="${"e".repeat(128)}" URL="${url}"/>\n    <vimmaTarball `,
@@ -989,7 +970,7 @@ esac
     const subtle = globalThis.crypto.subtle;
     const pin = {
       id: await spkiKeyId(subtle, der),
-      slot: /** @type {const} */ ("primary"),
+      slot: "primary" as const,
       spki: base64Encode(der),
     };
     expect(await verifyManifest(out, [pin], subtle)).toEqual({
@@ -1117,8 +1098,7 @@ esac
   );
 
   it("nightly-sign's byte check is sign's, the same shell text", () => {
-    /** @param {string} id */
-    const byteCheck = (id) => {
+    const byteCheck = (id: string) => {
       const step = runOf(job(id), "Check what is about to be signed");
       const start = step.indexOf("# Printable ASCII and newlines only");
       const end = step.indexOf("does not end with a newline");
@@ -1141,7 +1121,7 @@ esac
 });
 
 // mar-sign, run with the same stand-in for gcloud: the placeholder MAR release.yml's package job
-// builds (tools/update/mar.mjs, from a MAR Mozilla's own `mar` made) comes out signed so that the
+// builds (tools/update/mar.ts, from a MAR Mozilla's own `mar` made) comes out signed so that the
 // updater's check accepts it under the KMS key.
 describe.skipIf(process.platform !== "linux")("the MAR signing job's steps, run", () => {
   const NAME = "vimma-0.3.1-linux-x86_64.complete.mar";
@@ -1150,8 +1130,7 @@ describe.skipIf(process.platform !== "linux")("the MAR signing job's steps, run"
   const NIGHTLY_CALLER = "vimma-browser/vimma/.github/workflows/nightly.yml@refs/heads/main";
   const fixture = () => readFileSync(new URL("fixtures/mar/unsigned.mar", import.meta.url));
 
-  /** @param {Buffer} mar */
-  function setUp(mar) {
+  function setUp(mar: Buffer) {
     const dir = tempDir("vimma-mar-sign-");
     const pair = testKey("a");
     writeFileSync(join(dir, "kms.key"), pair.privateKey.export({ type: "pkcs8", format: "pem" }));
@@ -1181,12 +1160,7 @@ esac
     return { dir, publicKey: pair.publicKey };
   }
 
-  /**
-   * @param {string} dir
-   * @param {string} name
-   * @param {Record<string, string>} [env]
-   */
-  const run = (dir, name, env = {}) =>
+  const run = (dir: string, name: string, env: Record<string, string> = {}) =>
     spawnSync("bash", ["-e", "-o", "pipefail", "-c", runOf(job("mar-sign"), name)], {
       cwd: dir,
       encoding: "utf8",
@@ -1223,39 +1197,37 @@ esac
     expect(insertSignature(placeholder, out.subarray(28, 540)).equals(out)).toBe(true);
   }, 60_000);
 
-  /** @param {(b: Buffer) => Buffer} change */
-  const changed = (change) => change(Buffer.from(addSignaturePlaceholder(fixture())));
+  const changed = (change: (b: Buffer) => Buffer) =>
+    change(Buffer.from(addSignaturePlaceholder(fixture())));
 
-  it.each(
-    /** @type {[string, () => Buffer, Record<string, string>][]} */ ([
-      ["an unsigned MAR (no placeholder)", () => fixture(), {}],
-      ["a MAR already signed", () => changed((b) => (b.fill(7, 28, 540), b)), {}],
-      ["another channel", () => changed((b) => (b.write("vimmb", 552, "latin1"), b)), {}],
-      ["a channel with a space", () => changed((b) => (b.write("vi ma", 552, "latin1"), b)), {}],
-      [
-        "a product information block too short for its channel",
-        () => changed((b) => (b.writeUInt32BE(10, 544), b)),
-        {},
-      ],
-      ["no MAR at all", () => Buffer.from("XAR1".padEnd(1000, "x")), {}],
-      [
-        "a size field that is not the file's",
-        () => changed((b) => (b.writeBigUInt64BE(1n, 8), b)),
-        {},
-      ],
-      ["another algorithm", () => changed((b) => (b.writeUInt32BE(1, 20), b)), {}],
-      [
-        "a name that is not the tag's MAR",
-        () => addSignaturePlaceholder(fixture()),
-        { MAR: "vimma-0.3.2-linux-x86_64.complete.mar" },
-      ],
-      [
-        "a caller tag that is not vX.Y.Z",
-        () => addSignaturePlaceholder(fixture()),
-        { CALLER_TAG: "main" },
-      ],
-    ]),
-  )(
+  it.each([
+    ["an unsigned MAR (no placeholder)", () => fixture(), {}],
+    ["a MAR already signed", () => changed((b) => (b.fill(7, 28, 540), b)), {}],
+    ["another channel", () => changed((b) => (b.write("vimmb", 552, "latin1"), b)), {}],
+    ["a channel with a space", () => changed((b) => (b.write("vi ma", 552, "latin1"), b)), {}],
+    [
+      "a product information block too short for its channel",
+      () => changed((b) => (b.writeUInt32BE(10, 544), b)),
+      {},
+    ],
+    ["no MAR at all", () => Buffer.from("XAR1".padEnd(1000, "x")), {}],
+    [
+      "a size field that is not the file's",
+      () => changed((b) => (b.writeBigUInt64BE(1n, 8), b)),
+      {},
+    ],
+    ["another algorithm", () => changed((b) => (b.writeUInt32BE(1, 20), b)), {}],
+    [
+      "a name that is not the tag's MAR",
+      () => addSignaturePlaceholder(fixture()),
+      { MAR: "vimma-0.3.2-linux-x86_64.complete.mar" },
+    ],
+    [
+      "a caller tag that is not vX.Y.Z",
+      () => addSignaturePlaceholder(fixture()),
+      { CALLER_TAG: "main" },
+    ],
+  ] as [string, () => Buffer, Record<string, string>][])(
     "refuses to sign %s",
     (_name, mar, env) => {
       const { dir } = setUp(mar());
@@ -1270,19 +1242,15 @@ esac
   /**
    * The unsigned MAR with its product information block naming `channel`: the MAR Mozilla's
    * `mar -H <channel>` writes for the same files, rebuilt here since the fixture names `vimma`.
-   * @param {Buffer} buf
-   * @param {string} channel
    */
-  function withChannel(buf, channel) {
+  function withChannel(buf: Buffer, channel: string) {
     const mar = readMar(buf);
     const product = Buffer.from(`${channel}\0${mar.productVersion}\0`, "latin1");
     const block = Buffer.alloc(8);
     block.writeUInt32BE(8 + product.length, 0);
     block.writeUInt32BE(1, 4);
-    /** @type {Buffer[]} */
-    const contents = [];
-    /** @type {Buffer[]} */
-    const index = [];
+    const contents: Buffer[] = [];
+    const index: Buffer[] = [];
     let at = 24 + 8 + product.length;
     for (const e of mar.entries) {
       const entry = Buffer.alloc(12);
@@ -1378,13 +1346,13 @@ esac
     60_000,
   );
 
-  it("the checked offsets are the ones mar.mjs reads", () => {
+  it("the checked offsets are the ones mar.ts reads", () => {
     const mar = readMar(addSignaturePlaceholder(fixture()));
     expect(mar.signatures).toEqual([{ algorithm: 2, offset: 28, length: 512 }]);
   });
 });
 
-describe("tools/update/manifest.mjs verify (the CLI the publish job runs)", () => {
+describe("tools/update/manifest.ts verify (the CLI the publish job runs)", () => {
   it("refuses a manifest no pinned key signed, and says why", () => {
     const dir = tempDir("vimma-verify-");
     const body = buildManifest({ serial: "20261028041207", update: null });
@@ -1395,7 +1363,7 @@ describe("tools/update/manifest.mjs verify (the CLI the publish job runs)", () =
     const r = spawnSync(
       "node",
       [
-        new URL("../manifest.mjs", import.meta.url).pathname,
+        new URL("../manifest.ts", import.meta.url).pathname,
         "verify",
         "--signed",
         join(dir, "update.xml"),
@@ -1409,13 +1377,9 @@ describe("tools/update/manifest.mjs verify (the CLI the publish job runs)", () =
   });
 
   it("pem prints the pinned primary for openssl", () => {
-    const pem = execFileSync(
-      "node",
-      [new URL("../manifest.mjs", import.meta.url).pathname, "pem"],
-      {
-        encoding: "utf8",
-      },
-    );
+    const pem = execFileSync("node", [new URL("../manifest.ts", import.meta.url).pathname, "pem"], {
+      encoding: "utf8",
+    });
     expect(pem).toMatch(/^-----BEGIN PUBLIC KEY-----\n/);
   });
 });

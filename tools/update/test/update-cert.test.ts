@@ -1,7 +1,7 @@
 // docs/specs/m6a-updater.md §6 ("Key ceremony"), decision 39, and
 // docs/runbook/ci-update-keys-and-update-host.md step 5b: the updater's certificates. The primary's
 // private key cannot leave Cloud KMS, so its self-signed certificate is made in two steps:
-// tools/update/update-cert.mjs writes the to-be-signed part and its SHA-384 DigestInfo, KMS signs
+// tools/update/update-cert.ts writes the to-be-signed part and its SHA-384 DigestInfo, KMS signs
 // that (raw PKCS#1), and the tool assembles and checks the certificate. Here a fixed test key
 // (tools/test/test-keys.ts) stands in for KMS, signing exactly as it does.
 import { describe, expect, it } from "vitest";
@@ -13,6 +13,7 @@ import {
   generateKeyPairSync,
   privateEncrypt,
 } from "node:crypto";
+import type { KeyObject } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
@@ -22,29 +23,25 @@ import {
   assembleCertificate,
   certificateRequest,
   certificateSpki,
-} from "../update-cert.mjs";
+} from "../update-cert.ts";
 
-const SCRIPT = new URL("../update-cert.mjs", import.meta.url).pathname;
+const SCRIPT = new URL("../update-cert.ts", import.meta.url).pathname;
 
 /**
  * A 4096-bit key, as the KMS key and the offline secondary are.
- * @param {"a" | "b"} [name]
  */
-function rsaKey(name = "a") {
+function rsaKey(name: "a" | "b" = "a") {
   return testKey(name);
 }
 
 /**
  * What `gcloud kms asymmetric-sign` returns for an RSA_SIGN_RAW_PKCS1_4096 key: PKCS#1 v1.5
  * type-1 padding over exactly the bytes sent.
- * @param {import("node:crypto").KeyObject} privateKey
- * @param {Uint8Array} bytes
  */
-const kmsSign = (privateKey, bytes) =>
+const kmsSign = (privateKey: KeyObject, bytes: Uint8Array) =>
   new Uint8Array(privateEncrypt({ key: privateKey, padding: constants.RSA_PKCS1_PADDING }, bytes));
 
-const spkiOf = (/** @type {import("node:crypto").KeyObject} */ k) =>
-  new Uint8Array(k.export({ type: "spki", format: "der" }));
+const spkiOf = (k: KeyObject) => new Uint8Array(k.export({ type: "spki", format: "der" }));
 
 describe("update-cert: the updater's self-signed certificate", () => {
   it("builds a certificate KMS can sign, which NSS-style parsers and openssl accept", () => {
@@ -118,7 +115,7 @@ describe("update-cert: the updater's self-signed certificate", () => {
     const dir = tempDir("vimma-update-cert-cli-");
     const { publicKey, privateKey } = rsaKey();
     writeFileSync(join(dir, "key.pem"), publicKey.export({ type: "spki", format: "pem" }));
-    const run = (/** @type {string[]} */ args) =>
+    const run = (args: string[]) =>
       execFileSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8", stdio: "pipe" });
     const out = run([
       "request",

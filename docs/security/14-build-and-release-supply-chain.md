@@ -217,7 +217,7 @@ of the same commit read it too, so a tree without it could not be released anywa
   the published nightly manifest offers, and removes none when the update host does not answer.
   A scheduled run builds only when `main` changed (decision 44): the `changes` job, with
   `contents: read`, no secret and no environment, runs `gh release view` and
-  `tools/update/nightly-change.mjs` to compare `main`'s commit and Firefox version with the
+  `tools/update/nightly-change.ts` to compare `main`'s commit and Firefox version with the
   record that `publish` writes first in the release notes. On a match no job in the `build`
   environment starts, so the Safe Browsing key is not read that day, and `manifest` re-signs the
   recorded build (UP7); anything the record cannot vouch for builds, and a manual run always
@@ -258,7 +258,7 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`a manual run builds, whatever the change check says`](../../tools/test/nightly-workflow.test.ts),
   [`the change check reads with contents: read alone, no secret and no environment`](../../tools/test/nightly-workflow.test.ts),
   [`a skipped day starts no job in the build environment and none that reads the Safe Browsing key`](../../tools/test/nightly-workflow.test.ts),
-  [`builds when %s`](../../tools/update/test/nightly-change.test.mjs),
+  [`builds when %s`](../../tools/update/test/nightly-change.test.ts),
   [`only the nightly's failure-issue step, its publish job and its change check get GH_TOKEN`](../../tools/test/full-build-workflows.test.ts)
 - B9. Every file `release.yml` uploads to a release, the Arch Linux `PKGBUILD` and `SRCINFO`
   included, **must** be listed in that release's `SHA256SUMS` and get a cosign bundle from the

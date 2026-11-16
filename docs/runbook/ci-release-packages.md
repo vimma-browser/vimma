@@ -43,11 +43,11 @@ CycloneDX schema; installs the `.deb` and starts it headless, installs the `.rpm
 dnf in a Fedora container and with zypper in an openSUSE container and starts it headless there
 with `tools/package/rpm-smoke.sh`, and runs `makepkg -si` on the `PKGBUILD` in an Arch Linux
 container with `tools/package/arch-smoke.sh`; checks the release tarball's updater with
-`tools/update/check-build.mjs`, and while `UPDATES_ENABLED` is `true` builds the complete MAR
-from it with a zeroed signature placeholder, `tools/update/mar.mjs build`) → `mar-sign` (calls
+`tools/update/check-build.ts`, and while `UPDATES_ENABLED` is `true` builds the complete MAR
+from it with a zeroed signature placeholder, `tools/update/mar.ts build`) → `mar-sign` (calls
 `update-publish.yml`, whose job of that name signs the MAR with the Cloud KMS update key; see
 "Update signing keys and the update host", step 8) → `mar` (no secret: the signed MAR differs
-from package's only in its signature, verifies under `configs/updater/` with `mar.mjs` and with
+from package's only in its signature, verifies under `configs/updater/` with `mar.ts` and with
 the build's own `signmar`, and joins `SHA256SUMS`) → `sign` (cosign; with `mar-sign`, the only
 jobs with `id-token: write`) → `publish` (only job with `contents: write`; uploads to the draft by its tag
 and checks that the draft is still on that tag after the notes edit) → `failure` (opens a
