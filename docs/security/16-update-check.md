@@ -105,12 +105,17 @@ _Pages_ and _extensions_ cannot reach it.
   is **never** told to unpack a tarball over its install directory: every package except the
   tarball carries the `is-packaged-app` marker with its package type, the release refuses a
   `./mach package` tarball that already has one, and only an install without a marker gets the
-  tarball's command. The release workflow's smoke test checks the type of the installed `.deb`
+  tarball's command. `$APPIMAGE` **never** decides the install type: a program an AppImage starts
+  inherits it, so a tarball without a marker stays a tarball with it set, and a marker other
+  than `vimma-package=appimage` is never read as an AppImage (#1188, decision 34). The release workflow's smoke test checks the type of the installed `.deb`
   and, without `$APPIMAGE`, of the extracted AppImage, the marker of the `.rpm` installed on
   Fedora and openSUSE, and that the tarball has no marker.
   [`every package type except the tarball carries the marker`](../../tools/package/test/package.test.ts),
   [`gives each package type its own update hint, and only the tarball an untar`](../../tools/package/test/package.test.ts),
   [`a tarball that already carries an install-source marker`](../../tools/package/test/package.test.ts),
+  [`no marker with an inherited $APPIMAGE: still a tarball`](../../packages/vimma-core/test/updates-edges.test.ts),
+  [`an unknown marker with an inherited $APPIMAGE: packaged, not an AppImage`](../../packages/vimma-core/test/updates-edges.test.ts),
+  [`install-type.ts names each staged package as the update check would`](../../tools/package/test/package.test.ts),
   [`the .deb and AppImage smoke test checks each install type, and the tarball's lack of one`](../../tools/package/test/release-workflow.test.ts),
   [`checks the version line, the marker, the launcher, the desktop file and rpm -V`](../../tools/package/test/rpm-smoke.test.ts)
   On macOS ([macos-homebrew](../specs/macos-homebrew.md) decisions 8 and 19) no install is told to

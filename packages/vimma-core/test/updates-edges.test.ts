@@ -381,14 +381,31 @@ describe("staleDays with a serial that is not YYYYMMDDhhmmss", () => {
 });
 
 describe("the install marker's one line (UP6)", () => {
-  const at = (marker: string) => installTypeFrom({ packaged: true, marker, appImage: null });
+  const at = (marker: string) => installTypeFrom({ packaged: true, marker });
   test("the type is read with or without trailing whitespace or newline", () => {
     expect(at("vimma-package=deb")).toBe("deb");
     expect(at("vimma-package=deb \n")).toBe("deb");
     expect(at("other=1\nvimma-package=rpm\n")).toBe("rpm");
   });
-  test("no marker and no $APPIMAGE: a tarball", () => {
-    expect(installTypeFrom({ packaged: true, marker: null, appImage: null })).toBe("tarball");
+  test("no marker: a tarball", () => {
+    expect(installTypeFrom({ packaged: true, marker: null })).toBe("tarball");
+  });
+  // #1188, decision 34: $APPIMAGE is inherited by every program an AppImage starts, so it says
+  // nothing about this install; only the AppDir's own marker makes an AppImage. installTypeFrom
+  // takes no $APPIMAGE; these pass one as a caller that still read it would.
+  const inherited = (marker: string | null) => {
+    const input = { packaged: true, marker, appImage: "/home/u/Apps/Other.AppImage" };
+    return installTypeFrom(input);
+  };
+  test("no marker with an inherited $APPIMAGE: still a tarball", () => {
+    expect(inherited(null)).toBe("tarball");
+  });
+  test("an unknown marker with an inherited $APPIMAGE: packaged, not an AppImage", () => {
+    expect(inherited("")).toBe("packaged");
+    expect(inherited("vimma-package=snap\n")).toBe("packaged");
+  });
+  test("the AppDir's own appimage marker is an AppImage", () => {
+    expect(at("vimma-package=appimage\n")).toBe("appimage");
   });
   test("a line that only contains the key, or more after the type, is not a type", () => {
     expect(at("xvimma-package=deb\n")).toBe("packaged");

@@ -625,22 +625,24 @@ export function updateNotice(state) {
 }
 
 /**
- * `vimma-package=<type>` in the `is-packaged-app` marker (spec §3), with `$APPIMAGE`; `packaged`
- * is false for a build that runs from its objdir (no omni.ja). On macOS no build has a marker:
+ * `vimma-package=<type>` in the `is-packaged-app` marker (spec §3); `packaged` is false for a build that runs from its objdir (no omni.ja). On macOS no build has a marker:
  * the cask's app beside its Caskroom is `homebrew`, any other `dmg` (spec macos-homebrew,
  * decisions 8 and 19).
- * @param {{ packaged: boolean, marker: string | null, appImage: string | null,
- *   platform?: string, appPath?: string | null, caskroom?: boolean }} input
+ * `$APPIMAGE` never decides the type: every program an AppImage starts inherits it, so only the
+ * AppDir's own `vimma-package=appimage` makes an AppImage, and no marker is a tarball (decision
+ * 34, #1188).
+ * @param {{ packaged: boolean, marker: string | null, platform?: string,
+ *   appPath?: string | null, caskroom?: boolean }} input
  *   `marker`: the file's text, null when there is none; `platform`: AppConstants.platform;
  *   `appPath`: the running app bundle (appBundleOf); `caskroom`: HOMEBREW_CASKROOM exists
  * @returns {InstallType}
  */
-export function installTypeFrom({ packaged, marker, appImage, platform, appPath, caskroom }) {
+export function installTypeFrom({ packaged, marker, platform, appPath, caskroom }) {
   if (!packaged) return "source";
   if (platform === "macosx") {
     return appPath === HOMEBREW_APP && caskroom === true ? "homebrew" : "dmg";
   }
-  if (marker === null) return appImage ? "appimage" : "tarball";
+  if (marker === null) return "tarball";
   const m = /^vimma-package=([a-z-]+)\s*$/m.exec(marker);
   const name = m?.[1];
   if (
@@ -653,7 +655,7 @@ export function installTypeFrom({ packaged, marker, appImage, platform, appPath,
   ) {
     return name;
   }
-  return appImage ? "appimage" : "packaged";
+  return "packaged";
 }
 
 /**

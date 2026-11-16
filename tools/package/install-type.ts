@@ -2,7 +2,7 @@
 /**
  * Prints the install type Vimma's update check gives the install in a GRE directory, as
  * VimmaUpdates.sys.mjs detectInstall decides it (spec m6a-updater, section 3): packaged when
- * omni.ja is there, the `is-packaged-app` marker, and `$APPIMAGE`. release.yml's smoke test
+ * omni.ja is there, and the `is-packaged-app` marker (`$APPIMAGE` decides nothing, decision 34). release.yml's smoke test
  * runs it on the installed .deb and the extracted AppImage.
  *
  *   node tools/package/install-type.ts <gre-dir>
@@ -22,6 +22,5 @@ console.log(
   installTypeFrom({
     packaged: existsSync(join(dir, "omni.ja")),
     marker: existsSync(markerPath) ? readFileSync(markerPath, "utf8") : null,
-    appImage: process.env.APPIMAGE || null,
   }),
 );
