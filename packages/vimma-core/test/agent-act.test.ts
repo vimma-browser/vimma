@@ -1314,6 +1314,92 @@ describe("console reads: bounded work and URLs without credentials (F24, M30)", 
     const path = "https://example.com/" + "p".repeat(5000) + "@x";
     expect(shownFile(path).startsWith("https://example.com/ppp")).toBe(true);
   });
+
+  // Each case is checked on agentUrl alone and on the parsed entry, not only
+  // through the reply, which runs agentUrl a second time and so could hide a first-`@` cut.
+  const once = (url: string) => {
+    const file = parseConsoleEntry(script(url))?.file;
+    const direct = agentUrl(url);
+    expect(file).toBe(direct);
+    return direct;
+  };
+  /** As Node's WHATWG URL parser reads `url`: the same host, and no user name or password left. */
+  const likeAParser = (url: string) => {
+    const want = new URL(url);
+    expect(want.username + want.password).not.toBe("");
+    const out = once(url);
+    const got = new URL(out);
+    expect(got.host).toBe(want.host);
+    expect(got.username + got.password).toBe("");
+    expect(out).not.toContain("secret");
+    expect(out).not.toContain("ada");
+    return out;
+  };
+
+  test("the user name and password end at the authority's last at sign", () => {
+    expect(once("https://ada@x:secret@example.com/app.js")).toBe("https://example.com/app.js");
+    expect(once("https://a@b@c:secret@host/a.js")).toBe("https://host/a.js");
+    expect(likeAParser("https://ada@x:secret@example.com/app.js")).toBe(
+      "https://example.com/app.js",
+    );
+  });
+
+  test("the authority ends where a URL parser ends it, not at a look-alike", () => {
+    // NFKC would make these a slash, a question mark or a number sign; a URL parser does not.
+    for (const c of [
+      "\uff0f",
+      "\uff1f",
+      "\uff03",
+      "\ufe16",
+      "\u2100",
+      "\u2101",
+      "\u2105",
+      "\u2106",
+    ]) {
+      expect(likeAParser(`https://ada:secret${c}x@example.com/a.js`)).toBe(
+        "https://example.com/a.js",
+      );
+    }
+    // A backslash ends the authority of a special scheme, as a slash does.
+    expect(likeAParser("https://ada:secret@example.com\\a.js")).toBe("https://example.com\\a.js");
+  });
+
+  test("any slashes after a special scheme, or none, still lead to the authority", () => {
+    for (const url of [
+      "https:\\\\ada:secret@example.com/a.js",
+      "https:\\ada:secret@example.com/a.js",
+      "https:/ada:secret@example.com/a.js",
+      "https:ada:secret@example.com/a.js",
+      "http:////ada:secret@example.com/a.js",
+      "https:/\\ada:secret@example.com/a.js",
+      "HTTPS://ada:secret@example.com/a.js",
+      "ht\ttps://ada:secret@example.com/a.js",
+      "https://ada:\nsecret@example.com/a.js",
+      " https://ada:secret@example.com/a.js",
+      "\u0000https://ada:secret@example.com/a.js",
+      "ws://ada:secret@example.com/a.js",
+      "ftp://ada:secret@example.com/a.js",
+      "moz-extension://ada:secret@example.com/a.js",
+    ]) {
+      expect(likeAParser(url).endsWith("example.com/a.js")).toBe(true);
+    }
+  });
+
+  test("a URL inside view-source, jar or blob loses its user name and password too", () => {
+    expect(once("view-source:https://ada:secret@example.com/a.js")).toBe(
+      "view-source:https://example.com/a.js",
+    );
+    expect(once("blob:https://ada:secret@example.com/uuid")).toBe("blob:https://example.com/uuid");
+    expect(once("jar:https://ada:secret@example.com/a.jar!/x.js")).toBe(
+      "jar:https://example.com/a.jar!/x.js",
+    );
+    expect(once("view-source:jar:https://a@b@ada:secret@example.com/a.jar!/x.js")).toBe(
+      "view-source:jar:https://example.com/a.jar!/x.js",
+    );
+    const long = "view-source:https://ada:" + "s".repeat(5000) + "@example.com/a.js";
+    expect(once(long)).not.toContain("ada");
+    expect(once(long)).not.toContain("sss");
+  });
 });
 
 // Issue #1119: edges the weekly mutation run found unpinned. A child's reply is checked for its
