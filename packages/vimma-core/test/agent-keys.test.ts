@@ -453,9 +453,8 @@ describe("vimma_keys edges", () => {
 
   test("a word of two characters or more that names one key is that key", () => {
     expect(refusal("f1")).toBe('key "<f1>" is refused: it is not one of the keys vimma_keys runs');
-    expect(refusal("esc")).toBe(
-      'key "<esc>" (page.stop) is refused: it is not one of the keys vimma_keys runs',
-    );
+    // Only the key's name: page.stop's reason is #1212's.
+    expect(refusal("esc")).toMatch(/^key "<esc>" \(page\.stop\) is refused: /);
   });
 
   test("a word with other characters after a key's name is a run of keys", () => {
