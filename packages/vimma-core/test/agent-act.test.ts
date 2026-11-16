@@ -1237,3 +1237,361 @@ describe("console reads: bounded work and URLs without credentials (F24, M30)", 
     expect(r.errors + r.requests).not.toContain("secret");
   });
 });
+
+// Issue #1119: edges the weekly mutation run found unpinned. A child's reply is checked for its
+// shape, not only read in a try: a list or a function carrying the right fields is refused too.
+describe("the child's replies before a click or a fill, at their edges (mutation-tested)", () => {
+  const button = { alive: true, kind: "button", text: "Add to list" };
+  const email = { alive: true, kind: "field", field: "text", type: "email", accepts: true };
+  const submit = { method: "post", action: "https://example.com/api/signup", fields: 3 };
+  /** A list or a function with these fields, which no content process can send as a reply. */
+  const asList = (o: object) => Object.assign([], o);
+  const asFunction = (o: object) => Object.assign(() => {}, o);
+
+  test("a click's reply: a list or a function is refused, and so is its submit as one", () => {
+    expect(parseActTarget(asList(button))).toBe(null);
+    expect(parseActTarget(asFunction(button))).toBe(null);
+    expect(parseActTarget({ ...button, submit: asList(submit) })).toBe(null);
+    expect(parseActTarget({ ...button, submit: asFunction(submit) })).toBe(null);
+    expect(parseActTarget({ ...button, submit: null })).toBe(null);
+    expect(parseActTarget({ ...button, kind: 3 })).toBe(null);
+    expect(parseActTarget({ ...button, field: 3 })).toBe(null);
+    expect(parseActTarget({ ...button, type: 3 })).toBe(null);
+    expect(parseActTarget({ ...button, submit: { ...submit, method: 3 } })).toBe(null);
+  });
+
+  test("a click's reply at its caps, with a form of no fields, and not disabled", () => {
+    const t = parseActTarget({
+      ...button,
+      text: "x".repeat(512),
+      type: "t".repeat(32),
+      href: "h".repeat(8192),
+      disabled: false,
+      submit: { ...submit, action: "a".repeat(8192), fields: 0 },
+    });
+    expect(t).toEqual({
+      alive: true,
+      kind: "button",
+      text: "x".repeat(512),
+      type: "t".repeat(32),
+      href: "h".repeat(8192),
+      submit: { method: "post", action: "a".repeat(8192), fields: 0 },
+    });
+    expect(Object.hasOwn(t ?? {}, "disabled")).toBe(false);
+    expect(parseActTarget({ ...button, type: "t".repeat(33) })).toBe(null);
+    for (const field of ["text", "select", "editable", "file"]) {
+      expect(parseActTarget({ ...button, field })?.field).toBe(field);
+    }
+  });
+
+  test("a click's reply without a form is taken; text that is a list is not", () => {
+    expect(parseActTarget(button)).toEqual(button);
+    expect(parseActTarget({ ...button, disabled: true })).toEqual({ ...button, disabled: true });
+    expect(parseActTarget({ ...button, text: ["Add to list"] })).toBe(null);
+    expect(parseActTarget({ ...button, href: ["https://example.com/"] })).toBe(null);
+  });
+
+  test("a console entry that is a function, or a category that is not a string, is no source", () => {
+    const entry = {
+      level: "error",
+      source: "script",
+      message: "m",
+      file: "f",
+      line: 1,
+      column: 1,
+      time: 1,
+    };
+    expect(parseConsoleEntry(asFunction(entry))).toBe(null);
+    expect(scriptErrorSource({ toString: () => "CSP" })).toBe("other");
+  });
+
+  test("a reply whose reading throws is refused, never thrown", () => {
+    const throwing = {
+      get alive(): boolean {
+        throw new Error("a getter");
+      },
+    };
+    expect(parseActTarget(throwing)).toBe(null);
+    expect(parseFillTarget(throwing)).toBe(null);
+  });
+
+  test("a fill's reply: a list or a function is refused, and so is a bad kind or field", () => {
+    expect(parseFillTarget(asList(email))).toBe(null);
+    expect(parseFillTarget(asFunction(email))).toBe(null);
+    expect(parseFillTarget({ ...email, kind: 3 })).toBe(null);
+    expect(parseFillTarget({ ...email, field: 3 })).toBe(null);
+    expect(parseFillTarget({ ...email, field: "teleport" })).toBe(null);
+    expect(parseFillTarget({ ...email, secret: 3 })).toBe(null);
+    expect(parseFillTarget({ ...email, secret: "toString" })).toBe(null);
+    expect(parseFillTarget({ ...email, submit: asList(submit) })).toBe(null);
+    expect(parseFillTarget({ ...email, submit: "post" })).toBe(null);
+  });
+
+  // fillRefusal refuses a value the field does not take only when the child says so: a false
+  // `accepts` must survive the check (security.md M27).
+  test("a fill's reply keeps accepts and checked when false, and drops a false disabled", () => {
+    const t = parseFillTarget({ ...email, accepts: false, checked: false, disabled: false });
+    expect(t).toEqual({
+      alive: true,
+      kind: "field",
+      field: "text",
+      type: "email",
+      accepts: false,
+      checked: false,
+    });
+    expect(fillRefusal("sd", t as NonNullable<typeof t>, "not an email")).toBe(
+      'field "sd" does not take "not an email" as a email',
+    );
+    expect(parseFillTarget({ ...email, readonly: false })).toEqual(email);
+    expect(parseFillTarget({ ...email, submit })?.submit).toEqual(submit);
+  });
+});
+
+describe("the element list, clicks, fills and console reads, at their edges (mutation-tested)", () => {
+  const el = (label: string, info: AgentElementInfo, more: Partial<AgentElementTarget> = {}) => ({
+    label,
+    target: { rect, kind: "click", info, ...more },
+  });
+  const lines = (text: string) => text.split("\n").map((l) => JSON.parse(l));
+  const bytesOf = (s: string) => new TextEncoder().encode(JSON.stringify(s)).length;
+
+  test("hrefs and form actions lose their white space; a disabled or read-only state is said", () => {
+    const form = { key: "1:0", method: "post", action: "https://example.com/ sign up" };
+    const list = agentElementList(
+      [
+        el("a", { kind: "link", text: "Plans" }, { href: "https://example.com/ pl\tans" }),
+        el(
+          "s",
+          { kind: "field", text: "", type: "text", disabled: true, readonly: true },
+          { form },
+        ),
+      ],
+      AGENT_ELEMENTS.bytes,
+    );
+    expect(lines(list.text)).toEqual([
+      { form: 1, method: "post", action: "https://example.com/signup" },
+      { label: "a", kind: "link", text: "Plans", href: "https://example.com/plans" },
+      {
+        label: "s",
+        kind: "field",
+        text: "",
+        type: "text",
+        disabled: true,
+        readonly: true,
+        form: 1,
+      },
+    ]);
+  });
+
+  test("a sensitive select never says which option is chosen", () => {
+    const list = agentElementList(
+      [
+        el("a", {
+          kind: "select",
+          text: "",
+          sensitive: true,
+          selected: "Visa",
+        } as AgentElementInfo),
+      ],
+      AGENT_ELEMENTS.bytes,
+    );
+    expect(lines(list.text)).toEqual([{ label: "a", kind: "select", text: "", sensitive: true }]);
+  });
+
+  test("the byte budget is the JSON-encoded text's: exactly that fits, a byte less does not", () => {
+    const form = { key: "1:0", method: "post", action: "https://example.com/a" };
+    const elements = [
+      el("a", { kind: "link", text: "Plans" }, { href: "https://example.com/plans" }),
+      el("s", { kind: "button", text: "Sign up" }, { form }),
+      el("d", { kind: "button", text: "Log in" }),
+    ];
+    const whole = agentElementList(elements, AGENT_ELEMENTS.bytes);
+    const exact = bytesOf(whole.text);
+    expect(agentElementList(elements, exact)).toMatchObject({ text: whole.text, omitted: 0 });
+    expect(agentElementList(elements, exact - 1).omitted).toBe(1);
+  });
+
+  test("a query matches within one of the label, text, caption and name, never across them", () => {
+    const page = [el("aa", { kind: "link", text: "Dairy", caption: "Shop", name: "milk" })];
+    expect(filterAgentElements(page, { query: "aa" })).toHaveLength(1);
+    expect(filterAgentElements(page, { query: "aadairy" })).toEqual([]);
+    expect(filterAgentElements(page, { query: "dairyshop" })).toEqual([]);
+    expect(filterAgentElements(page, { query: "shopmilk" })).toEqual([]);
+  });
+
+  test("the last lists of 16 sites are kept per connection, the least recently set going first", () => {
+    const listed = new ListedSites();
+    for (let i = 0; i < 16; i++) listed.set(1, `https://s${i}.example`, [`line ${i}`]);
+    expect(listed.get(1, "https://s0.example")).toEqual(new Set(["line 0"]));
+    // Setting s0 again makes it the most recent: s1 goes when a 17th site comes.
+    listed.set(1, "https://s0.example", ["line 0 again"]);
+    listed.set(1, "https://s16.example", ["line 16"]);
+    expect(listed.get(1, "https://s1.example")).toBe(undefined);
+    expect(listed.get(1, "https://s0.example")).toEqual(new Set(["line 0 again"]));
+    expect(listed.get(1, "https://s2.example")).toEqual(new Set(["line 2"]));
+    listed.forget(1);
+    expect(listed.get(1, "https://s0.example")).toBe(undefined);
+  });
+
+  test("a click's detail: no text, no kind, white space, and one field", () => {
+    expect(actDetail("sd", { alive: true })).toBe('sd click ""');
+    expect(actDetail("sd", { alive: true, kind: "button", text: "  Sign \n\n up  " })).toBe(
+      'sd button "Sign up"',
+    );
+    expect(
+      actDetail("sd", {
+        alive: true,
+        kind: "button",
+        text: "Go",
+        submit: { method: "get", action: "https://example.com/s", fields: 1 },
+      }),
+    ).toBe('sd button "Go" → GET https://example.com/s (1 field)');
+  });
+
+  test("a fill's refusal shows the value on one line; a field without a type takes a value", () => {
+    const select = { alive: true, kind: "select", field: "select", accepts: false };
+    expect(fillRefusal("sd", select, "a \t\t b")).toBe(
+      'select "sd" has no option with the value or text "a b"',
+    );
+    const untyped = { alive: true, kind: "field", field: "text", accepts: false };
+    expect(fillRefusal("sd", untyped, "x")).toBe('field "sd" does not take "x" as a value');
+  });
+
+  test("a fill's detail: a field without a name, and one field sent", () => {
+    expect(
+      fillDetail([{ label: "sd", name: undefined as unknown as string, value: "x" }], {
+        method: "post",
+        action: "https://example.com/s",
+        fields: 1,
+      }),
+    ).toBe('sd = "x" → POST https://example.com/s (1 field)');
+  });
+
+  test("labels on a screenshot: an element ending at the image's edge, or starting at it, is off", () => {
+    const size = { width: 100, height: 50 };
+    const labels = new Map([
+      ["a", { rect: { x: -10, y: 5, width: 10, height: 10 } }],
+      ["s", { rect: { x: 5, y: -10, width: 10, height: 10 } }],
+      ["d", { rect: { x: 100, y: 5, width: 10, height: 10 } }],
+      ["f", { rect: { x: 5, y: 50, width: 10, height: 10 } }],
+      ["g", { rect: { x: 5, y: -30, width: 10, height: 10 } }],
+      ["h", { rect: { x: 300, y: 5, width: 10, height: 10 } }],
+      ["j", { rect: { x: 99, y: 49, width: 10, height: 10 } }],
+    ]);
+    expect(screenshotLabels(labels, 1, size)).toEqual([{ label: "j", x: 99, y: 49 }]);
+  });
+
+  test("an nsIScriptError's flags must be a number of zero or more", () => {
+    expect(scriptErrorLevel("1")).toBe(null);
+    expect(scriptErrorLevel(-1)).toBe(null);
+    expect(scriptErrorLevel(0)).toBe("error");
+  });
+
+  test("a console call's arguments are cut to two messages' worth after they are joined", () => {
+    expect(consoleArgsText(["a", "x".repeat(5000)])).toHaveLength(2 * AGENT_CONSOLE.message);
+  });
+
+  test("a request fails from status 400 to 999", () => {
+    expect(requestFailure(399, null)).toBe(null);
+    expect(requestFailure(400, null)).toEqual({ status: 400 });
+    expect(requestFailure(999, null)).toEqual({ status: 999 });
+    expect(requestFailure(1000, null)).toBe(null);
+  });
+
+  test("an entry may be at line and column 0, and logged at time 0", () => {
+    const entry = {
+      level: "error",
+      source: "script",
+      message: "m",
+      file: "f",
+      line: 0,
+      column: 0,
+      time: 0,
+    };
+    expect(parseConsoleEntry(entry)).toEqual(entry);
+  });
+
+  test("the lists: white space out of URLs, a request's error, entries at since left out", () => {
+    const err = (time: number) => ({
+      level: "error" as const,
+      source: "script" as const,
+      message: "m",
+      file: "https://example.com/a pp.js",
+      line: 1,
+      column: 1,
+      time,
+    });
+    const req = (time: number) => ({
+      method: "GET",
+      url: "https://example.com/ api",
+      error: "NS_ERROR_CONNECTION_REFUSED",
+      type: "fetch",
+      time,
+    });
+    const r = consoleLists([err(2), err(3)], [req(4), req(6), req(5)], 2, AGENT_CONSOLE.bytes);
+    expect(lines(r.errors)).toEqual([{ ...err(3), file: "https://example.com/app.js" }]);
+    expect(lines(r.requests).map((l) => l.time)).toEqual([6, 5, 4]);
+    expect(lines(r.requests)[0]).toEqual({ ...req(6), url: "https://example.com/api" });
+    expect(r.dropped).toBe(0);
+    // A message that is not a string is written empty.
+    const odd = consoleLists([{ ...err(3), message: undefined as unknown as string }], [], 0, 1e6);
+    expect(lines(odd.errors)[0].message).toBe("");
+  });
+
+  test("the lists' byte budget: exactly the two texts' JSON and their lead fit, a byte less not", () => {
+    const err = (time: number) => ({
+      level: "error" as const,
+      source: "script" as const,
+      message: `message ${time}`,
+      file: "https://example.com/app.js",
+      line: 1,
+      column: 1,
+      time,
+    });
+    const req = (time: number) => ({
+      method: "GET",
+      url: "https://example.com/",
+      status: 500,
+      type: "fetch",
+      time,
+    });
+    const errors = [err(1), err(3)];
+    const requests = [req(2), req(4)];
+    const whole = consoleLists(errors, requests, 0, AGENT_CONSOLE.bytes);
+    const exact = bytesOf(whole.errors) + bytesOf(whole.requests) + 4;
+    expect(consoleLists(errors, requests, 0, exact)).toEqual(whole);
+    expect(consoleLists(errors, requests, 0, exact - 1).dropped).toBe(1);
+  });
+
+  test("only the URL's own user name and password go, not a URL inside its query", () => {
+    const urls = [
+      "https://u:p@example.com/login?next=https://v:q@other.example/",
+      "https://example.com/login?next=https://v:q@other.example/",
+    ];
+    const r = consoleLists(
+      [],
+      urls.map((url, i) => ({ method: "GET", url, status: 500, type: "fetch", time: 2 - i })),
+      0,
+      AGENT_CONSOLE.bytes,
+    );
+    expect(lines(r.requests).map((l) => l.url)).toEqual([
+      "https://example.com/login?next=https://v:q@other.example/",
+      "https://example.com/login?next=https://v:q@other.example/",
+    ]);
+  });
+
+  test("the newest 100 requests are kept, however the log has them in order", () => {
+    const reqs = Array.from({ length: 101 }, (_, i) => ({
+      method: "GET",
+      url: "https://example.com/",
+      status: 500,
+      type: "fetch",
+      time: i + 1,
+    }));
+    const r = consoleLists([], reqs, 0, AGENT_CONSOLE.bytes);
+    const times = lines(r.requests).map((l) => l.time);
+    expect(times[0]).toBe(101);
+    expect(times).not.toContain(1);
+    expect(r.dropped).toBe(1);
+  });
+});
