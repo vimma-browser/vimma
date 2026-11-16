@@ -731,6 +731,27 @@ describe("downloads picker (docs/specs/downloads.md)", () => {
     expect(matchItem(third, "file1")?.highlights.display).toEqual([[0, 5]]);
   });
 
+  test("on an equal score a user's download ranks above the agent's (tab-search decision 6)", () => {
+    // The agent's is listed first; both are named alike, so they score the same.
+    const both = downloadSections(
+      [
+        record(1, { name: "report.pdf" }),
+        record(2, { name: "report.pdf", agent: true, workspace: "agent" }),
+      ],
+      NOW,
+    );
+    expect(both.map((r) => [r.downloadId, r.agent])).toEqual([
+      ["2", true],
+      ["1", false],
+    ]);
+    const matches = filterItems(both, "report");
+    expect(matches.map((m) => m.score)).toEqual([matches[0]?.score, matches[0]?.score]);
+    expect(matches.map((m) => ("downloadId" in m.item ? m.item.downloadId : undefined))).toEqual([
+      "1",
+      "2",
+    ]);
+  });
+
   test("sections are active and recent", () => {
     expect(rows().map(sectionOf)).toEqual(["active", "recent", "recent"]);
   });
