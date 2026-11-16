@@ -257,13 +257,19 @@ describe("setup", () => {
     expect(r.state.cursor).toBe(1);
     r = keys(r.state, "down", "j");
     expect(r.state.cursor).toBe(1);
-    r = keys(r.state, "up", "up", "k");
+    r = keys(r.state, "up");
+    expect(r.state.cursor).toBe(0);
+    r = keys(r.state, "down", "k");
+    expect(r.state.cursor).toBe(0);
+    r = keys(r.state, "up", "k");
     expect(r.state.cursor).toBe(0);
     r = keys(r.state, "enter", "down", "down", "down", "j");
     expect(r.state).toMatchObject({ step: "engine", cursor: 2 });
     r = keys(r.state, "up");
     expect(r.state.cursor).toBe(1);
-    r = keys(r.state, "enter");
+    r = keys(r.state, "k");
+    expect(r.state.cursor).toBe(0);
+    r = keys(r.state, "down", "enter");
     expect(planSetup(r.state)?.engine).toBe("DuckDuckGo");
   });
 
