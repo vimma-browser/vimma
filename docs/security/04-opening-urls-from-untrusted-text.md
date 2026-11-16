@@ -56,5 +56,5 @@ link targets for hints, which chrome must treat as untrusted.
   [`malformed_block_messages_are_refused`](../../tests/browser/browser_vimma_element.js)
 - U7. Text pasted on the command line **must** be read in bounded time: a megabyte never
   freezes the window.
-  [`a pasted megabyte is parsed and completed in bounded time`](../../packages/vimma-core/test/fuzz/cmdline.fuzz.test.mjs),
-  [`parseCommandLine never throws, and a run names a real action`](../../packages/vimma-core/test/fuzz/cmdline.fuzz.test.mjs)
+  [`a pasted megabyte is parsed and completed in bounded time`](../../packages/vimma-core/test/fuzz/cmdline.fuzz.test.ts),
+  [`parseCommandLine never throws, and a run names a real action`](../../packages/vimma-core/test/fuzz/cmdline.fuzz.test.ts)

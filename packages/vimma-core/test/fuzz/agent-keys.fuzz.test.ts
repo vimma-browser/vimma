@@ -8,7 +8,7 @@ import {
   AGENT_KEY_LIMITS,
   parseAgentKeys,
 } from "../../src/agent/agent-keys.mjs";
-import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.mjs";
+import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.ts";
 
 /** Pieces of key notation, refused keys among them, so random joins often parse. */
 const piece = fc.oneof(

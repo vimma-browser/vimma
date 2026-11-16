@@ -4,19 +4,5 @@
 # tools/test/mjs-ratchet.test.ts fails until it does. The hooks of tools/claude-plugin and the
 # base-branch guards (tools/ci/docs-only.mjs, tools/ci/key-guard.mjs and its test) stay .mjs
 # (ADR-025, decision 7) and are not listed.
-packages/vimma-core/test/budget.mjs
-packages/vimma-core/test/fuzz/agent-downloads.fuzz.test.mjs
-packages/vimma-core/test/fuzz/agent-keys.fuzz.test.mjs
-packages/vimma-core/test/fuzz/agent.fuzz.test.mjs
-packages/vimma-core/test/fuzz/cmdline.fuzz.test.mjs
-packages/vimma-core/test/fuzz/config.fuzz.test.mjs
-packages/vimma-core/test/fuzz/control.fuzz.test.mjs
-packages/vimma-core/test/fuzz/harness.mjs
-packages/vimma-core/test/fuzz/harness.test.mjs
-packages/vimma-core/test/fuzz/keys.fuzz.test.mjs
-packages/vimma-core/test/fuzz/routes.fuzz.test.mjs
-packages/vimma-core/test/fuzz/strings.fuzz.test.mjs
-packages/vimma-core/test/fuzz/theme.fuzz.test.mjs
-packages/vimma-core/test/fuzz/toml-arb.mjs
 tools/test/temp-dir.mjs
 tools/test/workflow-runners.mjs

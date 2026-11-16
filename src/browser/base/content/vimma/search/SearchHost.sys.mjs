@@ -14,6 +14,7 @@
 
 import {
   appliedAliases,
+  configuredEngine,
   parseSearchState,
   planSearch,
   searchCompletions,
@@ -296,6 +297,16 @@ export const SearchHost = {
       if (timer !== null) await new Promise((resolve) => timerWaiters.push(resolve));
       else await running;
     }
+  },
+
+  /**
+   * The engine config.toml's `[search] default` names among `names`, or null: the setup page's
+   * current engine.
+   * @param {readonly string[]} names  the profile's visible engines
+   * @returns {string | null}
+   */
+  configuredDefault(names) {
+    return configuredEngine(config?.default ?? null, names, readState());
   },
 
   /** Problems only the profile's engines reveal (decision 9), as config errors. */

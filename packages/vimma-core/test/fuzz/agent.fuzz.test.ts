@@ -10,10 +10,11 @@ import {
   UNTRUSTED_OPEN,
   wrapUntrusted,
 } from "../../src/agent/agent.mjs";
-import { FUZZ_TIMEOUT, fuzz, nastyString } from "./harness.mjs";
+import type { Answer, ConnId } from "../../src/agent/agent.mjs";
+import { FUZZ_TIMEOUT, fuzz, nastyString } from "./harness.ts";
 
-/** Occurrences of `needle` in `text`. @param {string} text @param {string} needle */
-const count = (text, needle) => text.split(needle).length - 1;
+/** Occurrences of `needle` in `text`. */
+const count = (text: string, needle: string): number => text.split(needle).length - 1;
 
 const pieces = fc.oneof(
   nastyString,
@@ -99,11 +100,9 @@ describe("agent gate fuzzing", () => {
           (events) => {
             const q = new AgentQueue();
             for (let c = 0; c <= 3; c++) q.connect(c);
-            /** @type {Set<number>} */
-            const always = new Set();
+            const always = new Set<number>();
             // The connections that answered a grantable question with a grant.
-            /** @type {Set<import("../../src/agent/agent.mjs").ConnId>} */
-            const granted = new Set();
+            const granted = new Set<ConnId>();
             let now = 0;
             for (const e of events) {
               now += 1000;
@@ -117,8 +116,7 @@ describe("agent gate fuzzing", () => {
                 if (!waiting.length) continue;
                 const target = waiting[e.pick % waiting.length];
                 if (!target) continue;
-                /** @type {import("../../src/agent/agent.mjs").Answer} */
-                const answer =
+                const answer: Answer =
                   e.kind === "grant" ? { kind: "grant", minutes: 5 } : { kind: e.kind };
                 const { resolved, grant } = q.answer(target.id, answer, now);
                 for (const r of resolved) {
@@ -168,8 +166,7 @@ describe("agent gate fuzzing", () => {
             const q = new AgentQueue();
             const done = new Set();
             let now = 0;
-            /** @param {{ id: number }[]} resolved */
-            const settle = (resolved) => {
+            const settle = (resolved: { id: number }[]) => {
               for (const { id } of resolved) {
                 expect(done.has(id)).toBe(false);
                 done.add(id);
@@ -181,8 +178,7 @@ describe("agent gate fuzzing", () => {
               const target = ids[("pick" in e ? e.pick : 0) % ids.length] ?? -1;
               if (e.op === "ask") q.ask(e.conn, e.tool, now);
               else if (e.op === "answer") {
-                /** @type {import("../../src/agent/agent.mjs").Answer} */
-                const answer =
+                const answer: Answer =
                   e.kind === "grant" ? { kind: "grant", minutes: e.minutes } : { kind: e.kind };
                 settle(q.answer(target, answer, now).resolved);
               } else if (e.op === "expire") settle(q.expire(target, now).resolved);

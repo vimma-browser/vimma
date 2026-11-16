@@ -2,7 +2,7 @@ import { describe, test, expect } from "vitest";
 import fc from "fast-check";
 import { ACTIONS, closest, getAction, resolveActionName } from "../src/keys/actions.mjs";
 import { compileKeymap } from "../src/keys/keymap.mjs";
-import { budget } from "./budget.mjs";
+import { budget } from "./budget.ts";
 
 describe("actions", () => {
   test("every action has a unique id+arg, a unique config name, a group and a description", () => {

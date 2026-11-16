@@ -15,9 +15,10 @@ import {
   UPDATE_STAGES,
   validateMessage,
 } from "../../src/control/control.mjs";
+import type { ValidateOptions } from "../../src/control/control.mjs";
 import { parseKey } from "../../src/keys/keys.mjs";
 import { MODES } from "../../src/keys/modes.mjs";
-import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.mjs";
+import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.ts";
 
 const FIELDS = [
   "type",
@@ -46,15 +47,9 @@ const url = fc.oneof(
   fc.constantFrom("about:blank", "file:///etc/hosts", "HTTPS://A.COM/", "about:vimma#bug"),
 );
 
-/**
- * @typedef {{ m: { type?: string } & Record<string, unknown>,
- *   o: import("../../src/control/control.mjs").ValidateOptions }} ValidCase
- */
-/**
- * Valid messages of every kind, each with the options its check needs.
- * @type {fc.Arbitrary<ValidCase>}
- */
-const validMessage = fc.oneof(
+type ValidCase = { m: { type?: string } & Record<string, unknown>; o: ValidateOptions };
+/** Valid messages of every kind, each with the options its check needs. */
+const validMessage: fc.Arbitrary<ValidCase> = fc.oneof(
   hex64.map((nonce) => ({ m: { type: "hello", protocol: 1, nonce }, o: {} })),
   hex64.map((proof) => ({ m: { type: "challenge", protocol: 1, proof }, o: {} })),
   hex64.map((token) => ({ m: { type: "auth", token }, o: {} })),
@@ -109,7 +104,7 @@ const validMessage = fc.oneof(
     .tuple(hex64, fc.constantFrom(["agent"], ["full"], ["agent", "full"]))
     .map(([token, roles]) => ({
       m: { protocol: 2, port: 4000, token, pid: 7, roles },
-      o: { kind: /** @type {const} */ ("discovery") },
+      o: { kind: "discovery" as const },
     })),
   fc
     .tuple(id, tabId, fc.constantFrom("markdown", "text"), fc.integer({ min: 1, max: 500000 }))
@@ -228,7 +223,7 @@ const validMessage = fc.oneof(
     })),
   fc.tuple(fc.integer({ min: 1, max: 65535 }), hex64, id).map(([port, token, pid]) => ({
     m: { protocol: 1, port, token, pid },
-    o: { kind: /** @type {const} */ ("discovery") },
+    o: { kind: "discovery" as const },
   })),
 );
 
@@ -244,8 +239,8 @@ const wrongValue = fc.oneof(
     .map(([k, v]) => JSON.parse(`{${JSON.stringify(k)}:${JSON.stringify(v)}}`)),
 );
 
-/** @param {unknown} v */
-const jsonType = (v) => (v === null ? "null" : Array.isArray(v) ? "array" : typeof v);
+const jsonType = (v: unknown): string =>
+  v === null ? "null" : Array.isArray(v) ? "array" : typeof v;
 /** Fields that take more than one JSON type: `string | null`, `integer | null`, anything. */
 const UNION_FIELDS = ["pending", "workspace", "panes", "selection", "language"];
 
@@ -267,13 +262,12 @@ describe("control protocol fuzzing", () => {
           fc.array(fc.nat(), { maxLength: 10 }),
           (lines, tail, cuts) => {
             const MAX = 32;
-            const enc = (/** @type {string} */ s) => new TextEncoder().encode(s);
+            const enc = (s: string) => new TextEncoder().encode(s);
             const stream = new Uint8Array(
               [...lines.flatMap(([l, end]) => [...l, ...enc(end)]), ...tail].map(Number),
             );
             // The model: each line loses one \r before its \n; the first one over MAX ends it.
-            /** @type {number[][]} */
-            const want = [];
+            const want: number[][] = [];
             let overflow = false;
             for (const [l, end] of lines) {
               let got = [...l, ...(end === "\r\n" ? [0x0d] : [])];
@@ -290,8 +284,7 @@ describe("control protocol fuzzing", () => {
             const bounds = [...new Set(cuts.map((c) => c % (stream.length + 1)))].sort(
               (a, b) => a - b,
             );
-            /** @type {number[][]} */
-            const have = [];
+            const have: number[][] = [];
             let from = 0;
             for (const to of [...bounds, stream.length]) {
               for (const line of framer.push(stream.subarray(from, to))) have.push([...line]);
@@ -372,7 +365,7 @@ describe("control protocol fuzzing", () => {
               copy,
               ...Object.values(copy).filter((v) => v && typeof v === "object" && !Array.isArray(v)),
             ];
-            const target = /** @type {Record<string, unknown>} */ (targets[pick % targets.length]);
+            const target = targets[pick % targets.length] as Record<string, unknown>;
             const keys = Object.keys(target);
             if (add || keys.length === 0) {
               if (Object.hasOwn(target, extra)) return;
@@ -391,7 +384,7 @@ describe("control protocol fuzzing", () => {
                 configurable: true,
               });
             } else {
-              const key = /** @type {string} */ (keys[pick % keys.length]);
+              const key = keys[pick % keys.length] as string;
               // A value of another JSON type: always outside the schema, but for union fields.
               if (jsonType(target[key]) === jsonType(value) || UNION_FIELDS.includes(key)) return;
               if (key === "id" && value === null && copy.type === "response") return;
@@ -504,7 +497,7 @@ describe("control protocol fuzzing", () => {
             if (hi.valid) {
               expect([...label].length).toBeLessThanOrEqual(64);
               for (const c of label) {
-                const cp = /** @type {number} */ (c.codePointAt(0));
+                const cp = c.codePointAt(0) as number;
                 const bad =
                   cp <= 0x1f ||
                   (cp >= 0x7f && cp <= 0x9f) ||
@@ -550,7 +543,7 @@ describe("control protocol fuzzing", () => {
     "a 1 MiB line of any shape validates in bounded time",
     () => {
       const mib = 1024 * 1024;
-      const req = (/** @type {object} */ args, command = "send-keys") => ({
+      const req = (args: object, command = "send-keys") => ({
         type: "request",
         id: 1,
         command,

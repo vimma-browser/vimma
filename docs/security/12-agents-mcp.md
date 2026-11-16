@@ -278,7 +278,7 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_a_used_up_open_rate_refuses_before_asking`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`two connections sending 5 each: 4 of each wait in order, the 5th of each is busy`](../../packages/vimma-core/test/agent-gate.test.ts),
   [`three denials in a row mute a connection for 60 s, without asking`](../../packages/vimma-core/test/agent-gate.test.ts),
-  [`no sequence of events breaks the queue's limits or resolves a request twice`](../../packages/vimma-core/test/fuzz/agent.fuzz.test.mjs),
+  [`no sequence of events breaks the queue's limits or resolves a request twice`](../../packages/vimma-core/test/fuzz/agent.fuzz.test.ts),
   [`test_grants_cannot_flood`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`at most OPEN_RATE.max opens per connection in any OPEN_RATE.ms window`](../../packages/vimma-core/test/agent-gate.test.ts)
 - M4. The question **never** opens by itself while you type, are in a field, or have another
@@ -346,7 +346,7 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   the page cannot close early, not even with a look-alike tag (other spacing or separators,
   full-width letters, attributes; matched after NFKC).
   [`test_agent_read_returns_marked_text_of_a_hidden_tab`](../../tests/browser/browser_vimma_mcp_agent.js),
-  [`any page text comes out with exactly one opening and one closing delimiter`](../../packages/vimma-core/test/fuzz/agent.fuzz.test.mjs),
+  [`any page text comes out with exactly one opening and one closing delimiter`](../../packages/vimma-core/test/fuzz/agent.fuzz.test.ts),
   [`test_the_selection_is_marked_and_fits_the_line`](../../tests/browser/browser_vimma_mcp_agent.js),
   [`test_replies_are_well_formed_unicode`](../../tests/browser/browser_vimma_mcp_agent.js)
 - M8. A yes **must** stand only for the tab and URL asked about: if the tab left the agent
@@ -410,7 +410,7 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`download_dir is ~ or absolute, never home, / or the Downloads folder itself`](../../packages/vimma-core/test/config-v2.test.ts),
   [`download_dir is never in a hidden folder of home or in /tmp, /var/tmp, /dev/shm`](../../packages/vimma-core/test/config-v2.test.ts),
   [`test_a_folder_that_is_not_private_is_refused`](../../tests/browser/browser_vimma_mcp_downloads.js),
-  [`[mcp] download_dir and download_max_mb are refused or a quarantine folder in bounds`](../../packages/vimma-core/test/fuzz/config.fuzz.test.mjs)
+  [`[mcp] download_dir and download_max_mb are refused or a quarantine folder in bounds`](../../packages/vimma-core/test/fuzz/config.fuzz.test.ts)
 - M13. A dangerous file (an executable or library by name, type or first bytes; a script, a `#!`
   line, an installer or package; Firefox's executable list; an archive Vimma cannot list; a zip
   whose central directory names one of these, or holds an entry with an exec bit, a symbolic
@@ -445,7 +445,7 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`a grant does not run it, whatever was asked: it waits`](../../packages/vimma-core/test/agent-gate.test.ts),
   [`! allows a dangerous one; y, a and counts do nothing there`](../../packages/vimma-core/test/agent-prompt.test.ts),
   [`a dangerous name inside makes the zip dangerous, and says which`](../../packages/vimma-core/test/agent-downloads.test.ts),
-  [`any bytes: the zip lister and the magic check never throw, and stay inside the file`](../../packages/vimma-core/test/fuzz/agent-downloads.fuzz.test.mjs)
+  [`any bytes: the zip lister and the magic check never throw, and stay inside the file`](../../packages/vimma-core/test/fuzz/agent-downloads.fuzz.test.ts)
 - M9. `vimma-ctl mcp`'s JSON-RPC parsing **never** panics, and its standard output carries
   **only** whole JSON-RPC messages, one per line (logs go to standard error); a line over 1 MiB
   is answered with an error and never kept.
@@ -476,7 +476,7 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   what runs.
   [`each refused group is invalid-args naming the key (M16)`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`a user keymap that binds j to tab.close does not change the agent's j (D10)`](../../packages/vimma-core/test/agent-keys.test.ts),
-  [`any text parses to whitelisted actions within the limits, or is refused`](../../packages/vimma-core/test/fuzz/agent-keys.fuzz.test.mjs),
+  [`any text parses to whitelisted actions within the limits, or is refused`](../../packages/vimma-core/test/fuzz/agent-keys.fuzz.test.ts),
   [`agent_keys_never_reach_the_prefix_the_command_line_or_mcp_answer`](../../tests/browser/browser_vimma_security_invariants.js),
   [`test_keys_scroll_a_background_tab_without_touching_the_window`](../../tests/browser/browser_vimma_mcp_keys.js),
   [`test_a_find_never_focuses_a_field_of_the_tab_the_user_is_in`](../../tests/browser/browser_vimma_mcp_keys.js)

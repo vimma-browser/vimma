@@ -13,7 +13,7 @@ import {
   mimeappsLists,
   routedBrowser,
 } from "../src/system/default-browser.mjs";
-import { budget } from "./budget.mjs";
+import { budget } from "./budget.ts";
 
 const OWN = "/opt/vimma/vimma-open";
 

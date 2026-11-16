@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { describeOutcome, formatAge, redactReport, workspaceReport } from "../src/ui/report.mjs";
-import { budget } from "./budget.mjs";
+import { budget } from "./budget.ts";
 
 describe("redactReport", () => {
   const home = "/home/alice";

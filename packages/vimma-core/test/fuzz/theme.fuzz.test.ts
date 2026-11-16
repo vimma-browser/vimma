@@ -10,8 +10,8 @@ import {
   tokensToCss,
 } from "../../src/config/theme.mjs";
 import { parseConfig } from "../../src/config/config.mjs";
-import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.mjs";
-import { tomlDoc } from "./toml-arb.mjs";
+import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.ts";
+import { tomlDoc } from "./toml-arb.ts";
 
 /** A stock-looking colors.toml with some values replaced by hostile ones. */
 const colorsToml = fc

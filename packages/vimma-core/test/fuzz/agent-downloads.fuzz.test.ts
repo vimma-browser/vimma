@@ -13,7 +13,7 @@ import {
   zipVerdict,
 } from "../../src/agent/agent-downloads.mjs";
 import { makeZip } from "../agent-downloads.test.ts";
-import { FUZZ_TIMEOUT, fuzz, nastyString, within } from "./harness.mjs";
+import { FUZZ_TIMEOUT, fuzz, nastyString, within } from "./harness.ts";
 
 /** A zip's bytes, then some of them changed at random. */
 const mangledZip = fc

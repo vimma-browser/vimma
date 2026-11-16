@@ -12,7 +12,7 @@ import {
   parseBinding,
   parseKey,
 } from "../../src/keys/keys.mjs";
-import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, throwsOnly, within } from "./harness.mjs";
+import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, throwsOnly, within } from "./harness.ts";
 
 const MODS = ["ctrl", "control", "alt", "opt", "option", "shift", "meta", "cmd", "super", "win"];
 /** Pieces key notation is made of, so random joins often come close to valid notation. */
@@ -79,8 +79,7 @@ describe("key notation fuzzing", () => {
       fuzz(
         "keys-round-trip",
         fc.property(notation, (text) => {
-          /** @type {ReturnType<typeof parseKey> | undefined} */
-          let chord;
+          let chord: ReturnType<typeof parseKey> | undefined;
           try {
             chord = parseKey(text);
           } catch {
