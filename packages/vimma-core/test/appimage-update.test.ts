@@ -11,12 +11,12 @@ import {
   stagedSteps,
 } from "../src/updates/appimage-update.mjs";
 import { RELEASES_URL } from "../src/updates/updates.mjs";
+import type { Offer } from "../src/updates/updates.mjs";
 
-const H = (/** @type {string} */ c) => c.repeat(128);
+const H = (c: string) => c.repeat(128);
 const URL = `${RELEASES_URL}/download/v0.3.1/vimma-0.3.1-x86_64.AppImage`;
 
-/** @param {Partial<import("../src/updates/updates.mjs").Offer>} [o] */
-const offer = (o = {}) => ({
+const offer = (o: Partial<Offer> = {}) => ({
   appVersion: "158.0.1",
   buildId: "20261028031500",
   displayVersion: "0.3.1",
@@ -28,7 +28,7 @@ const offer = (o = {}) => ({
 });
 
 const base = {
-  installType: /** @type {const} */ ("appimage"),
+  installType: "appimage" as const,
   marker: "vimma-package=appimage\n",
   appImage: "/home/u/Apps/vimma-0.1.0-x86_64.AppImage",
   appDir: "/tmp/.mount_vimmaAb12Cd",
@@ -59,13 +59,7 @@ describe("appImagePlan (decision 19: replace $APPIMAGE after a verified offer)",
 
   test("not an AppImage install: nothing to replace", () => {
     // The Flatpak never downloads or applies an update itself (spec flatpak, decision 10).
-    for (const installType of /** @type {const} */ ([
-      "tarball",
-      "deb",
-      "aur",
-      "source",
-      "flatpak",
-    ])) {
+    for (const installType of ["tarball", "deb", "aur", "source", "flatpak"] as const) {
       expect(appImagePlan({ ...base, installType })).toMatchObject({ ok: false });
     }
   });

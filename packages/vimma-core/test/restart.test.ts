@@ -43,7 +43,7 @@ describe("restartPlan (how this install restarts)", () => {
   });
 
   test("every other install restarts through Firefox, which runs the same binary path", () => {
-    for (const installType of /** @type {const} */ (["tarball", "deb", "aur", "source"])) {
+    for (const installType of ["tarball", "deb", "aur", "source"] as const) {
       expect(restartPlan({ installType, appImage: APPIMAGE })).toEqual({ kind: "firefox" });
     }
   });
@@ -94,7 +94,7 @@ describe("the relaunch script under /bin/sh", () => {
     const { path, marker } = fakeAppImage();
     const old = spawn("sleep", ["0.6"]);
     const { program, args } = relaunchCommand({
-      pid: /** @type {number} */ (old.pid),
+      pid: old.pid as number,
       appImage: path,
     });
     const helper = spawn(program, args, { cwd: dir });

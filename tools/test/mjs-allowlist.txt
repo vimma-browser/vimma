@@ -23,12 +23,7 @@ packages/vimma-core/test/agent-store.test.mjs
 packages/vimma-core/test/agent-tools.test.mjs
 packages/vimma-core/test/agent-wait.test.mjs
 packages/vimma-core/test/agent.test.mjs
-packages/vimma-core/test/appimage-update.test.mjs
 packages/vimma-core/test/budget.mjs
-packages/vimma-core/test/control-v2.test.mjs
-packages/vimma-core/test/control.test.mjs
-packages/vimma-core/test/ctl-version.test.mjs
-packages/vimma-core/test/default-browser.test.mjs
 packages/vimma-core/test/fuzz/agent-downloads.fuzz.test.mjs
 packages/vimma-core/test/fuzz/agent-keys.fuzz.test.mjs
 packages/vimma-core/test/fuzz/agent.fuzz.test.mjs
@@ -43,9 +38,6 @@ packages/vimma-core/test/fuzz/strings.fuzz.test.mjs
 packages/vimma-core/test/fuzz/theme.fuzz.test.mjs
 packages/vimma-core/test/fuzz/toml-arb.mjs
 packages/vimma-core/test/load-errors.test.mjs
-packages/vimma-core/test/restart.test.mjs
-packages/vimma-core/test/setup.test.mjs
-packages/vimma-core/test/update-notices.test.mjs
 tools/artifact-build/artifact-build.mjs
 tools/artifact-build/test/artifact-build.test.mjs
 tools/ci/test/docs-only.test.mjs

@@ -87,8 +87,8 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   the router.
   [`test_omarchy_s_router_to_vimma_counts_as_default`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_without_omarchy_s_router_nothing_is_read`](../../tests/browser/browser_vimma_app_launcher.js),
-  [`a quoted Exec never counts, since Omarchy's launcher cannot run it`](../../packages/vimma-core/test/default-browser.test.mjs),
-  [`matches the program by its exact absolute path, never by name or a relative one`](../../packages/vimma-core/test/default-browser.test.mjs),
+  [`a quoted Exec never counts, since Omarchy's launcher cannot run it`](../../packages/vimma-core/test/default-browser.test.ts),
+  [`matches the program by its exact absolute path, never by name or a relative one`](../../packages/vimma-core/test/default-browser.test.ts),
   [`test_the_shell_service_starts_with_the_launcher_next_to_the_binary`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_an_inherited_value_never_picks_another_program`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_an_inherited_appdir_never_keeps_another_program`](../../tests/browser/browser_vimma_app_launcher.js),
@@ -101,7 +101,7 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   [`test_a_policy_against_make_default_is_left_to_firefox`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_under_flatpak_make_default_is_left_to_firefox`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_a_late_start_counts_the_package_entry_as_the_default`](../../tests/browser/browser_vimma_app_launcher.js),
-  [`never counts a quoted or escaped program, which it does not parse`](../../packages/vimma-core/test/default-browser.test.mjs),
+  [`never counts a quoted or escaped program, which it does not parse`](../../packages/vimma-core/test/default-browser.test.ts),
   [`names each package's installed vimma-open by its absolute path in the desktop entry`](../../tools/package/test/package.test.mjs)
 
 Allowed: two or more arguments (other than `--from`) pass through unchanged; a local app that

@@ -11,6 +11,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/actors/VimmaChild.sys.mjs": typeof import("../src/browser/base/content/vimma/actors/VimmaChild.sys.mjs");
   "chrome://browser/content/vimma/actors/actor-for.mjs": typeof import("../src/browser/base/content/vimma/actors/actor-for.mjs");
   "chrome://browser/content/vimma/actors/agent-fields.mjs": typeof import("../src/browser/base/content/vimma/actors/agent-fields.mjs");
+  "chrome://browser/content/vimma/actors/agent-page.mjs": typeof import("../src/browser/base/content/vimma/actors/agent-page.mjs");
   "chrome://browser/content/vimma/actors/block.mjs": typeof import("../src/browser/base/content/vimma/actors/block.mjs");
   "chrome://browser/content/vimma/actors/caret.mjs": typeof import("../src/browser/base/content/vimma/actors/caret.mjs");
   "chrome://browser/content/vimma/actors/enter-key.mjs": typeof import("../src/browser/base/content/vimma/actors/enter-key.mjs");
@@ -182,6 +183,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/start/StartPage.sys.mjs": typeof import("../src/browser/base/content/vimma/start/StartPage.sys.mjs");
   "chrome://browser/content/vimma/start/start.mjs": typeof import("../src/browser/base/content/vimma/start/start.mjs");
   "chrome://browser/content/vimma/ui/agent-chat-key.mjs": typeof import("../src/browser/base/content/vimma/ui/agent-chat-key.mjs");
+  "chrome://browser/content/vimma/ui/agent-chat-models.mjs": typeof import("../src/browser/base/content/vimma/ui/agent-chat-models.mjs");
   "chrome://browser/content/vimma/ui/agent-chat-view.mjs": typeof import("../src/browser/base/content/vimma/ui/agent-chat-view.mjs");
   "chrome://browser/content/vimma/ui/agent-chat.mjs": typeof import("../src/browser/base/content/vimma/ui/agent-chat.mjs");
   "chrome://browser/content/vimma/ui/agent-prompt.mjs": typeof import("../src/browser/base/content/vimma/ui/agent-prompt.mjs");
