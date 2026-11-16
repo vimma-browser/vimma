@@ -369,7 +369,7 @@ async function cleanGemini(ours) {
       await IOUtils.makeDirectory(lock, { ignoreExisting: false, createAncestors: false });
       locked = true;
     } catch (e) {
-      if (/** @type {any} */ (e)?.name !== "NoModificationAllowedError") return;
+      if (/** @type {Thrown} */ (e)?.name !== "NoModificationAllowedError") return;
       await delay(LOCK_WAIT_MS);
     }
   }

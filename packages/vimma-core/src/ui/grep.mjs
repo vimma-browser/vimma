@@ -652,7 +652,7 @@ export function closedRows(closed, matches) {
   for (const m of matches) {
     while (
       f + 1 < closed.fields.length &&
-      /** @type {any} */ (closed.fields[f + 1]).start <= m.start
+      /** @type {GrepClosedText["fields"][number]} */ (closed.fields[f + 1]).start <= m.start
     )
       f++;
     const field = closed.fields[f];

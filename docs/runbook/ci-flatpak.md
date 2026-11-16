@@ -1,6 +1,6 @@
 ### Flatpak (`flatpak.yml`, spec flatpak)
 
-`tools/package/flatpak.mjs` writes the Flatpak manifest `dev.vimma.browser.json` and the four
+`tools/package/flatpak.ts` writes the Flatpak manifest `dev.vimma.browser.json` and the four
 files it names (launcher, desktop file, metainfo, icon); the manifest repackages a release
 tarball on `org.freedesktop.Platform` 25.08. `tools/package/flatpak-smoke.sh` builds it with
 flatpak-builder in a privileged Fedora container, installs it, and checks the version line,
@@ -24,7 +24,7 @@ Vimma is not on Flathub yet (issue #465).
   find one, take the current ones from
   `flatpak remote-info flathub runtime/org.freedesktop.Platform/x86_64/25.08` (and `…Sdk…`) and
   update the script in a pull request. A new runtime branch (26.08) changes `RUNTIME_VERSION` in
-  `flatpak.mjs` and `RUNTIME` in the script together; a test keeps them equal.
+  `flatpak.ts` and `RUNTIME` in the script together; a test keeps them equal.
 
 **Submitting to Flathub** (issue #465; only once its other items are done, and only when the
 maintainer decides to list Vimma):
@@ -34,13 +34,13 @@ bars a manifest with AI-generated or AI-assisted
 content, even disclosed, and bars AI tools from opening the submission pull request or writing
 its description, commit messages, comments or replies. Other AI-generated material in the app
 or its packaging must be disclosed in the pull request, naming the parts and the extent. Since
-`tools/package/flatpak.mjs` was written with AI help, its generated manifest cannot be submitted
+`tools/package/flatpak.ts` was written with AI help, its generated manifest cannot be submitted
 as it is: a person writes the submitted manifest by hand (the generated one and step 2's lint
 can serve as research), and does steps 3 and 4 by hand.
 
 1. Generate the files for the release to submit, with the tarball's SHA-256 from its
    `SHA256SUMS` and the release's date:
-   `node tools/package/flatpak.mjs --out flathub --version X.Y.Z --date YYYY-MM-DD --sha256 <hex>`.
+   `node tools/package/flatpak.ts --out flathub --version X.Y.Z --date YYYY-MM-DD --sha256 <hex>`.
 2. Build and lint them as Flathub does, on a machine with Flatpak:
    `flatpak install flathub org.flatpak.Builder`, then
    `flatpak run --command=flathub-build org.flatpak.Builder --install flathub/dev.vimma.browser.json`
@@ -48,7 +48,7 @@ can serve as research), and does steps 3 and 4 by hand.
    `--disable-rofiles-fuse` before the manifest),
    `flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest flathub/dev.vimma.browser.json`
    and `flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo`. Fix every
-   error in `flatpak.mjs`, not in the generated files. Expect one warning,
+   error in `flatpak.ts`, not in the generated files. Expect one warning,
    `runtime-update-available-to-org.freedesktop.Platform-26.08`, while Mozilla's Flatpak stays
    on 25.08. The metainfo links its screenshots at the release's tag
    (`docs/assets/screenshots/README.md`), so submit a release whose tag has

@@ -24,7 +24,7 @@ same call as the manual re-run, so one path is exercised every time.
 | `vimma-X.Y.Z-x86_64.AppImage`           | AppImage (appimagetool 1.9.1, runtime 20251108, both pinned)                                                                    |
 | `vimma_X.Y.Z_amd64.deb`                 | `/usr/lib/vimma`, `/usr/bin/vimma`, desktop file, icons                                                                         |
 | `vimma-X.Y.Z-1.x86_64.rpm`              | the same layout as the `.deb`, for Fedora and openSUSE                                                                          |
-| `vimma-X.Y.Z.cdx.json`                  | CycloneDX 1.6 SBOM (`tools/package/sbom.mjs`)                                                                                   |
+| `vimma-X.Y.Z.cdx.json`                  | CycloneDX 1.6 SBOM (`tools/package/sbom.ts`)                                                                                    |
 | `PKGBUILD`                              | `vimma-bin` for Arch Linux; its only source is the tarball                                                                      |
 | `SRCINFO`                               | its `.SRCINFO` (GitHub renames an asset with a leading period)                                                                  |
 | `vimma-X.Y.Z-linux-x86_64.complete.mar` | the complete MAR Firefox's updater applies to a tarball install, signed with the update key (while `UPDATES_ENABLED` is `true`) |
@@ -34,7 +34,7 @@ same call as the manual re-run, so one path is exercised every time.
 Jobs: `build` (read-only token and the Safe Browsing key; first checks that the tag is
 `vX.Y.Z` and that its commit is on `main`) → `ctl` (`vimma-ctl` from the same commit, static for
 `x86_64-unknown-linux-musl`; read-only token, no secret; spec
-[ship-vimma-ctl](../specs/ship-vimma-ctl.md); then `tools/package/ctl-notices.mjs` writes
+[ship-vimma-ctl](../specs/ship-vimma-ctl.md); then `tools/package/ctl-notices.ts` writes
 `vimma-ctl-licenses/`, the notices of musl, Rust's standard library and LLVM's libunwind, from
 that toolchain, and `vimma-ctl`'s SBOM entry) → `package` (AppImage, `.deb`, `.rpm`, `PKGBUILD`,
 the AUR variant, checksums, each with `vimma-ctl` and `vimma-ctl-licenses/` next to `vimma`, and
@@ -62,20 +62,20 @@ tools/package/fetch-appimagetool.sh /tmp/ait
 (cd tools/vimma-ctl && rustup target add x86_64-unknown-linux-musl &&
   cargo build --release --locked --target x86_64-unknown-linux-musl)
 mkdir ctl && cp tools/vimma-ctl/target/x86_64-unknown-linux-musl/release/vimma-ctl ctl/
-node tools/package/ctl-notices.mjs --target x86_64-unknown-linux-musl --binary ctl/vimma-ctl \
+node tools/package/ctl-notices.ts --target x86_64-unknown-linux-musl --binary ctl/vimma-ctl \
   --out ctl/vimma-ctl-licenses --component ctl/vimma-ctl.cdx.json
-node tools/package/sbom.mjs --engine engine --out /tmp/vimma.cdx.json
-node tools/package/package.mjs --tarball engine/obj-x86_64-pc-linux-gnu/dist/vimma-*.tar.xz \
+node tools/package/sbom.ts --engine engine --out /tmp/vimma.cdx.json
+node tools/package/package.ts --tarball engine/obj-x86_64-pc-linux-gnu/dist/vimma-*.tar.xz \
   --ctl ctl/vimma-ctl --ctl-licenses ctl/vimma-ctl-licenses \
   --sbom /tmp/vimma.cdx.json --ctl-component ctl/vimma-ctl.cdx.json \
   --out dist --maintainer 'Name <email>' --appimagetool /tmp/ait/appimagetool \
   --runtime /tmp/ait/runtime-x86_64 --no-deb   # dpkg-deb only exists on Debian/Ubuntu
-node tools/package/validate-sbom.mjs dist/vimma-*.cdx.json
+node tools/package/validate-sbom.ts dist/vimma-*.cdx.json
 tools/package/arch-smoke.sh dist "$(node tools/release/version-line.ts)"   # needs docker
 tools/package/rpm-smoke.sh dist "$(node tools/release/version-line.ts)"    # needs docker
 ```
 
-`package.mjs` builds the `.rpm` with `rpmbuild` (on Arch, the `rpm-tools` package; on
+`package.ts` builds the `.rpm` with `rpmbuild` (on Arch, the `rpm-tools` package; on
 Debian and Ubuntu, `rpm`); without it, pass `--no-rpm`. `rpmbuild` reads the binaries'
 requirements as sonames, which Fedora and openSUSE both provide, and the spec it is given keeps
 the libraries Vimma bundles out of them (spec [rpm-package](../specs/rpm-package.md)).
@@ -98,7 +98,7 @@ would turn the check off for every tap on the machine. When a run fails with "Re
 cask ... from untrusted tap", the trust step did not run: check that `brew commands --quiet` on
 that Homebrew lists `trust`.
 
-**The two `PKGBUILD`s.** `package.mjs` writes one `vimma-bin` PKGBUILD in two variants that
+**The two `PKGBUILD`s.** `package.ts` writes one `vimma-bin` PKGBUILD in two variants that
 differ in one line, the install source it records in `/opt/vimma/is-packaged-app`:
 `dist/PKGBUILD` (`vimma-package=pkgbuild-release`) is the release asset that Arch users
 download with `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO
@@ -179,7 +179,7 @@ neither needs another file.
      the checks `tools/package/cask-check.sh` runs here, but on the latest stable Homebrew and
      the whole tap, so a new Homebrew audit rule can turn the tap red before the `cask` job here. It is not a required check in the ruleset, so
      `homebrew.yml`'s push lands first and the check then runs on it. When it fails on `main`,
-     the pushed cask came from a release: fix `tools/package/cask.mjs` here and ship a fixed
+     the pushed cask came from a release: fix `tools/package/cask.ts` here and ship a fixed
      release, since `homebrew.yml` never replaces a newer cask with an older one. Its one action,
      `Homebrew/actions/setup-homebrew`, is pinned by commit SHA with its tag in a comment, and
      the tap has no Dependabot: bump it by hand from Homebrew's releases.
@@ -264,7 +264,7 @@ only by `workflow_dispatch` and refuses any other branch, and every signed relea
 included, was signed so.
 The issuer pins GitHub Actions' OIDC. Checking `SHA256SUMS`'s signature and then `sha256sum -c`
 covers every file; each asset also has its own `<file>.sigstore.json`, verified the same way.
-The regexp is `IDENTITY_REGEXP` in `tools/package/package.mjs`, and a test keeps the two equal.
+The regexp is `IDENTITY_REGEXP` in `tools/package/package.ts`, and a test keeps the two equal.
 
 **What the maintainer sees on a release** (from `0.1.2` on):
 
@@ -276,7 +276,7 @@ The regexp is `IDENTITY_REGEXP` in `tools/package/package.mjs`, and a test keeps
    a little over two hours (2 h 12 min for `v0.1.1`). The draft has no files until its `publish` job, near the end,
    uploads them all and edits the notes: an "Updating" section goes above the changelog and the
    third-party notice below it, each once (a re-run finds the heading). Both come from
-   `tools/package/package.mjs` (`dist/notes/`). The update steps are there on every release,
+   `tools/package/package.ts` (`dist/notes/`). The update steps are there on every release,
    with or without macOS: the Mac update notice of 0.1.6 shows a Linux command and links to these
    notes, and the macOS jobs upload the `.dmg` after this edit.
 3. When the run is green, the draft lists the tarball, AppImage, `.deb`, `.rpm`, SBOM, `PKGBUILD`,

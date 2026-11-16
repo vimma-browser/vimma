@@ -5,7 +5,7 @@
 # PKGBUILD and SRCINFO, fetched from releases/download/<tag>/, which serves a published release
 # only (a draft's files are a 404 there), checked against the release's SHA256SUMS and, with
 # signing on, SHA256SUMS against release.yml's signature. Then the one install-source line is
-# switched to `aur` (the variant package.mjs writes to dist/aur/; a test keeps the two equal).
+# switched to `aur` (the variant package.ts writes to dist/aur/; a test keeps the two equal).
 # Nothing runs until RELEASE_ENABLED is `true`; skipped (green, with a notice) until the
 # AUR_SSH_KEY secret exists. Retry: gh workflow run aur.yml -f tag=vX.Y.Z (docs/runbook/ci-release-packages.md,
 # "Release packages").
@@ -79,7 +79,7 @@ jobs:
       - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
         if: env.AUR_KEY_SET == 'true' && vars.SIGNING_ENABLED == 'true'
 
-      # The identity users verify (IDENTITY_REGEXP in tools/package/package.mjs; a test keeps
+      # The identity users verify (IDENTITY_REGEXP in tools/package/package.ts; a test keeps
       # the two equal), so the AUR gets only what release.yml built and signed.
       - name: Verify the release's signature
         if: env.AUR_KEY_SET == 'true' && vars.SIGNING_ENABLED == 'true'

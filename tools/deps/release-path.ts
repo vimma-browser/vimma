@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 
 /**
  * What release.yml's build job runs from node_modules: Surfer (npm run import, surfer build) and
- * ajv (validate-sbom.mjs). release-path.test.ts checks this against the job's imports.
+ * ajv (validate-sbom.ts). release-path.test.ts checks this against the job's imports.
  */
 export const ROOTS = ["@zen-browser/surfer", "ajv"];
 

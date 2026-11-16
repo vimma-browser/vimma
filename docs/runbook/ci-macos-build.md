@@ -30,7 +30,7 @@ and `background.png`, in `configs/branding/vimma/`) from `configs/branding/vimma
 and the Icon Composer source `configs/macos/AppIcon.icon/icon.json`, and fails if they differ
 (spec [macos-homebrew](../specs/macos-homebrew.md), decision 13). `actool`, which compiles
 `Assets.car`, ships only with Xcode, not the Command Line Tools. After changing the logo or the
-icon source, either run `node tools/package/macos-icons.mjs` on a Mac with Xcode, or push and
+icon source, either run `node tools/package/macos-icons.ts` on a Mac with Xcode, or push and
 copy the files from the run's `macos-icons` artifact, which also holds their renderings:
 
 ```sh
@@ -41,14 +41,14 @@ cp /tmp/macos-icons/{Assets.car,firefox.icns,document.icns,disk.icns,background.
 
 The `.dmg` window's layout, `configs/branding/vimma/dsstore`, is the `.DS_Store` Finder writes,
 so no job can regenerate it byte for byte (it records dates and the disk image's location).
-After changing `DMG_LAYOUT` in `tools/package/macos-icons.mjs` or the background, run
+After changing `DMG_LAYOUT` in `tools/package/macos-icons.ts` or the background, run
 `tools/package/macos-dsstore.sh --out "$RUNNER_TEMP/dsstore"` on a GitHub-hosted `macos-15`
 runner (a short-lived workflow on the branch that uploads the file as an artifact, with
 `contents: read` and pinned actions, removed again before merge) and commit the downloaded file.
 It lays out a scratch disk image in Finder through AppleScript, which the hosted image allows
 without a prompt, and copies the `.DS_Store`. A developer's Mac is not used, because Finder
 records the machine's per-user temp-dir hash and volume UUIDs in the file.
-`tools/package/test/macos.test.mjs` checks that it places `Vimma.app` and the Applications link
+`tools/package/test/macos.test.ts` checks that it places `Vimma.app` and the Applications link
 where `DMG_LAYOUT` says, shows the background from the Vimma volume, and names no home directory.
 
 `actool` names the catalog's flattened fallback images with a fresh UUID and writes them anew on
@@ -80,7 +80,7 @@ build used 44 GB of the runner's disk, the 16 GB swap file included, and left 42
 `macos-ctl` builds `vimma-ctl` on a hosted Mac from the tag's commit (spec
 [ship-vimma-ctl](../specs/ship-vimma-ctl.md)); `macos-build` builds as `macos.yml` does, from the release tag's commit and with the Safe
 Browsing key, and renders the Homebrew cask `vimma.rb` for the `.dmg`
-(`tools/package/cask.mjs`), with that `vimma-ctl` signed into `Vimma.app/Contents/MacOS`;
+(`tools/package/cask.ts`), with that `vimma-ctl` signed into `Vimma.app/Contents/MacOS`;
 `macos-smoke` checks the `.dmg` on a hosted Mac against the tag, runs the e2e smoke scenarios
 through the app's own `vimma-ctl`, and installs it through the cask (`tools/package/cask-check.sh`); `macos-sign` signs both and
 `SHA256SUMS-macos` with cosign while `SIGNING_ENABLED` is `true`; `macos-publish` uploads them

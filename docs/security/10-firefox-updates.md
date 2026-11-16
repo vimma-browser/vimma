@@ -132,8 +132,8 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   checks pass. A head that release-please pushed without the `firefox-notes` commit fails CI's
   `changelog-lint` step (its `[Unreleased]` is not the first heading), so it cannot merge.
   [`fails when [Unreleased] is not the first version heading`](../../tools/release/test/changelog.test.ts),
-  [`firefox-notes reads the release branch as data and does nothing without the token`](../../tools/package/test/release-workflow.test.mjs),
-  [`firefox-notes moves [Unreleased] into the new entry before naming the Firefox version`](../../tools/package/test/release-workflow.test.mjs),
+  [`firefox-notes reads the release branch as data and does nothing without the token`](../../tools/package/test/release-workflow.test.ts),
+  [`firefox-notes moves [Unreleased] into the new entry before naming the Firefox version`](../../tools/package/test/release-workflow.test.ts),
   [`sets auto-merge only once the slow checks of the ready run have replaced the draft's`](../../tools/release/test/security-release.test.ts),
   [`finds no cover in a run whose checks were skipped, such as a draft's`](../../tools/ci/test/tree-covered.test.ts),
   [`marks a draft release PR ready for review, then sets it to auto-merge`](../../tools/release/test/security-release.test.ts),
@@ -146,9 +146,9 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`refuses a release PR with another author, branch, base, label or title`](../../tools/release/test/security-release.test.ts),
   [`refuses when the release PR does not contain the bump commit`](../../tools/release/test/security-release.test.ts),
   [`pins the merge to the release PR's head commit`](../../tools/release/test/security-release.test.ts),
-  [`security-release runs only on a push to main of vimma-browser/vimma`](../../tools/package/test/release-workflow.test.mjs),
-  [`RELEASE_PLEASE_TOKEN reaches only release-please, the changelog push and the auto-merge`](../../tools/package/test/release-workflow.test.mjs),
-  [`release-please.yml grants nothing by default and each job only what it needs`](../../tools/package/test/release-workflow.test.mjs)
+  [`security-release runs only on a push to main of vimma-browser/vimma`](../../tools/package/test/release-workflow.test.ts),
+  [`RELEASE_PLEASE_TOKEN reaches only release-please, the changelog push and the auto-merge`](../../tools/package/test/release-workflow.test.ts),
+  [`release-please.yml grants nothing by default and each job only what it needs`](../../tools/package/test/release-workflow.test.ts)
 - G12. The automatic path **must never** merge the first release PR, and **must** stop when the
   variable is unset; with the variable on and no `RELEASE_PLEASE_TOKEN` it fails the run.
   [`refuses before the first release exists`](../../tools/release/test/security-release.test.ts),

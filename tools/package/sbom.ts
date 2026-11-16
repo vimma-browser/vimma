@@ -6,7 +6,7 @@
  * the tree vendors, a superset of what the binary links. No dependency: scanners such as syft
  * read installed package metadata, which a Firefox build does not have.
  *
- * Usage: node tools/package/sbom.mjs [--engine engine] [--repo vimma-browser/vimma] --out <file>
+ * Usage: node tools/package/sbom.ts [--engine engine] [--repo vimma-browser/vimma] --out <file>
  */
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -15,33 +15,42 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { REPO } from "../repo.ts";
 
-/** @typedef {{ name: string, version: string, source?: string, checksum?: string }} CargoPackage */
-/** @typedef {{ name: string, url?: string, release?: string, revision?: string, licenses: string[] }} MozYaml */
-/**
- * @typedef {{ license: { id: string } } | { license: { name: string } } | { expression: string }} License
- * @typedef {{ type: string, "bom-ref": string, name: string, version?: string, purl?: string,
- *   group?: string, hashes?: { alg: string, content: string }[], licenses?: License[],
- *   externalReferences?: { type: string, url: string }[],
- *   properties?: { name: string, value: string }[], components?: Component[] }} Component
- */
+export type CargoPackage = { name: string; version: string; source?: string; checksum?: string };
+export type MozYaml = {
+  name: string;
+  url?: string;
+  release?: string;
+  revision?: string;
+  licenses: string[];
+};
+export type License =
+  { license: { id: string } } | { license: { name: string } } | { expression: string };
+export type Component = {
+  type: string;
+  "bom-ref": string;
+  name: string;
+  version?: string;
+  purl?: string;
+  group?: string;
+  hashes?: { alg: string; content: string }[];
+  licenses?: License[];
+  externalReferences?: { type: string; url: string }[];
+  properties?: { name: string; value: string }[];
+  components?: Component[];
+};
 
 /**
  * The `[[package]]` tables of a Cargo.lock (flat string keys only; dependencies are skipped).
- * @param {string} text
- * @returns {CargoPackage[]}
  */
-export function parseCargoLock(text) {
-  /** @type {CargoPackage[]} */
-  const packages = [];
+export function parseCargoLock(text: string): CargoPackage[] {
+  const packages: CargoPackage[] = [];
   for (const block of text.split(/^\[\[package\]\]$/m).slice(1)) {
-    /** @type {Record<string, string>} */
-    const fields = {};
+    const fields: Record<string, string> = {};
     for (const match of block.matchAll(/^(name|version|source|checksum) = "([^"]*)"$/gm)) {
       fields[match[1] ?? ""] = match[2] ?? "";
     }
     if (!fields.name || !fields.version) continue;
-    /** @type {CargoPackage} */
-    const pkg = { name: fields.name, version: fields.version };
+    const pkg: CargoPackage = { name: fields.name, version: fields.version };
     if (fields.source) pkg.source = fields.source;
     if (fields.checksum) pkg.checksum = fields.checksum;
     packages.push(pkg);
@@ -49,8 +58,8 @@ export function parseCargoLock(text) {
   return packages;
 }
 
-/** @param {string} value a YAML scalar: strips quotes and a trailing comment */
-function scalar(value) {
+/** @param value a YAML scalar: strips quotes and a trailing comment */
+function scalar(value: string) {
   const v = value.replace(/\s+#.*$/, "").trim();
   const quoted = /^(["'])(.*)\1$/.exec(v);
   return quoted ? (quoted[2] ?? "") : v;
@@ -58,17 +67,13 @@ function scalar(value) {
 
 /**
  * The `origin:` block of a moz.yaml (two-space keys, scalar or list licence).
- * @param {string} text
- * @returns {MozYaml | null}
  */
-export function parseMozYaml(text) {
+export function parseMozYaml(text: string): MozYaml | null {
   const lines = text.split("\n");
   const start = lines.findIndex((line) => /^origin:\s*$/.test(line));
   if (start < 0) return null;
-  /** @type {Record<string, string>} */
-  const fields = {};
-  /** @type {string[]} */
-  const licenses = [];
+  const fields: Record<string, string> = {};
+  const licenses: string[] = [];
   let inLicenseList = false;
   for (const line of lines.slice(start + 1)) {
     if (/^\S/.test(line) && !line.startsWith("#")) break; // next top-level key
@@ -89,8 +94,7 @@ export function parseMozYaml(text) {
     if (item && inLicenseList) licenses.push(scalar(item[1] ?? ""));
   }
   if (!fields.name) return null;
-  /** @type {MozYaml} */
-  const result = { name: fields.name, licenses };
+  const result: MozYaml = { name: fields.name, licenses };
   if (fields.url) result.url = fields.url;
   if (fields.release) result.release = fields.release;
   if (fields.revision) result.revision = fields.revision;
@@ -98,15 +102,10 @@ export function parseMozYaml(text) {
 }
 
 const SPDX_DIR = new URL("vendor/spdx-license-list-3.24.0/", import.meta.url);
-/**
- * @param {string} file
- * @param {string} list
- * @param {string} key
- */
-function spdxIds(file, list, key) {
+function spdxIds(file: string, list: string, key: string) {
   const data = JSON.parse(readFileSync(new URL(file, SPDX_DIR), "utf8"));
-  /** @type {Map<string, string>} lower case -> SPDX's spelling */
-  const ids = new Map();
+  // lower case -> SPDX's spelling
+  const ids = new Map<string, string>();
   for (const entry of data[list]) ids.set(String(entry[key]).toLowerCase(), String(entry[key]));
   return ids;
 }
@@ -118,20 +117,17 @@ const EXCEPTION_IDS = spdxIds("exceptions.json", "exceptions", "licenseException
  * A CycloneDX licence entry: an SPDX id in SPDX's own spelling (`libpng` -> `Libpng`), an SPDX
  * expression whose every id is on the list (operators upper-cased; the old `MIT/Apache-2.0` form
  * becomes `MIT OR Apache-2.0`), or else the text as a licence name.
- * @param {string} license
- * @returns {License}
  */
-export function canonicalLicense(license) {
+export function canonicalLicense(license: string): License {
   const asName = { license: { name: license } };
   const tokens = license.replace(/\s*\/\s*/g, " OR ").match(/\(|\)|[^\s()]+/g) ?? [];
-  const isOperator = (/** @type {string} */ t) => /^(or|and|with)$/i.test(t);
+  const isOperator = (t: string) => /^(or|and|with)$/i.test(t);
   if (!tokens.some(isOperator)) {
     if (tokens.length !== 1) return asName;
     const id = LICENSE_IDS.get(license.toLowerCase());
     return id ? { license: { id } } : asName;
   }
-  /** @type {string[]} */
-  const out = [];
+  const out: string[] = [];
   for (const token of tokens) {
     if (token === "(" || token === ")") out.push(token);
     else if (isOperator(token)) out.push(token.toUpperCase());
@@ -148,9 +144,8 @@ export function canonicalLicense(license) {
 /**
  * The version of a moz.yaml origin: the revision (a commit) when there is one, else the release
  * without the "(date)." Mozilla's tooling appends.
- * @param {MozYaml} origin
  */
-function mozVersion(origin) {
+function mozVersion(origin: MozYaml) {
   if (origin.revision) return origin.revision;
   return (origin.release ?? "")
     .replace(/\s*\(.*\)\.?\s*$/, "")
@@ -160,10 +155,8 @@ function mozVersion(origin) {
 
 /**
  * The smol-toml vimma-core vendors (tools/vendor-smol-toml.ts writes its version in a header).
- * @param {string} vimmaRoot
- * @returns {Component[]}
  */
-function vendoredNpm(vimmaRoot) {
+function vendoredNpm(vimmaRoot: string): Component[] {
   const file = join(vimmaRoot, "packages/vimma-core/src/vendor/smol-toml/smol-toml.mjs");
   if (!existsSync(file)) return [];
   const header = /Vendored for vimma: smol-toml (\S+), generated/.exec(readFileSync(file, "utf8"));
@@ -184,11 +177,8 @@ function vendoredNpm(vimmaRoot) {
 
 /**
  * The licence a vendored crate's Cargo.toml declares (cargo vendor writes `license = "…"`).
- * @param {string} engineDir
- * @param {CargoPackage} pkg
- * @returns {string | undefined}
  */
-function crateLicense(engineDir, pkg) {
+function crateLicense(engineDir: string, pkg: CargoPackage): string | undefined {
   for (const dir of [`${pkg.name}-${pkg.version}`, pkg.name]) {
     const toml = join(engineDir, "third_party/rust", dir, "Cargo.toml");
     if (!existsSync(toml)) continue;
@@ -202,12 +192,9 @@ function crateLicense(engineDir, pkg) {
 
 /**
  * Every moz.yaml under the engine, skipping objdirs and VCS dirs.
- * @param {string} dir
- * @returns {string[]}
  */
-function findMozYaml(dir) {
-  /** @type {string[]} */
-  const found = [];
+function findMozYaml(dir: string): string[] {
+  const found: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
       if (/^(obj-.*|\.git|\.hg|node_modules)$/.test(entry.name)) continue;
@@ -218,17 +205,30 @@ function findMozYaml(dir) {
 }
 
 /**
- * @param {{ engineDir: string,
- *   config: { version?: { version?: unknown }, brands?: Record<string, { release?: { displayVersion?: unknown } }> },
- *   repo: string, vimmaRoot?: string, serialNumber?: string, timestamp?: string }} options
  * vimmaRoot: this repository, for what Vimma itself vendors (smol-toml)
  */
-export function buildSbom({ engineDir, config, repo, vimmaRoot, serialNumber, timestamp }) {
+export function buildSbom({
+  engineDir,
+  config,
+  repo,
+  vimmaRoot,
+  serialNumber,
+  timestamp,
+}: {
+  engineDir: string;
+  config: {
+    version?: { version?: unknown };
+    brands?: Record<string, { release?: { displayVersion?: unknown } }>;
+  };
+  repo: string;
+  vimmaRoot?: string;
+  serialNumber?: string;
+  timestamp?: string;
+}) {
   const version = String(config.brands?.vimma?.release?.displayVersion ?? "");
   const firefox = String(config.version?.version ?? "");
   const mpl = [canonicalLicense("MPL-2.0")];
-  /** @type {Component[]} */
-  const components = [
+  const components: Component[] = [
     {
       type: "application",
       "bom-ref": `pkg:generic/mozilla/firefox@${firefox}`,
@@ -244,8 +244,7 @@ export function buildSbom({ engineDir, config, repo, vimmaRoot, serialNumber, ti
   for (const pkg of existsSync(lock) ? parseCargoLock(readFileSync(lock, "utf8")) : []) {
     if (!pkg.source) continue; // in-tree crate: part of Firefox
     const purl = `pkg:cargo/${pkg.name}@${pkg.version}`;
-    /** @type {Component} */
-    const component = {
+    const component: Component = {
       type: "library",
       "bom-ref": `${purl}#${pkg.source}`,
       name: pkg.name,
@@ -265,8 +264,7 @@ export function buildSbom({ engineDir, config, repo, vimmaRoot, serialNumber, ti
     if (!origin) continue;
     const ver = mozVersion(origin);
     const purl = `pkg:generic/${encodeURIComponent(origin.name)}${ver ? `@${encodeURIComponent(ver)}` : ""}`;
-    /** @type {Component} */
-    const component = {
+    const component: Component = {
       type: "library",
       "bom-ref": `${purl}#${file.slice(engineDir.length + 1)}`,
       name: origin.name,
@@ -286,7 +284,7 @@ export function buildSbom({ engineDir, config, repo, vimmaRoot, serialNumber, ti
     version: 1,
     metadata: {
       timestamp: timestamp ?? new Date().toISOString().replace(/\.\d+Z$/, "Z"),
-      tools: { components: [{ type: "application", name: "tools/package/sbom.mjs" }] },
+      tools: { components: [{ type: "application", name: "tools/package/sbom.ts" }] },
       component: {
         type: "application",
         "bom-ref": `pkg:github/${repo}@v${version}`,
@@ -310,15 +308,12 @@ export function buildSbom({ engineDir, config, repo, vimmaRoot, serialNumber, ti
 
 /**
  * The release SBOM with vimma-ctl, which every package ships next to the browser (#516; spec
- * ship-vimma-ctl): the component ctl-notices.mjs wrote in release.yml's ctl job, with the
+ * ship-vimma-ctl): the component ctl-notices.ts wrote in release.yml's ctl job, with the
  * libraries its toolchain linked into it as its own components. The SBOM is built where the
  * engine tree is and the binary where its toolchain is, so release.yml's package job joins them.
- * @template {ReturnType<typeof buildSbom>} T
- * @param {T} bom
- * @param {Component} ctl
- * @returns {T} a new SBOM; `bom` is unchanged
+ * @returns a new SBOM; `bom` is unchanged
  */
-export function addCtlComponent(bom, ctl) {
+export function addCtlComponent<T extends ReturnType<typeof buildSbom>>(bom: T, ctl: Component): T {
   if (ctl.name !== "vimma-ctl") throw new Error(`not vimma-ctl's component: ${ctl.name}`);
   const version = bom.metadata.component.version;
   if (ctl.version !== version) {
@@ -351,7 +346,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     },
   });
   if (!values.out) {
-    console.error("usage: sbom.mjs [--engine engine] [--repo owner/name] --out <file>");
+    console.error("usage: sbom.ts [--engine engine] [--repo owner/name] --out <file>");
     process.exit(2);
   }
   const root = new URL("../../", import.meta.url);

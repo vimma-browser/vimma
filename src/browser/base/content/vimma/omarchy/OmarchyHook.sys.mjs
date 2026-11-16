@@ -91,7 +91,7 @@ async function readOrNull(path) {
   try {
     return await IOUtils.readUTF8(path);
   } catch (e) {
-    if (/** @type {any} */ (e)?.name === "NotFoundError") return null;
+    if (/** @type {Thrown} */ (e)?.name === "NotFoundError") return null;
     throw e;
   }
 }

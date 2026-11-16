@@ -120,7 +120,7 @@ Its version is Vimma's, read from `surfer.json`'s `displayVersion` by `build.rs`
 and a browser built from one checkout match and the agent notice for an older `vimma-ctl` stays
 quiet. Release builds are static Linux binaries (`--target x86_64-unknown-linux-musl`) and
 native arm64 ones on macOS; `release.yml`'s `ctl` and `macos-ctl` jobs build them, and
-`tools/package/ctl-notices.mjs` gathers the notices of what the toolchain links into them (Rust's
+`tools/package/ctl-notices.ts` gathers the notices of what the toolchain links into them (Rust's
 standard library, and musl and LLVM's libunwind on Linux) from that toolchain, for the packages,
 and the SBOM entry. A Rust update that brings a new musl stops that step until the new musl's
 `COPYRIGHT` is in `tools/package/notices/` (`tools/package/vendor/README.md`).

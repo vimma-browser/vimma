@@ -17,9 +17,9 @@
 // Needs macOS with Xcode (actool is not in the Command Line Tools); macos.yml runs it with
 // `--check`, which regenerates the files and fails if the committed ones differ.
 //
-//   node tools/package/macos-icons.mjs            write the files into configs/branding/vimma
-//   node tools/package/macos-icons.mjs --out DIR  write them into DIR instead
-//   node tools/package/macos-icons.mjs --check    regenerate and compare with the committed files
+//   node tools/package/macos-icons.ts            write the files into configs/branding/vimma
+//   node tools/package/macos-icons.ts --out DIR  write them into DIR instead
+//   node tools/package/macos-icons.ts --check    regenerate and compare with the committed files
 import { execFileSync } from "node:child_process";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -37,10 +37,12 @@ const MARK_AQUA = "#1afaca";
  * The mounted dmg's Finder window, in points: its size, which background.png fills at 144 dpi,
  * and where the app and the Applications link (named " ") sit, by the centre of their icons.
  * tools/package/macos-dsstore.sh lays the window out to match.
- * @type {{ window: { width: number, height: number }, iconSize: number,
- *   icons: { "Vimma.app": [number, number], " ": [number, number] } }}
  */
-export const DMG_LAYOUT = {
+export const DMG_LAYOUT: {
+  window: { width: number; height: number };
+  iconSize: number;
+  icons: { "Vimma.app": [number, number]; " ": [number, number] };
+} = {
   window: { width: 640, height: 400 },
   iconSize: 128,
   icons: { "Vimma.app": [180, 190], " ": [460, 190] },
@@ -53,17 +55,14 @@ const ICONSET = [16, 32, 128, 256, 512].flatMap((s) => [
   [`icon_${s}x${s}@2x.png`, s * 2],
 ]);
 
-/**
- * @param {string} cmd
- * @param {string[]} args
- */
-const run = (cmd, args) => execFileSync(cmd, args, { encoding: "utf8", stdio: "pipe" });
+const run = (cmd: string, args: string[]) =>
+  execFileSync(cmd, args, { encoding: "utf8", stdio: "pipe" });
 
 /**
  * A document page in the brand's colours with a folded corner, as an SVG on a 1024 canvas.
- * @param {string} background the brand background, #rrggbb
+ * @param background the brand background, #rrggbb
  */
-export function pageSvg(background) {
+export function pageSvg(background: string) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <path d="M232 64H632L824 256V912Q824 960 776 960H248Q200 960 200 912V96Q200 64 232 64Z"
     fill="${background}" stroke="#234040" stroke-width="12" stroke-linejoin="round"/>
@@ -74,10 +73,10 @@ export function pageSvg(background) {
 /**
  * The dmg window's background at twice DMG_LAYOUT's size, as an SVG: the brand background and an
  * arrow from the app to the Applications link, in the mark's aqua.
- * @param {string} background the brand background, #rrggbb
- * @param {string} accent the arrow, #rrggbb
+ * @param background the brand background, #rrggbb
+ * @param accent the arrow, #rrggbb
  */
-export function dmgBackgroundSvg(background, accent) {
+export function dmgBackgroundSvg(background: string, accent: string) {
   const { window, iconSize, icons } = DMG_LAYOUT;
   const [app, link] = [icons["Vimma.app"], icons[" "]];
   const [appX, y, linkX] = [app[0] * 2, app[1] * 2, link[0] * 2];
@@ -95,12 +94,8 @@ export function dmgBackgroundSvg(background, accent) {
 
 /**
  * An .icns with every size iconutil knows, up to 1024 px, from one square image.
- * @param {any} sharp
- * @param {Buffer} image
- * @param {string} file
- * @param {string} iconset
  */
-async function icns(sharp, image, file, iconset) {
+async function icns(sharp: any, image: Buffer, file: string, iconset: string) {
   mkdirSync(iconset);
   for (const [name, size] of ICONSET) {
     await sharp(image)
@@ -111,11 +106,7 @@ async function icns(sharp, image, file, iconset) {
   run("iconutil", ["--convert", "icns", "--output", file, iconset]);
 }
 
-/**
- * @param {string} out
- * @param {string} work
- */
-async function generate(out, work) {
+async function generate(out: string, work: string) {
   const surfer = JSON.parse(readFileSync(join(repo, "surfer.json"), "utf8"));
   const { default: sharp } = await import("sharp");
 
@@ -166,10 +157,8 @@ async function generate(out, work) {
 /**
  * Writes the dmg window's background.png. 144 dpi: Finder draws it at half its pixel size, so it
  * fills the window on a Retina display.
- * @param {any} sharp
- * @param {string} file
  */
-export async function dmgBackground(sharp, file) {
+export async function dmgBackground(sharp: any, file: string) {
   const surfer = JSON.parse(readFileSync(join(repo, "surfer.json"), "utf8"));
   await sharp(Buffer.from(dmgBackgroundSvg(surfer.brands.vimma.backgroundColor, MARK_AQUA)))
     .withMetadata({ density: 144 })
@@ -183,9 +172,8 @@ export async function dmgBackground(sharp, file) {
  * flattened fallback images' names and digests, which actool generates afresh on every run
  * (a UUID in the name, different bytes). Their sizes and the layer image they are drawn from
  * are compared.
- * @param {Array<Record<string, unknown>>} info
  */
-export function catalogSummary(info) {
+export function catalogSummary(info: Array<Record<string, unknown>>) {
   const assets = info
     .slice(1)
     .map(({ RenditionName, SHA1Digest, ...asset }) =>
@@ -194,15 +182,13 @@ export function catalogSummary(info) {
   return JSON.stringify(assets, null, 1);
 }
 
-/** @param {string} car */
-const catalog = (car) => catalogSummary(JSON.parse(run("assetutil", ["--info", car])));
+const catalog = (car: string) => catalogSummary(JSON.parse(run("assetutil", ["--info", car])));
 
 /**
  * Where the files go: a scratch folder under `work` for --check, else --out's value, else the
  * branding folder.
- * @param {string[]} argv @param {string} work
  */
-export function outDirOf(argv, work) {
+export function outDirOf(argv: string[], work: string) {
   if (argv.includes("--check")) return join(work, "out");
   const outIndex = argv.indexOf("--out");
   if (outIndex < 0) return BRANDING;
@@ -214,7 +200,7 @@ export function outDirOf(argv, work) {
 async function main() {
   const argv = process.argv.slice(2);
   const check = argv.includes("--check");
-  if (process.platform !== "darwin") throw new Error("macos-icons.mjs needs macOS with Xcode");
+  if (process.platform !== "darwin") throw new Error("macos-icons.ts needs macOS with Xcode");
   const work = mkdtempSync(join(tmpdir(), "vimma-icons-"));
   try {
     const out = outDirOf(argv, work);
@@ -229,7 +215,7 @@ async function main() {
     });
     if (drift.length) {
       console.error(
-        `::error::${drift.join(", ")} differ from what macos-icons.mjs generates; ` +
+        `::error::${drift.join(", ")} differ from what macos-icons.ts generates; ` +
           "run it on a Mac with Xcode and commit the files",
       );
       process.exitCode = 1;

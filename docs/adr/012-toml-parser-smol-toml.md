@@ -35,5 +35,5 @@ becomes "a small, permissively licensed (MIT, BSD or ISC) parser".
   since Firefox 158; the `APP_LICENSE_{PRODUCT_NAME,LIST_BLOCK,BODY_BLOCK}` DEFINES before),
   whose `body.html` carries `LICENSE` verbatim and says the copy is modified (the modules joined
   into one file; `smol-toml.mjs`'s header says so too). `about:license` is in `omni.ja`, so every
-  release artefact has it; `tools/package/test/licence-notices.test.mjs` and
+  release artefact has it; `tools/package/test/licence-notices.test.ts` and
   `browser_vimma_licence.js` check it. A new vendored component adds its entry there.

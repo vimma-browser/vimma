@@ -125,7 +125,7 @@ function targetOf(os: string): (typeof TARGETS)[Os] {
 }
 
 /**
- * A target's release file names, as tools/package/package.mjs and release.yml write them.
+ * A target's release file names, as tools/package/package.ts and release.yml write them.
  */
 export function assetNames(version: string, os: Os = "linux"): Partial<Record<AssetKind, string>> {
   const all: Record<AssetKind, string> = {
