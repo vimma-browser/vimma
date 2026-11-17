@@ -928,6 +928,8 @@ function validateAgent(agent, { fail, typeError, unknownKey, warnings }) {
       typeError(at, p, "a table");
       return;
     }
+    // `default` and the stored key name a provider by it (B24): it cannot be left out.
+    if (!("name" in p)) fail(at, 'a provider needs "name"');
     if (p.kind === "cli") {
       validateCliProvider(p, at, {
         fail,
