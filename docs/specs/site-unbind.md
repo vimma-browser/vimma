@@ -75,7 +75,9 @@ The host passes `keymap.site(host)` of the focused `<browser>`'s `currentURI` on
    that the page receives the key: a first key Vimma kept would never reach the page, and the
    second key of a sequence cannot reach it either, since Vimma consumes the first. Rejected:
    sequences (`"gt"`), because unbinding `gt` while keeping `gg` would still swallow `g`, and the
-   `t` would reach neither Vimma nor the page.
+   `t` would reach neither Vimma nor the page. The keys after the first reach the page only if
+   they are free as well: with `"g"` listed, GitHub's `g c` works, but `g i` also needs `"i"`,
+   since Vimma's normal-mode `i` (`mode.insert`) runs before the page sees it.
 2. **Normal and insert mode, in the page, not the PDF viewer,** because those are the modes in
    which a key goes to the page. In insert mode it matters for chords (`ctrl+k` in a site's text
    field); plain keys already reach the page there. Vimma's own modes and surfaces own their keys
@@ -100,14 +102,19 @@ The host passes `keymap.site(host)` of the focused `<browser>`'s `currentURI` on
    because of decision 4.
 6. **Tries built on first use per site,** because a config with many sites should not build two
    tries per site at every reload, and the per-key cost stays one host lookup and a `Map` read.
-   `site(host)` returns `null` at once when no table unbinds a key, so a config without `unbind`
-   costs nothing per key.
+   The host asks `hasSiteUnbinds()` before it reads the page's host, so a config without
+   `unbind` costs nothing per key.
 7. **The help overlay and `:map` keep showing the keymap without site rules,** because they list
    the configuration, not one page's view of it, and a list that changed with the selected tab
    would hide bindings. The `[sites]` tables are in `config.toml` for reading.
 8. **Firefox's shortcuts stay off on an unbound chord,** because the keymap still binds the chord
    ([firefox-keys](firefox-keys.md) decision 2): on that site the page gets the key and Firefox
    does not act on it, which is what the entry asks for.
+9. **An unbound chord is not Vimma's text-field key either.** In insert mode Vimma's `ctrl+w`,
+   `ctrl+u`, `ctrl+h`, `ctrl+j` and `ctrl+m` edit the field after the page left the key alone
+   ([key-handling-batch](key-handling-batch.md) § 2); on a site that lists one, Vimma does not
+   edit, because the entry gives the key to the page and the page may handle it without
+   preventing it. `keymap.unbinds(site, key)` answers this for the host.
 
 ## Security and privacy
 
@@ -124,7 +131,8 @@ question and the pickers take their keys before the keymap, so a site entry cann
 
 - vitest, `packages/vimma-core/test/site-unbind.test.ts`: a site's unbound key is off in its
   normal and insert tries and on elsewhere; a key that starts sequences takes them all; a
-  subdomain matches and a more specific table replaces the parent's; IP literals match exactly;
+  subdomain matches and a more specific table replaces the parent's; `unbinds()` and
+  `hasSiteUnbinds()`; IP literals match exactly;
   the pdf context and Vimma's own modes keep their keys; `site()` is `null` without entries; the
   dispatcher drops a pending key when the site changes; `esc`, the prefix (alone, starting a
   sequence, and remapped), a sequence, a bad key, a non-list and a non-string are errors at their line;
@@ -132,7 +140,8 @@ question and the pickers take their keys before the keymap, so a site entry cann
 - mochitest, `browser_vimma_site_unbind.js` (fixture `file_vimma_site_unbind.html`):
   `a_site_unbound_key_reaches_the_page` (`t` reaches the page on example.com and opens no tab,
   `x` and `j` stay Vimma's), `the_same_key_is_vimmas_on_another_site` (example.org),
-  `a_site_unbound_chord_reaches_a_field_in_insert_mode`, `esc_still_leaves_insert`.
+  `a_site_unbound_chord_reaches_a_field_in_insert_mode`, `a_site_unbound_edit_key_is_left_to_the_field`,
+  `esc_still_leaves_insert`.
 
 ## Docs and changelog
 

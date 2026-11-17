@@ -1644,7 +1644,7 @@ Vimma there, list it under the site in `config.toml`:
 schema = 2
 
 [sites."github.com"]
-unbind = ["t", "g"]   # GitHub's t file finder and its g shortcuts (g c, g i)
+unbind = ["t", "g"]   # GitHub's t file finder and its g c (go to the code)
 
 [sites."app.slack.com"]
 unbind = ["ctrl+k"]
@@ -1655,7 +1655,11 @@ unbind = ["ctrl+k"]
   key does: `j`, `gt` without the `g` entry, `ctrl+b c`.
 - Each entry is one key, written as in `[keys]`: `"t"`, `"T"`, `"ctrl+k"`, `"<C-k>"`, `"space"`.
   A key that starts longer sequences takes them all: `"g"` gives the page `g`, and `gg`, `gt` and
-  `gT` are off on that site, since the page has to see the first key of its own shortcuts.
+  `gT` are off on that site, since the page has to see the first key of its own shortcuts. The
+  keys after it must be free too: GitHub's `g c` works with `"g"` alone, but its `g i` also needs
+  `"i"`, since `i` is Vimma's insert key.
+- A listed chord is the field's in insert mode too: with `"ctrl+w"` listed, Vimma's
+  [text-field keys](#normal-and-insert-mode) leave `ctrl+w` to the site.
 - `esc` and the prefix (`ctrl+b`) cannot be listed, so a site never keeps you from leaving insert
   mode or reaching Vimma's commands.
 - Vimma's own modes and panels (the side panel, the `:` line, hints, copy mode, `ctrl+b ?`), the
