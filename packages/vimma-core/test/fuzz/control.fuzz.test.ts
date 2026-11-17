@@ -473,7 +473,7 @@ describe("control protocol fuzzing", () => {
           fc.oneof(
             nastyString,
             fc.string({ maxLength: 70 }),
-            fc.constantFrom("a\u202eb", "a\u2066"),
+            fc.constantFrom("a\u202eb", "a\u2066", "a\u061cb", "a\u200fb", "a\u206ab", "a\u2029b"),
           ),
           fc.oneof(nastyString, fc.constantFrom("1", "01", "12", "-3", "1e2")),
           (u, label, tab) => {
@@ -498,11 +498,16 @@ describe("control protocol fuzzing", () => {
               expect([...label].length).toBeLessThanOrEqual(64);
               for (const c of label) {
                 const cp = c.codePointAt(0) as number;
+                // Controls, Unicode's Bidi_Control set, the deprecated format characters
+                // and the line and paragraph separators (security.md S11).
                 const bad =
                   cp <= 0x1f ||
                   (cp >= 0x7f && cp <= 0x9f) ||
-                  (cp >= 0x202a && cp <= 0x202e) ||
-                  (cp >= 0x2066 && cp <= 0x2069);
+                  cp === 0x061c ||
+                  cp === 0x200e ||
+                  cp === 0x200f ||
+                  (cp >= 0x2028 && cp <= 0x202e) ||
+                  (cp >= 0x2066 && cp <= 0x206f);
                 expect(bad, `U+${cp.toString(16)}`).toBe(false);
               }
             }

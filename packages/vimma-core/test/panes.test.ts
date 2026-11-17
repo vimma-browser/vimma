@@ -21,6 +21,7 @@ import {
   splitRefusal,
   MIN_RATIO,
   PaneError,
+  makeSplit,
 } from "../src/panes/panes.mjs";
 
 import type { Direction, LayoutRect, Leaf, PaneNode, Panes, Split } from "../src/panes/panes.mjs";
@@ -832,5 +833,106 @@ describe("hidden views and pickTab", () => {
     const h = hideView(view());
     expect(pickTab(h, "t9")).toEqual({ panes: h, change: "none" });
     expect(pickTab(h, "t9", { opened: true })).toEqual({ panes: h, change: "none" });
+  });
+});
+
+describe("pane edges", () => {
+  const thrown = (fn: () => unknown) => {
+    try {
+      fn();
+    } catch (e) {
+      return e as PaneError;
+    }
+    throw new Error("expected a throw");
+  };
+
+  test("errors carry their name, code and Vimma's message", () => {
+    const s = createRow(["a", "b"]);
+    const unknown = thrown(() => focusPane(s, "p9"));
+    expect([unknown.name, unknown.code, unknown.message]).toEqual([
+      "PaneError",
+      "unknown-pane",
+      'no pane "p9"',
+    ]);
+    expect(thrown(() => createRow([])).message).toBe("a row needs at least one tab");
+    expect(thrown(() => createRow(["a", "a"])).message).toBe("a tab can be shown in one pane only");
+    expect(thrown(() => split(s, "p1", "diagonal" as any, "c")).message).toBe(
+      'bad split direction "diagonal"',
+    );
+    expect(thrown(() => splitRefusal(s, "p1", "vertical", { max: 0 })).message).toBe(
+      "max panes must be a positive integer, got 0",
+    );
+    expect(thrown(() => split(s, "p1", "vertical", "b")).message).toBe(
+      'tab "b" is already shown in a pane',
+    );
+    expect(thrown(() => closePane(createPanes("a"), "p1")).message).toBe(
+      "cannot close the last pane",
+    );
+    expect(thrown(() => focus(s, "north" as any)).message).toBe('bad direction "north"');
+    expect(thrown(() => resize(s, "fatter" as any, 0.1)).message).toBe(
+      'bad resize direction "fatter"',
+    );
+    expect(thrown(() => resize(s, "wider", -1)).message).toBe(
+      "resize amount must be positive, got -1",
+    );
+    expect(thrown(() => setPaneTab(s, "p1", "b")).message).toBe(
+      'tab "b" is already shown in a pane',
+    );
+  });
+
+  test("a resize by nothing is refused", () => {
+    expect(thrown(() => resize(createRow(["a", "b"]), "wider", 0)).code).toBe("bad-amount");
+  });
+
+  test("the max-panes refusal counts panes in the singular and the plural", () => {
+    const one = createPanes("a");
+    expect(splitRefusal(one, "p1", "vertical", { max: 1 })?.message).toBe("at most 1 pane");
+    expect(splitRefusal(createRow(["a", "b"]), "p1", "vertical", { max: 2 })?.message).toBe(
+      "at most 2 panes",
+    );
+  });
+
+  test("a pane of exactly twice the smallest share still splits along its axis", () => {
+    const s = createRow(["a", "b"], { ratios: [0.2, 0.8] });
+    expect(splitRefusal(s, "p1", "vertical")).toBeNull();
+    expect(
+      splitRefusal(createRow(["a", "b"], { ratios: [0.19, 0.81] }), "p1", "vertical")?.code,
+    ).toBe("no-space");
+  });
+
+  test("a nested split on the same axis flattens only when every pane keeps the smallest share", () => {
+    const leaf = (pane: string) => ({ type: "leaf" as const, pane, tab: pane });
+    const lopsided = makeSplit("x", [leaf("a"), leaf("b")], [0.9, 0.1]);
+    const kept = makeSplit("x", [lopsided, leaf("c")], [0.5, 0.5]);
+    expect(kept).toMatchObject({ children: [lopsided, leaf("c")], ratios: [0.5, 0.5] });
+    const fits = makeSplit("x", [leaf("a"), leaf("b")], [0.2, 0.8]);
+    expect(makeSplit("x", [fits, leaf("c")], [0.5, 0.5])).toMatchObject({
+      children: [leaf("a"), leaf("b"), leaf("c")],
+      ratios: [0.1, 0.4, 0.5],
+    });
+  });
+
+  test("the last pane of a row ends at the area's edge, not at a rounded one", () => {
+    const rects = layout(createRow(["a", "b"]), { x: 0, y: 0, width: 100.4, height: 10 });
+    expect(rects.map((r) => r.rect.width)).toEqual([50, 50.400000000000006]);
+    expect(rects[1]?.rect.x).toBe(50);
+  });
+
+  // y[x[a, b], x[c, d]], each row split at the middle: a's corner meets d's.
+  const grid = () => {
+    let s = createPanes("a");
+    s = split(s, "p1", "horizontal", "c");
+    s = split(s, "p1", "vertical", "b");
+    s = split(s, "p2", "vertical", "d");
+    // Most recent: d, then a (diagonal from d), then the others.
+    return focusPane(focusPane(s, "p1"), "p4");
+  };
+
+  test("a pane touching only at a corner is no neighbour", () => {
+    const s = grid();
+    expect(s.mru.slice(0, 2)).toEqual(["p4", "p1"]);
+    expect(paneOfTab(s, "c")).toBe("p2");
+    expect(focus(s, "left").focus).toBe("p2");
+    expect(focus(s, "up").focus).toBe("p3");
   });
 });

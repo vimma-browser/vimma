@@ -265,7 +265,14 @@ export function planSetup(s) {
 
 /** "1.2M users" style, for the list. */
 export function formatUsers(/** @type {number} */ n) {
-  if (n >= 1e6) return `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M users`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}k users`;
+  // Round first, then pick the unit, so 999_999 reads as 1.0M rather than 1000k (#1190).
+  if (n >= 1e6 || Math.round(n / 1e3) >= 1000) return `${scaledUsers(n / 1e6)}M users`;
+  if (n >= 1e3) return `${scaledUsers(n / 1e3)}k users`;
   return `${n} users`;
+}
+
+/** One decimal below 10 of the unit, whole units from there: 9.9k, then 10k rather than 10.0k. */
+function scaledUsers(/** @type {number} */ x) {
+  const tenths = x.toFixed(1);
+  return Number(tenths) < 10 ? tenths : x.toFixed(0);
 }

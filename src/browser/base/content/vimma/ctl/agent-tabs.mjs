@@ -10,6 +10,7 @@
 // calls these before and after. It is its one importer (RESTRICTED in tools/layering/layers.ts).
 
 import { isBuiltinConn } from "../core/agent.mjs";
+import { agentTabTitle } from "../core/agent-keys.mjs";
 import { workspaceOfTab } from "../core/workspaces.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
@@ -150,6 +151,16 @@ export function tabUrl(tab) {
     // no session for it: what the browser says
   }
   return uri;
+}
+
+/**
+ * The tab's title as the agent may see it (security.md M21, #1209): core's agentTabTitle, with
+ * the URL the tab is at and the URL it is loading.
+ * @param {Tab} tab
+ */
+export function tabTitle(tab) {
+  const b = tab.linkedBrowser;
+  return agentTabTitle(tab.label, tab.labelIsContentTitle, tabUrl(tab), b?.userTypedValue);
 }
 
 /**

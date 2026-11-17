@@ -10,6 +10,7 @@ import {
   boundChords,
   canonicalChord,
   firefoxShortcuts,
+  isShortcutChord,
   pageFirst,
   planFirefoxKeys,
   planMenuKeys,
@@ -17,6 +18,7 @@ import {
 } from "../src/keys/firefox-keys.mjs";
 import { compileKeymap } from "../src/keys/keymap.mjs";
 import { insertEditCommand } from "../src/keys/editable.mjs";
+import { parseKey } from "../src/keys/keys.mjs";
 import { SUGGESTION_ACTIONS } from "../src/keys/suggestions.mjs";
 
 /** The modes whose keys type into a text field (keymap.mjs TEXT_FIELD_MODES). */
@@ -778,5 +780,50 @@ describe("planMenuKeys (macOS menu items of the keys that are off)", () => {
 
   test("an empty key is not a key", () => {
     expect(planMenuKeys([item("")], new Set([""]))).toEqual([]);
+  });
+});
+
+describe("xulKeyChord: each modifier is its own", () => {
+  test.each([
+    ["alt", "alt+x"],
+    ["shift", "shift+x"],
+    ["meta", "meta+x"],
+    ["control alt", "ctrl+alt+x"],
+  ])("modifiers %j make %s", (modifiers, chord) => {
+    expect(xulKeyChord({ key: "x", modifiers })).toBe(chord);
+  });
+
+  test("a modifier word it does not know adds no modifier", () => {
+    expect(xulKeyChord({ key: "x", modifiers: "access" })).toBe("x");
+  });
+
+  test("a key attribute wins over a keycode", () => {
+    expect(xulKeyChord({ key: "x", keycode: "VK_F5", modifiers: "accel" })).toBe("ctrl+x");
+  });
+});
+
+describe("isShortcutChord", () => {
+  test.each(["f1", "f10", "f12"])("function key %s can name a Firefox shortcut", (key) => {
+    expect(isShortcutChord(parseKey(key))).toBe(true);
+  });
+});
+
+describe("planFirefoxKeys: all, outside the inventory", () => {
+  test.each(["ctrl+9", "alt+q", "meta+;"])(
+    "a key Firefox defines on %s, missing from the inventory, is off",
+    (chord) => {
+      const key = { chord };
+      expect(planFirefoxKeys([key], { disable: "all", enable: [] }).off).toEqual([key]);
+    },
+  );
+
+  test("a listed chord that Vimma also binds is matched, not reported unmatched", () => {
+    const key = { chord: "ctrl+shift+q" };
+    const plan = planFirefoxKeys(
+      [key],
+      { disable: ["ctrl+shift+q"], enable: [] },
+      { bound: new Set(["ctrl+shift+q"]) },
+    );
+    expect(plan).toEqual({ off: [key], unmatched: [] });
   });
 });

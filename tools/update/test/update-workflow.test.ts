@@ -182,7 +182,7 @@ describe("update-publish.yml", () => {
 
   it("grants nothing by default, and each job only what it needs", () => {
     expect(text).toMatch(/^permissions: \{\}$/m);
-    expect(permissionsOf(job("start"))).toEqual(["actions: write"]);
+    expect(permissionsOf(job("start"))).toEqual(["actions: write", "contents: read"]);
     expect(permissionsOf(job("prepare"))).toEqual(["contents: read", "pull-requests: read"]);
     expect(permissionsOf(job("sign"))).toEqual(["id-token: write"]);
     expect(permissionsOf(job("publish"))).toEqual(["contents: read"]);

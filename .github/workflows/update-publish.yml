@@ -131,13 +131,15 @@ env:
 
 jobs:
   # The run a published release starts executes this file as the release's tag has it, which a
-  # tag pushed on another commit could change; so it does nothing but start main's copy.
+  # tag pushed on another commit could change; so it does nothing but start main's copy. Its
+  # token reads the release's metadata (contents: read), against the API's rate limit (#1170).
   start:
     if: github.event_name == 'release' && github.repository == 'vimma-browser/vimma'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       actions: write # start this workflow on main
+      contents: read # the release's metadata, read with this job's token
     env:
       GH_TOKEN: ${{ github.token }}
       UPDATES_ENABLED: ${{ vars.UPDATES_ENABLED }}
@@ -156,7 +158,10 @@ jobs:
           # The release's metadata, never the file: GitHub counts any request for a release file,
           # a HEAD too, as a download (docs/runbook/ci-release-download-counts.md, "Release download counts"). A draft
           # answers 404 here, as at its download URLs.
+          # With the job's token: without one, the runner shares GitHub's 60 requests an hour per IP,
+          # and a 403 is that limit, not the answer (#1170). curl --retry waits out a 429.
           code=$(curl -sS --proto =https --retry 3 -o "$RUNNER_TEMP/release.json" -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_TOKEN" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG") || true
           case "$code" in
             200) jq -e '.assets | type == "array"' "$RUNNER_TEMP/release.json" > /dev/null 2>&1 \

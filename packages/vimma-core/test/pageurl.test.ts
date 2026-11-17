@@ -250,3 +250,66 @@ describe("inputIndex (gi)", () => {
     expect(inputIndex(4, 0)).toBe(-1);
   });
 });
+
+describe("pageurl edges", () => {
+  test("a URL with an empty path has no root to walk to", () => {
+    expect(urlRoot("git://example.com")).toBeNull();
+    expect(urlUp("git://example.com")).toBeNull();
+    expect(urlRoot("git://example.com?q=1")).toBe("git://example.com");
+  });
+
+  test("a URL without a special scheme keeps its leading slash at the root", () => {
+    expect(urlRoot("foo://host/a/b")).toBe("foo://host/");
+    expect(urlUp("foo://host/a/b")).toBe("foo://host/a/");
+  });
+
+  test("a drive-like first segment is a drive only in a file: URL", () => {
+    expect(urlRoot("https://example.com/C:/a/b")).toBe("https://example.com/");
+    expect(urlUp("https://example.com/C:/a")).toBe("https://example.com/C:/");
+  });
+
+  test("a drive must start the path", () => {
+    expect(urlRoot("file:///x/C:/y")).toBe("file:///");
+  });
+
+  test("a bare drive is a root, given its slash", () => {
+    expect(urlRoot("file:///C:")).toBe("file:///C:/");
+  });
+
+  test("the segments counted on a file: URL start after its drive", () => {
+    expect(urlUp("file:///C:/a/b")).toBe("file:///C:/a/");
+    expect(urlUp("file:///C:/a/b", 2)).toBe("file:///C:/");
+  });
+
+  test("controls are stripped only before the scheme, not inside it", () => {
+    expect(refusedScheme("java script:alert(1)")).toBeNull();
+    expect(refusedScheme("java\u0001script:alert(1)")).toBeNull();
+    expect(refusedScheme(" \u0001javascript:alert(1)")).toBe("javascript");
+  });
+
+  test("text of exactly the limit is still opened", () => {
+    const word = `a.${"b".repeat(MAX_CLIPBOARD_CHARS - 2)}`;
+    expect(classifyClipboard(word)).toEqual({ kind: "url", text: word });
+    expect(classifyClipboard(`${word}c`)).toEqual({
+      kind: "refused",
+      reason: `over ${MAX_CLIPBOARD_CHARS} characters`,
+    });
+  });
+
+  test("the refusal names the scheme", () => {
+    expect(classifyClipboard("JavaScript:alert(1)")).toEqual({
+      kind: "refused",
+      reason: "javascript: URL",
+    });
+    expect(classifyClipboard("data:text/html,x")).toEqual({ kind: "refused", reason: "data: URL" });
+  });
+
+  test("a scheme must start the word", () => {
+    expect(classifyClipboard("1foo:bar")).toEqual({ kind: "search", text: "1foo:bar" });
+  });
+
+  test("a negative field count means no field", () => {
+    expect(inputIndex(1, -2)).toBe(-1);
+    expect(inputIndex(undefined, -1)).toBe(-1);
+  });
+});

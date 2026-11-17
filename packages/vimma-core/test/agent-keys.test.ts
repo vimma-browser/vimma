@@ -6,14 +6,22 @@ import {
   AGENT_KEY_ACTIONS,
   AGENT_KEY_LIMITS,
   AGENT_LINKS,
+  CONTROL,
+  UNSHOWN,
   agentLinkLines,
   agentLinkList,
+  agentTabTitle,
+  agentTitle,
+  agentUrl,
+  markdownWithoutUserinfo,
   labelAgentLinks,
   labelsCurrent,
   parseAgentKeys,
   refusalReason,
   shownKeys,
 } from "../src/agent/agent-keys.mjs";
+import { FILL_INVISIBLE } from "../src/agent/agent-act.mjs";
+import { budget } from "./budget.ts";
 import { DEFAULT_HINT_CHARS, hintLabels } from "../src/page/hints.mjs";
 import { compileKeymap } from "../src/keys/keymap.mjs";
 
@@ -209,6 +217,31 @@ describe("links (D12)", () => {
     expect(refusalReason("hint.follow_new_tab_fg")).toBe(refusalReason("hint.follow_new_tab"));
   });
 
+  // Issue #1212: the action is looked up by its id, not its config name.
+  test.each([
+    ["Browser", "app.quit"],
+    ["Browser", "page.stop"],
+    ["Developer tools", "devtools.toggle"],
+    ["Bookmarks", "bookmark.add"],
+    ["Config", "config.reload"],
+    ["Add-ons", "addons.picker"],
+    ["Help", "help.show"],
+    ["Agents", "mcp.answer"],
+  ])("an action of the %s group is refused as the user's own (M16)", (_group, id) => {
+    expect(refusalReason(id)).toBe("the browser's own tools and settings are the user's");
+  });
+
+  test("esc (page.stop) is refused as the user's own", () => {
+    expect(refusal("esc")).toBe(
+      `key "<esc>" (page.stop) is refused: the browser's own tools and settings are the user's`,
+    );
+  });
+
+  test("an action of no user group, or no action, gets the generic reason", () => {
+    expect(refusalReason("site.permissions")).toBe("it is not one of the keys vimma_keys runs");
+    expect(refusalReason("no.such_action")).toBe("it is not one of the keys vimma_keys runs");
+  });
+
   test("an upper-case character after f is not part of the label", () => {
     expect(steps("fsG")).toEqual([
       { keys: "fs", action: "hint.follow", label: "s" },
@@ -311,6 +344,20 @@ describe("link lists (D12, D16; security.md M21)", () => {
     const bidi = labelAgentLinks([at(0, 0, "javascript:x\u202e//", "t")]).links;
     expect(agentLinkLines(bidi)).toBe('a "t" javascript:x//');
   });
+
+  test("every character a fill refuses as invisible is dropped from link text and hrefs (M21)", () => {
+    // The ends of each FILL_INVISIBLE range (U+206A to U+206F among them, #1205); the line and
+    // paragraph separators are white space, which a link's text collapses and its href drops.
+    for (const [lo, hi] of FILL_INVISIBLE) {
+      for (const cp of [lo, hi]) {
+        const c = String.fromCodePoint(cp);
+        const space = cp === 0x2028 || cp === 0x2029;
+        const { links } = labelAgentLinks([at(0, 0, `https://a/x${c}y`, `a${c}b`)]);
+        const hex = cp.toString(16);
+        expect(agentLinkLines(links), hex).toBe(`a "${space ? "a b" : "ab"}" https://a/xy`);
+      }
+    }
+  });
 });
 
 describe("the link list's size (review: the reply must fit the protocol's line)", () => {
@@ -390,6 +437,55 @@ describe("the limits (D15, M20)", () => {
       expect(refusal(`/a${c}b<CR>`)).toContain("control characters");
     }
   });
+
+  test("every character a fill refuses as invisible is refused in keys (M16)", () => {
+    // The ends of each FILL_INVISIBLE range: U+206A to U+206F among them (#1205), which drew
+    // nothing, so "/foo\u206abar<CR>" was asked as a find of "foobar".
+    for (const [lo, hi] of FILL_INVISIBLE) {
+      for (const cp of [lo, hi]) {
+        const c = String.fromCodePoint(cp);
+        expect(refusal(`/foo${c}bar<CR>`), cp.toString(16)).toContain("control characters");
+        expect(refusal(`j${c}`), cp.toString(16)).toContain("control characters");
+      }
+    }
+  });
+});
+
+describe("the refused and dropped characters (M16, M21; review of #1205)", () => {
+  type Ranges = readonly (readonly [number, number])[];
+  /** One byte a code point: 1 where `ranges` hold it. */
+  const table = (ranges: Ranges) => {
+    const t = new Uint8Array(0x110000);
+    for (const [lo, hi] of ranges) t.fill(1, lo, hi + 1);
+    return t;
+  };
+  /** The code points where `actual` and `expected` disagree, every code point checked. */
+  const differences = (actual: Ranges, expected: (cp: number) => boolean) => {
+    const t = table(actual);
+    const out: string[] = [];
+    for (let cp = 0; cp < t.length; cp++) {
+      if (t[cp] !== (expected(cp) ? 1 : 0)) out.push(cp.toString(16));
+    }
+    return out;
+  };
+  const fill = table(FILL_INVISIBLE);
+  const invisible = (cp: number) => fill[cp] === 1;
+
+  test("keys refuse C0 but the tab, C1 and FILL_INVISIBLE, and nothing else", () => {
+    const expected = (cp: number) =>
+      (cp <= 0x1f && cp !== 0x09) || (cp >= 0x7f && cp <= 0x9f) || invisible(cp);
+    expect(differences(CONTROL, expected)).toEqual([]);
+  });
+
+  test("links drop C0 but white space, C1 and FILL_INVISIBLE but the separators, and no more", () => {
+    // The tab, line feed, vertical tab, form feed, carriage return and U+2028, U+2029 are white
+    // space: a link's text collapses them and its href drops them.
+    const expected = (cp: number) =>
+      (cp <= 0x1f && (cp < 0x09 || cp > 0x0d)) ||
+      (cp >= 0x7f && cp <= 0x9f) ||
+      (invisible(cp) && cp !== 0x2028 && cp !== 0x2029);
+    expect(differences(UNSHOWN, expected)).toEqual([]);
+  });
 });
 
 describe("the keys as the question shows them (D14)", () => {
@@ -432,5 +528,284 @@ describe("how long labels last (D12; mcp-forms F3; issue #591)", () => {
   test("a shorter link lifetime can be given (tests)", () => {
     expect(labelsCurrent({ mark, at, source: "links" }, later(0), 0)).toBe(false);
     expect(labelsCurrent({ mark, at, source: "elements" }, later(0), 0)).toBe(true);
+  });
+});
+
+// Issue #1119: what the weekly mutation run left unpinned.
+describe("vimma_keys edges", () => {
+  test("an exact name in a refusal group is not a prefix: page.open_clipboard is the clipboard's", () => {
+    expect(refusalReason("page.open_clipboard")).toBe("the clipboard is the user's");
+    expect(refusalReason("no.such_action")).toBe("it is not one of the keys vimma_keys runs");
+  });
+
+  test("a refused key is named as Vim writes it, every modifier included", () => {
+    expect(refusal("meta+j")).toBe(
+      'key "<M-j>" is refused: it is not one of the keys vimma_keys runs',
+    );
+    expect(refusal("ctrl+alt+x")).toBe(
+      'key "<C-A-x>" is refused: it is not one of the keys vimma_keys runs',
+    );
+  });
+
+  test("a word of two characters or more that names one key is that key", () => {
+    expect(refusal("f1")).toBe('key "<f1>" is refused: it is not one of the keys vimma_keys runs');
+    // Only the key's name: page.stop's reason is #1212's.
+    expect(refusal("esc")).toMatch(/^key "<esc>" \(page\.stop\) is refused: /);
+  });
+
+  test("a word with other characters after a key's name is a run of keys", () => {
+    expect(refusal("ctrl+j!")).toBe(
+      'key "c" is refused: it is not one of the keys vimma_keys runs',
+    );
+  });
+
+  test("the prefix and the leader are named as such", () => {
+    const why = "the prefix, the leader and their bindings are the user's";
+    expect(refusal("prefix+x")).toBe(`key "prefix" is refused: ${why}`);
+    expect(refusal("<leader>x")).toBe(`key "<leader>" is refused: ${why}`);
+  });
+
+  test("keys of exactly the character limit are taken", () => {
+    const keys = `j${" ".repeat(AGENT_KEY_LIMITS.chars - 1)}`;
+    expect(ids(keys)).toEqual(["scroll.down"]);
+  });
+
+  test("a < with no > after it in its word is the < key", () => {
+    const why = "it is not one of the keys vimma_keys runs";
+    expect(refusal("<")).toBe(`key "<" is refused: ${why}`);
+    expect(refusal("j<")).toBe(`key "<" is refused: ${why}`);
+    expect(refusal("<x >")).toBe(`key "<" is refused: ${why}`);
+  });
+
+  test("a label that is too long is named with its f", () => {
+    expect(refusal("fsdfsdfsdx")).toBe(
+      `key "fsdfsdfsd" is refused: a label is at most ${AGENT_LINKS.label} characters`,
+    );
+  });
+
+  test("a tab in a find query is refused", () => {
+    expect(refusal("/a\tb<CR>")).toBe(
+      'key "/" is refused: a find query must not contain control characters',
+    );
+  });
+
+  test("keys after a find's <CR> are keys again, up to the next space and after it", () => {
+    expect(ids("/foo<CR>n j")).toEqual(["find.forward", "find.next", "scroll.down"]);
+    expect(ids("/foo<CR>n")).toEqual(["find.forward", "find.next"]);
+  });
+});
+
+describe("vimma_keys edges: tokens", () => {
+  test("a word that looks like one key but is none is refused as no key", () => {
+    expect(refusal("ctrl+")).toBe('key "ctrl+" is refused: it is not a key');
+  });
+
+  test("a <...> that names no key is refused as no key, after another token too", () => {
+    expect(refusal("<zzz>")).toBe('key "<zzz>" is refused: it is not a key');
+    expect(refusal("<C-d><zzz>")).toBe('key "<zzz>" is refused: it is not a key');
+  });
+
+  test("after a token, a < whose > is missing or past a space is the < key", () => {
+    const why = 'key "<" is refused: it is not one of the keys vimma_keys runs';
+    expect(refusal("<C-d><")).toBe(why);
+    expect(refusal("<C-d><x >")).toBe(why);
+  });
+});
+
+describe("link list edges", () => {
+  const rect = { x: 0, y: 0, width: 10, height: 10 };
+  test("a text of exactly AGENT_LINKS.text characters is not cut", () => {
+    const text = "t".repeat(AGENT_LINKS.text);
+    expect(agentLinkLines([{ label: "a", target: { rect, href: "https://a/", text } }])).toBe(
+      `a "${text}" https://a/`,
+    );
+  });
+
+  test("a link with no text is an empty string; spaces in an href are dropped", () => {
+    expect(agentLinkLines([{ label: "a", target: { rect, href: "https://a/ b\tc" } }])).toBe(
+      'a "" https://a/bc',
+    );
+  });
+
+  test("the byte budget counts each line and the line break between two exactly", () => {
+    const links = [
+      { label: "a", target: { rect, href: "https://a/", text: "x" } },
+      { label: "s", target: { rect, href: "https://b/", text: "y" } },
+    ];
+    const one = agentLinkLines(links.slice(0, 1));
+    const both = agentLinkLines(links);
+    const size = (s: string) => new TextEncoder().encode(JSON.stringify(s)).length;
+    expect(agentLinkList(links, size(one))).toEqual({ text: one, omitted: 1 });
+    expect(agentLinkList(links, size(one) - 1)).toEqual({ text: "", omitted: 2 });
+    expect(agentLinkList(links, size(both))).toEqual({ text: both, omitted: 0 });
+    expect(agentLinkList(links, size(both) - 1)).toEqual({ text: one, omitted: 1 });
+  });
+});
+
+describe("URLs without user names and passwords (security.md M21, #1209)", () => {
+  const at = (href: string) => ({ rect: { x: 0, y: 0, width: 10, height: 10 }, href, text: "t" });
+  const lineOf = (href: string) => agentLinkLines(labelAgentLinks([at(href)]).links);
+
+  test("a link's href loses its user name and password", () => {
+    expect(lineOf("https://ada:secret@example.com/p")).toBe('a "t" https://example.com/p');
+    expect(lineOf("https://ada@x:secret@example.com/p")).toBe('a "t" https://example.com/p');
+    expect(lineOf("http:\\\\ada:secret@example.com\\p")).toBe('a "t" http:\\\\example.com\\p');
+    expect(lineOf("https://ada:secret＠example.com/p")).toBe('a "t" https://example.com/p');
+    expect(lineOf("view-source:https://ada:secret@example.com/")).toBe(
+      'a "t" view-source:https://example.com/',
+    );
+  });
+
+  test("a user name and password longer than the cut are dropped before it", () => {
+    const long = `https://ada:${"s".repeat(3 * AGENT_LINKS.href)}@example.com/p`;
+    expect(lineOf(long)).toBe('a "t" https://example.com/p');
+    const huge = `https://ada:${"s".repeat(5 * AGENT_LINKS.href)}@example.com/p`;
+    expect(lineOf(huge)).toBe('a "t" https://…');
+  });
+
+  test("a read page's markdown links lose their user names and passwords", () => {
+    const md = [
+      "Intro [Plans](https://ada:secret@example.com/plans) and",
+      "[Docs](http://ada@x:secret@docs.example/a?b=c@d) [Here](/rel)",
+      "![logo](https://ada:secret@example.com/l.png) a:b@c.example stays as text",
+    ].join("\n");
+    expect(markdownWithoutUserinfo(md)).toBe(
+      [
+        "Intro [Plans](https://example.com/plans) and",
+        "[Docs](http://docs.example/a?b=c@d) [Here](/rel)",
+        "![logo](https://example.com/l.png) a:b@c.example stays as text",
+      ].join("\n"),
+    );
+    // Text that is no link target keeps its white space.
+    expect(markdownWithoutUserinfo("a](https://a:b@c/\nd) e](f\tg)")).toBe(
+      "a](https://a:b@c/\nd) e](f\tg)",
+    );
+    // Work is bounded however long the text.
+    const many = "[x](https://a:b@e.example/) ".repeat(100_000);
+    expect(markdownWithoutUserinfo(many)).not.toContain("a:b@");
+  });
+
+  // Firefox's DOMExtractor.sys.mjs escapeMarkdownLink, byte for byte: a block anchor that wraps
+  // inline anchors (the Google search strategy) runs it over text already holding `[a](href)`.
+  // It puts a backslash before each bracket and parenthesis of the text and leaves backslashes
+  // unescaped, and percent-encodes the href's parentheses. Mapped one character at a time, as
+  // the regex replace Firefox uses reads as an incomplete sanitizer (CodeQL
+  // js/incomplete-sanitization).
+  const escapeMarkdownLink = (text: string, url: string): string => {
+    const escaped = Array.from(text, (c) => ("[]()".includes(c) ? `\\${c}` : c)).join("");
+    const href = Array.from(url, (c) => (c === "(" ? "%28" : c === ")" ? "%29" : c)).join("");
+    return `[${escaped}](${href})`;
+  };
+
+  test("a link nested in another link's text loses its user name and password (#1217)", () => {
+    const inner = escapeMarkdownLink("a", "https://ada:secret@www.google.com/x");
+    const once = escapeMarkdownLink(`${inner} b`, "https://ada:secret@www.google.com/y");
+    expect(once).toBe(
+      "[\\[a\\]\\(https://ada:secret@www.google.com/x\\) b](https://ada:secret@www.google.com/y)",
+    );
+    expect(markdownWithoutUserinfo(once)).toBe(
+      "[\\[a\\]\\(https://www.google.com/x\\) b](https://www.google.com/y)",
+    );
+    // Nested twice, the escapes pile up; IPv6 brackets in the href are escaped too.
+    const twice = escapeMarkdownLink(
+      escapeMarkdownLink(escapeMarkdownLink("c", "http://u:p@[::1]/z(1)"), "/r"),
+      "/s",
+    );
+    const out = markdownWithoutUserinfo(twice);
+    expect(out).not.toContain("u:p@");
+    expect(out).toBe(twice.replace("u:p@", ""));
+    expect(markdownWithoutUserinfo("\\[i\\]\\(foo://ada:secret@h\\x\\)")).toBe(
+      "\\[i\\]\\(foo://h\\x\\)",
+    );
+  });
+
+  test("a read page's link targets are found in linear time (CodeQL js/polynomial-redos)", () => {
+    const start = performance.now();
+    const open = `](${"\\".repeat(200_000)}`;
+    expect(markdownWithoutUserinfo(open)).toBe(open);
+    const runs = `]\\(${"\\".repeat(200_000)}x`.repeat(2);
+    expect(markdownWithoutUserinfo(runs)).toBe(runs);
+    expect(performance.now() - start).toBeLessThan(budget(1000));
+    // Backslashes before the closing parenthesis stay as they were.
+    expect(markdownWithoutUserinfo("]\\(https://a:b@h/x\\\\\\)")).toBe("]\\(https://h/x\\\\\\)");
+  });
+
+  test("text that is no link target is left byte for byte, URLs and emails too", () => {
+    const text = [
+      "Mail bob@example.com or ada:secret@example.com, see https://ada:secret@example.com/ here.",
+      "`git clone ssh://git@github.com/a/b` and `\\](https://a:b@c/ x)` stay; so does mailto:bob@example.com.",
+      "\\[not a link\\] \\(https://ada:secret@example.com/ x\\) and \\](a b@c\\) and ](\\u00e9)",
+      "Caf\u00e9 \u2014 \u{1f600} \\\\ \\] \\( \\) [] () ](",
+    ].join("\n");
+    expect(markdownWithoutUserinfo(text)).toBe(text);
+  });
+
+  test("agentUrl takes the cut it is given", () => {
+    expect(agentUrl("https://ada:secret@example.com/abcdef", 22)).toBe("https://example.com/a…");
+  });
+});
+
+describe("tab titles without user names and passwords (security.md M21, #1209)", () => {
+  // Firefox's #setTabLabel for a label made of a URL: no scheme or www., at most 256 characters.
+  const firefoxLabel = (url: string) => url.replace(/^[^:]+:\/\/(?:www\.)?/, "").slice(0, 256);
+
+  test("a label Firefox made of a URL is the tab's URL without them, as Firefox shows it", () => {
+    const url = "https://ada:secret@www.example.com/a?b";
+    expect(agentTabTitle(firefoxLabel(url), false, url)).toBe("example.com/a?b");
+    // Clamped at 256 characters, a long password leaves no at sign in the label.
+    const jwt = `eyJ${"x".repeat(400)}`;
+    const long = `https://ci:${jwt}@registry.example.com/v2/`;
+    expect(firefoxLabel(long)).not.toContain("@");
+    expect(agentTabTitle(firefoxLabel(long), false, long)).toBe("registry.example.com/v2/");
+    // An untitled page keeps the label of the URL it was opened at after a redirect.
+    const opened = "https://ada:secret@example.com/file.txt";
+    const now = "https://cdn.example.net/file.txt";
+    expect(agentTabTitle(firefoxLabel(opened), false, now)).toBe("cdn.example.net/file.txt");
+    // A new tab still at about:blank: the URL it is loading, which Firefox keeps as typed.
+    expect(agentTabTitle(firefoxLabel(opened), false, "about:blank", opened)).toBe(
+      "example.com/file.txt",
+    );
+    expect(agentTabTitle("New Tab", false, "about:blank", null)).toBe("about:blank");
+    expect(agentTabTitle(firefoxLabel(opened), false, now, "https://elsewhere.example/")).toBe(
+      "cdn.example.net/file.txt",
+    );
+    // A label of unknown kind is taken for one made of a URL.
+    expect(agentTabTitle(firefoxLabel(opened), undefined, now)).toBe("cdn.example.net/file.txt");
+  });
+
+  test("a page's own title is its own, but a URL in it loses them", () => {
+    const url = "https://ada:secret@example.com/a";
+    expect(agentTabTitle("Plans and pricing", true, url)).toBe("Plans and pricing");
+    expect(agentTabTitle("https://ada:secret@example.com/", true, url)).toBe(
+      "https://example.com/",
+    );
+    // No guess at a title without a scheme: it is the page's text.
+    expect(agentTabTitle("bob@example.com", true, url)).toBe("bob@example.com");
+  });
+
+  test("a title that is a URL loses its user name and password", () => {
+    expect(agentTitle("https://ada:secret@example.com/")).toBe("https://example.com/");
+    expect(agentTitle("  http://ada@x:secret@example.com/a?b")).toBe("http://example.com/a?b");
+    expect(agentTitle("https://ada:secret\uff20example.com/")).toBe("https://example.com/");
+    expect(agentTitle("view-source:https://ada:secret@example.com/")).toBe(
+      "view-source:https://example.com/",
+    );
+    const long = `https://ada:${"s".repeat(5000)}@example.com/`;
+    expect(agentTitle(long)).toBe("https://example.com/");
+  });
+
+  test("any other title is left as the page wrote it", () => {
+    for (const title of [
+      "Plans and pricing",
+      "Note: read me",
+      "Mail ada:secret@example.com now",
+      "https://ada:secret@example.com/ is my address",
+      "",
+      "\u202eflipped",
+      "ada:secret@example.com/a",
+      "mailto:ada@example.com",
+    ]) {
+      expect(agentTitle(title)).toBe(title);
+    }
   });
 });

@@ -51,8 +51,9 @@ export const OWN_TOOL_GLYPH = "◆";
  * C0 and C1 controls but tab and line feed, and the bidi controls, which could make a line of
  * the model's read in another order than it is stored (security.md M4).
  */
-// eslint-disable-next-line no-control-regex -- the control characters are what it removes
-const UNSAFE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g;
+const UNSAFE =
+  // eslint-disable-next-line no-control-regex -- the control characters are what it removes
+  /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 
 /**
  * The user's or the model's text as the window shows it: line breaks and tabs kept, `\r\n` as

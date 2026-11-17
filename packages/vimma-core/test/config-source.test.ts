@@ -1,7 +1,7 @@
 // `:source <path>` and `:config` (spec m5-config-load, § `:source <path>` and `:config`).
 import { describe, test, expect } from "vitest";
 import { parseConfig, resolveSourcePath } from "../src/config/config.mjs";
-import { formatConfigTemplate } from "../src/config/defaults.mjs";
+import { formatConfigTemplate, formatDefaultsToml } from "../src/config/defaults.mjs";
 import { bindingTable } from "../src/ui/help.mjs";
 import { MODES } from "../src/keys/modes.mjs";
 
@@ -89,5 +89,27 @@ describe("formatConfigTemplate", () => {
     expect(said).toMatch(/:config\b.*opens this file/);
     expect(said).toContain("ctrl+b ?");
     expect(said).toMatch(/remove the `# `/);
+  });
+});
+
+describe("formatConfigTemplate, line by line", () => {
+  test("defaults.toml after its header, each setting commented out, blank lines and headers kept", () => {
+    const template = formatConfigTemplate().split("\n");
+    const header = 6;
+    expect(template[0]).toBe(
+      "# Vimma config. Every line below is a default, commented out, so this file changes nothing.",
+    );
+    expect(template[header - 1]).toBe(
+      "# Reference: the user guide's config.toml section (docs/guide.md).",
+    );
+    const defaults = formatDefaultsToml().split("\n").slice(3);
+    expect(template.slice(header)).toHaveLength(defaults.length);
+    defaults.forEach((line, i) => {
+      const kept = line === "" || /^(#|\[|schema = )/.test(line);
+      expect(template[header + i], line).toBe(kept ? line : `# ${line}`);
+    });
+    expect(defaults).toContain("");
+    expect(defaults.some((l) => l.startsWith("["))).toBe(true);
+    expect(defaults.some((l) => l.startsWith("#"))).toBe(true);
   });
 });

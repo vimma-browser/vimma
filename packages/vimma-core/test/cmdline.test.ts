@@ -655,3 +655,167 @@ describe(":{n} (docs/specs/pdf-mode.md Behaviour 2)", () => {
     });
   });
 });
+
+describe("parseCommandLine: messages and edges", () => {
+  test("an ambiguous abbreviation lists its commands", () => {
+    expect(errorOf("ta")).toEqual({
+      code: "ambiguous-command",
+      message: 'ambiguous command "ta": tabnew, tabrename, tabsearch',
+      suggestions: ["tabnew", "tabrename", "tabsearch"],
+    });
+  });
+
+  test("errors that suggest nothing say so with an empty list", () => {
+    expect(errorOf("open")).toEqual({
+      code: "missing-argument",
+      message: ":open needs an argument",
+      suggestions: [],
+    });
+    expect(errorOf("quit x")).toEqual({
+      code: "unexpected-argument",
+      message: ":q takes no argument",
+      suggestions: [],
+    });
+    expect(errorOf("map x").message).toBe(
+      ":map takes no argument; bindings are set in config.toml",
+    );
+  });
+
+  test("a lone quote is the argument itself, not an empty pair", () => {
+    expect(parseCommandLine('open "')).toEqual(run("open", "page.open", { text: '"' }));
+  });
+
+  test("only quotes unwrap an argument, not any character that starts and ends it", () => {
+    expect(parseCommandLine("open xyzx")).toEqual(run("open", "page.open", { text: "xyzx" }));
+  });
+
+  test("an action named with an argument says it takes none", () => {
+    expect(errorOf("new_tab x").message).toBe(":new_tab takes no argument");
+  });
+
+  test("an unknown word suggests at most three words it begins", () => {
+    expect(errorOf("caret_").suggestions).toEqual(["caret_browsing", "caret_left", "caret_down"]);
+  });
+
+  test("a page number has at most six digits and nothing after them", () => {
+    expect(errorOf("1234567").code).toBe("unknown-command");
+    expect(errorOf("12x").code).toBe("unknown-command");
+    expect(parseCommandLine("123456")).toEqual({
+      kind: "run",
+      command: "123456",
+      action: { id: "pdf.first_page", count: 123456 },
+    });
+  });
+
+  test("an action run by name carries only its id when it has no argument", () => {
+    expect(parseCommandLine("new_tab")).toStrictEqual({
+      kind: "run",
+      command: "new_tab",
+      action: { id: "tab.new" },
+    });
+  });
+});
+
+describe("parseCommandLine: hidden actions", () => {
+  test("a hidden action's name neither runs nor is suggested", () => {
+    expect(errorOf("new_tab", { hidden: ["tab.new"] }).code).toBe("unknown-command");
+    expect(errorOf("new_tabb", { hidden: ["tab.new"] }).suggestions).not.toContain("new_tab");
+  });
+
+  test("a word whose command is hidden runs its action's meaning", () => {
+    expect(parseCommandLine("downloads", { hidden: ["downloads.picker"] })).toEqual(
+      run("downloads", "browser.downloads"),
+    );
+  });
+
+  test("a word stays a suggestion while one of its meanings is shown", () => {
+    for (const hidden of [["downloads.picker"], ["browser.downloads"]]) {
+      expect(errorOf("downloadz", { hidden }).suggestions).toEqual(["downloads"]);
+    }
+  });
+
+  test("a command is hidden when either of its actions is, abbreviated or not", () => {
+    expect(errorOf("grep", { hidden: ["grep.open"] }).code).toBe("unknown-command");
+    expect(errorOf("gre", { hidden: ["grep.open"] }).code).toBe("unknown-command");
+  });
+});
+
+describe("completeCommandLine: order and limits", () => {
+  const values = (line: string, options?: Parameters<typeof completeCommandLine>[1]) =>
+    completeCommandLine(line, options).candidates.map((c) => c.value);
+
+  test("an exact match comes before the longer words it begins", () => {
+    expect(values("addon")[0]).toBe("addon");
+  });
+
+  test("loose matches rank by the span they cover, then where it starts", () => {
+    expect(values("dl", { limit: 6 })).toEqual([
+      "wsdelete",
+      "command_line",
+      "bookmarks_delete",
+      "dual",
+      "pdf_last_page",
+      "downloads",
+    ]);
+  });
+
+  test("loose matches of the same span rank by where they start", () => {
+    expect(values("ach")).toEqual(["web_search", "agent_chat", "tabsearch", "caret_first_char"]);
+  });
+
+  test("arguments that score the same keep the host's order", () => {
+    expect(values("workspace ab", { args: { workspace: ["ab2", "ab1", "abz"] } })).toEqual([
+      "workspace ab2",
+      "workspace ab1",
+      "workspace abz",
+    ]);
+  });
+
+  test("a blank argument lists every name, and the limit applies", () => {
+    expect(values("layout  ")).toHaveLength(values("layout ").length);
+    expect(values("layout ", { limit: 1 })).toHaveLength(1);
+  });
+
+  test("a word after a non-command completes nothing", () => {
+    expect(values("nosuch x")).toEqual([]);
+  });
+
+  const search = [
+    { name: "@gh", description: "GitHub" },
+    { name: "@g", description: "Google" },
+  ];
+
+  test("search aliases complete while the alias is the only word, up to the limit", () => {
+    expect(completeCommandLine("open @g", { args: { search }, limit: 1 }).candidates).toEqual([
+      { value: "open @gh ", kind: "argument", description: "GitHub", label: "@gh" },
+    ]);
+    expect(values("open x @g", { args: { search } })).toEqual([]);
+    expect(values("open @g x", { args: { search } })).toEqual([]);
+  });
+
+  test("a hidden action's name is left out while its command stays", () => {
+    const kinds = completeCommandLine("downloads", { hidden: ["browser.downloads"] })
+      .candidates.filter((c) => c.value === "downloads")
+      .map((c) => c.kind);
+    expect(kinds).toEqual(["command"]);
+  });
+});
+
+describe("history: edges", () => {
+  test("a limit of one is allowed; less is refused with the value", () => {
+    expect(createHistory({ limit: 1 }).limit).toBe(1);
+    expect(() => createHistory({ limit: 0 })).toThrow(
+      new RangeError("history limit must be a positive integer, got 0"),
+    );
+  });
+
+  test("a new history has no draft", () => {
+    expect(createHistory().draft).toBe("");
+  });
+
+  test("a repeated line keeps only its newest copy, and a blank line is not stored", () => {
+    let h = createHistory();
+    for (const l of ["a", "b", "a", "   "]) h = pushHistory(h, l);
+    expect(h.entries).toEqual(["b", "a"]);
+  });
+});

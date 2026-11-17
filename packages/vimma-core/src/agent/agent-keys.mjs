@@ -10,7 +10,7 @@
  * link list `f` returns: its labels and its lines.
  */
 
-import { getAction } from "../keys/actions.mjs";
+import { ACTIONS } from "../keys/actions.mjs";
 import { DEFAULT_CONFIG } from "../config/defaults.mjs";
 import { createDispatcher } from "../keys/dispatcher.mjs";
 import { DEFAULT_HINT_CHARS, hintLabels, orderTargets } from "../page/hints.mjs";
@@ -45,6 +45,12 @@ export const AGENT_KEY_ACTIONS = Object.freeze(
 
 /** D15: the keys' length, actions per call, a count, a find query. */
 export const AGENT_KEY_LIMITS = Object.freeze({ chars: 512, actions: 32, count: 99, query: 256 });
+
+/**
+ * The longest page URL a reply carries, in code points: a tab's in `vimma_tabs`, and the page's
+ * after a read, a list, a step, a screenshot or a console read. agentUrl cuts it (security.md M7).
+ */
+export const AGENT_PAGE_URL_MAX = 8192;
 
 /**
  * D12: at most `max` links a list, each link's text cut at `text` and its href at `href`
@@ -127,6 +133,9 @@ const USER_GROUPS = new Set([
   "Agents",
 ]);
 
+/** Each action id's group: getAction looks actions up by config name, not by id. */
+const GROUP_BY_ID = new Map(ACTIONS.map((a) => [a.id, a.group]));
+
 /**
  * Why `vimma_keys` refuses the action `id`.
  * @param {string} id
@@ -135,7 +144,7 @@ export function refusalReason(id) {
   for (const [names, why] of REASONS) {
     if (names.some((n) => (n.endsWith(".") ? id.startsWith(n) : id === n))) return why;
   }
-  const group = getAction(id)?.group;
+  const group = GROUP_BY_ID.get(id);
   if (group && USER_GROUPS.has(group)) return "the browser's own tools and settings are the user's";
   return "it is not one of the keys vimma_keys runs";
 }
@@ -173,10 +182,56 @@ function shownChord(c) {
 
 /** The end of a `/` or `?` query, in any case. */
 const QUERY_END = /<cr>/i;
-/** Control, bidirectional and invisible characters: the question must show what runs. */
-const CONTROL =
-  // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
-  /[\u0000-\u0008\u000a-\u001f\u007f-\u009f\u00ad\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/;
+/**
+ * Control, bidirectional and invisible characters, by code point range: the question must show
+ * what runs. C0 but the tab, C1, and every range of agent-act's FILL_INVISIBLE (which imports
+ * this module, so the ranges are written out; a test compares every code point), as vimma-ctl's
+ * mcp/args.rs `keys_control`.
+ */
+export const CONTROL = Object.freeze(
+  /** @type {const} */ ([
+    [0x00, 0x08],
+    [0x0a, 0x1f],
+    [0x7f, 0x9f],
+    [0xad, 0xad],
+    [0x34f, 0x34f],
+    [0x600, 0x605],
+    [0x61c, 0x61c],
+    [0x6dd, 0x6dd],
+    [0x70f, 0x70f],
+    [0x890, 0x891],
+    [0x8e2, 0x8e2],
+    [0x115f, 0x1160],
+    [0x17b4, 0x17b5],
+    [0x180b, 0x180f],
+    [0x200b, 0x200f],
+    [0x2028, 0x202e],
+    [0x2060, 0x206f],
+    [0x3164, 0x3164],
+    [0xfe00, 0xfe0f],
+    [0xfeff, 0xfeff],
+    [0xffa0, 0xffa0],
+    [0xfff0, 0xfffb],
+    [0x110bd, 0x110bd],
+    [0x110cd, 0x110cd],
+    [0x13430, 0x1343f],
+    [0x1bca0, 0x1bca3],
+    [0x1d173, 0x1d17a],
+    [0xe0000, 0xe0fff],
+  ]),
+);
+
+/**
+ * Whether `c`'s code point is in one of `ranges`.
+ * @param {string} c @param {readonly (readonly [number, number])[]} ranges
+ */
+function within(c, ranges) {
+  const cp = /** @type {number} */ (c.codePointAt(0));
+  return ranges.some(([lo, hi]) => cp >= lo && cp <= hi);
+}
+
+/** Whether `s` holds a character of CONTROL. @param {string} s */
+const hasControl = (s) => [...s].some((c) => within(c, CONTROL));
 /** The default prefix (ctrl+b): it and every binding after it are the user's. */
 const PREFIX = formatKey(parseKey(/** @type {string} */ (DEFAULT_CONFIG.keys?.prefix)));
 const PREFIX_WHY = "the prefix, the leader and their bindings are the user's";
@@ -209,7 +264,7 @@ export function parseAgentKeys(text) {
   if (chars.length > AGENT_KEY_LIMITS.chars) {
     return refused(`keys must be at most ${AGENT_KEY_LIMITS.chars} characters`);
   }
-  if (CONTROL.test(text))
+  if (hasControl(text))
     return refused(
       "keys must not contain control characters, bidirectional controls or invisible characters",
     );
@@ -357,7 +412,7 @@ export function parseAgentKeys(text) {
           const why = `a find query must be at most ${AGENT_KEY_LIMITS.query} characters`;
           return refused(refusal(step.keys, why));
         }
-        if (CONTROL.test(query) || query.includes("\t")) {
+        if (hasControl(query) || query.includes("\t")) {
           return refused(refusal(step.keys, "a find query must not contain control characters"));
         }
         step.query = query;
@@ -417,28 +472,42 @@ export function labelAgentLinks(targets) {
 /**
  * Control, bidirectional and invisible characters, by code point range, dropped from a link's
  * text and href: tag characters, variation selectors and fillers among them, which a model
- * reads and the user cannot see.
+ * reads and the user cannot see. C0 but the white space, C1, and every range of agent-act's
+ * FILL_INVISIBLE but the line and paragraph separators, which are white space too (a test
+ * compares every code point).
  */
-const UNSHOWN = /** @type {const} */ ([
-  [0x00, 0x08],
-  [0x0e, 0x1f],
-  [0x7f, 0x9f],
-  [0xad, 0xad],
-  [0x34f, 0x34f],
-  [0x61c, 0x61c],
-  [0x115f, 0x1160],
-  [0x17b4, 0x17b5],
-  [0x180b, 0x180f],
-  [0x200b, 0x200f],
-  [0x202a, 0x202e],
-  [0x2060, 0x2069],
-  [0x3164, 0x3164],
-  [0xfe00, 0xfe0f],
-  [0xfeff, 0xfeff],
-  [0xffa0, 0xffa0],
-  [0xe0000, 0xe007f],
-  [0xe0100, 0xe01ef],
-]);
+export const UNSHOWN = Object.freeze(
+  /** @type {const} */ ([
+    [0x00, 0x08],
+    [0x0e, 0x1f],
+    [0x7f, 0x9f],
+    [0xad, 0xad],
+    [0x34f, 0x34f],
+    [0x600, 0x605],
+    [0x61c, 0x61c],
+    [0x6dd, 0x6dd],
+    [0x70f, 0x70f],
+    [0x890, 0x891],
+    [0x8e2, 0x8e2],
+    [0x115f, 0x1160],
+    [0x17b4, 0x17b5],
+    [0x180b, 0x180f],
+    [0x200b, 0x200f],
+    [0x202a, 0x202e],
+    [0x2060, 0x206f],
+    [0x3164, 0x3164],
+    [0xfe00, 0xfe0f],
+    [0xfeff, 0xfeff],
+    [0xffa0, 0xffa0],
+    [0xfff0, 0xfffb],
+    [0x110bd, 0x110bd],
+    [0x110cd, 0x110cd],
+    [0x13430, 0x1343f],
+    [0x1bca0, 0x1bca3],
+    [0x1d173, 0x1d17a],
+    [0xe0000, 0xe0fff],
+  ]),
+);
 
 /**
  * `s` as shown in the list: NFKC first, so a compatibility character (a fullwidth quote) is
@@ -446,18 +515,142 @@ const UNSHOWN = /** @type {const} */ ([
  * the invisible characters.
  * @param {string} s
  */
-export const shown = (s) =>
-  [...s.normalize("NFKC")]
-    .filter((c) => {
-      const cp = /** @type {number} */ (c.codePointAt(0));
-      return !UNSHOWN.some(([lo, hi]) => cp >= lo && cp <= hi);
-    })
-    .join("");
+export const shown = (s) => [...s.normalize("NFKC")].filter((c) => !within(c, UNSHOWN)).join("");
 
 /** @param {string} s @param {number} max  at most `max` code points, `…` the last when cut */
 export function cutTo(s, max) {
   const chars = [...s];
   return chars.length > max ? `${chars.slice(0, max - 1).join("")}…` : s;
+}
+
+/** A URL's scheme and its colon. */
+const URL_SCHEME = /^([a-z][a-z0-9+.-]*):/i;
+/** Schemes whose authority may come after any slashes or backslashes, or none (WHATWG). */
+const SPECIAL_SCHEMES = new Set(["http", "https", "ws", "wss", "ftp", "file"]);
+/** Schemes whose rest is a URL of its own, whose user name and password go too. */
+const NESTED_SCHEMES = new Set(["view-source", "jar", "blob"]);
+/** At most this many URLs inside one another are read (view-source:jar:https:...). */
+const NESTED_MAX = 4;
+
+/**
+ * `text` without the user name and password of its URL, and of the URLs nested in it: the
+ * authority after the scheme's slashes, up to its last `@`. Each scheme's authority ends where a
+ * WHATWG URL parser ends it (a slash, a question mark or a number sign, and for a special scheme a
+ * backslash too); a case where they could differ drops more, never less. `cut` says the text was
+ * cut, so an authority that runs to its end may hide a user name and password: it is dropped
+ * whole, and only the scheme and its slashes kept.
+ * @param {string} text @param {boolean} cut @param {number} depth
+ * @returns {string}
+ */
+function withoutUserinfo(text, cut, depth) {
+  // As a URL parser does: leading C0 controls and spaces go, and so do tabs and line breaks.
+  const t = text.replace(/[\t\n\r]/g, "");
+  let start = 0;
+  while (start < t.length && t.charCodeAt(start) <= 0x20) start++;
+  const s = t.slice(start);
+  const m = URL_SCHEME.exec(s);
+  if (!m) return s;
+  const name = /** @type {string} */ (m[1]).toLowerCase();
+  const rest = s.slice(m[0].length);
+  if (NESTED_SCHEMES.has(name)) {
+    // Past NESTED_MAX the rest is not read, so it is dropped: it may hold a user name.
+    return depth < NESTED_MAX ? m[0] + withoutUserinfo(rest, cut, depth + 1) : `${m[0]}\u2026`;
+  }
+  const special = SPECIAL_SCHEMES.has(name);
+  const lead = special ? (/^[/\\]*/.exec(rest)?.[0] ?? "") : rest.startsWith("//") ? "//" : null;
+  if (lead === null) return s;
+  const after = rest.slice(lead.length);
+  let end = after.search(special ? /[/\\?#]/ : /[/?#]/);
+  if (end < 0) {
+    if (cut) return `${m[0]}${lead}\u2026`;
+    end = after.length;
+  }
+  return m[0] + lead + after.slice(after.lastIndexOf("@", end) + 1);
+}
+
+/**
+ * A URL as the agent may see it (security.md M21, M30, M31): a script's, file's or request's, a
+ * link's href, a form's action, a tab's page. Without the user name and password it may carry,
+ * as shown (NFKC, no invisible characters, no white space), then cut at `max` code points. The user name and password go before the cut, so that no cut
+ * can take their `@` and leave them in (#1198). They go first from the text as the page gave it,
+ * where the authority ends where a URL parser ends it (NFKC would make a fullwidth slash one that
+ * the parser does not see), and again from the shown text, where a fullwidth `@` is one: only
+ * more is dropped that way, never less. Only the first `4 * max` code units are read, so the work
+ * is bounded however long the URL.
+ * @param {unknown} url @param {number} max
+ */
+export function agentUrl(url, max) {
+  const raw = String(url ?? "");
+  const read = raw.slice(0, 4 * max);
+  const cut = read.length < raw.length;
+  const first = withoutUserinfo(read, cut, 0);
+  const text = shown(first).replace(/\s/g, "");
+  return cutTo(withoutUserinfo(text, cut, 0), max);
+}
+
+/** What Firefox drops from a URL it makes a tab's label of (#setTabLabel): its scheme and www. */
+const LABEL_SCHEME = /^[^:]+:\/\/(?:www\.)?/;
+
+/**
+ * A page's own title as the agent may see it (security.md M21, #1209), in depth: one that is a
+ * URL (no white space, a scheme and an authority holding a user name or password once shown)
+ * loses them as agentUrl drops them. Any other title is the page's text, returned as it is.
+ * @param {unknown} label
+ */
+export function agentTitle(label) {
+  const s = String(label ?? "");
+  const t = s.trim();
+  if (!t || /\s/.test(t)) return s;
+  const plain = shown(t);
+  if (!plain.includes("@") || !URL_SCHEME.test(plain)) return s;
+  return withoutUserinfo(plain, false, 0) === plain ? s : agentUrl(t, AGENT_PAGE_URL_MAX);
+}
+
+/**
+ * A tab's title as the agent may see it (security.md M21, #1209). A label Firefox made of a URL
+ * (`contentTitle`, the tab's `labelIsContentTitle`, not true: before a load, restored pending, a
+ * page with no title, even after a redirect) may hold a user name and password, or only part of
+ * one once Firefox cut it at 256 characters, or those of the URL the tab was opened at: it is
+ * never read. The tab's URL `url` is given instead, without them, as Firefox shows a URL in a
+ * label (no scheme, no www.). While a new tab's first load has not committed, its URL is
+ * about:blank, and `typed`, the URL it is loading (Firefox keeps it as typed until the load ends;
+ * Tabbrowser addTab), is given instead. A page's own title goes through agentTitle.
+ * @param {unknown} label @param {unknown} contentTitle @param {unknown} url
+ * @param {unknown} [typed]
+ */
+export function agentTabTitle(label, contentTitle, url, typed) {
+  if (contentTitle === true) return agentTitle(label);
+  const at = url === "about:blank" && typeof typed === "string" && typed ? typed : url;
+  return agentUrl(at, AGENT_PAGE_URL_MAX).replace(LABEL_SCHEME, "");
+}
+
+/**
+ * A markdown link's or image's target: `](`, then up to the next `)`. DOMExtractor writes a
+ * resolved href there, which holds no white space and has its parentheses escaped; page text
+ * with white space between the two is not a target, and keeps its white space. A link nested in
+ * another link's text (a block anchor wrapping inline ones, as on Google's search pages) is
+ * escaped once more by DOMExtractor's escapeMarkdownLink, which puts a backslash before each
+ * bracket and parenthesis of the text: `\[a\]\(href\)`, with more backslashes for each deeper
+ * nesting. So the `(` may follow backslashes, kept as they are; those before the closing `)`
+ * are read as part of the target, which withoutUserinfo keeps byte for byte. Each part's
+ * characters are disjoint from the next one's, so the match runs in linear time
+ * (CodeQL js/polynomial-redos). Only a target is read, never a URL anywhere else in the text:
+ * code, email addresses and URLs in a page's prose (`ssh://git@host` in a code span) stay.
+ */
+const MARKDOWN_TARGET = /\](\\*)\(([^()\s]*)\)/g;
+
+/**
+ * A page's text as the agent may read it (security.md M7, #1209): each markdown link's and
+ * image's target without its user name and password, as agentUrl drops them. Firefox's
+ * extractor writes a link as `[text](href)` with the href resolved against the page's URL, so a
+ * page whose URL holds a user name and password would give them to every relative link.
+ * @param {string} text
+ */
+export function markdownWithoutUserinfo(text) {
+  return text.replace(
+    MARKDOWN_TARGET,
+    (_, open, url) => `]${open}(${withoutUserinfo(url, false, 0)})`,
+  );
 }
 
 /**
@@ -478,9 +671,7 @@ function linkLine({ label, target }) {
       .trim(),
     AGENT_LINKS.text,
   );
-  const href = target.href
-    ? cutTo(shown(target.href).replace(/\s/g, ""), AGENT_LINKS.href)
-    : "(no URL)";
+  const href = target.href ? agentUrl(target.href, AGENT_LINKS.href) : "(no URL)";
   return `${label} ${JSON.stringify(text)} ${href}`;
 }
 

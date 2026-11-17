@@ -259,3 +259,215 @@ describe("setTomlKeys", () => {
     });
   });
 });
+
+describe("parseToml: the unclosed-bracket hint", () => {
+  // The parser reports an unterminated array where it notices; the hint names where it opened,
+  // skipping brackets inside comments and strings, and only for brackets opened on earlier lines.
+  // The parser's own wording and columns are smol-toml's: only Vimma's hint is pinned here.
+  const syntaxError = (text: string) => {
+    const r = parseToml(text);
+    if (r.ok) throw new Error(`parsed: ${text}`);
+    expect(r.error.column).toBeGreaterThan(0);
+    return r.error;
+  };
+
+  test.each([
+    ["a = [\n1,\n[t]\n", 3, '(unclosed "[" opened at line 1?)'],
+    ["x = 1\na = [\n1,\n[t]\n", 4, '(unclosed "[" opened at line 2?)'],
+    ["a = [\n[\n[t]\n", 3, '(unclosed "[" opened at line 2?)'],
+    ["a = [[1], \n[t]\n", 2, '(unclosed "[" opened at line 1?)'],
+    ["a = { b = [1] \n[t]\n", 2, '(unclosed "{" opened at line 1?)'],
+    ["a = [ # [ {\n1,\n[t]\n", 3, '(unclosed "[" opened at line 1?)'],
+    ["a = [ \"[\" , '{',\n1,\n[t]\n", 3, '(unclosed "[" opened at line 1?)'],
+    ['a = [ "x\\"[",\n1,\n[t]\n', 3, '(unclosed "[" opened at line 1?)'],
+    ['a = [ """\n[\n""",\n1,\n[t]\n', 5, '(unclosed "[" opened at line 1?)'],
+    ["a = [ '''\n[\n''',\n1,\n[t]\n", 5, '(unclosed "[" opened at line 1?)'],
+    ['a = """\nx\n"""\nb = [\n[t]\n', 5, '(unclosed "[" opened at line 4?)'],
+    ["a = [\n1 1 ]\n", 2, '(unclosed "[" opened at line 1?)'],
+    ["a = [ #x\n1 1\n", 2, '(unclosed "[" opened at line 1?)'],
+    ["a = [ \r\n1 1\n", 2, '(unclosed "[" opened at line 1?)'],
+  ])("%j fails at line %i, ending %s", (text, line, hint) => {
+    const error = syntaxError(text);
+    expect(error.line).toBe(line);
+    expect(error.message.endsWith(` ${hint}`)).toBe(true);
+    expect(error.message.indexOf("(unclosed")).toBe(error.message.length - hint.length);
+  });
+
+  test.each([
+    "# [\nb = 1 1\n",
+    'a = "["\nb = 1 1\n',
+    "a = '['\nb = 1 1\n",
+    'a = "\\"["\nb = 1 1\n',
+    'a = """\n[\n"""\nb = 1 1\n',
+    "a = '''\n[\n'''\nb = 1 1\n",
+    "a = [1]\nb = 1 1\n",
+    "a = {b = 1}\nb = 1 1\n",
+    // A bracket opened on the error's own line.
+    "a = [1 1]\n",
+  ])("%j: brackets in comments, strings, closed or on the error's line give no hint", (text) => {
+    const error = syntaxError(text);
+    expect(error.line).toBe(text.split("\n").length - 1);
+    expect(error.message.length).toBeGreaterThan(0);
+    expect(error.message).not.toContain("(unclosed");
+  });
+});
+
+describe("locateKeys: whitespace, comments, strings and nesting", () => {
+  const text = [
+    "\ufeffa = [", // 1, after a byte order mark
+    "  1", // 2
+    "]", // 3
+    "\tb\t=\t2\t# tab", // 4
+    "c . d = 3", // 5
+    'e = """x\\"""', // 6
+    'y\\\\"""', // 7
+    "f = '''z''''' # five quotes end it", // 8
+    "g = [ # c", // 9
+    "  { h = 1 }, # c", // 10
+    "  [ 2 ,", // 11
+    "3 ],", // 12
+    "]", // 13
+    "[ t . u ]", // 14
+    "[[ arr ]]", // 15
+    "[[arr]]", // 16
+    "v = 'lit\\' # x", // 17
+    'w = "s#" # x', // 18
+    "z = 1", // 19
+  ].join("\n");
+  // Built inside each test, so per-test coverage (Stryker) sees the scan.
+  const lineOf = (path: (string | number)[]) => locateKeys(text)(path);
+
+  test("the fixture parses", () => {
+    expect(parseToml(text)).toMatchObject({
+      ok: true,
+      value: { e: 'x"""\ny\\', f: "z''", g: [{ h: 1 }, [2, 3]], arr: [{}, { z: 1 }] },
+    });
+  });
+
+  test.each([
+    [["a"], 1],
+    [["a", 0], 2],
+    [["b"], 4],
+    [["c"], 5],
+    [["c", "d"], 5],
+    [["e"], 6],
+    [["f"], 8],
+    [["g"], 9],
+    [["g", 0], 10],
+    [["g", 0, "h"], 10],
+    [["g", 1], 11],
+    [["g", 1, 0], 11],
+    [["g", 1, 1], 12],
+    [["t"], 14],
+    [["t", "u"], 14],
+    [["arr", 0], 15],
+    [["arr", 1], 16],
+    [["arr", 1, "v"], 17],
+    [["arr", 1, "w"], 18],
+    [["arr", 1, "z"], 19],
+  ])("%j is on line %i", (path, line) => {
+    expect(lineOf(path)).toBe(line);
+  });
+
+  test("a value ending a line is on that line", () => {
+    expect(locateKeys("a = [\n1\n,2]\n")(["a", 0])).toBe(2);
+    expect(locateKeys("a = [\n1\n,2]\n")(["a", 1])).toBe(3);
+  });
+
+  test("a path deeper than MAX_DEPTH + 1 is located by its prefix", () => {
+    const deep = Array.from({ length: MAX_DEPTH + 3 }, () => "a");
+    const where = locateKeys(`x = 1\n${deep.join(".")} = 1\n`);
+    expect(where(deep)).toBe(2);
+    expect(where(deep.slice(0, MAX_DEPTH + 1))).toBe(2);
+    const header = locateKeys(`x = 1\n[${deep.join(".")}]\n`);
+    expect(header(deep)).toBe(2);
+  });
+});
+
+describe("setTomlKeys: what a line edit may change", () => {
+  const set = (text: string, table: string, key: string, value: string | boolean | number) =>
+    setTomlKeys(text, [{ table, key, value }]);
+  const fails = (line: number, message: string) => ({
+    ok: false,
+    error: { line, column: 1, message },
+  });
+
+  test.each([
+    ['search.default = "Google"\n', 1, "search is not a plain [search] table"],
+    ['x = 1\nsearch = { default = "Google" }\n', 2, "search is not a plain [search] table"],
+    ["x = 1\n[[search]]\nx = 1\n", 2, "search is not a plain [search] table"],
+    ["[search.sub]\nx = 1\n", 1, "search is not a plain [search] table"],
+    ['x = 1\n[search]\ndefault = """\nGoogle"""\n', 3, "search.default is not a one-line value"],
+    ["x = 1\n[search]\ndefault = '''G'''\n", 3, "search.default is not a one-line value"],
+    ["x = 1\n[search]\ndefault = [1]\n", 3, "search.default is not a one-line value"],
+    ["x = 1\n[search]\ndefault = {a=1}\n", 3, "search.default is not a one-line value"],
+    [
+      'x = 1\n[search]\ndefault.name = "Google"\n',
+      3,
+      "search.default is not a plain key = value line",
+    ],
+  ])("%j: line %i, %s", (text, line, message) => {
+    expect(set(text, "search", "default", "X")).toEqual(fails(line, message));
+  });
+
+  test("a table or key that is not bare is refused before any edit", () => {
+    expect(set("a = 1\n", "se arch", "default", 1)).toEqual(fails(1, "not a bare key"));
+    expect(set("a = 1\n", "search", "de.fault", 1)).toEqual(fails(1, "not a bare key"));
+  });
+
+  test.each([
+    ['[search]\ndefault = "a\\"b" # c\n', "X", '[search]\ndefault = "X" # c\n'],
+    ["[search]\ndefault = 'a\\' # c\n", "X", '[search]\ndefault = "X" # c\n'],
+    ["[search]\ndefault = 12 \t# c\n", 3, "[search]\ndefault = 3 \t# c\n"],
+    ["[search]\ndefault = 12\n", 3, "[search]\ndefault = 3\n"],
+    ["[search]\ndefault = true\r\nx = 1\r\n", false, "[search]\ndefault = false\r\nx = 1\r\n"],
+    ["  [ search ]  # hdr\n\tdefault = 1\n", 2, "  [ search ]  # hdr\n\tdefault = 2\n"],
+    ["[search]\t\r\n default = 1\r\n", 2, "[search]\t\r\n default = 2\r\n"],
+    ["[search]\n# default = 1\ndefault = 1\n", 2, "[search]\n# default = 1\ndefault = 2\n"],
+    [
+      "[search]\ndefault = 1\n[search.sub]\nx = 1\n",
+      2,
+      "[search]\ndefault = 2\n[search.sub]\nx = 1\n",
+    ],
+  ])("%j: the value alone is replaced", (text, value, out) => {
+    expect(set(text, "search", "default", value)).toEqual({ ok: true, text: out });
+  });
+
+  test.each([
+    ["[search]\r\nx = 1\r\n", "[search]\r\nx = 1\r\ndefault = 2\r\n"],
+    [
+      "[search]\nx = 1\n\n# trailing\n\n[other]\ny = 2\n",
+      "[search]\nx = 1\ndefault = 2\n\n# trailing\n\n[other]\ny = 2\n",
+    ],
+    ["[search]\nx = 1\n  [other]\ny = 2\n", "[search]\nx = 1\ndefault = 2\n  [other]\ny = 2\n"],
+    ["[search]\n[search.sub]\nx = 1\n", "[search]\ndefault = 2\n[search.sub]\nx = 1\n"],
+    ["[search]\ndefaultx = 1\n", "[search]\ndefaultx = 1\ndefault = 2\n"],
+    ["[other]\n[search]\n", "[other]\n[search]\ndefault = 2\n"],
+  ])("%j: a missing key goes after the table's last key", (text, out) => {
+    expect(set(text, "search", "default", 2)).toEqual({ ok: true, text: out });
+  });
+
+  test.each([
+    ["", '[search]\ndefault = "é\\u007F"\n'],
+    ["a = 1", 'a = 1\n\n[search]\ndefault = "é\\u007F"\n'],
+    ["a = 1\n", 'a = 1\n\n[search]\ndefault = "é\\u007F"\n'],
+    ["a = 1\r\n", 'a = 1\r\n\r\n[search]\r\ndefault = "é\\u007F"\r\n'],
+  ])("%j: a missing table is appended in the file's line endings", (text, out) => {
+    expect(set(text, "search", "default", "é\x7f")).toEqual({ ok: true, text: out });
+  });
+
+  test("a later edit sees an earlier one, and other tables keep their keys", () => {
+    const r = setTomlKeys("[a]\nx = 1\n[b]\ny = 2\n", [
+      { table: "a", key: "x", value: 3 },
+      { table: "a", key: "z", value: true },
+      { table: "b", key: "y", value: "s" },
+    ]);
+    expect(r).toEqual({ ok: true, text: '[a]\nx = 3\nz = true\n[b]\ny = "s"\n' });
+  });
+
+  test("a syntax error is returned as the parser reports it", () => {
+    const parsed = parseToml("[bad\n");
+    expect(parsed.ok).toBe(false);
+    expect(set("[bad\n", "search", "default", 1)).toEqual(parsed);
+  });
+});

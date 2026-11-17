@@ -839,26 +839,17 @@ describe("the status-bar segment", () => {
 
 describe("install type (§3)", () => {
   test.each([
-    [{ packaged: false, marker: null, appImage: null }, "source"],
-    [{ packaged: false, marker: "vimma-package=deb\n", appImage: null }, "source"],
-    [{ packaged: true, marker: null, appImage: null }, "tarball"],
-    [{ packaged: true, marker: "vimma-package=deb\n", appImage: null }, "deb"],
-    [{ packaged: true, marker: "vimma-package=rpm\n", appImage: null }, "rpm"],
-    [{ packaged: true, marker: "vimma-package=aur\n", appImage: null }, "aur"],
-    [
-      { packaged: true, marker: "vimma-package=pkgbuild-release\n", appImage: null },
-      "pkgbuild-release",
-    ],
-    [{ packaged: true, marker: "vimma-package=appimage\n", appImage: null }, "appimage"],
-    [{ packaged: true, marker: "vimma-package=flatpak\n", appImage: null }, "flatpak"],
-    // $APPIMAGE is inherited by every program an AppImage starts (decision 34): the marker wins.
-    [
-      { packaged: true, marker: "vimma-package=flatpak\n", appImage: "/home/u/V.AppImage" },
-      "flatpak",
-    ],
-    [{ packaged: true, marker: "", appImage: "/home/u/Vimma.AppImage" }, "appimage"],
-    [{ packaged: true, marker: "", appImage: null }, "packaged"],
-    [{ packaged: true, marker: "vimma-package=snap\n", appImage: null }, "packaged"],
+    [{ packaged: false, marker: null }, "source"],
+    [{ packaged: false, marker: "vimma-package=deb\n" }, "source"],
+    [{ packaged: true, marker: null }, "tarball"],
+    [{ packaged: true, marker: "vimma-package=deb\n" }, "deb"],
+    [{ packaged: true, marker: "vimma-package=rpm\n" }, "rpm"],
+    [{ packaged: true, marker: "vimma-package=aur\n" }, "aur"],
+    [{ packaged: true, marker: "vimma-package=pkgbuild-release\n" }, "pkgbuild-release"],
+    [{ packaged: true, marker: "vimma-package=appimage\n" }, "appimage"],
+    [{ packaged: true, marker: "vimma-package=flatpak\n" }, "flatpak"],
+    [{ packaged: true, marker: "" }, "packaged"],
+    [{ packaged: true, marker: "vimma-package=snap\n" }, "packaged"],
   ])("%j → %s", (input, type) => {
     expect(installTypeFrom(input)).toBe(type);
   });
@@ -872,7 +863,7 @@ describe("install type (§3)", () => {
     ["vimma-package=aur\n", null, "aur", /^yay -Syu vimma-bin$/],
     [null, null, "tarball", / && tar -xJf vimma-0\.3\.1-linux-x86_64\.tar\.xz -C \/usr\/lib$/],
   ])("marker %j → %s's own hint", (marker, appImage, type, command) => {
-    const got = installTypeFrom({ packaged: true, marker, appImage });
+    const got = installTypeFrom({ packaged: true, marker });
     expect(got).toBe(type);
     const offer = {
       appVersion: "158.0.1",
@@ -891,7 +882,7 @@ describe("install type (§3)", () => {
 });
 
 describe("install type on macOS (macos-homebrew decisions 8 and 19)", () => {
-  const mac = { marker: null, appImage: null, platform: "macosx" };
+  const mac = { marker: null, platform: "macosx" };
   test.each([
     [{ ...mac, packaged: false, appPath: "/Applications/Vimma.app", caskroom: true }, "source"],
     [{ ...mac, packaged: true, appPath: "/Applications/Vimma.app", caskroom: true }, "homebrew"],
@@ -912,7 +903,6 @@ describe("install type on macOS (macos-homebrew decisions 8 and 19)", () => {
       installTypeFrom({
         packaged: true,
         marker: null,
-        appImage: null,
         platform: "linux",
         ...facts,
       }),
@@ -921,7 +911,6 @@ describe("install type on macOS (macos-homebrew decisions 8 and 19)", () => {
       installTypeFrom({
         packaged: true,
         marker: "vimma-package=deb\n",
-        appImage: null,
         platform: "linux",
         ...facts,
       }),
@@ -1033,8 +1022,10 @@ describe("updateSteps (:update and about:vimma)", () => {
 
   test("appimage: download next to the file, check it, and rename it over, quoted", () => {
     const s = updateSteps("appimage", hashed, {
-      installDir: "/tmp/.mount",
+      installDir: "/tmp/.mount_v/usr/lib/vimma",
       appImage: "/home/u/it's.AppImage",
+      appDir: "/tmp/.mount_v",
+      marker: "vimma-package=appimage\n",
     });
     const next = "'/home/u/it'\\''s.AppImage.new'";
     expect(s.commands).toEqual([
@@ -1080,8 +1071,15 @@ describe("updateSteps (:update and about:vimma)", () => {
       );
       const run = (hash: string) => {
         const o = { ...offer, assets: { appimage: { size: body.length, sha512: hash } } };
-        const [cmd = ""] = updateSteps("appimage", o, { installDir: dir, appImage: file }).commands;
+        const [cmd = ""] = updateSteps("appimage", o, {
+          installDir: join(dir, "usr"),
+          appImage: file,
+          appDir: dir,
+          marker: "vimma-package=appimage\n",
+        }).commands;
+        // In the temp dir: a command with a relative path never writes into the checkout.
         return spawnSync("sh", ["-c", cmd], {
+          cwd: dir,
           env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, BODY: body },
         }).status;
       };

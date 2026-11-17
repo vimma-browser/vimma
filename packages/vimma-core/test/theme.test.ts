@@ -950,3 +950,122 @@ describe("themeStylesheet", () => {
     expect(r.warnings.filter((w) => !w.startsWith("light: "))).toEqual([]);
   });
 });
+
+describe("theme edges", () => {
+  const base = (background = "#1c1e26", extra: string[] = []) =>
+    [
+      'accent = "#26bbd9"',
+      'foreground = "#fadad1"',
+      `background = "${background}"`,
+      ...[
+        "#1c1e26",
+        "#e95678",
+        "#29d398",
+        "#fab795",
+        "#26bbd9",
+        "#ee64ac",
+        "#59e3e3",
+        "#fadad1",
+      ].map((c, i) => `color${i} = "${c}"`),
+      ...extra,
+    ].join("\n");
+
+  test("a background whose channels add up to 382 is dark, 383 light", () => {
+    expect(parseOmarchyColors(base("#7f7f80")).palette?.mode).toBe("dark");
+    expect(parseOmarchyColors(base("#7f8080")).palette?.mode).toBe("light");
+  });
+
+  test("a mode the file names wins over its background", () => {
+    expect(parseOmarchyColors(base("#1c1e26", ['mode = "light"'])).palette?.mode).toBe("light");
+    expect(parseOmarchyColors(base("#f5f4ef", ['mode = "dark"'])).palette?.mode).toBe("dark");
+  });
+
+  test("errors name what was given instead", () => {
+    expect(parseOmarchyColors(base("#1c1e26", ["mode = 1", "accent2 = 2"])).errors).toEqual([
+      { line: 12, path: "mode", message: 'must be "dark" or "light", got a number' },
+    ]);
+    expect(parseOmarchyColors('accent = 5\nforeground = "#ffffff"').errors[0]).toEqual({
+      line: 1,
+      path: "accent",
+      message: 'must be a hex colour like "#7aa2f7", got a number',
+    });
+    expect(parseOmarchyColors("accent = ").errors).toEqual([
+      expect.objectContaining({ path: "", line: 1 }),
+    ]);
+  });
+
+  test("resolveTheme reads an Omarchy file as dark unless told it ships light.mode", () => {
+    const theme = themeCfg({ source: "omarchy" });
+    expect(resolveTheme({ theme, omarchy: base() }).mode).toBe("dark");
+    expect(resolveTheme({ theme, omarchy: base(), omarchyLightMode: true }).mode).toBe("light");
+  });
+
+  test("an unknown theme name is an error, and vimma's palette is used", () => {
+    const r = resolveTheme({ theme: themeCfg({ source: "file", name: "nope" as any }) });
+    expect(r.errors).toEqual([{ path: "theme.name", message: 'unknown theme "nope"' }]);
+    expect(r.tokens).toEqual(resolveTheme({ theme: themeCfg({ source: "file" }) }).tokens);
+  });
+
+  test("overlay errors say what was given", () => {
+    const r = resolveTheme({
+      theme: themeCfg({
+        source: "file",
+        colors: { nope: "#ffffff", accent: 3, split_1: "x", mode: "dim" } as any,
+      }),
+    });
+    expect(r.errors).toEqual([
+      { path: "theme.colors.nope", message: 'unknown colour key "nope"' },
+      { path: "theme.colors.accent", message: 'must be a hex colour like "#7aa2f7", got a number' },
+      { path: "theme.colors.split_1", message: 'must be a hex colour like "#7aa2f7", got "x"' },
+      { path: "theme.colors.mode", message: 'must be "dark" or "light", got "dim"' },
+    ]);
+  });
+
+  test("[theme.colors] mode light makes the scheme light", () => {
+    const r = resolveTheme({ theme: tokyoCfg({ source: "file", colors: { mode: "light" } }) });
+    expect(r.mode).toBe("light");
+    expect(r.tokens["--vimma-color-scheme"]).toBe("light");
+  });
+
+  test("dim text too faint for the surfaces is moved by the smallest step that reads", () => {
+    const r = resolveTheme({
+      theme: tokyoCfg({ source: "file", colors: { dark_foreground: "#3b4261" } }),
+    });
+    const dim = r.tokens["--vimma-fg-dim"] as string;
+    const surfaces = ["--vimma-bg", "--vimma-bg-dark", "--vimma-bg-darker", "--vimma-bg-light"].map(
+      (t) => r.tokens[t] as string,
+    );
+    const worst = (c: string) => Math.min(...surfaces.map((s) => contrastRatio(c, s)));
+    expect(worst(dim)).toBeGreaterThanOrEqual(MIN_CONTRAST);
+    expect(dim).not.toBe("#3b4261");
+    expect(["#000000", "#ffffff"]).not.toContain(dim);
+  });
+
+  test("a light variant repeats none of the dark one's warnings", () => {
+    const colors = { foreground: "#808080", background: "#7a7a7a" };
+    const dark = resolveTheme({ theme: themeCfg({ source: "file", colors }), scheme: "dark" });
+    expect(dark.warnings.length).toBeGreaterThan(0);
+    const sheet = themeStylesheet({ theme: themeCfg({ source: "file", colors }) });
+    expect(sheet.warnings.slice(0, dark.warnings.length)).toEqual(dark.warnings);
+    for (const w of dark.warnings) expect(sheet.warnings).not.toContain(`light: ${w}`);
+  });
+
+  test("tokensToCss writes each token on its own line", () => {
+    expect(tokensToCss({ "--vimma-bg": "#aabbcc", "--vimma-fg": "#000000" }, ".x")).toBe(
+      ".x {\n  --vimma-bg: #aabbcc;\n  --vimma-fg: #000000;\n}\n",
+    );
+  });
+
+  test.each([
+    [{ "x--vimma-bg": "#aabbcc" }, 'unsafe token x--vimma-bg: "#aabbcc"'],
+    [{ "--vimma-bg": "x#aabbcc" }, 'unsafe token --vimma-bg: "x#aabbcc"'],
+    [{ "--vimma-bg": "#aabbccx" }, 'unsafe token --vimma-bg: "#aabbccx"'],
+    [{ "--vimma-bg": 1 }, "unsafe token --vimma-bg: 1"],
+  ])("tokensToCss refuses %j: %s", (tokens, message) => {
+    expect(() => tokensToCss(tokens as any)).toThrow(new TypeError(message));
+  });
+
+  test("a selector with a brace anywhere is refused", () => {
+    expect(() => tokensToCss({}, "{x")).toThrow(new TypeError('unsafe selector "{x"'));
+  });
+});

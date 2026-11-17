@@ -87,4 +87,68 @@ describe("PageFirstQueue (docs/specs/firefox-keys.md decision 6)", () => {
     expect(q.reply("meta+l", 0)).toBeNull();
     expect(q.reply("meta+l", PAGE_FIRST_MAX)).toMatchObject({ result: PAGE_FIRST_MAX });
   });
+
+  test("Given no binding on a key, when its keypress comes, then nothing is asked or changed", () => {
+    const q = new PageFirstQueue();
+    expect(q.press("meta+x", 5, true)).toBe(false);
+    expect(q.size).toBe(0);
+  });
+
+  test("Given two presses of a key waiting, when one keypress comes back to the browser, then only that press settles here", () => {
+    const q = queue(["meta+l"]);
+    q.press("meta+l", 10, true);
+    q.keydown();
+    q.defer("meta+l", "second", "normal");
+    q.press("meta+l", 20, true);
+    expect(q.press("meta+l", 20, true)).toBe(false);
+    expect(q.settle("meta+l")).toMatchObject({ result: "second" });
+    expect(q.reply("meta+l", 10)).toMatchObject({ result: "meta+l@normal" });
+  });
+
+  test("Given presses of two keys waiting, when one keypress comes back to the browser, then the other key keeps waiting", () => {
+    const q = queue(["meta+l"], ["meta+k"]);
+    q.press("meta+l", 10, true);
+    q.press("meta+k", 10, true);
+    q.press("meta+k", 10, true);
+    expect(q.settle("meta+l")).toBeNull();
+    expect(q.settle("meta+k")).toMatchObject({ result: "meta+k@normal" });
+    expect(q.reply("meta+l", 10)).toMatchObject({ result: "meta+l@normal" });
+  });
+
+  test("Given a press waiting for its reply, when the same keypress comes again in this process, then it still waits for the reply", () => {
+    const q = queue(["meta+l"]);
+    q.press("meta+l", 10, true);
+    expect(q.press("meta+l", 10, false)).toBe(false);
+    expect(q.settle("meta+l")).toBeNull();
+    expect(q.reply("meta+l", 10)).toMatchObject({ result: "meta+l@normal" });
+  });
+
+  test("Given an unpressed binding on another key, then a reply settles nothing", () => {
+    const q = queue(["meta+a"]);
+    expect(q.reply("meta+b", 10)).toBeNull();
+    expect(q.size).toBe(1);
+  });
+
+  test("Given no press that stayed in this process on the key, then settle takes nothing", () => {
+    const unpressed = queue(["meta+l"]);
+    expect(unpressed.settle("meta+l")).toBeNull();
+    expect(unpressed.size).toBe(1);
+
+    const waiting = queue(["meta+l"]);
+    waiting.press("meta+l", 10, true);
+    expect(waiting.settle("meta+l")).toBeNull();
+    expect(waiting.size).toBe(1);
+
+    const other = queue(["meta+l"]);
+    other.press("meta+l", 10, false);
+    expect(other.settle("meta+k")).toBeNull();
+    expect(other.size).toBe(1);
+  });
+
+  test("Given a local press behind another binding, then settle takes that press", () => {
+    const q = queue(["meta+a"], ["meta+b"]);
+    q.press("meta+b", 10, false);
+    expect(q.settle("meta+b")).toMatchObject({ result: "meta+b@normal" });
+    expect(q.size).toBe(1);
+  });
 });

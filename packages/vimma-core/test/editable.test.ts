@@ -557,3 +557,47 @@ describe("insertEditCommand", () => {
     expect(insertEditCommand("ctrl+u", { mac: true })).toBe("cmd_deleteToBeginningOfLine");
   });
 });
+
+describe("parseDescriptor: only a plain object is a descriptor", () => {
+  test("an array or a function carrying a tag name is not one", () => {
+    expect(parseDescriptor(Object.assign([], { tagName: "input" }))).toBeNull();
+    expect(parseDescriptor(Object.assign(() => {}, { tagName: "input" }))).toBeNull();
+  });
+});
+
+describe("isEditable: arguments and the document root", () => {
+  test("an unknown site mode or trigger names itself", () => {
+    const d = { tagName: "input" };
+    expect(() => isEditable(d, { site: "sometimes" as never })).toThrow(
+      new TypeError('unknown insert site mode "sometimes"'),
+    );
+    expect(() => isEditable(d, { trigger: "blur" as never })).toThrow(
+      new TypeError('unknown insert trigger "blur"'),
+    );
+  });
+
+  test("a recheck on the document root of an ordinary page is no editable, not the root rule", () => {
+    expect(isEditable({ tagName: "body" }, { trigger: "recheck" })).toEqual({
+      editable: false,
+      reason: "none",
+    });
+  });
+});
+
+describe("matchSiteRule: edge rules", () => {
+  test("a host that only starts like an IP address is a domain: its subdomains match", () => {
+    const rules = [{ match: "1.2.3.4.nip.io", insert: "never" as const }];
+    expect(matchSiteRule("app.1.2.3.4.nip.io", rules)).toBe(rules[0]);
+  });
+
+  test("a one-letter rule matches its host", () => {
+    const rules = [{ match: "x", insert: "never" as const }];
+    expect(matchSiteRule("x", rules)).toBe(rules[0]);
+    expect(matchSiteRule("a.x", rules)).toBe(rules[0]);
+  });
+
+  test("an empty rule matches nothing, not even an empty host", () => {
+    expect(matchSiteRule("", [{ match: "", insert: "always" }])).toBeUndefined();
+    expect(matchSiteRule("", [{ match: ".", insert: "always" }])).toBeUndefined();
+  });
+});

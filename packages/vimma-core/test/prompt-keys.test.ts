@@ -263,3 +263,16 @@ describe("dialogHint", () => {
     );
   });
 });
+
+describe("hint labels", () => {
+  test("a label's runs of white space become one space", () => {
+    expect(doorhangerHint({ main: "Allow \n  now", secondary: "Block" })).toBe(
+      "y allow now · n block · Tab buttons",
+    );
+  });
+
+  test("a blank secondary or checkbox label names no key", () => {
+    expect(doorhangerHint({ main: "OK", secondary: "  ", toggle: " " })).toBe("y ok · Tab buttons");
+    expect(dialogHint({ accept: "OK", cancel: "  " })).toBe("y ok");
+  });
+});

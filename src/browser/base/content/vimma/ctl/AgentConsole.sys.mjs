@@ -16,6 +16,7 @@
 
 import {
   AGENT_CONSOLE,
+  agentUrl,
   consoleLists,
   newestEntries,
   parseConsoleEntry,
@@ -23,7 +24,6 @@ import {
   scriptErrorLevel,
   scriptErrorSource,
 } from "../core/agent-act.mjs";
-import { cutTo } from "../core/agent-keys.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
 import { AgentActors } from "../actors/AgentActors.sys.mjs";
 import { MCP_CHANGED_TOPIC, MCP_ENABLED_PREF, McpHost } from "../host/mcp-ops.mjs";
@@ -128,7 +128,7 @@ function onStopRequest(subject) {
   }
   const entry = {
     method: String(channel.requestMethod),
-    url: cutTo(String(uri.spec).slice(0, 4 * AGENT_CONSOLE.url), AGENT_CONSOLE.url),
+    url: agentUrl(String(uri.spec), AGENT_CONSOLE.url),
     ...failed,
     type: TYPES.get(loadInfo.externalContentPolicyType) ?? "other",
     time: Date.now(),

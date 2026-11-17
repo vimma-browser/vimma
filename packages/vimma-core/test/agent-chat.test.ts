@@ -19,6 +19,7 @@ import {
   parseAgentCommand,
   providerWhere,
   sendNotice,
+  whereDataGoes,
 } from "../src/agent/agent-chat.mjs";
 import { reloadConfig } from "../src/config/config.mjs";
 
@@ -250,6 +251,10 @@ describe("an agent CLI's steps from the gate", () => {
 describe("plain text", () => {
   test("bidi overrides and control characters go; line breaks and tabs stay", () => {
     expect(chatText("a‮b\r\nc\u0007d\te⁦f")).toBe("ab\ncd\tef");
+  });
+
+  test("every bidi control goes, the Arabic letter mark among them", () => {
+    expect(chatText("a\u061cb\u200fc\u2069d")).toBe("abcd");
   });
 
   test("a reply line starting with a question glyph is indented under the agent label", () => {
@@ -538,5 +543,256 @@ describe("the window's keys in normal mode (Behaviour 14)", () => {
     for (const [key, what] of verbs) expect(k(key)).toEqual({ kind: "do", what });
     expect(k("z")).toEqual({ kind: "none" });
     expect(k("esc")).toEqual({ kind: "none" });
+  });
+});
+
+// Issue #1119: what the weekly mutation run left unpinned.
+describe("the transcript's edges", () => {
+  test("plain text: nothing is empty, and a lone carriage return is a line break", () => {
+    expect(chatText(undefined)).toBe("");
+    expect(chatText(null)).toBe("");
+    expect(chatText("a\rb\r\nc")).toBe("a\nb\nc");
+  });
+
+  test("a tool's name: every run of spaces and breaks is one space; 40 characters are not cut", () => {
+    const t = new Transcript();
+    t.task({ type: "call", call: call(" vimma \n\t open ") });
+    const forty = "n".repeat(40);
+    t.task({ type: "refused", call: call(forty, {}, "c2"), reason: "no" });
+    t.task({ type: "refused", call: call(`${forty}xyz`, {}, "c3"), reason: "no" });
+    expect(t.entries.map((e) => [e.kind, e.text])).toEqual([
+      ["step", "vimma open"],
+      ["step", forty],
+      ["step", `${forty}…`],
+    ]);
+  });
+
+  test("an own tool's line has single spaces; a refusal marks the latest of that id only", () => {
+    const t = new Transcript();
+    t.ownTool("t1", "ran  Bash");
+    t.ownTool("t2", "ran Read");
+    t.ownTool("t1", "ran Grep");
+    const v = t.version;
+    t.ownToolRefused("t1");
+    expect(t.version).toBe(v + 1);
+    expect(t.entries.map((e) => [e.text, e.outcome])).toEqual([
+      ["ran Bash", undefined],
+      ["ran Read", undefined],
+      ["ran Grep", "refused by its settings"],
+    ]);
+    t.ownToolRefused("t2");
+    expect(t.entries[1]?.outcome).toBe("refused by its settings");
+    expect(t.entries[0]?.outcome).toBe(undefined);
+  });
+
+  test("a rate wait, a result or a gate event with no step running changes nothing", () => {
+    const t = new Transcript();
+    t.user("x");
+    const v = t.version;
+    t.rateWait(1000);
+    t.task({ type: "result", call: call("vimma_open"), result: ok });
+    t.gate({ kind: "asked", tool: "vimma_open", what: {} });
+    expect(t.version).toBe(v);
+    expect(texts(t)).toEqual(["user: x"]);
+  });
+
+  test("a rate wait, a result and a gate event each raise the version", () => {
+    const t = new Transcript();
+    t.task({ type: "call", call: call("vimma_open") });
+    let v = t.version;
+    t.rateWait(1000);
+    expect(t.version).toBe(++v);
+    t.gate({ kind: "asked", tool: "vimma_open", what: { url: "https://a.example/" } });
+    expect(t.version).toBe(++v);
+    t.task({ type: "result", call: call("vimma_open"), result: ok });
+    expect(t.version).toBe(v + 1);
+  });
+
+  test("a result that comes while the question is still shown ends the step", () => {
+    const t = new Transcript();
+    t.task({ type: "call", call: call("vimma_tabs") });
+    t.gate({ kind: "asked", tool: "vimma_tabs", what: { count: 1 } });
+    t.task({ type: "result", call: call("vimma_tabs"), result: ok });
+    expect(t.entries[0]?.outcome).toBe("done");
+  });
+
+  test("a checkpoint's outcomes: no answer, yes once, yes with a grant, no", () => {
+    const pay = { label: "Pay", pay: true };
+    const outcomes = (["timeout", "once", "grant", "deny"] as const).map((a) => {
+      const t = new Transcript();
+      t.task({ type: "call", call: call("vimma_activate") });
+      t.gate({ kind: "asked", tool: "vimma_activate", what: pay });
+      if (a === "timeout") t.gate({ kind: "timeout", tool: "vimma_activate", what: pay });
+      else t.gate({ kind: "answered", tool: "vimma_activate", what: pay, answer: a });
+      return [t.entries[0]?.kind, t.entries[0]?.outcome];
+    });
+    expect(outcomes).toEqual([
+      ["checkpoint", "→ no answer, stopped"],
+      ["checkpoint", "→ you said yes"],
+      ["checkpoint", "→ you said yes"],
+      ["checkpoint", "→ you said no"],
+    ]);
+  });
+
+  test("an answer the window does not know is a denial", () => {
+    const t = new Transcript();
+    t.task({ type: "call", call: call("vimma_tabs") });
+    t.gate({ kind: "answered", tool: "vimma_tabs", what: { count: 1 }, answer: "maybe" });
+    expect(t.entries[0]?.outcome).toBe("denied");
+  });
+
+  test("an agent CLI's step run under the grant is not the step a later answer is about", () => {
+    const t = new Transcript();
+    t.cliGate({ kind: "ran", tool: "vimma_tabs", what: {} });
+    t.cliGate({ kind: "answered", tool: "vimma_tabs", what: {}, answer: "deny" });
+    t.cliGate({ kind: "timeout", tool: "vimma_tabs", what: {} });
+    expect(texts(t)).toEqual(["step: listed the agent tabs · ran under grant"]);
+  });
+
+  test("a step not yet asked about, or waiting out a rate, is withdrawn when the task stops", () => {
+    for (const wait of [false, true]) {
+      const t = new Transcript();
+      t.task({ type: "call", call: call("vimma_open") });
+      if (wait) t.rateWait(5000);
+      t.end({ outcome: "stopped" });
+      expect(t.entries[0]?.outcome, `${wait}`).toBe("withdrawn");
+    }
+  });
+
+  test("stopped after names the latest step or checkpoint, not a reply after it", () => {
+    const t = new Transcript();
+    t.task({ type: "call", call: call("vimma_open") });
+    t.task({ type: "result", call: call("vimma_open"), result: ok });
+    t.task({ type: "call", call: call("vimma_tabs", {}, "c2") });
+    t.task({ type: "result", call: call("vimma_tabs", {}, "c2"), result: ok });
+    t.task({ type: "reply", text: "Done looking." });
+    t.end({ outcome: "stopped", after: call("vimma_tabs", {}, "c2") });
+    expect(t.entries.at(-1)?.text).toBe('stopped after "vimma_tabs"');
+    const c = new Transcript();
+    c.task({ type: "call", call: call("vimma_activate") });
+    c.gate({ kind: "asked", tool: "vimma_activate", what: { label: "Pay", pay: true } });
+    c.end({ outcome: "stopped", after: call("vimma_activate") });
+    expect(c.entries.at(-1)?.text).toBe(`stopped after "${c.entries[0]?.text}"`);
+  });
+
+  test("an end's kinds and warnings: a budget without its limit, an error without words", () => {
+    const t = new Transcript();
+    t.end({ outcome: "budget", exceeded: { limit: "steps", used: 60, max: 60 } });
+    t.end({ outcome: "budget" });
+    t.end({ outcome: "error" });
+    t.end({ outcome: "error", error: "stopped by the user" });
+    t.end({ outcome: "error", error: "the CLI stopped" });
+    expect(t.entries.map((e) => [e.kind, e.text, e.warn])).toEqual([
+      ["end", "stopped: 60 steps, the limit of [agent] max_steps", true],
+      ["end", "stopped: the task failed", true],
+      ["end", "stopped: the task failed", true],
+      ["end", "stopped by the user", true],
+      ["end", "stopped: the CLI stopped", true],
+    ]);
+    // A limit goes with a budget's end only.
+    const e = new Transcript();
+    e.end({ outcome: "error", error: "x", exceeded: { limit: "steps", used: 60, max: 60 } });
+    expect(e.entries[0]?.text).toBe("stopped: x");
+  });
+
+  test("how a checkpoint, a step, a notice and an end are drawn", () => {
+    expect(entryView({ kind: "checkpoint", text: "pay" })).toEqual({
+      label: null,
+      lines: ["pay"],
+      indent: false,
+      tone: "warn",
+    });
+    expect(entryView({ kind: "step", text: "opened" })).toEqual({
+      label: null,
+      lines: ["· opened"],
+      indent: false,
+      tone: "dim",
+    });
+    expect(entryView({ kind: "notice", text: "granted" })).toEqual({
+      label: null,
+      lines: ["granted"],
+      indent: false,
+      tone: "dim",
+    });
+    expect(entryView({ kind: "end", text: "stopped: x", warn: true })).toEqual({
+      label: null,
+      lines: ["stopped: x"],
+      indent: false,
+      tone: "warn",
+    });
+  });
+});
+
+describe("what leaves the machine: edges", () => {
+  test("a key is needed for Anthropic anywhere and for a hosted endpoint, never for a cli", () => {
+    expect(needsKey({ kind: "anthropic", endpoint: "http://127.0.0.1:8000" })).toBe(true);
+    expect(needsKey({ kind: "openai", endpoint: "http://127.0.0.1:11434/v1" })).toBe(false);
+    expect(needsKey({ kind: "openai", endpoint: "https://llm.example/v1" })).toBe(true);
+    expect(needsKey({ kind: "cli", endpoint: "https://llm.example/v1" })).toBe(false);
+  });
+
+  test("a cli without a name is still a cli's notice target", () => {
+    expect(noticeTarget({ kind: "cli", endpoint: "https://llm.example/" })).toBe("cli:");
+  });
+
+  test("an endpoint that does not parse is named as written", () => {
+    expect(externalNotice({ kind: "openai", endpoint: "not a url" })).toContain(
+      "are sent to not a url. y send",
+    );
+    expect(whereDataGoes("not a url")).toBe("no endpoint");
+  });
+
+  test("only 127.0.0.1 on a probed port stays on this machine", () => {
+    expect(whereDataGoes("http://localhost:11434/v1")).toBe("local endpoint localhost:11434");
+    expect(whereDataGoes("http://127.0.0.1:9999/v1")).toBe("local endpoint 127.0.0.1:9999");
+    expect(whereDataGoes("http://127.0.0.1:1234/v1")).toBe("stays on this machine");
+  });
+
+  test("an [agent] error is one whose path starts with agent, the table itself included", () => {
+    const errors = [
+      { line: 2, path: "keys.agent", message: "unknown action" },
+      { line: 5, path: "agent", message: "is not a table" },
+    ];
+    expect(noModelReason(errors, "c.toml")).toBe("2 errors: c.toml:5: agent: is not a table");
+    expect(noModelReason([{ line: 3, path: "agentx", message: "m" }], "c.toml")).toBe(
+      "c.toml:3: agentx: m",
+    );
+  });
+
+  test("an agent CLI's header counts its steps", () => {
+    const claude = { name: "claude", kind: "cli", cli: "claude-code", endpoint: "", model: "" };
+    const budget = { steps: 3, maxSteps: 60, tokens: 1, estimated: false, cost: null };
+    expect(chatHeader({ provider: claude, granted: true, budget })[1]).toBe(
+      "works in: agent workspace · granted · 3/60 steps · its own tools: as its configuration allows",
+    );
+  });
+});
+
+describe("the status bar's counts", () => {
+  const s = (o: any) => ({ steps: 1, maxSteps: 60, tokens: 0, estimated: false, cost: null, ...o });
+  test("a thousand tokens are 1k, a million 1M", () => {
+    expect(builtinStatus([s({ tokens: 999 })])).toBe("◇ built-in 1/60 · 999 tok");
+    expect(builtinStatus([s({ tokens: 1000 })])).toBe("◇ built-in 1/60 · 1k tok");
+    expect(builtinStatus([s({ tokens: 1_000_000 })])).toBe("◇ built-in 1/60 · 1M tok");
+    expect(builtinStatus([s({ tokens: 2_000_000 })])).toBe("◇ built-in 1/60 · 2M tok");
+  });
+
+  test("an agent CLI that reported tokens but no cost shows no estimate", () => {
+    expect(
+      builtinStatus([s({ cli: "codex", tokens: 5000, tokensReported: true, reportedCost: null })]),
+    ).toBe("◇ built-in 1/60 · 5k tok");
+  });
+});
+
+describe(":agent's words: edges", () => {
+  test("words are matched in any case, with any spaces between them", () => {
+    expect(parseAgentCommand("  Forget   ALL ")).toEqual({ kind: "forget" });
+  });
+
+  test("the refusal lists every word", () => {
+    expect(parseAgentCommand("zzzzzzzz")).toEqual({
+      kind: "refuse",
+      text: ':agent takes "stop", "new", "model", "list", "clear", "give", "forget all" or nothing',
+    });
   });
 });

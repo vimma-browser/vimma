@@ -329,3 +329,189 @@ test("a truncated outline says so after its last row", () => {
   expect(OUTLINE_TRUNCATED_TEXT).toBe("outline truncated at 5000 entries");
   expect(openOutline(o, 1).outline.truncated).toBe(true);
 });
+
+// A first entry with children starts collapsed:
+// 0 Intro (1)   collapsed
+// 1   Setup (2)
+// 2 Usage (3)
+const parsed = (entries: object[], pages = 6) =>
+  parsePdfOutline({ entries, truncated: false }, pages) as NonNullable<
+    ReturnType<typeof parsePdfOutline>
+  >;
+const nested = () =>
+  parsed([e("Intro", 1, 1, { collapsed: true }), e("Setup", 2, 2), e("Usage", 1, 3)]);
+
+describe("parsePdfOutline at its bounds", () => {
+  test("a missing entry drops the outline", () => {
+    expect(parsePdfOutline({ entries: [null], truncated: false }, 6)).toBeNull();
+  });
+
+  test("a 512-character title and an 8192-character URL are kept", () => {
+    const title = "x".repeat(512);
+    const url = "https://a/" + "x".repeat(8182);
+    const o = parsed([e(title, 1, 1), e("u", 1, 0, { kind: "url", url })]);
+    expect(o.entries[0]?.title).toBe(title);
+    expect(o.entries[1]?.url).toBe(url);
+  });
+});
+
+describe("the current entry in detail", () => {
+  test("an entry with no page is never the current one", () => {
+    expect(currentEntry(parsed([e("a", 1, 3), e("none", 1, 0, { kind: "none" })]), 1)).toBe(0);
+    expect(currentEntry(parsed([e("none", 1, 0, { kind: "none" }), e("b", 1, 1)]), 1)).toBe(1);
+  });
+
+  test("on one page, the deepest entry; at the same depth, the first", () => {
+    const o = parsed([e("A", 1, 2), e("A.1", 2, 2), e("B", 1, 2), e("C", 1, 2)]);
+    expect(currentEntry(o, 2)).toBe(1);
+    expect(currentEntry(parsed([e("A", 1, 2), e("B", 1, 2)]), 2)).toBe(0);
+  });
+
+  test("an entry on an earlier page after the current one does not replace it", () => {
+    expect(currentEntry(parsed([e("A", 1, 3), e("B", 1, 2)]), 3)).toBe(0);
+    expect(currentEntry(parsed([e("A", 1, 3), e("A.1", 2, 2)]), 3)).toBe(0);
+  });
+
+  test("an empty outline has none", () => {
+    expect(currentEntry(parsed([]), 1)).toBe(-1);
+  });
+});
+
+describe("the panel's state", () => {
+  test("opening knows each entry's parent and children, with no filter", () => {
+    const s = openOutline(nested(), 1);
+    expect(s.parents).toEqual([-1, 0, -1]);
+    expect(s.hasChildren).toEqual([true, false, false]);
+    expect(s.expanded).toEqual([false, true, true]);
+    expect(s).toMatchObject({ selected: 0, query: null, matches: [], match: 0 });
+    expect(openOutline(parsed([]), 1).expanded).toEqual([]);
+  });
+
+  test("a collapsed first entry hides its children, and opens for the page inside it", () => {
+    expect(titles(openOutline(nested(), 1))).toEqual(["Intro", "Usage"]);
+    const inside = openOutline(nested(), 2);
+    expect(selectedTitle(inside)).toBe("Setup");
+    expect(titles(inside)).toEqual(["Intro", "Setup", "Usage"]);
+  });
+
+  test("following the page opens the path through the first entry", () => {
+    const s = openOutline(nested(), 3);
+    expect(titles(s)).toEqual(["Intro", "Usage"]);
+    expect(titles(selectOutlinePage(s, 2))).toEqual(["Intro", "Setup", "Usage"]);
+  });
+
+  test("following the page keeps the folders the user left open", () => {
+    const s = openOutline(outline(), 1);
+    expect(titles(selectOutlinePage(s, 6))).toContain("Section 1.1");
+  });
+
+  test("tree rows have no path or matched ranges", () => {
+    for (const r of outlineRows(openOutline(outline(), 1))) {
+      expect(r).toMatchObject({ path: "", ranges: [] });
+    }
+  });
+
+  test("h on a child of the first entry goes up to it", () => {
+    const s = openOutline(nested(), 2);
+    expect(selectedTitle(keys(s, "index.collapse").state)).toBe("Intro");
+  });
+
+  test("zc closes the selected entry only", () => {
+    const s = keys(openOutline(outline(), 3), "index.expand_subtree").state; // Chapter 1, all open
+    const closed = keys(s, "index.down", "index.collapse").state; // Section 1.1
+    expect(closed.expanded).toEqual([true, true, false, true, true, true, true, true]);
+  });
+
+  test("zC on the last entry with children closes it and its descendants", () => {
+    const o = parsed([e("A", 1, 1), e("B", 1, 2), e("B.1", 2, 2), e("B.1.a", 3, 2)]);
+    const s = keys(openOutline(o, 2), "index.up", "index.up", "index.collapse_subtree").state;
+    expect(selectedTitle(s)).toBe("B");
+    expect(s.expanded).toEqual([true, false, false, false]);
+    // A sibling of the same level ends the subtree.
+    const t = keys(openOutline(outline(), 3), "index.collapse_subtree").state;
+    expect(t.expanded).toEqual([true, false, false, false, false, false, true, true]);
+  });
+
+  test("H / zM go to the top entry above the selection, also the first one", () => {
+    const s = keys(openOutline(nested(), 2), "index.collapse_all").state;
+    expect(selectedTitle(s)).toBe("Intro");
+    expect(s.expanded).toEqual([false, false, false]);
+  });
+
+  test("h on a top entry with nothing under it does nothing", () => {
+    const s = openOutline(outline(), 1); // Preface
+    expect(outlineKey(s, { id: "index.collapse" })).toEqual({ state: s, effect: null });
+  });
+
+  test("j on the last row stays there", () => {
+    const s = openOutline(outline(), 1);
+    expect(keys(s, "index.last", "index.down").state.selected).toBe(7);
+  });
+
+  test("G goes to the last row; k goes up one", () => {
+    const s = openOutline(outline(), 4); // Detail
+    expect(selectedTitle(keys(s, "index.up").state)).toBe("Section 1.1");
+    expect(keys(s, "index.last").state.selected).toBe(7);
+  });
+});
+
+describe("the filter in detail", () => {
+  const filtered = (query: string, o = outline()) =>
+    outlineRows(setOutlineQuery(keys(openOutline(o, 1), "index.filter").state, query));
+
+  test("a blank filter lists every entry with no ranges", () => {
+    const rows = filtered("   ");
+    expect(rows).toHaveLength(8);
+    for (const r of rows) expect(r.ranges).toEqual([]);
+  });
+
+  test("every term must match, whatever the white space", () => {
+    expect(filtered("  sec  1.2 ").map((r) => r.title)).toEqual(["Section 1.2"]);
+  });
+
+  test("the best match comes first, before document order", () => {
+    const o = parsed([e("Notes on setup", 1, 1), e("Setup", 1, 2)]);
+    expect(filtered("setup", o).map((r) => r.title)).toEqual(["Setup", "Notes on setup"]);
+  });
+
+  test("a match's path names the first entry above it", () => {
+    expect(filtered("setup", nested())).toMatchObject([{ title: "Setup", path: "Intro" }]);
+  });
+
+  test("ranges are in title order, and overlapping or touching ones merge", () => {
+    const o = parsed([e("one two", 1, 1)]);
+    expect(filtered("two one", o)[0]?.ranges).toEqual([
+      [0, 3],
+      [4, 7],
+    ]);
+    expect(filtered("on ne", o)[0]?.ranges).toEqual([[0, 3]]);
+    expect(filtered("on e", o)[0]?.ranges).toEqual([[0, 3]]);
+    expect(filtered("one n", o)[0]?.ranges).toEqual([[0, 3]]);
+  });
+
+  test("k, gg, G and ctrl+d / ctrl+u move among the matches, within them", () => {
+    const f = setOutlineQuery(keys(openOutline(outline(), 1), "index.filter").state, "e");
+    const n = f.matches.length;
+    expect(n).toBeGreaterThan(4);
+    const match = (...ids: string[]) => keys(f, ...ids).state.match;
+    expect(match("index.down", "index.down", "index.up")).toBe(1);
+    expect(match("index.up")).toBe(0);
+    expect(match("index.last")).toBe(n - 1);
+    expect(match("index.last", "index.first")).toBe(0);
+    expect(match("index.half_down")).toBe(2);
+    expect(match("index.half_down", "index.half_down", "index.half_up")).toBe(2);
+    expect(match(...Array(20).fill("index.down"))).toBe(n - 1);
+  });
+
+  test("/ again keeps the filter; other keys do nothing; Esc leaves no matches", () => {
+    const f = setOutlineQuery(keys(openOutline(outline(), 1), "index.filter").state, "sec");
+    expect(outlineKey(f, { id: "index.filter" })).toEqual({ state: f, effect: { type: "filter" } });
+    expect(outlineKey(f, { id: "index.expand_all" })).toEqual({ state: f, effect: null });
+    expect(keys(f, "index.close").state.matches).toEqual([]);
+  });
+
+  test("an unknown key does nothing outside the filter", () => {
+    const s = openOutline(outline(), 1);
+    expect(outlineKey(s, { id: "index.nothing" })).toEqual({ state: s, effect: null });
+  });
+});

@@ -321,7 +321,6 @@ describe("install type of the Flatpak", () => {
     const type = installTypeFrom({
       packaged: true,
       marker: "vimma-package=flatpak\n",
-      appImage: null,
     });
     expect(type).toBe("flatpak");
     const offer = {

@@ -52,7 +52,7 @@ the build's own `signmar`, and joins `SHA256SUMS`) → `sign` (cosign; with `mar
 jobs with `id-token: write`) → `publish` (only job with `contents: write`; uploads to the draft by its tag
 and checks that the draft is still on that tag after the notes edit) → `failure` (opens a
 `release-failure` issue). `aur.yml`, on publish: `aur` (no GitHub token; the SSH key only) →
-`failure`. `homebrew.yml`, on publish: `start` (`actions: write` only; starts `main`'s copy for
+`failure`. `homebrew.yml`, on publish: `start` (`actions: write`, and `contents: read` to read the release; starts `main`'s copy for
 the tag when `vimma.rb` is on the release) → `failure`. From `main` when `start` or `macos-tap`
 starts it, or by hand: `homebrew` (no GitHub token; the tap's deploy key only) → `failure`. Locally, from a mach tarball:
 

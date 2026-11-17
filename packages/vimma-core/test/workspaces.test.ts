@@ -779,3 +779,185 @@ describe("skipped workspaces (the agent workspace)", () => {
     expect(end.workspaces.map((w) => w.name)).toEqual(["main", "work", "agent", "x"]);
   });
 });
+
+// #1119: mutants the tests above let through.
+describe("workspaces: what each refusal says", () => {
+  const thrown = (fn: () => unknown) => {
+    try {
+      fn();
+    } catch (e) {
+      expect(e).toBeInstanceOf(WorkspaceError);
+      expect((e as Error).name).toBe("WorkspaceError");
+      return (e as Error).message;
+    }
+    throw new Error("expected a WorkspaceError");
+  };
+
+  test.each([
+    [
+      "an unknown workspace",
+      () => switchWorkspace(two(), { name: "nope" }),
+      'no workspace {"name":"nope"}',
+    ],
+    ["an unknown tab", () => closeTab(two(), "zz"), 'no tab "zz"'],
+    ["an empty name", () => renameWorkspace(two(), { index: 1 }, "  "), "workspace name is empty"],
+    [
+      "a duplicate name",
+      () => renameWorkspace(two(), { index: 1 }, " personal "),
+      'workspace "personal" already exists',
+    ],
+    ["a tab already open", () => openTab(abc(), "a"), 'tab "a" is already open'],
+    ["no workspaces", () => createWorkspaces([]), "need at least one workspace"],
+    [
+      "no container",
+      () => addWorkspace(two(), { name: "x", container: "" }),
+      'workspace "x" needs a container',
+    ],
+    [
+      "a container in use",
+      () => addWorkspace(two(), { name: "x", container: "c-work" }),
+      'container "c-work" is in use',
+    ],
+    [
+      "a bad id",
+      () => addWorkspace(two(), { id: "a b", name: "x", container: "c-x" }),
+      'bad workspace id "a b"',
+    ],
+    [
+      "an id in use",
+      () => addWorkspace(two(), { id: "w1", name: "x", container: "c-x" }),
+      'workspace id "w1" is in use',
+    ],
+    [
+      "no container for an existing workspace",
+      () => setWorkspaceContainer(two(), { index: 2 }, ""),
+      'workspace "personal" needs a container',
+    ],
+    [
+      "another workspace's container",
+      () => setWorkspaceContainer(two(), { index: 2 }, "c-work"),
+      'container "c-work" is in use',
+    ],
+    [
+      "deleting the last workspace",
+      () => deleteWorkspace(createWorkspaces([{ name: "w", container: "c" }]), { index: 1 }),
+      "cannot delete the last workspace",
+    ],
+    [
+      "a tab after an unknown one",
+      () => openTab(abc(), "d", { after: "zz" }),
+      'no tab "zz" in "work"',
+    ],
+    [
+      "pane ops on an empty workspace",
+      () => withPanes(two(), (p) => p),
+      'workspace "work" has no tabs',
+    ],
+    [
+      "a pane showing a stray tab",
+      () => withPanes(abc(), (p) => setPaneTab(p, p.focus, "stray")),
+      'pane shows "stray", not a tab of "work"',
+    ],
+  ] as Array<[string, () => unknown, string]>)("%s", (_, fn, message) => {
+    expect(thrown(fn)).toBe(message);
+  });
+});
+
+describe("workspaces: edges", () => {
+  test("a workspace id, name or container that is not a string is refused, not coerced", () => {
+    expectWsError(
+      () => addWorkspace(two(), { id: ["w9"] as any, name: "x", container: "c-x" }),
+      "bad-id",
+    );
+    expectWsError(() => addWorkspace(two(), { name: 5 as any, container: "c-x" }), "empty-name");
+    expectWsError(() => addWorkspace(two(), { name: "x", container: 5 as any }), "empty-container");
+    expectWsError(() => setWorkspaceContainer(two(), { index: 1 }, 5 as any), "empty-container");
+  });
+
+  test("a fractional place names no workspace", () => {
+    expectWsError(() => switchWorkspace(two(), { index: 1.5 }), "unknown-workspace");
+    expect(findWorkspace(two(), { index: 1.5 })).toBeUndefined();
+  });
+
+  test.each([
+    ["w5x", 3],
+    ["xw5", 3],
+    ["w12", 13],
+  ])("an explicit id %s sets the minted counter to %i", (id, next) => {
+    expect(addWorkspace(two(), { id, name: "x", container: "c-x" }).next).toBe(next);
+  });
+
+  test("before the first workspace puts the new one first", () => {
+    const s = addWorkspace(two(), { name: "x", container: "c-x" }, { before: "w1" });
+    expect(s.workspaces.map((w) => w.name)).toEqual(["x", "work", "personal"]);
+  });
+
+  test.each([
+    ["12", { index: 12 }],
+    ["2a", { name: "2a" }],
+    ["a2", { name: "a2" }],
+  ])("workspaceRefFor(%j)", (text, ref) => {
+    expect(workspaceRefFor(two(), text)).toEqual(ref);
+  });
+
+  test("a change that keeps the active workspace keeps the alternate", () => {
+    let s = switchWorkspace(two(), { index: 2 });
+    expect(s.alternate).toBe("w1");
+    s = renameWorkspace(s, { index: 2 }, "home");
+    expect(s.alternate).toBe("w1");
+  });
+
+  test("setAlternate to none leaves no alternate key", () => {
+    const s = switchWorkspace(two(), { index: 2 });
+    expect(setAlternate(s, undefined)).not.toHaveProperty("alternate");
+  });
+
+  test("leaveSkipped fixes only an alternate that is the skipped workspace", () => {
+    const skip = new Set(["agent"]);
+    const base = () =>
+      addWorkspace(
+        createWorkspaces([
+          { id: "main", name: "main", container: "1" },
+          { id: "work", name: "work", container: "2" },
+        ]),
+        { id: "agent", name: "agent", container: "3" },
+        { activate: false },
+      );
+    const prev = switchWorkspace(base(), { id: "agent" }); // alternate main
+    const next = switchWorkspace(switchWorkspace(base(), { id: "work" }), { id: "main" });
+    expect(next.alternate).toBe("work");
+    expect(leaveSkipped(prev, next, skip)).toBe(next);
+  });
+
+  test("splitsOf keeps a workspace's last split", () => {
+    const w = { ...ws(abc()), splits: [], shown: null, last: 2 } as any;
+    expect(splitsOf(w).last).toBe(2);
+  });
+
+  test("deleteWorkspace hands back its tabs as a list of its own", () => {
+    const { closedTabs } = deleteWorkspace(abc(), { index: 1 });
+    expect(closedTabs).toEqual(["a", "b", "c"]);
+    expect(Object.isFrozen(closedTabs)).toBe(false);
+  });
+
+  test("closing a tab of a workspace without splits adds none", () => {
+    expect(ws(closeTab(abc(), "a"))).not.toHaveProperty("splits");
+  });
+
+  test("an unfocused pane's closed tab gives way to the nearest hidden tab on its left", () => {
+    let s = selectTab(abc(), "c");
+    s = splitPane(s, "vertical", "d"); // tabs a, b, c, d; panes [c, d], focus d; a, b hidden
+    s = closeTab(s, "c");
+    expect(ws(s).tabs).toEqual(["a", "b", "d"]);
+    expect(paneTabs(ws(s))).toEqual(["b", "d"]);
+  });
+
+  test("splitPane refuses a tab that is already open", () => {
+    expectWsError(() => splitPane(abc(), "vertical", "a"), "duplicate-tab");
+  });
+
+  test("withPanes takes the active tab from the focused pane, wherever it is", () => {
+    const s = splitPane(abc(), "vertical", "d"); // panes [b, d], focus d
+    expect(ws(withPanes(s, toggleZoom)).activeTab).toBe("d");
+  });
+});

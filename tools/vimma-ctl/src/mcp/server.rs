@@ -263,15 +263,19 @@ pub fn clean_label(text: &str, max: usize) -> Option<String> {
     (!cleaned.is_empty()).then_some(cleaned)
 }
 
-/// vimma-core's `unprintable` (control.mjs): C0, DEL, C1 and the bidi controls.
+/// vimma-core's `unprintable` (control.mjs), the same set: C0, DEL, C1, Unicode's whole
+/// `Bidi_Control` set (the Arabic letter mark among them), the line and paragraph separators and
+/// the deprecated format characters U+206A to U+206F. A label holding one the core refuses
+/// would make Vimma refuse the whole hello.
 fn unprintable(c: char) -> bool {
     let cp = u32::from(c);
     cp <= 0x1f
         || (0x7f..=0x9f).contains(&cp)
+        || cp == 0x061c
         || cp == 0x200e
         || cp == 0x200f
-        || (0x202a..=0x202e).contains(&cp)
-        || (0x2066..=0x2069).contains(&cp)
+        || (0x2028..=0x202e).contains(&cp)
+        || (0x2066..=0x206f).contains(&cp)
 }
 
 fn capabilities() -> Value {
@@ -640,6 +644,14 @@ mod tests {
         );
         assert_eq!(clean_label(&"é".repeat(80), 64), Some("é".repeat(64)));
         assert_eq!(clean_label("\u{1}\u{2}", 64), None);
+        // The rest of control.mjs's set: the Arabic letter mark (Bidi_Control), the separators
+        // and the deprecated format characters, else Vimma refuses the whole hello.
+        assert_eq!(
+            clean_label("a\u{61c}b\u{2028}c\u{2029}d\u{206a}e\u{206f}f", 64),
+            Some("abcdef".into())
+        );
+        assert_eq!(clean_label("1\u{206a}", 64), Some("1".into()));
+        assert_eq!(clean_label("\u{61c}\u{2029}\u{206a}", 32), None);
         assert_eq!(clean_label("", 64), None);
     }
 

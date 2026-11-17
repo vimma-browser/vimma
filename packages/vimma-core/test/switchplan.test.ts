@@ -256,3 +256,30 @@ describe("planWorkspaceSwitch properties", () => {
     );
   });
 });
+
+// #1119: mutants the tests above let through.
+describe("planWorkspaceSwitch: edges", () => {
+  test("a split group of tabs the model does not know is left alone", () => {
+    const st = state([["a"], ["b"], ["u", { group: "g" }], ["v", { group: "g" }]], "b");
+    expect(planWorkspaceSwitch(model(), { index: 1 }, st).hide).toEqual([]);
+  });
+
+  test("a group is hidden through a member other than the selected tab, which Firefox keeps", () => {
+    // admin is empty, so nothing is selected yet and c, the selected tab, stays selected.
+    const st = state([["a"], ["b"], ["c", { group: "g" }], ["d", { group: "g" }]], "c");
+    expect(planWorkspaceSwitch(model(), { index: 3 }, st).hide).toEqual(["a", "b", "d"]);
+  });
+
+  test("the refusals name the workspace and the tabs", () => {
+    const st = state([["a"]], "a");
+    expect(() => planWorkspaceSwitch(model(), { name: "nope" }, st)).toThrow(
+      expect.objectContaining({
+        code: "unknown-workspace",
+        message: 'no workspace {"name":"nope"}',
+      }),
+    );
+    expect(() => planWorkspaceSwitch(model(), { index: 1 }, state([["a"], ["a"]], "a"))).toThrow(
+      expect.objectContaining({ message: 'tabs list a tab twice: ["a","a"]' }),
+    );
+  });
+});

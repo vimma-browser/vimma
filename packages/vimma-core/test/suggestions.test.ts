@@ -102,3 +102,19 @@ describe("suggestionStep", () => {
     expect([...SUGGESTION_ACTIONS]).toEqual(["page.suggestion_next", "page.suggestion_prev"]);
   });
 });
+
+describe("suggestionListOpen: only a combobox's aria-expanded opens a list", () => {
+  test("a textbox that says it is expanded, with no popup named, has no list open", () => {
+    const focused = field({ role: "textbox", expanded: "true" });
+    expect(suggestionListOpen({ focused, combobox: null, autocompletePopup: false })).toBe(false);
+  });
+
+  test("an expanded combobox with one of its named popups showing has a list open", () => {
+    const focused = field({
+      role: "combobox",
+      expanded: "true",
+      popups: [popup({ role: "grid", visible: false }), popup({ role: "grid" })],
+    });
+    expect(suggestionListOpen({ focused, combobox: null, autocompletePopup: false })).toBe(true);
+  });
+});

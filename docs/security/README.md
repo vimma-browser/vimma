@@ -53,3 +53,4 @@ S9 or M62), so a citation that gives only those ("security.md M62", "§12") find
 | §19     | [Site permissions](19-site-permissions.md)                                      | SP1 to SP5          |
 | §20     | [The PDF viewer](20-pdf-viewer.md)                                              | V1 to V12           |
 | §21     | [Downloads picker](21-downloads-picker.md)                                      | D1 to D6            |
+| §22     | [The `:bug` report](22-bug-report.md)                                           | BG1 to BG6          |

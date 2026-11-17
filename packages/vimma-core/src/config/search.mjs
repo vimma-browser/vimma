@@ -372,13 +372,13 @@ export function planSearch(previous, next, { engines, defaultId }) {
     }
   }
 
-  const empty = !state.created.length && !state.aliased.length && !state.default;
   return {
     steps: [...restoreDefault, ...removals, ...restores, ...changes, ...setDefault],
     problems: problems.sort((a, b) =>
       String(a.path[2] ?? "").localeCompare(String(b.path[2] ?? "")),
     ),
-    state: empty && !next ? null : state,
+    // Without `next` nothing is wanted, so the state is empty: nothing left to record.
+    state: next ? state : null,
   };
 }
 

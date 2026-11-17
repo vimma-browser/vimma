@@ -654,3 +654,245 @@ describe("workspace folders", () => {
     expect(fromPlaces(places, "workspace")).toEqual(fromPlaces(places, "toolbar"));
   });
 });
+
+// The cases below build their trees inside each test, where per-test coverage sees them.
+const menuTree = () => fromPlaces(places);
+
+describe("paths in detail", () => {
+  test("a backslash before anything but / or \\ is kept", () => {
+    expect(parseBookmarkPath("a\\b")).toEqual({ folders: [], leaf: "a\\b" });
+  });
+  test("an escaped backslash before a slash ends the folder", () => {
+    expect(parseBookmarkPath("a\\\\/b")).toEqual({ folders: ["a\\"], leaf: "b" });
+    expect(splitWorkspacePath("@a\\\\/b")).toEqual({ workspace: "a\\", rest: "b" });
+  });
+  test("a workspace name keeps other backslashes and loses its spaces", () => {
+    expect(splitWorkspacePath("@a\\b/x")).toEqual({ workspace: "a\\b", rest: "x" });
+    expect(splitWorkspacePath("@ shop /x")).toEqual({ workspace: "shop", rest: "x" });
+  });
+});
+
+describe("fromPlaces in detail", () => {
+  test("a bookmark needs a URL; only bookmarks and folders are kept", () => {
+    const tree = fromPlaces({
+      guid: "r",
+      children: [
+        folder(PLACES_ROOTS.menu, "menu", [
+          { guid: "nourl", typeCode: 1, title: "No URL" },
+          { guid: "odd", typeCode: 3, uri: "https://sep.example/" },
+          { guid: "untitled", typeCode: 1, uri: "https://u.example/" },
+          { guid: "f", typeCode: 2 },
+        ]),
+      ],
+    });
+    expect(tree.children).toEqual([
+      { guid: "untitled", kind: "bookmark", title: "", url: "https://u.example/" },
+      { guid: "f", kind: "folder", title: "", children: [] },
+    ]);
+    // A row shows a bookmark's URL and a folder's placeholder for a missing title.
+    expect(flattenTree(tree, new Set()).map((r) => [r.title, r.url])).toEqual([
+      ["https://u.example/", "https://u.example/"],
+      ["(untitled folder)", ""],
+    ]);
+  });
+  test("Places with no roots, or a mobile root without children, give an empty menu", () => {
+    expect(fromPlaces({ guid: "r" })).toEqual({
+      guid: PLACES_ROOTS.menu,
+      kind: "folder",
+      title: "",
+      root: "menu",
+      children: [],
+    });
+    const noMobileKids = fromPlaces({
+      guid: "r",
+      children: [{ guid: PLACES_ROOTS.mobile, typeCode: 2 }],
+    });
+    expect(noMobileKids.children).toEqual([]);
+    expect(fromPlaces({ guid: "r" }, "toolbar").title).toBe("");
+  });
+});
+
+describe("folders in detail", () => {
+  test("a workspace's tree is a folder", () => {
+    const toolbar = fromPlaces(places, "toolbar");
+    expect(workspaceTree(toolbar, { id: "w", name: "new" }).kind).toBe("folder");
+  });
+  test("an unknown guid has no path", () => {
+    expect(folderPath(menuTree(), "nope")).toEqual([]);
+  });
+  test("a path walks folders only, from the top when the base is not a folder", () => {
+    const tree = menuTree();
+    expect(resolveFolders(tree, "work", ["Jira"])).toEqual({ guid: "work", missing: ["Jira"] });
+    expect(resolveFolders(tree, "jira", ["work"])).toEqual({ guid: "work", missing: [] });
+    expect(resolveFolders(tree, "nope", ["work"])).toEqual({ guid: "work", missing: [] });
+  });
+  test("an exact name wins; a case-insensitive one only when it is the only one", () => {
+    const tree = fromPlaces({
+      guid: "r",
+      children: [folder(PLACES_ROOTS.menu, "menu", [folder("up", "Docs"), folder("low", "docs")])],
+    });
+    expect(resolveFolders(tree, PLACES_ROOTS.menu, ["docs"]).guid).toBe("low");
+    expect(resolveFolders(tree, PLACES_ROOTS.menu, ["Docs"]).guid).toBe("up");
+    expect(resolveFolders(tree, PLACES_ROOTS.menu, ["DOCS"])).toEqual({
+      guid: PLACES_ROOTS.menu,
+      missing: ["DOCS"],
+    });
+  });
+  test("Tab completion: an escaped slash is part of the name; missing folders offer nothing", () => {
+    const tree = fromPlaces({
+      guid: "r",
+      children: [folder(PLACES_ROOTS.menu, "menu", [folder("ab", "a/b"), folder("a", "a")])],
+    });
+    expect(completeFolder(tree, PLACES_ROOTS.menu, "a\\/")).toEqual(["a\\/b/"]);
+    expect(completeFolder(menuTree(), PLACES_ROOTS.menu, "work")).toEqual(["work/", "Workshop/"]);
+    expect(completeFolder(menuTree(), PLACES_ROOTS.menu, "nope/w")).toEqual([]);
+  });
+});
+
+describe("isOpenable in detail", () => {
+  test("tabs and line breaks are dropped as the URL parser drops them; the scheme must lead", () => {
+    expect(isOpenable("ht\ttps://a.example/")).toBe(true);
+    expect(isOpenable(" \nhttps://a.example/")).toBe(true);
+    expect(isOpenable("javascript:alert('https://a.example/')")).toBe(false);
+  });
+});
+
+describe("rows and the filter in detail", () => {
+  test("a bookmark's guid in the expanded set opens nothing", () => {
+    const rows = flattenTree(menuTree(), new Set(["lua"]));
+    expect(rows.find((r) => r.guid === "lua")).toMatchObject({ open: false, path: "" });
+  });
+
+  test("a title match ranks first, then the folder path, then the URL, then letters in order", () => {
+    const tree = fromPlaces({
+      guid: "r",
+      children: [
+        folder(PLACES_ROOTS.menu, "menu", [
+          bm("subseq", "a lot of paths and more", "https://one.example/"),
+          bm("url", "beta", "https://alpha.example/"),
+          folder("f", "alpha", [bm("path", "gamma", "https://two.example/")]),
+          bm("title", "alpha", "https://three.example/"),
+        ]),
+      ],
+    });
+    const rows = filterBookmarks(tree, "alpha");
+    expect(rows.map((r) => r.guid)).toEqual(["title", "path", "url", "subseq"]);
+    expect(rows.every((r) => !r.open)).toBe(true);
+  });
+
+  test("every term must match", () => {
+    expect(filterBookmarks(menuTree(), "git hub").map((r) => r.guid)).toEqual(["gh"]);
+    expect(filterBookmarks(menuTree(), "git jira")).toEqual([]);
+  });
+
+  test("a blank filter shows the tree", () => {
+    const tree = menuTree();
+    expect(openBookmarks(tree, { query: "  " }).rows).toEqual(flattenTree(tree, new Set()));
+  });
+});
+
+describe("bookmarksKey in detail", () => {
+  const open = (guid: string, expanded: string[] = []) =>
+    openBookmarks(menuTree(), { selectedGuid: guid, expanded });
+
+  test("Enter on an open folder closes it alone", () => {
+    const { state } = press(open("work", ["work", "docs"]), [{ id: "panel.open" }]);
+    expect(state.expanded).toEqual(["docs"]);
+  });
+
+  test("h on an open folder closes it alone and keeps it highlighted", () => {
+    const { state } = press(open("work", ["work", "docs"]), [{ id: "bookmarks.collapse" }]);
+    expect(state.expanded).toEqual(["docs"]);
+    expect(sel(state)?.guid).toBe("work");
+  });
+
+  test("a blank filter is no filter: Enter still opens a folder", () => {
+    const s = openBookmarks(menuTree(), { selectedGuid: "work", query: "  " });
+    expect(press(s, [{ id: "panel.open" }]).state.expanded).toEqual(["work"]);
+  });
+
+  test("2 h from three folders down stops two levels up", () => {
+    const tree = fromPlaces({
+      guid: "r",
+      children: [
+        folder(PLACES_ROOTS.menu, "menu", [
+          folder("a", "a", [
+            folder("b", "b", [folder("c", "c", [bm("leaf", "Leaf", "https://l/")])]),
+          ]),
+        ]),
+      ],
+    });
+    const s = openBookmarks(tree, { selectedGuid: "leaf", expanded: ["a", "b", "c"] });
+    const { state } = press(s, [{ id: "bookmarks.collapse", count: 2 }]);
+    expect(sel(state)?.guid).toBe("b");
+    expect(state.expanded).toEqual(["a"]);
+  });
+
+  test("a folder refuses to open in a tab or be yanked, by name", () => {
+    expect(press(open("work"), [{ id: "bookmarks.open_tab" }]).effect).toEqual({
+      type: "refuse",
+      text: "work is a folder",
+    });
+    expect(press(open("work"), [{ id: "bookmarks.yank" }]).effect).toEqual({
+      type: "refuse",
+      text: "work is a folder",
+    });
+  });
+
+  test("a bookmark with no scheme says this:, and a scheme must lead the URL", () => {
+    const tree = fromPlaces({
+      guid: "r",
+      children: [
+        folder(PLACES_ROOTS.menu, "menu", [
+          bm("bare", "Bare", "nothing"),
+          bm("odd", "Odd", "1x:y"),
+        ]),
+      ],
+    });
+    const refusal = (guid: string) =>
+      press(openBookmarks(tree, { selectedGuid: guid }), [{ id: "panel.open" }]).effect;
+    expect(refusal("bare")).toEqual({
+      type: "refuse",
+      text: "this: bookmarks don't open from Vimma (only http, https, file, about)",
+    });
+    expect(refusal("odd")).toEqual({
+      type: "refuse",
+      text: "this: bookmarks don't open from Vimma (only http, https, file, about)",
+    });
+  });
+
+  test("r on a bookmark with no title starts from its empty title, not its URL", () => {
+    expect(press(open("lua"), [{ id: "bookmarks.rename" }]).effect).toEqual({
+      type: "rename",
+      guid: "lua",
+      title: "",
+    });
+  });
+});
+
+describe("refreshBookmarks in detail", () => {
+  test("an empty panel refreshes into the new tree", () => {
+    const empty = openBookmarks(fromPlaces({ guid: "r" }));
+    const next = refreshBookmarks(empty, menuTree());
+    expect(next.selected).toBe(0);
+    expect(sel(next)?.guid).toBe(PLACES_ROOTS.toolbar);
+  });
+
+  test("the last row gone: the highlight moves to the new last row", () => {
+    const s = openBookmarks(menuTree(), { selectedGuid: "js" });
+    const less = structuredClone(places);
+    folderAt(less, 0).children.pop();
+    const next = refreshBookmarks(s, fromPlaces(less));
+    expect(sel(next)?.guid).toBe("lua");
+  });
+});
+
+describe("renderStart at its edges", () => {
+  test("the selection on the window's first row keeps the window", () => {
+    expect(renderStart(2000, 100, 100)).toBe(100);
+  });
+  test("a window that starts at the last full window stays; one past it is pulled back", () => {
+    expect(renderStart(2000, 1920, 1900)).toBe(1900);
+    expect(renderStart(2000, 1990, 1950)).toBe(1900);
+  });
+});

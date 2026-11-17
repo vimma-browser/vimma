@@ -175,3 +175,59 @@ describe("iw / aw: a word as a text object", () => {
     expect(wordObject("", 0, false)).toBe(null);
   });
 });
+
+describe("motion edges", () => {
+  const f = (kind: FindKind, char: string) => ({ kind, char });
+
+  test("a carriage return ends the line for f", () => {
+    expect(findChar("a\rb", 0, f("f", "b"))).toBeNull();
+    expect(findChar("a\rb", 3, f("F", "a"))).toBeNull();
+  });
+
+  test("a count that runs out of words keeps the last word found", () => {
+    expect(textMotion("a b", 0, "word_end", 4)).toBe(3);
+    expect(textMotion("a b c", 0, "bigword_forward", 9)).toBe(4);
+  });
+
+  test("^ on a line of only blanks stays put", () => {
+    expect(firstNonBlank("  ", 0)).toBe(0);
+    expect(firstNonBlank("x  ", 1)).toBe(1);
+  });
+
+  test("f matches the character right after the caret", () => {
+    expect(findChar("ab", 0, f("f", "a"))).toBe(1);
+  });
+
+  test("f and F reach the line's last and first characters", () => {
+    expect(findChar("ab", 0, f("f", "b"))).toBe(2);
+    expect(findChar("ab", 0, f("t", "b"))).toBe(1);
+    expect(findChar("ab", 2, f("F", "a"))).toBe(0);
+    expect(findChar("ab", 2, f("T", "a"))).toBe(1);
+  });
+
+  test("a find with no match in the text is null", () => {
+    expect(findChar("abc", 0, f("f", "z"))).toBeNull();
+    expect(findChar("abc", 3, f("F", "z"))).toBeNull();
+    expect(findChar("abc", 0, f("t", "z"))).toBeNull();
+    expect(findChar("abc", 3, f("T", "z"))).toBeNull();
+  });
+
+  test("iw on blanks stops at the text's ends", () => {
+    expect(wordObject("  a", 1, false)).toEqual([0, 2]);
+    expect(wordObject("a  ", 1, false)).toEqual([1, 3]);
+  });
+
+  test("aw on a word with punctuation on both sides is the word alone", () => {
+    expect(wordObject("ab.cd", 0, true)).toEqual([0, 2]);
+    expect(wordObject(".ab.", 1, true)).toEqual([1, 3]);
+  });
+
+  test("aw takes the blanks before a word at the text's end, from the text's start", () => {
+    expect(wordObject(" ab", 1, true)).toEqual([0, 3]);
+  });
+
+  test("aw on blanks at the end or before a line break takes no word", () => {
+    expect(wordObject("a  ", 2, true)).toEqual([1, 3]);
+    expect(wordObject("a \nb", 1, true)).toEqual([1, 2]);
+  });
+});
