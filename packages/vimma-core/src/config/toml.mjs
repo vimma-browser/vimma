@@ -452,6 +452,11 @@ function setKey(text, doc, { table, key, value }) {
     if (text === "") return { ok: true, text: body };
     return { ok: true, text: `${text}${text.endsWith("\n") ? "" : eol}${eol}${body}` };
   }
+  // A `[table]` line inside a multi-line string is no header: the file has no such table.
+  const t = doc[table];
+  if (typeof t !== "object" || t === null || Array.isArray(t)) {
+    return fail(headerAt + 1, `${table} is not a plain [${table}] table`);
+  }
   let end = lines.length;
   for (let n = headerAt + 1; n < lines.length; n++) {
     if (/^[ \t]*\[/.test(/** @type {string} */ (lines[n]))) {
@@ -469,7 +474,7 @@ function setKey(text, doc, { table, key, value }) {
     lines[n] = `${m[0]}${literal}${line.slice(stop)}`;
     return { ok: true, text: lines.join("\n") };
   }
-  if (key in doc[table]) {
+  if (key in t) {
     return fail(where([table, key]) ?? headerAt + 1, `${name} is not a plain key = value line`);
   }
   let last = headerAt;
