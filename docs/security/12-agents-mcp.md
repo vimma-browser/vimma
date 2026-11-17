@@ -651,14 +651,17 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   at. Every reply that names a title gives the tab's URL instead, without them, as Firefox shows
   it (no scheme, no `www.`; core's `agentTabTitle`). A page's own title that is a URL with a
   scheme loses them too (core's `agentTitle`). Any other title, and the page's text, are the
-  page's own: a page that writes its address into them is not changed. Not yet covered: a link nested in another link's text, which some
-  search pages have, comes out of Firefox's extractor escaped (`\[a\]\(https://...\)`), is not
-  read as a link target, and keeps a user name and password its resolved href holds.
+  page's own: a page that writes its address into them is not changed. A link nested in another
+  link's text, which some search pages have, comes out of Firefox's extractor escaped
+  (`\[a\]\(https://...\)`); its target loses them too (#1217), and only link targets are read, so
+  the page's text, code and email addresses stay byte for byte.
   [`a link's href loses its user name and password`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`a user name and password longer than the cut are dropped before it`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`a link's href and a form's action lose their user name and password`](../../packages/vimma-core/test/agent-act.test.ts),
   [`a user name and password longer than the cut are dropped before it`](../../packages/vimma-core/test/agent-act.test.ts),
   [`a read page's markdown links lose their user names and passwords`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`a link nested in another link's text loses its user name and password (#1217)`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`text that is no link target is left byte for byte, URLs and emails too`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`the console's and the lists' URLs go through one stripper`](../../packages/vimma-core/test/agent-act.test.ts),
   [`test_no_reply_carries_the_pages_user_name_and_password`](../../tests/browser/browser_vimma_mcp_userinfo.js),
   [`a title that is a URL loses its user name and password`](../../packages/vimma-core/test/agent-keys.test.ts),

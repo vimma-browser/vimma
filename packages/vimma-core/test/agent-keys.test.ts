@@ -684,6 +684,43 @@ describe("URLs without user names and passwords (security.md M21, #1209)", () =>
     expect(markdownWithoutUserinfo(many)).not.toContain("a:b@");
   });
 
+  // Firefox's DOMExtractor.sys.mjs escapeMarkdownLink, as it is: a block anchor that wraps
+  // inline anchors (the Google search strategy) runs it over text already holding `[a](href)`.
+  const escapeMarkdownLink = (text: string, url: string): string =>
+    `[${text.replace(/[[\]()]/g, "\\$&")}](${url.replace(/\(/g, "%28").replace(/\)/g, "%29")})`;
+
+  test("a link nested in another link's text loses its user name and password (#1217)", () => {
+    const inner = escapeMarkdownLink("a", "https://ada:secret@www.google.com/x");
+    const once = escapeMarkdownLink(`${inner} b`, "https://ada:secret@www.google.com/y");
+    expect(once).toBe(
+      "[\\[a\\]\\(https://ada:secret@www.google.com/x\\) b](https://ada:secret@www.google.com/y)",
+    );
+    expect(markdownWithoutUserinfo(once)).toBe(
+      "[\\[a\\]\\(https://www.google.com/x\\) b](https://www.google.com/y)",
+    );
+    // Nested twice, the escapes pile up; IPv6 brackets in the href are escaped too.
+    const twice = escapeMarkdownLink(
+      escapeMarkdownLink(escapeMarkdownLink("c", "http://u:p@[::1]/z(1)"), "/r"),
+      "/s",
+    );
+    const out = markdownWithoutUserinfo(twice);
+    expect(out).not.toContain("u:p@");
+    expect(out).toBe(twice.replace("u:p@", ""));
+    expect(markdownWithoutUserinfo("\\[i\\]\\(foo://ada:secret@h\\x\\)")).toBe(
+      "\\[i\\]\\(foo://h\\x\\)",
+    );
+  });
+
+  test("text that is no link target is left byte for byte, URLs and emails too", () => {
+    const text = [
+      "Mail bob@example.com or ada:secret@example.com, see https://ada:secret@example.com/ here.",
+      "`git clone ssh://git@github.com/a/b` and `\\](https://a:b@c/ x)` stay; so does mailto:bob@example.com.",
+      "\\[not a link\\] \\(https://ada:secret@example.com/ x\\) and \\](a b@c\\) and ](\\u00e9)",
+      "Caf\u00e9 \u2014 \u{1f600} \\\\ \\] \\( \\) [] () ](",
+    ].join("\n");
+    expect(markdownWithoutUserinfo(text)).toBe(text);
+  });
+
   test("agentUrl takes the cut it is given", () => {
     expect(agentUrl("https://ada:secret@example.com/abcdef", 22)).toBe("https://example.com/a…");
   });
