@@ -149,15 +149,19 @@ describe("full builds (nightly.yml, release.yml, macos.yml)", () => {
       expect(step).toMatch(/npx --no -- surfer build --jobs 3\b/);
       expect(step).toMatch(/tools\/ci\/memory-watch\.sh[^\n]*&\n/);
       expect(step).toMatch(/watch=\$!\n/);
-      expect(step).toMatch(/trap 'kill "\$watch" 2>\/dev\/null \|\| true' EXIT\n/);
+      // The watch gives the runner agent its oom_score_adj back as it stops: wait for that, or
+      // the next step could start shielded from the OOM killer.
+      expect(step).toMatch(
+        /trap 'kill "\$watch" 2>\/dev\/null \|\| true; wait "\$watch" \|\| true' EXIT\n/,
+      );
       expect(step.indexOf("trap ")).toBeLessThan(step.indexOf("surfer build"));
     },
   );
 
   it("the Linux builds' timeouts leave room for a 3-job build", () => {
     const minutes = (block: string) => Number(/^ {4}timeout-minutes: (\d+)$/m.exec(block)?.[1]);
-    expect(minutes(BUILDS[0]?.block ?? "")).toBe(220);
-    expect(minutes(BUILDS[1]?.block ?? "")).toBe(200);
+    expect(minutes(BUILDS[0]?.block ?? "")).toBe(240);
+    expect(minutes(BUILDS[1]?.block ?? "")).toBe(230);
   });
 
   it.each(BUILDS)("$name stops itself before GitHub's 6-hour job limit", ({ block }) => {

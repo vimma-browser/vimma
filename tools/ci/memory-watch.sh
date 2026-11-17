@@ -10,9 +10,13 @@
 #
 #   tools/ci/memory-watch.sh &      from the repository root, in a GitHub Actions step
 #
-# Once, at the start: asks the kernel's OOM killer to spare the runner agent (Runner.Listener
-# and Runner.Worker; `sudo -n choom`, util-linux), so a build that runs out of memory loses a
-# compiler, with a log, rather than the runner and every log with it.
+# Once, at the start: asks the kernel's OOM killer to spare the runner agent, so a build that
+# runs out of memory loses a compiler, with a log, rather than the runner and every log with it.
+# It walks up from itself (step shell, Runner.Worker, Runner.Listener) and takes only a process
+# whose executable is named Runner.Worker or Runner.Listener, never one whose arguments merely say
+# so; each gets oom_score_adj -999 (`sudo -n choom`, util-linux). As it stops (SIGTERM from the
+# step's trap, which waits for it) it gives each its old value back: the steps the worker starts
+# after the build inherit its value, and must stay killable.
 #
 # Each minute: `free -m` and `df -h /` to the step log, and a `::warning::` annotation when less
 # than 1 GB of memory is available, more than half the swap is used, or the OOM killer killed
@@ -23,7 +27,7 @@
 # choom, no runner process) is ignored: the watch must never fail or slow the build. For tests:
 # MEMORY_WATCH_PROC (a fake /proc), MEMORY_WATCH_INTERVAL (seconds), MEMORY_WATCH_GAP (rounds
 # between warnings), MEMORY_WATCH_MAX (warnings) and MEMORY_WATCH_TICKS (rounds, then exit; 0
-# runs until killed).
+# runs until killed) and MEMORY_WATCH_SELF (the pid to walk up from).
 
 set -u
 
@@ -33,10 +37,29 @@ gap=${MEMORY_WATCH_GAP:-5}
 max=${MEMORY_WATCH_MAX:-10}
 ticks=${MEMORY_WATCH_TICKS:-0}
 
+self=${MEMORY_WATCH_SELF:-$$}
+
+# "pid:old oom_score_adj" of each runner process this script changed.
+shielded=()
+
+restore() {
+  local entry
+  for entry in "${shielded[@]}"; do
+    sudo -n choom -n "${entry#*:}" -p "${entry%%:*}" > /dev/null 2>&1 ||
+      echo "memory-watch: runner agent ${entry%%:*}: could not restore oom_score_adj ${entry#*:}"
+  done
+  shielded=()
+}
+
 # The step kills this script on exit: take the sleep down too, so no child keeps the step's
-# output open.
+# output open, and give the runner agent its old oom_score_adj back.
 sleeper=
-trap '[ -n "$sleeper" ] && kill "$sleeper" 2>/dev/null; exit 0' TERM HUP
+stop() {
+  [ -n "$sleeper" ] && kill "$sleeper" 2> /dev/null
+  restore
+  exit 0
+}
+trap stop TERM HUP
 
 # A /proc/meminfo field in kB (0 when missing).
 meminfo_kb() {
@@ -50,14 +73,26 @@ oom_kills() {
     "$proc/vmstat" 2>/dev/null || echo 0
 }
 
-for pid in $(pgrep -f 'Runner\.(Listener|Worker)' 2>/dev/null); do
-  case $pid in '' | *[!0-9]*) continue ;; esac
-  if sudo -n choom -n -1000 -p "$pid" > /dev/null 2>&1; then
-    echo "memory-watch: runner agent $pid: oom_score_adj -1000"
+# Up the parent chain from this script, at most 32 steps.
+pid=$self
+found=0
+for _ in {1..32}; do
+  pid=$(awk '$1 == "PPid:" { print $2; exit }' "$proc/$pid/status" 2> /dev/null)
+  case $pid in '' | 0 | *[!0-9]*) break ;; esac
+  exe=$(readlink "$proc/$pid/exe" 2> /dev/null) || continue
+  name=${exe##*/}
+  case $name in Runner.Worker | Runner.Listener) ;; *) continue ;; esac
+  found=1
+  old=$(cat "$proc/$pid/oom_score_adj" 2> /dev/null)
+  [[ $old =~ ^-?[0-9]+$ ]] || old=
+  if [ -n "$old" ] && sudo -n choom -n -999 -p "$pid" > /dev/null 2>&1; then
+    shielded+=("$pid:$old")
+    echo "memory-watch: runner agent $pid ($name): oom_score_adj -999, was $old"
   else
-    echo "memory-watch: runner agent $pid: could not set oom_score_adj"
+    echo "memory-watch: runner agent $pid ($name): could not set oom_score_adj"
   fi
 done
+[ "$found" -eq 1 ] || echo "memory-watch: no runner agent among this step's ancestors"
 
 base=$(oom_kills)
 tick=0
@@ -99,7 +134,7 @@ while :; do
     [ "$warned" -eq "$max" ] && echo "memory-watch: $max warnings, no more in this step"
   fi
 
-  [ "$ticks" -gt 0 ] && [ "$tick" -ge "$ticks" ] && exit 0
+  [ "$ticks" -gt 0 ] && [ "$tick" -ge "$ticks" ] && stop
   sleep "$interval" &
   sleeper=$!
   wait "$sleeper"

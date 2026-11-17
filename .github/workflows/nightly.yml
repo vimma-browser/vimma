@@ -115,7 +115,7 @@ jobs:
     # About 1.5 times the measured job, 124 min, plus room for the 3-job build (#1033;
     # docs/runbook/ci-full-builds.md, "Full builds"), well under GitHub's 6 hours, so a hung build
     # fails here with its own log and failure handling.
-    timeout-minutes: 220
+    timeout-minutes: 240
     # No write token here: npm, Surfer, mach and the mochitests run in this job. The failure
     # issue is a job of its own (`report`).
     permissions:
@@ -205,14 +205,14 @@ jobs:
       # Issue #1033: hosted runners were lost here, 61 to 72 min in, in the libxul link window,
       # while the build swapped about 19 GB. mach would run 4 jobs for 16 GB; 3 leave memory for
       # the link. tools/ci/memory-watch.sh logs memory each minute, warns when it runs short, and
-      # keeps the OOM killer off the runner agent (runbook, "Full builds").
+      # keeps the OOM killer off the runner agent until the build ends (runbook, "Full builds").
       - name: Build
         run: |
           set -o pipefail
           rm -rf engine/.git
           tools/ci/memory-watch.sh &
           watch=$!
-          trap 'kill "$watch" 2>/dev/null || true' EXIT
+          trap 'kill "$watch" 2>/dev/null || true; wait "$watch" || true' EXIT
           npx --no -- surfer build --jobs 3 2>&1 | tee -a "$LOG"
 
       - name: Smoke check
