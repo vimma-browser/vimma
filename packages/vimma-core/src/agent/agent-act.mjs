@@ -213,6 +213,7 @@ export function agentElementList(elements, maxBytes, seen) {
     const more = (again ? 0 : cost(own)) + (formLine ? cost(formLine) : 0);
     if (bytes + more > maxBytes) break;
     bytes += more;
+    // Stryker disable next-line LogicalOperator: a form line is written only with f and form set, and setting a form already kept again changes nothing
     if (f && formLine && form) forms.set(f.key, form);
     if (again) repeated.push(label);
     else shownLines.push(own);
@@ -512,7 +513,9 @@ export function parseFillTarget(value) {
       if (v[key] || key === "checked" || key === "accepts") out[key] = v[key];
     }
     if (v.submit !== undefined) {
+      // Stryker disable next-line StringLiteral: only the submit of this check is read, never its text
       const parsed = parseActTarget({ alive: true, kind: v.kind, text: "", submit: v.submit });
+      // Stryker disable next-line OptionalChaining: a null parsed throws here, and the catch below returns null too
       if (!parsed?.submit) return null;
       out.submit = parsed.submit;
     }
@@ -758,6 +761,7 @@ export function consoleArgsText(args) {
     const type = typeof v;
     /** @type {string} */
     let text;
+    // Stryker disable next-line MethodExpression: bounds the work only; the joined text is cut to room below
     if (type === "string") text = /** @type {string} */ (v).slice(0, room);
     else if (v === null) text = "null";
     else if (type === "number" || type === "boolean" || type === "bigint" || type === "undefined") {
@@ -825,6 +829,7 @@ export function parseConsoleEntry(raw) {
     level: r.level,
     source: /** @type {ConsoleEntry["source"]} */ (r.source),
     // Sliced first: a content process's string of any size is never spread whole.
+    // Stryker disable next-line MethodExpression: bounds the work only; 4,000 code units hold over 1,000 code points, so cutTo cuts the same
     message: cutTo(r.message.slice(0, 4 * AGENT_CONSOLE.message), AGENT_CONSOLE.message),
     file: agentUrl(r.file, AGENT_CONSOLE.url),
     line: /** @type {number} */ (r.line),
