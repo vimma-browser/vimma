@@ -71,10 +71,16 @@ both attempts of release run 44050265017 (v0.1.21), with no log left. So the Lin
   stay killable. If the runner is lost anyway, the step log and its warnings are lost with it; a
   successful run's warnings show how close it came.
 
-A 3-job build has not been timed yet, and a slow runner could take about 185 min. So
 `timeout-minutes` is 240 for the nightly and 230 for the release (which runs no mochitests),
-well over 1.5 times the 4-job measurements. Once a 3-job nightly and release have run, put their
-Build times here and check the margins.
+well over 1.5 times the 4-job measurements. The first 3-job build, manual nightly run
+44089137879 on 17 Nov 2026 (cold sccache), took 136 min in the Build step and 167 min for the
+whole job, so the nightly's margin is 73 min. The watch shielded both runner agents
+(`runner agent 2255 (Runner.Worker): oom_score_adj -999, was 0`, and the same for
+`Runner.Listener`), logged 137 minutes, and warned three times, all for low available memory:
+649 to 926 MB at minutes 28 to 39, the Rust stage. Swap use peaked at 10.2 GB and mach's summary
+says 14.7 GB in and 14.7 GB out (against 17.6 to 19.5 GB with 4 jobs); the OOM killer killed
+nothing. A 3-job release build has not been timed yet; once one has run, put its Build time
+here and check the release's margin.
 
 Each job's disk guard fails at once when less than 50 GB is free: the build needs
 about 26 GB and the swap file 16 GB. The free space is a property of the runner image, not a
