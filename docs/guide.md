@@ -4142,8 +4142,8 @@ type reaches the page, and `ctrl+b` sequences still work.
   narrows the list. Matching also takes letters in order (`scd` finds `scroll_down`).
 - **History.** `Up` / `Down` walk the lines you ran before, newest first. With text typed, `Up`
   recalls only lines that start with it, as in Vim, and `Down` then walks back towards your text.
-  On an empty line, or when nothing matches, `Down` stays in history. History lasts until Vimma quits; a private
-  window keeps its own, forgotten when it closes.
+  On an empty line, or when nothing matches, `Down` stays in history. History lasts until Vimma
+  quits; a private window keeps its own, forgotten when it closes.
 - `:open @` and `Tab` lists the search aliases (`@gh`, `@google`, …) with the engine each one
   searches; the chosen one ends in a space, ready for the words.
 - `:open` and `:tabnew` refuse `javascript:` and `data:` URLs (also behind `view-source:`), with a
