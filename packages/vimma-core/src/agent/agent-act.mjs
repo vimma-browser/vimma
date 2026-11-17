@@ -823,19 +823,77 @@ export function parseConsoleEntry(raw) {
     source: /** @type {ConsoleEntry["source"]} */ (r.source),
     // Sliced first: a content process's string of any size is never spread whole.
     message: cutTo(r.message.slice(0, 4 * AGENT_CONSOLE.message), AGENT_CONSOLE.message),
-    file: cutTo(r.file.slice(0, 4 * AGENT_CONSOLE.url), AGENT_CONSOLE.url),
+    file: agentUrl(r.file),
     line: /** @type {number} */ (r.line),
     column: /** @type {number} */ (r.column),
     time: /** @type {number} */ (r.time),
   };
 }
 
+/** A URL's scheme and its colon. */
+const URL_SCHEME = /^([a-z][a-z0-9+.-]*):/i;
+/** Schemes whose authority may come after any slashes or backslashes, or none (WHATWG). */
+const SPECIAL_SCHEMES = new Set(["http", "https", "ws", "wss", "ftp", "file"]);
+/** Schemes whose rest is a URL of its own, whose user name and password go too. */
+const NESTED_SCHEMES = new Set(["view-source", "jar", "blob"]);
+/** At most this many URLs inside one another are read (view-source:jar:https:...). */
+const NESTED_MAX = 4;
+
 /**
- * `url` without a user name and password, which a script's or request's URL may carry and which
- * are never the agent's (security.md M30).
- * @param {string} url
+ * `text` without the user name and password of its URL, and of the URLs nested in it: the
+ * authority after the scheme's slashes, up to its last `@`. Each scheme's authority ends where a
+ * WHATWG URL parser ends it (a slash, a question mark or a number sign, and for a special scheme a
+ * backslash too); a case where they could differ drops more, never less. `cut` says the text was
+ * cut, so an authority that runs to its end may hide a user name and password: it is dropped
+ * whole, and only the scheme and its slashes kept.
+ * @param {string} text @param {boolean} cut @param {number} depth
+ * @returns {string}
  */
-const withoutUserinfo = (url) => url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/?#@]*@/i, "$1");
+function withoutUserinfo(text, cut, depth) {
+  // As a URL parser does: leading C0 controls and spaces go, and so do tabs and line breaks.
+  const t = text.replace(/[\t\n\r]/g, "");
+  let start = 0;
+  while (start < t.length && t.charCodeAt(start) <= 0x20) start++;
+  const s = t.slice(start);
+  const m = URL_SCHEME.exec(s);
+  if (!m) return s;
+  const name = /** @type {string} */ (m[1]).toLowerCase();
+  const rest = s.slice(m[0].length);
+  if (NESTED_SCHEMES.has(name)) {
+    // Past NESTED_MAX the rest is not read, so it is dropped: it may hold a user name.
+    return depth < NESTED_MAX ? m[0] + withoutUserinfo(rest, cut, depth + 1) : `${m[0]}\u2026`;
+  }
+  const special = SPECIAL_SCHEMES.has(name);
+  const lead = special ? (/^[/\\]*/.exec(rest)?.[0] ?? "") : rest.startsWith("//") ? "//" : null;
+  if (lead === null) return s;
+  const after = rest.slice(lead.length);
+  let end = after.search(special ? /[/\\?#]/ : /[/?#]/);
+  if (end < 0) {
+    if (cut) return `${m[0]}${lead}\u2026`;
+    end = after.length;
+  }
+  return m[0] + lead + after.slice(after.lastIndexOf("@", end) + 1);
+}
+
+/**
+ * A script's, file's or request's URL as the agent may see it (F24, security.md M30): without the
+ * user name and password it may carry, as shown (NFKC, no invisible characters, no white space),
+ * then cut at `max` code points. The user name and password go before the cut, so that no cut
+ * can take their `@` and leave them in (#1198). They go first from the text as the page gave it,
+ * where the authority ends where a URL parser ends it (NFKC would make a fullwidth slash one that
+ * the parser does not see), and again from the shown text, where a fullwidth `@` is one: only
+ * more is dropped that way, never less. Only the first `4 * max` code units are read, so the work
+ * is bounded however long the URL.
+ * @param {unknown} url @param {number} [max]
+ */
+export function agentUrl(url, max = AGENT_CONSOLE.url) {
+  const raw = String(url ?? "");
+  const read = raw.slice(0, 4 * max);
+  const cut = read.length < raw.length;
+  const first = withoutUserinfo(read, cut, 0);
+  const text = shown(first).replace(/\s/g, "");
+  return cutTo(withoutUserinfo(text, cut, 0), max);
+}
 
 /**
  * A frame's entries as it answers them (F24): only those after `since`, newest first, at most
@@ -857,7 +915,7 @@ const errorLine = (e) =>
     level: e.level,
     source: e.source,
     message: valueText(e.message, AGENT_CONSOLE.message),
-    file: cutTo(withoutUserinfo(shown(e.file).replace(/\s/g, "")), AGENT_CONSOLE.url),
+    file: agentUrl(e.file),
     line: e.line,
     column: e.column,
     time: e.time,
@@ -867,7 +925,7 @@ const errorLine = (e) =>
 const requestLine = (r) =>
   jsonLine({
     method: line(r.method, 16),
-    url: cutTo(withoutUserinfo(shown(r.url).replace(/\s/g, "")), AGENT_CONSOLE.url),
+    url: agentUrl(r.url),
     ...(r.status !== undefined ? { status: r.status } : {}),
     ...(r.error !== undefined ? { error: line(r.error, 64) } : {}),
     type: line(r.type, 32),

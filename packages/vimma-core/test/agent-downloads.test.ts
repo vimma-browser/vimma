@@ -395,12 +395,11 @@ describe("ClamAV's definitions and clamd (decision 31 g, decisions 43-45)", () =
       "AlertExceedsMax true",
     ];
     expect(conf(...good)).toEqual({ socket: "/run/clamav/clamd.ctl" });
-    expect(conf(...good, "LocalSocket /run/other.ctl")).toEqual({ socket: "/run/other.ctl" });
-    expect(conf("  localsocket   /run/c.ctl  ", "alertencrypted YES", "AlertExceedsMax 1")).toEqual(
-      {
-        socket: "/run/c.ctl",
-      },
-    );
+    expect(
+      conf(" \tLocalSocket \t /run/c.ctl \t", "\tAlertEncrypted YES", "AlertExceedsMax 1"),
+    ).toEqual({
+      socket: "/run/c.ctl",
+    });
     expect(conf(...good, "TCPSocket 3310")).toEqual({ problem: "clamd listens on TCP" });
     expect(conf(...good.slice(2))).toEqual({ problem: "no LocalSocket" });
     expect(conf("LocalSocket clamd.ctl", ...good.slice(2))).toEqual({ problem: "no LocalSocket" });
@@ -410,7 +409,7 @@ describe("ClamAV's definitions and clamd (decision 31 g, decisions 43-45)", () =
     expect(conf(...good.slice(0, 2), "AlertEncrypted yes", "#AlertExceedsMax yes")).toEqual({
       problem: "clamd does not alert on files over its limits",
     });
-    expect(conf(...good, "AlertEncrypted no")).toEqual({
+    expect(conf(...good.slice(0, 2), "AlertEncrypted no", "AlertExceedsMax yes")).toEqual({
       problem: "clamd does not alert on encrypted files",
     });
   });
@@ -485,6 +484,11 @@ describe("ClamAV's answer (decision 31 g)", () => {
       expect(v.signature).not.toMatch(/[\u0000-\u001f\u202e]/);
       expect(v.signature.length).toBeLessThanOrEqual(60);
     }
+  });
+
+  test("a signature name loses every bidi control, the Arabic letter mark among them", () => {
+    const v = clamVerdict({ exitCode: 1, stdout: "/q/a: Evil\u061cName\u2066X FOUND\n" });
+    expect(v).toEqual({ kind: "infected", signature: "Evil Name X" });
   });
 });
 
@@ -823,10 +827,138 @@ describe("the download checks' edges (mutation-tested)", () => {
     expect(clamdConfig([...good, "TCPSocket 3310 #"].join("\n"))).toEqual({
       problem: "clamd listens on TCP",
     });
-    // `.` stops at a carriage return, so such a line is not read: no socket of it.
     expect(clamdConfig(["LocalSocket /run/a\r/b", ...good.slice(1)].join("\n"))).toEqual({
-      problem: "no LocalSocket",
+      problem: "line 1 has a control character",
     });
+  });
+
+  // clamd's own parser (ClamAV common/optparser.c) reads a line with fgets, so a carriage return,
+  // a form feed or a NUL is part of the line to it, and a NUL ends what it reads. Any such line
+  // makes the whole file unused: Vimma cannot be sure it reads it as clamd does.
+  test("clamd.conf: a control character on any line refuses the whole file", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    expect(conf(...good, "TCPSocket 3310\r#x")).toEqual({
+      problem: "line 4 has a control character",
+    });
+    expect(conf(...good, "AlertEncrypted no\rX")).toEqual({
+      problem: "line 4 has a control character",
+    });
+    // clamd strips only spaces, tabs and the LF: `yes\r` is no boolean to it, so CRLF is refused.
+    expect(clamdConfig(good.join("\r\n"))).toEqual({ problem: "line 1 has a control character" });
+    expect(clamdConfig(`${good.join("\n")}\r\n`)).toEqual({
+      problem: "line 3 has a control character",
+    });
+    for (const c of ["\u0000", "\f", "\v", "\u001b", "\u007f", "\u0085"]) {
+      expect(conf(...good, `TCPSocket 3310${c}`)).toEqual({
+        problem: "line 4 has a control character",
+      });
+      expect(conf(`${c}TCPSocket 3310`, ...good)).toEqual({
+        problem: "line 1 has a control character",
+      });
+      expect(conf(...good, `# a comment${c}`)).toEqual({
+        problem: "line 4 has a control character",
+      });
+    }
+    expect(conf("LocalSocket\t/run/c.ctl", "AlertEncrypted\tyes", "AlertExceedsMax yes")).toEqual({
+      socket: "/run/c.ctl",
+    });
+    expect(clamdConfig(`${good.join("\n")}\n`)).toEqual({ socket: "/run/c.ctl" });
+  });
+
+  // clamd reads at most 1023 bytes of a line at once (512 in older releases) and parses the rest
+  // as a line of its own, so a long comment could hide a setting.
+  test("clamd.conf: a line clamd would read in two parts refuses the whole file", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    expect(conf(...good, `#${"x".repeat(1100)}TCPSocket 3310`)).toEqual({
+      problem: "line 4 is too long for clamd to read whole",
+    });
+    expect(conf(...good, `#${"x".repeat(509)}`)).toEqual({ socket: "/run/c.ctl" });
+    expect(conf(...good, `#${"x".repeat(510)}`)).toEqual({
+      problem: "line 4 is too long for clamd to read whole",
+    });
+    // Bytes, not characters: 2 + 2 * 255 bytes.
+    expect(conf(...good, `# ${"\u00e9".repeat(255)}`)).toEqual({
+      problem: "line 4 is too long for clamd to read whole",
+    });
+  });
+
+  test("clamd.conf: names as clamd spells them, each set once, spaces and tabs only", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    // clamd matches names case-sensitively and refuses the file over an unknown one.
+    expect(conf("localsocket /run/c.ctl", ...good.slice(1))).toEqual({
+      problem: "clamd does not read localsocket (line 1)",
+    });
+    expect(conf(...good, "alertencrypted no")).toEqual({
+      problem: "clamd does not read alertencrypted (line 4)",
+    });
+    expect(conf(...good, "TCPAddr 127.0.0.1", "tcpaddr ::1")).toEqual({
+      problem: "clamd does not read tcpaddr (line 5)",
+    });
+    expect(conf(...good, "Alert-Encrypted no")).toEqual({
+      problem: "clamd does not read Alert-Encrypted (line 4)",
+    });
+    // Only a space or a tab ends a name in clamd; a name that runs into another kind of space is
+    // unknown to it.
+    expect(conf(...good, "TCPSocket\u00a03310")).toEqual({
+      problem: "clamd does not read TCPSocket\u00a03310 (line 4)",
+    });
+    expect(conf(...good, "\ufeffTCPSocket 3310")).toEqual({
+      problem: "clamd does not read \ufeffTCPSocket (line 4)",
+    });
+    expect(conf("LocalSocket /run/c.ctl\u00a0", ...good.slice(1))).toEqual({
+      socket: "/run/c.ctl\u00a0",
+    });
+    // clamd also reads an option by its command-line name.
+    expect(conf("LocalSocket /run/c.ctl", "alert-encrypted yes", "alert-exceeds-max 1")).toEqual({
+      socket: "/run/c.ctl",
+    });
+    // clamd keeps the first setting of an option and ignores the rest: a second one is refused
+    // rather than guessed at.
+    expect(conf("AlertEncrypted no", ...good)).toEqual({
+      problem: "clamd.conf sets AlertEncrypted twice",
+    });
+    expect(conf(...good, "alert-encrypted no")).toEqual({
+      problem: "clamd.conf sets AlertEncrypted twice",
+    });
+    expect(conf(...good, "AlertExceedsMax yes")).toEqual({
+      problem: "clamd.conf sets AlertExceedsMax twice",
+    });
+    expect(conf(...good, "LocalSocket /run/other.ctl")).toEqual({
+      problem: "clamd.conf sets LocalSocket twice",
+    });
+    expect(conf(...good, "TCPSocket 3310", "TCPSocket 3311")).toEqual({
+      problem: "clamd.conf sets TCPSocket twice",
+    });
+    // TCPAddr may be given more than once; it opens nothing without TCPSocket.
+    expect(conf(...good, "TCPAddr 127.0.0.1", "TCPAddr ::1")).toEqual({ socket: "/run/c.ctl" });
+  });
+
+  test("clamd.conf: comments and quotes as clamd reads them", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    expect(conf(...good, " \t# TCPSocket 3310")).toEqual({ socket: "/run/c.ctl" });
+    // clamd drops a # and what follows it from a value.
+    expect(
+      conf("LocalSocket /run/c.ctl", "AlertEncrypted yes # all", "AlertExceedsMax TRUE#"),
+    ).toEqual({ socket: "/run/c.ctl" });
+    expect(conf(...good.slice(0, 2), "AlertExceedsMax no # yes")).toEqual({
+      problem: "clamd does not alert on files over its limits",
+    });
+    // clamd's booleans are yes, true and 1 (any case) and no, false and 0; it refuses the rest.
+    for (const value of ["on", "yes please", '"yes"', "#yes", "2"]) {
+      expect(conf(good[0] ?? "", `AlertEncrypted ${value}`, good[2] ?? "")).toEqual({
+        problem: "clamd does not alert on encrypted files",
+      });
+    }
+    // A quoted or commented socket path is read differently by clamd: not used.
+    for (const value of ['"/run/c.ctl"', "/run/c.ctl # main", "/run/c#ctl"]) {
+      expect(conf(`LocalSocket ${value}`, ...good.slice(1))).toEqual({
+        problem: "LocalSocket has a quote or a #",
+      });
+    }
   });
 
   test("a uid in /etc/passwd is digits only", () => {

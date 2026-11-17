@@ -122,17 +122,21 @@ export const MAX_READ_CHARS = 500000;
 const TAB_ID = /^[1-9][0-9]{0,15}$/;
 /**
  * Whether code point `cp` may not appear in a label shown in the question (a client's name):
- * control characters (C0, DEL, C1), and bidirectional marks, overrides and isolates, which
- * could make it read as something else.
+ * control characters (C0, DEL, C1); every bidirectional control (Unicode's Bidi_Control: the
+ * Arabic letter mark, LRM and RLM, embeddings, overrides and isolates), which could make it
+ * read as something else; the deprecated format characters U+206A to U+206F, which change how
+ * the text around them is shaped; and the line and paragraph separators, which break the line
+ * and end a bidi paragraph (security.md S11).
  * @param {number} cp
  */
 const unprintable = (cp) =>
   cp <= 0x1f ||
   (cp >= 0x7f && cp <= 0x9f) ||
+  cp === 0x061c ||
   cp === 0x200e ||
   cp === 0x200f ||
-  (cp >= 0x202a && cp <= 0x202e) ||
-  (cp >= 0x2066 && cp <= 0x2069);
+  (cp >= 0x2028 && cp <= 0x202e) ||
+  (cp >= 0x2066 && cp <= 0x206f);
 const KINDS = ["hello", "challenge", "auth", "welcome", "request", "response", "discovery"];
 /** Prefix of the challenge's HMAC message, so the proof is good for nothing else. */
 export const CHALLENGE_CONTEXT = "vimma-server\0";

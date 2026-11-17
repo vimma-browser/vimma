@@ -120,7 +120,7 @@ const danger = (kind, detail) => ({
 
 /** Control characters, line breaks and bidi overrides become spaces: one line, read as is. */
 // eslint-disable-next-line no-control-regex -- the control characters are what it removes
-const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028-\u202e\u2066-\u2069]+/g;
+const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]+/g;
 
 /** @param {unknown} s  one line, without control or bidi characters, cut at `max` */
 function oneLine(s, max = 80) {
@@ -509,33 +509,100 @@ export function clamdArguments(configFile, path) {
   return [`--config-file=${configFile}`, "--fdpass", "--no-summary", "--stdout", "--", path];
 }
 
-/** clamd.conf's booleans (clamd's optparser accepts these spellings for true). */
-const YES = new Set(["yes", "true", "1", "on"]);
+/**
+ * The clamd.conf options Vimma reads, by every name clamd accepts for them in the file (clamd
+ * also takes an option's command-line name there), case as clamd matches it.
+ */
+const CLAMD_NAMES = new Map([
+  ["LocalSocket", "LocalSocket"],
+  ["TCPSocket", "TCPSocket"],
+  ["TCPAddr", "TCPAddr"],
+  ["AlertEncrypted", "AlertEncrypted"],
+  ["alert-encrypted", "AlertEncrypted"],
+  ["AlertExceedsMax", "AlertExceedsMax"],
+  ["alert-exceeds-max", "AlertExceedsMax"],
+]);
+const CLAMD_NAMES_LOWER = new Set([...CLAMD_NAMES.keys()].map((k) => k.toLowerCase()));
+
+/** Options clamd allows more than once (FLAG_MULTIPLE); any other is refused when repeated. */
+const CLAMD_MULTIPLE = new Set(["TCPAddr"]);
+
+/**
+ * clamd's true, after it has dropped an inline comment: its optparser checks a boolean against
+ * `^(yes|true|1|no|false|0)(( +)?#(.*))?$` (any case) and takes yes, true and 1 as true.
+ */
+const CLAMD_TRUE = /^(yes|true|1) *(#.*)?$/i;
+
+/**
+ * clamd reads a line with fgets into 1024 bytes (512 in older releases) and parses what is left
+ * as a line of its own; a line this long, with its LF, could be split, so it is refused.
+ */
+const CLAMD_LINE_BYTES = 512;
+
+/**
+ * A control character clamd would keep inside a line (it strips only spaces, tabs and the LF):
+ * a CR, so CRLF too; a NUL, which ends what clamd reads of the line; anything else C0 or C1.
+ * @param {string} line
+ */
+function hasControl(line) {
+  for (let k = 0; k < line.length; k++) {
+    const c = line.charCodeAt(k);
+    if ((c < 0x20 && c !== 0x09) || (c >= 0x7f && c <= 0x9f)) return true;
+  }
+  return false;
+}
 
 /**
  * What clamd.conf says that matters here: the local socket, or why clamd is not used. clamd
  * must not listen on TCP (anyone on the network could answer), and must alert on encrypted
  * files and files over its limits, as `clamscan` is asked to, or such a file would scan clean.
- * The last setting of a key wins, as in clamd.
+ * It reads the file as clamd's optparser does (ClamAV common/optparser.c), and wherever the
+ * two readings could differ for these options it refuses the file instead: clamd is then not
+ * used and clamscan scans.
  * @param {string} text
  * @returns {{ socket: string } | { problem: string }}
  */
 export function clamdConfig(text) {
   /** @type {Map<string, string>} */
   const keys = new Map();
-  for (const raw of String(text ?? "").split("\n")) {
-    const line = raw.trim();
+  const lines = String(text ?? "").split("\n");
+  const encoder = new TextEncoder();
+  for (const [i, raw] of lines.entries()) {
+    const n = i + 1;
+    if (hasControl(raw)) return { problem: `line ${n} has a control character` };
+    if (encoder.encode(raw).length + 1 >= CLAMD_LINE_BYTES) {
+      return { problem: `line ${n} is too long for clamd to read whole` };
+    }
+    // clamd strips leading spaces and tabs only, then skips a comment.
+    const line = raw.replace(/^[ \t]+/, "");
     if (!line || line.startsWith("#")) continue;
-    const m = /^(\S+)\s*(.*)$/.exec(line);
-    if (m) keys.set(String(m[1]).toLowerCase(), String(m[2]).trim());
+    const m = /^([^ \t]*)[ \t]*(.*?)[ \t]*$/.exec(line);
+    const name = m?.[1] ?? "";
+    const option = CLAMD_NAMES.get(name);
+    if (!option) {
+      // A name that only looks like one of these (other case, or run into a space clamd does
+      // not split on) makes clamd refuse the whole file; it is not guessed at here.
+      const looks = (/^\s*([^\s]+)/.exec(line)?.[1] ?? "").toLowerCase();
+      if (CLAMD_NAMES_LOWER.has(looks) || CLAMD_NAMES_LOWER.has(name.toLowerCase())) {
+        return { problem: `clamd does not read ${name} (line ${n})` };
+      }
+      continue;
+    }
+    // clamd keeps the first setting and ignores later ones: a second one is refused.
+    if (keys.has(option) && !CLAMD_MULTIPLE.has(option)) {
+      return { problem: `clamd.conf sets ${option} twice` };
+    }
+    keys.set(option, m?.[2] ?? "");
   }
-  if (keys.has("tcpsocket")) return { problem: "clamd listens on TCP" };
-  const socket = keys.get("localsocket") ?? "";
+  if (keys.has("TCPSocket")) return { problem: "clamd listens on TCP" };
+  const socket = keys.get("LocalSocket") ?? "";
+  // clamd unquotes a value and drops an inline comment; a socket path written so is not used.
+  if (/["#]/.test(socket)) return { problem: "LocalSocket has a quote or a #" };
   if (!socket.startsWith("/")) return { problem: "no LocalSocket" };
-  if (!YES.has((keys.get("alertencrypted") ?? "").toLowerCase())) {
+  if (!CLAMD_TRUE.test(keys.get("AlertEncrypted") ?? "")) {
     return { problem: "clamd does not alert on encrypted files" };
   }
-  if (!YES.has((keys.get("alertexceedsmax") ?? "").toLowerCase())) {
+  if (!CLAMD_TRUE.test(keys.get("AlertExceedsMax") ?? "")) {
     return { problem: "clamd does not alert on files over its limits" };
   }
   return { socket };

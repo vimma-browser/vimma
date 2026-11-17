@@ -211,6 +211,10 @@ describe("the question's text (decision 13)", () => {
     const evil = { client: "a\nb\u202ec" };
     expect(clientName(evil)).toBe("a b c");
   });
+
+  test("every bidi control leaves a label, the Arabic letter mark among them", () => {
+    expect(clientName({ client: "a\u061cb\u200ec\u2067d" })).toBe("a b c d");
+  });
 });
 
 describe("the keys (decisions 13 and 20)", () => {

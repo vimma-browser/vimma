@@ -474,3 +474,64 @@ describe("updateSteps' words for each install type", () => {
     expect(updateSteps("source", offer, where).commands).toEqual([]);
   });
 });
+
+// The command about:vimma and :update show for an AppImage names only the file this Vimma is
+// (#1196): every program an AppImage starts inherits its `$APPIMAGE`, so the steps apply the
+// replacement's own check (ownAppImage) and otherwise name the placeholder (UP10).
+describe("the AppImage steps name only the AppImage this Vimma owns (#1196)", () => {
+  const offer: Offer = {
+    appVersion: "158.0.1",
+    buildId: "20261028031500",
+    displayVersion: "0.3.1",
+    detailsUrl: "https://github.com/vimma-browser/vimma/releases/tag/v0.3.1",
+    urgent: false,
+    advisories: [],
+    assets: {},
+  };
+  const own = {
+    installDir: "/tmp/.mount_vimmaXYZ/usr/lib/vimma",
+    appImage: "/home/u/Apps/vimma-0.3.0-x86_64.AppImage",
+    appDir: "/tmp/.mount_vimmaXYZ",
+    marker: "vimma-package=appimage\n",
+    forced: false,
+  };
+  const file = "/home/u/Apps/vimma-0.3.0-x86_64.AppImage";
+  const command = (where: Parameters<typeof updateSteps>[2]) =>
+    updateSteps("appimage", offer, where).commands[0] ?? "";
+  const placeholder = (cmd: string) => {
+    expect(cmd).toMatch(/ -o Vimma\.AppImage\.new /);
+    expect(cmd).toMatch(/ && mv Vimma\.AppImage\.new Vimma\.AppImage$/);
+  };
+
+  test("the AppImage this Vimma runs from: its own file", () => {
+    expect(command(own)).toMatch(new RegExp(` && mv ${file}\\.new ${file}$`));
+  });
+
+  test("a hand-extracted AppDir with another AppImage's $APPIMAGE: never that file", () => {
+    const other = "/home/u/Apps/Other.AppImage";
+    for (const where of [
+      // squashfs-root/AppRun started from another AppImage's process: $APPDIR is that one's mount
+      { ...own, installDir: "/home/u/squashfs-root/usr/lib/vimma", appImage: other },
+      { ...own, appDir: null, appImage: other },
+      { ...own, marker: null, appImage: other },
+      { ...own, marker: "vimma-package=deb\n", appImage: other },
+      { installDir: "/home/u/squashfs-root/usr/lib/vimma", appImage: other },
+    ]) {
+      const cmd = command(where);
+      expect(cmd, JSON.stringify(where)).not.toContain("Other.AppImage");
+      placeholder(cmd);
+    }
+  });
+
+  test("a $APPIMAGE that is not an absolute file path: the placeholder", () => {
+    for (const appImage of ["", "vimma.AppImage", "/a/../b.AppImage", "/a/\nb", "/a/"]) {
+      placeholder(command({ ...own, appImage }));
+    }
+  });
+
+  test("a test's forced install type skips the marker, as the replacement does", () => {
+    expect(command({ ...own, marker: null, appDir: null, forced: true })).toMatch(
+      new RegExp(` && mv ${file}\\.new ${file}$`),
+    );
+  });
+});

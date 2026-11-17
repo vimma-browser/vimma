@@ -301,6 +301,7 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_other_ui_opened_over_the_line_gets_the_keys`](../../tests/browser/browser_vimma_mcp_prompt_guards.js),
   [`test_hint_and_copy_mode_keep_their_keys`](../../tests/browser/browser_vimma_mcp_prompt_guards.js),
   [`test_names_titles_and_urls_are_bidi_isolates`](../../tests/browser/browser_vimma_mcp_prompt_guards.js),
+  [`every bidi control leaves a label, the Arabic letter mark among them`](../../packages/vimma-core/test/agent-prompt.test.ts),
   [`test_typing_in_a_field_waits_for_ctrl_b_shift_a`](../../tests/browser/browser_vimma_mcp_prompt.js),
   [`test_a_window_not_in_front_gets_attention_and_a_notification`](../../tests/browser/browser_vimma_mcp_control.js),
   [`any other key neither allows nor denies`](../../packages/vimma-core/test/agent-prompt.test.ts),
@@ -427,9 +428,14 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   definitions". `clamdscan` is used only when it passes clamscan's checks, the system's
   clamd.conf passes them too and sets a local socket, no TCP socket and both alerts, and the
   socket is a socket (not a symlink) owned by root or `clamav`, on Linux and macOS alike (C2);
-  on any failure the file is scanned by `clamscan`. Vimma has no download reputation service of its
-  own: Firefox's Safe Browsing checks downloads only in a build with a Google key (P6), so in a
-  keyless build these checks and ClamAV are all there is.
+  on any failure the file is scanned by `clamscan`. clamd.conf is read as clamd's own parser
+  reads it, and a file Vimma could read otherwise is **never** used: one with a control
+  character on any line (a carriage return, so CRLF line ends too, a NUL or a form feed), a
+  line long enough for clamd to read in two parts, one of these options spelt otherwise than
+  clamd matches it or set twice (clamd keeps the first), or a quoted or commented socket path.
+  Vimma has no download reputation service of its own: Firefox's Safe Browsing checks downloads
+  only in a build with a Google key (P6), so in a keyless build these checks and ClamAV are all
+  there is.
   [`test_a_dangerous_file_needs_bang_for_that_one_file`](../../tests/browser/browser_vimma_mcp_downloads.js),
   [`test_dangerous_content_asks_again_and_no_deletes_it`](../../tests/browser/browser_vimma_mcp_downloads.js),
   [`test_a_different_danger_in_the_bytes_asks_again`](../../tests/browser/browser_vimma_mcp_downloads.js),
@@ -441,6 +447,10 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_clamav_stale_definitions_and_clamd`](../../tests/browser/browser_vimma_mcp_downloads.js),
   [`stale past the set age, or with no date; never otherwise`](../../packages/vimma-core/test/agent-downloads.test.ts),
   [`clamd.conf: a local socket, no TCP, alerting as clamscan is asked to`](../../packages/vimma-core/test/agent-downloads.test.ts),
+  [`clamd.conf: a control character on any line refuses the whole file`](../../packages/vimma-core/test/agent-downloads.test.ts),
+  [`clamd.conf: a line clamd would read in two parts refuses the whole file`](../../packages/vimma-core/test/agent-downloads.test.ts),
+  [`clamd.conf: names as clamd spells them, each set once, spaces and tabs only`](../../packages/vimma-core/test/agent-downloads.test.ts),
+  [`clamd.conf: comments and quotes as clamd reads them`](../../packages/vimma-core/test/agent-downloads.test.ts),
   [`the socket: a socket owned by root or clamav, never by the user or anyone else`](../../packages/vimma-core/test/agent-downloads.test.ts),
   [`a grant does not run it, whatever was asked: it waits`](../../packages/vimma-core/test/agent-gate.test.ts),
   [`! allows a dangerous one; y, a and counts do nothing there`](../../packages/vimma-core/test/agent-prompt.test.ts),
@@ -1013,7 +1023,10 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   content process; at most 100 frames are asked, and each answers only its newest 100 entries
   after `since`, cut in the child and counted beyond, so a page that logs without end cannot
   make the parent copy and sort all of it. No user name or password of a script, file or
-  request URL reaches the agent. Failed requests (HTTP status 400 and above, or a channel error other than a
+  request URL reaches the agent: each is removed, up to the authority's last `@` where a URL
+  parser ends the authority, from the URL and from any URL inside a `view-source:`, `jar:` or
+  `blob:` one, before the URL is cut to length; an authority longer than what is read is dropped
+  whole, and so is everything past the fourth URL nested in another. Failed requests (HTTP status 400 and above, or a channel error other than a
   cancel, a redirect or a load turned download) **must** be logged only for channels whose top
   browsing context is a live tab of the agent workspace's container outside private windows,
   only while MCP is on, the last
@@ -1030,7 +1043,14 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_a_noisy_page_sends_one_replys_worth`](../../tests/browser/browser_vimma_mcp_console.js),
   [`a console call's huge arguments are cut before they are joined`](../../packages/vimma-core/test/agent-act.test.ts),
   [`a frame answers only its newest entries after since, at most a list's worth`](../../packages/vimma-core/test/agent-act.test.ts),
-  [`no user name or password of a script or request URL reaches the agent`](../../packages/vimma-core/test/agent-act.test.ts)
+  [`no user name or password of a script or request URL reaches the agent`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a user name and password longer than the cut never reach the agent`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a user name and password ending at the cut length never reach the agent`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a user name and password of any length are dropped with bounded work`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`the user name and password end at the authority's last at sign`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`the authority ends where a URL parser ends it, not at a look-alike`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`any slashes after a special scheme, or none, still lead to the authority`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a URL inside view-source, jar or blob loses its user name and password too`](../../packages/vimma-core/test/agent-act.test.ts)
 - M31. `agent-elements`' list **must** be one string inside the untrusted-content delimiters,
   wrapped by the browser with look-alike delimiters broken (M7), and `vimma-ctl mcp` and the
   protocol validator **must** refuse a list that is not, or that holds a second delimiter. At

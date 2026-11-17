@@ -676,15 +676,70 @@ export function shellQuote(word) {
   return `'${word.replaceAll("'", "'\\''")}'`;
 }
 
+const APPIMAGE_MARKER = /^vimma-package=appimage\s*$/m;
+
+/**
+ * An absolute path with no empty, `.` or `..` segment and no control character, naming a file.
+ * @param {string | null} path
+ */
+function plainFilePath(path) {
+  if (!path || !path.startsWith("/") || path.endsWith("/")) return false;
+  if ([...path].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f)) return false;
+  return path
+    .slice(1)
+    .split("/")
+    .every((seg) => seg !== "" && seg !== "." && seg !== "..");
+}
+
+/**
+ * `path` without its trailing slashes, in linear time: `$APPDIR` comes from the environment, and
+ * a regex like `/\/+$/` backtracks quadratically on many slashes that are not at the end.
+ * @param {string} path
+ */
+function trimTrailingSlashes(path) {
+  let end = path.length;
+  while (end > 0 && path.charCodeAt(end - 1) === 47) end--;
+  return path.slice(0, end);
+}
+
+/**
+ * What a restart and the replacement both ask: whether this Vimma is the AppImage `$APPIMAGE`
+ * names. `$APPIMAGE` is inherited by every program an AppImage starts: only the AppDir's own
+ * marker and a GRE directory inside `$APPDIR` show that it is (decision 34).
+ * @typedef {{ installType: InstallType, marker: string | null, appImage: string | null,
+ *   appDir: string | null, greDir: string, forced: boolean }} AppImageWhere
+ * @param {AppImageWhere} input
+ * @returns {{ ok: true, path: string } | { ok: false, why: string }}
+ */
+export function appImageOwnership({ installType, marker, appImage, appDir, greDir, forced }) {
+  if (installType !== "appimage") return { ok: false, why: "not an AppImage install" };
+  if (!forced) {
+    if (marker === null || !APPIMAGE_MARKER.test(marker)) {
+      return {
+        ok: false,
+        why: "this Vimma is not an AppImage build (no vimma-package=appimage marker)",
+      };
+    }
+    if (!appDir || !greDir.startsWith(`${trimTrailingSlashes(appDir)}/`)) {
+      return { ok: false, why: "this Vimma does not run from the AppImage's mount ($APPDIR)" };
+    }
+  }
+  if (!plainFilePath(appImage)) return { ok: false, why: "$APPIMAGE is not an absolute file path" };
+  return { ok: true, path: /** @type {string} */ (appImage) };
+}
+
 /**
  * How to update this install to `offer` (`:update`, about:vimma): a sentence, the exact
  * commands, and the release page. Versions come from a verified manifest and are SemVer
  * (parseManifest); paths are quoted.
  * @param {InstallType} type
  * @param {Offer} offer
- * @param {{ installDir: string, appImage: string | null, writable?: boolean }} where
+ * @param {{ installDir: string, appImage: string | null, writable?: boolean,
+ *   marker?: string | null, appDir?: string | null, forced?: boolean }} where
  *   `writable`: false when Vimma cannot write a tarball's directory, so Firefox's updater cannot
- *   apply there (Behaviour 2)
+ *   apply there (Behaviour 2); `appImage`, `appDir`: `$APPIMAGE` and `$APPDIR`; `marker`: the
+ *   `is-packaged-app` file's text; `forced`: a test set the install type. An AppImage's command
+ *   names `$APPIMAGE` only when this Vimma is that AppImage (appImageOwnership, #1196)
  * @returns {{ text: string, commands: string[], link: string }}
  */
 export function updateSteps(type, offer, where) {
@@ -757,7 +812,17 @@ export function updateSteps(type, offer, where) {
       };
     }
     case "appimage": {
-      const file = where.appImage ?? "Vimma.AppImage";
+      // `$APPIMAGE` is inherited by every program an AppImage starts: name it only when this
+      // Vimma is that AppImage, by the replacement's own rule, else the placeholder (#1196).
+      const own = appImageOwnership({
+        installType: type,
+        marker: where.marker ?? null,
+        appImage: where.appImage,
+        appDir: where.appDir ?? null,
+        greDir: where.installDir,
+        forced: where.forced === true,
+      });
+      const file = own.ok ? own.path : "Vimma.AppImage";
       const next = `${file}.new`;
       return {
         text: "Download the new AppImage and rename it over this one; the next start runs it:",

@@ -5,6 +5,7 @@
 import { describe, expect, test } from "vitest";
 import {
   AGENT_CONSOLE,
+  agentUrl,
   CONSOLE_SOURCES,
   consoleArgsText,
   consoleLists,
@@ -1235,6 +1236,180 @@ describe("console reads: bounded work and URLs without credentials (F24, M30)", 
     expect(JSON.parse(r.errors).file).toBe("https://example.com/app.js");
     expect(JSON.parse(r.requests).url).toBe("https://example.com/api");
     expect(r.errors + r.requests).not.toContain("secret");
+  });
+
+  // Issue #1198: the cut to AGENT_CONSOLE.url came before the user name and password were
+  // removed, so a cut that took the `@` left them in.
+  const script = (file: string, time = 5) => ({
+    level: "error",
+    source: "script",
+    message: "x",
+    file,
+    line: 1,
+    column: 1,
+    time,
+  });
+  const shownFile = (file: string) => {
+    const entry = parseConsoleEntry(script(file));
+    expect(entry).not.toBe(null);
+    if (!entry) return "";
+    const r = consoleLists([entry], [], 0, AGENT_CONSOLE.bytes);
+    return JSON.parse(r.errors).file as string;
+  };
+  const shownRequest = (url: string) => {
+    const r = consoleLists(
+      [],
+      [{ method: "GET", url: agentUrl(url), status: 500, type: "fetch", time: 5 }],
+      0,
+      AGENT_CONSOLE.bytes,
+    );
+    return JSON.parse(r.requests).url as string;
+  };
+
+  test("a user name and password longer than the cut never reach the agent", () => {
+    const long = "https://alice:" + "s".repeat(600) + "@evil.example/a.js";
+    expect(shownFile(long)).toBe("https://evil.example/a.js");
+    expect(shownRequest(long)).toBe("https://evil.example/a.js");
+    expect(agentUrl(long)).toBe("https://evil.example/a.js");
+    // The parsed entry, which the parent keeps and compares, holds none of it either.
+    expect(parseConsoleEntry(script(long))?.file).toBe("https://evil.example/a.js");
+    // A fullwidth at sign is an at sign once shown.
+    const wide = "https://alice:" + "s".repeat(600) + "\uff20evil.example/a.js";
+    expect(shownFile(wide)).toBe("https://evil.example/a.js");
+    expect(shownRequest(wide)).toBe("https://evil.example/a.js");
+    // The last at sign of the authority ends the user name and password, as a URL parser reads it.
+    expect(shownFile("https://ada@x:secret@example.com/app.js")).toBe("https://example.com/app.js");
+    expect(shownRequest("https://ada@x:secret@example.com/api")).toBe("https://example.com/api");
+  });
+
+  test("a user name and password ending at the cut length never reach the agent", () => {
+    const head = "https://alice:";
+    for (const at of [
+      AGENT_CONSOLE.url - 2,
+      AGENT_CONSOLE.url - 1,
+      AGENT_CONSOLE.url,
+      AGENT_CONSOLE.url + 1,
+    ]) {
+      const url = head + "s".repeat(at - head.length) + "@evil.example/a.js";
+      expect(url.indexOf("@")).toBe(at);
+      expect(shownFile(url)).toBe("https://evil.example/a.js");
+      expect(shownRequest(url)).toBe("https://evil.example/a.js");
+    }
+  });
+
+  test("a user name and password of any length are dropped with bounded work", () => {
+    for (const n of [4 * AGENT_CONSOLE.url, 5_000_000]) {
+      const url = "https://alice:" + "s".repeat(n) + "@evil.example/a.js";
+      const started = Date.now();
+      const file = shownFile(url);
+      const request = shownRequest(url);
+      expect(Date.now() - started).toBeLessThan(budget(400));
+      for (const text of [file, request]) {
+        expect(text).not.toContain("alice");
+        expect(text).not.toContain("sss");
+        expect(text.startsWith("https://")).toBe(true);
+      }
+    }
+    // Past the window, a path keeps what it holds: only an authority is cut away.
+    const path = "https://example.com/" + "p".repeat(5000) + "@x";
+    expect(shownFile(path).startsWith("https://example.com/ppp")).toBe(true);
+  });
+
+  // Each case is checked on agentUrl alone and on the parsed entry, not only
+  // through the reply, which runs agentUrl a second time and so could hide a first-`@` cut.
+  const once = (url: string) => {
+    const file = parseConsoleEntry(script(url))?.file;
+    const direct = agentUrl(url);
+    expect(file).toBe(direct);
+    return direct;
+  };
+  /** As Node's WHATWG URL parser reads `url`: the same host, and no user name or password left. */
+  const likeAParser = (url: string) => {
+    const want = new URL(url);
+    expect(want.username + want.password).not.toBe("");
+    const out = once(url);
+    const got = new URL(out);
+    expect(got.host).toBe(want.host);
+    expect(got.username + got.password).toBe("");
+    expect(out).not.toContain("secret");
+    expect(out).not.toContain("ada");
+    return out;
+  };
+
+  test("the user name and password end at the authority's last at sign", () => {
+    expect(once("https://ada@x:secret@example.com/app.js")).toBe("https://example.com/app.js");
+    expect(once("https://a@b@c:secret@host/a.js")).toBe("https://host/a.js");
+    expect(likeAParser("https://ada@x:secret@example.com/app.js")).toBe(
+      "https://example.com/app.js",
+    );
+  });
+
+  test("the authority ends where a URL parser ends it, not at a look-alike", () => {
+    // NFKC would make these a slash, a question mark or a number sign; a URL parser does not.
+    for (const c of [
+      "\uff0f",
+      "\uff1f",
+      "\uff03",
+      "\ufe16",
+      "\u2100",
+      "\u2101",
+      "\u2105",
+      "\u2106",
+    ]) {
+      expect(likeAParser(`https://ada:secret${c}x@example.com/a.js`)).toBe(
+        "https://example.com/a.js",
+      );
+    }
+    // A backslash ends the authority of a special scheme, as a slash does.
+    expect(likeAParser("https://ada:secret@example.com\\a.js")).toBe("https://example.com\\a.js");
+  });
+
+  test("any slashes after a special scheme, or none, still lead to the authority", () => {
+    for (const url of [
+      "https:\\\\ada:secret@example.com/a.js",
+      "https:\\ada:secret@example.com/a.js",
+      "https:/ada:secret@example.com/a.js",
+      "https:ada:secret@example.com/a.js",
+      "http:////ada:secret@example.com/a.js",
+      "https:/\\ada:secret@example.com/a.js",
+      "HTTPS://ada:secret@example.com/a.js",
+      "ht\ttps://ada:secret@example.com/a.js",
+      "https://ada:\nsecret@example.com/a.js",
+      " https://ada:secret@example.com/a.js",
+      "\u0000https://ada:secret@example.com/a.js",
+      "ws://ada:secret@example.com/a.js",
+      "ftp://ada:secret@example.com/a.js",
+      "moz-extension://ada:secret@example.com/a.js",
+    ]) {
+      expect(likeAParser(url).endsWith("example.com/a.js")).toBe(true);
+    }
+  });
+
+  test("a URL inside view-source, jar or blob loses its user name and password too", () => {
+    expect(once("view-source:https://ada:secret@example.com/a.js")).toBe(
+      "view-source:https://example.com/a.js",
+    );
+    expect(once("blob:https://ada:secret@example.com/uuid")).toBe("blob:https://example.com/uuid");
+    expect(once("jar:https://ada:secret@example.com/a.jar!/x.js")).toBe(
+      "jar:https://example.com/a.jar!/x.js",
+    );
+    expect(once("view-source:jar:https://a@b@ada:secret@example.com/a.jar!/x.js")).toBe(
+      "view-source:jar:https://example.com/a.jar!/x.js",
+    );
+    // Past the nesting it reads, the rest is dropped, not shown as it came.
+    for (const url of [
+      "view-source:".repeat(5) + "https://ada:secret@example.com/a.js",
+      "blob:".repeat(5) + "https://ada:secret@example.com/a.js",
+      "jar:view-source:blob:jar:view-source:https://ada:secret@example.com/a.js",
+    ]) {
+      const out = once(url);
+      expect(out.endsWith(":\u2026")).toBe(true);
+      expect(out).not.toContain("secret");
+      expect(out).not.toContain("ada");
+    }
+    const long = "view-source:https://ada:" + "s".repeat(5000) + "@example.com/a.js";
+    expect(once(long)).not.toContain("ada");
+    expect(once(long)).not.toContain("sss");
   });
 });
 

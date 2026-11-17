@@ -12,6 +12,7 @@
 import { isSensitiveAutocomplete } from "../core/agent-element.mjs";
 import {
   AGENT_CONSOLE,
+  agentUrl,
   consoleArgsText,
   newestEntries,
   scriptErrorLevel,
@@ -652,7 +653,7 @@ export class AgentPage {
         level,
         source: scriptErrorSource(m.category),
         message: cut(m.errorMessage, AGENT_CONSOLE.message),
-        file: cut(m.sourceName, AGENT_CONSOLE.url),
+        file: agentUrl(m.sourceName),
         line: m.lineNumber,
         column: m.columnNumber,
         time: m.timeStamp,
@@ -668,7 +669,7 @@ export class AgentPage {
         level,
         source: "console",
         message: cut(consoleArgsText(event.arguments), AGENT_CONSOLE.message),
-        file: typeof event.filename === "string" ? cut(event.filename, AGENT_CONSOLE.url) : "",
+        file: typeof event.filename === "string" ? agentUrl(event.filename) : "",
         line: n(event.lineNumber),
         column: n(event.columnNumber),
         time: n(event.timeStamp),
