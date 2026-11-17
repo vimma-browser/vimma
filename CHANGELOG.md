@@ -2,7 +2,9 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.21](https://github.com/vimma-browser/vimma/compare/v0.1.20...v0.1.21) (2026-11-17)
+## [Unreleased]
+
+## [0.1.21](https://github.com/vimma-browser/vimma/compare/v0.1.20...v0.1.21) · Firefox 160.0 (2026-11-17)
 
 
 ### Added
@@ -37,8 +39,6 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 * **shell:** name vimma-open before -setDefaultBrowser runs ([#1127](https://github.com/vimma-browser/vimma/issues/1127)) ([64d37a8](https://github.com/vimma-browser/vimma/commit/64d37a89da61e1c9c4b1d84680ad5769e0859c01))
 * **updates:** name only an AppImage this Vimma owns in its update command ([#1204](https://github.com/vimma-browser/vimma/issues/1204)) ([a58884d](https://github.com/vimma-browser/vimma/commit/a58884d941e41d3e52b900af7c448916c6b47b37))
 * **updates:** refuse text after &lt;updates/&gt;; no marker is a tarball despite $APPIMAGE ([#1194](https://github.com/vimma-browser/vimma/issues/1194)) ([a8e2af2](https://github.com/vimma-browser/vimma/commit/a8e2af2e512a148e6582ffd1110288659e836ed5))
-
-## [Unreleased]
 
 ## [0.1.20](https://github.com/vimma-browser/vimma/compare/v0.1.19...v0.1.20) · Firefox 160.0 (2026-11-15)
 
