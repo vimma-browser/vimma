@@ -236,11 +236,9 @@ export function dangerousType(type) {
   return kind && Object.hasOwn(DANGEROUS_TYPES, /** @type {string} */ (bare)) ? danger(kind) : null;
 }
 
-/**
- * Whether `b` holds `sig` at `at`: a byte past the end is undefined, never equal to one.
- * @param {Uint8Array} b @param {number[]} sig @param {number} [at]
- */
-const starts = (b, sig, at = 0) => sig.every((v, i) => b[at + i] === v);
+/** @param {Uint8Array} b @param {number[]} sig @param {number} [at] */
+const starts = (b, sig, at = 0) =>
+  b.length >= at + sig.length && sig.every((v, i) => b[at + i] === v);
 
 /** How many bytes from the start dangerousContent reads. */
 export const HEAD_BYTES = 512;
@@ -309,8 +307,9 @@ export function zipLocate(tail, size) {
     const entries = u16(tail, i + 10);
     const length = u32(tail, i + 12);
     const offset = u32(tail, i + 16);
-    // zip64's markers; its length marker, 0xffffffff, is over ZIP_MAX_DIRECTORY below.
-    if (entries === 0xffff || offset === 0xffffffff) return { kind: "unlistable" };
+    if (entries === 0xffff || length === 0xffffffff || offset === 0xffffffff) {
+      return { kind: "unlistable" };
+    }
     const end = base + i;
     if (offset + length > end || length > ZIP_MAX_DIRECTORY || u16(tail, i + 8) !== entries) {
       return { kind: "unlistable" };
@@ -341,8 +340,8 @@ export function zipEntryList(cd, entries) {
   const out = [];
   let at = 0;
   for (let n = 0; n < entries; n++) {
-    // A record cut short reads 0 past the end (byte()), and `next` below is then past the end.
-    if (u32(cd, at) !== 0x02014b50) return null;
+    // Stryker disable next-line ArithmeticOperator: defence in depth, also enforced by the `next > cd.length` check below
+    if (at + 46 > cd.length || u32(cd, at) !== 0x02014b50) return null;
     const madeOnUnix = byte(cd, at + 5) === 3;
     const attributes = u32(cd, at + 38);
     const nameLength = u16(cd, at + 28);
@@ -488,10 +487,8 @@ export function clamDefinitionsDate(text) {
   if (!m) return null;
   const month = MONTHS.indexOf(String(m[1]));
   const [day = 0, h = 0, min = 0, sec = 0, year = 0] = m.slice(2).map(Number);
-  if (month < 0 || min > 59 || sec > 60) return null;
+  if (month < 0 || day < 1 || day > 31 || h > 23 || min > 59 || sec > 60) return null;
   const date = new Date(year, month, day, h, min, sec);
-  // A day the month does not have (0 to 99) or an hour past 23 (up to 99) moves the date to
-  // another day of the month: refused here.
   return date.getDate() === day ? date.getTime() : null;
 }
 
@@ -706,19 +703,20 @@ export function clamdConfig(text) {
     if (encoder.encode(raw).length + 1 >= CLAMD_LINE_BYTES) {
       return { problem: `line ${n} is too long for clamd to read whole` };
     }
-    // clamd strips leading spaces and tabs only, then skips a comment; a blank line or a
-    // comment (`#…`, a name no option has) is skipped below.
+    // clamd strips leading spaces and tabs only, then skips a comment.
     const line = raw.replace(/^[ \t]+/, "");
+    // Stryker disable next-line LogicalOperator: defence in depth, also enforced by the name lookup below ("" and "#…" name no option)
+    if (!line || line.startsWith("#")) continue;
     const m = /^([^ \t]*)[ \t]*(.*?)[ \t]*$/.exec(line);
     const name = m?.[1] ?? "";
     const option = CLAMD_NAMES.get(name);
     if (!option) {
       // A name that only looks like one of these (other case, or run into a space clamd does
       // not split on) makes clamd refuse the whole file; it is not guessed at here.
-      // `looks` is `name` too, lower case, whenever `name` is such a name: it has no space.
       // Stryker disable next-line StringLiteral: a line with no word names no option, as "" does not
       const looks = (/\S+/.exec(line)?.[0] ?? "").toLowerCase();
-      if (CLAMD_NAMES_LOWER.has(looks)) {
+      // Stryker disable next-line MethodExpression: defence in depth, also enforced by `looks`, which is `name` in lower case whenever `name` is such a name
+      if (CLAMD_NAMES_LOWER.has(looks) || CLAMD_NAMES_LOWER.has(name.toLowerCase())) {
         return { problem: `clamd does not read ${name} (line ${n})` };
       }
       continue;
