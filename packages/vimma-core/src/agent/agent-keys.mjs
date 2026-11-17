@@ -47,6 +47,12 @@ export const AGENT_KEY_ACTIONS = Object.freeze(
 export const AGENT_KEY_LIMITS = Object.freeze({ chars: 512, actions: 32, count: 99, query: 256 });
 
 /**
+ * The longest page URL a reply carries, in code points: a tab's in `vimma_tabs`, and the page's
+ * after a read, a list, a step, a screenshot or a console read. agentUrl cuts it (security.md M7).
+ */
+export const AGENT_PAGE_URL_MAX = 8192;
+
+/**
  * D12: at most `max` links a list, each link's text cut at `text` and its href at `href`
  * characters; `f`'s labels live `ttlMs` (an element list's do not: `labelsCurrent`). `label` is the longest label `max` links get over
  * DEFAULT_HINT_CHARS, so a longer one can name no link.
@@ -517,6 +523,125 @@ export function cutTo(s, max) {
   return chars.length > max ? `${chars.slice(0, max - 1).join("")}…` : s;
 }
 
+/** A URL's scheme and its colon. */
+const URL_SCHEME = /^([a-z][a-z0-9+.-]*):/i;
+/** Schemes whose authority may come after any slashes or backslashes, or none (WHATWG). */
+const SPECIAL_SCHEMES = new Set(["http", "https", "ws", "wss", "ftp", "file"]);
+/** Schemes whose rest is a URL of its own, whose user name and password go too. */
+const NESTED_SCHEMES = new Set(["view-source", "jar", "blob"]);
+/** At most this many URLs inside one another are read (view-source:jar:https:...). */
+const NESTED_MAX = 4;
+
+/**
+ * `text` without the user name and password of its URL, and of the URLs nested in it: the
+ * authority after the scheme's slashes, up to its last `@`. Each scheme's authority ends where a
+ * WHATWG URL parser ends it (a slash, a question mark or a number sign, and for a special scheme a
+ * backslash too); a case where they could differ drops more, never less. `cut` says the text was
+ * cut, so an authority that runs to its end may hide a user name and password: it is dropped
+ * whole, and only the scheme and its slashes kept.
+ * @param {string} text @param {boolean} cut @param {number} depth
+ * @returns {string}
+ */
+function withoutUserinfo(text, cut, depth) {
+  // As a URL parser does: leading C0 controls and spaces go, and so do tabs and line breaks.
+  const t = text.replace(/[\t\n\r]/g, "");
+  let start = 0;
+  while (start < t.length && t.charCodeAt(start) <= 0x20) start++;
+  const s = t.slice(start);
+  const m = URL_SCHEME.exec(s);
+  if (!m) return s;
+  const name = /** @type {string} */ (m[1]).toLowerCase();
+  const rest = s.slice(m[0].length);
+  if (NESTED_SCHEMES.has(name)) {
+    // Past NESTED_MAX the rest is not read, so it is dropped: it may hold a user name.
+    return depth < NESTED_MAX ? m[0] + withoutUserinfo(rest, cut, depth + 1) : `${m[0]}\u2026`;
+  }
+  const special = SPECIAL_SCHEMES.has(name);
+  const lead = special ? (/^[/\\]*/.exec(rest)?.[0] ?? "") : rest.startsWith("//") ? "//" : null;
+  if (lead === null) return s;
+  const after = rest.slice(lead.length);
+  let end = after.search(special ? /[/\\?#]/ : /[/?#]/);
+  if (end < 0) {
+    if (cut) return `${m[0]}${lead}\u2026`;
+    end = after.length;
+  }
+  return m[0] + lead + after.slice(after.lastIndexOf("@", end) + 1);
+}
+
+/**
+ * A URL as the agent may see it (security.md M21, M30, M31): a script's, file's or request's, a
+ * link's href, a form's action, a tab's page. Without the user name and password it may carry,
+ * as shown (NFKC, no invisible characters, no white space), then cut at `max` code points. The user name and password go before the cut, so that no cut
+ * can take their `@` and leave them in (#1198). They go first from the text as the page gave it,
+ * where the authority ends where a URL parser ends it (NFKC would make a fullwidth slash one that
+ * the parser does not see), and again from the shown text, where a fullwidth `@` is one: only
+ * more is dropped that way, never less. Only the first `4 * max` code units are read, so the work
+ * is bounded however long the URL.
+ * @param {unknown} url @param {number} max
+ */
+export function agentUrl(url, max) {
+  const raw = String(url ?? "");
+  const read = raw.slice(0, 4 * max);
+  const cut = read.length < raw.length;
+  const first = withoutUserinfo(read, cut, 0);
+  const text = shown(first).replace(/\s/g, "");
+  return cutTo(withoutUserinfo(text, cut, 0), max);
+}
+
+/** What Firefox drops from a URL it makes a tab's label of (#setTabLabel): its scheme and www. */
+const LABEL_SCHEME = /^[^:]+:\/\/(?:www\.)?/;
+
+/**
+ * A page's own title as the agent may see it (security.md M21, #1209), in depth: one that is a
+ * URL (no white space, a scheme and an authority holding a user name or password once shown)
+ * loses them as agentUrl drops them. Any other title is the page's text, returned as it is.
+ * @param {unknown} label
+ */
+export function agentTitle(label) {
+  const s = String(label ?? "");
+  const t = s.trim();
+  if (!t || /\s/.test(t)) return s;
+  const plain = shown(t);
+  if (!plain.includes("@") || !URL_SCHEME.test(plain)) return s;
+  return withoutUserinfo(plain, false, 0) === plain ? s : agentUrl(t, AGENT_PAGE_URL_MAX);
+}
+
+/**
+ * A tab's title as the agent may see it (security.md M21, #1209). A label Firefox made of a URL
+ * (`contentTitle`, the tab's `labelIsContentTitle`, not true: before a load, restored pending, a
+ * page with no title, even after a redirect) may hold a user name and password, or only part of
+ * one once Firefox cut it at 256 characters, or those of the URL the tab was opened at: it is
+ * never read. The tab's URL `url` is given instead, without them, as Firefox shows a URL in a
+ * label (no scheme, no www.). While a new tab's first load has not committed, its URL is
+ * about:blank, and `typed`, the URL it is loading (Firefox keeps it as typed until the load ends;
+ * Tabbrowser addTab), is given instead. A page's own title goes through agentTitle.
+ * @param {unknown} label @param {unknown} contentTitle @param {unknown} url
+ * @param {unknown} [typed]
+ */
+export function agentTabTitle(label, contentTitle, url, typed) {
+  if (contentTitle === true) return agentTitle(label);
+  const at = url === "about:blank" && typeof typed === "string" && typed ? typed : url;
+  return agentUrl(at, AGENT_PAGE_URL_MAX).replace(LABEL_SCHEME, "");
+}
+
+/**
+ * A markdown link's or image's target: `](`, then up to the next `)`. DOMExtractor writes a
+ * resolved href there, which holds no white space and has its parentheses escaped; page text
+ * with white space between the two is not a target, and keeps its white space.
+ */
+const MARKDOWN_TARGET = /\]\(([^()\s]*)\)/g;
+
+/**
+ * A page's text as the agent may read it (security.md M7, #1209): each markdown link's and
+ * image's target without its user name and password, as agentUrl drops them. Firefox's
+ * extractor writes a link as `[text](href)` with the href resolved against the page's URL, so a
+ * page whose URL holds a user name and password would give them to every relative link.
+ * @param {string} text
+ */
+export function markdownWithoutUserinfo(text) {
+  return text.replace(MARKDOWN_TARGET, (_, url) => `](${withoutUserinfo(url, false, 0)})`);
+}
+
 /**
  * The link list's text (D16, security.md M21), one link a line: the label, the text as a JSON
  * string cut at AGENT_LINKS.text, the href cut at AGENT_LINKS.href. The browser wraps it in the
@@ -535,9 +660,7 @@ function linkLine({ label, target }) {
       .trim(),
     AGENT_LINKS.text,
   );
-  const href = target.href
-    ? cutTo(shown(target.href).replace(/\s/g, ""), AGENT_LINKS.href)
-    : "(no URL)";
+  const href = target.href ? agentUrl(target.href, AGENT_LINKS.href) : "(no URL)";
   return `${label} ${JSON.stringify(text)} ${href}`;
 }
 

@@ -36,7 +36,7 @@ import {
   labelAgentElements,
   parseAgentElement,
 } from "../src/agent/agent-act.mjs";
-import { AGENT_LINKS } from "../src/agent/agent-keys.mjs";
+import { AGENT_LINKS, agentUrl as keysAgentUrl } from "../src/agent/agent-keys.mjs";
 import { parseHintReply } from "../src/page/hints.mjs";
 import { budget } from "./budget.ts";
 import type { AgentElementTarget } from "../src/agent/agent-act.mjs";
@@ -1259,7 +1259,15 @@ describe("console reads: bounded work and URLs without credentials (F24, M30)", 
   const shownRequest = (url: string) => {
     const r = consoleLists(
       [],
-      [{ method: "GET", url: agentUrl(url), status: 500, type: "fetch", time: 5 }],
+      [
+        {
+          method: "GET",
+          url: agentUrl(url, AGENT_CONSOLE.url),
+          status: 500,
+          type: "fetch",
+          time: 5,
+        },
+      ],
       0,
       AGENT_CONSOLE.bytes,
     );
@@ -1270,7 +1278,7 @@ describe("console reads: bounded work and URLs without credentials (F24, M30)", 
     const long = "https://alice:" + "s".repeat(600) + "@evil.example/a.js";
     expect(shownFile(long)).toBe("https://evil.example/a.js");
     expect(shownRequest(long)).toBe("https://evil.example/a.js");
-    expect(agentUrl(long)).toBe("https://evil.example/a.js");
+    expect(agentUrl(long, AGENT_CONSOLE.url)).toBe("https://evil.example/a.js");
     // The parsed entry, which the parent keeps and compares, holds none of it either.
     expect(parseConsoleEntry(script(long))?.file).toBe("https://evil.example/a.js");
     // A fullwidth at sign is an at sign once shown.
@@ -1319,7 +1327,7 @@ describe("console reads: bounded work and URLs without credentials (F24, M30)", 
   // through the reply, which runs agentUrl a second time and so could hide a first-`@` cut.
   const once = (url: string) => {
     const file = parseConsoleEntry(script(url))?.file;
-    const direct = agentUrl(url);
+    const direct = agentUrl(url, AGENT_CONSOLE.url);
     expect(file).toBe(direct);
     return direct;
   };
@@ -1768,5 +1776,60 @@ describe("the element list, clicks, fills and console reads, at their edges (mut
     expect(times[0]).toBe(101);
     expect(times).not.toContain(1);
     expect(r.dropped).toBe(1);
+  });
+});
+
+describe("element lists without user names and passwords (security.md M31; #1209)", () => {
+  // A page whose own URL holds a user name and password resolves its relative links and form
+  // actions with them: the child sends them so, and the parent drops them before any cut.
+  const link = (href: string) => ({
+    label: "a",
+    target: { rect, kind: "click", info: { kind: "link", text: "x" }, href },
+  });
+  const form = (action: string) => ({
+    label: "a",
+    target: {
+      rect,
+      kind: "click",
+      info: { kind: "button", text: "Go" },
+      form: { key: "1:0", method: "post", action },
+    },
+  });
+  const lines = (e: { label: string; target: AgentElementTarget }) =>
+    agentElementList([e], AGENT_ELEMENTS.bytes)
+      .text.split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+  test("a link's href and a form's action lose their user name and password", () => {
+    expect(lines(link("https://ada:secret@example.com/plans"))[0]?.href).toBe(
+      "https://example.com/plans",
+    );
+    expect(lines(form("https://ada:secret@example.com/api/signup"))[0]?.action).toBe(
+      "https://example.com/api/signup",
+    );
+    // The authority's last at sign ends them, and a fullwidth one counts once shown.
+    expect(lines(link("https://ada@x:secret@example.com/p"))[0]?.href).toBe(
+      "https://example.com/p",
+    );
+    expect(lines(link("https://ada:secret＠example.com/p"))[0]?.href).toBe("https://example.com/p");
+    // Inside view-source: too.
+    expect(lines(link("view-source:https://ada:secret@example.com/"))[0]?.href).toBe(
+      "view-source:https://example.com/",
+    );
+  });
+
+  test("a user name and password longer than the cut are dropped before it", () => {
+    const long = `https://ada:${"s".repeat(3 * AGENT_ELEMENTS.href)}@example.com/p`;
+    expect(lines(link(long))[0]?.href).toBe("https://example.com/p");
+    expect(lines(form(long))[0]?.action).toBe("https://example.com/p");
+    // Longer than what is read: the authority goes whole, never a cut piece of it.
+    const huge = `https://ada:${"s".repeat(5 * AGENT_ELEMENTS.href)}@example.com/p`;
+    for (const shown of [lines(link(huge))[0]?.href, lines(form(huge))[0]?.action]) {
+      expect(shown).toBe("https://…");
+    }
+  });
+
+  test("the console's and the lists' URLs go through one stripper", () => {
+    expect(agentUrl).toBe(keysAgentUrl);
   });
 });

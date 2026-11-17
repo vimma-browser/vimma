@@ -20,7 +20,15 @@
 // an element list only while the link is still in the page (F4). `vimma_activate` clicks, and
 // `vimma_fill` fills, only an element of a `vimma_elements` list (`element`).
 
-import { AGENT_LINKS, agentLinkList, labelAgentLinks, labelsCurrent } from "../core/agent-keys.mjs";
+import {
+  AGENT_LINKS,
+  AGENT_PAGE_URL_MAX,
+  agentLinkList,
+  agentTabTitle,
+  agentUrl,
+  labelAgentLinks,
+  labelsCurrent,
+} from "../core/agent-keys.mjs";
 import { AGENT_ELEMENTS } from "../core/agent-act.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
 import { isCaseSensitive } from "../core/find.mjs";
@@ -637,8 +645,16 @@ export const AgentDrive = {
     }
     /** @type {KeysResult} */
     const out = {
-      url: wf(browser.currentURI?.spec ?? ""),
-      title: wf(tab.label ?? ""),
+      // Without the page's user name and password (security.md M7, #1209).
+      url: wf(agentUrl(browser.currentURI?.spec ?? "", AGENT_PAGE_URL_MAX)),
+      title: wf(
+        agentTabTitle(
+          tab.label,
+          tab.labelIsContentTitle,
+          String(browser.currentURI?.spec ?? ""),
+          browser.userTypedValue,
+        ),
+      ),
       loading: !!browser.webProgress?.isLoadingDocument || tab.hasAttribute("busy"),
       scroll: {
         y:
