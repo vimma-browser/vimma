@@ -1595,7 +1595,7 @@ export const VimmaHost = {
   },
 
   /**
-   * Whether the keypress just sent to a remote page is a suggestion key's. On macOS such a
+   * Whether the keypress on its way to a remote page is a suggestion key's. On macOS such a
    * keypress is marked for the page's process (Event.webidl's preventMultipleActions: the default
    * is not prevented, but only one handler acts on the event; the flags go to the page's process
    * with the event, widget/nsGUIEventIPC.h, ParamTraits<BaseEventFlags>), because Cocoa binds
@@ -1604,6 +1604,15 @@ export const VimmaHost = {
    * prevents its default, so the reply would say the page took the key, with or without a
    * list. VimmaChild keeps a marked keypress from the field while its suggestion list is open;
    * with none open the field keeps its key (docs/specs/page-suggestions.md, Behaviour 3).
+   *
+   * The flag is free for this on a keypress: in Firefox 160 its only reader that sees one is a
+   * link's activation on Enter (Element::CheckHandleEventForLinksPrecondition, dom/base/
+   * Element.cpp), its other readers are mouse, touch and menu code, and no Firefox script sets it
+   * on a key. To check again at a Firefox bump.
+   *
+   * Not marked, so the field's as before: a page in the parent process, whose keypress is not
+   * sent anywhere (stopping it before the field would stop `_onKeyPressAfter` too), and a chord
+   * whose keypress Firefox's root key listener holds back before `_onKeyPress` sees it.
    * @param {WindowState} state
    * @param {string} key
    * @param {number} stamp  the keypress's timeStamp

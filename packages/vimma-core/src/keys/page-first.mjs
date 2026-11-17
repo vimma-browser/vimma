@@ -78,7 +78,7 @@ export class PageFirstQueue {
   }
 
   /**
-   * The press whose keypress, sent to a remote page, waits for that page's reply, or null.
+   * The press whose keypress goes to a remote page and waits for that page's reply, or null.
    * @param {string} key
    * @param {number} stamp  the keypress's timeStamp
    * @returns {PageFirstEntry<R> | null}

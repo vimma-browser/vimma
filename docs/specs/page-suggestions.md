@@ -109,11 +109,13 @@ typing a query.
 - **macOS.** Cocoa binds `ctrl+n` and `ctrl+p` to `moveDown:` and `moveUp:` in text fields
   (`widget/cocoa/NativeKeyBindings.mm:447-460`), an editor command, not an arrow key event, so a
   page's list does not move on them today. Not run on macOS for this spec. (Since changed: run
-  on the macOS mochitest job. The field's command also prevents the keypress's default, which
-  the host read as the page taking the key, so no arrow key was pressed on macOS. There the
-  parent now marks a suggestion key's keypress, and the content actor keeps a marked keypress
-  from the field while its suggestion list is open, so the caret stays and the arrow key is
-  pressed; `host/VimmaHost.sys.mjs`, `_suggestionKeySent`, and `actors/VimmaChild.sys.mjs`,
+  on the macOS mochitest job. The field's command also prevents the keypress's default
+  (`dom/html/TextControlState.cpp:948-951`, `editor/libeditor/EditorEventListener.cpp:650-653`,
+  Firefox 160), which the host read as the page taking the key, so no arrow key was pressed on
+  macOS. There the parent now marks a suggestion key's keypress, and the content actor keeps a
+  marked keypress from the field while its suggestion list is open, so the caret stays and the
+  arrow key is pressed. A page in the parent process is not covered: its field keeps both keys,
+  list or not. `host/VimmaHost.sys.mjs`, `_suggestionKeySent`, and `actors/VimmaChild.sys.mjs`,
   `keypress`.)
 
 ## Design

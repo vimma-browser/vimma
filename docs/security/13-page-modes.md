@@ -69,7 +69,10 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   `ctrl+n` or `ctrl+p` on the keypress, the parent marks the keypress of a suggestion key it sends
   to the page, and the frame's actor keeps a trusted, marked keypress from the field while that
   same test says a list is open: a page can at most keep the user's own key from moving the caret
-  in its own field, which it could also do by handling the key.
+  in its own field, which it could also do by handling the key. The mark is a chrome-only event
+  flag, which page script can neither set nor read; the actor only stops the keypress on its way
+  to the field, and neither prevents its default nor makes a key; and the parent reads no mark
+  back from a reply.
   [`suggestionListOpen`](../../packages/vimma-core/test/suggestions.test.ts),
   [`ctrl_n_and_ctrl_p_move_an_aria_combobox`](../../tests/browser/browser_vimma_page_suggestions.js),
   [`a_pressed_arrow_key_runs_no_vimma_binding`](../../tests/browser/browser_vimma_page_suggestions.js),

@@ -24,6 +24,10 @@ const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
 );
 
+const { compileKeymap } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/keymap.mjs",
+);
+
 const ROOT = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
   "https://example.com",
@@ -130,15 +134,15 @@ function caretOf(target, id) {
 }
 
 /**
- * ctrl+p in the focused field `id`, whose list is not open: it prints, the chord's [keys]
- * binding. On macOS the field keeps the key instead: Cocoa's moveUp:, which in a one-line field
- * puts the caret at the start, and nothing prints.
+ * ctrl+p in the focused field `id` where it presses no arrow key (no list is open, or the chord
+ * is bound to printing alone): it prints. On macOS the field keeps the key instead: Cocoa's
+ * moveUp:, which in a one-line field puts the caret at the start, and nothing prints.
  * @param {XULBrowserElement} browser
  * @param {string} id
  * @param {() => number} prints
  * @param {string} msg
  */
-async function ctrlPWithNoList(browser, id, prints, msg) {
+async function ctrlPOutsideAList(browser, id, prints, msg) {
   if (!MAC) {
     ctrl("p");
     await TestUtils.waitForCondition(() => prints() === 1, msg);
@@ -238,20 +242,27 @@ add_task(async function ctrl_n_and_ctrl_p_move_an_aria_combobox() {
 add_task(async function the_caret_stays_where_it_was_in_an_open_list() {
   await BrowserTestUtils.withNewTab(COMBO, async (browser) => {
     await focusContent(browser);
-    await focusField(browser, browser, "keeps");
-    await setField(browser, "keeps", "abc", 1);
-    ctrl("p");
-    await TestUtils.waitForCondition(
-      async () => (await pageLog(browser)).includes("keeps:ArrowUp:true"),
-      "ctrl+p presses ArrowUp",
-    );
-    Assert.equal(await caretOf(browser, "keeps"), "1-1", "and the caret stays");
-    ctrl("n");
-    await TestUtils.waitForCondition(
-      async () => (await pageLog(browser)).includes("keeps:ArrowDown:true"),
-      "ctrl+n presses ArrowDown",
-    );
-    Assert.equal(await caretOf(browser, "keeps"), "1-1", "and the caret stays");
+    // A one-line field, then a <textarea> with the caret in its middle line (Cocoa moves a
+    // line there, not to an end).
+    for (const [id, text, at] of /** @type {const} */ ([
+      ["keeps", "abc", 1],
+      ["area", "one\ntwo\nthree", 5],
+    ])) {
+      await focusField(browser, browser, id);
+      await setField(browser, id, text, at);
+      ctrl("p");
+      await TestUtils.waitForCondition(
+        async () => (await pageLog(browser)).includes(`${id}:ArrowUp:true`),
+        `${id}: ctrl+p presses ArrowUp`,
+      );
+      Assert.equal(await caretOf(browser, id), `${at}-${at}`, `${id}: and the caret stays`);
+      ctrl("n");
+      await TestUtils.waitForCondition(
+        async () => (await pageLog(browser)).includes(`${id}:ArrowDown:true`),
+        `${id}: ctrl+n presses ArrowDown`,
+      );
+      Assert.equal(await caretOf(browser, id), `${at}-${at}`, `${id}: and the caret stays`);
+    }
   });
 });
 
@@ -328,10 +339,7 @@ add_task(async function a_combobox_in_a_cross_origin_frame() {
 // binding on
 // <Down> (here: new tab), the key still reaches the page and runs no binding.
 add_task(async function a_pressed_arrow_key_runs_no_vimma_binding() {
-  const { compileKeymap } = ChromeUtils.importESModule(
-    "chrome://browser/content/vimma/core/keymap.mjs",
-  );
-  const mac = { mac: Services.appinfo.OS === "Darwin" };
+  const mac = { mac: MAC };
   VimmaHost.configure({
     keymap: compileKeymap({ modal: { insert: { "<Down>": "tab.new" } } }, mac),
   });
@@ -414,23 +422,46 @@ add_task(async function a_late_reply_presses_no_arrow_key_in_another_tab() {
   BrowserTestUtils.removeTab(tabB);
 });
 
+// Only a suggestion key's keypress is kept from the field. With ctrl+p bound to print in insert
+// mode, it prints with a list open too, as a page-first key does when the page leaves it alone.
+// On macOS the field's moveUp: takes it, as it takes every page-first key Cocoa binds in a field.
+add_task(async function a_key_bound_to_another_action_is_no_suggestion_key() {
+  const mac = { mac: MAC };
+  VimmaHost.configure({
+    keymap: compileKeymap({ modal: { insert: { "<C-p>": "page.print" } } }, mac),
+  });
+  try {
+    await withPrintRecorder(async (prints) => {
+      await BrowserTestUtils.withNewTab(COMBO, async (browser) => {
+        await focusContent(browser);
+        await focusField(browser, browser, "keeps");
+        await ctrlPOutsideAList(browser, "keeps", prints, "ctrl+p prints in an open list");
+        Assert.deepEqual(arrows(await pageLog(browser)), [], "and presses no ArrowUp");
+      });
+    });
+  } finally {
+    VimmaHost.configure({ keymap: compileKeymap({}, mac) });
+  }
+});
+
 add_task(async function a_hidden_list_left_aria_expanded_is_not_open() {
   await withPrintRecorder(async (prints) => {
     await BrowserTestUtils.withNewTab(COMBO, async (browser) => {
       await focusContent(browser);
       await focusField(browser, browser, "stale");
-      await ctrlPWithNoList(browser, "stale", prints, "ctrl+p prints: the list is hidden");
+      await ctrlPOutsideAList(browser, "stale", prints, "ctrl+p prints: the list is hidden");
       Assert.deepEqual(arrows(await pageLog(browser)), [], "no ArrowUp");
     });
   });
 });
 
+// On macOS no [keys] binding runs here: the field's own keys do (ctrlPOutsideAList).
 add_task(async function with_no_list_open_the_keys_binding_runs() {
   await withPrintRecorder(async (prints) => {
     await BrowserTestUtils.withNewTab(COMBO, async (browser) => {
       await focusContent(browser);
       await focusField(browser, browser, "plain");
-      await ctrlPWithNoList(browser, "plain", prints, "ctrl+p runs print_page");
+      await ctrlPOutsideAList(browser, "plain", prints, "ctrl+p runs print_page");
       await focusField(browser, browser, "plain");
       await setField(browser, "plain", "abc", 0);
       await ctrlNOpensNoWindow(browser, "plain");
@@ -457,6 +488,18 @@ add_task(async function ctrl_n_and_ctrl_p_move_firefoxs_datalist_popup() {
     const shown = BrowserTestUtils.waitForPopupEvent(popup, "shown");
     EventUtils.synthesizeKey("KEY_ArrowDown");
     await shown;
+    // The frame hears of its open popup in a message of its own (AutoComplete:PopupOpened),
+    // which a key, sent at input priority, may overtake. On macOS the frame reads that state
+    // at the keypress, so the key waits for it.
+    await SpecialPowers.spawn(browser, [], () =>
+      ContentTaskUtils.waitForCondition(
+        () =>
+          /** @type {{ popupOpen?: boolean } | undefined} */ (
+            content.windowGlobalChild?.getActor("AutoComplete")
+          )?.popupOpen === true,
+        "the frame knows its popup is open",
+      ),
+    );
     ctrl("n");
     await TestUtils.waitForCondition(() => popup.selectedIndex === 0, "ctrl+n selects row 0");
     ctrl("n");
@@ -478,7 +521,8 @@ add_task(async function ctrl_n_and_ctrl_p_move_firefoxs_datalist_popup() {
 });
 
 // Chrome fields keep their keys (decision 6 of the spec's Behaviour, item 6): in the address bar
-// ctrl+p prints as before, and ctrl+n opens no window (decision 7).
+// ctrl+p prints as before (on macOS it is the address bar's own key, as before too), and ctrl+n
+// opens no window (decision 7).
 add_task(async function the_address_bar_keeps_ctrl_n_and_ctrl_p() {
   await withPrintRecorder(async (prints) => {
     await BrowserTestUtils.withNewTab(COMBO, async () => {

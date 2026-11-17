@@ -416,10 +416,12 @@ export class VimmaChild extends JSWindowActorChild {
       case "keypress": {
         // macOS only (VimmaActors registers it there alone). The parent marked this keypress:
         // it is a suggestion key's, sent here for the page to have first (VimmaHost,
-        // _suggestionKeySent). Page script has had it by now; the focused field has not. While
-        // the field's suggestion list is open, the field does not get it, so Cocoa's moveDown:
-        // or moveUp: moves no caret and the parent, whose reply then comes back not prevented,
-        // presses the arrow key. With no list open the field keeps its key.
+        // _suggestionKeySent). The page has had the keydown by now; the focused field has not
+        // had this keypress. While the field's suggestion list is open, the field does not get
+        // it, so Cocoa's moveDown: or moveUp: moves no caret and the parent, whose reply then
+        // comes back not prevented, presses the arrow key. With no list open the field keeps
+        // its key; so it does when Firefox's own popup has only just opened, since this frame
+        // hears of that in a message a key may overtake (AutoComplete:PopupOpened).
         // Stopped, not prevented: a prevented keypress reads as one the page took. And stopped
         // for this target's later listeners too: a contenteditable's editor listens on this
         // same target, the window's parent (HTMLEditor::GetDOMEventTarget), after this actor.

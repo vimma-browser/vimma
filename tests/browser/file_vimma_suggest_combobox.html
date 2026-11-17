@@ -6,7 +6,8 @@
      combobox whose list opens on input and whose highlight moves on ArrowDown and ArrowUp; a
      combobox left aria-expanded with its list hidden; an open combobox that takes ctrl+n itself;
      an open combobox that takes the arrow keys and leaves its text and caret alone, and the
-     same as a contenteditable; a plain input. Every keydown is logged with isTrusted. -->
+     same as a textarea and as a contenteditable; a plain input. Every keydown is logged with
+     isTrusted. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -36,6 +37,10 @@
     <input id="keeps" role="combobox" aria-expanded="true" aria-controls="lb4" />
     <ul id="lb4" role="listbox">
       <li role="option">kept</li>
+    </ul>
+    <textarea id="area" role="combobox" aria-expanded="true" aria-controls="lb6"></textarea>
+    <ul id="lb6" role="listbox">
+      <li role="option">area</li>
     </ul>
     <div id="rich" contenteditable="true" role="combobox" aria-expanded="true" aria-controls="lb5">
       one<br />two<br />three
@@ -73,7 +78,7 @@
       document.getElementById("takes").addEventListener("keydown", (e) => {
         if (e.ctrlKey && e.key === "n") e.preventDefault();
       });
-      for (const id of ["keeps", "rich"]) {
+      for (const id of ["keeps", "area", "rich"]) {
         document.getElementById(id).addEventListener("keydown", (e) => {
           if (e.key === "ArrowDown" || e.key === "ArrowUp") e.preventDefault();
         });
