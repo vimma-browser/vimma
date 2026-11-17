@@ -23,7 +23,9 @@ import { SCROLL_STEP_DEFAULT } from "../page/scroll.mjs";
  * @property {ThemeInput} [theme]
  * @property {{ max?: number, layout?: "dwindle" | "manual", main_size?: number,
  *   new_tab?: "alone" | "pane" }} [panes]
- * @property {Record<string, { insert?: import("../keys/editable.mjs").InsertSiteMode }>} [sites]
+ * @property {Record<string, { insert?: import("../keys/editable.mjs").InsertSiteMode,
+ *   unbind?: string[] }>} [sites]  per-site insert mode and keys the page keeps
+ *   (docs/specs/site-unbind.md)
  * @property {Record<string, string>[]} [routes]  `[[routes]]` (workspace-routing)
  * @property {{ default_workspace?: string }} [routing]  where links from other programs that no
  *   rule matches open (docs/specs/app-routes.md)
@@ -685,9 +687,13 @@ export function formatDefaultsToml() {
     ...mcpLines(),
     "",
     "# Per-site insert mode: auto (detect text fields), never (keys stay vimma's), always.",
-    "# A host also covers its subdomains. None by default.",
+    "# unbind: keys the page gets instead of vimma there, in normal and insert mode; a key that",
+    "# starts sequences (g) takes them all. esc and the prefix stay vimma's.",
+    "# A host also covers its subdomains; the most specific table wins. None by default.",
     '# [sites."docs.google.com"]',
     '# insert = "always"',
+    '# [sites."github.com"]',
+    '# unbind = ["t"]',
     "",
     "# Which workspace a link opens in: by domain (and its subdomains), url prefix, or the",
     "# programs that opened it (vimma-open). The first matching rule wins, except that among the",

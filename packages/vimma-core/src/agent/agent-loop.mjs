@@ -26,7 +26,7 @@ import { UNTRUSTED_FROM } from "./agent.mjs";
  * @typedef {import("./agent-budget.mjs").Budget} Budget
  * @typedef {import("./agent-budget.mjs").Exceeded} Exceeded
  *
- * @typedef {(name: string, args: Record<string, any>, opts: { signal: AbortSignal })
+ * @typedef {(name: string, args: Record<string, unknown>, opts: { signal: AbortSignal })
  *   => Promise<{ content?: ToolContent[], isError?: boolean }>} RunTool
  *   One tool call, answered as MCP's CallToolResult: through the gate, so it may wait for the
  *   user's answer and come back denied (`isError`).
@@ -170,7 +170,8 @@ export function checkToolCall(call, tools) {
   if (call.error) return call.error;
   const tool = tools.find((t) => t.name === call.name);
   if (!tool) return `there is no tool named ${JSON.stringify(call.name)}`;
-  const args = /** @type {Record<string, any>} */ (call.args);
+  // A call without an error has an object as its arguments (agent-providers.mjs, toolCall).
+  const args = /** @type {Record<string, unknown>} */ (call.args);
   const schema = tool.inputSchema;
   const props = schema.properties ?? {};
   for (const name of schema.required ?? [])
@@ -183,10 +184,13 @@ export function checkToolCall(call, tools) {
         return `${call.name} takes no ${JSON.stringify(name)}`;
       continue;
     }
-    const is = TYPES[prop.type];
+    // No type, or a list of types (a key of their names joined by commas), has no check in
+    // TYPES: the runner checks those. `type` is from Vimma's own tools/list, never the model's.
+    const type = /** @type {string} */ (prop.type);
+    const is = TYPES[type];
     if (is && !is(value)) {
-      const article = /^[aeiou]/.test(prop.type) ? "an" : "a";
-      return `${JSON.stringify(name)} must be ${article} ${prop.type}`;
+      const article = /^[aeiou]/.test(type) ? "an" : "a";
+      return `${JSON.stringify(name)} must be ${article} ${type}`;
     }
   }
   return null;
@@ -365,7 +369,7 @@ async function run(opts, signal, pending) {
       /** @type {ToolResult} */
       let result;
       try {
-        const r = await runTool(call.name, /** @type {Record<string, any>} */ (call.args), {
+        const r = await runTool(call.name, /** @type {Record<string, unknown>} */ (call.args), {
           signal,
         });
         result = { id: call.id, name: call.name, isError: !!r?.isError, content: r?.content ?? [] };

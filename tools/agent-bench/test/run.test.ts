@@ -63,11 +63,11 @@ function fakeVimma({
         };
       opens.push(now);
       const tab = String(next++);
-      tabs.set(tab, args.url);
+      tabs.set(tab, args.url as string);
       const opened = `Opened ${args.url} in tab ${tab} of Vimma's agent workspace, in the background.`;
-      return text(args.elements ? `${opened}\n${list(args.url)}` : opened);
+      return text(args.elements ? `${opened}\n${list(args.url as string)}` : opened);
     }
-    const url = tabs.get(args.tab) ?? "";
+    const url = tabs.get(args.tab as string) ?? "";
     if (name === "vimma_elements") return text(list(url));
     if (name === "vimma_activate") {
       // A click may load a page, so Vimma checks the open rate before it (agent-activate); a

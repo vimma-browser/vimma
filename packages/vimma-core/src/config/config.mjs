@@ -232,7 +232,7 @@ const TOP_KEYS = [
   "panel",
   "scroll",
 ];
-const KEYMAP_SECTIONS = new Set(["keys", "modal", "unbind", "firefox"]);
+const KEYMAP_SECTIONS = new Set(["keys", "modal", "unbind", "firefox", "sites"]);
 const WORKSPACE_KEYS = ["color", "icon", "home", "autofill"];
 const THEME_KEYS = ["source", "name", "appearance", "font", "colors"];
 const THEME_NAMES = Object.keys(BUILTIN_THEMES);
@@ -248,7 +248,7 @@ export const PANES_NEW_TAB_MODES = Object.freeze(["alone", "pane"]);
 /** `[panes] main_size` bounds, in percent. */
 export const MAIN_SIZE_MIN = 20;
 export const MAIN_SIZE_MAX = 80;
-const SITE_KEYS = ["insert"];
+const SITE_KEYS = ["insert", "unbind"];
 const MODAL_KEYS = ["leader", "timeout_ms", "hint_chars", "insert_editing"];
 const FIREFOX_KEYS = ["disable", "enable"];
 const FIREFOX_DISABLE = 'must be "all" or a list of keys like "ctrl+w"';
@@ -751,7 +751,12 @@ function validate(raw, declared, warnings = []) {
       if (!table(path, site)) continue;
       for (const [key, v] of Object.entries(site)) {
         const at = [...path, key];
-        if (key !== "insert") unknownKey(at, key, SITE_KEYS);
+        if (key === "unbind") {
+          // Each entry's key is checked by compileKeymap, which knows the prefix
+          // (docs/specs/site-unbind.md behaviour 4 and 5).
+          if (!Array.isArray(v)) typeError(at, v, "a list of keys");
+          else v.forEach((k, i) => typeof k !== "string" && typeError([...at, i], k, "a string"));
+        } else if (key !== "insert") unknownKey(at, key, SITE_KEYS);
         else if (typeof v !== "string") typeError(at, v, "a string");
         else if (!INSERT_SITE_MODES.includes(/** @type {InsertSiteMode} */ (v))) {
           fail(at, 'must be "auto", "never" or "always"', closest(v, INSERT_SITE_MODES));
@@ -1304,7 +1309,13 @@ export function parseConfig(text, { mac = false } = {}) {
   if (!problems.some((p) => KEYMAP_SECTIONS.has(/** @type {string} */ (p.path[0])))) {
     try {
       keymap = compileKeymap(
-        { keys: user.keys, modal: user.modal, unbind: user.unbind, firefox: user.firefox },
+        {
+          keys: user.keys,
+          modal: user.modal,
+          unbind: user.unbind,
+          firefox: user.firefox,
+          sites: user.sites,
+        },
         { mac },
       );
     } catch (e) {

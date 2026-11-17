@@ -1331,11 +1331,9 @@ alone in the whole window, as Firefox's own split view does. The split is not lo
 hidden, with its panes, sizes and focused pane, and the status bar says `split 3 hidden`. Go to
 any of its tabs, by any of the same routes, and the whole split comes back, with that tab's pane
 focused. A pinned tab works the same way. While the split is hidden the pane keys act on the tab
-you see as on a single pane, and `ctrl+b v` / `-` / `enter` say "split S1 is hidden: ]s or
-ctrl+b S to go back, or mark tabs in ctrl+b b for a new split"; the message stays until your
-next key. `]s` brings the split back. The hidden split survives a workspace switch and a
-restart. To show the tab you are on beside others, start another split from the side panel
-([Several splits](#several-splits)).
+you see as on a single pane: `ctrl+b v` / `-` / `enter` start a new split from it
+([Several splits](#several-splits)), and the hidden one keeps waiting. `]s` brings the split
+back. The hidden split survives a workspace switch and a restart.
 
 A new tab you open while the split shows (`ctrl+t`, `ctrl+b c`, `t`, `:tabnew`, `P`, a link
 opened in a new foreground tab, also with `f`, or a link from another app) shows alone too, right
@@ -1353,9 +1351,9 @@ widths Firefox gave them, with the selected tab's pane focused. The pane keys th
 and the workspace keeps it like any other split. If such a split's tabs are in different
 workspaces, Vimma separates its tabs again and the status bar says why; the tabs stay in their
 workspaces. If the workspace already has a split, Vimma separates it too and the status bar
-says "split undone: mark tabs in ctrl+b b for another split": a further split is made from the
-side panel ([Several splits](#several-splits)). Separating a split outside Vimma closes its
-panes.
+says "split undone: mark tabs in ctrl+b b for another split": a further split is made with
+Vimma's own keys or the side panel ([Several splits](#several-splits)). Separating a split
+outside Vimma closes its panes.
 
 ### Several splits
 
@@ -1363,10 +1361,14 @@ A workspace can keep several splits, up to 9, and shows one at a time: an editor
 docs, and a second comparison of two pages, without breaking up the first.
 
 - **Starting another split.** Go to a tab that is in no split, or open a new one, so it shows
-  alone and the split waits hidden. Open the side panel (`ctrl+b b`): on a tab shown alone
-  nothing starts marked. Mark two or more tabs with `space` or `V` and press `Enter`; they become
-  a new split, shown at once, and the split you had before waits hidden. A marked tab that was in another split leaves
-  it, as `ctrl+b x` would close its pane there; a split left with one pane ends.
+  alone and the split waits hidden. Press `ctrl+b v`, `ctrl+b -` or `ctrl+b enter` (or run
+  `:vsplit` / `:split`): the tab and a new pane on the start page become a new split, shown at
+  once with the new pane focused, and the split you had before waits hidden. A bookmark opened
+  with `s` or `S` in the bookmarks panel does the same, with the bookmark in the new pane. Or
+  open the side panel (`ctrl+b b`), where on a tab shown alone nothing starts marked, mark two
+  or more tabs with `space` or `V` and press `Enter`; they become a new split in the same way. A
+  marked tab that was in another split leaves it, as `ctrl+b x` would close its pane there; a
+  split left with one pane ends.
 - **Numbers and colours.** Each split has a number, `S1` to `S9`, which it keeps while it exists,
   and the colour of that number from the theme. In the side panel each split's tabs carry a
   stripe in its colour and its label, and the head says `S2: 3 panes · 3 splits`, or
@@ -1377,13 +1379,13 @@ docs, and a second comparison of two pages, without breaking up the first.
   or `Enter` shows one, `/` filters by title. Selecting any tab of a split, by any route, shows
   that split whole too. Without a split, `]s` and `[s` say `no splits`, and `ctrl+b S` says
   `no splits in this workspace`.
-- **Splitting a lone tab.** While the workspace has a split and a tab shows alone, `ctrl+b v`,
-  `ctrl+b -` and `ctrl+b enter` are refused, so a split you meant to be on screen is never hidden
-  further by mistake; the message names the split and the ways back. With no split in the
-  workspace these keys split the tab as usual.
 - **The limit.** `[panes] max_splits` in [config.toml](#configtoml) sets how many splits a
-  workspace keeps (1 to 9, default 9); `1` gives one split per workspace. Past it, the side
-  panel says `new split: at most 9 splits in a workspace` and changes nothing.
+  workspace keeps (1 to 9, default 9); `1` gives one split per workspace. Past it, a new split
+  is refused with `new split: at most 9 splits in a workspace` and nothing changes; from
+  `ctrl+b v`, `-` or `enter` the message stays until your next key (from the bookmarks panel's
+  `s` / `S` it is a short notice). With `max_splits = 1`, the
+  side panel's marks replace the one split, while those keys are refused, so a key never ends
+  the hidden split.
 - **Kept.** A workspace switch, a restart and the private workspace keep every split, its sizes
   and which one shows.
 
@@ -1636,6 +1638,40 @@ enable = []
   a picker, hint, resize and the PDF outline) it does nothing: those take every key.
 - A key must have `ctrl`, `alt` or `meta`, be a function key (`f5`), or be `esc` or `shift+esc`;
   anything else, or a key that does not parse, is an error at its line.
+
+### Keys a site keeps
+
+Some sites have keyboard shortcuts of their own: `t` finds a file on GitHub, `c` writes a mail in
+Gmail, `ctrl+k` searches in Slack. To give such a key to the site without losing the rest of
+Vimma there, list it under the site in `config.toml`:
+
+```toml
+schema = 2
+
+[sites."github.com"]
+unbind = ["t", "g"]   # GitHub's t file finder and its g c (go to the code)
+
+[sites."app.slack.com"]
+unbind = ["ctrl+k"]
+```
+
+- On that site and its subdomains (`gist.github.com` too), the listed keys go to the page in
+  normal mode and in insert mode. Everywhere else they stay Vimma's, and on the site every other
+  key does: `j`, `gt` without the `g` entry, `ctrl+b c`.
+- Each entry is one key, written as in `[keys]`: `"t"`, `"T"`, `"ctrl+k"`, `"<C-k>"`, `"space"`.
+  A key that starts longer sequences takes them all: `"g"` gives the page `g`, and `gg`, `gt` and
+  `gT` are off on that site, since the page has to see the first key of its own shortcuts. The
+  keys after it must be free too: GitHub's `g c` works with `"g"` alone, but its `g i` also needs
+  `"i"`, since `i` is Vimma's insert key.
+- A listed chord is the field's in insert mode too: with `"ctrl+w"` listed, Vimma's
+  [text-field keys](#normal-and-insert-mode) leave `ctrl+w` to the site.
+- `esc` and the prefix (`ctrl+b`) cannot be listed, so a site never keeps you from leaving insert
+  mode or reaching Vimma's commands.
+- Vimma's own modes and panels (the side panel, the `:` line, hints, copy mode, `ctrl+b ?`), the
+  address bar and the PDF viewer keep their keys.
+- The most specific host is the site's whole rule: a `[sites."gist.github.com"]` table replaces
+  `github.com`'s on gist, so list a key in both to keep it on both. `insert` and `unbind` can sit
+  in the same table.
 
 ## Workspaces
 
@@ -4336,7 +4372,8 @@ accent = "#ff9e64"
   whether a new tab opened during a split shows alone beside it or opens in the focused pane;
   [Picking a tab during a split](#picking-a-tab-during-a-split)), `[panes] layout` (`"dwindle"` or `"manual"`: where `ctrl+b enter` puts a new pane) and
   `[panes] main_size` (the main-\* presets' main pane, 20 to 80%, default 60); `[sites."<host>"] insert` (`auto`, `never` or `always`: whether a text field on that
-  site and its subdomains takes insert mode); `[theme]` `source` (`omarchy` or `file`, the
+  site and its subdomains takes insert mode) and `unbind` (keys the page gets there instead of
+  Vimma, [Keys a site keeps](#keys-a-site-keeps)); `[theme]` `source` (`omarchy` or `file`, the
   built-in palette), `name` (`vimma`, the default, or `tokyo-night`: the built-in palette),
   `appearance` (`system`, `dark` or `light`: the built-in palette's; left out, `:theme` sets it),
   `font` and `[theme.colors]` (single colours over either source);

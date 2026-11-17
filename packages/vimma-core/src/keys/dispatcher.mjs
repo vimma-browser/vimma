@@ -54,6 +54,8 @@ export function createDispatcher(keymap) {
   let mode = null;
   /** @type {Context} */
   let context = "page";
+  /** @type {string | null} the `[sites]` table whose unbinds apply (keymap `site`) */
+  let site = null;
   /** @type {TrieNode | null} the trie of `mode` in `context`, null until the first key */
   let root = null;
   /** @type {TrieNode | null} */
@@ -91,19 +93,21 @@ export function createDispatcher(keymap) {
    * @param {Mode} m
    * @param {Chord} chord
    * @param {Context} [c]  the document's keymap context (docs/adr/024-keymap-contexts.md)
+   * @param {string | null} [s]  the page's site, `keymap.site(host)` (docs/specs/site-unbind.md)
    * @returns {DispatchResult}
    */
-  function dispatch(m, chord, c = "page") {
-    // Checked and looked up only when the mode or context changes: `mode` and `context` only ever
+  function dispatch(m, chord, c = "page", s = null) {
+    // Checked and looked up only when the mode, context or site changes: `mode` and `context` only ever
     // hold checked values, and this runs on every key, which the bench gates (docs/runbook/).
-    if (root === null || m !== mode || c !== context) {
+    if (root === null || m !== mode || c !== context || s !== site) {
       if (!isMode(m)) throw new Error(`unknown mode "${m}"`);
       if (!isContext(c)) throw new Error(`unknown context "${c}"`);
       // A sequence started under one set of bindings never finishes under another.
       reset();
       mode = m;
       context = c;
-      root = keymap.trie(m, c);
+      site = s;
+      root = keymap.trie(m, c, s);
     }
     const busy = node !== null || count !== "" || wantsChar !== null;
     const isEsc = chord.key === "esc" && !chord.ctrl && !chord.alt && !chord.meta && !chord.shift;

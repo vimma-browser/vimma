@@ -39,7 +39,24 @@ const MAX_COUNT_DIGITS = 4;
 
 /**
  * @typedef {{ client?: string, version?: string, via?: string } | null | undefined} Label
- * @typedef {{ tool: string, label: Label, what: Record<string, any> }} Asked
+ * @typedef {{ site?: unknown, top?: unknown, total?: unknown, keys?: unknown, text?: unknown }} PayWhat
+ *   a payment checkpoint's: the paying frame's host (`site`) and the tab's (`top`), the page's
+ *   total, and the keys or the control's text that pay
+ * @typedef {{ method?: unknown, action?: unknown, host?: unknown, fields?: unknown }} SubmitWhat
+ *   where a form goes, and how many fields it sends
+ * @typedef {{ fields?: unknown, hidden?: unknown, more?: unknown, unread?: unknown }} SentWhat
+ *   what a form sends (mcp-checkpoints Behaviour 4)
+ * @typedef {{ pay?: PayWhat | null, submit?: SubmitWhat | null, sent?: SentWhat | null,
+ *   here?: { site?: unknown } | null, current?: unknown, tab?: unknown, index?: unknown, title?: unknown,
+ *   url?: unknown, host?: unknown, keys?: unknown, followed?: unknown, label?: unknown,
+ *   kind?: unknown, text?: unknown, fields?: unknown, elements?: unknown, count?: unknown,
+ *   code?: unknown, name?: unknown, size?: unknown, type?: unknown, ext?: unknown,
+ *   danger?: unknown, unscanned?: unknown }} What
+ *   A question's `what` as the gate asks it: plain data, each value cleaned where it is shown.
+ *   Which keys a question has depends on its tool; the values are the page's or the agent's.
+ *   A `pay`, `submit`, `sent` or `here` that is not an object (`true`) still reads as one without
+ *   keys: none of the keys read is a property of a boolean, number or string.
+ * @typedef {{ tool: string, label: Label, what: What }} Asked
  * @typedef {{ text: string, strong?: boolean, warn?: boolean, isolate?: "auto" | "ltr" }} Part
  *   `isolate`: text an agent or a page chose, drawn as its own bidi run (security.md M4): `auto`
  *   for names and titles (<bdi>), `ltr` for URLs; `warn`: a checkpoint's glyph and verb, in the
@@ -90,7 +107,7 @@ const cutTitle = (title) => truncate(clean(title), TITLE_COLUMNS, "end");
 
 /**
  * A tab as the question shows it: its place in the agent workspace, title and URL.
- * @param {Record<string, any>} what
+ * @param {What} what
  * @returns {Part[]}
  */
 function tabParts(what) {
@@ -124,7 +141,7 @@ function urlParts(url, host) {
 /**
  * A download as the question shows it (decision 31 a): its name, size, type and extension, and
  * the host it comes from in bold; never the URL.
- * @param {Record<string, any>} w
+ * @param {What} w
  * @returns {Part[]}
  */
 function downloadParts(w) {
@@ -177,7 +194,7 @@ export const isCheckpoint = (q) => !!q.what?.pay || !!q.what?.submit;
  * A form submission as the question shows it (docs/specs/mcp-forms.md F15): its method and the
  * host of its destination in bold, and how many fields it sends when the fields themselves are
  * not known (`counted`; mcp-checkpoints Behaviour 4 lists them after).
- * @param {Record<string, any>} s @param {boolean} counted
+ * @param {SubmitWhat} s @param {boolean} counted
  * @returns {Part[]}
  */
 function submitParts(s, counted) {
@@ -193,7 +210,7 @@ function submitParts(s, counted) {
 
 /**
  * An element as an activation's question shows it (F28): its label, kind and text.
- * @param {Record<string, any>} w
+ * @param {What} w
  * @returns {Part[]}
  */
 function elementParts(w) {
@@ -219,7 +236,7 @@ const pageClean = (s) => clean(pageText(s));
  * element's) as its name and `(not read)`; hidden fields counted, not listed; the list cut with
  * `… (N more)` where the line ends; `+ what the page adds` when the page's script may add to it
  * (docs/specs/mcp-consequence.md K3). Empty when there is nothing to say.
- * @param {Record<string, any>} sent @param {string} lead  what comes before the fields
+ * @param {SentWhat} sent @param {string} lead  what comes before the fields
  * @returns {Part[]}
  */
 function sentParts(sent, lead) {
@@ -346,7 +363,7 @@ function checkpointLine(q, who) {
  * A fill's fields as its question shows them (docs/specs/mcp-forms.md F14): each label, the
  * field's name or label text and the value in quotes (a checkbox's checked or unchecked), values
  * and names cut with …, the list cut with … where the line ends; `:mcp log` keeps them whole.
- * @param {Record<string, any>} w @param {string} lead  what comes before the fields
+ * @param {What} w @param {string} lead  what comes before the fields
  * @param {boolean} [count]  name how many fields there are also when there is one
  * @returns {Part[]}
  */
@@ -356,7 +373,7 @@ function fillParts(w, lead, count = false) {
 
 /**
  * `fillParts`, and whether every field's name and value fits the question whole.
- * @param {Record<string, any>} w @param {string} lead @param {boolean} count
+ * @param {What} w @param {string} lead @param {boolean} count
  * @returns {{ parts: Part[], fits: boolean }}
  */
 function fillLine(w, lead, count) {
@@ -396,7 +413,7 @@ function fillLine(w, lead, count) {
 /**
  * Whether a fill's question shows every field's name and value whole (docs/specs/mcp-forms.md
  * F14, F15): a fill that submits must, because its one yes sends them.
- * @param {Record<string, any>} what
+ * @param {What} what
  */
 export const fillFits = (what) => fillLine(what, "", false).fits;
 
@@ -578,7 +595,7 @@ export function ranNotice(q, until, now) {
  * What a call did, in the words of its notice (`clicked button "Lisää" in "Maito"`): the notice
  * after a call under a grant, and a step of the built-in agent's transcript
  * (docs/specs/builtin-agent.md Behaviour 12).
- * @param {{ tool: string, what: Record<string, any> }} q
+ * @param {{ tool: string, what: What }} q
  */
 export function stepText(q) {
   const w = q.what ?? {};
@@ -615,7 +632,7 @@ export function stepText(q) {
 
 /**
  * Where a form a click sent under a grant went (docs/specs/mcp-consequence.md Behaviour 1).
- * @param {Record<string, any>} w
+ * @param {What} w
  */
 const sentTo = (w) =>
   w.submit && typeof w.submit === "object"
@@ -628,7 +645,7 @@ const sentTo = (w) =>
  * A checkpoint as the built-in agent's transcript keeps it once asked
  * (docs/specs/builtin-agent.md Behaviour 12): `▲ asked to pay on shop.example · the page says
  * "Total 42,90 €"`, or `▲ asked to send a form to shop.example`.
- * @param {{ what: Record<string, any> }} q
+ * @param {{ what: What }} q
  */
 export function checkpointText(q) {
   const w = q.what ?? {};
@@ -678,7 +695,7 @@ export function deniedNotice(q, why) {
  * Where a payment goes, as a notice says it (docs/specs/mcp-checkpoints.md Behaviour 3): the
  * host of the frame whose control pays, and the tab's after it when that is another site, as
  * in a payment provider's hosted frame.
- * @param {Record<string, any>} pay
+ * @param {PayWhat} pay
  */
 const paySite = (pay) => `${clean(pay.site)}${clean(pay.top) ? ` (in ${clean(pay.top)})` : ""}`;
 

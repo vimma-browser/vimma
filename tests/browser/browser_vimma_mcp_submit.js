@@ -448,11 +448,12 @@ addTidyTask(async function test_submit_question_lists_the_fields_it_sends() {
     submit: true,
   });
   q = await question();
+  const sent = /** @type {{ name: string }[]} */ (q.what.sent?.fields);
   Assert.ok(
-    !q.what.sent.fields.some((/** @type {any} */ f) => f.name === "email"),
+    !sent.some((f) => f.name === "email"),
     "a fill's question lists the field it fills once, with its new value",
   );
-  Assert.equal(q.what.sent.fields.length, 5, "and what else the form sends");
+  Assert.equal(sent.length, 5, "and what else the form sends");
   AgentGate.answer(q.id, { kind: "deny" });
   await c.response(id);
 });

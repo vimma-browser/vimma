@@ -126,9 +126,10 @@ Tests: `prefix_parens_show_one_workspace_and_restore_its_tab` and
 ## 2. The split view
 
 A pane key (`ctrl+b v`, `ctrl+b -`) reaches `host/pane-ops.mjs`, which calls `PaneView.split`: it
-refuses while the split is hidden and wherever core's `splitRefusal` says no (`[panes] max`, or
-no room next to the focused pane), opens
-the new tab in the background, and sets the tree that core's `split` returns. Every change, and
+refuses wherever core's `splitRefusal` says no (`[panes] max`, or no room next to the focused
+pane), opens the new tab in the background, and sets the tree that core's `split` returns. On a
+tab shown alone while the splits are hidden, it splits that tab instead and core's `addSplit`
+makes the tree a new split (refused at `[panes] max_splits`). Every change, and
 every switch, ends in `PaneView.reconcile`:
 
 1. A tree whose tabs closed behind its back shrinks first.

@@ -38,11 +38,11 @@ const DAY_MS = 86_400_000;
  */
 export const MAX_RECORD_BYTES = 400_000;
 
-/** @param {unknown} v @returns {v is Record<string, any>} */
+/** @param {unknown} v @returns {v is Record<string, unknown>} */
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-/** @param {unknown} v */
+/** @param {unknown} v @returns {v is number} */
 const isTime = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
-/** @param {unknown} v */
+/** @param {unknown} v @returns {v is number} */
 const isPrice = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
 
 /**
@@ -87,7 +87,9 @@ function storedProvider(p) {
 }
 
 /** @param {unknown} e @returns {e is StoredEntry} */
-const isEntry = (e) => isObject(e) && ENTRY_KINDS.has(e.kind) && typeof e.text === "string";
+// A kind that is not a string is in no set of strings.
+const isEntry = (e) =>
+  isObject(e) && ENTRY_KINDS.has(/** @type {string} */ (e.kind)) && typeof e.text === "string";
 
 /**
  * What is written of a conversation: its id, title, times, provider, and its stored entries
