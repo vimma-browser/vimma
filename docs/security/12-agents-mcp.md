@@ -1018,7 +1018,10 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   content process; at most 100 frames are asked, and each answers only its newest 100 entries
   after `since`, cut in the child and counted beyond, so a page that logs without end cannot
   make the parent copy and sort all of it. No user name or password of a script, file or
-  request URL reaches the agent. Failed requests (HTTP status 400 and above, or a channel error other than a
+  request URL reaches the agent: each is removed, up to the authority's last `@` where a URL
+  parser ends the authority, from the URL and from any URL inside a `view-source:`, `jar:` or
+  `blob:` one, before the URL is cut to length; an authority longer than what is read is dropped
+  whole, and so is everything past the fourth URL nested in another. Failed requests (HTTP status 400 and above, or a channel error other than a
   cancel, a redirect or a load turned download) **must** be logged only for channels whose top
   browsing context is a live tab of the agent workspace's container outside private windows,
   only while MCP is on, the last
@@ -1035,7 +1038,14 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_a_noisy_page_sends_one_replys_worth`](../../tests/browser/browser_vimma_mcp_console.js),
   [`a console call's huge arguments are cut before they are joined`](../../packages/vimma-core/test/agent-act.test.ts),
   [`a frame answers only its newest entries after since, at most a list's worth`](../../packages/vimma-core/test/agent-act.test.ts),
-  [`no user name or password of a script or request URL reaches the agent`](../../packages/vimma-core/test/agent-act.test.ts)
+  [`no user name or password of a script or request URL reaches the agent`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a user name and password longer than the cut never reach the agent`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a user name and password ending at the cut length never reach the agent`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a user name and password of any length are dropped with bounded work`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`the user name and password end at the authority's last at sign`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`the authority ends where a URL parser ends it, not at a look-alike`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`any slashes after a special scheme, or none, still lead to the authority`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a URL inside view-source, jar or blob loses its user name and password too`](../../packages/vimma-core/test/agent-act.test.ts)
 - M31. `agent-elements`' list **must** be one string inside the untrusted-content delimiters,
   wrapped by the browser with look-alike delimiters broken (M7), and `vimma-ctl mcp` and the
   protocol validator **must** refuse a list that is not, or that holds a second delimiter. At
