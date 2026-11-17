@@ -1632,8 +1632,8 @@ enable = []
   its other keys). If your own `[keys]` or `[modal.*]` binds the key, that is an error at the
   `enable` line: unbind it or drop it from the list. Enabled keys are listed in `ctrl+b ?` under
   "Firefox (on in config.toml)", and `about:vimma` lists them under "Firefox shortcuts on". An
-  enabled key is never the page's first. While the side panel, the help overlay or a picker is
-  open, it does nothing: those take every key.
+  enabled key is never the page's first. In any modal mode (the side panel, the help overlay,
+  a picker, hint, resize and the PDF outline) it does nothing: those take every key.
 - A key must have `ctrl`, `alt` or `meta`, be a function key (`f5`), or be `esc` or `shift+esc`;
   anything else, or a key that does not parse, is an error at its line.
 
