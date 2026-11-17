@@ -49,7 +49,8 @@
               { "name": "vimma_activate", "annotations": { "destructiveHint": true } },
               { "name": "vimma_fill", "annotations": { "destructiveHint": true } },
               { "name": "vimma_screenshot", "annotations": { "readOnlyHint": true } },
-              { "name": "vimma_console", "annotations": { "readOnlyHint": true } }
+              { "name": "vimma_console", "annotations": { "readOnlyHint": true } },
+              { "name": "vimma_bookmarklet", "annotations": { "destructiveHint": true } }
             ]
           }
         }
