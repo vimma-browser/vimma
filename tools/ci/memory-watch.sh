@@ -87,10 +87,13 @@ for _ in {1..32}; do
   found=1
   old=$(cat "$proc/$pid/oom_score_adj" 2> /dev/null)
   [[ $old =~ ^-?[0-9]+$ ]] || old=
+  # Recorded before the change: a TERM during choom then still restores it (restoring a value
+  # that did not change is harmless); a failed change drops the record again.
+  [ -n "$old" ] && shielded+=("$pid:$old")
   if [ -n "$old" ] && sudo -n choom -n -999 -p "$pid" > /dev/null 2>&1; then
-    shielded+=("$pid:$old")
     echo "memory-watch: runner agent $pid ($name): oom_score_adj -999, was $old"
   else
+    [ -n "$old" ] && unset "shielded[$((${#shielded[@]} - 1))]"
     echo "memory-watch: runner agent $pid ($name): could not set oom_score_adj"
   fi
 done
