@@ -1139,8 +1139,10 @@ const GEMINI_REFUSED = new Set(["tool_not_registered", "policy_violation"]);
  * after every answer) or at the stream's end without one, and an id given to a second call
  * while the first is still open, whose result could then be either's. Vimma's tools are told
  * by their `mcp_vimma_chat_` prefix: a tool's name does not say where its server's name ends,
- * so a server named `vimma_chat_x` would pass as Vimma's, but `--allowed-mcp-server-names`
- * starts the server named exactly `vimma_chat` alone, with extensions off.
+ * so a server named `vimma_chat_x` (or `vimma chat`, made `vimma_chat`) would pass as Vimma's,
+ * but `--allowed-mcp-server-names` starts only a server named exactly `vimma_chat`, whether
+ * from settings, an extension (off with `-e none`) or a subagent (Research); that exact name is
+ * the boundary.
  */
 export class GeminiStream extends JsonLines {
   /** @param {{ model?: string }} [o]  the provider's model, "" for Gemini CLI's own default */
