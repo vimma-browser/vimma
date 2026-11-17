@@ -399,7 +399,14 @@ export function offerAssets(value) {
   const record = /** @type {Record<string, any>} */ (value);
   for (const key of /** @type {(keyof Assets)[]} */ (Object.keys(ASSET_ELEMENTS))) {
     const a = record[key];
-    if (a && Number.isSafeInteger(a.size) && a.size >= 0 && SHA512_HEX.test(a.sha512)) {
+    // test() reads its argument as text: an array of the hex would pass without typeof.
+    if (
+      a &&
+      Number.isSafeInteger(a.size) &&
+      a.size >= 0 &&
+      typeof a.sha512 === "string" &&
+      SHA512_HEX.test(a.sha512)
+    ) {
       out[key] = { size: a.size, sha512: a.sha512 };
       if (typeof a.url === "string" && a.url.startsWith("https://")) out[key].url = a.url;
     }

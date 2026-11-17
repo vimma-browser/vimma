@@ -249,6 +249,10 @@ describe("offerAssets: a saved result's sizes (UP8)", () => {
     expect(offerAssets({ deb: { size: 0, sha512: H } })).toEqual({ deb: { size: 0, sha512: H } });
     expect(offerAssets({ deb: { size: -1, sha512: H } })).toEqual({});
   });
+
+  test("a hash that only reads as hex as text, such as [hex], is dropped", () => {
+    expect(offerAssets({ deb: { size: 1, sha512: [H] } })).toEqual({});
+  });
 });
 
 describe("the signature comment's shape (UP1)", () => {
