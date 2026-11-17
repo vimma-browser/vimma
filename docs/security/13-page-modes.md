@@ -76,7 +76,8 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   [`a_page_that_takes_ctrl_n_keeps_it`](../../tests/browser/browser_vimma_page_suggestions.js),
   [`a_late_reply_presses_no_arrow_key_in_another_tab`](../../tests/browser/browser_vimma_page_suggestions.js),
   [`a_hidden_list_left_aria_expanded_is_not_open`](../../tests/browser/browser_vimma_page_suggestions.js),
-  [`the_caret_stays_where_it_was_in_an_open_list`](../../tests/browser/browser_vimma_page_suggestions.js)
+  [`the_caret_stays_where_it_was_in_an_open_list`](../../tests/browser/browser_vimma_page_suggestions.js),
+  [`the_caret_stays_where_it_was_in_an_open_contenteditable_list`](../../tests/browser/browser_vimma_page_suggestions.js)
 - K7. The content actor **must** attach only to http, https, file, `about:` and `view-source:`
   documents and Vimma's start page (`VimmaActors.register`); `moz-extension:`, `data:`, `blob:` and
   `chrome:` documents get none and stay in insert, though their `view-source:` forms match. A
