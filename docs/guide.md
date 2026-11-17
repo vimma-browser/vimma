@@ -1636,6 +1636,40 @@ enable = []
 - A key must have `ctrl`, `alt` or `meta`, be a function key (`f5`), or be `esc` or `shift+esc`;
   anything else, or a key that does not parse, is an error at its line.
 
+### Keys a site keeps
+
+Some sites have keyboard shortcuts of their own: `t` finds a file on GitHub, `c` writes a mail in
+Gmail, `ctrl+k` searches in Slack. To give such a key to the site without losing the rest of
+Vimma there, list it under the site in `config.toml`:
+
+```toml
+schema = 2
+
+[sites."github.com"]
+unbind = ["t", "g"]   # GitHub's t file finder and its g c (go to the code)
+
+[sites."app.slack.com"]
+unbind = ["ctrl+k"]
+```
+
+- On that site and its subdomains (`gist.github.com` too), the listed keys go to the page in
+  normal mode and in insert mode. Everywhere else they stay Vimma's, and on the site every other
+  key does: `j`, `gt` without the `g` entry, `ctrl+b c`.
+- Each entry is one key, written as in `[keys]`: `"t"`, `"T"`, `"ctrl+k"`, `"<C-k>"`, `"space"`.
+  A key that starts longer sequences takes them all: `"g"` gives the page `g`, and `gg`, `gt` and
+  `gT` are off on that site, since the page has to see the first key of its own shortcuts. The
+  keys after it must be free too: GitHub's `g c` works with `"g"` alone, but its `g i` also needs
+  `"i"`, since `i` is Vimma's insert key.
+- A listed chord is the field's in insert mode too: with `"ctrl+w"` listed, Vimma's
+  [text-field keys](#normal-and-insert-mode) leave `ctrl+w` to the site.
+- `esc` and the prefix (`ctrl+b`) cannot be listed, so a site never keeps you from leaving insert
+  mode or reaching Vimma's commands.
+- Vimma's own modes and panels (the side panel, the `:` line, hints, copy mode, `ctrl+b ?`), the
+  address bar and the PDF viewer keep their keys.
+- The most specific host is the site's whole rule: a `[sites."gist.github.com"]` table replaces
+  `github.com`'s on gist, so list a key in both to keep it on both. `insert` and `unbind` can sit
+  in the same table.
+
 ## Workspaces
 
 Workspaces keep the different parts of your day apart. Every tab lives in a workspace, and every
@@ -4313,7 +4347,8 @@ accent = "#ff9e64"
   whether a new tab opened during a split shows alone beside it or opens in the focused pane;
   [Picking a tab during a split](#picking-a-tab-during-a-split)), `[panes] layout` (`"dwindle"` or `"manual"`: where `ctrl+b enter` puts a new pane) and
   `[panes] main_size` (the main-\* presets' main pane, 20 to 80%, default 60); `[sites."<host>"] insert` (`auto`, `never` or `always`: whether a text field on that
-  site and its subdomains takes insert mode); `[theme]` `source` (`omarchy` or `file`, the
+  site and its subdomains takes insert mode) and `unbind` (keys the page gets there instead of
+  Vimma, [Keys a site keeps](#keys-a-site-keeps)); `[theme]` `source` (`omarchy` or `file`, the
   built-in palette), `name` (`vimma`, the default, or `tokyo-night`: the built-in palette),
   `appearance` (`system`, `dark` or `light`: the built-in palette's; left out, `:theme` sets it),
   `font` and `[theme.colors]` (single colours over either source);
