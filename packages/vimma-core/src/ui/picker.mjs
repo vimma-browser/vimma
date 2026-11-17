@@ -66,9 +66,10 @@ import { graphemes } from "../text/textwidth.mjs";
 /** @import { PopupItem } from "./popups.mjs" */
 /** @import { DownloadItem } from "./downloads.mjs" */
 /** @import { SplitItem } from "../panes/splits.mjs" */
+/** @import { BookmarkItem } from "./bookmark-open.mjs" */
 /**
  * @typedef {PickerItem | WorkspaceItem | AddonItem | LogItem | PermissionItem | PopupItem
- *   | DownloadItem | SplitItem} AnyItem
+ *   | DownloadItem | SplitItem | BookmarkItem} AnyItem
  */
 /** @typedef {"display" | "title" | "url" | "workspace" | "markers"} Field */
 /** @typedef {[start: number, end: number]} Range */
@@ -395,8 +396,8 @@ function mergeRanges(a, b) {
 }
 
 /**
- * The id an item is selected by: a tab's, a workspace's, an add-on's, a permission's or a pop-up
- * bar row's.
+ * The id an item is selected by: a tab's, a workspace's, an add-on's, a permission's, a pop-up
+ * bar row's or a bookmark's.
  * @param {AnyItem} item
  */
 export function itemId(item) {
@@ -406,13 +407,15 @@ export function itemId(item) {
   if (item.kind === "popup") return item.popupId;
   if (item.kind === "download") return item.downloadId;
   if (item.kind === "split") return item.splitId;
+  if (item.kind === "bookmark") return item.bookmarkId;
   return item.kind === "addon" ? item.addonId : item.workspaceId;
 }
 
 /**
  * Every whitespace-separated term must match some field; per term the best field counts. A
  * workspace or an add-on matches by its name only; a download by its name, then by its host,
- * state word and workspace (docs/specs/downloads.md, Behaviour 6).
+ * state word and workspace (docs/specs/downloads.md, Behaviour 6); a bookmark by its title, then
+ * by its host and folders (docs/specs/bookmark-open.md).
  * @param {AnyItem} item
  * @param {string} query
  * @returns {Match | null}
@@ -427,7 +430,13 @@ export function matchItem(item, query) {
             ["display", item.display],
             ["markers", downloadSearchText(item)],
           ]
-        : [["display", item.display]]
+        : item.kind === "bookmark"
+          ? [
+              ["display", item.display],
+              ["url", item.host],
+              ["workspace", item.path],
+            ]
+          : [["display", item.display]]
       : [
           ["display", item.display],
           ...(item.label ? [/** @type {[Field, string]} */ (["title", item.title])] : []),

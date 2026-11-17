@@ -2553,6 +2553,16 @@
           ]
         },
         {
+          "name": "open_bookmark",
+          "description": "Open a bookmark by title (picker; runs a bookmarklet)",
+          "keys": []
+        },
+        {
+          "name": "open_bookmark_tab",
+          "description": "Open a bookmark by title in a new tab (picker)",
+          "keys": []
+        },
+        {
           "name": "bookmarks_collapse",
           "description": "Bookmarks: close the folder, or go to its parent",
           "keys": [

@@ -302,6 +302,8 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | ------------------------------------------------------ | -------------------- | ---------------- |
 | Open / close the bookmarks panel                       | `toggle_bookmarks`   | `ctrl+b shift+b` |
 | Bookmark this page (folders/title files it in folders) | `add_bookmark`       | `ctrl+b a`       |
+| Open a bookmark by title (picker; runs a bookmarklet)  | `open_bookmark`      | —                |
+| Open a bookmark by title in a new tab (picker)         | `open_bookmark_tab`  | —                |
 | Bookmarks: close the folder, or go to its parent       | `bookmarks_collapse` | `h [panel]`      |
 | Bookmarks: open the folder or the bookmark             | `bookmarks_expand`   | `l [panel]`      |
 | Bookmarks: open in a new background tab                | `bookmarks_open_tab` | `t [panel]`      |

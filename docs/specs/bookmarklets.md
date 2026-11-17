@@ -137,7 +137,8 @@ where)` in `host/bookmark-actions.mjs` reads the bookmark by its Places guid, de
     `"user"`, and opens or runs it. The panel calls it, and `:bookmark_open`
     ([#1219](https://github.com/vimma-browser/vimma/issues/1219)) is to call it with the guid of the
     bookmark the user picked: what the user types there chooses among stored bookmarks and never
-    becomes the URL.
+    becomes the URL. (Since changed: the commands are `:bookmarkopen` and `:bookmarktab`, which
+    pass `from: "command"` to word the new-tab refusal; [bookmark-open](bookmark-open.md).)
 11. **B11. Private windows.** In a private window (and the private workspace) a user's
     bookmarklet runs as in a normal one, as Firefox's does: it is the user's own choice on the
     page they see, and the page is already private. Nothing about the run is stored. An agent

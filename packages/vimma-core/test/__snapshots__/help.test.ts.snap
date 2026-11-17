@@ -251,6 +251,8 @@ Side panel
 Bookmarks
   toggle_bookmarks          ctrl+b shift+b                                       Open / close the bookmarks panel
   add_bookmark              ctrl+b a                                             Bookmark this page (folders/title files it in folders)
+  open_bookmark             (unbound)                                            Open a bookmark by title (picker; runs a bookmarklet)
+  open_bookmark_tab         (unbound)                                            Open a bookmark by title in a new tab (picker)
   bookmarks_collapse        h [panel]                                            Bookmarks: close the folder, or go to its parent
   bookmarks_expand          l [panel]                                            Bookmarks: open the folder or the bookmark
   bookmarks_open_tab        t [panel]                                            Bookmarks: open in a new background tab
@@ -578,6 +580,8 @@ Side panel
 Bookmarks
   toggle_bookmarks          ctrl+b shift+b                                       Open / close the bookmarks panel
   add_bookmark              ctrl+b a                                             Bookmark this page (folders/title files it in folders)
+  open_bookmark             (unbound)                                            Open a bookmark by title (picker; runs a bookmarklet)
+  open_bookmark_tab         (unbound)                                            Open a bookmark by title in a new tab (picker)
   bookmarks_collapse        h [panel]                                            Bookmarks: close the folder, or go to its parent
   bookmarks_expand          l [panel]                                            Bookmarks: open the folder or the bookmark
   bookmarks_open_tab        t [panel]                                            Bookmarks: open in a new background tab

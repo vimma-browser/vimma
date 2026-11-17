@@ -439,6 +439,9 @@ support-files = [
 ["browser_vimma_bookmarklets.js"]
 support-files = ["file_vimma_bookmarklet_page.html", "head_vimma_control.js"]
 
+["browser_vimma_bookmark_open.js"]
+support-files = ["file_vimma_bookmarklet_page.html"]
+
 ["browser_vimma_workspace_restore.js"]
 support-files = ["file_vimma_insert_scroll.html"]
 

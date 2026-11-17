@@ -386,6 +386,9 @@ group("Side panel", [
 group("Bookmarks", [
   ["toggle_bookmarks", "bookmarks.toggle", "Open / close the bookmarks panel"],
   ["add_bookmark", "bookmark.add", "Bookmark this page (folders/title files it in folders)"],
+  // docs/specs/bookmark-open.md: no default key; :bookmarkopen / :bookmarktab take a title.
+  ["open_bookmark", "bookmark.open", "Open a bookmark by title (picker; runs a bookmarklet)"],
+  ["open_bookmark_tab", "bookmark.open_tab", "Open a bookmark by title in a new tab (picker)"],
   ["bookmarks_collapse", "bookmarks.collapse", "Bookmarks: close the folder, or go to its parent"],
   ["bookmarks_expand", "bookmarks.expand", "Bookmarks: open the folder or the bookmark"],
   ["bookmarks_open_tab", "bookmarks.open_tab", "Bookmarks: open in a new background tab"],
