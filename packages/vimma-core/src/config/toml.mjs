@@ -144,7 +144,8 @@ export function parsePath(text) {
   let i = 0;
   while (i < text.length) {
     const index = matchAt(/\[\d+\]/y, text, i);
-    const quoted = matchAt(/"(?:[^"\\]|\\.)*"/y, text, i);
+    // `^` on a slice, not sticky: CodeQL (js/polynomial-redos) reads a sticky regex as unanchored.
+    const quoted = /^"(?:[^"\\]|\\.)*"/.exec(text.slice(i))?.[0];
     if (text[i] === ".") {
       i++;
     } else if (index) {
@@ -401,7 +402,7 @@ function valueEnd(line, i) {
   const c = line[i];
   if (c === "[" || c === "{") return -1;
   // A one-line string closes on its line, since the text parsed.
-  const quoted = matchAt(/"(?:[^"\\]|\\.)*"|'[^']*'/y, line, i);
+  const quoted = /^(?:"(?:[^"\\]|\\.)*"|'[^']*')/.exec(line.slice(i))?.[0]; // `^`: see parsePath
   if (quoted) return i + quoted.length;
   // Up to a comment or the line's end, less the blanks before it (`line[i]` is not blank).
   return i + trimBlank(/** @type {string} */ (matchAt(/[^#\r]*/y, line, i))).length;

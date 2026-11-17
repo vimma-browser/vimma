@@ -206,6 +206,8 @@ describe("config paths", () => {
     ['keys."abc', ["keys", '"abc']],
     ["a[b.c[1]", ["a", "[b", "c", 1]],
     ["a. b", ["a", " b"]],
+    // No JSON string at the `"`: a backslash before a line break escapes nothing JSON knows.
+    ['"a\\\n"b"', ['"a\\\n"b"']],
   ])("parsePath(%j) ends on text formatPath does not write", (text, segs) => {
     expect(parsePath(text)).toEqual(segs);
   });
@@ -508,6 +510,7 @@ describe("setTomlKeys: what a line edit may change", () => {
     ["[search]\ndefault = 12 \t# c\n", 3, "[search]\ndefault = 3 \t# c\n"],
     ["[search]\ndefault = 12\n", 3, "[search]\ndefault = 3\n"],
     ["[search]\ndefault = 12", 3, "[search]\ndefault = 3"],
+    ['[search]\ndefault = 12 # "c"\n', 3, '[search]\ndefault = 3 # "c"\n'],
     ["[search]\ndefault = true\r\nx = 1\r\n", false, "[search]\ndefault = false\r\nx = 1\r\n"],
     ["  [ search ]  # hdr\n\tdefault = 1\n", 2, "  [ search ]  # hdr\n\tdefault = 2\n"],
     ["[search]\t\r\n default = 1\r\n", 2, "[search]\t\r\n default = 2\r\n"],
