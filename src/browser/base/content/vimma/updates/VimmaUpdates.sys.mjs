@@ -651,11 +651,12 @@ async function checkNow(asked) {
  * Only requests from chrome with no browsing context (Firefox's downloader) and only to a URL
  * the verified offer named, or a redirect from one, are touched; a page's own request to the
  * same URL is left as it is.
- * @param {any} subject @param {string} topic
+ * @param {unknown} subject  an http-on-* topic's, which is always an nsIHttpChannel
+ * @param {string} topic
  */
 function onMarRequest(subject, topic) {
   if (!marUrls.size) return;
-  const channel = subject.QueryInterface(Ci.nsIHttpChannel);
+  const channel = /** @type {nsISupports} */ (subject).QueryInterface(Ci.nsIHttpChannel);
   if (!marUrls.has(channel.URI.spec)) return;
   const info = channel.loadInfo;
   if (!info.loadingPrincipal?.isSystemPrincipal || info.browsingContextID) return;

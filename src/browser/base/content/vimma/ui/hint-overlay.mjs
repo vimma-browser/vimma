@@ -40,12 +40,15 @@ export class HintOverlay {
    * Outlines a text block: a ring just outside its border box, in chrome over the page. Called
    * again as the block moves (a scroll, `j`), it moves the same ring; a null box (the block is
    * scrolled out of its frame) hides it until the next.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {{ x: number, y: number, width: number, height: number } | null} box  in the top
    *   frame's CSS pixels
    */
   outline(browser, box) {
-    const parent = browser.closest(".browserStack") ?? browser.parentNode;
+    // The selected tab's <browser>, so in the document: a tab switch ends the session first.
+    const parent = /** @type {ParentNode} */ (
+      browser.closest(".browserStack") ?? browser.parentNode
+    );
     if (this.ring?.parentNode !== parent) this.clearOutline();
     this.#style();
     const doc = this.win.document;
@@ -79,7 +82,7 @@ export class HintOverlay {
 
   /**
    * Draws a label at the top left of each target.
-   * @param {any} browser XULBrowserElement the targets belong to
+   * @param {MozBrowser} browser  the <browser> the targets belong to
    * @param {readonly Hint<HintTarget>[]} hints
    */
   show(browser, hints) {
@@ -106,7 +109,10 @@ export class HintOverlay {
       this.labels.set(label, el);
     }
     layer.append(fragment);
-    (browser.closest(".browserStack") ?? browser.parentNode).append(layer);
+    // The selected tab's <browser>, so in the document: a tab switch cancels the hints first.
+    /** @type {ParentNode} */ (browser.closest(".browserStack") ?? browser.parentNode).append(
+      layer,
+    );
     this.layer = layer;
   }
 

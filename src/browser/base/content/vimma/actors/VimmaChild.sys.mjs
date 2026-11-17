@@ -23,6 +23,39 @@ import { AgentPage } from "./agent-page.mjs";
 
 /** @import { EditableDescriptor } from "../core/editable.mjs" */
 
+/**
+ * A message the parent (host/VimmaParent.sys.mjs) sends this child, by name, with its data as
+ * the parent sends it. Each handler still checks what it reads, as before: the types say what
+ * is sent, not what has been checked.
+ * @typedef {{ name: "Vimma:Scroll", data: { kind: Parameters<PageScroll["scroll"]>[0],
+ *     count: number, instant?: boolean, step?: unknown } }
+ *   | { name: "Vimma:PdfTheme", data: { css?: unknown } | undefined }
+ *   | { name: "Vimma:PdfOp", data: unknown }
+ *   | { name: "Vimma:PdfLinkPage", data: { gen?: unknown, id?: unknown } | undefined }
+ *   | { name: "Vimma:Blur", data: { gen?: unknown, keys?: unknown } | undefined }
+ *   | { name: "Vimma:FocusInput", data: { count?: number } | undefined }
+ *   | { name: "Vimma:Edit", data: { command: string } }
+ *   | { name: "Vimma:Selection", data: { max?: unknown } | undefined }
+ *   | { name: "Vimma:ScrollTo", data: Parameters<PageScroll["scrollTo"]>[0] }
+ *   | { name: "Vimma:Grep", data: Parameters<GrepPage["search"]>[0] }
+ *   | { name: "Vimma:GrepPreview", data: Parameters<GrepPage["preview"]>[0] }
+ *   | { name: "Vimma:GrepJump", data: Parameters<GrepPage["jump"]>[0] }
+ *   | { name: "Vimma:CollectHints", data: { gen: number, linksOnly: boolean, blocks?: boolean,
+ *       texts?: boolean, elements?: boolean } }
+ *   | { name: "Vimma:ActivateHint", data: { gen: number, id: number } }
+ *   | { name: "Vimma:AgentElement", data: Parameters<AgentPage["element"]>[0] }
+ *   | { name: "Vimma:AgentQuiet", data: Parameters<AgentPage["quiet"]>[0] }
+ *   | { name: "Vimma:AgentConsole", data: Parameters<AgentPage["consoleEntries"]>[0] }
+ *   | { name: "Vimma:Caret", data: unknown }
+ *   | { name: "Vimma:Block", data: BlockMessage }
+ *   | { name: "Vimma:PdfZoom" | "Vimma:PdfWhere" | "Vimma:ScrollFraction" | "Vimma:FocusLast"
+ *       | "Vimma:SuggestionsOpen" | "Vimma:ScrollPosition" | "Vimma:FindAnchor"
+ *       | "Vimma:FindClosed" | "Vimma:FindStep" | "Vimma:GrepEnd" | "Vimma:AgentCards"
+ *       | "Vimma:AgentTotal" | "Vimma:AgentSensitiveShown", data?: unknown }} ChildMessage
+ */
+/** @import { BlockMessage } from "./block.mjs" */
+/** @import { PdfOutlineMessage, PdfStateMessage } from "./pdf-view.mjs" */
+
 const lazy = /** @type {Lazy<"setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
@@ -278,7 +311,7 @@ export class VimmaChild extends JSWindowActorChild {
 
   /**
    * The adapter's state or outline message; its timer can fire while the document goes away.
-   * @param {object} data
+   * @param {PdfStateMessage | PdfOutlineMessage} data
    * @param {string} [name]
    */
   #sendPdf(data, name = "Vimma:PdfState") {
@@ -584,7 +617,7 @@ export class VimmaChild extends JSWindowActorChild {
     });
   }
 
-  /** @param {{ name: string, data: any }} msg */
+  /** @param {ChildMessage} msg */
   receiveMessage(msg) {
     switch (msg.name) {
       case "Vimma:Scroll":

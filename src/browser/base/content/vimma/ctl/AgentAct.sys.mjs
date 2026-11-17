@@ -203,7 +203,7 @@ function linkWhere(browser, href) {
 /**
  * Each tab's running click, so that two calls on one tab never share its mark: the next waits
  * for the last to settle (F16).
- * @type {WeakMap<object, Promise<unknown>>}
+ * @type {WeakMap<MozBrowser, Promise<unknown>>}
  */
 const running = new WeakMap();
 

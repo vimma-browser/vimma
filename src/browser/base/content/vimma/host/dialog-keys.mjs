@@ -90,7 +90,7 @@ export class DialogKeys {
   constructor(win, host) {
     this.win = win;
     this.host = host;
-    /** @type {WeakMap<object, Shown>} by the dialog's document */
+    /** @type {WeakMap<Document, Shown>} by the dialog's document */
     this.dialogs = new WeakMap();
     this.onFrame = (/** @type {Event} */ e) => this.frameLoaded(e);
     this.onOpen = (/** @type {Event} */ e) => this.dialogShown(e);
@@ -295,7 +295,8 @@ export class DialogKeys {
     const target = /** @type {(Partial<Node> & Partial<Window>) | null} */ (e.target);
     const doc = target?.ownerDocument ?? target?.document ?? target;
     // Keyed by its document: the <dialog> found in it is in it.
-    const state = doc ? this.dialogs.get(doc) : undefined;
+    // Only a document has no ownerDocument: `doc` is one whenever the target is a node or window.
+    const state = doc ? this.dialogs.get(/** @type {Document} */ (doc)) : undefined;
     return state ? state.dialog.ownerDocument : null;
   }
 

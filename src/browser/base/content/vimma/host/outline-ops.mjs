@@ -47,10 +47,10 @@ export const PDF_OUTLINE_PREF = "vimma.ui.pdf_outline.hidden";
 /**
  * Per tab, the document (PdfOps.documentKey) whose outline the host asked for to show beside it,
  * and the one whose outline the user closed: it stays hidden until the tab shows another.
- * @type {WeakMap<object, string>}
+ * @type {WeakMap<MozBrowser, string>}
  */
 const outlineAsked = new WeakMap();
-/** @type {WeakMap<object, string>} */
+/** @type {WeakMap<MozBrowser, string>} */
 const outlineHidden = new WeakMap();
 
 /**

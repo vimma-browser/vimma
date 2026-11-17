@@ -30,7 +30,7 @@ const logins = () => Services.logins;
 const search = (provider) =>
   logins()
     .searchLoginsAsync({ origin: KEY_ORIGIN, httpRealm: REALM })
-    .then((/** @type {any[]} */ all) => all.filter((l) => l.username === provider));
+    .then((/** @type {nsILoginInfo[]} */ all) => all.filter((l) => l.username === provider));
 
 /** OSKeyStore encrypts UTF-8 bytes and decrypts to them, one character a byte. */
 const fromBytes = (/** @type {string} */ s) =>
@@ -50,7 +50,7 @@ export const AgentKeys = {
     login.init(KEY_ORIGIN, null, REALM, provider, cipher, "", "");
     const old = await search(provider);
     if (old.length) {
-      await logins().modifyLoginAsync(old[0], login);
+      await logins().modifyLoginAsync(/** @type {nsILoginInfo} */ (old[0]), login);
       for (const extra of old.slice(1)) await logins().removeLoginAsync(extra);
     } else {
       await logins().addLoginAsync(login);

@@ -153,8 +153,9 @@ async function encode(canvas, max, full) {
  * agent's keys, click or fill runs in, with how many: the two exclude each other, so the agent
  * cannot scroll or change a tab between the checks of its own screenshot (F21).
  */
+/** @type {WeakSet<MozBrowser>} */
 const capturing = new WeakSet();
-/** @type {WeakMap<object, number>} */
+/** @type {WeakMap<MozBrowser, number>} */
 const acting = new WeakMap();
 
 export const AgentShot = {

@@ -93,6 +93,7 @@ import { LOAD_TIMEOUT_MS, docOf, notLoading, raisePriority, within } from "./age
 export { AgentError };
 
 /** @import { ConnId, LogOutcome } from "../core/agent.mjs" */
+/** @import { GateWhat } from "../host/AgentGate.sys.mjs" */
 /** @import { AgentArgs, AgentCommand } from "../core/control.mjs" */
 /** @import { HintTarget } from "../actors/VimmaActors.sys.mjs" */
 /** @import { AgentWorkspace, Tab, Win } from "./agent-tabs.mjs" */
@@ -191,7 +192,7 @@ function rateDenied(rate, conn, calls) {
  * With `until`, the question is withdrawn then (a step of a call that must end by then);
  * `always`: asked even under a grant, and never granted (mcp-drive D4); `covered`: a form the
  * grant runs all the same (docs/specs/mcp-consequence.md K1, K5).
- * @param {ConnId} conn @param {string} command @param {object} what
+ * @param {ConnId} conn @param {string} command @param {GateWhat} what
  * @param {AgentConn} state @param {number | undefined} rid @param {number} [until]
  * @param {boolean} [always] @param {true | string} [covered]
  */
@@ -266,7 +267,7 @@ async function pageElements(conn, tab, still, { query, kinds, full = false } = {
  * Takes a slot of the connection's `agent-elements` rate for a step asked with `elements`
  * (issue #584; mcp-forms F26): counted when asked, as a list of its own, so returning the list
  * with a step is no way past the rate. Refused as `busy` before anything else of the step.
- * @param {ConnId} conn @param {string} tool @param {object} what
+ * @param {ConnId} conn @param {string} tool @param {GateWhat} what
  */
 function takeListSlot(conn, tool, what) {
   if (elementCalls.take(conn, Date.now())) return;
@@ -282,7 +283,7 @@ function takeListSlot(conn, tool, what) {
  * while it was listed), `error` (the load ended on Firefox's error page, named in `loadError`;
  * issue #643) or `failed`. A tab that left the agent workspace or closed meanwhile is a
  * `failed` refusal that says nothing of its page, noted in `:mcp log` (M23).
- * @param {ConnId} conn @param {string} tool @param {object} what  the step's, for the log
+ * @param {ConnId} conn @param {string} tool @param {GateWhat} what  the step's, for the log
  * @param {AgentWorkspace} agent @param {Win} win @param {Tab} tab
  * @param {() => Promise<boolean>} ready @param {ListOptions} filters  the step's `query` and `kinds`
  * @returns {Promise<{ url: string, title: string }
@@ -1012,7 +1013,7 @@ const COMMANDS = {
     };
     /**
      * A refusal outside the gate goes into `:mcp log` too (M23, M32).
-     * @param {LogOutcome} outcome @param {unknown} error @param {object} [what]
+     * @param {LogOutcome} outcome @param {unknown} error @param {GateWhat} [what]
      */
     const refuse = (outcome, error, what = base) => {
       AgentGate.note(conn, "vimma_activate", what, outcome);
@@ -1187,7 +1188,8 @@ const COMMANDS = {
     };
     /**
      * A refusal outside the gate goes into `:mcp log` too (M23, M32).
-     * @param {LogOutcome} outcome @param {unknown} error @param {object} [what] @param {string} [why]
+     * @param {LogOutcome} outcome @param {unknown} error @param {GateWhat} [what]
+     * @param {string} [why]
      */
     const refuse = (outcome, error, what = base, why) => {
       AgentGate.note(conn, "vimma_fill", what, outcome, why);
@@ -1517,7 +1519,7 @@ function start(request, conn, state, rid) {
  * @overload
  * @param {ConnId} conn @param {AgentConn} state @param {string} command @param {unknown} args
  * @param {number} [rid]
- * @returns {Promise<object>}
+ * @returns {Promise<AgentResults[AgentCommand]>}
  */
 /**
  * @param {ConnId} conn
@@ -1525,7 +1527,7 @@ function start(request, conn, state, rid) {
  * @param {string} command
  * @param {unknown} args
  * @param {number} [rid]  the request's id, which `agent-cancel` names
- * @returns {Promise<object>}
+ * @returns {Promise<AgentResults[AgentCommand]>}
  */
 export async function runAgentCommand(conn, state, command, args, rid) {
   if (command === "agent-hello") {

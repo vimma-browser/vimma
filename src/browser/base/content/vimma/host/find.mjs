@@ -61,7 +61,7 @@ export class Find {
     this.last = null;
     /** @type {WeakMap<Browser, Entry>} the status per tab */
     this.entries = new WeakMap();
-    /** @type {WeakMap<Browser, object>} our finder result listener per tab */
+    /** @type {WeakMap<Browser, FinderResultListener>} our finder result listener per tab */
     this.listeners = new WeakMap();
     /** @type {WeakSet<Browser>} tabs whose finder results we show */
     this.active = new WeakSet();

@@ -120,7 +120,7 @@ const NOT_PAID = /** @type {Record<string, string>} */ ({
 const onTheWeb = (principal) =>
   !!principal?.isContentPrincipal && (principal.schemeIs("http") || principal.schemeIs("https"));
 
-/** Each connection's labels, per agent tab (D12). @type {Map<unknown, WeakMap<object, LinkSession>>} */
+/** Each connection's labels, per agent tab (D12). @type {Map<unknown, WeakMap<Browser, LinkSession>>} */
 const sessions = new Map();
 
 /**
