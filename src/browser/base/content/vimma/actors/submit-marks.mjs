@@ -27,14 +27,14 @@ let stepCount = 0;
 /**
  * The agent's last click or submission sent to each frame's document, by its window global:
  * its element and its number, which the child says back if it skips it (issue #1028).
- * @type {WeakMap<object, { gen: number, id: number, step: number }>}
+ * @type {WeakMap<WindowGlobalParent, { gen: number, id: number, step: number }>}
  */
 const sentSteps = new WeakMap();
 /**
  * The number of the last step each frame's document said it skipped (`Vimma:AgentSkipped`), by
  * its window global: once the page has gone, its child can no longer be asked how the step went
  * (issue #1028).
- * @type {WeakMap<object, number>}
+ * @type {WeakMap<WindowGlobalParent, number>}
  */
 const skippedSteps = new WeakMap();
 
@@ -171,7 +171,7 @@ export function setMark(top, doc, allowed) {
  * The child of `wg` skipped a step (AgentActors.agentSkipped): the allowed submission of its tab
  * is withdrawn, and the step's number kept for that document when it is the last one sent there.
  * @param {CanonicalBrowsingContext | null | undefined} bc
- * @param {object | null} wg
+ * @param {WindowGlobalParent | null} wg
  * @param {unknown} data
  */
 export function noteSkipped(bc, wg, data) {

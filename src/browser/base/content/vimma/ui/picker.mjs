@@ -49,18 +49,29 @@ const styled = new WeakSet();
  */
 
 /**
+ * A look's row callbacks. Each is given rows of its own picker's kind only (the host's items), so
+ * they are method signatures: a look may take the narrower item it gets (PickerItem, AddonItem…).
+ * @typedef {{
+ *   cells(item: AnyItem): [index: string, right: string],
+ *   heading(item: AnyItem, count: number): string,
+ *   rowClass(item: AnyItem): string,
+ *   swatch(item: AnyItem): string,
+ * }} LookRows
+ */
+
+/**
  * What one kind of picker shows: its dialog id, heading, hint, and a row's cells after the index.
  * @typedef {object} PickerLook
  * @property {string} id
  * @property {string} title
  * @property {string} listLabel
  * @property {string} hint
- * @property {(item: any) => [index: string, right: string]} cells
+ * @property {LookRows["cells"]} cells
  * @property {string} [empty]  the list's one row when there are no items
- * @property {(item: any, count: number) => string} [heading]  a section's heading, for a picker
+ * @property {LookRows["heading"]} [heading]  a section's heading, for a picker
  *   listed in sections (core sectionOf) other than tab search
- * @property {(item: any) => string} [rowClass]  a class for a row
- * @property {(item: any) => string} [swatch]  a colour shown before the row's index (a CSS
+ * @property {LookRows["rowClass"]} [rowClass]  a class for a row
+ * @property {LookRows["swatch"]} [swatch]  a colour shown before the row's index (a CSS
  *   value), as `--vimma-picker-swatch`
  * @property {boolean} [tabs]  tab search (docs/specs/tab-search.md): typing from the first
  *   key, section headings, a muted cell for workspace, window and markers, host highlights,

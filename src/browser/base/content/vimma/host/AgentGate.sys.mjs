@@ -49,16 +49,21 @@ const DEFAULT_ASK_TIMEOUT_S = 50;
 const DEFAULT_GRANT = { grantMinutes: 0, grantMaxMinutes: 480 };
 
 /**
+ * What a call touches, for its question, its notices and the log: plain data, shown as text.
+ * @typedef {Readonly<Record<string, unknown>>} GateWhat
+ */
+
+/**
  * @typedef {{ allow: true, grant?: { until: number } }
  *   | { allow: false, reason: "user" | "timeout" | "busy" | "muted" | "cancelled" }} Outcome
  * @typedef {{ client: string, version?: string, via?: string, since: number }} AgentLabel
- * @typedef {{ id: number, conn: ConnId, tool: string, what: object, label: AgentLabel,
+ * @typedef {{ id: number, conn: ConnId, tool: string, what: GateWhat, label: AgentLabel,
  *   asked: number, deadline: number }} Question
  * @typedef {{ kind: "asked", question: Question }
  *   | { kind: "answered", question: Question, answer: string,
  *       length: { minutes: number, capped: boolean } | null, released?: number }
  *   | { kind: "timeout", question: Question }
- *   | { kind: "ran", conn: ConnId, tool: string, what: object, label: AgentLabel,
+ *   | { kind: "ran", conn: ConnId, tool: string, what: GateWhat, label: AgentLabel,
  *       until: number }
  *   | { kind: "notice", text: string, hold?: boolean }} GateEvent  what listeners hear, for the notices
  *   (decisions 16, 20, 23; `notice`: an agent download's, decision 31)
@@ -271,7 +276,7 @@ export const AgentGate = {
    * was asked about is still so (decision 19).
    * @param {ConnId} conn
    * @param {string} tool  the MCP tool (core AGENT_TOOLS)
-   * @param {object} asked  what it touches, for the question: plain data, shown as text. The gate
+   * @param {GateWhat} asked  what it touches, for the question: plain data, shown as text. The gate
    *   keeps a frozen copy taken now (M62): the question, the answer's checks and the log use it,
    *   whatever the caller does to its object afterwards
    * @param {{ always?: boolean, covered?: true | string,
@@ -336,7 +341,7 @@ export const AgentGate = {
   /**
    * A download no agent connection asked for (decision 31): asks as "a page in the agent
    * workspace", with no grant.
-   * @param {string} tool @param {object} what
+   * @param {string} tool @param {GateWhat} what
    * @param {{ always?: boolean, onCancel?: (cancel: () => void) => void }} [options]
    * @returns {Promise<Outcome>}
    */
@@ -508,7 +513,7 @@ export const AgentGate = {
   /**
    * A notice for a step of a call that runs under a grant (mcp-drive D14: a follow names the
    * host it loaded), shown like the call's own.
-   * @param {ConnId} conn @param {string} tool @param {object} what @param {number} until
+   * @param {ConnId} conn @param {string} tool @param {GateWhat} what @param {number} until
    */
   announce(conn, tool, what, until) {
     // Copied here: a value that cannot be copied throws to this caller, before anyone is told.
@@ -528,7 +533,7 @@ export const AgentGate = {
   /**
    * A call's outcome decided outside the gate, for `:mcp log` (mcp-drive D14, M23): denied
    * before or after the question (`busy`, `in-use`, `changed`), or stopped while it ran.
-   * @param {ConnId} conn @param {string} tool @param {object} what
+   * @param {ConnId} conn @param {string} tool @param {GateWhat} what
    * @param {import("../core/agent.mjs").LogOutcome} outcome @param {string} [why]
    */
   note(conn, tool, what, outcome, why) {

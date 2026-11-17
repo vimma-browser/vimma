@@ -24,12 +24,17 @@ export const GREP_BUDGET_MS = 1000;
  * @property {string} query
  * @property {boolean} all  every match up to the count cap (the jump)
  * @property {boolean} firstPerLine  one match a line (recently closed titles and URLs)
- * @property {(reply: any) => void} resolve  grepText's result, null when replaced, "timeout"
+ * @property {(reply: MatchReply) => void} resolve
+ */
+
+/**
+ * grepText's result (from the worker), null when replaced, or "timeout".
+ * @typedef {ReturnType<typeof import("../core/grep.mjs").grepText> | null | "timeout"} MatchReply
  */
 
 /** @type {ChromeWorker | null} */
 let worker = null;
-/** @type {Map<string, object>} the model each frame's text in the worker came from */
+/** @type {Map<string, { text: string }>} the model each frame's text in the worker came from */
 const texts = new Map();
 /** @type {Job[]} */
 let queue = [];
@@ -112,7 +117,7 @@ export const GrepMatcher = {
    * @param {string} query
    * @param {boolean} all
    * @param {boolean} [firstPerLine]
-   * @returns {Promise<any>} grepText's result, null when replaced, or "timeout"
+   * @returns {Promise<MatchReply>}
    */
   match(key, model, query, all, firstPerLine = false) {
     cancel(key);

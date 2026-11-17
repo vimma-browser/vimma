@@ -185,7 +185,7 @@ function dropOpenerPolicy(channel) {
 
 /**
  * A browser-scoped DENY for each WebRTC prompt on `uri`'s origin, in the agent tab `browserId`.
- * @param {nsIURI | null | undefined} uri @param {object} originAttributes @param {number} browserId
+ * @param {nsIURI | null | undefined} uri @param {OriginAttributes} originAttributes @param {number} browserId
  */
 function denyFor(uri, originAttributes, browserId) {
   if (!uri?.schemeIs("https") && !uri?.schemeIs("http")) return;

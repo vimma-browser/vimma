@@ -287,7 +287,8 @@ interface XPCComponentsUtils {
   // it reads. Unwaived, it is the Xray view again.
   waiveXrays(obj: object): { readonly [name: string]: unknown };
   unwaiveXrays<T>(obj: T): T;
-  exportFunction(fn: Function, target: object): Function;
+  /** A function of the target's scope that calls `fn`, with the same parameters and result. */
+  exportFunction<F extends (...args: unknown[]) => unknown>(fn: F, target: object): F;
   cloneInto<T>(obj: T, target: object, options?: { cloneFunctions?: boolean }): T;
 }
 declare const Cu: XPCComponentsUtils;
@@ -748,6 +749,13 @@ interface nsILoginInfo {
   ): void;
 }
 
+// engine/dom/chrome-webidl/OriginAttributes.webidl (OriginAttributesDictionary): the members
+// Vimma sets when it makes a principal; the others take their defaults.
+interface OriginAttributes {
+  userContextId?: number;
+  privateBrowsingId?: number;
+}
+
 // engine/netwerk/base/nsIURI.idl (the members Vimma reads)
 interface nsIURI {
   readonly spec: string;
@@ -762,6 +770,8 @@ interface nsIURI {
   readonly prePath: string;
   /** The path without query and fragment (a simple URI's whole path: nsSimpleURI::GetFilePath). */
   readonly filePath: string;
+  /** The part after `?`, without it; empty when there is none. */
+  readonly query: string;
   schemeIs(scheme: string): boolean;
 }
 
@@ -829,8 +839,13 @@ interface MozBrowser extends Element {
   readonly browsingContext: CanonicalBrowsingContext | null;
   /** Null while the browser has no docshell or remote navigation yet. */
   readonly currentURI: nsIURI | null;
-  readonly documentURI: { readonly spec: string } | null;
+  readonly documentURI: nsIURI | null;
   readonly contentTitle: string;
+  /**
+   * The page's security state as Firefox's identity block reads it (nsISecureBrowserUI.idl;
+   * browser-custom-element.mjs, `get securityUI`): null before the browser has one.
+   */
+  readonly securityUI: { readonly state: number; readonly isSecureContext: boolean } | null;
   readonly isRemoteBrowser: boolean;
   /** Its context's (browser-custom-element.mjs); undefined without a context, null without one. */
   readonly webProgress: nsIWebProgress | null | undefined;
@@ -1091,12 +1106,26 @@ interface MozFindbar extends Element {
 // engine/toolkit/modules/FinderParent.sys.mjs (a <browser>'s finder)
 interface MozFinder {
   set caseSensitive(sensitive: boolean);
-  addResultListener(listener: object): void;
-  removeResultListener(listener: object): void;
+  addResultListener(listener: FinderResultListener): void;
+  removeResultListener(listener: FinderResultListener): void;
   findAgain(query: string, backward: boolean, linksOnly: boolean, outline: boolean): void;
   fastFind(query: string, linksOnly: boolean, outline: boolean): void;
-  requestMatchesCount(query: string, args: object): void;
+  requestMatchesCount(query: string, args: { linksOnly: boolean }): void;
   removeSelection(keepHighlight?: boolean): void;
+}
+
+// What FinderParent tells its result listeners, from the page's process (Finder.sys.mjs).
+interface FinderResultListener {
+  onFindResult(data: { result: number; searchString: string }): void;
+  onMatchesCountResult(result: {
+    searchString: string;
+    current: number;
+    total: number;
+    limit: number;
+  }): void;
+  onHighlightFinished(): void;
+  onCurrentSelection(): void;
+  shouldFocusContent?(): boolean;
 }
 
 // engine/dom/chrome-webidl/XULPopupElement.webidl: a <menupopup>, <panel> or <tooltip>
@@ -1344,6 +1373,8 @@ interface FirefoxDownload extends SessionDownload {
   launcherPath: string | null;
   launcherId: string | null;
   handleInternally: boolean;
+  /** DownloadsCommon opens the downloads panel on its start only while this is true. */
+  openDownloadsListOnStart: boolean;
   finalize(removePartialData?: boolean): Promise<void>;
   whenSucceeded(): Promise<void>;
 }

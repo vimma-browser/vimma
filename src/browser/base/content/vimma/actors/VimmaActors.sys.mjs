@@ -23,6 +23,8 @@ import { pressKeyLater } from "./enter-key.mjs";
 import { forgetMark } from "./submit-marks.mjs";
 
 /** @import { BlockReply } from "../core/hints.mjs" */
+/** @import { GrepAsk } from "./grep-page.mjs" */
+/** @import { BlockMessage } from "./block.mjs" */
 
 // System modules have no timer globals; Firefox's actors import them the same way.
 const { clearTimeout, setTimeout } = ChromeUtils.importESModule(
@@ -68,7 +70,7 @@ let hintGen = 0;
 /**
  * The generation of each tab's last blur (Esc). Per tab, so a content process cannot count the
  * Esc presses of other tabs.
- * @type {WeakMap<object, number>}
+ * @type {WeakMap<MozBrowser, number>}
  */
 const blurGens = new WeakMap();
 
@@ -76,21 +78,21 @@ const blurGens = new WeakMap();
  * The keydowns the parent let through to each document (WindowGlobalParent) since its last
  * blur (insert-focus behaviour 8), which that blur names so the frame can tell the keys it
  * handled before the blur was asked for from those it handled after.
- * @type {WeakMap<object, number>}
+ * @type {WeakMap<WindowGlobalParent, number>}
  */
 const keysSent = new WeakMap();
 /**
  * The live collection of each window, and of each agent tab (docs/specs/mcp-drive.md D12):
  * another window's `f` must not void a window's, and an agent's `f`, keyed by its tab's
  * <browser>, neither voids the user's hint mode in the same window nor is voided by it.
- * @type {WeakMap<object, number>}
+ * @type {WeakMap<Window | MozBrowser, number>}
  */
 const liveGen = new WeakMap();
 
 /**
  * Per browser, how its last collection's top frame ended (hintCollectReason), or "threw" when
  * its query rejected. Only read by tests, to say why a collection was empty (#605).
- * @type {WeakMap<object, string>}
+ * @type {WeakMap<MozBrowser, string>}
  */
 const lastReasons = new WeakMap();
 
@@ -598,7 +600,7 @@ export const VimmaActors = {
 
   /**
    * Drops the window's collection in flight (Esc, tab switch): its reply is ignored.
-   * @param {object} win
+   * @param {Window} win
    */
   cancelHints(win) {
     liveGen.delete(win);
@@ -734,7 +736,7 @@ export const VimmaActors = {
    * within `ms`.
    * @param {CanonicalBrowsingContext} bc
    * @param {string} name
-   * @param {object} data
+   * @param {GrepAsk} data
    * @param {number} ms
    * @returns {Promise<unknown>}
    */
@@ -764,7 +766,7 @@ export const VimmaActors = {
    * @param {FrameRef} frame  the frame and its document when the block was chosen
    * @param {number} gen
    * @param {string} op
-   * @param {object} [extra]
+   * @param {Omit<BlockMessage, "op" | "gen">} [extra]  the op's own fields (`id`, `count`, `line`)
    * @returns {Promise<BlockReply | null>}
    */
   async block(frame, gen, op, extra = {}) {

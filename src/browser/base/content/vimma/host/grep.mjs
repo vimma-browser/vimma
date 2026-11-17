@@ -42,6 +42,7 @@ import { GrepPicker } from "../ui/grep.mjs";
 
 /** @import { GrepClosedEntry, GrepClosedRow, GrepFrame, GrepList, GrepMatchRow, GrepPickerState, GrepRow, GrepTab } from "../core/grep.mjs" */
 /** @import { GrepInfo } from "../ui/grep.mjs" */
+/** @import { GrepAsk } from "../actors/grep-page.mjs" */
 
 const { clearTimeout, setTimeout } = ChromeUtils.importESModule(
   "resource://gre/modules/Timer.sys.mjs",
@@ -340,7 +341,7 @@ export class GrepSession {
   /**
    * A frame's reply to one message; the test replaces it to hold replies back.
    * @param {CanonicalBrowsingContext} bc
-   * @param {object} data
+   * @param {GrepAsk} data
    * @param {string} [name]
    * @returns {Promise<unknown>}
    */

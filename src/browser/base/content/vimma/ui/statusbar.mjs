@@ -423,7 +423,7 @@ function originOf(uri) {
  * (BrowserUIUtils.checkEmptyPageOrigin): an about:blank a page opened or wrote into reads
  * `about:blank from <the page that controls it>` (docs/security/06-chrome-ui-rendering.md C3).
  * @param {BrowserWindow} win
- * @param {any} browser
+ * @param {MozTabBrowser} browser
  * @returns {{ url: string | null, origin: UrlOrigin | null }}
  */
 function barUrl(win, browser) {
@@ -463,7 +463,7 @@ function barUrl(win, browser) {
  * The origin of a URL without a host of its own: a nested one's inner URL (view-source:), else
  * the page's principal (blob:, which carries its creator's origin), so the bar can still keep
  * that origin's domain whole (docs/security/06-chrome-ui-rendering.md C3).
- * @param {any} browser
+ * @param {MozTabBrowser} browser
  * @param {nsIURI} uri
  * @returns {UrlOrigin | null}
  */
@@ -488,7 +488,7 @@ function innerOrigin(browser, uri) {
  * The selected page's connection, from the browser's security state as Firefox's identity
  * block reads it (browser-siteIdentity.js), never from the address bar, so an unsent edit in
  * the hidden address bar changes nothing (docs/security/06-chrome-ui-rendering.md C3).
- * @param {any} browser
+ * @param {MozTabBrowser} browser
  */
 function securityOf(browser) {
   const W = Ci.nsIWebProgressListener;

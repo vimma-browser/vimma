@@ -109,7 +109,7 @@ export class WorkspaceStoreImpl {
   /** @type {Promise<void> | null} */
   #ready = null;
   /** Active workspace id per window (WindowWorkspaces sets it, sub-spec 2b). */
-  /** @type {WeakMap<object, string>} */
+  /** @type {WeakMap<Window, string>} */
   #active = new WeakMap();
   /** `[mcp] workspace`: the agent workspace's name, or null (a test's store has none). */
   /** @type {string | null} */
@@ -240,7 +240,7 @@ export class WorkspaceStoreImpl {
       this.readOnly = true;
       console.warn(`vimma: ${this.#path} is from a newer vimma; workspaces are read-only`);
       try {
-        return readDefinitions({ .../** @type {object} */ (raw), schema: 1 });
+        return readDefinitions({ .../** @type {Record<string, unknown>} */ (raw), schema: 1 });
       } catch {
         return emptyDefinitions();
       }
@@ -548,7 +548,7 @@ export class WorkspaceStoreImpl {
 
   /**
    * Records the workspace a window switched to; it becomes `lastActive` for the next start.
-   * @param {object | null} win
+   * @param {Window | null} win
    * @param {string} id
    */
   setActive(win, id) {

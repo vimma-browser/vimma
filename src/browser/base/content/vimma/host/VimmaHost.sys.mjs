@@ -298,7 +298,7 @@ const MULTI_PANE = new Set([
 /**
  * The page mode of each tab's <browser>, from the actor's focus reports; absent = normal.
  * Written only through setBrowserMode.
- * @type {WeakMap<object, PageMode>}
+ * @type {WeakMap<MozBrowser, PageMode>}
  */
 const browserModes = new WeakMap();
 
@@ -320,7 +320,7 @@ function setBrowserMode(browser, mode) {
  * Tabs in explicit insert (`i`, `gi`; docs/specs/insert-focus.md): the inner window ID of the
  * top document it was entered on. Focus reports from that document do not end it; Esc does, as
  * does any other change to normal mode (setBrowserMode). A new top document starts over.
- * @type {WeakMap<object, number>}
+ * @type {WeakMap<MozBrowser, number>}
  */
 const explicitInsert = new WeakMap();
 
@@ -329,7 +329,7 @@ const explicitInsert = new WeakMap();
  * the top document it was pressed on. While it is shown, a focus the page's script makes on its
  * own does not enter insert. Entering insert, a focus report the user's input caused, a key the
  * page gets and a new top document end the hold.
- * @type {WeakMap<object, number>}
+ * @type {WeakMap<MozBrowser, number>}
  */
 const escapeHold = new WeakMap();
 
@@ -337,7 +337,7 @@ const escapeHold = new WeakMap();
  * The document of each tab that Esc's blur last went to, and that blur's generation
  * (behaviour 7): a report from that document with an older generation was sent before the
  * blur and is dropped.
- * @type {WeakMap<object, { windowId: number, gen: number }>}
+ * @type {WeakMap<MozBrowser, { windowId: number, gen: number }>}
  */
 const lastBlur = new WeakMap();
 
@@ -358,7 +358,7 @@ function enterExplicitInsert(browser) {
 /**
  * The frame of each tab whose text field last took focus, and its document's inner window ID,
  * so `i` can go back to that field.
- * @type {WeakMap<object, { frame: CanonicalBrowsingContext, windowId: number }>}  browser → BrowsingContext and ID
+ * @type {WeakMap<MozBrowser, { frame: CanonicalBrowsingContext, windowId: number }>}  browser → BrowsingContext and ID
  */
 const lastFieldFrame = new WeakMap();
 

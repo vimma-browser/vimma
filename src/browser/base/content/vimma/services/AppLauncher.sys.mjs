@@ -237,6 +237,12 @@ function safely(check) {
  */
 
 /**
+ * Firefox's ShellService, whose methods wrapIsDefault and wrapSetDefault replace.
+ * @typedef {VimmaModules["moz-src:///browser/components/shell/ShellService.sys.mjs"]["ShellService"]}
+ *   ShellServiceApi
+ */
+
+/**
  * @param {nsIGIOService | null} gio
  * @param {string} own
  * @returns {nsIGIOMimeApp | null} the first desktop entry GIO lists whose Exec program, found as
@@ -367,17 +373,19 @@ export const AppLauncher = {
    * which its proxy returns before the native service's; everything that asks (Settings'
    * DefaultBrowserHelper, DefaultBrowserCheck, BrowserGlue) goes through them.
    *
-   * @param {{ isDefaultBrowser: Function, isDefaultBrowserAsync: Function }} target
+   * @param {Pick<ShellServiceApi, "isDefaultBrowser" | "isDefaultBrowserAsync">} target
    * @param {() => boolean} check
    */
   wrapIsDefault(target, check) {
     const isDefault = target.isDefaultBrowser;
     const isDefaultAsync = target.isDefaultBrowserAsync;
-    target.isDefaultBrowser = function vimmaIsDefaultBrowser(/** @type {unknown[]} */ ...args) {
+    target.isDefaultBrowser = function vimmaIsDefaultBrowser(
+      /** @type {Parameters<ShellServiceApi["isDefaultBrowser"]>} */ ...args
+    ) {
       return Boolean(isDefault.apply(this, args)) || safely(check);
     };
     target.isDefaultBrowserAsync = async function vimmaIsDefaultBrowserAsync(
-      /** @type {unknown[]} */ ...args
+      /** @type {Parameters<ShellServiceApi["isDefaultBrowserAsync"]>} */ ...args
     ) {
       return Boolean(await isDefaultAsync.apply(this, args)) || safely(check);
     };
@@ -391,7 +399,8 @@ export const AppLauncher = {
    * Firefox's own method runs. Only an explicit request reaches it: Settings' button, the startup prompt's,
    * and `vimma -setDefaultBrowser`.
    *
-   * @param {{ setDefaultBrowser: Function, _attemptedSetDefaultThisSession?: boolean }} target
+   * @param {Pick<ShellServiceApi, "setDefaultBrowser">
+   *   & { _attemptedSetDefaultThisSession?: boolean }} target
    *   ShellService, whose proxy returns its internal object's methods before the native service's
    * @param {string} own vimma-open's absolute path
    * @param {{
@@ -411,7 +420,7 @@ export const AppLauncher = {
           ? Services.prefs.setBoolPref(name, value)
           : Services.prefs.setIntPref(name, value));
     target.setDefaultBrowser = async function vimmaSetDefaultBrowser(
-      /** @type {unknown[]} */ ...args
+      /** @type {Parameters<ShellServiceApi["setDefaultBrowser"]>} */ ...args
     ) {
       const app = allowed() ? ownEntry(gio(), own) : null;
       if (!app) {

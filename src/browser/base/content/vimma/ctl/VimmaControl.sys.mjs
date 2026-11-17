@@ -334,6 +334,12 @@ function splitsState(win, visible) {
 }
 
 /**
+ * A pane of `state.panes`' tree: a tab (its id and visible index), or a split of panes.
+ * @typedef {{ tab: string | null, index: number }
+ *   | { axis: import("../core/panes.mjs").Axis, ratios: number[], children: PaneState[] }} PaneState
+ */
+
+/**
  * One pane tree with state's tab ids (see paneState).
  * @param {BrowserWindow} win
  * @param {MozTabbrowserTab[]} visible
@@ -344,7 +350,7 @@ function treeState(win, visible, panes) {
     win.gBrowser.tabs.find((t) => t.linkedPanel === panel);
   const idOf = (/** @type {MozTabbrowserTab | undefined} */ tab) =>
     tab ? String(tab.linkedBrowser.browserId) : null;
-  /** @param {import("../core/panes.mjs").PaneNode} n @returns {object} */
+  /** @param {import("../core/panes.mjs").PaneNode} n @returns {PaneState} */
   const node = (n) => {
     if (n.type === "leaf") {
       const tab = tabOf(n.tab);
@@ -1028,7 +1034,7 @@ class Connection {
     this.waitForInput();
   }
 
-  /** @param {object} message */
+  /** @param {{ type: string } & Record<string, unknown>} message  one protocol line */
   write(message) {
     if (this.closed || this.closeAfterWrite) return;
     const bytes = new TextEncoder().encode(JSON.stringify(message) + "\n");
@@ -1288,7 +1294,7 @@ function revoke(ticket) {
  * Atomically, and 0600 from the first byte: create the temporary file with mode 0600, write
  * into it (an "overwrite" write keeps the file's mode), then rename it over the real name.
  * IOUtils.writeJSON's tmpPath would create the temporary file 0644 first.
- * @param {object} discovery
+ * @param {ReturnType<typeof discoveryOf>} discovery
  */
 async function writeDiscovery(discovery) {
   const tmp = await IOUtils.createUniqueFile(PathUtils.profileDir, `${DISCOVERY_FILE}.tmp`, 0o600);
