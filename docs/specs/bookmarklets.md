@@ -147,7 +147,7 @@ where)` in `host/bookmark-actions.mjs` reads the bookmark by its Places guid, de
     `vimma_bookmarklet { tab, name }` (control command `agent-bookmarklet`) takes an agent tab
     and a bookmark title. Vimma looks for bookmarks whose stored URL is a bookmarklet (B4) and
     whose title equals `name` exactly, anywhere in the user's bookmarks. None: the call fails (`failed`, `no bookmarklet is titled "…"`). More
-    than one: it fails asking the user to rename one, because the question must name exactly
+    than one: it fails with a message saying to rename one, because the question must name exactly
     one script. Vimma never lists bookmarklets to the agent: the user tells the agent which one
     to run, so the agent learns no bookmark it was not told about. A `javascript:` text from the
     agent, a page or a tool argument is never run: `name` is only compared with titles. A tab

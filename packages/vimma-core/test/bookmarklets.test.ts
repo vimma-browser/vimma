@@ -59,6 +59,23 @@ describe("bookmarkKind (B4, B5)", () => {
   ])("%j is %s", (url, kind) => expect(bookmarkKind(url)).toBe(kind));
 });
 
+/** Each level, caller and place, and what a bookmarklet does there (B6, B7, B13). */
+const DECISIONS = [
+  // setting, by, where, outcome
+  ["none", "user", "current", { kind: "refuse", text: DEFAULT_REFUSAL }],
+  ["none", "user", "tab", { kind: "refuse", text: DEFAULT_REFUSAL }],
+  ["user", "user", "current", { kind: "run" }],
+  ["user", "user", "tab", { kind: "refuse", text: NOT_HERE }],
+  ["user", "user", "vertical", { kind: "refuse", text: NOT_HERE }],
+  ["user", "user", "horizontal", { kind: "refuse", text: NOT_HERE }],
+  ["agent", "user", "current", { kind: "run" }],
+  ["agent", "user", "tab", { kind: "refuse", text: NOT_HERE }],
+  ["agent", "agent", "current", { kind: "run" }],
+] as const;
+
+/** The levels that keep agents out (B13). */
+const BELOW_AGENT = [["none"], ["user"]] as const;
+
 describe("bookmarkletDecision (B6, B7, B13)", () => {
   const where = "current";
   test("an ordinary bookmark opens at every level, for the user", () => {
@@ -69,30 +86,19 @@ describe("bookmarkletDecision (B6, B7, B13)", () => {
     }
   });
 
-  test.each([
-    // setting, by, where, outcome
-    ["none", "user", "current", { kind: "refuse", text: DEFAULT_REFUSAL }],
-    ["none", "user", "tab", { kind: "refuse", text: DEFAULT_REFUSAL }],
-    ["user", "user", "current", { kind: "run" }],
-    ["user", "user", "tab", { kind: "refuse", text: NOT_HERE }],
-    ["user", "user", "vertical", { kind: "refuse", text: NOT_HERE }],
-    ["user", "user", "horizontal", { kind: "refuse", text: NOT_HERE }],
-    ["agent", "user", "current", { kind: "run" }],
-    ["agent", "user", "tab", { kind: "refuse", text: NOT_HERE }],
-    ["agent", "agent", "current", { kind: "run" }],
-  ] as const)("a bookmarklet at %s, by the %s, %s → %j", (setting, by, at, outcome) => {
-    expect(bookmarkletDecision({ url: JS, setting, by, where: at })).toEqual(outcome);
-  });
-
-  test.each([["none"], ["user"]] as const)(
-    "an agent is refused at %s, naming the setting",
-    (setting) => {
-      expect(bookmarkletDecision({ url: JS, setting, by: "agent", where })).toEqual({
-        kind: "refuse",
-        text: 'bookmarklets are off for agents: [bookmarks] bookmarklets = "agent" in config.toml allows them',
-      });
+  test.each([...DECISIONS])(
+    "a bookmarklet at %s, by the %s, %s → %j",
+    (setting, by, at, outcome) => {
+      expect(bookmarkletDecision({ url: JS, setting, by, where: at })).toEqual(outcome);
     },
   );
+
+  test.each([...BELOW_AGENT])("an agent is refused at %s, naming the setting", (setting) => {
+    expect(bookmarkletDecision({ url: JS, setting, by: "agent", where })).toEqual({
+      kind: "refuse",
+      text: 'bookmarklets are off for agents: [bookmarks] bookmarklets = "agent" in config.toml allows them',
+    });
+  });
 
   test("data: and other schemes refuse at every level, for anyone, anywhere", () => {
     for (const setting of BOOKMARKLETS_SETTINGS) {

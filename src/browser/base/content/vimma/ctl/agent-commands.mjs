@@ -851,7 +851,7 @@ const COMMANDS = {
     const base = { ...describeTab(asked.tab), index: asked.index };
     /**
      * Logs a call that ended before or after the question (M23), and returns its error.
-     * @param {LogOutcome} outcome @param {unknown} error @param {object} [what]
+     * @param {LogOutcome} outcome @param {unknown} error @param {GateWhat} [what]
      */
     const refuse = (outcome, error, what = base) => {
       AgentGate.note(conn, "vimma_bookmarklet", what, outcome);
