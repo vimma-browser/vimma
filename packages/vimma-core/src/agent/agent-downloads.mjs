@@ -138,15 +138,16 @@ function oneLine(s, max = 80) {
  * @param {string} name
  */
 function extensions(name) {
-  const base = String(name ?? "")
-    .split(/[/\\]/)
-    .pop()
-    ?.replace(/[. ]+$/, "")
-    .toLowerCase();
-  if (!base) return [];
-  const parts = base.split(".");
-  parts.shift();
-  return parts.reverse();
+  // Stryker disable next-line StringLiteral: no name has no extension, as a name without a dot has none
+  const path = String(name ?? "");
+  // Stryker disable next-line StringLiteral: split() always gives pop() a part
+  const base = path.split(/[/\\]/).pop() ?? "";
+  return base
+    .replace(/[. ]+$/, "")
+    .toLowerCase()
+    .split(".")
+    .slice(1)
+    .reverse();
 }
 
 /**
@@ -164,6 +165,7 @@ export function dangerousName(name, { isExecutable } = {}) {
   if (EXECUTABLE_EXTENSIONS.includes(last)) return danger("executable");
   if (ARCHIVE_EXTENSIONS.includes(last)) return danger("archive");
   try {
+    // Stryker disable next-line OptionalChaining: with no isExecutable the call throws, and the catch gives the same null
     if (isExecutable?.(String(name).replace(/[. ]+$/, ""))) return danger("executable");
   } catch {
     // Firefox's check failed: the name alone decides.
@@ -225,6 +227,7 @@ const DANGEROUS_TYPES = /** @type {Record<string, DangerKind>} */ ({
  * @returns {Danger | null}
  */
 export function dangerousType(type) {
+  // Stryker disable next-line OptionalChaining,StringLiteral: split() always gives a first part, and no type is no dangerous type
   const bare = String(type ?? "")
     .split(";")[0]
     ?.trim()
@@ -233,9 +236,11 @@ export function dangerousType(type) {
   return kind && Object.hasOwn(DANGEROUS_TYPES, /** @type {string} */ (bare)) ? danger(kind) : null;
 }
 
-/** @param {Uint8Array} b @param {number[]} sig @param {number} [at] */
-const starts = (b, sig, at = 0) =>
-  b.length >= at + sig.length && sig.every((v, i) => b[at + i] === v);
+/**
+ * Whether `b` holds `sig` at `at`: a byte past the end is undefined, never equal to one.
+ * @param {Uint8Array} b @param {number[]} sig @param {number} [at]
+ */
+const starts = (b, sig, at = 0) => sig.every((v, i) => b[at + i] === v);
 
 /** How many bytes from the start dangerousContent reads. */
 export const HEAD_BYTES = 512;
@@ -296,6 +301,7 @@ const u32 = (b, at) => (u16(b, at) | (u16(b, at + 2) << 16)) >>> 0;
  */
 export function zipLocate(tail, size) {
   const base = size - tail.length;
+  // Stryker disable next-line ArithmeticOperator: a record starting in the last 21 bytes cannot end with its comment where the tail ends
   for (let i = tail.length - 22; i >= 0; i--) {
     if (u32(tail, i) !== 0x06054b50) continue;
     const commentLength = u16(tail, i + 20);
@@ -303,9 +309,8 @@ export function zipLocate(tail, size) {
     const entries = u16(tail, i + 10);
     const length = u32(tail, i + 12);
     const offset = u32(tail, i + 16);
-    if (entries === 0xffff || length === 0xffffffff || offset === 0xffffffff) {
-      return { kind: "unlistable" };
-    }
+    // zip64's markers; its length marker, 0xffffffff, is over ZIP_MAX_DIRECTORY below.
+    if (entries === 0xffff || offset === 0xffffffff) return { kind: "unlistable" };
     const end = base + i;
     if (offset + length > end || length > ZIP_MAX_DIRECTORY || u16(tail, i + 8) !== entries) {
       return { kind: "unlistable" };
@@ -330,12 +335,14 @@ export function zipLocate(tail, size) {
  */
 export function zipEntryList(cd, entries) {
   if (entries > ZIP_MAX_ENTRIES) return null;
+  // Stryker disable next-line ObjectLiteral: fatal is false by default; written out, as a name that is not UTF-8 must never throw
   const decoder = new TextDecoder("utf-8", { fatal: false });
   /** @type {ZipEntry[]} */
   const out = [];
   let at = 0;
   for (let n = 0; n < entries; n++) {
-    if (at + 46 > cd.length || u32(cd, at) !== 0x02014b50) return null;
+    // A record cut short reads 0 past the end (byte()), and `next` below is then past the end.
+    if (u32(cd, at) !== 0x02014b50) return null;
     const madeOnUnix = byte(cd, at + 5) === 3;
     const attributes = u32(cd, at + 38);
     const nameLength = u16(cd, at + 28);
@@ -381,17 +388,19 @@ const leaves = (/** @type {string} */ name) =>
 export function zipVerdict(entries, options) {
   for (const entry of entries) {
     const { name, mode } = typeof entry === "string" ? { name: entry, mode: null } : entry;
+    // No mode (not made on Unix) has no type and no exec bit.
+    const bits = mode ?? 0;
     const shown = oneLine(name, 60);
     if (leaves(name))
       return { kind: "archive", text: `a zip with a path outside its folder (${shown})` };
-    if (mode !== null && (mode & S_IFMT) === S_IFLNK) {
+    if ((bits & S_IFMT) === S_IFLNK) {
       return { kind: "archive", text: `a zip holding a symbolic link (${shown})` };
     }
     if (name.endsWith("/")) continue;
     const [last] = extensions(name);
     const inner = dangerousName(name, options) ?? (last === "zip" ? danger("archive") : null);
     if (inner) return { kind: "archive", text: `a zip holding ${inner.text} (${shown})` };
-    if (mode !== null && (mode & 0o111) !== 0) {
+    if ((bits & 0o111) !== 0) {
       return { kind: "executable", text: `a zip holding an executable (${shown}, exec bit)` };
     }
   }
@@ -433,7 +442,9 @@ const PARTIAL = /** @type {const} */ ([
 export function clamVerdict({ exitCode, stdout }) {
   if (exitCode === 0) return { kind: "clean" };
   if (exitCode !== 1) return { kind: "error" };
+  // Stryker disable next-line StringLiteral: no output has no FOUND line, as "" has none
   const found = [...String(stdout ?? "").matchAll(/:\s*([^\n]*?)\s+FOUND\s*$/gm)].map((m) =>
+    // Stryker disable next-line StringLiteral: the group always takes part in a match
     String(m[1] ?? ""),
   );
   /** @type {string | null} */
@@ -471,13 +482,16 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 export function clamDefinitionsDate(text) {
   const m =
     /^ClamAV [^/\n]+\/\d+\/\w{3} (\w{3}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})\s*$/m.exec(
+      // Stryker disable next-line StringLiteral: no output has no date, as "" has none
       String(text ?? ""),
     );
   if (!m) return null;
   const month = MONTHS.indexOf(String(m[1]));
   const [day = 0, h = 0, min = 0, sec = 0, year = 0] = m.slice(2).map(Number);
-  if (month < 0 || day < 1 || day > 31 || h > 23 || min > 59 || sec > 60) return null;
+  if (month < 0 || min > 59 || sec > 60) return null;
   const date = new Date(year, month, day, h, min, sec);
+  // A day the month does not have (0 to 99) or an hour past 23 (up to 99) moves the date to
+  // another day of the month: refused here.
   return date.getDate() === day ? date.getTime() : null;
 }
 
@@ -660,8 +674,8 @@ const CLAMD_LINE_BYTES = 512;
  * @param {string} line
  */
 function hasControl(line) {
-  for (let k = 0; k < line.length; k++) {
-    const c = line.charCodeAt(k);
+  for (const ch of line) {
+    const c = ch.charCodeAt(0);
     if ((c < 0x20 && c !== 0x09) || (c >= 0x7f && c <= 0x9f)) return true;
   }
   return false;
@@ -682,7 +696,9 @@ function hasControl(line) {
 export function clamdConfig(text) {
   /** @type {Map<string, string[]>} */
   const keys = new Map();
-  const lines = String(text ?? "").split("\n");
+  // Stryker disable next-line StringLiteral: no file sets no LocalSocket, as "" sets none
+  const conf = String(text ?? "");
+  const lines = conf.split("\n");
   const encoder = new TextEncoder();
   for (const [i, raw] of lines.entries()) {
     const n = i + 1;
@@ -690,41 +706,49 @@ export function clamdConfig(text) {
     if (encoder.encode(raw).length + 1 >= CLAMD_LINE_BYTES) {
       return { problem: `line ${n} is too long for clamd to read whole` };
     }
-    // clamd strips leading spaces and tabs only, then skips a comment.
+    // clamd strips leading spaces and tabs only, then skips a comment; a blank line or a
+    // comment (`#…`, a name no option has) is skipped below.
     const line = raw.replace(/^[ \t]+/, "");
-    if (!line || line.startsWith("#")) continue;
     const m = /^([^ \t]*)[ \t]*(.*?)[ \t]*$/.exec(line);
     const name = m?.[1] ?? "";
     const option = CLAMD_NAMES.get(name);
     if (!option) {
       // A name that only looks like one of these (other case, or run into a space clamd does
       // not split on) makes clamd refuse the whole file; it is not guessed at here.
-      const looks = (/^\s*([^\s]+)/.exec(line)?.[1] ?? "").toLowerCase();
-      if (CLAMD_NAMES_LOWER.has(looks) || CLAMD_NAMES_LOWER.has(name.toLowerCase())) {
+      // `looks` is `name` too, lower case, whenever `name` is such a name: it has no space.
+      // Stryker disable next-line StringLiteral: a line with no word names no option, as "" does not
+      const looks = (/\S+/.exec(line)?.[0] ?? "").toLowerCase();
+      if (CLAMD_NAMES_LOWER.has(looks)) {
         return { problem: `clamd does not read ${name} (line ${n})` };
       }
       continue;
     }
     // clamd keeps the first setting and ignores later ones: a second one is refused.
     const values = keys.get(option) ?? [];
+    // Stryker disable next-line OptionalChaining: every name in CLAMD_NAMES is an option of CLAMD_OPTIONS
     if (values.length && !CLAMD_OPTIONS.get(option)?.multiple) {
       return { problem: `clamd.conf sets ${option} twice` };
     }
+    // Stryker disable next-line OptionalChaining,StringLiteral: a line with a name matched, and its value group always takes part
     keys.set(option, [...values, m?.[2] ?? ""]);
   }
+  // An option's first value, or "" when it is not set.
+  // Stryker disable next-line StringLiteral: an unset LocalSocket, AlertEncrypted or AlertExceedsMax is refused below whatever stands in for it, as long as it has no / first and is no yes
+  const first = (/** @type {string} */ option) => keys.get(option)?.[0] ?? "";
   if (keys.has("TCPSocket")) return { problem: "clamd listens on TCP" };
-  const socket = keys.get("LocalSocket")?.[0] ?? "";
+  const socket = first("LocalSocket");
   // clamd unquotes a value and drops an inline comment; a socket path written so is not used.
   if (/["#]/.test(socket)) return { problem: "LocalSocket has a quote or a #" };
   if (!socket.startsWith("/")) return { problem: "no LocalSocket" };
-  if (!CLAMD_TRUE.test(keys.get("AlertEncrypted")?.[0] ?? "")) {
+  if (!CLAMD_TRUE.test(first("AlertEncrypted"))) {
     return { problem: "clamd does not alert on encrypted files" };
   }
-  if (!CLAMD_TRUE.test(keys.get("AlertExceedsMax")?.[0] ?? "")) {
+  if (!CLAMD_TRUE.test(first("AlertExceedsMax"))) {
     return { problem: "clamd does not alert on files over its limits" };
   }
   // Decision 45: clamd may make a scan faster, never weaker than clamscan's with its defaults.
   for (const [option, values] of keys) {
+    // Stryker disable next-line OptionalChaining: every key is an option of CLAMD_OPTIONS
     const scans = CLAMD_OPTIONS.get(option)?.scans;
     if (scans && !values.every(scans)) {
       return { problem: `clamd would scan less than clamscan (${option})` };
@@ -740,9 +764,12 @@ export function clamdConfig(text) {
  * @returns {number | null}
  */
 export function passwdUid(text, name) {
-  for (const line of String(text ?? "").split("\n")) {
+  // Stryker disable next-line StringLiteral: no file names no user, as "" names none
+  const passwd = String(text ?? "");
+  for (const line of passwd.split("\n")) {
     const fields = line.split(":");
     if (fields[0] !== name) continue;
+    // Stryker disable next-line StringLiteral: no uid field is not digits, as "" is not
     return /^\d+$/.test(fields[2] ?? "") ? Number(fields[2]) : null;
   }
   return null;
@@ -755,7 +782,8 @@ export function passwdUid(text, name) {
  * @param {number | null} clamavUid
  */
 export function clamdSocketTrusted({ isSocket, uid }, clamavUid) {
-  return isSocket && (uid === 0 || (clamavUid !== null && uid === clamavUid));
+  // A uid is a number, never equal to a null clamavUid.
+  return isSocket && (uid === 0 || uid === clamavUid);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -831,12 +859,14 @@ export function formatBytes(n) {
   if (n < 1000) return `${n} B`;
   const units = ["kB", "MB", "GB", "TB"];
   let v = n;
+  // Stryker disable next-line StringLiteral: n is 1000 or more here, so the loop always sets a unit
   let unit = "B";
   for (const u of units) {
     if (v < 1000) break;
     v /= 1000;
     unit = u;
   }
+  // Stryker disable next-line Regex: under 10, toFixed(1) gives one digit, a dot and one digit, so .0 is only ever at the end
   const shown = v < 10 ? v.toFixed(1).replace(/\.0$/, "") : String(Math.round(v));
   return `${shown} ${unit}`;
 }

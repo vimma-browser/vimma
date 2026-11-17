@@ -793,6 +793,9 @@ describe("the download checks' edges (mutation-tested)", () => {
     expect(run("/q/a: Eicar FOUND \n")).toEqual({ kind: "infected", signature: "Eicar" });
     expect(run("/q/a: Eicar FOUND later\n")).toEqual({ kind: "infected", signature: "a virus" });
     expect(run("/q/a:  FOUND\n")).toEqual({ kind: "infected", signature: "a virus" });
+    // Any run of whitespace before FOUND, a line break in it too, ends the signature's name.
+    expect(run("/q/a: Eicar  FOUND\n")).toEqual({ kind: "infected", signature: "Eicar" });
+    expect(run("/q/a: Eicar \n FOUND\n")).toEqual({ kind: "infected", signature: "Eicar" });
   });
 
   test("the definitions' date: each field in its range, and a day the month has", () => {
@@ -849,7 +852,7 @@ describe("the download checks' edges (mutation-tested)", () => {
     expect(clamdConfig(`${good.join("\n")}\r\n`)).toEqual({
       problem: "line 3 has a control character",
     });
-    for (const c of ["\u0000", "\f", "\v", "\u001b", "\u007f", "\u0085"]) {
+    for (const c of ["\u0000", "\f", "\v", "\u001b", "\u007f", "\u0085", "\u009f"]) {
       expect(conf(...good, `TCPSocket 3310${c}`)).toEqual({
         problem: "line 4 has a control character",
       });
@@ -934,6 +937,24 @@ describe("the download checks' edges (mutation-tested)", () => {
     });
     // TCPAddr may be given more than once; it opens nothing without TCPSocket.
     expect(conf(...good, "TCPAddr 127.0.0.1", "TCPAddr ::1")).toEqual({ socket: "/run/c.ctl" });
+  });
+
+  // JavaScript's `.` stops at U+2028 and U+2029, which clamd reads as bytes of the value; and
+  // `\s` is more than the space and tab clamd splits on. Neither may make Vimma throw, or read
+  // a setting that clamd reads otherwise.
+  test("clamd.conf: Unicode line and other separators are never read as clamd's", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    for (const c of [" ", " "]) {
+      expect(conf(`LocalSocket /run/c.ctl${c}`, ...good.slice(1))).toEqual({
+        problem: expect.stringMatching(/^clamd does not read +\(line 1\)$/),
+      });
+      expect(conf(...good, `TCPSocket 3310${c}x`)).toEqual({
+        problem: expect.stringMatching(/^clamd does not read +\(line 4\)$/),
+      });
+    }
+    // A line of only a no-break space names no option.
+    expect(conf(...good, " ")).toEqual({ socket: "/run/c.ctl" });
   });
 
   test("clamd.conf: comments and quotes as clamd reads them", () => {
@@ -1087,7 +1108,18 @@ describe("the download checks' edges (mutation-tested)", () => {
     for (const value of ["10000", "60000", "010000", "2147483647", "60000 # a minute"]) {
       expect(conf(...good, `BytecodeTimeout ${value}`)).toEqual(ok);
     }
-    for (const value of ["9999", "0", "", "2147483648", "99999999999", "1e5", "60000\t#"]) {
+    // A number from its first character: atoi reads -20000 and x20000 otherwise.
+    for (const value of [
+      "9999",
+      "0",
+      "",
+      "2147483648",
+      "99999999999",
+      "1e5",
+      "60000\t#",
+      "-20000",
+      "x20000",
+    ]) {
       expect(conf(...good, `bytecode-timeout ${value}`)).toEqual(weaker("BytecodeTimeout"));
     }
     expect(conf(...good, "MaxFileSize 25M", "ScanArchive no")).toEqual(weaker("MaxFileSize"));
