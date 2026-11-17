@@ -132,9 +132,9 @@ is the user's own, picked by the user, so this is opt-in.
    system-principal page; this check also refuses Vimma's start page, `about:` pages and
    `moz-extension:` pages, where a user's bookmarklet has nothing to do and
    an extension's rights must not be borrowed.
-10. **B10. A reusable entry point for every user-chosen bookmark.** `openUserBookmark(ctx, guid,
-where)` in `host/bookmark-actions.mjs` reads the bookmark by its Places guid, decides with
-    B6 as `"user"`, and opens or runs it. The panel calls it, and `:bookmark_open`
+10. **B10. A reusable entry point for every user-chosen bookmark.**
+    `openUserBookmark(ctx, guid, where)` in `host/bookmark-actions.mjs` reads the bookmark by
+    its Places guid, decides with B6 as `"user"`, and opens or runs it. The panel calls it, and `:bookmark_open`
     ([#1219](https://github.com/vimma-browser/vimma/issues/1219)) is to call it with the guid of
     the bookmark the user picked: what the user types there chooses among stored bookmarks and
     never becomes the URL.
@@ -146,8 +146,9 @@ where)` in `host/bookmark-actions.mjs` reads the bookmark by its Places guid, de
 12. **B12. The agent names a bookmarklet; it never sends script.** With `"agent"`, the tool
     `vimma_bookmarklet { tab, name }` (control command `agent-bookmarklet`) takes an agent tab
     and a bookmark title. Vimma looks for bookmarks whose stored URL is a bookmarklet (B4) and
-    whose title equals `name` exactly, anywhere in the user's bookmarks. None: the call fails (`failed`, `no bookmarklet is titled "…"`). More
-    than one: it fails with a message saying to rename one, because the question must name exactly
+    whose title equals `name` exactly, anywhere in the user's bookmarks. Exactly one must
+    match, because the question must name exactly one script; none and several fail with the
+    same message (B16).
     one script. Vimma never lists bookmarklets to the agent: the user tells the agent which one
     to run, so the agent learns no bookmark it was not told about. A `javascript:` text from the
     agent, a page or a tool argument is never run: `name` is only compared with titles. A tab
@@ -166,12 +167,18 @@ where)` in `host/bookmark-actions.mjs` reads the bookmark by its Places guid, de
     agent, the bookmarklet's title and folder path, and the tab's site.
 15. **B15. After the yes, the same tab, page and bookmark.** The tab and its URL must still be
     the ones asked about (M8), and the bookmark is read again by its guid: if its URL or title
-    changed, nothing runs and the call is denied as `changed`. Then it runs with B8 (no popups) on
-    a page that passes B9.
+    changed, nothing runs and the call is denied as `changed`. The level is decided again too,
+    so a level lowered while the question waited refuses (B13). Then it runs with B8 (no popups)
+    on a page that passes B9. These checks read the parent's view of the tab; the race that
+    leaves is described under Security and privacy.
 16. **B16. Rate and result.** At most 6 `vimma_bookmarklet` calls a minute per connection,
     counted before the bookmark is looked up, so an agent cannot probe titles quickly or flood
-    the user with questions. The result is `{ ran: true }`; the script's return value is not
-    sent back, and the agent reads the page with `vimma_read_page` as after any other step.
+    the user with questions. Whether exactly one bookmarklet has a title still leaks, at that
+    rate: the refusal before the question tells an agent that a title it guessed is not one
+    bookmarklet's. It cannot tell none from several (one message for both, "no single
+    bookmarklet has that title: check it is one you saved, and that no other bookmarklet shares
+    it"), and it learns nothing of a bookmarklet's URL or folder. The result is
+    `{ ran: true }`; the script's return value is not sent back, and the agent reads the page with `vimma_read_page` as after any other step.
     Every call is a `:mcp log` row (M23).
 17. **B17. Typed and page text never run script.** The setting does not change `p`, `P`,
     `:open`, `:tabnew`, keyword bookmarklets (security.md U1, U4, U5), the socket's `open`,
@@ -189,9 +196,16 @@ where)` in `host/bookmark-actions.mjs` reads the bookmark by its Places guid, de
 - Never the system principal: the engine evaluates the script in the page's global and refuses
   a system-principal page (Research); Vimma also refuses any page that is not http, https or
   file (B9).
-- Remaining race: between the check after the yes and the start of the load in the content
-  process, a page could navigate itself. The engine then runs the script only if the page's
-  inner window is still the one the load targeted (`nsJSProtocolHandler.cpp:298`).
+- Remaining race, accepted as Firefox accepts it for a clicked bookmarklet: Vimma checks the
+  tab's URL and principal in the parent (`currentURI`, `contentPrincipal`) right before it
+  starts the load, but the document the script runs in, and the principal it inherits, are
+  fixed only when the content process's docshell handles the load. During a same-site
+  navigation in the same content process, the parent's view can lag the page for a moment, so a
+  page that navigates itself just then can receive the script instead of the page asked about.
+  The script still runs only in a web page's global with that page's principal, never with the
+  system principal, and it is a bookmarklet the user saved and allowed. A content-side origin
+  check through an actor was not added: it would narrow the window, not close it, since the
+  page could still navigate between that check and the load.
 - Rules: security.md U3 and U8, M63.
 
 ## Tests
@@ -210,7 +224,8 @@ where)` in `host/bookmark-actions.mjs` reads the bookmark by its Places guid, de
 - Vitest `packages/vimma-core/test/bookmarklets-agent.test.ts`: the command's arguments and
   result, `ALWAYS_ASK`, the question line and its hint, the desktop notification, the rate, and
   the built-in agent's result text.
-- Rust `tools/vimma-ctl`: the tool's arguments (`bad_bookmarklet_arguments_are_tool_errors_and_never_reach_vimma`),
+- Rust `tools/vimma-ctl`: the tool's arguments
+  (`bad_bookmarklet_arguments_are_tool_errors_and_never_reach_vimma`),
   command (`the_bookmarklet_tool_sends_a_tab_and_a_title`) and result text
   (`a_bookmarklet_run_says_only_that_it_ran`); the tool list fixture.
 - Contract fixtures `tests/contract/control/v2/{request,response}-agent-bookmarklet.{valid,invalid}.json`.

@@ -10,8 +10,8 @@ link targets for hints, which chrome must treat as untrusted.
 - U2. Clipboard text over 8,192 characters **must** be refused, not truncated.
   [`text over the cap is refused, not truncated`](../../packages/vimma-core/test/pageurl.test.ts)
 - U3. Bookmarks **must** open only http, https, file and about URLs. A bookmarklet (a stored
-  bookmark whose URL is `javascript:`) is listed and **never** runs unless `[bookmarks]
-bookmarklets` is `"user"` or `"agent"` (U8); then it runs only when you pick it in the
+  bookmark whose URL is `javascript:`) is listed and **never** runs unless the config key
+  `[bookmarks] bookmarklets` is `"user"` or `"agent"` (U8); then it runs only when you pick it in the
   bookmarks panel (`Enter` or `l`), only in the current tab's http, https or file page, in that
   page's own global with the page's principal (the load Firefox makes for a picked bookmarklet,
   [bookmarklets](../specs/bookmarklets.md) B8), **never** with the system principal and never in
@@ -74,9 +74,16 @@ bookmarklets` is `"user"` or `"agent"` (U8); then it runs only when you pick it 
   `"agent"`) **must** come only from config.toml: no pref, command, control-socket message, agent
   tool or page changes it, and any other value is a config error. At every level, typed or sent
   text **never** runs script: `p`, `P`, `:open`, `:tabnew`, a keyword bookmarklet (`:open k x`,
-  whose `%s` would put typed words into the script), the socket's `open`, `vimma_open`, a follow
-  and a page's links stay refused as in U1, U4, U5, M6 and M18. Only a stored bookmark's URL,
+  whose `%s` would put typed words into the script), the socket's `open` (S10), `vimma_open` and
+  a follow stay refused as in U1, U4, U5, M6 and M18, whatever the level; the setting is read
+  only by the bookmarks panel and `agent-bookmarklet`. Only a stored bookmark's URL,
   unchanged, ever runs.
   [`typed_and_keyword_bookmarklets_refuse_at_every_level`](../../tests/browser/browser_vimma_bookmarklets.js),
+  [`p_and_shift_p_refuse_javascript_and_data_urls`](../../tests/browser/browser_vimma_normal_extras.js),
+  [`javascript_urls_are_blocked_with_a_notice`](../../tests/browser/browser_vimma_cmdline.js),
+  [`bookmark_keywords_work_and_refused_ones_never_run`](../../tests/browser/browser_vimma_search.js),
+  [`test_server_checks_the_scheme_itself`](../../tests/browser/browser_vimma_control.js),
+  [`test_agent_open_is_background_and_checked`](../../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_follow_refuses_javascript_and_data_hrefs`](../../tests/browser/browser_vimma_mcp_follow.js),
   [`another value is an error, with the nearest name when one is close`](../../packages/vimma-core/test/bookmarklets.test.ts),
   [`defaults to "none"`](../../packages/vimma-core/test/bookmarklets.test.ts)
