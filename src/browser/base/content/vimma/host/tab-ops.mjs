@@ -14,6 +14,12 @@ import { xulElementById } from "./browser-ops.mjs";
 /** @import { Action } from "../core/dispatcher.mjs" */
 /** @import { WindowState } from "./VimmaHost.sys.mjs" */
 
+/**
+ * The parts of openTrustedLinkIn's parameters Vimma passes (browser/base/content/utilityOverlay.js).
+ * @typedef {{ postData?: unknown, inBackground?: boolean, allowThirdPartyFixup?: boolean,
+ *   targetBrowser?: MozBrowser, userContextId?: number }} OpenLinkParams
+ */
+
 const lazy = /** @type {Lazy<"UrlbarUtils">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   UrlbarUtils: "moz-src:///browser/components/urlbar/UrlbarUtils.sys.mjs",
@@ -130,7 +136,7 @@ export function selectTab(win, action) {
  */
 export function openUrl(win, text, where) {
   if (refusedScheme(text)) return false;
-  /** @type {{ openTrustedLinkIn: (url: string, where: string, params: object) => void }} */ (
+  /** @type {{ openTrustedLinkIn: (url: string, where: string, params: OpenLinkParams) => void }} */ (
     /** @type {unknown} */ (win)
   ).openTrustedLinkIn(text, where, { allowThirdPartyFixup: true, inBackground: false });
   return true;
@@ -162,7 +168,7 @@ export async function openTyped(win, text, where) {
     if (!moved) return openUrl(win, text, where);
     r.url = text;
   } else if (refusedScheme(r.url)) return false;
-  /** @type {Record<string, unknown>} */
+  /** @type {OpenLinkParams} */
   const params = { postData: r.postData, inBackground: false };
   if (r.url === text) params.allowThirdPartyFixup = true;
   if (moved) {
@@ -173,7 +179,7 @@ export async function openTyped(win, text, where) {
       params.inBackground = true;
     }
   }
-  /** @type {{ openTrustedLinkIn: (url: string, where: string, params: object) => void }} */ (
+  /** @type {{ openTrustedLinkIn: (url: string, where: string, params: OpenLinkParams) => void }} */ (
     /** @type {unknown} */ (win)
   ).openTrustedLinkIn(r.url, where, params);
   return true;

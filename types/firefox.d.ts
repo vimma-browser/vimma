@@ -749,6 +749,13 @@ interface nsILoginInfo {
   ): void;
 }
 
+// engine/dom/chrome-webidl/OriginAttributes.webidl (OriginAttributesDictionary): the members
+// Vimma sets when it makes a principal; the others take their defaults.
+interface OriginAttributes {
+  userContextId?: number;
+  privateBrowsingId?: number;
+}
+
 // engine/netwerk/base/nsIURI.idl (the members Vimma reads)
 interface nsIURI {
   readonly spec: string;
@@ -1096,12 +1103,26 @@ interface MozFindbar extends Element {
 // engine/toolkit/modules/FinderParent.sys.mjs (a <browser>'s finder)
 interface MozFinder {
   set caseSensitive(sensitive: boolean);
-  addResultListener(listener: object): void;
-  removeResultListener(listener: object): void;
+  addResultListener(listener: FinderResultListener): void;
+  removeResultListener(listener: FinderResultListener): void;
   findAgain(query: string, backward: boolean, linksOnly: boolean, outline: boolean): void;
   fastFind(query: string, linksOnly: boolean, outline: boolean): void;
-  requestMatchesCount(query: string, args: object): void;
+  requestMatchesCount(query: string, args: { linksOnly: boolean }): void;
   removeSelection(keepHighlight?: boolean): void;
+}
+
+// What FinderParent tells its result listeners, from the page's process (Finder.sys.mjs).
+interface FinderResultListener {
+  onFindResult(data: { result: number; searchString: string }): void;
+  onMatchesCountResult(result: {
+    searchString: string;
+    current: number;
+    total: number;
+    limit: number;
+  }): void;
+  onHighlightFinished(): void;
+  onCurrentSelection(): void;
+  shouldFocusContent(): boolean;
 }
 
 // engine/dom/chrome-webidl/XULPopupElement.webidl: a <menupopup>, <panel> or <tooltip>

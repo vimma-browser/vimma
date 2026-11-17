@@ -96,7 +96,7 @@ function errorOf(error) {
  * @typedef {{ key: string, agent: boolean, workspace: string | null, viewsInternally: boolean }}
  *   About
  */
-/** @type {WeakMap<object, About>} */
+/** @type {WeakMap<DownloadListEntry, About>} */
 const abouts = new WeakMap();
 
 /**
@@ -357,7 +357,7 @@ export class DownloadRows {
     this.downloads = new Set();
     /** @type {DownloadList | null} */
     this.list = null;
-    /** @type {object | null} */
+    /** @type {DownloadListView<DownloadListEntry> | null} */
     this.view = null;
     this.shape = "";
     this.at = 0;

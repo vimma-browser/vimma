@@ -52,6 +52,7 @@ import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { AgentGate } from "../host/AgentGate.sys.mjs";
 
 /** @import { Refusal, Danger } from "../core/agent-downloads.mjs" */
+/** @import { GateWhat } from "../host/AgentGate.sys.mjs" */
 
 // Typed in types/firefox.d.ts, which names the modules: tools/security/test/chrome-source.test.ts
 // pins every mention of the process module in this file.
@@ -836,7 +837,7 @@ async function check(download, base) {
   });
   /**
    * Ask again, as the same agent (or the page), always: no grant covers it.
-   * @param {object} more
+   * @param {GateWhat} more  what this question adds to the download's
    */
   const askAgain = (more) => {
     const what = { ...t.what, size, ...more };
