@@ -49,10 +49,16 @@ function jsdocTypes(source: string): string[] {
   return types;
 }
 
-/** How many `any` a JSDoc type expression holds: a bare `*` or `?` is one, as checkJs reads it. */
+/**
+ * How many `any` a JSDoc type expression holds: a `*` that stands as a type (`*`, `Array<*>`,
+ * `* | null`) and a bare `?` are one each, as checkJs reads them. The ` * ` that starts each
+ * continuation line of the comment is not a type.
+ */
 function anyCount(type: string): number {
-  const bare = ["*", "?"].includes(type.trim()) ? 1 : 0;
-  return bare + (type.match(/\bany\b/g) ?? []).length;
+  const text = type.replace(/\n\s*\*/g, "\n");
+  const bare = text.trim() === "?" ? 1 : 0;
+  const stars = (text.match(/(^|[<,|(\s])\*(?=$|[>,|)[\s])/g) ?? []).length;
+  return bare + stars + (text.match(/\bany\b/g) ?? []).length;
 }
 
 /** Each `any` in a source's JSDoc types, as `path: type`. */
@@ -68,6 +74,12 @@ describe("vimma-core's any ratchet (#1225)", () => {
     expect(anyCount("*")).toBe(1);
     expect(anyCount(" ? ")).toBe(1);
     expect(anyCount("Record<string, any> | any[]")).toBe(2);
+    expect(anyCount("Array<*>")).toBe(1);
+    expect(anyCount("*[] | Map<string, *>")).toBe(2);
+    expect(anyCount("* | null")).toBe(1);
+    expect(anyCount("(*)")).toBe(1);
+    expect(anyCount("x ** 2")).toBe(0);
+    expect(anyCount("{ a: string,\n *   b: number }")).toBe(0);
     expect(anyCount("?string")).toBe(0);
     expect(anyCount("string")).toBe(0);
   });
