@@ -495,6 +495,23 @@ describe("setTomlKeys: what a line edit may change", () => {
       3,
       "search.default is not a plain key = value line",
     ],
+    // A `[search]` line inside a string, with the real search an inline table over several lines:
+    // the lines after the fake header are no plain key = value lines either.
+    [
+      'note = """\n[search]\n"""\nsearch = { a = \'\'\'\ndefault = "abc\'\'\', default = 1 }\n',
+      5,
+      "search.default is not a one-line value",
+    ],
+    [
+      'note = """\n[search]\n"""\nsearch = { a = """\ndefault = \'abc""", default = 1 }\n',
+      5,
+      "search.default is not a one-line value",
+    ],
+    [
+      'search = {\ndefault = 1, note = """\n[search]\n"""}\n',
+      2,
+      "search.default is not a plain key = value line",
+    ],
   ])("%j: line %i, %s", (text, line, message) => {
     expect(set(text, "search", "default", "X")).toEqual(fails(line, message));
   });
