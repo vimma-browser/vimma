@@ -397,9 +397,12 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
     for (const e of entries) {
       if (!e.modes.has(mode)) continue;
       const prev = seen.get(e.seq);
+      // No conflict is first found in the pdf context: an entry there is either [modal.pdf]'s,
+      // one per sequence and shadowing every other there, or also bound in normal mode, which is
+      // checked first (TARGETS lists "pdf" last), so the message never names the pdf context.
       if (prev && prev.action !== e.action) {
         throw new KeymapError(
-          `"${e.text}" is already bound to ${prev.action.name} in ${mode === "pdf" ? "the pdf context" : `${mode} mode`}`,
+          `"${e.text}" is already bound to ${prev.action.name} in ${mode} mode`,
           `keys.${e.action.name}`,
         );
       }

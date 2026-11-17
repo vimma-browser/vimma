@@ -159,7 +159,17 @@ shift is already folded for printable characters:
   `widget/cocoa/nsCocoaUtils.mm`, `ModifiersForEvent`), or ctrl and alt together (Windows'
   left ctrl + alt emulation of AltGr), or alt where `getModifierState` is missing;
 - and the key is one printable character that differs from what its physical key (`code`) types
-  on a US layout at the same shift state (`Digit7` types `7`, or `&` with shift).
+  on a US layout at the same shift state (`Digit7` types `7`, or `&` with shift). Any ASCII
+  letter counts as its key's own, on whatever key, as layouts move letters between keys and onto
+  punctuation keys (AZERTY's `KeyQ` types `a` and `Semicolon` `m`, QWERTZ's `KeyY` `z`, Dvorak's
+  `Slash` `z`): AZERTY `ctrl+alt+a` and Dvorak `ctrl+alt+z` keep their modifiers (#1175), while
+  AltGr+e (`€`) still folds. The cost: a layout whose AltGr or Option level types a different
+  ASCII letter (Latvian ergonomic, Esperanto nativo, Vietnamese aderty, Kikuyu, Kurdish F,
+  `ru(ruintl_ru)`, `hr(us)`) gets the `ctrl+alt` chord from Windows' left ctrl+alt and the `alt`
+  chord from macOS Option instead of the bare letter. An unbound chord passes to the page, so the
+  letter still types unless the chord is bound; only `hr(us)` (AltGr+`KeyY`) and `vn(aderty)`
+  (AltGr+`KeyW`) put a letter of a default chord there, z, so `ctrl+alt+z` would toggle the
+  sidebar instead. Linux AltGr reports no alt, so it is unaffected.
 
 Then alt is dropped, and ctrl too when ctrl and alt were both down. So Finnish AltGr+7 is `{`,
 AltGr+4 is `$` (US shift+4 is also `$`, but shift is up), Mac Option+shift+8 is `{`. A genuine
@@ -185,7 +195,8 @@ modifiers. Alt alone with `AltGraph` false (Linux, Windows) is always a genuine 
 
 ## Tests
 
-Vitest: `keys.test.mjs` (Option/AltGr cases), `firefox-keys.test.mjs` (chords of `<key>`
-elements, the plan for default, list, "all", enable), `config-v2.test.mjs` (`[firefox]`,
-`insert_editing`), `sidepanel.test.mjs` (`panel.close_tab`). Mochitests:
+Vitest: `keys.test.mjs` (Option/AltGr cases), `keys-layouts.test.ts` (non-US letter layouts),
+`firefox-keys.test.mjs` (chords of `<key>` elements, the plan for default, list, "all", enable),
+`config-v2.test.mjs` (`[firefox]`, `insert_editing`), `sidepanel.test.mjs` (`panel.close_tab`).
+Mochitests:
 `browser_vimma_firefox_keys.js`, `browser_vimma_edit_keys.js`, `browser_vimma_side_panel.js`.
