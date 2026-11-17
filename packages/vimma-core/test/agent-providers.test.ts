@@ -9,6 +9,7 @@ import {
   buildRequest,
   callModel,
   checkEndpoint,
+  isLocalEndpoint,
   parseReply,
   providerErrorText,
 } from "../src/agent/agent-providers.mjs";
@@ -516,5 +517,128 @@ describe("edge shapes", () => {
       text: "",
       toolCalls: [{ id: "e", name: "", args: {} }],
     });
+  });
+});
+
+// Issue #1119: what the weekly mutation run left unpinned.
+describe("edges the mutation run found", () => {
+  test("a provider error is named as one", () => {
+    expect(new ProviderError("x").name).toBe("ProviderError");
+  });
+
+  test("an endpoint with a user name alone, or a password alone, is refused", () => {
+    for (const e of ["https://user@llm.example/", "https://:pw@llm.example/"])
+      expect(checkEndpoint(e, { localOnly: false }), e).toBe(
+        "an endpoint must not carry a user name or password",
+      );
+  });
+
+  test("an address that does not parse is not on this machine", () => {
+    expect(isLocalEndpoint("not a url")).toBe(false);
+    expect(isLocalEndpoint("http://127.0.0.1:11434/v1")).toBe(true);
+  });
+
+  test("every slash at the end of an endpoint goes before the path", () => {
+    const req = buildRequest(
+      { ...local, endpoint: "http://127.0.0.1:11434/v1//" },
+      {
+        key: "",
+        system: "",
+        tools: [],
+        messages: [],
+      },
+    );
+    expect(req.url).toBe("http://127.0.0.1:11434/v1/chat/completions");
+  });
+
+  test("a tool result's text items are sent one a line", () => {
+    const req = buildRequest(local, {
+      key: "",
+      system: "",
+      tools: [],
+      messages: [
+        {
+          role: "tool",
+          results: [
+            {
+              id: "c1",
+              name: "vimma_read_page",
+              isError: false,
+              content: [
+                { type: "text", text: "first" },
+                { type: "text", text: "second" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(JSON.parse(req.body).messages[1]).toEqual({
+      role: "tool",
+      tool_call_id: "c1",
+      content: "first\nsecond",
+    });
+  });
+
+  test("replies that are not replies say which API they are not", () => {
+    expect(() => parseReply(anthropic, {}, "")).toThrow("the reply is not a Messages API reply");
+    expect(() => parseReply(local, {}, "")).toThrow("the reply is not a chat completions reply");
+    // A message that is not an object is no message.
+    expect(() => parseReply(local, { choices: [{ message: "hi" }] }, "")).toThrow(
+      "the reply is not a chat completions reply",
+    );
+  });
+
+  test("an Anthropic reply's text blocks join one a line; a null block is skipped", () => {
+    const reply = parseReply(
+      anthropic,
+      {
+        content: [null, { type: "text", text: "one" }, { type: "text", text: "two" }],
+        stop_reason: "end_turn",
+      },
+      "",
+    );
+    expect(reply.message.text).toBe("one\ntwo");
+    expect(reply.message.toolCalls).toEqual([]);
+  });
+
+  test("a chat completions call that is null or has no function is marked, not thrown", () => {
+    const reply = parseReply(
+      local,
+      { choices: [{ message: { content: "", tool_calls: [null, { id: "x" }] } }] },
+      "",
+    );
+    expect(reply.message.toolCalls).toEqual([
+      { id: "call_1", name: "", args: null, error: "its arguments are not a JSON object" },
+      { id: "x", name: "", args: null, error: "its arguments are not a JSON object" },
+    ]);
+  });
+
+  test("a call's id is used only when it is a string that is not empty", () => {
+    const reply = parseReply(
+      local,
+      {
+        choices: [
+          {
+            message: {
+              content: "",
+              tool_calls: [
+                { id: 7, function: { name: "a", arguments: "{}" } },
+                { id: "", function: { name: "b", arguments: "{}" } },
+              ],
+            },
+          },
+        ],
+      },
+      "",
+    );
+    expect(reply.message.toolCalls.map((c) => c.id)).toEqual(["call_1", "call_2"]);
+  });
+
+  test("an error of exactly ERROR_CHARS characters is not cut", () => {
+    const body = "e".repeat(195);
+    const text = providerErrorText(500, body, "");
+    expect([...text]).toHaveLength(200);
+    expect(text).toBe(`500: ${body}`);
   });
 });

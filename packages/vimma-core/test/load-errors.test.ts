@@ -52,4 +52,11 @@ describe("loadErrorOf", () => {
       expect(rs, code).toMatch(pair);
     }
   });
+
+  // Issue #1119: the fragment is not part of the code.
+  test("a fragment after the query is left out of the code", () => {
+    expect(loadErrorOf("about:neterror?e=dnsNotFound#x")).toBe("dnsNotFound");
+    expect(loadErrorOf("about:neterror?e=netTimeout#ab")).toBe("netTimeout");
+    expect(loadErrorOf("about:certerror?e=nssBadCert&u=https%3A//a/#frag")).toBe("nssBadCert");
+  });
 });

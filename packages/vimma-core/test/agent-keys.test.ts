@@ -434,3 +434,114 @@ describe("how long labels last (D12; mcp-forms F3; issue #591)", () => {
     expect(labelsCurrent({ mark, at, source: "elements" }, later(0), 0)).toBe(true);
   });
 });
+
+// Issue #1119: what the weekly mutation run left unpinned.
+describe("vimma_keys edges", () => {
+  test("an exact name in a refusal group is not a prefix: page.open_clipboard is the clipboard's", () => {
+    expect(refusalReason("page.open_clipboard")).toBe("the clipboard is the user's");
+    expect(refusalReason("no.such_action")).toBe("it is not one of the keys vimma_keys runs");
+  });
+
+  test("a refused key is named as Vim writes it, every modifier included", () => {
+    expect(refusal("meta+j")).toBe(
+      'key "<M-j>" is refused: it is not one of the keys vimma_keys runs',
+    );
+    expect(refusal("ctrl+alt+x")).toBe(
+      'key "<C-A-x>" is refused: it is not one of the keys vimma_keys runs',
+    );
+  });
+
+  test("a word of two characters or more that names one key is that key", () => {
+    expect(refusal("f1")).toBe('key "<f1>" is refused: it is not one of the keys vimma_keys runs');
+    // Only the key's name: page.stop's reason is #1212's.
+    expect(refusal("esc")).toMatch(/^key "<esc>" \(page\.stop\) is refused: /);
+  });
+
+  test("a word with other characters after a key's name is a run of keys", () => {
+    expect(refusal("ctrl+j!")).toBe(
+      'key "c" is refused: it is not one of the keys vimma_keys runs',
+    );
+  });
+
+  test("the prefix and the leader are named as such", () => {
+    const why = "the prefix, the leader and their bindings are the user's";
+    expect(refusal("prefix+x")).toBe(`key "prefix" is refused: ${why}`);
+    expect(refusal("<leader>x")).toBe(`key "<leader>" is refused: ${why}`);
+  });
+
+  test("keys of exactly the character limit are taken", () => {
+    const keys = `j${" ".repeat(AGENT_KEY_LIMITS.chars - 1)}`;
+    expect(ids(keys)).toEqual(["scroll.down"]);
+  });
+
+  test("a < with no > after it in its word is the < key", () => {
+    const why = "it is not one of the keys vimma_keys runs";
+    expect(refusal("<")).toBe(`key "<" is refused: ${why}`);
+    expect(refusal("j<")).toBe(`key "<" is refused: ${why}`);
+    expect(refusal("<x >")).toBe(`key "<" is refused: ${why}`);
+  });
+
+  test("a label that is too long is named with its f", () => {
+    expect(refusal("fsdfsdfsdx")).toBe(
+      `key "fsdfsdfsd" is refused: a label is at most ${AGENT_LINKS.label} characters`,
+    );
+  });
+
+  test("a tab in a find query is refused", () => {
+    expect(refusal("/a\tb<CR>")).toBe(
+      'key "/" is refused: a find query must not contain control characters',
+    );
+  });
+
+  test("keys after a find's <CR> are keys again, up to the next space and after it", () => {
+    expect(ids("/foo<CR>n j")).toEqual(["find.forward", "find.next", "scroll.down"]);
+    expect(ids("/foo<CR>n")).toEqual(["find.forward", "find.next"]);
+  });
+});
+
+describe("vimma_keys edges: tokens", () => {
+  test("a word that looks like one key but is none is refused as no key", () => {
+    expect(refusal("ctrl+")).toBe('key "ctrl+" is refused: it is not a key');
+  });
+
+  test("a <...> that names no key is refused as no key, after another token too", () => {
+    expect(refusal("<zzz>")).toBe('key "<zzz>" is refused: it is not a key');
+    expect(refusal("<C-d><zzz>")).toBe('key "<zzz>" is refused: it is not a key');
+  });
+
+  test("after a token, a < whose > is missing or past a space is the < key", () => {
+    const why = 'key "<" is refused: it is not one of the keys vimma_keys runs';
+    expect(refusal("<C-d><")).toBe(why);
+    expect(refusal("<C-d><x >")).toBe(why);
+  });
+});
+
+describe("link list edges", () => {
+  const rect = { x: 0, y: 0, width: 10, height: 10 };
+  test("a text of exactly AGENT_LINKS.text characters is not cut", () => {
+    const text = "t".repeat(AGENT_LINKS.text);
+    expect(agentLinkLines([{ label: "a", target: { rect, href: "https://a/", text } }])).toBe(
+      `a "${text}" https://a/`,
+    );
+  });
+
+  test("a link with no text is an empty string; spaces in an href are dropped", () => {
+    expect(agentLinkLines([{ label: "a", target: { rect, href: "https://a/ b\tc" } }])).toBe(
+      'a "" https://a/bc',
+    );
+  });
+
+  test("the byte budget counts each line and the line break between two exactly", () => {
+    const links = [
+      { label: "a", target: { rect, href: "https://a/", text: "x" } },
+      { label: "s", target: { rect, href: "https://b/", text: "y" } },
+    ];
+    const one = agentLinkLines(links.slice(0, 1));
+    const both = agentLinkLines(links);
+    const size = (s: string) => new TextEncoder().encode(JSON.stringify(s)).length;
+    expect(agentLinkList(links, size(one))).toEqual({ text: one, omitted: 1 });
+    expect(agentLinkList(links, size(one) - 1)).toEqual({ text: "", omitted: 2 });
+    expect(agentLinkList(links, size(both))).toEqual({ text: both, omitted: 0 });
+    expect(agentLinkList(links, size(both) - 1)).toEqual({ text: one, omitted: 1 });
+  });
+});
