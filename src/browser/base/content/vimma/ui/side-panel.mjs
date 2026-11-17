@@ -158,8 +158,8 @@ export class SidePanel {
 
   /**
    * One `[modal.panel]` action (panel.down, panel.up, panel.first, panel.last, panel.half_down,
-   * panel.half_up, panel.open, panel.select, panel.close, panel.close_tab, panel.mark,
-   * panel.visual, panel.move), with its count.
+   * panel.half_up, panel.open, panel.select, panel.close, panel.close_tab,
+   * panel.close_active_tab, panel.mark, panel.visual, panel.move), with its count.
    * @param {{ id: string, arg?: number, count?: number }} action
    */
   action(action) {

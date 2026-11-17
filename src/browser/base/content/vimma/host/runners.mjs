@@ -459,6 +459,13 @@ export function hostRunners(host, page) {
     "panel.close_tab": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
       if (!s.bookmarks.isOpen) s.panel.action(a);
     },
+    // docs/specs/close-active-tab.md decision 2: the tab the window shows, the panel kept open.
+    // Without the side panel (the bookmarks panel lists no tabs, or a global binding in another
+    // mode) it is tab.close (decision 3).
+    "panel.close_active_tab": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
+      if (s.panel.isOpen) s.panel.action(a);
+      else closeTab(s.win);
+    },
     // m4-side-panel-multiselect: marks in the side panel; nothing in the bookmarks panel.
     "panel.mark": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
       if (!s.bookmarks.isOpen) s.panel.action(a);

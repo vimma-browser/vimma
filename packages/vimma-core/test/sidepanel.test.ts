@@ -254,6 +254,60 @@ describe("panelKey", () => {
     expect(effect).toEqual({ type: "refuse", text: "pinned tab: unpin it to close it" });
   });
 
+  // docs/specs/close-active-tab.md
+  test("close_active_tab closes the active tab, not the highlighted one", () => {
+    const { state, effect } = press(s, [{ id: "panel.up" }, { id: "panel.close_active_tab" }]);
+    expect(effect).toEqual({ type: "closeTab", id: "t3" });
+    expect(state.rows[state.selected]?.tabId).toBe("t2");
+  });
+
+  test("close_active_tab on the highlighted active tab moves the highlight as x does", () => {
+    const { state, effect } = press(s, [{ id: "panel.close_active_tab" }]);
+    expect(effect).toEqual({ type: "closeTab", id: "t3" });
+    expect(state.rows[state.selected]?.tabId).toBe("t4");
+    const last = openPanel(
+      {
+        ...model,
+        workspaces: model.workspaces.map((w) => ({ ...w, activeTab: w.tabs.at(-1) ?? null })),
+      },
+      info,
+    );
+    const r = press(last, [{ id: "panel.close_active_tab" }]);
+    expect(r.effect).toEqual({ type: "closeTab", id: "t4" });
+    expect(r.state.rows[r.state.selected]?.tabId).toBe("t3");
+  });
+
+  test("close_active_tab keeps the highlight's tab after the refresh", () => {
+    const r = press(s, [{ id: "panel.up" }, { id: "panel.close_active_tab" }]);
+    const left = {
+      ...model,
+      workspaces: model.workspaces.map((w) =>
+        w.id === "w2" ? { ...w, tabs: ["t2", "t4"], activeTab: "t4" } : w,
+      ),
+    };
+    const next = refreshPanel(r.state, left, info);
+    expect(next.rows[next.selected]?.tabId).toBe("t2");
+  });
+
+  test("close_active_tab on a pinned active tab refuses as x does", () => {
+    const pinned = openPanel(model, (id) => ({ ...tabs[id], pinned: id === "t3" }));
+    const { state, effect } = press(pinned, [{ id: "panel.close_active_tab" }]);
+    expect(state).toBe(pinned);
+    expect(effect).toEqual({ type: "refuse", text: "pinned tab: unpin it to close it" });
+  });
+
+  test("close_active_tab with no active row (an empty workspace) does nothing", () => {
+    const empty = openPanel({ ...model, active: "w3" }, info);
+    expect(press(empty, [{ id: "panel.close_active_tab" }]).effect).toBeNull();
+  });
+
+  test("a count before close_active_tab closes one tab", () => {
+    expect(panelKey(s, { id: "panel.close_active_tab", count: 3 }).effect).toEqual({
+      type: "closeTab",
+      id: "t3",
+    });
+  });
+
   test("x in an empty workspace does nothing", () => {
     const empty = openPanel({ ...model, active: "w3" }, info);
     expect(press(empty, [{ id: "panel.close_tab" }]).effect).toBeNull();

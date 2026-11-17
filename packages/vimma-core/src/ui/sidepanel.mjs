@@ -462,6 +462,21 @@ export function panelKey(state, action) {
         effect: { type: "closeTab", id: row.tabId },
       };
     }
+    // The tab the window shows, wherever the highlight is (docs/specs/close-active-tab.md
+    // decision 2). A highlight on it moves as `x` moves it; elsewhere it stays on its own tab,
+    // which the refresh after the close finds again.
+    case "panel.close_active_tab": {
+      const at = state.rows.findIndex((r) => r.active);
+      const row = state.rows[at];
+      if (!row) return { state, effect: null };
+      if (row.pinned) return { state, effect: { type: "refuse", text: PINNED_TEXT } };
+      const next =
+        state.selected !== at ? state.selected : at < last ? at + 1 : Math.max(0, at - 1);
+      return {
+        state: Object.freeze({ ...state, selected: next }),
+        effect: { type: "closeTab", id: row.tabId },
+      };
+    }
     // The highlighted row's tab, which need not be the selected one: a background tab moves
     // without being selected first. The panel closes for the picker that asks where.
     case "panel.move": {
