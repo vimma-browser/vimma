@@ -392,6 +392,11 @@ export function geminiArguments({ model }) {
 /**
  * The `.gemini/settings.json` of a Gemini CLI run's folder (C3): `vimma-ctl mcp` with the ticket
  * in its own environment, and `trust`, since a headless run asks nobody before a tool call.
+ * Subagents are off (M56): one of the user's (`~/.gemini/agents/*.md`) may declare an MCP server
+ * named `vimma_chat`, which the allow-list lets start and which is merged into Vimma's entry,
+ * its command getting the ticket; `-e none` turns off only an extension's. This file, trusted
+ * through `GEMINI_CLI_TRUST_WORKSPACE`, wins over the user's settings; only the system's
+ * settings, an administrator's, come after it.
  * @param {{ vimmaCtl: string, ticket: string, port: number }} o
  */
 export function geminiSettings({ vimmaCtl, ticket, port }) {
@@ -404,6 +409,7 @@ export function geminiSettings({ vimmaCtl, ticket, port }) {
         trust: true,
       },
     },
+    experimental: { enableAgents: false },
   };
 }
 
@@ -1141,8 +1147,8 @@ const GEMINI_REFUSED = new Set(["tool_not_registered", "policy_violation"]);
  * by their `mcp_vimma_chat_` prefix: a tool's name does not say where its server's name ends,
  * so a server named `vimma_chat_x` (or `vimma chat`, made `vimma_chat`) would pass as Vimma's,
  * but `--allowed-mcp-server-names` starts only a server named exactly `vimma_chat`, whether
- * from settings, an extension (off with `-e none`) or a subagent (Research); that exact name is
- * the boundary.
+ * from settings or an extension (off with `-e none`), and subagents, which could declare one,
+ * are off (`geminiSettings`); that exact name is the boundary.
  */
 export class GeminiStream extends JsonLines {
   /** @param {{ model?: string }} [o]  the provider's model, "" for Gemini CLI's own default */

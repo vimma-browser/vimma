@@ -2560,10 +2560,11 @@ Vimma's own`; rename it. A call to any server other than Vimma's ends the task.
   refused, shows as refused on its `◆` line
   (`◆ gemini ran its own tool: run_shell_command "ls /"`).
 - Vimma gives it one MCP server, `vimma_chat`, in a settings file in the task's own folder, and
-  lets no other server start (`--allowed-mcp-server-names vimma_chat`); its extensions are off
-  for these runs (`-e none`), since they bring servers and tools of their own. So the `vimma`
-  server you may have added for a terminal (Using Vimma from an agent) stays in your settings but
-  does not start. A call to any other server ends the task.
+  lets no other server start (`--allowed-mcp-server-names vimma_chat`), so the `vimma` server you
+  may have added for a terminal (Using Vimma from an agent) stays in your settings but does not
+  start. Its extensions are off for these runs (`-e none`), since they bring servers and tools of
+  their own, and so are its subagents, yours and its built-in ones, since a subagent can start a
+  server of its own. A call to any other server ends the task.
 - Gemini CLI saves every conversation, page text included, under `~/.gemini/tmp`, and has no
   setting to stop it. After each task, Vimma deletes what Gemini CLI saved of it: its session
   file, its project folders in `~/.gemini/tmp` and `~/.gemini/history`, and its entry in
@@ -3935,6 +3936,25 @@ Library, Sync, another window) show in the panel at once. With `root = "all"`, t
 folders cannot be renamed, moved or deleted. The panel remembers which folders you opened until
 Vimma quits.
 
+**Open a bookmark by its title:** `:bookmarkopen Google Shopping` opens the bookmark with that
+title in this tab, as `Enter` in the panel does; `:bookmarktab` opens it in a new tab in front.
+`Tab` completes both names. Case does not matter, and it finds bookmarks in every folder, whatever
+the panel shows. When part of a title matches, or several bookmarks share the title, a picker
+opens with your text typed: keep typing to narrow it, `ctrl+n` / `ctrl+p` to move, `Enter` to
+open, `Esc` to close. `:bookmarkopen` alone lists every bookmark. A bookmarklet opened this way
+follows the `bookmarklets` setting above, as in the panel; `:bookmarktab` never runs one. The
+text you type only picks among your bookmarks by title: it is never opened as an address, and a
+bookmark without a title is reached through the picker.
+
+To reach a bookmark with one key, bind the command in [config.toml](#configtoml); quote a title
+with spaces:
+
+```toml
+[modal.normal]
+"<M-g>" = ":bookmarkopen 'Google Shopping'"
+"<M-j>" = ":bookmarkopen 'Dark mode'"    # a bookmarklet, with bookmarklets = "user"
+```
+
 Counts work as in the [side panel](#side-panel), except that a folder tree has no fixed row
 numbers: the rows shift as folders open and close. So the bookmarks panel shows no numbers by
 default, and `4G` and `4 Enter` ignore the count. With `[panel] numbers = "relative"` or
@@ -4280,6 +4300,8 @@ type reaches the page, and `ctrl+b` sequences still work.
 | `:route`, `:route add`, `:route move` | Workspace routing rules: list them, add one for this site, move this tab ([Routing](#routing-which-workspace-a-link-opens-in)).                |
 | `:bookmarks`                          | Opens or closes the [bookmarks panel](#bookmarks), as `ctrl+b shift+b`.                                                                        |
 | `:bookmark [path]`                    | Bookmarks the page under `path` (`work/docs/title`); without one, opens the prompt, as `ctrl+b a`.                                             |
+| `:bookmarkopen [title]`               | Opens the bookmark with that title in this tab; a partial or shared title, or none, opens a picker ([Bookmarks](#bookmarks)).                  |
+| `:bookmarktab [title]`                | The same in a new tab in front.                                                                                                                |
 | `:source`                             | Reads `config.toml` now instead of within 2 seconds (see [config.toml](#configtoml)).                                                          |
 | `:source path`                        | Loads that TOML file instead of `config.toml` until `config.toml` changes or a plain `:source`.                                                |
 | `:config`                             | Opens `config.toml` in a new tab (read-only view); creates it from a commented template when it is missing.                                    |

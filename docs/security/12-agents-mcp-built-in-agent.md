@@ -502,7 +502,11 @@ own process, not a process group.
   command line. The CLI **must** be given no MCP server but Vimma's, so that it reaches pages
   only through the gate: `--strict-mcp-config`; for Gemini CLI `--allowed-mcp-server-names`
   naming its server alone (`vimma_chat`, whose entry in the run folder's settings replaces a
-  user's entry of that name whole), its extensions off (`-e none`), and a tool of any other MCP
+  user's entry of that name whole), its extensions off (`-e none`), its subagents off
+  (`experimental.enableAgents: false` in that file, since a user's subagent may declare a
+  server named `vimma_chat`, which the allow-list would start and merge into Vimma's entry; the
+  system settings, an administrator's, come after the run folder's and could turn them back on,
+  as they could already replace Vimma's entry), and a tool of any other MCP
   server that ran ending the run, as does a call to one that has no id to match its result by,
   one still unanswered at the run's `result` or the stream's end, and a call that reuses the id
   of one still open (its result could be either's);
@@ -539,6 +543,7 @@ own process, not a process group.
   [`test_a_server_named_as_vimmas_refuses_the_run`](../../tests/browser/browser_vimma_agent_cli_codex.js),
   [`test_a_call_to_a_server_not_vimmas_ends_the_run`](../../tests/browser/browser_vimma_agent_cli_codex.js),
   [`vimma's server is in the run folder's settings file, the ticket in its env`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`gemini's subagents are off, so none brings a server named as vimma's (M56)`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`gemini trusts the run folder from its environment, and keeps its reports there`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`a tool of another mcp server that ran ends the run; one never offered does not`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`a tool of another mcp server called without an id ends the run (M56)`](../../packages/vimma-core/test/agent-cli.test.ts),

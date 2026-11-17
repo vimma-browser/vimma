@@ -74,7 +74,7 @@ export { NO_OUTLINE, OUTLINE_ATTACHMENT, PDF_OUTLINE_PREF } from "./outline-ops.
 /** @import { ElementFocus } from "./element-focus.mjs" */
 /** @import { Notice } from "../ui/notice.mjs" */
 /** @import { AddonPicker, DownloadPicker, PermissionPicker, PopupPicker } from "../ui/picker.mjs" */
-/** @import { SplitPicker, WorkspacePicker } from "../ui/picker.mjs" */
+/** @import { BookmarkPicker, SplitPicker, WorkspacePicker } from "../ui/picker.mjs" */
 /** @import { RenamePrompt } from "../ui/rename-prompt.mjs" */
 /** @import { SidePanel } from "../ui/side-panel.mjs" */
 /** @import { BookmarksPanel } from "../ui/bookmarks-panel.mjs" */
@@ -191,6 +191,7 @@ const isRemoteBrowserTarget = (target) =>
  * @property {PermissionPicker} permissionPicker  `:site` (docs/specs/site-permissions.md)
  * @property {PopupPicker} popups  the `:popups` overlay (docs/specs/popup-blocked.md)
  * @property {SplitPicker} splitPicker  the workspace's splits (docs/specs/multiple-splits.md)
+ * @property {BookmarkPicker} bookmarkPicker  `:bookmarkopen`'s (docs/specs/bookmark-open.md)
  * @property {DownloadWatch} downloads  the status bar's `↓` segment (docs/specs/downloads.md)
  * @property {DownloadPicker} downloadPicker  the prefix+d overlay (docs/specs/downloads.md)
  * @property {DownloadRows} downloadRows  the picker's rows while it is open
@@ -236,6 +237,7 @@ function vimmaSurfaceOpen(s) {
     s.permissionPicker.isOpen ||
     s.popups.isOpen ||
     s.splitPicker.isOpen ||
+    s.bookmarkPicker.isOpen ||
     s.downloadPicker.isOpen ||
     s.mcpLog.isOpen ||
     s.grep.isOpen ||
@@ -792,6 +794,7 @@ export const VimmaHost = {
     forgetSitePermissions(win);
     state.popups.destroy();
     state.splitPicker.destroy();
+    state.bookmarkPicker.destroy();
     state.downloads.destroy();
     state.downloadPicker.destroy();
     state.downloadRows.close();
@@ -1194,7 +1197,7 @@ export const VimmaHost = {
     if (state.addonPicker.isOpen || state.mcpLog.isOpen || state.grep.isOpen) return "help";
     if (state.permissionPicker.isOpen) return "help";
     if (state.popups.isOpen || state.downloadPicker.isOpen) return "help";
-    if (state.splitPicker.isOpen) return "help";
+    if (state.splitPicker.isOpen || state.bookmarkPicker.isOpen) return "help";
     if (state.cmdline.isOpen) return "command";
     // A prompt over a panel (the bookmarks' add, rename, a y/N) types: keys are its input's.
     if (state.rename.isOpen) return "insert";
@@ -1326,6 +1329,7 @@ export const VimmaHost = {
       state.permissionPicker,
       state.popups,
       state.splitPicker,
+      state.bookmarkPicker,
       state.downloadPicker,
       state.mcpLog,
       state.grep,

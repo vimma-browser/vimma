@@ -2,10 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// What the bookmark keys do (docs/specs/bookmarks.md): `ctrl+b a` / `:bookmark` and the
-// bookmarks panel's effects (open, add, rename, move, delete, copy), over the rename prompt,
-// the notice, the split code and bookmark-ops.mjs (Places).
+// What the bookmark keys do (docs/specs/bookmarks.md): `ctrl+b a` / `:bookmark`, the
+// bookmarks panel's effects (open, add, rename, move, delete, copy) and `:bookmarkopen` /
+// `:bookmarktab` (docs/specs/bookmark-open.md), over the rename prompt, the notice, the split
+// code and bookmark-ops.mjs (Places).
 
+import { bookmarkOpenItems, bookmarkOpenTarget } from "../core/bookmark-open.mjs";
 import {
   bookmarkletDecision,
   completeWorkspacePath,
@@ -20,6 +22,7 @@ import {
   currentPage,
   fetchBookmark,
   findBookmark,
+  loadAllBookmarks,
   loadScope,
   moveItem,
   placeBookmark,
@@ -34,6 +37,7 @@ import { splitPane } from "./pane-ops.mjs";
 /** @import { RenamePrompt } from "../ui/rename-prompt.mjs" */
 /** @import { WindowState } from "./VimmaHost.sys.mjs" */
 /** @import { BookmarksPanel } from "../ui/bookmarks-panel.mjs" */
+/** @import { BookmarkItem } from "../core/bookmark-open.mjs" */
 
 /**
  * @typedef {object} BookmarkContext
@@ -147,15 +151,18 @@ function where(tree, guid) {
 
 /**
  * Loads `url` in the panel's window (spec decision 6): this tab, a background tab (the
- * workspace's container, by the m3 routing), or a new split pane.
+ * workspace's container, by the m3 routing), or a new split pane. `foreground`: the new tab is
+ * selected, as `:tabnew`'s is (bookmark-open decision 3).
  * @param {BookmarkContext} ctx
  * @param {string} url
  * @param {"current" | "tab" | "vertical" | "horizontal"} at
+ * @param {boolean} [foreground]
  */
-function openBookmark(ctx, url, at) {
+function openBookmark(ctx, url, at, foreground = false) {
   const win = ctx.win;
   if (at === "tab") {
-    win.openTrustedLinkIn(url, "tab", { inBackground: true });
+    win.openTrustedLinkIn(url, "tab", { inBackground: !foreground });
+    if (foreground) ctx.panel.close();
     return;
   }
   ctx.panel.close();
@@ -175,29 +182,48 @@ function openBookmark(ctx, url, at) {
  * Opens or runs a stored bookmark the user picked (docs/specs/bookmarklets.md B10): read again
  * from Places by its guid, decided by core `bookmarkletDecision` as the user at the level in
  * force, then loaded (decision 6) or, a bookmarklet, run in the selected tab's page (B7, B8).
- * The bookmarks panel's Enter and l come here, and `:bookmark_open` (#1219) is to call it with
- * the guid of the picked bookmark: typed text picks a stored bookmark and never becomes
- * the URL.
+ * The bookmarks panel's Enter and l come here, and so do `:bookmarkopen` and `:bookmarktab`
+ * (`from: "command"`, docs/specs/bookmark-open.md) with the guid of the bookmark the user
+ * picked: typed text picks a stored bookmark and never becomes the URL.
  * @param {BookmarkContext} ctx
  * @param {string} guid
  * @param {"current" | "tab" | "vertical" | "horizontal"} where
+ * @param {{ from?: "panel" | "command", listed?: string, page?: PageSeen }} [options]
+ *   `from: "command"`: the new tab is in front and the refusals name the command; `listed`: the
+ *   bookmark's URL when its row was listed, refused if it changed since;
+ *   `page`: the tab and page the command was given on, which a bookmarklet must still run on
+ *   (bookmark-open decision 6)
  */
-export async function openUserBookmark(ctx, guid, where) {
+export async function openUserBookmark(ctx, guid, where, { from = "panel", listed, page } = {}) {
   const bm = await fetchBookmark(guid);
   if (!bm) {
     ctx.say("bookmark: it is no longer there");
     return;
   }
-  const d = bookmarkletDecision({ url: bm.url, setting: bookmarkletsSetting(), by: "user", where });
+  if (listed !== undefined && bm.url !== listed) {
+    ctx.say("bookmark: it changed since it was listed: pick it again");
+    return;
+  }
+  const d = bookmarkletDecision({
+    url: bm.url,
+    setting: bookmarkletsSetting(),
+    by: "user",
+    where,
+    from,
+  });
   if (d.kind === "refuse") {
     ctx.say(d.text);
     return;
   }
   if (d.kind === "open") {
-    openBookmark(ctx, bm.url, where);
+    openBookmark(ctx, bm.url, where, from === "command");
     return;
   }
   const browser = ctx.win.gBrowser.selectedBrowser;
+  if (page && !samePage(page, browser)) {
+    ctx.say("bookmark: the page changed: run it again");
+    return;
+  }
   const refused = runBookmarklet(browser, bm.url, { popups: true });
   if (refused) {
     ctx.say(refused);
@@ -205,6 +231,52 @@ export async function openUserBookmark(ctx, guid, where) {
   }
   ctx.panel.close();
   browser.focus();
+}
+
+/**
+ * The tab and page a command or picker was asked on.
+ * @typedef {{ browser: MozBrowser, uri: string }} PageSeen
+ */
+
+/**
+ * The selected tab's page now, for openUserBookmark's `page`.
+ * @param {BrowserWindow} win
+ * @returns {PageSeen}
+ */
+export function pageSeen(win) {
+  const browser = win.gBrowser.selectedBrowser;
+  return { browser, uri: browser.currentURI?.spec ?? "" };
+}
+
+/**
+ * Whether `browser` is the tab, still on the page, the command was given on.
+ * @param {PageSeen} page
+ * @param {MozBrowser} browser
+ */
+const samePage = (page, browser) =>
+  page.browser === browser && (browser.currentURI?.spec ?? "") === page.uri;
+
+/**
+ * `:bookmarkopen [title]` (`where` "current") and `:bookmarktab [title]` ("tab"), docs/specs/
+ * bookmark-open.md: every bookmark is read afresh; one titled exactly `text` opens at once
+ * through openUserBookmark, several or a part of a title go to `pick` with the text as its
+ * query, none is said on the notice.
+ * @param {BookmarkContext} ctx
+ * @param {string | undefined} text
+ * @param {"current" | "tab"} where
+ * @param {(items: BookmarkItem[], query: string, page: PageSeen) => void} pick  opens the
+ *   bookmark picker; `page` is where the command was given
+ */
+export async function openBookmarkByTitle(ctx, text, where, pick) {
+  const page = pageSeen(ctx.win);
+  const items = bookmarkOpenItems(await loadAllBookmarks());
+  const target = bookmarkOpenTarget(items, text);
+  if (target.kind === "refuse") ctx.say(target.text);
+  else if (target.kind === "pick") pick(items, target.query, page);
+  else {
+    const listed = items.find((i) => i.bookmarkId === target.id)?.listed;
+    await openUserBookmark(ctx, target.id, where, { from: "command", listed, page });
+  }
 }
 
 /**

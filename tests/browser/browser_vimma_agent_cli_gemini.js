@@ -294,6 +294,11 @@ addTidyTask(async function test_task_on_stdin_fixed_arguments_and_the_folders_se
   Assert.equal(report.tmpdir, report.cwd, "and its reports go to the run's folder");
   Assert.deepEqual(Object.keys(report.settings.mcpServers), ["vimma_chat"], "vimma's server only");
   Assert.equal(report.settings.mcpServers.vimma_chat.command, ctl, "which is vimma-ctl");
+  Assert.strictEqual(
+    report.settings.experimental?.enableAgents,
+    false,
+    "and subagents off, so none of the user's brings a server of that name (M56)",
+  );
   Assert.ok(report.server_trusted, "trusted, as nobody answers a headless run's questions");
   Assert.deepEqual(
     report.server_env_keys,

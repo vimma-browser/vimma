@@ -441,7 +441,11 @@ export function bookmarkKind(url) {
 /** Why an agent's run is refused below `"agent"` (bookmarklets B13); it names the setting. */
 export const AGENTS_OFF =
   'bookmarklets are off for agents: [bookmarks] bookmarklets = "agent" in config.toml allows them';
-const RUNS_HERE = "a bookmarklet runs in this page: Enter runs it";
+/** Why a bookmarklet does not open in a new tab or pane (B7), naming what runs it instead. */
+const RUNS_HERE = Object.freeze({
+  panel: "a bookmarklet runs in this page: Enter runs it",
+  command: "a bookmarklet runs in this page: :bookmarkopen runs it",
+});
 
 /**
  * Whether a stored bookmark's URL opens, runs or is refused (bookmarklets B6), for the level in
@@ -449,22 +453,28 @@ const RUNS_HERE = "a bookmarklet runs in this page: Enter runs it";
  * `agent-bookmarklet` both decide here. A bookmarklet runs only in the current page (B7), for
  * the user at `"user"` and `"agent"`, for an agent only at `"agent"` (B13); `data:` and other
  * schemes never (B5). An agent only ever runs bookmarklets through this, never opens a page.
- * An unknown level counts as `"none"`.
+ * An unknown level counts as `"none"`. `from` only words the refusal of a new tab or pane: the
+ * panel's Enter, or `:bookmarkopen` (docs/specs/bookmark-open.md), runs it.
  * @param {{ url: string, setting: BookmarkletsSetting, by: "user" | "agent",
- *   where: "current" | "tab" | "vertical" | "horizontal" }} request
+ *   where: "current" | "tab" | "vertical" | "horizontal", from?: "panel" | "command" }} request
  * @returns {{ kind: "open" } | { kind: "run" } | { kind: "refuse", text: string }}
  */
-export function bookmarkletDecision({ url, setting, by, where }) {
+export function bookmarkletDecision({ url, setting, by, where, from = "panel" }) {
   const kind = bookmarkKind(url);
+  const runHere = () =>
+    where === "current"
+      ? /** @type {const} */ ({ kind: "run" })
+      : {
+          kind: /** @type {const} */ ("refuse"),
+          text: from === "command" ? RUNS_HERE.command : RUNS_HERE.panel,
+        };
   if (by === "agent") {
     if (setting !== "agent") return { kind: "refuse", text: AGENTS_OFF };
     if (kind !== "bookmarklet") return { kind: "refuse", text: "only a bookmarklet can be run" };
-    return where === "current" ? { kind: "run" } : { kind: "refuse", text: RUNS_HERE };
+    return runHere();
   }
   if (kind === "openable") return { kind: "open" };
-  if (kind === "bookmarklet" && (setting === "user" || setting === "agent")) {
-    return where === "current" ? { kind: "run" } : { kind: "refuse", text: RUNS_HERE };
-  }
+  if (kind === "bookmarklet" && (setting === "user" || setting === "agent")) return runHere();
   const scheme = /^\s*([a-z][a-z0-9+.-]*):/i.exec(url)?.[1]?.toLowerCase() ?? "this";
   return {
     kind: "refuse",

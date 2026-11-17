@@ -19,6 +19,7 @@ import { HintOverlay } from "../ui/hint-overlay.mjs";
 import { Notice } from "../ui/notice.mjs";
 import {
   AddonPicker,
+  BookmarkPicker,
   DownloadPicker,
   GotoPicker,
   PermissionPicker,
@@ -40,7 +41,12 @@ import { DownloadRows, DownloadWatch, downloadPickerKey } from "./download-ops.m
 import { Find } from "./find.mjs";
 import { ElementFocus } from "./element-focus.mjs";
 import { CHAT_SERVICES, giveSelectedTab } from "./agent-chat-ops.mjs";
-import { bookmarkContext, runBookmarkEffect } from "./bookmark-actions.mjs";
+import {
+  bookmarkContext,
+  openUserBookmark,
+  pageSeen,
+  runBookmarkEffect,
+} from "./bookmark-actions.mjs";
 import { bookmarkletsSetting, loadTree, observeBookmarks } from "./bookmark-ops.mjs";
 import { pickerWorkspaces, selectedTabId, tabById } from "./goto.mjs";
 import { goToTab, reopenClosed, tabSearchList } from "./tab-search.mjs";
@@ -139,6 +145,7 @@ export function newWindowState(host, win, keymap, env) {
       state.permissionPicker.close({ tabChanged: true });
       state.popups.close({ tabChanged: true });
       state.splitPicker.close({ tabChanged: true });
+      state.bookmarkPicker.close({ tabChanged: true });
       state.downloadPicker.close({ tabChanged: true });
       state.mcpLog.close({ tabChanged: true });
       state.grep.close({ tabChanged: true });
@@ -276,6 +283,21 @@ export function newWindowState(host, win, keymap, env) {
       select: (id) => {
         showSplit(win, Number(id));
         host._emit(state);
+      },
+    }),
+    // docs/specs/bookmark-open.md: Enter opens the row as the panel's Enter does, or in a new tab.
+    bookmarkPicker: new BookmarkPicker(win, {
+      select: (id) => {
+        const say = (/** @type {string} */ t) => state.notice.show(t, { error: true });
+        const picker = state.bookmarkPicker;
+        openUserBookmark({ ...bookmarkContext(state), say }, id, picker.where, {
+          from: "command",
+          listed: picker.row(id)?.listed,
+          page: picker.page ?? pageSeen(win),
+        }).catch((e) => {
+          console.error("vimma: the bookmark could not open", e);
+          say(`bookmark: ${e?.message ?? e}`);
+        });
       },
     }),
     popups: new PopupPicker(win, {
