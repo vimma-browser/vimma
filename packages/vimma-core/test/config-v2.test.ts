@@ -55,11 +55,16 @@ describe("schema 2", () => {
 
   test("defaults: panes.max 8, hint_chars the home row, no sites; defaults.toml is schema 2", () => {
     expect(PANES_MAX_DEFAULT).toBe(8);
-    expect(DEFAULT_CONFIG.panes).toEqual({ max: 8, layout: "dwindle", main_size: 60 });
+    expect(DEFAULT_CONFIG.panes).toEqual({
+      max: 8,
+      layout: "dwindle",
+      main_size: 60,
+      new_tab: "alone",
+    });
     const text = formatDefaultsToml();
     expect(text).toMatch(/^schema = 2$/m);
     expect(text).toMatch(
-      /^\[panes\]\nmax = 8\n(#.*\n)*layout = "dwindle"\n(#.*\n)*main_size = 60$/m,
+      /^\[panes\]\nmax = 8\n(#.*\n)*layout = "dwindle"\n(#.*\n)*main_size = 60\n(#.*\n)*new_tab = "alone"$/m,
     );
     expect(text).toMatch(/^hint_chars = "asdfghjkl"$/m);
     expect(text).toMatch(/^# \[sites\."docs\.google\.com"\]$/m);
@@ -80,6 +85,7 @@ describe("[panes] max", () => {
       layout: "dwindle",
       mainSize: 0.6,
       maxSplits: MAX_SPLITS_DEFAULT,
+      newTab: "alone",
     });
   });
 
@@ -150,10 +156,42 @@ describe("[panes] max_splits", () => {
   });
 });
 
+// docs/specs/new-tab-in-split.md
+describe("[panes] new_tab", () => {
+  test('defaults to "alone"', () => {
+    expect(ok(v2("")).panes.newTab).toBe("alone");
+  });
+
+  test.each([["alone"], ["pane"]])('new_tab = "%s" is accepted', (v) => {
+    expect(ok(v2("[panes]", `new_tab = "${v}"`)).panes.newTab).toBe(v);
+  });
+
+  test("an unknown value is an error at its line with the nearest name", () => {
+    expect(errors(v2("", "[panes]", 'new_tab = "panes"'))).toEqual([
+      { line: 4, path: "panes.new_tab", message: 'must be "alone" or "pane"', suggestion: "pane" },
+    ]);
+    expect(errors(v2("[panes]", "new_tab = true"))).toEqual([
+      { line: 3, path: "panes.new_tab", message: "expected a string, got a boolean" },
+    ]);
+  });
+
+  test("a near miss suggests new_tab", () => {
+    expect(errors(v2("[panes]", 'newtab = "pane"'))).toEqual([
+      { line: 3, path: "panes.newtab", message: 'unknown key "newtab"', suggestion: "new_tab" },
+    ]);
+  });
+});
+
 // docs/specs/tiling-layouts.md
 describe("[panes] layout and main_size", () => {
   test("defaults: dwindle, 60 %", () => {
-    expect(ok(v2("")).panes).toEqual({ max: 8, layout: "dwindle", mainSize: 0.6, maxSplits: 9 });
+    expect(ok(v2("")).panes).toEqual({
+      max: 8,
+      layout: "dwindle",
+      mainSize: 0.6,
+      maxSplits: 9,
+      newTab: "alone",
+    });
   });
 
   test.each([["dwindle"], ["manual"]])('layout = "%s" is accepted', (layout) => {

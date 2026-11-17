@@ -1,0 +1,7 @@
+# Scenarios that fill a new pane with `vimma-ctl open` (a new foreground tab): with
+# new_tab = "pane" it opens in the focused pane, as it did before "alone" became the default
+# (docs/specs/new-tab-in-split.md).
+schema = 2
+
+[panes]
+new_tab = "pane"

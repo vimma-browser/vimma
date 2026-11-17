@@ -285,7 +285,12 @@ describe("the m3-restart-restore scenario (m3-workspaces sub-spec 7)", () => {
   const steps = JSON.stringify(restart?.steps);
   it("runs on Vimma's own startup.page (resume the session), not the harness's 0", () => {
     expect(restart?.pending).toBeUndefined();
-    expect(restart?.prefs).toEqual({ "browser.startup.page": null });
+    expect(restart?.prefs).toEqual({
+      "browser.startup.page": null,
+      // A fresh tab in the split's workspace opens in the focused pane, as the last steps assert
+      // (docs/specs/new-tab-in-split.md).
+      "vimma.config.path": "checkout:tests/e2e/fixtures/new-tab-pane.toml",
+    });
   });
   it("quits and relaunches once, between building workspaces and asserting them", () => {
     expect(restart?.steps.filter((s) => s.restart === "quit")).toHaveLength(1);

@@ -229,7 +229,9 @@ Decisions 1–11 follow the goal above. Decisions 12–19 are the answers to the
     (also `f` on a `target=_blank` link), `vimma-ctl open` and routed links. A new tab is told from
     a pick by its `TabOpen` coming just before its `TabSelect`, in the same task (as
     WindowWorkspaces' `#adopt` already relies on). While the view is hidden a new tab shows alone
-    and the view stays hidden.
+    and the view stays hidden. (Since changed: by default a new foreground tab shows alone right
+    after the split and the view is hidden; `[panes] new_tab = "pane"` keeps the focused pane;
+    [new-tab-in-split](new-tab-in-split.md).)
 23. **A hidden view comes back whole** when any of its tabs is selected, by any route: the same
     tree, sizes and zoom, focus on that tab's pane. If something else selects a view's tab while
     it is hidden (Firefox picking the next tab after a close), the view shows again on the next
@@ -311,7 +313,8 @@ Decisions 1–11 follow the goal above. Decisions 12–19 are the answers to the
    longer puts that tab in the focused pane (3 above); the multiselect mochitest's last task
    changed with it.
 
-Unchanged: new foreground tabs open in the focused pane (decision 22); new panes (`ctrl+b v`,
+Unchanged: new foreground tabs open in the focused pane (decision 22; since changed, see
+[new-tab-in-split](new-tab-in-split.md)); new panes (`ctrl+b v`,
 `-`, `enter`); a tab of another workspace switches workspaces; the address bar loads into the
 focused pane.
 

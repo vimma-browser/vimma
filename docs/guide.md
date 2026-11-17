@@ -1336,8 +1336,14 @@ restart. To show the tab you are on beside others, start another split from the 
 ([Several splits](#several-splits)).
 
 A new tab you open while the split shows (`ctrl+t`, `ctrl+b c`, `t`, `:tabnew`, `P`, a link
-opened in a new foreground tab, also with `f`, or a link from another app) opens in the focused
-pane instead: the split stays, and the tab that pane showed stays open in the workspace.
+opened in a new foreground tab, also with `f`, or a link from another app) shows alone too, right
+after the split's tabs, so the split you arranged is never broken up: it waits hidden, with its
+panes, sizes and focused pane, until `]s`, `ctrl+b S` or any of its tabs brings it back. A tab
+opened from a link on one of the split's pages goes where Firefox puts it, after the split and
+after the tabs already opened from that page, and a closed tab you reopen with `ctrl+shift+t`
+goes back to its old place. To open new tabs in the focused pane instead, set
+`[panes] new_tab = "pane"` in [config.toml](#configtoml): the new tab then takes that pane's
+place, the split stays, and the tab that pane showed stays open in the workspace.
 
 A split made outside Vimma (Firefox's own split-view command, an extension, or a restored
 Firefox session) becomes the workspace's panes: its tabs side by side in its order, at the
@@ -1354,10 +1360,10 @@ panes.
 A workspace can keep several splits, up to 9, and shows one at a time: an editor beside its
 docs, and a second comparison of two pages, without breaking up the first.
 
-- **Starting another split.** Go to a tab that is in no split, so it shows alone and the split
-  waits hidden. Open the side panel (`ctrl+b b`): on a tab shown alone nothing starts marked.
-  Mark two or more tabs with `space` or `V` and press `Enter`; they become a new split, shown at
-  once, and the split you had before waits hidden. A marked tab that was in another split leaves
+- **Starting another split.** Go to a tab that is in no split, or open a new one, so it shows
+  alone and the split waits hidden. Open the side panel (`ctrl+b b`): on a tab shown alone
+  nothing starts marked. Mark two or more tabs with `space` or `V` and press `Enter`; they become
+  a new split, shown at once, and the split you had before waits hidden. A marked tab that was in another split leaves
   it, as `ctrl+b x` would close its pane there; a split left with one pane ends.
 - **Numbers and colours.** Each split has a number, `S1` to `S9`, which it keeps while it exists,
   and the colour of that number from the theme. In the side panel each split's tabs carry a
@@ -4300,7 +4306,9 @@ accent = "#ff9e64"
 - **What applies live:** `[keys]`, `[modal]` (leader, `timeout_ms`, per-mode keys, `hint_chars`)
   and `[unbind]`; `[panes] max` (most panes in a workspace, 1 to 16, default 8; it limits new
   splits), `[panes] max_splits` (most splits in a workspace, 1 to 9, default 9;
-  [Several splits](#several-splits)), `[panes] layout` (`"dwindle"` or `"manual"`: where `ctrl+b enter` puts a new pane) and
+  [Several splits](#several-splits)), `[panes] new_tab` (`"alone"`, the default, or `"pane"`:
+  whether a new tab opened during a split shows alone beside it or opens in the focused pane;
+  [Picking a tab during a split](#picking-a-tab-during-a-split)), `[panes] layout` (`"dwindle"` or `"manual"`: where `ctrl+b enter` puts a new pane) and
   `[panes] main_size` (the main-\* presets' main pane, 20 to 80%, default 60); `[sites."<host>"] insert` (`auto`, `never` or `always`: whether a text field on that
   site and its subdomains takes insert mode); `[theme]` `source` (`omarchy` or `file`, the
   built-in palette), `name` (`vimma`, the default, or `tokyo-night`: the built-in palette),

@@ -405,6 +405,10 @@ max = 8
 layout = "dwindle"
 # The main pane's size in the main-vertical and main-horizontal layouts, 20 to 80 percent.
 main_size = 60
+# A new tab opened while a split shows (ctrl+t, a link in a new tab): "alone" shows it by
+# itself next to the split, which waits hidden (]s brings it back); "pane" opens it in the
+# focused pane instead.
+new_tab = "alone"
 
 # The bookmarks panel (ctrl+b shift+b) and ctrl+b a: "workspace" is the current workspace's
 # folder in the Bookmarks Toolbar; "toolbar" the whole toolbar; "all" every bookmark.

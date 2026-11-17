@@ -522,7 +522,8 @@ export const VimmaActors = {
    * could not link to. `background` is passed to openLinkIn either way, so
    * browser.tabs.loadInBackground never decides (docs/specs/follow-link-switch.md decision 5). A
    * foreground tab is opened selected rather than selected afterwards: its TabOpen and TabSelect
-   * in one task make it take the focused pane in a split (decision 4).
+   * in one task make it a new tab in a split, shown alone beside it, or in the focused pane with
+   * `[panes] new_tab = "pane"` (decision 4; docs/specs/new-tab-in-split.md).
    * @param {MozBrowser} browser
    * @param {HintTarget} target
    * @param {{ background: boolean }} options

@@ -55,7 +55,9 @@ there`). It follows what is typed: after `s`, it names the first label that star
    does, and every label opens its link in a new tab and selects it, whatever the case typed. The
    status bar shows `<label> go there`.
 5. As a Vimma user in a split, a link opened with switching takes the focused pane, as every new
-   foreground tab does there, and the old tab stays open.
+   foreground tab does there, and the old tab stays open. (Since changed: by default a new
+   foreground tab shows alone after the split, which waits hidden; `[panes] new_tab = "pane"`
+   keeps this behaviour; [new-tab-in-split](new-tab-in-split.md).)
 6. As a Vimma user, the new tab is in the same window, container and workspace as the tab the link
    was on, and placed as Firefox places a related tab. Closing it with `x` returns to the tab the
    link was on.
@@ -277,7 +279,9 @@ Written first and seen to fail.
 - `the_switching_action_selects_the_tab_in_either_case`.
 - `the_status_bar_shows_both_outcomes_in_gF` and that the segment is gone when hint mode ends.
 - In `browser_vimma_side_panel_unsplit.js`:
-  `a_switching_follow_in_a_split_takes_the_focused_pane`.
+  `a_switching_follow_in_a_split_takes_the_focused_pane`. (Since changed: now
+  `a_switching_follow_with_new_tab_pane_takes_the_focused_pane`, beside
+  `a_switching_follow_in_a_split_shows_alone_beside_it`; [new-tab-in-split](new-tab-in-split.md).)
 - In `browser_vimma_private_workspace.js`: `a_switching_follow_in_a_private_window_stays_private`.
 
 **e2e:** a scenario `issue-533-follow-link-switch.json` that starts `gF` on a fixture page under the

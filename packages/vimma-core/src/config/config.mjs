@@ -78,9 +78,10 @@ import { hasControl } from "../text/strings.mjs";
  * @property {Record<string, string[]>} unbind
  * @property {Workspace[]} workspaces                     file order = workspace order
  * @property {ThemeConfig} theme
- * @property {{ max: number, layout: "dwindle" | "manual", mainSize: number, maxSplits: number }}
- *   panes `[panes]` (schema 2); `mainSize` is `main_size` as a share (0.6),
- *   docs/specs/tiling-layouts.md; `maxSplits` is `max_splits`, docs/specs/multiple-splits.md
+ * @property {{ max: number, layout: "dwindle" | "manual", mainSize: number, maxSplits: number,
+ *   newTab: "alone" | "pane" }} panes `[panes]` (schema 2); `mainSize` is `main_size` as a share
+ *   (0.6), docs/specs/tiling-layouts.md; `maxSplits` is `max_splits`,
+ *   docs/specs/multiple-splits.md; `newTab` is `new_tab`, docs/specs/new-tab-in-split.md
  * @property {string} hintChars                          `[modal] hint_chars` (schema 2)
  * @property {InsertSiteRule[]} sites                    `[sites."<host>"]` in file order (schema 2)
  * @property {Route[]} routes                            `[[routes]]` in file order (schema 2)
@@ -232,9 +233,14 @@ const WORKSPACE_KEYS = ["color", "icon", "home", "autofill"];
 const THEME_KEYS = ["source", "name", "appearance", "font", "colors"];
 const THEME_NAMES = Object.keys(BUILTIN_THEMES);
 const THEME_SOURCES = ["omarchy", "file"];
-const PANES_KEYS = ["max", "layout", "main_size", "max_splits"];
+const PANES_KEYS = ["max", "layout", "main_size", "max_splits", "new_tab"];
 /** `[panes] layout` (docs/specs/tiling-layouts.md): where a pane opened without a direction goes. */
 export const PANES_LAYOUT_MODES = Object.freeze(["dwindle", "manual"]);
+/**
+ * `[panes] new_tab` (docs/specs/new-tab-in-split.md): where a new tab opened while a split shows
+ * goes, alone beside the split or into the focused pane.
+ */
+export const PANES_NEW_TAB_MODES = Object.freeze(["alone", "pane"]);
 /** `[panes] main_size` bounds, in percent. */
 export const MAIN_SIZE_MIN = 20;
 export const MAIN_SIZE_MAX = 80;
@@ -606,6 +612,11 @@ function validate(raw, declared, warnings = []) {
         if (typeof v !== "bigint") typeError(path, v, "an integer");
         else if (v < BigInt(MAIN_SIZE_MIN) || v > BigInt(MAIN_SIZE_MAX)) {
           fail(path, `must be an integer between ${MAIN_SIZE_MIN} and ${MAIN_SIZE_MAX} (percent)`);
+        }
+      } else if (key === "new_tab") {
+        if (typeof v !== "string") typeError(path, v, "a string");
+        else if (!PANES_NEW_TAB_MODES.includes(v)) {
+          fail(path, `must be "alone" or "pane"`, closest(v, PANES_NEW_TAB_MODES));
         }
       } else if (key === "max_splits") {
         if (typeof v !== "bigint") typeError(path, v, "an integer");
@@ -1179,6 +1190,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
       // ship (docs/specs/multiple-splits.md, Delivery 6).
       maxSplits:
         /** @type {{ max_splits?: number }} */ (user.panes ?? {}).max_splits ?? MAX_SPLITS_DEFAULT,
+      newTab: user.panes?.new_tab ?? "alone",
     },
     hintChars: /** @type {string | undefined} */ (user.modal?.hint_chars) ?? DEFAULT_HINT_CHARS,
     sites: (siteOrder ?? Object.keys(user.sites ?? {})).map((match) => ({

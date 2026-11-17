@@ -20,7 +20,8 @@ import { DEFAULT_THEME_NAME } from "./theme.mjs";
  * @property {number} [schema]
  * @property {Record<string, WorkspaceInput>} [workspaces]
  * @property {ThemeInput} [theme]
- * @property {{ max?: number, layout?: "dwindle" | "manual", main_size?: number }} [panes]
+ * @property {{ max?: number, layout?: "dwindle" | "manual", main_size?: number,
+ *   new_tab?: "alone" | "pane" }} [panes]
  * @property {Record<string, { insert?: import("../keys/editable.mjs").InsertSiteMode }>} [sites]
  * @property {Record<string, string>[]} [routes]  `[[routes]]` (workspace-routing)
  * @property {{ default_workspace?: string }} [routing]  where links from other programs that no
@@ -516,6 +517,7 @@ export const DEFAULT_CONFIG = Object.freeze({
     max: PANES_MAX_DEFAULT,
     layout: /** @type {const} */ ("dwindle"),
     main_size: MAIN_SIZE_DEFAULT * 100,
+    new_tab: /** @type {const} */ ("alone"),
   },
   sites: {},
   firefox: { disable: /** @type {"all"} */ ("all"), enable: [] },
@@ -632,6 +634,10 @@ export function formatDefaultsToml() {
     'layout = "dwindle"',
     "# The main pane's size in the main-vertical and main-horizontal layouts, 20 to 80 percent.",
     `main_size = ${MAIN_SIZE_DEFAULT * 100}`,
+    '# A new tab opened while a split shows (ctrl+t, a link in a new tab): "alone" shows it by',
+    '# itself next to the split, which waits hidden (]s brings it back); "pane" opens it in the',
+    "# focused pane instead.",
+    `new_tab = ${tomlString(DEFAULT_CONFIG.panes?.new_tab ?? "alone")}`,
     "",
     '# The bookmarks panel (ctrl+b shift+b) and ctrl+b a: "workspace" is the current workspace\'s',
     '# folder in the Bookmarks Toolbar; "toolbar" the whole toolbar; "all" every bookmark.',

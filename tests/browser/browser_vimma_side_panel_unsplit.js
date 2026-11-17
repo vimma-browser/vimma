@@ -311,6 +311,7 @@ async function reset() {
   while (view().panes) view().close();
   view().max = Panes.PANES_MAX_DEFAULT;
   view().mode = "dwindle";
+  view().newTab = "alone";
   document.getElementById(NOTICE_ID)?.hidePopover?.();
   await nextFrame();
 }
@@ -644,12 +645,17 @@ add_task(async function another_workspace_in_the_panel_shows_its_own_split() {
   await BrowserTestUtils.closeWindow(win);
 });
 
-// docs/specs/follow-link-switch.md behaviour 5: gF's switching open takes the focused pane, as
-// every new foreground tab does in a split (decision 22), and the hinted tab stays open.
-add_task(async function a_switching_follow_in_a_split_takes_the_focused_pane() {
+/**
+ * Follows a new link from a's page with gF (switching) while a | b shows, a's pane focused.
+ * @param {string} name  the new tab's name in byName
+ * @param {"alone" | "pane"} newTab  config `[panes] new_tab`
+ * @returns {Promise<SplitTab>} the new tab, selected
+ */
+async function followWithSwitch(name, newTab) {
   await reset();
+  view().newTab = newTab;
   await split(["a", "b"], "a");
-  const target = `${PAGE}?followed`;
+  const target = `${PAGE}?${name}`;
   await SpecialPowers.spawn(tab("a").linkedBrowser, [target], (href) => {
     const a = content.document.createElement("a");
     a.href = href;
@@ -669,8 +675,35 @@ add_task(async function a_switching_follow_in_a_split_takes_the_focused_pane() {
   EventUtils.synthesizeKey(label.slice(-1).toUpperCase(), { shiftKey: true });
   // A loaded tab has its panel.
   const followed = /** @type {SplitTab} */ (await opened);
-  byName.set("followed", followed);
+  byName.set(name, followed);
   await until(() => gBrowser.selectedTab === followed, "the new tab is selected");
+  return followed;
+}
+
+// docs/specs/new-tab-in-split.md: gF's switching open is a new foreground tab, so by default it
+// shows alone right after the split, which waits hidden as it was; the hinted tab stays open.
+add_task(async function a_switching_follow_in_a_split_shows_alone_beside_it() {
+  const followed = await followWithSwitch("beside", "alone");
+  await until(() => hiddenView(), "the split waits hidden");
+  Assert.ok(shape() === "x[a,b]" || shape() === "y[a,b]", `the split keeps its panes (${shape()})`);
+  Assert.equal(focusedName(), "a", "and its focused pane");
+  Assert.ok(!followed.splitview, "the new tab joined no split");
+  Assert.deepEqual(
+    tabOrder().filter((n) => ["a", "b", "beside"].includes(n)),
+    ["a", "b", "beside"],
+    "the new tab sits right after the split's tabs",
+  );
+  gBrowser.selectedTab = tab("b");
+  await until(() => !hiddenView(), "a split tab brings the split back");
+  await reset();
+  gBrowser.removeTab(followed);
+});
+
+// docs/specs/follow-link-switch.md behaviour 5: with [panes] new_tab = "pane", gF's switching
+// open takes the focused pane, as every new foreground tab then does in a split (decision 22),
+// and the hinted tab stays open.
+add_task(async function a_switching_follow_with_new_tab_pane_takes_the_focused_pane() {
+  const followed = await followWithSwitch("followed", "pane");
   await until(
     () => shape() === "x[followed,b]" || shape() === "y[followed,b]",
     "it takes a's pane",
@@ -679,6 +712,37 @@ add_task(async function a_switching_follow_in_a_split_takes_the_focused_pane() {
   Assert.ok(tab("a").parentNode && !tab("a").closing, "the hinted tab stays open");
   await reset();
   gBrowser.removeTab(followed);
+});
+
+// docs/specs/new-tab-in-split.md decision 3: only a tab Firefox put at the end of the strip moves
+// beside the split. A closed tab reopened (ctrl+shift+t) during a split goes back to its own
+// place, as SessionStore's undoCloseTab puts it there; it still shows alone.
+add_task(async function a_reopened_tab_keeps_its_place_during_a_split() {
+  await reset();
+  const { SessionStore } = ChromeUtils.importESModule(
+    "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
+  );
+  const { TabStateFlusher } = ChromeUtils.importESModule(
+    "moz-src:///browser/components/sessionstore/TabStateFlusher.sys.mjs",
+  );
+  const closing = tab("a");
+  const index = gBrowser.tabs.indexOf(closing);
+  Assert.ok(index < gBrowser.tabs.length - 1, "a is not the last tab");
+  await TabStateFlusher.flush(closing.linkedBrowser);
+  const slot = opened.indexOf(closing);
+  BrowserTestUtils.removeTab(closing);
+  await until(() => !closing.parentNode, "a is closed");
+  await split(["b", "c"], "b");
+  const restored = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "SSTabRestored");
+  const reopened = /** @type {SplitTab} */ (SessionStore.undoCloseTab(window, 0));
+  byName.set("a", reopened);
+  opened[slot] = reopened;
+  await restored;
+  await until(() => gBrowser.selectedTab === reopened, "the reopened tab is selected");
+  Assert.equal(gBrowser.tabs.indexOf(reopened), index, "it is back at its own index");
+  Assert.ok(hiddenView(), "it shows alone, the split waits hidden");
+  Assert.equal(shape(), "x[b,c]", "with its panes");
+  await reset();
 });
 
 // docs/specs/multiple-splits.md behaviour 4 and decision 4: the refusal to split a tab shown

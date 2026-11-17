@@ -76,7 +76,8 @@ import {
  * @typedef {Pick<Tabbrowser, "tabpanels" | "_switcher"> & { tabs: Tab[], selectedTab: Tab,
  *   tabContainer: Element, splitViews: Wrapper[],
  *   addTabSplitView: (tabs: Tab[], options?: object) => Wrapper,
- *   addTrustedTab: (url: string, options?: object) => Tab, unpinTab: (tab: Tab) => void }} TabBrowser
+ *   addTrustedTab: (url: string, options?: object) => Tab, unpinTab: (tab: Tab) => void,
+ *   moveTabAfter: (tab: Tab, target: Tab) => void }} TabBrowser
  * @typedef {{ ok: true } | { ok: false, reason: string }} PaneResult
  * @typedef {object} Adoption  how splits made outside Vimma map onto workspaces (WindowWorkspaces)
  * @property {(tab: Tab) => string | undefined} workspaceOf  the tab's workspace id; undefined:
@@ -198,6 +199,12 @@ export class PaneView {
   #ended = [];
   /** config `[panes] max_splits` (docs/specs/multiple-splits.md decision 7) */
   maxSplits = MAX_SPLITS_DEFAULT;
+  /**
+   * Config `[panes] new_tab`: a new foreground tab while the view shows goes alone beside it
+   * ("alone") or into the focused pane ("pane"), docs/specs/new-tab-in-split.md.
+   * @type {"alone" | "pane"}
+   */
+  newTab = mergeWithDefaults({}).panes.newTab;
   /**
    * @type {Map<string, Slot & { number: number, others: Map<number, Slot> }>}
    */
@@ -935,9 +942,10 @@ export class PaneView {
    * docs/specs/side-panel-unsplit.md decisions 21-23). A pane's tab: focus that pane (core
    * updates the MRU and ends any zoom, as a pane move does), and a hidden view shows again, whole.
    * A new foreground tab (its TabOpen came in this task) the workspace may show, while the view
-   * shows: it replaces the focused pane's tab (core's `setPaneTab`), the split rebuilt around it
-   * in this same task, so no paint sees Firefox's suspended split; the old tab stays open. Any
-   * other tab (a pick: the picker, ctrl+tab, alt+N, ctrl+b n, a click, a pinned tab): it shows
+   * shows: config `[panes] new_tab` decides. "alone" (the default) shows it alone beside the
+   * split, kept as a hidden view (docs/specs/new-tab-in-split.md); "pane" replaces the focused
+   * pane's tab (core's `setPaneTab`), the split rebuilt around it in this same task, so no paint
+   * sees Firefox's suspended split, and the old tab stays open. Any other tab (a pick: the picker, ctrl+tab, alt+N, ctrl+b n, a click, a pinned tab): it shows
    * alone, as Firefox's split view does, and the tree is kept as a hidden view. Then reconcile.
    * Not from our own selection (the re-entry flag), not for a tab of another workspace or while
    * WindowWorkspaces switches (`accepts`: the switch parks the tree as it is), and not while
@@ -962,10 +970,35 @@ export class PaneView {
     const { panes: next, change } = pickTab(panes, tab.linkedPanel || "", {
       opened,
       canJoin: this.#canShow(tab),
+      newTab: this.newTab,
     });
     if (change === "none") return;
+    if (change === "beside") this.#placeBeside(tab, panes);
     this.#panes = next;
     this.reconcile();
+  }
+
+  /**
+   * Moves a new tab shown alone right after the split's tabs (docs/specs/new-tab-in-split.md
+   * decision 3), so it sits next to the work it came from. Only a tab Firefox put at the end of
+   * the strip, its place for a tab with no index and no opener (ctrl+t, :tabnew, P, a link from
+   * another app, with `browser.tabs.insertAfterCurrent` off): a tab given its own index keeps it,
+   * such as one reopened with ctrl+shift+t (SessionStore's undoCloseTab passes its old index), or
+   * any tab with insertAfterCurrent on. A tab opened from a link keeps Firefox's place too: with
+   * `browser.tabs.insertRelatedAfterCurrent` that is after the split's wrapper already, chained
+   * after earlier tabs from the same page (Tabbrowser.sys.mjs `#insertTabAtIndex`), whose order a
+   * move would break. `moveTabAfter` on a split's tab moves past its wrapper, never into it
+   * (`#moveTabNextTo`).
+   * @param {Tab} tab
+   * @param {Panes} panes
+   */
+  #placeBeside(tab, panes) {
+    const gBrowser = gBrowserOf(this.#win);
+    if (tab.openerTab || gBrowser.tabs.at(-1) !== tab) return;
+    const ids = new Set(leaves(panes).map((l) => l.tab));
+    const last = gBrowser.tabs.filter((t) => ids.has(t.linkedPanel)).at(-1);
+    if (!last || gBrowser.tabs.indexOf(tab) === gBrowser.tabs.indexOf(last) + 1) return;
+    gBrowser.moveTabAfter(tab, last);
   }
 
   /**
