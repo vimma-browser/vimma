@@ -61,7 +61,7 @@ registerCleanupFunction(async () => {
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = (/** @type {BrowserWindow} */ win = window) =>
   win.gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -117,7 +117,7 @@ async function question() {
 
 /**
  * `agent-show` of `tab`, answered with `answer` through the gate.
- * @param {any} c @param {any} tab @param {GateAnswer} [answer]
+ * @param {Client} c @param {MozTabbrowserTab} tab @param {GateAnswer} [answer]
  */
 async function show(c, tab, answer = { kind: "once" }) {
   const id = c.request("agent-show", { tab: idOf(tab) });

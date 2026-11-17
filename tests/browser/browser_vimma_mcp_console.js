@@ -60,7 +60,7 @@ registerCleanupFunction(async () => {
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -107,7 +107,7 @@ async function question() {
 
 /**
  * `agent-console` on `tab`, answered with `answer` (null: not asked, a grant runs it).
- * @param {any} c @param {any} tab @param {object} [args] @param {GateAnswer | null} [answer]
+ * @param {Client} c @param {MozTabbrowserTab} tab @param {object} [args] @param {GateAnswer | null} [answer]
  */
 async function readConsole(c, tab, args = {}, answer = { kind: "once" }) {
   const id = c.request("agent-console", { tab: idOf(tab), ...args });
@@ -132,7 +132,7 @@ function lines(wrapped) {
   return inner ? inner.split("\n").map((l) => JSON.parse(l)) : [];
 }
 
-/** Waits until the fixture's own requests and its uncaught error are in. @param {any} c @param {any} tab */
+/** Waits until the fixture's own requests and its uncaught error are in. @param {Client} c @param {MozTabbrowserTab} tab */
 async function settled(c, tab) {
   let r;
   await until(() => {
@@ -160,7 +160,7 @@ add_task(async function test_console_returns_uncaught_errors_and_console_errors(
   Assert.equal(r.result.title, "Console agent fixture", "its title");
   Assert.ok(Math.abs(r.result.time - Date.now()) < 60000, "Vimma's clock");
   const errors = lines(r.result.errors);
-  const find = (/** @type {(e: any) => boolean} */ f) => errors.find(f);
+  const find = (/** @type {(e: ConsoleEntry) => boolean} */ f) => errors.find(f);
   const thrown = find((e) => e.message.includes("boom from the fixture"));
   Assert.equal(thrown?.level, "error", "the uncaught error, as an error");
   Assert.equal(thrown?.source, "script", "from a script");

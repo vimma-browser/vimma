@@ -64,7 +64,7 @@ registerCleanupFunction(async () => {
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -97,7 +97,7 @@ async function openAgentTab(url = CLICK) {
   return tab;
 }
 
-/** The connections the running task opened. @type {any[]} */
+/** The connections the running task opened. @type {Client[]} */
 const clients = [];
 
 /** What a task leaves when it ends, passed or not (tidyTask): this file's state at its start. */
@@ -134,7 +134,7 @@ async function question() {
   return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
-/** The list's elements by what they say. @param {any} c @param {any} tab */
+/** The list's elements by what they say. @param {Client} c @param {MozTabbrowserTab} tab */
 async function labels(c, tab) {
   const id = c.request("agent-elements", { tab: idOf(tab) });
   // Under a grant the list runs unasked (mcp-grants G1).
@@ -152,7 +152,7 @@ async function labels(c, tab) {
 
 /**
  * `agent-activate` on `tab`, answered with `answer` (null: not asked, a grant runs it).
- * @param {any} c @param {any} tab @param {string} label @param {GateAnswer | null} [answer]
+ * @param {Client} c @param {MozTabbrowserTab} tab @param {string} label @param {GateAnswer | null} [answer]
  */
 async function activate(c, tab, label, answer = { kind: "once" }) {
   const id = c.request("agent-activate", { tab: idOf(tab), label });
@@ -169,7 +169,7 @@ async function activate(c, tab, label, answer = { kind: "once" }) {
   return r;
 }
 
-/** @param {any} tab */
+/** @param {MozTabbrowserTab} tab */
 const seen = (tab) =>
   SpecialPowers.spawn(tab.linkedBrowser, [], () => ({
     items: content.document.querySelectorAll("#list li").length,
@@ -478,7 +478,7 @@ add_task(async function the_agent_page_helper_acts_on_the_document_it_is_given()
       button.textContent = "Go";
       const field = doc.createElement("input");
       doc.body.append(button, field);
-      /** @type {{ name: string, data: any }[]} */
+      /** @type {{ name: string, data: { step?: unknown } }[]} */
       const sent = [];
       const actor = /** @type {JSWindowActorChild} */ (
         /** @type {unknown} */ ({
@@ -487,9 +487,9 @@ add_task(async function the_agent_page_helper_acts_on_the_document_it_is_given()
           docShell: content.docShell,
           manager: {
             isCurrentGlobal: true,
-            innerWindowId: /** @type {any} */ (content.windowGlobalChild)?.innerWindowId,
+            innerWindowId: content.windowGlobalChild?.innerWindowId,
           },
-          sendAsyncMessage: (/** @type {string} */ name, /** @type {any} */ data) =>
+          sendAsyncMessage: (/** @type {string} */ name, /** @type {{ step?: unknown }} */ data) =>
             sent.push({ name, data }),
         })
       );
@@ -510,7 +510,7 @@ add_task(async function the_agent_page_helper_acts_on_the_document_it_is_given()
       const tick = () =>
         new Promise((resolve) => Services.tm.dispatchToMainThread(() => resolve(null)));
       const until = Date.now() + 30000;
-      /** @type {any} */
+      /** @type {{ op: string, gen: number, id: number, href: string | null, until: number }} */
       const click = { op: "activate", gen: 4, id: 0, href: null, until };
       const outcome = () => agent.element({ op: "outcome", gen: 4, id: 0 });
       const unknown = agent.element({ op: "alive", gen: 3, id: 0 });
@@ -529,7 +529,7 @@ add_task(async function the_agent_page_helper_acts_on_the_document_it_is_given()
       agent.pageHidden();
       await tick();
       const hidden = outcome();
-      const target = /** @type {any} */ (
+      const target = /** @type {FillTargetRaw} */ (
         agent.element({ op: "inspect-fill", gen: 4, id: 1, value: "hi" })
       );
       const expect = { field: target.field, type: target.type };
@@ -539,7 +539,7 @@ add_task(async function the_agent_page_helper_acts_on_the_document_it_is_given()
       content.console.error("agent page helper");
       const logged = agent
         .consoleEntries({})
-        .entries.some((/** @type {any} */ e) => e.message.includes("agent page helper"));
+        .entries.some((e) => e.message.includes("agent page helper"));
       return {
         unknown,
         alive,
