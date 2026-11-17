@@ -419,11 +419,13 @@ export class VimmaChild extends JSWindowActorChild {
         // _suggestionKeySent). Page script has had it by now; the focused field has not. While
         // the field's suggestion list is open, the field does not get it, so Cocoa's moveDown:
         // or moveUp: moves no caret and the parent, whose reply then comes back not prevented,
-        // presses the arrow key. Stopped, not prevented: a prevented keypress reads as one the
-        // page took. With no list open the field keeps its key.
+        // presses the arrow key. With no list open the field keeps its key.
+        // Stopped, not prevented: a prevented keypress reads as one the page took. And stopped
+        // for this target's later listeners too: a contenteditable's editor listens on this
+        // same target, the window's parent (HTMLEditor::GetDOMEventTarget), after this actor.
         const e = /** @type {KeyboardEvent & { multipleActionsPrevented: boolean }} */ (event);
         if (!e.isTrusted || !e.multipleActionsPrevented || e.defaultPrevented) return;
-        if (this.#suggestionsOpen()) e.stopPropagation();
+        if (this.#suggestionsOpen()) e.stopImmediatePropagation();
         return;
       }
       case "focusout":

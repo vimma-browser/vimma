@@ -208,8 +208,9 @@ export const VimmaActors = {
           pagehide: { mozSystemGroup: true, createActor: false },
           // macOS only: a suggestion key's keypress, before the focused field runs Cocoa's key
           // binding on it (VimmaChild, "keypress"). The field's handler is in the system
-          // group's bubble phase (TextInputListener, EditorEventListener): this one is at
-          // capture, on the way down to it.
+          // group: an <input>'s or <textarea>'s on the field in the bubble phase
+          // (TextInputListener), a contenteditable's at capture on the target these listeners
+          // are on, added after them (EditorEventListener). So this one is at capture too.
           ...(MAC ? { keypress: { capture: true, mozSystemGroup: true, createActor: false } } : {}),
         },
       },
