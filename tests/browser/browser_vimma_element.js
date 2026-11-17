@@ -33,8 +33,13 @@ const FRAME_TIMEOUT_PREF = "vimma.hints.frameTimeoutMs";
 /** hint.element's default key in normal mode (decision 2). */
 const KEY = "F";
 
+/**
+ * A border box in the top page's CSS pixels.
+ * @typedef {{ x: number, y: number, width: number, height: number }} Box
+ */
+
 /** The blocks of file_vimma_element.html that get a label, with their kinds. */
-const BLOCKS = {
+const BLOCKS = /** @type {const} */ ({
   header: "block",
   h: "heading",
   p1: "paragraph",
@@ -54,7 +59,7 @@ const BLOCKS = {
   sopen: "paragraph",
   sclosed: "paragraph",
   framed: "paragraph",
-};
+});
 
 /** A bare key with no binding in normal mode: it reaches the page and flushes earlier events. */
 const UNBOUND = "z";
@@ -143,7 +148,7 @@ function type(label) {
  * Each block's border box in the top page's CSS pixels, by id: in the page, its open and
  * closed shadow roots, and `framed` in the cross-origin frame.
  * @param {XULBrowserElement} browser
- * @returns {Promise<Record<string, { x: number, y: number, width: number, height: number }>>}
+ * @returns {Promise<Record<string, Box>>}
  */
 async function boxes(browser) {
   const ids = Object.keys(BLOCKS).filter((id) => id !== "framed");
@@ -159,7 +164,7 @@ async function boxes(browser) {
           ),
       ),
     ];
-    /** @type {Record<string, any>} */
+    /** @type {Record<string, Box>} */
     const out = {};
     for (const id of [...list, "covered", "far", "ariahidden", "edit"]) {
       const el = /** @type {HTMLElement} */ (roots.map((r) => r.getElementById(id)).find(Boolean));
@@ -167,7 +172,7 @@ async function boxes(browser) {
       out[id] = { x: r.x, y: r.y, width: r.width, height: r.height };
     }
     const f = /** @type {HTMLElement} */ (doc.getElementById("frame")).getBoundingClientRect();
-    out.frame = { x: f.x, y: f.y };
+    out.frame = { x: f.x, y: f.y, width: f.width, height: f.height };
     return out;
   });
   const inner = await SpecialPowers.spawn(contextOf(browser).children[0], [], () => {
@@ -182,13 +187,13 @@ async function boxes(browser) {
 
 /**
  * The hint whose block box is this element's border box (within a pixel), or undefined.
- * @param {any} hints
- * @param {{ x: number, y: number, width: number, height: number }} b
+ * @param {HostHints} hints
+ * @param {Box} b
  */
 function hintFor(hints, b) {
   const near = (/** @type {number} */ u, /** @type {number} */ v) => Math.abs(u - v) <= 1;
   return hints.hints.find(
-    (/** @type {any} */ h) =>
+    (h) =>
       h.target.box &&
       near(h.target.box.x, Math.max(b.x, 0)) &&
       near(h.target.box.y, Math.max(b.y, 0)) &&
@@ -214,11 +219,14 @@ add_task(async function element_hints_label_every_visible_text_block_and_nothing
         `${id}'s kind`,
       );
       // The label sits on the block's first line, inside its box.
+      // hintFor finds only a hint with a box.
+      const box = h?.target.box;
       Assert.ok(
         h &&
-          h.target.rect.x >= h.target.box.x - 1 &&
-          h.target.rect.y >= h.target.box.y - 1 &&
-          h.target.rect.y + h.target.rect.height <= h.target.box.y + h.target.box.height + 1,
+          box &&
+          h.target.rect.x >= box.x - 1 &&
+          h.target.rect.y >= box.y - 1 &&
+          h.target.rect.y + h.target.rect.height <= box.y + box.height + 1,
         `${id}'s label is on its first line`,
       );
     }
@@ -228,13 +236,11 @@ add_task(async function element_hints_label_every_visible_text_block_and_nothing
     Assert.equal(hints.hints.length, ids.length, `exactly ${ids.length} blocks`);
     Assert.deepEqual(
       drawnLabels().sort(),
-      hints.hints.map((/** @type {any} */ h) => h.label).sort(),
+      hints.hints.map((h) => h.label).sort(),
       "every label is drawn in chrome",
     );
     Assert.ok(
-      hints.hints.every((/** @type {any} */ h) =>
-        [...h.label].every((c) => "asdfghjkl".includes(c)),
-      ),
+      hints.hints.every((h) => [...h.label].every((c) => "asdfghjkl".includes(c))),
       "the hint charset",
     );
   });
@@ -244,7 +250,7 @@ add_task(async function a_label_outlines_its_block_in_chrome_until_esc() {
   await withPage(PAGE, async (browser) => {
     const hints = await startElementHints();
     const at = await boxes(browser);
-    const h = hintFor(hints, at.p2);
+    const h = /** @type {HostHint} */ (hintFor(hints, at.p2));
     type(h.label);
     await TestUtils.waitForCondition(() => document.getElementById("vimma-element"), "outlined");
     Assert.deepEqual(drawnLabels(), [], "the labels are gone");
@@ -292,7 +298,7 @@ add_task(async function the_outline_sits_on_its_block_at_150_percent_zoom() {
       );
       const hints = await startElementHints();
       const at = await boxes(browser);
-      type(hintFor(hints, at.q).label);
+      type(/** @type {HostHint} */ (hintFor(hints, at.q)).label);
       await TestUtils.waitForCondition(() => document.getElementById("vimma-element"), "outlined");
       const r = /** @type {Element} */ (
         /** @type {Element} */ (document.getElementById("vimma-element")).firstElementChild
@@ -311,11 +317,11 @@ add_task(async function element_hints_feel_like_f() {
   await withPage(PAGE, async (browser) => {
     const hints = await startElementHints();
     const all = hints.hints.length;
-    const long = hints.hints.filter((/** @type {any} */ h) => h.label.length > 1);
+    const long = hints.hints.filter((h) => h.label.length > 1);
     Assert.greater(long.length, 1, "some labels have two keys");
     const first = long[0].label[0];
     type(first);
-    const narrowed = long.filter((/** @type {any} */ h) => h.label.startsWith(first)).length;
+    const narrowed = long.filter((h) => h.label.startsWith(first)).length;
     await TestUtils.waitForCondition(() => drawnLabels().length === narrowed, "narrowed");
     EventUtils.synthesizeKey("KEY_Backspace");
     await TestUtils.waitForCondition(() => drawnLabels().length === all, "backspace restores");
@@ -421,11 +427,13 @@ function ringBox(browser) {
 
 /**
  * Whether two boxes are the same within `tolerance` CSS pixels.
- * @param {any} a
- * @param {any} b
+ * @param {Box} a
+ * @param {Box} b
  */
 function same(a, b, tolerance = 2) {
-  return ["x", "y", "width", "height"].every((k) => Math.abs(a[k] - b[k]) <= tolerance);
+  return /** @type {const} */ (["x", "y", "width", "height"]).every(
+    (k) => Math.abs(a[k] - b[k]) <= tolerance,
+  );
 }
 
 /**
@@ -459,12 +467,12 @@ function boxOf(browser, id) {
  * @param {string} id
  */
 async function waitForRingOn(browser, id) {
-  let want = null;
+  let want = /** @type {Box | null} */ (null);
   await TestUtils.waitForCondition(async () => {
     want = id === "framed" ? (await boxes(browser)).framed : await boxOf(browser, id);
     return ring() && same(ringBox(browser), want);
   }, `the outline is on ${id}`).catch(() => {});
-  Assert.ok(ring() && same(ringBox(browser), want), `the outline is on ${id}`);
+  Assert.ok(want && ring() && same(ringBox(browser), want), `the outline is on ${id}`);
 }
 
 /**
@@ -482,7 +490,10 @@ async function focusBlock(browser, id) {
     () => VimmaHost._element(window)?.length && ring(),
     `${id} is focused`,
   );
-  return /** @type {any} */ (VimmaHost._element(window));
+  // Focused: the wait above saw its block.
+  return /** @type {NonNullable<ReturnType<typeof VimmaHost._element>>} */ (
+    VimmaHost._element(window)
+  );
 }
 
 /** @param {string} id */
@@ -734,8 +745,9 @@ add_task(async function plus_minus_j_and_k_move_the_focus() {
     // picks another block.
     EventUtils.synthesizeKey("F");
     await TestUtils.waitForCondition(() => drawnLabels().length, "F draws the labels again");
-    const hints = VimmaHost._hints(window);
-    type(hintFor(hints, await boxOf(browser, "sclosed")).label);
+    // On: the wait above saw its labels.
+    const hints = /** @type {HostHints} */ (VimmaHost._hints(window));
+    type(/** @type {HostHint} */ (hintFor(hints, await boxOf(browser, "sclosed"))).label);
     await TestUtils.waitForCondition(() => ring(), "sclosed focused");
     EventUtils.synthesizeKey("j");
     await waitForRingOn(browser, "far");

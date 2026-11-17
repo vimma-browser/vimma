@@ -95,7 +95,8 @@ class Client {
       this.wake();
       this.wait();
     } catch (e) {
-      if (/** @type {any} */ (e).result === Cr.NS_BASE_STREAM_WOULD_BLOCK) this.wait();
+      if (/** @type {{ result?: number }} */ (e).result === Cr.NS_BASE_STREAM_WOULD_BLOCK)
+        this.wait();
       else this.end();
     }
     return undefined;
@@ -110,7 +111,10 @@ class Client {
     for (const w of this.waiters.splice(0)) w();
   }
 
-  /** The next message matching `pred`, or null once closed. @param {(m: any) => boolean} pred */
+  /**
+   * The next message matching `pred`, or null once closed.
+   * @param {(m: Client["messages"][number]) => boolean} pred
+   */
   async take(pred = () => true) {
     for (;;) {
       const i = this.messages.findIndex(pred);

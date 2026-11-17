@@ -140,7 +140,8 @@ function runCommand(line) {
   EventUtils.synthesizeKey("KEY_Enter");
 }
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+// Each task turns MCP on before it reads the agent workspace, which then has its container.
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
 
 /** @param {boolean} on */
@@ -329,7 +330,7 @@ add_task(async function agent_is_refused_below_agent_without_a_question() {
 
 /**
  * `agent-bookmarklet` request; its response once answered.
- * @param {any} c @param {MozTabbrowserTab} tab @param {string} name
+ * @param {Client} c @param {MozTabbrowserTab} tab @param {string} name
  */
 function runRequest(c, tab, name) {
   return c.request("agent-bookmarklet", { tab: idOf(tab), name });

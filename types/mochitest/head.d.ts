@@ -250,8 +250,11 @@ declare class Client {
   onInputStreamReady(): void;
   end(): void;
   wake(): void;
-  /** The next message matching `pred`, or null once closed. @param {(m: any) => boolean} pred */
-  take(pred?: (m: any) => boolean): Promise<any>;
+  /**
+   * The next message matching `pred`, or null once closed.
+   * @param {(m: Client["messages"][number]) => boolean} pred
+   */
+  take(pred?: (m: Client["messages"][number]) => boolean): Promise<any>;
   /** @param {object} message */
   send(message: object): void;
   /** Several messages in one write, so the server reads them together. @param {object[]} ms */

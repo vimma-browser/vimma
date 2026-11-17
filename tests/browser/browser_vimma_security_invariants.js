@@ -51,7 +51,7 @@ add_task(async function control_state_is_read_only() {
   Assert.equal(snapshot(), before, "state changes no tab, selection, mode or workspace");
   Assert.deepEqual(second, first, "and asking twice gives the same answer");
   Assert.ok(
-    first.tabs.some((/** @type {any} */ t) => t.selected && t.url === `${PAGE}?state`),
+    first.tabs.some((t) => t.selected && t.url === `${PAGE}?state`),
     "sanity: it reports the window",
   );
   while (gBrowser.tabs.length > 1)
@@ -67,7 +67,7 @@ add_task(async function control_state_never_inserts_a_lazy_tab() {
   Assert.ok(!lazy.linkedPanel, "sanity: the tab is lazy");
   const entry = VimmaControl._commands
     .state()
-    .tabs.find((/** @type {any} */ t) => t.id === String(lazy.linkedBrowser.browserId));
+    .tabs.find((t) => t.id === String(lazy.linkedBrowser.browserId));
   Assert.ok(!lazy.linkedPanel, "state leaves the lazy tab without a browser");
   Assert.strictEqual(entry?.loading, false, "and reports it as not loading");
   BrowserTestUtils.removeTab(lazy);
@@ -148,7 +148,8 @@ add_task(async function agent_keys_never_reach_the_prefix_the_command_line_or_mc
   );
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
   await VimmaControl.settled();
-  const agent = /** @type {any} */ (WorkspaceStore.agent);
+  // MCP is on, so the agent workspace exists, with its container.
+  const agent = /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
   const tab = gBrowser.addTab(PAGE, {
     userContextId: agent.userContextId,
     triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
