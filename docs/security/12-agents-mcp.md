@@ -286,7 +286,11 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`takes a tab and a title, and nothing else: no url, no script`](../../packages/vimma-core/test/bookmarklets-agent.test.ts),
   [`no grant covers it and its answer makes none`](../../packages/vimma-core/test/bookmarklets-agent.test.ts),
   [`an agent is refused at %s, naming the setting`](../../packages/vimma-core/test/bookmarklets.test.ts),
-  [`bad_bookmarklet_arguments_are_tool_errors_and_never_reach_vimma`](../../tools/vimma-ctl/src/mcp/args.rs)
+  [`bad_bookmarklet_arguments_are_tool_errors_and_never_reach_vimma`](../../tools/vimma-ctl/src/mcp/args.rs).
+  The user's `:bookmarkopen` and `:bookmarktab` ([bookmark-open](../specs/bookmark-open.md)) are
+  not agent paths: `vimma_keys` runs only its whitelist (D9), which has no command line, and no
+  agent command reaches `bookmark.open` or `bookmark.open_tab`.
+  [`vimma_keys can never reach the commands (mcp-drive D9)`](../../packages/vimma-core/test/bookmark-open.test.ts)
 - M2. Agent commands **must** see only tabs of the agent workspace in its container, checked
   when each command runs; **never** another workspace's tab, a foreign or pinned tab, or a
   private window's.

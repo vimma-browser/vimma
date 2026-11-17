@@ -23,7 +23,7 @@ import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { sayAddon, openAddonByName } from "./addon-ops.mjs";
 import { runAgentCommand } from "./agent-chat-ops.mjs";
 import { AgentUi } from "./agent-ui.mjs";
-import { bookmarkContext, quickAdd } from "./bookmark-actions.mjs";
+import { bookmarkContext, openBookmarkByTitle, quickAdd } from "./bookmark-actions.mjs";
 import { browserRunners, openSettings, xulElementById } from "./browser-ops.mjs";
 import { ControlHost } from "./control-ops.mjs";
 import { copyModeRunners } from "./copy-mode.mjs";
@@ -221,6 +221,27 @@ function outlineAction(s, a) {
  */
 function bookmarksAction(s, a) {
   if (s.bookmarks.isOpen) s.bookmarks.action(a);
+}
+
+/**
+ * `:bookmarkopen [title]` and `:bookmarktab [title]` (docs/specs/bookmark-open.md).
+ * @param {WindowState} s
+ * @param {string | undefined} text
+ * @param {"current" | "tab"} where
+ */
+function openByTitle(s, text, where) {
+  s.notice.hide();
+  const say = (/** @type {string} */ t) => s.notice.show(t, { error: true });
+  openBookmarkByTitle({ ...bookmarkContext(s), say }, text, where, (items, query, page) => {
+    // Read while the bookmarks loaded: another picker, the help or a prompt opened since keeps
+    // the keys, so this one stays shut rather than show over it.
+    const busy =
+      s.cmdline.isOpen || s.rename.isOpen || !!s.win.document.querySelector("dialog[open]");
+    if (!busy) s.bookmarkPicker.openWith(items, query, where, page);
+  }).catch((e) => {
+    console.error("vimma: bookmark failed", e);
+    say(`bookmark: ${e?.message ?? e}`);
+  });
 }
 
 /**
@@ -529,6 +550,14 @@ export function hostRunners(host, page) {
         s.notice.show(`bookmark: ${e?.message ?? e}`, { error: true });
       });
     },
+    // docs/specs/bookmark-open.md: by title; several matches or none typed open the picker.
+    "bookmark.open": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) =>
+      openByTitle(s, text, "current"),
+    "bookmark.open_tab": (
+      /** @type {WindowState} */ s,
+      _a,
+      /** @type {string | undefined} */ text,
+    ) => openByTitle(s, text, "tab"),
     "bookmarks.collapse": bookmarksAction,
     "bookmarks.expand": bookmarksAction,
     "bookmarks.open_tab": bookmarksAction,

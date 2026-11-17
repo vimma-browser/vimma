@@ -12,7 +12,9 @@ link targets for hints, which chrome must treat as untrusted.
 - U3. Bookmarks **must** open only http, https, file and about URLs. A bookmarklet (a stored
   bookmark whose URL is `javascript:`) is listed and **never** runs unless the config key
   `[bookmarks] bookmarklets` is `"user"` or `"agent"` (U8); then it runs only when you pick it in
-  the bookmarks panel (`Enter` or `l`), only in the current tab's http, https or file page, in that
+  the bookmarks panel (`Enter` or `l`) or name it with `:bookmarkopen` (one exact title, or
+  `Enter` in its picker; [bookmark-open](../specs/bookmark-open.md)), both through the panel's
+  `openUserBookmark`, only in the current tab's http, https or file page, in that
   page's own global with the page's principal (the load Firefox makes for a picked bookmarklet,
   [bookmarklets](../specs/bookmarklets.md) B8), **never** with the system principal and never in a
   new tab or pane. A `data:` bookmark and every other scheme **never** open, at any level.
@@ -22,6 +24,10 @@ link targets for hints, which chrome must treat as untrusted.
   [`user_runs_from_the_panel_in_the_pages_principal`](../../tests/browser/browser_vimma_bookmarklets.js),
   [`user_t_s_and_S_refuse`](../../tests/browser/browser_vimma_bookmarklets.js),
   [`user_runs_only_on_web_pages`](../../tests/browser/browser_vimma_bookmarklets.js),
+  [`a_bookmarklet_follows_the_level`](../../tests/browser/browser_vimma_bookmark_open.js),
+  [`bookmarktab_refuses_a_bookmarklet`](../../tests/browser/browser_vimma_bookmark_open.js),
+  [`a_row_that_changed_is_refused`](../../tests/browser/browser_vimma_bookmark_open.js),
+  [`a_page_that_changed_runs_nothing`](../../tests/browser/browser_vimma_bookmark_open.js),
   [`data_bookmarks_refuse_at_every_level`](../../tests/browser/browser_vimma_bookmarklets.js),
   [`a bookmarklet at %s, by the %s, %s → %j`](../../packages/vimma-core/test/bookmarklets.test.ts),
   [`data: and other schemes refuse at every level, for anyone, anywhere`](../../packages/vimma-core/test/bookmarklets.test.ts)
@@ -76,9 +82,13 @@ link targets for hints, which chrome must treat as untrusted.
   text **never** runs script: `p`, `P`, `:open`, `:tabnew`, a keyword bookmarklet (`:open k x`,
   whose `%s` would put typed words into the script), the socket's `open` (S10), `vimma_open` and
   a follow stay refused as in U1, U4, U5, M6 and M18, whatever the level; the setting is read
-  only by the bookmarks panel and `agent-bookmarklet`. Only a stored bookmark's URL,
+  only by the bookmarks panel (and `:bookmarkopen` / `:bookmarktab`, whose text is only compared
+  with stored titles and never loaded; an untitled bookmark is reached only through the picker)
+  and `agent-bookmarklet`. Only a stored bookmark's URL,
   unchanged, ever runs.
   [`typed_and_keyword_bookmarklets_refuse_at_every_level`](../../tests/browser/browser_vimma_bookmarklets.js),
+  [`typed_text_never_opens_or_runs`](../../tests/browser/browser_vimma_bookmark_open.js),
+  [`the typed text is only compared with titles: a URL or script typed matches nothing`](../../packages/vimma-core/test/bookmark-open.test.ts),
   [`p_and_shift_p_refuse_javascript_and_data_urls`](../../tests/browser/browser_vimma_normal_extras.js),
   [`javascript_urls_are_blocked_with_a_notice`](../../tests/browser/browser_vimma_cmdline.js),
   [`bookmark_keywords_work_and_refused_ones_never_run`](../../tests/browser/browser_vimma_search.js),

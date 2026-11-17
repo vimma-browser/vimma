@@ -135,6 +135,10 @@ export const COMMANDS = Object.freeze([
   // docs/specs/bookmarks.md: with a path, files the page without the prompt.
   cmd("bookmark", "optional", "bookmark.add", "Bookmark this page (optionally folders/title)"),
   cmd("bookmarks", "none", "bookmarks.toggle", "Open / close the bookmarks panel"),
+  // docs/specs/bookmark-open.md: one exact title opens; otherwise a picker with the text typed.
+  // No short alias: `:bo` stays `:bookmark`, which it has abbreviated since that came.
+  cmd("bookmarkopen", "optional", "bookmark.open", "Open a bookmark by title (without: picker)"),
+  cmd("bookmarktab", "optional", "bookmark.open_tab", "Open a bookmark by title in a new tab"),
   // docs/specs/bookmarks-toolbar-hidden.md decision 5: Firefox's toggle; a word sets a state.
   cmd(
     "bookmarkstoolbar",

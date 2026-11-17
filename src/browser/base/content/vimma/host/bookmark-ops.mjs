@@ -148,6 +148,15 @@ export async function loadScope(win = null) {
 }
 
 /**
+ * Every bookmark, whatever the panel's root (core fromPlaces `"all"`), for `:bookmarkopen`
+ * (docs/specs/bookmark-open.md decision 1).
+ * @returns {Promise<Folder>}
+ */
+export async function loadAllBookmarks() {
+  return fromPlaces(await placesTree(), "all");
+}
+
+/**
  * The panel's tree for `win` (loadScope).
  * @param {BrowserWindow | null} [win]
  * @returns {Promise<Folder>}
