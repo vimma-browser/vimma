@@ -399,6 +399,21 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
   - An extension (`~/.gemini/extensions/<name>/gemini-extension.json`) with a server of the
     run's name and another one: with `--allowed-mcp-server-names` the other one never started,
     but Vimma's server was started twice; with `-e none` as well, once.
+  - Whether `--allowed-mcp-server-names` matches a name exactly (issue #1192; read in the
+    source at the `v0.66.0` tag, not run): the option is split at commas, and every server, from
+    the settings files, an extension or a subagent's definition, is checked by its configured
+    name before it starts (`McpClientManager.isBlockedBySettings`, `allowedNames.includes(name)`),
+    so a server named `vimma_chat_x` beside `vimma_chat` is not started. A tool's name is
+    `mcp_<server>_<tool>` (no second `mcp_` when the server's name starts with one), with each
+    character outside `[A-Za-z0-9_.:-]` made `_`, and a name past 63 characters replaced by its
+    first 30 characters, `...` and its last 30 (`generateValidName`). So the servers
+    `vimma_chat_x`, `vimma chat`, `mcp_vimma_chat`, `vimma` with a tool `chat_x`, and any long
+    name that starts with `vimma_chat_` all give names that start with `mcp_vimma_chat_`: only
+    the exact-name allow-list keeps them out. Vimma's own names need no change.
+  - Subagents are on by default, and `-e none` turns off only an extension's: a subagent of the
+    user's (`~/.gemini/agents/*.md`) whose `mcp_servers` names a server `vimma_chat` would pass
+    the allow-list and be merged into Vimma's entry, its command replacing Vimma's while the
+    `env` is merged. Its tools could not be told from Vimma's (issue #1240).
 - **opencode 2.0.32.** `opencode run --help` only: `--format json`, `--model`, `--auto`
   ("Auto-approve permissions that are not explicitly denied"). Its event shape was not found in
   the binary and is not described here.

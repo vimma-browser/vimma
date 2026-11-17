@@ -543,7 +543,9 @@ own process, not a process group.
   [`a tool of another mcp server that ran ends the run; one never offered does not`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`a tool of another mcp server called without an id ends the run (M56)`](../../packages/vimma-core/test/agent-cli.test.ts),
   [`a call to another mcp server left unanswered ends the run (M56)`](../../packages/vimma-core/test/agent-cli.test.ts),
-  [`an id reused while its call is open ends the run (M56)`](../../packages/vimma-core/test/agent-cli.test.ts)
+  [`an id reused while its call is open ends the run (M56)`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`only the prefix mcp_vimma_chat_ marks vimma's tools (M56)`](../../packages/vimma-core/test/agent-cli.test.ts),
+  [`each of vimma's tools keeps its name through gemini's tool names`](../../packages/vimma-core/test/agent-cli.test.ts)
 - M57. A CLI's steps in the browser **must** be the conversation's: asked and granted as its
   own (the `Enter` grant covers them, checkpoints and `vimma_show` still ask), and shown from the
   gate's record, never from the CLI's account of them. A CLI's output **must** be rendered as
