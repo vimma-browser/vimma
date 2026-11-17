@@ -94,6 +94,7 @@ add_task(async function test_mcp_log_lists_asked_and_granted_calls() {
   await c.handshake({ protocol: 2, role: "agent" });
   await c.call("agent-hello", { client: { name: "claude-code" } });
 
+  /** @type {ControlRequestId<"agent-read" | "agent-keys">} */
   let id = c.request("agent-read", { tab: idOf(tab) });
   await answer("once");
   await c.response(id);

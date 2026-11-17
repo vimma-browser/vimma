@@ -115,8 +115,10 @@ add_task(async function test_mcp_open_names_the_error_page() {
   AgentGate.answer(AgentGate.waiting[0].id, { kind: "grant", minutes: null });
   const r = await c.response(id);
   Assert.ok(r.result, `the open answers: ${JSON.stringify(r.error)}`);
-  Assert.equal(r.result.unlisted, "error", JSON.stringify(r.result));
-  Assert.equal(r.result.loadError, "deniedPortAccess");
+  // A load that ended on an error page is not listed.
+  const unlisted = /** @type {Extract<typeof r.result, { unlisted: string }>} */ (r.result);
+  Assert.equal(unlisted.unlisted, "error", JSON.stringify(r.result));
+  Assert.equal(unlisted.loadError, "deniedPortAccess");
   c.close();
   BrowserTestUtils.removeTab(tabById(r.result.tab));
 });

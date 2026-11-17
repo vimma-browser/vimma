@@ -67,8 +67,14 @@ const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.b
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
 /**
+ * The commands about one page, each of which answers with the page's `url`.
+ * @typedef {"agent-keys" | "agent-elements" | "agent-read" | "agent-console"} AgentPageCommand
+ */
+
+/**
  * `command` on an agent connection; the first is answered with a grant, which covers the rest.
- * @param {Client} c @param {string} command @param {object} args @param {boolean} [asks]
+ * @template {string} C
+ * @param {Client} c @param {C} command @param {object} args @param {boolean} [asks]
  */
 async function call(c, command, args, asks = false) {
   const id = c.request(command, args);
@@ -123,7 +129,7 @@ add_task(async function test_no_reply_carries_the_pages_user_name_and_password()
 
   const keys = await call(c, "agent-keys", { tab: id, keys: "f" });
   Assert.equal(keys.url, PAGE, "vimma_keys' page");
-  Assert.ok(keys.links.includes(`${DIR}file_vimma_agent_page.html?rel`), "the link, without them");
+  Assert.ok(keys.links?.includes(`${DIR}file_vimma_agent_page.html?rel`), "the link, without them");
   noUserinfo("vimma_keys", keys);
 
   const elements = await call(c, "agent-elements", { tab: id });
@@ -163,11 +169,13 @@ add_task(async function test_no_reply_carries_the_pages_user_name_and_password()
   await c2.handshake({ protocol: 2, role: "agent" });
   await c2.call("agent-hello", { client: { name: "example-agent" } });
   const opened = await call(c2, "agent-open", { url: WITH_USERINFO, elements: true }, true);
-  Assert.equal(opened.url, PAGE, "vimma_open's page");
+  // The page was ready, so the open listed it.
+  const listed = /** @type {Extract<typeof opened, { elements: string }>} */ (opened);
+  Assert.equal(listed.url, PAGE, "vimma_open's page");
   noUserinfo("vimma_open", opened);
   /** @type {Record<string, string>} */
   const by = {};
-  for (const line of opened.elements.split("\n").slice(1, -1)) {
+  for (const line of listed.elements.split("\n").slice(1, -1)) {
     const e = JSON.parse(line);
     if ("label" in e) by[e.kind === "field" ? "field" : e.text] = e.label;
   }
@@ -228,7 +236,7 @@ add_task(async function test_a_tab_labelled_with_its_url_gives_no_user_name_and_
   );
   noUserinfo("vimma_tabs", tabs);
   const id = idOf(tab);
-  for (const [command, args] of /** @type {[string, object][]} */ ([
+  for (const [command, args] of /** @type {[AgentPageCommand, object][]} */ ([
     ["agent-keys", { tab: id, keys: "f" }],
     ["agent-elements", { tab: id }],
     ["agent-read", { tab: id }],
@@ -283,7 +291,7 @@ add_task(async function test_a_clamped_or_redirected_url_label_gives_no_password
     REDIRECTED.replace("https://", ""),
     "the redirected tab's title is the URL it is at",
   );
-  for (const [command, args] of /** @type {[string, object][]} */ ([
+  for (const [command, args] of /** @type {[AgentPageCommand, object][]} */ ([
     ["agent-keys", { tab: idOf(moved), keys: "f" }],
     ["agent-elements", { tab: idOf(moved) }],
     ["agent-read", { tab: idOf(moved) }],

@@ -362,7 +362,7 @@ add_task(async function test_console_under_a_grant_notice_log_and_rate() {
     if (!x.ok) busy = { i, x };
   }
   Assert.equal(busy?.i, 28, "the 31st read in a minute is refused");
-  Assert.equal(busy?.x.error.reason, "busy", "as busy");
+  Assert.equal(busy?.x.error?.reason, "busy", "as busy");
   Assert.equal(AgentGate.log[0].outcome, "busy", "and logged");
   c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);

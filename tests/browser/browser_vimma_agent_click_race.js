@@ -163,7 +163,8 @@ async function labels(c, tab) {
 
 /**
  * `command` on `tab`, answered once.
- * @param {Client} c @param {string} command @param {Record<string, unknown>} args
+ * @template {string} C
+ * @param {Client} c @param {C} command @param {Record<string, unknown>} args
  */
 async function askedOnce(c, command, args) {
   const id = c.request(command, args);

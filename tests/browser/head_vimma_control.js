@@ -29,7 +29,12 @@ function tidyTask(task, after) {
   }[task.name];
 }
 
-/** The discovery file's contents: port, token, protocol and roles. */
+/**
+ * The discovery file's contents, as VimmaControl writes them (discoveryOf): `version` only for a
+ * display version of the form X.Y.Z.
+ * @returns {Promise<{ protocol: number, port: number, token: string, pid: number,
+ *   roles: string[], version?: string }>}
+ */
 async function discovery() {
   return JSON.parse(await IOUtils.readUTF8(CONTROL_DISCOVERY));
 }
@@ -61,11 +66,13 @@ class Client {
     this.binary = Cc["@mozilla.org/binaryinputstream;1"].createInstance(Ci.nsIBinaryInputStream);
     this.binary.setInputStream(this.input);
     this.buffer = "";
-    /** @type {any[]} */
+    /** @type {ControlMessage[]} */
     this.messages = [];
     /** @type {Array<() => void>} */
     this.waiters = [];
     this.closed = false;
+    /** The last request's id; none before the first. */
+    this.nextId = 0;
     this.wait();
   }
 
@@ -113,7 +120,8 @@ class Client {
 
   /**
    * The next message matching `pred`, or null once closed.
-   * @param {(m: Client["messages"][number]) => boolean} pred
+   * @param {(m: ControlMessage) => boolean} pred
+   * @returns {Promise<ControlMessage | null>}
    */
   async take(pred = () => true) {
     for (;;) {
@@ -142,6 +150,7 @@ class Client {
   /**
    * The handshake with `hello` (protocol and role); resolves to the welcome or the error.
    * @param {{ protocol: number, role?: string }} hello
+   * @returns {Promise<ControlMessage | null>}
    */
   async handshake(hello, auth = {}) {
     const { token } = await discovery();
@@ -159,18 +168,35 @@ class Client {
     return this.take();
   }
 
-  /** @param {string} command @param {object} [args] @param {number} [id] */
-  request(command, args = {}, id = (this.nextId = (this.nextId ?? 0) + 1)) {
+  /**
+   * @template {string} C
+   * @param {C} command @param {object} [args] @param {number} [id]
+   * @returns {ControlRequestId<C>}
+   */
+  request(command, args = {}, id = ++this.nextId) {
     this.send({ type: "request", id, command, args });
     return id;
   }
 
-  /** @param {number} id */
-  response(id) {
-    return this.take((m) => m.type === "response" && m.id === id);
+  /**
+   * The response to request `id`; throws if the connection closes first.
+   * @template {string} C
+   * @param {ControlRequestId<C>} id
+   * @returns {Promise<ControlReply<C>>}
+   */
+  async response(id) {
+    const reply = await this.take((m) => m.type === "response" && m.id === id);
+    if (!reply) throw new Error(`the connection closed before response ${id}`);
+    // VimmaControl writes a response as Connection.respond makes it: the command's result.
+    return /** @type {ControlReply<C>} */ (/** @type {unknown} */ (reply));
   }
 
-  /** Send and wait for the answer. @param {string} command @param {object} [args] */
+  /**
+   * Send and wait for the answer.
+   * @template {string} C
+   * @param {C} command @param {object} [args]
+   * @returns {Promise<ControlReply<C>>}
+   */
   call(command, args = {}) {
     return this.response(this.request(command, args));
   }
