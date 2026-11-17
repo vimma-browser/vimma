@@ -15,9 +15,9 @@ Issue: [#682](https://github.com/vimma-browser/vimma/issues/682)
 A workspace can hold several splits, up to `[panes] max_splits` (9), one shown at a time. Each
 split has a number and a colour from the theme, which the side panel shows on its tabs, so the
 splits of a workspace can be told apart at a glance. A split picker on `ctrl+b S` and `]s` / `[s`
-move between them. Splitting a tab that is shown alone starts a new split from it (since #1215;
-it was refused before), and a second split can also be made by marking its tabs in the side
-panel.
+move between them. Splitting a tab that is shown alone is still refused, with a message that
+stays until the next key and names the way back; a second split is made by marking its tabs in
+the side panel.
 
 ## Problem
 
@@ -46,16 +46,11 @@ go back to the editor split and unmark its panes; afterwards the editor split is
    tab that is in no split shows it alone and hides the shown split.
 3. **Numbers and colours.** Each split has a number from 1 to 9, kept while it exists, and the
    colour of that number from the theme (`--vimma-split-1` to `--vimma-split-9`).
-4. **Splitting the lone tab starts a new split.** While a tab outside every split is shown alone
-   and the workspace has at least one split, `ctrl+b v`, `ctrl+b -` and `ctrl+b enter` (and
-   `:vsplit` / `:split`) make that tab and a new pane on the start page a new split, with the
-   next free number, shown at once with the new pane focused, as behaviour 5 does for marked
-   tabs. The split shown before stays hidden and `]s`, `[s` and `ctrl+b S` reach it. With
-   `max_splits` splits already, `max_splits = 1` included, the key is refused with
-   `new split: at most 9 splits in a workspace` (`at most 1 split` for 1); the notice stays until
-   the next key, and no tab opens. With no split in the workspace, these keys split the tab as
-   before. (Changed by #1215: until then these keys were refused on a lone tab with
-   `split S2 is hidden: ]s or ctrl+b S to go back, or mark tabs in ctrl+b b for a new split`.)
+4. **Splitting the lone tab is refused, visibly.** While a tab outside every split is shown alone
+   and the workspace has at least one split, `ctrl+b v`, `ctrl+b -` and `ctrl+b enter` are
+   refused. The notice stays until the next key and says
+   `split S2 is hidden: ]s or ctrl+b S to go back, or mark tabs in ctrl+b b for a new split`,
+   naming the split shown last. With no split in the workspace, these keys split the tab as today.
 5. **Starting another split.** In the side panel (`ctrl+b b`), marking two or more tabs with
    `space` or `V` and pressing `Enter` makes them a new split with the next free number, shown at
    once; the split shown before becomes hidden. A marked tab that belongs to another split leaves
@@ -144,35 +139,25 @@ All references are to `main` at aac585a5, Firefox 157.
 2. **A tab belongs to one split at most**, so selecting a tab has exactly one answer and the side
    panel's labels are never ambiguous. Rejected: a tab in several splits, because selecting it
    would need a rule to pick a split the user cannot see.
-3. **Splitting the lone tab starts a new split** (behaviour 4), because a user who presses
-   `ctrl+b v` on a tab shown alone wants that tab beside a new page, and now that a workspace
-   keeps several splits, nothing is lost: the hidden split keeps its tree, sizes and focus, and
-   `]s` or `ctrl+b S` bring it back. The new split goes through the same model as decision 5's
-   (core `addSplit`: the next free number, shown at once), so numbering, colours, the panel,
-   the status bar and the snapshot need nothing new. At `max_splits` it is refused, also at 1,
-   where decision 5's marks replace the one split instead: a key is quicker to press by mistake
-   than a set of marks, so it never ends a hidden split. No config option: the refusal protected
-   one hidden split when a workspace could hold only one. (Since changed, #1215: this decision
-   was "Splitting the lone tab stays refused", because `ctrl+b v` there was thought most often
-   pressed by someone expecting the hidden split on screen; users asked for the split instead,
-   as the side panel already allowed.)
-4. **The limit's refusal from a key stays until the next key**, because the 1.5 s notice is
-   missed. `Notice.show` has `{ untilKey: true }`: the host hides it on the next keydown it sees,
-   and a later notice replaces it. The text is behaviour 5's, so the two ways to a new split
-   refuse alike. (Since changed, #1215: this notice was the refusal of behaviour 4 on every lone
-   tab, `split S2 is hidden: ]s or ctrl+b S to go back, or mark tabs in ctrl+b b for a new
-split`, naming the split shown last; core's `hiddenSplitRefusal` is removed.)
+3. **Splitting the lone tab stays refused**, because `ctrl+b v` on a tab shown alone is most often
+   pressed by someone who expects their hidden split to still be on screen; starting a new split
+   silently would hide that one further. The refusal costs nothing: no page, tab or split changes.
+4. **The refusal notice stays until the next key and names the way back**, because the 1.5 s
+   notice is missed and a refusal that does not say what to do instead leaves the user stuck.
+   `Notice.show` gains `{ untilKey: true }`: the host hides it on the next keydown it sees, and a
+   later notice replaces it. The text names the split shown last, the keys back (`]s`,
+   `ctrl+b S`) and the way to a new split. Before the keys exist (behaviour 12) it reads
+   `the split is hidden: select one of its tabs (ctrl+b b) to go back`.
 5. **A second split is started from the side panel's marks**, because marking tabs and pressing
    `Enter` already makes a split ([m4-side-panel-multiselect](m4-side-panel-multiselect.md)), it
-   needs no new key, and it is a deliberate act that cannot happen by the slip decision 3 guarded
-   against before #1215. The panel opens with no marks on a lone tab (behaviour 6), so marking
-   starts from nothing. (Since #1215 the lone tab is also split with a fresh empty tab in one
-   step, by decision 3.) Rejected: a "new split" entry in the split picker, because the picker
-   would then hold an action as well as a list (it can follow later without changing this decision); a dedicated
+   needs no new key, and it is a deliberate act that cannot happen by the slip decision 3 guards
+   against. The panel opens with no marks on a lone tab (behaviour 6), so marking starts from
+   nothing. The cost is that the lone tab cannot be split with a fresh empty tab in one step.
+   Rejected: a "new split" entry in the split picker, because the picker would then hold an
+   action as well as a list (it can follow later without changing this decision); a dedicated
    key such as `ctrl+b V`, because it is one more default key to learn and to keep apart from
    `ctrl+b v`; and confirming with a second `ctrl+b v` while the refusal shows, because a quick
-   double press would defeat the refusal's purpose (moot since #1215: decision 3 lets
-   `ctrl+b v` itself start the split).
+   double press would defeat the refusal's purpose.
 6. **Marking a tab of another split moves it**, because the marks state the wanted panes
    (side-panel-unsplit decision 3) and the tab's label shows where it came from. Its pane closes
    in the old split as `ctrl+b x` closes it (side-panel-unsplit decision 15), so the other sizes
@@ -237,12 +222,12 @@ split`, naming the split shown last; core's `hiddenSplitRefusal` is removed.)
     is treated as 1, the new `state` field is absent and the panel shows no labels. The last
     sub-PR removes the pref and every read of it, so `state.splits` is always present.
 18. **A second split from Firefox's own commands is still undone** (behaviour 13), as
-    [m4-split-panes](m4-split-panes.md) sub-spec 6 undoes it, because decisions 3 and 5 make
-    Vimma's own keys and the side panel's marks the ways to start another split: adopting
-    Firefox's wrapper as a new split would need decision 7's limit and decision 8's numbering on
-    an event path that cannot refuse with a message the user is looking at. The notice changes
-    from `one split per workspace`, which is no longer true, to the way that works. Adopting such
-    a split can follow in a later change without changing the model.
+    [m4-split-panes](m4-split-panes.md) sub-spec 6 undoes it, because decision 5 makes the side
+    panel's marks the one way to start another split: adopting Firefox's wrapper as a new split
+    would need decision 7's limit and decision 8's numbering on an event path that cannot refuse
+    with a message the user is looking at. The notice changes from `one split per workspace`,
+    which is no longer true, to the way that works. Adopting such a split can follow in a later
+    change without changing the model.
 
 ### Control protocol
 
@@ -324,12 +309,8 @@ Each test is written first and seen to fail.
   wrapper suspended; a lone tab hides both; moving a tab from split 1 into a new split; the tenth
   split refused; a workspace switch and back keeps both; a session restore (`setWindowState`)
   keeps both and the shown one; the private workspace with two splits.
-- `browser_vimma_side_panel_unsplit.js`: everything unchanged with the pref off. (Its test of
-  behaviour 4's former refusal moved, changed, to `browser_vimma_split_lone_tab.js`.)
-- `browser_vimma_split_lone_tab.js` (new, #1215): `ctrl+b v`, `-` and `enter` and `:vsplit` on a
-  lone tab make a new split with the next free number, the new pane focused, the old split
-  hidden and back with `]s`; at `max_splits` the key is refused, the notice stays after 2 s and
-  goes on the next key, and no tab opens; the same in the private workspace.
+- `browser_vimma_side_panel_unsplit.js`: the refusal notice stays after 2 s and hides on the next
+  key (behaviour 4); everything else unchanged with the pref off.
 - `browser_vimma_split_picker.js` (new): the picker lists splits with label, count and titles;
   digit and `Enter` show a split; the empty-workspace notice.
 - `browser_vimma_control.js`: `state.splits` with two splits; `panes` as before.

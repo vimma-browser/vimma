@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/multiple-splits.md behaviour 4 and decision 3 (changed by #1215). On a tab
+// Spec: docs/specs/split-from-lone-tab.md (changes multiple-splits behaviour 4). On a tab
 // shown alone while the workspace keeps a hidden split, ctrl+b v / - / enter and :vsplit / :split
 // make that tab and a new pane a new split with the next free number, the new pane focused; the
 // hidden split stays hidden and ]s brings it back. At [panes] max_splits the key is refused, the
@@ -21,6 +21,12 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
 const { leaves } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/panes.mjs");
 const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+);
+const { SessionStore } = ChromeUtils.importESModule(
+  "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
+);
+const { TabStateFlusher } = ChromeUtils.importESModule(
+  "moz-src:///browser/components/sessionstore/TabStateFlusher.sys.mjs",
 );
 
 const PAGE = "https://example.com/";
@@ -254,4 +260,54 @@ add_task(async function the_private_workspace_starts_a_new_split_the_same_way() 
   Assert.equal(splitsOf().all, normal, "the normal window's splits are untouched");
   await BrowserTestUtils.closeWindow(priv);
   for (const t of tabs) opened.splice(opened.indexOf(t), 1);
+});
+
+// Behaviour 10 of multiple-splits: a split started from a key is saved and restored like one
+// made from the side panel's marks.
+add_task(async function a_split_started_from_a_key_survives_a_session_restore() {
+  const win = await BrowserTestUtils.openNewBrowserWindow();
+  await /** @type {WindowWorkspacesImpl} */ (WindowWorkspaces.get(win)).ready;
+  const pages = [];
+  for (const q of ["rx", "ry", "rlone"]) pages.push(await page(q, win));
+  const [x, y, lone] = pages;
+  Assert.ok(view(win).showTabs([x, y], x).ok, "S1: rx | ry");
+  win.gBrowser.selectedTab = lone;
+  await until(() => view(win).hidden, "rlone shows alone");
+  Assert.deepEqual(view(win).split("vertical"), { ok: true }, "S2 from the lone tab");
+  await until(() => view(win).splits.shown === 2, "S2 shows");
+  Assert.equal(splitsOf(win).all, "S1:x[rx,ry] S2:x[rlone,new]", "before the restore");
+
+  const uuid = (/** @type {MozTabbrowserTab} */ t) =>
+    SessionStore.getCustomTabValue(t, "vimma-tab");
+  const ids = new Map(pages.map((t) => [uuid(t), nameOf(t)]));
+  await TabStateFlusher.flushWindow(win);
+  await TestUtils.waitForTick();
+  /**
+   * SessionStore's state, as much of it as this test reads (SessionStore.sys.mjs's winData,
+   * TabState.sys.mjs's tab and SessionHistory.sys.mjs's entries).
+   * @type {{ windows: { tabs: { entries: { url: string }[] }[] }[] }}
+   */
+  const state = JSON.parse(SessionStore.getBrowserState());
+  const winState = state.windows.find((w) =>
+    w.tabs.some((t) => t.entries.some((e) => e.url === `${PAGE}?rlone`)),
+  );
+  Assert.ok(winState, "the window is in the browser state");
+  for (const t of pages) opened.splice(opened.indexOf(t), 1);
+  await BrowserTestUtils.closeWindow(win);
+
+  const w2 = await BrowserTestUtils.openNewBrowserWindow();
+  await /** @type {WindowWorkspacesImpl} */ (WindowWorkspaces.get(w2)).ready;
+  const restored = BrowserTestUtils.waitForEvent(w2, "SSWindowRestored");
+  SessionStore.setWindowState(w2, JSON.stringify({ windows: [winState] }), true);
+  await restored;
+  await TestUtils.waitForTick();
+  for (const t of w2.gBrowser.tabs) {
+    // The pages this test named, with their panels once their splits show.
+    if (ids.has(uuid(t)))
+      byName.set(/** @type {string} */ (ids.get(uuid(t))), /** @type {SplitTab} */ (t));
+  }
+  await until(() => view(w2).splits.splits.length === 2, "both splits are restored");
+  Assert.equal(splitsOf(w2).all, "S1:x[rx,ry] S2:x[rlone,new]", "with their numbers and tabs");
+  Assert.equal(splitsOf(w2).shown, 2, "and S2 shown");
+  await BrowserTestUtils.closeWindow(w2);
 });
