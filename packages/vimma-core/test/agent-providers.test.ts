@@ -14,6 +14,7 @@ import {
   providerErrorText,
 } from "../src/agent/agent-providers.mjs";
 import type { ChatMessage, Provider, ToolDef } from "../src/agent/agent-providers.mjs";
+import { Budget } from "../src/agent/agent-budget.mjs";
 
 const fixture = (name: string) =>
   JSON.parse(
@@ -536,6 +537,16 @@ describe("edge shapes", () => {
       const usage = `{"input_tokens":7,"cache_creation_input_tokens":${bad},"cache_read_input_tokens":${bad},"output_tokens":3}`;
       expect(anthropicUsage(usage).usage, bad).toEqual({ input: 7, output: 3, estimated: false });
     }
+  });
+
+  test("counts whose sum is past the largest number still reach max_tokens", () => {
+    const { usage } = anthropicUsage(
+      '{"input_tokens":1e308,"cache_read_input_tokens":1e308,"output_tokens":1}',
+    );
+    expect(usage).toEqual({ input: Number.MAX_VALUE, output: 1, estimated: false });
+    const b = new Budget({ maxTokens: 1000 });
+    b.addUsage(usage);
+    expect(b.exceeded()?.limit).toBe("tokens");
   });
 
   test.each(['"7"', "-1", "-1e300", "1e400", "-1e400"])(

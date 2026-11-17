@@ -255,7 +255,12 @@ function usageOf(input, output, extra, requestBody, reply) {
     input:
       counted === null
         ? estimate(requestBody.length)
-        : extra.reduce((/** @type {number} */ n, e) => n + (count(e) ?? 0), counted),
+        : // Valid counts can still sum past the largest number, to Infinity, which the budget
+          // drops: the largest number still reaches every limit.
+          Math.min(
+            extra.reduce((/** @type {number} */ n, e) => n + (count(e) ?? 0), counted),
+            Number.MAX_VALUE,
+          ),
     output: counted === null || out === null ? estimate(JSON.stringify(reply).length) : out,
     estimated: counted === null || out === null,
   };

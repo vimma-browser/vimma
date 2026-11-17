@@ -34,6 +34,15 @@ describe("Budget", () => {
     },
   );
 
+  // Issue #1225: totals that reached Infinity make a continued task's use Infinity - Infinity,
+  // NaN, which `>=` never finds at a limit.
+  test("a use that is not a number is at the limit", () => {
+    const b = new Budget({ maxTokens: 1000, maxCost: 1 }, { priceIn: 1, priceOut: 1 });
+    b.addUsage({ input: Number.MAX_VALUE, output: Number.MAX_VALUE, estimated: false });
+    b.renew();
+    expect(b.exceeded()?.limit).toBe("tokens");
+  });
+
   test("a task stops at max_tokens, input and output summed over its requests", () => {
     const b = new Budget({ maxTokens: 1000 });
     b.addUsage({ input: 600, output: 300, estimated: false });
