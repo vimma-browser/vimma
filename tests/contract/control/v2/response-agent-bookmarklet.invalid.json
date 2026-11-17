@@ -1,0 +1,14 @@
+{
+  "description": "ran must be true, and the script's value is never returned",
+  "kind": "response",
+  "command": "agent-bookmarklet",
+  "message": {
+    "type": "response",
+    "id": 9,
+    "ok": true,
+    "result": {
+      "ran": true,
+      "value": "the script's result"
+    }
+  }
+}

@@ -62,6 +62,7 @@ impl ToolCall {
             ToolCall::Fill { .. } => "vimma_fill",
             ToolCall::Screenshot { .. } => "vimma_screenshot",
             ToolCall::Console { .. } => "vimma_console",
+            ToolCall::Bookmarklet { .. } => "vimma_bookmarklet",
         }
     }
 
@@ -163,6 +164,10 @@ impl ToolCall {
                 }
                 ("agent-console", Value::Object(args))
             }
+            ToolCall::Bookmarklet { tab, name } => (
+                "agent-bookmarklet",
+                object([("tab", text(tab)), ("name", text(name))]),
+            ),
         }
     }
 }
@@ -282,6 +287,19 @@ mod tests {
             ToolCall::Show { tab: tab() }.command().1.to_string(),
             r#"{"tab":"12"}"#
         );
+    }
+
+    /// bookmarklets B12: a tab and a title become `agent-bookmarklet` with exactly those.
+    #[test]
+    fn the_bookmarklet_tool_sends_a_tab_and_a_title() {
+        let call = ToolCall::Bookmarklet {
+            tab: "12".into(),
+            name: "Readability".into(),
+        };
+        assert_eq!(call.name(), "vimma_bookmarklet");
+        let (command, args) = call.command();
+        assert_eq!(command, "agent-bookmarklet");
+        assert_eq!(args.to_string(), r#"{"name":"Readability","tab":"12"}"#);
     }
 
     #[test]

@@ -29,8 +29,9 @@ import { SCROLL_STEP_DEFAULT } from "../page/scroll.mjs";
  *   rule matches open (docs/specs/app-routes.md)
  * @property {{ disable?: "all" | readonly string[], enable?: readonly string[] }} [firefox]
  *   Firefox's own shortcuts that are off (docs/specs/key-handling-batch.md)
- * @property {{ root?: "workspace" | "toolbar" | "all" }} [bookmarks]  the bookmarks panel's root
- *   (docs/specs/bookmarks.md)
+ * @property {{ root?: "workspace" | "toolbar" | "all", bookmarklets?: "none" | "user" | "agent" }}
+ *   [bookmarks]  the bookmarks panel's root (docs/specs/bookmarks.md) and who may run
+ *   bookmarklets (docs/specs/bookmarklets.md)
  * @property {{ numbers?: "absolute" | "relative" | "hybrid" }} [panel]  the side panel's and
  *   bookmarks panel's row numbers (docs/specs/side-panel-counts.md)
  * @property {{ step?: number }} [scroll]  how far j, k, h and l scroll, in CSS pixels
@@ -524,7 +525,10 @@ export const DEFAULT_CONFIG = Object.freeze({
   },
   sites: {},
   firefox: { disable: /** @type {"all"} */ ("all"), enable: [] },
-  bookmarks: { root: /** @type {const} */ ("workspace") },
+  bookmarks: {
+    root: /** @type {const} */ ("workspace"),
+    bookmarklets: /** @type {const} */ ("none"),
+  },
   panel: { numbers: /** @type {const} */ ("absolute") },
   scroll: { step: SCROLL_STEP_DEFAULT },
   private: { placement: /** @type {const} */ ("swap") },
@@ -647,6 +651,10 @@ export function formatDefaultsToml() {
     '# folder in the Bookmarks Toolbar; "toolbar" the whole toolbar; "all" every bookmark.',
     "[bookmarks]",
     `root = ${tomlString(DEFAULT_CONFIG.bookmarks?.root ?? "workspace")}`,
+    '# Bookmarklets (javascript: bookmarks) run their code with the page\'s rights: "none" lists',
+    '# them but never runs one; "user" runs one in this page with Enter in the bookmarks panel;',
+    '# "agent" also lets an agent run one by its title, asking you every time.',
+    `bookmarklets = ${tomlString(DEFAULT_CONFIG.bookmarks?.bookmarklets ?? "none")}`,
     "",
     '# Row numbers in the side panel (ctrl+b b): "absolute" is the tab number (alt+N, {N}gt);',
     '# "relative" the distance from the highlighted row, for 4j and 3k; "hybrid" both: the',

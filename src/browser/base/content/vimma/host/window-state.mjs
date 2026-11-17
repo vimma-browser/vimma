@@ -41,7 +41,7 @@ import { Find } from "./find.mjs";
 import { ElementFocus } from "./element-focus.mjs";
 import { CHAT_SERVICES, giveSelectedTab } from "./agent-chat-ops.mjs";
 import { bookmarkContext, runBookmarkEffect } from "./bookmark-actions.mjs";
-import { loadTree, observeBookmarks } from "./bookmark-ops.mjs";
+import { bookmarkletsSetting, loadTree, observeBookmarks } from "./bookmark-ops.mjs";
 import { pickerWorkspaces, selectedTabId, tabById } from "./goto.mjs";
 import { goToTab, reopenClosed, tabSearchList } from "./tab-search.mjs";
 import { GrepSession } from "./grep.mjs";
@@ -408,6 +408,7 @@ export function newWindowState(host, win, keymap, env) {
       load: () => loadTree(win),
       observe: observeBookmarks,
       effect: (effect) => runBookmarkEffect(bookmarkContext(state), effect),
+      bookmarklets: bookmarkletsSetting,
     }),
     agentChat: new AgentChatWindow(
       win,

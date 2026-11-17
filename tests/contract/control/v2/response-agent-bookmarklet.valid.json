@@ -1,0 +1,13 @@
+{
+  "description": "agent-bookmarklet says it ran, and nothing of the script's",
+  "kind": "response",
+  "command": "agent-bookmarklet",
+  "message": {
+    "type": "response",
+    "id": 9,
+    "ok": true,
+    "result": {
+      "ran": true
+    }
+  }
+}

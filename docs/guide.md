@@ -2138,21 +2138,22 @@ so they are not set up by endpoint: see [CLI providers](specs/builtin-agent-cli.
 #### Connecting an agent's tool
 
 `vimma-ctl mcp` is the MCP server your agent's tool starts. It speaks MCP over its standard input
-and output, connects to Vimma as an agent (never with full control), and offers eleven tools:
+and output, connects to Vimma as an agent (never with full control), and offers twelve tools:
 
-| Tool               | What the agent can do                                                                                    |
-| ------------------ | -------------------------------------------------------------------------------------------------------- |
-| `vimma_tabs`       | List the agent workspace's tabs: id, address, title, whether it is loading.                              |
-| `vimma_read_page`  | Read a tab's text, as Markdown or plain text, marked as untrusted web content.                           |
-| `vimma_open`       | Open an http or https address in a new background tab there, or in one of its tabs.                      |
-| `vimma_close_tab`  | Close one of its tabs.                                                                                   |
-| `vimma_keys`       | Scroll, find text, follow a link, go back and forward or up a level in one of its tabs, with Vimma keys. |
-| `vimma_show`       | Show you one of its tabs: your window switches to the agent workspace, and `ctrl+^` brings you back.     |
-| `vimma_elements`   | List the buttons, fields and links on screen in one of its tabs, with labels; never a password's value.  |
-| `vimma_activate`   | Click a button, link or checkbox from that list; paying and forms with text or personal details ask.     |
-| `vimma_fill`       | Fill fields from that list, never passwords, card numbers, one-time codes or files.                      |
-| `vimma_screenshot` | See what one of its tabs shows, as an image, with that list's labels drawn on it if it asks.             |
-| `vimma_console`    | Read one of its tabs' script errors, console errors and warnings, and failed requests.                   |
+| Tool                | What the agent can do                                                                                    |
+| ------------------- | -------------------------------------------------------------------------------------------------------- |
+| `vimma_tabs`        | List the agent workspace's tabs: id, address, title, whether it is loading.                              |
+| `vimma_read_page`   | Read a tab's text, as Markdown or plain text, marked as untrusted web content.                           |
+| `vimma_open`        | Open an http or https address in a new background tab there, or in one of its tabs.                      |
+| `vimma_close_tab`   | Close one of its tabs.                                                                                   |
+| `vimma_keys`        | Scroll, find text, follow a link, go back and forward or up a level in one of its tabs, with Vimma keys. |
+| `vimma_show`        | Show you one of its tabs: your window switches to the agent workspace, and `ctrl+^` brings you back.     |
+| `vimma_elements`    | List the buttons, fields and links on screen in one of its tabs, with labels; never a password's value.  |
+| `vimma_activate`    | Click a button, link or checkbox from that list; paying and forms with text or personal details ask.     |
+| `vimma_fill`        | Fill fields from that list, never passwords, card numbers, one-time codes or files.                      |
+| `vimma_screenshot`  | See what one of its tabs shows, as an image, with that list's labels drawn on it if it asks.             |
+| `vimma_console`     | Read one of its tabs' script errors, console errors and warnings, and failed requests.                   |
+| `vimma_bookmarklet` | Run one of your bookmarklets in one of its tabs, by title, only if you allow it; it asks every time.     |
 
 1. Use the `vimma-ctl` that came with Vimma, so it is updated with it: it is on your `PATH`
    from the `.deb`, the `.rpm`, the Arch Linux package and Homebrew; for the tarball, the
@@ -3021,6 +3022,28 @@ selected, as `:ws agent` would. The notice says `showing claude-code's tab · ct
   is nowhere else to go back to.
 - **At most 6 a minute** per agent; it is in `:mcp log` like every other call.
 
+#### Running one of your bookmarklets
+
+With `[bookmarks] bookmarklets = "agent"` in [config.toml](#configtoml), you can ask an agent to
+run one of your own [bookmarklets](#bookmarks) on a page of the agent workspace, such as a
+reading view or a word count, by its title: "run my Readability bookmarklet on that page". The
+agent sends `vimma_bookmarklet` with the tab and the title, and the question names both,
+`◇ claude-code wants vimma_bookmarklet: 2 "Pricing · Example" example.com/pricing  run
+"toolbar/tools/Readability" (its code acts as this page)`.
+
+- **It asks every time.** No grant covers it, and its question offers only `y` and `n`. A
+  bookmarklet's code can do anything the page can, such as fill a password field or send a form
+  without Vimma's question, so only you can say yes to it, each time.
+- **Only your bookmarklets, by title.** The agent sends a title, never code, and Vimma runs the
+  one bookmark with exactly that title whose address is `javascript:`. It never lists your
+  bookmarks to the agent. With no such bookmark, or two of the same title, nothing is asked and
+  the call fails.
+- **Off unless you turn it on.** With `"none"` (the default) or `"user"`, the call fails before
+  anything is asked, and the message names the setting.
+- **Only on web pages, and only the page asked about.** If the tab moved to another page or the
+  bookmark changed while the question waited, nothing runs. The result tells the agent only that
+  it ran; it reads the page to see what changed. At most 6 a minute per agent.
+
 #### Keeping agents out of your Vimma profile
 
 Vimma's profiles are in `~/.config/vimma/vimma/` (`~/.vimma/vimma/` on older installs;
@@ -3829,8 +3852,23 @@ unless you press `d`.
 | `Esc`, `ctrl+b shift+b` | Close the panel. With a filter, `Esc` clears it first.                                    |
 
 A bookmark opens in your current workspace's container, and in a private window it stays
-private. `javascript:` and `data:` bookmarks (bookmarklets) are listed but do not open from
-Vimma: it says so instead, since they would run code in the page. Changes made elsewhere (the
+private. `data:` bookmarks are listed but do not open from Vimma.
+
+**Bookmarklets** (`javascript:` bookmarks) run their code in the page you are on, with that
+page's rights. They are listed but do not run unless you choose so in config.toml:
+
+```toml
+[bookmarks]
+bookmarklets = "user"    # "none" (the default), "user", or "agent"
+```
+
+With `"user"`, `Enter` or `l` on a bookmarklet runs it in the current tab's page, as clicking it
+in Firefox would, and closes the panel; `t`, `s` and `S` say to use `Enter`, since in a new tab
+it would run on an empty page. It runs only on web pages (http, https and local files), never on
+the start page or `about:` pages. With `"agent"`, an agent may also ask to run one by its title,
+asking you every time ([Running one of your bookmarklets](#running-one-of-your-bookmarklets)).
+Text you type never runs as a bookmarklet at any level: `:open javascript:…` and a bookmark
+keyword that leads to a bookmarklet stay refused. Changes made elsewhere (the
 Library, Sync, another window) show in the panel at once. With `root = "all"`, the four top
 folders cannot be renamed, moved or deleted. The panel remembers which folders you opened until
 Vimma quits.
@@ -4320,7 +4358,8 @@ accent = "#ff9e64"
   shortcuts are off, [above](#firefoxs-own-shortcuts)); `[modal] insert_editing` (`ctrl+w`,
   `ctrl+u`, `ctrl+h`, and `ctrl+j` and `ctrl+m` as `Enter`, in text fields, default `true`); `[bookmarks] root` (`"workspace"`, the
   default: the current workspace's folder; `"toolbar"`; or `"all"`: what the
-  [bookmarks panel](#bookmarks) lists and where paths start); `[panel] numbers` (`"absolute"`, the
+  [bookmarks panel](#bookmarks) lists and where paths start); `[bookmarks] bookmarklets`
+  (`"none"`, the default, `"user"` or `"agent"`: who may run [bookmarklets](#bookmarks)); `[panel] numbers` (`"absolute"`, the
   default, `"relative"` or `"hybrid"`: the [side panel](#side-panel)'s row numbers);
   `[scroll] step` (how far `j`, `k`, `h` and `l` scroll, 1 to 2000 CSS pixels, default 60; the
   next scroll in every tab uses it);

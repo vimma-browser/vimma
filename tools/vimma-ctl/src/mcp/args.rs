@@ -291,6 +291,29 @@ pub(super) fn console_args(arguments: &BTreeMap<String, Value>) -> Result<ToolCa
     Ok(ToolCall::Console { tab, since })
 }
 
+/// The longest bookmark title `vimma_bookmarklet` takes, in characters (vimma-core's
+/// `MAX_BOOKMARKLET_NAME`).
+pub(super) const MAX_BOOKMARKLET_NAME: usize = 1024;
+
+/// bookmarklets B12: a tab and a bookmark's title; never a URL or script.
+pub(super) fn bookmarklet_args(arguments: &BTreeMap<String, Value>) -> Result<ToolCall, String> {
+    only(arguments, &["tab", "name"])?;
+    let tab = tab_arg(arguments.get("tab"))?;
+    let name = match arguments.get("name") {
+        Some(Value::String(name))
+            if !name.is_empty() && name.chars().count() <= MAX_BOOKMARKLET_NAME =>
+        {
+            name.clone()
+        }
+        _ => {
+            return Err(format!(
+                "name must be a bookmarklet's title, 1 to {MAX_BOOKMARKLET_NAME} characters"
+            ));
+        }
+    };
+    Ok(ToolCall::Bookmarklet { tab, name })
+}
+
 /// `n` as a double, exact up to [`MAX_SINCE`].
 pub(super) fn exact_f64(n: u64) -> f64 {
     let high = u32::try_from(n >> 32).unwrap_or(u32::MAX);
@@ -548,6 +571,43 @@ mod tests {
             let text = tool_error_text(&r);
             assert!(text.contains(says), "{name} {arguments}: {text}");
         }
+    }
+
+    // bookmarklets B12 (security.md M63): a tab and a title only, never a URL or script.
+    #[test]
+    fn bad_bookmarklet_arguments_are_tool_errors_and_never_reach_vimma() {
+        let mut p = Protocol::new();
+        reply(&mut p, INIT);
+        let long = format!(r#"{{"tab":"1","name":"{}"}}"#, "a".repeat(1025));
+        for (arguments, says) in [
+            (r#"{"tab":"1"}"#, "name must be"),
+            (r#"{"name":"Readability"}"#, "tab"),
+            (r#"{"tab":"1","name":""}"#, "1 to 1024"),
+            (&long, "1 to 1024"),
+            (r#"{"tab":"1","name":5}"#, "name must be"),
+            (
+                r#"{"tab":"1","name":"R","url":"javascript:alert(1)"}"#,
+                "unknown argument \"url\"",
+            ),
+            (
+                r#"{"tab":"1","name":"R","script":"alert(1)"}"#,
+                "unknown argument \"script\"",
+            ),
+        ] {
+            let r = reply(&mut p, &call_line(5, "vimma_bookmarklet", arguments));
+            let text = tool_error_text(&r);
+            assert!(text.contains(says), "{arguments}: {text}");
+        }
+        assert_eq!(
+            bookmarklet_args(&BTreeMap::from([
+                ("tab".to_string(), Value::String("3".into())),
+                ("name".to_string(), Value::String("Readability".into())),
+            ])),
+            Ok(ToolCall::Bookmarklet {
+                tab: "3".into(),
+                name: "Readability".into()
+            })
+        );
     }
 
     // mcp-drive D15 (security.md M20): the keys' limits, checked before Vimma is asked.

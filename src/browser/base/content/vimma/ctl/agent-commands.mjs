@@ -18,6 +18,7 @@
 import {
   ACT_RATE,
   AGENT_TOOLS,
+  BOOKMARKLET_RATE,
   CallRate,
   CONSOLE_RATE,
   ELEMENTS_RATE,
@@ -46,8 +47,16 @@ import {
   parseAgentRequest,
 } from "../core/control.mjs";
 import { ELEMENT_REPLY_CAPS } from "../core/agent-element.mjs";
+import { AGENTS_OFF, bookmarkletDecision } from "../core/bookmarks.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { AgentUi } from "../host/agent-ui.mjs";
+import {
+  bookmarkletPage,
+  bookmarkletsNamed,
+  bookmarkletsSetting,
+  fetchBookmark,
+  runBookmarklet,
+} from "../host/bookmark-ops.mjs";
 import { McpHost } from "../host/mcp-ops.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
@@ -120,6 +129,11 @@ const opens = new OpenRate();
 const keyCalls = new CallRate(KEYS_RATE);
 /** Each connection's `agent-show`: at most SHOW_RATE a minute, counted when asked (D7). */
 const showCalls = new CallRate(SHOW_RATE);
+/**
+ * Each connection's `agent-bookmarklet`: at most BOOKMARKLET_RATE a minute, counted before the
+ * bookmark is looked up (bookmarklets B16).
+ */
+const bookmarkletCalls = new CallRate(BOOKMARKLET_RATE);
 /** Each connection's `agent-elements`: at most ELEMENTS_RATE a minute, counted when asked (F26). */
 const elementCalls = new CallRate(ELEMENTS_RATE);
 /**
@@ -818,6 +832,78 @@ const COMMANDS = {
     };
     AgentGate.notify(shownNotice({ tool: "vimma_show", label, what }, where));
     return { shown: true };
+  },
+
+  /**
+   * One of the user's bookmarklets, named by its exact title, run in an agent tab's page
+   * (docs/specs/bookmarklets.md B12-B16; security.md M63). Only at `[bookmarks] bookmarklets =
+   * "agent"`, refused before anything else below it (B13). The agent sends a title, never
+   * script: the URL that runs is the stored bookmark's, read again after the yes (B15). Always
+   * asked, never under a grant (B14). The result says only that it ran (B16).
+   * @param {ConnId} conn @param {AgentConn} state @param {AgentArgs["agent-bookmarklet"]} args
+   * @param {number | undefined} rid
+   */
+  async "agent-bookmarklet"(conn, state, { tab: id, name }, rid) {
+    if (bookmarkletsSetting() !== "agent") throw new AgentError("failed", AGENTS_OFF);
+    const agent = agentWorkspace();
+    const asked = findAgentTab(agent, id, conn);
+    const base = { ...describeTab(asked.tab), index: asked.index };
+    /**
+     * Logs a call that ended before or after the question (M23), and returns its error.
+     * @param {LogOutcome} outcome @param {unknown} error @param {object} [what]
+     */
+    const refuse = (outcome, error, what = base) => {
+      AgentGate.note(conn, "vimma_bookmarklet", what, outcome);
+      return error;
+    };
+    // Counted before the bookmark is looked up, so titles cannot be probed quickly (B16).
+    if (!bookmarkletCalls.take(conn, Date.now())) {
+      throw refuse("busy", rateDenied(bookmarkletCalls, conn, "vimma_bookmarklet calls"));
+    }
+    const named = await bookmarkletsNamed(name);
+    if (named.length > 1) {
+      const why = `more than one bookmarklet is titled "${name}": rename one`;
+      throw refuse("failed", new AgentError("failed", why));
+    }
+    const bookmark = named[0];
+    if (!bookmark) {
+      throw refuse("failed", new AgentError("failed", `no bookmarklet is titled "${name}"`));
+    }
+    if (!bookmarkletPage(asked.tab.linkedBrowser)) {
+      throw refuse("failed", new AgentError("failed", "bookmarklets run only on web pages"));
+    }
+    if (inUse(asked.tab.linkedBrowser)) throw refuse("in-use", denied("in-use"));
+    const what = { ...base, bookmarklet: bookmark.path };
+    // AgentQueue asks it every time (ALWAYS_ASK); always is said here too (B14).
+    await ask(conn, "agent-bookmarklet", what, state, rid, undefined, true);
+    // The bookmark as stored now: a change to it while the question waited runs nothing (B15).
+    const stored = await fetchBookmark(bookmark.guid);
+    if (!stored || stored.url !== bookmark.url || stored.title !== bookmark.title) {
+      throw refuse("changed", denied("changed"), what);
+    }
+    // Then the tab and its page as asked (M8), right before the run, with no await between.
+    let found;
+    try {
+      found = stillAsAsked(agent, id, what.url, conn);
+    } catch (e) {
+      throw refuse("changed", e, what);
+    }
+    const browser = found.tab.linkedBrowser;
+    if (inUse(browser)) throw refuse("in-use", denied("in-use"), what);
+    // The level may have changed while the question waited: decided again, as the agent.
+    const decided = bookmarkletDecision({
+      url: stored.url,
+      setting: bookmarkletsSetting(),
+      by: "agent",
+      where: "current",
+    });
+    if (decided.kind !== "run") {
+      const text = decided.kind === "refuse" ? decided.text : "only a bookmarklet can be run";
+      throw refuse("failed", new AgentError("failed", text), what);
+    }
+    const refused = runBookmarklet(browser, stored.url, { popups: false });
+    if (refused) throw refuse("failed", new AgentError("failed", refused), what);
+    return { ran: true };
   },
 
   /**

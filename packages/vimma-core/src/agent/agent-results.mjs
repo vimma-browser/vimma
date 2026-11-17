@@ -34,6 +34,7 @@ export const TOOL_COMMANDS = Object.freeze({
   vimma_fill: "agent-fill",
   vimma_screenshot: "agent-screenshot",
   vimma_console: "agent-console",
+  vimma_bookmarklet: "agent-bookmarklet",
 });
 
 /** Flags left out of the command when false, as mcp/command.rs's `flag_into` does. */
@@ -220,6 +221,14 @@ function success(name, args, result) {
         item(
           `The user now sees tab ${tab} of Vimma's agent workspace. They go back to their own ` +
             "workspace with ctrl+^.",
+        ),
+      ];
+    case "vimma_bookmarklet":
+      if (result?.ran !== true) throw new Broken("Vimma's result does not say ran");
+      return [
+        item(
+          `Ran the bookmarklet "${args.name}" in tab ${tab} of Vimma's agent workspace, in the ` +
+            "background. Read the page with vimma_read_page to see what it did.",
         ),
       ];
     default:

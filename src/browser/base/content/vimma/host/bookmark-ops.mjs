@@ -8,7 +8,9 @@
 // link between a workspace and its folder in the Bookmarks Toolbar (decision 11).
 
 import {
+  BOOKMARKLETS_SETTINGS,
   PLACES_ROOTS,
+  bookmarkKind,
   folderPath,
   formatBookmarkPath,
   fromPlaces,
@@ -25,7 +27,10 @@ import {
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 
-/** @import { BookmarksRoot, BookmarksWorkspace, Folder } from "../core/bookmarks.mjs" */
+/**
+ * @import { BookmarkletsSetting, BookmarksRoot, BookmarksWorkspace, Folder, PlacesItem }
+ *   from "../core/bookmarks.mjs"
+ */
 /** @import { WorkspaceDefinition } from "../core/workspacedefs.mjs" */
 
 /**
@@ -51,6 +56,26 @@ export function setBookmarksRoot(next) {
 /** The root in force. */
 export function bookmarksRoot() {
   return root;
+}
+
+/**
+ * `[bookmarks] bookmarklets` (docs/specs/bookmarklets.md B3): set only by VimmaHost.configure
+ * from config.toml. No pref, command or socket message reaches it.
+ * @type {BookmarkletsSetting}
+ */
+let bookmarklets = "none";
+
+/**
+ * Who may run bookmarklets from now on; anything but a known level is `"none"`.
+ * @param {BookmarkletsSetting} next
+ */
+export function setBookmarkletsSetting(next) {
+  bookmarklets = BOOKMARKLETS_SETTINGS.includes(next) ? next : "none";
+}
+
+/** The level in force. */
+export function bookmarkletsSetting() {
+  return bookmarklets;
 }
 
 /** @returns {PlacesUtilsApi} */
@@ -427,4 +452,85 @@ export function observeBookmarks(fn) {
   const listener = () => fn();
   PU.observers.addListener([...BOOKMARK_EVENTS], listener);
   return () => PU.observers.removeListener([...BOOKMARK_EVENTS], listener);
+}
+
+/**
+ * A stored bookmark, read afresh from Places by its guid (bookmarklets B10, B15), or null when
+ * there is none or it is a folder.
+ * @param {string} guid
+ * @returns {Promise<{ guid: string, title: string, url: string } | null>}
+ */
+export async function fetchBookmark(guid) {
+  const bm = await places().bookmarks.fetch(guid);
+  if (!bm?.url) return null;
+  return { guid: bm.guid, title: bm.title ?? "", url: bm.url.href };
+}
+
+/**
+ * Every bookmarklet among the user's bookmarks whose title is exactly `name` (bookmarklets
+ * B12), anywhere in Places, with its folder path for the question.
+ * @param {string} name
+ * @returns {Promise<{ guid: string, title: string, url: string, path: string }[]>}
+ */
+export async function bookmarkletsNamed(name) {
+  /** @type {{ guid: string, title: string, url: string, path: string }[]} */
+  const found = [];
+  /** @param {PlacesItem} node @param {string[]} folders */
+  const walk = (node, folders) => {
+    const url = node.uri;
+    if (url !== undefined) {
+      if (node.guid && node.title === name && bookmarkKind(url) === "bookmarklet") {
+        found.push({
+          guid: node.guid,
+          title: name,
+          url,
+          path: formatBookmarkPath([...folders, name]),
+        });
+      }
+      return;
+    }
+    const inside = node.guid === "root________" ? folders : [...folders, node.title ?? ""];
+    for (const child of node.children ?? []) walk(child, inside);
+  };
+  walk(await placesTree(), []);
+  return found;
+}
+
+/**
+ * Whether `browser` shows a page a bookmarklet may run on (bookmarklets B9): one with an http,
+ * https or file content principal. Never a system-principal page, Vimma's own pages, `about:`
+ * or an extension's page.
+ * @param {MozBrowser} browser
+ */
+export function bookmarkletPage(browser) {
+  const p = browser.contentPrincipal;
+  return !!p?.isContentPrincipal && ["http", "https", "file"].some((s) => p.schemeIs(s));
+}
+
+/**
+ * Runs a stored bookmarklet's URL in `browser`'s page (bookmarklets B8), the load Firefox makes
+ * for a picked bookmarklet (PlacesUIUtils._openNodeIn → openTrustedLinkIn with
+ * allowInheritPrincipal, engine/browser/components/places/PlacesUIUtils.sys.mjs:959): the system
+ * principal triggers it and LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL is left out (as
+ * URILoadingHelper's openInCurrentTab does for allowInheritPrincipal), so the engine
+ * evaluates the script in the page's own global, with the page's principal, and refuses a
+ * system-principal page (engine/dom/jsurl/nsJSProtocolHandler.cpp:396). The browser is loaded
+ * directly, not through openTrustedLinkIn, which raises the window (`w.focus()`): an agent's run
+ * must not. `popups`: the user's run allows them, as Firefox's does; an agent's does not.
+ * Returns the refusal to show, or null once the load is started.
+ * @param {MozBrowser} browser
+ * @param {string} url  a stored bookmark's URL, unchanged; the caller decided it is a bookmarklet
+ * @param {{ popups: boolean }} options
+ * @returns {string | null}
+ */
+export function runBookmarklet(browser, url, { popups }) {
+  if (bookmarkKind(url) !== "bookmarklet") return "only a bookmarklet can be run";
+  if (!bookmarkletPage(browser)) return "bookmarklets run only on web pages";
+  let loadFlags = Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
+  if (popups) loadFlags |= Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_POPUPS;
+  browser.loadURI(Services.io.newURI(url), {
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+    loadFlags,
+  });
+  return null;
 }

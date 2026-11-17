@@ -4,7 +4,7 @@
 
 //! The `tools/list` result: every tool's description, input schema and annotations.
 
-use super::args::{ELEMENT_KINDS, MAX_SINCE, exact_f64};
+use super::args::{ELEMENT_KINDS, MAX_BOOKMARKLET_NAME, MAX_SINCE, exact_f64};
 use super::{object, text};
 use crate::json::Value;
 use std::collections::BTreeMap;
@@ -24,6 +24,7 @@ pub fn tools() -> Value {
         fill_tool(),
         screenshot_tool(),
         console_tool(),
+        bookmarklet_tool(),
     ])
 }
 
@@ -630,6 +631,50 @@ fn console_tool() -> Value {
     )
 }
 
+/// bookmarklets B12-B16: the bookmarklet's code can change the page and send requests as it, so
+/// not read-only and destructive; a second run may differ, so not idempotent; the page is the
+/// web's, so open-world.
+fn bookmarklet_tool() -> Value {
+    tool(
+        "vimma_bookmarklet",
+        "Vimma: run one of the user's bookmarklets",
+        "Run one of the user's own bookmarklets (a bookmark whose address is javascript: code) in \
+         a tab of Vimma's agent workspace, by the tab's id from vimma_tabs or vimma_open and the \
+         bookmarklet's exact title, which the user tells you. Only works when the user allowed \
+         agents to run bookmarklets in Vimma's config.toml. Vimma asks the user every time (no \
+         grant covers it), so tell them which bookmarklet you are about to run; the call waits \
+         for their answer and may be denied. You cannot pass code: only a title the user saved. \
+         The result says only that it ran; read the page with vimma_read_page to see what it did.",
+        schema(
+            object([
+                ("tab", tab_property(TAB_FROM)),
+                (
+                    "name",
+                    object([
+                        ("type", text("string")),
+                        ("minLength", Value::Number(1.0)),
+                        (
+                            "maxLength",
+                            Value::Number(exact_f64(MAX_BOOKMARKLET_NAME as u64)),
+                        ),
+                        (
+                            "description",
+                            text("The bookmarklet's title, exactly as the user saved it."),
+                        ),
+                    ]),
+                ),
+            ]),
+            &["tab", "name"],
+        ),
+        hints([
+            ("readOnlyHint", false),
+            ("destructiveHint", true),
+            ("idempotentHint", false),
+            ("openWorldHint", true),
+        ]),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -657,7 +702,7 @@ mod tests {
                 !text.contains("Vimma asks the user before it answers"),
                 "{name}: {text}"
             );
-            if name != "vimma_show" && name != "vimma_open" {
+            if name != "vimma_show" && name != "vimma_open" && name != "vimma_bookmarklet" {
                 assert!(
                     text.contains("Unless the user allowed this session, Vimma asks them first"),
                     "{name}: {text}"
@@ -709,7 +754,8 @@ mod tests {
                 "vimma_activate",
                 "vimma_fill",
                 "vimma_screenshot",
-                "vimma_console"
+                "vimma_console",
+                "vimma_bookmarklet"
             ]
         );
     }

@@ -125,14 +125,17 @@ export const AGENT_TOOLS = Object.freeze({
   "agent-fill": "vimma_fill",
   "agent-screenshot": "vimma_screenshot",
   "agent-console": "vimma_console",
+  "agent-bookmarklet": "vimma_bookmarklet",
 });
 /**
  * Tools that ask every time, under any grant, and whose answer never makes a grant: showing a
  * page changes what the user sees, so no grant may let an agent do it at any moment
- * (docs/specs/mcp-drive.md D4, mcp-grants G2, security.md M19). Requests asked with `always`
+ * (docs/specs/mcp-drive.md D4, mcp-grants G2, security.md M19). Running a bookmarklet runs code
+ * with the page's rights, past every other tool's checks, so it is asked each time too
+ * (docs/specs/bookmarklets.md B14, security.md M63). Requests asked with `always`
  * (a submission, a dangerous or unscanned download) do the same.
  */
-export const ALWAYS_ASK = Object.freeze(["vimma_show"]);
+export const ALWAYS_ASK = Object.freeze(["vimma_show", "vimma_bookmarklet"]);
 /** Questions that may wait: per connection and in all (decision 17). */
 export const QUEUE_LIMITS = Object.freeze({ perConnection: 4, total: 16 });
 /**
@@ -152,6 +155,13 @@ export const KEYS_RATE = Object.freeze({ max: 30, ms: 60_000 });
  * counted when asked, so a refused show cannot be retried in a loop.
  */
 export const SHOW_RATE = Object.freeze({ max: 6, ms: 60_000 });
+
+/**
+ * `agent-bookmarklet` requests per connection in any window of `ms` (docs/specs/bookmarklets.md
+ * B16, security.md M63), counted before the bookmark is looked up: titles cannot be probed
+ * quickly, and the user is not flooded with questions.
+ */
+export const BOOKMARKLET_RATE = Object.freeze({ max: 6, ms: 60_000 });
 
 /**
  * `agent-elements` requests per connection in any window of `ms` (mcp-forms F26, security.md

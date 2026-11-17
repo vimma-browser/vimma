@@ -850,7 +850,10 @@ interface MozBrowser extends Element {
   readonly popupAndRedirectBlocker: PopupAndRedirectBlocker;
   focus(): void;
   reload(): void;
-  loadURI(uri: nsIURI, params: { triggeringPrincipal: unknown; referrerInfo?: unknown }): void;
+  loadURI(
+    uri: nsIURI,
+    params: { triggeringPrincipal: unknown; referrerInfo?: unknown; loadFlags?: number },
+  ): void;
   /** The page's full zoom, 1 at 100 % (the fullZoom getter and setter). */
   fullZoom: number;
 }
@@ -1769,6 +1772,8 @@ interface PlacesBookmarkInfo {
   readonly guid: string;
   readonly parentGuid: string;
   readonly title: string;
+  /** A bookmark's address; a folder or separator has none (Bookmarks.sys.mjs, fetch). */
+  readonly url?: URL;
 }
 interface PlacesBookmarksApi {
   readonly TYPE_FOLDER: number;
@@ -2191,6 +2196,11 @@ interface XPCOMInterfaces {
     readonly FOREGROUND_CHECK: number;
   };
   nsIUpdateManager: nsIJSIID<nsIUpdateManager>;
+  // engine/docshell/base/nsIWebNavigation.idl: the load flags a bookmarklet's run passes.
+  nsIWebNavigation: nsIJSIID<nsISupports> & {
+    readonly LOAD_FLAGS_NONE: number;
+    readonly LOAD_FLAGS_ALLOW_POPUPS: number;
+  };
   nsIWebProgressListener: nsIJSIID<nsISupports> & {
     readonly LOCATION_CHANGE_SAME_DOCUMENT: number;
     readonly STATE_CERT_USER_OVERRIDDEN: number;

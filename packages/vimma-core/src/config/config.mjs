@@ -28,7 +28,7 @@ import { resolveRoutes, validateRoutes } from "./routes.mjs";
 import { formatPath, locateKeys, parsePath, parseToml, setTomlKeys, tomlLiteral } from "./toml.mjs";
 import { canonicalChord, isShortcutChord } from "../keys/firefox-keys.mjs";
 import { KeyNotationError, formatKey, parseKey } from "../keys/keys.mjs";
-import { BOOKMARKS_ROOTS } from "../ui/bookmarks.mjs";
+import { BOOKMARKLETS_SETTINGS, BOOKMARKS_ROOTS } from "../ui/bookmarks.mjs";
 import { PANEL_NUMBERS } from "../ui/sidepanel.mjs";
 import { SCROLL_STEP_DEFAULT, SCROLL_STEP_MAX, SCROLL_STEP_MIN } from "../page/scroll.mjs";
 import { quarantineProblem, resolveDownloadDir } from "../agent/agent-downloads.mjs";
@@ -49,7 +49,7 @@ import { hasControl } from "../text/strings.mjs";
 /** @import { ThemeConfig } from "./theme.mjs" */
 /** @import { InsertSiteMode, InsertSiteRule } from "../keys/editable.mjs" */
 /** @import { Route } from "./routes.mjs" */
-/** @import { BookmarksRoot } from "../ui/bookmarks.mjs" */
+/** @import { BookmarkletsSetting, BookmarksRoot } from "../ui/bookmarks.mjs" */
 /** @import { PanelNumbers } from "../ui/sidepanel.mjs" */
 /** @import { ResolvedSearch } from "./search.mjs" */
 
@@ -89,7 +89,8 @@ import { hasControl } from "../text/strings.mjs";
  * @property {{ defaultWorkspace: string | null }} routing  `[routing]` (schema 2), app-routes
  * @property {FirefoxKeySetting} firefox                 `[firefox]`, chords canonical (schema 2)
  * @property {boolean} insertEditing                     `[modal] insert_editing` (schema 2)
- * @property {{ root: BookmarksRoot }} bookmarks          `[bookmarks]` (schema 2)
+ * @property {{ root: BookmarksRoot, bookmarklets: BookmarkletsSetting }} bookmarks
+ *   `[bookmarks]` (schema 2; `bookmarklets`: docs/specs/bookmarklets.md B1)
  * @property {{ numbers: PanelNumbers }} panel            `[panel]` (schema 2), side-panel-counts
  * @property {{ step: number }} scroll                   `[scroll]` (schema 2): j/k/h/l in CSS
  *   pixels, docs/specs/m1-actor-insert-scroll.md "Follow-up: scroll step"
@@ -273,8 +274,8 @@ const SCHEMA_2_KEYS = [
   "panel",
   "scroll",
 ];
-/** `[bookmarks]` (docs/specs/bookmarks.md, decision 2). */
-const BOOKMARKS_KEYS = ["root"];
+/** `[bookmarks]` (docs/specs/bookmarks.md, decision 2; docs/specs/bookmarklets.md, B1). */
+const BOOKMARKS_KEYS = ["root", "bookmarklets"];
 /** `[routing]` (docs/specs/app-routes.md, decision 16). */
 const ROUTING_KEYS = ["default_workspace"];
 /** `[panel]` (docs/specs/side-panel-counts.md, decision 6). */
@@ -641,9 +642,14 @@ function validate(raw, declared, warnings = []) {
   if (declared >= 2 && isTable(raw.bookmarks)) {
     for (const [key, v] of Object.entries(raw.bookmarks)) {
       const path = ["bookmarks", key];
-      if (key !== "root") unknownKey(path, key, BOOKMARKS_KEYS);
+      if (!BOOKMARKS_KEYS.includes(key)) unknownKey(path, key, BOOKMARKS_KEYS);
       else if (typeof v !== "string") typeError(path, v, "a string");
-      else if (!BOOKMARKS_ROOTS.includes(/** @type {BookmarksRoot} */ (v))) {
+      else if (key === "bookmarklets") {
+        // docs/specs/bookmarklets.md B1-B3: only this file sets who may run bookmarklets.
+        if (!BOOKMARKLETS_SETTINGS.includes(/** @type {BookmarkletsSetting} */ (v))) {
+          fail(path, 'must be "none", "user" or "agent"', closest(v, BOOKMARKLETS_SETTINGS));
+        }
+      } else if (!BOOKMARKS_ROOTS.includes(/** @type {BookmarksRoot} */ (v))) {
         fail(path, 'must be "workspace", "toolbar" or "all"', closest(v, BOOKMARKS_ROOTS));
       }
     }
@@ -1222,7 +1228,10 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     routing: { defaultWorkspace: user.routing?.default_workspace ?? null },
     firefox: resolveFirefox(user.firefox),
     insertEditing: /** @type {boolean | undefined} */ (user.modal?.insert_editing) ?? true,
-    bookmarks: { root: user.bookmarks?.root ?? "workspace" },
+    bookmarks: {
+      root: user.bookmarks?.root ?? "workspace",
+      bookmarklets: user.bookmarks?.bookmarklets ?? "none",
+    },
     panel: { numbers: user.panel?.numbers ?? "absolute" },
     scroll: { step: user.scroll?.step ?? SCROLL_STEP_DEFAULT },
     private: { placement: user.private?.placement ?? "swap" },

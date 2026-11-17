@@ -43,7 +43,8 @@ export const RESERVED_COMMANDS = Object.freeze(["list-tabs", "screenshot", "relo
  * and links with hint labels (docs/specs/mcp-forms.md F2), `agent-activate` clicks one by its
  * label (F8), `agent-fill` fills fields by their labels (F12), `agent-screenshot` returns an
  * image of an agent tab's viewport (F18), and `agent-console` its script errors and failed
- * requests (F22).
+ * requests (F22). `agent-bookmarklet` runs one of the user's bookmarklets, named by its title,
+ * in an agent tab (docs/specs/bookmarklets.md B12).
  */
 export const AGENT_COMMANDS = Object.freeze([
   "agent-hello",
@@ -60,7 +61,10 @@ export const AGENT_COMMANDS = Object.freeze([
   "agent-fill",
   "agent-screenshot",
   "agent-console",
+  "agent-bookmarklet",
 ]);
+/** The longest bookmark title `agent-bookmarklet` takes, in code points (bookmarklets B12). */
+export const MAX_BOOKMARKLET_NAME = 1024;
 /** Why `agent-activate`'s wait after the click stopped early (mcp-forms F27). */
 export const ACTIVATE_STOPS = Object.freeze(["in-use"]);
 /** The page dialogs `agent-activate` reports (mcp-forms F11). */
@@ -554,6 +558,13 @@ function checkRequest(m, errors) {
     checkTabArg(args, errors);
     checkListFilters(args, errors);
     if ("full" in args && typeof args.full !== "boolean") errors.push("full must be a boolean");
+  } else if (command === "agent-bookmarklet") {
+    // A tab and a bookmark's title, never a URL or script (bookmarklets B12).
+    noExtraFields(args, ["tab", "name"], errors, "args.");
+    checkTabArg(args, errors);
+    if (!isBookmarkletName(args.name)) {
+      errors.push(`name must be a string of 1 to ${MAX_BOOKMARKLET_NAME} characters`);
+    }
   } else if (command === "agent-close" || command === "agent-show") {
     // A show names its tab only, never a workspace (mcp-drive D2).
     noExtraFields(args, ["tab"], errors, "args.");
@@ -590,10 +601,18 @@ function checkRequest(m, errors) {
  *   "agent-fill": TabArgs & StepListArgs & { fields: FillField[], submit?: true | string },
  *   "agent-screenshot": TabArgs & { labels?: boolean, full?: boolean },
  *   "agent-console": TabArgs & { since?: number },
+ *   "agent-bookmarklet": TabArgs & { name: string },
  * }} AgentArgs
  * @typedef {keyof AgentArgs} AgentCommand
  * @typedef {{ [C in AgentCommand]: { command: C, args: AgentArgs[C] } }[AgentCommand]} AgentRequest
  */
+
+/**
+ * A bookmark title as `agent-bookmarklet` takes it: 1 to MAX_BOOKMARKLET_NAME code points.
+ * @param {unknown} v @returns {v is string}
+ */
+const isBookmarkletName = (v) =>
+  typeof v === "string" && v.length > 0 && [...v].length <= MAX_BOOKMARKLET_NAME;
 
 /** @param {unknown} v @returns {v is string[]} */
 const isStrings = (v) => Array.isArray(v) && v.every((s) => typeof s === "string");
@@ -659,6 +678,9 @@ export function parseAgentRequest(command, given) {
   }
   if (typeof tab !== "string") return null;
   if (command === "agent-close" || command === "agent-show") return { command, args: { tab } };
+  if (command === "agent-bookmarklet") {
+    return isBookmarkletName(args.name) ? { command, args: { tab, name: args.name } } : null;
+  }
   if (command === "agent-read") {
     const { format, max_chars } = args;
     return {
@@ -1094,6 +1116,10 @@ function checkAgentResult(result, command, errors) {
   } else if (command === "agent-show") {
     noExtraFields(result, ["shown"], errors, "result.");
     if (result.shown !== true) errors.push("result.shown must be true");
+  } else if (command === "agent-bookmarklet") {
+    // Nothing of the script's comes back (bookmarklets B16).
+    noExtraFields(result, ["ran"], errors, "result.");
+    if (result.ran !== true) errors.push("result.ran must be true");
   } else if (command === "agent-cancel") {
     checkFields(result, "result", { flags: ["cancelled"] }, errors);
   } else if (command === "agent-keys") {
