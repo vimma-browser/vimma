@@ -57,10 +57,14 @@ export class Budget {
     this.steps++;
   }
 
-  /** @param {{ input: number, output: number, estimated: boolean }} usage */
+  /**
+   * A count that is not finite, or is below 0, adds nothing: it would keep the sums from ever
+   * reaching a limit (security.md M41). The providers drop such counts already.
+   * @param {{ input: number, output: number, estimated: boolean }} usage
+   */
   addUsage({ input, output, estimated }) {
-    this.input += input;
-    this.output += output;
+    if (Number.isFinite(input) && input >= 0) this.input += input;
+    if (Number.isFinite(output) && output >= 0) this.output += output;
     this.estimated ||= estimated;
     this.tokensReported = true;
   }

@@ -20,6 +20,20 @@ describe("Budget", () => {
     expect(b.exceeded()).toEqual({ limit: "steps", used: 2, max: 2 });
   });
 
+  // Issue #1225, security.md M41: a count that is not finite, or is below 0, would make the
+  // sums limits never reach (a negative count) or NaN, which no limit compares against.
+  test.each([-1, -1e300, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NaN])(
+    "a usage count of %s adds nothing",
+    (bad) => {
+      const b = new Budget({ maxTokens: 1000 });
+      b.addUsage({ input: 1500, output: 0, estimated: false });
+      b.addUsage({ input: bad, output: 2, estimated: false });
+      b.addUsage({ input: 3, output: bad, estimated: false });
+      expect(b.tokens).toBe(1505);
+      expect(b.exceeded()).toEqual({ limit: "tokens", used: 1505, max: 1000 });
+    },
+  );
+
   test("a task stops at max_tokens, input and output summed over its requests", () => {
     const b = new Budget({ maxTokens: 1000 });
     b.addUsage({ input: 600, output: 300, estimated: false });

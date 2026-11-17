@@ -232,8 +232,34 @@ function openaiMessage(m) {
 /** @param {number} chars */
 const estimate = (chars) => Math.ceil(chars / 4);
 
-/** A reply's token count, or 0 for one that is not a number, which would make the budget's sums text. */
-const count = (/** @type {unknown} */ n) => (typeof n === "number" ? n : 0);
+/**
+ * A reply's token count: a finite number of at least 0, as agent-cli.mjs reads one, else null. A
+ * string would make the budget's sums text, and a negative count, Infinity (`1e400` in JSON) or
+ * NaN would keep them from ever reaching a limit (security.md M41).
+ */
+const count = (/** @type {unknown} */ n) =>
+  typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : null;
+
+/**
+ * A reply's usage, or its estimate where the server gave none (B10): without a valid input count
+ * both are estimated, and an output count that is there but not valid is estimated alone. A
+ * missing output count is 0, and so is an optional `extra` count (cache reads) that is not valid.
+ * @param {unknown} input @param {unknown} output @param {unknown[]} extra
+ * @param {string} requestBody @param {unknown} reply  what the output estimate counts
+ * @returns {Usage}
+ */
+function usageOf(input, output, extra, requestBody, reply) {
+  const counted = count(input);
+  const out = output === undefined || output === null ? 0 : count(output);
+  return {
+    input:
+      counted === null
+        ? estimate(requestBody.length)
+        : extra.reduce((/** @type {number} */ n, e) => n + (count(e) ?? 0), counted),
+    output: counted === null || out === null ? estimate(JSON.stringify(reply).length) : out,
+    estimated: counted === null || out === null,
+  };
+}
 
 /**
  * @typedef {{ type?: unknown, text?: unknown, id?: unknown, name?: unknown, input?: unknown }} AnthropicBlock
@@ -276,21 +302,13 @@ function anthropicReply(reply, requestBody) {
     .filter(/** @type {IsBlock} */ ((b) => b?.type === "tool_use"))
     .map((b, i) => toolCall(b.id, i, b.name, b.input, false));
   const u = json.usage;
-  const usage =
-    typeof u?.input_tokens === "number"
-      ? {
-          input:
-            u.input_tokens +
-            count(u.cache_creation_input_tokens) +
-            count(u.cache_read_input_tokens),
-          output: count(u.output_tokens),
-          estimated: false,
-        }
-      : {
-          input: estimate(requestBody.length),
-          output: estimate(JSON.stringify(content).length),
-          estimated: true,
-        };
+  const usage = usageOf(
+    u?.input_tokens,
+    u?.output_tokens,
+    [u?.cache_creation_input_tokens, u?.cache_read_input_tokens],
+    requestBody,
+    content,
+  );
   return {
     message: { role: "assistant", text, toolCalls, raw: { kind: "anthropic", content } },
     usage,
@@ -312,14 +330,7 @@ function openaiReply(reply, requestBody) {
   );
   // A reply with a message is an object.
   const u = /** @type {OpenaiReply} */ (json).usage;
-  const usage =
-    typeof u?.prompt_tokens === "number"
-      ? { input: u.prompt_tokens, output: count(u.completion_tokens), estimated: false }
-      : {
-          input: estimate(requestBody.length),
-          output: estimate(JSON.stringify(msg).length),
-          estimated: true,
-        };
+  const usage = usageOf(u?.prompt_tokens, u?.completion_tokens, [], requestBody, msg);
   return {
     message: {
       role: "assistant",
