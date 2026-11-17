@@ -58,10 +58,11 @@ async function pageKeysThenZ(/** @type {MozTabbrowserTab} */ tab) {
 
 add_task(async function down_enters_the_list_and_arrows_move_in_it() {
   const tab = await openPage();
-  const expected = completeCommandLine("move_tab").candidates.map((c) => c.value);
-  Assert.greater(expected.length, 2, "sanity: several candidates for move_tab");
+  // A prefix no test runs as a line, so Up finds no history whatever ran before this file.
+  const expected = completeCommandLine("mvt").candidates.map((c) => c.value);
+  Assert.greater(expected.length, 2, "sanity: several candidates for mvt");
 
-  typeCommand("move_tab");
+  typeCommand("mvt");
   Assert.equal(options().length, expected.length, "the list follows the typed text");
   Assert.equal(selectedValue(), null, "no row is selected yet");
 
@@ -74,7 +75,7 @@ add_task(async function down_enters_the_list_and_arrows_move_in_it() {
   press("KEY_ArrowUp");
   Assert.equal(input().value, expected[0], "Up moves back");
   press("KEY_ArrowUp");
-  Assert.equal(input().value, "move_tab", "Up on the first row goes back to the typed text");
+  Assert.equal(input().value, "mvt", "Up on the first row goes back to the typed text");
   Assert.equal(selectedValue(), null, "and leaves the list");
   Assert.equal(options().length, expected.length, "which still shows the matches");
 
@@ -95,6 +96,38 @@ add_task(async function down_enters_the_list_and_arrows_move_in_it() {
   press("KEY_Escape");
   Assert.ok(!isOpen(), "Esc closes the line");
   Assert.deepEqual(await pageKeysThenZ(tab), ["z"], "the page saw none of the line's keys");
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function enter_runs_the_match_the_arrows_selected() {
+  const tab = await openPage();
+  const expected = completeCommandLine("tabn").candidates.map((c) => c.value);
+  Assert.equal(expected[0], "tabnew", "sanity: the first match");
+  Assert.greater(expected.length, 1, "sanity: a second match to move to and back from");
+  typeCommand("tabn");
+  press("KEY_ArrowDown");
+  press("KEY_ArrowDown");
+  press("KEY_ArrowUp");
+  Assert.equal(input().value, "tabnew", "the arrows selected tabnew");
+  const opened = BrowserTestUtils.waitForNewTab(gBrowser);
+  press("KEY_Enter");
+  const newTab = await opened;
+  Assert.ok(!isOpen(), "Enter ran the selected command and closed the line");
+  BrowserTestUtils.removeTab(newTab);
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function down_enters_the_list_after_an_error() {
+  const tab = await openPage();
+  const expected = completeCommandLine("tab").candidates.map((c) => c.value);
+  Assert.greater(expected.length, 0, "sanity: tab has matches");
+  typeCommand("tab");
+  press("KEY_Enter");
+  Assert.ok(isOpen(), "sanity: the ambiguous line stays open with its error");
+  Assert.equal(input().value, "tab", "with its text");
+  press("KEY_ArrowDown");
+  Assert.equal(input().value, expected[0], "Down still selects the first match, as Tab would");
+  press("KEY_Escape");
   BrowserTestUtils.removeTab(tab);
 });
 
@@ -136,6 +169,16 @@ add_task(async function history_keeps_up_and_down_on_an_empty_line_and_while_rec
   Assert.equal(input().value, "scroll_top", "Up with typed text is still the prefix search");
   press("KEY_ArrowDown");
   Assert.equal(input().value, "scr", "and Down returns to the typed text");
+  press("KEY_Escape");
+
+  await focusContent(tab.linkedBrowser);
+  typeCommand("");
+  press("KEY_ArrowUp");
+  Assert.equal(input().value, "scroll_top", "sanity: Up recalls the last command");
+  press("KEY_Backspace");
+  const edited = completeCommandLine("scroll_to").candidates.map((c) => c.value);
+  press("KEY_ArrowDown");
+  Assert.equal(input().value, edited[0], "after an edit, Down enters the list, not history");
   press("KEY_Escape");
 
   await focusContent(tab.linkedBrowser);
