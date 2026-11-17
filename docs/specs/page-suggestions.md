@@ -36,7 +36,11 @@ typing a query.
    `preventDefault` on it) keeps the key, and Vimma presses no arrow key.
 3. **Without a list.** With no suggestion list open, `ctrl+n` reaches the page and does nothing
    else, and `ctrl+p` prints as it does today. The same holds in a field whose list was closed
-   by `Esc` from the page or by the page itself.
+   by `Esc` from the page or by the page itself. (Since changed: on macOS, with no list open,
+   both keys stay the text field's own, Cocoa's `moveDown:` and `moveUp:`: the caret moves and
+   `ctrl+p` does not print from a text field, because a field's own edit command keeps a
+   page-first key on every platform ([firefox-keys](firefox-keys.md) decision 6) and these two
+   move the caret in every Mac app; `docs/guide.md`, "Normal and insert mode".)
 4. **Firefox's own popup.** The list Firefox draws for an `<input list>` with a `<datalist>`, and
    for form history, counts as an open list while it shows: `ctrl+n` and `ctrl+p` move its
    selection as `ArrowDown` and `ArrowUp` do. They do not open it; `ArrowDown` still does.
@@ -104,7 +108,13 @@ typing a query.
   row); `ctrl+n` is V, consumed on keydown (the `key_newNavigator` row).
 - **macOS.** Cocoa binds `ctrl+n` and `ctrl+p` to `moveDown:` and `moveUp:` in text fields
   (`widget/cocoa/NativeKeyBindings.mm:447-460`), an editor command, not an arrow key event, so a
-  page's list does not move on them today. Not run on macOS for this spec.
+  page's list does not move on them today. Not run on macOS for this spec. (Since changed: run
+  on the macOS mochitest job. The field's command also prevents the keypress's default, which
+  the host read as the page taking the key, so no arrow key was pressed on macOS. There the
+  parent now marks a suggestion key's keypress, and the content actor keeps a marked keypress
+  from the field while its suggestion list is open, so the caret stays and the arrow key is
+  pressed; `host/VimmaHost.sys.mjs`, `_suggestionKeySent`, and `actors/VimmaChild.sys.mjs`,
+  `keypress`.)
 
 ## Design
 

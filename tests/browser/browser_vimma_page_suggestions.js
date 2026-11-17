@@ -255,6 +255,46 @@ add_task(async function the_caret_stays_where_it_was_in_an_open_list() {
   });
 });
 
+// The same in a contenteditable, whose editor listens above the page (EditorEventListener, on
+// the window's parent target): Cocoa's moveDown: and moveUp: there move the caret a line.
+add_task(async function the_caret_stays_where_it_was_in_an_open_contenteditable_list() {
+  await BrowserTestUtils.withNewTab(COMBO, async (browser) => {
+    await focusContent(browser);
+    await focusField(browser, browser, "rich");
+    /** The caret, as the text of its line and its offset there. */
+    const caret = () =>
+      SpecialPowers.spawn(browser, [], () => {
+        const sel = /** @type {Selection} */ (content.getSelection());
+        return `${sel.anchorNode?.textContent?.trim()}:${sel.anchorOffset}:${sel.isCollapsed}`;
+      });
+    // In the middle line, so that a line up and a line down both show.
+    const start = await SpecialPowers.spawn(browser, [], () => {
+      const rich = /** @type {HTMLElement} */ (content.document.getElementById("rich"));
+      const two = [...rich.childNodes].find((n) => n.textContent?.trim() === "two");
+      const text = /** @type {string} */ (two?.textContent);
+      /** @type {Selection} */ (content.getSelection()).collapse(
+        /** @type {Node} */ (two),
+        text.indexOf("two") + 1,
+      );
+      const sel = /** @type {Selection} */ (content.getSelection());
+      return `${sel.anchorNode?.textContent?.trim()}:${sel.anchorOffset}:${sel.isCollapsed}`;
+    });
+    Assert.ok(start.startsWith("two:"), `the caret is in the middle line (${start})`);
+    ctrl("n");
+    await TestUtils.waitForCondition(
+      async () => (await pageLog(browser)).includes("rich:ArrowDown:true"),
+      "ctrl+n presses ArrowDown",
+    );
+    Assert.equal(await caret(), start, "and the caret stays");
+    ctrl("p");
+    await TestUtils.waitForCondition(
+      async () => (await pageLog(browser)).includes("rich:ArrowUp:true"),
+      "ctrl+p presses ArrowUp",
+    );
+    Assert.equal(await caret(), start, "and the caret stays");
+  });
+});
+
 add_task(async function a_combobox_in_a_cross_origin_frame() {
   await BrowserTestUtils.withNewTab(ROOT + "file_vimma_suggest_datalist.html", async (browser) => {
     const src = COMBO.replace("https://example.com", "https://example.org");
