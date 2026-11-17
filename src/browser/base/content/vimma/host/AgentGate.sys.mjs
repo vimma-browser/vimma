@@ -25,7 +25,13 @@
 // answer is checked against, or `:mcp log`.
 
 import { AgentLog, AgentQueue, frozenCopy, grantLength, isBuiltinConn } from "../core/agent.mjs";
-import { FULL_CONTROL, PAGE_CLIENT, SHOW_TOOL, isCheckpoint } from "../core/agent-prompt.mjs";
+import {
+  BOOKMARKLET_TOOL,
+  FULL_CONTROL,
+  PAGE_CLIENT,
+  SHOW_TOOL,
+  isCheckpoint,
+} from "../core/agent-prompt.mjs";
 import { McpHost } from "./mcp-ops.mjs";
 import { fieldsOf } from "./browser-ops.mjs";
 
@@ -395,11 +401,12 @@ export const AgentGate = {
     let length = null;
     /** @type {Answer} */
     let final = /** @type {Answer} */ (answer);
-    // Full control, a page's download and a show (mcp-drive D4) are one yes or no: no grant
-    // covers them, and `x` is a plain no.
+    // Full control, a page's download, a show (mcp-drive D4) and a bookmarklet (bookmarklets
+    // B14) are one yes or no: no grant covers them, and `x` is a plain no.
     if (
       question?.tool === FULL_CONTROL ||
       question?.tool === SHOW_TOOL ||
+      question?.tool === BOOKMARKLET_TOOL ||
       question?.conn === PAGE_CONN
     ) {
       if (answer.kind === "grant") return null;

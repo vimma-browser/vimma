@@ -149,6 +149,15 @@ fn success(tool: &ToolCall, result: &Value) -> Result<Value, String> {
         )?),
         ToolCall::Screenshot { tab, labels, .. } => ok(screenshot_items(tab, *labels, result)?),
         ToolCall::Console { tab, .. } => ok(console_text(tab, result)?),
+        ToolCall::Bookmarklet { tab, name } => {
+            if result.get("ran") != Some(&Value::Bool(true)) {
+                return Err("Vimma's result does not say ran".into());
+            }
+            ok(vec![text_item(&format!(
+                "Ran the bookmarklet \"{name}\" in tab {tab} of Vimma's agent workspace, in the \
+                 background. Read the page with vimma_read_page to see what it did."
+            ))])
+        }
         ToolCall::Show { tab } => {
             if result.get("shown") != Some(&Value::Bool(true)) {
                 return Err("Vimma's result does not say shown".into());
@@ -1125,6 +1134,27 @@ mod tests {
             &legacy_call(show),
             Ok(&parse(r#"{"shown":false}"#).unwrap()),
         );
+        assert!(tool_error_text(&r).contains("protocol"));
+    }
+
+    // bookmarklets B16: the model learns only that it ran, and how to see what it did; a result
+    // that does not say so is a protocol error.
+    #[test]
+    fn a_bookmarklet_run_says_only_that_it_ran() {
+        let call = ToolCall::Bookmarklet {
+            tab: "13".into(),
+            name: "Readability".into(),
+        };
+        let r = tool_result(
+            &legacy_call(call.clone()),
+            Ok(&parse(r#"{"ran":true}"#).unwrap()),
+        );
+        assert_eq!(
+            texts(&r).join(""),
+            "Ran the bookmarklet \"Readability\" in tab 13 of Vimma's agent workspace, in the \
+             background. Read the page with vimma_read_page to see what it did."
+        );
+        let r = tool_result(&legacy_call(call), Ok(&parse(r#"{"ran":false}"#).unwrap()));
         assert!(tool_error_text(&r).contains("protocol"));
     }
 

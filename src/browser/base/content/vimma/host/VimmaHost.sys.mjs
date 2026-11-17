@@ -29,7 +29,7 @@ import { PENDING_ACTIONS } from "../core/cmdline.mjs";
 import { StatusBar } from "../ui/statusbar.mjs";
 import { TabStrip } from "../ui/tabstrip.mjs";
 import { Toolbar } from "../ui/toolbar.mjs";
-import { bookmarksRoot, setBookmarksRoot } from "./bookmark-ops.mjs";
+import { bookmarksRoot, setBookmarkletsSetting, setBookmarksRoot } from "./bookmark-ops.mjs";
 import { getTabLabel } from "../workspaces/tab-labels.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
 import { openOrSay } from "./tab-ops.mjs";
@@ -95,7 +95,7 @@ export { NO_OUTLINE, OUTLINE_ATTACHMENT, PDF_OUTLINE_PREF } from "./outline-ops.
 /** @import { HintTarget } from "../actors/VimmaActors.sys.mjs" */
 /** @import { AddonOp } from "../core/picker.mjs" */
 /** @import { FirefoxKeySetting } from "../core/config.mjs" */
-/** @import { BookmarksRoot } from "../core/bookmarks.mjs" */
+/** @import { BookmarkletsSetting, BookmarksRoot } from "../core/bookmarks.mjs" */
 /** @import { OutlineHost } from "./outline-ops.mjs" */
 /** @import { HostState } from "./runners.mjs" */
 /** @import { SuggestionAction } from "../core/suggestions.mjs" */
@@ -1021,9 +1021,11 @@ export const VimmaHost = {
    * @param {{ keymap?: Keymap, hintChars?: string, sites?: readonly InsertSiteRule[],
    *   configErrors?: readonly ConfigError[], configFile?: string,
    *   firefox?: FirefoxKeySetting, insertEditing?: boolean,
-   *   bookmarksRoot?: BookmarksRoot }} next
+   *   bookmarksRoot?: BookmarksRoot, bookmarklets?: BookmarkletsSetting }} next
    */
   configure(next) {
+    // docs/specs/bookmarklets.md B3: config.toml is the only source of this level.
+    if (next.bookmarklets) setBookmarkletsSetting(next.bookmarklets);
     // `[bookmarks] root` (docs/specs/bookmarks.md): an open panel re-reads at the new root.
     const rootChanged = !!next.bookmarksRoot && next.bookmarksRoot !== bookmarksRoot();
     if (next.bookmarksRoot) setBookmarksRoot(next.bookmarksRoot);

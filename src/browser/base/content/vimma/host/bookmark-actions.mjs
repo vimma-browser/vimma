@@ -7,6 +7,7 @@
 // the notice, the split code and bookmark-ops.mjs (Places).
 
 import {
+  bookmarkletDecision,
   completeWorkspacePath,
   folderPath,
   formatBookmarkPath,
@@ -15,13 +16,16 @@ import {
 import {
   addBookmark,
   addFolder,
+  bookmarkletsSetting,
   currentPage,
+  fetchBookmark,
   findBookmark,
   loadScope,
   moveItem,
   placeBookmark,
   removeItem,
   renameItem,
+  runBookmarklet,
 } from "./bookmark-ops.mjs";
 import { splitPane } from "./pane-ops.mjs";
 
@@ -168,6 +172,42 @@ function openBookmark(ctx, url, at) {
 }
 
 /**
+ * Opens or runs a stored bookmark the user picked (docs/specs/bookmarklets.md B10): read again
+ * from Places by its guid, decided by core `bookmarkletDecision` as the user at the level in
+ * force, then loaded (decision 6) or, a bookmarklet, run in the selected tab's page (B7, B8).
+ * The bookmarks panel's Enter and l come here, and `:bookmark_open` (#1219) is to call it with
+ * the guid of the picked bookmark: typed text picks a stored bookmark and never becomes
+ * the URL.
+ * @param {BookmarkContext} ctx
+ * @param {string} guid
+ * @param {"current" | "tab" | "vertical" | "horizontal"} where
+ */
+export async function openUserBookmark(ctx, guid, where) {
+  const bm = await fetchBookmark(guid);
+  if (!bm) {
+    ctx.say("bookmark: it is no longer there");
+    return;
+  }
+  const d = bookmarkletDecision({ url: bm.url, setting: bookmarkletsSetting(), by: "user", where });
+  if (d.kind === "refuse") {
+    ctx.say(d.text);
+    return;
+  }
+  if (d.kind === "open") {
+    openBookmark(ctx, bm.url, where);
+    return;
+  }
+  const browser = ctx.win.gBrowser.selectedBrowser;
+  const refused = runBookmarklet(browser, bm.url, { popups: true });
+  if (refused) {
+    ctx.say(refused);
+    return;
+  }
+  ctx.panel.close();
+  browser.focus();
+}
+
+/**
  * One effect of the bookmarks panel's keys.
  * @param {BookmarkContext} ctx
  * @param {BookmarksEffect} effect
@@ -178,6 +218,11 @@ export function runBookmarkEffect(ctx, effect) {
   switch (effect.type) {
     case "open":
       openBookmark(ctx, effect.url, effect.where);
+      return;
+    case "run":
+      openUserBookmark(ctx, effect.guid, "current").catch((e) =>
+        console.error("vimma: the bookmarklet could not run", e),
+      );
       return;
     case "refuse":
       ctx.say(effect.text);

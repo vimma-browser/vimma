@@ -156,6 +156,7 @@ function apply(next, text) {
     firefox: config.firefox,
     insertEditing: config.insertEditing,
     bookmarksRoot: config.bookmarks.root,
+    bookmarklets: config.bookmarks.bookmarklets,
   });
   for (const win of windows) applyToWindow(win, config);
   ThemeHost.setConfig(config.theme);

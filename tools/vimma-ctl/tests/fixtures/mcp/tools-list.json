@@ -373,6 +373,35 @@
         "idempotentHint": true,
         "openWorldHint": true
       }
+    },
+    {
+      "name": "vimma_bookmarklet",
+      "title": "Vimma: run one of the user's bookmarklets",
+      "description": "Run one of the user's own bookmarklets (a bookmark whose address is javascript: code) in a tab of Vimma's agent workspace, by the tab's id from vimma_tabs or vimma_open and the bookmarklet's exact title, which the user tells you. Only works when the user allowed agents to run bookmarklets in Vimma's config.toml. Vimma asks the user every time (no grant covers it), so tell them which bookmarklet you are about to run; the call waits for their answer and may be denied. You cannot pass code: only a title the user saved. The result says only that it ran; read the page with vimma_read_page to see what it did.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tab": {
+            "type": "string",
+            "pattern": "^[0-9]{1,20}$",
+            "description": "The tab's id, from vimma_tabs or vimma_open."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "The bookmarklet's title, exactly as the user saved it."
+          }
+        },
+        "additionalProperties": false,
+        "required": ["tab", "name"]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
     }
   ]
 }

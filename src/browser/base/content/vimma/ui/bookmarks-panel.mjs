@@ -26,7 +26,10 @@ import {
 } from "./side-panel.mjs";
 import { rowNumber } from "../core/sidepanel.mjs";
 
-/** @import { BookmarksEffect, BookmarksState, Folder, Row } from "../core/bookmarks.mjs" */
+/**
+ * @import { BookmarkletsSetting, BookmarksEffect, BookmarksState, Folder, Row }
+ *   from "../core/bookmarks.mjs"
+ */
 
 export const BOOKMARKS_ID = "vimma-bookmarks";
 export const FILTER_ID = "vimma-bookmarks-filter";
@@ -38,8 +41,10 @@ const RELOAD_DELAY_MS = 30;
  * @typedef {object} BookmarksPanelHost
  * @property {() => Promise<Folder>} load  the tree from Places
  * @property {(fn: () => void) => () => void} observe  Places changes; returns the unsubscribe
- * @property {(effect: BookmarksEffect) => void} effect  an open, add, rename, move, delete,
- *   yank or refusal for the host to carry out
+ * @property {(effect: BookmarksEffect) => void} effect  an open, run, add, rename, move,
+ *   delete, yank or refusal for the host to carry out
+ * @property {() => BookmarkletsSetting} bookmarklets  who may run bookmarklets
+ *   (docs/specs/bookmarklets.md B1), read at each key so a config reload applies at once
  */
 
 /**
@@ -237,7 +242,11 @@ export class BookmarksPanel {
       return;
     }
     const page = rowsShown(this.list);
-    const { state, effect } = bookmarksKey(this.state, { ...action, page });
+    const { state, effect } = bookmarksKey(
+      this.state,
+      { ...action, page },
+      { bookmarklets: this.host.bookmarklets() },
+    );
     if (state !== this.state) {
       this.state = state;
       if (!state.query) this.endFilter();

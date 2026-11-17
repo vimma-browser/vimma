@@ -55,6 +55,7 @@ const TYPE_FOLDER = 2;
  *   | { type: "move", guid: string, from: string }
  *   | { type: "delete", guid: string, kind: "bookmark" | "folder", title: string, count: number }
  *   | { type: "yank", url: string }
+ *   | { type: "run", guid: string, url: string }
  *   | { type: "refuse", text: string }
  *   | { type: "filter" } | { type: "close" }} BookmarksEffect
  */
@@ -411,6 +412,66 @@ export function isOpenable(url) {
   return /^(https?|file|about):/i.test(url.replace(/[\t\n\r]/g, "").trim());
 }
 
+/**
+ * Who may run a bookmarklet (config `[bookmarks] bookmarklets`, docs/specs/bookmarklets.md B1):
+ * nobody, the user from the bookmarks panel, or the user and, asked each time, an agent.
+ * @typedef {"none" | "user" | "agent"} BookmarkletsSetting
+ */
+export const BOOKMARKLETS_SETTINGS = Object.freeze(
+  /** @type {const} */ (["none", "user", "agent"]),
+);
+
+/**
+ * What a stored bookmark's URL is (bookmarklets B4, B5): `"openable"` (decision 6),
+ * `"bookmarklet"` (a `javascript:` URL) or `"refused"` (`data:` and everything else). The scheme
+ * is read as the URL parser reads it: leading spaces and control characters dropped, tabs and
+ * line breaks removed anywhere.
+ * @param {string} url
+ * @returns {"openable" | "bookmarklet" | "refused"}
+ */
+export function bookmarkKind(url) {
+  // Only the leading run is dropped: trailing characters never change the scheme, and a
+  // trailing `[…]+$` alternative backtracks quadratically on a long run of spaces.
+  // eslint-disable-next-line no-control-regex -- the URL parser drops exactly these (C0 and space)
+  const text = url.replace(/^[\u0000-\u0020]+/, "").replace(/[\t\n\r]/g, "");
+  if (isOpenable(text)) return "openable";
+  return /^javascript:/i.test(text) ? "bookmarklet" : "refused";
+}
+
+/** Why an agent's run is refused below `"agent"` (bookmarklets B13); it names the setting. */
+export const AGENTS_OFF =
+  'bookmarklets are off for agents: [bookmarks] bookmarklets = "agent" in config.toml allows them';
+const RUNS_HERE = "a bookmarklet runs in this page: Enter runs it";
+
+/**
+ * Whether a stored bookmark's URL opens, runs or is refused (bookmarklets B6), for the level in
+ * force, who asked and where it would open. The bookmarks panel and the agent's
+ * `agent-bookmarklet` both decide here. A bookmarklet runs only in the current page (B7), for
+ * the user at `"user"` and `"agent"`, for an agent only at `"agent"` (B13); `data:` and other
+ * schemes never (B5). An agent only ever runs bookmarklets through this, never opens a page.
+ * An unknown level counts as `"none"`.
+ * @param {{ url: string, setting: BookmarkletsSetting, by: "user" | "agent",
+ *   where: "current" | "tab" | "vertical" | "horizontal" }} request
+ * @returns {{ kind: "open" } | { kind: "run" } | { kind: "refuse", text: string }}
+ */
+export function bookmarkletDecision({ url, setting, by, where }) {
+  const kind = bookmarkKind(url);
+  if (by === "agent") {
+    if (setting !== "agent") return { kind: "refuse", text: AGENTS_OFF };
+    if (kind !== "bookmarklet") return { kind: "refuse", text: "only a bookmarklet can be run" };
+    return where === "current" ? { kind: "run" } : { kind: "refuse", text: RUNS_HERE };
+  }
+  if (kind === "openable") return { kind: "open" };
+  if (kind === "bookmarklet" && (setting === "user" || setting === "agent")) {
+    return where === "current" ? { kind: "run" } : { kind: "refuse", text: RUNS_HERE };
+  }
+  const scheme = /^\s*([a-z][a-z0-9+.-]*):/i.exec(url)?.[1]?.toLowerCase() ?? "this";
+  return {
+    kind: "refuse",
+    text: `${scheme}: bookmarks don't open from Vimma (only http, https, file, about)`,
+  };
+}
+
 /** @param {Node} node */
 const display = (node) => node.title || (node.kind === "bookmark" ? node.url : "(untitled folder)");
 
@@ -584,17 +645,14 @@ const refuseRoot = (row) => ({
 /**
  * @param {Row} row
  * @param {"current" | "tab" | "vertical" | "horizontal"} where
+ * @param {BookmarkletsSetting} bookmarklets
  * @returns {BookmarksEffect}
  */
-function openEffect(row, where) {
+function openEffect(row, where, bookmarklets) {
   if (row.kind === "folder") return { type: "refuse", text: `${row.title} is a folder` };
-  if (!isOpenable(row.url)) {
-    const scheme = /^\s*([a-z][a-z0-9+.-]*):/i.exec(row.url)?.[1]?.toLowerCase() ?? "this";
-    return {
-      type: "refuse",
-      text: `${scheme}: bookmarks don't open from Vimma (only http, https, file, about)`,
-    };
-  }
+  const d = bookmarkletDecision({ url: row.url, setting: bookmarklets, by: "user", where });
+  if (d.kind === "refuse") return { type: "refuse", text: d.text };
+  if (d.kind === "run") return { type: "run", guid: row.guid, url: row.url };
   return { type: "open", url: row.url, where };
 }
 
@@ -610,11 +668,13 @@ function countItems(node) {
 /**
  * One panel action: `panel.*` (j, k, Enter, Esc) and `bookmarks.*` (defaults.mjs
  * `[modal.panel]`).
+ * `bookmarklets`: the level in force (bookmarklets B1), `"none"` unless given.
  * @param {BookmarksState} state
  * @param {{ id: string, arg?: number, count?: number, page?: number }} action
+ * @param {{ bookmarklets?: BookmarkletsSetting }} [options]
  * @returns {{ state: BookmarksState, effect: BookmarksEffect | null }}
  */
-export function bookmarksKey(state, action) {
+export function bookmarksKey(state, action, { bookmarklets = "none" } = {}) {
   const none = { state, effect: null };
   /** @param {BookmarksEffect} effect */
   const say = (effect) => ({ state, effect });
@@ -650,7 +710,7 @@ export function bookmarksKey(state, action) {
   const filtering = !!state.query.trim();
   switch (action.id) {
     case "panel.open":
-      if (row.kind === "bookmark") return say(openEffect(row, "current"));
+      if (row.kind === "bookmark") return say(openEffect(row, "current", bookmarklets));
       if (filtering) return none;
       return {
         state: withExpanded(
@@ -661,7 +721,7 @@ export function bookmarksKey(state, action) {
         effect: null,
       };
     case "bookmarks.expand":
-      if (row.kind === "bookmark") return say(openEffect(row, "current"));
+      if (row.kind === "bookmark") return say(openEffect(row, "current", bookmarklets));
       if (filtering) return none;
       if (!row.open) {
         return {
@@ -693,11 +753,11 @@ export function bookmarksKey(state, action) {
       };
     }
     case "bookmarks.open_tab":
-      return say(openEffect(row, "tab"));
+      return say(openEffect(row, "tab", bookmarklets));
     case "bookmarks.open_vsplit":
-      return say(openEffect(row, "vertical"));
+      return say(openEffect(row, "vertical", bookmarklets));
     case "bookmarks.open_hsplit":
-      return say(openEffect(row, "horizontal"));
+      return say(openEffect(row, "horizontal", bookmarklets));
     case "bookmarks.rename":
       if (row.root) return say(refuseRoot(row));
       return say({

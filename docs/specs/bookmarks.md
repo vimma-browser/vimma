@@ -49,7 +49,9 @@ As a Vimma user I open my bookmarks the way I open the side panel, with a keybin
      Folder names match exactly, else case-insensitively when one folder matches.
 6. **Opening.** Only `http:`, `https:`, `file:` and `about:` URLs open (core `isOpenable`).
    `javascript:`, `data:` and anything else are listed but refuse with a notice: a bookmarklet
-   would run with the page's rights from a key in chrome. Loads go through
+   would run with the page's rights from a key in chrome. (Since changed: with
+   `bookmarklets = "user"` or `"agent"` under `[bookmarks]`, `Enter` or `l` runs a `javascript:`
+   bookmark in the current page; `data:` still refuses; [bookmarklets](bookmarklets.md).) Loads go through
    `openTrustedLinkIn` in the panel's own window: a new tab takes the current workspace's
    container (the m3 routing patch), a current-tab load stays in the tab's container, and a
    private window's load is private (no history). `Enter` / `l` open in this tab and close the

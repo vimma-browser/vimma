@@ -414,6 +414,10 @@ new_tab = "alone"
 # folder in the Bookmarks Toolbar; "toolbar" the whole toolbar; "all" every bookmark.
 [bookmarks]
 root = "workspace"
+# Bookmarklets (javascript: bookmarks) run their code with the page's rights: "none" lists
+# them but never runs one; "user" runs one in this page with Enter in the bookmarks panel;
+# "agent" also lets an agent run one by its title, asking you every time.
+bookmarklets = "none"
 
 # Row numbers in the side panel (ctrl+b b): "absolute" is the tab number (alt+N, {N}gt);
 # "relative" the distance from the highlighted row, for 4j and 3k; "hybrid" both: the

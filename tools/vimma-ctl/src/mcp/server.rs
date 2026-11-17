@@ -6,8 +6,8 @@
 //! handshake, discovery, errors and `tools/call`'s dispatch.
 
 use super::args::{
-    activate_args, console_args, elements_args, fill_args, keys_args, only, open_args, read_args,
-    screenshot_args, tab_arg,
+    activate_args, bookmarklet_args, console_args, elements_args, fill_args, keys_args, only,
+    open_args, read_args, screenshot_args, tab_arg,
 };
 use super::instructions::INSTRUCTIONS;
 use super::render::{finish, tool_error};
@@ -398,6 +398,7 @@ fn tools_call(id: &Value, era: Era, params: &BTreeMap<String, Value>) -> Action 
         "vimma_fill" => fill_args(arguments),
         "vimma_screenshot" => screenshot_args(arguments),
         "vimma_console" => console_args(arguments),
+        "vimma_bookmarklet" => bookmarklet_args(arguments),
         _ => {
             let shown: String = name.chars().take(100).collect();
             return Action::Reply(error(

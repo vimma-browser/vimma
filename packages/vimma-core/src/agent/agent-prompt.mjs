@@ -51,7 +51,7 @@ const MAX_COUNT_DIGITS = 4;
  *   url?: unknown, host?: unknown, keys?: unknown, followed?: unknown, label?: unknown,
  *   kind?: unknown, text?: unknown, fields?: unknown, elements?: unknown, count?: unknown,
  *   code?: unknown, name?: unknown, size?: unknown, type?: unknown, ext?: unknown,
- *   danger?: unknown, unscanned?: unknown }} What
+ *   danger?: unknown, unscanned?: unknown, bookmarklet?: unknown }} What
  *   A question's `what` as the gate asks it: plain data, each value cleaned where it is shown.
  *   Which keys a question has depends on its tool; the values are the page's or the agent's.
  *   A `pay`, `submit`, `sent` or `here` that is not an object (`true`) still reads as one without
@@ -175,13 +175,21 @@ export const CHECKPOINT_GLYPH = "▲";
 /** The tool that brings the agent workspace to the front (docs/specs/mcp-drive.md D2). */
 export const SHOW_TOOL = "vimma_show";
 
+/** The tool that runs one of the user's bookmarklets (docs/specs/bookmarklets.md B12). */
+export const BOOKMARKLET_TOOL = "vimma_bookmarklet";
+
 /**
  * Whether the question is one yes or no, with no count or grant and `x` a plain no: a page's
- * download, an unscanned file (decision 31) and `vimma_show` (mcp-drive D4).
+ * download, an unscanned file (decision 31), `vimma_show` (mcp-drive D4) and
+ * `vimma_bookmarklet` (bookmarklets B14).
  * @param {Asked} q
  */
 export const noGrant = (q) =>
-  isPage(q) || q.tool === SHOW_TOOL || !!q.what?.unscanned || isCheckpoint(q);
+  isPage(q) ||
+  q.tool === SHOW_TOOL ||
+  q.tool === BOOKMARKLET_TOOL ||
+  !!q.what?.unscanned ||
+  isCheckpoint(q);
 
 /**
  * Whether the question is a checkpoint (docs/specs/mcp-checkpoints.md C1): a step that pays
@@ -495,6 +503,16 @@ export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE
         { text: '")' },
       ];
       hint = "y show it · n deny";
+    } else if (q.tool === BOOKMARKLET_TOOL) {
+      // bookmarklets B14: the bookmarklet by its folder path, and that its code acts as the page.
+      parts = [
+        ...head,
+        ...tabParts(w),
+        { text: '  run "' },
+        { text: cutTitle(w.bookmarklet), isolate: "auto" },
+        { text: '" (its code acts as this page)' },
+      ];
+      hint = "y run it · n deny";
     } else if (q.tool === "vimma_fill") {
       parts = [...head, ...tabParts(w), ...fillParts(w, "  ")];
     } else if (q.tool === "vimma_activate") {
@@ -625,7 +643,9 @@ export function stepText(q) {
                           ? `read the errors of "${cutTitle(w.title)}"`
                           : q.tool === DOWNLOAD_TOOL
                             ? `downloads "${cutTitle(w.name)}"`
-                            : `used ${q.tool}`;
+                            : q.tool === BOOKMARKLET_TOOL
+                              ? `ran the bookmarklet "${cutTitle(w.bookmarklet)}" in "${cutTitle(w.title)}"`
+                              : `used ${q.tool}`;
   const listed = w.elements === true ? " and listed the buttons and fields after it" : "";
   return `${did}${listed}`;
 }
@@ -723,6 +743,7 @@ const ASKS = Object.freeze({
   vimma_close_tab: "close a tab",
   vimma_keys: "move around a page",
   [SHOW_TOOL]: "show you a page",
+  [BOOKMARKLET_TOOL]: "run one of your bookmarklets",
   vimma_elements: "list a page's buttons and fields",
   vimma_activate: "click on a page",
   vimma_fill: "fill in a form",
