@@ -685,10 +685,17 @@ describe("URLs without user names and passwords (security.md M21, #1209)", () =>
     expect(markdownWithoutUserinfo(many)).not.toContain("a:b@");
   });
 
-  // Firefox's DOMExtractor.sys.mjs escapeMarkdownLink, as it is: a block anchor that wraps
+  // Firefox's DOMExtractor.sys.mjs escapeMarkdownLink, byte for byte: a block anchor that wraps
   // inline anchors (the Google search strategy) runs it over text already holding `[a](href)`.
-  const escapeMarkdownLink = (text: string, url: string): string =>
-    `[${text.replace(/[[\]()]/g, "\\$&")}](${url.replace(/\(/g, "%28").replace(/\)/g, "%29")})`;
+  // It puts a backslash before each bracket and parenthesis of the text and leaves backslashes
+  // unescaped, and percent-encodes the href's parentheses. Mapped one character at a time, as
+  // the regex replace Firefox uses reads as an incomplete sanitizer (CodeQL
+  // js/incomplete-sanitization).
+  const escapeMarkdownLink = (text: string, url: string): string => {
+    const escaped = Array.from(text, (c) => ("[]()".includes(c) ? `\\${c}` : c)).join("");
+    const href = Array.from(url, (c) => (c === "(" ? "%28" : c === ")" ? "%29" : c)).join("");
+    return `[${escaped}](${href})`;
+  };
 
   test("a link nested in another link's text loses its user name and password (#1217)", () => {
     const inner = escapeMarkdownLink("a", "https://ada:secret@www.google.com/x");
