@@ -288,7 +288,7 @@ interface XPCComponentsUtils {
   waiveXrays(obj: object): { readonly [name: string]: unknown };
   unwaiveXrays<T>(obj: T): T;
   /** A function of the target's scope that calls `fn`, with the same parameters and result. */
-  exportFunction<F extends (...args: never[]) => unknown>(fn: F, target: object): F;
+  exportFunction<F extends (...args: unknown[]) => unknown>(fn: F, target: object): F;
   cloneInto<T>(obj: T, target: object, options?: { cloneFunctions?: boolean }): T;
 }
 declare const Cu: XPCComponentsUtils;
@@ -1122,7 +1122,7 @@ interface FinderResultListener {
   }): void;
   onHighlightFinished(): void;
   onCurrentSelection(): void;
-  shouldFocusContent(): boolean;
+  shouldFocusContent?(): boolean;
 }
 
 // engine/dom/chrome-webidl/XULPopupElement.webidl: a <menupopup>, <panel> or <tooltip>
