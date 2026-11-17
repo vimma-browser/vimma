@@ -287,7 +287,8 @@ interface XPCComponentsUtils {
   // it reads. Unwaived, it is the Xray view again.
   waiveXrays(obj: object): { readonly [name: string]: unknown };
   unwaiveXrays<T>(obj: T): T;
-  exportFunction(fn: Function, target: object): Function;
+  /** A function of the target's scope that calls `fn`, with the same parameters and result. */
+  exportFunction<F extends (...args: never[]) => unknown>(fn: F, target: object): F;
   cloneInto<T>(obj: T, target: object, options?: { cloneFunctions?: boolean }): T;
 }
 declare const Cu: XPCComponentsUtils;

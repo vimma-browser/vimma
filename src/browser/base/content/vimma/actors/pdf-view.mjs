@@ -206,6 +206,16 @@ function str(read) {
  * @typedef {{ title: string, level: number, page: number, kind: string, collapsed: boolean, url?: string }} OutlineEntry
  */
 
+/**
+ * The outline message for the parent (`Vimma:PdfOutline`): primitives only, bounded (V8).
+ * @typedef {{ entries: OutlineEntry[], truncated: boolean }} PdfOutlineMessage
+ */
+
+/**
+ * The state message for the parent (`Vimma:PdfState`): primitives only (parsePdfState).
+ * @typedef {ReturnType<PdfView["read"]>} PdfStateMessage
+ */
+
 export class PdfView {
   /** @type {PdfJs.App} the viewer's PDFViewerApplication, waived */
   #app;
@@ -216,9 +226,9 @@ export class PdfView {
   #lastSpread = PDF_SPREAD.EVEN;
   /** @type {number} */
   #previousScroll = PDF_SCROLL.VERTICAL;
-  /** @type {(state: object) => void} */
+  /** @type {(state: PdfStateMessage) => void} */
   #send;
-  /** @type {(outline: object) => void} */
+  /** @type {(outline: PdfOutlineMessage) => void} */
   #sendOutline;
   /** @type {() => number} how many operations the actor has received from the parent */
   #ops;
@@ -229,7 +239,7 @@ export class PdfView {
   /**
    * The outline as last read: the message for the parent, and each entry's target, which stays
    * here (V7, V8). null until the user's first Tab.
-   * @type {{ message: { entries: OutlineEntry[], truncated: boolean }, targets: unknown[] } | null}
+   * @type {{ message: PdfOutlineMessage, targets: unknown[] } | null}
    */
   #outline = null;
   #readingOutline = false;
@@ -238,7 +248,7 @@ export class PdfView {
   /** @type {number | null} */
   #timer = null;
   #find = { current: 0, total: 0 };
-  /** @type {[string, Function][]} */
+  /** @type {[string, (event: unknown) => void][]} made with Cu.exportFunction */
   #listeners = [];
   /** The token sheet loaded into the viewer, as a data: URI; "" before the first. */
   #themeUri = "";
@@ -254,8 +264,8 @@ export class PdfView {
   /**
    * The adapter for an actor's document, or null when it is not the top-level pdf.js viewer.
    * @param {JSWindowActorChild} actor   the VimmaChild
-   * @param {(state: object) => void} send
-   * @param {(outline: object) => void} [sendOutline]
+   * @param {(state: PdfStateMessage) => void} send
+   * @param {(outline: PdfOutlineMessage) => void} [sendOutline]
    * @param {() => number} [ops]  how many operations the actor has received
    * @returns {PdfView | null}
    */
@@ -282,8 +292,8 @@ export class PdfView {
   /**
    * @param {Window} win  the viewer's window, through Xrays
    * @param {PdfJs.App} app  waived
-   * @param {(state: object) => void} send
-   * @param {(outline: object) => void} sendOutline
+   * @param {(state: PdfStateMessage) => void} send
+   * @param {(outline: PdfOutlineMessage) => void} sendOutline
    * @param {() => number} ops
    */
   constructor(win, app, send, sendOutline, ops) {
@@ -556,8 +566,8 @@ export class PdfView {
    * promise's own `then`, seen through Xrays: a viewer's object with a `then` of its own is a
    * plain object there, whose functions Xrays do not show.
    * @param {() => unknown} read
-   * @param {Function} done  made with Cu.exportFunction
-   * @param {Function} failed
+   * @param {(value: unknown) => void} done  made with Cu.exportFunction
+   * @param {() => void} failed  made with Cu.exportFunction
    * @returns {boolean} whether the callbacks were passed on
    */
   #then(read, done, failed) {

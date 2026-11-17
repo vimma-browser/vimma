@@ -54,6 +54,7 @@ import { AgentPage } from "./agent-page.mjs";
  *       | "Vimma:AgentTotal" | "Vimma:AgentSensitiveShown", data?: unknown }} ChildMessage
  */
 /** @import { BlockMessage } from "./block.mjs" */
+/** @import { PdfOutlineMessage, PdfStateMessage } from "./pdf-view.mjs" */
 
 const lazy = /** @type {Lazy<"setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -310,7 +311,7 @@ export class VimmaChild extends JSWindowActorChild {
 
   /**
    * The adapter's state or outline message; its timer can fire while the document goes away.
-   * @param {object} data
+   * @param {PdfStateMessage | PdfOutlineMessage} data
    * @param {string} [name]
    */
   #sendPdf(data, name = "Vimma:PdfState") {

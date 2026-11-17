@@ -989,7 +989,10 @@ add_task(async function the_grep_page_helper_searches_the_document_it_is_given()
     const before = GrepMatcher.frames.length;
     const badQuery = await grep.search({ query: "", gen: 1 });
     const badGen = await grep.search({ query: "needle", gen: -1 });
-    const found = await grep.search({ query: "needle", gen: 3 });
+    // A search with a query and a newer generation answers (null only for those).
+    const found = /** @type {NonNullable<Awaited<ReturnType<typeof grep.search>>>} */ (
+      await grep.search({ query: "needle", gen: 3 })
+    );
     const older = await grep.search({ query: "needle", gen: 2 });
     const match = found.matches[0];
     const preview = grep.preview({ start: match.start, end: match.end });
