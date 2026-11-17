@@ -1022,8 +1022,10 @@ describe("updateSteps (:update and about:vimma)", () => {
 
   test("appimage: download next to the file, check it, and rename it over, quoted", () => {
     const s = updateSteps("appimage", hashed, {
-      installDir: "/tmp/.mount",
+      installDir: "/tmp/.mount_v/usr/lib/vimma",
       appImage: "/home/u/it's.AppImage",
+      appDir: "/tmp/.mount_v",
+      marker: "vimma-package=appimage\n",
     });
     const next = "'/home/u/it'\\''s.AppImage.new'";
     expect(s.commands).toEqual([
@@ -1069,8 +1071,15 @@ describe("updateSteps (:update and about:vimma)", () => {
       );
       const run = (hash: string) => {
         const o = { ...offer, assets: { appimage: { size: body.length, sha512: hash } } };
-        const [cmd = ""] = updateSteps("appimage", o, { installDir: dir, appImage: file }).commands;
+        const [cmd = ""] = updateSteps("appimage", o, {
+          installDir: join(dir, "usr"),
+          appImage: file,
+          appDir: dir,
+          marker: "vimma-package=appimage\n",
+        }).commands;
+        // In the temp dir: a command with a relative path never writes into the checkout.
         return spawnSync("sh", ["-c", cmd], {
+          cwd: dir,
           env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, BODY: body },
         }).status;
       };

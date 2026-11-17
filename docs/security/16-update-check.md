@@ -89,9 +89,10 @@ _Pages_ and _extensions_ cannot reach it.
   `Content-Length` is refused unread, and a longer body or a compression bomb is cancelled at the
   cap. Manifest text is parsed **only** after its signature verifies, and only in the one format
   the release pipeline writes: at most 64 KiB, no DTD or entity declarations, at most one
-  `<update>`, and nothing but whitespace after a self-closing `<updates/>` (#1185). The commands about:vimma shows are built from a SemVer version and shell-quoted
-  paths, never from free text in the manifest; a saved result (the pref `vimma.update.last`) is
-  checked the same way when read back.
+  `<update>`, and nothing but whitespace after a self-closing `<updates/>` (#1185). The commands
+  about:vimma shows are built from a SemVer version and shell-quoted paths, never from free text
+  in the manifest; a saved result (the pref `vimma.update.last`) is checked the same way when
+  read back.
   [`an_oversized_or_compressed_bomb_response_is_refused`](../../tests/browser/browser_vimma_update_check.js),
   [`an oversized manifest is refused before any crypto`](../../packages/vimma-core/test/updates.test.ts),
   [`anything after a self-closing <updates/> is refused: %s`](../../packages/vimma-core/test/updates-edges.test.ts),
@@ -101,15 +102,15 @@ _Pages_ and _extensions_ cannot reach it.
   [`a pinned key that is not a valid SPKI refuses, never throws`](../../packages/vimma-core/test/updates.test.ts),
   [`a_damaged_saved_result_is_dropped_not_thrown`](../../tests/browser/browser_vimma_update_check.js)
 - UP6. A package manager's install (the `.deb`, the `.rpm`, the release `PKGBUILD`, the AUR's
-  `vimma-bin`)
-  is **never** told to unpack a tarball over its install directory: every package except the
-  tarball carries the `is-packaged-app` marker with its package type, the release refuses a
-  `./mach package` tarball that already has one, and only an install without a marker gets the
-  tarball's command. `$APPIMAGE` **never** decides the install type: a program an AppImage starts
-  inherits it, so a tarball without a marker stays a tarball with it set, and a marker other
-  than `vimma-package=appimage` is never read as an AppImage (#1188, decision 34). The release workflow's smoke test checks the type of the installed `.deb`
-  and, without `$APPIMAGE`, of the extracted AppImage, the marker of the `.rpm` installed on
-  Fedora and openSUSE, and that the tarball has no marker.
+  `vimma-bin`) is **never** told to unpack a tarball over its install directory: every package
+  except the tarball carries the `is-packaged-app` marker with its package type, the release
+  refuses a `./mach package` tarball that already has one, and only an install without a marker
+  gets the tarball's command. `$APPIMAGE` **never** decides the install type: a program an
+  AppImage starts inherits it, so a tarball without a marker stays a tarball with it set, and a
+  marker other than `vimma-package=appimage` is never read as an AppImage (#1188, decision 34).
+  The release workflow's smoke test checks the type of the installed `.deb` and, without
+  `$APPIMAGE`, of the extracted AppImage, the marker of the `.rpm` installed on Fedora and
+  openSUSE, and that the tarball has no marker.
   [`every package type except the tarball carries the marker`](../../tools/package/test/package.test.ts),
   [`gives each package type its own update hint, and only the tarball an untar`](../../tools/package/test/package.test.ts),
   [`a tarball that already carries an install-source marker`](../../tools/package/test/package.test.ts),
@@ -134,9 +135,10 @@ _Pages_ and _extensions_ cannot reach it.
   only `flatpak update dev.vimma.browser`, in `:update`, the security question's steps and the
   one-time message, a fixed string with no part taken from the manifest (the message adds only
   the verified offer's version, as for every install):
-  its `/app` is read-only and Flathub's build, not the release's files, is what it runs. The
-  marker outranks `$APPIMAGE`, which a Flatpak started from an AppImage's process inherits, so a
-  Flatpak is never handed the AppImage's replacement (UP10).
+  its `/app` is read-only and Flathub's build, not the release's files, is what it runs. Only
+  the marker types it: a Flatpak started from an AppImage's process inherits `$APPIMAGE`, which
+  takes no part in the type (UP6), so a Flatpak is never handed the AppImage's replacement
+  (UP10).
   [`flatpak: flatpak update, with no download (spec flatpak, decision 10)`](../../packages/vimma-core/test/updates.test.ts),
   [`is flatpak, whose update hint is flatpak update, never the tarball's unpack`](../../tools/package/test/flatpak.test.ts),
   [`flatpak_gets_flatpak_update`](../../tests/browser/browser_vimma_update_check.js),
@@ -314,26 +316,29 @@ _Pages_ and _extensions_ cannot reach it.
   [`a_new_version_is_announced_once`](../../tests/browser/browser_vimma_update_notices.js),
   [`y or Y shows the steps; n, Esc, Enter and any other key dismiss`](../../packages/vimma-core/test/update-notices.test.ts)
 
-- UP10. The AppImage **only** replaces its own file (`$APPIMAGE`) with a download whose size
-  and SHA-512 match a manifest verified by a check in the running process (an offer restored
-  from the saved result, the pref `vimma.update.last`, waits for a check), checked on the file as written to disk, after every
-  write is synced, and before the rename; anything else leaves the file as it was and removes
-  the download. It replaces nothing unless its GRE directory carries the
+- UP10. The AppImage **only** replaces its own file (`$APPIMAGE`) with a download whose size and
+  SHA-512 match a manifest verified by a check in the running process (an offer restored from the
+  saved result, the pref `vimma.update.last`, waits for a check), checked on the file as written to
+  disk, after every write is synced, and before the rename; anything else leaves the file as it was
+  and removes the download. It replaces nothing unless its GRE directory carries the
   `vimma-package=appimage` marker and lies inside `$APPDIR`, so a program started from another
-  AppImage, which inherits that AppImage's `$APPIMAGE`, never overwrites it. Outside automation
-  the download **must** come from `https://github.com/vimma-browser/vimma/releases/download/`
-  (path segments only), so a leaked manifest key alone cannot point installs at a file of its
-  own. The download is anonymous (no cookies, no referrer, an empty `Accept-Language`), follows
-  GitHub's redirect to its asset host but must end on https, stops past the signed size or after
-  60 seconds without data or after 6 hours, and is written to a hidden file in the same
-  directory whose name no other file has, created by this process alone, so a second Vimma
-  never writes into it or removes it; part files left by a killed run are removed after a day.
-  A symbolic link at `$APPIMAGE` is refused. The file is made `0755` and renamed over
-  `$APPIMAGE`; the running Vimma keeps its mounted image, and nothing restarts it. Checks off
-  (UP4) download nothing, and turning them off stops a download under way. **⚠ limit:** the manifest's hash is the AppImage's only signature: an
-  AppImage carries no MAR signature the way Firefox's updater checks one, so a leaked primary key
-  together with any release asset of the project (an older AppImage included) can install that
-  asset; the replay and downgrade rules (UP2) compare the manifest's versions, not the file's.
+  AppImage, which inherits that AppImage's `$APPIMAGE`, never overwrites it. The command about:vimma
+  and `:update` show for an AppImage names `$APPIMAGE` under the same check, and otherwise the
+  placeholder `Vimma.AppImage`, so a hand-extracted AppDir started from another AppImage's process
+  is never shown a command that renames over that file (#1196). Outside automation the download
+  **must** come from `https://github.com/vimma-browser/vimma/releases/download/` (path segments
+  only), so a leaked manifest key alone cannot point installs at a file of its own. The download is
+  anonymous (no cookies, no referrer, an empty `Accept-Language`), follows GitHub's redirect to its
+  asset host but must end on https, stops past the signed size or after 60 seconds without data or
+  after 6 hours, and is written to a hidden file in the same directory whose name no other file has,
+  created by this process alone, so a second Vimma never writes into it or removes it; part files
+  left by a killed run are removed after a day. A symbolic link at `$APPIMAGE` is refused. The file
+  is made `0755` and renamed over `$APPIMAGE`; the running Vimma keeps its mounted image, and
+  nothing restarts it. Checks off (UP4) download nothing, and turning them off stops a download
+  under way. **⚠ limit:** the manifest's hash is the AppImage's only signature: an AppImage carries
+  no MAR signature the way Firefox's updater checks one, so a leaked primary key together with any
+  release asset of the project (an older AppImage included) can install that asset; the replay and
+  downgrade rules (UP2) compare the manifest's versions, not the file's.
   [`a_newer_appimage_replaces_the_file`](../../tests/browser/browser_vimma_update_appimage.js),
   [`a_wrong_hash_leaves_the_file_alone`](../../tests/browser/browser_vimma_update_appimage.js),
   [`a_larger_download_than_signed_is_refused`](../../tests/browser/browser_vimma_update_appimage.js),
@@ -346,7 +351,9 @@ _Pages_ and _extensions_ cannot reach it.
   [`without the AppDir's own appimage marker, $APPIMAGE is never replaced`](../../packages/vimma-core/test/appimage-update.test.ts),
   [`a Vimma that does not run from $APPDIR is not the AppImage $APPIMAGE names`](../../packages/vimma-core/test/appimage-update.test.ts),
   [`a download from %s is refused outside automation`](../../packages/vimma-core/test/appimage-update.test.ts),
-  [`another size or hash: refused, with the reason`](../../packages/vimma-core/test/appimage-update.test.ts)
+  [`another size or hash: refused, with the reason`](../../packages/vimma-core/test/appimage-update.test.ts),
+  [`a hand-extracted AppDir with another AppImage's $APPIMAGE: never that file`](../../packages/vimma-core/test/updates-edges.test.ts),
+  [`a $APPIMAGE that is not an absolute file path: the placeholder`](../../packages/vimma-core/test/updates-edges.test.ts)
 
 - UP11. Vimma **never** restarts by itself: only `:restart` (action `app.restart`), `y` in the
   restart question, or Firefox's own restart commands do. The restart question

@@ -10,9 +10,9 @@
  * host does the download, the hash and the rename.
  */
 
-import { RELEASES_URL } from "./updates.mjs";
+import { RELEASES_URL, appImageOwnership as ownership } from "./updates.mjs";
 
-/** @import { InstallType, Offer } from "./updates.mjs" */
+/** @import { AppImageWhere, InstallType, Offer } from "./updates.mjs" */
 
 /**
  * The only place an AppImage is downloaded from outside automation: a leaked manifest key alone
@@ -20,7 +20,6 @@ import { RELEASES_URL } from "./updates.mjs";
  */
 export const APPIMAGE_DOWNLOAD_PREFIX = `${RELEASES_URL}/download/`;
 
-const MARKER = /^vimma-package=appimage\s*$/m;
 const SHA512_HEX = /^[0-9a-f]{128}$/;
 
 /**
@@ -35,19 +34,6 @@ export function appImagePartPath(target, buildId) {
 }
 
 /**
- * An absolute path with no empty, `.` or `..` segment and no control character, naming a file.
- * @param {string | null} path
- */
-function plainFilePath(path) {
-  if (!path || !path.startsWith("/") || path.endsWith("/")) return false;
-  if ([...path].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f)) return false;
-  return path
-    .slice(1)
-    .split("/")
-    .every((seg) => seg !== "" && seg !== "." && seg !== "..");
-}
-
-/**
  * A download URL the AppImage may come from: one of the project's release downloads (path
  * segments only, no query or fragment), or in automation any https URL (a local test host).
  * @param {string} url
@@ -58,32 +44,6 @@ function allowedUrl(url, automation) {
   if (!url.startsWith(APPIMAGE_DOWNLOAD_PREFIX)) return false;
   const rest = url.slice(APPIMAGE_DOWNLOAD_PREFIX.length);
   return /^[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)+$/.test(rest) && !/(^|\/)\.\.?(\/|$)/.test(rest);
-}
-
-/**
- * What a restart and the replacement both ask: whether this Vimma is the AppImage `$APPIMAGE`
- * names. `$APPIMAGE` is inherited by every program an AppImage starts: only the AppDir's own
- * marker and a GRE directory inside `$APPDIR` show that it is (decision 34).
- * @typedef {{ installType: InstallType, marker: string | null, appImage: string | null,
- *   appDir: string | null, greDir: string, forced: boolean }} AppImageWhere
- * @param {AppImageWhere} input
- * @returns {{ ok: true, path: string } | { ok: false, why: string }}
- */
-function ownership({ installType, marker, appImage, appDir, greDir, forced }) {
-  if (installType !== "appimage") return { ok: false, why: "not an AppImage install" };
-  if (!forced) {
-    if (marker === null || !MARKER.test(marker)) {
-      return {
-        ok: false,
-        why: "this Vimma is not an AppImage build (no vimma-package=appimage marker)",
-      };
-    }
-    if (!appDir || !greDir.startsWith(`${appDir.replace(/\/+$/, "")}/`)) {
-      return { ok: false, why: "this Vimma does not run from the AppImage's mount ($APPDIR)" };
-    }
-  }
-  if (!plainFilePath(appImage)) return { ok: false, why: "$APPIMAGE is not an absolute file path" };
-  return { ok: true, path: /** @type {string} */ (appImage) };
 }
 
 /**

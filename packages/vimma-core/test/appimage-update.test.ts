@@ -298,3 +298,35 @@ describe("appImagePlan and ownAppImage at their edges (UP10)", () => {
     expect(appImagePlan({ ...base, offer: o })).toMatchObject({ ok: true, url });
   });
 });
+
+// `$APPDIR` comes from the environment: its trailing slashes are trimmed in linear time, never
+// by a regex that backtracks on many slashes (CodeQL js/polynomial-redos, #1196).
+describe("$APPDIR's trailing slashes (ownership, #1196)", () => {
+  const where = {
+    installType: base.installType,
+    marker: base.marker,
+    appImage: base.appImage,
+    appDir: base.appDir,
+    greDir: base.greDir,
+    forced: false,
+  };
+
+  test("trailing slashes are trimmed; / and // hold every absolute GRE directory", () => {
+    for (const appDir of ["/tmp/.mount_vimmaAb12Cd/", "/tmp/.mount_vimmaAb12Cd///", "/", "//"]) {
+      expect(ownAppImage({ ...where, appDir }), appDir).toBe(base.appImage);
+    }
+    expect(ownAppImage({ ...where, appDir: "/tmp/.mount_vimmaAb12" })).toBeNull();
+    expect(ownAppImage({ ...where, appDir: "/tmp/.mount_vimmaAb12Cd/usr/" })).toBe(base.appImage);
+    expect(ownAppImage({ ...where, appDir: "/tmp/.mount_vimmaAb12Cd/usr/lib/vimma/" })).toBeNull();
+  });
+
+  test("100 000 slashes before the last segment: fast, and the same answer", () => {
+    const appDir = `${"/".repeat(100_000)}x`;
+    const start = performance.now();
+    expect(ownAppImage({ ...where, appDir, greDir: `${appDir}/usr/lib/vimma` })).toBe(
+      base.appImage,
+    );
+    expect(ownAppImage({ ...where, appDir, greDir: "/x/usr/lib/vimma" })).toBeNull();
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+});
