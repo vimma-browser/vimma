@@ -137,6 +137,29 @@ describe("full builds (nightly.yml, release.yml, macos.yml)", () => {
       expect(job(text, id), id).not.toContain("github.token");
   });
 
+  // Issue #1033: hosted runners were lost in the Build step, 61 to 72 min in, in the libxul link
+  // window, while the build swapped about 19 GB. The Linux builds run at most 3 jobs (mach picks
+  // 4 for 16 GB), watch memory each minute, and keep the runner agent away from the OOM killer
+  // (docs/runbook/ci-full-builds.md, "Full builds").
+  it.each(BUILDS.slice(0, 2))(
+    "$name builds with 3 jobs under a memory watch it stops on exit",
+    ({ block }) => {
+      const start = at(block, "- name: Build\n");
+      const step = block.slice(start, block.indexOf("\n      - ", start + 1));
+      expect(step).toMatch(/npx --no -- surfer build --jobs 3\b/);
+      expect(step).toMatch(/tools\/ci\/memory-watch\.sh[^\n]*&\n/);
+      expect(step).toMatch(/watch=\$!\n/);
+      expect(step).toMatch(/trap 'kill "\$watch" 2>\/dev\/null \|\| true' EXIT\n/);
+      expect(step.indexOf("trap ")).toBeLessThan(step.indexOf("surfer build"));
+    },
+  );
+
+  it("the Linux builds' timeouts leave room for a 3-job build", () => {
+    const minutes = (block: string) => Number(/^ {4}timeout-minutes: (\d+)$/m.exec(block)?.[1]);
+    expect(minutes(BUILDS[0]?.block ?? "")).toBe(220);
+    expect(minutes(BUILDS[1]?.block ?? "")).toBe(200);
+  });
+
   it.each(BUILDS)("$name stops itself before GitHub's 6-hour job limit", ({ block }) => {
     const minutes = Number(/^ {4}timeout-minutes: (\d+)$/m.exec(block)?.[1]);
     expect(minutes).toBeGreaterThan(0);

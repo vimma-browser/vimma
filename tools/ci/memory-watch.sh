@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+#
+# Watches memory beside a full build (issue #1033): nightly.yml and release.yml start it in the
+# background in their Build step and kill it on exit. Hosted runners were lost 61 to 72 min into
+# the build, in the libxul link window, while the build swapped about 19 GB
+# (docs/runbook/ci-full-builds.md, "Full builds").
+#
+#   tools/ci/memory-watch.sh &      from the repository root, in a GitHub Actions step
+#
+# Once, at the start: asks the kernel's OOM killer to spare the runner agent (Runner.Listener
+# and Runner.Worker; `sudo -n choom`, util-linux), so a build that runs out of memory loses a
+# compiler, with a log, rather than the runner and every log with it.
+#
+# Each minute: `free -m` and `df -h /` to the step log, and a `::warning::` annotation when less
+# than 1 GB of memory is available, more than half the swap is used, or the OOM killer killed
+# something since the last look (/proc/vmstat's oom_kill). At most one warning every 5 minutes
+# (an OOM kill warns at once) and 10 in all, so a long squeeze does not bury the log.
+#
+# Reads no input but /proc and the kernel log; makes no network call. Every failure (no sudo, no
+# choom, no runner process) is ignored: the watch must never fail or slow the build. For tests:
+# MEMORY_WATCH_PROC (a fake /proc), MEMORY_WATCH_INTERVAL (seconds), MEMORY_WATCH_GAP (rounds
+# between warnings), MEMORY_WATCH_MAX (warnings) and MEMORY_WATCH_TICKS (rounds, then exit; 0
+# runs until killed).
+
+set -u
+
+proc=${MEMORY_WATCH_PROC:-/proc}
+interval=${MEMORY_WATCH_INTERVAL:-60}
+gap=${MEMORY_WATCH_GAP:-5}
+max=${MEMORY_WATCH_MAX:-10}
+ticks=${MEMORY_WATCH_TICKS:-0}
+
+# The step kills this script on exit: take the sleep down too, so no child keeps the step's
+# output open.
+sleeper=
+trap '[ -n "$sleeper" ] && kill "$sleeper" 2>/dev/null; exit 0' TERM HUP
+
+# A /proc/meminfo field in kB (0 when missing).
+meminfo_kb() {
+  awk -v key="$1:" '$1 == key { print $2; found = 1; exit } END { if (!found) print 0 }' \
+    "$proc/meminfo" 2>/dev/null || echo 0
+}
+
+# The kernel's count of OOM kills since boot (0 when missing).
+oom_kills() {
+  awk '$1 == "oom_kill" { print $2; found = 1; exit } END { if (!found) print 0 }' \
+    "$proc/vmstat" 2>/dev/null || echo 0
+}
+
+for pid in $(pgrep -f 'Runner\.(Listener|Worker)' 2>/dev/null); do
+  case $pid in '' | *[!0-9]*) continue ;; esac
+  if sudo -n choom -n -1000 -p "$pid" > /dev/null 2>&1; then
+    echo "memory-watch: runner agent $pid: oom_score_adj -1000"
+  else
+    echo "memory-watch: runner agent $pid: could not set oom_score_adj"
+  fi
+done
+
+base=$(oom_kills)
+tick=0
+warned=0
+last=$((-gap))
+while :; do
+  tick=$((tick + 1))
+  echo "memory-watch: minute $tick ($(date -u +%H:%M:%S) UTC)"
+  free -m 2>&1
+  df -h / 2>&1
+
+  reasons=()
+  available=$(($(meminfo_kb MemAvailable) / 1024))
+  [ "$available" -lt 1024 ] && reasons+=("$available MB available")
+  swap_total=$(meminfo_kb SwapTotal)
+  swap_used=$((swap_total - $(meminfo_kb SwapFree)))
+  if [ "$swap_total" -gt 0 ] && [ $((swap_used * 2)) -gt "$swap_total" ]; then
+    reasons+=("swap $((swap_used * 100 / swap_total))% used ($((swap_used / 1024)) of $((swap_total / 1024)) MB)")
+  fi
+
+  oom=
+  now=$(oom_kills)
+  if [ "$now" -gt "$base" ]; then
+    kills=$((now - base))
+    base=$now
+    # The kernel's last word on it; only characters that cannot end or escape the annotation.
+    killed=$(sudo -n dmesg 2> /dev/null | grep -E 'Killed process|oom-kill' | tail -n 1 |
+      tr -cd '[:alnum:] ._()=:/[]-' | cut -c 1-200)
+    oom="OOM killer killed $kills process$([ "$kills" -gt 1 ] && echo es)${killed:+: $killed}"
+  fi
+
+  if [ "$warned" -lt "$max" ] &&
+    { [ -n "$oom" ] || { [ ${#reasons[@]} -gt 0 ] && [ $((tick - last)) -ge "$gap" ]; }; }; then
+    message=$oom
+    for reason in "${reasons[@]}"; do message=${message:+$message; }$reason; done
+    echo "::warning title=Build memory::Minute $tick: $message"
+    warned=$((warned + 1))
+    last=$tick
+    [ "$warned" -eq "$max" ] && echo "memory-watch: $max warnings, no more in this step"
+  fi
+
+  [ "$ticks" -gt 0 ] && [ "$tick" -ge "$ticks" ] && exit 0
+  sleep "$interval" &
+  sleeper=$!
+  wait "$sleeper"
+  sleeper=
+done

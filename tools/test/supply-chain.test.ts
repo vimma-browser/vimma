@@ -764,6 +764,7 @@ describe("supply chain: what installs and runs packages", () => {
     "it never runs: never `npm install`",
     "npx surfer build",
     "npx --no -- surfer build --ui",
+    "npx --no -- surfer build --jobs 3",
     "`npx commitlint < msg.txt`",
     "npx vitest run tools/",
     'execFileSync("npx", ["--no", "--", "prettier", "--write", out])',
