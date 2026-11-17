@@ -606,7 +606,9 @@ these keys itself (a web terminal, an editor with its own `ctrl+w`) keeps it: Vi
 when the page left the key alone. In normal mode the keys stay Vimma's (`ctrl+u` scrolls,
 `ctrl+w h` moves between panes, `ctrl+m` mutes the tab, `ctrl+j` is the web search). A
 `[modal.insert]` binding of yours on one of these keys wins; so does a `[keys]` binding of yours
-that is not the default. `[modal] insert_editing = false` in `config.toml` turns them off (then
+that is not the default. To close the tab from a text field as Firefox's `ctrl+w` does, bind
+`"<C-w>" = "tab.close"` under `[modal.insert]` ([below](#closing-the-shown-tab-from-the-side-panel)
+pairs it with the side panel). `[modal] insert_editing = false` in `config.toml` turns them off (then
 `ctrl+m` and `ctrl+j` mute and search in text fields too); Firefox's own actions on those keys
 stay off either way. On macOS, `ctrl+h` is already a backspace in text fields, so Vimma adds
 nothing there.
@@ -1632,7 +1634,8 @@ enable = []
   its other keys). If your own `[keys]` or `[modal.*]` binds the key, that is an error at the
   `enable` line: unbind it or drop it from the list. Enabled keys are listed in `ctrl+b ?` under
   "Firefox (on in config.toml)", and `about:vimma` lists them under "Firefox shortcuts on". An
-  enabled key is never the page's first.
+  enabled key is never the page's first. In any modal mode (the side panel, the help overlay,
+  a picker, hint, resize and the PDF outline) it does nothing: those take every key.
 - A key must have `ctrl`, `alt` or `meta`, be a function key (`f5`), or be `esc` or `shift+esc`;
   anything else, or a key that does not parse, is an error at its line.
 
@@ -3444,6 +3447,28 @@ follows the theme as the status bar does, scrollbar included (the theme's muted
 colour on the panel's background), and recolours the moment the theme changes. Change its keys under `[modal.panel]` in
 `config.toml`; `[keys] toggle_sidebar` changes the keys that open it, and a `<leader>` binding
 you add there (`toggle_sidebar = ["prefix+b", "<leader>n"]`) closes it too.
+
+#### Closing the shown tab from the side panel
+
+`x` closes the highlighted tab. To close the tab the window shows instead, wherever the highlight
+is, bind `panel_close_active_tab`; it has no default key. The panel stays open and the highlight
+stays on its row (on the closed tab's own row it moves to the next one, as with `x`). Outside the
+side panel it closes the shown tab as `ctrl+b shift+x` does. With the text-field binding above,
+`ctrl+w` closes the shown tab while you type and while the panel is open, and stays the pane key
+in normal mode:
+
+```toml
+schema = 2
+
+[modal.insert]
+"<C-w>" = "tab.close"
+
+[modal.panel]
+"<C-w>" = "panel.close_active_tab"
+```
+
+Firefox's own `ctrl+w`, given back with `[firefox] enable`, does nothing while the side panel is
+open: the panel takes every key, as the help overlay does, so nothing reaches the tab behind it.
 
 #### Moving a tab from the side panel
 

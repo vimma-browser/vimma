@@ -371,6 +371,13 @@ group("Side panel", [
     "panel.move",
     "Move the selected row's tab to a workspace (picker); in bookmarks, move to a folder",
   ],
+  // No default key (docs/specs/close-active-tab.md decision 1): a user binds it, as ctrl+w;
+  // after the bound keys, as the row numbers below are.
+  [
+    "panel_close_active_tab",
+    "panel.close_active_tab",
+    "Close the tab the window shows, not the highlighted row's; the panel stays open",
+  ],
   // Unbound since counts came to the panel (docs/specs/side-panel-counts.md): last, so the
   // help overlay lists the keys that work first. `4 Enter` does what `panel_select_4` did.
   ...numbered("panel_select", "panel.select", (n) => `Select row ${n}`),
