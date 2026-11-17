@@ -494,6 +494,26 @@ function siteInsert(browser) {
 }
 
 /**
+ * The `[sites."<host>"]` table whose `unbind` applies to a key pressed in `browser`, the focused
+ * page, or null (docs/specs/site-unbind.md): the keymap's own match on the top document's host,
+ * so a page cannot choose it other than by its address. No browser (focus in chrome) is null.
+ * @param {Keymap} keymap
+ * @param {MozBrowser | null} browser
+ * @returns {string | null}
+ */
+function pageSite(keymap, browser) {
+  if (!browser) return null;
+  /** @type {string} */
+  let host;
+  try {
+    host = browser.currentURI?.host ?? "";
+  } catch {
+    return null; // about:, data:, file: have no host
+  }
+  return keymap.site(host);
+}
+
+/**
  * The focused pane's 1-based place in reading order and the pane count, or null with one pane.
  * @param {BrowserWindow} win
  */
@@ -1347,7 +1367,8 @@ export const VimmaHost = {
     this._clearTimer(win, state);
     // The PDF viewer's bindings while its tab is selected (ADR-024): the parent's own view.
     const context = PdfOps.context(win.gBrowser?.selectedBrowser);
-    const result = state.dispatcher.dispatch(mode, chord, context);
+    const site = pageSite(state.keymap, this._focusedBrowser(win));
+    const result = state.dispatcher.dispatch(mode, chord, context, site);
     // about:vimma's last keys; never a private window's (private-workspace decision 8b).
     if (!("replay" in result) && !state.private) KeyLog.record(mode, chord, result);
     // The overlay is modal: in help mode every key is ours, handled or not, so nothing reaches
@@ -1392,7 +1413,8 @@ export const VimmaHost = {
         // The first key of a sequence that leads to nothing runnable yet passes, so ctrl+w (the
         // M4 <C-w> pane keys) reaches the page with one pane. A count is not in the trie, so it
         // is ours.
-        const node = first && !modal && state.keymap.trie(mode).children.get(formatKey(chord));
+        const node =
+          first && !modal && state.keymap.trie(mode, context, site).children.get(formatKey(chord));
         if (node && !this._leadsToRunnable(state, node)) {
           state.dispatcher.reset();
           return;

@@ -284,14 +284,15 @@ const isLiteral = (host) => host.includes(":") || /^\d+(\.\d+){3}$/.test(host);
  * `www.example.com`, not `badexample.com`); IP literals match only exactly. The longest match
  * wins, the earlier rule on a tie. Case and a trailing dot are ignored. A host with a port
  * (`example.com:8080`) is not a hostname and matches only a rule written exactly so.
+ * @template {{ match: string }} R
  * @param {string} host
- * @param {readonly InsertSiteRule[]} rules
- * @returns {InsertSiteRule | undefined}
+ * @param {readonly R[]} rules
+ * @returns {R | undefined}
  */
 export function matchSiteRule(host, rules) {
   const h = normaliseHost(host);
   const literal = isLiteral(h);
-  /** @type {InsertSiteRule | undefined} */
+  /** @type {R | undefined} */
   let best;
   let bestLength = -1;
   for (const rule of rules) {
