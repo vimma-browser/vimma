@@ -129,8 +129,8 @@ add_task(async function an_exact_title_opens_in_this_tab() {
   await until(() => !!panel() && BrowserTestUtils.isVisible(panel()), "the panel is open");
   const loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, SHOPPING);
   // As a binding in [modal.panel] would run it: the parsed line, while the panel is open.
-  const host = /** @type {any} */ (VimmaHost);
-  host._runCommand(host._state(window), {
+  // VimmaHost started this window, so it has its state.
+  VimmaHost._runCommand(/** @type {HostState} */ (VimmaHost._state(window)), {
     kind: "run",
     command: "bookmarkopen",
     action: { id: "bookmark.open" },

@@ -111,7 +111,7 @@ add_task(function test_only_vimma_js_provides_and_nothing_swaps_a_service() {
   );
   Assert.throws(
     () => {
-      /** @type {any} */ (HostServices).isAgentDownload = mine;
+      /** @type {Record<string, unknown>} */ (HostServices).isAgentDownload = mine;
     },
     TypeError,
     "nor assign one",
@@ -393,6 +393,12 @@ add_task(async function test_before_it_is_provided_each_service_does_the_least()
 
 add_task(function test_each_service_is_provided_once() {
   const services = createHostServices(HERE);
+  /**
+   * Lets a test pass `provide` a shape its type refuses, as an unchecked caller could, so the
+   * run-time check is what refuses it.
+   * @param {unknown} value
+   */
+  const wrongShape = (value) => /** @type {Parameters<typeof services.provide>[0]} */ (value);
   const first = () => true;
   const second = () => false;
   services.provide({ isAgentDownload: first });
@@ -415,28 +421,27 @@ add_task(function test_each_service_is_provided_once() {
     "provides none of them",
   );
   Assert.throws(
-    () => services.provide(/** @type {any} */ ({ openTab: first })),
+    () => services.provide(wrongShape({ openTab: first })),
     /no service openTab/,
     "a service the host does not run is refused",
   );
   Assert.throws(
-    () => services.provide(/** @type {any} */ ({ addRoute: "config.toml" })),
+    () => services.provide(wrongShape({ addRoute: "config.toml" })),
     /addRoute must be a function/,
     "so is a value of the wrong shape",
   );
   Assert.throws(
-    () => services.provide(/** @type {any} */ ({ agentChat: { list: () => [] } })),
+    () => services.provide(wrongShape({ agentChat: { list: () => [] } })),
     /agentChat must have addListener/,
     "a part of the conversations is not enough",
   );
   Assert.throws(
-    () => services.provide(/** @type {any} */ ({ agentKeys: { hint: FAKES.agentKeys.hint } })),
+    () => services.provide(wrongShape({ agentKeys: { hint: FAKES.agentKeys.hint } })),
     /agentKeys must have set, delete/,
     "nor a part of the keys",
   );
   Assert.throws(
-    () =>
-      services.provide(/** @type {any} */ ({ agentCli: { find() {}, noneFound() {}, use() {} } })),
+    () => services.provide(wrongShape({ agentCli: { find() {}, noneFound() {}, use() {} } })),
     /agentCli must have enabled/,
     "and the agent CLIs need their switch",
   );
@@ -453,7 +458,7 @@ add_task(function test_each_service_is_provided_once() {
       const rest = { ...whole };
       delete rest[member];
       Assert.throws(
-        () => services.provide(/** @type {any} */ ({ [name]: rest })),
+        () => services.provide(wrongShape({ [name]: rest })),
         new RegExp(`${name} must have ${member}$`),
         `${name} without ${member} is refused`,
       );

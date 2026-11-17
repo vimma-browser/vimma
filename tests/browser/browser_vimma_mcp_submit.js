@@ -409,6 +409,7 @@ addTidyTask(async function test_submit_question_lists_the_fields_it_sends() {
   const tab = await openAgentTab(SIGNUP);
   const c = await agentClient("claude-code");
   const by = await labels(c, tab);
+  /** @type {ControlRequestId<"agent-activate" | "agent-fill">} */
   let id = c.request("agent-activate", { tab: idOf(tab), label: by.Join });
   let q = await question();
   Assert.deepEqual(

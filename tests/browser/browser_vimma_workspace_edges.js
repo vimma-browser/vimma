@@ -98,8 +98,11 @@ async function workspace(name) {
 }
 
 /** The definitions file on disk, once it has `cond`. */
-async function savedFile(/** @type {(d: any) => boolean} */ cond, /** @type {string} */ msg) {
-  /** @type {any} */
+async function savedFile(
+  /** @type {(d: typeof WorkspaceStore.definitions) => boolean} */ cond,
+  /** @type {string} */ msg,
+) {
+  /** @type {typeof WorkspaceStore.definitions | null} */
   let data = null;
   await TestUtils.waitForCondition(
     async () => {
@@ -144,10 +147,7 @@ add_task(async function a_container_deleted_by_an_extension_is_replaced_at_once(
   Assert.equal(routed.userContextId, fresh, "ctrl+t opens in the new container");
 
   await savedFile(
-    (d) =>
-      d.workspaces.some(
-        (/** @type {WorkspaceDefinition} */ w) => w.id === ext.id && w.userContextId === fresh,
-      ),
+    (d) => d.workspaces.some((w) => w.id === ext.id && w.userContextId === fresh),
     "the definitions file has the new container",
   );
   await until(() => {

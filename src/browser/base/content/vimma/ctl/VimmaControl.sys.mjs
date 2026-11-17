@@ -92,7 +92,11 @@ const DISCOVERY_FILE = "vimma-control.json";
 /** After an error that ends the connection: how long to wait for the client to close first. */
 const DRAIN_MS = 1000;
 
-/** @typedef {{ code: string, message: string, reason?: string }} ProtocolError */
+/**
+ * A refusal: `retryAfter` (milliseconds) only on a used-up rate's busy denial, to a client new
+ * enough to read it (ctl/agent-commands.mjs rateDenied).
+ * @typedef {{ code: string, message: string, reason?: string, retryAfter?: number }} ProtocolError
+ */
 /** @typedef {"agent" | "full"} Role */
 
 /** What a hello for a role that is off is told: the switch that turns it on. */

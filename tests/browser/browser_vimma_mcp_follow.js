@@ -206,12 +206,12 @@ add_task(async function test_f_lists_links_with_labels_marked_untrusted() {
   Assert.ok(r.ok, "f runs");
   Assert.deepEqual(r.result.steps, [{ keys: "f", action: "hint.follow", ok: true }], "one step");
   Assert.ok(
-    r.result.links.startsWith("<untrusted-web-content>\n") &&
+    r.result.links?.startsWith("<untrusted-web-content>\n") &&
       r.result.links.endsWith("\n</untrusted-web-content>"),
     "the list is inside the untrusted-content delimiters (M21)",
   );
   Assert.deepEqual(
-    lines(r.result.links),
+    lines(r.result.links ?? ""),
     [
       `a "Same site page" ${PAGE}?same`,
       `s "Handled link" ${PAGE}?href`,
@@ -355,7 +355,7 @@ add_task(async function test_agent_hints_leave_the_users_hint_mode_alone() {
   EventUtils.synthesizeKey("f");
   await until(() => VimmaHost.status(window).mode === "hint", "the user's hint mode");
   const r = await keys(c, tab, "f");
-  Assert.equal(lines(r.result.links).length, 6, "the agent's f got its links");
+  Assert.equal(lines(r.result.links ?? "").length, 6, "the agent's f got its links");
   Assert.equal(VimmaHost.status(window).mode, "hint", "the user's hint mode is still on (D12)");
   EventUtils.synthesizeKey(LABEL.same);
   await BrowserTestUtils.browserLoaded(mine.linkedBrowser, false, `${PAGE}?same`);
@@ -414,7 +414,7 @@ add_task(async function test_f_on_a_tab_not_sized_yet_waits_for_its_size() {
   utils.restoreNormalRefresh();
   const r = await response;
   Assert.deepEqual(
-    lines(r.result.links).map((l) => l.split(" ")[0]),
+    lines(r.result.links ?? "").map((l) => l.split(" ")[0]),
     Object.values(LABEL),
     `f lists every link once the page has its size (steps: ${JSON.stringify(r.result.steps)}; ` +
       `collection: ${collectState(tab)})`,

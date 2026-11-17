@@ -274,7 +274,7 @@ add_task(async function a_stale_answer_closes_nothing() {
   );
   setCookie(shop.userContextId);
   setCookie(work.userContextId);
-  const asked = (/** @type {any} */ w) => ({
+  const asked = (/** @type {WorkspaceDefinition} */ w) => ({
     source: w.source,
     name: w.name,
     userContextId: w.userContextId,

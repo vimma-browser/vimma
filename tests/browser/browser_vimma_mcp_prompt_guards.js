@@ -77,7 +77,7 @@ async function setSwitches({ control = false, mcp = false }) {
 async function agentClient(name = "example-agent") {
   const c = new Client(/** @type {number} */ (VimmaControl.port));
   const welcome = await c.handshake({ protocol: 2, role: "agent" });
-  Assert.equal(welcome.role, "agent", "an agent connection");
+  Assert.equal(welcome?.role, "agent", "an agent connection");
   await c.call("agent-hello", { client: { name }, via: "example" });
   return c;
 }

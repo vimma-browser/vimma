@@ -29,6 +29,61 @@ type ControlResponse = {
   error?: ControlError;
 };
 
+type VimmaControlApi =
+  (typeof import("../../src/browser/base/content/vimma/ctl/VimmaControl.sys.mjs"))["VimmaControl"];
+/** What a command answers: an agent command's (AgentResults) or a full one's (`_commands`). */
+type ControlResult<C extends string> = C extends keyof AgentCommandResults
+  ? AgentCommandResults[C]
+  : C extends keyof VimmaControlApi["_commands"]
+    ? ReturnType<VimmaControlApi["_commands"][C]>
+    : unknown;
+/**
+ * A request's id as Client.request returns it, carrying its command for Client.response to type
+ * the reply with; at run time it is the plain number.
+ */
+type ControlRequestId<C extends string> = number & { readonly __command?: C };
+/**
+ * A command's response as a test reads it: the command's answer in `result` when `ok`, the
+ * refusal in `error` when not. A refused call has no `result`; a test reads it where it expects
+ * the call to run, and fails on reading it otherwise. `bytes` is its line's size, which Client
+ * adds.
+ */
+type ControlReply<C extends string> = Omit<ControlResponse, "result"> & {
+  result: ControlResult<C>;
+  readonly bytes: number;
+};
+/**
+ * The reply to a step asked with `elements: true` whose page was listed: its result has the
+ * list (`elements`). A page still loading has `unlisted` instead, and a test that reads the list
+ * there fails on it.
+ */
+type ListedReply<C extends string> = Omit<ControlReply<C>, "result"> & {
+  result: Extract<ControlResult<C>, { elements: string }>;
+};
+/**
+ * A line the control server writes, parsed (ctl/VimmaControl.sys.mjs): a challenge, a welcome,
+ * or a response (which carries a refusal as its `error`). Which fields it has depends on `type`.
+ */
+type ControlMessage = {
+  type: "challenge" | "welcome" | "response";
+  /** a response's or a refusal's request; null for a refusal of the handshake */
+  id?: number | null;
+  /** a challenge's and a welcome's */
+  protocol?: number;
+  /** a challenge's: the server's proof that it knows the token or the ticket */
+  proof?: string;
+  /** a welcome's (protocol 2) */
+  role?: string;
+  /** a welcome's */
+  app?: string;
+  version?: string;
+  /** a response's */
+  ok?: boolean;
+  result?: unknown;
+  /** a refusal's, of a request or of the handshake */
+  error?: ControlError;
+};
+
 // engine/js/src/vm/TypedArrayObject.cpp (TC39 Uint8Array base64), which the es2024 lib lacks.
 interface Uint8ArrayConstructor {
   fromBase64(string: string): Uint8Array<ArrayBuffer>;

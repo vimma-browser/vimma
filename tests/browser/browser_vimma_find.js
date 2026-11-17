@@ -130,7 +130,14 @@ async function pageKeysThenUnbound(browser) {
   return pageKeys(browser);
 }
 
-/** @param {any} node */
+/**
+ * A DOM node or the window, as a focus or key event's target.
+ * @typedef {EventTarget & {
+ *   id?: string, className?: unknown, localName?: string, nodeName?: string,
+ * }} Described
+ */
+
+/** @param {Described | null} node */
 function describeNode(node) {
   if (!node) return "null";
   if (node === window) return "window";
@@ -161,7 +168,7 @@ function traceFocus(browser) {
   return {
     /**
      * TestUtils.waitForCondition, and on a timeout an info() dump of the trace and the state.
-     * @param {() => any} condition
+     * @param {() => unknown} condition
      * @param {string} msg
      */
     async waitFor(condition, msg) {
@@ -751,17 +758,18 @@ function shown(el) {
 
 /** The open find bar of the selected tab, once it has laid out. */
 async function openFindBar() {
-  /** @type {any} */
-  let findbar = null;
+  /** @type {MozFindbar | undefined} */
+  let findbar;
   await TestUtils.waitForCondition(() => {
     findbar = gBrowser.getCachedFindBar();
     return findbar && !findbar.hidden && findbar.getBoundingClientRect().height > 0;
   }, "the find bar is open");
-  return findbar;
+  // The wait above returned only once the bar was there.
+  return /** @type {MozFindbar} */ (findbar);
 }
 
 /**
- * @param {any} findbar
+ * @param {MozFindbar} findbar
  * @param {string} expected
  * @param {string} msg
  */
@@ -800,12 +808,12 @@ add_task(async function the_find_bar_floats_over_the_page_in_the_pickers_style()
       ".findbar-match-diacritics",
       ".findbar-entire-word",
     ]) {
-      Assert.ok(!shown(findbar.querySelector(sel)), `${sel} is not shown`);
+      Assert.ok(!shown(/** @type {Element} */ (findbar.querySelector(sel))), `${sel} is not shown`);
     }
     Assert.ok(shown(findbar._findField), "the field is shown");
 
     await assertCount(findbar, "[1/4]", "the bar shows the count as [1/4]");
-    const count = findbar.querySelector(".vimma-find-count");
+    const count = /** @type {Element} */ (findbar.querySelector(".vimma-find-count"));
     Assert.equal(count.getAttribute("aria-hidden"), "true", "screen readers skip [1/4]");
     const field = findbar._findField.getBoundingClientRect();
     const countBox = count.getBoundingClientRect();
@@ -816,7 +824,7 @@ add_task(async function the_find_bar_floats_over_the_page_in_the_pickers_style()
     );
     Assert.less(countBox.height, field.height, "the count is not stretched to the field");
     // Firefox's own "1 of 4 matches" stays for screen readers, out of sight.
-    const label = findbar.querySelector(".found-matches");
+    const label = /** @type {XULElement} */ (findbar.querySelector(".found-matches"));
     Assert.ok(!label.hidden, "Firefox's count label is kept");
     Assert.lessOrEqual(label.getBoundingClientRect().width, 1, "but not shown");
 
@@ -876,9 +884,12 @@ add_task(async function firefoxs_find_in_page_keeps_its_own_find_bar() {
         "Firefox's bar is a row under the page",
       );
       for (const sel of [".findbar-find-next", ".findbar-closebutton", ".findbar-highlight"]) {
-        Assert.ok(shown(findbar.querySelector(sel)), `${sel} is shown`);
+        Assert.ok(shown(/** @type {Element} */ (findbar.querySelector(sel))), `${sel} is shown`);
       }
-      Assert.ok(!shown(findbar.querySelector(".vimma-find-count")), "with Firefox's own count");
+      Assert.ok(
+        !shown(/** @type {Element} */ (findbar.querySelector(".vimma-find-count"))),
+        "with Firefox's own count",
+      );
     } finally {
       findbar.close(true);
       findbar.removeAttribute("noanim");
