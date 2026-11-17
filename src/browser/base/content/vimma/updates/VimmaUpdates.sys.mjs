@@ -29,8 +29,10 @@ import {
   judgeManifest,
   OFF_NOTICE_MS,
   offNotice,
-  offerAssets,
   parseManifest,
+  savedKey,
+  savedOffer,
+  savedSerial,
   staleDays,
   updateNotice,
   updateSteps,
@@ -434,16 +436,9 @@ function load() {
   try {
     const saved = JSON.parse(Services.prefs.getStringPref(LAST_PREF, "null"));
     if (!saved || typeof saved !== "object" || Array.isArray(saved)) return;
-    const offer = saved.offer;
-    const valid =
-      offer &&
-      /^\d+\.\d+(?:\.\d+)?(?:[ab]\d+)?$/.test(offer.appVersion) &&
-      /^\d{1,16}$/.test(offer.buildId) &&
-      /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/.test(offer.displayVersion) &&
-      typeof offer.detailsUrl === "string" &&
-      offer.detailsUrl.startsWith("https://") &&
-      typeof offer.urgent === "boolean" &&
-      Array.isArray(offer.advisories);
+    // Each field must be a string of the manifest's own form, never an array whose text matches
+    // (#1237); a malformed offer is dropped whole.
+    const offer = savedOffer(saved.offer);
     const checkedAt = Number.isFinite(saved.checkedAt) ? saved.checkedAt : null;
     const outcome = OUTCOMES.includes(saved.outcome) ? saved.outcome : "never";
     state = {
@@ -457,9 +452,9 @@ function load() {
           : null,
       outcome,
       reason: typeof saved.reason === "string" ? saved.reason : null,
-      offer: valid && !alreadyHave(offer) ? { ...offer, assets: offerAssets(offer.assets) } : null,
-      serial: /^\d{14}$/.test(saved.serial) ? saved.serial : null,
-      key: saved.key && typeof saved.key.id === "string" ? saved.key : null,
+      offer: offer && !alreadyHave(offer) ? offer : null,
+      serial: savedSerial(saved.serial),
+      key: savedKey(saved.key),
       refusals: Number.isInteger(saved.refusals) ? saved.refusals : 0,
     };
     if (state.outcome === "offer" && !state.offer) state.outcome = "current";
