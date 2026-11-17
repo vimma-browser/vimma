@@ -505,6 +505,9 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   Keys with control, bidirectional or invisible characters are refused, so the question shows
   what runs.
   [`each refused group is invalid-args naming the key (M16)`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`every character a fill refuses as invisible is refused in keys (M16)`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`keys refuse C0 but the tab, C1 and FILL_INVISIBLE, and nothing else`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`keys_with_any_invisible_character_are_tool_errors`](../../tools/vimma-ctl/src/mcp/args.rs),
   [`a user keymap that binds j to tab.close does not change the agent's j (D10)`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`any text parses to whitelisted actions within the limits, or is refused`](../../packages/vimma-core/test/fuzz/agent-keys.fuzz.test.ts),
   [`agent_keys_never_reach_the_prefix_the_command_line_or_mcp_answer`](../../tests/browser/browser_vimma_security_invariants.js),
@@ -639,6 +642,8 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`at most 200 links; the rest are dropped and counted`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`one line per link: the label, the text as JSON cut at 80, the href cut at 2,048`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`text is one line: whitespace collapsed, bidi and control characters dropped`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`every character a fill refuses as invisible is dropped from link text and hrefs (M21)`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`links drop C0 but white space, C1 and FILL_INVISIBLE but the separators, and no more`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`links past the byte budget are left out and counted`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`agent-keys: a link list inside the untrusted delimiters, and how many were dropped`](../../packages/vimma-core/test/control-v2.test.ts),
   [`keys_list_links_as_untrusted_content`](../../tools/vimma-ctl/src/mcp/render.rs)

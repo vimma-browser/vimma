@@ -176,10 +176,56 @@ function shownChord(c) {
 
 /** The end of a `/` or `?` query, in any case. */
 const QUERY_END = /<cr>/i;
-/** Control, bidirectional and invisible characters: the question must show what runs. */
-const CONTROL =
-  // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
-  /[\u0000-\u0008\u000a-\u001f\u007f-\u009f\u00ad\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/;
+/**
+ * Control, bidirectional and invisible characters, by code point range: the question must show
+ * what runs. C0 but the tab, C1, and every range of agent-act's FILL_INVISIBLE (which imports
+ * this module, so the ranges are written out; a test compares every code point), as vimma-ctl's
+ * mcp/args.rs `keys_control`.
+ */
+export const CONTROL = Object.freeze(
+  /** @type {const} */ ([
+    [0x00, 0x08],
+    [0x0a, 0x1f],
+    [0x7f, 0x9f],
+    [0xad, 0xad],
+    [0x34f, 0x34f],
+    [0x600, 0x605],
+    [0x61c, 0x61c],
+    [0x6dd, 0x6dd],
+    [0x70f, 0x70f],
+    [0x890, 0x891],
+    [0x8e2, 0x8e2],
+    [0x115f, 0x1160],
+    [0x17b4, 0x17b5],
+    [0x180b, 0x180f],
+    [0x200b, 0x200f],
+    [0x2028, 0x202e],
+    [0x2060, 0x206f],
+    [0x3164, 0x3164],
+    [0xfe00, 0xfe0f],
+    [0xfeff, 0xfeff],
+    [0xffa0, 0xffa0],
+    [0xfff0, 0xfffb],
+    [0x110bd, 0x110bd],
+    [0x110cd, 0x110cd],
+    [0x13430, 0x1343f],
+    [0x1bca0, 0x1bca3],
+    [0x1d173, 0x1d17a],
+    [0xe0000, 0xe0fff],
+  ]),
+);
+
+/**
+ * Whether `c`'s code point is in one of `ranges`.
+ * @param {string} c @param {readonly (readonly [number, number])[]} ranges
+ */
+function within(c, ranges) {
+  const cp = /** @type {number} */ (c.codePointAt(0));
+  return ranges.some(([lo, hi]) => cp >= lo && cp <= hi);
+}
+
+/** Whether `s` holds a character of CONTROL. @param {string} s */
+const hasControl = (s) => [...s].some((c) => within(c, CONTROL));
 /** The default prefix (ctrl+b): it and every binding after it are the user's. */
 const PREFIX = formatKey(parseKey(/** @type {string} */ (DEFAULT_CONFIG.keys?.prefix)));
 const PREFIX_WHY = "the prefix, the leader and their bindings are the user's";
@@ -212,7 +258,7 @@ export function parseAgentKeys(text) {
   if (chars.length > AGENT_KEY_LIMITS.chars) {
     return refused(`keys must be at most ${AGENT_KEY_LIMITS.chars} characters`);
   }
-  if (CONTROL.test(text))
+  if (hasControl(text))
     return refused(
       "keys must not contain control characters, bidirectional controls or invisible characters",
     );
@@ -360,7 +406,7 @@ export function parseAgentKeys(text) {
           const why = `a find query must be at most ${AGENT_KEY_LIMITS.query} characters`;
           return refused(refusal(step.keys, why));
         }
-        if (CONTROL.test(query) || query.includes("\t")) {
+        if (hasControl(query) || query.includes("\t")) {
           return refused(refusal(step.keys, "a find query must not contain control characters"));
         }
         step.query = query;
@@ -420,28 +466,42 @@ export function labelAgentLinks(targets) {
 /**
  * Control, bidirectional and invisible characters, by code point range, dropped from a link's
  * text and href: tag characters, variation selectors and fillers among them, which a model
- * reads and the user cannot see.
+ * reads and the user cannot see. C0 but the white space, C1, and every range of agent-act's
+ * FILL_INVISIBLE but the line and paragraph separators, which are white space too (a test
+ * compares every code point).
  */
-const UNSHOWN = /** @type {const} */ ([
-  [0x00, 0x08],
-  [0x0e, 0x1f],
-  [0x7f, 0x9f],
-  [0xad, 0xad],
-  [0x34f, 0x34f],
-  [0x61c, 0x61c],
-  [0x115f, 0x1160],
-  [0x17b4, 0x17b5],
-  [0x180b, 0x180f],
-  [0x200b, 0x200f],
-  [0x202a, 0x202e],
-  [0x2060, 0x2069],
-  [0x3164, 0x3164],
-  [0xfe00, 0xfe0f],
-  [0xfeff, 0xfeff],
-  [0xffa0, 0xffa0],
-  [0xe0000, 0xe007f],
-  [0xe0100, 0xe01ef],
-]);
+export const UNSHOWN = Object.freeze(
+  /** @type {const} */ ([
+    [0x00, 0x08],
+    [0x0e, 0x1f],
+    [0x7f, 0x9f],
+    [0xad, 0xad],
+    [0x34f, 0x34f],
+    [0x600, 0x605],
+    [0x61c, 0x61c],
+    [0x6dd, 0x6dd],
+    [0x70f, 0x70f],
+    [0x890, 0x891],
+    [0x8e2, 0x8e2],
+    [0x115f, 0x1160],
+    [0x17b4, 0x17b5],
+    [0x180b, 0x180f],
+    [0x200b, 0x200f],
+    [0x202a, 0x202e],
+    [0x2060, 0x206f],
+    [0x3164, 0x3164],
+    [0xfe00, 0xfe0f],
+    [0xfeff, 0xfeff],
+    [0xffa0, 0xffa0],
+    [0xfff0, 0xfffb],
+    [0x110bd, 0x110bd],
+    [0x110cd, 0x110cd],
+    [0x13430, 0x1343f],
+    [0x1bca0, 0x1bca3],
+    [0x1d173, 0x1d17a],
+    [0xe0000, 0xe0fff],
+  ]),
+);
 
 /**
  * `s` as shown in the list: NFKC first, so a compatibility character (a fullwidth quote) is
@@ -449,13 +509,7 @@ const UNSHOWN = /** @type {const} */ ([
  * the invisible characters.
  * @param {string} s
  */
-export const shown = (s) =>
-  [...s.normalize("NFKC")]
-    .filter((c) => {
-      const cp = /** @type {number} */ (c.codePointAt(0));
-      return !UNSHOWN.some(([lo, hi]) => cp >= lo && cp <= hi);
-    })
-    .join("");
+export const shown = (s) => [...s.normalize("NFKC")].filter((c) => !within(c, UNSHOWN)).join("");
 
 /** @param {string} s @param {number} max  at most `max` code points, `…` the last when cut */
 export function cutTo(s, max) {

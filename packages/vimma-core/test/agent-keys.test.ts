@@ -6,6 +6,8 @@ import {
   AGENT_KEY_ACTIONS,
   AGENT_KEY_LIMITS,
   AGENT_LINKS,
+  CONTROL,
+  UNSHOWN,
   agentLinkLines,
   agentLinkList,
   labelAgentLinks,
@@ -14,6 +16,7 @@ import {
   refusalReason,
   shownKeys,
 } from "../src/agent/agent-keys.mjs";
+import { FILL_INVISIBLE } from "../src/agent/agent-act.mjs";
 import { DEFAULT_HINT_CHARS, hintLabels } from "../src/page/hints.mjs";
 import { compileKeymap } from "../src/keys/keymap.mjs";
 
@@ -336,6 +339,20 @@ describe("link lists (D12, D16; security.md M21)", () => {
     const bidi = labelAgentLinks([at(0, 0, "javascript:x\u202e//", "t")]).links;
     expect(agentLinkLines(bidi)).toBe('a "t" javascript:x//');
   });
+
+  test("every character a fill refuses as invisible is dropped from link text and hrefs (M21)", () => {
+    // The ends of each FILL_INVISIBLE range (U+206A to U+206F among them, #1205); the line and
+    // paragraph separators are white space, which a link's text collapses and its href drops.
+    for (const [lo, hi] of FILL_INVISIBLE) {
+      for (const cp of [lo, hi]) {
+        const c = String.fromCodePoint(cp);
+        const space = cp === 0x2028 || cp === 0x2029;
+        const { links } = labelAgentLinks([at(0, 0, `https://a/x${c}y`, `a${c}b`)]);
+        const hex = cp.toString(16);
+        expect(agentLinkLines(links), hex).toBe(`a "${space ? "a b" : "ab"}" https://a/xy`);
+      }
+    }
+  });
 });
 
 describe("the link list's size (review: the reply must fit the protocol's line)", () => {
@@ -414,6 +431,55 @@ describe("the limits (D15, M20)", () => {
     ]) {
       expect(refusal(`/a${c}b<CR>`)).toContain("control characters");
     }
+  });
+
+  test("every character a fill refuses as invisible is refused in keys (M16)", () => {
+    // The ends of each FILL_INVISIBLE range: U+206A to U+206F among them (#1205), which drew
+    // nothing, so "/foo\u206abar<CR>" was asked as a find of "foobar".
+    for (const [lo, hi] of FILL_INVISIBLE) {
+      for (const cp of [lo, hi]) {
+        const c = String.fromCodePoint(cp);
+        expect(refusal(`/foo${c}bar<CR>`), cp.toString(16)).toContain("control characters");
+        expect(refusal(`j${c}`), cp.toString(16)).toContain("control characters");
+      }
+    }
+  });
+});
+
+describe("the refused and dropped characters (M16, M21; review of #1205)", () => {
+  type Ranges = readonly (readonly [number, number])[];
+  /** One byte a code point: 1 where `ranges` hold it. */
+  const table = (ranges: Ranges) => {
+    const t = new Uint8Array(0x110000);
+    for (const [lo, hi] of ranges) t.fill(1, lo, hi + 1);
+    return t;
+  };
+  /** The code points where `actual` and `expected` disagree, every code point checked. */
+  const differences = (actual: Ranges, expected: (cp: number) => boolean) => {
+    const t = table(actual);
+    const out: string[] = [];
+    for (let cp = 0; cp < t.length; cp++) {
+      if (t[cp] !== (expected(cp) ? 1 : 0)) out.push(cp.toString(16));
+    }
+    return out;
+  };
+  const fill = table(FILL_INVISIBLE);
+  const invisible = (cp: number) => fill[cp] === 1;
+
+  test("keys refuse C0 but the tab, C1 and FILL_INVISIBLE, and nothing else", () => {
+    const expected = (cp: number) =>
+      (cp <= 0x1f && cp !== 0x09) || (cp >= 0x7f && cp <= 0x9f) || invisible(cp);
+    expect(differences(CONTROL, expected)).toEqual([]);
+  });
+
+  test("links drop C0 but white space, C1 and FILL_INVISIBLE but the separators, and no more", () => {
+    // The tab, line feed, vertical tab, form feed, carriage return and U+2028, U+2029 are white
+    // space: a link's text collapses them and its href drops them.
+    const expected = (cp: number) =>
+      (cp <= 0x1f && (cp < 0x09 || cp > 0x0d)) ||
+      (cp >= 0x7f && cp <= 0x9f) ||
+      (invisible(cp) && cp !== 0x2028 && cp !== 0x2029);
+    expect(differences(UNSHOWN, expected)).toEqual([]);
   });
 });
 
