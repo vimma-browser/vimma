@@ -1,0 +1,26 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_userinfo.js: a page loaded with a user name and password in
+   - its URL, whose relative link and form action the browser resolves with them (#1209). -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Userinfo agent fixture</title>
+  </head>
+  <body>
+    <main>
+      <h1>A page with relative links</h1>
+      <p>
+        This paragraph is long enough for the reader to keep it as the page's main text, and it
+        holds <a id="rel" href="file_vimma_agent_page.html?rel">a relative link</a> that the browser
+        resolves against the page's own address, user name and password included.
+      </p>
+      <form id="search" method="get" action="file_vimma_agent_page.html">
+        <input id="q" name="q" type="search" aria-label="Search" />
+        <button id="go" type="submit">Search</button>
+      </form>
+    </main>
+  </body>
+</html>

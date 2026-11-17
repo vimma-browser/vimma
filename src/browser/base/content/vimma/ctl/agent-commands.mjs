@@ -30,7 +30,13 @@ import {
   wrapUntrusted,
 } from "../core/agent.mjs";
 import { ListedSites, actDetail, fillDetail } from "../core/agent-act.mjs";
-import { parseAgentKeys, shownKeys } from "../core/agent-keys.mjs";
+import {
+  AGENT_PAGE_URL_MAX,
+  agentUrl,
+  markdownWithoutUserinfo,
+  parseAgentKeys,
+  shownKeys,
+} from "../core/agent-keys.mjs";
 import { fillFits, shownNotice } from "../core/agent-prompt.mjs";
 import { ctlIsCurrent, ctlVersionNotice } from "../core/ctl-version.mjs";
 import {
@@ -129,9 +135,14 @@ const consoleCalls = new CallRate(CONSOLE_RATE);
  * site leaves out. A connection is one conversation, so a new one gets every list in full.
  */
 const listedSites = new ListedSites();
-/** The longest URL and title an `agent-elements` reply carries, in code points. */
-const ELEMENTS_URL_MAX = 8192;
+/** The longest title an `agent-elements` reply carries, in code points. */
 const ELEMENTS_TITLE_MAX = 1024;
+/**
+ * A page's URL as a reply gives it to the agent (security.md M7, #1209): without its user name
+ * and password, cut at AGENT_PAGE_URL_MAX. The tab's own URL, compared in stillAsAsked, keeps them.
+ * @param {string} url
+ */
+const pageUrl = (url) => wf(agentUrl(url, AGENT_PAGE_URL_MAX));
 /** The longest an `agent-keys` call runs after the yes (mcp-drive D15). */
 const KEYS_CALL_MS = 60000;
 
@@ -286,7 +297,7 @@ async function stepList(conn, tool, what, agent, win, tab, ready, filters) {
       throw new AgentError("failed", "the tab left the agent workspace before its page was listed");
     }
     return {
-      url: wf(cut(tabUrl(tab), ELEMENTS_URL_MAX).text),
+      url: pageUrl(tabUrl(tab)),
       title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
     };
   };
@@ -424,7 +435,7 @@ const COMMANDS = {
     return {
       tabs: agentTabs(now, conn, true).map(({ tab }) => ({
         id: tabId(tab),
-        url: wf(tabUrl(tab)),
+        url: pageUrl(tabUrl(tab)),
         title: wf(tab.label ?? ""),
         loading: tab.hasAttribute("busy") || tab.hasAttribute("pending") || !tab.linkedPanel,
       })),
@@ -467,7 +478,8 @@ const COMMANDS = {
     if (typeof read !== "string") {
       throw new AgentError("failed", "Vimma could not read text from this page");
     }
-    let { text, truncated } = cut(wf(read), limit);
+    // The extractor resolves each link against the page's URL, user name and password included.
+    let { text, truncated } = cut(wf(markdownWithoutUserinfo(read)), limit);
     const picked = await VimmaActors.selection(tab.linkedBrowser, limit);
     /** @type {string | null} */
     let selection = picked === null ? null : wf(picked);
@@ -485,7 +497,7 @@ const COMMANDS = {
     stillAsAsked(agent, id, what.url, conn);
     // Page JS can set the selection, so it is as untrusted as the text.
     const reply = () => ({
-      url: wf(what.url),
+      url: pageUrl(what.url),
       title,
       text: wrapUntrusted(text),
       truncated,
@@ -840,7 +852,7 @@ const COMMANDS = {
     }
     // A page sets its URL and title: capped, so the reply stays within its 1 MiB line.
     return {
-      url: wf(cut(what.url, ELEMENTS_URL_MAX).text),
+      url: pageUrl(what.url),
       title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
       ...listed,
     };
@@ -910,7 +922,7 @@ const COMMANDS = {
     // Last, once the image is made (M8): a page that moved on meanwhile is not sent.
     still();
     return {
-      url: wf(cut(what.url, ELEMENTS_URL_MAX).text),
+      url: pageUrl(what.url),
       title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
       mimeType: shot.mimeType,
       data: shot.data,
@@ -965,7 +977,7 @@ const COMMANDS = {
     }
     still();
     return {
-      url: wf(cut(what.url, ELEMENTS_URL_MAX).text),
+      url: pageUrl(what.url),
       title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
       ...read,
     };
@@ -1129,7 +1141,7 @@ const COMMANDS = {
         })
       : null;
     return {
-      url: wf(cut(tabUrl(tab), ELEMENTS_URL_MAX).text),
+      url: pageUrl(tabUrl(tab)),
       title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
       ...list,
       loading: result.loading,
@@ -1370,7 +1382,7 @@ const COMMANDS = {
         })
       : null;
     return {
-      url: wf(cut(tabUrl(tab), ELEMENTS_URL_MAX).text),
+      url: pageUrl(tabUrl(tab)),
       title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
       ...list,
       filled: result.filled,

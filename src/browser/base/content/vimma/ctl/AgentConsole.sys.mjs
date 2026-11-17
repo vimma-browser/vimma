@@ -128,7 +128,7 @@ function onStopRequest(subject) {
   }
   const entry = {
     method: String(channel.requestMethod),
-    url: agentUrl(String(uri.spec)),
+    url: agentUrl(String(uri.spec), AGENT_CONSOLE.url),
     ...failed,
     type: TYPES.get(loadInfo.externalContentPolicyType) ?? "other",
     time: Date.now(),

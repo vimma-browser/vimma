@@ -8,6 +8,8 @@ import {
   AGENT_LINKS,
   agentLinkLines,
   agentLinkList,
+  agentUrl,
+  markdownWithoutUserinfo,
   labelAgentLinks,
   labelsCurrent,
   parseAgentKeys,
@@ -568,5 +570,53 @@ describe("link list edges", () => {
     expect(agentLinkList(links, size(one) - 1)).toEqual({ text: "", omitted: 2 });
     expect(agentLinkList(links, size(both))).toEqual({ text: both, omitted: 0 });
     expect(agentLinkList(links, size(both) - 1)).toEqual({ text: one, omitted: 1 });
+  });
+});
+
+describe("URLs without user names and passwords (security.md M21, #1209)", () => {
+  const at = (href: string) => ({ rect: { x: 0, y: 0, width: 10, height: 10 }, href, text: "t" });
+  const lineOf = (href: string) => agentLinkLines(labelAgentLinks([at(href)]).links);
+
+  test("a link's href loses its user name and password", () => {
+    expect(lineOf("https://ada:secret@example.com/p")).toBe('a "t" https://example.com/p');
+    expect(lineOf("https://ada@x:secret@example.com/p")).toBe('a "t" https://example.com/p');
+    expect(lineOf("http:\\\\ada:secret@example.com\\p")).toBe('a "t" http:\\\\example.com\\p');
+    expect(lineOf("https://ada:secret＠example.com/p")).toBe('a "t" https://example.com/p');
+    expect(lineOf("view-source:https://ada:secret@example.com/")).toBe(
+      'a "t" view-source:https://example.com/',
+    );
+  });
+
+  test("a user name and password longer than the cut are dropped before it", () => {
+    const long = `https://ada:${"s".repeat(3 * AGENT_LINKS.href)}@example.com/p`;
+    expect(lineOf(long)).toBe('a "t" https://example.com/p');
+    const huge = `https://ada:${"s".repeat(5 * AGENT_LINKS.href)}@example.com/p`;
+    expect(lineOf(huge)).toBe('a "t" https://…');
+  });
+
+  test("a read page's markdown links lose their user names and passwords", () => {
+    const md = [
+      "Intro [Plans](https://ada:secret@example.com/plans) and",
+      "[Docs](http://ada@x:secret@docs.example/a?b=c@d) [Here](/rel)",
+      "![logo](https://ada:secret@example.com/l.png) a:b@c.example stays as text",
+    ].join("\n");
+    expect(markdownWithoutUserinfo(md)).toBe(
+      [
+        "Intro [Plans](https://example.com/plans) and",
+        "[Docs](http://docs.example/a?b=c@d) [Here](/rel)",
+        "![logo](https://example.com/l.png) a:b@c.example stays as text",
+      ].join("\n"),
+    );
+    // Text that is no link target keeps its white space.
+    expect(markdownWithoutUserinfo("a](https://a:b@c/\nd) e](f\tg)")).toBe(
+      "a](https://a:b@c/\nd) e](f\tg)",
+    );
+    // Work is bounded however long the text.
+    const many = "[x](https://a:b@e.example/) ".repeat(100_000);
+    expect(markdownWithoutUserinfo(many)).not.toContain("a:b@");
+  });
+
+  test("agentUrl takes the cut it is given", () => {
+    expect(agentUrl("https://ada:secret@example.com/abcdef", 22)).toBe("https://example.com/a…");
   });
 });

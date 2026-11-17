@@ -614,7 +614,22 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   are quoted (a fullwidth quote cannot end the text's JSON string), with control,
   bidirectional and invisible characters (tag characters and variation selectors among them)
   dropped, the text one line cut at 80 characters, the href cut at 2,048; the rest are dropped
-  and counted. No page text beyond link texts is returned.
+  and counted. No page text beyond link texts is returned. No user name or password of a URL
+  **must** reach the agent in any reply (#1209): a link's href here, an element's href and a
+  form's action (M31), the page's URL in every reply that names it (`agent-tabs`, `agent-keys`,
+  `agent-elements`, `agent-read`, `agent-screenshot`, `agent-console`, `agent-open`,
+  `agent-activate`, `agent-fill`), and each markdown link target of a read page's text. A page
+  whose own URL holds them gives them to every link and form it resolves, so the parent removes
+  them, with the one stripper of M30 (core's `agentUrl`), before the URL is cut; the URL Vimma
+  keeps and compares (M8) is left whole. A page's own text and title are its own: a page that
+  writes its address into them is not changed.
+  [`a link's href loses its user name and password`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`a user name and password longer than the cut are dropped before it`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`a link's href and a form's action lose their user name and password`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a user name and password longer than the cut are dropped before it`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a read page's markdown links lose their user names and passwords`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`the console's and the lists' URLs go through one stripper`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`test_no_reply_carries_the_pages_user_name_and_password`](../../tests/browser/browser_vimma_mcp_userinfo.js),
   [`test_f_lists_links_with_labels_marked_untrusted`](../../tests/browser/browser_vimma_mcp_follow.js),
   [`at most 200 links; the rest are dropped and counted`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`one line per link: the label, the text as JSON cut at 80, the href cut at 2,048`](../../packages/vimma-core/test/agent-keys.test.ts),
@@ -1055,7 +1070,8 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   and of control characters too except a value's tabs and line breaks, which JSON escapes; no
   page `<`, line separator or paragraph separator appears literally in the list (each is
   escaped as `\u003c`, `\u2028`, `\u2029`), so no page string can spell a delimiter; texts and
-  captions are cut at 80 characters, values at 256, hrefs and form actions at 2,048, at most 50
+  captions are cut at 80 characters, values at 256, hrefs and form actions at 2,048 after their
+  user name and password are removed (M21), at most 50
   options a select; the rest are dropped and counted, and the reply's URL and title are capped. The child's description
   of each element is a fresh, checked copy (core's `parseAgentElement`). A sensitive field **must
   never** be listed with its value or its selected option: a field that is or was ever a
