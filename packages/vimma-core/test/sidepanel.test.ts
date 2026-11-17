@@ -46,7 +46,13 @@ const info = (id: string) => tabs[id];
 
 function press(
   s: PanelState,
-  actions: { id: string; arg?: number; count?: number; page?: number }[],
+  actions: {
+    id: string;
+    arg?: number;
+    count?: number;
+    page?: number;
+    shown?: string | null;
+  }[],
 ) {
   let effect: ReturnType<typeof panelKey>["effect"] = null;
   for (const a of actions) ({ state: s, effect } = panelKey(s, a));
@@ -299,6 +305,19 @@ describe("panelKey", () => {
   test("close_active_tab with no active row (an empty workspace) does nothing", () => {
     const empty = openPanel({ ...model, active: "w3" }, info);
     expect(press(empty, [{ id: "panel.close_active_tab" }]).effect).toBeNull();
+  });
+
+  // The host passes the tab the window shows: a pinned tab is in no workspace, so the model's
+  // active tab can be another, unpinned one (docs/specs/close-active-tab.md decision 2).
+  test("close_active_tab closes the shown tab the host names, not the model's active row", () => {
+    const { effect } = press(s, [{ id: "panel.close_active_tab", shown: "t2" }]);
+    expect(effect).toEqual({ type: "closeTab", id: "t2" });
+  });
+
+  test("close_active_tab with no shown row (a pinned tab is shown) closes nothing", () => {
+    const { state, effect } = press(s, [{ id: "panel.close_active_tab", shown: null }]);
+    expect(state).toBe(s);
+    expect(effect).toEqual({ type: "refuse", text: "pinned tab: unpin it to close it" });
   });
 
   test("a count before close_active_tab closes one tab", () => {
