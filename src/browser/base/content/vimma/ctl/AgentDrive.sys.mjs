@@ -24,6 +24,7 @@ import {
   AGENT_LINKS,
   AGENT_PAGE_URL_MAX,
   agentLinkList,
+  agentTitle,
   agentUrl,
   labelAgentLinks,
   labelsCurrent,
@@ -646,7 +647,7 @@ export const AgentDrive = {
     const out = {
       // Without the page's user name and password (security.md M7, #1209).
       url: wf(agentUrl(browser.currentURI?.spec ?? "", AGENT_PAGE_URL_MAX)),
-      title: wf(tab.label ?? ""),
+      title: wf(agentTitle(tab.label ?? "", browser.currentURI?.spec ?? "")),
       loading: !!browser.webProgress?.isLoadingDocument || tab.hasAttribute("busy"),
       scroll: {
         y:

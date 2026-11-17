@@ -534,6 +534,37 @@ export function agentUrl(url, max) {
   return cutTo(withoutUserinfo(text, cut, 0), max);
 }
 
+/** The scheme a label without one is read with. */
+const TRIMMED_SCHEME = "http://";
+
+/**
+ * A tab's title as the agent may see it (security.md M21, #1209). Firefox labels a tab with its
+ * URL before the page loads, when it is restored pending, and when the page has no title (then
+ * with the scheme trimmed off), user name and password included. A title that may be such a URL
+ * (no white space, an at sign once shown) loses them as agentUrl drops them: when it has a scheme
+ * and an authority that holds them, and, without a scheme, when the tab's URL `url` holds a user
+ * name or password, so that it is that URL trimmed. Any URL-shaped title is stripped, not only
+ * one equal to the tab's URL: Firefox's label may be the URL before a redirect, or unescaped, and
+ * a page that writes a URL with a user name into its title loses only the user name. Every other
+ * title is the page's own text and is returned as it is.
+ * @param {unknown} label @param {unknown} url  the tab's URL, user name and password included
+ */
+export function agentTitle(label, url) {
+  const s = String(label ?? "");
+  const t = s.trim();
+  if (!t || /\s/.test(t)) return s;
+  const plain = shown(t);
+  if (!plain.includes("@")) return s;
+  if (URL_SCHEME.test(plain) && withoutUserinfo(plain, false, 0) !== plain) {
+    return agentUrl(t, AGENT_PAGE_URL_MAX);
+  }
+  const tab = URL.parse(String(url ?? ""));
+  if (!tab || (!tab.username && !tab.password)) return s;
+  return agentUrl(TRIMMED_SCHEME + t, AGENT_PAGE_URL_MAX + TRIMMED_SCHEME.length).slice(
+    TRIMMED_SCHEME.length,
+  );
+}
+
 /**
  * A markdown link's or image's target: `](`, then up to the next `)`. DOMExtractor writes a
  * resolved href there, which holds no white space and has its parentheses escaped; page text

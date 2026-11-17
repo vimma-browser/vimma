@@ -32,6 +32,7 @@ import {
 import { ListedSites, actDetail, fillDetail } from "../core/agent-act.mjs";
 import {
   AGENT_PAGE_URL_MAX,
+  agentTitle,
   agentUrl,
   markdownWithoutUserinfo,
   parseAgentKeys,
@@ -143,6 +144,13 @@ const ELEMENTS_TITLE_MAX = 1024;
  * @param {string} url
  */
 const pageUrl = (url) => wf(agentUrl(url, AGENT_PAGE_URL_MAX));
+/**
+ * A tab's title as a reply gives it to the agent (security.md M21, #1209): a label Firefox made of
+ * the tab's URL without its user name and password; cut at `max` code points when one is given.
+ * @param {Tab} tab @param {number} [max]
+ */
+const pageTitle = (tab, max = Infinity) =>
+  wf(cut(agentTitle(String(tab.label ?? ""), tabUrl(tab)), max).text);
 /** The longest an `agent-keys` call runs after the yes (mcp-drive D15). */
 const KEYS_CALL_MS = 60000;
 
@@ -298,7 +306,7 @@ async function stepList(conn, tool, what, agent, win, tab, ready, filters) {
     }
     return {
       url: pageUrl(tabUrl(tab)),
-      title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
+      title: pageTitle(tab, ELEMENTS_TITLE_MAX),
     };
   };
   if (!(await ready())) return { ...page(), unlisted: "loading" };
@@ -436,7 +444,7 @@ const COMMANDS = {
       tabs: agentTabs(now, conn, true).map(({ tab }) => ({
         id: tabId(tab),
         url: pageUrl(tabUrl(tab)),
-        title: wf(tab.label ?? ""),
+        title: pageTitle(tab),
         loading: tab.hasAttribute("busy") || tab.hasAttribute("pending") || !tab.linkedPanel,
       })),
     };
@@ -490,7 +498,7 @@ const COMMANDS = {
     } catch {
       // metadata is a nicety; the text stands without it
     }
-    const title = wf(tab.label ?? "");
+    const title = pageTitle(tab);
     const background = !(tab.selected && Services.focus.activeWindow === win);
     // Last, once everything is collected (security.md M8): the page may have navigated or the
     // tab moved while it was read, and then nothing of it is sent.
@@ -853,7 +861,7 @@ const COMMANDS = {
     // A page sets its URL and title: capped, so the reply stays within its 1 MiB line.
     return {
       url: pageUrl(what.url),
-      title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
+      title: pageTitle(tab, ELEMENTS_TITLE_MAX),
       ...listed,
     };
   },
@@ -923,7 +931,7 @@ const COMMANDS = {
     still();
     return {
       url: pageUrl(what.url),
-      title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
+      title: pageTitle(tab, ELEMENTS_TITLE_MAX),
       mimeType: shot.mimeType,
       data: shot.data,
       width: shot.width,
@@ -978,7 +986,7 @@ const COMMANDS = {
     still();
     return {
       url: pageUrl(what.url),
-      title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
+      title: pageTitle(tab, ELEMENTS_TITLE_MAX),
       ...read,
     };
   },
@@ -1142,7 +1150,7 @@ const COMMANDS = {
       : null;
     return {
       url: pageUrl(tabUrl(tab)),
-      title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
+      title: pageTitle(tab, ELEMENTS_TITLE_MAX),
       ...list,
       loading: result.loading,
       navigated: result.navigated,
@@ -1383,7 +1391,7 @@ const COMMANDS = {
       : null;
     return {
       url: pageUrl(tabUrl(tab)),
-      title: wf(cut(String(tab.label ?? ""), ELEMENTS_TITLE_MAX).text),
+      title: pageTitle(tab, ELEMENTS_TITLE_MAX),
       ...list,
       filled: result.filled,
       ...(result.reset ? { reset: result.reset } : {}),

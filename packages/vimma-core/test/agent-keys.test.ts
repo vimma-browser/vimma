@@ -8,6 +8,7 @@ import {
   AGENT_LINKS,
   agentLinkLines,
   agentLinkList,
+  agentTitle,
   agentUrl,
   markdownWithoutUserinfo,
   labelAgentLinks,
@@ -618,5 +619,44 @@ describe("URLs without user names and passwords (security.md M21, #1209)", () =>
 
   test("agentUrl takes the cut it is given", () => {
     expect(agentUrl("https://ada:secret@example.com/abcdef", 22)).toBe("https://example.com/a…");
+  });
+});
+
+describe("tab titles without user names and passwords (security.md M21, #1209)", () => {
+  const AT = "https://ada:secret@example.com/a";
+
+  test("a title that is a URL loses its user name and password", () => {
+    // Firefox labels a tab with its raw URL before it loads and when it is restored pending.
+    expect(agentTitle("https://ada:secret@example.com/", "")).toBe("https://example.com/");
+    expect(agentTitle("  http://ada@x:secret@example.com/a?b", "")).toBe("http://example.com/a?b");
+    expect(agentTitle("https://ada:secret\uff20example.com/", "")).toBe("https://example.com/");
+    expect(agentTitle("view-source:https://ada:secret@example.com/", "")).toBe(
+      "view-source:https://example.com/",
+    );
+    // Longer than a title's cut: dropped before it.
+    const long = `https://ada:${"s".repeat(5000)}@example.com/`;
+    expect(agentTitle(long, "")).toBe("https://example.com/");
+  });
+
+  test("a title that is the tab's URL without its scheme loses them too", () => {
+    // Firefox trims the scheme off an untitled page's URL for its label.
+    expect(agentTitle("ada:secret@example.com/a", AT)).toBe("example.com/a");
+    expect(agentTitle("ada@example.com/a", "https://ada@example.com/a")).toBe("example.com/a");
+  });
+
+  test("any other title is left as the page wrote it", () => {
+    for (const [title, url] of [
+      ["Plans and pricing", AT],
+      ["Note: read me", AT],
+      ["Mail ada:secret@example.com now", AT],
+      ["https://ada:secret@example.com/ is my address", AT],
+      ["", AT],
+      ["\u202eflipped", AT],
+      // An at sign in a title of a tab whose URL holds no user name is the page's own.
+      ["ada@example.com", "https://example.com/"],
+      ["mailto:ada@example.com", "https://example.com/"],
+    ]) {
+      expect(agentTitle(title, url)).toBe(title);
+    }
   });
 });

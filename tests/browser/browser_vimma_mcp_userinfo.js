@@ -36,6 +36,8 @@ const DIR = getRootDirectory(gTestPath).replace(
 const PAGE = `${DIR}file_vimma_agent_userinfo.html`;
 /** The page with a user name and password, as a user may have typed or a link may have given. */
 const WITH_USERINFO = PAGE.replace("https://", "https://ada:secret@");
+const UNTITLED = `${DIR}file_vimma_agent_untitled.html`;
+const UNTITLED_WITH_USERINFO = UNTITLED.replace("https://", "https://ada:secret@");
 const NAME = "ada";
 const PASSWORD = "secret";
 /** Firefox asks before it loads a URL with a user name the server did not ask for. */
@@ -142,7 +144,90 @@ add_task(async function test_no_reply_carries_the_pages_user_name_and_password()
   noUserinfo("vimma_console", console);
 
   c.close();
-  BrowserTestUtils.removeTab(tab);
+
+  // The lists that come with a step: an open, a fill and a click, each with `elements`. A new
+  // connection, so that the first list is given in full (agent-speed S4).
+  const c2 = new Client(/** @type {number} */ (VimmaControl.port));
+  await c2.handshake({ protocol: 2, role: "agent" });
+  await c2.call("agent-hello", { client: { name: "example-agent" } });
+  const opened = await call(c2, "agent-open", { url: WITH_USERINFO, elements: true }, true);
+  Assert.equal(opened.url, PAGE, "vimma_open's page");
+  noUserinfo("vimma_open", opened);
+  /** @type {Record<string, string>} */
+  const by = {};
+  for (const line of opened.elements.split("\n").slice(1, -1)) {
+    const e = JSON.parse(line);
+    if ("label" in e) by[e.kind === "field" ? "field" : e.text] = e.label;
+  }
+  const filled = await call(c2, "agent-fill", {
+    tab: opened.tab,
+    fields: [{ label: by.field, value: "cats" }],
+    elements: true,
+  });
+  Assert.equal(filled.url, PAGE, "vimma_fill's page");
+  noUserinfo("vimma_fill", filled);
+  const clicked = await call(c2, "agent-activate", {
+    tab: opened.tab,
+    label: by["a relative link"],
+    elements: true,
+  });
+  Assert.equal(clicked.navigated, true, "the click followed the link");
+  Assert.equal(clicked.url, `${DIR}file_vimma_agent_page.html?rel`, "vimma_activate's page");
+  noUserinfo("vimma_activate", clicked);
+
+  c2.close();
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, false);
+  await VimmaControl.settled();
+});
+
+add_task(async function test_a_tab_labelled_with_its_url_gives_no_user_name_and_password() {
+  Services.prefs.setIntPref(PHISHY, 255);
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+  await VimmaControl.settled();
+  // Before it loads, Firefox labels a tab with the URL it was given, user name and all; a tab
+  // restored pending is labelled the same way.
+  const lazy = gBrowser.addTab(UNTITLED_WITH_USERINFO, {
+    createLazyBrowser: true,
+    userContextId: agent().userContextId,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
+  Assert.ok(
+    lazy.label.includes("ada:secret@"),
+    `the unloaded tab's label holds them: ${lazy.label}`,
+  );
+  // A loaded page with no title is labelled with its URL too.
+  const tab = gBrowser.addTab(UNTITLED_WITH_USERINFO, {
+    userContextId: agent().userContextId,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, UNTITLED_WITH_USERINFO);
+  await until(() => tab.hidden && lazy.hidden, "the agent tabs are hidden in their workspace");
+
+  const c = new Client(/** @type {number} */ (VimmaControl.port));
+  await c.handshake({ protocol: 2, role: "agent" });
+  await c.call("agent-hello", { client: { name: "example-agent" } });
+  const tabs = await call(c, "agent-tabs", {}, true);
+  const listed = tabs.tabs.find((/** @type {any} */ t) => t.id === idOf(lazy));
+  Assert.ok(listed, "the unloaded tab is listed");
+  Assert.ok(
+    !listed.title.includes("ada") && listed.title.includes("file_vimma_agent_untitled.html"),
+    `its title is its URL without them: ${listed.title}`,
+  );
+  noUserinfo("vimma_tabs", tabs);
+  const id = idOf(tab);
+  for (const [command, args] of /** @type {[string, object][]} */ ([
+    ["agent-keys", { tab: id, keys: "f" }],
+    ["agent-elements", { tab: id }],
+    ["agent-read", { tab: id }],
+    ["agent-console", { tab: id }],
+  ])) {
+    const r = await call(c, command, args);
+    Assert.equal(r.url, UNTITLED, `${command}'s page`);
+    noUserinfo(command, r);
+  }
+  c.close();
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, false);
   await VimmaControl.settled();
 });
