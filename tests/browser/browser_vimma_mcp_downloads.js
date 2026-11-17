@@ -571,7 +571,7 @@ async function scanRun(tab, name, unscanned = null) {
       /** @type {AskedQuestion[]} */ (AgentGate.waiting).find((w) => w.what.unscanned);
     await until(() => !!unscannedQuestion(), "asks whether to keep it unscanned");
     const again = /** @type {AskedQuestion} */ (unscannedQuestion());
-    why = again.what.unscanned;
+    why = /** @type {string} */ (again.what.unscanned);
     Assert.ok(why, `the question says why: ${why}`);
     AgentGate.answer(again.id, { kind: unscanned });
   }

@@ -42,7 +42,7 @@ export const OLLAMA_DEFAULT_CONTEXT = 4096;
 export const MIN_CONTEXT = 32768;
 const MAX_MODEL = 200;
 
-/** @param {string} url @param {AbortSignal} signal @param {Fetch} fetch @param {any} [body] */
+/** @param {string} url @param {AbortSignal} signal @param {Fetch} fetch @param {unknown} [body] */
 async function request(fetch, url, signal, body) {
   const res = await fetch(url, {
     method: body ? "POST" : "GET",

@@ -55,7 +55,10 @@ function generate() {
     "/** @type {string} */",
     `export const AGENT_INSTRUCTIONS = ${JSON.stringify(instructions)};`,
     "",
-    "/** @type {ReadonlyArray<{ name: string, title: string, description: string, inputSchema: any, annotations: any }>} */",
+    "/**",
+    " * @type {ReadonlyArray<{ name: string, title: string, description: string,",
+    ' *   inputSchema: import("./agent-providers.mjs").InputSchema, annotations: Record<string, boolean> }>}',
+    " */",
     `export const AGENT_TOOL_LIST = ${JSON.stringify(tools)};`,
     "",
   ].join("\n");

@@ -416,6 +416,11 @@ export function mcpClientName(name) {
  *   covered?: true | string }} AgentRequest  `always`: asks even under a grant, and its answer
  *   never makes one (decision 31 d); `covered`: a form a grant covers all the same, `true` for
  *   a harmless one, or the allowance that covers it (docs/specs/mcp-consequence.md K1, K5)
+ * @typedef {{ denials: number, mutedUntil: number, grant: number, session?: string,
+ *   allowed?: Set<string> }} ConnState  `grant`: when the connection's grant ends, 0 for none,
+ *   Infinity for the whole connection; `session`: its process's id, when no other connection
+ *   had it; `allowed`: the allowances `a` made under the grant in force, which end with it
+ *   (setGrant)
  * @typedef {{ conn: ConnId, until: number }} AgentGrant  one per connection, for every tool but
  *   ALWAYS_ASK (mcp-grants G1, G5)
  * @typedef {{ id: number, allow: true } | { id: number, allow: false,
@@ -454,11 +459,7 @@ export class AgentQueue {
   constructor() {
     /** @type {AgentRequest[]} */
     this.queue = [];
-    /** @type {Map<ConnId, { denials: number, mutedUntil: number, grant: number,
-     *   session?: string, allowed?: Set<string> }>} `grant`: when the connection's grant ends,
-     *   0 for none, Infinity for the whole connection; `session`: its process's id, when no
-     *   other connection had it; `allowed`: the allowances `a` made under the grant in force,
-     *   which end with it (setGrant) */
+    /** @type {Map<ConnId, ConnState>} */
     this.conns = new Map();
     /**
      * Grants of connections that closed, by session id, kept until `parkedUntil` for the same
@@ -586,9 +587,8 @@ export class AgentQueue {
   answer(id, answer, now) {
     const request = this.queue.find((r) => r.id === id);
     if (!request) return { resolved: [] };
-    const c = /** @type {NonNullable<ReturnType<Map<ConnId, any>["get"]>>} */ (
-      this.conns.get(request.conn)
-    );
+    // A waiting request's connection is open: disconnecting one drops its requests.
+    const c = /** @type {ConnState} */ (this.conns.get(request.conn));
     this.#drop(id);
     if (answer.kind === "here") {
       c.denials = 0;
