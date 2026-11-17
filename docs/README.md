@@ -96,7 +96,8 @@ introduced the feature ([roadmap.md](roadmap.md)).
   [search-engines](specs/search-engines.md), [m7-a11y](specs/m7-a11y.md).
 - **Pages and features of Vimma's own:** [m5-about-vimma](specs/m5-about-vimma.md),
   [start-page](specs/start-page.md), [first-run-setup](specs/first-run-setup.md),
-  [bookmarks](specs/bookmarks.md), [downloads](specs/downloads.md),
+  [bookmarks](specs/bookmarks.md), [bookmarklets](specs/bookmarklets.md),
+  [downloads](specs/downloads.md),
   [addon-manager](specs/addon-manager.md), [wake-lock](specs/wake-lock.md).
 - **Control socket and vimma-ctl:** [m0-control-server](specs/m0-control-server.md),
   [m0-control-protocol-and-vimma-ctl](specs/m0-control-protocol-and-vimma-ctl.md),

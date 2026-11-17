@@ -262,6 +262,25 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`frozenCopy refuses data nested deeper than FROZEN_COPY_DEPTH, with a clear error`](../../packages/vimma-core/test/agent-gate.test.ts),
   [`frozenCopy copies shared sub-objects in linear time, and a cycle still becomes null`](../../packages/vimma-core/test/agent-gate.test.ts),
   [`:mcp log keeps its own row: the caller's object and a reader's row change nothing`](../../packages/vimma-core/test/agent-gate.test.ts)
+- M63. `agent-bookmarklet` (`vimma_bookmarklet`, [bookmarklets](../specs/bookmarklets.md)
+  B12-B16) **must** be refused before anything is asked unless `[bookmarks] bookmarklets` in
+  config.toml is `"agent"` (U8). It takes an agent tab (M2) and a bookmark's title, **never** a
+  URL or script, and runs only the one stored bookmark with that exact title whose URL is a
+  `javascript:` bookmarklet; none or several such bookmarks, or a page that is not http, https
+  or file, refuse it before the question. It **must** ask every time, under any grant, with `y`
+  and `n` only, and a yes **never** makes a grant; the question names the bookmarklet's folder
+  path and the tab. After the yes it runs only if the tab and its URL are as asked (M8) and the
+  stored bookmark's URL and title are unchanged; the script runs in the page's own global with
+  the page's principal, never the system principal, with no popups; the result says only that
+  it ran. At most 6 calls a minute per connection, counted before the bookmark is looked up.
+  [`agent_is_refused_below_agent_without_a_question`](../../tests/browser/browser_vimma_bookmarklets.js),
+  [`agent_asks_every_time_and_runs_on_yes`](../../tests/browser/browser_vimma_bookmarklets.js),
+  [`agent_names_exactly_one_stored_bookmarklet`](../../tests/browser/browser_vimma_bookmarklets.js),
+  [`agent_runs_nothing_when_the_tab_changed_after_the_question`](../../tests/browser/browser_vimma_bookmarklets.js),
+  [`takes a tab and a title, and nothing else: no url, no script`](../../packages/vimma-core/test/bookmarklets-agent.test.ts),
+  [`no grant covers it and its answer makes none`](../../packages/vimma-core/test/bookmarklets-agent.test.ts),
+  [`an agent is refused at %s, naming the setting`](../../packages/vimma-core/test/bookmarklets.test.ts),
+  [`bad_bookmarklet_arguments_are_tool_errors_and_never_reach_vimma`](../../tools/vimma-ctl/src/mcp/args.rs)
 - M2. Agent commands **must** see only tabs of the agent workspace in its container, checked
   when each command runs; **never** another workspace's tab, a foreign or pinned tab, or a
   private window's.
