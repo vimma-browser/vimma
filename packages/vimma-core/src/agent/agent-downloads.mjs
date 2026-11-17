@@ -535,7 +535,10 @@ const sizeUnlimited = (value) => /^0+[kmg]? *(#.*)?$/i.test(value);
  * @param {string} value
  */
 const numberUnlimited = (value) => /^0+ *(#.*)?$/.test(value);
-/** A limit whose default is not in optparser.c and that 0 is not said to disable: never set. */
+/**
+ * An option that must not be set: a limit whose default is not in optparser.c and that 0 is
+ * not said to disable, an option with no default to compare with, or a developer option.
+ */
 const neverSet = () => false;
 /**
  * BytecodeTimeout: at least optparser.c's default, 10000 ms, and small enough for clamd's atoi
@@ -553,6 +556,13 @@ const bytecodeTimeout = (value) => {
  * @param {string} value
  */
 const systemExclude = (value) => value === "^/proc/" || value === "^/sys/";
+/**
+ * DatabaseDirectory: clamscan loads its signatures from CONST_DATADIR, its `--database` default
+ * (optparser.c), a build setting that is /var/lib/clamav in the packages Vimma uses. clamd must
+ * load the same ones, written exactly so.
+ * @param {string} value
+ */
+const packagedDatadir = (value) => value === "/var/lib/clamav";
 
 /**
  * @typedef {object} ClamdOption
@@ -614,6 +624,15 @@ const CLAMD_OPTIONS = new Map([
   ["PCRERecMatchLimit", { alias: "pcre-recmatch-limit", scans: neverSet }],
   ["BytecodeTimeout", { alias: "bytecode-timeout", scans: bytecodeTimeout }],
   ["ExcludePath", { multiple: true, scans: systemExclude }],
+  // The signatures clamscan loads, verified as clamscan verifies them. CVDCertsDirectory has no
+  // default in optparser.c to compare with: never set.
+  ["DatabaseDirectory", { alias: "datadir", scans: packagedDatadir }],
+  ["CVDCertsDirectory", { alias: "cvdcertsdir", scans: neverSet }],
+  // Hidden developer options (FLAG_HIDDEN): never set.
+  ["DevACOnly", { alias: "dev-ac-only", scans: neverSet }],
+  ["DevACDepth", { alias: "dev-ac-depth", scans: neverSet }],
+  ["DevPerformance", { alias: "dev-performance", scans: neverSet }],
+  ["DevLiblog", { alias: "dev-liblog", scans: neverSet }],
 ]);
 
 /** Every name clamd reads for those options in the file, case as clamd matches it. */
@@ -653,9 +672,10 @@ function hasControl(line) {
  * must not listen on TCP (anyone on the network could answer), and must alert on encrypted
  * files and files over its limits, as `clamscan` is asked to, or such a file would scan clean.
  * Nor may it scan less than clamscan with its defaults: a scan turned off, fewer signatures, a
- * lower limit or an excluded path (CLAMD_OPTIONS). It reads the file as clamd's optparser does (ClamAV common/optparser.c), and wherever the
- * two readings could differ for these options it refuses the file instead: clamd is then not
- * used and clamscan scans.
+ * lower limit, an excluded path, another signature folder or a developer option
+ * (CLAMD_OPTIONS). It reads the file as clamd's optparser does (ClamAV common/optparser.c), and
+ * wherever the two readings could differ for these options it refuses the file instead: clamd
+ * is then not used and clamscan scans.
  * @param {string} text
  * @returns {{ socket: string } | { problem: string }}
  */

@@ -1111,6 +1111,58 @@ describe("the download checks' edges (mutation-tested)", () => {
     });
   });
 
+  // clamscan loads its signatures from CONST_DATADIR (its --database default) and verifies them
+  // with its own certificates; clamd must load the same ones. CONST_DATADIR is a build setting,
+  // /var/lib/clamav in the packages Vimma uses; CVDCertsDirectory has no default in optparser.c.
+  test("clamd.conf: the signatures clamscan loads, from the same folder", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    const weaker = (name: string) => ({ problem: `clamd would scan less than clamscan (${name})` });
+    expect(conf(...good, "DatabaseDirectory /var/lib/clamav")).toEqual({ socket: "/run/c.ctl" });
+    expect(conf(...good, "datadir /var/lib/clamav")).toEqual({ socket: "/run/c.ctl" });
+    for (const value of [
+      "/var/lib/clamav/",
+      "/srv/clamav",
+      "/var/lib/clamav # x",
+      '"/var/lib/clamav"',
+      "",
+    ]) {
+      expect(conf(...good, `DatabaseDirectory ${value}`)).toEqual(weaker("DatabaseDirectory"));
+    }
+    expect(conf(...good, "DatabaseDirectory /var/lib/clamav", "datadir /var/lib/clamav")).toEqual({
+      problem: "clamd.conf sets DatabaseDirectory twice",
+    });
+    expect(conf(...good, "databasedirectory /srv")).toEqual({
+      problem: "clamd does not read databasedirectory (line 4)",
+    });
+    for (const line of [
+      "CVDCertsDirectory /etc/certs",
+      "cvdcertsdir /var/lib/clamav",
+      "CVDCertsDirectory",
+    ]) {
+      expect(conf(...good, line)).toEqual(weaker("CVDCertsDirectory"));
+    }
+  });
+
+  // optparser.c's hidden developer options (FLAG_HIDDEN, read by clamd): never in a clamd.conf
+  // Vimma uses.
+  test("clamd.conf: no developer option", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    for (const [name, alias] of [
+      ["DevACOnly", "dev-ac-only"],
+      ["DevACDepth", "dev-ac-depth"],
+      ["DevPerformance", "dev-performance"],
+      ["DevLiblog", "dev-liblog"],
+    ] as const) {
+      const weaker = { problem: `clamd would scan less than clamscan (${name})` };
+      for (const value of ["no", "yes", "0", "3"]) {
+        expect(conf(...good, `${name} ${value}`)).toEqual(weaker);
+        expect(conf(...good, `${alias} ${value}`)).toEqual(weaker);
+      }
+    }
+  });
+
   test("clamd.conf: the stock file, with the alerts turned on, is used", () => {
     const stock = [
       "##",

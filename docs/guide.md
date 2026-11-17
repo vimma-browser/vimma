@@ -3326,6 +3326,14 @@ Ubuntu, `clamav-daemon` or `clamd` on others), Vimma asks it through `clamdscan`
 is fast. It does so only when `/etc/clamav/clamd.conf` is root's, clamd listens on a local socket
 (`LocalSocket`, no `TCPSocket`) owned by root or `clamav`, and the config has
 `AlertEncrypted yes` and `AlertExceedsMax yes`, so clamd reports what it cannot look inside.
+clamd must also scan no less than `clamscan` does with ClamAV's defaults: no `Scan*`,
+`Phishing*`, `HeuristicAlerts` or `Bytecode` option may be off, and `OfficialDatabaseOnly` and
+`DisableCertCheck` may not be on. No `Max*` or `PCRE*` limit may be set. Debian's generated
+config sets several (`MaxFileSize 25M`, for one): delete those lines, which is simplest, or set
+the size limits and `MaxScanTime`, `MaxRecursion` and `MaxFiles` to 0 (no limit).
+`BytecodeTimeout` must be at least 10000, `ExcludePath` only `^/proc/` or `^/sys/`, and
+`DatabaseDirectory`, if set, `/var/lib/clamav`; `CVDCertsDirectory` and the `Dev*` options may
+not be set. Then restart clamd (`sudo systemctl restart clamav-daemon`).
 Otherwise, or if clamd fails or its definitions are old, Vimma uses `clamscan`.
 
 On macOS the same rules apply. Vimma looks for `clamscan` and `clamdscan` only in `/usr/bin`

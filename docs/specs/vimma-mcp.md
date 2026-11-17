@@ -962,7 +962,8 @@ outdated definitions (ClamAV)`. An infected verdict is refused however old the d
     `ScanArchive no` or a lower `MaxFileSize` passed while clamd then scanned less than
     clamscan. clamd.conf is now also refused when any scan option is weaker than clamscan's
     default: a scan turned off, fewer signatures, a limit set (other than 0, no limit), a short
-    BytecodeTimeout or an excluded path; security M13, issue #1210.)
+    BytecodeTimeout, an excluded path, another signature folder or a developer option; security
+    M13, issue #1210.)
 
 ## Security and privacy
 

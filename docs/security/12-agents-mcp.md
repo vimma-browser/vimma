@@ -439,8 +439,12 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   phishing options), loads fewer signatures (OfficialDatabaseOnly) or skips the certificate
   check, sets a scan limit (`Max*`, `PCRE*`) to anything but 0 where 0 means no limit, or at
   all where optparser.c does not say so (clamscan's limits are libclamav's `CLI_DEFAULT_*`,
-  which are not compared), sets BytecodeTimeout under its default of 10000, or excludes a path
-  other than `^/proc/` and `^/sys/`; each by its name or command-line name, and set once. Vimma
+  which are not compared), sets BytecodeTimeout under its default of 10000, excludes a path
+  other than `^/proc/` and `^/sys/`, loads signatures from a DatabaseDirectory other than
+  `/var/lib/clamav` (clamscan's `--database` default, CONST_DATADIR, in the packages Vimma uses)
+  or sets CVDCertsDirectory (no default in optparser.c to compare with), or sets a hidden
+  developer option (`DevACOnly`, `DevACDepth`, `DevPerformance`, `DevLiblog`); each by its name
+  or command-line name, and set once. Vimma
   checks the file, not the configuration the running clamd read when it started (perhaps from
   another file); only root can change either.
   Vimma has no download reputation service of its own: Firefox's Safe Browsing checks downloads
@@ -464,6 +468,8 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`clamd.conf: a scan clamscan does is never turned off`](../../packages/vimma-core/test/agent-downloads.test.ts),
   [`clamd.conf: a limit is never set below clamscan's`](../../packages/vimma-core/test/agent-downloads.test.ts),
   [`clamd.conf: ExcludePath may skip only /proc and /sys`](../../packages/vimma-core/test/agent-downloads.test.ts),
+  [`clamd.conf: the signatures clamscan loads, from the same folder`](../../packages/vimma-core/test/agent-downloads.test.ts),
+  [`clamd.conf: no developer option`](../../packages/vimma-core/test/agent-downloads.test.ts),
   [`clamd.conf: the stock file, with the alerts turned on, is used`](../../packages/vimma-core/test/agent-downloads.test.ts),
   [`the socket: a socket owned by root or clamav, never by the user or anyone else`](../../packages/vimma-core/test/agent-downloads.test.ts),
   [`a grant does not run it, whatever was asked: it waits`](../../packages/vimma-core/test/agent-gate.test.ts),
