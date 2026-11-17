@@ -117,7 +117,7 @@ describe("the untrusted-content delimiters", () => {
   });
 });
 
-describe("vimma_tabs, vimma_read_page, vimma_close_tab and vimma_show", () => {
+describe("vimma_tabs, vimma_read_page, vimma_close_tab, vimma_show and vimma_bookmarklet", () => {
   test("a result without a tabs list is a protocol failure", () => {
     for (const result of [null, {}, { tabs: "7" }]) {
       expect(toolResult("vimma_tabs", {}, result)).toEqual(
@@ -151,7 +151,12 @@ describe("vimma_tabs, vimma_read_page, vimma_close_tab and vimma_show", () => {
     ]);
   });
 
-  test("a close or a show Vimma does not confirm is a protocol failure", () => {
+  test("a close, a show or a bookmarklet run Vimma does not confirm is a protocol failure", () => {
+    for (const result of [null, undefined, { ran: "true" }]) {
+      expect(toolResult("vimma_bookmarklet", { tab: "9", name: "R" }, result)).toEqual(
+        broke("Vimma's result does not say ran"),
+      );
+    }
     for (const result of [null, { closed: false }, { closed: "true" }]) {
       expect(toolResult("vimma_close_tab", { tab: "9" }, result)).toEqual(
         broke("Vimma's result does not say closed"),
