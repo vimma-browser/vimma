@@ -12,6 +12,7 @@ import {
   parseToolbarCommand,
   parseBookmarksToolbarCommand,
   parseSettingsCommand,
+  cmdlineArrow,
 } from "../src/keys/cmdline.mjs";
 import { ACTIONS, getAction } from "../src/keys/actions.mjs";
 import type { History } from "../src/keys/cmdline.mjs";
@@ -817,5 +818,54 @@ describe("history: edges", () => {
     let h = createHistory();
     for (const l of ["a", "b", "a", "   "]) h = pushHistory(h, l);
     expect(h.entries).toEqual(["b", "a"]);
+  });
+});
+
+// docs/specs/cmdline-arrow-completion.md (#1222).
+describe("Up / Down: the completion list or history", () => {
+  const at = (line: string, shown: number, selected: number | null = null, browsing = false) => ({
+    line,
+    shown,
+    selected,
+    browsing,
+  });
+
+  test("an empty line browses history, both ways", () => {
+    expect(cmdlineArrow(at("", 0), 1)).toEqual({ kind: "history" });
+    expect(cmdlineArrow(at("", 0), -1)).toEqual({ kind: "history" });
+    expect(cmdlineArrow(at(" : ", 0), 1)).toEqual({ kind: "history" });
+  });
+
+  test("Down with typed text and a list selects its first match, as Tab", () => {
+    expect(cmdlineArrow(at("move", 4), 1)).toEqual({ kind: "select", index: 0 });
+  });
+
+  test("Up with typed text before entering the list keeps the history prefix search", () => {
+    expect(cmdlineArrow(at("move", 4), -1)).toEqual({ kind: "history" });
+  });
+
+  test("typed text with no matches keeps history", () => {
+    expect(cmdlineArrow(at("zzzz", 0), 1)).toEqual({ kind: "history" });
+    expect(cmdlineArrow(at("zzzz", 0), -1)).toEqual({ kind: "history" });
+  });
+
+  test("while history is being browsed, Down walks history, not the recalled line's list", () => {
+    expect(cmdlineArrow(at("tabnew", 3, null, true), 1)).toEqual({ kind: "history" });
+    expect(cmdlineArrow(at("tabnew", 3, null, true), -1)).toEqual({ kind: "history" });
+  });
+
+  test("in the list, Down moves on and wraps from the last to the first, as Tab", () => {
+    expect(cmdlineArrow(at("move_tab_right", 4, 0), 1)).toEqual({ kind: "select", index: 1 });
+    expect(cmdlineArrow(at("x", 4, 3), 1)).toEqual({ kind: "select", index: 0 });
+  });
+
+  test("in the list, Up moves back, and from the first leaves it for the typed text", () => {
+    expect(cmdlineArrow(at("x", 4, 2), -1)).toEqual({ kind: "select", index: 1 });
+    expect(cmdlineArrow(at("x", 4, 0), -1)).toEqual({ kind: "leave" });
+  });
+
+  test("a one-row list: Down stays on it, Up leaves", () => {
+    expect(cmdlineArrow(at("tabnew", 1, 0), 1)).toEqual({ kind: "select", index: 0 });
+    expect(cmdlineArrow(at("tabnew", 1, 0), -1)).toEqual({ kind: "leave" });
   });
 });

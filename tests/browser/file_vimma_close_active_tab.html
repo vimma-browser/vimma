@@ -1,0 +1,26 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_close_active_tab.js: a text field, and the page's own ctrl+w,
+     which it dispatches itself at the field (an untrusted key, never the user's). -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>vimma close active tab</title>
+  </head>
+  <body>
+    <input id="text" />
+    <script>
+      window.sent = [];
+      function fakeCtrlW() {
+        const field = document.getElementById("text");
+        field.focus();
+        for (const type of ["keydown", "keypress", "keyup"]) {
+          const init = { key: "w", code: "KeyW", ctrlKey: true, bubbles: true, cancelable: true };
+          sent.push(field.dispatchEvent(new KeyboardEvent(type, init)) ? type : `${type}!`);
+        }
+      }
+    </script>
+  </body>
+</html>

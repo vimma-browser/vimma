@@ -295,7 +295,7 @@ describe("[agent]", () => {
     ['kind = "openai"', 'model = "m"'],
     ['endpoint = "https://a.example/v1"', 'model = "m"'],
   ])("a provider without one of kind, endpoint and model: %s, %s", (...lines) => {
-    expect(problems(v2("[[agent.providers]]", ...lines))).toEqual([
+    expect(problems(v2("[[agent.providers]]", 'name = "x"', ...lines))).toEqual([
       [2, "agent.providers[0]", 'a provider needs "kind", "endpoint" and "model"'],
     ]);
   });

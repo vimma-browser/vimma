@@ -187,7 +187,7 @@ export function upperLast(label) {
 
 /**
  * What the status bar shows of a hint session: its action and the first label still on screen.
- * @param {HintState<any>} state
+ * @param {HintState} state  any target type: only labels are read
  * @returns {{ action: HintAction, label: string | null }}
  */
 export function hintStatus(state) {
@@ -248,7 +248,7 @@ export function hintKey(state, chord) {
 }
 
 /**
- * @param {HintState<any>} state
+ * @param {HintState} state  any target type: only labels are read
  * @returns {{ kind: "narrow", visible: number }}
  */
 const narrow = (state) => Object.freeze({ kind: "narrow", visible: visibleHints(state).length });

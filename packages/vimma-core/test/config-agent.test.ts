@@ -182,6 +182,18 @@ describe("[agent]", () => {
     );
   });
 
+  test("a provider without a name is an error, of either kind", () => {
+    // A nameless provider resolved with no name, and made `[agent] default` undefined.
+    const noName = (lines: string[]) => lines.filter((l) => !l.startsWith("name ="));
+    expect(errors(v2(...noName(LOCAL)))).toMatchObject([
+      { path: "agent.providers[0]", message: 'a provider needs "name"' },
+    ]);
+    const cli = ["[[agent.providers]]", 'kind = "cli"', 'cli = "codex"'];
+    expect(errors(v2(...cli))).toMatchObject([
+      { path: "agent.providers[0]", message: 'a provider needs "name"' },
+    ]);
+  });
+
   test("default names a provider", () => {
     expect(errors(v2("[agent]", 'default = "nope"', ...LOCAL))[0]).toMatchObject({
       path: "agent.default",

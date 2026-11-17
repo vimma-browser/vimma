@@ -177,6 +177,8 @@ support-files = ["file_vimma_search_post.sjs"]
 
 ["browser_vimma_cmdline.js"]
 
+["browser_vimma_cmdline_arrows.js"]
+
 ["browser_vimma_find.js"]
 support-files = [
   "file_vimma_find.html",
@@ -397,6 +399,9 @@ support-files = ["file_vimma_title.html"]
 ["browser_vimma_private_swap_native.js"]
 
 ["browser_vimma_side_panel.js"]
+
+["browser_vimma_close_active_tab.js"]
+support-files = ["file_vimma_close_active_tab.html"]
 
 ["browser_vimma_side_panel_marks.js"]
 

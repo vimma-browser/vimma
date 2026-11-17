@@ -2478,6 +2478,11 @@
           ]
         },
         {
+          "name": "panel_close_active_tab",
+          "description": "Close the tab the window shows, not the highlighted row's; the panel stays open",
+          "keys": []
+        },
+        {
           "name": "panel_select_1",
           "description": "Select row 1",
           "keys": []

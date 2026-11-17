@@ -29,6 +29,7 @@ import { ControlHost } from "./control-ops.mjs";
 import { copyModeRunners } from "./copy-mode.mjs";
 import { McpHost } from "./mcp-ops.mjs";
 import { openOutline } from "./outline-ops.mjs";
+import { tabById } from "./goto.mjs";
 import { goHistory, pageRunners } from "./page-ops.mjs";
 import {
   closePane,
@@ -458,6 +459,17 @@ export function hostRunners(host, page) {
     // there).
     "panel.close_tab": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
       if (!s.bookmarks.isOpen) s.panel.action(a);
+    },
+    // docs/specs/close-active-tab.md decision 2: the tab the window shows, the panel kept open.
+    // Without the side panel (the bookmarks panel lists no tabs, or a global binding in another
+    // mode) it is tab.close (decision 3).
+    // The shown tab is named by its row: a pinned tab has none, and the model's active row is
+    // then another tab (pinned tabs are in no workspace), which must not close.
+    "panel.close_active_tab": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
+      if (!s.panel.isOpen) return closeTab(s.win);
+      const shown = s.win.gBrowser.selectedTab;
+      const row = s.panel.state?.rows.find((r) => tabById(s.win, r.tabId) === shown);
+      s.panel.action({ ...a, shown: row?.tabId ?? null });
     },
     // m4-side-panel-multiselect: marks in the side panel; nothing in the bookmarks panel.
     "panel.mark": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
