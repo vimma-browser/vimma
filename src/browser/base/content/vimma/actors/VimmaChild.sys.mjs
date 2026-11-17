@@ -413,6 +413,19 @@ export class VimmaChild extends JSWindowActorChild {
         if (keys.focus.length > KEYS_KEPT) keys.focus.shift();
         return;
       }
+      case "keypress": {
+        // macOS only (VimmaActors registers it there alone). The parent marked this keypress:
+        // it is a suggestion key's, sent here for the page to have first (VimmaHost,
+        // _suggestionKeySent). Page script has had it by now; the focused field has not. While
+        // the field's suggestion list is open, the field does not get it, so Cocoa's moveDown:
+        // or moveUp: moves no caret and the parent, whose reply then comes back not prevented,
+        // presses the arrow key. Stopped, not prevented: a prevented keypress reads as one the
+        // page took. With no list open the field keeps its key.
+        const e = /** @type {KeyboardEvent & { multipleActionsPrevented: boolean }} */ (event);
+        if (!e.isTrusted || !e.multipleActionsPrevented || e.defaultPrevented) return;
+        if (this.#suggestionsOpen()) e.stopPropagation();
+        return;
+      }
       case "focusout":
         // Focus moving to another element of this document reports its own focusin; checking
         // in between would flicker insert → normal → insert.

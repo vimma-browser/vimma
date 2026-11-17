@@ -32,6 +32,8 @@ const { clearTimeout, setTimeout } = ChromeUtils.importESModule(
 );
 
 const BASE = "chrome://browser/content/vimma/actors/";
+/** Cocoa's key bindings run in text fields (docs/specs/page-suggestions.md, Behaviour 3). */
+const MAC = /** @type {{ OS?: string }} */ (Services.appinfo).OS === "Darwin";
 /** What the parent actor's URL must look like: a system module of host/ (ADR-026). */
 const PARENT_URI = /^chrome:\/\/browser\/content\/vimma\/host\/[\w-]+\.sys\.mjs$/;
 /** start/StartPage.sys.mjs START_PAGE_URL; a match pattern needs no import for one string. */
@@ -204,6 +206,11 @@ export const VimmaActors = {
           // child can still tell the parent (issue #1028). The system group: the page cannot
           // stop it.
           pagehide: { mozSystemGroup: true, createActor: false },
+          // macOS only: a suggestion key's keypress, before the focused field runs Cocoa's key
+          // binding on it (VimmaChild, "keypress"). The field's handler is in the system
+          // group's bubble phase (TextInputListener, EditorEventListener): this one is at
+          // capture, on the way down to it.
+          ...(MAC ? { keypress: { capture: true, mozSystemGroup: true, createActor: false } } : {}),
         },
       },
       allFrames: true,

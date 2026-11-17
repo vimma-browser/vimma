@@ -131,7 +131,7 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  * `defaultPreventedByContent` and `defaultPreventedByChrome` are Event.webidl's (ChromeOnly).
  * @typedef {KeyboardEvent & { isReplyEventFromRemoteContent: boolean,
  *   requestReplyFromRemoteContent: () => void, defaultPreventedByContent: boolean,
- *   defaultPreventedByChrome: boolean }} ChromeKeyEvent
+ *   defaultPreventedByChrome: boolean, preventMultipleActions: () => void }} ChromeKeyEvent
  */
 
 /**
@@ -1590,7 +1590,27 @@ export const VimmaHost = {
     if (state.pageFirst.press(key, e.timeStamp, isRemoteBrowserTarget(e.target))) {
       e.stopPropagation();
       ev.requestReplyFromRemoteContent();
+      if (MAC && this._suggestionKeySent(state, key, e.timeStamp)) ev.preventMultipleActions();
     }
+  },
+
+  /**
+   * Whether the keypress just sent to a remote page is a suggestion key's. On macOS such a
+   * keypress is marked for the page's process (Event.webidl's preventMultipleActions: the default
+   * is not prevented, but only one handler acts on the event; the flags go to the page's process
+   * with the event, widget/nsGUIEventIPC.h, ParamTraits<BaseEventFlags>), because Cocoa binds
+   * ctrl+n and ctrl+p to moveDown: and moveUp: in a text field
+   * (widget/cocoa/NativeKeyBindings.mm, Firefox 160): the field runs them on the keypress and
+   * prevents its default, so the reply would say the page took the key, with or without a
+   * list. VimmaChild keeps a marked keypress from the field while its suggestion list is open;
+   * with none open the field keeps its key (docs/specs/page-suggestions.md, Behaviour 3).
+   * @param {WindowState} state
+   * @param {string} key
+   * @param {number} stamp  the keypress's timeStamp
+   */
+  _suggestionKeySent(state, key, stamp) {
+    const result = state.pageFirst.sent(key, stamp)?.result;
+    return result?.kind === "action" && isSuggestionAction(result.action.id);
   },
 
   /**

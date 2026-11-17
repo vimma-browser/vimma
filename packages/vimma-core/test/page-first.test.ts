@@ -38,6 +38,24 @@ describe("PageFirstQueue (docs/specs/firefox-keys.md decision 6)", () => {
     expect(q.reply("meta+2", 10)).toMatchObject({ result: "meta+2@normal" });
   });
 
+  test("Given a key sent to a remote page, then `sent` names that press until its reply comes", () => {
+    const q = queue(["ctrl+n", "insert"], ["ctrl+p", "insert"]);
+    expect(q.sent("ctrl+n", 10)).toBeNull();
+    q.press("ctrl+n", 10, true);
+    expect(q.sent("ctrl+n", 10)).toMatchObject({ result: "ctrl+n@insert", mode: "insert" });
+    expect(q.sent("ctrl+n", 11)).toBeNull();
+    expect(q.sent("ctrl+p", 10)).toBeNull();
+    expect(q.size).toBe(2);
+    q.reply("ctrl+n", 10);
+    expect(q.sent("ctrl+n", 10)).toBeNull();
+  });
+
+  test("Given a keypress that stayed in this process, then `sent` names no press", () => {
+    const q = queue(["ctrl+p", "insert"]);
+    q.press("ctrl+p", 10, false);
+    expect(q.sent("ctrl+p", 10)).toBeNull();
+  });
+
   test("Given a reply no press asked for, then it settles nothing", () => {
     const q = queue(["meta+l"]);
     q.press("meta+l", 10, true);
