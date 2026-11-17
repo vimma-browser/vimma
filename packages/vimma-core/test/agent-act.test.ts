@@ -1510,6 +1510,13 @@ describe("the child's replies before a click or a fill, at their edges (mutation
     expect(parseFillTarget({ ...email, submit: "post" })).toBe(null);
   });
 
+  // A key lookup reads a list or an object as its text: ["password"] as "password".
+  test("a fill's reply whose secret only reads as a known one is refused", () => {
+    expect(parseFillTarget({ ...email, secret: ["password"] })).toBe(null);
+    expect(parseFillTarget({ ...email, secret: { toString: () => "card" } })).toBe(null);
+    expect(parseFillTarget({ ...email, secret: "card" })?.secret).toBe("card");
+  });
+
   // fillRefusal refuses a value the field does not take only when the child says so: a false
   // `accepts` must survive the check (security.md M27).
   test("a fill's reply keeps accepts and checked when false, and drops a false disabled", () => {
