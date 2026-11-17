@@ -631,11 +631,13 @@ export function agentTabTitle(label, contentTitle, url, typed) {
  * another link's text (a block anchor wrapping inline ones, as on Google's search pages) is
  * escaped once more by DOMExtractor's escapeMarkdownLink, which puts a backslash before each
  * bracket and parenthesis of the text: `\[a\]\(href\)`, with more backslashes for each deeper
- * nesting. So the `(` and the closing `)` may each follow backslashes, which are kept as they
- * are. Only a target is read, never a URL anywhere in the text: a page's text, code and email
- * addresses (`ssh://git@host` in a code span) are its own and left byte for byte.
+ * nesting. So the `(` may follow backslashes, kept as they are; those before the closing `)`
+ * are read as part of the target, which withoutUserinfo keeps byte for byte. Each part's
+ * characters are disjoint from the next one's, so the match runs in linear time
+ * (CodeQL js/polynomial-redos). Only a target is read, never a URL anywhere else in the text:
+ * code, email addresses and URLs in a page's prose (`ssh://git@host` in a code span) stay.
  */
-const MARKDOWN_TARGET = /\](\\*)\(([^()\s]*?)(\\*)\)/g;
+const MARKDOWN_TARGET = /\](\\*)\(([^()\s]*)\)/g;
 
 /**
  * A page's text as the agent may read it (security.md M7, #1209): each markdown link's and
@@ -647,7 +649,7 @@ const MARKDOWN_TARGET = /\](\\*)\(([^()\s]*?)(\\*)\)/g;
 export function markdownWithoutUserinfo(text) {
   return text.replace(
     MARKDOWN_TARGET,
-    (_, open, url, close) => `]${open}(${withoutUserinfo(url, false, 0)}${close})`,
+    (_, open, url) => `]${open}(${withoutUserinfo(url, false, 0)})`,
   );
 }
 

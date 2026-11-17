@@ -21,6 +21,7 @@ import {
   shownKeys,
 } from "../src/agent/agent-keys.mjs";
 import { FILL_INVISIBLE } from "../src/agent/agent-act.mjs";
+import { budget } from "./budget.ts";
 import { DEFAULT_HINT_CHARS, hintLabels } from "../src/page/hints.mjs";
 import { compileKeymap } from "../src/keys/keymap.mjs";
 
@@ -709,6 +710,17 @@ describe("URLs without user names and passwords (security.md M21, #1209)", () =>
     expect(markdownWithoutUserinfo("\\[i\\]\\(foo://ada:secret@h\\x\\)")).toBe(
       "\\[i\\]\\(foo://h\\x\\)",
     );
+  });
+
+  test("a read page's link targets are found in linear time (CodeQL js/polynomial-redos)", () => {
+    const start = performance.now();
+    const open = `](${"\\".repeat(200_000)}`;
+    expect(markdownWithoutUserinfo(open)).toBe(open);
+    const runs = `]\\(${"\\".repeat(200_000)}x`.repeat(2);
+    expect(markdownWithoutUserinfo(runs)).toBe(runs);
+    expect(performance.now() - start).toBeLessThan(budget(1000));
+    // Backslashes before the closing parenthesis stay as they were.
+    expect(markdownWithoutUserinfo("]\\(https://a:b@h/x\\\\\\)")).toBe("]\\(https://h/x\\\\\\)");
   });
 
   test("text that is no link target is left byte for byte, URLs and emails too", () => {
