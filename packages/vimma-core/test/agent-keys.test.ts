@@ -639,6 +639,14 @@ describe("tab titles without user names and passwords (security.md M21, #1209)",
     const opened = "https://ada:secret@example.com/file.txt";
     const now = "https://cdn.example.net/file.txt";
     expect(agentTabTitle(firefoxLabel(opened), false, now)).toBe("cdn.example.net/file.txt");
+    // A new tab still at about:blank: the URL it is loading, which Firefox keeps as typed.
+    expect(agentTabTitle(firefoxLabel(opened), false, "about:blank", opened)).toBe(
+      "example.com/file.txt",
+    );
+    expect(agentTabTitle("New Tab", false, "about:blank", null)).toBe("about:blank");
+    expect(agentTabTitle(firefoxLabel(opened), false, now, "https://elsewhere.example/")).toBe(
+      "cdn.example.net/file.txt",
+    );
     // A label of unknown kind is taken for one made of a URL.
     expect(agentTabTitle(firefoxLabel(opened), undefined, now)).toBe("cdn.example.net/file.txt");
   });

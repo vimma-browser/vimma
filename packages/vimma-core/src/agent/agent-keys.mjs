@@ -558,12 +558,16 @@ export function agentTitle(label) {
  * page with no title, even after a redirect) may hold a user name and password, or only part of
  * one once Firefox cut it at 256 characters, or those of the URL the tab was opened at: it is
  * never read. The tab's URL `url` is given instead, without them, as Firefox shows a URL in a
- * label (no scheme, no www.). A page's own title goes through agentTitle.
+ * label (no scheme, no www.). While a new tab's first load has not committed, its URL is
+ * about:blank, and `typed`, the URL it is loading (Firefox keeps it as typed until the load ends;
+ * Tabbrowser addTab), is given instead. A page's own title goes through agentTitle.
  * @param {unknown} label @param {unknown} contentTitle @param {unknown} url
+ * @param {unknown} [typed]
  */
-export function agentTabTitle(label, contentTitle, url) {
-  if (contentTitle !== true) return agentUrl(url, AGENT_PAGE_URL_MAX).replace(LABEL_SCHEME, "");
-  return agentTitle(label);
+export function agentTabTitle(label, contentTitle, url, typed) {
+  if (contentTitle === true) return agentTitle(label);
+  const at = url === "about:blank" && typeof typed === "string" && typed ? typed : url;
+  return agentUrl(at, AGENT_PAGE_URL_MAX).replace(LABEL_SCHEME, "");
 }
 
 /**

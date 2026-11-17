@@ -873,6 +873,8 @@ interface WindowGlobalParent {
 // finder is set either way.
 interface MozTabBrowser extends MozBrowser {
   readonly currentURI: nsIURI;
+  /** The URL being loaded, kept as if typed until the load ends (Tabbrowser addTab); or null. */
+  readonly userTypedValue: string | null;
   readonly finder: MozFinder;
   /** Tabbrowser makes it in its browser window's document. Null once that has no window. */
   readonly documentGlobal: BrowserWindow | null;

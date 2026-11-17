@@ -38,7 +38,10 @@ const PAGE = `${DIR}file_vimma_agent_userinfo.html`;
 const WITH_USERINFO = PAGE.replace("https://", "https://ada:secret@");
 const UNTITLED = `${DIR}file_vimma_agent_untitled.html`;
 const UNTITLED_WITH_USERINFO = UNTITLED.replace("https://", "https://ada:secret@");
-const REDIRECT = `${DIR}file_vimma_agent_redirect.sjs`.replace("https://", "https://ada:secret@");
+const REDIRECT = `${DIR}file_vimma_agent_userinfo_redirect.sjs`.replace(
+  "https://",
+  "https://ada:secret@",
+);
 const REDIRECTED = UNTITLED.replace("https://example.com", "https://example.org");
 /** A password longer than Firefox's 256-character tab label, which cuts its at sign off. */
 const LONG_PASSWORD = `eyJ${"x".repeat(400)}`;

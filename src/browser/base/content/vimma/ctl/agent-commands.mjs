@@ -32,7 +32,6 @@ import {
 import { ListedSites, actDetail, fillDetail } from "../core/agent-act.mjs";
 import {
   AGENT_PAGE_URL_MAX,
-  agentTabTitle,
   agentUrl,
   markdownWithoutUserinfo,
   parseAgentKeys,
@@ -76,6 +75,7 @@ import {
   siteOfTab,
   stillAsAsked,
   tabId,
+  tabTitle,
   tabUrl,
 } from "./agent-tabs.mjs";
 import {
@@ -149,8 +149,7 @@ const pageUrl = (url) => wf(agentUrl(url, AGENT_PAGE_URL_MAX));
  * made of a URL, the tab's URL without its user name and password; cut at `max` code points.
  * @param {Tab} tab @param {number} [max]
  */
-const pageTitle = (tab, max = Infinity) =>
-  wf(cut(agentTabTitle(tab.label, tab.labelIsContentTitle, tabUrl(tab)), max).text);
+const pageTitle = (tab, max = Infinity) => wf(cut(tabTitle(tab), max).text);
 /** The longest an `agent-keys` call runs after the yes (mcp-drive D15). */
 const KEYS_CALL_MS = 60000;
 
