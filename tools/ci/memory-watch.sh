@@ -29,6 +29,8 @@
 # between warnings), MEMORY_WATCH_MAX (warnings) and MEMORY_WATCH_TICKS (rounds, then exit; 0
 # runs until killed) and MEMORY_WATCH_SELF (the pid to walk up from).
 
+# `set -u` with bash 3.2 (macOS, where the unit tests also run) fails on an empty array
+# expanded as "${a[@]}": expansions here use ${a[@]+"${a[@]}"}.
 set -u
 
 proc=${MEMORY_WATCH_PROC:-/proc}
@@ -44,7 +46,7 @@ shielded=()
 
 restore() {
   local entry
-  for entry in "${shielded[@]}"; do
+  for entry in ${shielded[@]+"${shielded[@]}"}; do
     sudo -n choom -n "${entry#*:}" -p "${entry%%:*}" > /dev/null 2>&1 ||
       echo "memory-watch: runner agent ${entry%%:*}: could not restore oom_score_adj ${entry#*:}"
   done
@@ -127,7 +129,7 @@ while :; do
   if [ "$warned" -lt "$max" ] &&
     { [ -n "$oom" ] || { [ ${#reasons[@]} -gt 0 ] && [ $((tick - last)) -ge "$gap" ]; }; }; then
     message=$oom
-    for reason in "${reasons[@]}"; do message=${message:+$message; }$reason; done
+    for reason in ${reasons[@]+"${reasons[@]}"}; do message=${message:+$message; }$reason; done
     echo "::warning title=Build memory::Minute $tick: $message"
     warned=$((warned + 1))
     last=$tick
