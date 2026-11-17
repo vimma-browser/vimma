@@ -137,7 +137,9 @@ vision; its key stays in login storage.
   [`test_max_running`](../../tests/browser/browser_vimma_agent_conversations.js),
   [`test_ctrl_b_shift_a_stops_every_task`](../../tests/browser/browser_vimma_agent_conversations.js),
   [`a task stops at max_steps`](../../packages/vimma-core/test/agent-budget.test.ts),
-  [`usage counts that are not numbers count as none`](../../packages/vimma-core/test/agent-providers.test.ts),
+  [`an input count of %s is estimated instead`](../../packages/vimma-core/test/agent-providers.test.ts),
+  [`an output count of %s is estimated instead`](../../packages/vimma-core/test/agent-providers.test.ts),
+  [`a usage count of %s adds nothing`](../../packages/vimma-core/test/agent-budget.test.ts),
   [`a task ends after the same call is refused three times in a row`](../../packages/vimma-core/test/agent-loop.test.ts),
   [`max_running and keep_days parse within their bounds`](../../packages/vimma-core/test/config-agent.test.ts)
 
