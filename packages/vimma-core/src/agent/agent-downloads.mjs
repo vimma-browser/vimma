@@ -782,8 +782,7 @@ export function passwdUid(text, name) {
  * @param {number | null} clamavUid
  */
 export function clamdSocketTrusted({ isSocket, uid }, clamavUid) {
-  // A uid is a number, never equal to a null clamavUid.
-  return isSocket && (uid === 0 || uid === clamavUid);
+  return isSocket && (uid === 0 || (clamavUid !== null && uid === clamavUid));
 }
 
 // ---------------------------------------------------------------------------------------------

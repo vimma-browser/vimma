@@ -429,6 +429,10 @@ describe("ClamAV's definitions and clamd (decision 31 g, decisions 43-45)", () =
     expect(clamdSocketTrusted({ isSocket: true, uid: 1000 }, 64)).toBe(false);
     expect(clamdSocketTrusted({ isSocket: true, uid: 64 }, null)).toBe(false);
     expect(clamdSocketTrusted({ isSocket: false, uid: 0 }, 64)).toBe(false);
+    // No owner and no clamav user: not trusted, failing closed.
+    expect(clamdSocketTrusted({ isSocket: true, uid: null as unknown as number }, null)).toBe(
+      false,
+    );
   });
 });
 
@@ -945,7 +949,7 @@ describe("the download checks' edges (mutation-tested)", () => {
   test("clamd.conf: Unicode line and other separators are never read as clamd's", () => {
     const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
     const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
-    for (const c of [" ", " "]) {
+    for (const c of ["\u2028", "\u2029"]) {
       expect(conf(`LocalSocket /run/c.ctl${c}`, ...good.slice(1))).toEqual({
         problem: expect.stringMatching(/^clamd does not read +\(line 1\)$/),
       });
@@ -954,7 +958,7 @@ describe("the download checks' edges (mutation-tested)", () => {
       });
     }
     // A line of only a no-break space names no option.
-    expect(conf(...good, " ")).toEqual({ socket: "/run/c.ctl" });
+    expect(conf(...good, "\u00a0")).toEqual({ socket: "/run/c.ctl" });
   });
 
   test("clamd.conf: comments and quotes as clamd reads them", () => {
