@@ -408,6 +408,73 @@ export function offerAssets(value) {
 }
 
 /**
+ * `value` is a string of the form `re` describes: RegExp.test reads anything else as its text,
+ * so an array such as `["12345678901234"]` would pass on its own (#1237).
+ * @param {unknown} value
+ * @param {RegExp} re
+ * @returns {value is string}
+ */
+function textOf(value, re) {
+  return typeof value === "string" && re.test(value);
+}
+
+/**
+ * A saved offer read back (the pref `vimma.update.last`, which anyone can edit), held to the
+ * forms parseManifest accepts: anything malformed gives null, and the fields are copied one by
+ * one, so nothing else the pref holds rides along.
+ * @param {unknown} value
+ * @returns {Offer | null}
+ */
+export function savedOffer(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const o = /** @type {Record<string, unknown>} */ (value);
+  const { appVersion, buildId, displayVersion, detailsUrl, urgent, advisories, marUrl } = o;
+  if (
+    !textOf(appVersion, FIREFOX_VERSION) ||
+    !textOf(buildId, BUILD_ID) ||
+    !textOf(displayVersion, SEMVER) ||
+    typeof detailsUrl !== "string" ||
+    !detailsUrl.startsWith("https://") ||
+    typeof urgent !== "boolean" ||
+    !Array.isArray(advisories) ||
+    !advisories.every((a) => textOf(a, ADVISORY))
+  ) {
+    return null;
+  }
+  return {
+    appVersion,
+    buildId,
+    displayVersion,
+    detailsUrl,
+    urgent,
+    advisories: [...advisories],
+    assets: offerAssets(o.assets),
+    marUrl: typeof marUrl === "string" && marUrl.startsWith("https://") ? marUrl : null,
+  };
+}
+
+/**
+ * A saved manifest serial read back: 14 digits as a string, or null.
+ * @param {unknown} value
+ * @returns {string | null}
+ */
+export function savedSerial(value) {
+  return textOf(value, SERIAL) ? value : null;
+}
+
+/**
+ * A saved signing key read back: its id and slot as strings, or null.
+ * @param {unknown} value
+ * @returns {{ id: string, slot: "primary" | "secondary" } | null}
+ */
+export function savedKey(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const { id, slot } = /** @type {Record<string, unknown>} */ (value);
+  if (typeof id !== "string" || (slot !== "primary" && slot !== "secondary")) return null;
+  return { id, slot };
+}
+
+/**
  * Reads the manifest's body (after rule 1, so only signed text reaches it). Accepts exactly the
  * format the release pipeline writes: an XML declaration, `<updates>` with the channel, target
  * and serial, and at most one `<update>`. Anything else is refused rather than guessed at.

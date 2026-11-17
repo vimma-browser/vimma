@@ -18,6 +18,9 @@ import {
   OFF_NOTICE_MS,
   offerAssets,
   parseManifest,
+  savedKey,
+  savedOffer,
+  savedSerial,
   shellQuote,
   signatureComment,
   signedBytes,
@@ -502,6 +505,76 @@ describe("parseManifest", () => {
       expect(offerAssets({ appimage: { size: 1, sha512: H("d"), url: bad } })).toEqual({
         appimage: { size: 1, sha512: H("d") },
       });
+    }
+  });
+
+  // #1237: RegExp.test reads an array as its text, so ["12345678901234"] passed as a serial.
+  const SAVED = {
+    appVersion: "999.0",
+    buildId: "20991231000000",
+    displayVersion: "0.9.0-nightly.20991231",
+    detailsUrl: "https://github.com/vimma-browser/vimma/releases/tag/v0.9.0",
+    urgent: true,
+    advisories: ["MFSA 2099-01"],
+    assets: { deb: { size: 1, sha512: H("d") } },
+    marUrl: `${DL}/vimma.mar`,
+  };
+
+  test("savedOffer keeps a well-formed saved offer, field by field", () => {
+    expect(savedOffer(SAVED)).toEqual(SAVED);
+    expect(savedOffer({ ...SAVED, extra: "x" })).toEqual(SAVED);
+    const { marUrl, ...noMar } = SAVED;
+    expect(marUrl).toMatch(/^https:/);
+    expect(savedOffer(noMar)).toEqual({ ...noMar, marUrl: null });
+    expect(savedOffer({ ...SAVED, marUrl: "http://example.com/x.mar" })).toEqual({
+      ...SAVED,
+      marUrl: null,
+    });
+    expect(savedOffer({ ...SAVED, assets: [1] })).toEqual({ ...SAVED, assets: {} });
+  });
+
+  test.each([
+    ["appVersion", ["999.0"]],
+    ["appVersion", "999"],
+    ["buildId", ["20991231000000"]],
+    ["buildId", 20991231000000],
+    ["buildId", "not digits"],
+    ["displayVersion", ["0.9.0"]],
+    ["displayVersion", "1.0.0; rm -rf ~"],
+    ["detailsUrl", ["https://x/"]],
+    ["detailsUrl", "http://x/"],
+    ["urgent", "true"],
+    ["advisories", "MFSA 2099-01"],
+    ["advisories", [["MFSA 2099-01"]]],
+    ["advisories", ["<b>x</b>"]],
+  ])("savedOffer refuses a saved %s of %j", (field, value) => {
+    expect(savedOffer({ ...SAVED, [field]: value })).toBeNull();
+  });
+
+  test("savedOffer refuses what is not an offer object", () => {
+    for (const v of [null, undefined, "x", 1, [SAVED]]) expect(savedOffer(v)).toBeNull();
+  });
+
+  test("savedSerial keeps only a 14-digit string", () => {
+    expect(savedSerial("20991231000000")).toBe("20991231000000");
+    for (const v of [["20991231000000"], 20991231000000, "2099123100000", null, undefined]) {
+      expect(savedSerial(v)).toBeNull();
+    }
+  });
+
+  test("savedKey keeps a string id and a known slot, and nothing else", () => {
+    expect(savedKey({ id: "k", slot: "primary", x: 1 })).toEqual({ id: "k", slot: "primary" });
+    expect(savedKey({ id: "k", slot: "secondary" })).toEqual({ id: "k", slot: "secondary" });
+    for (const v of [
+      { id: ["k"], slot: "primary" },
+      { id: "k", slot: ["primary"] },
+      { id: "k", slot: "other" },
+      { id: "k" },
+      ["k"],
+      "k",
+      null,
+    ]) {
+      expect(savedKey(v)).toBeNull();
     }
   });
 

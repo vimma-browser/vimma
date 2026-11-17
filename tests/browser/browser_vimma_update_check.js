@@ -525,6 +525,39 @@ add_task(async function a_damaged_saved_result_is_dropped_not_thrown() {
   VimmaUpdates._reset();
 });
 
+add_task(async function a_saved_array_is_not_read_as_its_text() {
+  // #1237: RegExp.test reads ["1"] as "1", so an array in the pref passed as a string.
+  const offer = {
+    appVersion: "999.0",
+    buildId: "1",
+    displayVersion: "999.0.0",
+    detailsUrl: "https://github.com/vimma-browser/vimma/releases",
+    urgent: false,
+    advisories: [],
+  };
+  const save = (/** @type {object} */ extra) =>
+    Services.prefs.setStringPref(
+      "vimma.update.last",
+      JSON.stringify({ outcome: "offer", offer, ...extra }),
+    );
+  save({ serial: "20991231000000", key: { id: "k", slot: "primary" } });
+  VimmaUpdates._load();
+  Assert.equal(VimmaUpdates.status().offer?.displayVersion, "999.0.0", "a sound offer is kept");
+  Assert.equal(VimmaUpdates.status().serial, "20991231000000");
+  Assert.deepEqual(VimmaUpdates.status().key, { id: "k", slot: "primary" });
+  for (const field of ["appVersion", "buildId", "displayVersion", "detailsUrl"]) {
+    save({ offer: { ...offer, [field]: [/** @type {any} */ (offer)[field]] } });
+    VimmaUpdates._load();
+    Assert.equal(VimmaUpdates.status().offer, null, `${field} as an array`);
+    Assert.equal(VimmaUpdates.status().outcome, "current", `${field} as an array`);
+  }
+  save({ serial: ["20991231000000"], key: { id: ["k"], slot: "primary" } });
+  VimmaUpdates._load();
+  Assert.equal(VimmaUpdates.status().serial, null, "a serial as an array");
+  Assert.equal(VimmaUpdates.status().key, null, "a key id as an array");
+  VimmaUpdates._reset();
+});
+
 add_task(async function an_oversized_or_compressed_bomb_response_is_refused() {
   for (const query of ["big", "bigstream"]) {
     await SpecialPowers.pushPrefEnv({ set: [["vimma.update.url", `${HOST}?${query}`]] });

@@ -92,7 +92,8 @@ _Pages_ and _extensions_ cannot reach it.
   `<update>`, and nothing but whitespace after a self-closing `<updates/>` (#1185). The commands
   about:vimma shows are built from a SemVer version and shell-quoted paths, never from free text
   in the manifest; a saved result (the pref `vimma.update.last`) is checked the same way when
-  read back.
+  read back, each of its text fields only as a string, never an array whose text would match
+  (#1237).
   [`an_oversized_or_compressed_bomb_response_is_refused`](../../tests/browser/browser_vimma_update_check.js),
   [`an oversized manifest is refused before any crypto`](../../packages/vimma-core/test/updates.test.ts),
   [`anything after a self-closing <updates/> is refused: %s`](../../packages/vimma-core/test/updates-edges.test.ts),
@@ -100,7 +101,9 @@ _Pages_ and _extensions_ cannot reach it.
   [`shellQuote leaves plain paths alone and quotes the rest`](../../packages/vimma-core/test/updates.test.ts),
   [`tarball: quit, download and check it, then unpack over the install's parent, quoted`](../../packages/vimma-core/test/updates.test.ts),
   [`a pinned key that is not a valid SPKI refuses, never throws`](../../packages/vimma-core/test/updates.test.ts),
-  [`a_damaged_saved_result_is_dropped_not_thrown`](../../tests/browser/browser_vimma_update_check.js)
+  [`a_damaged_saved_result_is_dropped_not_thrown`](../../tests/browser/browser_vimma_update_check.js),
+  [`a_saved_array_is_not_read_as_its_text`](../../tests/browser/browser_vimma_update_check.js),
+  [`savedOffer refuses a saved %s of %j`](../../packages/vimma-core/test/updates.test.ts)
 - UP6. A package manager's install (the `.deb`, the `.rpm`, the release `PKGBUILD`, the AUR's
   `vimma-bin`) is **never** told to unpack a tarball over its install directory: every package
   except the tarball carries the `is-packaged-app` marker with its package type, the release
