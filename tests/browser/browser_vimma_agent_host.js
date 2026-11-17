@@ -94,7 +94,7 @@ add_setup(async () => {
 add_task(async function test_give_hands_over_an_agent_tab_but_never_anothers() {
   const id = AgentChat.create({ provider: PROVIDER }).id;
   const other = AgentChat.create({ provider: PROVIDER }).id;
-  const agent = /** @type {any} */ (WorkspaceStore.agent);
+  const agent = /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
   const ww = /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
   const home = ww.model.active;
   ww.switchTo({ id: agent.id });
@@ -134,7 +134,7 @@ add_task(async function test_each_windows_status_bar_follows_the_conversations_u
   /** @type {Set<Window>} */
   const told = new Set();
   const emit = VimmaHost._emit;
-  VimmaHost._emit = function (/** @type {any} */ state) {
+  VimmaHost._emit = function (/** @type {Parameters<VimmaHostApi["_emit"]>[0]} */ state) {
     told.add(state.win);
     return emit.call(this, state);
   };
@@ -333,7 +333,12 @@ add_task(async function test_the_window_uses_the_services_the_host_hands_it() {
     prompt() {},
     changed() {},
   };
-  const chat = new AgentChatWindow(window, host, /** @type {any} */ (services));
+  const chat = new AgentChatWindow(
+    window,
+    host,
+    // A fake of the services this test reaches.
+    /** @type {AgentChatServices} */ (/** @type {unknown} */ (services)),
+  );
   try {
     services.agentConfig = () => ({ ...AGENT_DEFAULTS, default: null, providers: [] });
     chat.newConversation();

@@ -58,7 +58,7 @@ registerCleanupFunction(async () => {
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -88,7 +88,7 @@ async function openAgentTab(url = CLICK) {
   return tab;
 }
 
-/** The connections the running task opened. @type {any[]} */
+/** The connections the running task opened. @type {Client[]} */
 const clients = [];
 
 /** What a task leaves when it ends, passed or not (tidyTask): this file's state at its start. */
@@ -119,7 +119,7 @@ async function question() {
   return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
-/** The list's elements by what they say. @param {any} c @param {any} tab */
+/** The list's elements by what they say. @param {Client} c @param {MozTabbrowserTab} tab */
 async function labels(c, tab) {
   // Every line, also those as in the last list of the site (agent-speed S4): the map needs all.
   const id = c.request("agent-elements", { tab: idOf(tab), full: true });
@@ -138,7 +138,7 @@ async function labels(c, tab) {
 
 /**
  * `agent-activate` on `tab`, answered with `answer` (null: not asked, a grant runs it).
- * @param {any} c @param {any} tab @param {string} label @param {GateAnswer | null} [answer]
+ * @param {Client} c @param {MozTabbrowserTab} tab @param {string} label @param {GateAnswer | null} [answer]
  */
 async function activate(c, tab, label, answer = { kind: "once" }) {
   const id = c.request("agent-activate", { tab: idOf(tab), label });
@@ -163,7 +163,7 @@ async function activate(c, tab, label, answer = { kind: "once" }) {
  */
 function requestStatus(prefix) {
   return new Promise((resolve) => {
-    const observe = (/** @type {any} */ subject) => {
+    const observe = (/** @type {nsISupports} */ subject) => {
       const channel = subject.QueryInterface(Ci.nsIHttpChannel);
       if (!channel.URI.spec.startsWith(prefix)) return;
       Services.obs.removeObserver(observe, "http-on-modify-request");

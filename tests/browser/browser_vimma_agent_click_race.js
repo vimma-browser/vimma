@@ -64,6 +64,10 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
 const { AgentActors } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/actors/AgentActors.sys.mjs",
 );
+/**
+ * The element an agent's click is sent to (AgentActors.agentActivate).
+ * @typedef {Parameters<typeof AgentActors.agentActivate>[0]} ActivateTarget
+ */
 
 const DIR = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -78,7 +82,7 @@ const NO_BFCACHE = "browser.sessionhistory.max_total_viewers";
 const PROBE = "VimmaTest:RaceProbe";
 const SKIPPED = "the element changed as it was clicked; nothing was clicked";
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -97,7 +101,7 @@ async function mcp(on) {
   await VimmaControl.settled();
 }
 
-/** The connections the running task opened. @type {any[]} */
+/** The connections the running task opened. @type {Client[]} */
 const clients = [];
 
 /** What a task leaves when it ends, passed or not (tidyTask): this file's state at its start. */
@@ -142,7 +146,7 @@ async function question() {
   return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
-/** The list's elements by what they say. @param {any} c @param {any} tab */
+/** The list's elements by what they say. @param {Client} c @param {MozTabbrowserTab} tab */
 async function labels(c, tab) {
   const id = c.request("agent-elements", { tab: idOf(tab) });
   AgentGate.answer((await question()).id, { kind: "once" });
@@ -159,7 +163,7 @@ async function labels(c, tab) {
 
 /**
  * `command` on `tab`, answered once.
- * @param {any} c @param {string} command @param {Record<string, unknown>} args
+ * @param {Client} c @param {string} command @param {Record<string, unknown>} args
  */
 async function askedOnce(c, command, args) {
   const id = c.request(command, args);
@@ -202,19 +206,22 @@ function childErrors() {
  * actor's window was still current when the child took the message, and what it answered.
  * With `system`, the test's own pagehide listener is in the system group, out of reach of a page
  * that stops its pagehide (`?stop`), as the child's is.
- * @param {any} bc BrowsingContext @param {string} name @param {string | null} op
+ * @param {BrowsingContext | null} bc @param {string} name @param {string | null} op
  * @param {string} next @param {boolean} late @param {boolean} [system]
  */
 function holdInChild(bc, name, op, next, late, system = false) {
   /** @type {[string, string | null, string, boolean, string, boolean]} */
   const args = [name, op, next, late, PROBE, system];
   return SpecialPowers.spawn(bc, args, (name, op, next, late, probe, system) => {
-    const win = /** @type {any} */ (content);
-    const actor = win.windowGlobalChild.getActor("Vimma");
+    const win = content;
+    const actor = /** @type {VimmaChildActor} */ (
+      /** @type {WindowGlobalChild} */ (win.windowGlobalChild).getActor("Vimma")
+    );
     const receive = actor.receiveMessage;
-    /** @param {any} msg */
+    /** @param {VimmaChildMessage} msg */
     actor.receiveMessage = (msg) => {
-      if (msg.name !== name || (op && msg.data?.op !== op)) return receive.call(actor, msg);
+      const asked = /** @type {{ op?: unknown } | undefined} */ (msg.data);
+      if (msg.name !== name || (op && asked?.op !== op)) return receive.call(actor, msg);
       actor.receiveMessage = receive;
       return new Promise((resolve, reject) => {
         const take = () => {
@@ -267,18 +274,18 @@ function probed() {
   });
 }
 
-/** Back to the page before, from the back-forward cache. @param {any} browser */
+/** Back to the page before, from the back-forward cache. @param {MozBrowser} browser */
 async function goBack(browser) {
   const back = BrowserTestUtils.waitForContentEvent(browser, "pageshow");
   await SpecialPowers.spawn(browser, [], () => content.history.back());
   await back;
 }
 
-/** The clicks the tab's session storage counted. @param {any} browser */
+/** The clicks the tab's session storage counted. @param {MozBrowser} browser */
 const storedClicks = (browser) =>
   SpecialPowers.spawn(browser, [], () => content.sessionStorage.getItem("clicks"));
 
-/** The page's own count of clicks and its field's value. @param {any} browser */
+/** The page's own count of clicks and its field's value. @param {MozBrowser} browser */
 const pageState = (browser) =>
   SpecialPowers.spawn(browser, [], () => ({
     clicks: content.document.body.dataset.clicks ?? null,
@@ -469,14 +476,14 @@ addTidyTask(async function test_a_page_that_stops_its_pagehide_still_has_the_cli
 /**
  * The target `agent-activate` would click for `label`, without clicking it: the call is
  * answered "changed" in the parent, before any message to the child.
- * @param {any} c @param {any} tab @param {string} label
- * @returns {Promise<any>} HintTarget
+ * @param {Client} c @param {MozTabbrowserTab} tab @param {string} label
+ * @returns {Promise<ActivateTarget>}
  */
 async function targetOf(c, tab, label) {
   const activate = AgentActors.agentActivate;
-  /** @type {any} */
+  /** @type {ActivateTarget | null} */
   let target = null;
-  AgentActors.agentActivate = async (/** @type {any} */ t) => {
+  AgentActors.agentActivate = async (/** @type {ActivateTarget} */ t) => {
     target = t;
     return "changed";
   };
@@ -504,12 +511,14 @@ addTidyTask(async function test_an_outcome_asked_as_the_page_goes_away_reads_the
   const by = await labels(c, tab);
   const target = await targetOf(c, tab, by.Go);
   await SpecialPowers.spawn(browser.browsingContext, [NEXT], (next) => {
-    const win = /** @type {any} */ (content);
-    const actor = win.windowGlobalChild.getActor("Vimma");
+    const win = content;
+    const actor = /** @type {VimmaChildActor} */ (
+      /** @type {WindowGlobalChild} */ (win.windowGlobalChild).getActor("Vimma")
+    );
     const receive = actor.receiveMessage;
-    /** @type {any} */
+    /** @type {(() => void) | null} */
     let held = null;
-    /** @param {any} msg */
+    /** @param {VimmaChildMessage} msg */
     actor.receiveMessage = (msg) => {
       if (msg.name !== "Vimma:AgentElement") return receive.call(actor, msg);
       if (msg.data?.op === "activate") {
@@ -550,12 +559,14 @@ addTidyTask(async function test_a_late_skip_of_an_earlier_step_is_not_the_next_o
   const c = await agentClient();
   const by = await labels(c, tab);
   await SpecialPowers.spawn(browser.browsingContext, [NEXT], (next) => {
-    const win = /** @type {any} */ (content);
-    const actor = win.windowGlobalChild.getActor("Vimma");
+    const win = content;
+    const actor = /** @type {VimmaChildActor} */ (
+      /** @type {WindowGlobalChild} */ (win.windowGlobalChild).getActor("Vimma")
+    );
     const receive = actor.receiveMessage;
-    /** @type {any} */
+    /** @type {Extract<VimmaChildMessage, { name: "Vimma:AgentElement" }>["data"] | null} */
     let first = null;
-    /** @param {any} msg */
+    /** @param {VimmaChildMessage} msg */
     actor.receiveMessage = (msg) => {
       if (msg.name !== "Vimma:AgentElement" || msg.data?.op !== "activate") {
         return receive.call(actor, msg);
@@ -596,12 +607,14 @@ addTidyTask(async function test_a_late_skip_after_the_current_ones_leaves_it_ski
   const c = await agentClient();
   const by = await labels(c, tab);
   await SpecialPowers.spawn(browser.browsingContext, [NEXT], (next) => {
-    const win = /** @type {any} */ (content);
-    const actor = win.windowGlobalChild.getActor("Vimma");
+    const win = content;
+    const actor = /** @type {VimmaChildActor} */ (
+      /** @type {WindowGlobalChild} */ (win.windowGlobalChild).getActor("Vimma")
+    );
     const receive = actor.receiveMessage;
-    /** @type {any} */
+    /** @type {Extract<VimmaChildMessage, { name: "Vimma:AgentElement" }>["data"] | null} */
     let first = null;
-    /** @param {any} msg */
+    /** @param {VimmaChildMessage} msg */
     actor.receiveMessage = (msg) => {
       if (msg.name !== "Vimma:AgentElement" || msg.data?.op !== "activate") {
         return receive.call(actor, msg);
@@ -634,7 +647,7 @@ addTidyTask(async function test_a_late_skip_after_the_current_ones_leaves_it_ski
  */
 function requestStatus(prefix) {
   return new Promise((resolve) => {
-    const observe = (/** @type {any} */ subject) => {
+    const observe = (/** @type {nsISupports} */ subject) => {
       const channel = subject.QueryInterface(Ci.nsIHttpChannel);
       if (!channel.URI.spec.startsWith(prefix)) return;
       Services.obs.removeObserver(observe, "http-on-modify-request");
@@ -659,7 +672,7 @@ add_task(async function test_a_hint_click_after_the_page_was_replaced_clicks_not
         return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
       });
       const hint = VimmaHost._hints(window)?.hints.find(
-        (/** @type {any} */ h) =>
+        (/** @type {HostHint} */ h) =>
           centre.x >= h.target.rect.x &&
           centre.x <= h.target.rect.x + h.target.rect.width &&
           centre.y >= h.target.rect.y &&

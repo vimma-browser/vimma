@@ -58,7 +58,7 @@ registerCleanupFunction(async () => {
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -68,7 +68,7 @@ const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
 /**
  * `command` on an agent connection; the first is answered with a grant, which covers the rest.
- * @param {any} c @param {string} command @param {object} args @param {boolean} [asks]
+ * @param {Client} c @param {string} command @param {object} args @param {boolean} [asks]
  */
 async function call(c, command, args, asks = false) {
   const id = c.request(command, args);
@@ -114,7 +114,11 @@ add_task(async function test_no_reply_carries_the_pages_user_name_and_password()
   const id = idOf(tab);
 
   const tabs = await call(c, "agent-tabs", {}, true);
-  Assert.equal(tabs.tabs.find((/** @type {any} */ t) => t.id === id)?.url, PAGE, "vimma_tabs");
+  Assert.equal(
+    tabs.tabs.find((/** @type {AgentListedTab} */ t) => t.id === id)?.url,
+    PAGE,
+    "vimma_tabs",
+  );
   noUserinfo("vimma_tabs", tabs);
 
   const keys = await call(c, "agent-keys", { tab: id, keys: "f" });
@@ -216,7 +220,7 @@ add_task(async function test_a_tab_labelled_with_its_url_gives_no_user_name_and_
   await c.handshake({ protocol: 2, role: "agent" });
   await c.call("agent-hello", { client: { name: "example-agent" } });
   const tabs = await call(c, "agent-tabs", {}, true);
-  const listed = tabs.tabs.find((/** @type {any} */ t) => t.id === idOf(lazy));
+  const listed = tabs.tabs.find((/** @type {AgentListedTab} */ t) => t.id === idOf(lazy));
   Assert.ok(listed, "the unloaded tab is listed");
   Assert.ok(
     !listed.title.includes("ada") && listed.title.includes("file_vimma_agent_untitled.html"),
@@ -268,7 +272,7 @@ add_task(async function test_a_clamped_or_redirected_url_label_gives_no_password
   const tabs = await call(c, "agent-tabs", {}, true);
   noUserinfo("vimma_tabs", tabs);
   const titleOf = (/** @type {MozTabbrowserTab} */ t) =>
-    tabs.tabs.find((/** @type {any} */ x) => x.id === idOf(t))?.title;
+    tabs.tabs.find((/** @type {AgentListedTab} */ x) => x.id === idOf(t))?.title;
   Assert.equal(
     titleOf(long),
     UNTITLED.replace("https://", ""),

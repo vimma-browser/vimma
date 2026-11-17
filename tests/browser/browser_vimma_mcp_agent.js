@@ -66,7 +66,7 @@ registerCleanupFunction(async () => {
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -207,7 +207,7 @@ add_task(async function test_agent_sees_only_the_agent_workspace() {
   const list = await c.response(id);
   Assert.ok(validateMessage(list, { command: "agent-tabs" }).valid, "a valid agent-tabs result");
   Assert.deepEqual(
-    list.result.tabs.map((/** @type {any} */ t) => t.id),
+    list.result.tabs.map((/** @type {AgentListedTab} */ t) => t.id),
     [idOf(theirs)],
     "only the agent workspace's tab",
   );
@@ -388,8 +388,8 @@ add_task(async function test_a_command_runs_its_tab_at_foreground_priority() {
   const atLoad = [];
   const listener = {
     onStateChange(
-      /** @type {any} */ b,
-      /** @type {any} */ wp,
+      /** @type {MozBrowser} */ b,
+      /** @type {nsIWebProgress} */ wp,
       /** @type {unknown} */ _r,
       /** @type {number} */ flags,
     ) {
@@ -413,13 +413,13 @@ add_task(async function test_a_command_runs_its_tab_at_foreground_priority() {
 // ---- limits and tab checks on agent commands ------------------------------------------------
 
 /**
- * Run `fn` in the tab's page. `fn` takes what `args` holds, which each caller knows; the
- * helper does not.
- * @param {any} tab @param {any[]} args @param {(...args: any[]) => unknown} fn
+ * Run `fn` in the tab's page, with what `args` holds.
+ * @template {unknown[]} A
+ * @param {MozTabbrowserTab} tab @param {A} args @param {(...args: A) => unknown} fn
  */
 const inPage = (tab, args, fn) => SpecialPowers.spawn(tab.linkedBrowser, args, fn);
 
-/** Read `tab` once, answering yes. @param {Client} c @param {any} tab @param {object} [extra] */
+/** Read `tab` once, answering yes. @param {Client} c @param {MozTabbrowserTab} tab @param {object} [extra] */
 async function readOnce(c, tab, extra = {}) {
   const id = c.request("agent-read", { tab: idOf(tab), ...extra });
   await answer({ kind: "once" });
@@ -512,7 +512,7 @@ add_task(async function test_confinement_edges() {
   const listed = async () => {
     const id = c.request("agent-tabs");
     await answer({ kind: "once" });
-    return (await c.response(id)).result.tabs.map((/** @type {any} */ t) => t.id);
+    return (await c.response(id)).result.tabs.map((/** @type {AgentListedTab} */ t) => t.id);
   };
 
   // A foreign tab: a container no workspace owns, adopted by the agent workspace while shown.
