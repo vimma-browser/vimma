@@ -76,6 +76,16 @@ const DECISIONS = [
 /** The levels that keep agents out (B13). */
 const BELOW_AGENT = [["none"], ["user"]] as const;
 
+describe("bookmarkKind reads a long URL in linear time (B4)", () => {
+  test("100,000 spaces between letters, and before a scheme, are read in bounded time", () => {
+    const url = `x${" ".repeat(100_000)}x`;
+    const start = performance.now();
+    expect(bookmarkKind(url)).toBe("refused");
+    expect(bookmarkKind(`${" ".repeat(100_000)}javascript:void(0)`)).toBe("bookmarklet");
+    expect(performance.now() - start).toBeLessThan(200);
+  });
+});
+
 describe("bookmarkletDecision (B6, B7, B13)", () => {
   const where = "current";
   test("an ordinary bookmark opens at every level, for the user", () => {

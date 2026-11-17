@@ -424,14 +424,16 @@ export const BOOKMARKLETS_SETTINGS = Object.freeze(
 /**
  * What a stored bookmark's URL is (bookmarklets B4, B5): `"openable"` (decision 6),
  * `"bookmarklet"` (a `javascript:` URL) or `"refused"` (`data:` and everything else). The scheme
- * is read as the URL parser reads it: leading and trailing spaces and control characters
- * dropped, tabs and line breaks removed anywhere.
+ * is read as the URL parser reads it: leading spaces and control characters dropped, tabs and
+ * line breaks removed anywhere.
  * @param {string} url
  * @returns {"openable" | "bookmarklet" | "refused"}
  */
 export function bookmarkKind(url) {
+  // Only the leading run is dropped: trailing characters never change the scheme, and a
+  // trailing `[…]+$` alternative backtracks quadratically on a long run of spaces.
   // eslint-disable-next-line no-control-regex -- the URL parser drops exactly these (C0 and space)
-  const text = url.replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, "").replace(/[\t\n\r]/g, "");
+  const text = url.replace(/^[\u0000-\u0020]+/, "").replace(/[\t\n\r]/g, "");
   if (isOpenable(text)) return "openable";
   return /^javascript:/i.test(text) ? "bookmarklet" : "refused";
 }
