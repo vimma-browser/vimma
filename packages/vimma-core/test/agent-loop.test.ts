@@ -15,10 +15,10 @@ import {
 import { toolResult } from "../src/agent/agent-results.mjs";
 import { untrustedHeader } from "../src/agent/agent.mjs";
 import { AGENT_DEFAULTS } from "../src/config/config.mjs";
-import type { ChatMessage, Provider } from "../src/agent/agent-providers.mjs";
+import type { ChatMessage, Provider, ToolDef } from "../src/agent/agent-providers.mjs";
 
 const provider = { kind: "openai", endpoint: "http://127.0.0.1:11434/v1", model: "m" };
-const TOOLS = [
+const TOOLS: ToolDef[] = [
   {
     name: "vimma_open",
     description: "Open a URL.",

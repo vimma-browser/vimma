@@ -341,7 +341,7 @@ addTidyTask(async function test_the_stated_total_is_quoted() {
   // The confirm button: the total before it, not the subtotal, the delivery or one after it.
   const id = c.request("agent-activate", { tab: idOf(tab), label: by["Vahvista tilaus"] });
   const q = await question();
-  Assert.equal(q.what.pay.total, "Yhteensä 42,90 €", "the nearest total before the button");
+  Assert.equal(q.what.pay?.total, "Yhteensä 42,90 €", "the nearest total before the button");
   AgentGate.answer(q.id, { kind: "deny" });
   await c.response(id);
   // With no total on the page, none is quoted.

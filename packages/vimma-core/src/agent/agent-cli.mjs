@@ -447,7 +447,8 @@ export function geminiProjects(text, ours) {
   const removed = [];
   /** @type {Record<string, string>} */
   const kept = {};
-  for (const [path, slug] of entries) {
+  // Every value is a string, as checked above.
+  for (const [path, slug] of /** @type {[string, string][]} */ (entries)) {
     if (!ours(path)) kept[path] = slug;
     else removed.push({ path, slug: GEMINI_SLUG.test(slug) ? slug : null });
   }
@@ -774,14 +775,14 @@ export function besideBinary(walk, trusted) {
 
 const CLAUDE = /** @type {CliInfo} */ (CLIS["claude-code"]);
 
-/** @param {unknown} v @returns {v is Record<string, any>} */
+/** @param {unknown} v @returns {v is Record<string, unknown>} */
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 /** @param {unknown} v */
 const count = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
 /**
  * A usage block's input tokens, cache creation and reads included, as the Messages API
  * provider counts them: Claude Code caches its prompt, so most of a call's input is cached.
- * Null when it reports none. @param {Record<string, any> | undefined} u
+ * Null when it reports none. @param {Record<string, unknown> | undefined} u
  */
 const inputTokens = (u) => {
   const parts = [u?.input_tokens, u?.cache_creation_input_tokens, u?.cache_read_input_tokens]
@@ -873,7 +874,7 @@ class JsonLines {
 
   /**
    * One JSON object of the stream, read by each CLI's class.
-   * @protected @abstract @param {Record<string, any>} m @returns {CliEvent[]}
+   * @protected @abstract @param {Record<string, unknown>} m @returns {CliEvent[]}
    */
   event(m) {
     throw new Error(`${this.cli.id}: no reader for ${typeof m}`);
@@ -895,7 +896,7 @@ export class ClaudeStream extends JsonLines {
     this.turn = { input: 0, output: 0 };
   }
 
-  /** @protected @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @protected @param {Record<string, unknown>} m @returns {CliEvent[]} */
   event(m) {
     if (m.type === "system" && m.subtype === "init") return this.init(m);
     if (m.type === "system" && m.subtype === "permission_denied") {
@@ -915,7 +916,7 @@ export class ClaudeStream extends JsonLines {
     return [];
   }
 
-  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @private @param {Record<string, unknown>} m @returns {CliEvent[]} */
   init(m) {
     if (typeof m.claude_code_version === "string") this.version = plain(m.claude_code_version);
     const tools = m.tools;
@@ -943,7 +944,7 @@ export class ClaudeStream extends JsonLines {
     ];
   }
 
-  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @private @param {Record<string, unknown>} m @returns {CliEvent[]} */
   assistant(m) {
     // A reply the CLI made up for an error (its model is "<synthetic>") repeats the result's
     // error, which the task's end shows.
@@ -980,7 +981,7 @@ export class ClaudeStream extends JsonLines {
     return out;
   }
 
-  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @private @param {Record<string, unknown>} m @returns {CliEvent[]} */
   result(m) {
     const usage = m.usage;
     if (typeof m.is_error !== "boolean" || (usage !== undefined && !isObject(usage))) {
@@ -1016,7 +1017,7 @@ export class ClaudeStream extends JsonLines {
 const CODEX = /** @type {CliInfo} */ (CLIS.codex);
 
 /** A Codex usage block's tokens: its input counts the cached part already. */
-const codexUsage = (/** @type {Record<string, any>} */ u) => ({
+const codexUsage = (/** @type {Record<string, unknown>} */ u) => ({
   input: count(u.input_tokens) ?? 0,
   output: count(u.output_tokens) ?? 0,
 });
@@ -1042,7 +1043,7 @@ export class CodexStream extends JsonLines {
     this.lastError = null;
   }
 
-  /** @protected @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @protected @param {Record<string, unknown>} m @returns {CliEvent[]} */
   event(m) {
     if (m.type === "thread.started") {
       return [{ type: "init", model: plain(this.model), version: "", tools: null }];
@@ -1081,7 +1082,7 @@ export class CodexStream extends JsonLines {
     return [{ type: "result", ok, error, usage, rest: usage, cost: null, queued: 0 }];
   }
 
-  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @private @param {Record<string, unknown>} m @returns {CliEvent[]} */
   item(m) {
     const item = m.item;
     if (!isObject(item)) return this.skip();
@@ -1157,7 +1158,7 @@ export class GeminiStream extends JsonLines {
     this.lastError = null;
   }
 
-  /** @protected @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @protected @param {Record<string, unknown>} m @returns {CliEvent[]} */
   event(m) {
     if (m.type === "message" && m.role === "assistant" && typeof m.content === "string") {
       this.text += m.content;
@@ -1196,7 +1197,7 @@ export class GeminiStream extends JsonLines {
     return text.trim() ? [{ type: "reply", text }] : [];
   }
 
-  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @private @param {Record<string, unknown>} m @returns {CliEvent[]} */
   use(m) {
     if (typeof m.tool_name !== "string") return this.skip();
     const name = m.tool_name;
@@ -1218,14 +1219,15 @@ export class GeminiStream extends JsonLines {
     return [{ type: "own-tool", id, text: ownToolText(GEMINI, name, m.parameters) }];
   }
 
-  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @private @param {Record<string, unknown>} m @returns {CliEvent[]} */
   toolResult(m) {
     const id = typeof m.tool_id === "string" ? m.tool_id : "";
     this.open.delete(id);
     const name = this.calls.get(id);
     if (name === undefined || name.startsWith(`mcp_${GEMINI_SERVER}_`)) return this.skip();
     const kind = isObject(m.error) ? m.error.type : null;
-    const refused = m.status === "error" && GEMINI_REFUSED.has(kind);
+    // A kind that is not a string is in no set of strings.
+    const refused = m.status === "error" && GEMINI_REFUSED.has(/** @type {string} */ (kind));
     if (refused) return [{ type: "own-tool-refused", id }];
     if (name.startsWith("mcp_")) return this.otherServer(name);
     return this.skip();
@@ -1253,7 +1255,7 @@ export class GeminiStream extends JsonLines {
     );
   }
 
-  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  /** @private @param {Record<string, unknown>} m @returns {CliEvent[]} */
   result(m) {
     const unanswered = this.unanswered();
     if (unanswered.length) return unanswered;
