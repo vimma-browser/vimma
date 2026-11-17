@@ -61,4 +61,14 @@ describe("TabOwners", () => {
     expect(o.owner(12)).toBe("builtin:1");
     expect(o.tabsOf("builtin:1")).toEqual([12]);
   });
+
+  // Issue #1119: a tab id is reused by a page's opening; the old owner must not stay.
+  test("a tab a page opened from a tab no conversation owns loses any owner it had", () => {
+    const o = new TabOwners();
+    o.opened(50, "builtin:1");
+    o.openedBy(50, 51);
+    expect(o.owner(50)).toBe(null);
+    expect(o.visible(50, "builtin:1")).toBe(false);
+    expect(o.visible(50, null)).toBe(true);
+  });
 });

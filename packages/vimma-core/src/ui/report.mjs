@@ -15,35 +15,151 @@ import { trimTrailing } from "../text/strings.mjs";
 const URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/\S*?(?=[\s,;)\]]|[.,;:!?]?(?:\s|$))/gi;
 
 /**
- * Whether a character (one code point) can be part of a word: a letter or a digit in any script,
- * a combining mark, or `_`. ASCII `\w` alone took the `é` of `/home/josé` for the end of a name,
- * so a home of `/home/jos` redacted it to `~é`.
- * @param {string} c
+ * A character that ends a file name in the report (#1173): whitespace, a path separator, the
+ * punctuation that the report or an error message puts around a path (`path:4:`, `"path"`,
+ * `'path'`, `` `path` ``, `<path>`, `path,`, `path;`), any opening, closing, initial or final
+ * punctuation (`(path)`, `[path]`, `“path”`, `«path»`, `「path」`), and past ASCII any dash or
+ * other punctuation (`—`, `…`, which also ends an error workspaceReport cut to length, `·`, `•`,
+ * `。`, `，`, `‼`), a zero-width space, a soft hyphen, arrows (`→`, `↔`, `⤴`: the arrow blocks,
+ * emoji among them, since `↮` is `↔` and a mark in NFD) and bullets (`∙`, `○`, `●`, `◦`). Anything else continues the name: letters, marks, digits, emoji,
+ * joiners, variation selectors, connector punctuation, symbols, and ASCII `-` `_` `+` `~` `@`
+ * `#` `=` `|` and the like, so `/home/alice` is not the home in `/home/alice+b`.
  */
-const isWordChar = (c) => /^[\p{L}\p{M}\p{N}_]$/u.test(c);
+const END_CHAR = String.raw`(?:[\s/\\:;,"'${"`"}<>\p{Ps}\p{Pe}\p{Pi}\p{Pf}\u00AD\u200B]|(?![\0-\x7f])[\p{Pd}\p{Po}]|[\u2190-\u21FF\u27F0-\u27FF\u2900-\u297F\u2219\u25CB\u25CF\u25E6])`;
 
 /**
- * Whether `home`, found at `at` in `text`, ends a whole path component there: what follows is
- * the end, a `/`, or a character that cannot continue a file name (`/home/alice` is not the home
- * in `/home/alicebob`, `/home/alice.bak` or `/home/aliceé`).
+ * What ends a name: an {@link END_CHAR}, or a run of `.`, `!` and `?` that closes a sentence,
+ * with the end or an END_CHAR after it (`/home/alice... done`, `(see /home/alice.)`). Otherwise
+ * they continue a name (`/home/alice.bak`, `/home/alice!x`).
+ */
+const ENDS_NAME = new RegExp(String.raw`${END_CHAR}|[.!?]+(?=$|${END_CHAR})`, "uy");
+
+/** {@link ENDS_NAME}'s answer for each non-ASCII BMP character seen: 0 not yet, 1 ends, 2 not. */
+const ENDS_BMP = new Uint8Array(0x10000);
+
+/**
+ * Whether the text at `at` ends a name: the end, or a character of {@link ENDS_NAME}.
  * @param {string} text
  * @param {number} at
- * @param {string} home
  */
-function homeEndsAt(text, at, home) {
-  const code = text.codePointAt(at + home.length);
-  if (code === undefined) return true;
-  const next = String.fromCodePoint(code);
-  if (next === "/") return true;
-  if (isWordChar(next) || next === "." || next === "-") return false;
-  // The word boundary a `\b` would want: the home's last code point is a word character.
-  const tail = home.slice(-2);
-  return isWordChar([...tail].at(-1) ?? "");
+function endsName(text, at) {
+  if (at === text.length) return true;
+  // Most of what follows a near miss is an ASCII letter or digit: no need for the expression.
+  const code = text.charCodeAt(at);
+  const c = code | 0x20;
+  if ((c >= 0x61 && c <= 0x7a) || (c >= 0x30 && c <= 0x39)) return false;
+  // A character past ASCII decides alone (`.!?` need what follows): remember each answer.
+  const memo = code >= 0x80 && (code < 0xd800 || code > 0xdfff);
+  if (memo && ENDS_BMP[code]) return ENDS_BMP[code] === 1;
+  ENDS_NAME.lastIndex = at;
+  const ends = ENDS_NAME.test(text);
+  if (memo) ENDS_BMP[code] = ends ? 1 : 2;
+  return ends;
+}
+
+/**
+ * The last index in `sorted` (ascending) whose value is at most `n` (0 if none is).
+ * @param {number[]} sorted
+ * @param {number} n
+ */
+function lastAtMost(sorted, n) {
+  let lo = 0;
+  let hi = sorted.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if ((sorted[mid] ?? 0) <= n) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
+
+/**
+ * Where a run's clusters (a non-mark and the marks after it) start in the run and in its NFD:
+ * the only offsets inside a run that NFD changes that map back. If the clusters ever
+ * decomposed apart differently from the run as a whole, only the run's edges map.
+ * @param {string} run
+ * @returns {{ text: number[], nfd: number[] }}
+ */
+function clusterOffsets(run) {
+  const text = [0];
+  const nfd = [0];
+  let t = 0;
+  let d = 0;
+  for (const [cluster] of run.matchAll(/\P{M}\p{M}*|\p{M}+/gu)) {
+    t += cluster.length;
+    d += cluster.normalize("NFD").length;
+    text.push(t);
+    nfd.push(d);
+  }
+  // Unreachable with the Unicode data Node ships (no non-mark reorders past a cluster's edge,
+  // checked over every code point); kept so a future Unicode cannot map an offset wrongly.
+  return d === run.normalize("NFD").length ? { text, nfd } : { text: [0], nfd: [0] };
+}
+
+/**
+ * @typedef {object} Piece  a stretch of the text, from where it starts in the text and in NFD
+ * @property {number} text
+ * @property {number} nfd
+ * @property {string} [run]  a run NFD changes; the other stretches map one to one
+ * @property {{ text: number[], nfd: number[] }} [clusters]  the run's, once a match needs them
+ */
+
+/**
+ * The next stretch of the text: ASCII, which is its own NFD and never reorders with its
+ * neighbours, or up to 64 other code points and the marks after them. A cut before a non-mark
+ * leaves NFD unchanged (no non-mark reorders past a cluster's edge), so the NFD of the whole
+ * text is the stretches' NFDs end to end, and clusterOffsets walks one short stretch at most.
+ */
+const STRETCH = /[\0-\x7f]+|[^\0-\x7f]{1,64}\p{M}*/uy;
+
+/**
+ * `text` in NFD with a way back to `text`'s offsets, so a home and a path written in different
+ * normal forms still match (an NFD $HOME is common on macOS) while the output keeps the text's
+ * own characters. The NFD is one native call; the way back is built only as far as the matches
+ * that need it, which arrive in order, one {@link STRETCH} at a time.
+ * @param {string} text
+ * @returns {{ nfd: string, toText: (at: number) => number | undefined }}
+ */
+function decomposed(text) {
+  const nfd = text.normalize("NFD");
+  /** @type {Piece[]} */
+  const pieces = [{ text: 0, nfd: 0 }];
+  /** @type {number[]} */
+  const starts = [0];
+  // Where the walk has got to, in step in both strings.
+  let t = 0;
+  let d = 0;
+  /** @param {number} n */
+  const toText = (n) => {
+    while (d <= n && t < text.length) {
+      STRETCH.lastIndex = t;
+      const stretch = STRETCH.exec(text)?.[0] ?? text.slice(t);
+      const decomposedStretch = stretch.charCodeAt(0) < 0x80 ? stretch : stretch.normalize("NFD");
+      if (decomposedStretch !== stretch) {
+        pieces.push({ text: t, nfd: d, run: stretch });
+        pieces.push({ text: t + stretch.length, nfd: d + decomposedStretch.length });
+        starts.push(d, d + decomposedStretch.length);
+      }
+      t += stretch.length;
+      d += decomposedStretch.length;
+    }
+    const piece = pieces[lastAtMost(starts, n)] ?? { text: 0, nfd: 0 };
+    const offset = n - piece.nfd;
+    if (offset === 0 || piece.run === undefined) return piece.text + offset;
+    piece.clusters ??= clusterOffsets(piece.run);
+    const k = lastAtMost(piece.clusters.nfd, offset);
+    return piece.clusters.nfd[k] === offset
+      ? piece.text + (piece.clusters.text[k] ?? 0)
+      : undefined;
+  };
+  return { nfd, toText };
 }
 
 /**
  * The report as `:bug` copies it: every URL becomes `<url>` and every path under `home` starts
- * with `~`. Titles never enter the report, so there is nothing else to strip.
+ * with `~`. The home matches whatever the normal form on either side, and only as a whole name:
+ * {@link ENDS_NAME} must follow it. Titles never enter the report, so there is nothing else to
+ * strip. Limits: docs/security/22-bug-report.md.
  * @param {string} text
  * @param {string} home  $HOME; "" leaves paths alone
  * @returns {string}
@@ -51,14 +167,21 @@ function homeEndsAt(text, at, home) {
 export function redactReport(text, home) {
   const out = text.replace(URL_RE, "<url>");
   // Linear scans rather than a regular expression built from $HOME (CodeQL js/polynomial-redos).
-  const h = trimTrailing(home, "/");
+  const h = trimTrailing(home, "/").normalize("NFD");
   if (!h) return out;
+  const { nfd, toText } = decomposed(out);
   let redacted = "";
   let from = 0;
-  for (let at = out.indexOf(h); at !== -1; at = out.indexOf(h, at + 1)) {
-    if (at < from || !homeEndsAt(out, at, h)) continue;
-    redacted += `${out.slice(from, at)}~`;
-    from = at + h.length;
+  for (let at = nfd.indexOf(h); at !== -1; at = nfd.indexOf(h, at + 1)) {
+    // Cheap first: the NFD of a character that ends a name ends one too (checked over every
+    // code point), so a match that NFD says goes on is never mapped back.
+    if (!endsName(nfd, at + h.length)) continue;
+    const start = toText(at);
+    const end = toText(at + h.length);
+    // What ends the name is judged on the text as written: U+037E is `;` only in NFD.
+    if (start === undefined || end === undefined || start < from || !endsName(out, end)) continue;
+    redacted += `${out.slice(from, start)}~`;
+    from = end;
   }
   return redacted + out.slice(from);
 }

@@ -395,12 +395,11 @@ describe("ClamAV's definitions and clamd (decision 31 g, decisions 43-45)", () =
       "AlertExceedsMax true",
     ];
     expect(conf(...good)).toEqual({ socket: "/run/clamav/clamd.ctl" });
-    expect(conf(...good, "LocalSocket /run/other.ctl")).toEqual({ socket: "/run/other.ctl" });
-    expect(conf("  localsocket   /run/c.ctl  ", "alertencrypted YES", "AlertExceedsMax 1")).toEqual(
-      {
-        socket: "/run/c.ctl",
-      },
-    );
+    expect(
+      conf(" \tLocalSocket \t /run/c.ctl \t", "\tAlertEncrypted YES", "AlertExceedsMax 1"),
+    ).toEqual({
+      socket: "/run/c.ctl",
+    });
     expect(conf(...good, "TCPSocket 3310")).toEqual({ problem: "clamd listens on TCP" });
     expect(conf(...good.slice(2))).toEqual({ problem: "no LocalSocket" });
     expect(conf("LocalSocket clamd.ctl", ...good.slice(2))).toEqual({ problem: "no LocalSocket" });
@@ -410,7 +409,7 @@ describe("ClamAV's definitions and clamd (decision 31 g, decisions 43-45)", () =
     expect(conf(...good.slice(0, 2), "AlertEncrypted yes", "#AlertExceedsMax yes")).toEqual({
       problem: "clamd does not alert on files over its limits",
     });
-    expect(conf(...good, "AlertEncrypted no")).toEqual({
+    expect(conf(...good.slice(0, 2), "AlertEncrypted no", "AlertExceedsMax yes")).toEqual({
       problem: "clamd does not alert on encrypted files",
     });
   });
@@ -485,6 +484,11 @@ describe("ClamAV's answer (decision 31 g)", () => {
       expect(v.signature).not.toMatch(/[\u0000-\u001f\u202e]/);
       expect(v.signature.length).toBeLessThanOrEqual(60);
     }
+  });
+
+  test("a signature name loses every bidi control, the Arabic letter mark among them", () => {
+    const v = clamVerdict({ exitCode: 1, stdout: "/q/a: Evil\u061cName\u2066X FOUND\n" });
+    expect(v).toEqual({ kind: "infected", signature: "Evil Name X" });
   });
 });
 
@@ -592,5 +596,647 @@ describe("the question and the notices (decision 31 a, g)", () => {
     const n = downloadSavedNotice({ name: `a\nb${"x".repeat(200)}`, dir: "/q", scan: "none" });
     expect(n).not.toMatch(/\n/);
     expect(n.length).toBeLessThan(140);
+  });
+});
+
+// Issue #1119: edges the weekly mutation run found unpinned.
+describe("the download checks' edges (mutation-tested)", () => {
+  /** One central directory record, as `zip` writes it, with an extra field and a comment. */
+  function cdRecord(name: string, { extra = 0, comment = 0, nameLength = -1 } = {}) {
+    const bytes = enc.encode(name);
+    const out = new Uint8Array(46 + bytes.length + extra + comment);
+    const view = new DataView(out.buffer);
+    view.setUint32(0, 0x02014b50, true);
+    view.setUint16(28, nameLength < 0 ? bytes.length : nameLength, true);
+    view.setUint16(30, extra, true);
+    view.setUint16(32, comment, true);
+    out.set(bytes, 46);
+    // The extra field and the comment hold bytes that look like the next record's start.
+    out.fill(0x50, 46 + bytes.length);
+    return out;
+  }
+  const join = (...parts: Uint8Array[]) => {
+    const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    let at = 0;
+    for (const p of parts) {
+      out.set(p, at);
+      at += p.length;
+    }
+    return out;
+  };
+  /** The offset of a zip's end record (no comment). */
+  const eocd = (zip: Uint8Array) => zip.length - 22;
+  const set16 = (zip: Uint8Array, at: number, n: number) =>
+    new DataView(zip.buffer).setUint16(at, n, true);
+  const set32 = (zip: Uint8Array, at: number, n: number) =>
+    new DataView(zip.buffer).setUint32(at, n, true);
+
+  test("each signature names what it found", () => {
+    const head = (...b: number[]) => new Uint8Array([...b, 0, 0, 0, 0, 0, 0]);
+    const tar = new Uint8Array(512);
+    tar.set(enc.encode("ustar"), 257);
+    expect(dangerousContent(head(0x7f, 0x45, 0x4c, 0x46))?.text).toBe("an executable (ELF)");
+    expect(dangerousContent(head(0x4d, 0x5a))?.text).toBe("an executable (PE)");
+    expect(dangerousContent(head(0xfe, 0xed, 0xfa, 0xce))?.text).toBe("an executable (Mach-O)");
+    expect(dangerousContent(enc.encode("#!/bin/sh"))?.text).toBe("a script (#!)");
+    const archive = "an archive Vimma cannot look inside";
+    expect(dangerousContent(head(0x1f, 0x8b))?.text).toBe(`${archive} (gzip)`);
+    expect(dangerousContent(head(0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00))?.text).toBe(
+      `${archive} (xz)`,
+    );
+    expect(dangerousContent(enc.encode("BZh9"))?.text).toBe(`${archive} (bzip2)`);
+    expect(dangerousContent(head(0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c))?.text).toBe(
+      `${archive} (7z)`,
+    );
+    expect(dangerousContent(enc.encode("Rar!\u001a\u0007"))?.text).toBe(`${archive} (rar)`);
+    expect(dangerousContent(head(0x28, 0xb5, 0x2f, 0xfd))?.text).toBe(`${archive} (zstd)`);
+    expect(dangerousContent(tar)?.text).toBe(`${archive} (tar)`);
+  });
+
+  test("a head exactly as long as a signature matches it; 512 zero bytes are no tar", () => {
+    expect(dangerousContent(new Uint8Array([0x4d, 0x5a]))?.kind).toBe("executable");
+    expect(dangerousContent(new Uint8Array(512))).toBe(null);
+  });
+
+  test("a name: trailing dots and spaces all go, and a bare word has no extension", () => {
+    expect(dangerousName("install.sh. .")?.kind).toBe("script");
+    expect(dangerousName("install.sh..")?.kind).toBe("script");
+    expect(dangerousName("sh")).toBe(null);
+    expect(dangerousName("exe")).toBe(null);
+    expect(dangerousName("dir/deb")).toBe(null);
+  });
+
+  test("Firefox's list is asked of an unlisted extension, with trailing dots and spaces gone", () => {
+    const asked: string[] = [];
+    const isExecutable = (n: string) => {
+      asked.push(n);
+      return n.endsWith(".pif");
+    };
+    expect(dangerousName("old.pif. ", { isExecutable })).toEqual({
+      kind: "executable",
+      text: "an executable",
+    });
+    expect(asked).toEqual(["old.pif"]);
+    // A name without an extension, or with nothing in it, is not asked about.
+    expect(dangerousName("README", { isExecutable: () => true })).toBe(null);
+    expect(dangerousName("", { isExecutable: () => true })).toBe(null);
+    expect(dangerousName("...", { isExecutable: () => true })).toBe(null);
+    // A check that throws leaves the name alone to decide.
+    const throws = () => {
+      throw new Error("no service");
+    };
+    expect(dangerousName("old.pif", { isExecutable: throws })).toBe(null);
+  });
+
+  test("a type: spaces before its parameters go; a name of Object's own is no type", () => {
+    expect(dangerousType("application/x-sh ; charset=utf-8")?.kind).toBe("script");
+    expect(dangerousType(" Application/X-Sh")?.kind).toBe("script");
+    for (const type of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      expect(dangerousType(type), type).toBe(null);
+    }
+  });
+
+  test("a zip: 22 zero bytes are not one, and a record faked in the comment is skipped", () => {
+    expect(zipLocate(new Uint8Array(22), 22)).toEqual({ kind: "none" });
+    // A comment that holds an end record of its own, followed by one more byte: its comment
+    // length does not reach the end of the file, so it is not the end record.
+    const fake = `PK\u0005\u0006${"\u0000".repeat(18)}x`;
+    const zip = makeZip(["a.txt"], { comment: fake });
+    expect(list(zip)).toEqual(["a.txt"]);
+  });
+
+  test("a zip whose directory runs one byte into its end record cannot be listed", () => {
+    const zip = makeZip(["a.txt"]);
+    const at = eocd(zip);
+    set32(zip, at + 16, new DataView(zip.buffer).getUint32(at + 16, true) + 1);
+    expect(list(zip)).toBe("unlistable");
+  });
+
+  test("zip64's markers each make a zip unlistable, also when nothing else is wrong", () => {
+    const entries = makeZip(["a.txt"]);
+    set16(entries, eocd(entries) + 8, 0xffff);
+    set16(entries, eocd(entries) + 10, 0xffff);
+    expect(list(entries)).toBe("unlistable");
+    // In a file past 4 GiB a directory at 0xffffffff would be inside it.
+    const offset = makeZip(["a.txt"]);
+    set32(offset, eocd(offset) + 16, 0xffffffff);
+    expect(zipLocate(offset, 5_000_000_000)).toEqual({ kind: "unlistable" });
+  });
+
+  test("a directory of 16 MiB is listed, one byte more is not; the two counts must agree", () => {
+    const big = 16 * 1024 * 1024;
+    const zip = makeZip(["a.txt"]);
+    set32(zip, eocd(zip) + 16, 0);
+    set32(zip, eocd(zip) + 12, big);
+    expect(zipLocate(zip, 5_000_000_000)).toMatchObject({ kind: "zip", length: big });
+    set32(zip, eocd(zip) + 12, big + 1);
+    expect(zipLocate(zip, 5_000_000_000)).toEqual({ kind: "unlistable" });
+    const counts = makeZip(["a.txt", "b.txt"]);
+    set16(counts, eocd(counts) + 8, 1);
+    expect(list(counts)).toBe("unlistable");
+  });
+
+  test("a directory: the most entries it lists, and every record checked", () => {
+    const record = cdRecord("");
+    const many = (n: number) => {
+      const cd = new Uint8Array(n * record.length);
+      for (let i = 0; i < n; i++) cd.set(record, i * record.length);
+      return cd;
+    };
+    expect(zipEntryList(many(65534), 65534)).toHaveLength(65534);
+    expect(zipEntryList(many(65535), 65535)).toBe(null);
+    // One record of exactly 46 bytes, with an empty name.
+    expect(zipEntryList(record, 1)).toEqual([{ name: "", mode: null }]);
+    // A record without its signature.
+    const unsigned = cdRecord("a.txt");
+    unsigned[0] = 0;
+    expect(zipEntryList(unsigned, 1)).toBe(null);
+    // A name longer than what is left.
+    expect(zipEntryList(cdRecord("a.txt", { nameLength: 6 }), 1)).toBe(null);
+  });
+
+  test("a directory: each record's extra field and comment are skipped to reach the next", () => {
+    const cd = join(
+      cdRecord("a.txt", { extra: 4, comment: 3 }),
+      cdRecord("b.txt", { extra: 2 }),
+      cdRecord("c.txt", { comment: 5 }),
+    );
+    expect(zipEntryNames(cd, 3)).toEqual(["a.txt", "b.txt", "c.txt"]);
+    expect(zipEntryNames(cd.subarray(0, cd.length - 1), 3)).toBe(null);
+  });
+
+  test("a name that is not UTF-8 is read with replacement characters, never a throw", () => {
+    const cd = cdRecord("ab");
+    cd[46] = 0xff;
+    expect(zipEntryNames(cd, 1)).toEqual(["\uFFFDb"]);
+  });
+
+  test("a zip's verdict: its kind, a colon inside a name, a folder with an exec bit", () => {
+    expect(zipVerdict(["../evil.txt"])).toEqual({
+      kind: "archive",
+      text: "a zip with a path outside its folder (../evil.txt)",
+    });
+    expect(zipVerdict([{ name: "docs", mode: 0o120777 }])?.kind).toBe("archive");
+    expect(zipVerdict(["notes/re:plan.txt"])).toBe(null);
+    expect(zipVerdict([{ name: "bin/", mode: 0o40755 }])).toBe(null);
+    expect(zipVerdict([{ name: "docs/a.pdf", mode: 0o100644 }, "img/b.png"])).toBe(null);
+    expect(zipVerdict(["nested.zip"])).toEqual({
+      kind: "archive",
+      text: "a zip holding an archive Vimma cannot look inside (nested.zip)",
+    });
+  });
+
+  test("ClamAV's FOUND lines: no space needed after the colon, FOUND ends the line", () => {
+    const run = (stdout: string) => clamVerdict({ exitCode: 1, stdout });
+    expect(run("/q/a:Eicar FOUND\n")).toEqual({ kind: "infected", signature: "Eicar" });
+    expect(run("/q/a: Eicar FOUND")).toEqual({ kind: "infected", signature: "Eicar" });
+    expect(run("/q/a: Eicar FOUND \n")).toEqual({ kind: "infected", signature: "Eicar" });
+    expect(run("/q/a: Eicar FOUND later\n")).toEqual({ kind: "infected", signature: "a virus" });
+    expect(run("/q/a:  FOUND\n")).toEqual({ kind: "infected", signature: "a virus" });
+  });
+
+  test("the definitions' date: each field in its range, and a day the month has", () => {
+    const date = (text: string) => clamDefinitionsDate(`ClamAV 1.5.4/28156/${text}`);
+    expect(date("Sat Oct 31 23:59:59 2026")).toBe(new Date(2026, 9, 31, 23, 59, 59).getTime());
+    // A leap second is read as the next minute.
+    expect(date("Sat Oct 17 09:25:60 2026")).toBe(new Date(2026, 9, 17, 9, 26, 0).getTime());
+    expect(date("Sat Foo 17 09:25:46 2026")).toBeNull();
+    expect(date("Sat Oct 0 09:25:46 2026")).toBeNull();
+    expect(date("Sat Oct 32 09:25:46 2026")).toBeNull();
+    expect(date("Sat Oct 17 24:25:46 2026")).toBeNull();
+    expect(date("Sat Oct 17 09:60:46 2026")).toBeNull();
+    expect(date("Sat Oct 17 09:25:61 2026")).toBeNull();
+    expect(date("Sat Nov 31 09:25:46 2026")).toBeNull();
+  });
+
+  test("the definitions' date: the version line alone, from its start to its end", () => {
+    const line = "ClamAV 1.5.4/28156/Sat Oct 17 09:25:46 2026";
+    const at = new Date(2026, 9, 17, 9, 25, 46).getTime();
+    expect(clamDefinitionsDate(line)).toBe(at);
+    expect(clamDefinitionsDate(`${line} \n`)).toBe(at);
+    expect(clamDefinitionsDate(`clamdscan: ${line}`)).toBeNull();
+    expect(clamDefinitionsDate(`${line} UTC`)).toBeNull();
+    expect(clamDefinitionsDate(`other output\n${line}\nmore`)).toBe(at);
+  });
+
+  test("clamd.conf: a key alone, a # after a value, a line broken by a carriage return", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    expect(clamdConfig([...good, "TCPSocket"].join("\n"))).toEqual({
+      problem: "clamd listens on TCP",
+    });
+    expect(clamdConfig([...good, "TCPSocket 3310 #"].join("\n"))).toEqual({
+      problem: "clamd listens on TCP",
+    });
+    expect(clamdConfig(["LocalSocket /run/a\r/b", ...good.slice(1)].join("\n"))).toEqual({
+      problem: "line 1 has a control character",
+    });
+  });
+
+  // clamd's own parser (ClamAV common/optparser.c) reads a line with fgets, so a carriage return,
+  // a form feed or a NUL is part of the line to it, and a NUL ends what it reads. Any such line
+  // makes the whole file unused: Vimma cannot be sure it reads it as clamd does.
+  test("clamd.conf: a control character on any line refuses the whole file", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    expect(conf(...good, "TCPSocket 3310\r#x")).toEqual({
+      problem: "line 4 has a control character",
+    });
+    expect(conf(...good, "AlertEncrypted no\rX")).toEqual({
+      problem: "line 4 has a control character",
+    });
+    // clamd strips only spaces, tabs and the LF: `yes\r` is no boolean to it, so CRLF is refused.
+    expect(clamdConfig(good.join("\r\n"))).toEqual({ problem: "line 1 has a control character" });
+    expect(clamdConfig(`${good.join("\n")}\r\n`)).toEqual({
+      problem: "line 3 has a control character",
+    });
+    for (const c of ["\u0000", "\f", "\v", "\u001b", "\u007f", "\u0085"]) {
+      expect(conf(...good, `TCPSocket 3310${c}`)).toEqual({
+        problem: "line 4 has a control character",
+      });
+      expect(conf(`${c}TCPSocket 3310`, ...good)).toEqual({
+        problem: "line 1 has a control character",
+      });
+      expect(conf(...good, `# a comment${c}`)).toEqual({
+        problem: "line 4 has a control character",
+      });
+    }
+    expect(conf("LocalSocket\t/run/c.ctl", "AlertEncrypted\tyes", "AlertExceedsMax yes")).toEqual({
+      socket: "/run/c.ctl",
+    });
+    expect(clamdConfig(`${good.join("\n")}\n`)).toEqual({ socket: "/run/c.ctl" });
+  });
+
+  // clamd reads at most 1023 bytes of a line at once (512 in older releases) and parses the rest
+  // as a line of its own, so a long comment could hide a setting.
+  test("clamd.conf: a line clamd would read in two parts refuses the whole file", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    expect(conf(...good, `#${"x".repeat(1100)}TCPSocket 3310`)).toEqual({
+      problem: "line 4 is too long for clamd to read whole",
+    });
+    expect(conf(...good, `#${"x".repeat(509)}`)).toEqual({ socket: "/run/c.ctl" });
+    expect(conf(...good, `#${"x".repeat(510)}`)).toEqual({
+      problem: "line 4 is too long for clamd to read whole",
+    });
+    // Bytes, not characters: 2 + 2 * 255 bytes.
+    expect(conf(...good, `# ${"\u00e9".repeat(255)}`)).toEqual({
+      problem: "line 4 is too long for clamd to read whole",
+    });
+  });
+
+  test("clamd.conf: names as clamd spells them, each set once, spaces and tabs only", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    // clamd matches names case-sensitively and refuses the file over an unknown one.
+    expect(conf("localsocket /run/c.ctl", ...good.slice(1))).toEqual({
+      problem: "clamd does not read localsocket (line 1)",
+    });
+    expect(conf(...good, "alertencrypted no")).toEqual({
+      problem: "clamd does not read alertencrypted (line 4)",
+    });
+    expect(conf(...good, "TCPAddr 127.0.0.1", "tcpaddr ::1")).toEqual({
+      problem: "clamd does not read tcpaddr (line 5)",
+    });
+    expect(conf(...good, "Alert-Encrypted no")).toEqual({
+      problem: "clamd does not read Alert-Encrypted (line 4)",
+    });
+    // Only a space or a tab ends a name in clamd; a name that runs into another kind of space is
+    // unknown to it.
+    expect(conf(...good, "TCPSocket\u00a03310")).toEqual({
+      problem: "clamd does not read TCPSocket\u00a03310 (line 4)",
+    });
+    expect(conf(...good, "\ufeffTCPSocket 3310")).toEqual({
+      problem: "clamd does not read \ufeffTCPSocket (line 4)",
+    });
+    expect(conf("LocalSocket /run/c.ctl\u00a0", ...good.slice(1))).toEqual({
+      socket: "/run/c.ctl\u00a0",
+    });
+    // clamd also reads an option by its command-line name.
+    expect(conf("LocalSocket /run/c.ctl", "alert-encrypted yes", "alert-exceeds-max 1")).toEqual({
+      socket: "/run/c.ctl",
+    });
+    // clamd keeps the first setting of an option and ignores the rest: a second one is refused
+    // rather than guessed at.
+    expect(conf("AlertEncrypted no", ...good)).toEqual({
+      problem: "clamd.conf sets AlertEncrypted twice",
+    });
+    expect(conf(...good, "alert-encrypted no")).toEqual({
+      problem: "clamd.conf sets AlertEncrypted twice",
+    });
+    expect(conf(...good, "AlertExceedsMax yes")).toEqual({
+      problem: "clamd.conf sets AlertExceedsMax twice",
+    });
+    expect(conf(...good, "LocalSocket /run/other.ctl")).toEqual({
+      problem: "clamd.conf sets LocalSocket twice",
+    });
+    expect(conf(...good, "TCPSocket 3310", "TCPSocket 3311")).toEqual({
+      problem: "clamd.conf sets TCPSocket twice",
+    });
+    // TCPAddr may be given more than once; it opens nothing without TCPSocket.
+    expect(conf(...good, "TCPAddr 127.0.0.1", "TCPAddr ::1")).toEqual({ socket: "/run/c.ctl" });
+  });
+
+  test("clamd.conf: comments and quotes as clamd reads them", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    expect(conf(...good, " \t# TCPSocket 3310")).toEqual({ socket: "/run/c.ctl" });
+    // clamd drops a # and what follows it from a value.
+    expect(
+      conf("LocalSocket /run/c.ctl", "AlertEncrypted yes # all", "AlertExceedsMax TRUE#"),
+    ).toEqual({ socket: "/run/c.ctl" });
+    expect(conf(...good.slice(0, 2), "AlertExceedsMax no # yes")).toEqual({
+      problem: "clamd does not alert on files over its limits",
+    });
+    // clamd's booleans are yes, true and 1 (any case) and no, false and 0; it refuses the rest.
+    for (const value of ["on", "yes please", '"yes"', "#yes", "2"]) {
+      expect(conf(good[0] ?? "", `AlertEncrypted ${value}`, good[2] ?? "")).toEqual({
+        problem: "clamd does not alert on encrypted files",
+      });
+    }
+    // A quoted or commented socket path is read differently by clamd: not used.
+    for (const value of ['"/run/c.ctl"', "/run/c.ctl # main", "/run/c#ctl"]) {
+      expect(conf(`LocalSocket ${value}`, ...good.slice(1))).toEqual({
+        problem: "LocalSocket has a quote or a #",
+      });
+    }
+  });
+
+  // Decision 45: clamd may make a scan faster, never weaker. Vimma's clamscan runs with ClamAV's
+  // defaults (clamArguments sets only the two alerts), so clamd.conf must not scan less than they
+  // do. Names, command-line names and defaults are from ClamAV's common/optparser.c.
+  const SCANS_ON = [
+    ["ScanPE", "scan-pe"],
+    ["ScanELF", "scan-elf"],
+    ["ScanMail", "scan-mail"],
+    ["PhishingSignatures", "phishing-sigs"],
+    ["PhishingScanURLs", "phishing-scan-urls"],
+    ["HeuristicAlerts", "heuristic-alerts"],
+    ["ScanHTML", "scan-html"],
+    ["ScanOLE2", "scan-ole2"],
+    ["ScanPDF", "scan-pdf"],
+    ["ScanSWF", "scan-swf"],
+    ["ScanXMLDOCS", "scan-xmldocs"],
+    ["ScanHWP3", "scan-hwp3"],
+    ["ScanOneNote", "scan-onenote"],
+    ["ScanArchive", "scan-archive"],
+    ["ScanImage", "scan-image"],
+    ["ScanImageFuzzyHash", "scan-image-fuzzy-hash"],
+    ["Bytecode", "bytecode"],
+    ["AlgorithmicDetection", "algorithmic-detection"],
+  ] as const;
+
+  test("clamd.conf: a scan clamscan does is never turned off", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    const ok = { socket: "/run/c.ctl" };
+    for (const [name, alias] of SCANS_ON) {
+      const weaker = { problem: `clamd would scan less than clamscan (${name})` };
+      expect(conf(...good, `${name} yes`)).toEqual(ok);
+      expect(conf(...good, `${alias} TRUE # on`)).toEqual(ok);
+      expect(conf(...good, `${name} no`)).toEqual(weaker);
+      expect(conf(...good, `${name} 0 # off`)).toEqual(weaker);
+      expect(conf(...good, `${alias} false`)).toEqual(weaker);
+      expect(conf(...good, `${name} off`)).toEqual(weaker);
+      expect(conf(...good, `${name}`)).toEqual(weaker);
+      expect(conf(...good, `${name} yes`, `${alias} no`)).toEqual({
+        problem: `clamd.conf sets ${name} twice`,
+      });
+      if (alias !== name.toLowerCase()) {
+        expect(conf(...good, `${name.toLowerCase()} no`)).toEqual({
+          problem: `clamd does not read ${name.toLowerCase()} (line 4)`,
+        });
+      }
+    }
+    // Options clamscan leaves off that would make clamd load fewer signatures or trust more.
+    for (const [name, alias] of [
+      ["OfficialDatabaseOnly", "official-db-only"],
+      ["DisableCertCheck", "nocerts"],
+    ] as const) {
+      const weaker = { problem: `clamd would scan less than clamscan (${name})` };
+      expect(conf(...good, `${name} no`)).toEqual(ok);
+      expect(conf(...good, `${alias} false # off`)).toEqual(ok);
+      expect(conf(...good, `${name} yes`)).toEqual(weaker);
+      expect(conf(...good, `${alias} 1`)).toEqual(weaker);
+      expect(conf(...good, `${name} maybe`)).toEqual(weaker);
+      expect(conf(...good, `${name} no`, `${alias} no`)).toEqual({
+        problem: `clamd.conf sets ${name} twice`,
+      });
+    }
+    expect(conf(...good, "ScanArchive no")).toEqual({
+      problem: "clamd would scan less than clamscan (ScanArchive)",
+    });
+  });
+
+  test("clamd.conf: a limit is never set below clamscan's", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    const ok = { socket: "/run/c.ctl" };
+    const weaker = (name: string) => ({ problem: `clamd would scan less than clamscan (${name})` });
+    // Sizes: clamd reads 0 as no limit. clamscan's defaults (CLI_DEFAULT_*) are defined outside
+    // optparser.c, so any other value is refused rather than compared.
+    for (const [name, alias] of [
+      ["MaxScanSize", "max-scansize"],
+      ["MaxFileSize", "max-filesize"],
+      ["MaxEmbeddedPE", "max-embeddedpe"],
+      ["MaxHTMLNormalize", "max-htmlnormalize"],
+      ["MaxHTMLNoTags", "max-htmlnotags"],
+      ["MaxScriptNormalize", "max-scriptnormalize"],
+      ["MaxZipTypeRcg", "max-ziptypercg"],
+      ["PCREMaxFileSize", "pcre-max-filesize"],
+    ] as const) {
+      expect(conf(...good, `${name} 0`)).toEqual(ok);
+      expect(conf(...good, `${alias} 00M # no limit`)).toEqual(ok);
+      expect(conf(...good, `${name} 0k`)).toEqual(ok);
+      for (const value of ["25M", "1", "4G", "010", "0x0", "0 M", "0\t# x", "-1", ""]) {
+        expect(conf(...good, `${name} ${value}`)).toEqual(weaker(name));
+      }
+      expect(conf(...good, `${name} 0`, `${alias} 0`)).toEqual({
+        problem: `clamd.conf sets ${name} twice`,
+      });
+    }
+    // Numbers where optparser.c says 0 disables the limit.
+    for (const [name, alias] of [
+      ["MaxScanTime", "max-scantime"],
+      ["MaxRecursion", "max-recursion"],
+      ["MaxFiles", "max-files"],
+    ] as const) {
+      expect(conf(...good, `${name} 0`)).toEqual(ok);
+      expect(conf(...good, `${alias} 000 # none`)).toEqual(ok);
+      for (const value of ["16", "100000000", "0k", "-0", "1"]) {
+        expect(conf(...good, `${name} ${value}`)).toEqual(weaker(name));
+      }
+      expect(conf(...good, `${alias} 0`, `${name} 0`)).toEqual({
+        problem: `clamd.conf sets ${name} twice`,
+      });
+    }
+    // Numbers where 0 is not said to disable the limit: any setting is refused.
+    for (const name of [
+      "MaxPartitions",
+      "MaxIconsPE",
+      "MaxRecHWP3",
+      "PCREMatchLimit",
+      "PCRERecMatchLimit",
+    ]) {
+      for (const value of ["0", "50", "100000", "999999999"]) {
+        expect(conf(...good, `${name} ${value}`)).toEqual(weaker(name));
+      }
+    }
+    expect(conf(...good, "max-partitions 128")).toEqual(weaker("MaxPartitions"));
+    expect(conf(...good, "pcre-recmatch-limit 5000")).toEqual(weaker("PCRERecMatchLimit"));
+    // BytecodeTimeout: optparser.c's default is 10000 (ms); clamd reads it with atoi.
+    for (const value of ["10000", "60000", "010000", "2147483647", "60000 # a minute"]) {
+      expect(conf(...good, `BytecodeTimeout ${value}`)).toEqual(ok);
+    }
+    for (const value of ["9999", "0", "", "2147483648", "99999999999", "1e5", "60000\t#"]) {
+      expect(conf(...good, `bytecode-timeout ${value}`)).toEqual(weaker("BytecodeTimeout"));
+    }
+    expect(conf(...good, "MaxFileSize 25M", "ScanArchive no")).toEqual(weaker("MaxFileSize"));
+  });
+
+  // clamdscan skips a path that matches an ExcludePath and calls it clean; clamscan, as Vimma
+  // runs it, excludes nothing. Only optparser.c's own examples, which no download can be under,
+  // are taken.
+  test("clamd.conf: ExcludePath may skip only /proc and /sys", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    const weaker = { problem: "clamd would scan less than clamscan (ExcludePath)" };
+    expect(conf(...good, "ExcludePath ^/proc/", "ExcludePath ^/sys/")).toEqual({
+      socket: "/run/c.ctl",
+    });
+    for (const value of ["\\.zip$", "^/home/", "^/proc", "/proc/", "^/proc/ # x", "^/sys/.*", ""]) {
+      expect(conf(...good, "ExcludePath ^/proc/", `ExcludePath ${value}`)).toEqual(weaker);
+    }
+    expect(conf(...good, "excludepath .")).toEqual({
+      problem: "clamd does not read excludepath (line 4)",
+    });
+  });
+
+  // clamscan loads its signatures from CONST_DATADIR (its --database default) and verifies them
+  // with its own certificates; clamd must load the same ones. CONST_DATADIR is a build setting,
+  // /var/lib/clamav in the packages Vimma uses; CVDCertsDirectory has no default in optparser.c.
+  test("clamd.conf: the signatures clamscan loads, from the same folder", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    const weaker = (name: string) => ({ problem: `clamd would scan less than clamscan (${name})` });
+    expect(conf(...good, "DatabaseDirectory /var/lib/clamav")).toEqual({ socket: "/run/c.ctl" });
+    expect(conf(...good, "datadir /var/lib/clamav")).toEqual({ socket: "/run/c.ctl" });
+    for (const value of [
+      "/var/lib/clamav/",
+      "/srv/clamav",
+      "/var/lib/clamav # x",
+      '"/var/lib/clamav"',
+      "",
+    ]) {
+      expect(conf(...good, `DatabaseDirectory ${value}`)).toEqual(weaker("DatabaseDirectory"));
+    }
+    expect(conf(...good, "DatabaseDirectory /var/lib/clamav", "datadir /var/lib/clamav")).toEqual({
+      problem: "clamd.conf sets DatabaseDirectory twice",
+    });
+    expect(conf(...good, "databasedirectory /srv")).toEqual({
+      problem: "clamd does not read databasedirectory (line 4)",
+    });
+    for (const line of [
+      "CVDCertsDirectory /etc/certs",
+      "cvdcertsdir /var/lib/clamav",
+      "CVDCertsDirectory",
+    ]) {
+      expect(conf(...good, line)).toEqual(weaker("CVDCertsDirectory"));
+    }
+  });
+
+  // optparser.c's hidden developer options (FLAG_HIDDEN, read by clamd): never in a clamd.conf
+  // Vimma uses.
+  test("clamd.conf: no developer option", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    for (const [name, alias] of [
+      ["DevACOnly", "dev-ac-only"],
+      ["DevACDepth", "dev-ac-depth"],
+      ["DevPerformance", "dev-performance"],
+      ["DevLiblog", "dev-liblog"],
+    ] as const) {
+      const weaker = { problem: `clamd would scan less than clamscan (${name})` };
+      for (const value of ["no", "yes", "0", "3"]) {
+        expect(conf(...good, `${name} ${value}`)).toEqual(weaker);
+        expect(conf(...good, `${alias} ${value}`)).toEqual(weaker);
+      }
+    }
+  });
+
+  test("clamd.conf: the stock file, with the alerts turned on, is used", () => {
+    const stock = [
+      "##",
+      "## Example config file for the Clam AV daemon",
+      "##",
+      "#Example",
+      "#LogFile /tmp/clamd.log",
+      "LocalSocket /run/clamav/clamd.ctl",
+      "LocalSocketGroup clamav",
+      "LocalSocketMode 660",
+      "FixStaleSocket yes",
+      "#TCPSocket 3310",
+      "#TCPAddr localhost",
+      "ExcludePath ^/proc/",
+      "ExcludePath ^/sys/",
+      "#MaxFileSize 25M",
+      "#ScanArchive no",
+      "User clamav",
+      "\t",
+      "   ",
+      "AlertEncrypted yes   ",
+      "AlertExceedsMax\tyes # turned on for Vimma",
+      "ScanArchive yes",
+      "BytecodeTimeout 60000",
+      "MaxDirectoryRecursion 15",
+      "StreamMaxLength 25M",
+      "DetectPUA yes",
+      "#AlertEncrypted no",
+    ];
+    expect(clamdConfig(stock.join("\n"))).toEqual({ socket: "/run/clamav/clamd.ctl" });
+  });
+
+  test("a uid in /etc/passwd is digits only", () => {
+    expect(passwdUid("clamav:x:x64:64::/:/bin/false", "clamav")).toBeNull();
+    expect(passwdUid("clamav:x:64x:64::/:/bin/false", "clamav")).toBeNull();
+    expect(passwdUid("clamav", "clamav")).toBeNull();
+  });
+
+  test("download_dir: spaces around it go, and ~ alone is home", () => {
+    expect(resolveDownloadDir("  ~/q  ", "/home/u")).toBe("/home/u/q");
+    expect(resolveDownloadDir(" /srv/q ", "/home/u")).toBe("/srv/q");
+    expect(resolveDownloadDir("~", "/home/u")).toBe("/home/u");
+  });
+
+  test("a hidden folder is refused only below home, and home's own path is not read", () => {
+    expect(quarantineProblem("/srv/abc/.x", "/home/u")).toBe(null);
+    expect(quarantineProblem("/var/.home/u/q", "/var/.home/u")).toBe(null);
+    expect(quarantineProblem("/home/j./q", "/home/j.")).toBe(null);
+    expect(quarantineProblem("/home/j./q/.x", "/home/j.")).toBe(
+      "must not be in a hidden folder (.x)",
+    );
+  });
+
+  test("home itself is shown as ~", () => {
+    expect(displayDir("/home/u", "/home/u")).toBe("~");
+    expect(displayDir("/home/user", "/home/u")).toBe("/home/user");
+  });
+
+  test("sizes at each unit's edge", () => {
+    expect(formatBytes(1000)).toBe("1 kB");
+    expect(formatBytes(10_060)).toBe("10 kB");
+    expect(formatBytes(123_400)).toBe("123 kB");
+    expect(formatBytes(1_000_000)).toBe("1 MB");
+    expect(formatBytes(3_200_000_000_000)).toBe("3.2 TB");
+    expect(formatBytes(12.5)).toBe("12.5 B");
+  });
+
+  test("a notice's file name: one line, spaces collapsed and trimmed, cut at 60 with …", () => {
+    const refused = (name: unknown) =>
+      downloadRefusedNotice(name as string, { kind: "http" }).slice("refused download ".length);
+    expect(refused(" a\u202Eb\n c  d ")).toBe('"a b c d": not https');
+    expect(refused(undefined)).toBe('"": not https');
+    const sixty = "x".repeat(60);
+    expect(refused(sixty)).toBe(`"${sixty}": not https`);
+    expect(refused(`${sixty}y`)).toBe(`"${"x".repeat(59)}…": not https`);
   });
 });

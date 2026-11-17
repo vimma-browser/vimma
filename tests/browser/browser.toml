@@ -250,6 +250,15 @@ support-files = [
   "head_vimma_control.js",
 ]
 
+["browser_vimma_mcp_userinfo.js"]
+support-files = [
+  "file_vimma_agent_page.html",
+  "file_vimma_agent_userinfo_redirect.sjs",
+  "file_vimma_agent_untitled.html",
+  "file_vimma_agent_userinfo.html",
+  "head_vimma_control.js",
+]
+
 ["browser_vimma_mcp_elements.js"]
 support-files = [
   "file_vimma_agent_cards.html",

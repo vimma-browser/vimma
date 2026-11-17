@@ -198,8 +198,9 @@ export const CLI_STREAM_LIMITS = Object.freeze({
  * C0 and C1 controls but tab and line feed, and the bidi controls (security.md M42): the window
  * removes them again, but a version line or an error is also a notice.
  */
-// eslint-disable-next-line no-control-regex -- the control characters are what it removes
-const UNSAFE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g;
+const UNSAFE =
+  // eslint-disable-next-line no-control-regex -- the control characters are what it removes
+  /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 /** @param {unknown} v */
 const plain = (v) => String(v ?? "").replace(UNSAFE, "");
 /** @param {string} text @param {number} n */
@@ -1131,7 +1132,14 @@ const GEMINI_REFUSED = new Set(["tool_not_registered", "policy_violation"]);
  * comes as pieces (`delta`), joined until the next event. A server that did not start is not in
  * the stream (Research): the run goes on without Vimma's tools. A tool of an MCP server that is
  * not Vimma's that ran ends the run, as for Codex; a call to one never offered (the model's own
- * guess at a name) comes back refused, as any tool it was not given.
+ * guess at a name) comes back refused, as any tool it was not given. A call to one without an
+ * id ends the run at once, since its result could not be matched to it; so does one still
+ * unanswered at `result` (Gemini CLI answers each call before it goes on, so `result` comes
+ * after every answer) or at the stream's end without one, and an id given to a second call
+ * while the first is still open, whose result could then be either's. Vimma's tools are told
+ * by their `mcp_vimma_chat_` prefix: a tool's name does not say where its server's name ends,
+ * so a server named `vimma_chat_x` would pass as Vimma's, but `--allowed-mcp-server-names`
+ * starts the server named exactly `vimma_chat` alone, with extensions off.
  */
 export class GeminiStream extends JsonLines {
   /** @param {{ model?: string }} [o]  the provider's model, "" for Gemini CLI's own default */
@@ -1142,6 +1150,8 @@ export class GeminiStream extends JsonLines {
     this.text = "";
     /** Tool calls by id: what each one was, for its result. @type {Map<string, string>} */
     this.calls = new Map();
+    /** The ids of the calls not answered yet. @type {Set<string>} */
+    this.open = new Set();
     this.resulted = false;
     /** @type {string | null} */
     this.lastError = null;
@@ -1172,6 +1182,8 @@ export class GeminiStream extends JsonLines {
     const out = [...super.end()];
     if (this.failed) return out;
     out.push(...this.reply());
+    const unanswered = this.unanswered();
+    if (unanswered.length) return [...out, ...unanswered];
     if (this.resulted || !this.lastError) return out;
     this.resulted = true;
     return [...out, ...this.ended(false, this.lastError, null)];
@@ -1189,30 +1201,62 @@ export class GeminiStream extends JsonLines {
     if (typeof m.tool_name !== "string") return this.skip();
     const name = m.tool_name;
     const id = typeof m.tool_id === "string" ? m.tool_id : "";
-    if (id) this.calls.set(id, name);
+    // A second call under an open call's id would take its result, so another server's could
+    // be read as Vimma's (M56): neither name can be trusted, so the run ends.
+    if (this.open.has(id)) {
+      return this.fail(`${GEMINI.id} gave two open tool calls one id: ${cut(plain(id), 40)}`);
+    }
+    if (id) {
+      this.calls.set(id, name);
+      this.open.add(id);
+    }
     // A step in the browser is the gate's to show, not the CLI's account of it (C8).
     if (name.startsWith(`mcp_${GEMINI_SERVER}_`)) return this.skip();
+    // Without an id its result cannot be told from another's, refused or ran, so the call to
+    // another server ends the run itself (M56): fail closed, as Codex does on any such call.
+    if (!id && name.startsWith("mcp_")) return this.otherServer(name);
     return [{ type: "own-tool", id, text: ownToolText(GEMINI, name, m.parameters) }];
   }
 
   /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
   toolResult(m) {
     const id = typeof m.tool_id === "string" ? m.tool_id : "";
+    this.open.delete(id);
     const name = this.calls.get(id);
     if (name === undefined || name.startsWith(`mcp_${GEMINI_SERVER}_`)) return this.skip();
     const kind = isObject(m.error) ? m.error.type : null;
     const refused = m.status === "error" && GEMINI_REFUSED.has(kind);
     if (refused) return [{ type: "own-tool-refused", id }];
-    if (name.startsWith("mcp_")) {
-      return this.fail(
-        `${GEMINI.id} called an MCP server that is not Vimma's: ${cut(plain(name), 40)}`,
-      );
-    }
+    if (name.startsWith("mcp_")) return this.otherServer(name);
     return this.skip();
+  }
+
+  /**
+   * A call to another MCP server with no answer to its id ends the run (M56): one not refused
+   * may have run. Vimma's and the CLI's own calls left open do not.
+   * @private @returns {CliEvent[]}
+   */
+  unanswered() {
+    for (const id of this.open) {
+      const name = /** @type {string} */ (this.calls.get(id));
+      if (name.startsWith("mcp_") && !name.startsWith(`mcp_${GEMINI_SERVER}_`)) {
+        return this.otherServer(name);
+      }
+    }
+    return [];
+  }
+
+  /** @private @param {string} name  the tool's name as Gemini CLI gives it @returns {CliEvent[]} */
+  otherServer(name) {
+    return this.fail(
+      `${GEMINI.id} called an MCP server that is not Vimma's: ${cut(plain(name), 40)}`,
+    );
   }
 
   /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
   result(m) {
+    const unanswered = this.unanswered();
+    if (unanswered.length) return unanswered;
     const stats = m.stats;
     if (
       (m.status !== "success" && m.status !== "error") ||

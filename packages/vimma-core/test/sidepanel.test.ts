@@ -981,3 +981,64 @@ describe("several splits in the panel (multiple-splits)", () => {
     expect(effect).toEqual({ type: "together", ids: ["t2", "t6"], focus: "t6" });
   });
 });
+
+describe("edge cases of the panel's state", () => {
+  test("a URL that does not parse is its own host", () => {
+    const odd = (id: string) => (id === "t2" ? { title: "Odd", url: "not a url" } : tabs[id]);
+    expect(openPanel(model, odd).rows[0]?.host).toBe("not a url");
+  });
+
+  test("the highlight can be on the first row while another tab is active", () => {
+    expect(openPanel(model, info, { selectedId: "t2" }).selected).toBe(0);
+  });
+
+  test("a focused pane that is not one of the panes is no focus", () => {
+    const s = openPanel(model, info, { panes: ["t2", "t3"], paneFocus: "t4" });
+    expect(s.paneFocus).toBeNull();
+  });
+
+  test("a hidden view of one pane is not hidden", () => {
+    expect(openPanel(model, info, { panes: ["t2"], paneHidden: true }).hidden).toBe(false);
+    expect(openPanel(model, info, { panes: ["t2", "t3"], paneHidden: true }).hidden).toBe(true);
+  });
+
+  test("a shown split that is not among the splits is none", () => {
+    const s = openPanel(model, info, {
+      splits: [{ number: 1, tabs: ["t2", "t3"] }],
+      shownSplit: 4,
+    });
+    expect(s.shownSplit).toBeNull();
+  });
+
+  test("several splits, a view and no shown split: the header says split", () => {
+    const s = openPanel(model, info, {
+      panes: ["t2", "t3"],
+      splits: [
+        { number: 1, tabs: ["t2", "t3"] },
+        { number: 2, tabs: ["t4", "t1"] },
+      ],
+      shownSplit: null,
+    });
+    expect(markSummary(s)).toBe("split: 2 panes · 2 splits");
+  });
+
+  test("an anchor no longer listed opens no range", () => {
+    const s = { ...openPanel(model, info, { selectedId: "t4" }), anchor: "gone" };
+    expect([0, 1, 2].map((i) => inRange(s, i))).toEqual([false, false, false]);
+  });
+
+  test("a row past the end has an empty gutter", () => {
+    expect(gutterOf(openPanel(model, info), 3)).toBe("");
+  });
+
+  test("a workspace with no tabs: no rows, and the keys that act on a row do nothing", () => {
+    const empty: Workspaces = { ...model, active: "w3" };
+    const s = openPanel(empty, info);
+    expect(s.rows).toEqual([]);
+    expect(refreshPanel(s, empty, info).selected).toBe(0);
+    expect(gutterOf(s, 0)).toBe("");
+    for (const id of ["panel.mark", "panel.visual", "panel.close_tab", "panel.move"]) {
+      expect(panelKey(s, { id }), id).toEqual({ state: s, effect: null });
+    }
+  });
+});

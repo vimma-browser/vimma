@@ -331,6 +331,71 @@ describe("the loop", () => {
     });
   });
 
+  test("a provider's refusal is asked once, not retried as a server error is", async () => {
+    let n = 0;
+    const fetch: any = async () => {
+      n++;
+      return { ok: false, status: 429, text: async () => "slow down" };
+    };
+    const res = await start({ fetch, runTool: runner().runTool }).done;
+    expect(n).toBe(1);
+    expect(res).toMatchObject({ outcome: "error", error: "429: slow down" });
+  });
+
+  test("a request that fails without an answer ends the task at once", async () => {
+    let n = 0;
+    const fetch: any = async () => {
+      n++;
+      throw new TypeError("NetworkError when attempting to fetch resource.");
+    };
+    const res = await start({ fetch, runTool: runner().runTool }).done;
+    expect(n).toBe(1);
+    expect(res.outcome).toBe("error");
+  });
+
+  test("the runner gets the task's signal, and a result it leaves out is an empty one", async () => {
+    const s = server([{ content: "", tool_calls: [call("vimma_tabs", {})] }, { content: "ok" }]);
+    const signals: any[] = [];
+    const runTool = async (_name: string, _args: any, opts: any) => {
+      signals.push(opts?.signal);
+      return undefined;
+    };
+    const res = await start({ fetch: s.fetch, runTool }).done;
+    expect(signals).toHaveLength(1);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    expect(signals[0].aborted).toBe(false);
+    expect(res.messages[2]).toEqual({
+      role: "tool",
+      results: [{ id: "c_vimma_tabs", name: "vimma_tabs", isError: false, content: [] }],
+    });
+  });
+
+  test("events: a steer is reported with its text, and a turn without text has no reply", async () => {
+    const gate = deferred();
+    const s = server([{ content: "", tool_calls: [call("vimma_tabs", {})] }, { content: "Done." }]);
+    const r = runner({
+      vimma_tabs: async () => {
+        await gate.promise;
+        return { content: [{ type: "text", text: "tabs" }] };
+      },
+    });
+    const events: any[] = [];
+    const task = start({ fetch: s.fetch, runTool: r.runTool, onEvent: (e: any) => events.push(e) });
+    await new Promise((res) => setTimeout(res, 0));
+    task.steer("Only oat milk.");
+    gate.resolve();
+    await task.done;
+    expect(events.map((e) => e.type)).toEqual([
+      "usage",
+      "call",
+      "result",
+      "steer",
+      "usage",
+      "reply",
+    ]);
+    expect(events[3]).toEqual({ type: "steer", text: "Only oat milk." });
+  });
+
   test("a provider's refusal of the request ends the task with the error", async () => {
     const fetch: any = async () => ({ ok: false, status: 401, text: async () => "bad key" });
     const res = await start({ fetch, runTool: runner().runTool }).done;
@@ -398,6 +463,36 @@ describe("the loop", () => {
     expect(res.error).toBe(
       "stopped: vimma_open was refused 3 times in a row with the same arguments",
     );
+  });
+
+  test("calls after the third refusal in the same reply are not run", async () => {
+    const bad = call("vimma_open", { url: 5 });
+    const s = server([
+      {
+        content: "",
+        tool_calls: [
+          { ...bad, id: "a" },
+          { ...bad, id: "b" },
+          { ...bad, id: "c" },
+          call("vimma_tabs", {}, "d"),
+        ],
+      },
+    ]);
+    const r = runner();
+    const res = await start({ fetch: s.fetch, runTool: r.runTool }).done;
+    expect(r.calls).toEqual([]);
+    expect(res.outcome).toBe("error");
+    expect(res.error).toBe(
+      "stopped: vimma_open was refused 3 times in a row with the same arguments",
+    );
+    const last = res.messages.at(-1);
+    if (last?.role !== "tool") throw new Error(`not the tool results: ${JSON.stringify(last)}`);
+    expect(last.results[3]).toEqual({
+      id: "d",
+      name: "vimma_tabs",
+      isError: true,
+      content: [{ type: "text", text: "Not run: the task was stopped." }],
+    });
   });
 
   // Issue #643: a local model opened the same failing URL in tab after tab.
@@ -661,6 +756,9 @@ describe("malformed tool calls", () => {
     [{ list: {} }, '"list" must be an array'],
     [{ opts: [] }, '"opts" must be an object'],
     [{ opts: null }, '"opts" must be an object'],
+    [{ n: 2.5 }, null],
+    [{ opts: {} }, null],
+    [{ opts: "x" }, '"opts" must be an object'],
     [{ unknown: 1 }, null],
   ])("checkToolCall %j", (args, error) => {
     expect(checkToolCall({ id: "x", name: "vimma_console", args }, TOOLS)).toBe(error);
@@ -689,6 +787,21 @@ describe("budgets", () => {
       isError: true,
       content: [{ type: "text", text: "Not run: the task reached its budget." }],
     });
+  });
+
+  test("a stop during a reply's last step ends as stopped, even with the budget spent", async () => {
+    const s = server([{ content: "", tool_calls: [call("vimma_tabs", {})] }]);
+    let task: any;
+    const r = runner({
+      vimma_tabs: () => {
+        task.stop();
+        return { content: [{ type: "text", text: "tabs" }] };
+      },
+    });
+    task = start({ fetch: s.fetch, runTool: r.runTool, budget: new Budget({ maxSteps: 1 }) });
+    const res = await task.done;
+    expect(r.calls).toHaveLength(1);
+    expect(res.outcome).toBe("stopped");
   });
 
   test("a task stops at max_tokens before running the reply's calls", async () => {
@@ -775,6 +888,7 @@ describe("clearContext", () => {
       },
       { role: "assistant", text: "", toolCalls: [{ id: "c2", name: "vimma_tabs", args: {} }] },
       { role: "assistant", text: "Milk is in the basket.", toolCalls: [] },
+      { role: "assistant", text: "", toolCalls: [] },
       { role: "user", text: "Task summary by Vimma: done, 2 steps." },
     ];
     expect(clearContext(history)).toEqual([
@@ -876,6 +990,72 @@ describe("older results leave the context in blocks", () => {
     const out = pruneResults(messages, 6);
     expect(out.slice(0, 4)).toEqual(messages.slice(0, 4));
     expect(bodies(out)[1].content[0].text).toBe(`${HEADER}\n${LEFT_OUT}`);
+  });
+
+  test("nothing to leave out gives back the same messages", () => {
+    const messages = conversation(12);
+    expect(pruneResults(messages, 0)).toBe(messages);
+    expect(pruneResults(messages, -1)).toBe(messages);
+    const few = conversation(5);
+    expect(pruneResults(few, 6)).toBe(few);
+  });
+
+  // Built here: one result of the given content, as the oldest of a conversation that leaves out
+  // exactly one result (keep 1, two results).
+  const oldest = (r: any): any => {
+    const messages: any[] = [
+      { role: "tool", results: [{ id: "c0", name: "vimma_open", isError: false, ...r }] },
+      { role: "tool", results: [page(1)] },
+    ];
+    return (pruneResults(messages, 1) as any[])[0].results[0];
+  };
+
+  test("the block boundary can fall inside one turn's results", () => {
+    const messages: any[] = [
+      { role: "tool", results: [page(0)] },
+      { role: "tool", results: [page(1), page(2)] },
+      { role: "tool", results: [page(3)] },
+    ];
+    // Four results, keep 2: the oldest two are left out, the turn's second result stays whole.
+    const out = bodies(pruneResults(messages, 2));
+    expect(out.map((r) => r.content.length)).toEqual([1, 1, 2, 2]);
+    expect(out[2]).toEqual(page(2));
+  });
+
+  test("a long refusal stays whole", () => {
+    const content = [{ type: "text", text: `Vimma refused it.\n${"why ".repeat(100)}` }];
+    expect(oldest({ isError: true, content })).toEqual({
+      id: "c0",
+      name: "vimma_open",
+      isError: true,
+      content,
+    });
+  });
+
+  test("a left-out result keeps the first line of its first text, not of an image", () => {
+    const r = oldest({
+      content: [
+        { type: "image", mimeType: "image/png", data: "A".repeat(400) },
+        { type: "text", text: "Screenshot of tab 3.\nIt shows a basket." },
+      ],
+    });
+    expect(r.content).toEqual([{ type: "text", text: `Screenshot of tab 3.\n${LEFT_OUT}` }]);
+  });
+
+  test("a left-out result that is not a page keeps its first line", () => {
+    const text = `Opened tab 3.\n${"line\n".repeat(100)}`;
+    expect(oldest({ content: [{ type: "text", text }] }).content).toEqual([
+      { type: "text", text: `Opened tab 3.\n${LEFT_OUT}` },
+    ]);
+  });
+
+  test("a result as long as its left-out form stays as it is", () => {
+    const content = [{ type: "text", text: `Opened tab 3.\n${"x".repeat(LEFT_OUT.length)}` }];
+    expect(oldest({ content }).content).toEqual(content);
+    const longer = [{ type: "text", text: `Opened tab 3.\n${"x".repeat(LEFT_OUT.length + 1)}` }];
+    expect(oldest({ content: longer }).content).toEqual([
+      { type: "text", text: `Opened tab 3.\n${LEFT_OUT}` },
+    ]);
   });
 
   test("a result that is a single line already stays as it is", () => {
