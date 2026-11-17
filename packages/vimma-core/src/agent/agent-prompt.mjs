@@ -51,7 +51,7 @@ const MAX_COUNT_DIGITS = 4;
  *   url?: unknown, host?: unknown, keys?: unknown, followed?: unknown, label?: unknown,
  *   kind?: unknown, text?: unknown, fields?: unknown, elements?: unknown, count?: unknown,
  *   code?: unknown, name?: unknown, size?: unknown, type?: unknown, ext?: unknown,
- *   danger?: unknown, unscanned?: unknown }} What
+ *   danger?: unknown, unscanned?: unknown, bookmarklet?: unknown }} What
  *   A question's `what` as the gate asks it: plain data, each value cleaned where it is shown.
  *   Which keys a question has depends on its tool; the values are the page's or the agent's.
  *   A `pay`, `submit`, `sent` or `here` that is not an object (`true`) still reads as one without
