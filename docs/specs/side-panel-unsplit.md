@@ -287,7 +287,9 @@ Decisions 1–11 follow the goal above. Decisions 12–19 are the answers to the
     [multiple-splits](multiple-splits.md), decision 4.) (Since changed again: it names the split
     and the keys back, "split S2 is hidden: ]s or ctrl+b S to go back, or mark tabs in ctrl+b b
     for a new split", and a second split is made from the side panel's marks;
-    [multiple-splits](multiple-splits.md), decisions 4 and 5.)
+    [multiple-splits](multiple-splits.md), decisions 4 and 5.) (Since changed a third time, #1215:
+    they are no longer refused; the tab shown alone and a new pane make a new split, and the
+    hidden split stays hidden; [multiple-splits](multiple-splits.md), behaviour 4 and decision 3.)
 
 ### Behaviour changes (option B)
 

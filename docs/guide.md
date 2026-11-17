@@ -1329,11 +1329,9 @@ alone in the whole window, as Firefox's own split view does. The split is not lo
 hidden, with its panes, sizes and focused pane, and the status bar says `split 3 hidden`. Go to
 any of its tabs, by any of the same routes, and the whole split comes back, with that tab's pane
 focused. A pinned tab works the same way. While the split is hidden the pane keys act on the tab
-you see as on a single pane, and `ctrl+b v` / `-` / `enter` say "split S1 is hidden: ]s or
-ctrl+b S to go back, or mark tabs in ctrl+b b for a new split"; the message stays until your
-next key. `]s` brings the split back. The hidden split survives a workspace switch and a
-restart. To show the tab you are on beside others, start another split from the side panel
-([Several splits](#several-splits)).
+you see as on a single pane: `ctrl+b v` / `-` / `enter` start a new split from it
+([Several splits](#several-splits)), and the hidden one keeps waiting. `]s` brings the split
+back. The hidden split survives a workspace switch and a restart.
 
 A new tab you open while the split shows (`ctrl+t`, `ctrl+b c`, `t`, `:tabnew`, `P`, a link
 opened in a new foreground tab, also with `f`, or a link from another app) shows alone too, right
@@ -1351,8 +1349,8 @@ widths Firefox gave them, with the selected tab's pane focused. The pane keys th
 and the workspace keeps it like any other split. If such a split's tabs are in different
 workspaces, Vimma separates its tabs again and the status bar says why; the tabs stay in their
 workspaces. If the workspace already has a split, Vimma separates it too and the status bar
-says "split undone: mark tabs in ctrl+b b for another split": a further split is made from the
-side panel ([Several splits](#several-splits)). Separating a split outside Vimma closes its
+says "split undone: mark tabs in ctrl+b b for another split": a further split is made with
+Vimma's own keys or the side panel ([Several splits](#several-splits)). Separating a split outside Vimma closes its
 panes.
 
 ### Several splits
@@ -1361,10 +1359,13 @@ A workspace can keep several splits, up to 9, and shows one at a time: an editor
 docs, and a second comparison of two pages, without breaking up the first.
 
 - **Starting another split.** Go to a tab that is in no split, or open a new one, so it shows
-  alone and the split waits hidden. Open the side panel (`ctrl+b b`): on a tab shown alone
-  nothing starts marked. Mark two or more tabs with `space` or `V` and press `Enter`; they become
-  a new split, shown at once, and the split you had before waits hidden. A marked tab that was in another split leaves
-  it, as `ctrl+b x` would close its pane there; a split left with one pane ends.
+  alone and the split waits hidden. Press `ctrl+b v`, `ctrl+b -` or `ctrl+b enter` (or run
+  `:vsplit` / `:split`): the tab and a new pane on the start page become a new split, shown at
+  once with the new pane focused, and the split you had before waits hidden. Or open the side
+  panel (`ctrl+b b`), where on a tab shown alone nothing starts marked, mark two or more tabs
+  with `space` or `V` and press `Enter`; they become a new split in the same way. A marked tab
+  that was in another split leaves it, as `ctrl+b x` would close its pane there; a split left
+  with one pane ends.
 - **Numbers and colours.** Each split has a number, `S1` to `S9`, which it keeps while it exists,
   and the colour of that number from the theme. In the side panel each split's tabs carry a
   stripe in its colour and its label, and the head says `S2: 3 panes · 3 splits`, or
@@ -1375,13 +1376,12 @@ docs, and a second comparison of two pages, without breaking up the first.
   or `Enter` shows one, `/` filters by title. Selecting any tab of a split, by any route, shows
   that split whole too. Without a split, `]s` and `[s` say `no splits`, and `ctrl+b S` says
   `no splits in this workspace`.
-- **Splitting a lone tab.** While the workspace has a split and a tab shows alone, `ctrl+b v`,
-  `ctrl+b -` and `ctrl+b enter` are refused, so a split you meant to be on screen is never hidden
-  further by mistake; the message names the split and the ways back. With no split in the
-  workspace these keys split the tab as usual.
 - **The limit.** `[panes] max_splits` in [config.toml](#configtoml) sets how many splits a
-  workspace keeps (1 to 9, default 9); `1` gives one split per workspace. Past it, the side
-  panel says `new split: at most 9 splits in a workspace` and changes nothing.
+  workspace keeps (1 to 9, default 9); `1` gives one split per workspace. Past it, a new split
+  is refused with `new split: at most 9 splits in a workspace` and nothing changes; from
+  `ctrl+b v`, `-` or `enter` the message stays until your next key. With `max_splits = 1`, the
+  side panel's marks replace the one split, while those keys are refused, so a key never ends
+  the hidden split.
 - **Kept.** A workspace switch, a restart and the private workspace keep every split, its sizes
   and which one shows.
 

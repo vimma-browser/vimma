@@ -63,19 +63,6 @@ export function splitLabel(number) {
 }
 
 /**
- * Why a new pane is refused on a lone tab while the workspace keeps splits (decision 4): it names
- * the split shown last, the keys back to it and the way to a new split. The keys are the
- * defaults; a remapped key is not followed, as in every other notice.
- * @param {number} number
- */
-export function hiddenSplitRefusal(number) {
-  return (
-    `split ${splitLabel(number)} is hidden: ]s or ctrl+b S to go back, ` +
-    "or mark tabs in ctrl+b b for a new split"
-  );
-}
-
-/**
  * @param {unknown} max
  * @returns {number}
  */
@@ -246,11 +233,60 @@ export function selectSplitTab(s, tabId) {
 }
 
 /**
- * Behaviour 5's refusal at `max` splits; never at `max` 1, where the new split replaces the old.
+ * The lowest number no split of `s` has (decision 8).
+ * @param {Splits} s
+ */
+function freeNumber(s) {
+  const used = new Set(s.splits.map((x) => x.number));
+  let number = 1;
+  while (used.has(number)) number++;
+  return number;
+}
+
+/**
+ * Behaviour 5's refusal at `max` splits.
  * @param {number} max
  */
 function maxRefusal(max) {
-  return `new split: at most ${max} splits in a workspace`;
+  return `new split: at most ${max} ${max === 1 ? "split" : "splits"} in a workspace`;
+}
+
+/**
+ * Why a new split from a key on a lone tab is refused (behaviour 4): `max` splits already, `max`
+ * 1 included, so a key never ends a hidden split. Null when there is room.
+ * @param {Splits} s
+ * @param {SplitsOptions} [options]
+ * @returns {string | null}
+ */
+export function splitLimitRefusal(s, { max = MAX_SPLITS_DEFAULT } = {}) {
+  const limit = checkMax(max);
+  return s.splits.length >= limit ? maxRefusal(limit) : null;
+}
+
+/**
+ * A new split of tree `panes`, numbered with the lowest free number and shown at once, with the
+ * tree's own focus; the split shown before, if any, is hidden (behaviour 4: `ctrl+b v` on a tab
+ * shown alone). Its tabs must be in no split. At `max` splits it is refused (`max` 1 included)
+ * and `splits` is the input itself.
+ * @param {Splits} s
+ * @param {Panes} panes  two panes or more
+ * @param {SplitsOptions} [options]
+ * @returns {{ splits: Splits, refusal: string | null }}
+ */
+export function addSplit(s, panes, options = {}) {
+  const refusal = splitLimitRefusal(s, options);
+  const tabs = leaves(panes).map((l) => l.tab);
+  if (tabs.length < 2) throw new SplitsError("bad-tabs", "a new split needs two panes or more");
+  for (const t of tabs) {
+    const owner = splitOfTab(s, t);
+    if (owner) throw new SplitsError("bad-tabs", `tab "${t}" is in split ${owner.number}`);
+  }
+  if (refusal) return { splits: s, refusal };
+  const number = freeNumber(s);
+  return {
+    splits: make([...s.splits, numbered(panes, number)], number, number),
+    refusal: null,
+  };
 }
 
 /**
@@ -273,9 +309,7 @@ export function newSplit(s, tabIds, { max = MAX_SPLITS_DEFAULT, focus } = {}) {
   for (const t of tabIds) rest = removeSplitTab(rest, t);
   if (limit === 1) rest = EMPTY;
   if (rest.splits.length >= limit) return { splits: s, refusal: maxRefusal(limit) };
-  const used = new Set(rest.splits.map((x) => x.number));
-  let number = 1;
-  while (used.has(number)) number++;
+  const number = freeNumber(rest);
   const tree = numbered(createRow(tabIds, focus === undefined ? {} : { focus }), number);
   return { splits: make([...rest.splits, tree], number, number), refusal: null };
 }

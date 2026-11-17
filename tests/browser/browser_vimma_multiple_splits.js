@@ -490,7 +490,8 @@ add_task(async function a_lone_tab_picked_before_a_split_paints_ends_the_switch(
   await assertShown(tab("e"), "e");
 });
 
-add_task(async function a_lone_tab_hides_both_and_splitting_it_names_the_split() {
+// Splitting the lone tab itself (behaviour 4, changed by #1215) is browser_vimma_split_lone_tab.js.
+add_task(async function a_lone_tab_hides_both() {
   await pick(tab("f"));
   Assert.equal(splitsOf().shown, null, "no split shows");
   Assert.ok(view().hidden, "the current tree is a hidden view");
@@ -498,17 +499,7 @@ add_task(async function a_lone_tab_hides_both_and_splitting_it_names_the_split()
   Assert.equal(count(), "2 splits (none shown)", "the header counts them");
   EventUtils.synthesizeKey("KEY_Escape", {});
   await until(() => !isOpen(), "Esc closes the panel");
-
-  await focusContent(gBrowser.selectedBrowser);
-  prefix("v");
-  await until(() => notice() !== null, "a notice");
-  Assert.equal(
-    notice(),
-    "split S2 is hidden: ]s or ctrl+b S to go back, or mark tabs in ctrl+b b for a new split",
-    "naming the split shown last",
-  );
-  Assert.equal(splitsOf().all, "S1:x[a,b] S2:x[c,d]", "nothing changed");
-  EventUtils.synthesizeKey("KEY_Escape", {});
+  Assert.equal(splitsOf().all, "S1:x[a,b] S2:x[c,d]", "both are kept");
 });
 
 add_task(async function marking_a_tab_of_another_split_moves_it_and_ends_that_split() {
