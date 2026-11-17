@@ -11,11 +11,11 @@ link targets for hints, which chrome must treat as untrusted.
   [`text over the cap is refused, not truncated`](../../packages/vimma-core/test/pageurl.test.ts)
 - U3. Bookmarks **must** open only http, https, file and about URLs. A bookmarklet (a stored
   bookmark whose URL is `javascript:`) is listed and **never** runs unless the config key
-  `[bookmarks] bookmarklets` is `"user"` or `"agent"` (U8); then it runs only when you pick it in the
-  bookmarks panel (`Enter` or `l`), only in the current tab's http, https or file page, in that
+  `[bookmarks] bookmarklets` is `"user"` or `"agent"` (U8); then it runs only when you pick it in
+  the bookmarks panel (`Enter` or `l`), only in the current tab's http, https or file page, in that
   page's own global with the page's principal (the load Firefox makes for a picked bookmarklet,
-  [bookmarklets](../specs/bookmarklets.md) B8), **never** with the system principal and never in
-  a new tab or pane. A `data:` bookmark and every other scheme **never** open, at any level.
+  [bookmarklets](../specs/bookmarklets.md) B8), **never** with the system principal and never in a
+  new tab or pane. A `data:` bookmark and every other scheme **never** open, at any level.
   [`javascript_and_data_bookmarks_refuse_with_a_notice`](../../tests/browser/browser_vimma_bookmarks.js),
   [`a javascript: bookmark is listed but refuses to open`](../../packages/vimma-core/test/bookmarks.test.ts),
   [`none_refuses_from_the_panel`](../../tests/browser/browser_vimma_bookmarklets.js),

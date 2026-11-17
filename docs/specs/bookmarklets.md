@@ -132,12 +132,12 @@ is the user's own, picked by the user, so this is opt-in.
    system-principal page; this check also refuses Vimma's start page, `about:` pages and
    `moz-extension:` pages, where a user's bookmarklet has nothing to do and
    an extension's rights must not be borrowed.
-10. **B10. A reusable entry point for every user-chosen bookmark.**
-    `openUserBookmark(ctx, guid, where)` in `host/bookmark-actions.mjs` reads the bookmark by
-    its Places guid, decides with B6 as `"user"`, and opens or runs it. The panel calls it, and `:bookmark_open`
-    ([#1219](https://github.com/vimma-browser/vimma/issues/1219)) is to call it with the guid of
-    the bookmark the user picked: what the user types there chooses among stored bookmarks and
-    never becomes the URL.
+10. **B10. A reusable entry point for every user-chosen bookmark.** `openUserBookmark(ctx, guid,
+where)` in `host/bookmark-actions.mjs` reads the bookmark by its Places guid, decides with B6 as
+    `"user"`, and opens or runs it. The panel calls it, and `:bookmark_open`
+    ([#1219](https://github.com/vimma-browser/vimma/issues/1219)) is to call it with the guid of the
+    bookmark the user picked: what the user types there chooses among stored bookmarks and never
+    becomes the URL.
 11. **B11. Private windows.** In a private window (and the private workspace) a user's
     bookmarklet runs as in a normal one, as Firefox's does: it is the user's own choice on the
     page they see, and the page is already private. Nothing about the run is stored. An agent
@@ -149,7 +149,7 @@ is the user's own, picked by the user, so this is opt-in.
     whose title equals `name` exactly, anywhere in the user's bookmarks. Exactly one must
     match, because the question must name exactly one script; none and several fail with the
     same message (B16).
-    one script. Vimma never lists bookmarklets to the agent: the user tells the agent which one
+    Vimma never lists bookmarklets to the agent: the user tells the agent which one
     to run, so the agent learns no bookmark it was not told about. A `javascript:` text from the
     agent, a page or a tool argument is never run: `name` is only compared with titles. A tab
     whose page fails B9 is refused before the question too. The server's instructions say, in
@@ -171,15 +171,15 @@ is the user's own, picked by the user, so this is opt-in.
     so a level lowered while the question waited refuses (B13). Then it runs with B8 (no popups)
     on a page that passes B9. These checks read the parent's view of the tab; the race that
     leaves is described under Security and privacy.
-16. **B16. Rate and result.** At most 6 `vimma_bookmarklet` calls a minute per connection,
-    counted before the bookmark is looked up, so an agent cannot probe titles quickly or flood
-    the user with questions. Whether exactly one bookmarklet has a title still leaks, at that
-    rate: the refusal before the question tells an agent that a title it guessed is not one
-    bookmarklet's. It cannot tell none from several (one message for both, "no single
-    bookmarklet has that title: check it is one you saved, and that no other bookmarklet shares
-    it"), and it learns nothing of a bookmarklet's URL or folder. The result is
-    `{ ran: true }`; the script's return value is not sent back, and the agent reads the page with `vimma_read_page` as after any other step.
-    Every call is a `:mcp log` row (M23).
+16. **B16. Rate and result.** At most 6 `vimma_bookmarklet` calls a minute per connection, counted
+    before the bookmark is looked up, so an agent cannot probe titles quickly or flood the user with
+    questions. Whether exactly one bookmarklet has a title still leaks, at that rate: the refusal
+    before the question tells an agent that a title it guessed is not one bookmarklet's. It cannot
+    tell none from several (one message for both, "no single bookmarklet has that title: check it is
+    one you saved, and that no other bookmarklet shares it"), and it learns nothing of a
+    bookmarklet's URL or folder. The result is `{ ran: true }`; the script's return value is not
+    sent back, and the agent reads the page with `vimma_read_page` as after any other step. Every
+    call is a `:mcp log` row (M23).
 17. **B17. Typed and page text never run script.** The setting does not change `p`, `P`,
     `:open`, `:tabnew`, keyword bookmarklets (security.md U1, U4, U5), the socket's `open`,
     `vimma_open` (M6), a follow (M18) or a page's own links: their URL is text someone typed or a
