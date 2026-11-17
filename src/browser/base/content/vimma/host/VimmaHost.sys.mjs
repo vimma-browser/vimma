@@ -502,7 +502,7 @@ function siteInsert(browser) {
  * @returns {string | null}
  */
 function pageSite(keymap, browser) {
-  if (!browser) return null;
+  if (!browser || !keymap.hasSiteUnbinds()) return null;
   /** @type {string} */
   let host;
   try {
@@ -1382,7 +1382,10 @@ export const VimmaHost = {
       mode === "index";
     switch (result.kind) {
       case "pass":
-        if (this._editKey(state, e, mode, chord)) return;
+        // A key the site keeps is not Vimma's text-field key either (site-unbind decision 9).
+        if (!state.keymap.unbinds(site, formatKey(chord)) && this._editKey(state, e, mode, chord)) {
+          return;
+        }
         if (modal) consume(e);
         // Firefox runs these outside its keysets (tabbox.js, browser-ctrlTab.js, Tabbrowser's
         // on_keydown, Firefox 158), where a disabled <key> cannot stop them; each skips a keydown
@@ -1715,6 +1718,9 @@ export const VimmaHost = {
     const command = chord && this._editCommand(state, chord);
     const browser = this._contentBrowser(state);
     if (!command || !browser || this._mode(state) !== "insert") return;
+    // The reply Firefox asks for its own (disabled) key on the chord comes here too: a key the
+    // site keeps is the page's whatever brought it back (site-unbind decision 9).
+    if (state.keymap.unbinds(pageSite(state.keymap, browser), formatKey(chord))) return;
     // A late reply (a busy page) must not edit, or press Enter in, the tab or pane focused since:
     // Firefox dispatches it on the <browser> the key went to (BrowserParent::RecvReplyKeyEvent).
     const remote = /** @type {ChromeKeyEvent} */ (e).isReplyEventFromRemoteContent;

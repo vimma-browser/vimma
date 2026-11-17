@@ -530,6 +530,18 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
       return trie;
     },
     /**
+     * Whether some `[sites]` table unbinds a key: without one, the host need not read a page's
+     * host on every key (decision 6).
+     */
+    hasSiteUnbinds: () => anyUnbound,
+    /**
+     * Whether `site` (from `site()`) gives the page `key` (canonical chord, `ctrl+w`), so that
+     * Vimma neither runs a binding on it nor edits a field with it (decision 9).
+     * @param {string | null} site
+     * @param {string} key
+     */
+    unbinds: (site, key) => site !== null && !!siteRules.get(site)?.keys.has(key),
+    /**
      * The `[sites."<host>"]` table, as written, whose `unbind` applies on `host` (a page's
      * `URL.hostname`), or null: none matches, or the most specific match unbinds nothing.
      * @param {string} host

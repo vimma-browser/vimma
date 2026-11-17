@@ -143,6 +143,17 @@ describe("[sites] unbind in the keymap", () => {
     expect(on(k, "a.com", "normal", "shift+t")).toBeUndefined();
   });
 
+  test("unbinds() names the chords a site gives the page; hasSiteUnbinds() says whether any", () => {
+    const site = keymap.site("github.com");
+    expect(keymap.unbinds(site, "ctrl+t")).toBe(true);
+    expect(keymap.unbinds(site, "t")).toBe(true);
+    expect(keymap.unbinds(site, "j")).toBe(false);
+    expect(keymap.unbinds(null, "t")).toBe(false);
+    expect(keymap.hasSiteUnbinds()).toBe(true);
+    expect(compileKeymap({}).hasSiteUnbinds()).toBe(false);
+    expect(keymapOf(v2('[sites."a.com"]', 'insert = "never"')).hasSiteUnbinds()).toBe(false);
+  });
+
   test("the bindings listed for help and :map are the configuration's", () => {
     expect(keymap.keysFor("new_tab")).toContain("t");
   });

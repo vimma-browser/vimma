@@ -32,10 +32,13 @@ const STEP = 60;
 
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({ set: [["general.smoothScroll", false]] });
-  // `t` and `ctrl+l` are the page's on example.com and its subdomains, as config.toml's
-  // [sites."example.com"] unbind = ["t", "ctrl+l"] makes them.
+  // `t`, `ctrl+l` and `ctrl+w` are the page's on example.com and its subdomains, as
+  // config.toml's [sites."example.com"] unbind = ["t", "ctrl+l", "ctrl+w"] makes them.
   VimmaHost.configure({
-    keymap: compileKeymap({ sites: { "example.com": { unbind: ["t", "ctrl+l"] } } }, { mac: MAC }),
+    keymap: compileKeymap(
+      { sites: { "example.com": { unbind: ["t", "ctrl+l", "ctrl+w"] } } },
+      { mac: MAC },
+    ),
   });
   registerCleanupFunction(() => VimmaHost.configure({ keymap: compileKeymap({}, { mac: MAC }) }));
 });
@@ -107,7 +110,7 @@ add_task(async function a_site_unbound_chord_reaches_a_field_in_insert_mode() {
   await withPage(PAGE, async (browser) => {
     await focusField(browser);
     await waitForMode(browser, "insert");
-    EventUtils.synthesizeKey("l", { accelKey: true });
+    EventUtils.synthesizeKey("l", { ctrlKey: true });
     Assert.ok(await waitForPageKey(browser, ["l"]), "the page got ctrl+l, not prevented");
     Assert.equal(document.activeElement, browser, "focus stayed in the page, not the URL bar");
     Assert.equal(VimmaHost._browserMode(browser), "insert", "the field keeps insert");
@@ -120,5 +123,34 @@ add_task(async function esc_still_leaves_insert() {
     await waitForMode(browser, "insert");
     EventUtils.synthesizeKey("KEY_Escape");
     await waitForMode(browser, "normal");
+  });
+});
+
+/** @param {XULBrowserElement} browser */
+function fieldValue(browser) {
+  return SpecialPowers.spawn(
+    browser,
+    [],
+    () => /** @type {HTMLInputElement} */ (content.document.getElementById("field")).value,
+  );
+}
+
+// Vimma's text-field keys (ctrl+w deletes the word before the caret) are Vimma acting on the key
+// too.
+add_task(async function a_site_unbound_edit_key_is_left_to_the_field() {
+  await withPage(PAGE, async (browser) => {
+    await focusField(browser);
+    await waitForMode(browser, "insert");
+    EventUtils.sendString("one two");
+    await TestUtils.waitForCondition(
+      async () => (await fieldValue(browser)) === "one two",
+      "typed",
+    );
+    EventUtils.synthesizeKey("w", { ctrlKey: true });
+    Assert.ok(await waitForPageKey(browser, ["w"]), "the page got ctrl+w, not prevented");
+    // A key typed after it lands after the edit would have: the field's text tells.
+    EventUtils.sendString("!");
+    await TestUtils.waitForCondition(async () => (await fieldValue(browser)).endsWith("!"), "!");
+    Assert.equal(await fieldValue(browser), "one two!", "Vimma did not delete the word");
   });
 });
