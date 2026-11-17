@@ -84,7 +84,7 @@ add_task(async function insert_ctrl_w_bound_to_tab_close_closes_the_tab_not_the_
   BrowserTestUtils.removeTab(keep);
 });
 
-// docs/security/13-page-modes.md K11: the page's own ctrl+w is untrusted and never Vimma's.
+// docs/security/13-page-modes.md K12: the page's own ctrl+w is untrusted and never Vimma's.
 add_task(async function a_ctrl_w_the_page_dispatches_closes_nothing() {
   bind({ modal: { insert: { "<C-w>": "tab.close" } } });
   const tab = await openTyping();
@@ -98,7 +98,7 @@ add_task(async function a_ctrl_w_the_page_dispatches_closes_nothing() {
   // A positive control: a real key after it is typed, so the page's keys have had their turn.
   EventUtils.synthesizeKey("x");
   await until(async () => (await fieldValue(browser)) === "foo barx", "x is typed");
-  Assert.ok(tab.isConnected, "the tab is still open");
+  Assert.ok(tab.isConnected && !tab.closing, "the tab is still open");
   Assert.equal(gBrowser.selectedTab, tab, "and selected");
   BrowserTestUtils.removeTab(tab);
 });
@@ -176,6 +176,44 @@ add_task(async function panel_close_active_tab_closes_the_shown_tab_and_keeps_th
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !isOpen(), "Esc closes the panel");
   for (const t of [one, two]) if (t.isConnected) BrowserTestUtils.removeTab(t);
+});
+
+// Decision 2: a pinned tab is in no workspace, so the model's active tab stays on the last
+// unpinned one; the key must not close that one while the pinned tab is shown.
+add_task(async function panel_close_active_tab_on_a_shown_pinned_tab_closes_nothing() {
+  const ww = /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
+  await ww.ready;
+  bind({ modal: { panel: { "<C-w>": "panel.close_active_tab" } } });
+  // m3-workspaces decision 11 unpins a tab pinned in a window with workspaces; a window that
+  // keeps it (unpinsPinnedTabs false) shows it outside the model.
+  ww.unpinsPinnedTabs = false;
+  registerCleanupFunction(() => (ww.unpinsPinnedTabs = true));
+  const a = await openTitled("pin-a");
+  const b = await openTitled("pin-b");
+  const pin = await openTitled("pin-pinned");
+  gBrowser.pinTab(pin);
+  gBrowser.selectedTab = b;
+  await until(() => gBrowser.selectedTab === b, "pin-b is selected");
+  gBrowser.selectedTab = pin;
+  await until(() => gBrowser.selectedTab === pin, "the pinned tab is shown");
+  await focusContent(pin.linkedBrowser);
+  EventUtils.synthesizeKey("b", { ctrlKey: true });
+  EventUtils.synthesizeKey("b");
+  await until(isOpen, "ctrl+b b opens the side panel");
+  EventUtils.synthesizeKey("w", { ctrlKey: true });
+  await until(
+    () => document.getElementById("vimma-notice")?.textContent?.includes("pinned tab"),
+    "the panel says the shown tab is pinned",
+  );
+  Assert.ok(a.isConnected && !a.closing, "pin-a is open");
+  Assert.ok(b.isConnected && !b.closing, "pin-b, the model's active tab, is open");
+  Assert.ok(pin.isConnected && !pin.closing, "the pinned tab is open");
+  Assert.ok(isOpen(), "the panel stays open");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !isOpen(), "Esc closes the panel");
+  gBrowser.unpinTab(pin);
+  ww.unpinsPinnedTabs = true;
+  for (const t of [a, b, pin]) BrowserTestUtils.removeTab(t);
 });
 
 // Decision 3: without the side panel there is no row to keep, so it is tab.close.
