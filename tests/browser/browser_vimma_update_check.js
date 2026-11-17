@@ -546,7 +546,7 @@ add_task(async function a_saved_array_is_not_read_as_its_text() {
   Assert.equal(VimmaUpdates.status().serial, "20991231000000");
   Assert.deepEqual(VimmaUpdates.status().key, { id: "k", slot: "primary" });
   for (const field of ["appVersion", "buildId", "displayVersion", "detailsUrl"]) {
-    save({ offer: { ...offer, [field]: [/** @type {any} */ (offer)[field]] } });
+    save({ offer: { ...offer, [field]: [/** @type {Record<string, unknown>} */ (offer)[field]] } });
     VimmaUpdates._load();
     Assert.equal(VimmaUpdates.status().offer, null, `${field} as an array`);
     Assert.equal(VimmaUpdates.status().outcome, "current", `${field} as an array`);

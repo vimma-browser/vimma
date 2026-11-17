@@ -90,7 +90,7 @@ add_task(async function a_ctrl_w_the_page_dispatches_closes_nothing() {
   const tab = await openTyping();
   const browser = tab.linkedBrowser;
   const sent = await SpecialPowers.spawn(browser, [], () => {
-    const page = /** @type {any} */ (content.wrappedJSObject);
+    const page = /** @type {{ fakeCtrlW(): void, sent: string[] }} */ (content.wrappedJSObject);
     page.fakeCtrlW();
     return [...page.sent];
   });

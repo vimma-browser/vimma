@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { anyCount, anys, jsdocTypes } from "./jsdoc-any.ts";
 
 // Issue #1225: vimma-core stays JavaScript with JSDoc (ADR-025, decision 6), and `tsc --checkJs`
 // accepts `any` there, which turns its checks off. The slices of #1225 replace each `any` with
@@ -25,48 +26,6 @@ function sources(dir: string): string[] {
     if (e.isDirectory()) return path === VENDOR ? [] : sources(path);
     return /\.m?js$/.test(e.name) ? [path] : [];
   });
-}
-
-/**
- * The type expressions of a source's JSDoc comments: the braces after a tag such as `@param`,
- * `@type` or `@typedef`, nested braces included. Prose that says "any" is not counted.
- */
-function jsdocTypes(source: string): string[] {
-  const types: string[] = [];
-  for (const comment of source.match(/\/\*\*[\s\S]*?\*\//g) ?? []) {
-    for (const tag of comment.matchAll(/@[a-zA-Z]+\s*\{/g)) {
-      let depth = 0;
-      const start = (tag.index ?? 0) + tag[0].length - 1;
-      for (let i = start; i < comment.length; i++) {
-        if (comment[i] === "{") depth++;
-        else if (comment[i] === "}" && --depth === 0) {
-          types.push(comment.slice(start + 1, i));
-          break;
-        }
-      }
-    }
-  }
-  return types;
-}
-
-/**
- * How many `any` a JSDoc type expression holds: a `*` that stands as a type (`*`, `Array<*>`,
- * `* | null`) and a bare `?` are one each, as checkJs reads them. The ` * ` that starts each
- * continuation line of the comment is not a type.
- */
-function anyCount(type: string): number {
-  const text = type.replace(/\n\s*\*/g, "\n");
-  const bare = text.trim() === "?" ? 1 : 0;
-  const stars = (text.match(/(^|[<,|(\s])\*(?=$|[>,|)[\s])/g) ?? []).length;
-  return bare + stars + (text.match(/\bany\b/g) ?? []).length;
-}
-
-/** Each `any` in a source's JSDoc types, as `path: type`. */
-function anys(path: string): string[] {
-  const rel = relative(ROOT, path);
-  return jsdocTypes(readFileSync(path, "utf8")).flatMap((t) =>
-    Array.from({ length: anyCount(t) }, () => `${rel}: ${t.replace(/\s+/g, " ").trim()}`),
-  );
 }
 
 describe("vimma-core's any ratchet (#1225)", () => {
@@ -101,12 +60,12 @@ describe("vimma-core's any ratchet (#1225)", () => {
   });
 
   it("has no any in packages/vimma-core/src/agent, #1225's first slice", () => {
-    const found = sources(join(SRC, "agent")).flatMap(anys);
+    const found = sources(join(SRC, "agent")).flatMap((p) => anys(ROOT, p));
     expect(found).toEqual([]);
   });
 
   it(`has at most ${MAX_ANY} any in packages/vimma-core/src`, () => {
-    const found = sources(SRC).flatMap(anys);
+    const found = sources(SRC).flatMap((p) => anys(ROOT, p));
     expect(found.length, found.join("\n")).toBeLessThanOrEqual(MAX_ANY);
   });
 });

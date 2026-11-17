@@ -411,7 +411,7 @@ add_task(async function agent_role_cannot_open_setup() {
   });
   const c = new Client(/** @type {number} */ (VimmaControl.port));
   const welcome = await c.handshake({ protocol: 2, role: "agent" });
-  Assert.equal(welcome.role, "agent");
+  Assert.equal(welcome?.role, "agent");
   await c.call("agent-hello", { client: { name: "setup-test" }, via: "test" });
   const tabs = gBrowser.tabs.length;
   for (const url of [SETUP_URL, "chrome://browser/content/vimma/setup/setup.html"]) {

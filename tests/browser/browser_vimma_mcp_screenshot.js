@@ -296,7 +296,7 @@ add_task(async function test_screenshot_is_smaller_unless_asked_full() {
   });
   Assert.ok((await elements(c, tab)).ok, "vimma_elements lists the page");
   const r = await screenshot(c, tab, { labels: true });
-  Assert.ok(r.result.labels > 0, "labels are drawn");
+  Assert.ok((r.result.labels ?? 0) > 0, "labels are drawn");
   const labelled = await decode(r.result);
   const style = getComputedStyle(document.documentElement);
   const hint = rgb(style.getPropertyValue("--vimma-hint-bg").trim() || "#ff4fb8");
@@ -440,6 +440,7 @@ add_task(async function test_screenshot_and_the_agents_own_steps_exclude_each_ot
   const tab = await openAgentTab();
   const c = await agentClient();
   // A grant, so the calls below run unasked; it covers keys too (mcp-grants G1).
+  /** @type {ControlReply<"agent-screenshot" | "agent-keys">} */
   let r = await screenshot(c, tab, {}, { kind: "grant", minutes: 5 });
   Assert.ok(r.ok, "a screenshot grant");
   Assert.ok((await c.call("agent-keys", { tab: idOf(tab), keys: "gg" })).ok, "keys run under it");
@@ -530,7 +531,7 @@ add_task(async function test_screenshot_under_a_grant_notice_log_and_rate() {
     if (!x.ok) busy = { i, x };
   }
   Assert.equal(busy?.i, 10, "the 13th screenshot in a minute is refused");
-  Assert.equal(busy?.x.error.reason, "busy", "as busy");
+  Assert.equal(busy?.x.error?.reason, "busy", "as busy");
   Assert.equal(AgentGate.log[0].outcome, "busy", "and logged");
   c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);

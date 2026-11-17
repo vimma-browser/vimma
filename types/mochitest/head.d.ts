@@ -227,8 +227,20 @@ declare function tidyTask(
   task: () => Promise<void>,
   after: () => Promise<void>,
 ): () => Promise<void>;
-/** The discovery file's contents: port, token, protocol and roles. */
-declare function discovery(): Promise<any>;
+/**
+ * The discovery file's contents, as VimmaControl writes them (discoveryOf): `version` only for a
+ * display version of the form X.Y.Z.
+ * @returns {Promise<{ protocol: number, port: number, token: string, pid: number,
+ *   roles: string[], version?: string }>}
+ */
+declare function discovery(): Promise<{
+  protocol: number;
+  port: number;
+  token: string;
+  pid: number;
+  roles: string[];
+  version?: string;
+}>;
 /** HMAC-SHA256 hex, as the server's challenge. @param {string} key @param {string} text */
 declare function hmacHex(key: string, text: string): Promise<string>;
 /** A protocol client over nsISocketTransport: JSON lines both ways. */
@@ -238,20 +250,25 @@ declare class Client {
   input: nsIAsyncInputStream;
   binary: nsIBinaryInputStream;
   buffer: string;
-  /** @type {any[]} */
-  messages: any[];
+  /** @type {ControlMessage[]} */
+  messages: ControlMessage[];
   /** @type {Array<() => void>} */
   waiters: Array<() => void>;
   closed: boolean;
-  nextId: any;
+  /** The last request's id; none before the first. */
+  nextId: number;
   /** @param {number} port */
   constructor(port: number);
   wait(): void;
   onInputStreamReady(): void;
   end(): void;
   wake(): void;
-  /** The next message matching `pred`, or null once closed. @param {(m: any) => boolean} pred */
-  take(pred?: (m: any) => boolean): Promise<any>;
+  /**
+   * The next message matching `pred`, or null once closed.
+   * @param {(m: ControlMessage) => boolean} pred
+   * @returns {Promise<ControlMessage | null>}
+   */
+  take(pred?: (m: ControlMessage) => boolean): Promise<ControlMessage | null>;
   /** @param {object} message */
   send(message: object): void;
   /** Several messages in one write, so the server reads them together. @param {object[]} ms */
@@ -259,6 +276,7 @@ declare class Client {
   /**
    * The handshake with `hello` (protocol and role); resolves to the welcome or the error.
    * @param {{ protocol: number, role?: string }} hello
+   * @returns {Promise<ControlMessage | null>}
    */
   handshake(
     hello: {
@@ -266,13 +284,27 @@ declare class Client {
       role?: string;
     },
     auth?: {},
-  ): Promise<any>;
-  /** @param {string} command @param {object} [args] @param {number} [id] */
-  request(command: string, args?: object, id?: number): number;
-  /** @param {number} id */
-  response(id: number): Promise<any>;
-  /** Send and wait for the answer. @param {string} command @param {object} [args] */
-  call(command: string, args?: object): Promise<any>;
+  ): Promise<ControlMessage | null>;
+  /**
+   * @template {string} C
+   * @param {C} command @param {object} [args] @param {number} [id]
+   * @returns {ControlRequestId<C>}
+   */
+  request<C extends string>(command: C, args?: object, id?: number): ControlRequestId<C>;
+  /**
+   * The response to request `id`; throws if the connection closes first.
+   * @template {string} C
+   * @param {ControlRequestId<C>} id
+   * @returns {Promise<ControlReply<C>>}
+   */
+  response<C extends string>(id: ControlRequestId<C>): Promise<ControlReply<C>>;
+  /**
+   * Send and wait for the answer.
+   * @template {string} C
+   * @param {C} command @param {object} [args]
+   * @returns {Promise<ControlReply<C>>}
+   */
+  call<C extends string>(command: C, args?: object): Promise<ControlReply<C>>;
   close(): void;
 }
 

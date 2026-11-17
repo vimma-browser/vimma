@@ -115,7 +115,8 @@ async function question() {
 
 /**
  * `command` with `args`, its question answered once; the response, and when it came.
- * @param {Client} c @param {string} command @param {object} args
+ * @template {string} C
+ * @param {Client} c @param {C} command @param {object} args
  */
 async function call(c, command, args) {
   const id = c.request(command, args);
@@ -266,7 +267,7 @@ addTidyTask(async function test_a_followed_link_by_keys_is_ready_at_domcontentlo
   const list = await call(c, "agent-keys", { tab: idOf(tab), keys: "f" });
   Assert.ok(list.r.ok, "f lists the links");
   const line = list.r.result.links
-    .split("\n")
+    ?.split("\n")
     .find((/** @type {string} */ l) => l.includes('"Slow page"'));
   const label = line?.split(" ")[0];
   Assert.ok(label, "the slow page's link is listed");

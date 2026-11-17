@@ -31,7 +31,7 @@ add_task(async function state_leaves_a_stale_resize_mode_as_it_found_it() {
   Services.prefs.setBoolPref(ENABLED_PREF, true);
   await VimmaControl.settled();
   const c = new Client(/** @type {number} */ (VimmaControl.port));
-  Assert.equal((await c.handshake({ protocol: 1 })).type, "welcome", "a full connection");
+  Assert.equal((await c.handshake({ protocol: 1 }))?.type, "welcome", "a full connection");
   Assert.ok(!PaneViews.get(window)?.panes, "one pane");
 
   const state = /** @type {{ resize: boolean }} */ (VimmaHost._state(window));

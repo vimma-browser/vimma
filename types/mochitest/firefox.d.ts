@@ -455,6 +455,8 @@ interface UrlbarInputTestMembers {
       readonly payload: { readonly suggestion?: string; readonly url?: string };
     } | null;
     readonly selectedElement: Element | null;
+    /** The view's panel, which holds its rows (the address bar's `.urlbarView`). */
+    readonly panel: HTMLElement;
     /** Closes the view (engine/browser/components/urlbar/content/UrlbarView.mjs). */
     close(options?: { elementPicked?: boolean; showFocusBorder?: boolean }): void;
   };

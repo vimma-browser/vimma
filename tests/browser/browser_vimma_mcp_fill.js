@@ -309,7 +309,7 @@ addTidyTask(async function test_fill_refuses_password_card_otp_and_file_fields()
   const tab = await openAgentTab();
   const c = await agentClient();
   const by = await labels(c, tab);
-  for (const [field, value, message] of [
+  for (const [field, value, message] of /** @type {[string, string | boolean, string][]} */ ([
     [by.Password, "hunter2", `field "${by.Password}" is a password field; Vimma never fills it`],
     [by.Code, "123456", `field "${by.Code}" is a one-time-code field; Vimma never fills it`],
     [by.Card, "4111111111111111", `field "${by.Card}" is a payment card field`],
@@ -326,7 +326,7 @@ addTidyTask(async function test_fill_refuses_password_card_otp_and_file_fields()
     [by.Country, "Norway", `select "${by.Country}" has no option with the value or text "Norway"`],
     [by.Day, "tomorrow", `field "${by.Day}" does not take "tomorrow" as a date`],
     [by.Age, "many", `field "${by.Age}" does not take "many" as a number`],
-  ]) {
+  ])) {
     Assert.ok(field, `the list has ${message}`);
     // A refused field among good ones refuses the whole call.
     const r = await c.call("agent-fill", {
@@ -686,7 +686,7 @@ addTidyTask(async function test_fill_reports_a_dialog_and_stops() {
   ]);
   Assert.ok(r.ok, "the fill ran");
   Assert.equal(r.result.dialog?.type, "alert", "the result names the dialog");
-  Assert.ok(r.result.dialog.text.includes("Saved"), "with its text");
+  Assert.ok(r.result.dialog?.text.includes("Saved"), "with its text");
   Assert.equal(r.result.filled, 1, "the fields after it were not filled");
   c.close();
   BrowserTestUtils.removeTab(tab);

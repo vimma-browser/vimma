@@ -475,7 +475,7 @@ add_task(async function a_jump_that_ends_after_grep_reopens_keeps_the_new_search
 /**
  * How many frames' texts the tab's content process holds for grep, once they are dropped or
  * after 2 seconds.
- * @param {any} tab
+ * @param {MozTabbrowserTab} tab
  */
 function grepTextsAfterDrop(tab) {
   return SpecialPowers.spawn(tab.linkedBrowser, [], async () => {
@@ -589,7 +589,7 @@ add_task(async function a_step_whose_tab_switch_ends_after_grep_reopens_stops_th
   // itself is counted.
   const browser = c.linkedBrowser;
   let focusedWhileOpen = 0;
-  browser.focus = function (/** @type {any[]} */ ...args) {
+  browser.focus = function (/** @type {Parameters<typeof browser.focus>} */ ...args) {
     if (session.isOpen) focusedWhileOpen++;
     return Object.getPrototypeOf(browser).focus.apply(browser, args);
   };

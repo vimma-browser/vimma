@@ -615,7 +615,7 @@ add_task(async function the_private_workspace_keeps_two_splits_and_state_names_n
   const keys = new Set();
   /** @type {string[]} */
   const strings = [];
-  const walk = (/** @type {any} */ n) => {
+  const walk = (/** @type {object} */ n) => {
     for (const [k, v] of Object.entries(n)) {
       keys.add(k);
       if (typeof v === "string") strings.push(v);

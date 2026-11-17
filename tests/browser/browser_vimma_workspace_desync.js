@@ -75,10 +75,12 @@ const system = () => Services.scriptSecurityManager.getSystemPrincipal();
 function watchBrackets() {
   /** @type {string[]} */
   const seen = [];
-  const watch = (/** @type {any} */ subject, /** @type {string} */ topic) => {
+  const watch = (/** @type {unknown} */ subject, /** @type {string} */ topic) => {
     if (topic !== "domwindowopened") return;
+    // The subject of domwindowopened is the window opened (nsIWindowWatcher.idl).
+    const win = /** @type {Window} */ (subject);
     for (const type of ["SSWindowStateBusy", "SSWindowStateReady"]) {
-      subject.addEventListener(type, () => seen.push(type));
+      win.addEventListener(type, () => seen.push(type));
     }
   };
   Services.ww.registerNotification(watch);
@@ -265,7 +267,9 @@ add_task(async function a_whole_window_restore_into_a_recovered_window_keeps_its
     /** @type {string[]} */
     const lines = [];
     const storage = Cc["@mozilla.org/consoleAPI-storage;1"].getService(Ci.nsIConsoleAPIStorage);
-    const onLog = (/** @type {any} */ m) => lines.push((m.arguments ?? []).map(String).join(" "));
+    // A ConsoleEvent (dom/webidl/Console.webidl): the call's arguments.
+    const onLog = (/** @type {{ arguments?: unknown[] }} */ m) =>
+      lines.push((m.arguments ?? []).map(String).join(" "));
     storage.addLogEventListener(onLog, Services.scriptSecurityManager.getSystemPrincipal());
     try {
       await restoreInto(win, winState);

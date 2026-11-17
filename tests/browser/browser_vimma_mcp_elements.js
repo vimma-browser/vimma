@@ -454,7 +454,7 @@ addTidyTask(async function test_elements_under_a_grant_notice_log_and_rate() {
     if (!x.ok) busy = { i, x };
   }
   Assert.equal(busy?.i, 28, "the 31st list in a minute is refused");
-  Assert.equal(busy?.x.error.reason, "busy", "as busy");
+  Assert.equal(busy?.x.error?.reason, "busy", "as busy");
   Assert.equal(AgentGate.log[0].outcome, "busy", "and logged");
   c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);
@@ -464,7 +464,9 @@ addTidyTask(async function test_elements_under_a_grant_notice_log_and_rate() {
 
 /**
  * `command` with `elements: true`, answered with `answer` (null: a grant runs it).
- * @param {Client} c @param {string} command @param {object} args @param {GateAnswer | null} [answer]
+ * @template {string} C
+ * @param {Client} c @param {C} command @param {object} args
+ * @param {GateAnswer | null} [answer]
  */
 async function withList(c, command, args, answer = { kind: "once" }) {
   const id = c.request(command, { ...args, elements: true });
@@ -478,7 +480,9 @@ async function withList(c, command, args, answer = { kind: "once" }) {
     const v = validateMessage(r, { command });
     Assert.deepEqual(v.errors, [], `a valid ${command} result with a list`);
   }
-  return r;
+  // Each caller steps on a page that is ready, so the result has its list; one still loading
+  // fails the test where it reads `elements`.
+  return /** @type {ListedReply<C>} */ (r);
 }
 
 /**
@@ -597,7 +601,10 @@ addTidyTask(async function test_a_steps_list_says_nothing_of_a_tab_that_left() {
 
   const tab = await openAgentTab();
   const t0 = Date.now();
-  const hash = await c.call("agent-open", { url: `${FORM}#plans`, tab: idOf(tab), elements: true });
+  // Asked with elements: a page that was listed has them, which the assertion checks.
+  const hash = /** @type {ListedReply<"agent-open">} */ (
+    await c.call("agent-open", { url: `${FORM}#plans`, tab: idOf(tab), elements: true })
+  );
   Assert.ok(
     hash.ok && hash.result.elements,
     `a same-document open is listed: ${hash.error?.message}`,
@@ -619,6 +626,10 @@ addTidyTask(async function test_a_steps_list_counts_as_an_elements_call() {
   Services.prefs.setIntPref(ASK_TIMEOUT, 200);
   const tab = await openAgentTab();
   const c = await agentClient();
+  /**
+   * @type {ControlReply<"agent-elements"> | ControlReply<"agent-activate">
+   *   | ControlReply<"agent-open">}
+   */
   let r = await elements(c, tab, { kind: "grant", minutes: 12 });
   const items = parsed(r.result.elements).filter((e) => "label" in e);
   const menu = one(items, (e) => e.text === "Menu", "script button");
@@ -641,7 +652,10 @@ addTidyTask(async function test_a_steps_list_counts_as_an_elements_call() {
     "naming the elements rate",
   );
   // Issue #592: a client naming no vimma-ctl version may predate retryAfter (decision 6).
-  Assert.ok(!("retryAfter" in r.error), "and no retryAfter to a client that names no version");
+  Assert.ok(
+    r.error && !("retryAfter" in r.error),
+    "and no retryAfter to a client that names no version",
+  );
   const title = await SpecialPowers.spawn(tab.linkedBrowser, [], () => content.document.title);
   Assert.equal(title, "Form agent fixture", "and nothing was clicked");
   Assert.equal(AgentGate.log[0].outcome, "busy", "the refusal is in :mcp log");
@@ -712,7 +726,7 @@ addTidyTask(async function test_repeated_list_leaves_out_unchanged_lines() {
     "only the changed field's line is written",
   );
   Assert.equal(shown[0].value, "Changed bio", "with its value now");
-  Assert.equal(changed.result.repeated.length, all.length - 1, "the rest repeated");
+  Assert.equal(changed.result.repeated?.length, all.length - 1, "the rest repeated");
   // full: every line.
   const full = await c.call("agent-elements", { tab: idOf(tab), full: true });
   Assert.ok(full.ok, `full lists: ${JSON.stringify(full.error)}`);
@@ -756,8 +770,9 @@ addTidyTask(async function test_compact_list_keeps_delimiters_and_sensitive_rule
   for (const secret of [...SECRETS, "another-secret", "999"]) {
     Assert.ok(!text.includes(secret), `the value ${secret} never reaches the agent`);
   }
-  Assert.ok(r.result.repeated.length > 0, "the list is compact");
-  for (const label of r.result.repeated) {
+  const repeated = r.result.repeated ?? [];
+  Assert.ok(repeated.length > 0, "the list is compact");
+  for (const label of repeated) {
     Assert.ok(/^[asdfghjkl]{1,3}$/.test(label), `${label} is a label only`);
   }
   const lines = readList(known, r.result);
@@ -779,7 +794,7 @@ addTidyTask(async function test_compact_list_keeps_delimiters_and_sensitive_rule
       step.result.elements.endsWith("\n</untrusted-web-content>"),
     "a step's compact list is inside the delimiters",
   );
-  Assert.ok(step.result.repeated.length > 0, "and compact too");
+  Assert.ok((step.result.repeated ?? []).length > 0, "and compact too");
   c.close();
   await mcp(false);
 });
@@ -826,12 +841,15 @@ addTidyTask(async function test_elements_query_and_kinds() {
   const gone = await c.call("agent-activate", { tab: idOf(tab), label: signup[0].label });
   Assert.ok(!gone.ok, `a label the newest list did not give is refused: ${JSON.stringify(gone)}`);
   Assert.equal(AgentGate.waiting.length, 0, "unasked");
-  const open = await c.call("agent-open", {
-    url: FORM,
-    tab: idOf(tab),
-    elements: true,
-    kinds: ["field"],
-  });
+  // Asked with elements on a ready page: it is listed.
+  const open = /** @type {ListedReply<"agent-open">} */ (
+    await c.call("agent-open", {
+      url: FORM,
+      tab: idOf(tab),
+      elements: true,
+      kinds: ["field"],
+    })
+  );
   Assert.ok(open.ok, `an open with kinds lists: ${JSON.stringify(open.error)}`);
   const fields = [
     ...parsed(open.result.elements).filter((e) => "label" in e),

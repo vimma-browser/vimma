@@ -300,7 +300,7 @@ addTidyTask(async function test_a_followed_pay_link_in_a_cross_site_frame_names_
   const list = await c.call("agent-keys", { tab: idOf(tab), keys: "f" });
   Assert.ok(list.ok, "f lists the links under the grant");
   const line = list.result.links
-    .split("\n")
+    ?.split("\n")
     .find((/** @type {string} */ l) => l.includes('"Pay by bank"'));
   Assert.ok(line, "the frame's link is listed");
   const id = c.request("agent-keys", { tab: idOf(tab), keys: `f${line.split(" ")[0]}` });
@@ -534,6 +534,7 @@ addTidyTask(async function test_a_allows_that_button_on_that_site() {
   const c = await agentClient();
   let by = await grantedLabels(c, tab);
   const until0 = grantEnd();
+  /** @type {ControlRequestId<"agent-activate" | "agent-elements">} */
   let id = activate(c, tab, by["Tarkista toimitus"]);
   const q = await question();
   AgentGate.answer(q.id, { kind: "here" });
