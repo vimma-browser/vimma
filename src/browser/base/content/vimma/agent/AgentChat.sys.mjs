@@ -155,7 +155,8 @@ function onGate(event) {
   if (event && event.kind !== "notice") {
     const q = event.kind === "ran" ? event : event.question;
     const c = [...conversations.values()].find((x) => x.conn === q.conn);
-    if (c?.task) c.urls.push(q.what.url, q.what.current);
+    const what = q.what;
+    if (c?.task) c.urls.push(what?.url, what?.current);
     const e = {
       kind: event.kind,
       tool: q.tool,
