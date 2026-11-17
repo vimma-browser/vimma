@@ -15,7 +15,7 @@ const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const SRC = join(ROOT, "packages/vimma-core/src");
 /** Third-party code, checked by its own project. */
 const VENDOR = join(SRC, "vendor");
-/** The `any` types left in vimma-core's src/ after #1225's first slice (agent/). */
+/** The `any` types (with a bare `*` or `?`) left in vimma-core's src/ after #1225's first slice (agent/). */
 const MAX_ANY = 18;
 
 /** Every .mjs and .js file under `dir`, but vendor/. */
@@ -49,15 +49,29 @@ function jsdocTypes(source: string): string[] {
   return types;
 }
 
+/** How many `any` a JSDoc type expression holds: a bare `*` or `?` is one, as checkJs reads it. */
+function anyCount(type: string): number {
+  const bare = ["*", "?"].includes(type.trim()) ? 1 : 0;
+  return bare + (type.match(/\bany\b/g) ?? []).length;
+}
+
 /** Each `any` in a source's JSDoc types, as `path: type`. */
 function anys(path: string): string[] {
   const rel = relative(ROOT, path);
   return jsdocTypes(readFileSync(path, "utf8")).flatMap((t) =>
-    (t.match(/\bany\b/g) ?? []).map(() => `${rel}: ${t.replace(/\s+/g, " ").trim()}`),
+    Array.from({ length: anyCount(t) }, () => `${rel}: ${t.replace(/\s+/g, " ").trim()}`),
   );
 }
 
 describe("vimma-core's any ratchet (#1225)", () => {
+  it("counts `*` and `?`, which checkJs reads as any, and each any in a type", () => {
+    expect(anyCount("*")).toBe(1);
+    expect(anyCount(" ? ")).toBe(1);
+    expect(anyCount("Record<string, any> | any[]")).toBe(2);
+    expect(anyCount("?string")).toBe(0);
+    expect(anyCount("string")).toBe(0);
+  });
+
   it("finds the type expressions of JSDoc tags, not prose", () => {
     const src = [
       "/** Takes any key. @param {Record<string, any>} a @returns {{ b: { c: any[] } }} */",
