@@ -1350,8 +1350,8 @@ and the workspace keeps it like any other split. If such a split's tabs are in d
 workspaces, Vimma separates its tabs again and the status bar says why; the tabs stay in their
 workspaces. If the workspace already has a split, Vimma separates it too and the status bar
 says "split undone: mark tabs in ctrl+b b for another split": a further split is made with
-Vimma's own keys or the side panel ([Several splits](#several-splits)). Separating a split outside Vimma closes its
-panes.
+Vimma's own keys or the side panel ([Several splits](#several-splits)). Separating a split
+outside Vimma closes its panes.
 
 ### Several splits
 
@@ -1361,11 +1361,12 @@ docs, and a second comparison of two pages, without breaking up the first.
 - **Starting another split.** Go to a tab that is in no split, or open a new one, so it shows
   alone and the split waits hidden. Press `ctrl+b v`, `ctrl+b -` or `ctrl+b enter` (or run
   `:vsplit` / `:split`): the tab and a new pane on the start page become a new split, shown at
-  once with the new pane focused, and the split you had before waits hidden. Or open the side
-  panel (`ctrl+b b`), where on a tab shown alone nothing starts marked, mark two or more tabs
-  with `space` or `V` and press `Enter`; they become a new split in the same way. A marked tab
-  that was in another split leaves it, as `ctrl+b x` would close its pane there; a split left
-  with one pane ends.
+  once with the new pane focused, and the split you had before waits hidden. A bookmark opened
+  with `s` or `S` in the bookmarks panel does the same, with the bookmark in the new pane. Or
+  open the side panel (`ctrl+b b`), where on a tab shown alone nothing starts marked, mark two
+  or more tabs with `space` or `V` and press `Enter`; they become a new split in the same way. A
+  marked tab that was in another split leaves it, as `ctrl+b x` would close its pane there; a
+  split left with one pane ends.
 - **Numbers and colours.** Each split has a number, `S1` to `S9`, which it keeps while it exists,
   and the colour of that number from the theme. In the side panel each split's tabs carry a
   stripe in its colour and its label, and the head says `S2: 3 panes · 3 splits`, or
@@ -1379,7 +1380,8 @@ docs, and a second comparison of two pages, without breaking up the first.
 - **The limit.** `[panes] max_splits` in [config.toml](#configtoml) sets how many splits a
   workspace keeps (1 to 9, default 9); `1` gives one split per workspace. Past it, a new split
   is refused with `new split: at most 9 splits in a workspace` and nothing changes; from
-  `ctrl+b v`, `-` or `enter` the message stays until your next key. With `max_splits = 1`, the
+  `ctrl+b v`, `-` or `enter` the message stays until your next key (from the bookmarks panel's
+  `s` / `S` it is a short notice). With `max_splits = 1`, the
   side panel's marks replace the one split, while those keys are refused, so a key never ends
   the hidden split.
 - **Kept.** A workspace switch, a restart and the private workspace keep every split, its sizes

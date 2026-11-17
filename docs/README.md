@@ -75,6 +75,7 @@ introduced the feature ([roadmap.md](roadmap.md)).
   [tab-search](specs/tab-search.md), [m0-tabstrip-hidden](specs/m0-tabstrip-hidden.md),
   [m3-m4-core-prep](specs/m3-m4-core-prep.md), [m3-m4-core-models](specs/m3-m4-core-models.md),
   [m4-split-panes](specs/m4-split-panes.md), [multiple-splits](specs/multiple-splits.md),
+  [split-from-lone-tab](specs/split-from-lone-tab.md),
   [new-tab-in-split](specs/new-tab-in-split.md),
   [tiling-layouts](specs/tiling-layouts.md), [pane-focus-highlight](specs/pane-focus-highlight.md),
   [m4-side-panel-multiselect](specs/m4-side-panel-multiselect.md),

@@ -252,7 +252,7 @@ function maxRefusal(max) {
 }
 
 /**
- * Why a new split from a key on a lone tab is refused (behaviour 4): `max` splits already, `max`
+ * Why a new split from a key on a lone tab is refused (split-from-lone-tab.md): `max` splits already, `max`
  * 1 included, so a key never ends a hidden split. Null when there is room.
  * @param {Splits} s
  * @param {SplitsOptions} [options]
@@ -265,7 +265,7 @@ export function splitLimitRefusal(s, { max = MAX_SPLITS_DEFAULT } = {}) {
 
 /**
  * A new split of tree `panes`, numbered with the lowest free number and shown at once, with the
- * tree's own focus; the split shown before, if any, is hidden (behaviour 4: `ctrl+b v` on a tab
+ * tree's own focus; the split shown before, if any, is hidden (split-from-lone-tab.md: `ctrl+b v` on a tab
  * shown alone). Its tabs must be in no split. At `max` splits it is refused (`max` 1 included)
  * and `splits` is the input itself.
  * @param {Splits} s

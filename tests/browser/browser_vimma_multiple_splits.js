@@ -490,7 +490,7 @@ add_task(async function a_lone_tab_picked_before_a_split_paints_ends_the_switch(
   await assertShown(tab("e"), "e");
 });
 
-// Splitting the lone tab itself (behaviour 4, changed by #1215) is browser_vimma_split_lone_tab.js.
+// Splitting the lone tab itself (docs/specs/split-from-lone-tab.md): browser_vimma_split_lone_tab.js.
 add_task(async function a_lone_tab_hides_both() {
   await pick(tab("f"));
   Assert.equal(splitsOf().shown, null, "no split shows");

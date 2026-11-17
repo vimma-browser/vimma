@@ -438,7 +438,7 @@ describe("invariants", () => {
   });
 });
 
-describe("splitting a lone tab starts a new split (behaviour 4, decision 4)", () => {
+describe("splitting a lone tab starts a new split (docs/specs/split-from-lone-tab.md)", () => {
   /** S1 and S2, with x shown alone: no split shows, S2 was shown last. */
   const lone = () =>
     selectSplitTab(

@@ -99,7 +99,7 @@ export const SPANS_WORKSPACES = "split undone: its tabs are in different workspa
 /**
  * A second split made by Firefox's own commands in a workspace that has one: Vimma makes further
  * splits from its own keys and the side panel's marks only (docs/specs/multiple-splits.md
- * decisions 4, 5 and 18), so the notice names a way.
+ * decision 5, docs/specs/split-from-lone-tab.md), so the notice names a way.
  */
 export const SECOND_SPLIT = "split undone: mark tabs in ctrl+b b for another split";
 
@@ -118,7 +118,7 @@ export const PANE_VIEW_EVENTS = Object.freeze([
 /**
  * Whether `text` is the refusal of a new split at `[panes] max_splits` (core's
  * `splitLimitRefusal`), which the host keeps on screen until the next key
- * (docs/specs/multiple-splits.md decision 4).
+ * (docs/specs/split-from-lone-tab.md decision 4).
  * @param {string} text
  */
 export function isSplitLimitRefusal(text) {
@@ -669,7 +669,7 @@ export class PaneView {
    * core's reason, past `[panes] max` or with no space; a refused split opens no tab. On a tab
    * shown alone while the workspace keeps splits, the tab and the new pane make a new split with
    * the next free number, and the split shown last stays hidden; refused at `[panes] max_splits`
-   * (docs/specs/multiple-splits.md behaviour 4).
+   * (docs/specs/split-from-lone-tab.md).
    * @param {SplitDirection} direction
    * @param {{ tab?: Tab }} [options]
    * @returns {PaneResult}

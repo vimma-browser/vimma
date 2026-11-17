@@ -343,7 +343,7 @@ export function stepSplits(win, action) {
 
 /**
  * Runs a pane op (above) and shows its refusal, if any, as the notice. The refusal of a new split
- * at `[panes] max_splits` stays until the next key (docs/specs/multiple-splits.md, decision 4).
+ * at `[panes] max_splits` stays until the next key (docs/specs/split-from-lone-tab.md decision 4).
  * @param {(win: BrowserWindow, action: Action) => string | null} op
  * @param {(s: WindowState) => void} emit  the host's redraw
  * @returns {(state: WindowState, action: Action) => void}
