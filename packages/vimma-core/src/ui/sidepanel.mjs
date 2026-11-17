@@ -396,7 +396,8 @@ export function panelMove(action, selected, length, { nthLast = true } = {}) {
  * for Enter (`4 Enter`); the other keys act on the highlighted row once whatever the count, so
  * `3x` cannot close three tabs by accident (docs/specs/side-panel-counts.md decision 4).
  * @param {PanelState} state
- * @param {{ id: string, arg?: number, count?: number, page?: number }} action
+ * @param {{ id: string, arg?: number, count?: number, page?: number, shown?: string | null }} action
+ *   `shown`: panel.close_active_tab's tab, the one the window shows; null when no row lists it
  * @returns {{ state: PanelState, effect: PanelEffect | null }}
  */
 export function panelKey(state, action) {
@@ -457,6 +458,26 @@ export function panelKey(state, action) {
       if (!row) return { state, effect: null };
       if (row.pinned) return { state, effect: { type: "refuse", text: PINNED_TEXT } };
       const next = state.selected < last ? state.selected + 1 : Math.max(0, state.selected - 1);
+      return {
+        state: Object.freeze({ ...state, selected: next }),
+        effect: { type: "closeTab", id: row.tabId },
+      };
+    }
+    // The tab the window shows, wherever the highlight is (docs/specs/close-active-tab.md
+    // decision 2). A highlight on it moves as `x` moves it; elsewhere it stays on its own tab,
+    // which the refresh after the close finds again. The host names the shown tab (`shown`),
+    // since a pinned tab is in no workspace and the model's active tab is then another one;
+    // `null` is a shown tab with no row, which only a pinned tab is.
+    case "panel.close_active_tab": {
+      if (action.shown === null) return { state, effect: { type: "refuse", text: PINNED_TEXT } };
+      const at = state.rows.findIndex((r) =>
+        action.shown === undefined ? r.active : r.tabId === action.shown,
+      );
+      const row = state.rows[at];
+      if (!row) return { state, effect: null };
+      if (row.pinned) return { state, effect: { type: "refuse", text: PINNED_TEXT } };
+      const next =
+        state.selected !== at ? state.selected : at < last ? at + 1 : Math.max(0, at - 1);
       return {
         state: Object.freeze({ ...state, selected: next }),
         effect: { type: "closeTab", id: row.tabId },

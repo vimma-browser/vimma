@@ -237,6 +237,7 @@ Side panel
   panel_mark                space [panel]                                        Mark or unmark the selected tab
   panel_visual              V [panel]                                            Start a range of rows to mark, or mark it
   panel_move_tab            m [panel]                                            Move the selected row's tab to a workspace (picker); in bookmarks, move to a folder
+  panel_close_active_tab    (unbound)                                            Close the tab the window shows, not the highlighted row's; the panel stays open
   panel_select_1            (unbound)                                            Select row 1
   panel_select_2            (unbound)                                            Select row 2
   panel_select_3            (unbound)                                            Select row 3
@@ -563,6 +564,7 @@ Side panel
   panel_mark                space [panel]                                        Mark or unmark the selected tab
   panel_visual              V [panel]                                            Start a range of rows to mark, or mark it
   panel_move_tab            m [panel]                                            Move the selected row's tab to a workspace (picker); in bookmarks, move to a folder
+  panel_close_active_tab    (unbound)                                            Close the tab the window shows, not the highlighted row's; the panel stays open
   panel_select_1            (unbound)                                            Select row 1
   panel_select_2            (unbound)                                            Select row 2
   panel_select_3            (unbound)                                            Select row 3

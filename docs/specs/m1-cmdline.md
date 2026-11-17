@@ -36,7 +36,9 @@ line open and tells me what I probably meant. Nothing I type into it reaches the
   and selects the first unpinned tab (as `tab.close`); the last tab with
   `browser.tabs.closeWindowWithLastTab` false leaves a fresh tab.
 - `Tab` completes `tabn` → `tabnew` and cycles to core's next candidate, `shift+Tab` back; `Up`
-  recalls the previous command line, `Down` returns to the draft.
+  recalls the previous command line, `Down` returns to the draft. (Since changed: with text
+  typed and matches shown, `Down` enters the completion list and `Up` / `Down` move in it, #1222;
+  see [cmdline-arrow-completion](cmdline-arrow-completion.md).)
 - An unknown command (`:tabnwe`) shows an error naming `tabnew` and the line stays open.
 - `:open example.com` loads `http(s)://example.com/` through fixup; `:tabnew example.com` does so
   in a new tab.
@@ -91,8 +93,9 @@ completion list.
 - **Completion popup:** a plain list (`ul[role=listbox]`) above the input, keyboard only, up to
   core's 20 candidates with a scroll, each row the name and its description. It follows typing
   while the line is just the command word; `Tab` selects the next candidate into the input
-  (`shift+Tab` the previous, both wrapping), typing ends the cycle. A line with an argument has
-  no candidates (core: argument completion is out of scope).
+  (`shift+Tab` the previous, both wrapping), typing ends the cycle. (Since changed: `Down` and
+  `Up` walk the list too, #1222; see [cmdline-arrow-completion](cmdline-arrow-completion.md).) A
+  line with an argument has no candidates (core: argument completion is out of scope).
 - **Errors** show inline under the input (`role="alert"`), core's message plus "did you mean"
   with its suggestions; the line stays open with the text, the next edit clears it. An empty
   line (`:` Enter) just closes, as Vim.

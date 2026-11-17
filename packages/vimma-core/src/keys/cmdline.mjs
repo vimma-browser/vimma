@@ -697,3 +697,31 @@ export function historyNext(h, current) {
 export function resetHistoryCursor(h) {
   return Object.freeze({ ...h, index: null, draft: "" });
 }
+
+/**
+ * @typedef {object} ArrowState
+ * @property {string} line              the input's text
+ * @property {number} shown             candidates the list holds (the cycle's while one runs)
+ * @property {number | null} selected   the selected row while Up / Down or Tab cycle, else null
+ * @property {boolean} browsing         an Up has recalled a history line, with no edit since
+ */
+
+/**
+ * Up / Down on the command line (docs/specs/cmdline-arrow-completion.md, #1222): whether the
+ * key walks history or the completion list. Down with typed text and a list selects its first
+ * row, as Tab; in the list Down moves on (wrapping, as Tab) and Up back, and Up on the first row
+ * leaves the list for the typed text. Otherwise history: an empty line, a line with no matches,
+ * Up before the list is entered (Vim's prefix search), and Down while a recalled line is shown.
+ * @param {ArrowState} state
+ * @param {1 | -1} direction  Down 1, Up -1
+ * @returns {{ kind: "history" } | { kind: "select", index: number } | { kind: "leave" }}
+ */
+export function cmdlineArrow({ line, shown, selected, browsing }, direction) {
+  if (selected !== null && shown > 0) {
+    if (direction > 0) return { kind: "select", index: (selected + 1) % shown };
+    return selected === 0 ? { kind: "leave" } : { kind: "select", index: selected - 1 };
+  }
+  const typed = line.replace(/^[\s:]*/, "") !== "";
+  if (direction > 0 && typed && shown > 0 && !browsing) return { kind: "select", index: 0 };
+  return { kind: "history" };
+}

@@ -104,3 +104,20 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   again in the child: only an integer from 1 to 2000 CSS pixels is taken, anything else scrolls
   by the default 60.
   [`the_child_ignores_a_step_config_toml_could_not_set`](../../tests/browser/browser_vimma_scroll_step.js)
+- K11. Which keys a site keeps (`[sites."<host>"] unbind`, [site-unbind](../specs/site-unbind.md))
+  **must** come only from `config.toml`: the keymap compiles them, and no page or content-process
+  message reaches it. The site is the focused `<browser>`'s top document host, and `esc` and the
+  prefix **must not** be given to a page.
+  [`a_site_unbound_key_reaches_the_page`](../../tests/browser/browser_vimma_site_unbind.js),
+  [`the_same_key_is_vimmas_on_another_site`](../../tests/browser/browser_vimma_site_unbind.js),
+  [`esc_still_leaves_insert`](../../tests/browser/browser_vimma_site_unbind.js),
+  [`a remapped prefix is the one kept`](../../packages/vimma-core/test/site-unbind.test.ts)
+- K12. A binding that closes a tab from a text field (`[modal.insert] "<C-w>" = "tab.close"`) or
+  from the side panel (`panel.close_active_tab`, [close-active-tab](../specs/close-active-tab.md))
+  **must** run only for a key the user pressed: it goes through the dispatcher from the window's
+  capture-phase `keydown` listener, and no message from a content process can ask for it. A
+  remote page's own key events stay in its content process (process separation), and a page in
+  the parent process cannot reach the listener either, because on a chrome window
+  `addEventListener` defaults `wantsUntrusted` to false. A page's own `ctrl+w`, dispatched at its
+  focused field, closes nothing.
+  [`a_ctrl_w_the_page_dispatches_closes_nothing`](../../tests/browser/browser_vimma_close_active_tab.js)

@@ -10,7 +10,7 @@ import { closest, describeAction } from "../core/actions.mjs";
 import { LAYOUTS, isLayoutName, layoutOfAction } from "../core/layouts.mjs";
 import { leaves } from "../core/panes.mjs";
 import { NO_SPLITS_TO_PICK, splitFocusTab, splitPickerItems, stepSplit } from "../core/splits.mjs";
-import { PaneViews, isHiddenRefusal } from "../split/PaneView.mjs";
+import { PaneViews, isSplitLimitRefusal } from "../split/PaneView.mjs";
 import { closeTab } from "./tab-ops.mjs";
 import { tabById } from "./goto.mjs";
 
@@ -69,8 +69,8 @@ function focusPage(win) {
  */
 function refusal(action, result) {
   if (!result || result.ok) return null;
-  // It already says what happened and what to do; the action's name would only lengthen it.
-  if (isHiddenRefusal(result.reason)) return result.reason;
+  // It already says what happened; the action's name would only lengthen it.
+  if (isSplitLimitRefusal(result.reason)) return result.reason;
   return `${describeAction(action)}: ${result.reason}`;
 }
 
@@ -342,8 +342,8 @@ export function stepSplits(win, action) {
 }
 
 /**
- * Runs a pane op (above) and shows its refusal, if any, as the notice. The hidden-split
- * refusal stays until the next key (docs/specs/multiple-splits.md, decision 4).
+ * Runs a pane op (above) and shows its refusal, if any, as the notice. The refusal of a new split
+ * at `[panes] max_splits` stays until the next key (docs/specs/split-from-lone-tab.md decision 4).
  * @param {(win: BrowserWindow, action: Action) => string | null} op
  * @param {(s: WindowState) => void} emit  the host's redraw
  * @returns {(state: WindowState, action: Action) => void}
@@ -351,7 +351,7 @@ export function stepSplits(win, action) {
 export function paneRunner(op, emit) {
   return (s, a) => {
     const refused = op(s.win, a);
-    if (refused) s.notice.show(refused, { untilKey: isHiddenRefusal(refused) });
+    if (refused) s.notice.show(refused, { untilKey: isSplitLimitRefusal(refused) });
     emit(s);
   };
 }

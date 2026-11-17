@@ -1,5 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { compileKeymap, KeymapError } from "../src/keys/keymap.mjs";
+import { createDispatcher } from "../src/keys/dispatcher.mjs";
+import { parseKey } from "../src/keys/keys.mjs";
 import { parsePath } from "../src/config/toml.mjs";
 
 import type { Mode } from "../src/keys/modes.mjs";
@@ -447,6 +449,43 @@ describe("text-field keys before default [keys] bindings", () => {
     expect(at(copied, "normal", "ctrl+m")).toBe("mute_tab");
     const modal = compileKeymap({ modal: { insert: { "<C-j>": "web_search" } } });
     expect(at(modal, "insert", "ctrl+j")).toBe("web_search");
+  });
+});
+
+// docs/specs/close-active-tab.md: closing the active tab from insert mode and the side panel.
+describe("closing the active tab from insert mode and the side panel", () => {
+  const at = (km: any, mode: string, key: string) => km.trie(mode).children.get(key)?.action?.name;
+
+  test("ctrl+w stays the field's delete-word key in insert mode by default", () => {
+    const km = compileKeymap();
+    expect(at(km, "insert", "ctrl+w")).toBeUndefined();
+    expect(at(km, "panel", "ctrl+w")).toBeUndefined();
+    expect(km.bindingsFor("panel_close_active_tab")).toEqual([]);
+  });
+
+  test("[modal.insert] <C-w> = tab.close closes the tab from a text field", () => {
+    const km = compileKeymap({ modal: { insert: { "<C-w>": "tab.close" } } });
+    expect(at(km, "insert", "ctrl+w")).toBe("close_tab");
+    // Only there: normal mode keeps its ctrl+w pane keys, the panel and the : line their own.
+    expect(at(km, "command", "ctrl+w")).toBeUndefined();
+    expect(at(km, "panel", "ctrl+w")).toBeUndefined();
+  });
+
+  test("[modal.panel] <C-w> = panel.close_active_tab binds it in the side panel", () => {
+    const km = compileKeymap({ modal: { panel: { "<C-w>": "panel.close_active_tab" } } });
+    expect(at(km, "panel", "ctrl+w")).toBe("panel_close_active_tab");
+    const d = createDispatcher(km);
+    expect(d.dispatch("panel", parseKey("ctrl+w"))).toEqual({
+      kind: "action",
+      action: { id: "panel.close_active_tab" },
+    });
+  });
+
+  test("[keys] close_tab with ctrl+w is a global chord: insert, panel and the : line", () => {
+    const km = compileKeymap({ keys: { close_tab: ["prefix+shift+x", "ctrl+w"] } });
+    for (const mode of ["insert", "panel", "command"]) {
+      expect(at(km, mode, "ctrl+w"), mode).toBe("close_tab");
+    }
   });
 });
 

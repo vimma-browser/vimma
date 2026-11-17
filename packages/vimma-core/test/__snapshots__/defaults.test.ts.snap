@@ -475,9 +475,13 @@ download_max_mb = 200
 clamav_max_age_days = 7
 
 # Per-site insert mode: auto (detect text fields), never (keys stay vimma's), always.
-# A host also covers its subdomains. None by default.
+# unbind: keys the page gets instead of vimma there, in normal and insert mode; a key that
+# starts sequences (g) takes them all. esc and the prefix stay vimma's.
+# A host also covers its subdomains; the most specific table wins. None by default.
 # [sites."docs.google.com"]
 # insert = "always"
+# [sites."github.com"]
+# unbind = ["t"]
 
 # Which workspace a link opens in: by domain (and its subdomains), url prefix, or the
 # programs that opened it (vimma-open). The first matching rule wins, except that among the

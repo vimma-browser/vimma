@@ -45,9 +45,10 @@ import {
 import { planSplit } from "../core/splitplan.mjs";
 import {
   MAX_SPLITS_DEFAULT,
-  hiddenSplitRefusal,
+  addSplit,
   newSplit,
   removeSplitTab,
+  splitLimitRefusal,
   splitsFromPanes,
   updateSplit,
 } from "../core/splits.mjs";
@@ -97,8 +98,8 @@ import {
 export const SPANS_WORKSPACES = "split undone: its tabs are in different workspaces";
 /**
  * A second split made by Firefox's own commands in a workspace that has one: Vimma makes further
- * splits from the side panel's marks only (docs/specs/multiple-splits.md decision 5), so the
- * notice names that way.
+ * splits from its own keys and the side panel's marks only (docs/specs/multiple-splits.md
+ * decision 5, docs/specs/split-from-lone-tab.md), so the notice names a way.
  */
 export const SECOND_SPLIT = "split undone: mark tabs in ctrl+b b for another split";
 
@@ -115,12 +116,13 @@ export const PANE_VIEW_EVENTS = Object.freeze([
 ]);
 
 /**
- * Whether `text` is the hidden-split refusal (core's `hiddenSplitRefusal`), which the host keeps
- * on screen until the next key (docs/specs/multiple-splits.md decision 4).
+ * Whether `text` is the refusal of a new split at `[panes] max_splits` (core's
+ * `splitLimitRefusal`), which the host keeps on screen until the next key
+ * (docs/specs/split-from-lone-tab.md decision 4).
  * @param {string} text
  */
-export function isHiddenRefusal(text) {
-  return /^split S\d is hidden: /.test(text);
+export function isSplitLimitRefusal(text) {
+  return /^new split: at most \d+ splits? in a workspace$/.test(text);
 }
 
 /**
@@ -452,11 +454,6 @@ export class PaneView {
     return away;
   }
 
-  /** The refusal of a new pane on a lone tab, naming the split shown last. */
-  #hiddenReason() {
-    return hiddenSplitRefusal(this.#number);
-  }
-
   /** @param {number} max  config `[panes] max` */
   set max(max) {
     this.#max = max;
@@ -669,26 +666,50 @@ export class PaneView {
   /**
    * Splits the focused pane: `vertical` puts the new pane right of it, `horizontal` below. The
    * new pane shows `tab` (default: a new tab on the new-tab page) and gets focus. Refused, with
-   * core's reason, past `[panes] max` or with no space; a refused split opens no tab.
+   * core's reason, past `[panes] max` or with no space; a refused split opens no tab. On a tab
+   * shown alone while the workspace keeps splits, the tab and the new pane make a new split with
+   * the next free number, and the split shown last stays hidden; refused at `[panes] max_splits`
+   * (docs/specs/split-from-lone-tab.md).
    * @param {SplitDirection} direction
    * @param {{ tab?: Tab }} [options]
    * @returns {PaneResult}
    */
   split(direction, { tab } = {}) {
-    if (this.hidden) return { ok: false, reason: this.#hiddenReason() };
-    const gBrowser = gBrowserOf(this.#win);
-    const current = this.#panes ?? createPanes(gBrowser.selectedTab.linkedPanel);
+    const lone = this.hidden;
+    if (lone) {
+      const limit = splitLimitRefusal(this.splits, { max: this.maxSplits });
+      if (limit) return { ok: false, reason: limit };
+    }
+    const current = this.#current();
     const refusal = /** @type {SplitRefusal | null} */ (
       splitRefusal(current, current.focus, direction, { max: this.#max })
     );
     if (refusal) return { ok: false, reason: refusal.message };
     const fresh =
       tab ??
-      gBrowser.addTrustedTab(this.#win.BROWSER_NEW_TAB_URL, {
+      gBrowserOf(this.#win).addTrustedTab(this.#win.BROWSER_NEW_TAB_URL, {
         inBackground: true,
       });
-    this.#set(split(current, current.focus, direction, fresh.linkedPanel, { max: this.#max }));
+    const next = split(current, current.focus, direction, fresh.linkedPanel, { max: this.#max });
+    if (!lone) {
+      this.#set(next);
+      return { ok: true };
+    }
+    const made = addSplit(this.splits, next, { max: this.maxSplits });
+    if (made.refusal) return { ok: false, reason: made.refusal };
+    this.#use(made.splits);
+    this.#set(this.#panes);
     return { ok: true };
+  }
+
+  /**
+   * The tree a new pane splits: the shown one, else the selected tab as one pane (no split, or a
+   * tab shown alone while the splits are hidden).
+   * @returns {Panes}
+   */
+  #current() {
+    if (this.#panes && !this.hidden) return this.#panes;
+    return createPanes(gBrowserOf(this.#win).selectedTab.linkedPanel);
   }
 
   /**
@@ -700,8 +721,7 @@ export class PaneView {
    * @returns {PaneResult}
    */
   newPane(options = {}) {
-    if (this.hidden) return { ok: false, reason: this.#hiddenReason() };
-    const current = this.#panes ?? createPanes(gBrowserOf(this.#win).selectedTab.linkedPanel);
+    const current = this.#current();
     const direction =
       this.mode === "manual" ? "vertical" : dwindleDirection(current, this.#area() ?? WIDE);
     return this.split(direction, options);

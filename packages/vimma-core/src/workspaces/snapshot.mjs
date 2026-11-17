@@ -16,7 +16,10 @@
 /** @import { PaneNode } from "../panes/panes.mjs" */
 /** @import { TabLabels, TabLabelWarning } from "./tablabels.mjs" */
 /** @import { NumberedSplit, Splits } from "../panes/splits.mjs" */
-/** @typedef {(raw: any) => any} SnapshotMigration a step from schema n to n + 1 */
+/**
+ * A step from schema n to n + 1: a schema-n document in, its schema-n + 1 form out (checked).
+ * @typedef {(raw: Record<string, unknown>) => unknown} SnapshotMigration
+ */
 
 import { MIN_RATIO } from "../panes/panes.mjs";
 import { isLayoutName } from "../panes/layouts.mjs";
@@ -58,7 +61,7 @@ function fail(path, message, code = "invalid") {
 
 /**
  * @param {unknown} v
- * @returns {v is Record<string, any>}
+ * @returns {v is Record<string, unknown>}
  */
 function isObject(v) {
   return v !== null && typeof v === "object" && !Array.isArray(v);
@@ -157,13 +160,14 @@ function olderView(own) {
  * Upgrades `raw` step by step to SCHEMA_VERSION; returns `raw` itself when it is current.
  * @param {unknown} raw
  * @param {Readonly<Record<number, SnapshotMigration>>} [migrations]
- * @returns {Record<string, any>}
+ * @returns {Record<string, unknown>}  its `schema` is SCHEMA_VERSION; nothing else is checked
  */
 export function migrateSnapshot(raw, migrations = SNAPSHOT_MIGRATIONS) {
   let doc = raw;
   for (;;) {
     if (!isObject(doc)) return fail("", "a snapshot must be a JSON object");
-    const schema = doc.schema;
+    // Read as a number only after the integer check on the next line.
+    const schema = /** @type {number} */ (doc.schema);
     if (!Number.isInteger(schema)) return fail("schema", "missing or not an integer");
     if (schema === SCHEMA_VERSION) return doc;
     const step = migrations[schema];
@@ -202,7 +206,7 @@ export function canWrite(existing) {
 }
 
 /**
- * @param {any} node
+ * @param {unknown} node
  * @param {string} path
  * @param {{ axis: string, share: number } | null} parent
  * @param {{ panes: Set<string>, shown: Set<string>, tabs: Set<string> }} ctx
@@ -254,7 +258,7 @@ function readNode(node, path, parent, ctx) {
 }
 
 /**
- * @param {any} raw
+ * @param {unknown} raw
  * @param {string} path
  * @param {Set<string>} tabs
  * @returns {Panes}
@@ -276,12 +280,13 @@ function readPanes(raw, path, tabs) {
   }
   if (raw.zoom !== null && !ctx.panes.has(raw.zoom)) fail(`${path}.zoom`, "must be null or a pane");
   checkNext(raw.next, ctx.panes, "p", `${path}.next`);
+  // Checked above: focus names a pane, zoom is null or one, next is an integer above them.
   return Object.freeze({
     root,
-    focus: raw.focus,
+    focus: /** @type {string} */ (raw.focus),
     mru: Object.freeze(mru.slice()),
-    zoom: raw.zoom,
-    next: raw.next,
+    zoom: /** @type {string | null} */ (raw.zoom),
+    next: /** @type {number} */ (raw.next),
     // The last preset (tiling-layouts): optional, read leniently. An unknown name (a newer
     // vimma's preset) is dropped; cycling then starts from the first preset.
     ...(isLayoutName(raw.layout) ? { layout: raw.layout } : {}),
@@ -306,7 +311,13 @@ function readSplits(raw, path, tabs) {
   raw.forEach((entry, i) => {
     if (!isObject(entry)) return;
     const n = entry.number;
-    if (!Number.isInteger(n) || n < 1 || n > MAX_SPLITS_LIMIT) return;
+    // An integer once Number.isInteger passed.
+    if (
+      !Number.isInteger(n) ||
+      /** @type {number} */ (n) < 1 ||
+      /** @type {number} */ (n) > MAX_SPLITS_LIMIT
+    )
+      return;
     if (out.some((x) => x.number === n)) return;
     let panes;
     try {
@@ -320,7 +331,7 @@ function readSplits(raw, path, tabs) {
     const shown = [...tabs].filter((t) => hasTab(tree, t));
     if (shown.some((t) => taken.has(t))) return;
     for (const t of shown) taken.add(t);
-    out.push(Object.freeze({ ...panes, number: n }));
+    out.push(Object.freeze({ ...panes, number: /** @type {number} */ (n) })); // checked above
   });
   return Object.freeze(out.sort((a, b) => a.number - b.number));
 }
@@ -398,10 +409,11 @@ export function readSnapshot(input, { migrations } = {}) {
     }
     // A hidden view (side-panel-unsplit decision 24), read leniently: kept hidden only with a
     // split and an `alone` tab of the workspace outside it, else the split reads as shown.
-    let activeTab = w.activeTab;
+    // Checked above: null without tabs, else one of them.
+    let activeTab = /** @type {string | null} */ (w.activeTab);
     if (
       panes &&
-      w.panes.hidden === true &&
+      /** @type {{ hidden?: unknown }} */ (w.panes).hidden === true && // readPanes read it: an object
       panes.root.type === "split" &&
       typeof w.alone === "string" &&
       w.tabs.includes(w.alone) &&
@@ -439,8 +451,9 @@ export function readSnapshot(input, { migrations } = {}) {
       : undefined;
   const state = Object.freeze({
     workspaces: Object.freeze(workspaces),
-    active: doc.active,
-    next: doc.next,
+    // Checked above: active names a workspace, next is an integer above every id.
+    active: /** @type {string} */ (doc.active),
+    next: /** @type {number} */ (doc.next),
     ...(alternate !== undefined ? { alternate } : {}),
   });
   const { labels, warnings } = readTabLabels(doc.tabLabels, allTabs);

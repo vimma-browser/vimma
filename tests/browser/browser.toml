@@ -177,6 +177,8 @@ support-files = ["file_vimma_search_post.sjs"]
 
 ["browser_vimma_cmdline.js"]
 
+["browser_vimma_cmdline_arrows.js"]
+
 ["browser_vimma_find.js"]
 support-files = [
   "file_vimma_find.html",
@@ -398,6 +400,9 @@ support-files = ["file_vimma_title.html"]
 
 ["browser_vimma_side_panel.js"]
 
+["browser_vimma_close_active_tab.js"]
+support-files = ["file_vimma_close_active_tab.html"]
+
 ["browser_vimma_side_panel_marks.js"]
 
 ["browser_vimma_side_panel_unsplit.js"]
@@ -405,6 +410,8 @@ support-files = ["file_vimma_title.html"]
 ["browser_vimma_multiple_splits.js"]
 
 ["browser_vimma_split_picker.js"]
+
+["browser_vimma_split_lone_tab.js"]
 
 ["browser_vimma_firefox_keys.js"]
 support-files = ["file_vimma_plain.html"]
@@ -581,3 +588,6 @@ support-files = ["file_vimma_urlbar_suggest.sjs"]
 
 ["browser_vimma_state_waits.js"]
 support-files = ["file_vimma_grep.html", "file_vimma_outline.pdf"]
+
+["browser_vimma_site_unbind.js"]
+support-files = ["file_vimma_site_unbind.html"]

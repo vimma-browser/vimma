@@ -6,8 +6,11 @@
 // container at the bottom of the window, above the status bar when there is one. VimmaHost
 // opens and cancels it (`command.open`, `command.cancel` on Esc) and runs what it parses; the
 // input's own keydown handles the line's editing keys: Tab / shift+Tab, Up / Down and Enter.
+// Up / Down walk history, or the completion list once Down enters it
+// (docs/specs/cmdline-arrow-completion.md).
 
 import {
+  cmdlineArrow,
   completeCommandLine,
   createHistory,
   historyNext,
@@ -92,7 +95,11 @@ export class CommandLine {
     this.error = null;
     /** @type {Element | null} focused before open; close() returns focus there */
     this.opener = null;
-    /** @type {{ candidates: Candidate[], index: number } | null} while Tab cycles */
+    /**
+     * While Tab or Up / Down cycle the list; `typed` is the line before, which Up on the first
+     * row puts back.
+     * @type {{ candidates: Candidate[], index: number, typed: string } | null}
+     */
     this.cycle = null;
     /** @type {HistoryStore} */
     this.store = isPrivate(win) ? { history: createHistory() } : sharedHistory;
@@ -177,7 +184,33 @@ export class CommandLine {
         break;
       case "ArrowUp":
       case "ArrowDown": {
-        const step = e.key === "ArrowUp" ? historyPrevious : historyNext;
+        const direction = e.key === "ArrowUp" ? -1 : 1;
+        // Core's matches, not the list's rows: an error empties the list but keeps the line,
+        // and Tab still completes it then.
+        const shown =
+          this.cycle?.candidates.length ??
+          completeCommandLine(input.value, { args: this.args(), hidden: this.hidden() }).candidates
+            .length;
+        const move = cmdlineArrow(
+          {
+            line: input.value,
+            shown,
+            selected: this.cycle?.index ?? null,
+            browsing: this.cursor.index !== null,
+          },
+          direction,
+        );
+        if (move.kind === "select") {
+          this.complete(direction);
+          break;
+        }
+        if (move.kind === "leave") {
+          input.value = /** @type {NonNullable<CommandLine["cycle"]>} */ (this.cycle).typed;
+          this.cycle = null;
+          this.refreshList();
+          break;
+        }
+        const step = direction < 0 ? historyPrevious : historyNext;
         const view = Object.freeze({ ...this.store.history, ...this.cursor });
         const next = step(view, input.value);
         this.cursor = { index: next.history.index, draft: next.history.draft };
@@ -256,7 +289,11 @@ export class CommandLine {
         hidden: this.hidden(),
       });
       if (!candidates.length) return;
-      this.cycle = { candidates, index: direction > 0 ? 0 : candidates.length - 1 };
+      this.cycle = {
+        candidates,
+        index: direction > 0 ? 0 : candidates.length - 1,
+        typed: input.value,
+      };
       this.renderList(candidates);
     } else {
       const n = this.cycle.candidates.length;

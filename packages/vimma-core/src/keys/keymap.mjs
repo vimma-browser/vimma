@@ -9,7 +9,7 @@
 import { removedAction, resolveActionName, suggestAction } from "./actions.mjs";
 import { parseCommandLine } from "./cmdline.mjs";
 import { DEFAULT_CONFIG, defaultKeys } from "../config/defaults.mjs";
-import { insertEditCommand } from "./editable.mjs";
+import { insertEditCommand, matchSiteRule } from "./editable.mjs";
 import { SUGGESTION_ACTIONS } from "./suggestions.mjs";
 import { firefoxShortcuts } from "./firefox-keys.mjs";
 import {
@@ -154,6 +154,30 @@ function asList(v, path) {
  * @returns {KeymapTarget}
  */
 const target = (mode, context) => (mode === "normal" && context === "pdf" ? "pdf" : mode);
+
+/**
+ * A trie over `entries`, which hold one binding per sequence.
+ * @param {readonly Entry[]} entries
+ * @returns {TrieNode}
+ */
+function buildTrie(entries) {
+  /** @type {TrieNode} */
+  const root = { children: new Map(), label: "" };
+  for (const e of entries) {
+    let node = root;
+    e.chords.forEach((c, i) => {
+      const k = formatKey(c);
+      let next = node.children.get(k);
+      if (!next) {
+        next = { children: new Map(), label: /** @type {string} */ (e.labels[i]) };
+        node.children.set(k, next);
+      }
+      node = next;
+    });
+    node.action = e.action;
+  }
+  return root;
+}
 
 /**
  * @param {UserConfig} [user]
@@ -408,24 +432,53 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
       }
       if (!prev) seen.set(e.seq, e);
     }
-    /** @type {TrieNode} */
-    const root = { children: new Map(), label: "" };
-    for (const e of seen.values()) {
-      let node = root;
-      e.chords.forEach((c, i) => {
-        const k = formatKey(c);
-        let next = node.children.get(k);
-        if (!next) {
-          next = { children: new Map(), label: /** @type {string} */ (e.labels[i]) };
-          node.children.set(k, next);
-        }
-        node = next;
-      });
-      node.action = e.action;
-    }
-    tries[mode] = root;
     perMode[mode] = [...seen.values()];
+    tries[mode] = buildTrie(/** @type {Entry[]} */ (perMode[mode]));
   }
+
+  // [sites."<host>"] unbind (docs/specs/site-unbind.md): each table's first keys, which the
+  // page gets in normal and insert mode instead of every binding they start.
+  /** @type {Map<string, { match: string, keys: Set<string> }>} */
+  const siteRules = new Map();
+  for (const [match, table] of Object.entries(user.sites ?? {})) {
+    /** @type {Set<string>} */
+    const keys = new Set();
+    const at = ["sites", match, "unbind"];
+    const list = table?.unbind ?? [];
+    if (!Array.isArray(list)) throw new KeymapError("expected a list of keys", formatPath(at));
+    list.forEach((text, i) => {
+      const path = formatPath([...at, i]);
+      if (typeof text !== "string") throw new KeymapError("expected a string", path);
+      const { chords } = concretise(notation(() => parseBinding(text), path));
+      const first = formatKey(/** @type {Chord} */ (chords[0]));
+      // Decision 3: a page holding either would leave the user no key back to Vimma.
+      if (first === "esc") {
+        throw new KeymapError(
+          "esc stays Vimma's on every site: it leaves insert mode and a pending key",
+          path,
+        );
+      }
+      if (first === formatKey(prefix)) {
+        throw new KeymapError(
+          "the prefix stays Vimma's on every site: it reaches every other command",
+          path,
+        );
+      }
+      // Decision 1: Vimma consumes a sequence's first key, so the page never sees the second.
+      if (chords.length !== 1) {
+        throw new KeymapError(
+          `must be one key: on a site, "${first}" gives the page ${first} and every sequence it starts`,
+          path,
+        );
+      }
+      keys.add(first);
+    });
+    siteRules.set(match, { match, keys });
+  }
+  const rules = [...siteRules.values()];
+  const anyUnbound = rules.some((r) => r.keys.size > 0);
+  /** @type {Map<string, TrieNode>} built on first use (decision 6), keyed by mode and host */
+  const siteTries = new Map();
 
   /**
    * @param {string} name
@@ -450,11 +503,55 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
     leader,
     timeoutMs,
     /**
-     * The trie a key is looked up in: the mode's, or the pdf context's in normal mode.
+     * The trie a key is looked up in: the mode's, or the pdf context's in normal mode; on a site
+     * that `site()` named, without the keys it unbinds (docs/specs/site-unbind.md).
      * @param {Mode} mode
      * @param {Context} [context]
+     * @param {string | null} [site]
+     * @returns {TrieNode}
      */
-    trie: (mode, context = "page") => /** @type {TrieNode} */ (tries[target(mode, context)]),
+    trie: (mode, context = "page", site = null) => {
+      const base = /** @type {TrieNode} */ (tries[target(mode, context)]);
+      // Decision 2: only where keys go to the page; Vimma's modes and the PDF viewer keep theirs.
+      if (site === null || context !== "page" || (mode !== "normal" && mode !== "insert")) {
+        return base;
+      }
+      const rule = siteRules.get(site);
+      if (!rule || rule.keys.size === 0) return base;
+      const key = `${mode} ${site}`;
+      let trie = siteTries.get(key);
+      if (!trie) {
+        const kept = /** @type {Entry[]} */ (perMode[mode]).filter(
+          (e) => !rule.keys.has(formatKey(/** @type {Chord} */ (e.chords[0]))),
+        );
+        trie = buildTrie(kept);
+        siteTries.set(key, trie);
+      }
+      return trie;
+    },
+    /**
+     * Whether some `[sites]` table unbinds a key: without one, the host need not read a page's
+     * host on every key (decision 6).
+     */
+    hasSiteUnbinds: () => anyUnbound,
+    /**
+     * Whether `site` (from `site()`) gives the page `key` (canonical chord, `ctrl+w`), so that
+     * Vimma neither runs a binding on it nor edits a field with it (decision 9).
+     * @param {string | null} site
+     * @param {string} key
+     */
+    unbinds: (site, key) => site !== null && !!siteRules.get(site)?.keys.has(key),
+    /**
+     * The `[sites."<host>"]` table, as written, whose `unbind` applies on `host` (a page's
+     * `URL.hostname`), or null: none matches, or the most specific match unbinds nothing.
+     * @param {string} host
+     * @returns {string | null}
+     */
+    site: (host) => {
+      if (!anyUnbound || !host) return null;
+      const rule = matchSiteRule(host, rules);
+      return rule && rule.keys.size > 0 ? rule.match : null;
+    },
     /**
      * @param {Mode} mode
      * @param {Context} [context]

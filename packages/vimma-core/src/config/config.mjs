@@ -233,7 +233,7 @@ const TOP_KEYS = [
   "panel",
   "scroll",
 ];
-const KEYMAP_SECTIONS = new Set(["keys", "modal", "unbind", "firefox"]);
+const KEYMAP_SECTIONS = new Set(["keys", "modal", "unbind", "firefox", "sites"]);
 const WORKSPACE_KEYS = ["color", "icon", "home", "autofill"];
 const THEME_KEYS = ["source", "name", "appearance", "font", "colors"];
 const THEME_NAMES = Object.keys(BUILTIN_THEMES);
@@ -249,7 +249,7 @@ export const PANES_NEW_TAB_MODES = Object.freeze(["alone", "pane"]);
 /** `[panes] main_size` bounds, in percent. */
 export const MAIN_SIZE_MIN = 20;
 export const MAIN_SIZE_MAX = 80;
-const SITE_KEYS = ["insert"];
+const SITE_KEYS = ["insert", "unbind"];
 const MODAL_KEYS = ["leader", "timeout_ms", "hint_chars", "insert_editing"];
 const FIREFOX_KEYS = ["disable", "enable"];
 const FIREFOX_DISABLE = 'must be "all" or a list of keys like "ctrl+w"';
@@ -757,7 +757,12 @@ function validate(raw, declared, warnings = []) {
       if (!table(path, site)) continue;
       for (const [key, v] of Object.entries(site)) {
         const at = [...path, key];
-        if (key !== "insert") unknownKey(at, key, SITE_KEYS);
+        if (key === "unbind") {
+          // Each entry's key is checked by compileKeymap, which knows the prefix
+          // (docs/specs/site-unbind.md behaviour 4 and 5).
+          if (!Array.isArray(v)) typeError(at, v, "a list of keys");
+          else v.forEach((k, i) => typeof k !== "string" && typeError([...at, i], k, "a string"));
+        } else if (key !== "insert") unknownKey(at, key, SITE_KEYS);
         else if (typeof v !== "string") typeError(at, v, "a string");
         else if (!INSERT_SITE_MODES.includes(/** @type {InsertSiteMode} */ (v))) {
           fail(at, 'must be "auto", "never" or "always"', closest(v, INSERT_SITE_MODES));
@@ -929,6 +934,8 @@ function validateAgent(agent, { fail, typeError, unknownKey, warnings }) {
       typeError(at, p, "a table");
       return;
     }
+    // `default` and the stored key name a provider by it (B24): it cannot be left out.
+    if (!("name" in p)) fail(at, 'a provider needs "name"');
     if (p.kind === "cli") {
       validateCliProvider(p, at, {
         fail,
@@ -1040,12 +1047,26 @@ function validateCliProvider(
 }
 
 /**
+ * A `[[agent.providers]]` table that validateAgent passed, its integers numbers (toNumbers): an
+ * endpoint provider, or an agent CLI (validateCliProvider).
+ * @typedef {{ name: string, kind: "openai" | "anthropic", endpoint: string, model: string,
+ *   vision?: boolean, price_in?: number, price_out?: number }} AgentProviderInput
+ * @typedef {{ name: string, kind: "cli", cli: string, model?: string,
+ *   max_minutes?: number }} AgentCliProviderInput
+ */
+/**
+ * `[agent]` as validateAgent passed it, its integers numbers (toNumbers).
+ * @typedef {{ default?: string, local_only?: boolean, max_running?: number, max_steps?: number,
+ *   max_tokens?: number, max_cost?: number, keep_days?: number, keep_results?: number,
+ *   providers?: (AgentProviderInput | AgentCliProviderInput)[] }} AgentInput
+ */
+
+/**
  * `[agent]` with the defaults filled in (camelCase, as ResolvedConfig keeps it).
- * @param {any} agent  valid
+ * @param {AgentInput | undefined} agent  valid
  * @returns {AgentConfig}
  */
 function resolveAgent(agent) {
-  /** @type {any[]} */
   const listed = Array.isArray(agent?.providers) ? agent.providers : [];
   const providers = listed.filter((p) => p.kind !== "cli" || CLI_IDS.includes(p.cli));
   // A default that names a skipped provider (validateCliProvider) sets none.
@@ -1053,7 +1074,8 @@ function resolveAgent(agent) {
   const num = (/** @type {unknown} */ v, /** @type {number | null} */ d) =>
     v === undefined ? d : Number(v);
   return {
-    default: named ? agent.default : null,
+    // named: a provider's name, a string (validateAgent), equals it, so `[agent]` is there.
+    default: named ? /** @type {string} */ (/** @type {AgentInput} */ (agent).default) : null,
     localOnly: agent?.local_only ?? false,
     maxRunning: /** @type {number} */ (num(agent?.max_running, AGENT_DEFAULTS.maxRunning)),
     maxSteps: /** @type {number} */ (num(agent?.max_steps, AGENT_DEFAULTS.maxSteps)),
@@ -1067,7 +1089,7 @@ function resolveAgent(agent) {
   };
 }
 
-/** A model provider, resolved. @param {any} p  valid @returns {AgentProviderConfig} */
+/** A model provider, resolved. @param {AgentProviderInput} p  valid @returns {AgentProviderConfig} */
 function resolveProvider(p) {
   return {
     name: p.name,
@@ -1085,7 +1107,7 @@ function resolveProvider(p) {
 /**
  * An agent CLI provider, resolved: no endpoint (the CLI decides), no vision of Vimma's (its
  * screenshots go through vimma-ctl), and its time limit.
- * @param {any} p  valid @returns {AgentProviderConfig}
+ * @param {AgentCliProviderInput} p  valid @returns {AgentProviderConfig}
  */
 function resolveCliProvider(p) {
   return {
@@ -1143,7 +1165,7 @@ function resolveMcp(mcp) {
 /**
  * TOML integers parsed as BigInt back to numbers, once validation has bounded them.
  * @param {unknown} v
- * @returns {any}
+ * @returns {unknown}  `v`'s shape, its BigInts numbers
  */
 function toNumbers(v) {
   if (typeof v === "bigint") return Number(v);
@@ -1243,7 +1265,8 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     },
     search: resolveSearch(user.search),
     updates: { check: user.updates?.check ?? true },
-    agent: resolveAgent(user.agent),
+    // validateAgent checked `[agent]` field by field; UserConfig keeps it as it was parsed.
+    agent: resolveAgent(/** @type {AgentInput | undefined} */ (user.agent)),
   };
 }
 
@@ -1313,7 +1336,13 @@ export function parseConfig(text, { mac = false } = {}) {
   if (!problems.some((p) => KEYMAP_SECTIONS.has(/** @type {string} */ (p.path[0])))) {
     try {
       keymap = compileKeymap(
-        { keys: user.keys, modal: user.modal, unbind: user.unbind, firefox: user.firefox },
+        {
+          keys: user.keys,
+          modal: user.modal,
+          unbind: user.unbind,
+          firefox: user.firefox,
+          sites: user.sites,
+        },
         { mac },
       );
     } catch (e) {
@@ -1448,7 +1477,7 @@ function firstProvidersHeader(lines) {
   return lines.findIndex((l) => /^[ \t]*\[\[[ \t]*agent[ \t]*\.[ \t]*providers[ \t]*\]\]/.test(l));
 }
 
-/** @param {any} raw  parsed TOML @returns {string} everything but `[agent]`, comparable */
+/** @param {Record<string, unknown>} raw  parsed TOML @returns {string} everything but `[agent]`, comparable */
 const withoutAgent = (raw) => JSON.stringify({ ...raw, agent: undefined });
 
 /**
