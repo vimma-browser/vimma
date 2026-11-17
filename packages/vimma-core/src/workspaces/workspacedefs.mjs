@@ -137,7 +137,9 @@ export function readDefinitions(input) {
     if (w.source !== "config" && w.source !== "runtime") {
       throw new DefinitionsError("invalid", at("source"), '"config" or "runtime"');
     }
-    if (w.bookmarksFolder !== undefined && !PLACES_GUID.test(String(w.bookmarksFolder))) {
+    const folder = w.bookmarksFolder;
+    // String() would read an array of the guid as the guid.
+    if (folder !== undefined && !(typeof folder === "string" && PLACES_GUID.test(folder))) {
       throw new DefinitionsError("invalid", at("bookmarksFolder"), "a Places guid");
     }
     ids.add(w.id);
