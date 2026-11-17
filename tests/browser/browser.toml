@@ -177,6 +177,8 @@ support-files = ["file_vimma_search_post.sjs"]
 
 ["browser_vimma_cmdline.js"]
 
+["browser_vimma_cmdline_arrows.js"]
+
 ["browser_vimma_find.js"]
 support-files = [
   "file_vimma_find.html",
