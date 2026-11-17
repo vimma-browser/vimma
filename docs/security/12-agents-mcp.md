@@ -433,6 +433,20 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   character on any line (a carriage return, so CRLF line ends too, a NUL or a form feed), a
   line long enough for clamd to read in two parts, one of these options spelt otherwise than
   clamd matches it or set twice (clamd keeps the first), or a quoted or commented socket path.
+  clamd **must never** scan less than Vimma's `clamscan` with ClamAV's defaults, so clamd.conf is
+  also refused when it turns off a scan that is on by default (ScanArchive, ScanPE, ScanELF,
+  ScanOLE2, ScanPDF, ScanHTML, ScanMail, Bytecode, HeuristicAlerts and the other `Scan*` and
+  phishing options), loads fewer signatures (OfficialDatabaseOnly) or skips the certificate
+  check, sets a scan limit (`Max*`, `PCRE*`) to anything but 0 where 0 means no limit, or at
+  all where optparser.c does not say so (clamscan's limits are libclamav's `CLI_DEFAULT_*`,
+  which are not compared), sets BytecodeTimeout under its default of 10000, excludes a path
+  other than `^/proc/` and `^/sys/`, loads signatures from a DatabaseDirectory other than
+  `/var/lib/clamav` (clamscan's `--database` default, CONST_DATADIR, in the packages Vimma uses)
+  or sets CVDCertsDirectory (no default in optparser.c to compare with), or sets a hidden
+  developer option (`DevACOnly`, `DevACDepth`, `DevPerformance`, `DevLiblog`); each by its name
+  or command-line name, and set once. Vimma
+  checks the file, not the configuration the running clamd read when it started (perhaps from
+  another file); only root can change either.
   Vimma has no download reputation service of its own: Firefox's Safe Browsing checks downloads
   only in a build with a Google key (P6), so in a keyless build these checks and ClamAV are all
   there is.
@@ -451,6 +465,12 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`clamd.conf: a line clamd would read in two parts refuses the whole file`](../../packages/vimma-core/test/agent-downloads.test.ts),
   [`clamd.conf: names as clamd spells them, each set once, spaces and tabs only`](../../packages/vimma-core/test/agent-downloads.test.ts),
   [`clamd.conf: comments and quotes as clamd reads them`](../../packages/vimma-core/test/agent-downloads.test.ts),
+  [`clamd.conf: a scan clamscan does is never turned off`](../../packages/vimma-core/test/agent-downloads.test.ts),
+  [`clamd.conf: a limit is never set below clamscan's`](../../packages/vimma-core/test/agent-downloads.test.ts),
+  [`clamd.conf: ExcludePath may skip only /proc and /sys`](../../packages/vimma-core/test/agent-downloads.test.ts),
+  [`clamd.conf: the signatures clamscan loads, from the same folder`](../../packages/vimma-core/test/agent-downloads.test.ts),
+  [`clamd.conf: no developer option`](../../packages/vimma-core/test/agent-downloads.test.ts),
+  [`clamd.conf: the stock file, with the alerts turned on, is used`](../../packages/vimma-core/test/agent-downloads.test.ts),
   [`the socket: a socket owned by root or clamav, never by the user or anyone else`](../../packages/vimma-core/test/agent-downloads.test.ts),
   [`a grant does not run it, whatever was asked: it waits`](../../packages/vimma-core/test/agent-gate.test.ts),
   [`! allows a dangerous one; y, a and counts do nothing there`](../../packages/vimma-core/test/agent-prompt.test.ts),

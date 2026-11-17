@@ -961,6 +961,240 @@ describe("the download checks' edges (mutation-tested)", () => {
     }
   });
 
+  // Decision 45: clamd may make a scan faster, never weaker. Vimma's clamscan runs with ClamAV's
+  // defaults (clamArguments sets only the two alerts), so clamd.conf must not scan less than they
+  // do. Names, command-line names and defaults are from ClamAV's common/optparser.c.
+  const SCANS_ON = [
+    ["ScanPE", "scan-pe"],
+    ["ScanELF", "scan-elf"],
+    ["ScanMail", "scan-mail"],
+    ["PhishingSignatures", "phishing-sigs"],
+    ["PhishingScanURLs", "phishing-scan-urls"],
+    ["HeuristicAlerts", "heuristic-alerts"],
+    ["ScanHTML", "scan-html"],
+    ["ScanOLE2", "scan-ole2"],
+    ["ScanPDF", "scan-pdf"],
+    ["ScanSWF", "scan-swf"],
+    ["ScanXMLDOCS", "scan-xmldocs"],
+    ["ScanHWP3", "scan-hwp3"],
+    ["ScanOneNote", "scan-onenote"],
+    ["ScanArchive", "scan-archive"],
+    ["ScanImage", "scan-image"],
+    ["ScanImageFuzzyHash", "scan-image-fuzzy-hash"],
+    ["Bytecode", "bytecode"],
+    ["AlgorithmicDetection", "algorithmic-detection"],
+  ] as const;
+
+  test("clamd.conf: a scan clamscan does is never turned off", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    const ok = { socket: "/run/c.ctl" };
+    for (const [name, alias] of SCANS_ON) {
+      const weaker = { problem: `clamd would scan less than clamscan (${name})` };
+      expect(conf(...good, `${name} yes`)).toEqual(ok);
+      expect(conf(...good, `${alias} TRUE # on`)).toEqual(ok);
+      expect(conf(...good, `${name} no`)).toEqual(weaker);
+      expect(conf(...good, `${name} 0 # off`)).toEqual(weaker);
+      expect(conf(...good, `${alias} false`)).toEqual(weaker);
+      expect(conf(...good, `${name} off`)).toEqual(weaker);
+      expect(conf(...good, `${name}`)).toEqual(weaker);
+      expect(conf(...good, `${name} yes`, `${alias} no`)).toEqual({
+        problem: `clamd.conf sets ${name} twice`,
+      });
+      if (alias !== name.toLowerCase()) {
+        expect(conf(...good, `${name.toLowerCase()} no`)).toEqual({
+          problem: `clamd does not read ${name.toLowerCase()} (line 4)`,
+        });
+      }
+    }
+    // Options clamscan leaves off that would make clamd load fewer signatures or trust more.
+    for (const [name, alias] of [
+      ["OfficialDatabaseOnly", "official-db-only"],
+      ["DisableCertCheck", "nocerts"],
+    ] as const) {
+      const weaker = { problem: `clamd would scan less than clamscan (${name})` };
+      expect(conf(...good, `${name} no`)).toEqual(ok);
+      expect(conf(...good, `${alias} false # off`)).toEqual(ok);
+      expect(conf(...good, `${name} yes`)).toEqual(weaker);
+      expect(conf(...good, `${alias} 1`)).toEqual(weaker);
+      expect(conf(...good, `${name} maybe`)).toEqual(weaker);
+      expect(conf(...good, `${name} no`, `${alias} no`)).toEqual({
+        problem: `clamd.conf sets ${name} twice`,
+      });
+    }
+    expect(conf(...good, "ScanArchive no")).toEqual({
+      problem: "clamd would scan less than clamscan (ScanArchive)",
+    });
+  });
+
+  test("clamd.conf: a limit is never set below clamscan's", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    const ok = { socket: "/run/c.ctl" };
+    const weaker = (name: string) => ({ problem: `clamd would scan less than clamscan (${name})` });
+    // Sizes: clamd reads 0 as no limit. clamscan's defaults (CLI_DEFAULT_*) are defined outside
+    // optparser.c, so any other value is refused rather than compared.
+    for (const [name, alias] of [
+      ["MaxScanSize", "max-scansize"],
+      ["MaxFileSize", "max-filesize"],
+      ["MaxEmbeddedPE", "max-embeddedpe"],
+      ["MaxHTMLNormalize", "max-htmlnormalize"],
+      ["MaxHTMLNoTags", "max-htmlnotags"],
+      ["MaxScriptNormalize", "max-scriptnormalize"],
+      ["MaxZipTypeRcg", "max-ziptypercg"],
+      ["PCREMaxFileSize", "pcre-max-filesize"],
+    ] as const) {
+      expect(conf(...good, `${name} 0`)).toEqual(ok);
+      expect(conf(...good, `${alias} 00M # no limit`)).toEqual(ok);
+      expect(conf(...good, `${name} 0k`)).toEqual(ok);
+      for (const value of ["25M", "1", "4G", "010", "0x0", "0 M", "0\t# x", "-1", ""]) {
+        expect(conf(...good, `${name} ${value}`)).toEqual(weaker(name));
+      }
+      expect(conf(...good, `${name} 0`, `${alias} 0`)).toEqual({
+        problem: `clamd.conf sets ${name} twice`,
+      });
+    }
+    // Numbers where optparser.c says 0 disables the limit.
+    for (const [name, alias] of [
+      ["MaxScanTime", "max-scantime"],
+      ["MaxRecursion", "max-recursion"],
+      ["MaxFiles", "max-files"],
+    ] as const) {
+      expect(conf(...good, `${name} 0`)).toEqual(ok);
+      expect(conf(...good, `${alias} 000 # none`)).toEqual(ok);
+      for (const value of ["16", "100000000", "0k", "-0", "1"]) {
+        expect(conf(...good, `${name} ${value}`)).toEqual(weaker(name));
+      }
+      expect(conf(...good, `${alias} 0`, `${name} 0`)).toEqual({
+        problem: `clamd.conf sets ${name} twice`,
+      });
+    }
+    // Numbers where 0 is not said to disable the limit: any setting is refused.
+    for (const name of [
+      "MaxPartitions",
+      "MaxIconsPE",
+      "MaxRecHWP3",
+      "PCREMatchLimit",
+      "PCRERecMatchLimit",
+    ]) {
+      for (const value of ["0", "50", "100000", "999999999"]) {
+        expect(conf(...good, `${name} ${value}`)).toEqual(weaker(name));
+      }
+    }
+    expect(conf(...good, "max-partitions 128")).toEqual(weaker("MaxPartitions"));
+    expect(conf(...good, "pcre-recmatch-limit 5000")).toEqual(weaker("PCRERecMatchLimit"));
+    // BytecodeTimeout: optparser.c's default is 10000 (ms); clamd reads it with atoi.
+    for (const value of ["10000", "60000", "010000", "2147483647", "60000 # a minute"]) {
+      expect(conf(...good, `BytecodeTimeout ${value}`)).toEqual(ok);
+    }
+    for (const value of ["9999", "0", "", "2147483648", "99999999999", "1e5", "60000\t#"]) {
+      expect(conf(...good, `bytecode-timeout ${value}`)).toEqual(weaker("BytecodeTimeout"));
+    }
+    expect(conf(...good, "MaxFileSize 25M", "ScanArchive no")).toEqual(weaker("MaxFileSize"));
+  });
+
+  // clamdscan skips a path that matches an ExcludePath and calls it clean; clamscan, as Vimma
+  // runs it, excludes nothing. Only optparser.c's own examples, which no download can be under,
+  // are taken.
+  test("clamd.conf: ExcludePath may skip only /proc and /sys", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    const weaker = { problem: "clamd would scan less than clamscan (ExcludePath)" };
+    expect(conf(...good, "ExcludePath ^/proc/", "ExcludePath ^/sys/")).toEqual({
+      socket: "/run/c.ctl",
+    });
+    for (const value of ["\\.zip$", "^/home/", "^/proc", "/proc/", "^/proc/ # x", "^/sys/.*", ""]) {
+      expect(conf(...good, "ExcludePath ^/proc/", `ExcludePath ${value}`)).toEqual(weaker);
+    }
+    expect(conf(...good, "excludepath .")).toEqual({
+      problem: "clamd does not read excludepath (line 4)",
+    });
+  });
+
+  // clamscan loads its signatures from CONST_DATADIR (its --database default) and verifies them
+  // with its own certificates; clamd must load the same ones. CONST_DATADIR is a build setting,
+  // /var/lib/clamav in the packages Vimma uses; CVDCertsDirectory has no default in optparser.c.
+  test("clamd.conf: the signatures clamscan loads, from the same folder", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    const weaker = (name: string) => ({ problem: `clamd would scan less than clamscan (${name})` });
+    expect(conf(...good, "DatabaseDirectory /var/lib/clamav")).toEqual({ socket: "/run/c.ctl" });
+    expect(conf(...good, "datadir /var/lib/clamav")).toEqual({ socket: "/run/c.ctl" });
+    for (const value of [
+      "/var/lib/clamav/",
+      "/srv/clamav",
+      "/var/lib/clamav # x",
+      '"/var/lib/clamav"',
+      "",
+    ]) {
+      expect(conf(...good, `DatabaseDirectory ${value}`)).toEqual(weaker("DatabaseDirectory"));
+    }
+    expect(conf(...good, "DatabaseDirectory /var/lib/clamav", "datadir /var/lib/clamav")).toEqual({
+      problem: "clamd.conf sets DatabaseDirectory twice",
+    });
+    expect(conf(...good, "databasedirectory /srv")).toEqual({
+      problem: "clamd does not read databasedirectory (line 4)",
+    });
+    for (const line of [
+      "CVDCertsDirectory /etc/certs",
+      "cvdcertsdir /var/lib/clamav",
+      "CVDCertsDirectory",
+    ]) {
+      expect(conf(...good, line)).toEqual(weaker("CVDCertsDirectory"));
+    }
+  });
+
+  // optparser.c's hidden developer options (FLAG_HIDDEN, read by clamd): never in a clamd.conf
+  // Vimma uses.
+  test("clamd.conf: no developer option", () => {
+    const good = ["LocalSocket /run/c.ctl", "AlertEncrypted yes", "AlertExceedsMax yes"];
+    const conf = (...lines: string[]) => clamdConfig(lines.join("\n"));
+    for (const [name, alias] of [
+      ["DevACOnly", "dev-ac-only"],
+      ["DevACDepth", "dev-ac-depth"],
+      ["DevPerformance", "dev-performance"],
+      ["DevLiblog", "dev-liblog"],
+    ] as const) {
+      const weaker = { problem: `clamd would scan less than clamscan (${name})` };
+      for (const value of ["no", "yes", "0", "3"]) {
+        expect(conf(...good, `${name} ${value}`)).toEqual(weaker);
+        expect(conf(...good, `${alias} ${value}`)).toEqual(weaker);
+      }
+    }
+  });
+
+  test("clamd.conf: the stock file, with the alerts turned on, is used", () => {
+    const stock = [
+      "##",
+      "## Example config file for the Clam AV daemon",
+      "##",
+      "#Example",
+      "#LogFile /tmp/clamd.log",
+      "LocalSocket /run/clamav/clamd.ctl",
+      "LocalSocketGroup clamav",
+      "LocalSocketMode 660",
+      "FixStaleSocket yes",
+      "#TCPSocket 3310",
+      "#TCPAddr localhost",
+      "ExcludePath ^/proc/",
+      "ExcludePath ^/sys/",
+      "#MaxFileSize 25M",
+      "#ScanArchive no",
+      "User clamav",
+      "\t",
+      "   ",
+      "AlertEncrypted yes   ",
+      "AlertExceedsMax\tyes # turned on for Vimma",
+      "ScanArchive yes",
+      "BytecodeTimeout 60000",
+      "MaxDirectoryRecursion 15",
+      "StreamMaxLength 25M",
+      "DetectPUA yes",
+      "#AlertEncrypted no",
+    ];
+    expect(clamdConfig(stock.join("\n"))).toEqual({ socket: "/run/clamav/clamd.ctl" });
+  });
+
   test("a uid in /etc/passwd is digits only", () => {
     expect(passwdUid("clamav:x:x64:64::/:/bin/false", "clamav")).toBeNull();
     expect(passwdUid("clamav:x:64x:64::/:/bin/false", "clamav")).toBeNull();
