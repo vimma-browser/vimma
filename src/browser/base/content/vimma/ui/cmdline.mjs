@@ -185,11 +185,16 @@ export class CommandLine {
       case "ArrowUp":
       case "ArrowDown": {
         const direction = e.key === "ArrowUp" ? -1 : 1;
-        const list = /** @type {HTMLElement} */ (this.list);
+        // Core's matches, not the list's rows: an error empties the list but keeps the line,
+        // and Tab still completes it then.
+        const shown =
+          this.cycle?.candidates.length ??
+          completeCommandLine(input.value, { args: this.args(), hidden: this.hidden() }).candidates
+            .length;
         const move = cmdlineArrow(
           {
             line: input.value,
-            shown: this.cycle?.candidates.length ?? (list.hidden ? 0 : list.childElementCount),
+            shown,
             selected: this.cycle?.index ?? null,
             browsing: this.cursor.index !== null,
           },
