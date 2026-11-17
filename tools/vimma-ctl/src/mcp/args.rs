@@ -671,6 +671,7 @@ mod tests {
     // them (#1205), which drew nothing, so "/foo\u{206a}bar<CR>" was asked as a find of "foobar".
     #[test]
     fn keys_with_any_invisible_character_are_tool_errors() {
+        use std::fmt::Write as _;
         let mut p = Protocol::new();
         reply(&mut p, INIT);
         for cp in FILL_INVISIBLE.iter().flat_map(|&(a, b)| [a, b]) {
@@ -679,11 +680,10 @@ mod tests {
             }
             // A JSON escape, as an agent would send it: two UTF-16 units past the BMP.
             let c = char::from_u32(cp).expect("a scalar value");
-            let escaped: String = c
-                .encode_utf16(&mut [0; 2])
-                .iter()
-                .map(|u| format!("\\u{u:04x}"))
-                .collect();
+            let mut escaped = String::new();
+            for u in c.encode_utf16(&mut [0; 2]).iter() {
+                write!(escaped, "\\u{u:04x}").expect("writing to a String");
+            }
             let arguments = format!(r#"{{"tab":"1","keys":"/foo{escaped}bar<CR>"}}"#);
             let r = reply(&mut p, &call_line(5, "vimma_keys", &arguments));
             assert!(
