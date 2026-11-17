@@ -1041,12 +1041,26 @@ function validateCliProvider(
 }
 
 /**
+ * A `[[agent.providers]]` table that validateAgent passed, its integers numbers (toNumbers): an
+ * endpoint provider, or an agent CLI (validateCliProvider).
+ * @typedef {{ name: string, kind: "openai" | "anthropic", endpoint: string, model: string,
+ *   vision?: boolean, price_in?: number, price_out?: number }} AgentProviderInput
+ * @typedef {{ name: string, kind: "cli", cli: string, model?: string,
+ *   max_minutes?: number }} AgentCliProviderInput
+ */
+/**
+ * `[agent]` as validateAgent passed it, its integers numbers (toNumbers).
+ * @typedef {{ default?: string, local_only?: boolean, max_running?: number, max_steps?: number,
+ *   max_tokens?: number, max_cost?: number, keep_days?: number, keep_results?: number,
+ *   providers?: (AgentProviderInput | AgentCliProviderInput)[] }} AgentInput
+ */
+
+/**
  * `[agent]` with the defaults filled in (camelCase, as ResolvedConfig keeps it).
- * @param {any} agent  valid
+ * @param {AgentInput | undefined} agent  valid
  * @returns {AgentConfig}
  */
 function resolveAgent(agent) {
-  /** @type {any[]} */
   const listed = Array.isArray(agent?.providers) ? agent.providers : [];
   const providers = listed.filter((p) => p.kind !== "cli" || CLI_IDS.includes(p.cli));
   // A default that names a skipped provider (validateCliProvider) sets none.
@@ -1054,7 +1068,8 @@ function resolveAgent(agent) {
   const num = (/** @type {unknown} */ v, /** @type {number | null} */ d) =>
     v === undefined ? d : Number(v);
   return {
-    default: named ? agent.default : null,
+    // named: a provider's name, a string (validateAgent), equals it, so `[agent]` is there.
+    default: named ? /** @type {string} */ (/** @type {AgentInput} */ (agent).default) : null,
     localOnly: agent?.local_only ?? false,
     maxRunning: /** @type {number} */ (num(agent?.max_running, AGENT_DEFAULTS.maxRunning)),
     maxSteps: /** @type {number} */ (num(agent?.max_steps, AGENT_DEFAULTS.maxSteps)),
@@ -1068,7 +1083,7 @@ function resolveAgent(agent) {
   };
 }
 
-/** A model provider, resolved. @param {any} p  valid @returns {AgentProviderConfig} */
+/** A model provider, resolved. @param {AgentProviderInput} p  valid @returns {AgentProviderConfig} */
 function resolveProvider(p) {
   return {
     name: p.name,
@@ -1086,7 +1101,7 @@ function resolveProvider(p) {
 /**
  * An agent CLI provider, resolved: no endpoint (the CLI decides), no vision of Vimma's (its
  * screenshots go through vimma-ctl), and its time limit.
- * @param {any} p  valid @returns {AgentProviderConfig}
+ * @param {AgentCliProviderInput} p  valid @returns {AgentProviderConfig}
  */
 function resolveCliProvider(p) {
   return {
@@ -1144,7 +1159,7 @@ function resolveMcp(mcp) {
 /**
  * TOML integers parsed as BigInt back to numbers, once validation has bounded them.
  * @param {unknown} v
- * @returns {any}
+ * @returns {unknown}  `v`'s shape, its BigInts numbers
  */
 function toNumbers(v) {
   if (typeof v === "bigint") return Number(v);
@@ -1241,7 +1256,8 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     },
     search: resolveSearch(user.search),
     updates: { check: user.updates?.check ?? true },
-    agent: resolveAgent(user.agent),
+    // validateAgent checked `[agent]` field by field; UserConfig keeps it as it was parsed.
+    agent: resolveAgent(/** @type {AgentInput | undefined} */ (user.agent)),
   };
 }
 
@@ -1452,7 +1468,7 @@ function firstProvidersHeader(lines) {
   return lines.findIndex((l) => /^[ \t]*\[\[[ \t]*agent[ \t]*\.[ \t]*providers[ \t]*\]\]/.test(l));
 }
 
-/** @param {any} raw  parsed TOML @returns {string} everything but `[agent]`, comparable */
+/** @param {Record<string, unknown>} raw  parsed TOML @returns {string} everything but `[agent]`, comparable */
 const withoutAgent = (raw) => JSON.stringify({ ...raw, agent: undefined });
 
 /**

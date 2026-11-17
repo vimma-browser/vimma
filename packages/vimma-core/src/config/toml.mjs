@@ -432,7 +432,7 @@ function headerName(line) {
 
 /**
  * One edit on parsed `text`.
- * @param {string} text @param {Record<string, any>} doc @param {TomlEdit} edit
+ * @param {string} text @param {Record<string, unknown>} doc  `text`, parsed @param {TomlEdit} edit
  * @returns {{ ok: true, text: string } | { ok: false, error: TomlSyntaxError }}
  */
 function setKey(text, doc, { table, key, value }) {
@@ -497,7 +497,6 @@ function setKey(text, doc, { table, key, value }) {
 export function setTomlKeys(text, edits) {
   const before = parseToml(text);
   if (!before.ok) return before;
-  /** @type {Record<string, any>} */
   const want = structuredClone(before.value);
   let out = text;
   for (const edit of edits) {
@@ -509,7 +508,11 @@ export function setTomlKeys(text, edits) {
     const r = setKey(out, now.value, edit);
     if (!r.ok) return r;
     out = r.text;
-    want[edit.table] = { ...want[edit.table], [edit.key]: edit.value };
+    // setKey refused a `table` that is there but is not a table: it is one, or not there yet.
+    want[edit.table] = {
+      .../** @type {Record<string, unknown> | undefined} */ (want[edit.table]),
+      [edit.key]: edit.value,
+    };
   }
   const after = parseToml(out);
   if (!after.ok) return after;
