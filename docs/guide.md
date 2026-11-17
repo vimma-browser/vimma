@@ -2561,7 +2561,8 @@ Vimma's own`; rename it. A call to any server other than Vimma's ends the task.
   (`◆ gemini ran its own tool: run_shell_command "ls /"`).
 - Vimma gives it one MCP server, `vimma_chat`, in a settings file in the task's own folder, and
   lets no other server start (`--allowed-mcp-server-names vimma_chat`); its extensions are off
-  for these runs (`-e none`), since they bring servers and tools of their own. So the `vimma`
+  for these runs (`-e none`), since they bring servers and tools of their own, and so are its
+  subagents, yours and its built-in ones, since a subagent can start a server of its own. So the `vimma`
   server you may have added for a terminal (Using Vimma from an agent) stays in your settings but
   does not start. A call to any other server ends the task.
 - Gemini CLI saves every conversation, page text included, under `~/.gemini/tmp`, and has no

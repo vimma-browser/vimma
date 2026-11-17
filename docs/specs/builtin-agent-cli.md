@@ -414,6 +414,23 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
     user's (`~/.gemini/agents/*.md`) whose `mcp_servers` names a server `vimma_chat` would pass
     the allow-list and be merged into Vimma's entry, its command replacing Vimma's while the
     `env` is merged. Its tools could not be told from Vimma's (issue #1240).
+  - What turns subagents off (issue #1240; read in the source at the `v0.66.0` tag, not run):
+    `experimental.enableAgents` (default `true`, "Enable local and remote subagents"), read
+    from the merged settings into `Config.enableAgents`. With it `false`,
+    `AgentRegistry.loadAgents` returns before it loads any agent, built-in, the project's
+    (`.gemini/agents/`), the user's (`~/.gemini/agents/`) or an extension's, and `refreshAgents`
+    registers none either; the only other way in, `acknowledgeAgent`, is the interactive
+    prompt for a new project agent. With no agent loaded, no subagent's `mcp_servers` is ever
+    started. There is no command-line option for it. The settings are merged as schema
+    defaults, system defaults (`system-defaults.json`), the user's, the workspace's (only when
+    the folder is trusted, which `GEMINI_CLI_TRUST_WORKSPACE=true` makes the run folder), then
+    the system settings (`/etc/gemini-cli/settings.json`, macOS
+    `/Library/Application Support/GeminiCli/settings.json`, or the file
+    `GEMINI_CLI_SYSTEM_SETTINGS_PATH` names) last, as overrides: so the run folder's `false`
+    wins over the user's settings and only the system settings can turn subagents back on, as
+    they can already replace Vimma's `mcpServers` entry. The live check the issue asked for (a
+    `~/.gemini/agents/x.md` declaring `vimma_chat` beside a run) was not made: Gemini CLI is not
+    run for this research.
 - **opencode 2.0.32.** `opencode run --help` only: `--format json`, `--model`, `--auto`
   ("Auto-approve permissions that are not explicitly denied"). Its event shape was not found in
   the binary and is not described here.
@@ -780,6 +797,13 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
     not start is not in its stream, so such a run goes on without the browser's tools; the guide
     and `docs/limits.md` say so. Like Codex it has no live input (Behaviour 10 queues), no tool
     list and no cost. Issue #726.)
+
+    (Since changed: the run folder's `.gemini/settings.json` also turns Gemini CLI's subagents
+    off (`experimental.enableAgents: false`), the user's, the project's and its built-in ones,
+    since a subagent of the user's may declare an MCP server named `vimma_chat`, which the
+    allow-list would start and merge into Vimma's entry, its command getting the ticket. Only
+    Gemini CLI's system settings come after that file. Research, "Gemini CLI 0.66.0";
+    issue #1240.)
 
 13. **A CLI's cost is shown, and `max_cost` does not apply to it** (C13, Behaviour 15). The
     status bar shows a reported cost as `≈ $0.41 (claude-code)` while the task runs, and the

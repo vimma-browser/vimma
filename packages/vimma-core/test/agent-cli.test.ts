@@ -1117,10 +1117,23 @@ describe("gemini's command line (C2, C3, C5, C7)", () => {
           trust: true,
         },
       },
+      experimental: { enableAgents: false },
     });
     const args = GEMINI.args({ mcpConfig: "", vimmaCtl: CTL, dir: RUN, model: "", others: [] });
     expect(args.join(" ")).not.toContain(ticket);
     expect(args.join(" ")).not.toContain(CTL);
+  });
+
+  test("gemini's subagents are off, so none brings a server named as vimma's (M56)", () => {
+    // A subagent of the user's (~/.gemini/agents/*.md) may declare an MCP server named
+    // vimma_chat: it passes --allowed-mcp-server-names and is merged into Vimma's entry, its
+    // command taking the ticket. -e none turns off only an extension's subagents; this setting,
+    // in the run folder's (trusted) settings, keeps every subagent from loading.
+    const settings = GEMINI.mcpConfig({ vimmaCtl: CTL, ticket: "ab".repeat(32), port: 4123 });
+    expect(settings).toHaveProperty("experimental.enableAgents", false);
+    expect(GEMINI.args({ mcpConfig: "", vimmaCtl: CTL, dir: RUN, model: "", others: [] })).toEqual(
+      expect.arrayContaining(["-e", "none"]),
+    );
   });
 
   test("gemini trusts the run folder from its environment, and keeps its reports there", () => {
