@@ -36,9 +36,10 @@ function tooDeep(root) {
   const stack = [[root, []]];
   while (stack.length) {
     const [v, path] = /** @type {[unknown, Path]} */ (stack.pop());
-    if (typeof v !== "object" || v === null || v instanceof Date) continue;
+    // TOML has no null: an object here is a table, an array or a date.
+    if (typeof v !== "object" || v instanceof Date) continue;
     if (path.length >= MAX_DEPTH) return path;
-    const entries = Array.isArray(v) ? v.entries() : Object.entries(v);
+    const entries = Array.isArray(v) ? v.entries() : Object.entries(/** @type {object} */ (v));
     for (const [k, child] of entries) stack.push([child, [...path, k]]);
   }
   return null;
@@ -59,9 +60,10 @@ export function parseToml(text, { integersAsBigInt = false } = {}) {
     const message = `tables and arrays nest deeper than ${MAX_DEPTH} levels`;
     return { ok: false, error: { line, column: 1, message } };
   } catch (e) {
-    /* c8 ignore next */
     if (!(e instanceof TomlError)) throw e;
-    let message = e.message.replace(/^Invalid TOML document: /, "").split("\n")[0] ?? "";
+    // Stryker disable next-line Regex: every smol-toml message starts so; `^` changes nothing
+    const first = e.message.replace(/^Invalid TOML document: /, "").split("\n")[0];
+    let message = /** @type {string} */ (first);
     const opened = unclosedBracket(text, e.line, e.column);
     if (opened) message += ` (unclosed "${opened.char}" opened at line ${opened.line}?)`;
     return { ok: false, error: { line: e.line, column: e.column, message } };
@@ -78,8 +80,8 @@ export function parseToml(text, { integersAsBigInt = false } = {}) {
  * @returns {{ char: string, line: number } | undefined}
  */
 function unclosedBracket(text, line, column) {
-  /** @type {{ char: string, line: number }[]} */
-  const stack = [];
+  // Stryker disable next-line ArrayDeclaration: an element with no line is never found below
+  const stack = /** @type {{ char: string, line: number }[]} */ ([]);
   let at = 1;
   let col = 1;
   for (let i = 0; i < text.length && (at < line || (at === line && col < column)); i++, col++) {
@@ -88,7 +90,7 @@ function unclosedBracket(text, line, column) {
       at++;
       col = 0;
     } else if (c === "#") {
-      while (i + 1 < text.length && text[i + 1] !== "\n") i++;
+      i += /** @type {string} */ (matchAt(/[^\n]*/y, text, i)).length - 1; // to the comment's end
     } else if (c === '"' || c === "'") {
       const q = text.startsWith(c.repeat(3), i) ? c.repeat(3) : c;
       let j = i + q.length;
@@ -107,6 +109,16 @@ function unclosedBracket(text, line, column) {
 }
 
 const BARE = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * What `re`, a sticky (`y`) regex, matches starting exactly at `text[at]`, or undefined. Sticky
+ * rather than `^` on a slice: no copy of the rest of the text, and no bound to check past its end.
+ * @param {RegExp} re @param {string} text @param {number} at
+ */
+function matchAt(re, text, at) {
+  re.lastIndex = at;
+  return re.exec(text)?.[0];
+}
 
 /**
  * `keys.new_tab[1]`, `modal.normal."<C-w>h"`: bare keys plain, others as JSON strings.
@@ -131,23 +143,20 @@ export function parsePath(text) {
   const out = [];
   let i = 0;
   while (i < text.length) {
-    const c = text[i];
-    if (c === ".") {
+    const index = matchAt(/\[\d+\]/y, text, i);
+    const quoted = matchAt(/"(?:[^"\\]|\\.)*"/y, text, i);
+    if (text[i] === ".") {
       i++;
-    } else if (c === "[" && /^\[\d+\]/.test(text.slice(i))) {
-      const end = text.indexOf("]", i);
-      out.push(Number(text.slice(i + 1, end)));
-      i = end + 1;
-    } else if (c === '"' && /^"(?:[^"\\]|\\.)*"/.test(text.slice(i))) {
-      let j = i + 1;
-      while (text[j] !== '"') j += text[j] === "\\" ? 2 : 1;
-      out.push(JSON.parse(text.slice(i, j + 1)));
-      i = j + 1;
+    } else if (index) {
+      out.push(Number(index.slice(1, -1)));
+      i += index.length;
+    } else if (quoted) {
+      out.push(JSON.parse(quoted));
+      i += quoted.length;
     } else {
       // A bare segment, or text formatPath does not write (an unclosed `[` or `"`): up to the
       // next separator, at least one character, so the loop always ends (issue #134).
-      const m = /^[\s\S][^.[]*/.exec(text.slice(i));
-      const seg = /** @type {RegExpExecArray} */ (m)[0];
+      const seg = /** @type {string} */ (matchAt(/[\s\S][^.[]*/y, text, i));
       out.push(seg);
       i += seg.length;
     }
@@ -167,10 +176,11 @@ const ESCAPES = { b: "\b", t: "\t", n: "\n", f: "\f", r: "\r", e: "\x1b", '"': '
 export function locateKeys(text) {
   /** @type {number[]} */
   const starts = [0];
-  for (let k = 0; k < text.length; k++) if (text[k] === "\n") starts.push(k + 1);
+  for (const nl of text.matchAll(/\n/g)) starts.push(nl.index + 1);
   /** @param {number} pos */
   const lineAt = (pos) => {
     let lo = 0;
+    // Stryker disable next-line ArithmeticOperator: starts[starts.length] is never <= pos, so lo never gets there
     let hi = starts.length - 1;
     while (lo < hi) {
       const mid = (lo + hi + 1) >> 1;
@@ -192,7 +202,7 @@ export function locateKeys(text) {
    * that prefix; cutting them keeps the scan linear (each key records every prefix).
    * @param {Path} path
    */
-  const cap = (path) => (path.length > MAX_DEPTH + 1 ? path.slice(0, MAX_DEPTH + 1) : path);
+  const cap = (path) => path.slice(0, MAX_DEPTH + 1);
 
   let i = text.charCodeAt(0) === 0xfeff ? 1 : 0; // BOM
   const ws = () => {
@@ -201,7 +211,7 @@ export function locateKeys(text) {
   const wsNl = () => {
     for (;;) {
       ws();
-      if (text[i] === "#") while (i < text.length && text[i] !== "\n") i++;
+      if (text[i] === "#") i += /** @type {string} */ (matchAt(/[^\n]*/y, text, i)).length;
       if (text[i] === "\r" || text[i] === "\n") i++;
       else return;
     }
@@ -240,9 +250,9 @@ export function locateKeys(text) {
       if (c === '"' || c === "'") {
         segs.push(quoted(c));
       } else {
-        const start = i;
-        while (i < text.length && /[A-Za-z0-9_-]/.test(/** @type {string} */ (text[i]))) i++;
-        segs.push(text.slice(start, i));
+        const bare = /** @type {string} */ (matchAt(/[A-Za-z0-9_-]*/y, text, i));
+        segs.push(bare);
+        i += bare.length;
       }
       ws();
       if (text[i] !== ".") return segs;
@@ -289,14 +299,16 @@ export function locateKeys(text) {
       }
       i++;
     } else {
-      while (i < text.length && !",]}\r\n#".includes(/** @type {string} */ (text[i]))) i++;
+      i += /** @type {string} */ (matchAt(/[^,\]}\r\n#]*/y, text, i)).length;
     }
   };
   /** @param {Path} base */
   const keyval = (base) => {
+    // Stryker disable next-line CallExpression: both callers have just skipped the blanks
     ws();
     const at = i;
     const full = cap([...base, ...key()]);
+    // Stryker disable next-line ArithmeticOperator: it only adds prefixes recorded at or before at
     for (let n = base.length + 1; n <= full.length; n++) record(full.slice(0, n), at);
     i++; // "="
     ws();
@@ -311,7 +323,6 @@ export function locateKeys(text) {
   for (;;) {
     wsNl();
     if (i >= text.length) break;
-    const before = i;
     if (text[i] === "[") {
       const at = i;
       const array = text[i + 1] === "[";
@@ -328,14 +339,13 @@ export function locateKeys(text) {
       // implicit parent tables (`[sites."a.com"]` alone) are located at their first header
       for (let n = 1; n <= table.length; n++) record(table.slice(0, n), at);
     } else {
+      // Every pass moves on: a header past its `[`, a key/value past its `=` (keyval's `i++`).
       keyval(table);
     }
-    /* c8 ignore next */
-    if (i === before) i++; // never loop forever on input the parser would have rejected
   }
 
   return (path) => {
-    for (let n = path.length; n > 0; n--) {
+    for (let n = path.length; n; n--) {
       const line = lines.get(JSON.stringify(path.slice(0, n)));
       if (line !== undefined) return line;
     }
@@ -352,14 +362,17 @@ export function locateKeys(text) {
 
 /** A TOML literal for `value`: a basic string, a boolean or an integer. */
 export function tomlLiteral(/** @type {string | boolean | number} */ value) {
-  if (typeof value !== "string") return String(value);
-  // JSON's escapes are valid TOML except that TOML also requires DEL to be escaped.
+  // JSON writes booleans and integers as TOML does, and its string escapes are valid TOML,
+  // except that TOML also requires DEL to be escaped.
   return JSON.stringify(value).replace(/\x7f/g, "\\u007F");
 }
 
-/** Structural equality of two parsed TOML values (key order ignored). */
-/** @returns {boolean} */
-function same(/** @type {unknown} */ a, /** @type {unknown} */ b) {
+/**
+ * Structural equality of two parsed TOML values (key order ignored). Exported for its tests:
+ * setTomlKeys reaches it only with what a wrong line edit could change.
+ * @returns {boolean}
+ */
+export function sameTomlValue(/** @type {unknown} */ a, /** @type {unknown} */ b) {
   if (a instanceof Date || b instanceof Date) return String(a) === String(b);
   if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
     return Object.is(a, b);
@@ -370,7 +383,7 @@ function same(/** @type {unknown} */ a, /** @type {unknown} */ b) {
   return (
     ka.length === kb.length &&
     ka.every((k) =>
-      same(
+      sameTomlValue(
         /** @type {Record<string, unknown>} */ (a)[k],
         /** @type {Record<string, unknown>} */ (b)[k],
       ),
@@ -387,45 +400,35 @@ function valueEnd(line, i) {
   if (line.startsWith('"""', i) || line.startsWith("'''", i)) return -1;
   const c = line[i];
   if (c === "[" || c === "{") return -1;
-  if (c === '"') {
-    for (let k = i + 1; k < line.length; k++) {
-      if (line[k] === "\\") k++;
-      else if (line[k] === '"') return k + 1;
-    }
-    return -1;
-  }
-  if (c === "'") {
-    const k = line.indexOf("'", i + 1);
-    return k < 0 ? -1 : k + 1;
-  }
-  let k = i;
-  while (k < line.length && !"#\r".includes(/** @type {string} */ (line[k]))) k++;
-  while (k > i && /[ \t]/.test(/** @type {string} */ (line[k - 1]))) k--;
-  return k;
+  // A one-line string closes on its line, since the text parsed.
+  const quoted = matchAt(/"(?:[^"\\]|\\.)*"|'[^']*'/y, line, i);
+  if (quoted) return i + quoted.length;
+  // Up to a comment or the line's end, less the blanks before it (`line[i]` is not blank).
+  return i + trimBlank(/** @type {string} */ (matchAt(/[^#\r]*/y, line, i))).length;
 }
 
 /** @param {string} s @returns {string} `s` without spaces and tabs at either end */
 function trimBlank(s) {
   let a = 0;
   let b = s.length;
-  while (a < b && (s[a] === " " || s[a] === "\t")) a++;
-  while (b > a && (s[b - 1] === " " || s[b - 1] === "\t")) b--;
+  while (s[a] === " " || s[a] === "\t") a++;
+  // All blank: b goes below a, and the slice is "" all the same.
+  while (s[b - 1] === " " || s[b - 1] === "\t") b--;
   return s.slice(a, b);
 }
 
 /**
  * The name in a `[table]` header line, or null. Scanned by hand rather than with a regex,
  * because a pattern with blank runs on both sides of the name backtracks quadratically on a long
- * line of blanks (CodeQL js/polynomial-redos).
+ * line of blanks (CodeQL js/polynomial-redos). Without a `]` (close is -1), the rest is the whole
+ * line, which starts with `[`: null. `[]` and `[[a]]` give "" and "[a", which no bare name equals.
  * @param {string} line
  */
 function headerName(line) {
   const s = trimBlank(line.endsWith("\r") ? line.slice(0, -1) : line);
   if (s[0] !== "[") return null;
   const close = s.indexOf("]");
-  if (close < 0) return null;
   const name = trimBlank(s.slice(1, close));
-  if (!name || name.includes("[")) return null;
   const rest = trimBlank(s.slice(close + 1));
   return rest === "" || rest[0] === "#" ? name : null;
 }
@@ -453,34 +456,29 @@ function setKey(text, doc, { table, key, value }) {
     return { ok: true, text: `${text}${text.endsWith("\n") ? "" : eol}${eol}${body}` };
   }
   // A `[table]` line inside a multi-line string is no header: the file has no such table.
-  const t = doc[table];
-  if (typeof t !== "object" || t === null || Array.isArray(t)) {
+  const t = doc[table]; // TOML has no null
+  if (typeof t !== "object" || Array.isArray(t)) {
     return fail(headerAt + 1, `${table} is not a plain [${table}] table`);
   }
-  let end = lines.length;
-  for (let n = headerAt + 1; n < lines.length; n++) {
-    if (/^[ \t]*\[/.test(/** @type {string} */ (lines[n]))) {
-      end = n;
-      break;
-    }
-  }
+  // The table's lines: after its header, up to the next line that starts with `[`.
+  const first = headerAt + 1;
+  const next = lines.findIndex((l, n) => n > headerAt && /^[ \t]*\[/.test(l));
+  const body = lines.slice(first, next === -1 ? lines.length : next);
   const keyRe = new RegExp(`^([ \\t]*${key}[ \\t]*=[ \\t]*)`);
-  for (let n = headerAt + 1; n < end; n++) {
-    const line = /** @type {string} */ (lines[n]);
+  for (const [k, line] of body.entries()) {
     const m = keyRe.exec(line);
-    if (!m || where([table, key]) !== n + 1) continue;
+    if (!m || where([table, key]) !== first + k + 1) continue;
     const stop = valueEnd(line, m[0].length);
-    if (stop < 0) return fail(n + 1, `${name} is not a one-line value`);
-    lines[n] = `${m[0]}${literal}${line.slice(stop)}`;
+    if (stop === -1) return fail(first + k + 1, `${name} is not a one-line value`);
+    lines[first + k] = `${m[0]}${literal}${line.slice(stop)}`;
     return { ok: true, text: lines.join("\n") };
   }
-  if (key in t) {
+  if (key in /** @type {object} */ (t)) {
+    // Stryker disable next-line ArithmeticOperator: unreachable, locateKeys has every key's line
     return fail(where([table, key]) ?? headerAt + 1, `${name} is not a plain key = value line`);
   }
   let last = headerAt;
-  for (let n = headerAt + 1; n < end; n++) {
-    if (!/^[ \t]*(#.*)?\r?$/.test(/** @type {string} */ (lines[n]))) last = n;
-  }
+  for (const [k, line] of body.entries()) if (!/^[ \t]*(#.*)?\r?$/.test(line)) last = first + k;
   lines.splice(last + 1, 0, `${key} = ${literal}${eol === "\r\n" ? "\r" : ""}`);
   return { ok: true, text: lines.join("\n") };
 }
@@ -516,7 +514,7 @@ export function setTomlKeys(text, edits) {
   }
   const after = parseToml(out);
   if (!after.ok) return after;
-  if (!same(after.value, want)) {
+  if (!sameTomlValue(after.value, want)) {
     return {
       ok: false,
       error: { line: 1, column: 1, message: "the edit would change other keys" },

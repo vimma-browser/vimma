@@ -5,8 +5,11 @@ import {
   locateKeys,
   parsePath,
   parseToml,
+  sameTomlValue,
   setTomlKeys,
+  tomlLiteral,
 } from "../src/config/toml.mjs";
+import { TomlError, parse } from "../src/vendor/smol-toml/smol-toml.mjs";
 import { budget } from "./budget.ts";
 
 describe("parseToml", () => {
@@ -58,6 +61,33 @@ describe("parseToml", () => {
     expect(({} as any).polluted).toBeUndefined();
     expect(r.ok).toBe(true);
   });
+
+  test("the message is the first line of smol-toml's, without its prefix", () => {
+    const text = "a = 1 1\n";
+    let raw = "";
+    try {
+      parse(text);
+    } catch (e) {
+      expect(e).toBeInstanceOf(TomlError);
+      raw = (e as Error).message;
+    }
+    expect(raw).toMatch(/^Invalid TOML document: [^\n]{10,}\n/);
+    const r = parseToml(text);
+    expect(!r.ok && r.error.message).toBe(
+      raw.split("\n")[0]?.slice("Invalid TOML document: ".length),
+    );
+  });
+
+  test("an error that is not a TOML syntax error is thrown, not reported as one", () => {
+    expect(() => parseToml(5 as unknown as string)).toThrow(TypeError);
+  });
+
+  test("the depth error is at the line of the first value too deep", () => {
+    // [a × 31] holds b (depth 32), whose c.d (34) goes past MAX_DEPTH: b's line, not the header's.
+    const header = Array.from({ length: MAX_DEPTH - 1 }, () => "a").join(".");
+    const r = parseToml(`x = 1\n[${header}]\nb.c.d = 1\n`);
+    expect(!r.ok && r.error).toMatchObject({ line: 3, message: expect.stringMatching(/deeper/) });
+  });
 });
 
 describe("locateKeys", () => {
@@ -89,7 +119,8 @@ describe("locateKeys", () => {
     "[[arr]]", // 25
     "n = 1.5e3", // 26
   ].join("\n");
-  const lineOf = locateKeys(text);
+  // Built inside each test, so per-test coverage (Stryker) sees the scan.
+  const lineOf = (path: (string | number)[]) => locateKeys(text)(path);
 
   test.each([
     [["schema"], 2],
@@ -134,7 +165,24 @@ describe("locateKeys", () => {
   });
 
   test("CRLF line endings count lines the same", () => {
-    expect(locateKeys("a = 1\r\n\r\n[b]\r\nc = 2\r\n")(["b", "c"])).toBe(4);
+    const where = locateKeys("a = 1\r\n\r\n[b]\r\nc = 2\r\n");
+    expect(where(["b", "c"])).toBe(4);
+    expect(where([""])).toBeUndefined(); // no key read from a "\r"
+  });
+
+  test("a comment at the end of the file, without a line break, ends the scan", () => {
+    expect(locateKeys("a = 1\nb = 2 # c")(["b"])).toBe(2);
+  });
+
+  test("the end of the file is no key", () => {
+    expect(locateKeys("a = 1\n")([""])).toBeUndefined();
+  });
+
+  test("a long dotted key takes linear time", () => {
+    const text = `${"a.".repeat(50_000)}a = 1\n`;
+    const start = performance.now();
+    expect(locateKeys(text)(["a", "a"])).toBe(1);
+    expect(performance.now() - start).toBeLessThan(budget(500));
   });
 });
 
@@ -144,6 +192,7 @@ describe("config paths", () => {
     ['modal.normal."j"', ["modal", "normal", "j"]],
     ['modal.normal."<C-w>."', ["modal", "normal", "<C-w>."]],
     ["unbind.normal[0]", ["unbind", "normal", 0]],
+    ["keys.new_tab[12]", ["keys", "new_tab", 12]],
     ["schema", ["schema"]],
     ["", []],
   ])("parsePath(%j)", (text, segs) => {
@@ -155,6 +204,8 @@ describe("config paths", () => {
   test.each([
     ["keys.c[mmand", ["keys", "c", "[mmand"]],
     ['keys."abc', ["keys", '"abc']],
+    ["a[b.c[1]", ["a", "[b", "c", 1]],
+    ["a. b", ["a", " b"]],
   ])("parsePath(%j) ends on text formatPath does not write", (text, segs) => {
     expect(parsePath(text)).toEqual(segs);
   });
@@ -295,6 +346,14 @@ describe("parseToml: the unclosed-bracket hint", () => {
     ["a = [\n1 1 ]\n", 2, '(unclosed "[" opened at line 1?)'],
     ["a = [ #x\n1 1\n", 2, '(unclosed "[" opened at line 1?)'],
     ["a = [ \r\n1 1\n", 2, '(unclosed "[" opened at line 1?)'],
+    ["x = 1 # c\na = [\n1,\n[t]\n", 4, '(unclosed "[" opened at line 2?)'],
+    // The parser points at the `}`: the scan stops before it.
+    ["a = [\n1 }\n", 2, '(unclosed "[" opened at line 1?)'],
+    ['a = [\n"abc', 2, '(unclosed "[" opened at line 1?)'],
+    // Only a backslash skips the next character: the string ends at its quote, before the `{`.
+    ['a = [ "abc", "{",\n1,\n[t]\n', 3, '(unclosed "[" opened at line 1?)'],
+    // A backslash escapes nothing in a literal string: 'a\' ends at its second quote.
+    ["a = [ 'a\\', '{',\n1,\n[t]\n", 3, '(unclosed "[" opened at line 1?)'],
   ])("%j fails at line %i, ending %s", (text, line, hint) => {
     const error = syntaxError(text);
     expect(error.line).toBe(line);
@@ -313,6 +372,8 @@ describe("parseToml: the unclosed-bracket hint", () => {
     "a = {b = 1}\nb = 1 1\n",
     // A bracket opened on the error's own line.
     "a = [1 1]\n",
+    // Closed on the error's line, before the error.
+    "a = [\n1]  x\n",
   ])("%j: brackets in comments, strings, closed or on the error's line give no hint", (text) => {
     const error = syntaxError(text);
     expect(error.line).toBe(text.split("\n").length - 1);
@@ -378,6 +439,22 @@ describe("locateKeys: whitespace, comments, strings and nesting", () => {
     expect(lineOf(path)).toBe(line);
   });
 
+  test("a multi-line string's content and its closing quotes are no keys", () => {
+    expect(lineOf(["y"])).toBeUndefined(); // line 7, inside e's string
+    expect(lineOf([""])).toBeUndefined(); // the two extra quotes ending f
+    // A backslash escapes nothing in a literal string.
+    expect(locateKeys("k = '''a\\'''\nz = 1\n")(["z"])).toBe(2);
+  });
+
+  test("blanks and line breaks around array elements and inline-table members", () => {
+    expect(locateKeys('a = [\n"x"\n,\n"y"]\n')(["a", 1])).toBe(4);
+    const inline = locateKeys('w = {\n a = "x"\n , b = 1\n}\nt = { }\nz = 1\n');
+    expect(inline(["w", "a"])).toBe(2);
+    expect(inline(["w", "b"])).toBe(3);
+    expect(inline(["t", ""])).toBe(5); // t itself: no member
+    expect(inline(["z"])).toBe(6);
+  });
+
   test("a value ending a line is on that line", () => {
     expect(locateKeys("a = [\n1\n,2]\n")(["a", 0])).toBe(2);
     expect(locateKeys("a = [\n1\n,2]\n")(["a", 1])).toBe(3);
@@ -409,6 +486,7 @@ describe("setTomlKeys: what a line edit may change", () => {
     ['x = 1\n[search]\ndefault = """\nGoogle"""\n', 3, "search.default is not a one-line value"],
     ["x = 1\n[search]\ndefault = '''G'''\n", 3, "search.default is not a one-line value"],
     ["x = 1\n[search]\ndefault = [1]\n", 3, "search.default is not a one-line value"],
+    ["[search]\nx = 1\ndefault = [1]\n", 3, "search.default is not a one-line value"],
     ["x = 1\n[search]\ndefault = {a=1}\n", 3, "search.default is not a one-line value"],
     [
       'x = 1\n[search]\ndefault.name = "Google"\n',
@@ -429,6 +507,7 @@ describe("setTomlKeys: what a line edit may change", () => {
     ["[search]\ndefault = 'a\\' # c\n", "X", '[search]\ndefault = "X" # c\n'],
     ["[search]\ndefault = 12 \t# c\n", 3, "[search]\ndefault = 3 \t# c\n"],
     ["[search]\ndefault = 12\n", 3, "[search]\ndefault = 3\n"],
+    ["[search]\ndefault = 12", 3, "[search]\ndefault = 3"],
     ["[search]\ndefault = true\r\nx = 1\r\n", false, "[search]\ndefault = false\r\nx = 1\r\n"],
     ["  [ search ]  # hdr\n\tdefault = 1\n", 2, "  [ search ]  # hdr\n\tdefault = 2\n"],
     ["[search]\t\r\n default = 1\r\n", 2, "[search]\t\r\n default = 2\r\n"],
@@ -478,5 +557,111 @@ describe("setTomlKeys: what a line edit may change", () => {
     const parsed = parseToml("[bad\n");
     expect(parsed.ok).toBe(false);
     expect(set("[bad\n", "search", "default", 1)).toEqual(parsed);
+  });
+
+  test("a syntax error comes before a key that is not bare", () => {
+    expect(set("[bad\n", "se arch", "default", 1)).toEqual(parseToml("[bad\n"));
+  });
+
+  test.each([
+    ['[search]\ndefault = "a#b" # c\n', "[search]\ndefault = 2 # c\n"],
+    ["[search]\ndefault = 'a#b' # c\n", "[search]\ndefault = 2 # c\n"],
+    ["[\tsearch\t]\ndefault = 1\n", "[\tsearch\t]\ndefault = 2\n"],
+  ])("%j: a `#` inside a string, or tabs in the header, are no end", (text, out) => {
+    expect(set(text, "search", "default", 2)).toEqual({ ok: true, text: out });
+  });
+
+  test.each([
+    // A key = value line inside a multi-line string is no key: the key is added after it.
+    [
+      '[search]\nnote = """\ndefault = 1\n"""\n',
+      '[search]\nnote = """\ndefault = 1\n"""\ndefault = 2\n',
+    ],
+    // Blank lines with blanks, and indented comments, end the table's keys.
+    [
+      "[search]\nx = 1\n  \n  # note\n[other]\n",
+      "[search]\nx = 1\ndefault = 2\n  \n  # note\n[other]\n",
+    ],
+    // Lines in a multi-line string that only look like a header are none.
+    ['note = """\nXsearch]\n"""\n', 'note = """\nXsearch]\n"""\n\n[search]\ndefault = 2\n'],
+    ['note = """\n[search] x\n"""\n', 'note = """\n[search] x\n"""\n\n[search]\ndefault = 2\n'],
+  ])("%j: only real keys and headers count", (text, out) => {
+    expect(set(text, "search", "default", 2)).toEqual({ ok: true, text: out });
+  });
+
+  // A `[` starting a line inside a value ends the table's lines for the scan, which then adds
+  // the key in the wrong place. The result is parsed again, so that is an error, not the file.
+  test("an added key that would change another value is an error", () => {
+    expect(set('[search]\nnote = """\n[x]\n"""\n', "search", "default", 2)).toEqual(
+      fails(1, "the edit would change other keys"),
+    );
+  });
+
+  test("an added key that breaks the file is the parser's error, and stops later edits", () => {
+    const text = "[search]\nd = [\n[1],\n]\n";
+    const broken = parseToml("[search]\nd = [\ndefault = 2\n[1],\n]\n");
+    expect(broken.ok).toBe(false);
+    expect(set(text, "search", "default", 2)).toEqual(broken);
+    const two = setTomlKeys(text, [
+      { table: "search", key: "default", value: 2 },
+      { table: "search", key: "x", value: 1 },
+    ]);
+    expect(two).toEqual(broken);
+  });
+});
+
+describe("tomlLiteral", () => {
+  test.each([
+    ['a"b\\c\x7f', '"a\\"b\\\\c\\u007F"'],
+    [true, "true"],
+    [false, "false"],
+    [42, "42"],
+    [-7, "-7"],
+  ] as const)("%j is %s", (value, literal) => {
+    expect(tomlLiteral(value)).toBe(literal);
+    expect(parseToml(`v = ${literal}`)).toEqual({ ok: true, value: { v: value } });
+  });
+});
+
+describe("sameTomlValue", () => {
+  const date = (s: string) => new Date(s);
+  test.each([
+    [1, 1],
+    ["a", "a"],
+    [Number.NaN, Number.NaN],
+    [date("1979-05-27T07:32:00Z"), date("1979-05-27T07:32:00Z")],
+    [
+      [1, [2]],
+      [1, [2]],
+    ],
+    [
+      { a: 1, b: { c: [true] } },
+      { b: { c: [true] }, a: 1 },
+    ],
+  ])("%j equals %j", (a, b) => {
+    expect(sameTomlValue(a, b)).toBe(true);
+  });
+
+  test.each([
+    [1, 2],
+    [0, -0],
+    [{}, 1],
+    [1, {}],
+    [null, {}],
+    [{}, null],
+    [[], {}],
+    [{}, []],
+    [date("1979-05-27T07:32:00Z"), date("1979-05-28T07:32:00Z")],
+    [date("1979-05-27T07:32:00Z"), {}],
+    [{}, date("1979-05-27T07:32:00Z")],
+    [{ a: 1 }, { a: 1, b: 2 }],
+    [{ a: 1, b: 2 }, { a: 1 }],
+    [
+      { a: 1, b: 2 },
+      { a: 1, b: 3 },
+    ],
+    [{ a: 1 }, { b: 1 }],
+  ])("%j differs from %j", (a, b) => {
+    expect(sameTomlValue(a, b)).toBe(false);
   });
 });
