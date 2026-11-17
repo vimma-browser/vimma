@@ -65,13 +65,22 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   boolean computed from its page's own attributes; the parent treats anything but `true` as
   "no list", and no message from a content process can ask for a key. A page, or a compromised
   content process, can at most turn the user's own `ctrl+n` into an arrow key in itself, which it
-  could do by handling `ctrl+n`.
+  could do by handling `ctrl+n`. On macOS, where the focused field would run Cocoa's own
+  `ctrl+n` or `ctrl+p` on the keypress, the parent marks the keypress of a suggestion key it sends
+  to the page, and the frame's actor keeps a trusted, marked keypress from the field while that
+  same test says a list is open: a page can at most keep the user's own key from moving the caret
+  in its own field, which it could also do by handling the key. The mark is a chrome-only event
+  flag, which page script can neither set nor read; the actor only stops the keypress on its way
+  to the field, and neither prevents its default nor makes a key; and the parent reads no mark
+  back from a reply.
   [`suggestionListOpen`](../../packages/vimma-core/test/suggestions.test.ts),
   [`ctrl_n_and_ctrl_p_move_an_aria_combobox`](../../tests/browser/browser_vimma_page_suggestions.js),
   [`a_pressed_arrow_key_runs_no_vimma_binding`](../../tests/browser/browser_vimma_page_suggestions.js),
   [`a_page_that_takes_ctrl_n_keeps_it`](../../tests/browser/browser_vimma_page_suggestions.js),
   [`a_late_reply_presses_no_arrow_key_in_another_tab`](../../tests/browser/browser_vimma_page_suggestions.js),
-  [`a_hidden_list_left_aria_expanded_is_not_open`](../../tests/browser/browser_vimma_page_suggestions.js)
+  [`a_hidden_list_left_aria_expanded_is_not_open`](../../tests/browser/browser_vimma_page_suggestions.js),
+  [`the_caret_stays_where_it_was_in_an_open_list`](../../tests/browser/browser_vimma_page_suggestions.js),
+  [`the_caret_stays_where_it_was_in_an_open_contenteditable_list`](../../tests/browser/browser_vimma_page_suggestions.js)
 - K7. The content actor **must** attach only to http, https, file, `about:` and `view-source:`
   documents and Vimma's start page (`VimmaActors.register`); `moz-extension:`, `data:`, `blob:` and
   `chrome:` documents get none and stay in insert, though their `view-source:` forms match. A

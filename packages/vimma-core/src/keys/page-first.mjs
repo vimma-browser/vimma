@@ -67,7 +67,7 @@ export class PageFirstQueue {
   press(key, stamp, remote) {
     const pending = this.entries.find((p) => !p.pressed && p.key === key);
     if (!pending) {
-      const sent = this.entries.find((p) => p.awaiting && p.key === key && p.stamp === stamp);
+      const sent = this.sent(key, stamp);
       if (sent && remote) sent.awaiting = false;
       return false;
     }
@@ -75,6 +75,16 @@ export class PageFirstQueue {
     pending.stamp = stamp;
     pending.awaiting = remote;
     return remote;
+  }
+
+  /**
+   * The press whose keypress goes to a remote page and waits for that page's reply, or null.
+   * @param {string} key
+   * @param {number} stamp  the keypress's timeStamp
+   * @returns {PageFirstEntry<R> | null}
+   */
+  sent(key, stamp) {
+    return this.entries.find((p) => p.awaiting && p.key === key && p.stamp === stamp) ?? null;
   }
 
   /**

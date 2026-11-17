@@ -620,7 +620,9 @@ Vim's insert-mode completion keys do, so you pick a suggestion without leaving t
 page gets a real `ArrowDown` or `ArrowUp`, so its highlight moves and the field shows the suggestion
 as it does for the arrow keys. The page goes first: a web app that uses `ctrl+n` or `ctrl+p` itself
 keeps the key. With no list open, `ctrl+p` prints and `ctrl+n` goes to the page and opens no window
-(a new window is `ctrl+b shift+c`). The address bar and Vimma's own fields keep their keys. Both
+(a new window is `ctrl+b shift+c`). On macOS, where `ctrl+n` and `ctrl+p` also move the caret down
+and up a line in every text field, they keep doing that while no list is open, so there `ctrl+p`
+prints only outside a text field. The address bar and Vimma's own fields keep their keys. Both
 keys can be remapped in `config.toml` (`suggestion_next` and `suggestion_prev` under
 `[modal.insert]`).
 
