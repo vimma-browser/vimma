@@ -32,7 +32,7 @@ import {
 import { ListedSites, actDetail, fillDetail } from "../core/agent-act.mjs";
 import {
   AGENT_PAGE_URL_MAX,
-  agentTitle,
+  agentTabTitle,
   agentUrl,
   markdownWithoutUserinfo,
   parseAgentKeys,
@@ -145,12 +145,12 @@ const ELEMENTS_TITLE_MAX = 1024;
  */
 const pageUrl = (url) => wf(agentUrl(url, AGENT_PAGE_URL_MAX));
 /**
- * A tab's title as a reply gives it to the agent (security.md M21, #1209): a label Firefox made of
- * the tab's URL without its user name and password; cut at `max` code points when one is given.
+ * A tab's title as a reply gives it to the agent (security.md M21, #1209): for a label Firefox
+ * made of a URL, the tab's URL without its user name and password; cut at `max` code points.
  * @param {Tab} tab @param {number} [max]
  */
 const pageTitle = (tab, max = Infinity) =>
-  wf(cut(agentTitle(String(tab.label ?? ""), tabUrl(tab)), max).text);
+  wf(cut(agentTabTitle(tab.label, tab.labelIsContentTitle, tabUrl(tab)), max).text);
 /** The longest an `agent-keys` call runs after the yes (mcp-drive D15). */
 const KEYS_CALL_MS = 60000;
 

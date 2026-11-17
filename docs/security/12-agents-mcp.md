@@ -621,12 +621,14 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   `agent-activate`, `agent-fill`), and each markdown link target of a read page's text. A page
   whose own URL holds them gives them to every link and form it resolves, so the parent removes
   them, with the one stripper of M30 (core's `agentUrl`), before the URL is cut; the URL Vimma
-  keeps and compares (M8) is left whole. A tab's title that Firefox made of its URL (before the
-  page loads, restored pending, or a page with no title, then without its scheme) **must** lose
-  them too, in every reply that names it: any title with no white space that has a scheme and an
-  authority holding them, and one without a scheme when the tab's URL holds them (core's
-  `agentTitle`). Any other title, and the page's text, are the page's own: a page that writes its
-  address into them is not changed. Not yet covered: a link nested in another link's text, which some
+  keeps and compares (M8) is left whole. A tab's title that Firefox made of a URL (its
+  `labelIsContentTitle` not true: before the page loads, restored pending, a page with no title,
+  also after a redirect) **must never** be read: such a label may hold a user name and password,
+  only part of one once Firefox cut it at 256 characters, or those of the URL the tab was opened
+  at. Every reply that names a title gives the tab's URL instead, without them, as Firefox shows
+  it (no scheme, no `www.`; core's `agentTabTitle`). A page's own title that is a URL with a
+  scheme loses them too (core's `agentTitle`). Any other title, and the page's text, are the
+  page's own: a page that writes its address into them is not changed. Not yet covered: a link nested in another link's text, which some
   search pages have, comes out of Firefox's extractor escaped (`\[a\]\(https://...\)`), is not
   read as a link target, and keeps a user name and password its resolved href holds.
   [`a link's href loses its user name and password`](../../packages/vimma-core/test/agent-keys.test.ts),
@@ -637,9 +639,11 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`the console's and the lists' URLs go through one stripper`](../../packages/vimma-core/test/agent-act.test.ts),
   [`test_no_reply_carries_the_pages_user_name_and_password`](../../tests/browser/browser_vimma_mcp_userinfo.js),
   [`a title that is a URL loses its user name and password`](../../packages/vimma-core/test/agent-keys.test.ts),
-  [`a title that is the tab's URL without its scheme loses them too`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`a label Firefox made of a URL is the tab's URL without them, as Firefox shows it`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`a page's own title is its own, but a URL in it loses them`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`any other title is left as the page wrote it`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`test_a_tab_labelled_with_its_url_gives_no_user_name_and_password`](../../tests/browser/browser_vimma_mcp_userinfo.js),
+  [`test_a_clamped_or_redirected_url_label_gives_no_password`](../../tests/browser/browser_vimma_mcp_userinfo.js),
   [`test_f_lists_links_with_labels_marked_untrusted`](../../tests/browser/browser_vimma_mcp_follow.js),
   [`at most 200 links; the rest are dropped and counted`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`one line per link: the label, the text as JSON cut at 80, the href cut at 2,048`](../../packages/vimma-core/test/agent-keys.test.ts),

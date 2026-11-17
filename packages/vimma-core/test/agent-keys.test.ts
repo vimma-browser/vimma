@@ -8,6 +8,7 @@ import {
   AGENT_LINKS,
   agentLinkLines,
   agentLinkList,
+  agentTabTitle,
   agentTitle,
   agentUrl,
   markdownWithoutUserinfo,
@@ -623,40 +624,58 @@ describe("URLs without user names and passwords (security.md M21, #1209)", () =>
 });
 
 describe("tab titles without user names and passwords (security.md M21, #1209)", () => {
-  const AT = "https://ada:secret@example.com/a";
+  // Firefox's #setTabLabel for a label made of a URL: no scheme or www., at most 256 characters.
+  const firefoxLabel = (url: string) => url.replace(/^[^:]+:\/\/(?:www\.)?/, "").slice(0, 256);
 
-  test("a title that is a URL loses its user name and password", () => {
-    // Firefox labels a tab with its raw URL before it loads and when it is restored pending.
-    expect(agentTitle("https://ada:secret@example.com/", "")).toBe("https://example.com/");
-    expect(agentTitle("  http://ada@x:secret@example.com/a?b", "")).toBe("http://example.com/a?b");
-    expect(agentTitle("https://ada:secret\uff20example.com/", "")).toBe("https://example.com/");
-    expect(agentTitle("view-source:https://ada:secret@example.com/", "")).toBe(
-      "view-source:https://example.com/",
-    );
-    // Longer than a title's cut: dropped before it.
-    const long = `https://ada:${"s".repeat(5000)}@example.com/`;
-    expect(agentTitle(long, "")).toBe("https://example.com/");
+  test("a label Firefox made of a URL is the tab's URL without them, as Firefox shows it", () => {
+    const url = "https://ada:secret@www.example.com/a?b";
+    expect(agentTabTitle(firefoxLabel(url), false, url)).toBe("example.com/a?b");
+    // Clamped at 256 characters, a long password leaves no at sign in the label.
+    const jwt = `eyJ${"x".repeat(400)}`;
+    const long = `https://ci:${jwt}@registry.example.com/v2/`;
+    expect(firefoxLabel(long)).not.toContain("@");
+    expect(agentTabTitle(firefoxLabel(long), false, long)).toBe("registry.example.com/v2/");
+    // An untitled page keeps the label of the URL it was opened at after a redirect.
+    const opened = "https://ada:secret@example.com/file.txt";
+    const now = "https://cdn.example.net/file.txt";
+    expect(agentTabTitle(firefoxLabel(opened), false, now)).toBe("cdn.example.net/file.txt");
+    // A label of unknown kind is taken for one made of a URL.
+    expect(agentTabTitle(firefoxLabel(opened), undefined, now)).toBe("cdn.example.net/file.txt");
   });
 
-  test("a title that is the tab's URL without its scheme loses them too", () => {
-    // Firefox trims the scheme off an untitled page's URL for its label.
-    expect(agentTitle("ada:secret@example.com/a", AT)).toBe("example.com/a");
-    expect(agentTitle("ada@example.com/a", "https://ada@example.com/a")).toBe("example.com/a");
+  test("a page's own title is its own, but a URL in it loses them", () => {
+    const url = "https://ada:secret@example.com/a";
+    expect(agentTabTitle("Plans and pricing", true, url)).toBe("Plans and pricing");
+    expect(agentTabTitle("https://ada:secret@example.com/", true, url)).toBe(
+      "https://example.com/",
+    );
+    // No guess at a title without a scheme: it is the page's text.
+    expect(agentTabTitle("bob@example.com", true, url)).toBe("bob@example.com");
+  });
+
+  test("a title that is a URL loses its user name and password", () => {
+    expect(agentTitle("https://ada:secret@example.com/")).toBe("https://example.com/");
+    expect(agentTitle("  http://ada@x:secret@example.com/a?b")).toBe("http://example.com/a?b");
+    expect(agentTitle("https://ada:secret\uff20example.com/")).toBe("https://example.com/");
+    expect(agentTitle("view-source:https://ada:secret@example.com/")).toBe(
+      "view-source:https://example.com/",
+    );
+    const long = `https://ada:${"s".repeat(5000)}@example.com/`;
+    expect(agentTitle(long)).toBe("https://example.com/");
   });
 
   test("any other title is left as the page wrote it", () => {
-    for (const [title, url] of [
-      ["Plans and pricing", AT],
-      ["Note: read me", AT],
-      ["Mail ada:secret@example.com now", AT],
-      ["https://ada:secret@example.com/ is my address", AT],
-      ["", AT],
-      ["\u202eflipped", AT],
-      // An at sign in a title of a tab whose URL holds no user name is the page's own.
-      ["ada@example.com", "https://example.com/"],
-      ["mailto:ada@example.com", "https://example.com/"],
+    for (const title of [
+      "Plans and pricing",
+      "Note: read me",
+      "Mail ada:secret@example.com now",
+      "https://ada:secret@example.com/ is my address",
+      "",
+      "\u202eflipped",
+      "ada:secret@example.com/a",
+      "mailto:ada@example.com",
     ]) {
-      expect(agentTitle(title, url)).toBe(title);
+      expect(agentTitle(title)).toBe(title);
     }
   });
 });

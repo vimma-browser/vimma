@@ -534,35 +534,36 @@ export function agentUrl(url, max) {
   return cutTo(withoutUserinfo(text, cut, 0), max);
 }
 
-/** The scheme a label without one is read with. */
-const TRIMMED_SCHEME = "http://";
+/** What Firefox drops from a URL it makes a tab's label of (#setTabLabel): its scheme and www. */
+const LABEL_SCHEME = /^[^:]+:\/\/(?:www\.)?/;
 
 /**
- * A tab's title as the agent may see it (security.md M21, #1209). Firefox labels a tab with its
- * URL before the page loads, when it is restored pending, and when the page has no title (then
- * with the scheme trimmed off), user name and password included. A title that may be such a URL
- * (no white space, an at sign once shown) loses them as agentUrl drops them: when it has a scheme
- * and an authority that holds them, and, without a scheme, when the tab's URL `url` holds a user
- * name or password, so that it is that URL trimmed. Any URL-shaped title is stripped, not only
- * one equal to the tab's URL: Firefox's label may be the URL before a redirect, or unescaped, and
- * a page that writes a URL with a user name into its title loses only the user name. Every other
- * title is the page's own text and is returned as it is.
- * @param {unknown} label @param {unknown} url  the tab's URL, user name and password included
+ * A page's own title as the agent may see it (security.md M21, #1209), in depth: one that is a
+ * URL (no white space, a scheme and an authority holding a user name or password once shown)
+ * loses them as agentUrl drops them. Any other title is the page's text, returned as it is.
+ * @param {unknown} label
  */
-export function agentTitle(label, url) {
+export function agentTitle(label) {
   const s = String(label ?? "");
   const t = s.trim();
   if (!t || /\s/.test(t)) return s;
   const plain = shown(t);
-  if (!plain.includes("@")) return s;
-  if (URL_SCHEME.test(plain) && withoutUserinfo(plain, false, 0) !== plain) {
-    return agentUrl(t, AGENT_PAGE_URL_MAX);
-  }
-  const tab = URL.parse(String(url ?? ""));
-  if (!tab || (!tab.username && !tab.password)) return s;
-  return agentUrl(TRIMMED_SCHEME + t, AGENT_PAGE_URL_MAX + TRIMMED_SCHEME.length).slice(
-    TRIMMED_SCHEME.length,
-  );
+  if (!plain.includes("@") || !URL_SCHEME.test(plain)) return s;
+  return withoutUserinfo(plain, false, 0) === plain ? s : agentUrl(t, AGENT_PAGE_URL_MAX);
+}
+
+/**
+ * A tab's title as the agent may see it (security.md M21, #1209). A label Firefox made of a URL
+ * (`contentTitle`, the tab's `labelIsContentTitle`, not true: before a load, restored pending, a
+ * page with no title, even after a redirect) may hold a user name and password, or only part of
+ * one once Firefox cut it at 256 characters, or those of the URL the tab was opened at: it is
+ * never read. The tab's URL `url` is given instead, without them, as Firefox shows a URL in a
+ * label (no scheme, no www.). A page's own title goes through agentTitle.
+ * @param {unknown} label @param {unknown} contentTitle @param {unknown} url
+ */
+export function agentTabTitle(label, contentTitle, url) {
+  if (contentTitle !== true) return agentUrl(url, AGENT_PAGE_URL_MAX).replace(LABEL_SCHEME, "");
+  return agentTitle(label);
 }
 
 /**

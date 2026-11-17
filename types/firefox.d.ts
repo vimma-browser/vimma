@@ -887,6 +887,9 @@ interface MozTabbrowserTab extends Element {
   readonly index: number;
   /** Its `label` attribute (customElements.js BaseText): setting it sets the attribute. */
   label: string;
+  /** Whether `label` is the page's title, false when Firefox made it of a URL (tab.mjs;
+   * Tabbrowser `#setTabLabel`). */
+  readonly labelIsContentTitle: boolean;
   readonly pinned: boolean;
   readonly hidden: boolean;
   readonly closing: boolean;

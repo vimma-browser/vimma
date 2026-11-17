@@ -38,6 +38,11 @@ const PAGE = `${DIR}file_vimma_agent_userinfo.html`;
 const WITH_USERINFO = PAGE.replace("https://", "https://ada:secret@");
 const UNTITLED = `${DIR}file_vimma_agent_untitled.html`;
 const UNTITLED_WITH_USERINFO = UNTITLED.replace("https://", "https://ada:secret@");
+const REDIRECT = `${DIR}file_vimma_agent_redirect.sjs`.replace("https://", "https://ada:secret@");
+const REDIRECTED = UNTITLED.replace("https://example.com", "https://example.org");
+/** A password longer than Firefox's 256-character tab label, which cuts its at sign off. */
+const LONG_PASSWORD = `eyJ${"x".repeat(400)}`;
+const LONG = UNTITLED.replace("https://", `https://${"ada"}:${LONG_PASSWORD}@`);
 const NAME = "ada";
 const PASSWORD = "secret";
 /** Firefox asks before it loads a URL with a user name the server did not ask for. */
@@ -78,7 +83,7 @@ async function call(c, command, args, asks = false) {
 /** @param {string} what @param {unknown} result */
 function noUserinfo(what, result) {
   const text = JSON.stringify(result);
-  Assert.ok(!text.includes(PASSWORD), `${what}: no password`);
+  Assert.ok(!text.includes(PASSWORD) && !text.includes("eyJx"), `${what}: no password`);
   Assert.ok(!text.includes(`${NAME}:`) && !text.includes(`${NAME}@`), `${what}: no user name`);
 }
 
@@ -224,6 +229,60 @@ add_task(async function test_a_tab_labelled_with_its_url_gives_no_user_name_and_
   ])) {
     const r = await call(c, command, args);
     Assert.equal(r.url, UNTITLED, `${command}'s page`);
+    noUserinfo(command, r);
+  }
+  c.close();
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, false);
+  await VimmaControl.settled();
+});
+
+add_task(async function test_a_clamped_or_redirected_url_label_gives_no_password() {
+  Services.prefs.setIntPref(PHISHY, 1024);
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+  await VimmaControl.settled();
+  const options = {
+    userContextId: agent().userContextId,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  };
+  // Firefox clamps a label made of a URL at 256 characters: the at sign is cut off.
+  const long = gBrowser.addTab(LONG, { ...options, createLazyBrowser: true });
+  Assert.ok(
+    long.label.includes("eyJx") && !long.label.includes("@"),
+    `the label holds the password and no at sign: ${long.label.length} characters`,
+  );
+  Assert.equal(long.labelIsContentTitle, false, "a label made of a URL");
+  // An untitled page keeps the label of the URL it was opened at after a redirect.
+  const moved = gBrowser.addTab(REDIRECT, options);
+  await BrowserTestUtils.browserLoaded(moved.linkedBrowser, false, REDIRECTED);
+  await until(() => long.hidden && moved.hidden, "the agent tabs are hidden in their workspace");
+  info(`the redirected tab's label: ${moved.label}`);
+  Assert.equal(moved.labelIsContentTitle, false, "a label made of a URL");
+
+  const c = new Client(/** @type {number} */ (VimmaControl.port));
+  await c.handshake({ protocol: 2, role: "agent" });
+  await c.call("agent-hello", { client: { name: "example-agent" } });
+  const tabs = await call(c, "agent-tabs", {}, true);
+  noUserinfo("vimma_tabs", tabs);
+  const titleOf = (/** @type {MozTabbrowserTab} */ t) =>
+    tabs.tabs.find((/** @type {any} */ x) => x.id === idOf(t))?.title;
+  Assert.equal(
+    titleOf(long),
+    UNTITLED.replace("https://", ""),
+    "the long tab's title is its URL without them",
+  );
+  Assert.equal(
+    titleOf(moved),
+    REDIRECTED.replace("https://", ""),
+    "the redirected tab's title is the URL it is at",
+  );
+  for (const [command, args] of /** @type {[string, object][]} */ ([
+    ["agent-keys", { tab: idOf(moved), keys: "f" }],
+    ["agent-elements", { tab: idOf(moved) }],
+    ["agent-read", { tab: idOf(moved) }],
+  ])) {
+    const r = await call(c, command, args);
+    Assert.equal(r.url, REDIRECTED, `${command}'s page`);
     noUserinfo(command, r);
   }
   c.close();
