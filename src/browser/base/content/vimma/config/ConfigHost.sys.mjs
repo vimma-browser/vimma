@@ -39,6 +39,7 @@ import { ThemeHost } from "../ui/theme-host.mjs";
 import { BookmarksToolbar } from "../ui/bookmarks-toolbar.mjs";
 import { Toolbar } from "../ui/toolbar.mjs";
 import { PanelNumbers } from "../ui/side-panel.mjs";
+import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
 import { WorkspaceRouter } from "../workspaces/WorkspaceRouter.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
@@ -160,6 +161,7 @@ function apply(next, text) {
   ThemeHost.setConfig(config.theme);
   PrivateSwap.configure(config.private.placement);
   PanelNumbers.set(config.panel.numbers);
+  VimmaActors.setScrollStep(config.scroll.step);
   WorkspaceRouter.setRoutes(config.routes);
   WorkspaceRouter.setDefaultWorkspace(config.routing.defaultWorkspace);
   McpHost.configure(config.mcp);

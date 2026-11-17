@@ -11,6 +11,7 @@ import { DEFAULT_HINT_CHARS } from "../page/hints.mjs";
 import { PANES_MAX_DEFAULT } from "../panes/panes.mjs";
 import { MAIN_SIZE_DEFAULT } from "../panes/layouts.mjs";
 import { DEFAULT_THEME_NAME } from "./theme.mjs";
+import { SCROLL_STEP_DEFAULT } from "../page/scroll.mjs";
 
 /**
  * @typedef {object} UserConfig
@@ -32,6 +33,8 @@ import { DEFAULT_THEME_NAME } from "./theme.mjs";
  *   (docs/specs/bookmarks.md)
  * @property {{ numbers?: "absolute" | "relative" | "hybrid" }} [panel]  the side panel's and
  *   bookmarks panel's row numbers (docs/specs/side-panel-counts.md)
+ * @property {{ step?: number }} [scroll]  how far j, k, h and l scroll, in CSS pixels
+ *   (docs/specs/m1-actor-insert-scroll.md, "Follow-up: scroll step")
  * @property {{ placement?: "swap" | "window" }} [private]  where the private workspace is shown
  *   (docs/specs/private-swap.md)
  * @property {{ check?: boolean }} [updates]  update checks (docs/specs/m6a-updater.md)
@@ -523,6 +526,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   firefox: { disable: /** @type {"all"} */ ("all"), enable: [] },
   bookmarks: { root: /** @type {const} */ ("workspace") },
   panel: { numbers: /** @type {const} */ ("absolute") },
+  scroll: { step: SCROLL_STEP_DEFAULT },
   private: { placement: /** @type {const} */ ("swap") },
   ui: { toolbar: /** @type {const} */ ("shown"), pdf_outline: /** @type {const} */ ("shown") },
   updates: { check: true },
@@ -650,6 +654,10 @@ export function formatDefaultsToml() {
     '# distances with "relative" and "hybrid", and no numbers with "absolute".',
     "[panel]",
     `numbers = ${tomlString(DEFAULT_CONFIG.panel?.numbers ?? "absolute")}`,
+    "",
+    "# How far j, k, h and l scroll a page, in CSS pixels, 1 to 2000 (3j: three steps).",
+    "[scroll]",
+    `step = ${DEFAULT_CONFIG.scroll?.step ?? SCROLL_STEP_DEFAULT}`,
     "",
     '# The private workspace (ctrl+b shift+p): "swap" shows it in place of the Vimma window on',
     '# Hyprland and macOS, which hide the other one until you switch back; "window" opens it as',

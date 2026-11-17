@@ -30,6 +30,7 @@ import { canonicalChord, isShortcutChord } from "../keys/firefox-keys.mjs";
 import { KeyNotationError, formatKey, parseKey } from "../keys/keys.mjs";
 import { BOOKMARKS_ROOTS } from "../ui/bookmarks.mjs";
 import { PANEL_NUMBERS } from "../ui/sidepanel.mjs";
+import { SCROLL_STEP_DEFAULT, SCROLL_STEP_MAX, SCROLL_STEP_MIN } from "../page/scroll.mjs";
 import { quarantineProblem, resolveDownloadDir } from "../agent/agent-downloads.mjs";
 import { resolveSearch, validateSearch } from "./search.mjs";
 import { checkEndpoint } from "../agent/agent-providers.mjs";
@@ -90,6 +91,8 @@ import { hasControl } from "../text/strings.mjs";
  * @property {boolean} insertEditing                     `[modal] insert_editing` (schema 2)
  * @property {{ root: BookmarksRoot }} bookmarks          `[bookmarks]` (schema 2)
  * @property {{ numbers: PanelNumbers }} panel            `[panel]` (schema 2), side-panel-counts
+ * @property {{ step: number }} scroll                   `[scroll]` (schema 2): j/k/h/l in CSS
+ *   pixels, docs/specs/m1-actor-insert-scroll.md "Follow-up: scroll step"
  * @property {{ placement: PrivatePlacement }} private    `[private]` (schema 2), private-swap
  * @property {McpConfig} mcp                             `[mcp]` (schema 2), docs/specs/vimma-mcp.md
  * @property {{ toolbar: ToolbarSetting, bookmarksToolbar: BookmarksToolbarSetting | null,
@@ -227,6 +230,7 @@ const TOP_KEYS = [
   "updates",
   "agent",
   "panel",
+  "scroll",
 ];
 const KEYMAP_SECTIONS = new Set(["keys", "modal", "unbind", "firefox"]);
 const WORKSPACE_KEYS = ["color", "icon", "home", "autofill"];
@@ -267,6 +271,7 @@ const SCHEMA_2_KEYS = [
   "updates",
   "agent",
   "panel",
+  "scroll",
 ];
 /** `[bookmarks]` (docs/specs/bookmarks.md, decision 2). */
 const BOOKMARKS_KEYS = ["root"];
@@ -274,6 +279,8 @@ const BOOKMARKS_KEYS = ["root"];
 const ROUTING_KEYS = ["default_workspace"];
 /** `[panel]` (docs/specs/side-panel-counts.md, decision 6). */
 const PANEL_KEYS = ["numbers"];
+/** `[scroll]` (docs/specs/m1-actor-insert-scroll.md, "Follow-up: scroll step"). */
+const SCROLL_KEYS = ["step"];
 /** `[private] placement` (docs/specs/private-swap.md, decision 1). */
 export const PRIVATE_PLACEMENTS = Object.freeze(
   /** @type {PrivatePlacement[]} */ (["swap", "window"]),
@@ -660,6 +667,20 @@ function validate(raw, declared, warnings = []) {
       else if (typeof v !== "string") typeError(path, v, "a string");
       else if (!PANEL_NUMBERS.includes(/** @type {PanelNumbers} */ (v))) {
         fail(path, 'must be "absolute", "relative" or "hybrid"', closest(v, PANEL_NUMBERS));
+      }
+    }
+  }
+
+  if (declared >= 2 && isTable(raw.scroll)) {
+    for (const [key, v] of Object.entries(raw.scroll)) {
+      const path = ["scroll", key];
+      if (key !== "step") unknownKey(path, key, SCROLL_KEYS);
+      else if (typeof v !== "bigint") typeError(path, v, "an integer");
+      else if (v < BigInt(SCROLL_STEP_MIN) || v > BigInt(SCROLL_STEP_MAX)) {
+        fail(
+          path,
+          `must be an integer between ${SCROLL_STEP_MIN} and ${SCROLL_STEP_MAX} (CSS pixels)`,
+        );
       }
     }
   }
@@ -1203,6 +1224,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     insertEditing: /** @type {boolean | undefined} */ (user.modal?.insert_editing) ?? true,
     bookmarks: { root: user.bookmarks?.root ?? "workspace" },
     panel: { numbers: user.panel?.numbers ?? "absolute" },
+    scroll: { step: user.scroll?.step ?? SCROLL_STEP_DEFAULT },
     private: { placement: user.private?.placement ?? "swap" },
     mcp: resolveMcp(user.mcp),
     ui: {

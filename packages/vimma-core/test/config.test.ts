@@ -414,6 +414,7 @@ describe("mergeWithDefaults", () => {
       insertEditing: true,
       bookmarks: { root: "workspace" },
       panel: { numbers: "absolute" },
+      scroll: { step: 60 },
       private: { placement: "swap" },
       mcp: {
         workspace: "agent",

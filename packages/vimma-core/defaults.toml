@@ -419,6 +419,10 @@ root = "workspace"
 [panel]
 numbers = "absolute"
 
+# How far j, k, h and l scroll a page, in CSS pixels, 1 to 2000 (3j: three steps).
+[scroll]
+step = 60
+
 # The private workspace (ctrl+b shift+p): "swap" shows it in place of the Vimma window on
 # Hyprland and macOS, which hide the other one until you switch back; "window" opens it as
 # a window of its own beside it, as on every other system.
