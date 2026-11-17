@@ -234,3 +234,99 @@ describe("ownAppImage (the AppImage a restart starts again, spec §5)", () => {
     );
   });
 });
+
+// Edges the weekly mutation run (#1119) found unpinned: each refusal's reason, and the path and
+// URL rules at their boundaries (UP10).
+describe("appImagePlan and ownAppImage at their edges (UP10)", () => {
+  test("another install type is refused as such, with or without an offer", () => {
+    const why = "not an AppImage install";
+    expect(appImagePlan({ ...base, installType: "tarball" })).toEqual({ ok: false, why });
+    expect(appImagePlan({ ...base, installType: "tarball", offer: null })).toEqual({
+      ok: false,
+      why,
+    });
+    expect(appImagePlan({ ...base, offer: null })).toEqual({
+      ok: false,
+      why: "no update is offered",
+    });
+  });
+
+  test("an offer restored without assets names no AppImage, and never throws", () => {
+    const bare = { ...offer(), assets: undefined } as unknown as Offer;
+    expect(appImagePlan({ ...base, offer: bare })).toEqual({
+      ok: false,
+      why: "the update manifest names no AppImage",
+    });
+  });
+
+  test("$APPDIR with trailing slashes is still the mount that holds the GRE directory", () => {
+    expect(appImagePlan({ ...base, appDir: `${base.appDir}/` })).toMatchObject({ ok: true });
+    expect(appImagePlan({ ...base, appDir: `${base.appDir}//` })).toMatchObject({ ok: true });
+  });
+
+  test("a space in $APPIMAGE is a plain path; DEL, like any control character, is not", () => {
+    const spaced = "/home/u/My Apps/V.AppImage";
+    expect(appImagePlan({ ...base, appImage: spaced })).toMatchObject({ ok: true, target: spaced });
+    expect(appImagePlan({ ...base, appImage: "/home/u/V\x7f.AppImage" })).toEqual({
+      ok: false,
+      why: "$APPIMAGE is not an absolute file path",
+    });
+    expect(appImagePlan({ ...base, appImage: "/home/u/V\x1f.AppImage" })).toEqual({
+      ok: false,
+      why: "$APPIMAGE is not an absolute file path",
+    });
+  });
+
+  test.each([
+    ["a leading .. segment", `${RELEASES_URL}/download/../v0.3.1/x.AppImage`],
+    ["a leading . segment", `${RELEASES_URL}/download/./v0.3.1/x.AppImage`],
+    ["a . segment in the middle", `${RELEASES_URL}/download/v0.3.1/./x.AppImage`],
+    ["a trailing .. segment", `${RELEASES_URL}/download/v0.3.1/..`],
+    ["a query in the first segment", `${RELEASES_URL}/download/v0.3.1?a/x.AppImage`],
+    ["a single segment", `${RELEASES_URL}/download/x.AppImage`],
+  ])("a download URL with %s is refused outside automation", (_name, url) => {
+    const o = offer({ assets: { appimage: { size: 1, sha512: H("b"), url } } });
+    expect(appImagePlan({ ...base, offer: o })).toEqual({
+      ok: false,
+      why: "the AppImage's URL is not a release download of vimma-browser/vimma",
+    });
+  });
+
+  test("a release download nested deeper is still path segments only: allowed", () => {
+    const url = `${RELEASES_URL}/download/v0.3.1/linux/x.AppImage`;
+    const o = offer({ assets: { appimage: { size: 1, sha512: H("b"), url } } });
+    expect(appImagePlan({ ...base, offer: o })).toMatchObject({ ok: true, url });
+  });
+});
+
+// `$APPDIR` comes from the environment: its trailing slashes are trimmed in linear time, never
+// by a regex that backtracks on many slashes (CodeQL js/polynomial-redos, #1196).
+describe("$APPDIR's trailing slashes (ownership, #1196)", () => {
+  const where = {
+    installType: base.installType,
+    marker: base.marker,
+    appImage: base.appImage,
+    appDir: base.appDir,
+    greDir: base.greDir,
+    forced: false,
+  };
+
+  test("trailing slashes are trimmed; / and // hold every absolute GRE directory", () => {
+    for (const appDir of ["/tmp/.mount_vimmaAb12Cd/", "/tmp/.mount_vimmaAb12Cd///", "/", "//"]) {
+      expect(ownAppImage({ ...where, appDir }), appDir).toBe(base.appImage);
+    }
+    expect(ownAppImage({ ...where, appDir: "/tmp/.mount_vimmaAb12" })).toBeNull();
+    expect(ownAppImage({ ...where, appDir: "/tmp/.mount_vimmaAb12Cd/usr/" })).toBe(base.appImage);
+    expect(ownAppImage({ ...where, appDir: "/tmp/.mount_vimmaAb12Cd/usr/lib/vimma/" })).toBeNull();
+  });
+
+  test("100 000 slashes before the last segment: fast, and the same answer", () => {
+    const appDir = `${"/".repeat(100_000)}x`;
+    const start = performance.now();
+    expect(ownAppImage({ ...where, appDir, greDir: `${appDir}/usr/lib/vimma` })).toBe(
+      base.appImage,
+    );
+    expect(ownAppImage({ ...where, appDir, greDir: "/x/usr/lib/vimma" })).toBeNull();
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+});

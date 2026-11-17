@@ -150,3 +150,51 @@ describe("keys and commands", () => {
     expect(parseCommandLine(":popups")).toMatchObject({ action: { id: "popups.picker" } });
   });
 });
+
+describe("each row's right-hand cell", () => {
+  test("allow opens them all while something is blocked; the other rows say what they reach", () => {
+    const items = popupItems(blocked({ redirect: "https://example.net/next" }));
+    expect(items.map((i) => [i.popupId, i.detail])).toEqual([
+      ["allow", "opens them all"],
+      ["redirect", "blocked redirect"],
+      ["popup:0", "pop-up"],
+      ["popup:1", "pop-up"],
+      ["hide", "every site"],
+      ["settings", "about:preferences"],
+    ]);
+  });
+
+  test("blocked pop-ups without a redirect make allow open them all", () => {
+    expect(popupItems(blocked())[0]).toMatchObject({ popupId: "allow", detail: "opens them all" });
+  });
+
+  test("a blocked redirect alone also makes allow open it", () => {
+    const items = popupItems(blocked({ popups: [], redirect: "https://example.net/next" }));
+    expect(items[0]).toMatchObject({ popupId: "allow", detail: "opens them all" });
+  });
+
+  test("with nothing blocked, allow, block and reset are about this site", () => {
+    const blockedSite = popupItems(blocked({ popups: [], permission: "block" }));
+    expect(blockedSite.map((i) => [i.popupId, i.detail])).toEqual([
+      ["allow", "this site"],
+      ["reset", "this site"],
+      ["settings", "about:preferences"],
+    ]);
+    const allowedSite = popupItems(blocked({ popups: [], permission: "allow" }));
+    expect(allowedSite[0]).toMatchObject({ popupId: "block", detail: "this site" });
+  });
+});
+
+describe("parsePopupId reads the whole id", () => {
+  test("a pop-up number of several digits", () => {
+    expect(parsePopupId("popup:12")).toEqual({ op: "popup", index: 12 });
+  });
+
+  test("text before popup: is no action", () => {
+    expect(parsePopupId("xpopup:1")).toBeNull();
+  });
+});
+
+test("without the bar and without siteBlocked, no cue", () => {
+  expect(popupCue({ bar: false, hint: null })).toBeNull();
+});

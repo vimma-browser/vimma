@@ -10,9 +10,12 @@
  * it is the page's.
  */
 
-import { AGENT_LINKS, cutTo, labelAgentLinks, shown } from "./agent-keys.mjs";
+import { AGENT_LINKS, agentUrl, cutTo, labelAgentLinks, shown } from "./agent-keys.mjs";
 import { DEFAULT_HINT_CHARS } from "../page/hints.mjs";
 import { ELEMENT_KINDS, ELEMENT_REPLY_CAPS, isSensitiveAutocomplete } from "./agent-element.mjs";
+
+// The console read's URLs go through the same stripper as every other URL the agent sees.
+export { agentUrl };
 
 export {
   ELEMENT_KINDS,
@@ -98,7 +101,7 @@ function elementObject(label, t, form) {
   const max = AGENT_ELEMENTS;
   /** @type {Record<string, unknown>} */
   const o = { label, kind: i.kind, text: line(i.text, max.text) };
-  if (t.href) o.href = cutTo(shown(t.href).replace(/\s/g, ""), max.href);
+  if (t.href) o.href = agentUrl(t.href, max.href);
   if (t.frame) o.frame = line(t.frame, 253);
   if (i.type !== undefined) o.type = line(i.type, 32);
   if (i.name !== undefined) o.name = line(i.name, max.text);
@@ -201,7 +204,7 @@ export function agentElementList(elements, maxBytes, seen) {
       formLine = jsonLine({
         form: n,
         method: line(f.method, 8),
-        action: cutTo(shown(f.action).replace(/\s/g, ""), AGENT_ELEMENTS.href),
+        action: agentUrl(f.action, AGENT_ELEMENTS.href),
       });
       form = { n, line: formLine };
     }
@@ -823,19 +826,12 @@ export function parseConsoleEntry(raw) {
     source: /** @type {ConsoleEntry["source"]} */ (r.source),
     // Sliced first: a content process's string of any size is never spread whole.
     message: cutTo(r.message.slice(0, 4 * AGENT_CONSOLE.message), AGENT_CONSOLE.message),
-    file: cutTo(r.file.slice(0, 4 * AGENT_CONSOLE.url), AGENT_CONSOLE.url),
+    file: agentUrl(r.file, AGENT_CONSOLE.url),
     line: /** @type {number} */ (r.line),
     column: /** @type {number} */ (r.column),
     time: /** @type {number} */ (r.time),
   };
 }
-
-/**
- * `url` without a user name and password, which a script's or request's URL may carry and which
- * are never the agent's (security.md M30).
- * @param {string} url
- */
-const withoutUserinfo = (url) => url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/?#@]*@/i, "$1");
 
 /**
  * A frame's entries as it answers them (F24): only those after `since`, newest first, at most
@@ -857,7 +853,7 @@ const errorLine = (e) =>
     level: e.level,
     source: e.source,
     message: valueText(e.message, AGENT_CONSOLE.message),
-    file: cutTo(withoutUserinfo(shown(e.file).replace(/\s/g, "")), AGENT_CONSOLE.url),
+    file: agentUrl(e.file, AGENT_CONSOLE.url),
     line: e.line,
     column: e.column,
     time: e.time,
@@ -867,7 +863,7 @@ const errorLine = (e) =>
 const requestLine = (r) =>
   jsonLine({
     method: line(r.method, 16),
-    url: cutTo(withoutUserinfo(shown(r.url).replace(/\s/g, "")), AGENT_CONSOLE.url),
+    url: agentUrl(r.url, AGENT_CONSOLE.url),
     ...(r.status !== undefined ? { status: r.status } : {}),
     ...(r.error !== undefined ? { error: line(r.error, 64) } : {}),
     type: line(r.type, 32),

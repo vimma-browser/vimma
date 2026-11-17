@@ -193,3 +193,23 @@ describe("reach", () => {
     expect(parseCommandLine(":permissions")).toMatchObject({ action: { id: "site.permissions" } });
   });
 });
+
+describe("row order and the empty state list", () => {
+  test("equal labels go by id, also when the larger id comes first", () => {
+    for (const ids of [
+      ["h", "g", "f", "e", "d", "c", "b", "a"],
+      ["d", "a", "g", "c", "h", "b", "f", "e"],
+      ["a", "b", "c", "d", "e", "f", "g", "h"],
+    ]) {
+      const items = permissionItems(ids.map((id) => rec({ id, label: "Same" })));
+      expect(items.map((i) => i.permissionId)).toEqual([...ids].sort());
+    }
+  });
+
+  test("next on a permission Firefox offers no states for is refused", () => {
+    expect(permissionPlan(rec({ states: [] }), "next")).toEqual({
+      type: "refuse",
+      text: "Use the camera cannot be changed",
+    });
+  });
+});

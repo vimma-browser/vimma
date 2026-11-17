@@ -736,3 +736,49 @@ describe("LineFramer (the server's framing)", () => {
     expect(new LineFramer().max).toBe(MAX_LINE_LENGTH);
   });
 });
+
+describe("validateMessage: agent labels (security.md S11)", () => {
+  const hello = (args: Record<string, unknown>) =>
+    validateMessage({ type: "request", id: 1, command: "agent-hello", args });
+  // Every Bidi_Control character (U+061C ARABIC LETTER MARK among them), the deprecated format
+  // characters U+206A to U+206F, and the line and paragraph separators.
+  const refused = [
+    "\u061c",
+    "\u200e",
+    "\u200f",
+    "\u202a",
+    "\u202e",
+    "\u2066",
+    "\u2069",
+    "\u206a",
+    "\u206b",
+    "\u206c",
+    "\u206d",
+    "\u206e",
+    "\u206f",
+    "\u2028",
+    "\u2029",
+  ];
+
+  test("a label with a bidi control, a deprecated format character or a separator is refused", () => {
+    for (const c of refused) {
+      const label = `a${c}b`;
+      const at = `U+${(c.codePointAt(0) as number).toString(16)}`;
+      expect(hello({ client: { name: label } }).valid, at).toBe(false);
+      expect(hello({ client: { name: "x", version: label } }).valid, at).toBe(false);
+      expect(hello({ client: { name: "x" }, via: label }).valid, at).toBe(false);
+    }
+  });
+
+  test("letters of right-to-left scripts and their neighbours' marks stay printable", () => {
+    for (const name of [
+      "\u0645\u062b\u0627\u0644",
+      "a\u061bb",
+      "a\u061db",
+      "a\u2065b",
+      "a\u2070b",
+    ]) {
+      expect(hello({ client: { name } }).valid, name).toBe(true);
+    }
+  });
+});

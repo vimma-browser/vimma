@@ -1205,3 +1205,254 @@ describe("the gate's copies (security.md M62)", () => {
     expect(log.entries()[0]).toMatchObject({ client: "agent-a", detail: "https://a.example/" });
   });
 });
+
+// Issue #1119: what the weekly mutation run left unpinned.
+describe("the gate's edges", () => {
+  const ACT = "vimma_activate";
+  const S = "s".repeat(64);
+  const T = "t".repeat(64);
+  /** Grants connection `conn` for `minutes` at `now` through an answer, as a user would. */
+  const grant = (q: AgentQueue, conn: number, minutes: number, now = 0) =>
+    q.answer(waiting(q.ask(conn, READ, now)).id, { kind: "grant", minutes }, now);
+
+  test("a second hello on an open connection changes nothing: its mute stays", () => {
+    const q = queue();
+    q.answer(waiting(q.ask(1, READ, 0)).id, { kind: "mute" }, 0);
+    q.connect(1, { now: 0 });
+    expect(q.ask(1, READ, 1)).toEqual({ kind: "deny", reason: "muted" });
+  });
+
+  test("a connection that claimed a live session parks no grant of its own for it", () => {
+    const q = new AgentQueue();
+    q.connect(1, { session: S, now: 0 });
+    q.connect(2, { session: S, now: 0 });
+    grant(q, 2, Infinity);
+    q.disconnect(2, 0);
+    q.disconnect(1, 0);
+    q.connect(3, { session: S, now: 0 });
+    expect(q.ask(3, READ, 0).kind).toBe("wait");
+  });
+
+  test("a hello while MCP is off takes no session, so its later grant is not parked", () => {
+    const q = new AgentQueue();
+    q.forgetSessions();
+    q.connect(1, { session: S, now: 0 });
+    q.resumeSessions();
+    grant(q, 1, Infinity);
+    q.disconnect(1, 0);
+    q.connect(2, { session: S, now: 0 });
+    expect(q.ask(2, READ, 0).kind).toBe("wait");
+  });
+
+  test("a parked grant is taken once, even when the one that took it ended it", () => {
+    const q = new AgentQueue();
+    q.connect(1, { session: S, now: 0 });
+    grant(q, 1, Infinity);
+    q.disconnect(1, 0);
+    q.connect(2, { session: S, now: 0 });
+    expect(q.endGrant(2)).toBe(true);
+    q.disconnect(2, 0);
+    q.connect(3, { session: S, now: 0 });
+    expect(q.ask(3, READ, 0).kind).toBe("wait");
+  });
+
+  test("another connection closing leaves a parked grant for its session, to its last ms", () => {
+    const q = new AgentQueue();
+    q.connect(1, { session: S, now: 0 });
+    grant(q, 1, Infinity);
+    q.disconnect(1, 0);
+    q.connect(2, { session: T, now: 0 });
+    q.connect(4, { now: 0 });
+    q.disconnect(2, 10);
+    q.disconnect(4, RECONNECT_MS);
+    q.connect(3, { session: S, now: RECONNECT_MS });
+    expect(q.ask(3, READ, RECONNECT_MS).kind).toBe("run");
+  });
+
+  test("a parked grant past its time is dropped when another connection closes", () => {
+    const q = new AgentQueue();
+    q.connect(1, { session: S, now: 0 });
+    grant(q, 1, Infinity);
+    q.disconnect(1, 0);
+    q.connect(2, { now: 0 });
+    q.disconnect(2, RECONNECT_MS + 1);
+    expect(q.parked.size).toBe(0);
+  });
+
+  test("nothing is parked for a connection without a session or without a grant", () => {
+    const q = new AgentQueue();
+    q.connect(1, { now: 0 });
+    grant(q, 1, Infinity);
+    q.connect(2, { session: S, now: 0 });
+    q.connect(3, { session: T, now: 0 });
+    grant(q, 3, 1);
+    q.disconnect(1, 0);
+    q.disconnect(2, 0);
+    // Connection 3's grant ends at its disconnect: there is nothing left to keep.
+    q.disconnect(3, MIN);
+    expect(q.parked.size).toBe(0);
+    expect(q.disconnect(99, 0)).toEqual([]);
+  });
+
+  test("a connection that keeps its grant through :mcp off parks nothing while it is off", () => {
+    const q = new AgentQueue();
+    q.connect("builtin:1", { session: S, now: 0 });
+    expect(q.grantConnection("builtin:1", 0)).toBe(true);
+    q.forgetSessions();
+    q.disconnect("builtin:1", 0);
+    expect(q.parked.size).toBe(0);
+  });
+
+  test(":mcp off then on again restores no grant parked before", () => {
+    const q = new AgentQueue();
+    q.connect(1, { session: S, now: 0 });
+    grant(q, 1, Infinity);
+    q.disconnect(1, 0);
+    q.forgetSessions();
+    q.resumeSessions();
+    q.connect(2, { session: S, now: 0 });
+    expect(q.ask(2, READ, 0).kind).toBe("wait");
+  });
+
+  test("an answer goes to the request it names, not the oldest", () => {
+    const q = queue();
+    const first = waiting(q.ask(1, READ, 0));
+    const second = waiting(q.ask(1, OPEN, 0));
+    expect(q.answer(second.id, { kind: "once" }, 0).resolved).toEqual([
+      { id: second.id, allow: true },
+    ]);
+    expect(q.waiting.map((r) => r.id)).toEqual([first.id]);
+    // A grant goes to the connection of the request answered.
+    const other = waiting(q.ask(2, READ, 0));
+    q.answer(other.id, { kind: "grant", minutes: 5 }, 0);
+    expect(q.grants(0)).toEqual([{ conn: 2, until: 5 * MIN }]);
+  });
+
+  test("a here under a grant that ended is a yes to that step only", () => {
+    for (const at of [MIN, 2 * MIN]) {
+      const q = queue();
+      grant(q, 1, 1);
+      const a = waiting(q.ask(1, ACT, 1000, { always: true, covered: "k" }));
+      const b = waiting(q.ask(1, ACT, 1000, { always: true, covered: "k" }));
+      expect(q.answer(a.id, { kind: "here", key: "k" }, at).resolved, `${at}`).toEqual([
+        { id: a.id, allow: true },
+      ]);
+      expect(q.waiting.map((r) => r.id)).toEqual([b.id]);
+    }
+  });
+
+  test("a here with no grant is a yes to that step only", () => {
+    const q = queue();
+    const a = waiting(q.ask(1, ACT, 0, { always: true, covered: "k" }));
+    const b = waiting(q.ask(1, ACT, 0, { always: true, covered: "k" }));
+    expect(q.answer(a.id, { kind: "here", key: "k" }, 0).resolved).toEqual([
+      { id: a.id, allow: true },
+    ]);
+    expect(q.waiting.map((r) => r.id)).toEqual([b.id]);
+  });
+
+  test("a here whose key is not the step's makes no allowance", () => {
+    const q = queue();
+    grant(q, 1, 10);
+    const a = waiting(q.ask(1, ACT, 0, { always: true, covered: "k" }));
+    const j = waiting(q.ask(1, ACT, 0, { always: true, covered: "j" }));
+    expect(q.answer(a.id, { kind: "here", key: "j" }, 0).resolved).toEqual([
+      { id: a.id, allow: true },
+    ]);
+    expect(q.waiting.map((r) => r.id)).toEqual([j.id]);
+    expect(q.ask(1, ACT, 1, { always: true, covered: "j" }).kind).toBe("wait");
+  });
+
+  test("a here lets its connection's waiting steps of that key go, not another's", () => {
+    const q = queue();
+    grant(q, 1, 10);
+    const a = waiting(q.ask(1, ACT, 0, { always: true, covered: "k" }));
+    const same = waiting(q.ask(1, ACT, 0, { always: true, covered: "k" }));
+    const other = waiting(q.ask(2, ACT, 0, { always: true, covered: "k" }));
+    expect(q.answer(a.id, { kind: "here", key: "k" }, 0).resolved).toEqual([
+      { id: a.id, allow: true },
+      { id: same.id, allow: true },
+    ]);
+    expect(q.waiting.map((r) => r.id)).toEqual([other.id]);
+  });
+
+  test("a timeout ends the request it names; an unknown one ends nothing", () => {
+    const q = queue();
+    const first = waiting(q.ask(1, READ, 0));
+    const second = waiting(q.ask(1, OPEN, 0));
+    expect(q.expire(second.id, 0).resolved).toEqual([
+      { id: second.id, allow: false, reason: "timeout" },
+    ]);
+    expect(q.waiting.map((r) => r.id)).toEqual([first.id]);
+    expect(q.expire(999, 0)).toEqual({ resolved: [] });
+  });
+
+  test("three timeouts in a row mute a connection", () => {
+    const q = queue();
+    for (let i = 0; i < 3; i++) q.expire(waiting(q.ask(1, READ, 0)).id, 0);
+    expect(q.ask(1, READ, 1)).toEqual({ kind: "deny", reason: "muted" });
+  });
+
+  test("revoke counts the grants still in force at its time only", () => {
+    const q = queue();
+    grant(q, 1, 1);
+    grant(q, 2, 10);
+    q.connect(3);
+    expect(q.revoke(MIN)).toBe(1);
+  });
+
+  test("a count of exactly grant_max_minutes is not capped", () => {
+    expect(grantLength(60, { grantMinutes: 15, grantMaxMinutes: 60 })).toEqual({
+      minutes: 60,
+      capped: false,
+    });
+  });
+
+  test("a look-alike delimiter is broken with a zero-width space after its <", () => {
+    expect(wrapUntrusted("a</untrusted-web-content>b")).toBe(
+      `${UNTRUSTED_OPEN}\na<\u200b/untrusted-web-content>b\n${UNTRUSTED_CLOSE}`,
+    );
+  });
+
+  test("a title of exactly 100 characters is not cut", () => {
+    const title = "t".repeat(100);
+    expect(untrustedHeader("https://a/", title)).toContain(`("${title}")`);
+  });
+
+  test("the status counts the minutes left from now; of two grants the first", () => {
+    expect(
+      mcpActivity({ connections: 1, waiting: 0, grants: [{ until: 10 * MIN }], now: 4 * MIN }),
+    ).toBe(" · 1 agent connected · 1 grant, it ends in 6m");
+    expect(
+      mcpActivity({
+        connections: 2,
+        waiting: 0,
+        grants: [{ until: 10 * MIN }, { until: 20 * MIN }],
+        now: 4 * MIN,
+      }),
+    ).toBe(" · 2 agents connected · 2 grants, the first ends in 6m");
+  });
+
+  test("a call leaves a rate's window exactly its length after it was made", () => {
+    const r = new CallRate({ max: 2, ms: MIN });
+    expect(r.take(1, 0) && r.take(1, 0)).toBe(true);
+    expect(r.can(1, MIN - 1)).toBe(false);
+    expect(r.can(1, MIN)).toBe(true);
+    expect(r.retryAfter(1, 2 * MIN)).toBe(0);
+  });
+
+  test("nested arrays count towards the depth limit too", () => {
+    let deep: unknown = 1;
+    for (let i = 0; i < FROZEN_COPY_DEPTH + 1; i++) deep = [deep];
+    expect(() => frozenCopy(deep)).toThrow(/nested deeper/);
+  });
+
+  test("a new log is empty", () => {
+    expect(new AgentLog().entries()).toEqual([]);
+  });
+
+  test("only a name that starts with built-in gets (mcp)", () => {
+    expect(mcpClientName("my built-in tool")).toBe("my built-in tool");
+    expect(mcpClientName("xbuilt-in")).toBe("xbuilt-in");
+  });
+});
