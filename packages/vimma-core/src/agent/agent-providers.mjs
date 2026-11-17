@@ -10,23 +10,31 @@
 /**
  * @typedef {{ type: "text", text: string } | { type: "image", mimeType: string, data: string }} ToolContent
  *   A tool result's content, as MCP's CallToolResult carries it.
- * @typedef {{ id: string, name: string, args: Record<string, any> | null, error?: string }} ToolCall
+ * @typedef {{ id: string, name: string, args: Record<string, unknown> | null, error?: string }} ToolCall
  *   `error` says why the call cannot run (its arguments are not a JSON object); `args` is then
- *   null.
+ *   null. The arguments are the model's: nothing has checked their values yet.
  * @typedef {{ id: string, name: string, isError: boolean, content: ToolContent[] }} ToolResult
  * @typedef {{ role: "user", text: string }
- *   | { role: "assistant", text: string, toolCalls: ToolCall[], raw?: { kind: string, content: any[] } }
+ *   | { role: "assistant", text: string, toolCalls: ToolCall[], raw?: { kind: string, content: unknown[] } }
  *   | { role: "tool", results: ToolResult[] }} ChatMessage
  *   A provider-neutral message. `raw` keeps an Anthropic reply's blocks (thinking included),
  *   which the API wants back unchanged.
  * @typedef {{ kind: "anthropic" | "openai", endpoint: string, model: string, vision?: boolean,
  *   priceIn?: number, priceOut?: number, maxOutput?: number }} Provider
- * @typedef {{ name: string, description: string, inputSchema: any }} ToolDef
+ * @typedef {{ type?: string | string[], properties?: Record<string, InputSchema>,
+ *   required?: string[], additionalProperties?: boolean | InputSchema }
+ *   & Record<string, unknown>} InputSchema
+ *   A tool's JSON Schema, as tools/list gives it (agent-tools-data.mjs); a list as `type` allows
+ *   any of its types.
+ * @typedef {{ name: string, description: string, inputSchema: InputSchema }} ToolDef
  * @typedef {{ input: number, output: number, estimated: boolean }} Usage
  *   `estimated`: the server reported no usage, so both are characters divided by four (B10).
  * @typedef {{ message: Extract<ChatMessage, { role: "assistant" }>, usage: Usage, stop: string }} Reply
  * @typedef {{ key: string, system: string, tools: ToolDef[], messages: ChatMessage[] }} RequestInput
- * @typedef {(url: string, init: any) => Promise<{ ok: boolean, status: number, text(): Promise<string> }>} Fetch
+ * @typedef {{ method?: "GET" | "POST", headers?: Record<string, string>, body?: string,
+ *   credentials?: "omit", redirect?: "error", signal?: AbortSignal }} FetchInit
+ *   What Vimma passes `fetch`: a model's requests send no cookies and follow no redirects (B11).
+ * @typedef {(url: string, init: FetchInit) => Promise<{ ok: boolean, status: number, text(): Promise<string> }>} Fetch
  */
 
 export const ANTHROPIC_VERSION = "2023-06-01";
@@ -127,7 +135,7 @@ function anthropicRequest(provider, { key, system, tools, messages }) {
   };
 }
 
-/** @param {ChatMessage} m @returns {any[]} */
+/** @param {ChatMessage} m @returns {{ role: "user" | "assistant", content: unknown }[]} */
 function anthropicMessage(m) {
   if (m.role === "user") return [{ role: "user", content: m.text }];
   if (m.role === "assistant") {
@@ -162,7 +170,7 @@ function anthropicMessage(m) {
 
 /** @param {Provider} provider @param {RequestInput} input */
 function openaiRequest(provider, { key, system, tools, messages }) {
-  /** @type {Record<string, any>} */
+  /** @type {Record<string, unknown>} */
   const body = {
     model: provider.model,
     messages: [{ role: "system", content: system }, ...messages.flatMap(openaiMessage)],
@@ -183,11 +191,11 @@ function openaiRequest(provider, { key, system, tools, messages }) {
   };
 }
 
-/** @param {ChatMessage} m @returns {any[]} */
+/** @param {ChatMessage} m @returns {Record<string, unknown>[]} */
 function openaiMessage(m) {
   if (m.role === "user") return [{ role: "user", content: m.text }];
   if (m.role === "assistant") {
-    /** @type {Record<string, any>} */
+    /** @type {Record<string, unknown>} */
     const out = { role: "assistant", content: m.text };
     if (m.toolCalls.length)
       out.tool_calls = m.toolCalls.map((c) => ({
@@ -224,9 +232,27 @@ function openaiMessage(m) {
 /** @param {number} chars */
 const estimate = (chars) => Math.ceil(chars / 4);
 
+/** A reply's token count, or 0 for one that is not a number, which would make the budget's sums text. */
+const count = (/** @type {unknown} */ n) => (typeof n === "number" ? n : 0);
+
+/**
+ * @typedef {{ type?: unknown, text?: unknown, id?: unknown, name?: unknown, input?: unknown }} AnthropicBlock
+ * @typedef {(b: AnthropicBlock | null | undefined) => b is AnthropicBlock} IsBlock
+ * @typedef {{ content?: unknown, stop_reason?: unknown, usage?: { input_tokens?: unknown,
+ *   cache_creation_input_tokens?: unknown, cache_read_input_tokens?: unknown,
+ *   output_tokens?: unknown } }} AnthropicReply
+ * @typedef {{ id?: unknown, function?: { name?: unknown, arguments?: unknown } } | null} OpenaiCall
+ * @typedef {{ choices?: { message?: { content?: unknown, tool_calls?: unknown } | null,
+ *   finish_reason?: unknown }[], usage?: { prompt_tokens?: unknown,
+ *   completion_tokens?: unknown } }} OpenaiReply
+ *   Replies as the APIs document them, every field optional and every value the code reads
+ *   `unknown`: the server is not trusted to keep to them, so each value is checked where it is
+ *   read, and a reply of another shape fails with a ProviderError or reads as a missing value.
+ */
+
 /**
  * One model turn read from a reply body.
- * @param {Provider} provider @param {any} json @param {string} requestBody  for an estimate
+ * @param {Provider} provider @param {unknown} json  the parsed body @param {string} requestBody  for an estimate
  * @returns {Reply}
  */
 export function parseReply(provider, json, requestBody) {
@@ -235,18 +261,19 @@ export function parseReply(provider, json, requestBody) {
     : openaiReply(json, requestBody);
 }
 
-/** @param {any} json @param {string} requestBody @returns {Reply} */
-function anthropicReply(json, requestBody) {
+/** @param {unknown} reply @param {string} requestBody @returns {Reply} */
+function anthropicReply(reply, requestBody) {
+  const json = /** @type {AnthropicReply | null | undefined} */ (reply);
   if (!json || !Array.isArray(json.content))
     throw new ProviderError("the reply is not a Messages API reply");
-  /** @type {any[]} */
+  /** @type {(AnthropicBlock | null | undefined)[]} */
   const content = json.content;
   const text = content
-    .filter((b) => b?.type === "text")
+    .filter(/** @type {IsBlock} */ ((b) => b?.type === "text"))
     .map((b) => String(b.text))
     .join("\n");
   const toolCalls = content
-    .filter((b) => b?.type === "tool_use")
+    .filter(/** @type {IsBlock} */ ((b) => b?.type === "tool_use"))
     .map((b, i) => toolCall(b.id, i, b.name, b.input, false));
   const u = json.usage;
   const usage =
@@ -254,9 +281,9 @@ function anthropicReply(json, requestBody) {
       ? {
           input:
             u.input_tokens +
-            (u.cache_creation_input_tokens ?? 0) +
-            (u.cache_read_input_tokens ?? 0),
-          output: u.output_tokens ?? 0,
+            count(u.cache_creation_input_tokens) +
+            count(u.cache_read_input_tokens),
+          output: count(u.output_tokens),
           estimated: false,
         }
       : {
@@ -271,21 +298,23 @@ function anthropicReply(json, requestBody) {
   };
 }
 
-/** @param {any} json @param {string} requestBody @returns {Reply} */
-function openaiReply(json, requestBody) {
+/** @param {unknown} reply @param {string} requestBody @returns {Reply} */
+function openaiReply(reply, requestBody) {
+  const json = /** @type {OpenaiReply | null | undefined} */ (reply);
   const choice = json?.choices?.[0];
   const msg = choice?.message;
   if (!msg || typeof msg !== "object")
     throw new ProviderError("the reply is not a chat completions reply");
-  /** @type {any[]} */
+  /** @type {OpenaiCall[]} */
   const calls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
   const toolCalls = calls.map((c, i) =>
     toolCall(c?.id, i, c?.function?.name, c?.function?.arguments, true),
   );
-  const u = json.usage;
+  // A reply with a message is an object.
+  const u = /** @type {OpenaiReply} */ (json).usage;
   const usage =
     typeof u?.prompt_tokens === "number"
-      ? { input: u.prompt_tokens, output: u.completion_tokens ?? 0, estimated: false }
+      ? { input: u.prompt_tokens, output: count(u.completion_tokens), estimated: false }
       : {
           input: estimate(requestBody.length),
           output: estimate(JSON.stringify(msg).length),
@@ -325,7 +354,7 @@ function toolCall(id, index, name, raw, json) {
   }
   if (!args || typeof args !== "object" || Array.isArray(args))
     return { ...call, args: null, error: "its arguments are not a JSON object" };
-  return { ...call, args: /** @type {Record<string, any>} */ (args) };
+  return { ...call, args: /** @type {Record<string, unknown>} */ (args) };
 }
 
 /**

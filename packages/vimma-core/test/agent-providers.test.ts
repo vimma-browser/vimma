@@ -518,6 +518,28 @@ describe("edge shapes", () => {
       toolCalls: [{ id: "e", name: "", args: {} }],
     });
   });
+
+  // Issue #1225: a count that is not a number must not reach the budget, where a string turns
+  // the token sum into text and the token and cost limits into comparisons that never hold.
+  test("usage counts that are not numbers count as none", () => {
+    const usage = {
+      input_tokens: 7,
+      cache_creation_input_tokens: "5",
+      cache_read_input_tokens: null,
+      output_tokens: "9",
+    };
+    const fromAnthropic = parseReply(anthropic, { content: [], usage }, "");
+    expect(fromAnthropic.usage).toEqual({ input: 7, output: 0, estimated: false });
+    const fromLocal = parseReply(
+      local,
+      {
+        choices: [{ message: { content: "ok" } }],
+        usage: { prompt_tokens: 9, completion_tokens: "1e9" },
+      },
+      "",
+    );
+    expect(fromLocal.usage).toEqual({ input: 9, output: 0, estimated: false });
+  });
 });
 
 // Issue #1119: what the weekly mutation run left unpinned.
