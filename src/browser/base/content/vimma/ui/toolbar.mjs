@@ -392,7 +392,11 @@ export class Toolbar {
     return this.win.document.commandDispatcher?.focusedElement ?? null;
   }
 
-  /** @private @param {any} node */
+  /**
+   * @private
+   * @param {(EventTarget & { closest?: Element["closest"] }) | null | undefined} node  only an
+   *   element has `closest`; any other target is outside the bar
+   */
   inBar(node) {
     return !!node?.closest?.("#nav-bar");
   }

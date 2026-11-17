@@ -155,12 +155,11 @@ function onGate(event) {
   if (event && event.kind !== "notice") {
     const q = event.kind === "ran" ? event : event.question;
     const c = [...conversations.values()].find((x) => x.conn === q.conn);
-    const what = /** @type {Record<string, any>} */ (q.what);
-    if (c?.task) c.urls.push(what?.url, what?.current);
+    if (c?.task) c.urls.push(q.what.url, q.what.current);
     const e = {
       kind: event.kind,
       tool: q.tool,
-      what: /** @type {Record<string, any>} */ (q.what),
+      what: q.what,
       ...(event.kind === "answered" ? { answer: event.answer } : {}),
     };
     // An agent CLI's steps are the gate's alone: no loop's call starts them (builtin-agent-cli C8).
@@ -337,7 +336,7 @@ const isRunning = (c) => (c.task !== null && !c.stopped) || c.starting;
 /**
  * One tool call of conversation `c`, as an agent command on its connection, its result as the
  * text vimma-ctl mcp gives an MCP agent. Stopping the task withdraws a question it waits on.
- * @param {Conversation} c @param {string} name @param {Record<string, any>} args
+ * @param {Conversation} c @param {string} name @param {Record<string, unknown>} args
  * @param {{ signal: AbortSignal }} opts
  */
 async function runTool(c, name, args, { signal }) {
@@ -382,8 +381,8 @@ async function runTool(c, name, args, { signal }) {
 
 /**
  * One run of a tool call: its result, or the failure that refused it.
- * @param {Conversation} c @param {string} name @param {Record<string, any>} args
- * @param {{ command: string, args: any }} mapped @param {number} rid @param {AbortSignal} signal
+ * @param {Conversation} c @param {string} name @param {Record<string, unknown>} args
+ * @param {{ command: string, args: Record<string, unknown> }} mapped @param {number} rid @param {AbortSignal} signal
  * @returns {Promise<import("../core/agent-results.mjs").CallToolResult
  *   | import("../core/agent-results.mjs").Failure>}
  */
@@ -994,7 +993,7 @@ export const AgentChat = {
   /**
    * A tab moved to the agent workspace for this conversation (Behaviour 17): it is the
    * conversation's from now on, and the transcript says so.
-   * @param {number} id @param {any} tab  the tab in the agent workspace
+   * @param {number} id @param {MozTabbrowserTab} tab  the tab in the agent workspace
    * @param {string} title  as the transcript names it
    */
   give(id, tab, title) {
@@ -1006,7 +1005,7 @@ export const AgentChat = {
 
   /**
    * The conversation that owns `tab`, or null.
-   * @param {any} tab
+   * @param {MozTabbrowserTab} tab
    */
   ownerOf(tab) {
     const conn = AgentTabOwners.ownerOf(tab);

@@ -28,6 +28,7 @@ import {
 } from "../core/agent-setup.mjs";
 
 /** @import { AgentChatServices, AgentChatWindow, Row } from "./agent-chat.mjs" */
+/** @import { LocalServer, ModelState } from "../core/agent-setup.mjs" */
 /** @typedef {import("../core/config.mjs").AgentProviderConfig} AgentProviderConfig */
 
 /** Anthropic's API, which setup's "add: Anthropic" uses (Behaviour 3). */
@@ -82,7 +83,10 @@ export function loadModels(chat) {
   /** @type {Map<string, string>} key hints, which arrive one by one */
   const hints = new Map();
   let first = true;
-  /** @param {any} found @param {any} states */
+  /**
+   * @param {LocalServer[] | null} found  the probe's servers, null until it answers
+   * @param {Map<string, ModelState> | null} states  by providerKey, null until asked
+   */
   const draw = (found, states) => {
     const selected = chat.rows[chat.row]?.label;
     const entries = pickerEntries({ providers, found, states, current });

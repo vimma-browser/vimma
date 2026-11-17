@@ -24,7 +24,7 @@ const view = {
    * `handleInternally` is final by now: DownloadLegacy starts a download before adding it to
    * the list, and the start runs the integration's shouldBlockForParentalControls at once, where
    * AgentDownloads clears it for an agent's download, which no tab ever shows.
-   * @param {any} download
+   * @param {FirefoxDownload} download
    */
   onDownloadAdded(download) {
     if (download.handleInternally) download.openDownloadsListOnStart = false;

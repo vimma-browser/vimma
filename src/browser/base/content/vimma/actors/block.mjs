@@ -389,6 +389,12 @@ function onScreen(el) {
 }
 
 /**
+ * A `Vimma:Block` message's data as the parent sends it; run checks each field it reads.
+ * @typedef {{ op?: unknown, gen?: unknown, count?: unknown, id?: unknown, line?: unknown }}
+ *   BlockMessage
+ */
+
+/**
  * The context VimmaChild gives an op.
  * @typedef {object} BlockContext
  * @property {(gen: number, id: number) => Element | null} take  a target of the last hint
@@ -413,7 +419,7 @@ export class BlockFocus {
    * Runs a `Vimma:Block` message; null for anything malformed, stale or not this frame's.
    * The replies are checked in the parent (core parseBlockReply).
    * @param {Window} win
-   * @param {any} data
+   * @param {BlockMessage} data
    * @param {BlockContext} ctx
    * @returns {object | null}
    */

@@ -762,6 +762,8 @@ interface nsIURI {
   readonly prePath: string;
   /** The path without query and fragment (a simple URI's whole path: nsSimpleURI::GetFilePath). */
   readonly filePath: string;
+  /** The part after `?`, without it; empty when there is none. */
+  readonly query: string;
   schemeIs(scheme: string): boolean;
 }
 
@@ -829,8 +831,13 @@ interface MozBrowser extends Element {
   readonly browsingContext: CanonicalBrowsingContext | null;
   /** Null while the browser has no docshell or remote navigation yet. */
   readonly currentURI: nsIURI | null;
-  readonly documentURI: { readonly spec: string } | null;
+  readonly documentURI: nsIURI | null;
   readonly contentTitle: string;
+  /**
+   * The page's security state as Firefox's identity block reads it (nsISecureBrowserUI.idl;
+   * browser-custom-element.mjs, `get securityUI`): null before the browser has one.
+   */
+  readonly securityUI: { readonly state: number; readonly isSecureContext: boolean } | null;
   readonly isRemoteBrowser: boolean;
   /** Its context's (browser-custom-element.mjs); undefined without a context, null without one. */
   readonly webProgress: nsIWebProgress | null | undefined;
@@ -1341,6 +1348,8 @@ interface FirefoxDownload extends SessionDownload {
   launcherPath: string | null;
   launcherId: string | null;
   handleInternally: boolean;
+  /** DownloadsCommon opens the downloads panel on its start only while this is true. */
+  openDownloadsListOnStart: boolean;
   finalize(removePartialData?: boolean): Promise<void>;
   whenSucceeded(): Promise<void>;
 }
