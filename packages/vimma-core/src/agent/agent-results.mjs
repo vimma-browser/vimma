@@ -426,7 +426,13 @@ function openItems(url, tab, elements, filtered, result) {
     if (result.url !== undefined || result.title !== undefined) {
       throw new Broken("Vimma's result has a page other than asked");
     }
-    stepList(tab, false, false, result);
+    stepList(
+      tab,
+      false,
+      // Stryker disable next-line BooleanLiteral: not asked, stepList never reads filtered
+      false,
+      result,
+    );
     return [item(`${opened} Read it with vimma_read_page.`)];
   }
   const page = field(result, "url");
@@ -674,7 +680,8 @@ export const USER_DENIED = "The user denied this request in Vimma.";
 export function isFinalRefusal(result) {
   if (!result.isError) return false;
   const first = result.content[0];
-  const text = first?.type === "text" ? first.text : "";
+  if (first?.type !== "text") return false;
+  const { text } = first;
   return (
     text.startsWith(REFUSED_ARGS) ||
     text === USER_DENIED ||
@@ -701,10 +708,9 @@ export function failureResult(failure) {
  */
 export function rateWaitMs(failure) {
   if (failure.kind !== "denied" || failure.reason !== "busy") return null;
-  const ms = failure.retryAfterMs;
-  return typeof ms === "number" && Number.isInteger(ms) && ms > 0 && ms <= MAX_RETRY_AFTER
-    ? ms
-    : null;
+  // No wait at all is 0, which is no wait to take.
+  const ms = failure.retryAfterMs ?? 0;
+  return Number.isInteger(ms) && ms > 0 && ms <= MAX_RETRY_AFTER ? ms : null;
 }
 
 /** @param {Failure} failure */
