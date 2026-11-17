@@ -57,10 +57,14 @@ export class Budget {
     this.steps++;
   }
 
-  /** @param {{ input: number, output: number, estimated: boolean }} usage */
+  /**
+   * A count that is not finite, or is below 0, adds nothing: it would keep the sums from ever
+   * reaching a limit (security.md M41). The providers drop such counts already.
+   * @param {{ input: number, output: number, estimated: boolean }} usage
+   */
   addUsage({ input, output, estimated }) {
-    this.input += input;
-    this.output += output;
+    if (Number.isFinite(input) && input >= 0) this.input += input;
+    if (Number.isFinite(output) && output >= 0) this.output += output;
     this.estimated ||= estimated;
     this.tokensReported = true;
   }
@@ -88,19 +92,23 @@ export class Budget {
     return this.cli ? Math.floor((now - this.cli.start) / MINUTE_MS) : null;
   }
 
-  /** @param {number} [now] @returns {Exceeded | null} */
+  /**
+   * `!(used < max)`, not `used >= max`: a use that is NaN (totals that reached Infinity, less
+   * the same after `renew`) is at its limit, never under it.
+   * @param {number} [now] @returns {Exceeded | null}
+   */
   exceeded(now = Date.now()) {
     const steps = this.steps - this.base.steps;
-    if (steps >= this.limits.maxSteps)
+    if (!(steps < this.limits.maxSteps))
       return { limit: "steps", used: steps, max: this.limits.maxSteps };
     const tokens = this.tokens - this.base.tokens;
-    if (tokens >= this.limits.maxTokens)
+    if (!(tokens < this.limits.maxTokens))
       return { limit: "tokens", used: tokens, max: this.limits.maxTokens };
     const cost = this.cost();
-    if (cost !== null && cost - this.base.cost >= this.limits.maxCost)
+    if (cost !== null && !(cost - this.base.cost < this.limits.maxCost))
       return { limit: "cost", used: cost - this.base.cost, max: this.limits.maxCost };
     const minutes = this.minutes(now);
-    if (this.cli && minutes !== null && minutes >= this.cli.maxMinutes)
+    if (this.cli && minutes !== null && !(minutes < this.cli.maxMinutes))
       return { limit: "minutes", used: minutes, max: this.cli.maxMinutes };
     return null;
   }

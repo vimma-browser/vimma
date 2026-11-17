@@ -9,7 +9,7 @@ import { AGENT_INSTRUCTIONS, AGENT_TOOL_LIST } from "./agent-tools-data.mjs";
 
 export { AGENT_INSTRUCTIONS, AGENT_TOOL_LIST };
 
-/** @typedef {{ name: string, description: string, inputSchema: any }} AgentToolDef */
+/** @typedef {import("./agent-providers.mjs").ToolDef} AgentToolDef */
 
 /**
  * The tools offered to a model. A model without vision gets no `vimma_screenshot`, which it

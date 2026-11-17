@@ -28,7 +28,7 @@ import { formatConfigError } from "../config/config.mjs";
  *   `own`: a step an agent CLI took with a tool of its own, never in the browser, `id` its
  *   call's id in the CLI's stream
  * @typedef {{ kind: "asked" | "ran" | "timeout" | "answered", tool: string,
- *   what: Record<string, any>, answer?: string }} ConvGateEvent
+ *   what: Record<string, unknown>, answer?: string }} ConvGateEvent
  *   one of AgentGate's events about this conversation's connection
  * @typedef {{ outcome: string, after?: ToolCall | null, exceeded?: Exceeded, error?: string,
  *   cost?: { usd: number, cli: string } }} TaskEnd  `cost`: what an agent CLI reported as its
