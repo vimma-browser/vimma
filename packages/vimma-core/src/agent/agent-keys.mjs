@@ -627,9 +627,17 @@ export function agentTabTitle(label, contentTitle, url, typed) {
 /**
  * A markdown link's or image's target: `](`, then up to the next `)`. DOMExtractor writes a
  * resolved href there, which holds no white space and has its parentheses escaped; page text
- * with white space between the two is not a target, and keeps its white space.
+ * with white space between the two is not a target, and keeps its white space. A link nested in
+ * another link's text (a block anchor wrapping inline ones, as on Google's search pages) is
+ * escaped once more by DOMExtractor's escapeMarkdownLink, which puts a backslash before each
+ * bracket and parenthesis of the text: `\[a\]\(href\)`, with more backslashes for each deeper
+ * nesting. So the `(` may follow backslashes, kept as they are; those before the closing `)`
+ * are read as part of the target, which withoutUserinfo keeps byte for byte. Each part's
+ * characters are disjoint from the next one's, so the match runs in linear time
+ * (CodeQL js/polynomial-redos). Only a target is read, never a URL anywhere else in the text:
+ * code, email addresses and URLs in a page's prose (`ssh://git@host` in a code span) stay.
  */
-const MARKDOWN_TARGET = /\]\(([^()\s]*)\)/g;
+const MARKDOWN_TARGET = /\](\\*)\(([^()\s]*)\)/g;
 
 /**
  * A page's text as the agent may read it (security.md M7, #1209): each markdown link's and
@@ -639,7 +647,10 @@ const MARKDOWN_TARGET = /\]\(([^()\s]*)\)/g;
  * @param {string} text
  */
 export function markdownWithoutUserinfo(text) {
-  return text.replace(MARKDOWN_TARGET, (_, url) => `](${withoutUserinfo(url, false, 0)})`);
+  return text.replace(
+    MARKDOWN_TARGET,
+    (_, open, url) => `]${open}(${withoutUserinfo(url, false, 0)})`,
+  );
 }
 
 /**
