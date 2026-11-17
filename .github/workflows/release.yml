@@ -58,9 +58,10 @@ jobs:
     # from (docs/security/14-build-and-release-supply-chain.md, B6): GitHub enforces that outside this file.
     environment: build
     runs-on: ubuntu-24.04
-    # About 1.5 times the measured job, 117 min (docs/runbook/ci-full-builds.md, "Full builds"), well under
-    # GitHub's 6 hours, so a hung build fails here with its own log and failure handling.
-    timeout-minutes: 180
+    # About 1.5 times the measured job, 117 min, plus room for the 3-job build (#1033;
+    # docs/runbook/ci-full-builds.md, "Full builds"), well under GitHub's 6 hours, so a hung build
+    # fails here with its own log and failure handling.
+    timeout-minutes: 230
     permissions:
       contents: read
     env:
@@ -178,10 +179,16 @@ jobs:
 
       # As nightly.yml: mach must not see engine/'s empty repository, or --enable-bootstrap finds
       # none of Mozilla's toolchains (its taskgraph hashes only the files a repository tracks).
+      # As nightly.yml (#1033): 3 jobs, not mach's 4, leave memory for the libxul link, and the
+      # memory watch logs memory each minute and keeps the OOM killer off the runner agent until
+      # the build ends.
       - name: Build
         run: |
           rm -rf engine/.git
-          npx --no -- surfer build
+          tools/ci/memory-watch.sh &
+          watch=$!
+          trap 'kill "$watch" 2>/dev/null || true; wait "$watch" || true' EXIT
+          npx --no -- surfer build --jobs 3
 
       - name: Smoke check
         run: |
