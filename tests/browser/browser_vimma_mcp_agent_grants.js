@@ -52,7 +52,7 @@ registerCleanupFunction(async () => {
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -305,9 +305,9 @@ add_task(async function test_queued_calls_a_grant_releases_show_as_granted() {
   await setSwitches({ mcp: true });
   const tab = await openAgentTab();
   const c = await agentClient();
-  /** @type {any[]} */
+  /** @type {GateEvent[]} */
   const events = [];
-  const listener = (/** @type {any} */ e) => e && events.push(e);
+  const listener = (/** @type {GateEvent | undefined} */ e) => e && events.push(e);
   AgentGate.addListener(listener);
   const read = c.request("agent-read", { tab: idOf(tab) });
   const open = c.request("agent-open", { url: `${PAGE}?queued` });
@@ -412,7 +412,7 @@ add_task(async function test_an_older_vimma_ctl_gets_a_notice_and_still_works() 
   Assert.equal((await discovery()).version, VIMMA_VERSION, "the discovery file names the version");
   /** @type {string[]} */
   const notices = [];
-  /** @param {any} e */
+  /** @param {GateEvent | undefined} e */
   const collect = (e) => {
     if (e?.kind === "notice") notices.push(e.text);
   };

@@ -39,7 +39,7 @@ const DIR = getRootDirectory(gTestPath).replace(
 );
 const BASKET = `${DIR}file_vimma_agent_basket.html`;
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -58,7 +58,7 @@ async function mcp(on) {
   await VimmaControl.settled();
 }
 
-/** The connections the running task opened. @type {any[]} */
+/** The connections the running task opened. @type {Client[]} */
 const clients = [];
 
 /** What a task leaves when it ends, passed or not (tidyTask): this file's state at its start. */
@@ -102,7 +102,7 @@ async function question() {
   return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
-/** The list's elements by what they say. @param {any} c @param {any} tab */
+/** The list's elements by what they say. @param {Client} c @param {MozTabbrowserTab} tab */
 async function labels(c, tab) {
   const id = c.request("agent-elements", { tab: idOf(tab) });
   AgentGate.answer((await question()).id, { kind: "once" });
@@ -117,7 +117,7 @@ async function labels(c, tab) {
   return by;
 }
 
-/** `agent-activate` on `tab`, answered once. @param {any} c @param {any} tab @param {string} label */
+/** `agent-activate` on `tab`, answered once. @param {Client} c @param {MozTabbrowserTab} tab @param {string} label */
 async function activate(c, tab, label) {
   const id = c.request("agent-activate", { tab: idOf(tab), label });
   AgentGate.answer((await question()).id, { kind: "once" });

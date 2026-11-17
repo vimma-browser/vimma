@@ -82,7 +82,7 @@ registerCleanupFunction(async () => {
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -125,7 +125,7 @@ async function openAgentTab(url = FORM) {
   return tab;
 }
 
-/** The connections the running task opened. @type {any[]} */
+/** The connections the running task opened. @type {Client[]} */
 const clients = [];
 
 /** What a task leaves when it ends, passed or not (tidyTask): this file's state at its start. */
@@ -159,7 +159,7 @@ async function question() {
 
 /**
  * `agent-elements` on `tab`, answered with `answer` (null: not asked, a grant runs it).
- * @param {any} c @param {any} tab @param {GateAnswer | null} [answer] @param {object} [args]
+ * @param {Client} c @param {MozTabbrowserTab} tab @param {GateAnswer | null} [answer] @param {object} [args]
  */
 async function elements(c, tab, answer = { kind: "once" }, args = {}) {
   const id = c.request("agent-elements", { tab: idOf(tab), ...args });
@@ -178,13 +178,18 @@ async function elements(c, tab, answer = { kind: "once" }, args = {}) {
 
 /**
  * `agent-keys` on `tab`, answered once.
- * @param {any} c @param {any} tab @param {string} keys
+ * @param {Client} c @param {MozTabbrowserTab} tab @param {string} keys
  */
 async function keys(c, tab, keys) {
   const id = c.request("agent-keys", { tab: idOf(tab), keys });
   AgentGate.answer((await question()).id, { kind: "once" });
   return c.response(id);
 }
+
+/**
+ * A result with an element list: the list, and the labels it repeats of the last list of the site.
+ * @typedef {{ elements: string, repeated?: string[] }} ListResult
+ */
 
 /** The list's JSON objects, between the delimiters; an empty list has none. @param {string} list */
 const parsed = (list) =>
@@ -194,7 +199,10 @@ const parsed = (list) =>
     .filter((l) => l !== "")
     .map((l) => JSON.parse(l));
 
-/** @param {any[]} list @param {(e: any) => boolean} pick @param {string} what */
+/**
+ * @param {ListedElement[]} list @param {(e: ListedElement) => boolean} pick @param {string} what
+ * @returns {Partial<ListedElement>}
+ */
 function one(list, pick, what) {
   const found = list.filter(pick);
   Assert.equal(found.length, 1, `one ${what} is listed`);
@@ -456,7 +464,7 @@ addTidyTask(async function test_elements_under_a_grant_notice_log_and_rate() {
 
 /**
  * `command` with `elements: true`, answered with `answer` (null: a grant runs it).
- * @param {any} c @param {string} command @param {object} args @param {GateAnswer | null} [answer]
+ * @param {Client} c @param {string} command @param {object} args @param {GateAnswer | null} [answer]
  */
 async function withList(c, command, args, answer = { kind: "once" }) {
   const id = c.request(command, { ...args, elements: true });
@@ -476,8 +484,8 @@ async function withList(c, command, args, answer = { kind: "once" }) {
 /**
  * That `list` keeps the M31 rules this file checks on vimma_elements' own; its items, or those
  * a model reads off it with `known`, the connection's last list of the site (agent-speed S4).
- * @param {string} list @param {string} what @param {any} [result]  the result with `list`
- * @param {Map<string, any>} [known]
+ * @param {string} list @param {string} what @param {ListResult} [result]  the result with `list`
+ * @param {Map<string, ListedElement>} [known]
  */
 function checkM31(list, what, result, known) {
   Assert.ok(
@@ -488,7 +496,10 @@ function checkM31(list, what, result, known) {
   for (const secret of SECRETS) {
     Assert.ok(!list.includes(secret), `${what}: the value ${secret} never reaches the agent`);
   }
-  const items = known ? readList(known, result) : parsed(list).filter((e) => "label" in e);
+  // A caller that passes `known` passes the result too.
+  const items = known
+    ? readList(known, /** @type {ListResult} */ (result))
+    : parsed(list).filter((e) => "label" in e);
   for (const name of ["password", "old", "code", "cardnumber", "expiry", "cvc", "card2", "pin"]) {
     const field = one(items, (e) => e.name === name, `${what}: ${name} field`);
     Assert.equal(field.sensitive, true, `${what}: ${name} is sensitive`);
@@ -520,7 +531,8 @@ addTidyTask(async function test_steps_return_the_element_list_vimma_elements_wou
     "the list is the page after the fill",
   );
   const after = await elements(c, tab, undefined, { full: true });
-  const byLabel = (/** @type {any} */ a, /** @type {any} */ b) => (a.label < b.label ? -1 : 1);
+  const byLabel = (/** @type {ListedElement} */ a, /** @type {ListedElement} */ b) =>
+    a.label < b.label ? -1 : 1;
   Assert.deepEqual(
     [...items].sort(byLabel),
     parsed(after.result.elements)
@@ -645,7 +657,7 @@ addTidyTask(async function test_a_steps_list_counts_as_an_elements_call() {
  * The list a model reads off a compact list (agent-speed S4): the lines shown, and for each
  * repeated label the line an earlier list gave it. `known` maps labels to the lines of the
  * connection's last list of the site, and is replaced by this list's.
- * @param {Map<string, any>} known @param {any} result
+ * @param {Map<string, ListedElement>} known @param {ListResult} result
  */
 function readList(known, result) {
   const items = parsed(result.elements).filter((e) => "label" in e);
@@ -976,7 +988,7 @@ addTidyTask(async function test_a_foreign_input_in_a_label_inspects_as_its_contr
 /**
  * A form whose submit button is `#buy`, and a label for it around `kind`'s content: a summary
  * in a foreign-namespace `label`, or a link.
- * @param {any} browser @param {string} kind
+ * @param {MozBrowser} browser @param {string} kind
  */
 async function labelForBuy(browser, kind) {
   await SpecialPowers.spawn(browser, [kind], (kind) => {
@@ -1161,14 +1173,14 @@ const REFERENCE_TARGET_PREF = "dom.shadowdom.referenceTarget.enabled";
 /**
  * Adds a form with a submit button `#buy` inside a shadow root of a host `#shop`, the root's
  * reference target that button, and a label for the host; `mode` is the root's.
- * @param {any} browser @param {"open" | "closed"} mode
+ * @param {MozBrowser} browser @param {"open" | "closed"} mode
  */
 async function labelForShadowBuy(browser, mode) {
   await SpecialPowers.spawn(browser, [mode], (mode) => {
     const doc = content.document;
     const host = doc.createElement("span");
     host.id = "shop";
-    const root = /** @type {any} */ (host.attachShadow({ mode }));
+    const root = host.attachShadow({ mode });
     root.innerHTML =
       '<form action="https://example.com/collect"><input name="note" value="kept">' +
       '<button id="buy">Buy</button></form>';
@@ -1190,9 +1202,9 @@ addTidyTask(async function test_a_label_for_a_reference_target_submit_asks() {
   const items = parsed(r.result.elements).filter((e) => "label" in e);
   const target = one(items, (e) => e.text === "Continue", "element in the label");
   const id = c.request("agent-activate", { tab: idOf(tab), label: target.label });
-  /** @type {any} */
-  let reply = null;
-  const replied = c.response(id).then((/** @type {any} */ v) => (reply = v));
+  // Set when the call ends, which the type checker does not follow.
+  let reply = /** @type {ControlResponse | null} */ (null);
+  const replied = c.response(id).then((/** @type {ControlResponse} */ v) => (reply = v));
   await until(() => AgentGate.waiting.length > 0 || reply, "a question waits or the call ends");
   Assert.equal(reply, null, "the click did not run unasked under the grant (M28)");
   const q = await question();
@@ -1225,7 +1237,7 @@ addTidyTask(async function test_label_forwarding_follows_reference_targets() {
     const hostFor = (target, mode = "open") => {
       const host = doc.createElement("span");
       host.id = `host${++n}`;
-      const root = /** @type {any} */ (host.attachShadow({ mode }));
+      const root = host.attachShadow({ mode });
       root.innerHTML = FORM;
       root.referenceTarget = target;
       return host;
@@ -1253,7 +1265,7 @@ addTidyTask(async function test_label_forwarding_follows_reference_targets() {
     // A shadow root that forwards to another host, whose root forwards to its submit button.
     const outer = doc.createElement("span");
     outer.id = "outer";
-    const outerRoot = /** @type {any} */ (outer.attachShadow({ mode: "closed" }));
+    const outerRoot = outer.attachShadow({ mode: "closed" });
     const inner = hostFor("buy", "closed");
     inner.id = "inner";
     outerRoot.append(inner);
@@ -1292,14 +1304,14 @@ addTidyTask(async function test_label_forwarding_follows_reference_targets() {
  * Adds a shadow host `#shop` whose shadow root (of `mode`) holds a form `#order` that sends a
  * field to https://example.com/collect and forwards to it, and a submit button `Buy` outside the
  * root whose `form` attribute names the host.
- * @param {any} browser @param {"open" | "closed"} mode
+ * @param {MozBrowser} browser @param {"open" | "closed"} mode
  */
 async function buttonForShadowForm(browser, mode) {
   await SpecialPowers.spawn(browser, [mode], (mode) => {
     const doc = content.document;
     const host = doc.createElement("span");
     host.id = "shop";
-    const root = /** @type {any} */ (host.attachShadow({ mode }));
+    const root = host.attachShadow({ mode });
     root.innerHTML =
       '<form id="order" action="https://example.com/collect"><input name="note" value="kept">' +
       "</form>";
@@ -1321,9 +1333,9 @@ addTidyTask(async function test_a_submit_for_a_reference_target_form_asks() {
   const items = parsed(r.result.elements).filter((e) => "label" in e);
   const target = one(items, (e) => e.text === "Buy", "the button for the host's form");
   const id = c.request("agent-activate", { tab: idOf(tab), label: target.label });
-  /** @type {any} */
-  let reply = null;
-  const replied = c.response(id).then((/** @type {any} */ v) => (reply = v));
+  // Set when the call ends, which the type checker does not follow.
+  let reply = /** @type {ControlResponse | null} */ (null);
+  const replied = c.response(id).then((/** @type {ControlResponse} */ v) => (reply = v));
   await until(() => AgentGate.waiting.length > 0 || reply, "a question waits or the call ends");
   Assert.equal(reply?.error, undefined, "the click is not refused as gone");
   Assert.equal(reply, null, "the click did not run unasked under the grant (M28)");
@@ -1357,7 +1369,7 @@ addTidyTask(async function test_form_owners_follow_reference_targets() {
     const hostFor = (target, mode = "open") => {
       const host = doc.createElement("span");
       host.id = `owner${++n}`;
-      const root = /** @type {any} */ (host.attachShadow({ mode }));
+      const root = host.attachShadow({ mode });
       root.innerHTML = FORM;
       root.referenceTarget = target;
       return host;
@@ -1392,7 +1404,7 @@ addTidyTask(async function test_form_owners_follow_reference_targets() {
     // A shadow root that forwards to another host, whose root forwards to its form.
     const outer = doc.createElement("span");
     outer.id = "outer-owner";
-    const outerRoot = /** @type {any} */ (outer.attachShadow({ mode: "closed" }));
+    const outerRoot = outer.attachShadow({ mode: "closed" });
     const inner = hostFor("order", "closed");
     outerRoot.append(inner);
     outerRoot.referenceTarget = inner.id;

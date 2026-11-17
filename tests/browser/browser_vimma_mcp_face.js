@@ -48,7 +48,7 @@ registerCleanupFunction(async () => {
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
 });
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
@@ -78,7 +78,7 @@ async function openAgentTab(url = FACE) {
   return tab;
 }
 
-/** The connections the running task opened. @type {any[]} */
+/** The connections the running task opened. @type {Client[]} */
 const clients = [];
 
 /** What a task leaves when it ends, passed or not (tidyTask). */
@@ -105,7 +105,7 @@ async function agentClient(name = "claude-code") {
 /**
  * The list's elements by what they say; the first list of the connection is answered with a
  * grant of 15 minutes, which covers every tool after it (mcp-grants G1).
- * @param {any} c @param {any} tab
+ * @param {Client} c @param {MozTabbrowserTab} tab
  */
 async function grantedLabels(c, tab) {
   const id = c.request("agent-elements", { tab: idOf(tab), full: true });
@@ -130,19 +130,18 @@ async function grantedLabels(c, tab) {
 /**
  * Clicks `label` under the grant: the question it asks, or null when it ran unasked, with the
  * response's id to answer it by.
- * @param {any} c @param {any} tab @param {string} label
+ * @param {Client} c @param {MozTabbrowserTab} tab @param {string} label
  */
 async function press(c, tab, label) {
   const id = c.request("agent-activate", { tab: idOf(tab), label });
   let done = false;
-  /** @type {Promise<any>} */
-  const answered = c.response(id).then((/** @type {any} */ r) => ((done = true), r));
+  const answered = c.response(id).then((r) => ((done = true), r));
   await until(() => AgentGate.waiting.length > 0 || done, "asked, or done");
   const q = /** @type {AskedQuestion | undefined} */ (AgentGate.waiting[0]) ?? null;
   return { q, response: () => answered };
 }
 
-/** Back to the page, and its labels. @param {any} c @param {any} tab */
+/** Back to the page, and its labels. @param {Client} c @param {MozTabbrowserTab} tab */
 async function reload(c, tab) {
   BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, FACE);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, FACE);

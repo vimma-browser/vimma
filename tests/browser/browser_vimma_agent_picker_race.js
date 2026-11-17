@@ -307,7 +307,12 @@ function fakeWindow({
     },
     changed() {},
   };
-  const chat = new AgentChatWindow(window, host, /** @type {any} */ (services));
+  const chat = new AgentChatWindow(
+    window,
+    host,
+    // A fake of the services this test reaches.
+    /** @type {AgentChatServices} */ (/** @type {unknown} */ (services)),
+  );
   return {
     chat,
     conversation,
@@ -581,7 +586,7 @@ add_task(async function test_every_way_out_of_the_key_field_empties_it() {
       Assert.equal(f.chat.keyFor, keyFor, `${how}: the field is for no key typed before`);
       f.chat.askKey(ANTHROPIC);
       Assert.equal(keyField(f.chat).value, "", `after ${how} the field opens empty`);
-      const editor = /** @type {any} */ (keyField(f.chat)).editor;
+      const editor = keyField(f.chat).editor;
       Assert.ok(editor, `after ${how} the field has its editor`);
       Assert.ok(!editor.canUndo, `after ${how} nothing typed before comes back with an undo`);
       press(f.chat, "Escape");
@@ -1111,7 +1116,7 @@ add_task(async function test_a_pick_on_a_list_reloaded_after_a_key_deletion_says
 });
 
 /** What the address bar holds. */
-const addressBar = () => /** @type {string} */ (/** @type {any} */ (gURLBar).value);
+const addressBar = () => gURLBar.value;
 
 /**
  * Moves focus out of the chat window to the address bar and types there, as a user who clicks
@@ -1128,13 +1133,13 @@ function typeElsewhere(text) {
 function assertFocusStaysElsewhere(what) {
   Assert.equal(
     document.activeElement,
-    /** @type {any} */ (gURLBar).inputField,
+    gURLBar.inputField,
     `${what}: focus stays in the address bar`,
   );
 }
 
 function revertAddressBar() {
-  const bar = /** @type {any} */ (gURLBar);
+  const bar = gURLBar;
   bar.handleRevert();
   bar.view.close();
   bar.blur();
@@ -1216,7 +1221,7 @@ add_task(async function test_a_pick_answering_after_focus_left_the_window_takes_
 
 add_task(async function test_a_pick_whose_browser_window_lost_os_focus_is_still_used() {
   const f = fakeWindow({ providers: [LOCAL, HOSTED] });
-  /** @type {any} */
+  /** @type {BrowserWindow | null} */
   let other = null;
   try {
     f.chat.open({ view: "models" });

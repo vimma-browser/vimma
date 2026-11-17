@@ -203,7 +203,8 @@ export class AgentPage {
    * says whether it is still in the document, so a label never names an element the page has
    * replaced since.
    * @param {{ op: string, gen: number, id: number, submit?: unknown, href?: unknown,
-   *   until?: unknown, value?: unknown, expect?: unknown, by?: unknown, skip?: unknown }} data
+   *   until?: unknown, value?: unknown, expect?: unknown, by?: unknown, skip?: unknown,
+   *   step?: unknown }} data
    */
   element(data) {
     const known = isIndex(data?.gen) && isIndex(data?.id) && data.gen === this.#agentEls.gen;
