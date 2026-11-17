@@ -3036,9 +3036,9 @@ agent sends `vimma_bookmarklet` with the tab and the title, and the question nam
   without Vimma's question, so only you can say yes to it, each time.
 - **Only your bookmarklets, by title.** The agent sends a title, never code, and Vimma runs the
   one bookmark with exactly that title whose address is `javascript:`. Before you answer `y`,
-  check that the title in the question is one you saved. It never lists your
-  bookmarks to the agent. With no such bookmark, or two of the same title, nothing is asked and
-  the call fails with the same message either way.
+  check that the title in the question is one you saved. Vimma never lists your bookmarks to the
+  agent. With no such bookmark, or two of the same title, nothing is asked and the call fails
+  with the same message either way.
 - **Off unless you turn it on.** With `"none"` (the default) or `"user"`, the call fails before
   anything is asked, and the message names the setting.
 - **Only on web pages, and only the page asked about.** If the tab moved to another page or the
