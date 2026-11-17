@@ -4,6 +4,42 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.21](https://github.com/vimma-browser/vimma/compare/v0.1.20...v0.1.21) · Firefox 160.0 (2026-11-17)
+
+
+### Added
+
+* **panes:** a new tab opened during a split shows alone beside it ([#1197](https://github.com/vimma-browser/vimma/issues/1197)) ([87b23fa](https://github.com/vimma-browser/vimma/commit/87b23fa87fe49d5db6553e0e3f5b006d0cdf109d))
+* **plugin:** block installs outside the lockfile in the bash guard ([#1136](https://github.com/vimma-browser/vimma/issues/1136)) ([202a7d9](https://github.com/vimma-browser/vimma/commit/202a7d98798245d59f5998505472e853cfbab429))
+* **scroll:** set the j/k/h/l scroll step with [scroll] step in config.toml ([#1189](https://github.com/vimma-browser/vimma/issues/1189)) ([bb96d51](https://github.com/vimma-browser/vimma/commit/bb96d5128481dc3f7b706b17d173dc921198c16d))
+
+
+### Fixed
+
+* **agent:** end a gemini run on an id-less call to another mcp server ([#1191](https://github.com/vimma-browser/vimma/issues/1191)) ([5817c31](https://github.com/vimma-browser/vimma/commit/5817c3105987cf89121b1a1f4e577185022201f8))
+* **agent:** end a Gemini run on an unanswered or reused tool call id ([#1200](https://github.com/vimma-browser/vimma/issues/1200)) ([3e0365b](https://github.com/vimma-browser/vimma/commit/3e0365bb47356ae36db28eda877e08b1f438c48c))
+* **agent:** give the documented reason when vimma_keys refuses the user's own tools ([#1213](https://github.com/vimma-browser/vimma/issues/1213)) ([1ee8931](https://github.com/vimma-browser/vimma/commit/1ee893196d4d321baeec310cc9336a9a6fec84a5))
+* **agent:** look up model- and page-chosen names as own keys only ([#1165](https://github.com/vimma-browser/vimma/issues/1165)) ([766c1c3](https://github.com/vimma-browser/vimma/commit/766c1c3a5edf05da9c421cd0f3260fdd7f169ffc)), closes [#1163](https://github.com/vimma-browser/vimma/issues/1163)
+* **agent:** read clamd.conf as clamd does and refuse it where the readings could differ ([#1208](https://github.com/vimma-browser/vimma/issues/1208)) ([e1df632](https://github.com/vimma-browser/vimma/commit/e1df632badac12532965e66a9612dc382c668fd8))
+* **agent:** refuse every invisible character in agent keys, as a fill does ([#1207](https://github.com/vimma-browser/vimma/issues/1207)) ([8187d04](https://github.com/vimma-browser/vimma/commit/8187d04a17cc9e63e436f4325367fdb16c56ca45))
+* **agent:** strip a console URL's user name and password before the cut ([#1206](https://github.com/vimma-browser/vimma/issues/1206)) ([ab159a0](https://github.com/vimma-browser/vimma/commit/ab159a053fc4f3f4d3b420aad5e48cb868d2b0e0))
+* **agent:** strip user names and passwords from link, form and page URLs ([#1216](https://github.com/vimma-browser/vimma/issues/1216)) ([0417433](https://github.com/vimma-browser/vimma/commit/0417433428d01e0c71a467333f504a91294d5bb1))
+* **agent:** strip userinfo from escaped markdown link targets ([#1218](https://github.com/vimma-browser/vimma/issues/1218)) ([4be3a97](https://github.com/vimma-browser/vimma/commit/4be3a9789824129703c670aee1bdc24ff34d960e))
+* **agent:** use clamd only when its scan options are at least clamscan's ([#1214](https://github.com/vimma-browser/vimma/issues/1214)) ([9680375](https://github.com/vimma-browser/vimma/commit/96803752f878139789c2ca4d737366f39889ff52))
+* **ci:** read the release's metadata with the job's token ([#1171](https://github.com/vimma-browser/vimma/issues/1171)) ([80a0a33](https://github.com/vimma-browser/vimma/commit/80a0a33fd312f9029723bfb3df0ed1a93266bd80)), closes [#1170](https://github.com/vimma-browser/vimma/issues/1170)
+* **control:** make the control socket's state command a pure read ([#1149](https://github.com/vimma-browser/vimma/issues/1149)) ([c698d59](https://github.com/vimma-browser/vimma/commit/c698d597d6bef8f181ea23c8876eafa272ce2af5)), closes [#1147](https://github.com/vimma-browser/vimma/issues/1147)
+* **control:** refuse the arabic letter mark and format characters in agent labels ([#1203](https://github.com/vimma-browser/vimma/issues/1203)) ([463781c](https://github.com/vimma-browser/vimma/commit/463781c51163f1044670155fb6482de809f5da91))
+* **core:** round number units before picking them ([#1193](https://github.com/vimma-browser/vimma/issues/1193)) ([c387698](https://github.com/vimma-browser/vimma/commit/c3876981c38c800600dab9907b9591e2b8ec7ff9))
+* **keys:** ctrl+alt+letter keeps its modifiers on azerty, qwertz and dvorak ([#1176](https://github.com/vimma-browser/vimma/issues/1176)) ([b7c6820](https://github.com/vimma-browser/vimma/commit/b7c6820333f785f0ed1b41bca6ec1e1782b679de)), closes [#1175](https://github.com/vimma-browser/vimma/issues/1175)
+* **report:** read letters past ASCII as part of a home's name when :bug redacts it ([#1172](https://github.com/vimma-browser/vimma/issues/1172)) ([d286a0e](https://github.com/vimma-browser/vimma/commit/d286a0eb2d25291292f6c066416fe8e2c5202381))
+* **report:** redact a whole home name in any normal form ([#1178](https://github.com/vimma-browser/vimma/issues/1178)) ([0b0bcc6](https://github.com/vimma-browser/vimma/commit/0b0bcc628da96adf39e288a9c1487bba570be5a3))
+* **setup:** read AMO's answer one checked level at a time ([#1166](https://github.com/vimma-browser/vimma/issues/1166)) ([98b2eb5](https://github.com/vimma-browser/vimma/commit/98b2eb5852e6e27824b264d26edb99ea8315ff21))
+* **setup:** start the search step on config.toml's search default ([#1164](https://github.com/vimma-browser/vimma/issues/1164)) ([f83feeb](https://github.com/vimma-browser/vimma/commit/f83feeb660680244103aa8347fd401b5b5b6d650)), closes [#1160](https://github.com/vimma-browser/vimma/issues/1160)
+* **shell:** make default sets the package entry after a late shell-service start ([#1123](https://github.com/vimma-browser/vimma/issues/1123)) ([6992b83](https://github.com/vimma-browser/vimma/commit/6992b83a5d9a4abe09b07732c2242ce37bb181a7))
+* **shell:** name vimma-open before -setDefaultBrowser runs ([#1127](https://github.com/vimma-browser/vimma/issues/1127)) ([64d37a8](https://github.com/vimma-browser/vimma/commit/64d37a89da61e1c9c4b1d84680ad5769e0859c01))
+* **updates:** name only an AppImage this Vimma owns in its update command ([#1204](https://github.com/vimma-browser/vimma/issues/1204)) ([a58884d](https://github.com/vimma-browser/vimma/commit/a58884d941e41d3e52b900af7c448916c6b47b37))
+* **updates:** refuse text after &lt;updates/&gt;; no marker is a tarball despite $APPIMAGE ([#1194](https://github.com/vimma-browser/vimma/issues/1194)) ([a8e2af2](https://github.com/vimma-browser/vimma/commit/a8e2af2e512a148e6582ffd1110288659e836ed5))
+
 ## [0.1.20](https://github.com/vimma-browser/vimma/compare/v0.1.19...v0.1.20) · Firefox 160.0 (2026-11-15)
 
 
