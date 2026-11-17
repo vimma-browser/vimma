@@ -1,7 +1,15 @@
 // docs/specs/multiple-splits.md: several splits per workspace, one shown at a time.
 import { describe, test, expect } from "vitest";
 import fc from "fast-check";
-import { closePane, createRow, hideView, leaves, paneOfTab, split } from "../src/panes/panes.mjs";
+import {
+  closePane,
+  createPanes,
+  createRow,
+  hideView,
+  leaves,
+  paneOfTab,
+  split,
+} from "../src/panes/panes.mjs";
 import {
   MAX_SPLITS_DEFAULT,
   NO_SPLITS_TO_PICK,
@@ -9,7 +17,7 @@ import {
   SplitsError,
   createSplits,
   endSplit,
-  hiddenSplitRefusal,
+  addSplit,
   newSplit,
   removeSplitTab,
   selectSplitTab,
@@ -18,6 +26,7 @@ import {
   splitLabel,
   splitFocusTab,
   splitOfTab,
+  splitLimitRefusal,
   splitPickerItems,
   splitsFromPanes,
   stepSplit,
@@ -429,11 +438,78 @@ describe("invariants", () => {
   });
 });
 
-describe("hiddenSplitRefusal (decision 4)", () => {
-  test("names the split shown last, the keys back and the way to a new split", () => {
-    expect(hiddenSplitRefusal(2)).toBe(
-      "split S2 is hidden: ]s or ctrl+b S to go back, or mark tabs in ctrl+b b for a new split",
+describe("splitting a lone tab starts a new split (docs/specs/split-from-lone-tab.md)", () => {
+  /** S1 and S2, with x shown alone: no split shows, S2 was shown last. */
+  const lone = () =>
+    selectSplitTab(
+      made([
+        ["a", "b"],
+        ["c", "d"],
+      ]),
+      "x",
+    ).splits;
+
+  test("the lone tab and a new pane become a split with the next free number, shown", () => {
+    const tree = split(createPanes("x"), "p1", "vertical", "y");
+    const r = addSplit(lone(), tree);
+    expect(r.refusal).toBeNull();
+    expect(numbers(r.splits)).toEqual([1, 2, 3]);
+    expect(r.splits.shown).toBe(3);
+    expect(r.splits.last).toBe(3);
+    expect(tabsOf(r.splits, 3)).toEqual(["x", "y"]);
+    expect(shownSplit(r.splits)?.focus).toBe(paneOfTab(tree, "y"));
+    expect(shownSplit(r.splits)?.hidden).toBeUndefined();
+  });
+
+  test("the lowest free number is reused", () => {
+    const s = selectSplitTab(
+      endSplit(
+        made([
+          ["a", "b"],
+          ["c", "d"],
+        ]),
+        1,
+      ),
+      "x",
+    ).splits;
+    const r = addSplit(s, split(createPanes("x"), "p1", "horizontal", "y"));
+    expect(numbers(r.splits)).toEqual([1, 2]);
+    expect(r.splits.shown).toBe(1);
+    expect(r.splits.splits[0]?.root).toMatchObject({ axis: "y" });
+  });
+
+  test("the hidden splits are kept as they were, and stepping still reaches them", () => {
+    const before = lone();
+    const r = addSplit(before, split(createPanes("x"), "p1", "vertical", "y"));
+    expect(r.splits.splits.slice(0, 2)).toEqual(before.splits);
+    expect(stepSplit(r.splits, 1).splits.shown).toBe(1);
+  });
+
+  test("at max_splits it is refused with the limit's text and nothing changes", () => {
+    const s = lone();
+    const r = addSplit(s, split(createPanes("x"), "p1", "vertical", "y"), { max: 2 });
+    expect(r.refusal).toBe("new split: at most 2 splits in a workspace");
+    expect(r.splits).toBe(s);
+    expect(splitLimitRefusal(s, { max: 2 })).toBe(r.refusal);
+    expect(splitLimitRefusal(s, { max: 3 })).toBeNull();
+    expect(splitLimitRefusal(s)).toBeNull();
+  });
+
+  test("max_splits 1 refuses too: a key never ends the hidden split", () => {
+    const s = selectSplitTab(made([["a", "b"]], { max: 1 }), "x").splits;
+    expect(splitLimitRefusal(s, { max: 1 })).toBe("new split: at most 1 split in a workspace");
+    const r = addSplit(s, split(createPanes("x"), "p1", "vertical", "y"), { max: 1 });
+    expect(r.refusal).toBe("new split: at most 1 split in a workspace");
+    expect(r.splits).toBe(s);
+  });
+
+  test("a tree of one pane, or with a tab of another split, is an error", () => {
+    expectSplitsError(() => addSplit(lone(), createRow(["x"])), "bad-tabs");
+    expectSplitsError(
+      () => addSplit(lone(), split(createPanes("x"), "p1", "vertical", "a")),
+      "bad-tabs",
     );
+    expectSplitsError(() => addSplit(lone(), createRow(["x", "y"]), { max: 0 }), "bad-max");
   });
 });
 
