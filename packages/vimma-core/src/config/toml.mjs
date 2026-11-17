@@ -432,7 +432,7 @@ function headerName(line) {
 
 /**
  * One edit on parsed `text`.
- * @param {string} text @param {Record<string, any>} doc @param {TomlEdit} edit
+ * @param {string} text @param {Record<string, unknown>} doc  `text`, parsed @param {TomlEdit} edit
  * @returns {{ ok: true, text: string } | { ok: false, error: TomlSyntaxError }}
  */
 function setKey(text, doc, { table, key, value }) {
@@ -452,6 +452,11 @@ function setKey(text, doc, { table, key, value }) {
     if (text === "") return { ok: true, text: body };
     return { ok: true, text: `${text}${text.endsWith("\n") ? "" : eol}${eol}${body}` };
   }
+  // A `[table]` line inside a multi-line string is no header: the file has no such table.
+  const t = doc[table];
+  if (typeof t !== "object" || t === null || Array.isArray(t)) {
+    return fail(headerAt + 1, `${table} is not a plain [${table}] table`);
+  }
   let end = lines.length;
   for (let n = headerAt + 1; n < lines.length; n++) {
     if (/^[ \t]*\[/.test(/** @type {string} */ (lines[n]))) {
@@ -469,7 +474,7 @@ function setKey(text, doc, { table, key, value }) {
     lines[n] = `${m[0]}${literal}${line.slice(stop)}`;
     return { ok: true, text: lines.join("\n") };
   }
-  if (key in doc[table]) {
+  if (key in t) {
     return fail(where([table, key]) ?? headerAt + 1, `${name} is not a plain key = value line`);
   }
   let last = headerAt;
@@ -492,7 +497,6 @@ function setKey(text, doc, { table, key, value }) {
 export function setTomlKeys(text, edits) {
   const before = parseToml(text);
   if (!before.ok) return before;
-  /** @type {Record<string, any>} */
   const want = structuredClone(before.value);
   let out = text;
   for (const edit of edits) {
@@ -504,7 +508,11 @@ export function setTomlKeys(text, edits) {
     const r = setKey(out, now.value, edit);
     if (!r.ok) return r;
     out = r.text;
-    want[edit.table] = { ...want[edit.table], [edit.key]: edit.value };
+    // setKey refused a `table` that is there but is not a table: it is one, or not there yet.
+    want[edit.table] = {
+      .../** @type {Record<string, unknown> | undefined} */ (want[edit.table]),
+      [edit.key]: edit.value,
+    };
   }
   const after = parseToml(out);
   if (!after.ok) return after;

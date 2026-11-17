@@ -9,14 +9,14 @@ import { describe, expect, it } from "vitest";
 
 // Issue #1225: vimma-core stays JavaScript with JSDoc (ADR-025, decision 6), and `tsc --checkJs`
 // accepts `any` there, which turns its checks off. The slices of #1225 replace each `any` with
-// the real type; this count keeps new ones out. Lower MAX_ANY when a change removes some; a
-// change that needs a new `any` says why in its pull request and raises it.
+// the real type; this count keeps new ones out. Every slice is done and none is left: a change
+// that needs a new `any` says why in its pull request and raises MAX_ANY.
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const SRC = join(ROOT, "packages/vimma-core/src");
 /** Third-party code, checked by its own project. */
 const VENDOR = join(SRC, "vendor");
-/** The `any` types (with a bare `*` or `?`) left in vimma-core's src/ after #1225's first slice (agent/). */
-const MAX_ANY = 18;
+/** The `any` types (with a bare `*` or `?`) left in vimma-core's src/ after #1225: none. */
+const MAX_ANY = 0;
 
 /** Every .mjs and .js file under `dir`, but vendor/. */
 function sources(dir: string): string[] {

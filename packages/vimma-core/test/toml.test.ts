@@ -242,6 +242,15 @@ describe("setTomlKeys", () => {
     }
   });
 
+  test("a header line inside a multi-line string is not the table: an error, not a throw", () => {
+    const text = 'note = """\n[search]\n"""\n';
+    const r = setTomlKeys(text, [{ table: "search", key: "default", value: "X" }]);
+    expect(r).toEqual({
+      ok: false,
+      error: { line: 2, column: 1, message: "search is not a plain [search] table" },
+    });
+  });
+
   test("the result parses to the old file plus the new values", () => {
     const edits = [
       { table: "search", key: "default", value: 'Duck "Go"\\' },

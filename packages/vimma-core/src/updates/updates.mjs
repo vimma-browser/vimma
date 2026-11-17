@@ -396,11 +396,22 @@ export function offerAssets(value) {
   /** @type {Assets} */
   const out = {};
   if (!value || typeof value !== "object" || Array.isArray(value)) return out;
-  const record = /** @type {Record<string, any>} */ (value);
+  // Any entry, unchecked: a number's or a string's fields read as undefined, which is dropped.
+  const record =
+    /** @type {Record<string, { size?: unknown, sha512?: unknown, url?: unknown } | undefined>} */ (
+      value
+    );
   for (const key of /** @type {(keyof Assets)[]} */ (Object.keys(ASSET_ELEMENTS))) {
     const a = record[key];
-    if (a && Number.isSafeInteger(a.size) && a.size >= 0 && SHA512_HEX.test(a.sha512)) {
-      out[key] = { size: a.size, sha512: a.sha512 };
+    // test() reads its argument as text: an array of the hex would pass without typeof.
+    if (
+      a &&
+      Number.isSafeInteger(a.size) &&
+      /** @type {number} */ (a.size) >= 0 && // a safe integer, just checked
+      typeof a.sha512 === "string" &&
+      SHA512_HEX.test(a.sha512)
+    ) {
+      out[key] = { size: /** @type {number} */ (a.size), sha512: a.sha512 };
       if (typeof a.url === "string" && a.url.startsWith("https://")) out[key].url = a.url;
     }
   }
