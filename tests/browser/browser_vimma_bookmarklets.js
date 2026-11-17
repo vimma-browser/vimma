@@ -379,11 +379,14 @@ add_task(async function agent_names_exactly_one_stored_bookmarklet() {
   const tab = await openAgentTab();
   const user = await openPage();
   const c = await agentClient();
+  // One refusal for none and for several (B16): the agent learns nothing more than that.
+  const NOT_ONE =
+    "no single bookmarklet has that title: check it is one you saved, and that no other bookmarklet shares it";
   for (const [name, message] of [
-    ["ran", 'no bookmarklet is titled "ran"'],
-    [RAN, `no bookmarklet is titled "${RAN}"`],
-    ["Data", 'no bookmarklet is titled "Data"'],
-    ["Twin", 'more than one bookmarklet is titled "Twin": rename one'],
+    ["ran", NOT_ONE],
+    [RAN, NOT_ONE],
+    ["Data", NOT_ONE],
+    ["Twin", NOT_ONE],
   ]) {
     const r = await c.response(runRequest(c, tab, name));
     Assert.equal(r.error?.code, "failed", `${name}: refused`);
@@ -418,6 +421,52 @@ add_task(async function agent_runs_nothing_when_the_tab_changed_after_the_questi
   Assert.equal(r.error?.reason, "changed", "the run is refused as changed");
   await TestUtils.waitForTick();
   Assert.equal(await titleOf(tab), ORIGINAL_TITLE, "nothing ran on the new page");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+// B15: the stored bookmark is read again after the yes; a URL changed while the question waited
+// runs nothing.
+add_task(async function agent_runs_nothing_when_the_bookmark_changed_after_the_question() {
+  setLevel("agent");
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const id = runRequest(c, tab, "Ran");
+  const q = await question();
+  const ran = /** @type {{ guid: string }} */ (await PlacesUtils.bookmarks.fetch({ url: RAN }));
+  await PlacesUtils.bookmarks.update({
+    guid: ran.guid,
+    url: "javascript:void(document.title='swapped')",
+  });
+  AgentGate.answer(q.id, { kind: "once" });
+  const r = await c.response(id);
+  Assert.equal(r.error?.reason, "changed", "the run is refused as changed");
+  await TestUtils.waitForTick();
+  Assert.equal(await titleOf(tab), ORIGINAL_TITLE, "neither script ran");
+  await PlacesUtils.bookmarks.update({ guid: ran.guid, url: RAN });
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+// B13, B15: the level is decided again after the yes; dropped to "user" meanwhile, it refuses.
+add_task(async function agent_runs_nothing_when_the_level_dropped_during_the_question() {
+  setLevel("agent");
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const id = runRequest(c, tab, "Ran");
+  const q = await question();
+  setLevel("user");
+  AgentGate.answer(q.id, { kind: "once" });
+  const r = await c.response(id);
+  Assert.equal(r.error?.code, "failed", "refused");
+  Assert.equal(r.error?.message, AGENTS_OFF, "naming the setting");
+  await TestUtils.waitForTick();
+  Assert.equal(await titleOf(tab), ORIGINAL_TITLE, "nothing ran");
+  setLevel("none");
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);

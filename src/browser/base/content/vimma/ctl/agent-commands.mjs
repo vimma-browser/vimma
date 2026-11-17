@@ -130,6 +130,10 @@ const opens = new OpenRate();
 const keyCalls = new CallRate(KEYS_RATE);
 /** Each connection's `agent-show`: at most SHOW_RATE a minute, counted when asked (D7). */
 const showCalls = new CallRate(SHOW_RATE);
+/** Why `agent-bookmarklet` refuses a title that names no bookmarklet, or several (B16). */
+const NOT_ONE_BOOKMARKLET =
+  "no single bookmarklet has that title: check it is one you saved, and that no other " +
+  "bookmarklet shares it";
 /**
  * Each connection's `agent-bookmarklet`: at most BOOKMARKLET_RATE a minute, counted before the
  * bookmark is looked up (bookmarklets B16).
@@ -861,15 +865,11 @@ const COMMANDS = {
     if (!bookmarkletCalls.take(conn, Date.now())) {
       throw refuse("busy", rateDenied(bookmarkletCalls, conn, "vimma_bookmarklet calls"));
     }
+    // One refusal for none and for several, so the agent learns no more than whether exactly
+    // one bookmarklet has the title, at the rate above (B16).
     const named = await bookmarkletsNamed(name);
-    if (named.length > 1) {
-      const why = `more than one bookmarklet is titled "${name}": rename one`;
-      throw refuse("failed", new AgentError("failed", why));
-    }
-    const bookmark = named[0];
-    if (!bookmark) {
-      throw refuse("failed", new AgentError("failed", `no bookmarklet is titled "${name}"`));
-    }
+    const bookmark = named.length === 1 ? named[0] : undefined;
+    if (!bookmark) throw refuse("failed", new AgentError("failed", NOT_ONE_BOOKMARKLET));
     if (!bookmarkletPage(asked.tab.linkedBrowser)) {
       throw refuse("failed", new AgentError("failed", "bookmarklets run only on web pages"));
     }
