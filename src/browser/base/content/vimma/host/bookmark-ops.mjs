@@ -109,7 +109,7 @@ let refusal = MIRRORED_REFUSAL;
  *     outside: () => Promise<string> }
  *   | { type: "remove", guid: string }
  *   | { type: "renameTable", folder: string, to: string }
- *   | { type: "moveTable", from: string, into: () => Promise<string> }
+ *   | { type: "moveTable", from: string, target: string | null, into: () => Promise<string> }
  *   | { type: "removeTable", folder: string }} FileChange
  * @typedef {{ error: string } | { guid: string | null, path: string[], count: number,
  *   renamed?: { from: string, to: string } }} FileChangeResult
@@ -689,7 +689,12 @@ export async function moveWorkspaceBookmarks(from, toId) {
   const route = await routeMirrored(null, from, target);
   if (route) {
     if ("refused" in route) throw new Error(route.refused);
-    const r = await route.write({ type: "moveTable", from, into: () => makeWorkspaceFolder(toId) });
+    const r = await route.write({
+      type: "moveTable",
+      from,
+      target,
+      into: () => makeWorkspaceFolder(toId),
+    });
     if ("error" in r) throw new Error(r.error);
     return r.count;
   }

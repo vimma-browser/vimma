@@ -112,7 +112,9 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   `http`, `https`, `file`, `about`), a `javascript:` URL unless `bookmarklets` is `"user"` or
   `"agent"`, a name with control, bidirectional or invisible characters (they are dropped from a
   page title first), a name over 4,096 characters, or a file over 4 MiB or 20,000 bookmarks and
-  folders. Nothing reaches Places when the write fails (D18). A key's delete removes only the item
+  folders. Nothing reaches Places when the write fails, and when the Places step of a change fails the file
+  and the base are put back, so nothing is lost on either side (D18). A file over 4 MiB is not
+  read for an edit either. A key's delete removes only the item
   its y/N named; a takeover of a folder that has bookmarks writes them into the table and
   deletes nothing (D7); the guide warns that a shared file's table can so take a personal folder's
   bookmarks into it. A bookmark put back three times in ten minutes (two devices with different
@@ -131,4 +133,11 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`write_back_none_refuses_vimma_keys_and_puts_library_changes_back`](../../tests/browser/browser_vimma_bookmarks_file.js),
   [`a_bookmark_put_back_three_times_pauses_its_table`](../../tests/browser/browser_vimma_bookmarks_file.js),
   [`config_and_bookmarks_edits_are_serialised`](../../tests/browser/browser_vimma_bookmarks_file.js),
-  [`a_table_over_a_folder_with_bookmarks_writes_them_into_the_table`](../../tests/browser/browser_vimma_bookmarks_file.js)
+  [`a_table_over_a_folder_with_bookmarks_writes_them_into_the_table`](../../tests/browser/browser_vimma_bookmarks_file.js),
+  [`an_edited_file_keeps_its_mode_and_symlink`](../../tests/browser/browser_vimma_bookmarks_file.js),
+  [`a_dangling_link_or_a_fifo_is_never_replaced`](../../tests/browser/browser_vimma_bookmarks_file.js),
+  [`a_file_changed_during_an_edit_is_retried_once`](../../tests/browser/browser_vimma_bookmarks_file.js),
+  [`a_move_out_whose_places_step_fails_loses_nothing`](../../tests/browser/browser_vimma_bookmarks_file.js),
+  [`a_paused_table_refuses_wsdelete_and_makes_no_folder`](../../tests/browser/browser_vimma_bookmarks_file.js),
+  [`editBookmarkLines on any parsed file either refuses or yields the expected model`](../../packages/vimma-core/test/fuzz/bookmarks-file.fuzz.test.ts),
+  [`many subtrees go into a table as one edit, within budget at 5,000 lines`](../../packages/vimma-core/test/bookmarks-edit.test.ts)

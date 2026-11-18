@@ -19,6 +19,7 @@ import {
 } from "../src/config/bookmarks-file.mjs";
 import { parseConfig } from "../src/config/config.mjs";
 import { PLACES_ROOTS } from "../src/ui/bookmarks.mjs";
+import { budget } from "./budget.ts";
 
 type FileItem =
   | { kind: "folder"; title: string; line: number; children: FileItem[] }
@@ -767,7 +768,7 @@ describe("planMirror for slice 2", () => {
         table: "work",
         items: [
           { names: ["mine"], url: "https://example.com/mine" },
-          { names: ["mine (2)"], url: "https://example.com/mine2" },
+          { names: ["mine (2)"], url: "https://example.com/mine2", from: "mine" },
           { names: ["f", "i"], url: "https://example.com/i" },
           { names: ["d"], url: "data:,x" },
         ],
@@ -881,6 +882,13 @@ describe("config: [bookmarks] write_back", () => {
     expect(
       parseConfig('schema = 2\n[bookmarks]\nwrite_back = "none"\n').config?.bookmarks.writeBack,
     ).toBe("none");
+    expect(parseConfig('schema = 2\n[bookmarks]\nwrite_back = "all"\n').errors).toEqual([
+      {
+        path: "bookmarks.write_back",
+        line: 3,
+        message: 'must be "vimma" or "none": "all" comes in a later version',
+      },
+    ]);
     expect(parseConfig('schema = 2\n[bookmarks]\nwrite_back = "vima"\n').errors).toEqual([
       {
         path: "bookmarks.write_back",
@@ -888,6 +896,121 @@ describe("config: [bookmarks] write_back", () => {
         message: 'must be "vimma" or "none"',
         suggestion: "vimma",
       },
+    ]);
+  });
+});
+
+describe("review fixes (PR #1343)", () => {
+  test("a CRLF file without a final line break takes a line at the end of its last table", () => {
+    const text = '[bookmarks.work]\r\n"a" = "https://a.example/"';
+    const r = edit(text, {
+      op: "add",
+      table: "work",
+      folders: [],
+      title: "b",
+      url: "https://b.example/",
+    });
+    expect(r.text).toBe(
+      '[bookmarks.work]\r\n"a" = "https://a.example/"\r\n"b" = "https://b.example/"',
+    );
+    const t = edit(text, { op: "renameTable", from: "work", to: "job" });
+    expect(t.text).toBe('[bookmarks.job]\r\n"a" = "https://a.example/"');
+    const lf = edit('[bookmarks.work]\n"a" = "https://a.example/"', {
+      op: "add",
+      table: "work",
+      folders: [],
+      title: "b",
+      url: "https://b.example/",
+    });
+    expect(lf.text).toBe(
+      '[bookmarks.work]\n"a" = "https://a.example/"\n"b" = "https://b.example/"',
+    );
+  });
+
+  test("a lone surrogate in a title becomes U+FFFD", () => {
+    const r = edit(FILE, {
+      op: "add",
+      table: "work",
+      folders: [],
+      title: "half \ud800 pair",
+      url: "https://s.example/",
+    });
+    expect(r.path).toEqual(["half � pair"]);
+  });
+
+  test("a moved line keeps its trailing comment; an emptied folder's line does not take it", () => {
+    const text =
+      '[bookmarks.work]\n"f/a" = "https://a.example/"  # mine\n"b" = "https://b.example/"\n';
+    const r = edit(text, {
+      op: "move",
+      table: "work",
+      kind: "bookmark",
+      path: ["f", "a"],
+      toTable: "work",
+      toFolders: [],
+      toTitle: "a",
+    });
+    expect(r.text).toBe(
+      '[bookmarks.work]\n"f/" = ""\n"b" = "https://b.example/"\n"a" = "https://a.example/"  # mine\n',
+    );
+  });
+
+  test("many subtrees go into a table as one edit, within budget at 5,000 lines", () => {
+    const big = `[bookmarks.work]\n${Array.from({ length: 5000 }, (_, i) => `"b${i}" = "https://e.example/${i}"`).join("\n")}\n`;
+    const nodes = Array.from({ length: 100 }, (_, i) => ({
+      guid: `guid${String(i).padStart(8, "0")}`,
+      title: i % 2 ? `n${i}` : "b0",
+      url: `https://n.example/${i}`,
+    }));
+    const start = performance.now();
+    const r = edit(big, { op: "addTrees", table: "work", folders: [], nodes });
+    expect(performance.now() - start).toBeLessThan(budget(3000));
+    expect(r.entries).toHaveLength(100);
+    expect(r.entries[0]).toEqual({
+      path: ["b0 (2)"],
+      kind: "bookmark",
+      url: "https://n.example/0",
+      guid: "guid00000000",
+    });
+    expect(r.entries[2]!.path).toEqual(["b0 (3)"]);
+  });
+});
+
+describe("planMirror: adoption names a renamed duplicate", () => {
+  test("an adopted item whose name was made unique says what it was", () => {
+    const placesTree = {
+      guid: "root________",
+      typeCode: 2,
+      children: [
+        {
+          guid: PLACES_ROOTS.toolbar,
+          typeCode: 2,
+          children: [
+            {
+              guid: "workfolder01",
+              typeCode: 2,
+              title: "work",
+              children: [
+                { guid: "mine00000001", typeCode: 1, title: "mine", uri: "https://example.com/1" },
+                { guid: "mine00000002", typeCode: 1, title: "mine", uri: "https://example.com/2" },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const p = planMirror({
+      tables: parseBookmarksFile("[bookmarks.work]\n").tables,
+      base: null,
+      places: placesTree,
+      workspaces: [],
+      bookmarklets: "none",
+      approved: null,
+      makeGuid: () => "new000000001",
+    });
+    expect(p.adopt[0]!.items).toEqual([
+      { names: ["mine"], url: "https://example.com/1" },
+      { names: ["mine (2)"], url: "https://example.com/2", from: "mine" },
     ]);
   });
 });

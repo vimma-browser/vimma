@@ -190,6 +190,8 @@ export class BookmarksFileImpl {
     this.putBacks = new Map();
     /** @type {Map<string, string>} the table of each guid a burst's events named */
     this.eventTables = new Map();
+    /** The bookmarks' content hash when the loop guard paused: a change of it lifts the pause. */
+    this.heldContent = "";
     /** @type {FileWriter} */
     this.writer = (change) => this.edit(change);
     /**
@@ -515,6 +517,8 @@ export class BookmarksFileImpl {
   onEvents(events) {
     const S = places().bookmarks.SOURCES;
     let any = false;
+    /** @type {Map<string, string>} */
+    const named = new Map();
     for (const e of events) {
       if (e.isTagging || e.source === S.RESTORE_ON_STARTUP) continue;
       const table =
@@ -523,7 +527,7 @@ export class BookmarksFileImpl {
         (e.oldParentGuid ? this.tableOf.get(e.oldParentGuid) : undefined);
       if (!table || this.held.has(table)) continue;
       any = true;
-      this.eventTables.set(e.guid, table);
+      named.set(e.guid, table);
       const who = this.burst.get(table) ?? new Set();
       who.add(sourceName(e.source));
       this.burst.set(table, who);
@@ -532,6 +536,8 @@ export class BookmarksFileImpl {
       if (this.applying || this.paused) this.burst.clear();
       return;
     }
+    // Only a burst that will be put back names its items for the loop guard.
+    for (const [g, t] of named) this.eventTables.set(g, t);
     if (this.burstTimer !== null) lazy.clearTimeout(this.burstTimer);
     this.burstTimer = lazy.setTimeout(
       () => {
@@ -629,6 +635,8 @@ export class BookmarksFileImpl {
     // clear it.
     const burst = new Map(this.burst);
     this.burst.clear();
+    const eventTables = new Map(this.eventTables);
+    this.eventTables.clear();
     let base = await this.loadBase();
     const { text: fileText, problem } = await this.readFile();
     const configText = this.configText ?? null;
@@ -710,7 +718,12 @@ export class BookmarksFileImpl {
     }
     // The file changed from outside Vimma: a table the loop guard paused goes on (open
     // question 2), its edit being the user's answer.
-    if ((how.trigger === "file" || how.trigger === "config") && this.held.size) {
+    const content = contentHash(r, fileText);
+    if (
+      (how.trigger === "file" || how.trigger === "config") &&
+      this.held.size &&
+      content !== this.heldContent
+    ) {
       this.held.clear();
       this.putBacks.clear();
       this.report([], r.warnings);
@@ -790,7 +803,10 @@ export class BookmarksFileImpl {
     p = { ...again, removed: [...p.removed, ...again.removed], skipped: p.skipped };
     this.paused = null;
     const saved = { ...next, tables: again.base.tables };
-    const holdSaid = how.trigger === "places" ? this.guard(putBack, base, saved, r.warnings) : null;
+    const holdSaid =
+      how.trigger === "places"
+        ? this.guard(putBack, base, saved, r.warnings, content, eventTables)
+        : null;
     await this.saveBase(source === null && !saved.tables.length ? null : saved);
     for (const link of p.links) this.link(link.name, link.folder);
     const loaded = this.lastInput !== input;
@@ -807,7 +823,8 @@ export class BookmarksFileImpl {
    * D7: writes what taken-over folders hold that their tables lack to the end of each table.
    * Returns what to say, or null when nothing was written.
    * @param {BookmarksSource} source
-   * @param {{ table: string, items: { names: string[], url: string | null }[] }[]} adopt
+   * @param {{ table: string, items: { names: string[], url: string | null, from?: string }[] }[]}
+   *   adopt
    */
   async adopt(source, adopt) {
     const w = await this.writeEdits(
@@ -822,6 +839,12 @@ export class BookmarksFileImpl {
       .map((r, i) => ({ n: r.written, table: /** @type {{ table: string }} */ (adopt[i]).table }))
       .filter((x) => x.n)
       .map((x) => `${plural(x.n, "bookmark")} of ${JSON.stringify(x.table)} written to ${source}`);
+    // Behaviour 15: a second item of one name is written, and renamed in Places, as `name (2)`.
+    const renamed = adopt
+      .flatMap((a) => a.items)
+      .filter((i) => i.from !== undefined)
+      .map((i) => `${JSON.stringify(i.from)} as ${JSON.stringify(i.names.at(-1))}`);
+    if (renamed.length) said.push(`a name a folder holds twice is written ${renamed.join(", ")}`);
     return said.length ? `${BOOKMARKS_FILE}: ${said.join(", ")}` : null;
   }
 
@@ -833,15 +856,17 @@ export class BookmarksFileImpl {
    * @param {Base | null} before  the base the run started from
    * @param {Base} after  the base it saved
    * @param {BookmarksFileError[]} warnings
+   * @param {string} content  the bookmarks' hash now: the pause lasts until it changes
+   * @param {ReadonlyMap<string, string>} eventTables  the table of each guid the burst named
    * @returns {string | null} what to say
    */
-  guard(ops, before, after, warnings) {
+  guard(ops, before, after, warnings, content, eventTables) {
     /** @type {{ table: string, id: string }[]} */
     const items = [];
     for (const o of ops) {
       const guid = o.op === "reorder" ? o.parentGuid : o.guid;
       const at = locateInBase(after, guid) ?? locateInBase(before, guid);
-      const table = at?.table ?? this.eventTables.get(guid);
+      const table = at?.table ?? eventTables.get(guid);
       if (!table) continue;
       // A line of the file by its path; an item only Places had, by its guid (Sync keeps it).
       const id = at
@@ -849,10 +874,10 @@ export class BookmarksFileImpl {
         : `guid\0${guid}`;
       items.push({ table, id });
     }
-    this.eventTables.clear();
     const tripped = notePutBacks(this.putBacks, items, Date.now()).filter((t) => !this.held.has(t));
     if (!tripped.length) return null;
     for (const t of tripped) this.held.add(t);
+    this.heldContent = content;
     this.report([], warnings);
     return `${BOOKMARKS_FILE}: ${tripped.map((t) => JSON.stringify(t)).join(", ")} put back ${PUT_BACK_TIMES} times in ${
       PUT_BACK_WINDOW_MS / 60_000
@@ -866,7 +891,8 @@ export class BookmarksFileImpl {
    * @param {BookmarksSource} source
    * @param {readonly BookmarkChange[]} changes
    * @returns {Promise<{ results: Extract<ReturnType<typeof editBookmarks>, { ok: true }>[],
-   *   written: boolean } | { error: string }>}
+   *   written: boolean, before: string | null, after: string | null } | { error: string }>}
+   *   `before` and `after`: the text read and the text written (null: nothing written)
    */
   async writeEdits(source, changes) {
     if (!this.writeFile) return { error: NONE_REFUSAL };
@@ -886,17 +912,43 @@ export class BookmarksFileImpl {
       }
       return { text: out === text ? null : out };
     };
+    /** @type {string | null} */
+    let read = null;
+    /** @param {string | null} text */
+    const reading = (text) => {
+      read = text;
+      return compute(text);
+    };
     for (let attempt = 0; ; attempt++) {
-      const w = await this.writeFile(path, compute);
+      const w = await this.writeFile(path, reading);
       if (!("error" in w)) {
         if (w.text !== null && source === "config.toml") {
           this.configText = w.text;
           this.reloadConfig();
         }
-        return { results, written: w.text !== null };
+        return { results, written: w.text !== null, before: read, after: w.text };
       }
       // D11: a file changed while it was edited is edited again once from its new text.
       if (!w.changed || attempt > 0) return { error: w.error };
+    }
+  }
+
+  /**
+   * Puts back the text an edit replaced, while the file still holds what the edit wrote.
+   * @param {BookmarksSource} source
+   * @param {{ before: string | null, after: string | null }} w
+   */
+  async revert(source, w) {
+    const { before, after } = w;
+    if (!this.writeFile || before === null || after === null) return;
+    const path = source === BOOKMARKS_FILE ? this.path : this.configPath();
+    const r = await this.writeFile(path, (text) =>
+      text === after ? { text: before } : { error: `${path} changed meanwhile; not put back` },
+    );
+    if ("error" in r) console.error(`vimma: ${r.error}`);
+    else if (source === "config.toml") {
+      this.configText = before;
+      this.reloadConfig();
     }
   }
 
@@ -1064,6 +1116,8 @@ export class BookmarksFileImpl {
       case "removeTable": {
         const loc = at(change.folder);
         if (loc?.kind !== "table") return { error: notYet };
+        const h = held(loc.table);
+        if (h) return { error: h };
         changes = [{ op: "removeTable", name: loc.table }];
         baseEdit = () => ({ removeTable: loc.table });
         placesOp = async () => {
@@ -1073,6 +1127,13 @@ export class BookmarksFileImpl {
       }
       case "moveTable": {
         const from = at(change.from);
+        // Refused before anything is made: into() may make the workspace's folder in Places.
+        const before =
+          held(from?.table) ?? held(change.target ? at(change.target)?.table : undefined);
+        if (before) return { error: before };
+        if (from?.kind !== "table" && !(change.target && at(change.target)?.kind === "table")) {
+          return { error: notYet };
+        }
         const into = await change.into();
         const to = at(into);
         const tree = /** @type {PlacesNode | null} */ (await PU.promiseBookmarksTree(change.from));
@@ -1085,13 +1146,15 @@ export class BookmarksFileImpl {
           changes = [{ op: "removeTable", name: from.table }];
           baseEdit = () => ({ removeTable: from.table });
         } else if (to?.kind === "table") {
+          // One edit for every item, so the file is read and checked once (not once per item).
+          /** @type {TreeNode[]} */
+          const nodes = [];
           for (const k of kids) {
             const node = treeNode(k);
-            if (node) changes.push({ op: "addTree", table: to.table, folders: [], node });
+            if (node) nodes.push(node);
           }
-          baseEdit = (res) => ({
-            add: res.map((r) => ({ table: to.table, entries: r.entries })),
-          });
+          changes = [{ op: "addTrees", table: to.table, folders: [], nodes }];
+          baseEdit = (res) => ({ add: [{ table: to.table, entries: res[0]?.entries ?? [] }] });
         } else return { error: notYet };
         const h = held(from?.table) ?? held(to?.table);
         if (h) return { error: h };
@@ -1115,12 +1178,26 @@ export class BookmarksFileImpl {
     const results = w.results;
     await this.saveBase(baseAfterEdit(base, baseEdit(results)));
     if (placesOp) {
+      /** @type {unknown} */
+      let failed = null;
       this.applying = true;
       try {
         await placesOp();
+      } catch (e) {
+        failed = e ?? "failed";
       } finally {
         this.applying = false;
         this.burst.clear();
+      }
+      if (failed) {
+        // D18: Places did not take the change, so the file and the base go back to what they
+        // held, and the run brings Places back to them; nothing is lost on either side.
+        console.error("vimma: bookmark change failed in Places; bookmarks.toml put back", failed);
+        await this.revert(source, w);
+        await this.saveBase(base);
+        await this.run({ trigger: "vimma" });
+        const why = /** @type {Thrown} */ (failed)?.message ?? String(failed);
+        return { error: `bookmark: not changed (${why}); ${BOOKMARKS_FILE} is as it was` };
       }
     }
     await this.run({ trigger: "vimma" });

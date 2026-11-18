@@ -704,7 +704,7 @@ function subtree(root) {
  *   removing: number, touched: string[],
  *   removed: { table: string, count: number, cause: "file" | "outside" | "adopt" }[],
  *   skipped: { table: string, line: number }[], links: { name: string, folder: string }[],
- *   adopt: { table: string, items: { names: string[], url: string | null }[] }[] }}
+ *   adopt: { table: string, items: { names: string[], url: string | null, from?: string }[] }[] }}
  */
 export function planMirror(input) {
   const { tables, base, places, workspaces, bookmarklets, approved, makeGuid } = input;
@@ -1061,7 +1061,7 @@ export function planMirror(input) {
     return { known, other, tops };
   };
 
-  /** @type {{ table: string, items: { names: string[], url: string | null }[] }[]} */
+  /** @type {{ table: string, items: { names: string[], url: string | null, from?: string }[] }[]} */
   const adopt = [];
   /**
    * What a taken-over folder holds that the file lacks, as lines in Places order: each bookmark,
@@ -1071,15 +1071,19 @@ export function planMirror(input) {
    */
   const adoptLines = (name, tops) => {
     const pathOf = pathsByTable.get(name) ?? new Map();
-    /** @type {{ names: string[], url: string | null }[]} */
+    /** @type {{ names: string[], url: string | null, from?: string }[]} */
     const items = [];
     const stack = [...tops].reverse();
     while (stack.length) {
       const n = /** @type {PlacesNode} */ (stack.pop());
       const names = n.guid ? pathOf.get(n.guid) : undefined;
       if (!names || !n.guid || claimed.has(n.guid)) continue;
-      if (n.typeCode === TYPE_BOOKMARK) items.push({ names, url: normUrl(n.uri) });
-      else if (n.typeCode === TYPE_FOLDER) {
+      if (n.typeCode === TYPE_BOOKMARK) {
+        const title = normTitle(n.title);
+        // A name made unique (Behaviour 15) says what it was, for the notice.
+        const from = names.at(-1) === title ? {} : { from: title };
+        items.push({ names, url: normUrl(n.uri), ...from });
+      } else if (n.typeCode === TYPE_FOLDER) {
         const kids = (n.children ?? []).filter((k) => kindOf(k));
         if (!kids.length) items.push({ names, url: null });
         stack.push(...[...kids].reverse());

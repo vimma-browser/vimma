@@ -693,7 +693,10 @@ function validate(raw, declared, warnings = []) {
       } else if (key === "write_back") {
         // docs/specs/bookmarks-file.md Behaviour 9, D12: only config.toml says which changes
         // reach the bookmarks file.
-        if (!WRITE_BACK_SETTINGS.includes(/** @type {WriteBack} */ (v))) {
+        if (v === "all") {
+          // docs/specs/bookmarks-file.md Delivery slice 3 brings it.
+          fail(path, 'must be "vimma" or "none": "all" comes in a later version');
+        } else if (!WRITE_BACK_SETTINGS.includes(/** @type {WriteBack} */ (v))) {
           fail(path, 'must be "vimma" or "none"', closest(v, WRITE_BACK_SETTINGS));
         }
       } else if (!BOOKMARKS_ROOTS.includes(/** @type {BookmarksRoot} */ (v))) {

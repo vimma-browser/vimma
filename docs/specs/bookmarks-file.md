@@ -765,7 +765,7 @@ Slice 2 landed with these departures and particulars, each for the reason given:
   `bookmarks-file.mjs`, because that file already holds the reader and the plan.
 - **`write_back` values.** Only `"vimma"` and `"none"` are valid until slice 3; `"all"` is a
   config error with the closest valid value, because accepting it would promise writes this
-  slice does not make.
+  slice does not make; for `"all"` the message says it comes in a later version.
 - **The writer.** `ConfigHost`'s write of `config.toml` became `writeFileNow`, used for both
   files in the one queue (D11); it also refuses to replace a file that is not a regular file,
   as the reader refuses to read one. The re-read after a `config.toml` edit runs after the
@@ -797,6 +797,15 @@ Slice 2 landed with these departures and particulars, each for the reason given:
   no burst, and Vimma's keys refuse there. It goes on when the file changes from outside Vimma
   (an edit, a `git pull`) or after `:bookmarks forget`, not after Vimma's own edit of
   another table.
+- **A Places step that fails.** When the Places part of a key's change fails after the file was
+  written (a move's destination removed while the key waited in the queue), the file's text and
+  the base are put back and a run brings Places to them, because D18 promises that the two never
+  diverge and a dropped line would otherwise make the next run remove the bookmark.
+- **Moved lines** keep their trailing comment; a folder's line that a move or a delete leaves
+  behind does not take it. Several items `:wsdelete`'s `m` writes into a table are one edit, so a
+  large file is read and checked once.
+- **Line ends.** A CRLF file is written with CRLF throughout, also when its last line has no line
+  break and a line goes after it.
 - **Takeover (D7).** Under `"vimma"` a takeover writes the folder's extra bookmarks and empty
   folders to the end of the table, a second item of one name as `name (2)`, and says how many it
   wrote; an item the file cannot hold (a `data:` URL, a name with hidden characters) is still

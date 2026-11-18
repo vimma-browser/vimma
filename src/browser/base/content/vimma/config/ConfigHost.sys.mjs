@@ -23,7 +23,7 @@ import {
   reloadConfig,
   resolveSourcePath,
 } from "../core/config.mjs";
-import { inlineBookmarkTables } from "../core/bookmarks-file.mjs";
+import { MAX_BOOKMARKS_FILE_BYTES, inlineBookmarkTables } from "../core/bookmarks-file.mjs";
 import { serialQueue } from "../core/bookmarks-edit.mjs";
 import { formatConfigTemplate } from "../core/defaults.mjs";
 import { editSiteUnbindText } from "../core/site-edit.mjs";
@@ -150,7 +150,7 @@ let bookmarksErrors = [];
 const bookmarksFile = new BookmarksFileImpl({
   configPath,
   queue: edits,
-  writeFile: (path, compute) => writeFileNow(path, compute),
+  writeFile: (path, compute) => writeFileNow(path, compute, MAX_BOOKMARKS_FILE_BYTES),
   reloadConfig: () => {
     ConfigHost.reload().catch((e) => console.error("vimma: config.toml not read", e));
   },
@@ -593,9 +593,10 @@ async function rewriteConfig(compute) {
  * @template {{ text: string | null }} R
  * @param {string} path
  * @param {(text: string | null) => R | { error: string }} compute
+ * @param {number} [maxBytes]  a larger file is not read (the bookmarks file's limit)
  * @returns {Promise<R | { error: string, changed?: boolean }>}
  */
-async function writeFileNow(path, compute) {
+async function writeFileNow(path, compute, maxBytes = Infinity) {
   /** @type {string | null} */
   let text = null;
   /** @type {Awaited<ReturnType<IOUtilsNamespace["stat"]>> | null} */
@@ -620,6 +621,8 @@ async function writeFileNow(path, compute) {
     // Only a regular file is read and replaced (a FIFO would block, a folder is not ours).
     if (before.type !== "regular")
       return { error: `${path} is not a regular file; nothing written` };
+    // The size as well: a file swapped since its caller read it is never read whole.
+    if ((before.size ?? 0) > maxBytes) return { error: `${path} is too large; nothing written` };
     text = await IOUtils.readUTF8(target);
   } catch (e) {
     if (!notFound(e)) return { error: `cannot read ${path}` };

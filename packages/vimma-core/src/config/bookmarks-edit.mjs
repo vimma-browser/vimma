@@ -45,15 +45,17 @@ import { parseToml, locateKeys, sameTomlValue, tomlLiteral, valueEnd } from "./t
  */
 
 /**
- * A line the writer adds or a key it sets: the path's names, and whether it is a folder's line.
- * @typedef {{ names: string[], folder: boolean, value: string }} NewLine
+ * A line the writer adds or a key it sets: the path's names, and whether it is a folder's line;
+ * `keep`, the line (of the text as given) whose trailing comment it carries, for a moved line.
+ * @typedef {{ names: string[], folder: boolean, value: string, keep?: number }} NewLine
  */
 
 /**
  * The line writer's operations (D10). `line` is a line number of the text as given.
  * @typedef {{ op: "add", table: string, after?: number, lines: NewLine[] }
  *   | { op: "remove", line: number }
- *   | { op: "replace", line: number, names?: string[], folder?: boolean, value?: string }
+ *   | { op: "replace", line: number, names?: string[], folder?: boolean, value?: string,
+ *     keep?: number, bare?: boolean }
  *   | { op: "move", line: number, table: string, after?: number }
  *   | { op: "addTable", name: string }
  *   | { op: "renameTable", from: string, to: string }
@@ -76,7 +78,9 @@ import { parseToml, locateKeys, sameTomlValue, tomlLiteral, valueEnd } from "./t
  *   | { op: "mergeTable", from: string, to: string }
  *   | { op: "removeTable", name: string }
  *   | { op: "addTree", table: string, folders: string[], node: TreeNode }
- *   | { op: "append", table: string, items: { names: string[], url: string | null }[] }}
+ *   | { op: "addTrees", table: string, folders: string[], nodes: TreeNode[] }
+ *   | { op: "append", table: string,
+ *     items: { names: string[], url: string | null, from?: string }[] }}
  *   BookmarkChange
  */
 
@@ -363,8 +367,17 @@ export function editBookmarkLines(text, ops) {
     }
     return { rec: r + 1, line: t.lines.length };
   };
+  /** The trailing text (spaces and a comment) after line `n`'s one-line value, without its CR. */
+  const tailOf = (/** @type {number} */ n) => {
+    const row = rows[n - 1] ?? "";
+    const vs = valueStart(row);
+    const stop = vs < 0 ? -1 : valueEnd(row, vs);
+    return stop < 0 ? "" : row.slice(stop).replace(/\r$/, "");
+  };
   const lineText = (/** @type {NewLine} */ l) =>
-    `${bookmarkKey(l.names, l.folder)} = ${tomlLiteral(l.value)}${cr}`;
+    `${bookmarkKey(l.names, l.folder)} = ${tomlLiteral(l.value)}${l.keep ? tailOf(l.keep) : ""}${cr}`;
+  // Without a line break at its end, the file's last row gets one when a line goes after it.
+  const lastRow = text.endsWith("\n") ? null : recs.at(-1);
 
   for (const op of ops) {
     if (op.op === "add") {
@@ -417,6 +430,13 @@ export function editBookmarkLines(text, ops) {
         line.folder = op.folder ?? line.folder;
         row = `${row.slice(0, ks)}${bookmarkKey(line.names, line.folder)}${row.slice(ke)}`;
       }
+      if (op.keep !== undefined || op.bare) {
+        const vs = valueStart(row);
+        const stop = vs < 0 ? -1 : valueEnd(row, vs);
+        if (stop < 0) return fail(`line ${op.line}: not a one-line value`);
+        const end = row.endsWith("\r") ? "\r" : "";
+        row = `${row.slice(0, stop)}${op.keep !== undefined ? tailOf(op.keep) : ""}${end}`;
+      }
       rec.text = [row, ...more].join("\n");
     } else if (op.op === "addTable") {
       if (modelTable(op.name)) return fail(`[bookmarks.${op.name}] is there already`);
@@ -457,6 +477,11 @@ export function editBookmarkLines(text, ops) {
     }
   }
 
+  if (lastRow && recs.at(-1) !== lastRow) {
+    if (cr && recs.includes(lastRow) && !lastRow.text.endsWith(cr)) lastRow.text += cr;
+    const end = /** @type {Rec} */ (recs.at(-1));
+    end.text = end.text.replace(/\r$/, "");
+  }
   const out = recs.map((r) => r.text).join("\n");
   const after = scan(out);
   if ("error" in after) return fail(`the edit would not read back: ${after.error}`);
@@ -484,6 +509,8 @@ export function cleanName(name) {
   for (const ch of name) {
     const c = /** @type {number} */ (ch.codePointAt(0));
     if (c < 0x20 || c === 0x7f) out += " ";
+    // A lone surrogate (a DOM title may hold one) cannot be written as UTF-8 or a TOML escape.
+    else if (c >= 0xd800 && c <= 0xdfff) out += "\ufffd";
     else if (!HIDDEN.test(ch)) out += ch;
   }
   out = out.trim();
@@ -611,7 +638,17 @@ function takeOut(t, lines, parent) {
   const [first, ...others] = /** @type {[ScanLine, ...ScanLine[]]} */ (lines);
   /** @type {LineOp[]} */
   const ops = emptied
-    ? [{ op: "replace", line: first.line, names: [...parent], folder: true, value: "" }]
+    ? [
+        // The folder's line, without the moved line's comment.
+        {
+          op: "replace",
+          line: first.line,
+          names: [...parent],
+          folder: true,
+          value: "",
+          bare: true,
+        },
+      ]
     : [{ op: "remove", line: first.line }];
   for (const l of others) ops.push({ op: "remove", line: l.line });
   return ops;
@@ -622,11 +659,10 @@ function takeOut(t, lines, parent) {
  * folder, as `named` does in the plan), with the base entries of every item that has a guid.
  * @param {TreeNode} node
  * @param {string[]} top
- * @param {string} table
  * @param {BookmarkletsSetting} bookmarklets
  * @returns {{ lines: NewLine[], entries: BaseEntry[] } | { error: string }}
  */
-function treeLines(node, top, table, bookmarklets) {
+function treeLines(node, top, bookmarklets) {
   /** @type {NewLine[]} */
   const lines = [];
   /** @type {BaseEntry[]} */
@@ -759,6 +795,7 @@ export function editBookmarks(text, source, change, { bookmarklets }) {
         names: [...path, ...l.names.slice(depth)],
         folder: l.folder,
         value: l.value,
+        keep: l.line,
       });
       const parent = change.path.slice(0, -1);
       if (from === to && samePath(parent, folders)) {
@@ -831,23 +868,31 @@ export function editBookmarks(text, source, change, { bookmarklets }) {
       ops = [{ op: "removeTable", name: change.name }];
       break;
     }
-    case "addTree": {
+    case "addTree":
+    case "addTrees": {
+      // Several subtrees (:wsdelete's m of a whole folder) are one edit: the file is read and
+      // checked once, not once per item.
       const t = table(change.table);
       if (!t) return missing(change.table);
       const folders = cleanAll(change.folders);
       if (!folders) return fail("move: empty folder name");
-      const kind = change.node.url !== undefined ? "bookmark" : "folder";
-      const title =
-        cleanName(change.node.title) ||
-        (change.node.url !== undefined ? cleanName(change.node.url) : "");
-      if (!title) return fail("move: empty name");
-      const name = unique(title, kind, childNames(t, folders));
-      if (name !== title) renamed = { from: title, to: name };
-      path = [...folders, name];
-      const tree = treeLines(change.node, path, change.table, bookmarklets);
-      if ("error" in tree) return fail(tree.error);
-      entries = tree.entries;
-      ops = place(t, folders, tree.lines, new Set());
+      const nodes = change.op === "addTree" ? [change.node] : change.nodes;
+      const taken = childNames(t, folders);
+      /** @type {NewLine[]} */
+      const lines = [];
+      for (const node of nodes) {
+        const kind = node.url !== undefined ? "bookmark" : "folder";
+        const title = cleanName(node.title) || (node.url !== undefined ? cleanName(node.url) : "");
+        if (!title) return fail("move: empty name");
+        const name = unique(title, kind, taken);
+        if (name !== title && !renamed) renamed = { from: title, to: name };
+        if (!path.length) path = [...folders, name];
+        const tree = treeLines(node, [...folders, name], bookmarklets);
+        if ("error" in tree) return fail(tree.error);
+        entries.push(...tree.entries);
+        lines.push(...tree.lines);
+      }
+      ops = place(t, folders, lines, new Set());
       break;
     }
     case "append": {
