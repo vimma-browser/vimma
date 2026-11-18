@@ -5,8 +5,8 @@ you move through your code. This guide walks you through it in the order you wil
 first launch, the two key layers, then tabs, panes, workspaces and the settings that make it
 yours.
 
-Vimma is pre-alpha. The guide describes what works now and marks anything that is not available
-yet as **planned**. Known gaps are listed in [limits.md](limits.md).
+Vimma is pre-alpha. The guide describes what works now; known gaps are listed in
+[limits.md](limits.md).
 
 ## Features at a glance
 
@@ -25,7 +25,7 @@ What works today, each with the section that explains it:
 - **tmux for the window** (prefix `ctrl+b`, [keys](#keys)): tabs (`c` new, `n`/`p`, `1..9`,
   found and renamed with [tab search](#tab-search-and-tab-rename)); up to 8 split panes (`v`, `-`,
   `h/j/k/l`, `z` zoom, swap, resize); [several splits](#several-splits) in a workspace, one shown
-  at a time (`]s` / `[s` to step, `ctrl+b S` to pick); tiling [layouts](#layouts) (`enter`
+  at a time (`]s` / `[s` to step, `ctrl+b shift+s` to pick); tiling [layouts](#layouts) (`enter`
   dwindle, `space` cycles tmux's presets); `ctrl+b ?` lists every binding, searchable.
 - **[Workspaces](#workspaces):** each one a container with its own logins and cookies, kept
   with its tabs and split layout across restarts; `ctrl+^` goes back to the last one; a
@@ -198,8 +198,9 @@ apply; [limits.md](limits.md#platforms-and-packaging) lists what differs.
 
 #### macOS
 
-A release may also carry, for Macs with Apple Silicon (M1 or later), `vimma-X.Y.Z-macos-aarch64.dmg`
-with its checksum file `SHA256SUMS-macos`. There is no build for Intel Macs. Open the `.dmg` and
+A release may also carry, for Macs with Apple Silicon (M1 or later) on macOS 15 or later,
+`vimma-X.Y.Z-macos-aarch64.dmg` with its checksum file `SHA256SUMS-macos`. There is no build for
+Intel Macs or older macOS, and Homebrew refuses the cask there. Open the `.dmg` and
 drag Vimma into Applications.
 
 **The first open.** A release signed with Vimma's Developer ID and notarised by Apple opens like
@@ -273,7 +274,8 @@ and Vimma's preferences and saved window state in `~/Library`; it leaves your co
 
 Each release carries a `PKGBUILD` for the `vimma-bin` package. It needs no other file: it
 downloads the release tarball, checks it against the SHA-256 written into it, and installs Vimma
-to `/opt/vimma` with `vimma` and `vimma-open` on your `PATH`, a desktop entry and icons. Run
+to `/opt/vimma` with `vimma`, `vimma-open` and `vimma-ctl` on your `PATH`, a desktop entry and
+icons. Run
 this as your normal user, from any directory:
 
 ```sh
@@ -534,9 +536,10 @@ everywhere.
   The prefix works in every mode and waits for the next key with no timeout. `Esc` cancels it.
 - **The modal layer (Vim).** Bare keys act on the page depending on the mode: `j`/`k` scroll
   in `normal` mode, while in `insert` mode (focus in a text field) keys go to the page.
-  `visual` is copy mode (caret and selection), `hint` is link hints, `help` the bindings overlay
-  and `command` the `:` line, `resize` is resize mode for panes (`ctrl+b r`) and `panel` the side
-  panel (`ctrl+b b`).
+  `visual` is copy mode (caret and selection), `hint` is link hints, `element` is
+  [element focus](#copying-a-paragraph-element-focus) (`F`), `help` the bindings overlay and
+  `command` the `:` line, `resize` is resize mode for panes (`ctrl+b r`), `panel` the side panel
+  (`ctrl+b b`) and `index` the [PDF viewer](#pdf-viewer)'s outline (`Tab`).
 
 ### Normal and insert mode
 
@@ -628,9 +631,9 @@ keys can be remapped in `config.toml` (`suggestion_next` and `suggestion_prev` u
 
 **`Esc` in a text field is Vimma's.** It leaves insert, so the page does not see that `Esc`: a
 site's own `Esc` (closing an autocomplete list or a dialog) does not fire from the field. Press
-`Esc` again: in normal mode `Esc` has no binding, so it reaches the page (the field no longer
-has focus, so the page's document gets it, not the field; a dialog that put focus back into its
-field gets it there, and closes).
+`Esc` again: in normal mode the page gets `Esc` first, and only if the page leaves it
+alone does `Esc` stop a page still loading (the field no longer has focus, so the page's document gets it, not the field; a dialog
+that put focus back into its field gets it there, and closes).
 
 **A key that starts a sequence passes when nothing in that sequence works yet.** `ctrl+w`
 starts the `ctrl+w h/j/k/l`, `H/J/K/L`, `o` and `< > + -` pane keys, which do something only with two panes or
@@ -895,7 +898,8 @@ it.
 Every Vimma key does in the PDF viewer what it does on any page (only `gg` and `G` with a count
 go to page N, as in `12G`), so your hands need not know
 which kind of page they are on: `d` scrolls half a screen, `r` and `F5` reload, `H` / `L` go back
-and forward, `P` opens the clipboard in a new tab, `F` is element focus and `ctrl+f` finds. Vimma
+and forward, `P` opens the clipboard in a new tab and `ctrl+f` finds. `F` (element focus) is the
+exception: a PDF has no text blocks, so use `v` there ([copy mode](#copy-mode)). Vimma
 adds PDF keys only on the keys it leaves free; the other PDF actions are commands:
 
 - **Pages.** `J` / `K` go to the next / previous page, with a count (`3J`). `gg` goes to the first
@@ -987,6 +991,11 @@ with `F11` keeps it. From the left:
   without asking (`◇ agent 14m` for a grant of minutes with 14 left), and `◇ agent ·` for a
   moment after a request ran; `◇ built-in 14/100 · 212k tok` while a task of
   [Vimma's own agent](#vimmas-own-agent) runs (steps and tokens), `◇ 2 agents` while several do;
+- `⇡ 0.3.1 available` (dim) when a newer Vimma is out, or `⇡ 0.3.1 security: :update` in the
+  error colour for a security release; `⇡ 0.3.1 on restart` (`⇡ 0.3.1 security: :restart`) once
+  an install that updates itself has the update ready; `updates: check failed` or
+  `updates: no news for N days` (yellow) when the check has trouble, and a dim `updates: off` for
+  a few seconds after startup when checks are off ([Updates](#updates));
 - `pop-up blocked · y allow · n block · Esc close` (yellow) while the page has Firefox's pop-up
   blocked bar and [its keys](#blocked-pop-ups) count, and `pop-ups blocked · :popups to allow`
   on a site whose pop-ups you blocked with `n`;
@@ -1012,8 +1021,8 @@ subdomains, never the site's own domain: `…evil.example…`, not `accounts.goo
 page another page opened says so: `about:blank from example.com`.
 
 After `ctrl+b` (or any key that starts a longer sequence) only the pending keys show in the bar;
-no list of next keys pops up. To see the bindings, press `ctrl+b ?` (`ctrl+b shift+?` on a
-layout where `?` is shifted): the overlay is the one place that lists them.
+no list of next keys pops up. To see the bindings, press `ctrl+b ?` (`ctrl+b`, then
+whatever your layout types `?` with): the overlay is the one place that lists them.
 
 ### Hiding the toolbar
 
@@ -1278,7 +1287,6 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `Esc` or `q` (overlay)                                                                  | Closes the overlay. Focus returns to where it was.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `ctrl+b c`, `ctrl+t`, `t`                                                               | Opens a new tab (the start page, address bar focused).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `ctrl+b shift+c`                                                                        | Opens a new window. `ctrl+n` does not ([Firefox's keys are Vimma bindings](#firefoxs-keys-are-vimma-bindings)).                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `t` in normal mode.                                                                     |
 | `ctrl+b n` / `ctrl+b p`, `ctrl+tab` / `ctrl+shift+tab`, `ctrl+pagedown` / `ctrl+pageup` | Next / previous tab, wrapping around at the ends. Hidden tabs are skipped. `gt` / `gT` in normal mode; `3gt` goes to tab 3.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `ctrl+b 1..9`, `alt+1..8`, `alt+9`                                                      | Tab 1 to 9, counting visible tabs (pinned tabs first); Firefox's `alt+9` is the last tab. On macOS Firefox's `cmd+1..8` and `cmd+9` instead. With fewer tabs than N, nothing happens. `ctrl+shift+pageup` / `ctrl+shift+pagedown` move the tab left / right among them.                                                                                                                                                                                                                                                                                                  |
 | `:`                                                                                     | Normal mode: opens the command line at the bottom of the window ([below](#the-command-line)). In a text field `:` is typed.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -1297,7 +1305,7 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `ctrl+b r`                                                                              | Resize mode ([below](#resize-mode)): `h j k l` move the pane's divider, `Esc` leaves. `ctrl+w < > + -` resize directly in normal mode.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `ctrl+b enter`                                                                          | A new pane along the focused pane's longer side: side by side when it is wide, stacked when it is tall ([Layouts](#layouts)). `[panes] layout = "manual"`: as `ctrl+b v`.                                                                                                                                                                                                                                                                                                                                                                                                |
 | `]s` / `[s`                                                                             | Normal mode: shows the workspace's next / previous split, wrapping; on a tab shown alone, the split shown last ([Several splits](#several-splits)).                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `ctrl+b S`                                                                              | The split picker: the workspace's splits with their colour, pane count and titles; a digit or `Enter` shows one, `/` filters by title ([Several splits](#several-splits)).                                                                                                                                                                                                                                                                                                                                                                                               |
+| `ctrl+b shift+s`                                                                        | The split picker: the workspace's splits with their colour, pane count and titles; a digit or `Enter` shows one, `/` filters by title ([Several splits](#several-splits)).                                                                                                                                                                                                                                                                                                                                                                                               |
 | `ctrl+b space`                                                                          | Cycles the layout presets, as tmux does; the status bar names the one you get ([Layouts](#layouts)). `:layout tiled` picks one.                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `ctrl+b shift+x`, `x`, `ctrl+F4`                                                        | Closes the tab, as Firefox's `ctrl+w` did: on a pinned tab it selects the first unpinned tab instead; closing the last tab opens a new tab and keeps the window ([Firefox behaviour Vimma changes](#firefox-behaviour-vimma-changes)). `x` in normal mode. `ctrl+shift+t` reopens the last closed tab, in every mode.                                                                                                                                                                                                                                                    |
 | `ctrl+b` then anything else                                                             | Never leaks to the page. A binding without a command shows "… not implemented yet" for 1.5 s; an unbound key does nothing. Firefox's `ctrl+b` bookmarks sidebar is off.                                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -1340,7 +1348,7 @@ back. The hidden split survives a workspace switch and a restart.
 A new tab you open while the split shows (`ctrl+t`, `ctrl+b c`, `t`, `:tabnew`, `P`, a link
 opened in a new foreground tab, also with `f`, or a link from another app) shows alone too, right
 after the split's tabs, so the split you arranged is never broken up: it waits hidden, with its
-panes, sizes and focused pane, until `]s`, `ctrl+b S` or any of its tabs brings it back. A tab
+panes, sizes and focused pane, until `]s`, `ctrl+b shift+s` or any of its tabs brings it back. A tab
 opened from a link on one of the split's pages goes where Firefox puts it, after the split and
 after the tabs already opened from that page, and a closed tab you reopen with `ctrl+shift+t`
 goes back to its old place. To open new tabs in the focused pane instead, set
@@ -1376,10 +1384,10 @@ docs, and a second comparison of two pages, without breaking up the first.
   stripe in its colour and its label, and the head says `S2: 3 panes · 3 splits`, or
   `3 splits (none shown)` on a tab shown alone. A new split takes the lowest free number.
 - **Going between them.** `]s` shows the next split by number and `[s` the previous one,
-  wrapping; on a tab shown alone both bring back the split shown last first. `ctrl+b S` opens the
+  wrapping; on a tab shown alone both bring back the split shown last first. `ctrl+b shift+s` opens the
   split picker: each split with its colour, label, pane count and the titles of its tabs; a digit
   or `Enter` shows one, `/` filters by title. Selecting any tab of a split, by any route, shows
-  that split whole too. Without a split, `]s` and `[s` say `no splits`, and `ctrl+b S` says
+  that split whole too. Without a split, `]s` and `[s` say `no splits`, and `ctrl+b shift+s` says
   `no splits in this workspace`.
 - **The limit.** `[panes] max_splits` in [config.toml](#configtoml) sets how many splits a
   workspace keeps (1 to 9, default 9); `1` gives one split per workspace. Past it, a new split
@@ -1520,8 +1528,8 @@ An unbound key does nothing, including the tab keys Firefox handles outside its 
 (`ctrl+pagedown`, `ctrl+tab`, `ctrl+F4`, `F7`). `ctrl+alt+x`, Firefox's AI chatbot sidebar, is
 one of them, since Firefox's chatbot is off in Vimma; a `config.toml` that still names
 `ai_chatbot_sidebar` gets an error that says the action was removed. `ctrl+alt+u` (tabs from
-your other devices) and `ctrl+alt+z` (show or hide Firefox's sidebar) keep working. `shift+esc` (stop loading) works in normal mode
-only. Three are left alone: the `alt+letter` keys that open the menu bar's menus stay Firefox's,
+your other devices) and `ctrl+alt+z` (show or hide Firefox's sidebar) keep working. `shift+esc` (the process manager,
+`about:processes`) works in normal mode only. Three are left alone: the `alt+letter` keys that open the menu bar's menus stay Firefox's,
 and a bare `alt` tap and `'` (quick find for links) do nothing (the `ui.key.menuAccessKeyFocuses`
 and `accessibility.typeaheadfind.manual` prefs are `false` in Vimma's defaults).
 
@@ -1722,8 +1730,8 @@ more as you need them (see [Managing workspaces](#managing-workspaces)).
   out as you left them with the same pane focused, your tab names and each page's scroll position. Tabs of other workspaces are not loaded
   until you first go to them; their scroll position comes back then. The same happens with
   "Restore previous session" and reopening a closed window.
-- **Pinned tabs** belong to no workspace and show in every one. Vimma has no key to pin; an
-  extension or an old session can still pin.
+- **No pinned tabs:** Vimma has no key to pin, and a tab pinned by an extension or an old session
+  is unpinned at once and stays in its workspace ([Managing workspaces](#managing-workspaces)).
 - Each window has its own current workspace; the workspaces themselves are shared by all
   windows.
 
@@ -1740,6 +1748,9 @@ If you think of a workspace as a Vim buffer, the keys are the ones your fingers 
 | `:bd [name]`             | `:wd [name]`                   | Close this (or the named) workspace; asks `y/N`.        |
 | `:badd name`             | `:wa name`                     | New workspace; you switch to it.                        |
 | `:ls`                    | `:workspaces`, `ctrl+b w`      | The workspace picker.                                   |
+
+In Vimma, `:b` and `:ls` themselves open [tab search](#tab-search-and-tab-rename), not a
+workspace: `:b work` searches your tabs for `work`.
 
 - **The previous workspace** is the one this window showed before the current one, however you
   left it (a key, a command, the picker, or selecting one of its tabs). Pressing `ctrl+^` again
@@ -3443,8 +3454,10 @@ highlighted and its number coloured; a tab playing sound shows `♪`, one from a
 | `Esc`                   | End a range; else clear the marks (with a split: put its marks back); else close the panel, and the page has the keys again.                                                                               |
 | `ctrl+b b`              | Close the panel.                                                                                                                                                                                           |
 
-Pinned tabs belong to no workspace, so the panel never lists them and `x` never closes one (a
-row whose tab was pinned after the panel was drawn says "pinned tab: unpin it to close it").
+A window with workspaces has no pinned tabs: they are unpinned at once
+([Managing workspaces](#managing-workspaces)). A private window keeps them: the panel lists them,
+but `x` does not close one, `m` does not move one and `space` does not mark one
+(`pinned tab: unpin it to close it`).
 
 **Counts.** Digits are a count, as in Vim: type `4` and the status bar shows it while the panel
 waits for `j`, `k`, `G`, `ctrl+d`, `ctrl+u` or `Enter`. Moves stop at the first and last row. A
@@ -3564,7 +3577,7 @@ which tabs they are, and the head says `split: 3 panes`. Change the marks as abo
 - **A hidden split** is listed with its label, but its tabs are not marked: on a tab shown
   alone the marks start a new split ([Several splits](#several-splits)). The head says
   `split: 2 panes (hidden)`, or `3 splits (none shown)` with several. To change a hidden split,
-  show it first (`]s`, `ctrl+b S` or any of its tabs).
+  show it first (`]s`, `ctrl+b shift+s` or any of its tabs).
 
 `ctrl+b )` / `ctrl+b (` with the panel open list the other workspace with its own split marked.
 No page reloads.
@@ -3646,7 +3659,9 @@ command, so when Slack, Discord, a terminal or Neovim opens a link, `vimma-open`
 programs asked (through `/proc`, skipping openers such as `xdg-open` and `gio`) and tells Vimma.
 A link carries up to eight program names, nearest first, shells included: `az login` run in a
 herdr pane in Ghostty carries `python3, zsh, herdr, zsh, ghostty`, so a rule can name whichever
-of them stands for the role, and the rule naming the nearest one wins.
+of them stands for the role, and the rule naming the nearest one wins. App rules need `vimma-open`,
+so they work only on Linux, and not in the Flatpak, whose desktop entry runs `vimma` itself
+([limits.md](limits.md#workspaces-by-design), [Flatpak](limits.md#platforms-and-packaging)).
 
 Command-line tools (the Azure CLI, `gh`, anything written in Python) open links through the
 `BROWSER` variable. Set it in your shell's startup file, and their links are routed by the
@@ -4280,6 +4295,9 @@ type reaches the page, and `ctrl+b` sequences still work.
 - An argument is the rest of the line, as typed. Quotes are removed only when one pair wraps all
   of it: `:tabrename "my  tab"`.
 
+The table lists the main commands; the completion list shows every one, and the other sections
+give the rest.
+
 | Command                               | What it does                                                                                                                                   |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `:open text`                          | As the address bar would: `example.com` a web address, `@gh words` that alias's engine, a bookmark keyword its bookmark, other words a search. |
@@ -4369,7 +4387,7 @@ notices are in `vimma-ctl-licenses/` next to it (`/usr/lib/vimma/vimma-ctl-licen
 
 ## Settings (about:config)
 
-Vimma's own preferences today:
+Vimma's main preferences (a few more are described with the feature they belong to):
 
 | Preference                    | Default                                | What it does                                                                                                                                                                            |
 | ----------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -4377,6 +4395,7 @@ Vimma's own preferences today:
 | `vimma.ui.toolbar.hidden`     | `false`                                | Hides Firefox's toolbar in every window ([Hiding the toolbar](#hiding-the-toolbar)). `ctrl+b u` and `:toolbar` set it; `[ui] toolbar` sets it at startup. Applies at once.              |
 | `vimma.ui.pdf_outline.hidden` | `false`                                | Opens PDFs without their outline shown ([PDF viewer](#pdf-viewer)); `Tab` still opens it. `[ui] pdf_outline` sets it at startup. Applies to the next PDF.                               |
 | `vimma.debug.keys`            | unset                                  | Create it as a boolean set to `true` to log every key Vimma sees (`{ key, mods, mode }`) to the Browser Console (`ctrl+shift+j`; enable its Debug filter).                              |
+| `vimma.update.enabled`        | `true`                                 | Checks for a newer Vimma ([Updates](#updates)). `false` stops every check, as `[updates] check = false` does.                                                                           |
 | `vimma.startpage.newtab`      | `true`                                 | New tabs open Vimma's start page (see [The start page](#the-start-page)). Set `false` for Firefox's new tab page; it applies at once, no restart.                                       |
 | `vimma.control.enabled`       | `false`                                | Turns on the control socket for `vimma-ctl` and scripts (see [Scripting with vimma-ctl](#scripting-with-vimma-ctl)). Applies at once, no restart.                                       |
 | `vimma.theme.source`          | `omarchy`                              | `omarchy` follows your Omarchy theme where Omarchy is installed (see [Colours](#colours-and-themes)); `builtin` forces `[theme] name`'s palette. Applies at once.                       |
@@ -4474,9 +4493,9 @@ accent = "#ff9e64"
 - **Schema:** `schema = 2` at the top enables `[panes]`, `[sites]`, `[[routes]]`, `[routing]`,
   `[firefox]`,
   `[bookmarks]`, `[panel]`, `[scroll]`, `[private]`, `[mcp]`, `[search]`, `[ui]`, `[updates]`, `[agent]`,
-  `hint_chars`, `insert_editing`, `[theme] name` and `appearance`. Every key is in the template
-  `:config` writes, with its default commented out (the same as
-  [`defaults.toml`](../packages/vimma-core/defaults.toml) in the source).
+  `hint_chars`, `insert_editing`, `[theme] name` and `appearance`. Every key but
+  `[panes] max_splits` and the `[agent]` table is in the template `:config` writes, with its
+  default commented out (the same as [`defaults.toml`](../packages/vimma-core/defaults.toml) in the source).
 
 ### Search engines
 
@@ -4561,7 +4580,8 @@ help overlay open, plain keys go to the overlay, as when typing; chords that wor
 token: they can type into any page (including your logged-in sites), open `about:config` and
 change any setting, and quit Vimma. `open` loads with the system principal, like a URL given on
 the command line, so it can open local files (`file:`) and privileged pages such as
-`about:config`; only `javascript:` and `data:` are refused. Leave the pref off unless you use it.
+`about:config`; any URL that is not http, https, file or about is refused. Leave the pref off
+unless you use it.
 
 What keeps others out:
 
@@ -4595,14 +4615,6 @@ Vimma 0.1.2 and later tell you when a newer release is out, on Linux x86_64 and 
 Apple Silicon. Vimma notifies you and shows the command; it does not install the update itself,
 except as an AppImage, which replaces its own file, and as a tarball built with Firefox's
 updater, which applies the update at its next start (below).
-
-**Vimma 0.1.6 on a Mac** shows the notice, but its `:update` shows the Linux tarball command,
-which does not apply to a Mac: do not run it. Update with `brew upgrade --cask vimma`, or install
-the new `.dmg` over the old one ([macOS](#macos)). Later versions show the right steps.
-
-**Coming from 0.1.1?** Vimma 0.1.1 has no signing key built in, so it refuses every update file
-and never shows a notice. Update it once by hand, the way you installed it: the commands are in
-the table below and in [Installing](#installing). From 0.1.2 on, the status bar tells you.
 
 Every 12 hours, and a few seconds after startup when the last successful check is older, Vimma
 fetches one small signed file from `updates.vimma.dev` that names the newest release of its
@@ -4671,18 +4683,18 @@ Except for the AppImage and such a tarball, it installs nothing; it tells you.
   and is checked against the SHA-512 the signed file gives for it (`sha512sum -c`) before
   anything is installed or replaced, so a file changed on the release page stops the command.
 
-  | Installed with           | `:update` shows                                                                                                                                                  |
-  | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | The release's `PKGBUILD` | `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si`  |
-  | AUR `vimma-bin`          | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                   |
-  | `.deb`                   | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`                                                                      |
-  | `.rpm`                   | download `vimma-X.Y.Z-1.x86_64.rpm`, check it, then `sudo dnf install` it (Fedora) or `sudo zypper install --allow-unsigned-rpm` it (openSUSE)                   |
-  | Tarball                  | nothing when it updates itself (above); otherwise quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory             |
-  | AppImage                 | nothing: it replaces its own file (above); if it cannot, download the new AppImage next to yours, check it, and rename it over yours                             |
-  | Flatpak (Flathub)        | `flatpak update dev.vimma.browser`, or your software centre; Flathub builds a release after it is published, so it can arrive some hours after the notice        |
-  | Homebrew (macOS)         | `brew upgrade --cask vimma`                                                                                                                                      |
-  | `.dmg` (macOS)           | no command: quit Vimma, download the new `.dmg` from the release page and drag Vimma over the copy in Applications; macOS asks again on [the first open](#macos) |
-  | A build from source      | nothing: source builds never check (pull and rebuild)                                                                                                            |
+  | Installed with            | `:update` shows                                                                                                                                                  |
+  | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | The release's `PKGBUILD`  | `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si`  |
+  | AUR `vimma-bin`           | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                   |
+  | `.deb`                    | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`                                                                      |
+  | `.rpm`                    | download `vimma-X.Y.Z-1.x86_64.rpm`, check it, then `sudo dnf install` it (Fedora) or `sudo zypper install --allow-unsigned-rpm` it (openSUSE)                   |
+  | Tarball                   | nothing when it updates itself (above); otherwise quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory             |
+  | AppImage                  | nothing: it replaces its own file (above); if it cannot, download the new AppImage next to yours, check it, and rename it over yours                             |
+  | Flatpak (once on Flathub) | `flatpak update dev.vimma.browser`, or your software centre; Flathub builds a release after it is published, so it can arrive some hours after the notice        |
+  | Homebrew (macOS)          | `brew upgrade --cask vimma`                                                                                                                                      |
+  | `.dmg` (macOS)            | no command: quit Vimma, download the new `.dmg` from the release page and drag Vimma over the copy in Applications; macOS asks again on [the first open](#macos) |
+  | A build from source       | nothing: source builds never check (pull and rebuild)                                                                                                            |
 
 - **What a check sends:** a GET for
   `https://updates.vimma.dev/updates/browser/<target>/<channel>/update.xml`, where the target is
@@ -4707,6 +4719,14 @@ Except for the AppImage and such a tarball, it installs nothing; it tells you.
   still checks when you ask, unless `vimma.update.enabled` is `false`. When a config is already
   in force, such a file never turns checks on: a `check = false` you saved earlier, even in a
   file with errors, still holds.
+
+**Vimma 0.1.6 on a Mac** shows the update notice, but its `:update` shows the Linux tarball command,
+which does not apply to a Mac: do not run it. Update with `brew upgrade --cask vimma`, or install
+the new `.dmg` over the old one ([macOS](#macos)). Later versions show the right steps.
+
+**Coming from 0.1.1?** Vimma 0.1.1 has no signing key built in, so it refuses every update file
+and never shows a notice. Update it once by hand, the way you installed it: the commands are in
+the table above and in [Installing](#installing). From 0.1.2 on, the status bar tells you.
 
 ## Privacy defaults
 
@@ -4739,7 +4759,8 @@ Mozilla's update server is for the OpenH264 and Widevine plugins, which video ca
 need.
 
 Sites see the user agent of the Firefox release Vimma is built on, with no Vimma token, and
-add-ons see Firefox's version (`runtime.getBrowserInfo()`), so Vimma is treated like Firefox. The
+add-ons see Firefox's version number (`runtime.getBrowserInfo()`), under the browser name
+`Vimma`. The
 About dialog shows Vimma's own version; `vimma --version` and the start page show it with the
 Firefox release it is built on, for example `Vimma X.Y.Z · Firefox N`.
 
@@ -4913,8 +4934,8 @@ it does not help. Mozilla's tracking-protection lists update either way.
 
 **Does Vimma update itself?** The AppImage and the tarball do: the AppImage replaces its own
 file, and a tarball whose release lists `vimma-X.Y.Z-linux-x86_64.complete.mar` installs the
-update at its next start ([Updates](#updates)). The `.deb`, the `.rpm`, the Arch package and
-macOS only notify: from 0.1.2 on, the status bar tells you when a release is out and
+update at its next start ([Updates](#updates)). The `.deb`, the `.rpm`, the Arch package, the
+Flatpak and macOS only notify: from 0.1.2 on, the status bar tells you when a release is out and
 `:update` shows the command for your install ([Installing](#installing)). Vimma 0.1.1 shows no
 notice: update it once by hand. Every update is checked against a file signed with Vimma's own
 key from `updates.vimma.dev`; Vimma never asks Mozilla's update server (`aus5.mozilla.org`) for a

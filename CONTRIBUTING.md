@@ -133,9 +133,11 @@ npm run typecheck        # tsc --checkJs: browser code, tools/, core tests, then
 npm run lint             # eslint, prettier, wording, spec, architecture and changelog checks
 npm run mochitest -- tests/browser/                       # browser tests on your full build
 npm run mochitest -- tests/browser/browser_vimma_tabstrip.js
-npm run sites -- --filter github                          # live sites, a report (docs/runbook/)
 npm run sites -- --offline --artifact                     # recorded pages, no network: the PR gate
 ```
+
+The live site-compatibility run (`npm run sites` without `--offline`) is for nightly CI only: run
+from a developer machine, it gets that machine's IP address blocked by the sites' bot protection.
 
 `npm run e2e -- --artifact --xvfb` runs the socket-driven e2e scenarios and compares their
 screenshots with baselines made on CI. On Linux it needs Xvfb (`xvfb` on Ubuntu,

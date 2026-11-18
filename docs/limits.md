@@ -93,7 +93,9 @@ the [user guide](guide.md); planned work is on the
 
 - Tags, keywords, separators, sorting and editing a bookmark's address need Firefox's Library
   (`ctrl+shift+o`).
-- Bookmarklets (`javascript:` and `data:` bookmarks) are listed but do not open from Vimma.
+- `data:` bookmarks are listed but do not open from Vimma. Bookmarklets (`javascript:`
+  bookmarks) run only when `[bookmarks] bookmarklets` in `config.toml` allows it; they are off
+  by default ([Bookmarks](guide.md#bookmarks)).
 
 ## Add-ons
 
@@ -249,8 +251,8 @@ the [user guide](guide.md); planned work is on the
 
 ## Platforms and packaging
 
-- Vimma is released for Linux x86_64 and for macOS on Apple Silicon. There is no Intel Mac,
-  universal or Windows build.
+- Vimma is released for Linux x86_64 and for macOS 15 or later on Apple Silicon. There is no
+  Intel Mac, universal or Windows build.
 - On macOS, passkeys stored in macOS (iCloud Keychain) do not work (issue #544). Releases 0.1.10
   and earlier, and every CI test build, are ad hoc signed rather than notarised: macOS asks
   once, under Privacy & Security, before such a `.dmg` first opens. Vimma on macOS shows update

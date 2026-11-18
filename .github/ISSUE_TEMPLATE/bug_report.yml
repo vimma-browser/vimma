@@ -22,12 +22,10 @@ body:
       label: Install type
       options:
         - Arch PKGBUILD
-        - AUR
         - .deb
         - .rpm
         - AppImage
         - Tarball
-        - Flatpak
         - macOS .dmg
         - Homebrew (macOS)
         - Built from source
@@ -47,7 +45,10 @@ body:
     id: what-happened
     attributes:
       label: What happened
-      description: What you saw, including any message in the status bar or the Browser Console.
+      description: >-
+        What you saw, including any message in the status bar or the Browser Console. If it may
+        depend on your setup (config, theme, workspaces), add the redacted report that `:bug`
+        copies; read it before you paste it.
     validations:
       required: true
   - type: textarea
