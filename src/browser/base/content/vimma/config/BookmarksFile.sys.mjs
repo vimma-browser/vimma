@@ -414,6 +414,8 @@ export class BookmarksFileImpl {
     if (!writeFile) return { said: `${BOOKMARKS_FILE} cannot be written here; nothing exported` };
     const { text: existing, problem } = await this.readFile();
     if (problem) return { said: `${BOOKMARKS_FILE} exists but is ${problem}; nothing exported` };
+    // The base names the tables already mirrored, which the export must keep.
+    await this.loadBase();
     const PU = places();
     const tree = /** @type {PlacesNode} */ (await PU.promiseBookmarksTree(""));
     const r = exportBookmarks({ places: tree, tables: this.exportTables(tree) });
