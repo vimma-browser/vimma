@@ -88,7 +88,9 @@ engine, and applies nothing until its summary is confirmed. That leaves three ga
 
 12. A setting step **must** show the exact line it will write for the selected choice (for
     example `[ui] toolbar = "hidden"`) before `enter`, and "Writes nothing" for **Keep** or the
-    value in force.
+    value in force. When `config.toml` is read again while the step is open, the step redraws
+    that line from the new value in force. After `enter`, the footer reports what was actually
+    written, or that nothing was (decision 4).
 13. A `config.toml` that does not parse **must** never be written. The welcome screen names the
     file and line; setting steps show the same notice and only skip; action steps work.
 14. An edit made to `config.toml` by another program while a step is open is kept: the step's
@@ -161,7 +163,8 @@ none of its choices (behaviour 9).
 29. **Agents.** "Off" is selected first unless agents are on. The step says, in two lines, that
     agents reach only the agent workspace, and that sending a form, paying and showing a page
     always ask the user. `enter` on "on" is the user's consent, as answering `y` to `:mcp on`
-    is. The step also says that `:mcp off` turns agents off until Vimma restarts (decision 16).
+    is. The step also says that `:mcp off` turns agents off until Vimma restarts, whatever the
+    file says and however often it is read again (decision 16).
 30. Neither the control socket nor an MCP agent can open, read or drive the page (unchanged
     from first-run-setup, behaviour 10).
 
@@ -274,7 +277,8 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
 5. **One config writer.** Setting steps call a new `ConfigHost.setConfigKeys(edits)`, which runs
    `setTomlKeys` inside `rewriteConfig`, so that the setup gets the symlink handling, the
    private temporary file and the queue that `:siteunbind --save` has. `SetupHost.writeEngine`
-   moves to it and its own writer is removed, and `addRoute` moves onto the same queue, because
+   moves to it and its own writer is removed, and `addRoute` becomes an append run inside the
+   `rewriteConfig` queue, because
    two copies of the same safety checks drift and an append outside the queue can race a
    rewrite. The edited text is parsed with `parseConfig` before the rename and nothing is
    written when it reports an error, so a step can never leave a file that does not load.
@@ -344,18 +348,25 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
 16. **Setting steps write the file; `:mcp off` still turns agents off.** Every setting step
     saves to `config.toml`, so `[theme] appearance` written there overrides `:theme` from then
     on, and the colours step says so. For agents, the file would also take away `:mcp off` as a
-    way to stop every agent at once, so `:mcp off` changes to turn agents off until Vimma
-    restarts even when the file says `enabled = true`, and says that the file turns them on
-    again at the next start. Reason: a kill switch that depends on editing a file is no kill
-    switch. Proposed with Open question 4. Rejected: setting the prefs the commands use,
-    because the setup would then save some choices outside the file it shows.
+    way to stop every agent at once: today `[mcp] enabled` decides on every read of the file
+    (`host/mcp-ops.mjs:74-82`, the `state` getter; `docs/guide.md`, the `:mcp` table), so a
+    setup write, or any edit the file watcher picks up, would turn agents back on. `:mcp off`
+    therefore becomes a flag held in memory that wins over the file: a config reload never
+    clears it, and only `:mcp on` or a restart does; it says that the file turns agents on
+    again at the next start. Reason: a kill switch that depends on editing a file, or that the
+    next file read undoes, is no kill switch. This applies to every user, not only behind
+    `vimma.feature.setupV2`, because it is a fix in its own right for anyone who sets
+    `[mcp] enabled = true` by hand, and it lands in slice 1. Proposed with Open question 4.
+    Rejected: setting the prefs the commands use, because the setup would then save some
+    choices outside the file it shows.
 17. **Action steps keep Firefox's own paths.** The content blocker installs through
     `installAddonFromAOM` as first-run-setup decision 3; the default browser step calls
     `ShellService.setDefaultBrowser`, which Vimma's wrapper already routes for packaged installs
     and which honours the enterprise policy. The import step opens the wizard as Firefox's
     `tabModal` path does, calling `gBrowser.getTabDialogBox(setupBrowser).open()` with
     `migration-dialog-window.html`, `features: "resizable=no"`, the content modal type and
-    `{ options: { entrypoint: "file_menu", tabModal: true } }` (Research), and opens the next
+    `{ options: { entrypoint: MigrationUtils.MIGRATION_ENTRYPOINTS.FILE_MENU, tabModal: true } }`
+    (Research), and opens the next
     step when its `closedPromise` resolves, because `showMigrationWizard` itself gives no close
     signal. Reason: each prompt, check and policy stays Firefox's and is tested there. When the
     dialog cannot be opened over the setup page (slice 3 checks this first), the step falls
@@ -403,7 +414,8 @@ agent workspace; the first agent request does.
   escaped TOML string by `tomlLiteral`. `docs/security/08-config-toml.md` F1 becomes: Vimma
   changes an existing `config.toml` only from `:route add`, `:siteunbind --save`,
   `:sitebind --delete`, the built-in agent's setup and the setup page's setting steps, each
-  through `rewriteConfig` (slice 1 moves `:route add` onto it).
+  through `rewriteConfig`; `:route add` stays an append, run inside the `rewriteConfig` queue
+  (slice 1).
 - **Trusted input only.** The page acts only on trusted key and click events (unchanged), the
   control socket has no command for it, and the agent role's `open` refuses
   `about:vimma-setup`, so no agent can write `config.toml`, install an add-on, change the
@@ -413,9 +425,11 @@ agent workspace; the first agent request does.
   preselected, and the step explains the agent workspace and the prompts before the choice.
   Written to the file, the value would win over `:mcp off`, so the user would lose the one
   command that stops every agent at once; decision 16 keeps `:mcp off` working until restart.
-  `docs/security/12-agents-mcp.md` gains both rules: the setup can turn MCP on only from a
-  trusted `enter` on that step, and `:mcp off` always turns it off for the session. That slice
-  gets a review by a fresh session before merging.
+  Its flag lives in memory and no config reload clears it (today every read of the file
+  re-applies `[mcp] enabled`), only `:mcp on` or a restart. `docs/security/12-agents-mcp.md`
+  gains both rules: `:mcp off` always turns MCP off for the session, whatever the file says
+  and however often it is read (slice 1), and the setup can turn MCP on only from a trusted
+  `enter` on that step (slice 6). Both slices get a review by a fresh session before merging.
 - **Add-ons.** Installs keep first-run-setup's rules (AMO only, signed, Firefox's permission
   prompt, Vimma never answers it); only the moment changes. Until setup v2 is turned on,
   `docs/security/05-add-ons.md` A1 names both paths: after the summary with
@@ -504,6 +518,8 @@ last slice):
 - `updates_step_says_what_the_check_sends`
 - `agents_step_selects_off_first_and_writes_enabled_on_enter`
 - `mcp_off_turns_agents_off_until_restart_when_the_file_enables_them`
+- `mcp_off_survives_a_config_reload` (`[mcp] enabled = true` in the file, `:mcp off`, the file
+  edited and read again: agents stay off until `:mcp on`)
 - `finished_chapters_are_ticked_on_the_next_run`
 - `route_add_waits_for_a_running_rewrite` (`browser_vimma_workspace_routes.js`)
 - `agent_role_cannot_open_setup` (kept)
@@ -527,13 +543,15 @@ the line the step writes and the footer before the baselines are accepted.
 
 Slices 1 to 5 merge when green and verified. Slices 6 and 7 stop at ready for the maintainer,
 with notes in the pull request on how to try them (build, `vimma.feature.setupV2`, keys, what to
-look for), because slice 6 turns agents on from a page and changes `:mcp off`, and slice 7
+look for), because slice 6 turns agents on from a page, and slice 7
 turns the new setup on for every user.
 
 1. **Core: one config writer and the step table** (#1292). The three `setTomlKeys` cases,
    `ConfigHost.setConfigKeys` on `rewriteConfig`, `writeEngine` and `addRoute` moved onto it,
-   `setup-steps.mjs` with the key-hint fill and its tests, `vimma.feature.setupV2`; no
-   user-visible change.
+   `setup-steps.mjs` with the key-hint fill and its tests, `vimma.feature.setupV2`. Not behind
+   the pref: `:mcp off` as a flag in memory that no config reload clears (decision 16), with
+   `docs/security/12-agents-mcp.md`, the guide's `:mcp` table and a review by a fresh session;
+   that is the slice's only user-visible change.
 2. **The chapter flow and the essentials** (#1293), behind the feature pref: welcome screen,
    step and stop screen layout, footer, `enter`/`s`/`h`/`q`/digits, **Keep**, saving per step,
    the parse-error, failed-write and private-window rules, the chapter pref, and chapter 1
@@ -543,8 +561,9 @@ turns the new setup on for every user.
    that the wizard opens over the setup tab (decision 17).
 4. **The window** (#1295): the address bar step with its key hints and window drawing.
 5. **Your keys** (#1296): the prefix, hint letters (layout guess) and Firefox's keys steps.
-6. **Privacy and agents** (#1297): the updates and agents steps, `:mcp off` until restart,
-   `docs/security/12-agents-mcp.md`; review by a fresh session; stops at ready.
+6. **Privacy and agents** (#1297): the updates and agents steps,
+   `docs/security/12-agents-mcp.md` for turning MCP on from the step; review by a fresh
+   session; stops at ready.
 7. **Turn it on** (#1298): remove `vimma.feature.setupV2` and the summary flow, A1's summary
    path, rewrite the guide section, e2e baselines, the "Since changed" note in
    first-run-setup, status `implemented` unless slice 8 is still open; stops at ready.
