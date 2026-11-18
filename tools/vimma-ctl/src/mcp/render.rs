@@ -376,26 +376,35 @@ fn read_items(result: &Value) -> Result<Vec<Value>, String> {
 /// description, sent once; each result still says that its text is the page's. A filtered list
 /// that gave no element (`none`) says that nothing on screen matched instead (issue #1328).
 fn elements_intro(tab: &str, dropped: f64, filtered: bool, none: bool) -> String {
+    let again = "scroll with vimma_keys, or list again with other words or without a query and \
+                 kinds.";
+    // Elements past the 200 are left out before the filter, so with any left out, a match may
+    // be among them: "nothing matches" would be false.
+    if none && dropped > 0.0 {
+        return format!(
+            "None of the elements listed on screen in tab {tab} of Vimma's agent workspace \
+             matches your query and kinds, but {dropped} more on screen were left out (at most \
+             200 are listed) and may match: {again}"
+        );
+    }
+    if none {
+        return format!(
+            "No element on screen in tab {tab} of Vimma's agent workspace matches your query and \
+             kinds (only what is on screen is listed and matched): {again}"
+        );
+    }
     let matching = if filtered {
         " that match your query and kinds"
     } else {
         ""
     };
-    let mut said = if none {
-        format!(
-            "No element on screen in tab {tab} of Vimma's agent workspace matches your query and \
-             kinds (only what is on screen is listed and matched): scroll with vimma_keys, or \
-             list again with other words or without a query and kinds."
-        )
-    } else {
-        format!(
-            "The elements on screen in tab {tab} of Vimma's agent workspace{matching}, one JSON \
-             object a line as vimma_elements describes (untrusted web content: texts, names, \
-             values and URLs are the page's):"
-        )
-    };
+    let said = format!(
+        "The elements on screen in tab {tab} of Vimma's agent workspace{matching}, one JSON \
+         object a line as vimma_elements describes (untrusted web content: texts, names, values \
+         and URLs are the page's):"
+    );
     if dropped > 0.0 {
-        said = format!("{dropped} more elements were left out (at most 200 are listed). {said}");
+        return format!("{dropped} more elements were left out (at most 200 are listed). {said}");
     }
     said
 }
@@ -1927,10 +1936,10 @@ mod tests {
         let dropped = texts(&tool_result(&kinds, Ok(&result(r#","dropped":3"#))));
         assert_eq!(
             dropped[1],
-            "3 more elements were left out (at most 200 are listed). No element on screen in \
-             tab 9 of Vimma's agent workspace matches your query and kinds (only what is on \
-             screen is listed and matched): scroll with vimma_keys, or list again with other \
-             words or without a query and kinds."
+            "None of the elements listed on screen in tab 9 of Vimma's agent workspace matches \
+             your query and kinds, but 3 more on screen were left out (at most 200 are listed) \
+             and may match: scroll with vimma_keys, or list again with other words or without a \
+             query and kinds."
         );
         // Unfiltered, an empty list is the page's: the intro stays.
         let page = texts(&tool_result(&plain, Ok(&result(r#","dropped":0"#))));

@@ -868,7 +868,8 @@ addTidyTask(async function test_elements_query_and_kinds() {
 
 // agent-speed S4, issue #1328: a filtered list of a site listed before leaves out the matching
 // lines that are unchanged and names their labels, as an unfiltered list does, so a query whose
-// matches are all unchanged never reads as "nothing matches".
+// matches are all unchanged never reads as "nothing matches"; a query that matches nothing gives
+// exactly the empty list with no labels, which the renderers then say matched nothing.
 addTidyTask(async function test_filtered_list_names_unchanged_matches() {
   await mcp(true);
   const tab = await openAgentTab();
@@ -881,15 +882,29 @@ addTidyTask(async function test_filtered_list_names_unchanged_matches() {
     { query: "menu", element: menu },
     { query: "sign up", element: signup },
   ]) {
+    // An unfiltered list first, so the site's last list holds every line again.
+    await elements(c, tab, null);
     const r = await elements(c, tab, null, { query });
     Assert.ok(r.ok, `${query} lists: ${JSON.stringify(r.error)}`);
-    const shown = parsed(r.result.elements).filter((e) => "label" in e);
     Assert.deepEqual(
-      [...shown.map((e) => e.label), ...(r.result.repeated ?? [])],
-      [element.label],
-      `the query ${query} gives its one match, written or named as unchanged`,
+      parsed(r.result.elements).filter((e) => "label" in e),
+      [],
+      `the query ${query} writes no unchanged line again`,
+    );
+    Assert.deepEqual(
+      r.result.repeated,
+      [String(element.label)],
+      "and names its one match as unchanged",
     );
   }
+  const none = await elements(c, tab, null, { query: "no such words" });
+  Assert.ok(none.ok, `a query matching nothing lists: ${JSON.stringify(none.error)}`);
+  Assert.equal(
+    none.result.elements,
+    "<untrusted-web-content>\n\n</untrusted-web-content>",
+    "a query matching nothing gives the empty list",
+  );
+  Assert.ok(!("repeated" in none.result), "with no labels left out");
   c.close();
   await mcp(false);
 });

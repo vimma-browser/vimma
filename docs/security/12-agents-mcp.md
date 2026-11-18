@@ -1209,8 +1209,11 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   80 characters, never its value) and `kinds` (kinds of the list's own) leave out the elements
   that do not match, and their labels with them; neither reaches the page. A filtered list that
   gives no element says so in Vimma's fixed words in place of its intro, which both renderers
-  decide from the list's own shape (empty inside the delimiters, no `repeated`), so no page string
-  and no new field reach the agent by that route.
+  decide from the agent's own `query` and `kinds` arguments and the list's shape (empty inside
+  the delimiters, no `repeated`), so no page string and no new field reach the agent by that
+  route. With elements past the 200 left out, which happens before the filter, the words say
+  that none of the listed elements matches and that those left out may, never that nothing on
+  screen matches.
   [`test_repeated_list_leaves_out_unchanged_lines`](../../tests/browser/browser_vimma_mcp_elements.js),
   [`test_compact_list_keeps_delimiters_and_sensitive_rules`](../../tests/browser/browser_vimma_mcp_elements.js),
   [`test_elements_query_and_kinds`](../../tests/browser/browser_vimma_mcp_elements.js),

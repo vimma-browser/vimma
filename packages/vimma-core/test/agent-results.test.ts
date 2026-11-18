@@ -310,10 +310,10 @@ describe("results as the model reads them", () => {
       empty,
     ]);
     expect(none({ tab: "9", kinds: ["field"] }, 3)[1]).toBe(
-      "3 more elements were left out (at most 200 are listed). No element on screen in tab 9 " +
-        "of Vimma's agent workspace matches your query and kinds (only what is on screen is " +
-        "listed and matched): scroll with vimma_keys, or list again with other words or " +
-        "without a query and kinds.",
+      "None of the elements listed on screen in tab 9 of Vimma's agent workspace matches your " +
+        "query and kinds, but 3 more on screen were left out (at most 200 are listed) and may " +
+        "match: scroll with vimma_keys, or list again with other words or without a query and " +
+        "kinds.",
     );
     // Unfiltered, an empty list is the page's: the intro stays.
     expect(none({ tab: "9" })[1]).toContain("The elements on screen in tab 9");
