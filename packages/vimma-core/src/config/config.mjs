@@ -413,6 +413,7 @@ const isSiteHost = (host) => DOMAIN.test(host) || (host.includes(":") && IPV6.te
  * @param {string} host
  */
 const siteKey = (host) =>
+  // Stryker disable next-line MethodExpression: isSiteHost passes ASCII hosts only; either case compares the same
   host
     .toLowerCase()
     .replace(/\.$/, "")
@@ -453,6 +454,7 @@ function isHintCharset(chars) {
  * @param {Problem[]} [warnings]  receives what is left out without failing the file
  * @returns {Problem[]}
  */
+// Stryker disable next-line ArrayDeclaration: parseConfig, the only caller, always passes its own warnings list
 function validate(raw, declared, warnings = []) {
   /** @type {Problem[]} */
   const problems = [];
@@ -839,6 +841,7 @@ function validateMcp(mcp, { fail, typeError, unknownKey }) {
   const max = mcp.grant_max_minutes;
   const { grantMaxMinutes: g } = MCP_BOUNDS;
   const maxValid = typeof max === "bigint" && max >= BigInt(g.min) && max <= BigInt(g.max);
+  // Stryker disable next-line OptionalChaining: DEFAULT_CONFIG always has [mcp]
   const grantMax = maxValid ? Number(max) : DEFAULT_CONFIG.mcp?.grant_max_minutes;
   for (const [key, v] of Object.entries(mcp)) {
     const path = ["mcp", key];
@@ -1070,6 +1073,7 @@ function resolveAgent(agent) {
   const listed = Array.isArray(agent?.providers) ? agent.providers : [];
   const providers = listed.filter((p) => p.kind !== "cli" || CLI_IDS.includes(p.cli));
   // A default that names a skipped provider (validateCliProvider) sets none.
+  // Stryker disable next-line OptionalChaining: without [agent] there are no providers, so this never runs
   const named = providers.some((p) => p.name === agent?.default);
   const num = (/** @type {unknown} */ v, /** @type {number | null} */ d) =>
     v === undefined ? d : Number(v);
@@ -1388,6 +1392,7 @@ export function parseConfig(text, { mac = false } = {}) {
  */
 export function reloadConfig(active, text, { mac = false } = {}) {
   const r = parseConfig(text, { mac });
+  // Stryker disable next-line LogicalOperator: parseConfig returns a config and a keymap together or neither
   if (r.config && r.keymap) {
     return {
       active: { config: r.config, keymap: r.keymap },
@@ -1496,6 +1501,7 @@ const withoutAgent = (raw) => JSON.stringify({ ...raw, agent: undefined });
 export function addAgentProviderText(text, provider, { makeDefault, mac = false }) {
   const base = text ?? formatConfigTemplate();
   const before = parseConfig(base, { mac });
+  // Stryker disable next-line LogicalOperator: parseConfig returns a config exactly when it has no errors
   if (before.errors.length || !before.config) {
     return { error: "config.toml does not parse now; fix it first (:config shows it)" };
   }
@@ -1558,6 +1564,7 @@ export function addAgentProviderText(text, provider, { makeDefault, mac = false 
   }
   const after = parseConfig(out, { mac });
   const first = after.errors[0];
+  // Stryker disable next-line LogicalOperator: parseConfig returns a config exactly when it has no errors
   if (first || !after.config) {
     const why = first ? `${first.path ? `${first.path}: ` : ""}${first.message}` : "";
     return { error: `config.toml does not parse with the provider added: ${why}` };
@@ -1570,6 +1577,7 @@ export function addAgentProviderText(text, provider, { makeDefault, mac = false 
     !added ||
     added.endpoint !== provider.endpoint ||
     added.model !== provider.model ||
+    // Stryker disable next-line ConditionalExpression: a new kind reads back as written, a known one matched by kind
     added.kind !== provider.kind ||
     (makeDefault && agent.default !== name) ||
     !rawBefore.ok ||
@@ -1605,6 +1613,7 @@ const LEADING_VAR = /^\$(?:\{(HOME|XDG_CONFIG_HOME)\}|(HOME|XDG_CONFIG_HOME)(?![
  *   `xdgConfigHome` unset, empty or relative means `~/.config`, as the XDG spec says
  * @returns {string | null} null for an empty argument (plain `:source`)
  */
+// Stryker disable next-line StringLiteral: any default that does not start with "/" means ~/.config, as "" does
 export function resolveSourcePath(arg, { home, xdgConfigHome = "", configDir }) {
   let p = arg.trim();
   if (!p) return null;
