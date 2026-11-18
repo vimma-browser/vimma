@@ -1550,6 +1550,9 @@ export const VimmaHost = {
     // A late reply (a busy page) must not press a key in, or run the fallback for, the tab or
     // pane focused since (docs/security/13-page-modes.md K6).
     if (browser && target && target !== browser) return;
+    // The frame asked: the Enter fallback goes only there, never to a frame the page focused
+    // while it answered (docs/security/13-page-modes.md K5).
+    const asked = Services.focus.focusedContentBrowsingContext;
     if (browser && (await VimmaActors.suggestion(browser, action.id, sameMode))) return;
     if (browser && this._contentBrowser(state) !== browser) return;
     if (!sameMode() || !key || state.win.closed) return;
@@ -1564,7 +1567,11 @@ export const VimmaHost = {
     const chord = parseKey(key);
     const command = browser && mode === "insert" ? this._editCommand(state, chord) : null;
     if (!command || state.keymap.unbinds(pageSite(state.keymap, browser), key)) return;
-    VimmaActors.edit(/** @type {MozTabBrowser} */ (browser), command);
+    VimmaActors.edit(
+      /** @type {MozTabBrowser} */ (browser),
+      command,
+      () => sameMode() && Services.focus.focusedContentBrowsingContext === asked,
+    );
   },
 
   /**
