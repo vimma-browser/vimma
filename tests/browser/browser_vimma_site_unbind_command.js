@@ -96,6 +96,10 @@ async function withPage(url, fn) {
  * @param {XULBrowserElement} browser
  */
 async function tReachesPage(browser) {
+  // A fresh record each time: a t an earlier call saw must not answer this one.
+  await SpecialPowers.spawn(browser, [], () => {
+    content.wrappedJSObject.vimmaKeys.length = 0;
+  });
   await focusContent(browser);
   const tabs = gBrowser.tabs.length;
   EventUtils.synthesizeKey("t");
@@ -105,7 +109,6 @@ async function tReachesPage(browser) {
   }
   await TestUtils.waitForCondition(() => gBrowser.tabs.length === tabs + 1, "t opened a tab");
   BrowserTestUtils.removeTab(gBrowser.selectedTab);
-  await recordPageKeys(browser);
   return false;
 }
 
