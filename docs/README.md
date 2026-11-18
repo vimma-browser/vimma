@@ -98,6 +98,7 @@ introduced the feature ([roadmap.md](roadmap.md)).
   [search-engines](specs/search-engines.md), [m7-a11y](specs/m7-a11y.md).
 - **Pages and features of Vimma's own:** [m5-about-vimma](specs/m5-about-vimma.md),
   [start-page](specs/start-page.md), [first-run-setup](specs/first-run-setup.md),
+  [setup-v2](specs/setup-v2.md),
   [bookmarks](specs/bookmarks.md), [bookmarklets](specs/bookmarklets.md),
   [bookmark-open](specs/bookmark-open.md),
   [downloads](specs/downloads.md),
