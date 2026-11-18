@@ -2236,6 +2236,7 @@ interface XPCOMInterfaces {
     readonly FOREGROUND_CHECK: number;
   };
   nsIUpdateManager: nsIJSIID<nsIUpdateManager>;
+  nsIWebBrowserChrome: nsIJSIID<nsIWebBrowserChrome>;
   // engine/docshell/base/nsIWebNavigation.idl: the load flags a bookmarklet's run passes.
   nsIWebNavigation: nsIJSIID<nsISupports> & {
     readonly LOAD_FLAGS_NONE: number;
@@ -2426,6 +2427,11 @@ interface nsIPropertyBag2 extends nsISupports {}
 // engine/xpcom/base/nsIInterfaceRequestor.idl
 interface nsIInterfaceRequestor extends nsISupports {
   getInterface<T>(iid: nsIJSIID<T>): T;
+}
+// engine/toolkit/components/browser/nsIWebBrowserChrome.idl: setLinkStatus sets the window's
+// link preview (the status panel), "" to clear it.
+interface nsIWebBrowserChrome extends nsISupports {
+  setLinkStatus(status: string): void;
 }
 // engine/xpcom/threads/nsIProcess.idl: runw runs `file` with UTF-16 arguments; `blocking` false
 // returns at once.

@@ -15,6 +15,7 @@
 /* global focusContent -- from head.js */
 /* global Client, tidyTask -- from head_vimma_control.js */
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
+/* global XULBrowserWindow -- a browser window global (browser.js) */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
 // Every click and submission now also asks each frame of the tab for card fields and the
@@ -301,6 +302,10 @@ addTidyTask(async function test_activate_never_follows_a_link_moved_elsewhere_or
     "the click does not follow a link moved after the question",
   );
   Assert.equal(tab.linkedBrowser.currentURI.spec, CLICK, "nothing loaded");
+  // The hover the mouse events began has ended (#1309): the window's link preview shows no URL
+  // of the agent's hidden tab. A round trip through the page lets what it sent arrive first.
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {});
+  Assert.equal(XULBrowserWindow.overLink, "", "the link preview shows no URL");
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);

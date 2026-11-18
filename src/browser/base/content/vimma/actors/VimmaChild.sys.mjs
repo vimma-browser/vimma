@@ -1001,11 +1001,30 @@ export class VimmaChild extends JSWindowActorChild {
       const buttons = type === "mousedown" ? 1 : 0;
       el.dispatchEvent(new win.MouseEvent(type, { ...init, buttons }));
     }
+    this.#leaveLink();
     if (!this.#onPage(el) || !still()) return false;
     // SVG elements have no click(): dispatch the click event for them.
     if (typeof html.click === "function") html.click();
     else el.dispatchEvent(new win.MouseEvent("click", init));
     return true;
+  }
+
+  /**
+   * Ends the link hover that #press's mouseover and the focus its mousedown gives a link began:
+   * both put the link's URL in the window's link preview (Element::GetEventTargetParentForLinks),
+   * where it stayed until another document loaded, since no pointer leaves the link (#1309).
+   * This is what a mouseout does there (nsDocShell::OnLeaveLink), without one: the page sees the
+   * pointer stay on the element, so a menu that opened on the hover stays open.
+   */
+  #leaveLink() {
+    try {
+      this.docShell?.treeOwner
+        ?.QueryInterface(Ci.nsIInterfaceRequestor)
+        .getInterface(Ci.nsIWebBrowserChrome)
+        .setLinkStatus("");
+    } catch {
+      // A frame being torn down has no tree owner left; nothing shows its link then.
+    }
   }
 
   /**

@@ -719,6 +719,14 @@ interface BrowserWindow {
   };
 }
 
+// engine/browser/base/content/browser.js (XULBrowserWindow): `overLink` is the URL the window's
+// link preview (the status panel) shows for the link under the pointer or focus, "" for none.
+interface BrowserWindow {
+  readonly XULBrowserWindow: {
+    readonly overLink: string;
+  };
+}
+
 // engine/browser/base/content/browser.js (a lazy getter, `new CustomizeMode(window)`) and
 // engine/browser/components/customizableui/CustomizeMode.sys.mjs: the window's customize mode.
 // Both return at once; "customizationready" and "aftercustomization" on gNavToolbox tell the end.

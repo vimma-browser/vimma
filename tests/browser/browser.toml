@@ -45,6 +45,7 @@ support-files = [
   "file_vimma_hints_frame.html",
   "file_vimma_hints_many.html",
   "file_vimma_hints_menu.html",
+  "file_vimma_hints_overlink.html",
   "file_vimma_consent.html",
 ]
 
