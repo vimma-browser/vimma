@@ -46,7 +46,8 @@ with `[ui] tabline` in `config.toml` or `:tabline`.
    (the numbers `alt+N`, `ctrl+b N` and `{N}gt` take). A private window lists its own tabs; the
    agent workspace lists its own. No other workspace's tab is ever listed.
 5. Each entry is the tab's number and its name: the tab's rename (`ctrl+b shift+t`) if it has one,
-   else its title, else its URL, cut to `[ui] tabline_width` columns (default 14) with `…`. A tab
+   else its title, else its URL, cut to `[ui] tabline_width` columns (default 14) with `…`: a
+   tab with no title shows its URL as its name, as the side panel does. A tab
    playing sound ends with `♪`. A tab shown in a pane of the shown split has `▪` after its number.
    No favicons.
 6. The current tab is drawn as a solid block in bold, as the side panel's active row, with its
@@ -56,14 +57,17 @@ with `[ui] tabline` in `config.toml` or `:tabline`.
    each side. Numbers of two and three digits (tab 12, tab 120) are drawn whole and counted in
    the fit, in the entries and in the marks.
 8. `gb` in normal mode puts a hint label (from `[modal] hint_chars`) before every tab in the line
-   and shows the line if it was not drawn. Every tab gets a label: entries shrink to fit, and
-   while some still do not fit, typing the first character of a label scrolls the line to the
-   tabs left. Labels are the link hints' prefix-free labels over the same alphabet, so with more
-   tabs than letters they take two letters or more (30 tabs over the default nine letters take
-   two, 120 take three), and a tab scrolled out of view has one too. Typing a whole label goes
-   to that tab and removes the labels. `Esc`, or any key
-   that is not the next character of a label, removes the labels and does nothing else. The
-   mode badge says `HINT` meanwhile.
+   and shows the line if it was not drawn. Labels are the link hints' prefix-free labels over the
+   same alphabet, drawn in the link hints' case, so with more tabs than letters they take two
+   letters or more (30 tabs over the default nine letters take two, 120 take three). Every tab
+   gets a label: when they do not all fit, the names go first, then the numbers and marks, so
+   each tab is drawn as its label alone. Each letter typed narrows the line to the tabs whose
+   label it starts, which then show the letters still to type; with 40 columns or more and the
+   default nine hint characters, every tab is in view before its last letter, including a tab that
+   was scrolled out of view. A letter typed with Shift or Caps Lock is that letter. Typing a
+   whole label goes to that tab and removes the labels. `Backspace` takes back the last letter,
+   and with none typed removes the labels. `Esc`, or any other key that is not the next letter
+   of a label, removes the labels and does nothing else. The mode badge says `HINT` meanwhile.
 9. `{N}gb` goes to tab `N` at once, with no labels, as `{N}gt` does, for any `N` (`12gb`,
    `120gb`). A number past the last tab moves nothing and the notice says so:
    `no tab 12: this workspace has 5 tabs`.
@@ -225,16 +229,32 @@ the status bar's way of measuring and drawing. The host hands the line the side 
 hint_chars)` in tab order, and the host reports mode `hint` while the session lasts, so the
     mode badge, `KEY_KEEPING_MODES` and the permission prompts' stand-back work unchanged.
     Every key goes to the session first and is consumed: a label's next character narrows, a
-    whole label goes to that tab, and any other key, Esc included, only cancels. Rejected:
+    whole label goes to that tab, `Backspace` takes back the last character (or cancels with
+    none), and any other key, Esc included, only cancels. A letter keeps its meaning with Shift
+    or Caps Lock, which deliver it lower case with `shift` set (`keys.mjs` normaliseKey), as
+    `hintKey` reads it, so a user with Caps Lock on can still jump. Backspace erases rather
+    than cancels because it does so in link hints, and the same hand habit should work in both.
+    The labels take the link hints' case from the same rule (core `tabLabelCase`, over
+    `hintLabelCase`), upper case by CSS `text-transform` with the text left as typed, so a
+    change to how hints are drawn reaches both.
+    Rejected:
     page hints' rule of ignoring other keys (`hintKey`), because the session sits in a row the
     user is not looking at for long, and a stray key should end it rather than leave it waiting;
     passing the cancelling key on to its binding, because a mistyped label would then run an
     unrelated command.
-13. **Labels reach every tab.** While labels show, entries shrink their names (down to the label
-    and the number) until every tab fits; if even that does not fit, the line keeps the window
-    around the current tab, and after each typed character it fits again over the tabs whose
-    labels still match. So every tab can be reached in one session. Rejected: labels only on the
-    visible entries, because a tab scrolled out of view would then need a second step.
+13. **Labels reach every tab, as labels alone if need be.** While labels show, the names shrink
+    first (the widest width at which every tab fits); if even names of nothing do not fit, each
+    tab is drawn as its label alone, with no number or mark; only if that does not fit either
+    is a run of tabs drawn, starting at the first tab whose label still matches, with the
+    `n›` count. Labels go shortest first in tab order (`hintLabels`), so the tabs one letter
+    from being chosen are always the first ones listed and so always in view: at 40 columns
+    and more with the default nine hint characters (a run of 3 columns per hint
+    character and 5 for the count), every tab is in view before its last letter.
+    The labels show only the letters still to type, since the typed ones have already narrowed
+    the line; the typed letters drawn underlined (the link hints' way) were too faint to read
+    at the bar's 12 px size. Rejected: labels only on the visible entries, because a tab
+    scrolled out of view would then need a second step; keeping the run around the current
+    tab while labelling, because it could hide the tabs one letter away.
 14. **`gb` shows a hidden line for the session.** With the line off, `gb` draws it while its
     labels show and removes it after, so the key works under the default `"off"` and costs no
     row until used. Rejected: refusing with a notice, because `gb` would then do nothing out of
@@ -259,7 +279,8 @@ hint_chars)` in tab order, and the host reports mode `hint` while the session la
     is not a live region, because re-reading the list on every title change would bury
     everything else a screen reader says. After a `gb` or `{N}gb` jump the status bar's live
     region says "tab N of M", the new place, which the status bar's own policy allows since it
-    is no page text. `♪` and `▪` have their words ("playing sound", "in a pane") beside them for
+    is no page text; the same words twice in a row get a no-break space at the end, so that the
+    second jump is said too. `♪` and `▪` have their words ("playing sound", "in a pane") beside them for
     assistive technology, as the status bar's glyphs do.
 19. **Theme and font from Vimma's tokens.** `tabline.css` uses only `--vimma-*` tokens and the
     status bar's font and height (`--vimma-font`, 12 px, 20 px), so the line follows the
@@ -268,9 +289,15 @@ hint_chars)` in tab order, and the host reports mode `hint` while the session la
     the toolbox in browser full screen, because it is part of the toolbox.
 20. **Rendering costs one frame at most.** The line redraws at most once per animation frame,
     on the tab events the status bar listens to, the host's state changes, the window's
-    workspace changes and the pref; its width and the column width come from a
-    `ResizeObserver`, so the render path reads no layout. A redraw that would draw the same
-    entries touches no DOM.
+    workspace changes and the pref. A fit is linear in the tabs: each name is measured once
+    (printable ASCII without grapheme segmenting), the names' shrink width is found by
+    bisection, the run of tabs in view grows with a running sum, and only the names drawn are
+    cut, so 300 tabs with labels fit in well under a millisecond. With the line off, or under
+    `"auto"` with one tab, and no labels showing, a redraw reads only the window's tab count
+    and builds no rows. Its width is the toolbox's and its column a probe beside it, both from
+    a `ResizeObserver` that keeps the last width while the toolbox is collapsed, so the render
+    path reads no layout and `gb` on a line that is off fits at the real width at once. A
+    redraw that would draw the same entries touches no DOM.
 
 ### Data flow
 
@@ -292,9 +319,11 @@ hint_chars)` in tab order, and the host reports mode `hint` while the session la
   with `textContent`, never as markup, cut to a fixed width, and drawn in the bar's font and
   colours, so a page cannot style or script them. The current tab is marked by Vimma's own
   colours, not by anything the page sets.
-- The line never draws a URL, so it is not an origin indicator and does not weaken the status
-  bar's (docs/security/06-chrome-ui-rendering.md C3): the status bar keeps the URL segment even
-  with `[statusbar] tab = false`.
+- A URL shows in the line only as the name of a tab with no title, cut to `tabline_width` like
+  any name. The line is not an origin indicator and makes no claim about where a page comes
+  from; the status bar's URL segment stays the origin indicator
+  (docs/security/06-chrome-ui-rendering.md C3), and it is kept even with `[statusbar] tab =
+false`.
 - It lists only the window's current workspace's tabs, from the same model as the side panel, so
   an agent's tabs show only while the user is in the agent workspace, and a private window shows
   only its own tabs.
@@ -319,7 +348,13 @@ vitest (`packages/vimma-core/test/tabline.test.ts`):
   line holding only the matching tabs after each letter; with labels, names shrink before
   any tab is hidden; after a typed character, only matching tabs are fitted.
 - `tabLabelKey`: a one-character label selects; a two-character label narrows then selects;
-  Esc, a non-label character, a modified chord and Backspace cancel.
+  Shift letters (Caps Lock) select and narrow as plain ones; Backspace takes back a letter and
+  with none typed cancels; Esc, a non-label character, a ctrl or alt chord and a digit cancel.
+- Narrow lines: nine tabs at 30 columns draw as labels alone; 30 and 120 tabs at 40 and 60
+  columns have every tab in view before its last letter; a property over up to 300 tabs, any
+  width and any typed prefix: only matching tabs, counts add up, never wider than the line.
+- A complexity check (`budget.ts`): fits of 3000 tabs, with and without labels, run within a
+  budget that a fit quadratic in the tabs misses by far.
 - config: `[ui] tabline` accepts the three words and refuses others; `tabline_width` bounds;
   `[statusbar] tab` boolean; an unknown `[statusbar]` key is an error; defaults.
 - statusbar: `statusTab: false` drops `tab` and `title`, keeps `url`.
@@ -337,7 +372,8 @@ mochitest (`tests/browser/browser_vimma_tabline.js`):
   changes the cut; `[statusbar] tab = false` drops the status bar's tab segment.
 - `tabline_command_toggles`: `:tabline` hides a drawn line in every window and shows it again.
 - `gb_labels_and_jumps`, `gb_cancels_on_another_key`, `count_gb_jumps`: labels on every entry,
-  a label key selects that tab and removes the labels, `x` cancels without closing a tab,
+  a label key typed with Shift selects that tab and removes the labels, `x`, `Esc` and
+  `Backspace` with nothing typed cancel without closing a tab,
   `4gb` selects tab 4.
 - `gb_with_the_line_off`: the line shows for the session and goes after it.
 - `overflow_keeps_the_current_tab`, once with 30 tabs and once with 120: the current tab's entry
@@ -346,7 +382,10 @@ mochitest (`tests/browser/browser_vimma_tabline.js`):
   several letters, by which a tab out of view scrolls in and is reached.
 - `count_gb_jumps` also checks the notice for a number past the last tab.
 - `private_and_agent_workspaces_list_their_own`: a private window and the agent workspace list
-  only their own tabs.
+  only their own tabs, and back in the home workspace with an agent tab still open, the line
+  lists none of the agent's tabs.
+- `a_title_is_text_never_markup`: a page titled `<img src=x onerror=...><b>x</b>` shows that
+  text, cut, with no element made from it.
 - `split_marks_pane_tabs`: two tabs shown together carry `▪`.
 - `never_takes_focus`: focus stays in the page after drawing, labelling and a click on the line.
 
@@ -357,7 +396,7 @@ mochitest (`tests/browser/browser_vimma_tabline.js`):
 - `docs/bindings.md` and `defaults.toml`: regenerated (`npm run gen-docs`) for `gb`, `:tabline`
   and the new `[ui]` and `[statusbar]` lines in the config template.
 - `CHANGELOG.md`: written by release-please from the commit,
-  `feat(ui): an always-visible tab line with gb to jump to a tab`.
+  `feat(ui): an optional tab line, with gb to jump to a tab`.
 
 ## Delivery
 
