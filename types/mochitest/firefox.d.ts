@@ -721,10 +721,12 @@ interface BrowserWindow {
 }
 
 // engine/browser/base/content/browser.js (XULBrowserWindow): `overLink` is the URL the window's
-// link preview (the status panel) shows for the link under the pointer or focus, "" for none.
+// link preview (the status panel) shows for the link under the pointer or focus, "" for none;
+// setOverLink sets it as a hover does.
 interface BrowserWindow {
   readonly XULBrowserWindow: {
     readonly overLink: string;
+    setOverLink(url: string): void;
   };
 }
 

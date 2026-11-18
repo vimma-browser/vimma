@@ -335,6 +335,8 @@ add_task(async function following_a_link_leaves_no_url_in_the_link_preview() {
     const loaded = BrowserTestUtils.browserLoaded(browser, false, (u) => u.endsWith("?to=away"));
     type(await pageLabelFor(browser, "away"));
     await loaded;
+    // A top-level load clears the preview by itself (browser.js onLocationChange): this guards
+    // the ordinary case, the two links above are the ones the fix is for.
     Assert.equal(XULBrowserWindow.overLink, "", "away: the link preview shows no URL");
   });
 });

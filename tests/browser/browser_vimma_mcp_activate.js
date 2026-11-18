@@ -106,6 +106,7 @@ async function putBack() {
   for (const c of clients.splice(0)) c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);
   AgentDrive._linkTtlMs = null;
+  XULBrowserWindow.setOverLink("");
   if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
@@ -187,6 +188,9 @@ addTidyTask(async function test_activate_clicks_a_button_in_a_background_tab() {
   const before = { workspace: activeName(), selected: gBrowser.selectedTab };
   const c = await agentClient("claude-code");
   const by = await labels(c, tab);
+  // The user's own hover preview, as the pointer on a link in their tab shows it.
+  XULBrowserWindow.setOverLink("https://example.net/hovered");
+  const shown = XULBrowserWindow.overLink;
   const id = c.request("agent-activate", { tab: idOf(tab), label: by["Add to list"] });
   const q = await question();
   Assert.deepEqual(
@@ -197,6 +201,10 @@ addTidyTask(async function test_activate_clicks_a_button_in_a_background_tab() {
   AgentGate.answer(q.id, { kind: "once" });
   const r = await c.response(id);
   Assert.ok(r.ok, "vimma_activate runs");
+  // A press on a button, no link, leaves the user's preview alone (#1309).
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {});
+  Assert.equal(XULBrowserWindow.overLink, shown, "the user's link preview is unchanged");
+  XULBrowserWindow.setOverLink("");
   Assert.deepEqual(
     [r.result.url, r.result.title, r.result.navigated, r.result.loading],
     [CLICK, "Click agent fixture", false, false],
