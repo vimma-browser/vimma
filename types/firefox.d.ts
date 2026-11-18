@@ -475,6 +475,11 @@ interface nsIDOMWindowUtils {
   flushLayoutWithoutThrottledAnimations(): void;
   /** True while an event the user caused (a key, a click) is being handled. */
   readonly isHandlingUserInput: boolean;
+  /**
+   * With true: gives the window's document transient user activation and handles user input
+   * until the helper's destruct() (nsIJSRAIIHelper).
+   */
+  setHandlingUserInput(handlingInput: boolean): { destruct(): void };
   nodesFromRect(
     x: number,
     y: number,
@@ -2262,6 +2267,7 @@ interface XPCOMInterfaces {
     readonly FOREGROUND_CHECK: number;
   };
   nsIUpdateManager: nsIJSIID<nsIUpdateManager>;
+  nsIWebBrowserChrome: nsIJSIID<nsIWebBrowserChrome>;
   // engine/docshell/base/nsIWebNavigation.idl: the load flags a bookmarklet's run passes.
   nsIWebNavigation: nsIJSIID<nsISupports> & {
     readonly LOAD_FLAGS_NONE: number;
@@ -2453,6 +2459,11 @@ interface nsIPropertyBag2 extends nsISupports {}
 interface nsIInterfaceRequestor extends nsISupports {
   getInterface<T>(iid: nsIJSIID<T>): T;
 }
+// engine/toolkit/components/browser/nsIWebBrowserChrome.idl: setLinkStatus sets the window's
+// link preview (the status panel), "" to clear it.
+interface nsIWebBrowserChrome extends nsISupports {
+  setLinkStatus(status: string): void;
+}
 // engine/xpcom/threads/nsIProcess.idl: runw runs `file` with UTF-16 arguments; `blocking` false
 // returns at once.
 interface nsIProcess extends nsISupports {
@@ -2499,6 +2510,8 @@ interface nsITextInputProcessor extends nsISupports {
   beginInputTransaction(win: Window, callback: (...args: unknown[]) => boolean): boolean;
   keydown(event: KeyboardEvent, flags?: number): number;
   keyup(event: KeyboardEvent, flags?: number): boolean;
+  /** null: start again with no modifier held. */
+  shareModifierStateOf(other: nsITextInputProcessor | null): void;
 }
 // engine/xpcom/base/nsIConsoleMessage.idl and engine/dom/bindings/nsIScriptError.idl: a console
 // message; a script error or warning's `flags` say which (scriptErrorLevel in core).

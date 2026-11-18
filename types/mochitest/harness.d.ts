@@ -369,6 +369,8 @@ declare function setToolbarVisibility(
 declare var gTabsPanel: BrowserWindow["gTabsPanel"];
 // engine/browser/base/content/browser.js (a lazy getter on the window: CustomizeMode.sys.mjs).
 declare var gCustomizeMode: BrowserWindow["gCustomizeMode"];
+// engine/browser/base/content/browser.js (`var XULBrowserWindow`).
+declare var XULBrowserWindow: BrowserWindow["XULBrowserWindow"];
 // engine/browser/base/content/browser-sync.js (`var gSync`): FXA_ENABLED is a lazy getter of the
 // pref identity.fxaccounts.enabled; updateCTAPanel shows or hides the account panel's promotions.
 declare var gSync: { readonly FXA_ENABLED: boolean; updateCTAPanel(anchor?: Element): void };

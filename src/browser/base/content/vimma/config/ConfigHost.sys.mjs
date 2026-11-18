@@ -42,6 +42,7 @@ import { ThemeHost } from "../ui/theme-host.mjs";
 import { BookmarksToolbar } from "../ui/bookmarks-toolbar.mjs";
 import { Toolbar } from "../ui/toolbar.mjs";
 import { PanelNumbers } from "../ui/side-panel.mjs";
+import { TabLine, TabLineConfig } from "../ui/tabline.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
 import { WorkspaceRouter } from "../workspaces/WorkspaceRouter.sys.mjs";
@@ -145,6 +146,8 @@ const bookmarksFile = new BookmarksFileImpl({
     showErrors();
   },
 });
+/** `[ui] tabline` of the last config applied, null before the first (tab-line decision 5). */
+let appliedTabline = /** @type {string | null} */ (null);
 
 /**
  * @param {string} path
@@ -199,6 +202,12 @@ function apply(next, text) {
     appliedToolbar = config.ui.toolbar;
     Toolbar.setHidden(config.ui.toolbar === "hidden");
   }
+  // docs/specs/tab-line.md decision 5: as `[ui] toolbar`, so `:tabline` lasts until the line changes.
+  if (config.ui.tabline !== appliedTabline) {
+    appliedTabline = config.ui.tabline;
+    TabLine.setting = config.ui.tabline;
+  }
+  TabLineConfig.set({ width: config.ui.tablineWidth, statusTab: config.statusbar.tab });
   // docs/specs/pdf-mode.md decision 19: Vimma's outline beside a PDF, applied as `[ui] toolbar`
   // is, at startup and when the line changes.
   if (config.ui.pdfOutline !== appliedPdfOutline) {

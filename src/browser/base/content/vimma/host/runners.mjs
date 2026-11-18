@@ -11,6 +11,7 @@
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { describeAction } from "../core/actions.mjs";
 import {
+  noTabText,
   parseBookmarksToolbarCommand,
   parseCommandLine,
   parseSettingsCommand,
@@ -19,6 +20,7 @@ import {
 import { parsePrivateCommand } from "../core/privatews.mjs";
 import { findWorkspace } from "../core/workspaces.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
+import { TabLine } from "../ui/tabline.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { sayAddon, openAddonByName } from "./addon-ops.mjs";
 import { runAgentCommand } from "./agent-chat-ops.mjs";
@@ -60,7 +62,15 @@ import {
 import { restartAsking } from "./restart.mjs";
 import { runRoute } from "./route-ops.mjs";
 import { runSiteKeys } from "./site-keys-ops.mjs";
-import { closeTab, newTab, openOrSay, renameTab, restoreTab, selectTab } from "./tab-ops.mjs";
+import {
+  closeTab,
+  newTab,
+  openOrSay,
+  renameTab,
+  restoreTab,
+  selectTab,
+  selectableTabs,
+} from "./tab-ops.mjs";
 import { setBookmarksToolbar, setToolbar } from "./toolbar-ops.mjs";
 import { checkUpdates } from "./update-ui.mjs";
 import {
@@ -297,7 +307,19 @@ export function hostRunners(host, page) {
     "hint.cancel": (/** @type {WindowState} */ s) => host._cancelHints(s),
     "tab.new": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) =>
       text ? openOrSay(s, text, "tab") : newTab(s.win),
-    "tab.next": (/** @type {WindowState} */ s, /** @type {Action} */ a) => selectTab(s.win, a),
+    // `:tab N` passes N as typed: a typed command that does nothing reads as a typo, so it says
+    // there is no such tab; `{N}gt` stays silent, as in Vim (m1-cmdline, issue #1302).
+    "tab.next": (
+      /** @type {WindowState} */ s,
+      /** @type {Action} */ a,
+      /** @type {string | undefined} */ text,
+    ) => {
+      if (selectTab(s.win, a) || !text) return;
+      // Only a number past the last tab is "no tab N"; anything else that selected nothing (no
+      // tabs at all) is not the user's typo.
+      const length = selectableTabs(s.win).length;
+      if (length > 0 && (a.count ?? 0) > length) s.notice.show(noTabText(text, length));
+    },
     "tab.previous": (/** @type {WindowState} */ s, /** @type {Action} */ a) => selectTab(s.win, a),
     "tab.goto": (/** @type {WindowState} */ s, /** @type {Action} */ a) => selectTab(s.win, a),
     // Firefox's alt+9: the workspace's last visible tab (docs/specs/firefox-keys.md).
@@ -468,6 +490,11 @@ export function hostRunners(host, page) {
     "toolbar.toggle": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) =>
       setToolbar(s, parseToolbarCommand(text)),
     "toolbar.show": (/** @type {WindowState} */ s) => setToolbar(s, { kind: "show" }),
+    // docs/specs/tab-line.md: gb's labels, or with a count that tab; `:tabline` in every window.
+    "tabline.hint": (/** @type {WindowState} */ s, /** @type {Action} */ a) =>
+      host._tabLineHint(s, a),
+    "tabline.toggle": (/** @type {WindowState} */ s) =>
+      s.notice.show(TabLine.toggle(s.win) ? "tab line shown" : "tab line hidden"),
     "toolbar.hide": (/** @type {WindowState} */ s) => setToolbar(s, { kind: "hide" }),
     "panel.down": panelAction,
     "panel.up": panelAction,

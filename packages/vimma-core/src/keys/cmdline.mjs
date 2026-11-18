@@ -20,6 +20,7 @@ import { LAYOUTS } from "../panes/layouts.mjs";
  * @property {string} action       the action id, run without text (or with it, absent textAction)
  * @property {string} [textAction] the action id when text is given, if it differs
  * @property {string} [text]       fixed text the action always runs with (`:about`)
+ * @property {boolean} [exact]     its name and aliases run only typed in full, never abbreviated
  * @property {string} description
  */
 /** @typedef {{ code: string, message: string, suggestions: readonly string[] }} CommandError */
@@ -54,10 +55,10 @@ import { LAYOUTS } from "../panes/layouts.mjs";
  * @param {CommandDef["argument"]} argument
  * @param {string} action
  * @param {string} description
- * @param {{ aliases?: string[], textAction?: string, text?: string }} [extra]
+ * @param {{ aliases?: string[], textAction?: string, text?: string, exact?: boolean }} [extra]
  * @returns {CommandDef}
  */
-const cmd = (name, argument, action, description, { aliases = [], textAction, text } = {}) =>
+const cmd = (name, argument, action, description, { aliases = [], textAction, text, exact } = {}) =>
   Object.freeze({
     name,
     aliases: Object.freeze(aliases),
@@ -65,6 +66,7 @@ const cmd = (name, argument, action, description, { aliases = [], textAction, te
     action,
     ...(textAction ? { textAction } : {}),
     ...(text ? { text } : {}),
+    ...(exact ? { exact } : {}),
     description,
   });
 
@@ -77,6 +79,12 @@ export const COMMANDS = Object.freeze([
   cmd("open", "required", "page.open", "Open a URL in this tab"),
   cmd("tabnew", "optional", "tab.new", "New tab, optionally opening a URL"),
   cmd("tabrename", "optional", "tab.rename", "Rename tab (without a name: prompt)"),
+  // Issue #1302: `{N}gt` as a command, Vim's `:tabnext N` its alias. Only in full, so `:tabn`
+  // stays `:tabnew` and `:ta` stays ambiguous, as they were before `:tab` came.
+  cmd("tab", "optional", "tab.next", "Go to tab N of this workspace, $ the last (alone: next)", {
+    aliases: ["tabnext"],
+    exact: true,
+  }),
   cmd("q", "none", "pane.close", "Close pane (the last one closes the tab)", {
     aliases: ["quit"],
   }),
@@ -130,6 +138,8 @@ export const COMMANDS = Object.freeze([
     textAction: "grep.open",
   }),
   cmd("sidebar", "none", "sidebar.toggle", "Open / close the side panel"),
+  // docs/specs/tab-line.md decision 6: shows the line where it is not drawn, else hides it.
+  cmd("tabline", "none", "tabline.toggle", "Show / hide the tab line"),
   // docs/specs/toolbar-toggle.md decision 2: show / hide set a known state (vimma-ctl).
   cmd("toolbar", "optional", "toolbar.toggle", "Show / hide the toolbar (show | hide)"),
   // docs/specs/bookmarks.md: with a path, files the page without the prompt.
@@ -283,6 +293,32 @@ export function parseBookmarksToolbarCommand(text) {
   return { kind: "refuse", text: near ? `${refusal}: did you mean "${near}"?` : refusal };
 }
 
+/** The one argument `:tab` refuses with, whatever was typed. */
+const TAB_REFUSAL = ":tab takes a tab number (1, 2, …) or $";
+
+/**
+ * `:tab [N|$]`: tab N of the workspace as `{N}gt` runs it, the last tab as `select_last_tab`,
+ * the next tab without a number. The typed text goes along, so the host can say when there is
+ * no tab N (`noTabText`), which `{N}gt` leaves unsaid as Vim does.
+ * @param {string} text  the argument, trimmed
+ * @returns {CommandResult}
+ */
+function tabCommand(text) {
+  if (!text) return runResult("tab", { id: "tab.next" });
+  if (text === "$") return runResult("tab", { id: "tab.goto_last" }, text);
+  // Six digits at most, as `:{n}`: a longer number is no tab count anyone has.
+  if (/^[1-9]\d{0,5}$/.test(text))
+    return runResult("tab", { id: "tab.next", count: Number(text) }, text);
+  return fail("invalid-argument", TAB_REFUSAL);
+}
+
+/**
+ * What `:tab N` says when the workspace has fewer than N tabs.
+ * @param {string} typed  N as typed
+ * @param {number} length  the workspace's tabs
+ */
+export const noTabText = (typed, length) => `no tab ${typed} (this workspace has ${length})`;
+
 /** @type {Map<string, CommandDef>} */
 const byWord = new Map();
 for (const c of COMMANDS) for (const w of [c.name, ...c.aliases]) byWord.set(w, c);
@@ -387,7 +423,9 @@ const MAX_SUGGEST = 2 * Math.max(...ALL_WORDS.map((w) => w.length));
 const commandsWithPrefix = (word, hidden = /** @type {readonly string[]} */ ([])) => [
   ...new Set(
     [...byWord]
-      .filter(([w, c]) => w.startsWith(word) && !idsOf(c).some((id) => hidden.includes(id)))
+      .filter(
+        ([w, c]) => w.startsWith(word) && !c.exact && !idsOf(c).some((id) => hidden.includes(id)),
+      )
       .map(([, c]) => c),
   ),
 ];
@@ -457,6 +495,7 @@ export function parseCommandLine(line, { hidden = [] } = {}) {
   if (command.argument === "required" && !text) {
     return fail("missing-argument", `:${command.name} needs an argument`);
   }
+  if (command.name === "tab") return tabCommand(raw);
   const id = text && command.textAction ? command.textAction : command.action;
   return runResult(command.name, { id }, command.text ?? text);
 }
@@ -569,6 +608,38 @@ function argumentCandidates(command, kind, text, names) {
 }
 
 /**
+ * `:tab ` lists the workspace's tabs by number, each with its title (`args.tab`, in tab order):
+ * digits keep the numbers they begin, other text the titles it matches fuzzily, best first.
+ * @param {string} command  as typed (`tab`, `tabnext`)
+ * @param {string} text
+ * @param {readonly string[]} titles
+ * @returns {Candidate[]}
+ */
+function tabCandidates(command, text, titles) {
+  const t = text.trim();
+  const numbered = titles.map((title, i) => ({ n: String(i + 1), title }));
+  const shown = /^\d+$/.test(t)
+    ? numbered.filter((r) => r.n.startsWith(t))
+    : t
+      ? numbered
+          .flatMap((r) => {
+            const m = scoreField(r.title, t);
+            return m ? [{ r, score: m.score }] : [];
+          })
+          .sort((a, b) => b.score - a.score)
+          .map((x) => x.r)
+      : numbered;
+  return shown.map(({ n, title }) =>
+    Object.freeze({
+      value: `${command} ${n}`,
+      kind: /** @type {const} */ ("argument"),
+      description: title,
+      label: n,
+    }),
+  );
+}
+
+/**
  * `:open @g` → `open @gh ` (search-engines decision 11): the aliases starting with the one word
  * typed, each with its engine, the words to follow after the space.
  * @param {string} command
@@ -606,6 +677,11 @@ export function completeCommandLine(line, { limit = 20, args = {}, hidden = [] }
   const word = (m?.[1] ?? "").toLowerCase();
   if (m?.[2]) {
     const command = byWord.get(word)?.name;
+    if (command === "tab") {
+      const text = rest.slice(/** @type {string} */ (m[1]).length + 1);
+      const titles = /** @type {readonly string[]} */ (args.tab ?? []);
+      return { word, candidates: tabCandidates(word, text, titles).slice(0, limit) };
+    }
     const spec = command && Object.hasOwn(ARGUMENT_KINDS, command) ? ARGUMENT_KINDS[command] : null;
     const names =
       spec && Object.hasOwn(args, spec.names)

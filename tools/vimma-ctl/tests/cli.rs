@@ -192,6 +192,16 @@ fn stderr(o: &Output) -> String {
 }
 
 #[test]
+fn send_keys_says_when_a_key_opened_a_dialog() {
+    let server = Server::answering(
+        r#"{"type":"response","id":1,"ok":true,"result":{"sent":1,"dialog":true}}"#,
+    );
+    let out = vimma_ctl(&server.profile, &["send-keys", "x"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert_eq!(stdout(&out), "dialog open\n");
+}
+
+#[test]
 fn authenticates_and_sends_keys() {
     let server = Server::answering(r#"{"type":"response","id":1,"ok":true,"result":{"sent":2}}"#);
     let out = vimma_ctl(&server.profile, &["send-keys", "ctrl+b", "c"]);

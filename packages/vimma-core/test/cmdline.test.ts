@@ -13,6 +13,7 @@ import {
   parseBookmarksToolbarCommand,
   parseSettingsCommand,
   cmdlineArrow,
+  noTabText,
 } from "../src/keys/cmdline.mjs";
 import { ACTIONS, getAction } from "../src/keys/actions.mjs";
 import type { History } from "../src/keys/cmdline.mjs";
@@ -90,6 +91,9 @@ describe("parseCommandLine: the Vim-style commands", () => {
     [":grep retry budget", run("grep", "grep.open", { text: "retry budget" })],
     [":live_grep", run("live_grep", "grep.open")],
     [":sidebar", run("sidebar", "sidebar.toggle")],
+    // docs/specs/tab-line.md decision 6: shows or hides the tab line until restart.
+    [":tabline", run("tabline", "tabline.toggle")],
+    [":toggle_tabline", run("toggle_tabline", "tabline.toggle")],
     [":map", run("map", "help.show")],
     [":help", run("help", "help.show")],
     [":h", run("help", "help.show")],
@@ -269,11 +273,18 @@ describe("completeCommandLine", () => {
   const values = (text: string, opts?: { limit?: number }) =>
     completeCommandLine(text, opts).candidates.map((c) => c.value);
 
-  test("tab → tabnew, tabrename, tabsearch first, then actions", () => {
+  test("tab → tab itself, then the other tab commands, then actions", () => {
     const v = values(":tab");
-    expect(v.slice(0, 3)).toEqual(["tabnew", "tabrename", "tabsearch"]);
+    expect(v.slice(0, 6)).toEqual([
+      "tab",
+      "tabnew",
+      "tabrename",
+      "tabnext",
+      "tabsearch",
+      "tabline",
+    ]);
     expect(completeCommandLine(":tab").word).toBe("tab");
-    expect(completeCommandLine(":tab").candidates[3]?.kind).toBe("action");
+    expect(completeCommandLine(":tab").candidates[6]?.kind).toBe("action");
   });
 
   test("wsp → wsprev", () => {
@@ -661,8 +672,8 @@ describe("parseCommandLine: messages and edges", () => {
   test("an ambiguous abbreviation lists its commands", () => {
     expect(errorOf("ta")).toEqual({
       code: "ambiguous-command",
-      message: 'ambiguous command "ta": tabnew, tabrename, tabsearch',
-      suggestions: ["tabnew", "tabrename", "tabsearch"],
+      message: 'ambiguous command "ta": tabnew, tabrename, tabsearch, tabline',
+      suggestions: ["tabnew", "tabrename", "tabsearch", "tabline"],
     });
   });
 
@@ -867,5 +878,94 @@ describe("Up / Down: the completion list or history", () => {
   test("a one-row list: Down stays on it, Up leaves", () => {
     expect(cmdlineArrow(at("tabnew", 1, 0), 1)).toEqual({ kind: "select", index: 0 });
     expect(cmdlineArrow(at("tabnew", 1, 0), -1)).toEqual({ kind: "leave" });
+  });
+});
+
+describe(":tab N and :tabnext N (#1302)", () => {
+  const tabRun = (command: string, action: object, text?: string) => ({
+    kind: "run",
+    command,
+    action,
+    ...(text !== undefined ? { text } : {}),
+  });
+
+  test("a number goes to that tab, as {N}gt does", () => {
+    expect(parseCommandLine(":tab 12")).toEqual(tabRun("tab", { id: "tab.next", count: 12 }, "12"));
+    expect(parseCommandLine("tab 1")).toEqual(tabRun("tab", { id: "tab.next", count: 1 }, "1"));
+  });
+
+  test(":tabnext N, Vim's form, is the same command", () => {
+    expect(parseCommandLine(":tabnext 3")).toEqual(
+      tabRun("tab", { id: "tab.next", count: 3 }, "3"),
+    );
+  });
+
+  test("$ goes to the last tab", () => {
+    expect(parseCommandLine(":tab $")).toEqual(tabRun("tab", { id: "tab.goto_last" }, "$"));
+    expect(parseCommandLine(":tabnext $")).toEqual(tabRun("tab", { id: "tab.goto_last" }, "$"));
+  });
+
+  test("without a number the next tab, as gt and Vim's :tabnext", () => {
+    expect(parseCommandLine(":tab")).toEqual(tabRun("tab", { id: "tab.next" }));
+    expect(parseCommandLine(":tabnext")).toEqual(tabRun("tab", { id: "tab.next" }));
+  });
+
+  test("zero, a word or a second number is refused", () => {
+    for (const line of [":tab 0", ":tab x", ":tab 1 2", ":tab -1", ":tab 3x", ":tabnext 0"]) {
+      expect(errorOf(line)).toEqual({
+        code: "invalid-argument",
+        message: ":tab takes a tab number (1, 2, …) or $",
+        suggestions: [],
+      });
+    }
+  });
+
+  test("a number is at most six digits, as :{n} is", () => {
+    expect(parseCommandLine(":tab 999999")).toEqual(
+      tabRun("tab", { id: "tab.next", count: 999999 }, "999999"),
+    );
+    expect(errorOf(":tab 1234567")).toEqual({
+      code: "invalid-argument",
+      message: ":tab takes a tab number (1, 2, …) or $",
+      suggestions: [],
+    });
+  });
+
+  test("the abbreviations typed before :tab came keep their meaning", () => {
+    expect(parseCommandLine(":tabn")).toEqual(run("tabnew", "tab.new"));
+    expect(parseCommandLine(":tabne x")).toEqual(run("tabnew", "tab.new", { text: "x" }));
+    expect(errorOf(":ta").code).toBe("ambiguous-command");
+    expect(parseCommandLine(":tabs")).toEqual(run("tabsearch", "goto.picker"));
+    expect(parseCommandLine(":ts x")).toEqual(run("tabsearch", "goto.picker", { text: "x" }));
+    expect(parseCommandLine(":b")).toEqual(run("tabsearch", "goto.picker"));
+    expect(parseCommandLine(":tabr x")).toEqual(run("tabrename", "tab.rename", { text: "x" }));
+  });
+
+  test("out of range says how many tabs the workspace has", () => {
+    expect(noTabText("12", 4)).toBe("no tab 12 (this workspace has 4)");
+    expect(noTabText("2", 1)).toBe("no tab 2 (this workspace has 1)");
+  });
+
+  const titles = ["Inbox", "GitHub", "Docs", "Vimma issues"];
+  const complete = (line: string) =>
+    completeCommandLine(line, { args: { tab: titles } }).candidates;
+
+  test("completion offers each tab, by number and title", () => {
+    expect(complete(":tab ").map((c) => c.value)).toEqual(["tab 1", "tab 2", "tab 3", "tab 4"]);
+    expect(complete(":tab ")[1]).toEqual({
+      value: "tab 2",
+      kind: "argument",
+      description: "GitHub",
+      label: "2",
+    });
+  });
+
+  test("a typed title narrows to its tabs; a typed number to the tabs it begins", () => {
+    expect(complete(":tab git").map((c) => c.value)).toEqual(["tab 2"]);
+    expect(complete(":tabnext vim").map((c) => c.value)).toEqual(["tabnext 4"]);
+    const many = Array.from({ length: 12 }, (_, i) => `t${i + 1}`);
+    expect(
+      completeCommandLine(":tab 1", { args: { tab: many } }).candidates.map((c) => c.value),
+    ).toEqual(["tab 1", "tab 10", "tab 11", "tab 12"]);
   });
 });

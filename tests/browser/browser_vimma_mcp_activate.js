@@ -15,6 +15,7 @@
 /* global focusContent -- from head.js */
 /* global Client, tidyTask -- from head_vimma_control.js */
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
+/* global XULBrowserWindow -- a browser window global (browser.js) */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
 // Every click and submission now also asks each frame of the tab for card fields and the
@@ -52,6 +53,7 @@ const DIR = getRootDirectory(gTestPath).replace(
 );
 const CLICK = `${DIR}file_vimma_agent_click.html`;
 const PAGE = `${DIR}file_vimma_agent_page.html`;
+const PRESS = `${DIR}file_vimma_agent_press.html`;
 const NOTICE_ID = "vimma-notice";
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
 
@@ -105,6 +107,7 @@ async function putBack() {
   for (const c of clients.splice(0)) c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);
   AgentDrive._linkTtlMs = null;
+  XULBrowserWindow.setOverLink("");
   if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
@@ -186,6 +189,9 @@ addTidyTask(async function test_activate_clicks_a_button_in_a_background_tab() {
   const before = { workspace: activeName(), selected: gBrowser.selectedTab };
   const c = await agentClient("claude-code");
   const by = await labels(c, tab);
+  // The user's own hover preview, as the pointer on a link in their tab shows it.
+  XULBrowserWindow.setOverLink("https://example.net/hovered");
+  const shown = XULBrowserWindow.overLink;
   const id = c.request("agent-activate", { tab: idOf(tab), label: by["Add to list"] });
   const q = await question();
   Assert.deepEqual(
@@ -196,6 +202,10 @@ addTidyTask(async function test_activate_clicks_a_button_in_a_background_tab() {
   AgentGate.answer(q.id, { kind: "once" });
   const r = await c.response(id);
   Assert.ok(r.ok, "vimma_activate runs");
+  // A press on a button, no link, leaves the user's preview alone (#1309).
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {});
+  Assert.equal(XULBrowserWindow.overLink, shown, "the user's link preview is unchanged");
+  XULBrowserWindow.setOverLink("");
   Assert.deepEqual(
     [r.result.url, r.result.title, r.result.navigated, r.result.loading],
     [CLICK, "Click agent fixture", false, false],
@@ -235,6 +245,92 @@ addTidyTask(async function test_activate_gives_the_page_no_user_activation() {
   Assert.equal(page.seen[0].beenActive, false, "the page was never activated");
   Assert.equal(page.seen[0].clipboard, "refused", "so it cannot write the clipboard");
   Assert.equal(page.gesture, false, "the document has no valid transient activation");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+/** What the press fixture's elements got, in order. @param {MozTabbrowserTab} tab */
+const pressEvents = (tab) =>
+  SpecialPowers.spawn(tab.linkedBrowser, [], () => ({
+    events: /** @type {{ id: string, type: string, trusted: boolean }[]} */ (
+      JSON.parse(JSON.stringify(content.wrappedJSObject.events))
+    ),
+    focused: content.document.activeElement?.id ?? "",
+  }));
+
+addTidyTask(async function test_activate_presses_with_untrusted_mouse_events() {
+  // Issue #1321: the mouse events before an agent's click are the page's own script's, so the
+  // page sees them untrusted, and Gecko runs none of a trusted press's link handling on them:
+  // the link takes no focus and the user's window shows no URL of the agent's hidden tab.
+  await mcp(true);
+  const tab = await openAgentTab(PRESS);
+  await focusContent(gBrowser.selectedBrowser);
+  XULBrowserWindow.setOverLink("");
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  for (const [name, id] of [
+    ["Stay link", "stay"],
+    ["Press me", "press"],
+  ]) {
+    const r = await activate(c, tab, by[name]);
+    Assert.ok(r.ok, `${name}: the click ran`);
+    await until(
+      async () => (await pressEvents(tab)).events.some((e) => e.id === id && e.type === "click"),
+      `${name}: the page saw the click`,
+    );
+    const page = await pressEvents(tab);
+    const got = page.events.filter((e) => e.id === id);
+    Assert.deepEqual(
+      got.map((e) => [e.type, e.trusted]),
+      [
+        ["mouseover", false],
+        ["mousedown", false],
+        ["mouseup", false],
+        ["click", true],
+      ],
+      `${name}: untrusted mouse events, then the trusted click, and no focus`,
+    );
+    Assert.equal(page.focused, "", `${name}: nothing in the page took focus`);
+    // The child's link status reaches this process before its reply to pressEvents' spawn above
+    // (both on the same actor channel, in order), so a URL the press set would be here by now.
+    Assert.equal(XULBrowserWindow.overLink, "", `${name}: the user's window shows no link URL`);
+  }
+  Assert.equal(tab.linkedBrowser.currentURI.spec, PRESS, "the page handled the link itself");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+addTidyTask(async function test_activate_on_a_page_whose_dispatch_event_throws_still_clicks() {
+  // A page can replace the dispatchEvent an agent's press calls (page-events.mjs): it gets only
+  // its own element and its own MouseEvents, its throw is caught, and the click still follows.
+  await mcp(true);
+  const url = `${PRESS}?hostile`;
+  const tab = await openAgentTab(url);
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  const r = await activate(c, tab, by["Press me"]);
+  Assert.ok(r.ok, "the click ran");
+  await until(
+    async () => (await pressEvents(tab)).events.some((e) => e.type === "click"),
+    "the page saw the click",
+  );
+  const page = await pressEvents(tab);
+  Assert.deepEqual(
+    page.events.map((e) => [e.id, e.type, e.trusted]),
+    [["press", "click", true]],
+    "no mouse event reached a listener, and the click came trusted",
+  );
+  Assert.equal(page.focused, "", "nothing in the page took focus");
+  const hostile = await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
+    JSON.parse(JSON.stringify(content.wrappedJSObject.hostile)),
+  );
+  Assert.deepEqual(
+    hostile,
+    [{ onPress: true, mouseEvent: true, pageProto: true, type: "mouseover" }],
+    "the page's dispatchEvent got its own element and MouseEvent, then threw",
+  );
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
@@ -301,6 +397,10 @@ addTidyTask(async function test_activate_never_follows_a_link_moved_elsewhere_or
     "the click does not follow a link moved after the question",
   );
   Assert.equal(tab.linkedBrowser.currentURI.spec, CLICK, "nothing loaded");
+  // The hover the mouse events began has ended (#1309): the window's link preview shows no URL
+  // of the agent's hidden tab. A round trip through the page lets what it sent arrive first.
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {});
+  Assert.equal(XULBrowserWindow.overLink, "", "the link preview shows no URL");
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);

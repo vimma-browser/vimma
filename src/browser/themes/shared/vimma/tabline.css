@@ -1,0 +1,107 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* The tab line (ui/tabline.mjs, docs/specs/tab-line.md): the top row of #navigator-toolbox,
+   before #nav-bar. Colours and the font come only from the --vimma-* theme tokens, and its
+   height and font are the status bar's, so the two rows read as one style. Widths are counted
+   in columns of the monospace font, so padding is in ch. */
+
+#vimma-tabline {
+  display: flex;
+  flex: none;
+  box-sizing: border-box;
+  min-width: 0;
+  height: var(--vimma-statusbar-height, 20px);
+  line-height: var(--vimma-statusbar-height, 20px);
+  white-space: pre;
+  font-family: var(--vimma-font, monospace);
+  font-size: 12px;
+  color-scheme: var(--vimma-color-scheme, dark);
+  background-color: var(--vimma-statusbar-bg);
+  color: var(--vimma-statusbar-fg);
+  user-select: none;
+  /* The row never wraps or spills, even if a font draws a character wider than its columns. */
+  overflow: clip;
+
+  &[hidden],
+  :root[inDOMFullscreen] &,
+  :root[customizing] & {
+    display: none;
+  }
+}
+
+.vimma-tabline-list {
+  display: flex;
+  min-width: 0;
+  overflow: clip;
+}
+
+.vimma-tabline-tab {
+  padding: 0 1ch;
+  flex: none;
+
+  /* The side panel's active row (decision 9): a block of the selection colour, bold so it is
+     marked without relying on colour, and its number in the accent; every pair is one the
+     theme's contrast check covers (spec m7-a11y). */
+  &[current] {
+    background-color: var(--vimma-selection);
+    color: var(--vimma-fg-bright);
+    font-weight: bold;
+
+    & .vimma-tabline-number {
+      color: var(--vimma-text-accent);
+    }
+  }
+}
+
+.vimma-tabline-number {
+  color: var(--vimma-fg-dim);
+}
+
+.vimma-tabline-more {
+  flex: none;
+  color: var(--vimma-fg-dim);
+
+  &[data-side="before"] {
+    margin-inline-end: 1ch;
+  }
+
+  &[data-side="after"] {
+    margin-inline-start: 1ch;
+  }
+}
+
+/* gb's labels, in the page hints' colours and case (hints.css, core tabLabelCase): the text is
+   the letters to type, upper-cased only on screen. */
+.vimma-tabline-label {
+  background: var(--vimma-hint-bg);
+  color: var(--vimma-hint-fg);
+  font-weight: bold;
+
+  #vimma-tabline[data-case="upper"] & {
+    text-transform: uppercase;
+  }
+}
+
+.vimma-tabline-probe,
+.vimma-tabline-sr {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* Beside the line in the toolbox, measured while the line is hidden: the line's font. */
+.vimma-tabline-probe {
+  visibility: hidden;
+  white-space: pre;
+  font-family: var(--vimma-font, monospace);
+  font-size: 12px;
+}
+
+/* Visually hidden, still read. */
+.vimma-tabline-sr {
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}

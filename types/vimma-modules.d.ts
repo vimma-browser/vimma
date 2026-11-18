@@ -19,10 +19,12 @@ interface VimmaModules {
   "chrome://browser/content/vimma/actors/grep-page.mjs": typeof import("../src/browser/base/content/vimma/actors/grep-page.mjs");
   "chrome://browser/content/vimma/actors/grep-worker.mjs": typeof import("../src/browser/base/content/vimma/actors/grep-worker.mjs");
   "chrome://browser/content/vimma/actors/hint-collect.mjs": typeof import("../src/browser/base/content/vimma/actors/hint-collect.mjs");
+  "chrome://browser/content/vimma/actors/page-events.mjs": typeof import("../src/browser/base/content/vimma/actors/page-events.mjs");
   "chrome://browser/content/vimma/actors/page-scroll.mjs": typeof import("../src/browser/base/content/vimma/actors/page-scroll.mjs");
   "chrome://browser/content/vimma/actors/pdf-view.mjs": typeof import("../src/browser/base/content/vimma/actors/pdf-view.mjs");
   "chrome://browser/content/vimma/actors/submit-marks.mjs": typeof import("../src/browser/base/content/vimma/actors/submit-marks.mjs");
   "chrome://browser/content/vimma/actors/text-model.mjs": typeof import("../src/browser/base/content/vimma/actors/text-model.mjs");
+  "chrome://browser/content/vimma/actors/user-gesture.mjs": typeof import("../src/browser/base/content/vimma/actors/user-gesture.mjs");
   "chrome://browser/content/vimma/agent/AgentChat.sys.mjs": typeof import("../src/browser/base/content/vimma/agent/AgentChat.sys.mjs");
   "chrome://browser/content/vimma/agent/AgentCli.sys.mjs": typeof import("../src/browser/base/content/vimma/agent/AgentCli.sys.mjs");
   "chrome://browser/content/vimma/agent/AgentKeys.sys.mjs": typeof import("../src/browser/base/content/vimma/agent/AgentKeys.sys.mjs");
@@ -108,6 +110,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/core/suggestions.mjs": typeof import("../src/browser/base/content/vimma/core/suggestions.mjs");
   "chrome://browser/content/vimma/core/switchplan.mjs": typeof import("../src/browser/base/content/vimma/core/switchplan.mjs");
   "chrome://browser/content/vimma/core/tablabels.mjs": typeof import("../src/browser/base/content/vimma/core/tablabels.mjs");
+  "chrome://browser/content/vimma/core/tabline.mjs": typeof import("../src/browser/base/content/vimma/core/tabline.mjs");
   "chrome://browser/content/vimma/core/tabs.mjs": typeof import("../src/browser/base/content/vimma/core/tabs.mjs");
   "chrome://browser/content/vimma/core/tabsearch.mjs": typeof import("../src/browser/base/content/vimma/core/tabsearch.mjs");
   "chrome://browser/content/vimma/core/textwidth.mjs": typeof import("../src/browser/base/content/vimma/core/textwidth.mjs");
@@ -207,6 +210,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/ui/rename-prompt.mjs": typeof import("../src/browser/base/content/vimma/ui/rename-prompt.mjs");
   "chrome://browser/content/vimma/ui/side-panel.mjs": typeof import("../src/browser/base/content/vimma/ui/side-panel.mjs");
   "chrome://browser/content/vimma/ui/statusbar.mjs": typeof import("../src/browser/base/content/vimma/ui/statusbar.mjs");
+  "chrome://browser/content/vimma/ui/tabline.mjs": typeof import("../src/browser/base/content/vimma/ui/tabline.mjs");
   "chrome://browser/content/vimma/ui/tabstrip.mjs": typeof import("../src/browser/base/content/vimma/ui/tabstrip.mjs");
   "chrome://browser/content/vimma/ui/theme-host.mjs": typeof import("../src/browser/base/content/vimma/ui/theme-host.mjs");
   "chrome://browser/content/vimma/ui/toolbar.mjs": typeof import("../src/browser/base/content/vimma/ui/toolbar.mjs");

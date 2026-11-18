@@ -97,6 +97,9 @@ function paneText({ index, count, hidden, split, splits = 1 }) {
  *   (popups.mjs popupCue, docs/specs/popup-blocked.md)
  * @property {import("./downloads.mjs").DownloadSegment | null} [downloads]  the window's
  *   downloads (downloads.mjs downloadSegment, docs/specs/downloads.md decision 9)
+ * @property {boolean} [tabLineHasTab]  the tab line is drawn and `[statusbar] tab = false`: the
+ *   line shows the tab's place and name, so the bar leaves them out (docs/specs/tab-line.md
+ *   decision 16); the URL stays
  */
 /**
  * A hint session (docs/specs/follow-link-switch.md decision 8): its action, and the first label
@@ -379,6 +382,7 @@ export function statusSegments(input) {
     popups = null,
     pdf = null,
     downloads = null,
+    tabLineHasTab = false,
   } = input;
   /** @type {Segment[]} */
   const left = [];
@@ -459,7 +463,7 @@ export function statusSegments(input) {
     );
   }
   let urlShownAsTitle = false;
-  if (tab) {
+  if (tab && !tabLineHasTab) {
     left.push(
       seg({
         id: "tab",
@@ -483,7 +487,7 @@ export function statusSegments(input) {
       }),
     );
   }
-  if (tab) {
+  if (tab && !tabLineHasTab) {
     const title = displayLabel(tab);
     // Toolbar hidden: the URL is the origin indicator, so a title cannot stand in for it.
     urlShownAsTitle = !toolbarHidden && !!tab.url && title === tab.url;

@@ -67,7 +67,8 @@ function isPrivate(win) {
 /**
  * @typedef {object} Callbacks
  * @property {(result: Extract<CommandResult, { kind: "run" }>) => void} run
- * @property {() => void} [changed]  after it opens or closes (the status bar's mode)
+ * @property {() => void} [changed]  after it opens, closes, loses focus to a dialog or gets it
+ *   back (the status bar's mode)
  * @property {() => import("../core/cmdline.mjs").CompletionArgs} [args]  what commands'
  *   arguments complete to (`{ addon: names }`)
  * @property {() => readonly string[]} [hidden]  action ids whose commands do not exist now (an
@@ -108,10 +109,20 @@ export class CommandLine {
     this.cursor = { index: null, draft: "" };
     /** @type {ResizeObserver | null} */
     this.resizeObserver = null;
+    /**
+     * While a dialog has focus over the open line: watches where focus goes next.
+     * @type {((e: FocusEvent) => void) | null}
+     */
+    this.afterDialog = null;
   }
 
   get isOpen() {
     return !!this.el && !this.el.hidden;
+  }
+
+  /** Open with focus in its input: not while a dialog over the window or the tab has it. */
+  get focused() {
+    return this.isOpen && this.win.document.activeElement === this.input;
   }
 
   /** @param {string} [text]  the line to start with (`open ` for an unbound `open_url` key) */
@@ -156,6 +167,7 @@ export class CommandLine {
    */
   close({ restoreFocus = true, tabChanged = false } = {}) {
     if (!this.isOpen) return;
+    this.stopWatching();
     const opener = this.opener;
     this.opener = null;
     this.cycle = null;
@@ -255,15 +267,64 @@ export class CommandLine {
   /**
    * Focus left the input. Moving elsewhere in the window (a click, `ctrl+b c`) closes the line
    * without running it; the window losing focus (alt+tab) keeps it, so it is there on return.
+   * A dialog over the window or the tab (a page's `alert`, "Leave page?") keeps it too, as the
+   * `/` prompt is kept: Firefox gives focus back to what had it when the dialog closes
+   * (SubDialog.sys.mjs, `_topLevelPrevActiveElement`), and a closed line would leave focus on
+   * nothing, in insert mode with no field (#1304).
    * @private
    */
   onFocusOut() {
     this.win.setTimeout(() => {
       const doc = this.win.document;
-      if (this.isOpen && doc.activeElement !== this.input && doc.hasFocus()) {
+      if (!this.isOpen || doc.activeElement === this.input) return;
+      if (doc.hasFocus() && !this.isDialogOverLine(doc.activeElement)) {
         this.close({ restoreFocus: false });
+        return;
       }
+      if (doc.hasFocus()) this.watchAfterDialog();
+      // The status bar leaves COMMAND while the dialog has the keys.
+      this.changed();
     }, 0);
+  }
+
+  /**
+   * A dialog frame over the selected tab or over the window (`gDialogBox`), the ones that can
+   * open over the line and give focus back to it. Tab dialogs sit in the tab's container
+   * (browser.js, `TabDialogBox._containerFor`).
+   * @private
+   * @param {Element | null} el
+   */
+  isDialogOverLine(el) {
+    if (!el?.classList.contains("dialogFrame")) return false;
+    if (el.closest("#window-modal-dialog")) return true;
+    const selected = /** @type {{ gBrowser?: { selectedBrowser: Element } }} */ (
+      /** @type {unknown} */ (this.win)
+    ).gBrowser?.selectedBrowser;
+    const container = selected?.closest(".browserSidebarContainer");
+    return !!container && container.contains(el);
+  }
+
+  /**
+   * Focus left the dialog: back on the line, it stays; on another dialog, the watch goes on;
+   * anywhere else (the address bar, a click on the page), the line closes as on any focus move,
+   * so it is never left open behind with no way back to it.
+   * @private
+   */
+  watchAfterDialog() {
+    if (this.afterDialog) return;
+    this.afterDialog = (/** @type {FocusEvent} */ e) => {
+      const target = /** @type {Element} */ (e.target);
+      if (target === this.input) this.stopWatching();
+      else if (!this.isDialogOverLine(target)) this.close({ restoreFocus: false });
+    };
+    this.win.document.addEventListener("focusin", this.afterDialog, true);
+  }
+
+  /** @private */
+  stopWatching() {
+    if (!this.afterDialog) return;
+    this.win.document.removeEventListener("focusin", this.afterDialog, true);
+    this.afterDialog = null;
   }
 
   /** @private */
@@ -445,6 +506,9 @@ export class CommandLine {
     input.addEventListener("keydown", (e) => this.onKeyDown(e));
     input.addEventListener("input", () => this.onInput());
     input.addEventListener("focusout", () => this.onFocusOut());
+    // Back from a dialog: COMMAND again. open() reports its own change, since it may find the
+    // input focused already, with no focus event.
+    input.addEventListener("focus", () => this.changed());
     row.append(prompt, input);
 
     const error = el("div", "vimma-cmdline-error");

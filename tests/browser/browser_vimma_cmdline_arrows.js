@@ -119,12 +119,13 @@ add_task(async function enter_runs_the_match_the_arrows_selected() {
 
 add_task(async function down_enters_the_list_after_an_error() {
   const tab = await openPage();
-  const expected = completeCommandLine("tab").candidates.map((c) => c.value);
-  Assert.greater(expected.length, 0, "sanity: tab has matches");
-  typeCommand("tab");
+  // `ta`, not `tab`: `:tab` is a command of its own (issue #1302), `ta` still ambiguous.
+  const expected = completeCommandLine("ta").candidates.map((c) => c.value);
+  Assert.greater(expected.length, 0, "sanity: ta has matches");
+  typeCommand("ta");
   press("KEY_Enter");
   Assert.ok(isOpen(), "sanity: the ambiguous line stays open with its error");
-  Assert.equal(input().value, "tab", "with its text");
+  Assert.equal(input().value, "ta", "with its text");
   press("KEY_ArrowDown");
   Assert.equal(input().value, expected[0], "Down still selects the first match, as Tab would");
   press("KEY_Escape");

@@ -69,6 +69,13 @@ group("Tabs", [
   ["move_tab_left", "tab.move_left", "Move the tab left"],
   ["move_tab_right", "tab.move_right", "Move the tab right"],
   ["restore_tab", "tab.restore", "Reopen the last closed tab"],
+  // docs/specs/tab-line.md: the tab line's labels, and the line itself.
+  [
+    "tabline_hint",
+    "tabline.hint",
+    "Jump to a tab by its label in the tab line (with a count: tab N)",
+  ],
+  ["toggle_tabline", "tabline.toggle", "Show / hide the tab line"],
 ]);
 
 group("Panes", [

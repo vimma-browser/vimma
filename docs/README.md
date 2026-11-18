@@ -93,11 +93,12 @@ introduced the feature ([roadmap.md](roadmap.md)).
   [firefox-surfaces-theme](specs/firefox-surfaces-theme.md),
   [firefox-surfaces-trim](specs/firefox-surfaces-trim.md),
   [firefox-sidebar-theme](specs/firefox-sidebar-theme.md),
-  [toolbar-toggle](specs/toolbar-toggle.md),
+  [toolbar-toggle](specs/toolbar-toggle.md), [tab-line](specs/tab-line.md),
   [bookmarks-toolbar-hidden](specs/bookmarks-toolbar-hidden.md),
   [search-engines](specs/search-engines.md), [m7-a11y](specs/m7-a11y.md).
 - **Pages and features of Vimma's own:** [m5-about-vimma](specs/m5-about-vimma.md),
   [start-page](specs/start-page.md), [first-run-setup](specs/first-run-setup.md),
+  [setup-v2](specs/setup-v2.md),
   [bookmarks](specs/bookmarks.md), [bookmarklets](specs/bookmarklets.md),
   [bookmark-open](specs/bookmark-open.md),
   [downloads](specs/downloads.md),

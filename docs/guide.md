@@ -38,6 +38,9 @@ What works today, each with the section that explains it:
 - **[Search engines](#search-engines)** and `@aliases` from `config.toml`, such as `@gh vimma`.
 - **[Hide the toolbar](#hiding-the-toolbar)** with `ctrl+b u`: the page reaches the top of the
   window, and the address bar comes back when you need it.
+- **[Tab line](#tab-line):** an optional row of text at the top of the window that lists this
+  workspace's tabs with their numbers; `gb` labels them and one more key goes there, `12gb`
+  goes to tab 12.
 - **[Downloads from the keyboard](#downloads):** `ctrl+b d` lists them with live progress, and
   one key opens a file, shows it in its folder, pauses, retries, removes or deletes it, or allows
   a blocked one through Firefox's own warning; the status bar shows `↓ 42%` while they run and
@@ -673,9 +676,12 @@ menu entries, elements with a click handler), also inside web components and in 
 sites. Each entry of an open menu gets its own label, also when the page puts a click handler on the
 list around them. Things off screen, hidden or covered by something else (a fixed header, a cookie
 banner) get no label. Type a label to pick its target: a link is followed, a button is pressed, a
-text field gets focus and the tab is in insert mode. Labels use the home row (`a s d f g h j k l`),
-in reading order: targets near the top get the shortest. As you type, labels that no longer match
-disappear. `Backspace` takes back a key and `Esc` leaves hints without doing anything.
+text field gets focus and the tab is in insert mode, and a list box (`<select>`) opens its list.
+The page takes your label as your click: a link that opens a new tab opens it, and a button that
+opens a window or goes full screen does so, without Firefox's pop-up blocker stepping in. Labels
+use the home row (`a s d f g h j k l`), in reading order: targets near the top get the shortest.
+As you type, labels that no longer match disappear. `Backspace` takes back a key and `Esc` leaves
+hints without doing anything.
 
 `gF` labels links only and opens the one you pick in a new tab in the background, so you stay on the
 page and can pick more. Its labels are drawn in lower case (the other hint keys draw them in upper
@@ -1155,6 +1161,50 @@ The download question, "What should Vimma do with this file?" for a file type se
 takes them too: `y` presses OK, which opens or saves the file as picked in the question, and `n`
 cancels the download. `y` waits until the OK button is enabled.
 
+### Tab line
+
+The tab line is an optional row of text at the top of the window that lists the current
+workspace's tabs, as Vim's tabline lists its tab pages, so you see what is open and the number
+each tab has for `alt+4`, `ctrl+b 4` or `4gt` without opening anything. It is off by default;
+turn it on in `config.toml`:
+
+```toml
+[ui]
+tabline = "always"   # "off" (the default), "always", or "auto": only with 2 or more tabs
+tabline_width = 14   # columns of each tab's name, 4 to 60
+
+[statusbar]
+tab = false          # leave the tab number and title out of the status bar while the line shows
+```
+
+`:tabline` shows the line, or hides it, in every window until you restart Vimma or change the
+`tabline` line in `config.toml`.
+
+The line sits above the address bar, where Firefox's tab strip was. `ctrl+b u` takes only the
+address bar away under it, so the line never moves. Each entry is the tab's number and its name
+(its rename from `ctrl+b shift+t`, else its title, else its URL), cut to `tabline_width`
+columns; `♪` marks a tab playing sound and `▪` after the number a tab shown in a pane of the
+split. The current tab is a bold block, as in the side panel, with its number in the accent
+colour. When the tabs do not fit, the line keeps the current tab in view and shows `‹3` and `5›`
+for the tabs hidden on each side.
+A private window and the agent workspace list only their own tabs.
+
+To jump, press `gb` in normal mode: every tab in the line gets a label from the link hints'
+letters, and typing a label goes to that tab; Shift and Caps Lock make no difference. With more
+tabs than letters the labels have two or three letters, as link hints do. Each label keeps its
+tab's number beside it (`AS 12`); when they do not all fit, the names give way first, and each
+letter you type narrows the line to the tabs still matching, so the tab you want comes into view
+before its last letter. With many tabs, `12gb` (or `12gt`, or `:tab 12`) goes straight to the
+number the line shows, and tab search (`b`, or `:b` and part of a name) finds a tab by its name.
+`Backspace` takes back a letter. `Esc`, or any other key that is not part of a label, removes the
+labels and does nothing else. `gb` works with the line off too: the line shows while its labels
+are up. With a number first, `12gb` goes to tab 12 at
+once; a number past the last tab says how many tabs the workspace has.
+
+The line never takes focus or a key from the page, and a click on it does nothing. It takes its
+colours and font from your theme. Like every key, `gb` can be remapped in `config.toml`
+(`tabline_hint`), and `toggle_tabline` can be bound to a key.
+
 ### Colours and themes
 
 The status bar, the command line, the `ctrl+b ?` overlay, the pickers and prompts, link hints,
@@ -1310,8 +1360,8 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `Esc` or `q` (overlay)                                                                  | Closes the overlay. Focus returns to where it was.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `ctrl+b c`, `ctrl+t`, `t`                                                               | Opens a new tab (the start page, address bar focused).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `ctrl+b shift+c`                                                                        | Opens a new window. `ctrl+n` does not ([Firefox's keys are Vimma bindings](#firefoxs-keys-are-vimma-bindings)).                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `ctrl+b n` / `ctrl+b p`, `ctrl+tab` / `ctrl+shift+tab`, `ctrl+pagedown` / `ctrl+pageup` | Next / previous tab, wrapping around at the ends. Hidden tabs are skipped. `gt` / `gT` in normal mode; `3gt` goes to tab 3.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `ctrl+b 1..9`, `alt+1..8`, `alt+9`                                                      | Tab 1 to 9, counting visible tabs (pinned tabs first); Firefox's `alt+9` is the last tab. On macOS Firefox's `cmd+1..8` and `cmd+9` instead. With fewer tabs than N, nothing happens. `ctrl+shift+pageup` / `ctrl+shift+pagedown` move the tab left / right among them.                                                                                                                                                                                                                                                                                                  |
+| `ctrl+b n` / `ctrl+b p`, `ctrl+tab` / `ctrl+shift+tab`, `ctrl+pagedown` / `ctrl+pageup` | Next / previous tab, wrapping around at the ends. Hidden tabs are skipped. `gt` / `gT` in normal mode; `3gt` goes to tab 3, and `12gt` to tab 12.                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `ctrl+b 1..9`, `alt+1..8`, `alt+9`                                                      | Tab 1 to 9, counting visible tabs (pinned tabs first); Firefox's `alt+9` is the last tab. On macOS Firefox's `cmd+1..8` and `cmd+9` instead. With fewer tabs than N, nothing happens. Tab 10 and above: `{N}gt` or `:tab N`. `ctrl+shift+pageup` / `ctrl+shift+pagedown` move the tab left / right among them.                                                                                                                                                                                                                                                           |
 | `:`                                                                                     | Normal mode: opens the command line at the bottom of the window ([below](#the-command-line)). In a text field `:` is typed.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `ctrl+b g`, `ctrl+shift+a`, `b`                                                         | Opens tab search over the page, ready to type (`b` in normal mode; `ctrl+shift+a` is Firefox's tab search key): every tab of every workspace and window, and the recently closed ones ([below](#tab-search-and-tab-rename)).                                                                                                                                                                                                                                                                                                                                             |
 | `ctrl+b f g`                                                                            | Opens [live grep](#live-grep): search the text of the workspace's tabs as you type. `]q` / `[q` in normal mode step through its results afterwards.                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -2986,10 +3036,10 @@ for its images; the result says it is still loading. It gets no page text this w
 `vimma_elements` to see what changed. Only the frame of the clicked element is compared, so a
 button inside an embedded frame that updates the page around it reads as no change.
 
-- **A plain click, no user activation.** The page gets the same click your `f` hints give it,
-  never a mouse press from the system. It therefore cannot do what needs a real gesture of yours
-  from that click: write or read the clipboard, use a passkey or a saved login, or ask for a
-  permission.
+- **A plain click, no user activation.** The page gets a plain click, never a mouse press from
+  the system, and unlike your own `f` hints it does not count as your gesture. It therefore
+  cannot do what needs a real gesture of yours from that click: write or read the clipboard, use
+  a passkey or a saved login, open a pop-up, go full screen, or ask for a permission.
 - **What it does not click.** Text fields and selects (a click there would only move focus
   into the page), file fields (a click would open a file chooser), disabled elements, links to
   another site (the agent follows those with `vimma_keys`, which asks as an open of that site)
@@ -4279,12 +4329,12 @@ dropping the toolbar over the page. While a download runs, the [status bar](#sta
 
 `ctrl+b d` (or `:downloads`) opens the downloads picker over the page: newest first, those in
 progress, paused or blocked under **Active**, the rest under **Recent**, up to 100 in all. Each row
-shows the file's name, its state (`42%`, `paused`, `done`, `failed`, `canceled`, `blocked`,
-`missing`), its size or progress (`3.1 / 7.4 MB · 1.2 MB/s · 0:35 left`), the site it came from
-(the host only, never the full link) and when it finished. A download from another workspace
-names that workspace, and one from the [agent workspace](#agent-workspace) says `◇ agent`.
-Progress updates in place. Like the other pickers, it takes every key while open; `Esc` or `q`
-closes it.
+shows the file's name, its state (`42%`, or `running` while the size is unknown, `paused`, `done`,
+`failed`, `canceled`, `blocked`, `missing`), its size or progress
+(`3.1 / 7.4 MB · 1.2 MB/s · 0:35 left`), the site it came from (the host only, never the full
+link) and when it finished. A download from another workspace names that workspace, and one from
+the [agent workspace](#agent-workspace) says `◇ agent`. Progress updates in place. Like the other
+pickers, it takes every key while open; `Esc` or `q` closes it.
 
 | Key            | What it does                                                                                                                |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------- |
@@ -4457,10 +4507,19 @@ type reaches the page, and `ctrl+b` sequences still work.
   Firefox: press `Esc` (twice once you have typed) and then `:` instead.
 - **Errors** show under the line, which stays open so you can fix it: `:tabnwe` says
   `not a command: "tabnwe"; did you mean :tabnew?`.
+- **A dialog over the line.** When a page opens an alert, a confirm question or "Leave page?"
+  while you type, the line stays open behind it with what you typed. Answer the dialog with its
+  own keys (`y`, `n`, `Esc`, [Answering a dialog](#answering-a-dialog)) and you are back on the
+  line, as with a `/` search.
 - A command name can be shortened while it stays unique (`:tabr`, `:wsp`), and leading colons
   are fine (`::q`). When the shortened name starts several commands and one of them begins all
   the others, that one wins, as in Vim: `:wor` is `:workspace` (not `:workspaces`), `:bo`
   `:bookmark`. `:wsn` is `:wsnext`, as Vim's `:wsn[ext]`.
+- `:tab N` (or Vim's `:tabnext N`) goes to tab N of this workspace, as `{N}gt` does, and
+  `:tab $` to the last. A tab that does not exist says so with the count:
+  `no tab 20 (this workspace has 15)`. `Tab` after `:tab ` lists the tabs by number with their
+  titles; type a title's letters to narrow it. `:tab` and `:tabnext` run only typed in full, so
+  `:tabn` stays `:tabnew`.
 - An argument is the rest of the line, as typed. Quotes are removed only when one pair wraps all
   of it: `:tabrename "my  tab"`.
 
@@ -4476,6 +4535,7 @@ give the rest.
 | `:scroll_down`, `:tab.next`…          | Any action by its name in [bindings.md](bindings.md), or by its dotted id. Actions take no argument.                                           |
 | `:tabrename [name]`                   | Renames the tab; without a name, opens the rename prompt.                                                                                      |
 | `:ls`                                 | Opens [tab search](#tab-search-and-tab-rename).                                                                                                |
+| `:tab N`, `:tabnext N`, `:tab $`      | Goes to tab N of this workspace, as `{N}gt`; `$` the last, alone the next. Typed in full.                                                      |
 | `:tabsearch [text]`, `:ts`, `:b`      | Opens tab search with the text already typed.                                                                                                  |
 | `:grep text`, `:grep`                 | Opens [live grep](#live-grep) with that text; alone, with the last query.                                                                      |
 | `:vsplit`/`:vs`, `:split`/`:sp`       | Splits the pane right / down, as `ctrl+b v` / `ctrl+b -`.                                                                                      |
@@ -4749,6 +4809,12 @@ would: Vimma's bindings, Firefox's shortcuts (`ctrl+t`, `ctrl+q`) and the page a
 meant for the page reach it only while that window has focus, as with a real keyboard. With the
 help overlay open, plain keys go to the overlay, as when typing; chords that work in every mode
 (`ctrl+q`, `ctrl+t`) still run.
+
+A key that opens a dialog over the page, such as `x` on a page with unsaved changes ("Leave
+page?"), ends that `send-keys`: it prints `dialog open`, and the keys after it are not pressed.
+Answer the dialog with another `send-keys`, as you would by hand
+([Answering a dialog](#answering-a-dialog)): `y` or `n` once the dialog's key line shows, or
+`enter` or `esc`.
 
 **Security.** Turning the socket on hands **full control of the browser** to whoever has the
 token: they can type into any page (including your logged-in sites), open `about:config` and

@@ -79,7 +79,15 @@ completion list.
   browser. `Enter` closes first, restoring focus, then runs, so `:scroll_down` finds the page
   focused and `:tabnew` can move focus to the new tab's URL bar. Focus moving elsewhere in the
   window (a click, `ctrl+b c`) closes the line without running; the window losing focus
-  (alt+tab) keeps it open. A tab switch underneath closes it and focuses the new tab.
+  (alt+tab) keeps it open. A tab switch underneath closes it and focuses the new tab. (Since
+  changed, #1304: a dialog over the window or the tab, such as a page's `alert` or "Leave
+  page?", keeps the line open behind it with its text, as the `/` prompt is kept, because
+  Firefox gives focus back to the line when the dialog closes and a closed line left focus on
+  nothing, in insert mode. The mode is `command` only while the input has focus, so the
+  dialog's own keys, `Esc` included, answer it instead of closing the line. Focus moving on
+  from the dialog to anything but the line or another dialog closes the line. When a dialog
+  closes and the focus Firefox gives back finds nothing to land on (a line closed meanwhile by a
+  tab switch), the selected page gets it, in normal mode.)
 - **History** is in memory: one list of entries shared by the non-private windows of a session
   (Vim's is global too), newest 100 lines, kept by core's `pushHistory` (every executed line,
   errors included, as Vim). Each command line keeps its own cursor and draft, so browsing in one
@@ -162,3 +170,13 @@ The optional pane is one of `home`, `search`, `privacy` and `sync`, the panes a 
 changes most, completed by `Tab`; an unknown pane is refused with the nearest name. It has no
 default key: a command is enough for a page opened this rarely, and it can be bound as
 `settings` in `config.toml`.)
+
+(Since changed: `:tab N`, with Vim's `:tabnext N` as its alias, goes to tab N of the workspace
+by running `next_tab` with N as its count, the path `{N}gt` takes, so the two cannot disagree;
+`:tab $` runs `select_last_tab`, and `:tab` alone the next tab, as Vim's `:tabnext` does. Zero or
+anything but a number is refused, and a number past the last tab says
+`no tab N (this workspace has M)`, because a typed command that does nothing reads as a typo, while
+`{N}gt` keeps Vim's silence. Both words run only typed in full, so `:tabn` stays `:tabnew` and
+`:ta` stays ambiguous, as users already type them. `Tab` completes the workspace's tabs by number,
+each with its title. The `ctrl+b ?` overlay's tab 9 row names both ways to reach tab 10 and above,
+the count key read from the live keymap (issue #1302).)

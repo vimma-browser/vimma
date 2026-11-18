@@ -52,7 +52,7 @@ import { bookmarkletsSetting, loadTree, observeBookmarks } from "./bookmark-ops.
 import { pickerWorkspaces, selectedTabId, tabById } from "./goto.mjs";
 import { goToTab, reopenClosed, tabSearchList } from "./tab-search.mjs";
 import { GrepSession } from "./grep.mjs";
-import { closeTabById } from "./tab-ops.mjs";
+import { closeTabById, selectableTabs } from "./tab-ops.mjs";
 import { firefoxIds } from "./browser-ops.mjs";
 import {
   hasPanes,
@@ -158,6 +158,25 @@ export function newWindowState(host, win, keymap, env) {
       }
       showOutlineBeside(state, env.outline);
     },
+    // SubDialog gives focus back on close to what had it when the first dialog opened
+    // (SubDialog.sys.mjs, `_onDialogClose` and `_topLevelPrevActiveElement`). One of Vimma's
+    // surfaces closed since (a `:` line closed by a tab switch under its dialog, or open when a
+    // background tab's dialog opened) is hidden and takes no focus: focus is then nowhere, the
+    // mode insert with no field and every binding dead (#1304). The selected page gets it.
+    onDialogClose: () => {
+      win.setTimeout(() => {
+        const doc = win.document;
+        if (!doc.hasFocus()) return;
+        const el = doc.activeElement;
+        const lost =
+          !el ||
+          el === doc.documentElement ||
+          el === doc.body ||
+          !el.isConnected ||
+          !el.checkVisibility();
+        if (lost) win.gBrowser?.selectedBrowser.focus();
+      }, 0);
+    },
     dispatcher: createDispatcher(keymap),
     help: new HelpOverlay(win, keymap, env.runnable, () => state.firefoxKeys?.status().on ?? []),
     notice: new Notice(win),
@@ -168,6 +187,8 @@ export function newWindowState(host, win, keymap, env) {
         addon: addonNames(),
         firefox: firefoxIds(win),
         workspace: workspaceNames(win),
+        // `:tab ` completes the workspace's tabs by number, each with what its tab shows.
+        tab: selectableTabs(win).map((t) => getTabLabel(t) ?? t.label),
         search: SearchHost.completions,
         sitebind: siteBindCompletions(win, host.baseKeymap()),
         bookmarksfile: HostServices.bookmarksFileWords(),
@@ -195,6 +216,8 @@ export function newWindowState(host, win, keymap, env) {
     hintOverlay,
     listeners: new Set(),
     statusBar: null,
+    tabLine: null,
+    tabLabels: null,
     picker: new GotoPicker(win, {
       items: () => {
         const { items, windowOf } = tabSearchList(win);

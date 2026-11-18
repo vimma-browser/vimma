@@ -242,6 +242,7 @@ interface nsIWindowWatcher {
 // engine/dom/webidl/Document.webidl
 interface Document {
   readonly hasValidTransientUserGestureActivation: boolean;
+  readonly hasBeenUserGestureActivated: boolean;
   notifyUserGestureActivation(): void;
   /** Chrome-only: the document's sandbox flags, or null when it has none. */
   readonly sandboxFlagsAsString: string | null;
@@ -716,6 +717,16 @@ interface BrowserWindow {
     readonly canOpen: boolean;
     initElements(): void;
     hideAllTabsPanel(): void;
+  };
+}
+
+// engine/browser/base/content/browser.js (XULBrowserWindow): `overLink` is the URL the window's
+// link preview (the status panel) shows for the link under the pointer or focus, "" for none;
+// setOverLink sets it as a hover does.
+interface BrowserWindow {
+  readonly XULBrowserWindow: {
+    readonly overLink: string;
+    setOverLink(url: string): void;
   };
 }
 

@@ -209,6 +209,16 @@ export class SidePanel {
     this.render();
   }
 
+  /**
+   * What the panel would list now, open or not: the tab line's source, so its numbers, names and
+   * tabs are the panel's (docs/specs/tab-line.md decision 7). Null without workspaces.
+   * @returns {PanelState | null}
+   */
+  snapshot() {
+    const model = this.host.model();
+    return model ? openPanel(model, this.host.info, this.#options()) : null;
+  }
+
   /** Close and remove the box (VimmaHost.uninit). */
   destroy() {
     this.close();

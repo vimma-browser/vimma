@@ -646,6 +646,8 @@ describe("restrictedErrors", () => {
       "host/AgentGate.sys.mjs",
       "ctl/agent-tabs.mjs",
       "actors/agent-page.mjs",
+      "actors/user-gesture.mjs",
+      "actors/page-events.mjs",
       "ui/agent-chat-key.mjs",
       "ui/agent-chat-models.mjs",
     ]);
@@ -685,6 +687,41 @@ describe("restrictedErrors", () => {
     );
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatch(/^actors\/caret\.mjs:7: imports actors\/agent-page\.mjs, which only/);
+  });
+
+  test("the user's activation has one importer, VimmaChild, and a new one fails", () => {
+    // actors/user-gesture.mjs gives a page transient user activation for the user's own hint
+    // (M26, issue #1303): another caller, such as the agent's page work, could hand the page the
+    // user's gesture.
+    const gesture = "actors/user-gesture.mjs";
+    expect(RESTRICTED[gesture]?.importers).toEqual(["actors/VimmaChild.sys.mjs"]);
+    const errors = restrictedErrors(
+      [
+        edge("actors/VimmaChild.sys.mjs", gesture),
+        edge("actors/agent-page.mjs", gesture, "eager", 5),
+      ],
+      Object.fromEntries(Object.entries(RESTRICTED).filter(([module]) => module === gesture)),
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(
+      /^actors\/agent-page\.mjs:5: imports actors\/user-gesture\.mjs, which only/,
+    );
+  });
+
+  test("the page's own dispatch has one importer, VimmaChild, and a new one fails", () => {
+    // actors/page-events.mjs calls the page's dispatchEvent through waived Xrays (M26, issue
+    // #1321): a caller that passed it anything but objects the page built would hand chrome
+    // objects to page code.
+    const events = "actors/page-events.mjs";
+    expect(RESTRICTED[events]?.importers).toEqual(["actors/VimmaChild.sys.mjs"]);
+    const errors = restrictedErrors(
+      [edge("actors/VimmaChild.sys.mjs", events), edge("actors/caret.mjs", events, "eager", 6)],
+      Object.fromEntries(Object.entries(RESTRICTED).filter(([module]) => module === events)),
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(
+      /^actors\/caret\.mjs:6: imports actors\/page-events\.mjs, which only/,
+    );
   });
 
   test("the API key entry has two importers, the chat window and its view, and a new one fails", () => {

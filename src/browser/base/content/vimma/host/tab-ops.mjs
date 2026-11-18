@@ -114,13 +114,22 @@ export function restoreTab(win) {
  * tab.next, tab.previous, tab.goto.
  * @param {BrowserWindow} win
  * @param {Action} action
+ * @returns {boolean} false when there is no such tab (`12gt` with fewer tabs)
  */
 export function selectTab(win, action) {
   const gBrowser = gBrowserOf(win);
   const tabs = selectableTabs(win);
-  const index = tabTarget(action, tabs.indexOf(gBrowser.selectedTab), tabs.length);
+  const current = tabs.indexOf(gBrowser.selectedTab);
+  // A tab number does not depend on where you are: from a tab outside the list (a hidden one),
+  // `:tab 3` and `3gt` still go to tab 3, where tabTarget refuses for an unknown current tab.
+  const absolute =
+    action.id === "tab.goto" ||
+    action.id === "tab.goto_last" ||
+    (action.id === "tab.next" && action.count !== undefined);
+  const index = tabTarget(action, current < 0 && absolute ? 0 : current, tabs.length);
   const tab = index === null ? undefined : tabs[index];
   if (tab && tab !== gBrowser.selectedTab) gBrowser.selectedTab = tab;
+  return !!tab;
 }
 
 /**

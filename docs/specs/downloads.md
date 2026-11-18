@@ -66,8 +66,11 @@ Firefox's downloads UI is built for the mouse, and Vimma's hidden toolbar makes 
 4. As a Vimma user, each row shows the file's name, then its state as a word (`42%`, `paused`,
    `done`, `failed`, `canceled`, `blocked`, `missing`), its size or progress
    (`3.1 / 7.4 MB · 1.2 MB/s · 0:35 left`), the site it came from (its host only) and when it
-   finished. A download from another workspace's container names that workspace; one from the
-   agent workspace carries the agent glyph `◇`.
+   finished. (Since changed: a download in progress with no known size reads `running`, because
+   the word `downloading` it showed before is wider than the 9-character state column and ran into
+   the name, and the bytes so far would repeat what the size column already shows.) A download
+   from another workspace's container names that workspace; one from the agent workspace carries
+   the agent glyph `◇`.
 5. As a Vimma user with the picker open, progress, state and new downloads update in place, and
    the highlighted row stays on the same download.
 6. As a Vimma user, `/` filters the rows by name, host, state word and workspace name with the

@@ -45,11 +45,15 @@ support-files = [
   "file_vimma_hints_frame.html",
   "file_vimma_hints_many.html",
   "file_vimma_hints_menu.html",
+  "file_vimma_hints_overlink.html",
   "file_vimma_consent.html",
 ]
 
 ["browser_vimma_hints_wizard.js"]
 support-files = ["file_vimma_hints.html"]
+
+["browser_vimma_hints_activation.js"]
+support-files = ["file_vimma_agent_press.html", "file_vimma_hints_activation.html"]
 
 ["browser_vimma_element.js"]
 support-files = [
@@ -105,6 +109,8 @@ skip-if = ["artifact"]
 # The --version line is C++ (nsAppRunner-cpp.patch); artifact builds run Mozilla's libxul (ADR-010).
 skip-if = ["artifact"]
 
+["browser_vimma_tabline.js"]
+
 ["browser_vimma_tabstrip.js"]
 
 ["browser_vimma_toolbar.js"]
@@ -127,6 +133,8 @@ support-files = ["file_vimma_plain.html"]
 
 ["browser_vimma_tab_keys.js"]
 support-files = ["file_vimma_test.pdf"]
+
+["browser_vimma_tab_number.js"]
 
 ["browser_vimma_system_addons.js"]
 support-files = ["head_vimma_aus.js"]
@@ -165,6 +173,7 @@ support-files = [
 ["browser_vimma_pane_layouts.js"]
 
 ["browser_vimma_control.js"]
+support-files = ["file_vimma_leave_page.html"]
 
 ["browser_vimma_control_state_read.js"]
 support-files = ["head_vimma_control.js"]
@@ -280,6 +289,7 @@ support-files = [
 support-files = [
   "file_vimma_agent_click.html",
   "file_vimma_agent_page.html",
+  "file_vimma_agent_press.html",
   "head_vimma_control.js",
 ]
 
@@ -452,6 +462,9 @@ support-files = ["file_vimma_bookmarklet_page.html", "head_vimma_control.js"]
 support-files = ["file_vimma_bookmarklet_page.html"]
 
 ["browser_vimma_workspace_restore.js"]
+support-files = ["file_vimma_insert_scroll.html"]
+
+["browser_vimma_workspace_restore_splits.js"]
 support-files = ["file_vimma_insert_scroll.html"]
 
 ["browser_vimma_workspace_desync.js"]

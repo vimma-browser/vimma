@@ -1,0 +1,53 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_activate.js and browser_vimma_hints_activation.js: what the
+   - page sees of a press (issue #1321). A same-site link that the page handles itself, so no
+   - load clears the window's link preview, and a button. Each records the mouse, click, focus
+   - and blur events it gets, with whether they were trusted, in `window.events`. With `?hostile`
+   - the page replaces EventTarget.prototype.dispatchEvent with a function that records what it
+   - was called with (in `window.hostile`) and throws. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Press agent fixture</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        font: 16px/1.5 sans-serif;
+      }
+      p {
+        margin: 0 0 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <p><a id="stay" href="file_vimma_agent_page.html?stay">Stay link</a></p>
+    <p><button id="press" type="button">Press me</button></p>
+    <script>
+      window.events = [];
+      window.hostile = [];
+      if (location.search === "?hostile") {
+        EventTarget.prototype.dispatchEvent = function (event) {
+          window.hostile.push({
+            onPress: this === document.getElementById("press"),
+            mouseEvent: event instanceof MouseEvent,
+            pageProto: Object.getPrototypeOf(event) === MouseEvent.prototype,
+            type: event.type,
+          });
+          throw new Error("the page's dispatchEvent throws");
+        };
+      }
+      for (const el of document.querySelectorAll("#stay, #press")) {
+        for (const type of ["mouseover", "mousedown", "mouseup", "click", "focus", "blur"]) {
+          el.addEventListener(type, (e) => {
+            window.events.push({ id: el.id, type, trusted: e.isTrusted });
+            if (type === "click" && el.localName === "a") e.preventDefault();
+          });
+        }
+      }
+    </script>
+  </body>
+</html>

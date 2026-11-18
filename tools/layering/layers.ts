@@ -92,6 +92,28 @@ export const RESTRICTED: Record<string, Restricted> = {
       "a new caller of the agent's page work needs a security review (docs/security/12-agents-mcp.md section 12, M25 to M28)",
   },
   /**
+   * The user's activation for their own hint (docs/security/12-agents-mcp.md M26; issue #1303):
+   * the one place Vimma gives a page transient user activation. Only VimmaChild imports it, for
+   * the parent's `Vimma:ActivateHint`; a module the agent's clicks reach could hand the page the
+   * user's gesture.
+   */
+  "actors/user-gesture.mjs": {
+    importers: ["actors/VimmaChild.sys.mjs"],
+    review:
+      "a new caller of the user's activation needs a security review (docs/security/12-agents-mcp.md section 12, M26)",
+  },
+  /**
+   * The page's own dispatchEvent, called through waived Xrays for an agent's press
+   * (docs/security/12-agents-mcp.md M26; issue #1321). Only VimmaChild imports it, with events
+   * the page's constructors built: a caller that passed a chrome object would hand it to code
+   * the page can replace.
+   */
+  "actors/page-events.mjs": {
+    importers: ["actors/VimmaChild.sys.mjs"],
+    review:
+      "a new caller of the page's own dispatch needs a security review (docs/security/12-agents-mcp.md section 12, M26)",
+  },
+  /**
    * The chat window's API key entry (docs/security/12-agents-mcp-built-in-agent.md M46): the
    * masked key field that never reveals the key, and the calls that store, clear and delete it.
    * The chat window and its view, which builds the field, are its only callers.

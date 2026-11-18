@@ -116,6 +116,10 @@ not work yet is in [limits.md](docs/limits.md).
 
 Roadmap: <https://github.com/orgs/vimma-browser/projects/1>
 
+Chat with other users on [Discord](https://discord.gg/6rVqBXGjuD). Report bugs and request features
+in [GitHub issues](https://github.com/vimma-browser/vimma/issues/new/choose), and security problems
+privately as [SECURITY.md](SECURITY.md) describes.
+
 AI coding agents working on this repository follow [AGENTS.md](AGENTS.md); contributors read
 [CONTRIBUTING.md](CONTRIBUTING.md) before opening issues or pull requests.
 <!-- process-wording: points coding agents at their rules file -->

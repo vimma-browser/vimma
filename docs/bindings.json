@@ -238,7 +238,7 @@
         },
         {
           "name": "select_tab_9",
-          "description": "Jump to tab 9 in this workspace",
+          "description": "Jump to tab 9 in this workspace; tab 10 and above: {N}gt or :tab N",
           "keys": [
             {
               "keys": "ctrl+b 9",
@@ -313,6 +313,21 @@
               "chords": ["ctrl+shift+t"]
             }
           ]
+        },
+        {
+          "name": "tabline_hint",
+          "description": "Jump to a tab by its label in the tab line (with a count: tab N)",
+          "keys": [
+            {
+              "keys": "gb",
+              "chords": ["gb"]
+            }
+          ]
+        },
+        {
+          "name": "toggle_tabline",
+          "description": "Show / hide the tab line",
+          "keys": []
         }
       ]
     },
