@@ -4121,6 +4121,32 @@ anything from a URL: a bookmark is the address you saved.
 set `vimma.feature.bookmarksFile` to `true` in `about:config`; while it is `false`, Vimma reads
 no `bookmarks.toml` and changes no bookmark because of one.
 
+**From Firefox's bookmarks to the file.** Your workspaces' bookmarks are already in Firefox
+(imported from another browser, or saved with `ctrl+b a`). To move them into the file:
+
+1. Type `:bookmarks export`. Vimma writes `bookmarks.toml` beside `config.toml` (readable by you
+   only) with one table for each workspace that has a folder in the Bookmarks Toolbar, in the
+   workspace picker's order and each folder's own order, and opens it in a tab. The notice says
+   how many bookmarks it wrote and what it left out: bookmarks outside the workspaces' folders
+   (the Menu, Other Bookmarks, loose in the toolbar), `data:` addresses, and anything else the
+   file cannot hold. A bookmark without a title is written under its address, and a second
+   bookmark of one name in a folder as `Title (2)`; Firefox's copy is renamed to match. A
+   bookmark left out of a workspace's folder stays in Firefox: the first load asks before it
+   would delete it, and `n` keeps it.
+2. Read the file. A bookmarklet is exported too (it is yours), but reaches Firefox from the file
+   only while `[bookmarks] bookmarklets` allows it; Firefox keeps the one it has either way.
+3. Commit it, to a private repository or with `.gitignore` as above. From now on the folders
+   follow the file.
+
+`:bookmarks export` never replaces a file that exists: it says what the file holds and that
+`:bookmarks export!` replaces it. `:bookmarks export!` asks first
+(`replace bookmarks.toml (12 bookmarks in "work") with 30 bookmarks from Firefox, keeping the old
+file as bookmarks.toml.bak? y/N`), keeps the old text as `bookmarks.toml.bak` (also readable by
+you only), and writes nothing if the file changes while it asks. A table the file already
+mirrors is exported from its folder even when no workspace has that name, so `export!` never
+drops one. A private window exports nothing. `Tab` after `:bookmarks ` completes `export`,
+`export!` and `forget`.
+
 Vimma reads `bookmarks.toml` from the folder that holds `config.toml` (`~/.config/vimma/`, or
 the folder of a `config.toml` that is a link, such as a `stow` folder of links). Without the
 file nothing changes. Each `[bookmarks.<workspace>]` table is that workspace's folder in the

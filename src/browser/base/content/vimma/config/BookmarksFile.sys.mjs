@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// bookmarks.toml, mirrored into Places (docs/specs/bookmarks-file.md, Delivery slices 1 and 2:
-// the mirror and Vimma's write-back), behind `vimma.feature.bookmarksFile` until the feature is
-// finished: while the pref is off nothing here reads a file, listens to Places or refuses a key.
-// One per app,
+// bookmarks.toml, mirrored into Places (docs/specs/bookmarks-file.md, Delivery slices 1, 2 and
+// 4: the mirror, Vimma's write-back and `:bookmarks export`), behind `vimma.feature.bookmarksFile`
+// until the feature is finished: while the pref is off nothing here reads a file, listens to
+// Places or refuses a key. One per app,
 // started and fed by ConfigHost: it hands over config.toml's text after each read (inline tables,
 // D2) and calls `tick` on each of its polls. The file is read beside config.toml's path (D1),
 // settled (D15), checked by core's bookmarks-file.mjs, and applied to each table's workspace
@@ -39,8 +39,16 @@ import {
   notePutBacks,
   serialQueue,
 } from "../core/bookmarks-edit.mjs";
+import { describeBookmarksFile, exportBookmarks } from "../core/bookmarks-export.mjs";
+import { PLACES_ROOTS } from "../core/bookmarks.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
-import { MIRRORED_REFUSAL, NONE_REFUSAL, setMirroredFolders } from "../host/bookmark-ops.mjs";
+import {
+  MIRRORED_REFUSAL,
+  NONE_REFUSAL,
+  PRIVATE_REFUSAL,
+  setMirroredFolders,
+} from "../host/bookmark-ops.mjs";
+import { openUrl } from "../host/tab-ops.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 
 /**
@@ -70,6 +78,8 @@ const DEFAULT_ASK_MS = 60_000;
 const ASK_SETTLE_MS = 1000;
 /** The base (D4), in the profile: the model both sides last agreed on, with guids. */
 const BASE_FILE = "vimma-bookmarks.json";
+/** Where `:bookmarks export!` keeps the file it replaces, beside it (Behaviour 17). */
+const BACKUP_FILE = `${BOOKMARKS_FILE}.bak`;
 
 /** Places events that change a mirrored folder (PlacesEvent.webidl). */
 const EVENTS = [
@@ -158,12 +168,16 @@ export class BookmarksFileImpl {
    *   mirrored?: (guids: ReadonlySet<string>, refusal: string, write: FileWriter | null) =>
    *     void,
    *   queue?: ReturnType<typeof serialQueue>, writeFile?: WriteFile,
-   *   reloadConfig?: () => void }} options
+   *   reloadConfig?: () => void,
+   *   confirm?: (win: BrowserWindow | null, question: string, yes: () => void, no: () => void) =>
+   *     (() => void) | null,
+   *   open?: (win: BrowserWindow, path: string) => void }} options
    *   `configPath`: config.toml's path, not its symlink's target (D1); `enabled`: the feature
    *   pref; `queue`: the one edit queue (D11); `writeFile`: an atomic write of a file in it,
    *   without which nothing is written back; `reloadConfig`: config.toml is read again after
-   *   an edit of its inline tables; the rest default to the profile, Places and the most recent
-   *   window, and are replaced by tests
+   *   an edit of its inline tables; `confirm`: the y/N of a command the user typed
+   *   (`:bookmarks export!`), in its window; `open`: shows the file in a tab; the rest default to
+   *   the profile, Places and the most recent window, and are replaced by tests
    */
   constructor(options) {
     this.configPath = options.configPath;
@@ -179,6 +193,8 @@ export class BookmarksFileImpl {
     this.edits = options.queue ?? serialQueue();
     this.writeFile = options.writeFile ?? null;
     this.reloadConfig = options.reloadConfig ?? (() => {});
+    this.confirm = options.confirm ?? confirmInWindow;
+    this.open = options.open ?? openInTab;
     /**
      * `[bookmarks] write_back` of the last config.toml that applied (Behaviour 9, D12).
      * @type {WriteBack}
@@ -250,6 +266,10 @@ export class BookmarksFileImpl {
 
   get path() {
     return PathUtils.join(PathUtils.parent(this.configPath()) ?? "/", BOOKMARKS_FILE);
+  }
+
+  get backupPath() {
+    return PathUtils.join(PathUtils.parent(this.configPath()) ?? "/", BACKUP_FILE);
   }
 
   /** Once, with ConfigHost's first window: runs while the feature pref is on. */
@@ -344,7 +364,147 @@ export class BookmarksFileImpl {
 
   /** The words `:bookmarks` takes while the feature is on, for Tab. */
   words() {
-    return this.active ? ["forget"] : [];
+    return this.active ? ["export", "export!", "forget"] : [];
+  }
+
+  /**
+   * `:bookmarks export` and `:bookmarks export!` (Behaviour 17): Places' workspace folders
+   * written as a new bookmarks.toml, then opened in a tab. An existing file is replaced only with
+   * `!` and after a y/N that says what it holds; the old text is kept as bookmarks.toml.bak first,
+   * so that nothing the file held is lost. Never from a private window (Behaviour 12). The
+   * question is asked outside the edit queue and the export computed again inside it after a
+   * `y`, from the file and Places as they are then (D11).
+   * @param {BrowserWindow | null} win  the window the command was typed in
+   * @param {boolean} replace  `export!`
+   * @returns {Promise<string>} what to tell the user
+   */
+  async exportFile(win, replace) {
+    if (!this.active) return ":bookmarks export: bookmarks in a file are off";
+    if (win && isPrivate(win)) return PRIVATE_REFUSAL;
+    if (!this.writeFile) return `${BOOKMARKS_FILE} cannot be written here; nothing exported`;
+    const first = await this.edits.run(() => this.exportNow(win, replace, null));
+    if (!("ask" in first)) return first.said;
+    const yes = await new Promise((resolve) => {
+      const close = this.confirm(
+        win,
+        first.ask,
+        () => resolve(true),
+        () => resolve(false),
+      );
+      if (!close) resolve(false);
+    });
+    if (!yes) return `${BOOKMARKS_FILE} kept as it is; nothing exported`;
+    const again = await this.edits.run(() => this.exportNow(win, true, first.existing));
+    if ("ask" in again) {
+      return `${BOOKMARKS_FILE} changed meanwhile; nothing written (:bookmarks export! again)`;
+    }
+    return again.said;
+  }
+
+  /**
+   * The export, in the edit queue. `confirmed`: the text of the file a `y` agreed to replace;
+   * a file that holds anything else is asked about again.
+   * @param {BrowserWindow | null} win
+   * @param {boolean} replace
+   * @param {string | null} confirmed
+   * @returns {Promise<{ said: string } | { ask: string, existing: string }>}
+   */
+  async exportNow(win, replace, confirmed) {
+    const writeFile = this.writeFile;
+    if (!writeFile) return { said: `${BOOKMARKS_FILE} cannot be written here; nothing exported` };
+    const { text: existing, problem } = await this.readFile();
+    if (problem) return { said: `${BOOKMARKS_FILE} exists but is ${problem}; nothing exported` };
+    const PU = places();
+    const tree = /** @type {PlacesNode} */ (await PU.promiseBookmarksTree(""));
+    const r = exportBookmarks({ places: tree, tables: this.exportTables(tree) });
+    if (!r.ok) return { said: r.error };
+    const count = plural(r.bookmarks, "bookmark");
+    if (existing !== null) {
+      const holds = describeBookmarksFile(existing);
+      if (!replace) {
+        return { said: `${BOOKMARKS_FILE} exists (${holds}); :bookmarks export! replaces it` };
+      }
+      if (confirmed !== existing) {
+        return {
+          ask: `replace ${BOOKMARKS_FILE} (${holds}) with ${count} from Firefox, keeping the old file as ${BACKUP_FILE}? y/N`,
+          existing,
+        };
+      }
+      // The old text first: if it cannot be kept, nothing is replaced.
+      const kept = await writeFile(this.backupPath, () => ({ text: existing }));
+      if ("error" in kept) return { said: `${BOOKMARKS_FILE} not replaced: ${kept.error}` };
+    }
+    const w = await writeFile(this.path, (text) =>
+      text === existing
+        ? { text: r.text }
+        : { error: `${BOOKMARKS_FILE} changed meanwhile; nothing written` },
+    );
+    if ("error" in w) return { said: w.error };
+    // Behaviour 15: Places takes the names the file holds, so the first run finds both alike.
+    const renamed = await this.renameInPlaces(r.renames);
+    // Read now (after this task), not at the next poll.
+    this.enqueue({ trigger: "file" });
+    if (win && !win.closed) this.open(win, this.path);
+    const tables = r.tables.map((t) => JSON.stringify(t.name));
+    const shown = tables.length > 3 ? [...tables.slice(0, 3), `${tables.length - 3} more`] : tables;
+    const out = [`${BOOKMARKS_FILE} written: ${count} in ${shown.join(", ") || "no table"}`];
+    const left = [];
+    const L = r.leftOut;
+    if (L.outside) left.push(`${L.outside} outside workspace folders`);
+    if (L.data) left.push(`${plural(L.data, "data: URL")}`);
+    if (L.unholdable) left.push(`${L.unholdable} with a URL the file refuses`);
+    if (L.deep) left.push(`${L.deep} deeper than 32 folders`);
+    if (left.length) out.push(`left out: ${left.join(", ")}`);
+    if (renamed) out.push(`${renamed} renamed in Firefox to match`);
+    if (existing !== null) out.push(`the old file is ${BACKUP_FILE}`);
+    return { said: out.join("; ") };
+  }
+
+  /**
+   * The tables an export writes: each workspace's folder (bookmarks decision 11), in the order
+   * the workspace picker lists them, then each table the base mirrors that no workspace names,
+   * so that `export!` over a mirrored file never drops a table the mirror would then empty.
+   * @param {PlacesNode} tree
+   */
+  exportTables(tree) {
+    const toolbar = (tree.children ?? []).find((c) => c.guid === PLACES_ROOTS.toolbar);
+    const top = (toolbar?.children ?? []).filter(
+      (c) => c.typeCode === places().bookmarks.TYPE_FOLDER,
+    );
+    /** @type {{ name: string, folder: string }[]} */
+    const out = [];
+    for (const d of WorkspaceStore.definitions.workspaces) {
+      const linked = d.bookmarksFolder && top.some((f) => f.guid === d.bookmarksFolder);
+      const folder = linked ? d.bookmarksFolder : top.find((f) => f.title === d.name)?.guid;
+      if (folder) out.push({ name: d.name, folder });
+    }
+    for (const t of this.base?.tables ?? []) out.push({ name: t.name, folder: t.folder });
+    return out;
+  }
+
+  /**
+   * Gives Places' items the names an export wrote for them; an item gone meanwhile is skipped
+   * (the mirror's run then finds it as it is). Returns how many were renamed.
+   * @param {readonly { guid: string, title: string }[]} renames
+   */
+  async renameInPlaces(renames) {
+    const B = places().bookmarks;
+    let n = 0;
+    this.applying = true;
+    try {
+      for (const { guid, title } of renames) {
+        try {
+          await B.update({ guid, title });
+          n++;
+        } catch (e) {
+          console.warn("vimma: exported bookmark not renamed in Places", e);
+        }
+      }
+    } finally {
+      this.applying = false;
+      this.burst.clear();
+    }
+    return n;
   }
 
   /** Settles once every run asked for so far has ended (and every other queued edit, D11). */
@@ -1464,6 +1624,34 @@ function treeNode(n) {
     if (t) children.push(t);
   }
   return { ...(n.guid ? { guid: n.guid } : {}), title: n.title ?? "", children };
+}
+
+/** @param {BrowserWindow} win */
+function isPrivate(win) {
+  const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
+    "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+  );
+  return PrivateBrowsingUtils.isWindowPrivate(win);
+}
+
+/**
+ * A y/N for a command the user just typed: in its window's prompt line, answered at once.
+ * @param {BrowserWindow | null} win
+ * @param {string} question
+ * @param {() => void} yes
+ * @param {() => void} no
+ */
+function confirmInWindow(win, question, yes, no) {
+  return win ? VimmaHost.ask(win, question, yes, no) : null;
+}
+
+/**
+ * The file in a new tab, read-only, as `:config` opens config.toml.
+ * @param {BrowserWindow} win
+ * @param {string} path
+ */
+function openInTab(win, path) {
+  openUrl(win, `view-source:${PathUtils.toFileURI(path)}`, "tab");
 }
 
 /** Resolves once Places' browser start-up is done, its startup restore included (D17). */

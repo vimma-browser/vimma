@@ -128,7 +128,7 @@ const echo = (/** @type {string} */ text) =>
  * @param {string} text
  * @param {number} limit
  */
-function utf8Over(text, limit) {
+export function utf8Over(text, limit) {
   if (text.length > limit) return true;
   if (text.length * 3 <= limit) return false;
   let n = 0;

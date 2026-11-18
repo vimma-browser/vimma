@@ -1,7 +1,7 @@
 # Spec: bookmarks-file
 
-Status: accepted, Delivery slices 1 and 2 implemented · Area: `packages/vimma-core/src/` (new `config/bookmarks-file.mjs`: parse, validate,
-model, three-way diff and line edits of `bookmarks.toml`; `config/config.mjs` for
+Status: accepted, Delivery slices 1, 2 and 4 implemented · Area: `packages/vimma-core/src/` (new `config/bookmarks-file.mjs`: parse, validate,
+model, three-way diff and line edits of `bookmarks.toml`; new `config/bookmarks-export.mjs`: the export; `config/config.mjs` for
 `[bookmarks] write_back` and the inline tables; `config/defaults.mjs` for the template line;
 `ui/bookmarks.mjs` for the panel's write path); `src/browser/base/content/vimma/` (new
 `config/BookmarksFile.sys.mjs`: the poll, the Places mirror and the write-back;
@@ -814,6 +814,50 @@ Slice 2 landed with these departures and particulars, each for the reason given:
   folders to the end of the table, a second item of one name as `name (2)`, and says how many it
   wrote; an item the file cannot hold (a `data:` URL, a name with hidden characters) is still
   asked about, as under `"none"`.
+
+### Notes from delivery slice 4
+
+Slice 4 landed with these departures and particulars, each for the reason given:
+
+- **Module place.** The export is `packages/vimma-core/src/config/bookmarks-export.mjs`, pure
+  over Places' tree, and `BookmarksFileImpl.exportFile` does the I/O, because the formatter
+  then has unit and fuzz tests of its own and the writer stays the one of D11.
+- **What `!` replaces.** The refusal says what the file holds
+  (`bookmarks.toml exists (12 bookmarks in "work"); :bookmarks export! replaces it`), and so does
+  the question
+  (`replace bookmarks.toml (12 bookmarks in "work") with 30 bookmarks from Firefox, keeping the old file as bookmarks.toml.bak? y/N`),
+  because a user deciding to replace a file must see what goes. The question is asked in the
+  window the command was typed in, without the 1 s key settle of the mirror's background
+  questions, since the user has just asked for it.
+- **A backup.** `export!` first writes the old text to `bookmarks.toml.bak` beside it (0600 when
+  new) and replaces nothing if that fails, and it replaces the file only while it holds the text
+  the question described. A file can hold lines Places lacks (a bookmarklet `bookmarklets`
+  keeps out of Places, a table of a paused mirror); without the backup a replace would leave
+  them nowhere.
+- **Which tables.** Each workspace's folder as the panel finds it (the linked folder at the
+  toolbar's top, else the first top-level toolbar folder of its name, bookmarks decision 11), in
+  the order of the workspace definitions, which the picker lists; then every table the base
+  mirrors that no workspace names, because a table `export!` dropped would be a removed table,
+  whose bookmarks the next load deletes.
+- **Names.** Names are cleaned as the slice 2 writer cleans them; an empty bookmark title becomes
+  its URL and an empty folder title `untitled`; a second item of one name in a folder becomes
+  `name (2)`, counting the items left out too, as the mirror's naming does. Places then takes
+  each written name that differs from its trimmed title (Behaviour 15), so that the first load
+  matches every item by path instead of adding a copy.
+- **Left out.** `data:` bookmarks, URLs of the schemes the file refuses, and items deeper than
+  32 folders are left out and counted in the notice, with the bookmarks outside the exported
+  folders (tags aside). One left out of a workspace's folder stays in Places; the first load
+  asks before it deletes it (Behaviour 18), so `n` keeps it. A folder whose items were all
+  left out is written as an empty folder.
+- **Checked like an edit.** The exported text is parsed again and must hold exactly the tables
+  and items meant, without an error, else nothing is written (D10); over 20,000 bookmarks and
+  folders or 4 MiB is refused whole. The file starts with a two-line comment that names the
+  format and says that every URL goes wherever the file goes.
+- **Every `write_back`.** Export works under every value: it is a command the user types to
+  create or replace the file, not a change to a mirrored folder.
+- **`:bookmarks forget`** needed nothing more: slice 1 shipped it with the pause. `Tab` after
+  `:bookmarks ` completes `export`, `export!` and `forget` while the feature is on; another word
+  says which ones it takes.
 
 ## Decisions on the open questions
 

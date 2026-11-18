@@ -10,6 +10,7 @@ import {
   readBookmarks,
 } from "../../src/config/bookmarks-file.mjs";
 import { editBookmarkLines } from "../../src/config/bookmarks-edit.mjs";
+import { exportBookmarks } from "../../src/config/bookmarks-export.mjs";
 import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.ts";
 import { configText } from "./toml-arb.ts";
 
@@ -89,7 +90,128 @@ function bookmarksOf(text: string) {
   return { errors: r.errors, bookmarks: out, tables: r.tables.map((t) => t.name) };
 }
 
+/** A Places node as promiseBookmarksTree gives it: a bookmark, a separator or a folder. */
+type PlacesNode = {
+  guid: string;
+  typeCode: number;
+  title?: string;
+  uri?: string;
+  children?: PlacesNode[];
+};
+
+/** A Places folder's contents: nasty titles, URLs of every kind, separators, nested folders. */
+type PlacesArbs = { items: PlacesNode[]; item: PlacesNode };
+const placesChildren: fc.Arbitrary<PlacesNode[]> = fc.letrec<PlacesArbs>((tie) => ({
+  items: fc.array(tie("item"), { maxLength: 6 }),
+  item: fc.oneof(
+    { depthSize: "small", withCrossShrink: true },
+    fc.record({
+      guid: fc.constant(""),
+      typeCode: fc.constant(1),
+      title: fc.oneof(nastyString, fc.constantFrom("a", "a", "a (2)", "", " a ")),
+      uri: fc.oneof(
+        fc.constantFrom(
+          "https://example.com",
+          "https://example.com/",
+          "data:text/html,x",
+          "javascript:alert(1)",
+          "place:parent=toolbar_____",
+          "file:///etc/passwd",
+          "about:blank",
+        ),
+        nastyString.map((s) => `https://e.example/${s}`),
+        nastyString,
+      ),
+    }),
+    fc.constant({ guid: "", typeCode: 3 }),
+    fc.record({
+      guid: fc.constant(""),
+      typeCode: fc.constant(2),
+      title: fc.oneof(nastyString, fc.constantFrom("a", "f", "")),
+      children: tie("items") as fc.Arbitrary<PlacesNode[]>,
+    }),
+  ),
+})).items;
+
+/** Gives every node a guid of its own (the generator cannot). */
+function withGuids(nodes: PlacesNode[], prefix: string): PlacesNode[] {
+  return nodes.map((n, i) => ({
+    ...n,
+    guid: `${prefix}${i}`.padEnd(12, "_"),
+    ...(n.children ? { children: withGuids(n.children, `${prefix}${i}.`) } : {}),
+  }));
+}
+
+/** Places' tree holding the parsed file's tables as folders, for exporting again. */
+function placesFromFile(text: string) {
+  const toNodes = (list: readonly Item[], at: string): PlacesNode[] =>
+    list.map((i, n) =>
+      i.kind === "folder"
+        ? {
+            guid: `${at}${n}`,
+            typeCode: 2,
+            title: i.title,
+            children: toNodes(i.children, `${at}${n}.`),
+          }
+        : { guid: `${at}${n}`, typeCode: 1, title: i.title, uri: i.url },
+    );
+  const r = parseBookmarksFile(text);
+  const folders = r.tables.map((t, n) => ({
+    guid: `t${n}`,
+    typeCode: 2,
+    title: t.name,
+    children: toNodes(t.children as Item[], `t${n}.`),
+  }));
+  return {
+    places: {
+      guid: "root________",
+      typeCode: 2,
+      children: [{ guid: "toolbar_____", typeCode: 2, children: folders }],
+    },
+    tables: r.tables.map((t, n) => ({ name: t.name, folder: `t${n}` })),
+  };
+}
+
 describe("bookmarks.toml fuzzing", () => {
+  test(
+    "export then parse gives the same model: an exported file reads back without an error",
+    () =>
+      fuzz(
+        "bookmarks-file-export",
+        fc.property(
+          fc.array(fc.tuple(tableName, placesChildren), { minLength: 1, maxLength: 3 }),
+          (raw) => {
+            const folders = raw.map(([, kids], n) => ({
+              guid: `w${n}`.padEnd(12, "_"),
+              typeCode: 2,
+              title: `w${n}`,
+              children: withGuids(kids, `w${n}.`),
+            }));
+            const places = {
+              guid: "root________",
+              typeCode: 2,
+              children: [{ guid: "toolbar_____", typeCode: 2, children: folders }],
+            };
+            const tables = raw.map(([name], n) => ({ name, folder: `w${n}`.padEnd(12, "_") }));
+            const r = within(500, () => exportBookmarks({ places, tables }));
+            if (!r.ok) return; // refused: nothing written
+            const parsed = parseBookmarksFile(r.text);
+            expect(parsed.errors).toEqual([]);
+            let count = 0;
+            for (const t of parsed.tables)
+              for (const i of items(t.children as Item[])) if (i.kind === "bookmark") count++;
+            expect(count).toBe(r.bookmarks);
+            expect(parsed.tables.map((t) => t.name)).toEqual(r.tables.map((t) => t.name));
+            // The model the file holds exports to the same text: nothing is renamed twice.
+            const again = placesFromFile(r.text);
+            const second = exportBookmarks(again);
+            expect(second.ok && second.text).toBe(r.text);
+          },
+        ),
+      ),
+    FUZZ_TIMEOUT,
+  );
+
   test(
     "editBookmarkLines on any parsed file either refuses or yields the expected model",
     () =>
