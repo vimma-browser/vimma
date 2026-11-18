@@ -195,6 +195,17 @@ href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. B
 
 - Labels are drawn for the layout at `f`: a page that scrolls or moves itself while they show
   leaves them stale (a key or `Esc` still works on the targets).
+  (Since changed: a smooth scroll still running when the targets are collected no longer
+  misplaces them (issue #1308). `d f` collected while `d`'s scroll had barely begun, so the
+  labels sat where the targets were then, also on links the scroll then took off screen. Each
+  frame's child now ends the smooth scroll it started at its destination before it collects
+  (`PageScroll.finish`), which costs nothing, where waiting for its `scrollend` would hold the
+  labels for about half a second (the spring of `scrollBy({ behavior: "smooth" })` in
+  ScrollAnimationMSDPhysics.cpp). A wheel over the page while labels show collects and draws
+  them again once the top frame's scroll ends: at its `scrollend`, after 150 ms without a
+  scroll event, or after 1 s at most (`PageScroll.settled`); the keys typed toward a label are
+  dropped with the old labels. A page that scrolls itself, and a wheel over a framed scroller,
+  still leave them stale. Tests: `browser_vimma_hints_scroll.js`.)
 - Delegated click handlers on elements with no role, tabindex or listener of their own (some
   React apps) get no hint; no `cursor: pointer` heuristic.
 - Canvas and WebGL apps (Google Docs, Figma, maps, games) draw their own controls: there are no

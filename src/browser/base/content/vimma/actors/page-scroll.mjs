@@ -11,6 +11,23 @@ import { viewportSize } from "./hint-collect.mjs";
 
 /** @import { ScrollKind } from "./VimmaActors.sys.mjs" */
 
+const lazy = /** @type {Lazy<"setTimeout" | "clearTimeout">} */ ({});
+ChromeUtils.defineESModuleGetters(lazy, {
+  setTimeout: "resource://gre/modules/Timer.sys.mjs",
+  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
+});
+
+/**
+ * How long a smooth scroll this frame started may still be running. `scrollBy` with
+ * `behavior: "smooth"` runs on a spring (ScrollAnimationMSDPhysics.cpp, spring constant 250 by
+ * default) that settles in about half a second; its scrollend ends it sooner.
+ */
+const SMOOTH_MAX_MS = 1000;
+/** A scroll that sent no scroll event for this long has ended (a wheel at the page's end). */
+const SETTLE_QUIET_MS = 150;
+/** At most this long a collection waits for a scroll to end (the parent gives the top 2 s). */
+const SETTLE_MAX_MS = 1000;
+
 /** Overflow values that lock an axis: a site's modal sets one on <html> or <body>. */
 const LOCKED = new Set(["hidden", "clip"]);
 
@@ -140,6 +157,12 @@ export class PageScroll {
   #layerScroller = null;
   /** When a search for the largest scrollable last found nothing (0: not since focus moved). */
   #emptySearchAt = 0;
+  /**
+   * The smooth scroll this frame last started, and where it goes, until its scrollend or
+   * SMOOTH_MAX_MS: hints collected meanwhile finish it first (issue #1308).
+   * @type {{ el: WeakRef<Element>, left: number, top: number, until: number } | null}
+   */
+  #running = null;
 
   /**
    * @param {JSWindowActorChild} actor  the VimmaChild: its document and window are read
@@ -148,6 +171,53 @@ export class PageScroll {
   constructor(actor, activeElement) {
     this.#actor = actor;
     this.#activeElement = activeElement;
+  }
+
+  /**
+   * Ends the smooth scroll this frame started, if it still runs, at the place it was going to:
+   * hints collected now must label what will be on screen, not what the scroll is passing
+   * (issue #1308). Jumping there, rather than waiting for the animation, keeps `d f` as fast as
+   * `f`.
+   */
+  finish() {
+    const run = this.#running;
+    this.#running = null;
+    if (!run || ChromeUtils.now() > run.until) return;
+    const el = run.el.deref();
+    if (!el?.isConnected || (el.scrollLeft === run.left && el.scrollTop === run.top)) return;
+    el.scrollTo({ left: run.left, top: run.top, behavior: "instant" });
+  }
+
+  /**
+   * Resolves once a scroll in this frame, such as the one a wheel over the page just started,
+   * has ended: at its scrollend, once no scroll event came for SETTLE_QUIET_MS (a wheel at the
+   * page's end scrolls nothing), and at the latest after SETTLE_MAX_MS. Listens in the system
+   * group, which the page's own listeners cannot stop.
+   * @returns {Promise<void>}
+   */
+  settled() {
+    const win = this.#actor.contentWindow;
+    if (!win) return Promise.resolve();
+    return new Promise((resolve) => {
+      const opts = /** @type {AddEventListenerOptions} */ ({ capture: true, mozSystemGroup: true });
+      /** @type {number} */
+      let quiet;
+      const done = () => {
+        lazy.clearTimeout(quiet);
+        lazy.clearTimeout(cap);
+        win.removeEventListener("scroll", onScroll, opts);
+        win.removeEventListener("scrollend", done, opts);
+        resolve();
+      };
+      const onScroll = () => {
+        lazy.clearTimeout(quiet);
+        quiet = lazy.setTimeout(done, SETTLE_QUIET_MS);
+      };
+      const cap = lazy.setTimeout(done, SETTLE_MAX_MS);
+      win.addEventListener("scroll", onScroll, opts);
+      win.addEventListener("scrollend", done, opts);
+      onScroll();
+    });
   }
 
   /** Focus moved: a search that found nothing may run again at once. */
@@ -263,6 +333,46 @@ export class PageScroll {
       bottom: () => el.scrollTo({ top: el.scrollHeight, behavior }),
     };
     run[kind]();
+    if (behavior === "smooth") this.#started(el, kind, by, half);
     return true;
+  }
+
+  /**
+   * Notes where the smooth scroll just started on `el` goes, for finish(). As Gecko does for
+   * scrollBy (ScrollContainerFrame::ScrollByCSSPixelsInternal), from the rounded position now;
+   * scrollTo clamps it to the scroll range when it is used.
+   * @param {Element} el
+   * @param {ScrollKind} kind
+   * @param {number} by
+   * @param {number} half
+   */
+  #started(el, kind, by, half) {
+    const x = Math.round(el.scrollLeft);
+    const y = Math.round(el.scrollTop);
+    /** @type {Record<ScrollKind, [number, number]>} */
+    const to = {
+      down: [x, y + by],
+      up: [x, y - by],
+      right: [x + by, y],
+      left: [x - by, y],
+      half_down: [x, y + half],
+      half_up: [x, y - half],
+      top: [x, 0],
+      bottom: [x, el.scrollTopMax],
+    };
+    const [left, top] = to[kind];
+    if (left === x && Math.min(Math.max(top, 0), el.scrollTopMax) === y) {
+      this.#running = null; // at the end already: nothing runs
+      return;
+    }
+    const run = { el: new WeakRef(el), left, top, until: ChromeUtils.now() + SMOOTH_MAX_MS };
+    this.#running = run;
+    // The root scroller's scrollend is fired at its document.
+    const target = el === el.ownerDocument.scrollingElement ? el.ownerDocument : el;
+    const ended = () => {
+      if (this.#running === run) this.#running = null;
+    };
+    const opts = /** @type {AddEventListenerOptions} */ ({ once: true, mozSystemGroup: true });
+    target.addEventListener("scrollend", ended, opts);
   }
 }

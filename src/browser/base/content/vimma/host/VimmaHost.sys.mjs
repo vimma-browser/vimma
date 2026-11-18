@@ -110,6 +110,7 @@ export { NO_OUTLINE, OUTLINE_ATTACHMENT, PDF_OUTLINE_PREF } from "./outline-ops.
  * @property {HintAction} action
  * @property {HintState<HintTarget> | null} hs  null while collecting
  * @property {Chord[]} buffered  keys typed while collecting
+ * @property {boolean} [settle]  collecting once the scroll a wheel started ends (#1308)
  */
 
 /** Element focus with no text block on screen, and in the PDF viewer (element-focus 14). */
@@ -183,6 +184,7 @@ const isRemoteBrowserTarget = (target) =>
  * @property {number | null} timer   pending-sequence timeout (dispatcher.flush)
  * @property {() => void} onCancelHints  resize, a mouse click in chrome
  * @property {() => void} onMouseDown  a mouse click: hint mode and element focus end
+ * @property {(e: WheelEvent) => void} onWheel  a wheel over the page: the labels follow it
  * @property {HintSession | null} hint
  * @property {ElementFocus} element  the focused text block (docs/specs/element-focus.md)
  * @property {HintOverlay} hintOverlay
@@ -699,6 +701,7 @@ export const VimmaHost = {
     // block's outline follows a resize; a click ends the focus.
     win.addEventListener("resize", state.onCancelHints);
     win.addEventListener("mousedown", state.onMouseDown, true);
+    win.addEventListener("wheel", state.onWheel, true);
     // After the keys: an upstream change in tab code must not cost us ctrl+b.
     try {
       const tabStrip = new TabStrip(win);
@@ -802,6 +805,7 @@ export const VimmaHost = {
     state.firefoxKeys?.destroy();
     win.removeEventListener("resize", state.onCancelHints);
     win.removeEventListener("mousedown", state.onMouseDown, true);
+    win.removeEventListener("wheel", state.onWheel, true);
     this._cancelHints(state);
     state.element.leave();
     state.help.destroy();
@@ -1967,9 +1971,11 @@ export const VimmaHost = {
    * `f` / `gF` / `F`: collects the targets, then enters hint mode with a label on each. With none,
    * the tab stays in normal (the status bar will say so, M2).
    * @param {MozBrowser} browser
-   * @param {Action} action
+   * @param {Pick<Action, "id">} action
+   * @param {{ settle?: boolean }} [options]  `settle`: collect once the scroll running in the
+   *   page ends (a wheel moved it under the labels)
    */
-  _startHints(browser, action) {
+  _startHints(browser, action, { settle = false } = {}) {
     const state = stateOfBrowser(browser);
     if (!state) return;
     this._cancelHints(state);
@@ -1981,10 +1987,10 @@ export const VimmaHost = {
       return;
     }
     /** @type {HintSession} */
-    const session = { browser, action: id, hs: null, buffered: [] };
+    const session = { browser, action: id, hs: null, buffered: [], settle };
     state.hint = session;
     this._emit(state);
-    VimmaActors.collectHints(browser, id)
+    VimmaActors.collectHints(browser, id, { settle })
       .then((targets) => {
         if (state.hint !== session) return;
         try {
@@ -2009,6 +2015,20 @@ export const VimmaHost = {
         if (state.hint === session) this._cancelHints(state);
       })
       .finally(() => this._hintRuns++);
+  },
+
+  /**
+   * A wheel over the page while hints are up (issue #1308): the labels were drawn for the
+   * layout before it, so they are collected and drawn again once the scroll it starts ends.
+   * Keys typed toward a label are dropped with the old labels. Further wheels while that
+   * collection waits change nothing: it waits for the last scroll's end.
+   * @param {WindowState} state
+   * @param {WheelEvent} e
+   */
+  _hintsScrolled(state, e) {
+    const session = state.hint;
+    if (!session || e.target !== session.browser || (session.settle && !session.hs)) return;
+    this._startHints(session.browser, { id: session.action }, { settle: true });
   },
 
   /**

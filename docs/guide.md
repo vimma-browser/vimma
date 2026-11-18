@@ -678,7 +678,9 @@ The page takes your label as your click: a link that opens a new tab opens it, a
 opens a window or goes full screen does so, without Firefox's pop-up blocker stepping in. Labels
 use the home row (`a s d f g h j k l`), in reading order: targets near the top get the shortest.
 As you type, labels that no longer match disappear. `Backspace` takes back a key and `Esc` leaves
-hints without doing anything.
+hints without doing anything. `f` right after a scroll key (`d f`) labels what is on screen where the
+scroll ends, at once, and scrolling with the mouse wheel while the labels are up draws them again
+where that scroll ends (the keys typed toward a label start over).
 
 `gF` labels links only and opens the one you pick in a new tab in the background, so you stay on the
 page and can pick more. Its labels are drawn in lower case (the other hint keys draw them in upper

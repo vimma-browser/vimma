@@ -42,7 +42,7 @@ import { asUserGesture } from "./user-gesture.mjs";
  *   | { name: "Vimma:GrepPreview", data: Parameters<GrepPage["preview"]>[0] }
  *   | { name: "Vimma:GrepJump", data: Parameters<GrepPage["jump"]>[0] }
  *   | { name: "Vimma:CollectHints", data: { gen: number, linksOnly: boolean, blocks?: boolean,
- *       texts?: boolean, elements?: boolean } }
+ *       texts?: boolean, elements?: boolean, settle?: boolean } }
  *   | { name: "Vimma:ActivateHint", data: { gen: number, id: number } }
  *   | { name: "Vimma:AgentElement", data: Parameters<AgentPage["element"]>[0] }
  *   | { name: "Vimma:AgentQuiet", data: Parameters<AgentPage["quiet"]>[0] }
@@ -838,8 +838,10 @@ export class VimmaChild extends JSWindowActorChild {
    * `vimma_elements` (`elements`, docs/specs/mcp-forms.md F2-F6) gets every kind, disabled
    * controls included, each described, with the frame's forms, and keeps its elements apart from
    * the user's (F4). A top frame without a size yet is given time to get one first (#sized).
+   * A smooth scroll this frame started is finished first, and with `settle` (a wheel moved the
+   * page under the labels) a scroll running is waited for (m1-hints, issue #1308).
    * @param {{ gen: number, linksOnly: boolean, blocks?: boolean, texts?: boolean,
-   *   elements?: boolean }} data
+   *   elements?: boolean, settle?: boolean }} data
    */
   async #collectHints(data) {
     const gen = data?.gen;
@@ -847,14 +849,22 @@ export class VimmaChild extends JSWindowActorChild {
     if (!isIndex(gen) || !win) return null;
     const elements = data.elements === true;
     const texts = data.texts === true && !elements;
-    if (!this.browsingContext?.parent && !hasSize(win)) {
-      if (!(await this.#sized(win))) return null;
-      // Collections that wait can end out of order. Generations only grow, so a stored newer
-      // generation means a newer collection of the same kind answered meanwhile; the elements it
-      // stored are the ones the parent acts on, and they stay.
+    // Collections that wait can end out of order. Generations only grow, so a stored newer
+    // generation means a newer collection of the same kind answered meanwhile; the elements it
+    // stored are the ones the parent acts on, and they stay.
+    const overtaken = () => {
       const stored = elements ? this.#agent.listed : texts ? null : this.#hints;
-      if (stored && stored.gen > gen) return null;
+      return !!stored && stored.gen > gen;
+    };
+    if (!this.browsingContext?.parent && !hasSize(win)) {
+      if (!(await this.#sized(win)) || overtaken()) return null;
     }
+    // Labels go where the targets are once a scroll ends, not where it is passing (#1308).
+    if (data.settle === true) {
+      await this.#scroll.settled();
+      if (overtaken() || !this.contentWindow) return null;
+    }
+    this.#scroll.finish();
     const t0 = ChromeUtils.now();
     const { targets, frames } = collectTargets(win, {
       linksOnly: data.linksOnly === true && !elements,

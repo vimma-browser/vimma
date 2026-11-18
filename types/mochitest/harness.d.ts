@@ -285,6 +285,14 @@ declare const EventUtils: {
     win?: Window,
   ): boolean;
   synthesizeMouseAtCenter(target: Element, event: MouseEventOptions, win?: Window): boolean;
+  /** A wheel event at the offset in `target`, through the widget, so APZ scrolls with it. */
+  synthesizeWheel(
+    target: Element,
+    offsetX: number,
+    offsetY: number,
+    event: { deltaMode?: number; deltaX?: number; deltaY?: number; deltaZ?: number },
+    win?: Window,
+  ): void;
 };
 
 // --- Content-process globals, inside SpecialPowers.spawn tasks ---
