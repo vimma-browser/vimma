@@ -4194,8 +4194,8 @@ dropping the toolbar over the page. While a download runs, the [status bar](#sta
 
 `ctrl+b d` (or `:downloads`) opens the downloads picker over the page: newest first, those in
 progress, paused or blocked under **Active**, the rest under **Recent**, up to 100 in all. Each row
-shows the file's name, its state (`42%`, or the bytes so far such as `3.1 MB` while the size is
-unknown, `paused`, `done`, `failed`, `canceled`, `blocked`, `missing`), its size or progress
+shows the file's name, its state (`42%`, or `running` while the size is unknown, `paused`, `done`,
+`failed`, `canceled`, `blocked`, `missing`), its size or progress
 (`3.1 / 7.4 MB · 1.2 MB/s · 0:35 left`), the site it came from (the host only, never the full
 link) and when it finished. A download from another workspace names that workspace, and one from
 the [agent workspace](#agent-workspace) says `◇ agent`. Progress updates in place. Like the other

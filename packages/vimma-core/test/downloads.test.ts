@@ -139,7 +139,7 @@ describe("downloadRow", () => {
 
   test("state words for each state", () => {
     expect(downloadRow(running(), 0).state).toBe("41%");
-    expect(downloadRow(running({ hasProgress: false }), 0).state).toBe("3.1 MB");
+    expect(downloadRow(running({ hasProgress: false }), 0).state).toBe("running");
     expect(downloadRow(paused(), 0).state).toBe("paused");
     expect(downloadRow(failed(), 0).state).toBe("failed");
     expect(downloadRow(canceled(), 0).state).toBe("canceled");
@@ -167,7 +167,10 @@ describe("downloadRow", () => {
       rec({ succeeded: false, targetExists: false }),
     ];
     for (const r of rows) expect(downloadRow(r, 0).state.length).toBeLessThanOrEqual(9);
-    expect(downloadRow(unknown(0), 0).state).toBe("0 B");
+    // The size column already shows the bytes so far; the state does not repeat them.
+    const row = downloadRow(unknown(3.1 * MB), 0);
+    expect(row.state).toBe("running");
+    expect(row.detail).toBe("3.1 MB · 1.2 MB/s");
   });
 
   test("progress reads 3.1 / 7.4 MB · 1.2 MB/s · 0:35 left", () => {
@@ -630,7 +633,7 @@ describe("rows, sizes and times in detail", () => {
   });
 
   test("a running download with a known size of 0 bytes shows no percent", () => {
-    expect(downloadRow(running({ totalBytes: 0 }), 0).state).toBe("3.1 MB");
+    expect(downloadRow(running({ totalBytes: 0 }), 0).state).toBe("running");
     expect(downloadProgress(running({ totalBytes: 0 }))).toBe("3.1 MB · 1.2 MB/s");
     // A total without hasProgress is not trusted either.
     expect(downloadProgress(running({ hasProgress: false }))).toBe("3.1 MB · 1.2 MB/s");
