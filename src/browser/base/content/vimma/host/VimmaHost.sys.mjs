@@ -18,7 +18,7 @@ import {
   isEditable,
   matchSiteRule,
 } from "../core/editable.mjs";
-import { HintError, hintKey, hintStatus, startHints } from "../core/hints.mjs";
+import { HintError, hintKey, hintLabelCase, hintStatus, startHints } from "../core/hints.mjs";
 import { chordFromEvent, formatKey, parseKey } from "../core/keys.mjs";
 import { SUGGESTION_ACTIONS, suggestionStep } from "../core/suggestions.mjs";
 import { pressKeyLater, pressingKey } from "../actors/enter-key.mjs";
@@ -1947,7 +1947,7 @@ export const VimmaHost = {
           console.info("vimma: no hint targets");
           return;
         }
-        state.hintOverlay.show(browser, session.hs.hints);
+        state.hintOverlay.show(browser, session.hs.hints, hintLabelCase(id));
         this._emit(state); // the status bar's hint segment names a label now
         for (const chord of session.buffered.splice(0)) {
           if (state.hint !== session) break;

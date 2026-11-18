@@ -216,6 +216,40 @@ async function labelFor(browser, id, key = "f") {
   return /** @type {string} */ (label);
 }
 
+/**
+ * A label as the user sees it: its text with the case its style draws it in.
+ * @param {string} label
+ */
+function seenLabel(label) {
+  const el = /** @type {HTMLElement} */ (
+    document.querySelector(`#vimma-hints .vimma-hint[data-label="${label}"]`)
+  );
+  const transform = window.getComputedStyle(el).textTransform;
+  const text = /** @type {string} */ (el.textContent);
+  if (transform === "uppercase") return text.toUpperCase();
+  Assert.equal(transform, "none", "labels are drawn upper case or as they are");
+  return text;
+}
+
+/**
+ * Types a label character by character as seen, with Shift on each upper-case letter.
+ * @param {string} seen
+ */
+function typeAsSeen(seen) {
+  for (const c of seen) {
+    const upper = c !== c.toLowerCase();
+    EventUtils.synthesizeKey(c, upper ? { shiftKey: true } : {});
+  }
+}
+
+/**
+ * `seen` with its last character upper case, as a user types `sD` to go there.
+ * @param {string} seen
+ */
+function upperLastSeen(seen) {
+  return seen.slice(0, -1) + seen.slice(-1).toUpperCase();
+}
+
 add_task(async function f_labels_every_visible_target_and_nothing_else() {
   await withPage(PAGE, async (browser) => {
     const hints = await startHints();
@@ -224,6 +258,7 @@ add_task(async function f_labels_every_visible_target_and_nothing_else() {
     Assert.equal(windowMode(), "hint", "hint mode");
     const labels = hints.hints.map((h) => h.label);
     Assert.deepEqual(drawnLabels().sort(), [...labels].sort(), "every label is drawn in chrome");
+    for (const l of labels) Assert.equal(seenLabel(l), l.toUpperCase(), "f draws upper case");
     for (const a of labels) {
       for (const b of labels) {
         if (a !== b) Assert.ok(!b.startsWith(a), `${a} is not a prefix of ${b}`);
@@ -327,8 +362,11 @@ add_task(async function gF_opens_the_link_in_a_background_tab() {
 
     const selected = gBrowser.selectedTab;
     const label = await labelFor(browser, "l3", "gF");
+    // gF reads the case typed, so it draws the background form: typing what is seen opens there.
+    const seen = seenLabel(label);
+    Assert.equal(seen, label.toLowerCase(), "gF draws its labels lower case");
     const opened = BrowserTestUtils.waitForNewTab(gBrowser, (u) => u.endsWith("?to=3"), true);
-    type(label);
+    typeAsSeen(seen);
     const tab = await opened;
     Assert.equal(gBrowser.selectedTab, selected, "the new tab opened in the background");
     Assert.equal(tab.userContextId, selected.userContextId, "in the same container");
@@ -362,7 +400,7 @@ async function openL3(browser, typeLabel, key = "gF") {
 add_task(async function gF_with_an_upper_case_last_key_opens_and_selects_the_tab() {
   await withPage(PAGE, async (browser) => {
     const hinted = gBrowser.selectedTab;
-    const tab = await openL3(browser, typeUpperLast);
+    const tab = await openL3(browser, (l) => typeAsSeen(upperLastSeen(seenLabel(l))));
     await TestUtils.waitForCondition(() => gBrowser.selectedTab === tab, "the new tab is selected");
     Assert.equal(tab.userContextId, hinted.userContextId, "in the hinted tab's container");
     Assert.equal(tab.owner, hinted, "the hinted tab owns it");
@@ -444,6 +482,8 @@ add_task(async function the_status_bar_shows_both_outcomes_in_gF() {
       () => segment()?.startsWith(`${next} background`),
       "it follows the typed prefix",
     );
+    const typed = /** @type {HTMLElement} */ (document.querySelector(".vimma-hint-typed"));
+    Assert.equal(window.getComputedStyle(typed).textTransform, "none", "the typed part too");
     EventUtils.synthesizeKey("KEY_Escape");
     await TestUtils.waitForCondition(() => segment() === null, "gone when hint mode ends");
     await startHints("f");

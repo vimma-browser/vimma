@@ -663,13 +663,15 @@ text field gets focus and the tab is in insert mode. Labels use the home row (`a
 in reading order: targets near the top get the shortest. As you type, labels that no longer match
 disappear. `Backspace` takes back a key and `Esc` leaves hints without doing anything.
 
-`gF` labels links only and opens the one you pick in a new tab in the background, so you stay
-on the page and can pick more. To read the link now, type the label's last character in upper
-case (with `Shift`): `sD` instead of `sd` opens the same link in a new tab and switches to it, and
-the page you came from stays open behind it, so `x` on the new tab brings you back. Caps Lock counts
-as `Shift`. While the labels are up, the status bar shows both choices with a label you can type,
-such as `sd background · sD go there`. A label ending in a digit or punctuation (possible with a
-custom `hint_chars`) has no upper case and always opens in the background.
+`gF` labels links only and opens the one you pick in a new tab in the background, so you stay on the
+page and can pick more. Its labels are drawn in lower case (the other hint keys draw them in upper
+case), so typing a label as you see it opens the link in the background. To read the link now, type
+the label's last character in upper case (with `Shift`): `sD` instead of `sd` opens the same link in
+a new tab and switches to it, and the page you came from stays open behind it, so `x` on the new tab
+brings you back. Caps Lock counts as `Shift`. While the labels are up, the status bar shows both
+choices with a label you can type, such as `sd background · sD go there`. A label ending in a digit
+or punctuation (possible with a custom `hint_chars`) has no upper case and always opens in the
+background.
 
 For hints that always switch to the new tab, whatever the case typed, bind the action
 `follow_link_new_tab_fg` (`hint.follow_new_tab_fg`), which has no key by default:
