@@ -853,8 +853,9 @@ export class VimmaChild extends JSWindowActorChild {
    * `vimma_elements` (`elements`, docs/specs/mcp-forms.md F2-F6) gets every kind, disabled
    * controls included, each described, with the frame's forms, and keeps its elements apart from
    * the user's (F4). A top frame without a size yet is given time to get one first (#sized).
-   * A smooth scroll this frame started is finished first, and with `settle` (a wheel moved the
-   * page under the labels) a scroll running is waited for (m1-hints, issue #1308).
+   * A smooth scroll this frame started is finished first; one taken over since, and with
+   * `settle` (a wheel moved the page under the labels) any scroll running, is waited for
+   * (m1-hints, issue #1308).
    * @param {{ gen: number, linksOnly: boolean, blocks?: boolean, texts?: boolean,
    *   elements?: boolean, settle?: boolean }} data
    */
@@ -874,12 +875,13 @@ export class VimmaChild extends JSWindowActorChild {
     if (!this.browsingContext?.parent && !hasSize(win)) {
       if (!(await this.#sized(win)) || overtaken()) return null;
     }
-    // Labels go where the targets are once a scroll ends, not where it is passing (#1308).
-    if (data.settle === true) {
+    // Labels go where the targets are once a scroll ends, not where it is passing (#1308): a
+    // smooth scroll this frame started is finished at once; one that something else took over,
+    // or the wheel's with `settle`, is waited for.
+    if (this.#scroll.finish() || data.settle === true) {
       await this.#scroll.settled();
       if (overtaken() || !this.contentWindow) return null;
     }
-    this.#scroll.finish();
     const t0 = ChromeUtils.now();
     const { targets, frames } = collectTargets(win, {
       linksOnly: data.linksOnly === true && !elements,

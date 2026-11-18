@@ -714,7 +714,8 @@ export const VimmaHost = {
     // block's outline follows a resize; a click ends the focus.
     win.addEventListener("resize", state.onCancelHints);
     win.addEventListener("mousedown", state.onMouseDown, true);
-    win.addEventListener("wheel", state.onWheel, true);
+    // Passive: it only reads, so it never holds up the scroll (APZ need not wait for it).
+    win.addEventListener("wheel", state.onWheel, { capture: true, passive: true });
     // After the keys: an upstream change in tab code must not cost us ctrl+b.
     try {
       const tabStrip = new TabStrip(win);
@@ -831,7 +832,7 @@ export const VimmaHost = {
     state.firefoxKeys?.destroy();
     win.removeEventListener("resize", state.onCancelHints);
     win.removeEventListener("mousedown", state.onMouseDown, true);
-    win.removeEventListener("wheel", state.onWheel, true);
+    win.removeEventListener("wheel", state.onWheel, { capture: true });
     this._cancelHints(state);
     state.element.leave();
     state.help.destroy();
@@ -2015,7 +2016,8 @@ export const VimmaHost = {
   _startHints(browser, action, { settle = false } = {}) {
     const state = stateOfBrowser(browser);
     if (!state) return;
-    this._cancelHints(state);
+    // A restart after a wheel stays in hint mode: the status bar never shows normal between.
+    this._cancelHints(state, { emit: !settle });
     state.element.leave();
     const id = /** @type {HintAction} */ (action.id);
     // pdf.js draws lines, not paragraphs: copy mode is the way to copy there (decision 14).
@@ -2058,7 +2060,9 @@ export const VimmaHost = {
    * A wheel over the page while hints are up (issue #1308): the labels were drawn for the
    * layout before it, so they are collected and drawn again once the scroll it starts ends.
    * Keys typed toward a label are dropped with the old labels. Further wheels while that
-   * collection waits change nothing: it waits for the last scroll's end.
+   * collection waits change nothing: it waits for the last scroll's end. The wheel's target
+   * in chrome is the <browser> only for a remote page; over a page in the parent process
+   * (about: pages without hints) it is an element inside it, and nothing happens.
    * @param {WindowState} state
    * @param {WheelEvent} e
    */
@@ -2212,13 +2216,14 @@ export const VimmaHost = {
   /**
    * Leaves hint mode, if on: removes the labels and drops a collection in flight.
    * @param {WindowState} state
+   * @param {{ emit?: boolean }} [options]  `emit: false` when hint mode starts again at once
    */
-  _cancelHints(state) {
+  _cancelHints(state, { emit = true } = {}) {
     this._cancelTabLabels(state);
     if (!state.hint) return;
     state.hint = null;
     state.hintOverlay.hide();
-    this._emit(state); // the status bar leaves HINT, also when no key ended hint mode
+    if (emit) this._emit(state); // the status bar leaves HINT, also when no key ended hint mode
     VimmaActors.cancelHints(state.win);
   },
 

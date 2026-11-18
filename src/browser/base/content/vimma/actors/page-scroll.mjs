@@ -160,7 +160,10 @@ export class PageScroll {
   /**
    * The smooth scroll this frame last started, and where it goes, until its scrollend or
    * SMOOTH_MAX_MS: hints collected meanwhile finish it first (issue #1308).
-   * @type {{ el: WeakRef<Element>, left: number, top: number, until: number } | null}
+   * `x`, `y`: where it started; `left`, `top`: its destination; `over`: something else moved
+   * the scroller back meanwhile; `stop`: removes its listeners.
+   * @type {{ el: WeakRef<Element>, x: number, y: number, left: number, top: number,
+   *   until: number, over: boolean, stop: () => void } | null}
    */
   #running = null;
 
@@ -174,25 +177,46 @@ export class PageScroll {
   }
 
   /**
-   * Ends the smooth scroll this frame started, if it still runs, at the place it was going to:
-   * hints collected now must label what will be on screen, not what the scroll is passing
-   * (issue #1308). Jumping there, rather than waiting for the animation, keeps `d f` as fast as
-   * `f`.
+   * Ends the smooth scroll this frame started, if it still runs, where it was going: hints
+   * collected now must label what will be on screen, not what the scroll is passing (issue
+   * #1308). Jumping there, rather than waiting for the animation, keeps `d f` as fast as `f`.
+   * A scroll on a scroll-snap container is waited for instead: its end is a snap point. A
+   * scroll that has left the stretch between its start and its destination, or stepped back
+   * within it, was taken over (a snap point further on, the user's wheel or scrollbar): it is
+   * not undone, and the caller waits for it to end instead.
+   * @returns {boolean} whether a scroll still runs whose end is not known: wait (settled())
    */
   finish() {
     const run = this.#running;
     this.#running = null;
-    if (!run || ChromeUtils.now() > run.until) return;
+    run?.stop();
+    if (!run || ChromeUtils.now() > run.until) return false;
     const el = run.el.deref();
-    if (!el?.isConnected || (el.scrollLeft === run.left && el.scrollTop === run.top)) return;
+    if (!el?.isConnected) return false;
+    const x = el.scrollLeft;
+    const y = el.scrollTop;
+    if (x === run.left && y === run.top) return false;
+    const within = (/** @type {number} */ v, /** @type {number} */ a, /** @type {number} */ b) =>
+      v >= Math.min(a, b) - 1 && v <= Math.max(a, b) + 1;
+    if (run.over || !within(x, run.x, run.left) || !within(y, run.y, run.top)) return true;
+    // A scroll-snap container ends the scroll at a snap point that only layout knows; a jump to
+    // the unsnapped destination would snap to the nearest point instead, back where the scroll
+    // started. Nor does a relative jump (scrollBy) work: APZ shifts its running animation by
+    // the same distance, so the page ends beyond where the labels were collected.
+    const doc = el.ownerDocument;
+    const snapper = el === doc.scrollingElement ? doc.documentElement : el;
+    const snap = doc.defaultView?.getComputedStyle(snapper)?.scrollSnapType ?? "none";
+    if (snap !== "none") return true;
     el.scrollTo({ left: run.left, top: run.top, behavior: "instant" });
+    return false;
   }
 
   /**
    * Resolves once a scroll in this frame, such as the one a wheel over the page just started,
    * has ended: at its scrollend, once no scroll event came for SETTLE_QUIET_MS (a wheel at the
-   * page's end scrolls nothing), and at the latest after SETTLE_MAX_MS. Listens in the system
-   * group, which the page's own listeners cannot stop.
+   * page's end scrolls nothing), and at the latest after SETTLE_MAX_MS. Only the browser's own
+   * scroll events count: the page can dispatch untrusted ones, which a chrome listener on
+   * content receives too, but they neither end the wait nor prolong it.
    * @returns {Promise<void>}
    */
   settled() {
@@ -206,18 +230,30 @@ export class PageScroll {
         lazy.clearTimeout(quiet);
         lazy.clearTimeout(cap);
         win.removeEventListener("scroll", onScroll, opts);
-        win.removeEventListener("scrollend", done, opts);
+        win.removeEventListener("scrollend", onEnd, opts);
         resolve();
       };
-      const onScroll = () => {
+      const wait = () => {
         lazy.clearTimeout(quiet);
         quiet = lazy.setTimeout(done, SETTLE_QUIET_MS);
       };
+      const onScroll = (/** @type {Event} */ e) => {
+        if (e.isTrusted) wait();
+      };
+      const onEnd = (/** @type {Event} */ e) => {
+        if (e.isTrusted) done();
+      };
       const cap = lazy.setTimeout(done, SETTLE_MAX_MS);
       win.addEventListener("scroll", onScroll, opts);
-      win.addEventListener("scrollend", done, opts);
-      onScroll();
+      win.addEventListener("scrollend", onEnd, opts);
+      wait();
     });
+  }
+
+  /** Forgets the smooth scroll noted for finish(), and stops watching it. */
+  #forget() {
+    this.#running?.stop();
+    this.#running = null;
   }
 
   /** Focus moved: a search that found nothing may run again at once. */
@@ -252,6 +288,7 @@ export class PageScroll {
     const x = Number(data?.x);
     const y = Number(data?.y);
     if (Number.isFinite(x) && Number.isFinite(y)) {
+      this.#forget(); // this position replaces where a smooth scroll was going
       this.#actor.contentWindow?.scrollTo({ left: x, top: y, behavior: "instant" });
     }
   }
@@ -332,23 +369,28 @@ export class PageScroll {
       top: () => el.scrollTo({ top: 0, behavior }),
       bottom: () => el.scrollTo({ top: el.scrollHeight, behavior }),
     };
+    const from = { x: el.scrollLeft, y: el.scrollTop };
     run[kind]();
-    if (behavior === "smooth") this.#started(el, kind, by, half);
+    // An instant scroll has ended already, and replaces where an earlier smooth one was going.
+    this.#forget();
+    if (behavior === "smooth") this.#running = this.#started(el, from, kind, by, half);
     return true;
   }
 
   /**
-   * Notes where the smooth scroll just started on `el` goes, for finish(). As Gecko does for
-   * scrollBy (ScrollContainerFrame::ScrollByCSSPixelsInternal), from the rounded position now;
-   * scrollTo clamps it to the scroll range when it is used.
+   * Where the smooth scroll just started on `el` goes, for finish(), or null when it goes
+   * nowhere (at the end already). As Gecko does for scrollBy
+   * (ScrollContainerFrame::ScrollByCSSPixelsInternal), from the rounded position; clamped to
+   * the scroll range.
    * @param {Element} el
+   * @param {{ x: number, y: number }} from  its position before the scroll
    * @param {ScrollKind} kind
    * @param {number} by
    * @param {number} half
    */
-  #started(el, kind, by, half) {
-    const x = Math.round(el.scrollLeft);
-    const y = Math.round(el.scrollTop);
+  #started(el, from, kind, by, half) {
+    const x = Math.round(from.x);
+    const y = Math.round(from.y);
     /** @type {Record<ScrollKind, [number, number]>} */
     const to = {
       down: [x, y + by],
@@ -360,19 +402,47 @@ export class PageScroll {
       top: [x, 0],
       bottom: [x, el.scrollTopMax],
     };
-    const [left, top] = to[kind];
-    if (left === x && Math.min(Math.max(top, 0), el.scrollTopMax) === y) {
-      this.#running = null; // at the end already: nothing runs
-      return;
-    }
-    const run = { el: new WeakRef(el), left, top, until: ChromeUtils.now() + SMOOTH_MAX_MS };
-    this.#running = run;
-    // The root scroller's scrollend is fired at its document.
+    const clamp = (/** @type {number} */ v, /** @type {number} */ lo, /** @type {number} */ hi) =>
+      Math.min(Math.max(v, lo), hi);
+    const left = clamp(to[kind][0], el.scrollLeftMin, el.scrollLeftMax);
+    const top = clamp(to[kind][1], 0, el.scrollTopMax);
+    if (left === x && top === y) return null;
+    // The root scroller's scroll and scrollend are fired at its document. Only the browser's
+    // own count: the page can dispatch untrusted ones, which a chrome listener gets too.
     const target = el === el.ownerDocument.scrollingElement ? el.ownerDocument : el;
-    const ended = () => {
+    const opts = /** @type {AddEventListenerOptions} */ ({ mozSystemGroup: true });
+    const stop = () => {
+      target.removeEventListener("scroll", moved, opts);
+      target.removeEventListener("scrollend", ended, opts);
+    };
+    const run = {
+      el: new WeakRef(el),
+      x: from.x,
+      y: from.y,
+      left,
+      top,
+      until: ChromeUtils.now() + SMOOTH_MAX_MS,
+      over: false,
+      stop,
+    };
+    // A step back on either axis is not this scroll's: the user's wheel or scrollbar took over,
+    // and finish() must not undo it.
+    let last = { x: from.x, y: from.y };
+    const back = (/** @type {number} */ now, /** @type {number} */ was, /** @type {number} */ to) =>
+      (now - was) * Math.sign(to - was) < -1;
+    const moved = (/** @type {Event} */ e) => {
+      if (!e.isTrusted) return;
+      const now = { x: el.scrollLeft, y: el.scrollTop };
+      if (back(now.x, last.x, left) || back(now.y, last.y, top)) run.over = true;
+      last = now;
+    };
+    const ended = (/** @type {Event} */ e) => {
+      if (!e.isTrusted) return;
+      stop();
       if (this.#running === run) this.#running = null;
     };
-    const opts = /** @type {AddEventListenerOptions} */ ({ once: true, mozSystemGroup: true });
+    target.addEventListener("scroll", moved, opts);
     target.addEventListener("scrollend", ended, opts);
+    return run;
   }
 }

@@ -56,7 +56,7 @@ support-files = ["file_vimma_hints.html"]
 support-files = ["file_vimma_hints_activation.html"]
 
 ["browser_vimma_hints_scroll.js"]
-support-files = ["file_vimma_hints_many.html"]
+support-files = ["file_vimma_hints_many.html", "file_vimma_hints_scroll.html"]
 
 ["browser_vimma_element.js"]
 support-files = [

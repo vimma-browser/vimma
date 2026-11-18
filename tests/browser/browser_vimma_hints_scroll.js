@@ -21,6 +21,10 @@ const DIR = getRootDirectory(gTestPath).replace(
 );
 /** 2,000 links down a long page, one per line. */
 const LONG = DIR + "file_vimma_hints_many.html";
+/** Sections of links 500 px tall, with mandatory snap points at their tops. */
+const SNAP = DIR + "file_vimma_hints_scroll.html?snap";
+/** 300 links in an inner scroller (`#box`), focused, so that the scroll keys move it. */
+const INNER = DIR + "file_vimma_hints_scroll.html?inner";
 
 /** The labels drawn in chrome, by label. */
 function drawnLabels() {
@@ -51,11 +55,12 @@ async function slowSmoothScroll() {
 }
 
 /**
- * Opens the long page with content focus in normal mode, then runs `fn`.
+ * Opens `url` with content focus in normal mode, then runs `fn`.
+ * @param {string} url
  * @param {(browser: XULBrowserElement) => Promise<void>} fn
  */
-async function withLongPage(fn) {
-  await BrowserTestUtils.withNewTab(LONG, async (browser) => {
+async function withPage(url, fn) {
+  await BrowserTestUtils.withNewTab(url, async (browser) => {
     await focusContent(browser);
     await TestUtils.waitForCondition(
       () => VimmaHost._browserMode(browser) === "normal",
@@ -70,9 +75,22 @@ async function withLongPage(fn) {
 }
 
 /**
- * Waits until the page's scroll position holds still over a few frames.
+ * Where the scroller the keys move is scrolled to: the fixture's `#box` if it has one, else
+ * the page.
  * @param {XULBrowserElement} browser
- * @returns {Promise<number>} the settled scrollY
+ * @returns {Promise<number>}
+ */
+function scrollPos(browser) {
+  return SpecialPowers.spawn(browser, [], () => {
+    const box = content.document.getElementById("box");
+    return box ? box.scrollTop : content.scrollY;
+  });
+}
+
+/**
+ * Waits until the scroll position (scrollPos) holds still over a few frames.
+ * @param {XULBrowserElement} browser
+ * @returns {Promise<number>} the settled position
  */
 async function settledScroll(browser) {
   /** @type {number} */
@@ -80,9 +98,11 @@ async function settledScroll(browser) {
   await TestUtils.waitForCondition(async () => {
     const [a, b] = await SpecialPowers.spawn(browser, [], async () => {
       const frame = () => new Promise((r) => content.requestAnimationFrame(r));
-      const first = content.scrollY;
+      const box = content.document.getElementById("box");
+      const pos = () => (box ? box.scrollTop : content.scrollY);
+      const first = pos();
       for (let i = 0; i < 6; i++) await frame();
-      return [first, content.scrollY];
+      return [first, pos()];
     });
     y = b;
     return a === b;
@@ -190,9 +210,33 @@ async function pressFAndWait() {
   return performance.now() - t0;
 }
 
+/**
+ * Presses `f`, then `Esc` once the labels are up: the first collection in a tab loads what
+ * later ones reuse, so latency is measured after it.
+ */
+async function warmUp() {
+  await pressFAndWait();
+  EventUtils.synthesizeKey("KEY_Escape");
+  await TestUtils.waitForCondition(() => !VimmaHost._hints(window), "hints are gone");
+}
+
+/**
+ * Wheels over the middle of the page.
+ * @param {XULBrowserElement} browser
+ * @param {number} deltaY
+ */
+function wheel(browser, deltaY) {
+  const box = browser.getBoundingClientRect();
+  EventUtils.synthesizeWheel(browser, box.width / 2, box.height / 2, {
+    deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+    deltaY,
+  });
+}
+
 add_task(async function d_then_f_labels_the_targets_where_the_scroll_ends() {
   await slowSmoothScroll();
-  await withLongPage(async (browser) => {
+  await withPage(LONG, async (browser) => {
+    await warmUp();
     // At rest: the baseline for the latency of `f`.
     const idleMs = await pressFAndWait();
     EventUtils.synthesizeKey("KEY_Escape");
@@ -204,26 +248,97 @@ add_task(async function d_then_f_labels_the_targets_where_the_scroll_ends() {
     const y = await settledScroll(browser);
     Assert.greater(y, 0, "d scrolled the page");
     await assertLabelsOnTargets(browser);
-    // Generous, against an order-of-magnitude regression: waiting out a three-second scroll is not
-    // the fix.
+    // Generous, against an order-of-magnitude regression: waiting out a three-second scroll is
+    // not the fix.
     Assert.less(scrollingMs, 1000, "labels come up without waiting for the scroll");
+  });
+});
+
+add_task(async function j_j_j_then_f_labels_the_targets_where_the_scroll_ends() {
+  await slowSmoothScroll();
+  await withPage(LONG, async (browser) => {
+    for (const k of "jjj") EventUtils.synthesizeKey(k);
+    await pressFAndWait();
+    Assert.greater(await settledScroll(browser), 0, "j scrolled the page");
+    await assertLabelsOnTargets(browser);
+  });
+});
+
+add_task(async function d_then_f_in_an_inner_scroller_labels_where_it_ends() {
+  await slowSmoothScroll();
+  await withPage(INNER, async (browser) => {
+    await SpecialPowers.spawn(browser, [], () => content.document.getElementById("box")?.focus());
+    EventUtils.synthesizeKey("d");
+    await pressFAndWait();
+    Assert.greater(await settledScroll(browser), 0, "d scrolled the inner scroller");
+    await assertLabelsOnTargets(browser);
+  });
+});
+
+/**
+ * Smooth scrolling on, with the shipped spring (about half a second): for the cases where the
+ * collection waits for the scroll to end, which it does for at most a second.
+ */
+async function shippedSmoothScroll() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["general.smoothScroll", true],
+      ["layout.css.scroll-snap.spring-constant", 250],
+    ],
+  });
+}
+
+add_task(async function j_then_f_on_a_snapping_page_keeps_the_snapped_scroll() {
+  await shippedSmoothScroll();
+  await withPage(SNAP, async (browser) => {
+    // j is far less than a section: snapping takes the scroll on to the next snap point. Ending
+    // it must not snap it back to where it started.
+    EventUtils.synthesizeKey("j");
+    const ms = await pressFAndWait();
+    info(`f to labels after j on a snapping page: ${ms.toFixed(1)} ms`);
+    Assert.equal(await settledScroll(browser), 500, "the page is at the next snap point");
+    await assertLabelsOnTargets(browser);
+  });
+});
+
+add_task(async function a_wheel_back_during_d_is_not_undone_by_f() {
+  await shippedSmoothScroll();
+  await withPage(LONG, async (browser) => {
+    const start = 3000;
+    const half = await SpecialPowers.spawn(browser, [start], (y) => {
+      content.scrollTo({ top: y, behavior: "instant" });
+      return Math.round(content.document.documentElement.clientHeight / 2);
+    });
+    EventUtils.synthesizeKey("d");
+    await TestUtils.waitForCondition(
+      async () => (await scrollPos(browser)) > start + 10,
+      "d's scroll is under way",
+    );
+    const before = await scrollPos(browser);
+    wheel(browser, -300);
+    await TestUtils.waitForCondition(
+      async () => (await scrollPos(browser)) < before - 10,
+      "the wheel scrolls back",
+    );
+    await pressFAndWait();
+    const y = await settledScroll(browser);
+    Assert.less(y, start + half - 50, `the wheel's scroll stays (d went to ${start + half})`);
+    await assertLabelsOnTargets(browser);
   });
 });
 
 add_task(async function a_wheel_while_labels_show_draws_them_where_the_scroll_ends() {
   await slowSmoothScroll();
-  await withLongPage(async (browser) => {
+  await withPage(LONG, async (browser) => {
     await pressFAndWait();
     const runs = VimmaHost._hintRuns;
-    const box = browser.getBoundingClientRect();
-    EventUtils.synthesizeWheel(browser, box.width / 2, box.height / 2, {
-      deltaMode: WheelEvent.DOM_DELTA_PIXEL,
-      deltaY: 300,
-    });
+    const t0 = performance.now();
+    wheel(browser, 300);
     await TestUtils.waitForCondition(
       () => VimmaHost._hintRuns > runs && drawnLabels().size > 0,
       "labels are drawn again after the wheel",
     );
+    info(`wheel to labels drawn again: ${(performance.now() - t0).toFixed(1)} ms`);
     Assert.ok(VimmaHost._hints(window), "still in hint mode");
     const y = await settledScroll(browser);
     Assert.greater(y, 0, "the wheel scrolled the page");
