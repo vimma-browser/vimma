@@ -310,8 +310,12 @@ add_task(async function enable_gives_one_back_and_a_list_replaces_the_default() 
     await enableAndListOnMacos();
     return;
   }
-  // ctrl+j unbound and not on the list: Firefox's again, as the list replaces "all".
-  await useConfig(`[keys]\nweb_search = []\n[firefox]\ndisable = ["ctrl+u"]\nenable = []`);
+  // ctrl+j unbound and not on the list: Firefox's again, as the list replaces "all". Unbound
+  // means in every mode: insert mode's suggestion key too (issue #1261).
+  await useConfig(
+    `[keys]\nweb_search = []\n[unbind]\ninsert = ["<C-j>"]\n` +
+      `[firefox]\ndisable = ["ctrl+u"]\nenable = []`,
+  );
   Assert.ok(!byId("key_search2").hasAttribute("disabled"), "all is undone");
   Assert.equal(byId("key_find").getAttribute("disabled"), "true", "bound");
   Assert.equal(

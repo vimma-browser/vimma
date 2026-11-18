@@ -294,7 +294,7 @@ describe("suggestion keys in insert mode", () => {
   test("[firefox] enable drops the default suggestion binding on its chord", () => {
     const km = compileKeymap({ firefox: { enable: ["ctrl+n"] } });
     expect(km.trie("insert").children.get("ctrl+n")).toBeUndefined();
-    expect(km.keysFor("suggestion_next")).toEqual([]);
+    expect(km.keysFor("suggestion_next")).toEqual(["ctrl+j [insert]"]);
     expect(km.fallback("insert", "ctrl+n")).toBeNull();
     expect(km.trie("insert").children.get("ctrl+p")?.action?.name).toBe("suggestion_prev");
   });
@@ -306,6 +306,51 @@ describe("suggestion keys in insert mode", () => {
         firefox: { enable: ["ctrl+n"] },
       }),
     ).toThrow("ctrl+n is bound to suggestion_next in [modal.insert]; unbind it or drop it here");
+  });
+
+  // Issue #1261: ctrl+j and ctrl+k too, beside ctrl+n and ctrl+p.
+  test("ctrl+j and ctrl+k move through the list too, in insert mode only", () => {
+    const km = compileKeymap();
+    expect(km.trie("insert").children.get("ctrl+j")?.action?.name).toBe("suggestion_next");
+    expect(km.trie("insert").children.get("ctrl+k")?.action?.name).toBe("suggestion_prev");
+    expect(km.keysFor("suggestion_next")).toEqual(["ctrl+n [insert]", "ctrl+j [insert]"]);
+    expect(km.keysFor("suggestion_prev")).toEqual(["ctrl+p [insert]", "ctrl+k [insert]"]);
+    expect(km.trie("normal").children.get("ctrl+j")?.action?.name).toBe("web_search");
+    expect(km.trie("normal").children.get("ctrl+k")).toBeUndefined();
+  });
+
+  test("outside a list ctrl+j and ctrl+k have no [keys] fallback", () => {
+    const km = compileKeymap();
+    // web_search on ctrl+j is a text-field key's default (key-handling-batch § 2), not bound in
+    // insert mode: there the host presses Enter instead, as before.
+    expect(km.fallback("insert", "ctrl+j")).toBeNull();
+    expect(km.fallback("insert", "ctrl+k")).toBeNull();
+  });
+
+  test("with insert_editing off, ctrl+j falls back to the web search", () => {
+    const km = compileKeymap({ modal: { insert_editing: false } });
+    expect(km.trie("insert").children.get("ctrl+j")?.action?.name).toBe("suggestion_next");
+    expect(km.fallback("insert", "ctrl+j")?.name).toBe("web_search");
+  });
+
+  test("a user's bindings on ctrl+j and ctrl+k are kept", () => {
+    const own = compileKeymap({ modal: { insert: { "<C-j>": "tab.new", "<C-k>": "tab.close" } } });
+    expect(own.trie("insert").children.get("ctrl+j")?.action?.name).toBe("new_tab");
+    expect(own.trie("insert").children.get("ctrl+k")?.action?.name).toBe("close_tab");
+    expect(own.keysFor("suggestion_next")).toEqual(["ctrl+n [insert]"]);
+    const keys = compileKeymap({ keys: { new_tab: ["ctrl+k"] } });
+    expect(keys.fallback("insert", "ctrl+k")?.name).toBe("new_tab");
+    expect(keys.trie("normal").children.get("ctrl+k")?.action?.name).toBe("new_tab");
+    const unbound = compileKeymap({ unbind: { insert: ["<C-j>", "<C-k>"] } });
+    expect(unbound.trie("insert").children.get("ctrl+j")).toBeUndefined();
+    expect(unbound.trie("insert").children.get("ctrl+k")).toBeUndefined();
+  });
+
+  test("[firefox] enable = ['ctrl+j'] drops the suggestion binding on ctrl+j alone", () => {
+    const km = compileKeymap({ firefox: { enable: ["ctrl+j"] } });
+    expect(km.trie("insert").children.get("ctrl+j")).toBeUndefined();
+    expect(km.keysFor("suggestion_next")).toEqual(["ctrl+n [insert]"]);
+    expect(km.trie("insert").children.get("ctrl+k")?.action?.name).toBe("suggestion_prev");
   });
 });
 
@@ -421,9 +466,11 @@ describe("text-field keys before default [keys] bindings", () => {
   test("ctrl+j and ctrl+m are unbound where keys type into a field, bound elsewhere", () => {
     const km = compileKeymap();
     for (const mode of ["insert", "command", "help"]) {
-      expect(at(km, mode, "ctrl+j"), mode).toBeUndefined();
+      // Insert mode's ctrl+j is the suggestion key, which is Enter outside a list (#1261).
+      expect(at(km, mode, "ctrl+j"), mode).toBe(mode === "insert" ? "suggestion_next" : undefined);
       expect(at(km, mode, "ctrl+m"), mode).toBeUndefined();
     }
+    expect(km.fallback("insert", "ctrl+j")).toBeNull();
     for (const mode of ["normal", "panel", "pdf"]) {
       expect(at(km, mode, "ctrl+j"), mode).toBe("web_search");
       expect(at(km, mode, "ctrl+m"), mode).toBe("mute_tab");
@@ -436,7 +483,9 @@ describe("text-field keys before default [keys] bindings", () => {
 
   test("insert_editing = false keeps the bindings in every mode", () => {
     const km = compileKeymap({ modal: { insert_editing: false } });
-    expect(at(km, "insert", "ctrl+j")).toBe("web_search");
+    // In insert mode web_search is ctrl+j's binding outside a suggestion list (#1261).
+    expect(km.fallback("insert", "ctrl+j")?.name).toBe("web_search");
+    expect(at(km, "command", "ctrl+j")).toBe("web_search");
     expect(at(km, "command", "ctrl+m")).toBe("mute_tab");
   });
 
@@ -445,7 +494,7 @@ describe("text-field keys before default [keys] bindings", () => {
     expect(at(keys, "insert", "ctrl+m")).toBe("reload");
     const copied = compileKeymap({ keys: { mute_tab: ["ctrl+m"], web_search: "<C-j>" } });
     expect(at(copied, "insert", "ctrl+m")).toBeUndefined();
-    expect(at(copied, "insert", "ctrl+j")).toBeUndefined();
+    expect(copied.fallback("insert", "ctrl+j")).toBeNull();
     expect(at(copied, "normal", "ctrl+m")).toBe("mute_tab");
     const modal = compileKeymap({ modal: { insert: { "<C-j>": "web_search" } } });
     expect(at(modal, "insert", "ctrl+j")).toBe("web_search");

@@ -600,8 +600,9 @@ everything before it on the line, and `ctrl+h` one character, as `Backspace`. Th
 text field's own delete commands, so `ctrl+z` undoes them. `ctrl+j` and `ctrl+m` are `Enter`, as
 in Vim, so your hands stay on the home row: a new line in a text area, the form sent from a
 one-line field, the address loaded from the address bar, the command run from the `:` line
-(everywhere above but the side panel's filters). The page sees a real `Enter`, so a chat box
-that sends on `Enter` sends. A page that handles one of
+(everywhere above but the side panel's filters). While a suggestion list shows, `ctrl+j` moves
+down it instead (the suggestion keys, below) and `ctrl+m` stays `Enter`. The page sees a
+real `Enter`, so a chat box that sends on `Enter` sends. A page that handles one of
 these keys itself (a web terminal, an editor with its own `ctrl+w`) keeps it: Vimma acts only
 when the page left the key alone. In normal mode the keys stay Vimma's (`ctrl+u` scrolls,
 `ctrl+w h` moves between panes, `ctrl+m` mutes the tab, `ctrl+j` is the web search). A
@@ -613,18 +614,23 @@ pairs it with the side panel). `[modal] insert_editing = false` in `config.toml`
 stay off either way. On macOS, `ctrl+h` is already a backspace in text fields, so Vimma adds
 nothing there.
 
-**`ctrl+n` and `ctrl+p` move through a page's suggestion list.** While a search field or any other
-field on a page shows its list of suggestions (a search engine's completions, a shop's product
-matches, Firefox's own list for a form field), `ctrl+n` moves down the list and `ctrl+p` up it, as
-Vim's insert-mode completion keys do, so you pick a suggestion without leaving the home row. The
-page gets a real `ArrowDown` or `ArrowUp`, so its highlight moves and the field shows the suggestion
-as it does for the arrow keys. The page goes first: a web app that uses `ctrl+n` or `ctrl+p` itself
-keeps the key. With no list open, `ctrl+p` prints and `ctrl+n` goes to the page and opens no window
-(a new window is `ctrl+b shift+c`). On macOS, where `ctrl+n` and `ctrl+p` also move the caret down
-and up a line in every text field, they keep doing that while no list is open, so there `ctrl+p`
-prints only outside a text field. The address bar and Vimma's own fields keep their keys. Both
-keys can be remapped in `config.toml` (`suggestion_next` and `suggestion_prev` under
-`[modal.insert]`).
+**`ctrl+n` and `ctrl+p`, or `ctrl+j` and `ctrl+k`, move through a suggestion list.** While a
+search field or any other field on a page shows its list of suggestions (a search engine's
+completions, a shop's product matches, Firefox's own list for a form field), `ctrl+n` or `ctrl+j`
+moves down the list and `ctrl+p` or `ctrl+k` up it, as Vim's insert-mode completion keys and most
+pickers' list keys do, so you pick a suggestion without leaving the home row. The page gets a real
+`ArrowDown` or `ArrowUp`, so its highlight moves and the field shows the suggestion as it does for
+the arrow keys. The address bar's results move the same way while they show. The page goes first:
+a web app that uses one of these keys itself keeps it. With no list open, the keys keep their other
+meanings: `ctrl+j` is `Enter` in a text field, `ctrl+k` goes to the page, `ctrl+p` prints, and
+`ctrl+n` goes to the page and opens no window (a new window is `ctrl+b shift+c`). So while a list
+shows, `ctrl+j` moves instead of sending the form or loading the address: press `Enter` or
+`ctrl+m` for that. On macOS,
+where `ctrl+n` and `ctrl+p` also move the caret down and up a line and `ctrl+k` deletes to the end
+of the line in every text field, they keep doing that while no list is open, so there `ctrl+p`
+prints only outside a text field. Vimma's own fields (the `:` line, the pickers) keep their keys.
+All four keys can be remapped in `config.toml` (`suggestion_next` and `suggestion_prev` under
+`[modal.insert]`; `[unbind] insert = ["<C-j>"]` gives `ctrl+j` back to `Enter` alone).
 
 **`Esc` in a text field is Vimma's.** It leaves insert, so the page does not see that `Esc`: a
 site's own `Esc` (closing an autocomplete list or a dialog) does not fire from the field. Press
@@ -1262,6 +1268,7 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `r`, `F5`, `ctrl+r`                                                                     | Reloads the page (in a split, the focused pane's); `r` in normal mode, Firefox's `F5` and `ctrl+r` everywhere. In insert mode `H`, `L` and `r` are typed into the field. `ctrl+F5` / `ctrl+shift+r` reload bypassing the cache.                                                                                                                                                                                                                                                                                                                                          |
 | `i`                                                                                     | Normal mode: focus the text field you were last in (else the first) and enter insert mode.                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `gi`                                                                                    | Normal mode: focus the first visible text field, insert mode; `3gi` the third (or the last). With none, it says so and stays normal.                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `ctrl+n` / `ctrl+p`, `ctrl+j` / `ctrl+k`                                                | Insert mode: down / up an open suggestion list (a page's, Firefox's own for a form field, the address bar's results). With none open, `ctrl+j` is `Enter` ([Normal and insert mode](#normal-and-insert-mode)).                                                                                                                                                                                                                                                                                                                                                           |
 | `yy`                                                                                    | Normal mode: copies the page's URL (in a split, the focused pane's); the notice shows it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `p` / `P`                                                                               | Normal mode: opens the clipboard here / in a new tab, as `:open` / `:tabnew`: a URL loads, other text is searched. No `javascript:`, `data:`.                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `gu` / `gU`                                                                             | Normal mode: up one level in the URL / to the site's root, without query and hash; `2gu` goes up two. At the top it says so.                                                                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -1487,7 +1494,7 @@ normal mode only: `ctrl+[` / `ctrl+]` (back / forward; in a text field they do n
 `Esc` (stop loading; elsewhere `Esc` leaves insert mode and closes things as usual).
 
 One key moved: a new window is `ctrl+b shift+c`, next to `ctrl+b c` for a new tab, so that a
-`ctrl+n` pressed while typing never opens a window. `ctrl+n` moves down a page's suggestion list
+`ctrl+n` pressed while typing never opens a window. `ctrl+n` moves down an open suggestion list
 in insert mode ([Normal and insert mode](#normal-and-insert-mode)) and otherwise goes to the page.
 Firefox's own `ctrl+n` stays off; `enable = ["ctrl+n"]` under `[firefox]` gives it back, and
 then `ctrl+n` no longer moves a suggestion list. `new_window = ["ctrl+n"]` under `[keys]` puts
@@ -1628,7 +1635,9 @@ enable = []
 
 - **`disable`** is `"all"` by default: every Firefox shortcut, function and plain keys (`F5`,
   `Esc`) included. A list replaces it: then only the keys on the list are off. A Firefox shortcut on a key Vimma binds
-  is off whatever the list says (`disable = []` gives back only the ones Vimma does not bind).
+  is off whatever the list says (`disable = []` gives back only the ones Vimma does not bind;
+  `ctrl+j` is bound in insert mode too, as a suggestion key, so `web_search = []` alone does not
+  free it: add `[unbind] insert = ["<C-j>"]`, or use `enable`).
   `"all"` leaves the text keys the field itself runs (`ctrl+c`, `ctrl+v`, `ctrl+z`, `ctrl+a`)
   and the menu bar (`alt+letter`, `F10`).
 - **`enable`** gives a key back to Firefox exactly as Firefox runs it: Vimma's default bindings

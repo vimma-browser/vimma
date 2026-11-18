@@ -293,15 +293,16 @@ export const VimmaActors = {
    * it does a keyboard's.
    * @param {MozBrowser} browser
    * @param {string} command  one of core INSERT_EDIT_COMMANDS, or INSERT_ENTER
+   * @param {() => boolean} [still]  the caller's own check, made again just before an Enter
    */
-  edit(browser, command) {
+  edit(browser, command, still = () => true) {
     if (command === INSERT_ENTER) {
       // The frame focused now: a page that moves focus (into another frame) in the time before
       // the Enter gets none, rather than an Enter where the user did not type.
       const frame = Services.focus.focusedContentBrowsingContext;
       const win = browser.ownerDocument?.defaultView;
       if (!win || !frame) return;
-      pressKeyLater(win, "Enter", () => stillFocused(browser, frame));
+      pressKeyLater(win, "Enter", () => stillFocused(browser, frame) && still());
       return;
     }
     actorFor(framesFor(browser)[0])?.sendAsyncMessage("Vimma:Edit", { command });

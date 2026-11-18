@@ -48,6 +48,13 @@ typing a query.
    press goes to the focused frame.
 6. **Other modes and fields.** Normal, visual and the other modes are unchanged. Chrome fields
    (the address bar, the `:` line, Vimma's pickers) keep their own keys; this spec is about pages.
+   (Since changed: while the address bar shows its results, the suggestion keys press `ArrowDown`
+   and `ArrowUp` in it, so its selected row moves on every platform; Firefox's own `ctrl+n` and
+   `ctrl+p` there are macOS-only (`UrlbarChildController`, `handleKeyNavigation`, Firefox 160).
+   With its results closed, and in every other chrome field, a suggestion key is as if unbound:
+   the chord's `[keys]` binding, its text-field key (`ctrl+j` loads the address) or the field's
+   own key. `host/VimmaHost.sys.mjs`, `_urlbarStep`; issue
+   [#1261](https://github.com/vimma-browser/vimma/issues/1261).)
 7. **New window.** `new_window` is `ctrl+b shift+c`. `ctrl+n` opens no window in any mode.
 8. **Remapping.** Both actions, `suggestion_next` and `suggestion_prev`, and `new_window` are
    bindings like any other: `[modal.insert]` and `[unbind] insert` change the suggestion keys,
@@ -145,7 +152,13 @@ Decisions:
    insert-mode completion keys (`i_CTRL-N`, `i_CTRL-P`), Vimma's own pickers already move with
    them, and they stay on the home row. Rejected: `Tab` and `shift+Tab`, because a page uses
    `Tab` to move focus and a form would lose it; `ctrl+j` and `ctrl+k`, because `ctrl+j` is
-   `Enter` in a text field (key-handling-batch § 2).
+   `Enter` in a text field (key-handling-batch § 2). (Since changed: `ctrl+j` and `ctrl+k` are
+   suggestion keys too, `"<C-j>" = "page.suggestion_next"` and `"<C-k>" = "page.suggestion_prev"`
+   under `[modal.insert]`, because they are the list keys of most pickers and fuzzy finders and
+   the conflict is only while a list is open: outside one `ctrl+j` stays `Enter`, through the
+   host's fallback to the chord's text-field key when the chord has no `[keys]` binding in insert
+   mode, and `ctrl+k` reaches the page. `ctrl+m` stays `Enter` in an open list. Issue
+   [#1261](https://github.com/vimma-browser/vimma/issues/1261).)
 2. **Trusted arrow presses from the parent.** The keys reach the page as `ArrowDown` and
    `ArrowUp` pressed by a `TextInputProcessor` in the parent process, because only trusted keys
    drive every list: a page's own `keydown` handler sees what a keyboard sends, Firefox's form

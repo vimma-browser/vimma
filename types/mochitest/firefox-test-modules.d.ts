@@ -298,6 +298,7 @@ interface VimmaModules {
       getResultCount(win: Window): number;
       /** Null past the last row. */
       getRowAt(win: Window, index: number): Element | null;
+      getSelectedRowIndex(win: Window): number;
       getDetailsOfResultAt(win: Window, index: number): Promise<UrlbarResultDetails>;
       promiseAutocompleteResultPopup(options: { window: Window; value: string }): Promise<void>;
       promisePopupClose(win: Window): Promise<void>;
