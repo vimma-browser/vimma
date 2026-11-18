@@ -1070,19 +1070,25 @@ export class WindowWorkspacesImpl {
   #unpark(model, id) {
     const own = this.#unvisited.get(id);
     if (!own) return;
-    this.#unvisited.delete(id);
     const panels = this.#panelSplits(model, id, own);
     if (panels) PaneViews.get(this.#win)?.park(id, panels);
+    // Only once PaneView holds them: a conversion that throws keeps them for the next save.
+    this.#unvisited.delete(id);
   }
 
   /**
-   * The saved splits (in uuids) of workspace `id` while it has not been shown since a restore;
-   * null for any other workspace, whose splits PaneView holds.
+   * The saved splits (in uuids) of workspace `id` while it has not been shown since a restore,
+   * without the tabs that closed or left it since (a split left with one pane ends); null when
+   * none is left, and for any other workspace, whose splits PaneView holds.
    * @param {string} id
    * @returns {Splits | null}
    */
   unvisitedSplits(id) {
-    return this.#unvisited.get(id) ?? null;
+    const own = this.#unvisited.get(id);
+    const w = own && this.#model && findWorkspace(this.#model, { id });
+    if (!own || !w) return null;
+    const { splits, shown, last } = withSplits(w, own, (u) => u);
+    return splits?.length ? { splits, shown: shown ?? null, last: last ?? null } : null;
   }
 
   /**
@@ -1231,6 +1237,7 @@ export class WindowWorkspacesImpl {
       if (defs.some((d) => d.id === w.id) || model.workspaces.length === 1) continue;
       const { state, closedTabs } = deleteWorkspace(model, { id: w.id });
       model = state;
+      this.#unvisited.delete(w.id);
       orphans = [...orphans, ...closedTabs];
     }
     const agentId = WorkspaceStore.agent?.id;

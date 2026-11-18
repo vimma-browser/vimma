@@ -451,6 +451,9 @@ support-files = ["file_vimma_bookmarklet_page.html"]
 ["browser_vimma_workspace_restore.js"]
 support-files = ["file_vimma_insert_scroll.html"]
 
+["browser_vimma_workspace_restore_splits.js"]
+support-files = ["file_vimma_insert_scroll.html"]
+
 ["browser_vimma_workspace_desync.js"]
 
 ["browser_vimma_config.js"]
