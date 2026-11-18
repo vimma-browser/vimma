@@ -51,7 +51,7 @@ import { bookmarkletsSetting, loadTree, observeBookmarks } from "./bookmark-ops.
 import { pickerWorkspaces, selectedTabId, tabById } from "./goto.mjs";
 import { goToTab, reopenClosed, tabSearchList } from "./tab-search.mjs";
 import { GrepSession } from "./grep.mjs";
-import { closeTabById } from "./tab-ops.mjs";
+import { closeTabById, selectableTabs } from "./tab-ops.mjs";
 import { firefoxIds } from "./browser-ops.mjs";
 import {
   hasPanes,
@@ -167,6 +167,8 @@ export function newWindowState(host, win, keymap, env) {
         addon: addonNames(),
         firefox: firefoxIds(win),
         workspace: workspaceNames(win),
+        // `:tab ` completes the workspace's tabs by number, each with what its tab shows.
+        tab: selectableTabs(win).map((t) => getTabLabel(t) ?? t.label),
         search: SearchHost.completions,
         sitebind: siteBindCompletions(win, host.baseKeymap()),
       }),

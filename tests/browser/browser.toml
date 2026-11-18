@@ -131,6 +131,8 @@ support-files = ["file_vimma_plain.html"]
 ["browser_vimma_tab_keys.js"]
 support-files = ["file_vimma_test.pdf"]
 
+["browser_vimma_tab_number.js"]
+
 ["browser_vimma_system_addons.js"]
 support-files = ["head_vimma_aus.js"]
 
