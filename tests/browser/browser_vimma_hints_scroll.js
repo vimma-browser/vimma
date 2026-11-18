@@ -33,6 +33,8 @@ const CAROUSEL = DIR + "file_vimma_hints_scroll.html?carousel";
 const SNAP_CAROUSEL = DIR + "file_vimma_hints_scroll.html?snap&carousel";
 /** 600 links down a page that takes every wheel for itself (a map, a canvas app). */
 const CONSUME = DIR + "file_vimma_hints_scroll.html?consume";
+/** 40 links in a frame that the page moves up by 100 px for each wheel down, never scrolling. */
+const GLIDE = DIR + "file_vimma_hints_scroll.html?glide";
 
 /** The labels drawn in chrome, by label. */
 function drawnLabels() {
@@ -528,5 +530,85 @@ add_task(async function a_wheel_the_page_takes_keeps_the_labels_and_the_keys_typ
       "the link under the label typed was followed",
     );
     Assert.equal(await scrollPos(browser), 0, "the page did not scroll");
+  });
+});
+
+add_task(async function keys_typed_while_a_wheel_moves_the_page_are_not_sent_to_new_labels() {
+  await slowSmoothScroll();
+  await withPage(LONG, async (browser) => {
+    await pressFAndWait();
+    const runs = VimmaHost._hintRuns;
+    const wheeled = BrowserTestUtils.waitForEvent(window, "wheel", true);
+    wheel(browser, 300);
+    await wheeled;
+    // Typed blind, toward a label that was hidden: after the scroll that label is another link's.
+    EventUtils.synthesizeKey("a");
+    await TestUtils.waitForCondition(
+      () => VimmaHost._hintRuns > runs && drawnLabels().size > 0,
+      "labels are drawn again after the wheel",
+    );
+    const hints = VimmaHost._hints(window);
+    Assert.ok(hints, "still in hint mode: no link was followed");
+    Assert.equal(hints?.typed, "", "the key typed during the wheel was dropped");
+    Assert.equal(
+      await SpecialPowers.spawn(browser, [], () => content.location.hash),
+      "",
+      "no link was followed",
+    );
+  });
+});
+
+add_task(async function a_wheel_before_the_first_labels_draws_them_where_the_scroll_ends() {
+  await slowSmoothScroll();
+  await withPage(LONG, async (browser) => {
+    await warmUp();
+    // Hold the page busy so that the collection `f` asks for waits behind the wheel.
+    const busy = SpecialPowers.spawn(browser, [], () => {
+      const end = Date.now() + 300;
+      while (Date.now() < end);
+    });
+    EventUtils.synthesizeKey("f");
+    const wheeled = BrowserTestUtils.waitForEvent(window, "wheel", true);
+    wheel(browser, 300);
+    await wheeled;
+    Assert.equal(VimmaHost._hints(window)?.hints.length, 0, "the wheel came before the labels");
+    await busy;
+    await TestUtils.waitForCondition(() => drawnLabels().size > 0, "labels are drawn");
+    Assert.greater(await settledScroll(browser), 0, "the wheel scrolled the page");
+    await TestUtils.waitForCondition(() => drawnLabels().size > 0, "labels are drawn");
+    await assertLabelsOnTargets(browser);
+  });
+});
+
+add_task(async function a_wheel_that_moves_a_frame_without_scrolling_draws_the_labels_again() {
+  await slowSmoothScroll();
+  await withPage(GLIDE, async (browser) => {
+    await pressFAndWait();
+    const first = /** @type {HostHints} */ (VimmaHost._hints(window)).hints[0];
+    Assert.ok(first, "the frame's links have labels");
+    if (!first) return;
+    const hash = new URL(first.target.href ?? "about:blank").hash;
+    const before = first.target.rect.y;
+    const runs = VimmaHost._hintRuns;
+    const wheels = VimmaHost._hintWheels ?? 0;
+    // Over the page beside the frame: the page moves the frame up 100 px.
+    wheel(browser, 300, { x: 600, y: 100 });
+    await TestUtils.waitForCondition(
+      () =>
+        (VimmaHost._hintWheels ?? 0) > wheels &&
+        drawnLabels().size > 0 &&
+        (VimmaHost._hints(window)?.hints.length ?? 0) > 0,
+      "the labels are back after the wheel",
+    );
+    Assert.greater(VimmaHost._hintRuns, runs, "the labels were collected again");
+    const now = /** @type {HostHints} */ (VimmaHost._hints(window)).hints.find(
+      (h) => new URL(h.target.href ?? "about:blank").hash === hash,
+    );
+    Assert.ok(now, `${hash} still has a label`);
+    Assert.less(
+      Math.abs((now?.target.rect.y ?? 0) - (before - 100)),
+      2,
+      `${hash}'s label moved up with its frame`,
+    );
   });
 });

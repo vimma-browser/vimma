@@ -122,6 +122,8 @@ export { NO_OUTLINE, OUTLINE_ATTACHMENT, PDF_OUTLINE_PREF } from "./outline-ops.
  * @property {Chord[]} buffered  keys typed while collecting, or while `wheel`
  * @property {boolean} [wheel]  a wheel over the page: its labels are hidden until it is known
  *   whether the wheel moved their targets (#1337)
+ * @property {{ x: number, y: number }} [wheelAt]  a wheel came while collecting, here (the
+ *   page's CSS pixels): the labels are looked at for it before they are shown
  */
 
 /** Element focus with no text block on screen, and in the PDF viewer (element-focus 14). */
@@ -2015,8 +2017,7 @@ export const VimmaHost = {
    * @param {MozBrowser} browser
    * @param {Pick<Action, "id">} action
    * @param {{ restart?: boolean, buffered?: Chord[] }} [options]  `restart`: a wheel moved the
-   *   targets under the labels, which are collected again; `buffered`: keys typed meanwhile,
-   *   for the new labels
+   *   targets under the labels, which are collected again; `buffered`: keys for the new labels
    */
   _startHints(browser, action, { restart = false, buffered = [] } = {}) {
     const state = stateOfBrowser(browser);
@@ -2047,8 +2048,13 @@ export const VimmaHost = {
           console.info("vimma: no hint targets");
           return;
         }
-        state.hintOverlay.show(browser, session.hs.hints, hintLabelCase(id));
         this._emit(state); // the status bar's hint segment names a label now
+        // A wheel while collecting may have moved the targets: the labels wait for its check.
+        if (session.wheelAt) {
+          this._wheelCheck(state, session, session.wheelAt);
+          return;
+        }
+        state.hintOverlay.show(browser, session.hs.hints, hintLabelCase(id));
         for (const chord of session.buffered.splice(0)) {
           if (state.hint !== session) break;
           this._hintKey(state, chord);
@@ -2064,36 +2070,52 @@ export const VimmaHost = {
   /**
    * A wheel over the page while hints are up (issues #1308, #1337): the labels were drawn for
    * the layout before it. They are hidden, and the page says, once the scroll the wheel
-   * started has ended, whether their targets moved. If they did, the labels are collected and
-   * drawn again where the scroll ended, and keys typed toward the old ones are dropped with
-   * them. If nothing moved (the page's end, or a page that takes the wheel itself, such as a
-   * map), the same labels come back with the keys typed so far. Keys typed while that is not
-   * known yet are kept for whichever labels come. Further wheels meanwhile change nothing: the
-   * page waits for the last scroll's end. The wheel's target in chrome is the <browser> only
-   * for a remote page; over a page in the parent process (about: pages without hints) it is an
-   * element inside it, and nothing happens.
+   * started has ended, whether their targets moved (_wheelCheck). A wheel while the labels are
+   * still being collected is kept for when they arrive. Further wheels meanwhile change
+   * nothing: the page waits for the last scroll's end. The wheel's target in chrome is the
+   * <browser> only for a remote page; over a page in the parent process (about: pages without
+   * hints) it is an element inside it, and nothing happens.
    * @param {WindowState} state
    * @param {WheelEvent} e
    */
   _hintsScrolled(state, e) {
     const session = state.hint;
-    const hs = session?.hs;
-    if (!session || !hs || session.wheel || e.target !== session.browser) return;
-    const gen = hs.hints[0]?.target.gen;
-    if (gen === undefined) return;
+    if (!session || session.wheel || session.wheelAt || e.target !== session.browser) return;
     const { browser } = session;
-    session.wheel = true;
-    state.hintOverlay.hide();
     // The wheel's point in the page's CSS pixels, as the labels' rects are.
     const box = browser.getBoundingClientRect();
     const zoom = Number(browser.fullZoom) || 1;
     const point = { x: (e.clientX - box.left) / zoom, y: (e.clientY - box.top) / zoom };
+    if (session.hs) this._wheelCheck(state, session, point);
+    else session.wheelAt = point;
+  },
+
+  /**
+   * Hides the session's labels and asks the page whether a wheel at `point` moved their
+   * targets. If they moved, the labels are collected and drawn again where the scroll ended,
+   * and the keys typed toward the old ones are dropped with them, also those typed while the
+   * labels were hidden: they were aimed from memory at labels that now name other targets
+   * (only `Esc` is kept). If nothing moved (the page's end, or a page that takes the wheel
+   * itself, such as a map), the same labels come back with the keys typed so far, then those
+   * typed meanwhile.
+   * @param {WindowState} state
+   * @param {HintSession} session  with its labels collected
+   * @param {{ x: number, y: number }} point
+   */
+  _wheelCheck(state, session, point) {
+    const hs = session.hs;
+    const gen = hs?.hints[0]?.target.gen;
+    delete session.wheelAt;
+    if (!hs || gen === undefined) return;
+    const { browser } = session;
+    session.wheel = true;
+    state.hintOverlay.hide();
     VimmaActors.hintsMoved(browser, gen, point)
       .then((moved) => {
         if (state.hint !== session) return;
         this._hintWheels++;
         if (moved) {
-          const { buffered } = session;
+          const buffered = session.buffered.filter((c) => c.key === "esc");
           this._startHints(browser, { id: session.action }, { restart: true, buffered });
           return;
         }

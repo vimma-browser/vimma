@@ -28,7 +28,7 @@ import { needsBlockText, pickBlocks } from "../core/blocks.mjs";
  * @property {BlockKind} [blockKind]  blocks only
  * @property {Rect} [box]  blocks only: the border box, viewport-clipped, for the outline
  */
-/** @typedef {{ bc: BrowsingContext, rect: Rect }} FoundFrame */
+/** @typedef {{ bc: BrowsingContext, el: Element, rect: Rect }} FoundFrame */
 
 /** At most this many targets and subframes per frame (the parent's caps); the rest are dropped. */
 const MAX_TARGETS = HINT_REPLY_MAX_TARGETS;
@@ -458,7 +458,7 @@ function visibleFrames(win, candidates) {
     const bc = el.browsingContext;
     if (!bc) continue;
     const rect = frameViewport(win, el);
-    if (rect) frames.push({ bc, rect });
+    if (rect) frames.push({ bc, el, rect });
   }
   return frames;
 }

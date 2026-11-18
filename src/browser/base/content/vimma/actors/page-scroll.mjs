@@ -506,8 +506,11 @@ export class PageScroll {
       stop();
       if (this.#running === run) this.#running = null;
     };
-    // A wheel over the scroller takes the scroll over, also one that goes the same way and
-    // stops short of the destination, where no step back shows it (issue #1337).
+    // A wheel over the scroller takes the scroll over, also one that goes the same way, which
+    // APZ carries on past the destination with no step back to show it (issue #1337). On the
+    // page this also counts a wheel over an inner scroller that the page's scroll never sees:
+    // f then waits for that scroll's end (at most SETTLE_MAX_MS) where a jump would have done,
+    // slower but never wrong, and cheaper than finding which scroller the wheel will move.
     const wheeled = (/** @type {Event} */ e) => {
       if (e.isTrusted) run.over = true;
     };

@@ -207,11 +207,21 @@ function inLink(el) {
 }
 
 /**
+ * Where an element's border box starts in the viewport.
+ * @param {Element} el
+ */
+function corner(el) {
+  const r = el.getBoundingClientRect();
+  return { x: r.x, y: r.y };
+}
+
+/**
  * No hint collection: what `#hints` holds before the first one and after a label was followed.
  * @type {{ gen: number, els: WeakRef<Element>[], at: { x: number, y: number }[],
+ *   frames: { el: WeakRef<Element>, at: { x: number, y: number } }[],
  *   page: { x: number, y: number } }}
  */
-const HINTS_NONE = { gen: -1, els: [], at: [], page: { x: 0, y: 0 } };
+const HINTS_NONE = { gen: -1, els: [], at: [], frames: [], page: { x: 0, y: 0 } };
 
 export class VimmaChild extends JSWindowActorChild {
   /**
@@ -241,8 +251,9 @@ export class VimmaChild extends JSWindowActorChild {
   #scroll = new PageScroll(this, () => deepActiveElement(this.document));
   /**
    * The last hint collection (m1-hints): its generation, its elements by target id, and, to
-   * tell whether a wheel moved them, where each was in the viewport (`at`, by target id) and
-   * where the page was scrolled to (`page`: the subframes' targets move with it).
+   * tell whether a wheel moved them, where each was in the viewport (`at`, by target id), where
+   * each subframe was (`frames`: their targets move with them) and where the page was scrolled
+   * to (`page`).
    */
   #hints = HINTS_NONE;
   /** The agent's page work in this frame (docs/specs/mcp-forms.md, mcp-checkpoints.md). */
@@ -910,10 +921,10 @@ export class VimmaChild extends JSWindowActorChild {
       this.#hints = {
         gen,
         els: targets.map((t) => new WeakRef(t.el)),
-        at: targets.map((t) => {
-          const r = t.el.getBoundingClientRect();
-          return { x: r.x, y: r.y };
-        }),
+        // The border box, read again: a target's rect above is clipped to the viewport and, for
+        // a block, its first line, so it would not show every move. Layout is flushed already.
+        at: targets.map((t) => corner(t.el)),
+        frames: frames.map((f) => ({ el: new WeakRef(f.el), at: corner(f.el) })),
         page: { x: win.scrollX, y: win.scrollY },
       };
     }
@@ -956,16 +967,23 @@ export class VimmaChild extends JSWindowActorChild {
     const under = scrollersUnder(win, point);
     await this.#scroll.settled(under.targets);
     if (under.frame || gen !== this.#hints.gen) return true;
-    const { els, at, page } = this.#hints;
+    const { els, at, frames, page } = this.#hints;
     const moved = (
       /** @type {{ x: number, y: number }} */ a,
       /** @type {{ x: number, y: number } | undefined} */ b,
     ) => !b || Math.abs(a.x - b.x) > 0.5 || Math.abs(a.y - b.y) > 0.5;
     if (moved({ x: win.scrollX, y: win.scrollY }, page)) return true;
-    return els.some((ref, i) => {
-      const el = ref.deref();
-      return !el?.isConnected || moved(el.getBoundingClientRect(), at[i]);
-    });
+    const gone = (/** @type {Element | undefined} */ el) => !el?.isConnected;
+    return (
+      els.some((ref, i) => {
+        const el = ref.deref();
+        return gone(el) || moved(corner(/** @type {Element} */ (el)), at[i]);
+      }) ||
+      frames.some((f) => {
+        const el = f.el.deref();
+        return gone(el) || moved(corner(/** @type {Element} */ (el)), f.at);
+      })
+    );
   }
 
   /**

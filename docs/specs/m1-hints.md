@@ -129,8 +129,9 @@ reverted.
 - **Messages.** `Vimma:CollectHints { gen, linksOnly }` → `{ targets: [{ id, rect, kind,
 href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. (Since changed:
   a wheel over the page while labels show sends the top frame `Vimma:HintsMoved { gen, x, y }`,
-  which answers once the wheel's scroll has ended whether the labelled targets moved; issues
-  #1308 and #1337; described under Limits, and in `actors/VimmaChild.sys.mjs`, `#hintsMoved`.) Both are queries the parent sends to a frame it chose; the child never
+  which answers once the wheel's scroll has ended whether the labelled targets or the frames
+  moved; issues #1308 and #1337; described under Limits, and in `actors/VimmaChild.sys.mjs`,
+  `#hintsMoved`.) Both are queries the parent sends to a frame it chose; the child never
   starts a hint message, so the focused-frame rule of focus reports (m1-actor-insert-scroll)
   has no counterpart here: each reply comes from the frame that was asked. The parent runs
   every reply through core `parseHintReply` (`hints.mjs`, the counterpart of
@@ -209,10 +210,15 @@ href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. (
   over the page while labels show draws them again once its scroll ends (issue #1308). Only
   the scroll events of that scroller count, or for a wheel those of the page and of the
   scrollers under it, so a carousel the page turns elsewhere neither ends the wait nor holds
-  it open. A wheel that moved no labelled target (the page's end, or a page that takes the
-  wheel itself, such as a map) keeps the labels and the keys typed toward them; one over a
-  subframe draws them again. Issue #1337; described in `actors/page-scroll.mjs`, `finish`,
-  `settled` and `scrollersUnder`.)
+  it open. A wheel that moved no labelled target and no frame (the page's end, or a page that
+  takes the wheel itself, such as a map) keeps the labels and the keys typed toward them, and
+  then takes the keys typed while they were hidden; one that moved them, or one over a subframe,
+  draws them again and drops every key typed toward the old labels, including those typed while
+  they were hidden, which were aimed at labels that now name other targets. A wheel while the
+  labels are being collected is looked at once they arrive. A scroller inside a shadow root
+  fires its scroll events only within that tree, so a wait for it ends on the quiet timer and
+  can collect while it still moves. Issue #1337; described in `actors/page-scroll.mjs`,
+  `finish`, `settled` and `scrollersUnder`, and in `host/VimmaHost.sys.mjs`, `_wheelCheck`.)
 - Delegated click handlers on elements with no role, tabindex or listener of their own (some
   React apps) get no hint; no `cursor: pointer` heuristic.
 - Canvas and WebGL apps (Google Docs, Figma, maps, games) draw their own controls: there are no
