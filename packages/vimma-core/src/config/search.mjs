@@ -59,6 +59,8 @@ const ALIAS = /^[a-z0-9][a-z0-9._-]{0,31}$/;
 const ALIAS_MESSAGE = "an alias is a letter or digit, then up to 31 of a-z 0-9 . _ -";
 const TEMPLATE_MESSAGE =
   "must be an https:// or http:// URL with one %s, or an installed engine's name";
+const TEMPLATE_CONTROL_MESSAGE =
+  "a template is one line without control characters (a line break, a tab)";
 const NAME_MESSAGE = "an engine name is 1 to 100 characters without control characters";
 const MAX_NAME = 100;
 // eslint-disable-next-line no-control-regex -- control characters are what it looks for
@@ -142,7 +144,9 @@ export function validateSearch(search) {
         continue;
       }
       if (URL_LIKE.test(v)) {
-        if (templateHost(v) === null) fail(path, TEMPLATE_MESSAGE);
+        // The URL parser drops line breaks and tabs, so templateHost alone would take them (#1283).
+        if (CONTROL.test(v)) fail(path, TEMPLATE_CONTROL_MESSAGE);
+        else if (templateHost(v) === null) fail(path, TEMPLATE_MESSAGE);
         else aliases.set(alias, { key, kind: "template" });
         continue;
       }

@@ -79,18 +79,23 @@ What works today, each with the section that explains it:
 
 The keys in this guide are defaults, not decisions. Every binding, the `ctrl+b` prefix and the
 `space` leader can be remapped in `~/.config/vimma/config.toml`. The leader has no default
-bindings; it is there for your own. These three lines move the prefix to `ctrl+a`, move the
-leader to `,`, and add a leader binding (`, n`) for the side panel:
+bindings; it is there for your own. The file Vimma creates lists every setting, commented out,
+under its table. These edits move the prefix to `ctrl+a`, move the leader to `,`, and add a
+leader binding (`, n`) for the side panel: uncomment each line under its `[keys]` or `[modal]`
+header and change its value.
 
 ```toml
-keys.prefix = "ctrl+a"                           # the prefix, ctrl+b by default as in tmux
-modal.leader = ","                               # the leader, space by default as in many Vim setups
-keys.toggle_sidebar = ["prefix+b", "<leader>n"]  # side panel: prefix b, and now also leader n
+[keys]
+prefix = "ctrl+a"                           # the prefix, ctrl+b by default as in tmux
+toggle_sidebar = ["prefix+b", "<leader>n"]  # side panel: prefix b, and now also leader n
+
+[modal]
+leader = ","                                # the leader, space by default as in many Vim setups
 ```
 
 Firefox's own keys (`ctrl+t`, `alt+left`, `F5`, `ctrl+plus`, `F12`, …) are Vimma bindings too,
-with Firefox's meaning, so they are remapped the same way: `keys.new_tab = ["prefix+c"]` takes
-`ctrl+t` away from "New tab" ([Firefox's keys are Vimma bindings](#firefoxs-keys-are-vimma-bindings)).
+with Firefox's meaning, so they are remapped the same way: `new_tab = ["prefix+c"]` under `[keys]`
+takes `ctrl+t` away from "New tab" ([Firefox's keys are Vimma bindings](#firefoxs-keys-are-vimma-bindings)).
 
 Save the file and the change applies within 2 seconds, without a restart. [config.toml](#configtoml) has the
 details, and [bindings.md](bindings.md) lists every action's config name with its default keys.
@@ -798,9 +803,10 @@ Edit menu's Find in Page, and there `Enter` goes to the next match.
   toolbar is hidden) to the status bar. The prompt, titled `Live Grep`, is at the bottom, with
   `matches listed / found` on its right. Results stack above it, the best one next to the prompt
   and marked `>`. Each row shows its window (`w1` is this one), the tab's number (the one
-  `ctrl+b 1..9` uses) and title, its host, `:line:`, and the line with the match highlighted. A line is a paragraph, list item, heading or table cell (text after a `<br>`
+  `ctrl+b 1..9` uses) and title, its host, `:line:`, and the line with the match highlighted;
+  a line longer than the row is cut to fit around the match, with some of the text before it. A line is a paragraph, list item, heading or table cell (text after a `<br>`
   or in `pre` text starts a new one), numbered in the page. On the right, `Grep Preview` shows
-  the ten lines before and after the selected match, the matched line highlighted; its title
+  the ten lines before and after the selected match, the matched line highlighted and, when it is long, cut around the match; its title
   names the match's window, workspace, tab and host in full. In a window
   narrower than 900 pixels the preview is hidden and the results take the whole width.
 - **The query** is a regular expression in JavaScript's syntax (`err(or)?s?\b`, `\d+ ms`), matched
@@ -840,7 +846,9 @@ Edit menu's Find in Page, and there `Enter` goes to the next match.
   frame from another site is searched; its rows say `↳ host`.
 - **Limits.** A search stops in a page, or in the closed tabs' titles, after a second
   (`timed out`, so a pattern that would backtrack for ever never freezes the page or Vimma), covers at most 100 frames a tab and the first
-  million characters of a page (`cut`), and lists at most 2,000 results; a query over 1,000
+  million characters of a page (`cut`), and lists at most 2,000 results. Each frame of a page
+  lists its first 100 matches and counts up to 1,000, so the count can read `100 / 312`; narrow
+  the query to list the rest. A query over 1,000
   characters is not run (`too long`).
 - **Private and agent tabs.** From a normal window live grep never sees the
   [private workspace](#private-workspace), open or recently closed, in any scope; in the private
@@ -4524,7 +4532,9 @@ accent = "#ff9e64"
   and the status bar shows the first mistake in red on the right, with its line, e.g.
   `config.toml:3: keys.new_tabb: unknown action "new_tabb" (did you mean "new_tab"?)` (or
   `3 errors: …`). The Browser Console (`ctrl+shift+j`) lists them all. Fix the file and the
-  message goes away at the next check.
+  message goes away at the next check. A setting written as a dotted key (`keys.prefix = …`)
+  belongs under its table's header instead: below another table it is that table's key, and the
+  message names the table it goes in (`[keys]`).
 - **What applies live:** `[keys]`, `[modal]` (leader, `timeout_ms`, per-mode keys, `hint_chars`)
   and `[unbind]`; `[panes] max` (most panes in a workspace, 1 to 16, default 8; it limits new
   splits), `[panes] max_splits` (most splits in a workspace, 1 to 9, default 9;

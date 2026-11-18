@@ -383,6 +383,13 @@ which holds the text model and the matcher key, issue #1109.)
    - the line, with its match in `<mark>`, starting at most 16 characters before the match so
      that the match stays in view in a narrow list; prefixed `↳ host` when the match is in a
      frame from another site, and `◇ agent` for an agent workspace tab (decision 13).
+     (Since changed: the line is fitted to the room its row has, measured when the rows are
+     drawn and again when the dialog is resized, with a third of that room, at most 16
+     characters, before the match and an ellipsis at each cut (`fitAround`), because a fixed
+     16 characters still pushed the match past the row's edge in a dialog about 920 pixels
+     wide with the preview shown; the tab title and host columns also narrow, to at most a
+     quarter and a sixth of the row, so the line keeps room
+     ([#1274](https://github.com/vimma-browser/vimma/issues/1274)).)
 
    "Best" is source order: results in the workspace's tab order (in wider scopes, window by
    window, this one first, and workspace by workspace, the agent workspace last), then recently
@@ -394,7 +401,10 @@ which holds the text model and the matcher key, issue #1109.)
 
 6. **The preview** shows the selected match's line with the ten lines before and after it,
    from the frame's text model (`Vimma:GrepPreview`), with the matched line highlighted, the
-   match marked, and the line scrolled to the middle. `ctrl+d`/`ctrl+u` scroll it half a pane,
+   match marked, and the line scrolled to the middle. (Since changed: a matched line longer
+   than the preview is wide is fitted around the match as a row's line is, with at most 60
+   characters before it, so the match is kept in view;
+   [#1274](https://github.com/vimma-browser/vimma/issues/1274).) `ctrl+d`/`ctrl+u` scroll it half a pane,
    as Telescope's insert-mode keys do; with the preview shown, clearing the query is `ctrl+w`
    word by word or `backspace`, and without it (a narrow dialog) `ctrl+u` clears as in other
    pickers. It is text, not a picture of the page: a background tab is not painted (vimma-mcp,

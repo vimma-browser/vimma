@@ -122,6 +122,19 @@ function commandOrThrow(text, path, cache) {
 }
 
 /**
+ * A prefix or leader written as a sequence (`ctrl+b ctrl+b`), which parseKey would read as one
+ * chord with an odd modifier (#1273). A lone space is the space key.
+ * @param {unknown} text
+ * @param {string} path
+ * @param {string} message
+ */
+function oneChord(text, path, message) {
+  if (typeof text === "string" && /\s/.test(text.trim())) {
+    throw new KeymapError(`${message}, got ${JSON.stringify(text)}`, path);
+  }
+}
+
+/**
  * @template T
  * @param {() => T} fn
  * @param {string} path
@@ -237,11 +250,11 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
   /** @type {Set<string>} */
   const overridden = new Set();
 
-  const prefix = notation(
-    () => parseKey(/** @type {string} */ (userKeys.prefix ?? defKeys.prefix)),
-    "keys.prefix",
-  );
+  const prefixText = /** @type {string} */ (userKeys.prefix ?? defKeys.prefix);
+  oneChord(prefixText, "keys.prefix", 'the prefix is one chord, such as "ctrl+b"');
+  const prefix = notation(() => parseKey(prefixText), "keys.prefix");
   const leaderText = /** @type {string} */ (userModal.leader ?? defModal.leader);
+  oneChord(leaderText, "modal.leader", 'the leader is one key, such as "space"');
   const leader = notation(() => parseKey(leaderText), "modal.leader");
   const timeoutMs = userModal.timeout_ms ?? defModal.timeout_ms;
   if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs < 0) {
@@ -336,6 +349,14 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
         const { chords, labels } = concretise(notation(() => parseBinding(text), path));
         // The prefix layer must work in every mode and context (pdf-mode decision 5).
         if (mode === "pdf" && chords[0] && formatKey(chords[0]) === formatKey(prefix)) {
+          // A built-in key the user never wrote: the mistake is the prefix (#1273).
+          if (!isUser && "prefix" in userKeys) {
+            throw new KeymapError(
+              `${JSON.stringify(text)} is a [modal.pdf] key by default (${action.name}), and the` +
+                " prefix must work in every mode: pick a chord such as ctrl+a",
+              "keys.prefix",
+            );
+          }
           throw new KeymapError("[modal.pdf] cannot bind the prefix", path);
         }
         const seq = chords.map(formatKey).join(" ");

@@ -303,9 +303,7 @@ describe("addAgentProviderText", () => {
   });
 
   describe("refuses an edit whose result is not the provider asked for", () => {
-    const refused = { error: "the edit would change other keys of config.toml; nothing written" };
-    // A CLI provider that does not read back as given is refused, but no other key changed, so
-    // only the refusal is asserted here, not that message.
+    // Each of these says what is wrong (config-errors.test.ts, #1284); here only the refusal.
     const cli = { name: "c", kind: "cli", cli: "claude-code", endpoint: "", model: "" };
 
     test("a CLI this build does not know, which the config would skip", () => {
@@ -333,13 +331,19 @@ describe("addAgentProviderText", () => {
 
     test("[agent] that would land inside a multi-line string", () => {
       const text = v2(
+        // Line-ending backslashes keep the template one line until [agent] lands in it, which
+        // validation now refuses before the guard sees it: a template is one line (#1283).
         "[search.aliases]",
-        'g = """https://a.com/?q=%s',
-        "[[agent.providers]]",
+        'g = """https://a.com/?q=%s\\',
+        "[[agent.providers]]\\",
         '"""',
         ...existing,
       );
-      expect(addAgentProviderText(text, local, { makeDefault: true })).toEqual(refused);
+      expect(addAgentProviderText(text, local, { makeDefault: true })).toEqual({
+        error:
+          "config.toml does not parse with the provider added: search.aliases.g: " +
+          "a template is one line without control characters (a line break, a tab)",
+      });
     });
   });
 });

@@ -701,7 +701,15 @@ add_task(async function page_text_with_markup_stays_text() {
   await openGrep();
   type("needle");
   await resultsSettle(1);
-  Assert.equal(textOf(rows()[0]), line, "the line shows as text");
+  // The row fits the line to its width (#1274), so it may end in an ellipsis; what it shows of
+  // the markup is text, and its accessible name has the whole line.
+  const shown = textOf(rows()[0]);
+  Assert.ok(shown.includes("<img src=x"), `the line shows as text: ${shown}`);
+  Assert.ok(line.startsWith(shown.replace(/…$/, "")), "from the line's start, the match first");
+  Assert.ok(
+    /** @type {string} */ (rows()[0].getAttribute("aria-label")).startsWith(`${line}, `),
+    "the accessible name has the whole line",
+  );
   Assert.ok(
     /** @type {Element} */ (rows()[0].querySelector(".vimma-grep-tab")).textContent.includes(
       "<i>Markup</i>",

@@ -204,6 +204,26 @@ function cutAround(line, s, e, width, before) {
 }
 
 /**
+ * A row's or the preview's line fitted to `width` characters, the room its box has: a line that
+ * fits is left whole; a longer one is cut around the match, with a third of the width (at most
+ * `before` characters) before it so that the match stays in view with some context, and an
+ * ellipsis at each cut, counted in the width. A match wider than the box shows its start; at
+ * least two characters are kept, so a box narrower than four still shows some of the match (a
+ * surrogate pair is never split, and one character could be half of one).
+ * @param {string} text
+ * @param {[number, number]} at  the match in `text`
+ * @param {number} width  characters the box shows
+ * @param {number} before  the most context kept before the match
+ * @returns {{ text: string, at: [number, number] }}
+ */
+export function fitAround(text, [s, e], width, before) {
+  if (text.length <= width) return { text, at: [s, e] };
+  const room = Math.max(2, width - 2);
+  const keep = Math.max(0, Math.min(before, Math.floor(room / 3), room - (e - s)));
+  return cutAround(text, s, e, room, keep);
+}
+
+/**
  * Index after an empty match at `i`: the next code point.
  * @param {string} s
  * @param {number} i
