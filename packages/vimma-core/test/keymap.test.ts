@@ -307,6 +307,51 @@ describe("suggestion keys in insert mode", () => {
       }),
     ).toThrow("ctrl+n is bound to suggestion_next in [modal.insert]; unbind it or drop it here");
   });
+
+  // Issue #1261: ctrl+j and ctrl+k too, beside ctrl+n and ctrl+p.
+  test("ctrl+j and ctrl+k move through the list too, in insert mode only", () => {
+    const km = compileKeymap();
+    expect(km.trie("insert").children.get("ctrl+j")?.action?.name).toBe("suggestion_next");
+    expect(km.trie("insert").children.get("ctrl+k")?.action?.name).toBe("suggestion_prev");
+    expect(km.keysFor("suggestion_next")).toEqual(["ctrl+n [insert]", "ctrl+j [insert]"]);
+    expect(km.keysFor("suggestion_prev")).toEqual(["ctrl+p [insert]", "ctrl+k [insert]"]);
+    expect(km.trie("normal").children.get("ctrl+j")?.action?.name).toBe("web_search");
+    expect(km.trie("normal").children.get("ctrl+k")).toBeUndefined();
+  });
+
+  test("outside a list ctrl+j and ctrl+k have no [keys] fallback", () => {
+    const km = compileKeymap();
+    // web_search on ctrl+j is a text-field key's default (key-handling-batch § 2), not bound in
+    // insert mode: there the host presses Enter instead, as before.
+    expect(km.fallback("insert", "ctrl+j")).toBeNull();
+    expect(km.fallback("insert", "ctrl+k")).toBeNull();
+  });
+
+  test("with insert_editing off, ctrl+j falls back to the web search", () => {
+    const km = compileKeymap({ modal: { insert_editing: false } });
+    expect(km.trie("insert").children.get("ctrl+j")?.action?.name).toBe("suggestion_next");
+    expect(km.fallback("insert", "ctrl+j")?.name).toBe("web_search");
+  });
+
+  test("a user's bindings on ctrl+j and ctrl+k are kept", () => {
+    const own = compileKeymap({ modal: { insert: { "<C-j>": "tab.new", "<C-k>": "tab.close" } } });
+    expect(own.trie("insert").children.get("ctrl+j")?.action?.name).toBe("new_tab");
+    expect(own.trie("insert").children.get("ctrl+k")?.action?.name).toBe("close_tab");
+    expect(own.keysFor("suggestion_next")).toEqual(["ctrl+n [insert]"]);
+    const keys = compileKeymap({ keys: { new_tab: ["ctrl+k"] } });
+    expect(keys.fallback("insert", "ctrl+k")?.name).toBe("new_tab");
+    expect(keys.trie("normal").children.get("ctrl+k")?.action?.name).toBe("new_tab");
+    const unbound = compileKeymap({ unbind: { insert: ["<C-j>", "<C-k>"] } });
+    expect(unbound.trie("insert").children.get("ctrl+j")).toBeUndefined();
+    expect(unbound.trie("insert").children.get("ctrl+k")).toBeUndefined();
+  });
+
+  test("[firefox] enable = ['ctrl+j'] drops the suggestion binding on ctrl+j alone", () => {
+    const km = compileKeymap({ firefox: { enable: ["ctrl+j"] } });
+    expect(km.trie("insert").children.get("ctrl+j")).toBeUndefined();
+    expect(km.keysFor("suggestion_next")).toEqual(["ctrl+n [insert]"]);
+    expect(km.trie("insert").children.get("ctrl+k")?.action?.name).toBe("suggestion_prev");
+  });
 });
 
 // docs/specs/firefox-keys.md decision 5: a `:` value runs a command line.
