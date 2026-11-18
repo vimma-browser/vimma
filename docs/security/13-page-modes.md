@@ -49,7 +49,8 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   (`INSERT_EDIT_COMMANDS`), never Enter. A compromised content process that claims insert mode
   (K1) gets an `Enter` in place of its own `ctrl+j`, which it could synthesize itself. In insert
   mode `ctrl+j` is also a suggestion key (K6): its `Enter` comes from that key's fallback, after
-  the page's reply to the keypress, under K6's checks, and never also from the keydown's reply,
+  the page's reply to the keypress, under K6's checks (and, at the press, still insert mode and
+  still the frame that was asked whether its list is open), and never also from the keydown's reply,
   so one `ctrl+j` presses at most one key.
   [`Enter is no editor command: the content actor never takes it`](../../packages/vimma-core/test/editable.test.ts),
   [`a_page_that_takes_ctrl_j_keeps_it`](../../tests/browser/browser_vimma_edit_keys.js),
