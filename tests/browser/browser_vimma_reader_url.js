@@ -107,9 +107,12 @@ add_task(async function the_hidden_toolbar_shows_no_lock_and_no_warning_for_the_
   await TestUtils.waitForCondition(() => urlSegment() === shown, "the article's address shows");
   const bar = /** @type {Element} */ (document.getElementById("vimma-statusbar"));
   Assert.equal(bar.querySelector('[data-segment="security"]'), null, "no security segment");
-  Assert.ok(
-    !/secure|lock|\u{1F512}/iu.test(bar.textContent ?? ""),
-    "neither a lock nor not secure",
+  // Whole words: an earlier test's `↓ blocked` download may still show, and is no lock.
+  const segments = [...bar.querySelectorAll("[data-segment]")].map((s) => s.textContent ?? "");
+  Assert.deepEqual(
+    segments.filter((text) => /\bnot secure\b|\block\b|\u{1F512}/iu.test(text)),
+    [],
+    "no segment shows a lock or says not secure",
   );
   BrowserTestUtils.removeTab(tab);
   await SpecialPowers.popPrefEnv();
