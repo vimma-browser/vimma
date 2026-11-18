@@ -61,6 +61,7 @@ export function parseToml(text, { integersAsBigInt = false } = {}) {
   } catch (e) {
     /* c8 ignore next */
     if (!(e instanceof TomlError)) throw e;
+    // Stryker disable next-line Regex: every smol-toml message starts so; `^` changes nothing
     let message = e.message.replace(/^Invalid TOML document: /, "").split("\n")[0] ?? "";
     const opened = unclosedBracket(text, e.line, e.column);
     if (opened) message += ` (unclosed "${opened.char}" opened at line ${opened.line}?)`;
@@ -79,6 +80,7 @@ export function parseToml(text, { integersAsBigInt = false } = {}) {
  */
 function unclosedBracket(text, line, column) {
   /** @type {{ char: string, line: number }[]} */
+  // Stryker disable next-line ArrayDeclaration: an element with no line is never found below
   const stack = [];
   let at = 1;
   let col = 1;
@@ -171,6 +173,7 @@ export function locateKeys(text) {
   /** @param {number} pos */
   const lineAt = (pos) => {
     let lo = 0;
+    // Stryker disable next-line ArithmeticOperator: no index past the end is <= pos, so lo never gets there
     let hi = starts.length - 1;
     while (lo < hi) {
       const mid = (lo + hi + 1) >> 1;
@@ -294,9 +297,11 @@ export function locateKeys(text) {
   };
   /** @param {Path} base */
   const keyval = (base) => {
+    // Stryker disable next-line CallExpression: both callers have just skipped the blanks
     ws();
     const at = i;
     const full = cap([...base, ...key()]);
+    // Stryker disable next-line ArithmeticOperator: the extra prefixes are recorded at this same at or before
     for (let n = base.length + 1; n <= full.length; n++) record(full.slice(0, n), at);
     i++; // "="
     ws();
@@ -330,6 +335,7 @@ export function locateKeys(text) {
     } else {
       keyval(table);
     }
+    // Stryker disable next-line UpdateOperator: unreachable, every pass moves i on; the guard stays for bad input
     /* c8 ignore next */
     if (i === before) i++; // never loop forever on input the parser would have rejected
   }
@@ -357,9 +363,12 @@ export function tomlLiteral(/** @type {string | boolean | number} */ value) {
   return JSON.stringify(value).replace(/\x7f/g, "\\u007F");
 }
 
-/** Structural equality of two parsed TOML values (key order ignored). */
-/** @returns {boolean} */
-function same(/** @type {unknown} */ a, /** @type {unknown} */ b) {
+/**
+ * Structural equality of two parsed TOML values (key order ignored). Exported for its tests:
+ * setTomlKeys reaches it only with what a wrong line edit could change.
+ * @returns {boolean}
+ */
+export function sameTomlValue(/** @type {unknown} */ a, /** @type {unknown} */ b) {
   if (a instanceof Date || b instanceof Date) return String(a) === String(b);
   if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
     return Object.is(a, b);
@@ -370,7 +379,7 @@ function same(/** @type {unknown} */ a, /** @type {unknown} */ b) {
   return (
     ka.length === kb.length &&
     ka.every((k) =>
-      same(
+      sameTomlValue(
         /** @type {Record<string, unknown>} */ (a)[k],
         /** @type {Record<string, unknown>} */ (b)[k],
       ),
@@ -425,6 +434,7 @@ function headerName(line) {
   const close = s.indexOf("]");
   if (close < 0) return null;
   const name = trimBlank(s.slice(1, close));
+  // Stryker disable next-line LogicalOperator: the caller compares with a bare name, never "" or with a "["
   if (!name || name.includes("[")) return null;
   const rest = trimBlank(s.slice(close + 1));
   return rest === "" || rest[0] === "#" ? name : null;
@@ -475,9 +485,11 @@ function setKey(text, doc, { table, key, value }) {
     return { ok: true, text: lines.join("\n") };
   }
   if (key in t) {
+    // Stryker disable next-line ArithmeticOperator: the fallback is unreachable, locateKeys has every key's line
     return fail(where([table, key]) ?? headerAt + 1, `${name} is not a plain key = value line`);
   }
   let last = headerAt;
+  // Stryker disable next-line ArithmeticOperator: the header line would set last to headerAt
   for (let n = headerAt + 1; n < end; n++) {
     if (!/^[ \t]*(#.*)?\r?$/.test(/** @type {string} */ (lines[n]))) last = n;
   }
@@ -516,7 +528,7 @@ export function setTomlKeys(text, edits) {
   }
   const after = parseToml(out);
   if (!after.ok) return after;
-  if (!same(after.value, want)) {
+  if (!sameTomlValue(after.value, want)) {
     return {
       ok: false,
       error: { line: 1, column: 1, message: "the edit would change other keys" },
