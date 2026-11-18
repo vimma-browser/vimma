@@ -1891,6 +1891,8 @@ interface ContextualIdentity {
 interface ContextualIdentityServiceApi {
   getPublicIdentities(): ContextualIdentity[];
   getPublicIdentityFromId(userContextId: number): ContextualIdentity | undefined;
+  /** The name Firefox shows for the container: its own name, or the localised one of a built-in. */
+  getUserContextLabel(userContextId: number): string;
   /** Throws once the container ids run out. */
   create(name: string, icon: string, color: string): ContextualIdentity;
   /** Throws for a name of only whitespace. */

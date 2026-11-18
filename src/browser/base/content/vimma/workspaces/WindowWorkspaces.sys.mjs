@@ -50,15 +50,35 @@ import { CHANGED_TOPIC, WorkspaceStore } from "./WorkspaceStore.sys.mjs";
 /** @import { TabLabels } from "../core/tablabels.mjs" */
 
 /**
- * @typedef {"E10SUtils" | "PrivateBrowsingUtils" | "SessionStore" | "WorkspaceRouter"} LazyName
+ * @typedef {"ContextualIdentityService" | "E10SUtils" | "PrivateBrowsingUtils" | "SessionStore"
+ *   | "WorkspaceRouter"} LazyName
  */
 const lazy = /** @type {Lazy<LazyName>} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
+  ContextualIdentityService:
+    "moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs",
   E10SUtils: "resource://gre/modules/E10SUtils.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   SessionStore: "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
   WorkspaceRouter: "chrome://browser/content/vimma/workspaces/WorkspaceRouter.sys.mjs",
 });
+
+/** Sent by ContextualIdentityService when a container is renamed or restyled. */
+const IDENTITY_UPDATED_TOPIC = "contextual-identity-updated";
+
+/**
+ * Sets the element's one `identity-<kind>-<value>` class, as Tabbrowser's indicator does.
+ * @param {Element} element
+ * @param {"color" | "icon"} kind
+ * @param {string} value
+ */
+function replaceIdentityClass(element, kind, value) {
+  const prefix = `identity-${kind}-`;
+  for (const name of [...element.classList]) {
+    if (name.startsWith(prefix) && name !== prefix + value) element.classList.remove(name);
+  }
+  element.classList.add(prefix + value);
+}
 
 /** The window value holding core's snapshot. */
 export const WINDOW_KEY = "vimma-workspaces";
@@ -263,6 +283,7 @@ export class WindowWorkspacesImpl {
     win.addEventListener("focus", this.#onFocus, true);
     Services.obs.addObserver(this.#observer, CHANGED_TOPIC);
     Services.obs.addObserver(this.#windowRestored, WINDOW_RESTORED_TOPIC);
+    Services.obs.addObserver(this.#identityUpdated, IDENTITY_UPDATED_TOPIC);
     this.ready = this.#start().catch((e) => console.error("vimma: no workspaces", e));
   }
 
@@ -275,6 +296,7 @@ export class WindowWorkspacesImpl {
     this.#win.clearTimeout(this.#stuckTimer);
     Services.obs.removeObserver(this.#observer, CHANGED_TOPIC);
     Services.obs.removeObserver(this.#windowRestored, WINDOW_RESTORED_TOPIC);
+    Services.obs.removeObserver(this.#identityUpdated, IDENTITY_UPDATED_TOPIC);
     this.#win.gBrowser?.removeTabsProgressListener(this.#progress);
     const view = PaneViews.get(this.#win);
     if (view) {
@@ -750,6 +772,35 @@ export class WindowWorkspacesImpl {
   /** Observer: the store's definitions changed (a workspace added, renamed or deleted). */
   #observer = () => {
     if (this.#model && !this.#win.closed && !this.#pending) this.#sync();
+  };
+
+  /**
+   * Observer: a container was renamed or restyled, as `:wsrename` does to its workspace's. Firefox
+   * restyles that container's tabs (Tabbrowser's observe) but leaves the address bar's container
+   * label as it was until the next tab switch (issue #1272); this redraws the label, its tooltip,
+   * colour and icon the way Tabbrowser's #updateUserContextUIIndicator does, when the selected
+   * tab is in that container. It runs in every window, with or without workspaces, since any
+   * container can be renamed (also in Settings).
+   */
+  #identityUpdated = (/** @type {unknown} */ subject) => {
+    const win = this.#win;
+    const ucid = /** @type {{ wrappedJSObject?: ContextualIdentity } | null} */ (subject)
+      ?.wrappedJSObject?.userContextId;
+    if (win.closed || !ucid) return;
+    const browser = win.gBrowser?.selectedBrowser;
+    if (browser?.getAttribute("usercontextid") !== String(ucid)) return;
+    const CIS = lazy.ContextualIdentityService;
+    const identity = CIS.getPublicIdentityFromId(ucid);
+    const doc = win.document;
+    const box = doc.getElementById("userContext-icons");
+    const label = doc.getElementById("userContext-label");
+    const indicator = doc.getElementById("userContext-indicator");
+    if (!identity || !box || !label || !indicator) return;
+    const text = CIS.getUserContextLabel(ucid);
+    label.textContent = text;
+    box.setAttribute("tooltiptext", text);
+    replaceIdentityClass(box, "color", identity.color);
+    replaceIdentityClass(indicator, "icon", identity.icon);
   };
 
   get #gBrowser() {
