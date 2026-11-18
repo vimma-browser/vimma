@@ -15,7 +15,7 @@
  * thread, so every walk is bounded: at most 20,000 lines, 32 names deep, keys built one level
  * at a time, and the walks over Places iterative (docs/security/08-config-toml.md F6).
  */
-import { BOOKMARKLETS_SETTINGS, formatBookmarkPath, PLACES_ROOTS } from "../ui/bookmarks.mjs";
+import { formatBookmarkPath, PLACES_ROOTS } from "../ui/bookmarks.mjs";
 import { hasControl } from "../text/strings.mjs";
 import { locateKeys, parseToml } from "./toml.mjs";
 
@@ -72,7 +72,9 @@ const TYPE_SEPARATOR = 3;
  * The base (D4): what the file and Places last agreed on, with each item's Places guid.
  * @typedef {{ path: string[], kind: "bookmark" | "folder", url?: string, guid: string }} BaseEntry
  * @typedef {{ name: string, folder: string, entries: BaseEntry[] }} BaseTable
- * @typedef {{ version: 1, source: BookmarksSource, tables: BaseTable[] }} Base
+ * `forgotten`: `:bookmarks forget` turned the mirror off while the bookmarks file's content had
+ * this hash; the mirror starts again only when the content differs (Behaviour 19).
+ * @typedef {{ version: 1, source: BookmarksSource, tables: BaseTable[], forgotten?: string }} Base
  */
 
 /**
@@ -429,22 +431,6 @@ export function inlineBookmarkTables(text) {
 }
 
 /**
- * `[bookmarks] bookmarklets` as config.toml's own text says it, `"none"` for anything else: the
- * mirror follows config.toml, never a file `:source <file>` put in force (Behaviour 6, D12).
- * @param {string | null} text
- * @returns {BookmarkletsSetting}
- */
-export function configBookmarklets(text) {
-  if (text === null) return "none";
-  const parsed = parseToml(text, { integersAsBigInt: true });
-  if (!parsed.ok || !isTable(parsed.value.bookmarks)) return "none";
-  const v = parsed.value.bookmarks.bookmarklets;
-  return BOOKMARKLETS_SETTINGS.includes(/** @type {BookmarkletsSetting} */ (v))
-    ? /** @type {BookmarkletsSetting} */ (v)
-    : "none";
-}
-
-/**
  * The message for an inline table that config.toml's settings shadow (Behaviour 8).
  * @param {string} name
  */
@@ -591,7 +577,13 @@ export function parseBase(text) {
     }
     tables.push({ name: t.name, folder: t.folder, entries });
   }
-  return { version: 1, source: raw.source, tables };
+  if (raw.forgotten !== undefined && typeof raw.forgotten !== "string") return null;
+  return {
+    version: 1,
+    source: raw.source,
+    tables,
+    ...(typeof raw.forgotten === "string" ? { forgotten: raw.forgotten } : {}),
+  };
 }
 
 /** @param {Base} base */

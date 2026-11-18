@@ -47,8 +47,8 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   `javascript:` behind the gate below; every other scheme (`data:`, `chrome:`, `resource:`,
   `view-source:`, `blob:`, `jar:`, `place:`, …) is an error at its line. It **cannot** hold a
   setting, so a shared or pulled file cannot allow bookmarklets (D12); a `javascript:` line
-  reaches Places only while `config.toml`'s own text says `[bookmarks] bookmarklets = "user"`
-  or `"agent"` (a file `:source <file>` loaded does not count), because a bookmark in Places
+  reaches Places only while the last `config.toml` that applied says `[bookmarks] bookmarklets =
+"user"` or `"agent"` (a file with errors, or one `:source <file>` loaded, does not count), because a bookmark in Places
   runs from Firefox's own Library and toolbar (D13); with `"none"` the mirror neither adds,
   changes nor removes a `javascript:` bookmark, at any depth, also when a table is removed.
   Reading is bounded: a file over 4 MiB, or that is not a regular file (a FIFO would block the
@@ -67,8 +67,8 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   A run that would delete more than 20 bookmarks, or more than half of a table's, whether the
   file dropped them or Sync and the Library added them, or any bookmark of a folder a table
   takes over without a base (also after a new or restored Places database), asks y/N first;
-  the question never replaces an open prompt or command line and ignores keys for 400 ms as it
-  appears; no answer applies nothing, and a yes approves the removals it showed and no more.
+  the question never replaces an open prompt or command line nor opens while a page field has
+  the keys, and ignores keys for 1 s as it appears; no answer applies nothing, and a yes approves the removals it showed and no more.
   Accepted risks until later slices: many small edits, each under the limits, are applied
   without a question (each says what it removed); and two devices with different files and
   Sync on both put each other's changes back at every sync (bookmarks-file decision 2b, which

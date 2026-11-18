@@ -4098,7 +4098,8 @@ URL.
   say `bookmarks.toml is read-only` there; `:wsdelete` keeps a mirrored folder, and
   `:wsrename` leaves its name to the table. Edit the file to change these bookmarks. Bookmarks
   outside the mirrored folders work as before. Separators, tags and keywords in a mirrored
-  folder are kept as they are. With Firefox Sync on two machines whose files differ, each puts
+  folder are kept as they are. A bookmark or folder moved out of a mirrored folder stays where
+  you put it, and the folder gets a new copy from the file. With Firefox Sync on two machines whose files differ, each puts
   the other's changes back; carry mirrored folders with one of git or Sync, not both.
 - **Bookmarklets.** A `javascript:` line reaches Firefox's bookmarks only while `config.toml`
   says `[bookmarks] bookmarklets = "user"` (or `"agent"`), because a bookmark there runs from
@@ -4116,8 +4117,8 @@ URL.
   (`bookmarks.toml: 3 bookmarks removed from "work"`). One that would remove more than 20, or
   more than half of a table's, asks first, whether the lines left the file or the bookmarks
   came in from Sync or the Library and are being put back. The question waits until the
-  window's command line and prompts are closed, and ignores keys for a moment as it appears,
-  so a `y` typed into a page never answers it. `y` applies what it showed, and asks again if
+  window's command line and prompts are closed and no page field has your keys, and ignores
+  keys for a second as it appears, so a `y` typed into a page never answers it. `y` applies what it showed, and asks again if
   there is more by then; `n`, `Esc` or no answer in a minute keeps every bookmark and pauses
   the mirror until the file changes again. A table you add for a folder that already has
   bookmarks takes the folder over, and asks before it deletes any bookmark the table lacks.
@@ -4129,7 +4130,7 @@ URL.
   renamed file never empties your folders; so does a missing `config.toml` that held the
   tables. Put the file back, or type `:bookmarks forget` to stop mirroring: Firefox keeps every
   bookmark, the keys work in those folders again, and the mirror starts again only when the
-  file changes.
+  bookmarks in the file change (an unrelated `config.toml` edit or a restart does not).
 - **One small file.** For a small setup, the same tables can go in `config.toml` itself, after
   `[bookmarks]`. Once `bookmarks.toml` exists it is the only bookmarks file, and tables in
   `config.toml` are ignored with a warning. `bookmarks.toml` is the better home: an older Vimma

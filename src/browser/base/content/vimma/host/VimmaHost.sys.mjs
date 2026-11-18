@@ -1057,13 +1057,16 @@ export const VimmaHost = {
   },
 
   /**
-   * Whether the window's prompt line or command line is open: a question asked from outside a
-   * key waits until neither is (docs/specs/bookmarks-file.md Behaviour 7).
+   * Whether the window's prompt line or command line is open, or a page field has the keys
+   * (insert mode): a question asked from outside a key waits until none is
+   * (docs/specs/bookmarks-file.md Behaviour 7).
    * @param {BrowserWindow} win
    */
   promptBusy(win) {
     const state = states.get(win);
-    return !!state && (state.rename.isOpen || state.cmdline.isOpen);
+    return (
+      !!state && (state.rename.isOpen || state.cmdline.isOpen || this._mode(state) === "insert")
+    );
   },
 
   /** config.toml's keymap, without `:siteunbind`'s keys until restart; the built-in one before. */

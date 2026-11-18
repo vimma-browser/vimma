@@ -19,7 +19,6 @@
 import {
   BOOKMARKS_FILE,
   MAX_BOOKMARKS_FILE_BYTES,
-  configBookmarklets,
   formatBase,
   formatBookmarksFileError,
   parseBase,
@@ -32,6 +31,7 @@ import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 
 /**
  * @import { Base, BookmarksFileError, MirrorOp, PlacesNode } from "../core/bookmarks-file.mjs"
+ * @import { BookmarkletsSetting } from "../core/bookmarks.mjs"
  */
 
 const lazy = /** @type {Lazy<"clearTimeout" | "setTimeout">} */ ({});
@@ -50,7 +50,7 @@ const DEFAULT_SETTLE_MS = 500;
 const DEFAULT_BURST_MS = 1000;
 const DEFAULT_ASK_MS = 60_000;
 /** A key held or typed as the question appears is not its answer (`y` on a page). */
-const ASK_SETTLE_MS = 400;
+const ASK_SETTLE_MS = 1000;
 /** The base (D4), in the profile: the model both sides last agreed on, with guids. */
 const BASE_FILE = "vimma-bookmarks.json";
 
@@ -109,12 +109,26 @@ function sourceName(source) {
 /** @param {number} n @param {string} word */
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
+/**
+ * The hash of what the bookmarks file holds, for `:bookmarks forget`: bookmarks.toml's text, or
+ * config.toml's inline tables alone (an unrelated config.toml edit changes nothing); "" when
+ * there is no bookmarks file or it cannot be read.
+ * @param {ReturnType<typeof readBookmarks> | null} r
+ * @param {string | null} fileText
+ */
+function contentHash(r, fileText) {
+  if (!r || r.from === null) return "";
+  if (r.from === BOOKMARKS_FILE) return sha256(fileText ?? "");
+  return sha256(JSON.stringify(r.tables));
+}
+
 export class BookmarksFileImpl {
   /**
    * @param {{ configPath: () => string, basePath?: string, enabled?: () => boolean,
    *   initComplete?: () => Promise<void>, say?: (text: string) => void,
-   *   ask?: (question: string, yes: () => void, no: () => void) => (() => void) | null,
-   *   whenFree?: (fn: () => void) => () => void,
+   *   ask?: (win: BrowserWindow | null, question: string, yes: () => void, no: () => void) =>
+   *     (() => void) | null,
+   *   whenFree?: (fn: (win: BrowserWindow | null) => void) => () => void,
    *   showErrors?: (errors: BookmarksFileError[]) => void,
    *   mirrored?: (guids: ReadonlySet<string>, refusal: string) => void }} options
    *   `configPath`: config.toml's path, not its symlink's target (D1); `enabled`: the feature
@@ -127,7 +141,7 @@ export class BookmarksFileImpl {
     this.enabled = options.enabled ?? (() => Services.prefs.getBoolPref(FEATURE_PREF, false));
     this.initComplete = options.initComplete ?? placesInitComplete;
     this.say = options.say ?? sayInRecentWindow;
-    this.ask = options.ask ?? askInRecentWindow;
+    this.ask = options.ask ?? askInWindow;
     this.whenFree = options.whenFree ?? whenRecentWindowFree;
     this.showErrors = options.showErrors ?? (() => {});
     this.mirrored = options.mirrored ?? setMirroredFolders;
@@ -137,6 +151,12 @@ export class BookmarksFileImpl {
      * @type {string | null | undefined}
      */
     this.configText = undefined;
+    /**
+     * `[bookmarks] bookmarklets` of the last config.toml that applied (D12, D13): a file with
+     * errors, or one `:source <file>` loaded, allows nothing.
+     * @type {BookmarkletsSetting}
+     */
+    this.bookmarklets = "none";
     /** @type {Base | null | undefined} undefined until read from disk */
     this.base = undefined;
     /** Places' start-up is done (D17). */
@@ -152,7 +172,7 @@ export class BookmarksFileImpl {
     /** @type {string | null} a changed stat waiting to settle */
     this.settling = null;
     /**
-     * @type {{ why: "error" | "missing" | "declined" | "failed" | "forgotten", input: string,
+     * @type {{ why: "error" | "missing" | "declined" | "failed", input: string,
      *   file?: string } | null}
      */
     this.paused = null;
@@ -243,8 +263,9 @@ export class BookmarksFileImpl {
   }
 
   /**
-   * `:bookmarks forget` (Behaviour 19): drops the base and turns the mirror off until the
-   * bookmarks file changes or exists again; Places keeps every bookmark it has.
+   * `:bookmarks forget` (Behaviour 19): turns the mirror off, across restarts, until the
+   * bookmarks file's content changes or a file appears again; Places keeps every bookmark it
+   * has. The base keeps only the hash of the content it was forgotten for.
    * @returns {Promise<string>} what to tell the user
    */
   forget() {
@@ -254,10 +275,16 @@ export class BookmarksFileImpl {
       this.cancelAsk?.();
       this.burst.clear();
       this.report([], []);
-      await this.saveBase(null);
-      this.paused = { why: "forgotten", input: "" };
+      const { text, problem } = await this.readFile();
+      const r = problem ? null : readBookmarks({ file: text, config: this.configText ?? null });
+      this.paused = null;
       this.lastInput = "";
-      this.signature = await this.stat();
+      await this.saveBase({
+        version: 1,
+        source: r?.from ?? this.base?.source ?? BOOKMARKS_FILE,
+        tables: [],
+        forgotten: contentHash(r, text),
+      });
       return `${BOOKMARKS_FILE} forgotten: Places keeps every bookmark; the mirror is off until the file changes`;
     });
     this.queue = run.then(
@@ -280,11 +307,13 @@ export class BookmarksFileImpl {
   /**
    * config.toml was read (ConfigHost): its inline tables and the settings may have changed.
    * @param {string | null} text  null: there is no config.toml
+   * @param {BookmarkletsSetting} [bookmarklets]  of the last config.toml that applied
    */
-  configRead(text) {
+  configRead(text, bookmarklets = "none") {
     const first = this.configText === undefined;
-    const changed = this.configText !== text;
+    const changed = this.configText !== text || this.bookmarklets !== bookmarklets;
     this.configText = text;
+    this.bookmarklets = bookmarklets;
     if (first) this.maybeFirstRun();
     else if (this.ready && changed) this.enqueue({ trigger: "config" });
   }
@@ -515,10 +544,10 @@ export class BookmarksFileImpl {
     // clear it.
     const burst = new Map(this.burst);
     this.burst.clear();
-    const base = await this.loadBase();
+    let base = await this.loadBase();
     const { text: fileText, problem } = await this.readFile();
     const configText = this.configText ?? null;
-    const bookmarklets = configBookmarklets(configText);
+    const bookmarklets = this.bookmarklets;
     const r = problem
       ? {
           from: /** @type {const} */ ("bookmarks.toml"),
@@ -535,10 +564,14 @@ export class BookmarksFileImpl {
       bookmarklets,
     ]);
 
-    // `:bookmarks forget` holds until the file or config.toml changes (Behaviour 19).
-    if (this.paused?.why === "forgotten") {
-      if (how.trigger === "places" || how.trigger === "start") return;
-      this.paused = null;
+    // `:bookmarks forget` holds, across restarts, until the bookmarks' content changes or a
+    // file appears again (Behaviour 19); then the run is a first load.
+    if (base?.forgotten !== undefined) {
+      if (source === null || contentHash(problem ? null : r, fileText) === base.forgotten) {
+        this.report([], r.warnings);
+        return;
+      }
+      base = null;
     }
     // D9: a missing file after one existed is a pause, never "delete every bookmark".
     if (!problem && fileText === null && base?.source === BOOKMARKS_FILE) {
@@ -734,9 +767,9 @@ export class BookmarksFileImpl {
       this.paused = null;
       this.enqueue({ trigger: "file", approved: removing, asked: input });
     };
-    const stopWaiting = this.whenFree(() => {
+    const stopWaiting = this.whenFree((win) => {
       if (answered) return;
-      close = this.ask(text, yes, no);
+      close = this.ask(win, text, yes, no);
       if (!close) {
         no();
         return;
@@ -884,36 +917,56 @@ function sayInRecentWindow(text) {
 }
 
 /**
+ * @param {BrowserWindow | null} win  the window the question waited on
  * @param {string} question
  * @param {() => void} yes
  * @param {() => void} no
  */
-function askInRecentWindow(question, yes, no) {
-  const win = recentWindow();
+function askInWindow(win, question, yes, no) {
   return win ? VimmaHost.ask(win, question, yes, no, { settleMs: ASK_SETTLE_MS }) : null;
 }
 
 /**
- * Runs `fn` once the most recent window's prompt line and command line are both closed: at
- * once, or on the window's next state change that leaves them closed.
- * @param {() => void} fn
+ * Runs `fn` with the most recent window once its prompt line and command line are closed and
+ * no page field there has the keys: at once, or on the window's next state change that leaves
+ * it free. If that window closes or loses focus meanwhile, the most recent one is taken again.
+ * `fn` gets null when there is no window.
+ * @param {(win: BrowserWindow | null) => void} fn
  * @returns {() => void}  stops waiting
  */
 function whenRecentWindowFree(fn) {
-  const win = recentWindow();
-  if (!win || !VimmaHost.promptBusy(win)) {
-    fn();
-    return () => {};
-  }
   let done = false;
-  const off = VimmaHost.onStateChange(win, () => {
-    if (done || VimmaHost.promptBusy(win)) return;
+  let cleanup = () => {};
+  const run = (/** @type {BrowserWindow | null} */ win) => {
+    if (done) return;
     done = true;
-    off();
-    fn();
-  });
+    cleanup();
+    fn(win);
+  };
+  const attempt = () => {
+    cleanup();
+    if (done) return;
+    const win = recentWindow();
+    if (!win || !VimmaHost.promptBusy(win)) {
+      run(win);
+      return;
+    }
+    const off = VimmaHost.onStateChange(win, () => {
+      if (!VimmaHost.promptBusy(win)) run(win);
+    });
+    const moved = () => attempt();
+    win.addEventListener("unload", moved);
+    win.addEventListener("deactivate", moved);
+    cleanup = () => {
+      off();
+      win.removeEventListener("unload", moved);
+      win.removeEventListener("deactivate", moved);
+      cleanup = () => {};
+    };
+  };
+  attempt();
   return () => {
     done = true;
-    off();
+    cleanup();
   };
 }

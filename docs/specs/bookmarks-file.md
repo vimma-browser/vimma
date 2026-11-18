@@ -712,7 +712,9 @@ Slice 1 landed with these departures from the text above, each for the reason gi
   is off nothing reads either file. The slice that finishes the feature removes the pref.
 - **`:bookmarks forget` in slice 1.** Without it a missing file's pause (D9) has no way out
   but restoring the file, and the keys refuse in those folders until then; so it ships with
-  the pause, and `Tab` completes it while the feature is on. A key refused during that pause
+  the pause, and `Tab` completes it while the feature is on. The base keeps the hash of the
+  bookmarks it was forgotten for, so it lasts across restarts and unrelated `config.toml`
+  edits, and the mirror starts again only when the bookmarks change. A key refused during that pause
   says the file is missing and names the command.
 - **Notices.** The `(write_back = "…")` suffixes wait for the setting (slice 2): slice 1 says
   `bookmarks.toml is read-only: edit the file to change these bookmarks`. Table names are
@@ -734,8 +736,8 @@ Slice 1 landed with these departures from the text above, each for the reason gi
   the mirror at the user's other bookmarks.
 - **Questions (D14, Behaviour 7).** Removals of outside additions (Sync, the Library) count
   toward the question too, a yes approves the removals it showed and no more, and the question
-  waits until the window's prompt line and command line are closed and ignores keys for
-  400 ms, because a background `git pull` must not take over a prompt or be confirmed by a key
+  waits until the window's prompt line and command line are closed and no page field has the
+  keys, and ignores keys for 1 s, because a background `git pull` must not take over a prompt or be confirmed by a key
   typed on a page. Many small removals each under the limits are an accepted risk until
   write-back.
 - **Startup (D17).** A new or corrupt Places database no longer makes the file win without a
@@ -747,7 +749,10 @@ Slice 1 landed with these departures from the text above, each for the reason gi
   (the workspace's) and any protected bookmarklet in it. `:wsdelete` of a mirrored folder
   closes the workspace without the bookmarks question, which could only offer `k`; one whose
   other workspace's folder is mirrored is not offered `m`.
-- **The base** keeps no hash of the file: nothing read it.
+- **The base** keeps no hash of the file, only, after `:bookmarks forget`, the hash of the
+  bookmarks it was forgotten for.
+- **Bookmarklets** follow the last `config.toml` that applied, so a file with errors, or one
+  `:source <file>` loaded, allows none (D12).
 - **Cross-device put-back (open question 2).** Answer (b) comes with slice 2; until then two
   devices with different files put each other's changes back, and large put-backs ask.
 

@@ -127,7 +127,7 @@ const errorSegment = () =>
  * @param {string} key
  */
 async function answer(key) {
-  await new Promise((r) => setTimeout(r, 500));
+  await new Promise((r) => setTimeout(r, 1200));
   EventUtils.synthesizeKey(key);
 }
 
@@ -668,7 +668,7 @@ add_task(
       enabled: () => true,
       initComplete: () => new Promise((r) => (done = () => r(undefined))),
       say: () => {},
-      ask: (/** @type {string} */ q) => {
+      ask: (/** @type {BrowserWindow | null} */ _win, /** @type {string} */ q) => {
         asked.push(q);
         return null;
       },
@@ -728,6 +728,13 @@ add_task(async function separators_keep_their_place_through_a_reorder() {
 });
 
 add_task(async function javascript_lines_wait_for_bookmarklets_and_data_lines_never_reach_places() {
+  // A config.toml with an error does not apply, so its `bookmarklets = "user"` allows nothing.
+  await IOUtils.writeUTF8(
+    configFile,
+    'schema = 2\n[bookmarks]\nbookmarklets = "user"\n[keys]\nnew_tab = "nosuchkey+"\n',
+  );
+  await ConfigHost.reload();
+  Assert.ok(ConfigHost.errors.length > 0, "that config.toml has an error");
   await writeFile(
     '[bookmarks.work]\n"run" = "javascript:void(1)"\n"page" = "https://example.com/"',
   );
@@ -987,6 +994,94 @@ add_task(async function the_question_waits_for_the_command_line_and_ignores_an_e
   EventUtils.synthesizeKey("KEY_Escape");
   await mirror.settledRuns();
   Assert.equal((await folderContents("work"))?.length, 25, "nothing deleted");
+  BrowserTestUtils.removeTab(tab);
+  await reset();
+});
+
+add_task(async function bookmarks_forget_lasts_across_a_restart_until_the_file_changes() {
+  const own = PathUtils.join(dir, "restart");
+  await IOUtils.makeDirectory(own);
+  const base = PathUtils.join(own, "base.json");
+  const file = PathUtils.join(own, "bookmarks.toml");
+  /** @type {string[]} */
+  const asked = [];
+  const make = () =>
+    new BookmarksFileImpl({
+      configPath: () => PathUtils.join(own, "config.toml"),
+      basePath: base,
+      enabled: () => true,
+      initComplete: () => Promise.resolve(),
+      say: () => {},
+      ask: (/** @type {BrowserWindow | null} */ _win, /** @type {string} */ q) => {
+        asked.push(q);
+        return null;
+      },
+      mirrored: () => {},
+    });
+  await writeFile('[bookmarks.again]\n"a" = "https://example.com/a"', file);
+  const first = make();
+  first.start();
+  first.configRead(null);
+  await until(() => first.ready, "started");
+  await first.settledRuns();
+  await untilFolder("again", ["a https://example.com/a"], "mirrored");
+  await first.forget();
+  first.stop();
+  // A Library change and a restart: still forgotten, nothing put back.
+  const folder = /** @type {Node} */ (await topFolder("again"));
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: folder.guid,
+    url: "https://example.com/l",
+    title: "l",
+  });
+  const second = make();
+  second.start();
+  second.configRead(null);
+  await until(() => second.ready, "restarted");
+  await second.tick(true);
+  await second.settledRuns();
+  Assert.deepEqual(
+    await folderContents("again"),
+    ["a https://example.com/a", "l https://example.com/l"],
+    "forgotten across the restart: nothing put back",
+  );
+  Assert.deepEqual(asked, [], "and nothing asked");
+  // The file's content changes: the mirror starts again, as a first load.
+  await writeFile(
+    '[bookmarks.again]\n"a" = "https://example.com/a"\n"b" = "https://example.com/b"',
+    file,
+  );
+  await second.tick(true);
+  await second.settledRuns();
+  Assert.deepEqual(
+    asked,
+    ['bookmarks.toml takes over "again": delete its 1 bookmark the file lacks? y/N'],
+    "back on, it takes the folder over and asks",
+  );
+  second.stop();
+  await IOUtils.remove(own, { recursive: true, ignoreAbsent: true });
+  await reset();
+});
+
+add_task(async function the_question_waits_while_a_page_field_has_focus() {
+  await writeFile(`[bookmarks.work]\n${lines(25)}`);
+  await until(async () => (await folderContents("work"))?.length === 25, "25 loaded");
+  const fieldPage =
+    getRootDirectory(gTestPath).replace("chrome://mochitests/content", "https://example.com") +
+    "file_vimma_insert_scroll.html";
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, fieldPage);
+  await focusContent(tab.linkedBrowser);
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    /** @type {HTMLInputElement} */ (content.document.getElementById("text")).focus();
+  });
+  await until(() => VimmaHost.status(window).mode === "insert", "typing in the page");
+  await writeFile("[bookmarks.work]\n");
+  await new Promise((r) => setTimeout(r, 1500));
+  Assert.ok(!promptOpen(), "the question does not take the keys from a page field");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => promptOpen(), "asked once the field is left");
+  await answer("n");
+  await until(() => noticeText().includes("not applied"), "n applies nothing");
   BrowserTestUtils.removeTab(tab);
   await reset();
 });

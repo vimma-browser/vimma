@@ -121,6 +121,11 @@ const windows = new Set();
 let appliedToolbar = null;
 /** `[ui] pdf_outline` of the last config applied; null before the first. @type {string | null} */
 let appliedPdfOutline = null;
+/**
+ * `[bookmarks] bookmarklets` of the last config.toml read that applied, for the bookmarks.toml
+ * mirror. @type {import("../core/bookmarks.mjs").BookmarkletsSetting}
+ */
+let appliedBookmarklets = "none";
 /** @type {ConfigError[]} bookmarks.toml's errors and warnings (docs/specs/bookmarks-file.md) */
 let bookmarksErrors = [];
 
@@ -305,8 +310,11 @@ async function check(force) {
       signature = "missing"; // removed between stat and read: the defaults, silently
     }
   }
-  use(path, text);
-  bookmarksFile.configRead(now === "missing" ? null : text);
+  const applied = use(path, text);
+  // Bookmarklets as the last config.toml that applied says (bookmarks-file D12, D13): a file
+  // with errors keeps the previous value, and `:source <file>` never reaches here.
+  if (applied) appliedBookmarklets = active?.config.bookmarks.bookmarklets ?? "none";
+  bookmarksFile.configRead(now === "missing" ? null : text, appliedBookmarklets);
 }
 
 /**

@@ -4,7 +4,6 @@ import { describe, expect, test } from "vitest";
 import {
   BOOKMARKS_FILE,
   MAX_BOOKMARKS_FILE_BYTES,
-  configBookmarklets,
   formatBase,
   formatBookmarksFileError,
   inlineBookmarkTables,
@@ -16,6 +15,9 @@ import {
 } from "../src/config/bookmarks-file.mjs";
 import { parseConfig } from "../src/config/config.mjs";
 import { PLACES_ROOTS } from "../src/ui/bookmarks.mjs";
+// Linear-time checks, not benches: the quadratic code they guard against took minutes or ran out
+// of memory, so a loaded machine has a wide margin.
+import { budget } from "./budget.ts";
 
 type Item = {
   guid?: string;
@@ -973,6 +975,12 @@ describe("bookmarks.toml: the base", () => {
     ]) {
       expect(parseBase(bad)).toBeNull();
     }
+    // `:bookmarks forget` lasts across a restart: the base keeps the content it was given for.
+    const forgotten = { version: 1, source: "bookmarks.toml", tables: [], forgotten: "abc=" };
+    expect(parseBase(formatBase(forgotten as never))).toEqual(forgotten);
+    expect(
+      parseBase('{"version":1,"source":"bookmarks.toml","tables":[],"forgotten":3}'),
+    ).toBeNull();
     // A table name like __proto__ stays data.
     const proto = { ...base, tables: [{ ...base.tables[0], name: "__proto__" }] };
     expect(parseBase(formatBase(proto as never))?.tables[0]?.name).toBe("__proto__");
@@ -1023,7 +1031,7 @@ describe("bookmarks.toml: review fixes", () => {
     const deepLine = `[bookmarks.w]\n"${"a/".repeat(2_000_000)}x" = "https://e.com/"`;
     let t0 = performance.now();
     expect(errorsOf(deepLine)[0]?.message).toBe("a path deeper than 32 folders");
-    expect(performance.now() - t0).toBeLessThan(3000);
+    expect(performance.now() - t0).toBeLessThan(budget(10_000));
     // 19,000 lines of paths 32 folders deep, about 3.6 MB, within the 20,000 items with the 31
     // folders they share.
     const seg = (i: number) => Array.from({ length: 31 }, (_, d) => `dir${d}`).join("/") + `/f${i}`;
@@ -1033,13 +1041,13 @@ describe("bookmarks.toml: review fixes", () => {
     const t1 = tablesOf(deepMany);
     const p1 = plan({ tables: t1, places: places() });
     expect(p1.ops.length).toBeGreaterThan(19_000);
-    expect(performance.now() - t0).toBeLessThan(5000);
+    expect(performance.now() - t0).toBeLessThan(budget(15_000));
     // 20,000 empty folders side by side.
     const flat = `[bookmarks.w]\n${Array.from({ length: 20_000 }, (_, i) => `"folder number ${i}/" = ""`).join("\n")}`;
     t0 = performance.now();
     const p2 = plan({ tables: tablesOf(flat), places: places() });
     expect(p2.ops.length).toBe(20_001);
-    expect(performance.now() - t0).toBeLessThan(3000);
+    expect(performance.now() - t0).toBeLessThan(budget(10_000));
   });
 
   test("the cap counts the folders paths make: 15,500 lines of distinct 31-folder paths are refused fast", () => {
@@ -1052,7 +1060,7 @@ describe("bookmarks.toml: review fixes", () => {
     expect(errorsOf(text)).toEqual([
       { line: 0, message: "more than 20000 bookmarks and folders; not read" },
     ]);
-    expect(performance.now() - t0).toBeLessThan(3000);
+    expect(performance.now() - t0).toBeLessThan(budget(8_000));
     // Shared folders count once: 20,000 bookmarks in one folder are within the cap.
     const flat = Array.from({ length: 19_999 }, (_, i) => `"one/b${i}" = "https://e.com/"`).join(
       "\n",
@@ -1246,13 +1254,9 @@ describe("bookmarks.toml: review fixes", () => {
     expect(plan({ tables, places: added, base: twoBase }).touched).toEqual(["home"]);
   });
 
-  test("schema 1 config.toml's inline tables are not read; bookmarklets come from config.toml's text", () => {
+  test("schema 1 config.toml's inline tables are not read", () => {
     expect(
       readBookmarks({ file: null, config: '[bookmarks.work]\n"a" = "https://e.com/a"' }).from,
     ).toBeNull();
-    expect(configBookmarklets('schema = 2\n[bookmarks]\nbookmarklets = "user"')).toBe("user");
-    expect(configBookmarklets('schema = 2\n[bookmarks]\nbookmarklets = "bogus"')).toBe("none");
-    expect(configBookmarklets("[bookmarks")).toBe("none");
-    expect(configBookmarklets(null)).toBe("none");
   });
 });
