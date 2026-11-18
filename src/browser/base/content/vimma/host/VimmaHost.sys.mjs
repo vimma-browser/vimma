@@ -244,7 +244,7 @@ function vimmaSurfaceOpen(s) {
     s.downloadPicker.isOpen ||
     s.mcpLog.isOpen ||
     s.grep.isOpen ||
-    s.cmdline.isOpen ||
+    s.cmdline.focused ||
     s.rename.isOpen ||
     s.panel.isOpen ||
     s.bookmarks.isOpen ||
@@ -1242,7 +1242,9 @@ export const VimmaHost = {
     if (state.permissionPicker.isOpen) return "help";
     if (state.popups.isOpen || state.downloadPicker.isOpen) return "help";
     if (state.splitPicker.isOpen || state.bookmarkPicker.isOpen) return "help";
-    if (state.cmdline.isOpen) return "command";
+    // Only while its input has focus: a dialog that opens over the line keeps it open behind,
+    // and the dialog's keys (Esc) are its own, not the line's `command.cancel` (#1304).
+    if (state.cmdline.focused) return "command";
     // A prompt over a panel (the bookmarks' add, rename, a y/N) types: keys are its input's.
     if (state.rename.isOpen) return "insert";
     if (state.outline.isActive) return "index";

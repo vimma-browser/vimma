@@ -67,7 +67,8 @@ function isPrivate(win) {
 /**
  * @typedef {object} Callbacks
  * @property {(result: Extract<CommandResult, { kind: "run" }>) => void} run
- * @property {() => void} [changed]  after it opens or closes (the status bar's mode)
+ * @property {() => void} [changed]  after it opens, closes, loses focus to a dialog or gets it
+ *   back (the status bar's mode)
  * @property {() => import("../core/cmdline.mjs").CompletionArgs} [args]  what commands'
  *   arguments complete to (`{ addon: names }`)
  * @property {() => readonly string[]} [hidden]  action ids whose commands do not exist now (an
@@ -112,6 +113,11 @@ export class CommandLine {
 
   get isOpen() {
     return !!this.el && !this.el.hidden;
+  }
+
+  /** Open with focus in its input: not while a dialog over the window or the tab has it. */
+  get focused() {
+    return this.isOpen && this.win.document.activeElement === this.input;
   }
 
   /** @param {string} [text]  the line to start with (`open ` for an unbound `open_url` key) */
@@ -255,13 +261,21 @@ export class CommandLine {
   /**
    * Focus left the input. Moving elsewhere in the window (a click, `ctrl+b c`) closes the line
    * without running it; the window losing focus (alt+tab) keeps it, so it is there on return.
+   * A dialog over the window or the tab (a page's `alert`, "Leave page?") keeps it too, as the
+   * `/` prompt is kept: Firefox gives focus back to what had it when the dialog closes
+   * (SubDialog.sys.mjs, `_topLevelPrevActiveElement`), and a closed line would leave focus on
+   * nothing, in insert mode with no field (#1304).
    * @private
    */
   onFocusOut() {
     this.win.setTimeout(() => {
       const doc = this.win.document;
-      if (this.isOpen && doc.activeElement !== this.input && doc.hasFocus()) {
+      if (!this.isOpen || doc.activeElement === this.input) return;
+      if (doc.hasFocus() && !doc.activeElement?.classList.contains("dialogFrame")) {
         this.close({ restoreFocus: false });
+      } else {
+        // The status bar leaves COMMAND while the dialog has the keys.
+        this.changed();
       }
     }, 0);
   }
@@ -445,6 +459,8 @@ export class CommandLine {
     input.addEventListener("keydown", (e) => this.onKeyDown(e));
     input.addEventListener("input", () => this.onInput());
     input.addEventListener("focusout", () => this.onFocusOut());
+    // Back from a dialog: COMMAND again.
+    input.addEventListener("focus", () => this.changed());
     row.append(prompt, input);
 
     const error = el("div", "vimma-cmdline-error");

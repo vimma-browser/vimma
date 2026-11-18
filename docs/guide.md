@@ -4369,6 +4369,10 @@ type reaches the page, and `ctrl+b` sequences still work.
   Firefox: press `Esc` (twice once you have typed) and then `:` instead.
 - **Errors** show under the line, which stays open so you can fix it: `:tabnwe` says
   `not a command: "tabnwe"; did you mean :tabnew?`.
+- **A dialog over the line.** When a page opens an alert, a confirm question or "Leave page?"
+  while you type, the line stays open behind it with what you typed. Answer the dialog with its
+  own keys (`y`, `n`, `Esc`, [Answering a dialog](#answering-a-dialog)) and you are back on the
+  line, as with a `/` search.
 - A command name can be shortened while it stays unique (`:tabr`, `:wsp`), and leading colons
   are fine (`::q`). When the shortened name starts several commands and one of them begins all
   the others, that one wins, as in Vim: `:wor` is `:workspace` (not `:workspaces`), `:bo`
