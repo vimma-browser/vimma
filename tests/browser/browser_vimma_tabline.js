@@ -287,7 +287,8 @@ add_task(async function gb_labels_and_jumps() {
     "from the hint alphabet, in tab order",
   );
   Assert.equal(mode(), "hint", "HINT meanwhile");
-  type(DEFAULT_HINT_CHARS[0]);
+  // Shift (or Caps Lock) types the same letter, as for link hints.
+  EventUtils.synthesizeKey(DEFAULT_HINT_CHARS[0].toUpperCase(), { shiftKey: true });
   await until(() => gBrowser.selectedTab === first, "a label goes to its tab");
   await until(() => !labels().length, "the labels go");
   await until(() => liveText().includes("tab 1 of 3"), "a screen reader hears the new place");
@@ -313,6 +314,10 @@ add_task(async function gb_cancels_on_another_key() {
   await until(() => labels().length > 0, "labels again");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !labels().length, "Esc cancels");
+  type("gb");
+  await until(() => labels().length > 0, "labels again");
+  EventUtils.synthesizeKey("KEY_Backspace");
+  await until(() => !labels().length, "Backspace with nothing typed cancels");
   await SpecialPowers.popPrefEnv();
   closeOthers();
 });
@@ -405,10 +410,15 @@ for (const n of [30, 120]) {
     const target = session.labels[n - 2];
     const { label, tabId } = /** @type {{ label: string, tabId: string }} */ (target);
     Assert.greater(label.length, 1, "several letters, as link hints have them");
-    Assert.ok(
-      !entries().some((e) => e.dataset.number === String(n - 1)),
-      "tab n-1 starts out of view",
-    );
+    if (n === 30) {
+      // Thirty labels fit as labels alone: every tab is in view at once (decision 13).
+      Assert.equal(entries().length, n, "every tab in view, as its label");
+    } else {
+      Assert.ok(
+        !entries().some((e) => e.dataset.number === String(n - 1)),
+        "tab n-1 starts out of view",
+      );
+    }
     type(label.slice(0, -1));
     await until(
       () => labels().some((l) => l.dataset.label === label),
@@ -444,13 +454,34 @@ add_task(async function private_and_agent_workspaces_list_their_own() {
   const home = ww().model.active;
   ww().switchTo({ id: /** @type {{ id: string }} */ (agent).id });
   await until(() => ww().model.active === agent?.id, "in the agent workspace");
-  await openPage("agent page");
+  const agentTab = await openPage("agent page");
   await until(() => names().includes("agent page"), "its tab is listed");
   Assert.ok(!names().includes("main two"), "the main workspace's is not");
   Assert.equal(entries().length, panelRows().length, "only its own tabs");
-  for (const t of [...gBrowser.visibleTabs]) BrowserTestUtils.removeTab(t);
+  // Back home with the agent's tab still open: the line lists none of the agent's tabs.
   ww().switchTo({ id: home });
   await until(() => ww().model.active === home, "back");
+  Assert.ok(!agentTab.closing, "the agent's tab is still open");
+  await until(() => names().includes("main two"), "the home workspace's tabs again");
+  Assert.ok(!names().includes("agent page"), "and not the agent's");
+  Assert.equal(entries().length, panelRows().length, "only home's tabs");
+  for (const t of gBrowser.tabs.filter((x) => x.userContextId === agent?.userContextId)) {
+    BrowserTestUtils.removeTab(t);
+  }
+  await SpecialPowers.popPrefEnv();
+  closeOthers();
+});
+
+// A title is page text: drawn as text, never as markup (docs/specs/tab-line.md, Security).
+add_task(async function a_title_is_text_never_markup() {
+  await SpecialPowers.pushPrefEnv({ set: [[PREF, "always"]] });
+  const title = '<img src=x onerror="alert(1)"><b>x</b>';
+  await openPage(title);
+  await until(() => names().at(-1)?.startsWith("<img src=x"), "the title is listed");
+  const name = /** @type {Element} */ (entries().at(-1)?.querySelector(".vimma-tabline-name"));
+  Assert.equal(name.textContent, `${title.slice(0, 13)}…`, "the raw text, cut");
+  Assert.equal(name.childElementCount, 0, "no element made from it");
+  Assert.equal(line().querySelectorAll("img, b").length, 0, "nor anywhere in the line");
   await SpecialPowers.popPrefEnv();
   closeOthers();
 });
@@ -492,7 +523,8 @@ add_task(async function never_takes_focus() {
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !labels().length, "cancelled");
   EventUtils.synthesizeMouseAtCenter(line(), {});
-  await new Promise((r) => setTimeout(r, 100));
+  // The click's own events have run once two frames have passed.
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   Assert.equal(document.activeElement, browser, "a click on the line does not take it");
   Assert.equal(line().tabIndex, -1, "the line has no tab stop");
   Assert.equal(gBrowser.tabs.length, 2, "and the click did nothing");

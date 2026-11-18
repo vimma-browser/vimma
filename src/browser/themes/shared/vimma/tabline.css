@@ -72,18 +72,16 @@
   }
 }
 
-/* gb's labels, in the page hints' colours (hints.css). */
+/* gb's labels, in the page hints' colours and case (hints.css, core tabLabelCase): the text is
+   the letters to type, upper-cased only on screen. */
 .vimma-tabline-label {
   background: var(--vimma-hint-bg);
   color: var(--vimma-hint-fg);
   font-weight: bold;
-}
 
-/* The letters typed so far: underlined, never faded, as the link hints' (hints.css). */
-.vimma-tabline-typed {
-  font-weight: normal;
-  text-decoration: underline 1px;
-  text-underline-offset: 1px;
+  #vimma-tabline[data-case="upper"] & {
+    text-transform: uppercase;
+  }
 }
 
 .vimma-tabline-probe,
@@ -92,8 +90,12 @@
   pointer-events: none;
 }
 
+/* Beside the line in the toolbox, measured while the line is hidden: the line's font. */
 .vimma-tabline-probe {
   visibility: hidden;
+  white-space: pre;
+  font-family: var(--vimma-font, monospace);
+  font-size: 12px;
 }
 
 /* Visually hidden, still read. */

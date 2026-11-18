@@ -14,6 +14,7 @@ import {
 } from "../src/ui/tabline.mjs";
 import { textWidth } from "../src/text/textwidth.mjs";
 import { parseKey } from "../src/keys/keys.mjs";
+import { budget } from "./budget.ts";
 
 import type { TabLineEntry, TabLineFit } from "../src/ui/tabline.mjs";
 
@@ -244,16 +245,136 @@ describe("gb labels", () => {
     expect(tabLabelKey(one.state, key(label[1] ?? "")).result).toEqual({ kind: "select", tabId });
   });
 
-  test("Esc, a character of no label, a chord, Backspace and a digit cancel (decision 12)", () => {
+  test("Esc, a character of no label, a chord, Backspace with nothing typed and a digit cancel", () => {
     const s = startTabLabels(["t1", "t2"], "asdf");
-    for (const k of ["esc", "x", "ctrl+a", "backspace", "4", "enter", "shift+s"]) {
+    for (const k of ["esc", "x", "ctrl+a", "alt+s", "backspace", "4", "enter"]) {
       expect(tabLabelKey(s, key(k)).result, k).toEqual({ kind: "cancel" });
     }
+  });
+
+  test("a letter typed with Shift or Caps Lock is that letter, as for link hints", () => {
+    const s = startTabLabels(["t1", "t2", "t3"], "asdf");
+    expect(tabLabelKey(s, key("shift+s")).result).toEqual({ kind: "select", tabId: "t2" });
+    const ids = Array.from({ length: 12 }, (_, i) => `t${i + 1}`);
+    const many = startTabLabels(ids, "asdfghjkl");
+    const two = many.labels.find((l) => l.label.length === 2) as { label: string; tabId: string };
+    const first = tabLabelKey(many, key(`shift+${two.label[0]}`));
+    expect(first.result).toEqual({ kind: "narrow" });
+    expect(tabLabelKey(first.state, key(`shift+${two.label[1]}`)).result).toEqual({
+      kind: "select",
+      tabId: two.tabId,
+    });
+  });
+
+  test("Backspace takes back the last letter typed (decision 12)", () => {
+    const ids = Array.from({ length: 12 }, (_, i) => `t${i + 1}`);
+    const s = startTabLabels(ids, "asdfghjkl");
+    const two = s.labels.find((l) => l.label.length === 2) as { label: string; tabId: string };
+    const one = tabLabelKey(s, key(two.label[0] ?? ""));
+    const back = tabLabelKey(one.state, key("backspace"));
+    expect(back.result).toEqual({ kind: "narrow" });
+    expect(back.state.typed).toBe("");
+    expect(tabLabelKey(back.state, key("backspace")).result).toEqual({ kind: "cancel" });
+  });
+
+  test("labels draw the letters still to type", () => {
+    const ids = Array.from({ length: 12 }, (_, i) => `t${i + 1}`);
+    const entries = tabLineEntries(rows(12, 1), []);
+    let s = startTabLabels(ids, "asdfghjkl");
+    const two = s.labels.find((l) => l.label.length === 2) as { label: string; tabId: string };
+    ({ state: s } = tabLabelKey(s, key(two.label[0] ?? "")));
+    const fit = fitTabLine(entries, { width: 200, nameWidth: 14, labels: s });
+    for (const i of fit.items) expect(i.rest).toBe(i.label?.slice(1));
   });
 
   test("a character of the alphabet that starts no remaining label cancels", () => {
     const s = startTabLabels(["t1", "t2"], "asdf");
     expect(tabLabelKey(s, key("f")).result).toEqual({ kind: "cancel" });
+  });
+});
+
+describe("labels in a narrow line (decision 13)", () => {
+  test("labels alone, before any tab is hidden", () => {
+    const entries = tabLineEntries(rows(9, 5), []);
+    const s = startTabLabels(
+      entries.map((e) => e.tabId),
+      "asdfghjkl",
+    );
+    // Nine entries of " A " take 27 columns; with numbers ("A 1 ") they would take 45.
+    const fit = fitTabLine(entries, { width: 30, nameWidth: 14, labels: s });
+    expect(fit.items.length).toBe(9);
+    expect(fit.items.every((i) => i.bare && !i.name)).toBe(true);
+    expect(lineWidth(fit)).toBeLessThanOrEqual(30);
+  });
+
+  test.each([
+    [30, 40],
+    [30, 60],
+    [120, 40],
+    [120, 60],
+  ])("%i tabs at %i columns: every tab is in view before its last letter", (n, width) => {
+    const entries = tabLineEntries(rows(n, Math.ceil(n / 2)), []);
+    const start = startTabLabels(
+      entries.map((e) => e.tabId),
+      "asdfghjkl",
+    );
+    for (const { tabId, label } of start.labels) {
+      let s = start;
+      for (const c of label.slice(0, -1)) ({ state: s } = tabLabelKey(s, key(c)));
+      const fit = fitTabLine(entries, { width, nameWidth: 14, labels: s });
+      expect(
+        fit.items.some((i) => i.tabId === tabId),
+        `${label} after "${s.typed}"`,
+      ).toBe(true);
+      expect(lineWidth(fit)).toBeLessThanOrEqual(width);
+    }
+  });
+
+  test("any count, width and typed prefix: only matching tabs, counts add up, never wider", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 300 }),
+        fc.integer({ min: 30, max: 300 }),
+        fc.integer({ min: 4, max: 60 }),
+        fc.nat(),
+        fc.nat(),
+        (count, width, nameWidth, pick, which) => {
+          const entries = tabLineEntries(rows(count, (pick % count) + 1), []);
+          let s = startTabLabels(
+            entries.map((e) => e.tabId),
+            "asdfghjkl",
+          );
+          const target = s.labels[which % count]?.label ?? "";
+          for (const c of target.slice(0, which % target.length)) {
+            ({ state: s } = tabLabelKey(s, key(c)));
+          }
+          const left = s.labels.filter((l) => l.label.startsWith(s.typed)).length;
+          const fit = fitTabLine(entries, { width, nameWidth, labels: s });
+          expect(fit.before + fit.items.length + fit.after).toBe(left);
+          expect(fit.items.every((i) => i.label?.startsWith(s.typed))).toBe(true);
+          expect(lineWidth(fit)).toBeLessThanOrEqual(width);
+        },
+      ),
+    );
+  });
+
+  // A complexity check (budget.ts): a fit is linear in the tabs, so 3000 take milliseconds where
+  // a quadratic one took seconds.
+  test("a fit is linear in the tabs, with labels too", () => {
+    const entries = tabLineEntries(
+      rows(3000, 1500, (n) => `a page title number ${n}`),
+      [],
+    );
+    const s = startTabLabels(
+      entries.map((e) => e.tabId),
+      "asdfghjkl",
+    );
+    const start = performance.now();
+    for (let i = 0; i < 5; i++) {
+      fitTabLine(entries, { width: 120, nameWidth: 14 });
+      fitTabLine(entries, { width: 120, nameWidth: 14, labels: s });
+    }
+    expect(performance.now() - start).toBeLessThan(budget(1000));
   });
 });
 

@@ -1178,17 +1178,21 @@ tab = false          # leave the tab number and title out of the status bar whil
 `tabline` line in `config.toml`.
 
 The line sits above the address bar, where Firefox's tab strip was. `ctrl+b u` takes only the
-address bar away under it, so the line never moves. Each entry is the tab's number and its
-name (its rename from `ctrl+b shift+t`, else its title), cut to `tabline_width` columns; `♪`
-marks a tab playing sound and `▪` after the number a tab shown in a pane of the split. The
-current tab is a bold block, as in the side panel, with its number in the accent colour. When the tabs do not fit,
-the line keeps the current tab in view and shows `‹3` and `5›` for the tabs hidden on each side.
+address bar away under it, so the line never moves. Each entry is the tab's number and its name
+(its rename from `ctrl+b shift+t`, else its title, else its URL), cut to `tabline_width`
+columns; `♪` marks a tab playing sound and `▪` after the number a tab shown in a pane of the
+split. The current tab is a bold block, as in the side panel, with its number in the accent
+colour. When the tabs do not fit, the line keeps the current tab in view and shows `‹3` and `5›`
+for the tabs hidden on each side.
 A private window and the agent workspace list only their own tabs.
 
 To jump, press `gb` in normal mode: every tab in the line gets a label from the link hints'
-letters, and typing a label goes to that tab. With more tabs than letters the labels have two or
-three letters, as link hints do, and tabs out of view scroll in as you type. `Esc`, or any key
-that is not part of a label, removes the labels and does nothing else. `gb` works with the line
+letters, and typing a label goes to that tab; Shift and Caps Lock make no difference. With more
+tabs than letters the labels have two or three letters, as link hints do. When they do not all
+fit, the tabs show their labels alone, and each letter you type narrows the line to the tabs
+still matching, so the tab you want is in view before its last letter. `Backspace` takes back a
+letter. `Esc`, or any other key that is not part of a label, removes the labels and does nothing
+else. `gb` works with the line
 off too: the line shows while its labels are up. With a number first, `12gb` goes to tab 12 at
 once; a number past the last tab says how many tabs the workspace has.
 

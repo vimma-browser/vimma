@@ -371,7 +371,10 @@ export class StatusBar {
     this.announced = last;
     const said = [text, this.queued].filter(Boolean).join(". ");
     this.queued = null;
-    if (said) /** @type {HTMLElement} */ (this.live).textContent = said;
+    const live = /** @type {HTMLElement} */ (this.live);
+    // The same words twice (two gb jumps to the same place) change no text, which a screen
+    // reader does not say again: a no-break space at the end makes it a change.
+    if (said) live.textContent = said === live.textContent ? `${said}\u00a0` : said;
   }
 
   /**

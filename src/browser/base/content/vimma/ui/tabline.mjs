@@ -9,7 +9,13 @@
 // status bar's do. It has no tab stop and no key or pointer handler (decision 17).
 
 import { TABLINE_SETTINGS, TABLINE_WIDTH } from "../core/defaults.mjs";
-import { fitTabLine, nextTabLineSetting, tabLineEntries, tabLineShown } from "../core/tabline.mjs";
+import {
+  fitTabLine,
+  nextTabLineSetting,
+  tabLabelCase,
+  tabLineEntries,
+  tabLineShown,
+} from "../core/tabline.mjs";
 
 /** @import { TabLineLabels, TabLineFit } from "../core/tabline.mjs" */
 /** @import { TabLineSetting } from "../core/defaults.mjs" */
@@ -118,8 +124,6 @@ export class TabLine {
     this.last = "";
     /** whether the last render drew the line */
     this.drawn = false;
-    /** @type {string[]} the tab ids in line order, from the last render */
-    this.ids = [];
     /** @type {ResizeObserver | null} */
     this.resize = null;
     /** @type {(() => void) | null} */
@@ -151,6 +155,7 @@ export class TabLine {
     this.resize = null;
     if (this.line) for (const type of TAB_EVENTS) win.removeEventListener(type, this.update, true);
     this.line?.remove();
+    this.probe?.remove();
     this.line = this.list = this.probe = null;
     win.document.documentElement.removeAttribute(TABLINE_ATTR);
   }
@@ -192,21 +197,31 @@ export class TabLine {
     // Not a live region: the switch is said by the status bar's, not every change (decision 18).
     line.setAttribute("aria-label", "Tab line");
     line.hidden = true;
+    // gb's labels are drawn in the link hints' case (core tabLabelCase), by CSS: the text stays
+    // the letters to type.
+    line.dataset.case = tabLabelCase();
     this.list = el("div", "vimma-tabline-list");
+    line.append(this.list);
+    // The probe and the width are the toolbox's, which keep their size while the line is hidden,
+    // so gb on a line that is off fits at the window's real width from the first frame.
     this.probe = el("span", "vimma-tabline-probe");
     this.probe.setAttribute("aria-hidden", "true");
     this.probe.textContent = "0".repeat(PROBE_CHARS);
-    line.append(this.list, this.probe);
+    const toolbox = /** @type {Element} */ (navBar.parentElement);
     // Above the address bar, which toolbar.css takes out of the flow when hidden (decision 2).
-    navBar.before(line);
+    navBar.before(line, this.probe);
     this.line = line;
 
     this.resize = new win.ResizeObserver((entries) => {
       let refit = false;
       for (const entry of entries) {
-        if (entry.target === this.line) {
-          this.width = entry.contentBoxSize[0]?.inlineSize ?? entry.contentRect.width;
-          refit = true;
+        if (entry.target === toolbox) {
+          const w = entry.contentBoxSize[0]?.inlineSize ?? entry.contentRect.width;
+          // Collapsed (browser full screen): the last width stands.
+          if (w > 0 && w !== this.width) {
+            this.width = w;
+            refit = true;
+          }
         } else if (entry.target === this.probe) {
           const w = entry.contentRect.width / PROBE_CHARS;
           if (w > 0 && w !== this.column) {
@@ -217,7 +232,7 @@ export class TabLine {
       }
       if (refit) this.schedule();
     });
-    this.resize.observe(line);
+    this.resize.observe(toolbox);
     this.resize.observe(this.probe);
     for (const type of TAB_EVENTS) win.addEventListener(type, this.update, true);
     this.unsubscribe = this.host.subscribe(this.update);
@@ -228,11 +243,17 @@ export class TabLine {
   render() {
     const line = this.line;
     if (!line) return;
-    const panel = this.host.rows();
-    const rows = panel?.rows ?? [];
     const labels = this.host.labels();
-    const drawn = tabLineShown(TabLine.setting, rows.length, !!labels) && rows.length > 0;
-    this.ids = rows.map((r) => r.tabId);
+    const setting = TabLine.setting;
+    // Off, or under "auto" with one tab, and no labels: nothing to list, so the panel's rows are
+    // not built and the default costs a tab event nothing. The window's visible tabs are its
+    // workspace's.
+    const win = /** @type {BrowserWindow} */ (this.win);
+    const idle =
+      !labels && (setting === "off" || (setting === "auto" && win.gBrowser.visibleTabs.length < 2));
+    const panel = idle ? null : this.host.rows();
+    const rows = panel?.rows ?? [];
+    const drawn = !idle && tabLineShown(setting, rows.length, !!labels) && rows.length > 0;
     if (drawn !== this.drawn) {
       this.drawn = drawn;
       line.hidden = !drawn;
@@ -240,7 +261,7 @@ export class TabLine {
       this.host.changed();
     }
     if (!drawn) return;
-    // Hidden, the row has no width yet: draw at a generous width, the ResizeObserver refits.
+    // Before the first measure (a window just opened): a generous width; the observer refits.
     const columns =
       this.column > 0 && this.width > 0 ? Math.floor(this.width / this.column + 0.01) : 200;
     const fit = fitTabLine(tabLineEntries(rows, panel?.panes ?? []), {
@@ -251,15 +272,14 @@ export class TabLine {
     const key = JSON.stringify([fit, labels?.typed ?? null]);
     if (key === this.last) return;
     this.last = key;
-    /** @type {HTMLElement} */ (this.list).replaceChildren(...this.draw(fit, labels));
+    /** @type {HTMLElement} */ (this.list).replaceChildren(...this.draw(fit));
   }
 
   /**
    * @private
    * @param {TabLineFit} fit
-   * @param {TabLineLabels | null} labels
    */
-  draw(fit, labels) {
+  draw(fit) {
     const doc = this.win.document;
     const el = (/** @type {string} */ className, /** @type {string} */ text = "") => {
       const node = /** @type {HTMLElement} */ (doc.createElementNS(HTML_NS, "span"));
@@ -285,12 +305,15 @@ export class TabLine {
       tab.dataset.number = String(item.number);
       if (item.current) tab.setAttribute("current", "");
       if (item.label) {
-        const label = el("vimma-tabline-label");
-        const typed = labels?.typed ?? "";
-        if (typed) label.append(el("vimma-tabline-typed", typed.toUpperCase()));
-        label.append(doc.createTextNode(item.label.slice(typed.length).toUpperCase()));
+        // The letters still to type: the typed ones narrowed the line already (decision 13).
+        const label = el("vimma-tabline-label", item.rest ?? item.label);
         label.dataset.label = item.label;
-        tab.append(label, doc.createTextNode(" "));
+        tab.append(label);
+        if (item.bare) {
+          out.push(tab);
+          continue;
+        }
+        tab.append(doc.createTextNode(" "));
       }
       tab.append(el("vimma-tabline-number", String(item.number)));
       if (item.pane) tab.append(...glyph("▪", " in a pane"));
