@@ -58,17 +58,32 @@ export function bindingTable(keymap, { runnable, firefox = [] } = {}) {
   return [...actionRows(keymap, runnable), ...commands, ...on];
 }
 
+/** The last of the numbered tab keys, whose row says how to reach the tabs after it. */
+const LAST_NUMBERED_TAB = "select_tab_9";
+
+/**
+ * How to reach tab 10 and above (issue #1302), from the live keymap: `{N}` before a key of
+ * `next_tab` that is one bare sequence (`gt`), where a count applies, and `:tab N`, which works
+ * whatever the keys are.
+ * @param {Keymap} keymap
+ */
+function beyondNine(keymap) {
+  const key = keymap.keysFor("next_tab").find((k) => !k.includes("+") && !k.includes(" "));
+  return `tab 10 and above: ${key ? `{N}${key} or ` : ""}:tab N`;
+}
+
 /**
  * @param {Keymap} keymap
  * @param {ReadonlySet<string> | undefined} runnable
  * @returns {BindingRow[]}
  */
 function actionRows(keymap, runnable) {
+  const beyond = beyondNine(keymap);
   return ACTIONS.map((a) => ({
     id: a.id,
     name: a.name,
     group: a.group,
-    description: a.description,
+    description: a.name === LAST_NUMBERED_TAB ? `${a.description}; ${beyond}` : a.description,
     bindings: keymap.keysFor(a.name),
     overridden: keymap.isOverridden(a.name),
     runnable: isRunnable(a.id, runnable),

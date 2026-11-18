@@ -114,6 +114,7 @@ export function restoreTab(win) {
  * tab.next, tab.previous, tab.goto.
  * @param {BrowserWindow} win
  * @param {Action} action
+ * @returns {boolean} false when there is no such tab (`12gt` with fewer tabs)
  */
 export function selectTab(win, action) {
   const gBrowser = gBrowserOf(win);
@@ -121,6 +122,7 @@ export function selectTab(win, action) {
   const index = tabTarget(action, tabs.indexOf(gBrowser.selectedTab), tabs.length);
   const tab = index === null ? undefined : tabs[index];
   if (tab && tab !== gBrowser.selectedTab) gBrowser.selectedTab = tab;
+  return !!tab;
 }
 
 /**

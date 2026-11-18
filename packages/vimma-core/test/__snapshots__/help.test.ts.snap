@@ -18,7 +18,7 @@ Tabs
   select_tab_6              ctrl+b 6, alt+6                                      Jump to tab 6 in this workspace
   select_tab_7              ctrl+b 7, alt+7                                      Jump to tab 7 in this workspace
   select_tab_8              ctrl+b 8, alt+8                                      Jump to tab 8 in this workspace
-  select_tab_9              ctrl+b 9                                             Jump to tab 9 in this workspace
+  select_tab_9              ctrl+b 9                                             Jump to tab 9 in this workspace; tab 10 and above: {N}gt or :tab N
   rename_tab                ctrl+b shift+t                                       Rename tab
   close_tab                 ctrl+b shift+x, ctrl+f4, x                           Close tab
   select_last_tab           alt+9                                                Jump to the last tab in this workspace
@@ -349,7 +349,7 @@ Tabs
   select_tab_6              ctrl+b 6, meta+6                                     Jump to tab 6 in this workspace
   select_tab_7              ctrl+b 7, meta+7                                     Jump to tab 7 in this workspace
   select_tab_8              ctrl+b 8, meta+8                                     Jump to tab 8 in this workspace
-  select_tab_9              ctrl+b 9                                             Jump to tab 9 in this workspace
+  select_tab_9              ctrl+b 9                                             Jump to tab 9 in this workspace; tab 10 and above: {N}gt or :tab N
   rename_tab                ctrl+b shift+t                                       Rename tab
   close_tab                 ctrl+b shift+x, ctrl+f4, x                           Close tab
   select_last_tab           meta+9                                               Jump to the last tab in this workspace
