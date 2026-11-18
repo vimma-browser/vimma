@@ -2,10 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/m1-hints.md (Limits, the "Since changed" note on scrolling; issue #1308).
-// Labels drawn while a smooth scroll runs go where the targets are once it ends: `d f` finishes
-// the scroll that `d` started before collecting, and a wheel scroll while labels show draws them
-// again where that scroll ends. A target the scroll took off screen gets no label.
+// Spec: docs/specs/m1-hints.md (Limits, the "Since changed" note on scrolling; issues #1308 and
+// #1337). Labels drawn while a smooth scroll runs go where the targets are once it ends: `d f`
+// finishes the scroll that `d` started before collecting, and a wheel scroll while labels show
+// draws them again where that scroll ends. A target the scroll took off screen gets no label.
+// A scroll the page's own script runs elsewhere (a carousel) neither ends nor holds that wait,
+// and a wheel that moved nothing keeps the labels and the keys typed toward them.
 
 "use strict";
 
@@ -25,6 +27,12 @@ const LONG = DIR + "file_vimma_hints_many.html";
 const SNAP = DIR + "file_vimma_hints_scroll.html?snap";
 /** 300 links in an inner scroller (`#box`), focused, so that the scroll keys move it. */
 const INNER = DIR + "file_vimma_hints_scroll.html?inner";
+/** 600 links down the page, and a strip in a corner that the page scrolls every frame. */
+const CAROUSEL = DIR + "file_vimma_hints_scroll.html?carousel";
+/** SNAP with that strip. */
+const SNAP_CAROUSEL = DIR + "file_vimma_hints_scroll.html?snap&carousel";
+/** 600 links down a page that takes every wheel for itself (a map, a canvas app). */
+const CONSUME = DIR + "file_vimma_hints_scroll.html?consume";
 
 /** The labels drawn in chrome, by label. */
 function drawnLabels() {
@@ -221,16 +229,17 @@ async function warmUp() {
 }
 
 /**
- * Wheels over the middle of the page.
+ * Wheels over a point of the page, the middle by default.
  * @param {XULBrowserElement} browser
  * @param {number} deltaY
+ * @param {{ x: number, y: number }} [at]  in the page's CSS pixels
  */
-function wheel(browser, deltaY) {
+function wheel(browser, deltaY, at) {
   const box = browser.getBoundingClientRect();
-  EventUtils.synthesizeWheel(browser, box.width / 2, box.height / 2, {
-    deltaMode: WheelEvent.DOM_DELTA_PIXEL,
-    deltaY,
-  });
+  const zoom = browser.fullZoom;
+  const x = at ? at.x * zoom : box.width / 2;
+  const y = at ? at.y * zoom : box.height / 2;
+  EventUtils.synthesizeWheel(browser, x, y, { deltaMode: WheelEvent.DOM_DELTA_PIXEL, deltaY });
 }
 
 add_task(async function d_then_f_labels_the_targets_where_the_scroll_ends() {
@@ -365,5 +374,159 @@ add_task(async function a_wheel_while_labels_show_draws_them_where_the_scroll_en
     const y = await settledScroll(browser);
     Assert.greater(y, 0, "the wheel scrolled the page");
     await assertLabelsOnTargets(browser);
+  });
+});
+
+add_task(async function a_carousel_does_not_end_the_wait_for_a_wheel_s_scroll() {
+  await slowSmoothScroll();
+  await withPage(CAROUSEL, async (browser) => {
+    await pressFAndWait();
+    const runs = VimmaHost._hintRuns;
+    // The strip's scrollend comes every frame: were it the wheel's, the labels would be drawn
+    // where the page is while the wheel's scroll still runs.
+    wheel(browser, 300);
+    await TestUtils.waitForCondition(
+      () => VimmaHost._hintRuns > runs && drawnLabels().size > 0,
+      "labels are drawn again after the wheel",
+    );
+    Assert.greater(await settledScroll(browser), 0, "the wheel scrolled the page");
+    await assertLabelsOnTargets(browser);
+  });
+});
+
+add_task(async function a_carousel_does_not_end_the_wait_for_a_snapped_scroll() {
+  await shippedSmoothScroll();
+  await withPage(SNAP_CAROUSEL, async (browser) => {
+    EventUtils.synthesizeKey("j");
+    await pressFAndWait();
+    Assert.equal(await settledScroll(browser), 500, "the page is at the next snap point");
+    await assertLabelsOnTargets(browser);
+  });
+});
+
+add_task(async function a_wheel_over_an_inner_scroller_draws_the_labels_where_it_ends() {
+  await slowSmoothScroll();
+  await withPage(INNER, async (browser) => {
+    await pressFAndWait();
+    const box = await SpecialPowers.spawn(browser, [], () => {
+      const r = content.document.getElementById("box")?.getBoundingClientRect();
+      return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
+    });
+    Assert.ok(box, "the fixture has its inner scroller");
+    const runs = VimmaHost._hintRuns;
+    wheel(browser, 300, box ?? undefined);
+    await TestUtils.waitForCondition(
+      () => VimmaHost._hintRuns > runs && drawnLabels().size > 0,
+      "labels are drawn again after the wheel",
+    );
+    Assert.greater(await settledScroll(browser), 0, "the wheel scrolled the inner scroller");
+    await assertLabelsOnTargets(browser);
+  });
+});
+
+add_task(async function a_wheel_forward_during_d_is_not_overridden_by_f() {
+  await shippedSmoothScroll();
+  await withPage(LONG, async (browser) => {
+    const start = 3000;
+    const half = await SpecialPowers.spawn(browser, [start], (y) => {
+      content.scrollTo({ top: y, behavior: "instant" });
+      const win = content.wrappedJSObject;
+      win.wheeled = false;
+      content.addEventListener("wheel", () => (win.wheeled = true), { passive: true });
+      return Math.round(content.document.documentElement.clientHeight / 2);
+    });
+    EventUtils.synthesizeKey("d");
+    await TestUtils.waitForCondition(
+      async () => (await scrollPos(browser)) > start + 10,
+      "d's scroll is under way",
+    );
+    // A short wheel the same way takes the scroll over: APZ carries it on past d's end by the
+    // wheel's delta, where no step back shows that it is no longer d's.
+    wheel(browser, 40);
+    await TestUtils.waitForCondition(
+      () => SpecialPowers.spawn(browser, [], () => content.wrappedJSObject.wheeled),
+      "the page got the wheel",
+    );
+    await pressFAndWait();
+    const y = await settledScroll(browser);
+    Assert.greater(
+      Math.abs(y - (start + half)),
+      20,
+      `the wheel's scroll stays: the page is at ${y}, not at d's end ${start + half}`,
+    );
+    await assertLabelsOnTargets(browser);
+  });
+});
+
+add_task(async function a_d_cancelled_before_it_moved_is_not_jumped_to_its_end() {
+  await slowSmoothScroll();
+  await withPage(LONG, async (browser) => {
+    const start = 3000;
+    await SpecialPowers.spawn(browser, [start], (y) => {
+      content.scrollTo({ top: y, behavior: "instant" });
+    });
+    await settledScroll(browser);
+    await SpecialPowers.spawn(browser, [], () => {
+      const win = content.wrappedJSObject;
+      win.ended = false;
+      content.document.addEventListener("scrollend", () => (win.ended = true));
+      content.windowUtils.advanceTimeAndRefresh(0);
+    });
+    EventUtils.synthesizeKey("d");
+    // The page's own instant scroll to where it is cancels d's scroll before it moved; its
+    // scrollend comes at the next refresh.
+    await SpecialPowers.spawn(browser, [], () => {
+      content.scrollTo({ top: content.scrollY, behavior: "instant" });
+      content.windowUtils.restoreNormalRefresh();
+    });
+    await TestUtils.waitForCondition(
+      () => SpecialPowers.spawn(browser, [], () => content.wrappedJSObject.ended),
+      "the cancel's scrollend came",
+    );
+    await pressFAndWait();
+    Assert.equal(await settledScroll(browser), start, "d's scroll was cancelled and stays so");
+    await assertLabelsOnTargets(browser);
+  });
+});
+
+add_task(async function a_wheel_the_page_takes_keeps_the_labels_and_the_keys_typed() {
+  await slowSmoothScroll();
+  await withPage(CONSUME, async (browser) => {
+    await pressFAndWait();
+    const hint = /** @type {HostHints} */ (VimmaHost._hints(window)).hints.find(
+      (h) => h.label.length === 2,
+    );
+    Assert.ok(hint, "some label takes two keys");
+    if (!hint) return;
+    const want = new URL(hint.target.href ?? "about:blank").hash;
+    EventUtils.synthesizeKey(hint.label[0]);
+    await TestUtils.waitForCondition(
+      () => VimmaHost._hints(window)?.typed === hint.label[0],
+      "the first key narrowed the labels",
+    );
+    const runs = VimmaHost._hintRuns;
+    const wheels = VimmaHost._hintWheels ?? 0;
+    const wheeled = BrowserTestUtils.waitForEvent(window, "wheel", true);
+    wheel(browser, 300);
+    await wheeled;
+    // Typed while Vimma still looks whether the wheel moved the page: kept for the labels it
+    // keeps.
+    EventUtils.synthesizeKey(hint.label[1]);
+    await TestUtils.waitForCondition(
+      () => VimmaHost._hintRuns > runs || (VimmaHost._hintWheels ?? 0) > wheels,
+      "the wheel was looked at",
+    );
+    Assert.equal(VimmaHost._hintRuns, runs, "the labels were not collected again");
+    Assert.ok(!VimmaHost._hints(window), "the label typed across the wheel was followed");
+    await TestUtils.waitForCondition(
+      () => SpecialPowers.spawn(browser, [], () => content.location.hash),
+      "the link was followed",
+    );
+    Assert.equal(
+      await SpecialPowers.spawn(browser, [], () => content.location.hash),
+      want,
+      "the link under the label typed was followed",
+    );
+    Assert.equal(await scrollPos(browser), 0, "the page did not scroll");
   });
 });

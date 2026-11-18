@@ -119,8 +119,9 @@ export { NO_OUTLINE, OUTLINE_ATTACHMENT, PDF_OUTLINE_PREF } from "./outline-ops.
  * @property {MozBrowser} browser  the <browser> the hints are on
  * @property {HintAction} action
  * @property {HintState<HintTarget> | null} hs  null while collecting
- * @property {Chord[]} buffered  keys typed while collecting
- * @property {boolean} [settle]  collecting once the scroll a wheel started ends (#1308)
+ * @property {Chord[]} buffered  keys typed while collecting, or while `wheel`
+ * @property {boolean} [wheel]  a wheel over the page: its labels are hidden until it is known
+ *   whether the wheel moved their targets (#1337)
  */
 
 /** Element focus with no text block on screen, and in the PDF viewer (element-focus 14). */
@@ -591,6 +592,9 @@ export const VimmaHost = {
    * @type {number}
    */
   _hintRuns: 0,
+
+  /** Test-only: how many wheels over labels have been looked at (moved or not). */
+  _hintWheels: 0,
 
   /**
    * Test-only: the window's live grep session (docs/specs/live-grep.md).
@@ -2010,14 +2014,15 @@ export const VimmaHost = {
    * the tab stays in normal (the status bar will say so, M2).
    * @param {MozBrowser} browser
    * @param {Pick<Action, "id">} action
-   * @param {{ settle?: boolean }} [options]  `settle`: collect once the scroll running in the
-   *   page ends (a wheel moved it under the labels)
+   * @param {{ restart?: boolean, buffered?: Chord[] }} [options]  `restart`: a wheel moved the
+   *   targets under the labels, which are collected again; `buffered`: keys typed meanwhile,
+   *   for the new labels
    */
-  _startHints(browser, action, { settle = false } = {}) {
+  _startHints(browser, action, { restart = false, buffered = [] } = {}) {
     const state = stateOfBrowser(browser);
     if (!state) return;
     // A restart after a wheel stays in hint mode: the status bar never shows normal between.
-    this._cancelHints(state, { emit: !settle });
+    this._cancelHints(state, { emit: !restart });
     state.element.leave();
     const id = /** @type {HintAction} */ (action.id);
     // pdf.js draws lines, not paragraphs: copy mode is the way to copy there (decision 14).
@@ -2026,10 +2031,10 @@ export const VimmaHost = {
       return;
     }
     /** @type {HintSession} */
-    const session = { browser, action: id, hs: null, buffered: [], settle };
+    const session = { browser, action: id, hs: null, buffered };
     state.hint = session;
     this._emit(state);
-    VimmaActors.collectHints(browser, id, { settle })
+    VimmaActors.collectHints(browser, id)
       .then((targets) => {
         if (state.hint !== session) return;
         try {
@@ -2057,19 +2062,54 @@ export const VimmaHost = {
   },
 
   /**
-   * A wheel over the page while hints are up (issue #1308): the labels were drawn for the
-   * layout before it, so they are collected and drawn again once the scroll it starts ends.
-   * Keys typed toward a label are dropped with the old labels. Further wheels while that
-   * collection waits change nothing: it waits for the last scroll's end. The wheel's target
-   * in chrome is the <browser> only for a remote page; over a page in the parent process
-   * (about: pages without hints) it is an element inside it, and nothing happens.
+   * A wheel over the page while hints are up (issues #1308, #1337): the labels were drawn for
+   * the layout before it. They are hidden, and the page says, once the scroll the wheel
+   * started has ended, whether their targets moved. If they did, the labels are collected and
+   * drawn again where the scroll ended, and keys typed toward the old ones are dropped with
+   * them. If nothing moved (the page's end, or a page that takes the wheel itself, such as a
+   * map), the same labels come back with the keys typed so far. Keys typed while that is not
+   * known yet are kept for whichever labels come. Further wheels meanwhile change nothing: the
+   * page waits for the last scroll's end. The wheel's target in chrome is the <browser> only
+   * for a remote page; over a page in the parent process (about: pages without hints) it is an
+   * element inside it, and nothing happens.
    * @param {WindowState} state
    * @param {WheelEvent} e
    */
   _hintsScrolled(state, e) {
     const session = state.hint;
-    if (!session || e.target !== session.browser || (session.settle && !session.hs)) return;
-    this._startHints(session.browser, { id: session.action }, { settle: true });
+    const hs = session?.hs;
+    if (!session || !hs || session.wheel || e.target !== session.browser) return;
+    const gen = hs.hints[0]?.target.gen;
+    if (gen === undefined) return;
+    const { browser } = session;
+    session.wheel = true;
+    state.hintOverlay.hide();
+    // The wheel's point in the page's CSS pixels, as the labels' rects are.
+    const box = browser.getBoundingClientRect();
+    const zoom = Number(browser.fullZoom) || 1;
+    const point = { x: (e.clientX - box.left) / zoom, y: (e.clientY - box.top) / zoom };
+    VimmaActors.hintsMoved(browser, gen, point)
+      .then((moved) => {
+        if (state.hint !== session) return;
+        this._hintWheels++;
+        if (moved) {
+          const { buffered } = session;
+          this._startHints(browser, { id: session.action }, { restart: true, buffered });
+          return;
+        }
+        // Keys are buffered while `wheel`, so `hs` is still the session's.
+        session.wheel = false;
+        state.hintOverlay.show(browser, hs.hints, hintLabelCase(session.action));
+        state.hintOverlay.filter(hs.typed);
+        for (const chord of session.buffered.splice(0)) {
+          if (state.hint !== session) break;
+          this._hintKey(state, chord);
+        }
+      })
+      .catch((err) => {
+        console.error("vimma: hints after a wheel failed", err);
+        if (state.hint === session) this._cancelHints(state);
+      });
   },
 
   /**
@@ -2080,7 +2120,7 @@ export const VimmaHost = {
   _hintKey(state, chord) {
     const session = state.hint;
     if (!session) return;
-    if (!session.hs) {
+    if (!session.hs || session.wheel) {
       session.buffered.push(chord);
       return;
     }

@@ -3,7 +3,9 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <!-- Fixture for browser_vimma_hints_scroll.js: links in a page that scrolls by mandatory snap
-   - points 500 px apart (`?snap`), or in an inner scroller that has focus (`?inner`). -->
+   - points 500 px apart (`?snap`), in an inner scroller that has focus (`?inner`), or down a
+   - plain page. `carousel` adds a strip in the top right corner that the page's script scrolls
+   - every frame; `consume` makes the page take every wheel for itself, as a map does. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -28,13 +30,23 @@
         overflow: auto;
         margin: 40px;
       }
+      #strip {
+        position: fixed;
+        top: 0;
+        right: 0;
+        width: 200px;
+        height: 40px;
+        overflow-x: auto;
+        white-space: nowrap;
+        background: #eee;
+      }
     </style>
   </head>
   <body>
     <script>
-      const snap = location.search.includes("snap");
+      const has = (flag) => location.search.includes(flag);
       const html = [];
-      if (snap) {
+      if (has("snap")) {
         document.documentElement.className = "snap";
         for (let s = 0; s < 20; s++) {
           const links = [];
@@ -43,9 +55,30 @@
           html.push(`<section>${links.join("")}</section>`);
         }
         document.body.innerHTML = html.join("");
-      } else {
+      } else if (has("inner")) {
         for (let i = 0; i < 300; i++) html.push(`<a href="#b${i}">box link ${i}</a>`);
         document.body.innerHTML = `<div id="box" tabindex="-1">${html.join("")}</div>`;
+      } else {
+        for (let i = 0; i < 600; i++) html.push(`<a href="#p${i}">page link ${i}</a>`);
+        document.body.innerHTML = html.join("");
+      }
+      if (has("carousel")) {
+        const strip = document.createElement("div");
+        strip.id = "strip";
+        for (let i = 0; i < 40; i++) {
+          const item = document.createElement("span");
+          item.textContent = `slide ${i} `;
+          strip.append(item);
+        }
+        document.body.append(strip);
+        const step = () => {
+          strip.scrollLeft = (strip.scrollLeft + 3) % strip.scrollLeftMax;
+          requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      }
+      if (has("consume")) {
+        window.addEventListener("wheel", (e) => e.preventDefault(), { passive: false });
       }
     </script>
   </body>

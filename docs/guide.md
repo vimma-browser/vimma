@@ -683,7 +683,9 @@ use the home row (`a s d f g h j k l`), in reading order: targets near the top g
 As you type, labels that no longer match disappear. `Backspace` takes back a key and `Esc` leaves
 hints without doing anything. `f` right after a scroll key (`d f`) labels what is on screen where the
 scroll ends, at once, and scrolling with the mouse wheel while the labels are up draws them again
-where that scroll ends (the keys typed toward a label start over).
+where that scroll ends (the keys typed toward a label start over). A wheel that moves none of the
+labelled targets, at the page's end or over a map that zooms, keeps the labels and the keys you
+typed.
 
 `gF` labels links only and opens the one you pick in a new tab in the background, so you stay on the
 page and can pick more. Its labels are drawn in lower case (the other hint keys draw them in upper

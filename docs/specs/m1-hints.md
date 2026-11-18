@@ -128,8 +128,9 @@ reverted.
   yellow as the fallback until M5 sets the tokens.
 - **Messages.** `Vimma:CollectHints { gen, linksOnly }` → `{ targets: [{ id, rect, kind,
 href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. (Since changed:
-  `Vimma:CollectHints` also takes `settle`, which makes the top frame wait for a scroll to end
-  first; issue #1308.) Both are queries the parent sends to a frame it chose; the child never
+  a wheel over the page while labels show sends the top frame `Vimma:HintsMoved { gen, x, y }`,
+  which answers once the wheel's scroll has ended whether the labelled targets moved; issues
+  #1308 and #1337; described under Limits, and in `actors/VimmaChild.sys.mjs`, `#hintsMoved`.) Both are queries the parent sends to a frame it chose; the child never
   starts a hint message, so the focused-frame rule of focus reports (m1-actor-insert-scroll)
   has no counterpart here: each reply comes from the frame that was asked. The parent runs
   every reply through core `parseHintReply` (`hints.mjs`, the counterpart of
@@ -202,10 +203,16 @@ href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. (
 - Labels are drawn for the layout at `f`: a page that scrolls or moves itself while they show
   leaves them stale (a key or `Esc` still works on the targets).
   (Since changed: a smooth scroll that Vimma started is ended at its destination before the
-  targets are collected; one on a scroll-snap container, or one the user's wheel took over, is
-  waited for instead (at most 1 s); and a wheel
-  over the page while labels show draws them again once its scroll ends (issue #1308);
-  described in `actors/page-scroll.mjs`, `finish` and `settled`.)
+  targets are collected; one on a scroll-snap container, one the user's wheel took over, and
+  one a scrollend came for before it moved (cancelled, or an earlier scroll's end) is waited
+  for instead (at most 1 s); and a wheel
+  over the page while labels show draws them again once its scroll ends (issue #1308). Only
+  the scroll events of that scroller count, or for a wheel those of the page and of the
+  scrollers under it, so a carousel the page turns elsewhere neither ends the wait nor holds
+  it open. A wheel that moved no labelled target (the page's end, or a page that takes the
+  wheel itself, such as a map) keeps the labels and the keys typed toward them; one over a
+  subframe draws them again. Issue #1337; described in `actors/page-scroll.mjs`, `finish`,
+  `settled` and `scrollersUnder`.)
 - Delegated click handlers on elements with no role, tabindex or listener of their own (some
   React apps) get no hint; no `cursor: pointer` heuristic.
 - Canvas and WebGL apps (Google Docs, Figma, maps, games) draw their own controls: there are no

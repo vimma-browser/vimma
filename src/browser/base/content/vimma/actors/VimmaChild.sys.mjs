@@ -17,7 +17,7 @@ import { describeAgentElements } from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
 import { BlockFocus } from "./block.mjs";
 import { PdfView } from "./pdf-view.mjs";
-import { PageScroll } from "./page-scroll.mjs";
+import { PageScroll, scrollersUnder } from "./page-scroll.mjs";
 import { GrepPage } from "./grep-page.mjs";
 import { AgentPage } from "./agent-page.mjs";
 import { asUserGesture } from "./user-gesture.mjs";
@@ -43,7 +43,8 @@ import { dispatchAsPage } from "./page-events.mjs";
  *   | { name: "Vimma:GrepPreview", data: Parameters<GrepPage["preview"]>[0] }
  *   | { name: "Vimma:GrepJump", data: Parameters<GrepPage["jump"]>[0] }
  *   | { name: "Vimma:CollectHints", data: { gen: number, linksOnly: boolean, blocks?: boolean,
- *       texts?: boolean, elements?: boolean, settle?: boolean } }
+ *       texts?: boolean, elements?: boolean } }
+ *   | { name: "Vimma:HintsMoved", data: { gen?: unknown, x?: unknown, y?: unknown } | undefined }
  *   | { name: "Vimma:ActivateHint", data: { gen: number, id: number } }
  *   | { name: "Vimma:AgentElement", data: Parameters<AgentPage["element"]>[0] }
  *   | { name: "Vimma:AgentQuiet", data: Parameters<AgentPage["quiet"]>[0] }
@@ -205,6 +206,13 @@ function inLink(el) {
   return false;
 }
 
+/**
+ * No hint collection: what `#hints` holds before the first one and after a label was followed.
+ * @type {{ gen: number, els: WeakRef<Element>[], at: { x: number, y: number }[],
+ *   page: { x: number, y: number } }}
+ */
+const HINTS_NONE = { gen: -1, els: [], at: [], page: { x: 0, y: 0 } };
+
 export class VimmaChild extends JSWindowActorChild {
   /**
    * Test-only (browser_vimma_mcp_fill.js): the name of a page function an agent's form
@@ -231,8 +239,12 @@ export class VimmaChild extends JSWindowActorChild {
 
   /** Scrolling in this frame (docs/specs/m1-actor-insert-scroll.md). */
   #scroll = new PageScroll(this, () => deepActiveElement(this.document));
-  /** The last hint collection (m1-hints): its generation and its elements, by target id. */
-  #hints = { gen: -1, els: /** @type {WeakRef<Element>[]} */ ([]) };
+  /**
+   * The last hint collection (m1-hints): its generation, its elements by target id, and, to
+   * tell whether a wheel moved them, where each was in the viewport (`at`, by target id) and
+   * where the page was scrolled to (`page`: the subframes' targets move with it).
+   */
+  #hints = HINTS_NONE;
   /** The agent's page work in this frame (docs/specs/mcp-forms.md, mcp-checkpoints.md). */
   #agent = new AgentPage(this, {
     onPage: (el) => this.#onPage(el),
@@ -750,6 +762,8 @@ export class VimmaChild extends JSWindowActorChild {
         return undefined;
       case "Vimma:CollectHints":
         return this.#collectHints(msg.data);
+      case "Vimma:HintsMoved":
+        return this.#hintsMoved(msg.data);
       case "Vimma:ActivateHint":
         return this.#activateHint(msg.data);
       case "Vimma:AgentElement":
@@ -781,7 +795,7 @@ export class VimmaChild extends JSWindowActorChild {
           take: (gen, id) => {
             if (gen !== this.#hints.gen) return null;
             const el = this.#hints.els[id]?.deref() ?? null;
-            this.#hints = { gen: -1, els: [] };
+            this.#hints = HINTS_NONE;
             return el;
           },
           // `v` on a block: copy mode starts with the block selected, as with a mouse selection.
@@ -854,11 +868,10 @@ export class VimmaChild extends JSWindowActorChild {
    * `vimma_elements` (`elements`, docs/specs/mcp-forms.md F2-F6) gets every kind, disabled
    * controls included, each described, with the frame's forms, and keeps its elements apart from
    * the user's (F4). A top frame without a size yet is given time to get one first (#sized).
-   * A smooth scroll this frame started is finished first; one taken over since, and with
-   * `settle` (a wheel moved the page under the labels) any scroll running, is waited for
-   * (m1-hints, issue #1308).
+   * A smooth scroll this frame started is finished first; one taken over since is waited for
+   * (m1-hints, issues #1308 and #1337).
    * @param {{ gen: number, linksOnly: boolean, blocks?: boolean, texts?: boolean,
-   *   elements?: boolean, settle?: boolean }} data
+   *   elements?: boolean }} data
    */
   async #collectHints(data) {
     const gen = data?.gen;
@@ -877,10 +890,11 @@ export class VimmaChild extends JSWindowActorChild {
       if (!(await this.#sized(win)) || overtaken()) return null;
     }
     // Labels go where the targets are once a scroll ends, not where it is passing (#1308): a
-    // smooth scroll this frame started is finished at once; one that something else took over,
-    // or the wheel's with `settle`, is waited for.
-    if (this.#scroll.finish() || data.settle === true) {
-      await this.#scroll.settled();
+    // smooth scroll this frame started is finished at once; one that something else took over
+    // is waited for.
+    const running = this.#scroll.finish();
+    if (running) {
+      await this.#scroll.settled(new Set([running]));
       if (overtaken() || !this.contentWindow) return null;
     }
     const t0 = ChromeUtils.now();
@@ -892,7 +906,17 @@ export class VimmaChild extends JSWindowActorChild {
     // An agent's collection is never followed through the user's targets: the user's targets of
     // this frame stay as they were, and an agent's elements are kept apart.
     if (elements) this.#agent.listed = { gen, els: targets.map((t) => new WeakRef(t.el)) };
-    else if (!texts) this.#hints = { gen, els: targets.map((t) => new WeakRef(t.el)) };
+    else if (!texts) {
+      this.#hints = {
+        gen,
+        els: targets.map((t) => new WeakRef(t.el)),
+        at: targets.map((t) => {
+          const r = t.el.getBoundingClientRect();
+          return { x: r.x, y: r.y };
+        }),
+        page: { x: win.scrollX, y: win.scrollY },
+      };
+    }
     const described = elements ? describeAgentElements(targets.map((t) => t.el)) : null;
     return {
       targets: targets.map((t, id) => ({
@@ -909,6 +933,39 @@ export class VimmaChild extends JSWindowActorChild {
       ms: ChromeUtils.now() - t0,
       ...(described ? { forms: described.forms } : {}),
     };
+  }
+
+  /**
+   * A wheel over the page while the labels of collection `gen` show (m1-hints, issue #1337):
+   * resolves, once the scroll it started under the point `x`, `y` (viewport CSS pixels) has
+   * ended (PageScroll.settled), whether the labels may no longer sit on their targets. False
+   * only when every target of this frame is where it was collected: the wheel was at the
+   * page's end, or the page took it for itself (a map, a canvas app). True when the wheel was
+   * over a subframe, whose scroll this frame does not see, or when `gen` is not this frame's
+   * last collection.
+   * @param {{ gen?: unknown, x?: unknown, y?: unknown } | undefined} data
+   * @returns {Promise<boolean>}
+   */
+  async #hintsMoved(data) {
+    const win = this.contentWindow;
+    const gen = data?.gen;
+    if (!win || !isIndex(gen) || gen !== this.#hints.gen) return true;
+    const x = Number(data?.x);
+    const y = Number(data?.y);
+    const point = Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+    const under = scrollersUnder(win, point);
+    await this.#scroll.settled(under.targets);
+    if (under.frame || gen !== this.#hints.gen) return true;
+    const { els, at, page } = this.#hints;
+    const moved = (
+      /** @type {{ x: number, y: number }} */ a,
+      /** @type {{ x: number, y: number } | undefined} */ b,
+    ) => !b || Math.abs(a.x - b.x) > 0.5 || Math.abs(a.y - b.y) > 0.5;
+    if (moved({ x: win.scrollX, y: win.scrollY }, page)) return true;
+    return els.some((ref, i) => {
+      const el = ref.deref();
+      return !el?.isConnected || moved(el.getBoundingClientRect(), at[i]);
+    });
   }
 
   /**
@@ -985,7 +1042,7 @@ export class VimmaChild extends JSWindowActorChild {
   #activateHint(data) {
     if (!isIndex(data?.gen) || !isIndex(data?.id) || data.gen !== this.#hints.gen) return false;
     const el = this.#hints.els[data.id]?.deref();
-    this.#hints = { gen: -1, els: [] };
+    this.#hints = HINTS_NONE;
     // Not on a page this process has replaced since the labels were drawn (issue #1028).
     const win = this.contentWindow;
     if (!win || !this.#onPage(el)) return false;
