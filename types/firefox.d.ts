@@ -501,6 +501,8 @@ interface Element {
   readonly openOrClosedAssignedSlot: HTMLSlotElement | null;
   readonly scrollTopMax: number;
   readonly scrollLeftMax: number;
+  /** Negative in a right-to-left scroller, whose scrollLeft runs from it up to 0. */
+  readonly scrollLeftMin: number;
 }
 interface Node {
   /** The global of the document the node lives in (Node.webidl, ChromeOnly). */

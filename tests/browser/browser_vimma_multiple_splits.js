@@ -124,10 +124,14 @@ const tab = (name) => /** @type {SplitTab} */ (byName.get(name));
 /** @param {MozTabbrowserTab | undefined} t */
 const nameOf = (t) => [...byName].find(([, x]) => x === t)?.[0] ?? t?.label;
 /**
- * @param {string} panelId
+ * The tab of a tree's id: its panel, or for a lazy tab of a split that is not shown, its uuid.
+ * @param {string} id
  * @param {BrowserWindow} [win]
  */
-const tabOf = (panelId, win = window) => win.gBrowser.tabs.find((t) => t.linkedPanel === panelId);
+const tabOf = (id, win = window) =>
+  win.gBrowser.tabs.find(
+    (t) => t.linkedPanel === id || SessionStore.getCustomTabValue(t, "vimma-tab") === id,
+  );
 
 /**
  * A tree with each leaf named by its tab: `x[a,b]`; none: "".
@@ -620,7 +624,7 @@ add_task(async function a_workspace_switch_and_a_session_restore_keep_every_spli
   SessionStore.setWindowState(w2, JSON.stringify({ windows: [winState] }), true);
   await restored;
   await TestUtils.waitForTick();
-  // ids has the name of each page the test opened, and their splits give each a panel.
+  // ids has the name of each page the test opened.
   for (const t of w2.gBrowser.tabs) {
     if (ids.has(uuid(t)))
       byName.set(/** @type {string} */ (ids.get(uuid(t))), /** @type {SplitTab} */ (t));
@@ -628,6 +632,8 @@ add_task(async function a_workspace_switch_and_a_session_restore_keep_every_spli
   await until(() => view(w2).splits.splits.length === 2, "both splits are restored");
   Assert.equal(splitsOf(w2).all, "S1:x[p,q] S2:x[r,s]", "with their numbers");
   Assert.equal(splitsOf(w2).shown, 1, "and S1 shown");
+  // S2 is not on screen: its tabs stay lazy until it shows (issue #1318).
+  Assert.ok(!tab("r").linkedPanel && !tab("s").linkedPanel, "S2's tabs are lazy");
   await pick(tab("s"), w2);
   await until(() => splitsOf(w2).shown === 2, "picking s shows S2");
   await until(() => laidOut(tab("r"), w2) && laidOut(tab("s"), w2), "S2 is laid out");

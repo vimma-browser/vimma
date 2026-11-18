@@ -262,6 +262,11 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
    | `hint.follow`                        | `f`, `f<label>`            | links only, listed or followed as a load (D12)                       |
    | `page.url_up`, `page.url_root`       | `gu`, `gU`                 | a load of the derived URL in the same tab; same site by construction |
 
+   (Since changed: the user's `gu` / `gU` walk Reader View's article URL, `pageUrl` in
+   `core/pageurl.mjs`, issue #1310. The agent's stay on `currentURI.spec`: in Reader View the
+   derived `about:reader` is not http or https, so the step answers `already at the top of the
+site` and loads nothing; same site by construction still holds.)
+
    Everything else is refused before anything is asked, with `invalid-args` naming the first
    refused key and its reason. That includes, by group: the prefix (`ctrl+b`) and every
    prefix binding; `:` (`command.open`); every `workspace.*`, `window.*`, `tab.*`, `pane.*`,

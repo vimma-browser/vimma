@@ -7,6 +7,7 @@
 // selected, as every restored background tab is) the window model's uuid (m3-workspaces 3), or
 // in a window without workspaces an id core tabIds keeps for it.
 
+import { pageUrl } from "../core/pageurl.mjs";
 import { pickerItems } from "../core/picker.mjs";
 import { tabIds } from "../core/tabs.mjs";
 import { getTabLabel } from "../workspaces/tab-labels.mjs";
@@ -115,7 +116,7 @@ export function gotoItems(win, { agentId = null, window, name } = {}) {
       const browser = tab.linkedBrowser;
       return {
         title: browser.contentTitle || tab.label,
-        url: browser.currentURI?.spec ?? "",
+        url: pageUrl(browser.currentURI?.spec ?? ""),
         playing: !!tab.soundPlaying,
         muted: !!tab.muted,
         pinned: !!tab.pinned,

@@ -681,7 +681,9 @@ The page takes your label as your click: a link that opens a new tab opens it, a
 opens a window or goes full screen does so, without Firefox's pop-up blocker stepping in. Labels
 use the home row (`a s d f g h j k l`), in reading order: targets near the top get the shortest.
 As you type, labels that no longer match disappear. `Backspace` takes back a key and `Esc` leaves
-hints without doing anything.
+hints without doing anything. `f` right after a scroll key (`d f`) labels what is on screen where the
+scroll ends, at once, and scrolling with the mouse wheel while the labels are up draws them again
+where that scroll ends (the keys typed toward a label start over).
 
 `gF` labels links only and opens the one you pick in a new tab in the background, so you stay on the
 page and can pick more. Its labels are drawn in lower case (the other hint keys draw them in upper
@@ -1032,7 +1034,8 @@ with `F11` keeps it. From the left:
   red, stays until you next open the [downloads picker](#downloads) in that window. It never
   shows a file name, and a screen reader hears `downloading 42%` and, once, each file that
   finished, failed or was blocked;
-- `loading` while the page loads, then its **URL** without `https://`;
+- `loading` while the page loads, then its **URL** without `https://` (in Reader View the
+  article's own URL, as Firefox's address bar shows it, and `yy`, `gu` and `gU` use that one too);
 - with the [toolbar hidden](#hiding-the-toolbar), `not secure` in red for a page Firefox's
   address bar would warn about (an `http:` page keeps its `http://`), `using camera, mic` (or
   screen, location, XR, serial) while the page uses them, and `private` in a private window that

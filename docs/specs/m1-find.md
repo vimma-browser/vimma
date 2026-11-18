@@ -45,7 +45,8 @@ What Vimma adds (`host/find.mjs`, class `Find`, one per window, created by `Vimm
   started and taking the key's direction; `Find.start` in `host/find.mjs` and `docs/guide.md`,
   "Find". Since changed again: a click outside the prompt now closes the search (#685, under
   "Settled"), so this applies when the focus leaves the field without a click.)
-- **Keys typed while Firefox creates the bar** (one animation frame on first use per tab) are
+- **Keys typed while Firefox creates the bar** (one animation frame on first use per tab; since
+  #1307 also while a page in the parent process sets the search's start, at most 250 ms) are
   buffered and put into the field, then an `input` event runs the bar's own search; `Enter` and
   `Esc` in that window are queued or cancel. So `/word<Enter>` typed at full speed works and no
   key reaches the page.
@@ -164,7 +165,13 @@ limit, notFound }` in `VimmaHost.status()`; the segment is `/word [2/5]`, `/w` u
 - **Host changes are additive:** a `find` field in `WindowState`, four `CONTENT_RUNNERS`, one
   early return in `_onKeyDown` (only with no pending prefix, so `ctrl+b` sequences still work in
   the bar), and `status()`'s extra field. Actor: `Vimma:ScrollPosition`, `Vimma:ScrollTo`,
-  `Vimma:FindAnchor`. No upstream patch, no new dependency.
+  `Vimma:FindAnchor`. No upstream patch, no new dependency. (Since changed: `Vimma:FindAnchor`
+  is a query that `/` and `?` wait for before the find bar takes the typed text, because a page
+  in the parent process, such as about:vimma, has Firefox's in-process Finder, which searches
+  before a queued message arrives, and the anchor then collapsed the match (#1307). A new search
+  also drops the tab's last count, so the status bar never keeps the previous search's. A web
+  page's prompt does not wait, so a busy page cannot hold it; a tab switch before the prompt
+  opens cancels the search, so keys typed in the new tab are its own.)
 
 ## Limits
 
