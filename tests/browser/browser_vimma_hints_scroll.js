@@ -264,6 +264,28 @@ add_task(async function j_j_j_then_f_labels_the_targets_where_the_scroll_ends() 
   });
 });
 
+add_task(async function an_earlier_scroll_s_scrollend_does_not_end_d() {
+  await slowSmoothScroll();
+  await withPage(LONG, async (browser) => {
+    // An instant scroll's scroll and scrollend come at the next refresh. Holding the refresh
+    // driver makes them arrive after d has started, as they did on a busy runner: that
+    // scrollend is not d's, and f must still end d's scroll before collecting.
+    await SpecialPowers.spawn(browser, [], () => {
+      content.windowUtils.advanceTimeAndRefresh(0);
+      content.scrollTo({ top: 3000, behavior: "instant" });
+    });
+    EventUtils.synthesizeKey("d");
+    await SpecialPowers.spawn(browser, [], () => content.windowUtils.restoreNormalRefresh());
+    await TestUtils.waitForCondition(
+      async () => (await scrollPos(browser)) > 3010,
+      "d's scroll is under way",
+    );
+    await pressFAndWait();
+    Assert.greater(await settledScroll(browser), 3000, "d scrolled the page");
+    await assertLabelsOnTargets(browser);
+  });
+});
+
 add_task(async function d_then_f_in_an_inner_scroller_labels_where_it_ends() {
   await slowSmoothScroll();
   await withPage(INNER, async (browser) => {

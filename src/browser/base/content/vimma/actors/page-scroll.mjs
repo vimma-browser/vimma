@@ -428,16 +428,21 @@ export class PageScroll {
     // A step back on either axis is not this scroll's: the user's wheel or scrollbar took over,
     // and finish() must not undo it.
     let last = { x: from.x, y: from.y };
+    // Whether this scroll has moved the scroller yet. An instant scroll just before it (the
+    // page's, or a mark's) fires its scroll and scrollend at the next refresh, which can come
+    // after this scroll started: that scrollend is not this scroll's end.
+    let moving = false;
     const back = (/** @type {number} */ now, /** @type {number} */ was, /** @type {number} */ to) =>
       (now - was) * Math.sign(to - was) < -1;
     const moved = (/** @type {Event} */ e) => {
       if (!e.isTrusted) return;
       const now = { x: el.scrollLeft, y: el.scrollTop };
+      if (Math.abs(now.x - from.x) > 0.5 || Math.abs(now.y - from.y) > 0.5) moving = true;
       if (back(now.x, last.x, left) || back(now.y, last.y, top)) run.over = true;
       last = now;
     };
     const ended = (/** @type {Event} */ e) => {
-      if (!e.isTrusted) return;
+      if (!e.isTrusted || !moving) return;
       stop();
       if (this.#running === run) this.#running = null;
     };
