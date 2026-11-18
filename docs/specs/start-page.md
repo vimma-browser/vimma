@@ -87,22 +87,8 @@ quieter still.
 - **URL bar:** the page is `BROWSER_NEW_TAB_URL`, so `isInitialPage` and `isBlankPageURL` treat
   it as Firefox's new tab: empty URL bar, focused on open. `StartPage.init` also adds it to each
   window's `gInitialPages` for a home page opened with the new-tab override off.
-  (Since changed, issue #1271: a `:` line in the start page's address bar.) A new tab opens with
-  the address bar focused while the page advertises `:` for commands, so a keyboard user types
-  `:source` there and Firefox searched the default engine for it, sending the command to a third
-  party. Now, while the selected tab shows the start page, text in the address bar that starts
-  with `:` (after any spaces) is a Vimma command line and never a search, because no web address
-  starts with `:`. Plain `Enter` and `shift+Enter` run it as if typed after `:` on the page: into
-  the command line's history, an error shown on the open line, focus back on the page.
-  `alt`, `ctrl` or `meta+Enter`, Paste & Go, a drop on the address bar and the go button only put
-  the line on the command line, because the command line ignores those chords and because a page
-  can put text on the clipboard or start a drag: nothing a page controls runs without an `Enter`
-  the user pressed (an `isTrusted` keydown). The search engine's suggestion endpoint never sees
-  the line either: a result provider (`host/urlbar-commands.mjs`) outranks every other provider
-  for it, so none of them runs and the drop-down offers nothing. On every other page the address
-  bar is Firefox's, unchanged, because there the user moved to it on purpose, and `:` on the page
-  already opens the command line. Both hooks are runtime wrappers (the field's `handleCommand`
-  and `handleNavigation`, and a registered provider), not an upstream patch.
+  (Since changed: a line typed there that starts with `:` runs as a command line, not a search;
+  [start-page-commands](start-page-commands.md).)
 - **Vimma keys:** the content actor's `matches` include the page's URL, so it is in normal mode
   (without the actor the host keeps a page in insert, and `:` would not open the command line).
   `f` finds nothing to label; `j`/`k` have nothing to scroll.
@@ -124,16 +110,6 @@ quieter still.
   `start.mjs has filled in the version` timed out.
 
 - The logo has no background in either scheme (no tile, no box).
-
-`tests/browser/browser_vimma_start_commands.js` (since changed, issue #1271): `:tabnew` typed in a
-new tab's address bar and `Enter` (and `shift+Enter`) opens a tab, leaves the start page where it
-was and recalls with `Up` on the command line; no request reaches the test engine's search or
-suggestion URLs and the drop-down offers no row. `:tabnwe` opens the command line with its error.
-`alt+Enter`, `ctrl+Enter`, Paste & Go (`handleCommand()` with no event) and a drop
-(`handleNavigation` with a page's principal) put the line on the command line without running
-it. Words still search and an address still loads from the start page, and on another page a `:`
-line is still a search. Red before the change: `Enter ran :tabnew: a new tab opened` timed out
-and the engine was asked for suggestions.
 
 `tests/browser/browser_vimma_logo_theme.js` (Logo colours), on the start page and about:vimma:
 under a dark theme the mark's computed `background-color` is the theme's accent (and the page's

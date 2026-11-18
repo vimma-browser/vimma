@@ -135,14 +135,17 @@ export class CommandLine {
   }
 
   /**
-   * Runs `text` as if it had been typed on the line and Enter pressed: into the history, an
-   * error shown on the open line, a command run once the line has closed. For a `:` line typed
-   * in the start page's address bar (host/urlbar-commands.mjs).
+   * Puts `text` on the line and, with `run`, submits it as if typed there and Enter pressed:
+   * into the history, an error shown on the open line, a command run once the line has closed.
+   * A line left open with other text is closed first, so that text is never the one run. For a
+   * `:` line typed in the start page's address bar (host/urlbar-commands.mjs).
    * @param {string} text
+   * @param {{ run: boolean }} options
    */
-  enter(text) {
+  enter(text, { run }) {
+    this.close({ restoreFocus: false });
     this.open(text);
-    if (this.isOpen) this.submit();
+    if (run && this.isOpen) this.submit();
   }
 
   /**

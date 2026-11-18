@@ -721,8 +721,7 @@ export const VimmaHost = {
     try {
       state.urlbarCommands = new UrlbarCommands(win, (line, run) => {
         win.gBrowser.selectedBrowser.focus();
-        if (run) state.cmdline.enter(line);
-        else state.cmdline.open(line);
+        state.cmdline.enter(line, { run });
       });
     } catch (e) {
       console.error("vimma: a : line in the start page's address bar would search", e);

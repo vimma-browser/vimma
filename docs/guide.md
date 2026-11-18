@@ -444,7 +444,8 @@ unless the colours are your Omarchy
 theme's, `:theme light/dark` to [switch the colours](#colours-and-themes). The address bar is empty and focused, so you can type an
 address straight away, or a command: there, a line that starts with `:` (`:source`, `:q`) runs
 as a [command](#the-command-line) when you press `Enter`, and is never sent to the search engine
-or its suggestions. Click the page, or press `Esc`, to use the other keys there. At the bottom, a small
+or its suggestions. Click the page, or press `Esc` (twice once you have typed), to use the
+other keys there. At the bottom, a small
 line shows which Vimma you run and the Firefox release it is built on (`Vimma X.Y.Z · Firefox
 N`). It is a local page (`chrome://browser/content/vimma/start/start.html`); nothing loads
 from the network.
@@ -4287,7 +4288,7 @@ type reaches the page, and `ctrl+b` sequences still work.
   here, and it never goes to the search engine. `alt+Enter`, `ctrl+Enter`, Paste & Go and text
   dropped on the address bar only put the line here for you to check and run with `Enter`, since
   a web page can put text on the clipboard. On other pages the address bar searches as in
-  Firefox; press `Esc` and then `:` instead.
+  Firefox: press `Esc` (twice once you have typed) and then `:` instead.
 - **Errors** show under the line, which stays open so you can fix it: `:tabnwe` says
   `not a command: "tabnwe"; did you mean :tabnew?`.
 - A command name can be shortened while it stays unique (`:tabr`, `:wsp`), and leading colons

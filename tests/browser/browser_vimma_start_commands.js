@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/start-page.md, "A `:` line in the address bar" (issue #1271)
+// Spec: docs/specs/start-page-commands.md (issue #1271)
 
 "use strict";
 
@@ -16,6 +16,10 @@ const { UrlbarTestUtils } = ChromeUtils.importESModule(
 );
 SearchTestUtils.init(this);
 UrlbarTestUtils.init(this);
+
+const { VimmaHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
+);
 
 const START = "chrome://browser/content/vimma/start/start.html";
 const CMDLINE_ID = "vimma-cmdline";
@@ -123,6 +127,8 @@ add_task(async function a_colon_line_runs_as_a_command() {
 
   // The line went into the command line's history, as one typed after `:` does.
   gBrowser.selectedTab = tab;
+  // A tab switch may give the address bar focus back: move it to the page first.
+  tab.linkedBrowser.focus();
   await SimpleTest.promiseFocus(tab.linkedBrowser);
   EventUtils.synthesizeKey(":", { shiftKey: true });
   await TestUtils.waitForCondition(cmdlineOpen, ": opens the command line on the page");
@@ -180,6 +186,15 @@ add_task(async function other_enters_and_paste_and_go_only_fill_the_command_line
     gURLBar.focus();
   }
 
+  // The go button: a click, not an Enter.
+  await typeInBar(":tabnew");
+  EventUtils.synthesizeMouseAtCenter(gURLBar.goButton, {});
+  await TestUtils.waitForCondition(cmdlineOpen, "the go button opens the command line");
+  Assert.equal(cmdlineText(), "tabnew", "with the line on it");
+  Assert.equal(gBrowser.tabs.length, tabs, "and does not run it");
+  await closeCmdline();
+  gURLBar.focus();
+
   // Paste & Go (the address bar's context menu): what it runs after pasting, with no event,
   // since the clipboard may hold text a page put there.
   await typeInBar(":tabnew");
@@ -202,6 +217,32 @@ add_task(async function other_enters_and_paste_and_go_only_fill_the_command_line
   Assert.equal(tab.linkedBrowser.currentURI.spec, START, "the start page did not navigate");
   Assert.deepEqual(engineRequests(), [], "nothing was sent to the search engine");
   closeOtherTabs();
+});
+
+add_task(async function a_line_left_open_is_replaced() {
+  const tab = await openStartTab();
+  const tabs = gBrowser.tabs.length;
+  const cmd = /** @type {HostState} */ (VimmaHost._state(window)).cmdline;
+  // A line put on the command line and left open (the window lost focus, so it stayed).
+  cmd.open("tabclose");
+  Assert.ok(cmdlineOpen(), "a line is open");
+  cmd.enter("tabnew", { run: true });
+  await TestUtils.waitForCondition(
+    () => gBrowser.tabs.length === tabs + 1,
+    "the line handed over ran, not the one left open",
+  );
+  Assert.ok(tab.isConnected, "the start page's tab was not closed");
+  closeOtherTabs();
+});
+
+add_task(async function the_start_page_url_is_the_same() {
+  const { START_PAGE_URL } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/start/StartPage.sys.mjs",
+  );
+  const commands = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/host/urlbar-commands.mjs",
+  );
+  Assert.equal(commands.START_PAGE_URL, START_PAGE_URL, "urlbar-commands.mjs's copy agrees");
 });
 
 add_task(async function searches_and_addresses_still_work_on_the_start_page() {

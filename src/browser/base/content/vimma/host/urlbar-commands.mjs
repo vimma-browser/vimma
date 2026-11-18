@@ -3,8 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * A `:` line in the start page's address bar (docs/specs/start-page.md, "A `:` line in the
- * address bar"; #1271). A new tab opens on the start page with the address bar focused, and the
+ * A `:` line in the start page's address bar (docs/specs/start-page-commands.md; #1271). A new tab opens on the start page with the address bar focused, and the
  * page advertises `:` for commands, so a line typed there that starts with `:` is a Vimma command
  * line, never a search: no web address starts with `:`. On any other page the address bar is
  * Firefox's, unchanged.
@@ -20,8 +19,11 @@
  *   command line, so text a page put on the clipboard or dragged never runs without an Enter.
  */
 
-/** start/StartPage.sys.mjs START_PAGE_URL; `host/` may not import `start/` (ADR-026). */
-const START_PAGE_URL = "chrome://browser/content/vimma/start/start.html";
+/**
+ * start/StartPage.sys.mjs START_PAGE_URL; `host/` may not import `start/` (ADR-026), so
+ * browser_vimma_start_commands.js checks that the two agree.
+ */
+export const START_PAGE_URL = "chrome://browser/content/vimma/start/start.html";
 
 /** Above every built-in provider's (UrlbarProviderSearchTips, 2, is the highest in 160). */
 const PRIORITY = 1000;
@@ -115,6 +117,8 @@ export class UrlbarCommands {
     this.take = take;
     /** @type {UrlbarInput | null} */
     this.bar = null;
+    /** @type {{ handleCommand: Function, handleNavigation: Function } | null} ours, to undo */
+    this.wrapped = null;
     registerProvider();
     // The field may not exist yet at window init (urlbar-queries.mjs): hook it at first focus.
     this.onFocus = () => this.attach();
@@ -145,6 +149,7 @@ export class UrlbarCommands {
     bar.handleNavigation = function (params) {
       if (!self.intercept(params?.event ?? null)) handleNavigation.call(this, params);
     };
+    this.wrapped = { handleCommand: bar.handleCommand, handleNavigation: bar.handleNavigation };
   }
 
   /**
@@ -167,10 +172,12 @@ export class UrlbarCommands {
   destroy() {
     this.win.removeEventListener("focusin", this.onFocus, true);
     const bar = /** @type {Partial<UrlbarInput> | null} */ (this.bar);
-    if (bar) {
-      delete bar.handleCommand;
-      delete bar.handleNavigation;
+    // Only while ours are still there: a wrapper someone added over them stays.
+    if (bar && this.wrapped) {
+      if (bar.handleCommand === this.wrapped.handleCommand) delete bar.handleCommand;
+      if (bar.handleNavigation === this.wrapped.handleNavigation) delete bar.handleNavigation;
     }
     this.bar = null;
+    this.wrapped = null;
   }
 }
