@@ -374,8 +374,11 @@ listeners for `mousemove`, `pointermove` and `mouseover`:
      because chrome's per-tab hover state lives in the old window's state.
    - **A real mouse move**: a trusted `mousemove` that the actor did not dispatch, seen by the
      child's system-group listener, whose `screenX` / `screenY` differ from those of the last
-     trusted `mousemove` the child saw. Firefox's own moves after a scroll or reflow send no
-     DOM `mousemove`, and repeat the recorded position anyway (Research; experiments X2, X2C),
+     trusted `mousemove` the child saw. The listener is added when the hover begins, so
+     at that point no position is known: the first trusted `mousemove` not dispatched by the
+     actor then releases the hover, and later ones compare with the last one seen. That is safe
+     because Firefox's own moves after a scroll or reflow send no DOM `mousemove` at all, and
+     repeat the recorded position anyway (Research; experiments X2, X2C),
      so `j` with the mouse resting over the page, or the reflow the hover itself causes, never
      releases it. Reason: the user has taken the pointer, and two hovered elements would
      confuse both them and the page.
@@ -457,16 +460,19 @@ listeners for `mousemove`, `pointermove` and `mouseover`:
     the content actor as chrome code, and the events are ordinary DOM events, so the feature
     needs no change to Firefox.
 
-12. **Frames: the embedder chain gets locks only, through a relay keyed by browsing context.**
-    When the hovered element is in a subframe, the subframe's child reports the hover to its
-    parent actor, and the parent sends `Vimma:HoverEmbedder` (`lock` or `release`) to the actor
-    of the subframe's parent window global, naming only the subframe's browsing context id,
-    which the parent takes from the actor that reported (`this.browsingContext` of the
-    `JSWindowActorParent`), never from data the subframe sent. The embedding child resolves
-    the id with `BrowsingContext.get`, checks that its `parent` is its own browsing context and
-    that its `embedderElement` is in its own document, and locks that `<iframe>` element and
-    its flattened-tree ancestors as decision 2 does, remembering them as part of the same
-    hover; then it relays further up the same way. Reasons and details:
+12. **Frames: the embedder chain gets locks only, through a relay keyed by browsing context.** When
+    the hovered element is in a subframe, the subframe's child reports the hover to its parent
+    actor, and the parent sends `Vimma:HoverEmbedder` (`lock` or `release`) to the actor of the
+    subframe's parent window global, naming only the subframe's browsing context id, which the
+    parent takes from the actor that reported (`this.browsingContext` of the `JSWindowActorParent`),
+    never from data the subframe sent. The parent relays a `lock` only for a frame it asked to hover
+    itself (it sent that frame the `Vimma:Hover` or the agent's `hover` op) and only while that
+    hover is held, and refuses any other report, so that a compromised subframe cannot have its
+    `<iframe>` chain hovered at will. The embedding child resolves the id with
+    `BrowsingContext.get`, checks that its `parent` is its own browsing context and that its
+    `embedderElement` is in its own document, and locks that `<iframe>` element and its
+    flattened-tree ancestors as decision 2 does, remembering them as part of the same hover; then it
+    relays further up the same way. Reasons and details:
     - A real pointer over a subframe hovers the `<iframe>` element too: in process through the
       parent document's state manager (`NotifyMouseOver` uses `GetInProcessParentDocument`,
       `EventStateManager.cpp:5697-5711`), and out of process because the parent process's hit
@@ -480,12 +486,16 @@ listeners for `mousemove`, `pointermove` and `mouseover`:
       sees the subframe's actor go and relays a release), when the `<iframe>` element leaves
       its document (decision 13), and on the embedder's own `pagehide` (decision 5).
 
-13. **The hovered element leaving its place ends the hover.** The child watches the hovered
-    element with a `MutationObserver` on its document (`childList`, `subtree`) and, on any
-    mutation batch, checks that the element is still connected, in the same document, and
-    that its flattened-tree ancestor chain is the one it locked. When not, it releases the
-    whole hover (decision 6) and reports it, so that the status bar and an agent's `changed`
-    never claim a hover that no longer exists. This covers:
+13. **The hovered element leaving its place ends the hover.** The child watches the hovered element
+    with `MutationObserver`s (`childList`, `subtree`) on its document and on every shadow root on
+    the locked chain, closed ones included (the child reaches them from chrome with
+    `openOrClosedShadowRoot`), because a document observer does not see mutations inside a shadow
+    tree; it also listens for `slotchange` on each `slot` on the chain, because a slotted element
+    reassigned to another slot (or to none) changes its flattened-tree ancestors without any
+    `childList` mutation. On any mutation batch or `slotchange`, it checks that the element is still
+    connected, in the same document, and that its flattened-tree ancestor chain is the one it
+    locked. When not, it releases the whole hover (decision 6) and reports it, so that the status
+    bar and an agent's `changed` never claim a hover that no longer exists. This covers:
     - a framework re-render that **replaces** the node (the new node has no lock), and a
       virtualized list that **recycles** it (Discord's channel list reuses row nodes on scroll,
       so the same node may now show another row);
@@ -537,12 +547,12 @@ What a hover can do, and why nothing new becomes reachable:
   agent tabs by their sandbox flags anyway (M10).
 - **A subset of what a click already does.** An agent's `vimma_activate` already dispatches an
   untrusted `mouseover` on any element of its list (M26). `vimma_hover` adds `pointerover`,
-  `pointerenter`, `mouseenter`, `mousemove` and their leave counterparts, all untrusted (events
-  a page's own script can dispatch on itself), and the `:hover` lock, which changes only style
-  and runs no page code (`Element.cpp:667-674`). Every control a hover reveals is still reached
-  only through `vimma_elements` and `vimma_activate`, with all their checks: submissions and
-  payments are asked (F15, checkpoints), fields are filled only through `vimma_fill`, cross-site
-  links are followed only through `vimma_keys`.
+  `pointerenter`, `pointermove`, `mouseenter`, `mousemove` and their leave counterparts, all
+  untrusted (events a page's own script can dispatch on itself), and the `:hover` lock, which
+  changes only style and runs no page code (`Element.cpp:667-674`). Every control a hover reveals is
+  still reached only through `vimma_elements` and `vimma_activate`, with all their checks:
+  submissions and payments are asked (F15, checkpoints), fields are filled only through
+  `vimma_fill`, cross-site links are followed only through `vimma_keys`.
 - **Page handlers.** A page's hover handlers run, as they would for a mouse: they may fetch
   (prefetch on hover), render menus, or navigate. A navigation during the step counts in
   `OPEN_RATE`; a form submission is stopped by the `DOMFormBeforeSubmit` guard (F16) as after a
@@ -600,7 +610,8 @@ What a hover can do, and why nothing new becomes reachable:
     ancestors, the controls of `<label>`s among them and its embedder chain, only in agent
     tabs, and Vimma removes only the locks it added;
   - the embedder relay names the subframe by the browsing context of the reporting actor,
-    checked by the embedding child, never by data from the subframe;
+    checked by the embedding child, never by data from the subframe, and the parent relays a
+    lock only for a frame it asked to hover, while that hover is held;
   - it is released on every `pagehide`, the back-forward cache included, on the element leaving
     its place, on the tab leaving the agent workspace, on the user starting to use the tab, and
     on the connection's end;
@@ -637,10 +648,10 @@ Written first; red pasted, then green.
      text's label shows the gear; `row.matches(":hover")` is true in the page.
   2. `test_hover_runs_script_menus`: a `mouseenter` menu, a React-style `mouseover` menu and a
      `pointermove` sub-menu that ignores other pointer types open; the page's listeners see
-     `pointerover`, `pointerenter`, `mouseover`, `mouseenter`, `pointermove`, `mousemove` in
-     that order, trusted, with `pointerType: "mouse"`, `isPrimary`, the element's centre and
-     `relatedTarget` the previous hover target. Hovering the same element again sends only
-     `pointermove` and `mousemove`.
+     `pointerover`, `pointerenter`, `pointermove`, `mouseover`, `mouseenter`, `mousemove` in that
+     order (decision 2, experiment X3), trusted, with `pointerType: "mouse"`, `isPrimary`, the
+     element's centre and `relatedTarget` the previous hover target. Hovering the same element again
+     sends only `pointermove` and `mousemove`.
   3. `test_hover_then_f_follows_a_revealed_control`: after the hover, `f` labels the gear and
      its label clicks it; the row is still hovered after the click (or released, per open
      question 4).
@@ -661,7 +672,9 @@ Written first; red pasted, then green.
      and the status bar shows no hover; the same in a frame, for the embedder chain.
   7. `test_hover_target_leaves`: the page replaces the hovered node, recycles it into another
      row, moves it under another parent, and adopts it into a same-origin frame: each ends the
-     hover, no element keeps a Vimma lock, and the status segment goes.
+     hover, no element keeps a Vimma lock, and the status segment goes. The same for a hovered
+     element inside an open and a closed shadow root that the shadow tree's script replaces,
+     and for a slotted element whose `slot` attribute moves it to another slot.
   8. `test_hover_changes_nothing_else`: no focus, no selection, no click, and
      `navigator.userActivation.hasBeenActive` stays false.
   9. `test_hover_keeps_devtools_locks`: an element locked by `InspectorUtils` before the hover
@@ -677,7 +690,8 @@ Written first; red pasted, then green.
       `pagehide` release the embedder locks.
   13. `test_hover_malformed_messages`: `Vimma:Hover` with a stale `gen`, an unknown `op`, a
       frame not asked, `null` is refused; `Vimma:HoverEmbedder` naming a browsing context that
-      is not the receiver's child frame is refused.
+      is not the receiver's child frame is refused; a subframe that reports a hover the parent did
+      not ask for, or after it was released, gets no embedder lock.
 
   Mutation checks to run and paste with sub-PR 1: ancestor locks off (test 1 fails), the
   `hasPseudoClassLock` check off (test 9 fails), the trusted dispatch swapped for
