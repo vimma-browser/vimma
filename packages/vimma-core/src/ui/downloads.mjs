@@ -130,14 +130,16 @@ const percent = (r) =>
   r.hasProgress && r.totalBytes > 0 ? Math.floor((r.currentBytes / r.totalBytes) * 100) : null;
 
 /**
- * The state as the row's word.
+ * The state as the row's word. Every word fits the picker's 9ch state column (picker.css), because
+ * a longer one runs into the name (#1311): with no known size, a download in progress reads
+ * `running`, not a byte count, which the size column already shows.
  * @param {DownloadRecord} r
  */
 function stateWord(r) {
   const state = downloadState(r);
   if (state === S.DOWNLOADING) {
     const p = percent(r);
-    return p === null ? "downloading" : `${p}%`;
+    return p === null ? "running" : `${p}%`;
   }
   if (state === S.FINISHED) return r.targetExists ? "done" : "missing";
   if (state === S.PAUSED) return "paused";
