@@ -1627,16 +1627,15 @@ function isLink(/** @type {string} */ path) {
  */
 function wrapWriter({ before, during }) {
   const original = /** @type {NonNullable<typeof mirror.writeFile>} */ (mirror.writeFile);
-  mirror.writeFile = async (
-    /** @type {string} */ path,
-    /** @type {(text: string | null) => any} */ compute,
-  ) => {
+  /** @type {typeof original} */
+  const wrapped = async (path, compute) => {
     await before?.();
-    return original(path, (/** @type {string | null} */ t) => {
+    return original(path, (t) => {
       during?.();
       return compute(t);
     });
   };
+  mirror.writeFile = wrapped;
   return () => {
     mirror.writeFile = original;
   };
