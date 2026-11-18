@@ -74,6 +74,36 @@ interface VimmaModules {
       _test_reset(): Promise<void>;
     };
   };
+  // engine/browser/components/urlbar/UrlbarUtils.sys.mjs: the base class of the address bar's
+  // result providers, which host/urlbar-commands.mjs extends (it overrides the members it uses),
+  // and UrlbarUtils, which tab-ops.mjs reads lazily and the browser tests replace a method of.
+  "moz-src:///browser/components/urlbar/UrlbarUtils.sys.mjs": {
+    UrlbarProvider: new () => object;
+    UrlbarUtils: LazyModules["UrlbarUtils"];
+  };
+  // engine/browser/components/urlbar/UrlbarProvidersManager.sys.mjs: a search access point's
+  // providers, one manager per access point.
+  "moz-src:///browser/components/urlbar/UrlbarProvidersManager.sys.mjs": {
+    ProvidersManager: {
+      getInstanceForSap(sapName: string): {
+        registerProvider(provider: object): void;
+        unregisterProvider(provider: object): void;
+      };
+    };
+  };
+  // engine/browser/components/urlbar/content/UrlbarShared.mjs: the provider types (the product)
+  // and the result types and groups (the browser tests).
+  "chrome://browser/content/urlbar/UrlbarShared.mjs": {
+    UrlbarShared: {
+      readonly PROVIDER_TYPE: { readonly HEURISTIC: number };
+      readonly RESULT_TYPE: {
+        readonly TAB_SWITCH: number;
+        readonly SEARCH: number;
+        readonly URL: number;
+      };
+      readonly RESULT_GROUP: { readonly GENERAL_PARENT: string };
+    };
+  };
   // engine/browser/components/urlbar/UrlbarPrefs.sys.mjs: the result groups of a search access
   // point, which UrlbarRows wraps (a method Vimma replaces, so writable).
   "moz-src:///browser/components/urlbar/UrlbarPrefs.sys.mjs": {

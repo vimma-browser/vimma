@@ -7,7 +7,8 @@ key events the host dispatched, which `about:vimma` shows. `window-state.mjs` bu
 widgets (help, command line, pickers, prompts, panels, element focus, the agent chat) and wires
 their callbacks to the host, which it takes as an argument; `VimmaHost.init` then adds the
 listeners and registrations whose order matters. `urlbar-queries.mjs` follows the address
-bar's queries for the control socket's `state.urlbar`. `VimmaParent.sys.mjs` is the parent
+bar's queries for the control socket's `state.urlbar`; `urlbar-commands.mjs` runs a `:` line
+typed in the start page's address bar as a command line instead of a search. `VimmaParent.sys.mjs` is the parent
 side of the JSWindowActor pair `actors/` registers: it checks the page reports (focus, clicks,
 mouse selections, text blocks, the PDF viewer's state and outline) and hands them to the host
 and `pdf-ops.mjs`. `AgentGate.sys.mjs` is the agent gate: every agent command of `ctl/` and

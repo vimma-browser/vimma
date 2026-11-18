@@ -202,6 +202,9 @@ support-files = ["file_vimma_grep.html", "head_vimma_grep.js"]
 
 ["browser_vimma_start_page.js"]
 
+["browser_vimma_start_commands.js"]
+support-files = ["file_vimma_urlbar_suggest.sjs"]
+
 ["browser_vimma_logo_theme.js"]
 
 ["browser_vimma_workspace_store.js"]

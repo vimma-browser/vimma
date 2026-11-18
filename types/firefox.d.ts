@@ -1027,11 +1027,16 @@ interface UrlbarQueryListener {
 // there is none. `view` is its UrlbarView (UrlbarView.mjs: `isOpen`, and `queryContext`, the
 // context of the results it last drew). `lastSearchString` is set by startQuery as a query
 // starts; `lastQueryContextPromise` is the last query's, resolved when it ends (a resolved one
-// before any query).
+// before any query). `handleCommand` (Enter, the go button, Paste & Go) and `handleNavigation`
+// (what it calls, and a drop) lead to a load; `handleRevert` puts the page's address back.
 type UrlbarInput = HTMLElement & {
   focused: boolean;
-  view: { isOpen: boolean; queryContext: { searchString: string } | null };
+  value: string;
+  view: { isOpen: boolean; queryContext: { searchString: string } | null; close(): void };
   select(): void;
+  handleCommand(event?: Event | null): void;
+  handleNavigation(params: { event?: Event | null; triggeringPrincipal?: unknown }): void;
+  handleRevert(): void;
   controller?: {
     addListener(listener: UrlbarQueryListener): void;
     removeListener(listener: UrlbarQueryListener): void;

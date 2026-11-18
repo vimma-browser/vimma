@@ -42,6 +42,7 @@ browser.jar:
         content/browser/vimma/host/restart.mjs            (host/restart.mjs)
         content/browser/vimma/host/dialog-keys.mjs        (host/dialog-keys.mjs)
         content/browser/vimma/host/prompt-keys.mjs        (host/prompt-keys.mjs)
+        content/browser/vimma/host/urlbar-commands.mjs    (host/urlbar-commands.mjs)
         content/browser/vimma/host/urlbar-queries.mjs     (host/urlbar-queries.mjs)
         content/browser/vimma/host/window-state.mjs       (host/window-state.mjs)
         content/browser/vimma/host/hypr/HyprIpc.sys.mjs   (host/hypr/HyprIpc.sys.mjs)

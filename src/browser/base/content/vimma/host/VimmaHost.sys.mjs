@@ -48,6 +48,7 @@ import { AgentGate } from "./AgentGate.sys.mjs";
 import { logCells } from "../core/agent-prompt.mjs";
 import { PromptKeys } from "./prompt-keys.mjs";
 import { GotoPicker, MCP_LOG } from "../ui/picker.mjs";
+import { UrlbarCommands } from "./urlbar-commands.mjs";
 import { UrlbarQueries } from "./urlbar-queries.mjs";
 import { newWindowState } from "./window-state.mjs";
 import { ANNOUNCE_MS, UpdateUi } from "./update-ui.mjs";
@@ -175,6 +176,7 @@ const isRemoteBrowserTarget = (target) =>
  * @property {TabStrip | null} tabStrip  hides Firefox's tab strip (m0-tabstrip-hidden)
  * @property {Toolbar | null} toolbar  hides Firefox's toolbar (docs/specs/toolbar-toggle.md)
  * @property {UrlbarQueries | null} urlbarQueries  the address bar's queries, for `state.urlbar`
+ * @property {UrlbarCommands | null} urlbarCommands  a `:` line in the start page's address bar
  * @property {PromptKeys | null} promptKeys  y and n for Firefox's permission prompts
  * @property {number | null} timer   pending-sequence timeout (dispatcher.flush)
  * @property {() => void} onCancelHints  resize, a mouse click in chrome
@@ -714,6 +716,17 @@ export const VimmaHost = {
     } catch (e) {
       console.error("vimma: the address bar's queries are not reported", e);
     }
+    // A `:` line in the start page's address bar (start-page spec; #1271): as if typed after
+    // `:` on the page, so the line opens over the page and gives focus back to it.
+    try {
+      state.urlbarCommands = new UrlbarCommands(win, (line, run) => {
+        win.gBrowser.selectedBrowser.focus();
+        if (run) state.cmdline.enter(line);
+        else state.cmdline.open(line);
+      });
+    } catch (e) {
+      console.error("vimma: a : line in the start page's address bar would search", e);
+    }
     // Firefox's permission prompts from the keyboard (toolbar-toggle decision 11a).
     try {
       const promptKeys = new PromptKeys(win, {
@@ -809,6 +822,7 @@ export const VimmaHost = {
     state.tabStrip?.uninit();
     state.toolbar?.uninit();
     state.urlbarQueries?.destroy();
+    state.urlbarCommands?.destroy();
     state.promptKeys?.uninit();
     WindowWorkspaces.uninit(win);
     state.statusBar?.uninit();
