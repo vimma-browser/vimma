@@ -23,6 +23,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/actors/pdf-view.mjs": typeof import("../src/browser/base/content/vimma/actors/pdf-view.mjs");
   "chrome://browser/content/vimma/actors/submit-marks.mjs": typeof import("../src/browser/base/content/vimma/actors/submit-marks.mjs");
   "chrome://browser/content/vimma/actors/text-model.mjs": typeof import("../src/browser/base/content/vimma/actors/text-model.mjs");
+  "chrome://browser/content/vimma/actors/user-gesture.mjs": typeof import("../src/browser/base/content/vimma/actors/user-gesture.mjs");
   "chrome://browser/content/vimma/agent/AgentChat.sys.mjs": typeof import("../src/browser/base/content/vimma/agent/AgentChat.sys.mjs");
   "chrome://browser/content/vimma/agent/AgentCli.sys.mjs": typeof import("../src/browser/base/content/vimma/agent/AgentCli.sys.mjs");
   "chrome://browser/content/vimma/agent/AgentKeys.sys.mjs": typeof import("../src/browser/base/content/vimma/agent/AgentKeys.sys.mjs");

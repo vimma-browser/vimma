@@ -673,7 +673,9 @@ menu entries, elements with a click handler), also inside web components and in 
 sites. Each entry of an open menu gets its own label, also when the page puts a click handler on the
 list around them. Things off screen, hidden or covered by something else (a fixed header, a cookie
 banner) get no label. Type a label to pick its target: a link is followed, a button is pressed, a
-text field gets focus and the tab is in insert mode. Labels use the home row (`a s d f g h j k l`),
+text field gets focus and the tab is in insert mode, and a list box (`<select>`) opens its list.
+The page takes your label as your click: a link that opens a new tab opens it, and a button that
+opens a window or goes full screen does so, without Firefox's pop-up blocker stepping in. Labels use the home row (`a s d f g h j k l`),
 in reading order: targets near the top get the shortest. As you type, labels that no longer match
 disappear. `Backspace` takes back a key and `Esc` leaves hints without doing anything.
 
@@ -2986,10 +2988,10 @@ for its images; the result says it is still loading. It gets no page text this w
 `vimma_elements` to see what changed. Only the frame of the clicked element is compared, so a
 button inside an embedded frame that updates the page around it reads as no change.
 
-- **A plain click, no user activation.** The page gets the same click your `f` hints give it,
-  never a mouse press from the system. It therefore cannot do what needs a real gesture of yours
-  from that click: write or read the clipboard, use a passkey or a saved login, or ask for a
-  permission.
+- **A plain click, no user activation.** The page gets a plain click, never a mouse press from
+  the system, and unlike your own `f` hints it does not count as your gesture. It therefore
+  cannot do what needs a real gesture of yours from that click: write or read the clipboard, use
+  a passkey or a saved login, open a pop-up, go full screen, or ask for a permission.
 - **What it does not click.** Text fields and selects (a click there would only move focus
   into the page), file fields (a click would open a file chooser), disabled elements, links to
   another site (the agent follows those with `vimma_keys`, which asks as an open of that site)

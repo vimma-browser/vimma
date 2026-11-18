@@ -150,6 +150,13 @@ href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. B
   activation behaviour follows links (SVG elements, which have no `click()`, get a click
   event). `windowUtils.sendMouseEvent` would be a real pointer
   click, but Firefox 157 no longer has it outside tests.
+  (Since changed: the label the user types is their gesture, so the child gives the target's
+  document transient user activation for the press, with `windowUtils.setHandlingUserInput`,
+  which calls `Document::NotifyUserGestureActivation` and marks the press as user input. A link
+  with `target=_blank`, a button's `window.open`, `requestFullscreen` and a select's
+  `showPicker()` now work as after a click, where before the pop-up blocker stopped them or the
+  page refused them (issue #1303). Only `Vimma:ActivateHint` does this, which the parent sends
+  for a label the user typed; an agent's click (mcp-forms F8) shares the press without it.)
 - **`F`.** Links only (`a[href]`). The parent opens `href` with `openLinkIn(url, "tab",
 { inBackground: true })`, as the context menu's "Open Link in New Tab" does: the frame's
   document principal triggers the load, after `checkLoadURIWithPrincipal`, so a page cannot
@@ -192,7 +199,8 @@ href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. B
 - Frames inside a CSS-transformed or zoomed `<iframe>` get misplaced labels (offsets assume no
   transform); a frame covered by a fixed element in its parent is clipped, not occlusion-checked.
 - A `select` may not open from a hint (no user activation for `showPicker`); it has focus, so
-  `Alt+Down` opens it.
+  `Alt+Down` opens it. (Since changed: the hint gives activation, so its list opens; issue
+  #1303.)
 - Pinch zoom (the visual viewport) is not accounted for.
 - A frame that takes more than 150 ms to answer (a busy page, a slow process) gets no labels
   that time; press `f` again once it is idle.

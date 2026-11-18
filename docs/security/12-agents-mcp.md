@@ -25,7 +25,9 @@ just before (M26 to M28), the wait for the page to settle, the in-place changes 
 it the parent's `Vimma:Agent*` messages, and keeps what it shares with your hints: whether an
 element is still on the frame's page (M25) and the click itself, the same press your `f` sends
 (M26). `agent-page.mjs` is restricted too: `VimmaChild` is its one importer, so no other module
-of the content process acts in a page for an agent.
+of the content process acts in a page for an agent. The press gives no user activation; your own
+hint gets it from `actors/user-gesture.mjs`, which is restricted the same way, to `VimmaChild`,
+where only the handler of the parent's `Vimma:ActivateHint` calls it (M26).
 
 Only the seven modules that call the gate today may import it (ADR-026, `RESTRICTED` in
 `tools/layering/layers.ts`), so a new caller, such as the parent actor, is reviewed against this
@@ -821,7 +823,13 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   `f` hints send, with no event through `nsIDOMWindowUtils` or the widget, so the page gets no
   transient user activation: it cannot write or read the clipboard, use credentials or passkeys,
   or start anything else that needs a real gesture. Vimma **never** gives an agent tab's
-  document user activation. A trusted `click()` still runs the page's click listeners in
+  document user activation on an agent's behalf. Your own `f` hints do give the page your
+  activation, as your click would (issue #1303): the child wraps the press in
+  `nsIDOMWindowUtils.setHandlingUserInput` only in `actors/user-gesture.mjs`, called only by its
+  handler of `Vimma:ActivateHint`, which the parent sends only from the hint keys you type in
+  chrome. An agent's click comes as `Vimma:AgentElement`, whose press takes no such option, and
+  a page can send neither message. A full-control connection (`send-keys`) types as your
+  keyboard, so a label it types counts as yours, as every other key it sends does. A trusted `click()` still runs the page's click listeners in
   Firefox's older "handling user input" state, which some checks accept (audible autoplay,
   pointer lock, a pop-up); pop-ups are refused in agent tabs by their sandbox flags (M10).
   Before the click the child checks again that the element is still the one asked about (not a
@@ -851,6 +859,8 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`activate_says_what_changed_in_place`](../../tools/vimma-ctl/src/mcp/render.rs),
   [`agent-activate: what changed in place, from a fixed list`](../../packages/vimma-core/test/control-v2.test.ts),
   [`agent_clicks_never_synthesise_input_or_user_activation`](../../tests/browser/browser_vimma_security_invariants.js),
+  [`only_the_users_hints_give_user_activation`](../../tests/browser/browser_vimma_security_invariants.js),
+  [`an_agent_click_on_the_same_button_gets_no_activation`](../../tests/browser/browser_vimma_hints_activation.js),
   [`test_activate_reports_a_dialog`](../../tests/browser/browser_vimma_mcp_activate.js),
   [`test_a_click_a_navigation_overtakes_is_skipped_and_said`](../../tests/browser/browser_vimma_agent_click_race.js),
   [`test_a_click_on_a_page_going_into_the_bfcache_is_skipped`](../../tests/browser/browser_vimma_agent_click_race.js),
