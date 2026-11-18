@@ -52,7 +52,7 @@ const SCHEMES = Object.freeze(["http:", "https:", "file:", "about:", "javascript
  * C1 controls, bidirectional controls and invisible format characters: a name that shows as
  * something else in the Library and the panel. U+200D (the zero-width joiner of emoji) stays.
  */
-const HIDDEN = /[\u0080-\u009f؜​‌‎‏‪-‮⁠-⁩﻿]/u;
+const HIDDEN = /[\u0080-\u009f\u061c\u200b\u200c\u200e\u200f\u202a-\u202e\u2060-\u2069\ufeff]/u;
 
 const TYPE_BOOKMARK = 1;
 const TYPE_FOLDER = 2;
@@ -753,8 +753,8 @@ export function planMirror(input) {
     const linked = workspaces.find((w) => w.name === table.name)?.folder ?? null;
     const unused = (/** @type {string | null | undefined} */ g) =>
       isFolderGuid(g) && !usedFolders.has(/** @type {string} */ (g));
-    /** @type {string | null} */
-    let folderGuid = null;
+    /** @type {string | null | undefined} */
+    let folderGuid;
     if (
       known &&
       unused(known.folder) &&

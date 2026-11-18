@@ -90,9 +90,21 @@ let mirrored = new Set();
 export const MIRRORED_REFUSAL =
   "bookmarks.toml is read-only: edit the file to change these bookmarks";
 
-/** @param {ReadonlySet<string>} guids  the tables' folders */
-export function setMirroredFolders(guids) {
+/** What the keys say there now: read-only, or the pause of a missing file. */
+let refusal = MIRRORED_REFUSAL;
+
+/**
+ * @param {ReadonlySet<string>} guids  the tables' folders
+ * @param {string} [why]  what a refused key says
+ */
+export function setMirroredFolders(guids, why = MIRRORED_REFUSAL) {
   mirrored = new Set(guids);
+  refusal = why;
+}
+
+/** What a key refused in a mirrored folder says. */
+export function mirroredRefusal() {
+  return refusal;
 }
 
 /**
@@ -112,7 +124,7 @@ export async function isMirrored(guid) {
 
 /** @param {...(string | null | undefined)} guids @returns {Promise<string | null>} */
 async function refuseMirrored(...guids) {
-  for (const g of guids) if (await isMirrored(g)) return MIRRORED_REFUSAL;
+  for (const g of guids) if (await isMirrored(g)) return refusal;
   return null;
 }
 
@@ -494,9 +506,9 @@ export async function renameWorkspaceFolder(before, name) {
  */
 export async function moveWorkspaceBookmarks(from, toId) {
   const PU = places();
-  if (await isMirrored(from)) throw new Error(MIRRORED_REFUSAL);
+  if (await isMirrored(from)) throw new Error(refusal);
   const into = await makeWorkspaceFolder(toId);
-  if (await isMirrored(into)) throw new Error(MIRRORED_REFUSAL);
+  if (await isMirrored(into)) throw new Error(refusal);
   const kids = (await PU.promiseBookmarksTree(from))?.children ?? [];
   for (const k of kids) {
     await PU.bookmarks.update({

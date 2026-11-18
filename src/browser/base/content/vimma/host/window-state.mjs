@@ -38,6 +38,7 @@ import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { PaneViews } from "../split/PaneView.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
 import { DownloadRows, DownloadWatch, downloadPickerKey } from "./download-ops.mjs";
+import { HostServices } from "./host-services.mjs";
 import { Find } from "./find.mjs";
 import { ElementFocus } from "./element-focus.mjs";
 import { CHAT_SERVICES, giveSelectedTab } from "./agent-chat-ops.mjs";
@@ -169,6 +170,7 @@ export function newWindowState(host, win, keymap, env) {
         workspace: workspaceNames(win),
         search: SearchHost.completions,
         sitebind: siteBindCompletions(win, host.baseKeymap()),
+        bookmarksfile: HostServices.bookmarksFileWords(),
       }),
     }),
     tabStrip: null,

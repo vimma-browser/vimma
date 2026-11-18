@@ -1068,12 +1068,12 @@ describe("bookmarks.toml: review fixes", () => {
   });
 
   test("names: controls, bidi and zero-width characters and outer spaces are refused", () => {
-    for (const name of ["a‮b", "a⁦b", "a​b", "a\u0085b", " work", "work "]) {
+    for (const name of ["a\u202eb", "a\u2066b", "a\u200bb", "a\u0085b", " work", "work "]) {
       const r = errorsOf(`[bookmarks.${JSON.stringify(name)}]\n"a" = "https://e.com/"`);
       expect(r.length, JSON.stringify(name)).toBe(1);
       expect(r[0]!.line).toBe(1);
     }
-    for (const title of ["a‮b", "a\u0007b", "a\u0085b", "a⁩b"]) {
+    for (const title of ["a\u202eb", "a\u0007b", "a\u0085b", "a\u2069b"]) {
       const r = errorsOf(`[bookmarks.w]\n${JSON.stringify(title)} = "https://e.com/"`);
       expect(r, JSON.stringify(title)).toEqual([
         { line: 2, message: "a name with a control or bidirectional character" },
@@ -1176,7 +1176,7 @@ describe("bookmarks.toml: review fixes", () => {
       places: tree,
       base,
     });
-    const touched = p.ops.map((o) => (o.op === "insert" ? o.parentGuid : o.guid));
+    const touched = (p.ops as Op[]).map((o) => (o.op === "insert" ? o.parentGuid : o.guid));
     expect(touched).not.toContain("menufold0001");
     expect(touched).not.toContain("mine00000001");
     expect(p.base.tables[0]!.folder).not.toBe("menufold0001");
@@ -1193,7 +1193,7 @@ describe("bookmarks.toml: review fixes", () => {
       places: tree,
       base,
     });
-    expect(p.ops.some((o) => o.guid === "bmA000000001")).toBe(false);
+    expect((p.ops as Op[]).some((o) => o.guid === "bmA000000001")).toBe(false);
     expect(p.ops).toContainEqual(
       expect.objectContaining({ op: "insert", kind: "bookmark", title: "a" }),
     );

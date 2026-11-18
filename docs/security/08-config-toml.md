@@ -41,20 +41,39 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`a prototype member name is never a key or a modifier: constructor, toString, __proto__`](../../packages/vimma-core/test/fuzz/keys.fuzz.test.ts),
   [`nesting deeper than MAX_DEPTH, by dotted keys, headers or values, is refused at its line`](../../packages/vimma-core/test/toml.test.ts)
 - F6. `bookmarks.toml` beside `config.toml` (spec: [bookmarks-file](../specs/bookmarks-file.md),
-  read-only mirror) is a file that may come from someone else's repository, and it drives writes
-  to Places. Its values are URLs, never evaluated; it **cannot** hold a setting, so a shared or
-  pulled file cannot allow bookmarklets (D12); a `data:` line is an error at every level, and a
-  `javascript:` line reaches Places only while `config.toml` says `[bookmarks] bookmarklets =
-"user"` or `"agent"`, because a bookmark in Places runs from Firefox's own Library and toolbar
-  (D13); with `"none"` the mirror neither adds, changes nor removes a `javascript:` bookmark. A
-  file over 4 MiB is refused before it is parsed; paths and table names are kept in `Map`s, so a
-  title such as `__proto__` is an ordinary title. A file with an error, or a missing file, is
-  never applied: both directions pause (D9). A table reaches only its own folder at the
-  Bookmarks Toolbar's top and the folders below it; bookmarks elsewhere are never read or
-  written (Behaviour 21). A run that would delete more than 20 bookmarks, or more than half of
-  a table's, or any bookmark of a folder a table takes over, asks y/N first, and no answer
-  applies nothing (D14, Behaviour 18). Vimma never writes `bookmarks.toml` in this slice; no
-  control-socket or MCP command reads or writes it.
+  read-only mirror, behind `vimma.feature.bookmarksFile`, off by default) is a file that may come
+  from someone else's repository, and it drives writes to Places from the parent's main thread.
+  Its values are URLs, never evaluated, and only `http`, `https`, `file`, `about`, and
+  `javascript:` behind the gate below; every other scheme (`data:`, `chrome:`, `resource:`,
+  `view-source:`, `blob:`, `jar:`, `place:`, …) is an error at its line. It **cannot** hold a
+  setting, so a shared or pulled file cannot allow bookmarklets (D12); a `javascript:` line
+  reaches Places only while `config.toml`'s own text says `[bookmarks] bookmarklets = "user"`
+  or `"agent"` (a file `:source <file>` loaded does not count), because a bookmark in Places
+  runs from Firefox's own Library and toolbar (D13); with `"none"` the mirror neither adds,
+  changes nor removes a `javascript:` bookmark, at any depth, also when a table is removed.
+  Reading is bounded: a file over 4 MiB, or that is not a regular file (a FIFO would block the
+  queue), is not read, and it is read with a byte cap; at most 20,000 lines and 32 names per
+  path; keys are built one level at a time and the walks over Places are iterative, so a 4 MiB
+  file of either worst shape reads and plans in bounded time. Names refuse control,
+  bidirectional and invisible characters; errors cut what they repeat to 80 characters; paths
+  and table names are kept in `Map`s, so a title such as `__proto__` is an ordinary title. A
+  file with an error, or a missing file (or a missing `config.toml` that held the tables), is
+  never applied: both directions pause (D9), until the file reads or `:bookmarks forget`. The
+  plan reaches only the tables' own folders: one claimed set across all tables, a base guid
+  reused only inside a mirrored folder, and a folder from the stored base
+  (`<profile>/vimma-bookmarks.json`, which a damaged or edited copy could point anywhere)
+  trusted only at the Bookmarks Toolbar's top, inside another table's folder there, or as the
+  workspace's own linked folder; bookmarks elsewhere are never read or written (Behaviour 21).
+  A run that would delete more than 20 bookmarks, or more than half of a table's, whether the
+  file dropped them or Sync and the Library added them, or any bookmark of a folder a table
+  takes over without a base (also after a new or restored Places database), asks y/N first;
+  the question never replaces an open prompt or command line and ignores keys for 400 ms as it
+  appears; no answer applies nothing, and a yes approves the removals it showed and no more.
+  Accepted risks until later slices: many small edits, each under the limits, are applied
+  without a question (each says what it removed); and two devices with different files and
+  Sync on both put each other's changes back at every sync (bookmarks-file decision 2b, which
+  stops this, comes with write-back; large put-backs still ask). Vimma never writes
+  `bookmarks.toml` in this slice; no control-socket or MCP command reads or writes it.
   [`refuses data: URLs, relative URLs, non-string values, inline tables and nested tables at their line`](../../packages/vimma-core/test/bookmarks-file.test.ts),
   [`refuses keys other than [bookmarks.<name>] tables in bookmarks.toml`](../../packages/vimma-core/test/bookmarks-file.test.ts),
   [`refuses a file over 4 MiB without parsing it`](../../packages/vimma-core/test/bookmarks-file.test.ts),
@@ -66,4 +85,12 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`a_missing_file_pauses_and_forget_turns_the_mirror_off`](../../tests/browser/browser_vimma_bookmarks_file.js),
   [`a_large_deletion_asks_and_n_applies_nothing`](../../tests/browser/browser_vimma_bookmarks_file.js),
   [`a_table_over_a_folder_with_bookmarks_asks_before_deleting_them`](../../tests/browser/browser_vimma_bookmarks_file.js),
-  [`bookmarks_outside_mirrored_folders_are_untouched`](../../tests/browser/browser_vimma_bookmarks_file.js)
+  [`bookmarks_outside_mirrored_folders_are_untouched`](../../tests/browser/browser_vimma_bookmarks_file.js),
+  [`allows only http, https, file and about, and javascript: behind the bookmarklets gate`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`a 4 MiB file of deep paths or of many folders reads and plans in bounded time`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`one claimed set: a workspace folder dragged into another table's folder is moved back, not deleted`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`a removed table keeps protected bookmarklets, also inside its folders`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`a base folder outside the toolbar's top that is not the workspace's is not trusted`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`outside additions put back count toward the large-deletion question`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`the_question_waits_for_the_command_line_and_ignores_an_early_key`](../../tests/browser/browser_vimma_bookmarks_file.js),
+  [`with_the_feature_pref_off_nothing_is_read_or_refused`](../../tests/browser/browser_vimma_bookmarks_file.js)

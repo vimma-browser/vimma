@@ -26,6 +26,7 @@ import { AgentUi } from "./agent-ui.mjs";
 import { bookmarkContext, openBookmarkByTitle, quickAdd } from "./bookmark-actions.mjs";
 import { browserRunners, openSettings, xulElementById } from "./browser-ops.mjs";
 import { ControlHost } from "./control-ops.mjs";
+import { HostServices } from "./host-services.mjs";
 import { copyModeRunners } from "./copy-mode.mjs";
 import { McpHost } from "./mcp-ops.mjs";
 import { openOutline } from "./outline-ops.mjs";
@@ -535,8 +536,24 @@ export function hostRunners(host, page) {
       });
     },
     // docs/specs/bookmarks.md: the bookmarks panel, in the side panel's slot and mode.
-    "bookmarks.toggle": (/** @type {WindowState} */ s) => {
+    "bookmarks.toggle": (
+      /** @type {WindowState} */ s,
+      _a,
+      /** @type {string | undefined} */ text,
+    ) => {
       s.notice.hide();
+      const word = text?.trim() ?? "";
+      if (word) {
+        // docs/specs/bookmarks-file.md Behaviour 19, while the feature is on.
+        if (word === "forget" && HostServices.bookmarksFileWords().includes("forget")) {
+          HostServices.bookmarksFileForget().then(
+            (/** @type {string} */ said) => s.notice.show(said),
+            (/** @type {Thrown} */ e) =>
+              s.notice.show(`:bookmarks forget: ${e?.message ?? e}`, { error: true }),
+          );
+        } else s.notice.show(`:bookmarks takes no argument`, { error: true });
+        return;
+      }
       if (s.bookmarks.isOpen) s.bookmarks.close();
       else {
         s.panel.close();

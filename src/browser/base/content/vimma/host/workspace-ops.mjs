@@ -185,9 +185,12 @@ export function closeWorkspace(win, text, ask, say, choose) {
         }
         // A folder bookmarks.toml mirrors is the file's: it can only be kept
         // (docs/specs/bookmarks-file.md Behaviour 11), so there is nothing to ask.
-        return isMirrored(folder.guid).then((fileOwned) => {
+        return isMirrored(folder.guid).then(async (fileOwned) => {
           if (!fileOwned) {
-            askBookmarks(now, folder, { unchanged, close, say, choose });
+            const other = WorkspaceStore.definitions.workspaces.find((d) => d.id !== now.id);
+            const into = other ? await workspaceFolder(other) : null;
+            const noMove = !!into && (await isMirrored(into.guid));
+            askBookmarks(now, folder, { unchanged, close, say, choose, noMove });
             return;
           }
           if (!unchanged()) return;
@@ -208,12 +211,16 @@ export function closeWorkspace(win, text, ask, say, choose) {
  * @param {WorkspaceDefinition} def
  * @param {{ guid: string, count: number }} folder
  * @param {{ unchanged: () => WorkspaceDefinition | null, close: () => Promise<boolean>,
- *   say: (text: string) => void,
+ *   say: (text: string) => void, noMove?: boolean,
  *   choose: (question: string, choices: Record<string, () => void>) => void }} flow
  */
-function askBookmarks(def, folder, { unchanged, close, say, choose }) {
+function askBookmarks(def, folder, { unchanged, close, say, choose, noMove = false }) {
   const count = (/** @type {number} */ n) => `${n} bookmark${n === 1 ? "" : "s"}`;
-  const to = WorkspaceStore.definitions.workspaces.find((d) => d.id !== def.id) ?? null;
+  // A destination bookmarks.toml mirrors cannot take them (docs/specs/bookmarks-file.md
+  // Behaviour 11): then only k and d are offered.
+  const to = noMove
+    ? null
+    : (WorkspaceStore.definitions.workspaces.find((d) => d.id !== def.id) ?? null);
   /** @param {(guid: string) => Promise<string>} act  what is done with the folder, said after */
   const answer = (act) => () => {
     if (!unchanged()) return;
@@ -237,7 +244,8 @@ function askBookmarks(def, folder, { unchanged, close, say, choose }) {
     k: keep,
     Enter: keep,
     d: answer(async (guid) => {
-      await removeItem(guid);
+      const refused = await removeItem(guid);
+      if (refused) return `closed "${def.name}"; ${refused}`;
       return `closed "${def.name}" and deleted its ${count(folder.count)}`;
     }),
   };

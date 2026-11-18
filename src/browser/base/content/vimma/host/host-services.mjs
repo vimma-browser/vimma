@@ -60,6 +60,11 @@
  *   Promise<{ added: string[], already: string[], removed: string[] } | { error: string }>}
  *   editSiteUnbind  config/ConfigHost.sys.mjs's: `:siteunbind --save` and `:sitebind --delete`
  *   edit `[sites."<host>"] unbind` (docs/specs/site-unbind-command.md decision 10)
+ * @property {() => Promise<string>} bookmarksFileForget  config/ConfigHost.sys.mjs's:
+ *   `:bookmarks forget` drops the bookmarks.toml mirror's base (docs/specs/bookmarks-file.md
+ *   Behaviour 19); what to say
+ * @property {() => string[]} bookmarksFileWords  config/ConfigHost.sys.mjs's: the words
+ *   `:bookmarks` takes, `forget` while `vimma.feature.bookmarksFile` is on
  */
 
 /** @typedef {keyof Services} ServiceName */
@@ -80,6 +85,8 @@ const NAMES = Object.freeze([
   "configRefused",
   "addAgentProvider",
   "editSiteUnbind",
+  "bookmarksFileForget",
+  "bookmarksFileWords",
 ]);
 
 const NOT_STARTED = "the built-in agent is not started";
@@ -155,6 +162,8 @@ const UNPROVIDED = Object.freeze({
   editSiteUnbind: async () => ({
     error: "config.toml cannot be written before Vimma has started",
   }),
+  bookmarksFileForget: async () => "bookmarks.toml is not read before Vimma has started",
+  bookmarksFileWords: () => [],
 });
 
 /** @typedef {"agentChat" | "agentCli" | "agentKeys"} ObjectServiceName */
@@ -318,6 +327,12 @@ export function createHostServices(provider = PROVIDER) {
     },
     get editSiteUnbind() {
       return get("editSiteUnbind");
+    },
+    get bookmarksFileForget() {
+      return get("bookmarksFileForget");
+    },
+    get bookmarksFileWords() {
+      return get("bookmarksFileWords");
     },
   });
 }

@@ -1042,16 +1042,28 @@ export const VimmaHost = {
    * @param {string} question  ends with "y/N"
    * @param {() => void} yes
    * @param {() => void} no
+   * @param {{ settleMs?: number }} [options]  keys within `settleMs` of it showing are not an
+   *   answer (a `y` typed on the page as a background question appears)
    * @returns {(() => void) | null}
    */
-  ask(win, question, yes, no) {
+  ask(win, question, yes, no, { settleMs = 0 } = {}) {
     const prompt = states.get(win)?.rename;
     if (!prompt) return null;
     const ours = () => yes();
-    if (!prompt.ask(question, ours, no)) return null;
+    if (!prompt.ask(question, ours, no, { settleMs })) return null;
     return () => {
       if (prompt.yes === ours) prompt.close();
     };
+  },
+
+  /**
+   * Whether the window's prompt line or command line is open: a question asked from outside a
+   * key waits until neither is (docs/specs/bookmarks-file.md Behaviour 7).
+   * @param {BrowserWindow} win
+   */
+  promptBusy(win) {
+    const state = states.get(win);
+    return !!state && (state.rename.isOpen || state.cmdline.isOpen);
   },
 
   /** config.toml's keymap, without `:siteunbind`'s keys until restart; the built-in one before. */

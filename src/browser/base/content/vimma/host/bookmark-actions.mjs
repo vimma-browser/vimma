@@ -20,10 +20,10 @@ import {
   addFolder,
   bookmarkletsSetting,
   currentPage,
-  MIRRORED_REFUSAL,
   fetchBookmark,
   findBookmark,
   isMirrored,
+  mirroredRefusal,
   loadAllBookmarks,
   loadScope,
   moveItem,
@@ -102,7 +102,7 @@ export async function quickAdd(ctx, text) {
   const complete = completer(scope, scope.tree.guid);
   if (existing && (await isMirrored(existing.guid))) {
     // docs/specs/bookmarks-file.md Behaviour 11: no move/rename prompt for the file's bookmark.
-    ctx.say(`already bookmarked: ${existing.path}; ${MIRRORED_REFUSAL}`);
+    ctx.say(`already bookmarked: ${existing.path}; ${mirroredRefusal()}`);
     return;
   }
   if (existing) {
@@ -304,7 +304,7 @@ export function runBookmarkEffect(ctx, effect) {
         : null;
   if (target !== null) {
     isMirrored(target)
-      .then((fileOwned) => (fileOwned ? ctx.say(MIRRORED_REFUSAL) : runEffect(ctx, effect)))
+      .then((fileOwned) => (fileOwned ? ctx.say(mirroredRefusal()) : runEffect(ctx, effect)))
       .catch((e) => console.error("vimma: bookmarks could not be read", e));
     return;
   }

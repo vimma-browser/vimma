@@ -4064,6 +4064,10 @@ carry tokens (`?token=`, a session id, `user:pass@`), so keep `bookmarks.toml` i
 repository, or list it in `.gitignore` while you publish `config.toml`. Vimma does not strip
 anything from a URL: a bookmark is the address you saved.
 
+**Not yet on by default.** Bookmarks in a file arrive over several releases. To try it now,
+set `vimma.feature.bookmarksFile` to `true` in `about:config`; while it is `false`, Vimma reads
+no `bookmarks.toml` and changes no bookmark because of one.
+
 Vimma reads `bookmarks.toml` from the folder that holds `config.toml` (`~/.config/vimma/`, or
 the folder of a `config.toml` that is a link, such as a `stow` folder of links). Without the
 file nothing changes. Each `[bookmarks.<workspace>]` table is that workspace's folder in the
@@ -4091,31 +4095,49 @@ URL.
 - **Read-only, for now.** The file is the source: a change made in Firefox to a mirrored
   folder (the Library, the star, an import, Sync) is put back from the file a second later,
   with a notice, and Vimma's own bookmark keys (`ctrl+b a`, the panel's `a`, `r`, `m`, `d`)
-  say `bookmarks.toml is read-only` there. Edit the file to change these bookmarks. Bookmarks
+  say `bookmarks.toml is read-only` there; `:wsdelete` keeps a mirrored folder, and
+  `:wsrename` leaves its name to the table. Edit the file to change these bookmarks. Bookmarks
   outside the mirrored folders work as before. Separators, tags and keywords in a mirrored
-  folder are kept as they are.
+  folder are kept as they are. With Firefox Sync on two machines whose files differ, each puts
+  the other's changes back; carry mirrored folders with one of git or Sync, not both.
 - **Bookmarklets.** A `javascript:` line reaches Firefox's bookmarks only while `config.toml`
   says `[bookmarks] bookmarklets = "user"` (or `"agent"`), because a bookmark there runs from
   Firefox's Library and toolbar with one click. A file you pulled from someone else therefore
-  cannot add a script to your bookmarks unless you allowed bookmarklets. A `data:` line is an
-  error. Settings are read only from `config.toml`: `bookmarks.toml` holds tables and nothing
-  else.
+  cannot add a script to your bookmarks unless you allowed bookmarklets; count a file an
+  agent wrote, or one a tool you ran changed, as someone else's. Lines hold only `http`,
+  `https`, `file`, `about` and `javascript:` addresses; anything else (`data:`, `chrome:`,
+  `view-source:`, …) is an error. Settings are read only from `config.toml`: `bookmarks.toml`
+  holds tables and nothing else.
+- **Limits.** A file holds at most 20,000 lines, paths at most 32 names deep, and names
+  without control, bidirectional or invisible characters; a table name has no spaces at its
+  ends. A file over 4 MiB is not read.
 - **Deleting.** Every load that removes bookmarks says how many
-  (`bookmarks.toml: 3 bookmarks removed from work`). One that would remove more than 20, or
-  more than half of a table's, asks first: `y` applies the file; `n`, `Esc` or no answer in a
-  minute keeps every bookmark and pauses the mirror until the file changes again. A table you
-  add for a folder that already has bookmarks takes the folder over, and asks before it
-  deletes any bookmark the table lacks.
+  (`bookmarks.toml: 3 bookmarks removed from "work"`). One that would remove more than 20, or
+  more than half of a table's, asks first, whether the lines left the file or the bookmarks
+  came in from Sync or the Library and are being put back. The question waits until the
+  window's command line and prompts are closed, and ignores keys for a moment as it appears,
+  so a `y` typed into a page never answers it. `y` applies what it showed, and asks again if
+  there is more by then; `n`, `Esc` or no answer in a minute keeps every bookmark and pauses
+  the mirror until the file changes again. A table you add for a folder that already has
+  bookmarks takes the folder over, and asks before it deletes any bookmark the table lacks.
+  Many small edits each under the limits are not asked about: the notices say what each
+  removed.
 - **Errors.** A file with an error is not applied at all: the status bar shows the first, as
   `bookmarks.toml:<line>: <message>`, and the Browser Console lists them all. A file that goes
   missing pauses the mirror too (`bookmarks.toml is missing; bookmarks paused`), so a moved or
-  renamed file never empties your folders.
+  renamed file never empties your folders; so does a missing `config.toml` that held the
+  tables. Put the file back, or type `:bookmarks forget` to stop mirroring: Firefox keeps every
+  bookmark, the keys work in those folders again, and the mirror starts again only when the
+  file changes.
 - **One small file.** For a small setup, the same tables can go in `config.toml` itself, after
   `[bookmarks]`. Once `bookmarks.toml` exists it is the only bookmarks file, and tables in
   `config.toml` are ignored with a warning. `bookmarks.toml` is the better home: an older Vimma
   refuses a `config.toml` that has these tables.
-- **Recovery.** Firefox keeps its daily bookmark backups: Library → Import and Backup →
-  Restore undoes a bad file or a bad merge.
+- **Recovery.** The file is the source for its folders, so recover them in the file: undo the
+  edit, or `git revert` the commit, and the folders follow. A Library restore into a mirrored
+  folder is put back from the file like any other change. Firefox's daily bookmark backups
+  (Library → Import and Backup → Restore) still recover everything outside the mirrored
+  folders, and the mirrored ones after `:bookmarks forget`.
 
 ### Firefox's Bookmarks Toolbar
 

@@ -47,6 +47,8 @@ export class RenamePrompt {
     this.yes = null;
     /** @type {(() => void) | null} a y/N question's no: any answer but y, or the prompt closed */
     this.no = null;
+    /** A y/N question takes no answer before this time (Date.now()); 0: at once. */
+    this.answerAfter = 0;
     /** @type {Record<string, () => void> | null} a `choose` question's answers, by key */
     this.choices = null;
     /** @type {((text: string) => void) | null} a `prompt`'s Enter, while one is open */
@@ -79,12 +81,14 @@ export class RenamePrompt {
    * @param {() => void} yes  after the prompt has closed
    * @param {() => void} [no]  any other answer, or the question closed or replaced unanswered
    *   (docs/specs/bookmarks-file.md Behaviour 7: no answer applies nothing)
+   * @param {{ settleMs?: number }} [options]  keys within `settleMs` of it showing are ignored
    * @returns {boolean} whether it opened (not over a page in DOM fullscreen)
    */
-  ask(question, yes, no) {
+  ask(question, yes, no, { settleMs = 0 } = {}) {
     if (!this.show(`${question} `, "", question, "alertdialog")) return false;
     this.yes = yes;
     this.no = no ?? null;
+    this.answerAfter = settleMs ? Date.now() + settleMs : 0;
     return true;
   }
 
@@ -207,8 +211,9 @@ export class RenamePrompt {
     } else if (yes) {
       // Modifier keys alone (shift for `Y`) are not an answer.
       if (["Shift", "CapsLock"].includes(e.key)) return;
-      // Nor is a key held down from before the question (the D of ctrl+b shift+d repeating).
-      if (e.repeat) {
+      // Nor is a key held down from before the question (the D of ctrl+b shift+d repeating),
+      // or typed as a question from outside a key appears.
+      if (e.repeat || (this.answerAfter && Date.now() < this.answerAfter)) {
         e.preventDefault();
         e.stopPropagation();
         return;

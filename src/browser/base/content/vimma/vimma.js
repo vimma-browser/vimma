@@ -108,6 +108,8 @@
     configRefused: ConfigHost.refused,
     addAgentProvider: ConfigHost.addAgentProvider,
     editSiteUnbind: ConfigHost.editSiteUnbind,
+    bookmarksFileForget: ConfigHost.bookmarksForget,
+    bookmarksFileWords: ConfigHost.bookmarksWords,
   });
   VimmaHost.init(win);
 

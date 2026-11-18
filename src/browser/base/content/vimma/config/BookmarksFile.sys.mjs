@@ -3,19 +3,23 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // bookmarks.toml, mirrored into Places (docs/specs/bookmarks-file.md, Delivery slice 1: the
-// read-only mirror). One per app, started and fed by ConfigHost: it hands over config.toml's
-// text after each read (inline tables, D2) and calls `tick` on each of its polls. The file is
-// read beside config.toml's path (D1), settled (D15), checked by core's bookmarks-file.mjs, and
-// applied to each table's workspace folder in Places as one plan (D4-D6). A change made in
-// Places to a mirrored folder is put back from the file a second after its burst (Behaviour 14).
-// A file with an error, or a missing file after one existed, pauses both directions (D9); a run
-// that deletes many bookmarks, or takes over a folder that has bookmarks the file lacks, asks
-// first (D14, Behaviour 18). Vimma's own bookmark keys refuse in mirrored folders
-// (host/bookmark-ops.mjs, setMirroredFolders). Nothing here writes bookmarks.toml.
+// read-only mirror), behind `vimma.feature.bookmarksFile` until the feature is finished: while
+// the pref is off nothing here reads a file, listens to Places or refuses a key. One per app,
+// started and fed by ConfigHost: it hands over config.toml's text after each read (inline tables,
+// D2) and calls `tick` on each of its polls. The file is read beside config.toml's path (D1),
+// settled (D15), checked by core's bookmarks-file.mjs, and applied to each table's workspace
+// folder in Places as one plan (D4-D6). A change made in Places to a mirrored folder is put back
+// from the file a second after its burst (Behaviour 14). A file with an error, or a missing file
+// after one existed, pauses both directions (D9) until it reads again or `:bookmarks forget`
+// (Behaviour 19); a run that deletes many bookmarks, or takes over a folder that has bookmarks
+// the file lacks, asks first, and a yes approves those removals and no more (D14, Behaviour 18).
+// Vimma's own bookmark keys refuse in mirrored folders (host/bookmark-ops.mjs,
+// setMirroredFolders). Nothing here writes bookmarks.toml.
 
 import {
   BOOKMARKS_FILE,
   MAX_BOOKMARKS_FILE_BYTES,
+  configBookmarklets,
   formatBase,
   formatBookmarksFileError,
   parseBase,
@@ -23,12 +27,11 @@ import {
   readBookmarks,
 } from "../core/bookmarks-file.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
-import { setMirroredFolders } from "../host/bookmark-ops.mjs";
+import { MIRRORED_REFUSAL, setMirroredFolders } from "../host/bookmark-ops.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 
 /**
  * @import { Base, BookmarksFileError, MirrorOp, PlacesNode } from "../core/bookmarks-file.mjs"
- * @import { BookmarkletsSetting } from "../core/bookmarks.mjs"
  */
 
 const lazy = /** @type {Lazy<"clearTimeout" | "setTimeout">} */ ({});
@@ -37,6 +40,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
+/** The unfinished feature's switch (CONTRIBUTING.md, "Unfinished features"). */
+export const FEATURE_PREF = "vimma.feature.bookmarksFile";
 /** Prefs for tests: the settle (D15), the burst (D15) and the question's time (Behaviour 7). */
 const SETTLE_PREF = "vimma.bookmarks.settleMs";
 const BURST_PREF = "vimma.bookmarks.burstMs";
@@ -44,6 +49,8 @@ const ASK_PREF = "vimma.bookmarks.askMs";
 const DEFAULT_SETTLE_MS = 500;
 const DEFAULT_BURST_MS = 1000;
 const DEFAULT_ASK_MS = 60_000;
+/** A key held or typed as the question appears is not its answer (`y` on a page). */
+const ASK_SETTLE_MS = 400;
 /** The base (D4), in the profile: the model both sides last agreed on, with guids. */
 const BASE_FILE = "vimma-bookmarks.json";
 
@@ -80,6 +87,13 @@ function sha256(text) {
  */
 
 /**
+ * What starts a run, and what a `y` approved: `approved` is the number of removals the
+ * question showed, `asked` what the run read when it asked.
+ * @typedef {{ trigger: "start" | "file" | "config" | "places", approved?: number,
+ *   asked?: string }} RunHow
+ */
+
+/**
  * How a notice names who made a change (Behaviour 14): Firefox stands for every
  * DEFAULT-source change (the Library, the star, the menus, an add-on).
  * @param {number} source
@@ -97,39 +111,52 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 export class BookmarksFileImpl {
   /**
-   * @param {{ configPath: () => string, basePath?: string,
-   *   bookmarklets?: () => BookmarkletsSetting,
-   *   databaseStatus?: () => number, initComplete?: () => Promise<void>,
-   *   say?: (text: string) => void,
+   * @param {{ configPath: () => string, basePath?: string, enabled?: () => boolean,
+   *   initComplete?: () => Promise<void>, say?: (text: string) => void,
    *   ask?: (question: string, yes: () => void, no: () => void) => (() => void) | null,
+   *   whenFree?: (fn: () => void) => () => void,
    *   showErrors?: (errors: BookmarksFileError[]) => void,
-   *   mirrored?: (guids: ReadonlySet<string>) => void }} options
-   *   `configPath`: config.toml's path, not its symlink's target (D1); the rest default to the
-   *   profile, Places and the most recent window, and are replaced by tests
+   *   mirrored?: (guids: ReadonlySet<string>, refusal: string) => void }} options
+   *   `configPath`: config.toml's path, not its symlink's target (D1); `enabled`: the feature
+   *   pref; the rest default to the profile, Places and the most recent window, and are
+   *   replaced by tests
    */
   constructor(options) {
     this.configPath = options.configPath;
     this.basePath = options.basePath ?? PathUtils.join(PathUtils.profileDir, BASE_FILE);
-    this.bookmarklets = options.bookmarklets ?? (() => /** @type {BookmarkletsSetting} */ ("none"));
-    this.databaseStatus = options.databaseStatus ?? (() => places().history.databaseStatus);
+    this.enabled = options.enabled ?? (() => Services.prefs.getBoolPref(FEATURE_PREF, false));
     this.initComplete = options.initComplete ?? placesInitComplete;
     this.say = options.say ?? sayInRecentWindow;
     this.ask = options.ask ?? askInRecentWindow;
+    this.whenFree = options.whenFree ?? whenRecentWindowFree;
     this.showErrors = options.showErrors ?? (() => {});
     this.mirrored = options.mirrored ?? setMirroredFolders;
-    /** @type {string | null} config.toml's text as last read; null when it is missing */
-    this.configText = null;
+    /**
+     * config.toml's text as last read: undefined before ConfigHost's first read, null when the
+     * file is missing. The first run waits for it, so inline tables are never read as gone.
+     * @type {string | null | undefined}
+     */
+    this.configText = undefined;
     /** @type {Base | null | undefined} undefined until read from disk */
     this.base = undefined;
-    /** The first run waits for Places (D17). */
+    /** Places' start-up is done (D17). */
+    this.placesReady = false;
+    /** The first run has been asked for; runs before it are not. */
     this.ready = false;
+    /** Running: the feature is on and start() was called. */
+    this.active = false;
+    /** start() was called (ConfigHost's first window). */
+    this.started = false;
     /** @type {string} bookmarks.toml's stat at the last read; "" forces one */
     this.signature = "";
     /** @type {string | null} a changed stat waiting to settle */
     this.settling = null;
-    /** @type {{ why: "error" | "missing" | "declined" | "failed", input: string } | null} */
+    /**
+     * @type {{ why: "error" | "missing" | "declined" | "failed" | "forgotten", input: string,
+     *   file?: string } | null}
+     */
     this.paused = null;
-    /** @type {string} what the last applied run read: the file's hash and the settings */
+    /** @type {string} what the last applied run read: the file, the settings */
     this.lastInput = "";
     /** @type {Promise<void>} one run at a time */
     this.queue = Promise.resolve();
@@ -143,7 +170,7 @@ export class BookmarksFileImpl {
     this.burst = new Map();
     /** @type {Map<string, string>} each mirrored guid → its table */
     this.tableOf = new Map();
-    /** @type {(() => void) | null} closes the open question */
+    /** @type {(() => void) | null} closes the open (or waiting) question */
     this.cancelAsk = null;
     /** @type {((events: unknown[]) => void) | null} */
     this.listener = null;
@@ -151,47 +178,98 @@ export class BookmarksFileImpl {
     this.errors = [];
     /** @type {BookmarksFileError[]} */
     this.warnings = [];
-    this.stopped = false;
+    this.onFeature = () => this.feature();
   }
 
   get path() {
     return PathUtils.join(PathUtils.parent(this.configPath()) ?? "/", BOOKMARKS_FILE);
   }
 
-  /** Starts after Places' browser start-up (D17); never blocks the window. */
+  /** Once, with ConfigHost's first window: runs while the feature pref is on. */
   start() {
-    this.stopped = false;
+    if (this.started) return;
+    this.started = true;
+    Services.prefs.addObserver(FEATURE_PREF, this.onFeature);
+    this.feature();
+  }
+
+  /** The feature pref changed (or start): turns the mirror on or off. */
+  feature() {
+    if (!this.started) return;
+    if (this.enabled()) this.activate();
+    else this.deactivate();
+  }
+
+  activate() {
+    if (this.active) return;
+    this.active = true;
     this.initComplete()
-      .then(() => {
-        if (this.stopped) return;
-        this.ready = true;
-        const PU = places();
-        const status = this.databaseStatus();
-        const fresh =
-          status === PU.history.DATABASE_STATUS_CREATE ||
-          status === PU.history.DATABASE_STATUS_CORRUPT;
-        return this.enqueue({ trigger: "start", fresh });
+      .then(async () => {
+        if (!this.active) return;
+        this.placesReady = true;
+        // Keys refuse and outside changes are watched from the start, before the first run:
+        // a change made while a question waits, or the file is broken, is not lost (D9).
+        this.follow(await this.loadBase());
+        this.maybeFirstRun();
       })
       .catch((e) => console.error("vimma: bookmarks.toml not mirrored at start", e));
   }
 
+  /** The first run, once Places is ready and config.toml has been read once (D17). */
+  maybeFirstRun() {
+    if (this.ready || !this.active || !this.placesReady || this.configText === undefined) return;
+    this.ready = true;
+    this.enqueue({ trigger: "start" });
+  }
+
+  deactivate() {
+    this.active = false;
+    this.ready = false;
+    this.placesReady = false;
+    for (const t of [this.burstTimer, this.settleTimer]) if (t !== null) lazy.clearTimeout(t);
+    this.burstTimer = this.settleTimer = null;
+    this.cancelAsk?.();
+    this.unlisten();
+    this.mirrored(new Set(), MIRRORED_REFUSAL);
+    this.report([], []);
+    this.signature = "";
+    this.lastInput = "";
+  }
+
+  stop() {
+    if (this.started) Services.prefs.removeObserver(FEATURE_PREF, this.onFeature);
+    this.started = false;
+    this.deactivate();
+  }
+
   /**
-   * Drops the base and turns the mirror off until a bookmarks file exists again; Places keeps
-   * every bookmark it has (Behaviour 19, which `:bookmarks forget` gives the user in Delivery
-   * slice 4; the tests use it now).
-   * @returns {Promise<void>}
+   * `:bookmarks forget` (Behaviour 19): drops the base and turns the mirror off until the
+   * bookmarks file changes or exists again; Places keeps every bookmark it has.
+   * @returns {Promise<string>} what to tell the user
    */
   forget() {
+    if (!this.active) return Promise.resolve(":bookmarks forget: bookmarks in a file are off");
+    /** @type {Promise<string>} */
     const run = this.queue.then(async () => {
       this.cancelAsk?.();
-      this.paused = null;
-      this.lastInput = "";
       this.burst.clear();
       this.report([], []);
       await this.saveBase(null);
+      this.paused = { why: "forgotten", input: "" };
+      this.lastInput = "";
+      this.signature = await this.stat();
+      return `${BOOKMARKS_FILE} forgotten: Places keeps every bookmark; the mirror is off until the file changes`;
     });
-    this.queue = run.catch((e) => console.error("vimma: bookmarks base not dropped", e));
-    return this.queue;
+    this.queue = run.then(
+      () => {},
+      (e) => console.error("vimma: bookmarks base not dropped", e),
+    );
+    return run;
+  }
+
+  /** The words `:bookmarks` takes while the feature is on, for Tab. */
+  words() {
+    return this.active ? ["forget"] : [];
   }
 
   /** Settles once every run asked for so far has ended. */
@@ -199,21 +277,16 @@ export class BookmarksFileImpl {
     return this.queue;
   }
 
-  stop() {
-    this.stopped = true;
-    for (const t of [this.burstTimer, this.settleTimer]) if (t !== null) lazy.clearTimeout(t);
-    this.burstTimer = this.settleTimer = null;
-    this.cancelAsk?.();
-    this.unlisten();
-  }
-
   /**
    * config.toml was read (ConfigHost): its inline tables and the settings may have changed.
-   * @param {string | null} text
+   * @param {string | null} text  null: there is no config.toml
    */
   configRead(text) {
+    const first = this.configText === undefined;
+    const changed = this.configText !== text;
     this.configText = text;
-    if (this.ready) this.enqueue({ trigger: "config" });
+    if (first) this.maybeFirstRun();
+    else if (this.ready && changed) this.enqueue({ trigger: "config" });
   }
 
   /**
@@ -261,7 +334,7 @@ export class BookmarksFileImpl {
   async stat() {
     try {
       const info = await IOUtils.stat(this.path);
-      return `${info.lastModified}|${info.size}`;
+      return `${info.lastModified}|${info.size}|${info.type}`;
     } catch (e) {
       if (notFound(e)) return "missing";
       throw e;
@@ -269,12 +342,11 @@ export class BookmarksFileImpl {
   }
 
   /**
-   * @param {{ trigger: "start" | "file" | "config" | "places", fresh?: boolean,
-   *   confirmed?: boolean, asked?: string }} how
+   * @param {RunHow} how
    * @returns {Promise<void>}
    */
   enqueue(how) {
-    const run = this.queue.then(() => (this.stopped ? undefined : this.run(how)));
+    const run = this.queue.then(() => (this.active ? this.run(how) : undefined));
     this.queue = run.catch((e) => console.error("vimma: bookmarks.toml run failed", e));
     return this.queue;
   }
@@ -304,7 +376,8 @@ export class BookmarksFileImpl {
   }
 
   /**
-   * Keeps the keys' refusal (bookmark-ops) and the Places listener in step with the base.
+   * Keeps the keys' refusal (bookmark-ops) and the Places listener in step with the base; a
+   * missing file's pause says how out of it.
    * @param {Base | null} base
    */
   follow(base) {
@@ -313,7 +386,11 @@ export class BookmarksFileImpl {
       this.tableOf.set(t.folder, t.name);
       for (const e of t.entries) this.tableOf.set(e.guid, t.name);
     }
-    this.mirrored(new Set((base?.tables ?? []).map((t) => t.folder)));
+    const refusal =
+      this.paused?.why === "missing"
+        ? `${this.paused.file ?? BOOKMARKS_FILE} is missing, so these bookmarks are paused: restore it, or :bookmarks forget`
+        : MIRRORED_REFUSAL;
+    this.mirrored(new Set((base?.tables ?? []).map((t) => t.folder)), refusal);
     if (base?.tables.length) this.listen();
     else this.unlisten();
   }
@@ -350,7 +427,7 @@ export class BookmarksFileImpl {
       who.add(sourceName(e.source));
       this.burst.set(table, who);
     }
-    if (!any || this.applying || this.paused) {
+    if (!any || this.applying || this.paused || !this.ready) {
       if (this.applying || this.paused) this.burst.clear();
       return;
     }
@@ -365,17 +442,25 @@ export class BookmarksFileImpl {
   }
 
   /**
-   * Reads bookmarks.toml; null when it does not exist. A file over the limit is not read
+   * Reads bookmarks.toml; null when it does not exist. Only a regular file is read (a FIFO
+   * would block the queue), and never more than the limit, even if it grows meanwhile
    * (Behaviour 4).
-   * @returns {Promise<{ text: string | null, tooBig: boolean }>}
+   * @returns {Promise<{ text: string | null, problem: string | null }>}
    */
   async readFile() {
     try {
       const info = await IOUtils.stat(this.path);
-      if ((info.size ?? 0) > MAX_BOOKMARKS_FILE_BYTES) return { text: null, tooBig: true };
-      return { text: await IOUtils.readUTF8(this.path), tooBig: false };
+      if (info.type !== "regular") return { text: null, problem: "not a regular file; not read" };
+      if ((info.size ?? 0) > MAX_BOOKMARKS_FILE_BYTES) {
+        return { text: null, problem: "larger than 4 MiB; not read" };
+      }
+      const bytes = await IOUtils.read(this.path, { maxBytes: MAX_BOOKMARKS_FILE_BYTES + 1 });
+      if (bytes.length > MAX_BOOKMARKS_FILE_BYTES) {
+        return { text: null, problem: "larger than 4 MiB; not read" };
+      }
+      return { text: new TextDecoder().decode(bytes), problem: null };
     } catch (e) {
-      if (notFound(e)) return { text: null, tooBig: false };
+      if (notFound(e)) return { text: null, problem: null };
       throw e;
     }
   }
@@ -405,11 +490,24 @@ export class BookmarksFileImpl {
   }
 
   /**
+   * Pauses for a missing file (D9): the bookmarks file, or config.toml holding the inline
+   * tables, existed and is gone; nothing is deleted.
+   * @param {string} file
+   * @param {string} input
+   * @param {BookmarksFileError[]} warnings
+   */
+  pauseMissing(file, input, warnings) {
+    if (this.paused?.why !== "missing") this.say(`${file} is missing; bookmarks paused`);
+    this.paused = { why: "missing", input, file };
+    this.report([], warnings);
+    this.follow(this.base ?? null);
+  }
+
+  /**
    * One run (D4, D5): reads the bookmarks file and Places, plans, asks when it must, applies,
    * and ends with one more compare, so that a change that landed during the apply is put back
    * then. Runs one at a time (enqueue).
-   * @param {{ trigger: "start" | "file" | "config" | "places", fresh?: boolean,
-   *   confirmed?: boolean, asked?: string }} how
+   * @param {RunHow} how
    */
   async run(how) {
     if (!this.ready) return;
@@ -418,32 +516,37 @@ export class BookmarksFileImpl {
     const burst = new Map(this.burst);
     this.burst.clear();
     const base = await this.loadBase();
-    const { text: fileText, tooBig } = await this.readFile();
-    const hash = fileText === null ? "" : sha256(fileText);
-    const bookmarklets = this.bookmarklets();
-    const r = tooBig
+    const { text: fileText, problem } = await this.readFile();
+    const configText = this.configText ?? null;
+    const bookmarklets = configBookmarklets(configText);
+    const r = problem
       ? {
           from: /** @type {const} */ ("bookmarks.toml"),
           tables: [],
-          errors: [{ file: BOOKMARKS_FILE, line: 0, message: "larger than 4 MiB; not read" }],
+          errors: [{ file: BOOKMARKS_FILE, line: 0, message: problem }],
           warnings: [],
         }
-      : readBookmarks({ file: fileText, config: this.configText });
+      : readBookmarks({ file: fileText, config: configText });
     const source = r.from;
     const input = JSON.stringify([
       source,
-      hash,
-      source === "config.toml" ? this.configText : "",
+      fileText === null ? "" : sha256(fileText),
+      source === "config.toml" && configText !== null ? sha256(configText) : "",
       bookmarklets,
     ]);
 
+    // `:bookmarks forget` holds until the file or config.toml changes (Behaviour 19).
+    if (this.paused?.why === "forgotten") {
+      if (how.trigger === "places" || how.trigger === "start") return;
+      this.paused = null;
+    }
     // D9: a missing file after one existed is a pause, never "delete every bookmark".
-    if (!tooBig && fileText === null && base?.source === BOOKMARKS_FILE) {
-      if (this.paused?.why !== "missing") {
-        this.say(`${BOOKMARKS_FILE} is missing; bookmarks paused`);
-      }
-      this.paused = { why: "missing", input };
-      this.report([], r.warnings);
+    if (!problem && fileText === null && base?.source === BOOKMARKS_FILE) {
+      this.pauseMissing(BOOKMARKS_FILE, input, r.warnings);
+      return;
+    }
+    if (!problem && fileText === null && base?.source === "config.toml" && configText === null) {
+      this.pauseMissing("config.toml", input, r.warnings);
       return;
     }
     if (source === null && !base) {
@@ -460,19 +563,27 @@ export class BookmarksFileImpl {
       }
       this.paused = { why: "error", input };
       this.report(r.errors, r.warnings);
+      this.follow(base);
       return;
     }
     this.report([], r.warnings);
     // Behaviour 7: no answer, or no, holds both ways until the file (or its settings) change.
-    if (this.paused?.why === "declined" && this.paused.input === input && !how.confirmed) return;
-    if (how.asked !== undefined && how.asked !== input) {
-      how = { ...how, confirmed: false }; // the file changed while it asked: ask again
-    }
     if (
-      !this.paused &&
+      this.paused?.why === "declined" &&
+      this.paused.input === input &&
+      how.approved === undefined
+    ) {
+      return;
+    }
+    /** @type {number | null} */
+    let approved = how.approved ?? null;
+    if (how.asked !== undefined && how.asked !== input) approved = null; // changed: ask again
+    const wasPaused = this.paused;
+    if (
+      !wasPaused &&
       how.trigger !== "places" &&
       how.trigger !== "start" &&
-      !how.confirmed &&
+      approved === null &&
       base &&
       this.lastInput === input
     ) {
@@ -482,26 +593,25 @@ export class BookmarksFileImpl {
     const tables = r.tables;
     const PU = places();
     const ws = WorkspaceStore.definitions.workspaces.map((d) => ({
-      id: d.id,
       name: d.name,
       folder: d.bookmarksFolder ?? null,
     }));
-    /** @param {{ tables: Base["tables"] } | null} from @param {boolean} confirmed */
-    const plan = async (from, confirmed) =>
+    /** @param {{ tables: Base["tables"] } | null} from @param {number | null} ok */
+    const plan = async (from, ok) =>
       planMirror({
         tables,
         base: from,
         places: /** @type {PlacesNode} */ (await PU.promiseBookmarksTree("")),
         workspaces: ws,
         bookmarklets,
-        confirmed,
-        fresh: !!how.fresh,
+        approved: ok,
         makeGuid: () => PU.history.makeGuid(),
       });
-    let p = await plan(base, !!how.confirmed);
+    let p = await plan(base, approved);
     if (p.ask) {
       this.paused = { why: "declined", input };
-      this.question(p.ask, input, how);
+      this.follow(base);
+      this.question(p.ask, p.removing, input);
       return;
     }
     let failed = false;
@@ -511,9 +621,21 @@ export class BookmarksFileImpl {
       console.warn("vimma: bookmarks.toml apply failed; trying again from Places as it is", e);
       failed = true;
     }
+    /** @type {Base} */
+    const next = {
+      version: 1,
+      source: /** @type {Base["source"]} */ (source ?? base?.source ?? BOOKMARKS_FILE),
+      tables: p.base.tables,
+    };
     // D5: the closing compare, against what this run made (and Sync racing an apply: one more
-    // try from the new state). What landed meanwhile is an outside change: put back unasked.
-    const again = await plan(p.base, true);
+    // try from the new state). What landed meanwhile is an outside change, asked about like any.
+    const again = await plan(next, null);
+    if (again.ask) {
+      this.paused = { why: "declined", input };
+      await this.saveBase(next);
+      this.question(again.ask, again.removing, input);
+      return;
+    }
     if (again.ops.length) {
       try {
         await this.apply(again.ops);
@@ -525,34 +647,29 @@ export class BookmarksFileImpl {
           return;
         }
       }
-      p = { ...again, removed: [...p.removed, ...again.removed] };
-    } else if (failed) {
-      p = again;
     }
+    const touched = new Set([...p.touched, ...again.touched]);
+    p = { ...again, removed: [...p.removed, ...again.removed], skipped: p.skipped };
     this.paused = null;
-    /** @type {Base} */
-    const next = {
-      version: 1,
-      source: /** @type {Base["source"]} */ (source ?? base?.source ?? BOOKMARKS_FILE),
-      hash,
-      tables: p.base.tables,
-    };
-    await this.saveBase(source === null && !next.tables.length ? null : next);
+    const saved = { ...next, tables: again.base.tables };
+    await this.saveBase(source === null && !saved.tables.length ? null : saved);
     for (const link of p.links) this.link(link.name, link.folder);
     const loaded = this.lastInput !== input;
     this.lastInput = input;
-    this.notices(how, p, loaded, bookmarklets, burst);
+    this.notices(how, p, loaded, bookmarklets, burst, touched);
   }
 
   /**
-   * What the run says (Behaviour 5, 6, 14), as one notice.
-   * @param {{ trigger: string }} how
+   * What the run says (Behaviour 5, 6, 14), as one notice. A put-back is said only for a table
+   * the run changed: a separator or a kept bookmarklet is no change to put back.
+   * @param {RunHow} how
    * @param {ReturnType<typeof planMirror>} p
    * @param {boolean} loaded  the file or its settings changed since the last run
-   * @param {BookmarkletsSetting} bookmarklets
+   * @param {string} bookmarklets
    * @param {Map<string, Set<string>>} burst  who changed each table before the run
+   * @param {ReadonlySet<string>} touched  the tables the run changed
    */
-  notices(how, p, loaded, bookmarklets, burst) {
+  notices(how, p, loaded, bookmarklets, burst, touched) {
     /** @type {string[]} */
     const said = [];
     /** @type {Map<string, number>} */
@@ -563,11 +680,16 @@ export class BookmarksFileImpl {
       }
     }
     for (const [table, n] of fromFile) {
-      said.push(`${BOOKMARKS_FILE}: ${plural(n, "bookmark")} removed from ${table}`);
+      said.push(
+        `${BOOKMARKS_FILE}: ${plural(n, "bookmark")} removed from ${JSON.stringify(table)}`,
+      );
     }
     if (how.trigger === "places") {
       for (const [table, who] of burst) {
-        said.push(`${BOOKMARKS_FILE}: ${[...who].join(", ")} change to ${table} put back`);
+        if (!touched.has(table)) continue;
+        said.push(
+          `${BOOKMARKS_FILE}: ${[...who].join(", ")} change to ${JSON.stringify(table)} put back`,
+        );
       }
     }
     if (loaded && p.skipped.length) {
@@ -581,49 +703,57 @@ export class BookmarksFileImpl {
   }
 
   /**
-   * Behaviour 7 and 18: asked outside the run (D11), in the most recent window; a `y` runs the
-   * plan again, confirmed. `n`, Esc or no answer in time applies nothing and pauses until the
-   * file changes.
+   * Behaviour 7 and 18: asked outside the run (D11), in the most recent window, once its prompt
+   * line and command line are free (never over a prompt the user is typing in); the 60 s start
+   * when it shows. A `y` runs the plan again, approving `removing` removals and no more. `n`,
+   * Esc, a closed prompt or no answer in time applies nothing and pauses until the file changes.
    * @param {string} text
+   * @param {number} removing
    * @param {string} input
-   * @param {{ trigger: "start" | "file" | "config" | "places", fresh?: boolean }} how
    */
-  question(text, input, how) {
+  question(text, removing, input) {
     this.cancelAsk?.();
     let answered = false;
     /** @type {number | null} */
     let timer = null;
-    const no = () => {
-      if (answered) return;
+    /** @type {(() => void) | null} */
+    let close = null;
+    const end = () => {
       answered = true;
       if (timer !== null) lazy.clearTimeout(timer);
       this.cancelAsk = null;
+    };
+    const no = () => {
+      if (answered) return;
+      end();
       this.say(`${BOOKMARKS_FILE} not applied; bookmarks paused until the file changes`);
     };
     const yes = () => {
       if (answered) return;
-      answered = true;
-      if (timer !== null) lazy.clearTimeout(timer);
-      this.cancelAsk = null;
+      end();
       this.paused = null;
-      this.enqueue({ ...how, trigger: "file", confirmed: true, asked: input });
+      this.enqueue({ trigger: "file", approved: removing, asked: input });
     };
-    const cancel = this.ask(text, yes, no);
-    if (!cancel) {
-      no();
-      return;
-    }
+    const stopWaiting = this.whenFree(() => {
+      if (answered) return;
+      close = this.ask(text, yes, no);
+      if (!close) {
+        no();
+        return;
+      }
+      timer = lazy.setTimeout(
+        () => {
+          timer = null;
+          this.cancelAsk?.();
+        },
+        Services.prefs.getIntPref(ASK_PREF, DEFAULT_ASK_MS),
+      );
+    });
     this.cancelAsk = () => {
-      cancel();
+      stopWaiting();
+      if (close) close();
       no();
     };
-    timer = lazy.setTimeout(
-      () => {
-        timer = null;
-        this.cancelAsk?.();
-      },
-      Services.prefs.getIntPref(ASK_PREF, DEFAULT_ASK_MS),
-    );
   }
 
   /**
@@ -637,8 +767,7 @@ export class BookmarksFileImpl {
     this.applying = true;
     try {
       // Runs of inserts go in as trees, one transaction per parent (insertTree appends in the
-      // order given, as the plan expects); removals in one call. 5000 lines are then a few
-      // writes, not 5000 (Tests: the 5000-bookmark budget).
+      // order given, as the plan expects); removals in one call.
       for (let i = 0; i < ops.length;) {
         const op = /** @type {MirrorOp} */ (ops[i]);
         if (op.op === "insert") {
@@ -761,5 +890,30 @@ function sayInRecentWindow(text) {
  */
 function askInRecentWindow(question, yes, no) {
   const win = recentWindow();
-  return win ? VimmaHost.ask(win, question, yes, no) : null;
+  return win ? VimmaHost.ask(win, question, yes, no, { settleMs: ASK_SETTLE_MS }) : null;
+}
+
+/**
+ * Runs `fn` once the most recent window's prompt line and command line are both closed: at
+ * once, or on the window's next state change that leaves them closed.
+ * @param {() => void} fn
+ * @returns {() => void}  stops waiting
+ */
+function whenRecentWindowFree(fn) {
+  const win = recentWindow();
+  if (!win || !VimmaHost.promptBusy(win)) {
+    fn();
+    return () => {};
+  }
+  let done = false;
+  const off = VimmaHost.onStateChange(win, () => {
+    if (done || VimmaHost.promptBusy(win)) return;
+    done = true;
+    off();
+    fn();
+  });
+  return () => {
+    done = true;
+    off();
+  };
 }

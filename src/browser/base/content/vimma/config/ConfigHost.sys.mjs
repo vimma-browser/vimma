@@ -130,7 +130,6 @@ let bookmarksErrors = [];
  */
 const bookmarksFile = new BookmarksFileImpl({
   configPath,
-  bookmarklets: () => active?.config.bookmarks.bookmarklets ?? "none",
   showErrors: (list) => {
     bookmarksErrors = list.map((e) => ({
       ...(e.line ? { line: e.line } : {}),
@@ -619,6 +618,20 @@ async function rewriteConfigNow(compute) {
 export const ConfigHost = {
   /** The bookmarks.toml mirror (docs/specs/bookmarks-file.md), for tests and about:vimma. */
   bookmarksFile,
+
+  /**
+   * `:bookmarks forget` (docs/specs/bookmarks-file.md Behaviour 19), which vimma.js hands the
+   * host through host-services. A function of its own, so it can be handed over alone.
+   * @returns {Promise<string>} what to tell the user
+   */
+  bookmarksForget() {
+    return bookmarksFile.forget();
+  },
+
+  /** The words `:bookmarks` completes to: `forget` while the feature is on. */
+  bookmarksWords() {
+    return bookmarksFile.words();
+  },
 
   /**
    * The last read's errors, which kept the file from applying (`[search]`'s, found after it
