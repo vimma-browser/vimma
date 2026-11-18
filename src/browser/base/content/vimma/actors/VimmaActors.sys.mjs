@@ -675,9 +675,14 @@ export const VimmaActors = {
    * Makes the next find start where Vim's would (spec m1-find): at a selection still on screen,
    * else at the top of the viewport, not at the document's first match.
    * @param {MozBrowser} browser
+   * @returns {Promise<void>}  resolves once the anchor is set (or could not be)
    */
-  findAnchor(browser) {
-    actorFor(browser.browsingContext)?.sendAsyncMessage("Vimma:FindAnchor");
+  async findAnchor(browser) {
+    try {
+      await actorFor(browser.browsingContext)?.sendQuery("Vimma:FindAnchor");
+    } catch {
+      // the page went away: its next find starts where Firefox's would
+    }
   },
 
   /**
