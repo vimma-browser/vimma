@@ -34,6 +34,7 @@ export * from "./ui/statusbar.mjs";
 export * from "./ui/picker.mjs";
 export * from "./ui/addons.mjs";
 export * from "./ui/sidepanel.mjs";
+export * from "./ui/tabline.mjs";
 export * from "./ui/bookmarks.mjs";
 export * from "./control/control.mjs";
 export * from "./ui/report.mjs";

@@ -9,7 +9,13 @@
  */
 import { closest, resolveActionName } from "../keys/actions.mjs";
 import { BOOKMARKS_TOOLBAR_SETTINGS } from "../ui/bookmarks-toolbar.mjs";
-import { DEFAULT_CONFIG, WORKSPACE_DEFAULTS, formatConfigTemplate } from "./defaults.mjs";
+import {
+  DEFAULT_CONFIG,
+  TABLINE_SETTINGS,
+  TABLINE_WIDTH,
+  WORKSPACE_DEFAULTS,
+  formatConfigTemplate,
+} from "./defaults.mjs";
 import { INSERT_SITE_MODES } from "../keys/editable.mjs";
 import { DEFAULT_HINT_CHARS, hintLabels } from "../page/hints.mjs";
 import { KeymapError, compileKeymap } from "../keys/keymap.mjs";
@@ -97,10 +103,13 @@ import { hasControl } from "../text/strings.mjs";
  * @property {{ placement: PrivatePlacement }} private    `[private]` (schema 2), private-swap
  * @property {McpConfig} mcp                             `[mcp]` (schema 2), docs/specs/vimma-mcp.md
  * @property {{ toolbar: ToolbarSetting, bookmarksToolbar: BookmarksToolbarSetting | null,
- *   pdfOutline: ToolbarSetting }} ui
+ *   pdfOutline: ToolbarSetting, tabline: TabLineSetting, tablineWidth: number }} ui
  *   `[ui]` (schema 2): toolbar-toggle; `bookmarksToolbar` is null when unset
  *   (docs/specs/bookmarks-toolbar-hidden.md decision 3: Firefox's pref decides); `pdfOutline`,
- *   whether the PDF viewer opens with Vimma's outline shown (docs/specs/pdf-mode.md decision 19)
+ *   whether the PDF viewer opens with Vimma's outline shown (docs/specs/pdf-mode.md decision 19);
+ *   `tabline` and `tablineWidth`, the tab line (docs/specs/tab-line.md decisions 3 and 4)
+ * @property {{ tab: boolean }} statusbar  `[statusbar]` (schema 2): whether the status bar keeps
+ *   its tab and title while the tab line is drawn (docs/specs/tab-line.md decision 16)
  * @property {ResolvedSearch | null} search              `[search]` (schema 2), null without it;
  *   docs/specs/search-engines.md
  * @property {{ check: boolean }} updates                `[updates]` (schema 2),
@@ -137,6 +146,7 @@ import { hasControl } from "../text/strings.mjs";
 /** @typedef {"swap" | "window"} PrivatePlacement */
 /** @typedef {"shown" | "hidden"} ToolbarSetting */
 /** @typedef {import("../ui/bookmarks-toolbar.mjs").BookmarksToolbarSetting} BookmarksToolbarSetting */
+/** @import { TabLineSetting } from "./defaults.mjs" */
 
 /**
  * Which of Firefox's own shortcuts are off (docs/specs/key-handling-batch.md § 1).
@@ -232,6 +242,7 @@ const TOP_KEYS = [
   "agent",
   "panel",
   "scroll",
+  "statusbar",
 ];
 const KEYMAP_SECTIONS = new Set(["keys", "modal", "unbind", "firefox", "sites"]);
 const WORKSPACE_KEYS = ["color", "icon", "home", "autofill"];
@@ -273,6 +284,7 @@ const SCHEMA_2_KEYS = [
   "agent",
   "panel",
   "scroll",
+  "statusbar",
 ];
 /** `[bookmarks]` (docs/specs/bookmarks.md, decision 2; docs/specs/bookmarklets.md, B1). */
 const BOOKMARKS_KEYS = ["root", "bookmarklets"];
@@ -291,7 +303,9 @@ const PRIVATE_KEYS = ["placement"];
 export const TOOLBAR_SETTINGS = Object.freeze(
   /** @type {ToolbarSetting[]} */ (["shown", "hidden"]),
 );
-const UI_KEYS = ["toolbar", "bookmarks_toolbar", "pdf_outline"];
+const UI_KEYS = ["toolbar", "bookmarks_toolbar", "pdf_outline", "tabline", "tabline_width"];
+/** `[statusbar]` (docs/specs/tab-line.md, decision 16). */
+const STATUSBAR_KEYS = ["tab"];
 /** Firefox's words for the bookmarks toolbar's states, and the Vimma word each means. */
 const FIREFOX_VISIBILITY_WORDS = Object.freeze({ always: "shown", never: "hidden" });
 /** `[updates]` (docs/specs/m6a-updater.md, Security and privacy, "Off"). */
@@ -718,8 +732,21 @@ function validate(raw, declared, warnings = []) {
     for (const [key, v] of Object.entries(raw.ui)) {
       const path = ["ui", key];
       if (!UI_KEYS.includes(key)) unknownKey(path, key, UI_KEYS);
-      else if (typeof v !== "string") typeError(path, v, "a string");
-      else if (key === "bookmarks_toolbar") {
+      else if (key === "tabline_width") {
+        // docs/specs/tab-line.md decision 4.
+        if (typeof v !== "bigint") typeError(path, v, "an integer");
+        else if (v < BigInt(TABLINE_WIDTH.min) || v > BigInt(TABLINE_WIDTH.max)) {
+          fail(
+            path,
+            `must be an integer between ${TABLINE_WIDTH.min} and ${TABLINE_WIDTH.max} (columns)`,
+          );
+        }
+      } else if (typeof v !== "string") typeError(path, v, "a string");
+      else if (key === "tabline") {
+        if (!TABLINE_SETTINGS.includes(/** @type {TabLineSetting} */ (v))) {
+          fail(path, 'must be "off", "always" or "auto"', closest(v, TABLINE_SETTINGS));
+        }
+      } else if (key === "bookmarks_toolbar") {
         if (!BOOKMARKS_TOOLBAR_SETTINGS.includes(/** @type {BookmarksToolbarSetting} */ (v))) {
           const word = /** @type {Record<string, string>} */ (FIREFOX_VISIBILITY_WORDS)[v];
           fail(
@@ -731,6 +758,14 @@ function validate(raw, declared, warnings = []) {
       } else if (!TOOLBAR_SETTINGS.includes(/** @type {ToolbarSetting} */ (v))) {
         fail(path, 'must be "shown" or "hidden"', closest(v, TOOLBAR_SETTINGS));
       }
+    }
+  }
+
+  if (declared >= 2 && isTable(raw.statusbar)) {
+    for (const [key, v] of Object.entries(raw.statusbar)) {
+      const path = ["statusbar", key];
+      if (key !== "tab") unknownKey(path, key, STATUSBAR_KEYS);
+      else if (typeof v !== "boolean") typeError(path, v, "a boolean");
     }
   }
 
@@ -1276,7 +1311,10 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
       toolbar: user.ui?.toolbar ?? "shown",
       bookmarksToolbar: user.ui?.bookmarks_toolbar ?? null,
       pdfOutline: user.ui?.pdf_outline ?? "shown",
+      tabline: user.ui?.tabline ?? "off",
+      tablineWidth: user.ui?.tabline_width ?? TABLINE_WIDTH.default,
     },
+    statusbar: { tab: user.statusbar?.tab ?? true },
     search: resolveSearch(user.search),
     updates: { check: user.updates?.check ?? true },
     // validateAgent checked `[agent]` field by field; UserConfig keeps it as it was parsed.

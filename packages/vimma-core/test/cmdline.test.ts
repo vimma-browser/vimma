@@ -91,6 +91,9 @@ describe("parseCommandLine: the Vim-style commands", () => {
     [":grep retry budget", run("grep", "grep.open", { text: "retry budget" })],
     [":live_grep", run("live_grep", "grep.open")],
     [":sidebar", run("sidebar", "sidebar.toggle")],
+    // docs/specs/tab-line.md decision 6: shows or hides the tab line until restart.
+    [":tabline", run("tabline", "tabline.toggle")],
+    [":toggle_tabline", run("toggle_tabline", "tabline.toggle")],
     [":map", run("map", "help.show")],
     [":help", run("help", "help.show")],
     [":h", run("help", "help.show")],
@@ -270,11 +273,18 @@ describe("completeCommandLine", () => {
   const values = (text: string, opts?: { limit?: number }) =>
     completeCommandLine(text, opts).candidates.map((c) => c.value);
 
-  test("tab → tab itself, then tabnew, tabrename, tabnext, tabsearch, then actions", () => {
+  test("tab → tab itself, then the other tab commands, then actions", () => {
     const v = values(":tab");
-    expect(v.slice(0, 5)).toEqual(["tab", "tabnew", "tabrename", "tabnext", "tabsearch"]);
+    expect(v.slice(0, 6)).toEqual([
+      "tab",
+      "tabnew",
+      "tabrename",
+      "tabnext",
+      "tabsearch",
+      "tabline",
+    ]);
     expect(completeCommandLine(":tab").word).toBe("tab");
-    expect(completeCommandLine(":tab").candidates[5]?.kind).toBe("action");
+    expect(completeCommandLine(":tab").candidates[6]?.kind).toBe("action");
   });
 
   test("wsp → wsprev", () => {
@@ -662,8 +672,8 @@ describe("parseCommandLine: messages and edges", () => {
   test("an ambiguous abbreviation lists its commands", () => {
     expect(errorOf("ta")).toEqual({
       code: "ambiguous-command",
-      message: 'ambiguous command "ta": tabnew, tabrename, tabsearch',
-      suggestions: ["tabnew", "tabrename", "tabsearch"],
+      message: 'ambiguous command "ta": tabnew, tabrename, tabsearch, tabline',
+      suggestions: ["tabnew", "tabrename", "tabsearch", "tabline"],
     });
   });
 

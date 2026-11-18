@@ -427,7 +427,14 @@ describe("mergeWithDefaults", () => {
         downloadMaxMb: 200,
         clamavMaxAgeDays: 7,
       },
-      ui: { toolbar: "shown", bookmarksToolbar: null, pdfOutline: "shown" },
+      ui: {
+        toolbar: "shown",
+        bookmarksToolbar: null,
+        pdfOutline: "shown",
+        tabline: "off",
+        tablineWidth: 14,
+      },
+      statusbar: { tab: true },
       updates: { check: true },
       search: null,
       agent: {

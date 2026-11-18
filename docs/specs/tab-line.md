@@ -1,7 +1,7 @@
 # Spec: tab-line
 
-Status: accepted · Area: `packages/vimma-core/src/ui/tabline.mjs` (new), `statusbar.mjs`,
-`actions.mjs`, `defaults.mjs`, `config.mjs`, `cmdline.mjs`; `ui/tabline.mjs` (new),
+Status: implemented · Area: `packages/vimma-core/src/ui/tabline.mjs` (new), `statusbar.mjs`,
+`actions.mjs`, `defaults.mjs`, `config.mjs`, `cmdline.mjs`; `ui/tabline.mjs` (new), `ui/side-panel.mjs`,
 `ui/statusbar.mjs`, `host/VimmaHost.sys.mjs`, `host/window-state.mjs`, `host/runners.mjs`,
 `config/ConfigHost.sys.mjs`, `browser/themes/shared/vimma/tabline.css` (new) · Upstream patches:
 none · ADR: none

@@ -5,6 +5,7 @@
 // Spec: docs/specs/m1-hints.md; docs/specs/follow-link-switch.md (gF's upper-case last key)
 
 /* global focusContent, recordPageKeys, pageKeys, waitForPageKey, contextOf, windowGlobalOf -- from head.js */
+/* global XULBrowserWindow -- a browser window global (browser.js) */
 
 "use strict";
 
@@ -22,6 +23,7 @@ const DIR = getRootDirectory(gTestPath).replace(
 const PAGE = DIR + "file_vimma_hints.html";
 const MANY = DIR + "file_vimma_hints_many.html";
 const MENU = DIR + "file_vimma_hints_menu.html";
+const OVERLINK = DIR + "file_vimma_hints_overlink.html";
 const CONSENT = DIR + "file_vimma_consent.html";
 const { compileKeymap } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/keymap.mjs",
@@ -281,6 +283,61 @@ add_task(async function a_label_follows_the_link() {
     await loaded;
     Assert.ok(found(browser.currentURI).spec.endsWith("?to=2"), "followed l2");
     Assert.strictEqual(VimmaHost._hints(window), null, "hints are gone");
+  });
+});
+
+/**
+ * The mouse events a link of file_vimma_hints_overlink.html got, in order.
+ * @param {XULBrowserElement} browser
+ * @param {string} id
+ * @returns {Promise<string[]>}
+ */
+function linkEvents(browser, id) {
+  return SpecialPowers.spawn(browser, [id], (link) =>
+    [...content.wrappedJSObject.seen].filter((e) => e.startsWith(`${link}:`)),
+  );
+}
+
+/**
+ * The label `f` gives the element with this id, on a page without frames.
+ * @param {XULBrowserElement} browser
+ * @param {string} id
+ */
+async function pageLabelFor(browser, id) {
+  const hints = await startHints();
+  const label = labelAt(hints, (await pageCentres(browser, [id]))[id]);
+  Assert.ok(label, `${id} has a label`);
+  return /** @type {string} */ (label);
+}
+
+// Issue #1309: the link preview showed the URL of a link followed with a label until the page
+// loaded another document, as if the pointer still rested on the link.
+add_task(async function following_a_link_leaves_no_url_in_the_link_preview() {
+  await withPage(OVERLINK, async (browser) => {
+    for (const id of ["stay", "hash"]) {
+      type(await pageLabelFor(browser, id));
+      await TestUtils.waitForCondition(
+        async () => (await linkEvents(browser, id)).includes(`${id}:click`),
+        `${id} got its click`,
+      );
+      // A round trip through the page: what the page sent the parent before it has arrived.
+      await SpecialPowers.spawn(browser, [], () => {});
+      Assert.equal(XULBrowserWindow.overLink, "", `${id}: the link preview shows no URL`);
+      // A menu that opened on the hover stays open: the page sees the pointer stay on the link.
+      Assert.deepEqual(
+        await linkEvents(browser, id),
+        [`${id}:mouseover`, `${id}:click`],
+        `${id}: the page got no mouseout or mouseleave`,
+      );
+      Assert.equal(VimmaHost._browserMode(browser), "normal", `${id}: back in normal mode`);
+    }
+    Assert.ok(found(browser.currentURI).spec.endsWith("#x"), "the same-document link went to #x");
+    const loaded = BrowserTestUtils.browserLoaded(browser, false, (u) => u.endsWith("?to=away"));
+    type(await pageLabelFor(browser, "away"));
+    await loaded;
+    // A top-level load clears the preview by itself (browser.js onLocationChange): this guards
+    // the ordinary case, the two links above are the ones the fix is for.
+    Assert.equal(XULBrowserWindow.overLink, "", "away: the link preview shows no URL");
   });
 });
 

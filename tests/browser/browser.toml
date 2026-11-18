@@ -45,6 +45,7 @@ support-files = [
   "file_vimma_hints_frame.html",
   "file_vimma_hints_many.html",
   "file_vimma_hints_menu.html",
+  "file_vimma_hints_overlink.html",
   "file_vimma_consent.html",
 ]
 
@@ -107,6 +108,8 @@ skip-if = ["artifact"]
 ["browser_vimma_version_line.js"]
 # The --version line is C++ (nsAppRunner-cpp.patch); artifact builds run Mozilla's libxul (ADR-010).
 skip-if = ["artifact"]
+
+["browser_vimma_tabline.js"]
 
 ["browser_vimma_tabstrip.js"]
 

@@ -16,6 +16,7 @@ import {
   statusSegments,
 } from "../core/statusbar.mjs";
 import { HIDDEN_ATTR as TOOLBAR_HIDDEN_ATTR } from "./toolbar.mjs";
+import { TABLINE_ATTR, TabLineConfig } from "./tabline.mjs";
 
 /** @import { Mode } from "../core/modes.mjs" */
 /** @import { FindStatus } from "../core/find.mjs" */
@@ -108,6 +109,8 @@ export class StatusBar {
     this.drawnDownloads = null;
     /** @type {Announced} what the live region last said */
     this.announced = { mode: null, notFound: null };
+    /** @type {string | null} said with the next render's announcement (say) */
+    this.queued = null;
     /** @type {ResizeObserver | null} */
     this.resize = null;
     /** @type {MutationObserver | null} the address bar's "in use" icons (toolbar-toggle 12) */
@@ -169,6 +172,16 @@ export class StatusBar {
    */
   announce(text) {
     if (this.live) this.live.textContent = text;
+  }
+
+  /**
+   * Say `text` with the next render's announcement, after the mode it may change: a gb jump's
+   * new place (docs/specs/tab-line.md decision 18), which the mode's own words would replace.
+   * @param {string} text
+   */
+  say(text) {
+    this.queued = text;
+    this.schedule();
   }
 
   /** Mark dirty; one render per frame however many triggers fire. */
@@ -302,6 +315,8 @@ export class StatusBar {
     };
     // docs/specs/toolbar-toggle.md decision 12: the hidden toolbar's cues; shown, none.
     const root = this.win.document.documentElement;
+    // docs/specs/tab-line.md decision 16: the drawn tab line shows the tab's place and name.
+    if (!TabLineConfig.statusTab && root.hasAttribute(TABLINE_ATTR)) input.tabLineHasTab = true;
     if (root.hasAttribute(TOOLBAR_HIDDEN_ATTR)) {
       input.toolbarHidden = true;
       input.security = securityOf(browser);
@@ -354,7 +369,12 @@ export class StatusBar {
       hint: input.hint ?? null,
     });
     this.announced = last;
-    if (text !== null) /** @type {HTMLElement} */ (this.live).textContent = text;
+    const said = [text, this.queued].filter(Boolean).join(". ");
+    this.queued = null;
+    const live = /** @type {HTMLElement} */ (this.live);
+    // The same words twice (two gb jumps to the same place) change no text, which a screen
+    // reader does not say again: a no-break space at the end makes it a change.
+    if (said) live.textContent = said === live.textContent ? `${said}\u00a0` : said;
   }
 
   /**
