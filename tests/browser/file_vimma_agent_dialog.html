@@ -1,0 +1,43 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_page_focus.js: a page that focuses a field by itself. A
+   - button opens a modal dialog whose name field has autofocus, at once in its click handler; a
+   - second button opens it a moment after the click, as a page waiting on its server would, and
+   - so does the page's own shortcut, the q key. The dialog's Create button closes it. Everything
+   - fits the test window. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Dialog agent fixture</title>
+    <style>
+      body {
+        margin: 4px;
+        font: 12px sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <p>
+      <button id="open" type="button">New channel</button>
+      <button id="later" type="button">New channel later</button>
+    </p>
+    <dialog id="dialog">
+      <form method="dialog">
+        <input id="name" name="name" aria-label="Channel name" autofocus />
+        <button id="create" type="submit">Create</button>
+      </form>
+    </dialog>
+    <script>
+      const dialog = document.getElementById("dialog");
+      document.getElementById("open").addEventListener("click", () => dialog.showModal());
+      document
+        .getElementById("later")
+        .addEventListener("click", () => setTimeout(() => dialog.showModal(), 100));
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "q" && !dialog.open) setTimeout(() => dialog.showModal(), 100);
+      });
+    </script>
+  </body>
+</html>

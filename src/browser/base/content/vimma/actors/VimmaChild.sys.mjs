@@ -267,6 +267,12 @@ export class VimmaChild extends JSWindowActorChild {
   /** This actor is focusing an element (`i`, a hint): the focus is the user's, not the find's. */
   #focusing = false;
   /**
+   * An agent's press is running (#press): the page's listeners for its trusted click() run as
+   * "handling user input" (EventListenerManager::HandleEventInternal pushes it for every trusted
+   * click), so a field they focus would read as the user's. It is the page's (issue #1325).
+   */
+  #agentPress = false;
+  /**
    * The generation of the last Vimma:Blur (Esc) this document had, echoed in its focus reports
    * so that the parent can tell a report sent before that blur (docs/specs/insert-focus.md).
    */
@@ -469,9 +475,10 @@ export class VimmaChild extends JSWindowActorChild {
         // already has focus (the page put it back after Esc), fires no focus event.
         const el = this.#editableRoot() ?? this.#focusedFieldUnder(event.originalTarget);
         if (el) this.#report(el, "focusin");
-        // Any other click is the user's too, though it may move no focus (a toolbar item that
-        // prevents its mousedown): what the page focuses after it is not the page's own doing.
-        else if (event.isTrusted) this.sendAsyncMessage("Vimma:Click");
+        // Any trusted mousedown is the user's (an agent's is untrusted, #press), though it may
+        // move no focus (a toolbar item that prevents its mousedown): what the page focuses after
+        // it is not the page's own doing, and a field the page focused is the user's now.
+        if (event.isTrusted) this.sendAsyncMessage("Vimma:Click");
         return;
       }
       case "dragstart":
@@ -642,7 +649,9 @@ export class VimmaChild extends JSWindowActorChild {
     // `user`: the focus came from the user's input in this page (a click, Tab, a key the page
     // answered) or from this actor for a Vimma key (`i`, a hint), not from the page's script on
     // its own; after Esc only such a focus enters insert (docs/specs/insert-focus.md).
-    const user = this.#focusing || !!this.contentWindow?.windowUtils.isHandlingUserInput;
+    const user =
+      this.#focusing ||
+      (!this.#agentPress && !!this.contentWindow?.windowUtils.isHandlingUserInput);
     this.sendAsyncMessage("Vimma:Focus", {
       descriptor: describe(el),
       trigger,
@@ -1042,9 +1051,14 @@ export class VimmaChild extends JSWindowActorChild {
       if (inLink(el)) this.#leaveLink();
     }
     if (!this.#onPage(el) || !still()) return false;
-    // SVG elements have no click(): dispatch the click event for them.
-    if (typeof html.click === "function") html.click();
-    else el.dispatchEvent(new win.MouseEvent("click", init));
+    this.#agentPress = agent;
+    try {
+      // SVG elements have no click(): dispatch the click event for them.
+      if (typeof html.click === "function") html.click();
+      else el.dispatchEvent(new win.MouseEvent("click", init));
+    } finally {
+      this.#agentPress = false;
+    }
     return true;
   }
 

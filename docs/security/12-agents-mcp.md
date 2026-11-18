@@ -550,7 +550,21 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   tab, and **never** changes the window's workspace, mode, find bar or hint mode (finds use the
   tab's own finder, history moves stay in the tab's own session history). A tab the user is
   typing in, in copy or hint mode, a key sequence or its own find bar, is denied `in-use`; a call
-  already running stops there.
+  already running stops there. The same rule holds `agent-activate` and `agent-fill` (F27).
+  Insert mode counts as typing only when the user's own input put the tab there: a focus made
+  while the page handled their key or click, or one within 5 s after a key of theirs that the
+  page got, a trusted click of theirs in the page or a click of their own hints. Vimma's own
+  keys do not count (a scroll, the keys that open and answer the agent's question), so the user
+  can watch the agent and answer it. A field the page's script focuses on its own with none of
+  these, such as a dialog with autofocus that the agent's own click opened, is not the user's,
+  and the agent may fill it (issue #1325). The page's listeners for the agent's `click()` run as
+  handling user input, as every trusted click's do, so the content actor never counts a focus
+  made during the agent's press as the user's. The user's typing **must** always win: any key of
+  theirs that reaches the page makes its insert theirs, as every typed character does, and that
+  keydown is the window's own trusted event, which neither a page nor an agent can make (an
+  agent's presses are untrusted page events). So does any trusted mousedown in the page, which
+  an agent's untrusted one is not. A compromised content process can make a tab look in use,
+  but cannot make the user's keys count as the page's.
   [`test_keys_scroll_a_background_tab_without_touching_the_window`](../../tests/browser/browser_vimma_mcp_keys.js),
   [`test_keys_find_uses_the_tabs_finder`](../../tests/browser/browser_vimma_mcp_keys.js),
   [`test_keys_back_and_forward_stay_in_the_tab`](../../tests/browser/browser_vimma_mcp_keys.js),
@@ -558,6 +572,13 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_keys_in_use_while_the_user_types_in_the_tab`](../../tests/browser/browser_vimma_mcp_keys.js),
   [`test_keys_stop_when_the_tab_leaves`](../../tests/browser/browser_vimma_mcp_keys.js),
   [`test_keys_stop_when_the_user_starts_using_the_tab`](../../tests/browser/browser_vimma_mcp_keys.js),
+  [`test_a_field_the_page_focuses_after_the_agents_click_is_not_the_users`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_the_users_key_in_that_field_makes_the_tab_theirs`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_the_users_click_in_that_field_makes_the_tab_theirs`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_a_page_focus_just_after_the_users_click_is_theirs`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_a_page_focus_just_after_the_users_key_is_theirs`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_a_page_focus_just_after_the_users_hint_click_is_theirs`](../../tests/browser/browser_vimma_mcp_page_focus.js),
+  [`test_vimmas_own_key_before_a_page_focus_is_not_the_users`](../../tests/browser/browser_vimma_mcp_page_focus.js),
   [`test_agent_hints_leave_the_users_hint_mode_alone`](../../tests/browser/browser_vimma_mcp_follow.js)
 - M18. A follow (`f<label>`, mcp-drive D12) **must** load only an http or https href the page
   could link to (`checkLoadURIWithPrincipal` with the page's own principal), from an http or

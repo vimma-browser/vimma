@@ -330,6 +330,7 @@ const browserModes = new WeakMap();
 function setBrowserMode(browser, mode) {
   if (mode !== "insert") explicitInsert.delete(browser);
   else escapeHold.delete(browser);
+  pageInsert.delete(browser);
   if ((browserModes.get(browser) ?? "normal") === mode) return;
   browserModes.set(browser, mode);
   VimmaHost.onModeChange(browser, mode);
@@ -351,6 +352,48 @@ const explicitInsert = new WeakMap();
  * @type {WeakMap<MozBrowser, number>}
  */
 const escapeHold = new WeakMap();
+
+/**
+ * Tabs in insert mode that the page's script entered on its own (docs/specs/mcp-drive.md D13,
+ * issue #1325): a field it focused with no input of the user's behind it, such as a dialog with
+ * autofocus that an agent's click opened. Such a tab is not in use by the user, so an agent may
+ * still fill it. Any other change of mode ends the mark (setBrowserMode), and so does the user's
+ * own key or click in the tab (noteUserInput), or a focus report their input caused.
+ * @type {WeakSet<MozBrowser>}
+ */
+const pageInsert = new WeakSet();
+
+/**
+ * When the user last gave each tab's page a key or a click, in `ChromeUtils.now()` milliseconds.
+ * Keys are the window's own trusted keydown events that Vimma left to the page, which no page
+ * and no agent can make; clicks are the page's trusted mousedown events (VimmaParent's
+ * `Vimma:Click`), which an agent's untrusted one is not (#1327).
+ * @type {WeakMap<MozBrowser, number>}
+ */
+const lastUserInput = new WeakMap();
+
+/**
+ * How long after the user's key or click a focus the page makes counts as theirs: a page that
+ * opens its dialog once its server answers the click focuses the field outside any input
+ * handler. The same 5 s as Firefox's transient user activation
+ * (dom.user_activation.transient.timeout), the time a page may act on a gesture.
+ */
+const USER_INPUT_RECENT_MS = 5000;
+
+/**
+ * The user pressed a key or clicked in `browser`'s tab: a page-made insert there is theirs now.
+ * @param {MozBrowser} browser
+ */
+function noteUserInput(browser) {
+  lastUserInput.set(browser, ChromeUtils.now());
+  pageInsert.delete(browser);
+}
+
+/** @param {MozBrowser} browser */
+function recentUserInput(browser) {
+  const at = lastUserInput.get(browser);
+  return at !== undefined && ChromeUtils.now() - at < USER_INPUT_RECENT_MS;
+}
 
 /**
  * The document of each tab that Esc's blur last went to, and that blur's generation
@@ -1027,9 +1070,10 @@ export const VimmaHost = {
     const tab = state.win.gBrowser?.getTabForBrowser(browser);
     const findbar = tab && state.win.gBrowser.getCachedFindBar(tab);
     // A page without our actor takes every key itself: in use while shown.
+    const mode = this._browserMode(browser);
     return (
       (!!findbar && !findbar.hidden) ||
-      this._browserMode(browser) !== "normal" ||
+      (mode !== "normal" && !(mode === "insert" && pageInsert.has(browser))) ||
       state.hint?.browser === browser ||
       state.find.session?.browser === browser ||
       state.dispatcher.pending().length > 0
@@ -1196,7 +1240,16 @@ export const VimmaHost = {
     const copy = mode === "visual";
     const next = insertModeAfterFocus({ mode: copy ? "normal" : mode, trigger, descriptor, site });
     if (copy && next !== "insert") return;
+    // Whose insert this is (D13): the user's when their input caused the focus or came shortly
+    // before it, and once theirs it stays theirs while the page moves focus about; else the
+    // page's own, which does not make the tab in use.
+    const byPage =
+      next === "insert" &&
+      !user &&
+      !recentUserInput(browser) &&
+      (mode !== "insert" || pageInsert.has(browser));
     setBrowserMode(browser, next === "insert" ? "insert" : "normal");
+    if (byPage) pageInsert.add(browser);
   },
 
   /**
@@ -1206,6 +1259,7 @@ export const VimmaHost = {
    */
   onUserClick(browser) {
     escapeHold.delete(browser);
+    noteUserInput(browser);
   },
 
   /**
@@ -1441,9 +1495,14 @@ export const VimmaHost = {
     // A key the page gets after Esc is the user acting on the page again: what the page
     // focuses in answer (Tab into a frame, a shortcut that opens its search box) is the user's
     // focus, though it may reach a frame whose process handles no input (insert-focus 6).
+    // It is also the user using the page (mcp-drive D13): typing in a field the page focused
+    // makes that insert theirs, and a field the page focuses soon after is theirs to type in, not
+    // an agent's to fill. Vimma's own keys are not (a scroll, the keys that open and answer the
+    // agent's question), so the user can watch the agent and answer it.
     if (!e.defaultPrevented) {
       const browser = this._focusedBrowser(win);
       if (browser) escapeHold.delete(browser);
+      if (browser) noteUserInput(browser);
     }
     this._emit(state);
   },
@@ -2086,6 +2145,8 @@ export const VimmaHost = {
           // docs/specs/follow-link-switch.md: an upper-case last key, or the switching action.
           VimmaActors.openInNewTab(session.browser, result.target, { background: !result.switch });
         } else {
+          // The user's own click, though its keys were Vimma's: a dialog it opens is theirs.
+          noteUserInput(session.browser);
           VimmaActors.activateHint(result.target);
         }
     }

@@ -93,7 +93,9 @@ export class VimmaParent extends JSWindowActorParent {
     const descriptor = parseDescriptor(data.descriptor);
     if (!browser || !isTrigger(trigger) || !descriptor) return undefined;
     // `user` and `gen` only narrow what a report may do after Esc (docs/specs/insert-focus.md):
-    // a forged one can do no more than any report could before them.
+    // a forged one can do no more than any report could before them. `user` also says whose
+    // insert it is (mcp-drive D13): a forged true only makes the tab look in use to an agent,
+    // and a forged false never outweighs the user's keys, which the window itself sees.
     const gen = typeof data.gen === "number" && Number.isSafeInteger(data.gen) ? data.gen : 0;
     VimmaHost.onFocusReport(browser, {
       descriptor,

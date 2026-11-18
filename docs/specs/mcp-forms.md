@@ -721,7 +721,10 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     call stops with `changed`. A tab the user is using (`VimmaHost.inUse`) denies
     `vimma_activate` and `vimma_fill` with `in-use`, and a call already running stops there,
     because a click or a fill under the user's cursor would take their page out of their hands.
-    The read-only tools run while the user uses the tab, since they change nothing.
+    The read-only tools run while the user uses the tab, since they change nothing. (Since
+    changed: a field the page focuses by itself, such as a dialog with autofocus the agent's own
+    click opened, does not make the tab in use; mcp-drive D13, issue
+    [#1325](https://github.com/vimma-browser/vimma/issues/1325).)
 28. **Questions, notices and log.** Each question shows the tab's title and URL and what the call
     does: the element's kind and text for an activation, each field and value for a fill (F14),
     the destination for a submit (F15). Under a grant each call shows a notice naming the tab and

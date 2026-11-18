@@ -345,6 +345,9 @@ support-files = [
   "head_vimma_control.js",
 ]
 
+["browser_vimma_mcp_page_focus.js"]
+support-files = ["file_vimma_agent_dialog.html", "head_vimma_control.js"]
+
 ["browser_vimma_mcp_screenshot.js"]
 support-files = [
   "file_vimma_agent_shot.html",
