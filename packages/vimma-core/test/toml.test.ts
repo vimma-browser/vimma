@@ -27,7 +27,8 @@ describe("parseToml", () => {
     const r = parseToml('a = 1\n\n[keys]\nnew_tab = ["x"\n');
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.error.line).toBe(5);
+    // The file ends inside the array: its line, not the one past the end (#1273).
+    expect(r.error.line).toBe(4);
     expect(r.error.column).toBeGreaterThan(0);
     expect(r.error.message).not.toMatch(/Invalid TOML document|\n/);
     expect(r.error.message.length).toBeGreaterThan(0);

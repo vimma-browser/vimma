@@ -474,7 +474,12 @@ function validate(raw, declared, warnings = []) {
     return false;
   };
   /** @param {Path} path @param {string} key @param {readonly string[]} known */
-  const unknownKey = (path, key, known) => fail(path, `unknown key "${key}"`, closest(key, known));
+  const unknownKey = (path, key, known) => {
+    // A `keys.prefix = …` line pasted below another table's header lands in that table (#1270).
+    if (path.length > 1 && TOP_KEYS.includes(key) && key !== "schema") {
+      fail(path, `unknown key "${key}": a ${key}.… line belongs under [${key}], without "${key}."`);
+    } else fail(path, `unknown key "${key}"`, closest(key, known));
+  };
 
   /**
    * A schema-2 key in a file that declares an older schema: reported once, then skipped.
@@ -1499,6 +1504,16 @@ const withoutAgent = (raw) => JSON.stringify({ ...raw, agent: undefined });
  * @returns {{ text: string, name: string } | { error: string }}
  */
 export function addAgentProviderText(text, provider, { makeDefault, mac = false }) {
+  // What the file could not read back as given; said before the guard below would (#1284).
+  if (provider.kind === "cli" && !CLI_IDS.includes(provider.cli ?? "")) {
+    return { error: `unknown agent CLI ${JSON.stringify(provider.cli ?? "")}` };
+  }
+  if (provider.kind === "cli" && provider.endpoint) {
+    return { error: "a CLI provider has no endpoint: the CLI decides where it sends requests" };
+  }
+  if (typeof provider.model !== "string") {
+    return { error: 'the provider has no model (an agent CLI takes "" for its own default)' };
+  }
   const base = text ?? formatConfigTemplate();
   const before = parseConfig(base, { mac });
   // Stryker disable next-line LogicalOperator: parseConfig returns a config exactly when it has no errors
