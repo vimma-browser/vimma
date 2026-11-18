@@ -496,6 +496,9 @@ run-if = ["os == 'linux'"] # ln -s for the omarchy-theme-set symlink swap
 
 ["browser_vimma_normal_extras.js"]
 
+["browser_vimma_reader_url.js"]
+support-files = ["file_vimma_reader_article.html"]
+
 ["browser_vimma_addons.js"]
 support-files = ["file_vimma_addon_updates.json"]
 
