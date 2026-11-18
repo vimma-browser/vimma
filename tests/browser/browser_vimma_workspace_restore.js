@@ -290,6 +290,7 @@ add_task(async function keys_reach_vimma_while_a_restored_start_page_pane_loads(
   await until(() => w1.gBrowser.selectedTab !== d1, "the new pane is focused");
   const d2 = w1.gBrowser.selectedTab;
   await until(() => d2.linkedBrowser.currentURI.spec === START, "it shows the start page");
+  const d2Uuid = SessionStore.getCustomTabValue(d2, TAB_KEY);
   ww1.switchTo({ id: C.id });
   await until(() => ww1.model.active === C.id, "C is shown");
   await TabStateFlusher.flushWindow(w1);
@@ -305,11 +306,11 @@ add_task(async function keys_reach_vimma_while_a_restored_start_page_pane_loads(
   await restoreInto(w2, winState);
   const ww2 = live(w2);
   await until(() => ww2.model.active === C.id, "C is shown after the restore");
-  // D was split when the window was saved, so its tree is parked.
-  const parked = /** @type {Panes} */ (view(w2).parked(D.id));
-  const right = leaves(parked).find((l) => l.pane === parked.focus);
-  const page = w2.gBrowser.tabs.find((t) => t.linkedPanel === right?.tab);
-  Assert.ok(page && SessionStore.isTabRestoring(page), "D's start page waits to be restored");
+  // D was split when the window was saved; its tabs stay lazy until D is shown (issue #1305).
+  const page = /** @type {MozTabbrowserTab} */ (
+    w2.gBrowser.tabs.find((t) => SessionStore.getCustomTabValue(t, TAB_KEY) === d2Uuid)
+  );
+  Assert.ok(page && !page.linkedPanel, "D's start page waits, lazy, to be restored");
 
   /** @type {string[]} */
   const seen = [];
@@ -326,6 +327,7 @@ add_task(async function keys_reach_vimma_while_a_restored_start_page_pane_loads(
   let lost = 0;
   ww2.switchTo({ id: D.id });
   Assert.equal(w2.gBrowser.selectedTab, page, "the switch selects D's focused pane");
+  Assert.ok(SessionStore.isTabRestoring(page), "which SessionStore now restores");
   for (let i = 0; i < 200 && SessionStore.isTabRestoring(page); i++) {
     const doc = page.linkedBrowser.contentDocument;
     if (doc?.documentURI === START && doc.readyState === "loading") {
