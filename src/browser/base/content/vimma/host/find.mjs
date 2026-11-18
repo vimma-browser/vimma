@@ -18,6 +18,8 @@ import { PdfOps } from "./pdf-ops.mjs";
 const FIND_NOTFOUND = 1;
 /** How long Enter waits for the incremental find's result before closing anyway. */
 const ACCEPT_WAIT_MS = 1000;
+/** The longest `/` waits for the anchor on a page in the parent process (`start`). */
+const ANCHOR_WAIT_MS = 250;
 
 /**
  * @typedef {MozFinder} Finder
@@ -30,7 +32,8 @@ const ACCEPT_WAIT_MS = 1000;
  * @typedef {object} Session  a `/` or `?` being typed
  * @property {Browser} browser
  * @property {boolean} backward
- * @property {FindBar | null} findbar   null while Firefox creates it (one frame)
+ * @property {FindBar | null} findbar   null until the prompt opens: while Firefox creates the
+ *   bar (one frame, on first use per tab) and, on a page in the parent process, the anchor is set
  * @property {string} buffer   keys typed before the find bar had focus
  * @property {"accept" | null} queued   Enter pressed before the find bar had focus
  * @property {string | null} accepting   Enter pressed: the query whose result we wait for
@@ -153,11 +156,16 @@ export class Find {
     };
     // Before the first search: it starts where Vim's would, not at the document's first match.
     VimmaActors.findStep(browser);
-    // The find bar waits for the anchor (#1307). A page in the parent process (about:vimma, the
-    // start page) has Firefox's in-process Finder, which searches as the bar's input event runs:
-    // with the bar cached, it would search before the anchor's message arrives, and the anchor
-    // would then collapse the match. A remote page's finder messages queue behind the anchor's.
-    const anchored = VimmaActors.findAnchor(browser);
+    // On a page in the parent process (about:vimma, the start page) the find bar waits for the
+    // anchor (#1307): Firefox's in-process Finder searches as the bar's input event runs, and with
+    // the bar cached it would search before the anchor's message arrives; the anchor would then
+    // collapse the match. That actor runs in this process, so its answer is a task away; the cap
+    // only keeps `/` from ever hanging on it. A remote page's finder messages queue behind the
+    // anchor's on the same channel, so its prompt does not wait on a page that may be busy.
+    const anchoring = VimmaActors.findAnchor(browser);
+    const anchored = browser.isRemoteBrowser
+      ? null
+      : Promise.race([anchoring, new Promise((r) => this.win.setTimeout(r, ANCHOR_WAIT_MS))]);
     this.session = session;
     this.onChange();
     Promise.all([gBrowser.getFindBar(tab), anchored]).then(([findbar]) => {
@@ -202,7 +210,19 @@ export class Find {
   }
 
   /**
-   * Enter, Esc and the keys typed while the find bar is being created. Returns whether the key
+   * The selected tab changed. A search whose prompt has not opened yet is cancelled: keys typed
+   * from now on are the new tab's, and the prompt would open in a tab no longer shown. An open
+   * prompt stays with its tab, as Firefox's find bar does.
+   */
+  onTabSelect() {
+    const s = this.session;
+    if (s && !s.findbar && s.browser !== this.#gBrowser().selectedBrowser) {
+      this.cancel({ scrollBack: false });
+    }
+  }
+
+  /**
+   * Enter, Esc and the keys typed before the prompt opens. Returns whether the key
    * was ours (consumed).
    * @param {KeyboardEvent} e
    */
@@ -210,7 +230,7 @@ export class Find {
     const s = this.session;
     if (!s) return false;
     if (!s.findbar) {
-      // One frame while Firefox creates the find bar: the keys belong to the search, as in Vim.
+      // Until the prompt opens (Session.findbar): the keys belong to the search, as in Vim.
       if (e.key === "Escape") this.cancel();
       else if (e.key === "Enter") s.queued = "accept";
       else if (e.key === "Backspace") s.buffer = s.buffer.slice(0, -1);
@@ -433,7 +453,9 @@ export class Find {
   async #restore(browser, mark) {
     const at = await mark;
     if (at) VimmaActors.scrollTo(browser, at);
-    // n after Esc searches from where the page is again.
+    // n after Esc searches from where the page is again. Not awaited, unlike `/`'s (#1307): on a
+    // page in the parent process an n could search before the anchor is set, but n comes at
+    // human speed after Esc, and the anchor's message is a task away.
     VimmaActors.findAnchor(browser);
   }
 

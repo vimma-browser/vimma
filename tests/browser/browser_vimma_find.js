@@ -751,6 +751,41 @@ add_task(async function a_tab_closed_while_finding_leaves_no_find_behind() {
   });
 });
 
+add_task(async function a_tab_switch_before_the_prompt_opens_cancels_the_search() {
+  // Keys typed after a tab switch are the new tab's, not a search the old tab has not yet opened
+  // (Firefox still creating its bar, or a page in the parent process answering the anchor): the
+  // switch cancels it.
+  await withPage(async (first) => {
+    const firstTab = /** @type {MozTabbrowserTab} */ (gBrowser.getTabForBrowser(first));
+    const other = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
+    try {
+      gBrowser.selectedTab = firstTab;
+      await focusContent(first);
+      Assert.ok(!gBrowser.getCachedFindBar(firstTab), "no find bar yet: / must create it");
+      // In one task: the bar is still being created when the tab changes.
+      type("/ab");
+      gBrowser.selectedTab = other;
+      Assert.equal(VimmaHost.status(window).mode, "normal", "the switch ends the search");
+      Assert.equal(findStatus(), null, "and nothing is shown for it");
+
+      const browser = other.linkedBrowser;
+      await recordPageKeys(browser);
+      await focusContent(browser);
+      type(UNBOUND);
+      EventUtils.synthesizeKey("KEY_Enter");
+      Assert.ok(await waitForPageKey(browser, [UNBOUND]), "a key typed now reaches the new tab");
+
+      const findbar = /** @type {MozFindbar} */ (await gBrowser.getFindBar(firstTab));
+      // A late prompt would open within a frame of its bar being created.
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      Assert.ok(findbar.hidden, "the old tab's prompt never opens");
+      Assert.equal(findbar._findField.value, "", "with nothing typed into it");
+    } finally {
+      BrowserTestUtils.removeTab(other);
+    }
+  });
+});
+
 /** @param {Element} el */
 function shown(el) {
   return el.checkVisibility();
@@ -956,11 +991,11 @@ add_task(async function find_on_about_vimma_moves_to_the_match() {
       type(`/${word}`);
       EventUtils.synthesizeKey("KEY_Enter");
       await assertBackInNormal(browser, `/${word} Enter`);
+      // The scroll may land a task after the selection.
       await TestUtils.waitForCondition(
-        () => sel() === `${first}:${word}`,
-        `/${word} selects the first match`,
+        () => sel() === `${first}:${word}` && onScreen(first),
+        `/${word} selects the first match and scrolls it into view`,
       );
-      Assert.ok(onScreen(first), `/${word} scrolls the first match into view`);
       await TestUtils.waitForCondition(
         () => findStatus()?.query === word && findStatus()?.total === total,
         `/${word} counts ${total}`,
@@ -970,11 +1005,15 @@ add_task(async function find_on_about_vimma_moves_to_the_match() {
 
     await search("quokka", "q1", 2);
     EventUtils.synthesizeKey("n");
-    await TestUtils.waitForCondition(() => sel() === "q2:quokka", "n: the next match");
-    Assert.ok(onScreen("q2"), "n scrolls to it");
+    await TestUtils.waitForCondition(
+      () => sel() === "q2:quokka" && onScreen("q2"),
+      "n: the next match, scrolled to",
+    );
     EventUtils.synthesizeKey("N");
-    await TestUtils.waitForCondition(() => sel() === "q1:quokka", "N: back to the first");
-    Assert.ok(onScreen("q1"), "N scrolls to it");
+    await TestUtils.waitForCondition(
+      () => sel() === "q1:quokka" && onScreen("q1"),
+      "N: back to the first, scrolled to",
+    );
 
     // The find bar is cached now: a new search, with no count left from /quokka.
     await search("wombat", "w1", 3);

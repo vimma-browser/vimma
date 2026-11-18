@@ -137,6 +137,7 @@ export function newWindowState(host, win, keymap, env) {
     onTabSelect: () => {
       host._cancelPending(win, state);
       host._cancelHints(state);
+      state.find.onTabSelect();
       state.element.leave();
       state.help.close({ tabChanged: true });
       state.cmdline.close({ tabChanged: true });
