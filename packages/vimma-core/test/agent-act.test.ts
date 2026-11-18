@@ -1419,6 +1419,88 @@ describe("console reads: bounded work and URLs without credentials (F24, M30)", 
     expect(once(long)).not.toContain("ada");
     expect(once(long)).not.toContain("sss");
   });
+
+  // Issue #1324: Reader View's address carries the article's URL percent-encoded in its query, so
+  // its user name and password hide from a parser that only reads the authority.
+  const enc = encodeURIComponent;
+  const ARTICLE = "https://ada:secret@example.com/news/a?id=1";
+  /** Neither the user name nor the password, as they are or percent-encoded once or twice. */
+  const noCredentials = (out: string) => {
+    for (const text of [
+      out,
+      decodeURIComponent(out),
+      decodeURIComponent(decodeURIComponent(out)),
+    ]) {
+      expect(text).not.toContain("secret");
+      expect(text).not.toContain("ada");
+    }
+  };
+
+  test("a Reader View address is the article's URL without its user name and password", () => {
+    expect(once(`about:reader?url=${enc(ARTICLE)}`)).toBe("https://example.com/news/a?id=1");
+    // As the issue found it: the inner URL encoded, no path.
+    expect(once("about:reader?url=https%3A%2F%2Fuser%3Apass%40bank.com%2Fx")).toBe(
+      "https://bank.com/x",
+    );
+    // Not encoded, as a user may type it; with the reader's hash applied to the article.
+    expect(once("about:reader?url=https://ada:secret@example.com/a#part")).toBe(
+      "https://example.com/a#part",
+    );
+    // Without credentials, the article's URL as the status bar shows it (#1323).
+    expect(once(`about:reader?url=${enc("https://example.com/a")}`)).toBe("https://example.com/a");
+  });
+
+  test("a Reader View address the reader cannot show still loses them", () => {
+    for (const url of [
+      // A scheme Reader View does not load, so no article: the address, its inner URL stripped.
+      `about:reader?url=${enc("ftp://ada:secret@example.com/a")}`,
+      // Its own parameters beyond url, and another case of its name.
+      `about:reader?x=1&url=${enc(ARTICLE)}&y=${enc(ARTICLE)}`,
+      `ABOUT:Reader?url=${enc(ARTICLE)}`,
+      // Inside the wrappers Vimma already reads, and inside itself, encoded once more each time.
+      `view-source:about:reader?url=${enc(ARTICLE)}`,
+      `about:reader?url=${enc(`about:reader?url=${enc(ARTICLE)}`)}`,
+      `about:reader?url=${enc(`view-source:${ARTICLE}`)}`,
+      `jar:about:reader?url=${enc(`about:reader?url=${enc(ARTICLE)}`)}`,
+      // Firefox's other internal pages carry a URL in their query the same way.
+      `about:neterror?e=dnsNotFound&u=${enc(ARTICLE)}&c=UTF-8&d=x`,
+      `about:certerror?e=nssBadCert&u=${enc(ARTICLE)}`,
+    ]) {
+      noCredentials(once(url));
+    }
+    expect(once(`about:reader?url=${enc("ftp://ada:secret@example.com/a")}`)).toBe(
+      `about:reader?url=${enc("ftp://example.com/a")}`,
+    );
+    expect(once(`view-source:about:reader?url=${enc(ARTICLE)}`)).toBe(
+      `view-source:about:reader?url=${enc("https://example.com/news/a?id=1")}`,
+    );
+    // Past the nesting it reads, the rest is dropped.
+    let deep = ARTICLE;
+    for (let i = 0; i < 6; i++) deep = `about:reader?url=${enc(deep)}`;
+    noCredentials(once(deep));
+    // An about: page whose query names no URL is left as it is.
+    expect(once("about:preferences?entrypoint=menubar#privacy")).toBe(
+      "about:preferences?entrypoint=menubar#privacy",
+    );
+  });
+
+  test("a Reader View address cut short, or long, never shows them", () => {
+    // Cut inside its encoded at sign, the user name and password still go.
+    const article = `https://ada:${"s".repeat(3000)}@example.com/a`;
+    noCredentials(once(`about:reader?url=${enc(article)}`));
+    noCredentials(agentUrl(`about:reader?url=${enc(article)}`, 64));
+    const reader = `about:reader?url=${enc(ARTICLE)}`;
+    for (let n = 1; n <= reader.length; n++) {
+      const cut = reader.slice(0, n);
+      // The address as Vimma would get it cut is not an article; any prefix loses them all.
+      const out = agentUrl(cut + "x".repeat(4 * AGENT_CONSOLE.url), AGENT_CONSOLE.url);
+      expect(out).not.toContain("secret");
+      expect(out).not.toContain("ada");
+    }
+    const started = Date.now();
+    noCredentials(once(`about:reader?url=${enc(`https://ada:${"s".repeat(5_000_000)}@e.com/`)}`));
+    expect(Date.now() - started).toBeLessThan(budget(400));
+  });
 });
 
 // Issue #1119: edges the weekly mutation run found unpinned. A child's reply is checked for its
