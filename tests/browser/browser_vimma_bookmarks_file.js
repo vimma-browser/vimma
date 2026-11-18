@@ -131,14 +131,37 @@ async function answer(key) {
   EventUtils.synthesizeKey(key);
 }
 
-/** Removes every bookmark these tests made and drops the mirror's base. */
+/** The window's workspaces: this window has them built. */
+const liveWorkspaces = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
+/** The workspace the window showed and the workspaces there were when setup ran. */
+let startWorkspace = "";
+/** @type {Set<string>} */
+const startWorkspaces = new Set();
+
+/**
+ * Shows the workspace the window started on again and deletes the workspaces a test made (one
+ * left open, such as `leaving` after Esc at the bookmarks question, is shown next otherwise).
+ */
+async function restoreWorkspaces() {
+  if (liveWorkspaces().model.active !== startWorkspace) {
+    liveWorkspaces().switchTo({ id: startWorkspace });
+    await until(() => liveWorkspaces().model.active === startWorkspace, "the start workspace");
+  }
+  for (const w of WorkspaceStore.definitions.workspaces.filter((d) => !startWorkspaces.has(d.id))) {
+    await WorkspaceStore.deleteWorkspace(w.id, { confirmed: true });
+  }
+}
+
+/** Removes every bookmark and workspace these tests made and drops the mirror's base. */
 async function reset() {
+  if (promptOpen()) EventUtils.synthesizeKey("KEY_Escape");
   // Forgotten first, so that removing the file is no missing-file pause.
   await mirror.forget();
   await IOUtils.remove(bookmarksFile, { ignoreAbsent: true });
   await IOUtils.writeUTF8(configFile, "schema = 2\n");
   await ConfigHost.reload();
   await mirror.forget();
+  await restoreWorkspaces();
   for (const parent of [toolbarGuid, menuGuid, unfiledGuid]) {
     const tree = /** @type {Node} */ (await PlacesUtils.promiseBookmarksTree(parent));
     for (const c of tree.children ?? []) await PlacesUtils.bookmarks.remove(c.guid);
@@ -160,6 +183,9 @@ async function runCommand(/** @type {string} */ line) {
 requestLongerTimeout(2);
 
 add_task(async function setup() {
+  await liveWorkspaces().ready;
+  startWorkspace = liveWorkspaces().model.active;
+  for (const w of WorkspaceStore.definitions.workspaces) startWorkspaces.add(w.id);
   await IOUtils.makeDirectory(dir, { createAncestors: true });
   await SpecialPowers.pushPrefEnv({
     set: [
