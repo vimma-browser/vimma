@@ -3456,8 +3456,9 @@ highlighted and its number coloured; a tab playing sound shows `♪`, one from a
 
 A window with workspaces has no pinned tabs: they are unpinned at once
 ([Managing workspaces](#managing-workspaces)). A private window keeps them: the panel lists them,
-but `x` does not close one, `m` does not move one and `space` does not mark one
-(`pinned tab: unpin it to close it`).
+but `x` does not close one (`pinned tab: unpin it to close it`), `m` does not move one
+(`pinned tab: unpin it to move it`) and `space` does not mark one (`pinned tab: unpin it to show
+it in a split`).
 
 **Counts.** Digits are a count, as in Vim: type `4` and the status bar shows it while the panel
 waits for `j`, `k`, `G`, `ctrl+d`, `ctrl+u` or `Enter`. Moves stop at the first and last row. A
@@ -4935,7 +4936,7 @@ it does not help. Mozilla's tracking-protection lists update either way.
 **Does Vimma update itself?** The AppImage and the tarball do: the AppImage replaces its own
 file, and a tarball whose release lists `vimma-X.Y.Z-linux-x86_64.complete.mar` installs the
 update at its next start ([Updates](#updates)). The `.deb`, the `.rpm`, the Arch package, the
-Flatpak and macOS only notify: from 0.1.2 on, the status bar tells you when a release is out and
+Flatpak (once on Flathub) and macOS only notify: from 0.1.2 on, the status bar tells you when a release is out and
 `:update` shows the command for your install ([Installing](#installing)). Vimma 0.1.1 shows no
 notice: update it once by hand. Every update is checked against a file signed with Vimma's own
 key from `updates.vimma.dev`; Vimma never asks Mozilla's update server (`aus5.mozilla.org`) for a
