@@ -49,8 +49,8 @@ with `[ui] tabline` in `config.toml` or `:tabline`.
    else its title, else its URL, cut to `[ui] tabline_width` columns (default 14) with `…`. A tab
    playing sound ends with `♪`. A tab shown in a pane of the shown split has `▪` after its number.
    No favicons.
-6. The current tab is drawn reversed (the bar's colours swapped), with its number in the accent
-   colour, so it stands out without colour too.
+6. The current tab is drawn as a solid block in bold, as the side panel's active row, with its
+   number in the accent colour, so it stands out without colour too.
 7. When the entries do not fit, the line keeps the current tab in view, shows as many of its
    neighbours as fit, and shows `‹n` at the start and `n›` at the end for the `n` tabs hidden on
    each side. Numbers of two and three digits (tab 12, tab 120) are drawn whole and counted in
@@ -203,10 +203,15 @@ the status bar's way of measuring and drawing. The host hands the line the side 
    `truncate`, which never splits a grapheme cluster and counts wide characters as two columns.
    No favicons, because the line is a row of text in the bar's font, and an image would set its
    height and draw page-supplied pixels in chrome.
-9. **The current tab reversed, its number in the accent colour.** The current entry swaps the
-   bar's colours (`--vimma-statusbar-fg` behind, `--vimma-statusbar-bg` as text) and draws its
-   number in bold with `--vimma-accent`, because reverse video marks it without relying on colour
-   (m7-a11y: no meaning by colour alone), and the accent ties it to the side panel's active row.
+9. **The current tab as a bold block, its number in the accent colour.** The current entry is a
+   block of `--vimma-selection` with its text in `--vimma-fg-bright` and bold, and its number in
+   `--vimma-text-accent`, the side panel's active row, because the block and the weight mark it
+   without relying on colour (m7-a11y: no meaning by colour alone), and every one of those pairs
+   is covered by the theme's contrast check (`packages/vimma-core/src/config/theme.mjs`
+   `TEXT_TOKENS` on `SURFACE_TOKENS`, enforced for chrome CSS by `tools/test/chrome-css.test.ts`).
+   Rejected: reverse video (the bar's colours swapped, the number in the accent), because the
+   accent on the bar's foreground colour is a pair no theme check covers, and a theme whose
+   accent is close to its foreground would draw the number unreadable.
 10. **Overflow keeps the current tab in view.** When the entries are wider than the line, core
     picks the run of entries around the current tab: it adds neighbours one at a time, right
     then left, while they fit with the `‹n` and `n›` marks for the tabs still hidden, so the
