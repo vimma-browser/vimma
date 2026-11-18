@@ -53,15 +53,20 @@ with `[ui] tabline` in `config.toml` or `:tabline`.
    colour, so it stands out without colour too.
 7. When the entries do not fit, the line keeps the current tab in view, shows as many of its
    neighbours as fit, and shows `‹n` at the start and `n›` at the end for the `n` tabs hidden on
-   each side.
+   each side. Numbers of two and three digits (tab 12, tab 120) are drawn whole and counted in
+   the fit, in the entries and in the marks.
 8. `gb` in normal mode puts a hint label (from `[modal] hint_chars`) before every tab in the line
    and shows the line if it was not drawn. Every tab gets a label: entries shrink to fit, and
    while some still do not fit, typing the first character of a label scrolls the line to the
-   tabs left. Typing a whole label goes to that tab and removes the labels. `Esc`, or any key
+   tabs left. Labels are the link hints' prefix-free labels over the same alphabet, so with more
+   tabs than letters they take two letters or more (30 tabs over the default nine letters take
+   two, 120 take three), and a tab scrolled out of view has one too. Typing a whole label goes
+   to that tab and removes the labels. `Esc`, or any key
    that is not the next character of a label, removes the labels and does nothing else. The
    mode badge says `HINT` meanwhile.
-9. `{N}gb` goes to tab `N` at once, with no labels, as `{N}gt` does. A number past the last tab
-   does nothing.
+9. `{N}gb` goes to tab `N` at once, with no labels, as `{N}gt` does, for any `N` (`12gb`,
+   `120gb`). A number past the last tab moves nothing and the notice says so:
+   `no tab 12: this workspace has 5 tabs`.
 10. `alt+1`..`alt+9`, `ctrl+b 1`..`ctrl+b 9`, `gt`, `gT` and the side panel are unchanged.
 11. `[statusbar] tab = false` drops the status bar's `tab 2/6` and title segments while the
     window draws the tab line, since the line shows both. Left out, it is `true`, and the status
@@ -231,7 +236,10 @@ hint_chars)` in tab order, and the host reports mode `hint` while the session la
     the box.
 15. **`{N}gb` goes straight there.** With a count, `gb` runs `tab.goto` with that number, as
     `{N}gt` does (core `tabTarget`), because a user who reads the number in the line has no
-    need for a label. The count is the tab's number, not a label.
+    need for a label. The count is the tab's number, not a label, and any number works (`12gb`).
+    A number past the last tab moves nothing and the notice says
+    `no tab 12: this workspace has 5 tabs`, so that a count typed against a line that has
+    scrolled is not mistaken for a key that did nothing; `{N}gt` stays silent as before.
 16. **`[statusbar] tab`.** A new `[statusbar]` table with one key, `tab` (default `true`):
     `false` drops the status bar's `tab` and `title` segments while the window draws the line,
     since the line shows both. It never drops the URL segment, because with the toolbar hidden
@@ -298,15 +306,19 @@ vitest (`packages/vimma-core/test/tabline.test.ts`):
   pane tabs, the current tab marked.
 - `fitTabLine`: everything fits; names cut to the width with `…` and wide characters counted as
   two columns; overflow keeps the current tab in view at the start, middle and end, with exact
-  `‹n` and `n›` counts; 30 tabs at 80 columns; a width too small for one entry still shows the
+  `‹n` and `n›` counts; 30 and 120 tabs with the current tab first, at 12, in the middle and
+  last, numbers of three digits counted whole; up to 150 tabs at any width (property); a width too small for one entry still shows the
   current tab cut.
-- Labels: one label per tab in tab order from `hint_chars`; with labels, names shrink before
+- Labels: one label per tab in tab order from `hint_chars`; with 30 and 120 tabs every label is
+  different, two and three letters long, and typing each tab's label reaches that tab, the
+  line holding only the matching tabs after each letter; with labels, names shrink before
   any tab is hidden; after a typed character, only matching tabs are fitted.
 - `tabLabelKey`: a one-character label selects; a two-character label narrows then selects;
   Esc, a non-label character, a modified chord and Backspace cancel.
 - config: `[ui] tabline` accepts the three words and refuses others; `tabline_width` bounds;
   `[statusbar] tab` boolean; an unknown `[statusbar]` key is an error; defaults.
 - statusbar: `statusTab: false` drops `tab` and `title`, keeps `url`.
+- `tabCountRefusal`: none for 12 of 120, the notice for 12 of 5 and for 2 of 1 tab.
 - keymap: `gb` is bound to `tabline.hint` in normal mode and conflicts with nothing.
 
 mochitest (`tests/browser/browser_vimma_tabline.js`):
@@ -323,8 +335,11 @@ mochitest (`tests/browser/browser_vimma_tabline.js`):
   a label key selects that tab and removes the labels, `x` cancels without closing a tab,
   `4gb` selects tab 4.
 - `gb_with_the_line_off`: the line shows for the session and goes after it.
-- `overflow_keeps_the_current_tab`: with 30 tabs the current tab's entry is in the line and the
-  counts add up.
+- `overflow_keeps_the_current_tab`, once with 30 tabs and once with 120: the current tab's entry
+  is in the line and the counts add up, numbers past 9 are drawn whole and in order, the last
+  entry is not cut off, `12gb` goes to tab 12, and `gb` gives every tab a distinct label of
+  several letters, by which a tab out of view scrolls in and is reached.
+- `count_gb_jumps` also checks the notice for a number past the last tab.
 - `private_and_agent_workspaces_list_their_own`: a private window and the agent workspace list
   only their own tabs.
 - `split_marks_pane_tabs`: two tabs shown together carry `▪`.
