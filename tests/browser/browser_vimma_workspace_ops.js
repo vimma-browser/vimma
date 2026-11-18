@@ -228,11 +228,19 @@ add_task(async function rename_shows_in_the_bar_and_renames_the_container() {
   const input = /** @type {HTMLInputElement | null} */ (document.getElementById(CMDLINE_INPUT_ID));
   await until(() => input?.value === "wsrename shop", "prefix+shift+w offers the name to edit");
   EventUtils.synthesizeKey("KEY_Escape");
+  const chip = /** @type {HTMLElement} */ (document.getElementById("userContext-icons"));
+  const chipLabel = () => document.getElementById("userContext-label")?.textContent;
+  Assert.equal(chipLabel(), "shop", "the address bar's container label names the container");
 
   await runCommand("wsrename market");
   await until(() => wsSegment() === "● 2:market", "the bar shows the new name");
   Assert.equal(def("market")?.id, shop.id, "same workspace, new name");
   Assert.equal(identity(shop.userContextId)?.name, "market", "the container is renamed too");
+  // Issue #1272: Firefox restyles the container's tabs on a rename, not the address bar's label
+  // (a rename keeps the colour and icon, so only the label and tooltip change here).
+  Assert.equal(chipLabel(), "market", "the address bar's container label follows at once");
+  Assert.equal(chip.getAttribute("tooltiptext"), "market", "and its tooltip");
+  Assert.ok(!chip.hidden, "the label stays shown");
   await until(
     () =>
       snapshot().workspaces?.find((/** @type {WorkspaceState} */ w) => w.id === shop.id)?.name ===
