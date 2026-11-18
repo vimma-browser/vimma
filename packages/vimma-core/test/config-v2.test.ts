@@ -680,8 +680,19 @@ describe("[private] placement", () => {
 // docs/specs/toolbar-toggle.md, decision 3: [ui] toolbar, a schema-2 table.
 describe("[ui] toolbar", () => {
   test('defaults to "shown"', () => {
-    expect(ok(v2()).ui).toEqual({ toolbar: "shown", bookmarksToolbar: null, pdfOutline: "shown" });
-    expect(DEFAULT_CONFIG.ui).toEqual({ toolbar: "shown", pdf_outline: "shown" });
+    expect(ok(v2()).ui).toEqual({
+      toolbar: "shown",
+      bookmarksToolbar: null,
+      pdfOutline: "shown",
+      tabline: "off",
+      tablineWidth: 14,
+    });
+    expect(DEFAULT_CONFIG.ui).toEqual({
+      toolbar: "shown",
+      pdf_outline: "shown",
+      tabline: "off",
+      tabline_width: 14,
+    });
     expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n)*toolbar = "shown"$/m);
   });
 
@@ -757,6 +768,8 @@ describe("[ui] bookmarks_toolbar", () => {
       toolbar: "shown",
       bookmarksToolbar: v,
       pdfOutline: "shown",
+      tabline: "off",
+      tablineWidth: 14,
     });
   });
 
@@ -985,6 +998,72 @@ describe("[mcp]", () => {
     ]);
     expect(errors(v2("mcp = true"))).toEqual([
       { line: 2, path: "mcp", message: "expected a table, got a boolean" },
+    ]);
+  });
+});
+
+// docs/specs/tab-line.md decisions 3, 4 and 16: [ui] tabline, [ui] tabline_width, [statusbar] tab.
+describe("[ui] tabline", () => {
+  test('defaults: tabline "off", 14 columns a name, the status bar keeps its tab', () => {
+    const c = ok(v2());
+    expect(c.ui.tabline).toBe("off");
+    expect(c.ui.tablineWidth).toBe(14);
+    expect(c.statusbar).toEqual({ tab: true });
+    expect(DEFAULT_CONFIG.ui).toMatchObject({ tabline: "off", tabline_width: 14 });
+    expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n|\w+ = .*\n)*tabline = "off"$/m);
+    expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n|\w+ = .*\n)*tabline_width = 14$/m);
+    expect(formatDefaultsToml()).toMatch(/^\[statusbar\]\n(#.*\n)*tab = true$/m);
+  });
+
+  test.each([["off"], ["always"], ["auto"]])('tabline = "%s" is accepted', (v) => {
+    expect(ok(v2("[ui]", `tabline = "${v}"`)).ui.tabline).toBe(v);
+  });
+
+  test("any other value is an error, with the nearest one when it is close", () => {
+    expect(errors(v2("[ui]", 'tabline = "alway"'))).toEqual([
+      {
+        line: 3,
+        path: "ui.tabline",
+        message: 'must be "off", "always" or "auto"',
+        suggestion: "always",
+      },
+    ]);
+    expect(errors(v2("[ui]", "tabline = true"))).toEqual([
+      { line: 3, path: "ui.tabline", message: "expected a string, got a boolean" },
+    ]);
+  });
+
+  test("tabline_width is 4 to 60 columns", () => {
+    expect(ok(v2("[ui]", "tabline_width = 4")).ui.tablineWidth).toBe(4);
+    expect(ok(v2("[ui]", "tabline_width = 60")).ui.tablineWidth).toBe(60);
+    for (const v of ["3", "61"]) {
+      expect(errors(v2("[ui]", `tabline_width = ${v}`))).toEqual([
+        {
+          line: 3,
+          path: "ui.tabline_width",
+          message: "must be an integer between 4 and 60 (columns)",
+        },
+      ]);
+    }
+    expect(errors(v2("[ui]", 'tabline_width = "14"'))).toEqual([
+      { line: 3, path: "ui.tabline_width", message: "expected an integer, got a string" },
+    ]);
+  });
+
+  test("[statusbar] tab is a boolean; an unknown key is an error; new in schema 2", () => {
+    expect(ok(v2("[statusbar]", "tab = false")).statusbar).toEqual({ tab: false });
+    expect(errors(v2("[statusbar]", 'tab = "no"'))).toEqual([
+      { line: 3, path: "statusbar.tab", message: "expected a boolean, got a string" },
+    ]);
+    expect(errors(v2("[statusbar]", "tabs = false"))).toEqual([
+      { line: 3, path: "statusbar.tabs", message: 'unknown key "tabs"', suggestion: "tab" },
+    ]);
+    expect(errors(toml("schema = 1", "[statusbar]", "tab = false"))).toEqual([
+      {
+        line: 2,
+        path: "statusbar",
+        message: "is new in schema 2: put schema = 2 at the top of the file",
+      },
     ]);
   });
 });

@@ -37,6 +37,8 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Move the tab left                                                  | `move_tab_left`   | `ctrl+shift+pageup`                               |
 | Move the tab right                                                 | `move_tab_right`  | `ctrl+shift+pagedown`                             |
 | Reopen the last closed tab                                         | `restore_tab`     | `ctrl+shift+t`                                    |
+| Jump to a tab by its label in the tab line (with a count: tab N)   | `tabline_hint`    | `gb`                                              |
+| Show / hide the tab line                                           | `toggle_tabline`  | —                                                 |
 
 ## Panes
 

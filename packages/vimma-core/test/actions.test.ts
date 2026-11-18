@@ -222,6 +222,21 @@ describe("toolbar toggle", () => {
     expect(compileKeymap().bindingsFor("focus_element")).toEqual(["F", "F [element]"]);
   });
 
+  // docs/specs/tab-line.md decisions 6, 12 and 15.
+  test("tabline_hint (tabline.hint) is gb in normal mode only; toggle_tabline is unbound", () => {
+    expect(getAction("tabline_hint")).toMatchObject({ id: "tabline.hint", group: "Tabs" });
+    expect(getAction("toggle_tabline")).toMatchObject({ id: "tabline.toggle", group: "Tabs" });
+    expect(compileKeymap().bindingsFor("tabline_hint")).toEqual(["gb"]);
+    expect(compileKeymap().bindingsFor("toggle_tabline")).toEqual([]);
+    const g = compileKeymap().trie("normal").children.get("g");
+    expect(g?.children.get("b")?.action?.id).toBe("tabline.hint");
+    // b alone is still tab search, and gb stays free in the PDF viewer's own table.
+    expect(compileKeymap().trie("normal").children.get("b")?.action?.id).toBe("goto.picker");
+    expect(
+      compileKeymap().trie("normal", "pdf").children.get("g")?.children.get("b")?.action?.id,
+    ).toBe("tabline.hint");
+  });
+
   test("follow_link_new_tab (hint.follow_new_tab) moved from F to gF", () => {
     expect(compileKeymap().bindingsFor("follow_link_new_tab")).toEqual(["gF"]);
   });
