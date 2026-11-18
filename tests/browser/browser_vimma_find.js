@@ -896,3 +896,113 @@ add_task(async function firefoxs_find_in_page_keeps_its_own_find_bar() {
     }
   });
 });
+
+/**
+ * about:vimma loads in the parent process (AboutVimma.sys.mjs). There the browser's finder is
+ * Firefox's in-process Finder, which searches as the find bar's input event runs, not over IPC
+ * as FinderParent does (#1307).
+ */
+add_task(async function find_on_about_vimma_moves_to_the_match() {
+  await SpecialPowers.pushPrefEnv({ set: [["general.smoothScroll", false]] });
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:vimma");
+  const browser = tab.linkedBrowser;
+  try {
+    await TestUtils.waitForCondition(
+      () => browser.contentDocument?.documentElement?.dataset.ready === "true",
+      "about:vimma rendered",
+    );
+    const doc = /** @type {Document} */ (browser.contentDocument);
+    const win = /** @type {Window} */ (browser.contentWindow);
+    // Words of their own, far below the fold, so the counts and the scroll do not depend on the
+    // page's text: "quokka" twice, "wombat" three times.
+    const tail = doc.createElement("section");
+    tail.style.marginTop = `${win.innerHeight * 3}px`;
+    for (const [id, word] of [
+      ["q1", "quokka"],
+      ["w1", "wombat"],
+      ["q2", "quokka"],
+      ["w2", "wombat"],
+      ["w3", "wombat"],
+    ]) {
+      const p = doc.createElement("p");
+      p.id = id;
+      p.textContent = word;
+      p.style.marginBottom = `${win.innerHeight}px`;
+      tail.append(p);
+    }
+    doc.body.append(tail);
+    await focusContent(browser);
+    await TestUtils.waitForCondition(
+      () => VimmaHost._browserMode(browser) === "normal",
+      "about:vimma is in normal mode",
+    );
+    Assert.equal(win.scrollY, 0, "at the top");
+    const sel = () => {
+      const s = win.getSelection();
+      return s && !s.isCollapsed ? `${s.anchorNode?.parentElement?.id}:${s}` : "";
+    };
+    /** @param {string} id */
+    const onScreen = (id) => {
+      const r = /** @type {Element} */ (doc.getElementById(id)).getBoundingClientRect();
+      return r.top >= 0 && r.bottom <= win.innerHeight;
+    };
+    /**
+     * `/word` Enter from the top of the page, then the first match is selected and on screen
+     * with a count of its own.
+     * @param {string} word @param {string} first @param {number} total
+     */
+    const search = async (word, first, total) => {
+      win.scrollTo(0, 0);
+      type(`/${word}`);
+      EventUtils.synthesizeKey("KEY_Enter");
+      await assertBackInNormal(browser, `/${word} Enter`);
+      await TestUtils.waitForCondition(
+        () => sel() === `${first}:${word}`,
+        `/${word} selects the first match`,
+      );
+      Assert.ok(onScreen(first), `/${word} scrolls the first match into view`);
+      await TestUtils.waitForCondition(
+        () => findStatus()?.query === word && findStatus()?.total === total,
+        `/${word} counts ${total}`,
+      );
+      Assert.equal(findStatus()?.current, 1, `/${word} is on the first of ${total}`);
+    };
+
+    await search("quokka", "q1", 2);
+    EventUtils.synthesizeKey("n");
+    await TestUtils.waitForCondition(() => sel() === "q2:quokka", "n: the next match");
+    Assert.ok(onScreen("q2"), "n scrolls to it");
+    EventUtils.synthesizeKey("N");
+    await TestUtils.waitForCondition(() => sel() === "q1:quokka", "N: back to the first");
+    Assert.ok(onScreen("q1"), "N scrolls to it");
+
+    // The find bar is cached now: a new search, with no count left from /quokka.
+    await search("wombat", "w1", 3);
+    // The same text again starts at the top of what is on screen, not after the last match.
+    EventUtils.synthesizeKey("n");
+    await TestUtils.waitForCondition(() => sel() === "w2:wombat", "n: the next wombat");
+    await search("wombat", "w1", 3);
+    // From the middle of the page: the first match below the top of what is on screen.
+    EventUtils.synthesizeKey("n");
+    EventUtils.synthesizeKey("n");
+    await TestUtils.waitForCondition(() => sel() === "w3:wombat", "n n: the last wombat");
+    const q2 = /** @type {Element} */ (doc.getElementById("q2"));
+    win.scrollTo(0, q2.getBoundingClientRect().top + win.scrollY);
+    type("/wombat");
+    EventUtils.synthesizeKey("KEY_Enter");
+    await assertBackInNormal(browser, "/wombat Enter from the middle");
+    await TestUtils.waitForCondition(
+      () => sel() === "w2:wombat",
+      "/wombat from the middle selects the first match on screen",
+    );
+    // Its own count, not the [3/3] that n n left.
+    await TestUtils.waitForCondition(
+      () => findStatus()?.current === 2,
+      "/wombat from the middle counts it as the second",
+    );
+    Assert.equal(findStatus()?.total, 3, "of 3");
+  } finally {
+    gBrowser.getCachedFindBar(tab)?.close(true);
+    BrowserTestUtils.removeTab(tab);
+  }
+});

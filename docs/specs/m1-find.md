@@ -164,7 +164,11 @@ limit, notFound }` in `VimmaHost.status()`; the segment is `/word [2/5]`, `/w` u
 - **Host changes are additive:** a `find` field in `WindowState`, four `CONTENT_RUNNERS`, one
   early return in `_onKeyDown` (only with no pending prefix, so `ctrl+b` sequences still work in
   the bar), and `status()`'s extra field. Actor: `Vimma:ScrollPosition`, `Vimma:ScrollTo`,
-  `Vimma:FindAnchor`. No upstream patch, no new dependency.
+  `Vimma:FindAnchor`. No upstream patch, no new dependency. (Since changed: `Vimma:FindAnchor`
+  is a query that `/` and `?` wait for before the find bar takes the typed text, because a page
+  in the parent process, such as about:vimma, has Firefox's in-process Finder, which searches
+  before a queued message arrives, and the anchor then collapsed the match (#1307). A new search
+  also drops the tab's last count, so the status bar never keeps the previous search's.)
 
 ## Limits
 

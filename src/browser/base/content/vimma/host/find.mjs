@@ -135,6 +135,10 @@ export class Find {
     if (!tab) return;
     this.#watch(browser);
     this.active.add(browser);
+    // A new search counts its own matches (#1307). The last search's count is carried over to a
+    // result for the same text so that n and N keep it until theirs is in (#onResult); here it
+    // would stay, as #finish asks for a count only when it has none.
+    this.entries.delete(browser);
     /** @type {Session} */
     const session = {
       browser,
@@ -149,10 +153,14 @@ export class Find {
     };
     // Before the first search: it starts where Vim's would, not at the document's first match.
     VimmaActors.findStep(browser);
-    VimmaActors.findAnchor(browser);
+    // The find bar waits for the anchor (#1307). A page in the parent process (about:vimma, the
+    // start page) has Firefox's in-process Finder, which searches as the bar's input event runs:
+    // with the bar cached, it would search before the anchor's message arrives, and the anchor
+    // would then collapse the match. A remote page's finder messages queue behind the anchor's.
+    const anchored = VimmaActors.findAnchor(browser);
     this.session = session;
     this.onChange();
-    gBrowser.getFindBar(tab).then((findbar) => {
+    Promise.all([gBrowser.getFindBar(tab), anchored]).then(([findbar]) => {
       if (this.session !== session) return;
       if (!findbar) {
         this.session = null;
