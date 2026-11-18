@@ -1037,12 +1037,11 @@ export class WindowWorkspacesImpl {
 
   /**
    * Workspace `id`'s saved splits `own` (in uuids) in the ids PaneView uses, or null when none is
-   * left. The split PaneView makes current (the one shown, else the one shown last) gets panel
-   * ids, a lazy member its browser (not loaded), as Firefox's split view gives it on activation.
-   * Every other split keeps a lazy member's uuid, so that it stays lazy until that split shows:
-   * a browser makes SessionStore restore the tab in the background, and its next save then
-   * writes it without its scroll position and form data (issues #1305, #1318). A tab gone or no
-   * longer in the workspace leaves its split.
+   * left: a loaded tab's panel, a lazy tab's uuid. Nothing gets a browser here: PaneView gives
+   * them to the split it makes current (#use) and to any other split once it shows, so the
+   * others stay lazy. A browser makes SessionStore restore the tab in the background, and its
+   * next save then writes it without its scroll position and form data (issues #1305, #1318).
+   * A tab gone or no longer in the workspace leaves its split.
    * @param {Workspaces} model
    * @param {string} id
    * @param {Splits} own
@@ -1051,19 +1050,15 @@ export class WindowWorkspacesImpl {
   #panelSplits(model, id, own) {
     const ours = findWorkspace(model, { id });
     if (!ours) return null;
-    // PaneView's choice of the current split (#use).
-    const current = own.shown ?? own.last ?? own.splits[0]?.number;
-    const panel = (/** @type {string} */ uuid, /** @type {boolean} */ wake) => {
+    const panel = (/** @type {string} */ uuid) => {
       const tab = this.#tab(uuid);
       if (!tab || !ours.tabs.includes(uuid)) return undefined;
-      if (!tab.linkedPanel && !wake) return uuid;
-      if (!tab.linkedPanel) this.#gBrowser.insertBrowser(tab);
-      return tab.linkedPanel ?? undefined;
+      return tab.linkedPanel || uuid;
     };
     /** @type {NumberedSplit[]} */
     const list = [];
     for (const x of own.splits) {
-      const tree = mapTree(x, (uuid) => panel(uuid, x.number === current));
+      const tree = mapTree(x, panel);
       if (tree) list.push(Object.freeze({ ...tree, number: x.number }));
     }
     const kept = (/** @type {number | null} */ n) =>

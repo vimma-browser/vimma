@@ -80,8 +80,9 @@ workspace` and does not open.
     private workspace and the agent workspace behave the same. (Since changed: after a restore, a
     split that is not on screen names each tab that has not loaded by its workspace uuid instead
     of its panel, so the tab stays lazy and keeps its saved scroll position and form data until
-    the split shows; `vimma-ctl state`, the panel and the picker show those tabs as they show any
-    tab that has not loaded; #1318.)
+    the split shows; a tab Firefox unloads is named by its uuid again, so its split keeps it;
+    `vimma-ctl state`, the panel and the picker show those tabs as they show any tab that has not
+    loaded; #1318.)
 11. **`vimma-ctl state`** lists every split of the window's workspace in a new `splits` field.
     `panes` keeps its meaning for older clients.
 12. **Behind a pref until finished.** While `vimma.feature.multiple_splits` is `false` (the

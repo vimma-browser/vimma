@@ -22,6 +22,12 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
 const { PaneViews } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/split/PaneView.mjs",
 );
+const { SessionStore } = ChromeUtils.importESModule(
+  "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
+);
+const { TabStateFlusher } = ChromeUtils.importESModule(
+  "moz-src:///browser/components/sessionstore/TabStateFlusher.sys.mjs",
+);
 const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
 const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
 
@@ -594,6 +600,80 @@ add_task(async function test_state_splits() {
   for (const t of tabs) gBrowser.removeTab(t);
   await TestUtils.waitForCondition(() => !view.panes, "no split left");
   await SpecialPowers.popPrefEnv();
+  Services.prefs.clearUserPref("browser.tabs.splitview.hasUsed");
+});
+
+// docs/specs/multiple-splits.md behaviour 10 (#1318): after a restore, a split that is not on
+// screen names its lazy tabs by their workspace uuids; `state` still gives each of their panes
+// the tab's id and its place, as for any tab, and wakes none of them.
+add_task(async function test_state_splits_with_lazy_tabs() {
+  await enable();
+  const client = await session();
+  const w1 = await BrowserTestUtils.openNewBrowserWindow();
+  await /** @type {WindowWorkspacesImpl} */ (WindowWorkspaces.get(w1)).ready;
+  /** @type {MozTabbrowserTab[]} */
+  const tabs = [];
+  for (const q of ["l1", "l2", "l3", "l4", "l5"]) {
+    const t = BrowserTestUtils.addTab(w1.gBrowser, `https://example.com/?${q}`);
+    await BrowserTestUtils.browserLoaded(t.linkedBrowser);
+    tabs.push(t);
+  }
+  const [a, b, c, d, lone] = tabs;
+  const view1 = /** @type {PaneView} */ (PaneViews.get(w1));
+  Assert.ok(view1.showTabs(/** @type {PaneTab[]} */ ([a, b]), /** @type {PaneTab} */ (a)).ok);
+  w1.gBrowser.selectedTab = lone;
+  await TestUtils.waitForCondition(() => view1.hidden, "lone shows alone");
+  Assert.ok(view1.showTabs(/** @type {PaneTab[]} */ ([c, d]), /** @type {PaneTab} */ (c)).ok);
+  await TestUtils.waitForCondition(() => view1.splits.shown === 2, "S2 shows, S1 does not");
+  const uuid = (/** @type {MozTabbrowserTab} */ t) =>
+    SessionStore.getCustomTabValue(t, "vimma-tab");
+  const [ua, ub] = [a, b].map(uuid);
+  await TabStateFlusher.flushWindow(w1);
+  /** @type {{ windows: { tabs: { entries: { url: string }[] }[] }[] }} */
+  const saved = JSON.parse(SessionStore.getBrowserState());
+  const winState = saved.windows.find((w) =>
+    w.tabs.some((t) => t.entries.some((e) => e.url === "https://example.com/?l1")),
+  );
+  Assert.ok(winState, "the window is saved");
+  await BrowserTestUtils.closeWindow(w1);
+
+  const w2 = await BrowserTestUtils.openNewBrowserWindow();
+  await /** @type {WindowWorkspacesImpl} */ (WindowWorkspaces.get(w2)).ready;
+  const restored = BrowserTestUtils.waitForEvent(w2, "SSWindowRestored");
+  SessionStore.setWindowState(w2, JSON.stringify({ windows: [winState] }), true);
+  await restored;
+  const view2 = /** @type {PaneView} */ (PaneViews.get(w2));
+  await TestUtils.waitForCondition(() => view2.splits.shown === 2, "S2 shows after the restore");
+  await SimpleTest.promiseFocus(w2);
+  const byUuid = (/** @type {string} */ u) =>
+    /** @type {MozTabbrowserTab} */ (w2.gBrowser.tabs.find((t) => uuid(t) === u));
+  const [ra, rb] = [ua, ub].map(byUuid);
+  Assert.ok(!ra.linkedPanel && !rb.linkedPanel, "S1's tabs are lazy");
+
+  const { result } = await client.request(1, "state");
+  const v = validateMessage(
+    { type: "response", id: 1, ok: true, result },
+    { kind: "response", command: "state" },
+  );
+  Assert.ok(v.valid, `the state is valid: ${v.errors.join("; ")}`);
+  const s1 = result.splits.find((/** @type {{ number: number }} */ x) => x.number === 1);
+  /** @type {{ tab: string | null, index: number }[]} */
+  const panes = s1?.root?.children ?? [];
+  const visible = w2.gBrowser.visibleTabs;
+  Assert.deepEqual(
+    panes.map((p) => p.index),
+    [visible.indexOf(ra), visible.indexOf(rb)],
+    "S1's panes are its two tabs, in their places",
+  );
+  Assert.ok(
+    panes.every((p) => p.index >= 0 && p.tab === result.tabs[p.index].id),
+    "each with the id tabs[] gives it",
+  );
+  Assert.ok(!ra.linkedPanel && !rb.linkedPanel, "state woke neither");
+
+  client.close();
+  await disable();
+  await BrowserTestUtils.closeWindow(w2);
   Services.prefs.clearUserPref("browser.tabs.splitview.hasUsed");
 });
 

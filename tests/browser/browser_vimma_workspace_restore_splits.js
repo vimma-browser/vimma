@@ -229,7 +229,16 @@ add_task(async function a_hidden_workspaces_split_stays_lazy_and_keeps_its_scrol
       // Null until the page has replaced about:blank.
       text: /** @type {HTMLInputElement | null} */ (content.document.getElementById("text"))?.value,
     }));
-  await TestUtils.waitForCondition(async () => (await read()).y === 1200, "scroll restores");
+  // The restore may still move the page to its content process: a read that reaches the old
+  // one fails (its actor is destroyed) and is tried again.
+  await TestUtils.waitForCondition(
+    () =>
+      read().then(
+        (r) => r.y === 1200,
+        () => false,
+      ),
+    "scroll restores",
+  );
   Assert.equal((await read()).text, "kept", "the typed text comes back");
   await BrowserTestUtils.closeWindow(w3);
 });
@@ -310,106 +319,4 @@ add_task(async function a_hidden_split_that_loses_a_tab_before_its_visit_keeps_t
     "G shows the two panes left",
   );
   await BrowserTestUtils.closeWindow(w2);
-});
-
-// Issue #1318: in the shown workspace, a split that is not on screen (docs/specs/multiple-splits.md)
-// stays lazy after a restore until it is shown, and keeps its saved scroll position and form data
-// meanwhile, as a hidden workspace's split does (#1305).
-add_task(async function a_split_not_on_screen_stays_lazy_and_keeps_its_scroll() {
-  const M = workspace("rs-m");
-  const w1 = await openWindow();
-  const ww1 = live(w1);
-  ww1.switchTo({ id: M.id });
-  await until(() => ww1.model.active === M.id, "M is shown");
-  const m1 = /** @type {SplitTab} */ (await openIn(w1, LONG));
-  await SpecialPowers.spawn(m1.linkedBrowser, [], () => {
-    const field = /** @type {HTMLInputElement} */ (content.document.getElementById("text"));
-    field.value = "kept";
-    field.dispatchEvent(new content.Event("input", { bubbles: true }));
-    content.scrollTo(0, 1200);
-  });
-  /** @type {SplitTab[]} */
-  const more = [];
-  for (const n of ["m2", "m3", "m4"]) {
-    const t = /** @type {SplitTab} */ (BrowserTestUtils.addTab(w1.gBrowser, `${PAGE}?${n}`));
-    await BrowserTestUtils.browserLoaded(t.linkedBrowser);
-    more.push(t);
-  }
-  const [m2, m3, m4] = more;
-  // S1: the long page and m2; then S2 on the lone m3: S1 is no longer on screen.
-  Assert.ok(view(w1).showTabs([m1, m2], m1).ok, "S1: m1 | m2");
-  w1.gBrowser.selectedTab = m3;
-  await until(() => view(w1).hidden, "m3 shows alone, S1 kept");
-  Assert.ok(view(w1).showTabs([m3, m4], m3).ok, "S2: m3 | m4");
-  await until(() => view(w1).splits.splits.length === 2, "M has two splits");
-  Assert.equal(view(w1).splits.shown, 2, "S2 is on screen");
-  const uuids = [m1, m2, m3, m4].map((t) => SessionStore.getCustomTabValue(t, TAB_KEY));
-  const first = await saved(w1, LONG);
-  Assert.equal(first.tab.scroll?.scroll, "0,1200", "the long page is saved scrolled");
-  Assert.equal(first.tab.formdata?.id?.text, "kept", "with its typed text");
-  await BrowserTestUtils.closeWindow(w1);
-
-  const byUuid = (/** @type {BrowserWindow} */ win, /** @type {string} */ u) =>
-    /** @type {SplitTab} */ (
-      win.gBrowser.tabs.find((t) => SessionStore.getCustomTabValue(t, TAB_KEY) === u)
-    );
-  // First restart: S2 is on screen, S1 is not shown.
-  const w2 = await openWindow();
-  await restoreInto(w2, first.winState);
-  const ww2 = live(w2);
-  await until(() => ww2.model.active === M.id, "M is shown after the restore");
-  await until(() => view(w2).splits.shown === 2, "S2 is on screen");
-  const [r1, r2] = uuids.map((u) => byUuid(w2, u));
-  Assert.ok(r1 && r2, "S1's tabs come back");
-  Assert.ok(!r1.linkedPanel && !r2.linkedPanel, "S1's tabs stay lazy");
-  const offScreen = view(w2).splits.splits.find((x) => x.number === 1);
-  Assert.deepEqual(
-    offScreen ? leaves(offScreen).map((l) => view(w2).tabOf(l.tab)) : [],
-    [r1, r2],
-    "S1 names them by their uuids",
-  );
-  Assert.ok(
-    !SessionStore.isTabRestoring(r1) && !SessionStore.isTabRestoring(r2),
-    "and are not restored in the background",
-  );
-  const second = await saved(w2, LONG);
-  Assert.equal(second.tab.scroll?.scroll, "0,1200", "the next save keeps the scroll position");
-  Assert.equal(second.tab.formdata?.id?.text, "kept", "and the typed text");
-  const snapshot = readSnapshot(/** @type {string} */ (second.winState.extData?.[WINDOW_KEY]));
-  const own = splitsOf(
-    /** @type {WorkspaceState} */ (snapshot.state.workspaces.find((w) => w.id === M.id)),
-  );
-  Assert.deepEqual(
-    own.splits.map((x) => leaves(x).map((l) => l.tab)),
-    [uuids.slice(0, 2), uuids.slice(2)],
-    "and both splits",
-  );
-  Assert.equal(own.shown, 2, "with S2 on screen");
-  await BrowserTestUtils.closeWindow(w2);
-
-  // Second restart: picking the long page shows S1, at the saved position.
-  const w3 = await openWindow();
-  await restoreInto(w3, second.winState);
-  const ww3 = live(w3);
-  await until(() => ww3.model.active === M.id, "M is shown after the second restore");
-  await until(() => view(w3).splits.shown === 2, "S2 is on screen again");
-  const [s1, s2] = uuids.map((u) => byUuid(w3, u));
-  w3.gBrowser.selectedTab = s1;
-  await until(() => view(w3).splits.shown === 1, "selecting the long page shows S1");
-  const panes = view(w3).panes;
-  Assert.deepEqual(
-    panes ? leaves(panes).map((l) => l.tab) : [],
-    [s1?.linkedPanel ?? "", s2?.linkedPanel ?? ""],
-    "S1 comes back whole",
-  );
-  await until(() => !s1.hasAttribute("pending"), "the long page restores");
-  const read = () =>
-    SpecialPowers.spawn(s1.linkedBrowser, [], () => ({
-      y: content.scrollY,
-      // Null until the page has replaced about:blank.
-      text: /** @type {HTMLInputElement | null} */ (content.document.getElementById("text"))?.value,
-    }));
-  await TestUtils.waitForCondition(async () => (await read()).y === 1200, "scroll restores");
-  Assert.equal((await read()).text, "kept", "the typed text comes back");
-  await BrowserTestUtils.closeWindow(w3);
 });
