@@ -19,9 +19,9 @@ import {
   matchSiteRule,
 } from "../core/editable.mjs";
 import { HintError, hintKey, hintStatus, startHints } from "../core/hints.mjs";
-import { chordFromEvent, formatKey } from "../core/keys.mjs";
-import { SUGGESTION_ACTIONS } from "../core/suggestions.mjs";
-import { pressingKey } from "../actors/enter-key.mjs";
+import { chordFromEvent, formatKey, parseKey } from "../core/keys.mjs";
+import { SUGGESTION_ACTIONS, suggestionStep } from "../core/suggestions.mjs";
+import { pressKeyLater, pressingKey } from "../actors/enter-key.mjs";
 import { compileKeymap, withSiteUnbinds } from "../core/keymap.mjs";
 import { KEY_KEEPING_MODES } from "../core/modes.mjs";
 import { notImplementedText } from "../core/actions.mjs";
@@ -1479,10 +1479,29 @@ export const VimmaHost = {
           return;
         }
         if (first && !modal && !this._runnable(state, result.action.id)) return;
+        // A suggestion key with no page focused (docs/specs/page-suggestions.md, issue #1261):
+        // the address bar's results while they show; otherwise the chord is as if unbound
+        // there, so the field keeps its own keys: its [keys] binding, Vim's text-field key
+        // (ctrl+j is Enter) or the field's own (Cocoa's ctrl+k on macOS).
+        let run = result;
+        if (isSuggestionAction(result.action.id) && !this._contentBrowser(state)) {
+          if (this._urlbarStep(state, result.action.id)) {
+            consume(e);
+            return;
+          }
+          const fallback = first ? state.keymap.fallback(mode, formatKey(chord)) : null;
+          if (!fallback) {
+            if (!first) consume(e);
+            else this._editKey(state, e, mode, chord);
+            return;
+          }
+          run = { kind: "action", action: { ...fallback, count: result.action.count } };
+          if (!this._runnable(state, run.action.id)) return;
+        }
         // Firefox let the page have this chord first: so does Vimma (firefox-keys decision 6).
         // The keydown goes on; the keypress after the page runs the action (_onKeyPress).
-        if (first && !modal && this._pageFirstAction(state, chord, mode, result.action.id)) {
-          state.pageFirst.defer(formatKey(chord), result, mode);
+        if (first && !modal && this._pageFirstAction(state, chord, mode, run.action.id)) {
+          state.pageFirst.defer(formatKey(chord), run, mode);
           return;
         }
         consume(e);
@@ -1494,13 +1513,12 @@ export const VimmaHost = {
           state.element.leave();
           if (result.action.id === "mode.normal") return;
         }
-        // A suggestion key that does not wait for a page (a chrome field has focus) runs its
-        // chord's [keys] binding: the address bar keeps ctrl+n and ctrl+p.
-        if (isSuggestionAction(result.action.id)) {
-          this._suggest(state, result.action, first ? formatKey(chord) : null, mode);
+        // A suggestion key that does not wait for the page: the second key of a sequence.
+        if (isSuggestionAction(run.action.id)) {
+          this._suggest(state, run.action, first ? formatKey(chord) : null, mode);
           return;
         }
-        this._run(state, result);
+        this._run(state, run);
       }
     }
   },
@@ -1563,13 +1581,48 @@ export const VimmaHost = {
     // A late reply (a busy page) must not press a key in, or run the fallback for, the tab or
     // pane focused since (docs/security/13-page-modes.md K6).
     if (browser && target && target !== browser) return;
+    // The frame asked: the Enter fallback goes only there, never to a frame the page focused
+    // while it answered (docs/security/13-page-modes.md K5).
+    const asked = Services.focus.focusedContentBrowsingContext;
     if (browser && (await VimmaActors.suggestion(browser, action.id, sameMode))) return;
     if (browser && this._contentBrowser(state) !== browser) return;
-    if (!sameMode()) return;
-    const fallback = key ? state.keymap.fallback(mode, key) : null;
-    if (!fallback || state.win.closed) return;
-    this._run(state, { kind: "action", action: { ...fallback, count: action.count } });
-    this._emit(state);
+    if (!sameMode() || !key || state.win.closed) return;
+    const fallback = state.keymap.fallback(mode, key);
+    if (fallback) {
+      this._run(state, { kind: "action", action: { ...fallback, count: action.count } });
+      this._emit(state);
+      return;
+    }
+    // No binding of its own outside a list: Vim's text-field key on the chord, as when no
+    // suggestion key is bound to it (ctrl+j is Enter, issue #1261). The page has had the key.
+    const chord = parseKey(key);
+    const command = browser && mode === "insert" ? this._editCommand(state, chord) : null;
+    if (!command || state.keymap.unbinds(pageSite(state.keymap, browser), key)) return;
+    VimmaActors.edit(
+      /** @type {MozTabBrowser} */ (browser),
+      command,
+      () => sameMode() && Services.focus.focusedContentBrowsingContext === asked,
+    );
+  },
+
+  /**
+   * A suggestion key in the address bar while its results show (issue #1261): ArrowDown or
+   * ArrowUp pressed in it, which moves the selected row as the arrow keys do, including the
+   * one-off search buttons. Firefox's own ctrl+n and ctrl+p there are macOS-only
+   * (UrlbarChildController, handleKeyNavigation, Firefox 160); this gives every platform all
+   * four keys. Returns whether it pressed one.
+   * @param {WindowState} state
+   * @param {string} id  page.suggestion_next or page.suggestion_prev
+   */
+  _urlbarStep(state, id) {
+    const win = state.win;
+    const bar = /** @type {UrlbarInput | null} */ (win.document.getElementById("urlbar"));
+    const field = focusedChromeField(win);
+    if (!bar?.focused || !field || !bar.contains(field) || !bar.view?.isOpen) return false;
+    const step = suggestionStep(id, true);
+    if (step.kind !== "press") return false;
+    pressKeyLater(win, step.key, () => focusedChromeField(win) === field && bar.view.isOpen);
+    return true;
   },
 
   /**
@@ -1786,7 +1839,11 @@ export const VimmaHost = {
     if (!command || !browser || this._mode(state) !== "insert") return;
     // The reply Firefox asks for its own (disabled) key on the chord comes here too: a key the
     // site keeps is the page's whatever brought it back (site-unbind decision 9).
-    if (state.keymap.unbinds(pageSite(state.keymap, browser), formatKey(chord))) return;
+    const site = pageSite(state.keymap, browser);
+    if (state.keymap.unbinds(site, formatKey(chord))) return;
+    // A chord bound in insert mode runs its binding, not the text-field key: ctrl+j's Enter
+    // outside a suggestion list comes from `_suggest` (issue #1261), never a second time here.
+    if (state.keymap.trie("insert", "page", site).children.get(formatKey(chord))?.action) return;
     // A late reply (a busy page) must not edit, or press Enter in, the tab or pane focused since:
     // Firefox dispatches it on the <browser> the key went to (BrowserParent::RecvReplyKeyEvent).
     const remote = /** @type {ChromeKeyEvent} */ (e).isReplyEventFromRemoteContent;

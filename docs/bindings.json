@@ -1146,22 +1146,32 @@
         },
         {
           "name": "suggestion_next",
-          "description": "Next suggestion in the page's list",
+          "description": "Next suggestion in an open list",
           "keys": [
             {
               "keys": "ctrl+n",
               "chords": ["ctrl+n"],
+              "mode": "insert"
+            },
+            {
+              "keys": "ctrl+j",
+              "chords": ["ctrl+j"],
               "mode": "insert"
             }
           ]
         },
         {
           "name": "suggestion_prev",
-          "description": "Previous suggestion in the page's list",
+          "description": "Previous suggestion in an open list",
           "keys": [
             {
               "keys": "ctrl+p",
               "chords": ["ctrl+p"],
+              "mode": "insert"
+            },
+            {
+              "keys": "ctrl+k",
+              "chords": ["ctrl+k"],
               "mode": "insert"
             }
           ]

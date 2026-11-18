@@ -12,7 +12,7 @@
 
 import { parseConfig } from "./config.mjs";
 import { formatConfigTemplate } from "./defaults.mjs";
-import { locateKeys, parseToml, sameToml, tomlLiteral } from "./toml.mjs";
+import { locateKeys, parseToml, sameTomlValue, tomlLiteral } from "./toml.mjs";
 
 /**
  * @typedef {{ text: string | null, added: string[], already: string[], removed: string[] }
@@ -268,7 +268,7 @@ export function editSiteUnbindText(text, table, { add = [], remove = [] }, { mac
     delete expSites[table];
     if (Object.keys(expSites).length === 0 && !("sites" in after.value)) delete expected.sites;
   }
-  if (!sameToml(after.value, expected)) return leftAlone;
+  if (!sameTomlValue(after.value, expected)) return leftAlone;
   const loads = parseConfig(out, { mac }).errors[0];
   if (loads) {
     return { error: `config.toml would not load with the change: ${loads.path}: ${loads.message}` };

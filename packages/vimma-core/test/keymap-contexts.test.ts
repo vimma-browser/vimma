@@ -275,9 +275,11 @@ describe("index mode", () => {
   });
 
   test("index mode turns off none of Firefox's keys that no other mode binds", () => {
-    // ctrl+c is Firefox's copy; ctrl+j its web search once the user unbinds Vimma's.
+    // ctrl+c is Firefox's copy; ctrl+j its web search once the user unbinds Vimma's, the web
+    // search and insert mode's suggestion key (issue #1261).
     expect(boundChords(compileKeymap()).has("ctrl+c")).toBe(false);
-    expect(boundChords(compileKeymap({ keys: { web_search: [] } })).has("ctrl+j")).toBe(false);
+    const unbound = compileKeymap({ keys: { web_search: [] }, unbind: { insert: ["<C-j>"] } });
+    expect(boundChords(unbound).has("ctrl+j")).toBe(false);
   });
 
   test("config.toml accepts [modal.index] as a mode table", () => {
