@@ -112,8 +112,10 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   `http`, `https`, `file`, `about`), a `javascript:` URL unless `bookmarklets` is `"user"` or
   `"agent"`, a name with control, bidirectional or invisible characters (they are dropped from a
   page title first), a name over 4,096 characters, or a file over 4 MiB or 20,000 bookmarks and
-  folders. Nothing reaches Places when the write fails, and when the Places step of a change fails the file
-  and the base are put back, so nothing is lost on either side (D18). A file over 4 MiB is not
+  folders. Nothing reaches Places when the write fails. When the Places step of a change fails before it
+  changed anything, the file and the base are put back; once part of it is in Places, the edit
+  stays and a run brings Places to the file, so an item may end up twice but never nowhere
+  (D18). A file over 4 MiB is not
   read for an edit either. A key's delete removes only the item
   its y/N named; a takeover of a folder that has bookmarks writes them into the table and
   deletes nothing (D7); the guide warns that a shared file's table can so take a personal folder's
@@ -139,5 +141,6 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`a_file_changed_during_an_edit_is_retried_once`](../../tests/browser/browser_vimma_bookmarks_file.js),
   [`a_move_out_whose_places_step_fails_loses_nothing`](../../tests/browser/browser_vimma_bookmarks_file.js),
   [`a_paused_table_refuses_wsdelete_and_makes_no_folder`](../../tests/browser/browser_vimma_bookmarks_file.js),
+  [`a_move_into_a_table_that_fails_partway_loses_nothing`](../../tests/browser/browser_vimma_bookmarks_file.js),
   [`editBookmarkLines on any parsed file either refuses or yields the expected model`](../../packages/vimma-core/test/fuzz/bookmarks-file.fuzz.test.ts),
   [`many subtrees go into a table as one edit, within budget at 5,000 lines`](../../packages/vimma-core/test/bookmarks-edit.test.ts)

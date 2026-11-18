@@ -1796,3 +1796,54 @@ add_task(async function a_paused_table_refuses_wsdelete_and_makes_no_folder() {
   BrowserTestUtils.removeTab(tab);
   await reset();
 });
+
+add_task(async function a_move_into_a_table_that_fails_partway_loses_nothing() {
+  // :wsdelete's m into a mirrored table moves the items one by one. When the second move fails,
+  // the first is already in the mirrored folder: the edit stays, so every item is still in
+  // Places and in the file (at worst twice), never in neither.
+  await IOUtils.writeUTF8(bookmarksFile, '[bookmarks.work]\n"w" = "https://example.com/w"\n');
+  await untilFolder("work", ["w https://example.com/w"], "loaded");
+  const work = /** @type {Node} */ (await topFolder("work")).guid;
+  const loose = await PlacesUtils.bookmarks.insert({
+    parentGuid: toolbarGuid,
+    type: PlacesUtils.bookmarks.TYPE_FOLDER,
+    title: "loose",
+  });
+  const urls = [1, 2, 3].map((i) => `https://example.com/loose${i}`);
+  for (const [i, url] of urls.entries()) {
+    await PlacesUtils.bookmarks.insert({ parentGuid: loose.guid, url, title: `l${i + 1}` });
+  }
+  // The second item goes (Sync, another window) after the key read the folder and before its
+  // Places step: its move then fails, after the first one was made.
+  const second = /** @type {string} */ (
+    (await PlacesUtils.bookmarks.fetch({ url: urls[1] }))?.guid
+  );
+  let once = true;
+  const restore = wrapWriter({
+    before: async () => {
+      if (once) await PlacesUtils.bookmarks.remove(second);
+      once = false;
+    },
+  });
+  /** @type {unknown} */
+  let r;
+  try {
+    r = await mirror.edit({
+      type: "moveTable",
+      from: loose.guid,
+      target: work,
+      into: async () => work,
+    });
+  } finally {
+    restore();
+  }
+  Assert.ok(r && typeof r === "object" && "error" in r, "the key says it failed");
+  await new Promise((res) => setTimeout(res, 600));
+  await mirror.settledRuns();
+  const file = await IOUtils.readUTF8(bookmarksFile);
+  for (const url of urls) {
+    Assert.ok(file.includes(`"${url}"`), `${url} is in the file`);
+    Assert.ok(await PlacesUtils.bookmarks.fetch({ url }), `${url} is in Places`);
+  }
+  await reset();
+});

@@ -65,6 +65,11 @@ function* items(list: readonly Item[]): Generator<Item> {
   }
 }
 
+/** The URL of the line the edit property adds. */
+const ADDED = "https://added.example/";
+/** Whether a bookmark key (`[table, path, url]` as JSON) is not the added line's: its URL alone. */
+const notAdded = (key: string) => (JSON.parse(key) as [string, string[], string])[2] !== ADDED;
+
 /** Every bookmark of a parsed file as `table, path, url`, with its line. */
 function bookmarksOf(text: string) {
   const r = parseBookmarksFile(text);
@@ -107,7 +112,7 @@ describe("bookmarks.toml fuzzing", () => {
             const gone = before.bookmarks.length
               ? before.bookmarks[pick % before.bookmarks.length]
               : undefined;
-            const add = { names, folder: false, value: "https://added.example/" };
+            const add = { names, folder: false, value: ADDED };
             const r = within(500, () =>
               editBookmarkLines(source, [
                 ...(gone ? [{ op: "remove" as const, line: gone.line }] : []),
@@ -120,9 +125,7 @@ describe("bookmarks.toml fuzzing", () => {
             const want = before.bookmarks.filter((b) => b !== gone).map((b) => b.key);
             const got = after.bookmarks.map((b) => b.key);
             // Every other bookmark is still there, and nothing else is but the new line.
-            expect(got.filter((k) => !k.includes("https://added.example/")).sort()).toEqual(
-              want.filter((k) => !k.includes("https://added.example/")).sort(),
-            );
+            expect(got.filter(notAdded).sort()).toEqual(want.filter(notAdded).sort());
             expect(after.tables).toEqual(before.tables);
           },
         ),

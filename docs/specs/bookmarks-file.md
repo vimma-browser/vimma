@@ -798,9 +798,13 @@ Slice 2 landed with these departures and particulars, each for the reason given:
   (an edit, a `git pull`) or after `:bookmarks forget`, not after Vimma's own edit of
   another table.
 - **A Places step that fails.** When the Places part of a key's change fails after the file was
-  written (a move's destination removed while the key waited in the queue), the file's text and
-  the base are put back and a run brings Places to them, because D18 promises that the two never
-  diverge and a dropped line would otherwise make the next run remove the bookmark.
+  written (a move's destination removed while the key waited in the queue), and Places has not
+  changed yet, the file's text and the base are put back and a run brings Places to them. Once
+  part of the change is in Places (`:wsdelete`'s `m` moves items one by one), the edit stays
+  and the run brings Places to the file, so an item that did not move gets a copy from the
+  file. Either way no item is lost, because D18 promises that the two never diverge and a line
+  dropped for an item already moved would make the next run remove it. A put-back the file
+  refuses (it changed meanwhile) keeps the edited base, which matches what was written.
 - **Moved lines** keep their trailing comment; a folder's line that a move or a delete leaves
   behind does not take it. Several items `:wsdelete`'s `m` writes into a table are one edit, so a
   large file is read and checked once.

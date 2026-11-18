@@ -937,19 +937,26 @@ export class BookmarksFileImpl {
    * Puts back the text an edit replaced, while the file still holds what the edit wrote.
    * @param {BookmarksSource} source
    * @param {{ before: string | null, after: string | null }} w
+   * @returns {Promise<boolean>} whether the file holds its old text again
    */
   async revert(source, w) {
     const { before, after } = w;
-    if (!this.writeFile || before === null || after === null) return;
+    if (!this.writeFile || before === null) return false;
+    if (after === null) return true; // nothing was written
+    let ok = false;
     const path = source === BOOKMARKS_FILE ? this.path : this.configPath();
     const r = await this.writeFile(path, (text) =>
       text === after ? { text: before } : { error: `${path} changed meanwhile; not put back` },
     );
     if ("error" in r) console.error(`vimma: ${r.error}`);
-    else if (source === "config.toml") {
-      this.configText = before;
-      this.reloadConfig();
+    else {
+      ok = true;
+      if (source === "config.toml") {
+        this.configText = before;
+        this.reloadConfig();
+      }
     }
+    return ok;
   }
 
   /**
@@ -1012,6 +1019,15 @@ export class BookmarksFileImpl {
     let baseEdit = () => ({});
     /** @type {(() => Promise<void>) | null} */
     let placesOp = null;
+    // Whether the Places step changed anything yet: a revert must never lose an item, so the
+    // file and the base go back only while Places is as it was.
+    let placesChanged = false;
+    /** @template T @param {Promise<T>} write @returns {Promise<T>} */
+    const step = async (write) => {
+      const done = await write;
+      placesChanged = true;
+      return done;
+    };
     let count = 0;
 
     switch (change.type) {
@@ -1062,7 +1078,7 @@ export class BookmarksFileImpl {
             /** @type {{ guid: string, parentGuid: string, index: number, title?: string }} */
             const info = { guid, parentGuid, index: B.DEFAULT_INDEX };
             if (change.title !== null) info.title = change.title;
-            await B.update(info);
+            await step(B.update(info));
           };
         } else if (dst) {
           // Into the file from a folder it does not mirror: the item and everything in it.
@@ -1081,7 +1097,7 @@ export class BookmarksFileImpl {
           ];
           baseEdit = (res) => ({ add: [{ table: dst.table, entries: res[0]?.entries ?? [] }] });
           placesOp = async () => {
-            await B.update({ guid, parentGuid: change.parent, index: B.DEFAULT_INDEX });
+            await step(B.update({ guid, parentGuid: change.parent, index: B.DEFAULT_INDEX }));
           };
         } else return { error: notYet };
         break;
@@ -1099,7 +1115,7 @@ export class BookmarksFileImpl {
         changes = [{ op: "remove", table: src.table, kind: src.kind, path: src.path }];
         baseEdit = () => ({ drop: [{ table: src.table, kind: src.kind, path: src.path }] });
         placesOp = async () => {
-          await B.remove(change.guid);
+          await step(B.remove(change.guid));
         };
         break;
       }
@@ -1121,7 +1137,7 @@ export class BookmarksFileImpl {
         changes = [{ op: "removeTable", name: loc.table }];
         baseEdit = () => ({ removeTable: loc.table });
         placesOp = async () => {
-          await B.remove(change.folder);
+          await step(B.remove(change.folder));
         };
         break;
       }
@@ -1160,14 +1176,16 @@ export class BookmarksFileImpl {
         if (h) return { error: h };
         placesOp = async () => {
           for (const k of kids) {
-            await B.update({
-              guid: /** @type {string} */ (k.guid),
-              parentGuid: into,
-              index: B.DEFAULT_INDEX,
-            });
+            await step(
+              B.update({
+                guid: /** @type {string} */ (k.guid),
+                parentGuid: into,
+                index: B.DEFAULT_INDEX,
+              }),
+            );
           }
           const left = (await PU.promiseBookmarksTree(change.from))?.children ?? [];
-          if (!left.length) await B.remove(change.from);
+          if (!left.length) await step(B.remove(change.from));
         };
         break;
       }
@@ -1190,14 +1208,22 @@ export class BookmarksFileImpl {
         this.burst.clear();
       }
       if (failed) {
-        // D18: Places did not take the change, so the file and the base go back to what they
-        // held, and the run brings Places back to them; nothing is lost on either side.
-        console.error("vimma: bookmark change failed in Places; bookmarks.toml put back", failed);
-        await this.revert(source, w);
-        await this.saveBase(base);
-        await this.run({ trigger: "vimma" });
+        // D18: a revert never loses an item. While Places is as it was, the file and the base go
+        // back to what they held; once part of the change is in Places (a :wsdelete m that
+        // moved some items), the edit stays and the run brings Places to the file, so an item
+        // that did not move gets a copy from the file: at worst twice, never nowhere. A revert
+        // the file refuses (changed meanwhile) keeps the edited base, which matches the file.
+        console.error("vimma: bookmark change failed in Places", failed);
         const why = /** @type {Thrown} */ (failed)?.message ?? String(failed);
-        return { error: `bookmark: not changed (${why}); ${BOOKMARKS_FILE} is as it was` };
+        if (!placesChanged && (await this.revert(source, w))) {
+          await this.saveBase(base);
+          await this.run({ trigger: "vimma" });
+          return { error: `bookmark: not changed (${why}); ${BOOKMARKS_FILE} is as it was` };
+        }
+        await this.run({ trigger: "vimma" });
+        return {
+          error: `bookmark: only partly changed in Firefox (${why}); ${BOOKMARKS_FILE} has the change, and Firefox follows it`,
+        };
       }
     }
     await this.run({ trigger: "vimma" });
