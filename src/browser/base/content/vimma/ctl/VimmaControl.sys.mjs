@@ -427,8 +427,12 @@ function splitsState(win, visible) {
  * @param {import("../core/panes.mjs").Panes} panes
  */
 function treeState(win, visible, panes) {
+  // A split that is not shown names a lazy tab by its uuid (multiple-splits behaviour 10).
+  const view = PaneViews.get(win);
   const tabOf = (/** @type {string | undefined} */ panel) =>
-    win.gBrowser.tabs.find((t) => t.linkedPanel === panel);
+    panel === undefined
+      ? undefined
+      : (win.gBrowser.tabs.find((t) => t.linkedPanel === panel) ?? view?.tabOf(panel));
   const idOf = (/** @type {MozTabbrowserTab | undefined} */ tab) =>
     tab ? String(tab.linkedBrowser.browserId) : null;
   /** @param {import("../core/panes.mjs").PaneNode} n @returns {PaneState} */
