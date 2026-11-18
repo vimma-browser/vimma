@@ -68,11 +68,21 @@ text that pages, add-ons and bookmarks choose.
   the tab position, the workspace). The address takes room only from what comes after it: it
   is cut to `…<domain>…` while the rest gives way, and cut further, its domain's end as the
   last resort, rather than push a cue or the mode's short form off the bar. An about:blank a page opened or controls **must** read
-  `about:blank from <the origin that wrote it>`, never nothing.
+  `about:blank from <the origin that wrote it>`, never nothing. Reader View shows the article's
+  own address, as Firefox's address bar and identity block do: the reader renders content it
+  fetched from that address. This is safe to show because web content cannot link to
+  `about:reader` (no `MAKE_LINKABLE` in Firefox's AboutRedirector.cpp), and the reader loads only
+  http, https and file articles. Only an http, https or file article counts (the schemes the reader
+  loads); a malformed `about:reader` address shows as it is, and the security cue stays the
+  reader page's own, never a lock the reader page does not have.
   [`the URL keeps its registrable domain while the toolbar is hidden`](../../packages/vimma-core/test/statusbar.test.ts),
   [`the_status_bar_keeps_the_registrable_domain`](../../tests/browser/browser_vimma_toolbar.js),
   [`an_about_blank_a_page_wrote_says_so`](../../tests/browser/browser_vimma_toolbar.js),
   [`a_blob_page_shows_its_origin`](../../tests/browser/browser_vimma_toolbar.js),
+  [`reader_view_shows_and_yanks_the_article_url`](../../tests/browser/browser_vimma_reader_url.js),
+  [`a_malformed_reader_address_stays_as_it_is`](../../tests/browser/browser_vimma_reader_url.js),
+  [`the_hidden_toolbar_shows_no_lock_and_no_warning_for_the_reader`](../../tests/browser/browser_vimma_reader_url.js),
+  [`an_article_with_credentials_shows_and_copies_none`](../../tests/browser/browser_vimma_reader_url.js),
   [`an_about_blank_names_its_writer_after_the_opener_leaves`](../../tests/browser/browser_vimma_toolbar.js),
   [`the security cues outrank the kept URL`](../../packages/vimma-core/test/statusbar.test.ts)
 - It **must** say `not secure` wherever Firefox's address bar would warn (plain http, a

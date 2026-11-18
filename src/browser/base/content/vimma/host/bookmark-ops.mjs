@@ -24,6 +24,7 @@ import {
   workspaceFolderGuid,
   workspaceTree,
 } from "../core/bookmarks.mjs";
+import { pageUrl } from "../core/pageurl.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 
@@ -253,13 +254,14 @@ function pathIn(scope, parentGuid, title) {
 }
 
 /**
- * The page a key bookmarks: the selected tab's URL and title, when the panel could open it.
+ * The page a key bookmarks: the selected tab's URL and title, when the panel could open it; in
+ * Reader View the article's own URL, which opens anywhere, not the about:reader one.
  * @param {BrowserWindow} win
  * @returns {{ url: string, title: string } | null}
  */
 export function currentPage(win) {
   const browser = win.gBrowser.selectedBrowser;
-  const url = browser.currentURI?.spec ?? "";
+  const url = pageUrl(browser.currentURI?.spec ?? "");
   if (!isOpenable(url) || url === "about:blank") return null;
   return { url, title: browser.contentTitle || url };
 }

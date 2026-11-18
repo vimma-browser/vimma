@@ -229,7 +229,16 @@ add_task(async function a_hidden_workspaces_split_stays_lazy_and_keeps_its_scrol
       // Null until the page has replaced about:blank.
       text: /** @type {HTMLInputElement | null} */ (content.document.getElementById("text"))?.value,
     }));
-  await TestUtils.waitForCondition(async () => (await read()).y === 1200, "scroll restores");
+  // The restore may still move the page to its content process: a read that reaches the old
+  // one fails (its actor is destroyed) and is tried again.
+  await TestUtils.waitForCondition(
+    () =>
+      read().then(
+        (r) => r.y === 1200,
+        () => false,
+      ),
+    "scroll restores",
+  );
   Assert.equal((await read()).text, "kept", "the typed text comes back");
   await BrowserTestUtils.closeWindow(w3);
 });

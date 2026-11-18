@@ -55,6 +55,9 @@ support-files = ["file_vimma_hints.html"]
 ["browser_vimma_hints_activation.js"]
 support-files = ["file_vimma_agent_press.html", "file_vimma_hints_activation.html"]
 
+["browser_vimma_hints_scroll.js"]
+support-files = ["file_vimma_hints_many.html", "file_vimma_hints_scroll.html"]
+
 ["browser_vimma_element.js"]
 support-files = [
   "file_vimma_element.html",
@@ -464,6 +467,9 @@ support-files = ["file_vimma_insert_scroll.html"]
 ["browser_vimma_workspace_restore_splits.js"]
 support-files = ["file_vimma_insert_scroll.html"]
 
+["browser_vimma_restore_offscreen_splits.js"]
+support-files = ["file_vimma_insert_scroll.html"]
+
 ["browser_vimma_workspace_desync.js"]
 
 ["browser_vimma_config.js"]
@@ -492,6 +498,9 @@ run-if = ["os == 'linux'"] # ln -s for the omarchy-theme-set symlink swap
 ["browser_vimma_nav_keys.js"]
 
 ["browser_vimma_normal_extras.js"]
+
+["browser_vimma_reader_url.js"]
+support-files = ["file_vimma_reader_article.html"]
 
 ["browser_vimma_addons.js"]
 support-files = ["file_vimma_addon_updates.json"]

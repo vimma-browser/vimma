@@ -7,7 +7,7 @@
 // CONTENT_RUNNERS, so each acts on the focused <browser>: in a split, the focused pane's.
 
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
-import { classifyClipboard, urlRoot, urlUp } from "../core/pageurl.mjs";
+import { classifyClipboard, pageUrl, urlRoot, urlUp } from "../core/pageurl.mjs";
 import { browserWindowOf, openUrl } from "./tab-ops.mjs";
 import { PdfOps } from "./pdf-ops.mjs";
 
@@ -78,8 +78,9 @@ export function pageRunners(enterInsert, notify) {
     else notify(b, AT_TOP);
   };
   return {
+    // Reader View's page is its article (pageUrl), as Firefox's address bar copies it.
     "page.yank_url": (b) => {
-      const url = b.currentURI?.spec;
+      const url = pageUrl(b.currentURI?.spec ?? "");
       if (!url) return;
       Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper).copyString(url);
       notify(b, `yanked ${url}`);
@@ -91,8 +92,8 @@ export function pageRunners(enterInsert, notify) {
       if (await VimmaActors.focusNthInput(b, a.count)) enterInsert(b);
       else notify(b, NO_FIELD);
     },
-    "page.url_up": (b, a) => goTo(b, urlUp(b.currentURI?.spec ?? "", a.count)),
-    "page.url_root": (b) => goTo(b, urlRoot(b.currentURI?.spec ?? "")),
+    "page.url_up": (b, a) => goTo(b, urlUp(pageUrl(b.currentURI?.spec ?? ""), a.count)),
+    "page.url_root": (b) => goTo(b, urlRoot(pageUrl(b.currentURI?.spec ?? ""))),
     // Firefox's ctrl+u, on this pane's page.
     "page.view_source": (b) => browserWindowOf(b)?.BrowserCommands.viewSource(b),
   };

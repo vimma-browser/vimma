@@ -343,6 +343,9 @@ export class WindowWorkspacesImpl {
         active: () => /** @type {Workspaces} */ (this.#model).active,
         busy: () => !this.#model || this.#switching || this.#pending,
         notify: (text) => this.#notify(text),
+        // Only a uuid already given: a tab event must not hand out new ones (#rereadIds does).
+        idOf: (tab) => this.#ids.get(tab) ?? "",
+        tabOf: (id) => this.#tab(id) ?? null,
       };
     }
     // A restore under way builds on its SSWindowStateReady, from the restored values.
@@ -1033,9 +1036,12 @@ export class WindowWorkspacesImpl {
   }
 
   /**
-   * Workspace `id`'s saved splits `own` (in uuids) in the panel ids PaneView uses, or null when
-   * none is left; a lazy member gets its browser (not loaded), as Firefox's split view gives it
-   * on activation. A tab gone or no longer in the workspace leaves its split.
+   * Workspace `id`'s saved splits `own` (in uuids) in the ids PaneView uses, or null when none is
+   * left: a loaded tab's panel, a lazy tab's uuid. Nothing gets a browser here: PaneView gives
+   * them to the split it makes current (#use) and to any other split once it shows, so the
+   * others stay lazy. A browser makes SessionStore restore the tab in the background, and its
+   * next save then writes it without its scroll position and form data (issues #1305, #1318).
+   * A tab gone or no longer in the workspace leaves its split.
    * @param {Workspaces} model
    * @param {string} id
    * @param {Splits} own
@@ -1047,8 +1053,7 @@ export class WindowWorkspacesImpl {
     const panel = (/** @type {string} */ uuid) => {
       const tab = this.#tab(uuid);
       if (!tab || !ours.tabs.includes(uuid)) return undefined;
-      if (!tab.linkedPanel) this.#gBrowser.insertBrowser(tab);
-      return tab.linkedPanel ?? undefined;
+      return tab.linkedPanel || uuid;
     };
     /** @type {NumberedSplit[]} */
     const list = [];
@@ -1445,9 +1450,11 @@ export class WindowWorkspacesImpl {
   #withPanes(model) {
     const view = PaneViews.get(this.#win);
     if (!view) return model;
+    // A panel, or a lazy tab's uuid in a split that is not the current one (#panelSplits).
     const uuid = (/** @type {string} */ panel) => {
       const tab = this.#gBrowser.tabs.find((t) => t.linkedPanel === panel && this.#live(t));
-      return tab ? this.#idOf(tab) : undefined;
+      if (tab) return this.#idOf(tab);
+      return this.#tab(panel) ? panel : undefined;
     };
     /** @type {WorkspaceState[]} */
     const workspaces = model.workspaces.map((w) => {

@@ -118,7 +118,9 @@ screenshot baselines (the e2e harness).
   from the WindowProxy `init()` keys its state by, so it never matched.
 - **Title and URL.** Title is the browser's `contentTitle`, else the tab's label (lazy tabs,
   `New Tab`); the URL is `Services.io.createExposableURI(uri).displaySpec` (no credentials, IDN
-  shown decoded), none for `about:blank`. Loading is the tab's `busy` attribute; Firefox exposes
+  shown decoded), none for `about:blank`. (Since changed: in Reader View the URL is the
+  article's, `pageUrl` in `core/pageurl.mjs`, as Firefox's address bar shows it; issue #1310.)
+  Loading is the tab's `busy` attribute; Firefox exposes
   no page-load fraction, so the segment reads `loading`.
 - **Tab labels.** `StatusBar` takes a `labelFor(tab)` option (default: none), which the tab
   rename spec fills from its label store; core's `displayLabel` already prefers it.

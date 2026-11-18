@@ -15,6 +15,7 @@ import {
   statusAnnouncement,
   statusSegments,
 } from "../core/statusbar.mjs";
+import { readerOriginalUrl } from "../core/pageurl.mjs";
 import { HIDDEN_ATTR as TOOLBAR_HIDDEN_ATTR } from "./toolbar.mjs";
 import { TABLINE_ATTR, TabLineConfig } from "./tabline.mjs";
 
@@ -476,7 +477,27 @@ function barUrl(win, browser) {
     }
     return { url: uri.spec, origin: null };
   }
-  return { url: displaySpec(browser), origin: originOf(uri) ?? innerOrigin(browser, uri) };
+  const article = readerArticle(uri);
+  if (article) return { url: displaySpec(article), origin: originOf(article) };
+  return { url: displaySpec(uri), origin: originOf(uri) ?? innerOrigin(browser, uri) };
+}
+
+/**
+ * Reader View's article, which Firefox's address bar and identity block name in place of the
+ * about:reader address (ReaderMode.getOriginalUrlObjectForDisplay): the reader renders that
+ * page's content, fetched from it. Null for any other page, and for a malformed reader address,
+ * which the bar then shows as it is.
+ * @param {nsIURI} uri
+ * @returns {nsIURI | null}
+ */
+function readerArticle(uri) {
+  const article = readerOriginalUrl(uri.spec);
+  if (!article) return null;
+  try {
+    return Services.io.newURI(article);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -534,12 +555,11 @@ function securityOf(browser) {
 /**
  * The URL as the user may see it: no credentials (createExposableURI), IDN decoded; none for
  * an empty tab.
- * @param {MozBrowser} browser
+ * @param {nsIURI} uri
  * @returns {string | null}
  */
-function displaySpec(browser) {
-  const uri = browser.currentURI;
-  if (!uri || uri.spec === "about:blank") return null;
+function displaySpec(uri) {
+  if (uri.spec === "about:blank") return null;
   try {
     return Services.io.createExposableURI(uri).displaySpec;
   } catch {

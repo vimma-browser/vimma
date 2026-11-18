@@ -866,6 +866,49 @@ addTidyTask(async function test_elements_query_and_kinds() {
   await mcp(false);
 });
 
+// agent-speed S4, issue #1328: a filtered list of a site listed before leaves out the matching
+// lines that are unchanged and names their labels, as an unfiltered list does, so a query whose
+// matches are all unchanged never reads as "nothing matches"; a query that matches nothing gives
+// exactly the empty list with no labels, which the renderers then say matched nothing.
+addTidyTask(async function test_filtered_list_names_unchanged_matches() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const known = new Map();
+  const all = readList(known, (await elements(c, tab, { kind: "grant", minutes: 12 })).result);
+  const menu = one(all, (e) => e.text === "Menu", "script button");
+  const signup = one(all, (e) => e.text === "Sign up", "form button");
+  for (const { query, element } of [
+    { query: "menu", element: menu },
+    { query: "sign up", element: signup },
+  ]) {
+    // An unfiltered list first, so the site's last list holds every line again.
+    await elements(c, tab, null);
+    const r = await elements(c, tab, null, { query });
+    Assert.ok(r.ok, `${query} lists: ${JSON.stringify(r.error)}`);
+    Assert.deepEqual(
+      parsed(r.result.elements).filter((e) => "label" in e),
+      [],
+      `the query ${query} writes no unchanged line again`,
+    );
+    Assert.deepEqual(
+      r.result.repeated,
+      [String(element.label)],
+      "and names its one match as unchanged",
+    );
+  }
+  const none = await elements(c, tab, null, { query: "no such words" });
+  Assert.ok(none.ok, `a query matching nothing lists: ${JSON.stringify(none.error)}`);
+  Assert.equal(
+    none.result.elements,
+    "<untrusted-web-content>\n\n</untrusted-web-content>",
+    "a query matching nothing gives the empty list",
+  );
+  Assert.ok(!("repeated" in none.result), "with no labels left out");
+  c.close();
+  await mcp(false);
+});
+
 // docs/specs/mcp-forms.md F5, issue #693: a shop's add button that shows only "+" or a word every
 // card shares is named by its accessible label as its caption, and a text that repeats in the list
 // gets its card's heading, so the model sees which product each button adds; a heading of another

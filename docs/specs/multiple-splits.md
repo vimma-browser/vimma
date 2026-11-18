@@ -77,7 +77,12 @@ workspace` and does not open.
    `split 3 hidden` with one hidden split, as today, and `3 splits hidden` with several.
 10. **Workspaces, restarts and the private workspace.** A workspace switch parks every split with
     its number; the session snapshot keeps them all, which one shows and the tab shown alone. The
-    private workspace and the agent workspace behave the same.
+    private workspace and the agent workspace behave the same. (Since changed: after a restore, a
+    split that is not on screen names each tab that has not loaded by its workspace uuid instead
+    of its panel, so the tab stays lazy and keeps its saved scroll position and form data until
+    the split shows; a tab Firefox unloads is named by its uuid again, so its split keeps it;
+    `vimma-ctl state`, the panel and the picker show those tabs as they show any tab that has not
+    loaded; #1318.)
 11. **`vimma-ctl state`** lists every split of the window's workspace in a new `splits` field.
     `panes` keeps its meaning for older clients.
 12. **Behind a pref until finished.** While `vimma.feature.multiple_splits` is `false` (the
