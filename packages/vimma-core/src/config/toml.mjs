@@ -75,39 +75,51 @@ export function parseToml(text, { integersAsBigInt = false } = {}) {
       }
       return {
         ok: false,
-        error: { line: last, column: (lines[last - 1] ?? "").length + 1, message },
+        error: {
+          line: last,
+          column: (lines[last - 1] ?? "").replace(/\r$/, "").length + 1,
+          message,
+        },
       };
     }
     if (opened) message += ` (unclosed "${opened.char}" opened at line ${opened.line}?)`;
-    const dotted = dottedBeforeHeader(text, e.line, message);
-    if (dotted) {
+    const redefined = redefinedHeader(text, e.line, message);
+    if (redefined?.dotted) {
+      const name = redefined.name;
       message +=
-        ` ([${dotted}] is already made by a ${dotted}.… line above: a table is either dotted` +
-        ` keys or a [${dotted}] header, not both; write those lines under [${dotted}], without` +
-        ` "${dotted}.")`;
+        ` ([${name}] is already made by a ${name}.… line above: a table is either dotted` +
+        ` keys or a [${name}] header, not both; write those lines under [${name}], without` +
+        ` "${name}.")`;
+    } else if (redefined) {
+      message += ` ([${redefined.name}] is already at line ${redefined.line}: put these lines under it)`;
     }
     return { ok: false, error: { line: e.line, column: e.column, message } };
   }
 }
 
 /**
- * For a redefinition reported at a `[name]` header: `name` when a line before the first header
- * starts with the dotted key `name.`, as a line pasted at the top of the file does (#1270).
- * A rough scan, only used to word a hint.
+ * For a redefinition reported at a `[name]` header: where `[name]` was made before, by the same
+ * header earlier in the file (an example pasted with its headers) or by a line before the first
+ * header that starts with the dotted key `name.` (a line pasted at the top) (#1270). A rough
+ * scan, only used to word a hint: inline tables and quoted names are not looked for.
  * @param {string} text
  * @param {number} line  1-based, where the parser stopped
  * @param {string} message
- * @returns {string | undefined}
+ * @returns {{ name: string, line: number, dotted: boolean } | undefined}
  */
-function dottedBeforeHeader(text, line, message) {
+function redefinedHeader(text, line, message) {
   if (!message.startsWith("trying to redefine")) return undefined;
   const lines = text.split("\n");
-  const header = /^[ \t]*\[[ \t]*([A-Za-z0-9_-]+)[ \t]*\]/.exec(lines[line - 1] ?? "");
-  if (!header) return undefined;
-  const name = /** @type {string} */ (header[1]);
-  for (const l of lines.slice(0, line - 1)) {
-    if (/^[ \t]*\[/.test(l)) return undefined;
-    if (new RegExp(`^[ \\t]*${name}[ \\t]*\\.`).test(l)) return name;
+  const headerOf = (/** @type {string} */ l) =>
+    /^[ \t]*\[[ \t]*([A-Za-z0-9_.-]+)[ \t]*\][ \t]*(?:#.*)?\r?$/.exec(l)?.[1];
+  const name = headerOf(lines[line - 1] ?? "");
+  if (!name) return undefined;
+  const dotted = new RegExp(`^[ \\t]*${name.replaceAll(".", "\\.")}[ \\t]*\\.`);
+  let inHeader = false;
+  for (const [i, l] of lines.slice(0, line - 1).entries()) {
+    if (headerOf(l) === name) return { name, line: i + 1, dotted: false };
+    if (/^[ \t]*\[/.test(l)) inHeader = true;
+    else if (!inHeader && dotted.test(l)) return { name, line: i + 1, dotted: true };
   }
   return undefined;
 }

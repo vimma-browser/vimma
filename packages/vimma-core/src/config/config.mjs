@@ -475,10 +475,15 @@ function validate(raw, declared, warnings = []) {
   };
   /** @param {Path} path @param {string} key @param {readonly string[]} known */
   const unknownKey = (path, key, known) => {
-    // A `keys.prefix = …` line pasted below another table's header lands in that table (#1270).
-    if (path.length > 1 && TOP_KEYS.includes(key) && key !== "schema") {
+    // A `keys.prefix = …` line pasted below another table's header lands in that table as a
+    // table of its own (#1270); a plain value or a near miss is an ordinary unknown key.
+    /** @type {unknown} */
+    let v = raw;
+    for (const seg of path) v = /** @type {Record<string | number, unknown>} */ (v)[seg];
+    const near = closest(key, known);
+    if (path.length > 1 && TOP_KEYS.includes(key) && isTable(v) && !near) {
       fail(path, `unknown key "${key}": a ${key}.… line belongs under [${key}], without "${key}."`);
-    } else fail(path, `unknown key "${key}"`, closest(key, known));
+    } else fail(path, `unknown key "${key}"`, near);
   };
 
   /**

@@ -48,8 +48,30 @@ describe("dotted keys pasted outside their table (#1270)", () => {
     });
   });
 
-  test("a redefinition with no dotted key above has no such hint", () => {
-    const r = parseToml("[keys]\na = 1\n[keys]\n");
+  test("a near miss or a plain value is an ordinary unknown key", () => {
+    expect(errors(v2("[mcp]", 'workspaces = "agent"'))).toEqual([
+      'config.toml:3: mcp.workspaces: unknown key "workspaces" (did you mean "workspace"?)',
+    ]);
+    expect(errors(v2("[ui]", 'search = "x"'))).toEqual([
+      'config.toml:3: ui.search: unknown key "search"',
+    ]);
+  });
+
+  test("the guide's example pasted with its headers names the header already there", () => {
+    const text = `${template}[keys]\nprefix = "ctrl+a"\n`;
+    const r = parseToml(text);
+    expect(!r.ok && r.error).toEqual({
+      line: lineCount + 1,
+      column: 2,
+      message:
+        "trying to redefine an already defined table or value " +
+        `([keys] is already at line ${template.split("\n").indexOf("[keys]") + 1}: put these lines under it)`,
+    });
+  });
+
+  test("a redefinition made otherwise has no such hint", () => {
+    // An inline table is not looked for; nor is a header the scan does not read as one.
+    const r = parseToml("keys = { a = 1 }\n[keys]\n");
     expect(r.ok).toBe(false);
     expect(!r.ok && r.error.message).toBe("trying to redefine an already defined table or value");
   });
@@ -140,6 +162,14 @@ describe("adding an agent provider says what is wrong with it (#1284)", () => {
     const noModel = { ...cli, model: undefined } as unknown as typeof cli;
     expect(addAgentProviderText(v2(), noModel, opts)).toEqual({
       error: 'the provider has no model (an agent CLI takes "" for its own default)',
+    });
+  });
+
+  test("a provider that does not read back as given still meets the guard", () => {
+    // No endpoint key at all: past the early checks, and read back as "", not undefined.
+    const noEndpoint = { name: "c", kind: "cli", cli: "claude-code", model: "m" };
+    expect(addAgentProviderText(v2(), noEndpoint as typeof cli, opts)).toEqual({
+      error: "the edit would change other keys of config.toml; nothing written",
     });
   });
 
