@@ -301,7 +301,7 @@ export function locateKeys(text) {
     ws();
     const at = i;
     const full = cap([...base, ...key()]);
-    // Stryker disable next-line ArithmeticOperator: it only adds prefixes recorded at or before at
+    // Stryker disable next-line ArithmeticOperator: the extra prefixes are recorded at this same at or before
     for (let n = base.length + 1; n <= full.length; n++) record(full.slice(0, n), at);
     i++; // "="
     ws();
@@ -485,7 +485,7 @@ function setKey(text, doc, { table, key, value }) {
     return { ok: true, text: lines.join("\n") };
   }
   if (key in t) {
-    // Stryker disable next-line ArithmeticOperator: unreachable, locateKeys has every key's line
+    // Stryker disable next-line ArithmeticOperator: the fallback is unreachable, locateKeys has every key's line
     return fail(where([table, key]) ?? headerAt + 1, `${name} is not a plain key = value line`);
   }
   let last = headerAt;
