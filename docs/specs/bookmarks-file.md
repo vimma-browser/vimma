@@ -705,11 +705,13 @@ Each slice is one PR with its tests, docs and changelog line, mergeable alone.
 The maintainer took the recommendation on all four (18 Nov 2026).
 
 1. **Duplicate titles in one folder:** (a). The second is written as `Title (2)` and renamed in
-   Places to match (Behaviour 15), and the notice says what changed.
+   Places to match (Behaviour 15), and the notice says what changed, because duplicates are rare
+   and usually an accident.
 2. **Two devices putting each other's changes back:** (b). A bookmark put back three times in ten
    minutes stops being put back: both directions pause for that table, and the status bar says
    so. Slice 2 builds this, since it is the first slice where `"vimma"` writes back.
 3. **Sync and git both carrying mirrored folders:** (a). The guide says to use one carrier; no
-   fourth `write_back` value, and Vimma does not read git state.
+   fourth `write_back` value, and Vimma does not read git state, because those add states the
+   user must understand.
 4. **Empty folders:** (a). A key ending in `/` with the value `""` (Behaviour 2), written only
-   while the folder is empty.
+   while the folder is empty, because folders made on purpose should survive a reload.
