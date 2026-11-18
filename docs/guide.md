@@ -1029,7 +1029,8 @@ with `F11` keeps it. From the left:
   red, stays until you next open the [downloads picker](#downloads) in that window. It never
   shows a file name, and a screen reader hears `downloading 42%` and, once, each file that
   finished, failed or was blocked;
-- `loading` while the page loads, then its **URL** without `https://`;
+- `loading` while the page loads, then its **URL** without `https://` (in Reader View the
+  article's own URL, as Firefox's address bar shows it, and `yy`, `gu` and `gU` use that one too);
 - with the [toolbar hidden](#hiding-the-toolbar), `not secure` in red for a page Firefox's
   address bar would warn about (an `http:` page keeps its `http://`), `using camera, mic` (or
   screen, location, XR, serial) while the page uses them, and `private` in a private window that

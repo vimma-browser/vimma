@@ -31,6 +31,7 @@ import {
   setGrepRows,
   stepGrepList,
 } from "../core/grep.mjs";
+import { pageUrl } from "../core/pageurl.mjs";
 import { PRIVATE_NAME } from "../core/privatews.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { GrepMatcher } from "../actors/grep-matcher.mjs";
@@ -499,7 +500,7 @@ export class GrepSession {
           const browser = tab.linkedBrowser;
           const loaded =
             !!tab.linkedPanel && !tab.hasAttribute("pending") && !!browser?.browsingContext;
-          const url = browser?.currentURI?.spec ?? "";
+          const url = pageUrl(browser?.currentURI?.spec ?? "");
           this.windowOf.set(id, win);
           out.push({
             browser,
