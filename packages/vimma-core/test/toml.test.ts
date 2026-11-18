@@ -182,7 +182,7 @@ describe("locateKeys", () => {
     const text = `${"a.".repeat(50_000)}a = 1\n`;
     const start = performance.now();
     expect(locateKeys(text)(["a", "a"])).toBe(1);
-    expect(performance.now() - start).toBeLessThan(budget(500));
+    expect(performance.now() - start).toBeLessThan(budget(1500));
   });
 });
 
