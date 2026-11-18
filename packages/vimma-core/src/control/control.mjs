@@ -1401,8 +1401,12 @@ function checkResult(result, command, errors) {
     errors.push("result must be an object");
     return;
   }
-  if (command === "send-keys" && !isInt(result.sent, 0, MAX_ID)) {
-    errors.push("result.sent must be an integer >= 0");
+  if (command === "send-keys") {
+    if (!isInt(result.sent, 0, MAX_ID)) errors.push("result.sent must be an integer >= 0");
+    // A key opened a dialog that waits for its answer, and the keys after it were not pressed.
+    if ("dialog" in result && result.dialog !== true) {
+      errors.push("result.dialog must be true when present");
+    }
   } else if (command === "open" && typeof result.tab !== "string") {
     errors.push("result.tab must be a string");
   } else if (command === "reload-theme" && typeof result.changed !== "boolean") {

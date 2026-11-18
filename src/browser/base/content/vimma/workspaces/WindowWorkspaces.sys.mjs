@@ -260,6 +260,12 @@ export class WindowWorkspacesImpl {
   #saveQueued = false;
   /** The window value as last written, to tell our own value from a restored one. */
   #written = "";
+  /**
+   * The saved splits (in uuids) of each workspace not shown since the last restore, kept out of
+   * PaneView until it is (#unpark), so that their tabs stay lazy.
+   * @type {Map<string, Splits>}
+   */
+  #unvisited = new Map();
   #onChange;
   #notify;
   /**
@@ -997,43 +1003,92 @@ export class WindowWorkspacesImpl {
   }
 
   /**
-   * Hands the snapshot's pane trees to the window's PaneView, with the panel ids PaneView uses;
-   * a lazy member gets its browser (not loaded), as Firefox's split view gives it on
-   * activation. Returns whether it did.
+   * Hands the shown workspace's saved pane trees to the window's PaneView, with the panel ids
+   * PaneView uses, and keeps every other workspace's until it is shown. Returns whether it did.
    * @param {Workspaces} saved
    * @param {Workspaces} model  the rebuilt model
    */
   #restorePanes(saved, model) {
     const view = PaneViews.get(this.#win);
     if (!view) return false;
+    this.#unvisited = new Map();
     /** @type {Map<string, Splits>} */
     const trees = new Map();
     for (const w of saved.workspaces) {
-      const ours = findWorkspace(model, { id: w.id });
-      if (!ours) continue;
-      const panel = (/** @type {string} */ id) => {
-        const tab = this.#tab(id);
-        if (!tab || !ours.tabs.includes(id)) return undefined;
-        if (!tab.linkedPanel) this.#gBrowser.insertBrowser(tab);
-        return tab.linkedPanel ?? undefined;
-      };
       // Every split with its number, which one shows and which showed last
       // (docs/specs/multiple-splits.md behaviour 10).
       const own = splitsOf(w);
-      /** @type {NumberedSplit[]} */
-      const list = [];
-      for (const x of own.splits) {
-        const tree = mapTree(x, panel);
-        if (tree) list.push(Object.freeze({ ...tree, number: x.number }));
-      }
-      const kept = (/** @type {number | null} */ n) =>
-        n !== null && list.some((x) => x.number === n) ? n : null;
-      if (list.length) {
-        trees.set(w.id, { splits: list, shown: kept(own.shown), last: kept(own.last) });
+      if (!own.splits.length || !findWorkspace(model, { id: w.id })) continue;
+      // Another workspace's splits stay in uuids until it is first shown (#unpark): giving their
+      // lazy tabs browsers now made SessionStore restore them in the background, and its next
+      // save wrote them without their scroll position and form data (issue #1305).
+      if (w.id !== model.active) this.#unvisited.set(w.id, own);
+      else {
+        const panels = this.#panelSplits(model, w.id, own);
+        if (panels) trees.set(w.id, panels);
       }
     }
     view.restore(trees, model.active);
     return true;
+  }
+
+  /**
+   * Workspace `id`'s saved splits `own` (in uuids) in the panel ids PaneView uses, or null when
+   * none is left; a lazy member gets its browser (not loaded), as Firefox's split view gives it
+   * on activation. A tab gone or no longer in the workspace leaves its split.
+   * @param {Workspaces} model
+   * @param {string} id
+   * @param {Splits} own
+   * @returns {Splits | null}
+   */
+  #panelSplits(model, id, own) {
+    const ours = findWorkspace(model, { id });
+    if (!ours) return null;
+    const panel = (/** @type {string} */ uuid) => {
+      const tab = this.#tab(uuid);
+      if (!tab || !ours.tabs.includes(uuid)) return undefined;
+      if (!tab.linkedPanel) this.#gBrowser.insertBrowser(tab);
+      return tab.linkedPanel ?? undefined;
+    };
+    /** @type {NumberedSplit[]} */
+    const list = [];
+    for (const x of own.splits) {
+      const tree = mapTree(x, panel);
+      if (tree) list.push(Object.freeze({ ...tree, number: x.number }));
+    }
+    const kept = (/** @type {number | null} */ n) =>
+      n !== null && list.some((x) => x.number === n) ? n : null;
+    return list.length ? { splits: list, shown: kept(own.shown), last: kept(own.last) } : null;
+  }
+
+  /**
+   * Hands workspace `id`'s restored splits to PaneView as it is about to be shown, if it has not
+   * been since the restore.
+   * @param {Workspaces} model
+   * @param {string} id
+   */
+  #unpark(model, id) {
+    const own = this.#unvisited.get(id);
+    if (!own) return;
+    const panels = this.#panelSplits(model, id, own);
+    if (panels) PaneViews.get(this.#win)?.park(id, panels);
+    // Only once PaneView holds them: a conversion that throws keeps them for the next save.
+    this.#unvisited.delete(id);
+  }
+
+  /**
+   * The saved splits (in uuids) of workspace `id` while it has not been shown since a restore,
+   * without the tabs that closed or left it since (a split left with one pane ends); null when
+   * none is left, and for any other workspace, whose splits PaneView holds.
+   * @param {string} id
+   * @returns {Splits | null}
+   */
+  unvisitedSplits(id) {
+    const own = this.#unvisited.get(id);
+    const w = own && this.#model && findWorkspace(this.#model, { id });
+    if (!own || !w) return null;
+    const { splits, shown, last } = withSplits(w, own, (u) => u);
+    return splits?.length ? { splits, shown: shown ?? null, last: last ?? null } : null;
   }
 
   /**
@@ -1182,6 +1237,7 @@ export class WindowWorkspacesImpl {
       if (defs.some((d) => d.id === w.id) || model.workspaces.length === 1) continue;
       const { state, closedTabs } = deleteWorkspace(model, { id: w.id });
       model = state;
+      this.#unvisited.delete(w.id);
       orphans = [...orphans, ...closedTabs];
     }
     const agentId = WorkspaceStore.agent?.id;
@@ -1258,6 +1314,7 @@ export class WindowWorkspacesImpl {
     this.#model = next;
     this.#switching = true;
     try {
+      if (prev.active !== next.active) this.#unpark(next, next.active);
       view?.swap(prev.active, next.active);
       const target = activeWorkspace(next);
       if (!target.activeTab) this.#openHome(target.id, Number(target.container));
@@ -1394,6 +1451,8 @@ export class WindowWorkspacesImpl {
     };
     /** @type {WorkspaceState[]} */
     const workspaces = model.workspaces.map((w) => {
+      const unvisited = w.id === model.active ? undefined : this.#unvisited.get(w.id);
+      if (unvisited) return withSplits(w, unvisited, (id) => id);
       const splits = w.id === model.active ? view.splits : view.parkedSplits(w.id);
       return withSplits(w, splits, uuid);
     });

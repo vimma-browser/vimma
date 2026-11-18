@@ -862,7 +862,10 @@ dependency for 4b, 5 and parts of 4a.
   restored one: its labels fill tabs that came back without `vimma.tabLabel`, and its pane trees
   go to `PaneView.restore` (the active one shown, the others parked; a lazy member gets its
   browser with `gBrowser.insertBrowser`, as split-view activation does). Firefox restores
-  `hidden`, the split wrappers and the scroll positions.
+  `hidden`, the split wrappers and the scroll positions. (Since changed: only the shown
+  workspace's pane trees go to `PaneView.restore` at once; the other workspaces' stay in uuids
+  until each is first shown, then go to `PaneView.park`, so their tabs stay lazy and keep their
+  saved scroll position and form data; #1305.)
 - **Labels: no consolidation.** The rename seam planned to read `vimma.tabLabel` once into the
   snapshot and drop the tab value. Dropping it would lose a label on undo-close-tab and on a move
   to another window (only tab values travel with a tab), so the tab value stays the source of

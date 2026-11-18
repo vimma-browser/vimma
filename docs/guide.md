@@ -4676,6 +4676,12 @@ meant for the page reach it only while that window has focus, as with a real key
 help overlay open, plain keys go to the overlay, as when typing; chords that work in every mode
 (`ctrl+q`, `ctrl+t`) still run.
 
+A key that opens a dialog over the page, such as `x` on a page with unsaved changes ("Leave
+page?"), ends that `send-keys`: it prints `dialog open`, and the keys after it are not pressed.
+Answer the dialog with another `send-keys`, as you would by hand
+([Answering a dialog](#answering-a-dialog)): `y` or `n` once the dialog's key line shows, or
+`enter` or `esc`.
+
 **Security.** Turning the socket on hands **full control of the browser** to whoever has the
 token: they can type into any page (including your logged-in sites), open `about:config` and
 change any setting, and quit Vimma. `open` loads with the system principal, like a URL given on
