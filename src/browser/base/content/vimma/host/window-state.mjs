@@ -93,8 +93,8 @@ import {
 /**
  * What the widgets' callbacks call on the host.
  * @typedef {Pick<typeof VimmaHost, "_onKeyDown" | "_onKeyDownAfter" | "_onKeyPress"
- *   | "_onKeyPressAfter" | "_cancelPending" | "_cancelHints" | "_runCommand" | "_emit"
- *   | "_mode" | "baseKeymap">} WindowHost
+ *   | "_onKeyPressAfter" | "_cancelPending" | "_cancelHints" | "_hintsScrolled" | "_runCommand"
+ *   | "_emit" | "_mode" | "baseKeymap">} WindowHost
  */
 
 /**
@@ -204,6 +204,7 @@ export function newWindowState(host, win, keymap, env) {
       host._cancelHints(state);
       state.element.leave();
     },
+    onWheel: (e) => host._hintsScrolled(state, e),
     hint: null,
     element: new ElementFocus({
       overlay: hintOverlay,
