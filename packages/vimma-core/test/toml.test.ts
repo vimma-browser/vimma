@@ -356,6 +356,26 @@ describe("parseToml: the unclosed-bracket hint", () => {
     ['a = [ "abc", "{",\n1,\n[t]\n', 3, '(unclosed "[" opened at line 1?)'],
     // A backslash escapes nothing in a literal string: 'a\' ends at its second quote.
     ["a = [ 'a\\', '{',\n1,\n[t]\n", 3, '(unclosed "[" opened at line 1?)'],
+    // An unclosed one-line string ends at its line break, which still counts as a line (#1257):
+    // the scan stops at the parser's error there, before the next line's `}`.
+    ["a = [\n'abc\n1 }\n", 2, '(unclosed "[" opened at line 1?)'],
+    ['a = [\n"abc\n1 }\n', 2, '(unclosed "[" opened at line 1?)'],
+    // Columns count on across a string, so the scan stops at the error, before the `]` (#1257).
+    ["a = [\n'abcdef' 1 ]\n", 2, '(unclosed "[" opened at line 1?)'],
+    ['a = [\n"abcdef" 1 ]\n', 2, '(unclosed "[" opened at line 1?)'],
+    // After a multi-line string, columns count from the start of the line it ends on.
+    ['a = [\n"""\nxxxxxxxx""" 1 ]\n', 3, '(unclosed "[" opened at line 1?)'],
+    // An error inside a multi-line string: the scan ends with the string, past the error's line,
+    // so the `]` after it is not read.
+    ['a = [\n"""ab\\q\n"""]\n', 2, '(unclosed "[" opened at line 1?)'],
+    // An unclosed multi-line string the scan reaches runs to the end of the file.
+    ['a = [\n"""\\q', 2, '(unclosed "[" opened at line 1?)'],
+    // A comment at the end of the file, with no line break after it.
+    ["a = [\n# x", 2, '(unclosed "[" opened at line 1?)'],
+    // A closing run of four quotes: the scan reads the fourth as a one-line string, unclosed at
+    // its line break, which it counts once and does not skip, so the next line's `[` is named.
+    ['a = [\n"""x"""",\n[\n1 1\n', 4, '(unclosed "[" opened at line 3?)'],
+    ["a = [\n'''x'''',\n[\n1 1\n", 4, '(unclosed "[" opened at line 3?)'],
   ])("%j fails at line %i, ending %s", (text, line, hint) => {
     const error = syntaxError(text);
     expect(error.line).toBe(line);
@@ -376,6 +396,10 @@ describe("parseToml: the unclosed-bracket hint", () => {
     "a = [1 1]\n",
     // Closed on the error's line, before the error.
     "a = [\n1]  x\n",
+    // Closed right before the error: columns count from the start of the error's line, also
+    // when a multi-line string ends on it.
+    "a = [\n1]x\n",
+    'a = [\n"""\nx"""]x\n',
   ])("%j: brackets in comments, strings, closed or on the error's line give no hint", (text) => {
     const error = syntaxError(text);
     expect(error.line).toBe(text.split("\n").length - 1);
