@@ -215,6 +215,8 @@ export function newWindowState(host, win, keymap, env) {
     hintOverlay,
     listeners: new Set(),
     statusBar: null,
+    tabLine: null,
+    tabLabels: null,
     picker: new GotoPicker(win, {
       items: () => {
         const { items, windowOf } = tabSearchList(win);

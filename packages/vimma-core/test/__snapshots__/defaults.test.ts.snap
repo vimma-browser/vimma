@@ -169,6 +169,7 @@ insert_editing = true
 "x" = "tab.close"
 "gt" = "tab.next"
 "gT" = "tab.previous"
+"gb" = "tabline.hint"
 "b" = "goto.picker"
 "<C-^>" = "workspace.last"
 "<C-6>" = "workspace.last"
@@ -449,6 +450,15 @@ toolbar = "shown"
 # Vimma's outline beside a PDF that has one (Tab focuses it): "shown" when a PDF opens, or
 # "hidden" until you press Tab.
 pdf_outline = "shown"
+# A row at the top of the window listing this workspace's tabs: "off", "always", or
+# "auto" (only with 2 or more tabs). :tabline shows or hides it until restart.
+tabline = "off"
+# The columns of each tab's name in the tab line, 4 to 60.
+tabline_width = 14
+
+# false drops the status bar's tab number and title while the tab line shows them.
+[statusbar]
+tab = true
 
 # Every 12 hours Vimma asks updates.vimma.dev whether a newer version exists. The request
 # names only the update channel and the platform. false stops every check.

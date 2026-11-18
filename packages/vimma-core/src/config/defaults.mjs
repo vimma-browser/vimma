@@ -13,6 +13,16 @@ import { MAIN_SIZE_DEFAULT } from "../panes/layouts.mjs";
 import { DEFAULT_THEME_NAME } from "./theme.mjs";
 import { SCROLL_STEP_DEFAULT } from "../page/scroll.mjs";
 
+/** @typedef {"off" | "always" | "auto"} TabLineSetting */
+
+/** `[ui] tabline`'s words (docs/specs/tab-line.md decision 3). */
+export const TABLINE_SETTINGS = Object.freeze(
+  /** @type {TabLineSetting[]} */ (["off", "always", "auto"]),
+);
+
+/** `[ui] tabline_width`, the columns of one tab's name (docs/specs/tab-line.md decision 4). */
+export const TABLINE_WIDTH = Object.freeze({ min: 4, max: 60, default: 14 });
+
 /**
  * @typedef {object} UserConfig
  * @property {Record<string, string | string[]>} [keys]
@@ -43,10 +53,13 @@ import { SCROLL_STEP_DEFAULT } from "../page/scroll.mjs";
  * @property {{ check?: boolean }} [updates]  update checks (docs/specs/m6a-updater.md)
  * @property {{ toolbar?: "shown" | "hidden",
  *   bookmarks_toolbar?: import("../ui/bookmarks-toolbar.mjs").BookmarksToolbarSetting,
- *   pdf_outline?: "shown" | "hidden" }} [ui]
+ *   pdf_outline?: "shown" | "hidden", tabline?: TabLineSetting,
+ *   tabline_width?: number }} [ui]
  *   Firefox's toolbar at startup (docs/specs/toolbar-toggle.md), its Bookmarks Toolbar
  *   (docs/specs/bookmarks-toolbar-hidden.md) and Vimma's outline beside a PDF
- *   (docs/specs/pdf-mode.md decision 19)
+ *   (docs/specs/pdf-mode.md decision 19), and the tab line (docs/specs/tab-line.md)
+ * @property {{ tab?: boolean }} [statusbar]  whether the status bar keeps its tab and title while
+ *   the tab line is drawn (docs/specs/tab-line.md decision 16)
  * @property {{ enabled?: boolean, workspace?: string, ask_timeout?: number,
  *   grant_minutes?: number, grant_max_minutes?: number, max_read_chars?: number,
  *   notify?: boolean, download_dir?: string, download_max_mb?: number,
@@ -289,6 +302,8 @@ const modal = {
     x: "tab.close",
     gt: "tab.next",
     gT: "tab.previous",
+    // docs/specs/tab-line.md decision 12: Vim's "go to buffer", beside gt.
+    gb: "tabline.hint",
     b: "goto.picker",
     // Workspaces as Vim buffers: the alternate (ctrl+6 where ^ is a dead key), unimpaired's ]w.
     "<C-^>": "workspace.last",
@@ -538,7 +553,13 @@ export const DEFAULT_CONFIG = Object.freeze({
   panel: { numbers: /** @type {const} */ ("absolute") },
   scroll: { step: SCROLL_STEP_DEFAULT },
   private: { placement: /** @type {const} */ ("swap") },
-  ui: { toolbar: /** @type {const} */ ("shown"), pdf_outline: /** @type {const} */ ("shown") },
+  ui: {
+    toolbar: /** @type {const} */ ("shown"),
+    pdf_outline: /** @type {const} */ ("shown"),
+    tabline: /** @type {const} */ ("off"),
+    tabline_width: TABLINE_WIDTH.default,
+  },
+  statusbar: { tab: true },
   updates: { check: true },
   // docs/specs/vimma-mcp.md, decision 26. No `enabled`: left out, `:mcp on|off` decides.
   mcp: {
@@ -690,6 +711,15 @@ export function formatDefaultsToml() {
     '# Vimma\'s outline beside a PDF that has one (Tab focuses it): "shown" when a PDF opens, or',
     '# "hidden" until you press Tab.',
     `pdf_outline = ${tomlString(DEFAULT_CONFIG.ui?.pdf_outline ?? "shown")}`,
+    '# A row at the top of the window listing this workspace\'s tabs: "off", "always", or',
+    '# "auto" (only with 2 or more tabs). :tabline shows or hides it until restart.',
+    `tabline = ${tomlString(DEFAULT_CONFIG.ui?.tabline ?? "off")}`,
+    "# The columns of each tab's name in the tab line, 4 to 60.",
+    `tabline_width = ${DEFAULT_CONFIG.ui?.tabline_width ?? TABLINE_WIDTH.default}`,
+    "",
+    "# false drops the status bar's tab number and title while the tab line shows them.",
+    "[statusbar]",
+    `tab = ${DEFAULT_CONFIG.statusbar?.tab === false ? "false" : "true"}`,
     "",
     "# Every 12 hours Vimma asks updates.vimma.dev whether a newer version exists. The request",
     "# names only the update channel and the platform. false stops every check.",
