@@ -27,6 +27,13 @@ const { VimmaHost } = ChromeUtils.importESModule(
 const { compileKeymap } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/keymap.mjs",
 );
+const { UrlbarTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/UrlbarTestUtils.sys.mjs",
+);
+const { PlacesTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/PlacesTestUtils.sys.mjs",
+);
+UrlbarTestUtils.init(this);
 
 const ROOT = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -200,41 +207,50 @@ async function ctrlNOpensNoWindow(browser, id) {
   Assert.equal(BrowserWindowTracker.orderedWindows.length, 1, "one window");
 }
 
-add_task(async function ctrl_n_and_ctrl_p_move_an_aria_combobox() {
-  await withPrintRecorder(async (prints) => {
-    await BrowserTestUtils.withNewTab(COMBO, async (browser) => {
-      await focusContent(browser);
-      await focusField(browser, browser, "combo");
-      EventUtils.sendString("a");
-      await TestUtils.waitForCondition(
-        () =>
-          SpecialPowers.spawn(
-            browser,
-            [],
-            () =>
-              /** @type {HTMLElement} */ (content.document.getElementById("combo")).getAttribute(
-                "aria-expanded",
-              ) === "true",
-          ),
-        "the list opens on input",
-      );
-      ctrl("n");
-      await waitForValue(browser, "combo", "alpha", "ctrl+n highlights the first suggestion");
-      ctrl("n");
-      await waitForValue(browser, "combo", "apple", "ctrl+n again, the second");
-      ctrl("p");
-      await waitForValue(browser, "combo", "alpha", "ctrl+p, back to the first");
-      Assert.deepEqual(
-        arrows(await pageLog(browser)),
-        ["combo:ArrowDown:true", "combo:ArrowDown:true", "combo:ArrowUp:true"],
-        "the page got trusted ArrowDown, ArrowDown, ArrowUp without ctrl",
-      );
-      Assert.ok((await pageLog(browser)).includes("combo:ctrl+n:true"), "and ctrl+n first");
-      Assert.equal(prints(), 0, "ctrl+p in an open list does not print");
-      Assert.equal(VimmaHost._browserMode(browser), "insert", "still in insert mode");
+// Issue #1261: ctrl+j and ctrl+k move the list too, as ctrl+n and ctrl+p do.
+for (const [down, up] of [
+  ["n", "p"],
+  ["j", "k"],
+]) {
+  add_task(async function ctrl_n_p_and_ctrl_j_k_move_an_aria_combobox() {
+    await withPrintRecorder(async (prints) => {
+      await BrowserTestUtils.withNewTab(COMBO, async (browser) => {
+        await focusContent(browser);
+        await focusField(browser, browser, "combo");
+        EventUtils.sendString("a");
+        await TestUtils.waitForCondition(
+          () =>
+            SpecialPowers.spawn(
+              browser,
+              [],
+              () =>
+                /** @type {HTMLElement} */ (
+                  content.document.getElementById("combo")
+                ).getAttribute("aria-expanded") === "true",
+            ),
+          "the list opens on input",
+        );
+        ctrl(down);
+        await waitForValue(browser, "combo", "alpha", `ctrl+${down} highlights the first one`);
+        ctrl(down);
+        await waitForValue(browser, "combo", "apple", `ctrl+${down} again, the second`);
+        ctrl(up);
+        await waitForValue(browser, "combo", "alpha", `ctrl+${up}, back to the first`);
+        const log = await pageLog(browser);
+        Assert.deepEqual(
+          arrows(log),
+          ["combo:ArrowDown:true", "combo:ArrowDown:true", "combo:ArrowUp:true"],
+          "the page got trusted ArrowDown, ArrowDown, ArrowUp without ctrl",
+        );
+        Assert.ok(log.includes(`combo:ctrl+${down}:true`), `and ctrl+${down} first`);
+        Assert.ok(!log.some((e) => e.includes(":Enter:")), "and no Enter");
+        Assert.equal(prints(), 0, "ctrl+p in an open list does not print");
+        Assert.notEqual(document.activeElement, gURLBar.inputField, "no web search began");
+        Assert.equal(VimmaHost._browserMode(browser), "insert", "still in insert mode");
+      });
     });
   });
-});
+}
 
 // A list that only moves its highlight, as most list widgets do, leaves the field's text and
 // caret to the user. On macOS the field's own ctrl+p and ctrl+n (Cocoa's moveUp: and moveDown:)
@@ -477,7 +493,56 @@ add_task(async function with_no_list_open_the_keys_binding_runs() {
   });
 });
 
-add_task(async function ctrl_n_and_ctrl_p_move_firefoxs_datalist_popup() {
+// Issue #1261: with no list open, ctrl+j stays the field's Enter (key-handling-batch § 2) and
+// ctrl+k, which has no Vimma binding in a text field, only reaches the page: no arrow key, no
+// web search. On macOS ctrl+k is Cocoa's deleteToEndOfParagraph: in a field, and the field keeps it.
+add_task(async function with_no_list_open_ctrl_j_is_enter_and_ctrl_k_is_the_pages() {
+  await BrowserTestUtils.withNewTab(COMBO, async (browser) => {
+    await focusContent(browser);
+    for (const id of ["plain", "stale"]) {
+      await focusField(browser, browser, id);
+      await setField(browser, id, "abc", 1);
+      ctrl("j");
+      await TestUtils.waitForCondition(
+        async () => (await pageLog(browser)).includes(`${id}:Enter:true`),
+        `${id}: ctrl+j presses a trusted Enter`,
+      );
+      ctrl("k");
+      await TestUtils.waitForCondition(
+        async () => (await pageLog(browser)).includes(`${id}:ctrl+k:true`),
+        `${id}: the page received ctrl+k`,
+      );
+      // The page's reply reaches the parent before this answer from the same process, so a
+      // pressed key would have reached the page by the next answer.
+      await pageLog(browser);
+      await turn();
+      const log = await pageLog(browser);
+      Assert.deepEqual(arrows(log), [], `${id}: no arrow key`);
+      Assert.equal(
+        log.filter((e) => e === `${id}:Enter:true`).length,
+        1,
+        `${id}: one Enter, for ctrl+j alone`,
+      );
+      Assert.equal(
+        await SpecialPowers.spawn(
+          browser,
+          [id],
+          (i) => /** @type {HTMLInputElement} */ (content.document.getElementById(i)).value,
+        ),
+        MAC ? "a" : "abc",
+        MAC ? `${id}: ctrl+k is the field's own on macOS` : `${id}: ctrl+k edits nothing`,
+      );
+      Assert.notEqual(document.activeElement, gURLBar.inputField, `${id}: no web search began`);
+      Assert.equal(VimmaHost._browserMode(browser), "insert", `${id}: still in insert mode`);
+    }
+  });
+});
+
+for (const [down, up] of [
+  ["n", "p"],
+  ["j", "k"],
+]) {
+add_task(async function ctrl_n_p_and_ctrl_j_k_move_firefoxs_datalist_popup() {
   await BrowserTestUtils.withNewTab(DATALIST, async (browser) => {
     await focusContent(browser);
     await focusField(browser, browser, "dl");
@@ -500,12 +565,12 @@ add_task(async function ctrl_n_and_ctrl_p_move_firefoxs_datalist_popup() {
         "the frame knows its popup is open",
       ),
     );
-    ctrl("n");
-    await TestUtils.waitForCondition(() => popup.selectedIndex === 0, "ctrl+n selects row 0");
-    ctrl("n");
-    await TestUtils.waitForCondition(() => popup.selectedIndex === 1, "ctrl+n again, row 1");
-    ctrl("p");
-    await TestUtils.waitForCondition(() => popup.selectedIndex === 0, "ctrl+p, row 0");
+    ctrl(down);
+    await TestUtils.waitForCondition(() => popup.selectedIndex === 0, `ctrl+${down}: row 0`);
+    ctrl(down);
+    await TestUtils.waitForCondition(() => popup.selectedIndex === 1, `ctrl+${down}: row 1`);
+    ctrl(up);
+    await TestUtils.waitForCondition(() => popup.selectedIndex === 0, `ctrl+${up}: row 0`);
     const hidden = BrowserTestUtils.waitForPopupEvent(popup, "hidden");
     EventUtils.synthesizeKey("KEY_Enter");
     await hidden;
@@ -519,6 +584,7 @@ add_task(async function ctrl_n_and_ctrl_p_move_firefoxs_datalist_popup() {
     Assert.ok(!popup.popupOpen, "ctrl+n did not open the popup");
   });
 });
+}
 
 // Chrome fields keep their keys (decision 6 of the spec's Behaviour, item 6): in the address bar
 // ctrl+p prints as before (on macOS it is the address bar's own key, as before too), and ctrl+n
@@ -556,6 +622,45 @@ add_task(async function the_address_bar_keeps_ctrl_n_and_ctrl_p() {
       Assert.equal(opened, 0, "ctrl+n in the address bar opens no window");
     });
   });
+});
+
+// Issue #1261: while the address bar shows its results, the suggestion keys move its selected
+// row as ArrowDown and ArrowUp do, and load nothing.
+add_task(async function the_suggestion_keys_move_the_address_bars_results() {
+  await PlacesUtils.history.clear();
+  await PlacesTestUtils.addVisits(
+    [1, 2, 3, 4].map((n) => ({ uri: `https://example.com/vimma-row-${n}`, title: `row ${n}` })),
+  );
+  try {
+    await withPrintRecorder(async (prints) => {
+      await BrowserTestUtils.withNewTab(COMBO, async (browser) => {
+        await UrlbarTestUtils.promiseAutocompleteResultPopup({ window, value: "vimma-row" });
+        Assert.greaterOrEqual(UrlbarTestUtils.getResultCount(window), 4, "the rows show");
+        const selected = () => UrlbarTestUtils.getSelectedRowIndex(window);
+        Assert.equal(selected(), 0, "the first row is selected");
+        const steps = /** @type {const} */ ([
+          ["j", 1],
+          ["j", 2],
+          ["k", 1],
+          ["n", 2],
+          ["p", 1],
+        ]);
+        for (const [key, want] of steps) {
+          ctrl(key);
+          await TestUtils.waitForCondition(() => selected() === want, `ctrl+${key}: row ${want}`);
+        }
+        await turn();
+        Assert.ok(gURLBar.view.isOpen, "the results still show");
+        Assert.equal(gURLBar.value.includes("vimma-row"), true, "the address bar kept its text");
+        Assert.equal(browser.currentURI.spec, COMBO, "nothing loaded");
+        Assert.equal(prints(), 0, "ctrl+p did not print");
+        await UrlbarTestUtils.promisePopupClose(window);
+        gURLBar.handleRevert();
+      });
+    });
+  } finally {
+    await PlacesUtils.history.clear();
+  }
 });
 
 add_task(async function normal_mode_presses_no_arrow_key() {
