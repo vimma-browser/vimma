@@ -9,7 +9,7 @@
 
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { isCaseSensitive } from "../core/find.mjs";
-import { openPrompt, watchFindBars } from "./find-bar.mjs";
+import { markPrompt, openPrompt, watchFindBars } from "./find-bar.mjs";
 import { PdfOps } from "./pdf-ops.mjs";
 
 /** @import { FindStatus } from "../core/find.mjs" */
@@ -168,7 +168,12 @@ export class Find {
       : Promise.race([anchoring, new Promise((r) => this.win.setTimeout(r, ANCHOR_WAIT_MS))]);
     this.session = session;
     this.onChange();
-    Promise.all([gBrowser.getFindBar(tab), anchored]).then(([findbar]) => {
+    const created = gBrowser.getFindBar(tab).then((findbar) => {
+      // The prompt's style while it waits for the anchor (markPrompt).
+      if (findbar && this.session === session && findbar.hidden) markPrompt(findbar);
+      return findbar;
+    });
+    Promise.all([created, anchored]).then(([findbar]) => {
       if (this.session !== session) return;
       if (!findbar) {
         this.session = null;

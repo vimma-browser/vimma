@@ -82,9 +82,8 @@
   font-size: 13px;
   /* Firefox slides a closed bar below the page (findbar.css), which here would be over the
    * status bar: a closed prompt is simply gone, and with its margin fixed nothing slides. Nor
-   * does it slide in: a bar `/` creates is styled as Firefox's hidden one, with its negative
-   * margin-bottom, until the search's start is anchored (#1307). */
-  transition: none !important;
+   * does it slide in: `/` marks a bar it creates as the prompt at once (host/find-bar.mjs,
+   * markPrompt), so it is never laid out as Firefox's hidden bar first. */
   &[hidden] {
     display: none !important;
   }
