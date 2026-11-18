@@ -356,6 +356,15 @@ describe("parseToml: the unclosed-bracket hint", () => {
     ['a = [ "abc", "{",\n1,\n[t]\n', 3, '(unclosed "[" opened at line 1?)'],
     // A backslash escapes nothing in a literal string: 'a\' ends at its second quote.
     ["a = [ 'a\\', '{',\n1,\n[t]\n", 3, '(unclosed "[" opened at line 1?)'],
+    // An unclosed one-line string ends at its line break, which still counts as one (#1257):
+    // the scan stops at the parser's error there, before the next line's `}`.
+    ["a = [\n'abc\n1 }\n", 2, '(unclosed "[" opened at line 1?)'],
+    ['a = [\n"abc\n1 }\n', 2, '(unclosed "[" opened at line 1?)'],
+    // Columns count on across a string, so the scan stops at the error, before the `]` (#1257).
+    ["a = [\n'abcdef' 1 ]\n", 2, '(unclosed "[" opened at line 1?)'],
+    ['a = [\n"abcdef" 1 ]\n', 2, '(unclosed "[" opened at line 1?)'],
+    // After a multi-line string, columns count from the start of the line it ends on.
+    ['a = [\n"""\nxxxxxxxx""" 1 ]\n', 3, '(unclosed "[" opened at line 1?)'],
   ])("%j fails at line %i, ending %s", (text, line, hint) => {
     const error = syntaxError(text);
     expect(error.line).toBe(line);

@@ -83,12 +83,16 @@ function unclosedBracket(text, line, column) {
   // Stryker disable next-line ArrayDeclaration: an element with no line is never found below
   const stack = [];
   let at = 1;
-  let col = 1;
-  for (let i = 0; i < text.length && (at < line || (at === line && col < column)); i++, col++) {
+  let lineStart = 0; // index of line `at`'s first character: column is i - lineStart + 1
+  for (
+    let i = 0;
+    i < text.length && (at < line || (at === line && i - lineStart + 1 < column));
+    i++
+  ) {
     const c = text[i];
     if (c === "\n") {
       at++;
-      col = 0;
+      lineStart = i + 1;
     } else if (c === "#") {
       while (i + 1 < text.length && text[i + 1] !== "\n") i++;
     } else if (c === '"' || c === "'") {
@@ -97,8 +101,15 @@ function unclosedBracket(text, line, column) {
       while (j < text.length && !text.startsWith(q, j) && (q.length === 3 || text[j] !== "\n")) {
         j += c === '"' && text[j] === "\\" ? 2 : 1;
       }
-      for (let k = i; k < j; k++) if (text[k] === "\n") at++;
-      i = j + q.length - 1;
+      for (let k = i; k < j; k++) {
+        if (text[k] === "\n") {
+          at++;
+          lineStart = k + 1;
+        }
+      }
+      // Past the closing quote; an unclosed one-line string stops before its line break, which
+      // the next turn counts (#1257).
+      i = text.startsWith(q, j) ? j + q.length - 1 : j - 1;
     } else if (c === "[" || c === "{") {
       stack.push({ char: c, line: at });
     } else if (c === "]" || c === "}") {
