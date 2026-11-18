@@ -9,6 +9,10 @@
 
 "use strict";
 
+/* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
+// Six tasks, most with two restarts: past the default timeout on a busy runner.
+requestLongerTimeout(2);
+
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
 );
@@ -450,9 +454,203 @@ add_task(async function an_off_screen_splits_lazy_tabs_close_leave_and_unload_by
     "and so does a save",
   );
   Assert.deepEqual(
-    leaves(/** @type {Panes} */ (view(w2).splits.splits[0])).map((l) => view(w2).tabOf(l.tab)),
-    [r("na"), r("nb")],
-    "S1 names the unloaded tab by its uuid",
+    leaves(/** @type {Panes} */ (view(w2).splits.splits[0])).map((l) => l.tab),
+    [uuids.get("na") ?? "", r("nb").linkedPanel],
+    "S1 names the unloaded tab by its uuid, the loaded one by its panel",
   );
   await BrowserTestUtils.closeWindow(w2);
+});
+
+/**
+ * Types into the long page's field and scrolls it to 1200.
+ * @param {SplitTab} tab
+ */
+async function scrollAndType(tab) {
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    const field = /** @type {HTMLInputElement} */ (content.document.getElementById("text"));
+    field.value = "kept";
+    field.dispatchEvent(new content.Event("input", { bubbles: true }));
+    content.scrollTo(0, 1200);
+  });
+}
+
+/**
+ * Selects `tab`, the long page, and waits until it has restored its scroll position; returns
+ * its field's text.
+ * @param {SplitTab} tab
+ */
+async function restoredLongPage(tab) {
+  await until(() => !tab.hasAttribute("pending"), "the long page restores");
+  const read = () =>
+    SpecialPowers.spawn(tab.linkedBrowser, [], () => ({
+      y: content.scrollY,
+      // Null until the page has replaced about:blank.
+      text: /** @type {HTMLInputElement | null} */ (content.document.getElementById("text"))?.value,
+    }));
+  // The restore may still move the page to its content process: a read that reaches the old
+  // one fails (its actor is destroyed) and is tried again.
+  await TestUtils.waitForCondition(
+    () =>
+      read().then(
+        (r) => r.y === 1200,
+        () => false,
+      ),
+    "scroll restores",
+  );
+  return (await read()).text;
+}
+
+// Issue #1332: a split that becomes the current one while it is not on screen keeps its lazy tabs
+// lazy until it shows. Here the split on screen ends (a tab of it closed), so the other one
+// becomes current as the split shown last, kept hidden (#promote); a restart then restores it as
+// that hidden view. Both used to give its tabs browsers at once, and the next save lost the long
+// page's scroll position and typed text.
+add_task(async function a_split_made_current_off_screen_stays_lazy_across_restarts() {
+  const K = workspace("rs-k");
+  const w1 = await openWindow();
+  const ww1 = live(w1);
+  ww1.switchTo({ id: K.id });
+  await until(() => ww1.model.active === K.id, "K is shown");
+  const k1 = /** @type {SplitTab} */ (await openIn(w1, LONG));
+  await scrollAndType(k1);
+  const { tabs, uuids } = await pages(w1, ["k2", "k3", "k4"]);
+  const t = (/** @type {string} */ n) => /** @type {SplitTab} */ (tabs.get(n));
+  uuids.set("k1", SessionStore.getCustomTabValue(k1, TAB_KEY));
+  await twoSplits(w1, [k1, t("k2")], [t("k3"), t("k4")]);
+  const first = await saved(w1, LONG);
+  Assert.equal(first.tab.scroll?.scroll, "0,1200", "the long page is saved scrolled");
+  await BrowserTestUtils.closeWindow(w1);
+
+  // First restart: S2 on screen, S1 lazy. Closing k4 ends S2, so S1 becomes current, hidden.
+  const w2 = await openWindow();
+  await restoreInto(w2, first.winState);
+  const ww2 = live(w2);
+  await until(() => ww2.model.active === K.id, "K is shown after the restore");
+  await until(() => view(w2).splits.shown === 2, "S2 is on screen");
+  const r = (/** @type {BrowserWindow} */ win, /** @type {string} */ name) =>
+    /** @type {SplitTab} */ (
+      win.gBrowser.tabs.find((x) => SessionStore.getCustomTabValue(x, TAB_KEY) === uuids.get(name))
+    );
+  Assert.ok(!r(w2, "k1").linkedPanel && !r(w2, "k2").linkedPanel, "S1's tabs are lazy");
+  w2.gBrowser.selectedTab = r(w2, "k3");
+  BrowserTestUtils.removeTab(r(w2, "k4"));
+  await until(() => view(w2).splits.splits.length === 1, "S2 ends with k4");
+  await until(() => view(w2).hidden, "S1 is current, kept hidden while k3 shows alone");
+  await TestUtils.waitForTick();
+  Assert.equal(namedSplits(w2, uuids), "S1:k1,k2", "S1 is the split left");
+  Assert.ok(
+    !r(w2, "k1").linkedPanel && !r(w2, "k2").linkedPanel,
+    "made current off screen, S1's tabs stay lazy",
+  );
+  Assert.ok(!SessionStore.isTabRestoring(r(w2, "k1")), "and are not restored in the background");
+  const second = await saved(w2, LONG);
+  Assert.equal(second.tab.scroll?.scroll, "0,1200", "the next save keeps the scroll position");
+  Assert.equal(second.tab.formdata?.id?.text, "kept", "and the typed text");
+  Assert.equal(savedSplits(second.winState, K.id, uuids), "S1:k1,k2", "and S1");
+  await BrowserTestUtils.closeWindow(w2);
+
+  // Second restart: S1 comes back as the current split, a hidden view, and stays lazy.
+  const w3 = await openWindow();
+  await restoreInto(w3, second.winState);
+  const ww3 = live(w3);
+  await until(() => ww3.model.active === K.id, "K is shown after the second restore");
+  await until(() => view(w3).hidden, "S1 is a hidden view, k3 shows alone");
+  await TestUtils.waitForTick();
+  Assert.equal(namedSplits(w3, uuids), "S1:k1,k2", "S1 comes back");
+  Assert.ok(
+    !r(w3, "k1").linkedPanel && !r(w3, "k2").linkedPanel,
+    "a restored hidden view's tabs stay lazy",
+  );
+  Assert.deepEqual(
+    leaves(/** @type {Panes} */ (view(w3).panes)).map((l) => l.tab),
+    [uuids.get("k1") ?? "", uuids.get("k2") ?? ""],
+    "the current tree names them by their uuids",
+  );
+  const third = await saved(w3, LONG);
+  Assert.equal(third.tab.scroll?.scroll, "0,1200", "the save after it keeps the scroll position");
+  Assert.equal(third.tab.formdata?.id?.text, "kept", "and the typed text");
+
+  // Picking the long page shows S1 whole, at the saved position, with the text.
+  w3.gBrowser.selectedTab = r(w3, "k1");
+  await until(() => view(w3).splits.shown === 1 && !view(w3).hidden, "picking k1 shows S1");
+  const panes = view(w3).panes;
+  Assert.deepEqual(
+    panes ? leaves(panes).map((l) => l.tab) : [],
+    [r(w3, "k1").linkedPanel, r(w3, "k2").linkedPanel],
+    "S1 comes back whole, with panels",
+  );
+  Assert.ok(
+    r(w3, "k2").splitview && r(w3, "k2").splitview === r(w3, "k1").splitview,
+    "in one wrapper",
+  );
+  Assert.equal(await restoredLongPage(r(w3, "k1")), "kept", "the typed text comes back");
+  await BrowserTestUtils.closeWindow(w3);
+});
+
+// Issue #1332: unloading a pane's tab of the current split (the tab menu's Unload Tab, which first
+// selects a tab outside the split, so the split is kept hidden) leaves the tab unloaded until the
+// split shows again; it used to get a browser back at once, which restored it in the background.
+add_task(async function unloading_a_pane_of_the_current_split_keeps_it_unloaded() {
+  const U = workspace("rs-u");
+  const w1 = await openWindow();
+  const ww1 = live(w1);
+  ww1.switchTo({ id: U.id });
+  await until(() => ww1.model.active === U.id, "U is shown");
+  const { tabs, uuids } = await pages(w1, ["ua", "ub", "uc"]);
+  const t = (/** @type {string} */ n) => /** @type {SplitTab} */ (tabs.get(n));
+  Assert.ok(view(w1).showTabs([t("ua"), t("ub")], t("ua")).ok, "S1: ua | ub");
+  await until(() => t("ua").selected && !view(w1).hidden, "S1 shows");
+  await w1.gBrowser.explicitUnloadTabs([t("ub")]);
+  await until(() => !t("ub").linkedPanel, "ub is unloaded");
+  Assert.ok(view(w1).hidden, "a tab outside S1 shows, S1 is kept hidden");
+  await TestUtils.waitForTick();
+  await TestUtils.waitForTick();
+  Assert.ok(!t("ub").linkedPanel, "ub stays unloaded");
+  Assert.deepEqual(
+    leaves(/** @type {Panes} */ (view(w1).panes)).map((l) => l.tab),
+    [t("ua").linkedPanel, uuids.get("ub") ?? ""],
+    "S1 names ub by its uuid",
+  );
+
+  w1.gBrowser.selectedTab = t("ua");
+  await until(() => !view(w1).hidden, "selecting ua shows S1");
+  Assert.ok(t("ub").linkedPanel, "ub gets its browser as S1 shows");
+  Assert.deepEqual(
+    leaves(/** @type {Panes} */ (view(w1).panes)).map((l) => l.tab),
+    [t("ua").linkedPanel, t("ub").linkedPanel],
+    "S1 is whole",
+  );
+  await BrowserTestUtils.closeWindow(w1);
+});
+
+// Issue #1332: a tab whose browser was there before PaneView started listening (its
+// TabBrowserInserted came earlier) is still renamed to its uuid when Firefox unloads it, so its
+// split keeps it.
+add_task(async function a_tab_loaded_before_the_view_started_keeps_its_split_when_unloaded() {
+  const V = workspace("rs-v");
+  const w1 = await openWindow();
+  const ww1 = live(w1);
+  ww1.switchTo({ id: V.id });
+  await until(() => ww1.model.active === V.id, "V is shown");
+  const { tabs, uuids } = await pages(w1, ["va", "vb", "vc", "vd"]);
+  const t = (/** @type {string} */ n) => /** @type {SplitTab} */ (tabs.get(n));
+  await twoSplits(w1, [t("va"), t("vb")], [t("vc"), t("vd")]);
+  // A fresh PaneView over the same window, given the splits as a restore would: it never saw
+  // these tabs' browsers come.
+  const old = view(w1);
+  const { adoption, accepts, onChange } = old;
+  const splits = old.splits;
+  PaneViews.uninit(w1);
+  PaneViews.init(w1);
+  const fresh = view(w1);
+  Object.assign(fresh, { adoption, accepts, onChange });
+  fresh.restore(new Map([[V.id, splits]]), V.id);
+  Assert.ok(w1.gBrowser.discardBrowser(t("va"), true), "va is unloaded");
+  Assert.equal(namedSplits(w1, uuids), "S1:va,vb S2:vc,vd", "S1 still has va");
+  Assert.equal(
+    leaves(/** @type {Panes} */ (fresh.splits.splits[0]))[0]?.tab,
+    uuids.get("va") ?? "",
+    "named by its uuid",
+  );
+  await BrowserTestUtils.closeWindow(w1);
 });

@@ -71,8 +71,8 @@ import {
 
 /**
  * @typedef {MozTabbrowserTab & { linkedPanel: string, splitview: Wrapper | null }} Tab  a tab
- *   the panes hold: loaded, so it has a panel (a split that is not the current one may also name
- *   a lazy tab by its uuid, see #anyTab)
+ *   the panes hold: loaded, so it has a panel (a split that is not on screen may also name a lazy
+ *   tab by its uuid, see #anyTab)
  * @typedef {Element & { tabs: Tab[], addTabs: (tabs: Tab[]) => void,
  *   unsplitTabs: () => void }} Wrapper
  * @typedef {Pick<Tabbrowser, "tabpanels" | "_switcher"> & { tabs: Tab[], selectedTab: Tab,
@@ -238,6 +238,8 @@ export class PaneView {
    * @type {WeakMap<MozTabbrowserTab, string>}
    */
   #panels = new WeakMap();
+  /** Whether #panels has the panels of the tabs loaded before the view listened (#seedPanels). */
+  #seeded = false;
   /**
    * The tab whose TabOpen came in this task: its TabSelect is a new foreground tab, not a pick
    * (docs/specs/side-panel-unsplit.md decision 22); cleared in a microtask.
@@ -310,6 +312,7 @@ export class PaneView {
 
   /** @param {Event} e */
   handleEvent(e) {
+    this.#seedPanels();
     if (e.type === "TabOpen") this.#onTabOpen(/** @type {Tab} */ (e.target));
     else if (e.type === "TabClose") this.#onTabClose(/** @type {Tab} */ (e.target));
     else if (e.type === "TabSelect") this.#onTabSelect(/** @type {CustomEvent} */ (e));
@@ -426,10 +429,11 @@ export class PaneView {
       this.#resize?.disconnect();
       this.#resize = null;
     }
-    // The current tree names panels only (#reconcile closes a pane whose panel it cannot find):
-    // its lazy tabs, named by uuid in a restored or parked split, get their browsers now.
-    if (current) current.panes = this.#wake(current.panes);
-    this.#panes = current && (next.shown === null ? hideView(current.panes) : current.panes);
+    this.#seedPanels();
+    // A split on screen names panels only: its lazy tabs, named by uuid in a restored or parked
+    // split, get their browsers now. One kept hidden keeps them lazy until it shows (#reconcile).
+    this.#panes =
+      current && this.#asCurrent(next.shown === null ? hideView(current.panes) : current.panes);
     this.#wrapper = current?.wrapper ?? null;
     this.#laidOut = current?.laidOut ?? new Set();
     this.#number = want ?? 1;
@@ -531,7 +535,7 @@ export class PaneView {
     }
     const back = this.#parked.get(to);
     this.#parked.delete(to);
-    this.#panes = back ? this.#wake(back.panes) : null;
+    this.#panes = back ? this.#asCurrent(back.panes) : null;
     this.#wrapper = back?.wrapper ?? null;
     this.#laidOut = back?.laidOut ?? new Set();
     this.#number = back?.number ?? 1;
@@ -676,10 +680,12 @@ export class PaneView {
     }
     const active = this.adoption?.active();
     for (const t of this.#members()) {
-      if (!panes || paneOfTab(panes, t.linkedPanel)) continue;
+      // A hidden view's wrapper may hold its lazy tabs, named by uuid in the tree.
+      const id = this.#idOf(t);
+      if (!panes || !id || paneOfTab(panes, id)) continue;
       if (this.adoption && this.adoption.workspaceOf(t) !== active) continue;
       const last = leaves(panes).at(-1);
-      if (last) panes = split(panes, last.pane, "vertical", t.linkedPanel, { max: this.#max });
+      if (last) panes = split(panes, last.pane, "vertical", id, { max: this.#max });
     }
     this.#panes = panes;
   }
@@ -1002,7 +1008,7 @@ export class PaneView {
       return;
     }
     const panes = this.#panes;
-    const pane = panes && paneOfTab(panes, tab.linkedPanel);
+    const pane = panes && id && paneOfTab(panes, id);
     if (!panes || !pane) return;
     this.#panes = leaves(panes).length > 2 ? closePane(panes, pane) : null;
     // The current split ended with others kept: one takes its place now, so the model, a save
@@ -1025,7 +1031,9 @@ export class PaneView {
     if (first === undefined) return;
     const slot = /** @type {Slot} */ (this.#others.get(first));
     this.#others.delete(first);
-    this.#panes = hideView(this.#wake(slot.panes));
+    // Hidden, so its lazy tabs stay lazy until it shows (#reconcile), as in any other split that
+    // is not on screen (issue #1332).
+    this.#panes = hideView(slot.panes);
     this.#wrapper = slot.wrapper;
     this.#laidOut = slot.laidOut;
     this.#number = first;
@@ -1188,7 +1196,9 @@ export class PaneView {
 
   /**
    * A tab was unloaded: Firefox took its panel away, so its uuid names it in the trees again. In
-   * the current tree it gets a browser back at once (not loaded), as the split shows it.
+   * the current tree on screen it gets a browser back at once (not loaded), as the split shows
+   * it; a hidden view keeps it unloaded until it shows (Unload Tab on a pane first selects a tab
+   * outside the split, so the split is hidden by then; issue #1332).
    * @param {MozTabbrowserTab} tab
    */
   #onBrowserDiscarded(tab) {
@@ -1196,9 +1206,60 @@ export class PaneView {
     const panel = this.#panels.get(tab);
     this.#panels.delete(tab);
     if (!uuid || !panel) return;
-    const inCurrent = !!this.#panes && paneOfTab(this.#panes, panel) !== undefined;
     this.#renameEverywhere(panel, uuid);
-    if (inCurrent && this.#panes) this.#panes = this.#wake(this.#panes);
+    if (this.#panes) this.#panes = this.#asCurrent(this.#panes);
+  }
+
+  /**
+   * `panes` as the current tree: on screen it names panels only (#reconcile lays it out from
+   * them), so its lazy tabs get their browsers (#wake); a hidden view keeps them lazy, named by
+   * uuid, until it shows, so SessionStore does not restore them in the background and its next
+   * save keeps their scroll position and form data (issues #1318, #1332).
+   * @param {Panes} panes
+   * @returns {Panes}
+   */
+  #asCurrent(panes) {
+    return isHiddenView(panes) ? panes : this.#wake(panes);
+  }
+
+  /**
+   * A hidden view that names lazy tabs (#asCurrent): its pages that have a browser sleep, and
+   * its wrapper holds its tabs, rebuilt when they changed (a pane closed, a tab moved out). No
+   * split plan: core's plan names panels, and a wrapper with no selected tab gives none of its
+   * tabs a browser (tabsplitview.mjs activates only one that has the selected tab).
+   * @param {Panes} panes
+   */
+  #keepLazy(panes) {
+    const tabs = /** @type {Tab[]} */ (
+      leaves(panes)
+        .map((l) => this.#anyTab(l.tab))
+        .filter(Boolean)
+    );
+    const wrapper = this.#currentWrapper();
+    const now = wrapper ? wrapper.tabs.filter((t) => !t.closing) : [];
+    if (now.length !== tabs.length || tabs.some((t) => !now.includes(t))) {
+      wrapper?.unsplitTabs();
+      this.#wrapper =
+        tabs.length >= 2
+          ? gBrowserOf(this.#win).addTabSplitView(tabs, { insertBefore: tabs[0] })
+          : null;
+    }
+    this.#sleep(panes);
+  }
+
+  /**
+   * Records the panel of each tab that had its browser before the view listened for
+   * TabBrowserInserted (the window's first tab; every tab of a restore with
+   * `browser.sessionstore.restore_on_demand` off), so #onBrowserDiscarded knows it. Once, as
+   * soon as gBrowser exists (the view is made before it).
+   */
+  #seedPanels() {
+    if (this.#seeded) return;
+    const tabs = /** @type {{ gBrowser?: TabBrowser }} */ (/** @type {unknown} */ (this.#win))
+      .gBrowser?.tabs;
+    if (!tabs) return;
+    this.#seeded = true;
+    for (const t of tabs) if (t.linkedPanel) this.#panels.set(t, t.linkedPanel);
   }
 
   /**
@@ -1228,7 +1289,7 @@ export class PaneView {
   #currentWrapper() {
     if (this.#wrapper?.isConnected && this.#wrapper.tabs.length) return this.#wrapper;
     const ids = this.#panes ? leaves(this.#panes).map((l) => l.tab) : [];
-    const found = ids.map((id) => this.#tab(id)?.splitview).find(Boolean) ?? null;
+    const found = ids.map((id) => this.#anyTab(id)?.splitview).find(Boolean) ?? null;
     this.#wrapper = found;
     return found;
   }
@@ -1278,21 +1339,29 @@ export class PaneView {
   #reconcile() {
     const win = this.#win;
     const gBrowser = gBrowserOf(win);
-    // A tree whose tabs are gone (closed outside a TabClose we saw) shrinks first.
+    // A tree whose tabs are gone (closed outside a TabClose we saw) shrinks first. A hidden view
+    // may name a lazy tab by its uuid (#asCurrent).
     let panes = this.#panes;
     for (const leaf of panes ? leaves(panes) : []) {
-      if (!panes || this.#tab(leaf.tab)) continue;
+      if (!panes || this.#anyTab(leaf.tab)) continue;
       panes = leaves(panes).length > 2 ? closePane(panes, leaf.pane) : null;
     }
-    // A hidden view whose tab got selected some other way (Firefox's successor for a closed tab)
-    // shows again, focused there (side-panel-unsplit decision 23).
+    // A hidden view whose tab got selected (a pick, or Firefox's successor for a closed tab)
+    // shows again, focused there (side-panel-unsplit decision 23), and its lazy tabs get their
+    // browsers.
     const selected = gBrowser.selectedTab;
     const selectedPane = panes && selected && paneOfTab(panes, selected.linkedPanel);
     if (panes && isHiddenView(panes) && selectedPane) {
       panes = focusPane(showView(panes), selectedPane);
     }
+    if (panes) panes = this.#asCurrent(panes);
     this.#panes = panes;
     const hidden = !!panes && isHiddenView(panes);
+    if (panes && hidden && leaves(panes).some((l) => !this.#tab(l.tab))) {
+      this.#keepLazy(panes);
+      this.#label();
+      return;
+    }
 
     const members = this.#members();
     const managed = new Set([...members, ...this.#laidOut]);
