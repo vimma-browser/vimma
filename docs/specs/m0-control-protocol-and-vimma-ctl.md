@@ -193,6 +193,13 @@ what `parseKey` (vimma-core) accepts: `ctrl+b c`, `g t`, `esc`, `shift+t`. Symbo
 each chord to the window's dispatcher as if typed (same path as a real keydown, including mode
 handling) and returns how many it sent. A chord that fails `parseKey` is `invalid-args` and none
 are sent.
+(Since changed, [#1306](https://github.com/vimma-browser/vimma/issues/1306): a key that opens a
+dialog Firefox runs in a nested event loop, such as "Leave page?", ends the command once the
+dialog is up, with `{ "sent": n, "dialog": true }`: `n` counts that key, and the keys after it are
+not pressed, because the dialog takes keys only after its arming wait
+([firefox-dialogs](firefox-dialogs.md), decision 3). `dialog` is absent otherwise and is never
+`false`. A later `send-keys` answers the dialog. `vimma-ctl send-keys` prints `dialog open` for
+such a result, and nothing otherwise.)
 
 **`state`.** A snapshot of the focused window:
 

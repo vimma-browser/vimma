@@ -741,6 +741,55 @@ add_task(async function test_send_keys_reach_the_page() {
   await disable();
 });
 
+// #1306: a key that opens a dialog over the page ("Leave page?") does not return until the
+// dialog is answered, because Firefox asks in a nested event loop (browser-custom-element.mjs,
+// permitUnload). send-keys answers once the dialog is up, and a later send-keys answers it.
+add_task(async function test_send_keys_answer_the_dialog_they_open() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["dom.require_user_interaction_for_beforeunload", false],
+      ["security.notification_enable_delay", 0],
+    ],
+  });
+  const leave =
+    getRootDirectory(gTestPath).replace("chrome://mochitests/content", "https://example.com") +
+    "file_vimma_leave_page.html";
+  await enable();
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, leave);
+  const shown = TestUtils.topicObserved("common-dialog-loaded").then(([w]) => w);
+  /** @param {number} ms */
+  const late = (ms) => new Promise((r) => setTimeout(() => r({ late: ms }), ms));
+  const client = await session();
+  // `j` comes after the key that opens the dialog, so it is not pressed.
+  const first = await Promise.race([client.request(1, "send-keys", { keys: "x j" }), late(5000)]);
+  const dialog = /** @type {Window} */ (await shown);
+  const second = await session();
+  try {
+    Assert.deepEqual(first.result, { sent: 1, dialog: true }, "x answers once its dialog is up");
+    await TestUtils.waitForCondition(
+      () => dialog.document.querySelector(".vimma-prompt-keys")?.hasAttribute("armed"),
+      "the dialog's keys count",
+    );
+    const answer = await Promise.race([second.request(1, "send-keys", { keys: "n" }), late(5000)]);
+    Assert.deepEqual(answer.result, { sent: 1 }, "a later send-keys answers the dialog");
+    await TestUtils.waitForCondition(() => dialog.closed, "n answered the dialog");
+    Assert.ok(tab.isConnected && !tab.closing, "n stays on the page");
+    const after = await second.request(2, "send-keys", { keys: "j" });
+    Assert.deepEqual(after.result, { sent: 1 }, "send-keys goes on working");
+  } finally {
+    // Unwedge a failed run: without an answer, the first key never returns.
+    const box = /** @type {(Element & { cancelDialog(): void }) | null} */ (
+      dialog.closed ? null : dialog.document.querySelector("dialog")
+    );
+    box?.cancelDialog();
+    client.close();
+    second.close();
+    gBrowser.removeTab(tab, { skipPermitUnload: true });
+    await disable();
+    await SpecialPowers.popPrefEnv();
+  }
+});
+
 add_task(async function test_open() {
   await enable();
   const client = await session();

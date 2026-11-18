@@ -239,6 +239,15 @@ describe("validateMessage: send-keys", () => {
       "result.sent must be an integer >= 0",
     ]);
   });
+
+  test("dialog, when present, is true: a key opened a dialog that waits for its answer", () => {
+    expect(errorsOf(ok({ sent: 1, dialog: true }), { command: "send-keys" })).toEqual([]);
+    for (const dialog of [false, "yes", 1, null]) {
+      expect(errorsOf(ok({ sent: 1, dialog }), { command: "send-keys" })).toEqual([
+        "result.dialog must be true when present",
+      ]);
+    }
+  });
 });
 
 describe("validateMessage: open", () => {

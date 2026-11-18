@@ -165,6 +165,7 @@ support-files = [
 ["browser_vimma_pane_layouts.js"]
 
 ["browser_vimma_control.js"]
+support-files = ["file_vimma_leave_page.html"]
 
 ["browser_vimma_control_state_read.js"]
 support-files = ["head_vimma_control.js"]
