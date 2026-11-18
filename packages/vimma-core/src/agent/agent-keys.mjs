@@ -571,12 +571,24 @@ function withoutUserinfo(text, cut, depth) {
 }
 
 /**
+ * `text` without the user names and passwords of its URLs, in two passes: first as given, where
+ * an authority ends where a URL parser ends it (NFKC would make a fullwidth slash one that the
+ * parser does not see, and end the authority before its `@`), then as `show` shows it, where a
+ * fullwidth `@` is one: only more is dropped that way, never less.
+ * @param {string} text @param {boolean} cut @param {number} depth
+ * @param {(s: string) => string} show
+ */
+function bothPasses(text, cut, depth, show) {
+  return withoutUserinfo(show(withoutUserinfo(text, cut, depth)), cut, depth);
+}
+
+/**
  * An `about:` address without the user names and passwords of the URLs in its query (#1324).
  * Firefox's internal pages carry a whole URL percent-encoded in a parameter (Reader View's
  * `about:reader?url=`, the error pages' `u=`), where no `@` ends an authority. Each parameter
  * is decoded as URLSearchParams decodes it (Reader View reads it that way: ReaderMode
- * getOriginalUrl), its shown text (NFKC, so a fullwidth `@` is one) stripped as a URL nested
- * one level deeper, and the query written again when that changed any of them; past NESTED_MAX
+ * getOriginalUrl) and stripped as a URL nested one level deeper, in agentUrl's two passes
+ * (bothPasses), and the query written again when that changed any of them; past NESTED_MAX
  * the query is dropped. The page's name and its hash are kept as they are.
  * @param {string} s @param {number} at  where the scheme's colon ends
  * @param {boolean} cut @param {number} depth
@@ -594,7 +606,7 @@ function aboutWithoutUserinfo(s, at, cut, depth) {
   let changed = false;
   const out = new URLSearchParams();
   for (const [key, value] of params) {
-    const stripped = withoutUserinfo(shown(value), cut, depth + 1);
+    const stripped = bothPasses(value, cut, depth + 1, shown);
     if (stripped !== value) changed = true;
     out.append(key, stripped);
   }
@@ -616,9 +628,7 @@ export function agentUrl(url, max) {
   const raw = String(url ?? "");
   const read = raw.slice(0, 4 * max);
   const cut = read.length < raw.length;
-  const first = withoutUserinfo(read, cut, 0);
-  const text = shown(first).replace(/\s/g, "");
-  const plain = withoutUserinfo(text, cut, 0);
+  const plain = bothPasses(read, cut, 0, (t) => shown(t).replace(/\s/g, ""));
   // A Reader View address is its article's URL, as the status bar shows it (#1323, #1324); one
   // that was cut may have lost the end of that URL, so it stays the stripped reader address.
   return cutTo((!cut && readerOriginalUrl(plain)) || plain, max);

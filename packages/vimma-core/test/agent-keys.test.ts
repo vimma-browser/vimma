@@ -801,6 +801,10 @@ describe("tab titles without user names and passwords (security.md M21, #1209)",
     // A title that is such an address, encoded once or twice, loses them too.
     expect(agentTitle(reader)).toBe("https://www.example.com/a");
     expect(agentTitle(`about:reader?url=${encodeURIComponent(reader)}`)).not.toMatch(/ada|secret/);
+    // A look-alike slash in the user name ends no authority for Firefox's parser, nor here.
+    const lookAlike = `about:reader?url=${encodeURIComponent("https://ada\uff0fx:secret@example.com/a")}`;
+    expect(agentTitle(lookAlike)).toBe("https://example.com/a");
+    expect(agentTabTitle(lookAlike, false, lookAlike)).toBe("example.com/a");
   });
 
   test("any other title is left as the page wrote it", () => {

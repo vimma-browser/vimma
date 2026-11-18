@@ -1146,8 +1146,9 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   whole, and so is everything past the fourth URL nested in another. An `about:` address carries
   URLs percent-encoded in its query, where no `@` ends an authority (Reader View's
   `about:reader?url=`, the error pages' `u=`; #1324): each parameter is decoded as
-  `URLSearchParams` decodes it and stripped as a nested URL, and the query is written again when
-  that removed anything. A Reader View address that was read whole is then given as its
+  `URLSearchParams` decodes it and stripped as a nested URL in the same two passes, as given and
+  then as shown (a fullwidth slash inside the user name ends no authority, so the host given is
+  the one Firefox loads), and the query is written again when that removed anything. A Reader View address that was read whole is then given as its
   article's URL, as the status bar shows it (core's `readerOriginalUrl`), so a reader tab is
   named by its article without a user name or password in every reply, its title too. Failed requests (HTTP status 400 and above, or a channel error other than a
   cancel, a redirect or a load turned download) **must** be logged only for channels whose top
@@ -1177,6 +1178,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`a Reader View address is the article's URL without its user name and password`](../../packages/vimma-core/test/agent-act.test.ts),
   [`a Reader View address the reader cannot show still loses them`](../../packages/vimma-core/test/agent-act.test.ts),
   [`a Reader View address cut short, or long, never shows them`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`inside an about: query too, the authority ends where a URL parser ends it`](../../packages/vimma-core/test/agent-act.test.ts),
   [`a Reader View tab's title is its article's URL without them (#1324)`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`test_a_reader_view_tab_gives_its_article_url_without_them`](../../tests/browser/browser_vimma_mcp_userinfo.js)
 - M31. `agent-elements`' list **must** be one string inside the untrusted-content delimiters,

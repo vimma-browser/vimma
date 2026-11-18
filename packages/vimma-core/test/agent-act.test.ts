@@ -1484,6 +1484,39 @@ describe("console reads: bounded work and URLs without credentials (F24, M30)", 
     );
   });
 
+  test("inside an about: query too, the authority ends where a URL parser ends it", () => {
+    // NFKC would make these a slash, a question mark, a number sign or a backslash; the URL
+    // parser Firefox's reader and error pages use does not, so the at sign after them is the
+    // authority's end. Each value is stripped as given, then as shown (#1324 review).
+    for (const c of [
+      "\uff0f",
+      "\uff1f",
+      "\uff03",
+      "\ufe16",
+      "\ufe68",
+      "\u2100",
+      "\u2101",
+      "\u2105",
+      "\u2106",
+    ]) {
+      for (const article of [
+        `https://ada:se${c}cret@example.com/a`,
+        `https://ada${c}x:secret@example.com/a`,
+      ]) {
+        expect(new URL(article).host).toBe("example.com");
+        expect(once(`about:reader?url=${enc(article)}`)).toBe("https://example.com/a");
+        const error = once(`about:neterror?e=dnsNotFound&u=${enc(article)}&c=UTF-8`);
+        const u = new URLSearchParams(error.slice(error.indexOf("?") + 1)).get("u") ?? "";
+        expect(u).toBe("https://example.com/a");
+        noCredentials(error);
+      }
+    }
+    // The agent is told the host Firefox loads, never the look-alike before the at sign.
+    const evil = "https://good.example\uff0f@evil.example/";
+    expect(new URL(evil).host).toBe("evil.example");
+    expect(once(`about:reader?url=${enc(evil)}`)).toBe("https://evil.example/");
+  });
+
   test("a Reader View address cut short, or long, never shows them", () => {
     // Cut inside its encoded at sign, the user name and password still go.
     const article = `https://ada:${"s".repeat(3000)}@example.com/a`;
