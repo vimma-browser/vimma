@@ -325,6 +325,8 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Open config.toml in a tab                            | `edit_config`      | —        |
 | Open the first-run setup (add-ons, search engine)    | `setup`            | —        |
 | Built-in theme: dark, light or the system's (:theme) | `theme_appearance` | —        |
+| Give keys to this site's page (:siteunbind)          | `site_unbind`      | —        |
+| Give keys back to Vimma on this site (:sitebind)     | `site_bind`        | —        |
 
 ## Agents
 

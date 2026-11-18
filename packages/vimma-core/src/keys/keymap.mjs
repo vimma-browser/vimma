@@ -180,6 +180,49 @@ function buildTrie(entries) {
 }
 
 /**
+ * Why a page never gets esc or the prefix (docs/specs/site-unbind.md decision 3), after the key's
+ * name: a page holding either would leave the user no key back to Vimma.
+ */
+const KEPT_KEYS = Object.freeze({
+  esc: "stays Vimma's on every site: it leaves insert mode and a pending key",
+  prefix: "stays Vimma's on every site: it reaches every other command",
+});
+
+/**
+ * One `[sites."<host>"] unbind` entry or one `:siteunbind` argument, read as one key in the
+ * notation `[keys]` uses, so that the file and the command accept the same keys
+ * (docs/specs/site-unbind.md behaviour 2, 4 and 5; site-unbind-command.md decision 2). `key` is
+ * the canonical chord (`ctrl+k`). Refused: text that does not parse (`notation`), esc and the
+ * prefix, alone or first (`esc`, `prefix`, with the reason in `message`), and more than one key
+ * (`sequence`, with each key in `keys`), because Vimma consumes a sequence's first key and the
+ * page would never see the second (site-unbind decision 1).
+ * @param {string} text
+ * @param {{ prefix: Chord, leader: Chord }} keys
+ * @returns {{ ok: true, key: string }
+ *   | { ok: false, why: "notation" | "esc" | "prefix", message: string }
+ *   | { ok: false, why: "sequence", keys: string[] }}
+ */
+export function readSiteKey(text, { prefix, leader }) {
+  /** @type {BindingElement[]} */
+  let els;
+  try {
+    els = parseBinding(text);
+  } catch (e) {
+    /* c8 ignore next */
+    if (!(e instanceof KeyNotationError)) throw e;
+    return { ok: false, why: "notation", message: e.message };
+  }
+  const keys = els.map((e) =>
+    formatKey("special" in e ? (e.special === "prefix" ? prefix : leader) : e),
+  );
+  const first = /** @type {string} */ (keys[0]);
+  if (first === "esc") return { ok: false, why: "esc", message: KEPT_KEYS.esc };
+  if (first === formatKey(prefix)) return { ok: false, why: "prefix", message: KEPT_KEYS.prefix };
+  if (keys.length !== 1) return { ok: false, why: "sequence", keys };
+  return { ok: true, key: first };
+}
+
+/**
  * @param {UserConfig} [user]
  * @param {{ mac?: boolean }} [options]  macOS's default keys (defaults.mjs MAC_KEYS) and inventory
  */
@@ -449,29 +492,17 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
     list.forEach((text, i) => {
       const path = formatPath([...at, i]);
       if (typeof text !== "string") throw new KeymapError("expected a string", path);
-      const { chords } = concretise(notation(() => parseBinding(text), path));
-      const first = formatKey(/** @type {Chord} */ (chords[0]));
-      // Decision 3: a page holding either would leave the user no key back to Vimma.
-      if (first === "esc") {
-        throw new KeymapError(
-          "esc stays Vimma's on every site: it leaves insert mode and a pending key",
-          path,
-        );
-      }
-      if (first === formatKey(prefix)) {
-        throw new KeymapError(
-          "the prefix stays Vimma's on every site: it reaches every other command",
-          path,
-        );
-      }
-      // Decision 1: Vimma consumes a sequence's first key, so the page never sees the second.
-      if (chords.length !== 1) {
+      const read = readSiteKey(text, { prefix, leader });
+      if (read.ok) keys.add(read.key);
+      else if (read.why === "notation") throw new KeymapError(read.message, path);
+      else if (read.why === "sequence") {
+        const first = /** @type {string} */ (read.keys[0]);
         throw new KeymapError(
           `must be one key: on a site, "${first}" gives the page ${first} and every sequence it starts`,
           path,
         );
-      }
-      keys.add(first);
+      } else
+        throw new KeymapError(`${read.why === "esc" ? "esc" : "the prefix"} ${read.message}`, path);
     });
     siteRules.set(match, { match, keys });
   }
@@ -553,6 +584,22 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
       return rule && rule.keys.size > 0 ? rule.match : null;
     },
     /**
+     * One `:siteunbind` argument read as config.toml reads an `unbind` entry, with this keymap's
+     * prefix and leader (readSiteKey).
+     * @param {string} text
+     */
+    siteKey: (text) => readSiteKey(text, { prefix, leader }),
+    /** Every `[sites."<host>"]` table, as written, in file order. */
+    siteTables: () => [...siteRules.keys()],
+    /**
+     * The keys `table` (as written) gives the page, canonical, in the order listed.
+     * @param {string} table
+     * @returns {string[]}
+     */
+    siteKeys: (table) => [...(siteRules.get(table)?.keys ?? [])],
+    /** What it was compiled from, for withSiteUnbinds. */
+    source: Object.freeze({ user, mac }),
+    /**
      * @param {Mode} mode
      * @param {Context} [context]
      */
@@ -609,3 +656,27 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
 }
 
 /** @typedef {ReturnType<typeof compileKeymap>} Keymap */
+
+/**
+ * `keymap` with more keys given to the page per table (`:siteunbind` until restart,
+ * docs/specs/site-unbind-command.md decision 4): each table's keys join the file's list for it,
+ * or make a table of their own, so that they follow the file's rules exactly. A key that
+ * config.toml has since made the prefix (or that this keymap refuses for another reason) is
+ * left out, so a reload of config.toml never fails on a key given earlier.
+ * @param {Keymap} keymap  config.toml's
+ * @param {ReadonlyMap<string, readonly string[]>} extra  canonical keys by table
+ * @returns {Keymap}
+ */
+export function withSiteUnbinds(keymap, extra) {
+  if (extra.size === 0) return keymap;
+  const { user, mac } = keymap.source;
+  /** @type {NonNullable<UserConfig["sites"]>} */
+  const sites = { ...user.sites };
+  for (const [table, all] of extra) {
+    const keys = all.filter((k) => keymap.siteKey(k).ok);
+    if (keys.length === 0) continue;
+    const had = Object.hasOwn(sites, table) ? sites[table] : undefined;
+    sites[table] = { ...had, unbind: [...(had?.unbind ?? []), ...keys] };
+  }
+  return compileKeymap({ ...user, sites }, { mac });
+}

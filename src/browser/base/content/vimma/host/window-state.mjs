@@ -77,6 +77,7 @@ import { addonNames, addonOp, addonPickerItems, openAddonById, sayAddon } from "
 import { sitePermissionItems, sitePermissionKey } from "./permission-ops.mjs";
 import { popupPickerItems, popupRefusal, runPopupRow } from "./popup-ops.mjs";
 import { PdfOps } from "./pdf-ops.mjs";
+import { siteBindCompletions } from "./site-keys-ops.mjs";
 import {
   dropOutlineAsk,
   followOutline,
@@ -93,7 +94,7 @@ import {
  * What the widgets' callbacks call on the host.
  * @typedef {Pick<typeof VimmaHost, "_onKeyDown" | "_onKeyDownAfter" | "_onKeyPress"
  *   | "_onKeyPressAfter" | "_cancelPending" | "_cancelHints" | "_runCommand" | "_emit"
- *   | "_mode">} WindowHost
+ *   | "_mode" | "baseKeymap">} WindowHost
  */
 
 /**
@@ -167,6 +168,7 @@ export function newWindowState(host, win, keymap, env) {
         firefox: firefoxIds(win),
         workspace: workspaceNames(win),
         search: SearchHost.completions,
+        sitebind: siteBindCompletions(win, host.baseKeymap()),
       }),
     }),
     tabStrip: null,

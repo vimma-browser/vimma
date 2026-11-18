@@ -1695,6 +1695,24 @@ unbind = ["ctrl+k"]
   `github.com`'s on gist, so list a key in both to keep it on both. `insert` and `unbind` can sit
   in the same table.
 
+To try a key without editing the file, give it to the site from the [command line](#the-command-line)
+while one of its pages is in the selected tab:
+
+- `:siteunbind t ctrl+k` gives `t` and `ctrl+k` to the site until Vimma restarts, and says
+  `github.com: t · ctrl+k go to the page (until restart)`. `config.toml` is not touched.
+- `:siteunbind --save t` writes `t` into the site's `unbind` list in `config.toml` instead, and
+  keeps the rest of the file, its comments and its layout as they were.
+- `:sitebind t` gives back a key given until restart. A key saved in `config.toml` stays the
+  site's, and Vimma says so: `:sitebind --delete t` removes it from the file too.
+- `:siteunbind` alone lists the site's keys, those until restart and those saved apart.
+- Each word is one key, written as in the file: `g c` is two keys, and `gc` is refused
+  (`gc is not one key (did you mean g c?)`), as are `esc` and the prefix.
+- The site is the selected tab's host: the most specific `[sites]` table that matches it, or the
+  host without `www.`. Pages without a host (`about:`, `file:`) and the PDF viewer have no site to
+  give keys to, and a private window does not save one to the file.
+- `config.toml` changes only with `--save` or `--delete`, and never while it has errors: fix
+  them first (`:config`). Agents cannot run these commands.
+
 ## Workspaces
 
 Workspaces keep the different parts of your day apart. Every tab lives in a workspace, and every
@@ -4379,6 +4397,8 @@ give the rest.
 | `:addon name`                         | Opens that add-on's popup; `Tab` completes the name ([Add-ons](#add-ons)).                                                                     |
 | `:site`, `:permissions`               | Opens the [site permissions](#site-permissions) picker for the selected tab.                                                                   |
 | `:popups`                             | Opens the [blocked pop-ups picker](#blocked-pop-ups): allow, reset or block the site, open one.                                                |
+| `:siteunbind [--save] [key …]`        | Gives the keys to this site's page until restart, or for good with `--save`; bare, lists them ([Keys a site keeps](#keys-a-site-keeps)).       |
+| `:sitebind [--delete] key …`          | Gives the keys back to Vimma on this site; `--delete` also removes them from `config.toml` ([Keys a site keeps](#keys-a-site-keeps)).          |
 | `:bug`                                | Opens `about:vimma` and copies its redacted report to the clipboard, for a bug report.                                                         |
 | `:update`                             | Checks for a newer Vimma now; when there is one, opens `about:vimma`'s Updates section with the exact commands ([Updates](#updates)).          |
 | `:restart`                            | Restarts Vimma; tabs come back, and an installed update applies. Asks first while private tabs are open ([Updates](#updates)).                 |

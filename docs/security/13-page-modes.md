@@ -122,8 +122,8 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   by the default 60.
   [`the_child_ignores_a_step_config_toml_could_not_set`](../../tests/browser/browser_vimma_scroll_step.js)
 - K11. Which keys a site keeps (`[sites."<host>"] unbind`, [site-unbind](../specs/site-unbind.md))
-  **must** come only from `config.toml`: the keymap compiles them, and no page or content-process
-  message reaches it. The site is the focused `<browser>`'s top document host, and `esc` and the
+  **must** come only from `config.toml` or the user's `:siteunbind` (K13): the keymap compiles
+  them, and no page or content-process message reaches it. The site is the focused `<browser>`'s top document host, and `esc` and the
   prefix **must not** be given to a page.
   [`a_site_unbound_key_reaches_the_page`](../../tests/browser/browser_vimma_site_unbind.js),
   [`the_same_key_is_vimmas_on_another_site`](../../tests/browser/browser_vimma_site_unbind.js),
@@ -138,3 +138,19 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   `addEventListener` defaults `wantsUntrusted` to false. A page's own `ctrl+w`, dispatched at its
   focused field, closes nothing.
   [`a_ctrl_w_the_page_dispatches_closes_nothing`](../../tests/browser/browser_vimma_close_active_tab.js)
+- K13. `:siteunbind` and `:sitebind` ([site-unbind-command](../specs/site-unbind-command.md))
+  change which keys a site keeps, and with `--save` or `--delete` write `config.toml`, so they
+  **must** run only from the user's `:` line or the user's own binding: `vimma_keys` refuses `:`
+  and runs neither action (`site.unbind`, `site.bind`), and no page or content-process message
+  reaches them or the keys they set. `esc` and the prefix **must not** be given to a page, as
+  in K11. The write **must not** touch a `config.toml` with errors, and **must** change nothing
+  in it but the one `unbind` list (or the table that list empties): the result is parsed again
+  and compared before it is written, through a temporary file renamed over it. A private window
+  **must not** save a site to the file; `:sitebind --delete` there may only remove keys from a
+  table the file already has, so no host it visits reaches the disk. Keys given until restart
+  from a private window stay in memory and apply in every window until restart.
+  [`neither action is a vimma_keys action, and the : line is refused`](../../packages/vimma-core/test/site-keys.test.ts),
+  [`a file with errors is refused, never rewritten`](../../packages/vimma-core/test/site-keys.test.ts),
+  [`a_bad_argument_is_refused_and_nothing_changes`](../../tests/browser/browser_vimma_site_unbind_command.js),
+  [`a_config_toml_with_errors_is_never_written`](../../tests/browser/browser_vimma_site_unbind_command.js),
+  [`a_private_window_does_not_save`](../../tests/browser/browser_vimma_site_unbind_command.js)

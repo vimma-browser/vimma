@@ -4,7 +4,8 @@
 
 // The commands of higher folders that the host runs (ADR-026, decision 4): the built-in agent's
 // conversations (agent/), the agent-download test (ctl/) and `:route add`'s write to config.toml
-// (config/), and what the agent chat window the host builds uses of them: the agent CLIs and the
+// (config/), `:siteunbind --save`'s and `:sitebind --delete`'s edit of it (config/), and what
+// the agent chat window the host builds uses of them: the agent CLIs and the
 // API keys (agent/), config.toml's refusal and setup's write to it (config/). The host may not
 // import those folders, so vimma.js, the window script, which imports every folder, hands them
 // over here before the first window's host starts, and the host calls them through here or
@@ -55,6 +56,10 @@
  * @property {AgentChatServices["addAgentProvider"]} addAgentProvider
  *   config/ConfigHost.sys.mjs's: setup's write of a provider to config.toml, for the chat
  *   window (B12)
+ * @property {(table: string, change: { add?: string[], remove?: string[] }) =>
+ *   Promise<{ added: string[], already: string[], removed: string[] } | { error: string }>}
+ *   editSiteUnbind  config/ConfigHost.sys.mjs's: `:siteunbind --save` and `:sitebind --delete`
+ *   edit `[sites."<host>"] unbind` (docs/specs/site-unbind-command.md decision 10)
  */
 
 /** @typedef {keyof Services} ServiceName */
@@ -74,6 +79,7 @@ const NAMES = Object.freeze([
   "agentKeys",
   "configRefused",
   "addAgentProvider",
+  "editSiteUnbind",
 ]);
 
 const NOT_STARTED = "the built-in agent is not started";
@@ -144,6 +150,9 @@ const UNPROVIDED = Object.freeze({
   }),
   configRefused: () => NOT_READ,
   addAgentProvider: async () => ({
+    error: "config.toml cannot be written before Vimma has started",
+  }),
+  editSiteUnbind: async () => ({
     error: "config.toml cannot be written before Vimma has started",
   }),
 });
@@ -306,6 +315,9 @@ export function createHostServices(provider = PROVIDER) {
     },
     get addAgentProvider() {
       return get("addAgentProvider");
+    },
+    get editSiteUnbind() {
+      return get("editSiteUnbind");
     },
   });
 }

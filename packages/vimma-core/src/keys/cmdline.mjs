@@ -175,6 +175,9 @@ export const COMMANDS = Object.freeze([
   cmd("site", "none", "site.permissions", "Site permissions of this page: allow, block, reset", {
     aliases: ["permissions"],
   }),
+  // docs/specs/site-unbind-command.md: keys the page gets on this site, until restart or saved.
+  cmd("siteunbind", "optional", "site.unbind", "Give keys to this site's page (--save keeps them)"),
+  cmd("sitebind", "required", "site.bind", "Give keys back to Vimma on this site (--delete)"),
   // docs/specs/popup-blocked.md
   cmd("popups", "none", "popups.picker", "Blocked pop-ups picker"),
   // docs/specs/downloads.md decision 2.
@@ -523,6 +526,9 @@ const ARGUMENT_KINDS = Object.freeze({
     kind: "bookmarks toolbar",
     fixed: Object.keys(BOOKMARKS_TOOLBAR_WORDS),
   },
+  // docs/specs/site-unbind-command.md decision 9: the option, and the site's keys to give back.
+  siteunbind: { names: "siteunbind", kind: "option", fixed: ["--save"] },
+  sitebind: { names: "sitebind", kind: "key or option" },
   workspace: { names: "workspace", kind: "workspace" },
   wsdelete: { names: "workspace", kind: "workspace" },
   wsmove: { names: "workspace", kind: "workspace" },

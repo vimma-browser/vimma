@@ -594,3 +594,6 @@ support-files = ["file_vimma_grep.html", "file_vimma_outline.pdf"]
 
 ["browser_vimma_site_unbind.js"]
 support-files = ["file_vimma_site_unbind.html"]
+
+["browser_vimma_site_unbind_command.js"]
+support-files = ["file_vimma_site_unbind.html"]

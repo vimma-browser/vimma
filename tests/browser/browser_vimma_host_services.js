@@ -48,6 +48,7 @@ const ALL = [
   "agentKeys",
   "configRefused",
   "addAgentProvider",
+  "editSiteUnbind",
 ];
 
 /** Keys of the services' fakes, shaped as the registry asks. */
@@ -60,6 +61,7 @@ const FAKES = {
   },
   configRefused: () => ({ errors: [], file: "config.toml" }),
   addAgentProvider: async () => ({ name: "fake" }),
+  editSiteUnbind: async () => ({ added: [], already: [], removed: [] }),
 };
 
 /**
@@ -94,6 +96,11 @@ add_task(async function test_vimma_js_provided_every_service_before_the_window_s
     HostServices.addAgentProvider,
     ConfigHost.addAgentProvider,
     "setup writes [[agent.providers]] through ConfigHost",
+  );
+  Assert.equal(
+    HostServices.editSiteUnbind,
+    ConfigHost.editSiteUnbind,
+    ":siteunbind --save and :sitebind --delete write through ConfigHost",
   );
   // Each window runs vimma.js, which hands over the same services again.
   const second = await BrowserTestUtils.openNewBrowserWindow();
@@ -388,6 +395,11 @@ add_task(async function test_before_it_is_provided_each_service_does_the_least()
     ),
     { error: "config.toml cannot be written before Vimma has started" },
     "setup writes nothing to config.toml",
+  );
+  Assert.deepEqual(
+    await services.editSiteUnbind("example.org", { add: ["t"] }),
+    { error: "config.toml cannot be written before Vimma has started" },
+    ":siteunbind --save writes nothing to config.toml",
   );
 });
 

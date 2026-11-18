@@ -22,7 +22,7 @@ import { HintError, hintKey, hintStatus, startHints } from "../core/hints.mjs";
 import { chordFromEvent, formatKey, parseKey } from "../core/keys.mjs";
 import { SUGGESTION_ACTIONS, suggestionStep } from "../core/suggestions.mjs";
 import { pressKeyLater, pressingKey } from "../actors/enter-key.mjs";
-import { compileKeymap } from "../core/keymap.mjs";
+import { compileKeymap, withSiteUnbinds } from "../core/keymap.mjs";
 import { KEY_KEEPING_MODES } from "../core/modes.mjs";
 import { notImplementedText } from "../core/actions.mjs";
 import { PENDING_ACTIONS } from "../core/cmdline.mjs";
@@ -56,6 +56,7 @@ import { addonNames } from "./addon-ops.mjs";
 import { forgetSitePermissions } from "./permission-ops.mjs";
 import { popupStatus } from "./popup-ops.mjs";
 import { PdfOps, pdfFindStatus } from "./pdf-ops.mjs";
+import { TemporarySiteUnbinds } from "./site-keys-ops.mjs";
 import { stripInvisible } from "../core/pdf.mjs";
 import { contentRunners, hostRunners } from "./runners.mjs";
 import { HostServices } from "./host-services.mjs";
@@ -461,12 +462,15 @@ function stateOfBrowser(browser) {
  * `configFile` names the file `configErrors` are about (config.toml, or `:source <path>`'s).
  * `firefox`: Firefox's own shortcuts that are off; `insertEditing`: ctrl+w, ctrl+u, ctrl+h in
  * text fields (docs/specs/key-handling-batch.md).
- * @type {{ keymap: Keymap | null, hintChars: string | undefined,
+ * `baseKeymap` is config.toml's, and `keymap` it with `:siteunbind`'s keys until restart
+ * (docs/specs/site-unbind-command.md decision 4).
+ * @type {{ keymap: Keymap | null, baseKeymap: Keymap | null, hintChars: string | undefined,
  *   sites: readonly InsertSiteRule[], configErrors: readonly ConfigError[], configFile: string,
  *   firefox: FirefoxKeySetting, insertEditing: boolean }}
  */
 const settings = {
   keymap: null,
+  baseKeymap: null,
   hintChars: undefined,
   sites: [],
   configErrors: [],
@@ -1017,6 +1021,17 @@ export const VimmaHost = {
     states.get(win)?.notice.show(text);
   },
 
+  /** config.toml's keymap, without `:siteunbind`'s keys until restart; the built-in one before. */
+  baseKeymap() {
+    settings.baseKeymap ??= settings.keymap ?? compileKeymap({}, { mac: MAC });
+    return settings.baseKeymap;
+  },
+
+  /** `:siteunbind` or `:sitebind` changed the keys until restart: every window's keymap follows. */
+  siteUnbindsChanged() {
+    this.configure({ siteUnbinds: true });
+  },
+
   /**
    * What config.toml sets (m5-config-load), for every window now and every later one. Each
    * field is optional: absent keeps the current value. A new keymap drops a pending sequence
@@ -1024,7 +1039,8 @@ export const VimmaHost = {
    * @param {{ keymap?: Keymap, hintChars?: string, sites?: readonly InsertSiteRule[],
    *   configErrors?: readonly ConfigError[], configFile?: string,
    *   firefox?: FirefoxKeySetting, insertEditing?: boolean,
-   *   bookmarksRoot?: BookmarksRoot, bookmarklets?: BookmarkletsSetting }} next
+   *   bookmarksRoot?: BookmarksRoot, bookmarklets?: BookmarkletsSetting,
+   *   siteUnbinds?: boolean }} next  `siteUnbinds`: `:siteunbind`'s keys changed
    */
   configure(next) {
     // docs/specs/bookmarklets.md B3: config.toml is the only source of this level.
@@ -1038,7 +1054,22 @@ export const VimmaHost = {
     if (next.sites) settings.sites = next.sites;
     if (next.configErrors) settings.configErrors = next.configErrors;
     if (next.configFile) settings.configFile = next.configFile;
-    const keymap = next.keymap && next.keymap !== settings.keymap ? next.keymap : null;
+    const base = next.keymap && next.keymap !== settings.baseKeymap ? next.keymap : null;
+    if (base) settings.baseKeymap = base;
+    // The keys `:siteunbind` gave until restart stay through a reload of config.toml, but for
+    // a key the new file made the prefix (withSiteUnbinds leaves it out) or now saves for the
+    // same table: those end, so a key is never listed as both.
+    if (base) {
+      for (const [table, keys] of TemporarySiteUnbinds.entries()) {
+        const saved = base.siteKeys(table);
+        const gone = keys.filter((k) => !base.siteKey(k).ok || saved.includes(k));
+        if (gone.length) TemporarySiteUnbinds.remove(table, gone);
+      }
+    }
+    const keymap =
+      base || next.siteUnbinds
+        ? withSiteUnbinds(this.baseKeymap(), TemporarySiteUnbinds.entries())
+        : null;
     if (keymap) settings.keymap = keymap;
     for (const win of windows) {
       const state = states.get(win);
