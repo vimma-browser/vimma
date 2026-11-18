@@ -357,7 +357,9 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     makes it theirs, and so does a later focus in a document where they already made a field
     theirs, until they leave insert themselves. The 5 s window errs towards the user: a key the
     page gets or a click in the page shortly before the agent's own click makes the dialog it
-    opens the user's, so the agent is refused then. Insert mode from the page alone had blocked
+    opens the user's, so the agent is refused then. So does a document where the user typed
+    and did not leave with Esc or a click elsewhere: an agent's later dialog there is refused
+    until they do, by design. Insert mode from the page alone had blocked
     every later step of the agent in a shown tab until the user left it; issue
     [#1325](https://github.com/vimma-browser/vimma/issues/1325), security.md M17.)
 14. **The audit.** The question shows the keys exactly as they will run, after parsing, with

@@ -1313,7 +1313,11 @@ export const VimmaHost = {
    * @param {MozBrowser} browser
    */
   _forgetUserInputTimeForTests(browser) {
-    lastUserInput.delete(browser);
+    // Automation only (Cu.isInAutomation, read as restart.mjs does): a release never forgets
+    // the user's input early.
+    const inAutomation =
+      /** @type {{ Cu?: { isInAutomation?: unknown } }} */ (globalThis).Cu?.isInAutomation === true;
+    if (inAutomation) lastUserInput.delete(browser);
   },
 
   /**

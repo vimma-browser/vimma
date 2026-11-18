@@ -185,6 +185,10 @@ addTidyTask(async function test_a_field_the_page_focuses_after_the_agents_click_
   Assert.ok(r.ok, `the agent fills the field: ${JSON.stringify(r.error ?? null)}`);
   Assert.equal((await dialog(tab)).name, "general", "with its value");
   Assert.equal(AgentGate.waiting.length, 0, "nothing was asked under the grant");
+  // The agent's own fill (setUserInput, an insertReplacementText) never counts as the user's.
+  Assert.ok(!VimmaHost.inUse(tab.linkedBrowser), "the agent's fill is not the user typing");
+  const again = await fillName(c, tab);
+  Assert.ok(again.ok, `so its next fill runs too: ${JSON.stringify(again.error ?? null)}`);
 });
 
 addTidyTask(async function test_the_users_key_in_that_field_makes_the_tab_theirs() {
