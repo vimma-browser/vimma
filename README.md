@@ -25,9 +25,10 @@ The docs, every key and the install page are at **[vimma.dev](https://vimma.dev)
 - **PDFs with the same keys:** Vimma's keys work in PDFs too, plus `J`/`K` and `12G` by page,
   zoom and fit, the outline on `Tab`, marks and presentation mode in Firefox's own PDF viewer,
   with the page count in the status bar.
-- **tmux for the window:** `ctrl+b`, tmux's default prefix, then `c` for a new tab, `v` to split,
-  `w` to switch workspace. A workspace keeps several splits, one shown at a time, and `]s` steps
-  between them. If your fingers know tmux, they already know Vimma.
+- **tmux-style keys for the window:** `ctrl+b`, tmux's default prefix, then `c` for a new tab,
+  `n` / `p` for the next and previous, `v` or `-` to split, `w` to switch workspace. A workspace
+  keeps several splits, one shown at a time, and `]s` steps between them. If your fingers know
+  tmux, most of the prefix keys will feel familiar.
 - **Every key is yours:** every binding, the prefix and the leader can be remapped in
   `config.toml`, Firefox's own keys too: every Firefox shortcut is a Vimma binding with
   Firefox's meaning, listed in `ctrl+b ?`, and `:firefox <id>` runs any other Firefox command.
