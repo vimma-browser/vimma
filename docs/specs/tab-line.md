@@ -60,11 +60,14 @@ with `[ui] tabline` in `config.toml` or `:tabline`.
    and shows the line if it was not drawn. Labels are the link hints' prefix-free labels over the
    same alphabet, drawn in the link hints' case, so with more tabs than letters they take two
    letters or more (30 tabs over the default nine letters take two, 120 take three). Every tab
-   gets a label: when they do not all fit, the names go first, then the numbers and marks, so
-   each tab is drawn as its label alone. Each letter typed narrows the line to the tabs whose
-   label it starts, which then show the letters still to type; with 40 columns or more and the
-   default nine hint characters, every tab is in view before its last letter, including a tab that
-   was scrolled out of view. A letter typed with Shift or Caps Lock is that letter. Typing a
+   gets a label, and a label always keeps its tab's number beside it (`AS 12`): when they do not
+   all fit, the names go first, and if the labels and numbers alone still do not fit, the line
+   shows a run of them from the first tab, with the `n›` count. Each letter typed narrows the
+   line to the tabs whose label it starts, which then show the letters still to type, and the
+   tabs one letter from being chosen come first; with 70 columns or more and the default nine
+   hint characters, every tab is in view before its last letter, including a tab that was
+   scrolled out of view. With many tabs, `{N}gb` and `{N}gt` go to a tab by the number the line
+   shows, and tab search (`b`, `:b name`) finds one by name. A letter typed with Shift or Caps Lock is that letter. Typing a
    whole label goes to that tab and removes the labels. `Backspace` takes back the last letter,
    and with none typed removes the labels. `Esc`, or any other key that is not the next letter
    of a label, removes the labels and does nothing else. The mode badge says `HINT` meanwhile.
@@ -242,18 +245,22 @@ hint_chars)` in tab order, and the host reports mode `hint` while the session la
     user is not looking at for long, and a stray key should end it rather than leave it waiting;
     passing the cancelling key on to its binding, because a mistyped label would then run an
     unrelated command.
-13. **Labels reach every tab, as labels alone if need be.** While labels show, the names shrink
-    first (the widest width at which every tab fits); if even names of nothing do not fit, each
-    tab is drawn as its label alone, with no number or mark; only if that does not fit either
-    is a run of tabs drawn, starting at the first tab whose label still matches, with the
-    `n›` count. Labels go shortest first in tab order (`hintLabels`), so the tabs one letter
-    from being chosen are always the first ones listed and so always in view: at 40 columns
-    and more with the default nine hint characters (a run of 3 columns per hint
-    character and 5 for the count), every tab is in view before its last letter.
-    The labels show only the letters still to type, since the typed ones have already narrowed
-    the line; the typed letters drawn underlined (the link hints' way) were too faint to read
-    at the bar's 12 px size. Rejected: labels only on the visible entries, because a tab
-    scrolled out of view would then need a second step; keeping the run around the current
+13. **Labels reach every tab, and keep the tab's number.** While labels show, the names shrink
+    first (the widest width at which every tab fits); if even no names do not fit, each entry is
+    its label and its number (`AS 12`), and a run of them is drawn from the first tab whose
+    label still matches, with the `n›` count. The number stays because a label alone says
+    nothing about which tab it is: a row of `A S D F JA JS …` cannot be read against the tabs
+    the user knows, while `A 1 S 2 … JA 7` can, and the number is the one `{N}gb` and `{N}gt`
+    take. The run starts at the first matching tab because labels go shortest first in tab
+    order (`hintLabels`), so the tabs one letter from being chosen are the first ones listed
+    and so in view after each letter: at most nine entries of up to seven columns
+    (`A 120`) and the count, so at 70 columns and more with the default nine hint characters
+    every tab is in view before its last letter; narrower, the room goes to the tabs one letter
+    away. The labels show only the letters still to type, since the typed ones have already
+    narrowed the line; the typed letters drawn underlined (the link hints' way) were too faint
+    to read at the bar's 12 px size. Rejected: labels alone without the number, because the
+    line then no longer tells the tabs apart; labels only on the visible entries, because a
+    tab scrolled out of view would then need a second step; keeping the run around the current
     tab while labelling, because it could hide the tabs one letter away.
 14. **`gb` shows a hidden line for the session.** With the line off, `gb` draws it while its
     labels show and removes it after, so the key works under the default `"off"` and costs no
@@ -341,7 +348,9 @@ vitest (`packages/vimma-core/test/tabline.test.ts`):
 - `fitTabLine`: everything fits; names cut to the width with `…` and wide characters counted as
   two columns; overflow keeps the current tab in view at the start, middle and end, with exact
   `‹n` and `n›` counts; 30 and 120 tabs with the current tab first, at 12, in the middle and
-  last, numbers of three digits counted whole; up to 150 tabs at any width (property); a width too small for one entry still shows the
+  last, numbers of three digits counted whole; a property over up to 150 tabs with names of wide CJK characters, ZWJ emoji, flags and
+  combining and precomposed accents, random pane and sound marks, any width: the current tab
+  shows, counts add up, the line is never wider, and no hidden neighbour would fit; a width too small for one entry still shows the
   current tab cut.
 - Labels: one label per tab in tab order from `hint_chars`; with 30 and 120 tabs every label is
   different, two and three letters long, and typing each tab's label reaches that tab, the
@@ -350,9 +359,12 @@ vitest (`packages/vimma-core/test/tabline.test.ts`):
 - `tabLabelKey`: a one-character label selects; a two-character label narrows then selects;
   Shift letters (Caps Lock) select and narrow as plain ones; Backspace takes back a letter and
   with none typed cancels; Esc, a non-label character, a ctrl or alt chord and a digit cancel.
-- Narrow lines: nine tabs at 30 columns draw as labels alone; 30 and 120 tabs at 40 and 60
-  columns have every tab in view before its last letter; a property over up to 300 tabs, any
-  width and any typed prefix: only matching tabs, counts add up, never wider than the line.
+- Narrow lines: with names that do not fit, every entry is its label and its number, the run
+  from the first tab; 30 and 120 tabs at 40, 60 and 110 columns: the run starts at the first
+  matching tab, at 110 every tab is in view before its last letter, and narrower a tab out of
+  view gives its room only to tabs one letter away; a property over up to 300 tabs with any
+  names, marks, width and typed prefix: only matching tabs from the first, counts add up, never
+  wider than the line, and no hidden neighbour would fit.
 - A complexity check (`budget.ts`): fits of 3000 tabs, with and without labels, run within a
   budget that a fit quadratic in the tabs misses by far.
 - config: `[ui] tabline` accepts the three words and refuses others; `tabline_width` bounds;
