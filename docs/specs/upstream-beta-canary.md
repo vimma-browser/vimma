@@ -69,7 +69,10 @@ it never does.
 4. **B4. Runs what PR CI runs.** On the verified tarball it dry-runs every `src/**/*.patch`. When
    every patch applies and Mozilla's Beta build of that revision is in the Taskcluster index, it
    runs `e2e.yml` on that Beta: import, branding and upstream-prefs checks, artifact build,
-   `tests/browser/`, `tests/e2e/`.
+   `tests/browser/`, `tests/e2e/`. (Since changed: on a Beta, the product names check no longer
+   requires the committed `brandings.ftl` to be current. It regenerates the file from the Beta's
+   for that run and fails only on a term the mapping does not decide or a renamed term the Beta
+   dropped; releases and PR CI keep the strict check (#858); `docs/rebase.md`, step 6.)
 5. **B5. Reports failures in one issue per Firefox version.** When a patch does not apply, Mozilla's
    artifacts are missing, or a check or test fails, the workflow opens an issue titled
    `Firefox N beta: canary findings`, labelled `upstream-beta`, or updates the open one for that

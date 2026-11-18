@@ -139,7 +139,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.error(`gen-brandings: no upstream ${PATH} under engine/ (it needs the Firefox source)`);
     process.exit(1);
   }
-  const out = generate(upstream);
+  let out;
+  try {
+    out = generate(upstream);
+  } catch (error) {
+    // The message names the term to decide; a stack trace would only bury it in the CI log.
+    console.error(`gen-brandings: ${(error as Error).message}`);
+    process.exit(1);
+  }
   if (process.argv.includes("--check")) {
     let current = "";
     try {
