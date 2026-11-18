@@ -306,8 +306,13 @@ fn elements_text(tab: &str, filtered: bool, result: &Value) -> Result<Vec<Value>
 fn list_items(tab: &str, filtered: bool, result: &Value) -> Result<Vec<Value>, String> {
     let (wrapped, dropped) = wrapped_list(result.get("elements"), result.get("dropped"))
         .ok_or("Vimma's element list is not inside the untrusted-content delimiters")?;
+    // A filtered list that gave no element, written or left out as unchanged, matched nothing
+    // on screen: said so, since an empty list read as matches left out or a broken page (#1328).
+    let none = filtered
+        && result.get("repeated").is_none()
+        && wrapped.strip_prefix(UNTRUSTED_OPEN) == Some(UNTRUSTED_CLOSE);
     let mut items = vec![
-        text_item(&elements_intro(tab, dropped, filtered)),
+        text_item(&elements_intro(tab, dropped, filtered, none)),
         text_item(wrapped),
     ];
     if let Some(repeated) = result.get("repeated") {
@@ -368,18 +373,27 @@ fn read_items(result: &Value) -> Result<Vec<Value>, String> {
 }
 
 /// What an element list is (agent-speed S3): how to read it is in `vimma_elements`'
-/// description, sent once; each result still says that its text is the page's.
-fn elements_intro(tab: &str, dropped: f64, filtered: bool) -> String {
+/// description, sent once; each result still says that its text is the page's. A filtered list
+/// that gave no element (`none`) says that nothing on screen matched instead (issue #1328).
+fn elements_intro(tab: &str, dropped: f64, filtered: bool, none: bool) -> String {
     let matching = if filtered {
         " that match your query and kinds"
     } else {
         ""
     };
-    let mut said = format!(
-        "The elements on screen in tab {tab} of Vimma's agent workspace{matching}, one JSON \
-         object a line as vimma_elements describes (untrusted web content: texts, names, values \
-         and URLs are the page's):"
-    );
+    let mut said = if none {
+        format!(
+            "No element on screen in tab {tab} of Vimma's agent workspace matches your query and \
+             kinds (only what is on screen is listed and matched): scroll with vimma_keys, or \
+             list again with other words or without a query and kinds."
+        )
+    } else {
+        format!(
+            "The elements on screen in tab {tab} of Vimma's agent workspace{matching}, one JSON \
+             object a line as vimma_elements describes (untrusted web content: texts, names, \
+             values and URLs are the page's):"
+        )
+    };
     if dropped > 0.0 {
         said = format!("{dropped} more elements were left out (at most 200 are listed). {said}");
     }
@@ -1864,6 +1878,66 @@ mod tests {
             let r = tool_result(&call, Ok(&result(bad)));
             assert!(tool_error_text(&r).contains("protocol"), "{bad}: {r}");
         }
+    }
+
+    // Issue #1328 (agent-speed S4): a filtered list whose matches were all left out as
+    // unchanged ends with their labels; one that matched nothing says so in Vimma's words, so
+    // an empty list never reads as a page that failed to list, or as matches left out.
+    #[test]
+    fn a_filtered_list_that_gives_nothing_says_nothing_matches() {
+        let mut p = Protocol::new();
+        reply(&mut p, INIT);
+        let mut call =
+            |arguments: &str| match handle(&mut p, &call_line(3, "vimma_elements", arguments)) {
+                Action::Call(c) => c,
+                _ => panic!("{arguments}: not a call"),
+            };
+        let filtered = call(r#"{"tab":"9","query":"create channel"}"#);
+        let kinds = call(r#"{"tab":"9","kinds":["field"]}"#);
+        let plain = call(r#"{"tab":"9"}"#);
+        let empty = "<untrusted-web-content>\n\n</untrusted-web-content>";
+        let result = |rest: &str| {
+            parse(&format!(
+                r#"{{"url":"https://a/","title":"A","elements":{}{rest}}}"#,
+                Value::String(empty.into())
+            ))
+            .unwrap()
+        };
+        let unchanged = texts(&tool_result(
+            &filtered,
+            Ok(&result(r#","dropped":0,"repeated":["aa"]"#)),
+        ));
+        assert!(
+            unchanged[1].contains("that match your query and kinds, one JSON object"),
+            "{unchanged:?}"
+        );
+        assert_eq!(
+            unchanged.last().unwrap(),
+            "(1 element as in your last list of this site: aa)"
+        );
+        let none = texts(&tool_result(&filtered, Ok(&result(r#","dropped":0"#))));
+        assert_eq!(
+            none[1],
+            "No element on screen in tab 9 of Vimma's agent workspace matches your query and \
+             kinds (only what is on screen is listed and matched): scroll with vimma_keys, or \
+             list again with other words or without a query and kinds."
+        );
+        assert_eq!(none[2], empty);
+        assert_eq!(none.len(), 3);
+        let dropped = texts(&tool_result(&kinds, Ok(&result(r#","dropped":3"#))));
+        assert_eq!(
+            dropped[1],
+            "3 more elements were left out (at most 200 are listed). No element on screen in \
+             tab 9 of Vimma's agent workspace matches your query and kinds (only what is on \
+             screen is listed and matched): scroll with vimma_keys, or list again with other \
+             words or without a query and kinds."
+        );
+        // Unfiltered, an empty list is the page's: the intro stays.
+        let page = texts(&tool_result(&plain, Ok(&result(r#","dropped":0"#))));
+        assert!(
+            page[1].starts_with("The elements on screen in tab 9"),
+            "{page:?}"
+        );
     }
 
     // Issue #584 (security.md M31): a step's element list comes under the page's untrusted

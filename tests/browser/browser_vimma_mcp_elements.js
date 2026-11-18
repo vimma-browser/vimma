@@ -866,6 +866,34 @@ addTidyTask(async function test_elements_query_and_kinds() {
   await mcp(false);
 });
 
+// agent-speed S4, issue #1328: a filtered list of a site listed before leaves out the matching
+// lines that are unchanged and names their labels, as an unfiltered list does, so a query whose
+// matches are all unchanged never reads as "nothing matches".
+addTidyTask(async function test_filtered_list_names_unchanged_matches() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const known = new Map();
+  const all = readList(known, (await elements(c, tab, { kind: "grant", minutes: 12 })).result);
+  const menu = one(all, (e) => e.text === "Menu", "script button");
+  const signup = one(all, (e) => e.text === "Sign up", "form button");
+  for (const { query, element } of [
+    { query: "menu", element: menu },
+    { query: "sign up", element: signup },
+  ]) {
+    const r = await elements(c, tab, null, { query });
+    Assert.ok(r.ok, `${query} lists: ${JSON.stringify(r.error)}`);
+    const shown = parsed(r.result.elements).filter((e) => "label" in e);
+    Assert.deepEqual(
+      [...shown.map((e) => e.label), ...(r.result.repeated ?? [])],
+      [element.label],
+      `the query ${query} gives its one match, written or named as unchanged`,
+    );
+  }
+  c.close();
+  await mcp(false);
+});
+
 // docs/specs/mcp-forms.md F5, issue #693: a shop's add button that shows only "+" or a word every
 // card shares is named by its accessible label as its caption, and a text that repeats in the list
 // gets its card's heading, so the model sees which product each button adds; a heading of another

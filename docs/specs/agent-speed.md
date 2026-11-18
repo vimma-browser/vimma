@@ -257,7 +257,12 @@ enable, set OLLAMA_IGPU_ENABLE=1` for the device `AMD Radeon 860M Graphics (RADV
    `query` matches every word against an element's label, text, caption and name, never its
    value; `kinds` takes the list's own kinds (`link`, `button`, `field`, `checkbox`, `radio`,
    `select`, `click`), so a filter names exactly what the lines say. The check runs in the parent on the checked copies
-   (`parseAgentElement`), so it adds no page-controlled path. Rejected: a diff that names
+   (`parseAgentElement`), so it adds no page-controlled path. (Since changed: a filtered list whose
+   matches were all left out as unchanged still ends with their labels, and one that gives no
+   element at all, written or left out, opens with Vimma's words that nothing on screen matches
+   the query and kinds, and that only what is on screen is listed and matched, in place of the
+   intro, because an empty list was read as matches left out, or as a page that failed to list;
+   see #1328.) Rejected: a diff that names
    removed elements, because the model acts only on what is on the page now.
 5. **Old page content leaves the context in blocks** (S5), because earlier results are the
    largest and fastest-growing part of each request (39 % on the ten-item list) and a model

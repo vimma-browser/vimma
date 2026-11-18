@@ -288,6 +288,37 @@ describe("results as the model reads them", () => {
     expect(texts(one).at(-1)).toBe("(1 element as in your last list of this site: aa)");
   });
 
+  // Issue #1328 (agent-speed S4): a filtered list whose matches were all left out as unchanged
+  // ends with their labels; one that matched nothing says so in Vimma's words, so an empty list
+  // never reads as a page that failed to list, or as matches left out.
+  test("vimma_elements: a filtered list that gives nothing says nothing matches", () => {
+    const empty = wrapUntrusted("");
+    const unchanged = toolResult(
+      "vimma_elements",
+      { tab: "9", query: "create channel" },
+      { ...page, elements: empty, dropped: 0, repeated: ["aa"] },
+    );
+    expect(texts(unchanged)[1]).toContain("that match your query and kinds, one JSON object");
+    expect(texts(unchanged).at(-1)).toBe("(1 element as in your last list of this site: aa)");
+    const none = (args: Record<string, unknown>, dropped = 0) =>
+      texts(toolResult("vimma_elements", args, { ...page, elements: empty, dropped }));
+    expect(none({ tab: "9", query: "create channel" })).toEqual([
+      HEADER,
+      "No element on screen in tab 9 of Vimma's agent workspace matches your query and kinds " +
+        "(only what is on screen is listed and matched): scroll with vimma_keys, or list again " +
+        "with other words or without a query and kinds.",
+      empty,
+    ]);
+    expect(none({ tab: "9", kinds: ["field"] }, 3)[1]).toBe(
+      "3 more elements were left out (at most 200 are listed). No element on screen in tab 9 " +
+        "of Vimma's agent workspace matches your query and kinds (only what is on screen is " +
+        "listed and matched): scroll with vimma_keys, or list again with other words or " +
+        "without a query and kinds.",
+    );
+    // Unfiltered, an empty list is the page's: the intro stays.
+    expect(none({ tab: "9" })[1]).toContain("The elements on screen in tab 9");
+  });
+
   test("the element list's explanation is in vimma_elements' description, once", () => {
     const tool = AGENT_TOOL_LIST.find((t) => t.name === "vimma_elements");
     for (const words of [
