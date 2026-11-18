@@ -354,8 +354,11 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
     one; Vimma's own keys, such as a scroll or the keys that answer the agent, do not count. A
     field the page focuses by itself, such as a dialog with autofocus that the agent's click
     opened, is not the user's, so the agent can fill it; the user's next key or click in the tab
-    makes it theirs. Insert mode from the page alone had blocked every later step of
-    the agent in a shown tab until the user left it; issue
+    makes it theirs, and so does a later focus in a document where they already made a field
+    theirs, until they leave insert themselves. The 5 s window errs towards the user: a key the
+    page gets or a click in the page shortly before the agent's own click makes the dialog it
+    opens the user's, so the agent is refused then. Insert mode from the page alone had blocked
+    every later step of the agent in a shown tab until the user left it; issue
     [#1325](https://github.com/vimma-browser/vimma/issues/1325), security.md M17.)
 14. **The audit.** The question shows the keys exactly as they will run, after parsing, with
     `⏎` for `<CR>` and find queries in quotes:

@@ -364,6 +364,17 @@ const escapeHold = new WeakMap();
 const pageInsert = new WeakSet();
 
 /**
+ * The top document (inner window ID) in which each tab's insert mode was last the user's. Once
+ * the user has made a field of a document theirs, a field that document's script focuses later
+ * is theirs too, also after a pause and a blur and focus of the page's own (a messaging page that
+ * re-renders its field): the page does not hand the tab back to an agent. Leaving insert by the
+ * user's own doing ends it (Esc, a click outside a field, a Vimma key that leaves the mode), and
+ * a new top document does not match. A page that blurs the field on its own does not end it.
+ * @type {WeakMap<MozBrowser, number>}
+ */
+const userInsertDoc = new WeakMap();
+
+/**
  * When the user last gave each tab's page a key or a click, in `ChromeUtils.now()` milliseconds.
  * Keys are the window's own trusted keydown events that Vimma left to the page, which no page
  * and no agent can make; clicks are the page's trusted mousedown events (VimmaParent's
@@ -380,6 +391,9 @@ const lastUserInput = new WeakMap();
  */
 const USER_INPUT_RECENT_MS = 5000;
 
+/** Keys with no name Vimma binds that are still the user typing: an IME's, a dead key's. */
+const TEXT_KEYS = new Set(["Process", "Dead", "Unidentified"]);
+
 /**
  * The user pressed a key or clicked in `browser`'s tab: a page-made insert there is theirs now.
  * @param {MozBrowser} browser
@@ -387,6 +401,18 @@ const USER_INPUT_RECENT_MS = 5000;
 function noteUserInput(browser) {
   lastUserInput.set(browser, ChromeUtils.now());
   pageInsert.delete(browser);
+  if (browserModes.get(browser) === "insert") userInsertDoc.set(browser, topWindowId(browser));
+}
+
+/**
+ * Leaves `browser`'s page mode at `mode` by the user's own doing (a runner, Esc): an insert the
+ * user owned in its document is over.
+ * @param {MozBrowser} browser
+ * @param {PageMode} mode
+ */
+function setBrowserModeByUser(browser, mode) {
+  if (mode !== "insert") userInsertDoc.delete(browser);
+  setBrowserMode(browser, mode);
 }
 
 /** @param {MozBrowser} browser */
@@ -415,6 +441,7 @@ function topWindowId(browser) {
 function enterExplicitInsert(browser) {
   setBrowserMode(browser, "insert");
   explicitInsert.set(browser, topWindowId(browser));
+  userInsertDoc.set(browser, topWindowId(browser));
 }
 
 /**
@@ -449,6 +476,7 @@ function elementOf(browser) {
  * @param {MozBrowser} browser
  */
 function blurPage(browser) {
+  userInsertDoc.delete(browser);
   escapeHold.set(browser, topWindowId(browser));
   const blur = VimmaActors.blur(browser);
   if (blur) lastBlur.set(browser, blur);
@@ -471,7 +499,8 @@ function findOf(browser) {
 const HOST_STATE = {
   stateOf: (win) => states.get(win),
   browserMode: (browser) => browserModes.get(browser),
-  setBrowserMode,
+  // The runners run the user's keys: a mode they leave is left by the user.
+  setBrowserMode: setBrowserModeByUser,
   blurPage,
   enterExplicitInsert,
   lastFieldFrame: (browser) => lastFieldFrame.get(browser),
@@ -683,7 +712,7 @@ export const VimmaHost = {
     );
     const state = newWindowState(this, win, keymap, {
       runnable: RUNNABLE,
-      setBrowserMode,
+      setBrowserMode: setBrowserModeByUser,
       stateOfBrowser,
       outline: OUTLINE_HOST,
       mcpLog,
@@ -1241,15 +1270,21 @@ export const VimmaHost = {
     const next = insertModeAfterFocus({ mode: copy ? "normal" : mode, trigger, descriptor, site });
     if (copy && next !== "insert") return;
     // Whose insert this is (D13): the user's when their input caused the focus or came shortly
-    // before it, and once theirs it stays theirs while the page moves focus about; else the
-    // page's own, which does not make the tab in use.
+    // before it, or when they already made a field of this document theirs; once theirs it
+    // stays theirs while the page moves focus about. Else it is the page's own, which does not
+    // make the tab in use.
+    const doc = topWindowId(browser);
     const byPage =
       next === "insert" &&
       !user &&
       !recentUserInput(browser) &&
+      userInsertDoc.get(browser) !== doc &&
       (mode !== "insert" || pageInsert.has(browser));
+    // The user's click out of a field ends their insert; the page's own blur does not.
+    if (user && next !== "insert") userInsertDoc.delete(browser);
     setBrowserMode(browser, next === "insert" ? "insert" : "normal");
     if (byPage) pageInsert.add(browser);
+    else if (next === "insert") userInsertDoc.set(browser, doc);
   },
 
   /**
@@ -1260,6 +1295,25 @@ export const VimmaHost = {
   onUserClick(browser) {
     escapeHold.delete(browser);
     noteUserInput(browser);
+  },
+
+  /**
+   * The user put text into the focused frame of `browser` without a key the window saw as one
+   * (VimmaParent's Vimma:UserInput: an IME's composition, a drop, typed or pasted text): a field
+   * the page focused is theirs (mcp-drive D13).
+   * @param {MozBrowser} browser
+   */
+  onUserInput(browser) {
+    noteUserInput(browser);
+  },
+
+  /**
+   * Tests only: forgets when the user last gave `browser`'s page input, as a pause of more than
+   * USER_INPUT_RECENT_MS would.
+   * @param {MozBrowser} browser
+   */
+  _forgetUserInputTimeForTests(browser) {
+    lastUserInput.delete(browser);
   },
 
   /**
@@ -1421,7 +1475,14 @@ export const VimmaHost = {
       return;
     }
     const chord = chordFromEvent(e);
-    if (!chord) return; // a bare modifier
+    if (!chord) {
+      // A bare modifier, or a key with no name Vimma binds: an IME's ("Process", keyCode 229),
+      // a dead key's, or one the layout leaves unidentified. Those are the user typing into the
+      // page (mcp-drive D13); a bare modifier is not, so ctrl+b shift+a stays watching.
+      const browser = this._focusedBrowser(win);
+      if (browser && (TEXT_KEYS.has(e.key) || e.isComposing)) noteUserInput(browser);
+      return;
+    }
     // Another key after Tab: an outline still on its way opens nothing.
     dropOutlineAsk(state);
     const key = formatKey(chord);
@@ -1630,6 +1691,10 @@ export const VimmaHost = {
         }
         // A suggestion key that does not wait for the page: the second key of a sequence.
         if (isSuggestionAction(run.action.id)) {
+          // A key that picks or moves in the page's suggestions is the user using the page,
+          // though Vimma keeps it (mcp-drive D13).
+          const focused = this._focusedBrowser(win);
+          if (focused) noteUserInput(focused);
           this._suggest(state, run.action, first ? formatKey(chord) : null, mode);
           return;
         }
@@ -2145,8 +2210,6 @@ export const VimmaHost = {
           // docs/specs/follow-link-switch.md: an upper-case last key, or the switching action.
           VimmaActors.openInNewTab(session.browser, result.target, { background: !result.switch });
         } else {
-          // The user's own click, though its keys were Vimma's: a dialog it opens is theirs.
-          noteUserInput(session.browser);
           VimmaActors.activateHint(result.target);
         }
     }

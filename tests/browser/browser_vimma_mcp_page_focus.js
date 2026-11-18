@@ -40,6 +40,8 @@ const DIR = getRootDirectory(gTestPath).replace(
   "https://example.com",
 );
 const DIALOG = `${DIR}file_vimma_agent_dialog.html`;
+/** Firefox's delay before a question's buttons count (security.md M4), short for these tests. */
+const ARMING = "security.dialog_enable_delay";
 
 const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
@@ -50,6 +52,15 @@ const mainId = () =>
   /** @type {string} */ (
     ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id
   );
+
+/** Whether the agent's question line is open with its keys hint: y and n count. */
+const armed = () => {
+  const line = document.getElementById("vimma-agent-prompt");
+  const hint = /** @type {HTMLElement | null | undefined} */ (
+    line?.querySelector(".vimma-agent-prompt-hint")
+  );
+  return !!line && !line.hidden && !!hint && !hint.hidden && hint.textContent !== "";
+};
 
 /** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
@@ -66,6 +77,7 @@ const clients = [];
 /** What a task leaves when it ends, passed or not (tidyTask): this file's state at its start. */
 async function putBack() {
   for (const c of clients.splice(0)) c.close();
+  Services.prefs.clearUserPref(ARMING);
   if (VimmaHost.status(window).mode === "insert") EventUtils.synthesizeKey("KEY_Escape");
   if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
@@ -85,7 +97,7 @@ const addTidyTask = (task) => add_task(tidyTask(task, putBack));
  * The dialog fixture in an agent tab, shown to the user as vimma_show shows it (the window on
  * the agent workspace, the page focused), and an agent with a grant, so nothing is asked.
  */
-async function shownAgentTab() {
+async function shownAgentTab({ grant = true } = {}) {
   await mcp(true);
   const tab = gBrowser.addTab(DIALOG, {
     userContextId: agent().userContextId,
@@ -98,11 +110,11 @@ async function shownAgentTab() {
   await c.call("agent-hello", { client: { name: "claude-code" } });
   const id = c.request("agent-elements", { tab: idOf(tab), full: true });
   await until(() => AgentGate.waiting.length > 0, "the first call asks");
-  AgentGate.answer(/** @type {AskedQuestion} */ (AgentGate.waiting[0]).id, {
-    kind: "grant",
-    minutes: 12,
-  });
-  Assert.ok((await c.response(id)).ok, "vimma_elements runs, and the grant is given");
+  AgentGate.answer(
+    /** @type {AskedQuestion} */ (AgentGate.waiting[0]).id,
+    grant ? { kind: "grant", minutes: 12 } : { kind: "once" },
+  );
+  Assert.ok((await c.response(id)).ok, "vimma_elements runs");
   ww().switchTo({ id: agent().id });
   await until(() => gBrowser.selectedTab === tab, "the agent tab is in front");
   await focusContent(tab.linkedBrowser);
@@ -112,8 +124,15 @@ async function shownAgentTab() {
 
 /** The list's elements by what they say. @param {Client} c @param {MozTabbrowserTab} tab */
 async function labels(c, tab) {
-  const r = await c.call("agent-elements", { tab: idOf(tab), full: true });
-  Assert.ok(r.ok, "vimma_elements runs under the grant");
+  const id = c.request("agent-elements", { tab: idOf(tab), full: true });
+  // Without a grant the list asks; in a field its question waits behind the status bar, so it
+  // is answered here, not with keys.
+  if (!AgentGate.grants().length) {
+    await until(() => AgentGate.waiting.length > 0, "vimma_elements asks");
+    AgentGate.answer(/** @type {AskedQuestion} */ (AgentGate.waiting[0]).id, { kind: "once" });
+  }
+  const r = await c.response(id);
+  Assert.ok(r.ok, "vimma_elements runs");
   /** @type {Record<string, string>} */
   const by = {};
   for (const line of r.result.elements.split("\n").slice(1, -1)) {
@@ -131,6 +150,7 @@ const dialog = (tab) =>
       open: /** @type {HTMLDialogElement} */ (d.getElementById("dialog")).open,
       focused: d.activeElement?.id ?? "",
       name: /** @type {HTMLInputElement} */ (d.getElementById("name")).value,
+      note: /** @type {HTMLTextAreaElement} */ (d.getElementById("note")).value,
     };
   });
 
@@ -220,7 +240,8 @@ addTidyTask(async function test_a_page_focus_just_after_the_users_key_is_theirs(
 addTidyTask(async function test_a_page_focus_just_after_the_users_hint_click_is_theirs() {
   const { tab, c } = await shownAgentTab();
   // The user's own click through a hint (f and a label: keys Vimma keeps from the page) on the
-  // button that opens the dialog a moment later.
+  // button that opens the dialog a moment later. The hint's press sends the page trusted mouse
+  // events, so its mousedown counts as the user's click (Vimma:Click).
   const browser = tab.linkedBrowser;
   EventUtils.synthesizeKey("f");
   await until(() => VimmaHost._hints(window)?.hints.length, "hints are collected");
@@ -256,5 +277,134 @@ addTidyTask(async function test_vimmas_own_key_before_a_page_focus_is_not_the_us
   Assert.ok(!VimmaHost.inUse(tab.linkedBrowser), "watching is not using the tab");
   const r = await fillName(c, tab);
   Assert.ok(r.ok, `the agent fills the field: ${JSON.stringify(r.error ?? null)}`);
+  Assert.equal((await dialog(tab)).name, "general", "with its value");
+});
+
+addTidyTask(async function test_an_ime_composition_in_that_field_makes_the_tab_theirs() {
+  const { tab, c } = await shownAgentTab();
+  await agentOpensTheDialog(c, tab);
+  // An IME's typing: its keydowns are "Process", a key Vimma binds no action to.
+  EventUtils.synthesizeCompositionChange({
+    composition: {
+      string: "\u304b",
+      clauses: [{ length: 1, attr: EventUtils.COMPOSITION_ATTR_RAW_CLAUSE }],
+    },
+    caret: { start: 1, length: 0 },
+    key: { key: "KEY_Process" },
+  });
+  EventUtils.synthesizeComposition({ type: "compositioncommitasis", key: { key: "KEY_Enter" } });
+  await until(async () => (await dialog(tab)).name === "\u304b", "the user composed in the field");
+  await until(() => VimmaHost.inUse(tab.linkedBrowser), "the composition makes the tab in use");
+  const r = await fillName(c, tab);
+  Assert.equal(r.error?.reason, "in-use", "the agent's fill is denied (F27)");
+  Assert.equal((await dialog(tab)).name, "\u304b", "and fills nothing");
+});
+
+addTidyTask(async function test_the_users_insert_stays_theirs_when_the_page_moves_focus() {
+  const { tab, c } = await shownAgentTab();
+  await agentOpensTheDialog(c, tab);
+  const browser = tab.linkedBrowser;
+  await BrowserTestUtils.synthesizeMouseAtCenter("#name", {}, browser);
+  await until(() => VimmaHost.inUse(browser), "the user's click makes the tab in use");
+  // At once: the page moves focus to its next field.
+  await SpecialPowers.spawn(browser, [], () =>
+    /** @type {HTMLElement} */ (content.document.getElementById("topic")).focus(),
+  );
+  await until(async () => (await dialog(tab)).focused === "topic", "the page moved focus");
+  Assert.ok(VimmaHost.inUse(browser), "the tab stays the user's");
+  // After a pause longer than the user's input counts as recent, the page blurs the field and
+  // focuses it again, as a page that re-renders its field does.
+  VimmaHost._forgetUserInputTimeForTests(browser);
+  await SpecialPowers.spawn(browser, [], () => {
+    const topic = /** @type {HTMLElement} */ (content.document.getElementById("topic"));
+    topic.blur();
+  });
+  await until(() => VimmaHost._browserMode(browser) === "normal", "the page's blur left insert");
+  await SpecialPowers.spawn(browser, [], () =>
+    /** @type {HTMLElement} */ (content.document.getElementById("topic")).focus(),
+  );
+  await until(() => VimmaHost._browserMode(browser) === "insert", "the page's focus is insert");
+  Assert.ok(VimmaHost.inUse(browser), "the document's fields stay the user's");
+  const r = await fillName(c, tab);
+  Assert.equal(r.error?.reason, "in-use", "the agent's fill is denied (F27)");
+  // Esc, the user's own leaving of insert, hands the page back.
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => VimmaHost._browserMode(browser) === "normal", "normal mode");
+  Assert.ok(!VimmaHost.inUse(browser), "watching again");
+});
+
+addTidyTask(async function test_a_field_a_fills_checkbox_reveals_is_not_the_users() {
+  const { tab, c } = await shownAgentTab();
+  await agentOpensTheDialog(c, tab);
+  let by = await labels(c, tab);
+  // The agent's fill ticks a checkbox, whose change handler shows a field and focuses it.
+  let r = await c.call("agent-fill", {
+    tab: idOf(tab),
+    fields: [{ label: by["With note"], value: true }],
+  });
+  Assert.ok(r.ok, `the agent ticks the checkbox: ${JSON.stringify(r.error ?? null)}`);
+  await until(async () => (await dialog(tab)).focused === "note", "the page focused its note");
+  Assert.ok(!VimmaHost.inUse(tab.linkedBrowser), "the page's own focus is not the user's");
+  by = await labels(c, tab);
+  r = await c.call("agent-fill", { tab: idOf(tab), fields: [{ label: by.Note, value: "hi" }] });
+  Assert.ok(r.ok, `the agent fills the note: ${JSON.stringify(r.error ?? null)}`);
+  Assert.equal((await dialog(tab)).note, "hi", "with its value");
+});
+
+addTidyTask(async function test_a_field_the_agents_click_on_a_label_opens_is_not_the_users() {
+  const { tab, c } = await shownAgentTab();
+  const by = await labels(c, tab);
+  // A label's activation clicks its button inside click() (a second, nested trusted click),
+  // whose handler opens the dialog and its field takes focus.
+  const r = await c.call("agent-activate", { tab: idOf(tab), label: by["Open by label"] });
+  Assert.ok(r.ok, `the agent's click runs: ${JSON.stringify(r.error ?? null)}`);
+  Assert.equal(r.result.stopped, undefined, "and is not stopped as the user's");
+  await until(async () => (await dialog(tab)).focused === "name", "the dialog's field has focus");
+  await until(() => VimmaHost._browserMode(tab.linkedBrowser) === "insert", "the tab is in insert");
+  Assert.ok(!VimmaHost.inUse(tab.linkedBrowser), "the page's focus is not the user's");
+});
+
+addTidyTask(async function test_the_agent_aiming_at_the_page_focused_field_leaves_it_the_pages() {
+  const { tab, c } = await shownAgentTab();
+  await agentOpensTheDialog(c, tab);
+  const by = await labels(c, tab);
+  const r = await c.call("agent-activate", { tab: idOf(tab), label: by["Channel name"] });
+  Assert.ok(
+    r.error?.message.includes("use vimma_fill"),
+    `a field is not clicked: ${r.error?.message}`,
+  );
+  Assert.ok(!VimmaHost.inUse(tab.linkedBrowser), "the tab is still not the user's");
+  const f = await fillName(c, tab);
+  Assert.ok(f.ok, `the agent fills the field: ${JSON.stringify(f.error ?? null)}`);
+});
+
+addTidyTask(async function test_answering_the_agent_is_not_using_the_tab() {
+  Services.prefs.setIntPref(ARMING, 100);
+  const { tab, c } = await shownAgentTab({ grant: false });
+  const browser = tab.linkedBrowser;
+  let by = await labels(c, tab);
+  // The click asks; its question opens by itself in normal mode, and the user answers y.
+  const id = c.request("agent-activate", { tab: idOf(tab), label: by["New channel"] });
+  await until(() => AgentGate.waiting.length > 0, "the click asks");
+  await until(armed, "the question opens and is armed");
+  EventUtils.synthesizeKey("y");
+  const r = await c.response(id);
+  Assert.ok(r.ok, `the agent's click runs: ${JSON.stringify(r.error ?? null)}`);
+  Assert.equal(r.result.stopped, undefined, "and the user's y does not stop it");
+  await until(() => VimmaHost._browserMode(browser) === "insert", "the page focused its field");
+  Assert.ok(!VimmaHost.inUse(browser), "the y was not the user using the tab");
+  // In a field the fill's question waits; ctrl+b shift+a opens it, and y answers it.
+  by = await labels(c, tab);
+  const fid = c.request("agent-fill", {
+    tab: idOf(tab),
+    fields: [{ label: by["Channel name"], value: "general" }],
+  });
+  await until(() => AgentGate.waiting.length > 0, "the fill asks");
+  EventUtils.synthesizeKey("b", { ctrlKey: true });
+  EventUtils.synthesizeKey("A", { shiftKey: true });
+  await until(armed, "ctrl+b shift+a opens the question");
+  EventUtils.synthesizeKey("y");
+  const f = await c.response(fid);
+  Assert.ok(f.ok, `the agent fills the field: ${JSON.stringify(f.error ?? null)}`);
   Assert.equal((await dialog(tab)).name, "general", "with its value");
 });

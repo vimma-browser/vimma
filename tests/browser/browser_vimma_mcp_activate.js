@@ -603,6 +603,7 @@ add_task(async function the_agent_page_helper_acts_on_the_document_it_is_given()
           pressed.push(ok);
           return ok;
         },
+        asAgent: (fn) => fn(),
         beforeSubmitCheck: () => null,
       });
       agent.listed = { gen: 4, els: [new WeakRef(button), new WeakRef(field)] };

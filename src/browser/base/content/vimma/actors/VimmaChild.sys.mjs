@@ -185,6 +185,19 @@ const JS_REASON = 256;
 const KEYS_KEPT = 16;
 
 /**
+ * The beforeinput types of text the user puts into an editor themselves: typed, composed,
+ * pasted or dropped. Not insertReplacementText, setUserInput's (TextControlState.cpp), which is
+ * how an agent's fill sets a value.
+ */
+const TYPED_INPUT = new Set([
+  "insertText",
+  "insertCompositionText",
+  "insertFromComposition",
+  "insertFromPaste",
+  "insertFromDrop",
+]);
+
+/**
  * @param {unknown} n
  * @returns {n is number}
  */
@@ -237,6 +250,7 @@ export class VimmaChild extends JSWindowActorChild {
   #agent = new AgentPage(this, {
     onPage: (el) => this.#onPage(el),
     press: (el, still) => this.#press(el, still, { agent: true }),
+    asAgent: (fn) => this.#asAgent(fn),
     beforeSubmitCheck: () => this.#beforeSubmitCheck(),
   });
   /** Copy mode in this document (m1-copy-mode). */
@@ -272,6 +286,8 @@ export class VimmaChild extends JSWindowActorChild {
    * click), so a field they focus would read as the user's. It is the page's (issue #1325).
    */
   #agentPress = false;
+  /** When this frame last sent Vimma:UserInput, in ChromeUtils.now() ms (#noteTyping). */
+  #typedAt = -Infinity;
   /**
    * The generation of the last Vimma:Blur (Esc) this document had, echoed in its focus reports
    * so that the parent can tell a report sent before that blur (docs/specs/insert-focus.md).
@@ -475,10 +491,27 @@ export class VimmaChild extends JSWindowActorChild {
         // already has focus (the page put it back after Esc), fires no focus event.
         const el = this.#editableRoot() ?? this.#focusedFieldUnder(event.originalTarget);
         if (el) this.#report(el, "focusin");
-        // Any trusted mousedown is the user's (an agent's is untrusted, #press), though it may
+        // A trusted mousedown is the user's (an agent's is untrusted, #press), though it may
         // move no focus (a toolbar item that prevents its mousedown): what the page focuses after
-        // it is not the page's own doing, and a field the page focused is the user's now.
+        // it is not the page's own doing, and a field the page focused is the user's now. The
+        // parent takes it only from the frame that has focus (VimmaParent); a click into another
+        // frame focuses it, and that focus report is the user's.
         if (event.isTrusted) this.sendAsyncMessage("Vimma:Click");
+        return;
+      }
+      case "compositionstart":
+      case "drop":
+        // Text the user puts in without a key Vimma sees as one: an IME's composition (its
+        // keydowns are "Process"), an on-screen keyboard, dictation or an emoji picker that
+        // commits through one, and a drop from another application (issue #1325). Trusted
+        // only: an agent's fill sets values with setUserInput, which fires neither.
+        if (event.isTrusted) this.#noteTyping(true);
+        return;
+      case "beforeinput": {
+        // Text typed, composed, pasted or dropped into an editor. An agent's fill sets values
+        // with setUserInput, whose beforeinput is insertReplacementText, never one of these.
+        const type = /** @type {InputEvent} */ (event).inputType;
+        if (event.isTrusted && TYPED_INPUT.has(type)) this.#noteTyping(false);
         return;
       }
       case "dragstart":
@@ -632,6 +665,36 @@ export class VimmaChild extends JSWindowActorChild {
     const first = this.#keys.focus.find((k) => k.n === before);
     this.#keys = { count: 0, focus: [] };
     return !!first && (first.el?.deref() ?? null) !== el;
+  }
+
+  /**
+   * Tells the parent the user put text in this frame (Vimma:UserInput), so that a field the page
+   * focused by itself is theirs (docs/specs/mcp-drive.md D13). A beforeinput is sent at most once
+   * a second: one a second apart keeps the tab theirs, as any input within 5 s does.
+   * @param {boolean} always  a composition or a drop, always sent
+   */
+  #noteTyping(always) {
+    const now = ChromeUtils.now();
+    if (!always && now - this.#typedAt < 1000) return;
+    this.#typedAt = now;
+    this.sendAsyncMessage("Vimma:UserInput");
+  }
+
+  /**
+   * Runs an agent's step that may run page listeners as "handling user input" (a click(), a
+   * checkbox's click() in a fill): a focus they make is the page's, not the user's (#report).
+   * @template T
+   * @param {() => T} fn
+   * @returns {T}
+   */
+  #asAgent(fn) {
+    const before = this.#agentPress;
+    this.#agentPress = true;
+    try {
+      return fn();
+    } finally {
+      this.#agentPress = before;
+    }
   }
 
   #recheck() {
@@ -1051,14 +1114,13 @@ export class VimmaChild extends JSWindowActorChild {
       if (inLink(el)) this.#leaveLink();
     }
     if (!this.#onPage(el) || !still()) return false;
-    this.#agentPress = agent;
-    try {
-      // SVG elements have no click(): dispatch the click event for them.
-      if (typeof html.click === "function") html.click();
-      else el.dispatchEvent(new win.MouseEvent("click", init));
-    } finally {
-      this.#agentPress = false;
-    }
+    // SVG elements have no click(): dispatch the click event for them.
+    const click = () =>
+      typeof html.click === "function"
+        ? html.click()
+        : el.dispatchEvent(new win.MouseEvent("click", init));
+    if (agent) this.#asAgent(click);
+    else click();
     return true;
   }
 
