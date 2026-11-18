@@ -70,8 +70,8 @@ fn flag(v: &Value, key: &str) -> Result<bool, String> {
     }
 }
 
-/// A tool's result from the agent command's: text for the model, and the data as
-/// `structuredContent` where the model may want it.
+/// A tool's result from the agent command's: text for the model, and no `structuredContent`,
+/// which Claude Code shows the model in place of the text when both are there.
 fn success(tool: &ToolCall, result: &Value) -> Result<Value, String> {
     let ok = |items: Vec<Value>| BTreeMap::from([("content".to_string(), Value::Array(items))]);
     let out = match tool {
@@ -108,10 +108,10 @@ fn success(tool: &ToolCall, result: &Value) -> Result<Value, String> {
         }
         ToolCall::Read { .. } => ok(read_items(result)?),
         ToolCall::Open { url, elements, .. } => {
+            // Text only, the tab id in it, as for tabs: Claude Code showed the model only a
+            // structuredContent {tab}, none of the page's header, open note or list (#1336).
             let tab = field(result, "tab")?;
-            let mut out = ok(open_items(url, tab, *elements, tool.filtered(), result)?);
-            out.insert("structuredContent".into(), object([("tab", text(tab))]));
-            out
+            ok(open_items(url, tab, *elements, tool.filtered(), result)?)
         }
         ToolCall::Close { tab } => {
             if result.get("closed") != Some(&Value::Bool(true)) {
@@ -1136,7 +1136,12 @@ mod tests {
             t.contains("https://docs.rs/serde") && t.contains("tab 13"),
             "{t}"
         );
-        assert_eq!(at(&r, &["result", "structuredContent", "tab"]), &s("13"));
+        // Text only, as for tabs: with structuredContent, Claude Code shows the model
+        // {"tab":"13"} and none of the text (#1336).
+        assert!(
+            r.get("result").unwrap().get("structuredContent").is_none(),
+            "{r}"
+        );
 
         let close = ToolCall::Close { tab: "13".into() };
         let r = tool_result(
@@ -2078,9 +2083,10 @@ mod tests {
             "{body}"
         );
         assert_eq!(t.last().unwrap(), list, "{t:?}");
-        assert_eq!(
-            at(&r, &["result", "structuredContent", "tab"]),
-            &s("13"),
+        // Text only (#1336): with structuredContent, Claude Code shows the model only the tab,
+        // and none of the page's header, the open note or the element list.
+        assert!(
+            r.get("result").unwrap().get("structuredContent").is_none(),
             "{r}"
         );
         let bare = tool_result(&open, Ok(&parse(r#"{"tab":"13"}"#).unwrap()));

@@ -523,6 +523,13 @@ describe("runSteps", () => {
     const replies: Record<string, any> = {
       open1: { ok: true, result: { tab: "42" } },
       read1: { ok: true },
+      shown1: {
+        result: {
+          content: [
+            { type: "text", text: "Opened https://a/ in tab 42 of Vimma's agent workspace." },
+          ],
+        },
+      },
     };
     return {
       calls,
@@ -624,6 +631,69 @@ describe("runSteps", () => {
       "mcp notifications/initialized {} as undefined",
       'mcp tools/call {"name":"vimma_read_page","arguments":{"tab":"42"}} as read1',
     ]);
+  });
+
+  // vimma_open's result is text only (#1336): a scenario reads the tab id out of its text with
+  // $name.path~regex, the regex's first group.
+  it("$name.path~regex takes the regex's first group from a string in an answer", async () => {
+    const { ctl } = fakeCtl([{ mode: "normal" }]);
+    const fake = fakeControl();
+    const tab = "$shown1.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace";
+    await runSteps(
+      scenario({
+        steps: [
+          { mcp: { method: "tools/call", params: { name: "vimma_open" }, as: "shown1" } },
+          { "mcp-result": { of: "shown1", expect: { result: {} } } },
+          {
+            mcp: {
+              method: "tools/call",
+              params: { name: "vimma_read_page", arguments: { tab } },
+              as: "read1",
+            },
+          },
+        ],
+      }),
+      { ctl, control: fake.control, screenshot: async () => {} },
+    );
+    expect(fake.calls.at(-1)).toBe(
+      'mcp tools/call {"name":"vimma_read_page","arguments":{"tab":"42"}} as read1',
+    );
+    const missing = "$shown1.result.content.0.text~in window (\\w+)";
+    await expect(
+      runSteps(
+        scenario({
+          steps: [
+            { mcp: { method: "tools/call", params: { name: "vimma_open" }, as: "shown1" } },
+            { "mcp-result": { of: "shown1", expect: { result: {} } } },
+            { mcp: { method: "tools/call", params: { tab: missing }, as: "read1" } },
+          ],
+        }),
+        { ctl, control: fakeControl().control, screenshot: async () => {} },
+      ),
+    ).rejects.toThrow("does not match");
+    for (const [regex, why] of [
+      ["in tab \\w+ of", "the regex has no capture group"],
+      ["in tab (\\w+", "not a regex: "],
+    ]) {
+      await expect(
+        runSteps(
+          scenario({
+            steps: [
+              { mcp: { method: "tools/call", params: { name: "vimma_open" }, as: "shown1" } },
+              { "mcp-result": { of: "shown1", expect: { result: {} } } },
+              {
+                mcp: {
+                  method: "tools/call",
+                  params: { tab: `$shown1.result.content.0.text~${regex}` },
+                  as: "read1",
+                },
+              },
+            ],
+          }),
+          { ctl, control: fakeControl().control, screenshot: async () => {} },
+        ),
+      ).rejects.toThrow(why);
+    }
   });
 
   it("an agent answer that does not match fails the step", async () => {

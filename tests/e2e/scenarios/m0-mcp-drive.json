@@ -51,7 +51,7 @@
         "params": {
           "name": "vimma_keys",
           "arguments": {
-            "tab": "$open1.result.structuredContent.tab",
+            "tab": "$open1.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace",
             "keys": "3j /pricing<CR>"
           }
         },
@@ -79,7 +79,10 @@
         "method": "tools/call",
         "params": {
           "name": "vimma_keys",
-          "arguments": { "tab": "$open1.result.structuredContent.tab", "keys": "gg f" }
+          "arguments": {
+            "tab": "$open1.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace",
+            "keys": "gg f"
+          }
         },
         "as": "links"
       }
@@ -107,7 +110,10 @@
         "method": "tools/call",
         "params": {
           "name": "vimma_keys",
-          "arguments": { "tab": "$open1.result.structuredContent.tab", "keys": "fa" }
+          "arguments": {
+            "tab": "$open1.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace",
+            "keys": "fa"
+          }
         },
         "as": "follow"
       }
@@ -127,7 +133,9 @@
         "method": "tools/call",
         "params": {
           "name": "vimma_show",
-          "arguments": { "tab": "$open1.result.structuredContent.tab" }
+          "arguments": {
+            "tab": "$open1.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace"
+          }
         },
         "as": "show1"
       }

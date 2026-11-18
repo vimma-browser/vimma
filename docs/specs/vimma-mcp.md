@@ -794,8 +794,12 @@ Found necessary in the security reviews of the protocol (#176) and the question 
     escaped) and a first line saying titles and URLs are untrusted web content; it has no
     `structuredContent`, because Claude Code (2.1.287) shows the model `structuredContent`
     instead of the text when both are present, which would drop that note. `vimma_close_tab`
-    returns a sentence. A result of the wrong shape becomes a tool error ("Vimma's answer broke
-    the control protocol").
+    returns a sentence. (Since changed: `vimma_open` returns text only too, the tab id in its
+    sentence, because in Claude Code its `structuredContent` reached the model as only
+    `{"tab": …}`, without the sentence, the page's untrusted header or the element list asked
+    with `elements`, while that list still counted as the site's last list for the next one;
+    no tool sets `structuredContent`; see #1336.) A result of the wrong shape becomes a tool
+    error ("Vimma's answer broke the control protocol").
 38. **Arguments are checked before anything reaches Vimma.** Bad arguments are tool errors
     (`isError`, "Invalid arguments for <tool>: <why>.") the model can correct, and nothing is
     asked: `tab` is 1 to 20 digits, as a string or a non-negative integer; `url` is http or https
@@ -1065,7 +1069,7 @@ m7-a11y.
   tool calls become agent commands; unknown tools and malformed calls are protocol errors; bad
   arguments are tool errors that never reach Vimma; client labels are cleaned; a read is a
   header then the wrapped text, says when it was cut or read in the background and adds the
-  selection; tabs, opens and closes say what happened (tabs without `structuredContent`); a
+  selection; tabs, opens and closes say what happened (tabs and opens without `structuredContent`); a
   result of the wrong shape is a tool error; modern results carry `resultType` and serverInfo;
   each failure's text; every reply is one line; `agent_command_fixtures_match_what_mcp_sends_and_decodes`
   (the v2 fixtures' requests are what the tools send, their valid results decode and their
