@@ -877,7 +877,7 @@ describe("bookmarks.toml: the mirror's plan", () => {
     ).toBeNull();
   });
 
-  test('javascript: lines are skipped below bookmarklets = "user", and Places\' own are kept', () => {
+  test('javascript: lines are skipped below bookmarklets = "user", and those already in Places are kept', () => {
     const tables = tablesOf(
       [
         "[bookmarks.work]",

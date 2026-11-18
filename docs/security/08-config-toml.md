@@ -59,7 +59,7 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`refuses keys other than [bookmarks.<name>] tables in bookmarks.toml`](../../packages/vimma-core/test/bookmarks-file.test.ts),
   [`refuses a file over 4 MiB without parsing it`](../../packages/vimma-core/test/bookmarks-file.test.ts),
   [`titles __proto__ and constructor are ordinary titles`](../../packages/vimma-core/test/bookmarks-file.test.ts),
-  [`javascript: lines are skipped below bookmarklets = "user", and Places' own are kept`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`javascript: lines are skipped below bookmarklets = "user", and those already in Places are kept`](../../packages/vimma-core/test/bookmarks-file.test.ts),
   [`parse never throws and an accepted file holds only valid lines`](../../packages/vimma-core/test/fuzz/bookmarks-file.fuzz.test.ts),
   [`javascript_lines_wait_for_bookmarklets_and_data_lines_never_reach_places`](../../tests/browser/browser_vimma_bookmarks_file.js),
   [`a_broken_file_pauses_both_ways_and_names_the_line`](../../tests/browser/browser_vimma_bookmarks_file.js),

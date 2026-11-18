@@ -546,7 +546,7 @@ add_task(async function a_library_change_during_an_apply_is_handled_by_the_closi
   );
   const apply = race.apply.bind(race);
   let once = true;
-  race.apply = async (/** @type {any[]} */ ops) => {
+  race.apply = async (/** @type {Parameters<typeof apply>[0]} */ ops) => {
     await apply(ops);
     if (once) {
       once = false;
@@ -593,6 +593,7 @@ add_task(
     );
     /** @type {() => void} */
     let done = () => {};
+    /** @type {string[]} */
     const asked = [];
     const boot = new BookmarksFileImpl({
       configPath: () => PathUtils.join(own, "config.toml"),
