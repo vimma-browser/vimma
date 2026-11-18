@@ -170,6 +170,7 @@ const isRemoteBrowserTarget = (target) =>
  *   their key alone (core page-first.mjs)
  * @property {FirefoxKeys | null} firefoxKeys  Firefox's own shortcuts off (key-handling-batch)
  * @property {() => void} onTabSelect
+ * @property {() => void} onDialogClose  focus left on nothing by a closed dialog goes to the page
  * @property {ReturnType<typeof createDispatcher>} dispatcher
  * @property {HelpOverlay} help
  * @property {Notice} notice  "<action>: not implemented yet" (m2-tab-keys)
@@ -244,7 +245,7 @@ function vimmaSurfaceOpen(s) {
     s.downloadPicker.isOpen ||
     s.mcpLog.isOpen ||
     s.grep.isOpen ||
-    s.cmdline.isOpen ||
+    s.cmdline.focused ||
     s.rename.isOpen ||
     s.panel.isOpen ||
     s.bookmarks.isOpen ||
@@ -684,6 +685,8 @@ export const VimmaHost = {
     win.addEventListener("keypress", state.onKeyPress, SYSTEM_GROUP_CAPTURE);
     win.addEventListener("keypress", state.onKeyPressAfter, SYSTEM_GROUP);
     win.addEventListener("TabSelect", state.onTabSelect, true);
+    // Bubbles from the dialog's overlay (SubDialog.sys.mjs, close).
+    win.addEventListener("dialogclose", state.onDialogClose, true);
     // After the keys too: Firefox's shortcuts that overlap ours, off (key-handling-batch § 1).
     try {
       const firefoxKeys = new FirefoxKeys(win, settings.firefox, boundChords(keymap));
@@ -795,6 +798,7 @@ export const VimmaHost = {
     win.removeEventListener("keypress", state.onKeyPress, SYSTEM_GROUP_CAPTURE);
     win.removeEventListener("keypress", state.onKeyPressAfter, SYSTEM_GROUP);
     win.removeEventListener("TabSelect", state.onTabSelect, true);
+    win.removeEventListener("dialogclose", state.onDialogClose, true);
     state.firefoxKeys?.destroy();
     win.removeEventListener("resize", state.onCancelHints);
     win.removeEventListener("mousedown", state.onMouseDown, true);
@@ -1242,7 +1246,9 @@ export const VimmaHost = {
     if (state.permissionPicker.isOpen) return "help";
     if (state.popups.isOpen || state.downloadPicker.isOpen) return "help";
     if (state.splitPicker.isOpen || state.bookmarkPicker.isOpen) return "help";
-    if (state.cmdline.isOpen) return "command";
+    // Only while its input has focus: a dialog that opens over the line keeps it open behind,
+    // and the dialog's keys (Esc) are its own, not the line's `command.cancel` (#1304).
+    if (state.cmdline.focused) return "command";
     // A prompt over a panel (the bookmarks' add, rename, a y/N) types: keys are its input's.
     if (state.rename.isOpen) return "insert";
     if (state.outline.isActive) return "index";
