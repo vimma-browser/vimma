@@ -2473,6 +2473,8 @@ interface nsITextInputProcessor extends nsISupports {
   beginInputTransaction(win: Window, callback: (...args: unknown[]) => boolean): boolean;
   keydown(event: KeyboardEvent, flags?: number): number;
   keyup(event: KeyboardEvent, flags?: number): boolean;
+  /** null: start again with no modifier held. */
+  shareModifierStateOf(other: nsITextInputProcessor | null): void;
 }
 // engine/xpcom/base/nsIConsoleMessage.idl and engine/dom/bindings/nsIScriptError.idl: a console
 // message; a script error or warning's `flags` say which (scriptErrorLevel in core).

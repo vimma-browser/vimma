@@ -285,6 +285,11 @@ function keyInit(chord) {
  * other processor can begin a transaction on the window, but this one, with the same callback,
  * still can (TextInputProcessor::BeginInputTransactionInternal). So a later send-keys can answer
  * the dialog (#1306).
+ * Its transaction is never ended, on purpose: ending it from a later send-keys while a key of an
+ * earlier one is still being dispatched would leave that key's keyup to a processor that no
+ * longer owns the window. Holding it takes nothing from anyone: a keyboard's IME or another
+ * processor still takes the window whenever no key of ours is being dispatched, and a closed
+ * window's widget unlinks it (TextInputProcessor::OnRemovedFrom).
  * @type {nsITextInputProcessor | null}
  */
 let processor = null;
@@ -326,20 +331,37 @@ function pressChords(win, chords) {
       resolve({ sent, dialog: true });
     };
     Services.tm.dispatchToMainThread(() => {
-      win.addEventListener("dialogopen", onDialog, true);
       try {
+        if (win.closed) throw new ControlError("failed", "the window closed");
+        win.addEventListener("dialogopen", onDialog, true);
         const tip = beginInput(win);
+        // Start with no modifier held: a send-keys whose key waits on a dialog still holds its
+        // own (ctrl of ctrl+f4) in this shared processor, and the answer would go as ctrl+n.
+        tip.shareModifierStateOf(null);
         const KeyboardEvent = win.KeyboardEvent;
         for (const chord of chords) {
           if (dialog) break;
           sent++;
-          const held = MODIFIER_KEYS.filter(([flag]) => chord[flag]);
-          for (const [, key, code] of held) tip.keydown(new KeyboardEvent("", { key, code }));
-          const event = new KeyboardEvent("", keyInit(chord));
-          tip.keydown(event);
-          tip.keyup(event);
-          for (const [, key, code] of held.reverse()) {
-            tip.keyup(new KeyboardEvent("", { key, code }));
+          /** @type {Array<[string, string]>} modifiers pressed and not yet released */
+          const down = [];
+          try {
+            for (const [flag, key, code] of MODIFIER_KEYS) {
+              if (!chord[flag]) continue;
+              tip.keydown(new KeyboardEvent("", { key, code }));
+              down.push([key, code]);
+            }
+            const event = new KeyboardEvent("", keyInit(chord));
+            tip.keydown(event);
+            tip.keyup(event);
+          } finally {
+            // Released even when a key threw, so no later send-keys inherits them.
+            for (const [key, code] of down.reverse()) {
+              try {
+                tip.keyup(new KeyboardEvent("", { key, code }));
+              } catch (e) {
+                console.warn("vimma control: releasing", key, e);
+              }
+            }
           }
         }
         resolve({ sent });

@@ -744,7 +744,12 @@ add_task(async function test_send_keys_reach_the_page() {
 // #1306: a key that opens a dialog over the page ("Leave page?") does not return until the
 // dialog is answered, because Firefox asks in a nested event loop (browser-custom-element.mjs,
 // permitUnload). send-keys answers once the dialog is up, and a later send-keys answers it.
-add_task(async function test_send_keys_answer_the_dialog_they_open() {
+/**
+ * Sends `keys`, whose first chord closes a page with unsaved changes, then answers its "Leave
+ * page?" dialog with `n` from another connection, and checks how the answer arrived.
+ * @param {string} keys
+ */
+async function answerOwnDialog(keys) {
   await SpecialPowers.pushPrefEnv({
     set: [
       ["dom.require_user_interaction_for_beforeunload", false],
@@ -757,26 +762,41 @@ add_task(async function test_send_keys_answer_the_dialog_they_open() {
   await enable();
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, leave);
   const shown = TestUtils.topicObserved("common-dialog-loaded").then(([w]) => w);
+  /** @type {KeyboardEvent[]} the answer's keydowns, as the dialog sees them */
+  const answers = [];
+  const record = (/** @type {KeyboardEvent} */ e) => {
+    if (e.code === "KeyN") answers.push(e);
+  };
+  window.addEventListener("keydown", record, true);
   /** @param {number} ms */
   const late = (ms) => new Promise((r) => setTimeout(() => r({ late: ms }), ms));
   const client = await session();
-  // `j` comes after the key that opens the dialog, so it is not pressed.
-  const first = await Promise.race([client.request(1, "send-keys", { keys: "x j" }), late(5000)]);
+  const first = await Promise.race([client.request(1, "send-keys", { keys }), late(5000)]);
   const dialog = /** @type {Window} */ (await shown);
   const second = await session();
   try {
-    Assert.deepEqual(first.result, { sent: 1, dialog: true }, "x answers once its dialog is up");
+    Assert.deepEqual(
+      first.result,
+      { sent: 1, dialog: true },
+      `${keys}: answered once its dialog is up`,
+    );
     await TestUtils.waitForCondition(
       () => dialog.document.querySelector(".vimma-prompt-keys")?.hasAttribute("armed"),
       "the dialog's keys count",
     );
     const answer = await Promise.race([second.request(1, "send-keys", { keys: "n" }), late(5000)]);
     Assert.deepEqual(answer.result, { sent: 1 }, "a later send-keys answers the dialog");
+    Assert.deepEqual(
+      answers.map((e) => [e.key, e.ctrlKey, e.shiftKey, e.altKey, e.metaKey]),
+      [["n", false, false, false, false]],
+      "the answer is a plain n: no modifier of the first send-keys is still held",
+    );
     await TestUtils.waitForCondition(() => dialog.closed, "n answered the dialog");
     Assert.ok(tab.isConnected && !tab.closing, "n stays on the page");
     const after = await second.request(2, "send-keys", { keys: "j" });
     Assert.deepEqual(after.result, { sent: 1 }, "send-keys goes on working");
   } finally {
+    window.removeEventListener("keydown", record, true);
     // Unwedge a failed run: without an answer, the first key never returns.
     const box = /** @type {(Element & { cancelDialog(): void }) | null} */ (
       dialog.closed ? null : dialog.document.querySelector("dialog")
@@ -784,10 +804,28 @@ add_task(async function test_send_keys_answer_the_dialog_they_open() {
     box?.cancelDialog();
     client.close();
     second.close();
+    // A failed run's ctrl+n opens a window.
+    for (const w of Services.wm.getEnumerator("navigator:browser")) {
+      if (w !== window) await BrowserTestUtils.closeWindow(w);
+    }
     gBrowser.removeTab(tab, { skipPermitUnload: true });
     await disable();
     await SpecialPowers.popPrefEnv();
   }
+}
+
+// #1306: a key that opens a dialog over the page ("Leave page?") does not return until the
+// dialog is answered, because Firefox asks in a nested event loop (browser-custom-element.mjs,
+// permitUnload). send-keys answers once the dialog is up, and a later send-keys answers it.
+// `j` comes after the key that opens the dialog, so it is not pressed.
+add_task(async function test_send_keys_answer_the_dialog_they_open() {
+  await answerOwnDialog("x j");
+});
+
+// The key that opened the dialog is still held down, with its ctrl, until the dialog closes:
+// the answer must not arrive as ctrl+n (a new window) instead of n.
+add_task(async function test_send_keys_answer_with_no_modifier_held() {
+  await answerOwnDialog("ctrl+f4");
 });
 
 add_task(async function test_open() {
