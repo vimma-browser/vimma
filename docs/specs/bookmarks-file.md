@@ -1,6 +1,6 @@
 # Spec: bookmarks-file
 
-Status: draft · Area: `packages/vimma-core/src/` (new `config/bookmarks-file.mjs`: parse, validate,
+Status: accepted · Area: `packages/vimma-core/src/` (new `config/bookmarks-file.mjs`: parse, validate,
 model, three-way diff and line edits of `bookmarks.toml`; `config/config.mjs` for
 `[bookmarks] write_back` and the inline tables; `config/defaults.mjs` for the template line;
 `ui/bookmarks.mjs` for the panel's write path); `src/browser/base/content/vimma/` (new
@@ -700,38 +700,16 @@ Each slice is one PR with its tests, docs and changelog line, mergeable alone.
 4. **Export.** `:bookmarks export` and `export!`, `:bookmarks forget`, `Tab` completion, the
    guide's migration steps.
 
-## Open questions
+## Decisions on the open questions
 
-1. **Duplicate titles in one folder.** Firefox allows two bookmarks with the same title in a
-   folder; a TOML table cannot hold one key twice.
-   - (a) Write the second as `Title (2)` and rename it in Places to match (Behaviour 15).
-     Simple, one line per bookmark; changes a title the user did not touch.
-   - (b) Allow an array value, `"Title" = ["https://a", "https://b"]`. Keeps titles; a second
-     syntax, and moving one of the two is a two-line diff.
-   - Recommendation: (a), because duplicates are rare and usually an accident, and the notice
-     says what changed.
-2. **Two devices putting each other's changes back.** Under `"vimma"` or `"none"`, two devices
-   with different files revert each other at every sync (D8).
-   - (a) Document it only.
-   - (b) Stop putting back a bookmark that was put back three times in ten minutes, pause both
-     ways for that table, and say so in the status bar.
-   - Recommendation: (b), because a silent tug of war uploads a change at every sync and the
-     user cannot see why their edit keeps vanishing.
-3. **Sync and git both carrying mirrored folders.** Under `"all"`, a change synced from another
-   machine is also written to this machine's file, so `git pull` of the same change refuses
-   (Design, "Sync and file edits racing").
-   - (a) Document it: use one carrier.
-   - (b) Add `write_back = "vimma+sync"`: Sync's changes stay in Places only and are put back
-     from the file on the next file change. Works with both carriers; a fourth value, and
-     Places and the file disagree between pulls.
-   - (c) Let the write-back skip a change whose result already matches the file at
-     `git`'s `HEAD` of the upstream branch. Precise; Vimma would have to read git state.
-   - Recommendation: (a) for now, because (b) and (c) add states the user must understand, and
-     the guide's advice covers the common setups.
-4. **Empty folders.** A folder with nothing in it has no bookmark line to carry it.
-   - (a) A key ending in `/` with the value `""` (Behaviour 2), written only while the folder is
-     empty.
-   - (b) Not in the file: the mirror removes an empty mirrored folder, and the panel's `A` warns
-     that the folder lasts only until the next load.
-   - Recommendation: (a), because `A` in the panel and `foo/bar/` in quick add make folders on
-     purpose, and (a) reads like quick add's trailing `/`.
+The maintainer took the recommendation on all four (18 Nov 2026).
+
+1. **Duplicate titles in one folder:** (a). The second is written as `Title (2)` and renamed in
+   Places to match (Behaviour 15), and the notice says what changed.
+2. **Two devices putting each other's changes back:** (b). A bookmark put back three times in ten
+   minutes stops being put back: both directions pause for that table, and the status bar says
+   so. Slice 2 builds this, since it is the first slice where `"vimma"` writes back.
+3. **Sync and git both carrying mirrored folders:** (a). The guide says to use one carrier; no
+   fourth `write_back` value, and Vimma does not read git state.
+4. **Empty folders:** (a). A key ending in `/` with the value `""` (Behaviour 2), written only
+   while the folder is empty.
