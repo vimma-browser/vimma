@@ -189,6 +189,21 @@ const KEYS_KEPT = 16;
  */
 const isIndex = (n) => Number.isSafeInteger(n) && /** @type {number} */ (n) >= 0;
 
+/**
+ * Whether `el` is a link or inside one, through shadow roots to their hosts: a press on it
+ * passes through the link, whose handling sets the window's link preview.
+ * @param {Element} el
+ */
+function inLink(el) {
+  /** @type {Element | null} */
+  let n = el;
+  while (n) {
+    if (n.matches(":any-link")) return true;
+    n = n.parentElement ?? /** @type {ShadowRoot | null} */ (n.parentNode)?.host ?? null;
+  }
+  return false;
+}
+
 export class VimmaChild extends JSWindowActorChild {
   /**
    * Test-only (browser_vimma_mcp_fill.js): the name of a page function an agent's form
@@ -986,10 +1001,12 @@ export class VimmaChild extends JSWindowActorChild {
 
   /**
    * A click as the user's hints and an agent's `vimma_activate` make it: mouseover, mousedown
-   * and mouseup built with the page's constructor (untrusted), for pages that act on them (menus,
-   * Google's jsaction), then click(), which the page sees as trusted and whose activation
-   * behaviour follows links. It gives no transient user activation itself
-   * (docs/specs/mcp-forms.md F8): the user's hint wraps it in asUserGesture, an agent's never.
+   * and mouseup built with the page's constructor, for pages that act on them (menus, Google's
+   * jsaction), then click(), whose activation behaviour follows links. The page sees all four as
+   * trusted: dispatched by chrome code, they are marked trusted again on dispatch
+   * (EventDispatcher::DispatchDOMEvent, LegacyIsCallerChromeOrNativeCode; #1321). It gives no
+   * transient user activation itself (docs/specs/mcp-forms.md F8): the user's hint wraps it in
+   * asUserGesture, an agent's never.
    * `still`: checked after the mouse events; when false, no click.
    * @param {Element} el @param {() => boolean} [still]
    * @returns {boolean} whether it clicked
@@ -1013,11 +1030,33 @@ export class VimmaChild extends JSWindowActorChild {
       const buttons = type === "mousedown" ? 1 : 0;
       el.dispatchEvent(new win.MouseEvent(type, { ...init, buttons }));
     }
+    if (inLink(el)) this.#leaveLink();
     if (!this.#onPage(el) || !still()) return false;
     // SVG elements have no click(): dispatch the click event for them.
     if (typeof html.click === "function") html.click();
     else el.dispatchEvent(new win.MouseEvent("click", init));
     return true;
+  }
+
+  /**
+   * Ends the link hover #press began on a link: its trusted mouseover, and the focus its trusted
+   * mousedown gives the link (Element::PostHandleEventForLinks), each put the link's URL in the
+   * window's link preview (Element::GetEventTargetParentForLinks), where it stayed until another
+   * document loaded, since no pointer leaves the link (#1309). This is what a mouseout does there
+   * (nsDocShell::OnLeaveLink), without one: the page sees the pointer stay on the element, so a
+   * menu that opened on the hover stays open. Only after a press in a link: the call clears
+   * whatever the window shows, the user's own hover included. In a hidden agent tab the URL
+   * still reaches the window before this clears it; #1321 tracks the events themselves.
+   */
+  #leaveLink() {
+    try {
+      this.docShell?.treeOwner
+        ?.QueryInterface(Ci.nsIInterfaceRequestor)
+        .getInterface(Ci.nsIWebBrowserChrome)
+        .setLinkStatus("");
+    } catch {
+      // A frame being torn down has no tree owner left; nothing shows its link then.
+    }
   }
 
   /**
