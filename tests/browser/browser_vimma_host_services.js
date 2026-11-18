@@ -49,6 +49,8 @@ const ALL = [
   "configRefused",
   "addAgentProvider",
   "editSiteUnbind",
+  "bookmarksFileForget",
+  "bookmarksFileWords",
 ];
 
 /** Keys of the services' fakes, shaped as the registry asks. */
@@ -62,6 +64,8 @@ const FAKES = {
   configRefused: () => ({ errors: [], file: "config.toml" }),
   addAgentProvider: async () => ({ name: "fake" }),
   editSiteUnbind: async () => ({ added: [], already: [], removed: [] }),
+  bookmarksFileForget: async () => "",
+  bookmarksFileWords: () => [],
 };
 
 /**
@@ -101,6 +105,16 @@ add_task(async function test_vimma_js_provided_every_service_before_the_window_s
     HostServices.editSiteUnbind,
     ConfigHost.editSiteUnbind,
     ":siteunbind --save and :sitebind --delete write through ConfigHost",
+  );
+  Assert.equal(
+    HostServices.bookmarksFileForget,
+    ConfigHost.bookmarksForget,
+    ":bookmarks forget goes through ConfigHost",
+  );
+  Assert.equal(
+    HostServices.bookmarksFileWords,
+    ConfigHost.bookmarksWords,
+    ":bookmarks completes from ConfigHost",
   );
   // Each window runs vimma.js, which hands over the same services again.
   const second = await BrowserTestUtils.openNewBrowserWindow();

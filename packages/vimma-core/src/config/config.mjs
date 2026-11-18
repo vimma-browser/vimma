@@ -35,6 +35,11 @@ import { formatPath, locateKeys, parsePath, parseToml, setTomlKeys, tomlLiteral 
 import { canonicalChord, isShortcutChord } from "../keys/firefox-keys.mjs";
 import { KeyNotationError, formatKey, parseKey } from "../keys/keys.mjs";
 import { BOOKMARKLETS_SETTINGS, BOOKMARKS_ROOTS } from "../ui/bookmarks.mjs";
+import {
+  BOOKMARKS_SETTING_NAMES,
+  WRITE_BACK_SETTINGS,
+  inlineSettingNameMessage,
+} from "./bookmarks-file.mjs";
 import { PANEL_NUMBERS } from "../ui/sidepanel.mjs";
 import { SCROLL_STEP_DEFAULT, SCROLL_STEP_MAX, SCROLL_STEP_MIN } from "../page/scroll.mjs";
 import { quarantineProblem, resolveDownloadDir } from "../agent/agent-downloads.mjs";
@@ -56,6 +61,7 @@ import { hasControl } from "../text/strings.mjs";
 /** @import { InsertSiteMode, InsertSiteRule } from "../keys/editable.mjs" */
 /** @import { Route } from "./routes.mjs" */
 /** @import { BookmarkletsSetting, BookmarksRoot } from "../ui/bookmarks.mjs" */
+/** @import { WriteBack } from "./bookmarks-file.mjs" */
 /** @import { PanelNumbers } from "../ui/sidepanel.mjs" */
 /** @import { ResolvedSearch } from "./search.mjs" */
 
@@ -66,6 +72,8 @@ import { hasControl } from "../text/strings.mjs";
  * @property {string} path           config path (`keys.new_tab[1]`); "" for syntax errors
  * @property {string} message
  * @property {string} [suggestion]
+ * @property {string} [file]         the file it is in, when not the config file the list is about
+ *   (bookmarks.toml's errors, docs/specs/bookmarks-file.md)
  */
 
 /**
@@ -95,7 +103,7 @@ import { hasControl } from "../text/strings.mjs";
  * @property {{ defaultWorkspace: string | null }} routing  `[routing]` (schema 2), app-routes
  * @property {FirefoxKeySetting} firefox                 `[firefox]`, chords canonical (schema 2)
  * @property {boolean} insertEditing                     `[modal] insert_editing` (schema 2)
- * @property {{ root: BookmarksRoot, bookmarklets: BookmarkletsSetting }} bookmarks
+ * @property {{ root: BookmarksRoot, bookmarklets: BookmarkletsSetting, writeBack: WriteBack }} bookmarks
  *   `[bookmarks]` (schema 2; `bookmarklets`: docs/specs/bookmarklets.md B1)
  * @property {{ numbers: PanelNumbers }} panel            `[panel]` (schema 2), side-panel-counts
  * @property {{ step: number }} scroll                   `[scroll]` (schema 2): j/k/h/l in CSS
@@ -287,7 +295,7 @@ const SCHEMA_2_KEYS = [
   "statusbar",
 ];
 /** `[bookmarks]` (docs/specs/bookmarks.md, decision 2; docs/specs/bookmarklets.md, B1). */
-const BOOKMARKS_KEYS = ["root", "bookmarklets"];
+const BOOKMARKS_KEYS = ["root", "bookmarklets", "write_back"];
 /** `[routing]` (docs/specs/app-routes.md, decision 16). */
 const ROUTING_KEYS = ["default_workspace"];
 /** `[panel]` (docs/specs/side-panel-counts.md, decision 6). */
@@ -668,12 +676,28 @@ function validate(raw, declared, warnings = []) {
   if (declared >= 2 && isTable(raw.bookmarks)) {
     for (const [key, v] of Object.entries(raw.bookmarks)) {
       const path = ["bookmarks", key];
+      // An inline `[bookmarks.<workspace>]` table (docs/specs/bookmarks-file.md D2): its lines are
+      // the mirror's to check (config/bookmarks-file.mjs), so that a bad bookmark never stops the
+      // rest of config.toml; a table named after a setting cannot be one (Behaviour 8).
+      if (isTable(v)) {
+        if (BOOKMARKS_SETTING_NAMES.includes(key)) fail(path, inlineSettingNameMessage(key));
+        continue;
+      }
       if (!BOOKMARKS_KEYS.includes(key)) unknownKey(path, key, BOOKMARKS_KEYS);
       else if (typeof v !== "string") typeError(path, v, "a string");
       else if (key === "bookmarklets") {
         // docs/specs/bookmarklets.md B1-B3: only this file sets who may run bookmarklets.
         if (!BOOKMARKLETS_SETTINGS.includes(/** @type {BookmarkletsSetting} */ (v))) {
           fail(path, 'must be "none", "user" or "agent"', closest(v, BOOKMARKLETS_SETTINGS));
+        }
+      } else if (key === "write_back") {
+        // docs/specs/bookmarks-file.md Behaviour 9, D12: only config.toml says which changes
+        // reach the bookmarks file.
+        if (v === "all") {
+          // docs/specs/bookmarks-file.md Delivery slice 3 brings it.
+          fail(path, 'must be "vimma" or "none": "all" comes in a later version');
+        } else if (!WRITE_BACK_SETTINGS.includes(/** @type {WriteBack} */ (v))) {
+          fail(path, 'must be "vimma" or "none"', closest(v, WRITE_BACK_SETTINGS));
         }
       } else if (!BOOKMARKS_ROOTS.includes(/** @type {BookmarksRoot} */ (v))) {
         fail(path, 'must be "workspace", "toolbar" or "all"', closest(v, BOOKMARKS_ROOTS));
@@ -1302,6 +1326,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     bookmarks: {
       root: user.bookmarks?.root ?? "workspace",
       bookmarklets: user.bookmarks?.bookmarklets ?? "none",
+      writeBack: user.bookmarks?.write_back ?? "vimma",
     },
     panel: { numbers: user.panel?.numbers ?? "absolute" },
     scroll: { step: user.scroll?.step ?? SCROLL_STEP_DEFAULT },

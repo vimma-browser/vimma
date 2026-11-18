@@ -24,6 +24,7 @@ import {
   workspaceFolderGuid,
   workspaceTree,
 } from "../core/bookmarks.mjs";
+import { pageUrl } from "../core/pageurl.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 
@@ -77,6 +78,121 @@ export function setBookmarkletsSetting(next) {
 export function bookmarkletsSetting() {
   return bookmarklets;
 }
+
+/**
+ * The folders bookmarks.toml mirrors (docs/specs/bookmarks-file.md), set by
+ * config/BookmarksFile.sys.mjs after each run. A change in them, or in any folder below, is an
+ * edit of the file first and of Places after it (Behaviour 10, D18), through `writer`; with no
+ * writer (`write_back = "none"`, a paused file) the keys refuse (Behaviour 11), and in a private
+ * window they always do (Behaviour 12).
+ * @type {ReadonlySet<string>}
+ */
+let mirrored = new Set();
+
+/** Why a key changes nothing in a mirrored folder, when nothing more particular applies. */
+export const MIRRORED_REFUSAL =
+  "bookmarks.toml is read-only: edit the file to change these bookmarks";
+/** Behaviour 11. */
+export const NONE_REFUSAL = 'bookmarks.toml is read-only (write_back = "none")';
+/** Behaviour 12: nothing done in private browsing reaches a file that may be committed. */
+export const PRIVATE_REFUSAL = "bookmarks.toml is not written from a private window";
+
+/** What the keys say there now: read-only, or a pause. */
+let refusal = MIRRORED_REFUSAL;
+
+/**
+ * A change in a mirrored folder, by Places guid, for the mirror to write to the file first:
+ * `parent` the deepest folder that exists and `missing` the folders to make below it; `outside`
+ * makes and returns a destination outside every mirrored folder; `into` a workspace's folder.
+ * @typedef {{ type: "add", parent: string, missing: string[], title: string | null,
+ *     url: string | null }
+ *   | { type: "move", guid: string, parent: string, missing: string[], title: string | null,
+ *     outside: () => Promise<string> }
+ *   | { type: "remove", guid: string }
+ *   | { type: "renameTable", folder: string, to: string }
+ *   | { type: "moveTable", from: string, target: string | null, into: () => Promise<string> }
+ *   | { type: "removeTable", folder: string }} FileChange
+ * @typedef {{ error: string } | { guid: string | null, path: string[], count: number,
+ *   renamed?: { from: string, to: string } }} FileChangeResult
+ * @typedef {(change: FileChange) => Promise<FileChangeResult>} FileWriter
+ */
+
+/** @type {FileWriter | null} */
+let writer = null;
+
+/**
+ * @param {ReadonlySet<string>} guids  the tables' folders
+ * @param {string} [why]  what a refused key says
+ * @param {FileWriter | null} [write]  writes a change to the file and then Places; null refuses
+ */
+export function setMirroredFolders(guids, why = MIRRORED_REFUSAL, write = null) {
+  mirrored = new Set(guids);
+  refusal = why;
+  writer = write;
+}
+
+/** Whether a change in a mirrored folder is written to the file now (`write_back = "vimma"`). */
+export function mirrorWritable() {
+  return writer !== null;
+}
+
+/** What a key refused in a mirrored folder says. */
+export function mirroredRefusal() {
+  return refusal;
+}
+
+/**
+ * Whether `guid` is a mirrored folder or anything under one, read from Places now.
+ * @param {string | null | undefined} guid
+ */
+export async function isMirrored(guid) {
+  if (!mirrored.size || !guid || isPendingFolder(guid)) return false;
+  const PU = places();
+  for (let g = /** @type {string | undefined} */ (guid), depth = 0; g && depth < 64; depth++) {
+    if (mirrored.has(g)) return true;
+    if (/** @type {string[]} */ (Object.values(PLACES_ROOTS)).includes(g)) return false;
+    g = (await PU.bookmarks.fetch(g))?.parentGuid;
+  }
+  return false;
+}
+
+/**
+ * How a change that touches `guids` goes: null when none is mirrored (Places alone, as before
+ * bookmarks.toml), else through the file's writer, or refused.
+ * @param {BrowserWindow | null} win  the window the key was typed in
+ * @param {...(string | null | undefined)} guids
+ * @returns {Promise<{ refused: string } | { write: FileWriter } | null>}
+ */
+async function routeMirrored(win, ...guids) {
+  let any = false;
+  for (const g of guids) if (!any && (await isMirrored(g))) any = true;
+  if (!any) return null;
+  const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
+    "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+  );
+  if (win && PrivateBrowsingUtils.isWindowPrivate(win)) return { refused: PRIVATE_REFUSAL };
+  return writer ? { write: writer } : { refused: refusal };
+}
+
+/**
+ * Why a change touching `guids` would be refused (a mirrored folder that is not written now, or
+ * a private window), or null: the panel says it before its prompt opens.
+ * @param {BrowserWindow | null} win
+ * @param {...(string | null | undefined)} guids
+ */
+export async function mirroredRefusalFor(win, ...guids) {
+  const route = await routeMirrored(win, ...guids);
+  return route && "refused" in route ? route.refused : null;
+}
+
+/**
+ * What a file write's outcome adds to the notice: a duplicate name made unique (Behaviour 15).
+ * @param {FileChangeResult} r
+ */
+const renamedNote = (r) =>
+  "renamed" in r && r.renamed
+    ? ` (${JSON.stringify(r.renamed.from)} is taken there, so bookmarks.toml has ${JSON.stringify(r.renamed.to)})`
+    : "";
 
 /** @returns {PlacesUtilsApi} */
 function places() {
@@ -253,13 +369,14 @@ function pathIn(scope, parentGuid, title) {
 }
 
 /**
- * The page a key bookmarks: the selected tab's URL and title, when the panel could open it.
+ * The page a key bookmarks: the selected tab's URL and title, when the panel could open it; in
+ * Reader View the article's own URL, which opens anywhere, not the about:reader one.
  * @param {BrowserWindow} win
  * @returns {{ url: string, title: string } | null}
  */
 export function currentPage(win) {
   const browser = win.gBrowser.selectedBrowser;
-  const url = browser.currentURI?.spec ?? "";
+  const url = pageUrl(browser.currentURI?.spec ?? "");
   if (!isOpenable(url) || url === "about:blank") return null;
   return { url, title: browser.contentTitle || url };
 }
@@ -312,6 +429,22 @@ export async function addBookmark(win, text, page, { base, folderOnly = false } 
   if (!leaf && !folders.length && !splitWorkspacePath(text).workspace) {
     return "bookmark: empty name";
   }
+  const at = resolveFolders(to.tree, to.base, folders);
+  const route = await routeMirrored(win, at.guid);
+  if (route) {
+    if ("refused" in route) return route.refused;
+    const onlyFolders = !leaf && folderOnly;
+    const r = await route.write({
+      type: "add",
+      parent: at.guid,
+      missing: at.missing,
+      title: onlyFolders ? null : (leaf ?? page.title),
+      url: onlyFolders ? null : page.url,
+    });
+    if ("error" in r) return r.error;
+    if (onlyFolders) return `made ${formatBookmarkPath(folders)}/`;
+    return `bookmarked: ${await shownPath(win, r.guid, r.path)}${renamedNote(r)}`;
+  }
   const parentGuid = await ensureFolders(to.tree, to.base, folders);
   if (!leaf && folderOnly) return `made ${formatBookmarkPath(folders)}/`;
   const title = leaf ?? page.title;
@@ -330,6 +463,20 @@ export async function addFolder(win, text, base) {
   if ("refused" in to) return to.refused;
   const names = to.leaf ? [...to.folders, to.leaf] : to.folders;
   if (!names.length) return "folder: empty name";
+  const at = resolveFolders(to.tree, to.base, names);
+  const route = await routeMirrored(win, at.guid);
+  if (route) {
+    if ("refused" in route) return route.refused;
+    const r = await route.write({
+      type: "add",
+      parent: at.guid,
+      missing: at.missing,
+      title: null,
+      url: null,
+    });
+    if ("error" in r) return r.error;
+    return `made ${formatBookmarkPath(names)}/`;
+  }
   await ensureFolders(to.tree, to.base, names);
   return `made ${formatBookmarkPath(names)}/`;
 }
@@ -349,6 +496,21 @@ export async function placeBookmark(win, guid, text) {
     return "bookmark: empty name";
   }
   const PU = places();
+  const at = resolveFolders(to.tree, to.base, folders);
+  const route = await routeMirrored(win, guid, at.guid);
+  if (route) {
+    if ("refused" in route) return route.refused;
+    const r = await route.write({
+      type: "move",
+      guid,
+      parent: at.guid,
+      missing: at.missing,
+      title: leaf,
+      outside: () => ensureFolders(to.tree, to.base, folders),
+    });
+    if ("error" in r) return r.error;
+    return `bookmarked: ${await shownPath(win, guid, r.path)}${renamedNote(r)}`;
+  }
   const parentGuid = await ensureFolders(to.tree, to.base, folders);
   const bm = await PU.bookmarks.fetch(guid);
   if (!bm) return "bookmark: it is gone";
@@ -366,10 +528,28 @@ export async function placeBookmark(win, guid, text) {
 /**
  * @param {string} guid
  * @param {string} title
+ * @param {BrowserWindow | null} [win]  the window the key was typed in
+ * @returns {Promise<string | null>} why not, or what to say
  */
-export async function renameItem(guid, title) {
+export async function renameItem(guid, title, win = null) {
   const name = title.trim();
   if (!name) return "rename: empty name";
+  const route = await routeMirrored(win, guid);
+  if (route) {
+    if ("refused" in route) return route.refused;
+    const bm = await places().bookmarks.fetch(guid);
+    if (!bm) return "rename: it is gone";
+    const r = await route.write({
+      type: "move",
+      guid,
+      parent: bm.parentGuid,
+      missing: [],
+      title: name,
+      outside: async () => bm.parentGuid,
+    });
+    if ("error" in r) return r.error;
+    return renamedNote(r).trim() || null;
+  }
   await places().bookmarks.update({ guid, title: name });
   return null;
 }
@@ -390,15 +570,71 @@ export async function moveItem(win, guid, text) {
     const at = resolveFolders(to.tree, to.base, names.slice(0, i));
     if (at.missing.length === 0 && at.guid === guid) return "move: not into itself";
   }
+  const at = resolveFolders(to.tree, to.base, names);
+  const route = await routeMirrored(win, guid, at.guid);
+  if (route) {
+    if ("refused" in route) return route.refused;
+    const r = await route.write({
+      type: "move",
+      guid,
+      parent: at.guid,
+      missing: at.missing,
+      title: null,
+      outside: () => ensureFolders(to.tree, to.base, names),
+    });
+    if ("error" in r) return r.error;
+    return renamedNote(r).trim() || null;
+  }
   const PU = places();
   const parentGuid = await ensureFolders(to.tree, to.base, names);
   await PU.bookmarks.update({ guid, parentGuid, index: PU.bookmarks.DEFAULT_INDEX });
   return null;
 }
 
-/** @param {string} guid */
-export async function removeItem(guid) {
+/**
+ * @param {string} guid
+ * @param {BrowserWindow | null} [win]  the window the key was typed in
+ * @returns {Promise<string | null>} why not, or null once removed
+ */
+export async function removeItem(guid, win = null) {
+  const route = await routeMirrored(win, guid);
+  if (route) {
+    if ("refused" in route) return route.refused;
+    const r = await route.write({ type: "remove", guid });
+    return "error" in r ? r.error : null;
+  }
   await places().bookmarks.remove(guid);
+  return null;
+}
+
+/**
+ * A closed workspace's folder deleted with everything in it (decision 12's `d`): for a mirrored
+ * folder its table goes from the file first (Behaviour 10).
+ * @param {string} guid
+ * @returns {Promise<string | null>} why not, or null once removed
+ */
+export async function removeWorkspaceFolder(guid) {
+  const route = await routeMirrored(null, guid);
+  if (route) {
+    if ("refused" in route) return route.refused;
+    const r = await route.write({ type: "removeTable", folder: guid });
+    return "error" in r ? r.error : null;
+  }
+  await places().bookmarks.remove(guid);
+  return null;
+}
+
+/**
+ * A bookmark's path as the notice shows it, read from Places after the file's write: from the
+ * window's tree, `@name/…` in another workspace's folder; else the path the file holds.
+ * @param {BrowserWindow | null} win
+ * @param {string | null} guid
+ * @param {readonly string[]} path
+ */
+async function shownPath(win, guid, path) {
+  const bm = guid ? await places().bookmarks.fetch(guid) : null;
+  const shown = bm ? pathIn(await loadScope(win), bm.parentGuid, bm.title) : null;
+  return shown ?? formatBookmarkPath([...path]);
 }
 
 /**
@@ -421,12 +657,22 @@ export async function workspaceFolder(def) {
  * a folder renamed in the Library stays linked; this only keeps the names alike.
  * @param {WorkspaceDefinition} before  the definition before the rename
  * @param {string} name
+ * @returns {Promise<string | null>} what to tell the user, if anything
  */
 export async function renameWorkspaceFolder(before, name) {
   const folder = await workspaceFolder(before);
-  if (!folder) return;
+  if (!folder) return null;
   link(before.id, folder.guid);
+  const route = await routeMirrored(null, folder.guid);
+  if (route) {
+    // Refused (write_back = "none", a pause): the folder keeps its table's name, linked by guid
+    // (bookmarks-file Behaviour 11). Else the table's header is renamed first (Behaviour 10).
+    if ("refused" in route) return null;
+    const r = await route.write({ type: "renameTable", folder: folder.guid, to: name });
+    return "error" in r ? `the bookmarks folder kept its name: ${r.error}` : null;
+  }
   await places().bookmarks.update({ guid: folder.guid, title: name });
+  return null;
 }
 
 /**
@@ -438,6 +684,22 @@ export async function renameWorkspaceFolder(before, name) {
  */
 export async function moveWorkspaceBookmarks(from, toId) {
   const PU = places();
+  const def = WorkspaceStore.definitions.workspaces.find((d) => d.id === toId);
+  const target = def
+    ? workspaceFolderGuid(fromPlaces(await placesTree(), "toolbar"), asWorkspace(def))
+    : null;
+  const route = await routeMirrored(null, from, target);
+  if (route) {
+    if ("refused" in route) throw new Error(route.refused);
+    const r = await route.write({
+      type: "moveTable",
+      from,
+      target,
+      into: () => makeWorkspaceFolder(toId),
+    });
+    if ("error" in r) throw new Error(r.error);
+    return r.count;
+  }
   const into = await makeWorkspaceFolder(toId);
   const kids = (await PU.promiseBookmarksTree(from))?.children ?? [];
   for (const k of kids) {

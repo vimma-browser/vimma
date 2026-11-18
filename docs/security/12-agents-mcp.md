@@ -1283,10 +1283,23 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   only an element of the page now. `query` (at most 200 characters of one line, matched NFKC and
   case-folded against an element's label, text, caption and name as the list writes them, cut at
   80 characters, never its value) and `kinds` (kinds of the list's own) leave out the elements
-  that do not match, and their labels with them; neither reaches the page.
+  that do not match, and their labels with them; neither reaches the page. A filtered list that
+  gives no element says so in Vimma's fixed words in place of its intro, which both renderers
+  decide from the agent's own `query` and `kinds` arguments and the list's shape (empty inside
+  the delimiters, no `repeated`), so no page string and no new field reach the agent by that
+  route. With elements past the 200 left out, which happens before the filter, the words say
+  that none of the listed elements matches and that those left out may, never that nothing on
+  screen matches. No MCP result carries `structuredContent`: Claude Code shows the model that in
+  place of the text when both are there, which dropped `vimma_open`'s untrusted header and its
+  list while the list still counted as the site's last one, so the next list named labels the
+  model never saw (#1336). The text is the only channel, with the header, the delimiters and
+  Vimma's own words in it.
   [`test_repeated_list_leaves_out_unchanged_lines`](../../tests/browser/browser_vimma_mcp_elements.js),
   [`test_compact_list_keeps_delimiters_and_sensitive_rules`](../../tests/browser/browser_vimma_mcp_elements.js),
   [`test_elements_query_and_kinds`](../../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_filtered_list_names_unchanged_matches`](../../tests/browser/browser_vimma_mcp_elements.js),
+  [`vimma_elements: a filtered list that gives nothing says nothing matches`](../../packages/vimma-core/test/agent-results.test.ts),
+  [`a_filtered_list_that_gives_nothing_says_nothing_matches`](../../tools/vimma-ctl/src/mcp/render.rs),
   [`test_clear_forgets_the_last_element_lists`](../../tests/browser/browser_vimma_agent_conversations.js),
   [`query matches only what the list writes: text cut at 80 characters, as shown`](../../packages/vimma-core/test/agent-act.test.ts),
   [`an element list leaves out lines given earlier for the same site and counts them`](../../packages/vimma-core/test/agent-act.test.ts),
@@ -1307,6 +1320,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_builtin_open_names_the_error_page`](../../tests/browser/browser_vimma_agent_load_error.js),
   [`a_steps_element_list_is_untrusted_content_as_vimma_elements`](../../tools/vimma-ctl/src/mcp/render.rs),
   [`an_open_with_elements_lists_the_page_it_loaded`](../../tools/vimma-ctl/src/mcp/render.rs),
+  [`tabs_opens_and_closes_say_what_happened`](../../tools/vimma-ctl/src/mcp/render.rs),
   [`a step that returns the element list says so in the question and the notice`](../../packages/vimma-core/test/agent-prompt.test.ts),
   [`test_password_and_card_fields_are_sensitive_without_values`](../../tests/browser/browser_vimma_mcp_elements.js),
   [`test_elements_lists_kinds_fields_and_forms`](../../tests/browser/browser_vimma_mcp_elements.js),

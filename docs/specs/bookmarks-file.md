@@ -1,10 +1,10 @@
 # Spec: bookmarks-file
 
-Status: accepted · Area: `packages/vimma-core/src/` (new `config/bookmarks-file.mjs`: parse, validate,
+Status: accepted, Delivery slices 1 and 2 implemented · Area: `packages/vimma-core/src/` (new `config/bookmarks-file.mjs`: parse, validate,
 model, three-way diff and line edits of `bookmarks.toml`; `config/config.mjs` for
 `[bookmarks] write_back` and the inline tables; `config/defaults.mjs` for the template line;
 `ui/bookmarks.mjs` for the panel's write path); `src/browser/base/content/vimma/` (new
-`bookmarks/BookmarksFile.sys.mjs`: the poll, the Places mirror and the write-back;
+`config/BookmarksFile.sys.mjs`: the poll, the Places mirror and the write-back;
 `config/ConfigHost.sys.mjs` for the shared edit queue; `host/bookmark-ops.mjs` and
 `host/bookmark-actions.mjs`, which write through the file when a folder is mirrored);
 `docs/guide.md`, `docs/security/08-config-toml.md` · Upstream patches: none · ADR: none
@@ -699,6 +699,121 @@ Each slice is one PR with its tests, docs and changelog line, mergeable alone.
    `write_back = "all"`, which becomes the default, said in its changelog line.
 4. **Export.** `:bookmarks export` and `export!`, `:bookmarks forget`, `Tab` completion, the
    guide's migration steps.
+
+### Notes from delivery slice 1
+
+Slice 1 landed with these departures from the text above, each for the reason given:
+
+- **Module place.** The mirror is `config/BookmarksFile.sys.mjs`, not a new `bookmarks/`
+  folder, because ConfigHost starts it, feeds it `config.toml`'s text and polls it, slice 2
+  shares ConfigHost's edit queue (D11), and a new folder needs a layer of its own (ADR-026).
+- **Feature pref.** The feature sits behind `vimma.feature.bookmarksFile`, off by default,
+  because it lands over four pull requests (CONTRIBUTING.md, "Unfinished features"); while it
+  is off nothing reads either file. The slice that finishes the feature removes the pref.
+- **`:bookmarks forget` in slice 1.** Without it a missing file's pause (D9) has no way out
+  but restoring the file, and the keys refuse in those folders until then; so it ships with
+  the pause, and `Tab` completes it while the feature is on. The base keeps the hash of the
+  bookmarks it was forgotten for, so it lasts across restarts and unrelated `config.toml`
+  edits, and the mirror starts again only when the bookmarks change. A key refused during that pause
+  says the file is missing and names the command.
+- **Notices.** The `(write_back = "…")` suffixes wait for the setting (slice 2): slice 1 says
+  `bookmarks.toml is read-only: edit the file to change these bookmarks`. Table names are
+  quoted in notices and questions (`from "work"`), so a name never reads as part of the
+  sentence. The first-load question (Behaviour 18) reads
+  `bookmarks.toml takes over "work": delete its 3 bookmarks the file lacks? y/N`.
+- **Schemes (Behaviour 4).** A line may hold only `http`, `https`, `file`, `about` and
+  `javascript:` (behind D13), the schemes Vimma opens (docs/security/04); every other scheme
+  is an error at its line, because a pulled file should not plant `chrome:`, `view-source:` or
+  `place:` bookmarks that run from Firefox's own UI.
+- **Bounds.** At most 20,000 bookmarks and folders (the folders paths make count) and 32 names per path, names without control,
+  bidirectional or invisible characters, table names without outer spaces, because the plan
+  runs on the parent's main thread and the file may be someone else's
+  (docs/security/08-config-toml.md F6).
+- **One claimed set (D4, D6).** Every table claims from one set, a base guid is reused only
+  inside a mirrored folder, and a base folder is trusted only at the toolbar's top, inside
+  another table's folder there, or as the workspace's linked folder, because a folder dragged
+  between mirrored folders must be moved back, not deleted, and a damaged base must not point
+  the mirror at the user's other bookmarks.
+- **Questions (D14, Behaviour 7).** Removals of outside additions (Sync, the Library) count
+  toward the question too, a yes approves the removals it showed and no more, and the question
+  waits until the window's prompt line and command line are closed and no page field has the
+  keys, and ignores keys for 1 s, because a background `git pull` must not take over a prompt or be confirmed by a key
+  typed on a page. Many small removals each under the limits are an accepted risk until
+  write-back.
+- **Startup (D17).** A new or corrupt Places database no longer makes the file win without a
+  question: the base is kept, and a folder the base never held (as a restored backup brings)
+  still asks before anything in it is deleted. The first run also waits for `config.toml`'s
+  first read, and a missing `config.toml` that held the tables pauses like a missing
+  `bookmarks.toml`.
+- **A removed table** removes the bookmarks the base knew in its folder and keeps the folder
+  (the workspace's) and any protected bookmarklet in it. `:wsdelete` of a mirrored folder
+  closes the workspace without the bookmarks question, which could only offer `k`; one whose
+  other workspace's folder is mirrored is not offered `m`.
+- **The base** keeps no hash of the file, only, after `:bookmarks forget`, the hash of the
+  bookmarks it was forgotten for.
+- **Bookmarklets** follow the last `config.toml` that applied, so a file with errors, or one
+  `:source <file>` loaded, allows none (D12).
+- **Cross-device put-back (open question 2).** Answer (b) comes with slice 2; until then two
+  devices with different files put each other's changes back, and large put-backs ask.
+
+### Notes from delivery slice 2
+
+Slice 2 landed with these departures and particulars, each for the reason given:
+
+- **Module place.** The line writer, the edits of Vimma's keys, the base's update after an edit,
+  the loop guard and the queue are `packages/vimma-core/src/config/bookmarks-edit.mjs`, beside
+  `bookmarks-file.mjs`, because that file already holds the reader and the plan.
+- **`write_back` values.** Only `"vimma"` and `"none"` are valid until slice 3; `"all"` is a
+  config error with the closest valid value, because accepting it would promise writes this
+  slice does not make; for `"all"` the message says it comes in a later version.
+- **The writer.** `ConfigHost`'s write of `config.toml` became `writeFileNow`, used for both
+  files in the one queue (D11); it also refuses to replace a file that is not a regular file,
+  as the reader refuses to read one. The re-read after a `config.toml` edit runs after the
+  edit's task, outside the queue.
+- **Names.** Control characters in a name Vimma writes become spaces, and bidirectional and
+  invisible characters are dropped, because a page title may hold them and the file refuses
+  them (Behaviour 4); the name is then trimmed and cut to 4,096 characters. A `javascript:` URL
+  is written only while `bookmarklets` is `"user"` or `"agent"`, so a key never writes a line the
+  mirror would then skip.
+- **Empty folders.** A key that leaves a folder empty (a move or a delete of its last bookmark)
+  writes that folder's `"name/" = ""` line in place of the line it took, because the folder
+  stays in Places and decision 4 keeps empty folders in the file.
+- **Across the edge of the file.** A move from a mirrored folder to one that is not mirrored
+  removes the lines and then moves the bookmark in Places, keeping its guid; a move the other
+  way writes the bookmark, or the folder with everything in it, into the table, and is refused
+  whole when the file cannot hold any of it. `:wsdelete`'s `m` merges the closed workspace's
+  table into the other workspace's (a clashing top-level name becomes `name (2)`), writes the
+  folder into the other table when only that one is mirrored, or removes the table when only
+  the closed one is; `d` removes the table and then the folder.
+- **The base follows each edit (D4).** After a key's edit the base records each moved item's
+  guid at its new path, so the run that follows keeps guids even where two bookmarks share a
+  URL.
+- **The workspace's own folder.** The panel's `r`, `m` and `d` on a mirrored workspace folder
+  itself (with `root = "toolbar"`) refuse: it is renamed with `:wsrename` and removed with
+  `:wsdelete`, because the folder is its table.
+- **Loop guard (open question 2).** "A bookmark" is a line of the file, by its table and path,
+  or an item only Places had, by its guid (Sync keeps guids across devices); a folder's order
+  counts as one item. A paused table is left as it is by every run, Places events in it start
+  no burst, and Vimma's keys refuse there. It goes on when the file changes from outside Vimma
+  (an edit, a `git pull`) or after `:bookmarks forget`, not after Vimma's own edit of
+  another table.
+- **A Places step that fails.** When the Places part of a key's change fails after the file was
+  written (a move's destination removed while the key waited in the queue), and Places has not
+  changed yet, the file's text and the base are put back and a run brings Places to them. Once
+  part of the change is in Places (`:wsdelete`'s `m` moves items one by one), the edit stays
+  and the run brings Places to the file, so an item that did not move gets a copy from the
+  file. Either way no item is lost, because D18 promises that the two never diverge and a line
+  dropped for an item already moved would make the next run remove it. A put-back the file
+  refuses (it changed meanwhile) keeps the edited base, which matches what was written.
+- **Moved lines** keep their trailing comment; a folder's line that a move or a delete leaves
+  behind does not take it. Several items `:wsdelete`'s `m` writes into a table are one edit, so a
+  large file is read and checked once.
+- **Line ends.** A CRLF file is written with CRLF throughout, also when its last line has no line
+  break and a line goes after it.
+- **Takeover (D7).** Under `"vimma"` a takeover writes the folder's extra bookmarks and empty
+  folders to the end of the table, a second item of one name as `name (2)`, and says how many it
+  wrote; an item the file cannot hold (a `data:` URL, a name with hidden characters) is still
+  asked about, as under `"none"`.
 
 ## Decisions on the open questions
 

@@ -38,7 +38,7 @@ S9 or M62), so a citation that gives only those ("security.md M62", "§12") find
 | §5      | [Add-ons](05-add-ons.md)                                                        | A1 to A3            |
 | §6      | [Chrome UI rendering](06-chrome-ui-rendering.md)                                | C1 to C4            |
 | §7      | [Omarchy hook and the `vimma-open` launcher](07-omarchy-hook-and-vimma-open.md) | O1 to O10           |
-| §8      | [config.toml](08-config-toml.md)                                                | F1 to F5            |
+| §8      | [config.toml](08-config-toml.md)                                                | F1 to F7            |
 | §9      | [Privacy defaults](09-privacy-defaults.md)                                      | P1 to P8            |
 | §10     | [Firefox updates](10-firefox-updates.md)                                        | G1 to G15           |
 | §11     | [Out of scope and trust boundaries](11-out-of-scope-and-trust-boundaries.md)    | none                |

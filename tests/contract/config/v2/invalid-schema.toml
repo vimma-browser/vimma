@@ -17,3 +17,6 @@ insert = "always"
 insert = "allways"
 
 [sites."EXAMPLE.com."]
+
+[bookmarks.root]
+"a" = "https://example.com/"

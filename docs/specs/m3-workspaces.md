@@ -865,7 +865,11 @@ dependency for 4b, 5 and parts of 4a.
   `hidden`, the split wrappers and the scroll positions. (Since changed: only the shown
   workspace's pane trees go to `PaneView.restore` at once; the other workspaces' stay in uuids
   until each is first shown, then go to `PaneView.park`, so their tabs stay lazy and keep their
-  saved scroll position and form data; #1305.)
+  saved scroll position and form data; #1305. Within a workspace, only the split PaneView makes
+  current gets panels then; its other splits name a lazy tab by its uuid until they show, and a
+  tab Firefox unloads goes back to its uuid; #1318. A split made current while not on screen, by
+  `#promote` when the current one ends or as a restored hidden view, still gets its tabs'
+  browsers at once; #1332.)
 - **Labels: no consolidation.** The rename seam planned to read `vimma.tabLabel` once into the
   snapshot and drop the tab value. Dropping it would lose a label on undo-close-tab and on a move
   to another window (only tab values travel with a tab), so the tab value stays the source of

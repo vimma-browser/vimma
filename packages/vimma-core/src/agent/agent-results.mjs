@@ -121,7 +121,13 @@ function listItems(tab, filtered, result) {
   if (!list) {
     throw new Broken("Vimma's element list is not inside the untrusted-content delimiters");
   }
-  const items = [item(elementsIntro(tab, list.dropped, filtered)), item(list.wrapped)];
+  // A filtered list that gave no element, written or left out as unchanged, matched nothing on
+  // screen: said so, since an empty list read as matches left out or a broken page (#1328).
+  const none =
+    filtered &&
+    result.repeated === undefined &&
+    list.wrapped === `${UNTRUSTED_OPEN}\n\n${UNTRUSTED_CLOSE}`;
+  const items = [item(elementsIntro(tab, list.dropped, filtered, none)), item(list.wrapped)];
   if (result.repeated !== undefined) {
     const r = result.repeated;
     const labels =
@@ -326,10 +332,28 @@ function keysText(tab, result) {
 
 /**
  * What an element list is (agent-speed S3): how to read it is in vimma_elements' description,
- * sent once; each result still says that its text is the page's.
- * @param {string} tab @param {number} dropped @param {boolean} filtered
+ * sent once; each result still says that its text is the page's. A filtered list that gave no
+ * element (`none`) says that nothing on screen matched instead (issue #1328).
+ * @param {string} tab @param {number} dropped @param {boolean} filtered @param {boolean} none
  */
-function elementsIntro(tab, dropped, filtered) {
+function elementsIntro(tab, dropped, filtered, none) {
+  const again =
+    "scroll with vimma_keys, or list again with other words or without a query and kinds.";
+  // Elements past the 200 are left out before the filter, so with any left out, a match may be
+  // among them: "nothing matches" would be false.
+  if (none && dropped > 0) {
+    return (
+      `None of the elements listed on screen in tab ${tab} of Vimma's agent workspace matches ` +
+      `your query and kinds, but ${dropped} more on screen were left out (at most 200 are ` +
+      `listed) and may match: ${again}`
+    );
+  }
+  if (none) {
+    return (
+      `No element on screen in tab ${tab} of Vimma's agent workspace matches your query and ` +
+      `kinds (only what is on screen is listed and matched): ${again}`
+    );
+  }
   const said =
     `The elements on screen in tab ${tab} of Vimma's agent workspace` +
     (filtered ? " that match your query and kinds" : "") +

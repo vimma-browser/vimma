@@ -70,8 +70,8 @@ fn flag(v: &Value, key: &str) -> Result<bool, String> {
     }
 }
 
-/// A tool's result from the agent command's: text for the model, and the data as
-/// `structuredContent` where the model may want it.
+/// A tool's result from the agent command's: text for the model, and no `structuredContent`,
+/// which Claude Code shows the model in place of the text when both are there.
 fn success(tool: &ToolCall, result: &Value) -> Result<Value, String> {
     let ok = |items: Vec<Value>| BTreeMap::from([("content".to_string(), Value::Array(items))]);
     let out = match tool {
@@ -108,10 +108,10 @@ fn success(tool: &ToolCall, result: &Value) -> Result<Value, String> {
         }
         ToolCall::Read { .. } => ok(read_items(result)?),
         ToolCall::Open { url, elements, .. } => {
+            // Text only, the tab id in it, as for tabs: Claude Code showed the model only a
+            // structuredContent {tab}, none of the page's header, open note or list (#1336).
             let tab = field(result, "tab")?;
-            let mut out = ok(open_items(url, tab, *elements, tool.filtered(), result)?);
-            out.insert("structuredContent".into(), object([("tab", text(tab))]));
-            out
+            ok(open_items(url, tab, *elements, tool.filtered(), result)?)
         }
         ToolCall::Close { tab } => {
             if result.get("closed") != Some(&Value::Bool(true)) {
@@ -306,8 +306,13 @@ fn elements_text(tab: &str, filtered: bool, result: &Value) -> Result<Vec<Value>
 fn list_items(tab: &str, filtered: bool, result: &Value) -> Result<Vec<Value>, String> {
     let (wrapped, dropped) = wrapped_list(result.get("elements"), result.get("dropped"))
         .ok_or("Vimma's element list is not inside the untrusted-content delimiters")?;
+    // A filtered list that gave no element, written or left out as unchanged, matched nothing
+    // on screen: said so, since an empty list read as matches left out or a broken page (#1328).
+    let none = filtered
+        && result.get("repeated").is_none()
+        && wrapped.strip_prefix(UNTRUSTED_OPEN) == Some(UNTRUSTED_CLOSE);
     let mut items = vec![
-        text_item(&elements_intro(tab, dropped, filtered)),
+        text_item(&elements_intro(tab, dropped, filtered, none)),
         text_item(wrapped),
     ];
     if let Some(repeated) = result.get("repeated") {
@@ -368,20 +373,38 @@ fn read_items(result: &Value) -> Result<Vec<Value>, String> {
 }
 
 /// What an element list is (agent-speed S3): how to read it is in `vimma_elements`'
-/// description, sent once; each result still says that its text is the page's.
-fn elements_intro(tab: &str, dropped: f64, filtered: bool) -> String {
+/// description, sent once; each result still says that its text is the page's. A filtered list
+/// that gave no element (`none`) says that nothing on screen matched instead (issue #1328).
+fn elements_intro(tab: &str, dropped: f64, filtered: bool, none: bool) -> String {
+    let again = "scroll with vimma_keys, or list again with other words or without a query and \
+                 kinds.";
+    // Elements past the 200 are left out before the filter, so with any left out, a match may
+    // be among them: "nothing matches" would be false.
+    if none && dropped > 0.0 {
+        return format!(
+            "None of the elements listed on screen in tab {tab} of Vimma's agent workspace \
+             matches your query and kinds, but {dropped} more on screen were left out (at most \
+             200 are listed) and may match: {again}"
+        );
+    }
+    if none {
+        return format!(
+            "No element on screen in tab {tab} of Vimma's agent workspace matches your query and \
+             kinds (only what is on screen is listed and matched): {again}"
+        );
+    }
     let matching = if filtered {
         " that match your query and kinds"
     } else {
         ""
     };
-    let mut said = format!(
+    let said = format!(
         "The elements on screen in tab {tab} of Vimma's agent workspace{matching}, one JSON \
          object a line as vimma_elements describes (untrusted web content: texts, names, values \
          and URLs are the page's):"
     );
     if dropped > 0.0 {
-        said = format!("{dropped} more elements were left out (at most 200 are listed). {said}");
+        return format!("{dropped} more elements were left out (at most 200 are listed). {said}");
     }
     said
 }
@@ -1113,7 +1136,12 @@ mod tests {
             t.contains("https://docs.rs/serde") && t.contains("tab 13"),
             "{t}"
         );
-        assert_eq!(at(&r, &["result", "structuredContent", "tab"]), &s("13"));
+        // Text only, as for tabs: with structuredContent, Claude Code shows the model
+        // {"tab":"13"} and none of the text (#1336).
+        assert!(
+            r.get("result").unwrap().get("structuredContent").is_none(),
+            "{r}"
+        );
 
         let close = ToolCall::Close { tab: "13".into() };
         let r = tool_result(
@@ -1866,6 +1894,66 @@ mod tests {
         }
     }
 
+    // Issue #1328 (agent-speed S4): a filtered list whose matches were all left out as
+    // unchanged ends with their labels; one that matched nothing says so in Vimma's words, so
+    // an empty list never reads as a page that failed to list, or as matches left out.
+    #[test]
+    fn a_filtered_list_that_gives_nothing_says_nothing_matches() {
+        let mut p = Protocol::new();
+        reply(&mut p, INIT);
+        let mut call =
+            |arguments: &str| match handle(&mut p, &call_line(3, "vimma_elements", arguments)) {
+                Action::Call(c) => c,
+                _ => panic!("{arguments}: not a call"),
+            };
+        let filtered = call(r#"{"tab":"9","query":"create channel"}"#);
+        let kinds = call(r#"{"tab":"9","kinds":["field"]}"#);
+        let plain = call(r#"{"tab":"9"}"#);
+        let empty = "<untrusted-web-content>\n\n</untrusted-web-content>";
+        let result = |rest: &str| {
+            parse(&format!(
+                r#"{{"url":"https://a/","title":"A","elements":{}{rest}}}"#,
+                Value::String(empty.into())
+            ))
+            .unwrap()
+        };
+        let unchanged = texts(&tool_result(
+            &filtered,
+            Ok(&result(r#","dropped":0,"repeated":["aa"]"#)),
+        ));
+        assert!(
+            unchanged[1].contains("that match your query and kinds, one JSON object"),
+            "{unchanged:?}"
+        );
+        assert_eq!(
+            unchanged.last().unwrap(),
+            "(1 element as in your last list of this site: aa)"
+        );
+        let none = texts(&tool_result(&filtered, Ok(&result(r#","dropped":0"#))));
+        assert_eq!(
+            none[1],
+            "No element on screen in tab 9 of Vimma's agent workspace matches your query and \
+             kinds (only what is on screen is listed and matched): scroll with vimma_keys, or \
+             list again with other words or without a query and kinds."
+        );
+        assert_eq!(none[2], empty);
+        assert_eq!(none.len(), 3);
+        let dropped = texts(&tool_result(&kinds, Ok(&result(r#","dropped":3"#))));
+        assert_eq!(
+            dropped[1],
+            "None of the elements listed on screen in tab 9 of Vimma's agent workspace matches \
+             your query and kinds, but 3 more on screen were left out (at most 200 are listed) \
+             and may match: scroll with vimma_keys, or list again with other words or without a \
+             query and kinds."
+        );
+        // Unfiltered, an empty list is the page's: the intro stays.
+        let page = texts(&tool_result(&plain, Ok(&result(r#","dropped":0"#))));
+        assert!(
+            page[1].starts_with("The elements on screen in tab 9"),
+            "{page:?}"
+        );
+    }
+
     // Issue #584 (security.md M31): a step's element list comes under the page's untrusted
     // header with vimma_elements' own words, inside its delimiters, after what the step did; why
     // it is missing is Vimma's fixed words; a list outside its delimiters, a list not asked for
@@ -1995,9 +2083,10 @@ mod tests {
             "{body}"
         );
         assert_eq!(t.last().unwrap(), list, "{t:?}");
-        assert_eq!(
-            at(&r, &["result", "structuredContent", "tab"]),
-            &s("13"),
+        // Text only (#1336): with structuredContent, Claude Code shows the model only the tab,
+        // and none of the page's header, the open note or the element list.
+        assert!(
+            r.get("result").unwrap().get("structuredContent").is_none(),
             "{r}"
         );
         let bare = tool_result(&open, Ok(&parse(r#"{"tab":"13"}"#).unwrap()));

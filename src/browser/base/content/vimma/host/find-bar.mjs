@@ -30,6 +30,17 @@ const PROMPT = "vimma-prompt";
 const opening = new WeakSet();
 
 /**
+ * Styles `findbar` as Vimma's prompt before it opens. A bar `/` creates gets this as soon as it
+ * exists: until the prompt opens (host/find.mjs, start) it is then `display: none`, not Firefox's
+ * hidden bar below the page, whose margin transition would slide the prompt up from under the
+ * status bar. A bar Firefox opens itself still loses it (decorate).
+ * @param {FindBar} findbar
+ */
+export function markPrompt(findbar) {
+  findbar.setAttribute(PROMPT, "");
+}
+
+/**
  * Opens `findbar` as Vimma's prompt.
  * @param {FindBar} findbar
  */

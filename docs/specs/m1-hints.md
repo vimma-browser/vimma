@@ -127,11 +127,13 @@ reverted.
   Colours: `--vimma-hint-bg` / `--vimma-hint-fg` (m5-core-config-and-theme) with Tokyo Night's
   yellow as the fallback until M5 sets the tokens.
 - **Messages.** `Vimma:CollectHints { gen, linksOnly }` → `{ targets: [{ id, rect, kind,
-href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. Both are
-  queries the parent sends to a frame it chose; the child never starts a hint message, so the
-  focused-frame rule of focus reports (m1-actor-insert-scroll) has no counterpart here: each
-  reply comes from the frame that was asked. The parent runs every reply through core
-  `parseHintReply` (`hints.mjs`, the counterpart of `parseDescriptor`), which returns a fresh
+href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. (Since changed:
+  `Vimma:CollectHints` also takes `settle`, which makes the top frame wait for a scroll to end
+  first; issue #1308.) Both are queries the parent sends to a frame it chose; the child never
+  starts a hint message, so the focused-frame rule of focus reports (m1-actor-insert-scroll)
+  has no counterpart here: each reply comes from the frame that was asked. The parent runs
+  every reply through core `parseHintReply` (`hints.mjs`, the counterpart of
+  `parseDescriptor`), which returns a fresh
   copy with only the known fields or null, and never throws: caps of 5,000 targets, 64 frames
   and 8 KiB per href (`HINT_REPLY_MAX_*`, which the child also applies to its own reply, so a
   page with 65 frames loses its 65th, not all of them), unique non-negative integer ids,
@@ -199,6 +201,11 @@ href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. B
 
 - Labels are drawn for the layout at `f`: a page that scrolls or moves itself while they show
   leaves them stale (a key or `Esc` still works on the targets).
+  (Since changed: a smooth scroll that Vimma started is ended at its destination before the
+  targets are collected; one on a scroll-snap container, or one the user's wheel took over, is
+  waited for instead (at most 1 s); and a wheel
+  over the page while labels show draws them again once its scroll ends (issue #1308);
+  described in `actors/page-scroll.mjs`, `finish` and `settled`.)
 - Delegated click handlers on elements with no role, tabindex or listener of their own (some
   React apps) get no hint; no `cursor: pointer` heuristic.
 - Canvas and WebGL apps (Google Docs, Figma, maps, games) draw their own controls: there are no

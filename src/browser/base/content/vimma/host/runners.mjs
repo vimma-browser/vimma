@@ -28,6 +28,7 @@ import { AgentUi } from "./agent-ui.mjs";
 import { bookmarkContext, openBookmarkByTitle, quickAdd } from "./bookmark-actions.mjs";
 import { browserRunners, openSettings, xulElementById } from "./browser-ops.mjs";
 import { ControlHost } from "./control-ops.mjs";
+import { HostServices } from "./host-services.mjs";
 import { copyModeRunners } from "./copy-mode.mjs";
 import { McpHost } from "./mcp-ops.mjs";
 import { openOutline } from "./outline-ops.mjs";
@@ -145,7 +146,8 @@ function switchWorkspace(s, text) {
 /**
  * A workspace operation (workspace-ops.mjs) that takes the rest of a command line; without one
  * (its key) it asks on the command line, starting with `prompt`.
- * @param {(win: BrowserWindow, text: string) => string | null} op
+ * @param {(win: BrowserWindow, text: string, say: (text: string) => void) => string | null} op
+ *   `say`: the notice, for what the operation says once it is done
  * @param {(win: BrowserWindow) => string} prompt
  * @param {(s: WindowState) => void} emit  the host's redraw
  * @returns {(state: WindowState, action: Action, text?: string) => void}
@@ -156,7 +158,7 @@ function workspaceRunner(op, prompt, emit) {
       s.cmdline.open(prompt(s.win));
       return;
     }
-    const said = op(s.win, text);
+    const said = op(s.win, text, (/** @type {string} */ t) => s.notice.show(t));
     if (said) s.notice.show(said);
     emit(s);
   };
@@ -562,8 +564,24 @@ export function hostRunners(host, page) {
       });
     },
     // docs/specs/bookmarks.md: the bookmarks panel, in the side panel's slot and mode.
-    "bookmarks.toggle": (/** @type {WindowState} */ s) => {
+    "bookmarks.toggle": (
+      /** @type {WindowState} */ s,
+      _a,
+      /** @type {string | undefined} */ text,
+    ) => {
       s.notice.hide();
+      const word = text?.trim() ?? "";
+      if (word) {
+        // docs/specs/bookmarks-file.md Behaviour 19, while the feature is on.
+        if (word === "forget" && HostServices.bookmarksFileWords().includes("forget")) {
+          HostServices.bookmarksFileForget().then(
+            (/** @type {string} */ said) => s.notice.show(said),
+            (/** @type {Thrown} */ e) =>
+              s.notice.show(`:bookmarks forget: ${e?.message ?? e}`, { error: true }),
+          );
+        } else s.notice.show(`:bookmarks takes no argument`, { error: true });
+        return;
+      }
       if (s.bookmarks.isOpen) s.bookmarks.close();
       else {
         s.panel.close();

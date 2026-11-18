@@ -120,6 +120,7 @@ export { NO_OUTLINE, OUTLINE_ATTACHMENT, PDF_OUTLINE_PREF } from "./outline-ops.
  * @property {HintAction} action
  * @property {HintState<HintTarget> | null} hs  null while collecting
  * @property {Chord[]} buffered  keys typed while collecting
+ * @property {boolean} [settle]  collecting once the scroll a wheel started ends (#1308)
  */
 
 /** Element focus with no text block on screen, and in the PDF viewer (element-focus 14). */
@@ -193,6 +194,7 @@ const isRemoteBrowserTarget = (target) =>
  * @property {number | null} timer   pending-sequence timeout (dispatcher.flush)
  * @property {() => void} onCancelHints  resize, a mouse click in chrome
  * @property {() => void} onMouseDown  a mouse click: hint mode and element focus end
+ * @property {(e: WheelEvent) => void} onWheel  a wheel over the page: the labels follow it
  * @property {HintSession | null} hint
  * @property {ElementFocus} element  the focused text block (docs/specs/element-focus.md)
  * @property {HintOverlay} hintOverlay
@@ -784,6 +786,8 @@ export const VimmaHost = {
     // block's outline follows a resize; a click ends the focus.
     win.addEventListener("resize", state.onCancelHints);
     win.addEventListener("mousedown", state.onMouseDown, true);
+    // Passive: it only reads, so it never holds up the scroll (APZ need not wait for it).
+    win.addEventListener("wheel", state.onWheel, { capture: true, passive: true });
     // After the keys: an upstream change in tab code must not cost us ctrl+b.
     try {
       const tabStrip = new TabStrip(win);
@@ -900,6 +904,7 @@ export const VimmaHost = {
     state.firefoxKeys?.destroy();
     win.removeEventListener("resize", state.onCancelHints);
     win.removeEventListener("mousedown", state.onMouseDown, true);
+    win.removeEventListener("wheel", state.onWheel, { capture: true });
     this._cancelHints(state);
     state.element.leave();
     state.help.destroy();
@@ -1136,6 +1141,41 @@ export const VimmaHost = {
    */
   say(win, text) {
     states.get(win)?.notice.show(text);
+  },
+
+  /**
+   * A y/N question in the window's prompt line, for a module with no key context
+   * (docs/specs/bookmarks-file.md Behaviour 7). Returns a function that closes it while it is
+   * still this question, which then counts as no; null when it could not open.
+   * @param {BrowserWindow} win
+   * @param {string} question  ends with "y/N"
+   * @param {() => void} yes
+   * @param {() => void} no
+   * @param {{ settleMs?: number }} [options]  keys within `settleMs` of it showing are not an
+   *   answer (a `y` typed on the page as a background question appears)
+   * @returns {(() => void) | null}
+   */
+  ask(win, question, yes, no, { settleMs = 0 } = {}) {
+    const prompt = states.get(win)?.rename;
+    if (!prompt) return null;
+    const ours = () => yes();
+    if (!prompt.ask(question, ours, no, { settleMs })) return null;
+    return () => {
+      if (prompt.yes === ours) prompt.close();
+    };
+  },
+
+  /**
+   * Whether the window's prompt line or command line is open, or a page field has the keys
+   * (insert mode): a question asked from outside a key waits until none is
+   * (docs/specs/bookmarks-file.md Behaviour 7).
+   * @param {BrowserWindow} win
+   */
+  promptBusy(win) {
+    const state = states.get(win);
+    return (
+      !!state && (state.rename.isOpen || state.cmdline.isOpen || this._mode(state) === "insert")
+    );
   },
 
   /** config.toml's keymap, without `:siteunbind`'s keys until restart; the built-in one before. */
@@ -2132,12 +2172,15 @@ export const VimmaHost = {
    * `f` / `gF` / `F`: collects the targets, then enters hint mode with a label on each. With none,
    * the tab stays in normal (the status bar will say so, M2).
    * @param {MozBrowser} browser
-   * @param {Action} action
+   * @param {Pick<Action, "id">} action
+   * @param {{ settle?: boolean }} [options]  `settle`: collect once the scroll running in the
+   *   page ends (a wheel moved it under the labels)
    */
-  _startHints(browser, action) {
+  _startHints(browser, action, { settle = false } = {}) {
     const state = stateOfBrowser(browser);
     if (!state) return;
-    this._cancelHints(state);
+    // A restart after a wheel stays in hint mode: the status bar never shows normal between.
+    this._cancelHints(state, { emit: !settle });
     state.element.leave();
     const id = /** @type {HintAction} */ (action.id);
     // pdf.js draws lines, not paragraphs: copy mode is the way to copy there (decision 14).
@@ -2146,10 +2189,10 @@ export const VimmaHost = {
       return;
     }
     /** @type {HintSession} */
-    const session = { browser, action: id, hs: null, buffered: [] };
+    const session = { browser, action: id, hs: null, buffered: [], settle };
     state.hint = session;
     this._emit(state);
-    VimmaActors.collectHints(browser, id)
+    VimmaActors.collectHints(browser, id, { settle })
       .then((targets) => {
         if (state.hint !== session) return;
         try {
@@ -2174,6 +2217,22 @@ export const VimmaHost = {
         if (state.hint === session) this._cancelHints(state);
       })
       .finally(() => this._hintRuns++);
+  },
+
+  /**
+   * A wheel over the page while hints are up (issue #1308): the labels were drawn for the
+   * layout before it, so they are collected and drawn again once the scroll it starts ends.
+   * Keys typed toward a label are dropped with the old labels. Further wheels while that
+   * collection waits change nothing: it waits for the last scroll's end. The wheel's target
+   * in chrome is the <browser> only for a remote page; over a page in the parent process
+   * (about: pages without hints) it is an element inside it, and nothing happens.
+   * @param {WindowState} state
+   * @param {WheelEvent} e
+   */
+  _hintsScrolled(state, e) {
+    const session = state.hint;
+    if (!session || e.target !== session.browser || (session.settle && !session.hs)) return;
+    this._startHints(session.browser, { id: session.action }, { settle: true });
   },
 
   /**
@@ -2320,13 +2379,14 @@ export const VimmaHost = {
   /**
    * Leaves hint mode, if on: removes the labels and drops a collection in flight.
    * @param {WindowState} state
+   * @param {{ emit?: boolean }} [options]  `emit: false` when hint mode starts again at once
    */
-  _cancelHints(state) {
+  _cancelHints(state, { emit = true } = {}) {
     this._cancelTabLabels(state);
     if (!state.hint) return;
     state.hint = null;
     state.hintOverlay.hide();
-    this._emit(state); // the status bar leaves HINT, also when no key ended hint mode
+    if (emit) this._emit(state); // the status bar leaves HINT, also when no key ended hint mode
     VimmaActors.cancelHints(state.win);
   },
 

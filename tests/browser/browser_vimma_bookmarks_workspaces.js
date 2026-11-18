@@ -229,6 +229,16 @@ registerCleanupFunction(async () => {
 
 add_task(async function setup() {
   await ww().ready;
+  // A known start whatever ran before: main shown and no other workspace but the agent's.
+  if (active() !== known("main").id) {
+    ww().switchTo({ id: known("main").id });
+    await until(() => active() === known("main").id, "main is shown");
+  }
+  for (const w of WorkspaceStore.definitions.workspaces.filter(
+    (d) => d.name !== "main" && d.id !== WorkspaceStore.agent?.id,
+  )) {
+    await WorkspaceStore.deleteWorkspace(w.id, { confirmed: true });
+  }
   await PlacesUtils.bookmarks.eraseEverything();
   await PlacesUtils.bookmarks.insertTree({
     guid: toolbarGuid,

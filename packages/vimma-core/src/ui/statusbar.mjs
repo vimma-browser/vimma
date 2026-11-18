@@ -500,7 +500,8 @@ export function statusSegments(input) {
     right.push(seg({ id: "loading", text, fg: "--vimma-fg-dim", side: "right", priority: 6 }));
   }
   if (configErrors.length) {
-    const first = formatConfigError(/** @type {ConfigError} */ (configErrors[0]), configFile);
+    const e = /** @type {ConfigError} */ (configErrors[0]);
+    const first = formatConfigError(e, e.file ?? configFile);
     const n = configErrors.length;
     right.push(
       seg({

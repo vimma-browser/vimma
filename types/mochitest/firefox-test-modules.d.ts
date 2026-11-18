@@ -24,10 +24,6 @@ interface VimmaModules {
       insertManyBookmarksWrapper(bookmarks: object[], parentGuid: string): Promise<void>;
     };
   };
-  // engine/browser/components/places/PlacesBrowserStartup.sys.mjs
-  "moz-src:///browser/components/places/PlacesBrowserStartup.sys.mjs": {
-    PlacesBrowserStartup: { _placesInitialized: boolean; initPlaces(): void };
-  };
   // engine/browser/components/sessionstore/SessionFile.sys.mjs: the session file's paths.
   "moz-src:///browser/components/sessionstore/SessionFile.sys.mjs": {
     SessionFile: { readonly Paths: { readonly recovery: string } };

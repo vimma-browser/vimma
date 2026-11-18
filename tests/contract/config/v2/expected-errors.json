@@ -12,7 +12,8 @@
       "suggestion": "docs.google.com"
     },
     { "line": 17, "path": "sites.\"example.com\".insert", "suggestion": "always" },
-    { "line": 19, "path": "sites.\"EXAMPLE.com.\"", "suggestion": null }
+    { "line": 19, "path": "sites.\"EXAMPLE.com.\"", "suggestion": null },
+    { "line": 21, "path": "bookmarks.root", "suggestion": null }
   ],
   "invalid-old-schema.toml": [
     { "line": 4, "path": "panes", "suggestion": null },

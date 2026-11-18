@@ -38,6 +38,7 @@ import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { PaneViews } from "../split/PaneView.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
 import { DownloadRows, DownloadWatch, downloadPickerKey } from "./download-ops.mjs";
+import { HostServices } from "./host-services.mjs";
 import { Find } from "./find.mjs";
 import { ElementFocus } from "./element-focus.mjs";
 import { CHAT_SERVICES, giveSelectedTab } from "./agent-chat-ops.mjs";
@@ -93,8 +94,8 @@ import {
 /**
  * What the widgets' callbacks call on the host.
  * @typedef {Pick<typeof VimmaHost, "_onKeyDown" | "_onKeyDownAfter" | "_onKeyPress"
- *   | "_onKeyPressAfter" | "_cancelPending" | "_cancelHints" | "_runCommand" | "_emit"
- *   | "_mode" | "baseKeymap">} WindowHost
+ *   | "_onKeyPressAfter" | "_cancelPending" | "_cancelHints" | "_hintsScrolled" | "_runCommand"
+ *   | "_emit" | "_mode" | "baseKeymap">} WindowHost
  */
 
 /**
@@ -137,6 +138,7 @@ export function newWindowState(host, win, keymap, env) {
     onTabSelect: () => {
       host._cancelPending(win, state);
       host._cancelHints(state);
+      state.find.onTabSelect();
       state.element.leave();
       state.help.close({ tabChanged: true });
       state.cmdline.close({ tabChanged: true });
@@ -190,6 +192,7 @@ export function newWindowState(host, win, keymap, env) {
         tab: selectableTabs(win).map((t) => getTabLabel(t) ?? t.label),
         search: SearchHost.completions,
         sitebind: siteBindCompletions(win, host.baseKeymap()),
+        bookmarksfile: HostServices.bookmarksFileWords(),
       }),
     }),
     tabStrip: null,
@@ -203,6 +206,7 @@ export function newWindowState(host, win, keymap, env) {
       host._cancelHints(state);
       state.element.leave();
     },
+    onWheel: (e) => host._hintsScrolled(state, e),
     hint: null,
     element: new ElementFocus({
       overlay: hintOverlay,

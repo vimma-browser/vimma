@@ -12,7 +12,8 @@
 // `:config` create a missing config.toml from the commented template, never touching an existing
 // one; `:route add` appends one `[[routes]]` table (spec workspace-routing), checked to parse
 // first; the built-in agent's setup and `:siteunbind --save` / `:sitebind --delete` edit their
-// own lines (rewriteConfig).
+// own lines (rewriteConfig). Every edit of config.toml and of bookmarks.toml, and every apply of
+// bookmarks.toml to Places, runs in one queue (docs/specs/bookmarks-file.md D11).
 
 import {
   addAgentProviderText,
@@ -22,6 +23,8 @@ import {
   reloadConfig,
   resolveSourcePath,
 } from "../core/config.mjs";
+import { MAX_BOOKMARKS_FILE_BYTES, inlineBookmarkTables } from "../core/bookmarks-file.mjs";
+import { serialQueue } from "../core/bookmarks-edit.mjs";
 import { formatConfigTemplate } from "../core/defaults.mjs";
 import { editSiteUnbindText } from "../core/site-edit.mjs";
 import { updatesCheckAfterRead } from "../core/updates.mjs";
@@ -46,6 +49,7 @@ import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
 import { WorkspaceRouter } from "../workspaces/WorkspaceRouter.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
+import { BookmarksFileImpl } from "./BookmarksFile.sys.mjs";
 
 /** @import { ActiveConfig, ConfigError, ResolvedConfig } from "../core/config.mjs" */
 
@@ -120,6 +124,46 @@ const windows = new Set();
 let appliedToolbar = null;
 /** `[ui] pdf_outline` of the last config applied; null before the first. @type {string | null} */
 let appliedPdfOutline = null;
+/**
+ * `[bookmarks] bookmarklets` of the last config.toml read that applied, for the bookmarks.toml
+ * mirror. @type {import("../core/bookmarks.mjs").BookmarkletsSetting}
+ */
+let appliedBookmarklets = "none";
+/**
+ * `[bookmarks] write_back` of the last config.toml read that applied (bookmarks-file D12).
+ * @type {import("../core/bookmarks-file.mjs").WriteBack}
+ */
+let appliedWriteBack = "vimma";
+/**
+ * The one queue of edits (docs/specs/bookmarks-file.md D11): config.toml's (rewriteConfig) and
+ * bookmarks.toml's, and the bookmarks mirror's applies to Places. A task never waits for a task
+ * it queues: an edit's re-read runs after the edit's task ends.
+ */
+const edits = serialQueue();
+/** @type {ConfigError[]} bookmarks.toml's errors and warnings (docs/specs/bookmarks-file.md) */
+let bookmarksErrors = [];
+
+/**
+ * bookmarks.toml beside config.toml (docs/specs/bookmarks-file.md): fed config.toml's text after
+ * each read and polled with it; its errors join the status bar's.
+ */
+const bookmarksFile = new BookmarksFileImpl({
+  configPath,
+  queue: edits,
+  writeFile: (path, compute) => writeFileNow(path, compute, MAX_BOOKMARKS_FILE_BYTES),
+  reloadConfig: () => {
+    ConfigHost.reload().catch((e) => console.error("vimma: config.toml not read", e));
+  },
+  showErrors: (list) => {
+    bookmarksErrors = list.map((e) => ({
+      ...(e.line ? { line: e.line } : {}),
+      path: "",
+      message: e.message,
+      file: e.file,
+    }));
+    showErrors();
+  },
+});
 /** `[ui] tabline` of the last config applied, null before the first (tab-line decision 5). */
 let appliedTabline = /** @type {string | null} */ (null);
 
@@ -236,7 +280,7 @@ function report(path, list, kept, left = []) {
  */
 function showErrors() {
   VimmaHost.configure({
-    configErrors: [...errors, ...warnings, ...SearchHost.errors],
+    configErrors: [...errors, ...warnings, ...SearchHost.errors, ...bookmarksErrors],
     configFile: PathUtils.filename(errorsPath || configPath()),
   });
 }
@@ -246,9 +290,10 @@ SearchHost.onErrors = showErrors;
  * Applies `text` (the contents of `path`) when it is valid, else reports its errors.
  * @param {string} path
  * @param {string} text
+ * @param {ConfigError[]} [left]  more that an applied file leaves out
  * @returns {boolean} whether it was applied
  */
-function use(path, text) {
+function use(path, text, left = []) {
   const previous = active;
   const r = reloadConfig(active, text, { mac: Services.appinfo.OS === "Darwin" });
   active = r.active;
@@ -267,7 +312,7 @@ function use(path, text) {
   });
   VimmaUpdates.configure(updates);
   fallback = previous === null ? r.errors.length > 0 : fallback && r.errors.length > 0;
-  report(path, r.errors, previous !== null, r.warnings);
+  report(path, r.errors, previous !== null, [...r.warnings, ...(r.errors.length ? [] : left)]);
   return r.errors.length === 0;
 }
 
@@ -292,7 +337,14 @@ async function check(force) {
       signature = "missing"; // removed between stat and read: the defaults, silently
     }
   }
-  use(path, text);
+  const applied = use(path, text);
+  // Bookmarklets as the last config.toml that applied says (bookmarks-file D12, D13): a file
+  // with errors keeps the previous value, and `:source <file>` never reaches here.
+  if (applied) {
+    appliedBookmarklets = active?.config.bookmarks.bookmarklets ?? "none";
+    appliedWriteBack = active?.config.bookmarks.writeBack ?? "vimma";
+  }
+  bookmarksFile.configRead(now === "missing" ? null : text, appliedBookmarklets, appliedWriteBack);
 }
 
 /**
@@ -309,7 +361,14 @@ async function source(path) {
     report(path, [{ path: "", message: notFound(e) ? "no such file" : "cannot be read" }], true);
     return;
   }
-  if (use(path, text)) sourced = path;
+  // docs/specs/bookmarks-file.md Behaviour 6: a config tried out with `:source` never changes
+  // bookmarks, so its inline tables are left out, each with a warning.
+  const ignored = inlineBookmarkTables(text).map((t) => ({
+    line: t.line,
+    path: `bookmarks.${t.name}`,
+    message: "ignored: :source <file> does not change bookmarks",
+  }));
+  if (use(path, text, ignored)) sourced = path;
 }
 
 /**
@@ -451,6 +510,7 @@ function startTimer() {
   timer = lazy.setTimeout(() => {
     startTimer();
     poll();
+    bookmarksFile.tick().catch((e) => console.error("vimma: bookmarks.toml check failed", e));
   }, ms);
 }
 
@@ -487,6 +547,7 @@ function start(win) {
   Services.obs.addObserver(reloadObserver, CONFIG_RELOAD_TOPIC);
   Services.obs.addObserver(editObserver, CONFIG_EDIT_TOPIC);
   startTimer();
+  bookmarksFile.start();
   // Never blocks startup: the windows start on the built-in keymap and swap when read. The
   // first run's file, all comments, means the defaults: read after it either way.
   const created = firstRunBlocked() ? Promise.resolve() : firstRun(win);
@@ -496,6 +557,7 @@ function start(win) {
 }
 
 function stop() {
+  bookmarksFile.stop();
   if (timer !== null) lazy.clearTimeout(timer);
   timer = null;
   Services.prefs.removeObserver(PATH_PREF, onPref);
@@ -507,32 +569,34 @@ function stop() {
 /**
  * An edit of config.toml: `compute` gets the file's text (null when it does not exist) and
  * returns the new text with whatever the caller wants back, `{ text: null }` to leave the file
- * alone, or `{ error }`. The new text goes through a 0600 temporary file renamed over the file a
- * symlinked config.toml points to, so a dotfile link stays a link and a crash never leaves half a
- * file; nothing is written when the file changed while it was edited. Then the file is read.
+ * alone, or `{ error }`. Written as writeFileNow writes, in the one edit queue (D11); then the
+ * file is read, after the edit's task has ended, so the read never waits on the edit.
  * @template {{ text: string | null }} R
  * @param {(text: string | null) => R | { error: string }} compute
  * @returns {Promise<R | { error: string }>}
  */
-function rewriteConfig(compute) {
-  // One edit at a time: two that read the same text would both pass the check below, and the
-  // second rename would drop the first edit after both said they were written.
-  const run = rewriteQueue.then(() => rewriteConfigNow(compute));
-  rewriteQueue = run.catch(() => {});
-  return run;
+async function rewriteConfig(compute) {
+  // One edit at a time: two that read the same text would both pass writeFileNow's check, and
+  // the second rename would drop the first edit after both said they were written.
+  const r = await edits.run(() => writeFileNow(configPath(), compute));
+  if (!("error" in r) && r.text !== null) await ConfigHost.reload();
+  return r;
 }
 
-/** @type {Promise<unknown>} */
-let rewriteQueue = Promise.resolve();
-
 /**
- * rewriteConfig's edit, run alone.
+ * One edit of `path` (config.toml, or bookmarks.toml beside it), run inside the edit queue: the
+ * new text goes through a 0600 temporary file in the same folder, given the file's permissions
+ * and renamed over the file, or over the file a symlink points to, so a dotfile link stays a link
+ * and a crash never leaves half a file. A link to nothing is never replaced. Nothing is written
+ * when the file changed while it was edited (`changed`: the caller may compute again from the new
+ * text). A missing file is created, with its folder, only by a `compute` that takes null.
  * @template {{ text: string | null }} R
+ * @param {string} path
  * @param {(text: string | null) => R | { error: string }} compute
- * @returns {Promise<R | { error: string }>}
+ * @param {number} [maxBytes]  a larger file is not read (the bookmarks file's limit)
+ * @returns {Promise<R | { error: string, changed?: boolean }>}
  */
-async function rewriteConfigNow(compute) {
-  const path = configPath();
+async function writeFileNow(path, compute, maxBytes = Infinity) {
   /** @type {string | null} */
   let text = null;
   /** @type {Awaited<ReturnType<IOUtilsNamespace["stat"]>> | null} */
@@ -541,7 +605,7 @@ async function rewriteConfigNow(compute) {
   try {
     const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
     file.initWithPath(path);
-    // isSymlink is lstat: a missing config.toml throws, and is created from the template.
+    // isSymlink is lstat: a missing file throws, and is created from the template.
     let link = false;
     try {
       link = file.isSymlink();
@@ -554,6 +618,11 @@ async function rewriteConfigNow(compute) {
       target = file.target;
     }
     before = await IOUtils.stat(target);
+    // Only a regular file is read and replaced (a FIFO would block, a folder is not ours).
+    if (before.type !== "regular")
+      return { error: `${path} is not a regular file; nothing written` };
+    // The size as well: a file swapped since its caller read it is never read whole.
+    if ((before.size ?? 0) > maxBytes) return { error: `${path} is too large; nothing written` };
     text = await IOUtils.readUTF8(target);
   } catch (e) {
     if (!notFound(e)) return { error: `cannot read ${path}` };
@@ -563,14 +632,14 @@ async function rewriteConfigNow(compute) {
   const dir = PathUtils.parent(target) ?? "/";
   const tmp = PathUtils.join(
     dir,
-    `.config.toml.${Services.uuid.generateUUID().toString().slice(1, 9)}`,
+    `.${PathUtils.filename(target)}.${Services.uuid.generateUUID().toString().slice(1, 9)}`,
   );
   try {
     if (!(await IOUtils.exists(dir))) {
       await IOUtils.makeDirectory(dir, { createAncestors: true, permissions: DIR_MODE });
     }
-    // Empty and with the file's permissions before the text goes in, so that a 0600
-    // config.toml is never readable more widely, even for a moment.
+    // Empty and with the file's permissions before the text goes in, so that a 0600 file is
+    // never readable more widely, even for a moment.
     await IOUtils.writeUTF8(tmp, "", { mode: "create" });
     await IOUtils.setPermissions(tmp, before ? before.permissions : FILE_MODE, false);
     await IOUtils.writeUTF8(tmp, r.text, { mode: "overwrite" });
@@ -579,7 +648,7 @@ async function rewriteConfigNow(compute) {
     const stat = await IOUtils.stat(target).catch(() => null);
     if (now !== text || (stat?.lastModified ?? null) !== (before?.lastModified ?? null)) {
       await IOUtils.remove(tmp);
-      return { error: `${path} changed meanwhile; nothing written` };
+      return { error: `${path} changed meanwhile; nothing written`, changed: true };
     }
     await IOUtils.move(tmp, target);
   } catch (e) {
@@ -587,11 +656,27 @@ async function rewriteConfigNow(compute) {
     await IOUtils.remove(tmp, { ignoreAbsent: true }).catch(() => {});
     return { error: `cannot write ${path}` };
   }
-  await ConfigHost.reload();
   return r;
 }
 
 export const ConfigHost = {
+  /** The bookmarks.toml mirror (docs/specs/bookmarks-file.md), for tests and about:vimma. */
+  bookmarksFile,
+
+  /**
+   * `:bookmarks forget` (docs/specs/bookmarks-file.md Behaviour 19), which vimma.js hands the
+   * host through host-services. A function of its own, so it can be handed over alone.
+   * @returns {Promise<string>} what to tell the user
+   */
+  bookmarksForget() {
+    return bookmarksFile.forget();
+  },
+
+  /** The words `:bookmarks` completes to: `forget` while the feature is on. */
+  bookmarksWords() {
+    return bookmarksFile.words();
+  },
+
   /**
    * The last read's errors, which kept the file from applying (`[search]`'s, found after it
    * applied, are not among them), and the file they are about: why the agent window has no model
@@ -639,6 +724,7 @@ export const ConfigHost = {
     await poll(true);
     // A read was running: ours was queued behind it.
     while (running) await running;
+    await bookmarksFile.tick(true);
   },
 
   /**

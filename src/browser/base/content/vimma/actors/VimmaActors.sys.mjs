@@ -415,13 +415,16 @@ export const VimmaActors = {
    * @param {string} action "hint.follow", "hint.follow_new_tab" or "hint.follow_new_tab_fg"
    *   (links only) or "hint.element"
    *   (text blocks, docs/specs/element-focus.md)
-   * @param {{ agent?: boolean, elements?: boolean }} [options]  `agent`: an agent's `f` in its
-   *   tab (docs/specs/mcp-drive.md D12): links only, each with its text, live per tab, not per
-   *   window; with `elements`, an agent's `vimma_elements` (docs/specs/mcp-forms.md F2): every
-   *   kind but blocks, disabled controls too, each described, kept apart from the user's
+   * @param {{ agent?: boolean, elements?: boolean, settle?: boolean }} [options]  `agent`: an
+   *   agent's `f` in its tab (docs/specs/mcp-drive.md D12): links only, each with its text, live
+   *   per tab, not per window; with `elements`, an agent's `vimma_elements`
+   *   (docs/specs/mcp-forms.md F2): every kind but blocks, disabled controls too, each
+   *   described, kept apart from the user's;
+   *   `settle`: the top frame waits for a scroll running there to end first (a wheel moved the
+   *   page under the labels, m1-hints, issue #1308)
    * @returns {Promise<HintTarget[]>}
    */
-  async collectHints(browser, action, { agent = false, elements = false } = {}) {
+  async collectHints(browser, action, { agent = false, elements = false, settle = false } = {}) {
     const gen = ++hintGen;
     // A <browser>'s document has no view only once its window has closed, where liveGen.set
     // throws: the collection fails, as before the type said so.
@@ -476,6 +479,7 @@ export const VimmaActors = {
           blocks,
           texts,
           elements: agent && elements,
+          settle: settle && depth === 0,
         });
         raw = await Promise.race([query, late]);
       } catch {
@@ -681,9 +685,14 @@ export const VimmaActors = {
    * Makes the next find start where Vim's would (spec m1-find): at a selection still on screen,
    * else at the top of the viewport, not at the document's first match.
    * @param {MozBrowser} browser
+   * @returns {Promise<void>}  resolves once the anchor is set (or could not be)
    */
-  findAnchor(browser) {
-    actorFor(browser.browsingContext)?.sendAsyncMessage("Vimma:FindAnchor");
+  async findAnchor(browser) {
+    try {
+      await actorFor(browser.browsingContext)?.sendQuery("Vimma:FindAnchor");
+    } catch {
+      // the page went away: its next find starts where Firefox's would
+    }
   },
 
   /**

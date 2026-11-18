@@ -134,7 +134,8 @@ needs no dependency.
   `notFound`, `current` and `total` once the find bar reports (live on GitHub: "neovim",
   10 matches).
 - **`yy`.** `page.yank_url` copies `currentURI.spec` with `nsIClipboardHelper`
-  (`host/page-ops.mjs:75-80`). The suite writes a sentinel first and reads the clipboard back
+  (`host/page-ops.mjs:75-80`). (Since changed: it copies `pageUrl(currentURI.spec)`, the
+  article's URL in Reader View; issue #1310.) The suite writes a sentinel first and reads the clipboard back
   in chrome. It always runs under its own Xvfb, so it never touches the desktop's clipboard.
 - **`ctrl+b`.** `state.pending` is `"prefix"` after `ctrl+b`. A keydown listener the probe adds
   to the page's window (capture phase) shows whether the page saw the key.
