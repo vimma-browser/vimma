@@ -149,6 +149,10 @@ needs no dependency.
   `chrome://browser/content/vimma/` and, through `console-api-log-event`, Vimma's own
   `console.error`. GitHub alone logs dozens of the site's own errors and warnings (the
   prototype saw referrer-policy warnings); those are ignored.
+  (Since changed: one upstream Firefox error with Vimma's click on its stack is ignored too,
+  `PictureInPictureChild.sys.mjs`'s `shadowRoot is null`
+  (`toolkit/actors/PictureInPictureChild.sys.mjs:603-605`), matched on both source and message;
+  #1245.)
 - **Site shortcuts.** A key the site handles shows as `defaultPrevented`, a focus change, a URL
   change, a scroll or a new dialog. On GitHub, `s` focused the search field (and Vimma went to
   insert mode, correctly). How the key reaches the page is settled in the implementation log.
