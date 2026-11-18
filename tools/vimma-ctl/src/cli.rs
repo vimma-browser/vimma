@@ -28,7 +28,8 @@ Commands:
   open URL            open an http(s), file or about URL in a new tab
   reload-theme        re-read the Omarchy theme now (prints changed or unchanged)
   mcp                 serve MCP on stdin and stdout for an AI agent tool, through Vimma's
-                      agent workspace; every request is confirmed in Vimma (:mcp on first)
+                      agent workspace; each call waits for your yes in Vimma or runs under a
+                      grant you gave there (:mcp on first)
 
 Options:
   --profile DIR       the Vimma profile (default: VIMMA_PROFILE, else profiles.ini's default)

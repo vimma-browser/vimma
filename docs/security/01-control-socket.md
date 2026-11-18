@@ -11,7 +11,8 @@ Specs: [m0-control-server](../specs/m0-control-server.md),
 (you, or root) gets past the handshake. Pages and extensions cannot speak the protocol (an HTTP
 request is refused). A connection's hello picks its role. With the `full` role, whoever holds the
 token is treated as you: `send-keys` can do anything your keyboard can. The `agent` role reaches
-only the agent workspace, and every request asks you first (§12).
+only the agent workspace, and each request waits for your yes or runs under a grant you gave
+(§12).
 
 - S1. The socket **must** be off by default and start or stop only with the pref
   `vimma.control.enabled` or `vimma.mcp.enabled` (`:mcp on`, `[mcp] enabled`). Either one starts
@@ -49,7 +50,7 @@ only the agent workspace, and every request asks you first (§12).
 - S6. A token file left by a crash **must** be removed at start; a symlink or directory in its
   place is never followed. [`test_stale_discovery_file_removed_at_start`](../../tests/browser/browser_vimma_control.js)
 - S7. Only the commands of the connection's role **must** run (`full`: the four of protocol 1;
-  `agent`: the seven agent commands); anything else, and any unknown argument, is refused.
+  `agent`: the agent commands, `AGENT_COMMANDS` in `control.mjs`); anything else, and any unknown argument, is refused.
   [`test_handshake`](../../tests/browser/browser_vimma_control.js),
   [`protocol version 1 with the commands of ADR-007`](../../packages/vimma-core/test/control.test.ts),
   [`protocols 1 and 2, two roles, the agent commands apart from v1's`](../../packages/vimma-core/test/control-v2.test.ts),

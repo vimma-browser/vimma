@@ -148,7 +148,9 @@ the [user guide](guide.md); planned work is on the
   in the parent process.
 - The agent's name in a question (`claude-code`) is what the agent says it is; Vimma cannot check
   it. Grants belong to the connection, and `:mcp` shows the program that started it.
-- A grant covers every agent tool for its minutes, but for the checkpoints: paying, and sending a
+- A grant covers every agent tool until it ends (by default, when the agent quits), but for
+  showing you a page, running a bookmarklet, a dangerous or unscanned download or one a page
+  started by itself, and the checkpoints: paying, and sending a
   form with text or personal details (free text, a name, an email address, a phone number, an
   address, a birth date, a username or organisation, a password, a payment card or one-time-code
   field, or a file), or one whose fields Vimma cannot read whole. A click that sends a form of only
@@ -177,9 +179,10 @@ the [user guide](guide.md); planned work is on the
 
 ## Vimma's own agent
 
-- The [model bench](agent-bench.md) is all Vimma says about models, and none of the local models
-  it ran on a laptop CPU completed its shopping tasks. Whether a local model calls tools well
-  depends on the model and the server running it.
+- The [model bench](agent-bench.md) is all Vimma says about models, and it ran only local models
+  on one laptop CPU: a 35B mixture-of-experts model completed the ten-item shopping list in 17
+  minutes, and the smaller ones completed few or none of their lists. Whether a local model calls
+  tools well depends on the model and the server running it.
 - A local address may itself forward to a hosted model: the window says `stays on this machine`
   only for a local server's model picked in the window, and `local endpoint` for an address
   typed by hand.

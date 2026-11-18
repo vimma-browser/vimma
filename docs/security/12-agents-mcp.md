@@ -1,7 +1,8 @@
 ## 12. Agents (MCP) (`host/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`, `ctl/agent-tabs.mjs`, `actors/agent-page.mjs`)
 
-Lets local AI agents (Claude Code, Codex, opencode, Copilot) list, read, open and close tabs of
-one workspace, **agent**, through the control socket's `agent` role. Spec:
+Lets local AI agents (Claude Code, Codex, opencode, Copilot) use the MCP tools in one workspace,
+**agent**, through the control socket's `agent` role: list, read, open and close its tabs, and
+the tools the specs below add. Spec:
 [vimma-mcp](../specs/vimma-mcp.md), [ADR-019](../adr/019-agents-over-mcp.md).
 
 `ctl/agent-commands.mjs` asks the gate and runs each command; `ctl/agent-tabs.mjs` decides which

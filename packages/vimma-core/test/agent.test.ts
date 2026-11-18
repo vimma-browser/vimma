@@ -59,7 +59,7 @@ describe(":mcp on|off (decision 26: config wins; the question only for the comma
 
   test("the question names the workspace; an adopted one of your own is warned about", () => {
     expect(mcpOnQuestion("agent", null)).toBe(
-      'Let local AI agents ask to use the "agent" workspace? Every request asks you first. y/N',
+      'Let local AI agents ask to use the "agent" workspace? Nothing runs until you allow it. y/N',
     );
     expect(mcpOnQuestion("agent", { tabs: 3 })).toBe(
       '"agent" is your own workspace (3 tabs, its own logins). Agents will be able to read it. y/N',

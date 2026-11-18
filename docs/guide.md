@@ -65,10 +65,13 @@ What works today, each with the section that explains it:
   click their buttons, fill their fields (never a password or card number), take a screenshot, read
   a page's errors and show you a page. An agent asks you first, one answer lets it work through its
   task until it quits, and paying or sending a form with text or personal details still asks,
-  showing what is sent or the total the page states.
+  showing what is sent or the total the page states, except for a form button you allow for the
+  grant and a checkout Vimma does not recognise as one
+  ([what Vimma protects](#what-vimma-protects-and-what-it-does-not)).
 - **[Vimma's own agent](#vimmas-own-agent)**: `ctrl+b i` opens a chat window where you write a
   task and watch every step, with a local model (Ollama, LM Studio, llama.cpp), a hosted one
-  by API key, or [Claude Code](#using-an-agent-cli-in-the-chat-window) on its own login. It
+  by API key, or the [Claude Code, Codex or Gemini CLI](#using-an-agent-cli-in-the-chat-window)
+  you already have, on its own login. It
   works in the agent workspace through the same tools and checkpoints, several conversations
   can run at once, and conversations are kept, encrypted, without page text.
 
@@ -1843,7 +1846,9 @@ tab count. `m` on it asks
 Every profile has a workspace named `agent`, for local AI agents (Claude Code, Codex CLI,
 opencode, GitHub Copilot) to use through `vimma-ctl mcp`. It is a workspace like the others, with a container of
 its own, so its cookies and logins are apart from `main`, `work` and the rest. An agent only
-ever reaches this workspace, and every request asks you first. To let one in, see
+ever reaches this workspace, and nothing it does runs until you allow it: its first request asks
+you, and `a` lets it work without asking until it quits, except where
+[a grant still asks](#what-a-grant-covers). To let one in, see
 [Connecting an agent's tool](#connecting-an-agents-tool).
 
 - **Made for you.** A new profile gets it after `main`; an existing one at its next start. It
@@ -1872,16 +1877,16 @@ ever reaches this workspace, and every request asks you first. To let one in, se
   never in reach of an agent. What you open while in the agent workspace (`ctrl+t`, `:open`, the address
   bar, a bookmark) stays there.
 
-| Command          | What it does                                                                                                        |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `:mcp`           | Says whether agents are on or off, which workspace is theirs, and how many agents, questions and grants.            |
-| `:mcp on`        | Asks `Let local AI agents ask to use the "agent" workspace? Every request asks you first. y/N`, then turns them on. |
-| `:mcp off`       | Turns agents off, without a question. Connected agents are disconnected and their grants end.                       |
-| `:mcp revoke`    | Ends every grant you gave agents, at once.                                                                          |
-| `:mcp forget`    | Asks, then deletes the agent workspace's cookies and site data (its logins). The workspace stays.                   |
-| `:mcp log`       | Lists the last 100 agent requests, newest first: time, agent, tool, tab, keys or address, and what came of it.      |
-| `ctrl+b shift+a` | Answers the waiting agent request; with none, ends every grant at once.                                             |
-| `:control on 15` | Turns full control (`vimma-ctl`) on for 15 minutes, after a `y/N`; `:control off` ends it now.                      |
+| Command          | What it does                                                                                                           |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `:mcp`           | Says whether agents are on or off, which workspace is theirs, and how many agents, questions and grants.               |
+| `:mcp on`        | Asks `Let local AI agents ask to use the "agent" workspace? Nothing runs until you allow it. y/N`, then turns them on. |
+| `:mcp off`       | Turns MCP agents off and ends their grants, without a question; not [Vimma's own agent](#vimmas-own-agent).            |
+| `:mcp revoke`    | Ends every grant you gave agents, at once.                                                                             |
+| `:mcp forget`    | Asks, then deletes the agent workspace's cookies and site data (its logins). The workspace stays.                      |
+| `:mcp log`       | Lists the last 100 agent requests, newest first: time, agent, tool, tab, keys or address, and what came of it.         |
+| `ctrl+b shift+a` | Answers the waiting agent request; with none, ends every grant at once.                                                |
+| `:control on 15` | Turns full control (`vimma-ctl`) on for 15 minutes, after a `y/N`; `:control off` ends it now.                         |
 
 - When the agent workspace is one of yours rather than one Vimma made, `:mcp on` warns:
   `"agent" is your own workspace (3 tabs, its own logins). Agents will be able to read it. y/N`.
@@ -2157,10 +2162,12 @@ model = "gpt-4.1"
 
 A listed provider without a key shows `no key · Enter adds one` in the picker, and its first
 task asks for the key before anything is sent. You paste it into a masked field in the window,
-which has no reveal button and gives up nothing to copy. The key is encrypted with your system
-keyring (without one, as Firefox's saved passwords are) and kept in Firefox's login storage for
-that provider and its endpoint's address: a provider whose endpoint changes in `config.toml` is
-not sent it, and a copied profile or a password export is of no use without your keyring. The
+which has no reveal button and gives up nothing to copy. The key is kept in Firefox's login
+storage for that provider and its endpoint's address, so a provider whose endpoint changes in
+`config.toml` is not sent it. With a system keyring it is encrypted with your keyring, and a
+copied profile or a password export is of no use without it; without one, it is protected as
+Firefox's saved passwords are, by a primary password if you set one, and otherwise readable by
+anything that can read your profile. The
 picker then shows `key stored · ends …a1b2`; `x` there deletes it, and changing a key means
 deleting it and entering the new one. A hosted model is paid for: set `price_in` and `price_out`
 on the provider (per million tokens, from your provider's price list), and `[agent] max_cost`
@@ -2174,7 +2181,8 @@ not list is added there, and becomes the default only when none was set; to chan
 edit `[agent] default`.
 
 **Claude Code, Codex and Gemini CLI** run as programs on your computer rather than as models Vimma calls,
-so they are not set up by endpoint: see [CLI providers](specs/builtin-agent-cli.md).
+so they are not set up by endpoint: see
+[Using an agent CLI in the chat window](#using-an-agent-cli-in-the-chat-window).
 
 #### Connecting an agent's tool
 
@@ -2247,8 +2255,10 @@ and output, connects to Vimma as an agent (never with full control), and offers 
    waits for your answer.
 
 4. Ask the agent, for example "open https://example.com in Vimma's agent workspace and tell me
-   its heading". Each call waits for your answer on the [question line](#answering-an-agent);
-   the agent says it is waiting.
+   its heading". The first call waits for your answer on the
+   [question line](#answering-an-agent), and the agent says it is waiting: `y` allows that one
+   call, and `a` lets the agent work without asking until it quits, except where
+   [a grant still asks](#what-a-grant-covers).
 
 - **What the agent gets.** A read comes back as a line saying where the text is from and that it
   is untrusted, then the text between `<untrusted-web-content>` delimiters a page cannot close.
@@ -2590,8 +2600,9 @@ Vimma's own`; rename it. A call to any server other than Vimma's ends the task.
 Each of these tools can also take one prompt on its command line, run it without its terminal
 interface and print the answer, so a shell script, an editor command or a keyboard shortcut can
 start a task in the agent workspace. Headless means no terminal interface, not unattended: every
-step still waits for your answer on Vimma's [question line](#answering-an-agent), so keep Vimma
-where you can answer it (when it is not in front, it marks its window urgent and notifies you).
+step still needs your answer on Vimma's [question line](#answering-an-agent), or a grant you gave
+there, so keep Vimma where you can answer it (when it is not in front, it marks its window urgent
+and notifies you).
 
 - **Allow Vimma's tools up front.** A headless run has no terminal to ask you in, so each tool
   refuses a tool call it would otherwise ask about, before Vimma sees it. The commands below
@@ -2599,7 +2610,8 @@ where you can answer it (when it is not in front, it marks its window urgent and
 - **Answer the first question with `a`.** Later steps then run under the grant without asking,
   until the run ends ([What a grant covers](#what-a-grant-covers)). Each run starts its own
   `vimma-ctl mcp`, so its grant ends with it and the next run asks again. Paying, sending a form
-  with text or personal details, showing you a page and the downloads that always ask still ask.
+  with text or personal details, showing you a page, running a bookmarklet and the downloads that
+  always ask still ask, except as [What a grant covers](#what-a-grant-covers) says.
 - **A denial or no answer.** The tool call comes back as an error, `The user denied this request
 in Vimma.` or `No answer in Vimma within 50 s; treated as denied.`, and the agent says so in
   its answer. The run itself does not fail (Claude Code and Copilot CLI exit with status 0), so
@@ -2721,7 +2733,8 @@ the agent every login and cookie in it, with no question before it sends or pays
 #### Timeouts in agent tools
 
 A call waits for your answer up to `[mcp] ask_timeout` (50 s by default, 10 to 300), and
-`vimma-ctl mcp` itself gives up after 310 s. The agent tool has its own limit on a call:
+`vimma-ctl mcp` itself gives up after 390 s (the longest `ask_timeout`, plus time for a page to
+load and for `vimma_keys` to run). The agent tool has its own limit on a call:
 
 | Tool        | Its limit on a tool call                                                                                                                                                                                                               | What to do                                                                                                                   |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
@@ -2748,14 +2761,15 @@ with the rest of your computer.
   connects with the agent role only, and `vimma-ctl mcp` never asks for full control.
   `vimma_keys` runs a fixed set of Vimma's page keys in an agent tab
   ([Moving around a page](#moving-around-a-page)), never keys of the page itself.
-- asks you for every request, in a line that pages cannot reach or draw on. Only `y`, or a count
-  and `a`, allows; no answer within `ask_timeout` denies.
+- runs a request only once you allow it, in a line that pages cannot reach or draw on: `y` allows
+  that one request, `a` (or a count and `a`) gives a grant, and no answer within `ask_timeout`
+  denies.
 - gets page text and titles marked as untrusted web content, so the model is told that
   instructions inside them are not yours. This lowers the risk of prompt injection; it does not
   remove it.
 - is held by limits: 4 waiting requests per agent and 16 in all, 10 opens a minute, 30
-  `vimma_keys` calls, 30 `vimma_elements` calls, 30 clicks and fills, 12 screenshots, 30 console reads and 6 `vimma_show` calls a minute, and a minute of silence after three noes
-  in a row. A call over one of these rates is refused with the limit it hit and the seconds
+  `vimma_keys` calls, 30 `vimma_elements` calls, 30 clicks and fills, 12 screenshots, 30 console reads, 6 `vimma_show` calls and
+  6 bookmarklets a minute, and a minute of silence after three noes in a row. A call over one of these rates is refused with the limit it hit and the seconds
   until the next call is allowed, so the agent waits for the rate, not for you; Vimma's own
   agent waits it out by itself, and its step says `waiting 40 s (rate limit)`. An open, a click
   or a fill over the rate is refused before you are asked.
@@ -2768,14 +2782,18 @@ with the rest of your computer.
 - **Grants are wide.** A grant lets that agent use every tool without asking until it ends: read,
   open, press keys, click, fill, take screenshots and download, and send by a click a form of hidden
   fields, numbers, dates, checkboxes and list choices that are not personal details, including ones
-  it filled in. Only paying, sending a form with text or personal details, showing you a page and a
-  dangerous or unscanned download still ask ([What a grant covers](#what-a-grant-covers)). A grant
+  it filled in. Only paying, sending a form with text or personal details, showing you a page,
+  running a bookmarklet, and a dangerous or unscanned download or one a page started by itself
+  still ask ([What a grant covers](#what-a-grant-covers)). A grant
   given for a read therefore also means "let it fetch any address", and an address can carry what
   the agent has read elsewhere. `a always here` on a form's question lets that button on that site
   send its later forms without asking until the grant ends, whatever text or personal details they
   carry; a payment, a password, card, one-time-code or file field, a form with more than 64 fields
   besides hidden ones, a value too long for Vimma to read whole (over 1024 characters), or a form
-  whose fields Vimma could not read still asks. Every call under a grant shows a notice and a row in
+  whose fields Vimma could not read still asks. A checkout Vimma does not recognise as one (no
+  card field on screen and a button worded otherwise, such as `Continue` or an icon) runs under the
+  grant like any other click ([what counts as paying](#checkpoints-sending-a-form-and-paying)).
+  Every call under a grant shows a notice and a row in
   `:mcp log`, so you can see where it went. A bare `a` lasts until the agent quits, which can be
   hours: give a grant for a task you are watching, a count (`15a`) when you want it to lapse by
   itself, and answer `y` one at a time otherwise.
@@ -2789,7 +2807,8 @@ with the rest of your computer.
 - **The rest of your computer is the agent tool's matter.** An agent with a shell or file tools
   runs as you. It can read your files, Vimma's profile included (cookies, saved passwords, and
   the control socket's token in `vimma-control.json`), unless its tool stops it. With the token
-  and MCP on, it still reaches only the agent role, where every request asks. With full control
+  and MCP on, it still reaches only the agent role, where each request needs your yes or a grant
+  you gave. With full control
   on, the same token would give it your keyboard and every workspace; while MCP is on, each
   full-control connection asks you first, but the safe setting is off. Turn it on only for a
   while (`:control on 15`) when you script Vimma yourself.
@@ -2835,7 +2854,7 @@ workspace, tab, focus, find bar and hint mode.
   (`in-use`) without a question, and keys stop at the next step if you start using it while they
   run. Watching is fine: in normal mode you see the agent scroll.
 - **A grant covers it:** under a grant each call shows
-  `claude-code pressed 2j in "Pricing · Example" (grant, 12m left)`; a follow adds
+  `claude-code pressed 2j in "Pricing · Example" (grant)`; a follow adds
   `claude-code followed a link to docs.example.com in "Pricing · Example"`. At most 30 calls a minute; a follow, `gu`, `gU`, `H` and `L`
   count towards the 10 opens a minute. A find does not run in the tab you are in, since the browser's find would
   put your focus in a text field it matched.
@@ -2871,7 +2890,7 @@ focus and hint mode.
   as a load of its address; the label of a button or a field is refused, and so is a link the
   page has replaced since it was listed.
 - **A grant covers it:** each call then shows
-  `claude-code listed the buttons and fields of "Sign up · Example" (grant, 12m left)`. The list
+  `claude-code listed the buttons and fields of "Sign up · Example" (grant)`. The list
   holds no page text beyond the elements' own. At most 30 calls a minute; each is in `:mcp log`.
 - **With a step, in one call.** An agent can ask `vimma_open`, `vimma_activate` or `vimma_fill`
   for the page's list too (`elements`), so it does not need a second call to see the page after
@@ -2952,7 +2971,7 @@ button inside an embedded frame that updates the page around it reads as no chan
 - **Agents cannot answer dialogs.** An `alert`, `confirm` or `prompt` the page opens waits in the
   tab for you; the agent only learns its text, as untrusted content.
 - **A grant covers clicks** (not submissions or payments): each shows
-  `claude-code clicked button "Add to list" in "List · Example" (grant, 12m left)`. A click that
+  `claude-code clicked button "Add to list" in "List · Example" (grant)`. A click that
   loads a page counts as one of the 10 opens a minute, and no click is made while those are used
   up. At most 30 clicks a minute, none while you are typing in the tab, and each is in
   `:mcp log` with the element, a submission with its destination.
@@ -2989,7 +3008,7 @@ soon as its last field is set.
   direction marks and the like) are refused, so the question shows all a value holds; values
   longer than the line are cut with `…`, and `:mcp log` keeps them whole.
 - **A grant covers fills** (not submissions or payments): each shows
-  `claude-code filled 2 fields in "Sign up · Example" (grant, 12m left)`, and `:mcp log` keeps
+  `claude-code filled 2 fields in "Sign up · Example" (grant)`, and `:mcp log` keeps
   every value. At most 32 fields a call, 30 clicks and fills a minute, none while you are typing
   in the tab.
 
@@ -3015,7 +3034,7 @@ has not scrolled since.
   yours. Only the viewport of an http or https page is captured, never the browser around it,
   another tab, or a settings page or local file opened in the agent workspace.
 - **A grant covers screenshots:** each shows
-  `claude-code took a screenshot of "Sign up · Example" (grant, 12m left)`. At most 12 a minute.
+  `claude-code took a screenshot of "Sign up · Example" (grant)`. At most 12 a minute.
 
 #### Reading a page's errors
 
@@ -3041,7 +3060,7 @@ can pass back as `since` to see only what a later click or fill caused.
   instructions, which the agent is told are not yours, or tokens the page put in a URL. Only an
   http or https page's are read.
 - **A grant covers console reads:** each shows
-  `claude-code read the errors of "Sign up · Example" (grant, 12m left)`. At most 30 a minute.
+  `claude-code read the errors of "Sign up · Example" (grant)`. At most 30 a minute.
 
 #### Showing you a page
 
@@ -3125,8 +3144,9 @@ on it.
 - `ctrl+b shift+a` with nothing waiting, or `:mcp revoke`: ends every grant now, without a
   second question. The agents stay connected, and their next requests ask.
 - `x` on a question: denies everything that agent asked and ignores it until it reconnects.
-- `:mcp off`: disconnects every agent and ends their grants; `vimma-ctl mcp` then answers each
-  call with `MCP is off in Vimma`.
+- `:mcp off`: disconnects every MCP agent and ends their grants; `vimma-ctl mcp` then answers
+  each call with `MCP is off in Vimma`. [Vimma's own agent](#vimmas-own-agent) keeps working:
+  `:agent stop` stops it.
 - `:mcp forget`: deletes the agent workspace's cookies and site data, so any login an agent used
   there is gone. `ctrl+b shift+d` in the workspace closes its tabs.
 - Removing the server from your tool (`claude mcp remove vimma`, `codex mcp remove vimma`,
@@ -3176,7 +3196,8 @@ of agent tabs for the tab list.
   title and no buttons: you answer in Vimma. `[mcp] notify = false` turns the notification off.
 - **Grants show.** `◇ agent granted` while an agent may act without asking (`◇ agent 14m` counts
   down a grant of minutes), and each request a grant lets through shows a notice
-  (`claude-code read "Pull requests · vimma-browser/vimma" (grant)`). `ctrl+b shift+a` with
+  (`claude-code read "Pull requests · vimma-browser/vimma" (grant)`, or `(grant, 12m left)` under
+  a grant of minutes). `ctrl+b shift+a` with
   nothing waiting, or `:mcp revoke`, ends them all at once. A grant also ends when the agent
   quits or `:mcp off` runs, and is never written to disk.
 
@@ -3199,8 +3220,14 @@ ending the one in force:
   ([Checkpoints: sending a form and paying](#checkpoints-sending-a-form-and-paying)): a payment
   spends your money, and a form that sends a message, a name, an address, a password or a file
   is where sign-ups and messages happen. A form that sends only the page's own values, such as a
-  basket's product and quantity, runs under the grant like any other click.
+  basket's product and quantity, runs under the grant like any other click. Two gaps:
+  `a always here` on a form's question lets that button on that site send its later forms without
+  asking until the grant ends, and a checkout Vimma does not recognise as one runs under the grant
+  ([What is not recognised](#checkpoints-sending-a-form-and-paying)).
 - **Showing you a page** ([Showing you a page](#showing-you-a-page)): it changes what you see.
+- **Running one of your bookmarklets**
+  ([Running one of your bookmarklets](#running-one-of-your-bookmarklets)): its code can do
+  anything the page can.
 - **A dangerous or unscanned download**, and a download a page started by itself
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
 
@@ -3284,8 +3311,8 @@ An agent with a shell can read the control socket's token like any program of yo
 agents are on (`:mcp on`), each new `vimma-ctl` connection with full control (keys in your
 window, every workspace) asks in the same line:
 `◇ vimma-ctl with code 7F3K wants full control (every workspace, not only "agent") — y/N`. `y` lets
-that one connection in, `n`, `Esc`, `Enter`, `x` or any other key refuses it, and nothing is
-remembered: the next one asks again. The line shows the code `vimma-ctl` printed in your terminal
+that one connection in, `n`, `Esc`, `Enter` or `x` refuses it (any other key does nothing), and
+nothing is remembered: the next one asks again. The line shows the code `vimma-ctl` printed in your terminal
 (`vimma-ctl with code 7F3K wants full control`): answer `y` only if it is the same, since
 another program could have asked at the same moment. `vimma-ctl` waits for your answer and says so; if refused, it
 prints `full control refused` and exits 4. With agents off, nothing asks.
@@ -3354,7 +3381,8 @@ script` (or what it is). `y` and grants do nothing there: only `!` allows that o
   before it leaves its `.part` name, and a file ClamAV flags is deleted (`deleted download
 "a.zip": ClamAV found …`). Sometimes ClamAV fails, takes over five minutes, or cannot look
   inside a file (encrypted, or over its limits). Then the line asks `— ⚠ not scanned: ClamAV
-failed; keep it?`: `y` keeps it unscanned, anything else deletes it. The notice says
+failed; keep it?`: `y` keeps it unscanned; `n`, `Esc`, `Enter` or `x` deletes it, and so does no
+  answer within `ask_timeout` (any other key does nothing). The notice says
   `saved "report.pdf" to ~/Downloads/vimma-agent, scanned (ClamAV)`, `not fully scanned (ClamAV)`,
   `scanned with outdated definitions (ClamAV)` or `not scanned`. Vimma has no download reputation service of its own: Firefox's Safe Browsing
   checks downloads only in a build with a Google key.

@@ -65,7 +65,7 @@ export function planMcpSwitch(word, { pref, config }) {
  */
 export function mcpOnQuestion(name, adopted) {
   if (!adopted) {
-    return `Let local AI agents ask to use the "${name}" workspace? Every request asks you first. y/N`;
+    return `Let local AI agents ask to use the "${name}" workspace? Nothing runs until you allow it. y/N`;
   }
   const tabs = `${adopted.tabs} tab${adopted.tabs === 1 ? "" : "s"}`;
   return (

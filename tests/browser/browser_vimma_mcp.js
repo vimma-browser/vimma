@@ -412,7 +412,7 @@ add_task(async function mcp_on_asks_off_does_not_and_config_wins() {
   await until(promptOpen, ":mcp on asks");
   Assert.equal(
     promptText(),
-    'Let local AI agents ask to use the "agent" workspace? Every request asks you first. y/N',
+    'Let local AI agents ask to use the "agent" workspace? Nothing runs until you allow it. y/N',
     "the question names the workspace",
   );
   EventUtils.synthesizeKey("n");
