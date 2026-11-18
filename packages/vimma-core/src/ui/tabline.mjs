@@ -21,11 +21,10 @@ import { truncate } from "./statusbar.mjs";
  */
 /**
  * One drawn entry: `name` cut to fit ("" for none); while gb's labels show, `label` the whole
- * label and `rest` the letters still to type, which are what is drawn; `bare` an entry drawn as
- * those letters alone (decision 13), with no number, mark or name.
+ * label and `rest` the letters still to type, which are what is drawn.
  * @typedef {{ readonly tabId: string, readonly number: number, readonly name: string,
  *   readonly current: boolean, readonly playing: boolean, readonly pane: boolean,
- *   readonly label: string | null, readonly rest?: string, readonly bare?: boolean }} TabLineItem
+ *   readonly label: string | null, readonly rest?: string }} TabLineItem
  */
 /**
  * What the line draws: the entries in view and how many tabs are hidden on each side.
@@ -106,15 +105,13 @@ function cut(text, width) {
 
 /**
  * The columns of an entry but its name: a column of padding on each side, the label's letters
- * still to type and a space, the number, the pane mark, a space before ♪ and ♪. A bare entry is
- * those letters and the padding.
+ * still to type and a space, the number, the pane mark, a space before ♪ and ♪.
  * @param {{ number: number, pane: boolean, playing: boolean, label?: string | null,
- *   rest?: string, bare?: boolean }} item
+ *   rest?: string }} item
  */
 function fixedWidth(item) {
   const shown = item.rest ?? item.label ?? "";
   const label = columns(shown);
-  if (item.bare) return 2 + label;
   return (
     2 +
     (shown ? label + 1 : 0) +
@@ -127,10 +124,10 @@ function fixedWidth(item) {
 /**
  * One entry's columns; the name takes a space before it.
  * @param {{ number: number, name: string, pane: boolean, playing: boolean,
- *   label?: string | null, rest?: string, bare?: boolean }} item
+ *   label?: string | null, rest?: string }} item
  */
 export function itemWidth(item) {
-  return fixedWidth(item) + (item.name && !item.bare ? 1 + columns(item.name) : 0);
+  return fixedWidth(item) + (item.name ? 1 + columns(item.name) : 0);
 }
 
 /** A hidden count's mark, `‹n` or `n›`, with the space after or before it. @param {number} n */
@@ -151,9 +148,9 @@ export function lineWidth(fit) {
  * around the current tab, grown a neighbour at a time, right then left, while it fits with the
  * hidden counts' marks. While gb's labels show (decision 13), only the tabs whose label starts
  * with what was typed are listed, each drawing the letters still to type; before any of them is
- * hidden their names shrink, then each is drawn as those letters alone, and if even that does not
- * fit, the run starts at the first tab listed, since labels go shortest first in tab order: the
- * tabs one key away are always in view. Each name is measured once and only the drawn ones are
+ * hidden their names shrink, and if the label and number alone do not fit for every tab, the
+ * run starts at the first tab listed, since labels go shortest first in tab order: the tabs one
+ * key away come first. Each name is measured once and only the drawn ones are
  * cut, so a fit is linear in the tabs.
  * @param {readonly TabLineEntry[]} entries
  * @param {{ width: number, nameWidth: number, labels?: TabLineLabels | null }} options
@@ -190,25 +187,24 @@ export function fitTabLine(entries, { width, nameWidth, labels = null }) {
     for (let i = 0; i < n; i++) sum += /** @type {number} */ (fixed[i]) + nameCols(i, w);
     return sum;
   };
-  /** @param {number} a @param {number} b @param {number} w @param {boolean} [bare] */
-  const make = (a, b, w, bare = false) =>
+  /** @param {number} a @param {number} b @param {number} w */
+  const make = (a, b, w) =>
     list.slice(a, b + 1).map((e) =>
       Object.freeze({
         ...e,
-        name: bare || w <= 0 ? "" : cut(e.name, w),
+        name: w <= 0 ? "" : cut(e.name, w),
         ...labelled(e),
-        ...(bare ? { bare: true } : {}),
       }),
     );
   if (total(nameWidth) <= width) return { items: make(0, n - 1, nameWidth), before: 0, after: 0 };
 
   let w = nameWidth;
-  let bare = false;
   /** @type {number[]} */
   let widths;
   if (labels) {
     // Every label in view first: the names give way (the widest that fits, by bisection, as the
-    // total only grows with the width), then the numbers and marks.
+    // total only grows with the width); the label and the number always stay together, so an
+    // entry still says which tab it is.
     if (total(0) <= width) {
       let lo = 0;
       let hi = nameWidth;
@@ -219,13 +215,8 @@ export function fitTabLine(entries, { width, nameWidth, labels = null }) {
       }
       return { items: make(0, n - 1, lo), before: 0, after: 0 };
     }
-    const bareWidths = list.map((e) => fixedWidth({ ...e, ...labelled(e), bare: true }));
-    if (bareWidths.reduce((x, y) => x + y, 0) <= width) {
-      return { items: make(0, n - 1, 0, true), before: 0, after: 0 };
-    }
-    bare = true;
     w = 0;
-    widths = bareWidths;
+    widths = /** @type {number[]} */ (fixed);
   } else {
     widths = list.map((_, i) => /** @type {number} */ (fixed[i]) + nameCols(i, w));
   }
@@ -245,14 +236,14 @@ export function fitTabLine(entries, { width, nameWidth, labels = null }) {
     s + markWidth(x) + markWidth(n - 1 - y) <= width;
   if (!fits(sum, a, b)) {
     // Too narrow for the current tab's whole entry: its name is cut further, as the last resort.
-    const [only] = make(current, current, w, bare);
+    const [only] = make(current, current, w);
     const fit = {
       items: [/** @type {TabLineItem} */ (only)],
       before: current,
       after: n - 1 - current,
     };
     const room = width - (lineWidth(fit) - (only?.name ? columns(only.name) : 0));
-    const name = only && !bare && room >= 1 ? cut(entriesName(list, current), room) : "";
+    const name = only && room >= 1 ? cut(entriesName(list, current), room) : "";
     return { ...fit, items: [Object.freeze({ .../** @type {TabLineItem} */ (only), name })] };
   }
   for (;;) {
@@ -262,7 +253,7 @@ export function fitTabLine(entries, { width, nameWidth, labels = null }) {
     if (left) sum += /** @type {number} */ (widths[--a]);
     if (!right && !left) break;
   }
-  return { items: make(a, b, w, bare), before: a, after: n - 1 - b };
+  return { items: make(a, b, w), before: a, after: n - 1 - b };
 }
 
 /** @param {readonly TabLineEntry[]} list @param {number} i */

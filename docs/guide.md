@@ -1188,9 +1188,11 @@ A private window and the agent workspace list only their own tabs.
 
 To jump, press `gb` in normal mode: every tab in the line gets a label from the link hints'
 letters, and typing a label goes to that tab; Shift and Caps Lock make no difference. With more
-tabs than letters the labels have two or three letters, as link hints do. When they do not all
-fit, the tabs show their labels alone, and each letter you type narrows the line to the tabs
-still matching, so the tab you want is in view before its last letter. `Backspace` takes back a
+tabs than letters the labels have two or three letters, as link hints do. Each label keeps its
+tab's number beside it (`AS 12`); when they do not all fit, the names give way first, and each
+letter you type narrows the line to the tabs still matching, so the tab you want comes into view
+before its last letter. With many tabs, `12gb` (or `12gt`) goes straight to the number the line
+shows, and tab search (`b`, or `:b` and part of a name) finds a tab by its name. `Backspace` takes back a
 letter. `Esc`, or any other key that is not part of a label, removes the labels and does nothing
 else. `gb` works with the line
 off too: the line shows while its labels are up. With a number first, `12gb` goes to tab 12 at

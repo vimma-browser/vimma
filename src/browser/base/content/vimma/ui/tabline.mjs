@@ -308,12 +308,7 @@ export class TabLine {
         // The letters still to type: the typed ones narrowed the line already (decision 13).
         const label = el("vimma-tabline-label", item.rest ?? item.label);
         label.dataset.label = item.label;
-        tab.append(label);
-        if (item.bare) {
-          out.push(tab);
-          continue;
-        }
-        tab.append(doc.createTextNode(" "));
+        tab.append(label, doc.createTextNode(" "));
       }
       tab.append(el("vimma-tabline-number", String(item.number)));
       if (item.pane) tab.append(...glyph("▪", " in a pane"));

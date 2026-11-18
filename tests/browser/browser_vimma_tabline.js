@@ -410,15 +410,14 @@ for (const n of [30, 120]) {
     const target = session.labels[n - 2];
     const { label, tabId } = /** @type {{ label: string, tabId: string }} */ (target);
     Assert.greater(label.length, 1, "several letters, as link hints have them");
-    if (n === 30) {
-      // Thirty labels fit as labels alone: every tab is in view at once (decision 13).
-      Assert.equal(entries().length, n, "every tab in view, as its label");
-    } else {
-      Assert.ok(
-        !entries().some((e) => e.dataset.number === String(n - 1)),
-        "tab n-1 starts out of view",
-      );
-    }
+    Assert.ok(
+      !entries().some((e) => e.dataset.number === String(n - 1)),
+      "tab n-1 starts out of view",
+    );
+    Assert.ok(
+      entries().every((e) => e.querySelector(".vimma-tabline-number")),
+      "each label keeps its tab's number",
+    );
     type(label.slice(0, -1));
     await until(
       () => labels().some((l) => l.dataset.label === label),

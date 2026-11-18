@@ -167,24 +167,104 @@ describe("fitTabLine", () => {
     });
   });
 
-  test("any count and width: the current tab shows, counts add up, it never overflows", () => {
+  test("any names, marks, count and width: the current tab shows, counts add up, it never overflows, and no hidden neighbour would fit", () => {
     fc.assert(
       fc.property(
-        fc.integer({ min: 1, max: 150 }),
+        fc.array(tabArb, { minLength: 1, maxLength: 150 }),
         fc.integer({ min: 30, max: 300 }),
         fc.integer({ min: 4, max: 60 }),
         fc.nat(),
-        (count, width, nameWidth, pick) => {
+        (tabs, width, nameWidth, pick) => {
+          const count = tabs.length;
           const current = (pick % count) + 1;
-          const fit = fitTabLine(tabLineEntries(rows(count, current), []), { width, nameWidth });
+          const entries = entriesOf(tabs, current);
+          const fit = fitTabLine(entries, { width, nameWidth });
           expect(fit.items.some((i) => i.number === current)).toBe(true);
           expect(fit.before + fit.items.length + fit.after).toBe(count);
           expect(lineWidth(fit)).toBeLessThanOrEqual(width);
+          expectMaximal(entries, fit, width, nameWidth, null);
         },
       ),
     );
   });
 });
+
+/** Pieces of tab names: wide CJK, a ZWJ emoji, a flag, combining and precomposed accents. */
+const NAME_PARTS = ["mail", "日本語の", "👩‍💻", "🇫🇮", "e\u0301te\u0301", "Ünïcödé", "ｶﾀｶﾅ", " ", "x"];
+const tabArb = fc.record({
+  name: fc.array(fc.constantFrom(...NAME_PARTS), { maxLength: 8 }).map((p) => p.join("")),
+  pane: fc.boolean(),
+  playing: fc.boolean(),
+});
+
+/** @param tabs  generated tabs @param current  the current tab's number */
+function entriesOf(
+  tabs: { name: string; pane: boolean; playing: boolean }[],
+  current: number,
+): TabLineEntry[] {
+  return tabLineEntries(
+    tabs.map((t, i) => row(i + 1, t.name, { active: i + 1 === current, playing: t.playing })),
+    tabs.flatMap((t, i) => (t.pane ? [`t${i + 1}`] : [])),
+  );
+}
+
+const mark = (n: number) => (n > 0 ? String(n).length + 2 : 0);
+
+/**
+ * The columns the fit counts for an entry: the name at most `w` columns (a cut name may take
+ * one less, where a wide character would not fit), the letters still to type.
+ */
+function counted(e: TabLineEntry, w: number, rest: string | null) {
+  const name = textWidth(e.name);
+  return (
+    2 +
+    (rest ? textWidth(rest) + 1 : 0) +
+    String(e.number).length +
+    (e.pane ? 1 : 0) +
+    (e.playing ? 2 : 0) +
+    (w > 0 && name > 0 ? Math.min(name, w) + 1 : 0)
+  );
+}
+
+/**
+ * No hidden neighbour of the run would fit beside it: the line is as full as the rule allows.
+ * `labels` null: names at `nameWidth`; with labels and tabs hidden, names are gone (w = 0).
+ */
+function expectMaximal(
+  entries: readonly TabLineEntry[],
+  fit: TabLineFit,
+  width: number,
+  nameWidth: number,
+  labels: { typed: string; labels: readonly { tabId: string; label: string }[] } | null,
+) {
+  if (!fit.before && !fit.after) return;
+  const listed = labels
+    ? entries.filter((e) =>
+        labels.labels.some((l) => l.tabId === e.tabId && l.label.startsWith(labels.typed)),
+      )
+    : entries;
+  const restOf = (e: TabLineEntry) => {
+    const l = labels?.labels.find((x) => x.tabId === e.tabId)?.label;
+    return l === undefined ? null : l.slice(labels?.typed.length ?? 0);
+  };
+  const w = labels ? 0 : nameWidth;
+  const sum = fit.items.reduce(
+    (n, i) => n + counted(listed.find((e) => e.tabId === i.tabId) as TabLineEntry, w, restOf(i)),
+    0,
+  );
+  if (fit.before) {
+    const left = listed[fit.before - 1] as TabLineEntry;
+    expect(
+      sum + counted(left, w, restOf(left)) + mark(fit.before - 1) + mark(fit.after),
+    ).toBeGreaterThan(width);
+  }
+  if (fit.after) {
+    const right = listed[fit.before + fit.items.length] as TabLineEntry;
+    expect(
+      sum + counted(right, w, restOf(right)) + mark(fit.before) + mark(fit.after - 1),
+    ).toBeGreaterThan(width);
+  }
+}
 
 describe("gb labels", () => {
   test("one label per tab, in tab order, from the hint characters", () => {
@@ -294,25 +374,33 @@ describe("gb labels", () => {
 });
 
 describe("labels in a narrow line (decision 13)", () => {
-  test("labels alone, before any tab is hidden", () => {
-    const entries = tabLineEntries(rows(9, 5), []);
+  test("a label keeps its number: when names do not fit, entries are label and number", () => {
+    const entries = tabLineEntries(rows(30, 15), []);
     const s = startTabLabels(
       entries.map((e) => e.tabId),
       "asdfghjkl",
     );
-    // Nine entries of " A " take 27 columns; with numbers ("A 1 ") they would take 45.
-    const fit = fitTabLine(entries, { width: 30, nameWidth: 14, labels: s });
-    expect(fit.items.length).toBe(9);
-    expect(fit.items.every((i) => i.bare && !i.name)).toBe(true);
-    expect(lineWidth(fit)).toBeLessThanOrEqual(30);
+    const fit = fitTabLine(entries, { width: 60, nameWidth: 14, labels: s });
+    expect(fit.items.length).toBeGreaterThan(0);
+    for (const i of fit.items) {
+      expect(i.name).toBe("");
+      expect(i.label).not.toBeNull();
+      expect(lineWidth({ items: [i], before: 0, after: 0 })).toBe(
+        2 + (i.rest?.length ?? 0) + 1 + String(i.number).length,
+      );
+    }
+    expect(fit.before).toBe(0);
+    expect(fit.items[0]?.number).toBe(1);
   });
 
   test.each([
     [30, 40],
     [30, 60],
+    [30, 110],
     [120, 40],
     [120, 60],
-  ])("%i tabs at %i columns: every tab is in view before its last letter", (n, width) => {
+    [120, 110],
+  ])("%i tabs at %i columns: the tabs one letter away come first", (n, width) => {
     const entries = tabLineEntries(rows(n, Math.ceil(n / 2)), []);
     const start = startTabLabels(
       entries.map((e) => e.tabId),
@@ -322,24 +410,35 @@ describe("labels in a narrow line (decision 13)", () => {
       let s = start;
       for (const c of label.slice(0, -1)) ({ state: s } = tabLabelKey(s, key(c)));
       const fit = fitTabLine(entries, { width, nameWidth: 14, labels: s });
-      expect(
-        fit.items.some((i) => i.tabId === tabId),
-        `${label} after "${s.typed}"`,
-      ).toBe(true);
+      const matching = s.labels.filter((l) => l.label.startsWith(s.typed));
+      expect(fit.before).toBe(0);
+      expect(fit.items[0]?.tabId).toBe(matching[0]?.tabId);
       expect(lineWidth(fit)).toBeLessThanOrEqual(width);
+      const shown = fit.items.some((i) => i.tabId === tabId);
+      if (width >= 110) {
+        // Wide enough for every tab one letter away with its number: each is in view.
+        expect(shown, `${label} after "${s.typed}"`).toBe(true);
+      } else if (!shown) {
+        // Narrower: only tabs one letter away (closer than this one) may take the room.
+        expect(
+          fit.items.every((i) => i.rest?.length === 1),
+          `${label} after "${s.typed}"`,
+        ).toBe(true);
+      }
     }
   });
 
-  test("any count, width and typed prefix: only matching tabs, counts add up, never wider", () => {
+  test("any names, count, width and typed prefix: only matching tabs from the first, counts add up, never wider, full", () => {
     fc.assert(
       fc.property(
-        fc.integer({ min: 1, max: 300 }),
+        fc.array(tabArb, { minLength: 1, maxLength: 300 }),
         fc.integer({ min: 30, max: 300 }),
         fc.integer({ min: 4, max: 60 }),
         fc.nat(),
         fc.nat(),
-        (count, width, nameWidth, pick, which) => {
-          const entries = tabLineEntries(rows(count, (pick % count) + 1), []);
+        (tabs, width, nameWidth, pick, which) => {
+          const count = tabs.length;
+          const entries = entriesOf(tabs, (pick % count) + 1);
           let s = startTabLabels(
             entries.map((e) => e.tabId),
             "asdfghjkl",
@@ -353,6 +452,8 @@ describe("labels in a narrow line (decision 13)", () => {
           expect(fit.before + fit.items.length + fit.after).toBe(left);
           expect(fit.items.every((i) => i.label?.startsWith(s.typed))).toBe(true);
           expect(lineWidth(fit)).toBeLessThanOrEqual(width);
+          expect(fit.before).toBe(0);
+          expectMaximal(entries, fit, width, nameWidth, s);
         },
       ),
     );
