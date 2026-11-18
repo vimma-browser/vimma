@@ -224,12 +224,19 @@ function routesOf(win, tabId) {
  * @param {BrowserWindow} win
  */
 function workspacesOf(win) {
-  const model = WindowWorkspaces.get(win)?.model;
+  const ww = WindowWorkspaces.get(win);
+  const model = ww?.model;
   if (!model) return [];
   const view = PaneViews.get(win);
+  /** A workspace not shown since a restore: its saved split, the one it will show. */
+  const unvisited = (/** @type {string} */ id) => {
+    const s = ww.unvisitedSplits(id);
+    const n = s && (s.shown ?? s.last);
+    return s ? (s.splits.find((x) => x.number === n) ?? s.splits[0] ?? null) : null;
+  };
   return model.workspaces.map((w) => {
     const active = w.id === model.active;
-    const panes = active ? (view?.panes ?? null) : (view?.parked(w.id) ?? null);
+    const panes = active ? (view?.panes ?? null) : (view?.parked(w.id) ?? unvisited(w.id));
     return {
       name: w.name,
       active,

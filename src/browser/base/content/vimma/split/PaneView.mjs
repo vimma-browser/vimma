@@ -521,8 +521,34 @@ export class PaneView {
     this.#panes = null;
     this.#number = 1;
     this.#others = new Map();
-    for (const [id, value] of trees) {
-      if (id === active) continue;
+    for (const [id, value] of trees) if (id !== active) this.park(id, value);
+    const shown = trees.get(active);
+    this.#use(shown ? ("splits" in shown ? shown : splitsFromPanes(shown)) : splitsFromPanes(null));
+  }
+
+  /**
+   * Parks `value` under workspace `id`, which is not shown, as `swap` would have: a restored
+   * workspace's splits, handed over when it is first shown (WindowWorkspaces keeps them in uuids
+   * until then, so that their tabs stay lazy: issue #1305). Touches nothing in Firefox and leaves
+   * the shown workspace's splits as they are.
+   * @param {string} id
+   * @param {Panes | Splits} value
+   */
+  park(id, value) {
+    const shown = {
+      panes: this.#panes,
+      wrapper: this.#wrapper,
+      laidOut: this.#laidOut,
+      number: this.#number,
+      others: this.#others,
+      resize: this.#resize,
+    };
+    this.#panes = null;
+    this.#wrapper = null;
+    this.#laidOut = new Set();
+    this.#others = new Map();
+    this.#resize = null;
+    try {
       this.#use("splits" in value ? value : splitsFromPanes(value));
       if (this.#panes) {
         this.#parked.set(id, {
@@ -532,12 +558,17 @@ export class PaneView {
           number: this.#number,
           others: this.#others,
         });
+      } else {
+        this.#parked.delete(id);
       }
-      this.#panes = null;
-      this.#others = new Map();
+    } finally {
+      this.#panes = shown.panes;
+      this.#wrapper = shown.wrapper;
+      this.#laidOut = shown.laidOut;
+      this.#number = shown.number;
+      this.#others = shown.others;
+      this.#resize = shown.resize;
     }
-    const shown = trees.get(active);
-    this.#use(shown ? ("splits" in shown ? shown : splitsFromPanes(shown)) : splitsFromPanes(null));
   }
 
   /**
