@@ -10,6 +10,7 @@ import {
   visibleHints,
   hintStatus,
   upperLast,
+  hintLabelCase,
   HintError,
   parseHintReply,
   hintCollectReason,
@@ -332,6 +333,15 @@ describe("hint mode", () => {
     expect(upperLast("a1")).toBe(null);
     // ß upper-cases to SS, two characters: no key types it.
     expect(upperLast("aß")).toBe(null);
+  });
+
+  test("hintLabelCase draws gF's labels lower case, its background form, and the rest upper", () => {
+    // gF reads the typed case (lower: background, upper: go there), so its labels show the
+    // form that opens in the background: typing what is drawn does what gF promises.
+    expect(hintLabelCase("hint.follow_new_tab")).toBe("lower");
+    for (const action of HINT_ACTIONS.filter((a) => a !== "hint.follow_new_tab")) {
+      expect(hintLabelCase(action)).toBe("upper");
+    }
   });
 
   test("hintStatus names the action and the first label still on screen", () => {

@@ -84,13 +84,15 @@ export class HintOverlay {
    * Draws a label at the top left of each target.
    * @param {MozBrowser} browser  the <browser> the targets belong to
    * @param {readonly Hint<HintTarget>[]} hints
+   * @param {"lower" | "upper"} [labelCase]  the case the labels are drawn in (core hintLabelCase)
    */
-  show(browser, hints) {
+  show(browser, hints, labelCase = "upper") {
     this.hide();
     const doc = this.win.document;
     this.#style();
     const layer = /** @type {HTMLElement} */ (doc.createElementNS(HTML_NS, "div"));
     layer.id = HINT_OVERLAY_ID;
+    layer.dataset.case = labelCase;
     // Labels drawn over a page are a picture of where to type, thousands of them: out of the
     // accessible tree. The status bar says "hint mode" (m7-a11y).
     layer.setAttribute("aria-hidden", "true");

@@ -29,6 +29,12 @@
     }
   }
 
+  /* gF reads the case typed: its labels show the lower-case, background form
+     (core hintLabelCase). */
+  &[data-case="lower"] .vimma-hint {
+    text-transform: none;
+  }
+
   /* The letters typed so far: underlined, never faded, so the label keeps its contrast
      (spec m7-a11y). */
   & .vimma-hint-typed {

@@ -186,6 +186,18 @@ export function upperLast(label) {
 }
 
 /**
+ * The case a hint session's labels are drawn in. `gF` reads the case of the last key typed (lower
+ * case opens in the background, upper case goes there), so its labels are drawn lower case, the
+ * background form: typing what is drawn does what `gF` is for. The other actions ignore case, and
+ * their labels are drawn upper case, which reads better at the labels' small size.
+ * @param {HintAction} action
+ * @returns {"lower" | "upper"}
+ */
+export function hintLabelCase(action) {
+  return action === "hint.follow_new_tab" ? "lower" : "upper";
+}
+
+/**
  * What the status bar shows of a hint session: its action and the first label still on screen.
  * @param {HintState} state  any target type: only labels are read
  * @returns {{ action: HintAction, label: string | null }}
