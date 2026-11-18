@@ -209,7 +209,7 @@ describe("invalid TOML 1.0 is rejected with a line", () => {
     ["t = { a.b = 1, a = 2 }", 1],
     ["t = { a = 1 }\nt.b = 2", 2],
     ["a = 1 # ok\nb = \u0007", 2],
-    ["x = [[1]\n", 2],
+    ["x = [[1]\n", 1], // the file ends inside it: reported at the bracket, not past the end
     ["# bad \u0001 comment", 1],
     ["a = 1 # bad \u007f", 1],
     ["i = 0x", 1],

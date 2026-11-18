@@ -64,9 +64,64 @@ export function parseToml(text, { integersAsBigInt = false } = {}) {
     // Stryker disable next-line Regex: every smol-toml message starts so; `^` changes nothing
     let message = e.message.replace(/^Invalid TOML document: /, "").split("\n")[0] ?? "";
     const opened = unclosedBracket(text, e.line, e.column);
+    // Past the last line: the file ends inside a bracket, or after a key with no value. The
+    // line the user wrote is the bracket's, or the last one (#1273).
+    const lines = text.split("\n");
+    const last = lines.length - (text.endsWith("\n") ? 1 : 0);
+    if (e.line > last) {
+      if (opened) {
+        message = `unclosed "${opened.char}": the file ends before it is closed`;
+        return { ok: false, error: { line: opened.line, column: opened.column, message } };
+      }
+      return {
+        ok: false,
+        error: {
+          line: last,
+          column: (lines[last - 1] ?? "").replace(/\r$/, "").length + 1,
+          message,
+        },
+      };
+    }
     if (opened) message += ` (unclosed "${opened.char}" opened at line ${opened.line}?)`;
+    const redefined = redefinedHeader(text, e.line, message);
+    if (redefined?.dotted) {
+      const name = redefined.name;
+      message +=
+        ` ([${name}] is already made by a ${name}.… line above: a table is either dotted` +
+        ` keys or a [${name}] header, not both; write those lines under [${name}], without` +
+        ` "${name}.")`;
+    } else if (redefined) {
+      message += ` ([${redefined.name}] is already at line ${redefined.line}: put these lines under it)`;
+    }
     return { ok: false, error: { line: e.line, column: e.column, message } };
   }
+}
+
+/**
+ * For a redefinition reported at a `[name]` header: where `[name]` was made before, by the same
+ * header earlier in the file (an example pasted with its headers) or by a line before the first
+ * header that starts with the dotted key `name.` (a line pasted at the top) (#1270). A rough
+ * scan, only used to word a hint: inline tables and quoted names are not looked for.
+ * @param {string} text
+ * @param {number} line  1-based, where the parser stopped
+ * @param {string} message
+ * @returns {{ name: string, line: number, dotted: boolean } | undefined}
+ */
+function redefinedHeader(text, line, message) {
+  if (!message.startsWith("trying to redefine")) return undefined;
+  const lines = text.split("\n");
+  const headerOf = (/** @type {string} */ l) =>
+    /^[ \t]*\[[ \t]*([A-Za-z0-9_.-]+)[ \t]*\][ \t]*(?:#.*)?\r?$/.exec(l)?.[1];
+  const name = headerOf(lines[line - 1] ?? "");
+  if (!name) return undefined;
+  const dotted = new RegExp(`^[ \\t]*${name.replaceAll(".", "\\.")}[ \\t]*\\.`);
+  let inHeader = false;
+  for (const [i, l] of lines.slice(0, line - 1).entries()) {
+    if (headerOf(l) === name) return { name, line: i + 1, dotted: false };
+    if (/^[ \t]*\[/.test(l)) inHeader = true;
+    else if (!inHeader && dotted.test(l)) return { name, line: i + 1, dotted: true };
+  }
+  return undefined;
 }
 
 /**
@@ -76,10 +131,10 @@ export function parseToml(text, { integersAsBigInt = false } = {}) {
  * @param {string} text
  * @param {number} line
  * @param {number} column
- * @returns {{ char: string, line: number } | undefined}
+ * @returns {{ char: string, line: number, column: number } | undefined}
  */
 function unclosedBracket(text, line, column) {
-  /** @type {{ char: string, line: number }[]} */
+  /** @type {{ char: string, line: number, column: number }[]} */
   // Stryker disable next-line ArrayDeclaration: an element with no line is never found below
   const stack = [];
   let at = 1;
@@ -111,7 +166,7 @@ function unclosedBracket(text, line, column) {
       // the next turn counts (#1257).
       i = text.startsWith(q, j) ? j + q.length - 1 : j - 1;
     } else if (c === "[" || c === "{") {
-      stack.push({ char: c, line: at });
+      stack.push({ char: c, line: at, column: i - lineStart + 1 });
     } else if (c === "]" || c === "}") {
       stack.pop();
     }
