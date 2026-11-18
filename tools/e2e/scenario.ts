@@ -672,7 +672,9 @@ export async function runSteps(
 
 /**
  * `args` with each string `$name.a.b`, at any depth, replaced by that path in the answer `name`
- * (an `agent-result` or `mcp-result` before it): `{ tab: "$open1.result.tab" }`.
+ * (an `agent-result` or `mcp-result` before it): `{ tab: "$open1.result.tab" }`. With
+ * `~regex` after the path, the value is the regex's first group in the string there: an MCP
+ * result is text only (#1336), so a tab id is read out of its words.
  */
 function substitute(
   args: Record<string, unknown>,
@@ -682,13 +684,18 @@ function substitute(
     if (Array.isArray(v)) return v.map(one);
     if (isObject(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, one(x)]));
     if (typeof v !== "string" || !v.startsWith("$")) return v;
-    const [name, ...path] = v.slice(1).split(".");
+    const tilde = v.indexOf("~");
+    const ref = tilde < 0 ? v : v.slice(0, tilde);
+    const [name, ...path] = ref.slice(1).split(".");
     let value: any = answers[name as string];
     if (value === undefined)
       throw new Error(`${v}: no agent-result or mcp-result named ${name} yet`);
     for (const p of path) value = value?.[p];
     if (value === undefined) throw new Error(`${v}: not in the answer`);
-    return value;
+    if (tilde < 0) return value;
+    const found = typeof value === "string" ? new RegExp(v.slice(tilde + 1)).exec(value) : null;
+    if (found?.[1] === undefined) throw new Error(`${v}: ${JSON.stringify(value)} does not match`);
+    return found[1];
   };
   return one(args) as Record<string, unknown>;
 }
