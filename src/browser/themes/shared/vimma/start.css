@@ -37,6 +37,8 @@ main {
 
 .hint {
   margin: 0;
+  /* a pane narrower than the hint wraps it; one line is as wide as its text either way */
+  text-align: center;
   color: var(--vimma-fg-dim, #9197b2);
   font-size: 0.9rem;
 }
@@ -44,6 +46,8 @@ main {
 /* the keys themselves in the text colour, a step brighter than the hint around them */
 kbd {
   font: inherit;
+  /* a wrapped hint breaks between keys, never inside one (ctrl+b shift+b) */
+  white-space: nowrap;
   color: var(--vimma-fg, #c2d6d3);
 }
 
@@ -65,4 +69,22 @@ footer {
 
 #firefox-version {
   font-size: 0.9em;
+}
+
+/* Small panes (eight in a dwindle layout, #1275): the page is the pane, so its viewport is the
+   pane's size. There the hint wraps to several lines and runs into the fixed version line, which
+   wraps too in a narrow pane. A narrow pane drops both, a short one the hint and, still shorter,
+   the version line; the logo stays. Media-query rem is the 16px default whatever the page's
+   font, and the thresholds leave room for a theme font at that size, the hint's longest text
+   and a long version. A full window is well above them, so it looks as before. */
+@media (max-width: 15rem), (max-height: 17.5rem) {
+  .hint {
+    display: none;
+  }
+}
+
+@media (max-width: 15rem), (max-height: 10rem) {
+  footer {
+    display: none;
+  }
 }
