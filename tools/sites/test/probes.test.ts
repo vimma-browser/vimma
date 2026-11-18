@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { Script, createContext, runInContext } from "node:vm";
 import * as espree from "espree";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { contentFocusField, jsonLiteral, probe } from "../probes.ts";
+import { chromeWatchErrors, contentFocusField, jsonLiteral, probe } from "../probes.ts";
 
 // probe() builds source text for the browser to evaluate, with the argument embedded as a
 // literal. The literal must decode to the same value and carry no character that could end the
@@ -79,6 +79,62 @@ describe("contentFocusField", () => {
       desc: "input#hidden",
       focused: false,
     });
+  });
+});
+
+// chromeWatchErrors runs in the browser window; these stand in for the console service it
+// listens to. An error counts when our code is on its stack, as a hint's click() is.
+describe("chromeWatchErrors", () => {
+  class ScriptError {
+    flags = 0;
+    errorMessage: string;
+    sourceName: string;
+    stack: string;
+    lineNumber: number;
+    constructor(errorMessage: string, sourceName: string, stack: string, lineNumber: number) {
+      this.errorMessage = errorMessage;
+      this.sourceName = sourceName;
+      this.stack = stack;
+      this.lineNumber = lineNumber;
+    }
+  }
+  const OURS = "click@chrome://browser/content/vimma/hints/HintsChild.sys.mjs:10:5";
+  const PIP = "moz-src:///toolkit/actors/PictureInPictureChild.sys.mjs";
+  /** The errors chromeWatchErrors keeps for these messages. */
+  const kept = (...messages: ScriptError[]) => {
+    const win: Record<string, any> = {};
+    let listener: { observe(m: unknown): void } | null = null;
+    vi.stubGlobal("window", win);
+    vi.stubGlobal("Ci", {
+      nsIScriptError: Object.assign(ScriptError, { warningFlag: 1, infoFlag: 8 }),
+    });
+    vi.stubGlobal("Services", {
+      console: { registerListener: (l: typeof listener) => (listener = l) },
+      obs: { addObserver: () => {} },
+    });
+    chromeWatchErrors();
+    for (const m of messages) listener!.observe(m);
+    return win.__vimmaSiteCompat.errors as string[];
+  };
+  afterEach(() => vi.unstubAllGlobals());
+
+  // #1245: upstream Firefox's PiP toggle reads a null shadowRoot on a click with detail 0.
+  it("ignores PictureInPictureChild's null shadowRoot error (#1245)", () => {
+    const msg = 'TypeError: can\'t access property "getElementById", shadowRoot is null';
+    expect(kept(new ScriptError(msg, PIP, OURS, 1627))).toEqual([]);
+  });
+
+  it("still reports another PictureInPictureChild error", () => {
+    const msg = "TypeError: video is undefined";
+    expect(kept(new ScriptError(msg, PIP, OURS, 1627))).toEqual([
+      `${msg} (${PIP}:1627, via chrome://browser/content/vimma/hints/HintsChild.sys.mjs:10:5)`,
+    ]);
+  });
+
+  it("still reports the null shadowRoot error from another source", () => {
+    const msg = 'TypeError: can\'t access property "getElementById", shadowRoot is null';
+    const src = "chrome://browser/content/vimma/hints/HintsChild.sys.mjs";
+    expect(kept(new ScriptError(msg, src, OURS, 3))).toEqual([`${msg} (${src}:3)`]);
   });
 });
 

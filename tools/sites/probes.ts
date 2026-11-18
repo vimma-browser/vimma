@@ -542,6 +542,14 @@ export function chromeWatchErrors() {
         if (m.flags & Ci.nsIScriptError.warningFlag || m.flags & Ci.nsIScriptError.infoFlag) return;
         const stack = String(m.stack ?? "");
         if (!ours.test(m.sourceName ?? "") && !ours.test(stack)) return;
+        // An upstream Firefox bug, not ours (#1245): on a click with detail 0, as a hint's
+        // click() is, PictureInPictureChild passes a null shadow root to getToggleElement. The
+        // user sees nothing. Drop this once Firefox fixes it; other PiP errors still count.
+        if (
+          m.sourceName === "moz-src:///toolkit/actors/PictureInPictureChild.sys.mjs" &&
+          String(m.errorMessage ?? "").includes("shadowRoot is null")
+        )
+          return;
         // Thrown elsewhere but called from our code: name our frame too.
         const via = ours.test(m.sourceName ?? "")
           ? ""
