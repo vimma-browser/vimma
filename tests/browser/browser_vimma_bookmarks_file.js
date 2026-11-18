@@ -881,6 +881,9 @@ add_task(async function the_panel_and_the_move_rename_prompt_refuse_in_a_mirrore
   await writeFile('[bookmarks.work]\n"docs/a" = "https://example.com/?mirrored"');
   await untilFolder("work", [{ "docs/": ["a https://example.com/?mirrored"] }], "loaded");
   const folder = /** @type {Node} */ (await topFolder("work"));
+  // Places shows the folder before the run ends and tells the keys it is mirrored
+  // (BookmarksFile.follow after saveBase): checked earlier, the keys would not refuse yet.
+  await until(() => isMirrored(folder.guid), "the keys know the folder is mirrored");
   const tree = /** @type {Node} */ (await PlacesUtils.promiseBookmarksTree(folder.guid));
   const docs = /** @type {Node} */ (tree.children?.[0]);
   const a = /** @type {Node} */ (docs.children?.[0]);
