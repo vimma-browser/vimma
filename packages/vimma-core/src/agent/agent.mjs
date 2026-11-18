@@ -65,7 +65,7 @@ export function planMcpSwitch(word, { pref, config }) {
  */
 export function mcpOnQuestion(name, adopted) {
   if (!adopted) {
-    return `Let local AI agents ask to use the "${name}" workspace? Every request asks you first. y/N`;
+    return `Let local AI agents ask to use the "${name}" workspace? Nothing runs until you allow it. y/N`;
   }
   const tabs = `${adopted.tabs} tab${adopted.tabs === 1 ? "" : "s"}`;
   return (
@@ -80,7 +80,7 @@ export function mcpOnQuestion(name, adopted) {
  */
 export function mcpStatus({ enabled, from, workspace }) {
   const where = from === "config" ? " (config.toml)" : "";
-  const what = enabled ? "every request asks you first" : ":mcp on lets agents ask to use it";
+  const what = enabled ? "nothing runs until you allow it" : ":mcp on lets agents ask to use it";
   return `mcp ${enabled ? "on" : "off"}${where} · agent workspace "${workspace}" · ${what}`;
 }
 

@@ -456,7 +456,7 @@ pdf_outline = "shown"
 check = true
 
 # Local AI agents (Claude Code, Codex, opencode, Copilot) reach only the agent workspace, and
-# each asks you first. Left out, :mcp on|off sets enabled and remembers it; set
+# nothing runs until you allow it. Left out, :mcp on|off sets enabled and remembers it; set
 # here, it always wins. ask_timeout: seconds a request waits for you (10 to 300). A bare \`a\`
 # allows the agent until it quits (grant_minutes = 0), or for grant_minutes; a count before
 # it allows that many minutes, up to grant_max_minutes (at most 1440).
@@ -468,8 +468,10 @@ grant_minutes = 0
 grant_max_minutes = 480
 max_read_chars = 200000
 notify = true
-# Downloads from the agent workspace ask first, are saved only here (never your Downloads
-# folder itself), never opened, and refused over download_max_mb (1 to 4096).
+# Downloads from the agent workspace ask unless a grant covers them (a dangerous file, a
+# page's own download and a file ClamAV could not fully scan always ask), are saved only here
+# (never your Downloads folder itself), never opened, and refused over download_max_mb
+# (1 to 4096).
 download_dir = "~/Downloads/vimma-agent"
 download_max_mb = 200
 # A ClamAV scan with definitions older than this many days (1 to 90) is never reported

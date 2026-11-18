@@ -400,8 +400,8 @@ fn activate_tool() -> Value {
         "vimma_activate",
         "Vimma: click on a page",
         "Click a button, link, checkbox or other element in a tab of Vimma's agent workspace, by \
-         its tab id and its label from vimma_elements (a label is good for 2 minutes on the page \
-         that listed it). Unless the user allowed this session, Vimma asks them first, so the call \
+         its tab id and its label from vimma_elements (a label lasts until that page changes or \
+         a new list replaces it). Unless the user allowed this session, Vimma asks them first, so the call \
          may wait for their answer and be denied; it is also denied while the user is typing in \
          that tab. The element gets a \
          plain click: nothing is focused, the tab stays in the background, and the page gets no \
@@ -409,8 +409,8 @@ fn activate_tool() -> Value {
          Fields, selects and file fields are not clicked (fill fields with vimma_fill), nor are \
          disabled elements or links to another site (follow those with vimma_keys). A button \
          that submits a form with text or personal details (a message, a name, an address, a \
-         password, a file) is asked every time, also under a grant, naming where the form is \
-         sent and what it sends; a form that sends only the page's own values, such as a \
+         password, a file) is asked also under a grant, unless the user allowed that button for \
+         the grant, naming where the form is sent and what it sends; a form that sends only the page's own values, such as a \
          basket's product and quantity, is asked only until the user allows this session; a \
          form the page tries to submit by itself after the click is stopped. A click that may pay (the page shows a payment card field, or the button says \
          pay, buy, place order or the like) is asked every time too, naming the button, the \
@@ -495,7 +495,8 @@ fn fill_tool() -> Value {
         "vimma_fill",
         "Vimma: fill in a form",
         "Fill fields of a page in a tab of Vimma's agent workspace, by its tab id and the fields' \
-         labels from vimma_elements (a label is good for 2 minutes on the page that listed it). \
+         labels from vimma_elements (a label lasts until that page changes or a new list \
+         replaces it). \
          Unless the user allowed this session, Vimma asks them first, showing each value, so the \
          call may wait for their answer and be denied; it is also denied while the user is typing \
          in that tab. Each field is \
@@ -538,7 +539,7 @@ fn screenshot_tool() -> Value {
         "Vimma: take a screenshot of a page",
         "Take a screenshot of what a tab of Vimma's agent workspace shows, by its id from \
          vimma_tabs or vimma_open: an image of its viewport, taken in the background, at most \
-         1024 pixels wide as a JPEG, or with full set to true at most 1280 pixels wide as a PNG \
+         1024 pixels wide as a PNG or a JPEG, whichever is smaller, or with full set to true at most 1280 pixels wide as a PNG \
          where it fits. Unless the user allowed this session, Vimma asks them first, so the call \
          may wait for their answer and be denied. With labels set to true, the labels of your last \
          vimma_elements list of \

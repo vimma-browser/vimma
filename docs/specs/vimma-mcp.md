@@ -54,6 +54,8 @@ answer for the user, and that never disturbs what the user is doing.
    the `ctrl+b (` / `ctrl+b )` cycle; the user reaches it from the picker or with `:ws agent`.
 2. The user runs `:mcp on` once and answers `y` to
    `Let local AI agents ask to use the "agent" workspace? Every request asks you first. y/N`.
+   (Since changed: the question ends `Nothing runs until you allow it. y/N`, since a bare `a`
+   lets an agent work until it quits; [mcp-session-grants](mcp-session-grants.md).)
    Vimma then serves the control socket's `agent` role, and `vimma-ctl mcp` works from Claude
    Code, Codex, opencode and Copilot, set up with one line in each (Research).
 3. The user keeps working in `work` while an agent reads and opens pages in `agent`. Nothing
@@ -836,7 +838,7 @@ Found necessary in the security reviews of the protocol (#176) and the question 
     connection with no grants; a write that fails on a connection that died unnoticed is retried
     once on a fresh one. (Since changed: `agent-hello` carries the process's session id, and a
     reconnect within 2 minutes keeps the grant; [mcp-session-grants](mcp-session-grants.md) S3, S4.) Each call has its own deadline of 310 s (the longest `ask_timeout` plus
-    10 s); past it the call fails and its question is withdrawn with `agent-cancel`. At most 16
+    10 s; since changed: 390 s, with a lazy tab's load and the longest `vimma_keys` run added); past it the call fails and its question is withdrawn with `agent-cancel`. At most 16
     calls wait here at once. (Since changed: at most 4 of them are sent to Vimma at once, as
     many as it takes in flight per connection, and the rest wait here, oldest first, because a
     fifth was refused as `busy`, which a model read as questions waiting for the user;
