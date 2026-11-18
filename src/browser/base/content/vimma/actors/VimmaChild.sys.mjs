@@ -20,6 +20,7 @@ import { PdfView } from "./pdf-view.mjs";
 import { PageScroll } from "./page-scroll.mjs";
 import { GrepPage } from "./grep-page.mjs";
 import { AgentPage } from "./agent-page.mjs";
+import { asUserGesture } from "./user-gesture.mjs";
 
 /** @import { EditableDescriptor } from "../core/editable.mjs" */
 
@@ -947,7 +948,10 @@ export class VimmaChild extends JSWindowActorChild {
 
   /**
    * Follows a target of the last collection: a text field gets focus (its focusin report enters
-   * insert), anything else a click.
+   * insert), a select opens its list, anything else a click. Only the parent sends this, for a
+   * label the user typed in chrome, so the press is the user's gesture in the page: their
+   * transient user activation, as a click would give (user-gesture.mjs; issue #1303). An
+   * agent's click reaches #press through AgentPage, never through here (mcp-forms F8).
    * @param {{ gen: number, id: number }} data
    */
   #activateHint(data) {
@@ -955,29 +959,37 @@ export class VimmaChild extends JSWindowActorChild {
     const el = this.#hints.els[data.id]?.deref();
     this.#hints = { gen: -1, els: [] };
     // Not on a page this process has replaced since the labels were drawn (issue #1028).
-    if (!this.#onPage(el)) return false;
+    const win = this.contentWindow;
+    if (!win || !this.#onPage(el)) return false;
     const html = /** @type {HTMLElement} */ (el);
+    // Before the text fields: a select is one for insert mode (core isEditable), and its focus
+    // alone left the list closed.
+    if (el.localName === "select") {
+      const select = /** @type {HTMLSelectElement} */ (el);
+      this.#focus(html);
+      // A disabled select opens nothing: no activation is given for it.
+      if (select.disabled || select.matches(":disabled")) return true;
+      try {
+        asUserGesture(win, () => select.showPicker());
+      } catch {
+        // A hidden select, or one the page removed on focus: it keeps focus, and Alt+Down
+        // opens it.
+      }
+      return true;
+    }
     if (el.localName !== "a" && isEditable(describe(el)).editable) {
       this.#focus(html);
       return true;
     }
-    if (el.localName === "select") {
-      html.focus();
-      try {
-        /** @type {HTMLSelectElement} */ (el).showPicker();
-      } catch {
-        // Without user activation it throws; the select keeps focus and Alt+Down opens it.
-      }
-      return true;
-    }
-    return this.#press(el);
+    return asUserGesture(win, () => this.#press(el));
   }
 
   /**
    * A click as the user's hints and an agent's `vimma_activate` make it: mouseover, mousedown
    * and mouseup built with the page's constructor (untrusted), for pages that act on them (menus,
    * Google's jsaction), then click(), which the page sees as trusted and whose activation
-   * behaviour follows links. No transient user activation (docs/specs/mcp-forms.md F8).
+   * behaviour follows links. It gives no transient user activation itself
+   * (docs/specs/mcp-forms.md F8): the user's hint wraps it in asUserGesture, an agent's never.
    * `still`: checked after the mouse events; when false, no click.
    * @param {Element} el @param {() => boolean} [still]
    * @returns {boolean} whether it clicked

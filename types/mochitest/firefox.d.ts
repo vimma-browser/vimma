@@ -242,6 +242,7 @@ interface nsIWindowWatcher {
 // engine/dom/webidl/Document.webidl
 interface Document {
   readonly hasValidTransientUserGestureActivation: boolean;
+  readonly hasBeenUserGestureActivated: boolean;
   notifyUserGestureActivation(): void;
   /** Chrome-only: the document's sandbox flags, or null when it has none. */
   readonly sandboxFlagsAsString: string | null;

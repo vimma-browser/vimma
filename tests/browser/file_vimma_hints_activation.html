@@ -1,0 +1,66 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_hints_activation.js: what needs a user's gesture. A link to a new
+   - tab, a button that opens a window, one that asks for full screen, a select, and a button
+   - that focuses a field. Each button
+   - records what the page saw of its click in `window.seen`. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>vimma hint activation</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        font: 16px/1.5 sans-serif;
+      }
+      p {
+        margin: 0 0 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <p><a id="blank" href="file_vimma_hints_activation.html?blank" target="_blank">blank</a></p>
+    <p><button id="opener" type="button">open a window</button></p>
+    <p><button id="fs" type="button">full screen</button></p>
+    <p>
+      <select id="sel">
+        <option>one</option>
+        <option>two</option>
+      </select>
+    </p>
+    <p>
+      <input id="field" aria-label="field" />
+      <button id="focuser" type="button">focus the field</button>
+    </p>
+    <div id="box">a box</div>
+    <script>
+      window.seen = {};
+      // A button that moves focus to a field, as a search toggle or a "reply" button does.
+      document.getElementById("focuser").addEventListener("click", () => {
+        document.getElementById("field").focus();
+      });
+      document.getElementById("opener").addEventListener("click", () => {
+        const active = navigator.userActivation.isActive;
+        const w = window.open(
+          "file_vimma_hints_activation.html?opened",
+          "w1",
+          "width=400,height=300",
+        );
+        window.seen.opener = { active, opened: !!w };
+      });
+      document.getElementById("fs").addEventListener("click", () => {
+        window.seen.fs = { active: navigator.userActivation.isActive, result: "pending" };
+        document
+          .getElementById("box")
+          .requestFullscreen()
+          .then(
+            () => (window.seen.fs.result = "entered"),
+            (e) => (window.seen.fs.result = `refused: ${e.name}`),
+          );
+      });
+    </script>
+  </body>
+</html>

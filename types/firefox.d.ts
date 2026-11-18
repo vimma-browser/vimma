@@ -475,6 +475,11 @@ interface nsIDOMWindowUtils {
   flushLayoutWithoutThrottledAnimations(): void;
   /** True while an event the user caused (a key, a click) is being handled. */
   readonly isHandlingUserInput: boolean;
+  /**
+   * With true: gives the window's document transient user activation and handles user input
+   * until the helper's destruct() (nsIJSRAIIHelper).
+   */
+  setHandlingUserInput(handlingInput: boolean): { destruct(): void };
   nodesFromRect(
     x: number,
     y: number,
