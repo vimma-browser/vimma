@@ -464,6 +464,9 @@ support-files = ["file_vimma_insert_scroll.html"]
 ["browser_vimma_workspace_restore_splits.js"]
 support-files = ["file_vimma_insert_scroll.html"]
 
+["browser_vimma_restore_offscreen_splits.js"]
+support-files = ["file_vimma_insert_scroll.html"]
+
 ["browser_vimma_workspace_desync.js"]
 
 ["browser_vimma_config.js"]
