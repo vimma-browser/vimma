@@ -12,7 +12,8 @@
 // `:config` create a missing config.toml from the commented template, never touching an existing
 // one; `:route add` appends one `[[routes]]` table (spec workspace-routing), checked to parse
 // first; the built-in agent's setup and `:siteunbind --save` / `:sitebind --delete` edit their
-// own lines (rewriteConfig).
+// own lines (rewriteConfig). Every edit of config.toml and of bookmarks.toml, and every apply of
+// bookmarks.toml to Places, runs in one queue (docs/specs/bookmarks-file.md D11).
 
 import {
   addAgentProviderText,
@@ -23,6 +24,7 @@ import {
   resolveSourcePath,
 } from "../core/config.mjs";
 import { inlineBookmarkTables } from "../core/bookmarks-file.mjs";
+import { serialQueue } from "../core/bookmarks-edit.mjs";
 import { formatConfigTemplate } from "../core/defaults.mjs";
 import { editSiteUnbindText } from "../core/site-edit.mjs";
 import { updatesCheckAfterRead } from "../core/updates.mjs";
@@ -127,6 +129,17 @@ let appliedPdfOutline = null;
  * mirror. @type {import("../core/bookmarks.mjs").BookmarkletsSetting}
  */
 let appliedBookmarklets = "none";
+/**
+ * `[bookmarks] write_back` of the last config.toml read that applied (bookmarks-file D12).
+ * @type {import("../core/bookmarks-file.mjs").WriteBack}
+ */
+let appliedWriteBack = "vimma";
+/**
+ * The one queue of edits (docs/specs/bookmarks-file.md D11): config.toml's (rewriteConfig) and
+ * bookmarks.toml's, and the bookmarks mirror's applies to Places. A task never waits for a task
+ * it queues: an edit's re-read runs after the edit's task ends.
+ */
+const edits = serialQueue();
 /** @type {ConfigError[]} bookmarks.toml's errors and warnings (docs/specs/bookmarks-file.md) */
 let bookmarksErrors = [];
 
@@ -136,6 +149,11 @@ let bookmarksErrors = [];
  */
 const bookmarksFile = new BookmarksFileImpl({
   configPath,
+  queue: edits,
+  writeFile: (path, compute) => writeFileNow(path, compute),
+  reloadConfig: () => {
+    ConfigHost.reload().catch((e) => console.error("vimma: config.toml not read", e));
+  },
   showErrors: (list) => {
     bookmarksErrors = list.map((e) => ({
       ...(e.line ? { line: e.line } : {}),
@@ -322,8 +340,11 @@ async function check(force) {
   const applied = use(path, text);
   // Bookmarklets as the last config.toml that applied says (bookmarks-file D12, D13): a file
   // with errors keeps the previous value, and `:source <file>` never reaches here.
-  if (applied) appliedBookmarklets = active?.config.bookmarks.bookmarklets ?? "none";
-  bookmarksFile.configRead(now === "missing" ? null : text, appliedBookmarklets);
+  if (applied) {
+    appliedBookmarklets = active?.config.bookmarks.bookmarklets ?? "none";
+    appliedWriteBack = active?.config.bookmarks.writeBack ?? "vimma";
+  }
+  bookmarksFile.configRead(now === "missing" ? null : text, appliedBookmarklets, appliedWriteBack);
 }
 
 /**
@@ -548,32 +569,33 @@ function stop() {
 /**
  * An edit of config.toml: `compute` gets the file's text (null when it does not exist) and
  * returns the new text with whatever the caller wants back, `{ text: null }` to leave the file
- * alone, or `{ error }`. The new text goes through a 0600 temporary file renamed over the file a
- * symlinked config.toml points to, so a dotfile link stays a link and a crash never leaves half a
- * file; nothing is written when the file changed while it was edited. Then the file is read.
+ * alone, or `{ error }`. Written as writeFileNow writes, in the one edit queue (D11); then the
+ * file is read, after the edit's task has ended, so the read never waits on the edit.
  * @template {{ text: string | null }} R
  * @param {(text: string | null) => R | { error: string }} compute
  * @returns {Promise<R | { error: string }>}
  */
-function rewriteConfig(compute) {
-  // One edit at a time: two that read the same text would both pass the check below, and the
-  // second rename would drop the first edit after both said they were written.
-  const run = rewriteQueue.then(() => rewriteConfigNow(compute));
-  rewriteQueue = run.catch(() => {});
-  return run;
+async function rewriteConfig(compute) {
+  // One edit at a time: two that read the same text would both pass writeFileNow's check, and
+  // the second rename would drop the first edit after both said they were written.
+  const r = await edits.run(() => writeFileNow(configPath(), compute));
+  if (!("error" in r) && r.text !== null) await ConfigHost.reload();
+  return r;
 }
 
-/** @type {Promise<unknown>} */
-let rewriteQueue = Promise.resolve();
-
 /**
- * rewriteConfig's edit, run alone.
+ * One edit of `path` (config.toml, or bookmarks.toml beside it), run inside the edit queue: the
+ * new text goes through a 0600 temporary file in the same folder, given the file's permissions
+ * and renamed over the file, or over the file a symlink points to, so a dotfile link stays a link
+ * and a crash never leaves half a file. A link to nothing is never replaced. Nothing is written
+ * when the file changed while it was edited (`changed`: the caller may compute again from the new
+ * text). A missing file is created, with its folder, only by a `compute` that takes null.
  * @template {{ text: string | null }} R
+ * @param {string} path
  * @param {(text: string | null) => R | { error: string }} compute
- * @returns {Promise<R | { error: string }>}
+ * @returns {Promise<R | { error: string, changed?: boolean }>}
  */
-async function rewriteConfigNow(compute) {
-  const path = configPath();
+async function writeFileNow(path, compute) {
   /** @type {string | null} */
   let text = null;
   /** @type {Awaited<ReturnType<IOUtilsNamespace["stat"]>> | null} */
@@ -582,7 +604,7 @@ async function rewriteConfigNow(compute) {
   try {
     const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
     file.initWithPath(path);
-    // isSymlink is lstat: a missing config.toml throws, and is created from the template.
+    // isSymlink is lstat: a missing file throws, and is created from the template.
     let link = false;
     try {
       link = file.isSymlink();
@@ -595,6 +617,9 @@ async function rewriteConfigNow(compute) {
       target = file.target;
     }
     before = await IOUtils.stat(target);
+    // Only a regular file is read and replaced (a FIFO would block, a folder is not ours).
+    if (before.type !== "regular")
+      return { error: `${path} is not a regular file; nothing written` };
     text = await IOUtils.readUTF8(target);
   } catch (e) {
     if (!notFound(e)) return { error: `cannot read ${path}` };
@@ -604,14 +629,14 @@ async function rewriteConfigNow(compute) {
   const dir = PathUtils.parent(target) ?? "/";
   const tmp = PathUtils.join(
     dir,
-    `.config.toml.${Services.uuid.generateUUID().toString().slice(1, 9)}`,
+    `.${PathUtils.filename(target)}.${Services.uuid.generateUUID().toString().slice(1, 9)}`,
   );
   try {
     if (!(await IOUtils.exists(dir))) {
       await IOUtils.makeDirectory(dir, { createAncestors: true, permissions: DIR_MODE });
     }
-    // Empty and with the file's permissions before the text goes in, so that a 0600
-    // config.toml is never readable more widely, even for a moment.
+    // Empty and with the file's permissions before the text goes in, so that a 0600 file is
+    // never readable more widely, even for a moment.
     await IOUtils.writeUTF8(tmp, "", { mode: "create" });
     await IOUtils.setPermissions(tmp, before ? before.permissions : FILE_MODE, false);
     await IOUtils.writeUTF8(tmp, r.text, { mode: "overwrite" });
@@ -620,7 +645,7 @@ async function rewriteConfigNow(compute) {
     const stat = await IOUtils.stat(target).catch(() => null);
     if (now !== text || (stat?.lastModified ?? null) !== (before?.lastModified ?? null)) {
       await IOUtils.remove(tmp);
-      return { error: `${path} changed meanwhile; nothing written` };
+      return { error: `${path} changed meanwhile; nothing written`, changed: true };
     }
     await IOUtils.move(tmp, target);
   } catch (e) {
@@ -628,7 +653,6 @@ async function rewriteConfigNow(compute) {
     await IOUtils.remove(tmp, { ignoreAbsent: true }).catch(() => {});
     return { error: `cannot write ${path}` };
   }
-  await ConfigHost.reload();
   return r;
 }
 

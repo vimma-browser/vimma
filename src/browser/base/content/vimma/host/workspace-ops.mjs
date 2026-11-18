@@ -18,8 +18,9 @@ import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import {
   isMirrored,
+  mirrorWritable,
   moveWorkspaceBookmarks,
-  removeItem,
+  removeWorkspaceFolder,
   renameWorkspaceFolder,
   workspaceFolder,
 } from "./bookmark-ops.mjs";
@@ -87,9 +88,10 @@ export function activeWorkspaceName(win) {
  * `:wsrename name`: renames the active workspace (and its container), in every window.
  * @param {BrowserWindow} win
  * @param {string} name
+ * @param {(text: string) => void} [say]  the notice, for what the folder's rename says later
  * @returns {string | null}
  */
-export function renameWorkspace(win, name) {
+export function renameWorkspace(win, name, say) {
   const { def, refused } = definitionOf(win);
   if (!def) return refused ?? NO_WORKSPACES;
   try {
@@ -98,8 +100,10 @@ export function renameWorkspace(win, name) {
     return `rename workspace: ${reason(e)}`;
   }
   // Its bookmarks folder takes the new name; the link is by guid (docs/specs/bookmarks.md).
-  renameWorkspaceFolder(def, name).catch((e) =>
-    console.error("vimma: the workspace's bookmarks folder kept its name", e),
+  // A folder bookmarks.toml mirrors: its table's header is renamed (bookmarks-file Behaviour 10).
+  renameWorkspaceFolder(def, name).then(
+    (said) => said && say?.(said),
+    (e) => console.error("vimma: the workspace's bookmarks folder kept its name", e),
   );
   return null;
 }
@@ -183,13 +187,14 @@ export function closeWorkspace(win, text, ask, say, choose) {
           if (unchanged()) close();
           return;
         }
-        // A folder bookmarks.toml mirrors is the file's: it can only be kept
-        // (docs/specs/bookmarks-file.md Behaviour 11), so there is nothing to ask.
+        // A folder bookmarks.toml mirrors while the file is not written can only be kept
+        // (docs/specs/bookmarks-file.md Behaviour 11), so there is nothing to ask; written, its
+        // table moves or goes with the answer (Behaviour 10).
         return isMirrored(folder.guid).then(async (fileOwned) => {
-          if (!fileOwned) {
+          if (!fileOwned || mirrorWritable()) {
             const other = WorkspaceStore.definitions.workspaces.find((d) => d.id !== now.id);
             const into = other ? await workspaceFolder(other) : null;
-            const noMove = !!into && (await isMirrored(into.guid));
+            const noMove = !!into && !mirrorWritable() && (await isMirrored(into.guid));
             askBookmarks(now, folder, { unchanged, close, say, choose, noMove });
             return;
           }
@@ -244,7 +249,7 @@ function askBookmarks(def, folder, { unchanged, close, say, choose, noMove = fal
     k: keep,
     Enter: keep,
     d: answer(async (guid) => {
-      const refused = await removeItem(guid);
+      const refused = await removeWorkspaceFolder(guid);
       if (refused) return `closed "${def.name}"; ${refused}`;
       return `closed "${def.name}" and deleted its ${count(folder.count)}`;
     }),

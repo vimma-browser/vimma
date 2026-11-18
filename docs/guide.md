@@ -4142,15 +4142,32 @@ URL.
 - **Live.** Save the file, or `git pull`, and the folders follow within about 3 seconds in
   every window; `:source` reads it at once. A table for a workspace that does not exist yet
   still gets its folder, which the workspace takes when you make it.
-- **Read-only, for now.** The file is the source: a change made in Firefox to a mirrored
-  folder (the Library, the star, an import, Sync) is put back from the file a second later,
-  with a notice, and Vimma's own bookmark keys (`ctrl+b a`, the panel's `a`, `r`, `m`, `d`)
-  say `bookmarks.toml is read-only` there; `:wsdelete` keeps a mirrored folder, and
-  `:wsrename` leaves its name to the table. Edit the file to change these bookmarks. Bookmarks
-  outside the mirrored folders work as before. Separators, tags and keywords in a mirrored
-  folder are kept as they are. A bookmark or folder moved out of a mirrored folder stays where
-  you put it, and the folder gets a new copy from the file. With Firefox Sync on two machines whose files differ, each puts
-  the other's changes back; carry mirrored folders with one of git or Sync, not both.
+- **Vimma's keys write the file.** In a mirrored folder, `ctrl+b a` and `:bookmark`, the
+  panel's `a`, `A`, `r`, `m` and `d`, and the `move/rename:` prompt of a page you bookmarked
+  edit the file first and Firefox's bookmarks after it, so the two never disagree. The edit
+  changes only the lines it is about: your comments, blank lines and the order of everything
+  else stay as they are. A new bookmark goes after the last line of its folder, or at the end
+  of the table for a new folder. `:wsrename` renames the table's header, and `:wsdelete`'s
+  `m` moves its lines into the other workspace's table (or out of the file) and `d` removes
+  the table. A name the folder already has is written as `Title (2)` (then `(3)`), in the file
+  and in Firefox, and the notice says so, because a table cannot hold one name twice; a page
+  without a title is filed under its address. Bookmarks outside the mirrored folders work as
+  before.
+- **`write_back`.** `[bookmarks] write_back` in `config.toml` says what reaches the file:
+  `"vimma"` (the default) writes Vimma's own changes; `"none"` makes the file the only way to
+  change these bookmarks, and the keys say `bookmarks.toml is read-only (write_back = "none")`
+  there (`:wsrename` then leaves the folder's name to the table, and `:wsdelete` keeps the
+  folder). The setting applies at once, and only `config.toml` can set it. Either way, a
+  change made elsewhere in Firefox to a mirrored folder (the Library, the star, an import,
+  Sync) is put back from the file a second later, with a notice. In a private window the keys
+  never write the file: `bookmarks.toml is not written from a private window`.
+- **Two devices.** With Firefox Sync on two machines whose files differ, each puts the other's
+  changes back. When one bookmark has been put back three times in ten minutes, its table
+  pauses both ways and the status bar says so; edit the file (or `git pull`) to go on. Carry
+  mirrored folders with one of git or Sync, not both.
+- **What the file keeps out.** Separators, tags and keywords in a mirrored folder are kept as
+  they are. A bookmark or folder moved out of a mirrored folder in the Library stays where you
+  put it, and the folder gets a new copy from the file.
 - **Bookmarklets.** A `javascript:` line reaches Firefox's bookmarks only while `config.toml`
   says `[bookmarks] bookmarklets = "user"` (or `"agent"`), because a bookmark there runs from
   Firefox's Library and toolbar with one click. A file you pulled from someone else therefore
@@ -4171,7 +4188,11 @@ URL.
   keys for a second as it appears, so a `y` typed into a page never answers it. `y` applies what it showed, and asks again if
   there is more by then; `n`, `Esc` or no answer in a minute keeps every bookmark and pauses
   the mirror until the file changes again. A table you add for a folder that already has
-  bookmarks takes the folder over, and asks before it deletes any bookmark the table lacks.
+  bookmarks takes the folder over and writes the bookmarks the table lacks to its end, so
+  nothing is deleted; with `write_back = "none"`, or for a bookmark the file cannot hold, it
+  asks before it deletes any. A shared table named like one of your own folders takes that
+  folder's bookmarks into the shared file this way: give shared tables names of their own, or
+  use `write_back = "none"` with a file you share.
   Many small edits each under the limits are not asked about: the notices say what each
   removed.
 - **Errors.** A file with an error is not applied at all: the status bar shows the first, as
@@ -4702,7 +4723,9 @@ accent = "#ff9e64"
   `ctrl+u`, `ctrl+h`, and `ctrl+j` and `ctrl+m` as `Enter`, in text fields, default `true`); `[bookmarks] root` (`"workspace"`, the
   default: the current workspace's folder; `"toolbar"`; or `"all"`: what the
   [bookmarks panel](#bookmarks) lists and where paths start); `[bookmarks] bookmarklets`
-  (`"none"`, the default, `"user"` or `"agent"`: who may run [bookmarklets](#bookmarks)); `[panel] numbers` (`"absolute"`, the
+  (`"none"`, the default, `"user"` or `"agent"`: who may run [bookmarklets](#bookmarks));
+  `[bookmarks] write_back` (`"vimma"`, the default, or `"none"`: whether Vimma's keys write
+  [bookmarks in a file](#bookmarks-in-a-file)); `[panel] numbers` (`"absolute"`, the
   default, `"relative"` or `"hybrid"`: the [side panel](#side-panel)'s row numbers);
   `[scroll] step` (how far `j`, `k`, `h` and `l` scroll, 1 to 2000 CSS pixels, default 60; the
   next scroll in every tab uses it);

@@ -1,6 +1,6 @@
 # Spec: bookmarks-file
 
-Status: accepted, Delivery slice 1 implemented · Area: `packages/vimma-core/src/` (new `config/bookmarks-file.mjs`: parse, validate,
+Status: accepted, Delivery slices 1 and 2 implemented · Area: `packages/vimma-core/src/` (new `config/bookmarks-file.mjs`: parse, validate,
 model, three-way diff and line edits of `bookmarks.toml`; `config/config.mjs` for
 `[bookmarks] write_back` and the inline tables; `config/defaults.mjs` for the template line;
 `ui/bookmarks.mjs` for the panel's write path); `src/browser/base/content/vimma/` (new
@@ -755,6 +755,52 @@ Slice 1 landed with these departures from the text above, each for the reason gi
   `:source <file>` loaded, allows none (D12).
 - **Cross-device put-back (open question 2).** Answer (b) comes with slice 2; until then two
   devices with different files put each other's changes back, and large put-backs ask.
+
+### Notes from delivery slice 2
+
+Slice 2 landed with these departures and particulars, each for the reason given:
+
+- **Module place.** The line writer, the edits of Vimma's keys, the base's update after an edit,
+  the loop guard and the queue are `packages/vimma-core/src/config/bookmarks-edit.mjs`, beside
+  `bookmarks-file.mjs`, because that file already holds the reader and the plan.
+- **`write_back` values.** Only `"vimma"` and `"none"` are valid until slice 3; `"all"` is a
+  config error with the closest valid value, because accepting it would promise writes this
+  slice does not make.
+- **The writer.** `ConfigHost`'s write of `config.toml` became `writeFileNow`, used for both
+  files in the one queue (D11); it also refuses to replace a file that is not a regular file,
+  as the reader refuses to read one. The re-read after a `config.toml` edit runs after the
+  edit's task, outside the queue.
+- **Names.** Control characters in a name Vimma writes become spaces, and bidirectional and
+  invisible characters are dropped, because a page title may hold them and the file refuses
+  them (Behaviour 4); the name is then trimmed and cut to 4,096 characters. A `javascript:` URL
+  is written only while `bookmarklets` is `"user"` or `"agent"`, so a key never writes a line the
+  mirror would then skip.
+- **Empty folders.** A key that leaves a folder empty (a move or a delete of its last bookmark)
+  writes that folder's `"name/" = ""` line in place of the line it took, because the folder
+  stays in Places and decision 4 keeps empty folders in the file.
+- **Across the edge of the file.** A move from a mirrored folder to one that is not mirrored
+  removes the lines and then moves the bookmark in Places, keeping its guid; a move the other
+  way writes the bookmark, or the folder with everything in it, into the table, and is refused
+  whole when the file cannot hold any of it. `:wsdelete`'s `m` merges the closed workspace's
+  table into the other workspace's (a clashing top-level name becomes `name (2)`), writes the
+  folder into the other table when only that one is mirrored, or removes the table when only
+  the closed one is; `d` removes the table and then the folder.
+- **The base follows each edit (D4).** After a key's edit the base records each moved item's
+  guid at its new path, so the run that follows keeps guids even where two bookmarks share a
+  URL.
+- **The workspace's own folder.** The panel's `r`, `m` and `d` on a mirrored workspace folder
+  itself (with `root = "toolbar"`) refuse: it is renamed with `:wsrename` and removed with
+  `:wsdelete`, because the folder is its table.
+- **Loop guard (open question 2).** "A bookmark" is a line of the file, by its table and path,
+  or an item only Places had, by its guid (Sync keeps guids across devices); a folder's order
+  counts as one item. A paused table is left as it is by every run, Places events in it start
+  no burst, and Vimma's keys refuse there. It goes on when the file changes from outside Vimma
+  (an edit, a `git pull`) or after `:bookmarks forget`, not after Vimma's own edit of
+  another table.
+- **Takeover (D7).** Under `"vimma"` a takeover writes the folder's extra bookmarks and empty
+  folders to the end of the table, a second item of one name as `name (2)`, and says how many it
+  wrote; an item the file cannot hold (a `data:` URL, a name with hidden characters) is still
+  asked about, as under `"none"`.
 
 ## Decisions on the open questions
 

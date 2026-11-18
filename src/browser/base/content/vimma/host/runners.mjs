@@ -146,7 +146,8 @@ function switchWorkspace(s, text) {
 /**
  * A workspace operation (workspace-ops.mjs) that takes the rest of a command line; without one
  * (its key) it asks on the command line, starting with `prompt`.
- * @param {(win: BrowserWindow, text: string) => string | null} op
+ * @param {(win: BrowserWindow, text: string, say: (text: string) => void) => string | null} op
+ *   `say`: the notice, for what the operation says once it is done
  * @param {(win: BrowserWindow) => string} prompt
  * @param {(s: WindowState) => void} emit  the host's redraw
  * @returns {(state: WindowState, action: Action, text?: string) => void}
@@ -157,7 +158,7 @@ function workspaceRunner(op, prompt, emit) {
       s.cmdline.open(prompt(s.win));
       return;
     }
-    const said = op(s.win, text);
+    const said = op(s.win, text, (/** @type {string} */ t) => s.notice.show(t));
     if (said) s.notice.show(said);
     emit(s);
   };
