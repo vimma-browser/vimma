@@ -17,28 +17,28 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 ## Tabs
 
-| Action                                                           | Config name       | Bindings                                          |
-| ---------------------------------------------------------------- | ----------------- | ------------------------------------------------- |
-| New tab                                                          | `new_tab`         | `ctrl+b c`, `ctrl+t`, `t`                         |
-| Next tab (with a count: go to tab N)                             | `next_tab`        | `ctrl+b n`, `ctrl+tab`, `ctrl+pagedown`, `gt`     |
-| Previous tab                                                     | `previous_tab`    | `ctrl+b p`, `ctrl+shift+tab`, `ctrl+pageup`, `gT` |
-| Jump to tab 1 in this workspace                                  | `select_tab_1`    | `ctrl+b 1`, `alt+1`                               |
-| Jump to tab 2 in this workspace                                  | `select_tab_2`    | `ctrl+b 2`, `alt+2`                               |
-| Jump to tab 3 in this workspace                                  | `select_tab_3`    | `ctrl+b 3`, `alt+3`                               |
-| Jump to tab 4 in this workspace                                  | `select_tab_4`    | `ctrl+b 4`, `alt+4`                               |
-| Jump to tab 5 in this workspace                                  | `select_tab_5`    | `ctrl+b 5`, `alt+5`                               |
-| Jump to tab 6 in this workspace                                  | `select_tab_6`    | `ctrl+b 6`, `alt+6`                               |
-| Jump to tab 7 in this workspace                                  | `select_tab_7`    | `ctrl+b 7`, `alt+7`                               |
-| Jump to tab 8 in this workspace                                  | `select_tab_8`    | `ctrl+b 8`, `alt+8`                               |
-| Jump to tab 9 in this workspace                                  | `select_tab_9`    | `ctrl+b 9`                                        |
-| Rename tab                                                       | `rename_tab`      | `ctrl+b shift+t`                                  |
-| Close tab                                                        | `close_tab`       | `ctrl+b shift+x`, `ctrl+f4`, `x`                  |
-| Jump to the last tab in this workspace                           | `select_last_tab` | `alt+9`                                           |
-| Move the tab left                                                | `move_tab_left`   | `ctrl+shift+pageup`                               |
-| Move the tab right                                               | `move_tab_right`  | `ctrl+shift+pagedown`                             |
-| Reopen the last closed tab                                       | `restore_tab`     | `ctrl+shift+t`                                    |
-| Jump to a tab by its label in the tab line (with a count: tab N) | `tabline_hint`    | `gb`                                              |
-| Show / hide the tab line                                         | `toggle_tabline`  | —                                                 |
+| Action                                                             | Config name       | Bindings                                          |
+| ------------------------------------------------------------------ | ----------------- | ------------------------------------------------- |
+| New tab                                                            | `new_tab`         | `ctrl+b c`, `ctrl+t`, `t`                         |
+| Next tab (with a count: go to tab N)                               | `next_tab`        | `ctrl+b n`, `ctrl+tab`, `ctrl+pagedown`, `gt`     |
+| Previous tab                                                       | `previous_tab`    | `ctrl+b p`, `ctrl+shift+tab`, `ctrl+pageup`, `gT` |
+| Jump to tab 1 in this workspace                                    | `select_tab_1`    | `ctrl+b 1`, `alt+1`                               |
+| Jump to tab 2 in this workspace                                    | `select_tab_2`    | `ctrl+b 2`, `alt+2`                               |
+| Jump to tab 3 in this workspace                                    | `select_tab_3`    | `ctrl+b 3`, `alt+3`                               |
+| Jump to tab 4 in this workspace                                    | `select_tab_4`    | `ctrl+b 4`, `alt+4`                               |
+| Jump to tab 5 in this workspace                                    | `select_tab_5`    | `ctrl+b 5`, `alt+5`                               |
+| Jump to tab 6 in this workspace                                    | `select_tab_6`    | `ctrl+b 6`, `alt+6`                               |
+| Jump to tab 7 in this workspace                                    | `select_tab_7`    | `ctrl+b 7`, `alt+7`                               |
+| Jump to tab 8 in this workspace                                    | `select_tab_8`    | `ctrl+b 8`, `alt+8`                               |
+| Jump to tab 9 in this workspace; tab 10 and above: {N}gt or :tab N | `select_tab_9`    | `ctrl+b 9`                                        |
+| Rename tab                                                         | `rename_tab`      | `ctrl+b shift+t`                                  |
+| Close tab                                                          | `close_tab`       | `ctrl+b shift+x`, `ctrl+f4`, `x`                  |
+| Jump to the last tab in this workspace                             | `select_last_tab` | `alt+9`                                           |
+| Move the tab left                                                  | `move_tab_left`   | `ctrl+shift+pageup`                               |
+| Move the tab right                                                 | `move_tab_right`  | `ctrl+shift+pagedown`                             |
+| Reopen the last closed tab                                         | `restore_tab`     | `ctrl+shift+t`                                    |
+| Jump to a tab by its label in the tab line (with a count: tab N)   | `tabline_hint`    | `gb`                                              |
+| Show / hide the tab line                                           | `toggle_tabline`  | —                                                 |
 
 ## Panes
 

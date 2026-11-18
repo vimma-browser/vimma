@@ -238,7 +238,7 @@
         },
         {
           "name": "select_tab_9",
-          "description": "Jump to tab 9 in this workspace",
+          "description": "Jump to tab 9 in this workspace; tab 10 and above: {N}gt or :tab N",
           "keys": [
             {
               "keys": "ctrl+b 9",

@@ -66,6 +66,10 @@ interface VimmaModules {
       getEngineByAlias(alias: string): Promise<TestSearchEngine | null>;
     };
   };
+  // engine/toolkit/actors/SelectChild.sys.mjs: whether a <select>'s dropdown is open.
+  "moz-src:///toolkit/actors/SelectChild.sys.mjs": {
+    SelectContentHelper: { readonly open: boolean };
+  };
   // engine/browser/modules/AboutNewTab.sys.mjs
   "resource:///modules/AboutNewTab.sys.mjs": Pick<LazyModules, "AboutNewTab">;
   // engine/browser/modules/BrowserWindowTracker.sys.mjs

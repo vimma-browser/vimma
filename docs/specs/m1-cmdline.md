@@ -162,3 +162,13 @@ The optional pane is one of `home`, `search`, `privacy` and `sync`, the panes a 
 changes most, completed by `Tab`; an unknown pane is refused with the nearest name. It has no
 default key: a command is enough for a page opened this rarely, and it can be bound as
 `settings` in `config.toml`.)
+
+(Since changed: `:tab N`, with Vim's `:tabnext N` as its alias, goes to tab N of the workspace
+by running `next_tab` with N as its count, the path `{N}gt` takes, so the two cannot disagree;
+`:tab $` runs `select_last_tab`, and `:tab` alone the next tab, as Vim's `:tabnext` does. Zero or
+anything but a number is refused, and a number past the last tab says
+`no tab N (this workspace has M)`, because a typed command that does nothing reads as a typo, while
+`{N}gt` keeps Vim's silence. Both words run only typed in full, so `:tabn` stays `:tabnew` and
+`:ta` stays ambiguous, as users already type them. `Tab` completes the workspace's tabs by number,
+each with its title. The `ctrl+b ?` overlay's tab 9 row names both ways to reach tab 10 and above,
+the count key read from the live keymap (issue #1302).)

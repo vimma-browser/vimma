@@ -196,13 +196,74 @@ add_task(async function agent_clicks_never_synthesise_input_or_user_activation()
     "actors/page-scroll.mjs",
   ];
   const forbidden =
-    /\bsend(?:Native)?(?:Mouse|Touch|Wheel|Key|Pointer)\w*\b|\bsynthesize\w*|\bnotifyUserGestureActivation\b/g;
+    /\bsend(?:Native)?(?:Mouse|Touch|Wheel|Key|Pointer)\w*\b|\bsynthesize\w*|\bnotifyUserGestureActivation\b|\bsetHandlingUserInput\b/g;
   for (const file of files) {
     const source = await (await fetch(base + file)).text();
     Assert.greater(source.length, 0, `${file} is read`);
     const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
     Assert.deepEqual(code.match(forbidden) ?? [], [], `${file} synthesises no input (M26)`);
   }
+});
+
+// docs/specs/m1-hints.md and security.md M26: the user's own hint gives the page their user
+// activation (issue #1303), and nothing an agent reaches can. The one place that gives it is
+// actors/user-gesture.mjs; only VimmaChild imports it, and only its handler of the parent's
+// Vimma:ActivateHint, which the parent sends for a label typed in chrome, calls it.
+add_task(async function only_the_users_hints_give_user_activation() {
+  const base = "chrome://browser/content/vimma/";
+  const strip = (/** @type {string} */ source) =>
+    source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+  const read = async (/** @type {string} */ file) => strip(await (await fetch(base + file)).text());
+  const gesture = await read("actors/user-gesture.mjs");
+  Assert.ok(/\bsetHandlingUserInput\(true\)/.test(gesture), "user-gesture.mjs gives activation");
+  for (const file of [
+    "actors/agent-page.mjs",
+    "actors/agent-fields.mjs",
+    "actors/AgentActors.sys.mjs",
+    "actors/VimmaActors.sys.mjs",
+    "ctl/AgentAct.sys.mjs",
+    "ctl/AgentDrive.sys.mjs",
+  ]) {
+    Assert.ok(!(await read(file)).includes("user-gesture.mjs"), `${file} does not import it`);
+  }
+  const child = await read("actors/VimmaChild.sys.mjs");
+  const imported = /import\s*\{\s*(\w+)\s*\}\s*from\s*"[^"]*user-gesture\.mjs"/.exec(child);
+  Assert.ok(imported, "VimmaChild imports it by one name");
+  const { 0: line, 1: name, index: at } = /** @type {RegExpExecArray} */ (imported);
+  const start = child.indexOf("  #activateHint(data) {");
+  const end = child.indexOf("\n  }\n", start);
+  Assert.greater(start, -1, "VimmaChild has #activateHint");
+  const uses = [...child.matchAll(new RegExp(`\\b${name}\\b`, "g"))].map((m) => m.index);
+  const calls = uses.filter((i) => i !== at + line.indexOf(name));
+  Assert.greater(calls.length, 0, `${name} is called`);
+  for (const i of calls) {
+    Assert.ok(i > start && i < end, `${name} is called only in #activateHint`);
+  }
+  Assert.ok(
+    /case "Vimma:ActivateHint":\s*return this\.#activateHint\(/.test(child),
+    "#activateHint runs for Vimma:ActivateHint",
+  );
+  Assert.equal([...child.matchAll(/this\.#activateHint\(/g)].length, 1, "and for nothing else");
+  // The parent sends Vimma:ActivateHint from one function, which only the host's hint keys call.
+  const actors = await read("actors/VimmaActors.sys.mjs");
+  Assert.equal([...actors.matchAll(/"Vimma:ActivateHint"/g)].length, 1, "one sender");
+  Assert.ok(/\n {2}activateHint\(target\) \{/.test(actors), "VimmaActors.activateHint sends it");
+  for (const file of [
+    "actors/AgentActors.sys.mjs",
+    "ctl/AgentAct.sys.mjs",
+    "ctl/AgentDrive.sys.mjs",
+  ]) {
+    const source = await read(file);
+    Assert.ok(!/Vimma:ActivateHint|\.activateHint\(/.test(source), `${file} never sends it`);
+  }
+  const host = await read("host/VimmaHost.sys.mjs");
+  Assert.equal([...host.matchAll(/VimmaActors\.activateHint\(/g)].length, 1, "one caller");
+  const hintKey = host.indexOf("  _hintKey(state, chord) {");
+  const callAt = host.indexOf("VimmaActors.activateHint(");
+  Assert.ok(
+    hintKey > -1 && callAt > hintKey && callAt < host.indexOf("\n  },\n", hintKey),
+    "the host's hint keys call it",
+  );
 });
 
 // docs/specs/mcp-forms.md F13 (security.md M27): an agent's fill never sets a file field. The
