@@ -1034,6 +1034,26 @@ export const VimmaHost = {
     states.get(win)?.notice.show(text);
   },
 
+  /**
+   * A y/N question in the window's prompt line, for a module with no key context
+   * (docs/specs/bookmarks-file.md Behaviour 7). Returns a function that closes it while it is
+   * still this question, which then counts as no; null when it could not open.
+   * @param {BrowserWindow} win
+   * @param {string} question  ends with "y/N"
+   * @param {() => void} yes
+   * @param {() => void} no
+   * @returns {(() => void) | null}
+   */
+  ask(win, question, yes, no) {
+    const prompt = states.get(win)?.rename;
+    if (!prompt) return null;
+    const ours = () => yes();
+    if (!prompt.ask(question, ours, no)) return null;
+    return () => {
+      if (prompt.yes === ours) prompt.close();
+    };
+  },
+
   /** config.toml's keymap, without `:siteunbind`'s keys until restart; the built-in one before. */
   baseKeymap() {
     settings.baseKeymap ??= settings.keymap ?? compileKeymap({}, { mac: MAC });

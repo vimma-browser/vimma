@@ -78,6 +78,44 @@ export function bookmarkletsSetting() {
   return bookmarklets;
 }
 
+/**
+ * The folders bookmarks.toml mirrors (docs/specs/bookmarks-file.md), set by
+ * config/BookmarksFile.sys.mjs after each run: in them, and in every folder below, the keys
+ * refuse, since the file is read-only until write-back (Delivery slice 1, Behaviour 11).
+ * @type {ReadonlySet<string>}
+ */
+let mirrored = new Set();
+
+/** Why a key changes nothing in a mirrored folder. */
+export const MIRRORED_REFUSAL =
+  "bookmarks.toml is read-only: edit the file to change these bookmarks";
+
+/** @param {ReadonlySet<string>} guids  the tables' folders */
+export function setMirroredFolders(guids) {
+  mirrored = new Set(guids);
+}
+
+/**
+ * Whether `guid` is a mirrored folder or anything under one, read from Places now.
+ * @param {string | null | undefined} guid
+ */
+export async function isMirrored(guid) {
+  if (!mirrored.size || !guid || isPendingFolder(guid)) return false;
+  const PU = places();
+  for (let g = /** @type {string | undefined} */ (guid), depth = 0; g && depth < 64; depth++) {
+    if (mirrored.has(g)) return true;
+    if (/** @type {string[]} */ (Object.values(PLACES_ROOTS)).includes(g)) return false;
+    g = (await PU.bookmarks.fetch(g))?.parentGuid;
+  }
+  return false;
+}
+
+/** @param {...(string | null | undefined)} guids @returns {Promise<string | null>} */
+async function refuseMirrored(...guids) {
+  for (const g of guids) if (await isMirrored(g)) return MIRRORED_REFUSAL;
+  return null;
+}
+
 /** @returns {PlacesUtilsApi} */
 function places() {
   return ChromeUtils.importESModule("resource://gre/modules/PlacesUtils.sys.mjs").PlacesUtils;
@@ -312,6 +350,8 @@ export async function addBookmark(win, text, page, { base, folderOnly = false } 
   if (!leaf && !folders.length && !splitWorkspacePath(text).workspace) {
     return "bookmark: empty name";
   }
+  const refused = await refuseMirrored(resolveFolders(to.tree, to.base, folders).guid);
+  if (refused) return refused;
   const parentGuid = await ensureFolders(to.tree, to.base, folders);
   if (!leaf && folderOnly) return `made ${formatBookmarkPath(folders)}/`;
   const title = leaf ?? page.title;
@@ -330,6 +370,8 @@ export async function addFolder(win, text, base) {
   if ("refused" in to) return to.refused;
   const names = to.leaf ? [...to.folders, to.leaf] : to.folders;
   if (!names.length) return "folder: empty name";
+  const refused = await refuseMirrored(resolveFolders(to.tree, to.base, names).guid);
+  if (refused) return refused;
   await ensureFolders(to.tree, to.base, names);
   return `made ${formatBookmarkPath(names)}/`;
 }
@@ -349,6 +391,8 @@ export async function placeBookmark(win, guid, text) {
     return "bookmark: empty name";
   }
   const PU = places();
+  const refused = await refuseMirrored(guid, resolveFolders(to.tree, to.base, folders).guid);
+  if (refused) return refused;
   const parentGuid = await ensureFolders(to.tree, to.base, folders);
   const bm = await PU.bookmarks.fetch(guid);
   if (!bm) return "bookmark: it is gone";
@@ -370,6 +414,8 @@ export async function placeBookmark(win, guid, text) {
 export async function renameItem(guid, title) {
   const name = title.trim();
   if (!name) return "rename: empty name";
+  const refused = await refuseMirrored(guid);
+  if (refused) return refused;
   await places().bookmarks.update({ guid, title: name });
   return null;
 }
@@ -390,15 +436,23 @@ export async function moveItem(win, guid, text) {
     const at = resolveFolders(to.tree, to.base, names.slice(0, i));
     if (at.missing.length === 0 && at.guid === guid) return "move: not into itself";
   }
+  const refused = await refuseMirrored(guid, resolveFolders(to.tree, to.base, names).guid);
+  if (refused) return refused;
   const PU = places();
   const parentGuid = await ensureFolders(to.tree, to.base, names);
   await PU.bookmarks.update({ guid, parentGuid, index: PU.bookmarks.DEFAULT_INDEX });
   return null;
 }
 
-/** @param {string} guid */
+/**
+ * @param {string} guid
+ * @returns {Promise<string | null>} why not, or null once removed
+ */
 export async function removeItem(guid) {
+  const refused = await refuseMirrored(guid);
+  if (refused) return refused;
   await places().bookmarks.remove(guid);
+  return null;
 }
 
 /**
@@ -426,6 +480,8 @@ export async function renameWorkspaceFolder(before, name) {
   const folder = await workspaceFolder(before);
   if (!folder) return;
   link(before.id, folder.guid);
+  // A mirrored folder keeps its table's name, linked by guid (bookmarks-file Behaviour 11).
+  if (await isMirrored(folder.guid)) return;
   await places().bookmarks.update({ guid: folder.guid, title: name });
 }
 
@@ -438,7 +494,9 @@ export async function renameWorkspaceFolder(before, name) {
  */
 export async function moveWorkspaceBookmarks(from, toId) {
   const PU = places();
+  if (await isMirrored(from)) throw new Error(MIRRORED_REFUSAL);
   const into = await makeWorkspaceFolder(toId);
+  if (await isMirrored(into)) throw new Error(MIRRORED_REFUSAL);
   const kids = (await PU.promiseBookmarksTree(from))?.children ?? [];
   for (const k of kids) {
     await PU.bookmarks.update({

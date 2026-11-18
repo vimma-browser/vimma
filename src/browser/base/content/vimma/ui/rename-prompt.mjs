@@ -45,6 +45,8 @@ export class RenamePrompt {
     this.label = null;
     /** @type {(() => void) | null} a y/N question's yes, while one is open */
     this.yes = null;
+    /** @type {(() => void) | null} a y/N question's no: any answer but y, or the prompt closed */
+    this.no = null;
     /** @type {Record<string, () => void> | null} a `choose` question's answers, by key */
     this.choices = null;
     /** @type {((text: string) => void) | null} a `prompt`'s Enter, while one is open */
@@ -75,11 +77,14 @@ export class RenamePrompt {
    * A y/N question: `y` runs `yes`; any other key, Enter (the default, N) or Esc says no.
    * @param {string} question  ends with "y/N"
    * @param {() => void} yes  after the prompt has closed
+   * @param {() => void} [no]  any other answer, or the question closed or replaced unanswered
+   *   (docs/specs/bookmarks-file.md Behaviour 7: no answer applies nothing)
    * @returns {boolean} whether it opened (not over a page in DOM fullscreen)
    */
-  ask(question, yes) {
+  ask(question, yes, no) {
     if (!this.show(`${question} `, "", question, "alertdialog")) return false;
     this.yes = yes;
+    this.no = no ?? null;
     return true;
   }
 
@@ -123,6 +128,8 @@ export class RenamePrompt {
    */
   show(label, placeholder, ariaLabel, role = "dialog") {
     if (this.win.document.documentElement.hasAttribute("inDOMFullscreen")) return false;
+    const dropped = this.no;
+    this.no = null;
     const input = this.input ?? this.build();
     if (!this.isOpen) this.opener = Services.focus.focusedElement;
     this.tab = null;
@@ -141,6 +148,7 @@ export class RenamePrompt {
     /** @type {HTMLElement} */ (this.el).hidden = false;
     input.focus();
     this.changed();
+    dropped?.();
     return true;
   }
 
@@ -151,6 +159,8 @@ export class RenamePrompt {
    */
   close({ restoreFocus = true, tabChanged = false } = {}) {
     if (!this.isOpen) return;
+    const no = this.no;
+    this.no = null;
     const opener = this.opener;
     this.opener = null;
     this.tab = null;
@@ -166,6 +176,7 @@ export class RenamePrompt {
     }
     /** @type {HTMLElement} */ (this.el).hidden = true;
     this.changed();
+    no?.();
   }
 
   /** Close and remove the element (VimmaHost.uninit). */
@@ -202,8 +213,11 @@ export class RenamePrompt {
         e.stopPropagation();
         return;
       }
-      this.close();
-      if (e.key === "y" || e.key === "Y") yes();
+      if (e.key === "y" || e.key === "Y") {
+        this.no = null;
+        this.close();
+        yes();
+      } else this.close();
     } else if (this.submit && e.key === "Tab") {
       this.complete(e.shiftKey ? -1 : 1);
     } else if (this.submit && e.key === "Enter") {

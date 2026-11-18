@@ -20,8 +20,10 @@ import {
   addFolder,
   bookmarkletsSetting,
   currentPage,
+  MIRRORED_REFUSAL,
   fetchBookmark,
   findBookmark,
+  isMirrored,
   loadAllBookmarks,
   loadScope,
   moveItem,
@@ -98,6 +100,11 @@ export async function quickAdd(ctx, text) {
     loadScope(ctx.win),
   ]);
   const complete = completer(scope, scope.tree.guid);
+  if (existing && (await isMirrored(existing.guid))) {
+    // docs/specs/bookmarks-file.md Behaviour 11: no move/rename prompt for the file's bookmark.
+    ctx.say(`already bookmarked: ${existing.path}; ${MIRRORED_REFUSAL}`);
+    return;
+  }
   if (existing) {
     ctx.say(
       existing.outside
@@ -287,6 +294,29 @@ export async function openBookmarkByTitle(ctx, text, where, pick) {
 export function runBookmarkEffect(ctx, effect) {
   const tree = ctx.panel.tree;
   if (!tree) return;
+  // In a folder bookmarks.toml mirrors, the panel's changes refuse before their prompt opens
+  // (docs/specs/bookmarks-file.md Behaviour 11); bookmark-ops checks again when they run.
+  const target =
+    effect.type === "add" || effect.type === "add_folder"
+      ? effect.folder
+      : effect.type === "rename" || effect.type === "move" || effect.type === "delete"
+        ? effect.guid
+        : null;
+  if (target !== null) {
+    isMirrored(target)
+      .then((fileOwned) => (fileOwned ? ctx.say(MIRRORED_REFUSAL) : runEffect(ctx, effect)))
+      .catch((e) => console.error("vimma: bookmarks could not be read", e));
+    return;
+  }
+  runEffect(ctx, effect);
+}
+
+/**
+ * runBookmarkEffect, once a change is allowed.
+ * @param {BookmarkContext} ctx
+ * @param {BookmarksEffect} effect
+ */
+function runEffect(ctx, effect) {
   switch (effect.type) {
     case "open":
       openBookmark(ctx, effect.url, effect.where);

@@ -442,6 +442,8 @@ support-files = [
 
 ["browser_vimma_bookmarks_workspaces.js"]
 
+["browser_vimma_bookmarks_file.js"]
+
 ["browser_vimma_bookmarklets.js"]
 support-files = ["file_vimma_bookmarklet_page.html", "head_vimma_control.js"]
 

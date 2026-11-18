@@ -27,6 +27,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/agent/AgentCli.sys.mjs": typeof import("../src/browser/base/content/vimma/agent/AgentCli.sys.mjs");
   "chrome://browser/content/vimma/agent/AgentKeys.sys.mjs": typeof import("../src/browser/base/content/vimma/agent/AgentKeys.sys.mjs");
   "chrome://browser/content/vimma/agent/AgentStore.sys.mjs": typeof import("../src/browser/base/content/vimma/agent/AgentStore.sys.mjs");
+  "chrome://browser/content/vimma/config/BookmarksFile.sys.mjs": typeof import("../src/browser/base/content/vimma/config/BookmarksFile.sys.mjs");
   "chrome://browser/content/vimma/config/ConfigHost.sys.mjs": typeof import("../src/browser/base/content/vimma/config/ConfigHost.sys.mjs");
   "chrome://browser/content/vimma/core/actions.mjs": typeof import("../src/browser/base/content/vimma/core/actions.mjs");
   "chrome://browser/content/vimma/core/addons.mjs": typeof import("../src/browser/base/content/vimma/core/addons.mjs");
@@ -52,6 +53,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/core/appimage-update.mjs": typeof import("../src/browser/base/content/vimma/core/appimage-update.mjs");
   "chrome://browser/content/vimma/core/blocks.mjs": typeof import("../src/browser/base/content/vimma/core/blocks.mjs");
   "chrome://browser/content/vimma/core/bookmark-open.mjs": typeof import("../src/browser/base/content/vimma/core/bookmark-open.mjs");
+  "chrome://browser/content/vimma/core/bookmarks-file.mjs": typeof import("../src/browser/base/content/vimma/core/bookmarks-file.mjs");
   "chrome://browser/content/vimma/core/bookmarks-toolbar.mjs": typeof import("../src/browser/base/content/vimma/core/bookmarks-toolbar.mjs");
   "chrome://browser/content/vimma/core/bookmarks.mjs": typeof import("../src/browser/base/content/vimma/core/bookmarks.mjs");
   "chrome://browser/content/vimma/core/cmdline.mjs": typeof import("../src/browser/base/content/vimma/core/cmdline.mjs");

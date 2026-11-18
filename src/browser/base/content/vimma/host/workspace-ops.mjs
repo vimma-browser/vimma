@@ -17,6 +17,7 @@ import { findWorkspace, workspaceRefFor } from "../core/workspaces.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import {
+  isMirrored,
   moveWorkspaceBookmarks,
   removeItem,
   renameWorkspaceFolder,
@@ -182,7 +183,18 @@ export function closeWorkspace(win, text, ask, say, choose) {
           if (unchanged()) close();
           return;
         }
-        askBookmarks(now, folder, { unchanged, close, say, choose });
+        // A folder bookmarks.toml mirrors is the file's: it can only be kept
+        // (docs/specs/bookmarks-file.md Behaviour 11), so there is nothing to ask.
+        return isMirrored(folder.guid).then((fileOwned) => {
+          if (!fileOwned) {
+            askBookmarks(now, folder, { unchanged, close, say, choose });
+            return;
+          }
+          if (!unchanged()) return;
+          close().then((done) => {
+            if (done) say(`closed "${now.name}"; bookmarks.toml keeps its bookmarks`);
+          });
+        });
       },
       (e) => say(`close workspace: ${reason(e)}`),
     );

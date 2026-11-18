@@ -3932,7 +3932,9 @@ position) and focuses it when you switch.
 ## Bookmarks
 
 Vimma's bookmarks are Firefox's: what you imported, what Sync brings and what the Library shows.
-Vimma keeps no list of its own; it gives you keys to reach them.
+Vimma keeps no list of its own; it gives you keys to reach them. The one exception is
+[bookmarks in a file](#bookmarks-in-a-file): `bookmarks.toml`, which Vimma mirrors into
+Firefox's bookmarks.
 
 **One folder per workspace.** Each [workspace](#workspaces) owns a folder in the Bookmarks
 Toolbar, named after it: `work`'s bookmarks live in Bookmarks Toolbar → `work`. The folder is
@@ -4052,6 +4054,68 @@ numbers: the rows shift as folders open and close. So the bookmarks panel shows 
 default, and `4G` and `4 Enter` ignore the count. With `[panel] numbers = "relative"` or
 `"hybrid"` each row shows its distance from the highlight (`0` on the highlighted row), so you
 can read off the count for `j` and `k`.
+
+### Bookmarks in a file
+
+Keep a workspace's bookmarks in `bookmarks.toml`, a plain file beside `config.toml`, and carry
+them between machines in the same git repository as the rest of your setup. **Every URL in the
+file goes wherever the file goes**: into each commit and every remote that holds it. URLs often
+carry tokens (`?token=`, a session id, `user:pass@`), so keep `bookmarks.toml` in a private
+repository, or list it in `.gitignore` while you publish `config.toml`. Vimma does not strip
+anything from a URL: a bookmark is the address you saved.
+
+Vimma reads `bookmarks.toml` from the folder that holds `config.toml` (`~/.config/vimma/`, or
+the folder of a `config.toml` that is a link, such as a `stow` folder of links). Without the
+file nothing changes. Each `[bookmarks.<workspace>]` table is that workspace's folder in the
+Bookmarks Toolbar, and each line is one bookmark: its path, written as for `ctrl+b a`, and its
+URL.
+
+```toml
+[bookmarks.work]
+"docs/Vimma guide" = "https://vimma.dev/docs"
+"docs/Firefox source" = "https://searchfox.org/"
+"Calendar" = "https://calendar.example.com/"
+"archive/" = ""                       # an empty folder
+
+[bookmarks."my shop"]
+"Cart" = "https://shop.example/cart"
+```
+
+- **Order.** The folder shows the lines in file order; a folder sits where its first line is.
+- **Paths.** `/` separates folders, `\/` is a slash in a name (TOML writes the backslash
+  twice), and names match exactly: `Docs/` and `docs/` are two folders. A key ending in `/`
+  with the value `""` is an empty folder.
+- **Live.** Save the file, or `git pull`, and the folders follow within about 3 seconds in
+  every window; `:source` reads it at once. A table for a workspace that does not exist yet
+  still gets its folder, which the workspace takes when you make it.
+- **Read-only, for now.** The file is the source: a change made in Firefox to a mirrored
+  folder (the Library, the star, an import, Sync) is put back from the file a second later,
+  with a notice, and Vimma's own bookmark keys (`ctrl+b a`, the panel's `a`, `r`, `m`, `d`)
+  say `bookmarks.toml is read-only` there. Edit the file to change these bookmarks. Bookmarks
+  outside the mirrored folders work as before. Separators, tags and keywords in a mirrored
+  folder are kept as they are.
+- **Bookmarklets.** A `javascript:` line reaches Firefox's bookmarks only while `config.toml`
+  says `[bookmarks] bookmarklets = "user"` (or `"agent"`), because a bookmark there runs from
+  Firefox's Library and toolbar with one click. A file you pulled from someone else therefore
+  cannot add a script to your bookmarks unless you allowed bookmarklets. A `data:` line is an
+  error. Settings are read only from `config.toml`: `bookmarks.toml` holds tables and nothing
+  else.
+- **Deleting.** Every load that removes bookmarks says how many
+  (`bookmarks.toml: 3 bookmarks removed from work`). One that would remove more than 20, or
+  more than half of a table's, asks first: `y` applies the file; `n`, `Esc` or no answer in a
+  minute keeps every bookmark and pauses the mirror until the file changes again. A table you
+  add for a folder that already has bookmarks takes the folder over, and asks before it
+  deletes any bookmark the table lacks.
+- **Errors.** A file with an error is not applied at all: the status bar shows the first, as
+  `bookmarks.toml:<line>: <message>`, and the Browser Console lists them all. A file that goes
+  missing pauses the mirror too (`bookmarks.toml is missing; bookmarks paused`), so a moved or
+  renamed file never empties your folders.
+- **One small file.** For a small setup, the same tables can go in `config.toml` itself, after
+  `[bookmarks]`. Once `bookmarks.toml` exists it is the only bookmarks file, and tables in
+  `config.toml` are ignored with a warning. `bookmarks.toml` is the better home: an older Vimma
+  refuses a `config.toml` that has these tables.
+- **Recovery.** Firefox keeps its daily bookmark backups: Library → Import and Backup →
+  Restore undoes a bad file or a bad merge.
 
 ### Firefox's Bookmarks Toolbar
 
@@ -4491,7 +4555,8 @@ Vimma's main preferences (a few more are described with the feature they belong 
 ## config.toml
 
 Vimma reads `~/.config/vimma/config.toml` (`$XDG_CONFIG_HOME/vimma/config.toml` when that is
-set), and nothing else in that folder. No file means the defaults. Vimma creates it, with every
+set). The one other file Vimma reads in that folder is
+[`bookmarks.toml`](#bookmarks-in-a-file). No file means the defaults. Vimma creates it, with every
 default commented out under a short header on how to edit it, in two cases: on a profile's first
 run, and when you type `:config` (which then opens it in a tab). The folder is created mode 0700
 if it is missing, and the file mode 0600, since it can name intranet hosts. An existing file,

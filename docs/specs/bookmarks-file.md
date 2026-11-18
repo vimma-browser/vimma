@@ -1,6 +1,6 @@
 # Spec: bookmarks-file
 
-Status: accepted · Area: `packages/vimma-core/src/` (new `config/bookmarks-file.mjs`: parse, validate,
+Status: accepted, Delivery slice 1 implemented · Area: `packages/vimma-core/src/` (new `config/bookmarks-file.mjs`: parse, validate,
 model, three-way diff and line edits of `bookmarks.toml`; `config/config.mjs` for
 `[bookmarks] write_back` and the inline tables; `config/defaults.mjs` for the template line;
 `ui/bookmarks.mjs` for the panel's write path); `src/browser/base/content/vimma/` (new

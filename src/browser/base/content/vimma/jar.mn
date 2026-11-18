@@ -22,6 +22,7 @@ browser.jar:
         content/browser/vimma/agent/AgentCli.sys.mjs      (agent/AgentCli.sys.mjs)
         content/browser/vimma/agent/AgentKeys.sys.mjs     (agent/AgentKeys.sys.mjs)
         content/browser/vimma/agent/AgentStore.sys.mjs    (agent/AgentStore.sys.mjs)
+        content/browser/vimma/config/BookmarksFile.sys.mjs (config/BookmarksFile.sys.mjs)
         content/browser/vimma/config/ConfigHost.sys.mjs   (config/ConfigHost.sys.mjs)
         content/browser/vimma/search/SearchHost.sys.mjs   (search/SearchHost.sys.mjs)
         content/browser/vimma/search/UrlbarRows.sys.mjs   (search/UrlbarRows.sys.mjs)
