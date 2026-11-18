@@ -10,6 +10,7 @@
 // Page text is untrusted: every row and preview line is built from text nodes and <mark>s.
 
 import { AGENT_GLYPH } from "../core/agent.mjs";
+import { fitAround } from "../core/grep.mjs";
 
 /** @import { GrepPickerState, GrepPreview, GrepRow } from "../core/grep.mjs" */
 
@@ -24,11 +25,20 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 const TITLE_WIDTH = 24;
 /** A row shows at most this many characters of its line before the match, so it stays in view. */
 const ROW_BEFORE = 16;
+/** The preview's matched line keeps at most this many characters before the match. */
+const PREVIEW_BEFORE = 60;
+/** The probe that measures a character's width holds this many. */
+const PROBE_CHARS = 10;
 /**
  * @typedef {{ list: HTMLElement, query: HTMLElement, cursor: HTMLElement, marker: HTMLElement,
  *   flags: HTMLElement, count: HTMLElement, preview: HTMLElement, previewBody: HTMLElement,
  *   previewTitle: HTMLElement, scope: HTMLElement, scopeTitle: HTMLElement,
- *   scopeBody: HTMLElement, status: HTMLElement }} Parts
+ *   scopeBody: HTMLElement, status: HTMLElement, probe: HTMLElement }} Parts
+ */
+/**
+ * A line that fit cuts to its box: the whole line, the match in it, the most context kept
+ * before the match, and the text it shows now.
+ * @typedef {{ text: string, at: [number, number], before: number, shown: string }} FitLine
  */
 /** @type {WeakSet<BrowserWindow>} windows our stylesheet is loaded into */
 const styled = new WeakSet();
@@ -78,6 +88,17 @@ export class GrepPicker {
     /** @type {string | null} the row id the preview shows */
     this.previewOf = null;
     this.onResize = () => this.place();
+    /**
+     * The rows' lines fitted to their box's width (fit), by their element.
+     * @type {Map<HTMLElement, FitLine>}
+     */
+    this.rowLines = new Map();
+    /** @type {(FitLine & { el: HTMLElement }) | null} the preview's matched line */
+    this.previewLine = null;
+    /** @type {ResizeObserver | null} refits the lines when the list or the preview resizes */
+    this.resized = null;
+    /** @type {WeakMap<Element, number>} the list's and the preview's widths last fitted to */
+    this.fitWidths = new WeakMap();
   }
 
   get isOpen() {
@@ -90,6 +111,9 @@ export class GrepPicker {
     this.place();
     dialog.showModal();
     this.win.addEventListener("resize", this.onResize);
+    this.resized ??= new this.win.ResizeObserver((entries) => this.onBoxResize(entries));
+    this.resized.observe(this.parts.list);
+    this.resized.observe(this.parts.previewBody);
     // The list, not the dialog: aria-activedescendant names the active row only while the
     // element carrying it has focus (m7-a11y).
     this.parts.list.focus();
@@ -100,6 +124,9 @@ export class GrepPicker {
     if (!this.isOpen) return;
     /** @type {HTMLDialogElement} */ (this.dialog).close();
     this.win.removeEventListener("resize", this.onResize);
+    this.resized?.disconnect();
+    this.rowLines.clear();
+    this.previewLine = null;
     this.previewOf = null;
   }
 
@@ -120,6 +147,7 @@ export class GrepPicker {
   destroy() {
     this.close();
     this.dialog?.remove();
+    this.resized = null;
     this.dialog = null;
     this.built = null;
   }
@@ -160,6 +188,66 @@ export class GrepPicker {
   }
 
   /**
+   * Fits each long line to the characters its box has room for, with its match in view and
+   * some of the line before it (core fitAround). The room is only known once the box is laid
+   * out, so the line is drawn whole first, then fitted here: every width is read before any
+   * line is rewritten, which lays the dialog out once. A box with no width (the preview, hidden
+   * in a narrow dialog) keeps its line whole.
+   * @param {{ rows?: boolean, preview?: boolean }} [which]  the rows' lines, the preview's, or both
+   */
+  fit({ rows = true, preview = true } = {}) {
+    if (!this.built || !this.isOpen) return;
+    /** @type {(FitLine & { el: HTMLElement })[]} */
+    const lines = rows ? [...this.rowLines].map(([el, line]) => Object.assign(line, { el })) : [];
+    if (preview && this.previewLine) lines.push(this.previewLine);
+    if (!lines.length) return;
+    const ch = this.parts.probe.getBoundingClientRect().width / PROBE_CHARS;
+    if (!ch) return;
+    const chars = lines.map(({ el }) => Math.floor(el.getBoundingClientRect().width / ch));
+    lines.forEach((line, i) => this.fitLine(line, /** @type {number} */ (chars[i])));
+    // The probe measures a `0`; full-width (CJK) text or a proportional font can still be wider
+    // than the count says, and the CSS ellipsis would then hide the match again. One more read
+    // finds those lines, and they are cut again in proportion to how far they overflow.
+    const over = lines.map(({ el }) => el.scrollWidth / Math.max(1, el.clientWidth));
+    lines.forEach((line, i) => {
+      const by = /** @type {number} */ (over[i]);
+      const n = /** @type {number} */ (chars[i]);
+      if (by > 1) this.fitLine(line, Math.max(0, Math.floor(n / by) - 1));
+    });
+  }
+
+  /**
+   * Draws `line` fitted to `chars` characters, unless it already shows that text.
+   * @param {FitLine & { el: HTMLElement }} line
+   * @param {number} chars  0: the box has no width yet, and the line is left as it is
+   */
+  fitLine(line, chars) {
+    if (!chars) return;
+    const { text, at } = fitAround(line.text, line.at, chars, line.before);
+    if (text === line.shown) return;
+    line.shown = text;
+    line.el.replaceChildren();
+    this.marked(line.el, text, at);
+  }
+
+  /**
+   * Refits the rows when the list's width changes and the preview's line when the preview's
+   * does; the list's height, which changes as results arrive, does not need it.
+   * @param {ResizeObserverEntry[]} entries
+   */
+  onBoxResize(entries) {
+    const changed = entries.filter(({ target, contentRect }) => {
+      const was = this.fitWidths.get(target);
+      this.fitWidths.set(target, contentRect.width);
+      return was !== contentRect.width;
+    });
+    if (!changed.length || !this.built) return;
+    const rows = changed.some(({ target }) => target === this.parts.list);
+    const preview = changed.some(({ target }) => target === this.parts.previewBody);
+    this.fit({ rows, preview });
+  }
+
+  /**
    * @param {GrepPickerState} state
    * @param {GrepInfo} info
    */
@@ -185,6 +273,7 @@ export class GrepPicker {
     p.count.textContent = state.query || state.refine ? `${matches} / ${total}` : "";
 
     const list = p.list;
+    this.rowLines.clear();
     list.replaceChildren(...state.rows.map((row, i) => this.row(row, i, i === state.selected)));
     const current = list.children[state.selected];
     if (current) {
@@ -193,6 +282,7 @@ export class GrepPicker {
     } else {
       list.removeAttribute("aria-activedescendant");
     }
+    this.fit({ preview: false });
   }
 
   /**
@@ -228,13 +318,13 @@ export class GrepPicker {
     }
     if (row.kind === "match") {
       if (row.frameHost) where.append(this.el("span", "vimma-grep-frame", `↳ ${row.frameHost}`));
-      const [start, end] = row.at;
-      let from = Math.max(0, start - ROW_BEFORE);
-      const code = row.context.charCodeAt(from);
-      if (code >= 0xdc00 && code <= 0xdfff) from++;
-      const shown = from > 0 ? `…${row.context.slice(from)}` : row.context;
-      const shift = from > 0 ? from - 1 : 0;
-      this.marked(text, shown, [start - shift, end - shift]);
+      this.marked(text, row.context, row.at);
+      this.rowLines.set(text, {
+        text: row.context,
+        at: row.at,
+        before: ROW_BEFORE,
+        shown: row.context,
+      });
     } else if (row.kind === "unloaded") {
       text.textContent = "not loaded";
       text.classList.add("vimma-grep-unloaded");
@@ -291,6 +381,7 @@ export class GrepPicker {
   setPreview(rowId, preview) {
     this.previewOf = rowId;
     const body = this.parts.previewBody;
+    this.previewLine = null;
     if (!preview) {
       body.replaceChildren();
       return;
@@ -301,12 +392,20 @@ export class GrepPicker {
         if (i === preview.line) {
           line.classList.add("vimma-grep-preview-match");
           this.marked(line, text, preview.at);
+          this.previewLine = {
+            el: line,
+            text,
+            at: preview.at,
+            before: PREVIEW_BEFORE,
+            shown: text,
+          };
         } else {
           line.textContent = text;
         }
         return line;
       }),
     );
+    this.fit({ rows: false });
     const match = body.querySelector(".vimma-grep-preview-match");
     if (match) {
       const lineTop = /** @type {HTMLElement} */ (match).offsetTop;
@@ -388,13 +487,17 @@ export class GrepPicker {
     const previewBody = this.el("div", "vimma-grep-preview-body");
     preview.append(previewBody);
 
+    // Measures a character of the dialog's font, so fit knows how many a box has room for.
+    const probe = this.el("span", "vimma-grep-probe", "0".repeat(PROBE_CHARS));
+    probe.setAttribute("aria-hidden", "true");
+
     const status = this.el("div", "vimma-grep-status");
     status.setAttribute("role", "status");
     status.setAttribute("aria-live", "polite");
 
     const body = this.el("div", "vimma-grep-body");
     body.append(left, preview);
-    dialog.append(body, status);
+    dialog.append(body, status, probe);
     doc.body.append(dialog);
     this.dialog = dialog;
     this.built = {
@@ -411,6 +514,7 @@ export class GrepPicker {
       scopeTitle,
       scopeBody,
       status,
+      probe,
     };
     return dialog;
   }
