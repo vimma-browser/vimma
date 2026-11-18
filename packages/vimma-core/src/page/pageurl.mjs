@@ -87,8 +87,10 @@ const READER_ARTICLE = new Set(["http:", "https:", "file:"]);
 /**
  * The article's own URL for a Reader View address (`about:reader?url=<encoded>`), as Firefox's
  * address bar shows it (ReaderMode.getOriginalUrl): the `url` parameter, with the reader's hash
- * applied to it. Null for any other address, and for a malformed one (no `url`, not an absolute
- * URL, or a scheme Reader View does not load), so callers fall back to the raw address.
+ * applied to it, without a username or password (as UrlbarInput's makeURIReadable copies it).
+ * Null for any other address, and for a malformed one (no `url`, a scheme Reader View does not
+ * load, or an inner value that is not an absolute URL: Firefox's address bar would run that
+ * through URI fixup, Vimma does not guess), so callers fall back to the raw address.
  * @param {string} href
  * @returns {string | null}
  */
@@ -100,6 +102,8 @@ export function readerOriginalUrl(href) {
     if (!inner) return null;
     const article = new URL(inner);
     if (!READER_ARTICLE.has(article.protocol)) return null;
+    article.username = "";
+    article.password = "";
     return reader.hash ? new URL(reader.hash, article).href : article.href;
   } catch {
     return null;

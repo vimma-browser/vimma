@@ -369,6 +369,13 @@ describe("readerOriginalUrl and pageUrl (Reader View)", () => {
     }
   });
 
+  test("the article's credentials are dropped, as Firefox's makeURIReadable does", () => {
+    expect(pageUrl(reader("https://user:secret@example.com/a.html"))).toBe(
+      "https://example.com/a.html",
+    );
+    expect(pageUrl(`${reader("https://user@example.com/a")}#b`)).toBe("https://example.com/a#b");
+  });
+
   test("gu works on the article, not on the reader address", () => {
     expect(urlUp(pageUrl(reader("https://example.com/a/b/c.html")))).toBe(
       "https://example.com/a/b/",

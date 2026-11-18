@@ -99,6 +99,39 @@ add_task(async function tab_rows_and_bookmarks_take_the_article_url() {
   BrowserTestUtils.removeTab(tab);
 });
 
+add_task(async function the_hidden_toolbar_shows_no_lock_and_no_warning_for_the_reader() {
+  // docs/security/06-chrome-ui-rendering.md C3: the security cue is the reader page's own.
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.ui.toolbar.hidden", true]] });
+  const tab = await openReader(READER, true);
+  const shown = ARTICLE.replace(/^https:\/\//, "");
+  await TestUtils.waitForCondition(() => urlSegment() === shown, "the article's address shows");
+  const bar = /** @type {Element} */ (document.getElementById("vimma-statusbar"));
+  Assert.equal(bar.querySelector('[data-segment="security"]'), null, "no security segment");
+  Assert.ok(
+    !/secure|lock|\u{1F512}/iu.test(bar.textContent ?? ""),
+    "neither a lock nor not secure",
+  );
+  BrowserTestUtils.removeTab(tab);
+  await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function an_article_with_credentials_shows_and_copies_none() {
+  const withUser = ARTICLE.replace("https://", "https://user:secret@");
+  const tab = await openReader(`about:reader?url=${encodeURIComponent(withUser)}`, false);
+  const shown = ARTICLE.replace(/^https:\/\//, "");
+  await TestUtils.waitForCondition(
+    () => urlSegment() === shown,
+    "the bar shows the article without credentials, its example.com domain first",
+  );
+  await copy("before");
+  await SimpleTest.promiseClipboardChange(ARTICLE, () => press(["y", "y"]));
+  await noticeSays(`yanked ${ARTICLE}`);
+  const id = selectedTabId(window);
+  const row = gotoItems(window).find((item) => "tabId" in item && item.tabId === id);
+  Assert.equal(row?.url, ARTICLE, "the tab search row has no credentials either");
+  BrowserTestUtils.removeTab(tab);
+});
+
 add_task(async function reader_view_gu_walks_up_the_article_url() {
   const tab = await openReader(READER, true);
   const loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, ROOT);

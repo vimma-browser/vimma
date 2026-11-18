@@ -202,7 +202,9 @@ The keys Vimium and Tridactyl users expect, normal mode only, as CONTENT_RUNNERS
 (`host/page-ops.mjs`) on the focused `<browser>`, so in a split the focused pane's. The pure
 parts are in `core/pageurl.mjs`.
 
-- `yy` copies `currentURI.spec` and the notice says `yanked <url>`. `y` alone is a prefix in
+- `yy` copies `currentURI.spec` and the notice says `yanked <url>`. (Since changed: `yy`, `gu`
+  and `gU` read `pageUrl(currentURI.spec)`, so in Reader View they use the article's URL, without
+  credentials, and `gu` / `gU` go to the article's site; issue #1310.) `y` alone is a prefix in
   normal mode; copy mode's `y` / `Y` are the visual table's and do not change.
 - `p` / `P` read the global clipboard in the parent and pass it through `classifyClipboard`:
   control characters dropped, whitespace trimmed and collapsed, over 8192 characters refused
