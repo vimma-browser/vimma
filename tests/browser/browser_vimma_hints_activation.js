@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/m1-hints.md (decision 12: the user's hint is the user's gesture);
+// Spec: docs/specs/m1-hints.md ("Activation in the child" and its "Since changed" note: the
+// user's hint is the user's gesture);
 // docs/specs/mcp-forms.md F8 and docs/security/12-agents-mcp.md M26 (an agent's click is not).
 // A label the user types gives the page their transient user activation, as a click would: a
 // link to a new tab opens it, a button's window.open opens, full screen is granted and a select
@@ -185,6 +186,37 @@ add_task(async function a_hint_on_a_select_opens_its_list() {
     );
     const popup = dropdown?.menupopup;
     popup?.hidePopup();
+  });
+});
+
+add_task(async function a_field_a_hinted_button_focuses_enters_insert_after_esc() {
+  // As after the user's click: the page's handler moves focus while user input is being handled,
+  // so the focus is the user's (docs/specs/insert-focus.md decision 6), also after Esc. A trusted
+  // click() from the child ran its listeners in that state before activation was given too; this
+  // pins that the hint's activation keeps it.
+  await withPage(async (browser) => {
+    await hint(browser, "field");
+    await TestUtils.waitForCondition(
+      () => VimmaHost._browserMode(browser) === "insert",
+      "the field's hint entered insert",
+    );
+    EventUtils.synthesizeKey("KEY_Escape");
+    await TestUtils.waitForCondition(
+      () => VimmaHost._browserMode(browser) === "normal",
+      "Esc left insert",
+    );
+    await SpecialPowers.spawn(browser, [], () => {
+      /** @type {HTMLElement} */ (content.document.activeElement)?.blur();
+    });
+    await hint(browser, "focuser");
+    await TestUtils.waitForCondition(
+      () => SpecialPowers.spawn(browser, [], () => content.document.activeElement?.id === "field"),
+      "the button's handler focused the field",
+    );
+    await TestUtils.waitForCondition(
+      () => VimmaHost._browserMode(browser) === "insert",
+      "the focus it made counts as the user's: insert",
+    );
   });
 });
 

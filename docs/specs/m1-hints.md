@@ -156,7 +156,11 @@ href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. B
   with `target=_blank`, a button's `window.open`, `requestFullscreen` and a select's
   `showPicker()` now work as after a click, where before the pop-up blocker stopped them or the
   page refused them (issue #1303). Only `Vimma:ActivateHint` does this, which the parent sends
-  for a label the user typed; an agent's click (mcp-forms F8) shares the press without it.)
+  for a label the user typed; an agent's click (mcp-forms F8) shares the press without it. A
+  focus the page's click handler makes during the press counts as the user's
+  (`isHandlingUserInput`), so a hinted button that focuses a field enters insert, also after
+  `Esc` (insert-focus decision 6), as a mouse click on it does. That was already so before the
+  activation: a trusted `click()` from the child runs its listeners in that state.)
 - **`F`.** Links only (`a[href]`). The parent opens `href` with `openLinkIn(url, "tab",
 { inBackground: true })`, as the context menu's "Open Link in New Tab" does: the frame's
   document principal triggers the load, after `checkLoadURIWithPrincipal`, so a page cannot

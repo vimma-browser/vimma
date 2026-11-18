@@ -965,12 +965,15 @@ export class VimmaChild extends JSWindowActorChild {
     // Before the text fields: a select is one for insert mode (core isEditable), and its focus
     // alone left the list closed.
     if (el.localName === "select") {
+      const select = /** @type {HTMLSelectElement} */ (el);
       this.#focus(html);
+      // A disabled select opens nothing: no activation is given for it.
+      if (select.disabled || select.matches(":disabled")) return true;
       try {
-        asUserGesture(win, () => /** @type {HTMLSelectElement} */ (el).showPicker());
+        asUserGesture(win, () => select.showPicker());
       } catch {
-        // A disabled or hidden select, or one the page removed on focus: it keeps focus, and
-        // Alt+Down opens it.
+        // A hidden select, or one the page removed on focus: it keeps focus, and Alt+Down
+        // opens it.
       }
       return true;
     }

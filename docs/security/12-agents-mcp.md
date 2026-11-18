@@ -829,9 +829,13 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   handler of `Vimma:ActivateHint`, which the parent sends only from the hint keys you type in
   chrome. An agent's click comes as `Vimma:AgentElement`, whose press takes no such option, and
   a page can send neither message. A full-control connection (`send-keys`) types as your
-  keyboard, so a label it types counts as yours, as every other key it sends does. A trusted `click()` still runs the page's click listeners in
-  Firefox's older "handling user input" state, which some checks accept (audible autoplay,
-  pointer lock, a pop-up); pop-ups are refused in agent tabs by their sandbox flags (M10).
+  keyboard, so a label it types counts as yours, as every other key it sends does. After your own
+  hint in an agent tab (one `vimma_show` brought forward), the page keeps its transient activation
+  for about 5 seconds, and a handler that an agent's following `vimma_activate` runs could consume
+  it, as after a mouse click of yours in that tab. A trusted `click()` still runs the page's click
+  listeners in Firefox's older "handling user input" state, which some checks accept (audible
+  autoplay, pointer lock, a pop-up); pop-ups are refused in agent tabs by their sandbox flags
+  (M10).
   Before the click the child checks again that the element is still the one asked about (not a
   field, not disabled, a submit only if asked as one and to the same method and destination,
   the same link), and once more after the mouse events, which the page can handle; a changed

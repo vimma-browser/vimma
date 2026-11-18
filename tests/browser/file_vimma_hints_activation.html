@@ -3,7 +3,8 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <!-- Fixture for browser_vimma_hints_activation.js: what needs a user's gesture. A link to a new
-   - tab, a button that opens a window, one that asks for full screen and a select. Each button
+   - tab, a button that opens a window, one that asks for full screen, a select, and a button
+   - that focuses a field. Each button
    - records what the page saw of its click in `window.seen`. -->
 <html lang="en">
   <head>
@@ -30,9 +31,17 @@
         <option>two</option>
       </select>
     </p>
+    <p>
+      <input id="field" aria-label="field" />
+      <button id="focuser" type="button">focus the field</button>
+    </p>
     <div id="box">a box</div>
     <script>
       window.seen = {};
+      // A button that moves focus to a field, as a search toggle or a "reply" button does.
+      document.getElementById("focuser").addEventListener("click", () => {
+        document.getElementById("field").focus();
+      });
       document.getElementById("opener").addEventListener("click", () => {
         const active = navigator.userActivation.isActive;
         const w = window.open(

@@ -18,6 +18,9 @@
  * (UserActivation::StartHandlingUserInput) until destruct() (dom/base/nsDOMWindowUtils.cpp,
  * Firefox 160). It is what Firefox gives a WebExtension's user action
  * (ExtensionCommon.withHandlingUserInput).
+ * `fn` must be synchronous: the user-input state ends when it returns, so the rest of an async
+ * function would run without it, and a promise left pending would hand the gesture's timing to
+ * whatever settles it. A thenable result throws, after the state has ended.
  * @template T
  * @param {Window} win the target's own window (its frame's, not the top one)
  * @param {() => T} fn
@@ -25,9 +28,15 @@
  */
 export function asUserGesture(win, fn) {
   const input = win.windowUtils.setHandlingUserInput(true);
+  /** @type {T} */
+  let result;
   try {
-    return fn();
+    result = fn();
   } finally {
     input.destruct();
   }
+  if (typeof (/** @type {{ then?: unknown }} */ (result)?.then) === "function") {
+    throw new TypeError("asUserGesture: fn must be synchronous");
+  }
+  return result;
 }

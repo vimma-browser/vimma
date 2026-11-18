@@ -4,10 +4,6 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
-### Fixed
-
-- Link hints: a label you type now counts as your click in the page. A link that opens in a new tab (`target="_blank"`) opens it, and a button that opens a window or goes full screen does so, where Firefox's pop-up blocker or the page refused them before; a list box (`<select>`) opens its list. An agent's click (`vimma_activate`) still gives the page no user activation.
-
 ## [0.1.21](https://github.com/vimma-browser/vimma/compare/v0.1.20...v0.1.21) · Firefox 160.0 (2026-11-17)
 
 
