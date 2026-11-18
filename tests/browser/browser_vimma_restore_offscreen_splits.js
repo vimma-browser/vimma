@@ -442,6 +442,9 @@ add_task(async function an_off_screen_splits_lazy_tabs_close_leave_and_unload_by
   w2.gBrowser.selectedTab = r("na");
   await until(() => view(w2).splits.shown === 1, "selecting na shows S1");
   await until(() => !r("na").hasAttribute("pending"), "na restores");
+  // Unloaded while SessionStore still restores it, the tab can get its browser back from that
+  // restore ("Given tab is not restoring"), whatever its split does.
+  await until(() => !SessionStore.isTabRestoring(r("na")), "na has restored");
   w2.gBrowser.selectedTab = r("nd");
   await until(() => view(w2).splits.shown === 2, "selecting nd shows S2");
   Assert.ok(w2.gBrowser.discardBrowser(r("na"), true), "na is unloaded");

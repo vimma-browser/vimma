@@ -65,9 +65,10 @@ add_task(async function control_state_never_inserts_a_lazy_tab() {
     triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
   });
   Assert.ok(!lazy.linkedPanel, "sanity: the tab is lazy");
-  const entry = VimmaControl._commands
-    .state()
-    .tabs.find((t) => t.id === String(lazy.linkedBrowser.browserId));
+  // By its place: a lazy tab's id is its workspace uuid until it loads (#1332).
+  const index = gBrowser.visibleTabs.indexOf(lazy);
+  Assert.ok(index >= 0, "sanity: the lazy tab is listed");
+  const entry = VimmaControl._commands.state().tabs.find((t) => t.index === index);
   Assert.ok(!lazy.linkedPanel, "state leaves the lazy tab without a browser");
   Assert.strictEqual(entry?.loading, false, "and reports it as not loading");
   BrowserTestUtils.removeTab(lazy);
