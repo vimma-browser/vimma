@@ -1229,7 +1229,11 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   the delimiters, no `repeated`), so no page string and no new field reach the agent by that
   route. With elements past the 200 left out, which happens before the filter, the words say
   that none of the listed elements matches and that those left out may, never that nothing on
-  screen matches.
+  screen matches. No MCP result carries `structuredContent`: Claude Code shows the model that in
+  place of the text when both are there, which dropped `vimma_open`'s untrusted header and its
+  list while the list still counted as the site's last one, so the next list named labels the
+  model never saw (#1336). The text is the only channel, with the header, the delimiters and
+  Vimma's own words in it.
   [`test_repeated_list_leaves_out_unchanged_lines`](../../tests/browser/browser_vimma_mcp_elements.js),
   [`test_compact_list_keeps_delimiters_and_sensitive_rules`](../../tests/browser/browser_vimma_mcp_elements.js),
   [`test_elements_query_and_kinds`](../../tests/browser/browser_vimma_mcp_elements.js),
@@ -1256,6 +1260,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_builtin_open_names_the_error_page`](../../tests/browser/browser_vimma_agent_load_error.js),
   [`a_steps_element_list_is_untrusted_content_as_vimma_elements`](../../tools/vimma-ctl/src/mcp/render.rs),
   [`an_open_with_elements_lists_the_page_it_loaded`](../../tools/vimma-ctl/src/mcp/render.rs),
+  [`tabs_opens_and_closes_say_what_happened`](../../tools/vimma-ctl/src/mcp/render.rs),
   [`a step that returns the element list says so in the question and the notice`](../../packages/vimma-core/test/agent-prompt.test.ts),
   [`test_password_and_card_fields_are_sensitive_without_values`](../../tests/browser/browser_vimma_mcp_elements.js),
   [`test_elements_lists_kinds_fields_and_forms`](../../tests/browser/browser_vimma_mcp_elements.js),

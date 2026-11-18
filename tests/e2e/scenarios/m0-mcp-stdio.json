@@ -88,7 +88,10 @@
         "method": "tools/call",
         "params": {
           "name": "vimma_read_page",
-          "arguments": { "tab": "$open1.result.structuredContent.tab", "format": "text" }
+          "arguments": {
+            "tab": "$open1.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace",
+            "format": "text"
+          }
         },
         "as": "read1"
       }
@@ -106,7 +109,9 @@
         "method": "tools/call",
         "params": {
           "name": "vimma_read_page",
-          "arguments": { "tab": "$open1.result.structuredContent.tab" }
+          "arguments": {
+            "tab": "$open1.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace"
+          }
         },
         "as": "read2"
       }
@@ -126,7 +131,9 @@
         "method": "tools/call",
         "params": {
           "name": "vimma_close_tab",
-          "arguments": { "tab": "$open1.result.structuredContent.tab" }
+          "arguments": {
+            "tab": "$open1.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace"
+          }
         },
         "as": "close1"
       }

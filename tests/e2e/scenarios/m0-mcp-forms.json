@@ -108,7 +108,7 @@
         "params": {
           "name": "vimma_elements",
           "arguments": {
-            "tab": "$open1.result.structuredContent.tab"
+            "tab": "$open1.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace"
           }
         },
         "as": "elems"
@@ -149,7 +149,7 @@
         "params": {
           "name": "vimma_fill",
           "arguments": {
-            "tab": "$open1.result.structuredContent.tab",
+            "tab": "$open1.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace",
             "fields": [
               {
                 "label": "d",
@@ -183,7 +183,7 @@
         "params": {
           "name": "vimma_fill",
           "arguments": {
-            "tab": "$open1.result.structuredContent.tab",
+            "tab": "$open1.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace",
             "fields": [
               {
                 "label": "a",
@@ -240,7 +240,7 @@
         "params": {
           "name": "vimma_screenshot",
           "arguments": {
-            "tab": "$open1.result.structuredContent.tab",
+            "tab": "$open1.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace",
             "labels": true
           }
         },
@@ -283,7 +283,7 @@
         "params": {
           "name": "vimma_activate",
           "arguments": {
-            "tab": "$open1.result.structuredContent.tab",
+            "tab": "$open1.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace",
             "label": "f"
           }
         },
@@ -331,7 +331,7 @@
         "params": {
           "name": "vimma_console",
           "arguments": {
-            "tab": "$open1.result.structuredContent.tab"
+            "tab": "$open1.result.content.0.text~ in tab (\\w+) of Vimma's agent workspace"
           }
         },
         "as": "console"
