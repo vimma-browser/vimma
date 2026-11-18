@@ -58,6 +58,7 @@ import {
 } from "./private-ops.mjs";
 import { restartAsking } from "./restart.mjs";
 import { runRoute } from "./route-ops.mjs";
+import { runSiteKeys } from "./site-keys-ops.mjs";
 import { closeTab, newTab, openOrSay, renameTab, restoreTab, selectTab } from "./tab-ops.mjs";
 import { setBookmarksToolbar, setToolbar } from "./toolbar-ops.mjs";
 import { checkUpdates } from "./update-ui.mjs";
@@ -611,6 +612,15 @@ export function hostRunners(host, page) {
       // The segment's `done`, `failed` and `blocked` have been seen once the picker opens.
       s.downloads.clearEnd();
       s.downloadPicker.open();
+    },
+    // docs/specs/site-unbind-command.md: the selected tab's site gets keys, or gives them back.
+    "site.unbind": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ t) => {
+      s.notice.hide();
+      runSiteKeys(host, s, "siteunbind", t, (text, error) => s.notice.show(text, { error }));
+    },
+    "site.bind": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ t) => {
+      s.notice.hide();
+      runSiteKeys(host, s, "sitebind", t, (text, error) => s.notice.show(text, { error }));
     },
     // `:settings [pane]` (m1-cmdline, Since changed): an unknown pane is refused as a notice.
     "browser.settings": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ t) => {

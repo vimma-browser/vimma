@@ -359,7 +359,7 @@ export function tomlLiteral(/** @type {string | boolean | number} */ value) {
 
 /** Structural equality of two parsed TOML values (key order ignored). */
 /** @returns {boolean} */
-function same(/** @type {unknown} */ a, /** @type {unknown} */ b) {
+export function sameToml(/** @type {unknown} */ a, /** @type {unknown} */ b) {
   if (a instanceof Date || b instanceof Date) return String(a) === String(b);
   if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
     return Object.is(a, b);
@@ -370,7 +370,7 @@ function same(/** @type {unknown} */ a, /** @type {unknown} */ b) {
   return (
     ka.length === kb.length &&
     ka.every((k) =>
-      same(
+      sameToml(
         /** @type {Record<string, unknown>} */ (a)[k],
         /** @type {Record<string, unknown>} */ (b)[k],
       ),
@@ -516,7 +516,7 @@ export function setTomlKeys(text, edits) {
   }
   const after = parseToml(out);
   if (!after.ok) return after;
-  if (!same(after.value, want)) {
+  if (!sameToml(after.value, want)) {
     return {
       ok: false,
       error: { line: 1, column: 1, message: "the edit would change other keys" },

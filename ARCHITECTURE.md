@@ -268,7 +268,7 @@ both on every import form (`import`, `ChromeUtils.importESModule`, lazy getter m
 
 A lower layer reaches a higher one through an observer topic, a callback or an interface object
 passed in, as `host/runners.mjs` is passed the host. The commands of higher folders the host runs
-(`:route add`, `:agent give`, the agent line following the conversations, the downloads
+(`:route add`, `:siteunbind --save` and `:sitebind --delete`, `:agent give`, the agent line following the conversations, the downloads
 picker's agent mark) come from `host/host-services.mjs`, which `vimma.js` fills, once,
 before the first window's host starts; so do the agent CLIs, the API keys and `config.toml`'s
 refusal and setup write, which the host hands the agent chat window (`ui/agent-chat.mjs`) when
@@ -303,15 +303,15 @@ In words, as the code stands:
 
 ## State and where it lives
 
-| State                                           | Where                                                                                                                              |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Keymap, workspaces, theme, `[mcp]` and the rest | `$XDG_CONFIG_HOME/vimma/config.toml`; Vimma writes it only when asked (first-run setup, `:config` on a missing file, `:route add`) |
-| Workspace definitions                           | `<profile>/vimma-workspaces.json`                                                                                                  |
-| Tab membership, labels, pane trees per window   | Firefox SessionStore values on tabs and windows                                                                                    |
-| Control socket port and token                   | `<profile>/vimma-control.json`, mode 0600, written when the server starts                                                          |
-| Agent gate, grants, `:mcp log`                  | Memory only; a restart ends them                                                                                                   |
-| Built-in agent's conversations and API keys     | `<profile>/vimma/agent/`, encrypted with the OS keyring; keys in Firefox's login store under the same encryption                   |
-| Switches and small settings                     | Prefs (`vimma.*`), default values in `firefox-branding.js`                                                                         |
+| State                                           | Where                                                                                                                                                                                                      |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Keymap, workspaces, theme, `[mcp]` and the rest | `$XDG_CONFIG_HOME/vimma/config.toml`; Vimma writes it only when asked (first-run setup, `:config` on a missing file, `:route add`, the built-in agent's setup, `:siteunbind --save`, `:sitebind --delete`) |
+| Workspace definitions                           | `<profile>/vimma-workspaces.json`                                                                                                                                                                          |
+| Tab membership, labels, pane trees per window   | Firefox SessionStore values on tabs and windows                                                                                                                                                            |
+| Control socket port and token                   | `<profile>/vimma-control.json`, mode 0600, written when the server starts                                                                                                                                  |
+| Agent gate, grants, `:mcp log`                  | Memory only; a restart ends them                                                                                                                                                                           |
+| Built-in agent's conversations and API keys     | `<profile>/vimma/agent/`, encrypted with the OS keyring; keys in Firefox's login store under the same encryption                                                                                           |
+| Switches and small settings                     | Prefs (`vimma.*`), default values in `firefox-branding.js`                                                                                                                                                 |
 
 Persisted formats carry a version and have fixtures in `tests/contract/`; the specs
 ([m3-workspaces](docs/specs/m3-workspaces.md), [m5-config-load](docs/specs/m5-config-load.md))

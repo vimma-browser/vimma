@@ -271,6 +271,8 @@ Config
   edit_config               (unbound)                                            Open config.toml in a tab
   setup                     (unbound)                                            Open the first-run setup (add-ons, search engine)
   theme_appearance          (unbound)                                            Built-in theme: dark, light or the system's (:theme)
+  site_unbind               (unbound)                                            Give keys to this site's page (:siteunbind)
+  site_bind                 (unbound)                                            Give keys back to Vimma on this site (:sitebind)
 
 Agents
   agent_chat                ctrl+b i                                             Built-in agent: open its chat window (:agent)
@@ -600,6 +602,8 @@ Config
   edit_config               (unbound)                                            Open config.toml in a tab
   setup                     (unbound)                                            Open the first-run setup (add-ons, search engine)
   theme_appearance          (unbound)                                            Built-in theme: dark, light or the system's (:theme)
+  site_unbind               (unbound)                                            Give keys to this site's page (:siteunbind)
+  site_bind                 (unbound)                                            Give keys back to Vimma on this site (:sitebind)
 
 Agents
   agent_chat                ctrl+b i                                             Built-in agent: open its chat window (:agent)

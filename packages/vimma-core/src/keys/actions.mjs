@@ -410,6 +410,9 @@ group("Config", [
   ["setup", "setup.open", "Open the first-run setup (add-ons, search engine)"],
   // docs/specs/theme-appearance.md: no default key; `:theme dark|light|system`.
   ["theme_appearance", "theme.appearance", "Built-in theme: dark, light or the system's (:theme)"],
+  // docs/specs/site-unbind-command.md: no default key; `:siteunbind` and `:sitebind`.
+  ["site_unbind", "site.unbind", "Give keys to this site's page (:siteunbind)"],
+  ["site_bind", "site.bind", "Give keys back to Vimma on this site (:sitebind)"],
 ]);
 
 // docs/specs/addon-manager.md

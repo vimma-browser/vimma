@@ -95,6 +95,8 @@ interface VimmaModules {
   "chrome://browser/content/vimma/core/search.mjs": typeof import("../src/browser/base/content/vimma/core/search.mjs");
   "chrome://browser/content/vimma/core/setup.mjs": typeof import("../src/browser/base/content/vimma/core/setup.mjs");
   "chrome://browser/content/vimma/core/sidepanel.mjs": typeof import("../src/browser/base/content/vimma/core/sidepanel.mjs");
+  "chrome://browser/content/vimma/core/site-edit.mjs": typeof import("../src/browser/base/content/vimma/core/site-edit.mjs");
+  "chrome://browser/content/vimma/core/site-keys.mjs": typeof import("../src/browser/base/content/vimma/core/site-keys.mjs");
   "chrome://browser/content/vimma/core/sitepermissions.mjs": typeof import("../src/browser/base/content/vimma/core/sitepermissions.mjs");
   "chrome://browser/content/vimma/core/snapshot.mjs": typeof import("../src/browser/base/content/vimma/core/snapshot.mjs");
   "chrome://browser/content/vimma/core/splitplan.mjs": typeof import("../src/browser/base/content/vimma/core/splitplan.mjs");
@@ -164,6 +166,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/host/restart.mjs": typeof import("../src/browser/base/content/vimma/host/restart.mjs");
   "chrome://browser/content/vimma/host/route-ops.mjs": typeof import("../src/browser/base/content/vimma/host/route-ops.mjs");
   "chrome://browser/content/vimma/host/runners.mjs": typeof import("../src/browser/base/content/vimma/host/runners.mjs");
+  "chrome://browser/content/vimma/host/site-keys-ops.mjs": typeof import("../src/browser/base/content/vimma/host/site-keys-ops.mjs");
   "chrome://browser/content/vimma/host/tab-ops.mjs": typeof import("../src/browser/base/content/vimma/host/tab-ops.mjs");
   "chrome://browser/content/vimma/host/tab-search.mjs": typeof import("../src/browser/base/content/vimma/host/tab-search.mjs");
   "chrome://browser/content/vimma/host/toolbar-ops.mjs": typeof import("../src/browser/base/content/vimma/host/toolbar-ops.mjs");

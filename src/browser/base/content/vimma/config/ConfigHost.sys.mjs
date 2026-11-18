@@ -11,7 +11,8 @@
 // force the same way, until config.toml changes or a plain `:source`. Writes: the first run and
 // `:config` create a missing config.toml from the commented template, never touching an existing
 // one; `:route add` appends one `[[routes]]` table (spec workspace-routing), checked to parse
-// first.
+// first; the built-in agent's setup and `:siteunbind --save` / `:sitebind --delete` edit their
+// own lines (rewriteConfig).
 
 import {
   addAgentProviderText,
@@ -22,6 +23,7 @@ import {
   resolveSourcePath,
 } from "../core/config.mjs";
 import { formatConfigTemplate } from "../core/defaults.mjs";
+import { editSiteUnbindText } from "../core/site-edit.mjs";
 import { updatesCheckAfterRead } from "../core/updates.mjs";
 import { locateKeys } from "../core/toml.mjs";
 import {
@@ -493,6 +495,73 @@ function stop() {
   Services.obs.removeObserver(editObserver, CONFIG_EDIT_TOPIC);
 }
 
+/**
+ * An edit of config.toml: `compute` gets the file's text (null when it does not exist) and
+ * returns the new text with whatever the caller wants back, `{ text: null }` to leave the file
+ * alone, or `{ error }`. The new text goes through a 0600 temporary file renamed over the file a
+ * symlinked config.toml points to, so a dotfile link stays a link and a crash never leaves half a
+ * file; nothing is written when the file changed while it was edited. Then the file is read.
+ * @template {{ text: string | null }} R
+ * @param {(text: string | null) => R | { error: string }} compute
+ * @returns {Promise<R | { error: string }>}
+ */
+async function rewriteConfig(compute) {
+  const path = configPath();
+  /** @type {string | null} */
+  let text = null;
+  /** @type {Awaited<ReturnType<IOUtilsNamespace["stat"]>> | null} */
+  let before = null;
+  let target = path;
+  try {
+    const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+    file.initWithPath(path);
+    // isSymlink is lstat: a missing config.toml throws, and is created from the template.
+    let link = false;
+    try {
+      link = file.isSymlink();
+    } catch (e) {
+      if (/** @type {Thrown} */ (e)?.result !== Cr.NS_ERROR_FILE_NOT_FOUND) throw e;
+    }
+    if (link) {
+      // A link to nothing: writing would replace the user's link with a plain file.
+      if (!file.exists()) return { error: `${path} is a link to a missing file; nothing written` };
+      target = file.target;
+    }
+    before = await IOUtils.stat(target);
+    text = await IOUtils.readUTF8(target);
+  } catch (e) {
+    if (!notFound(e)) return { error: `cannot read ${path}` };
+  }
+  const r = compute(text);
+  if ("error" in r || r.text === null) return r;
+  const dir = PathUtils.parent(target) ?? "/";
+  const tmp = PathUtils.join(
+    dir,
+    `.config.toml.${Services.uuid.generateUUID().toString().slice(1, 9)}`,
+  );
+  try {
+    if (!(await IOUtils.exists(dir))) {
+      await IOUtils.makeDirectory(dir, { createAncestors: true, permissions: DIR_MODE });
+    }
+    await IOUtils.writeUTF8(tmp, r.text, { mode: "create" });
+    await IOUtils.setPermissions(tmp, before ? before.permissions : FILE_MODE, false);
+    // The file's text as well as its time: an edit within the time's resolution changes it.
+    const now = await IOUtils.readUTF8(target).catch(() => null);
+    const stat = await IOUtils.stat(target).catch(() => null);
+    if (now !== text || (stat?.lastModified ?? null) !== (before?.lastModified ?? null)) {
+      await IOUtils.remove(tmp);
+      return { error: `${path} changed meanwhile; nothing written` };
+    }
+    await IOUtils.move(tmp, target);
+  } catch (e) {
+    console.error(`vimma: cannot write ${path}`, e);
+    await IOUtils.remove(tmp, { ignoreAbsent: true }).catch(() => {});
+    return { error: `cannot write ${path}` };
+  }
+  await ConfigHost.reload();
+  return r;
+}
+
 export const ConfigHost = {
   /**
    * The last read's errors, which kept the file from applying (`[search]`'s, found after it
@@ -594,65 +663,35 @@ export const ConfigHost = {
    * @returns {Promise<{ name: string } | { error: string }>} the name it has in the file
    */
   async addAgentProvider(provider, { makeDefault }) {
-    const path = configPath();
-    /** @type {string | null} */
-    let text = null;
-    /** @type {Awaited<ReturnType<IOUtilsNamespace["stat"]>> | null} */
-    let before = null;
-    let target = path;
-    try {
-      const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
-      file.initWithPath(path);
-      // isSymlink is lstat: a missing config.toml throws, and is created from the template.
-      let link = false;
-      try {
-        link = file.isSymlink();
-      } catch (e) {
-        if (/** @type {Thrown} */ (e)?.result !== Cr.NS_ERROR_FILE_NOT_FOUND) throw e;
-      }
-      if (link) {
-        // A link to nothing: writing would replace the user's link with a plain file.
-        if (!file.exists())
-          return { error: `${path} is a link to a missing file; nothing written` };
-        target = file.target;
-      }
-      before = await IOUtils.stat(target);
-      text = await IOUtils.readUTF8(target);
-    } catch (e) {
-      if (!notFound(e)) return { error: `cannot read ${path}` };
-    }
-    const r = addAgentProviderText(text, provider, {
-      makeDefault,
-      mac: Services.appinfo.OS === "Darwin",
+    const r = await rewriteConfig((text) =>
+      addAgentProviderText(text, provider, {
+        makeDefault,
+        mac: Services.appinfo.OS === "Darwin",
+      }),
+    );
+    return "error" in r ? r : { name: r.name };
+  },
+
+  /**
+   * `:siteunbind --save` and `:sitebind --delete` (docs/specs/site-unbind-command.md decision
+   * 10): canonical keys added to, or removed from, `[sites."<table>"] unbind`, the file's other
+   * lines kept, then the file read. Written as `addAgentProvider` writes; nothing is written
+   * when the file has errors, would not load with the edit, changed meanwhile, or already says
+   * so (a key it lists, or none of the keys to remove).
+   * @param {string} table
+   * @param {{ add?: string[], remove?: string[] }} change
+   * @returns {Promise<{ added: string[], already: string[], removed: string[] } | { error: string }>}
+   */
+  async editSiteUnbind(table, change) {
+    const r = await rewriteConfig((text) => {
+      const edit = editSiteUnbindText(text, table, change, {
+        mac: Services.appinfo.OS === "Darwin",
+      });
+      if ("error" in edit) return edit;
+      return { ...edit, text: edit.text === text ? null : edit.text };
     });
     if ("error" in r) return r;
-    const dir = PathUtils.parent(target) ?? "/";
-    const tmp = PathUtils.join(
-      dir,
-      `.config.toml.${Services.uuid.generateUUID().toString().slice(1, 9)}`,
-    );
-    try {
-      if (!(await IOUtils.exists(dir))) {
-        await IOUtils.makeDirectory(dir, { createAncestors: true, permissions: DIR_MODE });
-      }
-      await IOUtils.writeUTF8(tmp, r.text, { mode: "create" });
-      await IOUtils.setPermissions(tmp, before ? before.permissions : FILE_MODE, false);
-      // The file's text as well as its time: an edit within the time's resolution changes it.
-      const now = await IOUtils.readUTF8(target).catch(() => null);
-      const stat = await IOUtils.stat(target).catch(() => null);
-      if (now !== text || (stat?.lastModified ?? null) !== (before?.lastModified ?? null)) {
-        await IOUtils.remove(tmp);
-        return { error: `${path} changed meanwhile; nothing written` };
-      }
-      await IOUtils.move(tmp, target);
-    } catch (e) {
-      console.error(`vimma: cannot write ${path}`, e);
-      await IOUtils.remove(tmp, { ignoreAbsent: true }).catch(() => {});
-      return { error: `cannot write ${path}` };
-    }
-    // ConfigHost, not `this`: vimma.js hands the host this method on its own (HostServices).
-    await ConfigHost.reload();
-    return { name: r.name };
+    return { added: r.added, already: r.already, removed: r.removed };
   },
 
   firstRun,

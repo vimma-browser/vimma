@@ -130,3 +130,17 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   `addEventListener` defaults `wantsUntrusted` to false. A page's own `ctrl+w`, dispatched at its
   focused field, closes nothing.
   [`a_ctrl_w_the_page_dispatches_closes_nothing`](../../tests/browser/browser_vimma_close_active_tab.js)
+- K13. `:siteunbind` and `:sitebind` ([site-unbind-command](../specs/site-unbind-command.md))
+  change which keys a site keeps, and with `--save` or `--delete` write `config.toml`, so they
+  **must** run only from the user's `:` line or the user's own binding: `vimma_keys` refuses `:`
+  and runs neither action (`site.unbind`, `site.bind`), and no page or content-process message
+  reaches them or the keys they set. `esc` and the prefix **must not** be given to a page, as
+  in K11. The write **must not** touch a `config.toml` with errors, and **must** change nothing
+  in it but the one `unbind` list (or the table that list empties): the result is parsed again
+  and compared before it is written, through a temporary file renamed over it. A private window
+  **must not** save a site to the file.
+  [`neither action is a vimma_keys action, and the : line is refused`](../../packages/vimma-core/test/site-keys.test.ts),
+  [`a file with errors is refused, never rewritten`](../../packages/vimma-core/test/site-keys.test.ts),
+  [`a_bad_argument_is_refused_and_nothing_changes`](../../tests/browser/browser_vimma_site_unbind_command.js),
+  [`a_config_toml_with_errors_is_never_written`](../../tests/browser/browser_vimma_site_unbind_command.js),
+  [`a_private_window_does_not_save`](../../tests/browser/browser_vimma_site_unbind_command.js)

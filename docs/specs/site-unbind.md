@@ -41,7 +41,9 @@ unbinding `t` on every site.
    most specific matching host is the site's whole rule, as for `insert` today: a
    `[sites."gist.github.com"]` table replaces `github.com`'s for gist, so a key unbound on
    `github.com` and wanted on gist too is listed in both.
-7. The change applies live when `config.toml` is saved, like `[unbind]`.
+7. The change applies live when `config.toml` is saved, like `[unbind]`. (Since changed: `:siteunbind` and `:sitebind` give a
+   site keys from the command line, until restart or saved into this table;
+   [site-unbind-command](site-unbind-command.md).)
 
 ## Research
 

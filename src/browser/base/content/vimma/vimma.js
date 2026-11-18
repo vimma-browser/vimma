@@ -107,6 +107,7 @@
     agentKeys: AgentKeys,
     configRefused: ConfigHost.refused,
     addAgentProvider: ConfigHost.addAgentProvider,
+    editSiteUnbind: ConfigHost.editSiteUnbind,
   });
   VimmaHost.init(win);
 

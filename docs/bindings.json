@@ -2712,6 +2712,16 @@
           "name": "theme_appearance",
           "description": "Built-in theme: dark, light or the system's (:theme)",
           "keys": []
+        },
+        {
+          "name": "site_unbind",
+          "description": "Give keys to this site's page (:siteunbind)",
+          "keys": []
+        },
+        {
+          "name": "site_bind",
+          "description": "Give keys back to Vimma on this site (:sitebind)",
+          "keys": []
         }
       ]
     },
