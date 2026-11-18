@@ -275,7 +275,14 @@ describe("completeCommandLine", () => {
 
   test("tab → tab itself, then the other tab commands, then actions", () => {
     const v = values(":tab");
-    expect(v.slice(0, 6)).toEqual(["tab", "tabnew", "tabrename", "tabnext", "tabsearch", "tabline"]);
+    expect(v.slice(0, 6)).toEqual([
+      "tab",
+      "tabnew",
+      "tabrename",
+      "tabnext",
+      "tabsearch",
+      "tabline",
+    ]);
     expect(completeCommandLine(":tab").word).toBe("tab");
     expect(completeCommandLine(":tab").candidates[6]?.kind).toBe("action");
   });
