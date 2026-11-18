@@ -124,7 +124,7 @@ pub fn parse_args(args: &[String]) -> Result<Parsed, String> {
         }
         if timeout_given || json {
             return Err(
-                "mcp takes no --timeout or --json: each call waits for the user's answer"
+                "mcp takes no --timeout or --json: each call may wait for the user's answer"
                     .to_string(),
             );
         }

@@ -80,10 +80,10 @@ describe(":mcp on|off (decision 26: config wins; the question only for the comma
       'mcp off · agent workspace "agent" · :mcp on lets agents ask to use it',
     );
     expect(mcpStatus({ enabled: true, from: "pref", workspace: "agent" })).toBe(
-      'mcp on · agent workspace "agent" · every request asks you first',
+      'mcp on · agent workspace "agent" · nothing runs until you allow it',
     );
     expect(mcpStatus({ enabled: true, from: "config", workspace: "bots" })).toBe(
-      'mcp on (config.toml) · agent workspace "bots" · every request asks you first',
+      'mcp on (config.toml) · agent workspace "bots" · nothing runs until you allow it',
     );
   });
 });

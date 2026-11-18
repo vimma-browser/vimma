@@ -735,7 +735,7 @@ function mcpLines() {
   const m = /** @type {Required<NonNullable<UserConfig["mcp"]>>} */ (DEFAULT_CONFIG.mcp);
   return [
     "# Local AI agents (Claude Code, Codex, opencode, Copilot) reach only the agent workspace, and",
-    "# each asks you first. Left out, :mcp on|off sets enabled and remembers it; set",
+    "# nothing runs until you allow it. Left out, :mcp on|off sets enabled and remembers it; set",
     "# here, it always wins. ask_timeout: seconds a request waits for you (10 to 300). A bare `a`",
     "# allows the agent until it quits (grant_minutes = 0), or for grant_minutes; a count before",
     "# it allows that many minutes, up to grant_max_minutes (at most 1440).",
@@ -747,8 +747,10 @@ function mcpLines() {
     `grant_max_minutes = ${m.grant_max_minutes}`,
     `max_read_chars = ${m.max_read_chars}`,
     `notify = ${m.notify}`,
-    "# Downloads from the agent workspace ask first, are saved only here (never your Downloads",
-    "# folder itself), never opened, and refused over download_max_mb (1 to 4096).",
+    "# Downloads from the agent workspace ask unless a grant covers them (a dangerous file, a",
+    "# page's own download and a file ClamAV could not fully scan always ask), are saved only here",
+    "# (never your Downloads folder itself), never opened, and refused over download_max_mb",
+    "# (1 to 4096).",
     `download_dir = ${tomlString(m.download_dir)}`,
     `download_max_mb = ${m.download_max_mb}`,
     "# A ClamAV scan with definitions older than this many days (1 to 90) is never reported",

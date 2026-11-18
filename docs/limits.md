@@ -149,8 +149,9 @@ the [user guide](guide.md); planned work is on the
 - The agent's name in a question (`claude-code`) is what the agent says it is; Vimma cannot check
   it. Grants belong to the connection, and `:mcp` shows the program that started it.
 - A grant covers every agent tool until it ends (by default, when the agent quits), but for
-  showing you a page, running a bookmarklet, a dangerous or unscanned download or one a page
-  started by itself, and the checkpoints: paying, and sending a
+  showing you a page, running a bookmarklet, a dangerous download, one ClamAV could not fully scan
+  or scanned with outdated definitions (without ClamAV nothing is scanned, and that alone does not
+  ask) or one a page started by itself, and the checkpoints: paying, and sending a
   form with text or personal details (free text, a name, an email address, a phone number, an
   address, a birth date, a username or organisation, a password, a payment card or one-time-code
   field, or a file), or one whose fields Vimma cannot read whole. A click that sends a form of only

@@ -66,8 +66,8 @@ What works today, each with the section that explains it:
   a page's errors and show you a page. An agent asks you first, one answer lets it work through its
   task until it quits, and paying or sending a form with text or personal details still asks,
   showing what is sent or the total the page states, except for a form button you allow for the
-  grant and a checkout Vimma does not recognise as one
-  ([what Vimma protects](#what-vimma-protects-and-what-it-does-not)).
+  grant, a button whose script sends data without a form, and a checkout Vimma does not recognise
+  as one ([what Vimma protects](#what-vimma-protects-and-what-it-does-not)).
 - **[Vimma's own agent](#vimmas-own-agent)**: `ctrl+b i` opens a chat window where you write a
   task and watch every step, with a local model (Ollama, LM Studio, llama.cpp), a hosted one
   by API key, or the [Claude Code, Codex or Gemini CLI](#using-an-agent-cli-in-the-chat-window)
@@ -2783,8 +2783,8 @@ with the rest of your computer.
   open, press keys, click, fill, take screenshots and download, and send by a click a form of hidden
   fields, numbers, dates, checkboxes and list choices that are not personal details, including ones
   it filled in. Only paying, sending a form with text or personal details, showing you a page,
-  running a bookmarklet, and a dangerous or unscanned download or one a page started by itself
-  still ask ([What a grant covers](#what-a-grant-covers)). A grant
+  running a bookmarklet, and a dangerous download, one ClamAV could not fully scan or one a page
+  started by itself still ask ([What a grant covers](#what-a-grant-covers)). A grant
   given for a read therefore also means "let it fetch any address", and an address can carry what
   the agent has read elsewhere. `a always here` on a form's question lets that button on that site
   send its later forms without asking until the grant ends, whatever text or personal details they
@@ -2792,7 +2792,8 @@ with the rest of your computer.
   besides hidden ones, a value too long for Vimma to read whole (over 1024 characters), or a form
   whose fields Vimma could not read still asks. A checkout Vimma does not recognise as one (no
   card field on screen and a button worded otherwise, such as `Continue` or an icon) runs under the
-  grant like any other click ([what counts as paying](#checkpoints-sending-a-form-and-paying)).
+  grant like any other click ([what counts as paying](#checkpoints-sending-a-form-and-paying)),
+  and so does a button whose script sends data without a form.
   Every call under a grant shows a notice and a row in
   `:mcp log`, so you can see where it went. A bare `a` lasts until the agent quits, which can be
   hours: give a grant for a task you are watching, a count (`15a`) when you want it to lapse by
@@ -3146,7 +3147,8 @@ on it.
 - `x` on a question: denies everything that agent asked and ignores it until it reconnects.
 - `:mcp off`: disconnects every MCP agent and ends their grants; `vimma-ctl mcp` then answers
   each call with `MCP is off in Vimma`. [Vimma's own agent](#vimmas-own-agent) keeps working:
-  `:agent stop` stops it.
+  `s` or `:agent stop` stops a conversation's task, and `ctrl+b shift+a` or `:mcp revoke` ends
+  its grants.
 - `:mcp forget`: deletes the agent workspace's cookies and site data, so any login an agent used
   there is gone. `ctrl+b shift+d` in the workspace closes its tabs.
 - Removing the server from your tool (`claude mcp remove vimma`, `codex mcp remove vimma`,
@@ -3220,16 +3222,19 @@ ending the one in force:
   ([Checkpoints: sending a form and paying](#checkpoints-sending-a-form-and-paying)): a payment
   spends your money, and a form that sends a message, a name, an address, a password or a file
   is where sign-ups and messages happen. A form that sends only the page's own values, such as a
-  basket's product and quantity, runs under the grant like any other click. Two gaps:
+  basket's product and quantity, runs under the grant like any other click. Three gaps:
   `a always here` on a form's question lets that button on that site send its later forms without
-  asking until the grant ends, and a checkout Vimma does not recognise as one runs under the grant
+  asking until the grant ends; a button whose script sends data without a form is an ordinary
+  click, whatever it sends; and a checkout Vimma does not recognise as one runs under the grant
   ([What is not recognised](#checkpoints-sending-a-form-and-paying)).
 - **Showing you a page** ([Showing you a page](#showing-you-a-page)): it changes what you see.
 - **Running one of your bookmarklets**
   ([Running one of your bookmarklets](#running-one-of-your-bookmarklets)): its code can do
   anything the page can.
-- **A dangerous or unscanned download**, and a download a page started by itself
-  ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
+- **A dangerous download, one ClamAV could not fully scan or scanned with outdated definitions**,
+  and a download a page started by itself
+  ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)). Without ClamAV
+  nothing is scanned, and that alone does not ask.
 
 A grant belongs to one agent session, the one `vimma-ctl mcp` process your agent tool started:
 another agent asks again. If that agent's connection drops (a suspended laptop, Vimma closing an
@@ -3381,8 +3386,9 @@ script` (or what it is). `y` and grants do nothing there: only `!` allows that o
   before it leaves its `.part` name, and a file ClamAV flags is deleted (`deleted download
 "a.zip": ClamAV found …`). Sometimes ClamAV fails, takes over five minutes, or cannot look
   inside a file (encrypted, or over its limits). Then the line asks `— ⚠ not scanned: ClamAV
-failed; keep it?`: `y` keeps it unscanned; `n`, `Esc`, `Enter` or `x` deletes it, and so does no
-  answer within `ask_timeout` (any other key does nothing). The notice says
+failed; keep it?`: `y` keeps it unscanned (`!` for a file you allowed with `!` as dangerous);
+  `n`, `Esc`, `Enter` or `x` deletes it, and so does no answer within `ask_timeout` (any other key
+  does nothing). The notice says
   `saved "report.pdf" to ~/Downloads/vimma-agent, scanned (ClamAV)`, `not fully scanned (ClamAV)`,
   `scanned with outdated definitions (ClamAV)` or `not scanned`. Vimma has no download reputation service of its own: Firefox's Safe Browsing
   checks downloads only in a build with a Google key.
