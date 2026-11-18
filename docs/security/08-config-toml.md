@@ -52,8 +52,8 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   runs from Firefox's own Library and toolbar (D13); with `"none"` the mirror neither adds,
   changes nor removes a `javascript:` bookmark, at any depth, also when a table is removed.
   Reading is bounded: a file over 4 MiB, or that is not a regular file (a FIFO would block the
-  queue), is not read, and it is read with a byte cap; at most 20,000 lines and 32 names per
-  path; keys are built one level at a time and the walks over Places are iterative, so a 4 MiB
+  queue), is not read, and it is read with a byte cap; at most 20,000 bookmarks and folders (the
+  folders paths make count) and 32 names per path; keys are built one level at a time and the walks over Places are iterative, so a 4 MiB
   file of either worst shape reads and plans in bounded time. Names refuse control,
   bidirectional and invisible characters; errors cut what they repeat to 80 characters; paths
   and table names are kept in `Map`s, so a title such as `__proto__` is an ordinary title. A

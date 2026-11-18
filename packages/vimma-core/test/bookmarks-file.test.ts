@@ -1024,14 +1024,15 @@ describe("bookmarks.toml: review fixes", () => {
     let t0 = performance.now();
     expect(errorsOf(deepLine)[0]?.message).toBe("a path deeper than 32 folders");
     expect(performance.now() - t0).toBeLessThan(3000);
-    // 20,000 lines of paths 32 folders deep, about 4 MiB.
+    // 19,000 lines of paths 32 folders deep, about 3.6 MB, within the 20,000 items with the 31
+    // folders they share.
     const seg = (i: number) => Array.from({ length: 31 }, (_, d) => `dir${d}`).join("/") + `/f${i}`;
-    const deepMany = `[bookmarks.w]\n${Array.from({ length: 20_000 }, (_, i) => `"${seg(i)}/" = ""`).join("\n")}`;
+    const deepMany = `[bookmarks.w]\n${Array.from({ length: 19_000 }, (_, i) => `"${seg(i)}/" = ""`).join("\n")}`;
     expect(deepMany.length).toBeGreaterThan(3_500_000);
     t0 = performance.now();
     const t1 = tablesOf(deepMany);
     const p1 = plan({ tables: t1, places: places() });
-    expect(p1.ops.length).toBeGreaterThan(20_000);
+    expect(p1.ops.length).toBeGreaterThan(19_000);
     expect(performance.now() - t0).toBeLessThan(5000);
     // 20,000 empty folders side by side.
     const flat = `[bookmarks.w]\n${Array.from({ length: 20_000 }, (_, i) => `"folder number ${i}/" = ""`).join("\n")}`;
@@ -1039,6 +1040,24 @@ describe("bookmarks.toml: review fixes", () => {
     const p2 = plan({ tables: tablesOf(flat), places: places() });
     expect(p2.ops.length).toBe(20_001);
     expect(performance.now() - t0).toBeLessThan(3000);
+  });
+
+  test("the cap counts the folders paths make: 15,500 lines of distinct 31-folder paths are refused fast", () => {
+    let text = "[bookmarks.w]\n";
+    for (let i = 0; i < 15_500; i++) {
+      text += `"${Array.from({ length: 31 }, (_, k) => `${i}x${k}`).join("/")}/b" = "https://x/${i}"\n`;
+    }
+    expect(text.length).toBeGreaterThan(4_000_000);
+    const t0 = performance.now();
+    expect(errorsOf(text)).toEqual([
+      { line: 0, message: "more than 20000 bookmarks and folders; not read" },
+    ]);
+    expect(performance.now() - t0).toBeLessThan(3000);
+    // Shared folders count once: 20,000 bookmarks in one folder are within the cap.
+    const flat = Array.from({ length: 19_999 }, (_, i) => `"one/b${i}" = "https://e.com/"`).join(
+      "\n",
+    );
+    expect(errorsOf(`[bookmarks.w]\n${flat}`)).toEqual([]);
   });
 
   test("allows only http, https, file and about, and javascript: behind the bookmarklets gate", () => {

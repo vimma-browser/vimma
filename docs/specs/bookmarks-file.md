@@ -723,7 +723,7 @@ Slice 1 landed with these departures from the text above, each for the reason gi
   `javascript:` (behind D13), the schemes Vimma opens (docs/security/04); every other scheme
   is an error at its line, because a pulled file should not plant `chrome:`, `view-source:` or
   `place:` bookmarks that run from Firefox's own UI.
-- **Bounds.** At most 20,000 lines and 32 names per path, names without control,
+- **Bounds.** At most 20,000 bookmarks and folders (the folders paths make count) and 32 names per path, names without control,
   bidirectional or invisible characters, table names without outer spaces, because the plan
   runs on the parent's main thread and the file may be someone else's
   (docs/security/08-config-toml.md F6).

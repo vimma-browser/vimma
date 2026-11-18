@@ -4108,7 +4108,8 @@ URL.
   `https`, `file`, `about` and `javascript:` addresses; anything else (`data:`, `chrome:`,
   `view-source:`, …) is an error. Settings are read only from `config.toml`: `bookmarks.toml`
   holds tables and nothing else.
-- **Limits.** A file holds at most 20,000 lines, paths at most 32 names deep, and names
+- **Limits.** A file holds at most 20,000 bookmarks and folders (the folders its paths make
+  count too), paths at most 32 names deep, and names
   without control, bidirectional or invisible characters; a table name has no spaces at its
   ends. A file over 4 MiB is not read.
 - **Deleting.** Every load that removes bookmarks says how many

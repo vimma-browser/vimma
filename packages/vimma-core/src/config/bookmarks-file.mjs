@@ -223,9 +223,11 @@ const keyOf = (/** @type {string} */ kind, /** @type {readonly string[]} */ name
  * @param {Record<string, unknown>} raw
  * @param {(path: Path) => number | undefined} lineOf
  * @param {LineError[]} errors
+ * @param {{ left: number }} budget  bookmarks and folders all tables may still make; below 0,
+ *   the file is refused (the folders a path makes count, as the plan writes each)
  * @returns {FileTable}
  */
-function readTable(name, raw, lineOf, errors) {
+function readTable(name, raw, lineOf, errors, budget) {
   const headerLine = lineOf(["bookmarks", name]) ?? 0;
   /** @type {FileTable} */
   const table = { name, line: headerLine, children: [] };
@@ -305,6 +307,7 @@ function readTable(name, raw, lineOf, errors) {
       if (!level) subfolders.set(into, (level = new Map()));
       let f = level.get(folderName);
       if (!f) {
+        if (--budget.left < 0) return table;
         f = { kind: "folder", title: folderName, line, children: [] };
         level.set(folderName, f);
         into.children.push(f);
@@ -312,6 +315,7 @@ function readTable(name, raw, lineOf, errors) {
       into = f;
     }
     if (!isFolder) {
+      if (--budget.left < 0) return table;
       into.children.push({
         kind: "bookmark",
         title: /** @type {string} */ (leaf),
@@ -334,6 +338,10 @@ function countLines(section) {
 }
 
 const TOO_MANY = `more than ${MAX_BOOKMARK_LINES} lines; not read`;
+const TOO_MANY_ITEMS = `more than ${MAX_BOOKMARK_LINES} bookmarks and folders; not read`;
+
+/** A fresh budget of bookmarks and folders for one file. */
+const newBudget = () => ({ left: MAX_BOOKMARK_LINES });
 
 /**
  * Reads `bookmarks.toml` (Behaviour 2-4, D12): only `[bookmarks.<name>]` tables, each line a
@@ -359,6 +367,7 @@ export function parseBookmarksFile(text) {
   const errors = [];
   /** @type {FileTable[]} */
   const tables = [];
+  const budget = newBudget();
   for (const [key, value] of Object.entries(parsed.value)) {
     if (key !== "bookmarks") {
       errors.push({
@@ -383,7 +392,8 @@ export function parseBookmarksFile(text) {
         });
         continue;
       }
-      tables.push(readTable(name, raw, lineOf, errors));
+      tables.push(readTable(name, raw, lineOf, errors, budget));
+      if (budget.left < 0) return { tables: [], errors: [{ line: 0, message: TOO_MANY_ITEMS }] };
     }
   }
   tables.sort((a, b) => a.line - b.line);
@@ -492,6 +502,7 @@ export function readBookmarks({ file, config }) {
   const errors = [];
   /** @type {FileTable[]} */
   const tables = [];
+  const budget = newBudget();
   if (countLines(section) > MAX_BOOKMARK_LINES) errors.push({ line: 0, message: TOO_MANY });
   else {
     for (const [name, raw] of Object.entries(section)) {
@@ -503,7 +514,13 @@ export function readBookmarks({ file, config }) {
         });
         continue;
       }
-      tables.push(readTable(name, raw, lineOf, errors));
+      tables.push(readTable(name, raw, lineOf, errors, budget));
+      if (budget.left < 0) {
+        tables.length = 0;
+        errors.length = 0;
+        errors.push({ line: 0, message: TOO_MANY_ITEMS });
+        break;
+      }
     }
   }
   if (!tables.length && !errors.length) return none;
