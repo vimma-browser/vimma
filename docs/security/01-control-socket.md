@@ -183,3 +183,16 @@ only the agent workspace, and each request waits for your yes or runs under a gr
   [`a_discovery_file_whose_pid_has_exited_is_stale_on_every_unix`](../../tools/vimma-ctl/src/discovery.rs),
   [`ps_tells_a_running_pid_from_an_exited_one`](../../tools/vimma-ctl/src/discovery.rs),
   [`name_from_ps_keeps_the_executable_name`](../../tools/vimma-ctl/src/mcp_serve.rs)
+- S15. A `send-keys` whose key opens a dialog that Firefox runs in a nested event loop ("Leave
+  page?", a window's prompt) **must** answer once the dialog is up (`dialog: true`) and press
+  none of its later keys; the window's keyboard input **never** stays held by it, so a later
+  `send-keys` can answer the dialog. A later `send-keys` **must** start with no modifier held,
+  so the waiting key's own (the ctrl of `ctrl+f4`) never reaches the answer. This adds no
+  reach: the keys are the same `full`-role command, which an agent connection never reaches
+  (S12), and a dialog takes them only after its arming wait, as it does a keyboard's. Known gap:
+  a dialog in a window of its own, or a nested event loop with no `dialogopen`, still holds that
+  `send-keys`' answer and its connection's later requests until it ends; another connection's
+  `send-keys` can still answer it.
+  [`test_send_keys_answer_the_dialog_they_open`](../../tests/browser/browser_vimma_control.js),
+  [`test_send_keys_answer_with_no_modifier_held`](../../tests/browser/browser_vimma_control.js),
+  [`send_keys_says_when_a_key_opened_a_dialog`](../../tools/vimma-ctl/tests/cli.rs)

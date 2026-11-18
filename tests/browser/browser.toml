@@ -45,6 +45,7 @@ support-files = [
   "file_vimma_hints_frame.html",
   "file_vimma_hints_many.html",
   "file_vimma_hints_menu.html",
+  "file_vimma_hints_overlink.html",
   "file_vimma_consent.html",
 ]
 
@@ -170,6 +171,7 @@ support-files = [
 ["browser_vimma_pane_layouts.js"]
 
 ["browser_vimma_control.js"]
+support-files = ["file_vimma_leave_page.html"]
 
 ["browser_vimma_control_state_read.js"]
 support-files = ["head_vimma_control.js"]
@@ -455,6 +457,9 @@ support-files = ["file_vimma_bookmarklet_page.html", "head_vimma_control.js"]
 support-files = ["file_vimma_bookmarklet_page.html"]
 
 ["browser_vimma_workspace_restore.js"]
+support-files = ["file_vimma_insert_scroll.html"]
+
+["browser_vimma_workspace_restore_splits.js"]
 support-files = ["file_vimma_insert_scroll.html"]
 
 ["browser_vimma_workspace_desync.js"]

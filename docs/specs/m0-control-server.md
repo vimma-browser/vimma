@@ -82,6 +82,20 @@ running browser, and with it off nothing listens and no token file exists.
 - **Quitting while a command runs** (`send-keys ctrl+q`): the in-flight request is answered,
   then the connection closes; the file is removed. Verified with the real build (exit 0, file
   gone, `vimma-ctl` exit 0).
+- **A key that opens a dialog** (since
+  [#1306](https://github.com/vimma-browser/vimma/issues/1306)): Firefox runs "Leave page?" and a
+  window's prompts in a nested event loop, so the keydown that opens one returns only once the
+  dialog is answered, and while it is being dispatched no other TextInputProcessor can begin a
+  transaction on the window (`TextInputProcessor::BeginInputTransactionInternal`). `send-keys`
+  therefore presses its keys in a task of its own and answers with `dialog: true` when a
+  `dialogopen` reaches the window while they are being pressed, and every `send-keys` presses
+  through one processor with one callback, which can begin again mid-dispatch, so the next
+  `send-keys` reaches the dialog. Each `send-keys` starts with no modifier held in that
+  processor (`shareModifierStateOf(null)`), and releases a chord's modifiers even when a key
+  throws, so the waiting key's ctrl never turns the answer `n` into `ctrl+n`. Known gap: a dialog
+  in a window of its own, or a nested event loop with no `dialogopen`, still holds that
+  `send-keys`' answer and its connection's later requests until it ends; a `send-keys` on
+  another connection can still answer it.
 - **`SIGTERM` does not run our shutdown** (measured, 157.0.1 headless: the process dies by the
   signal in ~20 ms, exit 143). The discovery file then stays; clients report it as stale ("not
   running") and the next start overwrites it. Harnesses should quit with `send-keys ctrl+q`

@@ -15,7 +15,7 @@
 /* global focusContent -- from head.js */
 /* global Client, tidyTask -- from head_vimma_control.js */
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
-/* global XULBrowserWindow -- the browser window (browser.js) */
+/* global XULBrowserWindow -- a browser window global (browser.js) */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
 // Every click and submission now also asks each frame of the tab for card fields and the
@@ -107,6 +107,7 @@ async function putBack() {
   for (const c of clients.splice(0)) c.close();
   Services.prefs.clearUserPref(ASK_TIMEOUT);
   AgentDrive._linkTtlMs = null;
+  XULBrowserWindow.setOverLink("");
   if (ww().model.active !== mainId()) ww().switchTo({ id: mainId() });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
@@ -188,6 +189,9 @@ addTidyTask(async function test_activate_clicks_a_button_in_a_background_tab() {
   const before = { workspace: activeName(), selected: gBrowser.selectedTab };
   const c = await agentClient("claude-code");
   const by = await labels(c, tab);
+  // The user's own hover preview, as the pointer on a link in their tab shows it.
+  XULBrowserWindow.setOverLink("https://example.net/hovered");
+  const shown = XULBrowserWindow.overLink;
   const id = c.request("agent-activate", { tab: idOf(tab), label: by["Add to list"] });
   const q = await question();
   Assert.deepEqual(
@@ -198,6 +202,10 @@ addTidyTask(async function test_activate_clicks_a_button_in_a_background_tab() {
   AgentGate.answer(q.id, { kind: "once" });
   const r = await c.response(id);
   Assert.ok(r.ok, "vimma_activate runs");
+  // A press on a button, no link, leaves the user's preview alone (#1309).
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {});
+  Assert.equal(XULBrowserWindow.overLink, shown, "the user's link preview is unchanged");
+  XULBrowserWindow.setOverLink("");
   Assert.deepEqual(
     [r.result.url, r.result.title, r.result.navigated, r.result.loading],
     [CLICK, "Click agent fixture", false, false],
@@ -353,6 +361,10 @@ addTidyTask(async function test_activate_never_follows_a_link_moved_elsewhere_or
     "the click does not follow a link moved after the question",
   );
   Assert.equal(tab.linkedBrowser.currentURI.spec, CLICK, "nothing loaded");
+  // The hover the mouse events began has ended (#1309): the window's link preview shows no URL
+  // of the agent's hidden tab. A round trip through the page lets what it sent arrive first.
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {});
+  Assert.equal(XULBrowserWindow.overLink, "", "the link preview shows no URL");
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);

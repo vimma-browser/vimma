@@ -190,6 +190,21 @@ const KEYS_KEPT = 16;
  */
 const isIndex = (n) => Number.isSafeInteger(n) && /** @type {number} */ (n) >= 0;
 
+/**
+ * Whether `el` is a link or inside one, through shadow roots to their hosts: a press on it
+ * passes through the link, whose handling sets the window's link preview.
+ * @param {Element} el
+ */
+function inLink(el) {
+  /** @type {Element | null} */
+  let n = el;
+  while (n) {
+    if (n.matches(":any-link")) return true;
+    n = n.parentElement ?? /** @type {ShadowRoot | null} */ (n.parentNode)?.host ?? null;
+  }
+  return false;
+}
+
 export class VimmaChild extends JSWindowActorChild {
   /**
    * Test-only (browser_vimma_mcp_fill.js): the name of a page function an agent's form
@@ -1018,13 +1033,40 @@ export class VimmaChild extends JSWindowActorChild {
     const events = ["mouseover", "mousedown", "mouseup"].map(
       (type) => new win.MouseEvent(type, { ...init, buttons: type === "mousedown" ? 1 : 0 }),
     );
-    if (agent) dispatchAsPage(el, events);
-    else for (const event of events) el.dispatchEvent(event);
+    if (agent) {
+      // Untrusted: they set no link preview, so there is no hover to end, and the user's own
+      // hover in their window is left alone.
+      dispatchAsPage(el, events);
+    } else {
+      for (const event of events) el.dispatchEvent(event);
+      if (inLink(el)) this.#leaveLink();
+    }
     if (!this.#onPage(el) || !still()) return false;
     // SVG elements have no click(): dispatch the click event for them.
     if (typeof html.click === "function") html.click();
     else el.dispatchEvent(new win.MouseEvent("click", init));
     return true;
+  }
+
+  /**
+   * Ends the link hover #press began on a link: its trusted mouseover, and the focus its trusted
+   * mousedown gives the link (Element::PostHandleEventForLinks), each put the link's URL in the
+   * window's link preview (Element::GetEventTargetParentForLinks), where it stayed until another
+   * document loaded, since no pointer leaves the link (#1309). This is what a mouseout does there
+   * (nsDocShell::OnLeaveLink), without one: the page sees the pointer stay on the element, so a
+   * menu that opened on the hover stays open. Only after a press in a link: the call clears
+   * whatever the window shows, the user's own hover included. The user's hints only: an agent's
+   * press sends untrusted events, which never set the preview (page-events.mjs, #1321).
+   */
+  #leaveLink() {
+    try {
+      this.docShell?.treeOwner
+        ?.QueryInterface(Ci.nsIInterfaceRequestor)
+        .getInterface(Ci.nsIWebBrowserChrome)
+        .setLinkStatus("");
+    } catch {
+      // A frame being torn down has no tree owner left; nothing shows its link then.
+    }
   }
 
   /**

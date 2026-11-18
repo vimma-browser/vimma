@@ -279,24 +279,101 @@ function keyInit(chord) {
 }
 
 /**
- * Press and release each chord in `win`, holding its modifiers like a person would.
- * @param {BrowserWindow} win
- * @param {Chord[]} chords
+ * The one processor every send-keys presses through, with its one callback. A key can open a
+ * dialog that Firefox runs in a nested event loop ("Leave page?" in permitUnload, a window's
+ * prompt): the key is still being dispatched until the dialog is answered, and while it is, no
+ * other processor can begin a transaction on the window, but this one, with the same callback,
+ * still can (TextInputProcessor::BeginInputTransactionInternal). So a later send-keys can answer
+ * the dialog (#1306).
+ * Its transaction is never ended, on purpose: ending it from a later send-keys while a key of an
+ * earlier one is still being dispatched would leave that key's keyup to a processor that no
+ * longer owns the window. Holding it takes nothing from anyone: a keyboard's IME or another
+ * processor still takes the window whenever no key of ours is being dispatched, and a closed
+ * window's widget unlinks it (TextInputProcessor::OnRemovedFrom).
+ * @type {nsITextInputProcessor | null}
  */
-function pressChords(win, chords) {
-  const tip = Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor);
-  if (!tip.beginInputTransaction(win, () => true)) {
+let processor = null;
+const processorCallback = () => true;
+
+/** @param {BrowserWindow} win */
+function beginInput(win) {
+  processor ??= Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor);
+  let begun = false;
+  try {
+    begun = processor.beginInputTransaction(win, processorCallback);
+  } catch {
+    // NS_ERROR_ALREADY_INITIALIZED: a key of ours waits on a dialog in another window.
+  }
+  if (!begun) {
     throw new ControlError("failed", "another input method owns the window's keyboard input");
   }
-  const KeyboardEvent = win.KeyboardEvent;
-  for (const chord of chords) {
-    const held = MODIFIER_KEYS.filter(([flag]) => chord[flag]);
-    for (const [, key, code] of held) tip.keydown(new KeyboardEvent("", { key, code }));
-    const event = new KeyboardEvent("", keyInit(chord));
-    tip.keydown(event);
-    tip.keyup(event);
-    for (const [, key, code] of held.reverse()) tip.keyup(new KeyboardEvent("", { key, code }));
-  }
+  return processor;
+}
+
+/**
+ * Press and release each chord in `win`, holding its modifiers like a person would; resolves
+ * with how many chords were pressed. The keys go in a task of their own, so that the result can
+ * be answered while a key waits on a dialog it opened: then it is `{ sent, dialog: true }`, with
+ * that key counted, and the keys after it are not pressed, because a dialog takes its keys only
+ * after a wait (docs/specs/firefox-dialogs.md, decision 3) and would drop them (#1306). A
+ * `dialogopen` while the keys are being pressed is a dialog in a nested event loop: one that
+ * opens later, after the keys, does not hold them, and the result is then plain `{ sent }`.
+ * @param {BrowserWindow} win
+ * @param {Chord[]} chords
+ * @returns {Promise<{ sent: number, dialog?: true }>}
+ */
+function pressChords(win, chords) {
+  return new Promise((resolve, reject) => {
+    let sent = 0;
+    let dialog = false;
+    const onDialog = () => {
+      dialog = true;
+      resolve({ sent, dialog: true });
+    };
+    Services.tm.dispatchToMainThread(() => {
+      try {
+        if (win.closed) throw new ControlError("failed", "the window closed");
+        win.addEventListener("dialogopen", onDialog, true);
+        const tip = beginInput(win);
+        // Start with no modifier held: a send-keys whose key waits on a dialog still holds its
+        // own (ctrl of ctrl+f4) in this shared processor, and the answer would go as ctrl+n.
+        tip.shareModifierStateOf(null);
+        const KeyboardEvent = win.KeyboardEvent;
+        for (const chord of chords) {
+          if (dialog) break;
+          sent++;
+          /** @type {Array<[string, string]>} modifiers pressed and not yet released */
+          const down = [];
+          try {
+            for (const [flag, key, code] of MODIFIER_KEYS) {
+              if (!chord[flag]) continue;
+              tip.keydown(new KeyboardEvent("", { key, code }));
+              down.push([key, code]);
+            }
+            const event = new KeyboardEvent("", keyInit(chord));
+            tip.keydown(event);
+            tip.keyup(event);
+          } finally {
+            // Released even when a key threw, so no later send-keys inherits them.
+            for (const [key, code] of down.reverse()) {
+              try {
+                tip.keyup(new KeyboardEvent("", { key, code }));
+              } catch (e) {
+                console.warn("vimma control: releasing", key, e);
+              }
+            }
+          }
+        }
+        resolve({ sent });
+      } catch (e) {
+        // Already answered when a dialog opened: the window may have closed meanwhile.
+        if (dialog) console.warn("vimma control: send-keys after its dialog:", e);
+        reject(e);
+      } finally {
+        win.removeEventListener("dialogopen", onDialog, true);
+      }
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -407,8 +484,7 @@ const COMMANDS = {
     if (typeof keys !== "string") throw new ControlError("invalid-args", "keys must be a string");
     // The validator has already parsed every chord; parse again for the values.
     const chords = keys.split(/\s+/).filter(Boolean).map(parseKey);
-    pressChords(topWindow(), chords);
-    return { sent: chords.length };
+    return pressChords(topWindow(), chords);
   },
 
   state() {
