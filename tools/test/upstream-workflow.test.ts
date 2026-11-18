@@ -499,10 +499,12 @@ describe("e2e.yml Beta mode", () => {
     const undecided = brandings("true", `${beta}-firefox-new-brand-name = Firefox New\n`);
     expect(undecided.status).not.toBe(0);
     expect(undecided.stderr).toContain("-firefox-new-brand-name");
-    const dropped = brandings("true", beta.replace(/^-firefox-home-brand-name = .*\n/m, ""));
+    const renamed = Object.keys(RENAME)[0] as string;
+    const dropped = brandings("true", beta.replace(`${renamed} = Firefox Thing\n`, ""));
     expect(dropped.status).not.toBe(0);
-    expect(dropped.stderr).toContain("-firefox-home-brand-name");
+    expect(dropped.stderr).toContain(renamed);
     for (const r of [undecided, dropped]) {
+      expect(r.stderr).not.toMatch(/^\s+at /m);
       expect(r.committed).toBe("# the release's file\n");
       expect(r.vitest).toBeNull();
     }
