@@ -787,9 +787,10 @@ Edit menu's Find in Page, and there `Enter` goes to the next match.
   toolbar is hidden) to the status bar. The prompt, titled `Live Grep`, is at the bottom, with
   `matches listed / found` on its right. Results stack above it, the best one next to the prompt
   and marked `>`. Each row shows its window (`w1` is this one), the tab's number (the one
-  `ctrl+b 1..9` uses) and title, its host, `:line:`, and the line with the match highlighted. A line is a paragraph, list item, heading or table cell (text after a `<br>`
+  `ctrl+b 1..9` uses) and title, its host, `:line:`, and the line with the match highlighted;
+  a line longer than the row is cut to fit around the match, with some of the text before it. A line is a paragraph, list item, heading or table cell (text after a `<br>`
   or in `pre` text starts a new one), numbered in the page. On the right, `Grep Preview` shows
-  the ten lines before and after the selected match, the matched line highlighted; its title
+  the ten lines before and after the selected match, the matched line highlighted and, when it is long, cut around the match; its title
   names the match's window, workspace, tab and host in full. In a window
   narrower than 900 pixels the preview is hidden and the results take the whole width.
 - **The query** is a regular expression in JavaScript's syntax (`err(or)?s?\b`, `\d+ ms`), matched
@@ -829,7 +830,9 @@ Edit menu's Find in Page, and there `Enter` goes to the next match.
   frame from another site is searched; its rows say `↳ host`.
 - **Limits.** A search stops in a page, or in the closed tabs' titles, after a second
   (`timed out`, so a pattern that would backtrack for ever never freezes the page or Vimma), covers at most 100 frames a tab and the first
-  million characters of a page (`cut`), and lists at most 2,000 results; a query over 1,000
+  million characters of a page (`cut`), and lists at most 2,000 results. Each frame of a page
+  lists its first 100 matches and counts up to 1,000, so the count can read `100 / 312`; narrow
+  the query to list the rest. A query over 1,000
   characters is not run (`too long`).
 - **Private and agent tabs.** From a normal window live grep never sees the
   [private workspace](#private-workspace), open or recently closed, in any scope; in the private
