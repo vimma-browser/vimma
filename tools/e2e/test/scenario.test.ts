@@ -671,6 +671,29 @@ describe("runSteps", () => {
         { ctl, control: fakeControl().control, screenshot: async () => {} },
       ),
     ).rejects.toThrow("does not match");
+    for (const [regex, why] of [
+      ["in tab \\w+ of", "the regex has no capture group"],
+      ["in tab (\\w+", "not a regex: "],
+    ]) {
+      await expect(
+        runSteps(
+          scenario({
+            steps: [
+              { mcp: { method: "tools/call", params: { name: "vimma_open" }, as: "shown1" } },
+              { "mcp-result": { of: "shown1", expect: { result: {} } } },
+              {
+                mcp: {
+                  method: "tools/call",
+                  params: { tab: `$shown1.result.content.0.text~${regex}` },
+                  as: "read1",
+                },
+              },
+            ],
+          }),
+          { ctl, control: fakeControl().control, screenshot: async () => {} },
+        ),
+      ).rejects.toThrow(why);
+    }
   });
 
   it("an agent answer that does not match fails the step", async () => {

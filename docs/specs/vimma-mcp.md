@@ -798,8 +798,8 @@ Found necessary in the security reviews of the protocol (#176) and the question 
     sentence, because in Claude Code its `structuredContent` reached the model as only
     `{"tab": …}`, without the sentence, the page's untrusted header or the element list asked
     with `elements`, while that list still counted as the site's last list for the next one;
-    no tool sets `structuredContent`; see #1336.) A result of the wrong shape becomes a tool error ("Vimma's answer broke
-    the control protocol").
+    no tool sets `structuredContent`; see #1336.) A result of the wrong shape becomes a tool
+    error ("Vimma's answer broke the control protocol").
 38. **Arguments are checked before anything reaches Vimma.** Bad arguments are tool errors
     (`isError`, "Invalid arguments for <tool>: <why>.") the model can correct, and nothing is
     asked: `tab` is 1 to 20 digits, as a string or a non-negative integer; `url` is http or https

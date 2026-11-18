@@ -674,7 +674,9 @@ export async function runSteps(
  * `args` with each string `$name.a.b`, at any depth, replaced by that path in the answer `name`
  * (an `agent-result` or `mcp-result` before it): `{ tab: "$open1.result.tab" }`. With
  * `~regex` after the path, the value is the regex's first group in the string there: an MCP
- * result is text only (#1336), so a tab id is read out of its words.
+ * result is text only (#1336), so a tab id is read out of its words. `content.0.text` is the
+ * open sentence only for a `vimma_open` without `elements`; with it, item 0 is the page's
+ * untrusted header and the sentence is item 1.
  */
 function substitute(
   args: Record<string, unknown>,
@@ -693,7 +695,19 @@ function substitute(
     for (const p of path) value = value?.[p];
     if (value === undefined) throw new Error(`${v}: not in the answer`);
     if (tilde < 0) return value;
-    const found = typeof value === "string" ? new RegExp(v.slice(tilde + 1)).exec(value) : null;
+    let regex: RegExp;
+    try {
+      regex = new RegExp(v.slice(tilde + 1));
+    } catch (e) {
+      throw new Error(`${v}: not a regex: ${(e as Error).message}`, { cause: e });
+    }
+    // A regex with no group would match and still give nothing: said as such, not as no match.
+    if (new RegExp(`${regex.source}|`).exec("")!.length < 2) {
+      throw new Error(`${v}: the regex has no capture group`);
+    }
+    if (typeof value !== "string")
+      throw new Error(`${v}: ${JSON.stringify(value)} is not a string`);
+    const found = regex.exec(value);
     if (found?.[1] === undefined) throw new Error(`${v}: ${JSON.stringify(value)} does not match`);
     return found[1];
   };
