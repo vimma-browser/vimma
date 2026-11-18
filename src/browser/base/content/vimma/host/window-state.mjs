@@ -174,6 +174,7 @@ export function newWindowState(host, win, keymap, env) {
     tabStrip: null,
     toolbar: null,
     urlbarQueries: null,
+    urlbarCommands: null,
     promptKeys: null,
     timer: null,
     onCancelHints: () => host._cancelHints(state),

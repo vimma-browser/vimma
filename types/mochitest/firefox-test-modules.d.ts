@@ -5,17 +5,6 @@
 // imports a URL that no map has, and the tests' type check fails where it reads one
 // (importESModule gives `unknown` for it).
 interface VimmaModules {
-  // engine/browser/components/urlbar/content/UrlbarShared.mjs
-  "chrome://browser/content/urlbar/UrlbarShared.mjs": {
-    UrlbarShared: {
-      readonly RESULT_TYPE: {
-        readonly TAB_SWITCH: number;
-        readonly SEARCH: number;
-        readonly URL: number;
-      };
-      readonly RESULT_GROUP: { readonly GENERAL_PARENT: string };
-    };
-  };
   // engine/browser/components/migration/InternalTestingProfileMigrator.sys.mjs: the tests stub
   // its prototype's methods.
   "moz-src:///browser/components/migration/InternalTestingProfileMigrator.sys.mjs": {
@@ -58,18 +47,6 @@ interface VimmaModules {
   "moz-src:///browser/components/sidebar/SidebarManager.sys.mjs": {
     SidebarManager: { updateDefaultTools(): void };
   };
-  // engine/browser/components/urlbar/UrlbarProvidersManager.sys.mjs: the manager of one search
-  // access point.
-  "moz-src:///browser/components/urlbar/UrlbarProvidersManager.sys.mjs": {
-    ProvidersManager: {
-      getInstanceForSap(sapName: string): {
-        registerProvider(provider: object): void;
-        unregisterProvider(provider: object): void;
-      };
-    };
-  };
-  // engine/browser/components/urlbar/UrlbarUtils.sys.mjs: the tests replace a method.
-  "moz-src:///browser/components/urlbar/UrlbarUtils.sys.mjs": Pick<LazyModules, "UrlbarUtils">;
   // engine/toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs
   "moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs": Pick<
     LazyModules,

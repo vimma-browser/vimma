@@ -135,6 +135,20 @@ export class CommandLine {
   }
 
   /**
+   * Puts `text` on the line and, with `run`, submits it as if typed there and Enter pressed:
+   * into the history, an error shown on the open line, a command run once the line has closed.
+   * A line left open with other text is closed first, so that text is never the one run. For a
+   * `:` line typed in the start page's address bar (host/urlbar-commands.mjs).
+   * @param {string} text
+   * @param {{ run: boolean }} options
+   */
+  enter(text, { run }) {
+    this.close({ restoreFocus: false });
+    this.open(text);
+    if (run && this.isOpen) this.submit();
+  }
+
+  /**
    * Hides the line. Focus goes back to what had it before `:` unless focus already moved on
    * (`restoreFocus: false`); after a tab switch, or when that element is gone, to the selected
    * browser.

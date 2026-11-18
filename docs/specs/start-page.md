@@ -87,6 +87,8 @@ quieter still.
 - **URL bar:** the page is `BROWSER_NEW_TAB_URL`, so `isInitialPage` and `isBlankPageURL` treat
   it as Firefox's new tab: empty URL bar, focused on open. `StartPage.init` also adds it to each
   window's `gInitialPages` for a home page opened with the new-tab override off.
+  (Since changed: a line typed there that starts with `:` runs as a command line, not a search;
+  [start-page-commands](start-page-commands.md).)
 - **Vimma keys:** the content actor's `matches` include the page's URL, so it is in normal mode
   (without the actor the host keeps a page in insert, and `:` would not open the command line).
   `f` finds nothing to label; `j`/`k` have nothing to scroll.
