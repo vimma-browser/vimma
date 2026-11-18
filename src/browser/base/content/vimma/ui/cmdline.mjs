@@ -109,6 +109,11 @@ export class CommandLine {
     this.cursor = { index: null, draft: "" };
     /** @type {ResizeObserver | null} */
     this.resizeObserver = null;
+    /**
+     * While a dialog has focus over the open line: watches where focus goes next.
+     * @type {((e: FocusEvent) => void) | null}
+     */
+    this.afterDialog = null;
   }
 
   get isOpen() {
@@ -162,6 +167,7 @@ export class CommandLine {
    */
   close({ restoreFocus = true, tabChanged = false } = {}) {
     if (!this.isOpen) return;
+    this.stopWatching();
     const opener = this.opener;
     this.opener = null;
     this.cycle = null;
@@ -271,13 +277,54 @@ export class CommandLine {
     this.win.setTimeout(() => {
       const doc = this.win.document;
       if (!this.isOpen || doc.activeElement === this.input) return;
-      if (doc.hasFocus() && !doc.activeElement?.classList.contains("dialogFrame")) {
+      if (doc.hasFocus() && !this.isDialogOverLine(doc.activeElement)) {
         this.close({ restoreFocus: false });
-      } else {
-        // The status bar leaves COMMAND while the dialog has the keys.
-        this.changed();
+        return;
       }
+      if (doc.hasFocus()) this.watchAfterDialog();
+      // The status bar leaves COMMAND while the dialog has the keys.
+      this.changed();
     }, 0);
+  }
+
+  /**
+   * A dialog frame over the selected tab or over the window (`gDialogBox`), the ones that can
+   * open over the line and give focus back to it. Tab dialogs sit in the tab's container
+   * (browser.js, `TabDialogBox._containerFor`).
+   * @private
+   * @param {Element | null} el
+   */
+  isDialogOverLine(el) {
+    if (!el?.classList.contains("dialogFrame")) return false;
+    if (el.closest("#window-modal-dialog")) return true;
+    const selected = /** @type {{ gBrowser?: { selectedBrowser: Element } }} */ (
+      /** @type {unknown} */ (this.win)
+    ).gBrowser?.selectedBrowser;
+    const container = selected?.closest(".browserSidebarContainer");
+    return !!container && container.contains(el);
+  }
+
+  /**
+   * Focus left the dialog: back on the line, it stays; on another dialog, the watch goes on;
+   * anywhere else (the address bar, a click on the page), the line closes as on any focus move,
+   * so it is never left open behind with no way back to it.
+   * @private
+   */
+  watchAfterDialog() {
+    if (this.afterDialog) return;
+    this.afterDialog = (/** @type {FocusEvent} */ e) => {
+      const target = /** @type {Element} */ (e.target);
+      if (target === this.input) this.stopWatching();
+      else if (!this.isDialogOverLine(target)) this.close({ restoreFocus: false });
+    };
+    this.win.document.addEventListener("focusin", this.afterDialog, true);
+  }
+
+  /** @private */
+  stopWatching() {
+    if (!this.afterDialog) return;
+    this.win.document.removeEventListener("focusin", this.afterDialog, true);
+    this.afterDialog = null;
   }
 
   /** @private */
@@ -459,7 +506,8 @@ export class CommandLine {
     input.addEventListener("keydown", (e) => this.onKeyDown(e));
     input.addEventListener("input", () => this.onInput());
     input.addEventListener("focusout", () => this.onFocusOut());
-    // Back from a dialog: COMMAND again.
+    // Back from a dialog: COMMAND again. open() reports its own change, since it may find the
+    // input focused already, with no focus event.
     input.addEventListener("focus", () => this.changed());
     row.append(prompt, input);
 

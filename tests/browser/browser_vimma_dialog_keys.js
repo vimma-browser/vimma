@@ -199,6 +199,14 @@ async function backOnTheLine(tab) {
 
   EventUtils.synthesizeKey("KEY_Escape");
   Assert.ok(!lineOpen(), "Esc closes the line");
+  await normalKeysWork(tab);
+}
+
+/**
+ * Focus is on `tab`'s page in normal mode, where j scrolls and : opens the line.
+ * @param {MozTabbrowserTab} tab
+ */
+async function normalKeysWork(tab) {
   await until(() => document.activeElement === tab.linkedBrowser, "focus is back on the page");
   Assert.equal(mode(), "normal", "normal mode");
 
@@ -259,6 +267,45 @@ add_task(async function confirm_over_the_command_line_takes_y_and_esc() {
     Assert.equal(cmdInput().value, "tab", "with what was typed on it");
   }
   await backOnTheLine(tab);
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function a_tab_switch_under_the_dialog_closes_the_line_and_leaves_normal_mode() {
+  const other = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:blank");
+  const tab = await typeOnTheLine(PAGE);
+  const shown = nextDialog();
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    content.setTimeout(() => content.alert("alert?"), 0);
+  });
+  const w = await shown;
+  await until(() => w.document.hasFocus(), "the alert has focus");
+  await BrowserTestUtils.switchTab(gBrowser, other);
+  Assert.ok(!lineOpen(), "a tab switch closes the line");
+  await BrowserTestUtils.switchTab(gBrowser, tab);
+  await until(() => w.document.hasFocus(), "the alert has focus again");
+  await until(() => lineShows(w, "y ok"), "the alert's keys count");
+  press("y", w);
+  await gone(w);
+  // Firefox gives focus back to the line's input it had before, hidden now.
+  await normalKeysWork(tab);
+  BrowserTestUtils.removeTab(other);
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function focus_moving_on_from_the_dialog_closes_the_line() {
+  const tab = await typeOnTheLine(PAGE);
+  const shown = nextDialog();
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    content.setTimeout(() => content.alert("alert?"), 0);
+  });
+  const w = await shown;
+  await until(() => w.document.hasFocus(), "the alert has focus");
+  Assert.ok(lineOpen(), "the line stays open behind the alert");
+  gURLBar.focus();
+  await until(() => !lineOpen(), "focus moving on to the address bar closes the line");
+  // The keys go to the address bar now: OK as a click would.
+  w.document.getElementById("commonDialog").getButton("accept").click();
+  await gone(w);
   BrowserTestUtils.removeTab(tab);
 });
 

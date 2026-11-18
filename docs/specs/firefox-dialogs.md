@@ -187,6 +187,10 @@ presses Cancel and cancels the download.
 Tests: `browser_vimma_dialog_keys.js`, `download_n_cancels_y_saves`, with a launcher that only
 records what the dialog asks of it.
 
+(Since changed, #1304: a dialog that opens over Vimma's `:` line keeps the line open behind
+it, and focus a closed dialog would leave on nothing goes to the selected page; see the note in
+[m1-cmdline](m1-cmdline.md), "Closing".)
+
 ## Security and privacy
 
 The keys only press a button the user could press with `Enter`, `Esc` or the mouse, behind the

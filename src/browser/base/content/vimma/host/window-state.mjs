@@ -157,6 +157,25 @@ export function newWindowState(host, win, keymap, env) {
       }
       showOutlineBeside(state, env.outline);
     },
+    // SubDialog gives focus back on close to what had it when the first dialog opened
+    // (SubDialog.sys.mjs, `_onDialogClose` and `_topLevelPrevActiveElement`). One of Vimma's
+    // surfaces closed since (a `:` line closed by a tab switch under its dialog, or open when a
+    // background tab's dialog opened) is hidden and takes no focus: focus is then nowhere, the
+    // mode insert with no field and every binding dead (#1304). The selected page gets it.
+    onDialogClose: () => {
+      win.setTimeout(() => {
+        const doc = win.document;
+        if (!doc.hasFocus()) return;
+        const el = doc.activeElement;
+        const lost =
+          !el ||
+          el === doc.documentElement ||
+          el === doc.body ||
+          !el.isConnected ||
+          !el.checkVisibility();
+        if (lost) win.gBrowser?.selectedBrowser.focus();
+      }, 0);
+    },
     dispatcher: createDispatcher(keymap),
     help: new HelpOverlay(win, keymap, env.runnable, () => state.firefoxKeys?.status().on ?? []),
     notice: new Notice(win),

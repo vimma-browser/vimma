@@ -84,7 +84,10 @@ completion list.
   page?", keeps the line open behind it with its text, as the `/` prompt is kept, because
   Firefox gives focus back to the line when the dialog closes and a closed line left focus on
   nothing, in insert mode. The mode is `command` only while the input has focus, so the
-  dialog's own keys, `Esc` included, answer it instead of closing the line.)
+  dialog's own keys, `Esc` included, answer it instead of closing the line. Focus moving on
+  from the dialog to anything but the line or another dialog closes the line. When a dialog
+  closes and the focus Firefox gives back finds nothing to land on (a line closed meanwhile by a
+  tab switch), the selected page gets it, in normal mode.)
 - **History** is in memory: one list of entries shared by the non-private windows of a session
   (Vim's is global too), newest 100 lines, kept by core's `pushHistory` (every executed line,
   errors included, as Vim). Each command line keeps its own cursor and draft, so browsing in one
