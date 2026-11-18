@@ -38,6 +38,9 @@ What works today, each with the section that explains it:
 - **[Search engines](#search-engines)** and `@aliases` from `config.toml`, such as `@gh vimma`.
 - **[Hide the toolbar](#hiding-the-toolbar)** with `ctrl+b u`: the page reaches the top of the
   window, and the address bar comes back when you need it.
+- **[Tab line](#tab-line):** an optional row of text at the top of the window that lists this
+  workspace's tabs with their numbers; `gb` labels them and one more key goes there, `12gb`
+  goes to tab 12.
 - **[Downloads from the keyboard](#downloads):** `ctrl+b d` lists them with live progress, and
   one key opens a file, shows it in its folder, pauses, retries, removes or deletes it, or allows
   a blocked one through Firefox's own warning; the status bar shows `↓ 42%` while they run and
@@ -1154,6 +1157,44 @@ keeps greyed out for a moment after the question appears.
 The download question, "What should Vimma do with this file?" for a file type set to always ask,
 takes them too: `y` presses OK, which opens or saves the file as picked in the question, and `n`
 cancels the download. `y` waits until the OK button is enabled.
+
+### Tab line
+
+The tab line is an optional row of text at the top of the window that lists the current
+workspace's tabs, as Vim's tabline lists its tab pages, so you see what is open and the number
+each tab has for `alt+4`, `ctrl+b 4` or `4gt` without opening anything. It is off by default;
+turn it on in `config.toml`:
+
+```toml
+[ui]
+tabline = "always"   # "off" (the default), "always", or "auto": only with 2 or more tabs
+tabline_width = 14   # columns of each tab's name, 4 to 60
+
+[statusbar]
+tab = false          # leave the tab number and title out of the status bar while the line shows
+```
+
+`:tabline` shows the line, or hides it, in every window until you restart Vimma or change the
+`tabline` line in `config.toml`.
+
+The line sits above the address bar, where Firefox's tab strip was. `ctrl+b u` takes only the
+address bar away under it, so the line never moves. Each entry is the tab's number and its
+name (its rename from `ctrl+b shift+t`, else its title), cut to `tabline_width` columns; `♪`
+marks a tab playing sound and `▪` after the number a tab shown in a pane of the split. The
+current tab is a bold block, as in the side panel, with its number in the accent colour. When the tabs do not fit,
+the line keeps the current tab in view and shows `‹3` and `5›` for the tabs hidden on each side.
+A private window and the agent workspace list only their own tabs.
+
+To jump, press `gb` in normal mode: every tab in the line gets a label from the link hints'
+letters, and typing a label goes to that tab. With more tabs than letters the labels have two or
+three letters, as link hints do, and tabs out of view scroll in as you type. `Esc`, or any key
+that is not part of a label, removes the labels and does nothing else. `gb` works with the line
+off too: the line shows while its labels are up. With a number first, `12gb` goes to tab 12 at
+once; a number past the last tab says how many tabs the workspace has.
+
+The line never takes focus or a key from the page, and a click on it does nothing. It takes its
+colours and font from your theme. Like every key, `gb` can be remapped in `config.toml`
+(`tabline_hint`), and `toggle_tabline` can be bound to a key.
 
 ### Colours and themes
 

@@ -130,6 +130,8 @@ export const COMMANDS = Object.freeze([
     textAction: "grep.open",
   }),
   cmd("sidebar", "none", "sidebar.toggle", "Open / close the side panel"),
+  // docs/specs/tab-line.md decision 6: shows the line where it is not drawn, else hides it.
+  cmd("tabline", "none", "tabline.toggle", "Show / hide the tab line"),
   // docs/specs/toolbar-toggle.md decision 2: show / hide set a known state (vimma-ctl).
   cmd("toolbar", "optional", "toolbar.toggle", "Show / hide the toolbar (show | hide)"),
   // docs/specs/bookmarks.md: with a path, files the page without the prompt.

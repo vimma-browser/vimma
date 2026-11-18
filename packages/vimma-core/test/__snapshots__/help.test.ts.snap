@@ -25,6 +25,8 @@ Tabs
   move_tab_left             ctrl+shift+pageup                                    Move the tab left
   move_tab_right            ctrl+shift+pagedown                                  Move the tab right
   restore_tab               ctrl+shift+t                                         Reopen the last closed tab
+  tabline_hint              gb                                                   Jump to a tab by its label in the tab line (with a count: tab N)
+  toggle_tabline            (unbound)                                            Show / hide the tab line
 
 Panes
   split_vertical            ctrl+b v                                             Split right
@@ -356,6 +358,8 @@ Tabs
   move_tab_left             ctrl+shift+pageup                                    Move the tab left
   move_tab_right            ctrl+shift+pagedown                                  Move the tab right
   restore_tab               ctrl+shift+t                                         Reopen the last closed tab
+  tabline_hint              gb                                                   Jump to a tab by its label in the tab line (with a count: tab N)
+  toggle_tabline            (unbound)                                            Show / hide the tab line
 
 Panes
   split_vertical            ctrl+b v                                             Split right

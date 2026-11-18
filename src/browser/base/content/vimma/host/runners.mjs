@@ -19,6 +19,7 @@ import {
 import { parsePrivateCommand } from "../core/privatews.mjs";
 import { findWorkspace } from "../core/workspaces.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
+import { TabLine } from "../ui/tabline.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { sayAddon, openAddonByName } from "./addon-ops.mjs";
 import { runAgentCommand } from "./agent-chat-ops.mjs";
@@ -467,6 +468,11 @@ export function hostRunners(host, page) {
     "toolbar.toggle": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) =>
       setToolbar(s, parseToolbarCommand(text)),
     "toolbar.show": (/** @type {WindowState} */ s) => setToolbar(s, { kind: "show" }),
+    // docs/specs/tab-line.md: gb's labels, or with a count that tab; `:tabline` in every window.
+    "tabline.hint": (/** @type {WindowState} */ s, /** @type {Action} */ a) =>
+      host._tabLineHint(s, a),
+    "tabline.toggle": (/** @type {WindowState} */ s) =>
+      s.notice.show(TabLine.toggle(s.win) ? "tab line shown" : "tab line hidden"),
     "toolbar.hide": (/** @type {WindowState} */ s) => setToolbar(s, { kind: "hide" }),
     "panel.down": panelAction,
     "panel.up": panelAction,

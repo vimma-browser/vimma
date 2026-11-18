@@ -18,7 +18,14 @@ import {
   isEditable,
   matchSiteRule,
 } from "../core/editable.mjs";
-import { HintError, hintKey, hintLabelCase, hintStatus, startHints } from "../core/hints.mjs";
+import {
+  DEFAULT_HINT_CHARS,
+  HintError,
+  hintKey,
+  hintLabelCase,
+  hintStatus,
+  startHints,
+} from "../core/hints.mjs";
 import { chordFromEvent, formatKey, parseKey } from "../core/keys.mjs";
 import { SUGGESTION_ACTIONS, suggestionStep } from "../core/suggestions.mjs";
 import { pressKeyLater, pressingKey } from "../actors/enter-key.mjs";
@@ -27,12 +34,15 @@ import { KEY_KEEPING_MODES } from "../core/modes.mjs";
 import { notImplementedText } from "../core/actions.mjs";
 import { PENDING_ACTIONS } from "../core/cmdline.mjs";
 import { StatusBar } from "../ui/statusbar.mjs";
+import { TabLine } from "../ui/tabline.mjs";
+import { startTabLabels, tabCountRefusal, tabLabelKey } from "../core/tabline.mjs";
 import { TabStrip } from "../ui/tabstrip.mjs";
 import { Toolbar } from "../ui/toolbar.mjs";
 import { bookmarksRoot, setBookmarkletsSetting, setBookmarksRoot } from "./bookmark-ops.mjs";
 import { getTabLabel } from "../workspaces/tab-labels.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
-import { openOrSay } from "./tab-ops.mjs";
+import { openOrSay, selectTab, selectableTabs } from "./tab-ops.mjs";
+import { tabById } from "./goto.mjs";
 import { DEFAULT_FIREFOX_KEYS, FirefoxKeys } from "./firefox-keys.mjs";
 import { boundChords, firefoxShortcuts, pageFirst } from "../core/firefox-keys.mjs";
 import { focusedChromeField, runChromeEdit } from "./edit-keys.mjs";
@@ -187,6 +197,9 @@ const isRemoteBrowserTarget = (target) =>
  * @property {HintOverlay} hintOverlay
  * @property {Set<() => void>} listeners  told after mode or pending keys may have changed
  * @property {StatusBar | null} statusBar  m2-statusbar-whichkey (the bar; no which-key strip)
+ * @property {TabLine | null} tabLine  the tab line (docs/specs/tab-line.md)
+ * @property {import("../core/tabline.mjs").TabLineLabels | null} tabLabels  gb's labels while they
+ *   show: every key is theirs (docs/specs/tab-line.md decision 12)
  * @property {GotoPicker} picker  the prefix+g overlay (m2-picker-rename)
  * @property {WorkspacePicker} wsPicker  the prefix+w overlay (m3-workspaces 5)
  * @property {GotoPicker} mcpLog  `:mcp log`, the agents' last calls (docs/specs/mcp-drive.md D14)
@@ -264,7 +277,7 @@ function vimmaSurfaceOpen(s) {
  * @param {WindowState} s
  */
 function keysHeld(s) {
-  if (vimmaSurfaceOpen(s) || s.hint || s.element.browser) return true;
+  if (vimmaSurfaceOpen(s) || s.hint || s.tabLabels || s.element.browser) return true;
   return KEY_KEEPING_MODES.has(VimmaHost._mode(s));
 }
 
@@ -757,6 +770,19 @@ export const VimmaHost = {
     } catch (e) {
       console.error("vimma: no status bar", e);
     }
+    // docs/specs/tab-line.md: the side panel's rows, drawn at the top of the window.
+    try {
+      const tabLine = new TabLine(win, {
+        rows: () => state.panel.snapshot(),
+        labels: () => state.tabLabels,
+        subscribe: (fn) => this.onStateChange(win, fn),
+        changed: () => this._emit(state),
+      });
+      tabLine.init();
+      state.tabLine = tabLine;
+    } catch (e) {
+      console.error("vimma: no tab line", e);
+    }
     // `:addon` completes from a list kept by an AddonManager listener: start it now, so the
     // names are in before the first Tab (docs/specs/addon-manager.md).
     try {
@@ -829,6 +855,7 @@ export const VimmaHost = {
     state.promptKeys?.uninit();
     WindowWorkspaces.uninit(win);
     state.statusBar?.uninit();
+    state.tabLine?.uninit();
     state.find.destroy();
     state.stopPdf();
     state.stopOutline();
@@ -1250,6 +1277,8 @@ export const VimmaHost = {
     // Only while the window shows two panes: the flag itself is cleared where the panes go
     // (window-state.mjs stopPanes), never here, so reading the mode changes nothing (S9).
     if (state.resize && hasPanes(state.win)) return "resize";
+    // gb's labels (docs/specs/tab-line.md decision 12): the badge, and the questions stand back.
+    if (state.tabLabels) return "hint";
     const browser = this._focusedBrowser(state.win);
     if (state.hint && state.hint.browser === browser) return "hint";
     if (browser && state.element.browser === browser) return "element";
@@ -1363,6 +1392,14 @@ export const VimmaHost = {
     if (!secret && Services.prefs.getBoolPref(DEBUG_PREF, false)) {
       const mods = MODIFIERS.filter((m) => chord[m]);
       console.debug("vimma key", { key, mods, mode });
+    }
+    // gb's labels take every key: a label's next character, else the key only cancels
+    // (docs/specs/tab-line.md decision 12).
+    if (state.tabLabels) {
+      consume(e);
+      this._tabLabelKey(state, chord);
+      this._emit(state);
+      return;
     }
     // A picker takes every key, bare ones too, before any binding: nothing reaches the page or
     // Firefox underneath (ctrl+w would close a tab), and its j / q are not keymap keys.
@@ -2080,10 +2117,78 @@ export const VimmaHost = {
   },
 
   /**
+   * `gb` (docs/specs/tab-line.md decisions 12 to 15): with a count, that tab at once; else a
+   * label on every tab in the tab line, which shows meanwhile even when it is off.
+   * @param {WindowState} state
+   * @param {Action} action
+   */
+  _tabLineHint(state, action) {
+    if (action.count !== undefined) {
+      const n = action.count;
+      const refused = tabCountRefusal(n, selectableTabs(state.win).length);
+      if (refused) state.notice.show(refused);
+      else this._goToTab(state, () => selectTab(state.win, { id: "tab.goto", arg: n }));
+      return;
+    }
+    const ids = state.tabLine?.tabIds() ?? [];
+    if (!ids.length) return;
+    state.tabLabels = startTabLabels(ids, settings.hintChars ?? DEFAULT_HINT_CHARS);
+    state.tabLine?.schedule();
+    this._emit(state);
+  },
+
+  /**
+   * One key while gb's labels show (core tabLabelKey).
+   * @param {WindowState} state
+   * @param {Chord} chord
+   */
+  _tabLabelKey(state, chord) {
+    if (!state.tabLabels) return;
+    const { state: next, result } = tabLabelKey(state.tabLabels, chord);
+    if (result.kind === "narrow") {
+      state.tabLabels = next;
+      state.tabLine?.schedule();
+      return;
+    }
+    this._cancelTabLabels(state);
+    if (result.kind === "select") {
+      const tab = tabById(state.win, result.tabId);
+      if (tab) this._goToTab(state, () => (state.win.gBrowser.selectedTab = tab));
+    }
+  },
+
+  /**
+   * Selects a tab and has the status bar say its place, the one thing a screen reader hears of
+   * a gb jump (docs/specs/tab-line.md decision 18).
+   * @param {WindowState} state
+   * @param {() => void} select
+   */
+  _goToTab(state, select) {
+    const gBrowser = state.win.gBrowser;
+    const before = gBrowser.selectedTab;
+    select();
+    if (gBrowser.selectedTab === before) return;
+    const tabs = selectableTabs(state.win);
+    state.statusBar?.say(`tab ${tabs.indexOf(gBrowser.selectedTab) + 1} of ${tabs.length}`);
+  },
+
+  /**
+   * Removes gb's labels, if any.
+   * @param {WindowState} state
+   */
+  _cancelTabLabels(state) {
+    if (!state.tabLabels) return;
+    state.tabLabels = null;
+    state.tabLine?.schedule();
+    this._emit(state);
+  },
+
+  /**
    * Leaves hint mode, if on: removes the labels and drops a collection in flight.
    * @param {WindowState} state
    */
   _cancelHints(state) {
+    this._cancelTabLabels(state);
     if (!state.hint) return;
     state.hint = null;
     state.hintOverlay.hide();

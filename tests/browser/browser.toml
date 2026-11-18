@@ -105,6 +105,8 @@ skip-if = ["artifact"]
 # The --version line is C++ (nsAppRunner-cpp.patch); artifact builds run Mozilla's libxul (ADR-010).
 skip-if = ["artifact"]
 
+["browser_vimma_tabline.js"]
+
 ["browser_vimma_tabstrip.js"]
 
 ["browser_vimma_toolbar.js"]
