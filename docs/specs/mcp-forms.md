@@ -426,9 +426,11 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
    saw them trusted, the `mousedown` focused a link and the link's address showed in the user's
    window. An agent's press now dispatches them as the page's own script would, through the
    page's `dispatchEvent` with Xrays waived (`actors/page-events.mjs`), so the page sees them
-   untrusted and none of that happens; `click()` is still called by the child and stays trusted, for pages
-   that check it. The user's hints dispatch them from the child, trusted, as before. Issue
-   #1321.)
+   untrusted and none of that happens; `click()` is still called by the child and stays
+   trusted, for pages that check it. A page that acts only on a trusted `mousedown` now ignores
+   the agent's press, and the untrusted events before a trusted click mark the press as an
+   agent's; both are accepted (security.md M26). The user's hints dispatch them from the child,
+   trusted, as before. Issue #1321.)
 9. **What it will not click.** Refused before anything is asked, naming the label and the
    reason: a text field, text area, select or editable root (`use vimma_fill`); a file field
    (it would open a file chooser for the user, and `setUserInput` from system code can set a

@@ -822,14 +822,20 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   the element's `click()` after `mouseover`, `mousedown` and `mouseup` that it dispatches as the
   page's own script would, through the page's own `dispatchEvent` with Xrays waived, so that the
   call runs in the page's realm (`actors/page-events.mjs`, issue #1321), with no event through
-  `nsIDOMWindowUtils` or the widget. The page sees those
-  three events untrusted, so Gecko runs none of a real press's link handling on them: the link
-  takes no focus, its address shows in none of your windows' link previews, and the page's
-  listeners of them do not run as "handling user input". Your own `f` hints dispatch the same
-  events from the child itself, which Firefox marks trusted for system code
+  `nsIDOMWindowUtils` or the widget. The page sees those three events untrusted, so Gecko runs
+  none of a real press's link handling on them: the link takes no focus, its address shows in
+  none of your windows' link previews, and the page's listeners of them do not run as "handling
+  user input". Two trade-offs are accepted: a page that acts only on a trusted `mouseover`,
+  `mousedown` or `mouseup` (a menu that opens only on a trusted `mousedown`) ignores the agent's
+  press, and untrusted mouse events followed by a trusted click tell a page that an agent
+  pressed, which it could already tell from the missing pointer events. A page that replaces
+  `dispatchEvent` runs only its own code on its own element and events, and loses only its own
+  mouse events: the click still follows. Your own `f` hints dispatch the same events from the
+  child itself, which Firefox marks trusted for system code
   (`EventDispatcher::DispatchDOMEvent`), as a real press of yours would be. The `click()` is
-  trusted for both. The page gets no transient user activation from an agent's click: it cannot write or read the clipboard, use credentials or passkeys,
-  or start anything else that needs a real gesture. Vimma **never** gives an agent tab's
+  trusted for both. The page gets no transient user activation from an agent's click: it
+  cannot write or read the clipboard, use credentials or passkeys, or start anything else that
+  needs a real gesture. Vimma **never** gives an agent tab's
   document user activation on an agent's behalf. Your own `f` hints do give the page your
   activation, as your click would (issue #1303): the child wraps the press in
   `nsIDOMWindowUtils.setHandlingUserInput` only in `actors/user-gesture.mjs`, called only by its
@@ -867,6 +873,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   nothing; a submission the page tries during the call is still stopped and named.
   [`test_activate_gives_the_page_no_user_activation`](../../tests/browser/browser_vimma_mcp_activate.js),
   [`test_activate_presses_with_untrusted_mouse_events`](../../tests/browser/browser_vimma_mcp_activate.js),
+  [`test_activate_on_a_page_whose_dispatch_event_throws_still_clicks`](../../tests/browser/browser_vimma_mcp_activate.js),
   [`a_hint_presses_with_the_users_trusted_mouse_events`](../../tests/browser/browser_vimma_hints_activation.js),
   [`test_activate_says_what_changed_in_place`](../../tests/browser/browser_vimma_mcp_activate_changes.js),
   [`activate_says_what_changed_in_place`](../../tools/vimma-ctl/src/mcp/render.rs),

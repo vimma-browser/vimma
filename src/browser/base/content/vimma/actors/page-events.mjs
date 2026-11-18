@@ -19,22 +19,22 @@
  * Dispatches `events` at `el`, in order, as the page's script would: untrusted. The call goes
  * through the page's `EventTarget.prototype.dispatchEvent`, which the page could replace; it
  * then runs only the page's own code on the page's own objects, as its listeners already do,
- * and a page that breaks it loses only its own mouse events (the click still follows).
+ * and a page that breaks it loses only its own mouse events (the click still follows). Each
+ * event **must** be built with the page's own constructor (`new win.MouseEvent`), so that only
+ * page objects reach that code; tools/layering/layers.ts lets only VimmaChild import this.
  * @param {Element} el @param {Event[]} events
- * @returns {boolean} whether they were dispatched
  */
 export function dispatchAsPage(el, events) {
   const win = el.ownerDocument.defaultView;
   // A system principal's realm is chrome, and its events trusted.
-  if (!win || !el.nodePrincipal || el.nodePrincipal.isSystemPrincipal) return false;
+  if (!win || !el.nodePrincipal || el.nodePrincipal.isSystemPrincipal) return;
   try {
     const page = /** @type {{ EventTarget: typeof EventTarget }} */ (
       /** @type {unknown} */ (Cu.waiveXrays(win))
     );
     const dispatch = page.EventTarget.prototype.dispatchEvent;
     for (const event of events) Reflect.apply(dispatch, Cu.waiveXrays(el), [Cu.waiveXrays(event)]);
-    return true;
   } catch {
-    return false; // the page replaced dispatchEvent with something that throws
+    // The page replaced dispatchEvent with something that throws: its own events are lost.
   }
 }

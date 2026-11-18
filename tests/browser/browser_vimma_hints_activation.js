@@ -253,27 +253,34 @@ add_task(async function an_agent_click_on_the_same_button_gets_no_activation() {
 
 add_task(async function a_hint_presses_with_the_users_trusted_mouse_events() {
   // Issue #1321 makes only the agent's mouse events untrusted: the user's own hint keeps them
-  // trusted, as a real press would be, for pages that check.
+  // trusted, as a real press would be, for pages that check: on a button and on a link.
   await withPage(async (browser) => {
-    await hint(browser, "press");
     const events = () =>
       SpecialPowers.spawn(browser, [], () =>
         JSON.parse(JSON.stringify(content.wrappedJSObject.events)),
       );
-    await TestUtils.waitForCondition(
-      async () => (await events()).some((/** @type {{ type: string }} */ e) => e.type === "click"),
-      "the button was clicked",
-    );
-    const got = /** @type {{ id: string, type: string, trusted: boolean }[]} */ (await events());
-    Assert.deepEqual(
-      got.filter((e) => e.type !== "focus" && e.type !== "blur").map((e) => [e.type, e.trusted]),
-      [
-        ["mouseover", true],
-        ["mousedown", true],
-        ["mouseup", true],
-        ["click", true],
-      ],
-      "the page saw the user's press as trusted",
-    );
+    for (const id of ["press", "stay"]) {
+      await hint(browser, id);
+      await TestUtils.waitForCondition(
+        async () =>
+          (await events()).some(
+            (/** @type {{ id: string, type: string }} */ e) => e.id === id && e.type === "click",
+          ),
+        `${id} was clicked`,
+      );
+      const got = /** @type {{ id: string, type: string, trusted: boolean }[]} */ (await events());
+      Assert.deepEqual(
+        got
+          .filter((e) => e.id === id && e.type !== "focus" && e.type !== "blur")
+          .map((e) => [e.type, e.trusted]),
+        [
+          ["mouseover", true],
+          ["mousedown", true],
+          ["mouseup", true],
+          ["click", true],
+        ],
+        `${id}: the page saw the user's press as trusted`,
+      );
+    }
   }, PRESS);
 });
