@@ -295,9 +295,10 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
     ["f7", "caret_browsing"],
   ])("%s runs %s by default, after the page", (chord, action) => {
     expect(keymap.trie("normal").children.get(chord)?.action?.name).toBe(action);
-    // In a text field ctrl+j and ctrl+m are Enter (key-handling-batch § 2), the field's key.
+    // In a text field ctrl+j and ctrl+m are Enter (key-handling-batch § 2), the field's key;
+    // ctrl+j moves an open suggestion list there first (issue #1261).
     expect(keymap.trie("insert").children.get(chord)?.action?.name).toBe(
-      insertEditCommand(chord) ? undefined : action,
+      chord === "ctrl+j" ? "suggestion_next" : insertEditCommand(chord) ? undefined : action,
     );
     expect(pageFirst(chord)).toBe(true);
   });
@@ -334,7 +335,14 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
         r.modes === "all" ? ["normal", "insert", "visual", "panel", "help"] : ["normal"];
       for (const mode of modes) {
         const node = keymap.trie(mode, r.context).children.get(r.chord);
-        // ctrl+j and ctrl+m are Enter where keys type into a field (key-handling-batch § 2).
+        // ctrl+j and ctrl+m are Enter where keys type into a field (key-handling-batch § 2);
+        // in insert mode ctrl+j moves an open suggestion list first (issue #1261), with no
+        // [keys] fallback: the host presses Enter outside a list.
+        if (mode === "insert" && r.chord === "ctrl+j") {
+          expect(node?.action?.name, "ctrl+j in insert").toBe("suggestion_next");
+          expect(keymap.fallback("insert", r.chord), "ctrl+j in insert").toBeNull();
+          continue;
+        }
         if (TEXT_FIELD.has(mode) && insertEditCommand(r.chord)) {
           expect(node, `${r.chord} in ${mode} is the field's`).toBeUndefined();
           continue;
@@ -648,7 +656,14 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
         r.modes === "all" ? ["normal", "insert", "visual", "panel", "help"] : ["normal"];
       for (const mode of modes) {
         const node = keymap.trie(mode, r.context).children.get(r.chord);
-        // ctrl+j and ctrl+m are Enter where keys type into a field (key-handling-batch § 2).
+        // ctrl+j and ctrl+m are Enter where keys type into a field (key-handling-batch § 2);
+        // in insert mode ctrl+j moves an open suggestion list first (issue #1261), with no
+        // [keys] fallback: the host presses Enter outside a list.
+        if (mode === "insert" && r.chord === "ctrl+j") {
+          expect(node?.action?.name, "ctrl+j in insert").toBe("suggestion_next");
+          expect(keymap.fallback("insert", r.chord), "ctrl+j in insert").toBeNull();
+          continue;
+        }
         if (TEXT_FIELD.has(mode) && insertEditCommand(r.chord)) {
           expect(node, `${r.chord} in ${mode} is the field's`).toBeUndefined();
           continue;

@@ -89,13 +89,17 @@ const fate = (r: (typeof FIREFOX_SHORTCUTS)[number]) => {
       ...(insert ? [`\`${insert}\` in insert mode`] : []),
     ].join("; ");
   }
+  // A suggestion key in insert mode on a chord with another meaning (ctrl+p, ctrl+j, ctrl+k):
+  // it moves an open list, and the chord keeps that meaning outside one (issue #1261).
+  const insert = keymap.trie("insert").children.get(r.chord)?.action?.name;
+  const list = insert?.startsWith("suggestion_") ? `; \`${insert}\` in an open list` : "";
   if (r.action) {
     const where = r.modes === "normal" ? " (normal mode)" : "";
     // In a text field ctrl+j and ctrl+m are Enter (docs/specs/key-handling-batch.md § 2).
     const field = r.modes === "all" && insertEditCommand(r.chord) === INSERT_ENTER;
-    return `\`${r.action}\`${where}${r.first === "P" ? ", page first" : ""}${field ? "; Enter in a field" : ""}`;
+    return `\`${r.action}\`${where}${r.first === "P" ? ", page first" : ""}${field ? "; Enter in a field" : ""}${list}`;
   }
-  if (r.fate === "a") return "Vimma's own key";
+  if (r.fate === "a") return `Vimma's own key${list}`;
   if (r.fate === "d") return "unchanged";
   return r.conditional ? "unbound (only in some builds)" : "unbound";
 };

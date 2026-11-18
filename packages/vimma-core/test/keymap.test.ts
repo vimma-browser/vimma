@@ -294,7 +294,7 @@ describe("suggestion keys in insert mode", () => {
   test("[firefox] enable drops the default suggestion binding on its chord", () => {
     const km = compileKeymap({ firefox: { enable: ["ctrl+n"] } });
     expect(km.trie("insert").children.get("ctrl+n")).toBeUndefined();
-    expect(km.keysFor("suggestion_next")).toEqual([]);
+    expect(km.keysFor("suggestion_next")).toEqual(["ctrl+j [insert]"]);
     expect(km.fallback("insert", "ctrl+n")).toBeNull();
     expect(km.trie("insert").children.get("ctrl+p")?.action?.name).toBe("suggestion_prev");
   });
@@ -466,9 +466,11 @@ describe("text-field keys before default [keys] bindings", () => {
   test("ctrl+j and ctrl+m are unbound where keys type into a field, bound elsewhere", () => {
     const km = compileKeymap();
     for (const mode of ["insert", "command", "help"]) {
-      expect(at(km, mode, "ctrl+j"), mode).toBeUndefined();
+      // Insert mode's ctrl+j is the suggestion key, which is Enter outside a list (#1261).
+      expect(at(km, mode, "ctrl+j"), mode).toBe(mode === "insert" ? "suggestion_next" : undefined);
       expect(at(km, mode, "ctrl+m"), mode).toBeUndefined();
     }
+    expect(km.fallback("insert", "ctrl+j")).toBeNull();
     for (const mode of ["normal", "panel", "pdf"]) {
       expect(at(km, mode, "ctrl+j"), mode).toBe("web_search");
       expect(at(km, mode, "ctrl+m"), mode).toBe("mute_tab");
@@ -481,7 +483,9 @@ describe("text-field keys before default [keys] bindings", () => {
 
   test("insert_editing = false keeps the bindings in every mode", () => {
     const km = compileKeymap({ modal: { insert_editing: false } });
-    expect(at(km, "insert", "ctrl+j")).toBe("web_search");
+    // In insert mode web_search is ctrl+j's binding outside a suggestion list (#1261).
+    expect(km.fallback("insert", "ctrl+j")?.name).toBe("web_search");
+    expect(at(km, "command", "ctrl+j")).toBe("web_search");
     expect(at(km, "command", "ctrl+m")).toBe("mute_tab");
   });
 
@@ -490,7 +494,7 @@ describe("text-field keys before default [keys] bindings", () => {
     expect(at(keys, "insert", "ctrl+m")).toBe("reload");
     const copied = compileKeymap({ keys: { mute_tab: ["ctrl+m"], web_search: "<C-j>" } });
     expect(at(copied, "insert", "ctrl+m")).toBeUndefined();
-    expect(at(copied, "insert", "ctrl+j")).toBeUndefined();
+    expect(copied.fallback("insert", "ctrl+j")).toBeNull();
     expect(at(copied, "normal", "ctrl+m")).toBe("mute_tab");
     const modal = compileKeymap({ modal: { insert: { "<C-j>": "web_search" } } });
     expect(at(modal, "insert", "ctrl+j")).toBe("web_search");

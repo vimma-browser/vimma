@@ -8,7 +8,9 @@
 // first: a page that takes ctrl+n keeps it. With no list open (a plain field, a combobox left
 // aria-expanded with its list hidden), the chord's [keys] binding runs: ctrl+p prints, and ctrl+n,
 // which has none since new_window moved to ctrl+b shift+c, only reaches the page and opens no
-// window. Normal mode presses no arrow key.
+// window. Normal mode presses no arrow key. ctrl+j and ctrl+k move a list as ctrl+n and ctrl+p do
+// (issue #1261); with none open ctrl+j stays the field's Enter and ctrl+k the page's. While the
+// address bar shows its results, the four keys move its selected row.
 //
 // On macOS ctrl+n and ctrl+p are also Cocoa's moveDown: and moveUp: in every text field
 // (widget/cocoa/NativeKeyBindings.mm; a synthesized key gets them too, GetEditCommandsForTests).
@@ -224,9 +226,9 @@ for (const [down, up] of [
               browser,
               [],
               () =>
-                /** @type {HTMLElement} */ (
-                  content.document.getElementById("combo")
-                ).getAttribute("aria-expanded") === "true",
+                /** @type {HTMLElement} */ (content.document.getElementById("combo")).getAttribute(
+                  "aria-expanded",
+                ) === "true",
             ),
           "the list opens on input",
         );
@@ -542,52 +544,52 @@ for (const [down, up] of [
   ["n", "p"],
   ["j", "k"],
 ]) {
-add_task(async function ctrl_n_p_and_ctrl_j_k_move_firefoxs_datalist_popup() {
-  await BrowserTestUtils.withNewTab(DATALIST, async (browser) => {
-    await focusContent(browser);
-    await focusField(browser, browser, "dl");
-    // A XUL autocomplete popup, which getElementById types as an HTML element.
-    const popup = /** @type {AutoCompletePopupElement} */ (
-      /** @type {Element} */ (document.getElementById("PopupAutoComplete"))
-    );
-    const shown = BrowserTestUtils.waitForPopupEvent(popup, "shown");
-    EventUtils.synthesizeKey("KEY_ArrowDown");
-    await shown;
-    // The frame hears of its open popup in a message of its own (AutoComplete:PopupOpened),
-    // which a key, sent at input priority, may overtake. On macOS the frame reads that state
-    // at the keypress, so the key waits for it.
-    await SpecialPowers.spawn(browser, [], () =>
-      ContentTaskUtils.waitForCondition(
-        () =>
-          /** @type {{ popupOpen?: boolean } | undefined} */ (
-            content.windowGlobalChild?.getActor("AutoComplete")
-          )?.popupOpen === true,
-        "the frame knows its popup is open",
-      ),
-    );
-    ctrl(down);
-    await TestUtils.waitForCondition(() => popup.selectedIndex === 0, `ctrl+${down}: row 0`);
-    ctrl(down);
-    await TestUtils.waitForCondition(() => popup.selectedIndex === 1, `ctrl+${down}: row 1`);
-    ctrl(up);
-    await TestUtils.waitForCondition(() => popup.selectedIndex === 0, `ctrl+${up}: row 0`);
-    const hidden = BrowserTestUtils.waitForPopupEvent(popup, "hidden");
-    EventUtils.synthesizeKey("KEY_Enter");
-    await hidden;
-    await waitForValue(browser, "dl", "banana", "Enter fills the field");
-    // With the popup closed ctrl+n opens neither the popup nor a window.
-    await SpecialPowers.spawn(browser, [], () => {
-      /** @type {HTMLInputElement} */ (content.document.getElementById("dl")).value = "";
+  add_task(async function ctrl_n_p_and_ctrl_j_k_move_firefoxs_datalist_popup() {
+    await BrowserTestUtils.withNewTab(DATALIST, async (browser) => {
+      await focusContent(browser);
+      await focusField(browser, browser, "dl");
+      // A XUL autocomplete popup, which getElementById types as an HTML element.
+      const popup = /** @type {AutoCompletePopupElement} */ (
+        /** @type {Element} */ (document.getElementById("PopupAutoComplete"))
+      );
+      const shown = BrowserTestUtils.waitForPopupEvent(popup, "shown");
+      EventUtils.synthesizeKey("KEY_ArrowDown");
+      await shown;
+      // The frame hears of its open popup in a message of its own (AutoComplete:PopupOpened),
+      // which a key, sent at input priority, may overtake. On macOS the frame reads that state
+      // at the keypress, so the key waits for it.
+      await SpecialPowers.spawn(browser, [], () =>
+        ContentTaskUtils.waitForCondition(
+          () =>
+            /** @type {{ popupOpen?: boolean } | undefined} */ (
+              content.windowGlobalChild?.getActor("AutoComplete")
+            )?.popupOpen === true,
+          "the frame knows its popup is open",
+        ),
+      );
+      ctrl(down);
+      await TestUtils.waitForCondition(() => popup.selectedIndex === 0, `ctrl+${down}: row 0`);
+      ctrl(down);
+      await TestUtils.waitForCondition(() => popup.selectedIndex === 1, `ctrl+${down}: row 1`);
+      ctrl(up);
+      await TestUtils.waitForCondition(() => popup.selectedIndex === 0, `ctrl+${up}: row 0`);
+      const hidden = BrowserTestUtils.waitForPopupEvent(popup, "hidden");
+      EventUtils.synthesizeKey("KEY_Enter");
+      await hidden;
+      await waitForValue(browser, "dl", "banana", "Enter fills the field");
+      // With the popup closed ctrl+n opens neither the popup nor a window.
+      await SpecialPowers.spawn(browser, [], () => {
+        /** @type {HTMLInputElement} */ (content.document.getElementById("dl")).value = "";
+      });
+      await focusField(browser, browser, "dl");
+      await ctrlNOpensNoWindow(browser, "dl");
+      Assert.ok(!popup.popupOpen, "ctrl+n did not open the popup");
     });
-    await focusField(browser, browser, "dl");
-    await ctrlNOpensNoWindow(browser, "dl");
-    Assert.ok(!popup.popupOpen, "ctrl+n did not open the popup");
   });
-});
 }
 
 // Chrome fields keep their keys (decision 6 of the spec's Behaviour, item 6): in the address bar
-// ctrl+p prints as before (on macOS it is the address bar's own key, as before too), and ctrl+n
+// with its results closed, ctrl+p prints as before (on macOS it is the address bar's own key, as before too), and ctrl+n
 // opens no window (decision 7).
 add_task(async function the_address_bar_keeps_ctrl_n_and_ctrl_p() {
   await withPrintRecorder(async (prints) => {

@@ -354,11 +354,15 @@ const modal = {
     "'": "pdf.mark_go",
     c: "hint.copy_target",
   },
-  // Vim's insert-mode completion keys, in a page's suggestion list (page-suggestions).
+  // Vim's insert-mode completion keys, in a page's suggestion list (page-suggestions), and
+  // ctrl+j and ctrl+k beside them, the keys of most pickers' lists (issue #1261). Outside a list
+  // ctrl+j stays the field's Enter and ctrl+k the page's.
   insert: {
     "<Esc>": "mode.normal",
     "<C-n>": "page.suggestion_next",
     "<C-p>": "page.suggestion_prev",
+    "<C-j>": "page.suggestion_next",
+    "<C-k>": "page.suggestion_prev",
   },
   visual: {
     "<Esc>": "mode.normal",
