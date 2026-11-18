@@ -636,7 +636,10 @@ add_task(async function the_suggestion_keys_move_the_address_bars_results() {
   try {
     await withPrintRecorder(async (prints) => {
       await BrowserTestUtils.withNewTab(COMBO, async (browser) => {
-        await UrlbarTestUtils.promiseAutocompleteResultPopup({ window, value: "vimma-row" });
+        await UrlbarTestUtils.promiseAutocompleteResultPopup({
+          window,
+          value: "example.com/vimma-row",
+        });
         Assert.greaterOrEqual(UrlbarTestUtils.getResultCount(window), 4, "the rows show");
         const selected = () => UrlbarTestUtils.getSelectedRowIndex(window);
         Assert.equal(selected(), 0, "the first row is selected");
