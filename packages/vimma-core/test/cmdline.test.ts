@@ -910,6 +910,17 @@ describe(":tab N and :tabnext N (#1302)", () => {
     }
   });
 
+  test("a number is at most six digits, as :{n} is", () => {
+    expect(parseCommandLine(":tab 999999")).toEqual(
+      tabRun("tab", { id: "tab.next", count: 999999 }, "999999"),
+    );
+    expect(errorOf(":tab 1234567")).toEqual({
+      code: "invalid-argument",
+      message: ":tab takes a tab number (1, 2, …) or $",
+      suggestions: [],
+    });
+  });
+
   test("the abbreviations typed before :tab came keep their meaning", () => {
     expect(parseCommandLine(":tabn")).toEqual(run("tabnew", "tab.new"));
     expect(parseCommandLine(":tabne x")).toEqual(run("tabnew", "tab.new", { text: "x" }));

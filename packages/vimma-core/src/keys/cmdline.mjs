@@ -303,7 +303,8 @@ const TAB_REFUSAL = ":tab takes a tab number (1, 2, …) or $";
 function tabCommand(text) {
   if (!text) return runResult("tab", { id: "tab.next" });
   if (text === "$") return runResult("tab", { id: "tab.goto_last" }, text);
-  if (/^[1-9]\d*$/.test(text))
+  // Six digits at most, as `:{n}`: a longer number is no tab count anyone has.
+  if (/^[1-9]\d{0,5}$/.test(text))
     return runResult("tab", { id: "tab.next", count: Number(text) }, text);
   return fail("invalid-argument", TAB_REFUSAL);
 }

@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/m2-tab-keys.md (tab 10 and above: `{N}gt` and `:tab N`, issue #1302)
+// Spec: docs/specs/m1-cmdline.md (`:tab N`, Since changed) and docs/specs/m2-tab-keys.md (`{N}gt`);
+// issue #1302.
 
 "use strict";
 
@@ -78,6 +79,16 @@ add_task(async function count_gt_goes_to_tab_twelve() {
   for (const key of ["1", "2", "g", "t"]) EventUtils.synthesizeKey(key);
   await TestUtils.waitForCondition(() => gBrowser.selectedTab === tabs[11], "12gt");
   Assert.equal(gBrowser.visibleTabs.indexOf(gBrowser.selectedTab), 11, "12gt selects tab 12");
+});
+
+add_task(async function count_gt_past_the_last_tab_stays_silent() {
+  const tabs = await openFifteen();
+  await selectPage(tabs[2]);
+  for (const key of ["2", "0", "g", "t"]) EventUtils.synthesizeKey(key);
+  // Nothing to wait for: a notice, if any, is shown in the same task as the key.
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  Assert.equal(gBrowser.selectedTab, tabs[2], "20gt with 15 tabs stays on the tab");
+  Assert.equal(noticeText(), "", "and says nothing, as Vim");
 });
 
 add_task(async function tab_dollar_goes_to_the_last_tab() {

@@ -312,9 +312,11 @@ export function hostRunners(host, page) {
       /** @type {Action} */ a,
       /** @type {string | undefined} */ text,
     ) => {
-      if (!selectTab(s.win, a) && text) {
-        s.notice.show(noTabText(text, selectableTabs(s.win).length));
-      }
+      if (selectTab(s.win, a) || !text) return;
+      // Only a number past the last tab is "no tab N"; anything else that selected nothing (no
+      // tabs at all) is not the user's typo.
+      const length = selectableTabs(s.win).length;
+      if (length > 0 && (a.count ?? 0) > length) s.notice.show(noTabText(text, length));
     },
     "tab.previous": (/** @type {WindowState} */ s, /** @type {Action} */ a) => selectTab(s.win, a),
     "tab.goto": (/** @type {WindowState} */ s, /** @type {Action} */ a) => selectTab(s.win, a),
