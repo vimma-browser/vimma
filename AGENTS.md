@@ -196,11 +196,16 @@ labels`). An item with the other machine's label is not yours: do not push to it
 1. One item per branch. Start from the latest `origin/main`.
 2. Red test, fix, green test (keep both outputs). Docs and the spec change in the same branch.
 3. **Verify in a real build**: the lane's artifact build, or a full build when `*.patch`, C++,
-   `moz.build`, `configs/`, `moz.configure` or branding change (report that run, ADR-010). Use the change as a user would; unit tests and CI alone are not enough.
-   Run the manual checks yourself before you report: write down what a person would try, then
-   do each item in the build (throwaway e2e scenarios, `vimma-ctl send-keys`, real public sites
-   when the change depends on page behaviour, and for agent tools `vimma-ctl mcp` over stdio,
-   quoting the exact reply text). Report each check with what you saw. UI
+   `moz.build`, `configs/`, `moz.configure` or branding change (report that run, ADR-010). Use
+   the change as a user would; unit tests and CI alone are not enough. Run the manual checks
+   yourself before you report: write down what a person would try, then do each item in your
+   lane's own build with its throwaway profile under Xvfb (`--profile <dir>` or `VIMMA_PROFILE`
+   for `vimma-ctl`; never the installed Vimma): throwaway e2e scenarios, `vimma-ctl send-keys`,
+   and for agent tools `vimma-ctl mcp` over stdio, quoting the exact reply text. Prefer
+   `fixture:` pages; open real public sites only when the change depends on their behaviour, and
+   only to read them: no logins or accounts, no personal details, no form sent except a search,
+   no purchases. Report each check with what you saw; a failed check is a bug to fix before the
+   report, or a blocker to report. UI
    changes get screenshots, and every image is looked at, with the Omarchy theme
    (`vimma.theme.source=omarchy`, `vimma.theme.omarchyPath=~/.local/state/omarchy/current/theme`)
    and in a stock theme. Check that every Vimma and Firefox surface the change touches follows the
