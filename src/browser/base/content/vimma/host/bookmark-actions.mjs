@@ -22,8 +22,7 @@ import {
   currentPage,
   fetchBookmark,
   findBookmark,
-  isMirrored,
-  mirroredRefusal,
+  mirroredRefusalFor,
   loadAllBookmarks,
   loadScope,
   moveItem,
@@ -100,9 +99,11 @@ export async function quickAdd(ctx, text) {
     loadScope(ctx.win),
   ]);
   const complete = completer(scope, scope.tree.guid);
-  if (existing && (await isMirrored(existing.guid))) {
-    // docs/specs/bookmarks-file.md Behaviour 11: no move/rename prompt for the file's bookmark.
-    ctx.say(`already bookmarked: ${existing.path}; ${mirroredRefusal()}`);
+  const refused = existing ? await mirroredRefusalFor(ctx.win, existing.guid) : null;
+  if (existing && refused) {
+    // docs/specs/bookmarks-file.md Behaviour 11, 12: no move/rename prompt for a bookmark the
+    // file holds while it is not written.
+    ctx.say(`already bookmarked: ${existing.path}; ${refused}`);
     return;
   }
   if (existing) {
@@ -295,7 +296,8 @@ export function runBookmarkEffect(ctx, effect) {
   const tree = ctx.panel.tree;
   if (!tree) return;
   // In a folder bookmarks.toml mirrors, the panel's changes refuse before their prompt opens
-  // (docs/specs/bookmarks-file.md Behaviour 11); bookmark-ops checks again when they run.
+  // while the file is not written or the window is private (docs/specs/bookmarks-file.md
+  // Behaviour 11, 12); bookmark-ops checks again when they run.
   const target =
     effect.type === "add" || effect.type === "add_folder"
       ? effect.folder
@@ -303,8 +305,8 @@ export function runBookmarkEffect(ctx, effect) {
         ? effect.guid
         : null;
   if (target !== null) {
-    isMirrored(target)
-      .then((fileOwned) => (fileOwned ? ctx.say(mirroredRefusal()) : runEffect(ctx, effect)))
+    mirroredRefusalFor(ctx.win, target)
+      .then((refused) => (refused ? ctx.say(refused) : runEffect(ctx, effect)))
       .catch((e) => console.error("vimma: bookmarks could not be read", e));
     return;
   }
@@ -370,7 +372,7 @@ function runEffect(ctx, effect) {
       ctx.prompt.prompt({
         label: "rename: ",
         value: effect.title,
-        submit: (t) => apply(ctx, () => renameItem(effect.guid, t)),
+        submit: (t) => apply(ctx, () => renameItem(effect.guid, t, ctx.win)),
       });
       return;
     case "move":
@@ -389,7 +391,9 @@ function runEffect(ctx, effect) {
         effect.kind === "folder"
           ? `folder ${effect.title} and its ${effect.count} items`
           : effect.title;
-      ctx.prompt.ask(`delete ${what}? y/N`, () => apply(ctx, () => removeItem(effect.guid)));
+      ctx.prompt.ask(`delete ${what}? y/N`, () =>
+        apply(ctx, () => removeItem(effect.guid, ctx.win)),
+      );
     }
   }
 }

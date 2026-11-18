@@ -2,10 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/bookmarks-file.md, Delivery slice 1 (the read-only mirror): bookmarks.toml
-// beside config.toml is mirrored into each table's workspace folder in Places, live, keeping
-// guids; a change made in Places is put back; a broken or missing file pauses; a large deletion
-// and a takeover ask first; Vimma's keys refuse in mirrored folders.
+// Spec: docs/specs/bookmarks-file.md, Delivery slices 1 and 2: bookmarks.toml beside
+// config.toml is mirrored into each table's workspace folder in Places, live, keeping guids; a
+// change made in Places is put back; a broken or missing file pauses; a large deletion asks
+// first. Vimma's keys write the file first and Places after it (`write_back = "vimma"`), refuse
+// under `"none"` and in a private window; a takeover writes the folder's bookmarks into the
+// table; a bookmark put back three times in ten minutes pauses its table.
 
 "use strict";
 
@@ -28,9 +30,8 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
 const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
-const { isMirrored, mirroredRefusal } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/host/bookmark-ops.mjs",
-);
+const { addBookmark, isMirrored, mirroredRefusal, mirroredRefusalFor, renameItem } =
+  ChromeUtils.importESModule("chrome://browser/content/vimma/host/bookmark-ops.mjs");
 const { runBookmarkEffect } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/bookmark-actions.mjs",
 );
@@ -170,6 +171,23 @@ async function reset() {
   if (promptOpen()) EventUtils.synthesizeKey("KEY_Escape");
 }
 
+/**
+ * Sets `[bookmarks] write_back` in config.toml and reads it.
+ * @param {string} value
+ */
+async function setWriteBack(value) {
+  await IOUtils.writeUTF8(configFile, `schema = 2\n[bookmarks]\nwrite_back = "${value}"\n`);
+  await ConfigHost.reload();
+}
+
+/** The name of the workspace this window shows. */
+function activeName() {
+  const def = WorkspaceStore.definitions.workspaces.find(
+    (d) => d.id === liveWorkspaces().model.active,
+  );
+  return /** @type {{ name: string }} */ (def).name;
+}
+
 /** Runs `:line` in the selected tab. */
 async function runCommand(/** @type {string} */ line) {
   await focusContent(gBrowser.selectedBrowser);
@@ -179,8 +197,8 @@ async function runCommand(/** @type {string} */ line) {
   EventUtils.synthesizeKey("KEY_Enter");
 }
 
-// The 5000-bookmark budget test loads and edits a large file.
-requestLongerTimeout(2);
+// The 5000-bookmark budget test loads and edits a large file, and the file holds many tasks.
+requestLongerTimeout(6);
 
 add_task(async function setup() {
   await liveWorkspaces().ready;
@@ -527,7 +545,9 @@ add_task(async function a_small_deletion_from_the_file_says_how_many() {
   await reset();
 });
 
-add_task(async function a_table_over_a_folder_with_bookmarks_asks_before_deleting_them() {
+add_task(async function a_table_over_a_folder_with_bookmarks_asks_under_write_back_none() {
+  // Behaviour 18: the file cannot be written, so the takeover asks before it deletes any.
+  await setWriteBack("none");
   const folder = await PlacesUtils.bookmarks.insert({
     parentGuid: toolbarGuid,
     type: PlacesUtils.bookmarks.TYPE_FOLDER,
@@ -563,7 +583,56 @@ add_task(async function a_table_over_a_folder_with_bookmarks_asks_before_deletin
   await reset();
 });
 
+add_task(async function a_table_over_a_folder_with_bookmarks_writes_them_into_the_table() {
+  // D7: with write_back = "vimma" a takeover is a merge: nothing is deleted or asked.
+  const folder = await PlacesUtils.bookmarks.insert({
+    parentGuid: toolbarGuid,
+    type: PlacesUtils.bookmarks.TYPE_FOLDER,
+    title: "work",
+  });
+  /** @type {string[]} */
+  const guids = [];
+  for (const t of ["keep", "mine", "mine"]) {
+    const bm = await PlacesUtils.bookmarks.insert({
+      parentGuid: folder.guid,
+      url: `https://example.com/${t}${guids.length}`,
+      title: t,
+    });
+    guids.push(bm.guid);
+  }
+  const text = '[bookmarks.work]\n"keep" = "https://example.com/keep0"\n';
+  await IOUtils.writeUTF8(bookmarksFile, text);
+  await until(
+    async () => (await IOUtils.readUTF8(bookmarksFile)) !== text,
+    "the folder's other bookmarks written to the file",
+  );
+  Assert.equal(
+    await IOUtils.readUTF8(bookmarksFile),
+    `${text}"mine" = "https://example.com/mine1"\n"mine (2)" = "https://example.com/mine2"\n`,
+    "appended to the table, a second title made unique (Behaviour 15)",
+  );
+  await untilFolder(
+    "work",
+    [
+      "keep https://example.com/keep0",
+      "mine https://example.com/mine1",
+      "mine (2) https://example.com/mine2",
+    ],
+    "Places gets the written name too",
+  );
+  const kids = (await PlacesUtils.promiseBookmarksTree(folder.guid))?.children ?? [];
+  Assert.deepEqual(
+    kids.map((/** @type {Node} */ k) => k.guid),
+    guids,
+    "every bookmark kept, by guid",
+  );
+  Assert.ok(!promptOpen(), "nothing asked");
+  await until(() => noticeText().includes('2 bookmarks of "work" written to'), "said");
+  await reset();
+});
+
 add_task(async function write_back_none_refuses_vimma_keys_and_puts_library_changes_back() {
+  await setWriteBack("none");
   const ww = WindowWorkspaces.get(window);
   const def = WorkspaceStore.definitions.workspaces.find((d) => d.id === ww?.model?.active);
   Assert.ok(def, "the window shows a workspace");
@@ -585,16 +654,17 @@ add_task(async function write_back_none_refuses_vimma_keys_and_puts_library_chan
   await untilFolder(name, ["a https://example.com/a"], "put back from the file");
   await until(
     () =>
-      noticeText().includes(`bookmarks.toml: Firefox change to ${JSON.stringify(name)} put back`),
-    "said once for the burst",
+      noticeText().includes(
+        `bookmarks.toml: Firefox change to ${JSON.stringify(name)} put back (write_back = "none")`,
+      ),
+    "said once for the burst, with the setting",
   );
 
   // Vimma's keys refuse in the mirrored folder.
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?quickadd`);
   await runCommand("bookmark docs/page");
   await until(
-    () =>
-      noticeText().includes("bookmarks.toml is read-only: edit the file to change these bookmarks"),
+    () => noticeText().includes('bookmarks.toml is read-only (write_back = "none")'),
     ":bookmark refuses",
   );
   Assert.deepEqual(await folderContents(name), ["a https://example.com/a"], "nothing added");
@@ -877,7 +947,8 @@ async function newWorkspace(/** @type {string} */ name) {
   );
 }
 
-add_task(async function the_panel_and_the_move_rename_prompt_refuse_in_a_mirrored_folder() {
+add_task(async function the_panel_and_the_move_rename_prompt_refuse_under_write_back_none() {
+  await setWriteBack("none");
   await writeFile('[bookmarks.work]\n"docs/a" = "https://example.com/?mirrored"');
   await untilFolder("work", [{ "docs/": ["a https://example.com/?mirrored"] }], "loaded");
   const folder = /** @type {Node} */ (await topFolder("work"));
@@ -916,7 +987,7 @@ add_task(async function the_panel_and_the_move_rename_prompt_refuse_in_a_mirrore
   }
   await until(() => said.length === 5, "a, A, r, m and d each refused");
   Assert.ok(
-    said.every((t) => t === "bookmarks.toml is read-only: edit the file to change these bookmarks"),
+    said.every((t) => t === 'bookmarks.toml is read-only (write_back = "none")'),
     "with the read-only refusal",
   );
   Assert.equal(prompts, 0, "and no prompt opened");
@@ -935,7 +1006,8 @@ add_task(async function the_panel_and_the_move_rename_prompt_refuse_in_a_mirrore
   await reset();
 });
 
-add_task(async function wsrename_keeps_the_table_folder_and_wsdelete_keeps_a_mirrored_folder() {
+add_task(async function wsrename_and_wsdelete_keep_a_mirrored_folder_under_write_back_none() {
+  await setWriteBack("none");
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?ws`);
   await newWorkspace("filed");
   await writeFile('[bookmarks.filed]\n"a" = "https://example.com/a"');
@@ -962,7 +1034,8 @@ add_task(async function wsrename_keeps_the_table_folder_and_wsdelete_keeps_a_mir
   await reset();
 });
 
-add_task(async function wsdelete_offers_no_move_into_a_mirrored_folder() {
+add_task(async function wsdelete_offers_no_move_into_a_mirrored_folder_under_write_back_none() {
+  await setWriteBack("none");
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?wsm`);
   await newWorkspace("leaving");
   const leaving = /** @type {{ id: string }} */ (workspaceNamed("leaving"));
@@ -1112,5 +1185,665 @@ add_task(async function the_question_waits_while_a_page_field_has_focus() {
   await answer("n");
   await until(() => noticeText().includes("not applied"), "n applies nothing");
   BrowserTestUtils.removeTab(tab);
+  await reset();
+});
+
+add_task(async function quick_add_writes_the_file_first_and_keeps_its_comments() {
+  const name = activeName();
+  const text = [
+    "# my links",
+    `[bookmarks.${JSON.stringify(name)}]`,
+    '"docs/a" = "https://example.com/a"  # first',
+    "",
+    "# later",
+    '"z" = "https://example.com/z"',
+    "",
+  ].join("\n");
+  await IOUtils.writeUTF8(bookmarksFile, text);
+  await untilFolder(
+    name,
+    [{ "docs/": ["a https://example.com/a"] }, "z https://example.com/z"],
+    "loaded",
+  );
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?quickadd`);
+  await runCommand("bookmark docs/page");
+  await until(() => noticeText().includes("bookmarked: docs/page"), "bookmarked, said");
+  Assert.equal(
+    await IOUtils.readUTF8(bookmarksFile),
+    text.replace("# first\n", '# first\n"docs/page" = "https://example.com/?quickadd"\n'),
+    "written after the folder's last line; every other byte kept",
+  );
+  Assert.deepEqual(
+    await folderContents(name),
+    [
+      { "docs/": ["a https://example.com/a", "page https://example.com/?quickadd"] },
+      "z https://example.com/z",
+    ],
+    "and in Places when the key is done",
+  );
+  // The poll then sees the file it wrote: nothing more is applied or written (D5).
+  const guid = (await PlacesUtils.bookmarks.fetch({ url: `${PAGE}?quickadd` }))?.guid;
+  await new Promise((r) => setTimeout(r, 600));
+  await mirror.settledRuns();
+  Assert.equal(
+    (await PlacesUtils.bookmarks.fetch({ url: `${PAGE}?quickadd` }))?.guid,
+    guid,
+    "the same bookmark",
+  );
+  BrowserTestUtils.removeTab(tab);
+  await reset();
+});
+
+add_task(async function a_duplicate_title_is_written_with_2_and_renamed_in_places() {
+  const name = activeName();
+  await IOUtils.writeUTF8(
+    bookmarksFile,
+    `[bookmarks.${JSON.stringify(name)}]\n"page" = "https://example.com/first"\n`,
+  );
+  await untilFolder(name, ["page https://example.com/first"], "loaded");
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?dup`);
+  await runCommand("bookmark page");
+  await until(() => noticeText().includes("bookmarked: page (2)"), "said with its new name");
+  Assert.ok(noticeText().includes('"page" is taken there'), "and why");
+  Assert.ok(
+    (await IOUtils.readUTF8(bookmarksFile)).includes('"page (2)" = "https://example.com/?dup"'),
+    "written as page (2)",
+  );
+  await untilFolder(
+    name,
+    ["page https://example.com/first", "page (2) https://example.com/?dup"],
+    "Places has the written name",
+  );
+  BrowserTestUtils.removeTab(tab);
+  await reset();
+});
+
+add_task(async function panel_rename_move_delete_write_the_file() {
+  const name = activeName();
+  const header = `[bookmarks.${JSON.stringify(name)}]`;
+  await IOUtils.writeUTF8(
+    bookmarksFile,
+    `${header}\n"docs/a" = "https://example.com/a"\n"b" = "https://example.com/b"\n`,
+  );
+  await untilFolder(
+    name,
+    [{ "docs/": ["a https://example.com/a"] }, "b https://example.com/b"],
+    "loaded",
+  );
+  const folder = /** @type {Node} */ (await topFolder(name));
+  const tree = /** @type {Node} */ (await PlacesUtils.promiseBookmarksTree(folder.guid));
+  const docs = /** @type {Node} */ (tree.children?.[0]);
+  const a = /** @type {Node} */ (docs.children?.[0]);
+  const b = /** @type {Node} */ (tree.children?.[1]);
+  /** @type {string[]} */
+  const said = [];
+  /** @type {string[]} */
+  const typed = [];
+  const ctx = {
+    win: window,
+    say: (/** @type {string} */ t) => said.push(t),
+    panel: { tree: { guid: folder.guid, kind: "folder", title: name, children: [] }, isOpen: true },
+    prompt: {
+      prompt: (/** @type {{ submit: (t: string) => void }} */ o) =>
+        o.submit(/** @type {string} */ (typed.shift())),
+      ask: (/** @type {string} */ _q, /** @type {() => void} */ yes) => yes(),
+    },
+  };
+  /** @param {object} effect @param {string} [value] */
+  const run = (effect, value) => {
+    if (value !== undefined) typed.push(value);
+    runBookmarkEffect(
+      /** @type {Parameters<typeof runBookmarkEffect>[0]} */ (/** @type {unknown} */ (ctx)),
+      /** @type {Parameters<typeof runBookmarkEffect>[1]} */ (effect),
+    );
+  };
+  const file = () => IOUtils.readUTF8(bookmarksFile);
+  run({ type: "rename", guid: a.guid, title: "a" }, "alpha");
+  await until(async () => (await file()).includes('"docs/alpha"'), "r renames the line");
+  run({ type: "move", guid: b.guid, from: folder.guid }, "docs/");
+  await until(async () => (await file()).includes('"docs/b"'), "m moves the line");
+  run({ type: "add_folder", folder: docs.guid }, "later");
+  await until(async () => (await file()).includes('"docs/later/" = ""'), "A makes a folder");
+  run({ type: "delete", guid: a.guid, kind: "bookmark", title: "alpha", count: 0 });
+  await until(async () => !(await file()).includes("alpha"), "d removes the line");
+  Assert.equal(
+    await file(),
+    `${header}\n"docs/b" = "https://example.com/b"\n"docs/later/" = ""\n`,
+    "the file after r, m, a and d",
+  );
+  await untilFolder(
+    name,
+    [{ "docs/": ["b https://example.com/b", { "later/": [] }] }],
+    "Places follows the file",
+  );
+  Assert.equal(
+    (await PlacesUtils.bookmarks.fetch({ url: "https://example.com/b" }))?.guid,
+    b.guid,
+    "the moved bookmark kept its guid",
+  );
+  Assert.deepEqual(said, ["made later/"], "only the new folder says something");
+  await reset();
+});
+
+add_task(async function move_rename_prompt_of_a_bookmarked_page_writes_the_file() {
+  const name = activeName();
+  await IOUtils.writeUTF8(
+    bookmarksFile,
+    `[bookmarks.${JSON.stringify(name)}]\n"a" = "https://example.com/?mirrored"\n`,
+  );
+  await untilFolder(name, ["a https://example.com/?mirrored"], "loaded");
+  const guid = (await PlacesUtils.bookmarks.fetch({ url: `${PAGE}?mirrored` }))?.guid;
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?mirrored`);
+  await focusContent(tab.linkedBrowser);
+  await until(() => VimmaHost.status(window).mode === "normal", "normal mode");
+  prefix("a");
+  await until(() => promptOpen() && promptText() === "move/rename:", "the move/rename prompt");
+  const input = /** @type {HTMLInputElement} */ (promptEl()?.querySelector("input"));
+  input.value = "docs/renamed";
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => noticeText().includes("bookmarked: docs/renamed"), "said");
+  Assert.equal(
+    await IOUtils.readUTF8(bookmarksFile),
+    `[bookmarks.${JSON.stringify(name)}]\n"docs/renamed" = "https://example.com/?mirrored"\n`,
+    "the line renamed in place",
+  );
+  const bm = await PlacesUtils.bookmarks.fetch({ url: `${PAGE}?mirrored` });
+  Assert.equal(bm?.guid, guid, "the same bookmark, moved and renamed");
+  Assert.equal(bm?.title, "renamed", "renamed in Places");
+  BrowserTestUtils.removeTab(tab);
+  await reset();
+});
+
+add_task(async function wsrename_renames_the_table_header_and_wsdelete_d_removes_it() {
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?wsr`);
+  await newWorkspace("filed");
+  await IOUtils.writeUTF8(
+    bookmarksFile,
+    '# team\n[bookmarks.filed]  # mine\n"a" = "https://example.com/a"\n',
+  );
+  await untilFolder("filed", ["a https://example.com/a"], "the workspace's folder is mirrored");
+  const guid = /** @type {Node} */ (await topFolder("filed")).guid;
+  await runCommand("wsrename kept");
+  await until(
+    async () => (await IOUtils.readUTF8(bookmarksFile)).includes("[bookmarks.kept]"),
+    "the header renamed",
+  );
+  Assert.equal(
+    await IOUtils.readUTF8(bookmarksFile),
+    '# team\n[bookmarks.kept]  # mine\n"a" = "https://example.com/a"\n',
+    "its comment kept",
+  );
+  await until(async () => (await topFolder("kept"))?.guid === guid, "the same folder, renamed");
+  await runCommand("wsdelete kept");
+  await until(() => promptOpen(), "asked to close it");
+  EventUtils.synthesizeKey("y");
+  await until(() => promptOpen() && promptText().includes("d delete"), "asked about its bookmarks");
+  EventUtils.synthesizeKey("d");
+  await until(() => noticeText().includes("deleted its 1 bookmark"), "said").catch((e) => {
+    Assert.equal(noticeText(), 'closed "kept" and deleted its 1 bookmark', "the notice");
+    throw e;
+  });
+  Assert.equal(await IOUtils.readUTF8(bookmarksFile), "# team\n", "the table gone from the file");
+  Assert.equal(await PlacesUtils.bookmarks.fetch(guid), null, "and its folder from Places");
+  BrowserTestUtils.removeTab(tab);
+  await reset();
+});
+
+add_task(async function wsdelete_m_moves_the_table_lines_into_the_other_table() {
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?wsm2`);
+  await newWorkspace("leaving");
+  const leaving = /** @type {{ id: string }} */ (workspaceNamed("leaving"));
+  const first = WorkspaceStore.definitions.workspaces.find((d) => d.id !== leaving.id);
+  const firstName = /** @type {{ name: string }} */ (first).name;
+  const head = `[bookmarks.${JSON.stringify(firstName)}]`;
+  await IOUtils.writeUTF8(
+    bookmarksFile,
+    `${head}\n"l" = "https://example.com/mine"\n\n[bookmarks.leaving]\n"l" = "https://example.com/l"\n`,
+  );
+  await untilFolder("leaving", ["l https://example.com/l"], "both mirrored");
+  const moved = (await PlacesUtils.bookmarks.fetch({ url: "https://example.com/l" }))?.guid;
+  await runCommand("wsdelete leaving");
+  await until(() => promptOpen(), "asked to close it");
+  EventUtils.synthesizeKey("y");
+  await until(() => promptOpen() && promptText().includes("m move"), "m is offered");
+  EventUtils.synthesizeKey("m");
+  await until(() => noticeText().includes(`moved its 1 bookmark to "${firstName}"`), "said");
+  Assert.equal(
+    await IOUtils.readUTF8(bookmarksFile),
+    `${head}\n"l" = "https://example.com/mine"\n"l (2)" = "https://example.com/l"\n\n`,
+    "its lines moved into the other table, a clash made unique, its table gone",
+  );
+  await untilFolder(
+    firstName,
+    ["l https://example.com/mine", "l (2) https://example.com/l"],
+    "Places follows",
+  );
+  Assert.equal(
+    (await PlacesUtils.bookmarks.fetch({ url: "https://example.com/l" }))?.guid,
+    moved,
+    "the moved bookmark kept its guid",
+  );
+  Assert.equal(await topFolder("leaving"), null, "its folder gone");
+  BrowserTestUtils.removeTab(tab);
+  await reset();
+});
+
+add_task(async function a_bookmark_put_back_three_times_pauses_its_table() {
+  // Open question 2, answer b: two devices with different files put each other's changes back;
+  // the third put-back of one bookmark in ten minutes pauses its table both ways.
+  await IOUtils.writeUTF8(
+    bookmarksFile,
+    '[bookmarks.work]\n"a" = "https://example.com/a"\n\n[bookmarks.home]\n"h" = "https://example.com/h"\n',
+  );
+  await untilFolder("work", ["a https://example.com/a"], "loaded");
+  await untilFolder("home", ["h https://example.com/h"], "loaded");
+  const a = /** @type {string} */ (
+    (await PlacesUtils.bookmarks.fetch({ url: "https://example.com/a" }))?.guid
+  );
+  for (let i = 1; i <= 3; i++) {
+    await PlacesUtils.bookmarks.update({
+      guid: a,
+      title: `sync ${i}`,
+      source: PlacesUtils.bookmarks.SOURCES.SYNC,
+    });
+    await untilFolder("work", ["a https://example.com/a"], `put back, time ${i}`);
+  }
+  await until(
+    () => noticeText().includes('"work" put back 3 times in 10 minutes; paused both ways'),
+    "the notice says so",
+  );
+  await until(() => errorSegment().includes("paused both ways"), "and the status bar keeps it");
+  // Paused: a fourth change stays, and the file is not edited for it.
+  await PlacesUtils.bookmarks.update({ guid: a, title: "sync 4" });
+  await new Promise((r) => setTimeout(r, 800));
+  await mirror.settledRuns();
+  Assert.deepEqual(await folderContents("work"), ["sync 4 https://example.com/a"], "not put back");
+  // Vimma's keys refuse there too; the other table goes on.
+  const r = await renameItem(a, "x", window);
+  Assert.ok(String(r).includes('"work" is paused'), "a key refuses in the paused table");
+  const h = /** @type {string} */ (
+    (await PlacesUtils.bookmarks.fetch({ url: "https://example.com/h" }))?.guid
+  );
+  await PlacesUtils.bookmarks.update({ guid: h, title: "changed" });
+  await untilFolder("home", ["h https://example.com/h"], "the other table is still put back");
+  // An edit of the file is the user's answer: the table goes on.
+  await writeFile(
+    '[bookmarks.work]\n"a" = "https://example.com/a"\n\n[bookmarks.home]\n"h" = "https://example.com/h"',
+  );
+  await untilFolder("work", ["a https://example.com/a"], "put back once the file changes");
+  await until(() => !errorSegment().includes("paused both ways"), "the status bar line goes");
+  await reset();
+});
+
+add_task(async function a_private_window_does_not_write_the_file() {
+  const text = '[bookmarks.work]\n"a" = "https://example.com/a"\n';
+  await IOUtils.writeUTF8(bookmarksFile, text);
+  await untilFolder("work", ["a https://example.com/a"], "loaded");
+  const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  const page = { url: `${PAGE}?private`, title: "secret" };
+  Assert.equal(
+    await addBookmark(priv, "work/secret", page),
+    "bookmarks.toml is not written from a private window",
+    "quick add refuses",
+  );
+  const a = /** @type {string} */ (
+    (await PlacesUtils.bookmarks.fetch({ url: "https://example.com/a" }))?.guid
+  );
+  Assert.equal(
+    await renameItem(a, "renamed", priv),
+    "bookmarks.toml is not written from a private window",
+    "a rename refuses",
+  );
+  await mirror.settledRuns();
+  Assert.equal(await IOUtils.readUTF8(bookmarksFile), text, "the file is untouched");
+  Assert.deepEqual(await folderContents("work"), ["a https://example.com/a"], "and Places");
+  await BrowserTestUtils.closeWindow(priv);
+  await reset();
+});
+
+add_task(async function config_and_bookmarks_edits_are_serialised() {
+  // D11: an edit of an inline table and another config.toml edit at once both land.
+  const name = activeName();
+  const text = `schema = 2\n[bookmarks.${JSON.stringify(name)}]\n"a" = "https://example.com/a"\n`;
+  await IOUtils.writeUTF8(configFile, text);
+  await ConfigHost.reload();
+  await untilFolder(name, ["a https://example.com/a"], "the inline table is mirrored");
+  const page = { url: `${PAGE}?inline`, title: "inline" };
+  const [added, unbound] = await Promise.all([
+    addBookmark(window, "inline", page),
+    ConfigHost.editSiteUnbind("example.org", { add: ["t"] }),
+  ]);
+  Assert.equal(added, "bookmarked: inline", "the bookmark is written");
+  Assert.ok(!("error" in unbound), "and the unbind");
+  const after = await IOUtils.readUTF8(configFile);
+  Assert.ok(after.includes('"inline" = "https://example.com/?inline"'), "the line is there");
+  Assert.ok(after.includes('[sites."example.org"]'), "and so is the unbind");
+  await untilFolder(
+    name,
+    ["a https://example.com/a", "inline https://example.com/?inline"],
+    "Places follows",
+  );
+  await reset();
+});
+
+add_task(async function a_key_during_the_apply_that_makes_a_folder_is_refused() {
+  // The mirrored folders are known before the apply changes Places, not only once the run has
+  // saved its base: a key pressed between the two must not treat the new folder as Firefox's.
+  await setWriteBack("none");
+  /** @type {Promise<string | null>[]} */
+  const answers = [];
+  const listener = (
+    /** @type {{ type: string, parentGuid: string, title: string, guid: string }[]} */ events,
+  ) => {
+    for (const e of events) {
+      if (e.parentGuid === toolbarGuid && e.title === "fresh") {
+        // Called from Places' own notification, inside the apply.
+        answers.push(mirroredRefusalFor(window, e.guid));
+      }
+    }
+  };
+  PlacesUtils.observers.addListener(["bookmark-added"], listener);
+  try {
+    await writeFile('[bookmarks.fresh]\n"a" = "https://example.com/a"');
+    await untilFolder("fresh", ["a https://example.com/a"], "the new folder is made");
+  } finally {
+    PlacesUtils.observers.removeListener(["bookmark-added"], listener);
+  }
+  Assert.equal(answers.length, 1, "seen as it was added");
+  Assert.equal(
+    await answers[0],
+    'bookmarks.toml is read-only (write_back = "none")',
+    "a key in that folder is refused already",
+  );
+  await reset();
+});
+
+add_task(async function a_move_out_whose_places_step_fails_loses_nothing() {
+  // D18: the file and Places never diverge. A move out of the file whose Places step fails (its
+  // destination went while the key waited in the queue) puts the line and the base back.
+  const text =
+    '[bookmarks.work]\n"a" = "https://example.com/a"  # mine\n"b" = "https://example.com/b"\n';
+  await IOUtils.writeUTF8(bookmarksFile, text);
+  await untilFolder("work", ["a https://example.com/a", "b https://example.com/b"], "loaded");
+  const a = /** @type {string} */ (
+    (await PlacesUtils.bookmarks.fetch({ url: "https://example.com/a" }))?.guid
+  );
+  const r = await mirror.edit({
+    type: "move",
+    guid: a,
+    parent: menuGuid,
+    missing: [],
+    title: null,
+    outside: async () => {
+      throw new Error("the destination is gone");
+    },
+  });
+  Assert.ok("error" in r, "the key says it failed");
+  Assert.equal(await IOUtils.readUTF8(bookmarksFile), text, "the file holds the line again");
+  await new Promise((res) => setTimeout(res, 600));
+  await mirror.settledRuns();
+  Assert.deepEqual(
+    await folderContents("work"),
+    ["a https://example.com/a", "b https://example.com/b"],
+    "and Places the bookmark",
+  );
+  Assert.equal(
+    (await PlacesUtils.bookmarks.fetch({ url: "https://example.com/a" }))?.guid,
+    a,
+    "the same bookmark",
+  );
+  await reset();
+});
+
+/**
+ * Runs a program found on the PATH and checks that it succeeded.
+ * @param {string} name
+ * @param {string[]} args
+ */
+async function sh(name, args) {
+  const proc = await Subprocess.call({
+    command: await Subprocess.pathSearch(name),
+    arguments: args,
+  });
+  Assert.equal((await proc.wait()).exitCode, 0, `${name} ${args.join(" ")}`);
+}
+
+/** Whether `path` is a symbolic link (lstat). */
+function isLink(/** @type {string} */ path) {
+  const f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  f.initWithPath(path);
+  try {
+    return f.isSymlink();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Wraps the mirror's file writer for one test: `before` runs ahead of each write, and `during`
+ * inside its computation, after the file was read and before it is renamed over.
+ * @param {{ before?: () => Promise<void>, during?: () => void }} hooks
+ * @returns {() => void} puts the writer back
+ */
+function wrapWriter({ before, during }) {
+  const original = /** @type {NonNullable<typeof mirror.writeFile>} */ (mirror.writeFile);
+  /** @type {typeof original} */
+  const wrapped = async (path, compute) => {
+    await before?.();
+    return original(path, (t) => {
+      during?.();
+      return compute(t);
+    });
+  };
+  mirror.writeFile = wrapped;
+  return () => {
+    mirror.writeFile = original;
+  };
+}
+
+/** Appends to a file at once, as an editor saving during Vimma's edit would. */
+function appendNow(/** @type {string} */ path, /** @type {string} */ text) {
+  const f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  f.initWithPath(path);
+  const out = Cc["@mozilla.org/network/file-output-stream;1"].createInstance(
+    Ci.nsIFileOutputStream,
+  );
+  out.init(f, 0x02 | 0x10, 0o600, 0); // PR_WRONLY | PR_APPEND
+  out.write(text, text.length);
+  out.close();
+}
+
+add_task(async function an_edited_file_keeps_its_mode_and_symlink() {
+  const name = activeName();
+  const text = `[bookmarks.${JSON.stringify(name)}]\n"a" = "https://example.com/a"\n`;
+  await IOUtils.writeUTF8(bookmarksFile, text);
+  await IOUtils.setPermissions(bookmarksFile, 0o640);
+  await untilFolder(name, ["a https://example.com/a"], "loaded");
+  const page = { url: `${PAGE}?mode`, title: "mode" };
+  Assert.equal(await addBookmark(window, "mode", page), "bookmarked: mode", "written");
+  Assert.equal((await IOUtils.stat(bookmarksFile)).permissions, 0o640, "its mode kept");
+  // A symlinked bookmarks.toml: the link stays, its target is written.
+  const real = PathUtils.join(dir, "dotfiles-bm");
+  await IOUtils.makeDirectory(real, { createAncestors: true });
+  const target = PathUtils.join(real, "bookmarks.toml");
+  await IOUtils.writeUTF8(target, await IOUtils.readUTF8(bookmarksFile));
+  await sh("ln", ["-sfn", target, bookmarksFile]);
+  await new Promise((r) => setTimeout(r, 600));
+  await mirror.settledRuns();
+  Assert.equal(
+    await addBookmark(window, "linked", { url: `${PAGE}?linked`, title: "linked" }),
+    "bookmarked: linked",
+    "written through the link",
+  );
+  Assert.ok(isLink(bookmarksFile), "bookmarks.toml is still a link");
+  Assert.ok(
+    (await IOUtils.readUTF8(target)).includes('"linked" = "https://example.com/?linked"'),
+    "its target holds the line",
+  );
+  await IOUtils.remove(bookmarksFile);
+  await IOUtils.writeUTF8(bookmarksFile, await IOUtils.readUTF8(target));
+  await reset();
+});
+
+add_task(async function a_dangling_link_or_a_fifo_is_never_replaced() {
+  const name = activeName();
+  const text = `[bookmarks.${JSON.stringify(name)}]\n"a" = "https://example.com/a"\n`;
+  for (const make of ["link", "fifo"]) {
+    await IOUtils.writeUTF8(bookmarksFile, text);
+    await untilFolder(name, ["a https://example.com/a"], "loaded");
+    await until(
+      async () => isMirrored(/** @type {Node} */ (await topFolder(name)).guid),
+      "mirrored again",
+    );
+    // Swapped after the mirror read the file and before the write.
+    const restore = wrapWriter({
+      before: async () => {
+        await IOUtils.remove(bookmarksFile);
+        if (make === "link") await sh("ln", ["-s", PathUtils.join(dir, "nowhere"), bookmarksFile]);
+        else await sh("mkfifo", [bookmarksFile]);
+      },
+    });
+    let said;
+    try {
+      said = await addBookmark(window, "x", { url: `${PAGE}?${make}`, title: "x" });
+    } finally {
+      restore();
+    }
+    Assert.ok(
+      String(said).includes(make === "link" ? "a link to a missing file" : "not a regular file"),
+      `${make}: refused (${said})`,
+    );
+    if (make === "link") Assert.ok(isLink(bookmarksFile), "the link is still a link");
+    else Assert.equal((await IOUtils.stat(bookmarksFile)).type, "other", "the FIFO is still one");
+    Assert.equal(
+      await PlacesUtils.bookmarks.fetch({ url: `${PAGE}?${make}` }),
+      null,
+      "nothing reached Places",
+    );
+    await IOUtils.remove(bookmarksFile);
+    await mirror.forget();
+  }
+  await reset();
+});
+
+add_task(async function a_file_changed_during_an_edit_is_retried_once() {
+  const name = activeName();
+  const text = `[bookmarks.${JSON.stringify(name)}]\n"a" = "https://example.com/a"\n`;
+  await IOUtils.writeUTF8(bookmarksFile, text);
+  await untilFolder(name, ["a https://example.com/a"], "loaded");
+  // Changed once while Vimma edits it: edited again from the new text.
+  let changes = 1;
+  let restore = wrapWriter({
+    during: () => {
+      if (changes-- > 0) appendNow(bookmarksFile, "# saved meanwhile\n");
+    },
+  });
+  try {
+    Assert.equal(
+      await addBookmark(window, "once", { url: `${PAGE}?once`, title: "once" }),
+      "bookmarked: once",
+      "written on the second try",
+    );
+  } finally {
+    restore();
+  }
+  Assert.equal(
+    await IOUtils.readUTF8(bookmarksFile),
+    `${text}"once" = "https://example.com/?once"\n# saved meanwhile\n`,
+    "both the other save and the line",
+  );
+  // Changed every time: nothing is written, nothing reaches Places.
+  const now = await IOUtils.readUTF8(bookmarksFile);
+  restore = wrapWriter({ during: () => appendNow(bookmarksFile, "# again\n") });
+  let said;
+  try {
+    said = await addBookmark(window, "twice", { url: `${PAGE}?twice`, title: "twice" });
+  } finally {
+    restore();
+  }
+  Assert.ok(String(said).includes("changed meanwhile"), `refused (${said})`);
+  Assert.equal(await IOUtils.readUTF8(bookmarksFile), `${now}# again\n# again\n`, "not written");
+  Assert.equal(await PlacesUtils.bookmarks.fetch({ url: `${PAGE}?twice` }), null, "not in Places");
+  await reset();
+});
+
+add_task(async function a_paused_table_refuses_wsdelete_and_makes_no_folder() {
+  // The loop guard's pause holds for :wsdelete's d and m too; m makes no folder before that.
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?held`);
+  await newWorkspace("held");
+  await IOUtils.writeUTF8(bookmarksFile, '[bookmarks.held]\n"a" = "https://example.com/a"\n');
+  await untilFolder("held", ["a https://example.com/a"], "loaded");
+  const folder = /** @type {Node} */ (await topFolder("held")).guid;
+  mirror.held.add("held");
+  try {
+    const removed = await mirror.edit({ type: "removeTable", folder });
+    Assert.ok("error" in removed && removed.error.includes("paused"), "d refuses");
+    let made = false;
+    const moved = await mirror.edit({
+      type: "moveTable",
+      from: folder,
+      target: null,
+      into: async () => {
+        made = true;
+        return folder;
+      },
+    });
+    Assert.ok("error" in moved && moved.error.includes("paused"), "m refuses");
+    Assert.ok(!made, "and makes no folder first");
+  } finally {
+    mirror.held.clear();
+  }
+  BrowserTestUtils.removeTab(tab);
+  await reset();
+});
+
+add_task(async function a_move_into_a_table_that_fails_partway_loses_nothing() {
+  // :wsdelete's m into a mirrored table moves the items one by one. When the second move fails,
+  // the first is already in the mirrored folder: the edit stays, so every item is still in
+  // Places and in the file (at worst twice), never in neither.
+  await IOUtils.writeUTF8(bookmarksFile, '[bookmarks.work]\n"w" = "https://example.com/w"\n');
+  await untilFolder("work", ["w https://example.com/w"], "loaded");
+  const work = /** @type {Node} */ (await topFolder("work")).guid;
+  const loose = await PlacesUtils.bookmarks.insert({
+    parentGuid: toolbarGuid,
+    type: PlacesUtils.bookmarks.TYPE_FOLDER,
+    title: "loose",
+  });
+  const urls = [1, 2, 3].map((i) => `https://example.com/loose${i}`);
+  for (const [i, url] of urls.entries()) {
+    await PlacesUtils.bookmarks.insert({ parentGuid: loose.guid, url, title: `l${i + 1}` });
+  }
+  // The second item goes (Sync, another window) after the key read the folder and before its
+  // Places step: its move then fails, after the first one was made.
+  const second = /** @type {string} */ (
+    (await PlacesUtils.bookmarks.fetch({ url: urls[1] }))?.guid
+  );
+  let once = true;
+  const restore = wrapWriter({
+    before: async () => {
+      if (once) await PlacesUtils.bookmarks.remove(second);
+      once = false;
+    },
+  });
+  /** @type {unknown} */
+  let r;
+  try {
+    r = await mirror.edit({
+      type: "moveTable",
+      from: loose.guid,
+      target: work,
+      into: async () => work,
+    });
+  } finally {
+    restore();
+  }
+  Assert.ok(r && typeof r === "object" && "error" in r, "the key says it failed");
+  await new Promise((res) => setTimeout(res, 600));
+  await mirror.settledRuns();
+  const file = await IOUtils.readUTF8(bookmarksFile);
+  for (const url of urls) {
+    Assert.ok(file.includes(`"${url}"`), `${url} is in the file`);
+    Assert.ok(await PlacesUtils.bookmarks.fetch({ url }), `${url} is in Places`);
+  }
   await reset();
 });

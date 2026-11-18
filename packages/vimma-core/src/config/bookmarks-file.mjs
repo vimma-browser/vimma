@@ -35,6 +35,13 @@ export const MAX_BOOKMARK_LINES = 20_000;
 export const MAX_BOOKMARK_DEPTH = 32;
 /** `[bookmarks]` keys that are config.toml's settings, never a workspace's inline table. */
 export const BOOKMARKS_SETTING_NAMES = Object.freeze(["root", "bookmarklets", "write_back"]);
+/**
+ * `[bookmarks] write_back` (Behaviour 9): which changes reach the file. Delivery slice 2 has
+ * Vimma's own (`"vimma"`, the default until `"all"` comes with slice 3) or none.
+ * @typedef {"vimma" | "none"} WriteBack
+ */
+/** @type {readonly WriteBack[]} */
+export const WRITE_BACK_SETTINGS = Object.freeze(["vimma", "none"]);
 /** The same as config.mjs's MAX_WORKSPACE_NAME; a table is named after a workspace. */
 const MAX_TABLE_NAME = 32;
 /** A large deletion asks first (D14): more than this many in one run, */
@@ -52,7 +59,8 @@ const SCHEMES = Object.freeze(["http:", "https:", "file:", "about:", "javascript
  * C1 controls, bidirectional controls and invisible format characters: a name that shows as
  * something else in the Library and the panel. U+200D (the zero-width joiner of emoji) stays.
  */
-const HIDDEN = /[\u0080-\u009f\u061c\u200b\u200c\u200e\u200f\u202a-\u202e\u2060-\u2069\ufeff]/u;
+export const HIDDEN =
+  /[\u0080-\u009f\u061c\u200b\u200c\u200e\u200f\u202a-\u202e\u2060-\u2069\ufeff]/u;
 
 const TYPE_BOOKMARK = 1;
 const TYPE_FOLDER = 2;
@@ -108,7 +116,7 @@ function typeName(v) {
  * @param {unknown} v
  * @returns {v is Record<string, unknown>}
  */
-const isTable = (v) =>
+export const isTable = (v) =>
   typeof v === "object" && v !== null && !Array.isArray(v) && !(v instanceof Date);
 
 /** `text` as an error repeats it: JSON-quoted, at most ECHO characters of it. */
@@ -138,7 +146,7 @@ function utf8Over(text, limit) {
  * @param {string} value
  * @returns {{ url: string } | { error: string }}
  */
-function lineUrl(value) {
+export function lineUrl(value) {
   if (value.length > MAX_BOOKMARK_URL) {
     return { error: `URL longer than ${MAX_BOOKMARK_URL} characters` };
   }
@@ -160,7 +168,7 @@ function lineUrl(value) {
 }
 
 /** A `javascript:` URL, which the mirror adds only while bookmarklets are allowed (D13). */
-const isBookmarklet = (/** @type {string} */ url) => /^\s*javascript:/i.test(url);
+export const isBookmarklet = (/** @type {string} */ url) => /^\s*javascript:/i.test(url);
 
 /**
  * A key as quick add reads a path (bookmarks decision 5: `/` separates, `\/` and `\\` escape,
@@ -170,7 +178,7 @@ const isBookmarklet = (/** @type {string} */ url) => /^\s*javascript:/i.test(url
  * @param {number} max
  * @returns {{ names: string[], leaf: string | null } | null}  null: deeper than `max`
  */
-function splitPath(text, max) {
+export function splitPath(text, max) {
   /** @type {string[]} */
   const names = [];
   let cur = "";
@@ -200,7 +208,7 @@ function splitPath(text, max) {
  * @param {string} name
  * @returns {string | null}
  */
-function tableNameProblem(name) {
+export function tableNameProblem(name) {
   const length = [...name].length;
   if (length < 1 || length > MAX_TABLE_NAME) {
     return `workspace name must be 1 to ${MAX_TABLE_NAME} characters`;
@@ -678,22 +686,29 @@ function subtree(root) {
  * `"outside"`, an item added in Places, put back; `"adopt"`, an item of a folder a table takes
  * over without a base (Behaviour 18). Any `"adopt"` removal, or too many removals of any cause
  * (D14), ask first: `ask` is the question and `ops` is empty, unless `approved` (the count a
- * `y` approved) covers them all. `removing` is that count.
+ * `y` approved) covers them all. `removing` is that count. `adopt` lists, per table taken over, what its folder holds that the
+ * file lacks, as lines (Delivery slice 2: D7 writes them to the file instead of asking).
+ *
+ * A table in `hold` (paused by the put-back loop guard, open question 2) is left as it is both
+ * ways: its folder and everything in it stay out of every other table's reach, and its base is
+ * kept.
  *
  * @param {{ tables: readonly FileTable[], base: { tables: BaseTable[] } | null,
  *   places: PlacesNode,
  *   workspaces: readonly { name: string, folder?: string | null }[],
  *   bookmarklets: BookmarkletsSetting, approved: number | null,
- *   makeGuid: () => string }} input
+ *   hold?: ReadonlySet<string>, makeGuid: () => string }} input
  *   `places`: the whole tree (promiseBookmarksTree("")); `workspaces`: each workspace's name and
  *   linked folder
  * @returns {{ ops: MirrorOp[], base: { tables: BaseTable[] }, ask: string | null,
  *   removing: number, touched: string[],
  *   removed: { table: string, count: number, cause: "file" | "outside" | "adopt" }[],
- *   skipped: { table: string, line: number }[], links: { name: string, folder: string }[] }}
+ *   skipped: { table: string, line: number }[], links: { name: string, folder: string }[],
+ *   adopt: { table: string, items: { names: string[], url: string | null, from?: string }[] }[] }}
  */
 export function planMirror(input) {
   const { tables, base, places, workspaces, bookmarklets, approved, makeGuid } = input;
+  const hold = input.hold ?? new Set();
   const allowScripts = bookmarklets === "user" || bookmarklets === "agent";
   const all = indexPlaces(places);
   /** @type {Set<string>} */
@@ -757,8 +772,17 @@ export function planMirror(input) {
   /** @type {{ table: FileTable, known: BaseTable | null, folder: string,
    *   node: PlacesNode | null }[]} */
   const resolved = [];
+  /** @type {{ table: FileTable, known: BaseTable, folder: string, node: PlacesNode | null }[]} */
+  const held = [];
   for (const table of tables) {
     const known = baseTables.get(table.name) ?? null;
+    if (hold.has(table.name) && known) {
+      const node = isFolderGuid(known.folder) ? all.get(known.folder)?.node : undefined;
+      const mine = !!node && !usedFolders.has(known.folder);
+      if (mine) usedFolders.add(known.folder);
+      held.push({ table, known, folder: known.folder, node: mine ? node : null });
+      continue;
+    }
     const linked = workspaces.find((w) => w.name === table.name)?.folder ?? null;
     const unused = (/** @type {string | null | undefined} */ g) =>
       isFolderGuid(g) && !usedFolders.has(/** @type {string} */ (g));
@@ -819,6 +843,10 @@ export function planMirror(input) {
     }
   }
   for (const r of resolved) if (r.node) mirroredIn.set(r.folder, r.table.name);
+  // A held table's items belong to it, so no other table claims or removes them.
+  for (const h of held) {
+    if (h.node) for (const n of subtree(h.node)) if (n.guid) mirroredIn.set(n.guid, h.table.name);
+  }
 
   // D13: under "none", a javascript: bookmark in a mirrored folder is never changed or removed,
   // nor any folder above it.
@@ -840,11 +868,16 @@ export function planMirror(input) {
   /** One set for every table: the tables' folders and every item a table placed. */
   /** @type {Set<string>} */
   const claimed = new Set(usedFolders);
+  for (const h of held) {
+    if (h.node) for (const n of subtree(h.node)) if (n.guid) claimed.add(n.guid);
+  }
   const free = (/** @type {string | undefined} */ g) =>
     !!g && !claimed.has(g) && !kept.has(g) && mirroredIn.has(g);
 
   /** @type {BaseTable[]} */
   const nextTables = [];
+  /** @type {Map<string, Map<string, string[]>>} table → each item's path in it */
+  const pathsByTable = new Map();
   for (const { table, known, folder: tableFolder, node: folderNode } of resolved) {
     /** @type {Map<string, BaseEntry>} */
     const baseByPath = new Map();
@@ -875,6 +908,9 @@ export function planMirror(input) {
     /** Places' items under the table's folder, by kind and path (duplicates as `title (n)`). */
     /** @type {Map<string, PlacesNode>} */
     const placesByPath = new Map();
+    /** @type {Map<string, string[]>} guid → its path in the table */
+    const pathOf = new Map();
+    pathsByTable.set(table.name, pathOf);
     if (folderNode) {
       /** @type {[PlacesNode, string[]][]} */
       const walk = [[folderNode, []]];
@@ -885,6 +921,7 @@ export function planMirror(input) {
         for (const { node, name, kind } of named(f.children ?? [])) {
           const p = [...at, name];
           placesByPath.set(keyOf(kind, p), node);
+          if (node.guid) pathOf.set(node.guid, p);
           if (kind === "folder") walk.push([node, p]);
         }
       }
@@ -983,6 +1020,11 @@ export function planMirror(input) {
     orderTable.set(tableFolder, table.name);
     nextTables.push({ name: table.name, folder: tableFolder, entries });
   }
+  for (const h of held) nextTables.push(structuredClone(h.known));
+  if (held.length) {
+    const order = new Map(tables.map((t, i) => [t.name, i]));
+    nextTables.sort((a, b) => (order.get(a.name) ?? 0) - (order.get(b.name) ?? 0));
+  }
 
   /**
    * Removes what `removable` allows under `root`: the topmost such item of each branch, after
@@ -996,6 +1038,8 @@ export function planMirror(input) {
   const sweep = (root, removable, baseGuids) => {
     let known = 0;
     let other = 0;
+    /** @type {PlacesNode[]} */
+    const tops = [];
     // Reversed onto the stack, so that removals keep Places' order.
     const stack = [...(root.children ?? [])].reverse();
     while (stack.length) {
@@ -1007,13 +1051,45 @@ export function planMirror(input) {
         continue;
       }
       removes.push({ op: "remove", guid: g });
+      tops.push(c);
       for (const n of subtree(c)) {
         if (n.typeCode !== TYPE_BOOKMARK || !n.guid || claimed.has(n.guid)) continue;
         if (baseGuids.has(n.guid)) known++;
         else other++;
       }
     }
-    return { known, other };
+    return { known, other, tops };
+  };
+
+  /** @type {{ table: string, items: { names: string[], url: string | null, from?: string }[] }[]} */
+  const adopt = [];
+  /**
+   * What a taken-over folder holds that the file lacks, as lines in Places order: each bookmark,
+   * and each folder with nothing in it.
+   * @param {string} name
+   * @param {readonly PlacesNode[]} tops
+   */
+  const adoptLines = (name, tops) => {
+    const pathOf = pathsByTable.get(name) ?? new Map();
+    /** @type {{ names: string[], url: string | null, from?: string }[]} */
+    const items = [];
+    const stack = [...tops].reverse();
+    while (stack.length) {
+      const n = /** @type {PlacesNode} */ (stack.pop());
+      const names = n.guid ? pathOf.get(n.guid) : undefined;
+      if (!names || !n.guid || claimed.has(n.guid)) continue;
+      if (n.typeCode === TYPE_BOOKMARK) {
+        const title = normTitle(n.title);
+        // A name made unique (Behaviour 15) says what it was, for the notice.
+        const from = names.at(-1) === title ? {} : { from: title };
+        items.push({ names, url: normUrl(n.uri), ...from });
+      } else if (n.typeCode === TYPE_FOLDER) {
+        const kids = (n.children ?? []).filter((k) => kindOf(k));
+        if (!kids.length) items.push({ names, url: null });
+        stack.push(...[...kids].reverse());
+      }
+    }
+    if (items.length) adopt.push({ table: name, items });
   };
 
   for (const { table, known, node: folderNode } of resolved) {
@@ -1031,6 +1107,7 @@ export function planMirror(input) {
         removingTables.push(table.name);
       }
     } else if (r.known + r.other) {
+      adoptLines(table.name, r.tops);
       removed.push({ table: table.name, count: r.known + r.other, cause: "adopt" });
       adoptCount += r.known + r.other;
       adoptTables.push(table.name);
@@ -1040,7 +1117,7 @@ export function planMirror(input) {
   // Tables gone from the file: the bookmarks the base knew in their folder go; the folder stays
   // as the workspace's, and a folder another table now holds is left to it.
   for (const known of base?.tables ?? []) {
-    if (tables.some((t) => t.name === known.name)) continue;
+    if (tables.some((t) => t.name === known.name) || hold.has(known.name)) continue;
     if (usedFolders.has(known.folder) || !isFolderGuid(known.folder)) continue;
     if (!atTop(known.folder)) continue; // a base folder elsewhere is not trusted (above)
     const folderNode = /** @type {PlacesNode} */ (all.get(known.folder)?.node);
@@ -1083,6 +1160,7 @@ export function planMirror(input) {
       removed,
       skipped,
       links,
+      adopt,
     };
   }
 
@@ -1141,5 +1219,6 @@ export function planMirror(input) {
     removed,
     skipped,
     links,
+    adopt,
   };
 }

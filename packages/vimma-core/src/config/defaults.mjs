@@ -41,7 +41,8 @@ export const TABLINE_WIDTH = Object.freeze({ min: 4, max: 60, default: 14 });
  *   rule matches open (docs/specs/app-routes.md)
  * @property {{ disable?: "all" | readonly string[], enable?: readonly string[] }} [firefox]
  *   Firefox's own shortcuts that are off (docs/specs/key-handling-batch.md)
- * @property {{ root?: "workspace" | "toolbar" | "all", bookmarklets?: "none" | "user" | "agent" }}
+ * @property {{ root?: "workspace" | "toolbar" | "all", bookmarklets?: "none" | "user" | "agent",
+ *   write_back?: "vimma" | "none" }}
  *   [bookmarks]  the bookmarks panel's root (docs/specs/bookmarks.md) and who may run
  *   bookmarklets (docs/specs/bookmarklets.md)
  * @property {{ numbers?: "absolute" | "relative" | "hybrid" }} [panel]  the side panel's and

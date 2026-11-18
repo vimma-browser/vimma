@@ -55,6 +55,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/core/appimage-update.mjs": typeof import("../src/browser/base/content/vimma/core/appimage-update.mjs");
   "chrome://browser/content/vimma/core/blocks.mjs": typeof import("../src/browser/base/content/vimma/core/blocks.mjs");
   "chrome://browser/content/vimma/core/bookmark-open.mjs": typeof import("../src/browser/base/content/vimma/core/bookmark-open.mjs");
+  "chrome://browser/content/vimma/core/bookmarks-edit.mjs": typeof import("../src/browser/base/content/vimma/core/bookmarks-edit.mjs");
   "chrome://browser/content/vimma/core/bookmarks-file.mjs": typeof import("../src/browser/base/content/vimma/core/bookmarks-file.mjs");
   "chrome://browser/content/vimma/core/bookmarks-toolbar.mjs": typeof import("../src/browser/base/content/vimma/core/bookmarks-toolbar.mjs");
   "chrome://browser/content/vimma/core/bookmarks.mjs": typeof import("../src/browser/base/content/vimma/core/bookmarks.mjs");

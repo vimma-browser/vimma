@@ -470,7 +470,11 @@ describe("[modal] insert_editing", () => {
 // docs/specs/bookmarks.md, decision 2.
 describe("[bookmarks] root", () => {
   test('defaults to "workspace"', () => {
-    expect(ok(v2()).bookmarks).toEqual({ root: "workspace", bookmarklets: "none" });
+    expect(ok(v2()).bookmarks).toEqual({
+      root: "workspace",
+      bookmarklets: "none",
+      writeBack: "vimma",
+    });
     expect(DEFAULT_CONFIG.bookmarks).toEqual({ root: "workspace", bookmarklets: "none" });
     expect(formatDefaultsToml()).toMatch(/^\[bookmarks\]\n(#.*\n)*root = "workspace"$/m);
   });

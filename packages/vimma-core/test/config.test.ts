@@ -412,7 +412,7 @@ describe("mergeWithDefaults", () => {
         enable: [],
       },
       insertEditing: true,
-      bookmarks: { root: "workspace", bookmarklets: "none" },
+      bookmarks: { root: "workspace", bookmarklets: "none", writeBack: "vimma" },
       panel: { numbers: "absolute" },
       scroll: { step: 60 },
       private: { placement: "swap" },

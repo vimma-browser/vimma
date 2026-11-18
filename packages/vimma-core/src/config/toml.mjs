@@ -458,7 +458,7 @@ export function sameTomlValue(/** @type {unknown} */ a, /** @type {unknown} */ b
  * string, an array or an inline table, which a line edit cannot replace safely.
  * @param {string} line @param {number} i
  */
-function valueEnd(line, i) {
+export function valueEnd(line, i) {
   if (line.startsWith('"""', i) || line.startsWith("'''", i)) return -1;
   const c = line[i];
   if (c === "[" || c === "{") return -1;
