@@ -22,6 +22,7 @@ import {
   reloadConfig,
   resolveSourcePath,
 } from "../core/config.mjs";
+import { inlineBookmarkTables } from "../core/bookmarks-file.mjs";
 import { formatConfigTemplate } from "../core/defaults.mjs";
 import { editSiteUnbindText } from "../core/site-edit.mjs";
 import { updatesCheckAfterRead } from "../core/updates.mjs";
@@ -46,6 +47,7 @@ import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
 import { WorkspaceRouter } from "../workspaces/WorkspaceRouter.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
+import { BookmarksFileImpl } from "./BookmarksFile.sys.mjs";
 
 /** @import { ActiveConfig, ConfigError, ResolvedConfig } from "../core/config.mjs" */
 
@@ -120,6 +122,30 @@ const windows = new Set();
 let appliedToolbar = null;
 /** `[ui] pdf_outline` of the last config applied; null before the first. @type {string | null} */
 let appliedPdfOutline = null;
+/**
+ * `[bookmarks] bookmarklets` of the last config.toml read that applied, for the bookmarks.toml
+ * mirror. @type {import("../core/bookmarks.mjs").BookmarkletsSetting}
+ */
+let appliedBookmarklets = "none";
+/** @type {ConfigError[]} bookmarks.toml's errors and warnings (docs/specs/bookmarks-file.md) */
+let bookmarksErrors = [];
+
+/**
+ * bookmarks.toml beside config.toml (docs/specs/bookmarks-file.md): fed config.toml's text after
+ * each read and polled with it; its errors join the status bar's.
+ */
+const bookmarksFile = new BookmarksFileImpl({
+  configPath,
+  showErrors: (list) => {
+    bookmarksErrors = list.map((e) => ({
+      ...(e.line ? { line: e.line } : {}),
+      path: "",
+      message: e.message,
+      file: e.file,
+    }));
+    showErrors();
+  },
+});
 /** `[ui] tabline` of the last config applied, null before the first (tab-line decision 5). */
 let appliedTabline = /** @type {string | null} */ (null);
 
@@ -236,7 +262,7 @@ function report(path, list, kept, left = []) {
  */
 function showErrors() {
   VimmaHost.configure({
-    configErrors: [...errors, ...warnings, ...SearchHost.errors],
+    configErrors: [...errors, ...warnings, ...SearchHost.errors, ...bookmarksErrors],
     configFile: PathUtils.filename(errorsPath || configPath()),
   });
 }
@@ -246,9 +272,10 @@ SearchHost.onErrors = showErrors;
  * Applies `text` (the contents of `path`) when it is valid, else reports its errors.
  * @param {string} path
  * @param {string} text
+ * @param {ConfigError[]} [left]  more that an applied file leaves out
  * @returns {boolean} whether it was applied
  */
-function use(path, text) {
+function use(path, text, left = []) {
   const previous = active;
   const r = reloadConfig(active, text, { mac: Services.appinfo.OS === "Darwin" });
   active = r.active;
@@ -267,7 +294,7 @@ function use(path, text) {
   });
   VimmaUpdates.configure(updates);
   fallback = previous === null ? r.errors.length > 0 : fallback && r.errors.length > 0;
-  report(path, r.errors, previous !== null, r.warnings);
+  report(path, r.errors, previous !== null, [...r.warnings, ...(r.errors.length ? [] : left)]);
   return r.errors.length === 0;
 }
 
@@ -292,7 +319,11 @@ async function check(force) {
       signature = "missing"; // removed between stat and read: the defaults, silently
     }
   }
-  use(path, text);
+  const applied = use(path, text);
+  // Bookmarklets as the last config.toml that applied says (bookmarks-file D12, D13): a file
+  // with errors keeps the previous value, and `:source <file>` never reaches here.
+  if (applied) appliedBookmarklets = active?.config.bookmarks.bookmarklets ?? "none";
+  bookmarksFile.configRead(now === "missing" ? null : text, appliedBookmarklets);
 }
 
 /**
@@ -309,7 +340,14 @@ async function source(path) {
     report(path, [{ path: "", message: notFound(e) ? "no such file" : "cannot be read" }], true);
     return;
   }
-  if (use(path, text)) sourced = path;
+  // docs/specs/bookmarks-file.md Behaviour 6: a config tried out with `:source` never changes
+  // bookmarks, so its inline tables are left out, each with a warning.
+  const ignored = inlineBookmarkTables(text).map((t) => ({
+    line: t.line,
+    path: `bookmarks.${t.name}`,
+    message: "ignored: :source <file> does not change bookmarks",
+  }));
+  if (use(path, text, ignored)) sourced = path;
 }
 
 /**
@@ -451,6 +489,7 @@ function startTimer() {
   timer = lazy.setTimeout(() => {
     startTimer();
     poll();
+    bookmarksFile.tick().catch((e) => console.error("vimma: bookmarks.toml check failed", e));
   }, ms);
 }
 
@@ -487,6 +526,7 @@ function start(win) {
   Services.obs.addObserver(reloadObserver, CONFIG_RELOAD_TOPIC);
   Services.obs.addObserver(editObserver, CONFIG_EDIT_TOPIC);
   startTimer();
+  bookmarksFile.start();
   // Never blocks startup: the windows start on the built-in keymap and swap when read. The
   // first run's file, all comments, means the defaults: read after it either way.
   const created = firstRunBlocked() ? Promise.resolve() : firstRun(win);
@@ -496,6 +536,7 @@ function start(win) {
 }
 
 function stop() {
+  bookmarksFile.stop();
   if (timer !== null) lazy.clearTimeout(timer);
   timer = null;
   Services.prefs.removeObserver(PATH_PREF, onPref);
@@ -592,6 +633,23 @@ async function rewriteConfigNow(compute) {
 }
 
 export const ConfigHost = {
+  /** The bookmarks.toml mirror (docs/specs/bookmarks-file.md), for tests and about:vimma. */
+  bookmarksFile,
+
+  /**
+   * `:bookmarks forget` (docs/specs/bookmarks-file.md Behaviour 19), which vimma.js hands the
+   * host through host-services. A function of its own, so it can be handed over alone.
+   * @returns {Promise<string>} what to tell the user
+   */
+  bookmarksForget() {
+    return bookmarksFile.forget();
+  },
+
+  /** The words `:bookmarks` completes to: `forget` while the feature is on. */
+  bookmarksWords() {
+    return bookmarksFile.words();
+  },
+
   /**
    * The last read's errors, which kept the file from applying (`[search]`'s, found after it
    * applied, are not among them), and the file they are about: why the agent window has no model
@@ -639,6 +697,7 @@ export const ConfigHost = {
     await poll(true);
     // A read was running: ours was queued behind it.
     while (running) await running;
+    await bookmarksFile.tick(true);
   },
 
   /**

@@ -24,6 +24,16 @@ interface VimmaModules {
   };
   // engine/toolkit/components/places/PlacesUtils.sys.mjs
   "resource://gre/modules/PlacesUtils.sys.mjs": { PlacesUtils: PlacesUtilsApi };
+  // engine/browser/components/places/PlacesBrowserStartup.sys.mjs: set once Places' browser
+  // start-up (its restore included) is done and places-browser-init-complete was notified.
+  "moz-src:///browser/components/places/PlacesBrowserStartup.sys.mjs": {
+    PlacesBrowserStartup: {
+      readonly _placesBrowserInitComplete: boolean;
+      // For the browser tests; product code does not read these.
+      _placesInitialized: boolean;
+      initPlaces(): void;
+    };
+  };
   // engine/toolkit/modules/PrivateBrowsingUtils.sys.mjs
   "resource://gre/modules/PrivateBrowsingUtils.sys.mjs": {
     PrivateBrowsingUtils: LazyModules["PrivateBrowsingUtils"] & {

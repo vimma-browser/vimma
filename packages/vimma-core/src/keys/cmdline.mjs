@@ -144,7 +144,8 @@ export const COMMANDS = Object.freeze([
   cmd("toolbar", "optional", "toolbar.toggle", "Show / hide the toolbar (show | hide)"),
   // docs/specs/bookmarks.md: with a path, files the page without the prompt.
   cmd("bookmark", "optional", "bookmark.add", "Bookmark this page (optionally folders/title)"),
-  cmd("bookmarks", "none", "bookmarks.toggle", "Open / close the bookmarks panel"),
+  // docs/specs/bookmarks-file.md Behaviour 19: `:bookmarks forget` while bookmarks.toml is on.
+  cmd("bookmarks", "optional", "bookmarks.toggle", "Open / close the bookmarks panel"),
   // docs/specs/bookmark-open.md: one exact title opens; otherwise a picker with the text typed.
   // No short alias: `:bo` stays `:bookmark`, which it has abbreviated since that came.
   cmd("bookmarkopen", "optional", "bookmark.open", "Open a bookmark by title (without: picker)"),
@@ -556,6 +557,8 @@ const ARGUMENT_KINDS = Object.freeze({
   tabnew: { names: "search", kind: "search engine" },
   layout: { names: "layout", kind: "layout", fixed: LAYOUTS },
   private: { names: "private", kind: "private workspace", fixed: ["close"] },
+  // Only the words the host offers: `forget` while the bookmarks file feature is on.
+  bookmarks: { names: "bookmarksfile", kind: "bookmarks file" },
   // The two a first-time user reaches for, then back to following the system.
   theme: { names: "theme", kind: "appearance", fixed: ["dark", "light", "system"] },
   toolbar: { names: "toolbar", kind: "toolbar", fixed: TOOLBAR_WORDS },

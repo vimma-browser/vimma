@@ -35,6 +35,7 @@ import { formatPath, locateKeys, parsePath, parseToml, setTomlKeys, tomlLiteral 
 import { canonicalChord, isShortcutChord } from "../keys/firefox-keys.mjs";
 import { KeyNotationError, formatKey, parseKey } from "../keys/keys.mjs";
 import { BOOKMARKLETS_SETTINGS, BOOKMARKS_ROOTS } from "../ui/bookmarks.mjs";
+import { BOOKMARKS_SETTING_NAMES, inlineSettingNameMessage } from "./bookmarks-file.mjs";
 import { PANEL_NUMBERS } from "../ui/sidepanel.mjs";
 import { SCROLL_STEP_DEFAULT, SCROLL_STEP_MAX, SCROLL_STEP_MIN } from "../page/scroll.mjs";
 import { quarantineProblem, resolveDownloadDir } from "../agent/agent-downloads.mjs";
@@ -66,6 +67,8 @@ import { hasControl } from "../text/strings.mjs";
  * @property {string} path           config path (`keys.new_tab[1]`); "" for syntax errors
  * @property {string} message
  * @property {string} [suggestion]
+ * @property {string} [file]         the file it is in, when not the config file the list is about
+ *   (bookmarks.toml's errors, docs/specs/bookmarks-file.md)
  */
 
 /**
@@ -668,6 +671,13 @@ function validate(raw, declared, warnings = []) {
   if (declared >= 2 && isTable(raw.bookmarks)) {
     for (const [key, v] of Object.entries(raw.bookmarks)) {
       const path = ["bookmarks", key];
+      // An inline `[bookmarks.<workspace>]` table (docs/specs/bookmarks-file.md D2): its lines are
+      // the mirror's to check (config/bookmarks-file.mjs), so that a bad bookmark never stops the
+      // rest of config.toml; a table named after a setting cannot be one (Behaviour 8).
+      if (isTable(v)) {
+        if (BOOKMARKS_SETTING_NAMES.includes(key)) fail(path, inlineSettingNameMessage(key));
+        continue;
+      }
       if (!BOOKMARKS_KEYS.includes(key)) unknownKey(path, key, BOOKMARKS_KEYS);
       else if (typeof v !== "string") typeError(path, v, "a string");
       else if (key === "bookmarklets") {

@@ -40,3 +40,57 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`a workspace colour named after an Object member is an error, not a value`](../../packages/vimma-core/test/fuzz/config.fuzz.test.ts),
   [`a prototype member name is never a key or a modifier: constructor, toString, __proto__`](../../packages/vimma-core/test/fuzz/keys.fuzz.test.ts),
   [`nesting deeper than MAX_DEPTH, by dotted keys, headers or values, is refused at its line`](../../packages/vimma-core/test/toml.test.ts)
+- F6. `bookmarks.toml` beside `config.toml` (spec: [bookmarks-file](../specs/bookmarks-file.md),
+  read-only mirror, behind `vimma.feature.bookmarksFile`, off by default) is a file that may come
+  from someone else's repository, and it drives writes to Places from the parent's main thread.
+  Its values are URLs, never evaluated, and only `http`, `https`, `file`, `about`, and
+  `javascript:` behind the gate below; every other scheme (`data:`, `chrome:`, `resource:`,
+  `view-source:`, `blob:`, `jar:`, `place:`, …) is an error at its line. It **cannot** hold a
+  setting, so a shared or pulled file cannot allow bookmarklets (D12); a `javascript:` line
+  reaches Places only while the last `config.toml` that applied says `[bookmarks] bookmarklets =
+"user"` or `"agent"` (a file with errors, or one `:source <file>` loaded, does not count), because a bookmark in Places
+  runs from Firefox's own Library and toolbar (D13); with `"none"` the mirror neither adds,
+  changes nor removes a `javascript:` bookmark, at any depth, also when a table is removed.
+  Reading is bounded: a file over 4 MiB, or that is not a regular file (a FIFO would block the
+  queue), is not read, and it is read with a byte cap; at most 20,000 bookmarks and folders (the
+  folders paths make count) and 32 names per path; keys are built one level at a time and the walks over Places are iterative, so a 4 MiB
+  file of either worst shape reads and plans in bounded time. Names refuse control,
+  bidirectional and invisible characters; errors cut what they repeat to 80 characters; paths
+  and table names are kept in `Map`s, so a title such as `__proto__` is an ordinary title. A
+  file with an error, or a missing file (or a missing `config.toml` that held the tables), is
+  never applied: both directions pause (D9), until the file reads or `:bookmarks forget`. The
+  plan reaches only the tables' own folders: one claimed set across all tables, a base guid
+  reused only inside a mirrored folder, and a folder from the stored base
+  (`<profile>/vimma-bookmarks.json`, which a damaged or edited copy could point anywhere)
+  trusted only at the Bookmarks Toolbar's top, inside another table's folder there, or as the
+  workspace's own linked folder; bookmarks elsewhere are never read or written (Behaviour 21).
+  A run that would delete more than 20 bookmarks, or more than half of a table's, whether the
+  file dropped them or Sync and the Library added them, or any bookmark of a folder a table
+  takes over without a base (also after a new or restored Places database), asks y/N first;
+  the question never replaces an open prompt or command line nor opens while a page field has
+  the keys, and ignores keys for 1 s as it appears; no answer applies nothing, and a yes approves the removals it showed and no more.
+  Accepted risks until later slices: many small edits, each under the limits, are applied
+  without a question (each says what it removed); and two devices with different files and
+  Sync on both put each other's changes back at every sync (bookmarks-file decision 2b, which
+  stops this, comes with write-back; large put-backs still ask). Vimma never writes
+  `bookmarks.toml` in this slice; no control-socket or MCP command reads or writes it.
+  [`refuses data: URLs, relative URLs, non-string values, inline tables and nested tables at their line`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`refuses keys other than [bookmarks.<name>] tables in bookmarks.toml`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`refuses a file over 4 MiB without parsing it`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`titles __proto__ and constructor are ordinary titles`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`javascript: lines are skipped below bookmarklets = "user", and those already in Places are kept`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`parse never throws and an accepted file holds only valid lines`](../../packages/vimma-core/test/fuzz/bookmarks-file.fuzz.test.ts),
+  [`javascript_lines_wait_for_bookmarklets_and_data_lines_never_reach_places`](../../tests/browser/browser_vimma_bookmarks_file.js),
+  [`a_broken_file_pauses_both_ways_and_names_the_line`](../../tests/browser/browser_vimma_bookmarks_file.js),
+  [`a_missing_file_pauses_and_forget_turns_the_mirror_off`](../../tests/browser/browser_vimma_bookmarks_file.js),
+  [`a_large_deletion_asks_and_n_applies_nothing`](../../tests/browser/browser_vimma_bookmarks_file.js),
+  [`a_table_over_a_folder_with_bookmarks_asks_before_deleting_them`](../../tests/browser/browser_vimma_bookmarks_file.js),
+  [`bookmarks_outside_mirrored_folders_are_untouched`](../../tests/browser/browser_vimma_bookmarks_file.js),
+  [`allows only http, https, file and about, and javascript: behind the bookmarklets gate`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`a 4 MiB file of deep paths or of many folders reads and plans in bounded time`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`one claimed set: a workspace folder dragged into another table's folder is moved back, not deleted`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`a removed table keeps protected bookmarklets, also inside its folders`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`a base folder outside the toolbar's top that is not the workspace's is not trusted`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`outside additions put back count toward the large-deletion question`](../../packages/vimma-core/test/bookmarks-file.test.ts),
+  [`the_question_waits_for_the_command_line_and_ignores_an_early_key`](../../tests/browser/browser_vimma_bookmarks_file.js),
+  [`with_the_feature_pref_off_nothing_is_read_or_refused`](../../tests/browser/browser_vimma_bookmarks_file.js)

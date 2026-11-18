@@ -1798,6 +1798,15 @@ interface PlacesUtilsApi {
   /** The item and everything under it; null for a guid that names no item. */
   promiseBookmarksTree(guid?: string): Promise<PlacesTreeItem | null>;
   readonly bookmarks: PlacesBookmarksApi;
+  // engine/toolkit/components/places/nsINavHistoryService.idl: the database's state at this
+  // start (DATABASE_STATUS_OK, CREATE, CORRUPT, UPGRADED, LOCKED).
+  readonly history: {
+    readonly databaseStatus: number;
+    /** A new random Places guid (PlacesUtils.sys.mjs, history.makeGuid). */
+    makeGuid(): string;
+    readonly DATABASE_STATUS_CREATE: number;
+    readonly DATABASE_STATUS_CORRUPT: number;
+  };
   // engine/dom/base/PlacesObservers.cpp (PlacesObservers.webidl)
   readonly observers: {
     addListener(types: string[], listener: (events: unknown[]) => void): void;
@@ -1821,12 +1830,24 @@ interface PlacesBookmarkInfo {
   readonly url?: URL;
 }
 interface PlacesBookmarksApi {
+  readonly TYPE_BOOKMARK: number;
   readonly TYPE_FOLDER: number;
   readonly DEFAULT_INDEX: number;
+  /** Who made a change (Bookmarks.sys.mjs SOURCES), forwarded to observers. */
+  readonly SOURCES: {
+    readonly DEFAULT: number;
+    readonly SYNC: number;
+    readonly IMPORT: number;
+    readonly SYNC_REPARENT_REMOVED_FOLDER_CHILDREN: number;
+    readonly RESTORE: number;
+    readonly RESTORE_ON_STARTUP: number;
+  };
   /** The first bookmark that matches, null for none. */
   fetch(guidOrInfo: string | { url: string }): Promise<PlacesBookmarkInfo | null>;
   insert(info: {
     parentGuid: string;
+    guid?: string;
+    index?: number;
     type?: number;
     url?: string;
     title?: string;
@@ -1836,8 +1857,13 @@ interface PlacesBookmarksApi {
     parentGuid?: string;
     index?: number;
     title?: string;
+    url?: string;
   }): Promise<PlacesBookmarkInfo>;
-  remove(guid: string): Promise<unknown>;
+  remove(guid: string | { guid: string }[]): Promise<unknown>;
+  /** Inserts children (and their children) under an existing folder, appended, in one go. */
+  insertTree(tree: { guid: string; children: object[] }): Promise<unknown>;
+  /** Sets a folder's order; children the list leaves out follow in their order (:1800). */
+  reorder(parentGuid: string, orderedChildrenGuids: string[]): Promise<unknown>;
 }
 // engine/toolkit/modules/FinderParent.sys.mjs: the frame of the last match, null before one and
 // after close() forgets it.
