@@ -21,6 +21,7 @@ import { PageScroll } from "./page-scroll.mjs";
 import { GrepPage } from "./grep-page.mjs";
 import { AgentPage } from "./agent-page.mjs";
 import { asUserGesture } from "./user-gesture.mjs";
+import { dispatchAsPage } from "./page-events.mjs";
 
 /** @import { EditableDescriptor } from "../core/editable.mjs" */
 
@@ -220,7 +221,7 @@ export class VimmaChild extends JSWindowActorChild {
   /** The agent's page work in this frame (docs/specs/mcp-forms.md, mcp-checkpoints.md). */
   #agent = new AgentPage(this, {
     onPage: (el) => this.#onPage(el),
-    press: (el, still) => this.#press(el, still),
+    press: (el, still) => this.#press(el, still, { agent: true }),
     beforeSubmitCheck: () => this.#beforeSubmitCheck(),
   });
   /** Copy mode in this document (m1-copy-mode). */
@@ -986,15 +987,20 @@ export class VimmaChild extends JSWindowActorChild {
 
   /**
    * A click as the user's hints and an agent's `vimma_activate` make it: mouseover, mousedown
-   * and mouseup built with the page's constructor (untrusted), for pages that act on them (menus,
-   * Google's jsaction), then click(), which the page sees as trusted and whose activation
-   * behaviour follows links. It gives no transient user activation itself
-   * (docs/specs/mcp-forms.md F8): the user's hint wraps it in asUserGesture, an agent's never.
+   * and mouseup, for pages that act on them (menus, Google's jsaction), then click(), whose
+   * activation behaviour follows links. The user's hint dispatches the mouse events from this
+   * actor, so the page sees them trusted (EventDispatcher::DispatchDOMEvent stamps an event
+   * that system code dispatches), as it would a real press. An agent's are dispatched as the
+   * page's own script would (page-events.mjs; issue #1321), so they are untrusted: Gecko then
+   * neither focuses a link on the mousedown nor shows its URL in the user's window, and the
+   * page runs their listeners without "handling user input". click() is called by this actor
+   * in both cases, so the page sees a trusted click (mcp-forms F8). Neither gives transient
+   * user activation itself: the user's hint wraps the press in asUserGesture, an agent's never.
    * `still`: checked after the mouse events; when false, no click.
-   * @param {Element} el @param {() => boolean} [still]
+   * @param {Element} el @param {() => boolean} [still] @param {{ agent?: boolean }} [opts]
    * @returns {boolean} whether it clicked
    */
-  #press(el, still = () => true) {
+  #press(el, still = () => true, { agent = false } = {}) {
     // A page this process has replaced since (#onPage): nothing to press.
     const win = this.contentWindow;
     if (!win || !this.#onPage(el)) return false;
@@ -1009,10 +1015,11 @@ export class VimmaChild extends JSWindowActorChild {
       clientY: r.top + r.height / 2,
       button: 0,
     };
-    for (const type of ["mouseover", "mousedown", "mouseup"]) {
-      const buttons = type === "mousedown" ? 1 : 0;
-      el.dispatchEvent(new win.MouseEvent(type, { ...init, buttons }));
-    }
+    const events = ["mouseover", "mousedown", "mouseup"].map(
+      (type) => new win.MouseEvent(type, { ...init, buttons: type === "mousedown" ? 1 : 0 }),
+    );
+    if (agent) dispatchAsPage(el, events);
+    else for (const event of events) el.dispatchEvent(event);
     if (!this.#onPage(el) || !still()) return false;
     // SVG elements have no click(): dispatch the click event for them.
     if (typeof html.click === "function") html.click();

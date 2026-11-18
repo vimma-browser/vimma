@@ -28,6 +28,7 @@ const DIR = getRootDirectory(gTestPath).replace(
   "https://example.com",
 );
 const PAGE = DIR + "file_vimma_hints_activation.html";
+const PRESS = DIR + "file_vimma_agent_press.html";
 
 add_task(async function setup() {
   await SpecialPowers.pushPrefEnv({
@@ -44,11 +45,11 @@ add_task(async function setup() {
 });
 
 /**
- * Opens the fixture in a new tab with content focus in normal mode, then runs `fn`.
- * @param {(browser: XULBrowserElement) => Promise<void>} fn
+ * Opens a fixture in a new tab with content focus in normal mode, then runs `fn`.
+ * @param {(browser: XULBrowserElement) => Promise<void>} fn @param {string} [url]
  */
-async function withPage(fn) {
-  await BrowserTestUtils.withNewTab(PAGE, async (browser) => {
+async function withPage(fn, url = PAGE) {
+  await BrowserTestUtils.withNewTab(url, async (browser) => {
     await focusContent(browser);
     await TestUtils.waitForCondition(
       () => VimmaHost._browserMode(browser) === "normal",
@@ -248,4 +249,31 @@ add_task(async function an_agent_click_on_the_same_button_gets_no_activation() {
     );
     Assert.equal(gesture, false, "the document was never activated");
   });
+});
+
+add_task(async function a_hint_presses_with_the_users_trusted_mouse_events() {
+  // Issue #1321 makes only the agent's mouse events untrusted: the user's own hint keeps them
+  // trusted, as a real press would be, for pages that check.
+  await withPage(async (browser) => {
+    await hint(browser, "press");
+    const events = () =>
+      SpecialPowers.spawn(browser, [], () =>
+        JSON.parse(JSON.stringify(content.wrappedJSObject.events)),
+      );
+    await TestUtils.waitForCondition(
+      async () => (await events()).some((/** @type {{ type: string }} */ e) => e.type === "click"),
+      "the button was clicked",
+    );
+    const got = /** @type {{ id: string, type: string, trusted: boolean }[]} */ (await events());
+    Assert.deepEqual(
+      got.filter((e) => e.type !== "focus" && e.type !== "blur").map((e) => [e.type, e.trusted]),
+      [
+        ["mouseover", true],
+        ["mousedown", true],
+        ["mouseup", true],
+        ["click", true],
+      ],
+      "the page saw the user's press as trusted",
+    );
+  }, PRESS);
 });

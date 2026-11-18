@@ -819,9 +819,16 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_console_returns_uncaught_errors_and_console_errors`](../../tests/browser/browser_vimma_mcp_console.js),
   [`test_console_only_of_agent_tabs_and_web_pages`](../../tests/browser/browser_vimma_mcp_console.js)
 - M26. An agent's click (`agent-activate`, mcp-forms F8) **must** be the frame's child calling
-  the element's `click()` after the same untrusted `mouseover`, `mousedown` and `mouseup` your
-  `f` hints send, with no event through `nsIDOMWindowUtils` or the widget, so the page gets no
-  transient user activation: it cannot write or read the clipboard, use credentials or passkeys,
+  the element's `click()` after `mouseover`, `mousedown` and `mouseup` that it dispatches as the
+  page's own script would, through the page's own `dispatchEvent` with Xrays waived, so that the
+  call runs in the page's realm (`actors/page-events.mjs`, issue #1321), with no event through
+  `nsIDOMWindowUtils` or the widget. The page sees those
+  three events untrusted, so Gecko runs none of a real press's link handling on them: the link
+  takes no focus, its address shows in none of your windows' link previews, and the page's
+  listeners of them do not run as "handling user input". Your own `f` hints dispatch the same
+  events from the child itself, which Firefox marks trusted for system code
+  (`EventDispatcher::DispatchDOMEvent`), as a real press of yours would be. The `click()` is
+  trusted for both. The page gets no transient user activation from an agent's click: it cannot write or read the clipboard, use credentials or passkeys,
   or start anything else that needs a real gesture. Vimma **never** gives an agent tab's
   document user activation on an agent's behalf. Your own `f` hints do give the page your
   activation, as your click would (issue #1303): the child wraps the press in
@@ -859,6 +866,8 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   element's frame has settled (M28), after the submission allowance of M28 is closed, so it opens
   nothing; a submission the page tries during the call is still stopped and named.
   [`test_activate_gives_the_page_no_user_activation`](../../tests/browser/browser_vimma_mcp_activate.js),
+  [`test_activate_presses_with_untrusted_mouse_events`](../../tests/browser/browser_vimma_mcp_activate.js),
+  [`a_hint_presses_with_the_users_trusted_mouse_events`](../../tests/browser/browser_vimma_hints_activation.js),
   [`test_activate_says_what_changed_in_place`](../../tests/browser/browser_vimma_mcp_activate_changes.js),
   [`activate_says_what_changed_in_place`](../../tools/vimma-ctl/src/mcp/render.rs),
   [`agent-activate: what changed in place, from a fixed list`](../../packages/vimma-core/test/control-v2.test.ts),

@@ -161,6 +161,10 @@ href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. B
   (`isHandlingUserInput`), so a hinted button that focuses a field enters insert, also after
   `Esc` (insert-focus decision 6), as a mouse click on it does. That was already so before the
   activation: a trusted `click()` from the child runs its listeners in that state.)
+  (Since changed: an agent's press through the same child, mcp-forms F8, dispatches the three
+  mouse events through the page's own `dispatchEvent`, so the page sees them untrusted and a
+  link takes no focus and shows no address in the user's window from them. A label the user
+  types keeps them trusted, as described here. Issue #1321.)
 - **`F`.** Links only (`a[href]`). The parent opens `href` with `openLinkIn(url, "tab",
 { inBackground: true })`, as the context menu's "Open Link in New Tab" does: the frame's
   document principal triggers the load, after `checkLoadURIWithPrincipal`, so a page cannot

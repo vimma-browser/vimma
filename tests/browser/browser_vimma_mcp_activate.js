@@ -15,6 +15,7 @@
 /* global focusContent -- from head.js */
 /* global Client, tidyTask -- from head_vimma_control.js */
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
+/* global XULBrowserWindow -- the browser window (browser.js) */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
 // Every click and submission now also asks each frame of the tab for card fields and the
@@ -52,6 +53,7 @@ const DIR = getRootDirectory(gTestPath).replace(
 );
 const CLICK = `${DIR}file_vimma_agent_click.html`;
 const PAGE = `${DIR}file_vimma_agent_page.html`;
+const PRESS = `${DIR}file_vimma_agent_press.html`;
 const NOTICE_ID = "vimma-notice";
 const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
 
@@ -235,6 +237,56 @@ addTidyTask(async function test_activate_gives_the_page_no_user_activation() {
   Assert.equal(page.seen[0].beenActive, false, "the page was never activated");
   Assert.equal(page.seen[0].clipboard, "refused", "so it cannot write the clipboard");
   Assert.equal(page.gesture, false, "the document has no valid transient activation");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+/** What the press fixture's elements got, in order. @param {MozTabbrowserTab} tab */
+const pressEvents = (tab) =>
+  SpecialPowers.spawn(tab.linkedBrowser, [], () => ({
+    events: /** @type {{ id: string, type: string, trusted: boolean }[]} */ (
+      JSON.parse(JSON.stringify(content.wrappedJSObject.events))
+    ),
+    focused: content.document.activeElement?.id ?? "",
+  }));
+
+addTidyTask(async function test_activate_presses_with_untrusted_mouse_events() {
+  // Issue #1321: the mouse events before an agent's click are the page's own script's, so the
+  // page sees them untrusted, and Gecko runs none of a trusted press's link handling on them:
+  // the link takes no focus and the user's window shows no URL of the agent's hidden tab.
+  await mcp(true);
+  const tab = await openAgentTab(PRESS);
+  await focusContent(gBrowser.selectedBrowser);
+  XULBrowserWindow.setOverLink("");
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  for (const [name, id] of [
+    ["Stay link", "stay"],
+    ["Press me", "press"],
+  ]) {
+    const r = await activate(c, tab, by[name]);
+    Assert.ok(r.ok, `${name}: the click ran`);
+    await until(
+      async () => (await pressEvents(tab)).events.some((e) => e.id === id && e.type === "click"),
+      `${name}: the page saw the click`,
+    );
+    const page = await pressEvents(tab);
+    const got = page.events.filter((e) => e.id === id);
+    Assert.deepEqual(
+      got.map((e) => [e.type, e.trusted]),
+      [
+        ["mouseover", false],
+        ["mousedown", false],
+        ["mouseup", false],
+        ["click", true],
+      ],
+      `${name}: untrusted mouse events, then the trusted click, and no focus`,
+    );
+    Assert.equal(page.focused, "", `${name}: nothing in the page took focus`);
+    Assert.equal(XULBrowserWindow.overLink, "", `${name}: the user's window shows no link URL`);
+  }
+  Assert.equal(tab.linkedBrowser.currentURI.spec, PRESS, "the page handled the link itself");
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);

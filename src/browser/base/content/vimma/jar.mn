@@ -71,6 +71,7 @@ browser.jar:
         content/browser/vimma/actors/grep-page.mjs        (actors/grep-page.mjs)
         content/browser/vimma/actors/agent-page.mjs       (actors/agent-page.mjs)
         content/browser/vimma/actors/user-gesture.mjs     (actors/user-gesture.mjs)
+        content/browser/vimma/actors/page-events.mjs      (actors/page-events.mjs)
         content/browser/vimma/actors/pdf-view.mjs         (actors/pdf-view.mjs)
         content/browser/vimma/actors/page-scroll.mjs      (actors/page-scroll.mjs)
         content/browser/vimma/host/pdf-ops.mjs            (host/pdf-ops.mjs)

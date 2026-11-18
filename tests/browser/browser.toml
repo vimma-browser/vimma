@@ -52,7 +52,7 @@ support-files = [
 support-files = ["file_vimma_hints.html"]
 
 ["browser_vimma_hints_activation.js"]
-support-files = ["file_vimma_hints_activation.html"]
+support-files = ["file_vimma_agent_press.html", "file_vimma_hints_activation.html"]
 
 ["browser_vimma_element.js"]
 support-files = [
@@ -285,6 +285,7 @@ support-files = [
 support-files = [
   "file_vimma_agent_click.html",
   "file_vimma_agent_page.html",
+  "file_vimma_agent_press.html",
   "head_vimma_control.js",
 ]
 

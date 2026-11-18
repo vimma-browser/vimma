@@ -175,6 +175,12 @@ export default [
     languageOptions: { globals: { Cu: "readonly" } },
   },
   {
+    // An agent's press dispatches its mouse events through the page's own dispatchEvent with
+    // Xrays waived, so the page sees them untrusted (docs/security/12-agents-mcp.md M26; #1321).
+    files: ["src/**/vimma/actors/page-events.mjs"],
+    languageOptions: { globals: { Cu: "readonly" } },
+  },
+  {
     // The PDF viewer's adapter waives Xrays on pdf.js's application object after its principal
     // check and hands it exported callbacks (docs/security/20-pdf-viewer.md section 20, V1 and V3).
     files: ["src/**/vimma/actors/pdf-view.mjs"],
