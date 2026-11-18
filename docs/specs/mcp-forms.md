@@ -405,6 +405,10 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
    through `sendMouseEvent`, because it is indistinguishable from the user's own press and would
    hand the page the user's activation; untrusted `click` events only, because most pages ignore
    them and links do not follow them.
+   (Since changed: the user's own hints no longer share this. A label the user types gives the
+   page their activation, through `Vimma:ActivateHint`, which only the parent sends for a key
+   typed in chrome; an agent's click reaches the same press through `Vimma:AgentElement`, which
+   has no way to ask for activation. Issue #1303.)
 9. **What it will not click.** Refused before anything is asked, naming the label and the
    reason: a text field, text area, select or editable root (`use vimma_fill`); a file field
    (it would open a file chooser for the user, and `setUserInput` from system code can set a

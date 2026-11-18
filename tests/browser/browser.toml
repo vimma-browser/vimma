@@ -51,6 +51,9 @@ support-files = [
 ["browser_vimma_hints_wizard.js"]
 support-files = ["file_vimma_hints.html"]
 
+["browser_vimma_hints_activation.js"]
+support-files = ["file_vimma_hints_activation.html"]
+
 ["browser_vimma_element.js"]
 support-files = [
   "file_vimma_element.html",
