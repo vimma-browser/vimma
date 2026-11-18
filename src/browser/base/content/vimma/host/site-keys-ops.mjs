@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// `:siteunbind` and `:sitebind` (docs/specs/site-unbind-command.md; security.md K12): keys the
+// `:siteunbind` and `:sitebind` (docs/specs/site-unbind-command.md; security.md K13): keys the
 // selected tab's site gets instead of Vimma, until restart or, with `--save`, in config.toml.
 // Core reads the arguments and picks the `[sites]` table; the keys until restart live here, one
 // list for every window, and reach the keymap through VimmaHost, which compiles them into the

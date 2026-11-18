@@ -660,7 +660,9 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
 /**
  * `keymap` with more keys given to the page per table (`:siteunbind` until restart,
  * docs/specs/site-unbind-command.md decision 4): each table's keys join the file's list for it,
- * or make a table of their own, so that they follow the file's rules exactly.
+ * or make a table of their own, so that they follow the file's rules exactly. A key that
+ * config.toml has since made the prefix (or that this keymap refuses for another reason) is
+ * left out, so a reload of config.toml never fails on a key given earlier.
  * @param {Keymap} keymap  config.toml's
  * @param {ReadonlyMap<string, readonly string[]>} extra  canonical keys by table
  * @returns {Keymap}
@@ -670,7 +672,9 @@ export function withSiteUnbinds(keymap, extra) {
   const { user, mac } = keymap.source;
   /** @type {NonNullable<UserConfig["sites"]>} */
   const sites = { ...user.sites };
-  for (const [table, keys] of extra) {
+  for (const [table, all] of extra) {
+    const keys = all.filter((k) => keymap.siteKey(k).ok);
+    if (keys.length === 0) continue;
     const had = Object.hasOwn(sites, table) ? sites[table] : undefined;
     sites[table] = { ...had, unbind: [...(had?.unbind ?? []), ...keys] };
   }

@@ -224,14 +224,24 @@ export function editSiteUnbindText(text, table, { add = [], remove = [] }, { mac
         const lastEl = scan.elements[scan.elements.length - 1];
         if (!lastEl) {
           out = `${out.slice(0, open + 1)}${literals.join(", ")}${out.slice(open + 1)}`;
-        } else if (lastEl.comma < 0) {
-          out = `${out.slice(0, lastEl.end)}, ${literals.join(", ")}${out.slice(lastEl.end)}`;
-        } else if (out.slice(lastEl.comma, scan.end).includes("\n")) {
-          // A list written one key a line gets one key a line, indented as its last.
+        } else if (out.slice(open, scan.end).includes("\n")) {
+          // A list written one key a line gets one key a line, indented as its last, after the
+          // end of the last key's line so that a comment there stays on its key; a trailing
+          // comma is kept or left out as the list has it.
           const from = out.lastIndexOf("\n", lastEl.start) + 1;
           const indent = /^[ \t]*/.exec(out.slice(from))?.[0] ?? "";
-          const more = literals.map((l) => `${eol}${indent}${l},`).join("");
-          out = `${out.slice(0, lastEl.comma + 1)}${more}${out.slice(lastEl.comma + 1)}`;
+          const trailing = lastEl.comma >= 0;
+          const tail = trailing ? lastEl.comma + 1 : lastEl.end;
+          let at = out.indexOf("\n", tail);
+          const close = scan.end - 1;
+          if (at < 0 || at > close) at = close;
+          else if (out[at - 1] === "\r") at--;
+          const more = literals.map((l) => `${eol}${indent}${l}`).join(",");
+          const lead = trailing ? "" : ",";
+          const end = trailing ? "," : "";
+          out = `${out.slice(0, tail)}${lead}${out.slice(tail, at)}${more}${end}${out.slice(at)}`;
+        } else if (lastEl.comma < 0) {
+          out = `${out.slice(0, lastEl.end)}, ${literals.join(", ")}${out.slice(lastEl.end)}`;
         } else {
           const more = literals.map((l) => ` ${l},`).join("");
           out = `${out.slice(0, lastEl.comma + 1)}${more}${out.slice(lastEl.comma + 1)}`;
@@ -252,7 +262,9 @@ export function editSiteUnbindText(text, table, { add = [], remove = [] }, { mac
   else delete expTable.unbind;
   const after = parseToml(out);
   if (!after.ok) return leftAlone;
-  if (!(table in /** @type {Record<string, unknown>} */ (after.value.sites ?? {}))) {
+  // The table may be gone only when this edit emptied it; any other loss fails the comparison.
+  const emptied = want.length === 0 && Object.keys(expTable).length === 0;
+  if (emptied && !(table in /** @type {Record<string, unknown>} */ (after.value.sites ?? {}))) {
     delete expSites[table];
     if (Object.keys(expSites).length === 0 && !("sites" in after.value)) delete expected.sites;
   }

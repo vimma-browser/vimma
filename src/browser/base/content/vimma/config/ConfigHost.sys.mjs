@@ -505,7 +505,24 @@ function stop() {
  * @param {(text: string | null) => R | { error: string }} compute
  * @returns {Promise<R | { error: string }>}
  */
-async function rewriteConfig(compute) {
+function rewriteConfig(compute) {
+  // One edit at a time: two that read the same text would both pass the check below, and the
+  // second rename would drop the first edit after both said they were written.
+  const run = rewriteQueue.then(() => rewriteConfigNow(compute));
+  rewriteQueue = run.catch(() => {});
+  return run;
+}
+
+/** @type {Promise<unknown>} */
+let rewriteQueue = Promise.resolve();
+
+/**
+ * rewriteConfig's edit, run alone.
+ * @template {{ text: string | null }} R
+ * @param {(text: string | null) => R | { error: string }} compute
+ * @returns {Promise<R | { error: string }>}
+ */
+async function rewriteConfigNow(compute) {
   const path = configPath();
   /** @type {string | null} */
   let text = null;
@@ -543,8 +560,11 @@ async function rewriteConfig(compute) {
     if (!(await IOUtils.exists(dir))) {
       await IOUtils.makeDirectory(dir, { createAncestors: true, permissions: DIR_MODE });
     }
-    await IOUtils.writeUTF8(tmp, r.text, { mode: "create" });
+    // Empty and with the file's permissions before the text goes in, so that a 0600
+    // config.toml is never readable more widely, even for a moment.
+    await IOUtils.writeUTF8(tmp, "", { mode: "create" });
     await IOUtils.setPermissions(tmp, before ? before.permissions : FILE_MODE, false);
+    await IOUtils.writeUTF8(tmp, r.text, { mode: "overwrite" });
     // The file's text as well as its time: an edit within the time's resolution changes it.
     const now = await IOUtils.readUTF8(target).catch(() => null);
     const stat = await IOUtils.stat(target).catch(() => null);

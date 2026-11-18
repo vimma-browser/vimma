@@ -211,8 +211,12 @@ add_task(async function a_config_toml_with_errors_is_never_written() {
 add_task(async function a_private_window_does_not_save() {
   const win = await BrowserTestUtils.openNewBrowserWindow({ private: true });
   try {
-    const tab = await BrowserTestUtils.openNewForegroundTab(win.gBrowser, PAGE);
-    await focusContent(tab.linkedBrowser);
+    const browser = win.gBrowser.selectedBrowser;
+    BrowserTestUtils.startLoadingURIString(browser, PAGE);
+    await BrowserTestUtils.browserLoaded(browser, false, PAGE);
+    // focusContent asserts against this test window's focus; the private window has its own.
+    await SimpleTest.promiseFocus(win);
+    await SimpleTest.promiseFocus(browser);
     await TestUtils.waitForCondition(
       () => VimmaHost.status(win).mode === "normal",
       "the private page is in normal mode",
@@ -223,7 +227,7 @@ add_task(async function a_private_window_does_not_save() {
     EventUtils.sendString("siteunbind --save t", win);
     EventUtils.synthesizeKey("KEY_Enter", {}, win);
     const text = () => win.document.getElementById("vimma-notice")?.textContent ?? "";
-    await TestUtils.waitForCondition(() => text() !== "", "a notice");
+    await TestUtils.waitForCondition(() => text().startsWith(":siteunbind --save:"), "the refusal");
     Assert.equal(
       text(),
       ":siteunbind --save: not from a private window, whose sites stay off disk; " +

@@ -208,6 +208,15 @@ describe("keys until restart", () => {
     expect(base.siteTables()).toEqual(["github.com"]);
   });
 
+  test("a temporary key config.toml has since made the prefix is dropped, not an error", () => {
+    const base = keymapOf(v2("[keys]", 'prefix = "ctrl+k"'));
+    const temp = createTemporarySiteUnbinds();
+    temp.add("github.com", ["ctrl+k", "t"]);
+    const k = withSiteUnbinds(base, temp.entries());
+    expect(k.siteKeys("github.com")).toEqual(["t"]);
+    expect(on(k, "github.com", "t")).toBeUndefined();
+  });
+
   test("remove ends the temporary keys only, and drops an empty table", () => {
     const temp = createTemporarySiteUnbinds();
     temp.add("github.com", ["t", "g"]);
@@ -352,6 +361,21 @@ describe("config.toml", () => {
       v2('[sites."github.com"]', "unbind = [", '  "g", # go to', '  "x",', "]"),
     );
     expect(unbindOf(removed.text, "github.com")).toEqual(["g", "x"]);
+  });
+
+  test("a comment on the last key stays on that key", () => {
+    const text = v2('[sites."github.com"]', "unbind = [", '  "g",', '  "x",  # x key', "]");
+    const r = written(edit(text, "github.com", { add: ["t"] }));
+    expect(r.text).toBe(
+      v2('[sites."github.com"]', "unbind = [", '  "g",', '  "x",  # x key', '  "t",', "]"),
+    );
+  });
+
+  test("a multi-line list without a trailing comma still gets one key a line", () => {
+    const text = v2('[sites."github.com"]', "unbind = [", '  "g",', '  "x"', "]");
+    const r = written(edit(text, "github.com", { add: ["t"] }));
+    expect(r.text).toBe(v2('[sites."github.com"]', "unbind = [", '  "g",', '  "x",', '  "t"', "]"));
+    expect(unbindOf(r.text, "github.com")).toEqual(["g", "x", "t"]);
   });
 
   test("nothing new writes nothing", () => {

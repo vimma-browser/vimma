@@ -1056,7 +1056,16 @@ export const VimmaHost = {
     if (next.configFile) settings.configFile = next.configFile;
     const base = next.keymap && next.keymap !== settings.baseKeymap ? next.keymap : null;
     if (base) settings.baseKeymap = base;
-    // The keys `:siteunbind` gave until restart stay through a reload of config.toml.
+    // The keys `:siteunbind` gave until restart stay through a reload of config.toml, but for
+    // a key the new file made the prefix (withSiteUnbinds leaves it out) or now saves for the
+    // same table: those end, so a key is never listed as both.
+    if (base) {
+      for (const [table, keys] of TemporarySiteUnbinds.entries()) {
+        const saved = base.siteKeys(table);
+        const gone = keys.filter((k) => !base.siteKey(k).ok || saved.includes(k));
+        if (gone.length) TemporarySiteUnbinds.remove(table, gone);
+      }
+    }
     const keymap =
       base || next.siteUnbinds
         ? withSiteUnbinds(this.baseKeymap(), TemporarySiteUnbinds.entries())
