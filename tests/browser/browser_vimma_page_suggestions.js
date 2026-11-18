@@ -497,7 +497,8 @@ add_task(async function with_no_list_open_the_keys_binding_runs() {
 
 // Issue #1261: with no list open, ctrl+j stays the field's Enter (key-handling-batch § 2) and
 // ctrl+k, which has no Vimma binding in a text field, only reaches the page: no arrow key, no
-// web search. On macOS ctrl+k is Cocoa's deleteToEndOfParagraph: in a field, and the field keeps it.
+// web search. On macOS ctrl+k is Cocoa's deleteToEndOfParagraph: in a field, and the field keeps
+// it.
 add_task(async function with_no_list_open_ctrl_j_is_enter_and_ctrl_k_is_the_pages() {
   await BrowserTestUtils.withNewTab(COMBO, async (browser) => {
     await focusContent(browser);
@@ -589,7 +590,8 @@ for (const [down, up] of [
 }
 
 // Chrome fields keep their keys (decision 6 of the spec's Behaviour, item 6): in the address bar
-// with its results closed, ctrl+p prints as before (on macOS it is the address bar's own key, as before too), and ctrl+n
+// with its results closed, ctrl+p prints as before (on macOS it is the address bar's own key, as
+// before too), and ctrl+n
 // opens no window (decision 7).
 add_task(async function the_address_bar_keeps_ctrl_n_and_ctrl_p() {
   await withPrintRecorder(async (prints) => {

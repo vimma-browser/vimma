@@ -1635,7 +1635,9 @@ enable = []
 
 - **`disable`** is `"all"` by default: every Firefox shortcut, function and plain keys (`F5`,
   `Esc`) included. A list replaces it: then only the keys on the list are off. A Firefox shortcut on a key Vimma binds
-  is off whatever the list says (`disable = []` gives back only the ones Vimma does not bind).
+  is off whatever the list says (`disable = []` gives back only the ones Vimma does not bind;
+  `ctrl+j` is bound in insert mode too, as a suggestion key, so `web_search = []` alone does not
+  free it: add `[unbind] insert = ["<C-j>"]`, or use `enable`).
   `"all"` leaves the text keys the field itself runs (`ctrl+c`, `ctrl+v`, `ctrl+z`, `ctrl+a`)
   and the menu bar (`alt+letter`, `F10`).
 - **`enable`** gives a key back to Firefox exactly as Firefox runs it: Vimma's default bindings
