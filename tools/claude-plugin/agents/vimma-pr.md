@@ -48,6 +48,8 @@ What applies to you as a subagent:
   instead of re-running.
 - Running Vimma: unset `WAYLAND_DISPLAY` and use Xvfb only, so no window reaches the desktop.
 - vimma-site design changes: show a local preview before any push.
+- Do the manual checks yourself before reporting: every item a person would try, run in your
+  lane's build, with the result. Do not hand the maintainer a check you could have run.
 
 ## Report
 
@@ -62,8 +64,10 @@ TDD:
   green: <command> -> <the passing summary>
 Screenshots: <absolute path of the folder looked at, or "none: no UI change">
 CHANGELOG: <proposed line for [Unreleased], or "none: not user-visible">
-Manual testing (only what an agent cannot verify; time estimate and recommendation):
-  - [ ] <what to try, the fastest way to run it, what to look for>
+Manual checks done (in the build, by you):
+  - <what you tried, how (e2e scenario, send-keys, site, vimma-ctl mcp), what you saw: PASS/FAIL>
+Left for the maintainer (only what you could not do after trying; why; time; recommendation):
+  - [ ] <what to try, the fastest way to run it, what to look for> (or "none")
 CI re-runs: <job and why, or "none">
 Cleanup: <lane, worktree and branch removed, or what is left and why>
 ```

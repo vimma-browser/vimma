@@ -196,7 +196,11 @@ labels`). An item with the other machine's label is not yours: do not push to it
 1. One item per branch. Start from the latest `origin/main`.
 2. Red test, fix, green test (keep both outputs). Docs and the spec change in the same branch.
 3. **Verify in a real build**: the lane's artifact build, or a full build when `*.patch`, C++,
-   `moz.build`, `configs/`, `moz.configure` or branding change (report that run, ADR-010). Use the change as a user would; unit tests and CI alone are not enough. UI
+   `moz.build`, `configs/`, `moz.configure` or branding change (report that run, ADR-010). Use the change as a user would; unit tests and CI alone are not enough.
+   Run the manual checks yourself before you report: write down what a person would try, then
+   do each item in the build (throwaway e2e scenarios, `vimma-ctl send-keys`, real public sites
+   when the change depends on page behaviour, and for agent tools `vimma-ctl mcp` over stdio,
+   quoting the exact reply text). Report each check with what you saw. UI
    changes get screenshots, and every image is looked at, with the Omarchy theme
    (`vimma.theme.source=omarchy`, `vimma.theme.omarchyPath=~/.local/state/omarchy/current/theme`)
    and in a stock theme. Check that every Vimma and Firefox surface the change touches follows the
@@ -238,8 +242,9 @@ End each item with a short report: the item; the outcome (merged as #N at a comm
 and why); red and green test evidence; the screenshots looked at; CI re-runs; anything only the
 maintainer can do or decide; the cleanup done.
 
-Hand the maintainer only what an agent cannot verify (real window-manager behaviour, their own
-theme and profile, real sites and logins, feel and focus), as a short checklist with the fastest
+List the manual checks you ran and what you saw. Hand the maintainer only what an agent cannot
+verify after trying (macOS, real window-manager behaviour, their own profile and logins, input the
+e2e driver cannot send, feel), with why it could not be done, as a short checklist with the fastest
 way to run it, a time estimate and a recommendation (merge now, or test X first). When a
 git-ignored `TESTING.md` exists in the primary checkout, add those items there.
 
