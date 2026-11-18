@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest";
 import {
   BOOKMARKS_FILE,
   MAX_BOOKMARKS_FILE_BYTES,
+  configBookmarklets,
   formatBase,
   formatBookmarksFileError,
   inlineBookmarkTables,
@@ -163,8 +164,7 @@ function plan(input: Partial<PlanInput> & Pick<PlanInput, "tables" | "places">) 
     base: null,
     workspaces: [],
     bookmarklets: "none",
-    confirmed: false,
-    fresh: false,
+    approved: null,
     makeGuid,
     ...input,
   });
@@ -175,7 +175,7 @@ function mirror(input: Partial<PlanInput> & Pick<PlanInput, "tables" | "places">
   const p = plan(input);
   expect(p.ask).toBeNull();
   const after = applyOps(input.places, p.ops as Op[]);
-  const again = plan({ ...input, places: after, base: p.base, confirmed: false });
+  const again = plan({ ...input, places: after, base: p.base, approved: null });
   expect(again.ops).toEqual([]);
   expect(again.ask).toBeNull();
   return { plan: p, places: after };
@@ -505,7 +505,6 @@ describe("bookmarks.toml: the mirror's plan", () => {
     const base = {
       version: 1,
       source: "bookmarks.toml",
-      hash: "",
       tables: [
         {
           name: "work",
@@ -516,8 +515,14 @@ describe("bookmarks.toml: the mirror's plan", () => {
         },
       ],
     } as const;
-    // The base's folder, wherever it is now: moved back to the toolbar and renamed back.
-    const p1 = plan({ tables, places: elsewhere, base: structuredClone(base) as never });
+    // The base's folder, wherever it is now, while it is the workspace's linked folder: moved
+    // back to the toolbar and renamed back.
+    const p1 = plan({
+      tables,
+      places: elsewhere,
+      base: structuredClone(base) as never,
+      workspaces: [{ name: "work", folder: "moved0000001" }],
+    });
     expect(p1.base.tables[0]!.folder).toBe("moved0000001");
     expect(p1.ops).toContainEqual({
       op: "update",
@@ -692,7 +697,7 @@ describe("bookmarks.toml: the mirror's plan", () => {
         '"Guide (2)" = "https://example.com/g2"',
       ].join("\n"),
     );
-    const { plan: p } = mirror({ tables, places: tree, confirmed: true });
+    const { plan: p } = mirror({ tables, places: tree, approved: 1000 });
     // The second of each is read as `title (2)`, matches its line, and is renamed to it.
     expect(p.ops).toContainEqual({ op: "update", guid: "docs00000002", title: "docs (2)" });
     expect(p.ops).toContainEqual({ op: "update", guid: "dupa00000002", title: "Guide (2)" });
@@ -714,9 +719,14 @@ describe("bookmarks.toml: the mirror's plan", () => {
     const node = topFolder(moved, "work")!;
     toolbarOf(moved).children = [];
     moved.children![0]!.children!.push(node);
-    expect(plan({ tables, places: moved, base: first.plan.base }).ops).toEqual([
-      { op: "update", guid: f, parentGuid: PLACES_ROOTS.toolbar },
-    ]);
+    expect(
+      plan({
+        tables,
+        places: moved,
+        base: first.plan.base,
+        workspaces: [{ name: "work", folder: f }],
+      }).ops,
+    ).toEqual([{ op: "update", guid: f, parentGuid: PLACES_ROOTS.toolbar }]);
     // Deleted: made again from the file, with nothing to ask.
     const gone = plan({ tables, places: places(), base: first.plan.base });
     expect(gone.ask).toBeNull();
@@ -793,7 +803,7 @@ describe("bookmarks.toml: the mirror's plan", () => {
     // A file that adds and removes around them: separators appear only in a reorder's list,
     // never as an insert, a move or a removal.
     const more = tablesOf('[bookmarks.work]\n"a" = "https://example.com/a"');
-    const ops = plan({ tables: more, places: tree, confirmed: true }).ops as Op[];
+    const ops = plan({ tables: more, places: tree, approved: 1000 }).ops as Op[];
     expect(ops.length).toBeGreaterThan(0);
     for (const o of ops.filter((x) => x.op !== "reorder")) {
       expect(String(o.guid)).not.toMatch(/^sep/);
@@ -821,12 +831,12 @@ describe("bookmarks.toml: the mirror's plan", () => {
     // An emptied file: 36 deletions over two tables, asked first; nothing applies.
     const emptied = plan({ tables: [], places: first.places, base: first.plan.base });
     expect(emptied.ask).toBe(
-      "bookmarks.toml removes 36 bookmarks from work, docs: delete them? y/N",
+      'bookmarks.toml removes 36 bookmarks from "work", "docs": delete them? y/N',
     );
     expect(emptied.ops).toEqual([]);
     expect(emptied.base).toEqual(first.plan.base);
     // After a y, the same plan applies: the bookmarks go, the folders stay.
-    const yes = plan({ tables: [], places: first.places, base: first.plan.base, confirmed: true });
+    const yes = plan({ tables: [], places: first.places, base: first.plan.base, approved: 1000 });
     expect(yes.ask).toBeNull();
     expect(yes.removed).toEqual([
       { table: "work", count: 30, cause: "file" },
@@ -838,7 +848,7 @@ describe("bookmarks.toml: the mirror's plan", () => {
     // Four of six from one table: more than half, asked; three of six is half, not more.
     const v2 = tablesOf(`[bookmarks.work]\n${lines(30)}\n[bookmarks.docs]\n${lines(2)}`);
     expect(plan({ tables: v2, places: first.places, base: first.plan.base }).ask).toBe(
-      "bookmarks.toml removes 4 bookmarks from docs: delete them? y/N",
+      'bookmarks.toml removes 4 bookmarks from "docs": delete them? y/N',
     );
     const half = tablesOf(`[bookmarks.work]\n${lines(30)}\n[bookmarks.docs]\n${lines(3)}`);
     expect(plan({ tables: half, places: first.places, base: first.plan.base }).ask).toBeNull();
@@ -858,19 +868,20 @@ describe("bookmarks.toml: the mirror's plan", () => {
     const tables = tablesOf('[bookmarks.work]\n"a" = "https://example.com/a"');
     const p = plan({ tables, places: tree });
     expect(p.ask).toBe(
-      "bookmarks.toml takes over work: delete its 2 bookmarks the file lacks? y/N",
+      'bookmarks.toml takes over "work": delete its 2 bookmarks the file lacks? y/N',
     );
     expect(p.ops).toEqual([]);
-    const yes = plan({ tables, places: tree, confirmed: true });
+    const yes = plan({ tables, places: tree, approved: 1000 });
     expect(yes.ops).toEqual([
       { op: "remove", guid: "bmx000000001" },
       { op: "remove", guid: "old000000001" },
     ]);
     expect(yes.removed).toEqual([{ table: "work", count: 2, cause: "adopt" }]);
-    // A new database (Firefox restored a backup at this start): the file wins without asking.
-    const fresh = plan({ tables, places: tree, fresh: true });
-    expect(fresh.ask).toBeNull();
-    expect(fresh.ops).toEqual(yes.ops);
+    // A yes approves that many removals and no more: one more than asked asks again.
+    expect(plan({ tables, places: tree, approved: 2 }).ask).toBeNull();
+    expect(plan({ tables, places: tree, approved: 1 }).ask).toBe(
+      'bookmarks.toml takes over "work": delete its 2 bookmarks the file lacks? y/N',
+    );
     // Nothing the file lacks: nothing to ask.
     expect(
       plan({ tables, places: work([bm("bma000000001", "a", "https://example.com/a")]) }).ask,
@@ -887,7 +898,7 @@ describe("bookmarks.toml: the mirror's plan", () => {
       ].join("\n"),
     );
     const tree = work([bm("bmmine000001", "mine", "javascript:void(1)")]);
-    const none = plan({ tables, places: tree, confirmed: true });
+    const none = plan({ tables, places: tree, approved: 1000 });
     expect(none.skipped).toEqual([
       { table: "work", line: 2 },
       { table: "work", line: 3 },
@@ -932,7 +943,6 @@ describe("bookmarks.toml: the base", () => {
     const base = {
       version: 1,
       source: "bookmarks.toml",
-      hash: "abc",
       tables: [
         {
           name: "work",
@@ -966,5 +976,264 @@ describe("bookmarks.toml: the base", () => {
     // A table name like __proto__ stays data.
     const proto = { ...base, tables: [{ ...base.tables[0], name: "__proto__" }] };
     expect(parseBase(formatBase(proto as never))?.tables[0]?.name).toBe("__proto__");
+  });
+});
+
+describe("bookmarks.toml: review fixes", () => {
+  const W = "wfolder00001";
+  const H = "hfolder00001";
+  const twoTables =
+    '[bookmarks.work]\n"a" = "https://e.com/a"\n[bookmarks.home]\n"h1" = "https://e.com/h1"\n"h2" = "https://e.com/h2"';
+  const twoBase = {
+    tables: [
+      {
+        name: "work",
+        folder: W,
+        entries: [{ path: ["a"], kind: "bookmark", url: "https://e.com/a", guid: "bmA000000001" }],
+      },
+      {
+        name: "home",
+        folder: H,
+        entries: [
+          { path: ["h1"], kind: "bookmark", url: "https://e.com/h1", guid: "bmH100000001" },
+          { path: ["h2"], kind: "bookmark", url: "https://e.com/h2", guid: "bmH200000001" },
+        ],
+      },
+    ],
+  } as never;
+  const A = () => bm("bmA000000001", "a", "https://e.com/a");
+  const H1 = () => bm("bmH100000001", "h1", "https://e.com/h1");
+  const H2 = () => bm("bmH200000001", "h2", "https://e.com/h2");
+
+  test("caps path depth at 32 and lines at 20,000", () => {
+    const deep = Array.from({ length: 33 }, (_, i) => `f${i}`).join("/");
+    expect(errorsOf(`[bookmarks.w]\n"${deep}" = "https://e.com/"`)).toEqual([
+      { line: 2, message: "a path deeper than 32 folders" },
+    ]);
+    const ok = Array.from({ length: 32 }, (_, i) => `f${i}`).join("/");
+    expect(errorsOf(`[bookmarks.w]\n"${ok}" = "https://e.com/"`)).toEqual([]);
+    const many = Array.from({ length: 20_001 }, (_, i) => `"b${i}" = "https://e.com/"`).join("\n");
+    expect(errorsOf(`[bookmarks.w]\n${many}`)).toEqual([
+      { line: 0, message: "more than 20000 lines; not read" },
+    ]);
+  });
+
+  test("a 4 MiB file of deep paths or of many folders reads and plans in bounded time", () => {
+    // One line: a path of 4 MiB.
+    const deepLine = `[bookmarks.w]\n"${"a/".repeat(2_000_000)}x" = "https://e.com/"`;
+    let t0 = performance.now();
+    expect(errorsOf(deepLine)[0]?.message).toBe("a path deeper than 32 folders");
+    expect(performance.now() - t0).toBeLessThan(3000);
+    // 20,000 lines of paths 32 folders deep, about 4 MiB.
+    const seg = (i: number) => Array.from({ length: 31 }, (_, d) => `dir${d}`).join("/") + `/f${i}`;
+    const deepMany = `[bookmarks.w]\n${Array.from({ length: 20_000 }, (_, i) => `"${seg(i)}/" = ""`).join("\n")}`;
+    expect(deepMany.length).toBeGreaterThan(3_500_000);
+    t0 = performance.now();
+    const t1 = tablesOf(deepMany);
+    const p1 = plan({ tables: t1, places: places() });
+    expect(p1.ops.length).toBeGreaterThan(20_000);
+    expect(performance.now() - t0).toBeLessThan(5000);
+    // 20,000 empty folders side by side.
+    const flat = `[bookmarks.w]\n${Array.from({ length: 20_000 }, (_, i) => `"folder number ${i}/" = ""`).join("\n")}`;
+    t0 = performance.now();
+    const p2 = plan({ tables: tablesOf(flat), places: places() });
+    expect(p2.ops.length).toBe(20_001);
+    expect(performance.now() - t0).toBeLessThan(3000);
+  });
+
+  test("allows only http, https, file and about, and javascript: behind the bookmarklets gate", () => {
+    const bad = [
+      "chrome://browser/content/browser.xhtml",
+      "resource://gre/x",
+      "moz-extension://abc/x",
+      "view-source:https://a/",
+      "view-source:javascript:alert(1)",
+      "blob:https://a/x",
+      "jar:file:///x!/y",
+      "place:sort=8",
+      "ftp://a/",
+    ];
+    const text = `[bookmarks.w]\n${bad.map((u, i) => `"b${i}" = ${JSON.stringify(u)}`).join("\n")}`;
+    expect(errorsOf(text)).toEqual(
+      bad.map((u, i) => ({
+        line: i + 2,
+        message: `${new URL(u).protocol} URLs are not bookmarked from the file: http, https, file, about and javascript only`,
+      })),
+    );
+    expect(
+      errorsOf(
+        '[bookmarks.w]\n"a" = "https://a/"\n"b" = "http://a/"\n"c" = "file:///etc/hosts"\n"d" = "about:config"\n"e" = " JavaScript:void(0)"',
+      ),
+    ).toEqual([]);
+  });
+
+  test("names: controls, bidi and zero-width characters and outer spaces are refused", () => {
+    for (const name of ["a‮b", "a⁦b", "a​b", "a\u0085b", " work", "work "]) {
+      const r = errorsOf(`[bookmarks.${JSON.stringify(name)}]\n"a" = "https://e.com/"`);
+      expect(r.length, JSON.stringify(name)).toBe(1);
+      expect(r[0]!.line).toBe(1);
+    }
+    for (const title of ["a‮b", "a\u0007b", "a\u0085b", "a⁩b"]) {
+      const r = errorsOf(`[bookmarks.w]\n${JSON.stringify(title)} = "https://e.com/"`);
+      expect(r, JSON.stringify(title)).toEqual([
+        { line: 2, message: "a name with a control or bidirectional character" },
+      ]);
+    }
+  });
+
+  test("errors cut what they echo to 80 characters", () => {
+    const long = `/${"x".repeat(500)}`;
+    const [e] = errorsOf(`[bookmarks.w]\n"a" = "${long}"`);
+    expect(e!.message.length).toBeLessThan(140);
+    expect(e!.message).toContain("…");
+  });
+
+  test("one claimed set: a workspace folder dragged into another table's folder is moved back, not deleted", () => {
+    const tree = places({
+      toolbar: [folder(W, "work", [A(), folder(H, "home", [H1(), H2()])])],
+    });
+    const p = plan({ tables: tablesOf(twoTables), places: tree, base: twoBase });
+    expect(p.ops).toEqual([{ op: "update", guid: H, parentGuid: PLACES_ROOTS.toolbar }]);
+    expect(p.removed).toEqual([]);
+  });
+
+  test("one claimed set: a bookmark dragged from one table's folder into another's is moved back", () => {
+    const tree = places({
+      toolbar: [folder(W, "work", [A(), H1()]), folder(H, "home", [H2()])],
+    });
+    const p = plan({ tables: tablesOf(twoTables), places: tree, base: twoBase });
+    expect(p.ops.filter((o) => o.op === "remove" || o.op === "insert")).toEqual([]);
+    expect(p.ops).toContainEqual({ op: "update", guid: "bmH100000001", parentGuid: H });
+    expect(p.removed).toEqual([]);
+  });
+
+  test("one claimed set: a renamed table that takes its old folder through the workspace link deletes nothing", () => {
+    const tree = places({ toolbar: [folder(W, "work", [A()])] });
+    const base = { tables: [(twoBase as { tables: unknown[] }).tables[0]] } as never;
+    const p = plan({
+      tables: tablesOf('[bookmarks.job]\n"a" = "https://e.com/a"'),
+      places: tree,
+      base,
+      workspaces: [{ name: "job", folder: W }],
+    });
+    expect(p.ask).toBeNull();
+    expect(p.removed).toEqual([]);
+    expect(p.ops).toEqual([{ op: "update", guid: W, title: "job" }]);
+  });
+
+  test("a removed table keeps protected bookmarklets, also inside its folders", () => {
+    const tree = places({
+      toolbar: [
+        folder(W, "work", [
+          A(),
+          folder("sub000000001", "tools", [
+            bm("js0000000001", "run", "javascript:void(0)"),
+            bm("bmB000000001", "b", "https://e.com/b"),
+          ]),
+        ]),
+      ],
+    });
+    const base = {
+      tables: [
+        {
+          name: "work",
+          folder: W,
+          entries: [
+            { path: ["a"], kind: "bookmark", url: "https://e.com/a", guid: "bmA000000001" },
+            { path: ["tools"], kind: "folder", guid: "sub000000001" },
+            {
+              path: ["tools", "b"],
+              kind: "bookmark",
+              url: "https://e.com/b",
+              guid: "bmB000000001",
+            },
+          ],
+        },
+      ],
+    } as never;
+    const p = plan({ tables: [], places: tree, base, approved: 1000 });
+    const after = applyOps(tree, p.ops as Op[]);
+    expect(contents(topFolder(after, "work"))).toEqual([{ "tools/": ["run javascript:void(0)"] }]);
+  });
+
+  test("a base folder outside the toolbar's top that is not the workspace's is not trusted", () => {
+    const tree = places({
+      menu: [folder("menufold0001", "mine", [bm("mine00000001", "m", "https://e.com/m")])],
+    });
+    const base = {
+      tables: [
+        {
+          name: "work",
+          folder: "menufold0001",
+          entries: [
+            { path: ["m"], kind: "bookmark", url: "https://e.com/m", guid: "mine00000001" },
+          ],
+        },
+      ],
+    } as never;
+    const p = plan({
+      tables: tablesOf('[bookmarks.work]\n"a" = "https://e.com/a"'),
+      places: tree,
+      base,
+    });
+    const touched = p.ops.map((o) => (o.op === "insert" ? o.parentGuid : o.guid));
+    expect(touched).not.toContain("menufold0001");
+    expect(touched).not.toContain("mine00000001");
+    expect(p.base.tables[0]!.folder).not.toBe("menufold0001");
+  });
+
+  test("a base guid outside every mirrored folder is never reused", () => {
+    const tree = places({
+      menu: [bm("bmA000000001", "a", "https://e.com/a")],
+      toolbar: [folder(W, "work", [])],
+    });
+    const base = { tables: [(twoBase as { tables: unknown[] }).tables[0]] } as never;
+    const p = plan({
+      tables: tablesOf('[bookmarks.work]\n"a" = "https://e.com/a"'),
+      places: tree,
+      base,
+    });
+    expect(p.ops.some((o) => o.guid === "bmA000000001")).toBe(false);
+    expect(p.ops).toContainEqual(
+      expect.objectContaining({ op: "insert", kind: "bookmark", title: "a" }),
+    );
+  });
+
+  test("outside additions put back count toward the large-deletion question", () => {
+    const lines = Array.from({ length: 10 }, (_, i) => `"b${i}" = "https://e.com/${i}"`).join("\n");
+    const tables = tablesOf(`[bookmarks.work]\n${lines}`);
+    const first = mirror({ tables, places: places() });
+    const synced = structuredClone(first.places);
+    for (let i = 0; i < 25; i++) {
+      topFolder(synced, "work")!.children!.push(
+        bm(`sync${String(i).padStart(8, "0")}`, `s${i}`, `https://e.com/s${i}`),
+      );
+    }
+    const p = plan({ tables, places: synced, base: first.plan.base });
+    expect(p.ask).toBe('bookmarks.toml removes 25 bookmarks from "work": delete them? y/N');
+    expect(p.ops).toEqual([]);
+    expect(plan({ tables, places: synced, base: first.plan.base, approved: 25 }).ask).toBeNull();
+  });
+
+  test("the plan says which tables its operations change", () => {
+    const tables = tablesOf(twoTables);
+    const tree = places({ toolbar: [folder(W, "work", [A()]), folder(H, "home", [H1(), H2()])] });
+    expect(plan({ tables, places: tree, base: twoBase }).touched).toEqual([]);
+    const sep2 = structuredClone(tree);
+    topFolder(sep2, "home")!.children!.push(sep("sep000000009"));
+    expect(plan({ tables, places: sep2, base: twoBase }).touched).toEqual([]);
+    const added = structuredClone(tree);
+    topFolder(added, "home")!.children!.push(bm("new000000001", "n", "https://e.com/n"));
+    expect(plan({ tables, places: added, base: twoBase }).touched).toEqual(["home"]);
+  });
+
+  test("schema 1 config.toml's inline tables are not read; bookmarklets come from config.toml's text", () => {
+    expect(
+      readBookmarks({ file: null, config: '[bookmarks.work]\n"a" = "https://e.com/a"' }).from,
+    ).toBeNull();
+    expect(configBookmarklets('schema = 2\n[bookmarks]\nbookmarklets = "user"')).toBe("user");
+    expect(configBookmarklets('schema = 2\n[bookmarks]\nbookmarklets = "bogus"')).toBe("none");
+    expect(configBookmarklets("[bookmarks")).toBe("none");
+    expect(configBookmarklets(null)).toBe("none");
   });
 });
