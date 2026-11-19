@@ -964,8 +964,7 @@ add_task(async function finished_chapters_are_ticked_on_the_next_run() {
 });
 
 /** @param {Document} doc @returns {string[]} the keys the step's text names */
-const textKeys = (doc) =>
-  [...doc.querySelectorAll("#v2-text kbd")].map((k) => k.textContent ?? "");
+const textKeys = (doc) => [...doc.querySelectorAll("#v2-text kbd")].map((k) => k.textContent ?? "");
 /** @param {Document} doc @returns {(string | undefined)[]} each choice's drawing: its toolbar */
 const drawnToolbars = (doc) =>
   [...doc.querySelectorAll("#v2-choices li")].map(
