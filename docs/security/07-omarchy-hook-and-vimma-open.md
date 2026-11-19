@@ -108,9 +108,11 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   behaviour 22), and only through Firefox's shell service, so O10 and Firefox's own checks
   apply. It **never** asks where Settings would hide its button: a policy that forbids Make
   default (`DefaultBrowserSettingEnabled`), a locked `pref.general.disable_button.default_browser`,
-  or Flatpak; and it asks nothing when Vimma already is the default. Only the setup page and
-  the window script that registers it import the setup host, so no control, MCP or agent code
-  calls it. The page acts on trusted keys and clicks only, and a full-control client's
+  or Flatpak; and it asks nothing when Vimma already is the default. The page names only a
+  choice index of the list the host sent it (`SetupHost.runAction`), and only the "make Vimma the
+  default browser" choice, offered only when Make default may be asked, runs it. Only the setup
+  page and the window script that registers it import the setup host, so no control, MCP or
+  agent code calls it. The page acts on trusted keys and clicks only, and a full-control client's
   `vimma-ctl send-keys` presses trusted keys (through `nsITextInputProcessor`), so full control
   can press `enter` on the setup page as on any tab: it is within what `:control on` already
   grants (M22), and an agent connection has no `send-keys` and cannot open the page.

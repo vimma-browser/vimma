@@ -202,3 +202,22 @@
     font-family: var(--vimma-font, monospace) !important;
   }
 }
+
+/* The import wizard looks like Vimma too (decision 8): square corners and the theme's font, as
+ * Settings above, in its own window over the setup page (docs/specs/setup-v2.md, decision 17)
+ * and in Settings' dialog. The wizard draws in a shadow root whose sheets set the radius and
+ * font tokens on :host (common.css); a rule on the host element itself wins over :host, and the
+ * shadow tree inherits from it. --border-radius-circle stays, for its radio buttons. */
+:root:has(> body > migration-wizard),
+:root:has(> body > migration-wizard) > body,
+migration-wizard {
+  --border-radius-xsmall: var(--vimma-radius, 0) !important;
+  --border-radius-small: var(--vimma-radius, 0) !important;
+  --border-radius-medium: var(--vimma-radius, 0) !important;
+  --border-radius-large: var(--vimma-radius, 0) !important;
+  --border-radius-xlarge: var(--vimma-radius, 0) !important;
+  --button-border-radius: var(--vimma-radius, 0) !important;
+  --input-border-radius: var(--vimma-radius, 0) !important;
+  --panel-border-radius: var(--vimma-radius, 0) !important;
+  font-family: var(--vimma-font, monospace) !important;
+}

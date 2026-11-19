@@ -147,7 +147,7 @@ add_task(async function set_default_browser_calls_the_shell_service() {
 
 add_task(async function set_default_browser_does_nothing_when_vimma_already_is() {
   await withShell({ isDefault: true }, async (calls) => {
-    Assert.equal(await SetupHost.setDefaultBrowser(), "default");
+    Assert.equal(await SetupHost.setDefaultBrowser(), "already", "not made the default now");
     Assert.deepEqual(calls, [], "the shell service is not asked again");
   });
 });

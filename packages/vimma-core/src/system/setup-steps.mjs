@@ -16,6 +16,8 @@ import { displayBinding, formatKey, parseKey } from "../keys/keys.mjs";
 import { tomlLiteral } from "../config/toml.mjs";
 import { DEFAULT_THEME_NAME } from "../config/theme.mjs";
 import { mcpAdoptedWarning, mcpState } from "../agent/agent.mjs";
+import { DEFAULT_HINT_CHARS } from "../page/hints.mjs";
+import { defaultKeys } from "../config/defaults.mjs";
 
 /** @import { Keymap } from "../keys/keymap.mjs" */
 /** @import { ResolvedConfig } from "../config/config.mjs" */
@@ -26,6 +28,8 @@ import { mcpAdoptedWarning, mcpState } from "../agent/agent.mjs";
  * @property {string} label
  * @property {readonly TomlEdit[]} edits  what it writes; [] for Keep
  * @property {true} [keep]  Keep: the value in force, which is none of the step's choices
+ * @property {true} [run]  an action step's choice that runs the step's action
+ * @property {ActionResult} [result]  an action step's choice that runs nothing: what it means
  */
 
 /**
@@ -85,6 +89,25 @@ function setting(step, { table, key }, choices) {
  * @returns {SetupStep}
  */
 const action = (step) => ({ ...step, kind: "action", choices: [] });
+
+/**
+ * The hint letters step's layouts (decision 10), each with its home row and its letter keys by
+ * physical key: the top, home and bottom rows from `KeyQ`, `KeyA` and `KeyZ`, as a
+ * `KeyboardEvent`'s `code` names them. A `key` that is no letter (`;` on QWERTY) is never
+ * compared.
+ */
+const HINT_LAYOUT_ROWS = [
+  { name: "QWERTY", chars: DEFAULT_HINT_CHARS, rows: ["qwertyuiop", "asdfghjkl;", "zxcvbnm,./"] },
+  { name: "Colemak", chars: "arstdhneio", rows: ["qwfpgjluy;", "arstdhneio", "zxcvbkm,./"] },
+  { name: "Dvorak", chars: "aoeuidhtns", rows: ["',.pyfgcrl", "aoeuidhtns", ";qjkxbmwvz"] },
+];
+
+/** The `code` of each key of the three rows, in the order of HINT_LAYOUT_ROWS' `rows`. */
+const ROW_CODES = [
+  [..."QWERTYUIOP"].map((c) => `Key${c}`),
+  [...[..."ASDFGHJKL"].map((c) => `Key${c}`), "Semicolon"],
+  [...[..."ZXCVBNM"].map((c) => `Key${c}`), "Comma", "Period", "Slash"],
+];
 
 /** @type {[id: string, name: string, steps: SetupStep[]][]} */
 const TABLE = [
@@ -209,8 +232,8 @@ const TABLE = [
           title: "Prefix key",
           question: "Which key starts Vimma's window commands?",
           text:
-            "Every prefix key below shows the key that lists all keys with it, " +
-            "{keys:show_keybinds} now.",
+            "Under each prefix is the key that lists every key with it; " +
+            "{keys:show_keybinds} lists them now.",
           actions: ["show_keybinds"],
         },
         { table: "keys", key: "prefix" },
@@ -224,15 +247,13 @@ const TABLE = [
           id: "hint_letters",
           title: "Hint letters",
           question: "Which letters label the links you follow by keyboard?",
-          text: "The home row of the layout you type on is the quickest to reach.",
-          actions: [],
+          text:
+            "{keys:follow_link} labels the links on a page with these letters. The home row of " +
+            "the layout you type on is the quickest to reach.",
+          actions: ["follow_link"],
         },
         { table: "modal", key: "hint_chars" },
-        [
-          ["QWERTY: asdfghjkl", "asdfghjkl"],
-          ["Colemak: arstdhneio", "arstdhneio"],
-          ["Dvorak: aoeuidhtns", "aoeuidhtns"],
-        ],
+        HINT_LAYOUT_ROWS.map(({ name, chars }) => [`${name}: ${chars}`, chars]),
       ),
     ],
   ],
@@ -310,6 +331,79 @@ export const CHAPTERS = freeze(
 /** Every step, in order. @type {readonly SetupStep[]} */
 export const STEPS = freeze(CHAPTERS.flatMap((c) => c.steps));
 
+/**
+ * The hint letters step's layouts, in the order of its choices: each one's name, its home-row
+ * letters and, by `code`, the letter each key types.
+ * @type {readonly { name: string, chars: string, letters: Readonly<Record<string, string>> }[]}
+ */
+export const HINT_LAYOUTS = freeze(
+  HINT_LAYOUT_ROWS.map(({ name, chars, rows }) =>
+    freeze({
+      name,
+      chars,
+      letters: freeze(
+        Object.fromEntries(
+          rows.flatMap((row, r) => [...row].map((ch, i) => [ROW_CODES[r]?.[i] ?? "", ch])),
+        ),
+      ),
+    }),
+  ),
+);
+
+/**
+ * A key pressed on the page, as its keydown saw it. The page keeps these in memory only and
+ * never sends or writes them (decision 10, Security and privacy).
+ * @typedef {{ code: string, key: string }} PressedKey
+ */
+
+/** The most keys the page keeps for the guess: the latest few are enough. */
+export const PRESSED_MAX = 32;
+
+/**
+ * `pressed` with `key` added when it is a letter typed without ctrl, alt or meta, the oldest
+ * dropped past PRESSED_MAX, so that the page never holds more than the guess needs.
+ * @param {readonly PressedKey[]} pressed @param {PressedKey} key
+ * @param {{ ctrl?: boolean, alt?: boolean, meta?: boolean }} [mods]
+ * @returns {PressedKey[]}
+ */
+export function rememberKey(pressed, key, { ctrl = false, alt = false, meta = false } = {}) {
+  if (ctrl || alt || meta || !/^[a-z]$/i.test(key.key)) return [...pressed];
+  return [...pressed, { code: key.code, key: key.key }].slice(-PRESSED_MAX);
+}
+
+/**
+ * The layout the user types on, from the keys already pressed on the page (decision 10): the
+ * first of HINT_LAYOUTS that puts every letter pressed on the physical key it came from. Null
+ * without a letter pressed, or when no layout fits (AZERTY's `a` on `KeyQ`).
+ * @param {readonly PressedKey[]} pressed
+ * @returns {string | null}  the layout's home-row letters
+ */
+export function guessLayout(pressed) {
+  const letters = pressed
+    .map((p) => ({ code: p.code, key: p.key.toLowerCase() }))
+    .filter((p) => /^[a-z]$/.test(p.key));
+  if (!letters.length) return null;
+  const fits = HINT_LAYOUTS.find((l) => letters.every((p) => l.letters[p.code] === p.key));
+  return fits ? fits.chars : null;
+}
+
+/**
+ * The row the hint letters step opens on (behaviour 26): the layout typed on when the value in
+ * force is the built-in QWERTY default, which a user on another layout has most likely never
+ * chosen; else the value in force (behaviour 9), so that a layout chosen before, or a custom
+ * value under Keep, stays selected. With no guess, the value in force: QWERTY by default.
+ * @param {readonly (string | null)[]} layouts  each choice's letters, null for Keep
+ * @param {number} selected  the row of the value in force
+ * @param {readonly PressedKey[]} pressed
+ * @returns {number}
+ */
+export function hintRow(layouts, selected, pressed) {
+  if (layouts[selected] !== DEFAULT_HINT_CHARS) return selected;
+  const guess = guessLayout(pressed);
+  const row = guess === null ? -1 : layouts.indexOf(guess);
+  return row >= 0 ? row : selected;
+}
+
 /** @param {string} key  as keysFor shows it @returns {boolean} whether it works from a page */
 const fromPage = (key) => !key.includes(" [");
 
@@ -375,13 +469,15 @@ export function fillStepText(step, keymap) {
 /**
  * For each of the prefix step's choices, the keys of the action the step names first
  * (`show_keybinds`), drawn with that choice as the prefix (decision 8): the keymap only knows
- * the prefix in force.
+ * the prefix in force. Keep, which writes nothing, is drawn with the prefix in force.
  * @param {SetupStep} step @param {Keymap} keymap
+ * @param {readonly SetupChoice[]} [choices]  the step's list as drawn (stepChoices), with Keep
  * @returns {string[][]}  per choice, the keys of the step's first action
  */
-export function prefixHints(step, keymap) {
+export function prefixHints(step, keymap, choices = step.choices) {
   const name = step.actions[0] ?? "";
-  return step.choices.map((c) => {
+  return choices.map((c) => {
+    if (c.keep) return stepKeys(keymap, name);
     const prefix = parseKey(String(c.edits[0]?.value ?? ""));
     return keymap
       .bindingsFor(name)
@@ -472,7 +568,26 @@ export function inForceOf(
     // Not choices' keys: what the agents step plans and says from (agentsTurnOn, choiceNote).
     "mcp.file": config.mcp.enabled,
     "mcp.held": mcp.off,
+    "keys.prefix": prefixOf(config),
+    "modal.hint_chars": config.hintChars,
   };
+}
+
+/**
+ * The prefix in force as one chord in Vimma's notation, so that `ctrl+A` in the file is the
+ * `ctrl+a` choice and enter on it writes nothing (behaviour 8); a prefix the notation cannot
+ * read stays as written, for Keep.
+ * @param {ResolvedConfig} config
+ * @returns {string}
+ */
+function prefixOf(config) {
+  const text = config.keys.prefix;
+  if (typeof text !== "string") return String(defaultKeys().prefix);
+  try {
+    return formatKey(parseKey(text));
+  } catch {
+    return text;
+  }
 }
 
 /**
@@ -648,6 +763,125 @@ export function choiceNote(step, choice, inForce, { adopted = null, missing = fa
 export function choiceLines(step, choice, inForce, { omarchy = false, missing = false } = {}) {
   if (missing && agentsTurnOn(step, choice, inForce)) return editLines([]);
   return editLines(planAtEnter(step, choice, inForce, { omarchy }) ?? []);
+}
+
+/**
+ * What an action step of Moving in did (decision 17): SetupHost.setDefaultBrowser's answer,
+ * openImportWizard's, or what a choice that runs nothing means.
+ * @typedef {"default" | "asked" | "unavailable" | "failed" | "closed" | "not-now" | "already"
+ *   | "left"} ActionResult
+ */
+
+/**
+ * @typedef {object} MovingInState  what the host found before drawing a Moving in step
+ * @property {boolean} [isDefault]
+ * @property {boolean} [canSet]
+ * @property {"flatpak" | "policy" | "locked" | null} [why]  why Make Default cannot be asked
+ * @property {boolean} [canImport]  the profileImport policy allows the wizard
+ */
+
+/** Why the default browser step cannot ask the system, by SetupHost's reason. */
+const NO_DEFAULT = {
+  flatpak:
+    "Under Flatpak, Vimma can neither set nor check the default browser: choose it in your " +
+    "system's settings.",
+  policy: "Your organisation's policy does not let Vimma change the default browser.",
+  locked: "A locked preference keeps Vimma from changing the default browser.",
+};
+
+/**
+ * The choices of a Moving in step (behaviours 22 and 23) for what the system allows now: they
+ * save no key, so each has no edits. A step that cannot act offers only to move on and says why.
+ * @param {string} id  "default_browser" or "bring_your_data"
+ * @param {MovingInState} state
+ * @returns {{ choices: SetupChoice[], selected: number, status: string }}
+ */
+export function actionChoices(id, state) {
+  /** @param {string} label @param {ActionResult} result @returns {SetupChoice} */
+  const pass = (label, result) => ({ label, edits: [], result });
+  if (id === "default_browser") {
+    if (state.isDefault) {
+      return {
+        choices: [pass("Go on", "already")],
+        selected: 0,
+        status: "Vimma is already your default browser.",
+      };
+    }
+    if (!state.canSet) {
+      return {
+        choices: [pass("Go on", "left")],
+        selected: 0,
+        status: NO_DEFAULT[state.why ?? "policy"],
+      };
+    }
+    return {
+      choices: [
+        { label: "Make Vimma the default browser", edits: [], run: true },
+        pass("Not now", "not-now"),
+      ],
+      selected: 0,
+      status: "Vimma is not your default browser now.",
+    };
+  }
+  if (id === "bring_your_data") {
+    if (!state.canImport) {
+      return {
+        choices: [pass("Go on", "left")],
+        selected: 0,
+        status: "Your organisation's policy turns the import wizard off.",
+      };
+    }
+    return {
+      choices: [
+        { label: "Open the import wizard", edits: [], run: true },
+        pass("Not now", "not-now"),
+      ],
+      selected: 0,
+      status: "",
+    };
+  }
+  return { choices: [], selected: 0, status: "" };
+}
+
+/**
+ * What the page does with a Moving in result: move on or keep the step open, what the footer
+ * says, and what "Saved this run" lists, so that an action that acted is never reported as
+ * "nothing written" (behaviour 11).
+ * @param {string} id @param {ActionResult} result
+ * @returns {{ advance: boolean, saved: string[], said: string }}
+ */
+export function actionOutcome(id, result) {
+  /** @param {string} said @param {string[]} [saved] */
+  const on = (said, saved = []) => ({ advance: true, saved, said });
+  /** @param {string} said */
+  const stay = (said) => ({ advance: false, saved: [], said });
+  switch (result) {
+    case "not-now":
+      return on("not now");
+    case "left":
+      return on("left as it is");
+    case "already":
+      return on("already the default browser");
+    case "default":
+      return on("Vimma is now the default browser", ["made the default browser"]);
+    case "asked":
+      // The system took the request, but its check still names another browser: it may
+      // be waiting for the user to confirm in a dialog of its own.
+      return on("asked the system to make Vimma the default; it may ask you to confirm", [
+        "asked the system to make Vimma the default",
+      ]);
+    case "closed":
+      return on("import wizard closed", ["import wizard closed"]);
+    case "failed":
+      return stay("The system did not make Vimma the default browser.");
+    case "unavailable":
+      return stay(
+        id === "bring_your_data"
+          ? "The import wizard cannot open here."
+          : "Vimma cannot change the default browser here.",
+      );
+  }
+  return stay("");
 }
 
 /**
