@@ -273,6 +273,7 @@ support-files = [
 ["browser_vimma_mcp_userinfo.js"]
 support-files = [
   "file_vimma_agent_page.html",
+  "file_vimma_agent_redirect_param.html",
   "file_vimma_agent_userinfo_redirect.sjs",
   "file_vimma_agent_untitled.html",
   "file_vimma_agent_userinfo.html",
