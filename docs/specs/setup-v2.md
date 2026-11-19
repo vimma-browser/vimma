@@ -402,10 +402,11 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
   search engines, the add-ons, the window drawings, the saved lines) scrolls in its own box
   under a header that stays put, and the row under the cursor is kept in view; a new screen
   opens its boxes at their top. A list shrinks to about two and a half add-on rows at the
-  least, and a short window (under 40rem, such as 800×600) gives the top's space to the list,
-  so the first choices after the one in force stay visible; a window too short for even that
-  scrolls the step, header and all, and never puts anything under the footer. The welcome
-  screen stays centred.
+  least. A short window, one whose page is under 40rem (640 px) high, such as 800×600,
+  tightens the spacing and draws the window drawings smaller, so at 800×600 the content
+  blocker shows two and a half add-ons without the step scrolling, even with the notice that
+  addons.mozilla.org is not answering. A window too short for even that scrolls the step,
+  header and all, and never puts anything under the footer. The welcome screen stays centred.
 - **Theme.** Theme variables only, as first-run-setup's welcome screen, so Omarchy, light and
   dark need no per-theme rules; no animation, as Vimma's chrome CSS tests require.
 

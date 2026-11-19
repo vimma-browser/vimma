@@ -378,10 +378,27 @@ code {
   overflow-y: auto;
 }
 
+/* A window under 40rem (640 px high, such as 800x600) tightens the spacing, so the content
+   blocker keeps two and a half add-ons in view without the step scrolling. */
 @media (max-height: 40rem) {
   :root[data-screen="step"] .step,
   :root[data-screen="stop"] .step {
-    padding-top: 1rem;
+    gap: 0.6rem;
+    padding: 0.75rem 0 0.5rem;
+  }
+
+  :root[data-screen="step"] #v2-blocker {
+    gap: 0.4rem;
+  }
+
+  :root[data-screen="step"] .flow-footer,
+  :root[data-screen="stop"] .flow-footer {
+    padding-bottom: 1rem;
+  }
+
+  :root[data-screen="step"] .flow-footer .keys,
+  :root[data-screen="stop"] .flow-footer .keys {
+    margin-top: 0.3rem;
   }
 }
 

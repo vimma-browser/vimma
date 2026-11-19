@@ -883,11 +883,37 @@ add_task(async function every_step_and_stop_screen_starts_at_the_same_height() {
   await atStep(doc, "search_engine");
   Assert.equal(progress(), small, "the search engine step starts there in a small window too");
   assertFooterClear(doc, "v2-choices", "search engine, small window");
+  // A short window keeps about two and a half add-ons in view, not one, even with the notice
+  // that addons.mozilla.org is not answering, and without scrolling the step under the list.
+  await press(doc, "h");
+  await atStep(doc, "content_blocker");
+  const offline = found(doc.getElementById("v2-offline"));
+  await TestUtils.waitForCondition(() => !offline.hidden, "the not answering notice is shown");
+  const stepBox = found(doc.getElementById("v2-step"));
+  const addons = found(doc.getElementById("v2-addons"));
+  const row = rectOf(addons.querySelector("li")).height;
+  const box = rectOf(addons);
+  const seen = Math.min(box.bottom, rectOf(stepBox).bottom) - box.top;
+  Assert.greaterOrEqual(
+    seen + 1,
+    Math.min(addons.scrollHeight, 2.5 * row),
+    `the add-on list shows two and a half rows at 800x600 (${seen} px seen, rows ${row})`,
+  );
+  Assert.lessOrEqual(
+    stepBox.scrollHeight,
+    stepBox.clientHeight + 1,
+    "the step itself does not scroll, so the list is the only scrolling box",
+  );
+  // Smaller still, the engines overflow: the list scrolls under a header that stays put.
+  await resizeWindow(doc, 800, 480);
+  await press(doc, "s");
+  await atStep(doc, "search_engine");
+  Assert.equal(progress(), small, "the search engine step starts there in a smaller window too");
   const engineList = found(doc.getElementById("v2-choices"));
   Assert.greater(
     engineList.scrollHeight,
     engineList.clientHeight,
-    "the engine list overflows its box at 800x600",
+    "the engine list overflows its box at 800x480",
   );
   for (let i = 1; i < engines; i++) await press(doc, "j");
   Assert.equal(progress(), small, "moving down the list leaves the header where it is");
@@ -897,17 +923,7 @@ add_task(async function every_step_and_stop_screen_starts_at_the_same_height() {
     cursor.top >= list.top - 1 && cursor.bottom <= list.bottom + 1,
     `the last engine is scrolled into view (${cursor.top}..${cursor.bottom} in ${list.top}..${list.bottom})`,
   );
-  assertFooterClear(doc, "v2-choices", "search engine at its last row, small window");
-  // A short window keeps about two and a half add-ons in view, not one.
-  await press(doc, "h");
-  await atStep(doc, "content_blocker");
-  const addons = found(doc.getElementById("v2-addons"));
-  const row = rectOf(addons.querySelector("li")).height;
-  Assert.greaterOrEqual(
-    addons.clientHeight + 1,
-    Math.min(addons.scrollHeight, 2.5 * row),
-    `the add-on list shows two and a half rows at 800x600 (${addons.clientHeight}, rows ${row})`,
-  );
+  assertFooterClear(doc, "v2-choices", "search engine at its last row, smaller window");
   window.resizeTo(startSize[0], startSize[1]);
   await closeFlow(tab);
 });
