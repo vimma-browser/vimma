@@ -1,6 +1,6 @@
 # Spec: setup-v2
 
-Status: accepted (delivery slices 1 and 2 built, #1292 and #1293) · Area: core
+Status: accepted (delivery slices 1, 2 and 6 built, #1292, #1293 and #1297) · Area: core
 (`packages/vimma-core/src/system/setup.mjs`, `packages/vimma-core/src/system/setup-steps.mjs`,
 `packages/vimma-core/src/config/toml.mjs`),
 chrome (`src/browser/base/content/vimma/setup/` (`setup.html`, `setup.mjs`, `flow.mjs`,
@@ -162,7 +162,8 @@ none of its choices (behaviour 9).
     agents reach only the agent workspace, and that sending a form, paying and showing a page
     always ask the user. `enter` on "on" is the user's consent, as answering `y` to `:mcp on`
     is. The step also says that `:mcp off` turns agents off until Vimma restarts, whatever the
-    file says and however often it is read again (decision 16).
+    file says and however often it is read again (decision 16). That `enter` is checked and
+    applied as the yes is (decision 20).
 29. Neither the control socket nor an MCP agent can open, read or drive the page (unchanged
     from first-run-setup, behaviour 10).
 
@@ -376,6 +377,18 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     it is a record of the setup and not a setting of the browser. It is not written in a
     private window.
 
+20. **The agents step's "on" is a yes to `:mcp on`, in every respect.** It is refused, with
+    nothing written, where that yes is refused: without an agent workspace, when the agent
+    workspace changed, or when `:mcp off` ran after the step was drawn; the step is then drawn
+    again, so that a new `enter` is a new consent. Once its `[mcp] enabled = true` is written
+    (or the file says so already), it ends `:mcp off`'s hold as the yes does, after the same
+    checks; the write alone never does (decision 16). With the hold in force, "off" is the value
+    in force and writes nothing (behaviour 8), and the step says that the file turns agents on
+    again at the next start; "on" says that it also ends `:mcp off`. For a workspace Vimma did
+    not make, "on" shows `:mcp on`'s warning that agents will read it. Reason: two ways to turn
+    agents on that check different things would leave the weaker one as the way around the
+    other, and a hold that a setup page could lift silently would undo decision 16.
+
 ### Page layout
 
 - **Welcome screen.** The logo as today, the heading "Set up Vimma", the promise of behaviour 2
@@ -510,6 +523,9 @@ outgrow the harness's time limit for one file):
 - `import_step_names_sync_for_firefox`
 - `updates_step_says_what_the_check_sends`
 - `agents_step_selects_off_first_and_writes_enabled_on_enter`
+- `agents_on_ends_mcp_off_as_mcp_on_does` (the file on and held off: off writes nothing; on
+  writes nothing and ends the hold; held without the key: on writes it and ends the hold)
+- `an_mcp_off_after_the_step_was_drawn_wins_over_its_enter`
 - `mcp_off_turns_agents_off_until_restart_when_the_file_enables_them`
 - `mcp_off_survives_a_config_reload` (`[mcp] enabled = true` in the file, `:mcp off`, the file
   edited and read again: agents stay off until `:mcp on`)

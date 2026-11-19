@@ -5,6 +5,8 @@ import {
   CHAPTERS,
   PAGE_KEYS,
   STEPS,
+  agentsTurnOn,
+  choiceNote,
   editLines,
   fillStepText,
   inForceOf,
@@ -20,7 +22,7 @@ import { compileKeymap } from "../src/keys/keymap.mjs";
 import { getAction } from "../src/keys/actions.mjs";
 import { parseKey } from "../src/keys/keys.mjs";
 
-import type { SetupStep } from "../src/system/setup-steps.mjs";
+import type { SetupChoice, SetupStep } from "../src/system/setup-steps.mjs";
 
 const keymap = compileKeymap();
 const step = (id: string) => STEPS.find((s) => s.id === id) as SetupStep;
@@ -361,6 +363,126 @@ describe("colours: the effect in force (decision 12)", () => {
     // Set to light by hand while the step was open: enter writes nothing.
     const now = inForce('schema = 2\n[theme]\nappearance = "light"\n');
     expect(planAtEnter(colours, light, now, { omarchy: false })).toEqual([]);
+  });
+});
+
+describe("updates (behaviour 27)", () => {
+  const updates = step("updates");
+
+  test("the file's check is in force, else the default: tell me", () => {
+    expect(inForce("schema = 2\n")["updates.check"]).toBe(true);
+    const off = inForce("schema = 2\n[updates]\ncheck = false\n");
+    expect(off["updates.check"]).toBe(false);
+    const r = stepChoices(updates, off);
+    expect(r.choices.map((c) => c.label)).toEqual(["Tell me when a release is out", "Never check"]);
+    expect(r.selected).toBe(1);
+    expect(planChoice(r.choices[0]!, off)).toEqual([
+      { table: "updates", key: "check", value: true },
+    ]);
+    expect(planChoice(r.choices[1]!, off)).toEqual([]);
+  });
+
+  test("says what the check sends and that never check stops every request", () => {
+    expect(updates.text).toContain("the update channel and the platform");
+    expect(updates.text).toContain("updates.vimma.dev");
+    expect(updates.text).toContain("every 12 hours");
+    expect(updates.text).toContain("Never check stops every request to updates.vimma.dev");
+  });
+});
+
+describe("agents (behaviour 28, decisions 14 and 16)", () => {
+  const agents = step("agents");
+  const [off, on] = agents.choices as [SetupChoice, SetupChoice];
+  const ENABLED = "schema = 2\n[mcp]\nenabled = true\n";
+  const DISABLED = "schema = 2\n[mcp]\nenabled = false\n";
+  const mcp = (pref: boolean, held: boolean) => ({ mcp: { pref, off: held } });
+
+  test("in force is what :mcp decides: its off for the session, then the file, then the pref", () => {
+    expect(inForce("schema = 2\n")["mcp.enabled"]).toBe(false);
+    expect(inForce("schema = 2\n", mcp(true, false))["mcp.enabled"]).toBe(true);
+    expect(inForce(ENABLED, mcp(false, false))["mcp.enabled"]).toBe(true);
+    expect(inForce(ENABLED, mcp(false, true))["mcp.enabled"]).toBe(false);
+    expect(inForce(DISABLED, mcp(true, false))["mcp.enabled"]).toBe(false);
+  });
+
+  test("off is selected first unless agents are on", () => {
+    expect(stepChoices(agents, inForce("schema = 2\n")).selected).toBe(0);
+    expect(stepChoices(agents, inForce(ENABLED, mcp(false, true))).selected).toBe(0);
+    expect(stepChoices(agents, inForce(ENABLED)).selected).toBe(1);
+    expect(stepChoices(agents, inForce("schema = 2\n", mcp(true, false))).selected).toBe(1);
+  });
+
+  test("on writes enabled = true and is the consent; off for the session ends with it", () => {
+    const none = inForce("schema = 2\n");
+    expect(planAtEnter(agents, on, none)).toEqual([{ table: "mcp", key: "enabled", value: true }]);
+    expect(agentsTurnOn(agents, on, none)).toBe(true);
+    // `:mcp off` holds a file's enabled = true off: the file already says on, so only the
+    // consent, as `:mcp on`'s yes, turns agents on.
+    const held = inForce(ENABLED, mcp(false, true));
+    expect(planAtEnter(agents, on, held)).toEqual([]);
+    expect(agentsTurnOn(agents, on, held)).toBe(true);
+    // Held without the key: the file gets it, and the hold ends too.
+    const heldBare = inForce("schema = 2\n", mcp(false, true));
+    expect(planAtEnter(agents, on, heldBare)).toEqual([
+      { table: "mcp", key: "enabled", value: true },
+    ]);
+    expect(agentsTurnOn(agents, on, heldBare)).toBe(true);
+  });
+
+  test("the choice in force turns nothing on and writes nothing", () => {
+    const now = inForce(ENABLED);
+    expect(planAtEnter(agents, on, now)).toEqual([]);
+    expect(agentsTurnOn(agents, on, now)).toBe(false);
+    const none = inForce("schema = 2\n");
+    expect(planAtEnter(agents, off, none)).toEqual([]);
+    expect(agentsTurnOn(agents, off, none)).toBe(false);
+    // Plain enter on the preselected off, under the hold, leaves the file as it is (behaviour 8).
+    expect(planAtEnter(agents, off, inForce(ENABLED, mcp(false, true)))).toEqual([]);
+  });
+
+  test("off writes enabled = false only while agents are on", () => {
+    expect(planAtEnter(agents, off, inForce(ENABLED))).toEqual([
+      { table: "mcp", key: "enabled", value: false },
+    ]);
+    expect(planAtEnter(agents, off, inForce("schema = 2\n", mcp(true, false)))).toEqual([
+      { table: "mcp", key: "enabled", value: false },
+    ]);
+    // No step turns agents on for any other step or choice.
+    for (const s of STEPS) {
+      for (const c of s.choices) {
+        if (s.id === "agents" && c === on) continue;
+        expect(agentsTurnOn(s, c, inForce("schema = 2\n"))).toBe(false);
+      }
+    }
+  });
+
+  test("the notes say what the hold and an adopted workspace mean", () => {
+    const held = inForce(ENABLED, mcp(false, true));
+    expect(choiceNote(agents, on, held)).toBe("Also ends :mcp off for this session.");
+    expect(choiceNote(agents, off, held)).toBe(
+      "config.toml's [mcp] enabled = true turns agents on again at the next start.",
+    );
+    expect(choiceNote(agents, on, inForce("schema = 2\n"))).toBeNull();
+    expect(choiceNote(agents, off, inForce("schema = 2\n"))).toBeNull();
+    expect(
+      choiceNote(agents, on, inForce("schema = 2\n"), { adopted: { name: "work", tabs: 3 } }),
+    ).toBe(
+      '"work" is your own workspace (3 tabs, its own logins). Agents will be able to read it.',
+    );
+    expect(choiceNote(agents, on, inForce("schema = 2\n"), { adopted: null, missing: true })).toBe(
+      "There is no agent workspace (containers are off), so agents cannot be turned on.",
+    );
+    expect(choiceNote(step("updates"), step("updates").choices[1]!, held)).toBeNull();
+  });
+
+  test("the step says, in two lines, where agents reach and what always asks", () => {
+    const lines = agents.text.split("\n");
+    expect(lines[0]).toBe("Agents reach only the agent workspace.");
+    expect(lines[1]).toBe("Sending a form, paying and showing you a page always ask you first.");
+    expect(agents.text).toContain(
+      "<code>:mcp off</code> turns agents off until <code>:mcp on</code> or a restart, " +
+        "whatever config.toml says and however often it is read again.",
+    );
   });
 });
 

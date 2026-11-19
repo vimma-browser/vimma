@@ -1524,3 +1524,28 @@ the page's own and can carry tokens it put there; they come only from the agent'
   [`mcp_off_survives_a_config_reload`](../../tests/browser/browser_vimma_mcp.js),
   [`mcp_on_after_off_starts_the_agent_role_when_the_pref_was_on`](../../tests/browser/browser_vimma_mcp.js),
   [`a_yes_to_an_older_mcp_on_question_does_not_undo_a_newer_mcp_off`](../../tests/browser/browser_vimma_mcp.js)
+- M65. The setup page (about:vimma-setup, [setup-v2](../specs/setup-v2.md) behaviour 28 and
+  decision 20, behind `vimma.feature.setupV2`) **must** turn MCP on only from a trusted `enter`
+  on its agents step's "On", which is the user's consent as a yes to `:mcp on` is, and is
+  checked as that yes is: it **must** be refused, with nothing written, when there is no agent
+  workspace, when the agent workspace changed, or when `:mcp off` ran after the step was drawn
+  (the host keeps what the step was drawn with, `McpHost.consentTicket`, beside the list it sent
+  that page). Only after its `[mcp] enabled = true` is written and read, or when the file says
+  so already, does it end `:mcp off`'s hold, checking again first, as the yes does; the write
+  alone **never** ends the hold (M64). "Off" is selected first unless agents are on, so a plain
+  `enter` never turns them on and, under the hold, writes nothing; the step names the hold it
+  would end and, for a workspace Vimma did not make, shows `:mcp on`'s warning. The page names
+  only a step and a choice index (section 8, F1); no other step and no other choice turns
+  agents on. Neither the control socket's agent role nor an MCP agent can open or drive the
+  page: the socket has no command for it, the agent role's `open` refuses it, and the page acts
+  only on trusted events. Full control (`vimma-ctl send-keys`, S13) presses trusted keys in the
+  focused window and so can drive the page, as it can type `:mcp on` and `y`; that is accepted
+  under M22, whose question says that full control reaches every workspace and tab.
+  [`on writes enabled = true and is the consent; off for the session ends with it`](../../packages/vimma-core/test/setup-steps.test.ts),
+  [`off writes enabled = false only while agents are on`](../../packages/vimma-core/test/setup-steps.test.ts),
+  [`the notes say what the hold and an adopted workspace mean`](../../packages/vimma-core/test/setup-steps.test.ts),
+  [`agents_step_selects_off_first_and_writes_enabled_on_enter`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`agents_on_ends_mcp_off_as_mcp_on_does`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`an_mcp_off_after_the_step_was_drawn_wins_over_its_enter`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`the_page_cannot_name_a_key_or_value`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`agent_role_cannot_open_setup`](../../tests/browser/browser_vimma_setup.js)

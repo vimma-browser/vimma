@@ -11,6 +11,7 @@
 
 import { CONFIG_READ_TOPIC, ConfigHost } from "../config/ConfigHost.sys.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
+import { MCP_CHANGED_TOPIC, McpHost } from "../host/mcp-ops.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
 import { parseConfig, setConfigKeysText } from "../core/config.mjs";
 import {
@@ -25,16 +26,18 @@ import {
 import {
   CHAPTERS,
   STEPS,
+  agentsTurnOn,
+  choiceNote,
   editLines,
   fillStepText,
   inForceOf,
   planAtEnter,
-  planChoice,
   stepChoices,
   textParts,
 } from "../core/setup-steps.mjs";
 
 /** @import { SetupChoice, SetupRuntime } from "../core/setup-steps.mjs" */
+/** @import { McpConsentTicket } from "../host/mcp-ops.mjs" */
 
 const lazy =
   /** @type {Lazy<"AddonManager" | "clearTimeout" | "PrivateBrowsingUtils" | "SearchService" | "setTimeout">} */ ({});
@@ -134,9 +137,18 @@ const notFound = (e) => /** @type {Thrown} */ (e)?.name === "NotFoundError";
  * `enter` names an index into the list that page was shown and that list's serial, so a list
  * drawn again meanwhile (a config read, a visit with `h`) never shifts what an index means: an
  * older serial is refused as stale.
- * @type {WeakMap<MozBrowser, Map<string, { serial: number, choices: SetupChoice[] }>>}
+ * The agents step's list also keeps what `:mcp on`'s question would have remembered when it was
+ * drawn (`ticket`), which its `enter` is checked against as that question's yes is (M65).
+ * @type {WeakMap<MozBrowser, Map<string, SentList>>}
  */
 const sent = new WeakMap();
+/**
+ * @typedef {object} SentList
+ * @property {number} serial
+ * @property {SetupChoice[]} choices
+ * @property {McpConsentTicket} [ticket]  the agents step's only
+ */
+
 /** The serial of the next list sent. */
 let nextSerial = 1;
 
@@ -176,6 +188,8 @@ async function runtime() {
     engine: (await s.getDefault()).name,
     engines: (await s.getVisibleEngines()).map((e) => e.name),
     ...(["dark", "light", "system"].includes(pref) ? { appearance: pref } : {}),
+    // `:mcp on|off`'s pref and `:mcp off`'s hold: the agents step's value in force (behaviour 9).
+    mcp: McpHost.switchState,
   };
 }
 
@@ -319,6 +333,9 @@ export const SetupHost = {
   /** Notified after every read of config.toml (behaviour 12: a step draws its line again). */
   CONFIG_READ_TOPIC,
 
+  /** Notified when `:mcp on|off` or the file turn agents on or off: the agents step redraws. */
+  MCP_CHANGED_TOPIC,
+
   /**
    * What setup v2's welcome screen needs (behaviours 2 and 13, decision 19): the chapters
    * finished before, whether this is a private window, and the parse error, if any.
@@ -361,7 +378,12 @@ export const SetupHost = {
     const omarchy = step.id === "colours" ? await ThemeHost.omarchyFound() : false;
     const { choices, selected } = stepChoices(step, inForce, { engines, omarchy });
     const serial = nextSerial++;
-    sentTo(browser).set(id, { serial, choices });
+    const agent = step.id === "agents" ? McpHost.setupAgent() : {};
+    sentTo(browser).set(id, {
+      serial,
+      choices,
+      ...(step.id === "agents" ? { ticket: McpHost.consentTicket() } : {}),
+    });
     /** @type {string | null} */
     let blocked = null;
     if (step.kind === "setting") {
@@ -379,7 +401,8 @@ export const SetupHost = {
       choices: choices.map((c) => ({
         label: c.label,
         keep: !!c.keep,
-        lines: editLines(planChoice(c, inForce)),
+        lines: editLines(planAtEnter(step, c, inForce, { omarchy }) ?? []),
+        note: choiceNote(step, c, inForce, agent),
       })),
       selected,
       blocked,
@@ -395,7 +418,9 @@ export const SetupHost = {
    * is not the list the host sent last, or the choice is no longer offered at `enter`.
    * @param {MozBrowser | null} browser @param {string} id @param {number} index
    * @param {number} [serial]  the serial of the list the page drew (stepView)
-   * @returns {Promise<{ written: string[] } | { error: string } | { stale: true }>}
+   * The agents step's "on" while agents are off is the user's consent, checked and applied as a
+   * yes to `:mcp on` is (behaviour 28, docs/security/12-agents-mcp.md M65): `turnedOn` then.
+   * @returns {Promise<{ written: string[], turnedOn?: true } | { error: string } | { stale: true }>}
    */
   async saveStep(browser, id, index, serial) {
     const step = builtStep(id);
@@ -413,17 +438,35 @@ export const SetupHost = {
     const omarchy = await ThemeHost.omarchyFound();
     /** @type {import("../core/toml.mjs").TomlEdit[] | null} */
     let written = [];
+    let turnsOn = false;
     const why = await ConfigHost.setConfigKeys((text) => {
       const parsed = parseConfig(text ?? "", { mac: Services.appinfo.OS === "Darwin" });
       if (!parsed.config || parsed.errors.length) {
         return { error: "config.toml does not load; fix it first (:config shows it)" };
       }
-      written = planAtEnter(step, choice, inForceOf(parsed.config, rt), { omarchy });
+      // The hold read now, inside the queue with the file: `:mcp off` may have run meanwhile.
+      const now = inForceOf(parsed.config, { ...rt, mcp: McpHost.switchState });
+      turnsOn = agentsTurnOn(step, choice, now);
+      // `enter` on "on" is the consent `:mcp on`'s yes is (behaviour 28): refused where that
+      // yes would be, before anything is written.
+      if (turnsOn) {
+        const refused = list.ticket ? McpHost.consentRefusal(list.ticket) : "no consent asked";
+        if (refused) return { error: `${refused}; nothing written` };
+      }
+      written = planAtEnter(step, choice, now, { omarchy });
       return written ?? [];
     });
     if (why !== null) return { error: why };
     if (written === null) return { stale: true };
-    return { written: written.length ? editLines(written) : [] };
+    const lines = written.length ? editLines(written) : [];
+    if (turnsOn && list.ticket) {
+      // After the write and its read, as `:mcp on`'s yes: ends `:mcp off`'s hold, unless an
+      // `:mcp off` ran while the file was written.
+      const after = McpHost.consentFromSetup(list.ticket);
+      if (after) return { error: `${after}; config.toml was written, agents stay off` };
+      return { written: lines, turnedOn: true };
+    }
+    return { written: lines };
   },
 
   /**

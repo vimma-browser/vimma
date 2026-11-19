@@ -286,9 +286,15 @@ function scaledUsers(/** @type {number} */ x) {
 /**
  * The steps of setup v2 the page draws so far: the delivery slices add theirs here, with a
  * renderer in the page (docs/specs/setup-v2.md, Delivery). The host saves only these, so a step
- * whose rules have not landed (the agents step's consent) cannot be written through the page.
+ * whose rules have not landed cannot be written through the page.
  */
-export const BUILT_STEPS = Object.freeze(["content_blocker", "search_engine", "colours"]);
+export const BUILT_STEPS = Object.freeze([
+  "content_blocker",
+  "search_engine",
+  "colours",
+  "updates",
+  "agents",
+]);
 
 /**
  * The chapters with only `built` steps, chapters left without one dropped; each keeps its

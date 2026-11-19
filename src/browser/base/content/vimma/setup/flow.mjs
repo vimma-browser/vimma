@@ -32,7 +32,7 @@ const browser = () => SetupHost.browserFor(window);
  * @property {string} title
  * @property {string} question
  * @property {{ tag: "kbd" | "code" | null, text: string }[]} text
- * @property {{ label: string, keep: boolean, lines: string[] }[]} choices
+ * @property {{ label: string, keep: boolean, lines: string[], note: string | null }[]} choices
  * @property {number} selected
  * @property {string | null} blocked
  * @property {number} serial  the host's serial of this list, sent back with `enter`
@@ -53,7 +53,7 @@ let loading = false;
 /** "busy" while a save, an install or a search runs: keys wait. */
 let busy = false;
 /** What the last `enter` wrote, for the footer (behaviour 12): null before one. */
-/** @type {{ title: string, lines: string[], action?: boolean } | null} */
+/** @type {{ title: string, lines: string[], action?: boolean, on?: boolean } | null} */
 let last = null;
 /** The content blocker's lists. @type {AddonEntry[]} */
 let curated = [];
@@ -71,8 +71,17 @@ function el(tag, attrs = {}, ...kids) {
   return e;
 }
 
-/** Step text as nodes, never as HTML (textParts). @param {StepView["text"]} parts */
-const textNodes = (parts) => parts.map((p) => (p.tag ? el(p.tag, {}, p.text) : p.text));
+/**
+ * Step text as nodes, never as HTML (textParts); a line break in the text starts a new line, as
+ * the agents step's two lines do (behaviour 28).
+ * @param {StepView["text"]} parts
+ */
+const textNodes = (parts) =>
+  parts.flatMap((p) =>
+    p.tag
+      ? [el(p.tag, {}, p.text)]
+      : p.text.split("\n").flatMap((line, i) => (i ? [el("br"), line] : [line])),
+  );
 
 /** @type {FlowContext} */
 const ctx = {
@@ -125,7 +134,9 @@ function drawFooter() {
             ? [last.lines.join(", ")]
             : last.lines.length
               ? last.lines.flatMap((l, i) => [...(i ? [", "] : []), el("code", {}, l)])
-              : ["nothing written, it was already so"]),
+              : [last.on ? "nothing written" : "nothing written, it was already so"]),
+          // The agents step's "on" ends `:mcp off` for the session, written or not.
+          ...(last.on ? ["; agents are on"] : []),
         ]
       : []),
   );
@@ -210,6 +221,10 @@ function drawChoices(v) {
       ? ["Writes nothing"]
       : ["Writes ", ...choice.lines.flatMap((l, i) => [...(i ? [", "] : []), el("code", {}, l)])]),
   );
+  // What the choice does besides the line: the agents step's hold and workspace notes.
+  const note = $("v2-choice-note");
+  note.hidden = !choice?.note;
+  note.textContent = choice?.note ?? "";
 }
 
 function drawAddons() {
@@ -269,6 +284,7 @@ function drawStep() {
   root.dataset.stepId = step.id;
   $("v2-blocker").hidden = true;
   $("v2-choices").hidden = false;
+  $("v2-choice-note").hidden = true;
   $("v2-writes-row").hidden = step.kind !== "setting";
   const v = view?.id === step.id ? view : null;
   $("v2-text").replaceChildren(...(v ? textNodes(v.text) : []));
@@ -465,6 +481,9 @@ async function runEnter(effect) {
     return;
   }
   if ("error" in r) {
+    // The agents step's consent is spent, as a refused yes to `:mcp on` is: drawn again, with
+    // what `:mcp` says now, its next `enter` is a new one.
+    if (step.id === "agents") await loadView(false);
     // A failed write keeps the step open and says why (behaviour 16).
     const notice = $("v2-notice");
     notice.hidden = false;
@@ -473,7 +492,7 @@ async function runEnter(effect) {
     return;
   }
   delete root.dataset.failed;
-  last = { title: step.title, lines: r.written };
+  last = { title: step.title, lines: r.written, ...("turnedOn" in r ? { on: true } : {}) };
   await settle(flowAdvance(state, ctx, r.written));
 }
 
@@ -544,9 +563,13 @@ function start() {
     if (state.screen === "step") loadView(false);
   };
   Services.obs.addObserver(onConfigRead, SetupHost.CONFIG_READ_TOPIC);
-  window.addEventListener("unload", () =>
-    Services.obs.removeObserver(onConfigRead, SetupHost.CONFIG_READ_TOPIC),
-  );
+  // `:mcp on|off` changes the agents step's value in force, and what its `enter` is checked
+  // against: draw it again.
+  Services.obs.addObserver(onConfigRead, SetupHost.MCP_CHANGED_TOPIC);
+  window.addEventListener("unload", () => {
+    Services.obs.removeObserver(onConfigRead, SetupHost.CONFIG_READ_TOPIC);
+    Services.obs.removeObserver(onConfigRead, SetupHost.MCP_CHANGED_TOPIC);
+  });
 
   SetupHost.flowStart(browser()).then((s) => {
     finished = s.finished;
