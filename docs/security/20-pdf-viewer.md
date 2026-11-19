@@ -42,7 +42,8 @@ bindings, so it is accepted here.
   the others theirs. Its focus runs as a system caller, which skips Gecko's check against stealing
   keystrokes from another frame (`nsFocusManager::SetFocusInner`); that gives no more than the
   viewer's own `focus` here, because the call never raises a window and the viewer's CSP
-  (`default-src 'none'`) allows it no subframe.
+  (`default-src 'none'`) allows it no subframe of another origin.
+  [`a_hostile_viewer_gets_only_primitives_through`](../../tests/browser/browser_vimma_pdf_status.js),
   [`a_hostile_viewer_cannot_turn_the_text_layers_focus`](../../tests/browser/browser_vimma_pdf_marks.js)
 - V4. Exported callbacks **must** read their arguments through Xrays, never waived, and only the
   fields they need; the child **must** keep only values whose `typeof` is `number`, `boolean` or
