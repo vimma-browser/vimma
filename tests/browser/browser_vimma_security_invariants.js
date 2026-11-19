@@ -70,6 +70,12 @@ add_task(async function control_state_never_inserts_a_lazy_tab() {
   Assert.ok(index >= 0, "sanity: the lazy tab is listed");
   const entry = VimmaControl._commands.state().tabs.find((t) => t.index === index);
   Assert.ok(!lazy.linkedPanel, "state leaves the lazy tab without a browser");
+  Assert.equal(entry?.url, `${PAGE}?lazy`, "the row is the lazy tab's");
+  // Its workspace uuid: the browser id it does not have yet is 0 for every lazy tab (#1332).
+  Assert.ok(
+    /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(entry?.id ?? ""),
+    `named by its workspace uuid, not "0": ${entry?.id}`,
+  );
   Assert.strictEqual(entry?.loading, false, "and reports it as not loading");
   BrowserTestUtils.removeTab(lazy);
 });

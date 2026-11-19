@@ -468,7 +468,9 @@ function treeState(win, visible, panes) {
 function stateTabId(win, tab) {
   const id = tab.linkedBrowser.browserId;
   if (id) return String(id);
-  return PaneViews.get(win)?.adoption?.idOf?.(tab) || String(id);
+  const uuid = PaneViews.get(win)?.adoption?.idOf?.(tab) ?? "";
+  // A uuid comes from a session value: one edited into digits could pass for another tab's id.
+  return uuid && !/^\d+$/.test(uuid) ? uuid : String(id);
 }
 
 /**

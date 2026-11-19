@@ -312,6 +312,8 @@ export class PaneView {
 
   /** @param {Event} e */
   handleEvent(e) {
+    // Before the event: a TabBrowserDiscarded that is the very first event the view sees comes
+    // after Firefox removed the panel, so that one tab is missed; #use seeds earlier in practice.
     this.#seedPanels();
     if (e.type === "TabOpen") this.#onTabOpen(/** @type {Tab} */ (e.target));
     else if (e.type === "TabClose") this.#onTabClose(/** @type {Tab} */ (e.target));
@@ -672,8 +674,10 @@ export class PaneView {
       if (live.length >= 2) this.#panes = null;
       return;
     }
-    const inWrapper = new Set(wrapper.tabs.filter((t) => !t.closing).map((t) => t.linkedPanel));
-    for (const leaf of live) {
+    // A hidden view's lazy tab (named by uuid) that left the wrapper leaves the split too, as a
+    // loaded one does; #keepLazy would otherwise put it back.
+    const inWrapper = new Set(wrapper.tabs.filter((t) => !t.closing).map((t) => this.#idOf(t)));
+    for (const leaf of leaves(panes).filter((l) => this.#anyTab(l.tab))) {
       if (panes && !inWrapper.has(leaf.tab)) {
         panes = leaves(panes).length > 2 ? closePane(panes, leaf.pane) : null;
       }
@@ -1230,10 +1234,13 @@ export class PaneView {
    * @param {Panes} panes
    */
   #keepLazy(panes) {
+    // Only tabs a wrapper takes (tabsplitview.mjs addTabs stops at a pinned one): a tab it
+    // refused would differ from the wrapper again on every reconcile, each rebuild scheduling the
+    // next (SplitViewTabChange).
     const tabs = /** @type {Tab[]} */ (
       leaves(panes)
         .map((l) => this.#anyTab(l.tab))
-        .filter(Boolean)
+        .filter((t) => t && !t.pinned)
     );
     const wrapper = this.#currentWrapper();
     const now = wrapper ? wrapper.tabs.filter((t) => !t.closing) : [];
@@ -1340,10 +1347,12 @@ export class PaneView {
     const win = this.#win;
     const gBrowser = gBrowserOf(win);
     // A tree whose tabs are gone (closed outside a TabClose we saw) shrinks first. A hidden view
-    // may name a lazy tab by its uuid (#asCurrent).
+    // may name a lazy tab by its uuid (#asCurrent); one that got pinned has left the split, as a
+    // loaded one does (#adoptOwn): Firefox's wrapper cannot hold a pinned tab.
     let panes = this.#panes;
     for (const leaf of panes ? leaves(panes) : []) {
-      if (!panes || this.#anyTab(leaf.tab)) continue;
+      const tab = this.#anyTab(leaf.tab);
+      if (!panes || (tab && (tab.linkedPanel || !tab.pinned))) continue;
       panes = leaves(panes).length > 2 ? closePane(panes, leaf.pane) : null;
     }
     // A hidden view whose tab got selected (a pick, or Firefox's successor for a closed tab)

@@ -235,7 +235,8 @@ such a result, and nothing otherwise.)
   (Since changed: an unloaded tab has no browser id yet, so it was listed as `"0"`, the same for
   every such tab. It now has its workspace uuid as its id until it loads, then its browser's id,
   so the panes of two unloaded tabs stay apart; outside workspaces, as in a private window, it is
-  still `"0"`. Clients already treat `id` as an opaque string, so this needs no version bump;
+  still `"0"`. So `id` is stable while the tab keeps its browser, not across its first load or
+  an unload. Clients already treat `id` as an opaque string, so this needs no version bump;
   #1332.)
   `loading` is `true` while the tab's page loads (the tab strip's busy state, or a document load
   in progress), and in a new window before it has started to load its first page: a window is

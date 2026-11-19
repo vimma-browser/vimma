@@ -465,6 +465,20 @@ add_task(async function an_off_screen_splits_lazy_tabs_close_leave_and_unload_by
 });
 
 /**
+ * Resolves after the next reconcile of `win`'s view (the one a tab close schedules).
+ * @param {BrowserWindow} win
+ * @returns {Promise<void>}
+ */
+function reconciled(win) {
+  return new Promise((resolve) => {
+    const stop = PaneViews.watch(win, () => {
+      stop();
+      resolve();
+    });
+  });
+}
+
+/**
  * Types into the long page's field and scrolls it to 1200.
  * @param {SplitTab} tab
  */
@@ -536,10 +550,11 @@ add_task(async function a_split_made_current_off_screen_stays_lazy_across_restar
     );
   Assert.ok(!r(w2, "k1").linkedPanel && !r(w2, "k2").linkedPanel, "S1's tabs are lazy");
   w2.gBrowser.selectedTab = r(w2, "k3");
+  const settled = reconciled(w2);
   BrowserTestUtils.removeTab(r(w2, "k4"));
   await until(() => view(w2).splits.splits.length === 1, "S2 ends with k4");
   await until(() => view(w2).hidden, "S1 is current, kept hidden while k3 shows alone");
-  await TestUtils.waitForTick();
+  await settled;
   Assert.equal(namedSplits(w2, uuids), "S1:k1,k2", "S1 is the split left");
   Assert.ok(
     !r(w2, "k1").linkedPanel && !r(w2, "k2").linkedPanel,
@@ -656,4 +671,59 @@ add_task(async function a_tab_loaded_before_the_view_started_keeps_its_split_whe
     "named by its uuid",
   );
   await BrowserTestUtils.closeWindow(w1);
+});
+
+// Issue #1332: pinning an unloaded tab of the current split while it is kept hidden takes the tab
+// out of the split, as for a loaded one. With workspaces Vimma unpins it again at once (decision
+// 11), out of the wrapper; kept pinned, Firefox's wrapper cannot hold it (tabsplitview.mjs addTabs
+// stops at a pinned tab). Either way a tree that kept it rebuilt the wrapper around it, and a
+// wrapper that cannot take it rebuilt on every reconcile, each rebuild scheduling the next.
+add_task(async function pinning_an_unloaded_tab_of_a_hidden_split_takes_it_out() {
+  for (const keepPinned of [false, true]) {
+    const Z = workspace(`rs-z${keepPinned ? "p" : ""}`);
+    const w1 = await openWindow();
+    const ww1 = live(w1);
+    workspaces(w1).unpinsPinnedTabs = !keepPinned;
+    ww1.switchTo({ id: Z.id });
+    await until(() => ww1.model.active === Z.id, "Z is shown");
+    const { tabs, uuids } = await pages(w1, ["za", "zb", "zc", "zd"]);
+    const t = (/** @type {string} */ n) => /** @type {SplitTab} */ (tabs.get(n));
+    Assert.ok(view(w1).showTabs([t("za"), t("zb"), t("zc")], t("za")).ok, "S1: za | zb | zc");
+    await until(() => t("za").selected && !view(w1).hidden, "S1 shows");
+    await w1.gBrowser.explicitUnloadTabs([t("zb")]);
+    await until(() => !t("zb").linkedPanel && view(w1).hidden, "zb is unloaded, S1 kept hidden");
+    Assert.equal(
+      leaves(/** @type {Panes} */ (view(w1).panes))[1]?.tab,
+      uuids.get("zb") ?? "",
+      "S1 names zb by its uuid",
+    );
+
+    let rounds = 0;
+    const stop = PaneViews.watch(w1, () => rounds++);
+    const paneCount = () => {
+      const panes = view(w1).panes;
+      return panes ? leaves(panes).length : 0;
+    };
+    w1.gBrowser.pinTab(t("zb"));
+    await until(() => paneCount() === 2, `pinned (kept: ${keepPinned}), zb leaves S1`);
+    for (let i = 0; i < 5; i++) await new Promise((r) => w1.setTimeout(r, 0));
+    const before = rounds;
+    for (let i = 0; i < 20; i++) await new Promise((r) => w1.setTimeout(r, 0));
+    stop();
+    Assert.equal(rounds, before, "and the view settles: no reconcile after it");
+    Assert.deepEqual(
+      leaves(/** @type {Panes} */ (view(w1).panes)).map((l) => view(w1).tabOf(l.tab)),
+      [t("za"), t("zc")],
+      "S1 is za | zc",
+    );
+    Assert.ok(view(w1).hidden, "still hidden");
+    Assert.equal(t("zb").pinned, keepPinned, "zb is pinned as the window wants");
+    Assert.ok(!t("zb").linkedPanel, "zb stays unloaded");
+    Assert.ok(
+      t("za").splitview && t("za").splitview === t("zc").splitview && !t("zb").splitview,
+      "one wrapper holds za and zc",
+    );
+    if (t("zb").pinned) w1.gBrowser.unpinTab(t("zb"));
+    await BrowserTestUtils.closeWindow(w1);
+  }
 });
