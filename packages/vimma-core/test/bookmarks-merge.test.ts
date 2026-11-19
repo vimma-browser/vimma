@@ -559,7 +559,93 @@ describe("bookmarks.toml: outside changes written to the file (three-way merge)"
   });
 });
 
+describe("bookmarks.toml merge: a removal the user declined", () => {
+  test("keepRemovals puts removals back and still writes the batch's additions, renames and moves", () => {
+    const { base, tree } = agreed(FILE);
+    // One Sync batch: removes docs/Source and Mail, adds two bookmarks, renames Calendar, and
+    // moves Guide out of docs.
+    const changed = edit(tree, (t, find) => {
+      remove(t, find("work", "docs", "Source"));
+      remove(t, find("work", "Mail"));
+      find("work").children?.push(bm("new00000001", "New 1", "https://n.example/1"));
+      find("work", "docs").children?.push(bm("new00000002", "New 2", "https://n.example/2"));
+      find("work", "Calendar").title = "Agenda";
+      move(t, find("work", "docs", "Guide"), find("work"));
+    });
+    const {
+      m,
+      text,
+      places: after,
+    } = settle({ text: FILE, base, places: changed, keepRemovals: true });
+    expect(m.ok && m.removing).toEqual([]);
+    expect(tables(text).work).toEqual([
+      { "docs/": ["Source https://searchfox.org/", "New 2 https://n.example/2"] },
+      "Agenda https://calendar.example.com/",
+      "Mail https://mail.example.com/",
+      "New 1 https://n.example/1",
+      "Guide https://vimma.dev/docs",
+    ]);
+    // Places gets the removed ones back and keeps the additions.
+    const urls = JSON.stringify(contents(topFolder(after, "work")));
+    for (const u of ["searchfox.org", "mail.example.com", "n.example/1", "n.example/2"]) {
+      expect(urls).toContain(u);
+    }
+    // A table whose folder went is kept too.
+    const deleted = edit(tree, (t) => remove(t, topFolder(t, "work") as Item));
+    const d = merge({ text: FILE, base, places: deleted, keepRemovals: true });
+    expect(d.ok && [d.text, d.removing]).toEqual([null, []]);
+  });
+});
+
 describe("bookmarks.toml merge: bounded time", () => {
+  test("a full reorder of 16,000 bookmarks in 4 folders merges in linear time", () => {
+    const n = 16_000;
+    const names = (i: number) => `f${i % 4}/b${i}`;
+    const text = `[bookmarks.work]\n${Array.from(
+      { length: n },
+      (_, i) => `${JSON.stringify(names(i))} = "https://example.com/${i}"`,
+    ).join("\n")}\n`;
+    const entries: { path: string[]; kind: "bookmark" | "folder"; url?: string; guid: string }[] = [
+      0, 1, 2, 3,
+    ].map((f) => ({ path: [`f${f}`], kind: "folder" as const, guid: `fold${f}` }));
+    const folders = [0, 1, 2, 3].map((f) => folder(`fold${f}`, `f${f}`, []));
+    for (let i = 0; i < n; i++) {
+      const guid = `bm${String(i).padStart(10, "0")}`;
+      entries.push({
+        path: [`f${i % 4}`, `b${i}`],
+        kind: "bookmark",
+        url: `https://example.com/${i}`,
+        guid,
+      });
+      folders[i % 4]?.children?.push(bm(guid, `b${i}`, `https://example.com/${i}`));
+    }
+    // Sorted the other way round, as the Library's "Sort by Name" or another device's order.
+    for (const f of folders) f.children?.reverse();
+    const start = performance.now();
+    const m = merge({
+      text,
+      base: { tables: [{ name: "work", folder: "workfolder01", entries }] },
+      places: places([folder("workfolder01", "work", folders)]),
+    });
+    expect(performance.now() - start).toBeLessThan(budget(3000));
+    expect(m.ok).toBe(true);
+    const t = tables(m.ok ? (m.text as string) : "").work as { [k: string]: string[] }[];
+    expect(t[0]?.["f0/"]?.[0]).toBe(`b${n - 4} https://example.com/${n - 4}`);
+  }, 60_000);
+
+  test("5,000 Places additions of one title are named in linear time", () => {
+    const text = '[bookmarks.work]\n"a" = "https://example.com/a"\n';
+    const { base, tree } = agreed(text);
+    const changed = edit(tree, (_t, find) => {
+      for (let i = 0; i < 5000; i++)
+        find("work").children?.push(bm(`same${i}`, "same", `https://s.example/${i}`));
+    });
+    const start = performance.now();
+    const m = merge({ text, base, places: changed });
+    expect(performance.now() - start).toBeLessThan(budget(2000));
+    expect(m.ok && m.text?.includes('"same (5000)" = "https://s.example/4999"')).toBe(true);
+  }, 60_000);
+
   test("a 5,000-bookmark folder with a Sync batch and a reorder merges in linear time", () => {
     const n = 5000;
     const text = `[bookmarks.work]\n${Array.from(

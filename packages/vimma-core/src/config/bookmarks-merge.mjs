@@ -26,6 +26,7 @@ import {
   lineUrl,
   readBookmarks,
   tableNameProblem,
+  uniqueNamer,
 } from "./bookmarks-file.mjs";
 import { cleanName, editBookmarkLines, scanBookmarkLines, writableUrl } from "./bookmarks-edit.mjs";
 import { PLACES_ROOTS } from "../ui/bookmarks.mjs";
@@ -121,8 +122,8 @@ function placesTitle(node) {
  * @param {readonly PlacesNode[]} children
  */
 function placesNamed(children) {
-  /** @type {Set<string>} */
-  const used = new Set();
+  // Linear even for thousands of one title (Sync, an import): slice 4's shared namer.
+  const unique = uniqueNamer();
   /** @type {{ node: PlacesNode, kind: "bookmark" | "folder", name: string, url: string | null }[]} */
   const out = [];
   for (const node of children) {
@@ -133,10 +134,7 @@ function placesNamed(children) {
           ? "folder"
           : null;
     if (!kind || !node.guid) continue;
-    const title = placesTitle(node);
-    let name = title;
-    for (let n = 2; used.has(`${kind}\0${name}`); n++) name = `${title} (${n})`;
-    used.add(`${kind}\0${name}`);
+    const name = unique(placesTitle(node), kind);
     out.push({ node, kind, name, url: kind === "bookmark" ? normUrl(node.uri) : null });
   }
   return out;
@@ -363,10 +361,15 @@ function orderOfLines(seq) {
  * `local` lists items made in a private window (Behaviour 12): they stay in Places and out of the
  * file, as everything under them. `putBackGuids` lists items whose Places change is not written
  * (made in a private window) but put back. A table in `hold` (the loop guard) is left as it is.
+ * `keepRemovals` (the user answered `n` to Behaviour 13's question, or did not answer): every
+ * removal Places made, a workspace folder's included, is put back from the file, while the rest
+ * of the change (additions, renames, moves) is still written, so declining a removal never
+ * deletes what the same batch added.
  *
  * @param {{ text: string, source: BookmarksSource, base: { tables: BaseTable[] },
  *   places: PlacesNode, bookmarklets: BookmarkletsSetting, hold?: ReadonlySet<string>,
- *   local?: ReadonlySet<string>, putBackGuids?: ReadonlySet<string> }} input
+ *   local?: ReadonlySet<string>, putBackGuids?: ReadonlySet<string>,
+ *   keepRemovals?: boolean }} input
  * @returns {{ ok: true, text: string | null, base: { tables: BaseTable[] },
  *   removing: { table: string, count: number, had: number }[],
  *   conflicts: { table: string, path: string[], what: "change" | "removal" }[],
@@ -379,6 +382,7 @@ export function mergeOutside(input) {
   const hold = input.hold ?? new Set();
   const local = input.local ?? new Set();
   const noWrite = input.putBackGuids ?? new Set();
+  const keepRemovals = input.keepRemovals === true;
   const s = scanBookmarkLines(text);
   if ("error" in s) return { ok: false, error: `${source}: ${s.error}` };
   const all = indexPlaces(places);
@@ -433,7 +437,9 @@ export function mergeOutside(input) {
       resolved.push({ t, folder: t.folder, status: "ok" });
       taken.add(t.folder);
     } else if (!at) {
-      const alias = (toolbar?.children ?? []).find(
+      // Only when exactly one such folder is there: a second folder of the name may be the
+      // user's own, and reading against it would count every bookmark as removed.
+      const candidates = (toolbar?.children ?? []).filter(
         (c) =>
           c.typeCode === TYPE_FOLDER &&
           c.guid &&
@@ -441,6 +447,7 @@ export function mergeOutside(input) {
           !taken.has(c.guid) &&
           placesTitle(c) === t.name,
       );
+      const alias = candidates.length === 1 ? candidates[0] : undefined;
       if (alias?.guid) {
         resolved.push({ t, folder: alias.guid, status: "ok" });
         taken.add(alias.guid);
@@ -472,6 +479,11 @@ export function mergeOutside(input) {
       continue;
     }
     const ft = /** @type {ScanTable} */ (fileTables.get(r.t.name));
+    if (keepRemovals) {
+      r.status = "fileGone"; // declined: the run makes its folder again
+      tableFolders.add(r.t.folder);
+      continue;
+    }
     if (fileChanged(r.t, ft)) {
       conflicts.push({ table: r.t.name, path: [], what: "removal" });
       putBack.push({ table: r.t.name, id: "table" });
@@ -755,6 +767,8 @@ export function mergeOutside(input) {
           ? "changed"
           : "same";
       const fState = !f ? "removed" : f.same ? "same" : "changed";
+      // A removal the user declined: the file's line stays and Places gets it back.
+      if (pState === "removed" && keepRemovals) pState = "same";
       // Made in a private window, or a change the file cannot hold: put back (Behaviour 12, 4).
       if (pState === "changed" && p && (noWrite.has(p.real) || !writable(p))) {
         putBack.push({ table: t.name, id: `guid\0${e.guid}` });
@@ -864,15 +878,13 @@ export function mergeOutside(input) {
         .filter((n) => n.kind === "folder"),
     ];
     for (const d of folders) {
-      /** @type {Set<string>} */
-      const used = new Set();
-      for (const c of d.children) if (!c.fromPlaces) used.add(`${c.kind}\0${c.name}`);
+      // The file's own names first (they are unique already), then Places', made unique.
+      const unique = uniqueNamer();
+      for (const c of d.children) if (!c.fromPlaces) unique(c.name, c.kind);
       for (const c of d.children) {
         if (!c.fromPlaces) continue;
         const from = c.name;
-        let name = from;
-        for (let k = 2; used.has(`${c.kind}\0${name}`); k++) name = `${from} (${k})`;
-        used.add(`${c.kind}\0${name}`);
+        const name = unique(from, c.kind);
         if (name !== from) {
           c.name = name;
           renamed.push({ table: t.name, from, to: name });
@@ -992,26 +1004,52 @@ export function mergeOutside(input) {
           node.children.map((c) => `${c.kind}\0${c.name}`),
         );
     }
-    const wrongFolder = () => {
+    // Every folder whose order the lines get wrong, found in one pass over the lines; each wrong
+    // folder that no wrong folder holds is laid out again in the merged order, all in one pass.
+    const wrongFolders = () => {
       const got = orderOfLines(seq);
+      /** @type {Set<string>} */
+      const out = new Set();
       for (const [path, want] of wantOrder) {
-        const have = got.get(path) ?? [];
-        if (!samePath(have, want)) return path;
+        if (!samePath(got.get(path) ?? [], want)) out.add(path);
       }
-      return null;
+      return out;
     };
     for (let tries = 0; ; tries++) {
-      const wrong = wrongFolder();
-      if (wrong === null) break;
-      if (tries > wantOrder.size + 1) return { error: "the merged order could not be written" };
-      const prefix = wrong === "" ? [] : wrong.split("\0");
-      const under = (/** @type {Leaf} */ l) =>
-        l.names.length >= prefix.length &&
-        prefix.every((n, i) => l.names[i] === n) &&
-        (l.names.length > prefix.length || l.folder);
-      const first = seq.findIndex(under);
-      const rest = seq.filter((l) => !under(l));
-      seq = [...rest.slice(0, first), ...leaves.filter(under), ...rest.slice(first)];
+      const wrong = wrongFolders();
+      if (!wrong.size) break;
+      if (tries > 2) return { error: "the merged order could not be written" };
+      /** The topmost wrong folder a line is in (its own empty-folder line included), or null. */
+      const groupOf = (/** @type {Leaf} */ l) => {
+        const depth = l.folder ? l.names.length : l.names.length - 1;
+        for (let i = 0; i <= depth; i++) {
+          const key = l.names.slice(0, i).join("\0");
+          if (wrong.has(key)) return key;
+        }
+        return null;
+      };
+      /** @type {Map<string, Leaf[]>} each group's lines, in the merged order */
+      const groups = new Map();
+      for (const l of leaves) {
+        const g = groupOf(l);
+        if (g === null) continue;
+        const list = groups.get(g) ?? [];
+        list.push(l);
+        groups.set(g, list);
+      }
+      /** @type {Leaf[]} */
+      const next = [];
+      /** @type {Set<string>} */
+      const laid = new Set();
+      for (const l of seq) {
+        const g = groupOf(l);
+        if (g === null) next.push(l);
+        else if (!laid.has(g)) {
+          laid.add(g);
+          next.push(...(groups.get(g) ?? []));
+        }
+      }
+      seq = next;
     }
 
     const scanned = new Map(ft.lines.map((l) => [l.line, l]));

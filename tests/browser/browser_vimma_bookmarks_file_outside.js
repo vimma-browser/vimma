@@ -106,9 +106,16 @@ async function answer(/** @type {string} */ key) {
   EventUtils.synthesizeKey(key);
 }
 
-/** Longer than a burst and a poll: anything a change started has run. */
+/**
+ * Until everything a change started has run: no burst or settle waiting, the file read once
+ * more (a forced run, which changes nothing that is already in agreement), and the queue idle.
+ */
 async function quiet() {
-  await new Promise((r) => setTimeout(r, 700));
+  const idle = () => mirror.burstTimer === null && mirror.settleTimer === null;
+  await until(idle, "no burst or settle waiting");
+  await mirror.tick(true);
+  await mirror.settledRuns();
+  await until(idle, "and none after the run");
   await mirror.settledRuns();
 }
 
@@ -329,6 +336,59 @@ add_task(async function a_sync_removal_of_many_asks_and_n_puts_them_back() {
   await untilText(`[bookmarks.work]\n${lines(25).split("\n").slice(22).join("\n")}\n`, "removed");
   Assert.equal((await folderContents("work"))?.length, 3, "and Places keeps the rest");
   await reset();
+});
+
+add_task(async function a_mixed_sync_batch_answered_n_or_not_at_all_keeps_its_additions() {
+  // Review of #1354: a Sync batch that removes many and adds some. `n`, or no answer, puts the
+  // removals back; the additions (and renames) are still written, never deleted everywhere.
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.bookmarks.askMs", 2500]] });
+  for (const how of ["n", "no answer"]) {
+    const text = `[bookmarks.work]\n${lines(30)}\n`;
+    await IOUtils.writeUTF8(bookmarksFile, text);
+    await until(async () => (await folderContents("work"))?.length === 30, `${how}: 30 loaded`);
+    await quiet();
+    const work = /** @type {Node} */ (await topFolder("work")).guid;
+    const gone = [];
+    for (let i = 0; i < 25; i++) gone.push({ guid: await guidOf(`https://example.com/${i}`) });
+    await PlacesUtils.bookmarks.remove(gone, { source: SYNC });
+    await PlacesUtils.bookmarks.insertTree(
+      {
+        guid: work,
+        children: Array.from({ length: 10 }, (_, i) => ({
+          url: `https://new.example/${i}`,
+          title: `new ${i}`,
+        })),
+      },
+      { source: SYNC },
+    );
+    await PlacesUtils.bookmarks.update({
+      guid: await guidOf("https://example.com/29"),
+      title: "renamed by Sync",
+      source: SYNC,
+    });
+    await until(
+      () => promptOpen() && promptText().includes("removes 25 bookmarks from"),
+      `${how}: asked`,
+    );
+    if (how === "n") await answer("n");
+    await until(async () => {
+      const t = await IOUtils.readUTF8(bookmarksFile);
+      return t.includes('"new 9" = "https://new.example/9"') && t.includes('"renamed by Sync"');
+    }, `${how}: the additions and the rename are written`);
+    await until(
+      async () => (await folderContents("work"))?.length === 40,
+      `${how}: the 25 are back in Places, beside the 10 new ones`,
+    );
+    const file = await IOUtils.readUTF8(bookmarksFile);
+    for (let i = 0; i < 25; i++) {
+      Assert.ok(file.includes(`"b${i}" = "https://example.com/${i}"`), `${how}: b${i} kept`);
+    }
+    for (let i = 0; i < 10; i++) {
+      Assert.ok(await PlacesUtils.bookmarks.fetch({ url: `https://new.example/${i}` }), `new ${i}`);
+    }
+    await reset();
+  }
+  await SpecialPowers.popPrefEnv();
 });
 
 /**

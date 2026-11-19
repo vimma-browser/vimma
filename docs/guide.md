@@ -4206,7 +4206,8 @@ URL.
   leave a bookmark twice, never nowhere. A removal of more than 20 bookmarks, or of more than
   half of a table's, asks first, as
   `Sync removes 34 bookmarks from "work": remove them from bookmarks.toml? y/N`; `n`, `Esc` or
-  no answer in a minute puts them back from the file.
+  no answer in a minute puts those bookmarks back from the file, and still writes what the same
+  change added, renamed or moved, so declining never deletes a bookmark Sync just brought.
 - **`write_back`.** `[bookmarks] write_back` in `config.toml` says what reaches the file:
   `"all"` (the default) writes every change, Vimma's keys' and Firefox's; `"vimma"` writes
   only Vimma's own and puts every other change back from the file a second later, with a
@@ -4220,7 +4221,10 @@ URL.
   the keys never write it (`bookmarks.toml is not written from a private window`), and under
   `"all"` a bookmark added to a mirrored folder from Firefox's star or Library while a private
   window is the last one you used stays in Firefox only, and a change to a mirrored bookmark is
-  put back, with a notice. Removals are written.
+  put back, with a notice. Removals are written. Firefox does not say which window a change
+  came from, so an edit in the Library counts as made in the last browser window you used:
+  after a private one, the Library's changes are put back too, even when you opened it from a
+  normal window.
 - **Two devices.** With Firefox Sync on two machines, each machine writes what Sync brings
   into its own file under `"all"`. Under `"vimma"` or `"none"`, or when both machines change one
   bookmark at once, one puts the other's change back. When one bookmark has been put back three

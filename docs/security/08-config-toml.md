@@ -112,7 +112,9 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   the file; such an item stays in Places as it is and no run removes it. Names are cleaned as
   for the keys. Every outside removal of more than 20 bookmarks, or of more than half of a
   table's, asks y/N first in the window (D14, the same question rules as F6); `n`, `Esc` or no
-  answer puts them back into Places from the file. The guide warns, in its first paragraph,
+  answer puts the removed ones back into Places from the file and writes the rest of the change,
+  so declining never deletes, on this device or through Sync on others, what the same batch
+  added. The guide warns, in its first paragraph,
   that every URL in a mirrored folder, Sync's included, goes into the file and every commit of
   it. A merge whose edit does not read back as merged, or a write that fails, writes nothing and
   pauses until the file changes, keeping Places' change; when both sides changed one bookmark
@@ -179,7 +181,9 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`a_private_window_change_is_not_written`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
   [`the_loop_guard_holds_across_two_simulated_devices`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
   [`a_move_out_whose_places_step_fails_and_whose_line_cannot_go_back_loses_nothing`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
-  [`a_base_that_cannot_be_saved_after_a_move_out_loses_nothing`](../../tests/browser/browser_vimma_bookmarks_file_outside.js)
+  [`a_base_that_cannot_be_saved_after_a_move_out_loses_nothing`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
+  [`a_mixed_sync_batch_answered_n_or_not_at_all_keeps_its_additions`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
+  [`keepRemovals puts removals back and still writes the batch's additions, renames and moves`](../../packages/vimma-core/test/bookmarks-merge.test.ts)
 - F8. `:bookmarks export` writes Places' workspace folders to a new `bookmarks.toml` (spec:
   [bookmarks-file](../specs/bookmarks-file.md) Behaviour 17, Delivery slice 4, behind the same
   pref). It writes through the same writer and queue as F7 (D11): a new file is created mode

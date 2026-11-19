@@ -131,10 +131,11 @@ function sha256(text) {
  * question showed, `asked` what the run read when it asked; `vimma` is the run after one of
  * Vimma's own edits (D18), `adopted` what a takeover wrote to the file before this run (D7).
  * `outside` is the number of removals from the file a `y` to Behaviour 13's question approved;
- * `putBack`, its `n`: this run writes nothing and puts Places back from the file. `retried`: the
+ * `keepRemovals`, its `n` or no answer: the removals are put back from the file and the rest of
+ * the change is written. `retried`: the
  * run after one whose apply failed (a second failure pauses).
  * @typedef {{ trigger: "start" | "file" | "config" | "places" | "vimma", approved?: number,
- *   asked?: string, adopted?: string, outside?: number, putBack?: boolean,
+ *   asked?: string, adopted?: string, outside?: number, keepRemovals?: boolean,
  *   retried?: boolean }} RunHow
  */
 
@@ -1187,10 +1188,11 @@ export class BookmarksFileImpl {
    * Behaviour 13 (`write_back = "all"`): merges Places' outside changes with the file and the base
    * (core's mergeOutside) and writes them to the file in the edit queue (D11), computed again from
    * the file's text when it is written, once more if it changed meanwhile. A removal of many asks
-   * first (D14): `y` writes it, `n` puts Places back from the file. A merge or a write that fails
+   * first (D14): `y` writes it; `n` or no answer puts the removals back and writes the rest. A
+   * merge or a write that fails
    * writes nothing and pauses until the file changes, so Places keeps the change: never lost.
    * Returns null when the run stops here (it asked, or paused); `putBack`: the run writes nothing
-   * and puts Places back (a `n`, or the first run on a new Places database, D17).
+   * and puts Places back (the first run on a new Places database, D17).
    * @param {BookmarksSource} source
    * @param {Base} base
    * @param {RunHow} how
@@ -1209,13 +1211,14 @@ export class BookmarksFileImpl {
       hold: this.held,
       local: new Set([...(base.local ?? []), ...this.privateAdded]),
       putBackGuids: new Set(this.privateChanged),
+      keepRemovals: !!how.keepRemovals,
     };
     const first = mergeOutside({ ...options, text });
     if (!first.ok) {
       this.failOutside(first.error, input, base);
       return null;
     }
-    const putBack = !!how.putBack || (how.trigger === "start" && this.freshDatabase);
+    const putBack = how.trigger === "start" && this.freshDatabase;
     if (putBack) return { merge: first, base, written: null, putBack: true };
     const removing = first.removing.reduce((n, x) => n + x.count, 0);
     const many = tooManyRemoved(first.removing.map((x) => ({ removed: x.count, had: x.had })));
@@ -1235,10 +1238,12 @@ export class BookmarksFileImpl {
         },
         () => {
           this.paused = null;
+          // Only the removals are put back: what the same batch added, renamed or moved is
+          // still written, so declining (or not answering) never deletes it everywhere.
           this.say(
-            `${source}: ${who}'s removal of ${plural(removing, "bookmark")} put back from the file`,
+            `${source}: ${who}'s removal of ${plural(removing, "bookmark")} put back from the file; the rest of the change is written`,
           );
-          this.enqueue({ trigger: "places", putBack: true });
+          this.enqueue({ trigger: "places", keepRemovals: true });
         },
       );
       return null;
@@ -1884,6 +1889,9 @@ export class BookmarksFileImpl {
       }
     }
     const local = new Set(m.local);
+    // Named once each; an item that left `keep` is forgotten, so the set stays as small as it.
+    const keep = new Set(m.keep);
+    for (const g of this.keptSaid) if (!keep.has(g)) this.keptSaid.delete(g);
     const fresh = m.keep.filter((g) => !local.has(g) && !this.keptSaid.has(g));
     for (const g of fresh) this.keptSaid.add(g);
     if (fresh.length) {

@@ -854,9 +854,11 @@ Slice 3 landed with these departures and particulars, each for the reason given:
   `local` list across restarts, and its changes are put back; removals are written, because they
   add nothing to the file.
 - **The removal question.** `n`, `Esc` or no answer to Behaviour 13's question puts the
-  bookmarks back from the file, where the file direction's question pauses instead, because a
-  paused merge would ask again at every burst and a put-back loses nothing. A newer question
-  closes an open one without answering it.
+  removed bookmarks back from the file and still writes the rest of the change (additions,
+  renames, moves), where the file direction's question pauses instead: a paused merge would ask
+  again at every burst, and putting back the whole batch would delete its additions from Places
+  and, through Sync, from every device. A newer question closes an open one without answering
+  it.
 - **A merge that cannot be written.** An edit that does not read back as merged, or a write that
   fails (after one more try when the file changed meanwhile), writes nothing and pauses both ways until the file changes, with a notice, keeping
   Places' change: an outside change is never put back because the file could not take it. The
