@@ -339,7 +339,7 @@ add_task(async function a_sync_removal_of_many_asks_and_n_puts_them_back() {
 });
 
 add_task(async function a_mixed_sync_batch_answered_n_or_not_at_all_keeps_its_additions() {
-  // Review of #1354: a Sync batch that removes many and adds some. `n`, or no answer, puts the
+  // A Sync batch that removes many and adds some. `n`, or no answer, puts the
   // removals back; the additions (and renames) are still written, never deleted everywhere.
   await SpecialPowers.pushPrefEnv({ set: [["vimma.bookmarks.askMs", 2500]] });
   for (const how of ["n", "no answer"]) {
