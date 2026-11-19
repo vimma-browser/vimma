@@ -7,12 +7,15 @@ import {
   STEPS,
   editLines,
   fillStepText,
+  inForceOf,
+  planAtEnter,
   planChoice,
   prefixHints,
   stepChoices,
   stepKeys,
+  textParts,
 } from "../src/system/setup-steps.mjs";
-import { setConfigKeysText } from "../src/config/config.mjs";
+import { parseConfig, setConfigKeysText } from "../src/config/config.mjs";
 import { compileKeymap } from "../src/keys/keymap.mjs";
 import { getAction } from "../src/keys/actions.mjs";
 import { parseKey } from "../src/keys/keys.mjs";
@@ -197,5 +200,185 @@ describe("choices, Keep and the line a step writes (behaviours 8, 9 and 12)", ()
         );
       }
     }
+  });
+});
+
+/** The values in force for `text` (the file at `enter`) and what the window shows. */
+const inForce = (text: string, runtime = {}) => {
+  const { config } = parseConfig(text);
+  if (!config) throw new Error(`does not parse: ${text}`);
+  return inForceOf(config, runtime);
+};
+
+describe("the value in force at enter (decision 4)", () => {
+  test("the file's value, else the built-in default, else what Firefox or :theme has", () => {
+    expect(inForce("schema = 2\n", { engine: "Google", appearance: "dark" })).toMatchObject({
+      "search.default": "Google",
+      "theme.source": "omarchy",
+      "theme.name": "vimma",
+      "theme.appearance": "dark",
+      "ui.toolbar": "shown",
+      "ui.tabline": "off",
+    });
+    const set = inForce(
+      'schema = 2\n[search]\ndefault = "Bing"\n[theme]\nappearance = "light"\n' +
+        '[ui]\ntoolbar = "hidden"\n',
+      { engine: "Google", appearance: "dark" },
+    );
+    expect(set).toMatchObject({
+      "search.default": "Bing",
+      "theme.appearance": "light",
+      "ui.toolbar": "hidden",
+    });
+    expect(inForce("schema = 2\n")["theme.appearance"]).toBe("system");
+  });
+});
+
+describe("the search engine named in another case (behaviour 8)", () => {
+  const engines = ["Google", "DuckDuckGo"];
+  const file = 'schema = 2\n[search]\ndefault = "duckduckgo"\n';
+
+  test("is the installed engine of that name: selected, no Keep, enter writes nothing", () => {
+    const now = inForce(file, { engines });
+    expect(now["search.default"]).toBe("DuckDuckGo");
+    const r = stepChoices(step("search_engine"), now, { engines });
+    expect(r.choices.map((c) => c.label)).toEqual(engines);
+    expect(r.selected).toBe(1);
+    expect(planChoice(r.choices[1]!, now)).toEqual([]);
+  });
+
+  test("a name no engine has stays as written, for Keep", () => {
+    const now = inForce('schema = 2\n[search]\ndefault = "Gone"\n', { engines });
+    expect(now["search.default"]).toBe("Gone");
+    expect(stepChoices(step("search_engine"), now, { engines }).choices[0]?.label).toBe(
+      'Keep "Gone"',
+    );
+  });
+});
+
+describe("colours: the effect in force (decision 12)", () => {
+  const colours = step("colours");
+  const labels = (r: { choices: { label: string }[] }) => r.choices.map((c) => c.label);
+  /** What enter on the choice labelled `label` writes, judged against `text` then. */
+  const writes = (text: string, label: string, omarchy: boolean, runtime = {}) => {
+    const now = inForce(text, runtime);
+    const r = stepChoices(colours, now, { omarchy });
+    const choice = r.choices.find((c) => c.label === label);
+    if (!choice) throw new Error(`no ${label} in ${labels(r).join(", ")}`);
+    return planAtEnter(colours, choice, now, { omarchy });
+  };
+
+  test("the Omarchy choice is listed only where an Omarchy theme is found", () => {
+    expect(labels(stepChoices(colours, inForce("schema = 2\n"), { omarchy: true }))).toEqual([
+      "The Omarchy theme",
+      "Light",
+      "Dark",
+      "Follow the system",
+    ]);
+    expect(labels(stepChoices(colours, inForce("schema = 2\n"), { omarchy: false }))).toEqual([
+      "Light",
+      "Dark",
+      "Follow the system",
+    ]);
+  });
+
+  test("colours: the choice in force writes nothing, with and without an Omarchy theme", () => {
+    const shown = stepChoices(colours, inForce("schema = 2\n"), { omarchy: true });
+    expect(shown.choices[shown.selected]?.label).toBe("The Omarchy theme");
+    expect(writes("schema = 2\n", "The Omarchy theme", true)).toEqual([]);
+    const builtin = stepChoices(colours, inForce("schema = 2\n"), { omarchy: false });
+    expect(builtin.choices[builtin.selected]?.label).toBe("Follow the system");
+    expect(writes("schema = 2\n", "Follow the system", false)).toEqual([]);
+    // :theme's appearance is in force without the key, and choosing it writes nothing.
+    const dark = stepChoices(colours, inForce("schema = 2\n", { appearance: "dark" }), {
+      omarchy: false,
+    });
+    expect(dark.choices[dark.selected]?.label).toBe("Dark");
+    expect(writes("schema = 2\n", "Dark", false, { appearance: "dark" })).toEqual([]);
+    // Omarchy found but turned off in the file: the built-in palette is the effect.
+    const off = 'schema = 2\n[theme]\nsource = "file"\nappearance = "light"\n';
+    const r = stepChoices(colours, inForce(off), { omarchy: true });
+    expect(r.choices[r.selected]?.label).toBe("Light");
+    expect(writes(off, "Light", true)).toEqual([]);
+    expect(writes(off, "The Omarchy theme", true)).toEqual([
+      { table: "theme", key: "source", value: "omarchy" },
+    ]);
+  });
+
+  test("colours: light without an Omarchy theme writes appearance only", () => {
+    expect(writes("schema = 2\n", "Light", false)).toEqual([
+      { table: "theme", key: "appearance", value: "light" },
+    ]);
+  });
+
+  test("colours: light with an Omarchy theme writes source and appearance", () => {
+    expect(writes("schema = 2\n", "Light", true)).toEqual([
+      { table: "theme", key: "source", value: "file" },
+      { table: "theme", key: "appearance", value: "light" },
+    ]);
+    // The appearance :theme set is already light: only the source changes the effect.
+    expect(writes("schema = 2\n", "Light", true, { appearance: "light" })).toEqual([
+      { table: "theme", key: "source", value: "file" },
+    ]);
+  });
+
+  test('colours: light or system with tokyo-night also writes name = "vimma"', () => {
+    const tokyo = 'schema = 2\n[theme]\nname = "tokyo-night"\nappearance = "dark"\n';
+    const r = stepChoices(colours, inForce(tokyo), { omarchy: false });
+    expect(r.choices[0]).toMatchObject({ label: 'Keep "tokyo-night"', keep: true });
+    expect(r.selected).toBe(0);
+    expect(planAtEnter(colours, r.choices[0]!, inForce(tokyo), { omarchy: false })).toEqual([]);
+    expect(writes(tokyo, "Light", false)).toEqual([
+      { table: "theme", key: "name", value: "vimma" },
+      { table: "theme", key: "appearance", value: "light" },
+    ]);
+    expect(writes(tokyo, "Follow the system", false)).toEqual([
+      { table: "theme", key: "name", value: "vimma" },
+      { table: "theme", key: "appearance", value: "system" },
+    ]);
+    expect(writes(tokyo, "Dark", false)).toEqual([]);
+    // The line the step shows says so before enter.
+    const light = r.choices.find((c) => c.label === "Light")!;
+    expect(editLines(planChoice(light, inForce(tokyo)))).toEqual([
+      '[theme] name = "vimma"',
+      '[theme] appearance = "light"',
+    ]);
+  });
+
+  test("a choice no longer offered at enter plans null, not an empty write", () => {
+    const opened = stepChoices(colours, inForce('schema = 2\n[theme]\nsource = "file"\n'), {
+      omarchy: true,
+    });
+    const omarchy = opened.choices.find((c) => c.label === "The Omarchy theme")!;
+    // Omarchy went away before enter: the choice is gone, which is not "already so".
+    expect(planAtEnter(colours, omarchy, inForce("schema = 2\n"), { omarchy: false })).toBeNull();
+    expect(planAtEnter(colours, omarchy, inForce("schema = 2\n"), { omarchy: true })).toEqual([]);
+  });
+
+  test("a choice judged at enter uses the file then, not the one the step opened on", () => {
+    const opened = stepChoices(colours, inForce("schema = 2\n"), { omarchy: false });
+    const light = opened.choices.find((c) => c.label === "Light")!;
+    // Set to light by hand while the step was open: enter writes nothing.
+    const now = inForce('schema = 2\n[theme]\nappearance = "light"\n');
+    expect(planAtEnter(colours, light, now, { omarchy: false })).toEqual([]);
+  });
+});
+
+describe("step text as page nodes", () => {
+  test("kbd and code become their own parts, everything else is text", () => {
+    expect(textParts("Press <kbd>ctrl+l</kbd> or <code>:open</code>.")).toEqual([
+      { tag: null, text: "Press " },
+      { tag: "kbd", text: "ctrl+l" },
+      { tag: null, text: " or " },
+      { tag: "code", text: ":open" },
+      { tag: null, text: "." },
+    ]);
+  });
+
+  test("a key with markup characters stays text: nothing is parsed as HTML", () => {
+    expect(textParts("<kbd><</kbd> <b>x</b>")).toEqual([
+      { tag: "kbd", text: "<" },
+      { tag: null, text: " <b>x</b>" },
+    ]);
   });
 });

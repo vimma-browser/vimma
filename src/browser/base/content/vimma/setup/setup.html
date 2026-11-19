@@ -5,7 +5,9 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
 <!-- about:vimma-setup (spec: docs/specs/first-run-setup.md): the welcome screen and the two
-   - setup steps. setup.mjs draws the lists and takes the keys; SetupHost applies the summary. -->
+   - setup steps. setup.mjs draws the lists and takes the keys; SetupHost applies the summary.
+   - The v2- screens are setup v2's chapters (docs/specs/setup-v2.md), drawn by flow.mjs while
+   - vimma.feature.setupV2 is on. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -18,6 +20,7 @@
     <link rel="stylesheet" href="chrome://browser/skin/vimma/logo.css" />
     <link rel="stylesheet" href="chrome://browser/skin/vimma/setup.css" />
     <script type="module" src="chrome://browser/content/vimma/setup/setup.mjs"></script>
+    <script type="module" src="chrome://browser/content/vimma/setup/flow.mjs"></script>
   </head>
   <body>
     <main id="welcome" class="screen">
@@ -81,5 +84,66 @@
         <kbd>enter</kbd> apply · <kbd>esc</kbd> back
       </footer>
     </main>
+
+    <main id="v2-welcome" class="screen" hidden>
+      <div class="vimma-logo" role="img" aria-label="Vimma">
+        <span class="vimma-logo-mark" aria-hidden="true"></span>
+        <span class="vimma-logo-wordmark" aria-hidden="true"></span>
+      </div>
+      <h1>Set up Vimma</h1>
+      <p class="promise" id="v2-promise">
+        This setup is optional. Leave it at any time with <kbd>q</kbd> or <kbd>esc</kbd>: each step
+        you finish is saved to config.toml at once, and the rest is left as it is.
+        <code>:setup</code> brings it back.
+      </p>
+      <p id="v2-config-error" class="notice" hidden></p>
+      <ul id="v2-chapters" class="chapters"></ul>
+      <div class="buttons">
+        <button id="v2-start" type="button"><kbd>enter</kbd> Set up</button>
+        <button id="v2-skip" type="button" class="quiet"><kbd>q</kbd> Not now</button>
+      </div>
+    </main>
+
+    <main id="v2-step" class="screen step" hidden>
+      <header>
+        <p class="progress" id="v2-progress"></p>
+        <h1 id="v2-question"></h1>
+        <p class="lede" id="v2-text"></p>
+      </header>
+      <div id="v2-blocker" class="blocker" hidden>
+        <label class="search">
+          <kbd>/</kbd>
+          <input id="v2-search" type="search" placeholder="Search addons.mozilla.org" />
+        </label>
+        <p class="note">A search sends its terms to addons.mozilla.org and nothing else.</p>
+        <p id="v2-offline" class="notice" hidden>
+          addons.mozilla.org is not answering; search is unavailable.
+        </p>
+        <ul id="v2-addons" class="list" role="listbox" aria-multiselectable="true"></ul>
+      </div>
+      <ul id="v2-choices" class="list" role="listbox"></ul>
+      <p id="v2-writes-row" class="writes"><span id="v2-writes"></span></p>
+      <p id="v2-notice" class="notice" hidden aria-live="polite"></p>
+      <ul id="v2-results" class="results" aria-live="polite"></ul>
+    </main>
+
+    <main id="v2-stop" class="screen step" hidden>
+      <header>
+        <h1 id="v2-stop-title"></h1>
+      </header>
+      <ul id="v2-stop-saved" class="saved-lines"></ul>
+      <p id="v2-stop-next" class="lede"></p>
+      <div class="buttons">
+        <button id="v2-go-on" type="button"><kbd>enter</kbd> Go on</button>
+        <button id="v2-done" type="button" class="quiet"><kbd>q</kbd> Done</button>
+      </div>
+    </main>
+
+    <footer id="v2-footer" class="flow-footer" hidden>
+      <p id="v2-place" class="place"></p>
+      <p id="v2-last" class="last" aria-live="polite"></p>
+      <p id="v2-saved" class="saved"></p>
+      <p id="v2-keys" class="keys"></p>
+    </footer>
   </body>
 </html>

@@ -1,9 +1,10 @@
 # Spec: setup-v2
 
-Status: accepted (delivery slice 1 built, #1292) · Area: core
+Status: accepted (delivery slices 1 and 2 built, #1292 and #1293) · Area: core
 (`packages/vimma-core/src/system/setup.mjs`, `packages/vimma-core/src/system/setup-steps.mjs`,
 `packages/vimma-core/src/config/toml.mjs`),
-chrome (`src/browser/base/content/vimma/setup/` (`setup.html`, `setup.mjs`, `SetupHost.sys.mjs`),
+chrome (`src/browser/base/content/vimma/setup/` (`setup.html`, `setup.mjs`, `flow.mjs`,
+`SetupHost.sys.mjs`),
 `config/ConfigHost.sys.mjs`, `services/AppLauncher.sys.mjs`), theme
 (`src/browser/themes/shared/vimma/setup.css`), prefs
 (`src/browser/branding/vimma/pref/firefox-branding.js`) · Upstream patches: none · ADR: none
@@ -484,8 +485,9 @@ vitest, `packages/vimma-core/test/setup.test.ts` (state machine):
 - `a digit on the welcome screen opens that chapter`
 - `with a config parse error, setting steps can only skip`
 
-Mochitest, `tests/browser/browser_vimma_setup.js` (with `vimma.feature.setupV2` on until the
-last slice):
+Mochitest, `tests/browser/browser_vimma_setup_v2.js` (with `vimma.feature.setupV2` on until the
+last slice; a file apart from the summary flow's `browser_vimma_setup.js`, because both together
+outgrow the harness's time limit for one file):
 
 - `welcome_says_q_leaves_and_finished_steps_are_saved`
 - `enter_on_a_step_writes_its_key_and_applies_live`
@@ -518,7 +520,7 @@ last slice):
   edited and read again: agents stay off until `:mcp on`)
 - `finished_chapters_are_ticked_on_the_next_run`
 - `route_add_waits_for_a_running_rewrite` (`browser_vimma_workspace_routes.js`)
-- `agent_role_cannot_open_setup` (kept)
+- `agent_role_cannot_open_setup` (kept, in `browser_vimma_setup.js`)
 
 Mochitest, `tests/browser/browser_vimma_setup_moving_in.js` (the host side of Moving in, with
 the shell service replaced, so no test changes the machine's default browser, and only

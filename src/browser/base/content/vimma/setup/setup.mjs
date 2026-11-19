@@ -17,7 +17,10 @@ const { SetupHost } = ChromeUtils.importESModule(
 const { formatUsers, initialSetup, setupKey, withAddons } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/setup.mjs",
 );
-ThemeHost.attachDocument(document);
+// docs/specs/setup-v2.md decision 18: the chapters (flow.mjs, the page's second script) in place
+// of the summary while they land; the summary flow below stays the default until then.
+const chaptersOn = SetupHost.chaptersOn;
+if (!chaptersOn) ThemeHost.attachDocument(document);
 
 const root = document.documentElement;
 const $ = (/** @type {string} */ id) => /** @type {HTMLElement} */ (document.getElementById(id));
@@ -207,32 +210,34 @@ function onKey(key) {
   draw();
 }
 
-document.addEventListener("keydown", (e) => {
-  // Only the user's own keys drive the page (Security: "No agent or socket reach").
-  if (!e.isTrusted) return;
-  if (e.target === search) {
-    if (e.key === "Enter") runSearch();
-    else if (e.key === "Escape") search.blur();
-    else return;
+if (!chaptersOn)
+  document.addEventListener("keydown", (e) => {
+    // Only the user's own keys drive the page (Security: "No agent or socket reach").
+    if (!e.isTrusted) return;
+    if (e.target === search) {
+      if (e.key === "Enter") runSearch();
+      else if (e.key === "Escape") search.blur();
+      else return;
+      e.preventDefault();
+      return;
+    }
+    // Tab and the buttons stay the browser's own on the welcome screen.
+    if (state.step === "welcome" && e.key === "Enter" && e.target instanceof HTMLButtonElement) {
+      return;
+    }
+    const key = keyName(e);
+    if (!key) return;
     e.preventDefault();
-    return;
-  }
-  // Tab and the buttons stay the browser's own on the welcome screen.
-  if (state.step === "welcome" && e.key === "Enter" && e.target instanceof HTMLButtonElement) {
-    return;
-  }
-  const key = keyName(e);
-  if (!key) return;
-  e.preventDefault();
-  onKey(key);
-});
+    onKey(key);
+  });
 
-$("setup-start").addEventListener("click", (e) => e.isTrusted && onKey("enter"));
-$("setup-skip").addEventListener("click", (e) => e.isTrusted && onKey("esc"));
-
-SetupHost.engines().then((e) => {
-  state = { ...state, engines: e.names, engine: e.current };
+if (!chaptersOn) {
+  $("setup-start").addEventListener("click", (e) => e.isTrusted && onKey("enter"));
+  $("setup-skip").addEventListener("click", (e) => e.isTrusted && onKey("esc"));
+  SetupHost.engines().then((e) => {
+    state = { ...state, engines: e.names, engine: e.current };
+    draw();
+    root.dataset.ready = "true";
+  });
   draw();
-  root.dataset.ready = "true";
-});
-draw();
+}
