@@ -354,7 +354,8 @@ false` in place of `hidden`. `panes` keeps its meaning: the shown split, else th
 - `setup` (since #1298, for the setup page's e2e screenshots): `null` unless the window's
   selected tab shows about:vimma-setup ([setup-v2](setup-v2.md)), else `{ "screen": word }`, the
   screen the page draws: `welcome`, a step's id from the step table (`content_blocker`,
-  `address_bar` and so on) or `stop`. A word from a closed list: never a choice, a search, a
+  `address_bar` and so on) once the step's choices are drawn, `loading` while its view loads, or
+  `stop`. A word from a closed list: never a choice, a search, a
   line a step writes or what was saved. It is `null` in a private window. Added without a
   version bump; vimma-core's validator checks the word against the list (`SETUP_SCREENS`),
   refuses any other field in `setup`, and refuses the object in a private window.

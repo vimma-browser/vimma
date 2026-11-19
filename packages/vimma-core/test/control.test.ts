@@ -568,6 +568,7 @@ describe("validateMessage: state", () => {
       { screen: "welcome" },
       { screen: "address_bar" },
       { screen: "stop" },
+      { screen: "loading" },
     ]) {
       expect(errorsOf(ok({ ...state, setup }), { command: "state" })).toEqual([]);
     }

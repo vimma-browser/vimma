@@ -290,6 +290,29 @@ describe("chrome code", () => {
   });
 
   // Only the setup page's summary installs, through Firefox's AMO path (security.md A1).
+  // security.md M65: the setup's agents step is the one caller that may end `:mcp off`'s hold
+  // besides `:mcp on`'s own yes; McpHost is imported by ctl/ and agent/ code too.
+  test("ends :mcp off's hold from a consent only in the setup host", () => {
+    const SETUP = "src/browser/base/content/vimma/setup/SetupHost.sys.mjs";
+    const MCP = "src/browser/base/content/vimma/host/mcp-ops.mjs";
+    const all = hits(/\b(consentFromSetup|consentRefusal|consentTicket)\b/);
+    expect(all.filter((h) => !h.startsWith(`${SETUP}:`) && !h.startsWith(`${MCP}:`))).toEqual([]);
+    const setup = readFileSync(join(ROOT, SETUP), "utf8");
+    expect(setup.match(/McpHost\.consent\w+\(/g)).toEqual([
+      "McpHost.consentTicket(",
+      "McpHost.consentRefusal(",
+      "McpHost.consentFromSetup(",
+    ]);
+    // In mcp-ops: the three definitions, and consentFromSetup's own re-check.
+    const mcp = readFileSync(join(ROOT, MCP), "utf8");
+    expect(mcp.match(/\b(consentFromSetup|consentRefusal|consentTicket)\(/g)).toEqual([
+      "consentTicket(",
+      "consentRefusal(",
+      "consentFromSetup(",
+      "consentRefusal(",
+    ]);
+  });
+
   test("installs an add-on only from the setup page", () => {
     const SETUP = "src/browser/base/content/vimma/setup/SetupHost.sys.mjs";
     const all = hits(

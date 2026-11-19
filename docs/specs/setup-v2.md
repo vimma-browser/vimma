@@ -63,7 +63,11 @@ engine, and applies nothing until its summary is confirmed. That leaves three ga
 5. `s` on a step **must** move on without writing anything for that step, so its default stays
    in force.
 6. `h` on a step returns to the previous step, with the value in force selected. `enter` there
-   saves again, overwriting that one key.
+   saves again, overwriting that one key, and the line it writes replaces the one listed for
+   that step this run. A step that writes nothing on the way back (the value in force, **Keep**,
+   or `s`) keeps the lines it saved earlier this run, since that write is still in
+   `config.toml`; an action done earlier this run (an add-on installed, the default browser
+   asked) stays listed, since it cannot be undone.
 7. `q` or `esc` on any step or stop screen closes the page. Steps already saved stay saved;
    nothing is undone, and nothing for the open step is written. Closing the tab or the window
    does the same. In the content blocker step's search field, the first `esc` leaves the field
@@ -124,7 +128,7 @@ none of its choices (behaviour 9).
 | --------------------- | --------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | 1. Essentials         | Content blocker | uBlock Origin, AdGuard AdBlocker, Privacy Badger, an AMO search; none                                 | action: installs the marked add-ons, each with Firefox's permission prompt |
 |                       | Search engine   | the installed engines                                                                                 | `[search] default`                                                         |
-|                       | Colours         | the Omarchy theme (only where one is found), light, dark, follow the system                           | `[theme] appearance`, and `source` or `name` when needed (decision 12)     |
+|                       | Colours         | the Omarchy theme (only where found); "Vimma light", "Vimma dark", "Vimma, following the system"      | `[theme] appearance`, and `source` or `name` when needed (decision 12)     |
 | 2. Moving in          | Default browser | make Vimma the default browser, or not now                                                            | action: the system's default browser                                       |
 |                       | Bring your data | open the import wizard (Chrome, Chromium, Brave, Edge, Opera, Vivaldi); from Firefox, how to use Sync | action: Firefox's import wizard                                            |
 | 3. The window         | Address bar     | shown, hidden                                                                                         | `[ui] toolbar`                                                             |
@@ -143,9 +147,11 @@ none of its choices (behaviour 9).
     is no longer installed at `enter`, nothing is written and the step redraws with the current
     list.
 21. **Colours.** The page itself takes the colours as soon as the step saves. The Omarchy choice
-    is listed only where an Omarchy theme is found. `vimma` is the only built-in palette (#1383),
-    so a choice writes `name` only when another name is in force; a config.toml that still names
-    a removed palette has `vimma` in force.
+    is listed only where an Omarchy theme is found, and comes first. The other three are the
+    appearances of Vimma's own built-in palette (`vimma`), and their labels say so: "Vimma
+    light", "Vimma dark" and "Vimma, following the system". `vimma` is the only built-in palette
+    (#1383), so a choice writes `name` only when another name is in force; a config.toml that
+    still names a removed palette has `vimma` in force.
 22. **Default browser.** Shows whether Vimma is the default browser now. `enter` on "make
     Vimma the default" asks the system through the same path as Settings' Make Default; when
     Vimma already is the default, the step says so and `enter` moves on.
@@ -165,7 +171,8 @@ none of its choices (behaviour 9).
     agents reach only the agent workspace, and that sending a form, paying and showing a page
     always ask the user. `enter` on "on" is the user's consent, as answering `y` to `:mcp on`
     is. The step also says that `:mcp off` turns agents off until Vimma restarts, whatever the
-    file says and however often it is read again (decision 16).
+    file says and however often it is read again (decision 16). That `enter` is checked and
+    applied as the yes is (decision 20).
 29. Neither the control socket nor an MCP agent can open, read or drive the page (unchanged
     from first-run-setup, behaviour 10).
 
@@ -396,6 +403,34 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     it is a record of the setup and not a setting of the browser. It is not written in a
     private window.
 
+20. **The agents step's "on" is a yes to `:mcp on`, in every respect.** It is refused, with
+    nothing written, where that yes is refused: without an agent workspace, when the agent
+    workspace changed, or when `:mcp off` ran after the user arrived at the step. What it is
+    checked against is taken when the user arrives at the step and kept when the step is drawn
+    again for a config read or an `:mcp on|off` elsewhere, because a redraw is no new consent; a
+    redraw that changes the row in force moves the cursor to it. After a refusal the step is
+    drawn anew with the cursor on the row in force, so that a new consent takes `j` and `enter`.
+    Once its `[mcp] enabled = true` is written (or the file says so already), it ends
+    `:mcp off`'s hold as the yes does, after the same checks; the write alone never does
+    (decision 16), and a refusal at that second check holds agents off until `:mcp on` or a
+    restart, so that the file just written does not turn them on in this session; it does at
+    the next start, as any `enabled = true` does. With the hold in force, "off" is the value
+    in force and writes nothing (behaviour 8), and the step says that the file turns agents on
+    again at the next start; "on" says that it also ends `:mcp off`. For a workspace Vimma did
+    not make, "on" shows `:mcp on`'s warning that agents will read it. Reason: two ways to turn
+    agents on that check different things would leave the weaker one as the way around the
+    other, and a hold that a setup page could lift silently would undo decision 16.
+    Decided for the two cases the behaviours above leave open:
+    - **"Off" under the hold, with `[mcp] enabled = true` in the file, writes nothing** and
+      keeps its note that agents come back at the next start, because plain `enter` through
+      every step must leave the file unchanged (behaviour 8), and the note tells the user that
+      the file, not the step, decides at the next start. Rejected: writing `enabled = false`,
+      because a plain `enter` would then change a file the user set by hand.
+    - **"On" without an agent workspace is refused**, with nothing written, as `:mcp on`
+      refuses it, because the step's consent checks what that yes checks (above). Rejected:
+      writing `enabled = true` anyway, because the step would then turn agents on in a way
+      `:mcp on` cannot.
+
 ### Page layout
 
 - **Welcome screen.** The logo as today, the heading "Set up Vimma", the promise of behaviour 2
@@ -408,6 +443,18 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
 - **A stop screen.** A heading ("The essentials are saved"), one line per saved step with its
   `config.toml` line, the next chapter's name and steps, and `enter` **Go on**, `q` **Done**.
   The last one is described in behaviour 10.
+- **Layout.** Every step and stop screen starts at the same height: the progress line and the
+  question sit a fixed distance from the top whatever the list holds, and a stop screen's
+  heading sits where the steps' progress line does, so nothing jumps from one screen to the
+  next. The footer stays at the bottom of the window. A list longer than the space left (the
+  search engines, the add-ons, the window drawings, the saved lines) scrolls in its own box
+  under a header that stays put, and the row under the cursor is kept in view; a new screen
+  opens its boxes at their top. A list shrinks to about two and a half add-on rows at the
+  least. A short window, one whose page is under 40rem (640 px) high, such as 800×600,
+  tightens the spacing and draws the window drawings smaller, so at 800×600 the content
+  blocker shows two and a half add-ons without the step scrolling, even with the notice that
+  addons.mozilla.org is not answering. A window too short for even that scrolls the step,
+  header and all, and never puts anything under the footer. The welcome screen stays centred.
 - **Theme.** Theme variables only, as first-run-setup's welcome screen, so Omarchy, light and
   dark need no per-theme rules; no animation, as Vimma's chrome CSS tests require.
 
@@ -540,6 +587,14 @@ through the search engine step and `agent_role_cannot_open_setup`):
 - `import_step_names_sync_for_firefox`
 - `updates_step_says_what_the_check_sends`
 - `agents_step_selects_off_first_and_writes_enabled_on_enter`
+- `agents_on_ends_mcp_off_as_mcp_on_does` (the file on and held off: off writes nothing; on
+  writes nothing and ends the hold; held without the key: on writes it and ends the hold)
+- `an_mcp_off_after_the_step_was_drawn_wins_over_its_enter`
+- `an_mcp_off_the_page_hears_keeps_the_ticket_and_moves_the_cursor`
+- `a_config_read_redraw_keeps_the_ticket`
+- `a_workspace_gone_during_the_write_holds_agents_off`
+- `a_redraw_during_the_load_after_a_refusal_keeps_the_cursor_on_off`
+- `a_redraw_with_no_ticket_takes_none`
 - `mcp_off_turns_agents_off_until_restart_when_the_file_enables_them`
 - `mcp_off_survives_a_config_reload` (`[mcp] enabled = true` in the file, `:mcp off`, the file
   edited and read again: agents stay off until `:mcp on`)

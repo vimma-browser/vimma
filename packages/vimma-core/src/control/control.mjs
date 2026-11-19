@@ -1212,8 +1212,16 @@ function checkStateResult(result, errors) {
   if ("setup" in result) checkSetup(result.setup, hidden, errors);
 }
 
-/** `state.setup.screen`: the setup page's welcome screen, a step (by its id) or a stop screen. */
-export const SETUP_SCREENS = Object.freeze(["welcome", ...STEPS.map((s) => s.id), "stop"]);
+/**
+ * `state.setup.screen`: the setup page's welcome screen, a step (by its id, once its choices are
+ * drawn), `loading` while a step's view loads, or a stop screen.
+ */
+export const SETUP_SCREENS = Object.freeze([
+  "welcome",
+  "loading",
+  ...STEPS.map((s) => s.id),
+  "stop",
+]);
 
 /**
  * `state.setup`: null unless the selected tab shows the setup page, else `{ screen }`, the

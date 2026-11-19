@@ -266,6 +266,7 @@ describe("setup v2 flow", () => {
       [2, ["default_browser", "bring_your_data"]],
       [3, ["address_bar", "tab_line"]],
       [4, ["prefix_key", "hint_letters"]],
+      [5, ["updates", "agents"]],
     ]);
     expect(chapters.map((c) => c.digit)).toEqual([1, 2]);
   });

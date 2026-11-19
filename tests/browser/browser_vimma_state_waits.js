@@ -442,8 +442,20 @@ add_task(async function test_state_reports_the_setup_screen() {
     Assert.deepEqual(state().setup, { screen: "welcome" });
     await focusContent(browser);
     EventUtils.synthesizeKey("KEY_Enter", {}, /** @type {Window} */ (doc.defaultView));
-    await until(() => state().setup?.screen === "content_blocker", "the first step");
-    Assert.equal(doc.documentElement.dataset.step, "content_blocker", "as the page draws it");
+    // The step's id is set as it opens, its choices once its view has loaded: `loading` until then.
+    const seen = new Set();
+    await until(() => {
+      const screen = state().setup?.screen;
+      if (screen) seen.add(screen);
+      if (screen === "content_blocker") {
+        Assert.equal(doc.documentElement.dataset.viewReady, "true", "named once its view is drawn");
+      }
+      return screen === "content_blocker";
+    }, "the first step");
+    Assert.ok(
+      [...seen].every((w) => ["welcome", "loading", "content_blocker"].includes(w)),
+      `only these words on the way: ${[...seen].join(", ")}`,
+    );
   } finally {
     BrowserTestUtils.removeTab(tab);
   }

@@ -85,7 +85,7 @@ only the agent workspace, and each request waits for your yes or runs under a gr
   document's title or URL, or the outline, and is `null` in a private window. The viewer's own
   report of its drawing (section 20, V6) only ever turns that flag; a viewer that lies about it
   (its drawing, size or zoom) changes when a script's wait ends, nothing else. Its `setup` field
-  is the screen the setup page draws, a word from a closed list (`welcome`, a step's id, `stop`),
+  is the screen the setup page draws, a word from a closed list (`welcome`, a step's id, `loading`, `stop`),
   and `null` unless the selected tab shows that page; it **never** carries a choice, a search, a
   line a step writes or what was saved, and is `null` in a private window. Reading the mode
   writes nothing: a resize mode left with no panes is reported as the mode it would be without

@@ -1096,10 +1096,14 @@ export const VimmaHost = {
     const pdf = browser ? PdfOps.drawn(browser) : null;
     // The setup page runs in this process: its screen as draw() last set it (welcome, a step's
     // id, stop), a fixed word, so an e2e scenario waits for the screen it photographs (#1298).
-    const screen =
+    const page =
       browser?.currentURI?.spec === "about:vimma-setup"
-        ? browser.contentDocument?.documentElement?.dataset.step
+        ? browser.contentDocument?.documentElement?.dataset
         : undefined;
+    // A step is named once its view has loaded and its choices are drawn; `loading` before.
+    const word = page?.step;
+    const ready = word === "welcome" || word === "stop" || page?.viewReady === "true";
+    const screen = word && !ready ? "loading" : word;
     // Checked here too: the server sends only a word from the closed list (security.md S9).
     const setup = screen && SETUP_SCREENS.includes(screen) ? { screen } : null;
     return { notice, prompt, chat, agent, downloads, grep, urlbar, pdf, setup };

@@ -10,8 +10,8 @@
 
 "use strict";
 
-// Every chapter of the setup in one file: about 26 s on an idle developer machine and 80 s on a
-// loaded one, against the harness's 45 s for a file.
+// Every chapter of the setup in one file: about 30 s on an idle developer machine and over 80 s
+// on a loaded one, against the harness's 45 s for a file.
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
 requestLongerTimeout(3);
 
@@ -295,7 +295,7 @@ add_task(async function enter_on_a_step_writes_its_key_and_applies_live() {
   await TestUtils.waitForCondition(async () => (await SearchService.getDefault()).name === name);
   Assert.ok(found(doc.getElementById("v2-last")).textContent.includes("[search] default"));
   // No Omarchy theme: light, dark, follow the system; the last is in force.
-  Assert.equal(current(doc), "Follow the system");
+  Assert.equal(current(doc), "Vimma, following the system");
   await press(doc, "k", "k");
   Assert.equal(writes(doc), 'Writes [theme] appearance = "light"');
   await press(doc, "KEY_Enter");
@@ -380,6 +380,13 @@ async function enterThrough(/** @type {Document} */ doc, /** @type {MozTabbrowse
   await press(doc, "KEY_Enter");
   await atStep(doc, "stop");
   await enterThroughKeys(doc);
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "updates");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "agents");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.ok(!McpHost.state.enabled, "plain enter never turns agents on");
   const closed = BrowserTestUtils.waitForTabClosing(tab);
   await press(doc, "KEY_Enter");
   await closed;
@@ -412,7 +419,7 @@ add_task(async function enter_through_every_step_leaves_config_toml_unchanged() 
     await atStep(doc, "colours");
     Assert.equal(
       current(doc),
-      prefs.length ? "The Omarchy theme" : "Follow the system",
+      prefs.length ? "The Omarchy theme" : "Vimma, following the system",
       "the effect in force is selected",
     );
     await press(doc, "KEY_Enter");
@@ -574,9 +581,10 @@ add_task(async function the_page_cannot_name_a_key_or_value() {
     "no step's choices were sent yet",
   );
   await toEngines(doc);
+  // A step whose slice has not landed is refused, whichever steps are still to come.
+  const unbuilt = STEPS.filter((s) => s.kind === "setting" && !BUILT_STEPS.includes(s.id));
   for (const [id, index] of /** @type {[string, number][]} */ ([
-    ["agents", 1],
-    ["updates", 1],
+    ...unbuilt.map((s) => [s.id, 0]),
     ["content_blocker", 0],
     ["no_such_step", 0],
   ])) {
@@ -600,6 +608,9 @@ add_task(async function the_page_cannot_name_a_key_or_value() {
   Assert.deepEqual(await SetupHost.saveStep(null, "search_engine", 1), {
     error: "not a step that saves",
   });
+  // The agents step's "on" before the page was shown that step: no list, so no consent.
+  Assert.deepEqual(await SetupHost.saveStep(b, "agents", 1), { error: "no such choice" });
+  Assert.ok(!McpHost.state.enabled, "agents stay off");
   Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
   await closeFlow(tab);
 });
@@ -780,6 +791,355 @@ add_task(async function an_engine_named_in_another_case_is_the_one_in_force() {
   await press(doc, "KEY_Enter");
   await atStep(doc, "colours");
   Assert.equal(await IOUtils.readUTF8(configFile()), text, "enter wrote nothing");
+  await closeFlow(tab);
+});
+
+// Chapter 5, Privacy and agents (behaviours 27 and 28, decisions 14 and 16).
+
+const { McpHost, MCP_ENABLED_PREF } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/host/mcp-ops.mjs",
+);
+const { VimmaUpdates } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/updates/VimmaUpdates.sys.mjs",
+);
+const { STEPS } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/setup-steps.mjs");
+const { WorkspaceStore } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
+);
+
+registerCleanupFunction(() => {
+  McpHost._clearHoldForTests();
+  Services.prefs.clearUserPref(MCP_ENABLED_PREF);
+});
+
+/** `:mcp off`, as typed: its notice's text. */
+const mcpOff = () =>
+  McpHost.run(
+    "off",
+    () => {},
+    () => {},
+  );
+
+/** From the welcome screen to chapter 5's first step, by its digit. */
+async function toUpdates(/** @type {Document} */ doc) {
+  await press(doc, "5");
+  await atStep(doc, "updates");
+}
+
+/** @param {Document} doc */
+const choiceNote = (doc) => {
+  const note = found(doc.getElementById("v2-choice-note"));
+  return note.hidden ? "" : note.textContent;
+};
+
+add_task(async function updates_step_says_what_the_check_sends() {
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  const text = found(doc.getElementById("v2-text")).textContent;
+  Assert.ok(text.includes("the update channel and the platform"), "what the check sends");
+  Assert.ok(text.includes("Never check stops every request to updates.vimma.dev"), text);
+  Assert.equal(current(doc), "Tell me when a release is out", "the default in force");
+  Assert.equal(writes(doc), "Writes nothing");
+  await press(doc, "j");
+  Assert.equal(writes(doc), "Writes [updates] check = false");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "agents");
+  Assert.ok(
+    (await IOUtils.readUTF8(configFile())).includes("[updates]\ncheck = false"),
+    "[updates] check = false written at enter",
+  );
+  Assert.ok(!VimmaUpdates.status().enabled, "checks are off at once");
+  // `:update` too: the check stops before any request.
+  Assert.equal((await VimmaUpdates.check({ asked: true })).outcome, "off", "no request");
+  await closeFlow(tab);
+  await TestUtils.waitForCondition(() => VimmaUpdates.status().enabled, "on again");
+});
+
+add_task(async function agents_step_selects_off_first_and_writes_enabled_on_enter() {
+  Assert.ok(!McpHost.state.enabled, "agents are off");
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  const text = found(doc.getElementById("v2-text"));
+  Assert.equal(text.querySelectorAll("br").length, 2, "two lines, then :mcp off");
+  Assert.ok(text.textContent.startsWith("Agents reach only the agent workspace."));
+  Assert.ok(
+    text.textContent.includes("Sending a form, paying and showing you a page always ask you"),
+  );
+  Assert.ok(text.textContent.includes(":mcp off turns agents off until :mcp on or a restart"));
+  Assert.equal(current(doc), "Off", "off is selected first");
+  Assert.equal(writes(doc), "Writes nothing");
+  await press(doc, "j");
+  Assert.equal(current(doc), "On");
+  Assert.equal(writes(doc), "Writes [mcp] enabled = true");
+  Assert.equal(choiceNote(doc), "", "no hold to end, the workspace is Vimma's");
+  const changed = TestUtils.topicObserved("vimma-mcp-changed");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  await changed;
+  Assert.ok((await IOUtils.readUTF8(configFile())).includes("[mcp]\nenabled = true"));
+  Assert.deepEqual(McpHost.state, { enabled: true, from: "config" }, "agents are on");
+  Assert.ok(found(doc.getElementById("v2-last")).textContent.includes("agents are on"));
+  Assert.ok(found(doc.getElementById("v2-stop-title")).textContent.includes("done"));
+  await closeFlow(tab);
+  Assert.ok(!McpHost.state.enabled, "off again without the file");
+});
+
+add_task(async function agents_on_ends_mcp_off_as_mcp_on_does() {
+  const text = "schema = 2\n[mcp]\nenabled = true\n";
+  await IOUtils.writeUTF8(configFile(), text);
+  await ConfigHost.reload();
+  Assert.ok(McpHost.state.enabled, "the file turns agents on");
+  mcpOff();
+  Assert.deepEqual(McpHost.state, { enabled: false, from: "session" }, ":mcp off holds");
+  let { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  Assert.equal(current(doc), "Off", "off is in force under the hold");
+  Assert.equal(writes(doc), "Writes nothing");
+  Assert.equal(
+    choiceNote(doc),
+    "config.toml's [mcp] enabled = true turns agents on again at the next start.",
+  );
+  // Plain enter on off keeps the file and the hold (behaviour 8).
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.equal(await IOUtils.readUTF8(configFile()), text, "byte for byte");
+  Assert.ok(!McpHost.state.enabled, "still held off");
+  await press(doc, "h");
+  await atStep(doc, "agents");
+  await press(doc, "j");
+  Assert.equal(writes(doc), "Writes nothing", "the file says on already");
+  Assert.equal(choiceNote(doc), "Also ends :mcp off for this session.");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.equal(await IOUtils.readUTF8(configFile()), text, "nothing written");
+  Assert.deepEqual(McpHost.state, { enabled: true, from: "config" }, "the hold ended, as y does");
+  Assert.ok(found(doc.getElementById("v2-last")).textContent.includes("agents are on"));
+  BrowserTestUtils.removeTab(tab);
+
+  // Held without the key: on writes it, and ends the hold.
+  await IOUtils.writeUTF8(configFile(), "schema = 2\n");
+  await ConfigHost.reload();
+  mcpOff();
+  ({ tab, doc } = await openFlow());
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  await press(doc, "j");
+  Assert.equal(writes(doc), "Writes [mcp] enabled = true");
+  Assert.equal(choiceNote(doc), "Also ends :mcp off for this session.");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.deepEqual(McpHost.state, { enabled: true, from: "config" });
+  await closeFlow(tab);
+});
+
+add_task(async function an_mcp_off_after_the_step_was_drawn_wins_over_its_enter() {
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  await press(doc, "j");
+  Assert.equal(current(doc), "On");
+  // Agents are off already, so `:mcp off` changes no state the page hears of: only the count
+  // of `:mcp off`s, which the enter is checked against, as a yes to `:mcp on` is.
+  mcpOff();
+  await press(doc, "KEY_Enter");
+  await TestUtils.waitForCondition(() => doc.documentElement.dataset.failed === "true", "refused");
+  Assert.equal(
+    notice(doc).textContent,
+    "Not saved: :mcp off ran since this step was drawn; nothing written",
+  );
+  Assert.equal(step(doc), "agents", "the step stays open");
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
+  Assert.ok(!McpHost.state.enabled, "agents stay off");
+  // Drawn again after the refusal with the cursor on off, the row in force: a second enter at
+  // once turns nothing on, as a refused yes needs `:mcp on` and `y` again.
+  await atStep(doc, "agents");
+  Assert.equal(current(doc), "Off", "the cursor is back on the row in force");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.ok(!McpHost.state.enabled, "a second enter turns nothing on");
+  Assert.ok(!(await IOUtils.exists(configFile())), "and writes nothing");
+  // Back, `j` and enter, on a screen drawn after the `:mcp off`: a new consent.
+  await press(doc, "h");
+  await atStep(doc, "agents");
+  await press(doc, "j", "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.ok(McpHost.state.enabled, "the newer consent turns agents on");
+  await closeFlow(tab);
+});
+
+/** Resolves once the open step was drawn again after now. @param {Document} doc */
+function redrawn(doc) {
+  const real = SetupHost.stepView;
+  return new Promise((resolve) => {
+    SetupHost.stepView = async (...args) => {
+      SetupHost.stepView = real;
+      const v = await real.apply(SetupHost, args);
+      // The page draws the view after this resolves; viewReady is set once it has.
+      TestUtils.waitForCondition(() => doc.documentElement.dataset.viewReady === "true").then(() =>
+        resolve(v),
+      );
+      return v;
+    };
+  });
+}
+
+add_task(async function an_mcp_off_the_page_hears_keeps_the_ticket_and_moves_the_cursor() {
+  await IOUtils.writeUTF8(configFile(), "schema = 2\n[mcp]\nenabled = true\n");
+  await ConfigHost.reload();
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  Assert.equal(current(doc), "On", "on is in force, the cursor on it");
+  // `:mcp off` in another window: agents were on, so the page hears of it and draws again.
+  const again = redrawn(doc);
+  mcpOff();
+  await again;
+  Assert.equal(current(doc), "Off", "the cursor follows the row in force");
+  await press(doc, "j");
+  Assert.equal(current(doc), "On");
+  await press(doc, "KEY_Enter");
+  await TestUtils.waitForCondition(() => doc.documentElement.dataset.failed === "true", "refused");
+  Assert.equal(
+    notice(doc).textContent,
+    "Not saved: :mcp off ran since this step was drawn; nothing written",
+    "the redraw did not take a new consent",
+  );
+  Assert.deepEqual(McpHost.state, { enabled: false, from: "session" }, "the hold stands");
+  await closeFlow(tab);
+  McpHost._clearHoldForTests();
+});
+
+add_task(async function a_config_read_redraw_keeps_the_ticket() {
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  await press(doc, "j");
+  Assert.equal(current(doc), "On");
+  // Agents are off already: `:mcp off` tells the page nothing, but a config read draws it again.
+  mcpOff();
+  const again = redrawn(doc);
+  await IOUtils.writeUTF8(configFile(), 'schema = 2\n[ui]\ntoolbar = "shown"\n');
+  await ConfigHost.reload();
+  await again;
+  Assert.equal(current(doc), "On", "the row in force did not change: the cursor stays");
+  await press(doc, "KEY_Enter");
+  await TestUtils.waitForCondition(() => doc.documentElement.dataset.failed === "true", "refused");
+  Assert.ok(notice(doc).textContent.includes(":mcp off ran since this step was drawn"));
+  Assert.ok(!McpHost.state.enabled, "agents stay off");
+  Assert.ok(!(await IOUtils.readUTF8(configFile())).includes("[mcp]"), "nothing written");
+  await closeFlow(tab);
+  McpHost._clearHoldForTests();
+});
+
+add_task(async function a_workspace_gone_during_the_write_holds_agents_off() {
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  await press(doc, "j");
+  // The agent workspace goes away after the write was planned, before the hold is ended.
+  const realSet = ConfigHost.setConfigKeys;
+  ConfigHost.setConfigKeys = async (...args) => {
+    const r = await realSet.apply(ConfigHost, args);
+    Object.defineProperty(WorkspaceStore, "agent", { value: null, configurable: true });
+    return r;
+  };
+  try {
+    await press(doc, "KEY_Enter");
+    await TestUtils.waitForCondition(
+      () => doc.documentElement.dataset.failed === "true",
+      "refused",
+    );
+  } finally {
+    ConfigHost.setConfigKeys = realSet;
+    delete (/** @type {{ agent?: unknown }} */ (WorkspaceStore).agent);
+  }
+  Assert.ok(
+    notice(doc).textContent.includes("config.toml was written, agents stay off"),
+    notice(doc).textContent,
+  );
+  Assert.ok((await IOUtils.readUTF8(configFile())).includes("[mcp]\nenabled = true"), "written");
+  Assert.deepEqual(
+    McpHost.state,
+    { enabled: false, from: "session" },
+    "held off, so the page's words are true",
+  );
+  await closeFlow(tab);
+  McpHost._clearHoldForTests();
+});
+
+add_task(async function a_redraw_during_the_load_after_a_refusal_keeps_the_cursor_on_off() {
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  await press(doc, "j");
+  mcpOff();
+  // The load the refusal asks for waits; a config read's redraw arrives and finishes first.
+  const real = SetupHost.stepView;
+  /** @type {() => void} */
+  let release = () => {};
+  const held = new Promise((resolve) => (release = () => resolve(undefined)));
+  let freshAsked = false;
+  SetupHost.stepView = async (b, id, options) => {
+    if (options?.fresh && !freshAsked) {
+      freshAsked = true;
+      // Superseded by the redraw: the page drops whatever it answers, so it answers nothing,
+      // and the list the redraw was sent stays the host's last.
+      await held;
+      return null;
+    }
+    return real.call(SetupHost, b, id, options);
+  };
+  try {
+    await press(doc, "KEY_Enter");
+    await TestUtils.waitForCondition(() => freshAsked, "the load after the refusal started");
+    await IOUtils.writeUTF8(configFile(), 'schema = 2\n[ui]\ntoolbar = "shown"\n');
+    await ConfigHost.reload();
+    await TestUtils.waitForCondition(
+      () => doc.documentElement.dataset.viewReady === "true",
+      "drawn again",
+    );
+  } finally {
+    release();
+    SetupHost.stepView = real;
+  }
+  // The refused enter finishes once the held load returns (dropped, as superseded).
+  await TestUtils.waitForCondition(
+    () => doc.documentElement.dataset.failed === "true" && !doc.documentElement.dataset.busy,
+    "the refusal is shown",
+  );
+  Assert.equal(current(doc), "Off", "the redraw kept the load fresh: the cursor is on off");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.ok(!McpHost.state.enabled, "a second enter turns nothing on");
+  await closeFlow(tab);
+  McpHost._clearHoldForTests();
+});
+
+add_task(async function a_redraw_with_no_ticket_takes_none() {
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  const b = tab.linkedBrowser;
+  // An enter spends the ticket; a redraw that is not an arrival at the step takes no new one.
+  const first = found(await SetupHost.stepView(b, "agents", { fresh: true }));
+  Assert.ok("written" in (await SetupHost.saveStep(b, "agents", 0, first.serial)), "off saved");
+  const v = found(await SetupHost.stepView(b, "agents"));
+  Assert.deepEqual(await SetupHost.saveStep(b, "agents", 1, v.serial), {
+    error: "no consent asked; nothing written",
+  });
+  Assert.ok(!McpHost.state.enabled, "agents stay off");
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
   await closeFlow(tab);
 });
 
@@ -1012,6 +1372,147 @@ add_task(async function address_bar_step_writes_toolbar_and_applies_live() {
     () => !Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", false),
     "the toolbar is back once the file is gone",
   );
+});
+
+/** @param {Element | null} e */
+const rectOf = (e) => found(e).getBoundingClientRect();
+
+/**
+ * Resizes the window to `w`×`h` and waits for the page to see a new size.
+ * @param {Document} doc @param {number} w @param {number} h
+ */
+async function resizeWindow(doc, w, h) {
+  const view = found(doc.defaultView);
+  const was = `${view.innerWidth}x${view.innerHeight}`;
+  window.resizeTo(w, h);
+  await TestUtils.waitForCondition(
+    () => `${view.innerWidth}x${view.innerHeight}` !== was,
+    `the page is resized to ${w}x${h}`,
+  );
+  await TestUtils.waitForTick();
+}
+
+/**
+ * The page's footer stays below the list it follows and inside the window (setup-v2 "Page
+ * layout"); a window too short for the step scrolls the step, not under the footer.
+ * @param {Document} doc @param {string} list  the list's id @param {string} what
+ */
+function assertFooterClear(doc, list, what) {
+  const footer = rectOf(doc.getElementById("v2-footer"));
+  const items = rectOf(doc.getElementById(list));
+  Assert.greaterOrEqual(
+    Math.round(footer.top),
+    Math.round(items.bottom),
+    `${what}: the footer (top ${footer.top}) does not overlap the list (bottom ${items.bottom})`,
+  );
+  Assert.lessOrEqual(
+    Math.round(footer.bottom),
+    found(doc.defaultView).innerHeight,
+    `${what}: the footer is inside the window`,
+  );
+}
+
+add_task(async function every_step_and_stop_screen_starts_at_the_same_height() {
+  const { tab, doc } = await openFlow();
+  const startSize = [window.outerWidth, window.outerHeight];
+  registerCleanupFunction(() => window.resizeTo(startSize[0], startSize[1]));
+  const progress = () => rectOf(doc.getElementById("v2-progress")).top;
+  const question = () => rectOf(doc.getElementById("v2-question")).top;
+  /** How tall the step's content is, its lists unscrolled. */
+  const length = () =>
+    found(doc.getElementById("v2-step")).scrollHeight +
+    found(doc.getElementById("v2-choices")).scrollHeight +
+    found(doc.getElementById("v2-addons")).scrollHeight;
+
+  // The welcome screen stays centred.
+  const welcome = rectOf(doc.getElementById("v2-welcome"));
+  Assert.lessOrEqual(
+    Math.abs((welcome.top + welcome.bottom) / 2 - found(doc.defaultView).innerHeight / 2),
+    4,
+    `the welcome screen is centred (${welcome.top}..${welcome.bottom})`,
+  );
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "content_blocker");
+  const top = progress();
+  const asked = question();
+  const lengths = [length()];
+  assertFooterClear(doc, "v2-addons", "content blocker");
+  await press(doc, "s");
+  await atStep(doc, "search_engine");
+  const engines = doc.querySelectorAll("#v2-choices li").length;
+  lengths.push(length());
+  Assert.equal(progress(), top, "the search engine step starts where the content blocker does");
+  Assert.equal(question(), asked, "and asks its question at the same height");
+  assertFooterClear(doc, "v2-choices", "search engine");
+  await press(doc, "s");
+  await atStep(doc, "colours");
+  lengths.push(length());
+  Assert.greater(new Set(lengths).size, 1, `the steps differ in length (${lengths})`);
+  Assert.equal(progress(), top, "the colours step starts there too");
+  Assert.equal(question(), asked);
+  assertFooterClear(doc, "v2-choices", "colours");
+  await press(doc, "s");
+  await atStep(doc, "stop");
+  Assert.equal(
+    rectOf(doc.querySelector("#v2-stop header")).top,
+    top,
+    "the stop screen's heading starts at the steps' progress line",
+  );
+  assertFooterClear(doc, "v2-stop-saved", "stop screen");
+
+  // A small window: the list scrolls under a header that stays put, clear of the footer.
+  await resizeWindow(doc, 800, 600);
+  await press(doc, "h");
+  await atStep(doc, "colours");
+  const small = progress();
+  assertFooterClear(doc, "v2-choices", "colours, small window");
+  await press(doc, "h");
+  await atStep(doc, "search_engine");
+  Assert.equal(progress(), small, "the search engine step starts there in a small window too");
+  assertFooterClear(doc, "v2-choices", "search engine, small window");
+  // A short window keeps about two and a half add-ons in view, not one, even with the notice
+  // that addons.mozilla.org is not answering, and without scrolling the step under the list.
+  await press(doc, "h");
+  await atStep(doc, "content_blocker");
+  const offline = found(doc.getElementById("v2-offline"));
+  await TestUtils.waitForCondition(() => !offline.hidden, "the not answering notice is shown");
+  const stepBox = found(doc.getElementById("v2-step"));
+  const addons = found(doc.getElementById("v2-addons"));
+  const row = rectOf(addons.querySelector("li")).height;
+  const box = rectOf(addons);
+  const seen = Math.min(box.bottom, rectOf(stepBox).bottom) - box.top;
+  Assert.greaterOrEqual(
+    seen + 1,
+    Math.min(addons.scrollHeight, 2.5 * row),
+    `the add-on list shows two and a half rows at 800x600 (${seen} px seen, rows ${row})`,
+  );
+  Assert.lessOrEqual(
+    stepBox.scrollHeight,
+    stepBox.clientHeight + 1,
+    "the step itself does not scroll, so the list is the only scrolling box",
+  );
+  // Smaller still, the engines overflow: the list scrolls under a header that stays put.
+  await resizeWindow(doc, 800, 480);
+  await press(doc, "s");
+  await atStep(doc, "search_engine");
+  Assert.equal(progress(), small, "the search engine step starts there in a smaller window too");
+  const engineList = found(doc.getElementById("v2-choices"));
+  Assert.greater(
+    engineList.scrollHeight,
+    engineList.clientHeight,
+    "the engine list overflows its box at 800x480",
+  );
+  for (let i = 1; i < engines; i++) await press(doc, "j");
+  Assert.equal(progress(), small, "moving down the list leaves the header where it is");
+  const cursor = rectOf(doc.querySelector("#v2-choices li[aria-current]"));
+  const list = rectOf(doc.getElementById("v2-choices"));
+  Assert.ok(
+    cursor.top >= list.top - 1 && cursor.bottom <= list.bottom + 1,
+    `the last engine is scrolled into view (${cursor.top}..${cursor.bottom} in ${list.top}..${list.bottom})`,
+  );
+  assertFooterClear(doc, "v2-choices", "search engine at its last row, smaller window");
+  window.resizeTo(startSize[0], startSize[1]);
+  await closeFlow(tab);
 });
 
 /** @param {Document} doc @returns {string[]} the labels of the open step's choices */
