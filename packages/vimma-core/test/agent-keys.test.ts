@@ -807,6 +807,42 @@ describe("tab titles without user names and passwords (security.md M21, #1209)",
     expect(agentTabTitle(lookAlike, false, lookAlike)).toBe("example.com/a");
   });
 
+  test("a title with a look-alike in its user name or password loses them (#1348)", () => {
+    // NFKC makes the fullwidth slash a slash that ends the authority before the at sign; Firefox's
+    // URL parser does not, so the title is read as given too.
+    expect(agentTitle("https://ada:se\uff0fcret@example.com/a")).toBe("https://example.com/a");
+    expect(agentTitle("https://good.example\uff0f@evil.example/")).toBe("https://evil.example/");
+  });
+
+  test("a title holding a URL in its query, encoded or not, loses them (#1348)", () => {
+    const enc = encodeURIComponent;
+    const bank = "https://ada:secret@bank.example/a";
+    expect(agentTitle(`https://site.example/login?next=${enc(bank)}`)).toBe(
+      `https://site.example/login?next=${enc("https://bank.example/a")}`,
+    );
+    const ext = `moz-extension://0d6f1c2e/blocked.html?url=${enc(bank)}`;
+    expect(agentTitle(ext)).toBe(
+      `moz-extension://0d6f1c2e/blocked.html?url=${enc("https://bank.example/a")}`,
+    );
+    expect(agentTabTitle(ext, false, ext)).toBe(
+      `0d6f1c2e/blocked.html?url=${enc("https://bank.example/a")}`,
+    );
+    for (const title of [
+      `https://site.example/?next=${enc(enc(bank))}`,
+      `https://site.example/?next=${enc("https://ada:secret\uff20bank.example/")}`,
+      `https://site.example/?next=${enc(bank).replace(/%/g, "\uff05")}`,
+    ]) {
+      expect(agentTitle(title)).not.toMatch(/ada|secret/);
+    }
+    // A title whose query names no credentials is the page's text.
+    for (const title of [
+      `https://site.example/?next=${enc("https://bank.example/")}&q=a+b%20c`,
+      "https://site.example/?email=ada%40example.com",
+    ]) {
+      expect(agentTitle(title)).toBe(title);
+    }
+  });
+
   test("any other title is left as the page wrote it", () => {
     for (const title of [
       "Plans and pricing",

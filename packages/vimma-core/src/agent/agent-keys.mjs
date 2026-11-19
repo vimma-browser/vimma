@@ -534,21 +534,26 @@ const NESTED_SCHEMES = new Set(["view-source", "jar", "blob"]);
 const NESTED_MAX = 4;
 
 /**
+ * `text` as a URL parser reads it: without tabs and line breaks anywhere, and without the C0
+ * controls and spaces it starts with.
+ * @param {string} text
+ */
+// eslint-disable-next-line no-control-regex -- leading C0 controls are what the parser strips
+const asParsed = (text) => text.replace(/[\t\n\r]/g, "").replace(/^[\u0000-\u0020]+/, "");
+
+/**
  * `text` without the user name and password of its URL, and of the URLs nested in it: the
  * authority after the scheme's slashes, up to its last `@`. Each scheme's authority ends where a
  * WHATWG URL parser ends it (a slash, a question mark or a number sign, and for a special scheme a
  * backslash too); a case where they could differ drops more, never less. `cut` says the text was
  * cut, so an authority that runs to its end may hide a user name and password: it is dropped
- * whole, and only the scheme and its slashes kept.
+ * whole, and only the scheme and its slashes kept. The URLs percent-encoded in its query go too
+ * (queryWithoutUserinfo).
  * @param {string} text @param {boolean} cut @param {number} depth
  * @returns {string}
  */
 function withoutUserinfo(text, cut, depth) {
-  // As a URL parser does: leading C0 controls and spaces go, and so do tabs and line breaks.
-  const t = text.replace(/[\t\n\r]/g, "");
-  let start = 0;
-  while (start < t.length && t.charCodeAt(start) <= 0x20) start++;
-  const s = t.slice(start);
+  const s = asParsed(text);
   const m = URL_SCHEME.exec(s);
   if (!m) return s;
   const name = /** @type {string} */ (m[1]).toLowerCase();
@@ -557,17 +562,19 @@ function withoutUserinfo(text, cut, depth) {
     // Past NESTED_MAX the rest is not read, so it is dropped: it may hold a user name.
     return depth < NESTED_MAX ? m[0] + withoutUserinfo(rest, cut, depth + 1) : `${m[0]}\u2026`;
   }
-  if (name === "about") return aboutWithoutUserinfo(s, m[0].length, cut, depth);
   const special = SPECIAL_SCHEMES.has(name);
   const lead = special ? (/^[/\\]*/.exec(rest)?.[0] ?? "") : rest.startsWith("//") ? "//" : null;
-  if (lead === null) return s;
+  // No authority (about:, data:): only its query may hold one.
+  if (lead === null) return queryWithoutUserinfo(s, m[0].length, cut, depth);
   const after = rest.slice(lead.length);
   let end = after.search(special ? /[/\\?#]/ : /[/?#]/);
   if (end < 0) {
     if (cut) return `${m[0]}${lead}\u2026`;
     end = after.length;
   }
-  return m[0] + lead + after.slice(after.lastIndexOf("@", end) + 1);
+  const from = after.lastIndexOf("@", end) + 1;
+  const out = m[0] + lead + after.slice(from);
+  return queryWithoutUserinfo(out, m[0].length + lead.length + end - from, cut, depth);
 }
 
 /**
@@ -583,35 +590,110 @@ function bothPasses(text, cut, depth, show) {
 }
 
 /**
- * An `about:` address without the user names and passwords of the URLs in its query (#1324).
- * Firefox's internal pages carry a whole URL percent-encoded in a parameter (Reader View's
- * `about:reader?url=`, the error pages' `u=`), where no `@` ends an authority. Each parameter
- * is decoded as URLSearchParams decodes it (Reader View reads it that way: ReaderMode
+ * A URL `s` without the user names and passwords of the URLs percent-encoded in its query, which
+ * starts at the first `?` from `at`, where its authority ends, and in its hash (#1324, #1348). A
+ * parameter's name or value may be a whole URL, where no `@` ends an authority: Reader View's
+ * `about:reader?url=`, the error pages' `u=`, an extension page that wraps the page it blocked,
+ * a site's redirect parameter (`?next=`, `?continue=`, a single-page app's `#/login?next=`).
+ * Each is decoded as URLSearchParams decodes it (Reader View reads its own that way: ReaderMode
  * getOriginalUrl) and stripped as a URL nested one level deeper, in agentUrl's two passes
- * (bothPasses), and the query written again when that changed any of them; past NESTED_MAX
- * the query is dropped. The page's name and its hash are kept as they are.
- * @param {string} s @param {number} at  where the scheme's colon ends
- * @param {boolean} cut @param {number} depth
+ * (bothPasses); a value encoded twice, a redirect inside a redirect, is decoded once more. Only
+ * a parameter that lost something is written again, so the page's address and the rest of its
+ * query stay as the page wrote them, and the agent still knows which page it is on. Past
+ * NESTED_MAX the query and the hash are not read, so they are dropped.
+ * @param {string} s @param {number} at @param {boolean} cut @param {number} depth
  * @returns {string}
  */
-function aboutWithoutUserinfo(s, at, cut, depth) {
-  const q = s.indexOf("?", at);
-  if (q < 0) return s;
+function queryWithoutUserinfo(s, at, cut, depth) {
   const h = s.indexOf("#", at);
-  if (h >= 0 && h < q) return s;
+  const q = s.indexOf("?", at);
   const end = h < 0 ? s.length : h;
-  const page = s.slice(0, q);
-  if (depth >= NESTED_MAX) return `${page}?\u2026${s.slice(end)}`;
-  const params = new URLSearchParams(s.slice(q + 1, end));
-  let changed = false;
-  const out = new URLSearchParams();
-  for (const [key, value] of params) {
-    const stripped = bothPasses(value, cut, depth + 1, shown);
-    if (stripped !== value) changed = true;
-    out.append(key, stripped);
+  const query = q >= 0 && q < end ? q + 1 : -1;
+  if (query < 0 && h < 0) return s;
+  if (depth >= NESTED_MAX) {
+    return `${s.slice(0, query < 0 ? end : query)}${query < 0 ? "" : "\u2026"}${h < 0 ? "" : "#\u2026"}`;
   }
-  return changed ? `${page.toLowerCase()}?${out}${s.slice(end)}` : s;
+  const head = query < 0 ? s.slice(0, end) : s.slice(0, query);
+  const search =
+    query < 0 ? "" : paramsWithoutUserinfo(s.slice(query, end), 0, cut && h < 0, depth);
+  const inHash = s.indexOf("?", h + 1);
+  const hash =
+    h < 0
+      ? ""
+      : `#${paramsWithoutUserinfo(s.slice(h + 1), inHash < 0 ? 0 : inHash - h, cut, depth)}`;
+  return head + search + hash;
 }
+
+/**
+ * A query's or a hash's parameters, `text`, each without the user names and passwords of the URL
+ * it encodes, from `from` on; `text` itself when none held any. A hash such as `#/login?next=` is
+ * read from its own `?`, any other from its start. Parameters are split at `&` as URLSearchParams
+ * splits them, and at `;` too, which some servers take for one: splitting more only reads more of
+ * them. `cut` is passed on to the last.
+ * @param {string} text @param {number} from @param {boolean} cut @param {number} depth
+ * @returns {string}
+ */
+function paramsWithoutUserinfo(text, from, cut, depth) {
+  const pieces = text.slice(from).split(/([&;])/);
+  let changed = false;
+  const out = pieces.map((piece, i) => {
+    if (i % 2) return piece;
+    const eq = piece.indexOf("=");
+    const parts = eq < 0 ? [piece] : [piece.slice(0, eq), piece.slice(eq + 1)];
+    const last = cut && i === pieces.length - 1;
+    return parts
+      .map((raw, j) => {
+        const kept = paramWithoutUserinfo(raw, last && j === parts.length - 1, depth + 1);
+        if (kept !== raw) changed = true;
+        return kept;
+      })
+      .join("=");
+  });
+  return changed ? text.slice(0, from) + out.join("") : text;
+}
+
+/**
+ * One name or value of a query, `raw` as written there, without the user names and passwords of
+ * the URL it encodes: `raw` itself when that holds none, else the stripped URL encoded again.
+ * @param {string} raw @param {boolean} cut @param {number} depth
+ * @returns {string}
+ */
+function paramWithoutUserinfo(raw, cut, depth) {
+  const value = paramValue(raw);
+  // Plain ASCII without a percent sign is a URL with a user name only with a colon and an at
+  // sign, unless cut before its at sign: most parameters are, and are passed over quickly.
+  if (!cut && !/[^\x20-\x7e]|%|:[^]*@/.test(value)) return raw;
+  // Printable ASCII is as shown already, so a second pass would find nothing more.
+  const ascii = !/[^\x20-\x7e]/.test(value);
+  const stripped = ascii
+    ? withoutUserinfo(value, cut, depth)
+    : bothPasses(value, cut, depth, shown);
+  if (stripped !== (ascii ? value : asParsed(shown(asParsed(value))))) {
+    return encodedParam(stripped);
+  }
+  // A value encoded once more, a redirect inside a redirect, is an encoded parameter itself.
+  if (value === raw || depth >= NESTED_MAX) return raw;
+  const inner = paramWithoutUserinfo(value, cut, depth + 1);
+  return inner === value ? raw : encodedParam(inner);
+}
+
+/**
+ * A query's name or value `raw` decoded as URLSearchParams decodes it: `+` a space, and each
+ * percent-encoded UTF-8 sequence its character, an invalid one U+FFFD and a `%` that starts none
+ * kept.
+ * @param {string} raw
+ */
+function paramValue(raw) {
+  if (!/[%+]/.test(raw)) return raw;
+  try {
+    return decodeURIComponent(raw.replace(/\+/g, " "));
+  } catch {
+    return new URLSearchParams(`v=${raw}`).get("v") ?? "";
+  }
+}
+
+/** @param {string} value  as URLSearchParams writes it in a query */
+const encodedParam = (value) => new URLSearchParams([["v", value]]).toString().slice(2);
 
 /**
  * A URL as the agent may see it (security.md M21, M30, M31): a script's, file's or request's, a
@@ -640,7 +722,7 @@ const LABEL_SCHEME = /^[^:]+:\/\/(?:www\.)?/;
 /**
  * A page's own title as the agent may see it (security.md M21, #1209), in depth: one that is a
  * URL (no white space, a scheme and an authority holding a user name or password once shown,
- * also one nested in an about: address's query) loses them as agentUrl drops them. Any other
+ * also one percent-encoded in its query) loses them as agentUrl drops them. Any other
  * title is the page's text, returned as it is.
  * @param {unknown} label
  */
@@ -649,9 +731,11 @@ export function agentTitle(label) {
   const t = s.trim();
   if (!t || /\s/.test(t)) return s;
   const plain = shown(t);
-  // An at sign, or one percent-encoded once or more inside an about: address's query (#1324).
-  if (!/@|%(?:25)*40/i.test(plain) || !URL_SCHEME.test(plain)) return s;
-  return withoutUserinfo(plain, false, 0) === plain ? s : agentUrl(t, AGENT_PAGE_URL_MAX);
+  // An at sign, or a URL percent-encoded in its query (#1324, #1348), as shown and as given: a
+  // fullwidth slash before the at sign ends no authority for a URL parser.
+  if (!/[@%]/.test(plain) || !URL_SCHEME.test(plain)) return s;
+  const holds = withoutUserinfo(plain, false, 0) !== plain || withoutUserinfo(t, false, 0) !== t;
+  return holds ? agentUrl(t, AGENT_PAGE_URL_MAX) : s;
 }
 
 /**
