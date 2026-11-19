@@ -436,6 +436,9 @@ support-files = ["file_vimma_close_active_tab.html"]
 
 ["browser_vimma_split_lone_tab.js"]
 
+["browser_vimma_split_unloaded_tab.js"]
+support-files = ["file_vimma_insert_scroll.html"]
+
 ["browser_vimma_firefox_keys.js"]
 support-files = ["file_vimma_plain.html"]
 
