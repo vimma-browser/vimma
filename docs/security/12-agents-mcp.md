@@ -1215,14 +1215,19 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   far as a link's href is read, and a title longer than a page URL's read is read as `agentUrl`
   reads it; a query or hash past that is dropped. A URL written unencoded in another URL's path,
   as archive and redirect services write it
-  (`https://web.archive.org/web/2020/https://user:password@host/`), loses them too (#1372): the
-  path's first URL, from its scheme to the end of the path, is stripped as a URL nested one level
-  deeper, and its own path holds the next, so a chain is read once, level by level, and past the
-  fourth level the rest of the URL is dropped. A path without one (`/@ada/posts`,
-  `/mailto:ada@host`) is left byte for byte. A URL percent-encoded in a path segment
-  (`/r/https%3A%2F%2F…`) is not decoded: reading every path segment as an encoded URL would
-  rewrite ordinary addresses and change which page the agent is told it is on, so it is a known
-  limit. `vimma_open`'s reply names the URL the agent passed,
+  (`https://web.archive.org/web/2020/https://user:password@host/`), loses them too (#1372): each
+  URL in the path, from its scheme to the end of the path, is stripped as a URL nested one level
+  deeper, and the next is looked for right after its scheme, so an authority that ends later
+  (`foo://a\https://user@host`) hides none; past the fourth URL in a path, or the fourth level,
+  the rest of the URL is dropped, query and hash too. A path without one (`/@ada/posts`,
+  `/mailto:ada@host`, a MediaWiki `/wiki/File:Logo@2x.png`, since a `file:` URL without slashes
+  has no user name) is left byte for byte; a segment in a special scheme's colon form
+  (`/go/http:ada@host`) is a URL to a parser and loses everything up to its `@`. Two known
+  limits: a URL right after a letter, digit, `+`, `-` or `.` (`/web/2020-https://…`) is not read,
+  so that no run of scheme characters is searched from each of its characters, and a URL
+  percent-encoded in a path segment (`/r/https%3A%2F%2F…`) is not decoded: reading every path
+  segment as an encoded URL would rewrite ordinary addresses and change which page the agent is
+  told it is on. `vimma_open`'s reply names the URL the agent passed,
   as the agent wrote it: it tells the agent nothing it did not send, and the loaded page's URL
   goes through `agentUrl` in every later reply. A Reader View address that was read whole is then given as its
   article's URL, as the status bar shows it (core's `readerOriginalUrl`), so a reader tab is

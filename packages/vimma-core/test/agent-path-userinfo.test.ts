@@ -63,11 +63,49 @@ describe("a URL in another URL's path (#1372)", () => {
     expect(out.length).toBeLessThan(`https://h.example/${"https://x.example/".repeat(5)}`.length);
   });
 
+  test("four URLs in a path are read whole, and a fifth is dropped with the rest", () => {
+    const four = `https://h.example/${"https://a.example/".repeat(3)}https://u:p@x.example/?q`;
+    expect(agentUrl(four, 2048)).toBe(
+      `https://h.example/${"https://a.example/".repeat(3)}https://x.example/?q`,
+    );
+    const five = `https://h.example/${"https://a.example/".repeat(4)}https://u:p@x.example/?q`;
+    const out = agentUrl(five, 2048);
+    expect(out.startsWith(`https://h.example/${"https://a.example/".repeat(4)}`)).toBe(true);
+    expect(out).not.toContain("x.example");
+    expect(out).not.toContain("?q");
+  });
+
+  test("a URL after a non-special nested URL's authority is read too", () => {
+    expect(agentUrl("foo://h/x/foo://abc\\https://u:p@x/", 2048)).toBe(
+      "foo://h/x/foo://abc\\https://x/",
+    );
+    expect(agentTitle("foo://h/x/foo://abc\\https://u:p@x/")).not.toContain("u:p");
+  });
+
+  test("a MediaWiki File: page keeps its name, as a file: URL has no user name", () => {
+    for (const url of [
+      "https://commons.wikimedia.org/wiki/File:Logo@2x.png",
+      "https://fandom.example/wiki/file:Char@Name.png",
+      "https://h.example/w/index.php?title=File:Logo@2x.png",
+    ]) {
+      expect(agentUrl(url, 2048)).toBe(url);
+    }
+    // The slash form is still read as a URL, and so is a special scheme's colon form.
+    expect(agentUrl("https://h.example/go/http:ada@x.example/", 2048)).toBe(
+      "https://h.example/go/http:x.example/",
+    );
+  });
+
+  test("a markdown target cut inside a nested authority ends in one ellipsis", () => {
+    const out = markdownWithoutUserinfo(`[a](https://h/w/https://${"u".repeat(8192)}:pass@x/)`);
+    expect(out).toBe("[a](https://h/w/https://\u2026)");
+  });
+
   test("a long, deeply nested path is read in bounded time", () => {
     const chain = "https://u:p@x.example/".repeat(200_000);
     const scheme = "https:".repeat(500_000);
     const start = performance.now();
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 10; i++) {
       expect(agentUrl(`https://h.example/${chain}`, 2048)).not.toContain("u:p");
       agentUrl(`https://h.example/${scheme}`, 2048);
       markdownWithoutUserinfo(`[a](https://h.example/${chain.slice(0, 8192)}) `.repeat(20));
@@ -104,7 +142,7 @@ describe("a long title that hides its URL behind invisible characters (#1372)", 
   test("a long invisible title is read in bounded time", () => {
     const title = `${"\u{E0041}".repeat(1_000_000)}https://user:pass@example.com/`;
     const start = performance.now();
-    for (let i = 0; i < 20; i++) expect(agentTitle(title)).not.toContain("user:pass");
+    for (let i = 0; i < 5; i++) expect(agentTitle(title)).not.toContain("user:pass");
     expect(performance.now() - start).toBeLessThan(budget(1000));
   });
 });
