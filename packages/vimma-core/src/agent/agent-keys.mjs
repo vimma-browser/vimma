@@ -248,7 +248,7 @@ function isOneKey(word) {
   try {
     parseKey(word);
     return true;
-  } catch {
+  } /* Stryker disable next-line BlockStatement: isOneKey's caller reads undefined as false */ catch {
     return false;
   }
 }
@@ -584,6 +584,7 @@ function withoutUserinfo(text, cut, depth, work, path = true) {
       : `${m[0]}…`;
   }
   const special = SPECIAL_SCHEMES.has(name);
+  // Stryker disable next-line OptionalChaining: a pattern that matches the empty string never fails, so exec never returns null
   const lead = special ? (/^[/\\]*/.exec(rest)?.[0] ?? "") : rest.startsWith("//") ? "//" : null;
   // No authority (about:, data:, and file: without slashes, whose rest a URL parser reads as a
   // path, so a MediaWiki `File:Logo@2x.png` keeps its name): only its path and query may hold one.
@@ -732,6 +733,7 @@ function paramsWithoutUserinfo(text, cut, depth, work) {
  */
 function splitWithoutUserinfo(text, separator, cut, depth, work) {
   const pieces = text.split(separator);
+  // Stryker disable next-line BooleanLiteral: joining the pieces again with nothing changed gives the text itself
   let changed = false;
   const out = pieces.map((piece, i) => {
     if (i % 2) return piece;
