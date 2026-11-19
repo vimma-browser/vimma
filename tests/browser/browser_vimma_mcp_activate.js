@@ -505,9 +505,8 @@ addTidyTask(async function test_activate_in_use_while_the_user_types() {
   ww().switchTo({ id: agent().id });
   await until(() => gBrowser.selectedTab === tab, "the agent tab is in front");
   await focusContent(tab.linkedBrowser);
-  await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
-    /** @type {HTMLElement} */ (content.document.getElementById("field")).focus(),
-  );
+  // The user's own click: a field the page focuses by itself is not theirs (#1325).
+  await BrowserTestUtils.synthesizeMouseAtCenter("#field", {}, tab.linkedBrowser);
   await until(() => VimmaHost.status(window).mode === "insert", "the user is in insert mode");
   const r = await c.call("agent-activate", { tab: idOf(tab), label: by["Add to list"] });
   Assert.equal(r.error?.reason, "in-use", "a tab the user types in is denied (F27)");
@@ -604,6 +603,7 @@ add_task(async function the_agent_page_helper_acts_on_the_document_it_is_given()
           pressed.push(ok);
           return ok;
         },
+        asAgent: (fn) => fn(),
         beforeSubmitCheck: () => null,
       });
       agent.listed = { gen: 4, els: [new WeakRef(button), new WeakRef(field)] };

@@ -1,0 +1,55 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_page_focus.js: a page that focuses a field by itself. A
+   - button opens a modal dialog whose name field has autofocus, at once in its click handler; a
+   - second button opens it a moment after the click, as a page waiting on its server would, and
+   - so does the page's own shortcut, the q key. The dialog has a second field, and a checkbox
+   - that shows a note field and focuses it. The dialog's Create button closes it. A label for a
+   - button off screen clicks that button, which opens the dialog. Everything fits the test window. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Dialog agent fixture</title>
+    <style>
+      body {
+        margin: 4px;
+        font: 12px sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <p>
+      <button id="open" type="button">New channel</button>
+      <button id="later" type="button">New channel later</button>
+      <label for="hidden-open">Open by label</label>
+    </p>
+    <button id="hidden-open" type="button" style="position: absolute; left: -9999px">Open</button>
+    <dialog id="dialog">
+      <form method="dialog">
+        <input id="name" name="name" aria-label="Channel name" autofocus />
+        <input id="topic" name="topic" aria-label="Topic" />
+        <label><input id="with-note" type="checkbox" />With note</label>
+        <textarea id="note" aria-label="Note" hidden></textarea>
+        <button id="create" type="submit">Create</button>
+      </form>
+    </dialog>
+    <script>
+      const dialog = document.getElementById("dialog");
+      document.getElementById("open").addEventListener("click", () => dialog.showModal());
+      document.getElementById("hidden-open").addEventListener("click", () => dialog.showModal());
+      document
+        .getElementById("later")
+        .addEventListener("click", () => setTimeout(() => dialog.showModal(), 100));
+      document.getElementById("with-note").addEventListener("click", (e) => {
+        const note = document.getElementById("note");
+        note.hidden = !e.target.checked;
+        if (e.target.checked) note.focus();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "q" && !dialog.open) setTimeout(() => dialog.showModal(), 100);
+      });
+    </script>
+  </body>
+</html>

@@ -65,6 +65,8 @@ const stepOf = (asked) => (isIndex(asked.step) ? asked.step : -1);
  * @property {(el: Element, still?: () => boolean) => boolean} press  the child's click, as the
  *   user's hints make it (M26); `still` is checked after the mouse events, and when false
  *   nothing is clicked
+ * @property {<T>(fn: () => T) => T} asAgent  runs `fn` as the agent's step: a focus the page
+ *   makes in listeners it runs as "handling user input" (a checkbox's click()) is not the user's
  * @property {() => string | null} beforeSubmitCheck  the name of the page function the child's
  *   test hook names, read only in automation (M28); null otherwise
  */
@@ -291,7 +293,7 @@ export class AgentPage {
       if (Date.now() > until || !this.#hooks.onPage(el) || !this.#fillAsAsked(el, asked)) {
         return "skipped";
       }
-      return fillField(el, value) ? "kept" : "reset";
+      return this.#hooks.asAgent(() => fillField(el, value)) ? "kept" : "reset";
     });
     return "ok";
   }

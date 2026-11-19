@@ -354,7 +354,19 @@ site` and loads nothing; same site by construction still holds.)
     new reason `in-use` before it runs, so an agent never scrolls or navigates a page under the
     user's cursor while they type in it. A call already running stops with `stopped: "in-use"`
     when the user starts using the tab. Watching is fine: in normal mode the user sees the agent
-    scroll and navigate.
+    scroll and navigate. (Since changed: insert mode counts only when the user's own input put
+    the tab there, a focus made while the page handled their key or click or within 5 s after
+    one; Vimma's own keys, such as a scroll or the keys that answer the agent, do not count. A
+    field the page focuses by itself, such as a dialog with autofocus that the agent's click
+    opened, is not the user's, so the agent can fill it; the user's next key or click in the tab
+    makes it theirs, and so does a later focus in a document where they already made a field
+    theirs, until they leave insert themselves. The 5 s window errs towards the user: a key the
+    page gets or a click in the page shortly before the agent's own click makes the dialog it
+    opens the user's, so the agent is refused then. So does a document where the user typed
+    and did not leave with Esc or a click elsewhere: an agent's later dialog there is refused
+    until they do, by design. Insert mode from the page alone had blocked
+    every later step of the agent in a shown tab until the user left it; issue
+    [#1325](https://github.com/vimma-browser/vimma/issues/1325), security.md M17.)
 14. **The audit.** The question shows the keys exactly as they will run, after parsing, with
     `⏎` for `<CR>` and find queries in quotes:
     `◇ claude-code wants vimma_keys: 2 "Pricing · Example" example.com/pricing  keys: 3j /"pricing"⏎ f`.

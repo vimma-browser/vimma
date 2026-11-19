@@ -15,7 +15,7 @@ import { fieldsOf } from "./browser-ops.mjs";
 /** @import { InsertTrigger } from "../core/editable.mjs" */
 
 const TRIGGERS = new Set(["focusin", "recheck"]);
-const MESSAGES = new Set(["Vimma:Focus", "Vimma:MouseSelection", "Vimma:Click"]);
+const MESSAGES = new Set(["Vimma:Focus", "Vimma:MouseSelection", "Vimma:Click", "Vimma:UserInput"]);
 
 /** Element focus (docs/specs/element-focus.md): from the frames of a focused block. */
 const BLOCK_REPORTS = new Map([
@@ -89,11 +89,20 @@ export class VimmaParent extends JSWindowActorParent {
       if (browser) VimmaHost.onUserClick(browser);
       return undefined;
     }
+    if (msg.name === "Vimma:UserInput") {
+      // The user put text into the focused frame without a key the window saw as one (an IME,
+      // a drop): a field the page focused is theirs (mcp-drive D13). A forged one only makes
+      // the tab look in use to an agent.
+      if (browser) VimmaHost.onUserInput(browser);
+      return undefined;
+    }
     const trigger = data.trigger;
     const descriptor = parseDescriptor(data.descriptor);
     if (!browser || !isTrigger(trigger) || !descriptor) return undefined;
     // `user` and `gen` only narrow what a report may do after Esc (docs/specs/insert-focus.md):
-    // a forged one can do no more than any report could before them.
+    // a forged one can do no more than any report could before them. `user` also says whose
+    // insert it is (mcp-drive D13): a forged true only makes the tab look in use to an agent,
+    // and a forged false never outweighs the user's keys, which the window itself sees.
     const gen = typeof data.gen === "number" && Number.isSafeInteger(data.gen) ? data.gen : 0;
     VimmaHost.onFocusReport(browser, {
       descriptor,
