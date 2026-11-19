@@ -62,6 +62,22 @@ const SIZES = ["minimal", "prompt", "full"];
  * @property {() => void} changed  the status bar may say something else now
  */
 
+/**
+ * Gives focus back to `el`, the element that had it when an overlay opened. The address bar's
+ * field goes through `gURLBar.focus()`, whose `beforefocus` reveals the hidden bar (the default,
+ * docs/specs/toolbar-toggle.md decisions 3 and 7): the field focused directly stays collapsed
+ * and refuses focus, which lost it. With the bar shown, the two are the same.
+ * @param {Window} win
+ * @param {Element} el
+ */
+export function focusOpener(win, el) {
+  const urlbar = /** @type {{ gURLBar?: { inputField: Element, focus(): void } }} */ (
+    /** @type {unknown} */ (win)
+  ).gURLBar;
+  if (urlbar && el === urlbar.inputField) urlbar.focus();
+  else /** @type {HTMLElement} */ (el).focus();
+}
+
 /** @type {WeakMap<Window, Toolbar>} */
 const instances = new WeakMap();
 /** @type {WeakSet<Window>} windows our stylesheet is loaded into (loading it twice throws) */

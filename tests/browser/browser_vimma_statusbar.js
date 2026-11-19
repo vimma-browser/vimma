@@ -415,3 +415,24 @@ add_task(async function bar_announces_mode_only() {
     "it holds the mode",
   );
 });
+
+// The same bar with Firefox's toolbar hidden, the default (toolbar-toggle decisions 3 and 12):
+// the URL with its host outlasts the title in a narrow bar, and the mode badge stays.
+add_task(async function the_default_hidden_toolbar_keeps_the_url() {
+  Services.prefs.clearUserPref("vimma.ui.toolbar.hidden");
+  try {
+    await BrowserTestUtils.withNewTab(TITLE_PAGE, async () => {
+      await until(() => segText("title") === LONG_TITLE, "the title shows");
+      await until(() => !!segText("url")?.includes("example.com"), "and the URL with its host");
+      Assert.equal(seg("security"), null, "an https: page says nothing more");
+      const b = shownBar();
+      b.style.width = "40ch";
+      await until(() => segText("title") !== LONG_TITLE, "the title gives way");
+      Assert.ok(segText("url")?.includes("example.com"), "the URL keeps its host");
+      Assert.ok(hasSize(seg("mode")), "the mode badge stays");
+      b.style.removeProperty("width");
+    });
+  } finally {
+    Services.prefs.setBoolPref("vimma.ui.toolbar.hidden", false);
+  }
+});

@@ -419,15 +419,19 @@ describe("the window chapter (behaviours 9, 17 and 24, Page layout)", () => {
     );
   });
 
-  test("the address bar step opens on the toolbar in force: shown by default, else the file's", () => {
-    expect(stepChoices(bar, inForce("schema = 2\n")).selected).toBe(0);
-    const hidden = inForce('schema = 2\n[ui]\ntoolbar = "hidden"\n');
-    const r = stepChoices(bar, hidden);
-    expect(r.choices.map((c) => c.label)).toEqual(["Shown", "Hidden"]);
-    expect(r.selected).toBe(1);
-    expect(planAtEnter(bar, r.choices[1]!, hidden)).toEqual([]);
-    expect(planAtEnter(bar, r.choices[0]!, hidden)).toEqual([
-      { table: "ui", key: "toolbar", value: "shown" },
+  // toolbar-toggle decision 3 (changed 19 Nov 2026): hidden by default.
+  test("the address bar step opens on the toolbar in force: hidden by default, else the file's", () => {
+    const fresh = inForce("");
+    const first = stepChoices(bar, fresh);
+    expect(first.choices.map((c) => c.label)).toEqual(["Shown", "Hidden"]);
+    expect(first.selected).toBe(1);
+    expect(planAtEnter(bar, first.choices[1]!, fresh)).toEqual([]);
+    const shown = inForce('[ui]\ntoolbar = "shown"\n');
+    const r = stepChoices(bar, shown);
+    expect(r.selected).toBe(0);
+    expect(planAtEnter(bar, r.choices[0]!, shown)).toEqual([]);
+    expect(planAtEnter(bar, r.choices[1]!, shown)).toEqual([
+      { table: "ui", key: "toolbar", value: "hidden" },
     ]);
   });
 

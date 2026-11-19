@@ -884,8 +884,8 @@ add_task(async function a_menu_opened_in_a_tab_not_sized_yet_gets_its_labels() {
   } finally {
     if (VimmaHost._hints(window)) EventUtils.synthesizeKey("KEY_Escape");
     BrowserTestUtils.removeTab(tab);
+    await SpecialPowers.popPrefEnv();
   }
-  await SpecialPowers.popPrefEnv();
 });
 
 add_task(async function a_label_clicks_a_menu_entry_with_only_a_listener() {

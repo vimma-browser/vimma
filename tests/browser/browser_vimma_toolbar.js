@@ -16,7 +16,7 @@
 requestLongerTimeout(4);
 
 /* global focusContent -- from head.js */
-/* global PopupNotifications, SitePermissions, gCustomizeMode, gNavToolbox, CustomizableUI, PanelMultiView,
+/* global BrowserCommands, PopupNotifications, SitePermissions, gCustomizeMode, gNavToolbox, CustomizableUI, PanelMultiView,
    PanelUI, AppMenuNotifications -- browser window globals (browser.js) */
 
 const { VimmaHost } = ChromeUtils.importESModule(
@@ -52,6 +52,7 @@ const PLAIN = DIR + "file_vimma_plain.html";
 /** A bookmarked page that is not the one open (Firefox leaves the current page out). */
 const OTHER = PLAIN + "?other";
 const HTTP_PLAIN = PLAIN.replace("https://", "http://");
+const START_PAGE = "chrome://browser/content/vimma/start/start.html";
 const VISIBLE = { visibilityProperty: true };
 
 const dir = PathUtils.join(PathUtils.tempDir, `vimma-toolbar-${Date.now()}`);
@@ -255,10 +256,10 @@ add_task(async function the_default_hidden_toolbar_keeps_the_security_cues() {
   await until(() => !barCollapsed(), "ctrl+b u shows the toolbar");
   const identity = [$("trust-icon-container"), $("identity-icon-box")].find(shows);
   Assert.ok(identity, "with the site's identity button");
-  const opened = BrowserTestUtils.waitForEvent(document, "popupshown", false, (e) => {
-    const popup = /** @type {XULPopupElement} */ (e.target);
-    return !!popup.anchorNode?.closest?.("#urlbar");
-  });
+  // The site's own panel: the trust panel, or the identity panel where it is off.
+  const opened = BrowserTestUtils.waitForEvent(document, "popupshown", false, (e) =>
+    ["trustpanel-popup", "identity-popup"].includes(/** @type {Element} */ (e.target).id),
+  );
   EventUtils.synthesizeMouseAtCenter(found(identity), {});
   const panel = /** @type {XULPopupElement} */ ((await opened).target);
   Assert.equal(panel.state, "open", "its panel opens from it");
@@ -1696,6 +1697,58 @@ add_task(async function config_sets_the_toolbar() {
   await until(() => Services.prefs.getBoolPref(PREF, false), "no config: hidden (decision 4)");
   await show();
   gBrowser.removeTab(tab);
+});
+
+// Decision 3 (changed 19 Nov 2026) and decision 13: an overlay opened from the address bar
+// gives focus back to it on Esc, through gURLBar.focus(), whose `beforefocus` reveals the hidden
+// bar; the field focused directly stays collapsed and refuses focus, which lost it.
+add_task(async function overlays_give_focus_back_to_the_hidden_address_bar() {
+  await hide();
+  const loaded = BrowserTestUtils.waitForNewTab(gBrowser, START_PAGE, true);
+  BrowserCommands.openTab();
+  const tab = await loaded;
+  await until(() => gURLBar.focused, "the start page focuses the address bar");
+
+  /** @param {string} what @param {() => void} open @param {number} [escapes] */
+  async function roundTrip(what, open, escapes = 1) {
+    gURLBar.focus();
+    await until(() => gURLBar.focused && minimal(), `${what}: the minimal bar has focus`);
+    open();
+    await until(() => !gURLBar.focused, `${what}: it takes focus`);
+    for (let i = 0; i < escapes; i++) EventUtils.synthesizeKey("KEY_Escape");
+    await until(() => gURLBar.focused, `${what}: Esc gives focus back to the address bar`);
+    Assert.ok(shows(gURLBar.inputField) && minimal(), `${what}: in the minimal bar, visible`);
+    await escapeUrlbar();
+  }
+
+  // A `:` line typed in the start page's address bar runs from the page (host/urlbar-commands.mjs
+  // puts focus there first, toolbar shown or hidden), so Esc on its error gives focus to the page.
+  gURLBar.focus();
+  await until(() => gURLBar.focused, "the address bar has focus");
+  EventUtils.sendString(":tabnwe");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => !gURLBar.focused, "the command line takes the line");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(
+    () => document.activeElement === gBrowser.selectedBrowser,
+    "Esc gives focus to the start page, as with the toolbar shown",
+  );
+
+  await roundTrip("the help overlay", () => prefix("?", window, { shiftKey: true }));
+  await roundTrip("the workspace picker", () => prefix("w"));
+  await roundTrip("the rename prompt", () => prefix("T", window, { shiftKey: true }));
+  // Live grep: the first Esc goes to browse mode, the second closes it.
+  await roundTrip(
+    "live grep",
+    () => {
+      prefix("f");
+      EventUtils.synthesizeKey("g");
+    },
+    2,
+  );
+  await roundTrip("the side panel", () => prefix("b"));
+  gBrowser.removeTab(tab);
+  await show();
 });
 
 // 14: the pointer at the window's top edge reveals nothing: the bar shows for the address, a
