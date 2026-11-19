@@ -598,8 +598,8 @@ describe("bookmarks.toml merge: a removal the user declined", () => {
 });
 
 describe("bookmarks.toml merge: bounded time", () => {
-  test("a full reorder of 16,000 bookmarks in 4 folders merges in linear time", () => {
-    const n = 16_000;
+  /** The merge's input when Places has every one of `n` bookmarks in 4 folders in reverse order. */
+  function fullReorder(n: number) {
     const names = (i: number) => `f${i % 4}/b${i}`;
     const text = `[bookmarks.work]\n${Array.from(
       { length: n },
@@ -621,17 +621,52 @@ describe("bookmarks.toml merge: bounded time", () => {
     }
     // Sorted the other way round, as the Library's "Sort by Name" or another device's order.
     for (const f of folders) f.children?.reverse();
-    const start = performance.now();
-    const m = merge({
+    return {
       text,
       base: { tables: [{ name: "work", folder: "workfolder01", entries }] },
       places: places([folder("workfolder01", "work", folders)]),
-    });
-    expect(performance.now() - start).toBeLessThan(budget(3000));
-    expect(m.ok).toBe(true);
-    const t = tables(m.ok ? (m.text as string) : "").work as { [k: string]: string[] }[];
-    expect(t[0]?.["f0/"]?.[0]).toBe(`b${n - 4} https://example.com/${n - 4}`);
-  }, 60_000);
+    };
+  }
+
+  // A ratio of two sizes, not a wall-clock budget: with the whole suite running in parallel at
+  // load 15, the linear merge of 16,000 took over 5 s, past any budget that still catches a
+  // quadratic one. Eight times the bookmarks take 7 to 10 times as long when the merge is linear
+  // (about 1 s against 0.12 s here); a quadratic part that adds a second or more at 16,000 (a
+  // lookup by scan instead of by Map) brings the ratio to 13 to 31, and one that leads to 64.
+  // Each pair runs back to back, after a pair that warms the JIT up (without it the first small
+  // run is the slow one), and the smallest of three ratios counts: one pair that load spared is
+  // enough, while a quadratic merge is slow in every pair. Load slows both runs of a pair alike,
+  // and so does Stryker's instrumented code, so the limit needs no budget().
+  test(
+    "a full reorder of 16,000 bookmarks in 4 folders merges in linear time",
+    () => {
+      const n = 16_000;
+      const time = (size: number) => {
+        const input = fullReorder(size);
+        const start = performance.now();
+        const m = merge(input);
+        return { ms: performance.now() - start, m };
+      };
+      time(n / 8);
+      time(n);
+      const ratios: number[] = [];
+      let m: ReturnType<typeof merge> | undefined;
+      for (let run = 0; run < 3; run++) {
+        const small = time(n / 8);
+        const large = time(n);
+        m = large.m;
+        ratios.push(large.ms / small.ms);
+      }
+      expect(
+        Math.min(...ratios),
+        `ratios ${ratios.map((r) => r.toFixed(1)).join(", ")}`,
+      ).toBeLessThan(12);
+      expect(m?.ok).toBe(true);
+      const t = tables(m?.ok ? (m.text as string) : "").work as { [k: string]: string[] }[];
+      expect(t[0]?.["f0/"]?.[0]).toBe(`b${n - 4} https://example.com/${n - 4}`);
+    },
+    budget(60_000),
+  );
 
   test("5,000 Places additions of one title are named in linear time", () => {
     const text = '[bookmarks.work]\n"a" = "https://example.com/a"\n';
