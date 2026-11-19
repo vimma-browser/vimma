@@ -635,12 +635,13 @@ export function parseAgentRequest(command, given) {
   let args;
   try {
     args = JSON.parse(JSON.stringify(given));
-  } catch {
+  } /* Stryker disable next-line BlockStatement: an emptied catch leaves args undefined, which the next line refuses */ catch {
     return null;
   }
   if (!isObject(args)) return null;
   /** @type {string[]} */
   const errors = [];
+  // Stryker disable next-line StringLiteral: checkRequest never reads a request's type, only its keys
   checkRequest({ type: "request", id: 1, command, args }, errors);
   if (errors.length) return null;
   // Checked above; each read narrows again, so a shape the checks let through by mistake is
@@ -653,6 +654,7 @@ export function parseAgentRequest(command, given) {
   };
   if (command === "agent-hello") {
     const { client, via, ctl, session } = args;
+    // Stryker disable next-line LogicalOperator: equivalent while checkAgentHelloArgs holds (client an object, its name a string); defence in depth (S11)
     if (!isObject(client) || typeof client.name !== "string") return null;
     return {
       command,
