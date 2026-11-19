@@ -59,6 +59,9 @@ refusal and registers no tab, so the host checks `splitRefusal` before it create
 
 ### Config schema 2
 
+(Since changed: config.toml has no schema, and every key is valid in every file (#1379);
+[m5-core-config-and-theme](m5-core-config-and-theme.md), under its status line.)
+
 | Key                       | Type    | Default       | Validation                                                                                                                                                                                                                            |
 | ------------------------- | ------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `schema`                  | integer | absent = 0    | `0 ≤ schema ≤ 2`                                                                                                                                                                                                                      |

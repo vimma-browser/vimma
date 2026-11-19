@@ -159,23 +159,24 @@ add_task(async function the_command_opens_it() {
 
 add_task(async function config_errors_show_with_file_and_line() {
   await SpecialPowers.pushPrefEnv({ set: [["vimma.config.path", file]] });
-  await IOUtils.writeUTF8(file, `schema = 2\n[keys]\nnew_tab = "prefix+y"\nnew_tabb = "x"\n`);
+  await IOUtils.writeUTF8(file, `[keys]\nnew_tab = "prefix+y"\nnew_tabb = "x"\n`);
   await ConfigHost.reload();
   Assert.equal(ConfigHost.errors.length, 1, "sanity: one error");
   const tab = await openAbout();
   const config = section(tab.linkedBrowser, "config");
   Assert.stringContains(config, file, "the config path");
-  Assert.stringContains(config, `${file}:4`, "the error with file:line");
+  Assert.stringContains(config, `${file}:3`, "the error with file:line");
   Assert.stringContains(config, "new_tabb", "the error's key");
   BrowserTestUtils.removeTab(tab);
 
-  // A good file: loaded, its schema, and the override marked in the binding table.
+  // A good file: loaded, and the override marked in the binding table. An older file's
+  // `schema` line is ignored, and the page shows no schema (#1379).
   await IOUtils.writeUTF8(file, `schema = 2\n[keys]\nnew_tab = "prefix+y"\n`);
   await ConfigHost.reload();
   const again = await openAbout();
   const doc = docOf(again.linkedBrowser);
   Assert.stringContains(section(again.linkedBrowser, "config"), "loaded", "the file is loaded");
-  Assert.equal(doc.getElementById("config-schema")?.textContent, "2", "the schema version");
+  Assert.equal(doc.getElementById("config-schema"), null, "no schema field");
   const overridden = [...doc.querySelectorAll("#bindings tr.overridden")].map((r) => r.textContent);
   Assert.equal(overridden.length, 1, "one override");
   Assert.stringContains(overridden[0], "new_tab", "new_tab is the override");
@@ -185,14 +186,14 @@ add_task(async function config_errors_show_with_file_and_line() {
   // #742: a provider whose CLI this build does not know is left out of a file that loads.
   await IOUtils.writeUTF8(
     file,
-    `schema = 2\n[[agent.providers]]\nname = "x"\nkind = "cli"\ncli = "opencode"\n`,
+    `[[agent.providers]]\nname = "x"\nkind = "cli"\ncli = "opencode"\n`,
   );
   await ConfigHost.reload();
   Assert.equal(ConfigHost.warnings.length, 1, "sanity: one warning");
   const skipped = await openAbout();
   const text = section(skipped.linkedBrowser, "config");
   Assert.stringContains(text, "loaded", "the file is loaded");
-  Assert.stringContains(text, `${file}:5: agent.providers[0].cli`, "the warning with file:line");
+  Assert.stringContains(text, `${file}:4: agent.providers[0].cli`, "the warning with file:line");
   Assert.stringContains(text, "this provider is skipped", "and what it left out");
   BrowserTestUtils.removeTab(skipped);
 

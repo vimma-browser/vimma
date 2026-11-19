@@ -187,7 +187,7 @@ add_task(async function engine_step_starts_on_the_config_toml_default() {
   // Written in another case: Vimma finds the engine as its [search] apply does.
   await IOUtils.writeUTF8(
     configFile(),
-    `schema = 2\n[search]\ndefault = ${JSON.stringify(wanted.name.toUpperCase())}\n`,
+    `[search]\ndefault = ${JSON.stringify(wanted.name.toUpperCase())}\n`,
   );
   await ConfigHost.reload();
   await TestUtils.waitForCondition(
@@ -235,7 +235,7 @@ add_task(async function summary_creates_a_private_config_toml_when_absent() {
 add_task(async function summary_keeps_comments_and_mode_of_config_toml() {
   const file = configFile();
   // A file that loads: the one config writer never edits one that does not (setup-v2 B13).
-  const before = '# mine\nschema = 2\n[search]\n# keep\ndefault = "x" # why\n';
+  const before = '# mine\n[search]\n# keep\ndefault = "x" # why\n';
   await IOUtils.writeUTF8(file, before);
   await IOUtils.setPermissions(file, 0o640);
   const { tab, doc } = await openSetup();
@@ -265,11 +265,12 @@ add_task(async function summary_writes_nothing_on_a_parse_error() {
   BrowserTestUtils.removeTab(tab);
 });
 
-// A file that loads but would not with `[search] default` added: the summary says so before
-// `enter`, as the writer would refuse it after (setup-v2 behaviour 13).
+// A file that loads but cannot take `[search] default`, here an inline `search` table the writer
+// does not edit: the summary says so before `enter`, as the writer would refuse it after
+// (setup-v2 behaviour 13).
 add_task(async function summary_names_a_key_the_file_cannot_take_before_enter() {
   const file = configFile();
-  const before = '[keys]\nscroll_down = "j"\n';
+  const before = "search = {}\n";
   await IOUtils.writeUTF8(file, before);
   const { tab, doc } = await openSetup();
   await chooseEngine(doc, 0);
@@ -277,7 +278,7 @@ add_task(async function summary_names_a_key_the_file_cannot_take_before_enter() 
     () =>
       doc
         .querySelector("#setup-config-error:not([hidden])")
-        ?.textContent.includes("config.toml would not load with the edit: search:"),
+        ?.textContent.includes("config.toml:1: search is not a plain [search] table"),
     "the summary names the key the file cannot take",
   );
   await press(doc, "KEY_Enter");

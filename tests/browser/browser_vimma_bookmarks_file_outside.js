@@ -121,10 +121,7 @@ async function quiet() {
 
 /** Writes config.toml with `write_back` (none: the default) and reads it. */
 async function setWriteBack(/** @type {string | null} */ value) {
-  await IOUtils.writeUTF8(
-    configFile,
-    value ? `schema = 2\n[bookmarks]\nwrite_back = "${value}"\n` : "schema = 2\n",
-  );
+  await IOUtils.writeUTF8(configFile, value ? `[bookmarks]\nwrite_back = "${value}"\n` : "");
   await ConfigHost.reload();
 }
 
