@@ -376,7 +376,7 @@ describe("the header (Behaviour 6)", () => {
     const { errors } = reloadConfig(null, toml);
     const refused = noModelReason(errors, "config.toml");
     expect(refused).toBe(
-      "config.toml:1: agent: is new in schema 2: put schema = 2 at the top of the file",
+      'config.toml:4: agent.providers[0]: a provider needs "kind", "endpoint" and "model"',
     );
     expect(chatHeader({ provider: null, granted: false, refused })[0]).toBe(`no model: ${refused}`);
     expect(noModelNotice(refused)).toBe(`agent: no model: ${refused}`);
@@ -395,7 +395,7 @@ describe("the header (Behaviour 6)", () => {
 
   test("the window's body names the refused file's error in place of the setup steps", () => {
     const refused =
-      "config.toml:1: agent: is new in schema 2: put schema = 2 at the top of the file";
+      'config.toml:4: agent.providers[0]: a provider needs "kind", "endpoint" and "model"';
     expect(noModelLines(refused, "config.toml")).toEqual([
       "No model: config.toml has errors, so none of it applies, [agent] included.",
       refused,

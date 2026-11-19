@@ -245,11 +245,12 @@ addTidyTask(async function test_header_says_where_it_works() {
 });
 
 addTidyTask(async function test_a_refused_config_is_named_instead_of_setup() {
-  // [agent] without `schema = 2`: the file is refused, so no model is set up, and the window
-  // names the error and its line rather than sending the user to setup (Behaviour 6).
+  // [agent] naming a provider the file does not list: the file is refused, so no model is set
+  // up, and the window names the error and its line rather than sending the user to setup
+  // (Behaviour 6).
   const name = "vimma-agent-refused.toml";
   const file = PathUtils.join(PathUtils.tempDir, name);
-  const error = `${name}:1: agent: is new in schema 2: put schema = 2 at the top of the file`;
+  const error = `${name}:2: agent.default: no provider is named "local"`;
   McpHost.configureAgent(agentConfig({ default: null, providers: [] }));
   await SpecialPowers.pushPrefEnv({ set: [["vimma.config.path", file]] });
   try {

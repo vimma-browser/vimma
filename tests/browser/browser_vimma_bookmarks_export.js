@@ -150,7 +150,7 @@ async function reset() {
       await IOUtils.remove(c, { recursive: true, ignoreAbsent: true });
     }
   }
-  await IOUtils.writeUTF8(configFile, "schema = 2\n");
+  await IOUtils.writeUTF8(configFile, "");
   await ConfigHost.reload();
   await mirror.forget();
   for (const parent of [toolbarGuid, menuGuid, unfiledGuid]) {
@@ -425,7 +425,7 @@ add_task(async function tab_completes_export_and_forget_while_the_feature_is_on(
 add_task(async function export_bang_twice_keeps_every_older_file_in_a_backup() {
   // The Places change between the two exports stays out of the file: under "all" (the default)
   // it would be written to the file first, and the second export would replace nothing new.
-  await IOUtils.writeUTF8(configFile, 'schema = 2\n[bookmarks]\nwrite_back = "vimma"\n');
+  await IOUtils.writeUTF8(configFile, '[bookmarks]\nwrite_back = "vimma"\n');
   await ConfigHost.reload();
   await twoWorkspaces();
   const hand =
@@ -508,7 +508,7 @@ add_task(async function a_failed_replace_after_the_backup_keeps_the_file() {
 });
 
 add_task(async function export_works_under_write_back_none() {
-  await IOUtils.writeUTF8(configFile, 'schema = 2\n[bookmarks]\nwrite_back = "none"\n');
+  await IOUtils.writeUTF8(configFile, '[bookmarks]\nwrite_back = "none"\n');
   await ConfigHost.reload();
   await twoWorkspaces();
   await runCommand("bookmarks export");

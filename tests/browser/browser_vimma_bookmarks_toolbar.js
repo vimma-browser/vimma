@@ -309,7 +309,7 @@ add_task(async function config_sets_it_in_every_window() {
   });
   let n = 0;
   const write = (/** @type {string} */ text) =>
-    IOUtils.writeUTF8(configFile, `schema = 2\n${text}\n${"#".repeat(++n)}\n`);
+    IOUtils.writeUTF8(configFile, `${text}\n${"#".repeat(++n)}\n`);
   const win2 = await BrowserTestUtils.openNewBrowserWindow();
   await SimpleTest.promiseFocus(window);
   const tab = await openPage();

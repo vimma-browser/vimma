@@ -66,7 +66,7 @@ let writes = 0;
  */
 async function useConfig(text) {
   writes++;
-  await IOUtils.writeUTF8(file, `schema = 2\n${text}\n${"#".repeat(writes)}\n`);
+  await IOUtils.writeUTF8(file, `${text}\n${"#".repeat(writes)}\n`);
   await ConfigHost.reload();
   Assert.deepEqual(ConfigHost.errors, [], "config.toml applies");
 }
@@ -526,7 +526,7 @@ add_task(async function enabling_a_chord_the_user_binds_is_an_error() {
   writes++;
   await IOUtils.writeUTF8(
     file,
-    `schema = 2\n[keys]\nnew_tab = ["ctrl+t"]\n[firefox]\nenable = ["ctrl+t"]\n${"#".repeat(writes)}\n`,
+    `[keys]\nnew_tab = ["ctrl+t"]\n[firefox]\nenable = ["ctrl+t"]\n${"#".repeat(writes)}\n`,
   );
   await ConfigHost.reload();
   Assert.deepEqual(
