@@ -1547,6 +1547,9 @@ add_task(async function a_key_during_the_apply_that_makes_a_folder_is_refused() 
   PlacesUtils.observers.addListener(["bookmark-added"], listener);
   try {
     await writeFile('[bookmarks.fresh]\n"a" = "https://example.com/a"');
+    // The notification itself is waited for, not the folder in the database: insertTree commits,
+    // then reads the new items back before it notifies, so a poll can find the folder first.
+    await until(() => answers.length > 0, "Places notifies the new folder");
     await untilFolder("fresh", ["a https://example.com/a"], "the new folder is made");
   } finally {
     PlacesUtils.observers.removeListener(["bookmark-added"], listener);
