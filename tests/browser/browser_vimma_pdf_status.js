@@ -396,6 +396,110 @@ add_task(async function a_hostile_viewer_gets_only_primitives_through() {
   });
 });
 
+// V3: each text layer's own `focus` is defined, not assigned, so a setter the viewer puts on the
+// prototype never runs in the adapter; a layer it cannot be defined on leaves the others theirs;
+// and the function ignores its `this` and arguments.
+add_task(async function a_hostile_viewer_cannot_turn_the_text_layers_focus() {
+  await withPdf(async (browser) => {
+    await TestUtils.waitForCondition(() => segment("page") === "page i (1/6)", "the page");
+    await SpecialPowers.spawn(browser, [PDFJS_DOM.textLayer], (layers) => {
+      const doc = content.document;
+      Assert.equal(
+        doc.querySelector('.page[data-page-number="6"] > .textLayer'),
+        null,
+        "page 6 has no text layer yet",
+      );
+      const w = /** @type {typeof globalThis & { setterRan?: number }} */ (content.wrappedJSObject);
+      w.setterRan = 0;
+      const proto = w.HTMLElement.prototype;
+      const native = /** @type {{ focus: unknown }} */ (proto).focus;
+      Object.defineProperty(proto, "focus", {
+        configurable: true,
+        get: Cu.exportFunction(() => native, content),
+        set: Cu.exportFunction(() => {
+          w.setterRan = (w.setterRan ?? 0) + 1;
+          throw new content.Error("hostile");
+        }, content),
+      });
+      // Two text layers added in one batch, the first with a `focus` that cannot be redefined.
+      const page = /** @type {Element} */ (doc.querySelector('.page[data-page-number="1"]'));
+      const stuck = doc.createElement("div");
+      const other = doc.createElement("div");
+      for (const el of [stuck, other]) el.className = "textLayer vimma-test";
+      Object.defineProperty(Cu.waiveXrays(stuck), "focus", { value: 1, configurable: false });
+      page.append(stuck);
+      page.append(other);
+      Assert.equal(doc.querySelectorAll(layers).length >= 3, true, "the layers are in the page");
+    });
+    const rendered = BrowserTestUtils.waitForContentEvent(
+      browser,
+      "textlayerrendered",
+      false,
+      (e) => /** @type {CustomEvent<{ pageNumber?: number }>} */ (e).detail?.pageNumber === 6,
+      true,
+    );
+    await goToPage(browser, 6);
+    await rendered;
+    await goToPage(browser, 1);
+    await TestUtils.waitForCondition(() => segment("page") === "page i (1/6)", "back on page 1");
+    const seen = await SpecialPowers.spawn(browser, [], () => {
+      const doc = content.document;
+      const w = /** @type {typeof globalThis & { setterRan?: number }} */ (content.wrappedJSObject);
+      const own = (/** @type {Element | null} */ el) =>
+        el ? typeof Object.getOwnPropertyDescriptor(Cu.waiveXrays(el), "focus")?.value : "none";
+      const six = /** @type {HTMLElement} */ (
+        doc.querySelector('.page[data-page-number="6"] > .textLayer')
+      );
+      const container = /** @type {HTMLElement} */ (doc.getElementById("viewerContainer"));
+      const top = container.scrollTop;
+      // Arguments the native focus would read: each getter counts its reads.
+      let reads = 0;
+      const hostile = /** @type {object} */ (new w.Object());
+      for (const key of ["preventScroll", "focusVisible"]) {
+        Object.defineProperty(hostile, key, {
+          get: Cu.exportFunction(() => {
+            reads++;
+            return false;
+          }, content),
+        });
+      }
+      const focus = /** @type {Function} */ (
+        /** @type {{ focus: unknown }} */ (Cu.waiveXrays(six)).focus
+      );
+      let threw = "";
+      let returned;
+      try {
+        returned = focus.call(Cu.waiveXrays(doc.body), hostile, hostile);
+      } catch (e) {
+        threw = String(e);
+      }
+      return {
+        setterRan: w.setterRan,
+        six: own(six),
+        other: own(doc.querySelectorAll(".textLayer.vimma-test")[1]),
+        reads,
+        threw,
+        returned: typeof returned,
+        moved: container.scrollTop - top,
+        focused: doc.activeElement?.closest(".page")?.getAttribute("data-page-number") ?? "",
+      };
+    });
+    Assert.equal(seen.setterRan, 0, "the viewer's focus setter never ran");
+    Assert.equal(seen.six, "function", "a text layer added later has its own focus");
+    Assert.equal(seen.other, "function", "a layer after one that refused it has its own focus");
+    Assert.equal(seen.threw, "", "the focus throws nothing into the viewer");
+    Assert.equal(seen.returned, "undefined", "and returns nothing");
+    Assert.equal(seen.reads, 0, "it reads none of its arguments");
+    Assert.equal(seen.moved, 0, "focusing page 6's text layer from page 1 scrolls nothing");
+    Assert.equal(seen.focused, "6", "and focuses it, whatever its this");
+    await goToPage(browser, 2);
+    await TestUtils.waitForCondition(
+      () => segment("page").endsWith("(2/6)"),
+      "the adapter still reports state",
+    );
+  });
+});
+
 add_task(async function a_viewer_whose_pdfViewer_getter_throws_still_reports_each_operation() {
   await withPdf(async (browser) => {
     await TestUtils.waitForCondition(() => segment("page") === "page i (1/6)", "the page");
