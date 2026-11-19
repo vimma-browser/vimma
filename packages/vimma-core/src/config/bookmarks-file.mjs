@@ -36,12 +36,12 @@ export const MAX_BOOKMARK_DEPTH = 32;
 /** `[bookmarks]` keys that are config.toml's settings, never a workspace's inline table. */
 export const BOOKMARKS_SETTING_NAMES = Object.freeze(["root", "bookmarklets", "write_back"]);
 /**
- * `[bookmarks] write_back` (Behaviour 9): which changes reach the file. Delivery slice 2 has
- * Vimma's own (`"vimma"`, the default until `"all"` comes with slice 3) or none.
- * @typedef {"vimma" | "none"} WriteBack
+ * `[bookmarks] write_back` (Behaviour 9): which changes reach the file: every change (`"all"`,
+ * the default), Vimma's own, or none.
+ * @typedef {"all" | "vimma" | "none"} WriteBack
  */
 /** @type {readonly WriteBack[]} */
-export const WRITE_BACK_SETTINGS = Object.freeze(["vimma", "none"]);
+export const WRITE_BACK_SETTINGS = Object.freeze(["all", "vimma", "none"]);
 /** The same as config.mjs's MAX_WORKSPACE_NAME; a table is named after a workspace. */
 const MAX_TABLE_NAME = 32;
 /** A large deletion asks first (D14): more than this many in one run, */
@@ -81,8 +81,11 @@ const TYPE_SEPARATOR = 3;
  * @typedef {{ path: string[], kind: "bookmark" | "folder", url?: string, guid: string }} BaseEntry
  * @typedef {{ name: string, folder: string, entries: BaseEntry[] }} BaseTable
  * `forgotten`: `:bookmarks forget` turned the mirror off while the bookmarks file's content had
- * this hash; the mirror starts again only when the content differs (Behaviour 19).
- * @typedef {{ version: 1, source: BookmarksSource, tables: BaseTable[], forgotten?: string }} Base
+ * this hash; the mirror starts again only when the content differs (Behaviour 19). `local`: items
+ * made in a mirrored folder from a private window, which stay in Places and out of the file
+ * (Behaviour 12, Delivery slice 3).
+ * @typedef {{ version: 1, source: BookmarksSource, tables: BaseTable[], forgotten?: string,
+ *   local?: string[] }} Base
  */
 
 /**
@@ -586,11 +589,16 @@ export function parseBase(text) {
     tables.push({ name: t.name, folder: t.folder, entries });
   }
   if (raw.forgotten !== undefined && typeof raw.forgotten !== "string") return null;
+  const local = raw.local;
+  if (local !== undefined && !(Array.isArray(local) && local.every((g) => typeof g === "string"))) {
+    return null;
+  }
   return {
     version: 1,
     source: raw.source,
     tables,
     ...(typeof raw.forgotten === "string" ? { forgotten: raw.forgotten } : {}),
+    ...(local?.length ? { local: [...local] } : {}),
   };
 }
 
@@ -693,11 +701,15 @@ function subtree(root) {
  * ways: its folder and everything in it stay out of every other table's reach, and its base is
  * kept.
  *
+ * `keep` lists Places items the file does not hold that stay as they are (Delivery slice 3: an
+ * outside addition the file cannot hold, or one made in a private window); the folders above
+ * them are never removed.
+ *
  * @param {{ tables: readonly FileTable[], base: { tables: BaseTable[] } | null,
  *   places: PlacesNode,
  *   workspaces: readonly { name: string, folder?: string | null }[],
  *   bookmarklets: BookmarkletsSetting, approved: number | null,
- *   hold?: ReadonlySet<string>, makeGuid: () => string }} input
+ *   hold?: ReadonlySet<string>, keep?: Iterable<string>, makeGuid: () => string }} input
  *   `places`: the whole tree (promiseBookmarksTree("")); `workspaces`: each workspace's name and
  *   linked folder
  * @returns {{ ops: MirrorOp[], base: { tables: BaseTable[] }, ask: string | null,
@@ -849,21 +861,33 @@ export function planMirror(input) {
   }
 
   // D13: under "none", a javascript: bookmark in a mirrored folder is never changed or removed,
-  // nor any folder above it.
+  // nor any folder above it removed; a line may still claim those folders, so that the file's
+  // folder of that name is the one that holds it, not a second one.
   /** @type {Set<string>} */
   const kept = new Set();
+  /** The folders above a kept item: never removed, though a line may still claim them. */
+  /** @type {Set<string>} */
+  const shield = new Set();
+  /** @param {string} g @param {string | undefined} [top]  stop below this folder */
+  const keepItem = (g, top) => {
+    kept.add(g);
+    for (let p = all.get(g)?.parent; p && p !== top && !usedFolders.has(p);) {
+      shield.add(p);
+      p = all.get(p)?.parent ?? null;
+    }
+  };
   /** @param {PlacesNode} root */
   const protect = (root) => {
     if (allowScripts) return;
     for (const n of subtree(root)) {
       if (n.typeCode !== TYPE_BOOKMARK || !n.guid || !isBookmarklet(n.uri ?? "")) continue;
-      for (let g = /** @type {string | null} */ (n.guid); g && g !== root.guid;) {
-        kept.add(g);
-        g = all.get(g)?.parent ?? null;
-      }
+      keepItem(n.guid, root.guid);
     }
   };
   for (const r of resolved) if (r.node) protect(r.node);
+  for (const g of input.keep ?? []) {
+    if (mirroredIn.has(g) && !usedFolders.has(g)) keepItem(g);
+  }
 
   /** One set for every table: the tables' folders and every item a table placed. */
   /** @type {Set<string>} */
@@ -1046,7 +1070,7 @@ export function planMirror(input) {
       const c = /** @type {PlacesNode} */ (stack.pop());
       const g = c.guid;
       if (!g || c.typeCode === TYPE_SEPARATOR || usedFolders.has(g)) continue;
-      if (claimed.has(g) || kept.has(g) || !removable(g)) {
+      if (claimed.has(g) || kept.has(g) || shield.has(g) || !removable(g)) {
         if (c.typeCode === TYPE_FOLDER) stack.push(...[...(c.children ?? [])].reverse());
         continue;
       }

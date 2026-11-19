@@ -131,7 +131,7 @@ export function setMirroredFolders(guids, why = MIRRORED_REFUSAL, write = null) 
   writer = write;
 }
 
-/** Whether a change in a mirrored folder is written to the file now (`write_back = "vimma"`). */
+/** Whether a change in a mirrored folder is written to the file now (`write_back = "all"` or "vimma"). */
 export function mirrorWritable() {
   return writer !== null;
 }

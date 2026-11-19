@@ -876,30 +876,6 @@ describe("one edit queue (D11)", () => {
   });
 });
 
-describe("config: [bookmarks] write_back", () => {
-  test("config: write_back accepts vimma and none, defaults to vimma, suggests the closest", () => {
-    expect(parseConfig("schema = 2\n").config?.bookmarks.writeBack).toBe("vimma");
-    expect(
-      parseConfig('schema = 2\n[bookmarks]\nwrite_back = "none"\n').config?.bookmarks.writeBack,
-    ).toBe("none");
-    expect(parseConfig('schema = 2\n[bookmarks]\nwrite_back = "all"\n').errors).toEqual([
-      {
-        path: "bookmarks.write_back",
-        line: 3,
-        message: 'must be "vimma" or "none": "all" comes in a later version',
-      },
-    ]);
-    expect(parseConfig('schema = 2\n[bookmarks]\nwrite_back = "vima"\n').errors).toEqual([
-      {
-        path: "bookmarks.write_back",
-        line: 3,
-        message: 'must be "vimma" or "none"',
-        suggestion: "vimma",
-      },
-    ]);
-  });
-});
-
 describe("review fixes (PR #1343)", () => {
   test("a CRLF file without a final line break takes a line at the end of its last table", () => {
     const text = '[bookmarks.work]\r\n"a" = "https://a.example/"';

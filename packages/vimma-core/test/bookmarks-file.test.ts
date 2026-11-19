@@ -922,6 +922,29 @@ describe("bookmarks.toml: the mirror's plan", () => {
     ]);
   });
 
+  test("a folder holding a kept bookmarklet is still the file's folder, never made twice", () => {
+    const tables = tablesOf('[bookmarks.work]\n"tools/page" = "https://example.com/"');
+    const tree = work([
+      folder("tools0000001", "tools", [bm("bmmine000001", "mine", "javascript:void(1)")]),
+    ]);
+    const p = plan({ tables, places: tree, approved: 1000 });
+    const after = applyOps(tree, p.ops as Op[]);
+    expect(contents(topFolder(after, "work"))).toEqual([
+      { "tools/": ["mine javascript:void(1)", "page https://example.com/"] },
+    ]);
+    expect(p.base.tables[0]?.entries.find((e) => e.kind === "folder")?.guid).toBe("tools0000001");
+    // A file without the folder leaves it, with the bookmarklet, where it is.
+    const gone = plan({
+      tables: tablesOf("[bookmarks.work]\n"),
+      places: after,
+      base: p.base,
+      approved: 1000,
+    });
+    expect(contents(topFolder(applyOps(after, gone.ops as Op[]), "work"))).toEqual([
+      { "tools/": ["mine javascript:void(1)"] },
+    ]);
+  });
+
   test("bookmarks outside the mirrored folders are never in the operations", () => {
     const tree = places({
       menu: [bm("menu00000001", "m", "https://example.com/m")],

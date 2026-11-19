@@ -398,6 +398,10 @@ declare var FullZoom: { reset(browser?: MozBrowser): Promise<void> };
 // button or to reset state between tasks. Their APIs are large and Vimma's code does not call
 // them, so they are untyped here: a test's use of one is checked against the page, not by tsc.
 declare const PlacesUtils: any;
+// dom/chrome-webidl/PlacesObservers.webidl and PlacesEvent.webidl: a test that changes a guid as
+// Sync's dedupe does notifies the event itself.
+declare const PlacesObservers: { notifyListeners(events: unknown[]): void };
+declare const PlacesBookmarkGuid: new (init: Record<string, unknown>) => unknown;
 declare const SidebarController: any;
 declare const SitePermissions: any;
 declare const CustomizableUI: any;

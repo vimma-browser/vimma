@@ -473,7 +473,7 @@ describe("[bookmarks] root", () => {
     expect(ok(v2()).bookmarks).toEqual({
       root: "workspace",
       bookmarklets: "none",
-      writeBack: "vimma",
+      writeBack: "all",
     });
     expect(DEFAULT_CONFIG.bookmarks).toEqual({ root: "workspace", bookmarklets: "none" });
     expect(formatDefaultsToml()).toMatch(/^\[bookmarks\]\n(#.*\n)*root = "workspace"$/m);

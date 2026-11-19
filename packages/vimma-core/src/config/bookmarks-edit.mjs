@@ -46,17 +46,21 @@ import { parseToml, locateKeys, sameTomlValue, tomlLiteral, valueEnd } from "./t
 
 /**
  * A line the writer adds or a key it sets: the path's names, and whether it is a folder's line;
- * `keep`, the line (of the text as given) whose trailing comment it carries, for a moved line.
- * @typedef {{ names: string[], folder: boolean, value: string, keep?: number }} NewLine
+ * `keep`, the line (of the text as given) whose trailing comment it carries, for a moved line;
+ * `id`, a name later operations give as `after` to place lines after this one.
+ * @typedef {{ names: string[], folder: boolean, value: string, keep?: number, id?: string }}
+ *   NewLine
  */
 
 /**
- * The line writer's operations (D10). `line` is a line number of the text as given.
- * @typedef {{ op: "add", table: string, after?: number, lines: NewLine[] }
+ * The line writer's operations (D10). `line` is a line number of the text as given; `after` is
+ * one too, or the `id` of a line added earlier, or 0 for the table's start (before its first
+ * line); without it, lines go after the table's last line.
+ * @typedef {{ op: "add", table: string, after?: number | string, lines: NewLine[] }
  *   | { op: "remove", line: number }
  *   | { op: "replace", line: number, names?: string[], folder?: boolean, value?: string,
  *     keep?: number, bare?: boolean }
- *   | { op: "move", line: number, table: string, after?: number }
+ *   | { op: "move", line: number, table: string, after?: number | string }
  *   | { op: "addTable", name: string }
  *   | { op: "renameTable", from: string, to: string }
  *   | { op: "removeTable", name: string }} LineOp
@@ -211,7 +215,7 @@ function readHeader(row) {
  * @param {string} text
  * @returns {{ tables: ScanTable[], value: Record<string, unknown> } | { error: string }}
  */
-function scan(text) {
+export function scanBookmarkLines(text) {
   const parsed = parseToml(text, { integersAsBigInt: true });
   if (!parsed.ok) return { error: `line ${parsed.error.line}: ${parsed.error.message}` };
   const rows = text.split("\n");
@@ -285,7 +289,7 @@ function rest(/** @type {Record<string, unknown>} */ value) {
  * @returns {{ ok: true, text: string } | { ok: false, error: string }}
  */
 export function editBookmarkLines(text, ops) {
-  const before = scan(text);
+  const before = scanBookmarkLines(text);
   if ("error" in before) return fail(before.error);
   const cr = text.includes("\r\n") ? "\r" : "";
   const rows = text.split("\n");
@@ -333,9 +337,9 @@ export function editBookmarkLines(text, ops) {
   }));
   let made = 0;
   const modelTable = (/** @type {string} */ name) => model.find((t) => t.name === name);
-  const entryIndex = (/** @type {number} */ line) =>
+  const entryIndex = (/** @type {number | string} */ line) =>
     recs.findIndex((r) => r.kind === "entry" && r.ref === line);
-  /** @param {number} line */
+  /** @param {number | string} line */
   const modelLine = (line) => {
     for (const t of model) {
       const i = t.lines.findIndex((l) => l.ref === line);
@@ -344,15 +348,25 @@ export function editBookmarkLines(text, ops) {
     return null;
   };
   /**
-   * Where lines go in `table`: after line `after`, else after the table's last line (or its
-   * header).
+   * Where lines go in `table`: after line `after`; at 0, before the table's first line (after
+   * the comments that open it); else after the table's last line (or its header).
    * @param {string} table
-   * @param {number | undefined} after
+   * @param {number | string | undefined} after
    * @returns {{ rec: number, line: number } | null}  record index and model index to insert at
    */
   const insertAt = (table, after) => {
     const t = modelTable(table);
     if (!t) return null;
+    if (after === 0) {
+      // Before the table's first line and the comment lines right above it, which belong to it.
+      const h = recs.findIndex((x) => x.kind === "header" && x.table === table);
+      if (h < 0) return null;
+      let first = recs.findIndex((x, k) => k > h && x.kind === "entry" && x.table === table);
+      const next = recs.findIndex((x, k) => k > h && x.kind === "header");
+      if (first < 0 || (next >= 0 && first > next)) return { rec: h + 1, line: 0 };
+      while (first - 1 > h && /** @type {Rec} */ (recs[first - 1]).text.trim() !== "") first--;
+      return { rec: first, line: 0 };
+    }
     if (after !== undefined) {
       const at = modelLine(after);
       const r = entryIndex(after);
@@ -385,7 +399,7 @@ export function editBookmarkLines(text, ops) {
       if (!at) return fail(`no place for the new lines in [bookmarks.${op.table}]`);
       const t = /** @type {NonNullable<ReturnType<typeof modelTable>>} */ (modelTable(op.table));
       const newRecs = op.lines.map((l) => {
-        const ref = `new${++made}`;
+        const ref = l.id ?? `new${++made}`;
         return {
           rec: { text: lineText(l), kind: /** @type {const} */ ("entry"), table: op.table, ref },
           line: { ...l, ref },
@@ -483,7 +497,7 @@ export function editBookmarkLines(text, ops) {
     end.text = end.text.replace(/\r$/, "");
   }
   const out = recs.map((r) => r.text).join("\n");
-  const after = scan(out);
+  const after = scanBookmarkLines(out);
   if ("error" in after) return fail(`the edit would not read back: ${after.error}`);
   const want = JSON.stringify(
     model.map((t) => [t.name, t.lines.map((l) => [l.names, l.folder, l.value])]),
@@ -529,7 +543,7 @@ export function cleanName(name) {
  * @param {BookmarkletsSetting} bookmarklets
  * @returns {{ url: string } | { error: string }}
  */
-function writableUrl(url, bookmarklets) {
+export function writableUrl(url, bookmarklets) {
   const u = lineUrl(url);
   if ("error" in u) return { error: `${BOOKMARKS_FILE} cannot hold it: ${u.error}` };
   if (isBookmarklet(u.url) && bookmarklets !== "user" && bookmarklets !== "agent") {
@@ -718,7 +732,7 @@ function treeLines(node, top, bookmarklets) {
  *   renamed?: { from: string, to: string } } | { ok: false, error: string }}
  */
 export function editBookmarks(text, source, change, { bookmarklets }) {
-  const s = scan(text);
+  const s = scanBookmarkLines(text);
   if ("error" in s) return fail(`${source}: ${s.error}`);
   const table = (/** @type {string} */ name) => s.tables.find((t) => t.name === name);
   const missing = (/** @type {string} */ name) =>

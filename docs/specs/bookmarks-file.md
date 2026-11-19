@@ -1,6 +1,6 @@
 # Spec: bookmarks-file
 
-Status: accepted, Delivery slices 1 and 2 implemented · Area: `packages/vimma-core/src/` (new `config/bookmarks-file.mjs`: parse, validate,
+Status: accepted, Delivery slices 1 to 3 implemented · Area: `packages/vimma-core/src/` (new `config/bookmarks-file.mjs`: parse, validate,
 model, three-way diff and line edits of `bookmarks.toml`; `config/config.mjs` for
 `[bookmarks] write_back` and the inline tables; `config/defaults.mjs` for the template line;
 `ui/bookmarks.mjs` for the panel's write path); `src/browser/base/content/vimma/` (new
@@ -814,6 +814,65 @@ Slice 2 landed with these departures and particulars, each for the reason given:
   folders to the end of the table, a second item of one name as `name (2)`, and says how many it
   wrote; an item the file cannot hold (a `data:` URL, a name with hidden characters) is still
   asked about, as under `"none"`.
+
+### Notes from delivery slice 3
+
+Slice 3 landed with these departures and particulars, each for the reason given:
+
+- **Module place.** The three-way merge of outside changes is
+  `packages/vimma-core/src/config/bookmarks-merge.mjs`, beside the reader and the writer, because
+  it is pure and is fuzzed on its own: merging and reading back never loses an item present on
+  either side, and a second merge after the run is empty.
+- **Per item, by guid.** Places' side of an item is its parent's guid, its name and its URL
+  against the base, so a child of a renamed folder is no change of its own. The same change on
+  both sides (git and Sync carrying one edit) is agreement: no conflict, and an item both sides
+  added at one place is one item, never `name (2)`.
+- **Order.** A folder whose order the file did not change takes Places' order, with the file's
+  own new lines after the line they followed; a folder the file reordered keeps the file's. The
+  edit moves the fewest lines (the longest run already in order stays), so a drag in the Library
+  is a one-line diff, and a folder whose lines would not give the merged order is laid out again
+  in it.
+- **Guid changes.** `bookmark-guid-changed` names the new guid only, so the run finds an item by
+  its kind, its place and its URL (Sync's dedupe changes the guid only of an item with the same
+  content in the same folder) and a table's folder by its name at the toolbar's top; the base
+  takes the new guids. A removal and an identical re-addition read the same way.
+- **Behaviour 20 under "all".** A workspace folder deleted or moved off the toolbar's top removes
+  the table only when the file has not changed that table since the base; otherwise the file wins
+  and the folder is made again, so a table edited in the file is never lost to a Library delete.
+  A rename the file cannot take (another table's name, a name a workspace cannot have) is put
+  back.
+- **What the file cannot hold.** An outside addition whose URL the file refuses (`data:`,
+  `place:`, a bookmarklet while bookmarklets are off) or whose path is deeper than 32 names stays
+  in Places as it is, named once in a notice, and no run removes it (planMirror's `keep`),
+  because under "all" deleting a bookmark the user just made would lose it; the folders above it
+  stay and are written as empty folders when nothing else is in them. A folder without a title
+  is written as `(untitled)`. A slice-1 bug this exposed is fixed with it: a folder holding a kept
+  bookmarklet could not be claimed by its own line, so the run made a second folder of its name.
+- **Private windows (Behaviour 12).** A Places event names no window, so a change counts as a
+  private window's when the most recent browser window is private at the time (also a Library
+  opened from it). Under "all" its additions stay in Places only, remembered in the base's
+  `local` list across restarts, and its changes are put back; removals are written, because they
+  add nothing to the file.
+- **The removal question.** `n`, `Esc` or no answer to Behaviour 13's question puts the
+  bookmarks back from the file, where the file direction's question pauses instead, because a
+  paused merge would ask again at every burst and a put-back loses nothing. A newer question
+  closes an open one without answering it.
+- **A merge that cannot be written.** An edit that does not read back as merged, or a write that
+  fails (after one more try when the file changed meanwhile), writes nothing and pauses both ways until the file changes, with a notice, keeping
+  Places' change: an outside change is never put back because the file could not take it. The
+  base is saved as soon as the file is written, so a crash before the run ends leaves the two in
+  agreement.
+- **Loop guard under "all" (open question 2).** Sync's changes the file takes are not put-backs.
+  A put-back is the file winning over Places' change of one bookmark, counted by its guid, which
+  Sync keeps across devices; three in ten minutes pause the table as before. A put-back after a
+  `n` is not counted.
+- **Startup (D17).** When Places made a new database at this start, the first run writes nothing
+  back and brings Places to the file, so a restored day-old backup never reaches the file.
+- **#1347.** A move out of the file whose Places step fails while an editor saved the file
+  meanwhile (so the line cannot go back by a revert) writes the line back, and moves the bookmark
+  to Other Bookmarks if even that fails; a base that cannot be saved after a file write (a full
+  disk) stays in memory and the change goes on. Either way no bookmark ends up in neither the file
+  nor the base.
 
 ## Decisions on the open questions
 

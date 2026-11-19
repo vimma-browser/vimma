@@ -7,6 +7,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 ### Added
 
 - **bookmarks:** with `vimma.feature.bookmarksFile` on, Vimma's bookmark keys in a folder that bookmarks.toml mirrors write the file first and Firefox's bookmarks after it, keeping comments; `[bookmarks] write_back = "none"` keeps the file read-only (#1286)
+- **bookmarks:** with `vimma.feature.bookmarksFile` on, a change made to a mirrored folder in Firefox's Library, by Sync or by an import is written to bookmarks.toml a second later, merged with the file's own changes and keeping comments; `[bookmarks] write_back = "all"` is now the default, and `"vimma"` keeps putting such changes back (#1286)
 
 ## [0.1.21](https://github.com/vimma-browser/vimma/compare/v0.1.20...v0.1.21) · Firefox 160.0 (2026-11-17)
 
