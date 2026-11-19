@@ -9,6 +9,7 @@
 // a row of the step table, its id in BUILT_STEPS and, when it needs more, a renderer here.
 
 /** @import { AddonEntry, FlowContext, FlowEffect, FlowState } from "../core/setup.mjs" */
+/** @import { WindowSketch } from "../core/setup-steps.mjs" */
 
 const { ThemeHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ui/theme-host.mjs",
@@ -32,7 +33,8 @@ const browser = () => SetupHost.browserFor(window);
  * @property {string} title
  * @property {string} question
  * @property {{ tag: "kbd" | "code" | null, text: string }[]} text
- * @property {{ label: string, keep: boolean, lines: string[] }[]} choices
+ * @property {{ label: string, keep: boolean, lines: string[], window: WindowSketch | null }[]}
+ *   choices
  * @property {number} selected
  * @property {string | null} blocked
  */
@@ -180,6 +182,51 @@ function drawWelcome() {
   $("v2-start").focus();
 }
 
+/**
+ * A small drawing of the window a choice leaves (Page layout): the tab line, the toolbar with
+ * its address field, the page and the status bar, each drawn only when the window has it.
+ * Square, in the theme's colours; the choice's label says the same in words.
+ * @param {WindowSketch} w
+ */
+function windowDrawing(w) {
+  return el(
+    "div",
+    {
+      class: "window",
+      "data-toolbar": w.toolbar,
+      "data-tabline": w.tabline,
+      "aria-hidden": "true",
+    },
+    ...(w.tabline === "off"
+      ? []
+      : [
+          el(
+            "div",
+            { class: "w-tabline" },
+            el("span", { class: "w-tab current" }),
+            el("span", { class: "w-tab" }),
+          ),
+        ]),
+    ...(w.toolbar === "hidden"
+      ? []
+      : [
+          el(
+            "div",
+            { class: "w-toolbar" },
+            el("span", { class: "w-buttons" }),
+            el("span", { class: "w-url" }),
+          ),
+        ]),
+    el(
+      "div",
+      { class: "w-page" },
+      el("span", { class: "w-line" }),
+      el("span", { class: "w-line short" }),
+    ),
+    el("div", { class: "w-status" }),
+  );
+}
+
 /** @param {StepView} v */
 function drawChoices(v) {
   $("v2-choices").replaceChildren(
@@ -188,7 +235,12 @@ function drawChoices(v) {
         "li",
         { role: "option", "data-index": String(i), ...(c.keep ? { "data-keep": "true" } : {}) },
         el("span", { class: "mark", "aria-hidden": "true" }, i === v.selected ? "●" : "○"),
-        el("span", { class: "body" }, el("span", { class: "name" }, c.label)),
+        el(
+          "span",
+          { class: "body" },
+          el("span", { class: "name" }, c.label),
+          ...(c.window ? [windowDrawing(c.window)] : []),
+        ),
         el("span", { class: "meta" }, i === v.selected ? "in force" : ""),
       );
       if (i === state.cursor) li.setAttribute("aria-current", "true");
@@ -239,8 +291,9 @@ function drawAddons() {
 
 /**
  * Renderers by step id: the content blocker's add-on list; every other step is a list of
- * choices with the line it writes. A later step that needs more (a drawing of the window)
- * adds one here.
+ * choices with the line it writes, and, for a step of the window chapter (the address bar, the
+ * tab line), a drawing of the window with each choice, from the host's windowSketch. A later
+ * step that needs more adds a renderer here.
  * @type {Record<string, (v: StepView) => void>}
  */
 const RENDERERS = {

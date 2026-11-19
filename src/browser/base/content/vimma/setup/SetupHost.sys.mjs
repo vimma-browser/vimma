@@ -32,6 +32,7 @@ import {
   planChoice,
   stepChoices,
   textParts,
+  windowSketch,
 } from "../core/setup-steps.mjs";
 
 /** @import { SetupChoice, SetupRuntime } from "../core/setup-steps.mjs" */
@@ -372,6 +373,8 @@ export const SetupHost = {
         label: c.label,
         keep: !!c.keep,
         lines: editLines(planChoice(c, inForce)),
+        // The window this choice leaves, for the step's drawing; null outside chapter 3.
+        window: windowSketch(step, c, inForce),
       })),
       selected,
       blocked,

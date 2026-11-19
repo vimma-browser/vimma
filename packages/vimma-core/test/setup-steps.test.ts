@@ -14,6 +14,7 @@ import {
   stepChoices,
   stepKeys,
   textParts,
+  windowSketch,
 } from "../src/system/setup-steps.mjs";
 import { parseConfig, setConfigKeysText } from "../src/config/config.mjs";
 import { compileKeymap } from "../src/keys/keymap.mjs";
@@ -348,5 +349,72 @@ describe("step text as page nodes", () => {
       { tag: "kbd", text: "<" },
       { tag: null, text: " <b>x</b>" },
     ]);
+  });
+});
+
+describe("the window chapter (behaviours 9, 17 and 24, Page layout)", () => {
+  const bar = step("address_bar");
+
+  test("the address bar step names every page key of focus_urlbar and toggle_toolbar", () => {
+    expect(fillStepText(bar, keymap)).toBe(
+      "With it hidden, <kbd>ctrl+l</kbd>, <kbd>alt+d</kbd> or <kbd>I</kbd> still opens the " +
+        "address bar for typing, and <kbd>ctrl+b u</kbd> shows or hides the whole toolbar " +
+        "until restart.",
+    );
+    // A rebound key as bound, an unbound one left out, an action without a key by its command.
+    const own = compileKeymap({
+      keys: { focus_urlbar: ["ctrl+k", "ctrl+l"], toggle_toolbar: [] },
+    });
+    expect(fillStepText(bar, own)).toBe(
+      "With it hidden, <kbd>ctrl+k</kbd>, <kbd>ctrl+l</kbd> or <kbd>I</kbd> still opens the " +
+        "address bar for typing, and <code>:toolbar</code> shows or hides the whole toolbar " +
+        "until restart.",
+    );
+  });
+
+  test("the address bar step opens on the toolbar in force: shown by default, else the file's", () => {
+    expect(stepChoices(bar, inForce("schema = 2\n")).selected).toBe(0);
+    const hidden = inForce('schema = 2\n[ui]\ntoolbar = "hidden"\n');
+    const r = stepChoices(bar, hidden);
+    expect(r.choices.map((c) => c.label)).toEqual(["Shown", "Hidden"]);
+    expect(r.selected).toBe(1);
+    expect(planAtEnter(bar, r.choices[1]!, hidden)).toEqual([]);
+    expect(planAtEnter(bar, r.choices[0]!, hidden)).toEqual([
+      { table: "ui", key: "toolbar", value: "shown" },
+    ]);
+  });
+
+  test("each choice draws the window it leaves, with the rest of the window in force", () => {
+    const now = inForce('schema = 2\n[ui]\ntabline = "always"\n');
+    const r = stepChoices(bar, now);
+    expect(r.choices.map((c) => windowSketch(bar, c, now))).toEqual([
+      { toolbar: "shown", tabline: "always" },
+      { toolbar: "hidden", tabline: "always" },
+    ]);
+    // Without a [ui] table: the built-in defaults.
+    expect(windowSketch(bar, r.choices[1]!, inForce("schema = 2\n"))).toEqual({
+      toolbar: "hidden",
+      tabline: "off",
+    });
+  });
+
+  test("the tab line step draws its choices over the same window", () => {
+    const tabs = step("tab_line");
+    const now = inForce('schema = 2\n[ui]\ntoolbar = "hidden"\n');
+    expect(stepChoices(tabs, now).choices.map((c) => windowSketch(tabs, c, now))).toEqual([
+      { toolbar: "hidden", tabline: "off" },
+      { toolbar: "hidden", tabline: "always" },
+      { toolbar: "hidden", tabline: "auto" },
+    ]);
+  });
+
+  test("keep draws the window in force, and a step outside the window chapter draws none", () => {
+    const keep = { label: "Keep", edits: [], keep: true as const };
+    expect(windowSketch(bar, keep, { "ui.toolbar": "hidden", "ui.tabline": "auto" })).toEqual({
+      toolbar: "hidden",
+      tabline: "auto",
+    });
+    const engine = step("search_engine");
+    expect(windowSketch(engine, { label: "x", edits: [] }, {})).toBeNull();
   });
 });
