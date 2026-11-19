@@ -91,7 +91,7 @@ export class Toolbar {
 
   /** Whether the toolbar is hidden, in every window. */
   static get hidden() {
-    return Services.prefs.getBoolPref(TOOLBAR_PREF, false);
+    return Services.prefs.getBoolPref(TOOLBAR_PREF, true);
   }
 
   /** @param {boolean} hidden */

@@ -17,6 +17,7 @@ import { tomlLiteral } from "../config/toml.mjs";
 import { DEFAULT_THEME_NAME } from "../config/theme.mjs";
 import { DEFAULT_HINT_CHARS } from "../page/hints.mjs";
 import { defaultKeys } from "../config/defaults.mjs";
+import { parseConfig } from "../config/config.mjs";
 
 /** @import { Keymap } from "../keys/keymap.mjs" */
 /** @import { ResolvedConfig } from "../config/config.mjs" */
@@ -484,7 +485,12 @@ export function prefixHints(step, keymap, choices = step.choices) {
 }
 
 /** The `[ui]` keys a drawing of the window shows, with their built-in defaults. */
-const WINDOW_DEFAULTS = Object.freeze({ toolbar: "shown", tabline: "off" });
+/** The config in force with no file at all: every key its built-in default. */
+const DEFAULTS = /** @type {ResolvedConfig} */ (parseConfig("").config);
+const WINDOW_DEFAULTS = Object.freeze({
+  toolbar: DEFAULTS.ui.toolbar,
+  tabline: DEFAULTS.ui.tabline,
+});
 
 /** The steps that draw the window with each choice (Page layout): chapter 3's. */
 const WINDOW_STEPS = new Set(CHAPTERS.find((c) => c.id === "window")?.steps.map((s) => s.id));
@@ -535,11 +541,13 @@ const pathOf = (e) => `${e.table}.${e.key}`;
 /**
  * The values in force of the steps' keys, by `table.key`, from a resolved config (the file at
  * `enter`, decision 4), its built-in defaults, and `runtime` for what the file leaves to
- * Firefox or a command (behaviour 9). A later step adds its key here.
- * @param {ResolvedConfig} config @param {SetupRuntime} [runtime]
+ * Firefox or a command (behaviour 9). A later step adds its key here. With no config in force
+ * (a broken file and no good one before it), the built-in defaults are.
+ * @param {ResolvedConfig | null} resolved @param {SetupRuntime} [runtime]
  * @returns {InForce}
  */
-export function inForceOf(config, { engine = null, appearance, engines = [] } = {}) {
+export function inForceOf(resolved, { engine = null, appearance, engines = [] } = {}) {
+  const config = resolved ?? DEFAULTS;
   const named = config.search?.default?.kind === "engine" ? config.search.default.name : null;
   const fileEngine =
     named === null ? null : (engines.find((e) => e.toLowerCase() === named.toLowerCase()) ?? named);

@@ -191,6 +191,16 @@ describe("keys named on the page (decisions 8 and 9)", () => {
 describe("choices, Keep and the line a step writes (behaviours 8, 9 and 12)", () => {
   const toolbar = step("address_bar");
 
+  // Re-review L1: a broken config.toml with no good one before it leaves no config in force;
+  // the built-in defaults are in force then, and the toolbar is hidden by default.
+  test("with no config in force, the defaults are: hidden is selected and drawn", () => {
+    const now = inForceOf(null);
+    expect(now["ui.toolbar"]).toBe("hidden");
+    expect(stepChoices(toolbar, now).selected).toBe(1);
+    const tabline = step("tab_line");
+    expect(windowSketch(tabline, tabline.choices[0]!, {})?.toolbar).toBe("hidden");
+  });
+
   test("the value in force is selected", () => {
     const r = stepChoices(toolbar, { "ui.toolbar": "hidden" });
     expect(r.choices.map((c) => c.label)).toEqual(["Shown", "Hidden"]);

@@ -343,6 +343,33 @@ add_task(async function window_dialog() {
   }
 });
 
+// A dialog opened from the hidden toolbar's address bar (#1387 re-review L2): SubDialog gives
+// focus back to the field directly, which the collapsed bar refuses, so Vimma gives it back
+// through gURLBar.focus(), which reveals the minimal bar, instead of to the page.
+add_task(async function a_dialog_closed_gives_focus_back_to_the_hidden_address_bar() {
+  Assert.ok(
+    Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", false),
+    "the toolbar is hidden by default",
+  );
+  gURLBar.focus();
+  await until(() => gURLBar.focused, "the address bar has focus");
+  const shown = nextDialog();
+  /** @type {boolean | undefined} */
+  let answer;
+  setTimeout(() => (answer = Services.prompt.confirm(window, "Vimma", "Turn it on?")), 0);
+  const w = await shown;
+  await until(() => lineShows(w, "y ok · n cancel"), "a window dialog names the keys");
+  press("n", w);
+  await until(() => answer !== undefined, "the dialog answered");
+  await until(() => gURLBar.focused, "the address bar has focus again");
+  Assert.ok(
+    gURLBar.inputField.checkVisibility({ visibilityProperty: true }),
+    "in the minimal bar, visible",
+  );
+  EventUtils.synthesizeKey("KEY_Escape");
+  gBrowser.selectedBrowser.focus();
+});
+
 // The external protocol questions (permissionDialog.xhtml, "Allow this site to open the link
 // with ...?", and appChooser.xhtml, the application list) open in the tab's SubDialog as the
 // page's dialogs do, and take the same keys: `y` opens the link, `n` cancels.
