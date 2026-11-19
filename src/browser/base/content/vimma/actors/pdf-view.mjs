@@ -370,8 +370,18 @@ export class PdfView {
         }
       }, win);
       // An own property of the element, seen by the viewer's script only: Xrays keep the
-      // element's own focus for Vimma.
-      /** @type {{ focus?: unknown }} */ (Cu.waiveXrays(layer)).focus = focus;
+      // element's own focus for Vimma. Defined, not assigned: an assignment would run a `focus`
+      // setter the viewer put on the prototype, inside this observer (V3).
+      try {
+        Object.defineProperty(Cu.waiveXrays(layer), "focus", {
+          value: focus,
+          configurable: true,
+          writable: true,
+        });
+      } catch {
+        // a layer the viewer made refuse the property keeps its own focus; the others, in the
+        // first scan or in the same batch of records, still get theirs
+      }
     };
     try {
       const container = this.#doc.querySelector(PDFJS_DOM.container);

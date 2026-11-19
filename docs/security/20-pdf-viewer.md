@@ -37,8 +37,14 @@ bindings, so it is accepted here.
   that pdf.js itself gave it (V8); no chrome object **may** be passed in. A text layer pdf.js adds
   to a page gets an own `focus` property, an exported function that takes no arguments and only
   focuses that element without scrolling (pdf-mode decision 9); the adapter finds the element in
-  the viewer's DOM through Xrays, never from a pdf.js object.
-  [`a_hostile_viewer_gets_only_primitives_through`](../../tests/browser/browser_vimma_pdf_status.js)
+  the viewer's DOM through Xrays, never from a pdf.js object. The property is defined, never
+  assigned, so no setter of the viewer's runs in the adapter, and a layer that refuses it leaves
+  the others theirs. Its focus runs as a system caller, which skips Gecko's check against stealing
+  keystrokes from another frame (`nsFocusManager::SetFocusInner`); that gives no more than the
+  viewer's own `focus` here, because the call never raises a window and the viewer's CSP
+  (`default-src 'none'`) allows it no subframe of another origin.
+  [`a_hostile_viewer_gets_only_primitives_through`](../../tests/browser/browser_vimma_pdf_status.js),
+  [`a_hostile_viewer_cannot_turn_the_text_layers_focus`](../../tests/browser/browser_vimma_pdf_marks.js)
 - V4. Exported callbacks **must** read their arguments through Xrays, never waived, and only the
   fields they need; the child **must** keep only values whose `typeof` is `number`, `boolean` or
   `string` before `sendAsyncMessage`, and **must not** `await` a value returned by pdf.js. An
