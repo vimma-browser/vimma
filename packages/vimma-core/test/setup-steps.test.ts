@@ -6,6 +6,8 @@ import {
   PAGE_KEYS,
   STEPS,
   HINT_LAYOUTS,
+  actionChoices,
+  actionOutcome,
   editLines,
   fillStepText,
   PRESSED_MAX,
@@ -605,5 +607,80 @@ describe("the window chapter (behaviours 9, 17 and 24, Page layout)", () => {
     });
     const engine = step("search_engine");
     expect(windowSketch(engine, { label: "x", edits: [] }, {})).toBeNull();
+  });
+});
+
+// docs/specs/setup-v2.md behaviours 22 and 23, decision 17: the Moving in steps act, they save no
+// key; their choices follow what the system allows now, and each result says what happened.
+describe("the Moving in chapter's action steps", () => {
+  const labels = (r: ReturnType<typeof actionChoices>) => r.choices.map((c) => c.label);
+
+  test("default browser: make default or not now, while another browser is the default", () => {
+    const r = actionChoices("default_browser", { isDefault: false, canSet: true, why: null });
+    expect(labels(r)).toEqual(["Make Vimma the default browser", "Not now"]);
+    expect(r.choices.map((c) => c.run ?? false)).toEqual([true, false]);
+    expect(r.choices.every((c) => c.edits.length === 0)).toBe(true);
+    expect(r.status).toMatch(/not your default browser/);
+  });
+
+  test("default browser: says so and only moves on when Vimma already is the default", () => {
+    const r = actionChoices("default_browser", { isDefault: true, canSet: true, why: null });
+    expect(labels(r)).toEqual(["Go on"]);
+    expect(r.choices[0]?.run).toBeUndefined();
+    expect(r.status).toMatch(/already your default browser/);
+  });
+
+  test("default browser: says why it cannot ask, and only moves on", () => {
+    for (const [why, words] of [
+      ["flatpak", /Flatpak/],
+      ["policy", /policy/],
+      ["locked", /locked/],
+    ] as const) {
+      const r = actionChoices("default_browser", { isDefault: false, canSet: false, why });
+      expect(labels(r)).toEqual(["Go on"]);
+      expect(r.status).toMatch(words);
+    }
+  });
+
+  test("bring your data: the wizard or not now, and only go on where policy turns import off", () => {
+    const r = actionChoices("bring_your_data", { canImport: true });
+    expect(labels(r)).toEqual(["Open the import wizard", "Not now"]);
+    expect(r.choices.map((c) => c.run ?? false)).toEqual([true, false]);
+    const off = actionChoices("bring_your_data", { canImport: false });
+    expect(labels(off)).toEqual(["Go on"]);
+    expect(off.status).toMatch(/policy/);
+  });
+
+  test("a result that acted is listed as saved, never as nothing written", () => {
+    expect(actionOutcome("default_browser", "default")).toEqual({
+      advance: true,
+      saved: ["made the default browser"],
+      said: "Vimma is now the default browser",
+    });
+    expect(actionOutcome("default_browser", "asked").saved).toEqual([
+      "asked the system to make Vimma the default",
+    ]);
+    expect(actionOutcome("bring_your_data", "closed")).toEqual({
+      advance: true,
+      saved: ["import wizard closed"],
+      said: "import wizard closed",
+    });
+  });
+
+  test("not now and go on move on and save nothing; a failure keeps the step open", () => {
+    for (const id of ["default_browser", "bring_your_data"]) {
+      expect(actionOutcome(id, "not-now")).toEqual({ advance: true, saved: [], said: "not now" });
+    }
+    expect(actionOutcome("default_browser", "already")).toMatchObject({ advance: true, saved: [] });
+    for (const [id, result] of [
+      ["default_browser", "failed"],
+      ["default_browser", "unavailable"],
+      ["bring_your_data", "unavailable"],
+    ] as const) {
+      const o = actionOutcome(id, result);
+      expect(o.advance).toBe(false);
+      expect(o.saved).toEqual([]);
+      expect(o.said).not.toBe("");
+    }
   });
 });

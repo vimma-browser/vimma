@@ -27,6 +27,7 @@ import {
 import {
   CHAPTERS,
   STEPS,
+  actionChoices,
   editLines,
   fillStepText,
   inForceOf,
@@ -38,7 +39,7 @@ import {
   windowSketch,
 } from "../core/setup-steps.mjs";
 
-/** @import { SetupChoice, SetupRuntime } from "../core/setup-steps.mjs" */
+/** @import { ActionResult, SetupChoice, SetupRuntime } from "../core/setup-steps.mjs" */
 
 const lazy =
   /** @type {Lazy<"AddonManager" | "clearTimeout" | "PrivateBrowsingUtils" | "SearchService" | "setTimeout">} */ ({});
@@ -181,6 +182,31 @@ function isPrivate(browser) {
     }
   }
   return true;
+}
+
+/**
+ * Why Make Default cannot be asked here, as Settings hides its button (main.js,
+ * isNotDefaultPane; DefaultBrowserHelper.canCheck), or null when it can.
+ * @returns {"flatpak" | "policy" | "locked" | null}
+ */
+function whyNoDefault() {
+  if (AppLauncher.underFlatpak()) return "flatpak";
+  if (!Services.policies.isAllowed("setDefaultBrowser")) return "policy";
+  if (Services.prefs.prefIsLocked(DEFAULT_BUTTON_PREF)) return "locked";
+  return null;
+}
+
+/**
+ * Gives the setup page the focus back when its tab is the one shown.
+ * @param {MozBrowser} browser
+ */
+function refocus(browser) {
+  for (const win of Services.wm.getEnumerator("navigator:browser")) {
+    if (win.gBrowser?.selectedBrowser === browser) {
+      browser.focus();
+      return;
+    }
+  }
 }
 
 /** A step of setup v2 the page draws so far (BUILT_STEPS), or undefined. @param {string} id */
@@ -375,6 +401,29 @@ export const SetupHost = {
     if (!step || !browser) return null;
     // The list this page had for the step is gone until the new one is sent.
     sentTo(browser).delete(id);
+    if (step.id === "default_browser" || step.id === "bring_your_data") {
+      const { choices, selected, status } = actionChoices(step.id, this.movingInState());
+      const serial = nextSerial++;
+      sentTo(browser).set(id, { serial, choices });
+      return {
+        id,
+        kind: step.kind,
+        title: step.title,
+        question: step.question,
+        text: textParts(step.text),
+        choices: choices.map((c) => ({
+          label: c.label,
+          keep: false,
+          lines: [],
+          window: null,
+          run: !!c.run,
+        })),
+        selected,
+        blocked: null,
+        status,
+        serial,
+      };
+    }
     const rt = await runtime();
     const text = await readConfigText().catch(() => null);
     const inForce = inForceFor(text, rt);
@@ -411,11 +460,51 @@ export const SetupHost = {
         lines: editLines(planChoice(c, inForce)),
         // The window this choice leaves, for the step's drawing; null outside chapter 3.
         window: windowSketch(step, c, inForce),
+        run: false,
       })),
       selected,
       blocked,
+      status: "",
       serial,
     };
+  },
+
+  /**
+   * What the Moving in steps offer now (behaviours 22 and 23): whether Vimma is the default
+   * browser, whether and why not Make Default may be asked, and whether policy allows import.
+   */
+  movingInState() {
+    return {
+      ...this.defaultBrowserState(),
+      why: whyNoDefault(),
+      canImport: Services.policies.isAllowed("profileImport"),
+    };
+  },
+
+  /**
+   * `enter` on a Moving in step (decision 17): the choice at `index` of the list this page was
+   * sent, as saveStep resolves it. Make Default goes through setDefaultBrowser and the import
+   * through openImportWizard, after which the setup page gets the focus back, since the dialog
+   * leaves it nowhere on the page (#1380). Works in a private window and with a broken
+   * config.toml (behaviours 13 and 15): neither writes the file.
+   * @param {MozBrowser | null} browser @param {string} id @param {number} index
+   * @param {number} [serial]
+   * @returns {Promise<{ result: ActionResult } | { error: string } | { stale: true }>}
+   */
+  async runAction(browser, id, index, serial) {
+    const step = builtStep(id);
+    if (!step || (id !== "default_browser" && id !== "bring_your_data") || !browser) {
+      return { error: "not a step that acts" };
+    }
+    const list = sent.get(browser)?.get(id);
+    const choice = Number.isInteger(index) && index >= 0 ? list?.choices[index] : undefined;
+    if (!list || !choice) return { error: "no such choice" };
+    if (serial !== list.serial) return { stale: true };
+    if (!choice.run) return { result: choice.result ?? "not-now" };
+    if (id === "default_browser") return { result: await this.setDefaultBrowser() };
+    const result = await this.openImportWizard(browser);
+    refocus(browser);
+    return { result };
   },
 
   /**
@@ -514,22 +603,20 @@ export const SetupHost = {
     } catch (e) {
       console.error("vimma: setup cannot tell whether Vimma is the default browser", e);
     }
-    const canSet =
-      Services.policies.isAllowed("setDefaultBrowser") &&
-      !Services.prefs.prefIsLocked(DEFAULT_BUTTON_PREF);
-    return { isDefault, canSet };
+    return { isDefault, canSet: whyNoDefault() === null };
   },
 
   /**
    * Make Default, as Settings' button asks it (decision 17): Firefox's shell service, which
    * checks the policy again, through AppLauncher's wrapper where a package installed one
-   * (security O10, O11). Nothing is asked when Vimma already is the default.
-   * @returns {Promise<"default" | "asked" | "unavailable" | "failed">} "asked" when the system
+   * (security O10, O11). Nothing is asked, and "already" is the answer, when Vimma already is
+   * the default.
+   * @returns {Promise<"default" | "already" | "asked" | "unavailable" | "failed">} "asked" when the system
    *   took the request but the check still says another browser is the default
    */
   async setDefaultBrowser() {
     const before = this.defaultBrowserState();
-    if (before.isDefault) return "default";
+    if (before.isDefault) return "already";
     if (!before.canSet) return "unavailable";
     try {
       await shell().setDefaultBrowser(false);

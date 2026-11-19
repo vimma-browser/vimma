@@ -312,6 +312,8 @@ describe("chrome code", () => {
     expect(all.filter((h) => !h.startsWith(`${SETUP}:`))).toEqual([]);
     expect(all.map((h) => h.slice(h.indexOf(": ") + 2))).toEqual([
       'const WIZARD_URL = "chrome://browser/content/migration/migration-dialog-window.html";',
+      // The step's `enter` (runAction), through the host's own method below.
+      'if (id === "default_browser") return { result: await this.setDefaultBrowser() };',
       "await shell().setDefaultBrowser(false);",
     ]);
     // Every importer, by name: a new one anywhere (host/, actors/, ctl/, agent/) fails here and

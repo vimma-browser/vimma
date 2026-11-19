@@ -121,6 +121,15 @@ h1 {
   font-size: 0.8rem;
 }
 
+/* What an action step found (Moving in): a fact about the system, under the step's text. */
+.status {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.8rem;
+  border-inline-start: 3px solid var(--vimma-text-accent, #2cf5d2);
+  background: var(--vimma-bg-dark, #05080a);
+  border-radius: var(--vimma-radius, 0);
+}
+
 .notice {
   margin: 0;
   padding: 0.5rem 0.8rem;

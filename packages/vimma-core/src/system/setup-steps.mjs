@@ -27,6 +27,8 @@ import { defaultKeys } from "../config/defaults.mjs";
  * @property {string} label
  * @property {readonly TomlEdit[]} edits  what it writes; [] for Keep
  * @property {true} [keep]  Keep: the value in force, which is none of the step's choices
+ * @property {true} [run]  an action step's choice that runs the step's action
+ * @property {ActionResult} [result]  an action step's choice that runs nothing: what it means
  */
 
 /**
@@ -683,6 +685,125 @@ export function planAtEnter(step, choice, inForce, { omarchy = false } = {}) {
     return now ? planChoice(now, inForce) : null;
   }
   return planChoice(choice, inForce);
+}
+
+/**
+ * What an action step of Moving in did (decision 17): SetupHost.setDefaultBrowser's answer,
+ * openImportWizard's, or what a choice that runs nothing means.
+ * @typedef {"default" | "asked" | "unavailable" | "failed" | "closed" | "not-now" | "already"
+ *   | "left"} ActionResult
+ */
+
+/**
+ * @typedef {object} MovingInState  what the host found before drawing a Moving in step
+ * @property {boolean} [isDefault]
+ * @property {boolean} [canSet]
+ * @property {"flatpak" | "policy" | "locked" | null} [why]  why Make Default cannot be asked
+ * @property {boolean} [canImport]  the profileImport policy allows the wizard
+ */
+
+/** Why the default browser step cannot ask the system, by SetupHost's reason. */
+const NO_DEFAULT = {
+  flatpak:
+    "Under Flatpak, Vimma can neither set nor check the default browser: choose it in your " +
+    "system's settings.",
+  policy: "Your organisation's policy does not let Vimma change the default browser.",
+  locked: "A locked preference keeps Vimma from changing the default browser.",
+};
+
+/**
+ * The choices of a Moving in step (behaviours 22 and 23) for what the system allows now: they
+ * save no key, so each has no edits. A step that cannot act offers only to move on and says why.
+ * @param {string} id  "default_browser" or "bring_your_data"
+ * @param {MovingInState} state
+ * @returns {{ choices: SetupChoice[], selected: number, status: string }}
+ */
+export function actionChoices(id, state) {
+  /** @param {string} label @param {ActionResult} result @returns {SetupChoice} */
+  const pass = (label, result) => ({ label, edits: [], result });
+  if (id === "default_browser") {
+    if (state.isDefault) {
+      return {
+        choices: [pass("Go on", "already")],
+        selected: 0,
+        status: "Vimma is already your default browser.",
+      };
+    }
+    if (!state.canSet) {
+      return {
+        choices: [pass("Go on", "left")],
+        selected: 0,
+        status: NO_DEFAULT[state.why ?? "policy"],
+      };
+    }
+    return {
+      choices: [
+        { label: "Make Vimma the default browser", edits: [], run: true },
+        pass("Not now", "not-now"),
+      ],
+      selected: 0,
+      status: "Vimma is not your default browser now.",
+    };
+  }
+  if (id === "bring_your_data") {
+    if (!state.canImport) {
+      return {
+        choices: [pass("Go on", "left")],
+        selected: 0,
+        status: "Your organisation's policy turns the import wizard off.",
+      };
+    }
+    return {
+      choices: [
+        { label: "Open the import wizard", edits: [], run: true },
+        pass("Not now", "not-now"),
+      ],
+      selected: 0,
+      status: "",
+    };
+  }
+  return { choices: [], selected: 0, status: "" };
+}
+
+/**
+ * What the page does with a Moving in result: move on or keep the step open, what the footer
+ * says, and what "Saved this run" lists, so that an action that acted is never reported as
+ * "nothing written" (behaviour 11).
+ * @param {string} id @param {ActionResult} result
+ * @returns {{ advance: boolean, saved: string[], said: string }}
+ */
+export function actionOutcome(id, result) {
+  /** @param {string} said @param {string[]} [saved] */
+  const on = (said, saved = []) => ({ advance: true, saved, said });
+  /** @param {string} said */
+  const stay = (said) => ({ advance: false, saved: [], said });
+  switch (result) {
+    case "not-now":
+      return on("not now");
+    case "left":
+      return on("left as it is");
+    case "already":
+      return on("already the default browser");
+    case "default":
+      return on("Vimma is now the default browser", ["made the default browser"]);
+    case "asked":
+      // The system took the request, but its check still names another browser: it may
+      // be waiting for the user to confirm in a dialog of its own.
+      return on("asked the system to make Vimma the default; it may ask you to confirm", [
+        "asked the system to make Vimma the default",
+      ]);
+    case "closed":
+      return on("import wizard closed", ["import wizard closed"]);
+    case "failed":
+      return stay("The system did not make Vimma the default browser.");
+    case "unavailable":
+      return stay(
+        id === "bring_your_data"
+          ? "The import wizard cannot open here."
+          : "Vimma cannot change the default browser here.",
+      );
+  }
+  return stay("");
 }
 
 /**

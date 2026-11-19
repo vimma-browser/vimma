@@ -292,6 +292,8 @@ export const BUILT_STEPS = Object.freeze([
   "content_blocker",
   "search_engine",
   "colours",
+  "default_browser",
+  "bring_your_data",
   "address_bar",
   "tab_line",
   "prefix_key",
@@ -417,7 +419,8 @@ function openStop(s, chapter) {
  * The step after the open one, or its chapter's stop screen; a step that wrote `lines` is
  * listed as saved, replacing what an earlier `enter` on it saved (behaviour 6). A skip, or a
  * save that wrote nothing, keeps what this run saved for the step: that write is still in the
- * file, and the stop screens list it.
+ * file, and the stop screens list it. So an action step that did nothing this time keeps what
+ * it did before: that cannot be undone.
  * @param {FlowState} s @param {FlowContext} ctx
  * @param {readonly string[]} [lines]  what the step wrote; none for a skip or "writes nothing"
  * @returns {{ state: FlowState, effect: FlowEffect | null }}
