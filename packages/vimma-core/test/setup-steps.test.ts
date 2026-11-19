@@ -119,6 +119,21 @@ describe("keys named on the page (decisions 8 and 9)", () => {
     expect(fillStepText(s, rebound)).not.toContain("alt+d");
   });
 
+  test("a key normal mode binds to another action, or unbinds, is not named", () => {
+    // [modal.normal] takes ctrl+l for tab.next: on a page ctrl+l no longer opens the address bar.
+    const shadowed = compileKeymap({ modal: { normal: { "<C-l>": "tab.next" } } });
+    expect(stepKeys(shadowed, "focus_urlbar")).toEqual(["alt+d", "I"]);
+    const unbound = compileKeymap({ unbind: { normal: ["<C-l>"] } });
+    expect(stepKeys(unbound, "focus_urlbar")).toEqual(["alt+d", "I"]);
+    expect(fillStepText(step("address_bar"), shadowed)).toContain(
+      "<kbd>alt+d</kbd> or <kbd>I</kbd> still opens",
+    );
+    // The prefix chords stay: they run the action in normal mode.
+    expect(stepKeys(compileKeymap({ keys: { prefix: "ctrl+a" } }), "toggle_toolbar")).toEqual([
+      "ctrl+a u",
+    ]);
+  });
+
   test("keys with a mode suffix are left out of a placeholder", () => {
     expect(keymap.keysFor("focus_urlbar")).toContain("I [visual]");
     expect(stepKeys(keymap, "focus_urlbar").some((k) => k.includes("["))).toBe(false);

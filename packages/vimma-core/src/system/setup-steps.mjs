@@ -12,7 +12,7 @@
 
 import { COMMANDS } from "../keys/cmdline.mjs";
 import { getAction } from "../keys/actions.mjs";
-import { displayBinding, parseKey } from "../keys/keys.mjs";
+import { displayBinding, formatKey, parseKey } from "../keys/keys.mjs";
 import { tomlLiteral } from "../config/toml.mjs";
 import { BUILTIN_THEMES, DEFAULT_THEME_NAME } from "../config/theme.mjs";
 
@@ -310,14 +310,35 @@ export const STEPS = freeze(CHAPTERS.flatMap((c) => c.steps));
 /** @param {string} key  as keysFor shows it @returns {boolean} whether it works from a page */
 const fromPage = (key) => !key.includes(" [");
 
+/** @param {string} key  as keysFor shows it (`I`, `ctrl+b u`) @returns {string} as a sequence */
+const sequenceOf = (key) =>
+  key
+    .split(" ")
+    .map((chord) => {
+      try {
+        return formatKey(parseKey(chord));
+      } catch {
+        return chord;
+      }
+    })
+    .join(" ");
+
 /**
- * The keys of `action` that work from a page (decision 8): keysFor without the bindings of
- * another mode (`I [visual]`).
+ * The keys of `action` that work from a page (decision 8, behaviour 17): keysFor without the
+ * bindings of another mode (`I [visual]`), and without a `[keys]` binding that normal mode binds
+ * to another action or unbinds (`[modal.normal] "<C-l>"`), because on a page that key no longer
+ * runs it.
  * @param {Keymap} keymap @param {string} action
  * @returns {string[]}
  */
 export function stepKeys(keymap, action) {
-  return keymap.keysFor(action).filter(fromPage);
+  const normal = new Set(
+    keymap
+      .sequences("normal")
+      .filter((s) => s.name === action)
+      .map((s) => s.seq),
+  );
+  return keymap.keysFor(action).filter((key) => fromPage(key) && normal.has(sequenceOf(key)));
 }
 
 /** @param {string} action @returns {string} the `:` command that runs it */

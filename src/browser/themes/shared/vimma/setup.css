@@ -410,22 +410,24 @@ input {
 .window .w-tab {
   width: 2.2rem;
   height: 100%;
-  background: var(--vimma-muted, #3b4252);
+  background: var(--vimma-fg-dim, #9197b2);
 }
 
 .window .w-tab.current {
   background: var(--vimma-text-accent, #2cf5d2);
 }
 
+/* The toolbar row is what tells the address bar's two drawings apart: fg-dim on bg-dark keeps it
+   well above 3:1 in the built-in palettes, where muted is about 2:1. */
 .window .w-toolbar {
   padding: 0 3px;
-  background: var(--vimma-muted, #3b4252);
+  background: var(--vimma-fg-dim, #9197b2);
 }
 
 .window .w-buttons {
   width: 1.4rem;
   height: 0.3rem;
-  background: var(--vimma-fg-dim, #9197b2);
+  background: var(--vimma-bg-dark, #04090a);
 }
 
 .window .w-url {
