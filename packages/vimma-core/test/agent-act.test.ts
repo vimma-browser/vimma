@@ -1534,6 +1534,173 @@ describe("console reads: bounded work and URLs without credentials (F24, M30)", 
     noCredentials(once(`about:reader?url=${enc(`https://ada:${"s".repeat(5_000_000)}@e.com/`)}`));
     expect(Date.now() - started).toBeLessThan(budget(400));
   });
+
+  // Issue #1348: any page's query, not only an about: page's, may carry a URL percent-encoded in
+  // a parameter: an extension page that wraps the page it blocked, a site's redirect parameter.
+  const STRIPPED = "https://example.com/news/a?id=1";
+
+  test("an extension page's query loses them as an about: query does (#1348)", () => {
+    const ext = "moz-extension://0d6f1c2e-1111-4a4a-9b9b-123456789abc/blocked.html";
+    expect(once(`${ext}?url=${enc(ARTICLE)}`)).toBe(`${ext}?url=${enc(STRIPPED)}`);
+    // Its other parameters and its hash are kept as written.
+    expect(once(`${ext}?a=b%20c+d&url=${enc(ARTICLE)}&z=%7E#top`)).toBe(
+      `${ext}?a=b%20c+d&url=${enc(STRIPPED)}&z=%7E#top`,
+    );
+    for (const wrapper of [
+      "chrome://browser/content/x.html",
+      "resource://gre/x.html",
+      "file:///x",
+    ]) {
+      expect(once(`${wrapper}?u=${enc(ARTICLE)}`)).toBe(`${wrapper}?u=${enc(STRIPPED)}`);
+    }
+  });
+
+  test("a redirect parameter loses them; the page and its other parameters stay (#1348)", () => {
+    const bank = "https://ada:secret@bank.example/acct?x=1";
+    const clean = "https://bank.example/acct?x=1";
+    for (const key of ["redirect", "url", "next", "continue", "returnTo", "RelayState"]) {
+      expect(once(`https://site.example/login?${key}=${enc(bank)}&lang=fi%2Bsv`)).toBe(
+        `https://site.example/login?${key}=${enc(clean)}&lang=fi%2Bsv`,
+      );
+    }
+    // Not encoded, as a site may write it, and with the page's own credentials too.
+    expect(once(`https://site.example/login?next=${bank}`)).toBe(
+      `https://site.example/login?next=${enc(clean)}`,
+    );
+    expect(once(`https://bob:pw@site.example/?next=${enc(bank)}`)).toBe(
+      `https://site.example/?next=${enc(clean)}`,
+    );
+    // A query that names no credentials is left byte for byte, however it is encoded.
+    for (const url of [
+      `https://site.example/s?q=a+b%20c&next=${enc("https://bank.example/")}&x=%7E&&y`,
+      `https://site.example/s?to=${enc("mailto:ada@example.com")}&email=ada%40example.com`,
+      "https://site.example/s?q=%E0%A4%A&r=%",
+    ]) {
+      expect(once(url)).toBe(url);
+    }
+    // A parameter name holding such a URL loses them too.
+    noCredentials(once(`https://site.example/?${enc(bank)}=1`));
+    // Inside the wrappers Vimma already reads.
+    expect(once(`view-source:https://site.example/?next=${enc(bank)}`)).toBe(
+      `view-source:https://site.example/?next=${enc(clean)}`,
+    );
+  });
+
+  test("a redirect parameter encoded twice, nested or in look-alikes loses them (#1348)", () => {
+    const page = "https://site.example/login";
+    // Encoded twice, the way a redirect inside a redirect is written.
+    expect(once(`${page}?next=${enc(enc(ARTICLE))}`)).toBe(`${page}?next=${enc(enc(STRIPPED))}`);
+    noCredentials(once(`${page}?next=${enc(enc(enc(ARTICLE)))}`));
+    // A chain of redirect pages, each inside the last.
+    let chain = ARTICLE;
+    for (let i = 0; i < 6; i++) chain = `https://hop${i}.example/r?next=${enc(chain)}`;
+    noCredentials(once(chain));
+    // A fullwidth at sign, encoded or not, and a fullwidth percent sign that is one once shown.
+    noCredentials(once(`${page}?next=${enc("https://ada:secret\uff20bank.example/")}`));
+    noCredentials(once(`${page}?next=${enc("https://ada:secret\ufe6bbank.example/")}`));
+    noCredentials(once(`${page}?next=${enc(ARTICLE).replace(/%/g, "\uff05")}`));
+    noCredentials(once(`${page}\uff1fnext=${enc(ARTICLE)}`));
+    // A look-alike slash before the at sign ends no authority for a URL parser, nor here.
+    for (const article of [
+      "https://ada:se\uff0fcret@bank.example/a",
+      "https://good.example\uff0f@evil.example/a",
+    ]) {
+      const host = new URL(article).host;
+      const out = once(`${page}?next=${enc(article)}`);
+      const next = new URLSearchParams(out.slice(out.indexOf("?") + 1)).get("next") ?? "";
+      expect(next).toBe(`https://${host}/a`);
+      expect(out.startsWith(`${page}?`)).toBe(true);
+    }
+  });
+
+  test("a redirect parameter in the hash, or after a semicolon, loses them (#1348)", () => {
+    const bank = "https://ada:secret@bank.example/a";
+    const clean = enc("https://bank.example/a");
+    expect(once(`https://app.example/#/login?next=${enc(bank)}&x=%7E`)).toBe(
+      `https://app.example/#/login?next=${clean}&x=%7E`,
+    );
+    expect(once(`https://app.example/?a=1#next=${enc(bank)}`)).toBe(
+      `https://app.example/?a=1#next=${clean}`,
+    );
+    expect(once(`https://app.example/s?a=1;next=${enc(bank)};b=2`)).toBe(
+      `https://app.example/s?a=1;next=${clean};b=2`,
+    );
+    // A hash that names no credentials is kept as written.
+    for (const url of [
+      "https://app.example/#/a?b=c%20d",
+      "https://app.example/#top",
+      "about:x#a@b",
+    ]) {
+      expect(once(url)).toBe(url);
+    }
+  });
+
+  test("a semicolon in a user name or password does not split their URL (#1352 review)", () => {
+    // URLSearchParams, Reader View and the error pages split a query at & only: a value read
+    // whole there is read whole here too.
+    expect(once("about:reader?url=ftp://ada:se;cret@example.com/a")).toBe(
+      `about:reader?url=${enc("ftp://example.com/a")}`,
+    );
+    expect(once("about:neterror?e=x&u=https://ada:se;cret@bank.example/&d=y")).toBe(
+      `about:neterror?e=x&u=${enc("https://bank.example/")}&d=y`,
+    );
+    expect(once("https://site.example/?next=https://ada:se;cret@bank.example/")).toBe(
+      `https://site.example/?next=${enc("https://bank.example/")}`,
+    );
+    expect(once(`https://site.example/?a=1;next=${enc("https://a;da:secret@bank.example/")}`)).toBe(
+      `https://site.example/?a=1;next=${enc("https://bank.example/")}`,
+    );
+  });
+
+  test("a URL anywhere in a hash or a parameter's value loses them (#1352 review)", () => {
+    const bank = "https://ada:secret@bank.example/?a=1";
+    for (const url of [
+      `https://site.example/#${bank}`,
+      `https://site.example/#/go/${bank}`,
+      `https://site.example/#/a?x=1?next=${enc(bank)}`,
+      `https://site.example/?a=1?next=${enc(bank)}`,
+      `https://site.example/?to=/go/${enc(bank)}`,
+      `https://site.example/?to=x${enc(" ")}${enc(bank)}`,
+    ]) {
+      const out = once(url);
+      noCredentials(out);
+      expect(out.startsWith("https://site.example/")).toBe(true);
+    }
+    expect(once(`https://site.example/#/go/${bank}`)).toBe(
+      `https://site.example/#${enc("/go/https://bank.example/?a")}=1`,
+    );
+  });
+
+  test("a value encoded past the nesting read is dropped, not kept (#1352 review)", () => {
+    let value = ARTICLE;
+    for (let i = 0; i < 5; i++) value = enc(value);
+    let out = once(`https://site.example/login?next=${value}`);
+    expect(out.startsWith("https://site.example/login?next=")).toBe(true);
+    for (let i = 0; i < 6; i++) out = decodeURIComponent(out);
+    expect(out).not.toContain("secret");
+    expect(out).not.toContain("ada");
+  });
+
+  test("a redirect parameter cut short, or long, never shows them (#1348)", () => {
+    const long = `https://site.example/?a=1&next=${enc(`https://ada:${"s".repeat(3000)}@b.example/`)}`;
+    noCredentials(once(long));
+    noCredentials(agentUrl(long, 64));
+    const url = `https://site.example/login?next=${enc(ARTICLE)}&lang=fi`;
+    for (let n = 1; n <= url.length; n++) {
+      const out = agentUrl(url.slice(0, n) + "x".repeat(4 * AGENT_CONSOLE.url), AGENT_CONSOLE.url);
+      expect(out).not.toContain("secret");
+      expect(out).not.toContain("ada");
+    }
+    // Cut after it, a parameter before the cut that names no credentials is not dropped.
+    const kept = `https://site.example/?next=${enc("https://bank.example/")}&q=`;
+    expect(agentUrl(kept + "q".repeat(4 * AGENT_CONSOLE.url), AGENT_CONSOLE.url)).toContain(
+      `next=${enc("https://bank.example/")}&q=`,
+    );
+    const started = Date.now();
+    const many = `https://site.example/?${`next=${enc(ARTICLE)}&`.repeat(200_000)}`;
+    noCredentials(once(many));
+    expect(Date.now() - started).toBeLessThan(budget(400));
+  });
 });
 
 // Issue #1119: edges the weekly mutation run found unpinned. A child's reply is checked for its
@@ -1868,7 +2035,9 @@ describe("the element list, clicks, fills and console reads, at their edges (mut
     expect(consoleLists(errors, requests, 0, exact - 1).dropped).toBe(1);
   });
 
-  test("only the URL's own user name and password go, not a URL inside its query", () => {
+  // The page stays example.com: its authority ends at its first slash, not at the last at sign;
+  // the URL in its query loses its own user name and password as a parameter (#1348).
+  test("the URL's own authority ends at its slash; a URL in its query loses them apart", () => {
     const urls = [
       "https://u:p@example.com/login?next=https://v:q@other.example/",
       "https://example.com/login?next=https://v:q@other.example/",
@@ -1880,8 +2049,8 @@ describe("the element list, clicks, fills and console reads, at their edges (mut
       AGENT_CONSOLE.bytes,
     );
     expect(lines(r.requests).map((l) => l.url)).toEqual([
-      "https://example.com/login?next=https://v:q@other.example/",
-      "https://example.com/login?next=https://v:q@other.example/",
+      "https://example.com/login?next=https%3A%2F%2Fother.example%2F",
+      "https://example.com/login?next=https%3A%2F%2Fother.example%2F",
     ]);
   });
 
