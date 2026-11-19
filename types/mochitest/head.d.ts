@@ -100,6 +100,15 @@ declare function windowGlobalOf(
  * @param {MozBrowser} browser
  */
 declare function historyOf(browser: MozBrowser): nsISHistory;
+/**
+ * Unloads `tab` as Firefox's Unload Tab, its tab unloader and `tabs.discard` do: its state
+ * flushed to SessionStore first (prepareDiscardBrowser), then discarded, past any dialog. A bare
+ * discardBrowser leaves SessionStore without the tab's latest state until an update from the
+ * discarded page arrives; a tab restored before that shows about:blank and stays `pending`.
+ * @param {MozTabbrowserTab} tab
+ * @returns {Promise<boolean>} whether Firefox unloaded it
+ */
+declare function unloadTab(tab: MozTabbrowserTab): Promise<boolean>;
 
 // tests/browser/head_vimma_agent_model.js
 

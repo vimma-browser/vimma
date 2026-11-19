@@ -10,7 +10,7 @@
 
 "use strict";
 
-/* global focusContent -- from head.js */
+/* global focusContent, unloadTab -- from head.js */
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
 // Eight tasks of two splits each, one with a restore: past the default timeout on a busy runner.
 requestLongerTimeout(2);
@@ -229,18 +229,13 @@ async function assertS1Shows({ a, long, c }, tab) {
 }
 
 /**
- * Unloads `t` as Firefox's Unload Tab, its tab unloader and `tabs.discard` do: its state flushed
- * to SessionStore first (prepareDiscardBrowser), then discarded. A bare discardBrowser leaves
- * SessionStore without the tab's state until an update from the discarded page arrives, and a
- * tab selected before that never restores: it shows about:blank and stays `pending`.
+ * Unloads `t` as Firefox does (head.js, unloadTab).
  * @param {SplitTab} t
  */
 async function unload(t) {
-  const win = /** @type {BrowserWindow} */ (winOf(t));
   // A tab SessionStore is still restoring is not unloaded, or is woken again at once (#1342).
   await until(() => !SessionStore.isTabRestoring(t), "the tab has restored");
-  await win.gBrowser.prepareDiscardBrowser(t);
-  Assert.ok(win.gBrowser.discardBrowser(t, true), "Firefox unloads the tab");
+  Assert.ok(await unloadTab(t), "Firefox unloads the tab");
   await until(() => !t.linkedPanel, "the tab is unloaded");
 }
 
