@@ -230,7 +230,10 @@ async function assertS1Shows({ a, long, c }, tab) {
 
 /** @param {SplitTab} t */
 async function unload(t) {
-  /** @type {BrowserWindow} */ (winOf(t)).gBrowser.discardBrowser(t, true);
+  const win = /** @type {BrowserWindow} */ (winOf(t));
+  // A tab SessionStore is still restoring is not unloaded, or is woken again at once (#1342).
+  await until(() => !SessionStore.isTabRestoring(t), "the tab has restored");
+  Assert.ok(win.gBrowser.discardBrowser(t, true), "Firefox unloads the tab");
   await until(() => !t.linkedPanel, "the tab is unloaded");
 }
 
@@ -383,7 +386,13 @@ add_task(async function after_a_restore_an_unloaded_tab_of_the_hidden_split_show
   w2.gBrowser.selectedTab = long;
   await until(() => view(w2).splits.shown === 1, "selecting the long page shows S1");
   await until(
-    () => [a, long].every((t) => !t.hasAttribute("pending") && t.linkedBrowser.isRemoteBrowser),
+    () =>
+      [a, long].every(
+        (t) =>
+          !t.hasAttribute("pending") &&
+          t.linkedBrowser.isRemoteBrowser &&
+          !SessionStore.isTabRestoring(t),
+      ),
     "S1's pages restore",
   );
   await nextFrame(w2);

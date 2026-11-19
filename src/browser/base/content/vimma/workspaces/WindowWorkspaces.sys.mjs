@@ -823,6 +823,10 @@ export class WindowWorkspacesImpl {
   /**
    * Firefox is selecting a tab: tabbox.js's selectedIndex has unmarked the old tab and marked the
    * new one, and gBrowser.selectedTab still names the old one until the panel's select event.
+   * This relies on that engine order (tabbox.js MozTabs `set selectedIndex`, then
+   * `getRelatedElement` inserting the browser, then tabpanels' select event running
+   * Tabbrowser's updateCurrentBrowser); after a Firefox bump that changes it,
+   * browser_vimma_split_unloaded_tab.js selecting_it_with_focus_nowhere_shows_its_split fails.
    */
   #midSelection() {
     const tab = this.#gBrowser?.selectedTab;
