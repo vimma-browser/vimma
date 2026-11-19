@@ -8,7 +8,7 @@
 
 "use strict";
 
-const { TOKYO_NIGHT } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/index.mjs");
+const { VIMMA_DARK } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/index.mjs");
 const { OmarchyHook } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/omarchy/OmarchyHook.sys.mjs",
 );
@@ -16,7 +16,7 @@ const { OmarchyHook } = ChromeUtils.importESModule(
 const HOOK_PREF = "vimma.theme.omarchyHook";
 
 function colorsToml(/** @type {string} */ darkBackground) {
-  const palette = { ...TOKYO_NIGHT, dark_background: darkBackground };
+  const palette = { ...VIMMA_DARK, dark_background: darkBackground };
   return Object.entries(palette)
     .map(([key, value]) => `${key} = "${value}"`)
     .join("\n");

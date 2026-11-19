@@ -14,7 +14,7 @@ import { COMMANDS } from "../keys/cmdline.mjs";
 import { getAction } from "../keys/actions.mjs";
 import { displayBinding, formatKey, parseKey } from "../keys/keys.mjs";
 import { tomlLiteral } from "../config/toml.mjs";
-import { BUILTIN_THEMES, DEFAULT_THEME_NAME } from "../config/theme.mjs";
+import { DEFAULT_THEME_NAME } from "../config/theme.mjs";
 
 /** @import { Keymap } from "../keys/keymap.mjs" */
 /** @import { ResolvedConfig } from "../config/config.mjs" */
@@ -460,15 +460,16 @@ export function inForceOf(config, { engine = null, appearance, engines = [] } = 
 /**
  * The colours step's choices for the effect in force (decision 12): what each choice must write
  * so that the window shows it. The choice's own key comes last. Omarchy is offered only where
- * an Omarchy theme is found; with it shown, a built-in choice also writes `source = "file"`,
- * and with a dark-only palette (`tokyo-night`), light and system also write `name = "vimma"`.
+ * an Omarchy theme is found; with it shown, a built-in choice also writes `source = "file"`.
+ * `vimma` is the only built-in palette, so a choice writes `name = "vimma"` only when another
+ * name is in force.
  * @param {SetupStep} step @param {InForce} inForce @param {boolean} omarchy  a theme is found
  * @returns {{ choices: SetupChoice[], selected: number }}
  */
 function colourChoices(step, inForce, omarchy) {
   const shown = omarchy && inForce["theme.source"] === "omarchy";
   const name = String(inForce["theme.name"] ?? DEFAULT_THEME_NAME);
-  const darkOnly = !BUILTIN_THEMES[name]?.light;
+  const otherName = name !== DEFAULT_THEME_NAME;
   /** @type {SetupChoice[]} */
   const choices = [];
   let selected = -1;
@@ -484,17 +485,15 @@ function colourChoices(step, inForce, omarchy) {
     /** @type {TomlEdit[]} */
     const edits = [];
     if (shown) edits.push({ table: "theme", key: "source", value: "file" });
-    if (darkOnly && own.value !== "dark") {
-      edits.push({ table: "theme", key: "name", value: DEFAULT_THEME_NAME });
-    }
+    if (otherName) edits.push({ table: "theme", key: "name", value: DEFAULT_THEME_NAME });
     edits.push(own);
-    if (!shown && !darkOnly && inForce["theme.appearance"] === own.value) {
+    if (!shown && !otherName && inForce["theme.appearance"] === own.value) {
       selected = choices.length;
     }
     choices.push({ label: c.label, edits });
   }
   if (selected >= 0) return { choices, selected };
-  // A dark-only palette in force is none of the choices (behaviour 9).
+  // Another name in force is none of the choices (behaviour 9).
   return {
     choices: [{ label: `Keep ${JSON.stringify(name)}`, edits: [], keep: true }, ...choices],
     selected: 0,

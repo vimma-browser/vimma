@@ -20,7 +20,7 @@ import {
 
 // Spec docs/specs/m7-a11y.md: what the status bar speaks, and WCAG AA contrast of every text
 // token Vimma's chrome draws, on every surface it draws it on, in both variants of the built-in
-// vimma palette, the built-in Tokyo Night and a light theme; and WCAG non-text contrast (3:1) of
+// vimma palette, a dark Omarchy theme and a light one; and WCAG non-text contrast (3:1) of
 // the focus colour (focus rings, the focused pane's outline) on every surface it touches.
 
 import type { Announced } from "../src/ui/statusbar.mjs";
@@ -33,10 +33,7 @@ const theme = mergeWithDefaults({}).theme;
 const THEMES = {
   "vimma dark (built in)": resolveTheme({ theme: { ...theme, source: "file" } }),
   "vimma light (built in)": resolveTheme({ theme: { ...theme, source: "file" }, scheme: "light" }),
-  "Tokyo Night (built in)": resolveTheme({
-    theme: { ...theme, source: "file", name: "tokyo-night" },
-  }),
-  "Tokyo Night (Omarchy)": resolveTheme({ theme, omarchy: fixture("tokyo-night.colors.toml") }),
+  "a dark theme (Omarchy sample)": resolveTheme({ theme, omarchy: fixture("sample.colors.toml") }),
   "a light theme (Catppuccin Latte)": resolveTheme({
     theme,
     omarchy: fixture("light.colors.toml"),
@@ -161,11 +158,10 @@ describe("contrast (WCAG 2.x AA, 4.5:1)", () => {
   test("the built-in vimma's two variants are the light and the dark one", () => {
     expect(THEMES["vimma dark (built in)"].mode).toBe("dark");
     expect(THEMES["vimma light (built in)"].mode).toBe("light");
-    expect(THEMES["Tokyo Night (built in)"].tokens["--vimma-bg"]).toBe("#1a1b26");
   });
 
   test("the text tokens and surfaces checked are theme tokens", () => {
-    const tokens = THEMES["Tokyo Night (built in)"].tokens;
+    const tokens = THEMES["a dark theme (Omarchy sample)"].tokens;
     for (const t of [...TEXT_TOKENS, ...SURFACE_TOKENS]) expect(tokens[t], t).toMatch(/^#/);
   });
 
@@ -212,11 +208,7 @@ describe("contrast (WCAG 2.x AA, 4.5:1)", () => {
   });
 
   test("the focus colour is the accent wherever the accent already reaches 3:1", () => {
-    for (const name of [
-      "vimma dark (built in)",
-      "Tokyo Night (built in)",
-      "Tokyo Night (Omarchy)",
-    ] as const) {
+    for (const name of ["vimma dark (built in)", "a dark theme (Omarchy sample)"] as const) {
       const t = THEMES[name].tokens;
       expect(t["--vimma-focus"], name).toBe(t["--vimma-accent"]);
     }
@@ -247,7 +239,7 @@ describe("contrast (WCAG 2.x AA, 4.5:1)", () => {
     const r = THEMES["a light theme (Catppuccin Latte)"];
     expect(r.tokens["--vimma-yellow"]).toBe("#df8e1d");
     expect(r.tokens["--vimma-text-yellow"]).not.toBe("#df8e1d");
-    const tokyo = THEMES["Tokyo Night (built in)"];
-    expect(tokyo.tokens["--vimma-text-yellow"]).toBe(tokyo.tokens["--vimma-yellow"]);
+    const dark = THEMES["a dark theme (Omarchy sample)"];
+    expect(dark.tokens["--vimma-text-yellow"]).toBe(dark.tokens["--vimma-yellow"]);
   });
 });

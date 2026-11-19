@@ -659,31 +659,26 @@ add_task(async function a_list_drawn_again_keeps_the_row_and_an_old_index_is_sta
   await ConfigHost.reload();
   const { tab, doc } = await openFlow();
   await toEngines(doc);
-  await press(doc, "s");
-  await atStep(doc, "colours");
-  await press(doc, "k");
-  Assert.equal(current(doc), "Dark");
+  const row = current(doc);
+  Assert.ok(row, "the cursor is on an engine");
   const before = /** @type {{ serial: number }} */ (
-    await SetupHost.stepView(tab.linkedBrowser, "colours")
+    await SetupHost.stepView(tab.linkedBrowser, "search_engine")
   ).serial;
-  // Another program sets a dark-only palette: the list gains Keep, first.
-  await IOUtils.writeUTF8(configFile(), 'schema = 2\n[theme]\nname = "tokyo-night"\n');
+  // Another program names an engine that is not installed: the list gains Keep, first.
+  const gone = 'schema = 2\n[search]\ndefault = "Gone"\n';
+  await IOUtils.writeUTF8(configFile(), gone);
   await ConfigHost.reload();
   await TestUtils.waitForCondition(
     () => doc.querySelector('#v2-choices li[data-keep="true"]'),
     "drawn again with Keep",
   );
-  Assert.equal(current(doc), "Dark", "the cursor stays on its row, not its index");
+  Assert.equal(current(doc), row, "the cursor stays on its row, not its index");
   Assert.deepEqual(
-    await SetupHost.saveStep(tab.linkedBrowser, "colours", 1, before),
+    await SetupHost.saveStep(tab.linkedBrowser, "search_engine", 1, before),
     { stale: true },
     "an index into the list drawn before is refused",
   );
-  Assert.equal(
-    await IOUtils.readUTF8(configFile()),
-    'schema = 2\n[theme]\nname = "tokyo-night"\n',
-    "nothing written",
-  );
+  Assert.equal(await IOUtils.readUTF8(configFile()), gone, "nothing written");
   await closeFlow(tab);
 });
 

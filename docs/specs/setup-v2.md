@@ -75,8 +75,8 @@ engine, and applies nothing until its summary is confirmed. That leaves three ga
    built-in default (or, for the colours and agents steps, the value `:theme` or `:mcp`
    remembered). For the colours step, the value in force is the effect: the palette and
    appearance the window shows (decision 12). When the value in force is none of the step's
-   choices (a custom prefix or `hint_chars`, the `tokyo-night` palette), the step lists
-   **Keep** with that value as its first choice and selects it; **Keep** writes nothing.
+   choices (a custom prefix or `hint_chars`, a search engine that is not installed), the step
+   lists **Keep** with that value as its first choice and selects it; **Keep** writes nothing.
 10. After the last step of each chapter, a stop screen lists what was saved in that chapter
     and names the next chapter. `enter` goes on; `q` or `esc` closes the page. After the last
     chapter, the stop screen says the setup is done, lists everything this run saved, and
@@ -140,9 +140,9 @@ none of its choices (behaviour 9).
     is no longer installed at `enter`, nothing is written and the step redraws with the current
     list.
 21. **Colours.** The page itself takes the colours as soon as the step saves. The Omarchy choice
-    is listed only where an Omarchy theme is found. With the dark-only `tokyo-night` palette in
-    force, light and "follow the system" also write `name = "vimma"`, and the step says so in
-    the line it shows.
+    is listed only where an Omarchy theme is found. `vimma` is the only built-in palette (#1383),
+    so a choice writes `name` only when another name is in force; a config.toml that still names
+    a removed palette has `vimma` in force.
 22. **Default browser.** Shows whether Vimma is the default browser now. `enter` on "make
     Vimma the default" asks the system through the same path as Settings' Make Default; when
     Vimma already is the default, the step says so and `enter` moves on.
@@ -327,8 +327,8 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     A choice writes only the keys that change that effect, so that plain `enter` writes
     nothing (behaviour 8): **Omarchy** writes `source = "omarchy"` when it is not in force;
     **light**, **dark** and **follow the system** write `appearance`, and `source = "file"`
-    only when an Omarchy theme is shown now, and `name = "vimma"` when the dark-only
-    `tokyo-night` palette is in force and the choice is light or follow the system.
+    only when an Omarchy theme is shown now, and `name = "vimma"` only when another name is in
+    force (none can be since #1383 left `vimma` the only built-in palette).
 13. **Moving in comes right after the essentials,** because the default browser and the
     imported bookmarks decide whether the user keeps using Vimma at all, and both are one-off
     actions a user is most likely to take on the first day. Every chapter can still be skipped
@@ -469,7 +469,8 @@ vitest, `packages/vimma-core/test/setup-steps.test.ts`:
 - `colours: the choice in force writes nothing, with and without an Omarchy theme`
 - `colours: light without an Omarchy theme writes appearance only`
 - `colours: light with an Omarchy theme writes source and appearance`
-- `colours: light or system with tokyo-night also writes name = "vimma"`
+- `colours: a removed palette's name is vimma: no Keep, no name written`
+- `colours: another name in force is kept, and a choice also writes name = "vimma"`
 - `each setting step's shown line is the edit it plans`
 
 vitest, `packages/vimma-core/test/setup.test.ts` (state machine):

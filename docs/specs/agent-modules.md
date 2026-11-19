@@ -160,8 +160,8 @@ none)`. By default the address is sent without its query and fragment, which can
 11. **Its effect is the page's until it reloads.** A module changes the page it ran on; turning
     the module off or rolling it back stops it from running again but does not undo what it
     already changed in an open page. The notice of `:module off` says `reload pages to undo`.
-12. **Theme.** A module with `theme = true` gets the current theme's colours (Tokyo Night,
-    an Omarchy theme or `[theme.colors]`) as `#rrggbb` values in `palette.json`, read from its
+12. **Theme.** A module with `theme = true` gets the current theme's colours (the built-in
+    vimma palette, an Omarchy theme or `[theme.colors]`) as `#rrggbb` values in `palette.json`, read from its
     own package, and is reloaded when the theme changes.
 
 ### The agent loop

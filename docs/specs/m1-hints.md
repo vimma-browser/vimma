@@ -124,7 +124,7 @@ reverted.
   the labels, and a MutationObserver sees nothing (tested). A shadow-root overlay injected into
   the page was the alternative: the page can detect it (layout, `elementFromPoint`, focus)
   and break it with its own CSS (`all: initial` on `*`, `z-index` wars); we drop it.
-  Colours: `--vimma-hint-bg` / `--vimma-hint-fg` (m5-core-config-and-theme) with Tokyo Night's
+  Colours: `--vimma-hint-bg` / `--vimma-hint-fg` (m5-core-config-and-theme) with the built-in palette's
   yellow as the fallback until M5 sets the tokens.
 - **Messages.** `Vimma:CollectHints { gen, linksOnly }` → `{ targets: [{ id, rect, kind,
 href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. (Since changed:
