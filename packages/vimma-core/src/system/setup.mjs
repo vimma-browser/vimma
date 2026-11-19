@@ -294,9 +294,8 @@ export const BUILT_STEPS = Object.freeze([
   "colours",
   "default_browser",
   "bring_your_data",
-  // The window (chapter 3): the tab line step (#1299) goes after the address bar; the page draws
-  // its window from windowSketch (setup-steps.mjs) already.
   "address_bar",
+  "tab_line",
 ]);
 
 /**

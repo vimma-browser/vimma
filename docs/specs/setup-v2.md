@@ -1,6 +1,6 @@
 # Spec: setup-v2
 
-Status: accepted (delivery slices 1 to 4 built, #1292, #1293, #1294 and #1295) · Area: core
+Status: accepted (delivery slices 1 to 4 and 8 built, #1292, #1293, #1294, #1295 and #1299) · Area: core
 (`packages/vimma-core/src/system/setup.mjs`, `packages/vimma-core/src/system/setup-steps.mjs`,
 `packages/vimma-core/src/config/toml.mjs`),
 chrome (`src/browser/base/content/vimma/setup/` (`setup.html`, `setup.mjs`, `flow.mjs`,

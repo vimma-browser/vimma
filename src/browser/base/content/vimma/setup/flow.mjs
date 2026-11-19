@@ -220,11 +220,13 @@ function windowDrawing(w) {
     ...(w.tabline === "off"
       ? []
       : [
+          // "always" draws the line over a single tab, "auto" only once there are two, so
+          // the tab line step's two drawings differ as its choices do.
           el(
             "div",
             { class: "w-tabline" },
             el("span", { class: "w-tab current" }),
-            el("span", { class: "w-tab" }),
+            ...(w.tabline === "auto" ? [el("span", { class: "w-tab" })] : []),
           ),
         ]),
     ...(w.toolbar === "hidden"

@@ -435,7 +435,7 @@ describe("setup v2 flow", () => {
     expect(flowChapters().map((c) => [c.digit, c.steps.map((s) => s.id)])).toEqual([
       [1, ["content_blocker", "search_engine", "colours"]],
       [2, ["default_browser", "bring_your_data"]],
-      [3, ["address_bar"]],
+      [3, ["address_bar", "tab_line"]],
     ]);
     expect(chapters.map((c) => c.digit)).toEqual([1, 2]);
   });
