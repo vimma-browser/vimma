@@ -581,8 +581,8 @@ function withoutUserinfo(text, cut, depth, work) {
   }
   const special = SPECIAL_SCHEMES.has(name);
   const lead = special ? (/^[/\\]*/.exec(rest)?.[0] ?? "") : rest.startsWith("//") ? "//" : null;
-  // No authority (about:, data:): only its query may hold one.
-  if (lead === null) return queryWithoutUserinfo(s, m[0].length, cut, depth, work);
+  // No authority (about:, data:): only its path and query may hold one.
+  if (lead === null) return pathWithoutUserinfo(s, m[0].length, cut, depth, work);
   const after = rest.slice(lead.length);
   let end = after.search(special ? /[/\\?#]/ : /[/?#]/);
   if (end < 0) {
@@ -591,7 +591,31 @@ function withoutUserinfo(text, cut, depth, work) {
   }
   const from = after.lastIndexOf("@", end) + 1;
   const out = m[0] + lead + after.slice(from);
-  return queryWithoutUserinfo(out, m[0].length + lead.length + end - from, cut, depth, work);
+  return pathWithoutUserinfo(out, m[0].length + lead.length + end - from, cut, depth, work);
+}
+
+/**
+ * A URL `s` without the user names and passwords of the URLs written unencoded in its path, which
+ * starts at `at`, where its authority ends, and of those in its query and hash
+ * (queryWithoutUserinfo). An archive or a redirect service writes a whole URL there
+ * (`/web/2020/https://user:password@host/`, #1372). The path's first URL is read as a URL nested
+ * one level deeper, as far as the path goes; its own path holds the next, so a chain of them is
+ * read once, level by level. Past NESTED_MAX the rest is not read, so it is dropped, query and
+ * hash too.
+ * @param {string} s @param {number} at @param {boolean} cut @param {number} depth
+ * @param {QueryWork} work
+ * @returns {string}
+ */
+function pathWithoutUserinfo(s, at, cut, depth, work) {
+  const rest = s.slice(at).search(/[?#]/);
+  const end = rest < 0 ? s.length : at + rest;
+  EMBEDDED_URL.lastIndex = at;
+  const nested = EMBEDDED_URL.exec(s.slice(0, end))?.index ?? -1;
+  if (nested < 0) return queryWithoutUserinfo(s, at, cut, depth, work);
+  if (depth >= NESTED_MAX) return `${s.slice(0, nested)}\u2026`;
+  const inner = withoutUserinfo(s.slice(nested, end), cut && end === s.length, depth + 1, work);
+  const out = s.slice(0, nested) + inner + s.slice(end);
+  return queryWithoutUserinfo(out, nested + inner.length, cut, depth, work);
 }
 
 /**
