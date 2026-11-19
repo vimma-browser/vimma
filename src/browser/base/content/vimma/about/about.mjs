@@ -232,7 +232,6 @@ function render(d) {
     dl([
       ["Path", c.path],
       ["File", fileText],
-      field("Schema", c.schema ?? "-", "config-schema"),
       ["Overrides", String(d.bindings.filter((b) => b.overridden).length)],
     ]),
     ...(c.errors.length

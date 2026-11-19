@@ -1,0 +1,8 @@
+# Contract fixture: keys added after schema 1 in a file that declares schema 1. Loads (#1379).
+schema = 1
+
+[panes]
+max = 2
+
+[modal]
+hint_chars = "asdf"

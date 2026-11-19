@@ -1,8 +1,0 @@
-# Contract fixture: schema-2 sections in a file that declares schema 1.
-schema = 1
-
-[panes]
-max = 2
-
-[modal]
-hint_chars = "asdf"

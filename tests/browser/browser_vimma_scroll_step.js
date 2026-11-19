@@ -34,7 +34,7 @@ let writes = 0;
  */
 async function useConfig(text) {
   writes++;
-  await IOUtils.writeUTF8(file, `schema = 2\n${text}\n${"#".repeat(writes)}\n`);
+  await IOUtils.writeUTF8(file, `${text}\n${"#".repeat(writes)}\n`);
   await ConfigHost.reload();
   Assert.deepEqual(ConfigHost.errors, [], "config.toml applies");
 }

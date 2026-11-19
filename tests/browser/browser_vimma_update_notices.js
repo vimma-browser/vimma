@@ -570,7 +570,7 @@ add_task(async function nothing_at_all_with_checks_off() {
   await fetch(`${HOST}?reset`);
   await serve(await manifest({ urgent: true }));
   const file = PathUtils.join(dir, "config.toml");
-  await IOUtils.writeUTF8(file, "schema = 2\n[updates]\ncheck = false\n");
+  await IOUtils.writeUTF8(file, "[updates]\ncheck = false\n");
   await ConfigHost.reload(file);
   await until(() => !VimmaUpdates.status().enabled, "[updates] check = false applied");
   // An urgent offer saved by an earlier session, and a check long overdue.

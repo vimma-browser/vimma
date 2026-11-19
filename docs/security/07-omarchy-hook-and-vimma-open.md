@@ -103,6 +103,25 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   [`test_a_late_start_counts_the_package_entry_as_the_default`](../../tests/browser/browser_vimma_app_launcher.js),
   [`never counts a quoted or escaped program, which it does not parse`](../../packages/vimma-core/test/default-browser.test.ts),
   [`names each package's installed vimma-open by its absolute path in the desktop entry`](../../tools/package/test/package.test.ts)
+- O11. Besides Settings' button, the startup prompt and `vimma -setDefaultBrowser`, only the setup
+  page's default browser step asks for Make default (spec [setup-v2](../specs/setup-v2.md),
+  behaviour 22), and only through Firefox's shell service, so O10 and Firefox's own checks
+  apply. It **never** asks where Settings would hide its button: a policy that forbids Make
+  default (`DefaultBrowserSettingEnabled`), a locked `pref.general.disable_button.default_browser`,
+  or Flatpak; and it asks nothing when Vimma already is the default. Only the setup page and
+  the window script that registers it import the setup host, so no control, MCP or agent code
+  calls it. The page acts on trusted keys and clicks only, and a full-control client's
+  `vimma-ctl send-keys` presses trusted keys (through `nsITextInputProcessor`), so full control
+  can press `enter` on the setup page as on any tab: it is within what `:control on` already
+  grants (M22), and an agent connection has no `send-keys` and cannot open the page.
+  [`set_default_browser_calls_the_shell_service`](../../tests/browser/browser_vimma_setup_moving_in.js),
+  [`set_default_browser_does_nothing_under_flatpak`](../../tests/browser/browser_vimma_setup_moving_in.js),
+  [`full_control_send_keys_reach_the_setup_page`](../../tests/browser/browser_vimma_setup_moving_in.js),
+  [`agent_role_cannot_open_setup`](../../tests/browser/browser_vimma_setup.js),
+  [`set_default_browser_respects_the_policy`](../../tests/browser/browser_vimma_setup_moving_in.js),
+  [`set_default_browser_respects_the_locked_button_pref`](../../tests/browser/browser_vimma_setup_moving_in.js),
+  [`set_default_browser_does_nothing_when_vimma_already_is`](../../tests/browser/browser_vimma_setup_moving_in.js),
+  [`asks for Make default and the import wizard only from the setup host`](../../tools/security/test/chrome-source.test.ts)
 
 Allowed: two or more arguments (other than `--from`) pass through unchanged; a local app that
 runs `vimma-open` with its own flags could run `vimma` with them directly. Any local program can
