@@ -15,7 +15,7 @@
 
 /* exported focusContent, recordPageKeys, pageKeys, waitForPageKey, bindUnbuiltPrefixKey,
    useShippedSupportBase, openSettingsPane, contextOf, windowGlobalOf, historyOf, webProgressOf,
-   contentPrincipalOf */
+   contentPrincipalOf, unloadTab */
 
 "use strict";
 
@@ -203,4 +203,18 @@ function historyOf(browser) {
   const history = contextOf(browser).sessionHistory;
   if (!history) throw new Error("the browsing context keeps no history");
   return history;
+}
+
+/**
+ * Unloads `tab` as Firefox's Unload Tab, its tab unloader and `tabs.discard` do: its state
+ * flushed to SessionStore first (prepareDiscardBrowser), then discarded, past any dialog. A bare
+ * discardBrowser leaves SessionStore without the tab's latest state until an update from the
+ * discarded page arrives; a tab restored before that shows about:blank and stays `pending`.
+ * @param {MozTabbrowserTab} tab
+ * @returns {Promise<boolean>} whether Firefox unloaded it
+ */
+async function unloadTab(tab) {
+  const tabbrowser = /** @type {BrowserWindow} */ (tab.ownerDocument.defaultView).gBrowser;
+  await tabbrowser.prepareDiscardBrowser(tab);
+  return tabbrowser.discardBrowser(tab, true);
 }

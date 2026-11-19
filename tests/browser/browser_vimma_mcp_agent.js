@@ -13,7 +13,7 @@
 
 "use strict";
 
-/* global focusContent -- from head.js */
+/* global focusContent, unloadTab -- from head.js */
 /* global Client, discovery -- from head_vimma_control.js */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
@@ -327,7 +327,7 @@ add_task(async function test_agent_read_loads_a_lazy_tab_in_the_background() {
   const before = { workspace: activeName(), selected: gBrowser.selectedTab };
   // Unloaded, as Firefox does under memory pressure: lazy again, with its session kept.
   const tab = await openAgentTab();
-  Assert.ok(gBrowser.discardBrowser(tab, true), "sanity: the tab could be unloaded");
+  Assert.ok(await unloadTab(tab), "sanity: the tab could be unloaded");
   Assert.ok(!tab.linkedPanel, "sanity: it is lazy");
   const c = await agentClient();
   // An agent names tabs by the ids agent-tabs gives it.
@@ -381,7 +381,7 @@ add_task(async function test_a_command_runs_its_tab_at_foreground_priority() {
   Assert.ok(!hint(), "and the raise ends with it");
 
   // A lazy tab gets its browser, and its process, during the command: that one is raised too.
-  Assert.ok(gBrowser.discardBrowser(tab, true), "sanity: the tab could be unloaded");
+  Assert.ok(await unloadTab(tab), "sanity: the tab could be unloaded");
   let listed = c.request("agent-tabs");
   await answer({ kind: "once" });
   await c.response(listed);
