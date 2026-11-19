@@ -84,7 +84,10 @@ only the agent workspace, and each request waits for your yes or runs under a gr
   `null` unless that tab shows the viewer; it **never** carries the page, the page count, the
   document's title or URL, or the outline, and is `null` in a private window. The viewer's own
   report of its drawing (section 20, V6) only ever turns that flag; a viewer that lies about it
-  (its drawing, size or zoom) changes when a script's wait ends, nothing else. Reading the mode
+  (its drawing, size or zoom) changes when a script's wait ends, nothing else. Its `setup` field
+  is the screen the setup page draws, a word from a closed list (`welcome`, a step's id, `stop`),
+  and `null` unless the selected tab shows that page; it **never** carries a choice, a search, a
+  line a step writes or what was saved, and is `null` in a private window. Reading the mode
   writes nothing: a resize mode left with no panes is reported as the mode it would be without
   resize, and its flag is cleared where the panes change (the last pane closes, the split hides),
   never by a read; the status bar's own bookkeeping (the update segment's timer) does not run for
@@ -116,6 +119,8 @@ only the agent workspace, and each request waits for your yes or runs under a gr
   [`pdf is one flag, or null`](../../packages/vimma-core/test/control.test.ts),
   [`pdfDrawn`](../../packages/vimma-core/test/pdf.test.ts),
   [`test_state_reports_the_pdf_viewer_as_drawn`](../../tests/browser/browser_vimma_state_waits.js)
+  [`setup is the screen drawn, as a fixed word, or null`](../../packages/vimma-core/test/control.test.ts),
+  [`test_state_reports_the_setup_screen`](../../tests/browser/browser_vimma_state_waits.js)
 - S10. `open` **must** load only http, https, file and about URLs of at most 64 KiB, checked by
   the server itself, never only by the client.
   [`test_server_checks_the_scheme_itself`](../../tests/browser/browser_vimma_control.js),

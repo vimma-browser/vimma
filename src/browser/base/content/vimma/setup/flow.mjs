@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// The setup page (docs/specs/setup-v2.md): the welcome screen, one step at a time and a stop screen after each chapter. core/setup.mjs keeps the state;
+// The setup page (docs/specs/setup-v2.md): the welcome screen, one step at a time and a stop
+// screen after each chapter. core/setup.mjs keeps the state;
 // SetupHost reads the values in force and saves each step on its `enter`. A step is drawn by
 // the renderer named after it in RENDERERS, else as a list of choices, so that a later step is
 // a row of the step table, its id in BUILT_STEPS and, when it needs more, a renderer here.

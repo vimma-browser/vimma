@@ -428,6 +428,29 @@ add_task(async function test_state_reports_the_pdf_viewer_as_drawn() {
   await SpecialPowers.popPrefEnv();
 });
 
+// #1298: the setup page's screen as drawn, a fixed word (welcome, a step's id, stop), so an e2e
+// scenario waits for the screen it photographs; null on any other page.
+add_task(async function test_state_reports_the_setup_screen() {
+  // The content blocker step asks AMO for its add-ons: a closed local port answers at once.
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.setup.amoApi", "http://127.0.0.1:1/"]] });
+  Assert.strictEqual(state().setup, null, "another page: null");
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:vimma-setup");
+  try {
+    const browser = tab.linkedBrowser;
+    const doc = /** @type {Document} */ (browser.contentDocument);
+    await until(() => doc.documentElement.dataset.step === "welcome", "the welcome screen");
+    Assert.deepEqual(state().setup, { screen: "welcome" });
+    await focusContent(browser);
+    EventUtils.synthesizeKey("KEY_Enter", {}, /** @type {Window} */ (doc.defaultView));
+    await until(() => state().setup?.screen === "content_blocker", "the first step");
+    Assert.equal(doc.documentElement.dataset.step, "content_blocker", "as the page draws it");
+  } finally {
+    BrowserTestUtils.removeTab(tab);
+  }
+  Assert.strictEqual(state().setup, null, "closed: null");
+  await SpecialPowers.popPrefEnv();
+});
+
 // The downloads picker opens only once its rows are read, and draws them as it opens: `mode:
 // "help"` is the e2e scenarios' wait for its rows, with `downloads: null` for the `↓` segment
 // that opening it clears.
