@@ -294,6 +294,17 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   not agent paths: `vimma_keys` runs only its whitelist (D9), which has no command line, and no
   agent command reaches `bookmark.open` or `bookmark.open_tab`.
   [`vimma_keys can never reach the commands (mcp-drive D9)`](../../packages/vimma-core/test/bookmark-open.test.ts)
+- M64. `:mcp off` **must** turn MCP off for the rest of the session, whatever config.toml says and
+  however often it is read again: it sets a flag held in memory that wins over `[mcp] enabled =
+true`, and only `:mcp on` (after its `y/N`) or a restart clears it, never a read of the file
+  (the watcher, `:source`, or a write by `:route add`, the built-in agent's setup or the setup page).
+  It also clears the pref `vimma.mcp.enabled`, so that taking `enabled` out of the file later keeps
+  agents off. Reason: a kill switch that depends on editing a file, or that the next read of the
+  file undoes, is no kill switch ([setup-v2](../specs/setup-v2.md) decision 16). `[mcp] enabled =
+false` still wins over `:mcp on`.
+  [`with [mcp] enabled = true in config.toml, :mcp off turns agents off until restart`](../../packages/vimma-core/test/agent.test.ts),
+  [`the state: :mcp off first, then the file, then the pref`](../../packages/vimma-core/test/agent.test.ts),
+  [`mcp_off_survives_a_config_reload`](../../tests/browser/browser_vimma_mcp.js)
 - M2. Agent commands **must** see only tabs of the agent workspace in its container, checked
   when each command runs; **never** another workspace's tab, a foreign or pinned tab, or a
   private window's.

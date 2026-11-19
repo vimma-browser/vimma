@@ -11,8 +11,8 @@
 // force the same way, until config.toml changes or a plain `:source`. Writes: the first run and
 // `:config` create a missing config.toml from the commented template, never touching an existing
 // one; `:route add` appends one `[[routes]]` table (spec workspace-routing), checked to parse
-// first; the built-in agent's setup and `:siteunbind --save` / `:sitebind --delete` edit their
-// own lines (rewriteConfig). Every edit of config.toml and of bookmarks.toml, and every apply of
+// first; the built-in agent's setup, `:siteunbind --save` / `:sitebind --delete` and the setup's
+// keys (setConfigKeys, docs/specs/setup-v2.md decision 5) edit their own lines (rewriteConfig). Every edit of config.toml and of bookmarks.toml, and every apply of
 // bookmarks.toml to Places, runs in one queue (docs/specs/bookmarks-file.md D11).
 
 import {
@@ -22,6 +22,7 @@ import {
   rawUpdatesCheck,
   reloadConfig,
   resolveSourcePath,
+  setConfigKeysText,
 } from "../core/config.mjs";
 import { MAX_BOOKMARKS_FILE_BYTES, inlineBookmarkTables } from "../core/bookmarks-file.mjs";
 import { serialQueue } from "../core/bookmarks-edit.mjs";
@@ -659,6 +660,40 @@ async function writeFileNow(path, compute, maxBytes = Infinity) {
   return r;
 }
 
+/**
+ * `:route add`'s append (ConfigHost.addRoute), run inside the edit queue.
+ * @param {{ domain: string, workspace: string }} rule
+ * @returns {Promise<string | null>} why not, or null once written
+ */
+async function appendRoute(rule) {
+  const path = configPath();
+  /** @type {string | null} */
+  let text = null;
+  try {
+    text = await IOUtils.readUTF8(path);
+  } catch (e) {
+    if (!notFound(e)) return `cannot read ${path}`;
+  }
+  const r = appendRouteText(text, rule, { mac: Services.appinfo.OS === "Darwin" });
+  if ("error" in r) return r.error;
+  try {
+    if ("create" in r) {
+      const parent = PathUtils.parent(path);
+      if (parent && !(await IOUtils.exists(parent))) {
+        await IOUtils.makeDirectory(parent, { createAncestors: true, permissions: DIR_MODE });
+      }
+      await IOUtils.writeUTF8(path, r.create, { mode: "create" });
+      await IOUtils.setPermissions(path, FILE_MODE, false);
+    } else {
+      await IOUtils.writeUTF8(path, r.append, { mode: "append" });
+    }
+  } catch (e) {
+    console.error(`vimma: cannot write ${path}`, e);
+    return `cannot write ${path}`;
+  }
+  return null;
+}
+
 export const ConfigHost = {
   /** The bookmarks.toml mirror (docs/specs/bookmarks-file.md), for tests and about:vimma. */
   bookmarksFile,
@@ -741,41 +776,37 @@ export const ConfigHost = {
   /**
    * `:route add`: appends a `domain` rule to config.toml (created from the template when
    * missing) and reads the file at once. Appending follows a symlinked file and never truncates
-   * it. Refused, with nothing written, when the file would not parse with the rule.
+   * it. Refused, with nothing written, when the file would not parse with the rule. Run in the
+   * one edit queue (setup-v2 decision 5), so that a rewrite that read the file before the append
+   * neither drops the rule nor refuses as "changed meanwhile".
    * @param {{ domain: string, workspace: string }} rule
    * @returns {Promise<string | null>} why not, or null once written and read
    */
   async addRoute(rule) {
-    const path = configPath();
-    /** @type {string | null} */
-    let text = null;
-    try {
-      text = await IOUtils.readUTF8(path);
-    } catch (e) {
-      if (!notFound(e)) return `cannot read ${path}`;
-    }
-    const r = appendRouteText(text, rule, { mac: Services.appinfo.OS === "Darwin" });
-    if ("error" in r) return r.error;
-    try {
-      if ("create" in r) {
-        const parent = PathUtils.parent(path);
-        if (parent && !(await IOUtils.exists(parent))) {
-          await IOUtils.makeDirectory(parent, { createAncestors: true, permissions: DIR_MODE });
-        }
-        await IOUtils.writeUTF8(path, r.create, { mode: "create" });
-        await IOUtils.setPermissions(path, FILE_MODE, false);
-      } else {
-        await IOUtils.writeUTF8(path, r.append, { mode: "append" });
-      }
-    } catch (e) {
-      console.error(`vimma: cannot write ${path}`, e);
-      return `cannot write ${path}`;
-    }
+    const why = await edits.run(() => appendRoute(rule));
+    if (why !== null) return why;
     // ConfigHost, not `this`: vimma.js hands the host this method on its own (HostServices).
     await ConfigHost.reload();
     return null;
   },
 
+  /**
+   * Keys set in config.toml by their lines alone (docs/specs/setup-v2.md decision 5): the
+   * setup's one writer, run as `addAgentProvider` writes, then the file read. Nothing is written
+   * when the file does not load now, would not load with the edits (parseConfig, before the
+   * rename), changed meanwhile, or already says so.
+   * @param {readonly import("../core/toml.mjs").TomlEdit[]} keys
+   * @returns {Promise<string | null>} why not, or null once written (or already so) and read
+   */
+  async setConfigKeys(keys) {
+    const r = await rewriteConfig((text) =>
+      setConfigKeysText(text, keys, { mac: Services.appinfo.OS === "Darwin" }),
+    );
+    return "error" in r ? r.error : null;
+  },
+
+  /**
+   * The built-in agent's setup
   /**
    * The built-in agent's setup (docs/specs/builtin-agent.md Behaviour 2-3): the provider picked
    * in the chat window goes into config.toml as `[[agent.providers]]`, by name, kind, endpoint,

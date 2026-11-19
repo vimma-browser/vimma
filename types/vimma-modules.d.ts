@@ -100,6 +100,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/core/routes.mjs": typeof import("../src/browser/base/content/vimma/core/routes.mjs");
   "chrome://browser/content/vimma/core/scroll.mjs": typeof import("../src/browser/base/content/vimma/core/scroll.mjs");
   "chrome://browser/content/vimma/core/search.mjs": typeof import("../src/browser/base/content/vimma/core/search.mjs");
+  "chrome://browser/content/vimma/core/setup-steps.mjs": typeof import("../src/browser/base/content/vimma/core/setup-steps.mjs");
   "chrome://browser/content/vimma/core/setup.mjs": typeof import("../src/browser/base/content/vimma/core/setup.mjs");
   "chrome://browser/content/vimma/core/sidepanel.mjs": typeof import("../src/browser/base/content/vimma/core/sidepanel.mjs");
   "chrome://browser/content/vimma/core/site-edit.mjs": typeof import("../src/browser/base/content/vimma/core/site-edit.mjs");

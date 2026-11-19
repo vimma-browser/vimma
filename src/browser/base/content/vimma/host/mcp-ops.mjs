@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Local AI agents and the agent workspace (docs/specs/vimma-mcp.md): `[mcp]` from config.toml,
-// the pref `vimma.mcp.enabled` that `:mcp on|off` sets, `:mcp forget` and `:mcp revoke`. The
+// the pref `vimma.mcp.enabled` that `:mcp on|off` sets, `:mcp off`'s hold for the session
+// (docs/specs/setup-v2.md decision 16), `:mcp forget` and `:mcp revoke`. The
 // control socket's agent role (ctl/VimmaControl.sys.mjs) runs while `state.enabled` is true and
 // hears of every change through MCP_CHANGED_TOPIC.
 
@@ -11,6 +12,7 @@ import {
   MCP_FORGET_QUESTION,
   mcpActivity,
   mcpOnQuestion,
+  mcpState,
   mcpStatus,
   parseMcpCommand,
   planMcpSwitch,
@@ -37,6 +39,11 @@ ChromeUtils.defineESModuleGetters(lazy, {
 let config = null;
 /** @type {AgentConfig | null} config.toml's `[agent]` (docs/specs/builtin-agent.md), once read. */
 let agentConfig = null;
+/**
+ * `:mcp off` this session (setup-v2 decision 16): in memory only, so that a restart clears it,
+ * and never touched by `configure`, so that no read of config.toml clears it; `:mcp on` does.
+ */
+let heldOff = false;
 
 /** @param {unknown} e */
 const reason = (e) => /** @type {Error} */ (e).message;
@@ -72,13 +79,12 @@ export const McpHost = {
   },
 
   /**
-   * Whether agents may connect, and what decides it: `[mcp] enabled` when the file sets it,
-   * else the pref.
-   * @returns {{ enabled: boolean, from: "config" | "pref" }}
+   * Whether agents may connect, and what decides it: `:mcp off` this session ("session"), else
+   * `[mcp] enabled` when the file sets it, else the pref.
+   * @returns {{ enabled: boolean, from: "session" | "config" | "pref" }}
    */
   get state() {
-    if (config?.enabled !== undefined) return { enabled: config.enabled, from: "config" };
-    return { enabled: Services.prefs.getBoolPref(MCP_ENABLED_PREF, false), from: "pref" };
+    return mcpState(switchState());
   },
 
   /** The agent workspace's name, as questions and notices show it. */
@@ -131,13 +137,14 @@ export const McpHost = {
       }
       case "on":
       case "off": {
-        const plan = planMcpSwitch(command.kind, {
-          pref: Services.prefs.getBoolPref(MCP_ENABLED_PREF, false),
-          ...(config?.enabled === undefined ? {} : { config: config.enabled }),
-        });
+        const plan = planMcpSwitch(command.kind, switchState());
         if (plan.kind === "say") return plan.text;
-        if (plan.kind === "set") {
-          Services.prefs.setBoolPref(MCP_ENABLED_PREF, plan.value);
+        if (plan.kind === "off") {
+          const was = this.state.enabled;
+          heldOff = true;
+          // The pref's observers hear the pref; the hold alone is told through the topic.
+          if (plan.pref) Services.prefs.setBoolPref(MCP_ENABLED_PREF, false);
+          else if (was) Services.obs.notifyObservers(null, MCP_CHANGED_TOPIC);
           return plan.text;
         }
         if (!agent) return "mcp: there is no agent workspace (containers off?)";
@@ -148,7 +155,10 @@ export const McpHost = {
             say(`mcp: "${agent.name}" changed since you were asked; MCP stays off`);
             return;
           }
-          Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+          heldOff = false;
+          // With `[mcp] enabled = true` the file turns agents on: the pref stays as it is.
+          if (config?.enabled === true) Services.obs.notifyObservers(null, MCP_CHANGED_TOPIC);
+          else Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
           say(`mcp on: agents may ask to use "${agent.name}"; each request asks you first`);
         });
         return null;
@@ -157,6 +167,15 @@ export const McpHost = {
     return null;
   },
 };
+
+/** What `:mcp on|off` and `state` decide from: the pref, the file, and `:mcp off`'s hold. */
+function switchState() {
+  return {
+    pref: Services.prefs.getBoolPref(MCP_ENABLED_PREF, false),
+    ...(config?.enabled === undefined ? {} : { config: config.enabled }),
+    off: heldOff,
+  };
+}
 
 /**
  * `:mcp forget` (decision 8): after a yes, the agent workspace's cookies and site data go; the

@@ -1,7 +1,8 @@
 # Spec: setup-v2
 
-Status: draft · Area: core (`packages/vimma-core/src/system/setup.mjs`,
-`packages/vimma-core/src/system/setup-steps.mjs` (new), `packages/vimma-core/src/config/toml.mjs`),
+Status: draft (delivery slice 1 built, #1292) · Area: core
+(`packages/vimma-core/src/system/setup.mjs`, `packages/vimma-core/src/system/setup-steps.mjs`,
+`packages/vimma-core/src/config/toml.mjs`),
 chrome (`src/browser/base/content/vimma/setup/` (`setup.html`, `setup.mjs`, `SetupHost.sys.mjs`),
 `config/ConfigHost.sys.mjs`, `services/AppLauncher.sys.mjs`), theme
 (`src/browser/themes/shared/vimma/setup.css`), prefs

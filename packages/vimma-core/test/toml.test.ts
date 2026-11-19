@@ -509,7 +509,7 @@ describe("setTomlKeys: what a line edit may change", () => {
     ['search.default = "Google"\n', 1, "search is not a plain [search] table"],
     ['x = 1\nsearch = { default = "Google" }\n', 2, "search is not a plain [search] table"],
     ["x = 1\n[[search]]\nx = 1\n", 2, "search is not a plain [search] table"],
-    ["[search.sub]\nx = 1\n", 1, "search is not a plain [search] table"],
+    ['x = 1\n["search"]\nx = 1\n', 2, "search is not a plain [search] table"],
     ['x = 1\n[search]\ndefault = """\nGoogle"""\n', 3, "search.default is not a one-line value"],
     ["x = 1\n[search]\ndefault = '''G'''\n", 3, "search.default is not a one-line value"],
     ["x = 1\n[search]\ndefault = [1]\n", 3, "search.default is not a one-line value"],
@@ -574,6 +574,8 @@ describe("setTomlKeys: what a line edit may change", () => {
     ],
     ["[search]\nx = 1\n  [other]\ny = 2\n", "[search]\nx = 1\ndefault = 2\n  [other]\ny = 2\n"],
     ["[search]\n[search.sub]\nx = 1\n", "[search]\ndefault = 2\n[search.sub]\nx = 1\n"],
+    // setup-v2 decision 6: a table made by its sub-tables alone gets its header before them.
+    ["[search.sub]\nx = 1\n", "[search]\ndefault = 2\n\n[search.sub]\nx = 1\n"],
     ["[search]\ndefaultx = 1\n", "[search]\ndefaultx = 1\ndefault = 2\n"],
     ["[other]\n[search]\n", "[other]\n[search]\ndefault = 2\n"],
   ])("%j: a missing key goes after the table's last key", (text, out) => {
@@ -708,5 +710,54 @@ describe("sameTomlValue", () => {
     [{ a: 1 }, { b: 1 }],
   ])("%j differs from %j", (a, b) => {
     expect(sameTomlValue(a, b)).toBe(false);
+  });
+});
+
+describe("setTomlKeys: a table made by its sub-tables alone (setup-v2 decision 6)", () => {
+  const set = (text: string, table: string, key: string, value: string) =>
+    setTomlKeys(text, [{ table, key, value }]);
+
+  test("adds [theme] before [theme.colors] when only the sub-table exists", () => {
+    const text = '# colours\nschema = 2\n\n[theme.colors]\naccent = "#ff0000"\n';
+    expect(set(text, "theme", "appearance", "dark")).toEqual({
+      ok: true,
+      text: '# colours\nschema = 2\n\n[theme]\nappearance = "dark"\n\n[theme.colors]\naccent = "#ff0000"\n',
+    });
+  });
+
+  test("adds [modal] before [modal.normal] when only the sub-table exists", () => {
+    const text =
+      '[keys]\nprefix = "ctrl+b"\n\n[modal.normal]\n"x" = "close_tab"\n\n[modal.insert]\n';
+    expect(set(text, "modal", "hint_chars", "arstdhneio")).toEqual({
+      ok: true,
+      text: '[keys]\nprefix = "ctrl+b"\n\n[modal]\nhint_chars = "arstdhneio"\n\n[modal.normal]\n"x" = "close_tab"\n\n[modal.insert]\n',
+    });
+  });
+
+  test("the added header keeps the file's line endings and comes before an array of sub-tables", () => {
+    const text = '[[agent.providers]]\r\nname = "a"\r\n';
+    expect(set(text, "agent", "default", "a")).toEqual({
+      ok: true,
+      text: '[agent]\r\ndefault = "a"\r\n\r\n[[agent.providers]]\r\nname = "a"\r\n',
+    });
+  });
+
+  test.each([
+    // The table is made by a dotted key, or a sub-table header first appears after one.
+    ['theme.name = "vimma"\n[theme.colors]\na = "#000000"\n', 1],
+    ["[x]\na = 1\n[theme.colors.more]\nb = 1\n", 3],
+  ])("%j: a sub-table header is added only where the table has no other key", (text, line) => {
+    const r = set(text, "theme", "appearance", "dark");
+    if (line === 1) {
+      expect(r).toEqual({
+        ok: false,
+        error: { line: 1, column: 1, message: "theme is not a plain [theme] table" },
+      });
+    } else {
+      expect(r).toEqual({
+        ok: true,
+        text: '[x]\na = 1\n[theme]\nappearance = "dark"\n\n[theme.colors.more]\nb = 1\n',
+      });
+    }
   });
 });

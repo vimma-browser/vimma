@@ -234,7 +234,8 @@ add_task(async function summary_creates_a_private_config_toml_when_absent() {
 
 add_task(async function summary_keeps_comments_and_mode_of_config_toml() {
   const file = configFile();
-  const before = '# mine\n[search]\n# keep\ndefault = "x" # why\n';
+  // A file that loads: the one config writer never edits one that does not (setup-v2 B13).
+  const before = '# mine\nschema = 2\n[search]\n# keep\ndefault = "x" # why\n';
   await IOUtils.writeUTF8(file, before);
   await IOUtils.setPermissions(file, 0o640);
   const { tab, doc } = await openSetup();
