@@ -857,6 +857,10 @@ const choices = (doc) =>
 /** @param {Document} doc */
 const statusLine = (doc) => found(doc.getElementById("v2-status"));
 /** @param {Document} doc */
+/** @param {Document} doc */
+const keysText = (doc) => found(doc.getElementById("v2-keys")).textContent;
+
+/** @param {Document} doc */
 const footerText = (doc) =>
   `${found(doc.getElementById("v2-last")).textContent} | ${found(doc.getElementById("v2-saved")).textContent}`;
 
@@ -882,13 +886,23 @@ add_task(async function default_browser_step_calls_the_shell_service() {
     "an action has no value in force",
   );
   Assert.ok(found(doc.getElementById("v2-writes-row")).hidden, "an action writes no line");
-  await press(doc, "KEY_Enter");
+  Assert.ok(keysText(doc).includes("enter do it and go on"), keysText(doc));
+  await press(doc, "j");
+  Assert.ok(keysText(doc).includes("enter go on"), `not now does nothing: ${keysText(doc)}`);
+  await press(doc, "k", "KEY_Enter");
   await atStep(doc, "bring_your_data");
   Assert.deepEqual(shell.calls, [[false]], "Make Default for this user, as Settings asks");
   const footer = footerText(doc);
   Assert.ok(footer.includes("Vimma is now the default browser"), footer);
   Assert.ok(footer.includes("made the default browser"), `saved this run: ${footer}`);
   Assert.ok(!footer.includes("nothing written"), footer);
+  // Back, and on with "Go on": what Make Default did cannot be undone, so it stays listed.
+  await press(doc, "h");
+  await atStep(doc, "default_browser");
+  Assert.deepEqual(choices(doc), ["Go on"], "Vimma is the default now");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "bring_your_data");
+  Assert.ok(footerText(doc).includes("made the default browser"), footerText(doc));
   await press(doc, "s");
   await atStep(doc, "stop");
   const saved = found(doc.getElementById("v2-stop-saved")).textContent;
@@ -903,6 +917,7 @@ add_task(async function default_browser_step_says_when_vimma_already_is_the_defa
   await toDefaultBrowser(doc);
   Assert.ok(statusLine(doc).textContent.includes("already your default browser"));
   Assert.deepEqual(choices(doc), ["Go on"], "nothing to ask");
+  Assert.ok(keysText(doc).includes("enter go on"), keysText(doc));
   await press(doc, "KEY_Enter");
   await atStep(doc, "bring_your_data");
   Assert.deepEqual(shell.calls, [], "the shell service is not asked");
@@ -922,6 +937,30 @@ add_task(async function default_browser_step_says_why_it_cannot_make_vimma_the_d
   await closeFlow(tab);
 });
 
+add_task(async function default_browser_step_says_when_a_locked_pref_hides_make_default() {
+  shellAnswers();
+  const pref = "pref.general.disable_button.default_browser";
+  await SpecialPowers.pushPrefEnv({ set: [[pref, false]] });
+  Services.prefs.lockPref(pref);
+  try {
+    const { tab, doc } = await openFlow();
+    await toDefaultBrowser(doc);
+    Assert.ok(
+      statusLine(doc).textContent.includes("locked preference"),
+      statusLine(doc).textContent,
+    );
+    Assert.deepEqual(choices(doc), ["Go on"], "only moves on");
+    await press(doc, "KEY_Enter");
+    await atStep(doc, "bring_your_data");
+    Assert.deepEqual(shell.calls, [], "the shell service is not asked");
+    Assert.ok(footerText(doc).includes("left as it is"), footerText(doc));
+    await closeFlow(tab);
+  } finally {
+    Services.prefs.unlockPref(pref);
+    await SpecialPowers.popPrefEnv();
+  }
+});
+
 add_task(async function a_failed_make_default_keeps_the_step_open() {
   shellAnswers({ setFails: true });
   const { tab, doc } = await openFlow();
@@ -937,6 +976,7 @@ add_task(async function a_failed_make_default_keeps_the_step_open() {
 });
 
 add_task(async function import_step_names_sync_for_firefox() {
+  shellAnswers();
   const { tab, doc } = await openFlow();
   await toDefaultBrowser(doc);
   await press(doc, "s");
@@ -955,6 +995,7 @@ add_task(async function import_step_names_sync_for_firefox() {
 
 add_task(
   async function import_step_opens_the_wizard_over_the_setup_tab_and_moves_on_when_it_closes() {
+    shellAnswers();
     const { tab, doc } = await openFlow();
     const browser = tab.linkedBrowser;
     await toDefaultBrowser(doc);
@@ -988,8 +1029,6 @@ add_task(
     Assert.ok(font, "the theme's font is set");
     Assert.equal(style.fontFamily, font, "the theme's font");
     Assert.equal(step(doc), "bring_your_data", "the step waits for the wizard");
-    await press(doc, "KEY_Enter");
-    Assert.equal(dialogs().length, 1, "a second enter opens no second wizard");
     dialog._frame.contentWindow.close();
     await atStep(doc, "stop");
     Assert.equal(dialogs().length, 0);

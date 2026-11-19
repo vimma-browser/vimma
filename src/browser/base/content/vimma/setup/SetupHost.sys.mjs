@@ -410,7 +410,13 @@ export const SetupHost = {
         title: step.title,
         question: step.question,
         text: textParts(step.text),
-        choices: choices.map((c) => ({ label: c.label, keep: false, lines: [], window: null })),
+        choices: choices.map((c) => ({
+          label: c.label,
+          keep: false,
+          lines: [],
+          window: null,
+          run: !!c.run,
+        })),
         selected,
         blocked: null,
         status,
@@ -445,6 +451,7 @@ export const SetupHost = {
         lines: editLines(planChoice(c, inForce)),
         // The window this choice leaves, for the step's drawing; null outside chapter 3.
         window: windowSketch(step, c, inForce),
+        run: false,
       })),
       selected,
       blocked,
@@ -593,13 +600,14 @@ export const SetupHost = {
   /**
    * Make Default, as Settings' button asks it (decision 17): Firefox's shell service, which
    * checks the policy again, through AppLauncher's wrapper where a package installed one
-   * (security O10, O11). Nothing is asked when Vimma already is the default.
-   * @returns {Promise<"default" | "asked" | "unavailable" | "failed">} "asked" when the system
+   * (security O10, O11). Nothing is asked, and "already" is the answer, when Vimma already is
+   * the default.
+   * @returns {Promise<"default" | "already" | "asked" | "unavailable" | "failed">} "asked" when the system
    *   took the request but the check still says another browser is the default
    */
   async setDefaultBrowser() {
     const before = this.defaultBrowserState();
-    if (before.isDefault) return "default";
+    if (before.isDefault) return "already";
     if (!before.canSet) return "unavailable";
     try {
       await shell().setDefaultBrowser(false);

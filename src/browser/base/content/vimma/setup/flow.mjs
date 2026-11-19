@@ -36,8 +36,8 @@ const browser = () => SetupHost.browserFor(window);
  * @property {string} title
  * @property {string} question
  * @property {{ tag: "kbd" | "code" | null, text: string }[]} text
- * @property {{ label: string, keep: boolean, lines: string[], window: WindowSketch | null }[]}
- *   choices
+ * @property {{ label: string, keep: boolean, lines: string[], window: WindowSketch | null,
+ *   run: boolean }[]} choices  `run`: an action step's choice that acts at `enter`
  * @property {number} selected
  * @property {string | null} blocked
  * @property {string} status  what an action step found (Vimma is the default browser now)
@@ -171,7 +171,7 @@ function drawFooter() {
     } else if (view?.blocked) {
       add(["enter"], "cannot save here");
     } else if (step?.kind === "action") {
-      add(["enter"], "do it and go on");
+      add(["enter"], view?.choices[state.cursor]?.run ? "do it and go on" : "go on");
     } else {
       add(["enter"], "save and go on");
     }

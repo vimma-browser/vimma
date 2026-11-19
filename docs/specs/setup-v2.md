@@ -377,7 +377,7 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     action cannot run (Vimma already the default; Make Default hidden by a policy, a locked
     pref or Flatpak; import turned off by policy), the step says why and offers only to go on,
     because a choice that cannot act would only fail. A failed Make Default keeps the step open
-    with the reason, as a failed write does (behaviour 16). When the wizard closes, the setup
+    and says so, as a failed write does (behaviour 16). When the wizard closes, the setup
     page takes the focus back, because the dialog leaves it nowhere on the page. The wizard has
     square corners and the theme's font, as Settings has (firefox-surfaces-trim, decision 8).
 18. **A feature pref while it lands.** `vimma.feature.setupV2` (default `false`) switches the
