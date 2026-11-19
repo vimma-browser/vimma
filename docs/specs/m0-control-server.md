@@ -23,9 +23,9 @@ running browser, and with it off nothing listens and no token file exists.
   on or off), before a start, and when the pref goes off, at `quit-application-granted` and
   (as a backstop) in an `AsyncShutdown.profileBeforeChange` blocker.
 - Line framing, 1 MiB limit, 5 s hello deadline, 60 s idle timeout, 8 authenticated connections
-  then `busy`, at most 2 waiting for a hello (a new one evicts the oldest), constant-time token
-  check (`tokensEqual`), a challenge proving the token before the client sends it, every message
-  checked with `validateMessage`.
+  then `busy`, at most 2 waiting for a hello (a new one evicts the oldest that has not spoken,
+  else the oldest), constant-time token check (`tokensEqual`), a challenge proving the token
+  before the client sends it, every message checked with `validateMessage`.
 - Commands `send-keys`, `state`, `open`, `reload-theme` (since m5-omarchy-theme:
   `ThemeHost.reload()`); `list-tabs`, `screenshot`, `reload-config` answer `not-implemented`.
 - Host seam: none of our own. `state` reads `VimmaHost.status(win)` (`{ mode, pending }`, added
@@ -130,11 +130,16 @@ running browser, and with it off nothing listens and no token file exists.
   `chrome:` → `invalid-args`, nothing opened.
 - Limits: 8 authenticated connections, the 9th hello gets `busy` (id null, no doubled "busy:") and a
   close, a freed slot works; 20 connections that never say hello leave 2 waiting (the evicted told
-  `busy`) and a client with the token still gets in; an oversized line → `bad-request` and a close;
-  idle (500 ms pref) → closed without a message; no hello (300 ms pref) → `bad-request` and a close.
+  `busy`) and a client with the token still gets in; a connection that sent part of a line
+  outlasts two silent ones after it, which are told `busy` (#1344); an oversized line →
+  `bad-request` and a close; idle (500 ms pref) → closed without a message; no hello (300 ms
+  pref) → `bad-request` and a close.
 - `vimma-ctl --profile <test profile> state --json` exits 0 with the live state; 5 more runs
-  succeed during a flood of 30 idle connections; against a squatting socket (a stale discovery
-  file with a token it does not know) it exits 4 and the squatter receives no command.
+  succeed during a flood of 30 idle connections, and one more when two silent connections arrive
+  after its hello but before the server reads it (#1344); at 8 authenticated connections it exits
+  3 saying `busy` and "try again", and gets in once a slot is free; against a squatting socket (a
+  stale discovery file with a token it does not know) it exits 4 and the squatter receives no
+  command.
 - The handshake: every challenge's proof is checked by the test client with WebCrypto; a hello
   without a nonce, a hello carrying the token, an auth before the hello and a request before
   the auth are `bad-request` and close; a hello that never gets its auth is closed at the
@@ -178,6 +183,12 @@ Two weaknesses were fixed before the server shipped:
    connection that never says hello: a reconnect loop made `vimma-ctl state` fail `busy` 10/10.
    Now 8 authenticated slots and, apart, 2 waiting ones; a new connection evicts the oldest
    waiting one (`busy`). vimma-ctl says hello right after connecting, so it wins the race.
+   Amended (#1344): the server takes new connections before it reads the ones it has, so on a
+   slow machine vimma-ctl's hello could wait unread while two silent connections arrived, and
+   it was the one evicted (CI, `vimma-ctl state during a flood`). Now a new connection evicts
+   the oldest waiting one that has sent nothing (read, or still in its socket), else the oldest.
+   Red: the mochitest holding the main thread so vimma-ctl's connect and hello come before two
+   silent connects failed 2/2 with `busy: evicted`; green 20/20 on two busy CPUs.
 2. **A stale discovery file let a squatter impersonate the server.** With the pref off nothing
    removed a crashed run's file, so another local user could bind its port and receive
    `send-keys`. Now: (a) the first window's `init` removes whatever is at the path (pref on or

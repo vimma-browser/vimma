@@ -79,8 +79,9 @@ const MAX_AGENT_CONNECTIONS = 4;
 const MAX_AGENT_INFLIGHT = 4;
 /**
  * Connections still waiting for their hello. Anyone local can open those, so they are capped
- * apart from the authenticated ones and a new one evicts the oldest: a flood of idle
- * connections cannot lock out a client with the token (security.md S5).
+ * apart from the authenticated ones and a new one evicts the oldest that has not spoken yet (else
+ * the oldest): a flood of idle connections cannot lock out a client with the token, whose hello
+ * may be in its socket before the server has read it (security.md S5, #1344).
  */
 const MAX_WAITING = 2;
 /** Unsent output beyond this means the client is not reading: close it. */
@@ -621,6 +622,8 @@ class Connection {
     /** Which handshake line comes next. @type {"hello" | "auth"} */
     this.stage = "hello";
     this.closed = false;
+    /** Some of its bytes have been read. */
+    this.heard = false;
     /** Binary string waiting for the socket to accept it. */
     this.pendingOut = "";
     this.closeAfterWrite = false;
@@ -707,8 +710,22 @@ class Connection {
       this.close();
       return;
     }
+    this.heard = true;
     if (!this.draining) this.receive(bytes);
     this.waitForInput();
+  }
+
+  /**
+   * It has sent something, read or still in its socket: the server takes new connections before
+   * it reads the ones it has, so a client's hello can wait there behind newer connections.
+   */
+  spoke() {
+    if (this.heard) return true;
+    try {
+      return this.input.available() > 0;
+    } catch {
+      return false; // closed or reset: nothing to keep
+    }
   }
 
   /** @param {Uint8Array} bytes */
@@ -1227,11 +1244,13 @@ class Server {
   onSocketAccepted(_socket, transport) {
     const connection = new Connection(this, transport);
     if (this.waiting.size >= MAX_WAITING) {
-      // Evict the oldest waiting connection, answering busy so its client can retry; it lingers
-      // in `closing` (not counted) until its client closes or DRAIN_MS pass.
-      const oldest = /** @type {Connection} */ (this.waiting.values().next().value);
-      this.waiting.delete(oldest);
-      this.refuse(oldest, "busy", `evicted: ${MAX_WAITING} newer connections are waiting`);
+      // Evict the oldest waiting connection that has not spoken (else the oldest), answering
+      // busy so its client can retry; it lingers in `closing` (not counted) until its client
+      // closes or DRAIN_MS pass.
+      const waiting = [...this.waiting];
+      const evicted = waiting.find((c) => !c.spoke()) ?? /** @type {Connection} */ (waiting[0]);
+      this.waiting.delete(evicted);
+      this.refuse(evicted, "busy", `evicted: ${MAX_WAITING} newer connections are waiting`);
     }
     this.waiting.add(connection);
     connection.start();
