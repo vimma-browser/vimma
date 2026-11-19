@@ -190,6 +190,10 @@ add_task(async function line_sits_above_the_address_bar() {
   await until(drawn, "drawn");
   const navBar = /** @type {Element} */ (document.getElementById("nav-bar"));
   const browser = /** @type {Element} */ (document.getElementById("browser"));
+  // The toolbar is hidden by default (toolbar-toggle decision 3): ctrl+b u shows it first.
+  Services.prefs.setBoolPref(TOOLBAR_PREF, false);
+  await until(() => navBar.checkVisibility({ visibilityProperty: true }), "ctrl+b u shows it");
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   const top = rect(line()).top;
   Assert.lessOrEqual(rect(line()).bottom, rect(navBar).top + 0.5, "above the address bar");
   Assert.lessOrEqual(rect(navBar).bottom, rect(browser).top + 0.5, "the page under both");
@@ -207,6 +211,7 @@ add_task(async function line_sits_above_the_address_bar() {
   Services.prefs.setBoolPref(TOOLBAR_PREF, false);
   await until(() => navBar.checkVisibility({ visibilityProperty: true }), "shown again");
   Assert.equal(rect(line()).top, top, "and the line never moved");
+  Services.prefs.clearUserPref(TOOLBAR_PREF);
   await SpecialPowers.popPrefEnv();
   closeOthers();
 });

@@ -57,8 +57,11 @@ text that pages, add-ons and bookmarks choose.
   [`opens and reveals downloads only through Firefox's Download, from download-ops`](../../tools/security/test/chrome-source.test.ts),
   [`test_enter_and_o_open_through_launchDownload`](../../tests/browser/browser_vimma_downloads.js),
   [`test_an_executable_asks_firefoxs_prompt_first`](../../tests/browser/browser_vimma_downloads.js)
-- C3. With Firefox's toolbar hidden ([toolbar-toggle](../specs/toolbar-toggle.md)), the status bar
-  is the only origin indicator: the page reaches the window's top, so there is no line of death.
+- C3. With Firefox's toolbar hidden ([toolbar-toggle](../specs/toolbar-toggle.md)), the default
+  since 19 Nov 2026 (decision 3), the status bar is the only origin indicator: the page reaches
+  the window's top, so there is no line of death. The cues below hold with the default, nothing
+  set, and `ctrl+b u` reaches the site's identity block and panel.
+  [`the_default_hidden_toolbar_keeps_the_security_cues`](../../tests/browser/browser_vimma_toolbar.js)
 - The status bar **must** always show the selected page's real address with its registrable
   domain whole: truncation **never** cuts inside it (the path, then the leftmost labels go
   first), also for a `blob:` or `view-source:` address (the origin it carries), and **never**

@@ -104,7 +104,11 @@ async function reset() {
 
 add_task(async function setup() {
   await IOUtils.makeDirectory(dir, { createAncestors: true });
+  // Firefox's toolbar is hidden by default (toolbar-toggle decision 3), and the bookmarks toolbar
+  // hides with it (decision 8): the tasks show it, and hidden_with_the_nav_bar hides it again.
+  Services.prefs.setBoolPref(TOOLBAR_PREF, false);
   registerCleanupFunction(async () => {
+    Services.prefs.clearUserPref(TOOLBAR_PREF);
     Services.prefs.clearUserPref(PREF);
     CustomizableUI.setToolbarVisibility("PersonalToolbar", "never");
     while (gBrowser.tabs.length > 1) {
@@ -381,6 +385,13 @@ add_task(async function hidden_with_the_nav_bar() {
     "the nav bar is hidden",
   );
   Assert.ok(!shown(), "the bookmarks toolbar hides with it");
+  // Decision 8, changed 19 Nov 2026: showing it then says how to see it.
+  runCommand("bookmarkstoolbar show");
+  await until(
+    () => noticeText() === "bookmarks toolbar shown; the toolbar is hidden: :toolbar show",
+    "the notice names :toolbar show",
+  );
+  Assert.ok(!shown(), "still hidden with the nav bar");
   // VimmaHost started this window and made its toolbar; without one, `.hold` throws, as before.
   const toolbar = /** @type {NonNullable<HostState["toolbar"]>} */ (
     /** @type {HostState} */ (VimmaHost._state(window)).toolbar
@@ -397,7 +408,7 @@ add_task(async function hidden_with_the_nav_bar() {
   await new Promise((r) => requestAnimationFrame(r));
   Assert.ok(!shown(), "then the full reveal does not show it");
   toolbar.release("test");
-  Services.prefs.clearUserPref(TOOLBAR_PREF);
+  Services.prefs.setBoolPref(TOOLBAR_PREF, false);
   BrowserTestUtils.removeTab(tab);
   await reset();
 });

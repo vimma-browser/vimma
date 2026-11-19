@@ -1330,7 +1330,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     private: { placement: user.private?.placement ?? "swap" },
     mcp: resolveMcp(user.mcp),
     ui: {
-      toolbar: user.ui?.toolbar ?? "shown",
+      toolbar: user.ui?.toolbar ?? "hidden",
       bookmarksToolbar: user.ui?.bookmarks_toolbar ?? null,
       pdfOutline: user.ui?.pdf_outline ?? "shown",
       tabline: user.ui?.tabline ?? "off",

@@ -683,21 +683,21 @@ describe("[private] placement", () => {
 
 // docs/specs/toolbar-toggle.md, decision 3: [ui] toolbar, a schema-2 table.
 describe("[ui] toolbar", () => {
-  test('defaults to "shown"', () => {
+  test('defaults to "hidden" (decision 3, changed 19 Nov 2026)', () => {
     expect(ok(v2()).ui).toEqual({
-      toolbar: "shown",
+      toolbar: "hidden",
       bookmarksToolbar: null,
       pdfOutline: "shown",
       tabline: "off",
       tablineWidth: 14,
     });
     expect(DEFAULT_CONFIG.ui).toEqual({
-      toolbar: "shown",
+      toolbar: "hidden",
       pdf_outline: "shown",
       tabline: "off",
       tabline_width: 14,
     });
-    expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n)*toolbar = "shown"$/m);
+    expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n)*toolbar = "hidden"$/m);
   });
 
   test.each([["shown"], ["hidden"]])('toolbar = "%s" is accepted', (toolbar) => {
@@ -769,7 +769,7 @@ describe("[ui] bookmarks_toolbar", () => {
 
   test.each([["shown"], ["hidden"], ["newtab"]])('bookmarks_toolbar = "%s" is accepted', (v) => {
     expect(ok(v2("[ui]", `bookmarks_toolbar = "${v}"`)).ui).toEqual({
-      toolbar: "shown",
+      toolbar: "hidden",
       bookmarksToolbar: v,
       pdfOutline: "shown",
       tabline: "off",

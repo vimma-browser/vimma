@@ -223,12 +223,51 @@ add_task(async function setup() {
     await PlacesUtils.bookmarks.eraseEverything();
     await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true });
   });
+  // Decision 3 (changed 19 Nov 2026): a profile with no `[ui] toolbar` (here no config.toml at
+  // all, browser.toml points the path at a missing file) starts with the toolbar hidden, and the
+  // build's pref agrees with the config default, so no window shows it before the config is read.
   Assert.equal(
-    Services.prefs.getDefaultBranch("").getBoolPref(PREF, true),
-    false,
-    `${PREF} defaults to false: the toolbar is shown`,
+    Services.prefs.getDefaultBranch("").getBoolPref(PREF, false),
+    true,
+    `${PREF} defaults to true: the toolbar is hidden`,
   );
-  Assert.ok(!barCollapsed(), "the toolbar shows by default");
+  Assert.equal(ConfigHost.config?.ui.toolbar, "hidden", "no config.toml: hidden");
+  Assert.ok(barCollapsed() && root().hasAttribute(HIDDEN), "the toolbar is hidden by default");
+});
+
+// Decision 3 (changed 19 Nov 2026) and docs/security/06-chrome-ui-rendering.md C3: with the
+// default, nothing set, the status bar carries the site and the warning the hidden bar did, and
+// ctrl+b u reaches the site's identity block and its panel.
+add_task(async function the_default_hidden_toolbar_keeps_the_security_cues() {
+  Assert.ok(!Services.prefs.prefHasUserValue(PREF), "the build's default, no pref set");
+  const tab = await openPage(HTTP_PLAIN);
+  Assert.ok(barCollapsed(), "hidden");
+  Assert.equal(tab.linkedBrowser.currentURI.scheme, "http", "the page stayed on http:");
+  await until(() => segText("security") === "not secure", "an http: page says not secure");
+  await until(() => segText("url")?.startsWith("http://example.com"), "with its http:// host");
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, PLAIN);
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, PLAIN);
+  await until(() => segText("security") === null, "an https: page says nothing");
+  await until(() => hostShown(segText("url")) === "example.com", "and names its site");
+
+  await focusContent(tab.linkedBrowser);
+  prefix("u");
+  await until(() => !barCollapsed(), "ctrl+b u shows the toolbar");
+  const identity = [$("trust-icon-container"), $("identity-icon-box")].find(shows);
+  Assert.ok(identity, "with the site's identity button");
+  const opened = BrowserTestUtils.waitForEvent(document, "popupshown", false, (e) => {
+    const popup = /** @type {XULPopupElement} */ (e.target);
+    return !!popup.anchorNode?.closest?.("#urlbar");
+  });
+  EventUtils.synthesizeMouseAtCenter(found(identity), {});
+  const panel = /** @type {XULPopupElement} */ ((await opened).target);
+  Assert.equal(panel.state, "open", "its panel opens from it");
+  PanelMultiView.hidePopup(panel);
+  await until(() => panel.state === "closed", "the panel closes");
+  await until(() => segText("security") === null, "shown: no security segment");
+  gBrowser.removeTab(tab);
+  // The tasks below start from the toolbar shown, as ctrl+b u left it.
+  await show();
 });
 
 // 1, 13: every window; the notice, spoken; the notification bars stay; no accessible.
@@ -1630,9 +1669,12 @@ add_task(async function config_sets_the_toolbar() {
   const write = (/** @type {string} */ text) =>
     IOUtils.writeUTF8(configFile, `schema = 2\n${text}\n${"#".repeat(++n)}\n`);
 
-  await show();
+  // The defaults in force say hidden (decision 3): "shown" first, so "hidden" is a change.
+  await write(`[ui]\ntoolbar = "shown"`);
+  await until(() => ConfigHost.config?.ui.toolbar === "shown", "the poll reads the file");
+  await until(() => !barCollapsed(), "shown, from the file");
   await write(`[ui]\ntoolbar = "hidden"`);
-  await until(() => ConfigHost.config?.ui.toolbar === "hidden", "the poll reads the file");
+  await until(() => ConfigHost.config?.ui.toolbar === "hidden", "the poll reads the change");
   await until(() => Services.prefs.getBoolPref(PREF, false), "and hides the toolbar");
   await until(() => barCollapsed(), "hidden");
 
@@ -1651,7 +1693,8 @@ add_task(async function config_sets_the_toolbar() {
   await IOUtils.remove(configFile);
   await SpecialPowers.popPrefEnv();
   await ConfigHost.reload();
-  await until(() => !Services.prefs.getBoolPref(PREF, false), "no config: shown");
+  await until(() => Services.prefs.getBoolPref(PREF, false), "no config: hidden (decision 4)");
+  await show();
   gBrowser.removeTab(tab);
 });
 

@@ -436,10 +436,11 @@ step = 60
 [private]
 placement = "swap"
 
-# Firefox's toolbar (the URL bar and add-on buttons) in every window: "shown" or "hidden".
-# Hidden, focusing the address bar shows it; ctrl+b u and :toolbar toggle it until restart.
+# Firefox's toolbar (the URL bar and add-on buttons) in every window: "hidden" or "shown".
+# Hidden, the status bar names the site and says "not secure"; ctrl+l shows the address
+# bar to type in, and ctrl+b u and :toolbar show or hide the toolbar until restart.
 [ui]
-toolbar = "shown"
+toolbar = "hidden"
 # Firefox's Bookmarks Toolbar, hidden by default (your bookmarks: ctrl+b shift+b):
 # "shown", "hidden" or "newtab" (on the start page and new tabs only). Left out,
 # ctrl+shift+b, :bookmarkstoolbar and Firefox's View > Toolbars menu set it for good.

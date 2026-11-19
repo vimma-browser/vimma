@@ -399,7 +399,14 @@ export function giveFocusBack(win, box, opener) {
   const tabs = tabsOf(win);
   const back = opener?.el;
   if (back?.isConnected && !box.contains(back) && opener?.tab === tabs?.selectedTab) {
-    /** @type {HTMLElement} */ (back).focus();
+    // The address bar through its own focus(), whose `beforefocus` reveals it while the toolbar
+    // is hidden (the default, toolbar-toggle decisions 3 and 7): its field focused directly
+    // stays hidden and refuses focus.
+    const urlbar = /** @type {{ gURLBar?: { inputField: Element, focus(): void } }} */ (
+      /** @type {unknown} */ (win)
+    ).gURLBar;
+    if (urlbar && back === urlbar.inputField) urlbar.focus();
+    else /** @type {HTMLElement} */ (back).focus();
   } else {
     tabs?.selectedBrowser.focus();
   }

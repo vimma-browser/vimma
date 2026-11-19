@@ -555,7 +555,9 @@ export const DEFAULT_CONFIG = Object.freeze({
   scroll: { step: SCROLL_STEP_DEFAULT },
   private: { placement: /** @type {const} */ ("swap") },
   ui: {
-    toolbar: /** @type {const} */ ("shown"),
+    // Hidden since 19 Nov 2026 (docs/specs/toolbar-toggle.md decision 3): the status bar carries
+    // the site and its security cues (decision 12). branding's vimma.ui.toolbar.hidden agrees.
+    toolbar: /** @type {const} */ ("hidden"),
     pdf_outline: /** @type {const} */ ("shown"),
     tabline: /** @type {const} */ ("off"),
     tabline_width: TABLINE_WIDTH.default,
@@ -701,10 +703,11 @@ export function formatDefaultsToml() {
     "[private]",
     `placement = ${tomlString(DEFAULT_CONFIG.private?.placement ?? "swap")}`,
     "",
-    '# Firefox\'s toolbar (the URL bar and add-on buttons) in every window: "shown" or "hidden".',
-    "# Hidden, focusing the address bar shows it; ctrl+b u and :toolbar toggle it until restart.",
+    '# Firefox\'s toolbar (the URL bar and add-on buttons) in every window: "hidden" or "shown".',
+    '# Hidden, the status bar names the site and says "not secure"; ctrl+l shows the address',
+    "# bar to type in, and ctrl+b u and :toolbar show or hide the toolbar until restart.",
     "[ui]",
-    `toolbar = ${tomlString(DEFAULT_CONFIG.ui?.toolbar ?? "shown")}`,
+    `toolbar = ${tomlString(DEFAULT_CONFIG.ui?.toolbar ?? "hidden")}`,
     "# Firefox's Bookmarks Toolbar, hidden by default (your bookmarks: ctrl+b shift+b):",
     '# "shown", "hidden" or "newtab" (on the start page and new tabs only). Left out,',
     "# ctrl+shift+b, :bookmarkstoolbar and Firefox's View > Toolbars menu set it for good.",

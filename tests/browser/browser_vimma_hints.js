@@ -847,6 +847,10 @@ add_task(async function every_entry_of_an_open_dropdown_menu_gets_a_label() {
 // viewport has its size, as Floating UI does, or the entries sit above the viewport (#605).
 // Pausing the chrome refresh driver holds that layout back, as a busy macOS runner did.
 add_task(async function a_menu_opened_in_a_tab_not_sized_yet_gets_its_labels() {
+  // With Firefox's toolbar shown: with it hidden, the default (toolbar-toggle decision 3), the
+  // window is laid out before the new tab's page loads even with the refresh driver paused, so
+  // the page loads with its size and the race this reproduces does not happen.
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.ui.toolbar.hidden", false]] });
   const utils = window.windowUtils;
   registerCleanupFunction(() => utils.restoreNormalRefresh());
   utils.advanceTimeAndRefresh(0);
@@ -881,6 +885,7 @@ add_task(async function a_menu_opened_in_a_tab_not_sized_yet_gets_its_labels() {
     if (VimmaHost._hints(window)) EventUtils.synthesizeKey("KEY_Escape");
     BrowserTestUtils.removeTab(tab);
   }
+  await SpecialPowers.popPrefEnv();
 });
 
 add_task(async function a_label_clicks_a_menu_entry_with_only_a_listener() {

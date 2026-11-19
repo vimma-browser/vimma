@@ -77,7 +77,13 @@ function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
 
+// The bar with Firefox's toolbar shown, as m2 specs it: the hidden toolbar, the default since
+// toolbar-toggle decision 3 changed, keeps the URL over the title and adds its security cues
+// (decision 12), which browser_vimma_toolbar.js and statusbar.test.ts cover.
+Services.prefs.setBoolPref("vimma.ui.toolbar.hidden", false);
+
 registerCleanupFunction(() => {
+  Services.prefs.clearUserPref("vimma.ui.toolbar.hidden");
   while (gBrowser.tabs.length > 1) {
     gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
   }
