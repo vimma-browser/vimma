@@ -18,7 +18,7 @@ const { SetupHost } = ChromeUtils.importESModule(
 );
 const { flowAdvance, flowChapters, flowKey, flowStep, formatUsers, initialFlow } =
   ChromeUtils.importESModule("chrome://browser/content/vimma/core/setup.mjs");
-const { HINT_LAYOUTS, hintRow } = ChromeUtils.importESModule(
+const { HINT_LAYOUTS, hintRow, rememberKey } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/setup-steps.mjs",
 );
 
@@ -62,12 +62,18 @@ let busy = false;
 let last = null;
 /**
  * The physical key and the character of the letter keys pressed on this page, for the hint
- * step's layout guess (decision 9): kept in this page's memory only, never sent to the host,
- * written or kept after the page closes; the latest few are enough.
+ * step's layout guess (decision 10): kept in this page's memory only, never sent to the host,
+ * written or kept after the page closes; rememberKey keeps the latest PRESSED_MAX.
  * @type {import("../core/setup-steps.mjs").PressedKey[]}
  */
-const pressed = [];
-const PRESSED_MAX = 32;
+let pressed = [];
+/**
+ * The letters of the layout typed on, guessed once when the hint step opens, so that j and k
+ * pressed on the step neither move the guess nor change the note under the list; null when
+ * the step opened on the value in force.
+ * @type {string | null}
+ */
+let guessed = null;
 /** The content blocker's lists. @type {AddonEntry[]} */
 let curated = [];
 /** @type {AddonEntry[]} */
@@ -286,28 +292,36 @@ const RENDERERS = {
       );
     }
   },
-  // Each layout's letters as keys, and where the selected row came from (decision 9).
+  // Each layout's letters as keys, and where the selected row came from (decision 10).
   hint_letters(v) {
     drawChoices(v);
-    const guessed = guessedRow(v);
+    const at = guessed === null ? -1 : (v.layouts?.indexOf(guessed) ?? -1);
+    const row = at >= 0 ? at : v.selected;
     for (const li of $("v2-choices").children) {
       const i = Number(li.getAttribute("data-index"));
-      if (i !== guessed || i === v.selected) continue;
+      if (i !== row || i === v.selected) continue;
       li.setAttribute("data-guessed", "true");
       const meta = li.querySelector(".meta");
       if (meta) meta.textContent = "your layout";
     }
     const note = $("v2-guess");
-    const name = HINT_LAYOUTS.find((l) => l.chars === v.layouts?.[guessed])?.name;
-    note.hidden = guessed === v.selected || !name;
+    const name = HINT_LAYOUTS.find((l) => l.chars === v.layouts?.[row])?.name;
+    note.hidden = row === v.selected || !name;
     note.textContent = note.hidden
       ? ""
-      : `${name} is selected from the keys you pressed on this page; they are not kept.`;
+      : `${name} fits the keys you pressed on this page; they are not kept.`;
   },
 };
 
-/** The hint step's row for the layout typed on, else the value in force. @param {StepView} v */
-const guessedRow = (v) => (v.layouts ? hintRow(v.layouts, v.selected, pressed) : v.selected);
+/**
+ * The letters of the layout typed on when the hint step's guess moves its cursor off the value
+ * in force (hintRow), else null. @param {StepView} v
+ */
+function guessFor(v) {
+  if (!v.layouts) return null;
+  const row = hintRow(v.layouts, v.selected, pressed);
+  return row === v.selected ? null : (v.layouts[row] ?? null);
+}
 
 function drawStep() {
   const step = flowStep(state);
@@ -388,7 +402,9 @@ async function loadView(select = true) {
   state = { ...state, blocked: !!v?.blocked };
   if (v && step.id !== "content_blocker") {
     const kept = select ? -1 : v.choices.findIndex((c) => c.label === under);
-    state = { ...state, cursor: kept >= 0 ? kept : guessedRow(v) };
+    if (select) guessed = guessFor(v);
+    const at = guessed === null ? -1 : (v.layouts?.indexOf(guessed) ?? -1);
+    state = { ...state, cursor: kept >= 0 ? kept : at >= 0 ? at : v.selected };
   }
   draw();
   root.dataset.viewReady = "true";
@@ -561,10 +577,11 @@ function start() {
   document.addEventListener("keydown", (e) => {
     // Only the user's own keys drive the page (behaviour 29, Security "Trusted input only").
     if (!e.isTrusted) return;
-    if (/^[a-z]$/i.test(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) {
-      pressed.push({ code: e.code, key: e.key });
-      if (pressed.length > PRESSED_MAX) pressed.shift();
-    }
+    pressed = rememberKey(
+      pressed,
+      { code: e.code, key: e.key },
+      { ctrl: e.ctrlKey, alt: e.altKey, meta: e.metaKey },
+    );
     if (e.target === search) {
       // In the field only enter and esc are the page's; `q` and the rest are typed (behaviour 7).
       if (e.key !== "Enter" && e.key !== "Escape") return;

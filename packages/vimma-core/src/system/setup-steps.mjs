@@ -88,7 +88,7 @@ function setting(step, { table, key }, choices) {
 const action = (step) => ({ ...step, kind: "action", choices: [] });
 
 /**
- * The hint letters step's layouts (decision 9), each with its home row and its letter keys by
+ * The hint letters step's layouts (decision 10), each with its home row and its letter keys by
  * physical key: the top, home and bottom rows from `KeyQ`, `KeyA` and `KeyZ`, as a
  * `KeyboardEvent`'s `code` names them. A `key` that is no letter (`;` on QWERTY) is never
  * compared.
@@ -347,12 +347,27 @@ export const HINT_LAYOUTS = freeze(
 
 /**
  * A key pressed on the page, as its keydown saw it. The page keeps these in memory only and
- * never sends or writes them (decision 9, Security and privacy).
+ * never sends or writes them (decision 10, Security and privacy).
  * @typedef {{ code: string, key: string }} PressedKey
  */
 
+/** The most keys the page keeps for the guess: the latest few are enough. */
+export const PRESSED_MAX = 32;
+
 /**
- * The layout the user types on, from the keys already pressed on the page (decision 9): the
+ * `pressed` with `key` added when it is a letter typed without ctrl, alt or meta, the oldest
+ * dropped past PRESSED_MAX, so that the page never holds more than the guess needs.
+ * @param {readonly PressedKey[]} pressed @param {PressedKey} key
+ * @param {{ ctrl?: boolean, alt?: boolean, meta?: boolean }} [mods]
+ * @returns {PressedKey[]}
+ */
+export function rememberKey(pressed, key, { ctrl = false, alt = false, meta = false } = {}) {
+  if (ctrl || alt || meta || !/^[a-z]$/i.test(key.key)) return [...pressed];
+  return [...pressed, { code: key.code, key: key.key }].slice(-PRESSED_MAX);
+}
+
+/**
+ * The layout the user types on, from the keys already pressed on the page (decision 10): the
  * first of HINT_LAYOUTS that puts every letter pressed on the physical key it came from. Null
  * without a letter pressed, or when no layout fits (AZERTY's `a` on `KeyQ`).
  * @param {readonly PressedKey[]} pressed

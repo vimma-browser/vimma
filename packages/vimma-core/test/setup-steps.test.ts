@@ -8,8 +8,10 @@ import {
   HINT_LAYOUTS,
   editLines,
   fillStepText,
+  PRESSED_MAX,
   guessLayout,
   hintRow,
+  rememberKey,
   inForceOf,
   planAtEnter,
   planChoice,
@@ -298,7 +300,7 @@ describe("your keys: the prefix and the hint letters in force (behaviours 9 and 
 const press = (keys: string, codes: string[]) =>
   [...keys].map((key, i) => ({ key, code: codes[i] ?? "" }));
 
-describe("the hint letters step guesses the layout (decision 9)", () => {
+describe("the hint letters step guesses the layout (decision 10)", () => {
   // j and k, the page's own keys, on each layout (Research, "No keyboard-layout API").
   const qwerty = press("jk", ["KeyJ", "KeyK"]);
   const colemak = press("jk", ["KeyY", "KeyN"]);
@@ -325,6 +327,33 @@ describe("the hint letters step guesses the layout (decision 9)", () => {
     expect(guessLayout([])).toBeNull();
     expect(guessLayout(press("a", ["KeyQ"]))).toBeNull();
     expect(guessLayout([{ key: "Escape", code: "Escape" }])).toBeNull();
+  });
+
+  test("keys that fit two layouts at once fit none: QWERTY stays", () => {
+    // j where QWERTY has it, k where Colemak has it.
+    const mixed = press("jk", ["KeyJ", "KeyN"]);
+    expect(guessLayout(mixed)).toBeNull();
+    expect(hintRow(layouts, 0, mixed)).toBe(0);
+  });
+
+  test("a key that is no letter is never compared, even on a letter row", () => {
+    // `;` sits on KeySemicolon on QWERTY and Colemak, and on KeyZ on Dvorak: it says nothing.
+    expect(guessLayout(press(";", ["KeySemicolon"]))).toBeNull();
+    expect(guessLayout([...press(";", ["KeyZ"]), ...colemak])).toBe("arstdhneio");
+  });
+
+  test("the page keeps only the latest keys, at most PRESSED_MAX", () => {
+    let kept: { code: string; key: string }[] = [];
+    for (let i = 0; i < PRESSED_MAX + 5; i++) kept = rememberKey(kept, { code: "KeyJ", key: "j" });
+    expect(kept.length).toBe(PRESSED_MAX);
+    expect(PRESSED_MAX).toBe(32);
+    // The newest wins: Colemak keys pressed last are among those kept.
+    for (const k of colemak) kept = rememberKey(kept, k);
+    expect(kept.slice(-2)).toEqual(colemak);
+    expect(kept.length).toBe(PRESSED_MAX);
+    // Only letters typed without ctrl, alt or meta are kept.
+    expect(rememberKey([], { code: "Enter", key: "Enter" })).toEqual([]);
+    expect(rememberKey([], { code: "KeyJ", key: "j" }, { ctrl: true })).toEqual([]);
   });
 
   test("the guess moves the cursor off the built-in QWERTY default only", () => {

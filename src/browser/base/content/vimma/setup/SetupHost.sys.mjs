@@ -379,7 +379,7 @@ export const SetupHost = {
       text: textParts(keymap ? fillStepText(step, keymap) : step.text),
       // Per choice, the prefix step's key that lists every key, drawn with that prefix
       // (behaviour 25), and the hint step's letters, which the page's layout guess matches
-      // (behaviour 26): the keys pressed stay in the page (decision 9).
+      // (behaviour 26): the keys pressed stay in the page (decision 10).
       prefixKeys: keymap && step.id === "prefix_key" ? prefixHints(step, keymap, choices) : null,
       layouts:
         step.id === "hint_letters"

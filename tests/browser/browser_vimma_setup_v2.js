@@ -823,6 +823,14 @@ add_task(async function hint_step_selects_the_layout_typed_on() {
   Assert.ok(!guess.hidden && guess.textContent.includes("Colemak"), guess.textContent);
   Assert.equal(writes(doc), 'Writes [modal] hint_chars = "arstdhneio"');
   Assert.ok(stepText(doc).includes("f labels the links"), stepText(doc));
+  // j on the step moves the cursor; the guess, its label and the note stay as they were.
+  const note = guess.textContent;
+  await typeOn(doc, [["j", "KeyY"]]);
+  Assert.equal(current(doc), "Dvorak: aoeuidhtns");
+  Assert.equal(guess.textContent, note, "the note is unchanged");
+  Assert.ok(doc.querySelector('#v2-choices li[data-index="1"][data-guessed]'), "Colemak's label");
+  await typeOn(doc, [["k", "KeyN"]]);
+  Assert.equal(current(doc), "Colemak: arstdhneio");
   await press(doc, "KEY_Enter");
   await atStep(doc, "stop");
   Assert.ok((await IOUtils.readUTF8(configFile())).includes('hint_chars = "arstdhneio"'));
