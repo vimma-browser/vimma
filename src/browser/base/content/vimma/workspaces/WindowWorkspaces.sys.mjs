@@ -624,11 +624,15 @@ export class WindowWorkspacesImpl {
         return;
       case "SSWindowStateReady":
         this.#endPending();
-        // A switch that selects a lazy tab makes SessionStore restore it inside the switch
-        // (insertBrowser, then #restoreTab), which can send this before the switch has selected
-        // that tab: a rebuild then would read the old selection and switch back. Run it after.
-        if (this.#started && this.#switching) this.#win.queueMicrotask(() => this.#reconcile());
-        else if (this.#started) this.#reconcile();
+        // Selecting a lazy or unloaded tab makes SessionStore restore it inside the selection
+        // (insertBrowser, then #restoreTab), which sends this before the selection is done,
+        // inside our own switch or inside Firefox's (#midSelection). A rebuild then would read
+        // the old selection and switch back, or focus the old tab's page, which selects that
+        // tab again (tabbox.js's focus handler) with no TabSelect: the new tab never showed
+        // (issue #1333). Run it after.
+        if (this.#started && (this.#switching || this.#midSelection())) {
+          this.#win.queueMicrotask(() => this.#reconcile());
+        } else if (this.#started) this.#reconcile();
         return;
       case "SSWindowClosing":
         this.#save();
@@ -814,6 +818,15 @@ export class WindowWorkspacesImpl {
 
   get #gBrowser() {
     return this.#win.gBrowser;
+  }
+
+  /**
+   * Firefox is selecting a tab: tabbox.js's selectedIndex has unmarked the old tab and marked the
+   * new one, and gBrowser.selectedTab still names the old one until the panel's select event.
+   */
+  #midSelection() {
+    const tab = this.#gBrowser?.selectedTab;
+    return !!tab && !tab.selected;
   }
 
   /** @param {Tab} tab */

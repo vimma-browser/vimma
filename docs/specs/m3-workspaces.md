@@ -520,7 +520,14 @@ Instead:
   reconcile. This is described now in `WindowWorkspaces.sys.mjs` (`STUCK_RESTORE_MS`,
   `#endStuckRestore`; the test-only pref `vimma.workspaces.stuckRestoreMs` overrides the bound),
   and the about:vimma report that names the restore that never finished, a restore still
-  pending, and the open tabs beside the model's is in `docs/guide.md`, "about:vimma".)
+  pending, and the open tabs beside the model's is in `docs/guide.md`, "about:vimma".) (Since
+  changed: a single-tab bracket can close inside a tab selection. Selecting a tab that has not
+  loaded, or that Firefox unloaded, makes SessionStore restore it while Firefox is still selecting
+  it, before `gBrowser.selectedTab` changes, so a reconcile there read the old selection, focused
+  the old tab's page and so selected that tab again: the new one never showed, issue
+  [#1333](https://github.com/vimma-browser/vimma/issues/1333). The reconcile of such an
+  `SSWindowStateReady`, like one inside a workspace switch, now runs in a microtask, after the
+  selection.)
 - **Tab events outside a bracket** are handled in a microtask, so a path that adds a tab and then
   restores it in the same task (undo close, `duplicateTab`) has set `extData` first; if a bracket
   opened meanwhile, the event waits for its `SSWindowStateReady`.
