@@ -9,8 +9,7 @@
 
 import { ConfigHost } from "../config/ConfigHost.sys.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
-import { formatConfigTemplate } from "../core/defaults.mjs";
-import { setTomlKeys } from "../core/toml.mjs";
+import { parseConfig, setConfigKeysText } from "../core/config.mjs";
 import {
   AMO_API,
   AMO_TIMEOUT_MS,
@@ -37,8 +36,6 @@ const OFFERED_PREF = "vimma.setup.offered";
 // Tests point AMO at a local server; a user never needs to.
 const AMO_PREF = "vimma.setup.amoApi";
 const CONFIG_PATH_PREF = "vimma.config.path";
-const FILE_MODE = 0o600;
-const DIR_MODE = 0o700;
 
 /** An nsIAboutModule that is its own nsIFactory, as about:vimma's (AboutVimma.sys.mjs). */
 const aboutModule = {
@@ -193,57 +190,31 @@ export const SetupHost = {
     } catch (e) {
       return notFound(e) ? null : `cannot read ${path}`;
     }
-    const r = setTomlKeys(text, [{ table: "search", key: "default", value: "x" }]);
-    return r.ok ? null : `${path}:${r.error.line}: ${r.error.message}`;
+    const mac = Services.appinfo.OS === "Darwin";
+    // A file that does not load: its first error, with its line.
+    const first = parseConfig(text, { mac }).errors[0];
+    if (first) {
+      return `${path}:${first.line ?? 1}: ${first.path ? `${first.path}: ` : ""}${first.message}`;
+    }
+    // Else the writer's own check (ConfigHost.setConfigKeys), so that whatever it would refuse
+    // after `enter` shows before it.
+    const r = setConfigKeysText(text, [{ table: "search", key: "default", value: "x" }], { mac });
+    return "error" in r ? `${path}${r.error.slice("config.toml".length)}` : null;
   },
 
   /**
    * `[search] default = engine` in config.toml, then the reload that applies it (decisions 9,
-   * 11): atomic through a 0600 temporary file renamed over the old one, the old mode kept,
-   * nothing written on a parse error or when the file changed since it was read.
+   * 11), through ConfigHost's one writer (docs/specs/setup-v2.md decision 5): the edit queue, a
+   * temporary file with the old mode renamed over the file (or a symlink's target), nothing
+   * written when the file does not load, would not with the edit, or changed meanwhile.
    * @param {string} engine
    * @returns {Promise<string | null>} why not, or null once written and applied
    */
   async writeEngine(engine) {
-    const path = configFile();
-    /** @type {string | null} */
-    let text = null;
-    /** @type {Awaited<ReturnType<IOUtilsNamespace["stat"]>> | null} */
-    let before = null;
-    try {
-      before = await IOUtils.stat(path);
-      text = await IOUtils.readUTF8(path);
-    } catch (e) {
-      if (!notFound(e)) return `cannot read ${path}`;
-    }
-    const r = setTomlKeys(text ?? formatConfigTemplate(), [
+    const why = await ConfigHost.setConfigKeys([
       { table: "search", key: "default", value: engine },
     ]);
-    if (!r.ok) return `${path}:${r.error.line}: ${r.error.message}; nothing written`;
-    const dir = PathUtils.parent(path) ?? "/";
-    const tmp = PathUtils.join(
-      dir,
-      `.config.toml.${Services.uuid.generateUUID().toString().slice(1, 9)}`,
-    );
-    try {
-      if (!(await IOUtils.exists(dir))) {
-        await IOUtils.makeDirectory(dir, { createAncestors: true, permissions: DIR_MODE });
-      }
-      await IOUtils.writeUTF8(tmp, r.text, { mode: "create" });
-      await IOUtils.setPermissions(tmp, before ? before.permissions : FILE_MODE, false);
-      const now = await IOUtils.stat(path).catch(() => null);
-      if ((now?.lastModified ?? null) !== (before?.lastModified ?? null)) {
-        await IOUtils.remove(tmp);
-        return `${path} changed while the setup ran; nothing written`;
-      }
-      await IOUtils.move(tmp, path);
-    } catch (e) {
-      console.error(`vimma: setup cannot write ${path}`, e);
-      await IOUtils.remove(tmp, { ignoreAbsent: true }).catch(() => {});
-      return `cannot write ${path}`;
-    }
-    await ConfigHost.reload();
-    return null;
+    return why === null ? null : `${why}; nothing written`;
   },
 
   /**
