@@ -119,7 +119,7 @@ fixed it, which tells a site no more than the scheme itself.
 
 ## Tests
 
-- **Vitest** (`theme.test.mjs`): a fixed appearance (`dark`, `light`), Tokyo Night, a light
+- **Vitest** (`theme.test.mjs`): a fixed appearance (`dark`, `light`), a light
   Omarchy theme and a pinned `[theme.colors] mode` emit `--vimma-content-color-scheme` with the
   theme's mode; the adaptive built-in (`system`, absent, the Omarchy fallback) does not;
   `tokensToCss` rejects any value other than `dark` or `light`.

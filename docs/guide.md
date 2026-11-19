@@ -1268,13 +1268,14 @@ teal-black.
   General → Website appearance, set to Dark or Light, wins over Vimma for web pages; Automatic
   (the default) leaves them to Vimma.
 
-**Picking the built-in palette.** `[theme] name` in [config.toml](#configtoml) chooses it:
-`"vimma"` (the default) or `"tokyo-night"`, a Tokyo Night palette that is dark only (so
-`appearance` makes no difference to it). `[theme.colors]` changes single colours of either.
+**The built-in palette.** Vimma has one built-in palette, `"vimma"` (`[theme] name` in
+[config.toml](#configtoml), the default), in a dark and a light variant. `[theme.colors]`
+changes single colours of it. An older config.toml with `name = "tokyo-night"` still applies:
+that palette was removed, so Vimma uses `"vimma"` and the status bar says so until you remove
+the line. For Omarchy's colours, use your Omarchy theme (`source = "omarchy"`, below).
 
 ```toml
 [theme]
-name = "tokyo-night"   # or "vimma", the default
 appearance = "dark"    # the built-in palette dark, "light", or "system" (the default)
 ```
 
@@ -4760,7 +4761,7 @@ accent = "#ff9e64"
   `[panes] main_size` (the main-\* presets' main pane, 20 to 80%, default 60); `[sites."<host>"] insert` (`auto`, `never` or `always`: whether a text field on that
   site and its subdomains takes insert mode) and `unbind` (keys the page gets there instead of
   Vimma, [Keys a site keeps](#keys-a-site-keeps)); `[theme]` `source` (`omarchy` or `file`, the
-  built-in palette), `name` (`vimma`, the default, or `tokyo-night`: the built-in palette),
+  built-in palette), `name` (`vimma`, the default and only built-in palette),
   `appearance` (`system`, `dark` or `light`: the built-in palette's; left out, `:theme` sets it),
   `font` and `[theme.colors]` (single colours over either source);
   `[workspaces]` (a new one gets its container at once; one removed from the file stays, as a
@@ -5219,7 +5220,7 @@ screen reader on top of Firefox's own accessibility support. On Linux that is Or
 - **Link hints** are labels drawn over the page, hidden from screen readers; hint mode is
   announced. On a page with a screen reader, its own link navigation may serve better.
 - **Contrast.** All text Vimma draws reaches WCAG AA (4.5:1) in both variants of the built-in
-  Vimma palette, in the built-in Tokyo Night palette and in light themes: secondary and coloured
+  Vimma palette and in Omarchy's dark and light themes: secondary and coloured
   text is darkened or lightened just enough on the theme's backgrounds, so a theme keeps its
   colours where they already read. A `[theme.colors]` foreground you set yourself is used as is,
   with a warning in `about:vimma` when it falls short. Focus rings, and the border of the

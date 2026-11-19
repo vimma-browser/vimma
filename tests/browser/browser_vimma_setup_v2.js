@@ -301,6 +301,10 @@ async function enterThrough(/** @type {Document} */ doc, /** @type {MozTabbrowse
   await press(doc, "KEY_Enter");
   await atStep(doc, "stop");
   await press(doc, "KEY_Enter");
+  await atStep(doc, "address_bar");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  await press(doc, "KEY_Enter");
   await atStep(doc, "updates");
   await press(doc, "KEY_Enter");
   await atStep(doc, "agents");
@@ -342,6 +346,11 @@ add_task(async function enter_through_every_step_leaves_config_toml_unchanged() 
       prefs.length ? "The Omarchy theme" : "Follow the system",
       "the effect in force is selected",
     );
+    await press(doc, "KEY_Enter");
+    await atStep(doc, "stop");
+    await press(doc, "KEY_Enter");
+    await atStep(doc, "address_bar");
+    Assert.equal(current(doc), "Shown", "the toolbar in force is selected");
     await press(doc, "KEY_Enter");
     await atStep(doc, "stop");
     Assert.equal(await IOUtils.readUTF8(configFile()), text, "byte for byte");
@@ -666,31 +675,26 @@ add_task(async function a_list_drawn_again_keeps_the_row_and_an_old_index_is_sta
   await ConfigHost.reload();
   const { tab, doc } = await openFlow();
   await toEngines(doc);
-  await press(doc, "s");
-  await atStep(doc, "colours");
-  await press(doc, "k");
-  Assert.equal(current(doc), "Dark");
+  const row = current(doc);
+  Assert.ok(row, "the cursor is on an engine");
   const before = /** @type {{ serial: number }} */ (
-    await SetupHost.stepView(tab.linkedBrowser, "colours")
+    await SetupHost.stepView(tab.linkedBrowser, "search_engine")
   ).serial;
-  // Another program sets a dark-only palette: the list gains Keep, first.
-  await IOUtils.writeUTF8(configFile(), 'schema = 2\n[theme]\nname = "tokyo-night"\n');
+  // Another program names an engine that is not installed: the list gains Keep, first.
+  const gone = 'schema = 2\n[search]\ndefault = "Gone"\n';
+  await IOUtils.writeUTF8(configFile(), gone);
   await ConfigHost.reload();
   await TestUtils.waitForCondition(
     () => doc.querySelector('#v2-choices li[data-keep="true"]'),
     "drawn again with Keep",
   );
-  Assert.equal(current(doc), "Dark", "the cursor stays on its row, not its index");
+  Assert.equal(current(doc), row, "the cursor stays on its row, not its index");
   Assert.deepEqual(
-    await SetupHost.saveStep(tab.linkedBrowser, "colours", 1, before),
+    await SetupHost.saveStep(tab.linkedBrowser, "search_engine", 1, before),
     { stale: true },
     "an index into the list drawn before is refused",
   );
-  Assert.equal(
-    await IOUtils.readUTF8(configFile()),
-    'schema = 2\n[theme]\nname = "tokyo-night"\n',
-    "nothing written",
-  );
+  Assert.equal(await IOUtils.readUTF8(configFile()), gone, "nothing written");
   await closeFlow(tab);
 });
 
@@ -1060,4 +1064,87 @@ add_task(async function a_redraw_with_no_ticket_takes_none() {
   Assert.ok(!McpHost.state.enabled, "agents stay off");
   Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
   await closeFlow(tab);
+});
+
+/** @param {Document} doc @returns {string[]} the keys the step's text names */
+const textKeys = (doc) => [...doc.querySelectorAll("#v2-text kbd")].map((k) => k.textContent ?? "");
+/** @param {Document} doc @returns {(string | undefined)[]} each choice's drawing: its toolbar */
+const drawnToolbars = (doc) =>
+  [...doc.querySelectorAll("#v2-choices li")].map(
+    (li) => /** @type {HTMLElement | null} */ (li.querySelector(".window"))?.dataset.toolbar,
+  );
+
+/** From the welcome screen straight to the window chapter (behaviour 3). */
+async function toAddressBar(/** @type {Document} */ doc) {
+  await press(doc, "3");
+  await atStep(doc, "address_bar");
+}
+
+add_task(async function address_bar_step_names_the_keys_in_force() {
+  // A failed assertion must not leave the rebound keys to the tasks after it.
+  registerCleanupFunction(removeConfig);
+  const { tab, doc } = await openFlow();
+  await toAddressBar(doc);
+  Assert.ok(found(doc.getElementById("v2-progress")).textContent.includes("The window"));
+  Assert.deepEqual(textKeys(doc), ["ctrl+l", "alt+d", "I", "ctrl+b u"], "the default keymap");
+  Assert.deepEqual(drawnToolbars(doc), ["shown", "hidden"], "a drawing of the window per choice");
+  // focus_urlbar rebound without alt+d, toggle_toolbar left without a key: the step, open, draws
+  // its text again when the file is read (behaviour 12).
+  await IOUtils.writeUTF8(
+    configFile(),
+    'schema = 2\n[keys]\nfocus_urlbar = ["ctrl+k", "ctrl+l"]\ntoggle_toolbar = []\n',
+  );
+  await ConfigHost.reload();
+  await TestUtils.waitForCondition(() => textKeys(doc).includes("ctrl+k"), "the rebound key");
+  Assert.deepEqual(textKeys(doc), ["ctrl+k", "ctrl+l", "I"], "alt+d unbound is left out");
+  Assert.ok(
+    [...doc.querySelectorAll("#v2-text code")].some((c) => c.textContent === ":toolbar"),
+    "an action with no key is named by its command",
+  );
+  await closeFlow(tab);
+});
+
+add_task(async function address_bar_step_writes_toolbar_and_applies_live() {
+  // A failed assertion must not leave the toolbar hidden for the tasks after it.
+  registerCleanupFunction(removeConfig);
+  const { tab, doc } = await openFlow();
+  await toAddressBar(doc);
+  Assert.equal(current(doc), "Shown", "shown is in force without the key");
+  Assert.equal(writes(doc), "Writes nothing");
+  await press(doc, "j");
+  Assert.equal(writes(doc), 'Writes [ui] toolbar = "hidden"');
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  // A missing file is written as the commented template with the one key set, and nothing else.
+  const { setConfigKeysText } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/core/config.mjs",
+  );
+  const only = setConfigKeysText(null, [{ table: "ui", key: "toolbar", value: "hidden" }], {
+    mac: AppConstants.platform === "macosx",
+  });
+  Assert.ok("text" in only, "the edit applies to the template");
+  Assert.equal(
+    await IOUtils.readUTF8(configFile()),
+    ("text" in only && only.text) || "",
+    "[ui] toolbar only",
+  );
+  await TestUtils.waitForCondition(
+    () => Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", false),
+    "the toolbar hides at once",
+  );
+  Assert.ok(document.documentElement.hasAttribute("vimma-toolbar-hidden"), "in this window too");
+  // Back: hidden is in force now, and enter on it writes nothing.
+  await press(doc, "h");
+  await atStep(doc, "address_bar");
+  Assert.equal(current(doc), "Hidden", "back opens on the value in force");
+  Assert.equal(writes(doc), "Writes nothing");
+  const before = await IOUtils.readUTF8(configFile());
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.equal(await IOUtils.readUTF8(configFile()), before, "nothing written");
+  await closeFlow(tab);
+  await TestUtils.waitForCondition(
+    () => !Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", false),
+    "the toolbar is back once the file is gone",
+  );
 });

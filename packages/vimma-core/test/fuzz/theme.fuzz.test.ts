@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import fc from "fast-check";
 import {
   PALETTE_KEYS,
-  TOKYO_NIGHT,
+  VIMMA_DARK,
   parseOmarchyColors,
   resolveTheme,
   tokensToCss,
@@ -50,7 +50,7 @@ const colorsToml = fc
       const lines = [...given].map(([k, v]) => `${JSON.stringify(k)} = ${v}`);
       if (complete) {
         for (const k of PALETTE_KEYS) {
-          if (!given.has(k)) lines.push(`${k} = ${JSON.stringify(TOKYO_NIGHT[k])}`);
+          if (!given.has(k)) lines.push(`${k} = ${JSON.stringify(VIMMA_DARK[k])}`);
         }
       }
       return `${lines.join("\n")}\n`;

@@ -334,6 +334,7 @@ const ACTION_NAMES = [...new Set(ACTIONS.map((a) => a.name))];
  */
 function wordIds(word, kind) {
   if (kind === "action") {
+    // Stryker disable next-line OptionalChaining: every ACTION_NAMES entry resolves
     const id = ACTION_NAMES.includes(word) ? resolveActionName(word)?.id : undefined;
     return id ? [id] : [];
   }
@@ -437,6 +438,7 @@ const commandsWithPrefix = (word, hidden = /** @type {readonly string[]} */ ([])
  *   not exist now (an unfinished feature's, while its pref is off)
  * @returns {CommandResult}
  */
+// Stryker disable next-line ArrayDeclaration: a default naming no action id hides nothing, as [] does
 export function parseCommandLine(line, { hidden = [] } = {}) {
   const m = /^[\s:]*([^\s:]\S*)([\s\S]*)$/.exec(line);
   if (!m) return Object.freeze({ kind: "empty" });
@@ -671,10 +673,13 @@ function aliasCandidates(command, text, aliases) {
  *   `hidden`: action ids whose commands are left out (parseCommandLine)
  * @returns {{ word: string, candidates: Candidate[] }}
  */
+// Stryker disable next-line ArrayDeclaration: a default naming no action id hides nothing, as [] does
 export function completeCommandLine(line, { limit = 20, args = {}, hidden = [] } = {}) {
   const rest = line.replace(/^[\s:]*/, "");
   const m = /^(\S*)(\s?)/.exec(rest);
+  // Stryker disable next-line OptionalChaining,StringLiteral: the pattern matches every string, so `m[1]` is a string
   const word = (m?.[1] ?? "").toLowerCase();
+  // Stryker disable next-line OptionalChaining: the pattern matches every string, so `m` is set
   if (m?.[2]) {
     const command = byWord.get(word)?.name;
     if (command === "tab") {
@@ -682,6 +687,7 @@ export function completeCommandLine(line, { limit = 20, args = {}, hidden = [] }
       const titles = /** @type {readonly string[]} */ (args.tab ?? []);
       return { word, candidates: tabCandidates(word, text, titles).slice(0, limit) };
     }
+    // Stryker disable next-line LogicalOperator: no command name is an Object.prototype key: spec is undefined, as null
     const spec = command && Object.hasOwn(ARGUMENT_KINDS, command) ? ARGUMENT_KINDS[command] : null;
     const names =
       spec && Object.hasOwn(args, spec.names)
@@ -695,6 +701,7 @@ export function completeCommandLine(line, { limit = 20, args = {}, hidden = [] }
         candidates: aliasCandidates(
           word,
           text,
+          // Stryker disable next-line ArrayDeclaration: only reached when args.search is set (it is `names`)
           /** @type {readonly AliasCompletion[]} */ (args.search ?? []),
         ).slice(0, limit),
       };

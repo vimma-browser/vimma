@@ -17,6 +17,7 @@ import {
   stepChoices,
   stepKeys,
   textParts,
+  windowSketch,
 } from "../src/system/setup-steps.mjs";
 import { parseConfig, setConfigKeysText } from "../src/config/config.mjs";
 import { compileKeymap } from "../src/keys/keymap.mjs";
@@ -119,6 +120,21 @@ describe("keys named on the page (decisions 8 and 9)", () => {
     expect(stepKeys(rebound, "focus_urlbar")).toEqual(["ctrl+k", "I"]);
     expect(fillStepText(s, rebound)).toContain("<kbd>ctrl+k</kbd> or <kbd>I</kbd>");
     expect(fillStepText(s, rebound)).not.toContain("alt+d");
+  });
+
+  test("a key normal mode binds to another action, or unbinds, is not named", () => {
+    // [modal.normal] takes ctrl+l for tab.next: on a page ctrl+l no longer opens the address bar.
+    const shadowed = compileKeymap({ modal: { normal: { "<C-l>": "tab.next" } } });
+    expect(stepKeys(shadowed, "focus_urlbar")).toEqual(["alt+d", "I"]);
+    const unbound = compileKeymap({ unbind: { normal: ["<C-l>"] } });
+    expect(stepKeys(unbound, "focus_urlbar")).toEqual(["alt+d", "I"]);
+    expect(fillStepText(step("address_bar"), shadowed)).toContain(
+      "<kbd>alt+d</kbd> or <kbd>I</kbd> still opens",
+    );
+    // The prefix chords stay: they run the action in normal mode.
+    expect(stepKeys(compileKeymap({ keys: { prefix: "ctrl+a" } }), "toggle_toolbar")).toEqual([
+      "ctrl+a u",
+    ]);
   });
 
   test("keys with a mode suffix are left out of a placeholder", () => {
@@ -325,24 +341,31 @@ describe("colours: the effect in force (decision 12)", () => {
     ]);
   });
 
-  test('colours: light or system with tokyo-night also writes name = "vimma"', () => {
-    const tokyo = 'schema = 2\n[theme]\nname = "tokyo-night"\nappearance = "dark"\n';
-    const r = stepChoices(colours, inForce(tokyo), { omarchy: false });
-    expect(r.choices[0]).toMatchObject({ label: 'Keep "tokyo-night"', keep: true });
+  // #1383: vimma is the only built-in palette. The removed "tokyo-night" is vimma in force, so
+  // the step offers no Keep and a choice writes no name.
+  test("colours: a removed palette's name is vimma: no Keep, no name written", () => {
+    const removed = 'schema = 2\n[theme]\nname = "tokyo-night"\nappearance = "dark"\n';
+    const r = stepChoices(colours, inForce(removed), { omarchy: false });
+    expect(r.choices.some((c) => c.keep)).toBe(false);
+    expect(r.choices[r.selected]?.label).toBe("Dark");
+    expect(writes(removed, "Light", false)).toEqual([
+      { table: "theme", key: "appearance", value: "light" },
+    ]);
+    expect(writes(removed, "Dark", false)).toEqual([]);
+  });
+
+  test('colours: another name in force is kept, and a choice also writes name = "vimma"', () => {
+    const other = { ...inForce("schema = 2\n"), "theme.name": "other" };
+    const r = stepChoices(colours, other, { omarchy: false });
+    expect(r.choices[0]).toMatchObject({ label: 'Keep "other"', keep: true });
     expect(r.selected).toBe(0);
-    expect(planAtEnter(colours, r.choices[0]!, inForce(tokyo), { omarchy: false })).toEqual([]);
-    expect(writes(tokyo, "Light", false)).toEqual([
+    expect(planAtEnter(colours, r.choices[0]!, other, { omarchy: false })).toEqual([]);
+    const light = r.choices.find((c) => c.label === "Light")!;
+    expect(planAtEnter(colours, light, other, { omarchy: false })).toEqual([
       { table: "theme", key: "name", value: "vimma" },
       { table: "theme", key: "appearance", value: "light" },
     ]);
-    expect(writes(tokyo, "Follow the system", false)).toEqual([
-      { table: "theme", key: "name", value: "vimma" },
-      { table: "theme", key: "appearance", value: "system" },
-    ]);
-    expect(writes(tokyo, "Dark", false)).toEqual([]);
-    // The line the step shows says so before enter.
-    const light = r.choices.find((c) => c.label === "Light")!;
-    expect(editLines(planChoice(light, inForce(tokyo)))).toEqual([
+    expect(editLines(planChoice(light, other))).toEqual([
       '[theme] name = "vimma"',
       '[theme] appearance = "light"',
     ]);
@@ -521,5 +544,72 @@ describe("step text as page nodes", () => {
       { tag: "kbd", text: "<" },
       { tag: null, text: " <b>x</b>" },
     ]);
+  });
+});
+
+describe("the window chapter (behaviours 9, 17 and 24, Page layout)", () => {
+  const bar = step("address_bar");
+
+  test("the address bar step names every page key of focus_urlbar and toggle_toolbar", () => {
+    expect(fillStepText(bar, keymap)).toBe(
+      "With it hidden, <kbd>ctrl+l</kbd>, <kbd>alt+d</kbd> or <kbd>I</kbd> still opens the " +
+        "address bar for typing, and <kbd>ctrl+b u</kbd> shows or hides the whole toolbar " +
+        "until restart.",
+    );
+    // A rebound key as bound, an unbound one left out, an action without a key by its command.
+    const own = compileKeymap({
+      keys: { focus_urlbar: ["ctrl+k", "ctrl+l"], toggle_toolbar: [] },
+    });
+    expect(fillStepText(bar, own)).toBe(
+      "With it hidden, <kbd>ctrl+k</kbd>, <kbd>ctrl+l</kbd> or <kbd>I</kbd> still opens the " +
+        "address bar for typing, and <code>:toolbar</code> shows or hides the whole toolbar " +
+        "until restart.",
+    );
+  });
+
+  test("the address bar step opens on the toolbar in force: shown by default, else the file's", () => {
+    expect(stepChoices(bar, inForce("schema = 2\n")).selected).toBe(0);
+    const hidden = inForce('schema = 2\n[ui]\ntoolbar = "hidden"\n');
+    const r = stepChoices(bar, hidden);
+    expect(r.choices.map((c) => c.label)).toEqual(["Shown", "Hidden"]);
+    expect(r.selected).toBe(1);
+    expect(planAtEnter(bar, r.choices[1]!, hidden)).toEqual([]);
+    expect(planAtEnter(bar, r.choices[0]!, hidden)).toEqual([
+      { table: "ui", key: "toolbar", value: "shown" },
+    ]);
+  });
+
+  test("each choice draws the window it leaves, with the rest of the window in force", () => {
+    const now = inForce('schema = 2\n[ui]\ntabline = "always"\n');
+    const r = stepChoices(bar, now);
+    expect(r.choices.map((c) => windowSketch(bar, c, now))).toEqual([
+      { toolbar: "shown", tabline: "always" },
+      { toolbar: "hidden", tabline: "always" },
+    ]);
+    // Without a [ui] table: the built-in defaults.
+    expect(windowSketch(bar, r.choices[1]!, inForce("schema = 2\n"))).toEqual({
+      toolbar: "hidden",
+      tabline: "off",
+    });
+  });
+
+  test("the tab line step draws its choices over the same window", () => {
+    const tabs = step("tab_line");
+    const now = inForce('schema = 2\n[ui]\ntoolbar = "hidden"\n');
+    expect(stepChoices(tabs, now).choices.map((c) => windowSketch(tabs, c, now))).toEqual([
+      { toolbar: "hidden", tabline: "off" },
+      { toolbar: "hidden", tabline: "always" },
+      { toolbar: "hidden", tabline: "auto" },
+    ]);
+  });
+
+  test("keep draws the window in force, and a step outside the window chapter draws none", () => {
+    const keep = { label: "Keep", edits: [], keep: true as const };
+    expect(windowSketch(bar, keep, { "ui.toolbar": "hidden", "ui.tabline": "auto" })).toEqual({
+      toolbar: "hidden",
+      tabline: "auto",
+    });
+    const engine = step("search_engine");
+    expect(windowSketch(engine, { label: "x", edits: [] }, {})).toBeNull();
   });
 });

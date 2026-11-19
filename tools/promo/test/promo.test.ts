@@ -118,12 +118,12 @@ describe("promoConfig", () => {
     ).toEqual([]);
     const text = promoConfig({
       source: "file",
-      name: "tokyo-night",
+      name: "vimma",
       colors: { accent: "#ff9e64" },
       toolbar: "hidden",
     });
     expect(text).toBe(
-      'schema = 2\n\n[theme]\nsource = "file"\nname = "tokyo-night"\n\n[theme.colors]\n' +
+      'schema = 2\n\n[theme]\nsource = "file"\nname = "vimma"\n\n[theme.colors]\n' +
         'accent = "#ff9e64"\n\n[ui]\ntoolbar = "hidden"\n',
     );
     expect(parseConfig(text).errors).toEqual([]);

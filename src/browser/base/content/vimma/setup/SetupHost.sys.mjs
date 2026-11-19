@@ -37,6 +37,7 @@ import {
   planAtEnter,
   stepChoices,
   textParts,
+  windowSketch,
 } from "../core/setup-steps.mjs";
 
 /** @import { SetupChoice, SetupRuntime } from "../core/setup-steps.mjs" */
@@ -434,6 +435,8 @@ export const SetupHost = {
         keep: !!c.keep,
         lines: choiceLines(step, c, inForce, { omarchy, missing: !!agent.missing }),
         note: choiceNote(step, c, inForce, agent),
+        // The window this choice leaves, for the step's drawing; null outside chapter 3.
+        window: windowSketch(step, c, inForce),
       })),
       selected,
       blocked,

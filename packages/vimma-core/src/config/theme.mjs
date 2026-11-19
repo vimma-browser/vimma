@@ -195,48 +195,16 @@ export const VIMMA_LIGHT = Object.freeze({
   bright_magenta: "#7b3f99", // derived: a deep violet beside the magenta, for the element badge
 });
 
-/** Omarchy's stock tokyo-night colors.toml, built in as `[theme] name = "tokyo-night"` (dark). */
-/** @type {Readonly<Palette>} */
-export const TOKYO_NIGHT = Object.freeze({
-  mode: "dark",
-  accent: "#7aa2f7",
-  selection: "#292e42",
-  muted: "#414868",
-  background: "#1a1b26",
-  dark_background: "#13141c",
-  darker_background: "#0e0e14",
-  lighter_background: "#24283b",
-  foreground: "#a9b1d6",
-  dark_foreground: "#565f89",
-  light_foreground: "#b4bee6",
-  bright_foreground: "#c0caf5",
-  red: "#f7768e",
-  yellow: "#e0af68",
-  orange: "#eb927b",
-  green: "#9ece6a",
-  cyan: "#449dab",
-  blue: "#7aa2f7",
-  magenta: "#ad8ee6",
-  brown: "#75493d",
-  bright_red: "#ff7a93",
-  bright_yellow: "#ff9e64",
-  bright_green: "#b9f27c",
-  bright_cyan: "#0db9d7",
-  bright_blue: "#7da6ff",
-  bright_magenta: "#bb9af7",
-});
-
 /**
  * @typedef {object} BuiltinTheme
  * @property {Readonly<Palette>} dark
- * @property {Readonly<Palette>} [light]  with one, the theme follows prefers-color-scheme
+ * @property {Readonly<Palette>} light  the theme follows prefers-color-scheme between the two
  */
 
 /** The built-in palettes, by `[theme] name`. */
 /** @type {Readonly<Record<string, Readonly<BuiltinTheme>>>} */
 export const BUILTIN_THEMES = Object.freeze({
   vimma: Object.freeze({ dark: VIMMA_DARK, light: VIMMA_LIGHT }),
-  "tokyo-night": Object.freeze({ dark: TOKYO_NIGHT }),
 });
 
 /** `[theme] name` by default. */
@@ -841,7 +809,7 @@ function mix(a, b, t) {
  * @property {"dark" | "light"} mode
  * @property {ThemeError[]} errors
  * @property {string[]} warnings
- * @property {boolean} adaptive  the tokens are a built-in's with a light variant, and no
+ * @property {boolean} adaptive  the tokens are a built-in's (each has a light variant), and no
  *   `[theme.colors] mode` pins one: they change with `scheme`
  */
 
@@ -878,7 +846,7 @@ export function resolveTheme({ theme, omarchy = null, omarchyLightMode = false, 
   const pinned = modePinned || appearance !== "system";
   const variant = modePinned ? theme.colors.mode : appearance === "system" ? scheme : appearance;
   /** @type {Palette} */
-  let base = { ...(variant === "light" && builtin.light ? builtin.light : builtin.dark) };
+  let base = { ...(variant === "light" ? builtin.light : builtin.dark) };
   let fromBuiltin = true;
   if (theme.source === "omarchy") {
     // No Omarchy file: the built-in palette, and nothing to report (theme-appearance A).
@@ -926,7 +894,7 @@ export function resolveTheme({ theme, omarchy = null, omarchyLightMode = false, 
     }
   }
   const mode = palette.mode === "light" ? "light" : "dark";
-  const adaptive = fromBuiltin && !pinned && builtin.light !== undefined;
+  const adaptive = fromBuiltin && !pinned;
   return { tokens, mode, errors, warnings, adaptive };
 }
 

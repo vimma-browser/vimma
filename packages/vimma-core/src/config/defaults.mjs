@@ -82,7 +82,7 @@ export const TABLINE_WIDTH = Object.freeze({ min: 4, max: 60, default: 14 });
 /**
  * @typedef {object} ThemeInput
  * @property {"omarchy" | "file"} [source]
- * @property {string} [name]   a built-in palette: "vimma" or "tokyo-night"
+ * @property {string} [name]   the built-in palette: "vimma"
  * @property {"system" | "dark" | "light"} [appearance]  the built-in palette's variant
  * @property {string} [font]
  * @property {Record<string, string>} [colors]
@@ -646,9 +646,9 @@ export function formatDefaultsToml() {
     "[workspaces]",
     '# work = { color = "blue", icon = "briefcase", home = "https://intranet.example" }',
     "",
-    '# The built-in palette `name`: "vimma" (vimma.dev\'s colours, dark or light) or "tokyo-night"',
-    '# (dark). "omarchy" follows your Omarchy theme where Omarchy is installed and uses `name`',
-    '# elsewhere; "file" always uses `name`.',
+    '# The built-in palette `name`: "vimma", vimma.dev\'s colours, dark or light. "omarchy" follows',
+    '# your Omarchy theme where Omarchy is installed and uses `name` elsewhere; "file" always uses',
+    "# `name`.",
     "[theme]",
     `source = ${tomlString(theme.source)}`,
     `name = ${tomlString(theme.name)}`,
