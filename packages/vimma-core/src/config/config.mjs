@@ -193,7 +193,6 @@ export const CONTAINER_ICONS = [
   "fence",
 ];
 const TOP_KEYS = [
-  "schema",
   "keys",
   "modal",
   "unbind",
@@ -235,6 +234,8 @@ const SITE_KEYS = ["insert", "unbind"];
 const MODAL_KEYS = ["leader", "timeout_ms", "hint_chars", "insert_editing"];
 const FIREFOX_KEYS = ["disable", "enable"];
 const FIREFOX_DISABLE = 'must be "all" or a list of keys like "ctrl+w"';
+/** The top-level key older files carry: accepted with any value and ignored (#1379). */
+const SCHEMA_KEY = "schema";
 /** `[bookmarks]` (docs/specs/bookmarks.md, decision 2; docs/specs/bookmarklets.md, B1). */
 const BOOKMARKS_KEYS = ["root", "bookmarklets", "write_back"];
 /** `[routing]` (docs/specs/app-routes.md, decision 16). */
@@ -450,11 +451,13 @@ function validate(raw, warnings = []) {
   };
 
   for (const [key, v] of Object.entries(raw)) {
+    // A `schema` line, which older files carry, is ignored; it is no key to suggest (#1379).
+    if (key === SCHEMA_KEY) continue;
     if (!TOP_KEYS.includes(key)) unknownKey([key], key, TOP_KEYS);
     else if (key === "routes") {
       // An array of tables (workspace-routing); routes.mjs checks it.
       for (const p of validateRoutes(v)) problems.push({ ...p, path: [key, ...p.path] });
-    } else if (key !== "schema") table([key], v);
+    } else table([key], v);
   }
 
   if (isTable(raw.modal)) {
@@ -1415,7 +1418,8 @@ export function rawUpdatesCheck(text) {
   const parsed = parseToml(text, { integersAsBigInt: true });
   if (!parsed.ok) return null;
   const { updates, ...rest } = parsed.value;
-  if (Object.keys(rest).some((key) => !TOP_KEYS.includes(key)) || strayCheck(rest)) return null;
+  const unknown = (/** @type {string} */ key) => key !== SCHEMA_KEY && !TOP_KEYS.includes(key);
+  if (Object.keys(rest).some(unknown) || strayCheck(rest)) return null;
   if (updates === undefined) return "missing";
   if (!isTable(updates)) return null;
   if (updates.check === undefined) return Object.keys(updates).length ? null : "missing";

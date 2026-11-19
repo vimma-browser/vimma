@@ -2101,8 +2101,8 @@ The chat window works with any model behind an OpenAI-compatible chat API that r
 calls, and with Anthropic's Messages API. Pick one in the window (`Esc`, then `m`), or list it in
 `config.toml` as an `[[agent.providers]]` table: a name, a kind, an endpoint and a model, never a
 key (a `key` or `api_key` field is a config error). A mistake in it refuses the whole file, and
-the status bar names the error. Each example below is a whole `config.toml`. To keep several providers, put their
-`[[agent.providers]]` tables in one file, under one `[agent]`.
+the status bar names the error. Each example below is a whole `config.toml`. To keep several
+providers, put their `[[agent.providers]]` tables in one file, under one `[agent]`.
 
 **Ollama** (port 11434). Its default context of 4096 tokens holds less than the agent's tool
 definitions. A model you pick in the window gets a copy with 32,768 tokens of context

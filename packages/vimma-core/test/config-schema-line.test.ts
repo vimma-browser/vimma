@@ -87,6 +87,12 @@ describe("config.toml without a schema line", () => {
     }
   });
 
+  test("a misspelt key is not pointed at schema, which does nothing", () => {
+    expect(parseConfig(toml("schme = 2")).errors).toEqual([
+      { line: 1, path: "schme", message: 'unknown key "schme"' },
+    ]);
+  });
+
   test("other validation still applies next to a schema line", () => {
     const r = parseConfig(toml("schema = 2", "[panes]", "max = 99"));
     expect(r.config).toBeNull();
