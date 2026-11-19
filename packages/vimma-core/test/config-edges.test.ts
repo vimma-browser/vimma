@@ -330,20 +330,32 @@ describe("addAgentProviderText", () => {
       });
     });
 
-    test("[agent] that would land inside a multi-line string", () => {
-      const text = cfg(
-        // Line-ending backslashes keep the template one line until [agent] lands in it, which
-        // validation now refuses before the guard sees it: a template is one line (#1283).
+    // setTomlKeys places `[agent]` by the parsed keys (setup-v2 decision 6), so a header-like
+    // line inside a multi-line string is passed over and `[agent]` goes before the real table.
+    test("[agent] goes before the real providers, not into a multi-line string", () => {
+      const fake = [
         "[search.aliases]",
         'g = """https://a.com/?q=%s\\',
         "[[agent.providers]]\\",
         '"""',
-        ...existing,
-      );
-      expect(addAgentProviderText(text, local, { makeDefault: true })).toEqual({
-        error:
-          "config.toml does not parse with the provider added: search.aliases.g: " +
-          "a template is one line without control characters (a line break, a tab)",
+      ];
+      const r = addAgentProviderText(cfg(...fake, ...existing), local, { makeDefault: true });
+      expect(r).toEqual({
+        name: "l",
+        text: cfg(
+          ...fake,
+          "[agent]",
+          'default = "l"',
+          "",
+          ...existing,
+          "",
+          "[[agent.providers]]",
+          'name = "l"',
+          'kind = "openai"',
+          'endpoint = "http://localhost:1/v1"',
+          'model = "m"',
+          "vision = false",
+        ),
       });
     });
   });

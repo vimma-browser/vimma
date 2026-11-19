@@ -442,7 +442,9 @@ function render(d) {
         "State",
         mcp.enabled
           ? `on${mcp.from === "config" ? " ([mcp] enabled in config.toml)" : " (:mcp on)"}`
-          : `off${mcp.from === "config" ? " ([mcp] enabled in config.toml)" : " (:mcp on turns it on)"}`,
+          : mcp.from === "session"
+            ? "off (:mcp off, until :mcp on or a restart)"
+            : `off${mcp.from === "config" ? " ([mcp] enabled in config.toml)" : " (:mcp on turns it on)"}`,
       ],
       // Decision 29: while MCP is on, each new full-control connection asks first.
       ["Full control", d.control.status],

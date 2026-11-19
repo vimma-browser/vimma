@@ -72,7 +72,7 @@ const CONTRACT = "@mozilla.org/network/protocol/about;1?what=vimma";
  *   without workspaces), beside the model's; the rest from WindowWorkspaces.health
  * @property {{ enabled: boolean, port: number | null, status: string }} control  `status`:
  *   full control's state with the minutes `:control on` left (docs/specs/vimma-mcp.md 29 D)
- * @property {{ enabled: boolean, from: "config" | "pref", workspace: string | null,
+ * @property {{ enabled: boolean, from: "session" | "config" | "pref", workspace: string | null,
  *   adopted: boolean, tabs: number }} mcp  agents (docs/specs/vimma-mcp.md): the switch and the
  *   agent workspace, with its tab count; never its URLs or titles
  * @property {string} windowManager  Hyprland, or none needed on macOS, and the private placement

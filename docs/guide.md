@@ -1974,21 +1974,26 @@ you, and `a` lets it work without asking until it quits, except where
   never in reach of an agent. What you open while in the agent workspace (`ctrl+t`, `:open`, the address
   bar, a bookmark) stays there.
 
-| Command          | What it does                                                                                                           |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `:mcp`           | Says whether agents are on or off, which workspace is theirs, and how many agents, questions and grants.               |
-| `:mcp on`        | Asks `Let local AI agents ask to use the "agent" workspace? Nothing runs until you allow it. y/N`, then turns them on. |
-| `:mcp off`       | Turns MCP agents off and ends their grants, without a question; not [Vimma's own agent](#vimmas-own-agent).            |
-| `:mcp revoke`    | Ends every grant you gave agents, at once.                                                                             |
-| `:mcp forget`    | Asks, then deletes the agent workspace's cookies and site data (its logins). The workspace stays.                      |
-| `:mcp log`       | Lists the last 100 agent requests, newest first: time, agent, tool, tab, keys or address, and what came of it.         |
-| `ctrl+b shift+a` | Answers the waiting agent request; with none, ends every grant at once.                                                |
-| `:control on 15` | Turns full control (`vimma-ctl`) on for 15 minutes, after a `y/N`; `:control off` ends it now.                         |
+| Command          | What it does                                                                                                                                                           |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `:mcp`           | Says whether agents are on or off, which workspace is theirs, and how many agents, questions and grants.                                                               |
+| `:mcp on`        | Asks `Let local AI agents ask to use the "agent" workspace? Nothing runs until you allow it. y/N`, then turns them on.                                                 |
+| `:mcp off`       | Turns MCP agents off and ends their grants, without a question, until `:mcp on` or a restart, whatever `config.toml` says; not [Vimma's own agent](#vimmas-own-agent). |
+| `:mcp revoke`    | Ends every grant you gave agents, at once.                                                                                                                             |
+| `:mcp forget`    | Asks, then deletes the agent workspace's cookies and site data (its logins). The workspace stays.                                                                      |
+| `:mcp log`       | Lists the last 100 agent requests, newest first: time, agent, tool, tab, keys or address, and what came of it.                                                         |
+| `ctrl+b shift+a` | Answers the waiting agent request; with none, ends every grant at once.                                                                                                |
+| `:control on 15` | Turns full control (`vimma-ctl`) on for 15 minutes, after a `y/N`; `:control off` ends it now.                                                                         |
 
 - When the agent workspace is one of yours rather than one Vimma made, `:mcp on` warns:
   `"agent" is your own workspace (3 tabs, its own logins). Agents will be able to read it. y/N`.
 - `:mcp on|off` is remembered in the pref `vimma.mcp.enabled`. `[mcp] enabled` in `config.toml`
-  wins over it; then `:mcp on|off` changes nothing and says to edit the file.
+  wins over the pref when Vimma starts and whenever it reads the file.
+- `:mcp off` always wins for the rest of the session: with `[mcp] enabled = true` in the file,
+  agents stay off however often the file is read or edited, until `:mcp on` (which asks again)
+  or a restart, when the file turns them on again. `:mcp` then says
+  `mcp off (until :mcp on or a restart)`. With `[mcp] enabled = false`, `:mcp on` changes
+  nothing and says to edit the file.
 - `about:vimma`'s **Agents (MCP)** section shows the switch, full control's state and the agent
   workspace's tab count.
 
