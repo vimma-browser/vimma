@@ -537,6 +537,40 @@ add_task(async function a_library_change_during_an_apply_is_written_not_put_back
   await reset();
 });
 
+add_task(async function a_sync_change_between_the_write_and_the_plan_is_written_not_put_back() {
+  // #1365: a Sync change that lands after the run wrote Places' change to the file, but before
+  // it plans, is an outside change for the next run, not a divergence from the file to put back.
+  await IOUtils.writeUTF8(bookmarksFile, '[bookmarks.work]\n"a" = "https://example.com/a"\n');
+  await untilFolder("work", ["a https://example.com/a"], "loaded");
+  const a = await guidOf("https://example.com/a");
+  const original = /** @type {NonNullable<typeof mirror.writeFile>} */ (mirror.writeFile);
+  let once = true;
+  /** @type {typeof original} */
+  const racing = async (path, compute) => {
+    const r = await original(path, compute);
+    if (once && !("error" in r) && r.text?.includes('"b2"')) {
+      once = false;
+      await PlacesUtils.bookmarks.update({ guid: a, title: "b3", source: SYNC });
+    }
+    return r;
+  };
+  mirror.writeFile = racing;
+  try {
+    await PlacesUtils.bookmarks.update({ guid: a, title: "b2", source: SYNC });
+    await until(() => !once, "Sync's second change landed right after the first was written");
+    await quiet();
+  } finally {
+    mirror.writeFile = original;
+  }
+  Assert.deepEqual(await folderContents("work"), ["b3 https://example.com/a"], "kept in Places");
+  Assert.equal(
+    await IOUtils.readUTF8(bookmarksFile),
+    '[bookmarks.work]\n"b3" = "https://example.com/a"\n',
+    "and written to the file",
+  );
+  await reset();
+});
+
 add_task(async function a_renamed_or_deleted_workspace_folder_follows_write_back_all() {
   await IOUtils.writeUTF8(
     bookmarksFile,

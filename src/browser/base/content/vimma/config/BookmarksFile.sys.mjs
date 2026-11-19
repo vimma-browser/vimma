@@ -1062,12 +1062,16 @@ export class BookmarksFileImpl {
       name: d.name,
       folder: d.bookmarksFolder ?? null,
     }));
-    /** @param {{ tables: Base["tables"] } | null} from @param {number | null} ok */
-    const plan = async (from, ok) =>
+    /**
+     * @param {{ tables: Base["tables"] } | null} from
+     * @param {number | null} ok
+     * @param {PlacesNode} [tree]  Places as already read; read now when absent
+     */
+    const plan = async (from, ok, tree) =>
       planMirror({
         tables,
         base: from,
-        places: /** @type {PlacesNode} */ (await PU.promiseBookmarksTree("")),
+        places: tree ?? /** @type {PlacesNode} */ (await PU.promiseBookmarksTree("")),
         workspaces: ws,
         bookmarklets,
         approved: ok,
@@ -1075,7 +1079,10 @@ export class BookmarksFileImpl {
         keep,
         makeGuid: () => PU.history.makeGuid(),
       });
-    let p = await plan(base, approved);
+    // After a merge, the plan reads Places as the merge did. Reading it again would show a change
+    // that landed since (Sync) as a divergence from the file and put it back, where Behaviour 13
+    // writes it: the closing compare below finds it instead, and the next run merges it (#1365).
+    let p = await plan(base, approved, outside && !outside.putBack ? outside.tree : undefined);
     // D7: a table taking over a folder writes the folder's bookmarks the file lacks to the file,
     // then reads it again; what the file cannot hold is still asked about.
     if (p.adopt.length && !how.adopted && source && this.writable()) {
@@ -1219,7 +1226,7 @@ export class BookmarksFileImpl {
       return null;
     }
     const putBack = how.trigger === "start" && this.freshDatabase;
-    if (putBack) return { merge: first, base, written: null, putBack: true };
+    if (putBack) return { merge: first, base, written: null, putBack: true, tree };
     const removing = first.removing.reduce((n, x) => n + x.count, 0);
     const many = tooManyRemoved(first.removing.map((x) => ({ removed: x.count, had: x.had })));
     if (many && !(how.outside !== undefined && removing <= how.outside)) {
@@ -1255,7 +1262,9 @@ export class BookmarksFileImpl {
       tables: first.base.tables,
       ...(first.local.length ? { local: first.local } : {}),
     };
-    if (first.text === null) return { merge: first, base: merged, written: null, putBack: false };
+    if (first.text === null) {
+      return { merge: first, base: merged, written: null, putBack: false, tree };
+    }
     let merge = first;
     const allowed = how.outside ?? (many ? 0 : removing);
     /** @param {string | null} now */
@@ -1297,7 +1306,7 @@ export class BookmarksFileImpl {
       };
       // Saved at once, so the base and the file agree even if Firefox stops before the run ends.
       await this.saveBase(after);
-      return { merge, base: after, written: w.text, putBack: false };
+      return { merge, base: after, written: w.text, putBack: false, tree };
     }
   }
 
