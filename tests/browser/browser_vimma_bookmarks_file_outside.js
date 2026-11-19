@@ -613,9 +613,40 @@ add_task(async function a_sync_change_in_the_run_after_a_failed_apply_is_written
   await reset();
 });
 
+add_task(async function an_apply_that_fails_twice_in_a_row_pauses_and_says_so() {
+  // The second failed apply in a row pauses: under "all" it is the only bound on a plan that can
+  // never be applied, which would otherwise rerun without end (#1368).
+  await IOUtils.writeUTF8(bookmarksFile, '[bookmarks.work]\n"a" = "https://example.com/a"\n');
+  await untilFolder("work", ["a https://example.com/a"], "loaded");
+  const apply = mirror.apply.bind(mirror);
+  let calls = 0;
+  mirror.apply = async (/** @type {Parameters<typeof apply>[0]} */ ops) => {
+    if (!ops.length) return apply(ops);
+    calls++;
+    throw new Error("test: every apply fails");
+  };
+  try {
+    await IOUtils.writeUTF8(
+      bookmarksFile,
+      '[bookmarks.work]\n"a" = "https://example.com/a"\n"b" = "https://example.com/b"\n',
+    );
+    await until(
+      () => noticeText().includes("bookmarks.toml: bookmarks could not be applied; paused until"),
+      "says it paused",
+    );
+    await mirror.settledRuns();
+    Assert.equal(mirror.paused?.why, "failed", "paused");
+    Assert.equal(calls, 2, "after two applies, and no more");
+  } finally {
+    mirror.apply = apply;
+  }
+  Assert.deepEqual(await folderContents("work"), ["a https://example.com/a"], "Places as it was");
+  await reset();
+});
+
 add_task(async function a_sync_removal_that_lands_before_an_apply_is_named_sync() {
-  // #1368: the apply forgets only its own events, so the run that writes Sync's removal names
-  // Sync, not Firefox.
+  // #1368: the apply keeps the names of changes that landed before it, so the run that writes
+  // Sync's removal names Sync, not Firefox.
   await IOUtils.writeUTF8(
     bookmarksFile,
     '[bookmarks.work]\n"a" = "https://example.com/a"\n"c" = "https://example.com/c"\n',

@@ -931,8 +931,8 @@ export class BookmarksFileImpl {
    */
   async run(how) {
     if (!this.ready) return;
-    // Who changed what since the last run (Behaviour 14), taken now: the apply's own events
-    // clear it.
+    // Who changed what since the last run (Behaviour 14), taken now, so that a change that lands
+    // during this run is named by the run that writes it.
     const burst = new Map(this.burst);
     this.burst.clear();
     const eventTables = new Map(this.eventTables);
@@ -2000,8 +2000,9 @@ export class BookmarksFileImpl {
   async apply(ops) {
     if (!ops.length) return;
     const B = places().bookmarks;
-    // Only the apply's own events are forgotten: a change that landed before it (Sync, after the
-    // merge read Places) keeps its name for the run that writes it (Behaviour 14, #1368).
+    // Events during the apply are forgotten (its own, and any that race it); a change that landed
+    // before it (Sync, after the merge read Places) keeps its name for the run that writes it
+    // (Behaviour 14, #1368).
     const before = new Map([...this.burst].map(([t, who]) => [t, new Set(who)]));
     this.applying = true;
     try {
