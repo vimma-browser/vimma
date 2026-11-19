@@ -130,7 +130,7 @@ describe("keys named on the page (decisions 8 and 9)", () => {
     expect(prefixHints(step("prefix_key"), own)).toEqual([["ctrl+b y"], ["ctrl+a y"]]);
   });
 
-  test("after a new prefix, the address bar step shows the new prefix", () => {
+  test("after a new prefix, the toolbar step shows the new prefix", () => {
     expect(fillStepText(step("address_bar"), keymap)).toContain("<kbd>ctrl+b u</kbd>");
     const after = compileKeymap({ keys: { prefix: "ctrl+a" } });
     expect(fillStepText(step("address_bar"), after)).toContain("<kbd>ctrl+a u</kbd>");
