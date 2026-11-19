@@ -4,10 +4,12 @@
 
 // The first-run setup (docs/specs/first-run-setup.md): about:vimma-setup, registered at runtime
 // like about:vimma (no upstream patch), and the privileged half of the page: the AMO requests,
-// the add-on installs through Firefox's AMO path, the search engines and the config.toml write.
-// The page only draws and takes keys; nothing here is reachable from the control socket.
+// the add-on installs through Firefox's AMO path, the search engines and the config.toml write,
+// and for setup v2's Moving in chapter (docs/specs/setup-v2.md) Make Default and the import
+// wizard. The page only draws and takes keys; nothing here is reachable from the control socket.
 
 import { ConfigHost } from "../config/ConfigHost.sys.mjs";
+import { AppLauncher } from "../services/AppLauncher.sys.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
 import { formatConfigTemplate } from "../core/defaults.mjs";
 import { setTomlKeys } from "../core/toml.mjs";
@@ -37,6 +39,9 @@ const OFFERED_PREF = "vimma.setup.offered";
 // Tests point AMO at a local server; a user never needs to.
 const AMO_PREF = "vimma.setup.amoApi";
 const CONFIG_PATH_PREF = "vimma.config.path";
+// Settings hides Make Default while this pref is locked (main.js, isNotDefaultPane).
+const DEFAULT_BUTTON_PREF = "pref.general.disable_button.default_browser";
+const WIZARD_URL = "chrome://browser/content/migration/migration-dialog-window.html";
 const FILE_MODE = 0o600;
 const DIR_MODE = 0o700;
 
@@ -104,6 +109,20 @@ const amoBase = () => Services.prefs.getStringPref(AMO_PREF, AMO_API);
 
 /** The file the setup edits: config.toml, or the one `vimma.config.path` names (decision 11). */
 const configFile = () => ConfigHost.configFile;
+
+/**
+ * Firefox's shell service: the proxy whose own object carries AppLauncher's wrappers, so a call
+ * here takes the same path as Settings' Make Default.
+ */
+const shell = () =>
+  ChromeUtils.importESModule("moz-src:///browser/components/shell/ShellService.sys.mjs")
+    .ShellService;
+
+/**
+ * The import wizard open over a setup page's browser, until it closes.
+ * @type {WeakMap<MozBrowser, Promise<"closed">>}
+ */
+const wizards = new WeakMap();
 
 /** @param {unknown} e */
 const notFound = (e) => /** @type {Thrown} */ (e)?.name === "NotFoundError";
@@ -285,6 +304,86 @@ export const SetupHost = {
       install.addListener(listener);
       AM.installAddonFromAOM(browser, Services.io.newURI(SETUP_URL), install);
     });
+  },
+
+  /**
+   * Whether Vimma is the default browser now, and whether the default browser step may ask to
+   * make it so: not where Settings hides its Make Default button (main.js, isNotDefaultPane;
+   * DefaultBrowserHelper.canCheck): a policy against it, its locked pref, or Flatpak, which can
+   * neither set nor detect the default.
+   * @returns {{ isDefault: boolean, canSet: boolean }}
+   */
+  defaultBrowserState() {
+    if (AppLauncher.underFlatpak()) return { isDefault: false, canSet: false };
+    let isDefault = false;
+    try {
+      // forAllTypes, as Settings asks; AppLauncher's wrapper also counts Omarchy's router.
+      isDefault = Boolean(shell().isDefaultBrowser(false, true));
+    } catch (e) {
+      console.error("vimma: setup cannot tell whether Vimma is the default browser", e);
+    }
+    const canSet =
+      Services.policies.isAllowed("setDefaultBrowser") &&
+      !Services.prefs.prefIsLocked(DEFAULT_BUTTON_PREF);
+    return { isDefault, canSet };
+  },
+
+  /**
+   * Make Default, as Settings' button asks it (decision 17): Firefox's shell service, which
+   * checks the policy again, through AppLauncher's wrapper where a package installed one
+   * (security O10, O11). Nothing is asked when Vimma already is the default.
+   * @returns {Promise<"default" | "asked" | "unavailable" | "failed">} "asked" when the system
+   *   took the request but the check still says another browser is the default
+   */
+  async setDefaultBrowser() {
+    const before = this.defaultBrowserState();
+    if (before.isDefault) return "default";
+    if (!before.canSet) return "unavailable";
+    try {
+      await shell().setDefaultBrowser(false);
+    } catch (e) {
+      console.error("vimma: setup cannot make Vimma the default browser", e);
+      return "failed";
+    }
+    return this.defaultBrowserState().isDefault ? "default" : "asked";
+  },
+
+  /**
+   * Firefox's import wizard as a dialog over the setup page's tab, as Firefox's tabModal path
+   * opens it (MigrationUtils.showMigrationWizard), which gives no close signal of its own; the
+   * dialog box's closedPromise does (decision 17). Only over a browser showing the setup page,
+   * and never where the profileImport policy forbids it (security P9). A second request while
+   * the wizard is open waits for the same dialog.
+   * @param {MozBrowser | null} browser  the setup page's browser
+   * @returns {Promise<"closed" | "unavailable">}
+   */
+  openImportWizard(browser) {
+    const open = browser && wizards.get(browser);
+    if (open) return open;
+    if (!browser || browser.currentURI?.spec !== SETUP_URL) return Promise.resolve("unavailable");
+    if (!Services.policies.isAllowed("profileImport")) return Promise.resolve("unavailable");
+    for (const win of Services.wm.getEnumerator("navigator:browser")) {
+      const gBrowser = win.gBrowser;
+      if (!gBrowser?.getTabForBrowser(browser)) continue;
+      const { MigrationUtils } = ChromeUtils.importESModule(
+        "moz-src:///browser/components/migration/MigrationUtils.sys.mjs",
+      );
+      const { closedPromise } = gBrowser.getTabDialogBox(browser).open(
+        WIZARD_URL,
+        { features: "resizable=no", modalType: Ci.nsIPrompt.MODAL_TYPE_CONTENT },
+        {
+          options: { entrypoint: MigrationUtils.MIGRATION_ENTRYPOINTS.FILE_MENU, tabModal: true },
+        },
+      );
+      /** @type {Promise<"closed">} */
+      const closed = closedPromise.then(() => {
+        wizards.delete(browser);
+        return "closed";
+      });
+      wizards.set(browser, closed);
+      return closed;
+    }
+    return Promise.resolve("unavailable");
   },
 
   /**

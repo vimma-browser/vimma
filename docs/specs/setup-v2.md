@@ -364,7 +364,12 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     signal. Reason: each prompt, check and policy stays Firefox's and is tested there. When the
     dialog cannot be opened over the setup page (slice 3 checks this first), the step falls
     back to `showMigrationWizard` with the Settings tab and opens the next step when the user
-    comes back to the setup tab.
+    comes back to the setup tab. The check passed: the wizard opens over the setup page, which
+    loads in the parent process, takes the theme in force, closes with its own Cancel or `esc`,
+    and `closedPromise` resolves then, so the fallback is not built. `SetupHost.openImportWizard`
+    opens it only over a browser showing `about:vimma-setup`, never where the
+    `DisableProfileImport` policy forbids it, and a second request while it is open waits for
+    the same dialog, because a repeated `enter` must not stack wizards.
 18. **A feature pref while it lands.** `vimma.feature.setupV2` (default `false`) switches the
     page from today's flow to the chapters while the slices land (`CONTRIBUTING.md`,
     "Unfinished features"), because the summary flow must keep working on `main` until the new
@@ -513,6 +518,20 @@ last slice):
 - `finished_chapters_are_ticked_on_the_next_run`
 - `route_add_waits_for_a_running_rewrite` (`browser_vimma_workspace_routes.js`)
 - `agent_role_cannot_open_setup` (kept)
+
+Mochitest, `tests/browser/browser_vimma_setup_moving_in.js` (the host side of Moving in, with
+the shell service replaced, so no test changes the machine's default browser, and only
+Firefox's test migrator in the wizard):
+
+- `default_browser_state_follows_the_shell_service`
+- `set_default_browser_calls_the_shell_service`
+- `set_default_browser_does_nothing_when_vimma_already_is`
+- `set_default_browser_reports_a_failure`
+- `set_default_browser_respects_the_policy`
+- `set_default_browser_respects_the_locked_button_pref`
+- `import_wizard_opens_over_the_setup_tab_and_resolves_when_it_closes`
+- `import_wizard_opens_only_over_the_setup_page`
+- `import_wizard_respects_the_policy`
 
 e2e: the `setup-page` scenario gains screenshots of the welcome screen, one step, the address
 bar step and a stop screen, with the Omarchy and light themes, checked by eye for the key hints,

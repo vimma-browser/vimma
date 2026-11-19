@@ -303,6 +303,23 @@ describe("chrome code", () => {
     ]);
   });
 
+  // security.md O11 and P9: Make default and the import wizard are asked for only by the setup
+  // host, through Firefox's own shell service and dialog, and no control, MCP or agent code
+  // imports it.
+  test("asks for Make default and the import wizard only from the setup host", () => {
+    const SETUP = "src/browser/base/content/vimma/setup/SetupHost.sys.mjs";
+    const all = hits(/\.setDefaultBrowser\(|migration-dialog-window|showMigrationWizard\(/);
+    expect(all.filter((h) => !h.startsWith(`${SETUP}:`))).toEqual([]);
+    expect(all.map((h) => h.slice(h.indexOf(": ") + 2))).toEqual([
+      'const WIZARD_URL = "chrome://browser/content/migration/migration-dialog-window.html";',
+      "await shell().setDefaultBrowser(false);",
+    ]);
+    const reach = sources().filter(
+      ({ path, text }) => /\/vimma\/(ctl|agent)\//.test(path) && /SetupHost/.test(text),
+    );
+    expect(reach.map((s) => s.path)).toEqual([]);
+  });
+
   // security.md SP4, SP5: a site permission changes only through Firefox's SitePermissions, from
   // the picker's ops, and no control, MCP or agent code can reach those ops.
   test("changes a site permission only from the site permissions picker", () => {
