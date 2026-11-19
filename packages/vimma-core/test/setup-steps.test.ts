@@ -5,8 +5,13 @@ import {
   CHAPTERS,
   PAGE_KEYS,
   STEPS,
+  HINT_LAYOUTS,
   editLines,
   fillStepText,
+  PRESSED_MAX,
+  guessLayout,
+  hintRow,
+  rememberKey,
   inForceOf,
   planAtEnter,
   planChoice,
@@ -156,6 +161,24 @@ describe("keys named on the page (decisions 8 and 9)", () => {
     expect(prefixHints(step("prefix_key"), own)).toEqual([["ctrl+b y"], ["ctrl+a y"]]);
   });
 
+  test("a custom prefix in force is drawn for Keep, the candidates with their own", () => {
+    const own = compileKeymap({ keys: { prefix: "ctrl+space" } });
+    const now = inForce('schema = 2\n[keys]\nprefix = "ctrl+space"\n');
+    const { choices } = stepChoices(step("prefix_key"), now);
+    expect(choices.map((c) => c.label)).toEqual(['Keep "ctrl+space"', "ctrl+b", "ctrl+a"]);
+    expect(prefixHints(step("prefix_key"), own, choices)).toEqual([
+      ["ctrl+space ?"],
+      ["ctrl+b ?"],
+      ["ctrl+a ?"],
+    ]);
+  });
+
+  test("the hint letters step names the key that shows the hints, from the keymap", () => {
+    expect(fillStepText(step("hint_letters"), keymap)).toContain("<kbd>f</kbd>");
+    const rebound = compileKeymap({ modal: { normal: { t: "hint.follow" } } });
+    expect(fillStepText(step("hint_letters"), rebound)).toContain("<kbd>t</kbd>");
+  });
+
   test("after a new prefix, the toolbar step shows the new prefix", () => {
     expect(fillStepText(step("address_bar"), keymap)).toContain("<kbd>ctrl+b u</kbd>");
     const after = compileKeymap({ keys: { prefix: "ctrl+a" } });
@@ -247,6 +270,118 @@ describe("the value in force at enter (decision 4)", () => {
       "ui.toolbar": "hidden",
     });
     expect(inForce("schema = 2\n")["theme.appearance"]).toBe("system");
+  });
+});
+
+describe("your keys: the prefix and the hint letters in force (behaviours 9 and 26)", () => {
+  test("the prefix and hint letters in force: the file's, else the built-in default", () => {
+    expect(inForce("schema = 2\n")).toMatchObject({
+      "keys.prefix": "ctrl+b",
+      "modal.hint_chars": "asdfghjkl",
+    });
+    expect(
+      inForce('schema = 2\n[keys]\nprefix = "ctrl+a"\n[modal]\nhint_chars = "arstdhneio"\n'),
+    ).toMatchObject({ "keys.prefix": "ctrl+a", "modal.hint_chars": "arstdhneio" });
+  });
+
+  test("the prefix is compared as a chord, however the file spells it", () => {
+    const now = inForce('schema = 2\n[keys]\nprefix = "Control+a"\n');
+    expect(now["keys.prefix"]).toBe("ctrl+a");
+    const r = stepChoices(step("prefix_key"), now);
+    expect(r.choices[r.selected]?.label).toBe("ctrl+a");
+    expect(planChoice(r.choices[r.selected]!, now)).toEqual([]);
+  });
+
+  test("enter on ctrl+a writes [keys] prefix; the one in force writes nothing", () => {
+    const now = inForce("schema = 2\n");
+    const r = stepChoices(step("prefix_key"), now);
+    expect(r.choices.map((c) => c.label)).toEqual(["ctrl+b", "ctrl+a"]);
+    expect(r.selected).toBe(0);
+    expect(planAtEnter(step("prefix_key"), r.choices[0]!, now)).toEqual([]);
+    expect(editLines(planChoice(r.choices[1]!, now))).toEqual(['[keys] prefix = "ctrl+a"']);
+  });
+
+  test("a custom hint_chars in the file adds Keep, first and selected, and Keep writes nothing", () => {
+    const now = inForce('schema = 2\n[modal]\nhint_chars = "fjdkslaghei"\n');
+    const r = stepChoices(step("hint_letters"), now);
+    expect(r.choices[0]).toEqual({ label: 'Keep "fjdkslaghei"', edits: [], keep: true });
+    expect(r.selected).toBe(0);
+    expect(editLines(planAtEnter(step("hint_letters"), r.choices[0]!, now) ?? [])).toEqual([
+      "Writes nothing",
+    ]);
+  });
+});
+
+/** A key as the page's keydown saw it: the physical key and the character it typed. */
+const press = (keys: string, codes: string[]) =>
+  [...keys].map((key, i) => ({ key, code: codes[i] ?? "" }));
+
+describe("the hint letters step guesses the layout (decision 10)", () => {
+  // j and k, the page's own keys, on each layout (Research, "No keyboard-layout API").
+  const qwerty = press("jk", ["KeyJ", "KeyK"]);
+  const colemak = press("jk", ["KeyY", "KeyN"]);
+  const dvorak = press("jk", ["KeyC", "KeyV"]);
+  const layouts = HINT_LAYOUTS.map((l) => l.chars);
+
+  test("the layouts are the step's choices, in order", () => {
+    expect(HINT_LAYOUTS.map((l) => l.chars)).toEqual(
+      step("hint_letters").choices.map((c) => c.edits[0]?.value),
+    );
+  });
+
+  test("the hint step selects the layout that matches the pressed keys, QWERTY otherwise", () => {
+    expect(guessLayout(qwerty)).toBe("asdfghjkl");
+    expect(guessLayout(colemak)).toBe("arstdhneio");
+    expect(guessLayout(dvorak)).toBe("aoeuidhtns");
+    // Shifted letters and keys that are no letter tell the same.
+    expect(guessLayout([...press("J", ["KeyY"]), { key: "Enter", code: "Enter" }])).toBe(
+      "arstdhneio",
+    );
+    // A key every layout puts in the same place says nothing more: QWERTY, the first.
+    expect(guessLayout(press("a", ["KeyA"]))).toBe("asdfghjkl");
+    // No letter pressed, or a layout that is none of the three (AZERTY's a on KeyQ): no guess.
+    expect(guessLayout([])).toBeNull();
+    expect(guessLayout(press("a", ["KeyQ"]))).toBeNull();
+    expect(guessLayout([{ key: "Escape", code: "Escape" }])).toBeNull();
+  });
+
+  test("keys that fit two layouts at once fit none: QWERTY stays", () => {
+    // j where QWERTY has it, k where Colemak has it.
+    const mixed = press("jk", ["KeyJ", "KeyN"]);
+    expect(guessLayout(mixed)).toBeNull();
+    expect(hintRow(layouts, 0, mixed)).toBe(0);
+  });
+
+  test("a key that is no letter is never compared, even on a letter row", () => {
+    // `;` sits on KeySemicolon on QWERTY and Colemak, and on KeyZ on Dvorak: it says nothing.
+    expect(guessLayout(press(";", ["KeySemicolon"]))).toBeNull();
+    expect(guessLayout([...press(";", ["KeyZ"]), ...colemak])).toBe("arstdhneio");
+  });
+
+  test("the page keeps only the latest keys, at most PRESSED_MAX", () => {
+    let kept: { code: string; key: string }[] = [];
+    for (let i = 0; i < PRESSED_MAX + 5; i++) kept = rememberKey(kept, { code: "KeyJ", key: "j" });
+    expect(kept.length).toBe(PRESSED_MAX);
+    expect(PRESSED_MAX).toBe(32);
+    // The newest wins: Colemak keys pressed last are among those kept.
+    for (const k of colemak) kept = rememberKey(kept, k);
+    expect(kept.slice(-2)).toEqual(colemak);
+    expect(kept.length).toBe(PRESSED_MAX);
+    // Only letters typed without ctrl, alt or meta are kept.
+    expect(rememberKey([], { code: "Enter", key: "Enter" })).toEqual([]);
+    expect(rememberKey([], { code: "KeyJ", key: "j" }, { ctrl: true })).toEqual([]);
+  });
+
+  test("the guess moves the cursor off the built-in QWERTY default only", () => {
+    // QWERTY in force (the default): the layout typed on is selected first.
+    expect(hintRow(layouts, 0, colemak)).toBe(1);
+    expect(hintRow(layouts, 0, dvorak)).toBe(2);
+    expect(hintRow(layouts, 0, qwerty)).toBe(0);
+    // No evidence: QWERTY, the value in force, stays.
+    expect(hintRow(layouts, 0, [])).toBe(0);
+    // A layout chosen before (in the file) or a custom value (Keep) stays selected.
+    expect(hintRow(layouts, 2, colemak)).toBe(2);
+    expect(hintRow([null, ...layouts], 0, colemak)).toBe(0);
   });
 });
 

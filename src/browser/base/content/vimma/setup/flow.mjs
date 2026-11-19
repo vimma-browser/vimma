@@ -19,6 +19,9 @@ const { SetupHost } = ChromeUtils.importESModule(
 );
 const { flowAdvance, flowChapters, flowKey, flowStep, formatUsers, initialFlow } =
   ChromeUtils.importESModule("chrome://browser/content/vimma/core/setup.mjs");
+const { HINT_LAYOUTS, hintRow, rememberKey } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/setup-steps.mjs",
+);
 
 const root = document.documentElement;
 const $ = (/** @type {string} */ id) => /** @type {HTMLElement} */ (document.getElementById(id));
@@ -36,6 +39,8 @@ const browser = () => SetupHost.browserFor(window);
  * @property {{ label: string, keep: boolean, lines: string[], window: WindowSketch | null }[]}
  *   choices
  * @property {number} selected
+ * @property {string[][] | null} prefixKeys  the prefix step's, per choice
+ * @property {(string | null)[] | null} layouts  the hint step's letters per choice, null for Keep
  * @property {string | null} blocked
  * @property {number} serial  the host's serial of this list, sent back with `enter`
  */
@@ -57,6 +62,20 @@ let busy = false;
 /** What the last `enter` wrote, for the footer (behaviour 12): null before one. */
 /** @type {{ title: string, lines: string[], action?: boolean } | null} */
 let last = null;
+/**
+ * The physical key and the character of the letter keys pressed on this page, for the hint
+ * step's layout guess (decision 10): kept in this page's memory only, never sent to the host,
+ * written or kept after the page closes; rememberKey keeps the latest PRESSED_MAX.
+ * @type {import("../core/setup-steps.mjs").PressedKey[]}
+ */
+let pressed = [];
+/**
+ * The letters of the layout typed on, guessed once when the hint step opens, so that j and k
+ * pressed on the step neither move the guess nor change the note under the list; null when
+ * the step opened on the value in force.
+ * @type {string | null}
+ */
+let guessed = null;
 /** The content blocker's lists. @type {AddonEntry[]} */
 let curated = [];
 /** @type {AddonEntry[]} */
@@ -312,7 +331,52 @@ const RENDERERS = {
     $("v2-writes-row").hidden = true;
     drawAddons();
   },
+  // Each prefix with the key that lists every key under it (behaviour 25).
+  prefix_key(v) {
+    drawChoices(v);
+    for (const li of $("v2-choices").children) {
+      const keys = v.prefixKeys?.[Number(li.getAttribute("data-index"))] ?? [];
+      if (!keys.length) continue;
+      li.querySelector(".body")?.append(
+        el(
+          "span",
+          { class: "hint" },
+          ...keys.flatMap((k, i) => [...(i ? [" or "] : []), el("kbd", {}, k)]),
+          " lists every key",
+        ),
+      );
+    }
+  },
+  // Each layout's letters as keys, and where the selected row came from (decision 10).
+  hint_letters(v) {
+    drawChoices(v);
+    const at = guessed === null ? -1 : (v.layouts?.indexOf(guessed) ?? -1);
+    const row = at >= 0 ? at : v.selected;
+    for (const li of $("v2-choices").children) {
+      const i = Number(li.getAttribute("data-index"));
+      if (i !== row || i === v.selected) continue;
+      li.setAttribute("data-guessed", "true");
+      const meta = li.querySelector(".meta");
+      if (meta) meta.textContent = "your layout";
+    }
+    const note = $("v2-guess");
+    const name = HINT_LAYOUTS.find((l) => l.chars === v.layouts?.[row])?.name;
+    note.hidden = row === v.selected || !name;
+    note.textContent = note.hidden
+      ? ""
+      : `${name} fits the keys you pressed on this page; they are not kept.`;
+  },
 };
+
+/**
+ * The letters of the layout typed on when the hint step's guess moves its cursor off the value
+ * in force (hintRow), else null. @param {StepView} v
+ */
+function guessFor(v) {
+  if (!v.layouts) return null;
+  const row = hintRow(v.layouts, v.selected, pressed);
+  return row === v.selected ? null : (v.layouts[row] ?? null);
+}
 
 function drawStep() {
   const step = flowStep(state);
@@ -323,6 +387,7 @@ function drawStep() {
   $("v2-question").textContent = step.question;
   root.dataset.stepId = step.id;
   $("v2-blocker").hidden = true;
+  $("v2-guess").hidden = true;
   $("v2-choices").hidden = false;
   $("v2-writes-row").hidden = step.kind !== "setting";
   const v = view?.id === step.id ? view : null;
@@ -392,7 +457,9 @@ async function loadView(select = true) {
   state = { ...state, blocked: !!v?.blocked };
   if (v && step.id !== "content_blocker") {
     const kept = select ? -1 : v.choices.findIndex((c) => c.label === under);
-    state = { ...state, cursor: kept >= 0 ? kept : v.selected };
+    if (select) guessed = guessFor(v);
+    const at = guessed === null ? -1 : (v.layouts?.indexOf(guessed) ?? -1);
+    state = { ...state, cursor: kept >= 0 ? kept : at >= 0 ? at : v.selected };
   }
   draw();
   root.dataset.viewReady = "true";
@@ -565,6 +632,11 @@ function start() {
   document.addEventListener("keydown", (e) => {
     // Only the user's own keys drive the page (behaviour 29, Security "Trusted input only").
     if (!e.isTrusted) return;
+    pressed = rememberKey(
+      pressed,
+      { code: e.code, key: e.key },
+      { ctrl: e.ctrlKey, alt: e.altKey, meta: e.metaKey },
+    );
     if (e.target === search) {
       // In the field only enter and esc are the page's; `q` and the rest are typed (behaviour 7).
       if (e.key !== "Enter" && e.key !== "Escape") return;

@@ -435,6 +435,7 @@ describe("setup v2 flow", () => {
     expect(flowChapters().map((c) => [c.digit, c.steps.map((s) => s.id)])).toEqual([
       [1, ["content_blocker", "search_engine", "colours"]],
       [3, ["address_bar", "tab_line"]],
+      [4, ["prefix_key", "hint_letters"]],
     ]);
     expect(chapters.map((c) => c.digit)).toEqual([1, 2]);
   });
@@ -504,9 +505,12 @@ describe("setup v2 flow", () => {
     s = run(s, ["h", "enter"]).state;
     s = flowAdvance(s, ctx(), ["[search] b"]).state;
     expect(s.saved.map((x) => x.lines)).toEqual([["[search] b"]]);
-    // A save that wrote nothing leaves the line out.
+    // Back again, then a save that wrote nothing (the value in force) or a skip: the run's
+    // real write stays listed, so the stop screens still name it.
     s = flowAdvance(run(s, ["h", "enter"]).state, ctx(), []).state;
-    expect(s.saved).toEqual([]);
+    expect(s.saved.map((x) => x.lines)).toEqual([["[search] b"]]);
+    s = run(s, ["h", "s"]).state;
+    expect(s.saved.map((x) => x.lines)).toEqual([["[search] b"]]);
   });
 
   test("q and esc close from every step and stop screen", () => {

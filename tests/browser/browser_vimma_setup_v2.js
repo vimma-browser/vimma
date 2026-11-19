@@ -10,6 +10,11 @@
 
 "use strict";
 
+// Every chapter's steps share this file: 20 to 26 s on a loaded 12-core machine, too close to the
+// harness's 45 s for a slower runner.
+/* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
+requestLongerTimeout(2);
+
 const { SetupHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/setup/SetupHost.sys.mjs",
 );
@@ -138,6 +143,8 @@ const { ThemeHost } = ChromeUtils.importESModule(
 );
 const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
 const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
+
+const { BUILT_STEPS } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/setup.mjs");
 
 const V2 = "vimma.feature.setupV2";
 const CHAPTERS_PREF = "vimma.setup.chapters";
@@ -288,6 +295,16 @@ add_task(async function closing_the_tab_keeps_finished_steps_and_writes_nothing_
   await closeFlow(tab);
 });
 
+/** Enter on the steps of Your keys, from the stop screen before them, to the last stop screen. */
+async function enterThroughKeys(/** @type {Document} */ doc) {
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "prefix_key");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "hint_letters");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+}
+
 /** Enter on every step, then on the last stop screen, which closes the page. */
 async function enterThrough(/** @type {Document} */ doc, /** @type {MozTabbrowserTab} */ tab) {
   await toEngines(doc);
@@ -301,6 +318,7 @@ async function enterThrough(/** @type {Document} */ doc, /** @type {MozTabbrowse
   await atStep(doc, "tab_line");
   await press(doc, "KEY_Enter");
   await atStep(doc, "stop");
+  await enterThroughKeys(doc);
   const closed = BrowserTestUtils.waitForTabClosing(tab);
   await press(doc, "KEY_Enter");
   await closed;
@@ -346,6 +364,7 @@ add_task(async function enter_through_every_step_leaves_config_toml_unchanged() 
     Assert.equal(current(doc), "Only with two or more tabs", "the tab line in force is selected");
     await press(doc, "KEY_Enter");
     await atStep(doc, "stop");
+    await enterThroughKeys(doc);
     Assert.equal(await IOUtils.readUTF8(configFile()), text, "byte for byte");
     Assert.ok(
       found(doc.getElementById("v2-stop-saved")).textContent.includes("Nothing was written"),
@@ -702,6 +721,138 @@ add_task(async function an_engine_named_in_another_case_is_the_one_in_force() {
   await atStep(doc, "colours");
   Assert.equal(await IOUtils.readUTF8(configFile()), text, "enter wrote nothing");
   await closeFlow(tab);
+});
+
+// Your keys (chapter 4): the prefix and the hint letters (behaviours 9, 18, 25 and 26).
+
+/** @param {Document} doc @returns {string} the step's text as the page shows it */
+const stepText = (doc) => found(doc.getElementById("v2-text")).textContent ?? "";
+
+/** @param {Document} doc @returns {string[]} the keys drawn under each prefix, in list order */
+const prefixRows = (doc) =>
+  [...doc.querySelectorAll("#v2-choices li")].map(
+    (li) => li.querySelector(".hint")?.textContent ?? "",
+  );
+
+/**
+ * Keys as a Colemak keyboard sends them: the character with the physical key it sits on.
+ * @param {Document} doc @param {[key: string, code: string][]} keys
+ */
+async function typeOn(doc, keys) {
+  for (const [key, code] of keys) {
+    EventUtils.synthesizeKey(key, { code }, found(doc.defaultView));
+    await TestUtils.waitForTick();
+  }
+}
+
+add_task(async function prefix_step_draws_show_keybinds_with_each_prefix() {
+  const { tab, doc } = await openFlow();
+  await press(doc, "4");
+  await atStep(doc, "prefix_key");
+  Assert.equal(current(doc), "ctrl+b", "the prefix in force first");
+  Assert.deepEqual(prefixRows(doc), ["ctrl+b ? lists every key", "ctrl+a ? lists every key"]);
+  Assert.ok(stepText(doc).includes("ctrl+b ? lists them now"), stepText(doc));
+  Assert.equal(writes(doc), "Writes nothing");
+  await press(doc, "j");
+  Assert.equal(writes(doc), 'Writes [keys] prefix = "ctrl+a"');
+  await closeFlow(tab);
+});
+
+add_task(async function prefix_step_changes_later_steps_hints() {
+  const { tab, doc } = await openFlow();
+  await press(doc, "4");
+  await atStep(doc, "prefix_key");
+  await press(doc, "j", "KEY_Enter");
+  await atStep(doc, "hint_letters");
+  Assert.ok(
+    (await IOUtils.readUTF8(configFile())).includes('[keys]\nprefix = "ctrl+a"'),
+    "[keys] prefix written at enter",
+  );
+  Assert.ok(found(ConfigHost.keymap).keysFor("show_keybinds").includes("ctrl+a ?"), "applied live");
+  // Back on the prefix step, its text and the value in force follow the new prefix.
+  await press(doc, "h");
+  await atStep(doc, "prefix_key");
+  Assert.equal(current(doc), "ctrl+a", "the prefix just saved is in force");
+  Assert.ok(stepText(doc).includes("ctrl+a ? lists them now"), stepText(doc));
+  // Every step drawn from now on names its keys with the new prefix.
+  /** @type {string[]} */
+  const kbds = [];
+  for (const id of BUILT_STEPS) {
+    const view = await SetupHost.stepView(tab.linkedBrowser, id);
+    for (const part of view?.text ?? []) if (part.tag === "kbd") kbds.push(part.text);
+  }
+  Assert.ok(kbds.includes("ctrl+a ?"), kbds.join(", "));
+  Assert.ok(!kbds.some((k) => k.startsWith("ctrl+b ")), `no old prefix: ${kbds.join(", ")}`);
+  await closeFlow(tab);
+});
+
+add_task(async function a_custom_prefix_and_hint_letters_offer_keep_and_write_nothing() {
+  const text =
+    '# mine\nschema = 2\n\n[keys]\nprefix = "ctrl+space"\n\n[modal]\nhint_chars = "fjdksla"\n';
+  await IOUtils.writeUTF8(configFile(), text);
+  await ConfigHost.reload();
+  const { tab, doc } = await openFlow();
+  await press(doc, "4");
+  await atStep(doc, "prefix_key");
+  Assert.equal(current(doc), 'Keep "ctrl+space"', "Keep first and selected");
+  Assert.equal(prefixRows(doc)[0], "ctrl+space ? lists every key", "drawn with the prefix kept");
+  Assert.equal(writes(doc), "Writes nothing");
+  // j and k as typed on Colemak: Keep stays selected for a value the user set.
+  await typeOn(doc, [
+    ["j", "KeyY"],
+    ["k", "KeyN"],
+  ]);
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "hint_letters");
+  Assert.equal(current(doc), 'Keep "fjdksla"', "Keep first and selected");
+  Assert.equal(writes(doc), "Writes nothing");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.equal(await IOUtils.readUTF8(configFile()), text, "byte for byte");
+  await closeFlow(tab);
+});
+
+add_task(async function hint_step_selects_the_layout_typed_on() {
+  const { tab, doc } = await openFlow();
+  await press(doc, "4");
+  await atStep(doc, "prefix_key");
+  // j, k and s on Colemak: KeyY, KeyN and KeyD.
+  await typeOn(doc, [
+    ["j", "KeyY"],
+    ["k", "KeyN"],
+    ["s", "KeyD"],
+  ]);
+  await atStep(doc, "hint_letters");
+  Assert.equal(current(doc), "Colemak: arstdhneio", "the layout typed on first");
+  Assert.ok(
+    found(doc.querySelector('#v2-choices li[data-index="0"] .meta')).textContent === "in force",
+    "QWERTY, the default, is still the one in force",
+  );
+  const guess = found(doc.getElementById("v2-guess"));
+  Assert.ok(!guess.hidden && guess.textContent.includes("Colemak"), guess.textContent);
+  Assert.equal(writes(doc), 'Writes [modal] hint_chars = "arstdhneio"');
+  Assert.ok(stepText(doc).includes("f labels the links"), stepText(doc));
+  // j on the step moves the cursor; the guess, its label and the note stay as they were.
+  const note = guess.textContent;
+  await typeOn(doc, [["j", "KeyY"]]);
+  Assert.equal(current(doc), "Dvorak: aoeuidhtns");
+  Assert.equal(guess.textContent, note, "the note is unchanged");
+  Assert.ok(doc.querySelector('#v2-choices li[data-index="1"][data-guessed]'), "Colemak's label");
+  await typeOn(doc, [["k", "KeyN"]]);
+  Assert.equal(current(doc), "Colemak: arstdhneio");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.ok((await IOUtils.readUTF8(configFile())).includes('hint_chars = "arstdhneio"'));
+  Assert.equal(ConfigHost.config?.hintChars, "arstdhneio", "applied live");
+  await closeFlow(tab);
+  // Nothing of what was typed outlives the page: a new one opens on QWERTY.
+  const again = await openFlow();
+  await press(again.doc, "4");
+  await atStep(again.doc, "prefix_key");
+  await press(again.doc, "s");
+  await atStep(again.doc, "hint_letters");
+  Assert.equal(current(again.doc), "QWERTY: asdfghjkl", "QWERTY without a guess");
+  await closeFlow(again.tab);
 });
 
 /** @param {Document} doc @returns {string[]} the keys the step's text names */
