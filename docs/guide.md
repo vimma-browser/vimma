@@ -1820,9 +1820,10 @@ more as you need them (see [Managing workspaces](#managing-workspaces)).
   container", as in Firefox, unless the extension names a container or opens it from one of
   your tabs (then it takes that tab's). It joins the workspace you are in as `foreign`. This is
   what lets an extension's sign-in work: a password manager such as Proton Pass opens its
-  sign-in page and then reads the session from its own background, which only ever
-  sees "no container". It never opens in the agent workspace's container, so agents never read
-  that session.
+  sign-in page and then reads the session from its own background, which only ever sees "no
+  container". Shown in the agent workspace, such a tab stays out of the agent's container and
+  agents cannot list or read it. A link you click in an extension's popup or page opens with
+  "no container" too, the container of the page it is on.
 - **Site permissions are per workspace**, like logins: a camera, microphone, location or
   notification permission you give a site in `work` does not apply to the same site in `main`
   or any other workspace (Vimma sets `permissions.isolateBy.userContext`). A permission stored

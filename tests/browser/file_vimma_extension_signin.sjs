@@ -4,7 +4,8 @@
 
 // Fixture for browser_vimma_workspace_extension_tabs.js: an extension's sign-in page. `?signin`
 // answers with a session cookie, as a sign-in does; `?whoami` answers with the cookies the
-// request carried, as the API an extension then calls from its background does.
+// request carried, as the API an extension then calls from its background does. `?links` is a
+// page whose link opens a new tab with `target=_blank rel=noopener`.
 /** @param {nsIHttpRequest} request @param {nsIHttpResponse} response */
 function handleRequest(request, response) {
   response.setHeader("Cache-Control", "no-store", false);
@@ -17,5 +18,12 @@ function handleRequest(request, response) {
     response.setHeader("Set-Cookie", "session=signed-in; Path=/; Secure; SameSite=None", false);
   }
   response.setHeader("Content-Type", "text/html; charset=utf-8", false);
+  if (request.queryString === "links") {
+    response.write(
+      "<!doctype html><meta charset=utf-8><title>links</title>" +
+        '<a id="noopener" href="?from=noopener" target="_blank" rel="noopener">open</a>',
+    );
+    return;
+  }
   response.write("<!doctype html><meta charset=utf-8><title>sign in</title><p>signed in");
 }

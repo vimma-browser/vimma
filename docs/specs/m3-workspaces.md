@@ -310,7 +310,8 @@ copying it across would leak data between containers. We do not.
      must share the cookies its background's requests carry and a workspace's container hid
      them (#1221). Hunk 1 passes `triggeringPrincipal` to `defaultUserContextId`, and
      `firstTabUserContextId` reads it from the window's `arguments[8]`; an explicit
-     `cookieStoreId` and an opener tab still win. Security: W8 in
+     `cookieStoreId` and an opener tab still win. An about: URL and a window with no URL get
+     that page's principal from Firefox, so they take the workspace's container. Security: W8 in
      `docs/security/03-workspace-deletion-and-containers.md`.)
    - _A third one-line hunk_, `BrowserDOMWindow-sys-mjs.patch` (found in 2a): an external link
      does not reach `addTab` with no container. `#getContentWindowOrOpenURI`

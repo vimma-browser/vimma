@@ -60,6 +60,9 @@ const DELETED_TOPIC = "contextual-identity-deleted";
  * `cookieStoreId` stays in no container, as in Firefox: an extension's sign-in page must share
  * the cookies its background's requests carry, and a workspace's container would hide them
  * (#1221). A page's own principal never has an add-on policy, so a page cannot ask for this.
+ * An about: URL from `tabs.create`, and `windows.create` with no URL (the start page), get a
+ * content principal of that page instead (setContentTriggeringPrincipal), so they take the
+ * workspace's container as ctrl+t and ctrl+n do: nothing an extension signs in to opens there.
  * @param {unknown} principal
  */
 function openedByExtension(principal) {
