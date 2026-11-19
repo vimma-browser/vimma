@@ -13,7 +13,7 @@ import {
   planMirror,
   resolveTableFolders,
 } from "../src/config/bookmarks-file.mjs";
-import { budget } from "./budget.ts";
+import { budget, growth, LINEAR_GROWTH } from "./budget.ts";
 import { PLACES_ROOTS } from "../src/ui/bookmarks.mjs";
 
 type Node = {
@@ -343,19 +343,31 @@ function renamed(tree: Node, renames: readonly { guid: string; title: string }[]
 }
 
 describe("exportBookmarks and the mirror", () => {
-  test("export: many items of one name are named in linear time", () => {
-    const many = Array.from({ length: 19_999 }, (_, i) => bm("New Tab", `https://e.example/${i}`));
-    const work = folder("work", many);
-    const start = performance.now();
-    const r = ok(
-      exportBookmarks({
-        places: places([work]),
-        workspaces: [{ name: "work", folder: work.guid as string }],
-      }),
-    );
-    expect(performance.now() - start).toBeLessThan(budget(3000));
-    expect(r.text).toContain('"New Tab (19999)" = "https://e.example/19998"');
-  });
+  // growth() rather than a wall-clock budget, which failed with the whole suite running at load
+  // 15. A scan of the renames for each item gives 17 to 24; a namer that searches from "(2)"
+  // again for each item runs for minutes, so the test's timeout ends it.
+  test(
+    "export: many items of one name are named in linear time",
+    () => {
+      let r: ReturnType<typeof ok> | undefined;
+      const g = growth((size) => {
+        const many = Array.from({ length: size }, (_, i) =>
+          bm("New Tab", `https://e.example/${i}`),
+        );
+        const work = folder("work", many);
+        const input = {
+          places: places([work]),
+          workspaces: [{ name: "work", folder: work.guid as string }],
+        };
+        const start = performance.now();
+        r = ok(exportBookmarks(input));
+        return performance.now() - start;
+      }, 19_999);
+      expect(g.smallest, g.ratios).toBeLessThan(LINEAR_GROWTH);
+      expect(r?.text).toContain('"New Tab (19999)" = "https://e.example/19998"');
+    },
+    budget(60_000),
+  );
 
   test("the mirror names many items of one title in linear time", () => {
     const many = Array.from({ length: 19_999 }, (_, i) => bm("New Tab", `https://e.example/${i}`));

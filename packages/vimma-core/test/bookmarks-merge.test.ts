@@ -6,7 +6,7 @@ import { mergeOutside } from "../src/config/bookmarks-merge.mjs";
 import { parseBookmarksFile, planMirror } from "../src/config/bookmarks-file.mjs";
 import { parseConfig } from "../src/config/config.mjs";
 import { PLACES_ROOTS } from "../src/ui/bookmarks.mjs";
-import { budget } from "./budget.ts";
+import { budget, growth, LINEAR_GROWTH } from "./budget.ts";
 
 type Item = {
   guid: string;
@@ -598,8 +598,8 @@ describe("bookmarks.toml merge: a removal the user declined", () => {
 });
 
 describe("bookmarks.toml merge: bounded time", () => {
-  test("a full reorder of 16,000 bookmarks in 4 folders merges in linear time", () => {
-    const n = 16_000;
+  /** The merge's input when Places has every one of `n` bookmarks in 4 folders in reverse order. */
+  function fullReorder(n: number) {
     const names = (i: number) => `f${i % 4}/b${i}`;
     const text = `[bookmarks.work]\n${Array.from(
       { length: n },
@@ -621,17 +621,33 @@ describe("bookmarks.toml merge: bounded time", () => {
     }
     // Sorted the other way round, as the Library's "Sort by Name" or another device's order.
     for (const f of folders) f.children?.reverse();
-    const start = performance.now();
-    const m = merge({
+    return {
       text,
       base: { tables: [{ name: "work", folder: "workfolder01", entries }] },
       places: places([folder("workfolder01", "work", folders)]),
-    });
-    expect(performance.now() - start).toBeLessThan(budget(3000));
-    expect(m.ok).toBe(true);
-    const t = tables(m.ok ? (m.text as string) : "").work as { [k: string]: string[] }[];
-    expect(t[0]?.["f0/"]?.[0]).toBe(`b${n - 4} https://example.com/${n - 4}`);
-  }, 60_000);
+    };
+  }
+
+  // growth() rather than a wall-clock budget, which failed with the whole suite running at load
+  // 15. A lookup by scan instead of by Map, in the merge or in the line writer, gives 13 to 31.
+  test(
+    "a full reorder of 16,000 bookmarks in 4 folders merges in linear time",
+    () => {
+      const n = 16_000;
+      let m: ReturnType<typeof merge> | undefined;
+      const g = growth((size) => {
+        const input = fullReorder(size);
+        const start = performance.now();
+        m = merge(input);
+        return performance.now() - start;
+      }, n);
+      expect(g.smallest, g.ratios).toBeLessThan(LINEAR_GROWTH);
+      expect(m?.ok).toBe(true);
+      const t = tables(m?.ok ? (m.text as string) : "").work as { [k: string]: string[] }[];
+      expect(t[0]?.["f0/"]?.[0]).toBe(`b${n - 4} https://example.com/${n - 4}`);
+    },
+    budget(60_000),
+  );
 
   test("5,000 Places additions of one title are named in linear time", () => {
     const text = '[bookmarks.work]\n"a" = "https://example.com/a"\n';
