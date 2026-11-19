@@ -89,9 +89,14 @@ ADR-025, #946.)
   with the main process's threads, their state, CPU time and kernel wait channel. On Linux it
   also says whether each lock got past the hostname lookup made before its `lock` symlink
   (`.parentlock` without `lock`); macOS makes no such symlink, so there it lists entries only.
-  Names only, never file contents or the lock symlink's target. A launch whose socket comes later than 10 s logs that
-  report as it was at 10 s, so a stall shorter than the timeout shows too; a faster launch prints
-  nothing extra. Before the scenarios, the CI job times the hostname lookups that Firefox's
+  Names only, never file contents or the lock symlink's target. A launch whose socket comes
+  later than 10 s logs that report as it was at 10 s, so a stall shorter than the timeout shows
+  too; a faster launch prints nothing extra. Both reports end with a sample taken about each
+  second since spawn: the main thread's state, CPU time and wait channel, what the main process
+  has read from disk (`read_bytes`), how late the harness's own timer fired, and how much the
+  machine's CPU steal, iowait and pressure stall time (PSI) grew, so a blocked main thread, a
+  CPU-starved one, a cold disk and a machine that stopped as a whole tell apart. A long wait
+  keeps its first 30 samples and its last 30. Before the scenarios, the CI job times the hostname lookups that Firefox's
   profile lock makes (`getent hosts "$(hostname)"`).
 - **Cleanup**: teardown first quits like a user, `send-keys ctrl+q` (the profile sets
   `browser.warnOnQuitShortcut=false`; an open help overlay swallows ctrl+q, so `esc` closes it
@@ -187,6 +192,18 @@ One JSON file per scenario in `tests/e2e/scenarios/`, file name = `name`:
   fail while writing the server).
 
 ### Runner
+
+Before the first scenario, the runner starts the build once (**warm-up**), waits for its
+control socket (at most 120 s) and stops it, outside every scenario's timeout and the budget. It
+logs how long that start took and what its main process read from disk. The machine's first
+start reads the build and the system's GTK, X11 and Mesa libraries from a cold disk: on CI the
+mochitests before the e2e step run headless, and every launch there slower than 10 s was the
+first scenario's, its main thread or gfxtest in disk wait with under 1 s of CPU (issue #901). A
+warm-up slower than 10 s is a `::warning::` on GitHub Actions. A build that cannot start even
+then fails each scenario that would launch it at once, without a launch or the budget spent
+(update scenarios run their own builds), and its `::error::` carries the first line of the
+report. The warm-up runs on the scenarios' display: with a `DISPLAY` and no `--xvfb`, a
+window opens for a few seconds. Scenarios keep the 30 s discovery wait.
 
 Scenarios run one after another, each in a fresh session. Per-scenario timeout (the scenario's
 `timeoutSeconds`, default 60 s, capped by what is left of the budget) and a **total budget of
