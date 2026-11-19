@@ -381,6 +381,8 @@ const pathOf = (e) => `${e.table}.${e.key}`;
  * @typedef {object} SetupRuntime
  * @property {string | null} [engine]
  * @property {string} [appearance]
+ * @property {readonly string[]} [engines]  the installed engines: a `[search] default` written
+ *   in another case is in force as the engine of that name, as the config's lookup finds it
  */
 
 /**
@@ -390,8 +392,10 @@ const pathOf = (e) => `${e.table}.${e.key}`;
  * @param {ResolvedConfig} config @param {SetupRuntime} [runtime]
  * @returns {InForce}
  */
-export function inForceOf(config, { engine = null, appearance } = {}) {
-  const fileEngine = config.search?.default?.kind === "engine" ? config.search.default.name : null;
+export function inForceOf(config, { engine = null, appearance, engines = [] } = {}) {
+  const named = config.search?.default?.kind === "engine" ? config.search.default.name : null;
+  const fileEngine =
+    named === null ? null : (engines.find((e) => e.toLowerCase() === named.toLowerCase()) ?? named);
   return {
     "search.default": fileEngine ?? engine ?? undefined,
     "theme.source": config.theme.source ?? "omarchy",
@@ -503,7 +507,8 @@ export function editLines(edits) {
  * the effect then, from the choice's own key (its last edit).
  * @param {SetupStep} step @param {SetupChoice} choice @param {InForce} inForce
  * @param {{ omarchy?: boolean }} [options]
- * @returns {TomlEdit[]}
+ * @returns {TomlEdit[] | null}  null when the choice is no longer offered (Omarchy went away):
+ *   nothing is written, and it is not "already so"
  */
 export function planAtEnter(step, choice, inForce, { omarchy = false } = {}) {
   if (choice.keep) return [];
@@ -512,7 +517,7 @@ export function planAtEnter(step, choice, inForce, { omarchy = false } = {}) {
     const now = colourChoices(step, inForce, omarchy).choices.find(
       (c) => !c.keep && c.edits.at(-1)?.key === own?.key && c.edits.at(-1)?.value === own?.value,
     );
-    return planChoice(now ?? null, inForce);
+    return now ? planChoice(now, inForce) : null;
   }
   return planChoice(choice, inForce);
 }

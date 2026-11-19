@@ -330,6 +330,8 @@ export function flowChapters(built = BUILT_STEPS) {
  * @property {number} count
  * @property {(chapter: number, step: number) => number} selected
  * @property {readonly AddonEntry[]} addons
+ * @property {boolean} ready  the open step's list, as the host sent it, is drawn: until then
+ *   `enter` names no row, since an index would point into a list the user has not seen
  */
 
 /**
@@ -492,7 +494,7 @@ export function flowKey(s, key, ctx) {
     }
     return stay;
   }
-  if (key !== "enter") return stay;
+  if (key !== "enter" || !ctx.ready) return stay;
   if (step.kind === "action") {
     return { state: s, effect: { type: "action", step: step.id, index: s.cursor } };
   }

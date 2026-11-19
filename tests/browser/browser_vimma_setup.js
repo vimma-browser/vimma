@@ -842,7 +842,17 @@ add_task(async function the_page_cannot_name_a_key_or_value() {
       id,
     );
   }
-  Assert.deepEqual(await SetupHost.saveStep(b, "search_engine", 999), { error: "no such choice" });
+  for (const index of [999, -1, 1.5, "length", "0"]) {
+    Assert.deepEqual(
+      await SetupHost.saveStep(
+        b,
+        "search_engine",
+        /** @type {number} */ (/** @type {unknown} */ (index)),
+      ),
+      { error: "no such choice" },
+      `index ${JSON.stringify(index)}`,
+    );
+  }
   Assert.deepEqual(await SetupHost.saveStep(null, "search_engine", 1), {
     error: "not a step that saves",
   });
@@ -951,5 +961,85 @@ add_task(async function finished_chapters_are_ticked_on_the_next_run() {
   await closeFlow(tab);
   ({ tab, doc } = await openFlow());
   Assert.ok(doc.querySelector('#v2-chapters li[data-chapter="essentials"][data-finished]'));
+  await closeFlow(tab);
+});
+
+add_task(async function enter_before_a_step_is_drawn_writes_nothing() {
+  const { tab, doc } = await openFlow();
+  await toEngines(doc);
+  await press(doc, "s");
+  await atStep(doc, "colours");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  // Back to the colours step and enter at once, before its list is drawn again: the list the
+  // page was sent on the first visit must not stand in for it.
+  const real = SetupHost.saveStep;
+  /** @type {unknown[][]} */
+  const asked = [];
+  SetupHost.saveStep = (...args) => {
+    asked.push(args.slice(1));
+    return real.apply(SetupHost, args);
+  };
+  registerCleanupFunction(() => (SetupHost.saveStep = real));
+  const win = found(doc.defaultView);
+  EventUtils.synthesizeKey("h", {}, win);
+  EventUtils.synthesizeKey("KEY_Enter", {}, win);
+  await atStep(doc, "colours");
+  await TestUtils.waitForTick();
+  SetupHost.saveStep = real;
+  Assert.deepEqual(asked, [], "the page asked for no save");
+  Assert.equal(step(doc), "colours", "enter did not save");
+  Assert.ok(!doc.documentElement.dataset.failed, "and reported no failure");
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
+  await closeFlow(tab);
+});
+
+add_task(async function a_list_drawn_again_keeps_the_row_and_an_old_index_is_stale() {
+  await IOUtils.writeUTF8(configFile(), "schema = 2\n");
+  await ConfigHost.reload();
+  const { tab, doc } = await openFlow();
+  await toEngines(doc);
+  await press(doc, "s");
+  await atStep(doc, "colours");
+  await press(doc, "k");
+  Assert.equal(current(doc), "Dark");
+  const before = /** @type {{ serial: number }} */ (
+    await SetupHost.stepView(tab.linkedBrowser, "colours")
+  ).serial;
+  // Another program sets a dark-only palette: the list gains Keep, first.
+  await IOUtils.writeUTF8(configFile(), 'schema = 2\n[theme]\nname = "tokyo-night"\n');
+  await ConfigHost.reload();
+  await TestUtils.waitForCondition(
+    () => doc.querySelector('#v2-choices li[data-keep="true"]'),
+    "drawn again with Keep",
+  );
+  Assert.equal(current(doc), "Dark", "the cursor stays on its row, not its index");
+  Assert.deepEqual(
+    await SetupHost.saveStep(tab.linkedBrowser, "colours", 1, before),
+    { stale: true },
+    "an index into the list drawn before is refused",
+  );
+  Assert.equal(
+    await IOUtils.readUTF8(configFile()),
+    'schema = 2\n[theme]\nname = "tokyo-night"\n',
+    "nothing written",
+  );
+  await closeFlow(tab);
+});
+
+add_task(async function an_engine_named_in_another_case_is_the_one_in_force() {
+  const engines = (await SearchService.getVisibleEngines()).map((e) => e.name);
+  const name = found(engines.find((n) => n !== n.toLowerCase()));
+  const text = `schema = 2\n[search]\ndefault = ${JSON.stringify(name.toLowerCase())}\n`;
+  await IOUtils.writeUTF8(configFile(), text);
+  await ConfigHost.reload();
+  const { tab, doc } = await openFlow();
+  await toEngines(doc);
+  Assert.equal(current(doc), name, "selected as the installed engine");
+  Assert.ok(!doc.querySelector('#v2-choices li[data-keep="true"]'), "no Keep row");
+  Assert.equal(writes(doc), "Writes nothing");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "colours");
+  Assert.equal(await IOUtils.readUTF8(configFile()), text, "enter wrote nothing");
   await closeFlow(tab);
 });

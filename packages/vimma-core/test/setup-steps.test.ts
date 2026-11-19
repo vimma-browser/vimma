@@ -234,6 +234,28 @@ describe("the value in force at enter (decision 4)", () => {
   });
 });
 
+describe("the search engine named in another case (behaviour 8)", () => {
+  const engines = ["Google", "DuckDuckGo"];
+  const file = 'schema = 2\n[search]\ndefault = "duckduckgo"\n';
+
+  test("is the installed engine of that name: selected, no Keep, enter writes nothing", () => {
+    const now = inForce(file, { engines });
+    expect(now["search.default"]).toBe("DuckDuckGo");
+    const r = stepChoices(step("search_engine"), now, { engines });
+    expect(r.choices.map((c) => c.label)).toEqual(engines);
+    expect(r.selected).toBe(1);
+    expect(planChoice(r.choices[1]!, now)).toEqual([]);
+  });
+
+  test("a name no engine has stays as written, for Keep", () => {
+    const now = inForce('schema = 2\n[search]\ndefault = "Gone"\n', { engines });
+    expect(now["search.default"]).toBe("Gone");
+    expect(stepChoices(step("search_engine"), now, { engines }).choices[0]?.label).toBe(
+      'Keep "Gone"',
+    );
+  });
+});
+
 describe("colours: the effect in force (decision 12)", () => {
   const colours = step("colours");
   const labels = (r: { choices: { label: string }[] }) => r.choices.map((c) => c.label);
@@ -321,6 +343,16 @@ describe("colours: the effect in force (decision 12)", () => {
       '[theme] name = "vimma"',
       '[theme] appearance = "light"',
     ]);
+  });
+
+  test("a choice no longer offered at enter plans null, not an empty write", () => {
+    const opened = stepChoices(colours, inForce('schema = 2\n[theme]\nsource = "file"\n'), {
+      omarchy: true,
+    });
+    const omarchy = opened.choices.find((c) => c.label === "The Omarchy theme")!;
+    // Omarchy went away before enter: the choice is gone, which is not "already so".
+    expect(planAtEnter(colours, omarchy, inForce("schema = 2\n"), { omarchy: false })).toBeNull();
+    expect(planAtEnter(colours, omarchy, inForce("schema = 2\n"), { omarchy: true })).toEqual([]);
   });
 
   test("a choice judged at enter uses the file then, not the one the step opened on", () => {

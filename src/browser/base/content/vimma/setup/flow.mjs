@@ -35,6 +35,7 @@ const browser = () => SetupHost.browserFor(window);
  * @property {{ label: string, keep: boolean, lines: string[] }[]} choices
  * @property {number} selected
  * @property {string | null} blocked
+ * @property {number} serial  the host's serial of this list, sent back with `enter`
  */
 
 /** Stop screen headings by chapter; another chapter reads "<name>: done". */
@@ -47,6 +48,8 @@ let state = initialFlow({ chapters: flowChapters() });
 let view = null;
 /** Bumped by each request for a view: an older answer is dropped. */
 let viewSerial = 0;
+/** A view is being read: its list may change under the cursor, so `enter` waits. */
+let loading = false;
 /** "busy" while a save, an install or a search runs: keys wait. */
 let busy = false;
 /** What the last `enter` wrote, for the footer (behaviour 12): null before one. */
@@ -82,6 +85,10 @@ const ctx = {
   selected: () => 0,
   get addons() {
     return addons;
+  },
+  // `enter` names a row only of the list the host sent for this step and the page drew.
+  get ready() {
+    return !loading && view !== null && view.id === flowStep(state)?.id;
   },
 };
 
@@ -310,20 +317,27 @@ function draw() {
   drawFooter();
 }
 
-/** Asks the host for the open step, and selects the value in force when the step just opened. */
+/**
+ * Asks the host for the open step, and selects the value in force when the step just opened;
+ * read again (`select` false), the cursor stays on the row with the same label, so a list that
+ * gained or lost a row (Keep) never moves it to another choice.
+ */
 async function loadView(select = true) {
   const step = flowStep(state);
   if (!step) return;
   const serial = ++viewSerial;
+  const under = view?.id === step.id ? view.choices[state.cursor]?.label : undefined;
+  loading = true;
   delete root.dataset.viewReady;
   if (step.id === "content_blocker") loadAddons();
   const v = /** @type {StepView | null} */ (await SetupHost.stepView(browser(), step.id));
   if (serial !== viewSerial || flowStep(state)?.id !== step.id) return;
+  loading = false;
   view = v;
   state = { ...state, blocked: !!v?.blocked };
-  if (select && v && step.id !== "content_blocker") state = { ...state, cursor: v.selected };
-  if (v && state.cursor >= ctx.count && step.id !== "content_blocker") {
-    state = { ...state, cursor: Math.max(0, ctx.count - 1) };
+  if (v && step.id !== "content_blocker") {
+    const kept = select ? -1 : v.choices.findIndex((c) => c.label === under);
+    state = { ...state, cursor: kept >= 0 ? kept : v.selected };
   }
   draw();
   root.dataset.viewReady = "true";
@@ -437,13 +451,17 @@ async function runEnter(effect) {
     await settle(flowAdvance(state, ctx, saved));
     return;
   }
-  const r = await SetupHost.saveStep(browser(), effect.step, effect.index);
+  const r = await SetupHost.saveStep(browser(), effect.step, effect.index, view?.serial);
   if ("stale" in r) {
-    // The engine went away since the list was drawn (behaviour 20): draw the list as it is now.
+    // The list changed since it was drawn: the engine went away (behaviour 20), the file was
+    // read again, or the Omarchy theme is gone. Nothing was written; draw the list as it is now.
     await loadView();
     const notice = $("v2-notice");
     notice.hidden = false;
-    notice.textContent = "That engine is no longer installed; nothing was written. Choose again.";
+    notice.textContent =
+      step.id === "search_engine"
+        ? "That engine is no longer installed; nothing was written. Choose again."
+        : "The choices changed; nothing was written. Choose again.";
     return;
   }
   if ("error" in r) {
