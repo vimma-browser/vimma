@@ -233,6 +233,9 @@ support-files = ["file_vimma_urlbar_suggest.sjs"]
 ["browser_vimma_workspace_routing.js"]
 support-files = ["file_vimma_cookie.html"]
 
+["browser_vimma_workspace_extension_tabs.js"]
+support-files = ["file_vimma_extension_signin.sjs"]
+
 ["browser_vimma_workspace_switching.js"]
 
 ["browser_vimma_workspace_ops.js"]

@@ -28,3 +28,12 @@ Spec: [m3-workspaces](../specs/m3-workspaces.md).
   into the default container.
   [`a_container_deleted_by_an_extension_is_replaced_at_once`](../../tests/browser/browser_vimma_workspace_edges.js),
   [`a_container_deleted_in_settings_is_replaced_and_ext_stays_usable`](../../tests/browser/browser_vimma_workspace_edges.js)
+- W8. A tab or window an extension opens with no `cookieStoreId` and no opener tab is in
+  container 0, as in Firefox, so its sign-in shares the cookies its background reads (#1221);
+  it is never in a workspace's container, the agent workspace's included. Only an extension's
+  own triggering principal (one with an add-on policy) does this: what you open and what a page
+  opens still take a workspace's container, and a page's principal never has an add-on policy.
+  [`an_extensions_sign_in_tab_shares_the_cookies_its_background_reads`](../../tests/browser/browser_vimma_workspace_extension_tabs.js),
+  [`what_you_open_still_takes_the_workspaces_container`](../../tests/browser/browser_vimma_workspace_extension_tabs.js),
+  [`an_extensions_explicit_container_and_opener_are_kept`](../../tests/browser/browser_vimma_workspace_extension_tabs.js),
+  [`an_extensions_tab_never_lands_in_the_agent_workspaces_container`](../../tests/browser/browser_vimma_workspace_extension_tabs.js)

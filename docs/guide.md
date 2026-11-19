@@ -1816,6 +1816,13 @@ more as you need them (see [Managing workspaces](#managing-workspaces)).
 - A tab in a container that belongs to no workspace (Firefox's own containers, "no container",
   an extension's) joins the workspace you are in as a `foreign` tab: it does not share that
   workspace's cookies and logins. The workspace picker counts it (`3 tabs, 1 foreign`).
+- **A tab or window an extension opens** at a web page or one of its own pages opens with "no
+  container", as in Firefox, unless the extension names a container or opens it from one of
+  your tabs (then it takes that tab's). It joins the workspace you are in as `foreign`. This is
+  what lets an extension's sign-in work: a password manager such as Proton Pass opens its
+  sign-in page and then reads the session from its own background, which only ever
+  sees "no container". It never opens in the agent workspace's container, so agents never read
+  that session.
 - **Site permissions are per workspace**, like logins: a camera, microphone, location or
   notification permission you give a site in `work` does not apply to the same site in `main`
   or any other workspace (Vimma sets `permissions.isolateBy.userContext`). A permission stored

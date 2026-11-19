@@ -552,6 +552,8 @@ interface nsIPrincipal {
   readonly baseDomain: string;
   readonly exposablePrePath: string;
   readonly privateBrowsingId: number;
+  /** The extension's WebExtensionPolicy for its own principals (moz-extension:), else null. */
+  readonly addonPolicy: object | null;
   schemeIs(scheme: string): boolean;
   equals(other: nsIPrincipal): boolean;
 }
@@ -2232,6 +2234,7 @@ interface XPCOMInterfaces {
   nsILoadContext: nsIJSIID<nsILoadContext>;
   nsILoginInfo: nsIJSIID<nsILoginInfo>;
   nsINestedURI: nsIJSIID<nsINestedURI>;
+  nsIPrincipal: nsIJSIID<nsIPrincipal>;
   nsIProcess: nsIJSIID<nsIProcess>;
   nsIPropertyBag2: nsIJSIID<nsIPropertyBag2>;
   nsIReferrerInfo: nsIJSIID<nsIReferrerInfo> & {

@@ -13,7 +13,7 @@ index 241875edde94e674713d6651704e19a142c40b5d..8a157b4aac84a293881fb8b47bf28c7f
  
      let remoteTypeOptions = { window: this.documentGlobal, userContextId };
      if (triggeringRemoteType) {
-@@ -3769,6 +3773,14 @@ export class Tabbrowser {
+@@ -3769,6 +3773,17 @@ export class Tabbrowser {
        (openerBrowser && this.getTabForBrowser(openerBrowser)) ||
        (relatedToCurrent && this.selectedTab) ||
        null;
@@ -23,7 +23,10 @@ index 241875edde94e674713d6651704e19a142c40b5d..8a157b4aac84a293881fb8b47bf28c7f
 +        openerTab?.userContextId ??
 +        ChromeUtils.importESModule(
 +          "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs"
-+        ).WorkspaceStore.defaultUserContextId(this.documentGlobal, { fromExternal });
++        ).WorkspaceStore.defaultUserContextId(this.documentGlobal, {
++          fromExternal,
++          triggeringPrincipal,
++        });
 +    }
  
      // When overflowing, new tabs are scrolled into view smoothly, which
