@@ -946,7 +946,9 @@ add_task(async function address_bar_step_names_the_keys_in_force() {
   const { tab, doc } = await openFlow();
   await toAddressBar(doc);
   Assert.ok(found(doc.getElementById("v2-progress")).textContent.includes("The window"));
-  Assert.deepEqual(textKeys(doc), ["ctrl+l", "alt+d", "I", "ctrl+b u"], "the default keymap");
+  // macOS binds meta+l where Linux binds alt+d (defaults.mjs, the mac keymap).
+  const second = AppConstants.platform === "macosx" ? "meta+l" : "alt+d";
+  Assert.deepEqual(textKeys(doc), ["ctrl+l", second, "I", "ctrl+b u"], "the default keymap");
   Assert.deepEqual(drawnToolbars(doc), ["shown", "hidden"], "a drawing of the window per choice");
   // focus_urlbar rebound without alt+d, toggle_toolbar left without a key: the step, open, draws
   // its text again when the file is read (behaviour 12).
@@ -983,7 +985,7 @@ add_task(async function a_fresh_profile_opens_the_address_bar_step_on_hidden() {
   Assert.equal(current(doc), "Hidden", "hidden is in force and selected without the key");
   Assert.equal(writes(doc), "Writes nothing");
   await press(doc, "KEY_Enter");
-  await atStep(doc, "stop");
+  await atStep(doc, "tab_line");
   Assert.ok(!(await IOUtils.exists(configFile())), "nothing written, no file created");
   Assert.ok(
     Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", false),
