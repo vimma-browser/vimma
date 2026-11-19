@@ -565,11 +565,13 @@ const asParsed = (text) => text.replace(/[\t\n\r]/g, "").replace(/^[\u0000-\u002
  * backslash too); a case where they could differ drops more, never less. `cut` says the text was
  * cut, so an authority that runs to its end may hide a user name and password: it is dropped
  * whole, and only the scheme and its slashes kept. The URLs percent-encoded in its query and
- * hash go too (queryWithoutUserinfo).
+ * hash go too (queryWithoutUserinfo), and with `path`, those written in its path
+ * (pathWithoutUserinfo).
  * @param {string} text @param {boolean} cut @param {number} depth @param {QueryWork} work
+ * @param {boolean} [path]
  * @returns {string}
  */
-function withoutUserinfo(text, cut, depth, work) {
+function withoutUserinfo(text, cut, depth, work, path = true) {
   const s = asParsed(text);
   const m = URL_SCHEME.exec(s);
   if (!m) return s;
@@ -577,13 +579,17 @@ function withoutUserinfo(text, cut, depth, work) {
   const rest = s.slice(m[0].length);
   if (NESTED_SCHEMES.has(name)) {
     // Past NESTED_MAX the rest is not read, so it is dropped: it may hold a user name.
-    return depth < NESTED_MAX ? m[0] + withoutUserinfo(rest, cut, depth + 1, work) : `${m[0]}…`;
+    return depth < NESTED_MAX
+      ? m[0] + withoutUserinfo(rest, cut, depth + 1, work, path)
+      : `${m[0]}…`;
   }
   const special = SPECIAL_SCHEMES.has(name);
   // Stryker disable next-line OptionalChaining: a pattern that matches the empty string never fails, so exec never returns null
   const lead = special ? (/^[/\\]*/.exec(rest)?.[0] ?? "") : rest.startsWith("//") ? "//" : null;
-  // No authority (about:, data:): only its query may hold one.
-  if (lead === null) return queryWithoutUserinfo(s, m[0].length, cut, depth, work);
+  // No authority (about:, data:, and file: without slashes, whose rest a URL parser reads as a
+  // path, so a MediaWiki `File:Logo@2x.png` keeps its name): only its path and query may hold one.
+  if (lead === null || (name === "file" && !lead))
+    return (path ? pathWithoutUserinfo : queryWithoutUserinfo)(s, m[0].length, cut, depth, work);
   const after = rest.slice(lead.length);
   let end = after.search(special ? /[/\\?#]/ : /[/?#]/);
   if (end < 0) {
@@ -592,15 +598,49 @@ function withoutUserinfo(text, cut, depth, work) {
   }
   const from = after.lastIndexOf("@", end) + 1;
   const out = m[0] + lead + after.slice(from);
-  return queryWithoutUserinfo(out, m[0].length + lead.length + end - from, cut, depth, work);
+  const at = m[0].length + lead.length + end - from;
+  return (path ? pathWithoutUserinfo : queryWithoutUserinfo)(out, at, cut, depth, work);
+}
+
+/**
+ * A URL `s` without the user names and passwords of the URLs written unencoded in its path, which
+ * starts at `at`, where its authority ends, and of those in its query and hash
+ * (queryWithoutUserinfo). An archive or a redirect service writes a whole URL there
+ * (`/web/2020/https://user:password@host/`, #1372). Each URL in the path is read as a URL
+ * nested one level deeper, from its scheme to the end of the path, but not its own path: the next
+ * is looked for after its scheme, as anywhereWithoutUserinfo does, so an authority that a URL
+ * parser would end later (`foo://a\https://user@host`) hides none. Past NESTED_MAX of them, or
+ * NESTED_MAX levels, the rest is not read, so it is dropped, query and hash too.
+ * @param {string} s @param {number} at @param {boolean} cut @param {number} depth
+ * @param {QueryWork} work
+ * @returns {string}
+ */
+function pathWithoutUserinfo(s, at, cut, depth, work) {
+  const rest = s.slice(at).search(/[?#]/);
+  let end = rest < 0 ? s.length : at + rest;
+  const last = cut && end === s.length;
+  let out = s;
+  for (let n = 0, from = at; ; n++) {
+    EMBEDDED_URL.lastIndex = from;
+    const nested = EMBEDDED_URL.exec(out.slice(0, end))?.index ?? -1;
+    if (nested < 0) return queryWithoutUserinfo(out, end, cut, depth, work);
+    if (n >= NESTED_MAX || depth >= NESTED_MAX) return `${out.slice(0, nested)}\u2026`;
+    const inner = withoutUserinfo(out.slice(nested, end), last, depth + 1, work, false);
+    out = out.slice(0, nested) + inner + out.slice(end);
+    end = nested + inner.length;
+    from = nested + 1;
+  }
 }
 
 /**
  * Where a URL may start inside a parameter's value, after its first character: a scheme not
  * preceded by a scheme character, followed by a slash or a backslash, or a special scheme's
- * colon alone, which a URL parser also reads (`https:ada@host`).
+ * colon alone, which a URL parser also reads (`https:ada@host`). Not `file:` alone: a URL parser
+ * reads what follows as a path, never a user name, so a MediaWiki `File:Logo@2x.png` is kept.
+ * A URL right after a scheme character (`/2020-https://…`) is not read, so that no scheme run is
+ * searched from each of its characters.
  */
-const EMBEDDED_URL = /(?<![a-z0-9+.-])(?:[a-z][a-z0-9+.-]*:(?=[/\\])|(?:https?|wss?|ftp|file):)/gi;
+const EMBEDDED_URL = /(?<![a-z0-9+.-])(?:[a-z][a-z0-9+.-]*:(?=[/\\])|(?:https?|wss?|ftp):)/gi;
 
 /**
  * `text` without the user names and passwords of the URL it starts with and of the URLs later in
@@ -806,9 +846,12 @@ export function agentTitle(label) {
   // A title longer than agentUrl reads is read only that far, so the work stays bounded
   // however long a page makes its title (#1352 review); it is given as agentUrl gives it.
   if (t.length > 4 * AGENT_PAGE_URL_MAX) {
-    return URL_SCHEME.test(shown(t.slice(0, 4 * AGENT_PAGE_URL_MAX)))
-      ? agentUrl(t, AGENT_PAGE_URL_MAX)
-      : s;
+    // Cut between two code points, so no half of an invisible character is left to show.
+    const head = shown(t.slice(0, 4 * AGENT_PAGE_URL_MAX).replace(/[\ud800-\udbff]$/, ""));
+    // Invisible characters may fill what is read, or cut a scheme short after it (#1372): a
+    // head that is empty or may still begin a scheme is given as agentUrl gives it too.
+    const scheme = URL_SCHEME.test(head) || /^(?:[a-z][a-z0-9+.-]*)?$/i.test(head);
+    return scheme ? agentUrl(t, AGENT_PAGE_URL_MAX) : s;
   }
   const plain = shown(t);
   // An at sign, or a URL percent-encoded in its query (#1324, #1348), as shown and as given: a
@@ -871,7 +914,9 @@ export function markdownWithoutUserinfo(text) {
   return text.replace(MARKDOWN_TARGET, (_, open, url) => {
     const read = url.slice(0, window);
     const cut = read.length < url.length;
-    return `]${open}(${withoutUserinfo(read, cut, 0, work)}${cut ? "\u2026" : ""})`;
+    const kept = withoutUserinfo(read, cut, 0, work);
+    // An authority cut short is dropped as `https://…` already: one ellipsis is enough.
+    return `]${open}(${kept}${cut && !kept.endsWith("\u2026") ? "\u2026" : ""})`;
   });
 }
 

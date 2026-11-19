@@ -722,16 +722,22 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   it (no scheme, no `www.`; core's `agentTabTitle`). A Reader View tab is named by its article's
   URL, whose user name and password its `about:reader?url=` address carries percent-encoded
   (M30, #1324). A link's href, a form's action and the page's URL lose them also from a URL
-  percent-encoded in their query or hash, a site's redirect parameter (M30, #1348). A page's own
+  percent-encoded in their query or hash, a site's redirect parameter (M30, #1348), and from
+  a URL written unencoded in their path, an archive's or a redirect service's (M30, #1372). A page's own
   title that is a URL with a scheme loses them too (core's `agentTitle`), as given and as shown:
   a fullwidth slash in the user name, which NFKC makes a slash, does not hide them, and neither
-  does a URL percent-encoded in its query. Any other title, and the page's text, are the
+  does a URL percent-encoded in its query, nor invisible characters that fill the part of a
+  long title that is read (a title read only in part is given as `agentUrl` gives it when that
+  part, as shown, is empty or may still begin a scheme; #1372). Any other title, and the page's text, are the
   page's own: a page that writes its address into them is not changed. A link nested in another
   link's text, which some search pages have, comes out of Firefox's extractor escaped
   (`\[a\]\(https://...\)`); its target loses them too (#1217). Only link targets are read: text
   shaped like one (`](scheme://user:password@host)`, white space-free) is rewritten as a target,
   and any other code, email address or URL in the page's text is left byte for byte.
   [`a link's href loses its user name and password`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`a link's href loses the user name and password of a URL in its path`](../../packages/vimma-core/test/agent-path-userinfo.test.ts),
+  [`a page's markdown link target loses them`](../../packages/vimma-core/test/agent-path-userinfo.test.ts),
+  [`a title whose first 32,768 code units are invisible still loses them`](../../packages/vimma-core/test/agent-path-userinfo.test.ts),
   [`a user name and password longer than the cut are dropped before it`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`a link's href and a form's action lose their user name and password`](../../packages/vimma-core/test/agent-act.test.ts),
   [`a user name and password longer than the cut are dropped before it`](../../packages/vimma-core/test/agent-act.test.ts),
@@ -1207,10 +1213,21 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   changed. That reading is bounded: one URL reads at most about four times its read length of
   query text, all of a read page's link targets together 256 Ki code units, each target only as
   far as a link's href is read, and a title longer than a page URL's read is read as `agentUrl`
-  reads it; a query or hash past that is dropped. A URL inside a path segment
-  (`https://web.archive.org/web/2020/https://user:password@host/`, `/r/https%3A%2F%2F…`) is not
-  read: reading paths as URLs would rewrite ordinary addresses and change which page the agent
-  is told it is on, so it is a known limit. `vimma_open`'s reply names the URL the agent passed,
+  reads it; a query or hash past that is dropped. A URL written unencoded in another URL's path,
+  as archive and redirect services write it
+  (`https://web.archive.org/web/2020/https://user:password@host/`), loses them too (#1372): each
+  URL in the path, from its scheme to the end of the path, is stripped as a URL nested one level
+  deeper, and the next is looked for right after its scheme, so an authority that ends later
+  (`foo://a\https://user@host`) hides none; past the fourth URL in a path, or the fourth level,
+  the rest of the URL is dropped, query and hash too. A path without one (`/@ada/posts`,
+  `/mailto:ada@host`, a MediaWiki `/wiki/File:Logo@2x.png`, since a `file:` URL without slashes
+  has no user name) is left byte for byte; a segment in a special scheme's colon form
+  (`/go/http:ada@host`) is a URL to a parser and loses everything up to its `@`. Two known
+  limits: a URL right after a letter, digit, `+`, `-` or `.` (`/web/2020-https://…`) is not read,
+  so that no run of scheme characters is searched from each of its characters, and a URL
+  percent-encoded in a path segment (`/r/https%3A%2F%2F…`) is not decoded: reading every path
+  segment as an encoded URL would rewrite ordinary addresses and change which page the agent is
+  told it is on. `vimma_open`'s reply names the URL the agent passed,
   as the agent wrote it: it tells the agent nothing it did not send, and the loaded page's URL
   goes through `agentUrl` in every later reply. A Reader View address that was read whole is then given as its
   article's URL, as the status bar shows it (core's `readerOriginalUrl`), so a reader tab is
