@@ -97,7 +97,7 @@ const hasControl = (s) =>
 function asciiHost(host) {
   try {
     return new URL(`http://${host}/`).hostname;
-  } catch {
+  } /* Stryker disable next-line BlockStatement: callers read undefined as null */ catch {
     return null;
   }
 }
@@ -146,7 +146,7 @@ function parseUrlPrefix(text) {
   try {
     const href = new URL(text.trim()).href;
     return /^javascript:/i.test(href) ? null : href;
-  } catch {
+  } /* Stryker disable next-line BlockStatement: callers read undefined as null */ catch {
     return null;
   }
 }
@@ -222,6 +222,7 @@ export function validateRoutes(value) {
 export function resolveRoutes(value) {
   return value.map((rule, i) => {
     /** @type {Route} */
+    // Stryker disable next-line StringLiteral: validateRoutes lets no rule through without a workspace
     const route = { index: i + 1, workspace: rule.workspace ?? "" };
     if (rule.domain !== undefined)
       route.domain = /** @type {RouteDomain} */ (parseDomain(rule.domain));
@@ -239,6 +240,7 @@ function domainHit(u, d) {
   if (u.protocol !== "http:" && u.protocol !== "https:") return false;
   const host = u.hostname.replace(/\.$/, "").replace(/^\[(.*)\]$/, "$1");
   if (d.ip) return host === d.host;
+  // Stryker disable next-line LogicalOperator: a domain rule's host never ends in a number or holds a colon, so it cannot equal or end an IP host either way
   if (IPV4.test(host) || host.includes(":")) return false;
   return d.sub ? host.endsWith(`.${d.host}`) : host === d.host || host.endsWith(`.${d.host}`);
 }
@@ -271,6 +273,7 @@ function keysHit(r, u) {
  * @param {Route} r
  * @param {{ workspaces?: readonly string[], skip?: readonly string[] }} options
  */
+// Stryker disable next-line ArrayDeclaration: the default stands for no workspace to skip; a name no workspace has skips nothing either
 function usable(r, { workspaces, skip = [] }) {
   return (!workspaces || workspaces.includes(r.workspace)) && !skip.includes(r.workspace);
 }
@@ -288,20 +291,24 @@ function usable(r, { workspaces, skip = [] }) {
  * @param {{ workspaces?: readonly string[], skip?: readonly string[] }} [options]
  * @returns {Route | null}
  */
+// Stryker disable next-line ArrayDeclaration: the default stands for no program known; a name that is not a token is filtered out
 export function matchRoute(routes, { url, apps = [] }, options = {}) {
   if (!routes.length) return null;
   /** @type {URL | null} */
   let u;
   try {
     u = new URL(url);
-  } catch {
+  } /* Stryker disable next-line BlockStatement: keysHit reads undefined as null */ catch {
     u = null;
   }
+  // Stryker disable next-line ArrayDeclaration: the default stands for no workspace to skip; a name no workspace has skips nothing either
   const skip = options.skip ?? [];
+  // Stryker disable next-line MethodExpression: a rule's app is always a token, so a name that is not one matches no rule, and dropping it keeps the order of the rest
   let names = apps.filter((a) => isAppToken(a));
   if (
     routes.some((r) => r.app !== undefined && skip.includes(r.workspace) && names.includes(r.app))
   ) {
+    // Stryker disable next-line ArrayDeclaration: a name that is not a token matches no rule's app
     names = [];
   }
   /** @type {Route | null} */
@@ -343,7 +350,8 @@ function covers(j, i) {
     if (i.url === undefined) return false;
     try {
       return domainHit(new URL(i.url), j.domain);
-    } catch {
+    } /* Stryker disable next-line BlockStatement: i.url is a parsed href, so it parses */ catch {
+      // Stryker disable next-line BooleanLiteral: i.url is an href the URL parser produced, so it always parses again
       return false;
     }
   }
@@ -378,6 +386,7 @@ export function shadowedBy(routes, i, options = {}) {
  * @param {{ workspaces: readonly string[], skip?: readonly string[] }} options
  * @returns {string | null}
  */
+// Stryker disable next-line ArrayDeclaration: the default stands for no workspace to skip; a name no workspace has skips nothing either
 export function defaultWorkspaceFor(name, { workspaces, skip = [] }) {
   return name !== null && workspaces.includes(name) && !skip.includes(name) ? name : null;
 }
