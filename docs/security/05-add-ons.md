@@ -16,7 +16,7 @@ The add-on picker lists, enables, disables and removes extensions. Spec:
   permissions.
   [`u_reports_the_update_check`](../../tests/browser/browser_vimma_addons.js),
   [`installs an add-on only from the setup page`](../../tools/security/test/chrome-source.test.ts),
-  [`content_blocker_installs_on_enter_with_the_permission_prompt`](../../tests/browser/browser_vimma_setup.js),
+  [`content_blocker_installs_on_enter_with_the_permission_prompt`](../../tests/browser/browser_vimma_setup_v2.js),
   [`an AMO result off addons.mozilla.org or without a sha256 hash is dropped`](../../packages/vimma-core/test/setup.test.ts)
 - A2. Removal **must** ask y/N, and a y stands only for the add-on and version asked about.
   [`d_removes_after_yes_and_keeps_after_no`](../../tests/browser/browser_vimma_addons.js),
