@@ -931,8 +931,8 @@ export class BookmarksFileImpl {
    */
   async run(how) {
     if (!this.ready) return;
-    // Who changed what since the last run (Behaviour 14), taken now: the apply's own events
-    // clear it.
+    // Who changed what since the last run (Behaviour 14), taken now, so that a change that lands
+    // during this run is named by the run that writes it.
     const burst = new Map(this.burst);
     this.burst.clear();
     const eventTables = new Map(this.eventTables);
@@ -1118,10 +1118,11 @@ export class BookmarksFileImpl {
     // Under "all", what landed during the apply is an outside change to write, never one to put
     // back (which would delete a bookmark just made): the next run merges it. After an apply that
     // failed part way the base stays what the merge saved, so what did land reads as agreement in
-    // that run, not as removals from the file; a second failure in a row pauses. One rerun in a
-    // row at most: a plan that never settles cannot keep the queue busy.
+    // that run, not as removals from the file; a second failure in a row pauses, so a plan that
+    // cannot be applied does not keep the queue busy. The run after a failed apply merges what
+    // landed the same way: putting it back there would upload the revert to Sync (#1368).
     const merging = !!outside && !outside.putBack;
-    const rerun = merging && !how.retried && (failed || again.ops.length > 0 || again.ask !== null);
+    const rerun = merging && (failed || again.ops.length > 0 || again.ask !== null);
     if (merging && failed && how.retried) {
       console.error("vimma: bookmarks.toml apply failed twice; paused");
       this.paused = { why: "failed", input: "" };
@@ -1999,6 +2000,10 @@ export class BookmarksFileImpl {
   async apply(ops) {
     if (!ops.length) return;
     const B = places().bookmarks;
+    // Events during the apply are forgotten (its own, and any that race it); a change that landed
+    // before it (Sync, after the merge read Places) keeps its name for the run that writes it
+    // (Behaviour 14, #1368).
+    const before = new Map([...this.burst].map(([t, who]) => [t, new Set(who)]));
     this.applying = true;
     try {
       // Runs of inserts go in as trees, one transaction per parent (insertTree appends in the
@@ -2038,7 +2043,7 @@ export class BookmarksFileImpl {
       }
     } finally {
       this.applying = false;
-      this.burst.clear();
+      this.burst = before;
     }
   }
 
