@@ -1995,6 +1995,11 @@ you, and `a` lets it work without asking until it quits, except where
   or a restart, when the file turns them on again. `:mcp` then says
   `mcp off (until :mcp on or a restart)`. With `[mcp] enabled = false`, `:mcp on` changes
   nothing and says to edit the file.
+- The new setup's **Agents** step (`:setup`, chapter 5, while the new setup is built behind
+  `vimma.feature.setupV2`) turns agents on as `:mcp on` and `y` do: `enter` on **On** writes
+  `[mcp] enabled = true` and ends an `:mcp off` of this session. It asks nothing more, since that
+  `enter` is your answer. It is refused when `:mcp off` ran after you arrived at the step, and
+  the step then puts the cursor back on **Off**.
 - `about:vimma`'s **Agents (MCP)** section shows the switch, full control's state and the agent
   workspace's tab count.
 

@@ -96,11 +96,17 @@ export function mcpOnQuestion(name, adopted) {
   if (!adopted) {
     return `Let local AI agents ask to use the "${name}" workspace? Nothing runs until you allow it. y/N`;
   }
-  const tabs = `${adopted.tabs} tab${adopted.tabs === 1 ? "" : "s"}`;
-  return (
-    `"${name}" is your own workspace (${tabs}, its own logins). Agents will be able to read ` +
-    "it. y/N"
-  );
+  return `${mcpAdoptedWarning(name, adopted)} y/N`;
+}
+
+/**
+ * What `:mcp on`'s question, and the setup's agents step, say of an agent workspace Vimma did
+ * not make (decision 8).
+ * @param {string} name @param {{ tabs: number }} adopted
+ */
+export function mcpAdoptedWarning(name, { tabs }) {
+  const n = `${tabs} tab${tabs === 1 ? "" : "s"}`;
+  return `"${name}" is your own workspace (${n}, its own logins). Agents will be able to read it.`;
 }
 
 /**

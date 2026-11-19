@@ -47,6 +47,11 @@ let heldOff = false;
 /** How many times `:mcp off` ran: a yes to an `:mcp on` asked before the latest one is refused. */
 let offs = 0;
 
+/**
+ * @typedef {Readonly<{ offs: number, agent: string | null }>} McpConsentTicket  how many
+ *   `:mcp off`s had run, and the agent workspace, when the setup's agents step was drawn
+ */
+
 /** @param {unknown} e */
 const reason = (e) => /** @type {Error} */ (e).message;
 
@@ -97,6 +102,70 @@ export const McpHost = {
   _clearHoldForTests() {
     heldOff = false;
     Services.obs.notifyObservers(null, MCP_CHANGED_TOPIC);
+  },
+
+  /** `:mcp on|off`'s pref and whether `:mcp off` holds agents off (setup-v2 behaviour 9). */
+  get switchState() {
+    const { pref, off } = switchState();
+    return { pref, off };
+  },
+
+  /**
+   * What `:mcp on`'s question remembers when it is asked, taken when the setup's agents step is
+   * drawn: that step's `enter` on "on" is the consent a yes is (setup-v2 behaviour 28), and is
+   * checked against it as the yes is (docs/security/12-agents-mcp.md M65).
+   * @returns {McpConsentTicket}
+   */
+  consentTicket() {
+    return Object.freeze({ offs, agent: WorkspaceStore.agent?.id ?? null });
+  },
+
+  /**
+   * Why a consent given on `ticket` may not turn agents on now, where `:mcp on`'s yes would be
+   * refused too: no agent workspace, another one since, or an `:mcp off` since. Null when it may.
+   * @param {McpConsentTicket} ticket
+   * @returns {string | null}
+   */
+  consentRefusal(ticket) {
+    const agent = WorkspaceStore.agent;
+    if (!agent) return "there is no agent workspace (containers off?)";
+    if (ticket.agent !== agent.id) return `"${agent.name}" changed since this step was drawn`;
+    // An `:mcp off` typed after the step was drawn (in another window, say) is the newer word.
+    if (ticket.offs !== offs) return ":mcp off ran since this step was drawn";
+    return null;
+  },
+
+  /**
+   * The setup's agents step turned agents on (its `[mcp] enabled = true` written and read):
+   * ends `:mcp off`'s hold, as `:mcp on`'s yes does, after the same checks. Refused here, after
+   * the write (the workspace changed or went away meanwhile), it holds agents off as `:mcp off`
+   * does, so that the file just written does not turn them on without a consent that counts.
+   * @param {McpConsentTicket} ticket
+   * @returns {string | null} why not, or null once agents may connect
+   */
+  consentFromSetup(ticket) {
+    const why = this.consentRefusal(ticket);
+    if (why) {
+      heldOff = true;
+      Services.obs.notifyObservers(null, MCP_CHANGED_TOPIC);
+      return why;
+    }
+    heldOff = false;
+    // Always: the file's read already told the topic while the hold still stood.
+    Services.obs.notifyObservers(null, MCP_CHANGED_TOPIC);
+    return null;
+  },
+
+  /**
+   * The agent workspace as the agents step shows it: missing (containers off), or one Vimma
+   * did not make, with its tabs, as `:mcp on`'s question names it (decision 8).
+   * @returns {{ missing?: boolean, adopted?: { name: string, tabs: number } | null }}
+   */
+  setupAgent() {
+    const agent = WorkspaceStore.agent;
+    if (!agent) return { missing: true };
+    if (WorkspaceStore.agentIsOurs()) return { adopted: null };
+    return { adopted: { name: agent.name, tabs: countTabs(agent) } };
   },
 
   /** The agent workspace's name, as questions and notices show it. */

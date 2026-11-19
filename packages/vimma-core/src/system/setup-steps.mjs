@@ -15,6 +15,7 @@ import { getAction } from "../keys/actions.mjs";
 import { displayBinding, formatKey, parseKey } from "../keys/keys.mjs";
 import { tomlLiteral } from "../config/toml.mjs";
 import { DEFAULT_THEME_NAME } from "../config/theme.mjs";
+import { mcpAdoptedWarning, mcpState } from "../agent/agent.mjs";
 import { DEFAULT_HINT_CHARS } from "../page/hints.mjs";
 import { defaultKeys } from "../config/defaults.mjs";
 
@@ -267,7 +268,8 @@ const TABLE = [
           question: "Tell you when a new release is out?",
           text:
             "The check sends the update channel and the platform to updates.vimma.dev every " +
-            "12 hours. Never check stops every request to it.",
+            "12 hours, with no cookies. Never check stops every request to " +
+            "updates.vimma.dev, <code>:update</code> included.",
           actions: [],
         },
         { table: "updates", key: "check" },
@@ -281,11 +283,12 @@ const TABLE = [
           id: "agents",
           title: "Agents",
           question: "Let local AI agents ask to use Vimma through vimma-ctl mcp?",
+          // Two lines (behaviour 28), then the kill switch: the page shows each line apart.
           text:
-            "Agents reach only the agent workspace. Sending a form, paying and showing you a " +
-            "page always ask you first. <code>:mcp off</code> turns agents off until " +
-            "<code>:mcp on</code> or a restart, whatever config.toml says and however often " +
-            "it is read again.",
+            "Agents reach only the agent workspace.\n" +
+            "Sending a form, paying and showing you a page always ask you first.\n" +
+            "<code>:mcp off</code> turns agents off until <code>:mcp on</code> or a restart, " +
+            "whatever config.toml says and however often it is read again.",
           actions: [],
         },
         { table: "mcp", key: "enabled" },
@@ -530,6 +533,8 @@ const pathOf = (e) => `${e.table}.${e.key}`;
  * @property {string} [appearance]
  * @property {readonly string[]} [engines]  the installed engines: a `[search] default` written
  *   in another case is in force as the engine of that name, as the config's lookup finds it
+ * @property {{ pref: boolean, off: boolean }} [mcp]  `:mcp on|off`'s pref, and whether `:mcp off`
+ *   holds agents off for the session (decision 16)
  */
 
 /**
@@ -539,7 +544,10 @@ const pathOf = (e) => `${e.table}.${e.key}`;
  * @param {ResolvedConfig} config @param {SetupRuntime} [runtime]
  * @returns {InForce}
  */
-export function inForceOf(config, { engine = null, appearance, engines = [] } = {}) {
+export function inForceOf(
+  config,
+  { engine = null, appearance, engines = [], mcp = { pref: false, off: false } } = {},
+) {
   const named = config.search?.default?.kind === "engine" ? config.search.default.name : null;
   const fileEngine =
     named === null ? null : (engines.find((e) => e.toLowerCase() === named.toLowerCase()) ?? named);
@@ -550,6 +558,16 @@ export function inForceOf(config, { engine = null, appearance, engines = [] } = 
     "theme.appearance": config.theme.appearance ?? appearance ?? "system",
     "ui.toolbar": config.ui.toolbar,
     "ui.tabline": config.ui.tabline,
+    "updates.check": config.updates.check,
+    // What `:mcp` says (behaviour 9): its off for the session, then the file, then the pref.
+    "mcp.enabled": mcpState({
+      pref: mcp.pref,
+      ...(config.mcp.enabled === undefined ? {} : { config: config.mcp.enabled }),
+      off: mcp.off,
+    }).enabled,
+    // Not choices' keys: what the agents step plans and says from (agentsTurnOn, choiceNote).
+    "mcp.file": config.mcp.enabled,
+    "mcp.held": mcp.off,
     "keys.prefix": prefixOf(config),
     "modal.hint_chars": config.hintChars,
   };
@@ -677,6 +695,10 @@ export function editLines(edits) {
  */
 export function planAtEnter(step, choice, inForce, { omarchy = false } = {}) {
   if (choice.keep) return [];
+  if (step.id === "agents" && agentsTurnOn(step, choice, inForce)) {
+    // Held off by `:mcp off` with the file already on: the consent alone turns agents on.
+    return inForce["mcp.file"] === true ? [] : planChoice(choice, inForce);
+  }
   if (step.id === "colours") {
     const own = choice.edits.at(-1);
     const now = colourChoices(step, inForce, omarchy).choices.find(
@@ -685,6 +707,62 @@ export function planAtEnter(step, choice, inForce, { omarchy = false } = {}) {
     return now ? planChoice(now, inForce) : null;
   }
   return planChoice(choice, inForce);
+}
+
+/**
+ * Whether `enter` on `choice` turns agents on (behaviour 28): the agents step's "on" while they
+ * are off. That `enter` is the user's consent, as a yes to `:mcp on` is, so the host checks what
+ * that yes checks and ends `:mcp off`'s hold as it does (docs/security/12-agents-mcp.md M65).
+ * @param {SetupStep} step @param {SetupChoice} choice @param {InForce} inForce
+ * @returns {boolean}
+ */
+export function agentsTurnOn(step, choice, inForce) {
+  if (step.id !== "agents" || choice.keep) return false;
+  const on = choice.edits.some((e) => e.table === "mcp" && e.key === "enabled" && e.value === true);
+  return on && inForce["mcp.enabled"] !== true;
+}
+
+/**
+ * A line the agents step shows under a choice, besides what it writes: that "on" also ends
+ * `:mcp off`'s hold, as `:mcp on` does; that the file turns agents on again at the next start
+ * while the hold keeps them off; what `:mcp on`'s question says of a workspace of yours; or that
+ * there is no agent workspace to turn on. Null for every other step and choice.
+ * @param {SetupStep} step @param {SetupChoice} choice @param {InForce} inForce
+ * @param {{ adopted?: { name: string, tabs: number } | null, missing?: boolean }} [agent]
+ *   the agent workspace when it is one Vimma did not make, or `missing` without one
+ * @returns {string | null}
+ */
+export function choiceNote(step, choice, inForce, { adopted = null, missing = false } = {}) {
+  if (step.id !== "agents" || choice.keep) return null;
+  if (agentsTurnOn(step, choice, inForce)) {
+    if (missing) {
+      return "There is no agent workspace (containers are off), so agents cannot be turned on.";
+    }
+    const hold = inForce["mcp.held"] ? "Also ends :mcp off for this session." : null;
+    if (adopted) {
+      const warning = mcpAdoptedWarning(adopted.name, { tabs: adopted.tabs });
+      return hold ? `${warning} ${hold}` : warning;
+    }
+    return hold;
+  }
+  const off = choice.edits.some((e) => e.key === "enabled" && e.value === false);
+  if (off && inForce["mcp.held"] && inForce["mcp.file"] === true) {
+    return "config.toml's [mcp] enabled = true turns agents on again at the next start.";
+  }
+  return null;
+}
+
+/**
+ * The lines a choice shows before `enter` (behaviour 12): what `planAtEnter` would write, and
+ * "Writes nothing" for the agents step's "on" without an agent workspace, which the host
+ * refuses as `:mcp on` refuses it (decision 20).
+ * @param {SetupStep} step @param {SetupChoice} choice @param {InForce} inForce
+ * @param {{ omarchy?: boolean, missing?: boolean }} [options]  `missing`: no agent workspace
+ * @returns {string[]}
+ */
+export function choiceLines(step, choice, inForce, { omarchy = false, missing = false } = {}) {
+  if (missing && agentsTurnOn(step, choice, inForce)) return editLines([]);
+  return editLines(planAtEnter(step, choice, inForce, { omarchy }) ?? []);
 }
 
 /**
