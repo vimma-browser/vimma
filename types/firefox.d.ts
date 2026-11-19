@@ -1533,6 +1533,18 @@ interface BrowserCommandsApi {
   openTab(): void;
   viewSource(browser: MozBrowser): void;
 }
+// engine/browser/base/content/browser.js (TabDialogBox): the dialogs over one tab's browser.
+// open's closedPromise resolves once the dialog has closed.
+interface Tabbrowser {
+  getTabDialogBox(browser: MozBrowser): TabDialogBox;
+}
+interface TabDialogBox {
+  open(
+    url: string,
+    options?: { features?: string; modalType?: number },
+    ...args: unknown[]
+  ): { closedPromise: Promise<void>; dialog: unknown };
+}
 // engine/browser/components/tabbrowser/Tabbrowser.sys.mjs (removeTab's options): the
 // TabMetrics context of a user's close.
 interface TabbrowserRemoveOptions {
@@ -2233,6 +2245,9 @@ interface XPCOMInterfaces {
   nsILoginInfo: nsIJSIID<nsILoginInfo>;
   nsINestedURI: nsIJSIID<nsINestedURI>;
   nsIProcess: nsIJSIID<nsIProcess>;
+  // engine/netwerk/base/nsIPrompt.idl: the modal types (TabDialogBox.open, and the browser
+  // tests' prompts).
+  nsIPrompt: { readonly MODAL_TYPE_CONTENT: number; readonly MODAL_TYPE_WINDOW: number };
   nsIPropertyBag2: nsIJSIID<nsIPropertyBag2>;
   nsIReferrerInfo: nsIJSIID<nsIReferrerInfo> & {
     readonly EMPTY: number;

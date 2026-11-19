@@ -116,7 +116,8 @@ first, so that what the guide says a model can do is what the bench measured.
    task sent with `Enter` is itself the grant and nothing would ask. With no model, the first
    line says `no model set up`, unless `config.toml` has errors: a file with errors applies none
    of its tables, `[agent]` included, so the line names the error and its line instead
-   (`no model: config.toml:1: agent: is new in schema 2: put schema = 2 at the top of the file`).
+   (`no model: config.toml:1: agent: is new in schema 2: put schema = 2 at the top of the file`;
+   since changed: that error is gone, as config.toml has no schema (#1379)).
    The window's body says the same in place of the setup steps, and so does the notice when
    `:agent give`, `n` or a send needs a model. Otherwise the setup hint would send the user to
    set up a model the file already lists.
@@ -140,6 +141,10 @@ first, so that what the guide says a model can do is what the bench measured.
    so a busy server is never refused a task it could run. A hosted provider is not asked: it
    gets no request before the first task (item 4).
 8. **`config.toml` may list providers**, by endpoint and model only:
+
+   (Since changed: the `schema = 2` line below is no longer needed; config.toml has no schema,
+   and every key is valid in every file (#1379),
+   [m5-core-config-and-theme](m5-core-config-and-theme.md).)
 
    ```toml
    schema = 2                  # at the top of the file: [agent] is new in schema 2

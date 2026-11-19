@@ -59,7 +59,7 @@ describe("the chapters and steps (decision 11)", () => {
       const chosen = steps.flatMap((s) => s.choices.slice(k, k + 1));
       for (const c of chosen) expect(c.edits.length, c.label).toBeGreaterThan(0);
       const r = setConfigKeysText(
-        "schema = 2\n",
+        "",
         chosen.flatMap((c) => c.edits),
       );
       const labels = chosen.map((c) => c.label).join(", ");

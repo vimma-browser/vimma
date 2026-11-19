@@ -89,12 +89,14 @@ docs/runbook/ci-fuzzing.md, "Fuzzing: reproducing a failing seed".
 **What it proves.** That a file or message written by one version is read correctly by the next,
 and that the browser and `vimma-ctl` agree on the protocol.
 
-**Where.** `tests/contract/` holds the fixtures by version: `config/v1/` and `v2/` (a valid file,
-invalid ones and their expected errors), `control/v1/` and `v2/`, `state/v1/` (the window snapshot),
-`workspaces/v1/` (the definitions file), and sample Omarchy themes in `theme/`. vimma-core's tests
+**Where.** `tests/contract/` holds the fixtures by version: `config/v1/` and `v2/` (valid files,
+invalid ones and their expected errors, for the `schema` line older config.toml files carry),
+`control/v1/` and `v2/`, `state/v1/` (the window snapshot), `workspaces/v1/` (the definitions
+file), and sample Omarchy themes in `theme/`. vimma-core's tests
 read them all (for example [contract.test.ts](../../packages/vimma-core/test/contract.test.ts)),
 and vimma-ctl's tests in `tools/vimma-ctl/src/protocol.rs` and `src/mcp/` read the `control/` ones,
-so both sides of the socket check the same lines. A new schema version adds a folder.
+so both sides of the socket check the same lines. A new version of a format adds a folder;
+config.toml has no version any more, since its keys only grow (#1379).
 
 **Locally.** `npm test` and `cargo test` in `tools/vimma-ctl`.
 

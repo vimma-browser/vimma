@@ -1299,9 +1299,15 @@ describe("bookmarks.toml: review fixes", () => {
     expect(plan({ tables, places: added, base: twoBase }).touched).toEqual(["home"]);
   });
 
-  test("schema 1 config.toml's inline tables are not read", () => {
-    expect(
-      readBookmarks({ file: null, config: '[bookmarks.work]\n"a" = "https://e.com/a"' }).from,
-    ).toBeNull();
-  });
+  test.each([[""], ["schema = 1\n"], ["schema = 2\n"]])(
+    "config.toml's inline tables are read whatever its schema line (%j, #1379)",
+    (schema) => {
+      const r = readBookmarks({
+        file: null,
+        config: `${schema}[bookmarks.work]\n"a" = "https://e.com/a"`,
+      });
+      expect(r.from).toBe("config.toml");
+      expect(r.tables.map((t) => t.name)).toEqual(["work"]);
+    },
+  );
 });
