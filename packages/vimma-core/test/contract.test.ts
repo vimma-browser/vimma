@@ -43,7 +43,7 @@ describe.each(["v1", "v2"])("config fixtures %s", (folder) => {
 describe("Omarchy colors.toml", () => {
   const read = (name: string) => readFileSync(new URL(`theme/${name}`, contract), "utf8");
 
-  test.each(["tokyo-night.colors.toml", "light.colors.toml"])("%s is valid", (name) => {
+  test.each(["sample.colors.toml", "light.colors.toml"])("%s is valid", (name) => {
     expect(parseOmarchyColors(read(name)).errors).toEqual([]);
   });
 

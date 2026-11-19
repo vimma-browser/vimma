@@ -26,6 +26,7 @@ import { MAIN_SIZE_DEFAULT } from "../panes/layouts.mjs";
 import {
   APPEARANCES,
   BUILTIN_THEMES,
+  DEFAULT_THEME_NAME,
   THEME_COLOR_KEYS,
   isHexColor,
   normalizeHex,
@@ -218,6 +219,11 @@ const KEYMAP_SECTIONS = new Set(["keys", "modal", "unbind", "firefox", "sites"])
 const WORKSPACE_KEYS = ["color", "icon", "home", "autofill"];
 const THEME_KEYS = ["source", "name", "appearance", "font", "colors"];
 const THEME_NAMES = Object.keys(BUILTIN_THEMES);
+/**
+ * Built-in palettes Vimma no longer has (#1383). A file that names one still applies, with the
+ * default palette and a warning, so an old config.toml is not refused whole for it.
+ */
+const REMOVED_THEME_NAMES = ["tokyo-night"];
 const THEME_SOURCES = ["omarchy", "file"];
 const PANES_KEYS = ["max", "layout", "main_size", "max_splits", "new_tab"];
 /** `[panes] layout` (docs/specs/tiling-layouts.md): where a pane opened without a direction goes. */
@@ -779,9 +785,17 @@ function validate(raw, warnings = []) {
         }
       } else if (key === "name") {
         if (typeof v !== "string") typeError(path, v, "a string");
-        else if (!THEME_NAMES.includes(v)) {
+        else if (REMOVED_THEME_NAMES.includes(v)) {
+          warnings.push({
+            path,
+            message:
+              `"${v}" was removed: the built-in palette is "${DEFAULT_THEME_NAME}" (dark and ` +
+              `light), used instead; for Omarchy's colours, use source = "omarchy"`,
+          });
+        } else if (!THEME_NAMES.includes(v)) {
           const names = THEME_NAMES.map((n) => `"${n}"`).join(" or ");
-          fail(path, `must be ${names}`, closest(v, THEME_NAMES));
+          const other = 'for other colours, use source = "omarchy" or [theme.colors]';
+          fail(path, `must be ${names}; ${other}`, closest(v, THEME_NAMES));
         }
       } else if (key === "appearance") {
         // docs/specs/theme-appearance.md B1: left out, `:theme` (a pref) decides.
@@ -1222,7 +1236,10 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     }),
     theme: {
       source: theme.source ?? defTheme.source,
-      name: theme.name ?? defTheme.name,
+      // A name that is not built in gives the default; validate() lets only a removed one
+      // (REMOVED_THEME_NAMES) through, with a warning.
+      name:
+        theme.name !== undefined && THEME_NAMES.includes(theme.name) ? theme.name : defTheme.name,
       // Only when the file sets it: config.toml then wins over `:theme` (theme-appearance B4).
       ...(theme.appearance === undefined ? {} : { appearance: theme.appearance }),
       font: theme.font ?? defTheme.font,
