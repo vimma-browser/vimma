@@ -571,6 +571,87 @@ add_task(async function a_sync_change_between_the_write_and_the_plan_is_written_
   await reset();
 });
 
+add_task(async function a_sync_change_in_the_run_after_a_failed_apply_is_written_not_put_back() {
+  // #1368: the run after a failed apply ends with the same closing compare; a Sync change that
+  // lands before it is merged into the file by one more run, never put back and uploaded.
+  await IOUtils.writeUTF8(bookmarksFile, '[bookmarks.work]\n"a" = "https://example.com/a"\n');
+  await untilFolder("work", ["a https://example.com/a"], "loaded");
+  const a = await guidOf("https://example.com/a");
+  const apply = mirror.apply.bind(mirror);
+  let calls = 0;
+  let landed = false;
+  mirror.apply = async (/** @type {Parameters<typeof apply>[0]} */ ops) => {
+    if (!ops.length) return apply(ops);
+    calls++;
+    if (calls === 1) throw new Error("test: the first apply fails");
+    await apply(ops);
+    if (calls === 2) {
+      await PlacesUtils.bookmarks.update({ guid: a, title: "a2", source: SYNC });
+      landed = true;
+    }
+  };
+  try {
+    await IOUtils.writeUTF8(
+      bookmarksFile,
+      '[bookmarks.work]\n"a" = "https://example.com/a"\n"b" = "https://example.com/b"\n',
+    );
+    await until(() => landed, "Sync's change landed right after the retried apply");
+    await quiet();
+  } finally {
+    mirror.apply = apply;
+  }
+  Assert.deepEqual(
+    await folderContents("work"),
+    ["a2 https://example.com/a", "b https://example.com/b"],
+    "kept in Places",
+  );
+  Assert.equal(
+    await IOUtils.readUTF8(bookmarksFile),
+    '[bookmarks.work]\n"a2" = "https://example.com/a"\n"b" = "https://example.com/b"\n',
+    "and written to the file",
+  );
+  await reset();
+});
+
+add_task(async function a_sync_removal_that_lands_before_an_apply_is_named_sync() {
+  // #1368: the apply forgets only its own events, so the run that writes Sync's removal names
+  // Sync, not Firefox.
+  await IOUtils.writeUTF8(
+    bookmarksFile,
+    '[bookmarks.work]\n"a" = "https://example.com/a"\n"c" = "https://example.com/c"\n',
+  );
+  await untilFolder("work", ["a https://example.com/a", "c https://example.com/c"], "loaded");
+  const c = await guidOf("https://example.com/c");
+  const apply = mirror.apply.bind(mirror);
+  let once = true;
+  mirror.apply = async (/** @type {Parameters<typeof apply>[0]} */ ops) => {
+    if (once && ops.length) {
+      once = false;
+      await PlacesUtils.bookmarks.remove(c, { source: SYNC });
+    }
+    await apply(ops);
+  };
+  try {
+    await IOUtils.writeUTF8(
+      bookmarksFile,
+      '[bookmarks.work]\n"a" = "https://example.com/a"\n"c" = "https://example.com/c"\n"b" = "https://example.com/b"\n',
+    );
+    await untilText(
+      '[bookmarks.work]\n"a" = "https://example.com/a"\n"b" = "https://example.com/b"\n',
+      "Sync's removal is written",
+    );
+    await until(() => noticeText().includes('removed 1 bookmark from "work"'), "said");
+    Assert.ok(
+      noticeText().includes('bookmarks.toml: Sync removed 1 bookmark from "work"'),
+      `the notice names Sync: ${noticeText()}`,
+    );
+    await quiet();
+  } finally {
+    mirror.apply = apply;
+  }
+  await reset();
+});
+
 add_task(async function a_renamed_or_deleted_workspace_folder_follows_write_back_all() {
   await IOUtils.writeUTF8(
     bookmarksFile,
