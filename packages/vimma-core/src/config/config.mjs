@@ -1543,13 +1543,29 @@ export function appendRouteText(text, { domain, workspace }, { mac = false } = {
 }
 
 /**
- * The first `[[agent.providers]]` header of `text`, as a line index, or -1. Where `[agent]` goes
- * in a file that has only its providers: a table header after them would not parse in every
- * TOML reader.
- * @param {string[]} lines
+ * Keys set in config.toml text (docs/specs/setup-v2.md decision 5), for ConfigHost.setConfigKeys:
+ * each by its line alone (setTomlKeys), every other line kept. Refused, with nothing to write,
+ * when the file does not load now or would not load with the edit, so that a setting can never
+ * leave a file the next read rejects. `{ text: null }` when the text would not change.
+ * @param {string | null} text  config.toml, null when it does not exist (the template is used)
+ * @param {readonly import("./toml.mjs").TomlEdit[]} edits
+ * @param {{ mac?: boolean }} [options]  check it with macOS's default keys (compileKeymap)
+ * @returns {{ text: string | null } | { error: string }}
  */
-function firstProvidersHeader(lines) {
-  return lines.findIndex((l) => /^[ \t]*\[\[[ \t]*agent[ \t]*\.[ \t]*providers[ \t]*\]\]/.test(l));
+export function setConfigKeysText(text, edits, { mac = false } = {}) {
+  const base = text ?? formatConfigTemplate();
+  if (parseConfig(base, { mac }).errors.length) {
+    return { error: "config.toml does not parse now; fix it first (:config shows it)" };
+  }
+  const r = setTomlKeys(base, edits);
+  if (!r.ok) return { error: `config.toml:${r.error.line}: ${r.error.message}` };
+  if (r.text === text) return { text: null };
+  const first = parseConfig(r.text, { mac }).errors[0];
+  if (first) {
+    const where = first.path ? `${first.path}: ` : "";
+    return { error: `config.toml would not load with the edit: ${where}${first.message}` };
+  }
+  return { text: r.text };
 }
 
 /** @param {Record<string, unknown>} raw  parsed TOML @returns {string} everything but `[agent]`, comparable */
@@ -1600,16 +1616,10 @@ export function addAgentProviderText(text, provider, { makeDefault, mac = false 
   }
   let out = base;
   if (makeDefault && before.config.agent.default !== name) {
+    // With `agent` made only by `[[agent.providers]]`, setTomlKeys puts `[agent]` before them.
     const r = setTomlKeys(out, [{ table: "agent", key: "default", value: name }]);
-    if (r.ok) out = r.text;
-    else {
-      // `agent` exists only through `[[agent.providers]]`: `[agent]` goes before them.
-      const lines = out.split("\n");
-      const at = firstProvidersHeader(lines);
-      if (at < 0) return { error: `config.toml cannot take [agent] default: ${r.error.message}` };
-      lines.splice(at, 0, "[agent]", `default = ${tomlLiteral(name)}`, "");
-      out = lines.join("\n");
-    }
+    if (!r.ok) return { error: `config.toml cannot take [agent] default: ${r.error.message}` };
+    out = r.text;
   }
   if (!known) {
     // An agent CLI by name, kind, cli, model and time limit only: its program's path is a pref

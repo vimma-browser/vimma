@@ -5,8 +5,9 @@
 // Spec: docs/specs/vimma-mcp.md, sub-PR 1: every profile has the agent workspace (decision 8),
 // made at the startup reconcile, empty, in its own cyan container; it is in the picker but not
 // in ctrl+b ( ) or ctrl+^ (decision 9); closing it empties it, renaming it is refused, and
-// `:mcp forget` clears its site data; `:mcp on|off` with its y/N (decisions 3 and 26); moving a
-// tab into it warns (decision 11). The socket's agent role: browser_vimma_mcp_agent.js.
+// `:mcp forget` clears its site data; `:mcp on|off` with its y/N (decisions 3 and 26), and
+// `:mcp off` winning over `[mcp] enabled = true` until `:mcp on` or a restart (setup-v2
+// decision 16); moving a tab into it warns (decision 11). The socket's agent role: browser_vimma_mcp_agent.js.
 
 "use strict";
 
@@ -20,6 +21,12 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
 );
 const { McpHost, MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",
+);
+const { ConfigHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
+);
+const { VimmaControl } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 );
 const { ContextualIdentityService } = ChromeUtils.importESModule(
   "moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs",
@@ -83,6 +90,7 @@ registerCleanupFunction(async () => {
   if (picker()?.open) EventUtils.synthesizeKey("KEY_Escape");
   Services.prefs.clearUserPref(MCP_ENABLED_PREF);
   McpHost.configure(null);
+  McpHost._clearHoldForTests();
   ww().switchTo({ id: def("main").id });
   for (const w of WorkspaceStore.definitions.workspaces.filter(
     (/** @type {WorkspaceDefinition} */ d) =>
@@ -434,15 +442,120 @@ add_task(async function mcp_on_asks_off_does_not_and_config_wins() {
   // and the reset below comes before any agent connects or is answered, which would read the
   // rest (AgentGate, AgentDownloads, agent-ui).
   McpHost.configure(
-    /** @type {McpConfig} */ ({ ...McpHost.config, enabled: true, workspace: "agent" }),
+    /** @type {McpConfig} */ ({ ...McpHost.config, enabled: false, workspace: "agent" }),
   );
-  await runCommand("mcp off");
+  await runCommand("mcp on");
   await until(
-    () => noticeText() === "mcp: config.toml sets [mcp] enabled = true; change it there",
-    "with [mcp] enabled in the file, :mcp off says to edit it",
+    () => noticeText() === "mcp: config.toml sets [mcp] enabled = false; change it there",
+    "with [mcp] enabled = false in the file, :mcp on says to edit it",
   );
-  Assert.ok(!Services.prefs.getBoolPref(MCP_ENABLED_PREF, false), "and changes nothing");
+  Assert.ok(!promptOpen(), "without a question");
+  Assert.ok(!McpHost.state.enabled, "and agents stay off");
   McpHost.configure(null);
+});
+
+add_task(async function mcp_off_survives_a_config_reload() {
+  ww().switchTo({ id: def("main").id });
+  // An earlier task's `:mcp off` holds for the whole session: only `:mcp on` clears it.
+  if (McpHost.state.from === "session" || !McpHost.state.enabled) {
+    await runCommand("mcp on");
+    await until(promptOpen, ":mcp on asks");
+    EventUtils.synthesizeKey("y");
+    await until(() => McpHost.state.enabled, "y clears the hold");
+  }
+  Services.prefs.clearUserPref(MCP_ENABLED_PREF);
+  const dir = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-mcp-off");
+  const file = PathUtils.join(dir, "config.toml");
+  await IOUtils.writeUTF8(file, "schema = 2\n[mcp]\nenabled = true\n");
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.config.path", file]] });
+  try {
+    await ConfigHost.reload();
+    Assert.deepEqual(McpHost.state, { enabled: true, from: "config" }, "the file turns agents on");
+
+    await runCommand("mcp off");
+    await until(() => !McpHost.state.enabled, ":mcp off turns them off, the file says on");
+    Assert.equal(
+      noticeText(),
+      "mcp off until :mcp on or a restart; config.toml's [mcp] enabled = true turns agents on " +
+        "again at the next start",
+      "and says when the file turns them on again",
+    );
+    Assert.ok(!promptOpen(), "without a question");
+
+    // The file edited and read again, as the watcher or `:source` reads it: agents stay off.
+    await IOUtils.writeUTF8(
+      file,
+      '# edited\nschema = 2\n[mcp]\nenabled = true\n[ui]\ntoolbar = "shown"\n',
+    );
+    await ConfigHost.reload();
+    Assert.equal(McpHost.config?.enabled, true, "the edited file is in force");
+    Assert.deepEqual(
+      McpHost.state,
+      { enabled: false, from: "session" },
+      "and agents stay off after the read",
+    );
+    await ConfigHost.reload();
+    Assert.ok(!McpHost.state.enabled, "and after another");
+    await runCommand("mcp");
+    await until(
+      () => noticeText().startsWith("mcp off (until :mcp on or a restart)"),
+      ":mcp says why it is off",
+    );
+
+    await runCommand("mcp on");
+    await until(promptOpen, ":mcp on asks again");
+    EventUtils.synthesizeKey("y");
+    await until(() => McpHost.state.enabled, "y turns agents on, as the file says");
+    Assert.deepEqual(McpHost.state, { enabled: true, from: "config" }, "the file decides again");
+    Assert.ok(!Services.prefs.getBoolPref(MCP_ENABLED_PREF, false), "the pref is left alone");
+  } finally {
+    await SpecialPowers.popPrefEnv();
+    await ConfigHost.reload();
+    await IOUtils.remove(dir, { recursive: true });
+    McpHost.configure(null);
+  }
+});
+
+// With the pref already on under the hold, `y` changes no pref, so the
+// agent role hears of the cleared hold only through MCP_CHANGED_TOPIC.
+add_task(async function mcp_on_after_off_starts_the_agent_role_when_the_pref_was_on() {
+  ww().switchTo({ id: def("main").id });
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+  await runCommand("mcp off");
+  await until(() => !McpHost.state.enabled, ":mcp off");
+  await until(() => VimmaControl.port === null, "the agent role stops");
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+  Assert.deepEqual(McpHost.state, { enabled: false, from: "session" }, "the hold beats the pref");
+  await runCommand("mcp on");
+  await until(promptOpen, ":mcp on asks");
+  EventUtils.synthesizeKey("y");
+  await until(() => McpHost.state.enabled, "y clears the hold");
+  await until(() => VimmaControl.port !== null, "and the agent role starts");
+  Services.prefs.clearUserPref(MCP_ENABLED_PREF);
+  await until(() => VimmaControl.port === null, "the role stops with the pref");
+});
+
+// A `:mcp on` question asked before an `:mcp off` (from another window, say) does not turn
+// agents on when answered later: the newer `:mcp off` wins.
+add_task(async function a_yes_to_an_older_mcp_on_question_does_not_undo_a_newer_mcp_off() {
+  ww().switchTo({ id: def("main").id });
+  Services.prefs.clearUserPref(MCP_ENABLED_PREF);
+  await runCommand("mcp on");
+  await until(promptOpen, ":mcp on asks");
+  McpHost.run(
+    "off",
+    () => {},
+    () => {},
+  );
+  EventUtils.synthesizeKey("y");
+  await until(() => !promptOpen(), "answered");
+  await until(
+    () => noticeText() === "mcp: :mcp off ran since you were asked; MCP stays off",
+    "the yes is refused, saying why",
+  );
+  Assert.ok(!McpHost.state.enabled, "agents stay off");
+  Assert.ok(!Services.prefs.getBoolPref(MCP_ENABLED_PREF, false), "the pref stays off");
+  McpHost._clearHoldForTests();
 });
 
 add_task(async function moving_a_tab_into_agent_warns_first() {

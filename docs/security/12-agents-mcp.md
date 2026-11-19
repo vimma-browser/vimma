@@ -1510,3 +1510,17 @@ the page's own and can carry tokens it put there; they come only from the agent'
   [`test_an_older_vimma_ctl_gets_a_notice_and_still_works`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`says older for a client that names no version: it predates the check`](../../packages/vimma-core/test/ctl-version.test.ts),
   [`is optional, and refused with the whole hello when it is not a version`](../../packages/vimma-core/test/ctl-version.test.ts)
+- M64. `:mcp off` **must** turn MCP off for the rest of the session, whatever config.toml says
+  and however often it is read again. It sets a hold kept in memory that wins over
+  `[mcp] enabled = true`, and only `:mcp on` (after its `y/N`) or a restart clears it, never a
+  read of the file (the watcher, `:source`, or a write by `:route add`, the built-in agent's
+  setup or the setup page). A yes to an `:mcp on` question asked before a later `:mcp off` is
+  refused. `:mcp off` also clears the pref `vimma.mcp.enabled`, so that taking `enabled` out of
+  the file later keeps agents off. Reason: a kill switch that depends on editing a file, or that
+  the next read of the file undoes, is no kill switch ([setup-v2](../specs/setup-v2.md)
+  decision 16). `[mcp] enabled = false` still wins over `:mcp on`.
+  [`with [mcp] enabled = true in config.toml, :mcp off turns agents off until restart`](../../packages/vimma-core/test/agent.test.ts),
+  [`the state: :mcp off first, then the file, then the pref`](../../packages/vimma-core/test/agent.test.ts),
+  [`mcp_off_survives_a_config_reload`](../../tests/browser/browser_vimma_mcp.js),
+  [`mcp_on_after_off_starts_the_agent_role_when_the_pref_was_on`](../../tests/browser/browser_vimma_mcp.js),
+  [`a_yes_to_an_older_mcp_on_question_does_not_undo_a_newer_mcp_off`](../../tests/browser/browser_vimma_mcp.js)

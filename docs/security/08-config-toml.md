@@ -4,14 +4,22 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
 [ADR-008](../adr/008-config-toml.md).
 
 - F1. A config.toml Vimma creates **must** be mode 0600 in a 0700 folder. Vimma changes an
-  existing file only from `:route add` (an append) and the setup summary (`[search] default`,
-  edited in place by `setTomlKeys`), never on a parse error, atomically through a renamed
-  temporary file, keeping the file's mode.
+  existing file only from `:route add` (an append), the setup summary (`[search] default`), the
+  built-in agent's setup, and `:siteunbind --save` / `:sitebind --delete`, each run one at a time
+  in the one queue of config.toml edits, so that an append never races a rewrite. Every edit but
+  the append goes through `ConfigHost`'s one writer (`rewriteConfig`; the setup's keys through
+  `setConfigKeys` and `setTomlKeys`), never on a parse error or when the file would not load with
+  the edit (checked with `parseConfig` before the rename), atomically through a renamed temporary
+  file that has the file's mode before any text goes in, renamed over the target of a symlinked
+  config.toml.
   [`a_missing_folder_is_created_private`](../../tests/browser/browser_vimma_config_first_run.js),
   [`an_existing_file_is_never_touched`](../../tests/browser/browser_vimma_config_first_run.js),
   [`route_add_creates_a_private_config_toml`](../../tests/browser/browser_vimma_security_invariants.js),
   [`summary_keeps_comments_and_mode_of_config_toml`](../../tests/browser/browser_vimma_setup.js),
-  [`summary_writes_nothing_on_a_parse_error`](../../tests/browser/browser_vimma_setup.js)
+  [`summary_writes_nothing_on_a_parse_error`](../../tests/browser/browser_vimma_setup.js),
+  [`an edit the file would not load with is refused, with the reason`](../../packages/vimma-core/test/config-set-keys.test.ts),
+  [`adds [theme] before [theme.colors] when only the sub-table exists`](../../packages/vimma-core/test/toml.test.ts),
+  [`route_add_waits_for_a_running_rewrite`](../../tests/browser/browser_vimma_workspace_routes.js)
 - F2. Every value **must** be validated; a broken file keeps the last good config and a bad
   value (such as a `javascript:` home page) is an error.
   [`broken text keeps the previous config active, unchanged`](../../packages/vimma-core/test/config.test.ts),
