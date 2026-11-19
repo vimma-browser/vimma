@@ -14,8 +14,10 @@ import { COMMANDS } from "../keys/cmdline.mjs";
 import { getAction } from "../keys/actions.mjs";
 import { displayBinding, parseKey } from "../keys/keys.mjs";
 import { tomlLiteral } from "../config/toml.mjs";
+import { BUILTIN_THEMES, DEFAULT_THEME_NAME } from "../config/theme.mjs";
 
 /** @import { Keymap } from "../keys/keymap.mjs" */
+/** @import { ResolvedConfig } from "../config/config.mjs" */
 /** @import { TomlEdit } from "../config/toml.mjs" */
 
 /**
@@ -373,14 +375,87 @@ export function prefixHints(step, keymap) {
 const pathOf = (e) => `${e.table}.${e.key}`;
 
 /**
- * A step's choices with the one in force selected (behaviour 9). When the value in force is
- * none of them, **Keep** comes first, with that value, and is selected. The search engine's
- * choices are `engines`, the installed engines the host lists.
- * @param {SetupStep} step @param {InForce} inForce
- * @param {{ engines?: readonly string[] }} [options]
+ * What the host knows besides the file: Firefox's default engine (in force without
+ * `[search] default`), the appearance `:theme` remembered (without `[theme] appearance`).
+ * @typedef {object} SetupRuntime
+ * @property {string | null} [engine]
+ * @property {string} [appearance]
+ */
+
+/**
+ * The values in force of the steps' keys, by `table.key`, from a resolved config (the file at
+ * `enter`, decision 4), its built-in defaults, and `runtime` for what the file leaves to
+ * Firefox or a command (behaviour 9). A later step adds its key here.
+ * @param {ResolvedConfig} config @param {SetupRuntime} [runtime]
+ * @returns {InForce}
+ */
+export function inForceOf(config, { engine = null, appearance } = {}) {
+  const fileEngine = config.search?.default?.kind === "engine" ? config.search.default.name : null;
+  return {
+    "search.default": fileEngine ?? engine ?? undefined,
+    "theme.source": config.theme.source ?? "omarchy",
+    "theme.name": config.theme.name ?? DEFAULT_THEME_NAME,
+    "theme.appearance": config.theme.appearance ?? appearance ?? "system",
+    "ui.toolbar": config.ui.toolbar,
+    "ui.tabline": config.ui.tabline,
+  };
+}
+
+/**
+ * The colours step's choices for the effect in force (decision 12): what each choice must write
+ * so that the window shows it. The choice's own key comes last. Omarchy is offered only where
+ * an Omarchy theme is found; with it shown, a built-in choice also writes `source = "file"`,
+ * and with a dark-only palette (`tokyo-night`), light and system also write `name = "vimma"`.
+ * @param {SetupStep} step @param {InForce} inForce @param {boolean} omarchy  a theme is found
  * @returns {{ choices: SetupChoice[], selected: number }}
  */
-export function stepChoices(step, inForce, { engines = [] } = {}) {
+function colourChoices(step, inForce, omarchy) {
+  const shown = omarchy && inForce["theme.source"] === "omarchy";
+  const name = String(inForce["theme.name"] ?? DEFAULT_THEME_NAME);
+  const darkOnly = !BUILTIN_THEMES[name]?.light;
+  /** @type {SetupChoice[]} */
+  const choices = [];
+  let selected = -1;
+  for (const c of step.choices) {
+    const own = c.edits[0];
+    if (!own) continue;
+    if (own.key === "source") {
+      if (!omarchy) continue;
+      if (shown) selected = choices.length;
+      choices.push(c);
+      continue;
+    }
+    /** @type {TomlEdit[]} */
+    const edits = [];
+    if (shown) edits.push({ table: "theme", key: "source", value: "file" });
+    if (darkOnly && own.value !== "dark") {
+      edits.push({ table: "theme", key: "name", value: DEFAULT_THEME_NAME });
+    }
+    edits.push(own);
+    if (!shown && !darkOnly && inForce["theme.appearance"] === own.value) {
+      selected = choices.length;
+    }
+    choices.push({ label: c.label, edits });
+  }
+  if (selected >= 0) return { choices, selected };
+  // A dark-only palette in force is none of the choices (behaviour 9).
+  return {
+    choices: [{ label: `Keep ${JSON.stringify(name)}`, edits: [], keep: true }, ...choices],
+    selected: 0,
+  };
+}
+
+/**
+ * A step's choices with the one in force selected (behaviour 9). When the value in force is
+ * none of them, **Keep** comes first, with that value, and is selected. The search engine's
+ * choices are `engines`, the installed engines the host lists; the colours step's follow the
+ * effect in force, with Omarchy only where `omarchy` says a theme is found.
+ * @param {SetupStep} step @param {InForce} inForce
+ * @param {{ engines?: readonly string[], omarchy?: boolean }} [options]
+ * @returns {{ choices: SetupChoice[], selected: number }}
+ */
+export function stepChoices(step, inForce, { engines = [], omarchy = false } = {}) {
+  if (step.id === "colours") return colourChoices(step, inForce, omarchy);
   /** @type {SetupChoice[]} */
   const choices =
     step.id === "search_engine"
@@ -419,4 +494,43 @@ export function planChoice(choice, inForce) {
 export function editLines(edits) {
   if (!edits.length) return ["Writes nothing"];
   return edits.map((e) => `[${e.table}] ${e.key} = ${tomlLiteral(e.value)}`);
+}
+
+/**
+ * What `enter` on `choice` writes, judged against the values in force at `enter` (decision 4),
+ * which may differ from those the step opened on. The colours step plans its choice again for
+ * the effect then, from the choice's own key (its last edit).
+ * @param {SetupStep} step @param {SetupChoice} choice @param {InForce} inForce
+ * @param {{ omarchy?: boolean }} [options]
+ * @returns {TomlEdit[]}
+ */
+export function planAtEnter(step, choice, inForce, { omarchy = false } = {}) {
+  if (choice.keep) return [];
+  if (step.id === "colours") {
+    const own = choice.edits.at(-1);
+    const now = colourChoices(step, inForce, omarchy).choices.find(
+      (c) => !c.keep && c.edits.at(-1)?.key === own?.key && c.edits.at(-1)?.value === own?.value,
+    );
+    return planChoice(now ?? null, inForce);
+  }
+  return planChoice(choice, inForce);
+}
+
+/**
+ * Step text as parts the page builds nodes from, never as HTML: `<kbd>` and `<code>` become
+ * their own parts and everything else stays text, so a key the user bound (`<`) is never markup.
+ * @param {string} text  a step's text, filled (fillStepText)
+ * @returns {{ tag: "kbd" | "code" | null, text: string }[]}
+ */
+export function textParts(text) {
+  /** @type {{ tag: "kbd" | "code" | null, text: string }[]} */
+  const out = [];
+  let at = 0;
+  for (const m of text.matchAll(/<(kbd|code)>(.*?)<\/\1>/g)) {
+    if (m.index > at) out.push({ tag: null, text: text.slice(at, m.index) });
+    out.push({ tag: /** @type {"kbd" | "code"} */ (m[1]), text: m[2] ?? "" });
+    at = m.index + m[0].length;
+  }
+  if (at < text.length) out.push({ tag: null, text: text.slice(at) });
+  return out;
 }

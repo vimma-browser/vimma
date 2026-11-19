@@ -5,18 +5,27 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
 
 - F1. A config.toml Vimma creates **must** be mode 0600 in a 0700 folder. Vimma changes an
   existing file only from `:route add` (an append), the setup summary (`[search] default`), the
-  built-in agent's setup, and `:siteunbind --save` / `:sitebind --delete`, each run one at a time
+  setup page's setting steps (with `vimma.feature.setupV2` on, in place of the summary: each
+  step's own keys on its `enter`, never from a private window), the built-in agent's setup, and
+  `:siteunbind --save` / `:sitebind --delete`, each run one at a time
   in the one queue of config.toml edits, so that an append never races a rewrite. Every edit but
   the append goes through `ConfigHost`'s one writer (`rewriteConfig`; the setup's keys through
   `setConfigKeys` and `setTomlKeys`), never on a parse error or when the file would not load with
   the edit (checked with `parseConfig` before the rename), atomically through a renamed temporary
   file that has the file's mode before any text goes in, renamed over the target of a symlinked
-  config.toml.
+  config.toml. A setup step names only a step and the index of a choice the host sent that
+  page; the host plans the keys from its own step table against the file as it is at `enter`,
+  and writes only those that change the value in force, so an edit made meanwhile is kept.
   [`a_missing_folder_is_created_private`](../../tests/browser/browser_vimma_config_first_run.js),
   [`an_existing_file_is_never_touched`](../../tests/browser/browser_vimma_config_first_run.js),
   [`route_add_creates_a_private_config_toml`](../../tests/browser/browser_vimma_security_invariants.js),
   [`summary_keeps_comments_and_mode_of_config_toml`](../../tests/browser/browser_vimma_setup.js),
   [`summary_writes_nothing_on_a_parse_error`](../../tests/browser/browser_vimma_setup.js),
+  [`a_parse_error_writes_nothing_and_action_steps_still_work`](../../tests/browser/browser_vimma_setup.js),
+  [`an_edit_made_while_a_step_is_open_is_kept`](../../tests/browser/browser_vimma_setup.js),
+  [`a_symlinked_config_toml_stays_a_link`](../../tests/browser/browser_vimma_setup.js),
+  [`a_private_window_saves_nothing`](../../tests/browser/browser_vimma_setup.js),
+  [`the_page_cannot_name_a_key_or_value`](../../tests/browser/browser_vimma_setup.js),
   [`an edit the file would not load with is refused, with the reason`](../../packages/vimma-core/test/config-set-keys.test.ts),
   [`adds [theme] before [theme.colors] when only the sub-table exists`](../../packages/vimma-core/test/toml.test.ts),
   [`route_add_waits_for_a_running_rewrite`](../../tests/browser/browser_vimma_workspace_routes.js)

@@ -62,6 +62,11 @@ ChromeUtils.defineESModuleGetters(lazy, {
 
 /** A full path overrides the XDG location (tests; `~/` is expanded). */
 const PATH_PREF = "vimma.config.path";
+/**
+ * Notified after every read of the config, applied or refused, so that a page showing a value
+ * in force (the setup's steps, setup-v2 behaviour 12) draws it again.
+ */
+export const CONFIG_READ_TOPIC = "vimma-config-read";
 const POLL_PREF = "vimma.config.pollMs";
 /** Set once the first run has looked for config.toml: a file deleted later stays deleted. */
 const FIRST_RUN_PREF = "vimma.config.firstRunDone";
@@ -273,6 +278,7 @@ function report(path, list, kept, left = []) {
     );
   }
   showErrors();
+  Services.obs.notifyObservers(null, CONFIG_READ_TOPIC);
 }
 
 /**
@@ -795,13 +801,20 @@ export const ConfigHost = {
    * setup's one writer, run as `addAgentProvider` writes, then the file read. Nothing is written
    * when the file does not load now, would not load with the edits (parseConfig, before the
    * rename), changed meanwhile, or already says so.
-   * @param {readonly import("../core/toml.mjs").TomlEdit[]} keys
+   * `keys` may be a plan run on the file's text inside the queue, so that what is written is
+   * judged against the file at that moment (setup-v2 decision 4); a plan of no keys writes
+   * nothing, not even a missing file.
+   * @param {readonly import("../core/toml.mjs").TomlEdit[]
+   *   | ((text: string | null) => readonly import("../core/toml.mjs").TomlEdit[] | { error: string })} keys
    * @returns {Promise<string | null>} why not, or null once written (or already so) and read
    */
   async setConfigKeys(keys) {
-    const r = await rewriteConfig((text) =>
-      setConfigKeysText(text, keys, { mac: Services.appinfo.OS === "Darwin" }),
-    );
+    const r = await rewriteConfig((text) => {
+      const edits = typeof keys === "function" ? keys(text) : keys;
+      if ("error" in edits) return edits;
+      if (!edits.length) return { text: null };
+      return setConfigKeysText(text, edits, { mac: Services.appinfo.OS === "Darwin" });
+    });
     return "error" in r ? r.error : null;
   },
 

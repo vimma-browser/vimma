@@ -192,6 +192,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/services/ViewedDownloads.sys.mjs": typeof import("../src/browser/base/content/vimma/services/ViewedDownloads.sys.mjs");
   "chrome://browser/content/vimma/services/WakeLock.sys.mjs": typeof import("../src/browser/base/content/vimma/services/WakeLock.sys.mjs");
   "chrome://browser/content/vimma/setup/SetupHost.sys.mjs": typeof import("../src/browser/base/content/vimma/setup/SetupHost.sys.mjs");
+  "chrome://browser/content/vimma/setup/flow.mjs": typeof import("../src/browser/base/content/vimma/setup/flow.mjs");
   "chrome://browser/content/vimma/setup/setup.mjs": typeof import("../src/browser/base/content/vimma/setup/setup.mjs");
   "chrome://browser/content/vimma/split/PaneView.mjs": typeof import("../src/browser/base/content/vimma/split/PaneView.mjs");
   "chrome://browser/content/vimma/split/layout.mjs": typeof import("../src/browser/base/content/vimma/split/layout.mjs");

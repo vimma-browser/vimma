@@ -6,13 +6,17 @@ import {
   amoEntries,
   amoSearchUrl,
   curatedOffline,
+  flowAdvance,
+  flowChapters,
+  flowKey,
   formatUsers,
+  initialFlow,
   initialSetup,
   planSetup,
   setupKey,
   withAddons,
 } from "../src/system/setup.mjs";
-import type { SetupState } from "../src/system/setup.mjs";
+import type { FlowContext, FlowState, SetupState } from "../src/system/setup.mjs";
 
 /** An AMO search result as the v5 API returns it. */
 const amo = (over = {}) => ({
@@ -385,5 +389,193 @@ describe("setup", () => {
     expect(amoEntries([amo({ current_version: { file: { url, hash: ["sha256:ab"] } } })])).toEqual(
       [],
     );
+  });
+});
+
+// docs/specs/setup-v2.md behaviours 3-11: the chapters, saving per step, and the page keys.
+describe("setup v2 flow", () => {
+  // Two chapters, so that stop screens between chapters and the last one are both reached.
+  const chapters = flowChapters([
+    "content_blocker",
+    "search_engine",
+    "colours",
+    "default_browser",
+    "bring_your_data",
+  ]);
+  const ctx = (over: Partial<FlowContext> = {}): FlowContext => ({
+    count: 3,
+    selected: () => 0,
+    addons: [],
+    ...over,
+  });
+  const run = (state: FlowState, ks: string[], c = ctx()) => {
+    let r: ReturnType<typeof flowKey> = { state, effect: null };
+    for (const k of ks) r = flowKey(r.state, k, c);
+    return r;
+  };
+  const at = (s: FlowState) =>
+    s.screen === "step"
+      ? chapters[s.chapter]!.steps[s.step]!.id
+      : s.screen === "stop"
+        ? `stop:${chapters[s.chapter]!.id}`
+        : s.screen;
+  const fresh = (blocked = false) => initialFlow({ chapters, blocked });
+  /** At step `id`, from the welcome screen, by skipping. */
+  const goTo = (id: string, blocked = false) => {
+    let r = run(fresh(blocked), ["enter"]);
+    for (let i = 0; at(r.state) !== id; i++) {
+      if (i > 20 || r.state.screen === "closed") throw new Error(`never reached ${id}`);
+      r = run(r.state, [r.state.screen === "stop" ? "enter" : "s"]);
+    }
+    return r.state;
+  };
+
+  test("only the steps built so far are in the flow, chapter digits kept", () => {
+    expect(flowChapters().map((c) => [c.digit, c.steps.map((s) => s.id)])).toEqual([
+      [1, ["content_blocker", "search_engine", "colours"]],
+    ]);
+    expect(chapters.map((c) => c.digit)).toEqual([1, 2]);
+  });
+
+  test("enter on the welcome screen starts at the first chapter", () => {
+    expect(at(run(fresh(), ["enter"]).state)).toBe("content_blocker");
+  });
+
+  test("a digit on the welcome screen opens that chapter", () => {
+    const r = run(fresh(), ["2"], ctx({ selected: () => 1 }));
+    expect(at(r.state)).toBe("default_browser");
+    expect(r.state.cursor).toBe(1);
+    expect(run(fresh(), ["9"]).state.screen).toBe("welcome");
+    // From a step and a stop screen too.
+    expect(at(run(goTo("colours"), ["1"]).state)).toBe("content_blocker");
+  });
+
+  test("enter on a setting step plans one write and opens the next step", () => {
+    const s = goTo("search_engine");
+    const r = run(s, ["j", "enter"]);
+    expect(r.effect).toEqual({ type: "save", step: "search_engine", index: 1 });
+    expect(at(r.state)).toBe("search_engine");
+    const next = flowAdvance(r.state, ctx({ selected: () => 2 }), ['[search] default = "Bing"']);
+    expect(at(next.state)).toBe("colours");
+    expect(next.state.cursor).toBe(2);
+    expect(next.state.saved).toEqual([
+      { chapter: "essentials", step: "search_engine", lines: ['[search] default = "Bing"'] },
+    ]);
+  });
+
+  test("enter on an action step runs it and opens the next step", () => {
+    const addons = amoEntries([amo(), amo({ guid: "y@e", slug: "y" })]);
+    const c = ctx({ count: 2, addons });
+    const blocker = goTo("content_blocker");
+    // Nothing marked: on to the next step.
+    expect(at(run(blocker, ["enter"], c).state)).toBe("search_engine");
+    const marked = run(blocker, ["j", "space", "enter"], c);
+    expect(marked.effect).toEqual({ type: "install", addons: [addons[1]] });
+    expect(at(marked.state)).toBe("content_blocker");
+    const moved = flowAdvance(marked.state, c, ["Installed y"]);
+    expect(at(moved.state)).toBe("search_engine");
+    expect(moved.state.marked.size).toBe(0);
+    const browser = run(goTo("default_browser"), ["enter"]);
+    expect(browser.effect).toEqual({ type: "action", step: "default_browser", index: 0 });
+  });
+
+  test("s moves on and plans nothing", () => {
+    const r = run(goTo("search_engine"), ["j", "s"]);
+    expect(r.effect).toBeNull();
+    expect(at(r.state)).toBe("colours");
+    expect(r.state.saved).toEqual([]);
+  });
+
+  test("h returns to the previous step with the value in force selected", () => {
+    const s = goTo("colours");
+    const r = run(s, ["h"], ctx({ selected: () => 2 }));
+    expect(at(r.state)).toBe("search_engine");
+    expect(r.state.cursor).toBe(2);
+    // Across a chapter, from a stop screen, and from the first step to the welcome screen.
+    expect(at(run(goTo("default_browser"), ["h"]).state)).toBe("stop:essentials");
+    expect(at(run(run(goTo("colours"), ["s"]).state, ["h"]).state)).toBe("colours");
+    expect(at(run(goTo("content_blocker"), ["h"]).state)).toBe("welcome");
+  });
+
+  test("back then enter saves again, replacing that step's saved line", () => {
+    let s = flowAdvance(run(goTo("search_engine"), ["enter"]).state, ctx(), ["[search] a"]).state;
+    s = run(s, ["h", "enter"]).state;
+    s = flowAdvance(s, ctx(), ["[search] b"]).state;
+    expect(s.saved.map((x) => x.lines)).toEqual([["[search] b"]]);
+    // A save that wrote nothing leaves the line out.
+    s = flowAdvance(run(s, ["h", "enter"]).state, ctx(), []).state;
+    expect(s.saved).toEqual([]);
+  });
+
+  test("q and esc close from every step and stop screen", () => {
+    for (const id of ["content_blocker", "search_engine", "colours", "stop:essentials"]) {
+      for (const key of ["q", "esc"]) {
+        const r = run(goTo(id), [key]);
+        expect(r.effect, `${id} ${key}`).toEqual({ type: "close" });
+        expect(r.state.screen).toBe("closed");
+      }
+    }
+    expect(run(fresh(), ["q"]).effect).toEqual({ type: "close" });
+    expect(run(run(fresh(), ["q"]).state, ["enter"]).effect).toBeNull();
+  });
+
+  test("esc in the search field leaves the field, a second esc leaves the page", () => {
+    const opened = run(goTo("content_blocker"), ["/"]);
+    expect(opened.effect).toEqual({ type: "search" });
+    expect(opened.state.searching).toBe(true);
+    const left = run(opened.state, ["esc"]);
+    expect(left.effect).toEqual({ type: "blur" });
+    expect(left.state.searching).toBe(false);
+    expect(at(left.state)).toBe("content_blocker");
+    expect(run(left.state, ["esc"]).effect).toEqual({ type: "close" });
+    // enter in the field searches and leaves it; other keys are the field's.
+    const searched = run(opened.state, ["enter"]);
+    expect(searched.effect).toEqual({ type: "run-search" });
+    expect(searched.state.searching).toBe(false);
+    expect(run(opened.state, ["q"]).state).toBe(opened.state);
+  });
+
+  test("the last step of a chapter opens its stop screen", () => {
+    const r = run(goTo("colours"), ["s"]);
+    expect(at(r.state)).toBe("stop:essentials");
+    expect(r.effect).toEqual({ type: "chapter-done", chapter: "essentials" });
+    const on = run(r.state, ["enter"]);
+    expect(at(on.state)).toBe("default_browser");
+  });
+
+  test("the last stop screen closes on enter, q and esc", () => {
+    const last = run(goTo("bring_your_data"), ["s"]);
+    expect(at(last.state)).toBe("stop:moving_in");
+    expect(last.state.done).toBe(true);
+    for (const key of ["enter", "q", "esc"]) {
+      expect(run(last.state, [key]).effect).toEqual({ type: "close" });
+    }
+    expect(goTo("stop:essentials").done).toBe(false);
+  });
+
+  test("with a config parse error, setting steps can only skip", () => {
+    const s = goTo("search_engine", true);
+    const r = run(s, ["enter"]);
+    expect(r.effect).toBeNull();
+    expect(r.state).toBe(s);
+    expect(at(run(s, ["s"]).state)).toBe("colours");
+    // Action steps still work.
+    expect(run(goTo("default_browser", true), ["enter"]).effect).toEqual({
+      type: "action",
+      step: "default_browser",
+      index: 0,
+    });
+  });
+
+  test("j and k stay inside the list; space marks only on the content blocker step", () => {
+    const s = goTo("search_engine");
+    expect(run(s, ["k"]).state.cursor).toBe(0);
+    expect(run(s, ["j", "j", "j", "j"]).state.cursor).toBe(2);
+    expect(run(s, ["space"]).state).toBe(s);
+    const addons = amoEntries([amo()]);
+    const c = ctx({ count: 1, addons });
+    const marked = run(goTo("content_blocker"), ["space"], c).state;
+    expect([...marked.marked.keys()]).toEqual(["x@example.com"]);
+    expect(run(marked, ["space"], c).state.marked.size).toBe(0);
   });
 });

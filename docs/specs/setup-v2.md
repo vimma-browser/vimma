@@ -1,9 +1,10 @@
 # Spec: setup-v2
 
-Status: accepted (delivery slice 1 built, #1292) · Area: core
+Status: accepted (delivery slices 1 and 2 built, #1292 and #1293) · Area: core
 (`packages/vimma-core/src/system/setup.mjs`, `packages/vimma-core/src/system/setup-steps.mjs`,
 `packages/vimma-core/src/config/toml.mjs`),
-chrome (`src/browser/base/content/vimma/setup/` (`setup.html`, `setup.mjs`, `SetupHost.sys.mjs`),
+chrome (`src/browser/base/content/vimma/setup/` (`setup.html`, `setup.mjs`, `flow.mjs`,
+`SetupHost.sys.mjs`),
 `config/ConfigHost.sys.mjs`, `services/AppLauncher.sys.mjs`), theme
 (`src/browser/themes/shared/vimma/setup.css`), prefs
 (`src/browser/branding/vimma/pref/firefox-branding.js`) · Upstream patches: none · ADR: none

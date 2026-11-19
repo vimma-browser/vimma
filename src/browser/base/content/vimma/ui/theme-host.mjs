@@ -786,6 +786,20 @@ export const ThemeHost = {
   },
 
   /**
+   * Whether an Omarchy theme is found, whatever config.toml's `source` says (the setup's colours
+   * step offers Omarchy only then, setup-v2 behaviour 21): Omarchy installed or a theme directory
+   * set by hand, and not turned off by the pref.
+   * @returns {Promise<boolean>}
+   */
+  async omarchyFound() {
+    await this.omarchyDetected;
+    return (
+      Services.prefs.getStringPref(SOURCE_PREF, "omarchy") !== "builtin" &&
+      (omarchyInstalled === true || Services.prefs.prefHasUserValue(PATH_PREF))
+    );
+  },
+
+  /**
    * `:theme [dark|light|system]` (theme-appearance B3-B5): the built-in palette's appearance,
    * kept in a pref unless config.toml sets it; without a word the other of what `win` shows.
    * @param {BrowserWindow} win
