@@ -169,9 +169,7 @@ describe("URLs without user names and passwords: queries (M21)", () => {
     // characters that reads as itself stays as written.
     expect(agentUrl("https://h/?a=+%", 2048)).toBe("https://h/?a=%25");
     expect(agentUrl("https://h/?a=x+%", 2048)).toBe("https://h/?a=x+%");
-    expect(markdownWithoutUserinfo("[a](https://h/?+%+%&b=1)")).toBe(
-      "[a](https://h/?%25+%25&b=1)",
-    );
+    expect(markdownWithoutUserinfo("[a](https://h/?+%+%&b=1)")).toBe("[a](https://h/?%25+%25&b=1)");
   });
 
   test("no URL is no text", () => {
