@@ -94,11 +94,33 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`the_question_waits_for_the_command_line_and_ignores_an_early_key`](../../tests/browser/browser_vimma_bookmarks_file.js),
   [`with_the_feature_pref_off_nothing_is_read_or_refused`](../../tests/browser/browser_vimma_bookmarks_file.js)
 - F7. Vimma writes the bookmarks file (spec: [bookmarks-file](../specs/bookmarks-file.md),
-  Delivery slice 2, behind the same pref): its own bookmark keys in a mirrored folder edit
+  Delivery slices 2 and 3, behind the same pref): its own bookmark keys in a mirrored folder edit
   `bookmarks.toml` (or `config.toml`'s inline tables) first and Places after it, under
-  `[bookmarks] write_back = "vimma"`, the default of this slice. The setting is read only from
-  `config.toml` (D12); with `"none"` the keys refuse, and in a private window they always refuse,
-  so nothing done in private browsing reaches a file that may be committed. Writes: only the
+  `[bookmarks] write_back = "all"` (the default) or `"vimma"`, and under `"all"` a change made
+  to a mirrored folder outside Vimma's keys (the Library, the star, an add-on, an import, Sync)
+  is written too, merged three ways with the file and the base. The setting is read only from
+  `config.toml` (D12), so a pulled file cannot turn writing on; with `"none"` the keys refuse,
+  and in a private window they always refuse, so nothing done in private browsing reaches a file
+  that may be committed. Outside changes carry no window: under `"all"`, an addition or change
+  made while the most recent browser window is private is never written (an addition stays in
+  Places only, listed in the base's `local` list; a change is put back), which also covers the
+  Library opened from that window; removals are written, as they add nothing to the file.
+  What an outside change can put into the file is what Places holds in the mirrored folders,
+  where the user, Sync or an add-on put it: the merge writes it through the same line writer and
+  checks below, so a URL the file refuses (`data:`, `place:`, `chrome:`, a bookmarklet while
+  `bookmarklets` is `"none"`), a path deeper than 32 names, or a hidden character never reaches
+  the file; such an item stays in Places as it is and no run removes it. Names are cleaned as
+  for the keys. Every outside removal of more than 20 bookmarks, or of more than half of a
+  table's, asks y/N first in the window (D14, the same question rules as F6); `n`, `Esc` or no
+  answer puts the removed ones back into Places from the file and writes the rest of the change,
+  so declining never deletes, on this device or through Sync on others, what the same batch
+  added. The guide warns, in its first paragraph,
+  that every URL in a mirrored folder, Sync's included, goes into the file and every commit of
+  it. A merge whose edit does not read back as merged, or a write that fails, writes nothing and
+  pauses until the file changes, keeping Places' change; when both sides changed one bookmark
+  the file wins; a removal on one side and a change on the other keeps the item. When Places
+  made a new database at start-up (a restored backup), the first run writes nothing back
+  (D17). Writes: only the
   bookmarks file in `config.toml`'s folder (or the file its symlink points to, as for
   `config.toml`), through a temporary file in the same folder created empty, given the file's
   mode before any text goes in, and renamed over it; a link to nothing, or a file that is not a
@@ -115,12 +137,16 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   folders. Nothing reaches Places when the write fails. When the Places step of a change fails before it
   changed anything, the file and the base are put back; once part of it is in Places, the edit
   stays and a run brings Places to the file, so an item may end up twice but never nowhere
-  (D18). A file over 4 MiB is not
-  read for an edit either. A key's delete removes only the item
+  (D18). A move out of the file whose Places step fails after an editor saved the file
+  meanwhile writes the line back (else moves the bookmark to Other Bookmarks), and a base that
+  cannot be saved after a file write (a full disk) is kept in memory while the change goes on,
+  so neither leaves a bookmark in neither the file nor the base (#1347). A file over 4 MiB is
+  not read for an edit either. A key's delete removes only the item
   its y/N named; a takeover of a folder that has bookmarks writes them into the table and
   deletes nothing (D7); the guide warns that a shared file's table can so take a personal folder's
   bookmarks into it. A bookmark put back three times in ten minutes (two devices with different
-  files and Sync) pauses its table both ways with a notice and a status bar line, until the file
+  files and Sync; under `"all"`, the file winning over Places' change of one bookmark, counted
+  by its guid) pauses its table both ways with a notice and a status bar line, until the file
   changes (bookmarks-file decision 2).
   [`editBookmarkLines keeps every other byte, comments and CRLF line ends`](../../packages/vimma-core/test/bookmarks-edit.test.ts),
   [`editBookmarkLines refuses an edit whose result does not parse to the expected model`](../../packages/vimma-core/test/bookmarks-edit.test.ts),
@@ -143,7 +169,21 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`a_paused_table_refuses_wsdelete_and_makes_no_folder`](../../tests/browser/browser_vimma_bookmarks_file.js),
   [`a_move_into_a_table_that_fails_partway_loses_nothing`](../../tests/browser/browser_vimma_bookmarks_file.js),
   [`editBookmarkLines on any parsed file either refuses or yields the expected model`](../../packages/vimma-core/test/fuzz/bookmarks-file.fuzz.test.ts),
-  [`many subtrees go into a table as one edit, within budget at 5,000 lines`](../../packages/vimma-core/test/bookmarks-edit.test.ts)
+  [`many subtrees go into a table as one edit, within budget at 5,000 lines`](../../packages/vimma-core/test/bookmarks-edit.test.ts),
+  [`an outside add, rename, URL change and removal are written, keeping comments`](../../packages/vimma-core/test/bookmarks-merge.test.ts),
+  [`the file wins when both changed one bookmark; removed and changed keeps it`](../../packages/vimma-core/test/bookmarks-merge.test.ts),
+  [`Places items the file cannot hold are kept in Places, never written or removed`](../../packages/vimma-core/test/bookmarks-merge.test.ts),
+  [`a Places-only item (made in a private window) stays out of the file and is kept`](../../packages/vimma-core/test/bookmarks-merge.test.ts),
+  [`merging then parsing never loses an item present in either side, and settles`](../../packages/vimma-core/test/fuzz/bookmarks-merge.fuzz.test.ts),
+  [`write_back_all_is_the_default_and_writes_a_library_change_after_a_burst`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
+  [`a_sync_removal_of_many_asks_and_n_puts_them_back`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
+  [`a_url_the_file_cannot_hold_stays_in_places_only`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
+  [`a_private_window_change_is_not_written`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
+  [`the_loop_guard_holds_across_two_simulated_devices`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
+  [`a_move_out_whose_places_step_fails_and_whose_line_cannot_go_back_loses_nothing`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
+  [`a_base_that_cannot_be_saved_after_a_move_out_loses_nothing`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
+  [`a_mixed_sync_batch_answered_n_or_not_at_all_keeps_its_additions`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
+  [`keepRemovals puts removals back and still writes the batch's additions, renames and moves`](../../packages/vimma-core/test/bookmarks-merge.test.ts)
 - F8. `:bookmarks export` writes Places' workspace folders to a new `bookmarks.toml` (spec:
   [bookmarks-file](../specs/bookmarks-file.md) Behaviour 17, Delivery slice 4, behind the same
   pref). It writes through the same writer and queue as F7 (D11): a new file is created mode

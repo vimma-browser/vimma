@@ -7,7 +7,9 @@
 // agent gets carries them: the tab list, a step's page, a link list, an element list, a read
 // page's text and URL, a screenshot's and a console read's page. Reader View's address carries
 // the article's URL percent-encoded in its query, them included (#1324): every reply names the
-// article's URL without them instead.
+// article's URL without them instead. A site's redirect parameter carries another page's URL
+// the same way, in the page's own URL, its links, its form's action and its title (#1348): each
+// loses them, and the page is still named as the page it is.
 
 "use strict";
 
@@ -353,6 +355,77 @@ add_task(async function test_a_reader_view_tab_gives_its_article_url_without_the
     }
     noneEncoded(command, r.ok && command === "agent-screenshot" ? { ...r.result, image: "" } : r);
   }
+  c.close();
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, false);
+  await VimmaControl.settled();
+});
+
+add_task(async function test_a_redirect_parameter_gives_no_user_name_and_password() {
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+  await VimmaControl.settled();
+  const enc = encodeURIComponent;
+  const bank = "https://ada:secret@bank.example/a";
+  const page = `${DIR}file_vimma_agent_redirect_param.html`;
+  const url = `${page}?continue=${enc(bank)}&lang=fi`;
+  const shown = `${page}?continue=${enc("https://bank.example/a")}&lang=fi`;
+  const next = enc("https://bank.example/");
+  const tab = gBrowser.addTab(url, {
+    userContextId: agent().userContextId,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, url);
+  await until(() => tab.hidden, "the agent tab is hidden in its workspace");
+
+  const c = new Client(/** @type {number} */ (VimmaControl.port));
+  await c.handshake({ protocol: 2, role: "agent" });
+  await c.call("agent-hello", { client: { name: "example-agent" } });
+  const id = idOf(tab);
+  /** No user name or password, also percent-encoded once or twice. */
+  const noneEncoded = (/** @type {string} */ what, /** @type {unknown} */ result) => {
+    noUserinfo(what, result);
+    const text = JSON.stringify(result);
+    Assert.ok(!/ada%(?:25)?3A|%(?:25)?40bank/i.test(text), `${what}: none percent-encoded`);
+  };
+
+  const tabs = await call(c, "agent-tabs", {}, true);
+  const listed = tabs.tabs.find((/** @type {AgentListedTab} */ t) => t.id === id);
+  Assert.equal(listed?.url, shown, "vimma_tabs names the page, its other parameters kept");
+  Assert.equal(listed?.title, `https://site.example/?next=${next}`, "and its title without them");
+  noneEncoded("vimma_tabs", tabs);
+
+  const keys = await call(c, "agent-keys", { tab: id, keys: "f" });
+  Assert.equal(keys.url, shown, "vimma_keys' page");
+  for (const href of [
+    `${DIR}file_vimma_agent_page.html?next=${next}&lang=fi`,
+    `${DIR}file_vimma_agent_page.html?next=${enc(next)}`,
+    `${DIR}file_vimma_agent_page.html#/login?next=${next}`,
+  ]) {
+    Assert.ok(keys.links?.includes(href), `a link without them: ${href}`);
+  }
+  noneEncoded("vimma_keys", keys);
+
+  const elements = await call(c, "agent-elements", { tab: id });
+  Assert.equal(elements.url, shown, "vimma_elements' page");
+  Assert.ok(
+    elements.elements.includes(`"action":"${DIR}file_vimma_agent_page.html?continue=${next}"`),
+    `the form's action, without them: ${elements.elements}`,
+  );
+  noneEncoded("vimma_elements", elements);
+
+  const read = await call(c, "agent-read", { tab: id });
+  Assert.equal(read.url, shown, "vimma_read_page's page");
+  Assert.ok(read.text.includes("Continue to the bank"), "the page's text was read");
+  noneEncoded("vimma_read_page", read);
+
+  const shot = await call(c, "agent-screenshot", { tab: id });
+  Assert.equal(shot.url, shown, "vimma_screenshot's page");
+  noneEncoded("vimma_screenshot", { ...shot, image: "" });
+
+  const console = await call(c, "agent-console", { tab: id });
+  Assert.equal(console.url, shown, "vimma_console's page");
+  noneEncoded("vimma_console", console);
+
   c.close();
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, false);

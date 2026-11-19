@@ -1018,6 +1018,25 @@ add_task(async function test_limits() {
   flood.forEach((c) => c.close());
   await TestUtils.waitForCondition(() => VimmaControl.waiting === 0, "flood closed");
 
+  // A new connection evicts the oldest waiting one that has sent nothing: a connection that has
+  // sent part of a line outlasts two silent ones that came after it (#1344).
+  const silent0 = new Client(port);
+  await TestUtils.waitForCondition(() => VimmaControl.waiting === 1, "the silent one waits");
+  const spoken = new Client(port);
+  await spoken.writeRaw("{");
+  await TestUtils.waitForCondition(() => VimmaControl.waiting === 2, "the speaking one waits");
+  const silent1 = new Client(port);
+  await silent0.heard();
+  const silent2 = new Client(port);
+  await silent1.heard();
+  for (const [name, c] of Object.entries({ silent0, silent1 })) {
+    Assert.equal(JSON.parse(c.lines[0] ?? "null")?.error?.code, "busy", `${name}: busy`);
+  }
+  Assert.equal(spoken.lines.length, 0, "the one that spoke is not evicted");
+  Assert.equal(spoken.closedWith, null, "and still open");
+  [silent0, spoken, silent1, silent2].forEach((c) => c.close());
+  await TestUtils.waitForCondition(() => VimmaControl.waiting === 0, "all closed");
+
   // An oversized line: an error, then a close, without waiting for its newline.
   const big = await session();
   const oversized = big.writeRaw("x".repeat(MAX_LINE_LENGTH + 2));
@@ -1084,16 +1103,73 @@ add_task(async function test_vimma_ctl_end_to_end() {
   const reload = await runVimmaCtl(bin, ["reload-theme"]);
   Assert.deepEqual(reload, { exitCode: 0, out: "unchanged\n" }, "vimma-ctl reload-theme");
 
-  // A flood of connections that never say hello does not lock vimma-ctl out.
-  const { port } = await readDiscovery();
+  // A flood of connections that never say hello does not lock vimma-ctl out. Each connects once
+  // the server has taken the one two before it, as in test_limits: a burst beyond the listen
+  // backlog leaves connects that the kernel retries later, which may land in vimma-ctl's
+  // handshake, and the spec promises nothing against such a connect flood (#1139, #1344).
+  const { port, token } = await readDiscovery();
   /** @type {Client[]} */
   const flood = [];
-  for (let i = 0; i < 30; i++) flood.push(new Client(port));
+  for (let i = 0; i < 30; i++) {
+    flood.push(new Client(port));
+    await flood[i - 2]?.heard();
+  }
+  await TestUtils.waitForCondition(
+    () => flood.filter((c) => c.lines.length || c.closedWith !== null).length >= 28,
+    "the server took the flood",
+  );
+  Assert.lessOrEqual(VimmaControl.waiting, 2, "at most two of the flood wait");
+  Assert.equal(JSON.parse(flood[0].lines[0] ?? "null")?.error?.code, "busy", "the oldest: busy");
   for (let i = 0; i < 5; i++) {
     const run = await runVimmaCtl(bin, ["state"]);
     Assert.equal(run.exitCode, 0, `vimma-ctl state during a flood, run ${i}: ${run.out}`);
   }
-  flood.forEach((c) => c.close());
+
+  // The server takes new connections before it reads the ones it has: on a slow machine
+  // vimma-ctl's hello waits in its socket while two silent connections arrive. They do not evict
+  // it (#1344). Holding the main thread lines the three up in that order every time.
+  /** @param {number} ms */
+  const holdMainThread = (ms) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end); // nothing else runs on this thread meanwhile, by design
+  };
+  const proc = await Subprocess.call({
+    command: bin,
+    arguments: ["--profile", PathUtils.profileDir, "state"],
+    stderr: "stdout",
+  });
+  holdMainThread(1000); // vimma-ctl connects and says hello, unread
+  const late = [new Client(port), new Client(port)];
+  holdMainThread(300); // two silent connections queue behind it
+  let held = "";
+  let chunk;
+  while ((chunk = await proc.stdout.readString())) held += chunk;
+  Assert.equal(
+    (await proc.wait()).exitCode,
+    0,
+    `newer silent connections do not evict it: ${held}`,
+  );
+  [...flood, ...late].forEach((c) => c.close());
+  await TestUtils.waitForCondition(() => VimmaControl.waiting === 0, "the flood closed");
+
+  // At the connection limit vimma-ctl says busy and "try again" (exit 3), and once a slot is
+  // free it gets in again.
+  /** @type {Client[]} */
+  const open = [];
+  for (let i = 0; i < 8; i++) {
+    const client = new Client(port);
+    Assert.equal((await client.hello(token))?.type, "welcome", `connection ${i} is in`);
+    open.push(client);
+  }
+  const busy = await runVimmaCtl(bin, ["state"]);
+  Assert.equal(busy.exitCode, 3, `at the limit, vimma-ctl exits 3: ${busy.out}`);
+  Assert.stringContains(busy.out, "busy", "says busy");
+  Assert.stringContains(busy.out, "try again", "and to try again");
+  /** @type {Client} */ (open.pop()).close();
+  await TestUtils.waitForCondition(() => VimmaControl.connections === 7, "a slot freed");
+  const again = await runVimmaCtl(bin, ["state"]);
+  Assert.equal(again.exitCode, 0, `a freed slot lets vimma-ctl in: ${again.out}`);
+  open.forEach((c) => c.close());
   await disable();
 
   // A squatter on a stale discovery file's port, without the token: vimma-ctl refuses it and

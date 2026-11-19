@@ -531,11 +531,13 @@ allows; and answers `not-implemented` for reserved commands.
   - **At most 8 authenticated connections** and, apart from them, **at most 2 still in the
     handshake**. Real use is one short-lived `vimma-ctl` per command plus the e2e harness; 8 leaves
     room for scripts running in parallel. Anyone local can open waiting connections, so a new
-    one evicts the oldest waiting one (answered `busy`) instead of being refused: idle
-    connections cannot lock out a client that holds the token, which answers at once. A fast
-    **connect flood still can**: two new connections arriving between a client's connect and its
-    `auth` evict it. That is an active local denial of service by a process of some local user;
-    the remedy is turning the pref off. Up to 16 refused connections linger 1 s to deliver their
+    one evicts the oldest waiting one that has sent nothing yet, else the oldest (answered
+    `busy`), instead of being refused: idle connections cannot lock out a client that holds the
+    token, which answers at once, even while its hello waits unread behind newer connections
+    (#1344). A fast **connect flood still can**: before the client's hello is in, one new
+    connection evicts it when the other waiting one has spoken; after it, two new ones do, the
+    first of which has spoken by the time the second arrives. That is an active local denial of
+    service by a process of some local user; the remedy is turning the pref off. Up to 16 refused connections linger 1 s to deliver their
     `busy`; beyond that they are closed at once.
   - **Handshake deadline 5 s** (above): no `welcome` earned within 5 s of connecting → close.
   - **Idle timeout 60 s after the handshake**: no complete request line for 60 s → the server

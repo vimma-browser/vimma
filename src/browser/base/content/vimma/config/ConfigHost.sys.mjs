@@ -133,7 +133,7 @@ let appliedBookmarklets = "none";
  * `[bookmarks] write_back` of the last config.toml read that applied (bookmarks-file D12).
  * @type {import("../core/bookmarks-file.mjs").WriteBack}
  */
-let appliedWriteBack = "vimma";
+let appliedWriteBack = "all";
 /**
  * The one queue of edits (docs/specs/bookmarks-file.md D11): config.toml's (rewriteConfig) and
  * bookmarks.toml's, and the bookmarks mirror's applies to Places. A task never waits for a task
@@ -342,7 +342,7 @@ async function check(force) {
   // with errors keeps the previous value, and `:source <file>` never reaches here.
   if (applied) {
     appliedBookmarklets = active?.config.bookmarks.bookmarklets ?? "none";
-    appliedWriteBack = active?.config.bookmarks.writeBack ?? "vimma";
+    appliedWriteBack = active?.config.bookmarks.writeBack ?? "all";
   }
   bookmarksFile.configRead(now === "missing" ? null : text, appliedBookmarklets, appliedWriteBack);
 }

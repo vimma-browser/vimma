@@ -4152,7 +4152,7 @@ no `bookmarks.toml` and changes no bookmark because of one.
    only while `[bookmarks] bookmarklets` allows it; Firefox keeps the one it has either way.
 3. Commit it, to a private repository, or list `bookmarks.toml` and `bookmarks.toml.bak*` in
    `.gitignore` as above. From now on the folders
-   follow the file.
+   and the file follow each other (with `write_back = "vimma"`, the folders follow the file).
 
 `:bookmarks export` never replaces a file that exists: it says what the file holds and that
 `:bookmarks export!` replaces it. `:bookmarks export!` asks first
@@ -4201,21 +4201,49 @@ URL.
   and in Firefox, and the notice says so, because a table cannot hold one name twice; a page
   without a title is filed under its address. Bookmarks outside the mirrored folders work as
   before.
+- **Changes made elsewhere in Firefox are written too.** A change to a mirrored folder from the
+  Library, the star, the bookmark menus, an add-on, an import or Sync (an add, a removal, a
+  move into, out of or within it, a new name or URL) is written to the file a second after the
+  last change of its burst, as one edit that keeps your comments: a Sync that brings 40
+  bookmarks is one edit, and `git diff` shows what it changed. Renaming the workspace's own
+  folder in the Library renames the table's header; deleting it, or moving it off the
+  toolbar's top, removes the table. When the file and Firefox both changed one bookmark since
+  they last agreed, the file wins and Firefox is put back, with a notice
+  (`bookmarks.toml kept "work"/docs/Guide; Sync's change put back`); a bookmark removed on one
+  side and changed on the other is kept with the change, so a failed or crossed change can
+  leave a bookmark twice, never nowhere. A removal of more than 20 bookmarks, or of more than
+  half of a table's, asks first, as
+  `Sync removes 34 bookmarks from "work": remove them from bookmarks.toml? y/N`; `n`, `Esc` or
+  no answer in a minute puts those bookmarks back from the file, and still writes what the same
+  change added, renamed or moved, so declining never deletes a bookmark Sync just brought.
 - **`write_back`.** `[bookmarks] write_back` in `config.toml` says what reaches the file:
-  `"vimma"` (the default) writes Vimma's own changes; `"none"` makes the file the only way to
-  change these bookmarks, and the keys say `bookmarks.toml is read-only (write_back = "none")`
-  there (`:wsrename` then leaves the folder's name to the table, and `:wsdelete` keeps the
-  folder). The setting applies at once, and only `config.toml` can set it. Either way, a
-  change made elsewhere in Firefox to a mirrored folder (the Library, the star, an import,
-  Sync) is put back from the file a second later, with a notice. In a private window the keys
-  never write the file: `bookmarks.toml is not written from a private window`.
-- **Two devices.** With Firefox Sync on two machines whose files differ, each puts the other's
-  changes back. When one bookmark has been put back three times in ten minutes, its table
-  pauses both ways and the status bar says so; edit the file (or `git pull`) to go on. Carry
-  mirrored folders with one of git or Sync, not both.
+  `"all"` (the default) writes every change, Vimma's keys' and Firefox's; `"vimma"` writes
+  only Vimma's own and puts every other change back from the file a second later, with a
+  notice (`bookmarks.toml: Firefox change to "work" put back (write_back = "vimma")`), so the
+  file stays under your hand and Vimma's keys; `"none"` makes the file the only way to change
+  these bookmarks: the keys say `bookmarks.toml is read-only (write_back = "none")` there
+  (`:wsrename` then leaves the folder's name to the table, and `:wsdelete` keeps the folder),
+  and other changes are put back too. The setting applies at once, and only `config.toml` can
+  set it, so a file you pulled cannot turn writing on.
+- **Private windows.** Nothing done in private browsing reaches the file. In a private window
+  the keys never write it (`bookmarks.toml is not written from a private window`), and under
+  `"all"` a bookmark added to a mirrored folder from Firefox's star or Library while a private
+  window is the last one you used stays in Firefox only, and a change to a mirrored bookmark is
+  put back, with a notice. Removals are written. Firefox does not say which window a change
+  came from, so an edit in the Library counts as made in the last browser window you used:
+  after a private one, the Library's changes are put back too, even when you opened it from a
+  normal window.
+- **Two devices.** With Firefox Sync on two machines, each machine writes what Sync brings
+  into its own file under `"all"`. Under `"vimma"` or `"none"`, or when both machines change one
+  bookmark at once, one puts the other's change back. When one bookmark has been put back three
+  times in ten minutes, its table pauses both ways and the status bar says so; edit the file
+  (or `git pull`) to go on. Carry mirrored folders with one of git or Sync, not both: with both,
+  `git pull` finds the change Sync already wrote and refuses to merge.
 - **What the file keeps out.** Separators, tags and keywords in a mirrored folder are kept as
-  they are. A bookmark or folder moved out of a mirrored folder in the Library stays where you
-  put it, and the folder gets a new copy from the file.
+  they are. A bookmark the file cannot hold (a `data:` or `place:` address, a bookmarklet while
+  bookmarklets are off, a path deeper than 32 folders) stays in Firefox only, with a notice
+  once, and no edit of the file removes it. A folder whose name is empty is written as
+  `(untitled)`, and a bookmark without a title under its address.
 - **Bookmarklets.** A `javascript:` line reaches Firefox's bookmarks only while `config.toml`
   says `[bookmarks] bookmarklets = "user"` (or `"agent"`), because a bookmark there runs from
   Firefox's Library and toolbar with one click. A file you pulled from someone else therefore
@@ -4256,7 +4284,9 @@ URL.
   refuses a `config.toml` that has these tables.
 - **Recovery.** The file is the source for its folders, so recover them in the file: undo the
   edit, or `git revert` the commit, and the folders follow. A Library restore into a mirrored
-  folder is put back from the file like any other change. Firefox's daily bookmark backups
+  folder is written to the file under `"all"` (asked first when it removes many) and put back
+  under `"vimma"` and `"none"`. When Firefox made a new bookmarks database at start-up and
+  restored a backup, the first load writes nothing back. Firefox's daily bookmark backups
   (Library → Import and Backup → Restore) still recover everything outside the mirrored
   folders, and the mirrored ones after `:bookmarks forget`.
 
@@ -4772,7 +4802,7 @@ accent = "#ff9e64"
   default: the current workspace's folder; `"toolbar"`; or `"all"`: what the
   [bookmarks panel](#bookmarks) lists and where paths start); `[bookmarks] bookmarklets`
   (`"none"`, the default, `"user"` or `"agent"`: who may run [bookmarklets](#bookmarks));
-  `[bookmarks] write_back` (`"vimma"`, the default, or `"none"`: whether Vimma's keys write
+  `[bookmarks] write_back` (`"all"`, the default, `"vimma"` or `"none"`: which changes reach
   [bookmarks in a file](#bookmarks-in-a-file)); `[panel] numbers` (`"absolute"`, the
   default, `"relative"` or `"hybrid"`: the [side panel](#side-panel)'s row numbers);
   `[scroll] step` (how far `j`, `k`, `h` and `l` scroll, 1 to 2000 CSS pixels, default 60; the

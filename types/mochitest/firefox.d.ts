@@ -257,6 +257,8 @@ interface Window {
 interface Tabbrowser {
   readonly splitViews: MozTabSplitViewWrapper[];
   pinTab(tab: MozTabbrowserTab, options?: { metricsContext?: unknown }): void;
+  /** Flushes the tab's state to SessionStore; Firefox's unload paths call it before a discard. */
+  prepareDiscardBrowser(tab: MozTabbrowserTab): Promise<void>;
   discardBrowser(tab: MozTabbrowserTab, forceDiscard?: boolean): boolean;
   explicitUnloadTabs(tabs: MozTabbrowserTab[]): Promise<void>;
   addTabSplitView(

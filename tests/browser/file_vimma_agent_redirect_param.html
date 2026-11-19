@@ -1,0 +1,43 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_userinfo.js: a login page whose links, form and title carry
+   - another page's URL, user name and password included, percent-encoded in a redirect
+   - parameter (#1348). -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>https://site.example/?next=https%3A%2F%2Fada%3Asecret%40bank.example%2F</title>
+  </head>
+  <body>
+    <main>
+      <h1>Sign in to continue</h1>
+      <p>
+        <a
+          id="next"
+          href="file_vimma_agent_page.html?next=https%3A%2F%2Fada%3Asecret%40bank.example%2F&amp;lang=fi"
+          >Continue to the bank</a
+        >
+        <a
+          id="twice"
+          href="file_vimma_agent_page.html?next=https%253A%252F%252Fada%253Asecret%2540bank.example%252F"
+          >Continue twice</a
+        >
+        <a
+          id="hash"
+          href="file_vimma_agent_page.html#/login?next=https%3A%2F%2Fada%3Asecret%40bank.example%2F"
+          >Continue in the app</a
+        >
+      </p>
+      <form
+        id="login"
+        method="get"
+        action="file_vimma_agent_page.html?continue=https%3A%2F%2Fada%3Asecret%40bank.example%2F"
+      >
+        <input id="q" name="q" type="search" aria-label="Search" />
+        <button id="go" type="submit">Search</button>
+      </form>
+    </main>
+  </body>
+</html>

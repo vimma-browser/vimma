@@ -7,9 +7,11 @@
 // FAKE_BROWSER_STDERR is written to stderr at start, FAKE_BROWSER_LATE_STDERR after
 // FAKE_BROWSER_LATE_STDERR_MS (a startup phase that stalls, issue #901). FAKE_BROWSER_CHILD=1 also starts a
 // long-lived child (like a content process) and writes its pid to <profile>/grandchild.pid.
-// FAKE_BROWSER_IGNORE_TERM=1 ignores SIGTERM.
+// FAKE_BROWSER_IGNORE_TERM=1 ignores SIGTERM. FAKE_BROWSER_COLD_MARKER names a file standing for a
+// warm page cache (issue #901): while it is missing, the start takes FAKE_BROWSER_COLD_MS longer
+// and creates it, as a machine's first start reads its libraries from disk.
 import { spawn } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { startFakeServer } from "../fake-server.ts";
 
@@ -20,12 +22,15 @@ if (!profile) {
   process.exit(2);
 }
 const mode = process.env.FAKE_BROWSER ?? "serve";
+const coldMarker = process.env.FAKE_BROWSER_COLD_MARKER;
+const cold = Boolean(coldMarker && !existsSync(coldMarker));
 writeFileSync(
   join(profile, "fake-browser.json"),
   JSON.stringify({
     argv,
     home: process.env.HOME,
     tmp: process.env.TMPDIR,
+    cold,
     env: Object.fromEntries(
       Object.entries(process.env).filter(([k]) =>
         /^(DISPLAY|XUL_APP_FILE|GDK_|QT_|MOZ_|WAYLAND_DISPLAY|PATH$|XDG_RUNTIME_DIR|FONTCONFIG_)/.test(
@@ -59,6 +64,8 @@ if (mode === "exit") {
 }
 setInterval(() => {}, 1000);
 if (mode === "serve") {
-  const delay = Number(process.env.FAKE_BROWSER_DELAY_MS ?? 0);
+  if (coldMarker) writeFileSync(coldMarker, "");
+  const coldMs = cold ? Number(process.env.FAKE_BROWSER_COLD_MS ?? 0) : 0;
+  const delay = Number(process.env.FAKE_BROWSER_DELAY_MS ?? 0) + coldMs;
   setTimeout(() => startFakeServer(profile), delay);
 }

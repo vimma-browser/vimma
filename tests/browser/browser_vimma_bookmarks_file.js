@@ -159,7 +159,9 @@ async function reset() {
   // Forgotten first, so that removing the file is no missing-file pause.
   await mirror.forget();
   await IOUtils.remove(bookmarksFile, { ignoreAbsent: true });
-  await IOUtils.writeUTF8(configFile, "schema = 2\n");
+  // Slices 1 and 2's behaviour: Vimma's keys write the file, outside changes are put back. The
+  // default, "all", is tested in browser_vimma_bookmarks_file_outside.js.
+  await IOUtils.writeUTF8(configFile, 'schema = 2\n[bookmarks]\nwrite_back = "vimma"\n');
   await ConfigHost.reload();
   await mirror.forget();
   await restoreWorkspaces();
@@ -1545,6 +1547,9 @@ add_task(async function a_key_during_the_apply_that_makes_a_folder_is_refused() 
   PlacesUtils.observers.addListener(["bookmark-added"], listener);
   try {
     await writeFile('[bookmarks.fresh]\n"a" = "https://example.com/a"');
+    // The notification itself is waited for, not the folder in the database: insertTree commits,
+    // then reads the new items back before it notifies, so a poll can find the folder first.
+    await until(() => answers.length > 0, "Places notifies the new folder");
     await untilFolder("fresh", ["a https://example.com/a"], "the new folder is made");
   } finally {
     PlacesUtils.observers.removeListener(["bookmark-added"], listener);
