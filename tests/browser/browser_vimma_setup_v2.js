@@ -882,6 +882,10 @@ add_task(async function default_browser_step_calls_the_shell_service() {
   );
   Assert.deepEqual(choices(doc), ["Make Vimma the default browser", "Not now"]);
   Assert.equal(current(doc), "Make Vimma the default browser");
+  Assert.ok(
+    !found(doc.getElementById("v2-choices")).textContent.includes("in force"),
+    "an action has no value in force",
+  );
   Assert.ok(found(doc.getElementById("v2-writes-row")).hidden, "an action writes no line");
   await press(doc, "KEY_Enter");
   await atStep(doc, "bring_your_data");

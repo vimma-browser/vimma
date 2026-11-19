@@ -249,19 +249,21 @@ function windowDrawing(w) {
 
 /** @param {StepView} v */
 function drawChoices(v) {
+  // An action step has no value in force: its choices are what to do now.
+  const inForce = (/** @type {number} */ i) => v.kind === "setting" && i === v.selected;
   $("v2-choices").replaceChildren(
     ...v.choices.map((c, i) => {
       const li = el(
         "li",
         { role: "option", "data-index": String(i), ...(c.keep ? { "data-keep": "true" } : {}) },
-        el("span", { class: "mark", "aria-hidden": "true" }, i === v.selected ? "●" : "○"),
+        el("span", { class: "mark", "aria-hidden": "true" }, inForce(i) ? "●" : "○"),
         el(
           "span",
           { class: "body" },
           el("span", { class: "name" }, c.label),
           ...(c.window ? [windowDrawing(c.window)] : []),
         ),
-        el("span", { class: "meta" }, i === v.selected ? "in force" : ""),
+        el("span", { class: "meta" }, inForce(i) ? "in force" : ""),
       );
       if (i === state.cursor) li.setAttribute("aria-current", "true");
       return li;
