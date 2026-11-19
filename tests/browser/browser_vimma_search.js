@@ -66,7 +66,7 @@ let writes = 0;
  */
 async function writeConfig(...lines) {
   writes++;
-  await IOUtils.writeUTF8(file, `schema = 2\n${lines.join("\n")}\n${"#".repeat(writes)}\n`);
+  await IOUtils.writeUTF8(file, `${lines.join("\n")}\n${"#".repeat(writes)}\n`);
 }
 
 /** The state Vimma recorded, once the apply after a write has run. */
@@ -432,14 +432,14 @@ add_task(async function an_unknown_engine_is_a_config_error_and_the_rest_applies
   await until(() => errorSegment()?.includes("search.default"), "the status bar shows it");
   Assert.equal(
     errorSegment(),
-    `config.toml:3: search.default: no search engine named "Vimma Instaled" (did you mean "${INSTALLED}"?)`,
+    `config.toml:2: search.default: no search engine named "Vimma Instaled" (did you mean "${INSTALLED}"?)`,
     "with its line and a suggestion",
   );
   const data = await AboutVimma.collect(window);
   Assert.ok(
     data.search.errors.some((e) =>
       e.endsWith(
-        `config.toml:3: search.default: no search engine named "Vimma Instaled" (did you mean "${INSTALLED}"?)`,
+        `config.toml:2: search.default: no search engine named "Vimma Instaled" (did you mean "${INSTALLED}"?)`,
       ),
     ),
     "about:vimma lists it under Search",

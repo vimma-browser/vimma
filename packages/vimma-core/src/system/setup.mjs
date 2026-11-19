@@ -4,8 +4,14 @@
 
 /**
  * The first-run setup's pure parts (docs/specs/first-run-setup.md): the curated add-ons, the
- * filter on AMO answers, the step state machine and the plan the summary applies.
+ * filter on AMO answers, the step state machine and the plan the summary applies; and setup
+ * v2's chapter flow (docs/specs/setup-v2.md), behind `vimma.feature.setupV2` until it replaces
+ * the summary.
  */
+
+import { CHAPTERS } from "./setup-steps.mjs";
+
+/** @import { SetupChapter } from "./setup-steps.mjs" */
 
 /**
  * The curated content blockers, pinned by GUID and slug (decision 13): all three are AMO
@@ -275,4 +281,223 @@ export function formatUsers(/** @type {number} */ n) {
 function scaledUsers(/** @type {number} */ x) {
   const tenths = x.toFixed(1);
   return Number(tenths) < 10 ? tenths : x.toFixed(0);
+}
+
+/**
+ * The steps of setup v2 the page draws so far: the delivery slices add theirs here, with a
+ * renderer in the page (docs/specs/setup-v2.md, Delivery). The host saves only these, so a step
+ * whose rules have not landed (the agents step's consent) cannot be written through the page.
+ */
+export const BUILT_STEPS = Object.freeze(["content_blocker", "search_engine", "colours"]);
+
+/**
+ * The chapters with only `built` steps, chapters left without one dropped; each keeps its
+ * digit, so a later chapter's key never changes.
+ * @param {readonly string[]} [built]
+ * @returns {SetupChapter[]}
+ */
+export function flowChapters(built = BUILT_STEPS) {
+  return CHAPTERS.map((c) => ({ ...c, steps: c.steps.filter((s) => built.includes(s.id)) })).filter(
+    (c) => c.steps.length,
+  );
+}
+
+/**
+ * @typedef {object} FlowSaved  what one step of this run wrote, for the footer and stop screen
+ * @property {string} chapter
+ * @property {string} step
+ * @property {string[]} lines
+ */
+
+/**
+ * @typedef {object} FlowState
+ * @property {"welcome" | "step" | "stop" | "closed"} screen
+ * @property {readonly SetupChapter[]} chapters
+ * @property {number} chapter  index into `chapters`
+ * @property {number} step     index into the chapter's steps
+ * @property {number} cursor
+ * @property {boolean} searching  the content blocker's search field has the keys
+ * @property {Map<string, AddonEntry>} marked  by GUID, kept across searches
+ * @property {FlowSaved[]} saved
+ * @property {boolean} blocked  setting steps can only skip (a parse error, a private window)
+ * @property {boolean} done     the stop screen is the last one
+ */
+
+/**
+ * What the page knows of the open step: the rows of its list, the row of the value in force of
+ * any step (behaviour 9), and the content blocker's add-ons.
+ * @typedef {object} FlowContext
+ * @property {number} count
+ * @property {(chapter: number, step: number) => number} selected
+ * @property {readonly AddonEntry[]} addons
+ * @property {boolean} ready  the open step's list, as the host sent it, is drawn: until then
+ *   `enter` names no row, since an index would point into a list the user has not seen
+ */
+
+/**
+ * @typedef {{ type: "close" } | { type: "search" } | { type: "blur" } | { type: "run-search" }
+ *   | { type: "save", step: string, index: number }
+ *   | { type: "action", step: string, index: number }
+ *   | { type: "install", addons: AddonEntry[] }
+ *   | { type: "chapter-done", chapter: string }} FlowEffect
+ */
+
+/**
+ * @param {{ chapters: readonly SetupChapter[], blocked?: boolean }} init
+ * @returns {FlowState}
+ */
+export function initialFlow({ chapters, blocked = false }) {
+  return {
+    screen: "welcome",
+    chapters,
+    chapter: 0,
+    step: 0,
+    cursor: 0,
+    searching: false,
+    marked: new Map(),
+    saved: [],
+    blocked,
+    done: false,
+  };
+}
+
+/** @param {FlowState} s @returns {import("./setup-steps.mjs").SetupStep | undefined} */
+export const flowStep = (s) =>
+  s.screen === "step" ? s.chapters[s.chapter]?.steps[s.step] : undefined;
+
+/**
+ * @param {FlowState} s @param {number} chapter @param {number} step @param {FlowContext} ctx
+ * @returns {{ state: FlowState, effect: FlowEffect | null }}
+ */
+function openStep(s, chapter, step, ctx) {
+  return {
+    state: {
+      ...s,
+      screen: "step",
+      chapter,
+      step,
+      cursor: ctx.selected(chapter, step),
+      searching: false,
+      done: false,
+    },
+    effect: null,
+  };
+}
+
+/**
+ * The stop screen of chapter `chapter` (behaviour 10); reaching it finishes the chapter.
+ * @param {FlowState} s @param {number} chapter
+ * @returns {{ state: FlowState, effect: FlowEffect | null }}
+ */
+function openStop(s, chapter) {
+  const id = s.chapters[chapter]?.id ?? "";
+  return {
+    state: {
+      ...s,
+      screen: "stop",
+      chapter,
+      step: 0,
+      cursor: 0,
+      searching: false,
+      done: chapter === s.chapters.length - 1,
+    },
+    effect: { type: "chapter-done", chapter: id },
+  };
+}
+
+/**
+ * The step after the open one, or its chapter's stop screen; a step that wrote `lines` is
+ * listed as saved, replacing what an earlier `enter` on it saved (behaviour 6).
+ * @param {FlowState} s @param {FlowContext} ctx
+ * @param {readonly string[]} [lines]  what the step wrote; none for a skip or "writes nothing"
+ * @returns {{ state: FlowState, effect: FlowEffect | null }}
+ */
+export function flowAdvance(s, ctx, lines = []) {
+  const step = flowStep(s);
+  if (!step) return { state: s, effect: null };
+  const chapter = s.chapters[s.chapter];
+  const saved = s.saved.filter((x) => x.step !== step.id);
+  if (lines.length) saved.push({ chapter: chapter?.id ?? "", step: step.id, lines: [...lines] });
+  const next = { ...s, saved, marked: step.id === "content_blocker" ? new Map() : s.marked };
+  if (chapter && s.step + 1 < chapter.steps.length)
+    return openStep(next, s.chapter, s.step + 1, ctx);
+  return openStop(next, s.chapter);
+}
+
+/**
+ * One key on the page (behaviours 3-11), in Vimma's key notation; in the search field only
+ * `enter` and `esc` reach here. `enter` on a step returns what to do, and the page calls
+ * flowAdvance once it is done; a failed save keeps the step open.
+ * @param {FlowState} s @param {string} key @param {FlowContext} ctx
+ * @returns {{ state: FlowState, effect: FlowEffect | null }}
+ */
+export function flowKey(s, key, ctx) {
+  const stay = { state: s, effect: null };
+  /** @type {{ state: FlowState, effect: FlowEffect }} */
+  const close = { state: { ...s, screen: "closed", searching: false }, effect: { type: "close" } };
+  if (s.screen === "closed") return stay;
+  if (s.searching) {
+    if (key === "esc") return { state: { ...s, searching: false }, effect: { type: "blur" } };
+    if (key === "enter")
+      return { state: { ...s, searching: false }, effect: { type: "run-search" } };
+    return stay;
+  }
+  if (key === "q" || key === "esc") return close;
+  const digit = s.chapters.findIndex((c) => String(c.digit) === key);
+  if (digit >= 0) return openStep(s, digit, 0, ctx);
+  if (s.screen === "welcome") return key === "enter" ? openStep(s, 0, 0, ctx) : stay;
+  if (s.screen === "stop") {
+    if (key === "h") {
+      return openStep(s, s.chapter, (s.chapters[s.chapter]?.steps.length ?? 1) - 1, ctx);
+    }
+    if (key !== "enter") return stay;
+    return s.done ? close : openStep(s, s.chapter + 1, 0, ctx);
+  }
+  const step = flowStep(s);
+  if (!step) return stay;
+  const move = (/** @type {number} */ d) =>
+    ctx.count === 0
+      ? stay
+      : {
+          state: { ...s, cursor: Math.max(0, Math.min(ctx.count - 1, s.cursor + d)) },
+          effect: null,
+        };
+  switch (key) {
+    case "j":
+    case "down":
+      return move(1);
+    case "k":
+    case "up":
+      return move(-1);
+    case "s":
+      return flowAdvance(s, ctx);
+    case "h":
+      if (s.step > 0) return openStep(s, s.chapter, s.step - 1, ctx);
+      if (s.chapter > 0) return openStop(s, s.chapter - 1);
+      return { state: { ...s, screen: "welcome", searching: false }, effect: null };
+  }
+  if (step.id === "content_blocker") {
+    if (key === "/") return { state: { ...s, searching: true }, effect: { type: "search" } };
+    if (key === "space") {
+      const a = ctx.addons[s.cursor];
+      if (!a || a.installed || !a.url) return stay;
+      const marked = new Map(s.marked);
+      if (marked.has(a.guid)) marked.delete(a.guid);
+      else marked.set(a.guid, a);
+      return { state: { ...s, marked }, effect: null };
+    }
+    if (key === "enter") {
+      const addons = [...s.marked.values()].filter((a) => !a.installed);
+      return addons.length
+        ? { state: s, effect: { type: "install", addons } }
+        : flowAdvance(s, ctx);
+    }
+    return stay;
+  }
+  if (key !== "enter" || !ctx.ready) return stay;
+  if (step.kind === "action") {
+    return { state: s, effect: { type: "action", step: step.id, index: s.cursor } };
+  }
+  if (s.blocked) return stay;
+  return { state: s, effect: { type: "save", step: step.id, index: s.cursor } };
 }

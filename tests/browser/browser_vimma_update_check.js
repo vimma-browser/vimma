@@ -326,7 +326,7 @@ add_task(async function off_by_pref_or_config_sends_nothing() {
   await SpecialPowers.popPrefEnv();
 
   const file = PathUtils.join(dir, "config.toml");
-  await IOUtils.writeUTF8(file, "schema = 2\n[updates]\ncheck = false\n");
+  await IOUtils.writeUTF8(file, "[updates]\ncheck = false\n");
   await ConfigHost.reload(file);
   await until(() => !VimmaUpdates.status().enabled, "[updates] check = false applied");
   Assert.equal((await VimmaUpdates.check()).outcome, "off");
@@ -342,7 +342,7 @@ add_task(async function checks_off_show_updates_off_briefly_once_per_session() {
   await fetch(`${HOST}?reset`);
   VimmaUpdates._reset(); // a new session: the notice has not been shown
   const file = PathUtils.join(dir, "config.toml");
-  await IOUtils.writeUTF8(file, "schema = 2\n[updates]\ncheck = false\n");
+  await IOUtils.writeUTF8(file, "[updates]\ncheck = false\n");
   await ConfigHost.reload(file);
   await until(() => !VimmaUpdates.status().enabled, "[updates] check = false applied");
   Assert.equal((await VimmaUpdates.check()).outcome, "off", "the install type is known");
@@ -601,10 +601,7 @@ add_task(async function a_config_with_errors_still_turns_checks_off() {
   await fetch(`${HOST}?reset`);
   await serve(await manifest());
   const file = PathUtils.join(dir, "broken.toml");
-  await IOUtils.writeUTF8(
-    file,
-    "schema = 2\n[updates]\ncheck = false\n[keys]\nnot_an_action = 1\n",
-  );
+  await IOUtils.writeUTF8(file, "[updates]\ncheck = false\n[keys]\nnot_an_action = 1\n");
   await ConfigHost.reload(file);
   Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
   await until(() => !VimmaUpdates.status().enabled, "check = false honoured from the broken file");
@@ -618,12 +615,12 @@ add_task(async function an_opt_out_under_a_misspelt_table_never_turns_checks_on(
   await fetch(`${HOST}?reset`);
   await serve(await manifest());
   const off = PathUtils.join(dir, "off.toml");
-  await IOUtils.writeUTF8(off, "schema = 2\n[updates]\ncheck = false\n");
+  await IOUtils.writeUTF8(off, "[updates]\ncheck = false\n");
   await ConfigHost.reload(off);
   await until(() => !VimmaUpdates.status().enabled, "check = false");
   // [update] for [updates]: the file parses and may mean check = false.
   const misspelt = PathUtils.join(dir, "misspelt.toml");
-  await IOUtils.writeUTF8(misspelt, "schema = 2\n[update]\ncheck = false\n");
+  await IOUtils.writeUTF8(misspelt, "[update]\ncheck = false\n");
   await ConfigHost.reload(misspelt);
   Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
   Assert.ok(!VimmaUpdates.status().enabled, "checks stay off");
@@ -639,16 +636,16 @@ add_task(async function an_unreadable_check_never_undoes_an_opt_out_stated_in_a_
   await serve(await manifest());
   // 1. A valid file without [updates]: checks on.
   const file = PathUtils.join(dir, "967.toml");
-  await IOUtils.writeUTF8(file, "schema = 2\n");
+  await IOUtils.writeUTF8(file, "");
   await ConfigHost.reload(file);
   await until(() => VimmaUpdates.status().enabled, "on with a valid file");
   // 2. check = false beside an error elsewhere: off, the valid file stays in force.
-  await IOUtils.writeUTF8(file, "schema = 2\n[updates]\ncheck = false\n[keys]\nnope = 1\n");
+  await IOUtils.writeUTF8(file, "[updates]\ncheck = false\n[keys]\nnope = 1\n");
   await ConfigHost.reload(file);
   Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
   await until(() => !VimmaUpdates.status().enabled, "check = false from the broken file");
   // 3. The TOML no longer parses: check = false was the last word, so checks stay off.
-  await IOUtils.writeUTF8(file, "schema = 2\n[updates\ncheck = false\n");
+  await IOUtils.writeUTF8(file, "[updates\ncheck = false\n");
   await ConfigHost.reload(file);
   Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
   Assert.ok(!VimmaUpdates.status().enabled, "checks stay off");
@@ -665,7 +662,7 @@ add_task(async function a_config_that_parses_with_errors_still_checks() {
   // A key a newer build writes: the file parses, and says nothing about [updates] check. (An
   // unknown provider cli, the case #741 met, is now only a warning: #742.)
   const file = PathUtils.join(dir, "newer.toml");
-  await IOUtils.writeUTF8(file, "schema = 2\n[agent]\nfuture_key = 1\n");
+  await IOUtils.writeUTF8(file, "[agent]\nfuture_key = 1\n");
   await ConfigHost.reload(file);
   Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
   Assert.ok(VimmaUpdates.status().enabled, "checks stay on");

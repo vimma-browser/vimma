@@ -1,9 +1,10 @@
 # Spec: setup-v2
 
-Status: accepted (delivery slice 1 built, #1292) · Area: core
+Status: accepted (delivery slices 1 and 2 built, #1292 and #1293) · Area: core
 (`packages/vimma-core/src/system/setup.mjs`, `packages/vimma-core/src/system/setup-steps.mjs`,
 `packages/vimma-core/src/config/toml.mjs`),
-chrome (`src/browser/base/content/vimma/setup/` (`setup.html`, `setup.mjs`, `SetupHost.sys.mjs`),
+chrome (`src/browser/base/content/vimma/setup/` (`setup.html`, `setup.mjs`, `flow.mjs`,
+`SetupHost.sys.mjs`),
 `config/ConfigHost.sys.mjs`, `services/AppLauncher.sys.mjs`), theme
 (`src/browser/themes/shared/vimma/setup.css`), prefs
 (`src/browser/branding/vimma/pref/firefox-branding.js`) · Upstream patches: none · ADR: none
@@ -365,7 +366,12 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     signal. Reason: each prompt, check and policy stays Firefox's and is tested there. When the
     dialog cannot be opened over the setup page (slice 3 checks this first), the step falls
     back to `showMigrationWizard` with the Settings tab and opens the next step when the user
-    comes back to the setup tab.
+    comes back to the setup tab. The check passed: the wizard opens over the setup page, which
+    loads in the parent process, takes the theme in force, closes with its own Cancel or `esc`,
+    and `closedPromise` resolves then, so the fallback is not built. `SetupHost.openImportWizard`
+    opens it only over a browser showing `about:vimma-setup`, never where the
+    `DisableProfileImport` policy forbids it, and a second request while it is open waits for
+    the same dialog, because a repeated `enter` must not stack wizards.
 18. **A feature pref while it lands.** `vimma.feature.setupV2` (default `false`) switches the
     page from today's flow to the chapters while the slices land (`CONTRIBUTING.md`,
     "Unfinished features"), because the summary flow must keep working on `main` until the new
@@ -479,8 +485,9 @@ vitest, `packages/vimma-core/test/setup.test.ts` (state machine):
 - `a digit on the welcome screen opens that chapter`
 - `with a config parse error, setting steps can only skip`
 
-Mochitest, `tests/browser/browser_vimma_setup.js` (with `vimma.feature.setupV2` on until the
-last slice):
+Mochitest, `tests/browser/browser_vimma_setup_v2.js` (with `vimma.feature.setupV2` on until the
+last slice; a file apart from the summary flow's `browser_vimma_setup.js`, because both together
+outgrow the harness's time limit for one file):
 
 - `welcome_says_q_leaves_and_finished_steps_are_saved`
 - `enter_on_a_step_writes_its_key_and_applies_live`
@@ -513,7 +520,25 @@ last slice):
   edited and read again: agents stay off until `:mcp on`)
 - `finished_chapters_are_ticked_on_the_next_run`
 - `route_add_waits_for_a_running_rewrite` (`browser_vimma_workspace_routes.js`)
-- `agent_role_cannot_open_setup` (kept)
+- `agent_role_cannot_open_setup` (kept, in `browser_vimma_setup.js`)
+
+Mochitest, `tests/browser/browser_vimma_setup_moving_in.js` (the host side of Moving in, with
+the shell service replaced, so no test changes the machine's default browser, and only
+Firefox's test migrator in the wizard):
+
+- `default_browser_state_follows_the_shell_service`
+- `set_default_browser_calls_the_shell_service`
+- `set_default_browser_does_nothing_when_vimma_already_is`
+- `set_default_browser_reports_a_failure`
+- `set_default_browser_respects_the_policy`
+- `set_default_browser_respects_the_locked_button_pref`
+- `set_default_browser_does_nothing_under_flatpak`
+- `import_wizard_opens_over_the_setup_tab_and_resolves_when_it_closes`
+- `import_wizard_opens_only_over_the_setup_page`
+- `import_wizard_respects_the_policy`
+- `closing_the_setup_tab_resolves_the_wizard_and_a_new_one_opens`
+- `a_wizard_that_cannot_open_is_unavailable`
+- `full_control_send_keys_reach_the_setup_page`
 
 e2e: the `setup-page` scenario gains screenshots of the welcome screen, one step, the address
 bar step and a stop screen, with the Omarchy and light themes, checked by eye for the key hints,

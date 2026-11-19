@@ -314,7 +314,8 @@ Written first and seen to fail (red, then green, per CONTRIBUTING.md).
   - `config.test.mjs` / `config-v2.test.mjs`: given `schema = 2` and
     `[ui] bookmarks_toolbar = "shown"`, then it parses to `"shown"` (and `"hidden"`,
     `"newtab"` to themselves); given `"always"` (Firefox's word), then an error suggesting
-    `"shown"`; given `[ui]` in a schema-1 file, then the "new in schema 2" error; given no key,
+    `"shown"`; given `[ui]` in a schema-1 file, then the "new in schema 2" error (since changed:
+    it loads, as config.toml has no schema, #1379); given no key,
     then the parsed config has none (the pref decides); given an unknown `[ui]` key, then an error
     with the closest name.
   - `bookmarks-toolbar.test.mjs`: each word maps to Firefox's value and back; the three notices

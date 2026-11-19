@@ -74,14 +74,14 @@ describe("formatConfigTemplate", () => {
   test("says what it is and how to use it, and lists every default binding", () => {
     expect(text.startsWith("# Vimma config")).toBe(true);
     expect(text).toContain(":source");
-    expect(text).toMatch(/^schema = 2$/m);
+    expect(text).not.toMatch(/^schema\b/m);
     expect(text).toMatch(/^# new_tab = \["prefix\+c", "ctrl\+t"\]$/m);
     expect(text).toMatch(/^\[keys\]$/m);
     expect(text).not.toMatch(/^new_tab =/m);
   });
 
   test("its header, all comments, says how to edit it, that saves reload, :config and ctrl+b ?", () => {
-    const header = text.slice(0, text.indexOf("\nschema = 2")).split("\n");
+    const header = text.slice(0, text.indexOf("\n\n[keys]")).split("\n");
     expect(header.every((line) => line.startsWith("#"))).toBe(true);
     const said = header.join("\n");
     expect(said).toMatch(/uncomment/i);
@@ -105,7 +105,7 @@ describe("formatConfigTemplate, line by line", () => {
     const defaults = formatDefaultsToml().split("\n").slice(3);
     expect(template.slice(header)).toHaveLength(defaults.length);
     defaults.forEach((line, i) => {
-      const kept = line === "" || /^(#|\[|schema = )/.test(line);
+      const kept = line === "" || /^(#|\[)/.test(line);
       expect(template[header + i], line).toBe(kept ? line : `# ${line}`);
     });
     expect(defaults).toContain("");
