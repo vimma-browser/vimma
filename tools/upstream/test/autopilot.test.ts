@@ -322,7 +322,7 @@ describe("autopilot body", () => {
       const run = await commitlint(`${title} (#200)\n\nBumps Firefox.\n`);
       expect(run.status, title + run.output).toBe(0);
     }
-  });
+  }, 30_000); // spawns commitlint three times: 5 s was too tight on the macOS runner (#1277)
 
   it("a ready PR only when patches apply, suites pass and a token starts CI", () => {
     const ok = { patchResult: "ok", tests: "success", hasToken: true };
