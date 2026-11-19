@@ -326,6 +326,30 @@ describe("chrome code", () => {
     ]);
   });
 
+  // security.md O11 and P9: Make default and the import wizard are asked for only by the setup
+  // host, through Firefox's own shell service and dialog, and only the setup page and the
+  // window script that registers it import the host.
+  test("asks for Make default and the import wizard only from the setup host", () => {
+    const SETUP = "src/browser/base/content/vimma/setup/SetupHost.sys.mjs";
+    const all = hits(/\.setDefaultBrowser\(|migration-dialog-window|showMigrationWizard\(/);
+    expect(all.filter((h) => !h.startsWith(`${SETUP}:`))).toEqual([]);
+    expect(all.map((h) => h.slice(h.indexOf(": ") + 2))).toEqual([
+      'const WIZARD_URL = "chrome://browser/content/migration/migration-dialog-window.html";',
+      "await shell().setDefaultBrowser(false);",
+    ]);
+    // Every importer, by name: a new one anywhere (host/, actors/, ctl/, agent/) fails here and
+    // needs a review of what it lets reach the setup host.
+    const importers = sources().filter(
+      ({ path, text }) => path !== SETUP && /SetupHost\.sys\.mjs/.test(text),
+    );
+    expect(importers.map((s) => s.path).sort()).toEqual([
+      // The setup page's own scripts (about:vimma-setup), as setup.mjs.
+      "src/browser/base/content/vimma/setup/flow.mjs",
+      "src/browser/base/content/vimma/setup/setup.mjs",
+      "src/browser/base/content/vimma/vimma.js",
+    ]);
+  });
+
   // security.md SP4, SP5: a site permission changes only through Firefox's SitePermissions, from
   // the picker's ops, and no control, MCP or agent code can reach those ops.
   test("changes a site permission only from the site permissions picker", () => {

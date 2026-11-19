@@ -494,6 +494,9 @@ support-files = ["file_vimma_insert_scroll.html"]
 ["browser_vimma_setup.js"]
 support-files = ["file_vimma_setup_amo.sjs", "head_vimma_control.js"]
 
+["browser_vimma_setup_moving_in.js"]
+support-files = ["head_vimma_control.js"]
+
 ["browser_vimma_setup_v2.js"]
 support-files = ["file_vimma_setup_amo.sjs"]
 

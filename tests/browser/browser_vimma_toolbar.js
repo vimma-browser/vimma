@@ -1628,7 +1628,7 @@ add_task(async function config_sets_the_toolbar() {
   });
   let n = 0;
   const write = (/** @type {string} */ text) =>
-    IOUtils.writeUTF8(configFile, `schema = 2\n${text}\n${"#".repeat(++n)}\n`);
+    IOUtils.writeUTF8(configFile, `${text}\n${"#".repeat(++n)}\n`);
 
   await show();
   await write(`[ui]\ntoolbar = "hidden"`);

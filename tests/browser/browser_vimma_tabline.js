@@ -233,7 +233,7 @@ add_task(async function config_reload_applies() {
   });
   let n = 0;
   const write = (/** @type {string} */ text) =>
-    IOUtils.writeUTF8(configFile, `schema = 2\n${text}\n${"#".repeat(++n)}\n`);
+    IOUtils.writeUTF8(configFile, `${text}\n${"#".repeat(++n)}\n`);
   await openPage("a long title for the cut");
   await write(`[ui]\ntabline = "always"\ntabline_width = 6`);
   await until(() => ConfigHost.config?.ui.tabline === "always", "the poll reads the file");

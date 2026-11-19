@@ -716,7 +716,8 @@ Written first and seen to fail.
   - `shadowedBy: a skipped rule shadows nothing`
 - **Vitest, `packages/vimma-core/test/config.test.mjs`:** `[routing] default_workspace takes a
 workspace name`; `[routing] refuses an unknown key and a name that is not a workspace name`;
-  `[routing] needs schema 2`.
+  `[routing] needs schema 2` (since changed: config.toml has no schema, so `[routing]` is valid
+  in every file, #1379).
 - **Fuzz, `packages/vimma-core/test/fuzz/routes.fuzz.test.mjs`:** `parseAppList returns only tokens,
 at most eight, never two equal neighbours`.
 - **Shell, `tools/package/test/vimma-open.test.ts`** (a fake `/proc` on Linux and a fake `ps` on

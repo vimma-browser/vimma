@@ -415,17 +415,6 @@ export function parseBookmarksFile(text) {
 }
 
 /**
- * config.toml's `[bookmarks]` table when the file declares schema 2 or later, which inline
- * tables need (a schema-1 file with them is a config error already); else null.
- * @param {Record<string, unknown>} raw
- */
-function schema2Bookmarks(raw) {
-  const schema = raw.schema;
-  if (typeof schema !== "bigint" || schema < 2n) return null;
-  return isTable(raw.bookmarks) ? raw.bookmarks : null;
-}
-
-/**
  * The inline `[bookmarks.<name>]` tables of config.toml's text, by name and line; [] when it
  * does not parse.
  * @param {string} text
@@ -450,7 +439,7 @@ export const inlineSettingNameMessage = (name) =>
 
 /**
  * Which file is the bookmarks file and what it holds (D1, D2): `bookmarks.toml` when it exists
- * (`file` is its text), else the inline `[bookmarks.<name>]` tables of a schema-2 config.toml.
+ * (`file` is its text), else the inline `[bookmarks.<name>]` tables of config.toml.
  * `from` is null when neither has a table. When both exist, config.toml's tables are ignored,
  * each with a warning at its line. config.toml's settings (`root`, `bookmarklets`) are never
  * tables. `from` is "config.toml" with an error when config.toml does not parse and there is no
@@ -492,7 +481,7 @@ export function readBookmarks({ file, config }) {
       warnings,
     };
   }
-  const section = schema2Bookmarks(parsed.value);
+  const section = isTable(parsed.value.bookmarks) ? parsed.value.bookmarks : null;
   if (!section) return none;
   const lineOf = locateKeys(config);
   /** @type {LineError[]} */
