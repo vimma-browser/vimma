@@ -11,6 +11,10 @@
 "use strict";
 
 /* global focusContent -- from head.js */
+/* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
+
+// Each question waits out its 1 s key settle, and the file holds many of them.
+requestLongerTimeout(3);
 
 const { ConfigHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
@@ -24,12 +28,15 @@ const { WorkspaceStore } = ChromeUtils.importESModule(
 const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
+const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
 
 const { toolbarGuid, menuGuid, unfiledGuid } = PlacesUtils.bookmarks;
 const dir = PathUtils.join(PathUtils.tempDir, `vimma-bookmarks-export-${Date.now()}`);
 const configFile = PathUtils.join(dir, "config.toml");
 const bookmarksFile = PathUtils.join(dir, "bookmarks.toml");
 const backupFile = PathUtils.join(dir, "bookmarks.toml.bak");
+const backup2 = PathUtils.join(dir, "bookmarks.toml.bak.2");
+const backup3 = PathUtils.join(dir, "bookmarks.toml.bak.3");
 const mirror = ConfigHost.bookmarksFile;
 const SECOND = "export two";
 
@@ -82,6 +89,48 @@ async function runCommand(/** @type {string} */ line) {
   EventUtils.synthesizeKey("KEY_Enter");
 }
 
+/**
+ * Waits out the moment a question ignores keys for after it shows (1 s, BookmarksFile's
+ * ASK_SETTLE_MS): no state shows its end, so this is a wait for a time-based rule.
+ */
+function pastSettle() {
+  return new Promise((r) => setTimeout(r, 1200));
+}
+
+/** Runs a program on PATH and checks it succeeded. */
+async function sh(/** @type {string} */ name, /** @type {string[]} */ args) {
+  const proc = await Subprocess.call({
+    command: await Subprocess.pathSearch(name),
+    arguments: args,
+  });
+  Assert.equal((await proc.wait()).exitCode, 0, `${name} ${args.join(" ")}`);
+}
+
+/**
+ * Waits for an export's notice and for the file's tab it opens to load: focusing that tab
+ * mid-load, for the next command, loses the focus query.
+ * @param {string} msg
+ */
+async function untilWritten(msg) {
+  await until(() => noticeText().startsWith("bookmarks.toml written"), msg);
+  const shown = `view-source:${PathUtils.toFileURI(bookmarksFile)}`;
+  await until(
+    () =>
+      gBrowser.selectedBrowser.currentURI.spec === shown &&
+      !gBrowser.selectedBrowser.webProgress?.isLoadingDocument,
+    "the file's tab has loaded",
+  );
+}
+
+/** `:bookmarks export!`, then `y` once the question takes keys; waits for its notice. */
+async function exportBang() {
+  await runCommand("bookmarks export!");
+  await until(() => promptOpen(), "export! asks");
+  await pastSettle();
+  EventUtils.synthesizeKey("y");
+  await untilWritten("replaced after y");
+}
+
 /** Waits until the mirror has made the top-level toolbar folder `name`. */
 async function untilTopFolder(/** @type {string} */ name) {
   await until(async () => {
@@ -96,7 +145,11 @@ async function reset() {
   if (promptOpen()) EventUtils.synthesizeKey("KEY_Escape");
   await mirror.forget();
   await IOUtils.remove(bookmarksFile, { ignoreAbsent: true });
-  await IOUtils.remove(backupFile, { ignoreAbsent: true });
+  for (const c of await IOUtils.getChildren(dir)) {
+    if (PathUtils.filename(c).startsWith("bookmarks.toml.bak")) {
+      await IOUtils.remove(c, { recursive: true, ignoreAbsent: true });
+    }
+  }
   await IOUtils.writeUTF8(configFile, "schema = 2\n");
   await ConfigHost.reload();
   await mirror.forget();
@@ -183,7 +236,7 @@ add_task(async function export_writes_one_table_per_workspace_and_opens_it() {
   const name = await twoWorkspaces();
   const tabs = gBrowser.tabs.length;
   await runCommand("bookmarks export");
-  await until(() => noticeText().startsWith("bookmarks.toml written"), "export says so");
+  await untilWritten("export says so");
   Assert.equal(
     noticeText(),
     `bookmarks.toml written: 6 bookmarks in ${JSON.stringify(name)}, ${JSON.stringify(
@@ -220,8 +273,7 @@ add_task(async function export_writes_one_table_per_workspace_and_opens_it() {
   );
   // The mirror then reads the file: nothing changes in Places but the written name, and nothing
   // is asked (the folders hold exactly what the file does).
-  await mirror.settledRuns();
-  await new Promise((r) => setTimeout(r, 400));
+  // The export's notice comes after the mirror's run of the new file, so that run is done.
   await mirror.settledRuns();
   Assert.ok(!promptOpen(), "no question");
   const untitled = await PlacesUtils.bookmarks.fetch({ url: "https://untitled.example/" });
@@ -250,13 +302,13 @@ add_task(async function a_data_bookmark_is_left_out_and_never_deleted() {
     ],
   });
   await runCommand("bookmarks export");
-  await until(() => noticeText().startsWith("bookmarks.toml written"), "export says so");
+  await untilWritten("export says so");
   Assert.stringContains(noticeText(), "1 data: URL", "the data: bookmark is counted");
   Assert.ok(!(await IOUtils.readUTF8(bookmarksFile)).includes("data:"), "and not written");
   // The mirror's first run then asks before it deletes what the file lacks (Behaviour 18).
   await until(() => promptOpen(), "the takeover asks");
   Assert.stringContains(promptText(), "delete its 1 bookmark the file lacks? y/N", "about it");
-  await new Promise((r) => setTimeout(r, 1200));
+  await pastSettle();
   EventUtils.synthesizeKey("n");
   await mirror.settledRuns();
   Assert.ok(
@@ -289,6 +341,7 @@ add_task(async function export_refuses_an_existing_file_and_export_bang_replaces
     'replace bookmarks.toml (1 bookmark in "old") with 7 bookmarks from Firefox, keeping the old file as bookmarks.toml.bak? y/N',
     "the question says what it replaces",
   );
+  await pastSettle();
   EventUtils.synthesizeKey("n");
   await until(() => noticeText().includes("kept"), "n keeps it");
   Assert.equal(await IOUtils.readUTF8(bookmarksFile), old, "untouched after n");
@@ -296,8 +349,9 @@ add_task(async function export_refuses_an_existing_file_and_export_bang_replaces
 
   await runCommand("bookmarks export!");
   await until(() => promptOpen(), "asked again");
+  await pastSettle();
   EventUtils.synthesizeKey("y");
-  await until(() => noticeText().startsWith("bookmarks.toml written"), "replaced after y");
+  await untilWritten("replaced after y");
   Assert.stringContains(
     noticeText(),
     "the old file is bookmarks.toml.bak",
@@ -324,9 +378,11 @@ add_task(async function a_file_changed_while_export_bang_asks_is_not_replaced() 
   await until(() => promptOpen(), "export! asks");
   const edited = `${old}"y" = "https://y.example/"\n`;
   await IOUtils.writeUTF8(bookmarksFile, edited);
+  await pastSettle();
   EventUtils.synthesizeKey("y");
   await until(() => noticeText().includes("changed meanwhile"), "refused after y");
   Assert.equal(await IOUtils.readUTF8(bookmarksFile), edited, "the edit is kept");
+  Assert.ok(!(await IOUtils.exists(backupFile)), "and no backup is written for no replace");
   await reset();
 });
 
@@ -363,5 +419,116 @@ add_task(async function tab_completes_export_and_forget_while_the_feature_is_on(
   await until(() => noticeText().includes("takes no argument"), "and export is no command");
   Assert.ok(!(await IOUtils.exists(bookmarksFile)), "no file");
   await SpecialPowers.popPrefEnv();
+  await reset();
+});
+
+add_task(async function export_bang_twice_keeps_every_older_file_in_a_backup() {
+  await twoWorkspaces();
+  const hand =
+    '# by hand\n[bookmarks.old]\n"x" = "https://x.example/"\n"tool" = "javascript:void(1)"\n';
+  await IOUtils.writeUTF8(bookmarksFile, hand);
+  await untilTopFolder("old");
+  await exportBang();
+  const first = await IOUtils.readUTF8(bookmarksFile);
+  Assert.equal(await IOUtils.readUTF8(backupFile), hand, "the hand-written file is kept");
+  // A second export! of a changed Places: the first backup stays, the replaced export gets its own.
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: /** @type {string} */ (
+      (await PlacesUtils.bookmarks.fetch({ url: "https://shop.example/cart" }))?.parentGuid
+    ),
+    url: "https://new.example/",
+    title: "new",
+  });
+  await exportBang();
+  Assert.equal(await IOUtils.readUTF8(backupFile), hand, "still in the first backup");
+  Assert.equal(await IOUtils.readUTF8(backup2), first, "the first export in the next one");
+  Assert.stringContains(
+    noticeText(),
+    "the old file is bookmarks.toml.bak.2",
+    "the notice names it",
+  );
+  // Nothing changed since: the newest backup already holds the text, so none is added.
+  const second = await IOUtils.readUTF8(bookmarksFile);
+  await runCommand("bookmarks export!");
+  await until(() => promptOpen(), "asked a third time");
+  Assert.stringContains(promptText(), "already in bookmarks.toml.bak.2", "it names that backup");
+  await pastSettle();
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !promptOpen(), "closed");
+  Assert.equal(await IOUtils.readUTF8(bookmarksFile), second, "Esc replaces nothing");
+  Assert.ok(!(await IOUtils.exists(backup3)), "and writes no backup");
+  await reset();
+});
+
+add_task(async function a_backup_is_a_new_0600_file_beside_a_fifo_or_a_wider_backup() {
+  await twoWorkspaces();
+  const old = '[bookmarks.old]\n"x" = "https://x.example/"\n';
+  await IOUtils.writeUTF8(bookmarksFile, old);
+  await untilTopFolder("old");
+  await sh("mkfifo", [backupFile]);
+  await IOUtils.writeUTF8(backup2, "someone else's");
+  await IOUtils.setPermissions(backup2, 0o644);
+  await exportBang();
+  Assert.equal(await IOUtils.readUTF8(backup3), old, "the backup takes the next free name");
+  Assert.equal((await IOUtils.stat(backup3)).permissions, 0o600, "0600, whatever others are");
+  Assert.equal((await IOUtils.stat(backupFile)).type, "other", "the FIFO is left as it is");
+  Assert.equal(await IOUtils.readUTF8(backup2), "someone else's", "and the older backup");
+  await reset();
+});
+
+add_task(async function a_failed_replace_after_the_backup_keeps_the_file() {
+  await twoWorkspaces();
+  const old = '[bookmarks.old]\n"x" = "https://x.example/"\n';
+  await IOUtils.writeUTF8(bookmarksFile, old);
+  await untilTopFolder("old");
+  const original = /** @type {NonNullable<typeof mirror.writeFile>} */ (mirror.writeFile);
+  /** @type {typeof original} */
+  mirror.writeFile = async (path, compute) =>
+    path === bookmarksFile ? { error: "disk full (test)" } : original(path, compute);
+  try {
+    await runCommand("bookmarks export!");
+    await until(() => promptOpen(), "export! asks");
+    await pastSettle();
+    EventUtils.synthesizeKey("y");
+    await until(() => noticeText().includes("disk full (test)"), "the failure is said");
+  } finally {
+    mirror.writeFile = original;
+  }
+  Assert.equal(await IOUtils.readUTF8(bookmarksFile), old, "the file is as it was");
+  Assert.equal(await IOUtils.readUTF8(backupFile), old, "its backup is an extra copy");
+  // Again, now working: the backup already holds the text, so no second copy is made.
+  await exportBang();
+  Assert.ok(!(await IOUtils.exists(backup2)), "no second backup of the same text");
+  Assert.stringContains(noticeText(), "bookmarks.toml.bak", "the notice names the backup");
+  await reset();
+});
+
+add_task(async function export_works_under_write_back_none() {
+  await IOUtils.writeUTF8(configFile, 'schema = 2\n[bookmarks]\nwrite_back = "none"\n');
+  await ConfigHost.reload();
+  await twoWorkspaces();
+  await runCommand("bookmarks export");
+  await untilWritten("export says so");
+  Assert.stringContains(
+    await IOUtils.readUTF8(bookmarksFile),
+    '"Cart" = "https://shop.example/cart"',
+    "written: export is a command, not a change write_back governs",
+  );
+  await reset();
+});
+
+add_task(async function the_export_bang_question_ignores_a_key_typed_as_it_appears() {
+  await twoWorkspaces();
+  const old = '[bookmarks.old]\n"x" = "https://x.example/"\n';
+  await IOUtils.writeUTF8(bookmarksFile, old);
+  await untilTopFolder("old");
+  await runCommand("bookmarks export!");
+  await until(() => promptOpen(), "export! asks");
+  EventUtils.synthesizeKey("y");
+  Assert.ok(promptOpen(), "a y typed as it shows is not the answer");
+  await pastSettle();
+  EventUtils.synthesizeKey("n");
+  await until(() => noticeText().includes("kept"), "the answer after the settle counts");
+  Assert.equal(await IOUtils.readUTF8(bookmarksFile), old, "nothing replaced");
   await reset();
 });

@@ -23,17 +23,21 @@ import {
   MAX_BOOKMARK_TITLE,
   lineUrl,
   parseBookmarksFile,
+  resolveTableFolders,
   tableNameProblem,
+  uniqueNamer,
   utf8Over,
 } from "./bookmarks-file.mjs";
 import { tomlLiteral } from "./toml.mjs";
 
-/** @import { FileItem, PlacesNode } from "./bookmarks-file.mjs" */
+/** @import { BaseTable, FileItem, PlacesNode } from "./bookmarks-file.mjs" */
 
 const TYPE_BOOKMARK = 1;
 const TYPE_FOLDER = 2;
 /** Places' tags root: tags are bookmarks of their own there, never the user's (D16). */
 const TAGS_ROOT = "tags________";
+/** Half of a UTF-16 pair alone, which neither UTF-8 nor a TOML escape can write. */
+const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
 /** The name of a folder Places holds without a title, which the file cannot hold. */
 const UNTITLED = "untitled";
 
@@ -97,20 +101,32 @@ function foldersOf(tree) {
 }
 
 /**
- * Writes the workspace folders `tables` of Places' tree `places` as a new bookmarks.toml.
+ * Writes the workspaces' folders of Places' tree `places` as a new bookmarks.toml.
  * `renames` lists the items whose name in the file is not their title in Places (an empty title,
  * hidden characters, a second item of one name), so that Places can take the written name and
  * the mirror's first run finds both sides alike (Behaviour 15).
- * @param {{ places: PlacesNode, tables: readonly { name: string, folder: string }[] }} input
- *   `places`: the whole tree (promiseBookmarksTree("")); `tables`: each workspace's name and
- *   folder, in the order the file lists them; a name the file refuses, a name or folder given
- *   twice, and a folder Places lacks are skipped
+ * @param {{ places: PlacesNode,
+ *   workspaces: readonly { name: string, folder?: string | null }[],
+ *   base?: { tables: BaseTable[] } | null }} input
+ *   `places`: the whole tree (promiseBookmarksTree("")); `workspaces`: each workspace's name and
+ *   linked folder, in the order the picker lists them; `base`: the mirror's, whose tables are
+ *   written after the workspaces' (a table `export!` dropped would be a removed table). Each
+ *   table's folder is the one the mirror's first load takes (D6, resolveTableFolders), so the
+ *   file holds what that load then mirrors; a name the file refuses, a name given twice and a
+ *   table without a folder are skipped
  * @returns {{ ok: true, text: string, bookmarks: number,
  *   tables: { name: string, bookmarks: number }[], leftOut: LeftOut,
  *   renames: { guid: string, title: string }[] } | { ok: false, error: string }}
  */
-export function exportBookmarks({ places, tables }) {
+export function exportBookmarks({ places, workspaces, base = null }) {
   const folders = foldersOf(places);
+  const wanted = [...workspaces.map((w) => w.name), ...(base?.tables ?? []).map((t) => t.name)];
+  const resolved = resolveTableFolders({
+    places,
+    names: wanted.filter((n) => !tableNameProblem(n) && !LONE_SURROGATE.test(n)),
+    workspaces,
+    base,
+  });
   /** @type {LeftOut} */
   const leftOut = { outside: 0, data: 0, unholdable: 0, deep: 0 };
   /** @type {{ guid: string, title: string }[]} */
@@ -128,11 +144,12 @@ export function exportBookmarks({ places, tables }) {
   let budget = MAX_BOOKMARK_LINES;
   let total = 0;
 
-  for (const t of tables) {
-    const node = folders.get(t.folder);
-    if (!node || names.has(t.name) || used.has(t.folder) || tableNameProblem(t.name)) continue;
-    names.add(t.name);
-    used.add(t.folder);
+  for (const [name, folder] of resolved) {
+    const node = folder ? folders.get(folder) : undefined;
+    if (!folder || !node || names.has(name)) continue;
+    const t = { name, folder };
+    names.add(name);
+    used.add(folder);
     /** @type {FileItem[]} */
     const top = [];
     /** @type {string[]} */
@@ -141,10 +158,10 @@ export function exportBookmarks({ places, tables }) {
     /**
      * The folders being walked, depth first, so each folder's lines follow its place (D3).
      * @type {{ kids: readonly PlacesNode[], i: number, path: string[], into: FileItem[],
-     *   taken: Set<string>, wrote: number }[]}
+     *   unique: (name: string, kind: string) => string, wrote: number }[]}
      */
     const walk = [
-      { kids: node.children ?? [], i: 0, path: [], into: top, taken: new Set(), wrote: 0 },
+      { kids: node.children ?? [], i: 0, path: [], into: top, unique: uniqueNamer(), wrote: 0 },
     ];
     while (walk.length) {
       const w = /** @type {(typeof walk)[number]} */ (walk.at(-1));
@@ -159,12 +176,7 @@ export function exportBookmarks({ places, tables }) {
         c.typeCode === TYPE_FOLDER ? "folder" : c.typeCode === TYPE_BOOKMARK ? "bookmark" : null;
       if (!kind) continue; // a separator (D16)
       /** @param {string} name */
-      const unique = (name) => {
-        let n = name;
-        for (let i = 2; w.taken.has(`${kind}\0${n}`); i++) n = `${name} (${i})`;
-        w.taken.add(`${kind}\0${n}`);
-        return n;
-      };
+      const unique = (name) => w.unique(name, kind);
       if (w.path.length + 1 > MAX_BOOKMARK_DEPTH) {
         leftOut.deep += countBookmarks(c);
         unique(normTitle(c.title));
@@ -206,7 +218,7 @@ export function exportBookmarks({ places, tables }) {
           i: 0,
           path,
           into: children,
-          taken: new Set(),
+          unique: uniqueNamer(),
           wrote: 0,
         });
       }

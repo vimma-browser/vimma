@@ -7,6 +7,7 @@ import fc from "fast-check";
 import {
   MAX_BOOKMARK_TITLE,
   parseBookmarksFile,
+  planMirror,
   readBookmarks,
 } from "../../src/config/bookmarks-file.mjs";
 import { editBookmarkLines } from "../../src/config/bookmarks-edit.mjs";
@@ -168,7 +169,7 @@ function placesFromFile(text: string) {
       typeCode: 2,
       children: [{ guid: "toolbar_____", typeCode: 2, children: folders }],
     },
-    tables: r.tables.map((t, n) => ({ name: t.name, folder: `t${n}` })),
+    workspaces: r.tables.map((t, n) => ({ name: t.name, folder: `t${n}` })),
   };
 }
 
@@ -192,9 +193,10 @@ describe("bookmarks.toml fuzzing", () => {
               typeCode: 2,
               children: [{ guid: "toolbar_____", typeCode: 2, children: folders }],
             };
-            const tables = raw.map(([name], n) => ({ name, folder: `w${n}`.padEnd(12, "_") }));
-            const r = within(500, () => exportBookmarks({ places, tables }));
-            if (!r.ok) return; // refused: nothing written
+            const workspaces = raw.map(([name], n) => ({ name, folder: `w${n}`.padEnd(12, "_") }));
+            const r = within(500, () => exportBookmarks({ places, workspaces }));
+            // No refusal is legitimate at these sizes: a refusal would be a read-back failure.
+            if (!r.ok) throw new Error(r.error);
             const parsed = parseBookmarksFile(r.text);
             expect(parsed.errors).toEqual([]);
             let count = 0;
@@ -206,6 +208,35 @@ describe("bookmarks.toml fuzzing", () => {
             const again = placesFromFile(r.text);
             const second = exportBookmarks(again);
             expect(second.ok && second.text).toBe(r.text);
+            // With Places renamed as the export says, the mirror's first load of the file adds
+            // and renames nothing: the exporter names items as the mirror does.
+            const to = new Map(r.renames.map((x) => [x.guid, x.title]));
+            const rename = (n: PlacesNode): PlacesNode => ({
+              ...n,
+              ...(to.has(n.guid) ? { title: to.get(n.guid) } : {}),
+              ...(n.children ? { children: n.children.map(rename) } : {}),
+            });
+            let g = 0;
+            const p = planMirror({
+              tables: parsed.tables,
+              base: null,
+              places: rename(places),
+              workspaces,
+              bookmarklets: "none",
+              approved: null,
+              makeGuid: () => `new${g++}`.padEnd(12, "_"),
+            });
+            // The workspace folder itself takes the table's name (Behaviour 20): not an item.
+            const tableFolders = new Set(p.links.map((l) => l.folder));
+            expect(
+              p.ops.filter(
+                (o) =>
+                  o.op === "insert" ||
+                  (o.op === "update" &&
+                    !tableFolders.has(o.guid) &&
+                    (o.title !== undefined || o.url !== undefined)),
+              ),
+            ).toEqual([]);
           },
         ),
       ),

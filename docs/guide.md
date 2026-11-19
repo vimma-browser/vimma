@@ -4114,7 +4114,8 @@ Keep a workspace's bookmarks in `bookmarks.toml`, a plain file beside `config.to
 them between machines in the same git repository as the rest of your setup. **Every URL in the
 file goes wherever the file goes**: into each commit and every remote that holds it. URLs often
 carry tokens (`?token=`, a session id, `user:pass@`), so keep `bookmarks.toml` in a private
-repository, or list it in `.gitignore` while you publish `config.toml`. Vimma does not strip
+repository, or list it and its backups in `.gitignore` (`bookmarks.toml` and
+`bookmarks.toml.bak*`) while you publish `config.toml`. Vimma does not strip
 anything from a URL: a bookmark is the address you saved.
 
 **Not yet on by default.** Bookmarks in a file arrive over several releases. To try it now,
@@ -4130,19 +4131,26 @@ no `bookmarks.toml` and changes no bookmark because of one.
    how many bookmarks it wrote and what it left out: bookmarks outside the workspaces' folders
    (the Menu, Other Bookmarks, loose in the toolbar), `data:` addresses, and anything else the
    file cannot hold. A bookmark without a title is written under its address, and a second
-   bookmark of one name in a folder as `Title (2)`; Firefox's copy is renamed to match. A
-   bookmark left out of a workspace's folder stays in Firefox: the first load asks before it
-   would delete it, and `n` keeps it.
+   bookmark of one name in a folder as `Title (2)`; Firefox's copy is renamed to match, and
+   stays renamed if you later delete the file or type `:bookmarks forget`. A bookmark left out
+   of a workspace's folder stays in Firefox: the first load asks before it would delete it.
+   `n` keeps it, but also pauses the whole file until it changes again, so nothing is mirrored
+   meanwhile. Move `data:` bookmarks out of the workspaces' folders before you export, and the
+   load has nothing to ask.
 2. Read the file. A bookmarklet is exported too (it is yours), but reaches Firefox from the file
    only while `[bookmarks] bookmarklets` allows it; Firefox keeps the one it has either way.
-3. Commit it, to a private repository or with `.gitignore` as above. From now on the folders
+3. Commit it, to a private repository, or list `bookmarks.toml` and `bookmarks.toml.bak*` in
+   `.gitignore` as above. From now on the folders
    follow the file.
 
 `:bookmarks export` never replaces a file that exists: it says what the file holds and that
 `:bookmarks export!` replaces it. `:bookmarks export!` asks first
 (`replace bookmarks.toml (12 bookmarks in "work") with 30 bookmarks from Firefox, keeping the old
-file as bookmarks.toml.bak? y/N`), keeps the old text as `bookmarks.toml.bak` (also readable by
-you only), and writes nothing if the file changes while it asks. A table the file already
+file as bookmarks.toml.bak? y/N`; keys typed in the first second it shows are not an answer),
+keeps the old text in a new backup readable by you only (`bookmarks.toml.bak`, then
+`bookmarks.toml.bak.2` and so on, so no backup ever replaces an older one; none when the newest
+already holds that text), and writes nothing, backup included, if the file changes while it
+asks. A table the file already
 mirrors is exported from its folder even when no workspace has that name, so `export!` never
 drops one. A private window exports nothing. `Tab` after `:bookmarks ` completes `export`,
 `export!` and `forget`.

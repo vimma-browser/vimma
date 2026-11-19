@@ -7,7 +7,13 @@ import {
   describeBookmarksFile,
   exportBookmarks,
 } from "../src/config/bookmarks-export.mjs";
-import { MAX_BOOKMARK_DEPTH, parseBookmarksFile } from "../src/config/bookmarks-file.mjs";
+import {
+  MAX_BOOKMARK_DEPTH,
+  parseBookmarksFile,
+  planMirror,
+  resolveTableFolders,
+} from "../src/config/bookmarks-file.mjs";
+import { budget } from "./budget.ts";
 import { PLACES_ROOTS } from "../src/ui/bookmarks.mjs";
 
 type Node = {
@@ -89,7 +95,7 @@ describe("exportBookmarks", () => {
     const r = ok(
       exportBookmarks({
         places: places([shop, work]),
-        tables: [
+        workspaces: [
           { name: "work", folder: work.guid as string },
           { name: "my shop", folder: shop.guid as string },
         ],
@@ -148,7 +154,7 @@ describe("exportBookmarks", () => {
     const r = ok(
       exportBookmarks({
         places: places([work]),
-        tables: [{ name: "work", folder: work.guid as string }],
+        workspaces: [{ name: "work", folder: work.guid as string }],
       }),
     );
     expect(tables(r.text)).toEqual([
@@ -170,7 +176,7 @@ describe("exportBookmarks", () => {
           menu: [bm("m", "https://m.example/")],
           unfiled: [bm("u", "https://u.example/")],
         }),
-        tables: [{ name: "work", folder: work.guid as string }],
+        workspaces: [{ name: "work", folder: work.guid as string }],
       }),
     );
     expect(r.leftOut.outside).toBe(5);
@@ -194,7 +200,7 @@ describe("exportBookmarks", () => {
     const r = ok(
       exportBookmarks({
         places: places([work]),
-        tables: [{ name: "work", folder: work.guid as string }],
+        workspaces: [{ name: "work", folder: work.guid as string }],
       }),
     );
     expect(tables(r.text)).toEqual([
@@ -227,7 +233,7 @@ describe("exportBookmarks", () => {
     const r = ok(
       exportBookmarks({
         places: places([work]),
-        tables: [{ name: "work", folder: work.guid as string }],
+        workspaces: [{ name: "work", folder: work.guid as string }],
       }),
     );
     expect(r.text).toContain('"a\\\\/b/c\\\\\\\\d" = "https://e.example/"');
@@ -243,7 +249,7 @@ describe("exportBookmarks", () => {
     const r = ok(
       exportBookmarks({
         places: places([work]),
-        tables: [{ name: "work", folder: work.guid as string }],
+        workspaces: [{ name: "work", folder: work.guid as string }],
       }),
     );
     expect(r.leftOut.deep).toBe(1);
@@ -256,7 +262,7 @@ describe("exportBookmarks", () => {
     const r = ok(
       exportBookmarks({
         places: places([work]),
-        tables: [
+        workspaces: [
           { name: "work", folder: work.guid as string },
           { name: "gone", folder: "missingguid1" },
         ],
@@ -270,11 +276,12 @@ describe("exportBookmarks", () => {
     const r = ok(
       exportBookmarks({
         places: places([work]),
-        tables: [
+        workspaces: [
           { name: "work", folder: work.guid as string },
           { name: "again", folder: work.guid as string },
           { name: "work", folder: "othersguid01" },
           { name: " spaced", folder: work.guid as string },
+          { name: "\ud800", folder: work.guid as string },
         ],
       }),
     );
@@ -286,7 +293,7 @@ describe("exportBookmarks", () => {
     const work = folder("work", many);
     const r = exportBookmarks({
       places: places([work]),
-      tables: [{ name: "work", folder: work.guid as string }],
+      workspaces: [{ name: "work", folder: work.guid as string }],
     });
     expect(r).toEqual({
       ok: false,
@@ -304,7 +311,7 @@ describe("exportBookmarks", () => {
     const first = ok(
       exportBookmarks({
         places: places([work]),
-        tables: [{ name: "work", folder: work.guid as string }],
+        workspaces: [{ name: "work", folder: work.guid as string }],
       }),
     );
     const parsed = parseBookmarksFile(first.text);
@@ -317,10 +324,132 @@ describe("exportBookmarks", () => {
     const second = ok(
       exportBookmarks({
         places: places([again]),
-        tables: [{ name: "work", folder: again.guid as string }],
+        workspaces: [{ name: "work", folder: again.guid as string }],
       }),
     );
     expect(second.text).toBe(first.text);
+  });
+});
+
+/** Applies an export's renames to Places' tree, as the host does. */
+function renamed(tree: Node, renames: readonly { guid: string; title: string }[]): Node {
+  const to = new Map(renames.map((r) => [r.guid, r.title]));
+  const walk = (n: Node): Node => ({
+    ...n,
+    ...(n.guid && to.has(n.guid) ? { title: to.get(n.guid) } : {}),
+    ...(n.children ? { children: n.children.map(walk) } : {}),
+  });
+  return walk(tree);
+}
+
+describe("exportBookmarks and the mirror", () => {
+  test("export: many items of one name are named in linear time", () => {
+    const many = Array.from({ length: 19_999 }, (_, i) => bm("New Tab", `https://e.example/${i}`));
+    const work = folder("work", many);
+    const start = performance.now();
+    const r = ok(
+      exportBookmarks({
+        places: places([work]),
+        workspaces: [{ name: "work", folder: work.guid as string }],
+      }),
+    );
+    expect(performance.now() - start).toBeLessThan(budget(3000));
+    expect(r.text).toContain('"New Tab (19999)" = "https://e.example/19998"');
+  });
+
+  test("the mirror names many items of one title in linear time", () => {
+    const many = Array.from({ length: 19_999 }, (_, i) => bm("New Tab", `https://e.example/${i}`));
+    const work = folder("work", many);
+    const start = performance.now();
+    planMirror({
+      tables: [{ name: "work", line: 1, children: [] }],
+      base: null,
+      places: places([work]),
+      workspaces: [{ name: "work", folder: work.guid as string }],
+      bookmarklets: "none",
+      approved: null,
+      makeGuid: guid,
+    });
+    expect(performance.now() - start).toBeLessThan(budget(3000));
+  });
+
+  test("export: a linked folder moved elsewhere is the workspace's, not a top folder of its name", () => {
+    const linked = folder("work", [bm("mine", "https://mine.example/")]);
+    const other = folder("work", [bm("theirs", "https://theirs.example/")]);
+    const tree = places([other], { unfiled: [linked] });
+    const r = ok(
+      exportBookmarks({
+        places: tree,
+        workspaces: [{ name: "work", folder: linked.guid as string }],
+      }),
+    );
+    expect(tables(r.text)).toEqual([["work", ["mine https://mine.example/"]]]);
+    expect(
+      resolveTableFolders({
+        places: tree,
+        names: ["work"],
+        workspaces: [{ name: "work", folder: linked.guid as string }],
+        base: null,
+      }).get("work"),
+    ).toBe(linked.guid);
+  });
+
+  test("export: the base's folder wins over the workspace's link, as at the mirror's first load", () => {
+    const a = folder("work", [bm("a", "https://a.example/")]);
+    const b = folder("work b", [bm("b", "https://b.example/")]);
+    const base = { tables: [{ name: "work", folder: a.guid as string, entries: [] }] };
+    const r = ok(
+      exportBookmarks({
+        places: places([a, b]),
+        workspaces: [{ name: "work", folder: b.guid as string }],
+        base,
+      }),
+    );
+    expect(tables(r.text)).toEqual([["work", ["a https://a.example/"]]]);
+  });
+
+  test("export: a table the base mirrors without a workspace is exported after the workspaces", () => {
+    const work = folder("work", [bm("a", "https://a.example/")]);
+    const old = folder("old", [bm("x", "https://x.example/")]);
+    const base = { tables: [{ name: "old", folder: old.guid as string, entries: [] }] };
+    const r = ok(
+      exportBookmarks({
+        places: places([old, work]),
+        workspaces: [{ name: "work", folder: work.guid as string }],
+        base,
+      }),
+    );
+    expect(tables(r.text).map(([n]) => n)).toEqual(["work", "old"]);
+  });
+
+  test("export then the first load adds and renames nothing", () => {
+    const work = folder("work", [
+      bm("Twin", "https://one.example/"),
+      bm("page", "data:,x"),
+      bm("Twin", "https://two.example/"),
+      bm("", "https://untitled.example/"),
+      folder("", [bm("x", "https://x.example/")]),
+      bm("a\u0007b", "https://ctl.example/"),
+    ]);
+    const tree = places([work]);
+    const ws = [{ name: "work", folder: work.guid as string }];
+    const r = ok(exportBookmarks({ places: tree, workspaces: ws }));
+    const p = planMirror({
+      tables: parseBookmarksFile(r.text).tables,
+      base: null,
+      places: renamed(tree, r.renames),
+      workspaces: ws,
+      bookmarklets: "none",
+      approved: null,
+      makeGuid: guid,
+    });
+    expect(
+      p.ops.filter(
+        (o) =>
+          o.op === "insert" ||
+          (o.op === "update" && (o.title !== undefined || o.url !== undefined)),
+      ),
+    ).toEqual([]);
   });
 });
 

@@ -24,6 +24,7 @@
 import {
   BOOKMARKS_FILE,
   MAX_BOOKMARKS_FILE_BYTES,
+  inlineBookmarkTables,
   formatBase,
   formatBookmarksFileError,
   parseBase,
@@ -40,7 +41,6 @@ import {
   serialQueue,
 } from "../core/bookmarks-edit.mjs";
 import { describeBookmarksFile, exportBookmarks } from "../core/bookmarks-export.mjs";
-import { PLACES_ROOTS } from "../core/bookmarks.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
 import {
   MIRRORED_REFUSAL,
@@ -78,8 +78,12 @@ const DEFAULT_ASK_MS = 60_000;
 const ASK_SETTLE_MS = 1000;
 /** The base (D4), in the profile: the model both sides last agreed on, with guids. */
 const BASE_FILE = "vimma-bookmarks.json";
-/** Where `:bookmarks export!` keeps the file it replaces, beside it (Behaviour 17). */
+/**
+ * Where `:bookmarks export!` keeps the file it replaces, beside it (Behaviour 17): `.bak`, then
+ * `.bak.2`, `.bak.3`, …, each a new file, so no backup ever replaces an older one.
+ */
 const BACKUP_FILE = `${BOOKMARKS_FILE}.bak`;
+const BACKUP_NAME = /^bookmarks\.toml\.bak(?:\.([1-9]\d{0,8}))?$/;
 
 /** Places events that change a mirrored folder (PlacesEvent.webidl). */
 const EVENTS = [
@@ -268,10 +272,6 @@ export class BookmarksFileImpl {
     return PathUtils.join(PathUtils.parent(this.configPath()) ?? "/", BOOKMARKS_FILE);
   }
 
-  get backupPath() {
-    return PathUtils.join(PathUtils.parent(this.configPath()) ?? "/", BACKUP_FILE);
-  }
-
   /** Once, with ConfigHost's first window: runs while the feature pref is on. */
   start() {
     if (this.started) return;
@@ -384,16 +384,20 @@ export class BookmarksFileImpl {
     if (!this.writeFile) return `${BOOKMARKS_FILE} cannot be written here; nothing exported`;
     const first = await this.edits.run(() => this.exportNow(win, replace, null));
     if (!("ask" in first)) return this.afterExport(first);
-    const yes = await new Promise((resolve) => {
+    /** @type {"yes" | "no" | "busy"} */
+    const answer = await new Promise((resolve) => {
       const close = this.confirm(
         win,
         first.ask,
-        () => resolve(true),
-        () => resolve(false),
+        () => resolve("yes"),
+        () => resolve("no"),
       );
-      if (!close) resolve(false);
+      if (!close) resolve("busy");
     });
-    if (!yes) return `${BOOKMARKS_FILE} kept as it is; nothing exported`;
+    if (answer === "busy") {
+      return `another question is open; nothing exported (:bookmarks export! again after it)`;
+    }
+    if (answer === "no") return `${BOOKMARKS_FILE} kept as it is; nothing exported`;
     const again = await this.edits.run(() => this.exportNow(win, true, first.existing));
     if ("ask" in again) {
       return `${BOOKMARKS_FILE} changed meanwhile; nothing written (:bookmarks export! again)`;
@@ -420,6 +424,8 @@ export class BookmarksFileImpl {
    * @returns {Promise<{ said: string, wrote?: boolean } | { ask: string, existing: string }>}
    */
   async exportNow(win, replace, confirmed) {
+    /** @type {string | null} */
+    let backup = null;
     const writeFile = this.writeFile;
     if (!writeFile) return { said: `${BOOKMARKS_FILE} cannot be written here; nothing exported` };
     const { text: existing, problem } = await this.readFile();
@@ -428,7 +434,15 @@ export class BookmarksFileImpl {
     await this.loadBase();
     const PU = places();
     const tree = /** @type {PlacesNode} */ (await PU.promiseBookmarksTree(""));
-    const r = exportBookmarks({ places: tree, tables: this.exportTables(tree) });
+    // Each table's folder as the mirror's first load of the file will find it (D6).
+    const r = exportBookmarks({
+      places: tree,
+      workspaces: WorkspaceStore.definitions.workspaces.map((d) => ({
+        name: d.name,
+        folder: d.bookmarksFolder ?? null,
+      })),
+      base: this.base,
+    });
     if (!r.ok) return { said: r.error };
     const count = plural(r.bookmarks, "bookmark");
     if (existing !== null) {
@@ -436,15 +450,30 @@ export class BookmarksFileImpl {
       if (!replace) {
         return { said: `${BOOKMARKS_FILE} exists (${holds}); :bookmarks export! replaces it` };
       }
+      const plan = await this.backupPlan(existing);
       if (confirmed !== existing) {
+        const keep = plan.path
+          ? `keeping the old file as ${PathUtils.filename(plan.path)}`
+          : `whose text is already in ${plan.same}`;
         return {
-          ask: `replace ${BOOKMARKS_FILE} (${holds}) with ${count} from Firefox, keeping the old file as ${BACKUP_FILE}? y/N`,
+          ask: `replace ${BOOKMARKS_FILE} (${holds}) with ${count} from Firefox, ${keep}? y/N`,
           existing,
         };
       }
-      // The old text first: if it cannot be kept, nothing is replaced.
-      const kept = await writeFile(this.backupPath, () => ({ text: existing }));
-      if ("error" in kept) return { said: `${BOOKMARKS_FILE} not replaced: ${kept.error}` };
+      // The old text in a backup of its own, right before the replace and only for one: if it
+      // cannot be kept, nothing is replaced. A file that changed since the question is asked
+      // about again, with no backup written.
+      if ((await this.readFile()).text !== existing) return { ask: "changed", existing };
+      if (plan.path) {
+        const target = plan.path;
+        const kept = await writeFile(target, (text) =>
+          text === null
+            ? { text: existing }
+            : { error: `${PathUtils.filename(target)} appeared meanwhile; nothing replaced` },
+        );
+        if ("error" in kept) return { said: `${BOOKMARKS_FILE} not replaced: ${kept.error}` };
+      }
+      backup = plan.path ? PathUtils.filename(plan.path) : plan.same;
     }
     const w = await writeFile(this.path, (text) =>
       text === existing
@@ -468,30 +497,48 @@ export class BookmarksFileImpl {
     if (L.deep) left.push(`${L.deep} deeper than 32 folders`);
     if (left.length) out.push(`left out: ${left.join(", ")}`);
     if (renamed) out.push(`${renamed} renamed in Firefox to match`);
-    if (existing !== null) out.push(`the old file is ${BACKUP_FILE}`);
+    if (backup) out.push(`the old file is ${backup}`);
+    if (inlineBookmarkTables(this.configText ?? "").length) {
+      out.push(`config.toml's [bookmarks.<name>] tables are now ignored`);
+    }
     return { said: out.join("; "), wrote: true };
   }
 
   /**
-   * The tables an export writes: each workspace's folder (bookmarks decision 11), in the order
-   * the workspace picker lists them, then each table the base mirrors that no workspace names,
-   * so that `export!` over a mirrored file never drops a table the mirror would then empty.
-   * @param {PlacesNode} tree
+   * Where `export!` keeps the text it replaces (M1 of its review): `same`, the newest backup
+   * when that already holds `text` (nothing is written again), else `path`, a name beside the
+   * file that no file has: one past the highest numbered backup. A backup is never replaced.
+   * @param {string} text
+   * @returns {Promise<{ path: string, same: null } | { path: null, same: string }>}
    */
-  exportTables(tree) {
-    const toolbar = (tree.children ?? []).find((c) => c.guid === PLACES_ROOTS.toolbar);
-    const top = (toolbar?.children ?? []).filter(
-      (c) => c.typeCode === places().bookmarks.TYPE_FOLDER,
-    );
-    /** @type {{ name: string, folder: string }[]} */
-    const out = [];
-    for (const d of WorkspaceStore.definitions.workspaces) {
-      const linked = d.bookmarksFolder && top.some((f) => f.guid === d.bookmarksFolder);
-      const folder = linked ? d.bookmarksFolder : top.find((f) => f.title === d.name)?.guid;
-      if (folder) out.push({ name: d.name, folder });
+  async backupPlan(text) {
+    const dir = PathUtils.parent(this.path) ?? "/";
+    let newest = 0;
+    let newestName = "";
+    try {
+      for (const child of await IOUtils.getChildren(dir)) {
+        const name = PathUtils.filename(child);
+        const m = BACKUP_NAME.exec(name);
+        if (!m) continue;
+        const n = m[1] ? Number(m[1]) : 1;
+        if (n > newest) {
+          newest = n;
+          newestName = name;
+        }
+      }
+    } catch (e) {
+      if (!notFound(e)) throw e;
     }
-    for (const t of this.base?.tables ?? []) out.push({ name: t.name, folder: t.folder });
-    return out;
+    if (newest) {
+      const at = PathUtils.join(dir, newestName);
+      const info = await IOUtils.stat(at).catch(() => null);
+      if (info?.type === "regular" && (info.size ?? 0) <= MAX_BOOKMARKS_FILE_BYTES) {
+        const held = await IOUtils.readUTF8(at).catch(() => null);
+        if (held === text) return { path: null, same: newestName };
+      }
+    }
+    const name = newest ? `${BACKUP_FILE}.${newest + 1}` : BACKUP_FILE;
+    return { path: PathUtils.join(dir, name), same: null };
   }
 
   /**
@@ -1647,14 +1694,16 @@ function isPrivate(win) {
 }
 
 /**
- * A y/N for a command the user just typed: in its window's prompt line, answered at once.
+ * A y/N for a command the user typed: in its window's prompt line, ignoring keys for a moment
+ * as it shows, since it shows only after the export is computed (seconds on a large profile),
+ * when a key meant for the page may be on its way.
  * @param {BrowserWindow | null} win
  * @param {string} question
  * @param {() => void} yes
  * @param {() => void} no
  */
 function confirmInWindow(win, question, yes, no) {
-  return win ? VimmaHost.ask(win, question, yes, no) : null;
+  return win ? VimmaHost.ask(win, question, yes, no, { settleMs: ASK_SETTLE_MS }) : null;
 }
 
 /**
