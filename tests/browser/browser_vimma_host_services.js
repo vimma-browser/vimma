@@ -50,6 +50,7 @@ const ALL = [
   "addAgentProvider",
   "editSiteUnbind",
   "bookmarksFileForget",
+  "bookmarksFileExport",
   "bookmarksFileWords",
 ];
 
@@ -65,6 +66,7 @@ const FAKES = {
   addAgentProvider: async () => ({ name: "fake" }),
   editSiteUnbind: async () => ({ added: [], already: [], removed: [] }),
   bookmarksFileForget: async () => "",
+  bookmarksFileExport: async () => "",
   bookmarksFileWords: () => [],
 };
 
@@ -110,6 +112,11 @@ add_task(async function test_vimma_js_provided_every_service_before_the_window_s
     HostServices.bookmarksFileForget,
     ConfigHost.bookmarksForget,
     ":bookmarks forget goes through ConfigHost",
+  );
+  Assert.equal(
+    HostServices.bookmarksFileExport,
+    ConfigHost.bookmarksExport,
+    ":bookmarks export goes through ConfigHost",
   );
   Assert.equal(
     HostServices.bookmarksFileWords,

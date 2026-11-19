@@ -672,7 +672,18 @@ export const ConfigHost = {
     return bookmarksFile.forget();
   },
 
-  /** The words `:bookmarks` completes to: `forget` while the feature is on. */
+  /**
+   * `:bookmarks export` and `export!` (docs/specs/bookmarks-file.md Behaviour 17), which vimma.js
+   * hands the host through host-services.
+   * @param {BrowserWindow | null} win  the window the command was typed in
+   * @param {boolean} replace  `export!`
+   * @returns {Promise<string>} what to tell the user
+   */
+  bookmarksExport(win, replace) {
+    return bookmarksFile.exportFile(win, replace);
+  },
+
+  /** The words `:bookmarks` completes to while the feature is on: export, export! and forget. */
   bookmarksWords() {
     return bookmarksFile.words();
   },
