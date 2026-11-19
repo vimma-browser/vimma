@@ -760,7 +760,12 @@ add_task(async function address_bar_step_writes_toolbar_and_applies_live() {
   const only = setConfigKeysText(null, [{ table: "ui", key: "toolbar", value: "hidden" }], {
     mac: AppConstants.platform === "macosx",
   });
-  Assert.equal(await IOUtils.readUTF8(configFile()), only.text, "[ui] toolbar only");
+  Assert.ok("text" in only, "the edit applies to the template");
+  Assert.equal(
+    await IOUtils.readUTF8(configFile()),
+    ("text" in only && only.text) || "",
+    "[ui] toolbar only",
+  );
   await TestUtils.waitForCondition(
     () => Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", false),
     "the toolbar hides at once",
