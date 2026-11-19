@@ -382,9 +382,9 @@ enable = []
 [workspaces]
 # work = { color = "blue", icon = "briefcase", home = "https://intranet.example" }
 
-# The built-in palette `name`: "vimma" (vimma.dev's colours, dark or light) or "tokyo-night"
-# (dark). "omarchy" follows your Omarchy theme where Omarchy is installed and uses `name`
-# elsewhere; "file" always uses `name`.
+# The built-in palette `name`: "vimma", vimma.dev's colours, dark or light. "omarchy" follows
+# your Omarchy theme where Omarchy is installed and uses `name` elsewhere; "file" always uses
+# `name`.
 [theme]
 source = "omarchy"
 name = "vimma"

@@ -547,7 +547,7 @@ describe("[panel] numbers", () => {
   });
 });
 
-// The built-in palette by name: vimma (vimma.dev's colours) by default, Tokyo Night on request.
+// The built-in palette by name: vimma (vimma.dev's colours, dark and light), the only one.
 describe("[theme] name", () => {
   test('defaults to "vimma"', () => {
     expect(ok(v2()).theme.name).toBe("vimma");
@@ -555,29 +555,42 @@ describe("[theme] name", () => {
     expect(formatDefaultsToml()).toMatch(/^\[theme\]\nsource = "omarchy"\nname = "vimma"$/m);
   });
 
-  test.each([["vimma"], ["tokyo-night"]])('name = "%s" is accepted', (name) => {
-    expect(ok(v2("[theme]", `name = "${name}"`)).theme.name).toBe(name);
+  test('name = "vimma" is accepted', () => {
+    expect(ok(v2("[theme]", 'name = "vimma"')).theme.name).toBe("vimma");
   });
 
   test("an unknown name is an error, with the nearest name when one is close", () => {
     expect(errors(v2("[theme]", 'name = "gruvbox"'))).toEqual([
-      { line: 3, path: "theme.name", message: 'must be "vimma" or "tokyo-night"' },
+      { line: 3, path: "theme.name", message: 'must be "vimma"' },
     ]);
-    expect(errors(v2("[theme]", 'name = "tokyonight"'))).toEqual([
-      {
-        line: 3,
-        path: "theme.name",
-        message: 'must be "vimma" or "tokyo-night"',
-        suggestion: "tokyo-night",
-      },
+    expect(errors(v2("[theme]", 'name = "vima"'))).toEqual([
+      { line: 3, path: "theme.name", message: 'must be "vimma"', suggestion: "vimma" },
     ]);
     expect(errors(v2("[theme]", "name = 1"))).toEqual([
       { line: 3, path: "theme.name", message: "expected a string, got an integer" },
     ]);
   });
 
+  // #1383: the built-in Tokyo Night palette is gone. A file that still names it applies, with
+  // vimma's palette and a warning that names the choices, rather than being refused whole.
+  test('the removed "tokyo-night" falls back to "vimma" with a warning; the file applies', () => {
+    const r = parseConfig(v2("[theme]", 'source = "file"', 'name = "tokyo-night"'));
+    expect(r.errors).toEqual([]);
+    expect(r.config?.theme.name).toBe("vimma");
+    expect(r.config?.theme.source).toBe("file");
+    expect(r.warnings).toEqual([
+      {
+        line: 4,
+        path: "theme.name",
+        message:
+          '"tokyo-night" was removed: the built-in palette is "vimma" (dark and light), ' +
+          'used instead; for Omarchy\'s colours, use source = "omarchy"',
+      },
+    ]);
+  });
+
   test("is new in schema 2; the rest of [theme] is not", () => {
-    expect(errors(toml("schema = 1", "[theme]", 'name = "tokyo-night"'))).toEqual([
+    expect(errors(toml("schema = 1", "[theme]", 'name = "vimma"'))).toEqual([
       {
         line: 3,
         path: "theme.name",

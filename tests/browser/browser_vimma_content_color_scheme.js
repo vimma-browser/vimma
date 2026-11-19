@@ -14,7 +14,7 @@
 const { ThemeHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ui/theme-host.mjs",
 );
-const { TOKYO_NIGHT } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/index.mjs");
+const { VIMMA_DARK } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/index.mjs");
 
 const APPEARANCE_PREF = "vimma.theme.appearance";
 const CONTENT_OVERRIDE_PREF = "layout.css.prefers-color-scheme.content-override";
@@ -74,7 +74,7 @@ async function system(/** @type {"dark" | "light"} */ scheme) {
 
 add_task(async function setup() {
   await IOUtils.makeDirectory(plainHome, { createAncestors: true });
-  const toml = Object.entries(TOKYO_NIGHT)
+  const toml = Object.entries(VIMMA_DARK)
     .filter(([k]) => k !== "mode")
     .map(([k, v]) => `${k} = "${v}"`)
     .join("\n");

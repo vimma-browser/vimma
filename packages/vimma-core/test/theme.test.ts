@@ -6,7 +6,6 @@ import {
   DEFAULT_THEME_NAME,
   PALETTE_KEYS,
   THEME_TOKENS,
-  TOKYO_NIGHT,
   VIMMA_DARK,
   VIMMA_LIGHT,
   MIN_BADGE_DISTANCE,
@@ -29,8 +28,35 @@ const fixture = (name: string) =>
 
 const defaults = mergeWithDefaults({}).theme;
 const themeCfg = (over: Partial<typeof defaults> = {}) => ({ ...defaults, ...over });
-const tokyoCfg = (over: Partial<typeof defaults> = {}) =>
-  themeCfg({ name: "tokyo-night", ...over });
+/** tests/contract/theme/sample.colors.toml, as parseOmarchyColors reads it. */
+const SAMPLE = {
+  mode: "dark",
+  accent: "#7aa2f7",
+  selection: "#292e42",
+  muted: "#414868",
+  background: "#1a1b26",
+  dark_background: "#13141c",
+  darker_background: "#0e0e14",
+  lighter_background: "#24283b",
+  foreground: "#a9b1d6",
+  dark_foreground: "#565f89",
+  light_foreground: "#b4bee6",
+  bright_foreground: "#c0caf5",
+  red: "#f7768e",
+  yellow: "#e0af68",
+  orange: "#eb927b",
+  green: "#9ece6a",
+  cyan: "#449dab",
+  blue: "#7aa2f7",
+  magenta: "#ad8ee6",
+  brown: "#75493d",
+  bright_red: "#ff7a93",
+  bright_yellow: "#ff9e64",
+  bright_green: "#b9f27c",
+  bright_cyan: "#0db9d7",
+  bright_blue: "#7da6ff",
+  bright_magenta: "#bb9af7",
+};
 
 describe("hex colours", () => {
   test.each(["#fff", "#FFF", "#1a1b26", "#A9B1D6"])("%s is a hex colour", (c) => {
@@ -64,10 +90,10 @@ describe("contrastRatio (WCAG 2.x)", () => {
 });
 
 describe("parseOmarchyColors", () => {
-  test("the Tokyo Night fixture parses to the built-in palette", () => {
-    const r = parseOmarchyColors(fixture("tokyo-night.colors.toml"));
+  test("the sample fixture parses to its palette", () => {
+    const r = parseOmarchyColors(fixture("sample.colors.toml"));
     expect(r.errors).toEqual([]);
-    expect(r.palette).toEqual(TOKYO_NIGHT);
+    expect(r.palette).toEqual(SAMPLE);
   });
 
   test("a light theme without orange and brown fills them, ignoring extra keys", () => {
@@ -95,7 +121,7 @@ describe("parseOmarchyColors", () => {
   });
 
   test("a bad mode is an error; no mode is dark, or light with lightMode", () => {
-    const base = fixture("tokyo-night.colors.toml").replace('mode = "dark"\n', "");
+    const base = fixture("sample.colors.toml").replace('mode = "dark"\n', "");
     expect(parseOmarchyColors(base).palette?.mode).toBe("dark");
     expect(parseOmarchyColors(base, { lightMode: true }).palette?.mode).toBe("light");
     expect(parseOmarchyColors(`mode = "dim"\n${base}`).errors[0]?.path).toBe("mode");
@@ -239,31 +265,19 @@ describe("resolveTheme", () => {
     expect(r.tokens["--vimma-font"]).toBe("monospace");
   });
 
-  test('name = "tokyo-night" without an Omarchy file is Tokyo Night, without a warning', () => {
-    const r = resolveTheme({ theme: tokyoCfg() });
-    expect(r.errors).toEqual([]);
-    expect(r.warnings).toEqual([]);
-    expect(r.tokens["--vimma-bg"]).toBe("#1a1b26");
-    expect(r.tokens["--vimma-accent"]).toBe("#7aa2f7");
-  });
-
-  test("source = file is the named built-in without a warning, even when Omarchy text is given", () => {
+  test("source = file is the built-in without a warning, even when Omarchy text is given", () => {
     const light = fixture("light.colors.toml");
-    const r = resolveTheme({ theme: tokyoCfg({ source: "file" }), omarchy: light });
-    expect(r.warnings).toEqual([]);
-    expect(r.tokens["--vimma-bg"]).toBe("#1a1b26");
     const v = resolveTheme({ theme: themeCfg({ source: "file" }), omarchy: light });
     expect(v.warnings).toEqual([]);
     expect(v.tokens["--vimma-bg"]).toBe("#071011");
   });
 
-  test("an Omarchy theme wins over the built-in name: Omarchy users see no change", () => {
-    const text = fixture("tokyo-night.colors.toml");
-    const vimma = resolveTheme({ theme: themeCfg(), omarchy: text });
-    const tokyo = resolveTheme({ theme: tokyoCfg(), omarchy: text });
-    expect(vimma.tokens).toEqual(tokyo.tokens);
+  test("an Omarchy theme wins over the built-in palette, whatever the scheme", () => {
+    const text = fixture("sample.colors.toml");
+    const dark = resolveTheme({ theme: themeCfg(), omarchy: text });
+    expect(dark.tokens["--vimma-bg"]).toBe(SAMPLE.background);
     const light = resolveTheme({ theme: themeCfg(), omarchy: text, scheme: "light" });
-    expect(light.tokens).toEqual(tokyo.tokens);
+    expect(light.tokens).toEqual(dark.tokens);
   });
 
   test('the built-in vimma is light with scheme "light", dark otherwise', () => {
@@ -282,13 +296,6 @@ describe("resolveTheme", () => {
     expect(dark.tokens["--vimma-bg"]).toBe("#071011");
   });
 
-  test("Tokyo Night is dark-only: a light scheme changes nothing", () => {
-    const light = resolveTheme({ theme: tokyoCfg({ source: "file" }), scheme: "light" });
-    const dark = resolveTheme({ theme: tokyoCfg({ source: "file" }) });
-    expect(light.tokens).toEqual(dark.tokens);
-    expect(light.mode).toBe("dark");
-  });
-
   test("vimma's link hints are the magenta, the aqua is the normal badge", () => {
     // The two neons of the Aqua Split palette: hints in the magenta, with the variant's own
     // background as text (dark on the neon, light on the deep berry), the mode in the aqua.
@@ -300,8 +307,9 @@ describe("resolveTheme", () => {
     expect(light.tokens["--vimma-hint-bg"]).toBe("#b0226f");
     expect(light.tokens["--vimma-hint-fg"]).toBe("#f3f6f4");
     expect(light.tokens["--vimma-mode-normal"]).toBe("#006b5e");
-    // Tokyo Night keeps its yellow hints
-    expect(resolveTheme({ theme: tokyoCfg() }).tokens["--vimma-hint-bg"]).toBe("#e0af68");
+    // an Omarchy theme keeps its yellow hints
+    const omarchy = resolveTheme({ theme: themeCfg(), omarchy: fixture("sample.colors.toml") });
+    expect(omarchy.tokens["--vimma-hint-bg"]).toBe(SAMPLE.yellow);
   });
 
   test("[theme.colors] mode pins one vimma variant whatever the scheme", () => {
@@ -353,14 +361,8 @@ describe("resolveTheme", () => {
       expect(r.mode).toBe("dark");
     });
 
-    test("Tokyo Night has no light variant: light stays dark", () => {
-      const r = resolveTheme({ theme: tokyoCfg({ source: "file", appearance: "light" }) });
-      expect(r.tokens["--vimma-bg"]).toBe("#1a1b26");
-      expect(r.mode).toBe("dark");
-    });
-
     test("an Omarchy theme decides its own: appearance changes nothing", () => {
-      const text = fixture("tokyo-night.colors.toml");
+      const text = fixture("sample.colors.toml");
       const plain = resolveTheme({ theme: themeCfg(), omarchy: text });
       const light = resolveTheme({ theme: themeCfg({ appearance: "light" }), omarchy: text });
       expect(light.tokens).toEqual(plain.tokens);
@@ -391,8 +393,8 @@ describe("resolveTheme", () => {
     });
   });
 
-  test("Omarchy Tokyo Night has the expected tokens and passes every contrast check", () => {
-    const r = resolveTheme({ theme: themeCfg(), omarchy: fixture("tokyo-night.colors.toml") });
+  test("An Omarchy sample theme has the expected tokens and passes every contrast check", () => {
+    const r = resolveTheme({ theme: themeCfg(), omarchy: fixture("sample.colors.toml") });
     expect(r.errors).toEqual([]);
     expect(r.warnings).toEqual([]);
     expect(r.tokens).toMatchObject({
@@ -432,8 +434,6 @@ describe("resolveTheme", () => {
     const r = resolveTheme({ theme: themeCfg(), omarchy: fixture("invalid.colors.toml") });
     expect(r.errors.map((e) => e.path)).toEqual(["accent", "foreground"]);
     expect(r.tokens["--vimma-bg"]).toBe("#071011");
-    const t = resolveTheme({ theme: tokyoCfg(), omarchy: fixture("invalid.colors.toml") });
-    expect(t.tokens["--vimma-bg"]).toBe("#1a1b26");
   });
 
   test("[theme.colors] overlays the Omarchy palette", () => {
@@ -447,7 +447,7 @@ describe("resolveTheme", () => {
   });
 
   test("[theme.colors] mode switches the colour scheme", () => {
-    const r = resolveTheme({ theme: tokyoCfg({ source: "file", colors: { mode: "light" } }) });
+    const r = resolveTheme({ theme: themeCfg({ source: "file", colors: { mode: "light" } }) });
     expect(r.mode).toBe("light");
   });
 
@@ -593,7 +593,7 @@ describe("tokens", () => {
     }
     const omarchy = themeCfg({ source: "omarchy" });
     for (const file of [
-      "tokyo-night.colors.toml",
+      "sample.colors.toml",
       "light.colors.toml",
       "event-horizon.colors.toml",
       "catppuccin.colors.toml",
@@ -814,13 +814,11 @@ describe("tokens", () => {
 });
 
 describe("built-in palettes", () => {
-  test('"vimma" is the default; "tokyo-night" stays available by name', () => {
+  test('"vimma" is the default and the only built-in palette (#1383)', () => {
     expect(DEFAULT_THEME_NAME).toBe("vimma");
     expect(defaults.name).toBe("vimma");
-    expect(Object.keys(BUILTIN_THEMES).sort()).toEqual(["tokyo-night", "vimma"]);
+    expect(Object.keys(BUILTIN_THEMES)).toEqual(["vimma"]);
     expect(BUILTIN_THEMES.vimma).toEqual({ dark: VIMMA_DARK, light: VIMMA_LIGHT });
-    expect(BUILTIN_THEMES["tokyo-night"]?.dark).toBe(TOKYO_NIGHT);
-    expect(BUILTIN_THEMES["tokyo-night"]?.light).toBeUndefined();
   });
 
   test.each([
@@ -899,9 +897,9 @@ describe("themeStylesheet", () => {
     expect(r.warnings).toEqual([]);
   });
 
-  test("Tokyo Night, an Omarchy theme and a pinned mode are one block", () => {
+  test("A fixed appearance, an Omarchy theme and a pinned mode are one block", () => {
     const one = [
-      themeStylesheet({ theme: tokyoCfg({ source: "file" }) }),
+      themeStylesheet({ theme: themeCfg({ source: "file", appearance: "dark" }) }),
       themeStylesheet({ theme: themeCfg(), omarchy: fixture("light.colors.toml") }),
       themeStylesheet({ theme: themeCfg({ source: "file", colors: { mode: "dark" } }) }),
     ];
@@ -915,7 +913,6 @@ describe("themeStylesheet", () => {
     const fixed: [ReturnType<typeof themeStylesheet>, string][] = [
       [themeStylesheet({ theme: themeCfg({ source: "file", appearance: "light" }) }), "light"],
       [themeStylesheet({ theme: themeCfg({ source: "file", appearance: "dark" }) }), "dark"],
-      [themeStylesheet({ theme: tokyoCfg({ source: "file" }) }), "dark"],
       [themeStylesheet({ theme: themeCfg(), omarchy: fixture("light.colors.toml") }), "light"],
       [
         themeStylesheet({ theme: themeCfg({ source: "file", colors: { mode: "light" } }) }),
@@ -1022,14 +1019,14 @@ describe("theme edges", () => {
   });
 
   test("[theme.colors] mode light makes the scheme light", () => {
-    const r = resolveTheme({ theme: tokyoCfg({ source: "file", colors: { mode: "light" } }) });
+    const r = resolveTheme({ theme: themeCfg({ source: "file", colors: { mode: "light" } }) });
     expect(r.mode).toBe("light");
     expect(r.tokens["--vimma-color-scheme"]).toBe("light");
   });
 
   test("dim text too faint for the surfaces is moved by the smallest step that reads", () => {
     const r = resolveTheme({
-      theme: tokyoCfg({ source: "file", colors: { dark_foreground: "#3b4261" } }),
+      theme: themeCfg({ source: "file", colors: { dark_foreground: "#3b4261" } }),
     });
     const dim = r.tokens["--vimma-fg-dim"] as string;
     const surfaces = ["--vimma-bg", "--vimma-bg-dark", "--vimma-bg-darker", "--vimma-bg-light"].map(

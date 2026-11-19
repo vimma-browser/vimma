@@ -47,7 +47,7 @@ describe.each(Array.from({ length: CONFIG_SCHEMA_VERSION }, (_, i) => i + 1))(
 describe("Omarchy colors.toml", () => {
   const read = (name: string) => readFileSync(new URL(`theme/${name}`, contract), "utf8");
 
-  test.each(["tokyo-night.colors.toml", "light.colors.toml"])("%s is valid", (name) => {
+  test.each(["sample.colors.toml", "light.colors.toml"])("%s is valid", (name) => {
     expect(parseOmarchyColors(read(name)).errors).toEqual([]);
   });
 

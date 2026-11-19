@@ -18,9 +18,7 @@ const { PaneViews } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/split/PaneView.mjs",
 );
 const { leaves } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/panes.mjs");
-const { TOKYO_NIGHT, VIMMA_DARK } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/core/theme.mjs",
-);
+const { VIMMA_DARK } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/theme.mjs");
 
 const PAGE = "https://example.com/";
 const START = "chrome://browser/content/vimma/start/start.html";
@@ -428,7 +426,7 @@ add_task(async function panes_new_tab_reaches_the_pane_view() {
 
 add_task(async function theme_source_and_colors_feed_the_theme() {
   // An Omarchy theme with its own status bar colour, followed as by default.
-  const palette = { ...TOKYO_NIGHT, dark_background: "#405060" };
+  const palette = { ...VIMMA_DARK, dark_background: "#405060" };
   const omarchy = Object.entries(palette)
     .map(([k, v]) => `${k} = "${v}"`)
     .join("\n");
@@ -450,20 +448,26 @@ add_task(async function theme_source_and_colors_feed_the_theme() {
     '"file": the built-in vimma',
   );
 
+  await writeConfig(`[theme]\nsource = "file"\n[theme.colors]\ndark_background = "#203040"`);
+  await until(() => barBackground() === rgb("#203040"), "[theme.colors] overrides it");
+
+  // #1383: the removed "tokyo-night" is not refused with the file: vimma's palette applies.
   await writeConfig(`schema = 2\n[theme]\nsource = "file"\nname = "tokyo-night"`);
   await until(
-    () => barBackground() === rgb(TOKYO_NIGHT.dark_background),
-    'name = "tokyo-night": Tokyo Night',
+    () => barBackground() === rgb(VIMMA_DARK.dark_background),
+    'name = "tokyo-night", removed: the file applies, with the built-in vimma',
+  );
+  Assert.deepEqual(
+    ConfigHost.warnings.map((w) => w.path),
+    ["theme.name"],
+    "and a warning says it was removed",
   );
 
   await writeConfig(`schema = 2\n[theme]\nname = "tokyo-night"`);
   await until(
     () => barBackground() === rgb("#405060"),
-    "an Omarchy theme wins over the name: Omarchy users see no change",
+    "an Omarchy theme wins: Omarchy users see no change",
   );
-
-  await writeConfig(`[theme]\nsource = "file"\n[theme.colors]\ndark_background = "#203040"`);
-  await until(() => barBackground() === rgb("#203040"), "[theme.colors] overrides it");
 
   await resetConfig();
   await until(() => barBackground() === rgb("#405060"), "no config: Omarchy again");
