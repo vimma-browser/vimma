@@ -121,7 +121,8 @@ running browser, and with it off nothing listens and no token file exists.
 - `send-keys ctrl+b` → `state.pending` `"prefix"`; `?` → overlay opens, host saw real keydowns,
   `state.mode` `help`; `esc` closes it, back to `normal`; a bad chord → `invalid-args` and nothing
   sent. `state` fields: tabs, ids (`browserId`), url, index, pinned, the workspace's name; `panes`
-  null with one pane, after a split the tree (`test_state_panes`).
+  null with one pane, after a split the tree (`test_state_panes`). (Since changed: an unloaded
+  tab's id is its workspace uuid until it loads, not its browser id `0`; #1332.)
 - `send-keys "j shift+k"` with the page focused, in normal mode: Vimma takes `j` (as with a real
   `j`), the page records `Shift`, `K`.
 - `open https://example.com/` → new selected tab, result id, content principal; `where: current`

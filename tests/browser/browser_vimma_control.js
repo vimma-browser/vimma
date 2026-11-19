@@ -669,6 +669,12 @@ add_task(async function test_state_splits_with_lazy_tabs() {
     panes.every((p) => p.index >= 0 && p.tab === result.tabs[p.index].id),
     "each with the id tabs[] gives it",
   );
+  // A lazy tab has no browser id yet (0): its workspace uuid tells such tabs apart (#1332).
+  Assert.deepEqual(
+    panes.map((p) => p.tab),
+    [ua, ub],
+    "a lazy tab's id is its workspace uuid",
+  );
   Assert.ok(!ra.linkedPanel && !rb.linkedPanel, "state woke neither");
 
   client.close();

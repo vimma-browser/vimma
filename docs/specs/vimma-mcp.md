@@ -295,7 +295,9 @@ other lines are from each tool's documentation; sub-PR 4 runs them against real 
      client's self-reported name (from MCP `clientInfo`, at most 64 printable characters) and
      `vimma-ctl`'s parent process name (`/proc/<ppid>/comm` on Linux, the last component of
      `ps -o comm=` on macOS, at most 32 printable characters). Both are labels for the question, never proof of anything.
-   - `tab` is an id from `agent-tabs` (`browserId`, as in `state`): digits. `url` is http or
+   - `tab` is an id from `agent-tabs` (`browserId`, as in `state`): digits. (Since changed:
+     `agent-tabs` ids are always browser ids; `state` names an unloaded tab by its workspace
+     uuid instead until it loads, #1332.) `url` is http or
      https, at most 65,536 characters, with no spaces or control characters. `file:`,
      `about:`, `javascript:` and `data:` are `invalid-args`: an agent has no reason to load
      local files or privileged pages through the browser.

@@ -1038,9 +1038,10 @@ export class WindowWorkspacesImpl {
   /**
    * Workspace `id`'s saved splits `own` (in uuids) in the ids PaneView uses, or null when none is
    * left: a loaded tab's panel, a lazy tab's uuid. Nothing gets a browser here: PaneView gives
-   * them to the split it makes current (#use) and to any other split once it shows, so the
-   * others stay lazy. A browser makes SessionStore restore the tab in the background, and its
-   * next save then writes it without its scroll position and form data (issues #1305, #1318).
+   * them to a split once it is on screen (#asCurrent), so the others, and a current split kept
+   * as a hidden view, stay lazy. A browser makes SessionStore restore the tab in the background,
+   * and its next save then writes it without its scroll position and form data (issues #1305,
+   * #1318, #1332).
    * A tab gone or no longer in the workspace leaves its split.
    * @param {Workspaces} model
    * @param {string} id

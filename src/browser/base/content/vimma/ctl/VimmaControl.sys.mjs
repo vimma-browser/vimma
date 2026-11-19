@@ -434,7 +434,7 @@ function treeState(win, visible, panes) {
       ? undefined
       : (win.gBrowser.tabs.find((t) => t.linkedPanel === panel) ?? view?.tabOf(panel));
   const idOf = (/** @type {MozTabbrowserTab | undefined} */ tab) =>
-    tab ? String(tab.linkedBrowser.browserId) : null;
+    tab ? stateTabId(win, tab) : null;
   /** @param {import("../core/panes.mjs").PaneNode} n @returns {PaneState} */
   const node = (n) => {
     if (n.type === "leaf") {
@@ -455,6 +455,22 @@ function treeState(win, visible, panes) {
     zoomed: panes.zoom !== null,
     root: node(panes.root),
   };
+}
+
+/**
+ * `state.tabs[].id` and the panes' tab ids: the tab's browser id, which a lazy tab (restored on
+ * demand, or unloaded) does not have yet (0, the same for all of them); such a tab gets its
+ * workspace uuid instead, so that its panes and its row stay apart from every other lazy tab's,
+ * until it loads (docs/specs/m0-control-protocol-and-vimma-ctl.md, "state"; issue #1332). Read
+ * only: no uuid is handed out here.
+ * @param {BrowserWindow} win @param {MozTabbrowserTab} tab
+ */
+function stateTabId(win, tab) {
+  const id = tab.linkedBrowser.browserId;
+  if (id) return String(id);
+  const uuid = PaneViews.get(win)?.adoption?.idOf?.(tab) ?? "";
+  // A uuid comes from a session value: one edited into digits could pass for another tab's id.
+  return uuid && !/^\d+$/.test(uuid) ? uuid : String(id);
 }
 
 /**
@@ -508,7 +524,7 @@ const COMMANDS = {
       workspace: host.workspace,
       ...(hidden ? { private: true } : {}),
       tabs: visible.map((tab, index) => ({
-        id: String(tab.linkedBrowser.browserId),
+        id: stateTabId(win, tab),
         index,
         url: hidden ? null : tab.linkedBrowser.currentURI.spec,
         title: hidden ? null : tab.label,
