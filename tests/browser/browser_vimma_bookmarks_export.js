@@ -423,6 +423,10 @@ add_task(async function tab_completes_export_and_forget_while_the_feature_is_on(
 });
 
 add_task(async function export_bang_twice_keeps_every_older_file_in_a_backup() {
+  // The Places change between the two exports stays out of the file: under "all" (the default)
+  // it would be written to the file first, and the second export would replace nothing new.
+  await IOUtils.writeUTF8(configFile, 'schema = 2\n[bookmarks]\nwrite_back = "vimma"\n');
+  await ConfigHost.reload();
   await twoWorkspaces();
   const hand =
     '# by hand\n[bookmarks.old]\n"x" = "https://x.example/"\n"tool" = "javascript:void(1)"\n';

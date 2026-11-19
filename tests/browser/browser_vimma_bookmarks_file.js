@@ -159,7 +159,9 @@ async function reset() {
   // Forgotten first, so that removing the file is no missing-file pause.
   await mirror.forget();
   await IOUtils.remove(bookmarksFile, { ignoreAbsent: true });
-  await IOUtils.writeUTF8(configFile, "schema = 2\n");
+  // Slices 1 and 2's behaviour: Vimma's keys write the file, outside changes are put back. The
+  // default, "all", is tested in browser_vimma_bookmarks_file_outside.js.
+  await IOUtils.writeUTF8(configFile, 'schema = 2\n[bookmarks]\nwrite_back = "vimma"\n');
   await ConfigHost.reload();
   await mirror.forget();
   await restoreWorkspaces();

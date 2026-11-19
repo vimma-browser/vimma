@@ -2,21 +2,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// bookmarks.toml, mirrored into Places (docs/specs/bookmarks-file.md, Delivery slices 1, 2 and
-// 4: the mirror, Vimma's write-back and `:bookmarks export`), behind `vimma.feature.bookmarksFile`
-// until the feature is finished: while the pref is off nothing here reads a file, listens to
-// Places or refuses a key. One per app,
+// bookmarks.toml, mirrored into Places (docs/specs/bookmarks-file.md, Delivery slices 1 to 4:
+// the mirror, Vimma's write-back, the outside write-back and `:bookmarks export`), behind
+// `vimma.feature.bookmarksFile` until the feature is finished: while the pref is off nothing here
+// reads a file, listens to Places or refuses a key. One per app,
 // started and fed by ConfigHost: it hands over config.toml's text after each read (inline tables,
 // D2) and calls `tick` on each of its polls. The file is read beside config.toml's path (D1),
 // settled (D15), checked by core's bookmarks-file.mjs, and applied to each table's workspace
-// folder in Places as one plan (D4-D6). A change made in Places to a mirrored folder is put back
-// from the file a second after its burst (Behaviour 14). A file with an error, or a missing file
+// folder in Places as one plan (D4-D6). A change made in Places to a mirrored folder (the Library,
+// Sync, an import) is written to the file a second after its burst under `write_back = "all"`,
+// the default, merged three ways with the file and the base (core's bookmarks-merge.mjs,
+// Behaviour 13), and put back from the file under "vimma" and "none" (Behaviour 14); one made from
+// a private window is never written (Behaviour 12). A file with an error, or a missing file
 // after one existed, pauses both directions (D9) until it reads again or `:bookmarks forget`
 // (Behaviour 19); a run that deletes many bookmarks, or takes over a folder that has bookmarks
 // the file lacks, asks first, and a yes approves those removals and no more (D14, Behaviour 18).
 // Vimma's own bookmark keys in mirrored folders (host/bookmark-ops.mjs, setMirroredFolders) edit
-// the file first and Places after it (Behaviour 10, D18) under `[bookmarks] write_back =
-// "vimma"`, and refuse under "none" or in a private window (Behaviour 11, 12). A table whose
+// the file first and Places after it (Behaviour 10, D18) under `[bookmarks] write_back = "all"`
+// or "vimma", and refuse under "none" or in a private window (Behaviour 11, 12). A table whose
 // folder already has bookmarks takes them into the file (D7). A bookmark put back three times in
 // ten minutes pauses its table both ways (open question 2). Every edit and apply runs in
 // ConfigHost's one queue (D11).
@@ -30,7 +33,10 @@ import {
   parseBase,
   planMirror,
   readBookmarks,
+  tooManyRemoved,
 } from "../core/bookmarks-file.mjs";
+import { mergeOutside } from "../core/bookmarks-merge.mjs";
+import { PLACES_ROOTS } from "../core/bookmarks.mjs";
 import {
   PUT_BACK_TIMES,
   PUT_BACK_WINDOW_MS,
@@ -92,6 +98,9 @@ const EVENTS = [
   "bookmark-moved",
   "bookmark-title-changed",
   "bookmark-url-changed",
+  // Sync's dedupe gives a local item the guid of the same item from another device (D6): the
+  // run finds it again by its place and URL, and the base takes the new guid.
+  "bookmark-guid-changed",
 ];
 
 /** @returns {PlacesUtilsApi} */
@@ -121,8 +130,13 @@ function sha256(text) {
  * What starts a run, and what a `y` approved: `approved` is the number of removals the
  * question showed, `asked` what the run read when it asked; `vimma` is the run after one of
  * Vimma's own edits (D18), `adopted` what a takeover wrote to the file before this run (D7).
+ * `outside` is the number of removals from the file a `y` to Behaviour 13's question approved;
+ * `keepRemovals`, its `n` or no answer: the removals are put back from the file and the rest of
+ * the change is written. `retried`: the
+ * run after one whose apply failed (a second failure pauses).
  * @typedef {{ trigger: "start" | "file" | "config" | "places" | "vimma", approved?: number,
- *   asked?: string, adopted?: string }} RunHow
+ *   asked?: string, adopted?: string, outside?: number, keepRemovals?: boolean,
+ *   retried?: boolean }} RunHow
  */
 
 /**
@@ -149,6 +163,18 @@ function sourceName(source) {
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
+ * Who changed `tables` in a burst, for a notice or a question: "Sync", "Firefox", ….
+ * @param {Map<string, Set<string>>} burst
+ * @param {readonly string[]} tables
+ */
+function whoChanged(burst, tables) {
+  /** @type {Set<string>} */
+  const who = new Set();
+  for (const t of tables) for (const w of burst.get(t) ?? []) who.add(w);
+  return who.size ? [...who].join(", ") : "Firefox";
+}
+
+/**
  * The hash of what the bookmarks file holds, for `:bookmarks forget`: bookmarks.toml's text, or
  * config.toml's inline tables alone (an unrelated config.toml edit changes nothing); "" when
  * there is no bookmarks file or it cannot be read.
@@ -172,15 +198,18 @@ export class BookmarksFileImpl {
    *   mirrored?: (guids: ReadonlySet<string>, refusal: string, write: FileWriter | null) =>
    *     void,
    *   queue?: ReturnType<typeof serialQueue>, writeFile?: WriteFile,
-   *   reloadConfig?: () => void,
+   *   reloadConfig?: () => void, newDatabase?: () => boolean,
+   *   privateNow?: () => boolean,
    *   confirm?: (win: BrowserWindow | null, question: string, yes: () => void, no: () => void) =>
    *     (() => void) | null,
    *   open?: (win: BrowserWindow, path: string) => void }} options
    *   `configPath`: config.toml's path, not its symlink's target (D1); `enabled`: the feature
    *   pref; `queue`: the one edit queue (D11); `writeFile`: an atomic write of a file in it,
    *   without which nothing is written back; `reloadConfig`: config.toml is read again after
-   *   an edit of its inline tables; `confirm`: the y/N of a command the user typed
-   *   (`:bookmarks export!`), in its window; `open`: shows the file in a tab; the rest default to
+   *   an edit of its inline tables; `newDatabase`: Places made a new database at this start
+   *   (D17); `privateNow`: the most recent window is private (Behaviour 12); `confirm`: the y/N
+   *   of a command the user typed (`:bookmarks export!`), in its window; `open`: shows the file
+   *   in a tab; the rest default to
    *   the profile, Places and the most recent window, and are replaced by tests
    */
   constructor(options) {
@@ -197,13 +226,23 @@ export class BookmarksFileImpl {
     this.edits = options.queue ?? serialQueue();
     this.writeFile = options.writeFile ?? null;
     this.reloadConfig = options.reloadConfig ?? (() => {});
+    this.newDatabase = options.newDatabase ?? placesDatabaseIsNew;
+    this.privateNow = options.privateNow ?? recentWindowIsPrivate;
     this.confirm = options.confirm ?? confirmInWindow;
     this.open = options.open ?? openInTab;
     /**
      * `[bookmarks] write_back` of the last config.toml that applied (Behaviour 9, D12).
      * @type {WriteBack}
      */
-    this.writeBack = "vimma";
+    this.writeBack = "all";
+    /** Places made a new database at this start: the first run writes nothing back (D17). */
+    this.freshDatabase = false;
+    /** @type {Set<string>} items added in a mirrored folder from a private window (Behaviour 12) */
+    this.privateAdded = new Set();
+    /** @type {Set<string>} items changed there from a private window: put back, never written */
+    this.privateChanged = new Set();
+    /** @type {Set<string>} items the file cannot hold that a notice already named */
+    this.keptSaid = new Set();
     /** @type {Set<string>} tables paused both ways by the put-back loop guard */
     this.held = new Set();
     /** @type {Map<string, number[]>} each put-back bookmark's times (notePutBacks) */
@@ -294,6 +333,11 @@ export class BookmarksFileImpl {
       .then(async () => {
         if (!this.active) return;
         this.placesReady = true;
+        try {
+          this.freshDatabase = this.newDatabase();
+        } catch (e) {
+          console.warn("vimma: Places' database status unknown", e);
+        }
         // Keys refuse and outside changes are watched from the start, before the first run:
         // a change made while a question waits, or the file is broken, is not lost (D9).
         this.follow(await this.loadBase());
@@ -320,6 +364,8 @@ export class BookmarksFileImpl {
     this.mirrored(new Set(), MIRRORED_REFUSAL, null);
     this.held.clear();
     this.putBacks.clear();
+    this.privateAdded.clear();
+    this.privateChanged.clear();
     this.report([], []);
     this.signature = "";
     this.lastInput = "";
@@ -577,7 +623,7 @@ export class BookmarksFileImpl {
    * @param {BookmarkletsSetting} [bookmarklets]  of the last config.toml that applied
    * @param {WriteBack} [writeBack]  of the last config.toml that applied; applies live
    */
-  configRead(text, bookmarklets = "none", writeBack = "vimma") {
+  configRead(text, bookmarklets = "none", writeBack = "all") {
     const first = this.configText === undefined;
     const changed = this.configText !== text || this.bookmarklets !== bookmarklets;
     this.configText = text;
@@ -663,17 +709,29 @@ export class BookmarksFileImpl {
     return this.base;
   }
 
-  /** @param {Base | null} base */
+  /**
+   * Keeps `base` and saves it in the profile. A save that fails (a full disk) never stops the
+   * change it follows (#1347): the base in memory is right, and the next save writes it whole;
+   * a step left undone after a file write would leave an item in neither the file nor the base.
+   * @param {Base | null} base
+   * @returns {Promise<boolean>} whether it was saved
+   */
   async saveBase(base) {
     this.base = base;
-    if (!base) {
-      await IOUtils.remove(this.basePath, { ignoreAbsent: true });
-    } else {
-      await IOUtils.writeUTF8(this.basePath, formatBase(base), {
-        tmpPath: `${this.basePath}.tmp`,
-      });
-    }
     this.follow(base);
+    try {
+      if (!base) {
+        await IOUtils.remove(this.basePath, { ignoreAbsent: true });
+      } else {
+        await IOUtils.writeUTF8(this.basePath, formatBase(base), {
+          tmpPath: `${this.basePath}.tmp`,
+        });
+      }
+      return true;
+    } catch (e) {
+      console.error("vimma: bookmarks base not saved; kept in memory until the next save", e);
+      return false;
+    }
   }
 
   /**
@@ -729,8 +787,9 @@ export class BookmarksFileImpl {
   }
 
   /**
-   * A change to a mirrored folder starts a burst, put back a second after its last event
-   * (Behaviour 14). The mirror's own writes, and the startup restore's (D17), start none.
+   * A change to a mirrored folder starts a burst, written to the file (Behaviour 13) or put back
+   * (Behaviour 14) a second after its last event. The mirror's own writes, and the startup
+   * restore's (D17), start none.
    * @param {BookmarkEvent[]} events
    */
   onEvents(events) {
@@ -738,15 +797,26 @@ export class BookmarksFileImpl {
     let any = false;
     /** @type {Map<string, string>} */
     const named = new Map();
+    /** @type {BookmarkEvent[]} */
+    const mine = [];
     for (const e of events) {
       if (e.isTagging || e.source === S.RESTORE_ON_STARTUP) continue;
       const table =
         this.tableOf.get(e.guid) ??
         (e.parentGuid ? this.tableOf.get(e.parentGuid) : undefined) ??
         (e.oldParentGuid ? this.tableOf.get(e.oldParentGuid) : undefined);
+      if (e.type === "bookmark-guid-changed") {
+        // A table's folder deduped against another device's has a guid no table knows: the run
+        // finds it by its name at the toolbar's top (D6).
+        if (table ? !this.held.has(table) : e.parentGuid === PLACES_ROOTS.toolbar) {
+          any = true;
+        }
+        continue;
+      }
       if (!table || this.held.has(table)) continue;
       any = true;
       named.set(e.guid, table);
+      mine.push(e);
       const who = this.burst.get(table) ?? new Set();
       who.add(sourceName(e.source));
       this.burst.set(table, who);
@@ -754,6 +824,16 @@ export class BookmarksFileImpl {
     if (!any || this.applying || this.paused || !this.ready) {
       if (this.applying || this.paused) this.burst.clear();
       return;
+    }
+    // Behaviour 12: what is added or changed while a private window is the most recent one is
+    // never written; an addition stays in Places only, a change is put back. The event names no
+    // window, so a Library opened from that window counts too.
+    if (this.writeBack === "all" && mine.some((e) => e.source === S.DEFAULT) && this.privateNow()) {
+      for (const e of mine) {
+        if (e.source !== S.DEFAULT || e.type === "bookmark-removed") continue;
+        if (e.type === "bookmark-added") this.privateAdded.add(e.guid);
+        else if (!this.privateAdded.has(e.guid)) this.privateChanged.add(e.guid);
+      }
     }
     // Only a burst that will be put back names its items for the loop guard.
     for (const [g, t] of named) this.eventTables.set(g, t);
@@ -842,9 +922,10 @@ export class BookmarksFileImpl {
   }
 
   /**
-   * One run (D4, D5): reads the bookmarks file and Places, plans, asks when it must, applies,
-   * and ends with one more compare, so that a change that landed during the apply is put back
-   * then. Runs one at a time (enqueue).
+   * One run (D4, D5): reads the bookmarks file and Places; under `write_back = "all"` first writes
+   * Places' outside changes to the file, merged three ways (Behaviour 13); then plans, asks when it
+   * must, applies, and ends with one more compare, so that a change that landed during the apply
+   * is handled then. Runs one at a time (enqueue).
    * @param {RunHow} how
    * @returns {Promise<void>}
    */
@@ -856,25 +937,32 @@ export class BookmarksFileImpl {
     this.burst.clear();
     const eventTables = new Map(this.eventTables);
     this.eventTables.clear();
+    // What a private window touched until now: cleared once this run has handled it.
+    const privateSeen = [...this.privateAdded, ...this.privateChanged];
     let base = await this.loadBase();
-    const { text: fileText, problem } = await this.readFile();
-    const configText = this.configText ?? null;
+    let { text: fileText, problem } = await this.readFile();
+    let configText = this.configText ?? null;
     const bookmarklets = this.bookmarklets;
-    const r = problem
-      ? {
-          from: /** @type {const} */ ("bookmarks.toml"),
-          tables: [],
-          errors: [{ file: BOOKMARKS_FILE, line: 0, message: problem }],
-          warnings: [],
-        }
-      : readBookmarks({ file: fileText, config: configText });
+    /** @returns {ReturnType<typeof readBookmarks>} */
+    const readAll = () =>
+      problem
+        ? {
+            from: /** @type {const} */ ("bookmarks.toml"),
+            tables: [],
+            errors: [{ file: BOOKMARKS_FILE, line: 0, message: problem }],
+            warnings: [],
+          }
+        : readBookmarks({ file: fileText, config: configText });
+    let r = readAll();
     const source = r.from;
-    const input = JSON.stringify([
-      source,
-      fileText === null ? "" : sha256(fileText),
-      source === "config.toml" && configText !== null ? sha256(configText) : "",
-      bookmarklets,
-    ]);
+    const inputOf = () =>
+      JSON.stringify([
+        source,
+        fileText === null ? "" : sha256(fileText),
+        source === "config.toml" && configText !== null ? sha256(configText) : "",
+        bookmarklets,
+      ]);
+    let input = inputOf();
 
     // `:bookmarks forget` holds, across restarts, until the bookmarks' content changes or a
     // file appears again (Behaviour 19); then the run is a first load.
@@ -937,7 +1025,7 @@ export class BookmarksFileImpl {
     }
     // The file changed from outside Vimma: a table the loop guard paused goes on (open
     // question 2), its edit being the user's answer.
-    const content = contentHash(r, fileText);
+    let content = contentHash(r, fileText);
     if (
       (how.trigger === "file" || how.trigger === "config") &&
       this.held.size &&
@@ -947,6 +1035,26 @@ export class BookmarksFileImpl {
       this.putBacks.clear();
       this.report([], r.warnings);
     }
+
+    // Behaviour 13: Places' outside changes go to the file first, so the plan below finds the
+    // file, the base and Places in agreement on them.
+    /** @type {Awaited<ReturnType<BookmarksFileImpl["writeOutside"]>> | undefined} */
+    let outside;
+    if (this.writeBack === "all" && this.writeFile && base && source) {
+      const text = source === BOOKMARKS_FILE ? fileText : configText;
+      outside = await this.writeOutside(source, base, how, input, burst, text ?? "");
+      if (!outside) return;
+      if (outside.written !== null) {
+        if (source === BOOKMARKS_FILE) fileText = outside.written;
+        else configText = outside.written;
+        r = readAll();
+        input = inputOf();
+        content = contentHash(r, fileText);
+      }
+      if (!outside.putBack) base = outside.base;
+    }
+    const local = outside ? outside.merge.local : [];
+    const keep = outside ? outside.merge.keep : [];
 
     const tables = r.tables;
     const PU = places();
@@ -964,6 +1072,7 @@ export class BookmarksFileImpl {
         bookmarklets,
         approved: ok,
         hold: this.held,
+        keep,
         makeGuid: () => PU.history.makeGuid(),
       });
     let p = await plan(base, approved);
@@ -994,17 +1103,32 @@ export class BookmarksFileImpl {
       version: 1,
       source: /** @type {Base["source"]} */ (source ?? base?.source ?? BOOKMARKS_FILE),
       tables: p.base.tables,
+      ...(local.length ? { local } : {}),
     };
     // D5: the closing compare, against what this run made (and Sync racing an apply: one more
     // try from the new state). What landed meanwhile is an outside change, asked about like any.
     const again = await plan(next, null);
-    if (again.ask) {
+    // Under "all", what landed during the apply is an outside change to write, never one to put
+    // back (which would delete a bookmark just made): the next run merges it. After an apply that
+    // failed part way the base stays what the merge saved, so what did land reads as agreement in
+    // that run, not as removals from the file; a second failure in a row pauses. One rerun in a
+    // row at most: a plan that never settles cannot keep the queue busy.
+    const merging = !!outside && !outside.putBack;
+    const rerun = merging && !how.retried && (failed || again.ops.length > 0 || again.ask !== null);
+    if (merging && failed && how.retried) {
+      console.error("vimma: bookmarks.toml apply failed twice; paused");
+      this.paused = { why: "failed", input: "" };
+      this.follow(base);
+      this.say(`${BOOKMARKS_FILE}: bookmarks could not be applied; paused until a change`);
+      return;
+    }
+    if (!rerun && again.ask) {
       this.paused = { why: "declined", input };
       await this.saveBase(next);
       this.question(again.ask, again.removing, input);
       return;
     }
-    if (again.ops.length) {
+    if (!rerun && again.ops.length) {
       try {
         await this.apply(again.ops);
       } catch (e) {
@@ -1017,25 +1141,187 @@ export class BookmarksFileImpl {
         }
       }
     }
-    const touched = new Set([...p.touched, ...again.touched]);
-    const putBack = [...p.ops, ...again.ops];
-    p = { ...again, removed: [...p.removed, ...again.removed], skipped: p.skipped };
+    const touched = new Set(rerun ? p.touched : [...p.touched, ...again.touched]);
+    const putBack = rerun ? p.ops : [...p.ops, ...again.ops];
+    if (!rerun) p = { ...again, removed: [...p.removed, ...again.removed], skipped: p.skipped };
     this.paused = null;
-    const saved = { ...next, tables: again.base.tables };
-    const holdSaid =
-      how.trigger === "places"
-        ? this.guard(putBack, base, saved, r.warnings, content, eventTables)
-        : null;
-    await this.saveBase(source === null && !saved.tables.length ? null : saved);
+    /** @type {Base | null} */
+    const saved = rerun && failed ? base : rerun ? next : { ...next, tables: again.base.tables };
+    /** @type {string | null} */
+    let holdSaid = null;
+    if (outside && !outside.putBack) {
+      holdSaid = this.guardItems(outside.merge.putBack, r.warnings, content);
+    } else if (how.trigger === "places" && !outside) {
+      holdSaid = this.guard(
+        putBack,
+        base,
+        /** @type {Base} */ (saved),
+        r.warnings,
+        content,
+        eventTables,
+      );
+    }
+    await this.saveBase(source === null && !saved?.tables.length ? null : saved);
+    // What a private window touched is now in the base's `local` list, or put back.
+    for (const g of privateSeen) {
+      this.privateAdded.delete(g);
+      this.privateChanged.delete(g);
+    }
     for (const link of p.links) this.link(link.name, link.folder);
     const loaded = this.lastInput !== input;
     this.lastInput = input;
-    this.notices(how, p, loaded, bookmarklets, burst, touched, holdSaid);
+    this.notices(
+      how,
+      p,
+      loaded,
+      bookmarklets,
+      burst,
+      touched,
+      holdSaid,
+      outside,
+      privateSeen.length > 0,
+    );
+    if (rerun) this.enqueue({ trigger: "places", retried: failed });
   }
 
-  /** Whether the file is written back now (`write_back = "vimma"`, a writer, no pause). */
+  /**
+   * Behaviour 13 (`write_back = "all"`): merges Places' outside changes with the file and the base
+   * (core's mergeOutside) and writes them to the file in the edit queue (D11), computed again from
+   * the file's text when it is written, once more if it changed meanwhile. A removal of many asks
+   * first (D14): `y` writes it; `n` or no answer puts the removals back and writes the rest. A
+   * merge or a write that fails
+   * writes nothing and pauses until the file changes, so Places keeps the change: never lost.
+   * Returns null when the run stops here (it asked, or paused); `putBack`: the run writes nothing
+   * and puts Places back (the first run on a new Places database, D17).
+   * @param {BookmarksSource} source
+   * @param {Base} base
+   * @param {RunHow} how
+   * @param {string} input
+   * @param {Map<string, Set<string>>} burst
+   * @param {string} text  the bookmarks file's text as the run read it
+   */
+  async writeOutside(source, base, how, input, burst, text) {
+    const tree = /** @type {PlacesNode} */ (await places().promiseBookmarksTree(""));
+    /** @type {Omit<Parameters<typeof mergeOutside>[0], "text">} */
+    const options = {
+      source,
+      base,
+      places: tree,
+      bookmarklets: this.bookmarklets,
+      hold: this.held,
+      local: new Set([...(base.local ?? []), ...this.privateAdded]),
+      putBackGuids: new Set(this.privateChanged),
+      keepRemovals: !!how.keepRemovals,
+    };
+    const first = mergeOutside({ ...options, text });
+    if (!first.ok) {
+      this.failOutside(first.error, input, base);
+      return null;
+    }
+    const putBack = how.trigger === "start" && this.freshDatabase;
+    if (putBack) return { merge: first, base, written: null, putBack: true };
+    const removing = first.removing.reduce((n, x) => n + x.count, 0);
+    const many = tooManyRemoved(first.removing.map((x) => ({ removed: x.count, had: x.had })));
+    if (many && !(how.outside !== undefined && removing <= how.outside)) {
+      const who = whoChanged(
+        burst,
+        first.removing.map((x) => x.table),
+      );
+      const from = first.removing.map((x) => JSON.stringify(x.table)).join(", ");
+      this.paused = { why: "declined", input };
+      this.follow(base);
+      this.askYesNo(
+        `${who} removes ${plural(removing, "bookmark")} from ${from}: remove them from ${source}? y/N`,
+        () => {
+          this.paused = null;
+          this.enqueue({ trigger: "places", outside: removing });
+        },
+        () => {
+          this.paused = null;
+          // Only the removals are put back: what the same batch added, renamed or moved is
+          // still written, so declining (or not answering) never deletes it everywhere.
+          this.say(
+            `${source}: ${who}'s removal of ${plural(removing, "bookmark")} put back from the file; the rest of the change is written`,
+          );
+          this.enqueue({ trigger: "places", keepRemovals: true });
+        },
+      );
+      return null;
+    }
+    /** @type {Base} */
+    const merged = {
+      version: 1,
+      source,
+      tables: first.base.tables,
+      ...(first.local.length ? { local: first.local } : {}),
+    };
+    if (first.text === null) return { merge: first, base: merged, written: null, putBack: false };
+    let merge = first;
+    const allowed = how.outside ?? (many ? 0 : removing);
+    /** @param {string | null} now */
+    const compute = (now) => {
+      if (now === null) return { error: `${source} is missing; Firefox's change kept` };
+      const m = now === text ? first : mergeOutside({ ...options, text: now });
+      if (!m.ok) return { error: m.error };
+      const n = m.removing.reduce((k, x) => k + x.count, 0);
+      if (
+        n > allowed &&
+        tooManyRemoved(m.removing.map((x) => ({ removed: x.count, had: x.had })))
+      ) {
+        return { error: `${source} changed meanwhile; Firefox's change kept` };
+      }
+      merge = m;
+      return { text: m.text };
+    };
+    const path = source === BOOKMARKS_FILE ? this.path : this.configPath();
+    for (let attempt = 0; ; attempt++) {
+      const w = this.writeFile
+        ? await this.writeFile(path, compute)
+        : { error: `${source} cannot be written now` };
+      if ("error" in w) {
+        // D11: a file changed while it was edited is edited again once from its new text.
+        if ("changed" in w && w.changed && attempt === 0) continue;
+        this.failOutside(w.error, input, base);
+        return null;
+      }
+      if (w.text !== null && source === "config.toml") {
+        this.configText = w.text;
+        this.reloadConfig();
+      }
+      /** @type {Base} */
+      const after = {
+        version: 1,
+        source,
+        tables: merge.base.tables,
+        ...(merge.local.length ? { local: merge.local } : {}),
+      };
+      // Saved at once, so the base and the file agree even if Firefox stops before the run ends.
+      await this.saveBase(after);
+      return { merge, base: after, written: w.text, putBack: false };
+    }
+  }
+
+  /**
+   * Outside changes that cannot be written (the merge refused, the file could not be written):
+   * nothing is put back, so Places keeps them; both ways pause until the file changes.
+   * @param {string} error
+   * @param {string} input
+   * @param {Base} base
+   */
+  failOutside(error, input, base) {
+    console.error(`vimma: Firefox's bookmark change not written: ${error}`);
+    if (this.paused?.why !== "failed") {
+      this.say(
+        `${BOOKMARKS_FILE}: Firefox's change could not be written (${error}); kept in Firefox, paused until the file changes`,
+      );
+    }
+    this.paused = { why: "failed", input };
+    this.follow(base);
+  }
+
+  /** Whether Vimma's keys write the file now (`write_back = "all"` or "vimma", a writer). */
   writable() {
-    return this.writeBack === "vimma" && !!this.writeFile;
+    return (this.writeBack === "all" || this.writeBack === "vimma") && !!this.writeFile;
   }
 
   /**
@@ -1093,6 +1379,19 @@ export class BookmarksFileImpl {
         : `guid\0${guid}`;
       items.push({ table, id });
     }
+    return this.guardItems(items, warnings, content);
+  }
+
+  /**
+   * The loop guard's count of the bookmarks one run put back (open question 2): under
+   * `write_back = "all"` those where the file won over Places' change, by guid (Sync keeps it).
+   * @param {readonly { table: string, id: string }[]} items
+   * @param {BookmarksFileError[]} warnings
+   * @param {string} content  the bookmarks' hash now: the pause lasts until it changes
+   * @returns {string | null} what to say
+   */
+  guardItems(items, warnings, content) {
+    if (!items.length) return null;
     const tripped = notePutBacks(this.putBacks, items, Date.now()).filter((t) => !this.held.has(t));
     if (!tripped.length) return null;
     for (const t of tripped) this.held.add(t);
@@ -1238,6 +1537,12 @@ export class BookmarksFileImpl {
     let baseEdit = () => ({});
     /** @type {(() => Promise<void>) | null} */
     let placesOp = null;
+    /**
+     * A move out of the file whose Places step never ran: writes the item back into the file
+     * where it was (#1347), so it is never in neither the file nor the base.
+     * @type {(() => Promise<boolean>) | null}
+     */
+    let restore = null;
     // Whether the Places step changed anything yet: a revert must never lose an item, so the
     // file and the base go back only while Places is as it was.
     let placesChanged = false;
@@ -1298,6 +1603,19 @@ export class BookmarksFileImpl {
             const info = { guid, parentGuid, index: B.DEFAULT_INDEX };
             if (change.title !== null) info.title = change.title;
             await step(B.update(info));
+          };
+          restore = async () => {
+            const tree = await PU.promiseBookmarksTree(guid);
+            const node = tree ? treeNode(/** @type {PlacesNode} */ (tree)) : null;
+            if (!node || !this.base) return false;
+            node.title = /** @type {string} */ (src.path.at(-1));
+            const back = await this.writeEdits(source, [
+              { op: "addTree", table: src.table, folders: src.path.slice(0, -1), node },
+            ]);
+            if ("error" in back) return false;
+            const entries = back.results[0]?.entries ?? [];
+            await this.saveBase(baseAfterEdit(this.base, { add: [{ table: src.table, entries }] }));
+            return true;
           };
         } else if (dst) {
           // Into the file from a folder it does not mirror: the item and everything in it.
@@ -1439,6 +1757,30 @@ export class BookmarksFileImpl {
           await this.run({ trigger: "vimma" });
           return { error: `bookmark: not changed (${why}); ${BOOKMARKS_FILE} is as it was` };
         }
+        // #1347: the file changed meanwhile, so the line could not go back by a revert. A move out
+        // whose bookmark is still in the mirrored folder is written back into the file; failing
+        // that, it moves to Other Bookmarks, where no run removes it.
+        if (!placesChanged && restore) {
+          const back = await restore().catch((e) => {
+            console.error("vimma: bookmark not written back", e);
+            return false;
+          });
+          if (!back && change.type === "move") {
+            await B.update({
+              guid: change.guid,
+              parentGuid: PLACES_ROOTS.unfiled,
+              index: B.DEFAULT_INDEX,
+            }).catch((/** @type {unknown} */ e) =>
+              console.error("vimma: bookmark not moved to Other Bookmarks", e),
+            );
+          }
+          await this.run({ trigger: "vimma" });
+          return {
+            error: back
+              ? `bookmark: not moved (${why}); ${BOOKMARKS_FILE} holds it again`
+              : `bookmark: not moved (${why}); it is in Other Bookmarks`,
+          };
+        }
         await this.run({ trigger: "vimma" });
         return {
           error: `bookmark: only partly changed in Firefox (${why}); ${BOOKMARKS_FILE} has the change, and Firefox follows it`,
@@ -1473,8 +1815,11 @@ export class BookmarksFileImpl {
    * @param {Map<string, Set<string>>} burst  who changed each table before the run
    * @param {ReadonlySet<string>} touched  the tables the run changed
    * @param {string | null} [holdSaid]  what the loop guard says, after the rest
+   * @param {Awaited<ReturnType<BookmarksFileImpl["writeOutside"]>>} [outside]  what the run wrote
+   *   of Places' outside changes (`write_back = "all"`)
+   * @param {boolean} [privateTouched]  a private window changed a mirrored folder (Behaviour 12)
    */
-  notices(how, p, loaded, bookmarklets, burst, touched, holdSaid = null) {
+  notices(how, p, loaded, bookmarklets, burst, touched, holdSaid = null, outside, privateTouched) {
     /** @type {string[]} */
     const said = how.adopted ? [how.adopted] : [];
     /** @type {Map<string, number>} */
@@ -1491,7 +1836,11 @@ export class BookmarksFileImpl {
         `${BOOKMARKS_FILE}: ${plural(n, "bookmark")} removed from ${JSON.stringify(table)}`,
       );
     }
-    if (how.trigger === "places") {
+    if (outside && !outside.putBack) said.push(...this.outsideNotices(outside, burst));
+    if (privateTouched && this.writeBack === "all") {
+      said.push(`${BOOKMARKS_FILE}: a change made from a private window is not written`);
+    }
+    if (how.trigger === "places" && (!outside || outside.putBack)) {
       for (const [table, who] of burst) {
         if (!touched.has(table)) continue;
         said.push(
@@ -1511,6 +1860,51 @@ export class BookmarksFileImpl {
   }
 
   /**
+   * What writing Places' outside changes says (Behaviour 13, 15): conflicts the file won,
+   * removals written, names made unique, and items the file cannot hold, each once.
+   * @param {NonNullable<Awaited<ReturnType<BookmarksFileImpl["writeOutside"]>>>} outside
+   * @param {Map<string, Set<string>>} burst
+   * @returns {string[]}
+   */
+  outsideNotices(outside, burst) {
+    const m = outside.merge;
+    /** @type {string[]} */
+    const said = [];
+    for (const c of m.conflicts) {
+      const where = [JSON.stringify(c.table), ...c.path].join("/");
+      said.push(
+        `${BOOKMARKS_FILE} kept ${where}; ${whoChanged(burst, [c.table])}'s ${c.what} put back`,
+      );
+    }
+    if (outside.written !== null) {
+      for (const x of m.removing) {
+        said.push(
+          `${BOOKMARKS_FILE}: ${whoChanged(burst, [x.table])} removed ${plural(x.count, "bookmark")} from ${JSON.stringify(x.table)}`,
+        );
+      }
+      for (const x of m.renamed) {
+        said.push(
+          `${BOOKMARKS_FILE}: ${JSON.stringify(x.from)} written as ${JSON.stringify(x.to)} in ${JSON.stringify(x.table)}`,
+        );
+      }
+    }
+    const local = new Set(m.local);
+    // Named once each; an item that left `keep` is forgotten, so the set stays as small as it.
+    const keep = new Set(m.keep);
+    for (const g of this.keptSaid) if (!keep.has(g)) this.keptSaid.delete(g);
+    const fresh = m.keep.filter((g) => !local.has(g) && !this.keptSaid.has(g));
+    for (const g of fresh) this.keptSaid.add(g);
+    if (fresh.length) {
+      said.push(
+        `${BOOKMARKS_FILE}: ${plural(fresh.length, "bookmark")} the file cannot hold ${
+          fresh.length === 1 ? "stays" : "stay"
+        } in Firefox only`,
+      );
+    }
+    return said;
+  }
+
+  /**
    * Behaviour 7 and 18: asked outside the run (D11), in the most recent window, once its prompt
    * line and command line are free (never over a prompt the user is typing in); the 60 s start
    * when it shows. A `y` runs the plan again, approving `removing` removals and no more. `n`,
@@ -1520,6 +1914,27 @@ export class BookmarksFileImpl {
    * @param {string} input
    */
   question(text, removing, input) {
+    this.askYesNo(
+      text,
+      () => {
+        this.paused = null;
+        this.enqueue({ trigger: "file", approved: removing, asked: input });
+      },
+      () => this.say(`${BOOKMARKS_FILE} not applied; bookmarks paused until the file changes`),
+      true,
+    );
+  }
+
+  /**
+   * A y/N question outside the run (D11), in the most recent window once it is free. `no` runs
+   * on `n`, Esc, a closed prompt or no answer in time; a newer question, `:bookmarks forget` or
+   * the feature turned off cancel it, which is a `no` only when `cancelIsNo`.
+   * @param {string} text
+   * @param {() => void} yes
+   * @param {() => void} no
+   * @param {boolean} [cancelIsNo]
+   */
+  askYesNo(text, yes, no, cancelIsNo = false) {
     this.cancelAsk?.();
     let answered = false;
     /** @type {number | null} */
@@ -1531,36 +1946,39 @@ export class BookmarksFileImpl {
       if (timer !== null) lazy.clearTimeout(timer);
       this.cancelAsk = null;
     };
-    const no = () => {
+    const onNo = () => {
       if (answered) return;
       end();
-      this.say(`${BOOKMARKS_FILE} not applied; bookmarks paused until the file changes`);
+      no();
     };
-    const yes = () => {
+    const onYes = () => {
       if (answered) return;
       end();
-      this.paused = null;
-      this.enqueue({ trigger: "file", approved: removing, asked: input });
+      yes();
     };
     const stopWaiting = this.whenFree((win) => {
       if (answered) return;
-      close = this.ask(win, text, yes, no);
+      close = this.ask(win, text, onYes, onNo);
       if (!close) {
-        no();
+        onNo();
         return;
       }
       timer = lazy.setTimeout(
         () => {
           timer = null;
-          this.cancelAsk?.();
+          stopWaiting();
+          close?.();
+          onNo();
         },
         Services.prefs.getIntPref(ASK_PREF, DEFAULT_ASK_MS),
       );
     });
     this.cancelAsk = () => {
+      // A cancel that is no answer ends the question first, so closing its prompt says no "no".
+      if (!cancelIsNo) end();
       stopWaiting();
       if (close) close();
-      no();
+      onNo();
     };
   }
 
@@ -1683,6 +2101,19 @@ function treeNode(n) {
     if (t) children.push(t);
   }
   return { ...(n.guid ? { guid: n.guid } : {}), title: n.title ?? "", children };
+}
+
+/** Whether Places made a new database at this start (D17): Firefox may have restored a backup. */
+function placesDatabaseIsNew() {
+  // DATABASE_STATUS_CREATE and DATABASE_STATUS_CORRUPT (nsINavHistoryService.idl).
+  const status = places().history.databaseStatus;
+  return status === 1 || status === 2;
+}
+
+/** Whether the most recently used browser window is private (Behaviour 12). */
+function recentWindowIsPrivate() {
+  const win = recentWindow();
+  return !!win && isPrivate(win);
 }
 
 /** @param {BrowserWindow} win */

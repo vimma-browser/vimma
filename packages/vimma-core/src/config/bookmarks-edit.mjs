@@ -46,17 +46,21 @@ import { parseToml, locateKeys, sameTomlValue, tomlLiteral, valueEnd } from "./t
 
 /**
  * A line the writer adds or a key it sets: the path's names, and whether it is a folder's line;
- * `keep`, the line (of the text as given) whose trailing comment it carries, for a moved line.
- * @typedef {{ names: string[], folder: boolean, value: string, keep?: number }} NewLine
+ * `keep`, the line (of the text as given) whose trailing comment it carries, for a moved line;
+ * `id`, a name later operations give as `after` to place lines after this one.
+ * @typedef {{ names: string[], folder: boolean, value: string, keep?: number, id?: string }}
+ *   NewLine
  */
 
 /**
- * The line writer's operations (D10). `line` is a line number of the text as given.
- * @typedef {{ op: "add", table: string, after?: number, lines: NewLine[] }
+ * The line writer's operations (D10). `line` is a line number of the text as given; `after` is
+ * one too, or the `id` of a line added earlier, or 0 for the table's start (before its first
+ * line); without it, lines go after the table's last line.
+ * @typedef {{ op: "add", table: string, after?: number | string, lines: NewLine[] }
  *   | { op: "remove", line: number }
  *   | { op: "replace", line: number, names?: string[], folder?: boolean, value?: string,
  *     keep?: number, bare?: boolean }
- *   | { op: "move", line: number, table: string, after?: number }
+ *   | { op: "move", line: number, table: string, after?: number | string }
  *   | { op: "addTable", name: string }
  *   | { op: "renameTable", from: string, to: string }
  *   | { op: "removeTable", name: string }} LineOp
@@ -212,7 +216,7 @@ function readHeader(row) {
  * @param {string} text
  * @returns {{ tables: ScanTable[], value: Record<string, unknown> } | { error: string }}
  */
-function scan(text) {
+export function scanBookmarkLines(text) {
   const parsed = parseToml(text, { integersAsBigInt: true });
   if (!parsed.ok) return { error: `line ${parsed.error.line}: ${parsed.error.message}` };
   const rows = text.split("\n");
@@ -286,16 +290,18 @@ function rest(/** @type {Record<string, unknown>} */ value) {
  * @returns {{ ok: true, text: string } | { ok: false, error: string }}
  */
 export function editBookmarkLines(text, ops) {
-  const before = scan(text);
+  const before = scanBookmarkLines(text);
   if ("error" in before) return fail(before.error);
   const cr = text.includes("\r\n") ? "\r" : "";
   const rows = text.split("\n");
 
   /**
-   * The text as records: a header, an entry (all the rows of one line's value) or any other
-   * row. `ref` names an entry: its line number, or a new one's own id.
+   * The text as records in a linked list, so that each operation finds its line and splices it
+   * in constant time (a merge may move thousands of lines in one edit): a header, an entry (all
+   * the rows of one line's value) or any other row. `ref` names an entry: its line number, or a
+   * new one's own id.
    * @typedef {{ text: string, kind: "header" | "entry" | "other", table?: string,
-   *   ref?: number | string }} Rec
+   *   ref?: number | string, prev: Rec | null, next: Rec | null, gone?: boolean }} Rec
    */
   /** @type {Map<number, string>} */
   const headers = new Map(before.tables.map((t) => [t.header, t.name]));
@@ -304,69 +310,105 @@ export function editBookmarkLines(text, ops) {
   for (const t of before.tables) {
     for (const l of t.lines) entries.set(l.line, { table: t.name, end: l.end });
   }
-  /** @type {Rec[]} */
-  const recs = [];
+  /** The list's start, never written. @type {Rec} */
+  const head = { text: "", kind: "other", prev: null, next: null };
+  let tail = head;
+  /** @param {Rec} anchor @param {Rec} rec */
+  const insertAfter = (anchor, rec) => {
+    rec.prev = anchor;
+    rec.next = anchor.next;
+    if (anchor.next) anchor.next.prev = rec;
+    anchor.next = rec;
+    if (tail === anchor) tail = rec;
+    rec.gone = false;
+  };
+  /** @param {Rec} rec */
+  const unlink = (rec) => {
+    if (rec.prev) rec.prev.next = rec.next;
+    if (rec.next) rec.next.prev = rec.prev;
+    if (tail === rec) tail = /** @type {Rec} */ (rec.prev);
+    rec.prev = rec.next = null;
+    rec.gone = true;
+  };
+  /** @type {Map<number | string, Rec>} each entry by its ref */
+  const recOf = new Map();
+  /** @type {Map<number | string, NewLine>} each entry's line as the edit means it */
+  const lineOf = new Map();
+  /** @type {Map<string, Rec>} each table's header */
+  const headerOf = new Map();
+  for (const t of before.tables) {
+    for (const l of t.lines) {
+      lineOf.set(l.line, { names: l.names, folder: l.folder, value: l.value });
+    }
+  }
   for (let n = 1; n <= rows.length;) {
     const h = headers.get(n);
     const e = entries.get(n);
+    /** @type {Rec} */
+    let rec;
     if (h !== undefined) {
-      recs.push({ text: /** @type {string} */ (rows[n - 1]), kind: "header", table: h });
+      rec = {
+        text: /** @type {string} */ (rows[n - 1]),
+        kind: "header",
+        table: h,
+        prev: null,
+        next: null,
+      };
+      headerOf.set(h, rec);
       n++;
     } else if (e) {
-      recs.push({
+      rec = {
         text: rows.slice(n - 1, e.end).join("\n"),
         kind: "entry",
         table: e.table,
         ref: n,
-      });
+        prev: null,
+        next: null,
+      };
+      recOf.set(n, rec);
       n = e.end + 1;
     } else {
-      recs.push({ text: /** @type {string} */ (rows[n - 1]), kind: "other" });
+      rec = { text: /** @type {string} */ (rows[n - 1]), kind: "other", prev: null, next: null };
       n++;
     }
+    insertAfter(tail, rec);
   }
 
-  /** The expected model: each table's lines in order. */
-  /** @type {{ name: string, lines: (NewLine & { ref: number | string })[] }[]} */
-  const model = before.tables.map((t) => ({
-    name: t.name,
-    lines: t.lines.map((l) => ({ ref: l.line, names: l.names, folder: l.folder, value: l.value })),
-  }));
   let made = 0;
-  const modelTable = (/** @type {string} */ name) => model.find((t) => t.name === name);
-  const entryIndex = (/** @type {number} */ line) =>
-    recs.findIndex((r) => r.kind === "entry" && r.ref === line);
-  /** @param {number} line */
-  const modelLine = (line) => {
-    for (const t of model) {
-      const i = t.lines.findIndex((l) => l.ref === line);
-      if (i >= 0) return { t, i };
-    }
-    return null;
-  };
   /**
-   * Where lines go in `table`: after line `after`, else after the table's last line (or its
-   * header).
+   * The record after which lines go in `table`: after line `after`; at 0, before the table's
+   * first line (and the comment lines right above it, which belong to it); else after the table's
+   * last line (or its header).
    * @param {string} table
-   * @param {number | undefined} after
-   * @returns {{ rec: number, line: number } | null}  record index and model index to insert at
+   * @param {number | string | undefined} after
+   * @returns {Rec | null}
    */
   const insertAt = (table, after) => {
-    const t = modelTable(table);
-    if (!t) return null;
+    const h = headerOf.get(table);
+    if (!h) return null;
+    if (after === 0) {
+      /** @type {Rec | null} */
+      let first = null;
+      for (let x = h.next; x && x.kind !== "header"; x = x.next) {
+        if (x.kind === "entry" && x.table === table) {
+          first = x;
+          break;
+        }
+      }
+      if (!first) return h;
+      let a = /** @type {Rec} */ (first.prev);
+      while (a !== h && a.text.trim() !== "") a = /** @type {Rec} */ (a.prev);
+      return a;
+    }
     if (after !== undefined) {
-      const at = modelLine(after);
-      const r = entryIndex(after);
-      if (!at || at.t !== t || r < 0) return null;
-      return { rec: r + 1, line: at.i + 1 };
+      const r = recOf.get(after);
+      return r && !r.gone && r.table === table ? r : null;
     }
-    let r = recs.findIndex((x) => x.kind === "header" && x.table === table);
-    for (let k = r + 1; k < recs.length; k++) {
-      const x = /** @type {Rec} */ (recs[k]);
-      if (x.kind === "header") break;
-      if (x.kind === "entry" && x.table === table) r = k;
+    let r = h;
+    for (let x = h.next; x && x.kind !== "header"; x = x.next) {
+      if (x.kind === "entry" && x.table === table) r = x;
     }
-    return { rec: r + 1, line: t.lines.length };
+    return r;
   };
   /** The trailing text (spaces and a comment) after line `n`'s one-line value, without its CR. */
   const tailOf = (/** @type {number} */ n) => {
@@ -378,42 +420,42 @@ export function editBookmarkLines(text, ops) {
   const lineText = (/** @type {NewLine} */ l) =>
     `${bookmarkKey(l.names, l.folder)} = ${tomlLiteral(l.value)}${l.keep ? tailOf(l.keep) : ""}${cr}`;
   // Without a line break at its end, the file's last row gets one when a line goes after it.
-  const lastRow = text.endsWith("\n") ? null : recs.at(-1);
+  const lastRow = text.endsWith("\n") ? null : tail;
 
   for (const op of ops) {
     if (op.op === "add") {
-      const at = insertAt(op.table, op.after);
+      let at = insertAt(op.table, op.after);
       if (!at) return fail(`no place for the new lines in [bookmarks.${op.table}]`);
-      const t = /** @type {NonNullable<ReturnType<typeof modelTable>>} */ (modelTable(op.table));
-      const newRecs = op.lines.map((l) => {
-        const ref = `new${++made}`;
-        return {
-          rec: { text: lineText(l), kind: /** @type {const} */ ("entry"), table: op.table, ref },
-          line: { ...l, ref },
+      for (const l of op.lines) {
+        const ref = l.id ?? `new${++made}`;
+        /** @type {Rec} */
+        const rec = {
+          text: lineText(l),
+          kind: "entry",
+          table: op.table,
+          ref,
+          prev: null,
+          next: null,
         };
-      });
-      recs.splice(at.rec, 0, ...newRecs.map((x) => x.rec));
-      t.lines.splice(at.line, 0, ...newRecs.map((x) => x.line));
+        insertAfter(at, rec);
+        recOf.set(ref, rec);
+        lineOf.set(ref, { names: l.names, folder: l.folder, value: l.value });
+        at = rec;
+      }
     } else if (op.op === "remove" || op.op === "move") {
-      const r = entryIndex(op.line);
-      const m = modelLine(op.line);
-      if (r < 0 || !m) return fail(`line ${op.line} is not a bookmark's line`);
-      const [rec] = recs.splice(r, 1);
-      const [line] = m.t.lines.splice(m.i, 1);
+      const rec = recOf.get(op.line);
+      if (!rec || rec.gone) return fail(`line ${op.line} is not a bookmark's line`);
+      unlink(rec);
       if (op.op === "move") {
         const at = insertAt(op.table, op.after);
         if (!at) return fail(`no place for line ${op.line} in [bookmarks.${op.table}]`);
-        recs.splice(at.rec, 0, { .../** @type {Rec} */ (rec), table: op.table });
-        /** @type {NonNullable<ReturnType<typeof modelTable>>} */ (
-          modelTable(op.table)
-        ).lines.splice(at.line, 0, /** @type {NewLine & { ref: number | string }} */ (line));
-      }
+        insertAfter(at, rec);
+        rec.table = op.table;
+      } else recOf.delete(op.line);
     } else if (op.op === "replace") {
-      const r = entryIndex(op.line);
-      const m = modelLine(op.line);
-      if (r < 0 || !m) return fail(`line ${op.line} is not a bookmark's line`);
-      const rec = /** @type {Rec} */ (recs[r]);
-      const line = /** @type {NewLine} */ (m.t.lines[m.i]);
+      const rec = recOf.get(op.line);
+      const line = lineOf.get(op.line);
+      if (!rec || rec.gone || !line) return fail(`line ${op.line} is not a bookmark's line`);
       const [first, ...more] = rec.text.split("\n");
       let row = /** @type {string} */ (first);
       if (op.value !== undefined) {
@@ -440,55 +482,74 @@ export function editBookmarkLines(text, ops) {
       }
       rec.text = [row, ...more].join("\n");
     } else if (op.op === "addTable") {
-      if (modelTable(op.name)) return fail(`[bookmarks.${op.name}] is there already`);
+      if (headerOf.has(op.name)) return fail(`[bookmarks.${op.name}] is there already`);
       // Before the empty string after the file's last line break, so the file still ends in one.
-      let at = recs.length;
-      const last = recs[at - 1];
-      if (last && last.kind === "other" && last.text === "") at--;
-      const prev = recs[at - 1];
-      const add = [];
-      if (prev && prev.text.trim() !== "")
-        add.push({ text: cr, kind: /** @type {const} */ ("other") });
-      add.push({
+      const endsEmpty = tail !== head && tail.kind === "other" && tail.text === "";
+      let at = endsEmpty ? /** @type {Rec} */ (tail.prev) : tail;
+      if (at !== head && at.text.trim() !== "") {
+        /** @type {Rec} */
+        const blank = { text: cr, kind: "other", prev: null, next: null };
+        insertAfter(at, blank);
+        at = blank;
+      }
+      /** @type {Rec} */
+      const header = {
         text: `[bookmarks.${tableKey(op.name)}]${cr}`,
-        kind: /** @type {const} */ ("header"),
+        kind: "header",
         table: op.name,
-      });
-      if (at === recs.length) add.push({ text: "", kind: /** @type {const} */ ("other") });
-      recs.splice(at, 0, ...add);
-      model.push({ name: op.name, lines: [] });
+        prev: null,
+        next: null,
+      };
+      insertAfter(at, header);
+      headerOf.set(op.name, header);
+      if (!endsEmpty) insertAfter(header, { text: "", kind: "other", prev: null, next: null });
     } else if (op.op === "renameTable") {
-      const r = recs.findIndex((x) => x.kind === "header" && x.table === op.from);
-      const t = modelTable(op.from);
-      if (r < 0 || !t) return fail(`no [bookmarks.${op.from}]`);
-      if (modelTable(op.to)) return fail(`[bookmarks.${op.to}] is there already`);
-      const rec = /** @type {Rec} */ (recs[r]);
+      const rec = headerOf.get(op.from);
+      if (!rec) return fail(`no [bookmarks.${op.from}]`);
+      if (headerOf.has(op.to)) return fail(`[bookmarks.${op.to}] is there already`);
       const h = /** @type {NonNullable<ReturnType<typeof readHeader>>} */ (readHeader(rec.text));
       rec.text = `${rec.text.slice(0, h.start)}[bookmarks.${tableKey(op.to)}]${rec.text.slice(h.end)}`;
-      for (const x of recs) if (x.table === op.from) x.table = op.to;
-      t.name = op.to;
+      for (let x = head.next; x; x = x.next) if (x.table === op.from) x.table = op.to;
+      headerOf.delete(op.from);
+      headerOf.set(op.to, rec);
     } else if (op.op === "removeTable") {
-      const t = modelTable(op.name);
-      if (!t) return fail(`no [bookmarks.${op.name}]`);
-      for (let k = recs.length - 1; k >= 0; k--) {
-        const x = /** @type {Rec} */ (recs[k]);
-        if (x.table === op.name && x.kind !== "other") recs.splice(k, 1);
+      if (!headerOf.has(op.name)) return fail(`no [bookmarks.${op.name}]`);
+      for (let x = head.next; x;) {
+        const next = x.next;
+        if (x.table === op.name && x.kind !== "other") {
+          unlink(x);
+          if (x.ref !== undefined) recOf.delete(x.ref);
+        }
+        x = next;
       }
-      model.splice(model.indexOf(t), 1);
+      headerOf.delete(op.name);
     }
   }
 
-  if (lastRow && recs.at(-1) !== lastRow) {
-    if (cr && recs.includes(lastRow) && !lastRow.text.endsWith(cr)) lastRow.text += cr;
-    const end = /** @type {Rec} */ (recs.at(-1));
-    end.text = end.text.replace(/\r$/, "");
+  if (lastRow && tail !== lastRow) {
+    if (cr && !lastRow.gone && !lastRow.text.endsWith(cr)) lastRow.text += cr;
+    tail.text = tail.text.replace(/\r$/, "");
   }
-  const out = recs.map((r) => r.text).join("\n");
-  const after = scan(out);
+  /** @type {string[]} */
+  const texts = [];
+  /** The expected model, from the records: each table's lines in order. */
+  /** @type {Map<string, [string[], boolean, string][]>} */
+  const model = new Map();
+  for (let x = head.next; x; x = x.next) {
+    texts.push(x.text);
+    if (x.kind === "header")
+      model.set(/** @type {string} */ (x.table), model.get(/** @type {string} */ (x.table)) ?? []);
+    else if (x.kind === "entry") {
+      const l = /** @type {NewLine} */ (lineOf.get(/** @type {number | string} */ (x.ref)));
+      const list = model.get(/** @type {string} */ (x.table)) ?? [];
+      list.push([l.names, l.folder, l.value]);
+      model.set(/** @type {string} */ (x.table), list);
+    }
+  }
+  const out = texts.join("\n");
+  const after = scanBookmarkLines(out);
   if ("error" in after) return fail(`the edit would not read back: ${after.error}`);
-  const want = JSON.stringify(
-    model.map((t) => [t.name, t.lines.map((l) => [l.names, l.folder, l.value])]),
-  );
+  const want = JSON.stringify([...model]);
   const got = JSON.stringify(
     after.tables.map((t) => [t.name, t.lines.map((l) => [l.names, l.folder, l.value])]),
   );
@@ -530,7 +591,7 @@ export function cleanName(name) {
  * @param {BookmarkletsSetting} bookmarklets
  * @returns {{ url: string } | { error: string }}
  */
-function writableUrl(url, bookmarklets) {
+export function writableUrl(url, bookmarklets) {
   const u = lineUrl(url);
   if ("error" in u) return { error: `${BOOKMARKS_FILE} cannot hold it: ${u.error}` };
   if (isBookmarklet(u.url) && bookmarklets !== "user" && bookmarklets !== "agent") {
@@ -719,7 +780,7 @@ function treeLines(node, top, bookmarklets) {
  *   renamed?: { from: string, to: string } } | { ok: false, error: string }}
  */
 export function editBookmarks(text, source, change, { bookmarklets }) {
-  const s = scan(text);
+  const s = scanBookmarkLines(text);
   if ("error" in s) return fail(`${source}: ${s.error}`);
   const table = (/** @type {string} */ name) => s.tables.find((t) => t.name === name);
   const missing = (/** @type {string} */ name) =>

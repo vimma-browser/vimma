@@ -58,6 +58,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/core/bookmarks-edit.mjs": typeof import("../src/browser/base/content/vimma/core/bookmarks-edit.mjs");
   "chrome://browser/content/vimma/core/bookmarks-export.mjs": typeof import("../src/browser/base/content/vimma/core/bookmarks-export.mjs");
   "chrome://browser/content/vimma/core/bookmarks-file.mjs": typeof import("../src/browser/base/content/vimma/core/bookmarks-file.mjs");
+  "chrome://browser/content/vimma/core/bookmarks-merge.mjs": typeof import("../src/browser/base/content/vimma/core/bookmarks-merge.mjs");
   "chrome://browser/content/vimma/core/bookmarks-toolbar.mjs": typeof import("../src/browser/base/content/vimma/core/bookmarks-toolbar.mjs");
   "chrome://browser/content/vimma/core/bookmarks.mjs": typeof import("../src/browser/base/content/vimma/core/bookmarks.mjs");
   "chrome://browser/content/vimma/core/cmdline.mjs": typeof import("../src/browser/base/content/vimma/core/cmdline.mjs");

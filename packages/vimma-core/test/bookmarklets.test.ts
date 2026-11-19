@@ -192,7 +192,7 @@ describe("[bookmarks] bookmarklets (B1-B3)", () => {
     expect(ok(v2("[bookmarks]", `bookmarklets = "${value}"`)).bookmarks).toEqual({
       root: "workspace",
       bookmarklets: value,
-      writeBack: "vimma",
+      writeBack: "all",
     });
   });
 
