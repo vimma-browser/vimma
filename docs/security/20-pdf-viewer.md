@@ -34,7 +34,10 @@ bindings, so it is accepted here.
   objects of primitives made with `Cu.cloneInto` into the viewer's window as `PdfJsChild` does (a
   mark's `XYZ` destination and the history and scroll arguments that go with it, an internal
   link's explicit destination read from its fragment), or an outline entry's target
-  that pdf.js itself gave it (V8); no chrome object **may** be passed in.
+  that pdf.js itself gave it (V8); no chrome object **may** be passed in. A text layer pdf.js adds
+  to a page gets an own `focus` property, an exported function that takes no arguments and only
+  focuses that element without scrolling (pdf-mode decision 9); the adapter finds the element in
+  the viewer's DOM through Xrays, never from a pdf.js object.
   [`a_hostile_viewer_gets_only_primitives_through`](../../tests/browser/browser_vimma_pdf_status.js)
 - V4. Exported callbacks **must** read their arguments through Xrays, never waived, and only the
   fields they need; the child **must** keep only values whose `typeof` is `number`, `boolean` or

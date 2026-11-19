@@ -237,6 +237,50 @@ add_task(async function a_key_right_after_a_mark_is_not_undone_by_its_page_rende
   });
 });
 
+// The same with a link, which pdf.js follows itself (goToDestination, with its focus): the jump
+// list's walk back (decision 9) found a jump the view had been pulled away from. Frames are held
+// from the click, so page 4 starts drawing only when 2G brings pdf.js's record of the view up to
+// date, and finishes once 2G has moved on.
+add_task(async function a_key_right_after_a_link_is_not_undone_by_its_page_rendering() {
+  await withPdf(async (browser) => {
+    const sh = historyOf(browser);
+    const label = await labelOf("f", (h) => h.endsWith("#chapter-two"));
+    const rendered = BrowserTestUtils.waitForContentEvent(
+      browser,
+      "textlayerrendered",
+      false,
+      (e) => /** @type {CustomEvent<{ pageNumber?: number }>} */ (e).detail?.pageNumber === 4,
+      true,
+    );
+    await SpecialPowers.spawn(browser, [], () => content.windowUtils.advanceTimeAndRefresh(0));
+    let last;
+    try {
+      const before = sh.index;
+      type(label);
+      await TestUtils.waitForCondition(() => sh.index === before + 1, "the link is in the history");
+      await jump(browser, "2G", 2, "2G before page 4 has rendered");
+      last = await view(browser);
+    } finally {
+      await SpecialPowers.spawn(browser, [], () => content.windowUtils.restoreNormalRefresh());
+    }
+    await rendered;
+    const at = await view(browser);
+    Assert.equal(
+      at.scrollTop,
+      last.scrollTop,
+      `page 4's rendering leaves the view on page 2: ${JSON.stringify(at)}`,
+    );
+    // pdf.js still focuses the link's page, as it does without Vimma, only without scrolling.
+    const focused = await SpecialPowers.spawn(
+      browser,
+      [],
+      () =>
+        content.document.activeElement?.closest(".page")?.getAttribute("data-page-number") ?? "",
+    );
+    Assert.equal(focused, "4", "the focus is on page 4's text layer");
+  }, LINKS);
+});
+
 add_task(async function marks_are_kept_per_document() {
   await withPdf(async (browser) => {
     type("4G");
