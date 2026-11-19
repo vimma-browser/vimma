@@ -21,11 +21,20 @@ export function budget(ms: number): number {
 // 15, a linear merge of 16,000 bookmarks took over 5 s against a 3 s budget. growth() compares the
 // code with itself instead: eight times the input takes 7 to 10 times as long when the code is
 // linear, 64 times when a quadratic part leads, and about 15 to 30 already when a quadratic part
-// adds a second or two to the large size (a lookup by scan instead of by Map). Load and Stryker slow both sizes of a pair
-// alike, so LINEAR_GROWTH needs no budget(); a test that uses growth() does several times the
-// work, so its timeout does.
+// adds a second or two to the large size (a lookup by scan instead of by Map). Load and Stryker
+// slow both sizes of a pair alike, so LINEAR_GROWTH needs no budget(); a test that uses growth()
+// does several times the work, so its timeout does.
+//
+// The smallest ratio of the pairs, not the smallest large run over the smallest small run: under
+// load (24 to 33) the latter gave up to 12.0 for the linear merge and export, against at most 8.9
+// for the smallest ratio. The smallest ratio leans toward passing, as a spike in a small run
+// lowers its pair's ratio: a quadratic export once gave 8.5 under load, though 17 or more in
+// every other run.
 
-/** The most `growth()` may give for code that runs in linear time. */
+/**
+ * The most `growth()` may give for code that runs in linear time. It admits n log n as well:
+ * log(16,000) / log(2,000) times 8 is about 10.2, so code that sorts sits near the limit.
+ */
 export const LINEAR_GROWTH = 12;
 
 /**
