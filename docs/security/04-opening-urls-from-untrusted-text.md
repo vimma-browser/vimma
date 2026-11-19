@@ -72,6 +72,12 @@ link targets for hints, which chrome must treat as untrusted.
   [`%s: a kind from the closed list, a length and a box`](../../packages/vimma-core/test/hints.test.ts),
   [`yank: the text, and whether the page marks it unselectable`](../../packages/vimma-core/test/hints.test.ts),
   [`malformed_block_messages_are_refused`](../../tests/browser/browser_vimma_element.js)
+  A page's answer to `Vimma:HintsMoved` (whether a wheel moved the labelled targets) **must**
+  only choose between keeping the labels drawn and collecting them again: only `false` keeps
+  them, and any other answer, none within 2 s, or an error collects them again through the
+  checks above. Keeping them gives a page nothing it lacks already: it can move its elements
+  under the labels at any time.
+  [`a_wheel_the_page_takes_keeps_the_labels_and_the_keys_typed`](../../tests/browser/browser_vimma_hints_scroll.js)
 - U7. Text pasted on the command line **must** be read in bounded time: a megabyte never
   freezes the window.
   [`a pasted megabyte is parsed and completed in bounded time`](../../packages/vimma-core/test/fuzz/cmdline.fuzz.test.ts),

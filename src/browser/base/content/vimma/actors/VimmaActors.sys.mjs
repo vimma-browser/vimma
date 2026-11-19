@@ -409,16 +409,14 @@ export const VimmaActors = {
    * @param {string} action "hint.follow", "hint.follow_new_tab" or "hint.follow_new_tab_fg"
    *   (links only) or "hint.element"
    *   (text blocks, docs/specs/element-focus.md)
-   * @param {{ agent?: boolean, elements?: boolean, settle?: boolean }} [options]  `agent`: an
+   * @param {{ agent?: boolean, elements?: boolean }} [options]  `agent`: an
    *   agent's `f` in its tab (docs/specs/mcp-drive.md D12): links only, each with its text, live
    *   per tab, not per window; with `elements`, an agent's `vimma_elements`
    *   (docs/specs/mcp-forms.md F2): every kind but blocks, disabled controls too, each
-   *   described, kept apart from the user's;
-   *   `settle`: the top frame waits for a scroll running there to end first (a wheel moved the
-   *   page under the labels, m1-hints, issue #1308)
+   *   described, kept apart from the user's
    * @returns {Promise<HintTarget[]>}
    */
-  async collectHints(browser, action, { agent = false, elements = false, settle = false } = {}) {
+  async collectHints(browser, action, { agent = false, elements = false } = {}) {
     const gen = ++hintGen;
     // A <browser>'s document has no view only once its window has closed, where liveGen.set
     // throws: the collection fails, as before the type said so.
@@ -473,7 +471,6 @@ export const VimmaActors = {
           blocks,
           texts,
           elements: agent && elements,
-          settle: settle && depth === 0,
         });
         raw = await Promise.race([query, late]);
       } catch {
@@ -529,6 +526,36 @@ export const VimmaActors = {
     await visit(top, all, { x: 0, y: 0 }, 0);
     this._lastCollectMs = ms;
     return live() ? out : [];
+  },
+
+  /**
+   * A wheel over the page while the labels of collection `gen` show (m1-hints, issue #1337):
+   * resolves once the scroll it started has ended, true unless the top frame says that none of
+   * its targets moved (VimmaChild `Vimma:HintsMoved`). The reply is from a content process:
+   * only `false` keeps the labels, and a frame that gave no answer within HINT_TOP_TIMEOUT_MS,
+   * went away or threw counts as moved, so the labels are collected again as before.
+   * @param {MozBrowser} browser
+   * @param {number} gen  the collection whose labels show
+   * @param {{ x: number, y: number }} point  the wheel's, in the page's CSS pixels
+   * @returns {Promise<boolean>}
+   */
+  async hintsMoved(browser, gen, point) {
+    const actor = actorFor(browser.browsingContext);
+    if (!actor) return true;
+    /** @type {number | undefined} */
+    let timer;
+    try {
+      /** @type {Promise<true>} */
+      const late = new Promise((resolve) => {
+        timer = setTimeout(resolve, HINT_TOP_TIMEOUT_MS, true);
+      });
+      const query = actor.sendQuery("Vimma:HintsMoved", { gen, x: point.x, y: point.y });
+      return (await Promise.race([query, late])) !== false;
+    } catch {
+      return true;
+    } finally {
+      clearTimeout(timer);
+    }
   },
 
   /**

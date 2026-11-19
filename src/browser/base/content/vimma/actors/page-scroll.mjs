@@ -104,17 +104,8 @@ function largestScrollable(all, vertical, visibleOnly = false) {
 function layerAtCentre(win, vertical) {
   const { vw, vh } = viewportSize(win);
   if (!(vw > 0 && vh > 0)) return null;
-  const x = vw / 2;
-  const y = vh / 2;
   const doc = win.document;
-  let hit = doc.elementFromPoint(x, y);
-  // elementFromPoint stops at a shadow host; the layer can be inside its tree, open or closed.
-  for (let root = hit?.openOrClosedShadowRoot; root;) {
-    const inner = root.elementFromPoint(x, y);
-    if (!inner || inner === hit) break;
-    hit = inner;
-    root = hit.openOrClosedShadowRoot;
-  }
+  const hit = deepElementFromPoint(doc, vw / 2, vh / 2);
   /** @type {Element | null} */
   let inner = null;
   for (
@@ -127,6 +118,49 @@ function layerAtCentre(win, vertical) {
     if (win.getComputedStyle(el)?.position === "fixed") return { layer: el, inner };
   }
   return null;
+}
+
+/**
+ * The element at a point of the viewport, inside shadow trees too.
+ * @param {Document} doc
+ * @param {number} x
+ * @param {number} y
+ */
+function deepElementFromPoint(doc, x, y) {
+  let hit = doc.elementFromPoint(x, y);
+  // elementFromPoint stops at a shadow host; the element can be inside its tree, open or closed.
+  for (let root = hit?.openOrClosedShadowRoot; root;) {
+    const inner = root.elementFromPoint(x, y);
+    if (!inner || inner === hit) break;
+    hit = inner;
+    root = hit.openOrClosedShadowRoot;
+  }
+  return hit;
+}
+
+/** Elements that show another document, which scrolls in its own frame. */
+const FRAME_ELEMENTS = new Set(["iframe", "frame", "object", "embed"]);
+
+/**
+ * What a wheel at `point` (viewport CSS pixels) can scroll in this frame: the page, and each
+ * element on the way up from the one under the point (a wheel scrolls the nearest of them that
+ * can go its way, and the next one up at its end). Their scroll and scrollend events are the
+ * wheel's; another scroller's (a carousel the page's script turns) are not (issue #1337).
+ * `frame`: a subframe is under the point, whose own scroll this frame never sees.
+ * @param {Window} win
+ * @param {{ x: number, y: number } | null} point
+ * @returns {{ targets: Set<EventTarget>, frame: boolean }}
+ */
+export function scrollersUnder(win, point) {
+  const doc = win.document;
+  /** @type {Set<EventTarget>} */
+  const targets = new Set([doc]);
+  const hit = point && deepElementFromPoint(doc, point.x, point.y);
+  const frame = !!hit && FRAME_ELEMENTS.has(hit.localName);
+  for (let el = hit; el; el = /** @type {Element | null} */ (el.assignedSlot) ?? parentOf(el)) {
+    targets.add(el);
+  }
+  return { targets, frame };
 }
 
 /**
@@ -160,10 +194,13 @@ export class PageScroll {
   /**
    * The smooth scroll this frame last started, and where it goes, until its scrollend or
    * SMOOTH_MAX_MS: hints collected meanwhile finish it first (issue #1308).
-   * `x`, `y`: where it started; `left`, `top`: its destination; `over`: something else moved
-   * the scroller back meanwhile; `stop`: removes its listeners.
+   * `x`, `y`: where it started; `left`, `top`: its destination; `target`: where its scroll
+   * events are fired; `over`: something else took it over meanwhile (moved the scroller back,
+   * or a wheel over it); `moving`: it has moved the scroller; `idleEnd`: a scrollend came
+   * before it moved; `stop`: removes its listeners.
    * @type {{ el: WeakRef<Element>, x: number, y: number, left: number, top: number,
-   *   until: number, over: boolean, stop: () => void } | null}
+   *   target: EventTarget, until: number, over: boolean, moving: boolean, idleEnd: boolean,
+   *   stop: () => void } | null}
    */
   #running = null;
 
@@ -183,22 +220,28 @@ export class PageScroll {
    * A scroll on a scroll-snap container is waited for instead: its end is a snap point. A
    * scroll that has left the stretch between its start and its destination, or stepped back
    * within it, was taken over (a snap point further on, the user's wheel or scrollbar): it is
-   * not undone, and the caller waits for it to end instead.
-   * @returns {boolean} whether a scroll still runs whose end is not known: wait (settled())
+   * not undone, and the caller waits for it to end instead. So is one a wheel over its scroller
+   * came during, whichever way (issue #1337): a wheel forward that ends short of the
+   * destination is the user's too. A scrollend before the scroll moved is either an earlier
+   * scroll's or the end of this one, cancelled before it moved (the page's own instant scroll
+   * to where it is): which one is not known, so the caller waits rather than jump.
+   * @returns {EventTarget | null} where the scroll events of a scroll still running, whose end
+   *   is not known, are fired: wait for it (settled()); null when there is none
    */
   finish() {
     const run = this.#running;
     this.#running = null;
     run?.stop();
-    if (!run || ChromeUtils.now() > run.until) return false;
+    if (!run || ChromeUtils.now() > run.until) return null;
     const el = run.el.deref();
-    if (!el?.isConnected) return false;
+    if (!el?.isConnected) return null;
     const x = el.scrollLeft;
     const y = el.scrollTop;
-    if (x === run.left && y === run.top) return false;
+    if (x === run.left && y === run.top) return null;
     const within = (/** @type {number} */ v, /** @type {number} */ a, /** @type {number} */ b) =>
       v >= Math.min(a, b) - 1 && v <= Math.max(a, b) + 1;
-    if (run.over || !within(x, run.x, run.left) || !within(y, run.y, run.top)) return true;
+    const taken = run.over || (run.idleEnd && !run.moving);
+    if (taken || !within(x, run.x, run.left) || !within(y, run.y, run.top)) return run.target;
     // A scroll-snap container ends the scroll at a snap point that only layout knows; a jump to
     // the unsnapped destination would snap to the nearest point instead, back where the scroll
     // started. Nor does a relative jump (scrollBy) work: APZ shifts its running animation by
@@ -206,20 +249,23 @@ export class PageScroll {
     const doc = el.ownerDocument;
     const snapper = el === doc.scrollingElement ? doc.documentElement : el;
     const snap = doc.defaultView?.getComputedStyle(snapper)?.scrollSnapType ?? "none";
-    if (snap !== "none") return true;
+    if (snap !== "none") return run.target;
     el.scrollTo({ left: run.left, top: run.top, behavior: "instant" });
-    return false;
+    return null;
   }
 
   /**
-   * Resolves once a scroll in this frame, such as the one a wheel over the page just started,
-   * has ended: at its scrollend, once no scroll event came for SETTLE_QUIET_MS (a wheel at the
-   * page's end scrolls nothing), and at the latest after SETTLE_MAX_MS. Only the browser's own
-   * scroll events count: the page can dispatch untrusted ones, which a chrome listener on
-   * content receives too, but they neither end the wait nor prolong it.
+   * Resolves once a scroll of one of `scrollers` (where their scroll events are fired: the
+   * document for the page) has ended: at its scrollend, once no scroll event came for
+   * SETTLE_QUIET_MS (a wheel at the page's end scrolls nothing), and at the latest after
+   * SETTLE_MAX_MS. Another scroller's events, such as a carousel the page's script turns every
+   * frame, neither end the wait nor hold it open (issue #1337). Only the browser's own scroll
+   * events count: the page can dispatch untrusted ones, which a chrome listener on content
+   * receives too, but they neither end the wait nor prolong it.
+   * @param {Set<EventTarget>} scrollers
    * @returns {Promise<void>}
    */
-  settled() {
+  settled(scrollers) {
     const win = this.#actor.contentWindow;
     if (!win) return Promise.resolve();
     return new Promise((resolve) => {
@@ -237,11 +283,12 @@ export class PageScroll {
         lazy.clearTimeout(quiet);
         quiet = lazy.setTimeout(done, SETTLE_QUIET_MS);
       };
+      const ours = (/** @type {Event} */ e) => e.isTrusted && !!e.target && scrollers.has(e.target);
       const onScroll = (/** @type {Event} */ e) => {
-        if (e.isTrusted) wait();
+        if (ours(e)) wait();
       };
       const onEnd = (/** @type {Event} */ e) => {
-        if (e.isTrusted) done();
+        if (ours(e)) done();
       };
       const cap = lazy.setTimeout(done, SETTLE_MAX_MS);
       win.addEventListener("scroll", onScroll, opts);
@@ -411,9 +458,16 @@ export class PageScroll {
     // own count: the page can dispatch untrusted ones, which a chrome listener gets too.
     const target = el === el.ownerDocument.scrollingElement ? el.ownerDocument : el;
     const opts = /** @type {AddEventListenerOptions} */ ({ mozSystemGroup: true });
+    // Passive: a listener that may cancel a wheel makes APZ wait for content before scrolling.
+    const wheelOpts = /** @type {AddEventListenerOptions} */ ({
+      mozSystemGroup: true,
+      capture: true,
+      passive: true,
+    });
     const stop = () => {
       target.removeEventListener("scroll", moved, opts);
       target.removeEventListener("scrollend", ended, opts);
+      target.removeEventListener("wheel", wheeled, wheelOpts);
     };
     const run = {
       el: new WeakRef(el),
@@ -421,33 +475,48 @@ export class PageScroll {
       y: from.y,
       left,
       top,
+      target,
       until: ChromeUtils.now() + SMOOTH_MAX_MS,
       over: false,
+      moving: false,
+      idleEnd: false,
       stop,
     };
     // A step back on either axis is not this scroll's: the user's wheel or scrollbar took over,
     // and finish() must not undo it.
     let last = { x: from.x, y: from.y };
-    // Whether this scroll has moved the scroller yet. An instant scroll just before it (the
-    // page's, or a mark's) fires its scroll and scrollend at the next refresh, which can come
-    // after this scroll started: that scrollend is not this scroll's end.
-    let moving = false;
+    // `run.moving`: whether this scroll has moved the scroller yet. An instant scroll just
+    // before it (the page's, or a mark's) fires its scroll and scrollend at the next refresh,
+    // which can come after this scroll started: that scrollend is not this scroll's end.
     const back = (/** @type {number} */ now, /** @type {number} */ was, /** @type {number} */ to) =>
       (now - was) * Math.sign(to - was) < -1;
     const moved = (/** @type {Event} */ e) => {
       if (!e.isTrusted) return;
       const now = { x: el.scrollLeft, y: el.scrollTop };
-      if (Math.abs(now.x - from.x) > 0.5 || Math.abs(now.y - from.y) > 0.5) moving = true;
+      if (Math.abs(now.x - from.x) > 0.5 || Math.abs(now.y - from.y) > 0.5) run.moving = true;
       if (back(now.x, last.x, left) || back(now.y, last.y, top)) run.over = true;
       last = now;
     };
     const ended = (/** @type {Event} */ e) => {
-      if (!e.isTrusted || !moving) return;
+      if (!e.isTrusted) return;
+      if (!run.moving) {
+        run.idleEnd = true;
+        return;
+      }
       stop();
       if (this.#running === run) this.#running = null;
     };
+    // A wheel over the scroller takes the scroll over, also one that goes the same way, which
+    // APZ carries on past the destination with no step back to show it (issue #1337). On the
+    // page this also counts a wheel over an inner scroller that the page's scroll never sees:
+    // f then waits for that scroll's end (at most SETTLE_MAX_MS) where a jump would have done,
+    // slower but never wrong, and cheaper than finding which scroller the wheel will move.
+    const wheeled = (/** @type {Event} */ e) => {
+      if (e.isTrusted) run.over = true;
+    };
     target.addEventListener("scroll", moved, opts);
     target.addEventListener("scrollend", ended, opts);
+    target.addEventListener("wheel", wheeled, wheelOpts);
     return run;
   }
 }
