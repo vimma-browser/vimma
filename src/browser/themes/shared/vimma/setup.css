@@ -318,6 +318,14 @@ code {
   color: var(--vimma-text-accent, #2cf5d2);
 }
 
+/* What a choice does besides its line (the agents step): set apart as a notice is, without the
+   error colour, since it is no failure. */
+.choice-note {
+  margin: 0;
+  padding: 0.3rem 0.8rem;
+  border-inline-start: 3px solid var(--vimma-text-accent, #2cf5d2);
+}
+
 .saved-lines {
   list-style: none;
   margin: 0;
@@ -376,6 +384,7 @@ code {
 .screen,
 .flow-footer,
 .notice,
+.choice-note,
 .chapters li,
 .saved-lines li,
 kbd,

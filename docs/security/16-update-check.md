@@ -70,6 +70,7 @@ _Pages_ and _extensions_ cannot reach it.
   `:update`, an attempt that got no answer is **never** repeated within 10 minutes, so restarts
   send no burst of requests.
   [`off_by_pref_or_config_sends_nothing`](../../tests/browser/browser_vimma_update_check.js),
+  [`updates_step_says_what_the_check_sends`](../../tests/browser/browser_vimma_setup_v2.js),
   [`nothing_at_all_with_checks_off`](../../tests/browser/browser_vimma_update_notices.js),
   [`checks off or a source build: never due`](../../packages/vimma-core/test/update-notices.test.ts),
   [`a failed attempt does not count as a check, but is not retried within 10 minutes`](../../packages/vimma-core/test/update-notices.test.ts),
