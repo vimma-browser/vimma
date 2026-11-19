@@ -12,7 +12,7 @@
 
 import { COMMANDS } from "../keys/cmdline.mjs";
 import { getAction } from "../keys/actions.mjs";
-import { displayBinding, parseKey } from "../keys/keys.mjs";
+import { displayBinding, formatKey, parseKey } from "../keys/keys.mjs";
 import { tomlLiteral } from "../config/toml.mjs";
 import { BUILTIN_THEMES, DEFAULT_THEME_NAME } from "../config/theme.mjs";
 
@@ -171,8 +171,8 @@ const TABLE = [
           title: "Address bar",
           question: "Show the address bar and the add-on buttons?",
           text:
-            "Hidden, {keys:focus_urlbar} still opens the address bar, and {keys:toggle_toolbar} " +
-            "shows or hides it until restart.",
+            "With it hidden, {keys:focus_urlbar} still opens the address bar for typing, and " +
+            "{keys:toggle_toolbar} shows or hides the whole toolbar until restart.",
           actions: ["focus_urlbar", "toggle_toolbar"],
         },
         { table: "ui", key: "toolbar" },
@@ -310,14 +310,35 @@ export const STEPS = freeze(CHAPTERS.flatMap((c) => c.steps));
 /** @param {string} key  as keysFor shows it @returns {boolean} whether it works from a page */
 const fromPage = (key) => !key.includes(" [");
 
+/** @param {string} key  as keysFor shows it (`I`, `ctrl+b u`) @returns {string} as a sequence */
+const sequenceOf = (key) =>
+  key
+    .split(" ")
+    .map((chord) => {
+      try {
+        return formatKey(parseKey(chord));
+      } catch {
+        return chord;
+      }
+    })
+    .join(" ");
+
 /**
- * The keys of `action` that work from a page (decision 8): keysFor without the bindings of
- * another mode (`I [visual]`).
+ * The keys of `action` that work from a page (decision 8, behaviour 17): keysFor without the
+ * bindings of another mode (`I [visual]`), and without a `[keys]` binding that normal mode binds
+ * to another action or unbinds (`[modal.normal] "<C-l>"`), because on a page that key no longer
+ * runs it.
  * @param {Keymap} keymap @param {string} action
  * @returns {string[]}
  */
 export function stepKeys(keymap, action) {
-  return keymap.keysFor(action).filter(fromPage);
+  const normal = new Set(
+    keymap
+      .sequences("normal")
+      .filter((s) => s.name === action)
+      .map((s) => s.seq),
+  );
+  return keymap.keysFor(action).filter((key) => fromPage(key) && normal.has(sequenceOf(key)));
 }
 
 /** @param {string} action @returns {string} the `:` command that runs it */
@@ -364,6 +385,36 @@ export function prefixHints(step, keymap) {
       .filter(fromPage)
       .map((text) => displayBinding(text, { prefix, leader: keymap.leader }));
   });
+}
+
+/** The `[ui]` keys a drawing of the window shows, with their built-in defaults. */
+const WINDOW_DEFAULTS = Object.freeze({ toolbar: "shown", tabline: "off" });
+
+/** The steps that draw the window with each choice (Page layout): chapter 3's. */
+const WINDOW_STEPS = new Set(CHAPTERS.find((c) => c.id === "window")?.steps.map((s) => s.id));
+
+/**
+ * What a step's drawing of the window shows for one choice.
+ * @typedef {object} WindowSketch
+ * @property {string} toolbar  "shown" or "hidden"
+ * @property {string} tabline  "off", "always" or "auto"
+ */
+
+/**
+ * The window a choice of a window step leaves (Page layout): the choice's own `[ui]` key over
+ * the values in force, so that each drawing shows the rest of the window as it is now. Keep
+ * draws the window in force; a step outside the window chapter draws none.
+ * @param {SetupStep} step @param {SetupChoice} choice @param {InForce} inForce
+ * @returns {WindowSketch | null}
+ */
+export function windowSketch(step, choice, inForce) {
+  if (!WINDOW_STEPS.has(step.id)) return null;
+  /** @param {keyof typeof WINDOW_DEFAULTS} key */
+  const of = (key) => {
+    const own = choice.edits.find((e) => e.table === "ui" && e.key === key);
+    return String(own?.value ?? inForce[`ui.${key}`] ?? WINDOW_DEFAULTS[key]);
+  };
+  return { toolbar: of("toolbar"), tabline: of("tabline") };
 }
 
 /**

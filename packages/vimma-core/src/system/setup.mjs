@@ -288,7 +288,14 @@ function scaledUsers(/** @type {number} */ x) {
  * renderer in the page (docs/specs/setup-v2.md, Delivery). The host saves only these, so a step
  * whose rules have not landed (the agents step's consent) cannot be written through the page.
  */
-export const BUILT_STEPS = Object.freeze(["content_blocker", "search_engine", "colours"]);
+export const BUILT_STEPS = Object.freeze([
+  "content_blocker",
+  "search_engine",
+  "colours",
+  // The window (chapter 3): the tab line step (#1299) goes after the address bar; the page draws
+  // its window from windowSketch (setup-steps.mjs) already.
+  "address_bar",
+]);
 
 /**
  * The chapters with only `built` steps, chapters left without one dropped; each keeps its
