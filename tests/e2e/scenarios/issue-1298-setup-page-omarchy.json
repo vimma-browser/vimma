@@ -1,0 +1,146 @@
+{
+  "name": "issue-1298-setup-page-omarchy",
+  "issue": 1298,
+  "description": "docs/specs/setup-v2.md, e2e: issue-1298-setup-page's four screens in a dark Omarchy theme (tests/e2e/fixtures/omarchy-theme): the welcome screen, the content blocker step, the essentials' stop screen and the address bar step, each in the theme's colours and font.",
+  "timeoutSeconds": 90,
+  "prefs": {
+    "vimma.theme.source": "omarchy",
+    "vimma.theme.omarchyPath": "checkout:tests/e2e/fixtures/omarchy-theme"
+  },
+  "steps": [
+    {
+      "wait-for-state": {
+        "workspace": "main"
+      },
+      "timeoutSeconds": 20
+    },
+    {
+      "open": "fixture:long.html"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "selected": true,
+            "title": "long top navigate"
+          }
+        ]
+      }
+    },
+    {
+      "keys": ": s e t u p enter"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {},
+          {
+            "title": "Vimma setup",
+            "selected": true
+          }
+        ]
+      }
+    },
+    {
+      "wait-for-state": {
+        "setup": {
+          "screen": "welcome"
+        }
+      }
+    },
+    {
+      "screenshot": "setup-welcome-omarchy"
+    },
+    {
+      "keys": "enter"
+    },
+    {
+      "wait-for-state": {
+        "setup": {
+          "screen": "content_blocker"
+        }
+      }
+    },
+    {
+      "screenshot": "setup-step-omarchy"
+    },
+    {
+      "keys": "s s s"
+    },
+    {
+      "wait-for-state": {
+        "setup": {
+          "screen": "stop"
+        }
+      }
+    },
+    {
+      "screenshot": "setup-stop-omarchy"
+    },
+    {
+      "keys": "q"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "selected": true,
+            "title": "long top navigate"
+          }
+        ]
+      }
+    },
+    {
+      "keys": ": s e t u p enter"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {},
+          {
+            "title": "Vimma setup",
+            "selected": true
+          }
+        ]
+      }
+    },
+    {
+      "wait-for-state": {
+        "setup": {
+          "screen": "welcome"
+        }
+      }
+    },
+    {
+      "keys": "3"
+    },
+    {
+      "wait-for-state": {
+        "setup": {
+          "screen": "address_bar"
+        }
+      }
+    },
+    {
+      "screenshot": "setup-address-bar-omarchy"
+    },
+    {
+      "keys": "q"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "selected": true,
+            "title": "long top navigate"
+          }
+        ]
+      }
+    }
+  ]
+}

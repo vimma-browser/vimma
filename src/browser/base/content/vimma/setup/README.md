@@ -1,8 +1,8 @@
 # `vimma/setup/`
 
 `about:vimma-setup`, the first-run setup: `SetupHost.sys.mjs` registers the page, decides when
-to offer it and writes the chosen `config.toml`; `setup.mjs` and `setup.html` are the page.
-`flow.mjs` draws setup v2's chapters in the same page while `vimma.feature.setupV2` is on.
+to offer it and saves each step to `config.toml`; `setup.html` and `flow.mjs`, which draws the
+chapters and takes the keys, are the page.
 
 **Entry points:** `SetupHost.register()`, called by `vimma.js`.
 

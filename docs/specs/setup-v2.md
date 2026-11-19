@@ -1,6 +1,6 @@
 # Spec: setup-v2
 
-Status: accepted (delivery slices 1 to 5 and 8 built, #1292, #1293, #1294, #1295, #1296 and #1299) · Area: core
+Status: implemented · Area: core
 (`packages/vimma-core/src/system/setup.mjs`, `packages/vimma-core/src/system/setup-steps.mjs`,
 `packages/vimma-core/src/config/toml.mjs`),
 chrome (`src/browser/base/content/vimma/setup/` (`setup.html`, `setup.mjs`, `flow.mjs`,
@@ -389,7 +389,8 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
 18. **A feature pref while it lands.** `vimma.feature.setupV2` (default `false`) switches the
     page from today's flow to the chapters while the slices land (`CONTRIBUTING.md`,
     "Unfinished features"), because the summary flow must keep working on `main` until the new
-    one is complete. The last slice removes the pref and the old flow.
+    one is complete. The last slice removes the pref and the old flow. (Since changed: #1298 removed
+    both; the chapters are the only flow.)
 19. **Finished chapters are a pref, not a config key.** `vimma.setup.chapters` holds the ids
     of the chapters whose stop screen was reached, for the ticks on the welcome screen, because
     it is a record of the setup and not a setting of the browser. It is not written in a
@@ -506,7 +507,9 @@ vitest, `packages/vimma-core/test/setup.test.ts` (state machine):
 
 Mochitest, `tests/browser/browser_vimma_setup_v2.js` (with `vimma.feature.setupV2` on until the
 last slice; a file apart from the summary flow's `browser_vimma_setup.js`, because both together
-outgrow the harness's time limit for one file):
+outgrow the harness's time limit for one file; the last slice drops the summary flow's tasks
+from `browser_vimma_setup.js`, which keeps the page's offering, its config.toml file checks
+through the search engine step and `agent_role_cannot_open_setup`):
 
 - `welcome_says_q_leaves_and_finished_steps_are_saved`
 - `enter_on_a_step_writes_its_key_and_applies_live`

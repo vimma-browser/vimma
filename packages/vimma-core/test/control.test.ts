@@ -559,6 +559,35 @@ describe("validateMessage: state", () => {
     ]);
   });
 
+  // #1298: the setup page's screen as drawn (welcome, a step's id, stop), a word from a closed
+  // list, so an e2e scenario waits for the screen it photographs; never a choice, a search or a
+  // line the step writes (security.md S9).
+  test("setup is the screen drawn, as a fixed word, or null", () => {
+    for (const setup of [
+      null,
+      { screen: "welcome" },
+      { screen: "address_bar" },
+      { screen: "stop" },
+    ]) {
+      expect(errorsOf(ok({ ...state, setup }), { command: "state" })).toEqual([]);
+    }
+    for (const setup of ["welcome", 3, true, [], {}, { screen: 1 }, { screen: "ublock origin" }]) {
+      expect(errorsOf(ok({ ...state, setup }), { command: "state" })).not.toEqual([]);
+    }
+    expect(
+      errorsOf(ok({ ...state, setup: { screen: "stop", saved: 2 } }), { command: "state" }),
+    ).toEqual(['unknown field "result.setup.saved"']);
+    const hidden = {
+      ...state,
+      private: true,
+      tabs: [{ id: "1", url: null, title: null, selected: true }],
+    };
+    expect(errorsOf(ok({ ...hidden, setup: null }), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok({ ...hidden, setup: { screen: "welcome" } }), { command: "state" })).toEqual(
+      ["result.setup must be null in a private window"],
+    );
+  });
+
   test("controlUpdateState keeps only the fields the protocol names (m6a-updater 41)", () => {
     const offer = {
       appVersion: "160.0",

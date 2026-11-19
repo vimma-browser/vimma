@@ -290,8 +290,3 @@ pref("pdfjs.sidebarViewOnLoad", 0);
 // until the feature is finished (CONTRIBUTING.md, "Unfinished features"); set to true in
 // about:config to try it.
 pref("vimma.feature.bookmarksFile", false);
-
-// docs/specs/setup-v2.md decision 18: the setup in optional chapters that save each step on
-// enter, in place of the summary flow. Off until its last slice lands (CONTRIBUTING.md,
-// "Unfinished features"); set to true in about:config to try it.
-pref("vimma.feature.setupV2", false);

@@ -48,9 +48,12 @@ section of `config.toml` before the browser is usable. Vimma disables Firefox's 
    `esc` goes back. `config.toml` is written first (decision 9), then each add-on then shows Firefox's standard permission prompt; declining it
    skips that add-on only. The page reports each result (installed, declined, failed) and
    closes with `enter`. When `config.toml` does not parse, the summary shows a notice naming the
-   file and line, writes nothing to it and still installs the add-ons.
+   file and line, writes nothing to it and still installs the add-ons. (Since changed: there is
+   no summary; each step saves on its own `enter`, and the setup is in five chapters,
+   [setup-v2](setup-v2.md) behaviours 4 to 11.)
 6. Nothing is applied before the summary is confirmed. Closing the tab or the window at any
-   earlier point **must** leave the profile as it was.
+   earlier point **must** leave the profile as it was. (Since changed: closing keeps every step
+   already saved and writes nothing for the open one, [setup-v2](setup-v2.md) behaviour 7.)
 7. Offline, or when AMO does not answer within 10 s, step 1 shows the curated list with a
    one-line notice that search is unavailable, and step 2 works as usual.
 8. `:setup` opens the setup again in a new tab, starting at the welcome screen; about:vimma
@@ -135,6 +138,8 @@ curated table, validating and filtering AMO results, and the summary plan.
 2. **Nothing applies before the summary.** Steps only collect choices; the summary applies them,
    so that skipping or closing at any point leaves nothing half-configured. Rejected: applying
    each step as it is left, because a later `esc` would then leave part of the setup done.
+   (Since changed: each step saves on `enter`, because a longer setup that applies only at the
+   end loses everything when the user stops half-way; [setup-v2](setup-v2.md) decision 1.)
 3. **Add-ons install through Firefox's AMO path.** `getInstallForURL(file.url, { hash })`
    followed by `installAddonFromAOM`, so that signature checks, enterprise policy and the
    standard permission prompt are Firefox's own and unchanged. Each install waits for the

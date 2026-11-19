@@ -155,7 +155,6 @@ browser.jar:
         content/browser/vimma/about/AboutVimma.sys.mjs    (about/AboutVimma.sys.mjs)
         content/browser/vimma/setup/SetupHost.sys.mjs     (setup/SetupHost.sys.mjs)
         content/browser/vimma/setup/setup.html            (setup/setup.html)
-        content/browser/vimma/setup/setup.mjs             (setup/setup.mjs)
         content/browser/vimma/setup/flow.mjs              (setup/flow.mjs)
         skin/classic/browser/vimma/setup.css              (/browser/themes/shared/vimma/setup.css)
         content/browser/vimma/host/key-log.mjs            (host/key-log.mjs)

@@ -11,6 +11,7 @@
 
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { createDispatcher } from "../core/dispatcher.mjs";
+import { SETUP_SCREENS } from "../core/control.mjs";
 import { resolveEscape } from "../core/escape.mjs";
 import {
   insertEditCommand,
@@ -1051,7 +1052,7 @@ export const VimmaHost = {
    *   agent: { waiting: number, ran: boolean, armed: boolean } | null,
    *   downloads: import("../core/downloads.mjs").DownloadSegment["kind"] | null,
    *   grep: { busy: boolean } | null, urlbar: { settled: boolean } | null,
-   *   pdf: { drawn: boolean } | null }}
+   *   pdf: { drawn: boolean } | null, setup: { screen: string } | null }}
    */
   screen(win) {
     const state = states.get(win);
@@ -1065,6 +1066,7 @@ export const VimmaHost = {
         grep: null,
         urlbar: null,
         pdf: null,
+        setup: null,
       };
     }
     // As the bar last drew it, not as AgentUi.status() says it will next: the ran dot is
@@ -1092,7 +1094,15 @@ export const VimmaHost = {
     const urlbar = state.urlbarQueries?.drawn() ?? null;
     const browser = win.gBrowser?.selectedBrowser;
     const pdf = browser ? PdfOps.drawn(browser) : null;
-    return { notice, prompt, chat, agent, downloads, grep, urlbar, pdf };
+    // The setup page runs in this process: its screen as draw() last set it (welcome, a step's
+    // id, stop), a fixed word, so an e2e scenario waits for the screen it photographs (#1298).
+    const screen =
+      browser?.currentURI?.spec === "about:vimma-setup"
+        ? browser.contentDocument?.documentElement?.dataset.step
+        : undefined;
+    // Checked here too: the server sends only a word from the closed list (security.md S9).
+    const setup = screen && SETUP_SCREENS.includes(screen) ? { screen } : null;
+    return { notice, prompt, chat, agent, downloads, grep, urlbar, pdf, setup };
   },
 
   /**
