@@ -43,4 +43,5 @@ Spec: [m0-mozilla-services](../specs/m0-mozilla-services.md),
   [`import_wizard_opens_over_the_setup_tab_and_resolves_when_it_closes`](../../tests/browser/browser_vimma_setup_moving_in.js),
   [`import_wizard_opens_only_over_the_setup_page`](../../tests/browser/browser_vimma_setup_moving_in.js),
   [`import_wizard_respects_the_policy`](../../tests/browser/browser_vimma_setup_moving_in.js),
+  [`closing_the_setup_tab_resolves_the_wizard_and_a_new_one_opens`](../../tests/browser/browser_vimma_setup_moving_in.js),
   [`asks for Make default and the import wizard only from the setup host`](../../tools/security/test/chrome-source.test.ts)

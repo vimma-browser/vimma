@@ -9,6 +9,9 @@
 
 "use strict";
 
+/* global Client -- from head_vimma_control.js */
+Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
+
 const { SetupHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/setup/SetupHost.sys.mjs",
 );
@@ -22,6 +25,12 @@ const { InternalTestingProfileMigrator } = ChromeUtils.importESModule(
   "moz-src:///browser/components/migration/InternalTestingProfileMigrator.sys.mjs",
 );
 const { sinon } = ChromeUtils.importESModule("resource://testing-common/Sinon.sys.mjs");
+const { AppLauncher } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/services/AppLauncher.sys.mjs",
+);
+const { VimmaControl } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
+);
 const { EnterprisePolicyTesting } = ChromeUtils.importESModule(
   "resource://testing-common/EnterprisePolicyTesting.sys.mjs",
 );
@@ -52,12 +61,16 @@ add_task(async () => {
 /**
  * Runs `run` with the shell service's check and Make Default replaced; the proxy has no set
  * trap, so the assignment lands on its internal object, where AppLauncher's wrapper also lives.
- * @param {{ isDefault: boolean, setFails?: boolean }} state
+ * AppLauncher's Flatpak check answers `state.flatpak`, so no task depends on how this machine
+ * runs the browser.
+ * @param {{ isDefault: boolean, setFails?: boolean, flatpak?: boolean }} state
  * @param {(calls: unknown[][]) => Promise<void>} run  gets the arguments of each Make Default
  */
 async function withShell(state, run) {
   const isDefault = ShellService.isDefaultBrowser;
   const setDefault = ShellService.setDefaultBrowser;
+  const sandbox = sinon.createSandbox();
+  sandbox.stub(AppLauncher, "underFlatpak").callsFake(() => Boolean(state.flatpak));
   /** @type {unknown[][]} */
   const calls = [];
   ShellService.isDefaultBrowser = () => state.isDefault;
@@ -71,6 +84,7 @@ async function withShell(state, run) {
   } finally {
     ShellService.isDefaultBrowser = isDefault;
     ShellService.setDefaultBrowser = setDefault;
+    sandbox.restore();
   }
 }
 
@@ -176,6 +190,14 @@ add_task(async function set_default_browser_respects_the_locked_button_pref() {
   });
 });
 
+add_task(async function set_default_browser_does_nothing_under_flatpak() {
+  await withShell({ isDefault: false, flatpak: true }, async (calls) => {
+    Assert.deepEqual(SetupHost.defaultBrowserState(), { isDefault: false, canSet: false });
+    Assert.equal(await SetupHost.setDefaultBrowser(), "unavailable");
+    Assert.deepEqual(calls, [], "Flatpak can neither set nor detect the default browser");
+  });
+});
+
 add_task(async function import_wizard_opens_over_the_setup_tab_and_resolves_when_it_closes() {
   await withTab(SETUP_URL, async (tab) => {
     const browser = tab.linkedBrowser;
@@ -227,4 +249,65 @@ add_task(async function import_wizard_respects_the_policy() {
     });
     Assert.equal(dialogsOver(tab.linkedBrowser).length, 0);
   });
+});
+
+add_task(async function closing_the_setup_tab_resolves_the_wizard_and_a_new_one_opens() {
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, SETUP_URL);
+  const doc = /** @type {Document} */ (tab.linkedBrowser.contentDocument);
+  await TestUtils.waitForCondition(() => doc.documentElement.dataset.ready === "true");
+  const ready = BrowserTestUtils.waitForEvent(window, "MigrationWizard:Ready");
+  const first = SetupHost.openImportWizard(tab.linkedBrowser);
+  await ready;
+  BrowserTestUtils.removeTab(tab);
+  Assert.equal(await first, "closed", "the tab's close closes the wizard");
+  await withTab(SETUP_URL, async (again) => {
+    const browser = again.linkedBrowser;
+    const readyAgain = BrowserTestUtils.waitForEvent(window, "MigrationWizard:Ready");
+    const second = SetupHost.openImportWizard(browser);
+    Assert.ok(second !== first, "a new request");
+    await readyAgain;
+    Assert.equal(dialogsOver(browser).length, 1, "opens a new wizard");
+    dialogsOver(browser)[0]._frame.contentWindow.close();
+    Assert.equal(await second, "closed");
+  });
+});
+
+add_task(async function a_wizard_that_cannot_open_is_unavailable() {
+  await withTab(SETUP_URL, async (tab) => {
+    const sandbox = sinon.createSandbox();
+    sandbox.stub(gBrowser, "getTabDialogBox").throws(new Error("no dialog box"));
+    try {
+      Assert.equal(await SetupHost.openImportWizard(tab.linkedBrowser), "unavailable");
+    } finally {
+      sandbox.restore();
+    }
+    Assert.equal(dialogsOver(tab.linkedBrowser).length, 0);
+  });
+});
+
+// The page acts on trusted keys only, and a full-control client's send-keys are trusted
+// (nsITextInputProcessor, VimmaControl's pressChords): full control can press the setup page's
+// keys, as it can any tab's (security O11). The steps that act must keep that in mind.
+add_task(async function full_control_send_keys_reach_the_setup_page() {
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.control.enabled", true]] });
+  await VimmaControl.settled();
+  const c = new Client(/** @type {number} */ (VimmaControl.port));
+  try {
+    await withTab(SETUP_URL, async (tab) => {
+      const doc = /** @type {Document} */ (tab.linkedBrowser.contentDocument);
+      Assert.equal((await c.handshake({ protocol: 2, role: "full" }))?.type, "welcome");
+      tab.linkedBrowser.focus();
+      Assert.equal(doc.documentElement.dataset.step, "welcome");
+      const sent = await c.call("send-keys", { keys: "enter" });
+      Assert.ok(sent.ok, "send-keys is answered");
+      await TestUtils.waitForCondition(
+        () => doc.documentElement.dataset.step === "addons",
+        "send-keys enter starts the setup",
+      );
+    });
+  } finally {
+    c.close();
+    await SpecialPowers.popPrefEnv();
+    await VimmaControl.settled();
+  }
 });

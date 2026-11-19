@@ -353,7 +353,8 @@ export const SetupHost = {
    * opens it (MigrationUtils.showMigrationWizard), which gives no close signal of its own; the
    * dialog box's closedPromise does (decision 17). Only over a browser showing the setup page,
    * and never where the profileImport policy forbids it (security P9). A second request while
-   * the wizard is open waits for the same dialog.
+   * the wizard is open waits for the same dialog. Closing the tab closes the wizard, which
+   * resolves it.
    * @param {MozBrowser | null} browser  the setup page's browser
    * @returns {Promise<"closed" | "unavailable">}
    */
@@ -365,16 +366,24 @@ export const SetupHost = {
     for (const win of Services.wm.getEnumerator("navigator:browser")) {
       const gBrowser = win.gBrowser;
       if (!gBrowser?.getTabForBrowser(browser)) continue;
-      const { MigrationUtils } = ChromeUtils.importESModule(
-        "moz-src:///browser/components/migration/MigrationUtils.sys.mjs",
-      );
-      const { closedPromise } = gBrowser.getTabDialogBox(browser).open(
-        WIZARD_URL,
-        { features: "resizable=no", modalType: Ci.nsIPrompt.MODAL_TYPE_CONTENT },
-        {
-          options: { entrypoint: MigrationUtils.MIGRATION_ENTRYPOINTS.FILE_MENU, tabModal: true },
-        },
-      );
+      /** @type {Promise<void>} */
+      let closedPromise;
+      try {
+        const { MigrationUtils } = ChromeUtils.importESModule(
+          "moz-src:///browser/components/migration/MigrationUtils.sys.mjs",
+        );
+        ({ closedPromise } = gBrowser.getTabDialogBox(browser).open(
+          WIZARD_URL,
+          { features: "resizable=no", modalType: Ci.nsIPrompt.MODAL_TYPE_CONTENT },
+          {
+            options: { entrypoint: MigrationUtils.MIGRATION_ENTRYPOINTS.FILE_MENU, tabModal: true },
+          },
+        ));
+      } catch (e) {
+        // A step waiting on the wizard would otherwise never move on.
+        console.error("vimma: setup cannot open the import wizard", e);
+        return Promise.resolve("unavailable");
+      }
       /** @type {Promise<"closed">} */
       const closed = closedPromise.then(() => {
         wizards.delete(browser);

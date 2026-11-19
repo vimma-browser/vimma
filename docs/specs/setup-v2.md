@@ -529,9 +529,13 @@ Firefox's test migrator in the wizard):
 - `set_default_browser_reports_a_failure`
 - `set_default_browser_respects_the_policy`
 - `set_default_browser_respects_the_locked_button_pref`
+- `set_default_browser_does_nothing_under_flatpak`
 - `import_wizard_opens_over_the_setup_tab_and_resolves_when_it_closes`
 - `import_wizard_opens_only_over_the_setup_page`
 - `import_wizard_respects_the_policy`
+- `closing_the_setup_tab_resolves_the_wizard_and_a_new_one_opens`
+- `a_wizard_that_cannot_open_is_unavailable`
+- `full_control_send_keys_reach_the_setup_page`
 
 e2e: the `setup-page` scenario gains screenshots of the welcome screen, one step, the address
 bar step and a stop screen, with the Omarchy and light themes, checked by eye for the key hints,
