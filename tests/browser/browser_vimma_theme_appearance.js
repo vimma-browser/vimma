@@ -19,7 +19,7 @@ const { OmarchyHook } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/omarchy/OmarchyHook.sys.mjs",
 );
 
-const { TOKYO_NIGHT } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/index.mjs");
+const { VIMMA_DARK } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/index.mjs");
 
 const START = "chrome://browser/content/vimma/start/start.html";
 /** The Omarchy fixture's dark_background: its status bar. */
@@ -165,7 +165,7 @@ add_task(async function theme_switches_the_builtin_palette_live_and_keeps_it() {
 add_task(async function on_omarchy_theme_keeps_the_omarchy_colours_and_says_so() {
   const dir = PathUtils.join(omarchyHome, ".local", "state", "omarchy", "current", "theme");
   await IOUtils.makeDirectory(dir, { createAncestors: true });
-  const palette = { ...TOKYO_NIGHT, dark_background: OMARCHY_BAR };
+  const palette = { ...VIMMA_DARK, dark_background: OMARCHY_BAR };
   const toml = Object.entries(palette).map(([k, v]) => `${k} = "${v}"`);
   await IOUtils.writeUTF8(PathUtils.join(dir, "colors.toml"), toml.join("\n"));
   try {

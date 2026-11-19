@@ -60,7 +60,7 @@ panes look as they do today. The border is 3 px wide, and unfocused panes are no
    3:1 where the theme's accent would not stand out against its own chrome), the colour Omarchy
    gives Kitty's active split and Hyprland's focused window border. Anywhere else it is the
    built-in palette's focus colour: mint (`#1bf587`) on vimma dark, deep green (`#056536`) on vimma
-   light, blue (`#7aa2f7`) on Tokyo Night. With the system's high-contrast setting on, it is
+   light, blue (`#7aa2f7`) on the earlier built-in palette. With the system's high-contrast setting on, it is
    Firefox's own high-contrast focus colour. (Since changed: with vimma.dev's "Aqua Split"
    palette the vimma focus colour is aqua (`#2cf5d2`) on vimma dark and deep teal (`#006659`)
    on vimma light.)

@@ -14,7 +14,7 @@ import { COMMANDS } from "../keys/cmdline.mjs";
 import { getAction } from "../keys/actions.mjs";
 import { displayBinding, formatKey, parseKey } from "../keys/keys.mjs";
 import { tomlLiteral } from "../config/toml.mjs";
-import { BUILTIN_THEMES, DEFAULT_THEME_NAME } from "../config/theme.mjs";
+import { DEFAULT_THEME_NAME } from "../config/theme.mjs";
 import { DEFAULT_HINT_CHARS } from "../page/hints.mjs";
 import { defaultKeys } from "../config/defaults.mjs";
 
@@ -192,8 +192,8 @@ const TABLE = [
           title: "Address bar",
           question: "Show the address bar and the add-on buttons?",
           text:
-            "Hidden, {keys:focus_urlbar} still opens the address bar, and {keys:toggle_toolbar} " +
-            "shows or hides it until restart.",
+            "With it hidden, {keys:focus_urlbar} still opens the address bar for typing, and " +
+            "{keys:toggle_toolbar} shows or hides the whole toolbar until restart.",
           actions: ["focus_urlbar", "toggle_toolbar"],
         },
         { table: "ui", key: "toolbar" },
@@ -402,14 +402,35 @@ export function hintRow(layouts, selected, pressed) {
 /** @param {string} key  as keysFor shows it @returns {boolean} whether it works from a page */
 const fromPage = (key) => !key.includes(" [");
 
+/** @param {string} key  as keysFor shows it (`I`, `ctrl+b u`) @returns {string} as a sequence */
+const sequenceOf = (key) =>
+  key
+    .split(" ")
+    .map((chord) => {
+      try {
+        return formatKey(parseKey(chord));
+      } catch {
+        return chord;
+      }
+    })
+    .join(" ");
+
 /**
- * The keys of `action` that work from a page (decision 8): keysFor without the bindings of
- * another mode (`I [visual]`).
+ * The keys of `action` that work from a page (decision 8, behaviour 17): keysFor without the
+ * bindings of another mode (`I [visual]`), and without a `[keys]` binding that normal mode binds
+ * to another action or unbinds (`[modal.normal] "<C-l>"`), because on a page that key no longer
+ * runs it.
  * @param {Keymap} keymap @param {string} action
  * @returns {string[]}
  */
 export function stepKeys(keymap, action) {
-  return keymap.keysFor(action).filter(fromPage);
+  const normal = new Set(
+    keymap
+      .sequences("normal")
+      .filter((s) => s.name === action)
+      .map((s) => s.seq),
+  );
+  return keymap.keysFor(action).filter((key) => fromPage(key) && normal.has(sequenceOf(key)));
 }
 
 /** @param {string} action @returns {string} the `:` command that runs it */
@@ -458,6 +479,36 @@ export function prefixHints(step, keymap, choices = step.choices) {
       .filter(fromPage)
       .map((text) => displayBinding(text, { prefix, leader: keymap.leader }));
   });
+}
+
+/** The `[ui]` keys a drawing of the window shows, with their built-in defaults. */
+const WINDOW_DEFAULTS = Object.freeze({ toolbar: "shown", tabline: "off" });
+
+/** The steps that draw the window with each choice (Page layout): chapter 3's. */
+const WINDOW_STEPS = new Set(CHAPTERS.find((c) => c.id === "window")?.steps.map((s) => s.id));
+
+/**
+ * What a step's drawing of the window shows for one choice.
+ * @typedef {object} WindowSketch
+ * @property {string} toolbar  "shown" or "hidden"
+ * @property {string} tabline  "off", "always" or "auto"
+ */
+
+/**
+ * The window a choice of a window step leaves (Page layout): the choice's own `[ui]` key over
+ * the values in force, so that each drawing shows the rest of the window as it is now. Keep
+ * draws the window in force; a step outside the window chapter draws none.
+ * @param {SetupStep} step @param {SetupChoice} choice @param {InForce} inForce
+ * @returns {WindowSketch | null}
+ */
+export function windowSketch(step, choice, inForce) {
+  if (!WINDOW_STEPS.has(step.id)) return null;
+  /** @param {keyof typeof WINDOW_DEFAULTS} key */
+  const of = (key) => {
+    const own = choice.edits.find((e) => e.table === "ui" && e.key === key);
+    return String(own?.value ?? inForce[`ui.${key}`] ?? WINDOW_DEFAULTS[key]);
+  };
+  return { toolbar: of("toolbar"), tabline: of("tabline") };
 }
 
 /**
@@ -522,15 +573,16 @@ function prefixOf(config) {
 /**
  * The colours step's choices for the effect in force (decision 12): what each choice must write
  * so that the window shows it. The choice's own key comes last. Omarchy is offered only where
- * an Omarchy theme is found; with it shown, a built-in choice also writes `source = "file"`,
- * and with a dark-only palette (`tokyo-night`), light and system also write `name = "vimma"`.
+ * an Omarchy theme is found; with it shown, a built-in choice also writes `source = "file"`.
+ * `vimma` is the only built-in palette, so a choice writes `name = "vimma"` only when another
+ * name is in force.
  * @param {SetupStep} step @param {InForce} inForce @param {boolean} omarchy  a theme is found
  * @returns {{ choices: SetupChoice[], selected: number }}
  */
 function colourChoices(step, inForce, omarchy) {
   const shown = omarchy && inForce["theme.source"] === "omarchy";
   const name = String(inForce["theme.name"] ?? DEFAULT_THEME_NAME);
-  const darkOnly = !BUILTIN_THEMES[name]?.light;
+  const otherName = name !== DEFAULT_THEME_NAME;
   /** @type {SetupChoice[]} */
   const choices = [];
   let selected = -1;
@@ -546,17 +598,15 @@ function colourChoices(step, inForce, omarchy) {
     /** @type {TomlEdit[]} */
     const edits = [];
     if (shown) edits.push({ table: "theme", key: "source", value: "file" });
-    if (darkOnly && own.value !== "dark") {
-      edits.push({ table: "theme", key: "name", value: DEFAULT_THEME_NAME });
-    }
+    if (otherName) edits.push({ table: "theme", key: "name", value: DEFAULT_THEME_NAME });
     edits.push(own);
-    if (!shown && !darkOnly && inForce["theme.appearance"] === own.value) {
+    if (!shown && !otherName && inForce["theme.appearance"] === own.value) {
       selected = choices.length;
     }
     choices.push({ label: c.label, edits });
   }
   if (selected >= 0) return { choices, selected };
-  // A dark-only palette in force is none of the choices (behaviour 9).
+  // Another name in force is none of the choices (behaviour 9).
   return {
     choices: [{ label: `Keep ${JSON.stringify(name)}`, edits: [], keep: true }, ...choices],
     selected: 0,

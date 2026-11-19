@@ -383,3 +383,88 @@ input {
   outline-offset: 0;
   border-radius: var(--vimma-radius, 0);
 }
+
+/* The window chapter's drawings (setup-v2 "Page layout"): a small window per choice, square as
+   every Vimma surface, its rows in the theme's colours. Rows the window does not have are not
+   drawn, so the page grows into their place as it does in the window. */
+.list .window {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 11rem;
+  height: 6.5rem;
+  margin-top: 0.5rem;
+  padding: 2px;
+  box-sizing: border-box;
+  border: 1px solid var(--vimma-muted, #3b4252);
+  border-radius: var(--vimma-radius, 0);
+  background: var(--vimma-bg-dark, #04090a);
+}
+
+.window > div,
+.window span {
+  border-radius: var(--vimma-radius, 0);
+}
+
+.window .w-tabline,
+.window .w-toolbar {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  flex: none;
+  height: 0.7rem;
+}
+
+.window .w-tab {
+  width: 2.2rem;
+  height: 100%;
+  background: var(--vimma-fg-dim, #9197b2);
+}
+
+.window .w-tab.current {
+  background: var(--vimma-text-accent, #2cf5d2);
+}
+
+/* The toolbar row is what tells the address bar's two drawings apart: fg-dim on bg-dark keeps it
+   well above 3:1 in the built-in palettes, where muted is about 2:1. */
+.window .w-toolbar {
+  padding: 0 3px;
+  background: var(--vimma-fg-dim, #9197b2);
+}
+
+.window .w-buttons {
+  width: 1.4rem;
+  height: 0.3rem;
+  background: var(--vimma-bg-dark, #04090a);
+}
+
+.window .w-url {
+  flex: 1;
+  height: 0.45rem;
+  background: var(--vimma-bg, #071011);
+}
+
+.window .w-page {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  padding: 5px;
+  background: var(--vimma-bg, #071011);
+}
+
+.window .w-line {
+  height: 0.25rem;
+  width: 80%;
+  background: var(--vimma-muted, #3b4252);
+}
+
+.window .w-line.short {
+  width: 50%;
+}
+
+.window .w-status {
+  flex: none;
+  height: 0.45rem;
+  background: var(--vimma-mode-normal, #2cf5d2);
+}
