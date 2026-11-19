@@ -1,5 +1,5 @@
-// Fuzzing config.toml: smol-toml's parse, Vimma's schema validation, migrations and the line
-// locator (config.mjs, toml.mjs). Spec: docs/specs/m7-fuzzing.md.
+// Fuzzing config.toml: smol-toml's parse, Vimma's validation and the line locator (config.mjs,
+// toml.mjs). Spec: docs/specs/m7-fuzzing.md.
 import { describe, expect, test } from "vitest";
 import fc from "fast-check";
 import {
@@ -7,7 +7,6 @@ import {
   CONTAINER_ICONS,
   MAX_WORKSPACE_NAME,
   appendRouteText,
-  migrate,
   parseConfig,
   reloadConfig,
 } from "../../src/config/config.mjs";
@@ -306,24 +305,6 @@ describe("config.toml fuzzing", () => {
           },
         ),
         { weight: 3 },
-      ),
-    FUZZ_TIMEOUT,
-  );
-
-  test(
-    "migrations never change their input",
-    () =>
-      fuzz(
-        "config-migrate-pure",
-        fc.property(
-          fc.dictionary(nastyString, fc.jsonValue({ maxDepth: 2 })),
-          fc.nat(2),
-          (raw, from) => {
-            const before = structuredClone(raw);
-            migrate(Object.freeze(raw), from);
-            expect(raw).toEqual(before);
-          },
-        ),
       ),
     FUZZ_TIMEOUT,
   );

@@ -12,7 +12,8 @@ import {
 
 import type { ResolvedConfig } from "../src/config/config.mjs";
 
-const v2 = (...lines: string[]) => ["schema = 2", ...lines].join("\n") + "\n";
+// A config.toml whose first line is a comment, so errors are on the lines they always were.
+const cfg = (...lines: string[]) => ["# config.toml", ...lines].join("\n") + "\n";
 
 function ok(text: string) {
   const r = parseConfig(text);
@@ -36,17 +37,17 @@ const RANGE = "must be an integer between 1 and 2000 (CSS pixels)";
 describe("[scroll] step", () => {
   test("defaults to 60 CSS pixels, Vimium's scrollStepSize, in 1 to 2000", () => {
     expect([SCROLL_STEP_DEFAULT, SCROLL_STEP_MIN, SCROLL_STEP_MAX]).toEqual([60, 1, 2000]);
-    expect(ok(v2()).scroll).toEqual({ step: 60 });
+    expect(ok(cfg()).scroll).toEqual({ step: 60 });
     expect(DEFAULT_CONFIG.scroll).toEqual({ step: 60 });
     expect(formatDefaultsToml()).toMatch(/^\[scroll\]\n(#.*\n)*step = 60$/m);
   });
 
   test.each([[1], [120], [2000]])("step = %i is accepted", (n) => {
-    expect(ok(v2("[scroll]", `step = ${n}`)).scroll.step).toBe(n);
+    expect(ok(cfg("[scroll]", `step = ${n}`)).scroll.step).toBe(n);
   });
 
   test.each([["0"], ["2001"], ["-60"]])("step = %s is out of range", (v) => {
-    expect(errors(v2("[scroll]", `step = ${v}`))).toEqual([
+    expect(errors(cfg("[scroll]", `step = ${v}`))).toEqual([
       { line: 3, path: "scroll.step", message: RANGE },
     ]);
   });
@@ -56,25 +57,19 @@ describe("[scroll] step", () => {
     ['"60"', "expected an integer, got a string"],
     ["true", "expected an integer, got a boolean"],
   ])("step = %s is not an integer", (v, message) => {
-    expect(errors(v2("[scroll]", `step = ${v}`))).toEqual([
+    expect(errors(cfg("[scroll]", `step = ${v}`))).toEqual([
       { line: 3, path: "scroll.step", message },
     ]);
   });
 
   test("an unknown key is an error, with the nearest name", () => {
-    expect(errors(v2("[scroll]", "steps = 80"))).toEqual([
+    expect(errors(cfg("[scroll]", "steps = 80"))).toEqual([
       { line: 3, path: "scroll.steps", message: 'unknown key "steps"', suggestion: "step" },
     ]);
   });
 
-  test("is new in schema 2", () => {
-    expect(errors("schema = 1\n[scroll]\nstep = 80\n")).toEqual([
-      {
-        line: 2,
-        path: "scroll",
-        message: "is new in schema 2: put schema = 2 at the top of the file",
-      },
-    ]);
+  test("is valid in a schema-1 file too", () => {
+    expect(parseConfig("schema = 1\n[scroll]\nstep = 80\n").errors).toEqual([]);
   });
 });
 
