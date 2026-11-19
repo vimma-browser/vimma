@@ -1018,6 +1018,25 @@ add_task(async function test_limits() {
   flood.forEach((c) => c.close());
   await TestUtils.waitForCondition(() => VimmaControl.waiting === 0, "flood closed");
 
+  // A new connection evicts the oldest waiting one that has sent nothing: a connection that has
+  // sent part of a line outlasts two silent ones that came after it (#1344).
+  const silent0 = new Client(port);
+  await TestUtils.waitForCondition(() => VimmaControl.waiting === 1, "the silent one waits");
+  const spoken = new Client(port);
+  await spoken.writeRaw("{");
+  await TestUtils.waitForCondition(() => VimmaControl.waiting === 2, "the speaking one waits");
+  const silent1 = new Client(port);
+  await silent0.heard();
+  const silent2 = new Client(port);
+  await silent1.heard();
+  for (const [name, c] of Object.entries({ silent0, silent1 })) {
+    Assert.equal(JSON.parse(c.lines[0] ?? "null")?.error?.code, "busy", `${name}: busy`);
+  }
+  Assert.equal(spoken.lines.length, 0, "the one that spoke is not evicted");
+  Assert.equal(spoken.closedWith, null, "and still open");
+  [silent0, spoken, silent1, silent2].forEach((c) => c.close());
+  await TestUtils.waitForCondition(() => VimmaControl.waiting === 0, "all closed");
+
   // An oversized line: an error, then a close, without waiting for its newline.
   const big = await session();
   const oversized = big.writeRaw("x".repeat(MAX_LINE_LENGTH + 2));
