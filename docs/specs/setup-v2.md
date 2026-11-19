@@ -556,9 +556,10 @@ setup on for every user.
    session; stops at ready.
 7. **Turn it on** (#1298): remove `vimma.feature.setupV2` and the summary flow, A1's summary
    path, rewrite the guide section, e2e baselines, the "Since changed" note in
-   first-run-setup, status `implemented` once slice 8 has merged too; stops at ready.
-8. **The tab line step** (#1299): the tab line step of chapter 3, with its window drawing; it
-   ships in the same release as the rest (decision 15).
+   first-run-setup, status `implemented`; it merges after slice 8, so that no release has
+   the new setup without the tab line step (decision 15); stops at ready.
+8. **The tab line step** (#1299): the tab line step of chapter 3, with its window drawing,
+   behind the feature pref; it merges before slice 7 (decision 15).
 
 ## Open questions
 
