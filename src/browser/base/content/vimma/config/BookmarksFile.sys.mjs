@@ -119,9 +119,11 @@ function sha256(text) {
  * question showed, `asked` what the run read when it asked; `vimma` is the run after one of
  * Vimma's own edits (D18), `adopted` what a takeover wrote to the file before this run (D7).
  * `outside` is the number of removals from the file a `y` to Behaviour 13's question approved;
- * `putBack`, its `n`: this run writes nothing and puts Places back from the file.
+ * `putBack`, its `n`: this run writes nothing and puts Places back from the file. `retried`: the
+ * run after one whose apply failed (a second failure pauses).
  * @typedef {{ trigger: "start" | "file" | "config" | "places" | "vimma", approved?: number,
- *   asked?: string, adopted?: string, outside?: number, putBack?: boolean }} RunHow
+ *   asked?: string, adopted?: string, outside?: number, putBack?: boolean,
+ *   retried?: boolean }} RunHow
  */
 
 /**
@@ -887,13 +889,27 @@ export class BookmarksFileImpl {
     // D5: the closing compare, against what this run made (and Sync racing an apply: one more
     // try from the new state). What landed meanwhile is an outside change, asked about like any.
     const again = await plan(next, null);
-    if (again.ask) {
+    // Under "all", what landed during the apply is an outside change to write, never one to put
+    // back (which would delete a bookmark just made): the next run merges it. After an apply that
+    // failed part way the base stays what the merge saved, so what did land reads as agreement in
+    // that run, not as removals from the file; a second failure in a row pauses. One rerun in a
+    // row at most: a plan that never settles cannot keep the queue busy.
+    const merging = !!outside && !outside.putBack;
+    const rerun = merging && !how.retried && (failed || again.ops.length > 0 || again.ask !== null);
+    if (merging && failed && how.retried) {
+      console.error("vimma: bookmarks.toml apply failed twice; paused");
+      this.paused = { why: "failed", input: "" };
+      this.follow(base);
+      this.say(`${BOOKMARKS_FILE}: bookmarks could not be applied; paused until a change`);
+      return;
+    }
+    if (!rerun && again.ask) {
       this.paused = { why: "declined", input };
       await this.saveBase(next);
       this.question(again.ask, again.removing, input);
       return;
     }
-    if (again.ops.length) {
+    if (!rerun && again.ops.length) {
       try {
         await this.apply(again.ops);
       } catch (e) {
@@ -906,19 +922,27 @@ export class BookmarksFileImpl {
         }
       }
     }
-    const touched = new Set([...p.touched, ...again.touched]);
-    const putBack = [...p.ops, ...again.ops];
-    p = { ...again, removed: [...p.removed, ...again.removed], skipped: p.skipped };
+    const touched = new Set(rerun ? p.touched : [...p.touched, ...again.touched]);
+    const putBack = rerun ? p.ops : [...p.ops, ...again.ops];
+    if (!rerun) p = { ...again, removed: [...p.removed, ...again.removed], skipped: p.skipped };
     this.paused = null;
-    const saved = { ...next, tables: again.base.tables };
+    /** @type {Base | null} */
+    const saved = rerun && failed ? base : rerun ? next : { ...next, tables: again.base.tables };
     /** @type {string | null} */
     let holdSaid = null;
     if (outside && !outside.putBack) {
       holdSaid = this.guardItems(outside.merge.putBack, r.warnings, content);
     } else if (how.trigger === "places" && !outside) {
-      holdSaid = this.guard(putBack, base, saved, r.warnings, content, eventTables);
+      holdSaid = this.guard(
+        putBack,
+        base,
+        /** @type {Base} */ (saved),
+        r.warnings,
+        content,
+        eventTables,
+      );
     }
-    await this.saveBase(source === null && !saved.tables.length ? null : saved);
+    await this.saveBase(source === null && !saved?.tables.length ? null : saved);
     // What a private window touched is now in the base's `local` list, or put back.
     for (const g of privateSeen) {
       this.privateAdded.delete(g);
@@ -938,6 +962,7 @@ export class BookmarksFileImpl {
       outside,
       privateSeen.length > 0,
     );
+    if (rerun) this.enqueue({ trigger: "places", retried: failed });
   }
 
   /**

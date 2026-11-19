@@ -439,6 +439,44 @@ add_task(async function the_loop_guard_holds_across_two_simulated_devices() {
   await reset();
 });
 
+add_task(async function a_library_change_during_an_apply_is_written_not_put_back() {
+  // D5's closing compare under "all": what lands while the mirror applies a file edit is an
+  // outside change like any other, written by the next run, never removed.
+  await IOUtils.writeUTF8(bookmarksFile, '[bookmarks.work]\n"a" = "https://example.com/a"\n');
+  await untilFolder("work", ["a https://example.com/a"], "loaded");
+  const apply = mirror.apply.bind(mirror);
+  let once = true;
+  mirror.apply = async (/** @type {Parameters<typeof apply>[0]} */ ops) => {
+    await apply(ops);
+    if (once && ops.length) {
+      once = false;
+      await PlacesUtils.bookmarks.insert({
+        parentGuid: /** @type {Node} */ (await topFolder("work")).guid,
+        url: "https://example.com/during",
+        title: "during",
+      });
+    }
+  };
+  try {
+    await IOUtils.writeUTF8(
+      bookmarksFile,
+      '[bookmarks.work]\n"a" = "https://example.com/a"\n"b" = "https://example.com/b"\n',
+    );
+    await untilText(
+      '[bookmarks.work]\n"a" = "https://example.com/a"\n"b" = "https://example.com/b"\n"during" = "https://example.com/during"\n',
+      "the change made during the apply is written",
+    );
+  } finally {
+    mirror.apply = apply;
+  }
+  await untilFolder(
+    "work",
+    ["a https://example.com/a", "b https://example.com/b", "during https://example.com/during"],
+    "and kept in Places",
+  );
+  await reset();
+});
+
 add_task(async function a_renamed_or_deleted_workspace_folder_follows_write_back_all() {
   await IOUtils.writeUTF8(
     bookmarksFile,
