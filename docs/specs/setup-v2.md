@@ -388,6 +388,16 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     not make, "on" shows `:mcp on`'s warning that agents will read it. Reason: two ways to turn
     agents on that check different things would leave the weaker one as the way around the
     other, and a hold that a setup page could lift silently would undo decision 16.
+    Decided for the two cases the behaviours above leave open:
+    - **"Off" under the hold, with `[mcp] enabled = true` in the file, writes nothing** and
+      keeps its note that agents come back at the next start, because plain `enter` through
+      every step must leave the file unchanged (behaviour 8), and the note tells the user that
+      the file, not the step, decides at the next start. Rejected: writing `enabled = false`,
+      because a plain `enter` would then change a file the user set by hand.
+    - **"On" without an agent workspace is refused**, with nothing written, as `:mcp on`
+      refuses it, because the step's consent checks what that yes checks (above). Rejected:
+      writing `enabled = true` anyway, because the step would then turn agents on in a way
+      `:mcp on` cannot.
 
 ### Page layout
 
