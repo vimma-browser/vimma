@@ -298,6 +298,8 @@ async function enterThrough(/** @type {Document} */ doc, /** @type {MozTabbrowse
   await press(doc, "KEY_Enter");
   await atStep(doc, "address_bar");
   await press(doc, "KEY_Enter");
+  await atStep(doc, "tab_line");
+  await press(doc, "KEY_Enter");
   await atStep(doc, "stop");
   const closed = BrowserTestUtils.waitForTabClosing(tab);
   await press(doc, "KEY_Enter");
@@ -311,7 +313,7 @@ add_task(async function enter_through_every_step_leaves_config_toml_unchanged() 
   Assert.ok(!(await IOUtils.exists(configFile())), "no file created");
   await closeFlow(tab);
   // A file of the user's, without an Omarchy theme and then with one.
-  const text = '# mine\nschema = 2\n\n[ui]\ntoolbar = "shown" # why\n';
+  const text = '# mine\nschema = 2\n\n[ui]\ntoolbar = "shown" # why\ntabline = "auto"\n';
   const omarchy = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-omarchy");
   /** @type {[string, string][][]} */
   const runs = [
@@ -339,6 +341,9 @@ add_task(async function enter_through_every_step_leaves_config_toml_unchanged() 
     await press(doc, "KEY_Enter");
     await atStep(doc, "address_bar");
     Assert.equal(current(doc), "Shown", "the toolbar in force is selected");
+    await press(doc, "KEY_Enter");
+    await atStep(doc, "tab_line");
+    Assert.equal(current(doc), "Only with two or more tabs", "the tab line in force is selected");
     await press(doc, "KEY_Enter");
     await atStep(doc, "stop");
     Assert.equal(await IOUtils.readUTF8(configFile()), text, "byte for byte");
@@ -752,7 +757,7 @@ add_task(async function address_bar_step_writes_toolbar_and_applies_live() {
   await press(doc, "j");
   Assert.equal(writes(doc), 'Writes [ui] toolbar = "hidden"');
   await press(doc, "KEY_Enter");
-  await atStep(doc, "stop");
+  await atStep(doc, "tab_line");
   // A missing file is written as the commented template with the one key set, and nothing else.
   const { setConfigKeysText } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/core/config.mjs",
@@ -778,11 +783,85 @@ add_task(async function address_bar_step_writes_toolbar_and_applies_live() {
   Assert.equal(writes(doc), "Writes nothing");
   const before = await IOUtils.readUTF8(configFile());
   await press(doc, "KEY_Enter");
-  await atStep(doc, "stop");
+  await atStep(doc, "tab_line");
   Assert.equal(await IOUtils.readUTF8(configFile()), before, "nothing written");
   await closeFlow(tab);
   await TestUtils.waitForCondition(
     () => !Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", false),
     "the toolbar is back once the file is gone",
   );
+});
+
+/** @param {Document} doc @returns {[string | undefined, number][]} each drawing's tab line */
+const drawnTabLines = (doc) =>
+  [...doc.querySelectorAll("#v2-choices li .window")].map((w) => [
+    /** @type {HTMLElement} */ (w).dataset.tabline,
+    w.querySelectorAll(".w-tab").length,
+  ]);
+/** Whether this window draws the tab line now. */
+const tabLineShown = () => document.documentElement.hasAttribute("vimma-tabline");
+
+add_task(async function tab_line_step_writes_tabline_and_applies_live() {
+  // A failed assertion must not leave the tab line drawn for the tasks after it.
+  registerCleanupFunction(removeConfig);
+  const { tab, doc } = await openFlow();
+  await toAddressBar(doc);
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "tab_line");
+  Assert.ok(found(doc.getElementById("v2-place")).textContent.includes("step 2 of 2"));
+  Assert.deepEqual(
+    [...doc.querySelectorAll("#v2-choices li .name")].map((n) => n.textContent),
+    ["Off", "Always", "Only with two or more tabs"],
+  );
+  // Always draws the line over a single tab, the third choice only once there are two.
+  Assert.deepEqual(drawnTabLines(doc), [
+    ["off", 0],
+    ["always", 1],
+    ["auto", 2],
+  ]);
+  Assert.ok(
+    [...doc.querySelectorAll("#v2-text code")].some((c) => c.textContent === ":tabline"),
+    "toggle_tabline has no default key: named by its command",
+  );
+  Assert.equal(current(doc), "Off", "off is in force without the key");
+  Assert.equal(writes(doc), "Writes nothing");
+  Assert.ok(!tabLineShown(), "no tab line yet");
+  const { setConfigKeysText } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/core/config.mjs",
+  );
+  /** Picks the choice `keys` reach, enters it, and checks the whole file and the window. */
+  const choose = async (/** @type {string[]} */ keys, /** @type {string} */ value) => {
+    await press(doc, ...keys);
+    Assert.equal(writes(doc), `Writes [ui] tabline = ${JSON.stringify(value)}`);
+    await press(doc, "KEY_Enter");
+    await atStep(doc, "stop");
+    // The commented template with only [ui] tabline set, whatever the earlier choice wrote.
+    const only = setConfigKeysText(null, [{ table: "ui", key: "tabline", value }], {
+      mac: AppConstants.platform === "macosx",
+    });
+    Assert.equal(
+      await IOUtils.readUTF8(configFile()),
+      ("text" in only && only.text) || "",
+      `[ui] tabline = ${value} only`,
+    );
+    // Two tabs are open (the first one and the setup page), so auto draws the line too.
+    await TestUtils.waitForCondition(
+      () => tabLineShown() === (value !== "off"),
+      `the tab line follows ${value} at once`,
+    );
+    await press(doc, "h");
+    await atStep(doc, "tab_line");
+  };
+  await choose(["j"], "always");
+  Assert.equal(current(doc), "Always", "back opens on the value in force");
+  await choose(["j"], "auto");
+  await choose(["k", "k"], "off");
+  // Off is in force now: enter on it writes nothing.
+  Assert.equal(current(doc), "Off");
+  Assert.equal(writes(doc), "Writes nothing");
+  const before = await IOUtils.readUTF8(configFile());
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.equal(await IOUtils.readUTF8(configFile()), before, "nothing written");
+  await closeFlow(tab);
 });
