@@ -739,7 +739,16 @@ add_task(async function page_text_with_markup_stays_text() {
   await resultsSettle(2);
   Assert.equal(closedTitle(rows()[0]), markup, "a closed title shows as text");
   const body = /** @type {Element} */ (shownDialog().querySelector(".vimma-grep-preview-body"));
-  await until(() => body.textContent.includes(markup), "the closed tab's preview");
+  // The preview fits the title to its width as it does a line (#1274), cut on the left so the
+  // match stays in view: the title here only just fits the default window (#858). Whatever it
+  // shows of the title is text, markup included.
+  const shownTitle = () =>
+    (body.querySelector(".vimma-grep-preview-match")?.textContent ?? "").replace(/^…|…$/g, "");
+  await until(() => shownTitle().includes("markneedle"), "the closed tab's preview");
+  Assert.ok(
+    markup.includes(shownTitle()) && shownTitle().includes("</i> markneedle"),
+    `the closed title shows as text: ${shownTitle()}`,
+  );
   Assert.equal(
     shownDialog().querySelectorAll("img, b, i").length,
     0,
