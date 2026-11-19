@@ -427,14 +427,14 @@ describe("colours: the effect in force (decision 12)", () => {
   test("the Omarchy choice is listed only where an Omarchy theme is found", () => {
     expect(labels(stepChoices(colours, inForce("schema = 2\n"), { omarchy: true }))).toEqual([
       "The Omarchy theme",
-      "Light",
-      "Dark",
-      "Follow the system",
+      "Vimma light",
+      "Vimma dark",
+      "Vimma, following the system",
     ]);
     expect(labels(stepChoices(colours, inForce("schema = 2\n"), { omarchy: false }))).toEqual([
-      "Light",
-      "Dark",
-      "Follow the system",
+      "Vimma light",
+      "Vimma dark",
+      "Vimma, following the system",
     ]);
   });
 
@@ -443,37 +443,37 @@ describe("colours: the effect in force (decision 12)", () => {
     expect(shown.choices[shown.selected]?.label).toBe("The Omarchy theme");
     expect(writes("schema = 2\n", "The Omarchy theme", true)).toEqual([]);
     const builtin = stepChoices(colours, inForce("schema = 2\n"), { omarchy: false });
-    expect(builtin.choices[builtin.selected]?.label).toBe("Follow the system");
-    expect(writes("schema = 2\n", "Follow the system", false)).toEqual([]);
+    expect(builtin.choices[builtin.selected]?.label).toBe("Vimma, following the system");
+    expect(writes("schema = 2\n", "Vimma, following the system", false)).toEqual([]);
     // :theme's appearance is in force without the key, and choosing it writes nothing.
     const dark = stepChoices(colours, inForce("schema = 2\n", { appearance: "dark" }), {
       omarchy: false,
     });
-    expect(dark.choices[dark.selected]?.label).toBe("Dark");
-    expect(writes("schema = 2\n", "Dark", false, { appearance: "dark" })).toEqual([]);
+    expect(dark.choices[dark.selected]?.label).toBe("Vimma dark");
+    expect(writes("schema = 2\n", "Vimma dark", false, { appearance: "dark" })).toEqual([]);
     // Omarchy found but turned off in the file: the built-in palette is the effect.
     const off = 'schema = 2\n[theme]\nsource = "file"\nappearance = "light"\n';
     const r = stepChoices(colours, inForce(off), { omarchy: true });
-    expect(r.choices[r.selected]?.label).toBe("Light");
-    expect(writes(off, "Light", true)).toEqual([]);
+    expect(r.choices[r.selected]?.label).toBe("Vimma light");
+    expect(writes(off, "Vimma light", true)).toEqual([]);
     expect(writes(off, "The Omarchy theme", true)).toEqual([
       { table: "theme", key: "source", value: "omarchy" },
     ]);
   });
 
   test("colours: light without an Omarchy theme writes appearance only", () => {
-    expect(writes("schema = 2\n", "Light", false)).toEqual([
+    expect(writes("schema = 2\n", "Vimma light", false)).toEqual([
       { table: "theme", key: "appearance", value: "light" },
     ]);
   });
 
   test("colours: light with an Omarchy theme writes source and appearance", () => {
-    expect(writes("schema = 2\n", "Light", true)).toEqual([
+    expect(writes("schema = 2\n", "Vimma light", true)).toEqual([
       { table: "theme", key: "source", value: "file" },
       { table: "theme", key: "appearance", value: "light" },
     ]);
     // The appearance :theme set is already light: only the source changes the effect.
-    expect(writes("schema = 2\n", "Light", true, { appearance: "light" })).toEqual([
+    expect(writes("schema = 2\n", "Vimma light", true, { appearance: "light" })).toEqual([
       { table: "theme", key: "source", value: "file" },
     ]);
   });
@@ -484,11 +484,11 @@ describe("colours: the effect in force (decision 12)", () => {
     const removed = 'schema = 2\n[theme]\nname = "tokyo-night"\nappearance = "dark"\n';
     const r = stepChoices(colours, inForce(removed), { omarchy: false });
     expect(r.choices.some((c) => c.keep)).toBe(false);
-    expect(r.choices[r.selected]?.label).toBe("Dark");
-    expect(writes(removed, "Light", false)).toEqual([
+    expect(r.choices[r.selected]?.label).toBe("Vimma dark");
+    expect(writes(removed, "Vimma light", false)).toEqual([
       { table: "theme", key: "appearance", value: "light" },
     ]);
-    expect(writes(removed, "Dark", false)).toEqual([]);
+    expect(writes(removed, "Vimma dark", false)).toEqual([]);
   });
 
   test('colours: another name in force is kept, and a choice also writes name = "vimma"', () => {
@@ -497,7 +497,7 @@ describe("colours: the effect in force (decision 12)", () => {
     expect(r.choices[0]).toMatchObject({ label: 'Keep "other"', keep: true });
     expect(r.selected).toBe(0);
     expect(planAtEnter(colours, r.choices[0]!, other, { omarchy: false })).toEqual([]);
-    const light = r.choices.find((c) => c.label === "Light")!;
+    const light = r.choices.find((c) => c.label === "Vimma light")!;
     expect(planAtEnter(colours, light, other, { omarchy: false })).toEqual([
       { table: "theme", key: "name", value: "vimma" },
       { table: "theme", key: "appearance", value: "light" },
@@ -520,7 +520,7 @@ describe("colours: the effect in force (decision 12)", () => {
 
   test("a choice judged at enter uses the file then, not the one the step opened on", () => {
     const opened = stepChoices(colours, inForce("schema = 2\n"), { omarchy: false });
-    const light = opened.choices.find((c) => c.label === "Light")!;
+    const light = opened.choices.find((c) => c.label === "Vimma light")!;
     // Set to light by hand while the step was open: enter writes nothing.
     const now = inForce('schema = 2\n[theme]\nappearance = "light"\n');
     expect(planAtEnter(colours, light, now, { omarchy: false })).toEqual([]);

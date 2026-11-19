@@ -372,6 +372,103 @@ code {
   margin-top: 0.6rem;
 }
 
+/* Setup v2's steps and stop screens (setup-v2 "Page layout"): every one starts at the same
+   height, its progress line and question a fixed distance from the top whatever its list holds,
+   and the footer sits at the bottom of the window. A long list scrolls in its own box, under a
+   header that stays put and above the footer. The welcome screen stays centred. */
+:root[data-screen="step"] body,
+:root[data-screen="stop"] body {
+  box-sizing: border-box;
+  height: 100vh;
+  min-height: 24rem;
+  grid-template-rows: minmax(0, 1fr) auto;
+  place-items: stretch center;
+}
+
+/* Overflow: the lists shrink first, down to about two and a half rows; a window too short for
+   that scrolls the step itself, header and all, so nothing reaches under the footer. Below 24rem
+   the page scrolls too, the footer at 24rem. A short window (a small laptop, a half-height tile)
+   gives the top's space and some of the drawings' to the list. */
+:root[data-screen="step"] .step,
+:root[data-screen="stop"] .step {
+  box-sizing: border-box;
+  min-height: 0;
+  padding: clamp(1.5rem, 9vh, 5rem) 0 1rem;
+  overflow-y: auto;
+}
+
+/* A window under 40rem (640 px high, such as 800x600) tightens the spacing, so the content
+   blocker keeps two and a half add-ons in view without the step scrolling. */
+@media (max-height: 40rem) {
+  :root[data-screen="step"] .step,
+  :root[data-screen="stop"] .step {
+    gap: 0.6rem;
+    padding: 0.75rem 0 0.5rem;
+  }
+
+  :root[data-screen="step"] #v2-blocker {
+    gap: 0.4rem;
+  }
+
+  :root[data-screen="step"] .flow-footer,
+  :root[data-screen="stop"] .flow-footer {
+    padding-bottom: 1rem;
+  }
+
+  :root[data-screen="step"] .flow-footer .keys,
+  :root[data-screen="stop"] .flow-footer .keys {
+    margin-top: 0.3rem;
+  }
+}
+
+#v2-stop h1 {
+  margin-top: 0;
+}
+
+.step,
+.step .list,
+#v2-stop-saved {
+  scrollbar-width: thin;
+  scrollbar-color: var(--vimma-muted, #3b4252) transparent;
+}
+
+.step > *,
+#v2-blocker > * {
+  flex: none;
+}
+
+#v2-blocker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-height: 0;
+}
+
+#v2-blocker,
+#v2-choices,
+#v2-addons,
+#v2-stop-saved {
+  flex: 0 1 auto;
+}
+
+#v2-choices,
+#v2-addons,
+#v2-stop-saved {
+  min-height: 3rem;
+  overflow-y: auto;
+}
+
+/* About two and a half rows at the least, so a list that scrolls shows there is more: an add-on
+   row is about 3.7rem high, a choice 2.5rem. Lists of two rows or fewer keep 3rem, so a short
+   one never gains empty space. */
+#v2-addons:has(> li:nth-child(3)) {
+  min-height: 10rem;
+}
+
+#v2-choices:has(> li:nth-child(3)) {
+  min-height: 6.5rem;
+}
+
 /* The prefix step's key under each prefix (setup-v2 behaviour 25). */
 .list .hint {
   color: var(--vimma-fg-dim, #9197b2);
@@ -417,6 +514,16 @@ input {
   border: 1px solid var(--vimma-muted, #3b4252);
   border-radius: var(--vimma-radius, 0);
   background: var(--vimma-bg-dark, #04090a);
+}
+
+/* A short window (setup-v2 "Page layout") draws them smaller, so both of the address bar's fit
+   at 800x600. */
+@media (max-height: 40rem) {
+  .list .window {
+    width: 8.5rem;
+    height: 4.25rem;
+    margin-top: 0.3rem;
+  }
 }
 
 .window > div,

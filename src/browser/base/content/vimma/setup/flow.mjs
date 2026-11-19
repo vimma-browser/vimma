@@ -305,6 +305,8 @@ function drawChoices(v) {
       return li;
     }),
   );
+  // A list longer than the window scrolls in its own box (Page layout): keep the cursor in it.
+  $("v2-choices").querySelector("[aria-current]")?.scrollIntoView({ block: "nearest" });
   const choice = v.choices[state.cursor];
   // editLines says "Writes nothing" for Keep or the value in force (behaviour 12).
   const nothing = !choice || choice.lines[0] === "Writes nothing";
@@ -462,10 +464,22 @@ function drawStop() {
   $("v2-done").hidden = state.done;
 }
 
+/** The chapter and screen last drawn, to know when a new one opens. */
+let drawn = "";
+
 function draw() {
   root.dataset.screen = state.screen;
   $("welcome").hidden = true;
-  root.dataset.step = state.screen === "step" ? (flowStep(state)?.id ?? "") : state.screen;
+  const shown = state.screen === "step" ? (flowStep(state)?.id ?? "") : state.screen;
+  // The boxes are the same on every screen: a new one opens at its top (Page layout).
+  const key = `${state.chapter} ${shown}`;
+  if (key !== drawn) {
+    drawn = key;
+    for (const id of ["v2-step", "v2-choices", "v2-addons", "v2-stop", "v2-stop-saved"]) {
+      $(id).scrollTop = 0;
+    }
+  }
+  root.dataset.step = shown;
   $("v2-welcome").hidden = state.screen !== "welcome";
   $("v2-step").hidden = state.screen !== "step";
   $("v2-stop").hidden = state.screen !== "stop";

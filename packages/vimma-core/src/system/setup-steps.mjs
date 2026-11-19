@@ -152,10 +152,10 @@ const TABLE = [
             label: "The Omarchy theme",
             edits: [{ table: "theme", key: "source", value: "omarchy" }],
           },
-          { label: "Light", edits: [{ table: "theme", key: "appearance", value: "light" }] },
-          { label: "Dark", edits: [{ table: "theme", key: "appearance", value: "dark" }] },
+          { label: "Vimma light", edits: [{ table: "theme", key: "appearance", value: "light" }] },
+          { label: "Vimma dark", edits: [{ table: "theme", key: "appearance", value: "dark" }] },
           {
-            label: "Follow the system",
+            label: "Vimma, following the system",
             edits: [{ table: "theme", key: "appearance", value: "system" }],
           },
         ],

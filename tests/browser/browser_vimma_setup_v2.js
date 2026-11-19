@@ -298,7 +298,7 @@ add_task(async function enter_on_a_step_writes_its_key_and_applies_live() {
   await TestUtils.waitForCondition(async () => (await SearchService.getDefault()).name === name);
   Assert.ok(found(doc.getElementById("v2-last")).textContent.includes("[search] default"));
   // No Omarchy theme: light, dark, follow the system; the last is in force.
-  Assert.equal(current(doc), "Follow the system");
+  Assert.equal(current(doc), "Vimma, following the system");
   await press(doc, "k", "k");
   Assert.equal(writes(doc), 'Writes [theme] appearance = "light"');
   await press(doc, "KEY_Enter");
@@ -422,7 +422,7 @@ add_task(async function enter_through_every_step_leaves_config_toml_unchanged() 
     await atStep(doc, "colours");
     Assert.equal(
       current(doc),
-      prefs.length ? "The Omarchy theme" : "Follow the system",
+      prefs.length ? "The Omarchy theme" : "Vimma, following the system",
       "the effect in force is selected",
     );
     await press(doc, "KEY_Enter");
@@ -1377,6 +1377,147 @@ add_task(async function address_bar_step_writes_toolbar_and_applies_live() {
     () => !Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", false),
     "the toolbar is back once the file is gone",
   );
+});
+
+/** @param {Element | null} e */
+const rectOf = (e) => found(e).getBoundingClientRect();
+
+/**
+ * Resizes the window to `w`×`h` and waits for the page to see a new size.
+ * @param {Document} doc @param {number} w @param {number} h
+ */
+async function resizeWindow(doc, w, h) {
+  const view = found(doc.defaultView);
+  const was = `${view.innerWidth}x${view.innerHeight}`;
+  window.resizeTo(w, h);
+  await TestUtils.waitForCondition(
+    () => `${view.innerWidth}x${view.innerHeight}` !== was,
+    `the page is resized to ${w}x${h}`,
+  );
+  await TestUtils.waitForTick();
+}
+
+/**
+ * The page's footer stays below the list it follows and inside the window (setup-v2 "Page
+ * layout"); a window too short for the step scrolls the step, not under the footer.
+ * @param {Document} doc @param {string} list  the list's id @param {string} what
+ */
+function assertFooterClear(doc, list, what) {
+  const footer = rectOf(doc.getElementById("v2-footer"));
+  const items = rectOf(doc.getElementById(list));
+  Assert.greaterOrEqual(
+    Math.round(footer.top),
+    Math.round(items.bottom),
+    `${what}: the footer (top ${footer.top}) does not overlap the list (bottom ${items.bottom})`,
+  );
+  Assert.lessOrEqual(
+    Math.round(footer.bottom),
+    found(doc.defaultView).innerHeight,
+    `${what}: the footer is inside the window`,
+  );
+}
+
+add_task(async function every_step_and_stop_screen_starts_at_the_same_height() {
+  const { tab, doc } = await openFlow();
+  const startSize = [window.outerWidth, window.outerHeight];
+  registerCleanupFunction(() => window.resizeTo(startSize[0], startSize[1]));
+  const progress = () => rectOf(doc.getElementById("v2-progress")).top;
+  const question = () => rectOf(doc.getElementById("v2-question")).top;
+  /** How tall the step's content is, its lists unscrolled. */
+  const length = () =>
+    found(doc.getElementById("v2-step")).scrollHeight +
+    found(doc.getElementById("v2-choices")).scrollHeight +
+    found(doc.getElementById("v2-addons")).scrollHeight;
+
+  // The welcome screen stays centred.
+  const welcome = rectOf(doc.getElementById("v2-welcome"));
+  Assert.lessOrEqual(
+    Math.abs((welcome.top + welcome.bottom) / 2 - found(doc.defaultView).innerHeight / 2),
+    4,
+    `the welcome screen is centred (${welcome.top}..${welcome.bottom})`,
+  );
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "content_blocker");
+  const top = progress();
+  const asked = question();
+  const lengths = [length()];
+  assertFooterClear(doc, "v2-addons", "content blocker");
+  await press(doc, "s");
+  await atStep(doc, "search_engine");
+  const engines = doc.querySelectorAll("#v2-choices li").length;
+  lengths.push(length());
+  Assert.equal(progress(), top, "the search engine step starts where the content blocker does");
+  Assert.equal(question(), asked, "and asks its question at the same height");
+  assertFooterClear(doc, "v2-choices", "search engine");
+  await press(doc, "s");
+  await atStep(doc, "colours");
+  lengths.push(length());
+  Assert.greater(new Set(lengths).size, 1, `the steps differ in length (${lengths})`);
+  Assert.equal(progress(), top, "the colours step starts there too");
+  Assert.equal(question(), asked);
+  assertFooterClear(doc, "v2-choices", "colours");
+  await press(doc, "s");
+  await atStep(doc, "stop");
+  Assert.equal(
+    rectOf(doc.querySelector("#v2-stop header")).top,
+    top,
+    "the stop screen's heading starts at the steps' progress line",
+  );
+  assertFooterClear(doc, "v2-stop-saved", "stop screen");
+
+  // A small window: the list scrolls under a header that stays put, clear of the footer.
+  await resizeWindow(doc, 800, 600);
+  await press(doc, "h");
+  await atStep(doc, "colours");
+  const small = progress();
+  assertFooterClear(doc, "v2-choices", "colours, small window");
+  await press(doc, "h");
+  await atStep(doc, "search_engine");
+  Assert.equal(progress(), small, "the search engine step starts there in a small window too");
+  assertFooterClear(doc, "v2-choices", "search engine, small window");
+  // A short window keeps about two and a half add-ons in view, not one, even with the notice
+  // that addons.mozilla.org is not answering, and without scrolling the step under the list.
+  await press(doc, "h");
+  await atStep(doc, "content_blocker");
+  const offline = found(doc.getElementById("v2-offline"));
+  await TestUtils.waitForCondition(() => !offline.hidden, "the not answering notice is shown");
+  const stepBox = found(doc.getElementById("v2-step"));
+  const addons = found(doc.getElementById("v2-addons"));
+  const row = rectOf(addons.querySelector("li")).height;
+  const box = rectOf(addons);
+  const seen = Math.min(box.bottom, rectOf(stepBox).bottom) - box.top;
+  Assert.greaterOrEqual(
+    seen + 1,
+    Math.min(addons.scrollHeight, 2.5 * row),
+    `the add-on list shows two and a half rows at 800x600 (${seen} px seen, rows ${row})`,
+  );
+  Assert.lessOrEqual(
+    stepBox.scrollHeight,
+    stepBox.clientHeight + 1,
+    "the step itself does not scroll, so the list is the only scrolling box",
+  );
+  // Smaller still, the engines overflow: the list scrolls under a header that stays put.
+  await resizeWindow(doc, 800, 480);
+  await press(doc, "s");
+  await atStep(doc, "search_engine");
+  Assert.equal(progress(), small, "the search engine step starts there in a smaller window too");
+  const engineList = found(doc.getElementById("v2-choices"));
+  Assert.greater(
+    engineList.scrollHeight,
+    engineList.clientHeight,
+    "the engine list overflows its box at 800x480",
+  );
+  for (let i = 1; i < engines; i++) await press(doc, "j");
+  Assert.equal(progress(), small, "moving down the list leaves the header where it is");
+  const cursor = rectOf(doc.querySelector("#v2-choices li[aria-current]"));
+  const list = rectOf(doc.getElementById("v2-choices"));
+  Assert.ok(
+    cursor.top >= list.top - 1 && cursor.bottom <= list.bottom + 1,
+    `the last engine is scrolled into view (${cursor.top}..${cursor.bottom} in ${list.top}..${list.bottom})`,
+  );
+  assertFooterClear(doc, "v2-choices", "search engine at its last row, smaller window");
+  window.resizeTo(startSize[0], startSize[1]);
+  await closeFlow(tab);
 });
 
 /** @param {Document} doc @returns {string[]} the labels of the open step's choices */

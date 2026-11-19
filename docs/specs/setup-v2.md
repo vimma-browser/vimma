@@ -124,7 +124,7 @@ none of its choices (behaviour 9).
 | --------------------- | --------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | 1. Essentials         | Content blocker | uBlock Origin, AdGuard AdBlocker, Privacy Badger, an AMO search; none                                 | action: installs the marked add-ons, each with Firefox's permission prompt |
 |                       | Search engine   | the installed engines                                                                                 | `[search] default`                                                         |
-|                       | Colours         | the Omarchy theme (only where one is found), light, dark, follow the system                           | `[theme] appearance`, and `source` or `name` when needed (decision 12)     |
+|                       | Colours         | the Omarchy theme (only where found); "Vimma light", "Vimma dark", "Vimma, following the system"      | `[theme] appearance`, and `source` or `name` when needed (decision 12)     |
 | 2. Moving in          | Default browser | make Vimma the default browser, or not now                                                            | action: the system's default browser                                       |
 |                       | Bring your data | open the import wizard (Chrome, Chromium, Brave, Edge, Opera, Vivaldi); from Firefox, how to use Sync | action: Firefox's import wizard                                            |
 | 3. The window         | Address bar     | shown, hidden                                                                                         | `[ui] toolbar`                                                             |
@@ -143,9 +143,11 @@ none of its choices (behaviour 9).
     is no longer installed at `enter`, nothing is written and the step redraws with the current
     list.
 21. **Colours.** The page itself takes the colours as soon as the step saves. The Omarchy choice
-    is listed only where an Omarchy theme is found. `vimma` is the only built-in palette (#1383),
-    so a choice writes `name` only when another name is in force; a config.toml that still names
-    a removed palette has `vimma` in force.
+    is listed only where an Omarchy theme is found, and comes first. The other three are the
+    appearances of Vimma's own built-in palette (`vimma`), and their labels say so: "Vimma
+    light", "Vimma dark" and "Vimma, following the system". `vimma` is the only built-in palette
+    (#1383), so a choice writes `name` only when another name is in force; a config.toml that
+    still names a removed palette has `vimma` in force.
 22. **Default browser.** Shows whether Vimma is the default browser now. `enter` on "make
     Vimma the default" asks the system through the same path as Settings' Make Default; when
     Vimma already is the default, the step says so and `enter` moves on.
@@ -436,6 +438,18 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
 - **A stop screen.** A heading ("The essentials are saved"), one line per saved step with its
   `config.toml` line, the next chapter's name and steps, and `enter` **Go on**, `q` **Done**.
   The last one is described in behaviour 10.
+- **Layout.** Every step and stop screen starts at the same height: the progress line and the
+  question sit a fixed distance from the top whatever the list holds, and a stop screen's
+  heading sits where the steps' progress line does, so nothing jumps from one screen to the
+  next. The footer stays at the bottom of the window. A list longer than the space left (the
+  search engines, the add-ons, the window drawings, the saved lines) scrolls in its own box
+  under a header that stays put, and the row under the cursor is kept in view; a new screen
+  opens its boxes at their top. A list shrinks to about two and a half add-on rows at the
+  least. A short window, one whose page is under 40rem (640 px) high, such as 800×600,
+  tightens the spacing and draws the window drawings smaller, so at 800×600 the content
+  blocker shows two and a half add-ons without the step scrolling, even with the notice that
+  addons.mozilla.org is not answering. A window too short for even that scrolls the step,
+  header and all, and never puts anything under the footer. The welcome screen stays centred.
 - **Theme.** Theme variables only, as first-run-setup's welcome screen, so Omarchy, light and
   dark need no per-theme rules; no animation, as Vimma's chrome CSS tests require.
 
