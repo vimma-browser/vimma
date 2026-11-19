@@ -776,10 +776,11 @@ describe("hint edges", () => {
     expect(orderTargets([first, higher]).map((t) => t.id)).toEqual([2, 0]);
   });
 
-  test("upperLast of nothing, of a digit and of a longer label", () => {
+  test("upperLast of nothing, of a digit and of longer labels", () => {
     expect(upperLast("")).toBeNull();
     expect(upperLast("a1")).toBeNull();
     expect(upperLast("ab")).toBe("aB");
+    expect(upperLast("abc")).toBe("abC");
   });
 
   test("the status of a session with no hint left on screen has no label", () => {
