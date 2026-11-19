@@ -65,6 +65,7 @@ import {
   scenarioFontconfig,
   unpackTarball,
   waitForSessionSaved,
+  warmUp,
 } from "./launcher.ts";
 import { PAGE_PORT, fixtureText, fixtureUrl, pagePort, startPageServer } from "./pages.ts";
 import { exitCode, formatReport, githubAnnotations, reportJson, runScenarios } from "./runner.ts";
@@ -428,6 +429,25 @@ async function main() {
       };
     };
 
+    // Issue #901: the machine's first start of the build, outside every scenario's timeout.
+    let warmUpFailure: string | null = null;
+    if (build && runnable.some((s) => !s.update)) {
+      let registered: (() => Promise<void>) | null = null;
+      await warmUp({
+        build,
+        xvfb: mode === "xvfb",
+        headless: mode === "headless",
+        fontconfig: scenarioFontconfig(),
+        onTeardown: (t) => cleanups.push((registered = t)),
+        log: (line) => console.log(line),
+      }).catch((e: unknown) => {
+        warmUpFailure = (e as Error).message;
+        console.log(`FAIL    ${warmUpFailure}`);
+      });
+      const i = registered ? cleanups.indexOf(registered) : -1;
+      if (i >= 0) cleanups.splice(i, 1);
+    }
+
     const results = await runScenarios(scenarios, {
       startSession,
       budgetMs,
@@ -441,6 +461,11 @@ async function main() {
     }
     if (process.env.GITHUB_ACTIONS) {
       for (const line of githubAnnotations(results)) console.log(line);
+      if (warmUpFailure) {
+        console.log(
+          `::error title=e2e warm-up::${(warmUpFailure as string).replace(/\r?\n/g, " ")}`,
+        );
+      }
       if (process.env.GITHUB_STEP_SUMMARY) {
         appendFileSync(
           process.env.GITHUB_STEP_SUMMARY,
@@ -454,7 +479,8 @@ async function main() {
           "a commit body saying why (CONTRIBUTING.md: never change a baseline without one).",
       );
     }
-    return exitCode(results);
+    // A build that cannot start even once fails the run, whatever the scenarios did after it.
+    return warmUpFailure ? 1 : exitCode(results);
   } finally {
     await cleanupAll();
     await pages?.close();
