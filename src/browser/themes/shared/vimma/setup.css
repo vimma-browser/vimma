@@ -353,6 +353,63 @@ code {
   margin-top: 0.6rem;
 }
 
+/* Setup v2's steps and stop screens (setup-v2 "Page layout"): every one starts at the same
+   height, its progress line and question a fixed distance from the top whatever its list holds,
+   and the footer sits at the bottom of the window. A long list scrolls in its own box, under a
+   header that stays put and above the footer; a window too short for both scrolls the page, the
+   footer right after the content. The welcome screen stays centred. */
+:root[data-screen="step"] body,
+:root[data-screen="stop"] body {
+  box-sizing: border-box;
+  height: 100vh;
+  min-height: 24rem;
+  grid-template-rows: minmax(0, 1fr) auto;
+  place-items: stretch center;
+}
+
+/* Overflow: the lists shrink first; a window too short for a step's fixed rows scrolls the step
+   itself, so nothing reaches under the footer. */
+:root[data-screen="step"] .step,
+:root[data-screen="stop"] .step {
+  box-sizing: border-box;
+  min-height: 0;
+  padding: clamp(1.5rem, 9vh, 5rem) 0 1rem;
+  overflow-y: auto;
+}
+
+.step,
+.step .list,
+#v2-stop-saved {
+  scrollbar-width: thin;
+  scrollbar-color: var(--vimma-muted, #3b4252) transparent;
+}
+
+.step > *,
+#v2-blocker > * {
+  flex: none;
+}
+
+#v2-blocker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-height: 0;
+}
+
+#v2-blocker,
+#v2-choices,
+#v2-addons,
+#v2-stop-saved {
+  flex: 0 1 auto;
+}
+
+#v2-choices,
+#v2-addons,
+#v2-stop-saved {
+  min-height: 3rem;
+  overflow-y: auto;
+}
+
 /* Square corners on every surface of the page, Firefox's own widgets included: the search
    field's native look (type=search draws a rounded field) and focus rings follow the theme's
    radius, as about.css and help-overlay.css do. */

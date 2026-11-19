@@ -254,6 +254,8 @@ function drawChoices(v) {
       return li;
     }),
   );
+  // A list longer than the window scrolls in its own box (Page layout): keep the cursor in it.
+  $("v2-choices").querySelector("[aria-current]")?.scrollIntoView({ block: "nearest" });
   const choice = v.choices[state.cursor];
   // editLines says "Writes nothing" for Keep or the value in force (behaviour 12).
   const nothing = !choice || choice.lines[0] === "Writes nothing";

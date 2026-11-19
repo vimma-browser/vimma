@@ -234,7 +234,7 @@ add_task(async function enter_on_a_step_writes_its_key_and_applies_live() {
   await TestUtils.waitForCondition(async () => (await SearchService.getDefault()).name === name);
   Assert.ok(found(doc.getElementById("v2-last")).textContent.includes("[search] default"));
   // No Omarchy theme: light, dark, follow the system; the last is in force.
-  Assert.equal(current(doc), "Follow the system");
+  Assert.equal(current(doc), "Vimma, following the system");
   await press(doc, "k", "k");
   Assert.equal(writes(doc), 'Writes [theme] appearance = "light"');
   await press(doc, "KEY_Enter");
@@ -331,7 +331,7 @@ add_task(async function enter_through_every_step_leaves_config_toml_unchanged() 
     await atStep(doc, "colours");
     Assert.equal(
       current(doc),
-      prefs.length ? "The Omarchy theme" : "Follow the system",
+      prefs.length ? "The Omarchy theme" : "Vimma, following the system",
       "the effect in force is selected",
     );
     await press(doc, "KEY_Enter");
@@ -662,7 +662,7 @@ add_task(async function a_list_drawn_again_keeps_the_row_and_an_old_index_is_sta
   await press(doc, "s");
   await atStep(doc, "colours");
   await press(doc, "k");
-  Assert.equal(current(doc), "Dark");
+  Assert.equal(current(doc), "Vimma dark");
   const before = /** @type {{ serial: number }} */ (
     await SetupHost.stepView(tab.linkedBrowser, "colours")
   ).serial;
@@ -673,7 +673,7 @@ add_task(async function a_list_drawn_again_keeps_the_row_and_an_old_index_is_sta
     () => doc.querySelector('#v2-choices li[data-keep="true"]'),
     "drawn again with Keep",
   );
-  Assert.equal(current(doc), "Dark", "the cursor stays on its row, not its index");
+  Assert.equal(current(doc), "Vimma dark", "the cursor stays on its row, not its index");
   Assert.deepEqual(
     await SetupHost.saveStep(tab.linkedBrowser, "colours", 1, before),
     { stale: true },
@@ -785,4 +785,99 @@ add_task(async function address_bar_step_writes_toolbar_and_applies_live() {
     () => !Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", false),
     "the toolbar is back once the file is gone",
   );
+});
+
+/** @param {Element | null} e */
+const rectOf = (e) => found(e).getBoundingClientRect();
+
+/**
+ * Resizes the window to `w`×`h` and waits for the page to see a new size.
+ * @param {Document} doc @param {number} w @param {number} h
+ */
+async function resizeWindow(doc, w, h) {
+  const view = found(doc.defaultView);
+  const was = `${view.innerWidth}x${view.innerHeight}`;
+  window.resizeTo(w, h);
+  await TestUtils.waitForCondition(
+    () => `${view.innerWidth}x${view.innerHeight}` !== was,
+    `the page is resized to ${w}x${h}`,
+  );
+  await TestUtils.waitForTick();
+}
+
+/**
+ * The page's footer stays below the list it follows and inside the window, or right after the
+ * content when the window is too short for both (setup-v2 "Page layout").
+ * @param {Document} doc @param {string} list  the list's id @param {string} what
+ */
+function assertFooterClear(doc, list, what) {
+  const footer = rectOf(doc.getElementById("v2-footer"));
+  const items = rectOf(doc.getElementById(list));
+  Assert.greaterOrEqual(
+    Math.round(footer.top),
+    Math.round(items.bottom),
+    `${what}: the footer (top ${footer.top}) does not overlap the list (bottom ${items.bottom})`,
+  );
+  Assert.lessOrEqual(
+    Math.round(footer.bottom),
+    found(doc.defaultView).innerHeight,
+    `${what}: the footer is inside the window`,
+  );
+}
+
+add_task(async function every_step_and_stop_screen_starts_at_the_same_height() {
+  const { tab, doc } = await openFlow();
+  const startSize = [window.outerWidth, window.outerHeight];
+  registerCleanupFunction(() => window.resizeTo(startSize[0], startSize[1]));
+  const progress = () => rectOf(doc.getElementById("v2-progress")).top;
+  const question = () => rectOf(doc.getElementById("v2-question")).top;
+
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "content_blocker");
+  const top = progress();
+  const asked = question();
+  assertFooterClear(doc, "v2-addons", "content blocker");
+  await press(doc, "s");
+  await atStep(doc, "search_engine");
+  const engines = doc.querySelectorAll("#v2-choices li").length;
+  Assert.equal(progress(), top, "the search engine step starts where the content blocker does");
+  Assert.equal(question(), asked, "and asks its question at the same height");
+  assertFooterClear(doc, "v2-choices", "search engine");
+  await press(doc, "s");
+  await atStep(doc, "colours");
+  const colours = doc.querySelectorAll("#v2-choices li").length;
+  Assert.notEqual(engines, colours, "the two steps' lists differ in length");
+  Assert.equal(progress(), top, "the colours step starts there too");
+  Assert.equal(question(), asked);
+  assertFooterClear(doc, "v2-choices", "colours");
+  await press(doc, "s");
+  await atStep(doc, "stop");
+  Assert.equal(
+    rectOf(doc.querySelector("#v2-stop header")).top,
+    top,
+    "the stop screen's heading starts at the steps' progress line",
+  );
+  assertFooterClear(doc, "v2-stop-saved", "stop screen");
+
+  // A small window: the list scrolls under a header that stays put, clear of the footer.
+  await resizeWindow(doc, 800, 600);
+  await press(doc, "h");
+  await atStep(doc, "colours");
+  const small = progress();
+  assertFooterClear(doc, "v2-choices", "colours, small window");
+  await press(doc, "h");
+  await atStep(doc, "search_engine");
+  Assert.equal(progress(), small, "the search engine step starts there in a small window too");
+  assertFooterClear(doc, "v2-choices", "search engine, small window");
+  for (let i = 1; i < engines; i++) await press(doc, "j");
+  Assert.equal(progress(), small, "moving down the list leaves the header where it is");
+  const cursor = rectOf(doc.querySelector("#v2-choices li[aria-current]"));
+  const list = rectOf(doc.getElementById("v2-choices"));
+  Assert.ok(
+    cursor.top >= list.top - 1 && cursor.bottom <= list.bottom + 1,
+    `the last engine is scrolled into view (${cursor.top}..${cursor.bottom} in ${list.top}..${list.bottom})`,
+  );
+  assertFooterClear(doc, "v2-choices", "search engine at its last row, small window");
+  window.resizeTo(startSize[0], startSize[1]);
+  await closeFlow(tab);
 });

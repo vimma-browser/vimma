@@ -121,7 +121,7 @@ none of its choices (behaviour 9).
 | --------------------- | --------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | 1. Essentials         | Content blocker | uBlock Origin, AdGuard AdBlocker, Privacy Badger, an AMO search; none                                 | action: installs the marked add-ons, each with Firefox's permission prompt |
 |                       | Search engine   | the installed engines                                                                                 | `[search] default`                                                         |
-|                       | Colours         | the Omarchy theme (only where one is found), light, dark, follow the system                           | `[theme] appearance`, and `source` or `name` when needed (decision 12)     |
+|                       | Colours         | the Omarchy theme (only where found); "Vimma light", "Vimma dark", "Vimma, following the system"      | `[theme] appearance`, and `source` or `name` when needed (decision 12)     |
 | 2. Moving in          | Default browser | make Vimma the default browser, or not now                                                            | action: the system's default browser                                       |
 |                       | Bring your data | open the import wizard (Chrome, Chromium, Brave, Edge, Opera, Vivaldi); from Firefox, how to use Sync | action: Firefox's import wizard                                            |
 | 3. The window         | Address bar     | shown, hidden                                                                                         | `[ui] toolbar`                                                             |
@@ -140,9 +140,11 @@ none of its choices (behaviour 9).
     is no longer installed at `enter`, nothing is written and the step redraws with the current
     list.
 21. **Colours.** The page itself takes the colours as soon as the step saves. The Omarchy choice
-    is listed only where an Omarchy theme is found. With the dark-only `tokyo-night` palette in
-    force, light and "follow the system" also write `name = "vimma"`, and the step says so in
-    the line it shows.
+    is listed only where an Omarchy theme is found, and comes first. The other three are the
+    appearances of Vimma's own built-in palette (`vimma`), and their labels say so: "Vimma
+    light", "Vimma dark" and "Vimma, following the system". With the dark-only `tokyo-night`
+    palette in force, light and following the system also write `name = "vimma"`, and the step
+    says so in the line it shows.
 22. **Default browser.** Shows whether Vimma is the default browser now. `enter` on "make
     Vimma the default" asks the system through the same path as Settings' Make Default; when
     Vimma already is the default, the step says so and `enter` moves on.
