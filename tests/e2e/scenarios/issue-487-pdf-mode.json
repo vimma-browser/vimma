@@ -47,15 +47,15 @@
       "keys": "tab"
     },
     {
+      "sleep": 2.5
+    },
+    {
       "wait-for-state": {
         "mode": "index",
         "pdf": {
           "drawn": true
         }
       }
-    },
-    {
-      "sleep": 2.5
     },
     {
       "screenshot": "pdf-outline"
