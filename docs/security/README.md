@@ -42,7 +42,7 @@ S9 or M62), so a citation that gives only those ("security.md M62", "§12") find
 | §9      | [Privacy defaults](09-privacy-defaults.md)                                      | P1 to P8              |
 | §10     | [Firefox updates](10-firefox-updates.md)                                        | G1 to G15             |
 | §11     | [Out of scope and trust boundaries](11-out-of-scope-and-trust-boundaries.md)    | none                  |
-| §12     | [Agents (MCP)](12-agents-mcp.md)                                                | M1 to M34, M62 to M64 |
+| §12     | [Agents (MCP)](12-agents-mcp.md)                                                | M1 to M34, M62 to M65 |
 | §12     | [Agents (MCP): the built-in agent](12-agents-mcp-built-in-agent.md)             | M35 to M61            |
 | §13     | [Page modes](13-page-modes.md)                                                  | K1 to K13             |
 | §14     | [Build and release supply chain](14-build-and-release-supply-chain.md)          | B1 to B20             |

@@ -10,6 +10,10 @@
 
 "use strict";
 
+// Five chapters' steps walked by keys: about 30 s on a quiet machine, past the harness's 45 s
+// for one file on a loaded CI runner.
+requestLongerTimeout(2);
+
 const { SetupHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/setup/SetupHost.sys.mjs",
 );
