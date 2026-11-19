@@ -1532,14 +1532,16 @@ the page's own and can carry tokens it put there; they come only from the agent'
   the step. The host takes what it checks against (`McpHost.consentTicket`) when the user
   arrives at the step, with the cursor on the value in force, and keeps it when the step is
   drawn again (a read of config.toml, `:mcp on|off` elsewhere), so a redraw **never** stands
-  for a consent given after an `:mcp off`; each `enter` on the step spends it. A redraw that
+  for a consent given after an `:mcp off`; each `enter` on the step spends it, and a redraw
+  after that takes none, so "On" is refused until the user arrives at the step again. A redraw that
   changes the row in force moves the cursor to it, and a refusal draws the step anew with the
   cursor on the row in force, so turning agents on always takes `j` and `enter` on a screen that
   shows the hold. Only after its `[mcp] enabled = true` is written and read, or when the file
   says so already, does it end `:mcp off`'s hold, checking again first, as the yes does; the
   write alone **never** ends the hold (M64). Refused at that second check (the workspace changed
-  or went away during the write), it holds agents off as `:mcp off` does, so the file just
-  written does not turn them on. "Off" is selected first unless agents are on, so a plain
+  or went away during the write), it holds agents off as `:mcp off` does, until `:mcp on` or a
+  restart, so the file just written does not turn them on in this session; it does at the next
+  start, as any `enabled = true` does. "Off" is selected first unless agents are on, so a plain
   `enter` never turns them on and, under the hold, writes nothing; "On" says that it also ends
   `:mcp off` and, for a workspace Vimma did not make, shows `:mcp on`'s warning too; without an
   agent workspace it shows that it writes nothing. The page names only a step and a choice
@@ -1562,5 +1564,7 @@ the page's own and can carry tokens it put there; they come only from the agent'
   [`an_mcp_off_the_page_hears_keeps_the_ticket_and_moves_the_cursor`](../../tests/browser/browser_vimma_setup_v2.js),
   [`a_config_read_redraw_keeps_the_ticket`](../../tests/browser/browser_vimma_setup_v2.js),
   [`a_workspace_gone_during_the_write_holds_agents_off`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`a_redraw_during_the_load_after_a_refusal_keeps_the_cursor_on_off`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`a_redraw_with_no_ticket_takes_none`](../../tests/browser/browser_vimma_setup_v2.js),
   [`the_page_cannot_name_a_key_or_value`](../../tests/browser/browser_vimma_setup_v2.js),
   [`agent_role_cannot_open_setup`](../../tests/browser/browser_vimma_setup.js)

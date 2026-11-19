@@ -994,3 +994,70 @@ add_task(async function a_workspace_gone_during_the_write_holds_agents_off() {
   await closeFlow(tab);
   McpHost._clearHoldForTests();
 });
+
+add_task(async function a_redraw_during_the_load_after_a_refusal_keeps_the_cursor_on_off() {
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  await press(doc, "j");
+  mcpOff();
+  // The load the refusal asks for waits; a config read's redraw arrives and finishes first.
+  const real = SetupHost.stepView;
+  /** @type {() => void} */
+  let release = () => {};
+  const held = new Promise((resolve) => (release = () => resolve(undefined)));
+  let freshAsked = false;
+  SetupHost.stepView = async (b, id, options) => {
+    if (options?.fresh && !freshAsked) {
+      freshAsked = true;
+      // Superseded by the redraw: the page drops whatever it answers, so it answers nothing,
+      // and the list the redraw was sent stays the host's last.
+      await held;
+      return null;
+    }
+    return real.call(SetupHost, b, id, options);
+  };
+  try {
+    await press(doc, "KEY_Enter");
+    await TestUtils.waitForCondition(() => freshAsked, "the load after the refusal started");
+    await IOUtils.writeUTF8(configFile(), 'schema = 2\n[ui]\ntoolbar = "shown"\n');
+    await ConfigHost.reload();
+    await TestUtils.waitForCondition(
+      () => doc.documentElement.dataset.viewReady === "true",
+      "drawn again",
+    );
+  } finally {
+    release();
+    SetupHost.stepView = real;
+  }
+  // The refused enter finishes once the held load returns (dropped, as superseded).
+  await TestUtils.waitForCondition(
+    () => doc.documentElement.dataset.failed === "true" && !doc.documentElement.dataset.busy,
+    "the refusal is shown",
+  );
+  Assert.equal(current(doc), "Off", "the redraw kept the load fresh: the cursor is on off");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.ok(!McpHost.state.enabled, "a second enter turns nothing on");
+  await closeFlow(tab);
+  McpHost._clearHoldForTests();
+});
+
+add_task(async function a_redraw_with_no_ticket_takes_none() {
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  const b = tab.linkedBrowser;
+  // An enter spends the ticket; a redraw that is not an arrival at the step takes no new one.
+  const first = found(await SetupHost.stepView(b, "agents", { fresh: true }));
+  Assert.ok("written" in (await SetupHost.saveStep(b, "agents", 0, first.serial)), "off saved");
+  const v = found(await SetupHost.stepView(b, "agents"));
+  Assert.deepEqual(await SetupHost.saveStep(b, "agents", 1, v.serial), {
+    error: "no consent asked; nothing written",
+  });
+  Assert.ok(!McpHost.state.enabled, "agents stay off");
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
+  await closeFlow(tab);
+});

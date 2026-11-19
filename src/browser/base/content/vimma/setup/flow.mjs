@@ -48,6 +48,12 @@ let state = initialFlow({ chapters: flowChapters() });
 let view = null;
 /** Bumped by each request for a view: an older answer is dropped. */
 let viewSerial = 0;
+/**
+ * A load that selects the value in force (an arrival, a refusal) has not been drawn yet: a
+ * redraw that supersedes it selects too, so that it never leaves the cursor on a row the user
+ * has not come back to.
+ */
+let freshPending = false;
 /** A view is being read: its list may change under the cursor, so `enter` waits. */
 let loading = false;
 /** "busy" while a save, an install or a search runs: keys wait. */
@@ -341,6 +347,8 @@ function draw() {
 async function loadView(select = true) {
   const step = flowStep(state);
   if (!step) return;
+  if (select) freshPending = true;
+  select = freshPending;
   const serial = ++viewSerial;
   const under = view?.id === step.id ? view.choices[state.cursor]?.label : undefined;
   loading = true;
@@ -352,6 +360,7 @@ async function loadView(select = true) {
   );
   if (serial !== viewSerial || flowStep(state)?.id !== step.id) return;
   loading = false;
+  freshPending = false;
   view = v;
   // The agents step drawn again with another row in force (`:mcp off` elsewhere): the cursor
   // follows it, so that turning agents on takes `j` and `enter` on a screen showing the hold.

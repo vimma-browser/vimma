@@ -386,8 +386,9 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     drawn anew with the cursor on the row in force, so that a new consent takes `j` and `enter`.
     Once its `[mcp] enabled = true` is written (or the file says so already), it ends
     `:mcp off`'s hold as the yes does, after the same checks; the write alone never does
-    (decision 16), and a refusal at that second check holds agents off, so that the file just
-    written does not turn them on. With the hold in force, "off" is the value
+    (decision 16), and a refusal at that second check holds agents off until `:mcp on` or a
+    restart, so that the file just written does not turn them on in this session; it does at
+    the next start, as any `enabled = true` does. With the hold in force, "off" is the value
     in force and writes nothing (behaviour 8), and the step says that the file turns agents on
     again at the next start; "on" says that it also ends `:mcp off`. For a workspace Vimma did
     not make, "on" shows `:mcp on`'s warning that agents will read it. Reason: two ways to turn
@@ -544,6 +545,8 @@ outgrow the harness's time limit for one file):
 - `an_mcp_off_the_page_hears_keeps_the_ticket_and_moves_the_cursor`
 - `a_config_read_redraw_keeps_the_ticket`
 - `a_workspace_gone_during_the_write_holds_agents_off`
+- `a_redraw_during_the_load_after_a_refusal_keeps_the_cursor_on_off`
+- `a_redraw_with_no_ticket_takes_none`
 - `mcp_off_turns_agents_off_until_restart_when_the_file_enables_them`
 - `mcp_off_survives_a_config_reload` (`[mcp] enabled = true` in the file, `:mcp off`, the file
   edited and read again: agents stay off until `:mcp on`)

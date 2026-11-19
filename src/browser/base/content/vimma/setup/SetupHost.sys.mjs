@@ -391,9 +391,9 @@ export const SetupHost = {
     const { choices, selected } = stepChoices(step, inForce, { engines, omarchy });
     const serial = nextSerial++;
     const agent = step.id === "agents" ? McpHost.setupAgent() : {};
-    if (step.id === "agents" && (fresh || !tickets.has(browser))) {
-      tickets.set(browser, McpHost.consentTicket());
-    }
+    // Only an arrival takes one: a redraw after an `enter` spent it takes none, and "on" is
+    // then refused until the user arrives at the step again.
+    if (step.id === "agents" && fresh) tickets.set(browser, McpHost.consentTicket());
     const ticket = step.id === "agents" ? tickets.get(browser) : undefined;
     sentTo(browser).set(id, { serial, choices, ...(ticket ? { ticket } : {}) });
     /** @type {string | null} */
