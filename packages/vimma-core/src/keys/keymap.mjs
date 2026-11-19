@@ -402,12 +402,15 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
   // carry Firefox's meaning, is not bound in the modes that type into a text field, so the key
   // is the field's there, as in Vim. A binding the user added stays and wins, as for ctrl+w; one
   // that repeats the default (a config.toml copied from defaults.toml) is still the default.
+  // Stryker disable next-line LogicalOperator: the default is true, so for an unset, true or false user value && gives the same on or off as ??
   const insertEditing = userModal.insert_editing ?? defModal.insert_editing;
   if (insertEditing !== false) {
     /** @type {Set<string>} action name and sequence of each default [keys] binding */
     const defaults = new Set();
     for (const [name, value] of Object.entries(defKeys)) {
+      // Stryker disable next-line StringLiteral: no action is named prefix, so reading its chord as a binding adds an entry no binding matches
       if (name === "prefix") continue;
+      // Stryker disable next-line ArrayDeclaration,StringLiteral: the path only names an error, and the built-in defaults always parse
       for (const text of asList(value, formatPath(["keys", name]))) {
         const { chords } = concretise(notation(() => parseBinding(text), name));
         defaults.add(`${name} ${chords.map(formatKey).join(" ")}`);
@@ -600,6 +603,7 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
      * @returns {string | null}
      */
     site: (host) => {
+      // Stryker disable next-line LogicalOperator: a shortcut only; with no keys unbound, or no host (matchSiteRule skips an empty table name), no rule with keys matches
       if (!anyUnbound || !host) return null;
       const rule = matchSiteRule(host, rules);
       return rule && rule.keys.size > 0 ? rule.match : null;
@@ -624,6 +628,7 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
      * @param {Mode} mode
      * @param {Context} [context]
      */
+    // Stryker disable next-line StringLiteral: only "pdf" picks another trie (target), so any other default reads the page's
     sequences: (mode, context = "page") =>
       /** @type {Entry[]} */ (perMode[target(mode, context)]).map((e) => ({
         seq: e.seq,
