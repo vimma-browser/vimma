@@ -406,6 +406,7 @@ describe("setup v2 flow", () => {
     count: 3,
     selected: () => 0,
     addons: [],
+    ready: true,
     ...over,
   });
   const run = (state: FlowState, ks: string[], c = ctx()) => {
@@ -552,6 +553,21 @@ describe("setup v2 flow", () => {
       expect(run(last.state, [key]).effect).toEqual({ type: "close" });
     }
     expect(goTo("stop:essentials").done).toBe(false);
+  });
+
+  test("enter before the view arrives does nothing", () => {
+    // The step's list is still being read: an index now could name a row of an older list.
+    const s = goTo("search_engine");
+    const r = run(s, ["enter"], ctx({ ready: false }));
+    expect(r.effect).toBeNull();
+    expect(r.state).toBe(s);
+    // Skip, back and leave still work.
+    expect(at(run(s, ["s"], ctx({ ready: false })).state)).toBe("colours");
+    expect(run(s, ["q"], ctx({ ready: false })).effect).toEqual({ type: "close" });
+    // Action steps are not lists of the host's: the content blocker's enter still works.
+    expect(at(run(goTo("content_blocker"), ["enter"], ctx({ ready: false })).state)).toBe(
+      "search_engine",
+    );
   });
 
   test("with a config parse error, setting steps can only skip", () => {

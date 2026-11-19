@@ -786,9 +786,10 @@ export const ThemeHost = {
   },
 
   /**
-   * Whether an Omarchy theme is found, whatever config.toml's `source` says (the setup's colours
-   * step offers Omarchy only then, setup-v2 behaviour 21): Omarchy installed or a theme directory
-   * set by hand, and not turned off by the pref.
+   * Whether Omarchy is found, whatever config.toml's `source` says (the setup's colours step
+   * offers the Omarchy theme only then, setup-v2 behaviour 21): Omarchy installed or a theme
+   * directory set by hand, and not turned off by the pref, as followsOmarchy decides. It does
+   * not look for colors.toml: without one the built-in palette shows, as with followsOmarchy.
    * @returns {Promise<boolean>}
    */
   async omarchyFound() {

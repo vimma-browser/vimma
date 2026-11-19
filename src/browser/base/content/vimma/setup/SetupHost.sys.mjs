@@ -131,11 +131,15 @@ const configFile = () => ConfigHost.configFile;
 const notFound = (e) => /** @type {Thrown} */ (e)?.name === "NotFoundError";
 
 /**
- * The choices each setup page was sent, by step (decision 7): `enter` names an index into the
- * list that page was shown, so a list redrawn meanwhile never shifts what an index means.
- * @type {WeakMap<MozBrowser, Map<string, SetupChoice[]>>}
+ * The choices each setup page was sent, by step, with the serial of that list (decision 7):
+ * `enter` names an index into the list that page was shown and that list's serial, so a list
+ * drawn again meanwhile (a config read, a visit with `h`) never shifts what an index means: an
+ * older serial is refused as stale.
+ * @type {WeakMap<MozBrowser, Map<string, { serial: number, choices: SetupChoice[] }>>}
  */
 const sent = new WeakMap();
+/** The serial of the next list sent. */
+let nextSerial = 1;
 
 /** @param {MozBrowser} browser */
 function sentTo(browser) {
@@ -171,6 +175,7 @@ async function runtime() {
     : "";
   return {
     engine: (await s.getDefault()).name,
+    engines: (await s.getVisibleEngines()).map((e) => e.name),
     ...(["dark", "light", "system"].includes(pref) ? { appearance: pref } : {}),
   };
 }
@@ -348,13 +353,16 @@ export const SetupHost = {
   async stepView(browser, id) {
     const step = builtStep(id);
     if (!step || !browser) return null;
+    // The list this page had for the step is gone until the new one is sent.
+    sentTo(browser).delete(id);
     const rt = await runtime();
     const text = await readConfigText().catch(() => null);
     const inForce = inForceFor(text, rt);
     const engines = step.id === "search_engine" ? (await this.engines()).names : [];
     const omarchy = step.id === "colours" ? await ThemeHost.omarchyFound() : false;
     const { choices, selected } = stepChoices(step, inForce, { engines, omarchy });
-    sentTo(browser).set(id, choices);
+    const serial = nextSerial++;
+    sentTo(browser).set(id, { serial, choices });
     /** @type {string | null} */
     let blocked = null;
     if (step.kind === "setting") {
@@ -378,6 +386,7 @@ export const SetupHost = {
       })),
       selected,
       blocked,
+      serial,
     };
   },
 
@@ -385,23 +394,27 @@ export const SetupHost = {
    * `enter` on a setting step (behaviours 4, 8, 14, 16; decisions 4 and 7): the choice at
    * `index` of the list this page was sent, planned again against config.toml as it is now,
    * inside the one edit queue, and written only where it changes the value in force. The search
-   * engine must still be installed (behaviour 20).
+   * engine must still be installed (behaviour 20). Stale, with nothing written, when `serial`
+   * is not the list the host sent last, or the choice is no longer offered at `enter`.
    * @param {MozBrowser | null} browser @param {string} id @param {number} index
+   * @param {number} [serial]  the serial of the list the page drew (stepView)
    * @returns {Promise<{ written: string[] } | { error: string } | { stale: true }>}
    */
-  async saveStep(browser, id, index) {
+  async saveStep(browser, id, index, serial) {
     const step = builtStep(id);
     if (!step || step.kind !== "setting" || !browser) return { error: "not a step that saves" };
     if (isPrivate(browser)) return { error: "a private window saves nothing" };
-    const choice = sent.get(browser)?.get(id)?.[index];
-    if (!choice) return { error: "no such choice" };
+    const list = sent.get(browser)?.get(id);
+    const choice = Number.isInteger(index) && index >= 0 ? list?.choices[index] : undefined;
+    if (!list || !choice) return { error: "no such choice" };
+    if (serial !== list.serial) return { stale: true };
     if (step.id === "search_engine" && !choice.keep) {
       const name = choice.edits[0]?.value;
       if (!(await this.engines()).names.includes(String(name))) return { stale: true };
     }
     const rt = await runtime();
     const omarchy = await ThemeHost.omarchyFound();
-    /** @type {import("../core/toml.mjs").TomlEdit[]} */
+    /** @type {import("../core/toml.mjs").TomlEdit[] | null} */
     let written = [];
     const why = await ConfigHost.setConfigKeys((text) => {
       const parsed = parseConfig(text ?? "", { mac: Services.appinfo.OS === "Darwin" });
@@ -409,9 +422,10 @@ export const SetupHost = {
         return { error: "config.toml does not load; fix it first (:config shows it)" };
       }
       written = planAtEnter(step, choice, inForceOf(parsed.config, rt), { omarchy });
-      return written;
+      return written ?? [];
     });
     if (why !== null) return { error: why };
+    if (written === null) return { stale: true };
     return { written: written.length ? editLines(written) : [] };
   },
 
