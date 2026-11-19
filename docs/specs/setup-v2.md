@@ -1,6 +1,6 @@
 # Spec: setup-v2
 
-Status: accepted (delivery slices 1, 2 and 4 built, #1292, #1293 and #1295) · Area: core
+Status: accepted (delivery slices 1 to 4 built, #1292, #1293, #1294 and #1295) · Area: core
 (`packages/vimma-core/src/system/setup.mjs`, `packages/vimma-core/src/system/setup-steps.mjs`,
 `packages/vimma-core/src/config/toml.mjs`),
 chrome (`src/browser/base/content/vimma/setup/` (`setup.html`, `setup.mjs`, `flow.mjs`,
@@ -372,6 +372,14 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     opens it only over a browser showing `about:vimma-setup`, never where the
     `DisableProfileImport` policy forbids it, and a second request while it is open waits for
     the same dialog, because a repeated `enter` must not stack wizards.
+    Both steps offer the action first and "not now" second, and save no key: "Saved this run"
+    lists what the action did ("made the default browser", "import wizard closed"). Where the
+    action cannot run (Vimma already the default; Make Default hidden by a policy, a locked
+    pref or Flatpak; import turned off by policy), the step says why and offers only to go on,
+    because a choice that cannot act would only fail. A failed Make Default keeps the step open
+    with the reason, as a failed write does (behaviour 16). When the wizard closes, the setup
+    page takes the focus back, because the dialog leaves it nowhere on the page. The wizard has
+    square corners and the theme's font, as Settings has (firefox-surfaces-trim, decision 8).
 18. **A feature pref while it lands.** `vimma.feature.setupV2` (default `false`) switches the
     page from today's flow to the chapters while the slices land (`CONTRIBUTING.md`,
     "Unfinished features"), because the summary flow must keep working on `main` until the new
@@ -511,7 +519,10 @@ outgrow the harness's time limit for one file):
 - `prefix_step_changes_later_steps_hints`
 - `default_browser_step_calls_the_shell_service`
 - `default_browser_step_says_when_vimma_already_is_the_default`
-- `import_step_opens_the_wizard_over_the_setup_tab_and_moves_on_when_it_closes`
+- `default_browser_step_says_why_it_cannot_make_vimma_the_default`
+- `a_failed_make_default_keeps_the_step_open`
+- `import_step_opens_the_wizard_over_the_setup_tab_and_moves_on_when_it_closes` (square
+  corners and the theme's font in the wizard, and the focus back on the setup page)
 - `import_step_names_sync_for_firefox`
 - `updates_step_says_what_the_check_sends`
 - `agents_step_selects_off_first_and_writes_enabled_on_enter`

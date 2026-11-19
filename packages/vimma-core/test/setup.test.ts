@@ -434,6 +434,7 @@ describe("setup v2 flow", () => {
   test("only the steps built so far are in the flow, chapter digits kept", () => {
     expect(flowChapters().map((c) => [c.digit, c.steps.map((s) => s.id)])).toEqual([
       [1, ["content_blocker", "search_engine", "colours"]],
+      [2, ["default_browser", "bring_your_data"]],
       [3, ["address_bar"]],
     ]);
     expect(chapters.map((c) => c.digit)).toEqual([1, 2]);

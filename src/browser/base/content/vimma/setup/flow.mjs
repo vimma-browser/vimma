@@ -19,6 +19,9 @@ const { SetupHost } = ChromeUtils.importESModule(
 );
 const { flowAdvance, flowChapters, flowKey, flowStep, formatUsers, initialFlow } =
   ChromeUtils.importESModule("chrome://browser/content/vimma/core/setup.mjs");
+const { actionOutcome } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/setup-steps.mjs",
+);
 
 const root = document.documentElement;
 const $ = (/** @type {string} */ id) => /** @type {HTMLElement} */ (document.getElementById(id));
@@ -37,6 +40,7 @@ const browser = () => SetupHost.browserFor(window);
  *   choices
  * @property {number} selected
  * @property {string | null} blocked
+ * @property {string} status  what an action step found (Vimma is the default browser now)
  * @property {number} serial  the host's serial of this list, sent back with `enter`
  */
 
@@ -106,11 +110,18 @@ function place() {
 const titleOf = (id) =>
   state.chapters.flatMap((c) => c.steps).find((s) => s.id === id)?.title ?? id;
 
+/** An action step's saved lines are what it did, in words; a setting step's are TOML. */
+const isAction = (/** @type {string} */ id) =>
+  state.chapters.flatMap((c) => c.steps).find((s) => s.id === id)?.kind === "action";
+
+/** @param {string} id @param {string} line */
+const savedLine = (id, line) => (isAction(id) ? line : el("code", {}, line));
+
 /** @param {import("../core/setup.mjs").FlowSaved[]} list */
 function savedList(list) {
   return list.flatMap((x) =>
     x.lines.map((line) =>
-      el("li", {}, el("span", { class: "what" }, titleOf(x.step)), el("code", {}, line)),
+      el("li", {}, el("span", { class: "what" }, titleOf(x.step)), savedLine(x.step, line)),
     ),
   );
 }
@@ -135,7 +146,7 @@ function drawFooter() {
     state.saved.length ? "Saved this run: " : `Nothing saved this run${state.done ? "" : " yet"}.`,
     ...state.saved.flatMap((x, i) => [
       ...(i ? ["; "] : []),
-      ...x.lines.flatMap((l, j) => [...(j ? [", "] : []), el("code", {}, l)]),
+      ...x.lines.flatMap((l, j) => [...(j ? [", "] : []), savedLine(x.step, l)]),
     ]),
   );
   const step = flowStep(state);
@@ -159,6 +170,8 @@ function drawFooter() {
       add(["enter"], "install and go on");
     } else if (view?.blocked) {
       add(["enter"], "cannot save here");
+    } else if (step?.kind === "action") {
+      add(["enter"], "do it and go on");
     } else {
       add(["enter"], "save and go on");
     }
@@ -328,6 +341,9 @@ function drawStep() {
   const notice = $("v2-notice");
   notice.hidden = !v?.blocked;
   notice.textContent = v?.blocked ? `${v.blocked} Press s to skip this step.` : "";
+  const status = $("v2-status");
+  status.hidden = !v?.status;
+  status.textContent = v?.status ?? "";
   if (!v) return;
   (RENDERERS[step.id] ?? drawChoices)(v);
 }
@@ -472,7 +488,7 @@ async function settle(r) {
     await runSearch();
     return;
   }
-  if (effect?.type === "save" || effect?.type === "install") {
+  if (effect?.type === "save" || effect?.type === "install" || effect?.type === "action") {
     busy = true;
     root.dataset.busy = "true";
     try {
@@ -494,10 +510,49 @@ async function settle(r) {
   draw();
 }
 
-/** @param {Extract<FlowEffect, { type: "save" } | { type: "install" }>} effect */
+/**
+ * `enter` on a Moving in step (behaviours 22 and 23): Make Default, or the import wizard, whose
+ * dialog holds the step until it closes. A result that acted is listed as saved; one that could
+ * not act keeps the step open, drawn again for what the system allows now.
+ * @param {Extract<FlowEffect, { type: "action" }>} effect
+ */
+async function runAction(effect) {
+  const step = flowStep(state);
+  if (!step) return;
+  const r = await SetupHost.runAction(browser(), effect.step, effect.index, view?.serial);
+  if ("stale" in r || "error" in r) {
+    await loadView();
+    const notice = $("v2-notice");
+    notice.hidden = false;
+    notice.textContent =
+      "error" in r ? `Not done: ${r.error}` : "The choices changed. Choose again.";
+    return;
+  }
+  const o = actionOutcome(step.id, r.result);
+  if (!o.advance) {
+    await loadView();
+    const notice = $("v2-notice");
+    notice.hidden = false;
+    notice.textContent =
+      r.result === "failed"
+        ? `${o.said} Press enter to try again or s to skip this step.`
+        : `${o.said} Press s to skip this step.`;
+    root.dataset.failed = "true";
+    return;
+  }
+  delete root.dataset.failed;
+  last = { title: step.title, lines: [o.said], action: true };
+  await settle(flowAdvance(state, ctx, o.saved));
+}
+
+/** @param {Extract<FlowEffect, { type: "save" } | { type: "install" } | { type: "action" }>} effect */
 async function runEnter(effect) {
   const step = flowStep(state);
   if (!step) return;
+  if (effect.type === "action") {
+    await runAction(effect);
+    return;
+  }
   if (effect.type === "install") {
     const { report, saved } = await install(effect.addons);
     last = { title: step.title, lines: report, action: true };
