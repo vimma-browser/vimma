@@ -163,6 +163,17 @@ describe("URLs without user names and passwords: queries (M21)", () => {
     expect(agentUrl(url, 1_000_000)).toBe("https://h/?…");
   });
 
+  test("a parameter of only + and % is decoded and read like any other", () => {
+    // `+%` reads as " %": as shown, without its white space, that is "%" written again as
+    // "%25". Only the leading white space goes (#1371 review); a parameter with other
+    // characters that reads as itself stays as written.
+    expect(agentUrl("https://h/?a=+%", 2048)).toBe("https://h/?a=%25");
+    expect(agentUrl("https://h/?a=x+%", 2048)).toBe("https://h/?a=x+%");
+    expect(markdownWithoutUserinfo("[a](https://h/?+%+%&b=1)")).toBe(
+      "[a](https://h/?%25+%25&b=1)",
+    );
+  });
+
   test("no URL is no text", () => {
     expect(agentUrl(undefined, 2048)).toBe("");
     expect(agentUrl(null, 2048)).toBe("");

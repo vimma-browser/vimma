@@ -749,7 +749,6 @@ function paramWithoutUserinfo(raw, cut, depth, work) {
  * @param {string} raw
  */
 function paramValue(raw) {
-  // Stryker disable next-line Regex: it differs only for a value of nothing but % and +, which comes back unchanged either way
   if (!/[%+]/.test(raw)) return raw;
   try {
     return decodeURIComponent(raw.replace(/\+/g, " "));
@@ -807,7 +806,6 @@ export function agentTitle(label) {
   // A title longer than agentUrl reads is read only that far, so the work stays bounded
   // however long a page makes its title (#1352 review); it is given as agentUrl gives it.
   if (t.length > 4 * AGENT_PAGE_URL_MAX) {
-    // Stryker disable next-line MethodExpression: URL_SCHEME reads only the start, which NFKC and the dropped characters leave the same either way; the cut bounds the work
     return URL_SCHEME.test(shown(t.slice(0, 4 * AGENT_PAGE_URL_MAX)))
       ? agentUrl(t, AGENT_PAGE_URL_MAX)
       : s;
