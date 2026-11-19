@@ -43,7 +43,7 @@ bindings, so it is accepted here.
   keystrokes from another frame (`nsFocusManager::SetFocusInner`); that gives no more than the
   viewer's own `focus` here, because the call never raises a window and the viewer's CSP
   (`default-src 'none'`) allows it no subframe.
-  [`a_hostile_viewer_cannot_turn_the_text_layers_focus`](../../tests/browser/browser_vimma_pdf_status.js)
+  [`a_hostile_viewer_cannot_turn_the_text_layers_focus`](../../tests/browser/browser_vimma_pdf_marks.js)
 - V4. Exported callbacks **must** read their arguments through Xrays, never waived, and only the
   fields they need; the child **must** keep only values whose `typeof` is `number`, `boolean` or
   `string` before `sendAsyncMessage`, and **must not** `await` a value returned by pdf.js. An
