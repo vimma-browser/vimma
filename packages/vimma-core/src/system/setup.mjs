@@ -296,6 +296,8 @@ export const BUILT_STEPS = Object.freeze([
   "bring_your_data",
   "address_bar",
   "tab_line",
+  "prefix_key",
+  "hint_letters",
 ]);
 
 /**
@@ -415,8 +417,10 @@ function openStop(s, chapter) {
 
 /**
  * The step after the open one, or its chapter's stop screen; a step that wrote `lines` is
- * listed as saved, replacing what an earlier `enter` on it saved (behaviour 6). An action
- * step that did nothing this time keeps what it did before: that cannot be undone.
+ * listed as saved, replacing what an earlier `enter` on it saved (behaviour 6). A skip, or a
+ * save that wrote nothing, keeps what this run saved for the step: that write is still in the
+ * file, and the stop screens list it. So an action step that did nothing this time keeps what
+ * it did before: that cannot be undone.
  * @param {FlowState} s @param {FlowContext} ctx
  * @param {readonly string[]} [lines]  what the step wrote; none for a skip or "writes nothing"
  * @returns {{ state: FlowState, effect: FlowEffect | null }}
@@ -425,9 +429,12 @@ export function flowAdvance(s, ctx, lines = []) {
   const step = flowStep(s);
   if (!step) return { state: s, effect: null };
   const chapter = s.chapters[s.chapter];
-  const keep = step.kind === "action" && !lines.length;
-  const saved = keep ? [...s.saved] : s.saved.filter((x) => x.step !== step.id);
-  if (lines.length) saved.push({ chapter: chapter?.id ?? "", step: step.id, lines: [...lines] });
+  const saved = lines.length
+    ? [
+        ...s.saved.filter((x) => x.step !== step.id),
+        { chapter: chapter?.id ?? "", step: step.id, lines: [...lines] },
+      ]
+    : s.saved;
   const next = { ...s, saved, marked: step.id === "content_blocker" ? new Map() : s.marked };
   if (chapter && s.step + 1 < chapter.steps.length)
     return openStep(next, s.chapter, s.step + 1, ctx);

@@ -80,6 +80,8 @@ button:focus kbd {
 kbd {
   font: inherit;
   color: var(--vimma-text-accent, #2cf5d2);
+  /* A key such as `ctrl+b ?` is one key: never split over two lines. */
+  white-space: nowrap;
 }
 
 button kbd {
@@ -360,6 +362,12 @@ code {
 
 .flow-footer .keys {
   margin-top: 0.6rem;
+}
+
+/* The prefix step's key under each prefix (setup-v2 behaviour 25). */
+.list .hint {
+  color: var(--vimma-fg-dim, #9197b2);
+  font-size: 0.85rem;
 }
 
 /* Square corners on every surface of the page, Firefox's own widgets included: the search
