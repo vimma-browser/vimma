@@ -10,10 +10,10 @@
 
 "use strict";
 
-// Every chapter of the setup in one file: about 26 s on a developer machine, near the harness's
-// 45 s for a file on a slower runner.
+// Every chapter of the setup in one file: about 26 s on an idle developer machine and 80 s on a
+// loaded one, against the harness's 45 s for a file.
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
-requestLongerTimeout(2);
+requestLongerTimeout(3);
 
 const { SetupHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/setup/SetupHost.sys.mjs",
