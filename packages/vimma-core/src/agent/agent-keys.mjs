@@ -828,9 +828,12 @@ export function agentTitle(label) {
   // A title longer than agentUrl reads is read only that far, so the work stays bounded
   // however long a page makes its title (#1352 review); it is given as agentUrl gives it.
   if (t.length > 4 * AGENT_PAGE_URL_MAX) {
-    return URL_SCHEME.test(shown(t.slice(0, 4 * AGENT_PAGE_URL_MAX)))
-      ? agentUrl(t, AGENT_PAGE_URL_MAX)
-      : s;
+    // Cut between two code points, so no half of an invisible character is left to show.
+    const head = shown(t.slice(0, 4 * AGENT_PAGE_URL_MAX).replace(/[\ud800-\udbff]$/, ""));
+    // Invisible characters may fill what is read, or cut a scheme short after it (#1372): a
+    // head that is empty or may still begin a scheme is given as agentUrl gives it too.
+    const scheme = URL_SCHEME.test(head) || /^(?:[a-z][a-z0-9+.-]*)?$/i.test(head);
+    return scheme ? agentUrl(t, AGENT_PAGE_URL_MAX) : s;
   }
   const plain = shown(t);
   // An at sign, or a URL percent-encoded in its query (#1324, #1348), as shown and as given: a

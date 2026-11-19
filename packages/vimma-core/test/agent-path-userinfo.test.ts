@@ -75,3 +75,36 @@ describe("a URL in another URL's path (#1372)", () => {
     expect(performance.now() - start).toBeLessThan(budget(1000));
   });
 });
+
+describe("a long title that hides its URL behind invisible characters (#1372)", () => {
+  test("a title whose first 32,768 code units are invisible still loses them", () => {
+    for (const title of [
+      `${"\u{E0041}".repeat(20_000)}https://user:pass@example.com/`,
+      `h${"\u200b".repeat(40_000)}ttps://user:pass@example.com/`,
+      `https${"\u{E0041}".repeat(20_000)}://user:pass@example.com/`,
+      // A scheme longer than what is read may still be one: it is read as agentUrl reads it.
+      `${"a".repeat(40_000)}://user:pass@example.com/`,
+    ]) {
+      expect(title.length).toBeGreaterThan(32_768);
+      expect(agentTitle(title)).not.toContain("user:pass");
+    }
+  });
+
+  test("a long title whose read part is no URL is left as the page wrote it", () => {
+    for (const title of [
+      // A page's own title that only holds a URL later is its own, as a short one is.
+      `Hello,${"\u200b".repeat(40_000)}https://user:pass@example.com/`,
+      `${"\u{E0041}".repeat(1_000)}Hello,${"\u200b".repeat(40_000)}world`,
+      `${"\u00e9".repeat(40_000)}`,
+    ]) {
+      expect(agentTitle(title)).toBe(title);
+    }
+  });
+
+  test("a long invisible title is read in bounded time", () => {
+    const title = `${"\u{E0041}".repeat(1_000_000)}https://user:pass@example.com/`;
+    const start = performance.now();
+    for (let i = 0; i < 20; i++) expect(agentTitle(title)).not.toContain("user:pass");
+    expect(performance.now() - start).toBeLessThan(budget(1000));
+  });
+});

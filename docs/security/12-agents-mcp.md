@@ -726,7 +726,9 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   a URL written unencoded in their path, an archive's or a redirect service's (M30, #1372). A page's own
   title that is a URL with a scheme loses them too (core's `agentTitle`), as given and as shown:
   a fullwidth slash in the user name, which NFKC makes a slash, does not hide them, and neither
-  does a URL percent-encoded in its query. Any other title, and the page's text, are the
+  does a URL percent-encoded in its query, nor invisible characters that fill the part of a
+  long title that is read (a title read only in part is given as `agentUrl` gives it when that
+  part, as shown, is empty or may still begin a scheme; #1372). Any other title, and the page's text, are the
   page's own: a page that writes its address into them is not changed. A link nested in another
   link's text, which some search pages have, comes out of Firefox's extractor escaped
   (`\[a\]\(https://...\)`); its target loses them too (#1217). Only link targets are read: text
@@ -735,6 +737,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`a link's href loses its user name and password`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`a link's href loses the user name and password of a URL in its path`](../../packages/vimma-core/test/agent-path-userinfo.test.ts),
   [`a page's markdown link target loses them`](../../packages/vimma-core/test/agent-path-userinfo.test.ts),
+  [`a title whose first 32,768 code units are invisible still loses them`](../../packages/vimma-core/test/agent-path-userinfo.test.ts),
   [`a user name and password longer than the cut are dropped before it`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`a link's href and a form's action lose their user name and password`](../../packages/vimma-core/test/agent-act.test.ts),
   [`a user name and password longer than the cut are dropped before it`](../../packages/vimma-core/test/agent-act.test.ts),
