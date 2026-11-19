@@ -44,7 +44,11 @@ function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 200);
 }
 
-const noticeText = () => document.getElementById("vimma-notice")?.textContent ?? "";
+/** The notice shown now: a hidden one keeps its last text, which an earlier task may have left. */
+const noticeText = () => {
+  const el = document.getElementById("vimma-notice");
+  return el?.matches(":popover-open") ? (el.textContent ?? "") : "";
+};
 const promptEl = () => document.getElementById("vimma-rename");
 const promptOpen = () => !!promptEl() && !(/** @type {HTMLElement} */ (promptEl()).hidden);
 const promptText = () =>

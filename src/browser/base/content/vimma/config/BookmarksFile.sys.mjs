@@ -383,7 +383,7 @@ export class BookmarksFileImpl {
     if (win && isPrivate(win)) return PRIVATE_REFUSAL;
     if (!this.writeFile) return `${BOOKMARKS_FILE} cannot be written here; nothing exported`;
     const first = await this.edits.run(() => this.exportNow(win, replace, null));
-    if (!("ask" in first)) return first.said;
+    if (!("ask" in first)) return this.afterExport(first);
     const yes = await new Promise((resolve) => {
       const close = this.confirm(
         win,
@@ -398,7 +398,17 @@ export class BookmarksFileImpl {
     if ("ask" in again) {
       return `${BOOKMARKS_FILE} changed meanwhile; nothing written (:bookmarks export! again)`;
     }
-    return again.said;
+    return this.afterExport(again);
+  }
+
+  /**
+   * What an export says, once the mirror's run of the new file has ended: said last, so a
+   * notice of that run (a bookmarklet not added) never hides what was written and left out.
+   * @param {{ said: string, wrote?: boolean }} r
+   */
+  async afterExport(r) {
+    if (r.wrote) await this.settledRuns();
+    return r.said;
   }
 
   /**
@@ -407,7 +417,7 @@ export class BookmarksFileImpl {
    * @param {BrowserWindow | null} win
    * @param {boolean} replace
    * @param {string | null} confirmed
-   * @returns {Promise<{ said: string } | { ask: string, existing: string }>}
+   * @returns {Promise<{ said: string, wrote?: boolean } | { ask: string, existing: string }>}
    */
   async exportNow(win, replace, confirmed) {
     const writeFile = this.writeFile;
@@ -459,7 +469,7 @@ export class BookmarksFileImpl {
     if (left.length) out.push(`left out: ${left.join(", ")}`);
     if (renamed) out.push(`${renamed} renamed in Firefox to match`);
     if (existing !== null) out.push(`the old file is ${BACKUP_FILE}`);
-    return { said: out.join("; ") };
+    return { said: out.join("; "), wrote: true };
   }
 
   /**
