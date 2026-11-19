@@ -25,6 +25,9 @@ const { McpHost, MCP_ENABLED_PREF } = ChromeUtils.importESModule(
 const { ConfigHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
 );
+const { VimmaControl } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
+);
 const { ContextualIdentityService } = ChromeUtils.importESModule(
   "moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs",
 );
@@ -87,6 +90,7 @@ registerCleanupFunction(async () => {
   if (picker()?.open) EventUtils.synthesizeKey("KEY_Escape");
   Services.prefs.clearUserPref(MCP_ENABLED_PREF);
   McpHost.configure(null);
+  McpHost._clearHoldForTests();
   ww().switchTo({ id: def("main").id });
   for (const w of WorkspaceStore.definitions.workspaces.filter(
     (/** @type {WorkspaceDefinition} */ d) =>
@@ -510,6 +514,48 @@ add_task(async function mcp_off_survives_a_config_reload() {
     await IOUtils.remove(dir, { recursive: true });
     McpHost.configure(null);
   }
+});
+
+// With the pref already on under the hold, `y` changes no pref, so the
+// agent role hears of the cleared hold only through MCP_CHANGED_TOPIC.
+add_task(async function mcp_on_after_off_starts_the_agent_role_when_the_pref_was_on() {
+  ww().switchTo({ id: def("main").id });
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+  await runCommand("mcp off");
+  await until(() => !McpHost.state.enabled, ":mcp off");
+  await until(() => VimmaControl.port === null, "the agent role stops");
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+  Assert.deepEqual(McpHost.state, { enabled: false, from: "session" }, "the hold beats the pref");
+  await runCommand("mcp on");
+  await until(promptOpen, ":mcp on asks");
+  EventUtils.synthesizeKey("y");
+  await until(() => McpHost.state.enabled, "y clears the hold");
+  await until(() => VimmaControl.port !== null, "and the agent role starts");
+  Services.prefs.clearUserPref(MCP_ENABLED_PREF);
+  await until(() => VimmaControl.port === null, "the role stops with the pref");
+});
+
+// A `:mcp on` question asked before an `:mcp off` (from another window, say) does not turn
+// agents on when answered later: the newer `:mcp off` wins.
+add_task(async function a_yes_to_an_older_mcp_on_question_does_not_undo_a_newer_mcp_off() {
+  ww().switchTo({ id: def("main").id });
+  Services.prefs.clearUserPref(MCP_ENABLED_PREF);
+  await runCommand("mcp on");
+  await until(promptOpen, ":mcp on asks");
+  McpHost.run(
+    "off",
+    () => {},
+    () => {},
+  );
+  EventUtils.synthesizeKey("y");
+  await until(() => !promptOpen(), "answered");
+  await until(
+    () => noticeText() === "mcp: :mcp off ran since you were asked; MCP stays off",
+    "the yes is refused, saying why",
+  );
+  Assert.ok(!McpHost.state.enabled, "agents stay off");
+  Assert.ok(!Services.prefs.getBoolPref(MCP_ENABLED_PREF, false), "the pref stays off");
+  McpHost._clearHoldForTests();
 });
 
 add_task(async function moving_a_tab_into_agent_warns_first() {

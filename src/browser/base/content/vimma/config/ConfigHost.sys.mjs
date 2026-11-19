@@ -12,8 +12,9 @@
 // `:config` create a missing config.toml from the commented template, never touching an existing
 // one; `:route add` appends one `[[routes]]` table (spec workspace-routing), checked to parse
 // first; the built-in agent's setup, `:siteunbind --save` / `:sitebind --delete` and the setup's
-// keys (setConfigKeys, docs/specs/setup-v2.md decision 5) edit their own lines (rewriteConfig). Every edit of config.toml and of bookmarks.toml, and every apply of
-// bookmarks.toml to Places, runs in one queue (docs/specs/bookmarks-file.md D11).
+// keys (setConfigKeys, docs/specs/setup-v2.md decision 5) edit their own lines (rewriteConfig).
+// Every edit of config.toml and of bookmarks.toml, and every apply of bookmarks.toml to Places,
+// runs in one queue (docs/specs/bookmarks-file.md D11).
 
 import {
   addAgentProviderText,
@@ -688,8 +689,11 @@ async function appendRoute(rule) {
       if (parent && !(await IOUtils.exists(parent))) {
         await IOUtils.makeDirectory(parent, { createAncestors: true, permissions: DIR_MODE });
       }
-      await IOUtils.writeUTF8(path, r.create, { mode: "create" });
+      // Empty and 0600 before the text goes in, as writeFileNow writes: never readable more
+      // widely, even for a moment.
+      await IOUtils.writeUTF8(path, "", { mode: "create" });
       await IOUtils.setPermissions(path, FILE_MODE, false);
+      await IOUtils.writeUTF8(path, r.create, { mode: "overwrite" });
     } else {
       await IOUtils.writeUTF8(path, r.append, { mode: "append" });
     }
@@ -818,8 +822,6 @@ export const ConfigHost = {
     return "error" in r ? r.error : null;
   },
 
-  /**
-   * The built-in agent's setup
   /**
    * The built-in agent's setup (docs/specs/builtin-agent.md Behaviour 2-3): the provider picked
    * in the chat window goes into config.toml as `[[agent.providers]]`, by name, kind, endpoint,

@@ -12,8 +12,7 @@
 import { CONFIG_READ_TOPIC, ConfigHost } from "../config/ConfigHost.sys.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
-import { parseConfig } from "../core/config.mjs";
-import { setTomlKeys } from "../core/toml.mjs";
+import { parseConfig, setConfigKeysText } from "../core/config.mjs";
 import {
   AMO_API,
   AMO_TIMEOUT_MS,
@@ -280,13 +279,16 @@ export const SetupHost = {
     } catch (e) {
       return notFound(e) ? null : `cannot read ${path}`;
     }
-    // As the writer checks (ConfigHost.setConfigKeys): a file that does not load is not edited.
-    const first = parseConfig(text, { mac: Services.appinfo.OS === "Darwin" }).errors[0];
+    const mac = Services.appinfo.OS === "Darwin";
+    // A file that does not load: its first error, with its line.
+    const first = parseConfig(text, { mac }).errors[0];
     if (first) {
       return `${path}:${first.line ?? 1}: ${first.path ? `${first.path}: ` : ""}${first.message}`;
     }
-    const r = setTomlKeys(text, [{ table: "search", key: "default", value: "x" }]);
-    return r.ok ? null : `${path}:${r.error.line}: ${r.error.message}`;
+    // Else the writer's own check (ConfigHost.setConfigKeys), so that whatever it would refuse
+    // after `enter` shows before it.
+    const r = setConfigKeysText(text, [{ table: "search", key: "default", value: "x" }], { mac });
+    return "error" in r ? `${path}${r.error.slice("config.toml".length)}` : null;
   },
 
   /**

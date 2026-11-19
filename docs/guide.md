@@ -2000,9 +2000,10 @@ you, and `a` lets it work without asking until it quits, except where
 - `:mcp on|off` is remembered in the pref `vimma.mcp.enabled`. `[mcp] enabled` in `config.toml`
   wins over the pref when Vimma starts and whenever it reads the file.
 - `:mcp off` always wins for the rest of the session: with `[mcp] enabled = true` in the file,
-  agents stay off however often the file is read or edited, until `:mcp on` (which asks again) or
-  a restart, when the file turns them on again. `:mcp` then says `mcp off (until :mcp on or a
-restart)`. With `[mcp] enabled = false`, `:mcp on` changes nothing and says to edit the file.
+  agents stay off however often the file is read or edited, until `:mcp on` (which asks again)
+  or a restart, when the file turns them on again. `:mcp` then says
+  `mcp off (until :mcp on or a restart)`. With `[mcp] enabled = false`, `:mcp on` changes
+  nothing and says to edit the file.
 - `about:vimma`'s **Agents (MCP)** section shows the switch, full control's state and the agent
   workspace's tab count.
 

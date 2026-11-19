@@ -262,8 +262,9 @@ const TABLE = [
           question: "Let local AI agents ask to use Vimma through vimma-ctl mcp?",
           text:
             "Agents reach only the agent workspace. Sending a form, paying and showing you a " +
-            "page always ask you first. <code>:mcp off</code> turns agents off until Vimma " +
-            "restarts, whatever config.toml says.",
+            "page always ask you first. <code>:mcp off</code> turns agents off until " +
+            "<code>:mcp on</code> or a restart, whatever config.toml says and however often " +
+            "it is read again.",
           actions: [],
         },
         { table: "mcp", key: "enabled" },
