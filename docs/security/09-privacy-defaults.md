@@ -36,3 +36,12 @@ Spec: [m0-mozilla-services](../specs/m0-mozilla-services.md),
   reset it after turning the tools off.
   [`test_devtools_defaults_match_official_firefox`](../../tests/browser/browser_vimma_mozilla_services.js),
   [`startPrefs`](../../tools/test/start.test.ts)
+- P9. Vimma opens Firefox's import wizard only from the setup page, as a dialog over the setup
+  page's own tab, and **never** where the `DisableProfileImport` policy forbids it (spec
+  [setup-v2](../specs/setup-v2.md), behaviour 23). Vimma passes the wizard only its entry point;
+  the wizard reads other browsers' profiles on this computer and sends nothing anywhere.
+  [`import_wizard_opens_over_the_setup_tab_and_resolves_when_it_closes`](../../tests/browser/browser_vimma_setup_moving_in.js),
+  [`import_wizard_opens_only_over_the_setup_page`](../../tests/browser/browser_vimma_setup_moving_in.js),
+  [`import_wizard_respects_the_policy`](../../tests/browser/browser_vimma_setup_moving_in.js),
+  [`closing_the_setup_tab_resolves_the_wizard_and_a_new_one_opens`](../../tests/browser/browser_vimma_setup_moving_in.js),
+  [`asks for Make default and the import wizard only from the setup host`](../../tools/security/test/chrome-source.test.ts)

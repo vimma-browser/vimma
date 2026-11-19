@@ -224,7 +224,6 @@ add_task(async function an_unknown_agent_cli_skips_its_provider_and_the_file_app
   const tab = await openPage("unknown-cli");
   await writeConfig(
     [
-      "schema = 2",
       "[keys]",
       'new_tab = "prefix+t"',
       "[[agent.providers]]",
@@ -238,7 +237,7 @@ add_task(async function an_unknown_agent_cli_skips_its_provider_and_the_file_app
   Assert.deepEqual(config().agent.providers, [], "its provider is left out");
   Assert.equal(ConfigHost.warnings.length, 1, "it is a warning");
   await until(
-    () => segText("error")?.startsWith("config.toml:7: agent.providers[0].cli: unknown agent CLI"),
+    () => segText("error")?.startsWith("config.toml:6: agent.providers[0].cli: unknown agent CLI"),
     "the status bar names the file, the line and the CLI",
   );
   Assert.ok(found(segText("error")).includes("this provider is skipped"), "and says what happened");
@@ -383,7 +382,7 @@ add_task(async function colon_config_opens_the_file_and_creates_it_from_the_temp
 
 add_task(async function panes_max_refuses_a_third_split() {
   const tab = await openPage("panes");
-  await writeConfig(`schema = 2\n[panes]\nmax = 2`);
+  await writeConfig(`[panes]\nmax = 2`);
   /** The window's pane view, which Vimma made when it started this window. */
   const paneView = () => found(PaneViews.get(window));
   await until(() => paneView().max === 2, "[panes] max reaches the pane view");
@@ -418,7 +417,7 @@ add_task(async function panes_max_refuses_a_third_split() {
 add_task(async function panes_new_tab_reaches_the_pane_view() {
   const paneView = () => found(PaneViews.get(window));
   Assert.equal(paneView().newTab, "alone", "alone without the file");
-  await writeConfig(`schema = 2\n[panes]\nnew_tab = "pane"`);
+  await writeConfig(`[panes]\nnew_tab = "pane"`);
   await until(() => paneView().newTab === "pane", "[panes] new_tab reaches the pane view");
   await resetConfig();
   Assert.equal(paneView().newTab, "alone", "the default comes back without the file");
@@ -452,7 +451,7 @@ add_task(async function theme_source_and_colors_feed_the_theme() {
   await until(() => barBackground() === rgb("#203040"), "[theme.colors] overrides it");
 
   // #1383: the removed "tokyo-night" is not refused with the file: vimma's palette applies.
-  await writeConfig(`schema = 2\n[theme]\nsource = "file"\nname = "tokyo-night"`);
+  await writeConfig(`[theme]\nsource = "file"\nname = "tokyo-night"`);
   await until(
     () => barBackground() === rgb(VIMMA_DARK.dark_background),
     'name = "tokyo-night", removed: the file applies, with the built-in vimma',
@@ -463,7 +462,7 @@ add_task(async function theme_source_and_colors_feed_the_theme() {
     "and a warning says it was removed",
   );
 
-  await writeConfig(`schema = 2\n[theme]\nname = "tokyo-night"`);
+  await writeConfig(`[theme]\nname = "tokyo-night"`);
   await until(
     () => barBackground() === rgb("#405060"),
     "an Omarchy theme wins: Omarchy users see no change",

@@ -1,7 +1,8 @@
-// Config schema 2 (spec m3-m4-core-prep): [panes] max, [modal] hint_chars, [sites."<host>"].
+// Keys added after M5 (spec m3-m4-core-prep and later): [panes], [modal] hint_chars, [sites."<host>"]
+// and the rest. Every key is valid in every file (#1379).
 import { describe, test, expect } from "vitest";
 import fc from "fast-check";
-import { CONFIG_SCHEMA_VERSION, MIGRATIONS, migrate, parseConfig } from "../src/config/config.mjs";
+import { parseConfig } from "../src/config/config.mjs";
 import { DEFAULT_CONFIG, formatDefaultsToml } from "../src/config/defaults.mjs";
 import { DEFAULT_HINT_CHARS } from "../src/page/hints.mjs";
 import { PANES_MAX_DEFAULT, PANES_MAX_LIMIT } from "../src/panes/panes.mjs";
@@ -10,7 +11,8 @@ import { MAX_SPLITS_DEFAULT } from "../src/panes/splits.mjs";
 import type { ResolvedConfig } from "../src/config/config.mjs";
 
 const toml = (...lines: string[]) => lines.join("\n") + "\n";
-const v2 = (...lines: string[]) => toml("schema = 2", ...lines);
+// A config.toml whose first line is a comment, so errors are on the lines they always were.
+const cfg = (...lines: string[]) => toml("# config.toml", ...lines);
 
 function ok(text: string) {
   const r = parseConfig(text);
@@ -29,31 +31,18 @@ function errors(text: string) {
   }));
 }
 
-describe("schema 2", () => {
-  test("is the current schema; 1 → 2 is the identity plus schema = 2", () => {
-    expect(CONFIG_SCHEMA_VERSION).toBe(2);
-    const raw = { schema: 1, keys: { new_tab: ["prefix+c"] } };
-    expect(migrate(raw, 1)).toEqual({
-      config: { schema: 2, keys: { new_tab: ["prefix+c"] } },
-      applied: ["1→2"],
-    });
-    expect(raw.schema).toBe(1);
-    expect(MIGRATIONS[1]).toBeTypeOf("function");
-  });
-
-  test("a v1 file still loads, migrated, with the new sections at their defaults", () => {
+describe("the newer keys", () => {
+  test("a schema-1 file still loads, with the newer sections at their defaults", () => {
     const r = parseConfig(toml("schema = 1", "[modal]", "timeout_ms = 500"));
     expect(r.errors).toEqual([]);
-    expect(r.migratedFrom).toBe(1);
     expect(r.config).toMatchObject({
-      schema: 2,
       panes: { max: PANES_MAX_DEFAULT },
       hintChars: DEFAULT_HINT_CHARS,
       sites: [],
     });
   });
 
-  test("defaults: panes.max 8, hint_chars the home row, no sites; defaults.toml is schema 2", () => {
+  test("defaults: panes.max 8, hint_chars the home row, no sites", () => {
     expect(PANES_MAX_DEFAULT).toBe(8);
     expect(DEFAULT_CONFIG.panes).toEqual({
       max: 8,
@@ -62,25 +51,18 @@ describe("schema 2", () => {
       new_tab: "alone",
     });
     const text = formatDefaultsToml();
-    expect(text).toMatch(/^schema = 2$/m);
     expect(text).toMatch(
       /^\[panes\]\nmax = 8\n(#.*\n)*layout = "dwindle"\n(#.*\n)*main_size = 60\n(#.*\n)*new_tab = "alone"$/m,
     );
     expect(text).toMatch(/^hint_chars = "asdfghjkl"$/m);
     expect(text).toMatch(/^# \[sites\."docs\.google\.com"\]$/m);
-    expect(parseConfig(text).migratedFrom).toBeNull();
-  });
-
-  test("a schema 3 file is from a newer vimma", () => {
-    expect(errors(toml("schema = 3"))).toEqual([
-      { line: 1, path: "schema", message: expect.stringMatching(/newer vimma.*up to 2/) },
-    ]);
+    expect(parseConfig(text).errors).toEqual([]);
   });
 });
 
 describe("[panes] max", () => {
   test.each([[1], [4], [7], [PANES_MAX_LIMIT]])("max = %i is accepted", (max) => {
-    expect(ok(v2("[panes]", `max = ${max}`)).panes).toEqual({
+    expect(ok(cfg("[panes]", `max = ${max}`)).panes).toEqual({
       max,
       layout: "dwindle",
       mainSize: 0.6,
@@ -96,16 +78,16 @@ describe("[panes] max", () => {
     ["4.0", "expected an integer, got a float"],
     ['"4"', "expected an integer, got a string"],
   ])("max = %s is an error at its line", (v, message) => {
-    expect(errors(v2("", "[panes]", `max = ${v}`))).toEqual([
+    expect(errors(cfg("", "[panes]", `max = ${v}`))).toEqual([
       { line: 4, path: "panes.max", message },
     ]);
   });
 
   test("an unknown key suggests max; panes must be a table", () => {
-    expect(errors(v2("[panes]", "maks = 4"))).toEqual([
+    expect(errors(cfg("[panes]", "maks = 4"))).toEqual([
       { line: 3, path: "panes.maks", message: 'unknown key "maks"', suggestion: "max" },
     ]);
-    expect(errors(v2("panes = 4"))).toEqual([
+    expect(errors(cfg("panes = 4"))).toEqual([
       { line: 2, path: "panes", message: "expected a table, got an integer" },
     ]);
   });
@@ -113,7 +95,7 @@ describe("[panes] max", () => {
   test("property: any integer max is accepted iff it is within 1..16", () => {
     fc.assert(
       fc.property(fc.integer({ min: -100, max: 100 }), (max) => {
-        const r = parseConfig(v2("[panes]", `max = ${max}`));
+        const r = parseConfig(cfg("[panes]", `max = ${max}`));
         expect(r.config !== null).toBe(max >= 1 && max <= PANES_MAX_LIMIT);
         if (r.config) expect(r.config.panes.max).toBe(max);
       }),
@@ -124,12 +106,12 @@ describe("[panes] max", () => {
 // docs/specs/multiple-splits.md decision 7.
 describe("[panes] max_splits", () => {
   test("defaults to 9", () => {
-    expect(ok(v2("")).panes.maxSplits).toBe(MAX_SPLITS_DEFAULT);
+    expect(ok(cfg("")).panes.maxSplits).toBe(MAX_SPLITS_DEFAULT);
     expect(MAX_SPLITS_DEFAULT).toBe(9);
   });
 
   test.each([[1], [4], [9]])("max_splits = %i is accepted", (n) => {
-    expect(ok(v2("[panes]", `max_splits = ${n}`)).panes.maxSplits).toBe(n);
+    expect(ok(cfg("[panes]", `max_splits = ${n}`)).panes.maxSplits).toBe(n);
   });
 
   test.each([
@@ -139,13 +121,13 @@ describe("[panes] max_splits", () => {
     ["2.0", "expected an integer, got a float"],
     ['"3"', "expected an integer, got a string"],
   ])("max_splits = %s is an error at its line", (v, message) => {
-    expect(errors(v2("", "[panes]", `max_splits = ${v}`))).toEqual([
+    expect(errors(cfg("", "[panes]", `max_splits = ${v}`))).toEqual([
       { line: 4, path: "panes.max_splits", message },
     ]);
   });
 
   test("a near miss suggests max_splits", () => {
-    expect(errors(v2("[panes]", "max_split = 3"))).toEqual([
+    expect(errors(cfg("[panes]", "max_split = 3"))).toEqual([
       {
         line: 3,
         path: "panes.max_split",
@@ -159,24 +141,24 @@ describe("[panes] max_splits", () => {
 // docs/specs/new-tab-in-split.md
 describe("[panes] new_tab", () => {
   test('defaults to "alone"', () => {
-    expect(ok(v2("")).panes.newTab).toBe("alone");
+    expect(ok(cfg("")).panes.newTab).toBe("alone");
   });
 
   test.each([["alone"], ["pane"]])('new_tab = "%s" is accepted', (v) => {
-    expect(ok(v2("[panes]", `new_tab = "${v}"`)).panes.newTab).toBe(v);
+    expect(ok(cfg("[panes]", `new_tab = "${v}"`)).panes.newTab).toBe(v);
   });
 
   test("an unknown value is an error at its line with the nearest name", () => {
-    expect(errors(v2("", "[panes]", 'new_tab = "panes"'))).toEqual([
+    expect(errors(cfg("", "[panes]", 'new_tab = "panes"'))).toEqual([
       { line: 4, path: "panes.new_tab", message: 'must be "alone" or "pane"', suggestion: "pane" },
     ]);
-    expect(errors(v2("[panes]", "new_tab = true"))).toEqual([
+    expect(errors(cfg("[panes]", "new_tab = true"))).toEqual([
       { line: 3, path: "panes.new_tab", message: "expected a string, got a boolean" },
     ]);
   });
 
   test("a near miss suggests new_tab", () => {
-    expect(errors(v2("[panes]", 'newtab = "pane"'))).toEqual([
+    expect(errors(cfg("[panes]", 'newtab = "pane"'))).toEqual([
       { line: 3, path: "panes.newtab", message: 'unknown key "newtab"', suggestion: "new_tab" },
     ]);
   });
@@ -185,7 +167,7 @@ describe("[panes] new_tab", () => {
 // docs/specs/tiling-layouts.md
 describe("[panes] layout and main_size", () => {
   test("defaults: dwindle, 60 %", () => {
-    expect(ok(v2("")).panes).toEqual({
+    expect(ok(cfg("")).panes).toEqual({
       max: 8,
       layout: "dwindle",
       mainSize: 0.6,
@@ -195,11 +177,11 @@ describe("[panes] layout and main_size", () => {
   });
 
   test.each([["dwindle"], ["manual"]])('layout = "%s" is accepted', (layout) => {
-    expect(ok(v2("[panes]", `layout = "${layout}"`)).panes.layout).toBe(layout);
+    expect(ok(cfg("[panes]", `layout = "${layout}"`)).panes.layout).toBe(layout);
   });
 
   test("an unknown layout is an error with the nearest name", () => {
-    expect(errors(v2("[panes]", 'layout = "dwindel"'))).toEqual([
+    expect(errors(cfg("[panes]", 'layout = "dwindel"'))).toEqual([
       {
         line: 3,
         path: "panes.layout",
@@ -207,13 +189,13 @@ describe("[panes] layout and main_size", () => {
         suggestion: "dwindle",
       },
     ]);
-    expect(errors(v2("[panes]", "layout = 1"))).toEqual([
+    expect(errors(cfg("[panes]", "layout = 1"))).toEqual([
       { line: 3, path: "panes.layout", message: "expected a string, got an integer" },
     ]);
   });
 
   test.each([[20], [55], [80]])("main_size = %i is that percent", (pct) => {
-    expect(ok(v2("[panes]", `main_size = ${pct}`)).panes.mainSize).toBeCloseTo(pct / 100, 9);
+    expect(ok(cfg("[panes]", `main_size = ${pct}`)).panes.mainSize).toBeCloseTo(pct / 100, 9);
   });
 
   test.each([
@@ -222,13 +204,13 @@ describe("[panes] layout and main_size", () => {
     ["0.6", "expected an integer, got a float"],
     ['"60%"', "expected an integer, got a string"],
   ])("main_size = %s is an error", (v, message) => {
-    expect(errors(v2("[panes]", `main_size = ${v}`))).toEqual([
+    expect(errors(cfg("[panes]", `main_size = ${v}`))).toEqual([
       { line: 3, path: "panes.main_size", message },
     ]);
   });
 
   test("an unknown key suggests the nearest of max, layout, main_size", () => {
-    expect(errors(v2("[panes]", "mainsize = 60"))).toEqual([
+    expect(errors(cfg("[panes]", "mainsize = 60"))).toEqual([
       {
         line: 3,
         path: "panes.mainsize",
@@ -242,7 +224,7 @@ describe("[panes] layout and main_size", () => {
 describe("[modal] hint_chars", () => {
   test("a valid charset is resolved; the keymap ignores the key", () => {
     const r = parseConfig(
-      v2("[modal]", 'hint_chars = "jfkdls"', "[modal.normal]", '"j" = "scroll.down"'),
+      cfg("[modal]", 'hint_chars = "jfkdls"', "[modal.normal]", '"j" = "scroll.down"'),
     );
     expect(r.errors).toEqual([]);
     expect(r.config?.hintChars).toBe("jfkdls");
@@ -252,7 +234,7 @@ describe("[modal] hint_chars", () => {
   test.each([['"aa"'], ['"a"'], ['"ABC"'], ['"a b"'], ['""']])(
     "hint_chars = %s is an error",
     (v) => {
-      expect(errors(v2("[modal]", `hint_chars = ${v}`))).toEqual([
+      expect(errors(cfg("[modal]", `hint_chars = ${v}`))).toEqual([
         {
           line: 3,
           path: "modal.hint_chars",
@@ -263,14 +245,14 @@ describe("[modal] hint_chars", () => {
   );
 
   test("a non-string hint_chars is a type error", () => {
-    expect(errors(v2("[modal]", "hint_chars = 5"))[0]).toMatchObject({
+    expect(errors(cfg("[modal]", "hint_chars = 5"))[0]).toMatchObject({
       path: "modal.hint_chars",
       message: "expected a string, got an integer",
     });
   });
 
   test("an unknown [modal] key now also suggests hint_chars", () => {
-    expect(errors(v2("[modal]", 'hint_char = "asdf"'))[0]).toMatchObject({
+    expect(errors(cfg("[modal]", 'hint_char = "asdf"'))[0]).toMatchObject({
       path: "modal.hint_char",
       suggestion: "hint_chars",
     });
@@ -280,7 +262,7 @@ describe("[modal] hint_chars", () => {
 describe('[sites."<host>"]', () => {
   test("rules are resolved in file order, insert defaulting to auto", () => {
     const config = ok(
-      v2(
+      cfg(
         '[sites."docs.google.com"]',
         'insert = "always"',
         '[sites."Example.COM."]',
@@ -309,7 +291,7 @@ describe('[sites."<host>"]', () => {
     ["", undefined],
     ["-bad-.com", undefined],
   ])("site %j is not a hostname", (host, suggestion) => {
-    expect(errors(v2(`[sites.${JSON.stringify(host)}]`, 'insert = "never"'))).toEqual([
+    expect(errors(cfg(`[sites.${JSON.stringify(host)}]`, 'insert = "never"'))).toEqual([
       {
         line: 2,
         path: `sites.${JSON.stringify(host)}`,
@@ -320,7 +302,7 @@ describe('[sites."<host>"]', () => {
   });
 
   test("insert must be auto, never or always; unknown keys suggest insert", () => {
-    expect(errors(v2('[sites."a.com"]', 'insert = "allways"', "insrt = 1"))).toEqual([
+    expect(errors(cfg('[sites."a.com"]', 'insert = "allways"', "insrt = 1"))).toEqual([
       {
         line: 3,
         path: 'sites."a.com".insert',
@@ -334,38 +316,32 @@ describe('[sites."<host>"]', () => {
         suggestion: "insert",
       },
     ]);
-    expect(errors(v2('[sites."a.com"]', "insert = true"))[0]?.message).toBe(
+    expect(errors(cfg('[sites."a.com"]', "insert = true"))[0]?.message).toBe(
       "expected a string, got a boolean",
     );
   });
 
   test("the same host twice (case and a trailing dot ignored) is an error on the second", () => {
-    expect(errors(v2('[sites."a.com"]', '[sites."A.com."]'))).toEqual([
+    expect(errors(cfg('[sites."a.com"]', '[sites."A.com."]'))).toEqual([
       { line: 3, path: 'sites."A.com."', message: 'same host as "a.com"' },
     ]);
   });
 
   test("a site must be a table", () => {
-    expect(errors(v2("[sites]", '"a.com" = "always"'))).toEqual([
+    expect(errors(cfg("[sites]", '"a.com" = "always"'))).toEqual([
       { line: 3, path: 'sites."a.com"', message: "expected a table, got a string" },
     ]);
   });
 });
 
-describe("schema 2 keys need schema = 2", () => {
+describe("the newer keys need no schema line", () => {
   test.each([
-    [["schema = 1", "[panes]", "max = 2"], 2, "panes"],
-    [["[panes]", "max = 2"], 1, "panes"],
-    [["schema = 1", '[sites."a.com"]'], 2, "sites"],
-    [["schema = 1", "[modal]", 'hint_chars = "asdf"'], 3, "modal.hint_chars"],
-  ])("%j is an error naming the key", (lines, line, path) => {
-    expect(errors(toml(...lines))).toEqual([
-      {
-        line,
-        path,
-        message: "is new in schema 2: put schema = 2 at the top of the file",
-      },
-    ]);
+    [["schema = 1", "[panes]", "max = 2"]],
+    [["[panes]", "max = 2"]],
+    [["schema = 1", '[sites."a.com"]']],
+    [["schema = 1", "[modal]", 'hint_chars = "asdf"']],
+  ])("%j loads", (lines) => {
+    expect(parseConfig(toml(...lines)).errors).toEqual([]);
   });
 });
 
@@ -373,27 +349,29 @@ describe("schema 2 keys need schema = 2", () => {
 describe("[firefox] disable and enable", () => {
   // docs/specs/firefox-keys.md decisions 9 and 10: Firefox's own shortcuts are off by default.
   test('the default is disable = "all" and enables none', () => {
-    expect(ok(v2()).firefox).toEqual({ disable: "all", enable: [] });
+    expect(ok(cfg()).firefox).toEqual({ disable: "all", enable: [] });
     const text = formatDefaultsToml();
     expect(text).toMatch(/^\[firefox\]\ndisable = "all"\nenable = \[\]$/m);
     expect(ok(text).firefox).toEqual({ disable: "all", enable: [] });
   });
 
   test('"all" and a list with enable are resolved, chords canonical', () => {
-    expect(ok(v2("[firefox]", 'disable = "all"', 'enable = ["ctrl+T", "alt+1"]')).firefox).toEqual({
-      disable: "all",
-      enable: ["ctrl+shift+t", "alt+1"],
-    });
-    expect(ok(v2("[firefox]", 'disable = ["control+w", "ctrl+U", "F5"]')).firefox).toEqual({
+    expect(ok(cfg("[firefox]", 'disable = "all"', 'enable = ["ctrl+T", "alt+1"]')).firefox).toEqual(
+      {
+        disable: "all",
+        enable: ["ctrl+shift+t", "alt+1"],
+      },
+    );
+    expect(ok(cfg("[firefox]", 'disable = ["control+w", "ctrl+U", "F5"]')).firefox).toEqual({
       disable: ["ctrl+w", "ctrl+shift+u", "f5"],
       enable: [],
     });
-    expect(ok(v2("[firefox]", "disable = []")).firefox).toEqual({ disable: [], enable: [] });
+    expect(ok(cfg("[firefox]", "disable = []")).firefox).toEqual({ disable: [], enable: [] });
   });
 
   // Decision 9: an inventory chord without ctrl, alt or meta (Firefox's stop) can be enabled.
   test('enable = ["esc", "shift+esc"] is valid', () => {
-    expect(ok(v2("[firefox]", 'enable = ["esc", "shift+esc"]')).firefox.enable).toEqual([
+    expect(ok(cfg("[firefox]", 'enable = ["esc", "shift+esc"]')).firefox.enable).toEqual([
       "esc",
       "shift+esc",
     ]);
@@ -401,7 +379,7 @@ describe("[firefox] disable and enable", () => {
 
   test("an enabled chord the user binds is an error at the enable line", () => {
     expect(
-      errors(v2("[keys]", 'new_tab = ["ctrl+t"]', "[firefox]", 'enable = ["ctrl+t"]')),
+      errors(cfg("[keys]", 'new_tab = ["ctrl+t"]', "[firefox]", 'enable = ["ctrl+t"]')),
     ).toEqual([
       {
         line: 5,
@@ -423,54 +401,42 @@ describe("[firefox] disable and enable", () => {
     ["enable = [1]", "firefox.enable[0]", "expected a key string, got an integer"],
     ['enable = "all"', "firefox.enable", "expected a list of key strings, got a string"],
   ])("%s is an error", (line, path, message) => {
-    expect(errors(v2("[firefox]", line))).toEqual([{ line: 3, path, message }]);
+    expect(errors(cfg("[firefox]", line))).toEqual([{ line: 3, path, message }]);
   });
 
   test("an unknown key in [firefox] suggests one", () => {
-    expect(errors(v2("[firefox]", "disabel = []"))).toEqual([
+    expect(errors(cfg("[firefox]", "disabel = []"))).toEqual([
       { line: 3, path: "firefox.disabel", message: 'unknown key "disabel"', suggestion: "disable" },
     ]);
   });
 
-  test("[firefox] is new in schema 2", () => {
-    expect(errors(toml("schema = 1", "[firefox]", "disable = []"))).toEqual([
-      {
-        line: 2,
-        path: "firefox",
-        message: "is new in schema 2: put schema = 2 at the top of the file",
-      },
-    ]);
+  test("[firefox] is valid in a schema-1 file too", () => {
+    expect(parseConfig(toml("schema = 1", "[firefox]", "disable = []")).errors).toEqual([]);
   });
 });
 
 describe("[modal] insert_editing", () => {
   test("is on by default and can be turned off; the keymap ignores it", () => {
-    expect(ok(v2()).insertEditing).toBe(true);
+    expect(ok(cfg()).insertEditing).toBe(true);
     expect(formatDefaultsToml()).toMatch(/^insert_editing = true$/m);
-    const r = parseConfig(v2("[modal]", "insert_editing = false"));
+    const r = parseConfig(cfg("[modal]", "insert_editing = false"));
     expect(r.errors).toEqual([]);
     expect(r.config?.insertEditing).toBe(false);
     expect(r.keymap).not.toBeNull();
   });
 
-  test("must be a boolean, and is new in schema 2", () => {
-    expect(errors(v2("[modal]", 'insert_editing = "yes"'))).toEqual([
+  test("must be a boolean, and is valid in a schema-1 file too", () => {
+    expect(errors(cfg("[modal]", 'insert_editing = "yes"'))).toEqual([
       { line: 3, path: "modal.insert_editing", message: "expected a boolean, got a string" },
     ]);
-    expect(errors(toml("schema = 1", "[modal]", "insert_editing = false"))).toEqual([
-      {
-        line: 3,
-        path: "modal.insert_editing",
-        message: "is new in schema 2: put schema = 2 at the top of the file",
-      },
-    ]);
+    expect(parseConfig(toml("schema = 1", "[modal]", "insert_editing = false")).errors).toEqual([]);
   });
 });
 
 // docs/specs/bookmarks.md, decision 2.
 describe("[bookmarks] root", () => {
   test('defaults to "workspace"', () => {
-    expect(ok(v2()).bookmarks).toEqual({
+    expect(ok(cfg()).bookmarks).toEqual({
       root: "workspace",
       bookmarklets: "none",
       writeBack: "all",
@@ -480,14 +446,14 @@ describe("[bookmarks] root", () => {
   });
 
   test.each([["workspace"], ["toolbar"], ["all"]])('root = "%s" is accepted', (root) => {
-    expect(ok(v2("[bookmarks]", `root = "${root}"`)).bookmarks.root).toBe(root);
+    expect(ok(cfg("[bookmarks]", `root = "${root}"`)).bookmarks.root).toBe(root);
   });
 
   test("an unknown root is an error, with the nearest name when one is close", () => {
-    expect(errors(v2("[bookmarks]", 'root = "menu"'))).toEqual([
+    expect(errors(cfg("[bookmarks]", 'root = "menu"'))).toEqual([
       { line: 3, path: "bookmarks.root", message: 'must be "workspace", "toolbar" or "all"' },
     ]);
-    expect(errors(v2("[bookmarks]", 'root = "tolbar"'))).toEqual([
+    expect(errors(cfg("[bookmarks]", 'root = "tolbar"'))).toEqual([
       {
         line: 3,
         path: "bookmarks.root",
@@ -495,42 +461,36 @@ describe("[bookmarks] root", () => {
         suggestion: "toolbar",
       },
     ]);
-    expect(errors(v2("[bookmarks]", "root = true"))).toEqual([
+    expect(errors(cfg("[bookmarks]", "root = true"))).toEqual([
       { line: 3, path: "bookmarks.root", message: "expected a string, got a boolean" },
     ]);
   });
 
-  test("an unknown key suggests root; the section is a table, new in schema 2", () => {
-    expect(errors(v2("[bookmarks]", 'roots = "all"'))).toEqual([
+  test("an unknown key suggests root; the section is a table, valid in any file", () => {
+    expect(errors(cfg("[bookmarks]", 'roots = "all"'))).toEqual([
       { line: 3, path: "bookmarks.roots", message: 'unknown key "roots"', suggestion: "root" },
     ]);
-    expect(errors(v2("bookmarks = 1"))).toEqual([
+    expect(errors(cfg("bookmarks = 1"))).toEqual([
       { line: 2, path: "bookmarks", message: "expected a table, got an integer" },
     ]);
-    expect(errors(toml("schema = 1", "[bookmarks]", 'root = "all"'))).toEqual([
-      {
-        line: 2,
-        path: "bookmarks",
-        message: "is new in schema 2: put schema = 2 at the top of the file",
-      },
-    ]);
+    expect(parseConfig(toml("schema = 1", "[bookmarks]", 'root = "all"')).errors).toEqual([]);
   });
 });
 
 // docs/specs/side-panel-counts.md, decision 6.
 describe("[panel] numbers", () => {
   test('defaults to "absolute"', () => {
-    expect(ok(v2()).panel).toEqual({ numbers: "absolute" });
+    expect(ok(cfg()).panel).toEqual({ numbers: "absolute" });
     expect(DEFAULT_CONFIG.panel).toEqual({ numbers: "absolute" });
     expect(formatDefaultsToml()).toMatch(/^\[panel\]\n(#.*\n)*numbers = "absolute"$/m);
   });
 
   test.each([["absolute"], ["relative"], ["hybrid"]])('numbers = "%s" is accepted', (n) => {
-    expect(ok(v2("[panel]", `numbers = "${n}"`)).panel.numbers).toBe(n);
+    expect(ok(cfg("[panel]", `numbers = "${n}"`)).panel.numbers).toBe(n);
   });
 
   test("an unknown value is an error, with the nearest name when one is close", () => {
-    expect(errors(v2("[panel]", 'numbers = "relativ"'))).toEqual([
+    expect(errors(cfg("[panel]", 'numbers = "relativ"'))).toEqual([
       {
         line: 3,
         path: "panel.numbers",
@@ -538,10 +498,10 @@ describe("[panel] numbers", () => {
         suggestion: "relative",
       },
     ]);
-    expect(errors(v2("[panel]", "numbers = 1"))).toEqual([
+    expect(errors(cfg("[panel]", "numbers = 1"))).toEqual([
       { line: 3, path: "panel.numbers", message: "expected a string, got an integer" },
     ]);
-    expect(errors(v2("[panel]", 'number = "hybrid"'))).toEqual([
+    expect(errors(cfg("[panel]", 'number = "hybrid"'))).toEqual([
       { line: 3, path: "panel.number", message: 'unknown key "number"', suggestion: "numbers" },
     ]);
   });
@@ -553,23 +513,23 @@ const MUST_BE_VIMMA =
 
 describe("[theme] name", () => {
   test('defaults to "vimma"', () => {
-    expect(ok(v2()).theme.name).toBe("vimma");
+    expect(ok(cfg()).theme.name).toBe("vimma");
     expect(DEFAULT_CONFIG.theme?.name).toBe("vimma");
     expect(formatDefaultsToml()).toMatch(/^\[theme\]\nsource = "omarchy"\nname = "vimma"$/m);
   });
 
   test('name = "vimma" is accepted', () => {
-    expect(ok(v2("[theme]", 'name = "vimma"')).theme.name).toBe("vimma");
+    expect(ok(cfg("[theme]", 'name = "vimma"')).theme.name).toBe("vimma");
   });
 
   test("an unknown name is an error, with the nearest name when one is close", () => {
-    expect(errors(v2("[theme]", 'name = "gruvbox"'))).toEqual([
+    expect(errors(cfg("[theme]", 'name = "gruvbox"'))).toEqual([
       { line: 3, path: "theme.name", message: MUST_BE_VIMMA },
     ]);
-    expect(errors(v2("[theme]", 'name = "vima"'))).toEqual([
+    expect(errors(cfg("[theme]", 'name = "vima"'))).toEqual([
       { line: 3, path: "theme.name", message: MUST_BE_VIMMA, suggestion: "vimma" },
     ]);
-    expect(errors(v2("[theme]", "name = 1"))).toEqual([
+    expect(errors(cfg("[theme]", "name = 1"))).toEqual([
       { line: 3, path: "theme.name", message: "expected a string, got an integer" },
     ]);
   });
@@ -577,7 +537,7 @@ describe("[theme] name", () => {
   // #1383: the built-in Tokyo Night palette is gone. A file that still names it applies, with
   // vimma's palette and a warning that names the choices, rather than being refused whole.
   test('the removed "tokyo-night" falls back to "vimma" with a warning; the file applies', () => {
-    const r = parseConfig(v2("[theme]", 'source = "file"', 'name = "tokyo-night"'));
+    const r = parseConfig(cfg("[theme]", 'source = "file"', 'name = "tokyo-night"'));
     expect(r.errors).toEqual([]);
     expect(r.config?.theme.name).toBe("vimma");
     expect(r.config?.theme.source).toBe("file");
@@ -592,14 +552,8 @@ describe("[theme] name", () => {
     ]);
   });
 
-  test("is new in schema 2; the rest of [theme] is not", () => {
-    expect(errors(toml("schema = 1", "[theme]", 'name = "vimma"'))).toEqual([
-      {
-        line: 3,
-        path: "theme.name",
-        message: "is new in schema 2: put schema = 2 at the top of the file",
-      },
-    ]);
+  test("is valid in a schema-1 file too, as the rest of [theme] is", () => {
+    expect(parseConfig(toml("schema = 1", "[theme]", 'name = "vimma"')).errors).toEqual([]);
     expect(ok(toml("schema = 1", "[theme]", 'source = "file"')).theme.name).toBe("vimma");
   });
 });
@@ -607,16 +561,16 @@ describe("[theme] name", () => {
 // docs/specs/theme-appearance.md, B: the built-in palette dark, light or as the system is.
 describe("[theme] appearance", () => {
   test("left out, it stays out: :theme's pref decides", () => {
-    expect(ok(v2()).theme.appearance).toBeUndefined();
+    expect(ok(cfg()).theme.appearance).toBeUndefined();
     expect(DEFAULT_CONFIG.theme?.appearance).toBeUndefined();
   });
 
   test.each([["system"], ["dark"], ["light"]])('appearance = "%s" is accepted', (v) => {
-    expect(ok(v2("[theme]", `appearance = "${v}"`)).theme.appearance).toBe(v);
+    expect(ok(cfg("[theme]", `appearance = "${v}"`)).theme.appearance).toBe(v);
   });
 
   test("an unknown value suggests the nearest; a non-string is a type error", () => {
-    expect(errors(v2("[theme]", 'appearance = "ligt"'))).toEqual([
+    expect(errors(cfg("[theme]", 'appearance = "ligt"'))).toEqual([
       {
         line: 3,
         path: "theme.appearance",
@@ -624,19 +578,13 @@ describe("[theme] appearance", () => {
         suggestion: "light",
       },
     ]);
-    expect(errors(v2("[theme]", "appearance = 1"))).toEqual([
+    expect(errors(cfg("[theme]", "appearance = 1"))).toEqual([
       { line: 3, path: "theme.appearance", message: "expected a string, got an integer" },
     ]);
   });
 
-  test("is new in schema 2", () => {
-    expect(errors(toml("schema = 1", "[theme]", 'appearance = "dark"'))).toEqual([
-      {
-        line: 3,
-        path: "theme.appearance",
-        message: "is new in schema 2: put schema = 2 at the top of the file",
-      },
-    ]);
+  test("is valid in a schema-1 file too", () => {
+    expect(parseConfig(toml("schema = 1", "[theme]", 'appearance = "dark"')).errors).toEqual([]);
   });
 
   test("defaults.toml documents it as a comment, so the file does not pin it", () => {
@@ -649,20 +597,20 @@ describe("[theme] appearance", () => {
 // docs/specs/private-swap.md, decision 1.
 describe("[private] placement", () => {
   test('defaults to "swap"', () => {
-    expect(ok(v2()).private).toEqual({ placement: "swap" });
+    expect(ok(cfg()).private).toEqual({ placement: "swap" });
     expect(DEFAULT_CONFIG.private).toEqual({ placement: "swap" });
     expect(formatDefaultsToml()).toMatch(/^\[private\]\n(#.*\n)*placement = "swap"$/m);
   });
 
   test.each([["swap"], ["window"]])('placement = "%s" is accepted', (placement) => {
-    expect(ok(v2("[private]", `placement = "${placement}"`)).private.placement).toBe(placement);
+    expect(ok(cfg("[private]", `placement = "${placement}"`)).private.placement).toBe(placement);
   });
 
   test("an unknown placement is an error, with the nearest name when one is close", () => {
-    expect(errors(v2("[private]", 'placement = "tab"'))).toEqual([
+    expect(errors(cfg("[private]", 'placement = "tab"'))).toEqual([
       { line: 3, path: "private.placement", message: 'must be "swap" or "window"' },
     ]);
-    expect(errors(v2("[private]", 'placement = "windows"'))).toEqual([
+    expect(errors(cfg("[private]", 'placement = "windows"'))).toEqual([
       {
         line: 3,
         path: "private.placement",
@@ -670,13 +618,13 @@ describe("[private] placement", () => {
         suggestion: "window",
       },
     ]);
-    expect(errors(v2("[private]", "placement = false"))).toEqual([
+    expect(errors(cfg("[private]", "placement = false"))).toEqual([
       { line: 3, path: "private.placement", message: "expected a string, got a boolean" },
     ]);
   });
 
-  test("an unknown key suggests placement; the section is a table, new in schema 2", () => {
-    expect(errors(v2("[private]", 'placment = "window"'))).toEqual([
+  test("an unknown key suggests placement; the section is a table, valid in any file", () => {
+    expect(errors(cfg("[private]", 'placment = "window"'))).toEqual([
       {
         line: 3,
         path: "private.placment",
@@ -684,23 +632,17 @@ describe("[private] placement", () => {
         suggestion: "placement",
       },
     ]);
-    expect(errors(v2("private = 1"))).toEqual([
+    expect(errors(cfg("private = 1"))).toEqual([
       { line: 2, path: "private", message: "expected a table, got an integer" },
     ]);
-    expect(errors(toml("schema = 1", "[private]", 'placement = "window"'))).toEqual([
-      {
-        line: 2,
-        path: "private",
-        message: "is new in schema 2: put schema = 2 at the top of the file",
-      },
-    ]);
+    expect(parseConfig(toml("schema = 1", "[private]", 'placement = "window"')).errors).toEqual([]);
   });
 });
 
 // docs/specs/toolbar-toggle.md, decision 3: [ui] toolbar, a schema-2 table.
 describe("[ui] toolbar", () => {
   test('defaults to "shown"', () => {
-    expect(ok(v2()).ui).toEqual({
+    expect(ok(cfg()).ui).toEqual({
       toolbar: "shown",
       bookmarksToolbar: null,
       pdfOutline: "shown",
@@ -717,50 +659,48 @@ describe("[ui] toolbar", () => {
   });
 
   test.each([["shown"], ["hidden"]])('toolbar = "%s" is accepted', (toolbar) => {
-    expect(ok(v2("[ui]", `toolbar = "${toolbar}"`)).ui.toolbar).toBe(toolbar);
+    expect(ok(cfg("[ui]", `toolbar = "${toolbar}"`)).ui.toolbar).toBe(toolbar);
   });
 
   test("any other value is an error, with the nearest one when it is close", () => {
-    expect(errors(v2("[ui]", 'toolbar = "off"'))).toEqual([
+    expect(errors(cfg("[ui]", 'toolbar = "off"'))).toEqual([
       { line: 3, path: "ui.toolbar", message: 'must be "shown" or "hidden"' },
     ]);
-    expect(errors(v2("[ui]", 'toolbar = "hiden"'))).toEqual([
+    expect(errors(cfg("[ui]", 'toolbar = "hiden"'))).toEqual([
       { line: 3, path: "ui.toolbar", message: 'must be "shown" or "hidden"', suggestion: "hidden" },
     ]);
-    expect(errors(v2("[ui]", "toolbar = false"))).toEqual([
+    expect(errors(cfg("[ui]", "toolbar = false"))).toEqual([
       { line: 3, path: "ui.toolbar", message: "expected a string, got a boolean" },
     ]);
   });
 
-  test("an unknown key is an error; [ui] is a table, new in schema 2", () => {
-    expect(errors(v2("[ui]", 'tolbar = "hidden"'))).toEqual([
+  test("an unknown key is an error; [ui] is a table, valid in any file", () => {
+    expect(errors(cfg("[ui]", 'tolbar = "hidden"'))).toEqual([
       { line: 3, path: "ui.tolbar", message: 'unknown key "tolbar"', suggestion: "toolbar" },
     ]);
-    expect(errors(v2("[ui]", "tabstrip = true"))).toMatchObject([
+    expect(errors(cfg("[ui]", "tabstrip = true"))).toMatchObject([
       { line: 3, path: "ui.tabstrip", message: 'unknown key "tabstrip"' },
     ]);
-    expect(errors(v2("ui = 1"))).toEqual([
+    expect(errors(cfg("ui = 1"))).toEqual([
       { line: 2, path: "ui", message: "expected a table, got an integer" },
     ]);
-    expect(errors(toml("schema = 1", "[ui]", 'toolbar = "hidden"'))).toEqual([
-      { line: 2, path: "ui", message: "is new in schema 2: put schema = 2 at the top of the file" },
-    ]);
+    expect(parseConfig(toml("schema = 1", "[ui]", 'toolbar = "hidden"')).errors).toEqual([]);
   });
 });
 
 // docs/specs/pdf-mode.md decision 19: [ui] pdf_outline, Vimma's outline beside a PDF that has one.
 describe("[ui] pdf_outline", () => {
   test('defaults to "shown", written in the template', () => {
-    expect(ok(v2()).ui.pdfOutline).toBe("shown");
+    expect(ok(cfg()).ui.pdfOutline).toBe("shown");
     expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n|\w+ = .*\n)*pdf_outline = "shown"$/m);
   });
 
   test.each([["shown"], ["hidden"]])('pdf_outline = "%s" is accepted', (v) => {
-    expect(ok(v2("[ui]", `pdf_outline = "${v}"`)).ui.pdfOutline).toBe(v);
+    expect(ok(cfg("[ui]", `pdf_outline = "${v}"`)).ui.pdfOutline).toBe(v);
   });
 
   test("any other value is an error, with the nearest one when it is close", () => {
-    expect(errors(v2("[ui]", 'pdf_outline = "hiden"'))).toEqual([
+    expect(errors(cfg("[ui]", 'pdf_outline = "hiden"'))).toEqual([
       {
         line: 3,
         path: "ui.pdf_outline",
@@ -768,7 +708,7 @@ describe("[ui] pdf_outline", () => {
         suggestion: "hidden",
       },
     ]);
-    expect(errors(v2("[ui]", "pdf_outline = false"))).toEqual([
+    expect(errors(cfg("[ui]", "pdf_outline = false"))).toEqual([
       { line: 3, path: "ui.pdf_outline", message: "expected a string, got a boolean" },
     ]);
   });
@@ -777,14 +717,14 @@ describe("[ui] pdf_outline", () => {
 // docs/specs/bookmarks-toolbar-hidden.md, decision 3: [ui] bookmarks_toolbar, unset by default.
 describe("[ui] bookmarks_toolbar", () => {
   test("left out, the config has none: Firefox's pref decides; the template only comments it", () => {
-    expect(ok(v2()).ui.bookmarksToolbar).toBeNull();
+    expect(ok(cfg()).ui.bookmarksToolbar).toBeNull();
     expect(DEFAULT_CONFIG.ui).not.toHaveProperty("bookmarks_toolbar");
     expect(formatDefaultsToml()).toMatch(/^# bookmarks_toolbar = "shown"$/m);
     expect(formatDefaultsToml()).not.toMatch(/^bookmarks_toolbar/m);
   });
 
   test.each([["shown"], ["hidden"], ["newtab"]])('bookmarks_toolbar = "%s" is accepted', (v) => {
-    expect(ok(v2("[ui]", `bookmarks_toolbar = "${v}"`)).ui).toEqual({
+    expect(ok(cfg("[ui]", `bookmarks_toolbar = "${v}"`)).ui).toEqual({
       toolbar: "shown",
       bookmarksToolbar: v,
       pdfOutline: "shown",
@@ -796,23 +736,23 @@ describe("[ui] bookmarks_toolbar", () => {
   test("Firefox's own words and other values are errors, with the Vimma word when one fits", () => {
     const message = 'must be "shown", "hidden" or "newtab"';
     const at = { line: 3, path: "ui.bookmarks_toolbar", message };
-    expect(errors(v2("[ui]", 'bookmarks_toolbar = "always"'))).toEqual([
+    expect(errors(cfg("[ui]", 'bookmarks_toolbar = "always"'))).toEqual([
       { ...at, suggestion: "shown" },
     ]);
-    expect(errors(v2("[ui]", 'bookmarks_toolbar = "never"'))).toEqual([
+    expect(errors(cfg("[ui]", 'bookmarks_toolbar = "never"'))).toEqual([
       { ...at, suggestion: "hidden" },
     ]);
-    expect(errors(v2("[ui]", 'bookmarks_toolbar = "hiden"'))).toEqual([
+    expect(errors(cfg("[ui]", 'bookmarks_toolbar = "hiden"'))).toEqual([
       { ...at, suggestion: "hidden" },
     ]);
-    expect(errors(v2("[ui]", 'bookmarks_toolbar = "blue"'))).toEqual([at]);
-    expect(errors(v2("[ui]", "bookmarks_toolbar = true"))).toEqual([
+    expect(errors(cfg("[ui]", 'bookmarks_toolbar = "blue"'))).toEqual([at]);
+    expect(errors(cfg("[ui]", "bookmarks_toolbar = true"))).toEqual([
       { line: 3, path: "ui.bookmarks_toolbar", message: "expected a string, got a boolean" },
     ]);
   });
 
-  test("a near miss of the key name suggests it; schema 1 has no [ui]", () => {
-    expect(errors(v2("[ui]", 'bookmark_toolbar = "shown"'))).toEqual([
+  test("a near miss of the key name suggests it; a schema-1 file may have [ui]", () => {
+    expect(errors(cfg("[ui]", 'bookmark_toolbar = "shown"'))).toEqual([
       {
         line: 3,
         path: "ui.bookmark_toolbar",
@@ -820,9 +760,9 @@ describe("[ui] bookmarks_toolbar", () => {
         suggestion: "bookmarks_toolbar",
       },
     ]);
-    expect(errors(toml("schema = 1", "[ui]", 'bookmarks_toolbar = "shown"'))).toEqual([
-      { line: 2, path: "ui", message: "is new in schema 2: put schema = 2 at the top of the file" },
-    ]);
+    expect(parseConfig(toml("schema = 1", "[ui]", 'bookmarks_toolbar = "shown"')).errors).toEqual(
+      [],
+    );
   });
 });
 
@@ -830,7 +770,7 @@ describe("[ui] bookmarks_toolbar", () => {
 describe("[mcp]", () => {
   // docs/specs/mcp-session-grants.md S1: grant_minutes 0, a grant for the whole connection.
   test("defaults: workspace agent, 50 s, grants for the connection or at most 480 min, 200,000 characters, notify", () => {
-    expect(ok(v2()).mcp).toEqual({
+    expect(ok(cfg()).mcp).toEqual({
       workspace: "agent",
       askTimeout: 50,
       grantMinutes: 0,
@@ -864,7 +804,7 @@ describe("[mcp]", () => {
 
   test("every key as written; enabled only when the file sets it", () => {
     const mcp = ok(
-      v2(
+      cfg(
         "[mcp]",
         "enabled = true",
         'workspace = "bots"',
@@ -890,12 +830,12 @@ describe("[mcp]", () => {
       downloadMaxMb: 4096,
       clamavMaxAgeDays: 90,
     });
-    expect(ok(v2("[mcp]", "enabled = false")).mcp.enabled).toBe(false);
-    expect("enabled" in ok(v2("[mcp]", "notify = true")).mcp).toBe(false);
+    expect(ok(cfg("[mcp]", "enabled = false")).mcp.enabled).toBe(false);
+    expect("enabled" in ok(cfg("[mcp]", "notify = true")).mcp).toBe(false);
   });
 
   test("each bound is an error that says the range", () => {
-    const at = (line: string) => errors(v2("[mcp]", line))[0];
+    const at = (line: string) => errors(cfg("[mcp]", line))[0];
     expect(at("ask_timeout = 5")).toEqual({
       line: 3,
       path: "mcp.ask_timeout",
@@ -911,7 +851,7 @@ describe("[mcp]", () => {
     expect(at("grant_minutes = -1")?.message).toBe(
       "must be an integer between 0 and grant_max_minutes (480)",
     );
-    expect(ok(v2("[mcp]", "grant_minutes = 0")).mcp.grantMinutes).toBe(0);
+    expect(ok(cfg("[mcp]", "grant_minutes = 0")).mcp.grantMinutes).toBe(0);
     expect(at("max_read_chars = 999")?.message).toBe("must be an integer between 1000 and 500000");
     expect(at("max_read_chars = 500001")?.path).toBe("mcp.max_read_chars");
     expect(at('ask_timeout = "50"')?.message).toBe("expected an integer, got a string");
@@ -920,22 +860,24 @@ describe("[mcp]", () => {
   });
 
   test("grant_minutes above grant_max_minutes is an error", () => {
-    expect(errors(v2("[mcp]", "grant_minutes = 60", "grant_max_minutes = 30"))).toEqual([
+    expect(errors(cfg("[mcp]", "grant_minutes = 60", "grant_max_minutes = 30"))).toEqual([
       {
         line: 3,
         path: "mcp.grant_minutes",
         message: "must be an integer between 0 and grant_max_minutes (30)",
       },
     ]);
-    expect(errors(v2("[mcp]", "grant_minutes = 500"))[0]?.message).toBe(
+    expect(errors(cfg("[mcp]", "grant_minutes = 500"))[0]?.message).toBe(
       "must be an integer between 0 and grant_max_minutes (480)",
     );
   });
 
   // Decision 31 b, f (sub-PR 2c): the quarantine folder and the size cap.
   test("download_dir is ~ or absolute, never home, / or the Downloads folder itself", () => {
-    const at = (line: string) => errors(v2("[mcp]", line))[0];
-    expect(ok(v2("[mcp]", 'download_dir = "~/agent-files"')).mcp.downloadDir).toBe("~/agent-files");
+    const at = (line: string) => errors(cfg("[mcp]", line))[0];
+    expect(ok(cfg("[mcp]", 'download_dir = "~/agent-files"')).mcp.downloadDir).toBe(
+      "~/agent-files",
+    );
     expect(at('download_dir = "agent-files"')).toEqual({
       line: 3,
       path: "mcp.download_dir",
@@ -953,18 +895,20 @@ describe("[mcp]", () => {
 
   // No hidden folder of home, nothing anyone can write (security.md M12).
   test("download_dir is never in a hidden folder of home or in /tmp, /var/tmp, /dev/shm", () => {
-    const at = (line: string) => errors(v2("[mcp]", line))[0]?.message;
+    const at = (line: string) => errors(cfg("[mcp]", line))[0]?.message;
     expect(at('download_dir = "~/.local/bin"')).toBe("must not be in a hidden folder (.local)");
     expect(at('download_dir = "~/a/.cache"')).toBe("must not be in a hidden folder (.cache)");
     for (const dir of ["/tmp/q", "/var/tmp", "/dev/shm/x", "/tmp"]) {
       expect(at(`download_dir = "${dir}"`), dir).toBe("must not be in /tmp, /var/tmp or /dev/shm");
     }
-    expect(ok(v2("[mcp]", 'download_dir = "~/agent.files"')).mcp.downloadDir).toBe("~/agent.files");
+    expect(ok(cfg("[mcp]", 'download_dir = "~/agent.files"')).mcp.downloadDir).toBe(
+      "~/agent.files",
+    );
   });
 
   test("download_max_mb is 1 to 4096", () => {
-    const at = (line: string) => errors(v2("[mcp]", line))[0];
-    expect(ok(v2("[mcp]", "download_max_mb = 1")).mcp.downloadMaxMb).toBe(1);
+    const at = (line: string) => errors(cfg("[mcp]", line))[0];
+    expect(ok(cfg("[mcp]", "download_max_mb = 1")).mcp.downloadMaxMb).toBe(1);
     expect(at("download_max_mb = 0")).toEqual({
       line: 3,
       path: "mcp.download_max_mb",
@@ -975,9 +919,9 @@ describe("[mcp]", () => {
   });
 
   test("clamav_max_age_days is 1 to 90, 7 by default", () => {
-    const at = (line: string) => errors(v2("[mcp]", line))[0];
-    expect(ok(v2("[mcp]", "notify = true")).mcp.clamavMaxAgeDays).toBe(7);
-    expect(ok(v2("[mcp]", "clamav_max_age_days = 1")).mcp.clamavMaxAgeDays).toBe(1);
+    const at = (line: string) => errors(cfg("[mcp]", line))[0];
+    expect(ok(cfg("[mcp]", "notify = true")).mcp.clamavMaxAgeDays).toBe(7);
+    expect(ok(cfg("[mcp]", "clamav_max_age_days = 1")).mcp.clamavMaxAgeDays).toBe(1);
     expect(at("clamav_max_age_days = 0")).toEqual({
       line: 3,
       path: "mcp.clamav_max_age_days",
@@ -988,7 +932,7 @@ describe("[mcp]", () => {
   });
 
   test('workspace follows the workspace-name rules and is never "private"', () => {
-    const at = (line: string) => errors(v2("[mcp]", line))[0];
+    const at = (line: string) => errors(cfg("[mcp]", line))[0];
     expect(at('workspace = "private"')).toEqual({
       line: 3,
       path: "mcp.workspace",
@@ -1000,8 +944,8 @@ describe("[mcp]", () => {
     expect(at("workspace = 3")?.message).toBe("expected a string, got an integer");
   });
 
-  test("a misspelt key suggests the right one; [mcp] without schema = 2 asks for it", () => {
-    expect(errors(v2("[mcp]", "ask_timout = 50"))).toEqual([
+  test("a misspelt key suggests the right one; [mcp] needs no schema line", () => {
+    expect(errors(cfg("[mcp]", "ask_timout = 50"))).toEqual([
       {
         line: 3,
         path: "mcp.ask_timout",
@@ -1009,14 +953,8 @@ describe("[mcp]", () => {
         suggestion: "ask_timeout",
       },
     ]);
-    expect(errors(toml("[mcp]", "enabled = true"))).toEqual([
-      {
-        line: 1,
-        path: "mcp",
-        message: "is new in schema 2: put schema = 2 at the top of the file",
-      },
-    ]);
-    expect(errors(v2("mcp = true"))).toEqual([
+    expect(parseConfig(toml("[mcp]", "enabled = true")).errors).toEqual([]);
+    expect(errors(cfg("mcp = true"))).toEqual([
       { line: 2, path: "mcp", message: "expected a table, got a boolean" },
     ]);
   });
@@ -1025,7 +963,7 @@ describe("[mcp]", () => {
 // docs/specs/tab-line.md decisions 3, 4 and 16: [ui] tabline, [ui] tabline_width, [statusbar] tab.
 describe("[ui] tabline", () => {
   test('defaults: tabline "off", 14 columns a name, the status bar keeps its tab', () => {
-    const c = ok(v2());
+    const c = ok(cfg());
     expect(c.ui.tabline).toBe("off");
     expect(c.ui.tablineWidth).toBe(14);
     expect(c.statusbar).toEqual({ tab: true });
@@ -1036,11 +974,11 @@ describe("[ui] tabline", () => {
   });
 
   test.each([["off"], ["always"], ["auto"]])('tabline = "%s" is accepted', (v) => {
-    expect(ok(v2("[ui]", `tabline = "${v}"`)).ui.tabline).toBe(v);
+    expect(ok(cfg("[ui]", `tabline = "${v}"`)).ui.tabline).toBe(v);
   });
 
   test("any other value is an error, with the nearest one when it is close", () => {
-    expect(errors(v2("[ui]", 'tabline = "alway"'))).toEqual([
+    expect(errors(cfg("[ui]", 'tabline = "alway"'))).toEqual([
       {
         line: 3,
         path: "ui.tabline",
@@ -1048,16 +986,16 @@ describe("[ui] tabline", () => {
         suggestion: "always",
       },
     ]);
-    expect(errors(v2("[ui]", "tabline = true"))).toEqual([
+    expect(errors(cfg("[ui]", "tabline = true"))).toEqual([
       { line: 3, path: "ui.tabline", message: "expected a string, got a boolean" },
     ]);
   });
 
   test("tabline_width is 4 to 60 columns", () => {
-    expect(ok(v2("[ui]", "tabline_width = 4")).ui.tablineWidth).toBe(4);
-    expect(ok(v2("[ui]", "tabline_width = 60")).ui.tablineWidth).toBe(60);
+    expect(ok(cfg("[ui]", "tabline_width = 4")).ui.tablineWidth).toBe(4);
+    expect(ok(cfg("[ui]", "tabline_width = 60")).ui.tablineWidth).toBe(60);
     for (const v of ["3", "61"]) {
-      expect(errors(v2("[ui]", `tabline_width = ${v}`))).toEqual([
+      expect(errors(cfg("[ui]", `tabline_width = ${v}`))).toEqual([
         {
           line: 3,
           path: "ui.tabline_width",
@@ -1065,25 +1003,19 @@ describe("[ui] tabline", () => {
         },
       ]);
     }
-    expect(errors(v2("[ui]", 'tabline_width = "14"'))).toEqual([
+    expect(errors(cfg("[ui]", 'tabline_width = "14"'))).toEqual([
       { line: 3, path: "ui.tabline_width", message: "expected an integer, got a string" },
     ]);
   });
 
-  test("[statusbar] tab is a boolean; an unknown key is an error; new in schema 2", () => {
-    expect(ok(v2("[statusbar]", "tab = false")).statusbar).toEqual({ tab: false });
-    expect(errors(v2("[statusbar]", 'tab = "no"'))).toEqual([
+  test("[statusbar] tab is a boolean; an unknown key is an error; valid in any file", () => {
+    expect(ok(cfg("[statusbar]", "tab = false")).statusbar).toEqual({ tab: false });
+    expect(errors(cfg("[statusbar]", 'tab = "no"'))).toEqual([
       { line: 3, path: "statusbar.tab", message: "expected a boolean, got a string" },
     ]);
-    expect(errors(v2("[statusbar]", "tabs = false"))).toEqual([
+    expect(errors(cfg("[statusbar]", "tabs = false"))).toEqual([
       { line: 3, path: "statusbar.tabs", message: 'unknown key "tabs"', suggestion: "tab" },
     ]);
-    expect(errors(toml("schema = 1", "[statusbar]", "tab = false"))).toEqual([
-      {
-        line: 2,
-        path: "statusbar",
-        message: "is new in schema 2: put schema = 2 at the top of the file",
-      },
-    ]);
+    expect(parseConfig(toml("schema = 1", "[statusbar]", "tab = false")).errors).toEqual([]);
   });
 });

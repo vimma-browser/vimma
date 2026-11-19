@@ -2,6 +2,23 @@
 
 Status: implemented (core); host wiring in [m5-config-load](m5-config-load.md) · Milestone: M5 · Area: `packages/vimma-core`
 
+Since changed (2026-11-19, #1379): config.toml has no schema. Every key is valid in every file,
+whatever its `schema` line says. A `schema` line, which files written for schema 1 or 2 carry, is
+accepted with any value (`1`, `2`, `3`, a string, a table) and ignored, so no existing file
+breaks and nothing is refused for a line that carries no meaning any more. `CONFIG_SCHEMA_VERSION`,
+`MIGRATIONS`, `migrate`, `ParseResult.migratedFrom` and `ResolvedConfig.schema` are gone,
+`defaults.toml` and the `:config` template no longer write the line, and about:vimma no longer
+shows it. The reasons: schema 2 was an identity migration that only added keys, and its one
+effect was to refuse a newer key in a file without `schema = 2`. That tripped hand-edited files
+and kept a writer such as setup from adding a key to a file with no `schema` line. Keys only
+ever grow, so an older Vimma meeting a newer key names it as an unknown key, which is a clear
+enough message. The one compatibility cost: Vimma 0.1.21 and older still enforce the rule, so a
+file without `schema = 2` that uses a newer key is refused when an older build opens it. That
+build keeps running on its defaults, and its error names the fix (`put schema = 2 at the top of
+the file`). Only a downgrade, mainly by nightly testers, meets it. Every other check stays as it
+was. Tests: `config-schema-line.test.ts`; the contract fixtures of `tests/contract/config/v1/`
+and `v2/` still load, `v2/valid-old-schema.toml` with newer keys under `schema = 1`.
+
 ## User stories
 
 - As a user, I write `~/.config/vimma/config.toml` in Herdr syntax; a mistake on line 12 shows
@@ -39,7 +56,7 @@ Unknown keys anywhere in the schema are errors with the closest known key as sug
 
 | Key                             | Type                      | Default                                     | Validation                                                                                                                                              |
 | ------------------------------- | ------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `schema`                        | integer                   | absent = version 0                          | `0 ≤ schema ≤ 1`; higher: "from a newer vimma"                                                                                                          |
+| `schema`                        | integer                   | absent = version 0                          | `0 ≤ schema ≤ 1`; higher: "from a newer vimma" (Since changed: any value, ignored; see above)                                                           |
 | `[keys] prefix`                 | key string                | `"ctrl+b"`                                  | `compileKeymap` (key notation)                                                                                                                          |
 | `[keys] <action>`               | string or list of strings | `defaults.mjs`                              | `compileKeymap`: action name from `actions.mjs` (suggestion), notation, no sequence bound twice in a mode                                               |
 | `[modal] leader`                | key string                | `" "`                                       | string; notation via `compileKeymap`                                                                                                                    |
@@ -100,6 +117,7 @@ the order of the names' lines in the text.
 - `migrate(raw, from, to = CONFIG_SCHEMA_VERSION, registry = MIGRATIONS)` applies each step in
   order and returns `{ config, applied: ["0→1", …] }`; a missing step throws. `from > to` throws.
 - v0 (no `schema` key: configs written before M5) → v1 is the identity plus `schema = 1`.
+  (Since changed: no migrations and no schema; see the note under the status line.)
 - Every new version adds a fixture pair under `tests/contract/config/v<n>/` and a migration test
   (plan §5).
 

@@ -50,7 +50,7 @@ let writes = 0;
 /** config.toml, with a unique trailer so the poll sees every write. */
 async function writeConfig(/** @type {string} */ text) {
   writes++;
-  await IOUtils.writeUTF8(file, `schema = 2\n${text}\n${"#".repeat(writes)}\n`);
+  await IOUtils.writeUTF8(file, `${text}\n${"#".repeat(writes)}\n`);
   await ConfigHost.reload();
 }
 

@@ -4,6 +4,11 @@ Status: implemented · Milestone: M5 · Area: `src/browser/base/content/vimma/co
 (new), `host/VimmaHost.sys.mjs`, `ui/theme-host.mjs`, `ui/help-overlay.mjs`, `ui/statusbar.mjs`,
 `vimma.js`
 
+Since changed (2026-11-19, #1379): config.toml has no schema; a `schema` line, with any value, is
+accepted and ignored, and every key is valid in every file. The decision, its reasons and its
+one compatibility cost (an older build refuses a newer key without `schema = 2`) are recorded in
+[m5-core-config-and-theme](m5-core-config-and-theme.md), under its status line.
+
 The host half of M5's config, on top of core's `reloadConfig` and `formatConfigError`
 ([m5-core-config-and-theme](m5-core-config-and-theme.md), schema 2 in
 [m3-m4-core-prep](m3-m4-core-prep.md)). Plan §6 M5 gate: "a broken config line shows file:line in

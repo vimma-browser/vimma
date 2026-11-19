@@ -1,6 +1,6 @@
 # ADR-008: Config: one `config.toml`
 
-- Status: Accepted; amended by [ADR-012](012-toml-parser-smol-toml.md) (the parser is smol-toml, BSD-3-Clause)
+- Status: Accepted; amended by [ADR-012](012-toml-parser-smol-toml.md) (the parser is smol-toml, BSD-3-Clause), and by #1379: config.toml has no `schema` version or migrations any more ([m5-core-config-and-theme](../specs/m5-core-config-and-theme.md))
 - Date: 2026-10-09
 
 ## Context

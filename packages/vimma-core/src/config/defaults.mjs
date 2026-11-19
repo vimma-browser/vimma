@@ -28,7 +28,7 @@ export const TABLINE_WIDTH = Object.freeze({ min: 4, max: 60, default: 14 });
  * @property {Record<string, string | string[]>} [keys]
  * @property {{ leader?: string, timeout_ms?: number } & Record<string, unknown>} [modal]
  * @property {Record<string, string[]>} [unbind]
- * @property {number} [schema]
+ * @property {unknown} [schema]  ignored: older files carry it (spec m5-core-config-and-theme)
  * @property {Record<string, WorkspaceInput>} [workspaces]
  * @property {ThemeInput} [theme]
  * @property {{ max?: number, layout?: "dwindle" | "manual", main_size?: number,
@@ -82,8 +82,8 @@ export const TABLINE_WIDTH = Object.freeze({ min: 4, max: 60, default: 14 });
 /**
  * @typedef {object} ThemeInput
  * @property {"omarchy" | "file"} [source]
- * @property {string} [name]   the built-in palette: "vimma" (schema 2)
- * @property {"system" | "dark" | "light"} [appearance]  the built-in palette's variant (schema 2)
+ * @property {string} [name]   the built-in palette: "vimma"
+ * @property {"system" | "dark" | "light"} [appearance]  the built-in palette's variant
  * @property {string} [font]
  * @property {Record<string, string>} [colors]
  */
@@ -591,7 +591,6 @@ export function formatDefaultsToml() {
     "# vimma default configuration.",
     "# Generated from packages/vimma-core/src/config/defaults.mjs by `npm run gen-docs`; do not edit.",
     "# Copy any line into ~/.config/vimma/config.toml to change it.",
-    "schema = 2",
     "",
     "[keys]",
   ];
@@ -808,9 +807,7 @@ export function formatConfigTemplate() {
     .split("\n")
     .slice(DEFAULTS_HEADER)
     .map((line) =>
-      line === "" || line.startsWith("#") || line.startsWith("[") || line.startsWith("schema =")
-        ? line
-        : `# ${line}`,
+      line === "" || line.startsWith("#") || line.startsWith("[") ? line : `# ${line}`,
     );
   return [
     "# Vimma config. Every line below is a default, commented out, so this file changes nothing.",

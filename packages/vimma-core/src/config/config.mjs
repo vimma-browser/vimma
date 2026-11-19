@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * config.toml: parse, validate schema v2, migrate, merge with defaults, keep the last good one.
+ * config.toml: parse, validate, merge with defaults, keep the last good one.
  * See docs/specs/m5-core-config-and-theme.md (v1) and docs/specs/m3-m4-core-prep.md (v2).
  * Core does no I/O: the host passes file contents.
  */
@@ -88,42 +88,41 @@ import { hasControl } from "../text/strings.mjs";
 
 /**
  * @typedef {object} ResolvedConfig
- * @property {number} schema
  * @property {Record<string, string | string[]>} keys     as written; compileKeymap merges
  * @property {Record<string, unknown>} modal              as written; compileKeymap merges
  * @property {Record<string, string[]>} unbind
  * @property {Workspace[]} workspaces                     file order = workspace order
  * @property {ThemeConfig} theme
  * @property {{ max: number, layout: "dwindle" | "manual", mainSize: number, maxSplits: number,
- *   newTab: "alone" | "pane" }} panes `[panes]` (schema 2); `mainSize` is `main_size` as a share
+ *   newTab: "alone" | "pane" }} panes `[panes]`; `mainSize` is `main_size` as a share
  *   (0.6), docs/specs/tiling-layouts.md; `maxSplits` is `max_splits`,
  *   docs/specs/multiple-splits.md; `newTab` is `new_tab`, docs/specs/new-tab-in-split.md
- * @property {string} hintChars                          `[modal] hint_chars` (schema 2)
- * @property {InsertSiteRule[]} sites                    `[sites."<host>"]` in file order (schema 2)
- * @property {Route[]} routes                            `[[routes]]` in file order (schema 2)
- * @property {{ defaultWorkspace: string | null }} routing  `[routing]` (schema 2), app-routes
- * @property {FirefoxKeySetting} firefox                 `[firefox]`, chords canonical (schema 2)
- * @property {boolean} insertEditing                     `[modal] insert_editing` (schema 2)
+ * @property {string} hintChars                          `[modal] hint_chars`
+ * @property {InsertSiteRule[]} sites                    `[sites."<host>"]` in file order
+ * @property {Route[]} routes                            `[[routes]]` in file order
+ * @property {{ defaultWorkspace: string | null }} routing  `[routing]`, app-routes
+ * @property {FirefoxKeySetting} firefox                 `[firefox]`, chords canonical
+ * @property {boolean} insertEditing                     `[modal] insert_editing`
  * @property {{ root: BookmarksRoot, bookmarklets: BookmarkletsSetting, writeBack: WriteBack }} bookmarks
- *   `[bookmarks]` (schema 2; `bookmarklets`: docs/specs/bookmarklets.md B1)
- * @property {{ numbers: PanelNumbers }} panel            `[panel]` (schema 2), side-panel-counts
- * @property {{ step: number }} scroll                   `[scroll]` (schema 2): j/k/h/l in CSS
+ *   `[bookmarks]` (`bookmarklets`: docs/specs/bookmarklets.md B1)
+ * @property {{ numbers: PanelNumbers }} panel            `[panel]`, side-panel-counts
+ * @property {{ step: number }} scroll                   `[scroll]`: j/k/h/l in CSS
  *   pixels, docs/specs/m1-actor-insert-scroll.md "Follow-up: scroll step"
- * @property {{ placement: PrivatePlacement }} private    `[private]` (schema 2), private-swap
- * @property {McpConfig} mcp                             `[mcp]` (schema 2), docs/specs/vimma-mcp.md
+ * @property {{ placement: PrivatePlacement }} private    `[private]`, private-swap
+ * @property {McpConfig} mcp                             `[mcp]`, docs/specs/vimma-mcp.md
  * @property {{ toolbar: ToolbarSetting, bookmarksToolbar: BookmarksToolbarSetting | null,
  *   pdfOutline: ToolbarSetting, tabline: TabLineSetting, tablineWidth: number }} ui
- *   `[ui]` (schema 2): toolbar-toggle; `bookmarksToolbar` is null when unset
+ *   `[ui]`: toolbar-toggle; `bookmarksToolbar` is null when unset
  *   (docs/specs/bookmarks-toolbar-hidden.md decision 3: Firefox's pref decides); `pdfOutline`,
  *   whether the PDF viewer opens with Vimma's outline shown (docs/specs/pdf-mode.md decision 19);
  *   `tabline` and `tablineWidth`, the tab line (docs/specs/tab-line.md decisions 3 and 4)
- * @property {{ tab: boolean }} statusbar  `[statusbar]` (schema 2): whether the status bar keeps
+ * @property {{ tab: boolean }} statusbar  `[statusbar]`: whether the status bar keeps
  *   its tab and title while the tab line is drawn (docs/specs/tab-line.md decision 16)
- * @property {ResolvedSearch | null} search              `[search]` (schema 2), null without it;
+ * @property {ResolvedSearch | null} search              `[search]`, null without it;
  *   docs/specs/search-engines.md
- * @property {{ check: boolean }} updates                `[updates]` (schema 2),
+ * @property {{ check: boolean }} updates                `[updates]`,
  *   docs/specs/m6a-updater.md
- * @property {AgentConfig} agent                         `[agent]` (schema 2),
+ * @property {AgentConfig} agent                         `[agent]`,
  *   docs/specs/builtin-agent.md
  */
 
@@ -163,42 +162,6 @@ import { hasControl } from "../text/strings.mjs";
  */
 
 /** @typedef {{ config: ResolvedConfig, keymap: Keymap }} ActiveConfig */
-/** @typedef {(config: Record<string, unknown>) => Record<string, unknown>} Migration */
-
-export const CONFIG_SCHEMA_VERSION = 2;
-
-/**
- * Step `n` turns a schema-n object into a schema-(n+1) object. Pure; never mutates its input.
- * @type {Readonly<Record<number, Migration>>}
- */
-export const MIGRATIONS = Object.freeze({
-  // v0: configs without `schema`, written before M5. Same shape as v1.
-  0: (config) => ({ ...config, schema: 1 }),
-  // v1 → v2 only adds keys ([panes], [sites], [modal] hint_chars). A file must say schema = 2 to
-  // use them, so an older vimma reports "from a newer vimma" instead of an unknown key.
-  1: (config) => ({ ...config, schema: 2 }),
-});
-
-/**
- * @param {Record<string, unknown>} raw
- * @param {number} from
- * @param {number} [to]
- * @param {Readonly<Record<number, Migration>>} [registry]
- * @returns {{ config: Record<string, unknown>, applied: string[] }}
- */
-export function migrate(raw, from, to = CONFIG_SCHEMA_VERSION, registry = MIGRATIONS) {
-  if (from > to) throw new Error(`config schema ${from} is newer than ${to}`);
-  let config = raw;
-  /** @type {string[]} */
-  const applied = [];
-  for (let v = from; v < to; v++) {
-    const step = registry[v];
-    if (typeof step !== "function") throw new Error(`no migration from schema ${v} to ${v + 1}`);
-    config = step(config);
-    applied.push(`${v}→${v + 1}`);
-  }
-  return { config, applied };
-}
 
 // Firefox container colours and icons (ContextualIdentityService.sys.mjs); workspacedefs.mjs too.
 export const CONTAINER_COLORS = [
@@ -231,7 +194,6 @@ export const CONTAINER_ICONS = [
   "fence",
 ];
 const TOP_KEYS = [
-  "schema",
   "keys",
   "modal",
   "unbind",
@@ -278,28 +240,8 @@ const SITE_KEYS = ["insert", "unbind"];
 const MODAL_KEYS = ["leader", "timeout_ms", "hint_chars", "insert_editing"];
 const FIREFOX_KEYS = ["disable", "enable"];
 const FIREFOX_DISABLE = 'must be "all" or a list of keys like "ctrl+w"';
-/** Keys a file may use only when it declares `schema = 2`, by config path. */
-const SCHEMA_2_KEYS = [
-  "panes",
-  "sites",
-  "modal.hint_chars",
-  "routes",
-  "routing",
-  "firefox",
-  "modal.insert_editing",
-  "bookmarks",
-  "theme.name",
-  "theme.appearance",
-  "private",
-  "mcp",
-  "ui",
-  "search",
-  "updates",
-  "agent",
-  "panel",
-  "scroll",
-  "statusbar",
-];
+/** The top-level key older files carry: accepted with any value and ignored (#1379). */
+const SCHEMA_KEY = "schema";
 /** `[bookmarks]` (docs/specs/bookmarks.md, decision 2; docs/specs/bookmarklets.md, B1). */
 const BOOKMARKS_KEYS = ["root", "bookmarklets", "write_back"];
 /** `[routing]` (docs/specs/app-routes.md, decision 16). */
@@ -396,7 +338,6 @@ const MAX_PRICE = 1_000_000;
 
 /** The private workspace's name (privatews.mjs): never the agent workspace's. */
 const PRIVATE_WORKSPACE_NAME = "private";
-const NEEDS_SCHEMA_2 = "is new in schema 2: put schema = 2 at the top of the file";
 const LABEL = "[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?";
 const DOMAIN = new RegExp(`^(?=.{1,253}$)${LABEL}(?:\\.${LABEL})*\\.?$`, "i");
 // Hex digits, dots and colons, bracketed or not; with a colon (tested apart: a pattern placing
@@ -476,14 +417,15 @@ function isHintCharset(chars) {
 }
 
 /**
- * Checks the current schema and returns every problem; keymap contents are left to compileKeymap.
- * @param {Record<string, unknown>} raw  migrated to the current schema
- * @param {number} declared  the schema the file declared (0 without `schema`)
+ * Checks every table and value and returns every problem; keymap contents are left to
+ * compileKeymap. A `schema` line, which older files carry, is accepted with any value and ignored
+ * (spec m5-core-config-and-theme, "Since changed": no schema).
+ * @param {Record<string, unknown>} raw
  * @param {Problem[]} [warnings]  receives what is left out without failing the file
  * @returns {Problem[]}
  */
 // Stryker disable next-line ArrayDeclaration: parseConfig, the only caller, always passes its own warnings list
-function validate(raw, declared, warnings = []) {
+function validate(raw, warnings = []) {
   /** @type {Problem[]} */
   const problems = [];
   /** @param {Path} path @param {string} message @param {string} [suggestion] */
@@ -514,24 +456,14 @@ function validate(raw, declared, warnings = []) {
     } else fail(path, `unknown key "${key}"`, near);
   };
 
-  /**
-   * A schema-2 key in a file that declares an older schema: reported once, then skipped.
-   * @param {Path} path
-   */
-  const gated = (path) => {
-    if (declared >= 2 || !SCHEMA_2_KEYS.includes(path.join("."))) return false;
-    fail(path, NEEDS_SCHEMA_2);
-    return true;
-  };
-
   for (const [key, v] of Object.entries(raw)) {
+    // A `schema` line, which older files carry, is ignored; it is no key to suggest (#1379).
+    if (key === SCHEMA_KEY) continue;
     if (!TOP_KEYS.includes(key)) unknownKey([key], key, TOP_KEYS);
     else if (key === "routes") {
       // An array of tables (workspace-routing); routes.mjs checks it.
-      if (!gated([key])) {
-        for (const p of validateRoutes(v)) problems.push({ ...p, path: [key, ...p.path] });
-      }
-    } else if (key !== "schema" && !gated([key])) table([key], v);
+      for (const p of validateRoutes(v)) problems.push({ ...p, path: [key, ...p.path] });
+    } else table([key], v);
   }
 
   if (isTable(raw.modal)) {
@@ -545,13 +477,11 @@ function validate(raw, declared, warnings = []) {
           fail(path, `must be an integer between 0 and ${MAX_TIMEOUT_MS}`);
         }
       } else if (key === "hint_chars") {
-        if (gated(path)) continue;
         if (typeof v !== "string") typeError(path, v, "a string");
         else if (!isHintCharset(v)) {
           fail(path, "must be at least 2 distinct characters, none uppercase or whitespace");
         }
       } else if (key === "insert_editing") {
-        if (gated(path)) continue;
         if (typeof v !== "boolean") typeError(path, v, "a boolean");
       } else if (isKeymapTable(key)) {
         table(path, v);
@@ -561,7 +491,7 @@ function validate(raw, declared, warnings = []) {
     }
   }
 
-  if (declared >= 2 && isTable(raw.firefox)) {
+  if (isTable(raw.firefox)) {
     for (const [key, v] of Object.entries(raw.firefox)) {
       const path = ["firefox", key];
       if (!FIREFOX_KEYS.includes(key)) {
@@ -648,7 +578,7 @@ function validate(raw, declared, warnings = []) {
     }
   }
 
-  if (declared >= 2 && isTable(raw.panes)) {
+  if (isTable(raw.panes)) {
     for (const [key, v] of Object.entries(raw.panes)) {
       const path = ["panes", key];
       if (key === "layout") {
@@ -679,7 +609,7 @@ function validate(raw, declared, warnings = []) {
     }
   }
 
-  if (declared >= 2 && isTable(raw.bookmarks)) {
+  if (isTable(raw.bookmarks)) {
     for (const [key, v] of Object.entries(raw.bookmarks)) {
       const path = ["bookmarks", key];
       // An inline `[bookmarks.<workspace>]` table (docs/specs/bookmarks-file.md D2): its lines are
@@ -708,7 +638,7 @@ function validate(raw, declared, warnings = []) {
     }
   }
 
-  if (declared >= 2 && isTable(raw.routing)) {
+  if (isTable(raw.routing)) {
     for (const [key, v] of Object.entries(raw.routing)) {
       const path = ["routing", key];
       if (!ROUTING_KEYS.includes(key)) unknownKey(path, key, ROUTING_KEYS);
@@ -719,7 +649,7 @@ function validate(raw, declared, warnings = []) {
     }
   }
 
-  if (declared >= 2 && isTable(raw.panel)) {
+  if (isTable(raw.panel)) {
     for (const [key, v] of Object.entries(raw.panel)) {
       const path = ["panel", key];
       if (key !== "numbers") unknownKey(path, key, PANEL_KEYS);
@@ -730,7 +660,7 @@ function validate(raw, declared, warnings = []) {
     }
   }
 
-  if (declared >= 2 && isTable(raw.scroll)) {
+  if (isTable(raw.scroll)) {
     for (const [key, v] of Object.entries(raw.scroll)) {
       const path = ["scroll", key];
       if (key !== "step") unknownKey(path, key, SCROLL_KEYS);
@@ -744,7 +674,7 @@ function validate(raw, declared, warnings = []) {
     }
   }
 
-  if (declared >= 2 && isTable(raw.private)) {
+  if (isTable(raw.private)) {
     for (const [key, v] of Object.entries(raw.private)) {
       const path = ["private", key];
       if (key !== "placement") unknownKey(path, key, PRIVATE_KEYS);
@@ -755,7 +685,7 @@ function validate(raw, declared, warnings = []) {
     }
   }
 
-  if (declared >= 2 && isTable(raw.ui)) {
+  if (isTable(raw.ui)) {
     for (const [key, v] of Object.entries(raw.ui)) {
       const path = ["ui", key];
       if (!UI_KEYS.includes(key)) unknownKey(path, key, UI_KEYS);
@@ -788,7 +718,7 @@ function validate(raw, declared, warnings = []) {
     }
   }
 
-  if (declared >= 2 && isTable(raw.statusbar)) {
+  if (isTable(raw.statusbar)) {
     for (const [key, v] of Object.entries(raw.statusbar)) {
       const path = ["statusbar", key];
       if (key !== "tab") unknownKey(path, key, STATUSBAR_KEYS);
@@ -796,7 +726,7 @@ function validate(raw, declared, warnings = []) {
     }
   }
 
-  if (declared >= 2 && isTable(raw.updates)) {
+  if (isTable(raw.updates)) {
     for (const [key, v] of Object.entries(raw.updates)) {
       const path = ["updates", key];
       if (key !== "check") unknownKey(path, key, UPDATES_KEYS);
@@ -804,16 +734,16 @@ function validate(raw, declared, warnings = []) {
     }
   }
 
-  if (declared >= 2 && isTable(raw.mcp)) validateMcp(raw.mcp, { fail, typeError, unknownKey });
+  if (isTable(raw.mcp)) validateMcp(raw.mcp, { fail, typeError, unknownKey });
 
-  if (declared >= 2 && isTable(raw.agent)) {
+  if (isTable(raw.agent)) {
     validateAgent(raw.agent, { fail, typeError, unknownKey, warnings });
   }
 
   // docs/specs/search-engines.md, decision 2.
-  if (declared >= 2 && isTable(raw.search)) problems.push(...validateSearch(raw.search));
+  if (isTable(raw.search)) problems.push(...validateSearch(raw.search));
 
-  if (declared >= 2 && isTable(raw.sites)) {
+  if (isTable(raw.sites)) {
     /** @type {Map<string, string>} */
     const seen = new Map();
     for (const [host, site] of Object.entries(raw.sites)) {
@@ -854,7 +784,6 @@ function validate(raw, declared, warnings = []) {
           fail(path, `must be "omarchy" or "file"`, closest(v, THEME_SOURCES));
         }
       } else if (key === "name") {
-        if (gated(path)) continue;
         if (typeof v !== "string") typeError(path, v, "a string");
         else if (REMOVED_THEME_NAMES.includes(v)) {
           warnings.push({
@@ -870,7 +799,6 @@ function validate(raw, declared, warnings = []) {
         }
       } else if (key === "appearance") {
         // docs/specs/theme-appearance.md B1: left out, `:theme` (a pref) decides.
-        if (gated(path)) continue;
         if (typeof v !== "string") typeError(path, v, "a string");
         else if (!(/** @type {readonly unknown[]} */ (APPEARANCES).includes(v))) {
           fail(path, `must be "system", "dark" or "light"`, closest(v, [...APPEARANCES]));
@@ -1292,7 +1220,6 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
   for (const [k, v] of Object.entries(theme.colors ?? {}))
     colors[k] = isHexColor(v) ? normalizeHex(v) : v;
   return {
-    schema: CONFIG_SCHEMA_VERSION,
     keys: user.keys ?? {},
     modal: user.modal ?? {},
     unbind: user.unbind ?? {},
@@ -1368,7 +1295,6 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
  * @property {ConfigError[]} errors           in file order
  * @property {ConfigError[]} warnings         what was left out of a file that applies, in file
  *   order: a provider whose `cli` this build does not know
- * @property {number | null} migratedFrom     the file's schema when older than the current one
  */
 
 /**
@@ -1383,7 +1309,6 @@ export function parseConfig(text, { mac = false } = {}) {
     keymap: null,
     errors,
     warnings: [],
-    migratedFrom: null,
   });
 
   const parsed = parseToml(text, { integersAsBigInt: true });
@@ -1404,23 +1329,10 @@ export function parseConfig(text, { mac = false } = {}) {
       })
       .sort((a, b) => (a.line ?? Infinity) - (b.line ?? Infinity));
 
-  const rawSchema = raw.schema ?? 0n;
-  if (typeof rawSchema === "number") {
-    return failed(located([{ path: ["schema"], message: "must be an integer, got a float" }]));
-  }
-  if (typeof rawSchema !== "bigint" || rawSchema < 0n) {
-    return failed(located([{ path: ["schema"], message: "must be a non-negative integer" }]));
-  }
-  const schema = rawSchema > BigInt(CONFIG_SCHEMA_VERSION) ? Infinity : Number(rawSchema);
-  if (schema > CONFIG_SCHEMA_VERSION) {
-    const message = `schema ${rawSchema} is from a newer vimma; this one reads up to ${CONFIG_SCHEMA_VERSION}`;
-    return failed(located([{ path: ["schema"], message }]));
-  }
-  const migrated = migrate(raw, schema).config;
   /** @type {Problem[]} */
   const warnings = [];
-  const problems = validate(migrated, schema, warnings);
-  const user = /** @type {UserConfig} */ (toNumbers(migrated));
+  const problems = validate(raw, warnings);
+  const user = /** @type {UserConfig} */ (toNumbers(raw));
 
   /** @type {Keymap | null} */
   let keymap = null;
@@ -1463,7 +1375,6 @@ export function parseConfig(text, { mac = false } = {}) {
     keymap,
     errors: [],
     warnings: located(warnings),
-    migratedFrom: schema === CONFIG_SCHEMA_VERSION ? null : schema,
   };
 }
 
@@ -1524,7 +1435,8 @@ export function rawUpdatesCheck(text) {
   const parsed = parseToml(text, { integersAsBigInt: true });
   if (!parsed.ok) return null;
   const { updates, ...rest } = parsed.value;
-  if (Object.keys(rest).some((key) => !TOP_KEYS.includes(key)) || strayCheck(rest)) return null;
+  const unknown = (/** @type {string} */ key) => key !== SCHEMA_KEY && !TOP_KEYS.includes(key);
+  if (Object.keys(rest).some(unknown) || strayCheck(rest)) return null;
   if (updates === undefined) return "missing";
   if (!isTable(updates)) return null;
   if (updates.check === undefined) return Object.keys(updates).length ? null : "missing";
@@ -1534,7 +1446,7 @@ export function rawUpdatesCheck(text) {
 /**
  * `:route add` (spec workspace-routing): the text to append to config.toml for a `domain` rule,
  * or the whole file to create when it is missing (`text` null: the template plus the rule).
- * The result must parse: a file with errors now, an older schema or an inline `routes = [...]`
+ * The result must parse: a file with errors now or an inline `routes = [...]`
  * is refused with the reason, and nothing is written.
  * @param {string | null} text  config.toml as it is, null when missing
  * @param {{ domain: string, workspace: string }} rule
