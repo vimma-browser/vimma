@@ -596,13 +596,72 @@ describe("LineFramer and tokensEqual (S4, S5)", () => {
 
 // The mutation run of issue #1119 after #1319: each test below fails against one surviving mutant.
 describe("arguments and fields no command names are refused (S7)", () => {
-  // "Stryker was here" is the one name an allow-list mutated to ["Stryker was here"] would let
-  // through, so it stands beside ordinary names.
+  // The element Stryker's ArrayDeclaration mutator puts in an emptied array (its literal in
+  // node_modules/@stryker-mutator/instrumenter/dist/src/mutators/array-declaration-mutator.js):
+  // the one name an allow-list mutated to it would let through. The names other commands take
+  // pin the realistic regression, a real name added to the wrong allow-list, without it.
+  const STRYKER_ARRAY_PLACEHOLDER = "Stryker was here";
+  /** Every argument name some command takes. */
+  const ARGUMENT_NAMES = [
+    "keys",
+    "url",
+    "where",
+    "client",
+    "via",
+    "ctl",
+    "session",
+    "tab",
+    "format",
+    "max_chars",
+    "elements",
+    "query",
+    "kinds",
+    "label",
+    "fields",
+    "submit",
+    "labels",
+    "full",
+    "since",
+    "name",
+    "id",
+  ];
+  /** Every result field some other command's result has, and agent-fill's own two. */
+  const OTHER_RESULT_FIELDS = [
+    "filled",
+    "reset",
+    "tab",
+    "workspace",
+    "exists",
+    "tabs",
+    "text",
+    "truncated",
+    "background",
+    "selection",
+    "language",
+    "closed",
+    "shown",
+    "ran",
+    "cancelled",
+    "scroll",
+    "steps",
+    "find",
+    "links",
+    "mimeType",
+    "data",
+    "width",
+    "height",
+    "labels",
+    "stale",
+    "time",
+    "errors",
+    "requests",
+  ];
+
   test.each(["state", "reload-theme", "agent-tabs", "agent-ping"])(
     "%s takes no argument, whatever its name",
     (command) => {
       expect(valid(req(command))).toBe(true);
-      for (const name of ["x", "tab", "Stryker was here"]) {
+      for (const name of ["x", ...ARGUMENT_NAMES, STRYKER_ARRAY_PLACEHOLDER]) {
         expect(errorsOf(req(command, { [name]: 1 }))).toEqual([`unknown field "args.${name}"`]);
       }
     },
@@ -611,7 +670,7 @@ describe("arguments and fields no command names are refused (S7)", () => {
   test("agent-activate's result has no field beyond its own", () => {
     const result = { url: "https://a.example/", title: "A", loading: false, navigated: false };
     expect(response("agent-activate", result).valid).toBe(true);
-    for (const name of ["filled", "Stryker was here"]) {
+    for (const name of [...OTHER_RESULT_FIELDS, STRYKER_ARRAY_PLACEHOLDER]) {
       expect(response("agent-activate", { ...result, [name]: 1 }).errors).toEqual([
         `unknown field "result.${name}"`,
       ]);

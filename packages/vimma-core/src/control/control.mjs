@@ -654,7 +654,7 @@ export function parseAgentRequest(command, given) {
   };
   if (command === "agent-hello") {
     const { client, via, ctl, session } = args;
-    // Stryker disable next-line LogicalOperator: checkAgentHelloArgs passed, so client is an object and its name a string: both sides are false
+    // Stryker disable next-line LogicalOperator: equivalent while checkAgentHelloArgs holds (client an object, its name a string); defence in depth (S11)
     if (!isObject(client) || typeof client.name !== "string") return null;
     return {
       command,
