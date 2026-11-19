@@ -548,11 +548,13 @@ const NESTED_MAX = 4;
 const asParsed = (text) => text.replace(/[\t\n\r]/g, "").replace(/^[\u0000-\u0020]+/, "");
 
 /**
- * How much more query text one call may read for user names and passwords (`left`, in code
- * units, counted at every level of nesting and in each pass). Decoding and normalising every
- * parameter of every nested query costs far more than reading an authority, so a page that
- * writes many deep queries could otherwise hold the parent process for seconds (#1352 review).
- * A query reached once it is spent is dropped whole: more is dropped that way, never less.
+ * How much more query text one call may read closely for user names and passwords (`left`, in
+ * code units of the parameters that the quick check lets through, counted at every level of
+ * nesting and in each pass). Decoding and normalising every parameter of every nested query costs
+ * far more than reading an authority, so a page that writes many deep queries could otherwise
+ * hold the parent process for seconds (#1352 review). An ordinary parameter, which the quick
+ * check passes over, costs nothing, so a page of plain links keeps all its queries. A parameter
+ * or query reached once it is spent is dropped: more is dropped that way, never less.
  * @typedef {{ left: number }} QueryWork
  */
 
@@ -655,7 +657,6 @@ function queryWithoutUserinfo(s, at, cut, depth, work) {
   const end = h < 0 ? s.length : h;
   const query = q >= 0 && q < end ? q + 1 : -1;
   if (query < 0 && h < 0) return s;
-  work.left -= s.length - (query < 0 ? h : query);
   if (depth >= NESTED_MAX || work.left < 0) {
     const kept = s.slice(0, query < 0 ? end : query);
     return `${kept}${query < 0 ? "" : "…"}${h < 0 ? "" : "#…"}`;
@@ -720,6 +721,10 @@ function paramWithoutUserinfo(raw, cut, depth, work) {
   // Plain ASCII without a percent sign is a URL with a user name only with a colon and an at
   // sign, unless cut before its at sign: most parameters are, and are passed over quickly.
   if (!cut && !/[^\x20-\x7e]|%|:[^]*@/.test(value)) return raw;
+  // Only a parameter read closely counts towards the work, so a page of ordinary queries keeps
+  // them all; one read once the work is spent is dropped, as it may hold a user name.
+  work.left -= raw.length;
+  if (work.left < 0) return "\u2026";
   // Printable ASCII is as shown already, so a second pass would find nothing more.
   const ascii = !/[^\x20-\x7e]/.test(value);
   const stripped = ascii
@@ -799,7 +804,9 @@ export function agentTitle(label) {
   // A title longer than agentUrl reads is read only that far, so the work stays bounded
   // however long a page makes its title (#1352 review); it is given as agentUrl gives it.
   if (t.length > 4 * AGENT_PAGE_URL_MAX) {
-    return URL_SCHEME.test(shown(t.slice(0, 64))) ? agentUrl(t, AGENT_PAGE_URL_MAX) : s;
+    return URL_SCHEME.test(shown(t.slice(0, 4 * AGENT_PAGE_URL_MAX)))
+      ? agentUrl(t, AGENT_PAGE_URL_MAX)
+      : s;
   }
   const plain = shown(t);
   // An at sign, or a URL percent-encoded in its query (#1324, #1348), as shown and as given: a

@@ -750,6 +750,16 @@ describe("URLs without user names and passwords (security.md M21, #1209)", () =>
     expect(markdownWithoutUserinfo(long)).not.toMatch(/ada|secret/);
   });
 
+  test("a page of many links keeps every plain query (#1352 re-review)", () => {
+    // A shop's list: 1,200 links with ordinary 300-character queries, none holding a URL.
+    const links = Array.from(
+      { length: 1200 },
+      (_, i) => `[item ${i}](https://shop.example/p/${i}?${"q=abc&".repeat(50)}id=${i}) `,
+    ).join("");
+    expect(links.length).toBeGreaterThan(400_000);
+    expect(markdownWithoutUserinfo(links)).toBe(links);
+  });
+
   test("text that is no link target is left byte for byte, URLs and emails too", () => {
     const text = [
       "Mail bob@example.com or ada:secret@example.com, see https://ada:secret@example.com/ here.",
@@ -879,6 +889,11 @@ describe("tab titles without user names and passwords (security.md M21, #1209)",
     expect(performance.now() - start).toBeLessThan(budget(1000));
     // Read only as far as agentUrl reads, an authority that runs past it is dropped whole.
     expect(agentTitle(`https://ada:${"s".repeat(1_500_000)}@x.example/`)).toBe("https://…");
+  });
+
+  test("a long title behind invisible characters still loses them (#1352 re-review)", () => {
+    const title = `${"\u200b".repeat(100)}https://ada:secret@x.example/${"a".repeat(40_000)}`;
+    expect(agentTitle(title)).not.toMatch(/ada|secret/);
   });
 
   test("any other title is left as the page wrote it", () => {
