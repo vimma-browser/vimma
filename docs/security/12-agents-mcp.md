@@ -719,7 +719,9 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   also after a redirect) **must never** be read: such a label may hold a user name and password,
   only part of one once Firefox cut it at 256 characters, or those of the URL the tab was opened
   at. Every reply that names a title gives the tab's URL instead, without them, as Firefox shows
-  it (no scheme, no `www.`; core's `agentTabTitle`). A page's own title that is a URL with a
+  it (no scheme, no `www.`; core's `agentTabTitle`). A Reader View tab is named by its article's
+  URL, whose user name and password its `about:reader?url=` address carries percent-encoded
+  (M30, #1324). A page's own title that is a URL with a
   scheme loses them too (core's `agentTitle`). Any other title, and the page's text, are the
   page's own: a page that writes its address into them is not changed. A link nested in another
   link's text, which some search pages have, comes out of Firefox's extractor escaped
@@ -742,6 +744,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`any other title is left as the page wrote it`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`test_a_tab_labelled_with_its_url_gives_no_user_name_and_password`](../../tests/browser/browser_vimma_mcp_userinfo.js),
   [`test_a_clamped_or_redirected_url_label_gives_no_password`](../../tests/browser/browser_vimma_mcp_userinfo.js),
+  [`test_a_reader_view_tab_gives_its_article_url_without_them`](../../tests/browser/browser_vimma_mcp_userinfo.js),
   [`test_f_lists_links_with_labels_marked_untrusted`](../../tests/browser/browser_vimma_mcp_follow.js),
   [`at most 200 links; the rest are dropped and counted`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`one line per link: the label, the text as JSON cut at 80, the href cut at 2,048`](../../packages/vimma-core/test/agent-keys.test.ts),
@@ -1178,7 +1181,14 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   request URL reaches the agent: each is removed, up to the authority's last `@` where a URL
   parser ends the authority, from the URL and from any URL inside a `view-source:`, `jar:` or
   `blob:` one, before the URL is cut to length; an authority longer than what is read is dropped
-  whole, and so is everything past the fourth URL nested in another. Failed requests (HTTP status 400 and above, or a channel error other than a
+  whole, and so is everything past the fourth URL nested in another. An `about:` address carries
+  URLs percent-encoded in its query, where no `@` ends an authority (Reader View's
+  `about:reader?url=`, the error pages' `u=`; #1324): each parameter is decoded as
+  `URLSearchParams` decodes it and stripped as a nested URL in the same two passes, as given and
+  then as shown (a fullwidth slash inside the user name ends no authority, so the host given is
+  the one Firefox loads), and the query is written again when that removed anything. A Reader View address that was read whole is then given as its
+  article's URL, as the status bar shows it (core's `readerOriginalUrl`), so a reader tab is
+  named by its article without a user name or password in every reply, its title too. Failed requests (HTTP status 400 and above, or a channel error other than a
   cancel, a redirect or a load turned download) **must** be logged only for channels whose top
   browsing context is a live tab of the agent workspace's container outside private windows,
   only while MCP is on, the last
@@ -1202,7 +1212,13 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`the user name and password end at the authority's last at sign`](../../packages/vimma-core/test/agent-act.test.ts),
   [`the authority ends where a URL parser ends it, not at a look-alike`](../../packages/vimma-core/test/agent-act.test.ts),
   [`any slashes after a special scheme, or none, still lead to the authority`](../../packages/vimma-core/test/agent-act.test.ts),
-  [`a URL inside view-source, jar or blob loses its user name and password too`](../../packages/vimma-core/test/agent-act.test.ts)
+  [`a URL inside view-source, jar or blob loses its user name and password too`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a Reader View address is the article's URL without its user name and password`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a Reader View address the reader cannot show still loses them`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a Reader View address cut short, or long, never shows them`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`inside an about: query too, the authority ends where a URL parser ends it`](../../packages/vimma-core/test/agent-act.test.ts),
+  [`a Reader View tab's title is its article's URL without them (#1324)`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`test_a_reader_view_tab_gives_its_article_url_without_them`](../../tests/browser/browser_vimma_mcp_userinfo.js)
 - M31. `agent-elements`' list **must** be one string inside the untrusted-content delimiters,
   wrapped by the browser with look-alike delimiters broken (M7), and `vimma-ctl mcp` and the
   protocol validator **must** refuse a list that is not, or that holds a second delimiter. At

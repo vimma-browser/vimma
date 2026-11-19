@@ -276,6 +276,7 @@ support-files = [
   "file_vimma_agent_userinfo_redirect.sjs",
   "file_vimma_agent_untitled.html",
   "file_vimma_agent_userinfo.html",
+  "file_vimma_reader_article.html",
   "head_vimma_control.js",
 ]
 

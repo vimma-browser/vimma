@@ -16,6 +16,7 @@ import { createDispatcher } from "../keys/dispatcher.mjs";
 import { DEFAULT_HINT_CHARS, hintLabels, orderTargets } from "../page/hints.mjs";
 import { compileKeymap } from "../keys/keymap.mjs";
 import { formatKey, parseBinding, parseKey } from "../keys/keys.mjs";
+import { readerOriginalUrl } from "../page/pageurl.mjs";
 
 /** @import { Chord, BindingElement } from "../keys/keys.mjs" */
 /** @import { Action } from "../keys/dispatcher.mjs" */
@@ -556,6 +557,7 @@ function withoutUserinfo(text, cut, depth) {
     // Past NESTED_MAX the rest is not read, so it is dropped: it may hold a user name.
     return depth < NESTED_MAX ? m[0] + withoutUserinfo(rest, cut, depth + 1) : `${m[0]}\u2026`;
   }
+  if (name === "about") return aboutWithoutUserinfo(s, m[0].length, cut, depth);
   const special = SPECIAL_SCHEMES.has(name);
   const lead = special ? (/^[/\\]*/.exec(rest)?.[0] ?? "") : rest.startsWith("//") ? "//" : null;
   if (lead === null) return s;
@@ -566,6 +568,49 @@ function withoutUserinfo(text, cut, depth) {
     end = after.length;
   }
   return m[0] + lead + after.slice(after.lastIndexOf("@", end) + 1);
+}
+
+/**
+ * `text` without the user names and passwords of its URLs, in two passes: first as given, where
+ * an authority ends where a URL parser ends it (NFKC would make a fullwidth slash one that the
+ * parser does not see, and end the authority before its `@`), then as `show` shows it, where a
+ * fullwidth `@` is one: only more is dropped that way, never less.
+ * @param {string} text @param {boolean} cut @param {number} depth
+ * @param {(s: string) => string} show
+ */
+function bothPasses(text, cut, depth, show) {
+  return withoutUserinfo(show(withoutUserinfo(text, cut, depth)), cut, depth);
+}
+
+/**
+ * An `about:` address without the user names and passwords of the URLs in its query (#1324).
+ * Firefox's internal pages carry a whole URL percent-encoded in a parameter (Reader View's
+ * `about:reader?url=`, the error pages' `u=`), where no `@` ends an authority. Each parameter
+ * is decoded as URLSearchParams decodes it (Reader View reads it that way: ReaderMode
+ * getOriginalUrl) and stripped as a URL nested one level deeper, in agentUrl's two passes
+ * (bothPasses), and the query written again when that changed any of them; past NESTED_MAX
+ * the query is dropped. The page's name and its hash are kept as they are.
+ * @param {string} s @param {number} at  where the scheme's colon ends
+ * @param {boolean} cut @param {number} depth
+ * @returns {string}
+ */
+function aboutWithoutUserinfo(s, at, cut, depth) {
+  const q = s.indexOf("?", at);
+  if (q < 0) return s;
+  const h = s.indexOf("#", at);
+  if (h >= 0 && h < q) return s;
+  const end = h < 0 ? s.length : h;
+  const page = s.slice(0, q);
+  if (depth >= NESTED_MAX) return `${page}?\u2026${s.slice(end)}`;
+  const params = new URLSearchParams(s.slice(q + 1, end));
+  let changed = false;
+  const out = new URLSearchParams();
+  for (const [key, value] of params) {
+    const stripped = bothPasses(value, cut, depth + 1, shown);
+    if (stripped !== value) changed = true;
+    out.append(key, stripped);
+  }
+  return changed ? `${page.toLowerCase()}?${out}${s.slice(end)}` : s;
 }
 
 /**
@@ -583,9 +628,10 @@ export function agentUrl(url, max) {
   const raw = String(url ?? "");
   const read = raw.slice(0, 4 * max);
   const cut = read.length < raw.length;
-  const first = withoutUserinfo(read, cut, 0);
-  const text = shown(first).replace(/\s/g, "");
-  return cutTo(withoutUserinfo(text, cut, 0), max);
+  const plain = bothPasses(read, cut, 0, (t) => shown(t).replace(/\s/g, ""));
+  // A Reader View address is its article's URL, as the status bar shows it (#1323, #1324); one
+  // that was cut may have lost the end of that URL, so it stays the stripped reader address.
+  return cutTo((!cut && readerOriginalUrl(plain)) || plain, max);
 }
 
 /** What Firefox drops from a URL it makes a tab's label of (#setTabLabel): its scheme and www. */
@@ -593,8 +639,9 @@ const LABEL_SCHEME = /^[^:]+:\/\/(?:www\.)?/;
 
 /**
  * A page's own title as the agent may see it (security.md M21, #1209), in depth: one that is a
- * URL (no white space, a scheme and an authority holding a user name or password once shown)
- * loses them as agentUrl drops them. Any other title is the page's text, returned as it is.
+ * URL (no white space, a scheme and an authority holding a user name or password once shown,
+ * also one nested in an about: address's query) loses them as agentUrl drops them. Any other
+ * title is the page's text, returned as it is.
  * @param {unknown} label
  */
 export function agentTitle(label) {
@@ -602,7 +649,8 @@ export function agentTitle(label) {
   const t = s.trim();
   if (!t || /\s/.test(t)) return s;
   const plain = shown(t);
-  if (!plain.includes("@") || !URL_SCHEME.test(plain)) return s;
+  // An at sign, or one percent-encoded once or more inside an about: address's query (#1324).
+  if (!/@|%(?:25)*40/i.test(plain) || !URL_SCHEME.test(plain)) return s;
   return withoutUserinfo(plain, false, 0) === plain ? s : agentUrl(t, AGENT_PAGE_URL_MAX);
 }
 
