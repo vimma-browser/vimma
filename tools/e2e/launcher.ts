@@ -945,16 +945,20 @@ export const WARM_UP_TIMEOUT_MS = 120_000;
  * (state D, folio_wait_bit_common) with under 1 s of CPU; locally a cold build reads about
  * 150 MB on its first start and nothing on the next. The scenarios keep their own discovery
  * timeout: a launch of a warm machine that stalls still fails, with startup-probe.ts's report.
- * Logs how long the start took and what it read from disk; throws when even this start does not
+ * It runs on the scenarios' display: with the caller's DISPLAY, a window opens for a few seconds.
+ * Logs how long the start took and what its main process read from disk, and returns that line
+ * with `slow` when the socket came later than `slowMs`; throws when even this start does not
  * reach its socket within `timeoutMs`.
  */
 export async function warmUp({
   timeoutMs = WARM_UP_TIMEOUT_MS,
+  slowMs = SLOW_LAUNCH_MS,
   log = () => {},
   ...options
 }: Omit<Parameters<typeof launch>[0], "discoveryTimeoutMs" | "keep"> & {
   timeoutMs?: number;
-}): Promise<void> {
+  slowMs?: number;
+}): Promise<{ line: string; slow: boolean }> {
   const startedAt = Date.now();
   let spawnedAt = 0;
   let session: Session;
@@ -973,13 +977,21 @@ export async function warmUp({
   }
   const socketAt = Date.now();
   const read = session.child.pid ? readDiskBytes(session.child.pid) : null;
-  await session.teardown();
+  try {
+    await session.teardown();
+  } catch (e) {
+    throw new Error(`warm-up: the build started but did not stop: ${(e as Error).message}`, {
+      cause: e,
+    });
+  }
   const secs = (ms: number) => (ms / 1000).toFixed(1);
-  log(
+  const line =
     `warm-up: the build's first start took ${secs(socketAt - startedAt)} s (control socket ` +
-      `after ${secs(socketAt - spawnedAt)} s; read ${read === null ? "an unknown amount" : megabytes(read)} ` +
-      "from disk), outside every scenario's timeout (issue #901)",
-  );
+    `after ${secs(socketAt - spawnedAt)} s; the main process read ` +
+    `${read === null ? "an unknown amount" : megabytes(read)} from disk), outside every ` +
+    "scenario's timeout (issue #901)";
+  log(line);
+  return { line, slow: socketAt - spawnedAt > slowMs };
 }
 
 /**

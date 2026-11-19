@@ -22,12 +22,15 @@ if (!profile) {
   process.exit(2);
 }
 const mode = process.env.FAKE_BROWSER ?? "serve";
+const coldMarker = process.env.FAKE_BROWSER_COLD_MARKER;
+const cold = Boolean(coldMarker && !existsSync(coldMarker));
 writeFileSync(
   join(profile, "fake-browser.json"),
   JSON.stringify({
     argv,
     home: process.env.HOME,
     tmp: process.env.TMPDIR,
+    cold,
     env: Object.fromEntries(
       Object.entries(process.env).filter(([k]) =>
         /^(DISPLAY|XUL_APP_FILE|GDK_|QT_|MOZ_|WAYLAND_DISPLAY|PATH$|XDG_RUNTIME_DIR|FONTCONFIG_)/.test(
@@ -61,9 +64,8 @@ if (mode === "exit") {
 }
 setInterval(() => {}, 1000);
 if (mode === "serve") {
-  const marker = process.env.FAKE_BROWSER_COLD_MARKER;
-  const cold = marker && !existsSync(marker) ? Number(process.env.FAKE_BROWSER_COLD_MS ?? 0) : 0;
-  if (marker) writeFileSync(marker, "");
-  const delay = Number(process.env.FAKE_BROWSER_DELAY_MS ?? 0) + cold;
+  if (coldMarker) writeFileSync(coldMarker, "");
+  const coldMs = cold ? Number(process.env.FAKE_BROWSER_COLD_MS ?? 0) : 0;
+  const delay = Number(process.env.FAKE_BROWSER_DELAY_MS ?? 0) + coldMs;
   setTimeout(() => startFakeServer(profile), delay);
 }

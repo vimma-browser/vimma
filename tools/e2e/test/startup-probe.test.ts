@@ -198,11 +198,11 @@ describe("startupSampler", () => {
     const lines = sampler.format().split("\n");
     expect(lines[0]).toMatch(/^start-up samples about each second since spawn/);
     expect(lines[1]).toBe(
-      "  +1.000 s  main R cpu 0.80 s running  disk read 1.0 MB  harness lag 0.0 s  " +
+      "  +1.000 s  main R cpu 0.80 s running  main process read 1.0 MB  harness lag 0.0 s  " +
         "steal 0.10 s  iowait 0.02 s  stall cpu 0.30 io 0.00 memory 0.00 s",
     );
     expect(lines[2]).toBe(
-      "  +27.000 s  main S cpu 0.85 s in poll_schedule_timeout.constprop.0  disk read 151.0 MB  " +
+      "  +27.000 s  main S cpu 0.85 s in poll_schedule_timeout.constprop.0  main process read 151.0 MB  " +
         "harness lag 25.0 s  " +
         "steal 24.00 s  iowait 0.00 s  stall cpu 0.00 io 24.00 memory 0.00 s",
     );
@@ -216,16 +216,23 @@ describe("startupSampler", () => {
     expect(sampler.format().split("\n")[1]).toBe("  +1.000 s  main gone  harness lag 0.0 s");
   });
 
-  it("keeps only the last maxSamples, and says how many it dropped", () => {
+  it("keeps the first and the last samples of a long wait, and says how many it dropped", () => {
     const { proc, clock, spawnedAtMs } = setup();
-    const sampler = startupSampler({ pid: 100, spawnedAtMs, proc, now: clock.now, maxSamples: 2 });
-    for (let i = 0; i < 5; i++) {
+    const sampler = startupSampler({ pid: 100, spawnedAtMs, proc, now: clock.now, maxSamples: 4 });
+    for (let i = 0; i < 7; i++) {
       clock.advance(1000);
       sampler.sample();
     }
     const lines = sampler.format().split("\n");
-    expect(lines[0]).toMatch(/3 earlier samples dropped/);
-    expect(lines.slice(1).map((l) => l.trim().split(" ")[0])).toEqual(["+4.000", "+5.000"]);
+    expect(lines.map((l) => l.trim().split(" ")[0])).toEqual([
+      "start-up",
+      "+1.000",
+      "+2.000",
+      "(3",
+      "+6.000",
+      "+7.000",
+    ]);
+    expect(lines[3]).toBe("  (3 samples dropped)");
   });
 
   it("says so before the first sample", () => {
@@ -432,13 +439,32 @@ describe.runIf(linux)("the warm-up start before the first scenario (fake browser
   it("takes the cold start, so the first scenario's launch is within its timeout", async () => {
     const build = coldBuild(join(tempDir(), "warm"));
     const logged: string[] = [];
-    await warmUp({ build, ...options(), log: (line) => logged.push(line) });
-    expect(logged).toHaveLength(1);
-    expect(logged[0]).toMatch(
-      /^warm-up: the build's first start took \d+\.\d s \(control socket after \d+\.\d s; read [\d.]+ MB from disk\)/,
+    const result = await warmUp({ build, ...options(), log: (line) => logged.push(line) });
+    expect(logged).toEqual([result.line]);
+    expect(result.line).toMatch(
+      /^warm-up: the build's first start took \d+\.\d s \(control socket after \d+\.\d s; the main process read [\d.]+ MB from disk\)/,
     );
-    const session = await launch({ build, ...options(), discoveryTimeoutMs: 1000 });
-    await session.teardown();
+    expect(result.slow).toBe(false);
+    let profile = "";
+    const session = await launch({
+      build,
+      ...options(),
+      discoveryTimeoutMs: 5000,
+      onProfile: (p: string) => (profile = p),
+    });
+    try {
+      // the scenario's start found the machine warm
+      const seen = JSON.parse(readFileSync(join(profile, "fake-browser.json"), "utf8"));
+      expect(seen.cold).toBe(false);
+    } finally {
+      await session.teardown();
+    }
+  });
+
+  it("says when the warm-up start itself was slower than slowMs", async () => {
+    const build = coldBuild(join(tempDir(), "warm"));
+    const result = await warmUp({ build, ...options(), slowMs: 500 });
+    expect(result.slow).toBe(true);
   });
 
   it("fails with the launch's report when even the warm-up start never comes up", async () => {

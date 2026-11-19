@@ -340,7 +340,10 @@ export function readDiskBytes(pid: number, { proc = "/proc" }: { proc?: string }
 /** Bytes as megabytes, one decimal. */
 export const megabytes = (bytes: number) => `${(bytes / 1e6).toFixed(1)} MB`;
 
-/** At most this many samples are listed, the latest ones. */
+/**
+ * At most this many samples are listed: the first half of them and the latest ones, so a 120 s
+ * warm-up keeps both where it stalled and how it ended.
+ */
 export const PROBE_MAX_SAMPLES = 60;
 
 /**
@@ -349,7 +352,7 @@ export const PROBE_MAX_SAMPLES = 60;
  * (state S, its CPU time flat, the machine idle) from one starved of CPU (state R) or from a
  * machine that stopped as a whole: a paused VM (steal grows, and the harness's own timer comes
  * late, "harness lag") or a disk stall (iowait and the io pressure grow). Each sample lists the
- * main thread's state, CPU time and wait channel, what the browser has read from disk so far,
+ * main thread's state, CPU time and wait channel, what the main process has read from disk so far,
  * how late the harness's own timer fired, and how much the machine's steal, iowait and pressure stall time grew since the previous sample.
  */
 export function startupSampler({
@@ -367,7 +370,8 @@ export function startupSampler({
   intervalMs?: number;
   maxSamples?: number;
 }) {
-  const samples: string[] = [];
+  const head: string[] = [];
+  const tail: string[] = [];
   let dropped = 0;
   let lastAt = spawnedAtMs;
   let last = readMachine({ proc });
@@ -385,7 +389,7 @@ export function startupSampler({
         if (s) {
           main = `main ${s.state} ${cpu(s.cpuSeconds)} ${readWchan(join(task, "wchan"))}`;
           const read = readDiskBytes(pid, { proc });
-          if (read !== null) main += `  disk read ${megabytes(read)}`;
+          if (read !== null) main += `  main process read ${megabytes(read)}`;
         }
       }
       const lag = Math.max(0, at - lastAt - intervalMs) / 1000;
@@ -402,22 +406,29 @@ export function startupSampler({
         );
         parts.push(`stall ${stalls.join(" ")} s`);
       }
-      samples.push(parts.join("  "));
-      if (samples.length > maxSamples) {
-        samples.shift();
-        dropped++;
+      // The first half of the samples stays (where start-up stalled), the rest is the latest.
+      const sample = parts.join("  ");
+      if (head.length < Math.ceil(maxSamples / 2)) head.push(sample);
+      else {
+        tail.push(sample);
+        if (head.length + tail.length > maxSamples) {
+          tail.shift();
+          dropped++;
+        }
       }
       lastAt = at;
       last = machine;
     },
     format(): string {
-      if (!samples.length) return "start-up samples: none yet";
+      if (!head.length) return "start-up samples: none yet";
       return [
         "start-up samples about each second since spawn (the main thread's state, CPU time and " +
-          "wait channel; what the browser read from disk so far; how late the harness's own timer fired; the machine's CPU steal and " +
-          "iowait over all CPUs and its pressure stall time since the previous sample" +
-          `${dropped ? `; ${dropped} earlier samples dropped` : ""}):`,
-        ...samples,
+          "wait channel; what the main process read from disk so far; how late the harness's " +
+          "own timer fired; the machine's CPU steal and iowait over all CPUs and its pressure " +
+          "stall time since the previous sample):",
+        ...head,
+        ...(dropped ? [`  (${dropped} samples dropped)`] : []),
+        ...tail,
       ].join("\n");
     },
   };

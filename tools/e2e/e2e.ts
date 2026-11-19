@@ -68,7 +68,14 @@ import {
   warmUp,
 } from "./launcher.ts";
 import { PAGE_PORT, fixtureText, fixtureUrl, pagePort, startPageServer } from "./pages.ts";
-import { exitCode, formatReport, githubAnnotations, reportJson, runScenarios } from "./runner.ts";
+import {
+  exitCode,
+  formatReport,
+  githubAnnotations,
+  reportJson,
+  runScenarios,
+  warmUpAnnotations,
+} from "./runner.ts";
 import { loadScenarios, scenarioLaunch } from "./scenario.ts";
 import { capture, checkBaseline, shotFailure } from "./screenshot.ts";
 import { installState, prepareUpdateRun, trustCa, updateEnv, updatePrefs } from "./update-host.ts";
@@ -152,6 +159,8 @@ async function main() {
   }
 
   const cleanups: Array<() => Promise<void>> = [];
+  /** Aborted by SIGINT or SIGTERM: stops the warm-up start (issue #901). */
+  const interrupted = new AbortController();
   const cleanupAll = async () => {
     for (const c of cleanups.splice(0).reverse()) await c().catch(() => {});
   };
@@ -161,6 +170,7 @@ async function main() {
   ] as const) {
     process.once(sig, () => {
       process.stderr.write(`\ne2e: ${sig}, cleaning up\n`);
+      interrupted.abort();
       cleanupAll().finally(() => process.exit(code));
     });
   }
@@ -429,27 +439,44 @@ async function main() {
       };
     };
 
-    // Issue #901: the machine's first start of the build, outside every scenario's timeout.
-    let warmUpFailure: string | null = null;
+    // Issue #901: the machine's first start of the build, outside every scenario's timeout. A
+    // build that cannot start even then fails every scenario at once, without a launch of its
+    // own: they would only spend the budget, and the report still lists them.
+    let warmUpError: string | null = null;
     if (build && runnable.some((s) => !s.update)) {
       let registered: (() => Promise<void>) | null = null;
-      await warmUp({
-        build,
-        xvfb: mode === "xvfb",
-        headless: mode === "headless",
-        fontconfig: scenarioFontconfig(),
-        onTeardown: (t) => cleanups.push((registered = t)),
-        log: (line) => console.log(line),
-      }).catch((e: unknown) => {
-        warmUpFailure = (e as Error).message;
-        console.log(`FAIL    ${warmUpFailure}`);
-      });
-      const i = registered ? cleanups.indexOf(registered) : -1;
-      if (i >= 0) cleanups.splice(i, 1);
+      let annotations: string[] = [];
+      try {
+        const warm = await warmUp({
+          build,
+          xvfb: mode === "xvfb",
+          headless: mode === "headless",
+          fontconfig: scenarioFontconfig(),
+          signal: interrupted.signal,
+          onTeardown: (t) => cleanups.push((registered = t)),
+          log: (line) => console.log(line),
+        });
+        annotations = warmUpAnnotations({ warmUp: warm });
+      } catch (e) {
+        warmUpError = (e as Error).message;
+        console.log(`FAIL    ${warmUpError}`);
+        annotations = warmUpAnnotations({ error: warmUpError });
+      } finally {
+        const i = registered ? cleanups.indexOf(registered) : -1;
+        if (i >= 0) cleanups.splice(i, 1);
+      }
+      if (process.env.GITHUB_ACTIONS) for (const line of annotations) console.log(line);
     }
+    const firstLine = (text: string) => text.split("\n")[0];
 
     const results = await runScenarios(scenarios, {
-      startSession,
+      // An update scenario starts its own install of another build: the warm-up is not its.
+      startSession: async (scenario, options) => {
+        if (warmUpError && !scenario.update) {
+          throw new Error(`not started: ${firstLine(warmUpError)}`);
+        }
+        return startSession(scenario, options);
+      },
       budgetMs,
       runPending: values["run-pending"],
       log: (line) => console.log(line),
@@ -461,11 +488,6 @@ async function main() {
     }
     if (process.env.GITHUB_ACTIONS) {
       for (const line of githubAnnotations(results)) console.log(line);
-      if (warmUpFailure) {
-        console.log(
-          `::error title=e2e warm-up::${(warmUpFailure as string).replace(/\r?\n/g, " ")}`,
-        );
-      }
       if (process.env.GITHUB_STEP_SUMMARY) {
         appendFileSync(
           process.env.GITHUB_STEP_SUMMARY,
@@ -479,8 +501,7 @@ async function main() {
           "a commit body saying why (CONTRIBUTING.md: never change a baseline without one).",
       );
     }
-    // A build that cannot start even once fails the run, whatever the scenarios did after it.
-    return warmUpFailure ? 1 : exitCode(results);
+    return exitCode(results);
   } finally {
     await cleanupAll();
     await pages?.close();

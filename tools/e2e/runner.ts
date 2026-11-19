@@ -231,3 +231,20 @@ export function githubAnnotations(results: Result[]) {
     return [`::error title=e2e ${r.name}::${clean(r.error ?? r.status)}`];
   });
 }
+
+/**
+ * Issue #901: GitHub annotations for the warm-up start before the first scenario. An error for a
+ * warm-up that failed (the first line of its report: the rest is in the log), and a warning for
+ * one slower than SLOW_LAUNCH_MS, so a cold start that grows shows before it fails anything.
+ */
+export function warmUpAnnotations({
+  error,
+  warmUp,
+}: {
+  error?: string | null;
+  warmUp?: { slow: boolean; line: string } | null;
+}): string[] {
+  if (error) return [`::error title=e2e warm-up::${error.split(/\r?\n/)[0]}`];
+  if (warmUp?.slow) return [`::warning title=e2e warm-up::${warmUp.line}`];
+  return [];
+}
