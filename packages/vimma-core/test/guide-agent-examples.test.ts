@@ -28,10 +28,10 @@ function section(heading: string) {
 describe("the guide's [agent] examples", () => {
   const all = agentExamples(guide);
 
-  test("each parses as a whole config.toml, schema line included", () => {
+  test("each parses as a whole config.toml, with no schema line", () => {
     expect(all.length).toBeGreaterThan(0);
     for (const block of all) {
-      expect(block.split("\n")[0], block).toBe("schema = 2");
+      expect(block, block).not.toMatch(/^schema\b/m);
       expect(parseConfig(block).errors, block).toEqual([]);
     }
   });

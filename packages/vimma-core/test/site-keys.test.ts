@@ -21,7 +21,8 @@ import {
 
 import type { TrieNode } from "../src/keys/keymap.mjs";
 
-const v2 = (...lines: string[]) => ["schema = 2", ...lines].join("\n") + "\n";
+// A config.toml whose first line is a comment, so errors are on the lines they always were.
+const cfg = (...lines: string[]) => ["# config.toml", ...lines].join("\n") + "\n";
 
 function keymapOf(text: string) {
   const r = parseConfig(text);
@@ -153,7 +154,7 @@ describe("arguments", () => {
       kind: "refuse",
       text: ":siteunbind: ctrl+b stays Vimma's on every site: it reaches every other command",
     });
-    const remapped = keymapOf(v2("[keys]", 'prefix = "ctrl+a"'));
+    const remapped = keymapOf(cfg("[keys]", 'prefix = "ctrl+a"'));
     expect(parseSiteKeysCommand("siteunbind", "ctrl+a", remapped)).toMatchObject({
       kind: "refuse",
     });
@@ -192,7 +193,7 @@ describe("the site", () => {
 
 describe("keys until restart", () => {
   test("a temporary table merges with config.toml's and leaves the base keymap alone", () => {
-    const base = keymapOf(v2('[sites."github.com"]', 'unbind = ["g"]', 'insert = "never"'));
+    const base = keymapOf(cfg('[sites."github.com"]', 'unbind = ["g"]', 'insert = "never"'));
     const temp = createTemporarySiteUnbinds();
     expect(temp.add("github.com", ["t", "ctrl+k"])).toEqual(["t", "ctrl+k"]);
     expect(temp.add("github.com", ["t"])).toEqual([]);
@@ -209,7 +210,7 @@ describe("keys until restart", () => {
   });
 
   test("a temporary key config.toml has since made the prefix is dropped, not an error", () => {
-    const base = keymapOf(v2("[keys]", 'prefix = "ctrl+k"'));
+    const base = keymapOf(cfg("[keys]", 'prefix = "ctrl+k"'));
     const temp = createTemporarySiteUnbinds();
     temp.add("github.com", ["ctrl+k", "t"]);
     const k = withSiteUnbinds(base, temp.entries());
@@ -311,14 +312,14 @@ describe("config.toml", () => {
   };
 
   test("a missing table is added at the end, the rest byte for byte", () => {
-    const text = v2("# my keys", "[keys]", 'new_tab = "t" # here', "");
+    const text = cfg("# my keys", "[keys]", 'new_tab = "t" # here', "");
     const r = ok(edit(text, "github.com", { add: ["t", "ctrl+k"] }));
     expect(r.text).toBe(`${text}[sites."github.com"]\nunbind = ["t", "ctrl+k"]\n`);
     expect(r.added).toEqual(["t", "ctrl+k"]);
   });
 
   test("an existing table gets an unbind line after its keys, comments kept", () => {
-    const text = v2(
+    const text = cfg(
       "# sites",
       '[sites."github.com"] # GitHub',
       'insert = "never" # forms',
@@ -329,7 +330,7 @@ describe("config.toml", () => {
     );
     const r = ok(edit(text, "github.com", { add: ["t"] }));
     expect(r.text).toBe(
-      v2(
+      cfg(
         "# sites",
         '[sites."github.com"] # GitHub',
         'insert = "never" # forms',
@@ -343,78 +344,80 @@ describe("config.toml", () => {
   });
 
   test("an existing list is appended to, without a key it has in another notation", () => {
-    const text = v2('[sites."github.com"]', 'unbind = ["<C-k>", "g"] # mine');
+    const text = cfg('[sites."github.com"]', 'unbind = ["<C-k>", "g"] # mine');
     const r = ok(edit(text, "github.com", { add: ["ctrl+k", "t"] }));
-    expect(r.text).toBe(v2('[sites."github.com"]', 'unbind = ["<C-k>", "g", "t"] # mine'));
+    expect(r.text).toBe(cfg('[sites."github.com"]', 'unbind = ["<C-k>", "g", "t"] # mine'));
     expect(r.added).toEqual(["t"]);
     expect(r.already).toEqual(["ctrl+k"]);
   });
 
   test("a multi-line list keeps its layout and comments", () => {
-    const text = v2('[sites."github.com"]', "unbind = [", '  "g", # go to', '  "t",', "]");
+    const text = cfg('[sites."github.com"]', "unbind = [", '  "g", # go to', '  "t",', "]");
     const r = written(edit(text, "github.com", { add: ["x"] }));
     expect(r.text).toBe(
-      v2('[sites."github.com"]', "unbind = [", '  "g", # go to', '  "t",', '  "x",', "]"),
+      cfg('[sites."github.com"]', "unbind = [", '  "g", # go to', '  "t",', '  "x",', "]"),
     );
     const removed = written(edit(r.text, "github.com", { remove: ["t"] }));
     expect(removed.text).toBe(
-      v2('[sites."github.com"]', "unbind = [", '  "g", # go to', '  "x",', "]"),
+      cfg('[sites."github.com"]', "unbind = [", '  "g", # go to', '  "x",', "]"),
     );
     expect(unbindOf(removed.text, "github.com")).toEqual(["g", "x"]);
   });
 
   test("a comment on the last key stays on that key", () => {
-    const text = v2('[sites."github.com"]', "unbind = [", '  "g",', '  "x",  # x key', "]");
+    const text = cfg('[sites."github.com"]', "unbind = [", '  "g",', '  "x",  # x key', "]");
     const r = written(edit(text, "github.com", { add: ["t"] }));
     expect(r.text).toBe(
-      v2('[sites."github.com"]', "unbind = [", '  "g",', '  "x",  # x key', '  "t",', "]"),
+      cfg('[sites."github.com"]', "unbind = [", '  "g",', '  "x",  # x key', '  "t",', "]"),
     );
   });
 
   test("a multi-line list without a trailing comma still gets one key a line", () => {
-    const text = v2('[sites."github.com"]', "unbind = [", '  "g",', '  "x"', "]");
+    const text = cfg('[sites."github.com"]', "unbind = [", '  "g",', '  "x"', "]");
     const r = written(edit(text, "github.com", { add: ["t"] }));
-    expect(r.text).toBe(v2('[sites."github.com"]', "unbind = [", '  "g",', '  "x",', '  "t"', "]"));
+    expect(r.text).toBe(
+      cfg('[sites."github.com"]', "unbind = [", '  "g",', '  "x",', '  "t"', "]"),
+    );
     expect(unbindOf(r.text, "github.com")).toEqual(["g", "x", "t"]);
   });
 
   test("nothing new writes nothing", () => {
-    const text = v2('[sites."github.com"]', 'unbind = ["t"]');
+    const text = cfg('[sites."github.com"]', 'unbind = ["t"]');
     const r = ok(edit(text, "github.com", { add: ["t"] }));
     expect(r.text).toBe(text);
     expect(r.added).toEqual([]);
   });
 
   test("a removed key goes, every spelling of it, and an emptied line is dropped", () => {
-    const text = v2(
+    const text = cfg(
       '[sites."github.com"]',
       'insert = "never"',
       'unbind = ["t", "<C-k>", "ctrl+k"]',
     );
     const r = written(edit(text, "github.com", { remove: ["ctrl+k"] }));
-    expect(r.text).toBe(v2('[sites."github.com"]', 'insert = "never"', 'unbind = ["t"]'));
+    expect(r.text).toBe(cfg('[sites."github.com"]', 'insert = "never"', 'unbind = ["t"]'));
     expect(r.removed).toEqual(["ctrl+k"]);
     const empty = ok(edit(r.text, "github.com", { remove: ["t"] }));
-    expect(empty.text).toBe(v2('[sites."github.com"]', 'insert = "never"'));
+    expect(empty.text).toBe(cfg('[sites."github.com"]', 'insert = "never"'));
   });
 
   test("a table left empty goes too, unless it has comments", () => {
-    const text = v2("[keys]", 'new_tab = "t"', "", '[sites."github.com"]', 'unbind = ["t"]', "");
+    const text = cfg("[keys]", 'new_tab = "t"', "", '[sites."github.com"]', 'unbind = ["t"]', "");
     expect(ok(edit(text, "github.com", { remove: ["t"] })).text).toBe(
-      v2("[keys]", 'new_tab = "t"', ""),
+      cfg("[keys]", 'new_tab = "t"', ""),
     );
-    const commented = v2('[sites."github.com"]', "# GitHub's own keys", 'unbind = ["t"]');
+    const commented = cfg('[sites."github.com"]', "# GitHub's own keys", 'unbind = ["t"]');
     expect(ok(edit(commented, "github.com", { remove: ["t"] })).text).toBe(
-      v2('[sites."github.com"]', "# GitHub's own keys"),
+      cfg('[sites."github.com"]', "# GitHub's own keys"),
     );
   });
 
   test("removing a key the file does not list writes nothing", () => {
-    const text = v2('[sites."github.com"]', 'unbind = ["t"]');
+    const text = cfg('[sites."github.com"]', 'unbind = ["t"]');
     const r = ok(edit(text, "github.com", { remove: ["x"] }));
     expect(r.text).toBe(text);
     expect(r.removed).toEqual([]);
-    expect(ok(edit(v2("[keys]"), "github.com", { remove: ["x"] })).removed).toEqual([]);
+    expect(ok(edit(cfg("[keys]"), "github.com", { remove: ["x"] })).removed).toEqual([]);
   });
 
   test("a missing file is made from the template", () => {
@@ -425,7 +428,7 @@ describe("config.toml", () => {
   });
 
   test("a file with errors is refused, never rewritten", () => {
-    expect(edit(v2("[keys]", 'new_tab = "nope+x"'), "github.com", { add: ["t"] })).toEqual({
+    expect(edit(cfg("[keys]", 'new_tab = "nope+x"'), "github.com", { add: ["t"] })).toEqual({
       error:
         "config.toml has errors; fix them first (:config): line 3: keys.new_tab: " +
         'unknown modifier "nope" in "nope+x"',
@@ -436,19 +439,19 @@ describe("config.toml", () => {
   });
 
   test('a table not written as its own [sites."<host>"] header is left to the user', () => {
-    const dotted = v2("[sites]", '"github.com".insert = "never"');
+    const dotted = cfg("[sites]", '"github.com".insert = "never"');
     expect(edit(dotted, "github.com", { add: ["t"] })).toEqual({
       error:
         'config.toml writes [sites."github.com"] in a form this edit leaves alone; edit it there (:config)',
     });
-    const inline = v2('sites = { "a.com" = { insert = "never" } }');
+    const inline = cfg('sites = { "a.com" = { insert = "never" } }');
     expect(edit(inline, "github.com", { add: ["t"] })).toMatchObject({
       error: expect.stringContaining("edit it there (:config)"),
     });
   });
 
   test("a header written with other quoting is found", () => {
-    const text = v2("[ sites . 'github.com' ]", "unbind = ['t']");
+    const text = cfg("[ sites . 'github.com' ]", "unbind = ['t']");
     const r = written(edit(text, "github.com", { add: ["x"] }));
     expect(unbindOf(r.text, "github.com")).toEqual(["t", "x"]);
     expect(r.text.split("\n")[1]).toBe("[ sites . 'github.com' ]");
@@ -463,7 +466,7 @@ describe("config.toml", () => {
   });
 
   test("a host that needs escaping is written as a TOML string", () => {
-    const r = ok(edit(v2(), "::1", { add: ["t"] }));
+    const r = ok(edit(cfg(), "::1", { add: ["t"] }));
     expect(r.text).toContain('[sites."::1"]');
     expect(unbindOf(r.text, "::1")).toEqual(["t"]);
   });

@@ -26,7 +26,7 @@ sequenceDiagram
   CH->>File: stat every 2 s, or read now on :source
   File-->>CH: the text
   CH->>Core: reloadConfig(active, text)
-  Core->>Core: parseToml, migrate, validate, compileKeymap
+  Core->>Core: parseToml, validate, compileKeymap
   Core-->>CH: the new config, or errors and the old one
   CH->>Host: apply: configure(keymap, ...)
   Host->>Host: a new dispatcher per window
@@ -75,23 +75,21 @@ in security.md §8.
 ## 2. Parsing and checking in vimma-core
 
 `reloadConfig(active, text)` in `packages/vimma-core/src/config/config.mjs` calls `parseConfig`,
-which does no I/O. A TOML or schema error ends it at once; validation and the keymap report their
-problems together:
+which does no I/O. A TOML error ends it at once; validation and the keymap report their problems
+together:
 
 1. **TOML.** `parseToml` (`toml.mjs`) runs the vendored smol-toml
    (`packages/vimma-core/src/vendor/smol-toml/`, ADR-012) with integers as BigInt, so `1.0` can be
    told from `1`. A syntax error becomes one error with its line and column, and a hint when an
    earlier bracket is still open. Nesting deeper than `MAX_DEPTH` (32 at present) is refused, since
    smol-toml bounds only inline values.
-2. **Schema.** `schema` must be a non-negative integer; a number above `CONFIG_SCHEMA_VERSION`
-   (2 at present) is "from a newer vimma", and nothing of the file applies.
-3. **Migration.** `migrate` runs the steps of `MIGRATIONS` from the file's schema up: a file
-   without `schema` is schema 0. Each step is pure, and schema 2 only adds keys, so an older
-   Vimma reading a newer file names the schema rather than an unknown key (ADR-008).
-4. **Validation.** `validate` checks every table and value and collects every problem, with a
+2. **No schema.** config.toml has no format version: every key is valid in every file, and a
+   `schema` line that older files carry (`schema = 1` or `2`, or any other value) is accepted
+   and ignored. The keys only ever grew, so there is nothing to migrate.
+3. **Validation.** `validate` checks every table and value and collects every problem, with a
    suggestion for a misspelt key or action. Values that would reach a page or run something are
    refused here: a `javascript:` home page, a program path or a secret in `[agent]`.
-5. **Keymap.** When the keymap sections (`[keys]`, `[modal]`, `[unbind]`, `[firefox]`) have no
+4. **Keymap.** When the keymap sections (`[keys]`, `[modal]`, `[unbind]`, `[firefox]`) have no
    problem of their own, `compileKeymap` builds the tries ([The life of a keypress](keypress.md));
    a `KeymapError` becomes one more problem, worded with the name the user wrote.
 
@@ -101,10 +99,11 @@ order of `[workspaces]` and `[sites]`. `reloadConfig` then returns either the ne
 keymap, or the one in force with the errors: the previous config, or the defaults when there was
 none (`kept: true`). Tests: [config.test.ts](../../packages/vimma-core/test/config.test.ts),
 [config-v2.test.ts](../../packages/vimma-core/test/config-v2.test.ts),
+[config-schema-line.test.ts](../../packages/vimma-core/test/config-schema-line.test.ts),
 [toml.test.ts](../../packages/vimma-core/test/toml.test.ts) and
 [toml-conformance.test.ts](../../packages/vimma-core/test/toml-conformance.test.ts); the
-fixtures of each schema in `tests/contract/config/v<n>/` (a valid file, invalid ones and their
-expected errors), read by
+fixtures in `tests/contract/config/v<n>/`, one folder for each `schema` line older files carry (a
+valid file, invalid ones and their expected errors), read by
 [contract.test.ts](../../packages/vimma-core/test/contract.test.ts); and the fast-check
 properties in [config.fuzz.test.ts](../../packages/vimma-core/test/fuzz/config.fuzz.test.ts).
 

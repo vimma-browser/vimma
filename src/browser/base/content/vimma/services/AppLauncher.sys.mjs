@@ -358,6 +358,16 @@ export const AppLauncher = {
   },
 
   /**
+   * Whether Vimma runs under Flatpak, where the shell service can neither set nor detect the
+   * default browser (Settings' DefaultBrowserHelper.canCheck hides Make Default there).
+   *
+   * @returns {boolean}
+   */
+  underFlatpak() {
+    return Boolean(gioService()?.isRunningUnderFlatpak);
+  },
+
+  /**
    * init's work with test doubles, without keeping its result.
    *
    * @param {StartDeps} deps

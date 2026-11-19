@@ -17,13 +17,6 @@ interface VimmaModules {
       };
     };
   };
-  // engine/browser/components/migration/MigrationUtils.sys.mjs
-  "moz-src:///browser/components/migration/MigrationUtils.sys.mjs": {
-    MigrationUtils: {
-      readonly availableMigratorKeys: string[];
-      insertManyBookmarksWrapper(bookmarks: object[], parentGuid: string): Promise<void>;
-    };
-  };
   // engine/browser/components/sessionstore/SessionFile.sys.mjs: the session file's paths.
   "moz-src:///browser/components/sessionstore/SessionFile.sys.mjs": {
     SessionFile: { readonly Paths: { readonly recovery: string } };

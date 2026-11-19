@@ -1,7 +1,8 @@
 # Spec: setup-v2
 
-Status: draft · Area: core (`packages/vimma-core/src/system/setup.mjs`,
-`packages/vimma-core/src/system/setup-steps.mjs` (new), `packages/vimma-core/src/config/toml.mjs`),
+Status: accepted (delivery slice 1 built, #1292) · Area: core
+(`packages/vimma-core/src/system/setup.mjs`, `packages/vimma-core/src/system/setup-steps.mjs`,
+`packages/vimma-core/src/config/toml.mjs`),
 chrome (`src/browser/base/content/vimma/setup/` (`setup.html`, `setup.mjs`, `SetupHost.sys.mjs`),
 `config/ConfigHost.sys.mjs`, `services/AppLauncher.sys.mjs`), theme
 (`src/browser/themes/shared/vimma/setup.css`), prefs
@@ -73,9 +74,8 @@ engine, and applies nothing until its summary is confirmed. That leaves three ga
    built-in default (or, for the colours and agents steps, the value `:theme` or `:mcp`
    remembered). For the colours step, the value in force is the effect: the palette and
    appearance the window shows (decision 12). When the value in force is none of the step's
-   choices (a custom prefix, `hint_chars` or `[firefox] disable` list, the `tokyo-night`
-   palette), the step lists **Keep** with that value as its first choice and selects it;
-   **Keep** writes nothing.
+   choices (a custom prefix or `hint_chars`, the `tokyo-night` palette), the step lists
+   **Keep** with that value as its first choice and selects it; **Keep** writes nothing.
 10. After the last step of each chapter, a stop screen lists what was saved in that chapter
     and names the next chapter. `enter` goes on; `q` or `esc` closes the page. After the last
     chapter, the stop screen says the setup is done, lists everything this run saved, and
@@ -110,8 +110,8 @@ engine, and applies nothing until its summary is confirmed. That leaves three ga
 
 ### The steps of the first version
 
-The chapters and steps below are the proposed first version (decision 11): eleven steps when
-setup v2 ships, and the tab line step as a twelfth once the tab line is on `main` (decision 15).
+The chapters and steps below are the first version (decision 11): eleven steps in five
+chapters, the tab line step among them (decision 15).
 `Saves` is the `config.toml` line a setting step writes, or "action" for a step that does
 something and saves nothing. Every setting step also offers **Keep** when the value in force is
 none of its choices (behaviour 9).
@@ -127,7 +127,6 @@ none of its choices (behaviour 9).
 |                       | Tab line        | off, always, only with two or more tabs                                                               | `[ui] tabline` (decision 15)                                               |
 | 4. Your keys          | Prefix key      | `ctrl+b`, `ctrl+a`                                                                                    | `[keys] prefix`                                                            |
 |                       | Hint letters    | the home row of QWERTY (`asdfghjkl`), Colemak (`arstdhneio`), Dvorak (`aoeuidhtns`)                   | `[modal] hint_chars`                                                       |
-|                       | Firefox's keys  | all of Firefox's own shortcuts off (the default), or Firefox's own where Vimma binds none             | `[firefox] disable`                                                        |
 | 5. Privacy and agents | Updates         | tell me when a release is out, or never check                                                         | `[updates] check`                                                          |
 |                       | Agents          | off, or on for local AI agents through `vimma-ctl mcp`                                                | `[mcp] enabled`                                                            |
 
@@ -156,16 +155,14 @@ none of its choices (behaviour 9).
 25. **Prefix key.** With each candidate prefix, the step shows the key that opens the list of
     keys (`show_keybinds`, `ctrl+b ?` with `ctrl+b`), drawn with that candidate (decision 8).
 26. **Hint letters.** The layout the user types on is selected first (decision 9).
-27. **Firefox's keys.** The step names the help overlay's key (`show_keybinds`) as the place to
-    see every key.
-28. **Updates.** Says what the check sends (the update channel and the platform) and that
+27. **Updates.** Says what the check sends (the update channel and the platform) and that
     "never check" stops every request to `updates.vimma.dev`.
-29. **Agents.** "Off" is selected first unless agents are on. The step says, in two lines, that
+28. **Agents.** "Off" is selected first unless agents are on. The step says, in two lines, that
     agents reach only the agent workspace, and that sending a form, paying and showing a page
     always ask the user. `enter` on "on" is the user's consent, as answering `y` to `:mcp on`
     is. The step also says that `:mcp off` turns agents off until Vimma restarts, whatever the
     file says and however often it is read again (decision 16).
-30. Neither the control socket nor an MCP agent can open, read or drive the page (unchanged
+29. Neither the control socket nor an MCP agent can open, read or drive the page (unchanged
     from first-run-setup, behaviour 10).
 
 ## Research
@@ -193,12 +190,11 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
   and neither does `addRoute` (`:route add`, lines 642-670), a plain append outside the queue.
 - **`setTomlKeys`** (`packages/vimma-core/src/config/toml.mjs`) edits one key of a top-level
   table in place, keeping comments and order, and takes a string, boolean or number
-  (`TomlEdit.value`). Three limits matter here. It has no array value, which
-  `[firefox] disable = []` needs. `valueEnd` (line 463) returns -1 for any existing value that
-  starts with `[` or `{`, so an existing `disable = ["ctrl+t"]` cannot be replaced. And a table
-  that exists only through sub-tables (`[theme.colors]` without `[theme]`, `[modal.normal]`
-  without `[modal]`) is refused as "not a plain table" (lines 533-534), although TOML 1.0
-  allows the `[theme]` header after its sub-tables.
+  (`TomlEdit.value`). It has no array value, and `valueEnd` returns -1 for any existing value
+  that starts with `[` or `{`; no step of the first version writes an array. One limit matters
+  here: a table that exists only through sub-tables (`[theme.colors]` without `[theme]`,
+  `[modal.normal]` without `[modal]`) is refused as "not a plain table" (lines 533-534),
+  although TOML 1.0 allows the `[theme]` header after its sub-tables.
 - **The keymap in force.** `ConfigHost.keymap` is the compiled keymap. Its `keysFor(name)`
   (`packages/vimma-core/src/keys/keymap.mjs:540-551` and 643) returns every binding of an
   action as the
@@ -211,12 +207,9 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
   from `keysFor`.
 - **Keys and values in `defaults.toml`** (`packages/vimma-core/defaults.toml`): prefix
   `ctrl+b`, `toggle_toolbar = ["prefix+u"]`, `focus_urlbar = ["ctrl+l", "alt+d"]` plus `I` in
-  `[modal.normal]`, hint characters `asdfghjkl`, Firefox keys `disable = "all"`, theme
+  `[modal.normal]`, hint characters `asdfghjkl`, theme
   `source = "omarchy"` and `name = "vimma"` with `appearance` left out, `toolbar = "shown"`,
   update `check = true`, and `[mcp] enabled` left out.
-- **Firefox's keys.** `disable = "all"` turns every Firefox shortcut off, function and plain
-  keys included; `disable = []` gives back the Firefox shortcuts on keys Vimma does not bind
-  (`docs/guide.md`, "Firefox's own shortcuts").
 - **File versus command.** `[theme] appearance` and `[mcp] enabled` set in the file win over
   `:theme` and `:mcp on|off`, which then change nothing and say so (`docs/guide.md`, "Colours
   and themes" and the `:mcp` table). `:mcp on` asks `y/N` before it turns agents on.
@@ -246,9 +239,9 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
 - **Private windows** do not save `:siteunbind` keys (spec
   [site-unbind-command](site-unbind-command.md), decision 12), because a private window leaves
   no trace on disk.
-- **The tab line** (`[ui] tabline = "off" | "always" | "auto"`, default `"off"`) is a separate
-  feature, [#1289](https://github.com/vimma-browser/vimma/issues/1289); it is not on `main`
-  yet.
+- **The tab line** (`[ui] tabline = "off" | "always" | "auto"`, default `"off"`) is on `main`
+  since [#1314](https://github.com/vimma-browser/vimma/pull/1314)
+  ([#1289](https://github.com/vimma-browser/vimma/issues/1289)).
 
 ## Design
 
@@ -282,13 +275,11 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
    two copies of the same safety checks drift and an append outside the queue can race a
    rewrite. The edited text is parsed with `parseConfig` before the rename and nothing is
    written when it reports an error, so a step can never leave a file that does not load.
-6. **`setTomlKeys` learns three cases.** An array of strings as a value (each item written with
-   `tomlLiteral`), because `[firefox] disable = []` needs one. An existing one-line array is
-   replaced like any other value, while a multi-line array is refused with "`<key>` spans
-   several lines; edit it by hand", because a line edit cannot place it safely. A table that
-   exists only through sub-tables gets its `[table]` header added before the first sub-table,
-   with the key under it, because TOML 1.0 allows it and `[theme.colors]` without `[theme]` is
-   a common file.
+6. **`setTomlKeys` learns one case.** A table that exists only through sub-tables gets its
+   `[table]` header added before the first sub-table, with the key under it, because TOML 1.0
+   allows it and `[theme.colors]` without `[theme]` or `[modal.normal]` without `[modal]` is a
+   common file. Array values are left out, since no step of the first version writes one now
+   that the Firefox's keys step is dropped (decision 11); a later step that needs one adds them.
 7. **Values come from a fixed table.** Each setting step's choices are constants in
    `packages/vimma-core/src/system/setup-steps.mjs` (table, key and value per choice), except
    the search engine, which is one of the installed engines' names. The page sends the host a
@@ -320,31 +311,34 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     no layout API (Research), and running a system tool (`hyprctl`, `setxkbmap`) for one
     preselection is not worth a process launch. The keys are kept in the page only and never
     written anywhere.
-11. **Proposed (Open question 1): the first version has the twelve steps in the table, in five
-    chapters,** because these cover the settings a new user changes first and each maps to one
-    existing key or one existing action. Eleven ship with setup v2, and the tab line step
-    follows (decision 15). The later chapters (Workspaces: names, sites that open there, new
-    tab in a split; Feel: scrolling, side panel numbers, split layout) and the other steps
-    (search shortcuts, bookmarks toolbar, font, leader key, editing keys in text fields) fit the
-    same table and slot in before Privacy and agents; chapter digits follow the list's order.
-12. **Proposed (Open question 2): the colours step is part of the essentials,** because it is
-    quick and its effect is the most visible one in the setup. Its value in force is the
+11. **The first version has the eleven steps in the table, in five chapters,** because these
+    cover the settings a new user changes first and each maps to one existing key or one
+    existing action. The Firefox's keys step (`[firefox] disable`) is not in it, because the
+    default, with all of Firefox's own shortcuts off, suits nearly everyone; the key stays in
+    `config.toml` and the guide. After the alpha, these come as rows added to the step table,
+    before Privacy and agents, with chapter digits following the list's order: Workspaces (names,
+    sites that open there, new tab in a split), Feel (scrolling, side panel numbers, split layout)
+    and the other steps (search shortcuts, bookmarks toolbar, font, leader key, editing keys in text
+    fields).
+12. **The colours step is the third essential,** because it is quick and its effect is the most
+    visible one in the setup. Its value in force is the
     effect: whether the Omarchy theme is shown, else the built-in palette and its appearance.
     A choice writes only the keys that change that effect, so that plain `enter` writes
     nothing (behaviour 8): **Omarchy** writes `source = "omarchy"` when it is not in force;
     **light**, **dark** and **follow the system** write `appearance`, and `source = "file"`
     only when an Omarchy theme is shown now, and `name = "vimma"` when the dark-only
     `tokyo-night` palette is in force and the choice is light or follow the system.
-13. **Proposed (Open question 3): Moving in comes right after the essentials,** because the
-    default browser and the imported bookmarks decide whether the user keeps using Vimma at
-    all, and both are one-off actions a user is most likely to take on the first day.
-14. **Proposed (Open question 4): the agents step is in the first version,** with "off"
-    selected first, because agents are one of Vimma's features and turning them on is otherwise
-    a command the user must find (`:mcp on`); the step explains the agent workspace before the
-    choice, as `:mcp on` asks before it acts.
-15. **Proposed (Open question 5): the tab line step lands after the tab line.** Setup v2 ships
-    without it; the step is added when `[ui] tabline` is on `main`, and until then chapter 3
-    has the address bar step only, so that neither feature waits for the other.
+13. **Moving in comes right after the essentials,** because the default browser and the
+    imported bookmarks decide whether the user keeps using Vimma at all, and both are one-off
+    actions a user is most likely to take on the first day. Every chapter can still be skipped
+    from its stop screen.
+14. **The agents step is in the first version, with "off" selected first,** because agents
+    are one of Vimma's features and turning them on is otherwise a command the user must find
+    (`:mcp on`); the step explains the agent workspace before the choice, as `:mcp on` asks
+    before it acts.
+15. **The tab line step ships with setup v2,** because `[ui] tabline` is on `main` since #1314,
+    so chapter 3 has both the address bar and the tab
+    line step from the first release, and the next release waits for setup v2.
 16. **Setting steps write the file; `:mcp off` still turns agents off.** Every setting step
     saves to `config.toml`, so `[theme] appearance` written there overrides `:theme` from then
     on, and the colours step says so. For agents, the file would also take away `:mcp off` as a
@@ -356,7 +350,7 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     again at the next start. Reason: a kill switch that depends on editing a file, or that the
     next file read undoes, is no kill switch. This applies to every user, not only behind
     `vimma.feature.setupV2`, because it is a fix in its own right for anyone who sets
-    `[mcp] enabled = true` by hand, and it lands in slice 1. Proposed with Open question 4.
+    `[mcp] enabled = true` by hand, and it lands in slice 1. Decided with decision 14.
     Rejected: setting the prefs the commands use, because the setup would then save some
     choices outside the file it shows.
 17. **Action steps keep Firefox's own paths.** The content blocker installs through
@@ -371,7 +365,12 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     signal. Reason: each prompt, check and policy stays Firefox's and is tested there. When the
     dialog cannot be opened over the setup page (slice 3 checks this first), the step falls
     back to `showMigrationWizard` with the Settings tab and opens the next step when the user
-    comes back to the setup tab.
+    comes back to the setup tab. The check passed: the wizard opens over the setup page, which
+    loads in the parent process, takes the theme in force, closes with its own Cancel or `esc`,
+    and `closedPromise` resolves then, so the fallback is not built. `SetupHost.openImportWizard`
+    opens it only over a browser showing `about:vimma-setup`, never where the
+    `DisableProfileImport` policy forbids it, and a second request while it is open waits for
+    the same dialog, because a repeated `enter` must not stack wizards.
 18. **A feature pref while it lands.** `vimma.feature.setupV2` (default `false`) switches the
     page from today's flow to the chapters while the slices land (`CONTRIBUTING.md`,
     "Unfinished features"), because the summary flow must keep working on `main` until the new
@@ -449,10 +448,6 @@ agent workspace; the first agent request does.
 
 vitest, `packages/vimma-core/test/toml.test.ts` (`setTomlKeys`):
 
-- `writes an array of strings, each escaped`
-- `writes an empty array`
-- `replaces a one-line array`
-- `refuses a multi-line array and says to edit it by hand`
 - `adds [theme] before [theme.colors] when only the sub-table exists`
 - `adds [modal] before [modal.normal] when only the sub-table exists`
 
@@ -510,6 +505,7 @@ last slice):
 - `content_blocker_installs_on_enter_with_the_permission_prompt`
 - `address_bar_step_names_the_keys_in_force` (default keys, a rebound `focus_urlbar`, an unbound
   `alt+d`)
+- `tab_line_step_writes_tabline_and_applies_live` (off, always and only with two or more tabs)
 - `prefix_step_changes_later_steps_hints`
 - `default_browser_step_calls_the_shell_service`
 - `default_browser_step_says_when_vimma_already_is_the_default`
@@ -523,6 +519,24 @@ last slice):
 - `finished_chapters_are_ticked_on_the_next_run`
 - `route_add_waits_for_a_running_rewrite` (`browser_vimma_workspace_routes.js`)
 - `agent_role_cannot_open_setup` (kept)
+
+Mochitest, `tests/browser/browser_vimma_setup_moving_in.js` (the host side of Moving in, with
+the shell service replaced, so no test changes the machine's default browser, and only
+Firefox's test migrator in the wizard):
+
+- `default_browser_state_follows_the_shell_service`
+- `set_default_browser_calls_the_shell_service`
+- `set_default_browser_does_nothing_when_vimma_already_is`
+- `set_default_browser_reports_a_failure`
+- `set_default_browser_respects_the_policy`
+- `set_default_browser_respects_the_locked_button_pref`
+- `set_default_browser_does_nothing_under_flatpak`
+- `import_wizard_opens_over_the_setup_tab_and_resolves_when_it_closes`
+- `import_wizard_opens_only_over_the_setup_page`
+- `import_wizard_respects_the_policy`
+- `closing_the_setup_tab_resolves_the_wizard_and_a_new_one_opens`
+- `a_wizard_that_cannot_open_is_unavailable`
+- `full_control_send_keys_reach_the_setup_page`
 
 e2e: the `setup-page` scenario gains screenshots of the welcome screen, one step, the address
 bar step and a stop screen, with the Omarchy and light themes, checked by eye for the key hints,
@@ -541,12 +555,12 @@ the line the step writes and the footer before the baselines are accepted.
 
 ## Delivery
 
-Slices 1 to 5 merge when green and verified. Slices 6 and 7 stop at ready for the maintainer,
-with notes in the pull request on how to try them (build, `vimma.feature.setupV2`, keys, what to
-look for), because slice 6 turns agents on from a page, and slice 7
-turns the new setup on for every user.
+Slices 1 to 5 and 8 merge when green and verified. Slices 6 and 7 stop at ready for the
+maintainer, with notes in the pull request on how to try them (build, `vimma.feature.setupV2`,
+keys, what to look for), because slice 6 turns agents on from a page, and slice 7 turns the new
+setup on for every user.
 
-1. **Core: one config writer and the step table** (#1292). The three `setTomlKeys` cases,
+1. **Core: one config writer and the step table** (#1292). The `setTomlKeys` sub-table case,
    `ConfigHost.setConfigKeys` on `rewriteConfig`, `writeEngine` and `addRoute` moved onto it,
    `setup-steps.mjs` with the key-hint fill and its tests, `vimma.feature.setupV2`. Not behind
    the pref: `:mcp off` as a flag in memory that no config reload clears (decision 16), with
@@ -560,39 +574,20 @@ turns the new setup on for every user.
 3. **Moving in** (#1294): the default browser and bring-your-data steps, starting with a check
    that the wizard opens over the setup tab (decision 17).
 4. **The window** (#1295): the address bar step with its key hints and window drawing.
-5. **Your keys** (#1296): the prefix, hint letters (layout guess) and Firefox's keys steps.
+5. **Your keys** (#1296): the prefix and hint letters (layout guess) steps.
 6. **Privacy and agents** (#1297): the updates and agents steps,
    `docs/security/12-agents-mcp.md` for turning MCP on from the step; review by a fresh
    session; stops at ready.
 7. **Turn it on** (#1298): remove `vimma.feature.setupV2` and the summary flow, A1's summary
    path, rewrite the guide section, e2e baselines, the "Since changed" note in
-   first-run-setup, status `implemented` unless slice 8 is still open; stops at ready.
-8. **The tab line step** (#1299), once `[ui] tabline` is on `main` (decision 15).
+   first-run-setup, status `implemented`; it merges after slice 8, so that no release has
+   the new setup without the tab line step (decision 15); stops at ready.
+8. **The tab line step** (#1299): the tab line step of chapter 3, with its window drawing,
+   behind the feature pref; it merges before slice 7 (decision 15).
 
 ## Open questions
 
-Decisions 11 to 16 adopt the recommendation of each question below.
-
-1. **Which steps are in the first version?** Options: the twelve steps in the table (five
-   chapters: Essentials, Moving in, The window, Your keys, Privacy and agents); all
-   twenty-three steps in seven chapters (adding Workspaces, Feel and five other steps); only
-   the essentials. Trade-off: more steps cover more first-day settings but take longer to
-   build and to sit through. Recommendation: the twelve, with Workspaces, Feel and the other
-   steps after the alpha.
-2. **Are the colours part of the essentials?** Options: yes, as the third essential; or in The
-   window. Trade-off: the essentials stay at two steps without it, but the colours are the most
-   visible choice and take one key. Recommendation: in the essentials.
-3. **Where does Moving in go?** Options: right after the essentials; last. Trade-off: the
-   default browser and the import matter most on the first day, but a user who only wants to
-   try Vimma may not want them early. Recommendation: right after the essentials, since every
-   chapter can be skipped from its stop screen.
-4. **Is the agents step in setup before the alpha, and what does `:mcp off` do after it?**
-   Options: (a) in the first version, off preselected, with `:mcp off` turning agents off until
-   restart even when the file enables them; (b) in the first version, with the file winning
-   over `:mcp off` as today, so stopping agents means editing the file; (c) left to the guide
-   and `:mcp on`. Trade-off: the step makes a headline feature findable, at the cost of one
-   more security-relevant step, and (b) loses the one-command kill switch. Recommendation: (a).
-5. **Does setup v2 ship with the tab line, or first?** Options: wait for the tab line and ship
-   both together; ship setup v2 first and add the tab line step when `[ui] tabline` lands.
-   Trade-off: one release with both versus neither feature waiting. Recommendation: setup v2
-   first, the tab line step as delivery slice 8.
+None. Decisions 11 to 16 record the answers to the five questions asked on #1290: eleven steps
+in five chapters, without Firefox's keys; the colours in the essentials; Moving in right after
+them; the agents step with off preselected and `:mcp off` winning until restart; and the tab
+line step shipping with setup v2.

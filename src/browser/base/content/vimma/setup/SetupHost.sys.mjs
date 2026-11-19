@@ -4,13 +4,14 @@
 
 // The first-run setup (docs/specs/first-run-setup.md): about:vimma-setup, registered at runtime
 // like about:vimma (no upstream patch), and the privileged half of the page: the AMO requests,
-// the add-on installs through Firefox's AMO path, the search engines and the config.toml write.
-// The page only draws and takes keys; nothing here is reachable from the control socket.
+// the add-on installs through Firefox's AMO path, the search engines and the config.toml write,
+// and for setup v2's Moving in chapter (docs/specs/setup-v2.md) Make Default and the import
+// wizard. The page only draws and takes keys; nothing here is reachable from the control socket.
 
 import { ConfigHost } from "../config/ConfigHost.sys.mjs";
+import { AppLauncher } from "../services/AppLauncher.sys.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
-import { formatConfigTemplate } from "../core/defaults.mjs";
-import { setTomlKeys } from "../core/toml.mjs";
+import { parseConfig, setConfigKeysText } from "../core/config.mjs";
 import {
   AMO_API,
   AMO_TIMEOUT_MS,
@@ -37,8 +38,9 @@ const OFFERED_PREF = "vimma.setup.offered";
 // Tests point AMO at a local server; a user never needs to.
 const AMO_PREF = "vimma.setup.amoApi";
 const CONFIG_PATH_PREF = "vimma.config.path";
-const FILE_MODE = 0o600;
-const DIR_MODE = 0o700;
+// Settings hides Make Default while this pref is locked (main.js, isNotDefaultPane).
+const DEFAULT_BUTTON_PREF = "pref.general.disable_button.default_browser";
+const WIZARD_URL = "chrome://browser/content/migration/migration-dialog-window.html";
 
 /** An nsIAboutModule that is its own nsIFactory, as about:vimma's (AboutVimma.sys.mjs). */
 const aboutModule = {
@@ -104,6 +106,20 @@ const amoBase = () => Services.prefs.getStringPref(AMO_PREF, AMO_API);
 
 /** The file the setup edits: config.toml, or the one `vimma.config.path` names (decision 11). */
 const configFile = () => ConfigHost.configFile;
+
+/**
+ * Firefox's shell service: the proxy whose own object carries AppLauncher's wrappers, so a call
+ * here takes the same path as Settings' Make Default.
+ */
+const shell = () =>
+  ChromeUtils.importESModule("moz-src:///browser/components/shell/ShellService.sys.mjs")
+    .ShellService;
+
+/**
+ * The import wizard open over a setup page's browser, until it closes.
+ * @type {WeakMap<MozBrowser, Promise<"closed">>}
+ */
+const wizards = new WeakMap();
 
 /** @param {unknown} e */
 const notFound = (e) => /** @type {Thrown} */ (e)?.name === "NotFoundError";
@@ -193,57 +209,31 @@ export const SetupHost = {
     } catch (e) {
       return notFound(e) ? null : `cannot read ${path}`;
     }
-    const r = setTomlKeys(text, [{ table: "search", key: "default", value: "x" }]);
-    return r.ok ? null : `${path}:${r.error.line}: ${r.error.message}`;
+    const mac = Services.appinfo.OS === "Darwin";
+    // A file that does not load: its first error, with its line.
+    const first = parseConfig(text, { mac }).errors[0];
+    if (first) {
+      return `${path}:${first.line ?? 1}: ${first.path ? `${first.path}: ` : ""}${first.message}`;
+    }
+    // Else the writer's own check (ConfigHost.setConfigKeys), so that whatever it would refuse
+    // after `enter` shows before it.
+    const r = setConfigKeysText(text, [{ table: "search", key: "default", value: "x" }], { mac });
+    return "error" in r ? `${path}${r.error.slice("config.toml".length)}` : null;
   },
 
   /**
    * `[search] default = engine` in config.toml, then the reload that applies it (decisions 9,
-   * 11): atomic through a 0600 temporary file renamed over the old one, the old mode kept,
-   * nothing written on a parse error or when the file changed since it was read.
+   * 11), through ConfigHost's one writer (docs/specs/setup-v2.md decision 5): the edit queue, a
+   * temporary file with the old mode renamed over the file (or a symlink's target), nothing
+   * written when the file does not load, would not with the edit, or changed meanwhile.
    * @param {string} engine
    * @returns {Promise<string | null>} why not, or null once written and applied
    */
   async writeEngine(engine) {
-    const path = configFile();
-    /** @type {string | null} */
-    let text = null;
-    /** @type {Awaited<ReturnType<IOUtilsNamespace["stat"]>> | null} */
-    let before = null;
-    try {
-      before = await IOUtils.stat(path);
-      text = await IOUtils.readUTF8(path);
-    } catch (e) {
-      if (!notFound(e)) return `cannot read ${path}`;
-    }
-    const r = setTomlKeys(text ?? formatConfigTemplate(), [
+    const why = await ConfigHost.setConfigKeys([
       { table: "search", key: "default", value: engine },
     ]);
-    if (!r.ok) return `${path}:${r.error.line}: ${r.error.message}; nothing written`;
-    const dir = PathUtils.parent(path) ?? "/";
-    const tmp = PathUtils.join(
-      dir,
-      `.config.toml.${Services.uuid.generateUUID().toString().slice(1, 9)}`,
-    );
-    try {
-      if (!(await IOUtils.exists(dir))) {
-        await IOUtils.makeDirectory(dir, { createAncestors: true, permissions: DIR_MODE });
-      }
-      await IOUtils.writeUTF8(tmp, r.text, { mode: "create" });
-      await IOUtils.setPermissions(tmp, before ? before.permissions : FILE_MODE, false);
-      const now = await IOUtils.stat(path).catch(() => null);
-      if ((now?.lastModified ?? null) !== (before?.lastModified ?? null)) {
-        await IOUtils.remove(tmp);
-        return `${path} changed while the setup ran; nothing written`;
-      }
-      await IOUtils.move(tmp, path);
-    } catch (e) {
-      console.error(`vimma: setup cannot write ${path}`, e);
-      await IOUtils.remove(tmp, { ignoreAbsent: true }).catch(() => {});
-      return `cannot write ${path}`;
-    }
-    await ConfigHost.reload();
-    return null;
+    return why === null ? null : `${why}; nothing written`;
   },
 
   /**
@@ -285,6 +275,95 @@ export const SetupHost = {
       install.addListener(listener);
       AM.installAddonFromAOM(browser, Services.io.newURI(SETUP_URL), install);
     });
+  },
+
+  /**
+   * Whether Vimma is the default browser now, and whether the default browser step may ask to
+   * make it so: not where Settings hides its Make Default button (main.js, isNotDefaultPane;
+   * DefaultBrowserHelper.canCheck): a policy against it, its locked pref, or Flatpak, which can
+   * neither set nor detect the default.
+   * @returns {{ isDefault: boolean, canSet: boolean }}
+   */
+  defaultBrowserState() {
+    if (AppLauncher.underFlatpak()) return { isDefault: false, canSet: false };
+    let isDefault = false;
+    try {
+      // forAllTypes, as Settings asks; AppLauncher's wrapper also counts Omarchy's router.
+      isDefault = Boolean(shell().isDefaultBrowser(false, true));
+    } catch (e) {
+      console.error("vimma: setup cannot tell whether Vimma is the default browser", e);
+    }
+    const canSet =
+      Services.policies.isAllowed("setDefaultBrowser") &&
+      !Services.prefs.prefIsLocked(DEFAULT_BUTTON_PREF);
+    return { isDefault, canSet };
+  },
+
+  /**
+   * Make Default, as Settings' button asks it (decision 17): Firefox's shell service, which
+   * checks the policy again, through AppLauncher's wrapper where a package installed one
+   * (security O10, O11). Nothing is asked when Vimma already is the default.
+   * @returns {Promise<"default" | "asked" | "unavailable" | "failed">} "asked" when the system
+   *   took the request but the check still says another browser is the default
+   */
+  async setDefaultBrowser() {
+    const before = this.defaultBrowserState();
+    if (before.isDefault) return "default";
+    if (!before.canSet) return "unavailable";
+    try {
+      await shell().setDefaultBrowser(false);
+    } catch (e) {
+      console.error("vimma: setup cannot make Vimma the default browser", e);
+      return "failed";
+    }
+    return this.defaultBrowserState().isDefault ? "default" : "asked";
+  },
+
+  /**
+   * Firefox's import wizard as a dialog over the setup page's tab, as Firefox's tabModal path
+   * opens it (MigrationUtils.showMigrationWizard), which gives no close signal of its own; the
+   * dialog box's closedPromise does (decision 17). Only over a browser showing the setup page,
+   * and never where the profileImport policy forbids it (security P9). A second request while
+   * the wizard is open waits for the same dialog. Closing the tab closes the wizard, which
+   * resolves it.
+   * @param {MozBrowser | null} browser  the setup page's browser
+   * @returns {Promise<"closed" | "unavailable">}
+   */
+  openImportWizard(browser) {
+    const open = browser && wizards.get(browser);
+    if (open) return open;
+    if (!browser || browser.currentURI?.spec !== SETUP_URL) return Promise.resolve("unavailable");
+    if (!Services.policies.isAllowed("profileImport")) return Promise.resolve("unavailable");
+    for (const win of Services.wm.getEnumerator("navigator:browser")) {
+      const gBrowser = win.gBrowser;
+      if (!gBrowser?.getTabForBrowser(browser)) continue;
+      /** @type {Promise<void>} */
+      let closedPromise;
+      try {
+        const { MigrationUtils } = ChromeUtils.importESModule(
+          "moz-src:///browser/components/migration/MigrationUtils.sys.mjs",
+        );
+        ({ closedPromise } = gBrowser.getTabDialogBox(browser).open(
+          WIZARD_URL,
+          { features: "resizable=no", modalType: Ci.nsIPrompt.MODAL_TYPE_CONTENT },
+          {
+            options: { entrypoint: MigrationUtils.MIGRATION_ENTRYPOINTS.FILE_MENU, tabModal: true },
+          },
+        ));
+      } catch (e) {
+        // A step waiting on the wizard would otherwise never move on.
+        console.error("vimma: setup cannot open the import wizard", e);
+        return Promise.resolve("unavailable");
+      }
+      /** @type {Promise<"closed">} */
+      const closed = closedPromise.then(() => {
+        wizards.delete(browser);
+        return "closed";
+      });
+      wizards.set(browser, closed);
+      return closed;
+    }
+    return Promise.resolve("unavailable");
   },
 
   /**

@@ -9,7 +9,8 @@ import { formatKey, parseKey } from "../src/keys/keys.mjs";
 import type { TrieNode } from "../src/keys/keymap.mjs";
 import type { Mode, Context } from "../src/keys/modes.mjs";
 
-const v2 = (...lines: string[]) => ["schema = 2", ...lines].join("\n") + "\n";
+// A config.toml whose first line is a comment, so errors are on the lines they always were.
+const cfg = (...lines: string[]) => ["# config.toml", ...lines].join("\n") + "\n";
 
 /** The action name `seq` (space-separated chords) runs from `root`, if any. */
 function lookup(root: TrieNode, seq: string) {
@@ -56,7 +57,7 @@ describe("[sites] unbind in the keymap", () => {
   let keymap: ReturnType<typeof compileKeymap>;
   beforeAll(() => {
     keymap = keymapOf(
-      v2('[sites."github.com"]', 'unbind = ["t", "ctrl+t", "g"]', '[sites."example.org"]'),
+      cfg('[sites."github.com"]', 'unbind = ["t", "ctrl+t", "g"]', '[sites."example.org"]'),
     );
   });
 
@@ -95,7 +96,7 @@ describe("[sites] unbind in the keymap", () => {
 
   test("the most specific table is the whole rule", () => {
     const k = keymapOf(
-      v2(
+      cfg(
         '[sites."github.com"]',
         'unbind = ["t"]',
         '[sites."gist.github.com"]',
@@ -112,7 +113,7 @@ describe("[sites] unbind in the keymap", () => {
 
   test("IP literals match only exactly", () => {
     const k = keymapOf(
-      v2('[sites."10.0.0.1"]', 'unbind = ["t"]', '[sites."[::1]"]', 'unbind = ["t"]'),
+      cfg('[sites."10.0.0.1"]', 'unbind = ["t"]', '[sites."[::1]"]', 'unbind = ["t"]'),
     );
     expect(on(k, "10.0.0.1", "normal", "t")).toBeUndefined();
     expect(on(k, "110.0.0.1", "normal", "t")).toBe("new_tab");
@@ -122,7 +123,7 @@ describe("[sites] unbind in the keymap", () => {
 
   test("site() is null without a table that unbinds, and for an unmatched host", () => {
     expect(compileKeymap({}).site("github.com")).toBeNull();
-    expect(keymapOf(v2('[sites."a.com"]', 'insert = "never"')).site("a.com")).toBeNull();
+    expect(keymapOf(cfg('[sites."a.com"]', 'insert = "never"')).site("a.com")).toBeNull();
     expect(keymap.site("example.com")).toBeNull();
     expect(keymap.site("")).toBeNull();
     expect(keymap.site("gist.github.com")).toBe("github.com");
@@ -130,7 +131,7 @@ describe("[sites] unbind in the keymap", () => {
 
   test("the leader and the other notations name one key", () => {
     const k = keymapOf(
-      v2(
+      cfg(
         "[modal.normal]",
         '"<leader>n" = "toggle_sidebar"',
         '[sites."a.com"]',
@@ -151,7 +152,7 @@ describe("[sites] unbind in the keymap", () => {
     expect(keymap.unbinds(null, "t")).toBe(false);
     expect(keymap.hasSiteUnbinds()).toBe(true);
     expect(compileKeymap({}).hasSiteUnbinds()).toBe(false);
-    expect(keymapOf(v2('[sites."a.com"]', 'insert = "never"')).hasSiteUnbinds()).toBe(false);
+    expect(keymapOf(cfg('[sites."a.com"]', 'insert = "never"')).hasSiteUnbinds()).toBe(false);
   });
 
   test("the bindings listed for help and :map are the configuration's", () => {
@@ -161,7 +162,7 @@ describe("[sites] unbind in the keymap", () => {
 
 describe("the dispatcher on a site", () => {
   test("an unbound key passes; a site change drops a pending key", () => {
-    const keymap = keymapOf(v2('[sites."github.com"]', 'unbind = ["t"]'));
+    const keymap = keymapOf(cfg('[sites."github.com"]', 'unbind = ["t"]'));
     const d = createDispatcher(keymap);
     const site = keymap.site("github.com");
     expect(d.dispatch("normal", parseKey("t"), "page", site).kind).toBe("pass");
@@ -186,36 +187,36 @@ describe("[sites] unbind is checked", () => {
       'must be one key: on a site, "ctrl+x" gives the page ctrl+x and every sequence it starts',
     ],
   ])("%s is an error at its line", (entry, message) => {
-    expect(errors(v2('[sites."a.com"]', `unbind = ["t", ${entry}]`))).toEqual([
+    expect(errors(cfg('[sites."a.com"]', `unbind = ["t", ${entry}]`))).toEqual([
       { line: 3, path: 'sites."a.com".unbind[1]', message },
     ]);
   });
 
   test("a remapped prefix is the one kept", () => {
     expect(
-      errors(v2('keys.prefix = "ctrl+a"', '[sites."a.com"]', 'unbind = ["ctrl+a"]'))[0]?.message,
+      errors(cfg('keys.prefix = "ctrl+a"', '[sites."a.com"]', 'unbind = ["ctrl+a"]'))[0]?.message,
     ).toBe("the prefix stays Vimma's on every site: it reaches every other command");
     expect(
-      keymapOf(v2('keys.prefix = "ctrl+a"', '[sites."a.com"]', 'unbind = ["ctrl+b"]')).site(
+      keymapOf(cfg('keys.prefix = "ctrl+a"', '[sites."a.com"]', 'unbind = ["ctrl+b"]')).site(
         "a.com",
       ),
     ).toBe("a.com");
   });
 
   test("a key that does not parse, a non-string and a non-list say why", () => {
-    expect(errors(v2('[sites."a.com"]', 'unbind = ["ctrl+"]'))).toMatchObject([
+    expect(errors(cfg('[sites."a.com"]', 'unbind = ["ctrl+"]'))).toMatchObject([
       { line: 3, path: 'sites."a.com".unbind[0]' },
     ]);
-    expect(errors(v2('[sites."a.com"]', "unbind = [1]"))).toEqual([
+    expect(errors(cfg('[sites."a.com"]', "unbind = [1]"))).toEqual([
       { line: 3, path: 'sites."a.com".unbind[0]', message: "expected a string, got an integer" },
     ]);
-    expect(errors(v2('[sites."a.com"]', 'unbind = "t"'))).toEqual([
+    expect(errors(cfg('[sites."a.com"]', 'unbind = "t"'))).toEqual([
       { line: 3, path: 'sites."a.com".unbind', message: "expected a list of keys, got a string" },
     ]);
   });
 
   test("a near miss suggests unbind; a key bound to nothing is accepted", () => {
-    expect(errors(v2('[sites."a.com"]', 'unbnd = ["t"]'))).toEqual([
+    expect(errors(cfg('[sites."a.com"]', 'unbnd = ["t"]'))).toEqual([
       {
         line: 3,
         path: 'sites."a.com".unbnd',
@@ -223,17 +224,13 @@ describe("[sites] unbind is checked", () => {
         suggestion: "unbind",
       },
     ]);
-    expect(keymapOf(v2('[sites."a.com"]', 'unbind = ["z"]')).site("a.com")).toBe("a.com");
+    expect(keymapOf(cfg('[sites."a.com"]', 'unbind = ["z"]')).site("a.com")).toBe("a.com");
   });
 
-  test("schema 1 has no [sites]", () => {
-    expect(errors(["schema = 1", '[sites."a.com"]', 'unbind = ["t"]'].join("\n") + "\n")).toEqual([
-      {
-        line: 2,
-        path: "sites",
-        message: "is new in schema 2: put schema = 2 at the top of the file",
-      },
-    ]);
+  test("a schema-1 file may have [sites]", () => {
+    expect(
+      parseConfig(["schema = 1", '[sites."a.com"]', 'unbind = ["t"]'].join("\n") + "\n").errors,
+    ).toEqual([]);
   });
 });
 

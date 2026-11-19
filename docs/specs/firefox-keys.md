@@ -128,7 +128,8 @@ tests.**
   every setting commented out (`# disable = [...]` under `[firefox]`, `defaults.mjs:328-332`); an
   existing file is never rewritten (`ConfigHost.sys.mjs:257` `createFromTemplate`).
   `CONFIG_SCHEMA_VERSION = 2` (`config.mjs:80`); `MIGRATIONS` steps 0→1→2 only add keys
-  (`config.mjs:86-92`).
+  (`config.mjs:86-92`). (Since changed: config.toml has no schema, no migrations, and every key
+  is valid in every file (#1379), [m5-core-config-and-theme](m5-core-config-and-theme.md).)
 - **about:vimma** shows "Firefox shortcuts off" (`about/about.html:61`,
   `AboutVimma.sys.mjs:295`) and the unmatched `disable` chords (`about/about.mjs:263-265`).
 

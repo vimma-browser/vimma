@@ -1177,7 +1177,8 @@ Written first and seen to fail.
   build-ID order; the running Vimma version with a newer build ID); freeze thresholds per channel, and no stale warning with checks off; `updateNotice` for every row of the §5 table;
   the `y/N` prompt once per session and its 24 h re-ask; install-type detection; the version line
   (`Vimma 0.3.1 · Firefox 158.0.1`, `0.3.1-nightly.20261028031500`).
-  `config.test.mjs`: `[updates] check`, wrong type, schema 1 → "is new in schema 2";
+  `config.test.mjs`: `[updates] check`, wrong type, schema 1 → "is new in schema 2" (since
+  changed: a schema-1 file may have `[updates]`, #1379);
   `cmdline.test.mjs`: `:update`, `:restart`; `actions.test.mjs`: both actions have no default key
   and appear in help. Snapshots (`defaults.toml`, help) are re-recorded with a changelog line.
 - **Tools** `tools/update/test/manifest.test.ts`: XML from fixtures (attributes, sizes, hashes,

@@ -1273,8 +1273,6 @@ teal-black.
 `appearance` makes no difference to it). `[theme.colors]` changes single colours of either.
 
 ```toml
-schema = 2
-
 [theme]
 name = "tokyo-night"   # or "vimma", the default
 appearance = "dark"    # the built-in palette dark, "light", or "system" (the default)
@@ -1300,8 +1298,6 @@ ignored: the colours stay as they were, and `about:vimma` and the Browser Consol
 (`ctrl+shift+j`) say which key is wrong.
 
 ```toml
-schema = 2
-
 [theme]
 source = "file"        # ignore Omarchy; always the built-in palette
 ```
@@ -1661,8 +1657,6 @@ To have Firefox's common `cmd` keys back, list them in `enable` (`cmd+t` works t
 means `meta+t`); each then runs exactly as in Firefox, and the others stay off:
 
 ```toml
-schema = 2
-
 [firefox]
 enable = [
   "meta+t", "meta+n", "meta+w", # new tab, new window, close tab
@@ -1706,8 +1700,6 @@ the ones that are on (key, Firefox's id, what it does) under "Firefox shortcuts 
 chords on a `disable` list that Firefox does not bind. Change the list in `config.toml`:
 
 ```toml
-schema = 2
-
 [firefox]
 disable = ["ctrl+b", "ctrl+d", "ctrl+e", "ctrl+h", "ctrl+i", "ctrl+k", "ctrl+o", "ctrl+u", "ctrl+w", "ctrl+y"]
 enable = []
@@ -1737,8 +1729,6 @@ Gmail, `ctrl+k` searches in Slack. To give such a key to the site without losing
 Vimma there, list it under the site in `config.toml`:
 
 ```toml
-schema = 2
-
 [sites."github.com"]
 unbind = ["t", "g"]   # GitHub's t file finder and its g c (go to the code)
 
@@ -1984,21 +1974,26 @@ you, and `a` lets it work without asking until it quits, except where
   never in reach of an agent. What you open while in the agent workspace (`ctrl+t`, `:open`, the address
   bar, a bookmark) stays there.
 
-| Command          | What it does                                                                                                           |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `:mcp`           | Says whether agents are on or off, which workspace is theirs, and how many agents, questions and grants.               |
-| `:mcp on`        | Asks `Let local AI agents ask to use the "agent" workspace? Nothing runs until you allow it. y/N`, then turns them on. |
-| `:mcp off`       | Turns MCP agents off and ends their grants, without a question; not [Vimma's own agent](#vimmas-own-agent).            |
-| `:mcp revoke`    | Ends every grant you gave agents, at once.                                                                             |
-| `:mcp forget`    | Asks, then deletes the agent workspace's cookies and site data (its logins). The workspace stays.                      |
-| `:mcp log`       | Lists the last 100 agent requests, newest first: time, agent, tool, tab, keys or address, and what came of it.         |
-| `ctrl+b shift+a` | Answers the waiting agent request; with none, ends every grant at once.                                                |
-| `:control on 15` | Turns full control (`vimma-ctl`) on for 15 minutes, after a `y/N`; `:control off` ends it now.                         |
+| Command          | What it does                                                                                                                                                           |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `:mcp`           | Says whether agents are on or off, which workspace is theirs, and how many agents, questions and grants.                                                               |
+| `:mcp on`        | Asks `Let local AI agents ask to use the "agent" workspace? Nothing runs until you allow it. y/N`, then turns them on.                                                 |
+| `:mcp off`       | Turns MCP agents off and ends their grants, without a question, until `:mcp on` or a restart, whatever `config.toml` says; not [Vimma's own agent](#vimmas-own-agent). |
+| `:mcp revoke`    | Ends every grant you gave agents, at once.                                                                                                                             |
+| `:mcp forget`    | Asks, then deletes the agent workspace's cookies and site data (its logins). The workspace stays.                                                                      |
+| `:mcp log`       | Lists the last 100 agent requests, newest first: time, agent, tool, tab, keys or address, and what came of it.                                                         |
+| `ctrl+b shift+a` | Answers the waiting agent request; with none, ends every grant at once.                                                                                                |
+| `:control on 15` | Turns full control (`vimma-ctl`) on for 15 minutes, after a `y/N`; `:control off` ends it now.                                                                         |
 
 - When the agent workspace is one of yours rather than one Vimma made, `:mcp on` warns:
   `"agent" is your own workspace (3 tabs, its own logins). Agents will be able to read it. y/N`.
 - `:mcp on|off` is remembered in the pref `vimma.mcp.enabled`. `[mcp] enabled` in `config.toml`
-  wins over it; then `:mcp on|off` changes nothing and says to edit the file.
+  wins over the pref when Vimma starts and whenever it reads the file.
+- `:mcp off` always wins for the rest of the session: with `[mcp] enabled = true` in the file,
+  agents stay off however often the file is read or edited, until `:mcp on` (which asks again)
+  or a restart, when the file turns them on again. `:mcp` then says
+  `mcp off (until :mcp on or a restart)`. With `[mcp] enabled = false`, `:mcp on` changes
+  nothing and says to edit the file.
 - `about:vimma`'s **Agents (MCP)** section shows the switch, full control's state and the agent
   workspace's tab count.
 
@@ -2105,10 +2100,9 @@ covers local servers, hosted APIs, what a model needs and how to measure your ow
 The chat window works with any model behind an OpenAI-compatible chat API that returns tool
 calls, and with Anthropic's Messages API. Pick one in the window (`Esc`, then `m`), or list it in
 `config.toml` as an `[[agent.providers]]` table: a name, a kind, an endpoint and a model, never a
-key (a `key` or `api_key` field is a config error). `[agent]` is new in config schema 2, so the
-file starts with `schema = 2`; without it the whole file is refused, and the status bar names the
-error. Each example below is a whole `config.toml`. To keep several providers, put their
-`[[agent.providers]]` tables in one file, under one `[agent]`.
+key (a `key` or `api_key` field is a config error). A mistake in it refuses the whole file, and
+the status bar names the error. Each example below is a whole `config.toml`. To keep several
+providers, put their `[[agent.providers]]` tables in one file, under one `[agent]`.
 
 **Ollama** (port 11434). Its default context of 4096 tokens holds less than the agent's tool
 definitions. A model you pick in the window gets a copy with 32,768 tokens of context
@@ -2121,8 +2115,6 @@ ollama create qwen3:14b-ctx32768 -f Modelfile
 ```
 
 ```toml
-schema = 2
-
 [agent]
 default = "ollama"
 
@@ -2138,8 +2130,6 @@ the model with the context it needs, in the model's load settings or with
 `lms load <model> --context-length 32768`. `model` is the identifier LM Studio lists for it.
 
 ```toml
-schema = 2
-
 [agent]
 default = "lm-studio"
 
@@ -2155,8 +2145,6 @@ model = "qwen/qwen3-14b"
 `llama-server -m qwen3-14b.gguf --alias qwen3-14b -c 32768 --jinja`.
 
 ```toml
-schema = 2
-
 [agent]
 default = "llama-cpp"
 
@@ -2172,8 +2160,6 @@ when started with a tool-call parser that fits the model, and its context is `--
 `vllm serve Qwen/Qwen3-14B --max-model-len 32768 --enable-auto-tool-choice --tool-call-parser hermes`.
 
 ```toml
-schema = 2
-
 [agent]
 default = "vllm"
 
@@ -2249,8 +2235,6 @@ endpoint over `https://` (`kind = "openai"`). Add one with `add: Anthropic (Mess
 `add: OpenAI-compatible endpoint` in the picker, or list it:
 
 ```toml
-schema = 2
-
 [agent]
 default = "anthropic"
 
@@ -2473,12 +2457,9 @@ Vimma restarts; `D` also keeps it, adding it to `config.toml` as a provider of i
 show it. A running task keeps the model it started with. A conversation started with another
 provider can be switched to a CLI the same way.
 
-**Or in `config.toml`.** `[agent]` needs `schema = 2` at the top of the file; without it the whole
-section is refused.
+**Or in `config.toml`.**
 
 ```toml
-schema = 2
-
 [agent]
 default = "claude"
 
@@ -3601,8 +3582,6 @@ each row is from the highlight instead, as Vim's `relativenumber` does, set `num
 [config.toml](#configtoml):
 
 ```toml
-schema = 2
-
 [panel]
 numbers = "relative"  # "absolute" (the default), "relative" or "hybrid"
 ```
@@ -3629,8 +3608,6 @@ side panel it closes the shown tab as `ctrl+b shift+x` does. With the text-field
 in normal mode:
 
 ```toml
-schema = 2
-
 [modal.insert]
 "<C-w>" = "tab.close"
 
@@ -3720,8 +3697,6 @@ No page reloads.
 matches; the first rule that matches, top to bottom, wins.
 
 ```toml
-schema = 2
-
 [[routes]]
 domain = "github.com"         # github.com and its subdomains (gist.github.com), any port
 workspace = "work"
@@ -3858,7 +3833,7 @@ claims a name opens nothing but the sign-in host there.
 | `:route move`                   | Moves this tab to the workspace its rule names.                                                                            |
 
 `:route add` refuses a site an earlier rule already routes (it names the rule), a `config.toml`
-that has errors, and a file without `schema = 2`. It only ever appends to the file.
+that has errors. It only ever appends to the file.
 
 ### Private workspace
 
@@ -4026,8 +4001,6 @@ Bookmarks outside workspace folders (loose in the toolbar, in the Menu or in Oth
 do not show in a workspace's panel. To see them, set `root` in [config.toml](#configtoml):
 
 ```toml
-schema = 2
-
 [bookmarks]
 root = "toolbar"    # the whole Bookmarks Toolbar; "all": every bookmark; default "workspace"
 ```
@@ -4679,7 +4652,7 @@ Refresh for the current state. It is an ordinary page, so `j` / `k` scroll it.
 - **Modes and keys:** each window's mode, and the last 20 keys Vimma saw with what each did
   (`j → scroll.down`, `pass` when the key went to the page). Letters typed into a text field or
   the command line show as `·`, so nothing you type is kept.
-- **Config:** the `config.toml` path, whether it was read, its `schema`, every error with its
+- **Config:** the `config.toml` path, whether it was read, every error with its
   line, and the full binding table with the keys your file changes marked `*`.
 - **Theme:** the colour source (`built in`, or `Omarchy`), the theme's name (the Omarchy
   theme's, or the built-in palette's, e.g. `vimma (built in)`), its appearance (`system`,
@@ -4738,8 +4711,6 @@ if it is missing, and the file mode 0600, since it can name intranet hosts. An e
 even an empty one, is never written; `:route add` only appends to it. A small example:
 
 ```toml
-schema = 2
-
 [keys]
 new_tab = ["prefix+t"]        # replaces ctrl+b c
 
@@ -4817,12 +4788,13 @@ accent = "#ff9e64"
   (`"shown"`, the default, or `"hidden"`: the [PDF viewer](#pdf-viewer)'s outline when a PDF
   opens; applied at startup and when the line changes); `[updates] check`
   (`true`, the default, or `false`: no [update check](#updates) at all).
-- **Schema:** `schema = 2` at the top enables `[panes]`, `[sites]`, `[[routes]]`, `[routing]`,
-  `[firefox]`,
-  `[bookmarks]`, `[panel]`, `[scroll]`, `[private]`, `[mcp]`, `[search]`, `[ui]`, `[updates]`, `[agent]`,
-  `hint_chars`, `insert_editing`, `[theme] name` and `appearance`. Every key but
-  `[panes] max_splits` and the `[agent]` table is in the template `:config` writes, with its
-  default commented out (the same as [`defaults.toml`](../packages/vimma-core/defaults.toml) in the source).
+- **No schema line:** every key above is valid in every `config.toml`. Older files start with
+  `schema = 1` or `schema = 2`; Vimma accepts that line, with any value, and ignores it, so you
+  can keep it or delete it. Vimma 0.1.21 and older still want `schema = 2` above the keys added
+  after schema 1; if you go back to one of those, put that line at the top.
+- **The template:** every key but `[panes] max_splits` and the `[agent]` table is in the
+  template `:config` writes, with its default commented out (the same as
+  [`defaults.toml`](../packages/vimma-core/defaults.toml) in the source).
 
 ### Search engines
 

@@ -104,7 +104,7 @@ function templateHost(value) {
 const isEngineName = (name) => name.length >= 1 && name.length <= MAX_NAME && !CONTROL.test(name);
 
 /**
- * Every problem in `[search]` (schema 2), with config paths.
+ * Every problem in `[search]`, with config paths.
  * @param {Record<string, unknown>} search
  * @returns {SearchProblem[]}
  */
