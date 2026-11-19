@@ -1635,6 +1635,52 @@ describe("console reads: bounded work and URLs without credentials (F24, M30)", 
     }
   });
 
+  test("a semicolon in a user name or password does not split their URL (#1352 review)", () => {
+    // URLSearchParams, Reader View and the error pages split a query at & only: a value read
+    // whole there is read whole here too.
+    expect(once("about:reader?url=ftp://ada:se;cret@example.com/a")).toBe(
+      `about:reader?url=${enc("ftp://example.com/a")}`,
+    );
+    expect(once("about:neterror?e=x&u=https://ada:se;cret@bank.example/&d=y")).toBe(
+      `about:neterror?e=x&u=${enc("https://bank.example/")}&d=y`,
+    );
+    expect(once("https://site.example/?next=https://ada:se;cret@bank.example/")).toBe(
+      `https://site.example/?next=${enc("https://bank.example/")}`,
+    );
+    expect(once(`https://site.example/?a=1;next=${enc("https://a;da:secret@bank.example/")}`)).toBe(
+      `https://site.example/?a=1;next=${enc("https://bank.example/")}`,
+    );
+  });
+
+  test("a URL anywhere in a hash or a parameter's value loses them (#1352 review)", () => {
+    const bank = "https://ada:secret@bank.example/?a=1";
+    for (const url of [
+      `https://site.example/#${bank}`,
+      `https://site.example/#/go/${bank}`,
+      `https://site.example/#/a?x=1?next=${enc(bank)}`,
+      `https://site.example/?a=1?next=${enc(bank)}`,
+      `https://site.example/?to=/go/${enc(bank)}`,
+      `https://site.example/?to=x${enc(" ")}${enc(bank)}`,
+    ]) {
+      const out = once(url);
+      noCredentials(out);
+      expect(out.startsWith("https://site.example/")).toBe(true);
+    }
+    expect(once(`https://site.example/#/go/${bank}`)).toBe(
+      `https://site.example/#${enc("/go/https://bank.example/?a")}=1`,
+    );
+  });
+
+  test("a value encoded past the nesting read is dropped, not kept (#1352 review)", () => {
+    let value = ARTICLE;
+    for (let i = 0; i < 5; i++) value = enc(value);
+    let out = once(`https://site.example/login?next=${value}`);
+    expect(out.startsWith("https://site.example/login?next=")).toBe(true);
+    for (let i = 0; i < 6; i++) out = decodeURIComponent(out);
+    expect(out).not.toContain("secret");
+    expect(out).not.toContain("ada");
+  });
+
   test("a redirect parameter cut short, or long, never shows them (#1348)", () => {
     const long = `https://site.example/?a=1&next=${enc(`https://ada:${"s".repeat(3000)}@b.example/`)}`;
     noCredentials(once(long));

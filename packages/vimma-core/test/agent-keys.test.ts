@@ -730,6 +730,26 @@ describe("URLs without user names and passwords (security.md M21, #1209)", () =>
     expect(markdownWithoutUserinfo("]\\(https://a:b@h/x\\\\\\)")).toBe("]\\(https://h/x\\\\\\)");
   });
 
+  test("a read page's link targets lose them in their queries in bounded time (#1352)", () => {
+    const enc = encodeURIComponent;
+    expect(
+      markdownWithoutUserinfo(
+        `[a](https://s.example/?next=${enc("https://ada:secret@b.example/")})`,
+      ),
+    ).toBe(`[a](https://s.example/?next=${enc("https://b.example/")})`);
+    // A page of links whose queries nest encoded queries, as the extractor could write it.
+    const inner = `https://u.example/?${"c=%C3%A9%3A%40&".repeat(10)}`;
+    const mid = `https://t.example/?b=${enc(inner)}&b2=${enc(inner)}`;
+    const link = `[l](https://s.example/?a=${enc(mid)}&a2=${enc(mid)}) `;
+    const page = link.repeat(Math.ceil(2_000_000 / link.length));
+    const start = performance.now();
+    markdownWithoutUserinfo(page);
+    expect(performance.now() - start).toBeLessThan(budget(1000));
+    // One target longer than a link's read is cut, its user name and password gone.
+    const long = `[a](https://s.example/?x=${"y".repeat(100_000)}&next=${enc("https://ada:secret@b/")})`;
+    expect(markdownWithoutUserinfo(long)).not.toMatch(/ada|secret/);
+  });
+
   test("text that is no link target is left byte for byte, URLs and emails too", () => {
     const text = [
       "Mail bob@example.com or ada:secret@example.com, see https://ada:secret@example.com/ here.",
@@ -841,6 +861,24 @@ describe("tab titles without user names and passwords (security.md M21, #1209)",
     ]) {
       expect(agentTitle(title)).toBe(title);
     }
+  });
+
+  test("a semicolon in a title's nested user name does not hide it (#1352 review)", () => {
+    expect(agentTitle("about:reader?url=https://a;da:secret@example.com/a")).toBe(
+      "https://example.com/a",
+    );
+  });
+
+  test("a long title is read in bounded time (#1352 review)", () => {
+    const enc = encodeURIComponent;
+    const title = `https://s.example/?${`a=${enc("https://x.example/?b=%C3%A9%3A%40")}&`.repeat(30_000)}`;
+    expect(title.length).toBeGreaterThan(1_000_000);
+    const start = performance.now();
+    agentTitle(title);
+    agentTitle(`https://ada:secret@x.example/${"\u00e9".repeat(1_500_000)}`);
+    expect(performance.now() - start).toBeLessThan(budget(1000));
+    // Read only as far as agentUrl reads, an authority that runs past it is dropped whole.
+    expect(agentTitle(`https://ada:${"s".repeat(1_500_000)}@x.example/`)).toBe("https://…");
   });
 
   test("any other title is left as the page wrote it", () => {

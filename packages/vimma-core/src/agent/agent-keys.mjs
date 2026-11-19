@@ -510,13 +510,19 @@ export const UNSHOWN = Object.freeze(
   ]),
 );
 
+/** UNSHOWN as one pattern, so that a text is cleaned in one pass rather than a call a character. */
+const UNSHOWN_PATTERN = new RegExp(
+  `[${UNSHOWN.map(([lo, hi]) => `\\u{${lo.toString(16)}}-\\u{${hi.toString(16)}}`).join("")}]`,
+  "gu",
+);
+
 /**
  * `s` as shown in the list: NFKC first, so a compatibility character (a fullwidth quote) is
  * what it looks like before the text is quoted and cannot end its JSON string; then without
  * the invisible characters.
  * @param {string} s
  */
-export const shown = (s) => [...s.normalize("NFKC")].filter((c) => !within(c, UNSHOWN)).join("");
+export const shown = (s) => s.normalize("NFKC").replace(UNSHOWN_PATTERN, "");
 
 /** @param {string} s @param {number} max  at most `max` code points, `…` the last when cut */
 export function cutTo(s, max) {
@@ -542,17 +548,26 @@ const NESTED_MAX = 4;
 const asParsed = (text) => text.replace(/[\t\n\r]/g, "").replace(/^[\u0000-\u0020]+/, "");
 
 /**
+ * How much more query text one call may read for user names and passwords (`left`, in code
+ * units, counted at every level of nesting and in each pass). Decoding and normalising every
+ * parameter of every nested query costs far more than reading an authority, so a page that
+ * writes many deep queries could otherwise hold the parent process for seconds (#1352 review).
+ * A query reached once it is spent is dropped whole: more is dropped that way, never less.
+ * @typedef {{ left: number }} QueryWork
+ */
+
+/**
  * `text` without the user name and password of its URL, and of the URLs nested in it: the
  * authority after the scheme's slashes, up to its last `@`. Each scheme's authority ends where a
  * WHATWG URL parser ends it (a slash, a question mark or a number sign, and for a special scheme a
  * backslash too); a case where they could differ drops more, never less. `cut` says the text was
  * cut, so an authority that runs to its end may hide a user name and password: it is dropped
- * whole, and only the scheme and its slashes kept. The URLs percent-encoded in its query go too
- * (queryWithoutUserinfo).
- * @param {string} text @param {boolean} cut @param {number} depth
+ * whole, and only the scheme and its slashes kept. The URLs percent-encoded in its query and
+ * hash go too (queryWithoutUserinfo).
+ * @param {string} text @param {boolean} cut @param {number} depth @param {QueryWork} work
  * @returns {string}
  */
-function withoutUserinfo(text, cut, depth) {
+function withoutUserinfo(text, cut, depth, work) {
   const s = asParsed(text);
   const m = URL_SCHEME.exec(s);
   if (!m) return s;
@@ -560,21 +575,48 @@ function withoutUserinfo(text, cut, depth) {
   const rest = s.slice(m[0].length);
   if (NESTED_SCHEMES.has(name)) {
     // Past NESTED_MAX the rest is not read, so it is dropped: it may hold a user name.
-    return depth < NESTED_MAX ? m[0] + withoutUserinfo(rest, cut, depth + 1) : `${m[0]}\u2026`;
+    return depth < NESTED_MAX ? m[0] + withoutUserinfo(rest, cut, depth + 1, work) : `${m[0]}…`;
   }
   const special = SPECIAL_SCHEMES.has(name);
   const lead = special ? (/^[/\\]*/.exec(rest)?.[0] ?? "") : rest.startsWith("//") ? "//" : null;
   // No authority (about:, data:): only its query may hold one.
-  if (lead === null) return queryWithoutUserinfo(s, m[0].length, cut, depth);
+  if (lead === null) return queryWithoutUserinfo(s, m[0].length, cut, depth, work);
   const after = rest.slice(lead.length);
   let end = after.search(special ? /[/\\?#]/ : /[/?#]/);
   if (end < 0) {
-    if (cut) return `${m[0]}${lead}\u2026`;
+    if (cut) return `${m[0]}${lead}…`;
     end = after.length;
   }
   const from = after.lastIndexOf("@", end) + 1;
   const out = m[0] + lead + after.slice(from);
-  return queryWithoutUserinfo(out, m[0].length + lead.length + end - from, cut, depth);
+  return queryWithoutUserinfo(out, m[0].length + lead.length + end - from, cut, depth, work);
+}
+
+/**
+ * Where a URL may start inside a parameter's value, after its first character: a scheme not
+ * preceded by a scheme character, followed by a slash or a backslash, or a special scheme's
+ * colon alone, which a URL parser also reads (`https:ada@host`).
+ */
+const EMBEDDED_URL = /(?<![a-z0-9+.-])(?:[a-z][a-z0-9+.-]*:(?=[/\\])|(?:https?|wss?|ftp|file):)/gi;
+
+/**
+ * `text` without the user names and passwords of the URL it starts with and of the URLs later in
+ * it, as a parameter's value may hold them (`/go/https://user:password@host/`,
+ * `1?next=https://…`; #1352 review). Each is read from where it starts to the end, first to last,
+ * so a later one's stripping can never shorten an earlier one's authority; past NESTED_MAX of
+ * them the rest is dropped.
+ * @param {string} text @param {boolean} cut @param {number} depth @param {QueryWork} work
+ */
+function anywhereWithoutUserinfo(text, cut, depth, work) {
+  let out = withoutUserinfo(text, cut, depth, work);
+  for (let n = 0, from = 1; ; n++) {
+    EMBEDDED_URL.lastIndex = from;
+    const at = EMBEDDED_URL.exec(out)?.index ?? -1;
+    if (at < 0) return out;
+    if (n >= NESTED_MAX) return `${out.slice(0, at)}…`;
+    out = out.slice(0, at) + withoutUserinfo(out.slice(at), cut, depth, work);
+    from = at + 1;
+  }
 }
 
 /**
@@ -582,11 +624,12 @@ function withoutUserinfo(text, cut, depth) {
  * an authority ends where a URL parser ends it (NFKC would make a fullwidth slash one that the
  * parser does not see, and end the authority before its `@`), then as `show` shows it, where a
  * fullwidth `@` is one: only more is dropped that way, never less.
- * @param {string} text @param {boolean} cut @param {number} depth
+ * @param {string} text @param {boolean} cut @param {number} depth @param {QueryWork} work
  * @param {(s: string) => string} show
+ * @param {typeof withoutUserinfo} [strip]
  */
-function bothPasses(text, cut, depth, show) {
-  return withoutUserinfo(show(withoutUserinfo(text, cut, depth)), cut, depth);
+function bothPasses(text, cut, depth, work, show, strip = withoutUserinfo) {
+  return strip(show(strip(text, cut, depth, work)), cut, depth, work);
 }
 
 /**
@@ -597,44 +640,57 @@ function bothPasses(text, cut, depth, show) {
  * a site's redirect parameter (`?next=`, `?continue=`, a single-page app's `#/login?next=`).
  * Each is decoded as URLSearchParams decodes it (Reader View reads its own that way: ReaderMode
  * getOriginalUrl) and stripped as a URL nested one level deeper, in agentUrl's two passes
- * (bothPasses); a value encoded twice, a redirect inside a redirect, is decoded once more. Only
- * a parameter that lost something is written again, so the page's address and the rest of its
- * query stay as the page wrote them, and the agent still knows which page it is on. Past
- * NESTED_MAX the query and the hash are not read, so they are dropped.
+ * (bothPasses), also where a URL starts later in it; a value encoded twice, a redirect inside a
+ * redirect, is decoded once more. Only a parameter that lost something is written again, so the
+ * page's address and the rest of its query stay as the page wrote them, and the agent still
+ * knows which page it is on. Past NESTED_MAX, or once `work` is spent, the query and the hash
+ * are not read, so they are dropped.
  * @param {string} s @param {number} at @param {boolean} cut @param {number} depth
+ * @param {QueryWork} work
  * @returns {string}
  */
-function queryWithoutUserinfo(s, at, cut, depth) {
+function queryWithoutUserinfo(s, at, cut, depth, work) {
   const h = s.indexOf("#", at);
   const q = s.indexOf("?", at);
   const end = h < 0 ? s.length : h;
   const query = q >= 0 && q < end ? q + 1 : -1;
   if (query < 0 && h < 0) return s;
-  if (depth >= NESTED_MAX) {
-    return `${s.slice(0, query < 0 ? end : query)}${query < 0 ? "" : "\u2026"}${h < 0 ? "" : "#\u2026"}`;
+  work.left -= s.length - (query < 0 ? h : query);
+  if (depth >= NESTED_MAX || work.left < 0) {
+    const kept = s.slice(0, query < 0 ? end : query);
+    return `${kept}${query < 0 ? "" : "…"}${h < 0 ? "" : "#…"}`;
   }
   const head = query < 0 ? s.slice(0, end) : s.slice(0, query);
   const search =
-    query < 0 ? "" : paramsWithoutUserinfo(s.slice(query, end), 0, cut && h < 0, depth);
-  const inHash = s.indexOf("?", h + 1);
-  const hash =
-    h < 0
-      ? ""
-      : `#${paramsWithoutUserinfo(s.slice(h + 1), inHash < 0 ? 0 : inHash - h, cut, depth)}`;
+    query < 0 ? "" : paramsWithoutUserinfo(s.slice(query, end), cut && h < 0, depth, work);
+  const hash = h < 0 ? "" : `#${paramsWithoutUserinfo(s.slice(h + 1), cut, depth, work)}`;
   return head + search + hash;
 }
 
 /**
- * A query's or a hash's parameters, `text`, each without the user names and passwords of the URL
- * it encodes, from `from` on; `text` itself when none held any. A hash such as `#/login?next=` is
- * read from its own `?`, any other from its start. Parameters are split at `&` as URLSearchParams
- * splits them, and at `;` too, which some servers take for one: splitting more only reads more of
- * them. `cut` is passed on to the last.
- * @param {string} text @param {number} from @param {boolean} cut @param {number} depth
+ * A query's or a hash's parameters, `text`, each without the user names and passwords of the
+ * URLs it encodes; `text` itself when none held any. A hash is read whole as parameters too, so
+ * `#/login?next=` is the name `/login?next` and a URL. Parameters are split at `&` and `;` first,
+ * as some servers split them, and the result again at `&` alone, as URLSearchParams and the pages
+ * that read their own query split them, so a value they read whole is read whole (a `;` may be in
+ * a password). `cut` is passed on to the last.
+ * @param {string} text @param {boolean} cut @param {number} depth @param {QueryWork} work
  * @returns {string}
  */
-function paramsWithoutUserinfo(text, from, cut, depth) {
-  const pieces = text.slice(from).split(/([&;])/);
+function paramsWithoutUserinfo(text, cut, depth, work) {
+  const once = splitWithoutUserinfo(text, /([&;])/, cut, depth, work);
+  return splitWithoutUserinfo(once, /(&)/, cut, depth, work);
+}
+
+/**
+ * `text` split at `separator` (a capturing pattern), each name and value without the user names
+ * and passwords of the URLs it encodes; `text` itself when none held any.
+ * @param {string} text @param {RegExp} separator @param {boolean} cut @param {number} depth
+ * @param {QueryWork} work
+ * @returns {string}
+ */
+function splitWithoutUserinfo(text, separator, cut, depth, work) {
+  const pieces = text.split(separator);
   let changed = false;
   const out = pieces.map((piece, i) => {
     if (i % 2) return piece;
@@ -643,22 +699,23 @@ function paramsWithoutUserinfo(text, from, cut, depth) {
     const last = cut && i === pieces.length - 1;
     return parts
       .map((raw, j) => {
-        const kept = paramWithoutUserinfo(raw, last && j === parts.length - 1, depth + 1);
+        const kept = paramWithoutUserinfo(raw, last && j === parts.length - 1, depth + 1, work);
         if (kept !== raw) changed = true;
         return kept;
       })
       .join("=");
   });
-  return changed ? text.slice(0, from) + out.join("") : text;
+  return changed ? out.join("") : text;
 }
 
 /**
  * One name or value of a query, `raw` as written there, without the user names and passwords of
- * the URL it encodes: `raw` itself when that holds none, else the stripped URL encoded again.
- * @param {string} raw @param {boolean} cut @param {number} depth
+ * the URLs it encodes: `raw` itself when that holds none, else the stripped text encoded again.
+ * One still encoded past NESTED_MAX is not read, so it is dropped.
+ * @param {string} raw @param {boolean} cut @param {number} depth @param {QueryWork} work
  * @returns {string}
  */
-function paramWithoutUserinfo(raw, cut, depth) {
+function paramWithoutUserinfo(raw, cut, depth, work) {
   const value = paramValue(raw);
   // Plain ASCII without a percent sign is a URL with a user name only with a colon and an at
   // sign, unless cut before its at sign: most parameters are, and are passed over quickly.
@@ -666,14 +723,15 @@ function paramWithoutUserinfo(raw, cut, depth) {
   // Printable ASCII is as shown already, so a second pass would find nothing more.
   const ascii = !/[^\x20-\x7e]/.test(value);
   const stripped = ascii
-    ? withoutUserinfo(value, cut, depth)
-    : bothPasses(value, cut, depth, shown);
+    ? anywhereWithoutUserinfo(value, cut, depth, work)
+    : bothPasses(value, cut, depth, work, shown, anywhereWithoutUserinfo);
   if (stripped !== (ascii ? value : asParsed(shown(asParsed(value))))) {
     return encodedParam(stripped);
   }
   // A value encoded once more, a redirect inside a redirect, is an encoded parameter itself.
-  if (value === raw || depth >= NESTED_MAX) return raw;
-  const inner = paramWithoutUserinfo(value, cut, depth + 1);
+  if (value === raw) return raw;
+  if (depth >= NESTED_MAX) return "…";
+  const inner = paramWithoutUserinfo(value, cut, depth + 1, work);
   return inner === value ? raw : encodedParam(inner);
 }
 
@@ -710,11 +768,19 @@ export function agentUrl(url, max) {
   const raw = String(url ?? "");
   const read = raw.slice(0, 4 * max);
   const cut = read.length < raw.length;
-  const plain = bothPasses(read, cut, 0, (t) => shown(t).replace(/\s/g, ""));
+  const work = { left: queryWork(read) };
+  const plain = bothPasses(read, cut, 0, work, (t) => shown(t).replace(/\s/g, ""));
   // A Reader View address is its article's URL, as the status bar shows it (#1323, #1324); one
   // that was cut may have lost the end of that URL, so it stays the stripped reader address.
   return cutTo((!cut && readerOriginalUrl(plain)) || plain, max);
 }
+
+/**
+ * The query text one stripping of `text` may read (QueryWork): each code unit read about four
+ * times over, in two passes and through the nesting, and a little more for a short URL.
+ * @param {string} text
+ */
+const queryWork = (text) => 4 * text.length + 4096;
 
 /** What Firefox drops from a URL it makes a tab's label of (#setTabLabel): its scheme and www. */
 const LABEL_SCHEME = /^[^:]+:\/\/(?:www\.)?/;
@@ -730,11 +796,18 @@ export function agentTitle(label) {
   const s = String(label ?? "");
   const t = s.trim();
   if (!t || /\s/.test(t)) return s;
+  // A title longer than agentUrl reads is read only that far, so the work stays bounded
+  // however long a page makes its title (#1352 review); it is given as agentUrl gives it.
+  if (t.length > 4 * AGENT_PAGE_URL_MAX) {
+    return URL_SCHEME.test(shown(t.slice(0, 64))) ? agentUrl(t, AGENT_PAGE_URL_MAX) : s;
+  }
   const plain = shown(t);
   // An at sign, or a URL percent-encoded in its query (#1324, #1348), as shown and as given: a
   // fullwidth slash before the at sign ends no authority for a URL parser.
   if (!/[@%]/.test(plain) || !URL_SCHEME.test(plain)) return s;
-  const holds = withoutUserinfo(plain, false, 0) !== plain || withoutUserinfo(t, false, 0) !== t;
+  const work = { left: 2 * queryWork(t) };
+  const holds =
+    withoutUserinfo(plain, false, 0, work) !== plain || withoutUserinfo(t, false, 0, work) !== t;
   return holds ? agentUrl(t, AGENT_PAGE_URL_MAX) : s;
 }
 
@@ -769,6 +842,9 @@ export function agentTabTitle(label, contentTitle, url, typed) {
  * (CodeQL js/polynomial-redos). Only a target is read, never a URL anywhere else in the text:
  * code, email addresses and URLs in a page's prose (`ssh://git@host` in a code span) stay.
  */
+/** The query text all of one page's link targets may read together (QueryWork). */
+const MARKDOWN_QUERY_WORK = 1 << 18;
+
 const MARKDOWN_TARGET = /\](\\*)\(([^()\s]*)\)/g;
 
 /**
@@ -779,10 +855,15 @@ const MARKDOWN_TARGET = /\](\\*)\(([^()\s]*)\)/g;
  * @param {string} text
  */
 export function markdownWithoutUserinfo(text) {
-  return text.replace(
-    MARKDOWN_TARGET,
-    (_, open, url) => `]${open}(${withoutUserinfo(url, false, 0)})`,
-  );
+  // Each target is read as far as a link's href in agentUrl, and all of them share one budget
+  // of query work, so a page of many long, deep links costs a bounded time (#1352 review).
+  const window = 4 * AGENT_LINKS.href;
+  const work = { left: MARKDOWN_QUERY_WORK };
+  return text.replace(MARKDOWN_TARGET, (_, open, url) => {
+    const read = url.slice(0, window);
+    const cut = read.length < url.length;
+    return `]${open}(${withoutUserinfo(read, cut, 0, work)}${cut ? "\u2026" : ""})`;
+  });
 }
 
 /**
