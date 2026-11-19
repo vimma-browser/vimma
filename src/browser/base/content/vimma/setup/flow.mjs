@@ -19,6 +19,9 @@ const { SetupHost } = ChromeUtils.importESModule(
 );
 const { flowAdvance, flowChapters, flowKey, flowStep, formatUsers, initialFlow } =
   ChromeUtils.importESModule("chrome://browser/content/vimma/core/setup.mjs");
+const { HINT_LAYOUTS, actionOutcome, hintRow, rememberKey } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/setup-steps.mjs",
+);
 
 const root = document.documentElement;
 const $ = (/** @type {string} */ id) => /** @type {HTMLElement} */ (document.getElementById(id));
@@ -33,10 +36,13 @@ const browser = () => SetupHost.browserFor(window);
  * @property {string} title
  * @property {string} question
  * @property {{ tag: "kbd" | "code" | null, text: string }[]} text
- * @property {{ label: string, keep: boolean, lines: string[], window: WindowSketch | null }[]}
- *   choices
+ * @property {{ label: string, keep: boolean, lines: string[], window: WindowSketch | null,
+ *   run: boolean }[]} choices  `run`: an action step's choice that acts at `enter`
  * @property {number} selected
+ * @property {string[][] | null} prefixKeys  the prefix step's, per choice
+ * @property {(string | null)[] | null} layouts  the hint step's letters per choice, null for Keep
  * @property {string | null} blocked
+ * @property {string} status  what an action step found (Vimma is the default browser now)
  * @property {number} serial  the host's serial of this list, sent back with `enter`
  */
 
@@ -57,6 +63,20 @@ let busy = false;
 /** What the last `enter` wrote, for the footer (behaviour 12): null before one. */
 /** @type {{ title: string, lines: string[], action?: boolean } | null} */
 let last = null;
+/**
+ * The physical key and the character of the letter keys pressed on this page, for the hint
+ * step's layout guess (decision 10): kept in this page's memory only, never sent to the host,
+ * written or kept after the page closes; rememberKey keeps the latest PRESSED_MAX.
+ * @type {import("../core/setup-steps.mjs").PressedKey[]}
+ */
+let pressed = [];
+/**
+ * The letters of the layout typed on, guessed once when the hint step opens, so that j and k
+ * pressed on the step neither move the guess nor change the note under the list; null when
+ * the step opened on the value in force.
+ * @type {string | null}
+ */
+let guessed = null;
 /** The content blocker's lists. @type {AddonEntry[]} */
 let curated = [];
 /** @type {AddonEntry[]} */
@@ -106,11 +126,18 @@ function place() {
 const titleOf = (id) =>
   state.chapters.flatMap((c) => c.steps).find((s) => s.id === id)?.title ?? id;
 
+/** An action step's saved lines are what it did, in words; a setting step's are TOML. */
+const isAction = (/** @type {string} */ id) =>
+  state.chapters.flatMap((c) => c.steps).find((s) => s.id === id)?.kind === "action";
+
+/** @param {string} id @param {string} line */
+const savedLine = (id, line) => (isAction(id) ? line : el("code", {}, line));
+
 /** @param {import("../core/setup.mjs").FlowSaved[]} list */
 function savedList(list) {
   return list.flatMap((x) =>
     x.lines.map((line) =>
-      el("li", {}, el("span", { class: "what" }, titleOf(x.step)), el("code", {}, line)),
+      el("li", {}, el("span", { class: "what" }, titleOf(x.step)), savedLine(x.step, line)),
     ),
   );
 }
@@ -135,7 +162,7 @@ function drawFooter() {
     state.saved.length ? "Saved this run: " : `Nothing saved this run${state.done ? "" : " yet"}.`,
     ...state.saved.flatMap((x, i) => [
       ...(i ? ["; "] : []),
-      ...x.lines.flatMap((l, j) => [...(j ? [", "] : []), el("code", {}, l)]),
+      ...x.lines.flatMap((l, j) => [...(j ? [", "] : []), savedLine(x.step, l)]),
     ]),
   );
   const step = flowStep(state);
@@ -159,6 +186,8 @@ function drawFooter() {
       add(["enter"], "install and go on");
     } else if (view?.blocked) {
       add(["enter"], "cannot save here");
+    } else if (step?.kind === "action") {
+      add(["enter"], view?.choices[state.cursor]?.run ? "do it and go on" : "go on");
     } else {
       add(["enter"], "save and go on");
     }
@@ -207,11 +236,13 @@ function windowDrawing(w) {
     ...(w.tabline === "off"
       ? []
       : [
+          // "always" draws the line over a single tab, "auto" only once there are two, so
+          // the tab line step's two drawings differ as its choices do.
           el(
             "div",
             { class: "w-tabline" },
             el("span", { class: "w-tab current" }),
-            el("span", { class: "w-tab" }),
+            ...(w.tabline === "auto" ? [el("span", { class: "w-tab" })] : []),
           ),
         ]),
     ...(w.toolbar === "hidden"
@@ -236,19 +267,21 @@ function windowDrawing(w) {
 
 /** @param {StepView} v */
 function drawChoices(v) {
+  // An action step has no value in force: its choices are what to do now.
+  const inForce = (/** @type {number} */ i) => v.kind === "setting" && i === v.selected;
   $("v2-choices").replaceChildren(
     ...v.choices.map((c, i) => {
       const li = el(
         "li",
         { role: "option", "data-index": String(i), ...(c.keep ? { "data-keep": "true" } : {}) },
-        el("span", { class: "mark", "aria-hidden": "true" }, i === v.selected ? "●" : "○"),
+        el("span", { class: "mark", "aria-hidden": "true" }, inForce(i) ? "●" : "○"),
         el(
           "span",
           { class: "body" },
           el("span", { class: "name" }, c.label),
           ...(c.window ? [windowDrawing(c.window)] : []),
         ),
-        el("span", { class: "meta" }, i === v.selected ? "in force" : ""),
+        el("span", { class: "meta" }, inForce(i) ? "in force" : ""),
       );
       if (i === state.cursor) li.setAttribute("aria-current", "true");
       return li;
@@ -312,7 +345,52 @@ const RENDERERS = {
     $("v2-writes-row").hidden = true;
     drawAddons();
   },
+  // Each prefix with the key that lists every key under it (behaviour 25).
+  prefix_key(v) {
+    drawChoices(v);
+    for (const li of $("v2-choices").children) {
+      const keys = v.prefixKeys?.[Number(li.getAttribute("data-index"))] ?? [];
+      if (!keys.length) continue;
+      li.querySelector(".body")?.append(
+        el(
+          "span",
+          { class: "hint" },
+          ...keys.flatMap((k, i) => [...(i ? [" or "] : []), el("kbd", {}, k)]),
+          " lists every key",
+        ),
+      );
+    }
+  },
+  // Each layout's letters as keys, and where the selected row came from (decision 10).
+  hint_letters(v) {
+    drawChoices(v);
+    const at = guessed === null ? -1 : (v.layouts?.indexOf(guessed) ?? -1);
+    const row = at >= 0 ? at : v.selected;
+    for (const li of $("v2-choices").children) {
+      const i = Number(li.getAttribute("data-index"));
+      if (i !== row || i === v.selected) continue;
+      li.setAttribute("data-guessed", "true");
+      const meta = li.querySelector(".meta");
+      if (meta) meta.textContent = "your layout";
+    }
+    const note = $("v2-guess");
+    const name = HINT_LAYOUTS.find((l) => l.chars === v.layouts?.[row])?.name;
+    note.hidden = row === v.selected || !name;
+    note.textContent = note.hidden
+      ? ""
+      : `${name} fits the keys you pressed on this page; they are not kept.`;
+  },
 };
+
+/**
+ * The letters of the layout typed on when the hint step's guess moves its cursor off the value
+ * in force (hintRow), else null. @param {StepView} v
+ */
+function guessFor(v) {
+  if (!v.layouts) return null;
+  const row = hintRow(v.layouts, v.selected, pressed);
+  return row === v.selected ? null : (v.layouts[row] ?? null);
+}
 
 function drawStep() {
   const step = flowStep(state);
@@ -323,6 +401,7 @@ function drawStep() {
   $("v2-question").textContent = step.question;
   root.dataset.stepId = step.id;
   $("v2-blocker").hidden = true;
+  $("v2-guess").hidden = true;
   $("v2-choices").hidden = false;
   $("v2-writes-row").hidden = step.kind !== "setting";
   const v = view?.id === step.id ? view : null;
@@ -330,6 +409,9 @@ function drawStep() {
   const notice = $("v2-notice");
   notice.hidden = !v?.blocked;
   notice.textContent = v?.blocked ? `${v.blocked} Press s to skip this step.` : "";
+  const status = $("v2-status");
+  status.hidden = !v?.status;
+  status.textContent = v?.status ?? "";
   if (!v) return;
   (RENDERERS[step.id] ?? drawChoices)(v);
 }
@@ -404,7 +486,9 @@ async function loadView(select = true) {
   state = { ...state, blocked: !!v?.blocked };
   if (v && step.id !== "content_blocker") {
     const kept = select ? -1 : v.choices.findIndex((c) => c.label === under);
-    state = { ...state, cursor: kept >= 0 ? kept : v.selected };
+    if (select) guessed = guessFor(v);
+    const at = guessed === null ? -1 : (v.layouts?.indexOf(guessed) ?? -1);
+    state = { ...state, cursor: kept >= 0 ? kept : at >= 0 ? at : v.selected };
   }
   draw();
   root.dataset.viewReady = "true";
@@ -486,7 +570,7 @@ async function settle(r) {
     await runSearch();
     return;
   }
-  if (effect?.type === "save" || effect?.type === "install") {
+  if (effect?.type === "save" || effect?.type === "install" || effect?.type === "action") {
     busy = true;
     root.dataset.busy = "true";
     try {
@@ -508,10 +592,49 @@ async function settle(r) {
   draw();
 }
 
-/** @param {Extract<FlowEffect, { type: "save" } | { type: "install" }>} effect */
+/**
+ * `enter` on a Moving in step (behaviours 22 and 23): Make Default, or the import wizard, whose
+ * dialog holds the step until it closes. A result that acted is listed as saved; one that could
+ * not act keeps the step open, drawn again for what the system allows now.
+ * @param {Extract<FlowEffect, { type: "action" }>} effect
+ */
+async function runAction(effect) {
+  const step = flowStep(state);
+  if (!step) return;
+  const r = await SetupHost.runAction(browser(), effect.step, effect.index, view?.serial);
+  if ("stale" in r || "error" in r) {
+    await loadView();
+    const notice = $("v2-notice");
+    notice.hidden = false;
+    notice.textContent =
+      "error" in r ? `Not done: ${r.error}` : "The choices changed. Choose again.";
+    return;
+  }
+  const o = actionOutcome(step.id, r.result);
+  if (!o.advance) {
+    await loadView();
+    const notice = $("v2-notice");
+    notice.hidden = false;
+    notice.textContent =
+      r.result === "failed"
+        ? `${o.said} Press enter to try again or s to skip this step.`
+        : `${o.said} Press s to skip this step.`;
+    root.dataset.failed = "true";
+    return;
+  }
+  delete root.dataset.failed;
+  last = { title: step.title, lines: [o.said], action: true };
+  await settle(flowAdvance(state, ctx, o.saved));
+}
+
+/** @param {Extract<FlowEffect, { type: "save" } | { type: "install" } | { type: "action" }>} effect */
 async function runEnter(effect) {
   const step = flowStep(state);
   if (!step) return;
+  if (effect.type === "action") {
+    await runAction(effect);
+    return;
+  }
   if (effect.type === "install") {
     const { report, saved } = await install(effect.addons);
     last = { title: step.title, lines: report, action: true };
@@ -577,6 +700,11 @@ function start() {
   document.addEventListener("keydown", (e) => {
     // Only the user's own keys drive the page (behaviour 29, Security "Trusted input only").
     if (!e.isTrusted) return;
+    pressed = rememberKey(
+      pressed,
+      { code: e.code, key: e.key },
+      { ctrl: e.ctrlKey, alt: e.altKey, meta: e.metaKey },
+    );
     if (e.target === search) {
       // In the field only enter and esc are the page's; `q` and the rest are typed (behaviour 7).
       if (e.key !== "Enter" && e.key !== "Escape") return;

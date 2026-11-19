@@ -1,6 +1,6 @@
 # Spec: setup-v2
 
-Status: accepted (delivery slices 1, 2 and 4 built, #1292, #1293 and #1295) · Area: core
+Status: accepted (delivery slices 1 to 5 and 8 built, #1292, #1293, #1294, #1295, #1296 and #1299) · Area: core
 (`packages/vimma-core/src/system/setup.mjs`, `packages/vimma-core/src/system/setup-steps.mjs`,
 `packages/vimma-core/src/config/toml.mjs`),
 chrome (`src/browser/base/content/vimma/setup/` (`setup.html`, `setup.mjs`, `flow.mjs`,
@@ -70,13 +70,16 @@ engine, and applies nothing until its summary is confirmed. That leaves three ga
    and a second one leaves the page; `q` there is typed.
 8. Choosing the value already in force **must** write nothing, so that `enter` through every
    step leaves `config.toml` unchanged. The comparison is made at `enter`, against the file as
-   it is then (decision 4).
+   it is then (decision 4). The one exception is the hint letters step's layout guess: with the
+   built-in QWERTY letters in force and keys pressed that fit Colemak or Dvorak, that layout is
+   selected first, so plain `enter` writes `[modal] hint_chars`; the step shows that line
+   ("Writes …") and the guess before `enter` (behaviour 26, decision 10).
 9. Each step opens with the value in force selected: the value in `config.toml`, else the
    built-in default (or, for the colours and agents steps, the value `:theme` or `:mcp`
    remembered). For the colours step, the value in force is the effect: the palette and
    appearance the window shows (decision 12). When the value in force is none of the step's
-   choices (a custom prefix or `hint_chars`, the `tokyo-night` palette), the step lists
-   **Keep** with that value as its first choice and selects it; **Keep** writes nothing.
+   choices (a custom prefix or `hint_chars`, a search engine that is not installed), the step
+   lists **Keep** with that value as its first choice and selects it; **Keep** writes nothing.
 10. After the last step of each chapter, a stop screen lists what was saved in that chapter
     and names the next chapter. `enter` goes on; `q` or `esc` closes the page. After the last
     chapter, the stop screen says the setup is done, lists everything this run saved, and
@@ -142,9 +145,9 @@ none of its choices (behaviour 9).
 21. **Colours.** The page itself takes the colours as soon as the step saves. The Omarchy choice
     is listed only where an Omarchy theme is found, and comes first. The other three are the
     appearances of Vimma's own built-in palette (`vimma`), and their labels say so: "Vimma
-    light", "Vimma dark" and "Vimma, following the system". With the dark-only `tokyo-night`
-    palette in force, light and following the system also write `name = "vimma"`, and the step
-    says so in the line it shows.
+    light", "Vimma dark" and "Vimma, following the system". `vimma` is the only built-in palette
+    (#1383), so a choice writes `name` only when another name is in force; a config.toml that
+    still names a removed palette has `vimma` in force.
 22. **Default browser.** Shows whether Vimma is the default browser now. `enter` on "make
     Vimma the default" asks the system through the same path as Settings' Make Default; when
     Vimma already is the default, the step says so and `enter` moves on.
@@ -157,7 +160,7 @@ none of its choices (behaviour 9).
     the user knows how to reach the address bar once it is hidden.
 25. **Prefix key.** With each candidate prefix, the step shows the key that opens the list of
     keys (`show_keybinds`, `ctrl+b ?` with `ctrl+b`), drawn with that candidate (decision 8).
-26. **Hint letters.** The layout the user types on is selected first (decision 9).
+26. **Hint letters.** The layout the user types on is selected first (decision 10).
 27. **Updates.** Says what the check sends (the update channel and the platform) and that
     "never check" stops every request to `updates.vimma.dev`.
 28. **Agents.** "Off" is selected first unless agents are on. The step says, in two lines, that
@@ -313,7 +316,10 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     step opens) and selects the layout they match, QWERTY when none matches. Reason: Firefox has
     no layout API (Research), and running a system tool (`hyprctl`, `setxkbmap`) for one
     preselection is not worth a process launch. The keys are kept in the page only and never
-    written anywhere.
+    written anywhere. The guess moves the selection only off the built-in QWERTY letters, because
+    a layout the user saved before, or custom letters under **Keep**, is a choice already made
+    (behaviour 9), while QWERTY in force is most often the default nobody chose; with no letter
+    pressed, or keys no layout fits, the value in force stays selected.
 11. **The first version has the eleven steps in the table, in five chapters,** because these
     cover the settings a new user changes first and each maps to one existing key or one
     existing action. The Firefox's keys step (`[firefox] disable`) is not in it, because the
@@ -329,8 +335,8 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     A choice writes only the keys that change that effect, so that plain `enter` writes
     nothing (behaviour 8): **Omarchy** writes `source = "omarchy"` when it is not in force;
     **light**, **dark** and **follow the system** write `appearance`, and `source = "file"`
-    only when an Omarchy theme is shown now, and `name = "vimma"` when the dark-only
-    `tokyo-night` palette is in force and the choice is light or follow the system.
+    only when an Omarchy theme is shown now, and `name = "vimma"` only when another name is in
+    force (none can be since #1383 left `vimma` the only built-in palette).
 13. **Moving in comes right after the essentials,** because the default browser and the
     imported bookmarks decide whether the user keeps using Vimma at all, and both are one-off
     actions a user is most likely to take on the first day. Every chapter can still be skipped
@@ -374,6 +380,14 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     opens it only over a browser showing `about:vimma-setup`, never where the
     `DisableProfileImport` policy forbids it, and a second request while it is open waits for
     the same dialog, because a repeated `enter` must not stack wizards.
+    Both steps offer the action first and "not now" second, and save no key: "Saved this run"
+    lists what the action did ("made the default browser", "import wizard closed"). Where the
+    action cannot run (Vimma already the default; Make Default hidden by a policy, a locked
+    pref or Flatpak; import turned off by policy), the step says why and offers only to go on,
+    because a choice that cannot act would only fail. A failed Make Default keeps the step open
+    and says so, as a failed write does (behaviour 16). When the wizard closes, the setup
+    page takes the focus back, because the dialog leaves it nowhere on the page. The wizard has
+    square corners and the theme's font, as Settings has (firefox-surfaces-trim, decision 8).
 18. **A feature pref while it lands.** `vimma.feature.setupV2` (default `false`) switches the
     page from today's flow to the chapters while the slices land (`CONTRIBUTING.md`,
     "Unfinished features"), because the summary flow must keep working on `main` until the new
@@ -456,6 +470,10 @@ agent workspace; the first agent request does.
 - **Network.** The setup sends requests only from the content blocker step (AMO, as today).
   The updates step changes whether Vimma asks `updates.vimma.dev` every 12 hours; "never
   check" stops it.
+- **Keys for the layout guess.** The page keeps the `code` and `key` of at most 32 letters
+  pressed on it, in its own memory, for the hint letters step (decision 10). They are never
+  sent to the host, written, logged or kept after the page closes; only the index of the
+  choice under the cursor reaches the host, on `enter`.
 - **Private windows.** No setting step writes from a private window, and the layout guess and
   the chapter pref are not kept there.
 
@@ -483,7 +501,8 @@ vitest, `packages/vimma-core/test/setup-steps.test.ts`:
 - `colours: the choice in force writes nothing, with and without an Omarchy theme`
 - `colours: light without an Omarchy theme writes appearance only`
 - `colours: light with an Omarchy theme writes source and appearance`
-- `colours: light or system with tokyo-night also writes name = "vimma"`
+- `colours: a removed palette's name is vimma: no Keep, no name written`
+- `colours: another name in force is kept, and a choice also writes name = "vimma"`
 - `each setting step's shown line is the edit it plans`
 
 vitest, `packages/vimma-core/test/setup.test.ts` (state machine):
@@ -525,7 +544,10 @@ outgrow the harness's time limit for one file):
 - `prefix_step_changes_later_steps_hints`
 - `default_browser_step_calls_the_shell_service`
 - `default_browser_step_says_when_vimma_already_is_the_default`
-- `import_step_opens_the_wizard_over_the_setup_tab_and_moves_on_when_it_closes`
+- `default_browser_step_says_why_it_cannot_make_vimma_the_default`
+- `a_failed_make_default_keeps_the_step_open`
+- `import_step_opens_the_wizard_over_the_setup_tab_and_moves_on_when_it_closes` (square
+  corners and the theme's font in the wizard, and the focus back on the setup page)
 - `import_step_names_sync_for_firefox`
 - `updates_step_says_what_the_check_sends`
 - `agents_step_selects_off_first_and_writes_enabled_on_enter`

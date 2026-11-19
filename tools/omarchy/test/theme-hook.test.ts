@@ -78,7 +78,7 @@ exit 1
 }
 
 /** @param args  what omarchy-hook passes: the theme name */
-function runHook(env: Record<string, string> = {}, args: string[] = ["tokyo-night"]) {
+function runHook(env: Record<string, string> = {}, args: string[] = ["sample"]) {
   return spawnSync("/bin/bash", [HOOK, ...args], {
     env: { HOME: dir, PATH: `${bin}:/usr/bin:/bin`, ...env },
     encoding: "utf8",

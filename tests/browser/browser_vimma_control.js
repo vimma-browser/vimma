@@ -8,8 +8,9 @@
 
 "use strict";
 
-const { validateMessage, MAX_LINE_LENGTH, TOKYO_NIGHT, BUILTIN_THEMES } =
-  ChromeUtils.importESModule("chrome://browser/content/vimma/core/index.mjs");
+const { validateMessage, MAX_LINE_LENGTH, VIMMA_DARK, BUILTIN_THEMES } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/index.mjs",
+);
 const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 );
@@ -1239,9 +1240,9 @@ add_task(async function test_vimma_ctl_end_to_end() {
   );
 });
 
-/** An Omarchy colors.toml: Tokyo Night with the status bar's colour (dark_background) set. */
+/** An Omarchy colors.toml: vimma dark's colours with the status bar's (dark_background) set. */
 function colorsToml(/** @type {string} */ darkBackground) {
-  const palette = { ...TOKYO_NIGHT, dark_background: darkBackground };
+  const palette = { ...VIMMA_DARK, dark_background: darkBackground };
   return Object.entries(palette)
     .map(([key, value]) => `${key} = "${value}"`)
     .join("\n");

@@ -1,5 +1,5 @@
-# Omarchy 4 colors.toml format, written by hand for vimma's tests (the Tokyo Night palette).
-# Same keys and layout as /usr/share/omarchy/themes/tokyo-night/colors.toml.
+# Omarchy 4 colors.toml format, written by hand for vimma's tests: a sample dark theme.
+# Same keys and layout as a stock theme's colors.toml under /usr/share/omarchy/themes/.
 mode = "dark"
 
 accent = "#7aa2f7"
