@@ -123,7 +123,7 @@ function drawFooter() {
       : []),
   );
   $("v2-saved").replaceChildren(
-    state.saved.length ? "Saved this run: " : "Nothing saved this run yet.",
+    state.saved.length ? "Saved this run: " : `Nothing saved this run${state.done ? "" : " yet"}.`,
     ...state.saved.flatMap((x, i) => [
       ...(i ? ["; "] : []),
       ...x.lines.flatMap((l, j) => [...(j ? [", "] : []), el("code", {}, l)]),

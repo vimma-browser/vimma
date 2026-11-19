@@ -325,6 +325,15 @@ code {
   color: var(--vimma-fg-dim, #9197b2);
 }
 
+.saved-lines li.none {
+  display: block;
+}
+
+#v2-welcome .notice {
+  align-self: stretch;
+  text-align: start;
+}
+
 .flow-footer {
   width: min(44rem, calc(100vw - 4rem));
   padding-bottom: 2rem;
@@ -342,4 +351,27 @@ code {
 
 .flow-footer .keys {
   margin-top: 0.6rem;
+}
+
+/* Square corners on every surface of the page, Firefox's own widgets included: the search
+   field's native look (type=search draws a rounded field) and focus rings follow the theme's
+   radius, as about.css and help-overlay.css do. */
+.screen,
+.flow-footer,
+.notice,
+.chapters li,
+.saved-lines li,
+kbd,
+code,
+input {
+  border-radius: var(--vimma-radius, 0);
+}
+
+.search input {
+  appearance: none;
+}
+
+:focus-visible {
+  outline-offset: 0;
+  border-radius: var(--vimma-radius, 0);
 }

@@ -591,13 +591,14 @@ add_task(async function leaving_mid_chapter_keeps_finished_steps() {
   const name = current(doc);
   await press(doc, "KEY_Enter");
   await atStep(doc, "colours");
+  const saved = await IOUtils.readUTF8(configFile());
   await press(doc, "k");
   const closed = BrowserTestUtils.waitForTabClosing(tab);
   await press(doc, "KEY_Escape");
   await closed;
   const text = await IOUtils.readUTF8(configFile());
   Assert.ok(text.includes(`default = ${JSON.stringify(name)}`), "the saved step stays saved");
-  Assert.ok(!text.includes("[theme]"), "nothing for the open step");
+  Assert.equal(text, saved, "nothing for the open step");
   await closeFlow(tab);
 });
 
@@ -635,13 +636,15 @@ add_task(async function enter_through_every_step_leaves_config_toml_unchanged() 
   // A file of the user's, without an Omarchy theme and then with one.
   const text = '# mine\nschema = 2\n\n[ui]\ntoolbar = "shown" # why\n';
   const omarchy = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-omarchy");
-  for (const prefs of [
+  /** @type {[string, string][][]} */
+  const runs = [
     [],
     [
       ["vimma.theme.source", "omarchy"],
       ["vimma.theme.omarchyPath", omarchy],
     ],
-  ]) {
+  ];
+  for (const prefs of runs) {
     await IOUtils.writeUTF8(configFile(), text);
     await ConfigHost.reload();
     await SpecialPowers.pushPrefEnv({ set: prefs });
@@ -713,7 +716,7 @@ add_task(async function a_failed_write_keeps_the_file_and_the_step_open() {
   await toEngines(doc);
   // No temporary file can be made beside config.toml now.
   await IOUtils.setPermissions(dir, 0o500);
-  registerCleanupFunction(() => IOUtils.setPermissions(dir, 0o700));
+  registerCleanupFunction(() => IOUtils.setPermissions(dir, 0o700).catch(() => {}));
   await press(doc, "j", "KEY_Enter");
   await TestUtils.waitForCondition(() => !notice(doc).hidden, "the reason is shown");
   Assert.ok(notice(doc).textContent.startsWith("Not saved:"), notice(doc).textContent);
@@ -771,6 +774,7 @@ add_task(async function a_symlinked_config_toml_stays_a_link() {
 });
 
 add_task(async function a_private_window_saves_nothing() {
+  Services.prefs.clearUserPref(CHAPTERS_PREF);
   const win = await BrowserTestUtils.openNewBrowserWindow({ private: true });
   const { tab, doc } = await openFlow(win);
   const error = found(doc.getElementById("v2-config-error"));
