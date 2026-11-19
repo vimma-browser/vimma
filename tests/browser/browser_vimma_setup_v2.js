@@ -12,6 +12,7 @@
 
 // Five chapters' steps walked by keys: about 30 s on a quiet machine, past the harness's 45 s
 // for one file on a loaded CI runner.
+/* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
 requestLongerTimeout(2);
 
 const { SetupHost } = ChromeUtils.importESModule(
