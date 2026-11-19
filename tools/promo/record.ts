@@ -154,7 +154,7 @@ function buildCheckout(binary: string) {
  * The look config.toml gives every shot: which built-in palette to name in `[theme] name`,
  * whether to pin its dark appearance, and `[ui] toolbar`. "vimma" when the build's own
  * vimma-core (the copy its chrome files use, synced into its checkout's src/) takes the key,
- * else null, and the build's default built-in shows (Tokyo Night before the vimma palette
+ * else null, and the build's default built-in shows (an older palette before the vimma one
  * landed); "dark" when it also takes `[theme] appearance`, so the palette is dark whatever the
  * system reports; `toolbar` (from --toolbar) when it takes `[ui] toolbar`. Each key is kept
  * only if the build reads the config with it and without an error, since a config.toml with an

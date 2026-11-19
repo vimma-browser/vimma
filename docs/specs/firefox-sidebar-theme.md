@@ -226,7 +226,7 @@ checks its painted colours under the dark, light and built-in light themes (12 f
 before the fix, green after).
 
 Screenshots (a temporary mochitest, not committed; the bookmarks sidebar renaming a bookmark in
-place, a notice showing) under Ristretto, Tokyo Night and Catppuccin Latte: the field is the theme's
+place, a notice showing) under Ristretto, a dark Omarchy theme and Catppuccin Latte: the field is the theme's
 background with its text and selection, ringed in the focus colour, and the toast sits on the status
 bar's surface with the theme's text and muted edge; no `Field` grey or white is left.
 `event-horizon` (an Aether-made `colors.toml`) is rejected by the validator (no `selection`,

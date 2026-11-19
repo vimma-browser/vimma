@@ -340,24 +340,31 @@ describe("colours: the effect in force (decision 12)", () => {
     ]);
   });
 
-  test('colours: light or system with tokyo-night also writes name = "vimma"', () => {
-    const tokyo = 'schema = 2\n[theme]\nname = "tokyo-night"\nappearance = "dark"\n';
-    const r = stepChoices(colours, inForce(tokyo), { omarchy: false });
-    expect(r.choices[0]).toMatchObject({ label: 'Keep "tokyo-night"', keep: true });
+  // #1383: vimma is the only built-in palette. The removed "tokyo-night" is vimma in force, so
+  // the step offers no Keep and a choice writes no name.
+  test("colours: a removed palette's name is vimma: no Keep, no name written", () => {
+    const removed = 'schema = 2\n[theme]\nname = "tokyo-night"\nappearance = "dark"\n';
+    const r = stepChoices(colours, inForce(removed), { omarchy: false });
+    expect(r.choices.some((c) => c.keep)).toBe(false);
+    expect(r.choices[r.selected]?.label).toBe("Dark");
+    expect(writes(removed, "Light", false)).toEqual([
+      { table: "theme", key: "appearance", value: "light" },
+    ]);
+    expect(writes(removed, "Dark", false)).toEqual([]);
+  });
+
+  test('colours: another name in force is kept, and a choice also writes name = "vimma"', () => {
+    const other = { ...inForce("schema = 2\n"), "theme.name": "other" };
+    const r = stepChoices(colours, other, { omarchy: false });
+    expect(r.choices[0]).toMatchObject({ label: 'Keep "other"', keep: true });
     expect(r.selected).toBe(0);
-    expect(planAtEnter(colours, r.choices[0]!, inForce(tokyo), { omarchy: false })).toEqual([]);
-    expect(writes(tokyo, "Light", false)).toEqual([
+    expect(planAtEnter(colours, r.choices[0]!, other, { omarchy: false })).toEqual([]);
+    const light = r.choices.find((c) => c.label === "Light")!;
+    expect(planAtEnter(colours, light, other, { omarchy: false })).toEqual([
       { table: "theme", key: "name", value: "vimma" },
       { table: "theme", key: "appearance", value: "light" },
     ]);
-    expect(writes(tokyo, "Follow the system", false)).toEqual([
-      { table: "theme", key: "name", value: "vimma" },
-      { table: "theme", key: "appearance", value: "system" },
-    ]);
-    expect(writes(tokyo, "Dark", false)).toEqual([]);
-    // The line the step shows says so before enter.
-    const light = r.choices.find((c) => c.label === "Light")!;
-    expect(editLines(planChoice(light, inForce(tokyo)))).toEqual([
+    expect(editLines(planChoice(light, other))).toEqual([
       '[theme] name = "vimma"',
       '[theme] appearance = "light"',
     ]);
