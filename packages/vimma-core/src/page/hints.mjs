@@ -122,6 +122,7 @@ export function orderTargets(targets) {
   const sorted = [...targets].sort(byPosition);
   /** @type {T[][]} */
   const rows = [];
+  // Stryker disable next-line UnaryOperator: read only once a row exists, which sets it first
   let limit = -Infinity;
   for (const t of sorted) {
     const row = rows[rows.length - 1];

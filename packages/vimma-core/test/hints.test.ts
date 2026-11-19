@@ -776,10 +776,11 @@ describe("hint edges", () => {
     expect(orderTargets([first, higher]).map((t) => t.id)).toEqual([2, 0]);
   });
 
-  test("upperLast of nothing, of a digit and of a longer label", () => {
+  test("upperLast of nothing, of a digit and of longer labels", () => {
     expect(upperLast("")).toBeNull();
     expect(upperLast("a1")).toBeNull();
     expect(upperLast("ab")).toBe("aB");
+    expect(upperLast("abc")).toBe("abC");
   });
 
   test("the status of a session with no hint left on screen has no label", () => {
@@ -802,6 +803,18 @@ describe("hint edges", () => {
     const back = hintKey(s, chord("backspace"));
     expect(back.state.typed).toBe("b");
     expect(back.result).toEqual({ kind: "narrow", visible: 3 });
+  });
+
+  test("upperLast refuses a letter whose upper case lower-cases to another letter", () => {
+    // ſ (long s) and ı (dotless i) upper-case to S and I, which Shift types as s and i.
+    expect(upperLast("ſ")).toBeNull();
+    expect(upperLast("aı")).toBeNull();
+  });
+
+  test("backspace keeps the rest of a longer typed prefix as it was", () => {
+    const state = startHints(twelve.slice(0, 5), { action: "hint.follow", chars: "ab" });
+    const back = hintKey({ ...state, typed: "bba" }, chord("backspace"));
+    expect(back.state.typed).toBe("bb");
   });
 
   test("a key of more than one character is ignored even when the charset holds it", () => {
@@ -862,6 +875,23 @@ describe("hint reply edges", () => {
       parseHintReply({ ...base, targets: [{ ...link(0), text }] }, { texts: true })?.targets[0]
         ?.text,
     ).toBe(text);
+  });
+
+  test("a function is not an object: a reply, target, frame or rect that is one is dropped", () => {
+    // defineProperties, not assign: a function's own `length` is read-only but configurable.
+    const fn = (props: object) =>
+      Object.defineProperties(() => undefined, Object.getOwnPropertyDescriptors(props));
+    expect(parseHintReply(base)).not.toBeNull();
+    expect(parseHintReply(fn(base))).toBeNull();
+    expect(parseHintReply({ ...base, targets: [fn(link(0))] })).toBeNull();
+    expect(parseHintReply({ ...base, targets: [{ ...link(0), rect: fn(rect) }] })).toBeNull();
+    expect(parseHintReply({ ...base, frames: [{ id: 0, rect }] })).not.toBeNull();
+    expect(parseHintReply({ ...base, frames: [fn({ id: 0, rect })] })).toBeNull();
+    const box = { x: 0, y: 0, width: 10, height: 10 };
+    const moved = { kind: "paragraph", length: 1, box };
+    expect(parseBlockReply(moved, "focus")).toEqual(moved);
+    expect(parseBlockReply(fn(moved), "focus")).toBeNull();
+    expect(parseBlockReply({ ...moved, box: fn(box) }, "focus")).toBeNull();
   });
 
   test("a block reply's length and yanked text may reach the cap", () => {
