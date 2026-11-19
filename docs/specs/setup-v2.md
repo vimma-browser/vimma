@@ -1,6 +1,6 @@
 # Spec: setup-v2
 
-Status: accepted (delivery slices 1 and 2 built, #1292 and #1293) · Area: core
+Status: accepted (delivery slices 1, 2 and 5 built, #1292, #1293 and #1296) · Area: core
 (`packages/vimma-core/src/system/setup.mjs`, `packages/vimma-core/src/system/setup-steps.mjs`,
 `packages/vimma-core/src/config/toml.mjs`),
 chrome (`src/browser/base/content/vimma/setup/` (`setup.html`, `setup.mjs`, `flow.mjs`,
@@ -311,7 +311,10 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     step opens) and selects the layout they match, QWERTY when none matches. Reason: Firefox has
     no layout API (Research), and running a system tool (`hyprctl`, `setxkbmap`) for one
     preselection is not worth a process launch. The keys are kept in the page only and never
-    written anywhere.
+    written anywhere. The guess moves the selection only off the built-in QWERTY letters, because
+    a layout the user saved before, or custom letters under **Keep**, is a choice already made
+    (behaviour 9), while QWERTY in force is most often the default nobody chose; with no letter
+    pressed, or keys no layout fits, the value in force stays selected.
 11. **The first version has the eleven steps in the table, in five chapters,** because these
     cover the settings a new user changes first and each maps to one existing key or one
     existing action. The Firefox's keys step (`[firefox] disable`) is not in it, because the

@@ -12,9 +12,11 @@
 
 import { COMMANDS } from "../keys/cmdline.mjs";
 import { getAction } from "../keys/actions.mjs";
-import { displayBinding, parseKey } from "../keys/keys.mjs";
+import { displayBinding, formatKey, parseKey } from "../keys/keys.mjs";
 import { tomlLiteral } from "../config/toml.mjs";
 import { BUILTIN_THEMES, DEFAULT_THEME_NAME } from "../config/theme.mjs";
+import { DEFAULT_HINT_CHARS } from "../page/hints.mjs";
+import { defaultKeys } from "../config/defaults.mjs";
 
 /** @import { Keymap } from "../keys/keymap.mjs" */
 /** @import { ResolvedConfig } from "../config/config.mjs" */
@@ -84,6 +86,25 @@ function setting(step, { table, key }, choices) {
  * @returns {SetupStep}
  */
 const action = (step) => ({ ...step, kind: "action", choices: [] });
+
+/**
+ * The hint letters step's layouts (decision 9), each with its home row and its letter keys by
+ * physical key: the top, home and bottom rows from `KeyQ`, `KeyA` and `KeyZ`, as a
+ * `KeyboardEvent`'s `code` names them. A `key` that is no letter (`;` on QWERTY) is never
+ * compared.
+ */
+const HINT_LAYOUT_ROWS = [
+  { name: "QWERTY", chars: DEFAULT_HINT_CHARS, rows: ["qwertyuiop", "asdfghjkl;", "zxcvbnm,./"] },
+  { name: "Colemak", chars: "arstdhneio", rows: ["qwfpgjluy;", "arstdhneio", "zxcvbkm,./"] },
+  { name: "Dvorak", chars: "aoeuidhtns", rows: ["',.pyfgcrl", "aoeuidhtns", ";qjkxbmwvz"] },
+];
+
+/** The `code` of each key of the three rows, in the order of HINT_LAYOUT_ROWS' `rows`. */
+const ROW_CODES = [
+  [..."QWERTYUIOP"].map((c) => `Key${c}`),
+  [...[..."ASDFGHJKL"].map((c) => `Key${c}`), "Semicolon"],
+  [...[..."ZXCVBNM"].map((c) => `Key${c}`), "Comma", "Period", "Slash"],
+];
 
 /** @type {[id: string, name: string, steps: SetupStep[]][]} */
 const TABLE = [
@@ -208,8 +229,8 @@ const TABLE = [
           title: "Prefix key",
           question: "Which key starts Vimma's window commands?",
           text:
-            "Every prefix key below shows the key that lists all keys with it, " +
-            "{keys:show_keybinds} now.",
+            "Under each prefix is the key that lists every key with it; " +
+            "{keys:show_keybinds} lists them now.",
           actions: ["show_keybinds"],
         },
         { table: "keys", key: "prefix" },
@@ -223,15 +244,13 @@ const TABLE = [
           id: "hint_letters",
           title: "Hint letters",
           question: "Which letters label the links you follow by keyboard?",
-          text: "The home row of the layout you type on is the quickest to reach.",
-          actions: [],
+          text:
+            "{keys:follow_link} labels the links on a page with these letters. The home row of " +
+            "the layout you type on is the quickest to reach.",
+          actions: ["follow_link"],
         },
         { table: "modal", key: "hint_chars" },
-        [
-          ["QWERTY: asdfghjkl", "asdfghjkl"],
-          ["Colemak: arstdhneio", "arstdhneio"],
-          ["Dvorak: aoeuidhtns", "aoeuidhtns"],
-        ],
+        HINT_LAYOUT_ROWS.map(({ name, chars }) => [`${name}: ${chars}`, chars]),
       ),
     ],
   ],
@@ -307,6 +326,64 @@ export const CHAPTERS = freeze(
 /** Every step, in order. @type {readonly SetupStep[]} */
 export const STEPS = freeze(CHAPTERS.flatMap((c) => c.steps));
 
+/**
+ * The hint letters step's layouts, in the order of its choices: each one's name, its home-row
+ * letters and, by `code`, the letter each key types.
+ * @type {readonly { name: string, chars: string, letters: Readonly<Record<string, string>> }[]}
+ */
+export const HINT_LAYOUTS = freeze(
+  HINT_LAYOUT_ROWS.map(({ name, chars, rows }) =>
+    freeze({
+      name,
+      chars,
+      letters: freeze(
+        Object.fromEntries(
+          rows.flatMap((row, r) => [...row].map((ch, i) => [ROW_CODES[r]?.[i] ?? "", ch])),
+        ),
+      ),
+    }),
+  ),
+);
+
+/**
+ * A key pressed on the page, as its keydown saw it. The page keeps these in memory only and
+ * never sends or writes them (decision 9, Security and privacy).
+ * @typedef {{ code: string, key: string }} PressedKey
+ */
+
+/**
+ * The layout the user types on, from the keys already pressed on the page (decision 9): the
+ * first of HINT_LAYOUTS that puts every letter pressed on the physical key it came from. Null
+ * without a letter pressed, or when no layout fits (AZERTY's `a` on `KeyQ`).
+ * @param {readonly PressedKey[]} pressed
+ * @returns {string | null}  the layout's home-row letters
+ */
+export function guessLayout(pressed) {
+  const letters = pressed
+    .map((p) => ({ code: p.code, key: p.key.toLowerCase() }))
+    .filter((p) => /^[a-z]$/.test(p.key));
+  if (!letters.length) return null;
+  const fits = HINT_LAYOUTS.find((l) => letters.every((p) => l.letters[p.code] === p.key));
+  return fits ? fits.chars : null;
+}
+
+/**
+ * The row the hint letters step opens on (behaviour 26): the layout typed on when the value in
+ * force is the built-in QWERTY default, which a user on another layout has most likely never
+ * chosen; else the value in force (behaviour 9), so that a layout chosen before, or a custom
+ * value under Keep, stays selected. With no guess, the value in force: QWERTY by default.
+ * @param {readonly (string | null)[]} layouts  each choice's letters, null for Keep
+ * @param {number} selected  the row of the value in force
+ * @param {readonly PressedKey[]} pressed
+ * @returns {number}
+ */
+export function hintRow(layouts, selected, pressed) {
+  if (layouts[selected] !== DEFAULT_HINT_CHARS) return selected;
+  const guess = guessLayout(pressed);
+  const row = guess === null ? -1 : layouts.indexOf(guess);
+  return row >= 0 ? row : selected;
+}
+
 /** @param {string} key  as keysFor shows it @returns {boolean} whether it works from a page */
 const fromPage = (key) => !key.includes(" [");
 
@@ -351,13 +428,15 @@ export function fillStepText(step, keymap) {
 /**
  * For each of the prefix step's choices, the keys of the action the step names first
  * (`show_keybinds`), drawn with that choice as the prefix (decision 8): the keymap only knows
- * the prefix in force.
+ * the prefix in force. Keep, which writes nothing, is drawn with the prefix in force.
  * @param {SetupStep} step @param {Keymap} keymap
+ * @param {readonly SetupChoice[]} [choices]  the step's list as drawn (stepChoices), with Keep
  * @returns {string[][]}  per choice, the keys of the step's first action
  */
-export function prefixHints(step, keymap) {
+export function prefixHints(step, keymap, choices = step.choices) {
   const name = step.actions[0] ?? "";
-  return step.choices.map((c) => {
+  return choices.map((c) => {
+    if (c.keep) return stepKeys(keymap, name);
     const prefix = parseKey(String(c.edits[0]?.value ?? ""));
     return keymap
       .bindingsFor(name)
@@ -403,7 +482,26 @@ export function inForceOf(config, { engine = null, appearance, engines = [] } = 
     "theme.appearance": config.theme.appearance ?? appearance ?? "system",
     "ui.toolbar": config.ui.toolbar,
     "ui.tabline": config.ui.tabline,
+    "keys.prefix": prefixOf(config),
+    "modal.hint_chars": config.hintChars,
   };
+}
+
+/**
+ * The prefix in force as one chord in Vimma's notation, so that `ctrl+A` in the file is the
+ * `ctrl+a` choice and enter on it writes nothing (behaviour 8); a prefix the notation cannot
+ * read stays as written, for Keep.
+ * @param {ResolvedConfig} config
+ * @returns {string}
+ */
+function prefixOf(config) {
+  const text = config.keys.prefix;
+  if (typeof text !== "string") return String(defaultKeys().prefix);
+  try {
+    return formatKey(parseKey(text));
+  } catch {
+    return text;
+  }
 }
 
 /**

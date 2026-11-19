@@ -30,6 +30,7 @@ import {
   inForceOf,
   planAtEnter,
   planChoice,
+  prefixHints,
   stepChoices,
   textParts,
 } from "../core/setup-steps.mjs";
@@ -376,6 +377,14 @@ export const SetupHost = {
       title: step.title,
       question: step.question,
       text: textParts(keymap ? fillStepText(step, keymap) : step.text),
+      // Per choice, the prefix step's key that lists every key, drawn with that prefix
+      // (behaviour 25), and the hint step's letters, which the page's layout guess matches
+      // (behaviour 26): the keys pressed stay in the page (decision 9).
+      prefixKeys: keymap && step.id === "prefix_key" ? prefixHints(step, keymap, choices) : null,
+      layouts:
+        step.id === "hint_letters"
+          ? choices.map((c) => (c.keep ? null : String(c.edits[0]?.value)))
+          : null,
       choices: choices.map((c) => ({
         label: c.label,
         keep: !!c.keep,

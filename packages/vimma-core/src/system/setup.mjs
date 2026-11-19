@@ -288,7 +288,13 @@ function scaledUsers(/** @type {number} */ x) {
  * renderer in the page (docs/specs/setup-v2.md, Delivery). The host saves only these, so a step
  * whose rules have not landed (the agents step's consent) cannot be written through the page.
  */
-export const BUILT_STEPS = Object.freeze(["content_blocker", "search_engine", "colours"]);
+export const BUILT_STEPS = Object.freeze([
+  "content_blocker",
+  "search_engine",
+  "colours",
+  "prefix_key",
+  "hint_letters",
+]);
 
 /**
  * The chapters with only `built` steps, chapters left without one dropped; each keeps its
