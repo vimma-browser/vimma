@@ -276,6 +276,7 @@ support-files = [
   "file_vimma_agent_userinfo_redirect.sjs",
   "file_vimma_agent_untitled.html",
   "file_vimma_agent_userinfo.html",
+  "file_vimma_reader_article.html",
   "head_vimma_control.js",
 ]
 
@@ -347,6 +348,9 @@ support-files = [
   "file_vimma_agent_page.html",
   "head_vimma_control.js",
 ]
+
+["browser_vimma_mcp_page_focus.js"]
+support-files = ["file_vimma_agent_dialog.html", "head_vimma_control.js"]
 
 ["browser_vimma_mcp_screenshot.js"]
 support-files = [
@@ -459,6 +463,8 @@ support-files = [
 support-files = ["file_vimma_insert_scroll.html"]
 
 ["browser_vimma_bookmarks_file_outside.js"]
+
+["browser_vimma_bookmarks_export.js"]
 
 ["browser_vimma_bookmarklets.js"]
 support-files = ["file_vimma_bookmarklet_page.html", "head_vimma_control.js"]

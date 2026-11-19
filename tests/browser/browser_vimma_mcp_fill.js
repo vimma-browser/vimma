@@ -701,9 +701,8 @@ addTidyTask(async function test_fill_in_use_while_the_user_types() {
   ww().switchTo({ id: agent().id });
   await until(() => gBrowser.selectedTab === tab, "the agent tab is in front");
   await focusContent(tab.linkedBrowser);
-  await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
-    /** @type {HTMLElement} */ (content.document.getElementById("q")).focus(),
-  );
+  // The user's own click: a field the page focuses by itself is not theirs (#1325).
+  await BrowserTestUtils.synthesizeMouseAtCenter("#q", {}, tab.linkedBrowser);
   await until(() => VimmaHost.status(window).mode === "insert", "the user is in insert mode");
   const r = await c.call("agent-fill", {
     tab: idOf(tab),

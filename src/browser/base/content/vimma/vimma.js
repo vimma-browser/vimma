@@ -109,6 +109,7 @@
     addAgentProvider: ConfigHost.addAgentProvider,
     editSiteUnbind: ConfigHost.editSiteUnbind,
     bookmarksFileForget: ConfigHost.bookmarksForget,
+    bookmarksFileExport: ConfigHost.bookmarksExport,
     bookmarksFileWords: ConfigHost.bookmarksWords,
   });
   VimmaHost.init(win);

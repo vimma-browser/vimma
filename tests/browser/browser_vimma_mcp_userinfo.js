@@ -5,7 +5,9 @@
 // Issue #1209 (security.md M21, M31, M7): a page loaded with a user name and password in its
 // URL gives them to every link and form action it resolves, and to its own URL. No reply an
 // agent gets carries them: the tab list, a step's page, a link list, an element list, a read
-// page's text and URL, a screenshot's and a console read's page.
+// page's text and URL, a screenshot's and a console read's page. Reader View's address carries
+// the article's URL percent-encoded in its query, them included (#1324): every reply names the
+// article's URL without them instead.
 
 "use strict";
 
@@ -299,6 +301,57 @@ add_task(async function test_a_clamped_or_redirected_url_label_gives_no_password
     const r = await call(c, command, args);
     Assert.equal(r.url, REDIRECTED, `${command}'s page`);
     noUserinfo(command, r);
+  }
+  c.close();
+  for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, false);
+  await VimmaControl.settled();
+});
+
+add_task(async function test_a_reader_view_tab_gives_its_article_url_without_them() {
+  Services.prefs.setIntPref(PHISHY, 255);
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+  await VimmaControl.settled();
+  const article = `${DIR}file_vimma_reader_article.html`;
+  const reader = `about:reader?url=${encodeURIComponent(article.replace("https://", "https://ada:secret@"))}`;
+  const tab = gBrowser.addTab(reader, {
+    userContextId: agent().userContextId,
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
+  await BrowserTestUtils.waitForContentEvent(tab.linkedBrowser, "AboutReaderContentReady");
+  await until(() => tab.hidden, "the agent tab is hidden in its workspace");
+  Assert.equal(tab.linkedBrowser.currentURI.spec, reader, "the reader's address holds them");
+
+  const c = new Client(/** @type {number} */ (VimmaControl.port));
+  await c.handshake({ protocol: 2, role: "agent" });
+  await c.call("agent-hello", { client: { name: "example-agent" } });
+  const id = idOf(tab);
+  /** No user name or password, also percent-encoded as the reader's address carries them. */
+  const noneEncoded = (/** @type {string} */ what, /** @type {unknown} */ result) => {
+    noUserinfo(what, result);
+    const text = JSON.stringify(result);
+    Assert.ok(!/ada%3A|ada%40|%3Asecret/i.test(text), `${what}: none percent-encoded`);
+  };
+  const tabs = await call(c, "agent-tabs", {}, true);
+  const listed = tabs.tabs.find((/** @type {AgentListedTab} */ t) => t.id === id);
+  Assert.equal(listed?.url, article, "vimma_tabs names the article's URL");
+  noneEncoded("vimma_tabs", tabs);
+  // The commands that read a page refuse one that is not http or https; neither their result
+  // nor their refusal names them.
+  for (const [command, args] of /** @type {[AgentPageCommand | "agent-screenshot", object][]} */ ([
+    ["agent-keys", { tab: id, keys: "f" }],
+    ["agent-elements", { tab: id }],
+    ["agent-read", { tab: id }],
+    ["agent-screenshot", { tab: id }],
+    ["agent-console", { tab: id }],
+  ])) {
+    const r = await c.response(c.request(command, args));
+    info(`${command}: ${r.ok ? "ran" : JSON.stringify(r.error)}`);
+    if (r.ok) {
+      Assert.deepEqual(validateMessage(r, { command }).errors, [], `a valid ${command} result`);
+      Assert.equal(r.result.url, article, `${command} names the article's URL`);
+    }
+    noneEncoded(command, r.ok && command === "agent-screenshot" ? { ...r.result, image: "" } : r);
   }
   c.close();
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);

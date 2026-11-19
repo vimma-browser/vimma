@@ -572,14 +572,28 @@ export function hostRunners(host, page) {
       s.notice.hide();
       const word = text?.trim() ?? "";
       if (word) {
-        // docs/specs/bookmarks-file.md Behaviour 19, while the feature is on.
-        if (word === "forget" && HostServices.bookmarksFileWords().includes("forget")) {
-          HostServices.bookmarksFileForget().then(
-            (/** @type {string} */ said) => s.notice.show(said),
-            (/** @type {Thrown} */ e) =>
-              s.notice.show(`:bookmarks forget: ${e?.message ?? e}`, { error: true }),
+        // docs/specs/bookmarks-file.md Behaviour 17 and 19, while the feature is on.
+        const words = HostServices.bookmarksFileWords();
+        if (!words.includes(word)) {
+          s.notice.show(
+            words.length
+              ? `:bookmarks takes ${words.join(", ")} or nothing`
+              : ":bookmarks takes no argument",
+            { error: true },
           );
-        } else s.notice.show(`:bookmarks takes no argument`, { error: true });
+          return;
+        }
+        const done =
+          word === "forget"
+            ? HostServices.bookmarksFileForget()
+            : HostServices.bookmarksFileExport(s.win, word === "export!");
+        // An export's notice says what it wrote and left out, or what `!` replaces: it stays
+        // until the next key, since the file's tab opens over it.
+        done.then(
+          (/** @type {string} */ said) => s.notice.show(said, { untilKey: word !== "forget" }),
+          (/** @type {Thrown} */ e) =>
+            s.notice.show(`:bookmarks ${word}: ${e?.message ?? e}`, { error: true }),
+        );
         return;
       }
       if (s.bookmarks.isOpen) s.bookmarks.close();

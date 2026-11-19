@@ -945,6 +945,28 @@ describe("bookmarks.toml: the mirror's plan", () => {
     ]);
   });
 
+  test("a folder holding a kept bookmarklet is matched by its line, not made again", () => {
+    // An exported file of a folder of bookmarklets: under "none" they stay out of Places' side
+    // of the plan, and the folder above them is neither made twice nor changed.
+    const tables = tablesOf(
+      [
+        "[bookmarks.work]",
+        '"tools/run" = "javascript:void(1)"',
+        '"tools/page" = "https://e.example/"',
+      ].join("\n"),
+    );
+    const tree = work([
+      folder("tools0000001", "tools", [
+        bm("tools0000002", "run", "javascript:void(1)"),
+        bm("tools0000003", "page", "https://e.example/"),
+      ]),
+    ]);
+    const p = plan({ tables, places: tree });
+    expect(p.ops.filter((o) => o.op === "insert")).toEqual([]);
+    expect(p.ops.filter((o) => o.op === "update" && o.guid === "tools0000001")).toEqual([]);
+    expect(p.ask).toBe(null);
+  });
+
   test("bookmarks outside the mirrored folders are never in the operations", () => {
     const tree = places({
       menu: [bm("menu00000001", "m", "https://example.com/m")],

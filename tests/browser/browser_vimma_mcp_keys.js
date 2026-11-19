@@ -304,9 +304,8 @@ add_task(async function test_keys_in_use_while_the_user_types_in_the_tab() {
   ww().switchTo({ id: agent().id });
   await until(() => gBrowser.selectedTab === tab, "the agent tab is in front");
   await focusContent(tab.linkedBrowser);
-  await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
-    /** @type {HTMLElement} */ (content.document.getElementById("field")).focus(),
-  );
+  // The user's own click: a field the page focuses by itself is not theirs (#1325).
+  await BrowserTestUtils.synthesizeMouseAtCenter("#field", {}, tab.linkedBrowser);
   await until(() => VimmaHost.status(window).mode === "insert", "the user is in insert mode");
 
   let r = await c.call("agent-keys", { tab: idOf(tab), keys: "j" });
@@ -401,9 +400,8 @@ add_task(async function test_keys_stop_when_the_user_starts_using_the_tab() {
     ww().switchTo({ id: agent().id });
     await until(() => gBrowser.selectedTab === tab, "the agent tab is in front");
     await focusContent(tab.linkedBrowser);
-    await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
-      /** @type {HTMLElement} */ (content.document.getElementById("field")).focus(),
-    );
+    // The user's own click: a field the page focuses by itself is not theirs (#1325).
+    await BrowserTestUtils.synthesizeMouseAtCenter("#field", {}, tab.linkedBrowser);
     await until(() => VimmaHost.status(window).mode === "insert", "the user types there");
   };
   const r = await keys(c, tab, "j j j");

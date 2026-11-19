@@ -80,8 +80,9 @@ runner is not used (decision 10).
   `tools/e2e/driver.mjs:92` (`Ctl`) runs `vimma-ctl` for `send-keys`, `state` and `open`.
 - `state` (`ctl/VimmaControl.sys.mjs:260`) reports `mode`, `pending` (`"prefix"` after
   `ctrl+b`), `workspace` and each tab's `id` (the browserId), `url` and `title`. That is enough
-  for keys, navigation and modes, but not for what a check must see in the page: scroll
-  positions, the focused element, hint labels, the find result, the clipboard, errors.
+  for keys, navigation and modes (Since changed: an unloaded tab's `id` is its workspace uuid
+  until it loads, and a check reads only loaded tabs; #1332), but not for what a check must see
+  in the page: scroll positions, the focused element, hint labels, the find result, the clipboard, errors.
 
 ### How to observe the page without changing what a site sees
 

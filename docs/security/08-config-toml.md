@@ -122,9 +122,9 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   bookmarks file in `config.toml`'s folder (or the file its symlink points to, as for
   `config.toml`), through a temporary file in the same folder created empty, given the file's
   mode before any text goes in, and renamed over it; a link to nothing, or a file that is not a
-  regular file, is never replaced, and Vimma never creates `bookmarks.toml` here. A file that
-  changed while it was edited is edited again once from its new text, else nothing is written.
-  Every edit, `config.toml`'s included, and every apply runs in one queue (D11), so no two
+  regular file, is never replaced, and a key never creates `bookmarks.toml` (only
+  `:bookmarks export` does, F8). A file that changed while it was edited is edited again once
+  from its new text, else nothing is written. Every edit, `config.toml`'s included, and every apply runs in one queue (D11), so no two
   edits read the same text. The line writer keeps every other byte and is verified: the edited
   text is read again and must hold exactly the lines meant, in order, with every other key of
   the file unchanged, and then must read as the mirror reads it, without an error, else nothing
@@ -180,3 +180,44 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`the_loop_guard_holds_across_two_simulated_devices`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
   [`a_move_out_whose_places_step_fails_and_whose_line_cannot_go_back_loses_nothing`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
   [`a_base_that_cannot_be_saved_after_a_move_out_loses_nothing`](../../tests/browser/browser_vimma_bookmarks_file_outside.js)
+- F8. `:bookmarks export` writes Places' workspace folders to a new `bookmarks.toml` (spec:
+  [bookmarks-file](../specs/bookmarks-file.md) Behaviour 17, Delivery slice 4, behind the same
+  pref). It writes through the same writer and queue as F7 (D11): a new file is created mode
+  0600 in a 0700 folder, never over a link to nothing or a file that is not a regular file. An
+  existing file is replaced only by `:bookmarks export!`, after a y/N that says what the file
+  holds, after a 1 s key settle, and only while it still holds the text the question
+  described. Right before the replace, its old text is written, the same way, to a backup that
+  is always a new 0600 file (`bookmarks.toml.bak`, then `.bak.2`, … one past the highest number
+  beside it), never over an existing file, whatever its type or mode; none is written when the
+  newest backup already holds that text or when the file changed since the question. Nothing is
+  replaced when the backup fails, and backups are never overwritten, so a line only the file
+  held (a bookmarklet the settings keep out of Places, a table of a paused mirror) stays in one
+  even across later `export!`s. The export is checked as the line writer's edits are:
+  the text is read again and must hold exactly the tables and items meant, with no error, else
+  nothing is written; a `data:` URL, a scheme the file refuses, a name it cannot hold and items
+  deeper than 32 folders are left out and counted, and names are cleaned as in F7. A
+  `javascript:` bookmark is exported whatever `bookmarklets` says, because it is already in the
+  user's Places; it reaches Places from the file only under F6's rule. Bookmarks outside the
+  workspaces' folders are not exported, so the Menu, Other Bookmarks and loose toolbar bookmarks
+  never reach a file that may be committed; each table's folder is the one the mirror's next load
+  takes (D6, shared code), and a table the base already mirrors is exported from its folder even
+  without a workspace, so `export!` never drops a table whose bookmarks the mirror
+  would then delete. A private window exports nothing. The only Places writes are renames of
+  exported items to the names the file holds (Behaviour 15); an item left out stays, and the
+  first load asks before it would delete it (Behaviour 18). Agents cannot reach it: the agent
+  role's `vimma_keys` refuses `:` (mcp-drive D9).
+  [`export: one table per linked workspace, in the order given, Places order inside`](../../packages/vimma-core/test/bookmarks-export.test.ts),
+  [`export: data: left out and counted; other schemes the file refuses too; javascript: kept`](../../packages/vimma-core/test/bookmarks-export.test.ts),
+  [`export: more bookmarks and folders than the file holds is refused`](../../packages/vimma-core/test/bookmarks-export.test.ts),
+  [`export then parse gives the same model: an exported file reads back without an error`](../../packages/vimma-core/test/fuzz/bookmarks-file.fuzz.test.ts),
+  [`export_writes_one_table_per_workspace_and_opens_it`](../../tests/browser/browser_vimma_bookmarks_export.js),
+  [`a_data_bookmark_is_left_out_and_never_deleted`](../../tests/browser/browser_vimma_bookmarks_export.js),
+  [`export_refuses_an_existing_file_and_export_bang_replaces_it_after_yes`](../../tests/browser/browser_vimma_bookmarks_export.js),
+  [`a_file_changed_while_export_bang_asks_is_not_replaced`](../../tests/browser/browser_vimma_bookmarks_export.js),
+  [`a_private_window_does_not_export`](../../tests/browser/browser_vimma_bookmarks_export.js),
+  [`export_bang_twice_keeps_every_older_file_in_a_backup`](../../tests/browser/browser_vimma_bookmarks_export.js),
+  [`a_backup_is_a_new_0600_file_beside_a_fifo_or_a_wider_backup`](../../tests/browser/browser_vimma_bookmarks_export.js),
+  [`a_failed_replace_after_the_backup_keeps_the_file`](../../tests/browser/browser_vimma_bookmarks_export.js),
+  [`the_export_bang_question_ignores_a_key_typed_as_it_appears`](../../tests/browser/browser_vimma_bookmarks_export.js),
+  [`export: the base's folder wins over the workspace's link, as at the mirror's first load`](../../packages/vimma-core/test/bookmarks-export.test.ts),
+  [`export: many items of one name are named in linear time`](../../packages/vimma-core/test/bookmarks-export.test.ts)

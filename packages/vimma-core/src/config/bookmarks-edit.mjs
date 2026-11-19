@@ -122,7 +122,8 @@ export function bookmarkKey(names, folder) {
 }
 
 /** A table's name as its header writes it: bare when it can be, else quoted. */
-const tableKey = (/** @type {string} */ name) => (BARE.test(name) ? name : tomlLiteral(name));
+export const tableKey = (/** @type {string} */ name) =>
+  BARE.test(name) ? name : tomlLiteral(name);
 
 /**
  * Where a key that starts at `row[i]` ends, or -1: a basic or literal string, or a bare key.

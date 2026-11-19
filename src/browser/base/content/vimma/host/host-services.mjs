@@ -63,8 +63,13 @@
  * @property {() => Promise<string>} bookmarksFileForget  config/ConfigHost.sys.mjs's:
  *   `:bookmarks forget` drops the bookmarks.toml mirror's base (docs/specs/bookmarks-file.md
  *   Behaviour 19); what to say
+ * @property {(win: BrowserWindow | null, replace: boolean) => Promise<string>}
+ *   bookmarksFileExport  config/ConfigHost.sys.mjs's: `:bookmarks export` and `export!` write
+ *   Places' workspace folders to bookmarks.toml (docs/specs/bookmarks-file.md Behaviour 17);
+ *   what to say
  * @property {() => string[]} bookmarksFileWords  config/ConfigHost.sys.mjs's: the words
- *   `:bookmarks` takes, `forget` while `vimma.feature.bookmarksFile` is on
+ *   `:bookmarks` takes, `export`, `export!` and `forget` while `vimma.feature.bookmarksFile` is
+ *   on
  */
 
 /** @typedef {keyof Services} ServiceName */
@@ -86,6 +91,7 @@ const NAMES = Object.freeze([
   "addAgentProvider",
   "editSiteUnbind",
   "bookmarksFileForget",
+  "bookmarksFileExport",
   "bookmarksFileWords",
 ]);
 
@@ -163,6 +169,7 @@ const UNPROVIDED = Object.freeze({
     error: "config.toml cannot be written before Vimma has started",
   }),
   bookmarksFileForget: async () => "bookmarks.toml is not read before Vimma has started",
+  bookmarksFileExport: async () => "bookmarks.toml is not written before Vimma has started",
   bookmarksFileWords: () => [],
 });
 
@@ -330,6 +337,9 @@ export function createHostServices(provider = PROVIDER) {
     },
     get bookmarksFileForget() {
       return get("bookmarksFileForget");
+    },
+    get bookmarksFileExport() {
+      return get("bookmarksFileExport");
     },
     get bookmarksFileWords() {
       return get("bookmarksFileWords");

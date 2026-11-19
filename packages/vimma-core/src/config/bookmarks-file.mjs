@@ -131,7 +131,7 @@ const echo = (/** @type {string} */ text) =>
  * @param {string} text
  * @param {number} limit
  */
-function utf8Over(text, limit) {
+export function utf8Over(text, limit) {
   if (text.length > limit) return true;
   if (text.length * 3 <= limit) return false;
   let n = 0;
@@ -631,20 +631,41 @@ const kindOf = (n) =>
  * @returns {{ node: PlacesNode, name: string, kind: "bookmark" | "folder" }[]}
  */
 function named(children) {
-  /** @type {Set<string>} */
-  const used = new Set();
+  const unique = uniqueNamer();
   /** @type {{ node: PlacesNode, name: string, kind: "bookmark" | "folder" }[]} */
   const out = [];
   for (const node of children) {
     const kind = kindOf(node);
     if (!kind) continue;
-    const title = normTitle(node.title);
-    let name = title;
-    for (let n = 2; used.has(`${kind}\0${name}`); n++) name = `${title} (${n})`;
-    used.add(`${kind}\0${name}`);
-    out.push({ node, name, kind });
+    out.push({ node, name: unique(normTitle(node.title), kind), kind });
   }
   return out;
+}
+
+/**
+ * Names in one folder made unique (open question 1, answer a): `name`, else the first free of
+ * `name (2)`, `(3)`, …, per kind. Each name's search resumes where its last one ended, so a
+ * folder of 20,000 items of one title is named in linear time, not quadratic: a number passed
+ * over was taken and stays taken.
+ * @returns {(name: string, kind: string) => string}
+ */
+export function uniqueNamer() {
+  /** @type {Set<string>} */
+  const taken = new Set();
+  /** @type {Map<string, number>} */
+  const next = new Map();
+  return (name, kind) => {
+    const key = `${kind}\0${name}`;
+    let out = name;
+    if (taken.has(`${key}`)) {
+      let n = next.get(key) ?? 2;
+      while (taken.has(`${kind}\0${name} (${n})`)) n++;
+      next.set(key, n + 1);
+      out = `${name} (${n})`;
+    }
+    taken.add(`${kind}\0${out}`);
+    return out;
+  };
 }
 
 /**
@@ -662,6 +683,81 @@ function indexPlaces(tree) {
     for (const c of n.children ?? []) stack.push([c, n.guid ?? null]);
   }
   return map;
+}
+
+/**
+ * D6's folder of a table, for the mirror's runs and for `:bookmarks export`: the base's folder
+ * while it is at the toolbar's top, inside another table's folder there, or the workspace's
+ * linked folder (a damaged or edited base names no other); else the workspace's linked folder,
+ * wherever it is; else the first top-level toolbar folder of the name; else null. A folder
+ * `used` holds is never given again, and the one returned is added to it.
+ * @param {Map<string, { node: PlacesNode, parent: string | null }>} all  indexPlaces' map
+ * @param {{ tables: BaseTable[] } | null | undefined} base
+ * @param {readonly { name: string, folder?: string | null }[]} workspaces
+ * @param {Set<string>} used
+ * @returns {(name: string) => string | null}
+ */
+function folderResolver(all, base, workspaces, used) {
+  const roots = new Set([...Object.values(PLACES_ROOTS), "root________", "tags________"]);
+  const isFolderGuid = (/** @type {string | null | undefined} */ g) =>
+    !!g && !roots.has(g) && all.get(g)?.node.typeCode === TYPE_FOLDER;
+  const atTop = (/** @type {string} */ g) => all.get(g)?.parent === PLACES_ROOTS.toolbar;
+  const toolbar = all.get(PLACES_ROOTS.toolbar)?.node ?? { guid: PLACES_ROOTS.toolbar };
+  const topFolders = (toolbar.children ?? []).filter((c) => c.typeCode === TYPE_FOLDER);
+  const baseTables = new Map((base?.tables ?? []).map((t) => [t.name, t]));
+  // The base's folders at the toolbar's top, and whether a base folder is inside one of them
+  // (a workspace folder dragged into another's in the Library).
+  const baseAtTop = new Set(
+    (base?.tables ?? []).map((t) => t.folder).filter((g) => isFolderGuid(g) && atTop(g)),
+  );
+  const insideBaseFolder = (/** @type {string} */ g) => {
+    let p = all.get(g)?.parent ?? null;
+    for (let depth = 0; p && depth < 64; depth++) {
+      if (baseAtTop.has(p)) return true;
+      p = all.get(p)?.parent ?? null;
+    }
+    return false;
+  };
+  const unused = (/** @type {string | null | undefined} */ g) =>
+    isFolderGuid(g) && !used.has(/** @type {string} */ (g));
+  return (name) => {
+    const known = baseTables.get(name) ?? null;
+    const linked = workspaces.find((w) => w.name === name)?.folder ?? null;
+    /** @type {string | null} */
+    let guid;
+    if (
+      known &&
+      unused(known.folder) &&
+      (atTop(known.folder) || known.folder === linked || insideBaseFolder(known.folder))
+    ) {
+      guid = known.folder;
+    } else if (linked && unused(linked)) {
+      guid = linked;
+    } else {
+      guid =
+        topFolders.find(
+          (f) => normTitle(f.title) === name && unused(/** @type {string} */ (f.guid)),
+        )?.guid ?? null;
+    }
+    if (guid) used.add(guid);
+    return guid;
+  };
+}
+
+/**
+ * Each table's folder as the mirror's first load finds it (D6), in the order of `names`, one
+ * folder per table: null when none exists yet.
+ * @param {{ places: PlacesNode, names: readonly string[],
+ *   workspaces: readonly { name: string, folder?: string | null }[],
+ *   base: { tables: BaseTable[] } | null | undefined }} input
+ * @returns {Map<string, string | null>}
+ */
+export function resolveTableFolders({ places, names, workspaces, base }) {
+  const folderOf = folderResolver(indexPlaces(places), base, workspaces, new Set());
+  /** @type {Map<string, string | null>} */
+  const out = new Map();
+  for (const name of names) if (!out.has(name)) out.set(name, folderOf(name));
+  return out;
 }
 
 /**
@@ -725,8 +821,6 @@ export function planMirror(input) {
   const all = indexPlaces(places);
   /** @type {Set<string>} */
   const roots = new Set([...Object.values(PLACES_ROOTS), "root________", "tags________"]);
-  const toolbar = all.get(PLACES_ROOTS.toolbar)?.node ?? { guid: PLACES_ROOTS.toolbar };
-  const topFolders = (toolbar.children ?? []).filter((c) => c.typeCode === TYPE_FOLDER);
   /** @type {Map<string, BaseTable>} */
   const baseTables = new Map((base?.tables ?? []).map((t) => [t.name, t]));
   const isFolderGuid = (/** @type {string | null | undefined} */ g) =>
@@ -761,26 +855,10 @@ export function planMirror(input) {
   /** @type {string[]} */
   const adoptTables = [];
 
-  // The base's folders at the toolbar's top, and whether a base folder is inside one of them
-  // (a workspace folder dragged into another's in the Library).
-  const baseAtTop = new Set(
-    (base?.tables ?? []).map((t) => t.folder).filter((g) => isFolderGuid(g) && atTop(g)),
-  );
-  const insideBaseFolder = (/** @type {string} */ g) => {
-    let p = all.get(g)?.parent ?? null;
-    for (let depth = 0; p && depth < 64; depth++) {
-      if (baseAtTop.has(p)) return true;
-      p = all.get(p)?.parent ?? null;
-    }
-    return false;
-  };
-
-  // D6, for every table before any is filled: the base's folder while it is at the toolbar's
-  // top, inside another table's folder there, or the workspace's linked folder (a damaged or
-  // edited base names no other), the workspace's linked folder, the first toolbar folder of the
-  // name, else a new one.
+  // D6, for every table before any is filled (folderOf), else a new one.
   /** @type {Set<string>} */
   const usedFolders = new Set();
+  const folderOf = folderResolver(all, base, workspaces, usedFolders);
   /** @type {{ table: FileTable, known: BaseTable | null, folder: string,
    *   node: PlacesNode | null }[]} */
   const resolved = [];
@@ -795,25 +873,7 @@ export function planMirror(input) {
       held.push({ table, known, folder: known.folder, node: mine ? node : null });
       continue;
     }
-    const linked = workspaces.find((w) => w.name === table.name)?.folder ?? null;
-    const unused = (/** @type {string | null | undefined} */ g) =>
-      isFolderGuid(g) && !usedFolders.has(/** @type {string} */ (g));
-    /** @type {string | null | undefined} */
-    let folderGuid;
-    if (
-      known &&
-      unused(known.folder) &&
-      (atTop(known.folder) || known.folder === linked || insideBaseFolder(known.folder))
-    ) {
-      folderGuid = known.folder;
-    } else if (linked && unused(linked)) {
-      folderGuid = linked;
-    } else {
-      folderGuid =
-        topFolders.find(
-          (f) => normTitle(f.title) === table.name && unused(/** @type {string} */ (f.guid)),
-        )?.guid ?? null;
-    }
+    let folderGuid = folderOf(table.name);
     const node = folderGuid ? (all.get(folderGuid)?.node ?? null) : null;
     if (!folderGuid || !node) {
       folderGuid = makeGuid();
@@ -988,6 +1048,8 @@ export function planMirror(input) {
             guid = only.guid;
           }
         }
+        // A folder above a kept bookmarklet (D13) is only shielded from removal, so its line
+        // claims it here like any folder, never making a second one beside it.
         if (!guid) {
           const p = placesByPath.get(key);
           if (p?.guid && fits(p.guid) && (item.kind === "folder" || normUrl(p.uri) === item.url)) {

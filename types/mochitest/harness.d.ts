@@ -285,6 +285,22 @@ declare const EventUtils: {
     win?: Window,
   ): boolean;
   synthesizeMouseAtCenter(target: Element, event: MouseEventOptions, win?: Window): boolean;
+  /** A clause attribute of synthesizeCompositionChange: text the IME has not converted yet. */
+  readonly COMPOSITION_ATTR_RAW_CLAUSE: number;
+  /** An IME's composition string changing in the focused editor (EventUtils.js). */
+  synthesizeCompositionChange(
+    event: {
+      composition: { string: string; clauses: { length: number; attr: number }[] };
+      caret?: { start: number; length: number };
+      key?: { key: string };
+    },
+    win?: Window,
+  ): void;
+  /** An IME's composition starting or ending, `compositioncommitasis` among its types. */
+  synthesizeComposition(
+    event: { type: string; data?: string; key?: { key: string } },
+    win?: Window,
+  ): boolean;
   /** A wheel event at the offset in `target`, through the widget, so APZ scrolls with it. */
   synthesizeWheel(
     target: Element,
