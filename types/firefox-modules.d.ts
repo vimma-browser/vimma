@@ -75,6 +75,16 @@ interface VimmaModules {
       _attemptedSetDefaultThisSession: boolean;
     };
   };
+  // engine/browser/components/migration/MigrationUtils.sys.mjs: the entry points the import
+  // wizard is opened with (the setup page passes FILE_MENU).
+  "moz-src:///browser/components/migration/MigrationUtils.sys.mjs": {
+    MigrationUtils: {
+      readonly MIGRATION_ENTRYPOINTS: { readonly FILE_MENU: string };
+      // For the browser tests; product code does not read these.
+      readonly availableMigratorKeys: string[];
+      insertManyBookmarksWrapper(bookmarks: object[], parentGuid: string): Promise<void>;
+    };
+  };
   // engine/browser/components/urlbar/QuickSuggest.sys.mjs: resolves once Suggest has started.
   "moz-src:///browser/components/urlbar/QuickSuggest.sys.mjs": {
     QuickSuggest: {
