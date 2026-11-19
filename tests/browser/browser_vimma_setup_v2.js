@@ -717,6 +717,13 @@ const drawnToolbars = (doc) =>
     (li) => /** @type {HTMLElement | null} */ (li.querySelector(".window"))?.dataset.toolbar,
   );
 
+/** @param {Document} doc @returns {[string | undefined, number][]} each drawing's tab line */
+const drawnTabLines = (doc) =>
+  [...doc.querySelectorAll("#v2-choices li .window")].map((w) => [
+    /** @type {HTMLElement} */ (w).dataset.tabline,
+    w.querySelectorAll(".w-tab").length,
+  ]);
+
 /** From the welcome screen straight to the window chapter (behaviour 3). */
 async function toAddressBar(/** @type {Document} */ doc) {
   await press(doc, "3");
@@ -735,10 +742,19 @@ add_task(async function address_bar_step_names_the_keys_in_force() {
   // its text again when the file is read (behaviour 12).
   await IOUtils.writeUTF8(
     configFile(),
-    'schema = 2\n[keys]\nfocus_urlbar = ["ctrl+k", "ctrl+l"]\ntoggle_toolbar = []\n',
+    'schema = 2\n[ui]\ntabline = "always"\n[keys]\nfocus_urlbar = ["ctrl+k", "ctrl+l"]\n' +
+      "toggle_toolbar = []\n",
   );
   await ConfigHost.reload();
   await TestUtils.waitForCondition(() => textKeys(doc).includes("ctrl+k"), "the rebound key");
+  Assert.deepEqual(
+    drawnTabLines(doc),
+    [
+      ["always", 1],
+      ["always", 1],
+    ],
+    "the tab line in force",
+  );
   Assert.deepEqual(textKeys(doc), ["ctrl+k", "ctrl+l", "I"], "alt+d unbound is left out");
   Assert.ok(
     [...doc.querySelectorAll("#v2-text code")].some((c) => c.textContent === ":toolbar"),
@@ -792,12 +808,6 @@ add_task(async function address_bar_step_writes_toolbar_and_applies_live() {
   );
 });
 
-/** @param {Document} doc @returns {[string | undefined, number][]} each drawing's tab line */
-const drawnTabLines = (doc) =>
-  [...doc.querySelectorAll("#v2-choices li .window")].map((w) => [
-    /** @type {HTMLElement} */ (w).dataset.tabline,
-    w.querySelectorAll(".w-tab").length,
-  ]);
 /** Whether this window draws the tab line now. */
 const tabLineShown = () => document.documentElement.hasAttribute("vimma-tabline");
 
