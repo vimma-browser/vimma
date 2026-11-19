@@ -1,6 +1,6 @@
 # Spec: setup-v2
 
-Status: accepted (delivery slices 1, 2 and 4 built, #1292, #1293 and #1295) · Area: core
+Status: implemented · Area: core
 (`packages/vimma-core/src/system/setup.mjs`, `packages/vimma-core/src/system/setup-steps.mjs`,
 `packages/vimma-core/src/config/toml.mjs`),
 chrome (`src/browser/base/content/vimma/setup/` (`setup.html`, `setup.mjs`, `flow.mjs`,
@@ -488,7 +488,9 @@ vitest, `packages/vimma-core/test/setup.test.ts` (state machine):
 
 Mochitest, `tests/browser/browser_vimma_setup_v2.js` (with `vimma.feature.setupV2` on until the
 last slice; a file apart from the summary flow's `browser_vimma_setup.js`, because both together
-outgrow the harness's time limit for one file):
+outgrow the harness's time limit for one file; the last slice drops the summary flow's tasks
+from `browser_vimma_setup.js`, which keeps the page's offering, its config.toml file checks
+through the search engine step and `agent_role_cannot_open_setup`):
 
 - `welcome_says_q_leaves_and_finished_steps_are_saved`
 - `enter_on_a_step_writes_its_key_and_applies_live`

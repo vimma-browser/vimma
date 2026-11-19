@@ -4,9 +4,8 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
 [ADR-008](../adr/008-config-toml.md).
 
 - F1. A config.toml Vimma creates **must** be mode 0600 in a 0700 folder. Vimma changes an
-  existing file only from `:route add` (an append), the setup summary (`[search] default`), the
-  setup page's setting steps (with `vimma.feature.setupV2` on, in place of the summary: each
-  step's own keys on its `enter`, never from a private window), the built-in agent's setup, and
+  existing file only from `:route add` (an append), the setup page's setting steps (each step's
+  own keys on its `enter`, never from a private window), the built-in agent's setup, and
   `:siteunbind --save` / `:sitebind --delete`, each run one at a time
   in the one queue of config.toml edits, so that an append never races a rewrite. Every edit but
   the append goes through `ConfigHost`'s one writer (`rewriteConfig`; the setup's keys through
@@ -19,8 +18,8 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`a_missing_folder_is_created_private`](../../tests/browser/browser_vimma_config_first_run.js),
   [`an_existing_file_is_never_touched`](../../tests/browser/browser_vimma_config_first_run.js),
   [`route_add_creates_a_private_config_toml`](../../tests/browser/browser_vimma_security_invariants.js),
-  [`summary_keeps_comments_and_mode_of_config_toml`](../../tests/browser/browser_vimma_setup.js),
-  [`summary_writes_nothing_on_a_parse_error`](../../tests/browser/browser_vimma_setup.js),
+  [`a_step_creates_a_private_config_toml_when_absent`](../../tests/browser/browser_vimma_setup.js),
+  [`a_step_keeps_comments_and_mode_of_config_toml`](../../tests/browser/browser_vimma_setup.js),
   [`a_parse_error_writes_nothing_and_action_steps_still_work`](../../tests/browser/browser_vimma_setup_v2.js),
   [`an_edit_made_while_a_step_is_open_is_kept`](../../tests/browser/browser_vimma_setup_v2.js),
   [`a_symlinked_config_toml_stays_a_link`](../../tests/browser/browser_vimma_setup_v2.js),

@@ -29,7 +29,6 @@ body {
 }
 
 /* Welcome: the logo 96 px high, scaled down with narrow windows. */
-#welcome,
 #v2-welcome {
   display: flex;
   flex-direction: column;
@@ -39,15 +38,9 @@ body {
   text-align: center;
 }
 
-#welcome .vimma-logo,
 #v2-welcome .vimma-logo {
   height: min(96px, 20vw);
   width: auto;
-}
-
-.tagline {
-  margin: 0;
-  color: var(--vimma-fg-dim, #9197b2);
 }
 
 .buttons {
@@ -210,40 +203,19 @@ h1 {
   font-size: 0.8rem;
 }
 
-.plan {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 0.5rem 1.5rem;
-  margin: 0;
-}
-
-.plan dt {
-  color: var(--vimma-fg-dim, #9197b2);
-}
-
-.plan dd {
-  margin: 0;
-}
-
 .results li {
   display: flex;
   justify-content: space-between;
   padding: 0.3rem 0;
 }
 
-.results .installed,
-.results .saved {
+.results .installed {
   color: var(--vimma-text-green, #a3be8c);
 }
 
 .results .failed,
-.results .declined,
-.results [class="not saved"] {
+.results .declined {
   color: var(--vimma-text-error, #e06c75);
-}
-
-#summary #setup-engines {
-  display: none;
 }
 
 .keys {

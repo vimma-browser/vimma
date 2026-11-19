@@ -433,21 +433,77 @@ Building is in [CONTRIBUTING.md](../CONTRIBUTING.md#build-and-run).
 
 ### First-run setup
 
-The first start of a new profile shows a welcome screen with two buttons: **Set up** (`enter`)
-and **Skip** (`esc` or `q`). Skipping changes nothing. Setting up has two steps:
+The first start of a new profile offers a short setup in five chapters, so that the settings a
+new user changes first are a few keys away rather than spread over `config.toml`, commands and
+Settings. Each step asks one question, shows the `config.toml` line it will write, and saves that
+line as soon as you press `enter`. You can leave after any step and keep every step you finished.
 
-1. **Add-ons.** A short list of content blockers (uBlock Origin, AdGuard AdBlocker, Privacy
-   Badger). `/` searches addons.mozilla.org (the request carries only the search terms), `j`/`k`
-   move, `space` marks, `enter` goes on. Add-ons run in every workspace, the agent workspace
-   too.
-2. **Search engine.** `j`/`k` and `enter` choose the default engine.
+The welcome screen lists the chapters and their steps, with a tick on each chapter finished on an
+earlier run. `enter` starts at the first chapter, a digit `1` to `5` starts at that chapter, and
+`q` or `esc` closes the page without changing anything.
 
-The summary lists what will happen; `enter` applies it, `esc` goes back. The engine is written
-to `config.toml` as `[search] default`, keeping your comments; a file that does not parse is
-left alone. Each add-on then shows Firefox's own permission prompt. Nothing changes before the
-summary, so closing the tab earlier leaves the profile as it was. The welcome screen appears
-only once per profile: after **Skip**, after finishing, or after closing its tab, later starts
-never show it again. `:setup` (or the link on about:vimma) opens the setup again.
+| Chapter               | Steps                                   | What it sets                                               |
+| --------------------- | --------------------------------------- | ---------------------------------------------------------- |
+| 1. Essentials         | Content blocker, Search engine, Colours | installs add-ons; `[search] default`; `[theme] appearance` |
+| 2. Moving in          | Default browser, Bring your data        | the system's default browser; Firefox's import wizard      |
+| 3. The window         | Address bar, Tab line                   | `[ui] toolbar`; `[ui] tabline`                             |
+| 4. Your keys          | Prefix key, Hint letters                | `[keys] prefix`; `[modal] hint_chars`                      |
+| 5. Privacy and agents | Updates, Agents                         | `[updates] check`; `[mcp] enabled`                         |
+
+The keys of a step are in its footer, with the step's place in its chapter and what this run has
+saved so far:
+
+- `j`/`k` choose, and `enter` saves and opens the next step.
+- `s` skips the step and writes nothing, so Vimma's default stays in force.
+- `h` goes back to the previous step, with the value in force selected; `enter` there saves
+  again, replacing that one key.
+- `q` or `esc` leaves the setup. Steps already saved stay saved, and nothing is written for the
+  open step. Closing the tab does the same.
+
+Each step opens with the value in force selected: the one in `config.toml`, else Vimma's default.
+Choosing it writes nothing, so pressing `enter` through every step leaves `config.toml` as it
+was. When the value in force is none of the step's choices (a prefix of your own, an engine that
+is not installed), the step lists **Keep** first and selects it; **Keep** writes nothing either.
+A step changes only its own key and keeps your comments, the order of the file and any edit made
+to it while the step was open. A `config.toml` that does not parse is never written: the welcome
+screen names the file and the line, and the setting steps can then only be skipped. In a private
+window, the setting steps cannot save. The keys a step names come from your keymap, so a key you
+rebound shows as you bound it, and after the prefix step every later step shows the new prefix.
+
+What the steps do:
+
+- **Content blocker.** A short list (uBlock Origin, AdGuard AdBlocker, Privacy Badger); `/`
+  searches addons.mozilla.org (the request carries only the search terms) and `space` marks.
+  `enter` installs the marked add-ons one after another, each with Firefox's own permission
+  prompt. Add-ons run in every workspace, the agent workspace too.
+- **Search engine.** The default engine of the address bar, from the installed engines.
+- **Colours.** Your Omarchy theme (offered only where one is found), light, dark, or following
+  the system. The setup page takes the colours at once. An `appearance` written here wins over
+  `:theme` from then on ([Colours and themes](#colours-and-themes)).
+- **Default browser.** Says whether Vimma is the default browser now; `enter` asks the system
+  the same way as Settings' **Make Default**.
+- **Bring your data.** Opens Firefox's import wizard over the setup tab, for Chrome, Chromium,
+  Brave, Edge, Opera and Vivaldi; the next step opens when the wizard closes. Data from Firefox
+  comes over with Firefox Sync ([Moving over](#moving-over-from-firefox-or-chrome)).
+- **Address bar.** Shown or hidden. The step names the keys that reach the address bar while it
+  is hidden (`ctrl+l`, `alt+d`, `I` and `ctrl+b u` with the default keys).
+- **Tab line.** Off, always, or only with two or more tabs ([Tab line](#tab-line)).
+- **Prefix key.** `ctrl+b` or `ctrl+a`, each shown with the key that opens the list of keys.
+- **Hint letters.** The home row of QWERTY, Colemak or Dvorak. The layout you type on is
+  selected first, guessed from the keys you already pressed on the page, which are kept in the
+  page only.
+- **Updates.** Says what the check sends (the update channel and the platform); "never check"
+  stops every request to `updates.vimma.dev`.
+- **Agents.** Off is selected first. The step says that agents reach only the agent workspace and
+  that sending a form, paying and showing a page always ask you; `enter` on "on" is your consent,
+  as answering `y` to `:mcp on` is. `:mcp off` still turns agents off until Vimma restarts,
+  whatever the file says ([Agent workspace](#agent-workspace)).
+
+After the last step of each chapter, a short screen lists what that chapter saved and names the
+next one: `enter` goes on, `q` or `esc` stops there. After the last chapter, it lists everything
+the run saved. The welcome screen appears only once per profile: after **Not now**, after
+finishing, or after closing its tab, later starts never show it again. `:setup` (or the link on
+about:vimma) opens the setup again, at any time.
 
 ### The start page
 

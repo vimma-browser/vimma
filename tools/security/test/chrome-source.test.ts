@@ -320,9 +320,8 @@ describe("chrome code", () => {
       ({ path, text }) => path !== SETUP && /SetupHost\.sys\.mjs/.test(text),
     );
     expect(importers.map((s) => s.path).sort()).toEqual([
-      // The setup page's own scripts (about:vimma-setup), as setup.mjs.
+      // The setup page's own script (about:vimma-setup).
       "src/browser/base/content/vimma/setup/flow.mjs",
-      "src/browser/base/content/vimma/setup/setup.mjs",
       "src/browser/base/content/vimma/vimma.js",
     ]);
   });
