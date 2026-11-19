@@ -6,7 +6,7 @@ import { mergeOutside } from "../src/config/bookmarks-merge.mjs";
 import { parseBookmarksFile, planMirror } from "../src/config/bookmarks-file.mjs";
 import { parseConfig } from "../src/config/config.mjs";
 import { PLACES_ROOTS } from "../src/ui/bookmarks.mjs";
-import { budget } from "./budget.ts";
+import { budget, growth, LINEAR_GROWTH } from "./budget.ts";
 
 type Item = {
   guid: string;
@@ -628,39 +628,20 @@ describe("bookmarks.toml merge: bounded time", () => {
     };
   }
 
-  // A ratio of two sizes, not a wall-clock budget: with the whole suite running in parallel at
-  // load 15, the linear merge of 16,000 took over 5 s, past any budget that still catches a
-  // quadratic one. Eight times the bookmarks take 7 to 10 times as long when the merge is linear
-  // (about 1 s against 0.12 s here); a quadratic part that adds a second or more at 16,000 (a
-  // lookup by scan instead of by Map) brings the ratio to 13 to 31, and one that leads to 64.
-  // Each pair runs back to back, after a pair that warms the JIT up (without it the first small
-  // run is the slow one), and the smallest of three ratios counts: one pair that load spared is
-  // enough, while a quadratic merge is slow in every pair. Load slows both runs of a pair alike,
-  // and so does Stryker's instrumented code, so the limit needs no budget().
+  // growth() rather than a wall-clock budget, which failed with the whole suite running at load
+  // 15. A lookup by scan instead of by Map, in the merge or in the line writer, gives 13 to 31.
   test(
     "a full reorder of 16,000 bookmarks in 4 folders merges in linear time",
     () => {
       const n = 16_000;
-      const time = (size: number) => {
+      let m: ReturnType<typeof merge> | undefined;
+      const g = growth((size) => {
         const input = fullReorder(size);
         const start = performance.now();
-        const m = merge(input);
-        return { ms: performance.now() - start, m };
-      };
-      time(n / 8);
-      time(n);
-      const ratios: number[] = [];
-      let m: ReturnType<typeof merge> | undefined;
-      for (let run = 0; run < 3; run++) {
-        const small = time(n / 8);
-        const large = time(n);
-        m = large.m;
-        ratios.push(large.ms / small.ms);
-      }
-      expect(
-        Math.min(...ratios),
-        `ratios ${ratios.map((r) => r.toFixed(1)).join(", ")}`,
-      ).toBeLessThan(12);
+        m = merge(input);
+        return performance.now() - start;
+      }, n);
+      expect(g.smallest, g.ratios).toBeLessThan(LINEAR_GROWTH);
       expect(m?.ok).toBe(true);
       const t = tables(m?.ok ? (m.text as string) : "").work as { [k: string]: string[] }[];
       expect(t[0]?.["f0/"]?.[0]).toBe(`b${n - 4} https://example.com/${n - 4}`);
