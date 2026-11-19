@@ -48,13 +48,20 @@ describe("the chapters and steps (decision 11)", () => {
   });
 
   test("every setting step's choices are a table, a key and a value the config schema accepts", () => {
-    for (const s of STEPS.filter((s) => s.kind === "setting" && s.choices.length)) {
-      for (const c of s.choices) {
-        expect(c.edits.length, `${s.id}: ${c.label}`).toBeGreaterThan(0);
-        const r = setConfigKeysText("schema = 2\n", c.edits);
-        expect(r, `${s.id}: ${c.label}`).toHaveProperty("text");
-        expect("text" in r && r.text, `${s.id}: ${c.label}`).toBeTruthy();
-      }
+    const steps = STEPS.filter((s) => s.kind === "setting" && s.choices.length);
+    // Choice k of every step in one write: one config parse per k, not per choice (each parse
+    // compiles the keymap), and no two steps set the same key.
+    const most = Math.max(...steps.map((s) => s.choices.length));
+    for (let k = 0; k < most; k++) {
+      const chosen = steps.flatMap((s) => s.choices.slice(k, k + 1));
+      for (const c of chosen) expect(c.edits.length, c.label).toBeGreaterThan(0);
+      const r = setConfigKeysText(
+        "schema = 2\n",
+        chosen.flatMap((c) => c.edits),
+      );
+      const labels = chosen.map((c) => c.label).join(", ");
+      expect(r, labels).toHaveProperty("text");
+      expect("text" in r && r.text, labels).toBeTruthy();
     }
   });
 

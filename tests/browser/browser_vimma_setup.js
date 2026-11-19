@@ -265,6 +265,28 @@ add_task(async function summary_writes_nothing_on_a_parse_error() {
   BrowserTestUtils.removeTab(tab);
 });
 
+// A file that loads but would not with `[search] default` added: the summary says so before
+// `enter`, as the writer would refuse it after (setup-v2 behaviour 13).
+add_task(async function summary_names_a_key_the_file_cannot_take_before_enter() {
+  const file = configFile();
+  const before = '[keys]\nscroll_down = "j"\n';
+  await IOUtils.writeUTF8(file, before);
+  const { tab, doc } = await openSetup();
+  await chooseEngine(doc, 0);
+  await TestUtils.waitForCondition(
+    () =>
+      doc
+        .querySelector("#setup-config-error:not([hidden])")
+        ?.textContent.includes("config.toml would not load with the edit: search:"),
+    "the summary names the key the file cannot take",
+  );
+  await press(doc, "KEY_Enter");
+  await TestUtils.waitForCondition(() => step(doc) === "done");
+  Assert.equal(await IOUtils.readUTF8(file), before, "untouched");
+  await removeConfig();
+  BrowserTestUtils.removeTab(tab);
+});
+
 add_task(async function colon_setup_opens_the_page() {
   const opened = BrowserTestUtils.waitForNewTab(gBrowser, SETUP_URL, true);
   gBrowser.selectedBrowser.focus();

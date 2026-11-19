@@ -44,6 +44,8 @@ let agentConfig = null;
  * and never touched by `configure`, so that no read of config.toml clears it; `:mcp on` does.
  */
 let heldOff = false;
+/** How many times `:mcp off` ran: a yes to an `:mcp on` asked before the latest one is refused. */
+let offs = 0;
 
 /** @param {unknown} e */
 const reason = (e) => /** @type {Error} */ (e).message;
@@ -85,6 +87,16 @@ export const McpHost = {
    */
   get state() {
     return mcpState(switchState());
+  },
+
+  /**
+   * Tests only: ends `:mcp off`'s hold, so that a test file stopped between its `:mcp off` and
+   * `:mcp on` does not leave agents off for the files after it. Not reachable from a page, the
+   * control socket or an agent.
+   */
+  _clearHoldForTests() {
+    heldOff = false;
+    Services.obs.notifyObservers(null, MCP_CHANGED_TOPIC);
   },
 
   /** The agent workspace's name, as questions and notices show it. */
@@ -142,6 +154,7 @@ export const McpHost = {
         if (plan.kind === "off") {
           const was = this.state.enabled;
           heldOff = true;
+          offs++;
           // The pref's observers hear the pref; the hold alone is told through the topic.
           if (plan.pref) Services.prefs.setBoolPref(MCP_ENABLED_PREF, false);
           else if (was) Services.obs.notifyObservers(null, MCP_CHANGED_TOPIC);
@@ -150,15 +163,22 @@ export const McpHost = {
         if (!agent) return "mcp: there is no agent workspace (containers off?)";
         // A workspace of yours that took the name: agents would read what is already in it.
         const adopted = WorkspaceStore.agentIsOurs() ? null : { tabs: countTabs(agent) };
+        const asked = offs;
         ask(mcpOnQuestion(agent.name, adopted), () => {
           if (WorkspaceStore.agent?.id !== agent.id) {
             say(`mcp: "${agent.name}" changed since you were asked; MCP stays off`);
             return;
           }
+          // An `:mcp off` typed after this question (in another window, say) is the newer word.
+          if (offs !== asked) {
+            say("mcp: :mcp off ran since you were asked; MCP stays off");
+            return;
+          }
           heldOff = false;
           // With `[mcp] enabled = true` the file turns agents on: the pref stays as it is.
-          if (config?.enabled === true) Services.obs.notifyObservers(null, MCP_CHANGED_TOPIC);
-          else Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+          if (config?.enabled !== true) Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+          // Always: a pref that was already true (set under the hold) tells no observer.
+          Services.obs.notifyObservers(null, MCP_CHANGED_TOPIC);
           say(`mcp on: agents may ask to use "${agent.name}"; each request asks you first`);
         });
         return null;
