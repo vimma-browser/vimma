@@ -573,14 +573,31 @@ export function choiceNote(step, choice, inForce, { adopted = null, missing = fa
     if (missing) {
       return "There is no agent workspace (containers are off), so agents cannot be turned on.";
     }
-    if (adopted) return mcpAdoptedWarning(adopted.name, { tabs: adopted.tabs });
-    return inForce["mcp.held"] ? "Also ends :mcp off for this session." : null;
+    const hold = inForce["mcp.held"] ? "Also ends :mcp off for this session." : null;
+    if (adopted) {
+      const warning = mcpAdoptedWarning(adopted.name, { tabs: adopted.tabs });
+      return hold ? `${warning} ${hold}` : warning;
+    }
+    return hold;
   }
   const off = choice.edits.some((e) => e.key === "enabled" && e.value === false);
   if (off && inForce["mcp.held"] && inForce["mcp.file"] === true) {
     return "config.toml's [mcp] enabled = true turns agents on again at the next start.";
   }
   return null;
+}
+
+/**
+ * The lines a choice shows before `enter` (behaviour 12): what `planAtEnter` would write, and
+ * "Writes nothing" for the agents step's "on" without an agent workspace, which the host
+ * refuses as `:mcp on` refuses it (decision 20).
+ * @param {SetupStep} step @param {SetupChoice} choice @param {InForce} inForce
+ * @param {{ omarchy?: boolean, missing?: boolean }} [options]  `missing`: no agent workspace
+ * @returns {string[]}
+ */
+export function choiceLines(step, choice, inForce, { omarchy = false, missing = false } = {}) {
+  if (missing && agentsTurnOn(step, choice, inForce)) return editLines([]);
+  return editLines(planAtEnter(step, choice, inForce, { omarchy }) ?? []);
 }
 
 /**

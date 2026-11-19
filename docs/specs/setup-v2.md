@@ -379,10 +379,15 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
 
 20. **The agents step's "on" is a yes to `:mcp on`, in every respect.** It is refused, with
     nothing written, where that yes is refused: without an agent workspace, when the agent
-    workspace changed, or when `:mcp off` ran after the step was drawn; the step is then drawn
-    again, so that a new `enter` is a new consent. Once its `[mcp] enabled = true` is written
-    (or the file says so already), it ends `:mcp off`'s hold as the yes does, after the same
-    checks; the write alone never does (decision 16). With the hold in force, "off" is the value
+    workspace changed, or when `:mcp off` ran after the user arrived at the step. What it is
+    checked against is taken when the user arrives at the step and kept when the step is drawn
+    again for a config read or an `:mcp on|off` elsewhere, because a redraw is no new consent; a
+    redraw that changes the row in force moves the cursor to it. After a refusal the step is
+    drawn anew with the cursor on the row in force, so that a new consent takes `j` and `enter`.
+    Once its `[mcp] enabled = true` is written (or the file says so already), it ends
+    `:mcp off`'s hold as the yes does, after the same checks; the write alone never does
+    (decision 16), and a refusal at that second check holds agents off, so that the file just
+    written does not turn them on. With the hold in force, "off" is the value
     in force and writes nothing (behaviour 8), and the step says that the file turns agents on
     again at the next start; "on" says that it also ends `:mcp off`. For a workspace Vimma did
     not make, "on" shows `:mcp on`'s warning that agents will read it. Reason: two ways to turn
@@ -536,6 +541,9 @@ outgrow the harness's time limit for one file):
 - `agents_on_ends_mcp_off_as_mcp_on_does` (the file on and held off: off writes nothing; on
   writes nothing and ends the hold; held without the key: on writes it and ends the hold)
 - `an_mcp_off_after_the_step_was_drawn_wins_over_its_enter`
+- `an_mcp_off_the_page_hears_keeps_the_ticket_and_moves_the_cursor`
+- `a_config_read_redraw_keeps_the_ticket`
+- `a_workspace_gone_during_the_write_holds_agents_off`
 - `mcp_off_turns_agents_off_until_restart_when_the_file_enables_them`
 - `mcp_off_survives_a_config_reload` (`[mcp] enabled = true` in the file, `:mcp off`, the file
   edited and read again: agents stay off until `:mcp on`)

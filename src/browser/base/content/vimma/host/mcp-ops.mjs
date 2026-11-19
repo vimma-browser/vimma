@@ -137,13 +137,19 @@ export const McpHost = {
 
   /**
    * The setup's agents step turned agents on (its `[mcp] enabled = true` written and read):
-   * ends `:mcp off`'s hold, as `:mcp on`'s yes does, after the same checks.
+   * ends `:mcp off`'s hold, as `:mcp on`'s yes does, after the same checks. Refused here, after
+   * the write (the workspace changed or went away meanwhile), it holds agents off as `:mcp off`
+   * does, so that the file just written does not turn them on without a consent that counts.
    * @param {McpConsentTicket} ticket
    * @returns {string | null} why not, or null once agents may connect
    */
   consentFromSetup(ticket) {
     const why = this.consentRefusal(ticket);
-    if (why) return why;
+    if (why) {
+      heldOff = true;
+      Services.obs.notifyObservers(null, MCP_CHANGED_TOPIC);
+      return why;
+    }
     heldOff = false;
     // Always: the file's read already told the topic while the hold still stood.
     Services.obs.notifyObservers(null, MCP_CHANGED_TOPIC);

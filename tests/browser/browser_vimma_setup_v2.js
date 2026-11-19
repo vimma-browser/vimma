@@ -720,6 +720,9 @@ const { VimmaUpdates } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/updates/VimmaUpdates.sys.mjs",
 );
 const { STEPS } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/setup-steps.mjs");
+const { WorkspaceStore } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
+);
 const { BUILT_STEPS } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/setup.mjs");
 
 registerCleanupFunction(() => {
@@ -872,11 +875,122 @@ add_task(async function an_mcp_off_after_the_step_was_drawn_wins_over_its_enter(
   Assert.equal(step(doc), "agents", "the step stays open");
   Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
   Assert.ok(!McpHost.state.enabled, "agents stay off");
-  // Drawn again after the refusal: a new enter is a new consent, given after the `:mcp off`.
+  // Drawn again after the refusal with the cursor on off, the row in force: a second enter at
+  // once turns nothing on, as a refused yes needs `:mcp on` and `y` again.
   await atStep(doc, "agents");
-  Assert.equal(current(doc), "On", "the cursor stays on its row");
+  Assert.equal(current(doc), "Off", "the cursor is back on the row in force");
   await press(doc, "KEY_Enter");
   await atStep(doc, "stop");
-  Assert.ok(McpHost.state.enabled, "the newer enter turns agents on");
+  Assert.ok(!McpHost.state.enabled, "a second enter turns nothing on");
+  Assert.ok(!(await IOUtils.exists(configFile())), "and writes nothing");
+  // Back, `j` and enter, on a screen drawn after the `:mcp off`: a new consent.
+  await press(doc, "h");
+  await atStep(doc, "agents");
+  await press(doc, "j", "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.ok(McpHost.state.enabled, "the newer consent turns agents on");
   await closeFlow(tab);
+});
+
+/** Resolves once the open step was drawn again after now. @param {Document} doc */
+function redrawn(doc) {
+  const real = SetupHost.stepView;
+  return new Promise((resolve) => {
+    SetupHost.stepView = async (...args) => {
+      SetupHost.stepView = real;
+      const v = await real.apply(SetupHost, args);
+      // The page draws the view after this resolves; viewReady is set once it has.
+      TestUtils.waitForCondition(() => doc.documentElement.dataset.viewReady === "true").then(() =>
+        resolve(v),
+      );
+      return v;
+    };
+  });
+}
+
+add_task(async function an_mcp_off_the_page_hears_keeps_the_ticket_and_moves_the_cursor() {
+  await IOUtils.writeUTF8(configFile(), "schema = 2\n[mcp]\nenabled = true\n");
+  await ConfigHost.reload();
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  Assert.equal(current(doc), "On", "on is in force, the cursor on it");
+  // `:mcp off` in another window: agents were on, so the page hears of it and draws again.
+  const again = redrawn(doc);
+  mcpOff();
+  await again;
+  Assert.equal(current(doc), "Off", "the cursor follows the row in force");
+  await press(doc, "j");
+  Assert.equal(current(doc), "On");
+  await press(doc, "KEY_Enter");
+  await TestUtils.waitForCondition(() => doc.documentElement.dataset.failed === "true", "refused");
+  Assert.equal(
+    notice(doc).textContent,
+    "Not saved: :mcp off ran since this step was drawn; nothing written",
+    "the redraw did not take a new consent",
+  );
+  Assert.deepEqual(McpHost.state, { enabled: false, from: "session" }, "the hold stands");
+  await closeFlow(tab);
+  McpHost._clearHoldForTests();
+});
+
+add_task(async function a_config_read_redraw_keeps_the_ticket() {
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  await press(doc, "j");
+  Assert.equal(current(doc), "On");
+  // Agents are off already: `:mcp off` tells the page nothing, but a config read draws it again.
+  mcpOff();
+  const again = redrawn(doc);
+  await IOUtils.writeUTF8(configFile(), 'schema = 2\n[ui]\ntoolbar = "shown"\n');
+  await ConfigHost.reload();
+  await again;
+  Assert.equal(current(doc), "On", "the row in force did not change: the cursor stays");
+  await press(doc, "KEY_Enter");
+  await TestUtils.waitForCondition(() => doc.documentElement.dataset.failed === "true", "refused");
+  Assert.ok(notice(doc).textContent.includes(":mcp off ran since this step was drawn"));
+  Assert.ok(!McpHost.state.enabled, "agents stay off");
+  Assert.ok(!(await IOUtils.readUTF8(configFile())).includes("[mcp]"), "nothing written");
+  await closeFlow(tab);
+  McpHost._clearHoldForTests();
+});
+
+add_task(async function a_workspace_gone_during_the_write_holds_agents_off() {
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  await press(doc, "j");
+  // The agent workspace goes away after the write was planned, before the hold is ended.
+  const realSet = ConfigHost.setConfigKeys;
+  ConfigHost.setConfigKeys = async (...args) => {
+    const r = await realSet.apply(ConfigHost, args);
+    Object.defineProperty(WorkspaceStore, "agent", { value: null, configurable: true });
+    return r;
+  };
+  try {
+    await press(doc, "KEY_Enter");
+    await TestUtils.waitForCondition(
+      () => doc.documentElement.dataset.failed === "true",
+      "refused",
+    );
+  } finally {
+    ConfigHost.setConfigKeys = realSet;
+    delete (/** @type {{ agent?: unknown }} */ (WorkspaceStore).agent);
+  }
+  Assert.ok(
+    notice(doc).textContent.includes("config.toml was written, agents stay off"),
+    notice(doc).textContent,
+  );
+  Assert.ok((await IOUtils.readUTF8(configFile())).includes("[mcp]\nenabled = true"), "written");
+  Assert.deepEqual(
+    McpHost.state,
+    { enabled: false, from: "session" },
+    "held off, so the page's words are true",
+  );
+  await closeFlow(tab);
+  McpHost._clearHoldForTests();
 });

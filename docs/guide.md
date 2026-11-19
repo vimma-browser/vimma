@@ -2007,7 +2007,8 @@ you, and `a` lets it work without asking until it quits, except where
 - The new setup's **Agents** step (`:setup`, chapter 5, while the new setup is built behind
   `vimma.feature.setupV2`) turns agents on as `:mcp on` and `y` do: `enter` on **On** writes
   `[mcp] enabled = true` and ends an `:mcp off` of this session. It asks nothing more, since that
-  `enter` is your answer, and it is refused when `:mcp off` ran after the step was drawn.
+  `enter` is your answer. It is refused when `:mcp off` ran after you arrived at the step, and
+  the step then puts the cursor back on **Off**.
 - `about:vimma`'s **Agents (MCP)** section shows the switch, full control's state and the agent
   workspace's tab count.
 

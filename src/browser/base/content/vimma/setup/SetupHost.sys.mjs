@@ -27,6 +27,7 @@ import {
   CHAPTERS,
   STEPS,
   agentsTurnOn,
+  choiceLines,
   choiceNote,
   editLines,
   fillStepText,
@@ -148,6 +149,14 @@ const sent = new WeakMap();
  * @property {SetupChoice[]} choices
  * @property {McpConsentTicket} [ticket]  the agents step's only
  */
+
+/**
+ * The agents step's consent ticket per page (M65): taken when the user arrives at the step,
+ * kept when the step is drawn again (a config read, `:mcp on|off`), so that a redraw never
+ * stands for a consent given after an `:mcp off`; dropped after each `enter` on it.
+ * @type {WeakMap<MozBrowser, McpConsentTicket>}
+ */
+const tickets = new WeakMap();
 
 /** The serial of the next list sent. */
 let nextSerial = 1;
@@ -365,8 +374,11 @@ export const SetupHost = {
    * choice's line (behaviour 12), and why it cannot save here (behaviours 13 and 15). The
    * choices are remembered for that page's `enter` (decision 7).
    * @param {MozBrowser | null} browser @param {string} id
+   * @param {{ fresh?: boolean }} [options]  `fresh`: the user arrives at the step (or comes
+   *   back to it after a refusal), with the cursor on the value in force: the agents step takes
+   *   a new consent ticket only then
    */
-  async stepView(browser, id) {
+  async stepView(browser, id, { fresh = false } = {}) {
     const step = builtStep(id);
     if (!step || !browser) return null;
     // The list this page had for the step is gone until the new one is sent.
@@ -379,11 +391,11 @@ export const SetupHost = {
     const { choices, selected } = stepChoices(step, inForce, { engines, omarchy });
     const serial = nextSerial++;
     const agent = step.id === "agents" ? McpHost.setupAgent() : {};
-    sentTo(browser).set(id, {
-      serial,
-      choices,
-      ...(step.id === "agents" ? { ticket: McpHost.consentTicket() } : {}),
-    });
+    if (step.id === "agents" && (fresh || !tickets.has(browser))) {
+      tickets.set(browser, McpHost.consentTicket());
+    }
+    const ticket = step.id === "agents" ? tickets.get(browser) : undefined;
+    sentTo(browser).set(id, { serial, choices, ...(ticket ? { ticket } : {}) });
     /** @type {string | null} */
     let blocked = null;
     if (step.kind === "setting") {
@@ -401,7 +413,7 @@ export const SetupHost = {
       choices: choices.map((c) => ({
         label: c.label,
         keep: !!c.keep,
-        lines: editLines(planAtEnter(step, c, inForce, { omarchy }) ?? []),
+        lines: choiceLines(step, c, inForce, { omarchy, missing: !!agent.missing }),
         note: choiceNote(step, c, inForce, agent),
       })),
       selected,
@@ -456,6 +468,8 @@ export const SetupHost = {
       written = planAtEnter(step, choice, now, { omarchy });
       return written ?? [];
     });
+    // Spent by this enter, whatever came of it: the next consent needs the step drawn anew.
+    if (step.id === "agents") tickets.delete(browser);
     if (why !== null) return { error: why };
     if (written === null) return { stale: true };
     const lines = written.length ? editLines(written) : [];

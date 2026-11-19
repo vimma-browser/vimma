@@ -6,6 +6,7 @@ import {
   PAGE_KEYS,
   STEPS,
   agentsTurnOn,
+  choiceLines,
   choiceNote,
   editLines,
   fillStepText,
@@ -473,6 +474,24 @@ describe("agents (behaviour 28, decisions 14 and 16)", () => {
       "There is no agent workspace (containers are off), so agents cannot be turned on.",
     );
     expect(choiceNote(step("updates"), step("updates").choices[1]!, held)).toBeNull();
+    // Under the hold, a workspace of yours: both what :mcp on's question says and the hold.
+    expect(choiceNote(agents, on, held, { adopted: { name: "work", tabs: 1 } })).toBe(
+      '"work" is your own workspace (1 tab, its own logins). Agents will be able to read it. ' +
+        "Also ends :mcp off for this session.",
+    );
+  });
+
+  test("on without an agent workspace shows that it writes nothing: it is refused", () => {
+    const none = inForce("schema = 2\n");
+    expect(choiceLines(agents, on, none, { missing: true })).toEqual(["Writes nothing"]);
+    expect(choiceLines(agents, on, none)).toEqual(["[mcp] enabled = true"]);
+    expect(choiceLines(agents, off, inForce(ENABLED), { missing: true })).toEqual([
+      "[mcp] enabled = false",
+    ]);
+    const updates = step("updates");
+    expect(choiceLines(updates, updates.choices[1]!, none, { missing: true })).toEqual([
+      "[updates] check = false",
+    ]);
   });
 
   test("the step says, in two lines, where agents reach and what always asks", () => {

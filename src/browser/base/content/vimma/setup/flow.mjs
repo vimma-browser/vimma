@@ -346,10 +346,18 @@ async function loadView(select = true) {
   loading = true;
   delete root.dataset.viewReady;
   if (step.id === "content_blocker") loadAddons();
-  const v = /** @type {StepView | null} */ (await SetupHost.stepView(browser(), step.id));
+  const wasInForce = view?.id === step.id ? view.choices[view.selected]?.label : undefined;
+  const v = /** @type {StepView | null} */ (
+    await SetupHost.stepView(browser(), step.id, { fresh: select })
+  );
   if (serial !== viewSerial || flowStep(state)?.id !== step.id) return;
   loading = false;
   view = v;
+  // The agents step drawn again with another row in force (`:mcp off` elsewhere): the cursor
+  // follows it, so that turning agents on takes `j` and `enter` on a screen showing the hold.
+  if (v && !select && step.id === "agents" && v.choices[v.selected]?.label !== wasInForce) {
+    select = true;
+  }
   state = { ...state, blocked: !!v?.blocked };
   if (v && step.id !== "content_blocker") {
     const kept = select ? -1 : v.choices.findIndex((c) => c.label === under);
@@ -482,8 +490,9 @@ async function runEnter(effect) {
   }
   if ("error" in r) {
     // The agents step's consent is spent, as a refused yes to `:mcp on` is: drawn again, with
-    // what `:mcp` says now, its next `enter` is a new one.
-    if (step.id === "agents") await loadView(false);
+    // what `:mcp` says now and the cursor on the row in force, so that a second `enter` at once
+    // turns nothing on.
+    if (step.id === "agents") await loadView(true);
     // A failed write keeps the step open and says why (behaviour 16).
     const notice = $("v2-notice");
     notice.hidden = false;
