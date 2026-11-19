@@ -463,7 +463,12 @@ find: { current, total } }`), sent to the parent on the viewer's events.
    Second, pdf.js records where a jump starts from its record of the view, which it updates on
    the animation frame after a scroll; the adapter calls `pdfViewer.update()` before each jump,
    so that a jump right after another (`G` then `'a`) or right after the document loaded starts
-   from where the view is.
+   from where the view is. (Since changed: `goToDestination`, which follows a link, an outline
+   entry and `ctrl+o` back to a link's entry, focuses the page's text layer once it has rendered;
+   on a busy viewer that came after the next key (a link, then `2G`) and scrolled the view back to
+   the link's page, so the walk back left from there. The adapter gives each text layer, as
+   pdf.js adds it, its own `focus` that focuses it without scrolling, so the next key's view
+   stays. Covered by `a_key_right_after_a_link_is_not_undone_by_its_page_rendering`.)
 10. **The outline is a Vimma panel, driven by `index` mode.** `Tab` asks the adapter for the
     outline and opens it in Vimma's outline panel, in the side panel's slot on the left of the
     window (one panel at a time there, as with the bookmarks panel), styled with the theme's

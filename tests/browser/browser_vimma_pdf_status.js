@@ -92,25 +92,31 @@ add_task(async function the_adapter_matches_the_shipped_pdfjs() {
         `PDFViewerApplication.${path} is ${type} (got ${found[path]})`,
       );
     }
-    // The elements the adapter measures for H, L, P and ctrl+f, and what a page that has
-    // finished drawing matches, for `state.pdf` (#1006).
+    // The elements the adapter measures for H, L, P and ctrl+f, what a page that has finished
+    // drawing matches, for `state.pdf` (#1006), and the text layers whose focus keeps the view.
     const dom = await SpecialPowers.spawn(browser, [PDFJS_DOM], async (sel) => {
       const page = content.document.querySelector(sel.page.replace("{n}", "1"));
       await ContentTaskUtils.waitForCondition(
         () => page?.matches(sel.drawn),
         "the first page has finished drawing",
       );
+      // pdf.js adds the text layer once the page's text has rendered, after its canvas.
+      await ContentTaskUtils.waitForCondition(
+        () => page?.querySelector(sel.textLayer),
+        "the first page has its text layer",
+      );
       return {
         container: (content.document.querySelector(sel.container)?.scrollHeight ?? 0) > 0,
-        page: !!page,
+        page: !!page?.matches(sel.anyPage),
         drawn: !!page?.matches(sel.drawn),
         canvas: !!page?.querySelector("canvas"),
+        textLayer: !!page?.querySelector(sel.textLayer),
       };
     });
     Assert.deepEqual(
       dom,
-      { container: true, page: true, drawn: true, canvas: true },
-      "the viewer's container and pages, and a drawn page with its canvas",
+      { container: true, page: true, drawn: true, canvas: true, textLayer: true },
+      "the viewer's container and pages, and a drawn page with its canvas and text layer",
     );
     // A page drawing again (a zoom) does not match `drawn` until it is done: pdf.js marks it
     // with both `data-loaded` and `loadingIcon` meanwhile, so neither name can change unseen.

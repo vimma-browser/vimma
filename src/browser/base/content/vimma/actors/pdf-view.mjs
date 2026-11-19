@@ -100,6 +100,9 @@ export const PDFJS_CONTRACT = Object.freeze({
 export const PDFJS_DOM = Object.freeze({
   container: "#viewerContainer",
   page: '#viewer .page[data-page-number="{n}"]',
+  // Any page, and its text layer, which pdf.js adds to the page once its text has rendered.
+  anyPage: "#viewer .page",
+  textLayer: "#viewer .page > .textLayer",
   drawn: "[data-loaded]:not(.loadingIcon)",
 });
 
@@ -234,6 +237,8 @@ export class PdfView {
   #ops;
   /** @type {(() => void) | null} the window's resize listener */
   #onResize = null;
+  /** @type {MutationObserver | null} gives each text layer pdf.js adds a focus that keeps the view */
+  #textLayers = null;
   /** @type {Window} the viewer's window, through Xrays: exported functions belong to it */
   #win;
   /**
@@ -312,6 +317,7 @@ export class PdfView {
       this.schedule();
     };
     win.addEventListener("resize", this.#onResize);
+    this.#keepViewOnTextLayerFocus();
     // pdf.js calls these with its own event objects; Cu.exportFunction keeps the arguments
     // behind Xrays (V3, V4).
     const onState = Cu.exportFunction(() => this.schedule(), win);
@@ -340,6 +346,53 @@ export class PdfView {
       }
     }
     this.schedule();
+  }
+
+  /**
+   * pdf.js's goToDestination (a link, an outline entry, `ctrl+o` back to a link's entry) focuses
+   * the page's text layer once the page has rendered, and a focus scrolls an element out of view
+   * into it. On a busy viewer that render comes after the next key (a link, then `2G`), which the
+   * focus undid: the view went back to the link's page, and the jump list's walk back (decision 9)
+   * left from there. Each text layer gets its own `focus`, an exported function (V3) that focuses
+   * it as pdf.js asks without scrolling: while the page is in view a focus scrolls nothing anyway.
+   * pdf.js adds a text layer to its page when its text has rendered, a microtask before it
+   * dispatches `textlayerrendered`, so the observer sees it first. Only the viewer's DOM is read,
+   * through Xrays.
+   */
+  #keepViewOnTextLayerFocus() {
+    const win = this.#win;
+    const keep = (/** @type {Element} */ layer) => {
+      const focus = Cu.exportFunction(() => {
+        try {
+          /** @type {HTMLElement} */ (layer).focus({ preventScroll: true });
+        } catch {
+          // the layer went with its page
+        }
+      }, win);
+      // An own property of the element, seen by the viewer's script only: Xrays keep the
+      // element's own focus for Vimma.
+      /** @type {{ focus?: unknown }} */ (Cu.waiveXrays(layer)).focus = focus;
+    };
+    try {
+      const container = this.#doc.querySelector(PDFJS_DOM.container);
+      if (!container) return;
+      for (const layer of container.querySelectorAll(PDFJS_DOM.textLayer)) keep(layer);
+      this.#textLayers = new win.MutationObserver((records) => {
+        for (const record of records) {
+          // A text layer is a page's child; a zoom refills one with its text, which needs no look.
+          const parent = /** @type {Element} */ (record.target);
+          if (parent.nodeType !== 1 || !parent.matches(PDFJS_DOM.anyPage)) continue;
+          for (const node of record.addedNodes) {
+            if (node.nodeType !== 1) continue;
+            const el = /** @type {Element} */ (node);
+            if (el.matches(PDFJS_DOM.textLayer)) keep(el);
+          }
+        }
+      });
+      this.#textLayers.observe(container, { childList: true, subtree: true });
+    } catch {
+      // a viewer without its container: its focus stays pdf.js's
+    }
   }
 
   /**
@@ -1064,6 +1117,8 @@ export class PdfView {
   destroy() {
     if (this.#timer) lazy.clearTimeout(this.#timer);
     this.#timer = null;
+    this.#textLayers?.disconnect();
+    this.#textLayers = null;
     if (this.#onResize) {
       try {
         this.#win.removeEventListener("resize", this.#onResize);
