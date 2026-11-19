@@ -806,8 +806,8 @@ async function resizeWindow(doc, w, h) {
 }
 
 /**
- * The page's footer stays below the list it follows and inside the window, or right after the
- * content when the window is too short for both (setup-v2 "Page layout").
+ * The page's footer stays below the list it follows and inside the window (setup-v2 "Page
+ * layout"); a window too short for the step scrolls the step, not under the footer.
  * @param {Document} doc @param {string} list  the list's id @param {string} what
  */
 function assertFooterClear(doc, list, what) {
@@ -831,22 +831,36 @@ add_task(async function every_step_and_stop_screen_starts_at_the_same_height() {
   registerCleanupFunction(() => window.resizeTo(startSize[0], startSize[1]));
   const progress = () => rectOf(doc.getElementById("v2-progress")).top;
   const question = () => rectOf(doc.getElementById("v2-question")).top;
+  /** How tall the step's content is, its lists unscrolled. */
+  const length = () =>
+    found(doc.getElementById("v2-step")).scrollHeight +
+    found(doc.getElementById("v2-choices")).scrollHeight +
+    found(doc.getElementById("v2-addons")).scrollHeight;
 
+  // The welcome screen stays centred.
+  const welcome = rectOf(doc.getElementById("v2-welcome"));
+  Assert.lessOrEqual(
+    Math.abs((welcome.top + welcome.bottom) / 2 - found(doc.defaultView).innerHeight / 2),
+    4,
+    `the welcome screen is centred (${welcome.top}..${welcome.bottom})`,
+  );
   await press(doc, "KEY_Enter");
   await atStep(doc, "content_blocker");
   const top = progress();
   const asked = question();
+  const lengths = [length()];
   assertFooterClear(doc, "v2-addons", "content blocker");
   await press(doc, "s");
   await atStep(doc, "search_engine");
   const engines = doc.querySelectorAll("#v2-choices li").length;
+  lengths.push(length());
   Assert.equal(progress(), top, "the search engine step starts where the content blocker does");
   Assert.equal(question(), asked, "and asks its question at the same height");
   assertFooterClear(doc, "v2-choices", "search engine");
   await press(doc, "s");
   await atStep(doc, "colours");
-  const colours = doc.querySelectorAll("#v2-choices li").length;
-  Assert.notEqual(engines, colours, "the two steps' lists differ in length");
+  lengths.push(length());
+  Assert.greater(new Set(lengths).size, 1, `the steps differ in length (${lengths})`);
   Assert.equal(progress(), top, "the colours step starts there too");
   Assert.equal(question(), asked);
   assertFooterClear(doc, "v2-choices", "colours");
@@ -869,6 +883,12 @@ add_task(async function every_step_and_stop_screen_starts_at_the_same_height() {
   await atStep(doc, "search_engine");
   Assert.equal(progress(), small, "the search engine step starts there in a small window too");
   assertFooterClear(doc, "v2-choices", "search engine, small window");
+  const engineList = found(doc.getElementById("v2-choices"));
+  Assert.greater(
+    engineList.scrollHeight,
+    engineList.clientHeight,
+    "the engine list overflows its box at 800x600",
+  );
   for (let i = 1; i < engines; i++) await press(doc, "j");
   Assert.equal(progress(), small, "moving down the list leaves the header where it is");
   const cursor = rectOf(doc.querySelector("#v2-choices li[aria-current]"));
@@ -878,6 +898,16 @@ add_task(async function every_step_and_stop_screen_starts_at_the_same_height() {
     `the last engine is scrolled into view (${cursor.top}..${cursor.bottom} in ${list.top}..${list.bottom})`,
   );
   assertFooterClear(doc, "v2-choices", "search engine at its last row, small window");
+  // A short window keeps about two and a half add-ons in view, not one.
+  await press(doc, "h");
+  await atStep(doc, "content_blocker");
+  const addons = found(doc.getElementById("v2-addons"));
+  const row = rectOf(addons.querySelector("li")).height;
+  Assert.greaterOrEqual(
+    addons.clientHeight + 1,
+    Math.min(addons.scrollHeight, 2.5 * row),
+    `the add-on list shows two and a half rows at 800x600 (${addons.clientHeight}, rows ${row})`,
+  );
   window.resizeTo(startSize[0], startSize[1]);
   await closeFlow(tab);
 });

@@ -395,6 +395,17 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
 - **A stop screen.** A heading ("The essentials are saved"), one line per saved step with its
   `config.toml` line, the next chapter's name and steps, and `enter` **Go on**, `q` **Done**.
   The last one is described in behaviour 10.
+- **Layout.** Every step and stop screen starts at the same height: the progress line and the
+  question sit a fixed distance from the top whatever the list holds, and a stop screen's
+  heading sits where the steps' progress line does, so nothing jumps from one screen to the
+  next. The footer stays at the bottom of the window. A list longer than the space left (the
+  search engines, the add-ons, the window drawings, the saved lines) scrolls in its own box
+  under a header that stays put, and the row under the cursor is kept in view; a new screen
+  opens its boxes at their top. A list shrinks to about two and a half add-on rows at the
+  least, and a short window (under 40rem, such as 800×600) gives the top's space to the list,
+  so the first choices after the one in force stay visible; a window too short for even that
+  scrolls the step, header and all, and never puts anything under the footer. The welcome
+  screen stays centred.
 - **Theme.** Theme variables only, as first-run-setup's welcome screen, so Omarchy, light and
   dark need no per-theme rules; no animation, as Vimma's chrome CSS tests require.
 
