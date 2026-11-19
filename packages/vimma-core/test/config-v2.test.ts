@@ -548,6 +548,9 @@ describe("[panel] numbers", () => {
 });
 
 // The built-in palette by name: vimma (vimma.dev's colours, dark and light), the only one.
+const MUST_BE_VIMMA =
+  'must be "vimma"; for other colours, use source = "omarchy" or [theme.colors]';
+
 describe("[theme] name", () => {
   test('defaults to "vimma"', () => {
     expect(ok(v2()).theme.name).toBe("vimma");
@@ -561,10 +564,10 @@ describe("[theme] name", () => {
 
   test("an unknown name is an error, with the nearest name when one is close", () => {
     expect(errors(v2("[theme]", 'name = "gruvbox"'))).toEqual([
-      { line: 3, path: "theme.name", message: 'must be "vimma"' },
+      { line: 3, path: "theme.name", message: MUST_BE_VIMMA },
     ]);
     expect(errors(v2("[theme]", 'name = "vima"'))).toEqual([
-      { line: 3, path: "theme.name", message: 'must be "vimma"', suggestion: "vimma" },
+      { line: 3, path: "theme.name", message: MUST_BE_VIMMA, suggestion: "vimma" },
     ]);
     expect(errors(v2("[theme]", "name = 1"))).toEqual([
       { line: 3, path: "theme.name", message: "expected a string, got an integer" },

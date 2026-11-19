@@ -865,7 +865,8 @@ function validate(raw, declared, warnings = []) {
           });
         } else if (!THEME_NAMES.includes(v)) {
           const names = THEME_NAMES.map((n) => `"${n}"`).join(" or ");
-          fail(path, `must be ${names}`, closest(v, THEME_NAMES));
+          const other = 'for other colours, use source = "omarchy" or [theme.colors]';
+          fail(path, `must be ${names}; ${other}`, closest(v, THEME_NAMES));
         }
       } else if (key === "appearance") {
         // docs/specs/theme-appearance.md B1: left out, `:theme` (a pref) decides.
@@ -1308,7 +1309,8 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     }),
     theme: {
       source: theme.source ?? defTheme.source,
-      // A removed palette's name (REMOVED_THEME_NAMES, warned about) gives the default.
+      // A name that is not built in gives the default; validate() lets only a removed one
+      // (REMOVED_THEME_NAMES) through, with a warning.
       name:
         theme.name !== undefined && THEME_NAMES.includes(theme.name) ? theme.name : defTheme.name,
       // Only when the file sets it: config.toml then wins over `:theme` (theme-appearance B4).

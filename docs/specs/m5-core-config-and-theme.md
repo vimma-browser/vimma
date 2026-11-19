@@ -145,7 +145,7 @@ Magenta hints stand apart from the accent that marks the normal badge and focus.
 that does not read as the normal badge's aqua.)
 
 - `VIMMA_DARK` / `VIMMA_LIGHT`: vimma.dev's colours, the built-in palette. `BUILTIN_THEMES` maps
-  `[theme] name` to `{ dark, light? }`; `"vimma"` is its only name. (The palette this section
+  `[theme] name` to `{ dark, light }`; `"vimma"` is its only name. (The palette this section
   first described was removed in #1383; a config.toml that still names it applies, with
   `"vimma"` and a warning.)
 - `resolveTheme({ theme, omarchy?, omarchyLightMode?, scheme? })` →
