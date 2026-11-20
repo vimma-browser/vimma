@@ -477,6 +477,21 @@ describe("text-field keys before default [keys] bindings", () => {
     }
   });
 
+  // The prefix must work in every mode (pdf-mode decision 5): a text-field key cannot be it (#1367).
+  test("a prefix on a text-field key is refused, as the setup's prefix step refuses it", () => {
+    expect(() => compileKeymap({ keys: { prefix: "ctrl+w" } })).toThrow(
+      /ctrl\+w deletes a word in text fields/,
+    );
+    expect(() => compileKeymap({ keys: { prefix: "ctrl+h" } })).toThrow(KeymapError);
+    // On macOS Cocoa makes ctrl+h a backspace itself and Vimma adds none: no text-field key.
+    expect(compileKeymap({ keys: { prefix: "ctrl+h" } }, { mac: true }).prefix.key).toBe("h");
+    expect(() => compileKeymap({ keys: { prefix: "ctrl+w" } }, { mac: true })).toThrow(KeymapError);
+    const off = compileKeymap({ keys: { prefix: "ctrl+w" }, modal: { insert_editing: false } });
+    for (const mode of ["insert", "command"]) {
+      expect(off.trie(mode as Mode).children.get("ctrl+w"), mode).toBeDefined();
+    }
+  });
+
   test("other default chords stay bound in insert mode", () => {
     expect(at(compileKeymap(), "insert", "ctrl+l")).toBe("focus_urlbar");
   });

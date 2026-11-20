@@ -699,7 +699,7 @@ that is not the default. To close the tab from a text field as Firefox's `ctrl+w
 pairs it with the side panel). `[modal] insert_editing = false` in `config.toml` turns them off (then
 `ctrl+m` and `ctrl+j` mute and search in text fields too); Firefox's own actions on those keys
 stay off either way. On macOS, `ctrl+h` is already a backspace in text fields, so Vimma adds
-nothing there.
+nothing there. While they are on, none of them can be the prefix ([config.toml](#configtoml)).
 
 **`ctrl+n` and `ctrl+p`, or `ctrl+j` and `ctrl+k`, move through a suggestion list.** While a
 search field or any other field on a page shows its list of suggestions (a search engine's
@@ -4812,7 +4812,11 @@ accent = "#ff9e64"
 - **Notation:** `prefix+t` means the prefix (`[keys] prefix`, default `ctrl+b`), then `t`;
   `<leader>ff` means the leader (`[modal] leader`, default `space`), then `f f`; keys in a
   sequence are separated by spaces. The `ctrl+b ?` overlay, `:map` and `about:vimma` show
-  bindings as the keys you press, with your prefix and leader.
+  bindings as the keys you press, with your prefix and leader. While `[modal] insert_editing` is
+  on, the prefix cannot be one of Vim's text-field keys (`ctrl+w`, `ctrl+u`, `ctrl+j`, `ctrl+m`,
+  and `ctrl+h` except on macOS): a text field takes that key, so the prefix would do nothing
+  there, and the file is refused with that reason (`keys.prefix: ctrl+w deletes a word in text
+fields …`). Pick another prefix, such as `ctrl+b`, or set `insert_editing = false`.
 - **Reload:** save the file and Vimma picks it up within 2 seconds, in every window, without a
   restart. `:source` reads it at once.
 - **Another file:** `:source work.toml` loads that file instead, the same way: whole, over the

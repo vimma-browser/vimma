@@ -105,6 +105,30 @@ describe("a bad prefix names keys.prefix and its line (#1273)", () => {
   });
 });
 
+describe("a prefix that is a text-field key is refused while insert_editing is on (#1367)", () => {
+  const reason = (chord: string, does: string) =>
+    `config.toml:3: keys.prefix: ${chord} ${does} in text fields ([modal] insert_editing), where ` +
+    "the prefix would not work: pick another chord, such as ctrl+b";
+
+  test("names the key and what it does there, and suggests the default", () => {
+    expect(errors(cfg("[keys]", 'prefix = "ctrl+w"'))).toEqual([
+      reason("ctrl+w", "deletes a word"),
+    ]);
+    expect(errors(cfg("[keys]", 'prefix = "ctrl+h"'))).toEqual([
+      reason("ctrl+h", "deletes a character"),
+    ]);
+    for (const chord of ["ctrl+u", "ctrl+j", "ctrl+m"]) {
+      expect(errors(cfg("[keys]", `prefix = "${chord}"`)), chord).toHaveLength(1);
+    }
+  });
+
+  test("with insert_editing = false the prefix is accepted", () => {
+    expect(errors(cfg("[keys]", 'prefix = "ctrl+w"', "[modal]", "insert_editing = false"))).toEqual(
+      [],
+    );
+  });
+});
+
 describe("an unclosed bracket at the end of the file (#1273)", () => {
   test("is reported at its own line, not one past the end", () => {
     expect(parseToml("a = 1\noops = [\n")).toEqual({
