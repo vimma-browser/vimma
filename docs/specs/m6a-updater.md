@@ -408,6 +408,13 @@ download against that SHA-512 before installing it (docs/security/16-update-chec
 `flatpak`, whose hint is `flatpak update dev.vimma.browser`; spec [flatpak](flatpak.md),
 decision 10.)
 
+(Since changed: the package from Vimma's pacman repository has the marker
+`vimma-package=pacman`, which gives the install type `pacman` with the hint `sudo pacman -Syu`.
+A `.deb` whose `/etc/apt/sources.list.d/vimma.sources` exists gets the hint
+`sudo apt update && sudo apt upgrade` in place of the download, and an `.rpm` gets
+`sudo dnf upgrade vimma` or `sudo zypper up vimma` for each repository file that exists; spec
+[package-repositories](package-repositories.md), decisions 18 and 26.)
+
 Firefox only tests that the file exists; the `vimma-package=` line is for Vimma's hint text.
 Detection order in `VimmaUpdates.sys.mjs`: no `omni.ja` in the GRE directory (a build run from
 its objdir) → source build (decision 28; once sub-PR 2 builds the updater in, `AppConstants.MOZ_UPDATER`

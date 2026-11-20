@@ -5092,9 +5092,10 @@ Except for the AppImage and such a tarball, it installs nothing; it tells you.
 
   Vimma's signed apt, dnf, zypper and pacman repositories are not published yet. Once they
   are, a `.deb` or `.rpm` installed from one is the same file as the release's, so `:update`
-  tells them apart by the repository's own setup file (`/etc/apt/sources.list.d/vimma.sources`,
-  `/etc/yum.repos.d/vimma.repo` or `/etc/zypp/repos.d/vimma.repo`): it checks only whether the
-  file exists, never reads it, and shows the upgrade command of each one present.
+  tells them apart by the repository's own setup file (`/etc/apt/sources.list.d/vimma.sources`
+  for a `.deb`; `/etc/yum.repos.d/vimma.repo` or `/etc/zypp/repos.d/vimma.repo` for an `.rpm`):
+  it checks only whether the file exists, never reads it, and shows the command of each
+  package manager set up for that package's format.
 
 - **What a check sends:** a GET for
   `https://updates.vimma.dev/updates/browser/<target>/<channel>/update.xml`, where the target is
