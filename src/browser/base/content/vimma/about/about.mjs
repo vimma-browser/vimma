@@ -61,6 +61,7 @@ const INSTALL_TYPES = /** @type {Record<string, string>} */ ({
   rpm: ".rpm",
   aur: "AUR vimma-bin",
   "pkgbuild-release": "the release's PKGBUILD",
+  pacman: "Vimma's pacman repository",
   flatpak: "Flatpak (Flathub)",
   packaged: "a package this version does not know",
   homebrew: "Homebrew cask",
@@ -159,10 +160,13 @@ function renderUpdates(u) {
   const body = [dl(rows)];
   if (u.offer) {
     const steps = u.offer.steps;
+    // Only a .deb's or .rpm's steps carry a note (core updateSteps); staged steps never do.
+    const note = "note" in steps ? steps.note : undefined;
     body.push(
       el("h3", {}, "How to update"),
       el("p", {}, steps.text),
       ...steps.commands.map((c) => el("pre", { class: "command" }, el("code", {}, c))),
+      ...(typeof note === "string" ? [el("p", { id: "update-note" }, note)] : []),
       el("p", {}, "Release notes: ", el("a", { href: steps.link }, steps.link)),
     );
   }

@@ -5082,12 +5082,20 @@ Except for the AppImage and such a tarball, it installs nothing; it tells you.
   | AUR `vimma-bin`           | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                   |
   | `.deb`                    | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`                                                                      |
   | `.rpm`                    | download `vimma-X.Y.Z-1.x86_64.rpm`, check it, then `sudo dnf install` it (Fedora) or `sudo zypper install --allow-unsigned-rpm` it (openSUSE)                   |
+  | Repository (unpublished)  | `sudo apt update && sudo apt upgrade`, `sudo dnf upgrade vimma`, `sudo zypper up vimma` or `sudo pacman -Syu`, once the repository is set up                     |
   | Tarball                   | nothing when it updates itself (above); otherwise quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory             |
   | AppImage                  | nothing: it replaces its own file (above); if it cannot, download the new AppImage next to yours, check it, and rename it over yours                             |
   | Flatpak (once on Flathub) | `flatpak update dev.vimma.browser`, or your software centre; Flathub builds a release after it is published, so it can arrive some hours after the notice        |
   | Homebrew (macOS)          | `brew upgrade --cask vimma`                                                                                                                                      |
   | `.dmg` (macOS)            | no command: quit Vimma, download the new `.dmg` from the release page and drag Vimma over the copy in Applications; macOS asks again on [the first open](#macos) |
   | A build from source       | nothing: source builds never check (pull and rebuild)                                                                                                            |
+
+  Vimma's signed apt, dnf, zypper and pacman repositories are not published yet. Once they
+  are, a `.deb` or `.rpm` installed from one is the same file as the release's, so `:update`
+  tells them apart by the repository's own setup file (`/etc/apt/sources.list.d/vimma.sources`
+  for a `.deb`; `/etc/yum.repos.d/vimma.repo` or `/etc/zypp/repos.d/vimma.repo` for an `.rpm`):
+  it checks only whether the file exists, never reads it, and shows the command of each
+  package manager set up for that package's format.
 
 - **What a check sends:** a GET for
   `https://updates.vimma.dev/updates/browser/<target>/<channel>/update.xml`, where the target is

@@ -111,6 +111,10 @@ whose libraries they install by hand.
    required asset, so every release from this one on carries it; a release before it cannot be
    re-published from `main` (docs/runbook/ci-update-keys-and-update-host.md, "Re-run, pull an
    update, and serials").
+   (Since changed: [package-repositories](package-repositories.md) adds a repository for dnf
+   and zypper; with `/etc/yum.repos.d/vimma.repo` or `/etc/zypp/repos.d/vimma.repo` present,
+   `:update` shows `sudo dnf upgrade vimma` or `sudo zypper up vimma` for each one present, its
+   decisions 18 and 26, and without either the download commands stay.)
 9. **Smoke-tested on Fedora 44 and openSUSE Leap 16.0, pinned by digest.** Reason: those are
    the current releases of each, and each run installs the release's current packages, so a
    digest only fixes the base image. Tumbleweed was not chosen, because its rolling repository
