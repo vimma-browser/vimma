@@ -1233,8 +1233,8 @@ describe("updateSteps (:update and about:vimma)", () => {
     expect(none.note).toBeUndefined();
   });
 
-  // Open question 4, answered (a): one line pointing at the guide's repository section, shown
-  // only once that section exists (vimma.feature.packageRepos, until the repositories are live).
+  // Decision 22: one line pointing at the guide's repository section, shown only once that
+  // section exists (decision 25: vimma.feature.packageRepos, until the repositories are live).
   test("without the repository, the download command and, when asked, one line to the guide", () => {
     for (const type of ["deb", "rpm"] as const) {
       const plain = updateSteps(type, hashed, where);

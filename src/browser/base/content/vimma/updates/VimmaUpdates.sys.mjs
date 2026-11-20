@@ -83,11 +83,11 @@ const INTERVAL_PREF = "app.update.interval";
 /** Test-only, honoured only in automation: extra pinned keys, and the install type. */
 const TEST_KEYS_PREF = "vimma.update.testKeys";
 const TEST_TYPE_PREF = "vimma.update.installType";
-/** Test-only, honoured only in automation: a directory that stands in for `/` for the repository files. */
+/** Test-only, honoured only in automation: a directory standing in for `/` (REPOSITORY_FILES). */
 const TEST_REPO_ROOT_PREF = "vimma.update.testRepoRoot";
 /**
  * The `.deb` and `.rpm` hint's line pointing at the guide's repository section (spec
- * package-repositories, open question 4), off until the repositories and that section are
+ * package-repositories, decisions 22 and 25), off until the repositories and that section are
  * published: until then the line would point at nothing.
  */
 const REPO_HINT_PREF = "vimma.feature.packageRepos";
