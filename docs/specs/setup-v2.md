@@ -139,7 +139,7 @@ none of its choices (behaviour 9).
 |                       | Bring your data | open the import wizard (Chrome, Chromium, Brave, Edge, Opera, Vivaldi); from Firefox, how to use Sync | action: Firefox's import wizard                                            |
 | 3. The window         | Address bar     | shown, hidden (the default)                                                                           | `[ui] toolbar`                                                             |
 |                       | Tab line        | off, always, only with two or more tabs                                                               | `[ui] tabline` (decision 15)                                               |
-| 4. Your keys          | Prefix key      | `ctrl+b`, `ctrl+a`                                                                                    | `[keys] prefix`                                                            |
+| 4. Your keys          | Prefix key      | `ctrl+b`, a key the user presses (decision 21; `ctrl+a` before #1402)                                 | `[keys] prefix`                                                            |
 |                       | Hint letters    | the home row of QWERTY (`asdfghjkl`), Colemak (`arstdhneio`), Dvorak (`aoeuidhtns`)                   | `[modal] hint_chars`                                                       |
 | 5. Privacy and agents | Updates         | tell me when a release is out, or never check                                                         | `[updates] check`                                                          |
 |                       | Agents          | off, or on for local AI agents through `vimma-ctl mcp`                                                | `[mcp] enabled`                                                            |
@@ -461,37 +461,56 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     key but `esc` and `enter` is the key being chosen, so `q`, `s`, `h` and the prefix in force
     reach the page as keys (VimmaHost leaves every chord to the page then), and a key the page
     refuses stays on screen with the reason. A prefix of the user's own already in force is the
-    second row, labelled with that chord, selected and in force: `enter` on it writes nothing, as
-    on any value in force (behaviour 8), and `space` waits for another key. Reason: a list of
+    second row, labelled with that chord, selected and in force. It is planned as **Keep**:
+    `enter` on it writes nothing, even when another program changed the file meanwhile
+    (behaviours 8 and 14), and `space` waits for another key. Reason: a list of
     candidates can only guess at the chord someone prefers (tmux's `ctrl+a`, `alt+w`, a key their
     window manager leaves free), while a key pressed is exactly the chord the keymap will see.
     Refused, each with the reason on the page, by the keymap's own rules rather than a list of
     the setup's own:
-    - **a key without ctrl, alt or meta** (a letter, a digit, `space`, shift with a letter;
-      `isShortcutChord`, which also lets a function key through), because the prefix works in
-      every mode and would take a key the user types;
+    - **a key without ctrl, alt or meta** (a letter, a digit, `space`, shift with a letter, a
+      function key such as `f2`), because the prefix works in every mode and would take a key
+      the user types. A function key alone works in every mode too (`isShortcutChord`), but one
+      rule is easier to state and to remember than one with an exception;
+    - **a character Option composes** (macOS; AltGr elsewhere): `chordFromEvent` reads
+      option+w as `∑`, the character it types, so the keymap would see `∑` (or `alt+∑`), never
+      `alt+w`. The page says so and asks for a key with ctrl or meta, because recording `alt+w`
+      from the physical key would save a prefix that never fires, and saving `∑` would surprise;
     - **`esc`, `enter` and `tab`, with any modifier**, because `esc` is the way back to normal
       mode and out of a pending key (site-unbind decision 3), and `enter` and `tab` are what
       forms, fields and focus need;
     - **the leader** (`[modal] leader`), because one key cannot start both layers;
     - **a key `[firefox] enable` gives back to Firefox**, because the user gave it to Firefox;
+    - **the keys Firefox and the system keep** (the inventory's fate d in Firefox's main
+      keyset but select all): copy, paste, cut, undo and redo (`ctrl+c`, `ctrl+v`, `ctrl+x`,
+      `ctrl+z`, `ctrl+shift+z`; `meta+…` on macOS), and macOS's quit, minimize, hide and settings
+      (`meta+q`, `meta+m`, `meta+h`, `alt+meta+h`, `meta+,`), because losing copy and paste in
+      every field, or a prefix the menu bar takes first, is no choice a setup should let through;
+    - **Vim's text-field keys while `[modal] insert_editing` is on** (`ctrl+w`, `ctrl+u`,
+      `ctrl+h`, `ctrl+j`, `ctrl+m`; not `ctrl+h` on macOS, where Cocoa runs it and Vimma adds
+      none; `insertEditCommand`), because the keymap gives those keys to the field in insert,
+      command and help mode, so the prefix would not work in a text field. `ctrl+w` and `ctrl+u`
+      are also bound by default, but they are refused for this reason even when unbound;
     - **the first key of a binding not written with `prefix`, in any mode**
       (`Keymap.keysOutsidePrefix`, after `[unbind]` and the user's `[keys]`): `ctrl+l` runs
       `focus_urlbar`, and Firefox's tab and window keys (`ctrl+w`, `ctrl+t`, `ctrl+n`, `ctrl+q`)
       are Vimma bindings by default, so the prefix would take them from their action. A key the
       user unbound is free, and bindings written with `prefix` move with it.
 
-    Taken, with a note on what it no longer does: a key Firefox keeps for text fields or menus
-    (fate d of the inventory, such as `ctrl+a`, select all), because `ctrl+a` is tmux's prefix
-    and the setup offered it before; the note says what the user gives up. The prefix in force,
+    Taken, with a note on what it no longer does: select all (`ctrl+a`, `meta+a` on macOS), and
+    the rest of fate d outside Firefox's main keyset (a menu's `alt+f`, an address bar key),
+    because `ctrl+a` is tmux's prefix and the setup offered it before; the note says what the
+    user gives up. The prefix in force,
     pressed again, writes nothing. The page judges each key by rules the host sends with the step
     (`prefixRules`: the prefix in force, the leader, the bindings of `show_keybinds`, the keys
-    outside the prefix, the keys given to Firefox and those of fate d), as plain data, so that
+    outside the prefix, the keys given to Firefox, the text-field keys, the keys Firefox and the
+    system keep, and the rest of fate d), as plain data, so that
     the keys pressed stay in the page; on `enter` it sends the step, the row and the chord. The
     host reads the chord as one chord in Vimma's notation (`readPrefix`), judges it again by the
     keymap of config.toml as it is at `enter`, writes only `[keys] prefix` with the chord's
     canonical text, and that edit, as every setup write, is refused when the file would not load
     with it (decision 5). Rejected: refusing every key of fate d, because it refuses `ctrl+a`;
+    recording a composed Option key by its physical key, because the keymap would never see it;
     adding the "first key of another binding" rule to `compileKeymap`, because a file that loads
     today would then stop loading; and a third row for `ctrl+a`, because a pressed key covers it.
 
@@ -617,6 +636,11 @@ vitest, `packages/vimma-core/test/setup-steps.test.ts`:
 - `a key Firefox keeps for fields is taken, with a note on what it no longer does`
 - `the key that lists every key is drawn with the chord pressed`
 - `the host reads only one chord in Vimma's notation`
+- `Vim's text-field keys are refused while insert_editing is on: the prefix would not work in a field`
+- `copy, paste, cut, undo and redo, and macOS's own keys, are refused`
+- `a character Option composes is refused: Vimma would not see alt with that letter`
+- `keysOutsidePrefix` (`packages/vimma-core/test/keymap.test.ts`): sequences, `[unbind]` of a
+  `[modal.*]` binding, a shadowed `[keys]` binding, `[firefox] enable`
 
 vitest, `packages/vimma-core/test/setup.test.ts` (state machine):
 
@@ -664,7 +688,9 @@ through the search engine step and `agent_role_cannot_open_setup`):
 - `prefix_step_offers_ctrl_b_and_a_key_of_your_own` (decision 21)
 - `prefix_step_records_a_key_and_esc_goes_back_to_the_list`
 - `prefix_step_refuses_a_key_the_keymap_uses`
-- `the_host_judges_the_pressed_prefix_again`
+- `the_host_judges_the_pressed_prefix_again` (also against a binding added to the file after
+  the step was drawn)
+- `waiting_for_a_key_holds_only_on_the_setup_tab`
 - `default_browser_step_calls_the_shell_service`
 - `default_browser_step_says_when_vimma_already_is_the_default`
 - `default_browser_step_says_why_it_cannot_make_vimma_the_default`

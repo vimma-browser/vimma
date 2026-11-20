@@ -1290,6 +1290,27 @@ add_task(async function prefix_step_records_a_key_and_esc_goes_back_to_the_list(
   await closeFlow(tab);
 });
 
+add_task(async function waiting_for_a_key_holds_only_on_the_setup_tab() {
+  const { tab, doc } = await openFlow();
+  await press(doc, "4");
+  await atStep(doc, "prefix_key");
+  await press(doc, "j", "KEY_Enter");
+  Assert.equal(doc.documentElement.dataset.recording, "true");
+  // Another tab: the prefix is Vimma's there, while the setup page still waits.
+  const other = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:blank");
+  EventUtils.synthesizeKey("b", { ctrlKey: true }, window);
+  await TestUtils.waitForTick();
+  Assert.deepEqual(found(VimmaHost._state(window)).dispatcher.pending(), ["prefix"]);
+  EventUtils.synthesizeKey("KEY_Escape", {}, window);
+  await TestUtils.waitForTick();
+  Assert.equal(recordedKey(doc), "", "nothing reached the setup page");
+  BrowserTestUtils.removeTab(other);
+  await BrowserTestUtils.switchTab(gBrowser, tab);
+  await press(doc, "KEY_Escape");
+  Assert.ok(!doc.documentElement.dataset.recording, "back to the list");
+  await closeFlow(tab);
+});
+
 add_task(async function prefix_step_refuses_a_key_the_keymap_uses() {
   const { tab, doc } = await openFlow();
   await press(doc, "4");
@@ -1354,6 +1375,9 @@ add_task(async function a_pressed_prefix_writes_one_line_and_later_steps_name_it
 });
 
 add_task(async function the_host_judges_the_pressed_prefix_again() {
+  // No poll reads config.toml while this task edits it: a read would draw the step again and
+  // make the list this task holds stale.
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.config.pollMs", 3_600_000]] });
   const { tab, doc } = await openFlow();
   await press(doc, "4");
   await atStep(doc, "prefix_key");
@@ -1377,12 +1401,21 @@ add_task(async function the_host_judges_the_pressed_prefix_again() {
     Assert.deepEqual(r, { error: "not a key the prefix step takes" }, JSON.stringify(chord));
   }
   Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
+  // Judged against the file as it is at enter: a binding added after the step was drawn wins.
+  const bound = 'schema = 2\n\n[keys]\nclose_tab = ["ctrl+alt+y"]\n';
+  await IOUtils.writeUTF8(configFile(), bound);
+  const late = await save(1, "ctrl+alt+y");
+  Assert.ok("error" in late && late.error.includes("already runs close_tab"), JSON.stringify(late));
+  Assert.equal(await IOUtils.readUTF8(configFile()), bound, "the file is as it was");
+  // Not read again: the list this task holds stays the page's.
+  await IOUtils.remove(configFile());
   // The chord is written as Vimma writes it.
   const r = await save(1, "control+a");
   Assert.deepEqual(r, { written: ['[keys] prefix = "ctrl+a"'] });
   await closeFlow(tab);
   await removeConfig();
   await ConfigHost.reload();
+  await SpecialPowers.popPrefEnv();
 });
 
 add_task(async function a_custom_prefix_and_hint_letters_offer_keep_and_write_nothing() {

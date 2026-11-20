@@ -136,6 +136,19 @@ export function insertEditCommand(chord, { mac = false } = {}) {
 }
 
 /**
+ * Every chord of Vim's text-field keys on this platform, with what it runs (insertEditCommand),
+ * for the setup's prefix step, which refuses them (docs/specs/setup-v2.md decision 21).
+ * @param {{ mac?: boolean }} [options]
+ * @returns {[chord: string, command: string][]}
+ */
+export function insertEditChords({ mac = false } = {}) {
+  return Object.keys(INSERT_EDIT_KEYS).flatMap((chord) => {
+    const command = insertEditCommand(chord, { mac });
+    return command ? [[chord, command]] : [];
+  });
+}
+
+/**
  * @param {boolean} editable
  * @param {string} reason
  * @returns {EditableResult}

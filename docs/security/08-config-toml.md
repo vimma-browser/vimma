@@ -18,7 +18,9 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   one value a page proposes is the prefix step's own key: the host reads it as one chord in
   Vimma's key notation, judges it again by the keymap of the file at `enter` (a key with ctrl,
   alt or meta, not esc, enter or tab, not the leader, not a key `[firefox] enable` gives back,
-  not the first key of a binding outside the prefix), and writes only `[keys] prefix` with that
+  not copy, paste, cut, undo, redo or macOS's quit, hide, minimize and settings, not a
+  text-field key while insert editing is on, not the first key of a binding outside the prefix),
+  and writes only `[keys] prefix` with that
   chord's canonical text, so the page can neither name another key nor put text of its own in
   the file. The keys pressed while the step waits for one stay in the page's memory: Vimma does
   not keep them among its recent keys, and only the chord saved reaches the host.

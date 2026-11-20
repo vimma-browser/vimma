@@ -22,6 +22,7 @@ const { flowAdvance, flowChapters, flowKey, flowRecord, flowStep, formatUsers, i
 const {
   HINT_LAYOUTS,
   actionOutcome,
+  composedRefusal,
   editLines,
   hintRow,
   planPrefix,
@@ -96,6 +97,12 @@ let pressed = [];
  * @type {string | null}
  */
 let guessed = null;
+/**
+ * Why the key the prefix step shows is a character Option composed (composedRefusal), kept with
+ * it so that a redraw for a config read keeps refusing it; null for any other key.
+ * @type {string | null}
+ */
+let composed = null;
 /** The content blocker's lists. @type {AddonEntry[]} */
 let curated = [];
 /** @type {AddonEntry[]} */
@@ -505,11 +512,9 @@ function onRecordKey(e) {
   }
   if (busy) return;
   const rules = view?.prefixRules;
-  state = flowRecord(
-    state,
-    text,
-    rules ? prefixRefusal(text, rules) : "The keys are not known yet.",
-  );
+  composed = composedRefusal(e, text);
+  const refused = rules ? (composed ?? prefixRefusal(text, rules)) : "The keys are not known yet.";
+  state = flowRecord(state, text, refused);
   draw();
 }
 
@@ -634,7 +639,7 @@ async function loadView(select = true) {
   // A key pressed before config.toml was read again is judged by the keymap now in force.
   const r = state.recording;
   if (r?.chord && v?.prefixRules) {
-    state = flowRecord(state, r.chord, prefixRefusal(r.chord, v.prefixRules));
+    state = flowRecord(state, r.chord, composed ?? prefixRefusal(r.chord, v.prefixRules));
   }
   if (state.recording && (select || v?.blocked)) state = { ...state, recording: null };
   if (v && step.id !== "content_blocker") {

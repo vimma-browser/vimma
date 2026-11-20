@@ -13,7 +13,8 @@
 import { COMMANDS } from "../keys/cmdline.mjs";
 import { getAction } from "../keys/actions.mjs";
 import { displayBinding, formatKey, parseKey } from "../keys/keys.mjs";
-import { firefoxShortcuts, isShortcutChord } from "../keys/firefox-keys.mjs";
+import { firefoxShortcuts } from "../keys/firefox-keys.mjs";
+import { INSERT_ENTER, insertEditChords } from "../keys/editable.mjs";
 import { tomlLiteral } from "../config/toml.mjs";
 import { DEFAULT_THEME_NAME } from "../config/theme.mjs";
 import { mcpAdoptedWarning, mcpState } from "../agent/agent.mjs";
@@ -649,8 +650,8 @@ function colourChoices(step, inForce, omarchy) {
 
 /**
  * The prefix step's two rows (decision 21): the built-in `ctrl+b`, and a key the user presses.
- * A prefix of the user's own in force is that second row, selected, and `enter` on it writes
- * nothing, as on any value in force; there is no Keep.
+ * A prefix of the user's own in force is that second row, selected, and planned as Keep: `enter`
+ * on it writes nothing, even when another program changed the file meanwhile (behaviour 14).
  * @param {SetupStep} step @param {InForce} inForce
  * @returns {{ choices: SetupChoice[], selected: number }}
  */
@@ -662,11 +663,7 @@ function prefixChoices(step, inForce) {
   const own =
     at >= 0
       ? { label: "Choose your own", edits: [], record: true }
-      : {
-          label: `Your own: ${now}`,
-          edits: [{ table: "keys", key: "prefix", value: now }],
-          record: true,
-        };
+      : { label: `Your own: ${now}`, edits: [], keep: true, record: true };
   return { choices: [...builtIn, own], selected: at >= 0 ? at : builtIn.length };
 }
 
@@ -682,9 +679,22 @@ function prefixChoices(step, inForce) {
  * @property {Record<string, string>} taken  the first key of each binding not written with
  *   `prefix`, with its action (Keymap.keysOutsidePrefix)
  * @property {string[]} firefox  the chords `[firefox] enable` gives back to Firefox
- * @property {Record<string, string>} shared  what Firefox does with a key it keeps for fields and
- *   menus (the inventory's fate d), which the prefix would take from it
+ * @property {Record<string, string>} fields  Vim's text-field keys while `[modal]
+ *   insert_editing` is on, with what each does there: the prefix would not work in a field
+ * @property {Record<string, string>} kept  the keys of Firefox's main keyset that it and the
+ *   system keep (the inventory's fate d: copy, paste, cut, undo, redo, and macOS's quit, hide,
+ *   minimize and settings), with what each does, except select all
+ * @property {Record<string, string>} shared  what Firefox does with a key of fate d the prefix may
+ *   take from it (select all, a menu, an address bar key)
  */
+
+/** What Vim's text-field keys do in a field, by editor command (editable.mjs). */
+const FIELD_KEYS = /** @type {Record<string, string>} */ ({
+  cmd_deleteWordBackward: "deletes a word",
+  cmd_deleteToBeginningOfLine: "deletes to the start of the line",
+  cmd_deleteCharBackward: "deletes a character",
+  [INSERT_ENTER]: "is enter",
+});
 
 /** @param {Keymap} keymap @returns {PrefixRules} */
 export function prefixRules(keymap) {
@@ -701,9 +711,21 @@ export function prefixRules(keymap) {
     }
   }
   /** @type {Record<string, string>} */
+  const kept = {};
+  /** @type {Record<string, string>} */
   const shared = {};
   for (const r of firefoxShortcuts({ mac })) {
-    if (r.fate === "d" && !(r.chord in shared)) shared[r.chord] = r.does;
+    if (r.fate !== "d" || r.chord in kept || r.chord in shared) continue;
+    // Select all stays takeable: ctrl+a is tmux's prefix, which the step offered before.
+    if (r.source === "main" && r.does !== "select all") kept[r.chord] = r.does;
+    else shared[r.chord] = r.does;
+  }
+  /** @type {Record<string, string>} */
+  const fields = {};
+  if (/** @type {Record<string, unknown>} */ (user.modal ?? {}).insert_editing !== false) {
+    for (const [chord, command] of insertEditChords({ mac })) {
+      fields[chord] = FIELD_KEYS[command] ?? "is a key";
+    }
   }
   return {
     inForce: formatKey(keymap.prefix),
@@ -711,6 +733,8 @@ export function prefixRules(keymap) {
     lists: keymap.bindingsFor("show_keybinds").filter(fromPage),
     taken: Object.fromEntries(keymap.keysOutsidePrefix()),
     firefox,
+    fields,
+    kept,
     shared,
   };
 }
@@ -737,12 +761,19 @@ export function prefixRefusal(chord, rules) {
   if (NEVER_PREFIX.has(c.key)) {
     return `${chord}: esc, enter and tab stay with Vimma, pages and forms, so none of them can be the prefix.`;
   }
-  if (!isShortcutChord(c)) {
+  // ctrl, alt or meta, function keys included: one rule a user can remember (decision 21).
+  if (!c.ctrl && !c.alt && !c.meta) {
     return `${chord} alone is a key you type: the prefix needs ctrl, alt or meta with it, such as ctrl+a.`;
   }
   if (chord === rules.leader) return `${chord} is the leader key ([modal] leader).`;
   if (rules.firefox.includes(chord)) {
     return `${chord} is Firefox's own: [firefox] enable in config.toml gives it back to Firefox.`;
+  }
+  const kept = rules.kept[chord];
+  if (kept) return `${chord} is ${kept}, which Vimma leaves to Firefox and the system.`;
+  const field = rules.fields[chord];
+  if (field) {
+    return `${chord} ${field} in text fields, where the prefix would not work. Choose another key.`;
   }
   const action = rules.taken[chord];
   if (action) {
@@ -772,6 +803,20 @@ export function prefixListKeys(chord, rules) {
   const prefix = parseKey(chord);
   const leader = parseKey(rules.leader);
   return rules.lists.map((text) => displayBinding(text, { prefix, leader }));
+}
+
+/**
+ * Why a key pressed on the page is not the chord its keys name, or null: Option on macOS (AltGr
+ * elsewhere) composes a character, so option+w reaches Vimma as `∑`, never as `alt+w`
+ * (chordFromEvent), and a prefix recorded as either would mislead (decision 21).
+ * @param {{ key: string, code?: string, altKey: boolean }} e  the keydown
+ * @param {string} chord  what chordFromEvent made of it, canonical
+ * @returns {string | null}
+ */
+export function composedRefusal(e, chord) {
+  const letter = /^Key([A-Z])$/.exec(e.code ?? "")?.[1]?.toLowerCase();
+  if (!e.altKey || !letter || /^[a-z]$/i.test(e.key)) return null;
+  return `alt+${letter} types ${e.key} on this keyboard, so Vimma sees ${chord}, not alt+${letter}. Choose a key with ctrl or meta.`;
 }
 
 /**

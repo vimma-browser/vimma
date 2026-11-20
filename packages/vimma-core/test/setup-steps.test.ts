@@ -21,6 +21,7 @@ import {
   planAtEnter,
   planChoice,
   planPrefix,
+  composedRefusal,
   prefixHints,
   prefixListKeys,
   prefixNote,
@@ -35,7 +36,7 @@ import {
 import { parseConfig, setConfigKeysText } from "../src/config/config.mjs";
 import { compileKeymap } from "../src/keys/keymap.mjs";
 import { getAction } from "../src/keys/actions.mjs";
-import { parseKey } from "../src/keys/keys.mjs";
+import { chordFromEvent, formatKey, parseKey } from "../src/keys/keys.mjs";
 
 import type { SetupChoice, SetupStep } from "../src/system/setup-steps.mjs";
 
@@ -182,7 +183,8 @@ describe("keys named on the page (decisions 8 and 9)", () => {
     const r = stepChoices(step("prefix_key"), now);
     expect(r.choices.map((c) => c.label)).toEqual(["ctrl+b", "Your own: ctrl+space"]);
     expect(r.selected).toBe(1);
-    expect(r.choices[1]?.record).toBe(true);
+    // Planned as Keep: enter writes nothing, whatever the file says by then (behaviour 14).
+    expect(r.choices[1]).toMatchObject({ record: true, keep: true, edits: [] });
     expect(prefixHints(step("prefix_key"), own, r.choices)).toEqual([
       ["ctrl+b ?"],
       ["ctrl+space ?"],
@@ -229,9 +231,12 @@ describe("choices, Keep and the line a step writes (behaviours 8, 9 and 12)", ()
     expect(r.choices[0]).toEqual({ label: 'Keep "qwerty"', edits: [], keep: true });
     expect(r.selected).toBe(0);
     expect(r.choices.length).toBe(step("hint_letters").choices.length + 1);
-    // The prefix step has no Keep: a prefix of the user's own is its second row (decision 21).
+    // The prefix step's Keep is its second row, a prefix of the user's own (decision 21).
     const prefix = stepChoices(step("prefix_key"), { "keys.prefix": "ctrl+space" });
-    expect(prefix.choices.some((c) => c.keep)).toBe(false);
+    expect(prefix.choices.map((c) => [c.label, !!c.keep])).toEqual([
+      ["ctrl+b", false],
+      ["Your own: ctrl+space", true],
+    ]);
   });
 
   test("choosing the value in force plans no write", () => {
@@ -349,7 +354,8 @@ describe("a prefix the user presses (decision 21)", () => {
   });
 
   test("a key without ctrl, alt or meta is refused: it is typed", () => {
-    for (const chord of ["a", "A", "1", "space", "/", "left"]) {
+    // Function keys too: one rule, ctrl, alt or meta.
+    for (const chord of ["a", "A", "1", "space", "/", "left", "f2", "shift+f2"]) {
       expect(refused(chord), chord).toMatch(/needs ctrl, alt or meta/);
     }
   });
@@ -362,8 +368,8 @@ describe("a prefix the user presses (decision 21)", () => {
 
   test("a chord the keymap binds outside the prefix is refused with its action", () => {
     expect(refused("ctrl+l")).toMatch(/ctrl\+l already runs focus_urlbar/);
-    // Firefox's keys that close or open tabs and windows are Vimma's actions by default.
-    for (const chord of ["ctrl+w", "ctrl+t", "ctrl+q", "ctrl+n"]) {
+    // Firefox's keys that open tabs and windows and quit are Vimma's actions by default.
+    for (const chord of ["ctrl+t", "ctrl+q", "ctrl+n"]) {
       expect(refused(chord), chord).toMatch(/already runs/);
     }
     // A key the user bound in the file, and one the user freed.
@@ -371,6 +377,70 @@ describe("a prefix the user presses (decision 21)", () => {
     expect(refused("ctrl+l", { keys: { focus_urlbar: [] } })).toBeNull();
     // Bindings written with the prefix move with it: they are no conflict.
     expect(refused("alt+w", { keys: { toggle_toolbar: ["prefix+y"] } })).toBeNull();
+  });
+
+  test("Vim's text-field keys are refused while insert_editing is on: the prefix would not work in a field", () => {
+    expect(refused("ctrl+h")).toBe(
+      "ctrl+h deletes a character in text fields, where the prefix would not work. Choose another key.",
+    );
+    expect(refused("ctrl+w")).toMatch(/ctrl\+w deletes a word in text fields/);
+    // Refused for that, not by accident of a binding: unbound, still refused.
+    expect(refused("ctrl+w", { keys: { focus_pane_left: [] } })).toMatch(/deletes a word/);
+    for (const chord of ["ctrl+u", "ctrl+j", "ctrl+m"]) {
+      expect(refused(chord), chord).toMatch(/in text fields/);
+    }
+    expect(refused("ctrl+h", { modal: { insert_editing: false } })).toBeNull();
+    // On macOS, Cocoa makes ctrl+h a backspace itself and Vimma adds none: no text-field key.
+    expect(prefixRefusal("ctrl+h", prefixRules(compileKeymap({}, { mac: true })))).toBeNull();
+  });
+
+  test("copy, paste, cut, undo and redo, and macOS's own keys, are refused", () => {
+    for (const chord of ["ctrl+c", "ctrl+v", "ctrl+x", "ctrl+z", "ctrl+shift+z"]) {
+      expect(refused(chord), chord).toMatch(/which Vimma leaves to Firefox and the system/);
+    }
+    expect(refused("ctrl+c")).toBe("ctrl+c is copy, which Vimma leaves to Firefox and the system.");
+    const mac = prefixRules(compileKeymap({}, { mac: true }));
+    for (const chord of [
+      "meta+c",
+      "meta+v",
+      "meta+x",
+      "meta+z",
+      "shift+meta+z",
+      "meta+q",
+      "meta+m",
+      "meta+h",
+      "meta+,",
+    ]) {
+      expect(prefixRefusal(chord, mac), chord).toMatch(
+        /which Vimma leaves to Firefox and the system/,
+      );
+    }
+    expect(prefixRefusal("meta+q", mac)).toBe(
+      "meta+q is quit (macOS's own key), which Vimma leaves to Firefox and the system.",
+    );
+    // Select all stays takeable, with its note, on both.
+    expect(refused("ctrl+a")).toBeNull();
+    expect(prefixRefusal("meta+a", mac)).toBeNull();
+  });
+
+  test("a character Option composes is refused: Vimma would not see alt with that letter", () => {
+    // macOS, US layout: option+w types ∑ and reports no AltGraph.
+    const e = {
+      key: "∑",
+      code: "KeyW",
+      altKey: true,
+      ctrlKey: false,
+      shiftKey: false,
+      metaKey: false,
+      getModifierState: () => false,
+    };
+    const chord = formatKey(chordFromEvent(e)!);
+    expect(composedRefusal(e, chord)).toBe(
+      `alt+w types ∑ on this keyboard, so Vimma sees ${chord}, not alt+w. Choose a key with ctrl or meta.`,
+    );
+    // Linux: alt+w is alt+w.
+    expect(composedRefusal({ ...e, key: "w" }, "alt+w")).toBeNull();
+    expect(composedRefusal({ ...e, key: "a", altKey: false }, "ctrl+a")).toBeNull();
   });
 
   test("the leader and a key given back to Firefox are refused", () => {

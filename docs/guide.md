@@ -495,11 +495,14 @@ What the steps do:
   combination you want (`ctrl+a` as in tmux, `alt+w`, …). The step shows the line it will write
   and the key that will list every key (`ctrl+a ?`); `enter` saves it and `esc` goes back to the
   list. While the step waits for your key, `q`, `s` and `h` are keys like any other, and Vimma's
-  own prefix reaches the page. A key without `ctrl`, `alt` or `meta`, `esc`, `enter` and `tab`,
-  the leader, and a key your keymap already uses outside the prefix (`ctrl+l`, `ctrl+w`, …) are
-  refused, with the reason; a key Firefox keeps for text fields, such as `ctrl+a` (select all),
-  is taken, with a note on what it no longer does. A prefix of your own already in force is the
-  second row, selected; `enter` keeps it and `space` records another.
+  own prefix reaches the page. Refused, with the reason: a key without `ctrl`, `alt` or `meta`
+  (function keys included), `esc`, `enter` and `tab`, the leader, copy, paste, cut, undo and
+  redo (and on macOS `cmd+q`, `cmd+m`, `cmd+h` and `cmd+,`), Vim's text-field keys (`ctrl+w`,
+  `ctrl+u`, `ctrl+h`, `ctrl+j`, `ctrl+m`), a key your keymap already uses outside the prefix
+  (`ctrl+l`, `ctrl+t`, …), and on macOS an Option key that types a character (option+w types
+  `∑`). Select all (`ctrl+a`) is taken, with a note that it no longer selects all. A prefix of
+  your own already in force is the second row, selected; `enter` keeps it and `space` records
+  another.
 - **Hint letters.** The home row of QWERTY, Colemak or Dvorak. The layout you type on is
   selected first, guessed from the keys you already pressed on the page, which are kept in the
   page only.
