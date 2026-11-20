@@ -54,6 +54,14 @@ describe("serve", () => {
       const r = await fetch(`${base}/apt/pool/v1/x.deb`, { redirect: "manual" });
       expect(r.status).toBe(302);
       expect(r.headers.get("location")).toBe("http://127.0.0.1:1/dl/v1/x.deb");
+      // apt's request for a flat repository's `Suites: ./`, sent as written
+      const dot = await new Promise<number | undefined>((resolve) =>
+        get(`${base}/x`, { path: "/apt/./Release" }, (res) => {
+          res.resume();
+          resolve(res.statusCode);
+        }),
+      );
+      expect(dot).toBe(200);
       const f = await fetch(`${base}/apt/Release`);
       expect(f.status).toBe(200);
       expect(await f.text()).toBe("release");
@@ -69,6 +77,7 @@ describe("serve", () => {
       expect(status).toBe(404);
       expect(log).toEqual([
         "GET /apt/pool/v1/x.deb 302 http://127.0.0.1:1/dl/v1/x.deb",
+        "GET /apt/./Release 200",
         "GET /apt/Release 200",
         "GET /apt/missing 404",
         "GET /apt/ 404",

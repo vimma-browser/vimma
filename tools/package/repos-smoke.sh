@@ -139,8 +139,9 @@ EOF
       [ "$key" = other ] && dest=$o
       cp "$s/rpm/RPMS/x86_64/$rpmfile" "$dest/$rpmfile"
       # The release job's form (decision 9): rpmsign runs the signer with the header on stdin.
+      # One form for rpm 4.18 and 6.0, as openpgp-kms.test.ts explains.
       rpmsign --define "_gpg_name Vimma packages" \
-        --define "__gpg_sign_cmd $(command -v node) node $signer sign --local-key $k/$key.pem --cert $k/$key.asc --format binary --in - --out %{shescape:%{__signature_filename}}" \
+        --define "__gpg_sign_cmd() /usr/bin/env env $(command -v node) $signer sign --local-key $k/$key.pem --cert $k/$key.asc --format binary --in %{?1:%{shescape:%{1}}}%{!?1:-} --out %{?2:%{shescape:%{2}}}%{!?2:%{shescape:%{__signature_filename}}}" \
         --addsign "$dest/$rpmfile" > /dev/null
     done
     local pkg=vimma-bin-$v-1-x86_64.pkg.tar.zst

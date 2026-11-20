@@ -195,7 +195,10 @@ smoke test", the last item below).
     cleartext message itself) and refused a changed `InRelease` with "Message has been
     manipulated" and one signed by another key with "Missing key"; apt 2.8 checks with `gpgv`
     and said `BADSIG` and `NO_PUBKEY`. Both refused a `.deb` with one bit changed: "Hash Sum
-    mismatch".
+    mismatch". For `Suites: ./` apt asks for `/apt/./InRelease` with the dot segment as
+    written, so the host must answer that path as `/apt/InRelease`. The smoke test's server
+    removes dot segments, as the update host does: with `curl --path-as-is`,
+    `https://updates.vimma.dev/./robots.txt` answers 200 like `/robots.txt` (2026-11-20).
   - dnf5 5.4.3 with rpm 6.0.2 (Fedora 44): `dnf config-manager addrepo --from-repofile` refuses
     a `.repo` file with an option dnf5 does not know ("Cannot set repository option
     \"autorefresh=1\": Option \"autorefresh\" not found"). With `gpgcheck=1` and
@@ -222,8 +225,15 @@ smoke test", the last item below).
     the packages' signatures were still required.
   - `rpmsign` 4.18.0 (Debian 12) signed through the signer by `%__gpg_sign_cmd` with the header
     on standard input, and needs `%_gpg_name` defined (any value) before it runs the command;
-    `rpm -K` accepted the result. `repo-add` 6.0.2 from Debian's `pacman-package-manager` needs
-    the `makepkg` package for the libraries it sources, and pacman 7.1.0 reads its database.
+    `rpm -K` accepted the result. rpm 6.0.1 (Ubuntu 26.04, the `ubuntu-latest` runner) changed
+    the command: `%__gpg_sign_cmd` is a parametric macro whose arguments `%1` and `%2` are the
+    header file and the signature file (no `%__signature_filename`), and rpm runs its words as
+    written, where rpm 4.18 drops the second word (its own macro is `<gpg path> gpg <options>`).
+    One parametric definition serves both: it runs `/usr/bin/env env <node>`, reads `%1` or
+    else standard input, and writes `%2` or else `%__signature_filename`
+    (`tools/package/test/openpgp-kms.test.ts`, checked with rpm 4.18.0 and 6.0.1). `repo-add`
+    6.0.2 from Debian's `pacman-package-manager` needs the `makepkg` package for the libraries
+    it sources, and pacman 7.1.0 reads its database.
     Sequoia's `sqv` 1.1.0 verifies detached signatures only.
 - **Install type.** `installTypeFrom` (`packages/vimma-core/src/updates/updates.mjs`) reads
   `vimma-package=<type>` from `/usr/lib/vimma/is-packaged-app` (or `/opt/vimma/` for the

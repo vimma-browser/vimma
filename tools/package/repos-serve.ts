@@ -16,10 +16,10 @@
  * Test tooling only; nothing in a release runs it.
  */
 
-import { appendFileSync, readFileSync, statSync } from "node:fs";
+import { appendFileSync, readFileSync, readdirSync } from "node:fs";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
-import { join, resolve, sep } from "node:path";
+import { join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -75,37 +75,63 @@ export function matchRedirect(
   return undefined;
 }
 
+/**
+ * What the server answers, built from the tree alone: each file by its URL path, and each
+ * redirect a request could match, found by filling the rules' placeholders with every path
+ * segment the tree has (a tag and a file name are both directory names under its download
+ * folder). A request path is only ever a key here, never part of a file path or a Location.
+ */
+export function routes(dir: string): {
+  files: Map<string, string>;
+  redirects: Map<string, { location: string; status: number }>;
+} {
+  const files = new Map<string, string>();
+  const segments = new Set<string>();
+  for (const entry of readdirSync(dir, { recursive: true, withFileTypes: true })) {
+    const rel = relative(dir, join(entry.parentPath, entry.name)).split(sep);
+    for (const part of rel) segments.add(part);
+    if (entry.isFile()) files.set(`/${rel.join("/")}`, join(entry.parentPath, entry.name));
+  }
+  const redirects = new Map<string, { location: string; status: number }>();
+  const redirectsFile = files.get("/_redirects");
+  const rules = redirectsFile ? parseRedirects(readFileSync(redirectsFile, "utf8")) : [];
+  for (const rule of rules) {
+    let paths = [""];
+    for (const part of rule.from.slice(1)) {
+      const options = part.startsWith(":") ? [...segments] : [part];
+      paths = paths.flatMap((p) => options.map((o) => `${p}/${o}`));
+    }
+    for (const path of paths) {
+      const hit = matchRedirect(rules, path);
+      if (hit && !redirects.has(path)) redirects.set(path, hit);
+    }
+  }
+  return { files, redirects };
+}
+
 /** Serves `dir` on 127.0.0.1:`port` (0 for any free port); resolves once it listens. */
 export function serve(dir: string, port: number, log: (line: string) => void): Promise<Server> {
   const root = resolve(dir);
   const server = createServer((req, res) => {
     const path = (req.url ?? "/").split("?")[0] ?? "/";
-    // the rules are read on each request, so the smoke test can switch a tree between steps
-    let rules: Rule[] = [];
-    try {
-      rules = parseRedirects(readFileSync(join(root, "_redirects"), "utf8"));
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    }
-    const hit = matchRedirect(rules, path);
+    // apt asks for `/apt/./InRelease` (the flat repository's `Suites: ./`); dot segments are
+    // removed before the lookup, as Cloudflare's edge normalises a request's URL
+    const key = posix.normalize(path);
+    // built on each request, so a tree may change between the smoke test's steps
+    const { files, redirects } = routes(root);
+    const hit = redirects.get(key);
     if (hit) {
       log(`${req.method} ${path} ${hit.status} ${hit.location}`);
       res.writeHead(hit.status, { location: hit.location }).end();
       return;
     }
-    let body: Buffer | undefined;
-    try {
-      const file = resolve(root, `.${decodeURIComponent(path)}`);
-      const inside = !path.split("/").includes("..") && file.startsWith(root + sep);
-      if (inside && statSync(file).isFile()) body = readFileSync(file);
-    } catch {
-      body = undefined;
-    }
-    log(`${req.method} ${path} ${body ? 200 : 404}`);
-    if (!body) {
+    const file = files.get(key);
+    log(`${req.method} ${path} ${file ? 200 : 404}`);
+    if (!file) {
       res.writeHead(404).end();
       return;
     }
+    const body = readFileSync(file);
     res.writeHead(200, { "content-length": body.length });
     res.end(req.method === "HEAD" ? undefined : body);
   });

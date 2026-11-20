@@ -47,7 +47,16 @@ function sh(cmd: string, args: string[], opts: { input?: string | Buffer } = {})
 /** A binary keyring for gpgv, which does not read armour. */
 function gpgvKeyring(asc: string): string {
   const out = join(dir, `keyring-${randomBytes(4).toString("hex")}.gpg`);
-  const r = sh("gpg", ["--batch", "--homedir", gnupgHome(), "--dearmor", "--output", out, asc]);
+  const r = sh("gpg", [
+    "--batch",
+    "--no-autostart",
+    "--homedir",
+    gnupgHome(),
+    "--dearmor",
+    "--output",
+    out,
+    asc,
+  ]);
   expect(r.status, r.stderr).toBe(0);
   return out;
 }
@@ -95,8 +104,12 @@ describe("certify", () => {
     "the certificate's self-signature verifies and its fingerprint is the one printed",
     () => {
       const home = gnupgHome();
-      expect(sh("gpg", ["--batch", "--homedir", home, "--import", cert]).status).toBe(0);
-      const r = sh("gpg", ["--batch", "--homedir", home, "--with-colons", "--check-sigs"]);
+      // --no-autostart: importing a public key needs no gpg-agent, and starting one fails where
+      // the homedir's socket path is too long (macOS's temp dirs) or no agent is installed
+      const gpg = ["--batch", "--no-autostart", "--homedir", home];
+      const imported = sh("gpg", [...gpg, "--import", cert]);
+      expect(imported.status, imported.stderr).toBe(0);
+      const r = sh("gpg", [...gpg, "--with-colons", "--check-sigs"]);
       expect(r.status, r.stderr).toBe(0);
       const lines = r.stdout.split("\n");
       const pub = lines.find((l) => l.startsWith("pub:"))?.split(":") ?? [];
@@ -409,15 +422,22 @@ describe("rpm", () => {
       expect(b.status, b.stderr).toBe(0);
       const pkg = join(top, "RPMS", "noarch", "vimma-stub-1.0.0-1.noarch.rpm");
       const payload = sh("rpm", ["-qp", "--qf", "%{PAYLOADSHA256}", pkg]).stdout;
-      // rpmbuild's own signing command line, with the signer in place of gpg (decision 9)
+      // rpmbuild's own signing command line, with the signer in place of gpg (decision 9), in
+      // one form for rpm 4.18 (Ubuntu 24.04's, which the release signs with) and rpm 6.0:
+      // - rpm 4.18 runs the first word with the words from the third on as its arguments (its
+      //   own macro is "<gpg path> gpg <options>"), rpm 6.0 runs the words as written, and
+      //   `/usr/bin/env env <node>` runs node either way;
+      // - rpm 4.18 writes the header to standard input and names the output in
+      //   %__signature_filename, rpm 6.0 passes both files as the macro's arguments %1 and %2.
       const cmd =
-        `${process.execPath} node ${SIGNER} sign --local-key ${keyPem} --cert ${cert} --format binary ` +
-        "--in - --out %{shescape:%{__signature_filename}}";
+        `/usr/bin/env env ${process.execPath} ${SIGNER} sign --local-key ${keyPem} --cert ${cert} ` +
+        "--format binary --in %{?1:%{shescape:%{1}}}%{!?1:-} " +
+        "--out %{?2:%{shescape:%{2}}}%{!?2:%{shescape:%{__signature_filename}}}";
       const s = sh("rpmsign", [
         "--define",
         "_gpg_name Vimma packages",
         "--define",
-        `__gpg_sign_cmd ${cmd}`,
+        `__gpg_sign_cmd() ${cmd}`,
         "--addsign",
         pkg,
       ]);
@@ -427,7 +447,11 @@ describe("rpm", () => {
       expect(sh("rpm", ["--dbpath", db, "--import", cert]).status).toBe(0);
       const k = sh("rpm", ["--dbpath", db, "-Kv", pkg]);
       expect(k.status, k.stdout + k.stderr).toBe(0);
-      expect(k.stdout).toMatch(/Header V4 RSA\/SHA256 Signature, key ID [0-9a-f]{8}: OK/);
+      // rpm 4.18: "Header V4 RSA/SHA256 Signature, key ID <id>: OK"; rpm 6.0 names the
+      // fingerprint
+      expect(k.stdout).toMatch(
+        /Header (?:OpenPGP )?V4 RSA\/SHA256 [Ss]ignature, key (?:ID|fingerprint):? [0-9a-f]+: OK/,
+      );
       expect(k.stdout.toLowerCase()).toContain(fingerprint.slice(-8).toLowerCase());
       // signing touches only the header; the payload digest stays
       expect(sh("rpm", ["-qp", "--qf", "%{PAYLOADSHA256}", pkg]).stdout).toBe(payload);
