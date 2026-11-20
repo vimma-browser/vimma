@@ -217,7 +217,7 @@ they test.
 | `tools/lanes/`              | Parallel browser lanes: a worktree with its own copy of `engine/`.                                          |
 | `tools/upstream/`           | The upstream autopilot and Beta canary: detecting Firefox releases, verifying source, bumping, patch audit. |
 | `tools/release/`            | Release notes, the version line, build ids, and the self-releasing security bump.                           |
-| `tools/package/`            | Release packages: tarball, AppImage, `.deb`, `.rpm`, PKGBUILD, Flatpak, macOS app and dmg, SBOM.            |
+| `tools/package/`            | Release packages (tarball, AppImage, `.deb`, `.rpm`, PKGBUILD, Flatpak, dmg, SBOM), repositories.           |
 | `tools/update/`             | The update manifest, MAR files and signing certificates.                                                    |
 | `tools/version-files/`      | The app version files the build reads.                                                                      |
 | `tools/branding/`           | Generated brand strings and icon rendering.                                                                 |
@@ -371,7 +371,7 @@ hold secrets are in security.md §10 and §14.
 | `ci.yml`                   | Pull requests, `main`       | Lint, typecheck, Vitest with coverage, the bench gate, commitlint, licences, vimma-ctl tests.                                         |
 | `e2e.yml`                  | Pull requests               | Artifact build, mochitests (Linux and macOS), e2e scenarios, the recorded-site gate.                                                  |
 | `key-guard.yml`            | Pull requests               | Holds a change to Mozilla's pinned release key until a maintainer labels it.                                                          |
-| `pkgbuild.yml`             | Packaging changes           | Builds and installs the Arch package, the `.rpm` and the Homebrew cask from a stub.                                                   |
+| `pkgbuild.yml`             | Packaging changes           | Installs the Arch package, `.rpm` and Homebrew cask from a stub; tests the package repositories.                                      |
 | `flatpak.yml`              | Packaging changes, releases | Builds and runs the Flatpak.                                                                                                          |
 | `macos.yml`                | Weekly, macOS changes       | Cross-compiles the macOS build on Linux and smoke-tests it on a Mac.                                                                  |
 | `semgrep.yml`              | Pull requests, weekly       | Static analysis.                                                                                                                      |
