@@ -299,8 +299,8 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     because waking means loading pages the user did not ask for.
 14. **`:sleep` uses the same rules, without the time.** `:sleep`, `:sleep all` and `:sleep N`
     call `planSleep` with the time rule off, so that by hand and on its own never disagree about
-    what is safe. A tab named by number ignores its pin and its site rule, because the user
-    asked for that tab; it still respects on screen, sound, sharing, private, agent and
+    what is safe. A tab named by number ignores its pin and its site rule, because naming one tab is an explicit
+    choice; it still respects on screen, sound, sharing, private, agent and
     `beforeunload`, because those protect something the user may not have in mind. The current
     tab is refused rather than switched away from, because `:sleep` should never move the user.
     The name follows the issue's wording and Vimma's "asleep"; Vim's `:sleep` (wait N seconds)
