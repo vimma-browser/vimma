@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { execFile, spawnSync } from "node:child_process";
 import { generateKeyPairSync, randomBytes } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -18,6 +18,8 @@ const SIGNER = fileURLToPath(new URL("../openpgp-kms.ts", import.meta.url));
 const run = promisify(execFile);
 const UID = "Vimma packages <packages@vimma.dev>";
 const CREATED = "2026-11-01T00:00:00Z";
+/** /tmp where it exists, which every Linux and macOS has; the temp dir otherwise. */
+const GNUPG_PARENT = existsSync("/tmp") ? "/tmp" : tmpdir();
 
 const hasGpg = haveTool("gpg") && haveTool("gpgv");
 const hasSqv = haveTool("sqv");
@@ -61,8 +63,16 @@ function gpgvKeyring(asc: string): string {
   return out;
 }
 
+const homes: string[] = [];
+
+/**
+ * A fresh GnuPG home under a short path: gpg looks for its agent's socket in the home, a Unix
+ * socket path has at most 104 (macOS) or 108 (Linux) bytes, and gpg 2.4 exits 2 when the path is
+ * longer ("can't connect to the gpg-agent: File name too long"), as under macOS's temp dirs.
+ */
 function gnupgHome(): string {
-  const home = mkdtempSync(join(dir, "gnupg-"));
+  const home = mkdtempSync(join(GNUPG_PARENT, "vimma-gpg-"));
+  homes.push(home);
   return home;
 }
 
@@ -93,7 +103,10 @@ beforeAll(async () => {
   fingerprint = stdout.trim();
 }, 120_000);
 
-afterAll(() => rmSync(dir, { recursive: true, force: true }));
+afterAll(() => {
+  rmSync(dir, { recursive: true, force: true });
+  for (const home of homes) rmSync(home, { recursive: true, force: true });
+});
 
 it("has every tool VIMMA_REQUIRE_TOOLS names", () => {
   expect(missingRequired(["gpg", "gpgv", "sqv", "rpm", "rpmbuild", "rpmsign"])).toEqual([]);
