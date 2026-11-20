@@ -45,6 +45,19 @@ export const PKGBUILD_INSTALL_COMMAND = `mkdir -p ~/.cache/vimma-build && cd ~/.
 export const FLATPAK_UPDATE_COMMAND = "flatpak update dev.vimma.browser";
 
 /**
+ * The file each package manager's repository setup writes (spec package-repositories,
+ * decision 18). A `.deb` or `.rpm` is the same file from a release and from the repository, so
+ * only these say whether the package manager's upgrade command would find a newer Vimma. The
+ * host reads whether they exist, never what they hold.
+ */
+export const REPOSITORY_FILES = Object.freeze({
+  apt: "/etc/apt/sources.list.d/vimma.sources",
+  dnf: "/etc/yum.repos.d/vimma.repo",
+  zypper: "/etc/zypp/repos.d/vimma.repo",
+});
+/** @typedef {{ apt?: boolean, dnf?: boolean, zypper?: boolean }} Repositories */
+
+/**
  * Where the Homebrew cask installs Vimma, and the Caskroom folder it keeps beside it (spec
  * macos-homebrew, decision 8; Apple Silicon's Homebrew prefix).
  */
@@ -54,10 +67,11 @@ export const HOMEBREW_CASKROOM = "/opt/homebrew/Caskroom/vimma";
 /**
  * How Vimma was installed (spec §3): `source` is a build run from its objdir, `packaged` an
  * `is-packaged-app` marker this version does not know, `flatpak` the Flatpak (spec flatpak,
- * decision 10); on macOS, `homebrew` is the cask and `dmg` any other copy of the app (spec
+ * decision 10), `pacman` the package from Vimma's pacman repository (spec package-repositories,
+ * decision 18); on macOS, `homebrew` is the cask and `dmg` any other copy of the app (spec
  * macos-homebrew, decision 19).
  * @typedef {"source" | "tarball" | "appimage" | "deb" | "rpm" | "aur" | "pkgbuild-release"
- *   | "flatpak" | "packaged" | "homebrew" | "dmg"} InstallType
+ *   | "pacman" | "flatpak" | "packaged" | "homebrew" | "dmg"} InstallType
  */
 /** @typedef {{ id: string, slot: "primary" | "secondary", spki: string }} PinnedKey */
 /**
@@ -728,6 +742,7 @@ export function installTypeFrom({ packaged, marker, platform, appPath, caskroom 
     name === "rpm" ||
     name === "aur" ||
     name === "pkgbuild-release" ||
+    name === "pacman" ||
     name === "appimage" ||
     name === "flatpak"
   ) {
@@ -813,12 +828,15 @@ export function appImageOwnership({ installType, marker, appImage, appDir, greDi
  * @param {InstallType} type
  * @param {Offer} offer
  * @param {{ installDir: string, appImage: string | null, writable?: boolean,
- *   marker?: string | null, appDir?: string | null, forced?: boolean }} where
+ *   marker?: string | null, appDir?: string | null, forced?: boolean,
+ *   repos?: Repositories, repoHint?: boolean }} where
  *   `writable`: false when Vimma cannot write a tarball's directory, so Firefox's updater cannot
  *   apply there (Behaviour 2); `appImage`, `appDir`: `$APPIMAGE` and `$APPDIR`; `marker`: the
  *   `is-packaged-app` file's text; `forced`: a test set the install type. An AppImage's command
- *   names `$APPIMAGE` only when this Vimma is that AppImage (appImageOwnership, #1196)
- * @returns {{ text: string, commands: string[], link: string }}
+ *   names `$APPIMAGE` only when this Vimma is that AppImage (appImageOwnership, #1196).
+ *   `repos`: which of REPOSITORY_FILES exist; `repoHint`: a `.deb` or `.rpm` without its
+ *   repository adds the `note` that points at the guide's repository section
+ * @returns {{ text: string, commands: string[], link: string, note?: string }}
  */
 export function updateSteps(type, offer, where) {
   const v = offer.displayVersion;
@@ -835,7 +853,24 @@ export function updateSteps(type, offer, where) {
     `curl -fL --proto =https -o ${shellQuote(file)} ${url}` +
     (asset ? ` && echo ${shellQuote(`${asset.sha512}  ${file}`)} | sha512sum -c -` : "");
   const assets = offer.assets ?? {};
+  const repos = where.repos ?? {};
+  /** @param {string} managers */
+  const repoNote = (managers) =>
+    where.repoHint === true
+      ? {
+          note:
+            `To have ${managers} upgrade Vimma with the rest of the system, set up its ` +
+            "repository once: the guide's “Package repositories” shows how.",
+        }
+      : {};
   switch (type) {
+    // Spec package-repositories, decision 18: the package manager's own upgrade, a fixed command.
+    case "pacman":
+      return {
+        text: "Upgrade Vimma with the rest of the system from its pacman repository:",
+        commands: ["sudo pacman -Syu"],
+        link,
+      };
     case "pkgbuild-release":
       return {
         text: "Build the package again from the latest release's PKGBUILD:",
@@ -849,6 +884,13 @@ export function updateSteps(type, offer, where) {
         link,
       };
     case "deb": {
+      if (repos.apt) {
+        return {
+          text: "Upgrade Vimma with the rest of the system from its apt repository:",
+          commands: ["sudo apt update && sudo apt upgrade"],
+          link,
+        };
+      }
       const file = `vimma_${v.replace("-", "~")}_amd64.deb`;
       return {
         text: "Download the new .deb and install it over this one:",
@@ -856,11 +898,32 @@ export function updateSteps(type, offer, where) {
           `${fetchChecked(`${dl}/${file}`, file, assets.deb)} && sudo apt install ./${file}`,
         ],
         link,
+        ...repoNote("apt"),
       };
     }
     case "rpm": {
-      // One .rpm for Fedora and openSUSE (spec rpm-package). It carries no OpenPGP signature,
-      // which zypper refuses unless told; the SHA-512 from the signed manifest checks it instead.
+      // One .rpm for Fedora and openSUSE: the command of each package manager whose repository
+      // file exists, since a machine may have either or both.
+      if (repos.dnf || repos.zypper) {
+        const commands = [
+          ...(repos.dnf ? ["sudo dnf upgrade vimma"] : []),
+          ...(repos.zypper ? ["sudo zypper up vimma"] : []),
+        ];
+        const which =
+          repos.dnf && repos.zypper
+            ? "with dnf on Fedora or zypper on openSUSE"
+            : repos.dnf
+              ? "with dnf"
+              : "with zypper";
+        return {
+          text: `Upgrade Vimma with the rest of the system from its rpm repository, ${which}:`,
+          commands,
+          link,
+        };
+      }
+      // A release's .rpm installed by hand (spec rpm-package): zypper refuses a package whose
+      // OpenPGP signature it cannot check unless told; the SHA-512 from the signed manifest
+      // checks it instead.
       const file = `vimma-${v.replace("-", "~")}-1.x86_64.rpm`;
       const fetch = fetchChecked(`${dl}/${file}`, file, assets.rpm);
       return {
@@ -870,6 +933,7 @@ export function updateSteps(type, offer, where) {
           `${fetch} && sudo zypper install --allow-unsigned-rpm ./${file}`,
         ],
         link,
+        ...repoNote("dnf or zypper"),
       };
     }
     case "tarball": {
