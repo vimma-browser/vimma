@@ -245,7 +245,10 @@ add_task(async function the_default_hidden_toolbar_keeps_the_security_cues() {
   Assert.ok(barCollapsed(), "hidden");
   Assert.equal(tab.linkedBrowser.currentURI.scheme, "http", "the page stayed on http:");
   await until(() => segText("security") === "not secure", "an http: page says not secure");
-  await until(() => segText("url")?.startsWith("http://example.com"), "with its http:// host");
+  await until(
+    () => !!segText("url")?.startsWith("http://") && hostShown(segText("url")) === "example.com",
+    "with its http:// host",
+  );
   BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, PLAIN);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, PLAIN);
   await until(() => segText("security") === null, "an https: page says nothing");
