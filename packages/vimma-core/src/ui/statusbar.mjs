@@ -78,7 +78,7 @@ function paneText({ index, count, hidden, split, splits = 1 }) {
  * @property {readonly string[]} [alerts]  persistent errors (containers off: no workspaces)
  * @property {FindStatus | null} [find]          the current `/` or `?` find (spec m1-find)
  * @property {{ waiting: number, minutes: number | null, ran: boolean, builtin?: string | null }
- *   | null} [agent]  local AI
+ *   | null} [agent]  AI
  *   agents (docs/specs/vimma-mcp.md decision 24): questions waiting, the shortest grant's
  *   minutes left (Infinity for a grant of the whole connection), a request that just ran, and
  *   the built-in agent's running tasks (docs/specs/builtin-agent.md Behaviour 35)

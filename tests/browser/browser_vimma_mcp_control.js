@@ -316,7 +316,7 @@ add_task(async function test_control_on_says_it_reaches_beyond_agent_while_mcp_i
   Assert.ok(
     (await question()).includes(
       'Turn on full control for 15 min? It reaches every workspace and tab, not only "\u2068agent\u2069", ' +
-        "and any local AI agent with a shell can use it. y/N",
+        "and any AI agent with a shell on this computer can use it. y/N",
     ),
     "MCP on: the question says what full control gives away",
   );

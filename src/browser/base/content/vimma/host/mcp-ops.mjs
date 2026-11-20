@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Local AI agents and the agent workspace (docs/specs/vimma-mcp.md): `[mcp]` from config.toml,
+// AI agents and the agent workspace (docs/specs/vimma-mcp.md): `[mcp]` from config.toml,
 // the pref `vimma.mcp.enabled` that `:mcp on|off` sets, `:mcp off`'s hold for the session
 // (docs/specs/setup-v2.md decision 16), `:mcp forget` and `:mcp revoke`. The
 // control socket's agent role (ctl/VimmaControl.sys.mjs) runs while `state.enabled` is true and

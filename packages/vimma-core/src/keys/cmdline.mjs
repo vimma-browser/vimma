@@ -197,7 +197,7 @@ export const COMMANDS = Object.freeze([
   cmd("rotate", "none", "pdf.rotate", "PDF viewer: rotate the pages 90 degrees clockwise"),
   cmd("dual", "none", "pdf.dual_page", "PDF viewer: two pages side by side, or one"),
   cmd("present", "none", "pdf.presentation", "PDF viewer: presentation mode, or leave it"),
-  // docs/specs/vimma-mcp.md: local AI agents and the agent workspace (on, off, revoke, forget);
+  // docs/specs/vimma-mcp.md: AI agents and the agent workspace (on, off, revoke, forget);
   // log: docs/specs/mcp-drive.md D14.
   cmd(
     "mcp",

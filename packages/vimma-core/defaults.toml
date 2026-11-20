@@ -462,7 +462,7 @@ tab = true
 [updates]
 check = true
 
-# Local AI agents (Claude Code, Codex, opencode, Copilot) reach only the agent workspace, and
+# AI agents (Claude Code, Codex, opencode, Copilot) reach only the agent workspace, and
 # nothing runs until you allow it. Left out, :mcp on|off sets enabled and remembers it; set
 # here, it always wins. ask_timeout: seconds a request waits for you (10 to 300). A bare `a`
 # allows the agent until it quits (grant_minutes = 0), or for grant_minutes; a count before

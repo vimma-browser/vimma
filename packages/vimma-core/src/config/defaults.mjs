@@ -64,7 +64,7 @@ export const TABLINE_WIDTH = Object.freeze({ min: 4, max: 60, default: 14 });
  * @property {{ enabled?: boolean, workspace?: string, ask_timeout?: number,
  *   grant_minutes?: number, grant_max_minutes?: number, max_read_chars?: number,
  *   notify?: boolean, download_dir?: string, download_max_mb?: number,
- *   clamav_max_age_days?: number }} [mcp]  local AI agents and the agent workspace (docs/specs/vimma-mcp.md)
+ *   clamav_max_age_days?: number }} [mcp]  AI agents and the agent workspace (docs/specs/vimma-mcp.md)
  * @property {{ default?: string, aliases?: Record<string, string> }} [search]  the default
  *   search engine and `@alias` keywords (docs/specs/search-engines.md)
  * @property {Record<string, unknown>} [agent]  the built-in agent (docs/specs/builtin-agent.md),
@@ -773,7 +773,7 @@ export function formatDefaultsToml() {
 function mcpLines() {
   const m = /** @type {Required<NonNullable<UserConfig["mcp"]>>} */ (DEFAULT_CONFIG.mcp);
   return [
-    "# Local AI agents (Claude Code, Codex, opencode, Copilot) reach only the agent workspace, and",
+    "# AI agents (Claude Code, Codex, opencode, Copilot) reach only the agent workspace, and",
     "# nothing runs until you allow it. Left out, :mcp on|off sets enabled and remembers it; set",
     "# here, it always wins. ask_timeout: seconds a request waits for you (10 to 300). A bare `a`",
     "# allows the agent until it quits (grant_minutes = 0), or for grant_minutes; a count before",

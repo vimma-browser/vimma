@@ -423,7 +423,7 @@ group("Config", [
 ]);
 
 // docs/specs/addon-manager.md
-// docs/specs/vimma-mcp.md: local AI agents, confined to the agent workspace. `:mcp on|off|forget`;
+// docs/specs/vimma-mcp.md: AI agents, confined to the agent workspace. `:mcp on|off|forget`;
 // prefix+shift+a answers the waiting question (decision 14); `:control on <minutes>` (29 D).
 // docs/specs/builtin-agent.md B13: prefix+i opens the built-in agent's window, as `:agent` does.
 group("Agents", [

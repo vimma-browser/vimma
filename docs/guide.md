@@ -63,7 +63,7 @@ What works today, each with the section that explains it:
   uploads; Safe Browsing on; a site's permissions shown and changed from the keyboard with
   [`:site`](#site-permissions).
 - **Scriptable** ([vimma-ctl](#scripting-with-vimma-ctl), shipped and updated with Vimma): a
-  token-protected control socket; local AI agents reach one [agent workspace](#agent-workspace)
+  token-protected control socket; AI agents reach one [agent workspace](#agent-workspace)
   through MCP, where they can read, open, scroll and search pages, follow their links, list and
   click their buttons, fill their fields (never a password or card number), take a screenshot, read
   a page's errors and show you a page. An agent asks you first, one answer lets it work through its
@@ -1089,7 +1089,7 @@ with `F11` keeps it. From the left:
 - the page **title**, or your rename (`ctrl+b shift+t`);
 - on the right, the **search** in this page: `/word [2/5]` (match 2 of 5), or
   `/zzz not found` in red;
-- `◇ agent` while a local AI agent is connected ([agent workspace](#agent-workspace)):
+- `◇ agent` while an AI agent is connected ([agent workspace](#agent-workspace)):
   `◇ agent 2?` when 2 of its requests wait for your answer, `◇ agent granted` while it may act
   without asking (`◇ agent 14m` for a grant of minutes with 14 left), and `◇ agent ·` for a
   moment after a request ran; `◇ built-in 14/100 · 212k tok` while a task of
@@ -2018,7 +2018,7 @@ tab count. `m` on it asks
 
 ### Agent workspace
 
-Every profile has a workspace named `agent`, for local AI agents (Claude Code, Codex CLI,
+Every profile has a workspace named `agent`, for AI agents (Claude Code, Codex CLI,
 opencode, GitHub Copilot) to use through `vimma-ctl mcp`. It is a workspace like the others, with a container of
 its own, so its cookies and logins are apart from `main`, `work` and the rest. An agent only
 ever reaches this workspace, and nothing it does runs until you allow it: its first request asks
@@ -2055,7 +2055,7 @@ you, and `a` lets it work without asking until it quits, except where
 | Command          | What it does                                                                                                                                                           |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `:mcp`           | Says whether agents are on or off, which workspace is theirs, and how many agents, questions and grants.                                                               |
-| `:mcp on`        | Asks `Let local AI agents ask to use the "agent" workspace? Nothing runs until you allow it. y/N`, then turns them on.                                                 |
+| `:mcp on`        | Asks `Let AI agents ask to use the "agent" workspace? Nothing runs until you allow it. y/N`, then turns them on.                                                       |
 | `:mcp off`       | Turns MCP agents off and ends their grants, without a question, until `:mcp on` or a restart, whatever `config.toml` says; not [Vimma's own agent](#vimmas-own-agent). |
 | `:mcp revoke`    | Ends every grant you gave agents, at once.                                                                                                                             |
 | `:mcp forget`    | Asks, then deletes the agent workspace's cookies and site data (its logins). The workspace stays.                                                                      |
@@ -3496,7 +3496,7 @@ prints `full control refused` and exits 4. With agents off, nothing asks.
 `y/N`, and then off again, even across a restart; `:control off` turns it off now, and `:control`
 says whether it is on and how long is left. Turning it on in `about:config` sets no end time.
 While agents are on, its question says what a yes gives away: `Turn on full control for 15 min?
-It reaches every workspace and tab, not only "agent", and any local AI agent with a shell can use
+It reaches every workspace and tab, not only "agent", and any AI agent with a shell on this computer can use
 it. y/N`. Agents do not need full control, and `vimma-ctl mcp` tells them never to ask for it;
 an agent that asks you to turn it on, or to run `vimma-ctl send-keys`, is asking for keys in
 every workspace.
@@ -4859,7 +4859,7 @@ fields …`). Pick another prefix, such as `ctrl+b`, or set `insert_editing = fa
   `[private] placement` (`"swap"`, the
   default: on Hyprland and macOS the [private workspace](#private-workspace) takes the Vimma
   window's place;
-  `"window"`: it is a window of its own beside it); `[mcp]` (local AI agents:
+  `"window"`: it is a window of its own beside it); `[mcp]` (AI agents:
   `enabled`, which wins over `:mcp on|off`; `workspace`, the [agent workspace](#agent-workspace)'s
   name, default `"agent"`, never `"private"`; `ask_timeout`, 10 to 300 seconds, default 50;
   `grant_minutes`, what a bare `a` allows: 0, the default, until the agent quits, or that many
