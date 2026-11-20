@@ -74,6 +74,8 @@ export const PDFJS_CONTRACT = Object.freeze({
   "pdfDocument.getOutline": "function",
   "pdfDocument.getDestinations": "function",
   "pdfDocument.cachedPageNumber": "function",
+  // Settles once pdf.js has fetched every page, so that cachedPageNumber knows them all (#1424).
+  "pdfViewer.pagesPromise": "object",
   "pdfLinkService.goToDestination": "function",
   "pdfLinkService.executeNamedAction": "function",
   "pdfLinkService.executeSetOCGState": "function",
@@ -619,9 +621,20 @@ export class PdfView {
     const failed = Cu.exportFunction(() => {
       this.#readingOutline = false;
     }, this.#win);
-    if (!this.#then(() => invoke(this.#part("pdfDocument"), "getOutline"), done, failed)) {
-      this.#readingOutline = false;
-    }
+    const read = () => {
+      if (!this.#then(() => invoke(this.#part("pdfDocument"), "getOutline"), done, failed)) {
+        this.#readingOutline = false;
+      }
+    };
+    // pdf.js resolves a destination's page reference (cachedPageNumber) only for a page it has
+    // fetched, and fetches the pages after the first one draws: read once they all are, as its
+    // own outline view waits for `pagesloaded` (PDFOutlineViewer._currentOutlineItem), or the
+    // outline read as the PDF opens (decision 19) has no page for the entries past the first.
+    const loaded = Cu.exportFunction(() => {
+      if (generation === this.#generation) read();
+      else this.#readingOutline = false;
+    }, this.#win);
+    if (!this.#then(() => this.#part("pdfViewer").pagesPromise, loaded, loaded)) read();
   }
 
   /**

@@ -551,6 +551,57 @@ add_task(async function a_read_under_way_does_not_outlive_its_document() {
   });
 });
 
+/**
+ * The viewer's window with the function the_outline_waits_for_the_pages puts on it, which lets
+ * pdf.js's pages finish loading.
+ * @typedef {PdfJsWindow & { vimmaPagesLoaded: () => void }} LoadingWindow
+ */
+
+// #1424: pdf.js resolves an explicit destination's page reference only for a page it has fetched,
+// and fetches the pages after the first one draws. An outline read before they are all fetched
+// would give each entry past the first page no page, so the selection could not follow the page.
+add_task(async function the_outline_waits_for_the_pages() {
+  await withPdf(async (browser) => {
+    // The pages still loading: pdf.js knows only the first page's reference until they are in.
+    await SpecialPowers.spawn(browser, [], () => {
+      /** @type {LoadingWindow} */
+      const w = content.wrappedJSObject;
+      const app = w.PDFViewerApplication;
+      const doc = /** @type {PdfJsDocument} */ (app.pdfDocument);
+      const viewer = /** @type {PdfJsViewer} */ (app.pdfViewer);
+      const real = doc.cachedPageNumber.bind(doc);
+      doc.cachedPageNumber = Cu.exportFunction(
+        (/** @type {object} */ ref) => (real(ref) === 1 ? 1 : null),
+        content,
+      );
+      /** @type {(value?: unknown) => void} */
+      let loaded = () => {};
+      const pages = new w.Promise(
+        Cu.exportFunction((/** @type {(value?: unknown) => void} */ resolve) => {
+          loaded = resolve;
+        }, content),
+      );
+      // Own properties over pdf.js's prototype members, removed to give them back.
+      Object.defineProperty(viewer, "pagesPromise", { value: pages, configurable: true });
+      w.vimmaPagesLoaded = Cu.exportFunction(() => {
+        Reflect.deleteProperty(doc, "cachedPageNumber");
+        Reflect.deleteProperty(viewer, "pagesPromise");
+        loaded();
+      }, content);
+    });
+    EventUtils.synthesizeKey("KEY_Tab");
+    await SpecialPowers.spawn(browser, [], () =>
+      /** @type {LoadingWindow} */ (content.wrappedJSObject).vimmaPagesLoaded(),
+    );
+    await TestUtils.waitForCondition(shown, "Tab opens the outline");
+    Assert.deepEqual(
+      [...found(panel()).querySelectorAll(".vimma-outline-page")].map((e) => e.textContent),
+      ["1", "3", "4", "5", "6"],
+      "each entry has its page",
+    );
+  });
+});
+
 add_task(async function a_hostile_outline_gets_only_primitives_through() {
   await withPdf(async (browser) => {
     await recordingOutline(async (seen) => {
