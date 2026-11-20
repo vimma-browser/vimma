@@ -32,8 +32,9 @@ ENGINE=${CONTAINER_ENGINE:-docker}
 PORT=${REPOS_SMOKE_PORT:-18770}
 OLD=0.0.1
 NEW=0.0.2
-# One tree, and one server, per case. archold is the pacman repository before the upgrade.
-VARIANTS="good archold badmeta otherkey badpkg pkgkey nodbsig"
+# One tree, and one server, per case. archold is the pacman repository before the upgrade;
+# keyswap is a host that serves another key, with metadata and packages signed by it.
+VARIANTS="good archold badmeta otherkey badpkg pkgkey nodbsig keyswap"
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 
@@ -156,15 +157,15 @@ EOF
   rpm --dbpath "$db" -K "/w/releases/good/v$NEW/vimma-$NEW-1.x86_64.rpm"
 
   for v in $VARIANTS; do
-    local p tree=/w/trees/$v releases=good args=()
+    local p tree=/w/trees/$v releases=good args=() published=good
     p=$(port_of "$v")
-    [ "$v" = pkgkey ] && releases=other
+    case "$v" in pkgkey) releases=other ;; keyswap) releases=other published=other ;; esac
     args=(--release "v$OLD=/w/releases/$releases/v$OLD")
     [ "$v" = archold ] || args+=(--release "v$NEW=/w/releases/$releases/v$NEW")
-    node /repo/tools/package/repos.ts build --out "$tree" --cert "$k/good.asc" "${args[@]}" \
+    node /repo/tools/package/repos.ts build --out "$tree" --cert "$k/$published.asc" "${args[@]}" \
       --base-url "http://127.0.0.1:$p" --download-base "http://127.0.0.1:$p/download"
     local key=good
-    [ "$v" = otherkey ] && key=other
+    case "$v" in otherkey | keyswap) key=other ;; esac
     sign "$key" cleartext "$tree/apt/Release" "$tree/apt/InRelease"
     sign "$key" armor "$tree/rpm/repodata/repomd.xml" "$tree/rpm/repodata/repomd.xml.asc"
     sign "$key" binary "$tree/arch/x86_64/vimma.db" "$tree/arch/x86_64/vimma.db.sig"
@@ -297,12 +298,17 @@ rpm_client() {
       rm -f /etc/yum.repos.d/vimma.repo
       dnf -q clean all > /dev/null
       dnf config-manager addrepo --from-repofile="$url"
+      # Vimma's update hint looks for this file (spec decision 18)
+      test -f /etc/yum.repos.d/vimma.repo || fail "$DISTRO: dnf did not write /etc/yum.repos.d/vimma.repo"
     else
       zypper --non-interactive --quiet removerepo vimma > /dev/null 2>&1 || true
       zypper --non-interactive --quiet clean --all > /dev/null
       # --refresh and --gpgcheck-strict: zypper's autorefresh and pkg_gpgcheck, which the .repo
       # file cannot carry (repos.ts, rpmRepo)
       zypper --non-interactive addrepo --refresh --gpgcheck-strict "$url"
+      # zypper names the file after the .repo file's section id, which repos.ts keeps [vimma],
+      # and Vimma's update hint looks for it (spec decision 18)
+      test -f /etc/zypp/repos.d/vimma.repo || fail "$DISTRO: zypper did not write /etc/zypp/repos.d/vimma.repo"
       cat /etc/zypp/repos.d/vimma.repo
     fi
     # forget a key a previous case trusted
@@ -343,6 +349,34 @@ rpm_client() {
   setup pkgkey
   refuse ".rpm signed by another key" "$sig" $(install_cmd "")
   ! command -v vimma > /dev/null || fail "$DISTRO: vimma is installed after a refusal"
+
+  # A host that turns on its users: after they trusted the good key and installed, it serves
+  # another key, with metadata and packages signed by it. The upgrade runs as a user's would,
+  # with no automatic key import (dnf answers no; zypper does not trust a new key unasked).
+  setup good
+  if [ "$DISTRO" = fedora ]; then dnf -y install "vimma-$OLD"
+  else
+    zypper --non-interactive --gpg-auto-import-keys refresh
+    zypper --non-interactive install "vimma=$OLD"
+  fi
+  local repofile=/etc/zypp/repos.d/vimma.repo
+  [ "$DISTRO" = fedora ] && repofile=/etc/yum.repos.d/vimma.repo
+  sed -i "s|127.0.0.1:$(port_of good)/|127.0.0.1:$(port_of keyswap)/|g" "$repofile"
+  if [ "$DISTRO" = fedora ]; then
+    # dnf skips a repository whose repomd.xml fails its check and exits 0 ("Nothing to do"),
+    # so the refusal is the message and the version left installed (checked below)
+    local out why
+    out=$(dnf --assumeno --refresh upgrade vimma 2>&1 | tr '\r' '\n') || true
+    why=$(echo "$out" | grep -E -m 1 "$sig") || {
+      echo "$out" | tail -n 20
+      fail "$DISTRO: a host that switched to another key: not refused"
+    }
+    echo "repos-smoke: $DISTRO: a host that switched to another key: refused: ${why#"${why%%[![:space:]]*}"}"
+  else
+    refuse "a host that switched to another key" "$sig" zypper --non-interactive up vimma
+  fi
+  [ "$(vimma)" = "Vimma $OLD" ] || fail "$DISTRO: vimma changed to '$(vimma)' after a refusal"
+  rpm -e vimma
   echo "repos-smoke: $DISTRO: OK"
 }
 

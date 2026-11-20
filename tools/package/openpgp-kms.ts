@@ -15,10 +15,11 @@
  *       the armoured certificate: the key packet, the user ID and a self-signature (type 0x13,
  *       key flags certify and sign) made at TIME, so the same key and TIME give the same bytes
  *   openpgp-kms.ts sign (--key-version NAME | --local-key PEM) --cert FILE
- *       --format binary|armor|cleartext --in FILE|- --out FILE
+ *       --format binary|armor|cleartext --in FILE|- --out FILE [--time TIME]
  *       a detached signature (binary: the pacman package and database, and rpmsign's
- *       %__gpg_sign_cmd, which writes the header to standard input), an armoured detached one
- *       (repomd.xml.asc), or a cleartext-signed message (apt's InRelease)
+ *       %__gpg_sign_cmd, which passes the header as a file or on standard input), an armoured
+ *       detached one (repomd.xml.asc), or a cleartext-signed message (apt's InRelease); --time
+ *       sets the signature's creation time (ISO 8601 with a zone, or seconds), default now
  *   openpgp-kms.ts fingerprint --cert FILE
  *       prints the certificate's fingerprint, 40 hex digits
  *
@@ -102,20 +103,30 @@ export function crc32c(data: Uint8Array): number {
 }
 
 /**
- * The KMS endpoint: KMS_ENDPOINT may point a test at a local fake, over plain HTTP only on the
- * loopback address, so no setting can send the token or a digest anywhere unencrypted.
+ * The KMS endpoint: Cloud KMS's global or regional endpoint, or, for a test's fake, plain HTTP on
+ * a literal loopback address. KMS_ENDPOINT must be written exactly as that origin (no user info,
+ * path, port on https, or other spelling of an address), so an inherited variable cannot send
+ * the access token anywhere else.
  */
 export function kmsEndpoint(env: NodeJS.ProcessEnv = process.env): string {
   const value = env.KMS_ENDPOINT || "https://cloudkms.googleapis.com";
-  const url = new URL(value);
-  const loopback = ["127.0.0.1", "[::1]", "localhost"].includes(url.hostname);
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) {
-    throw new Error(`openpgp-kms: KMS_ENDPOINT must be https (or http on loopback): ${value}`);
+  const ok =
+    /^https:\/\/cloudkms(?:\.[a-z0-9-]+\.rep)?\.googleapis\.com$/.test(value) ||
+    /^http:\/\/(?:127\.0\.0\.1|\[::1\]):[1-9][0-9]{0,4}$/.test(value);
+  let canonical: boolean;
+  try {
+    canonical = new URL(value).origin === value;
+  } catch {
+    canonical = false;
   }
-  if (url.pathname !== "/" || url.search || url.hash) {
-    throw new Error(`openpgp-kms: KMS_ENDPOINT must be an origin: ${value}`);
+  if (!ok || !canonical) {
+    throw new Error(
+      "openpgp-kms: KMS_ENDPOINT must be https://cloudkms.googleapis.com, " +
+        "https://cloudkms.<region>.rep.googleapis.com, or http://127.0.0.1:<port> or " +
+        `http://[::1]:<port> for a test: ${value}`,
+    );
   }
-  return url.origin;
+  return value;
 }
 
 async function kmsJson(
@@ -154,9 +165,15 @@ export async function kmsSigner(
       `openpgp-kms: the key version's algorithm is ${pub.algorithm}, want ${KMS_ALGORITHM}`,
     );
   }
+  // Decision 3: the key never leaves an HSM.
+  if (pub.protectionLevel !== "HSM") {
+    throw new Error(
+      `openpgp-kms: the key version's protection level is ${pub.protectionLevel}, want HSM`,
+    );
+  }
   if (typeof pub.pem !== "string") throw new Error("openpgp-kms: KMS returned no public key");
-  if (pub.pemCrc32c !== undefined && Number(pub.pemCrc32c) !== crc32c(Buffer.from(pub.pem))) {
-    throw new Error("openpgp-kms: the public key's CRC32C does not match");
+  if (pub.pemCrc32c === undefined || Number(pub.pemCrc32c) !== crc32c(Buffer.from(pub.pem))) {
+    throw new Error("openpgp-kms: the public key's CRC32C is missing or does not match");
   }
   return {
     publicKey: createPublicKey(pub.pem),
@@ -521,7 +538,7 @@ async function signerFrom(values: {
 const USAGE = `usage:
   openpgp-kms.ts certify (--key-version NAME | --local-key PEM) --created TIME --user-id UID --out FILE
   openpgp-kms.ts sign (--key-version NAME | --local-key PEM) --cert FILE
-      --format binary|armor|cleartext --in FILE|- --out FILE
+      --format binary|armor|cleartext --in FILE|- --out FILE [--time TIME]
   openpgp-kms.ts fingerprint --cert FILE`;
 
 export async function main(argv: string[]): Promise<void> {

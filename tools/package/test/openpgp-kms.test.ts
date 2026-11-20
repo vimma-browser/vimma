@@ -42,7 +42,7 @@ function signer(...args: string[]) {
   return run(process.execPath, [SIGNER, ...args], { encoding: "utf8" });
 }
 
-function sh(cmd: string, args: string[], opts: { input?: string | Buffer } = {}) {
+function sh(cmd: string, args: string[], opts: { input?: string | Buffer; cwd?: string } = {}) {
   return spawnSync(cmd, args, { encoding: "utf8", ...opts });
 }
 
@@ -315,95 +315,172 @@ describe("sign", () => {
 });
 
 describe("KMS", () => {
+  const NAME =
+    "projects/vimma-test/locations/europe-north1/keyRings/vimma-packages/cryptoKeys/package-signing/cryptoKeyVersions/1";
+  const TOKEN = "ya29.s3cret-t0ken-for-the-test";
+
+  /** What the fake KMS answers, each field a way a real or a forged answer could be wrong. */
+  interface Fake {
+    pem?: string;
+    algorithm?: string;
+    protectionLevel?: string;
+    pemCrc32c?: "omit" | "wrong";
+    verifiedDigestCrc32c?: boolean;
+    name?: string;
+    signatureCrc32c?: "omit" | "wrong";
+    signWith?: string; // a PEM private key other than the certificate's
+  }
+
+  /** Runs the signer against a fake KMS; resolves with its exit code, stderr and requests. */
+  async function signThroughFake(fake: Fake, out: string) {
+    const { localSigner, crc32c } = await import("../openpgp-kms.ts");
+    const local = localSigner(readFileSync(keyPem));
+    const signer = fake.signWith ? localSigner(readFileSync(fake.signWith)) : local;
+    const pem = fake.pem ?? (local.publicKey.export({ type: "spki", format: "pem" }) as string);
+    const crc = (b: Buffer, how?: "omit" | "wrong") =>
+      how === "omit" ? undefined : String(how === "wrong" ? crc32c(b) ^ 1 : crc32c(b));
+    const seen: string[] = [];
+    const server = createServer((req, res) => {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      req.on("end", async () => {
+        seen.push(`${req.method} ${req.url} ${req.headers.authorization}`);
+        if (req.headers.authorization !== `Bearer ${TOKEN}`) return res.writeHead(401).end();
+        if (req.method === "GET" && req.url === `/v1/${NAME}/publicKey`) {
+          res.end(
+            JSON.stringify({
+              pem,
+              algorithm: fake.algorithm ?? "RSA_SIGN_PKCS1_4096_SHA256",
+              pemCrc32c: crc(Buffer.from(pem), fake.pemCrc32c),
+              protectionLevel: fake.protectionLevel ?? "HSM",
+              name: NAME,
+            }),
+          );
+          return;
+        }
+        if (req.method === "POST" && req.url === `/v1/${NAME}:asymmetricSign`) {
+          const j = JSON.parse(body);
+          const digest = Buffer.from(j.digest.sha256, "base64");
+          const s = await signer.sign(digest);
+          res.end(
+            JSON.stringify({
+              signature: s.toString("base64"),
+              signatureCrc32c: crc(s, fake.signatureCrc32c),
+              verifiedDigestCrc32c:
+                fake.verifiedDigestCrc32c ?? Number(j.digestCrc32c) === crc32c(digest),
+              name: fake.name ?? NAME,
+            }),
+          );
+          return;
+        }
+        res.writeHead(404).end();
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    try {
+      const port = (server.address() as AddressInfo).port;
+      const args = [
+        ...["sign", "--key-version", NAME, "--cert", cert, "--format", "binary"],
+        ...["--in", file, "--out", out],
+      ];
+      const env = {
+        ...process.env,
+        KMS_ACCESS_TOKEN: TOKEN,
+        KMS_ENDPOINT: `http://127.0.0.1:${port}`,
+      };
+      const r = await run(process.execPath, [SIGNER, ...args], { env }).then(
+        (ok) => ({ code: 0, stderr: ok.stderr }),
+        (err: { code: number; stderr: string }) => ({ code: err.code, stderr: err.stderr }),
+      );
+      return { ...r, seen };
+    } finally {
+      server.close();
+    }
+  }
+
+  let file: string;
+  beforeAll(() => {
+    file = join(dir, "kms-input.bin");
+    writeFileSync(file, randomBytes(10_000));
+  });
+
   it.skipIf(!hasGpg)(
     "signs through asymmetricSign with the access token, and checks the CRC32Cs",
     async () => {
-      const name =
-        "projects/vimma-test/locations/europe-north1/keyRings/vimma-packages/cryptoKeys/package-signing/cryptoKeyVersions/1";
-      const { localSigner, crc32c } = await import("../openpgp-kms.ts");
-      const local = localSigner(readFileSync(keyPem));
-      const pem = local.publicKey.export({ type: "spki", format: "pem" }) as string;
-      const seen: string[] = [];
-      const server = createServer((req, res) => {
-        let body = "";
-        req.on("data", (c) => (body += c));
-        req.on("end", async () => {
-          seen.push(`${req.method} ${req.url} ${req.headers.authorization}`);
-          if (req.headers.authorization !== "Bearer t0ken") return res.writeHead(401).end();
-          if (req.method === "GET" && req.url === `/v1/${name}/publicKey`) {
-            res.end(
-              JSON.stringify({
-                pem,
-                algorithm: "RSA_SIGN_PKCS1_4096_SHA256",
-                pemCrc32c: String(crc32c(Buffer.from(pem))),
-                name,
-              }),
-            );
-            return;
-          }
-          if (req.method === "POST" && req.url === `/v1/${name}:asymmetricSign`) {
-            const j = JSON.parse(body);
-            const digest = Buffer.from(j.digest.sha256, "base64");
-            const ok = Number(j.digestCrc32c) === crc32c(digest);
-            const s = await local.sign(digest);
-            res.end(
-              JSON.stringify({
-                signature: s.toString("base64"),
-                signatureCrc32c: String(crc32c(s)),
-                verifiedDigestCrc32c: ok,
-                name,
-              }),
-            );
-            return;
-          }
-          res.writeHead(404).end();
-        });
-      });
-      await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-      try {
-        const port = (server.address() as AddressInfo).port;
-        const file = data();
-        const out = join(dir, "kms.sig");
-        await run(
-          process.execPath,
-          [
-            SIGNER,
-            "sign",
-            "--key-version",
-            name,
-            "--cert",
-            cert,
-            "--format",
-            "binary",
-            "--in",
-            file,
-            "--out",
-            out,
-          ],
-          {
-            env: {
-              ...process.env,
-              KMS_ACCESS_TOKEN: "t0ken",
-              KMS_ENDPOINT: `http://127.0.0.1:${port}`,
-            },
-          },
-        );
-        expect(gpgv(gpgvKeyring(cert), out, file).status).toBe(0);
-        expect(seen).toEqual([
-          `GET /v1/${name}/publicKey Bearer t0ken`,
-          `POST /v1/${name}:asymmetricSign Bearer t0ken`,
-        ]);
-      } finally {
-        server.close();
-      }
+      const out = join(dir, "kms.sig");
+      const r = await signThroughFake({}, out);
+      expect(r.code, r.stderr).toBe(0);
+      expect(gpgv(gpgvKeyring(cert), out, file).status).toBe(0);
+      expect(r.seen).toEqual([
+        `GET /v1/${NAME}/publicKey Bearer ${TOKEN}`,
+        `POST /v1/${NAME}:asymmetricSign Bearer ${TOKEN}`,
+      ]);
     },
   );
 
-  it("refuses a plain-HTTP endpoint off loopback, a bad key version name and a missing token", async () => {
-    const { kmsEndpoint, kmsSigner } = await import("../openpgp-kms.ts");
-    expect(() => kmsEndpoint({ KMS_ENDPOINT: "http://example.com" })).toThrow(/https/);
-    expect(() => kmsEndpoint({ KMS_ENDPOINT: "https://example.com/x" })).toThrow(/origin/);
+  it.each<[string, () => Fake, RegExp]>([
+    ["an unconfirmed digest CRC32C", () => ({ verifiedDigestCrc32c: false }), /confirm the digest/],
+    ["another key version's name", () => ({ name: NAME.replace(/1$/, "2") }), /signed with/],
+    ["no signature CRC32C", () => ({ signatureCrc32c: "omit" }), /signature's CRC32C/],
+    ["a wrong signature CRC32C", () => ({ signatureCrc32c: "wrong" }), /signature's CRC32C/],
+    ["another algorithm", () => ({ algorithm: "RSA_SIGN_PSS_4096_SHA256" }), /algorithm/],
+    ["a software key", () => ({ protectionLevel: "SOFTWARE" }), /HSM/],
+    ["no public key CRC32C", () => ({ pemCrc32c: "omit" }), /public key's CRC32C/],
+    ["a wrong public key CRC32C", () => ({ pemCrc32c: "wrong" }), /public key's CRC32C/],
+    [
+      "a public key that is not the certificate's",
+      () => ({
+        pem: generateKeyPairSync("rsa", { modulusLength: 2048 }).publicKey.export({
+          type: "spki",
+          format: "pem",
+        }) as string,
+      }),
+      /not the certificate's key/,
+    ],
+    ["a signature by another key", () => ({ signWith: otherPem }), /does not verify/],
+  ])("refuses %s, writes nothing and never prints the token", async (_, fake, why) => {
+    const out = join(dir, `kms-refused-${randomBytes(4).toString("hex")}.sig`);
+    const r = await signThroughFake(fake(), out);
+    expect(r.code).not.toBe(0);
+    expect(r.stderr).toMatch(why);
+    expect(r.stderr).not.toContain(TOKEN);
+    expect(existsSync(out)).toBe(false);
+  });
+
+  it("talks only to Cloud KMS, or to a fake on a literal loopback address", async () => {
+    const { kmsEndpoint } = await import("../openpgp-kms.ts");
     expect(kmsEndpoint({})).toBe("https://cloudkms.googleapis.com");
+    for (const ok of [
+      "https://cloudkms.googleapis.com",
+      "https://cloudkms.europe-north1.rep.googleapis.com",
+      "http://127.0.0.1:8443",
+      "http://[::1]:8443",
+    ]) {
+      expect(kmsEndpoint({ KMS_ENDPOINT: ok })).toBe(ok);
+    }
+    for (const bad of [
+      "https://example.com",
+      "https://cloudkms.googleapis.com.example.com",
+      "https://evil.googleapis.com",
+      "https://cloudkms.googleapis.com:8443",
+      "https://user:pw@cloudkms.googleapis.com",
+      "https://cloudkms.googleapis.com/",
+      "https://cloudkms.googleapis.com/v1",
+      "https://CLOUDKMS.googleapis.com",
+      "http://cloudkms.googleapis.com",
+      "http://localhost:8443",
+      "http://127.1:8443",
+      "http://0x7f.1:8443",
+      "http://2130706433:8443",
+      "http://user@127.0.0.1:8443",
+      "https://127.0.0.1:8443",
+    ]) {
+      expect(() => kmsEndpoint({ KMS_ENDPOINT: bad }), bad).toThrow(/KMS_ENDPOINT/);
+    }
+  });
+
+  it("refuses a bad key version name and a missing token", async () => {
+    const { kmsSigner } = await import("../openpgp-kms.ts");
     await expect(kmsSigner("projects/x/../y", { KMS_ACCESS_TOKEN: "t" })).rejects.toThrow(
       /resource name/,
     );
@@ -446,14 +523,22 @@ describe("rpm", () => {
         `/usr/bin/env env ${process.execPath} ${SIGNER} sign --local-key ${keyPem} --cert ${cert} ` +
         "--format binary --in %{?1:%{shescape:%{1}}}%{!?1:-} " +
         "--out %{?2:%{shescape:%{2}}}%{!?2:%{shescape:%{__signature_filename}}}";
-      const s = sh("rpmsign", [
-        "--define",
-        "_gpg_name Vimma packages",
-        "--define",
-        `__gpg_sign_cmd() ${cmd}`,
-        "--addsign",
-        pkg,
-      ]);
+      const s = sh(
+        "rpmsign",
+        [
+          "--define",
+          "_gpg_name Vimma packages",
+          "--define",
+          `__gpg_sign_cmd() ${cmd}`,
+          "--addsign",
+          pkg,
+        ],
+        {
+          // a temp dir, so a command line that names a file rpm left unexpanded writes it there,
+          // never into the checkout
+          cwd: mkdtempSync(join(dir, "rpmsign-cwd-")),
+        },
+      );
       expect(s.status, s.stderr).toBe(0);
       const db = join(dir, "rpmdb");
       mkdirSync(db);

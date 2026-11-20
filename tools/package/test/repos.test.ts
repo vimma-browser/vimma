@@ -55,8 +55,12 @@ function stubRelease(
   root: string,
   version: string,
   formats: { deb?: boolean; rpm?: boolean; pacman?: boolean },
+  // what the package itself says, when a test needs it to differ from its file name
+  inside: { name?: string; version?: string } = {},
 ) {
   const dir = join(root, `v${version}`);
+  const name = inside.name ?? "vimma";
+  const said = inside.version ?? version;
   mkdirSync(dir, { recursive: true });
   if (formats.deb) {
     const r = join(root, `deb-${version}`);
@@ -65,7 +69,7 @@ function stubRelease(
     writeFileSync(join(r, "usr/share/vimma/version"), version);
     writeFileSync(
       join(r, "DEBIAN/control"),
-      `Package: vimma\nVersion: ${version}\nArchitecture: amd64\nMaintainer: Vimma CI <ci@example.invalid>\nDescription: stub\n`,
+      `Package: ${name}\nVersion: ${said}\nArchitecture: amd64\nMaintainer: Vimma CI <ci@example.invalid>\nDescription: stub\n`,
     );
     ok("dpkg-deb", ["--root-owner-group", "--build", r, join(dir, `vimma_${version}_amd64.deb`)]);
   }
@@ -74,7 +78,7 @@ function stubRelease(
     mkdirSync(join(top, "SPECS"), { recursive: true });
     writeFileSync(
       join(top, "SPECS/vimma.spec"),
-      `Name: vimma\nVersion: ${version}\nRelease: 1\nSummary: stub\nLicense: MPL-2.0\n` +
+      `Name: ${name}\nVersion: ${said}\nRelease: 1\nSummary: stub\nLicense: MPL-2.0\n` +
         "%description\nstub\n%install\nmkdir -p %{buildroot}/usr/share/vimma\n" +
         `echo ${version} > %{buildroot}/usr/share/vimma/version\n%files\n/usr/share/vimma/version\n`,
     );
@@ -88,7 +92,7 @@ function stubRelease(
     ]);
     writeFileSync(
       join(dir, `vimma-${version}-1.x86_64.rpm`),
-      readFileSync(join(top, "RPMS/x86_64", `vimma-${version}-1.x86_64.rpm`)),
+      readFileSync(join(top, "RPMS/x86_64", `${name}-${said}-1.x86_64.rpm`)),
     );
   }
   if (formats.pacman) {
@@ -97,7 +101,7 @@ function stubRelease(
     writeFileSync(join(r, "usr/share/vimma/version"), version);
     writeFileSync(
       join(r, ".PKGINFO"),
-      `pkgname = vimma-bin\npkgbase = vimma-bin\npkgver = ${version}-1\npkgdesc = stub\n` +
+      `pkgname = ${name}-bin\npkgbase = ${name}-bin\npkgver = ${said}-1\npkgdesc = stub\n` +
         "url = https://vimma.dev\nbuilddate = 1790000000\npackager = Vimma CI <ci@example.invalid>\n" +
         "size = 6\narch = x86_64\nlicense = MPL-2.0\n",
     );
@@ -189,14 +193,19 @@ describe("readRelease", () => {
 });
 
 describe("host files", () => {
-  it("writes one redirect per pacman file and one dynamic rule each for apt and rpm", () => {
-    const p = plan([rel("0.1.0"), rel("0.2.0")], 5);
-    expect(redirectsFile(p, GITHUB)).toBe(
-      `/apt/pool/:tag/:file ${GITHUB}/:tag/:file 302\n` +
-        `/rpm/packages/:tag/:file ${GITHUB}/:tag/:file 302\n` +
-        `/arch/x86_64/vimma-bin-0.2.0-1-x86_64.pkg.tar.zst ${GITHUB}/v0.2.0/vimma-bin-0.2.0-1-x86_64.pkg.tar.zst 302\n` +
-        `/arch/x86_64/vimma-bin-0.2.0-1-x86_64.pkg.tar.zst.sig ${GITHUB}/v0.2.0/vimma-bin-0.2.0-1-x86_64.pkg.tar.zst.sig 302\n`,
+  it("writes one static redirect per kept package file, and no placeholder", () => {
+    const p = plan([rel("0.1.0"), rel("0.2.0"), rel("0.3.0")], 2);
+    const text = redirectsFile(p, GITHUB);
+    expect(text).toBe(
+      `/apt/pool/v0.3.0/vimma_0.3.0_amd64.deb ${GITHUB}/v0.3.0/vimma_0.3.0_amd64.deb 302\n` +
+        `/apt/pool/v0.2.0/vimma_0.2.0_amd64.deb ${GITHUB}/v0.2.0/vimma_0.2.0_amd64.deb 302\n` +
+        `/rpm/packages/v0.3.0/vimma-0.3.0-1.x86_64.rpm ${GITHUB}/v0.3.0/vimma-0.3.0-1.x86_64.rpm 302\n` +
+        `/rpm/packages/v0.2.0/vimma-0.2.0-1.x86_64.rpm ${GITHUB}/v0.2.0/vimma-0.2.0-1.x86_64.rpm 302\n` +
+        `/arch/x86_64/vimma-bin-0.3.0-1-x86_64.pkg.tar.zst ${GITHUB}/v0.3.0/vimma-bin-0.3.0-1-x86_64.pkg.tar.zst 302\n` +
+        `/arch/x86_64/vimma-bin-0.3.0-1-x86_64.pkg.tar.zst.sig ${GITHUB}/v0.3.0/vimma-bin-0.3.0-1-x86_64.pkg.tar.zst.sig 302\n`,
     );
+    // a placeholder would redirect to any file of any release (decision 11)
+    expect(text.replaceAll("https:", "")).not.toContain(":");
   });
 
   it("refuses a download base that is not https, except on loopback for the smoke test", () => {
@@ -204,7 +213,7 @@ describe("host files", () => {
     expect(() => redirectsFile(p, "http://github.com/x")).toThrow(/https/);
     expect(() => redirectsFile(p, `${GITHUB}/`)).toThrow(/slash/);
     expect(redirectsFile(p, "http://127.0.0.1:8080/download")).toContain(
-      "/apt/pool/:tag/:file http://127.0.0.1:8080/download/:tag/:file 302\n",
+      "/apt/pool/v0.2.0/vimma_0.2.0_amd64.deb http://127.0.0.1:8080/download/v0.2.0/vimma_0.2.0_amd64.deb 302\n",
     );
   });
 
@@ -235,6 +244,12 @@ describe("host files", () => {
       })
       .join("\n");
     expect(`${unfolded}\n`).toBe(key);
+  });
+
+  // zypper addrepo names /etc/zypp/repos.d/<file> after the section id, not after the URL, and
+  // Vimma's update hint looks for /etc/zypp/repos.d/vimma.repo (decision 18)
+  it("the .repo file's only section id is [vimma]", () => {
+    expect(rpmRepo(HOST).match(/^\[.*\]$/gm)).toEqual(["[vimma]"]);
   });
 
   it("the .repo file sets gpgcheck and repo_gpgcheck", () => {
@@ -332,6 +347,59 @@ describe("build", () => {
         ),
       );
       expect(readFileSync(join(out, "_headers"), "utf8")).toBe(headersFile());
+    },
+    120_000,
+  );
+
+  it.skipIf(!hasDeb || !hasRpm || !hasPacman).each([
+    [
+      "a .deb whose control file names another version",
+      { deb: { version: "0.9.9" } },
+      /Packages.*v0\.3\.0/s,
+    ],
+    ["a .deb of another package", { deb: { name: "vimmb" } }, /Packages.*v0\.3\.0/s],
+    [
+      "an .rpm whose header names another version",
+      { rpm: { version: "0.9.9" } },
+      /primary\.xml.*v0\.3\.0/s,
+    ],
+    ["an .rpm of another package", { rpm: { name: "vimmb" } }, /primary\.xml.*v0\.3\.0/s],
+    [
+      "a pacman package that names another version",
+      { pacman: { version: "0.9.9" } },
+      /vimma\.db.*v0\.3\.0/s,
+    ],
+    ["a pacman package of another package", { pacman: { name: "vimmb" } }, /vimma\.db.*v0\.3\.0/s],
+  ] as const)(
+    "refuses metadata that does not match the release: %s",
+    async (_, wrong, why) => {
+      const root = tempDir("vimma-repos-");
+      const good = stubRelease(root, "0.2.0", { deb: true, rpm: true, pacman: true });
+      // each format built from its own stub, so only the one under test is wrong
+      const bad = join(root, "v0.3.0");
+      for (const format of ["deb", "rpm", "pacman"] as const) {
+        const scratch = join(root, `scratch-${format}`);
+        mkdirSync(scratch);
+        const inside = (wrong as Record<string, { name?: string; version?: string }>)[format] ?? {};
+        const d = stubRelease(scratch, "0.3.0", { [format]: true }, inside);
+        mkdirSync(bad, { recursive: true });
+        for (const f of readdirSync(d)) writeFileSync(join(bad, f), readFileSync(join(d, f)));
+      }
+      const certFile = join(root, "cert.asc");
+      writeFileSync(certFile, await cert());
+      await expect(
+        build({
+          releases: [
+            { tag: "v0.2.0", dir: good },
+            { tag: "v0.3.0", dir: bad },
+          ],
+          out: join(root, "public"),
+          cert: certFile,
+          keep: 5,
+          baseUrl: HOST,
+          downloadBase: GITHUB,
+        }),
+      ).rejects.toThrow(why);
     },
     120_000,
   );

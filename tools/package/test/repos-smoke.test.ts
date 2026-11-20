@@ -59,6 +59,7 @@ describe("repos-smoke.sh", () => {
       "vimma.db signed by another key",
       "tampered package",
       "package signed by another key",
+      "a host that switched to another key",
     ]) {
       expect(script).toContain(`refuse "${what}"`);
     }

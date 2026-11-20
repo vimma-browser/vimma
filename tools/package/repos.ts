@@ -42,7 +42,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { gzipSync } from "node:zlib";
+import { gunzipSync, gzipSync } from "node:zlib";
 
 export const DEFAULT_BASE_URL = "https://updates.vimma.dev";
 export const DEFAULT_DOWNLOAD_BASE = "https://github.com/vimma-browser/vimma/releases/download";
@@ -140,22 +140,131 @@ function baseUrl(value: string, what: string): string {
 }
 
 /**
- * The host's _redirects (Cloudflare Workers static assets): a dynamic rule each for apt's and
- * rpm's package paths, which carry the tag, and a static rule for the pacman package and its
- * signature, which pacman asks for next to the database (decision 11).
+ * The host's _redirects (Cloudflare Workers static assets): one static rule per package file the
+ * metadata lists, to that file in its own release (decision 11). No placeholder, so the host
+ * redirects only to the files the signed metadata names, never to another asset of a release.
  */
 export function redirectsFile(p: Plan, downloadBase: string): string {
   const base = baseUrl(downloadBase, "download base");
-  const r = p.pacman;
-  const pkg = safeName(r.pacman as string, "file name");
-  const tag = safeName(r.tag, "tag");
-  return [
-    `/apt/pool/:tag/:file ${base}/:tag/:file 302`,
-    `/rpm/packages/:tag/:file ${base}/:tag/:file 302`,
-    `/arch/x86_64/${pkg} ${base}/${tag}/${pkg} 302`,
-    `/arch/x86_64/${pkg}.sig ${base}/${tag}/${pkg}.sig 302`,
-    "",
-  ].join("\n");
+  const rule = (path: string, tag: string, file: string) =>
+    `${path}/${safeName(tag, "tag")}/${safeName(file, "file name")}` +
+    ` ${base}/${tag}/${file} 302`;
+  const pkg = p.pacman.pacman as string;
+  const lines = [
+    ...p.apt.map((r) => rule("/apt/pool", r.tag, r.deb)),
+    ...p.rpm.map((r) => rule("/rpm/packages", r.tag, r.rpm)),
+    `/arch/x86_64/${safeName(pkg, "file name")} ${base}/${p.pacman.tag}/${pkg} 302`,
+    `/arch/x86_64/${pkg}.sig ${base}/${p.pacman.tag}/${pkg}.sig 302`,
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+/** The stanzas of a Debian control-style file, each as its fields. */
+function stanzas(text: string): Map<string, string>[] {
+  return text
+    .split(/\n\n+/)
+    .filter((b) => b.trim())
+    .map((b) => {
+      const fields = new Map<string, string>();
+      for (const line of b.split("\n")) {
+        const m = /^([A-Za-z0-9-]+):\s*(.*)$/.exec(line);
+        if (m?.[1] && m[2] !== undefined) fields.set(m[1], m[2]);
+      }
+      return fields;
+    });
+}
+
+/**
+ * Refuses apt's Packages unless it has exactly one stanza per kept release, each the package
+ * `vimma` at the release's version, at the release's path: the signature will vouch for what
+ * apt-ftparchive read from the files, so a file that is not the release it claims stops here.
+ */
+export function checkPackages(text: string, releases: Release[]): void {
+  const found = stanzas(text);
+  for (const r of releases) {
+    const s = found.filter((f) => f.get("Filename") === `pool/${r.tag}/${r.deb}`);
+    if (s.length !== 1 || s[0]?.get("Package") !== "vimma" || s[0]?.get("Version") !== r.version) {
+      throw new Error(`repos: Packages does not list vimma ${r.version} for ${r.tag}`);
+    }
+  }
+  if (found.length !== releases.length) {
+    throw new Error(`repos: Packages has ${found.length} stanzas, want ${releases.length}`);
+  }
+}
+
+/** Refuses primary.xml unless it lists exactly vimma X.Y.Z-1 for each kept release. */
+export function checkPrimary(xml: string, releases: Release[]): void {
+  const packages = [...xml.matchAll(/<package type="rpm">([\s\S]*?)<\/package>/g)].map(
+    (m) => m[1] ?? "",
+  );
+  for (const r of releases) {
+    const href = `packages/${r.tag}/${r.rpm}`;
+    const own = packages.filter((p) => p.includes(`<location href="${href}"/>`));
+    const p = own[0] ?? "";
+    const version = /<version epoch="0" ver="([^"]*)" rel="([^"]*)"\/>/.exec(p);
+    if (
+      own.length !== 1 ||
+      /<name>([^<]*)<\/name>/.exec(p)?.[1] !== "vimma" ||
+      /<arch>([^<]*)<\/arch>/.exec(p)?.[1] !== "x86_64" ||
+      version?.[1] !== r.version ||
+      version?.[2] !== "1"
+    ) {
+      throw new Error(`repos: primary.xml does not list vimma ${r.version}-1 for ${r.tag}`);
+    }
+  }
+  if (packages.length !== releases.length) {
+    throw new Error(`repos: primary.xml has ${packages.length} packages, want ${releases.length}`);
+  }
+}
+
+/** The files of a tar archive by name (ustar and pax, as bsdtar writes them). */
+export function untar(data: Buffer): Map<string, Buffer> {
+  const files = new Map<string, Buffer>();
+  let at = 0;
+  let paxPath: string | undefined;
+  while (at + 512 <= data.length) {
+    const header = data.subarray(at, at + 512);
+    if (header.every((b) => b === 0)) break;
+    const field = (from: number, len: number) =>
+      header
+        .subarray(from, from + len)
+        .toString("utf8")
+        .replace(/\0[\s\S]*$/, "");
+    const size = parseInt(field(124, 12).trim() || "0", 8);
+    const type = field(156, 1);
+    const prefix = header.subarray(257, 263).toString("latin1").startsWith("ustar")
+      ? field(345, 155)
+      : "";
+    const body = data.subarray(at + 512, at + 512 + size);
+    if (type === "x") {
+      paxPath = /(?:^|\n)\d+ path=([^\n]*)\n/.exec(body.toString("utf8"))?.[1];
+    } else if (type !== "g") {
+      const name = paxPath ?? (prefix ? `${prefix}/${field(0, 100)}` : field(0, 100));
+      files.set(name, body);
+      paxPath = undefined;
+    }
+    at += 512 + Math.ceil(size / 512) * 512;
+  }
+  return files;
+}
+
+/**
+ * Refuses the pacman database unless it holds exactly vimma-bin X.Y.Z-1 of the release, from
+ * the release's package file.
+ */
+export function checkPacmanDb(tarGz: Buffer, r: Release): void {
+  const entries = [...untar(gunzipSync(tarGz)).entries()].filter(([n]) => !n.endsWith("/"));
+  const dir = `vimma-bin-${r.version}-1`;
+  const desc = entries.length === 1 && entries[0]?.[0] === `${dir}/desc` ? entries[0][1] : null;
+  const text = desc?.toString("utf8") ?? "";
+  const value = (key: string) => new RegExp(`(?:^|\\n)%${key}%\\n([^\\n]*)\\n`).exec(text)?.[1];
+  if (
+    value("NAME") !== "vimma-bin" ||
+    value("VERSION") !== `${r.version}-1` ||
+    value("FILENAME") !== r.pacman
+  ) {
+    throw new Error(`repos: vimma.db does not list exactly vimma-bin ${r.version}-1 for ${r.tag}`);
+  }
 }
 
 /**
@@ -242,11 +351,7 @@ export async function build(opts: BuildOptions): Promise<void> {
       copyFileSync(join(r.dir, r.deb), join(aptWork, "pool", r.tag, r.deb));
     }
     const packages = tool("apt-ftparchive", ["packages", "pool"], aptWork);
-    for (const r of p.apt) {
-      if (!packages.includes(`\nFilename: pool/${r.tag}/${r.deb}\n`)) {
-        throw new Error(`repos: apt-ftparchive left out ${r.deb}`);
-      }
-    }
+    checkPackages(packages, p.apt);
     const apt = join(out, "apt");
     mkdirSync(apt);
     writeFileSync(join(apt, "Packages"), packages);
@@ -282,6 +387,10 @@ export async function build(opts: BuildOptions): Promise<void> {
       ["--no-database", "--general-compress-type=gz", "--checksum=sha256", "--quiet", "."],
       rpmWork,
     );
+    const repomd = readFileSync(join(rpmWork, "repodata", "repomd.xml"), "utf8");
+    const primary = /<data type="primary">[\s\S]*?<location href="([^"]+)"/.exec(repomd)?.[1];
+    if (!primary) throw new Error("repos: repomd.xml names no primary.xml");
+    checkPrimary(gunzipSync(readFileSync(join(rpmWork, primary))).toString("utf8"), p.rpm);
     const repodata = join(out, "rpm", "repodata");
     mkdirSync(repodata, { recursive: true });
     for (const f of readdirSync(join(rpmWork, "repodata"))) {
@@ -301,6 +410,7 @@ export async function build(opts: BuildOptions): Promise<void> {
     tool("repo-add", ["--quiet", "vimma.db.tar.gz", pkg], archWork);
     const arch = join(out, "arch", "x86_64");
     mkdirSync(arch, { recursive: true });
+    checkPacmanDb(readFileSync(join(archWork, "vimma.db.tar.gz")), p.pacman);
     copyFileSync(join(archWork, "vimma.db.tar.gz"), join(arch, "vimma.db"));
     copyFileSync(join(archWork, "vimma.files.tar.gz"), join(arch, "vimma.files"));
 
