@@ -47,5 +47,9 @@ export function setBookmarksToolbar(s, command) {
   }
   if (command.kind === "set") BookmarksToolbar.set(command.setting);
   else if (!runKey(s.win, BROWSER_KEYS["browser.bookmarks_toolbar"])) return;
-  s.notice.show(bookmarksToolbarNotice(BookmarksToolbar.visibility, BookmarksToolbar.configured));
+  s.notice.show(
+    bookmarksToolbarNotice(BookmarksToolbar.visibility, BookmarksToolbar.configured, {
+      toolbarHidden: Toolbar.hidden,
+    }),
+  );
 }

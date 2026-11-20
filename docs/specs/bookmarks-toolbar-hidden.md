@@ -156,7 +156,8 @@ changes.
   by `tools/branding/test/branding-prefs.test.mjs` (Since changed: `branding-prefs.test.ts`,
   ADR-025) (Vitest). They are defaults, never locked, so the user's own value wins.
 - **Config.** [toolbar-toggle](toolbar-toggle.md) (implemented) added the `[ui]` table with
-  `[ui] toolbar = "shown" | "hidden"` (decision 3, schema 2, `config.mjs:220–224`), held in
+  `[ui] toolbar = "shown" | "hidden"` (decision 3, schema 2, `config.mjs:220–224`; default
+  `"hidden"` since 19 Nov 2026, issue #1387), held in
   `vimma.ui.toolbar.hidden`, written by `ConfigHost` at startup and on a reload only when that
   value changed; a toggle lasts until the next restart or edit of that line (decision 4). Its
   decision 5 hides `#PersonalToolbar` with `#nav-bar`; its minimal bar never shows the bookmarks
@@ -266,6 +267,10 @@ import's forced reveal.
    independent: neither writes the other's pref, because each is its own config key and command
    and a user can want either without the other. This spec, built second, adds the combined
    mochitest (Tests, mochitest 10).
+   (Changed 19 Nov 2026, issue #1387: the nav bar is hidden by default (toolbar-toggle decision
+   3), so showing the bookmarks toolbar alone shows nothing until the nav bar is shown. A notice
+   that shows it (`shown` or `shown on new tabs`) while the nav bar is hidden adds
+   `; the toolbar is hidden: :toolbar show`; the two settings still never write each other.)
 9. **Private workspace.** The pref is per profile, so private windows follow it. With `"newtab"`,
    a private window's `about:privatebrowsing` counts as a new tab (Firefox's rule). A private
    window's bookmarks panel shows the toolbar folder (bookmarks decision 11); nothing else

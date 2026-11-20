@@ -25,6 +25,7 @@ takes over the security and private-browsing cues the hidden bar carried. Shown 
 toolbar, the URL field and its suggestions and the panels hanging from the bar take Vimma's theme,
 and a permission prompt answers `y` and `n`. Separately, the account panel loses Firefox's "Get
 Vimma for Android or iOS" row, which advertises an app that does not exist.
+(Since changed: the toolbar is hidden by default, decision 3; `ctrl+b u` shows it.)
 
 ## Problem
 
@@ -51,6 +52,8 @@ Vimma for Android or iOS" row, which advertises an app that does not exist.
 4. `ctrl+b u` brings the whole toolbar back, for its buttons and the window controls. The pointer
    at the window's top edge does not reveal it.
 5. `[ui] toolbar = "hidden"` in `config.toml` starts every window with the toolbar hidden.
+   (Changed 19 Nov 2026, issue #1387: hidden is the default, so a new profile starts with the
+   toolbar hidden, and `[ui] toolbar = "shown"` starts every window with it shown.)
 6. `:toolbar` toggles it, and `:toolbar show` / `:toolbar hide` set it, so `vimma-ctl` scripts can
    set a known state.
 7. `ctrl+b e` → `Enter` on an add-on still opens its popup under its button. The whole toolbar
@@ -334,20 +337,37 @@ Numbered decisions, each with its reason and the alternatives rejected.
    - `:sidebar` / `:bookmarks` are the model, plus arguments so `vimma-ctl` can set a known state
      rather than flip an unknown one.
 3. **Config: `[ui] toolbar = "shown" | "hidden"`.** This is a new top-level table, gated on
-   `schema = 2` like `[bookmarks]`. The default is `"shown"`.
+   `schema = 2` like `[bookmarks]`. The default is `"hidden"`.
    - Anything else is an error with the closest value, and the last good config stays.
    - `[ui]` is the home for later chrome-visibility settings; the tab strip pref could move there.
-   - Default shown: a new user gets Firefox's familiar address bar. Hiding is opt-in, because it
-     moves security information into the status bar (decision 12).
+   - Default hidden: the window is the page and the status bar, which carries the site and its
+     security cues (decision 12), and every way to the address bar still reaches it (decision 13).
+     An existing `toolbar = "shown"` keeps the toolbar shown.
+   - (Changed 19 Nov 2026, issue #1387: the default was `"shown"`, so that a new user got
+     Firefox's familiar address bar and hiding was opt-in, because it moves security information
+     into the status bar. It is hidden now, because the status bar carries that information for
+     every page: the address with its registrable domain, `not secure`, `private` and the devices
+     in use show with no `[ui]` line; the site's identity block and its panel, with the icons of
+     the permissions given to the site, are one `ctrl+b u` away; and a permission prompt still
+     hangs from its icon beside the site's identity (decision 11);
+     `the_default_hidden_toolbar_keeps_the_security_cues` in `browser_vimma_toolbar.js`.)
 4. **One state for all windows, held in a pref.**
-   - `vimma.ui.toolbar.hidden` (bool, default `false`) is observed live in every window, as the
-     tab strip pref is.
+   - `vimma.ui.toolbar.hidden` (bool, default `true`, as the config's default) is observed live
+     in every window, as the tab strip pref is. The two defaults agree, so no window shows the
+     toolbar before the config is read.
    - The toggle, `:toolbar` and `vimma-ctl` write it.
    - `ConfigHost` writes it from `[ui] toolbar` at startup, and on a reload only when that value
      changed from the last good config. A toggle therefore lasts until the next restart or the
      next edit of that line, as a tmux `set` lasts until `.tmux.conf` is sourced.
-   - A restart starts from the config. That is the safe direction: a broken or missing config
-     means `"shown"`.
+   - A restart starts from the config. A missing config.toml, or a broken one with no last good
+     config, means the defaults, so `"hidden"`; a broken one after a good one keeps the good one's
+     value.
+   - (Changed 19 Nov 2026, issue #1387: a broken or missing config meant `"shown"`, "the safe
+     direction", which the shown default gave for free. With the default hidden, they mean the
+     defaults, as for every other setting: the security cues are in the status bar either way
+     (decision 12), and a broken file's error shows there too. Forcing `"shown"` for them alone
+     would need a case of its own in `ConfigHost` and would show the toolbar to a new profile
+     that has no config.toml yet, the very user the default is for.)
    - Not per window: it is a look you choose for the browser, as Zen's compact mode is. A
      per-window toggle would make new windows guess.
 5. **What hides:**
@@ -820,7 +840,7 @@ Write first; paste red, then green (CONTRIBUTING.md, "TDD").
     - a wrong value is an error with the closest value;
     - `[ui]` in a schema-1 file gets the "new in schema 2" error;
     - an unknown `[ui]` key is an error;
-    - the default is `"shown"`.
+    - the default is `"hidden"` (changed 19 Nov 2026, issue #1387).
   - `cmdline.test.mjs`: `:toolbar`, `:toolbar show`, `:toolbar hide`, the completion of the two
     words, and an unknown word refused.
   - `prompt-keys.test.mjs` (decision 11a): `y` and `n` answer an armed prompt and are swallowed
@@ -895,7 +915,12 @@ Write first; paste red, then green (CONTRIBUTING.md, "TDD").
       - a private window shows `private`;
       - with the bar shown, neither appears.
   12. Config: `[ui] toolbar = "hidden"` hides it after the poll. A toggle then lasts until that
-      line changes.
+      line changes. With no config.toml the toolbar is hidden, and the pref's build default is
+      `true` (decisions 3 and 4, changed 19 Nov 2026).
+      12a. The default (decision 3, changed 19 Nov 2026): with no `[ui]` line and no pref set,
+      an `http:` page shows `not secure` and the status bar keeps its registrable domain, an
+      `https:` page shows its domain and no warning, and `ctrl+b u` shows the site's identity
+      block (`the_default_hidden_toolbar_keeps_the_security_cues`).
   13. a11y: with the bar hidden, the hidden `#urlbar` has no accessible. The notice reaches the
       polite region.
   14. No hover: there is no edge strip, and the pointer at `y = 0` and `y = 1` reveals nothing.
@@ -924,6 +949,11 @@ Write first; paste red, then green (CONTRIBUTING.md, "TDD").
       typed text (suggestions off in the e2e profile, so the shot is stable);
     - `Enter`.
   - The new baselines need their changelog line (see below).
+  - (Changed 19 Nov 2026, issue #1387: the e2e profile has no config.toml, so every scenario
+    starts with the toolbar hidden. This scenario waits for the page at the window's full height
+    first, then `ctrl+b u` twice; its two baselines are unchanged. The other 29 baselines lose
+    the toolbar, and the status bar keeps the fixture pages' `http://` (`127.0.0.1` is a secure
+    context, so no `not secure`); they are re-recorded from CI's images (#1093).)
 
 ## Docs and changelog
 

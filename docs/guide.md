@@ -36,8 +36,8 @@ What works today, each with the section that explains it:
   in [config.toml](#configtoml), which applies on save; Firefox's own shortcuts are Vimma
   bindings too ([Firefox's own shortcuts](#firefoxs-own-shortcuts)).
 - **[Search engines](#search-engines)** and `@aliases` from `config.toml`, such as `@gh vimma`.
-- **[Hide the toolbar](#hiding-the-toolbar)** with `ctrl+b u`: the page reaches the top of the
-  window, and the address bar comes back when you need it.
+- **[No toolbar](#hiding-the-toolbar)** by default: the page reaches the top of the window, the
+  address bar comes back when you need it, and `ctrl+b u` shows the whole toolbar.
 - **[Tab line](#tab-line):** an optional row of text at the top of the window that lists this
   workspace's tabs with their numbers; `gb` labels them and one more key goes there, `12gb`
   goes to tab 12.
@@ -1118,13 +1118,16 @@ whatever your layout types `?` with): the overlay is the one place that lists th
 
 ### Hiding the toolbar
 
-`ctrl+b u` hides Firefox's toolbar, the row with the address bar, the back and reload buttons and the
-add-on buttons, in every window, and `ctrl+b u` again brings it back. The page then reaches the
-top of the window, with only the status bar below it. The notice says `toolbar hidden` or
-`toolbar shown`. `:toolbar` does the same, and `:toolbar show` and `:toolbar hide` set it either
-way (a `vimma-ctl` script can set a known state); `Tab` completes the two words. To start every
-window with it hidden, put `[ui] toolbar = "hidden"` in [config.toml](#configtoml). A toggle lasts
-until a restart or until you edit that line.
+Firefox's toolbar, the row with the address bar, the back and reload buttons and the add-on
+buttons, is hidden by default: the page reaches the top of the window, with only the status bar
+below it, and the status bar names the site and warns about it ([below](#status-bar)).
+`ctrl+b u` shows it in every window, and `ctrl+b u` again hides it. The notice says
+`toolbar shown` or `toolbar hidden`. `:toolbar` does the same, and `:toolbar show` and
+`:toolbar hide` set it either way (a `vimma-ctl` script can set a known state); `Tab` completes
+the two words. To start every window with it shown, put `[ui] toolbar = "shown"` in
+[config.toml](#configtoml); a config.toml that already says so keeps it shown. A toggle lasts
+until a restart or until you edit that line. Without config.toml, or with one that has an error
+before any version of it applied, the toolbar is hidden.
 
 - **Typing an address:** `I`, `ctrl+l`, `alt+d`, `F6`, `t`, `ctrl+t`, `ctrl+b c` and a new pane
   all still focus the address bar. A minimal bar then shows over the top of the page: only the URL
@@ -1150,6 +1153,9 @@ until a restart or until you edit that line.
 - **Security in the status bar:** while the toolbar is hidden the status bar says `not secure`
   for a page that is not served over a secure connection, and `private` in a private window
   ([above](#status-bar)).
+- **The site's identity:** the lock, the site's identity panel and the icons of the permissions
+  you gave a site are in the address bar's identity block, which shows with the whole toolbar
+  (`ctrl+b u`) and with a permission prompt.
 - **Window controls:** with Firefox's own title bar (close, minimise and maximise buttons in the
   toolbar), they hide with it and show when `ctrl+b u` brings the toolbar back. On a tiling window
   manager such as Omarchy's, which draws no title bar, nothing changes.
@@ -4339,8 +4345,8 @@ before this default has it hidden once, with a notice that says how to bring it 
   decide.
 - **Customize → Restore Defaults** sets Firefox's own default, the toolbar on new tabs;
   `:bookmarkstoolbar hide` hides it again.
-- With the [toolbar hidden](#hiding-the-toolbar) (`ctrl+b u`), the bookmarks toolbar hides with
-  it.
+- With the [toolbar hidden](#hiding-the-toolbar), the default, the bookmarks toolbar hides with
+  it, and the notice that shows it adds `the toolbar is hidden: :toolbar show`.
 
 ## Tab search and tab rename
 
@@ -4750,7 +4756,7 @@ Vimma's main preferences (a few more are described with the feature they belong 
 | Preference                    | Default                                | What it does                                                                                                                                                                            |
 | ----------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `vimma.ui.tabstrip.hidden`    | `true`                                 | Hides Firefox's tab strip (horizontal, and the vertical tab list). Set `false` to show it again; it applies at once, no restart.                                                        |
-| `vimma.ui.toolbar.hidden`     | `false`                                | Hides Firefox's toolbar in every window ([Hiding the toolbar](#hiding-the-toolbar)). `ctrl+b u` and `:toolbar` set it; `[ui] toolbar` sets it at startup. Applies at once.              |
+| `vimma.ui.toolbar.hidden`     | `true`                                 | Hides Firefox's toolbar in every window ([Hiding the toolbar](#hiding-the-toolbar)). `ctrl+b u` and `:toolbar` set it; `[ui] toolbar` sets it at startup. Applies at once.              |
 | `vimma.ui.pdf_outline.hidden` | `false`                                | Opens PDFs without their outline shown ([PDF viewer](#pdf-viewer)); `Tab` still opens it. `[ui] pdf_outline` sets it at startup. Applies to the next PDF.                               |
 | `vimma.debug.keys`            | unset                                  | Create it as a boolean set to `true` to log every key Vimma sees (`{ key, mods, mode }`) to the Browser Console (`ctrl+shift+j`; enable its Debug filter).                              |
 | `vimma.update.enabled`        | `true`                                 | Checks for a newer Vimma ([Updates](#updates)). `false` stops every check, as `[updates] check = false` does.                                                                           |
@@ -4843,8 +4849,8 @@ accent = "#ff9e64"
   minutes, at most `grant_max_minutes`, 1 to 1440, default 480;
   `max_read_chars`, 1,000 to 500,000, default 200,000; `notify`, default `true`;
   `download_dir`, `download_max_mb` and `clamav_max_age_days`, [above](#downloads-from-the-agent-workspace)); `[search]`
-  (the default engine and `@aliases`, [below](#search-engines)); `[ui] toolbar` (`"shown"`, the
-  default, or `"hidden"`: [Firefox's toolbar](#hiding-the-toolbar) in every window; applied at
+  (the default engine and `@aliases`, [below](#search-engines)); `[ui] toolbar` (`"hidden"`, the
+  default, or `"shown"`: [Firefox's toolbar](#hiding-the-toolbar) in every window; applied at
   startup and when the line changes, so `ctrl+b u` lasts until then); `[ui] bookmarks_toolbar`
   (`"shown"`, `"hidden"` or `"newtab"`, unset by default: [Firefox's Bookmarks
   Toolbar](#firefoxs-bookmarks-toolbar), hidden unless you show it); `[ui] pdf_outline`

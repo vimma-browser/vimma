@@ -16,7 +16,7 @@
 requestLongerTimeout(4);
 
 /* global focusContent -- from head.js */
-/* global PopupNotifications, SitePermissions, gCustomizeMode, gNavToolbox, CustomizableUI, PanelMultiView,
+/* global BrowserCommands, PopupNotifications, SitePermissions, gCustomizeMode, gNavToolbox, CustomizableUI, PanelMultiView,
    PanelUI, AppMenuNotifications -- browser window globals (browser.js) */
 
 const { VimmaHost } = ChromeUtils.importESModule(
@@ -52,6 +52,7 @@ const PLAIN = DIR + "file_vimma_plain.html";
 /** A bookmarked page that is not the one open (Firefox leaves the current page out). */
 const OTHER = PLAIN + "?other";
 const HTTP_PLAIN = PLAIN.replace("https://", "http://");
+const START_PAGE = "chrome://browser/content/vimma/start/start.html";
 const VISIBLE = { visibilityProperty: true };
 
 const dir = PathUtils.join(PathUtils.tempDir, `vimma-toolbar-${Date.now()}`);
@@ -223,12 +224,54 @@ add_task(async function setup() {
     await PlacesUtils.bookmarks.eraseEverything();
     await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true });
   });
+  // Decision 3 (changed 19 Nov 2026): a profile with no `[ui] toolbar` (here no config.toml at
+  // all, browser.toml points the path at a missing file) starts with the toolbar hidden, and the
+  // build's pref agrees with the config default, so no window shows it before the config is read.
   Assert.equal(
-    Services.prefs.getDefaultBranch("").getBoolPref(PREF, true),
-    false,
-    `${PREF} defaults to false: the toolbar is shown`,
+    Services.prefs.getDefaultBranch("").getBoolPref(PREF, false),
+    true,
+    `${PREF} defaults to true: the toolbar is hidden`,
   );
-  Assert.ok(!barCollapsed(), "the toolbar shows by default");
+  Assert.equal(ConfigHost.config?.ui.toolbar, "hidden", "no config.toml: hidden");
+  Assert.ok(barCollapsed() && root().hasAttribute(HIDDEN), "the toolbar is hidden by default");
+});
+
+// Decision 3 (changed 19 Nov 2026) and docs/security/06-chrome-ui-rendering.md C3: with the
+// default, nothing set, the status bar carries the site and the warning the hidden bar did, and
+// ctrl+b u reaches the site's identity block and its panel.
+add_task(async function the_default_hidden_toolbar_keeps_the_security_cues() {
+  Assert.ok(!Services.prefs.prefHasUserValue(PREF), "the build's default, no pref set");
+  const tab = await openPage(HTTP_PLAIN);
+  Assert.ok(barCollapsed(), "hidden");
+  Assert.equal(tab.linkedBrowser.currentURI.scheme, "http", "the page stayed on http:");
+  await until(() => segText("security") === "not secure", "an http: page says not secure");
+  await until(
+    () => !!segText("url")?.startsWith("http://") && hostShown(segText("url")) === "example.com",
+    "with its http:// host",
+  );
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, PLAIN);
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, PLAIN);
+  await until(() => segText("security") === null, "an https: page says nothing");
+  await until(() => hostShown(segText("url")) === "example.com", "and names its site");
+
+  await focusContent(tab.linkedBrowser);
+  prefix("u");
+  await until(() => !barCollapsed(), "ctrl+b u shows the toolbar");
+  const identity = [$("trust-icon-container"), $("identity-icon-box")].find(shows);
+  Assert.ok(identity, "with the site's identity button");
+  // The site's own panel: the trust panel, or the identity panel where it is off.
+  const opened = BrowserTestUtils.waitForEvent(document, "popupshown", false, (e) =>
+    ["trustpanel-popup", "identity-popup"].includes(/** @type {Element} */ (e.target).id),
+  );
+  EventUtils.synthesizeMouseAtCenter(found(identity), {});
+  const panel = /** @type {XULPopupElement} */ ((await opened).target);
+  Assert.equal(panel.state, "open", "its panel opens from it");
+  PanelMultiView.hidePopup(panel);
+  await until(() => panel.state === "closed", "the panel closes");
+  await until(() => segText("security") === null, "shown: no security segment");
+  gBrowser.removeTab(tab);
+  // The tasks below start from the toolbar shown, as ctrl+b u left it.
+  await show();
 });
 
 // 1, 13: every window; the notice, spoken; the notification bars stay; no accessible.
@@ -1630,9 +1673,12 @@ add_task(async function config_sets_the_toolbar() {
   const write = (/** @type {string} */ text) =>
     IOUtils.writeUTF8(configFile, `${text}\n${"#".repeat(++n)}\n`);
 
-  await show();
+  // The defaults in force say hidden (decision 3): "shown" first, so "hidden" is a change.
+  await write(`[ui]\ntoolbar = "shown"`);
+  await until(() => ConfigHost.config?.ui.toolbar === "shown", "the poll reads the file");
+  await until(() => !barCollapsed(), "shown, from the file");
   await write(`[ui]\ntoolbar = "hidden"`);
-  await until(() => ConfigHost.config?.ui.toolbar === "hidden", "the poll reads the file");
+  await until(() => ConfigHost.config?.ui.toolbar === "hidden", "the poll reads the change");
   await until(() => Services.prefs.getBoolPref(PREF, false), "and hides the toolbar");
   await until(() => barCollapsed(), "hidden");
 
@@ -1651,8 +1697,61 @@ add_task(async function config_sets_the_toolbar() {
   await IOUtils.remove(configFile);
   await SpecialPowers.popPrefEnv();
   await ConfigHost.reload();
-  await until(() => !Services.prefs.getBoolPref(PREF, false), "no config: shown");
+  await until(() => Services.prefs.getBoolPref(PREF, false), "no config: hidden (decision 4)");
+  await show();
   gBrowser.removeTab(tab);
+});
+
+// Decision 3 (changed 19 Nov 2026) and decision 13: an overlay opened from the address bar
+// gives focus back to it on Esc, through gURLBar.focus(), whose `beforefocus` reveals the hidden
+// bar; the field focused directly stays collapsed and refuses focus, which lost it.
+add_task(async function overlays_give_focus_back_to_the_hidden_address_bar() {
+  await hide();
+  const loaded = BrowserTestUtils.waitForNewTab(gBrowser, START_PAGE, true);
+  BrowserCommands.openTab();
+  const tab = await loaded;
+  await until(() => gURLBar.focused, "the start page focuses the address bar");
+
+  /** @param {string} what @param {() => void} open @param {number} [escapes] */
+  async function roundTrip(what, open, escapes = 1) {
+    gURLBar.focus();
+    await until(() => gURLBar.focused && minimal(), `${what}: the minimal bar has focus`);
+    open();
+    await until(() => !gURLBar.focused, `${what}: it takes focus`);
+    for (let i = 0; i < escapes; i++) EventUtils.synthesizeKey("KEY_Escape");
+    await until(() => gURLBar.focused, `${what}: Esc gives focus back to the address bar`);
+    Assert.ok(shows(gURLBar.inputField) && minimal(), `${what}: in the minimal bar, visible`);
+    await escapeUrlbar();
+  }
+
+  // A `:` line typed in the start page's address bar runs from the page (host/urlbar-commands.mjs
+  // puts focus there first, toolbar shown or hidden), so Esc on its error gives focus to the page.
+  gURLBar.focus();
+  await until(() => gURLBar.focused, "the address bar has focus");
+  EventUtils.sendString(":tabnwe");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => !gURLBar.focused, "the command line takes the line");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(
+    () => document.activeElement === gBrowser.selectedBrowser,
+    "Esc gives focus to the start page, as with the toolbar shown",
+  );
+
+  await roundTrip("the help overlay", () => prefix("?", window, { shiftKey: true }));
+  await roundTrip("the workspace picker", () => prefix("w"));
+  await roundTrip("the rename prompt", () => prefix("T", window, { shiftKey: true }));
+  // Live grep: the first Esc goes to browse mode, the second closes it.
+  await roundTrip(
+    "live grep",
+    () => {
+      prefix("f");
+      EventUtils.synthesizeKey("g");
+    },
+    2,
+  );
+  await roundTrip("the side panel", () => prefix("b"));
+  gBrowser.removeTab(tab);
+  await show();
 });
 
 // 14: the pointer at the window's top edge reveals nothing: the bar shows for the address, a

@@ -46,13 +46,20 @@ const NOTICES = Object.freeze({
 
 /**
  * Behaviour 6: what a change made through Vimma says. While config.toml sets the key, the next
- * start applies it again (decision 4), so the notice says the change lasts until then.
+ * start applies it again (decision 4), so the notice says the change lasts until then. While
+ * Firefox's toolbar is hidden (its default, toolbar-toggle decision 3), the bookmarks toolbar
+ * hides with it (decision 8), so a notice that shows it says how to show the toolbar too.
  * @param {string} visibility  the pref's value after the change
  * @param {BookmarksToolbarSetting | null} configured  `[ui] bookmarks_toolbar`, null when unset
+ * @param {{ toolbarHidden?: boolean }} [options]  Firefox's toolbar is hidden
  */
-export function bookmarksToolbarNotice(visibility, configured) {
-  const text = NOTICES[/** @type {BookmarksToolbarVisibility} */ (visibility)] ?? NOTICES.always;
-  return configured ? `${text} (config.toml sets "${configured}"; until restart)` : text;
+export function bookmarksToolbarNotice(visibility, configured, { toolbarHidden = false } = {}) {
+  const key = /** @type {BookmarksToolbarVisibility} */ (
+    visibility in NOTICES ? visibility : "always"
+  );
+  const text = NOTICES[key];
+  const said = configured ? `${text} (config.toml sets "${configured}"; until restart)` : text;
+  return toolbarHidden && key !== "never" ? `${said}; the toolbar is hidden: :toolbar show` : said;
 }
 
 /**

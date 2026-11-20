@@ -222,8 +222,11 @@ add_task(async function test_screenshot_of_a_background_tab_shows_its_page() {
   const { width, height } = tab.linkedBrowser.getBoundingClientRect();
   const scale = Math.min(window.devicePixelRatio, 1280 / width);
   Assert.ok(image.width <= 1280, "at most 1,280 pixels wide");
-  Assert.equal(image.width, Math.round(width * scale), "the whole viewport's width");
-  Assert.equal(image.height, Math.round(height * scale), "and height");
+  // drawSnapshot truncates the scaled size to whole pixels (CrossProcessPaint.cpp, surfaceSize),
+  // and the scaled box need not be whole: with the toolbar hidden, the default, a 747 px high
+  // page at 1280/1366 is 699.97 px and draws 699. The image is the viewport to its last pixel.
+  Assert.less(Math.abs(image.width - width * scale), 1, "the whole viewport's width");
+  Assert.less(Math.abs(image.height - height * scale), 1, "and height");
   Assert.deepEqual(image.at(10, 10), [255, 0, 0], "shows the page as it is now (F18)");
   Assert.deepEqual(image.at(10, 125 * scale + 40), [255, 255, 255], "below the band, the page");
   Assert.deepEqual(

@@ -194,6 +194,16 @@ describe("keys named on the page (decisions 8 and 9)", () => {
 describe("choices, Keep and the line a step writes (behaviours 8, 9 and 12)", () => {
   const toolbar = step("address_bar");
 
+  // Re-review L1: a broken config.toml with no good one before it leaves no config in force;
+  // the built-in defaults are in force then, and the toolbar is hidden by default.
+  test("with no config in force, the defaults are: hidden is selected and drawn", () => {
+    const now = inForceOf(null);
+    expect(now["ui.toolbar"]).toBe("hidden");
+    expect(stepChoices(toolbar, now).selected).toBe(1);
+    const tabline = step("tab_line");
+    expect(windowSketch(tabline, tabline.choices[0]!, {})?.toolbar).toBe("hidden");
+  });
+
   test("the value in force is selected", () => {
     const r = stepChoices(toolbar, { "ui.toolbar": "hidden" });
     expect(r.choices.map((c) => c.label)).toEqual(["Shown", "Hidden"]);
@@ -261,18 +271,18 @@ describe("the value in force at enter (decision 4)", () => {
       "theme.source": "omarchy",
       "theme.name": "vimma",
       "theme.appearance": "dark",
-      "ui.toolbar": "shown",
+      "ui.toolbar": "hidden",
       "ui.tabline": "off",
     });
     const set = inForce(
       'schema = 2\n[search]\ndefault = "Bing"\n[theme]\nappearance = "light"\n' +
-        '[ui]\ntoolbar = "hidden"\n',
+        '[ui]\ntoolbar = "shown"\n',
       { engine: "Google", appearance: "dark" },
     );
     expect(set).toMatchObject({
       "search.default": "Bing",
       "theme.appearance": "light",
-      "ui.toolbar": "hidden",
+      "ui.toolbar": "shown",
     });
     expect(inForce("schema = 2\n")["theme.appearance"]).toBe("system");
   });
@@ -704,15 +714,19 @@ describe("the window chapter (behaviours 9, 17 and 24, Page layout)", () => {
     );
   });
 
-  test("the address bar step opens on the toolbar in force: shown by default, else the file's", () => {
-    expect(stepChoices(bar, inForce("schema = 2\n")).selected).toBe(0);
-    const hidden = inForce('schema = 2\n[ui]\ntoolbar = "hidden"\n');
-    const r = stepChoices(bar, hidden);
-    expect(r.choices.map((c) => c.label)).toEqual(["Shown", "Hidden"]);
-    expect(r.selected).toBe(1);
-    expect(planAtEnter(bar, r.choices[1]!, hidden)).toEqual([]);
-    expect(planAtEnter(bar, r.choices[0]!, hidden)).toEqual([
-      { table: "ui", key: "toolbar", value: "shown" },
+  // toolbar-toggle decision 3 (changed 19 Nov 2026): hidden by default.
+  test("the address bar step opens on the toolbar in force: hidden by default, else the file's", () => {
+    const fresh = inForce("");
+    const first = stepChoices(bar, fresh);
+    expect(first.choices.map((c) => c.label)).toEqual(["Shown", "Hidden"]);
+    expect(first.selected).toBe(1);
+    expect(planAtEnter(bar, first.choices[1]!, fresh)).toEqual([]);
+    const shown = inForce('[ui]\ntoolbar = "shown"\n');
+    const r = stepChoices(bar, shown);
+    expect(r.selected).toBe(0);
+    expect(planAtEnter(bar, r.choices[0]!, shown)).toEqual([]);
+    expect(planAtEnter(bar, r.choices[1]!, shown)).toEqual([
+      { table: "ui", key: "toolbar", value: "hidden" },
     ]);
   });
 

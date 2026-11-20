@@ -28,6 +28,7 @@ import {
   WorkspacePicker,
 } from "../ui/picker.mjs";
 import { RenamePrompt } from "../ui/rename-prompt.mjs";
+import { focusOpener } from "../ui/toolbar.mjs";
 import { SidePanel } from "../ui/side-panel.mjs";
 import { BookmarksPanel } from "../ui/bookmarks-panel.mjs";
 import { OutlinePanel } from "../ui/pdf-outline.mjs";
@@ -159,23 +160,48 @@ export function newWindowState(host, win, keymap, env) {
       }
       showOutlineBeside(state, env.outline);
     },
+    // What had focus when a dialog opened. A window dialog (gDialogBox) has taken focus by the
+    // time `dialogopen` comes, so the element focused before the current one is kept as well.
+    focusNow: null,
+    focusBefore: null,
+    /** @param {FocusEvent} e */
+    onFocusIn: (e) => {
+      const el = /** @type {Element | null} */ (e.target);
+      if (!el || el === state.focusNow) return;
+      state.focusBefore = state.focusNow;
+      state.focusNow = el;
+    },
+    dialogOpener: null,
+    onDialogOpen: () => {
+      const el = win.document.activeElement;
+      state.dialogOpener = el?.closest("dialog, .dialogOverlay") ? state.focusBefore : el;
+    },
     // SubDialog gives focus back on close to what had it when the first dialog opened
     // (SubDialog.sys.mjs, `_onDialogClose` and `_topLevelPrevActiveElement`). One of Vimma's
     // surfaces closed since (a `:` line closed by a tab switch under its dialog, or open when a
     // background tab's dialog opened) is hidden and takes no focus: focus is then nowhere, the
-    // mode insert with no field and every binding dead (#1304). The selected page gets it.
+    // mode insert with no field and every binding dead (#1304). The selected page gets it. The
+    // hidden toolbar's address bar refuses that direct focus too; focusOpener reveals it first.
     onDialogClose: () => {
       win.setTimeout(() => {
+        const opener = state.dialogOpener;
+        state.dialogOpener = null;
         const doc = win.document;
         if (!doc.hasFocus()) return;
-        const el = doc.activeElement;
-        const lost =
-          !el ||
-          el === doc.documentElement ||
-          el === doc.body ||
-          !el.isConnected ||
-          !el.checkVisibility();
-        if (lost) win.gBrowser?.selectedBrowser.focus();
+        const lost = () => {
+          const el = doc.activeElement;
+          return (
+            !el ||
+            el === doc.documentElement ||
+            el === doc.body ||
+            !el.isConnected ||
+            !el.checkVisibility()
+          );
+        };
+        if (!lost()) return;
+        // SubDialog's own focus() on it failed; focusOpener reveals a hidden address bar.
+        if (opener?.isConnected) focusOpener(win, opener);
+        if (lost()) win.gBrowser?.selectedBrowser.focus();
       }, 0);
     },
     dispatcher: createDispatcher(keymap),

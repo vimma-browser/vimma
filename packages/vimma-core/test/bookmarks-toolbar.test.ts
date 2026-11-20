@@ -40,6 +40,26 @@ describe("notices (Behaviour 6)", () => {
     );
   });
 
+  // toolbar-toggle decision 3 (changed 19 Nov 2026): the toolbar is hidden by default, and the
+  // bookmarks toolbar hides with it (decision 8), so showing it alone would show nothing.
+  test("shown while Firefox's toolbar is hidden, the notice says how to see it", () => {
+    const hidden = { toolbarHidden: true };
+    expect(bookmarksToolbarNotice("always", null, hidden)).toBe(
+      "bookmarks toolbar shown; the toolbar is hidden: :toolbar show",
+    );
+    expect(bookmarksToolbarNotice("newtab", null, hidden)).toBe(
+      "bookmarks toolbar shown on new tabs; the toolbar is hidden: :toolbar show",
+    );
+    expect(bookmarksToolbarNotice("always", "shown", hidden)).toBe(
+      'bookmarks toolbar shown (config.toml sets "shown"; until restart); ' +
+        "the toolbar is hidden: :toolbar show",
+    );
+    expect(bookmarksToolbarNotice("never", null, hidden)).toBe("bookmarks toolbar hidden");
+    expect(bookmarksToolbarNotice("always", null, { toolbarHidden: false })).toBe(
+      "bookmarks toolbar shown",
+    );
+  });
+
   test("the migration notice names the panel and the way back", () => {
     expect(MIGRATION_NOTICE).toBe(
       "bookmarks toolbar hidden: ctrl+b shift+b opens your bookmarks; " +

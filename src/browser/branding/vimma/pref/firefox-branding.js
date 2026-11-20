@@ -181,9 +181,10 @@ pref("extensions.systemAddon.update.url", "");
 // tab UI; false shows it again, live.
 pref("vimma.ui.tabstrip.hidden", true);
 
-// Firefox's navigation toolbar (spec toolbar-toggle): shown by default. ctrl+b u, :toolbar and
-// config.toml's [ui] toolbar set it for every window, live.
-pref("vimma.ui.toolbar.hidden", false);
+// Firefox's navigation toolbar (spec toolbar-toggle): hidden by default (decision 3, 19 Nov 2026),
+// as config.toml's [ui] toolbar default is, so no window shows it before the config is read.
+// ctrl+b u, :toolbar and [ui] toolbar set it for every window, live.
+pref("vimma.ui.toolbar.hidden", true);
 // Vimma's outline beside a PDF that has one (pdf-mode decision 19): shown when the PDF opens.
 // config.toml's [ui] pdf_outline sets it at startup and when the line changes.
 pref("vimma.ui.pdf_outline.hidden", false);

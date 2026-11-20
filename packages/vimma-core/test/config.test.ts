@@ -410,7 +410,7 @@ describe("mergeWithDefaults", () => {
         clamavMaxAgeDays: 7,
       },
       ui: {
-        toolbar: "shown",
+        toolbar: "hidden",
         bookmarksToolbar: null,
         pdfOutline: "shown",
         tabline: "off",

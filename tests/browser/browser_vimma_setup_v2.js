@@ -118,8 +118,14 @@ function shellAnswers(state = {}) {
 
 // XDG_CONFIG_HOME first: the vimma.config.path change reloads the config at once, and would
 // otherwise read the developer's own ~/.config/vimma/config.toml.
+// The folder XDG_CONFIG_HOME points at while this file runs. configFile() reads it here, not
+// from the variable: the cleanup below puts the variable back first (empty on macOS), and the
+// tasks' own cleanups, which run after it, still remove the right file (#1396).
+let configHome = "";
+
 add_task(async () => {
   const xdg = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-setup");
+  configHome = xdg;
   const before = Services.env.exists("XDG_CONFIG_HOME") ? Services.env.get("XDG_CONFIG_HOME") : "";
   Services.env.set("XDG_CONFIG_HOME", xdg);
   await SpecialPowers.pushPrefEnv({
@@ -139,8 +145,7 @@ add_task(async () => {
   });
 });
 
-const configFile = () =>
-  PathUtils.join(Services.env.get("XDG_CONFIG_HOME"), "vimma", "config.toml");
+const configFile = () => PathUtils.join(configHome, "vimma", "config.toml");
 
 /**
  * Removes config.toml and reads the config now, so Vimma undoes the `[search] default` a summary
@@ -1337,7 +1342,9 @@ add_task(async function address_bar_step_names_the_keys_in_force() {
   const { tab, doc } = await openFlow();
   await toAddressBar(doc);
   Assert.ok(found(doc.getElementById("v2-progress")).textContent.includes("The window"));
-  Assert.deepEqual(textKeys(doc), ["ctrl+l", "alt+d", "I", "ctrl+b u"], "the default keymap");
+  // macOS binds meta+l where Linux binds alt+d (defaults.mjs, the mac keymap).
+  const second = AppConstants.platform === "macosx" ? "meta+l" : "alt+d";
+  Assert.deepEqual(textKeys(doc), ["ctrl+l", second, "I", "ctrl+b u"], "the default keymap");
   Assert.deepEqual(drawnToolbars(doc), ["shown", "hidden"], "a drawing of the window per choice");
   // focus_urlbar rebound without alt+d, toggle_toolbar left without a key: the step, open, draws
   // its text again when the file is read (behaviour 12).
@@ -1364,22 +1371,41 @@ add_task(async function address_bar_step_names_the_keys_in_force() {
   await closeFlow(tab);
 });
 
+// toolbar-toggle decision 3 (changed 19 Nov 2026): a fresh profile, with no config.toml, opens
+// the step on Hidden, in force and selected, and enter on it writes nothing.
+add_task(async function a_fresh_profile_opens_the_address_bar_step_on_hidden() {
+  registerCleanupFunction(removeConfig);
+  Assert.ok(!(await IOUtils.exists(configFile())), "no config.toml");
+  const { tab, doc } = await openFlow();
+  await toAddressBar(doc);
+  Assert.equal(current(doc), "Hidden", "hidden is in force and selected without the key");
+  Assert.equal(writes(doc), "Writes nothing");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "tab_line");
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written, no file created");
+  Assert.ok(
+    Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", false),
+    "the toolbar stays hidden",
+  );
+  await closeFlow(tab);
+});
+
 add_task(async function address_bar_step_writes_toolbar_and_applies_live() {
-  // A failed assertion must not leave the toolbar hidden for the tasks after it.
+  // A failed assertion must not leave the toolbar shown for the tasks after it.
   registerCleanupFunction(removeConfig);
   const { tab, doc } = await openFlow();
   await toAddressBar(doc);
-  Assert.equal(current(doc), "Shown", "shown is in force without the key");
+  Assert.equal(current(doc), "Hidden", "hidden is in force without the key");
   Assert.equal(writes(doc), "Writes nothing");
-  await press(doc, "j");
-  Assert.equal(writes(doc), 'Writes [ui] toolbar = "hidden"');
+  await press(doc, "k");
+  Assert.equal(writes(doc), 'Writes [ui] toolbar = "shown"');
   await press(doc, "KEY_Enter");
   await atStep(doc, "tab_line");
   // A missing file is written as the commented template with the one key set, and nothing else.
   const { setConfigKeysText } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/core/config.mjs",
   );
-  const only = setConfigKeysText(null, [{ table: "ui", key: "toolbar", value: "hidden" }], {
+  const only = setConfigKeysText(null, [{ table: "ui", key: "toolbar", value: "shown" }], {
     mac: AppConstants.platform === "macosx",
   });
   Assert.ok("text" in only, "the edit applies to the template");
@@ -1389,14 +1415,14 @@ add_task(async function address_bar_step_writes_toolbar_and_applies_live() {
     "[ui] toolbar only",
   );
   await TestUtils.waitForCondition(
-    () => Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", false),
-    "the toolbar hides at once",
+    () => !Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", true),
+    "the toolbar shows at once",
   );
-  Assert.ok(document.documentElement.hasAttribute("vimma-toolbar-hidden"), "in this window too");
-  // Back: hidden is in force now, and enter on it writes nothing.
+  Assert.ok(!document.documentElement.hasAttribute("vimma-toolbar-hidden"), "in this window too");
+  // Back: shown is in force now, and enter on it writes nothing.
   await press(doc, "h");
   await atStep(doc, "address_bar");
-  Assert.equal(current(doc), "Hidden", "back opens on the value in force");
+  Assert.equal(current(doc), "Shown", "back opens on the value in force");
   Assert.equal(writes(doc), "Writes nothing");
   const before = await IOUtils.readUTF8(configFile());
   await press(doc, "KEY_Enter");
@@ -1404,8 +1430,8 @@ add_task(async function address_bar_step_writes_toolbar_and_applies_live() {
   Assert.equal(await IOUtils.readUTF8(configFile()), before, "nothing written");
   await closeFlow(tab);
   await TestUtils.waitForCondition(
-    () => !Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", false),
-    "the toolbar is back once the file is gone",
+    () => Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", false),
+    "the toolbar is hidden again once the file is gone",
   );
 });
 
