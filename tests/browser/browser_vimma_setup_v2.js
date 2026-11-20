@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Setup v2's chapters on the setup page (docs/specs/setup-v2.md), with vimma.feature.setupV2 on
-// until its last slice; the summary flow's tasks are in browser_vimma_setup.js. AMO is pointed at
+// Setup v2's chapters on the setup page (docs/specs/setup-v2.md); the page's offering and its
+// config.toml file checks are in browser_vimma_setup.js. AMO is pointed at
 // a closed local port, so the content blocker shows the curated list offline and nothing leaves
 // the machine; XDG_CONFIG_HOME is a temporary folder, so config.toml writes never reach the real
 // ~/.config. A later slice adds its steps' tasks here.
@@ -208,12 +208,10 @@ const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppC
 
 const { BUILT_STEPS } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/setup.mjs");
 
-const V2 = "vimma.feature.setupV2";
 const CHAPTERS_PREF = "vimma.setup.chapters";
 
 /** @param {BrowserWindow} [win] */
 async function openFlow(win = window) {
-  await SpecialPowers.pushPrefEnv({ set: [[V2, true]] });
   const tab = await BrowserTestUtils.openNewForegroundTab(win.gBrowser, SETUP_URL);
   const doc = docOf(tab);
   await TestUtils.waitForCondition(() => doc.documentElement.dataset.ready === "true", "ready");
@@ -224,7 +222,6 @@ async function openFlow(win = window) {
 /** @param {MozTabbrowserTab} tab */
 async function closeFlow(tab) {
   if (tab.linkedBrowser && !tab.closing) BrowserTestUtils.removeTab(tab);
-  await SpecialPowers.popPrefEnv();
   await removeConfig();
 }
 
@@ -267,7 +264,7 @@ add_task(async function welcome_says_q_leaves_and_finished_steps_are_saved() {
   }
   const chapter = found(doc.querySelector('#v2-chapters li[data-chapter="essentials"]'));
   Assert.ok(chapter.textContent.includes("Content blocker, Search engine, Colours"), "its steps");
-  Assert.ok(found(doc.getElementById("welcome")).hidden, "the summary flow's welcome is hidden");
+  Assert.ok(!doc.getElementById("summary"), "and no summary flow");
   const closed = BrowserTestUtils.waitForTabClosing(tab);
   await press(doc, "q");
   await closed;
@@ -577,7 +574,6 @@ add_task(async function a_private_window_saves_nothing() {
   await atStep(doc, "stop");
   Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
   Assert.ok(!Services.prefs.prefHasUserValue(CHAPTERS_PREF), "the chapter is not recorded");
-  await SpecialPowers.popPrefEnv();
   await BrowserTestUtils.closeWindow(win);
 });
 
@@ -685,6 +681,41 @@ add_task(async function content_blocker_installs_on_enter_with_the_permission_pr
     "the result is reported",
   );
   Assert.strictEqual(await AddonManager.getAddonByID(UBLOCK), null, "declining installs nothing");
+  stub.restore();
+  await closeFlow(tab);
+  await SpecialPowers.popPrefEnv();
+});
+
+// The prompt anchors to the page's browser; without one (browserFor found none, as after a
+// process switch) the add-on is reported failed and the step still goes on, rather than handing
+// Firefox a null anchor.
+add_task(async function install_without_the_pages_browser_fails_and_finishes() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["vimma.setup.amoApi", AMO_LOCAL],
+      ["xpinstall.signatures.required", false],
+    ],
+  });
+  const stub = await stubInstall();
+  const realInstall = SetupHost.install;
+  SetupHost.install = (_browser, guid) => realInstall.call(SetupHost, null, guid);
+  registerCleanupFunction(() => (SetupHost.install = realInstall));
+  const { tab, doc } = await openFlow();
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "content_blocker");
+  await TestUtils.waitForCondition(() =>
+    doc.querySelector(`#v2-addons li[data-guid="${UBLOCK}"]:not(.disabled)`),
+  );
+  await press(doc, " ");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "search_engine");
+  SetupHost.install = realInstall;
+  Assert.ok(
+    found(doc.getElementById("v2-last")).textContent.includes("uBlock Origin failed"),
+    "reported failed",
+  );
+  Assert.deepEqual(stub.asked, [], "AMO never asked: install fails before AddonManager");
+  Assert.strictEqual(await AddonManager.getAddonByID(UBLOCK), null, "nothing installed");
   stub.restore();
   await closeFlow(tab);
   await SpecialPowers.popPrefEnv();
@@ -928,7 +959,6 @@ add_task(async function agents_on_ends_mcp_off_as_mcp_on_does() {
   Assert.deepEqual(McpHost.state, { enabled: true, from: "config" }, "the hold ended, as y does");
   Assert.ok(found(doc.getElementById("v2-last")).textContent.includes("agents are on"));
   BrowserTestUtils.removeTab(tab);
-  await SpecialPowers.popPrefEnv();
 
   // Held without the key: on writes it, and ends the hold.
   await IOUtils.writeUTF8(configFile(), "schema = 2\n");

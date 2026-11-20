@@ -1,6 +1,6 @@
 # Spec: setup-v2
 
-Status: accepted (delivery slices 1 to 6 and 8 built, #1292, #1293, #1294, #1295, #1296, #1297 and #1299) · Area: core
+Status: implemented · Area: core
 (`packages/vimma-core/src/system/setup.mjs`, `packages/vimma-core/src/system/setup-steps.mjs`,
 `packages/vimma-core/src/config/toml.mjs`),
 chrome (`src/browser/base/content/vimma/setup/` (`setup.html`, `setup.mjs`, `flow.mjs`,
@@ -63,7 +63,12 @@ engine, and applies nothing until its summary is confirmed. That leaves three ga
 5. `s` on a step **must** move on without writing anything for that step, so its default stays
    in force.
 6. `h` on a step returns to the previous step, with the value in force selected. `enter` there
-   saves again, overwriting that one key.
+   saves again, overwriting that one key, and the line it writes replaces the one listed for
+   that step this run. A step that writes nothing on the way back (the value in force, **Keep**,
+   or `s`) keeps the lines it saved earlier this run, since that write is still in
+   `config.toml`; an action done earlier this run (an add-on installed, the default browser
+   asked) stays listed, since it cannot be undone. Add-ons installed on a second pass are
+   listed with those installed before, each once.
 7. `q` or `esc` on any step or stop screen closes the page. Steps already saved stay saved;
    nothing is undone, and nothing for the open step is written. Closing the tab or the window
    does the same. In the content blocker step's search field, the first `esc` leaves the field
@@ -394,7 +399,8 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
 18. **A feature pref while it lands.** `vimma.feature.setupV2` (default `false`) switches the
     page from today's flow to the chapters while the slices land (`CONTRIBUTING.md`,
     "Unfinished features"), because the summary flow must keep working on `main` until the new
-    one is complete. The last slice removes the pref and the old flow.
+    one is complete. The last slice removes the pref and the old flow. (Since changed: #1298 removed
+    both; the chapters are the only flow.)
 19. **Finished chapters are a pref, not a config key.** `vimma.setup.chapters` holds the ids
     of the chapters whose stop screen was reached, for the ticks on the welcome screen, because
     it is a record of the setup and not a setting of the browser. It is not written in a
@@ -551,7 +557,9 @@ vitest, `packages/vimma-core/test/setup.test.ts` (state machine):
 
 Mochitest, `tests/browser/browser_vimma_setup_v2.js` (with `vimma.feature.setupV2` on until the
 last slice; a file apart from the summary flow's `browser_vimma_setup.js`, because both together
-outgrow the harness's time limit for one file):
+outgrow the harness's time limit for one file; the last slice drops the summary flow's tasks
+from `browser_vimma_setup.js`, which keeps the page's offering, its config.toml file checks
+through the search engine step and `agent_role_cannot_open_setup`):
 
 - `welcome_says_q_leaves_and_finished_steps_are_saved`
 - `enter_on_a_step_writes_its_key_and_applies_live`

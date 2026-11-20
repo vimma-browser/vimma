@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Setup v2's page (docs/specs/setup-v2.md), behind vimma.feature.setupV2: the welcome screen,
-// one step at a time and a stop screen after each chapter. core/setup.mjs keeps the state;
+// The setup page (docs/specs/setup-v2.md): the welcome screen, one step at a time and a stop
+// screen after each chapter. core/setup.mjs keeps the state;
 // SetupHost reads the values in force and saves each step on its `enter`. A step is drawn by
 // the renderer named after it in RENDERERS, else as a list of choices, so that a later step is
 // a row of the step table, its id in BUILT_STEPS and, when it needs more, a renderer here.
@@ -88,7 +88,9 @@ let guessed = null;
 let curated = [];
 /** @type {AddonEntry[]} */
 let addons = [];
-let curatedLoaded = false;
+/** The curated list's one load, shared by every visit to the content blocker. */
+/** @type {Promise<void> | null} */
+let curatedLoad = null;
 /** @type {string[]} chapters finished before (welcome ticks) */
 let finished = [];
 
@@ -469,7 +471,6 @@ let drawn = "";
 
 function draw() {
   root.dataset.screen = state.screen;
-  $("welcome").hidden = true;
   const shown = state.screen === "step" ? (flowStep(state)?.id ?? "") : state.screen;
   // The boxes are the same on every screen: a new one opens at its top (Page layout).
   const key = `${state.chapter} ${shown}`;
@@ -503,7 +504,8 @@ async function loadView(select = true) {
   const under = view?.id === step.id ? view.choices[state.cursor]?.label : undefined;
   loading = true;
   delete root.dataset.viewReady;
-  if (step.id === "content_blocker") loadAddons();
+  // The content blocker is ready once its add-on list has loaded (or the offline list shows).
+  const addonsLoaded = step.id === "content_blocker" ? loadAddons() : null;
   const wasInForce = view?.id === step.id ? view.choices[view.selected]?.label : undefined;
   const v = /** @type {StepView | null} */ (
     await SetupHost.stepView(browser(), step.id, { fresh: select })
@@ -525,17 +527,23 @@ async function loadView(select = true) {
     state = { ...state, cursor: kept >= 0 ? kept : at >= 0 ? at : v.selected };
   }
   draw();
+  if (addonsLoaded) {
+    await addonsLoaded.catch(() => {});
+    if (serial !== viewSerial || flowStep(state)?.id !== step.id) return;
+  }
   root.dataset.viewReady = "true";
 }
 
-async function loadAddons() {
-  if (curatedLoaded) return;
-  curatedLoaded = true;
-  const r = await SetupHost.curated();
-  curated = r.addons;
-  $("v2-offline").hidden = !r.offline;
-  if (!search.value) addons = curated;
-  draw();
+/** @returns {Promise<void>} once the curated list (or the offline one) is drawn */
+function loadAddons() {
+  curatedLoad ??= (async () => {
+    const r = await SetupHost.curated();
+    curated = r.addons;
+    $("v2-offline").hidden = !r.offline;
+    if (!search.value) addons = curated;
+    draw();
+  })();
+  return curatedLoad;
 }
 
 async function runSearch() {
@@ -732,7 +740,7 @@ function onKey(key) {
   settle(flowKey(state, key, ctx));
 }
 
-/** Wires the page; only with vimma.feature.setupV2, else setup.mjs's summary flow has it. */
+/** Wires the page. */
 function start() {
   ThemeHost.attachDocument(document);
   document.addEventListener("keydown", (e) => {
@@ -801,4 +809,4 @@ function start() {
   draw();
 }
 
-if (SetupHost.chaptersOn) start();
+start();

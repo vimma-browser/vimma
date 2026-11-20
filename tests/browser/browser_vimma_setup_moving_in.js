@@ -301,7 +301,7 @@ add_task(async function full_control_send_keys_reach_the_setup_page() {
       const sent = await c.call("send-keys", { keys: "enter" });
       Assert.ok(sent.ok, "send-keys is answered");
       await TestUtils.waitForCondition(
-        () => doc.documentElement.dataset.step === "addons",
+        () => doc.documentElement.dataset.step === "content_blocker",
         "send-keys enter starts the setup",
       );
     });

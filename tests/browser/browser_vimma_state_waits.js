@@ -27,6 +27,9 @@ const { UrlbarTestUtils } = ChromeUtils.importESModule(
 const { ProvidersManager } = ChromeUtils.importESModule(
   "moz-src:///browser/components/urlbar/UrlbarProvidersManager.sys.mjs",
 );
+const { SetupHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/setup/SetupHost.sys.mjs",
+);
 const { PdfOps } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/pdf-ops.mjs");
 const { PDF_OUTLINE_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/outline-ops.mjs",
@@ -423,6 +426,84 @@ add_task(async function test_state_reports_the_pdf_viewer_as_drawn() {
   const hidden = state();
   Assert.strictEqual(hidden.private, true, "sanity: state reads the private window");
   Assert.strictEqual(hidden.pdf, null, "a private window's PDF stays out of state");
+  await BrowserTestUtils.closeWindow(priv);
+  await SimpleTest.promiseFocus(window);
+  await SpecialPowers.popPrefEnv();
+});
+
+// #1298: the setup page's screen as drawn, a fixed word (welcome, a step's id, stop), so an e2e
+// scenario waits for the screen it photographs; null on any other page.
+add_task(async function test_state_reports_the_setup_screen() {
+  // The content blocker step asks AMO for its add-ons: a closed local port answers at once.
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.setup.amoApi", "http://127.0.0.1:1/"]] });
+  Assert.strictEqual(state().setup, null, "another page: null");
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:vimma-setup");
+  try {
+    const browser = tab.linkedBrowser;
+    const doc = /** @type {Document} */ (browser.contentDocument);
+    await until(() => doc.documentElement.dataset.step === "welcome", "the welcome screen");
+    Assert.deepEqual(state().setup, { screen: "welcome" });
+    await focusContent(browser);
+    // The content blocker's add-on list, held until the test lets it answer.
+    const realCurated = SetupHost.curated;
+    /** @type {(v?: unknown) => void} */
+    let answer = () => {};
+    const held = new Promise((resolve) => (answer = resolve));
+    SetupHost.curated = async () => {
+      await held;
+      return realCurated.call(SetupHost);
+    };
+    const realStepView = SetupHost.stepView;
+    let read = false;
+    SetupHost.stepView = async (...args) => {
+      const v = await realStepView.apply(SetupHost, args);
+      read = true;
+      return v;
+    };
+    registerCleanupFunction(() => {
+      SetupHost.curated = realCurated;
+      SetupHost.stepView = realStepView;
+    });
+    EventUtils.synthesizeKey("KEY_Enter", {}, /** @type {Window} */ (doc.defaultView));
+    await until(() => doc.documentElement.dataset.step === "content_blocker", "the step opens");
+    await until(() => read, "its choices are read");
+    await TestUtils.waitForTick();
+    Assert.equal(state().setup?.screen, "loading", "the add-on list still to come: loading");
+    answer();
+    SetupHost.curated = realCurated;
+    SetupHost.stepView = realStepView;
+    // The step's id is set as it opens, its choices once its view has loaded: `loading` until then.
+    const seen = new Set();
+    await until(() => {
+      const screen = state().setup?.screen;
+      if (screen) seen.add(screen);
+      if (screen === "content_blocker") {
+        Assert.equal(doc.documentElement.dataset.viewReady, "true", "named once its view is drawn");
+        Assert.greater(doc.querySelectorAll("#v2-addons li").length, 0, "with its add-on list");
+      }
+      return screen === "content_blocker";
+    }, "the first step");
+    Assert.ok(
+      [...seen].every((w) => ["welcome", "loading", "content_blocker"].includes(w)),
+      `only these words on the way: ${[...seen].join(", ")}`,
+    );
+  } finally {
+    BrowserTestUtils.removeTab(tab);
+  }
+  Assert.strictEqual(state().setup, null, "closed: null");
+
+  // A private window's pages stay out of state, the setup page too.
+  const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  const privBrowser = priv.gBrowser.selectedBrowser;
+  BrowserTestUtils.startLoadingURIString(privBrowser, "about:vimma-setup");
+  await BrowserTestUtils.browserLoaded(privBrowser, false, "about:vimma-setup");
+  await until(
+    () => privBrowser.contentDocument?.documentElement?.dataset.step === "welcome",
+    "the private window's setup page draws its welcome screen",
+  );
+  const hidden = state();
+  Assert.strictEqual(hidden.private, true, "sanity: state reads the private window");
+  Assert.strictEqual(hidden.setup, null, "a private window's setup page stays out of state");
   await BrowserTestUtils.closeWindow(priv);
   await SimpleTest.promiseFocus(window);
   await SpecialPowers.popPrefEnv();

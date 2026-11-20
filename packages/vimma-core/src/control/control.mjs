@@ -22,6 +22,7 @@ import { LOAD_ERRORS } from "../agent/load-errors.mjs";
 import { DEFAULT_HINT_CHARS } from "../page/hints.mjs";
 import { parseKey } from "../keys/keys.mjs";
 import { MODES } from "../keys/modes.mjs";
+import { STEPS } from "../system/setup-steps.mjs";
 
 /** Protocol 1: what a hello without a role speaks (the `full` role). */
 export const CONTROL_PROTOCOL = 1;
@@ -1206,6 +1207,38 @@ function checkStateResult(result, errors) {
   // Whether the selected tab's PDF viewer has drawn every page in view (#1006): one flag, never
   // the page, the page count, the title or the outline.
   if ("pdf" in result) checkFlagObject(result.pdf, "pdf", "drawn", hidden, errors);
+  // The setup page's screen as drawn (#1298): optional, as `pdf`; a word from SETUP_SCREENS,
+  // never a choice, a search or a line a step writes.
+  if ("setup" in result) checkSetup(result.setup, hidden, errors);
+}
+
+/**
+ * `state.setup.screen`: the setup page's welcome screen, a step (by its id, once its choices are
+ * drawn), `loading` while a step's view loads, or a stop screen.
+ */
+export const SETUP_SCREENS = Object.freeze([
+  "welcome",
+  "loading",
+  ...STEPS.map((s) => s.id),
+  "stop",
+]);
+
+/**
+ * `state.setup`: null unless the selected tab shows the setup page, else `{ screen }`, the
+ * screen it draws as a word from SETUP_SCREENS. Null in a private window (security.md S9).
+ * @param {unknown} value @param {boolean} hidden  a private window's @param {string[]} errors
+ */
+function checkSetup(value, hidden, errors) {
+  if (value === null) return;
+  if (!isObject(value)) {
+    errors.push("result.setup must be an object or null");
+    return;
+  }
+  noExtraFields(value, ["screen"], errors, "result.setup.");
+  if (typeof value.screen !== "string" || !SETUP_SCREENS.includes(value.screen)) {
+    errors.push(`result.setup.screen must be one of ${SETUP_SCREENS.join(", ")}`);
+  }
+  if (hidden) errors.push("result.setup must be null in a private window");
 }
 
 /**

@@ -4,11 +4,11 @@
 
 // The first-run setup (docs/specs/first-run-setup.md): about:vimma-setup, registered at runtime
 // like about:vimma (no upstream patch), and the privileged half of the page: the AMO requests,
-// the add-on installs through Firefox's AMO path, the search engines and the config.toml write,
-// and for setup v2's Moving in chapter (docs/specs/setup-v2.md) Make Default and the import
-// wizard. The page only draws and takes keys; nothing here is reachable from the control socket.
-// With vimma.feature.setupV2 (docs/specs/setup-v2.md), each setting step saves on its own
-// `enter`: the page names a step and a choice index, never a key or a value (decision 7).
+// the add-on installs through Firefox's AMO path, the search engines, the config.toml writes,
+// and for the Moving in chapter (docs/specs/setup-v2.md) Make Default and the import wizard. The
+// page only draws and takes keys; nothing here is reachable from the control socket. Each
+// setting step saves on its own `enter`: the page names a step and a choice index, never a key
+// or a value (setup-v2 decision 7).
 
 import { CONFIG_READ_TOPIC, ConfigHost } from "../config/ConfigHost.sys.mjs";
 import { AppLauncher } from "../services/AppLauncher.sys.mjs";
@@ -63,8 +63,6 @@ const OFFERED_PREF = "vimma.setup.offered";
 // Tests point AMO at a local server; a user never needs to.
 const AMO_PREF = "vimma.setup.amoApi";
 const CONFIG_PATH_PREF = "vimma.config.path";
-/** docs/specs/setup-v2.md decision 18: the chapters in place of the summary while they land. */
-const FEATURE_PREF = "vimma.feature.setupV2";
 /** The chapters whose stop screen was reached, comma-separated (decision 19). */
 const CHAPTERS_PREF = "vimma.setup.chapters";
 /** What `:theme` remembered, in force without `[theme] appearance` (theme-appearance B4). */
@@ -345,7 +343,10 @@ export const SetupHost = {
     return { names, current };
   },
 
-  /** The notice the summary shows when config.toml cannot take the edit, or null. */
+  /**
+   * The notice the welcome screen and the setting steps show when config.toml cannot take an
+   * edit, or null.
+   */
   async configProblem() {
     const path = configFile();
     let text;
@@ -364,26 +365,6 @@ export const SetupHost = {
     // after `enter` shows before it.
     const r = setConfigKeysText(text, [{ table: "search", key: "default", value: "x" }], { mac });
     return "error" in r ? `${path}${r.error.slice("config.toml".length)}` : null;
-  },
-
-  /**
-   * `[search] default = engine` in config.toml, then the reload that applies it (decisions 9,
-   * 11), through ConfigHost's one writer (docs/specs/setup-v2.md decision 5): the edit queue, a
-   * temporary file with the old mode renamed over the file (or a symlink's target), nothing
-   * written when the file does not load, would not with the edit, or changed meanwhile.
-   * @param {string} engine
-   * @returns {Promise<string | null>} why not, or null once written and applied
-   */
-  async writeEngine(engine) {
-    const why = await ConfigHost.setConfigKeys([
-      { table: "search", key: "default", value: engine },
-    ]);
-    return why === null ? null : `${why}; nothing written`;
-  },
-
-  /** Whether the page shows setup v2's chapters (decision 18). */
-  get chaptersOn() {
-    return Services.prefs.getBoolPref(FEATURE_PREF, false);
   },
 
   /** Notified after every read of config.toml (behaviour 12: a step draws its line again). */

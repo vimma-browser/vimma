@@ -3,10 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * The first-run setup's pure parts (docs/specs/first-run-setup.md): the curated add-ons, the
- * filter on AMO answers, the step state machine and the plan the summary applies; and setup
- * v2's chapter flow (docs/specs/setup-v2.md), behind `vimma.feature.setupV2` until it replaces
- * the summary.
+ * The setup's pure parts: the curated add-ons and the filter on AMO answers
+ * (docs/specs/first-run-setup.md), and the chapter flow (docs/specs/setup-v2.md).
  */
 
 import { CHAPTERS } from "./setup-steps.mjs";
@@ -161,114 +159,6 @@ export function amoEntries(results, { curated = false, installed = new Set() } =
 
 const curatedIndex = (/** @type {string} */ guid) => CURATED.findIndex((c) => c.guid === guid);
 
-/**
- * @typedef {object} SetupState
- * @property {"welcome" | "addons" | "engine" | "summary" | "closed"} step
- * @property {number} cursor
- * @property {AddonEntry[]} addons   the list step 1 shows
- * @property {Map<string, AddonEntry>} marked  by GUID, kept across searches
- * @property {string[]} engines
- * @property {string | null} engine  the current default, then the chosen one
- */
-
-/**
- * @param {{ addons: AddonEntry[], engines: string[], engine: string | null }} init
- * @returns {SetupState}
- */
-export function initialSetup({ addons, engines, engine }) {
-  return { step: "welcome", cursor: 0, addons, marked: new Map(), engines, engine };
-}
-
-/** Step 1's list replaced (a search answered, or the curated list back). */
-export function withAddons(/** @type {SetupState} */ s, /** @type {AddonEntry[]} */ addons) {
-  return { ...s, addons, cursor: 0 };
-}
-
-/**
- * @typedef {{ type: "close" } | { type: "search" } | { type: "apply", plan: SetupPlan }
- *   | { type: "done" }} SetupEffect
- */
-
-/**
- * One key on the page, outside the search field. Nothing is applied here: the summary's
- * `enter` returns the plan for the host to apply (decision 2).
- * @param {SetupState} s
- * @param {string} key  "enter", "esc", "q", "j", "k", "space", "/" (Vimma's key notation)
- * @returns {{ state: SetupState, effect: SetupEffect | null }}
- */
-export function setupKey(s, key) {
-  const stay = { state: s, effect: null };
-  const close = {
-    state: { ...s, step: /** @type {const} */ ("closed") },
-    effect: { type: /** @type {const} */ ("close") },
-  };
-  const move = (/** @type {number} */ n, /** @type {number} */ d) =>
-    n === 0
-      ? stay
-      : { state: { ...s, cursor: Math.max(0, Math.min(n - 1, s.cursor + d)) }, effect: null };
-  switch (s.step) {
-    case "welcome":
-      if (key === "enter") return { state: { ...s, step: "addons", cursor: 0 }, effect: null };
-      if (key === "esc" || key === "q") return close;
-      return stay;
-    case "addons": {
-      if (key === "esc" || key === "q") return close;
-      if (key === "j" || key === "down") return move(s.addons.length, 1);
-      if (key === "k" || key === "up") return move(s.addons.length, -1);
-      if (key === "/") return { state: s, effect: { type: "search" } };
-      if (key === "space") {
-        const a = s.addons[s.cursor];
-        if (!a || a.installed || !a.url) return stay;
-        const marked = new Map(s.marked);
-        if (marked.has(a.guid)) marked.delete(a.guid);
-        else marked.set(a.guid, a);
-        return { state: { ...s, marked }, effect: null };
-      }
-      if (key === "enter") {
-        const at = s.engine ? s.engines.indexOf(s.engine) : -1;
-        return { state: { ...s, step: "engine", cursor: Math.max(0, at) }, effect: null };
-      }
-      return stay;
-    }
-    case "engine":
-      if (key === "esc" || key === "q") return close;
-      if (key === "j" || key === "down") return move(s.engines.length, 1);
-      if (key === "k" || key === "up") return move(s.engines.length, -1);
-      if (key === "enter") {
-        const engine = s.engines[s.cursor] ?? s.engine;
-        return { state: { ...s, step: "summary", engine }, effect: null };
-      }
-      return stay;
-    case "summary": {
-      if (key === "esc") {
-        const at = s.engine ? s.engines.indexOf(s.engine) : 0;
-        return { state: { ...s, step: "engine", cursor: Math.max(0, at) }, effect: null };
-      }
-      const plan = planSetup(s);
-      if (key === "enter" && plan) return { state: s, effect: { type: "apply", plan } };
-      return stay;
-    }
-    default:
-      return stay;
-  }
-}
-
-/**
- * @typedef {object} SetupPlan
- * @property {AddonEntry[]} addons  to install, one after another
- * @property {string | null} engine  `[search] default` to write
- */
-
-/**
- * What the summary would apply: null before the summary and after a skip (behaviour 2, 6).
- * @param {SetupState} s
- * @returns {SetupPlan | null}
- */
-export function planSetup(s) {
-  if (s.step !== "summary") return null;
-  return { addons: [...s.marked.values()].filter((a) => !a.installed), engine: s.engine };
-}
-
 /** "1.2M users" style, for the list. */
 export function formatUsers(/** @type {number} */ n) {
   // Round first, then pick the unit, so 999_999 reads as 1.0M rather than 1000k (#1190).
@@ -417,9 +307,13 @@ function openStop(s, chapter) {
   };
 }
 
+/** @param {FlowState} s @param {string} id @returns {FlowSaved | undefined} */
+const savedFor = (s, id) => s.saved.find((x) => x.step === id);
+
 /**
  * The step after the open one, or its chapter's stop screen; a step that wrote `lines` is
- * listed as saved, replacing what an earlier `enter` on it saved (behaviour 6). A skip, or a
+ * listed as saved, replacing what an earlier `enter` on it saved (behaviour 6), except that
+ * add-ons installed on a second pass are added to those installed before. A skip, or a
  * save that wrote nothing, keeps what this run saved for the step: that write is still in the
  * file, and the stop screens list it. So an action step that did nothing this time keeps what
  * it did before: that cannot be undone.
@@ -431,10 +325,13 @@ export function flowAdvance(s, ctx, lines = []) {
   const step = flowStep(s);
   if (!step) return { state: s, effect: null };
   const chapter = s.chapters[s.chapter];
+  // Add-ons stay installed (an install cannot be undone here): a second pass adds to the
+  // list, each add-on once, rather than replacing it.
+  const before = step.id === "content_blocker" ? (savedFor(s, step.id)?.lines ?? []) : [];
   const saved = lines.length
     ? [
         ...s.saved.filter((x) => x.step !== step.id),
-        { chapter: chapter?.id ?? "", step: step.id, lines: [...lines] },
+        { chapter: chapter?.id ?? "", step: step.id, lines: [...new Set([...before, ...lines])] },
       ]
     : s.saved;
   const next = { ...s, saved, marked: step.id === "content_blocker" ? new Map() : s.marked };
