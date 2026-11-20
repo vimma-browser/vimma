@@ -142,7 +142,7 @@ none of its choices (behaviour 9).
 | 4. Your keys          | Prefix key      | `ctrl+b`, a key the user presses (decision 21; `ctrl+a` before #1402)                                 | `[keys] prefix`                                                            |
 |                       | Hint letters    | the home row of QWERTY (`asdfghjkl`), Colemak (`arstdhneio`), Dvorak (`aoeuidhtns`)                   | `[modal] hint_chars`                                                       |
 | 5. Privacy and agents | Updates         | tell me when a release is out, or never check                                                         | `[updates] check`                                                          |
-|                       | Agents          | off, or on for local AI agents through `vimma-ctl mcp`                                                | `[mcp] enabled`                                                            |
+|                       | Agents          | off, or on for AI agents through `vimma-ctl mcp`                                                      | `[mcp] enabled`                                                            |
 
 19. **Content blocker.** As step 1 of first-run-setup (curated list, `/` searches AMO, `space`
     marks), except that `enter` installs the marked add-ons there and then, one after another,

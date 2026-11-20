@@ -6,7 +6,7 @@ longer guide for people.
 
 Vimma is a keyboard-first Firefox fork built with Surfer: a Neovim-style modal layer, a tmux-style
 prefix (`ctrl+b`), workspaces as containers, an on-demand side panel, an always-visible status
-bar, Omarchy theming, and local AI agents over MCP confined to an agent workspace. Linux first,
+bar, Omarchy theming, and AI agents over MCP confined to an agent workspace. Linux first,
 macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browser/vimma-site`.
 
 ## Read first

@@ -115,7 +115,7 @@ describe(":mcp on|off (decision 26; setup-v2 decision 16: :mcp off wins over the
 
   test("the question names the workspace; an adopted one of your own is warned about", () => {
     expect(mcpOnQuestion("agent", null)).toBe(
-      'Let local AI agents ask to use the "agent" workspace? Nothing runs until you allow it. y/N',
+      'Let AI agents ask to use the "agent" workspace? Nothing runs until you allow it. y/N',
     );
     expect(mcpOnQuestion("agent", { tabs: 3 })).toBe(
       '"agent" is your own workspace (3 tabs, its own logins). Agents will be able to read it. y/N',

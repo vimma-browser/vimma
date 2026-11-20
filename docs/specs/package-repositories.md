@@ -1,6 +1,6 @@
 # Spec: package-repositories
 
-Status: draft · Area: `tools/package/repos.ts` (new), `tools/package/repos-smoke.sh` (new),
+Status: accepted · Area: `tools/package/repos.ts` (new), `tools/package/repos-smoke.sh` (new),
 `tools/package/package.ts`, `.github/workflows/release.yml`,
 `.github/workflows/update-publish.yml`, `.github/workflows/pkgbuild.yml`,
 `packages/vimma-core/src/updates/updates.mjs`, `vimma-browser/vimma-updates` (`public/`),
@@ -81,7 +81,8 @@ alpha audience on Linux distributions, one signing system for all three is worth
    is set up, `:update` and `about:vimma` show the package manager's upgrade command
    (`sudo apt update && sudo apt upgrade`, `sudo dnf upgrade vimma`, `sudo zypper up vimma`,
    `sudo pacman -Syu`) instead of the download command. A `.deb` or `.rpm` installed without the
-   repository keeps today's download command (and see open question 4).
+   repository keeps today's download command, with one line pointing at the guide's repository
+   section (decision 22).
 8. **Downloads stay on GitHub.** Package files are downloaded from the GitHub Release. The
    update host serves only the metadata, the key and the setup files, and redirects package
    requests to the release's download URL.
@@ -228,7 +229,7 @@ pages, not run; the smoke test of sub-PR 1 runs each of them.
    committed as `configs/package-signing/vimma-packages.asc` with the KMS key version it names.
    Consequence: the key cannot be replaced behind a stable primary as a subkey could. A new KMS
    key version, or a new key, is a new OpenPGP key, which every user imports again, so a key
-   version is never rotated on a schedule (open question 5).
+   version is never rotated on a schedule (decision 23).
 5. **Signatures are made by a small signer in `tools/`, not by gpg.** `tools/package/openpgp-kms.ts`
    writes OpenPGP version 4 signature packets itself (RFC 4880, section 5.2.3: hashed
    subpackets for the creation time and the issuer fingerprint, hash algorithm SHA-256, public
@@ -318,7 +319,7 @@ pages, not run; the smoke test of sub-PR 1 runs each of them.
     how a symlink committed to `vimma-updates` reaches Cloudflare's asset upload was not
     checked, and copies leave nothing to check.
 13. **Metadata is rebuilt from the release files each time.** For every version the metadata
-    keeps (open question 2), `update-publish.yml` downloads that release's packages, checks them
+    keeps (decision 20), `update-publish.yml` downloads that release's packages, checks them
     against its `SHA256SUMS` and that file's cosign bundle, as `prepare` does for the manifest,
     and builds the metadata from them in an empty directory. Reason: the result depends only on
     signed release files, never on what the host published before, so a tampered host cannot
@@ -362,6 +363,36 @@ pages, not run; the smoke test of sub-PR 1 runs each of them.
     either way. Rejected: a second marker for repository installs, because the package file is
     identical. The check reads only whether those paths exist, never their content.
 
+### Host, retention and key lifetime
+
+19. **The repositories are paths on `updates.vimma.dev`: `/apt`, `/rpm` and `/arch`.** Reason:
+    the Worker, its deploy key and its checks already exist, where a new host such as
+    `pkgs.vimma.dev` would need a DNS record, a second Worker or route, and a deploy path.
+    Rejected: a separate host, which would separate package traffic and could move later
+    without touching the update check, but at that cost.
+20. **apt and rpm metadata keep the last 5 releases; pacman's database keeps the latest only.**
+    Reason: older versions let a user go back after a bad release
+    (`sudo apt install vimma=X.Y.Z`, `sudo dnf downgrade vimma`), at about 90 MB more download
+    per version in `repo-prepare`; pacman databases normally carry one version of a package.
+21. **The `.deb` and `.rpm` do not add their own repository or key on install.** Users set the
+    repository up once with the guide's commands. Reason: a package that edits the package
+    manager's sources is surprising, and it widens what a compromised package could change on
+    every machine that installs it. Rejected: installing the repository file and key from the
+    package, as Chrome's packages do.
+22. **A `.deb` or `.rpm` installed without the repository gets the download command and one line
+    pointing at the guide's repository section.** Reason: users who installed a file learn
+    once that upgrades can come with the system's own.
+23. **The certificate has no expiry.** The runbook's replacement steps cover a key that must be
+    retired. Reason: the private key cannot be copied out of KMS, and signing access is
+    withdrawn by disabling the key version or its IAM binding, so an expiry bounds little;
+    each extension would need every user to refresh the key by hand on apt (download the
+    `.sources` file again) and pacman (`pacman-key --refresh-keys` reaches only a keyserver
+    copy), dnf and zypper may not refresh a key they already imported either (not checked), and
+    an expired key stops upgrades for anyone who missed the step.
+24. **apt's `Release` has no `Valid-Until`.** Reason: Vimma's update check already reports a
+    newer release from its own signed manifest, while a 30-day `Valid-Until` would put the key
+    in a scheduled re-signing job and break `apt update` whenever a re-sign failed.
+
 ## Security and privacy
 
 New surface:
@@ -384,15 +415,15 @@ New surface:
   against the SHA-256 in the signed `Packages`, dnf and zypper check the signed `repomd.xml`
   and each `.rpm`'s own signature, and pacman checks the signed database and each package's
   signature. It can serve older signed metadata (a freeze or rollback attack), which keeps a
-  user on an older Vimma; apt's `Valid-Until` would bound that (open question 6), and Vimma's
-  own update check reports a newer release from its separately signed manifest either way.
+  user on an older Vimma; apt's `Release` has no `Valid-Until` to bound that (decision 24), and
+  Vimma's own update check reports a newer release from its separately signed manifest.
 - **Redirects to GitHub.** The redirect targets are fixed to
   `https://github.com/vimma-browser/vimma/releases/download/`; a placeholder can only fill a
   single path segment there (Research). GitHub serves what the release has, which B9 already
   forbids replacing once published.
 - **Setup files.** The `.sources` and `.repo` files are fetched over HTTPS from the host; the
-  guide's fingerprint lets a user check the key they trust. Whether the packages edit the
-  package manager's sources themselves is open question 3.
+  guide's fingerprint lets a user check the key they trust. The packages never edit the
+  package manager's sources themselves (decision 21).
 - **Repository detection** reads whether three fixed paths exist; it sends nothing anywhere.
 
 `docs/security/14-build-and-release-supply-chain.md` gains a rule (B20) for the
@@ -521,36 +552,3 @@ run with the maintainer's own Google Cloud credentials, which writes
 `configs/package-signing/vimma-packages.asc` for a pull request. The binding names the
 `package-signing` subject only; `update-primary`'s binding is not changed, so neither
 environment can use the other's key. No secret is stored.
-
-## Open questions
-
-1. **Repository URL.** (a) Paths on `updates.vimma.dev` (`/apt`, `/rpm`, `/arch`); (b) a new
-   host, `pkgs.vimma.dev`. (b) separates package traffic and could move later without touching
-   the update check, but needs a DNS record, a second Worker or route, and a deploy path.
-   Recommendation: (a), because the Worker, its deploy key and its checks already exist.
-2. **Versions kept in the metadata.** (a) The latest only; (b) the last few. Older versions let
-   a user go back after a bad release (`sudo apt install vimma=X.Y.Z`, `sudo dnf downgrade
-vimma`), at about 90 MB more download per version in `repo-prepare`. Recommendation: apt and
-   rpm keep the last 5 releases; pacman keeps the latest only, as pacman databases normally do.
-3. **Packages that add their own repository.** (a) No: the guide's one-time setup commands;
-   (b) yes: the `.deb` and `.rpm` install the repository file and key on install, as Chrome's
-   packages do, so a downloaded package starts updating with the system. Recommendation: (a),
-   because a package that edits the package manager's sources is surprising, and it widens what
-   a compromised package could change on every machine that installs it.
-4. **Hint for a `.deb` or `.rpm` without the repository.** (a) The download command plus one
-   line pointing at the guide's repository section; (b) the download command only.
-   Recommendation: (a), so that users who installed a file learn once that upgrades can be
-   automatic.
-5. **Key expiry.** (a) No expiry on the certificate; (b) an expiry of 2 years, extended
-   before it passes by a new self-signature that KMS makes with the same key. An expiry bounds
-   how long a key that is no longer controlled stays trusted, but here the private key cannot be
-   copied, and signing access is withdrawn by disabling the key version or its IAM binding.
-   Each extension needs every user to refresh the key by hand on apt (download the `.sources`
-   file again) and pacman (`pacman-key --refresh-keys` reaches only a keyserver copy); dnf and
-   zypper may not refresh a key they already imported either (not checked), and an expired key
-   stops upgrades for anyone who missed the step. Recommendation: (a), with
-   the runbook's replacement steps for a key that must be retired.
-6. **`Valid-Until` in apt's `Release`.** (a) None; (b) 30 days, re-signed by a scheduled job.
-   (b) stops a host from serving old signed metadata forever, but puts the key in a scheduled
-   job and breaks `apt update` if a re-sign fails. Recommendation: (a), because Vimma's update
-   check already reports a newer release from its own signed manifest.

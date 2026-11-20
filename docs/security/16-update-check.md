@@ -10,7 +10,7 @@ built with Firefox's updater (UP12), which Firefox's own check and download upda
 Vimma's hook (UP13). Who can reach it: whoever
 controls the update host or the network path (TLS stops the path), _you_ through `about:config`
 and `config.toml`, and the control socket's full role (`app.update_check` and `app.restart`, as
-it can run `app.quit`). The agent role reaches no action, so a local AI agent can neither trigger
+it can run `app.quit`). The agent role reaches no action, so an AI agent can neither trigger
 a check nor restart Vimma.
 _Pages_ and _extensions_ cannot reach it.
 
