@@ -307,9 +307,13 @@ function openStop(s, chapter) {
   };
 }
 
+/** @param {FlowState} s @param {string} id @returns {FlowSaved | undefined} */
+const savedFor = (s, id) => s.saved.find((x) => x.step === id);
+
 /**
  * The step after the open one, or its chapter's stop screen; a step that wrote `lines` is
- * listed as saved, replacing what an earlier `enter` on it saved (behaviour 6). A skip, or a
+ * listed as saved, replacing what an earlier `enter` on it saved (behaviour 6), except that
+ * add-ons installed on a second pass are added to those installed before. A skip, or a
  * save that wrote nothing, keeps what this run saved for the step: that write is still in the
  * file, and the stop screens list it. So an action step that did nothing this time keeps what
  * it did before: that cannot be undone.
@@ -321,10 +325,13 @@ export function flowAdvance(s, ctx, lines = []) {
   const step = flowStep(s);
   if (!step) return { state: s, effect: null };
   const chapter = s.chapters[s.chapter];
+  // Add-ons stay installed (an install cannot be undone here): a second pass adds to the
+  // list, each add-on once, rather than replacing it.
+  const before = step.id === "content_blocker" ? (savedFor(s, step.id)?.lines ?? []) : [];
   const saved = lines.length
     ? [
         ...s.saved.filter((x) => x.step !== step.id),
-        { chapter: chapter?.id ?? "", step: step.id, lines: [...lines] },
+        { chapter: chapter?.id ?? "", step: step.id, lines: [...new Set([...before, ...lines])] },
       ]
     : s.saved;
   const next = { ...s, saved, marked: step.id === "content_blocker" ? new Map() : s.marked };

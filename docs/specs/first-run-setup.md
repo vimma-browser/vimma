@@ -6,6 +6,12 @@ Status: implemented · Area: core (`packages/vimma-core/src/setup.mjs`, new; `to
 `jar.mn`), theme (`src/browser/themes/shared/vimma/setup.css`, new) · Upstream patches: none ·
 ADR: none
 
+(Since changed: [#1298](https://github.com/vimma-browser/vimma/issues/1298) turned
+[setup-v2](setup-v2.md) on and removed this spec's summary flow: `setup/setup.mjs` is gone, the
+page is `setup/flow.mjs` with `packages/vimma-core/src/system/setup.mjs` and `setup-steps.mjs`,
+and the `summary_*` and install tasks below became the chapter flow's tasks in
+`browser_vimma_setup.js` and `browser_vimma_setup_v2.js`, listed in setup-v2.)
+
 Issue: [#378](https://github.com/vimma-browser/vimma/issues/378)
 
 ## Summary
@@ -300,6 +306,8 @@ Mochitest, `tests/browser/browser_vimma_setup.js`:
 - `search_results_replace_the_curated_list`
 - `automation_and_config_path_skip_setup`
 - `esc_changes_no_pref_engine_or_addon`
+- (Since changed, #1298: the summary tasks that follow are removed with the summary flow; see
+  the note under the status line.)
 - `closing_before_summary_changes_nothing`
 - `summary_sets_the_default_engine`
 - `summary_writes_search_default_and_reloads`

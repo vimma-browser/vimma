@@ -487,7 +487,8 @@ What the steps do:
   Brave, Edge, Opera and Vivaldi; the next step opens when the wizard closes. Data from Firefox
   comes over with Firefox Sync ([Moving over](#moving-over-from-firefox-or-chrome)).
 - **Address bar.** Shown or hidden. The step names the keys that reach the address bar while it
-  is hidden (`ctrl+l`, `alt+d`, `I` and `ctrl+b u` with the default keys).
+  is hidden (`ctrl+l`, `alt+d`, `I` and `ctrl+b u` with the default keys; `cmd+l` instead of
+  `alt+d` on macOS).
 - **Tab line.** Off, always, or only with two or more tabs ([Tab line](#tab-line)).
 - **Prefix key.** `ctrl+b` or `ctrl+a`, each shown with the key that opens the list of keys.
 - **Hint letters.** The home row of QWERTY, Colemak or Dvorak. The layout you type on is
@@ -2052,11 +2053,10 @@ you, and `a` lets it work without asking until it quits, except where
   or a restart, when the file turns them on again. `:mcp` then says
   `mcp off (until :mcp on or a restart)`. With `[mcp] enabled = false`, `:mcp on` changes
   nothing and says to edit the file.
-- The new setup's **Agents** step (`:setup`, chapter 5, while the new setup is built behind
-  `vimma.feature.setupV2`) turns agents on as `:mcp on` and `y` do: `enter` on **On** writes
-  `[mcp] enabled = true` and ends an `:mcp off` of this session. It asks nothing more, since that
-  `enter` is your answer. It is refused when `:mcp off` ran after you arrived at the step, and
-  the step then puts the cursor back on **Off**.
+- The setup's **Agents** step (`:setup`, chapter 5) turns agents on as `:mcp on` and `y` do:
+  `enter` on **On** writes `[mcp] enabled = true` and ends an `:mcp off` of this session. It asks
+  nothing more, since that `enter` is your answer. It is refused when `:mcp off` ran after you
+  arrived at the step, and the step then puts the cursor back on **Off**.
 - `about:vimma`'s **Agents (MCP)** section shows the switch, full control's state and the agent
   workspace's tab count.
 

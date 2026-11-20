@@ -356,6 +356,22 @@ describe("setup v2 flow", () => {
     expect(s.saved.map((x) => x.lines)).toEqual([["asked the system to make Vimma the default"]]);
   });
 
+  test("add-ons installed on a second pass are listed with those installed before", () => {
+    const blocker = goTo("content_blocker");
+    let s = flowAdvance(blocker, ctx(), ["uBlock Origin installed"]).state;
+    // Back to the content blocker, another add-on installed: both stay installed, both listed.
+    s = flowAdvance(run(s, ["h"]).state, ctx(), ["Privacy Badger installed"]).state;
+    expect(s.saved.map((x) => x.lines)).toEqual([
+      ["uBlock Origin installed", "Privacy Badger installed"],
+    ]);
+    // The same add-on again (already installed) is listed once; nothing installed keeps both.
+    s = flowAdvance(run(s, ["h"]).state, ctx(), ["uBlock Origin installed"]).state;
+    s = flowAdvance(run(s, ["h"]).state, ctx(), []).state;
+    expect(s.saved.map((x) => x.lines)).toEqual([
+      ["uBlock Origin installed", "Privacy Badger installed"],
+    ]);
+  });
+
   test("q and esc close from every step and stop screen", () => {
     for (const id of ["content_blocker", "search_engine", "colours", "stop:essentials"]) {
       for (const key of ["q", "esc"]) {

@@ -1524,35 +1524,32 @@ the page's own and can carry tokens it put there; they come only from the agent'
   [`mcp_off_survives_a_config_reload`](../../tests/browser/browser_vimma_mcp.js),
   [`mcp_on_after_off_starts_the_agent_role_when_the_pref_was_on`](../../tests/browser/browser_vimma_mcp.js),
   [`a_yes_to_an_older_mcp_on_question_does_not_undo_a_newer_mcp_off`](../../tests/browser/browser_vimma_mcp.js)
-- M65. The setup page (about:vimma-setup, [setup-v2](../specs/setup-v2.md) behaviour 28 and
-  decision 20, behind `vimma.feature.setupV2`) **must** turn MCP on only from a trusted `enter`
-  on its agents step's "On", which is the user's consent as a yes to `:mcp on` is, and is
-  checked as that yes is: it **must** be refused, with nothing written, when there is no agent
-  workspace, when the agent workspace changed, or when `:mcp off` ran after the user arrived at
-  the step. The host takes what it checks against (`McpHost.consentTicket`) when the user
-  arrives at the step, with the cursor on the value in force, and keeps it when the step is
-  drawn again (a read of config.toml, `:mcp on|off` elsewhere), so a redraw **never** stands
-  for a consent given after an `:mcp off`; each `enter` on the step spends it, and a redraw
-  after that takes none, so "On" is refused until the user arrives at the step again. A redraw that
-  changes the row in force moves the cursor to it, and a refusal draws the step anew with the
-  cursor on the row in force, so turning agents on always takes `j` and `enter` on a screen that
-  shows the hold. Only after its `[mcp] enabled = true` is written and read, or when the file
-  says so already, does it end `:mcp off`'s hold, checking again first, as the yes does; the
-  write alone **never** ends the hold (M64). Refused at that second check (the workspace changed
-  or went away during the write), it holds agents off as `:mcp off` does, until `:mcp on` or a
-  restart, so the file just written does not turn them on in this session; it does at the next
+- M65. The setup page (about:vimma-setup, [setup-v2](../specs/setup-v2.md) behaviour 28 and decision 20) **must** turn MCP on only from a trusted `enter` on its agents step's "On", which is the
+  user's consent as a yes to `:mcp on` is, and is checked as that yes is: it **must** be refused,
+  with nothing written, when there is no agent workspace, when the agent workspace changed, or when
+  `:mcp off` ran after the user arrived at the step. The host takes what it checks against
+  (`McpHost.consentTicket`) when the user arrives at the step, with the cursor on the value in
+  force, and keeps it when the step is drawn again (a read of config.toml, `:mcp on|off` elsewhere),
+  so a redraw **never** stands for a consent given after an `:mcp off`; each `enter` on the step
+  spends it, and a redraw after that takes none, so "On" is refused until the user arrives at the
+  step again. A redraw that changes the row in force moves the cursor to it, and a refusal draws the
+  step anew with the cursor on the row in force, so turning agents on always takes `j` and `enter`
+  on a screen that shows the hold. Only after its `[mcp] enabled = true` is written and read, or
+  when the file says so already, does it end `:mcp off`'s hold, checking again first, as the yes
+  does; the write alone **never** ends the hold (M64). Refused at that second check (the workspace
+  changed or went away during the write), it holds agents off as `:mcp off` does, until `:mcp on` or
+  a restart, so the file just written does not turn them on in this session; it does at the next
   start, as any `enabled = true` does. "Off" is selected first unless agents are on, so a plain
-  `enter` never turns them on and, under the hold, writes nothing; "On" says that it also ends
-  `:mcp off` and, for a workspace Vimma did not make, shows `:mcp on`'s warning too; without an
-  agent workspace it shows that it writes nothing. The page names only a step and a choice
-  index (section 8, F1); no other step and no other choice turns agents on, and only the setup
-  host calls `consentTicket`, `consentRefusal` and `consentFromSetup`, although `ctl/` and
-  `agent/` code import `McpHost`. Neither the control socket's agent role nor an MCP agent can
-  open or drive the page: the socket has no command for it, the agent role's `open` refuses
-  it, and the page acts only on trusted events. Full control (`vimma-ctl send-keys`, S13)
-  presses trusted keys in the focused window and so can drive the page, as it can type
-  `:mcp on` and `y`; that is accepted under M22, whose question says that full control reaches
-  every workspace and tab.
+  `enter` never turns them on and, under the hold, writes nothing; "On" says that it also ends `:mcp
+off` and, for a workspace Vimma did not make, shows `:mcp on`'s warning too; without an agent
+  workspace it shows that it writes nothing. The page names only a step and a choice index (section
+  8, F1); no other step and no other choice turns agents on, and only the setup host calls
+  `consentTicket`, `consentRefusal` and `consentFromSetup`, although `ctl/` and `agent/` code import
+  `McpHost`. Neither the control socket's agent role nor an MCP agent can open or drive the page:
+  the socket has no command for it, the agent role's `open` refuses it, and the page acts only on
+  trusted events. Full control (`vimma-ctl send-keys`, S13) presses trusted keys in the focused
+  window and so can drive the page, as it can type `:mcp on` and `y`; that is accepted under M22,
+  whose question says that full control reaches every workspace and tab.
   [`on writes enabled = true and is the consent; off for the session ends with it`](../../packages/vimma-core/test/setup-steps.test.ts),
   [`off writes enabled = false only while agents are on`](../../packages/vimma-core/test/setup-steps.test.ts),
   [`the notes say what the hold and an adopted workspace mean`](../../packages/vimma-core/test/setup-steps.test.ts),

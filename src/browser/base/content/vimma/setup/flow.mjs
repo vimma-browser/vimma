@@ -88,7 +88,9 @@ let guessed = null;
 let curated = [];
 /** @type {AddonEntry[]} */
 let addons = [];
-let curatedLoaded = false;
+/** The curated list's one load, shared by every visit to the content blocker. */
+/** @type {Promise<void> | null} */
+let curatedLoad = null;
 /** @type {string[]} chapters finished before (welcome ticks) */
 let finished = [];
 
@@ -502,7 +504,8 @@ async function loadView(select = true) {
   const under = view?.id === step.id ? view.choices[state.cursor]?.label : undefined;
   loading = true;
   delete root.dataset.viewReady;
-  if (step.id === "content_blocker") loadAddons();
+  // The content blocker is ready once its add-on list has loaded (or the offline list shows).
+  const addonsLoaded = step.id === "content_blocker" ? loadAddons() : null;
   const wasInForce = view?.id === step.id ? view.choices[view.selected]?.label : undefined;
   const v = /** @type {StepView | null} */ (
     await SetupHost.stepView(browser(), step.id, { fresh: select })
@@ -524,17 +527,23 @@ async function loadView(select = true) {
     state = { ...state, cursor: kept >= 0 ? kept : at >= 0 ? at : v.selected };
   }
   draw();
+  if (addonsLoaded) {
+    await addonsLoaded.catch(() => {});
+    if (serial !== viewSerial || flowStep(state)?.id !== step.id) return;
+  }
   root.dataset.viewReady = "true";
 }
 
-async function loadAddons() {
-  if (curatedLoaded) return;
-  curatedLoaded = true;
-  const r = await SetupHost.curated();
-  curated = r.addons;
-  $("v2-offline").hidden = !r.offline;
-  if (!search.value) addons = curated;
-  draw();
+/** @returns {Promise<void>} once the curated list (or the offline one) is drawn */
+function loadAddons() {
+  curatedLoad ??= (async () => {
+    const r = await SetupHost.curated();
+    curated = r.addons;
+    $("v2-offline").hidden = !r.offline;
+    if (!search.value) addons = curated;
+    draw();
+  })();
+  return curatedLoad;
 }
 
 async function runSearch() {

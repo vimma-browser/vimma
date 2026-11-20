@@ -27,6 +27,9 @@ const { UrlbarTestUtils } = ChromeUtils.importESModule(
 const { ProvidersManager } = ChromeUtils.importESModule(
   "moz-src:///browser/components/urlbar/UrlbarProvidersManager.sys.mjs",
 );
+const { SetupHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/setup/SetupHost.sys.mjs",
+);
 const { PdfOps } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/pdf-ops.mjs");
 const { PDF_OUTLINE_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/outline-ops.mjs",
@@ -441,7 +444,34 @@ add_task(async function test_state_reports_the_setup_screen() {
     await until(() => doc.documentElement.dataset.step === "welcome", "the welcome screen");
     Assert.deepEqual(state().setup, { screen: "welcome" });
     await focusContent(browser);
+    // The content blocker's add-on list, held until the test lets it answer.
+    const realCurated = SetupHost.curated;
+    /** @type {(v?: unknown) => void} */
+    let answer = () => {};
+    const held = new Promise((resolve) => (answer = resolve));
+    SetupHost.curated = async () => {
+      await held;
+      return realCurated.call(SetupHost);
+    };
+    const realStepView = SetupHost.stepView;
+    let read = false;
+    SetupHost.stepView = async (...args) => {
+      const v = await realStepView.apply(SetupHost, args);
+      read = true;
+      return v;
+    };
+    registerCleanupFunction(() => {
+      SetupHost.curated = realCurated;
+      SetupHost.stepView = realStepView;
+    });
     EventUtils.synthesizeKey("KEY_Enter", {}, /** @type {Window} */ (doc.defaultView));
+    await until(() => doc.documentElement.dataset.step === "content_blocker", "the step opens");
+    await until(() => read, "its choices are read");
+    await TestUtils.waitForTick();
+    Assert.equal(state().setup?.screen, "loading", "the add-on list still to come: loading");
+    answer();
+    SetupHost.curated = realCurated;
+    SetupHost.stepView = realStepView;
     // The step's id is set as it opens, its choices once its view has loaded: `loading` until then.
     const seen = new Set();
     await until(() => {
@@ -449,6 +479,7 @@ add_task(async function test_state_reports_the_setup_screen() {
       if (screen) seen.add(screen);
       if (screen === "content_blocker") {
         Assert.equal(doc.documentElement.dataset.viewReady, "true", "named once its view is drawn");
+        Assert.greater(doc.querySelectorAll("#v2-addons li").length, 0, "with its add-on list");
       }
       return screen === "content_blocker";
     }, "the first step");

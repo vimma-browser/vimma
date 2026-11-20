@@ -67,7 +67,8 @@ engine, and applies nothing until its summary is confirmed. That leaves three ga
    that step this run. A step that writes nothing on the way back (the value in force, **Keep**,
    or `s`) keeps the lines it saved earlier this run, since that write is still in
    `config.toml`; an action done earlier this run (an add-on installed, the default browser
-   asked) stays listed, since it cannot be undone.
+   asked) stays listed, since it cannot be undone. Add-ons installed on a second pass are
+   listed with those installed before, each once.
 7. `q` or `esc` on any step or stop screen closes the page. Steps already saved stay saved;
    nothing is undone, and nothing for the open step is written. Closing the tab or the window
    does the same. In the content blocker step's search field, the first `esc` leaves the field

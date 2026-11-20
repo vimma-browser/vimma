@@ -681,6 +681,41 @@ add_task(async function content_blocker_installs_on_enter_with_the_permission_pr
   await SpecialPowers.popPrefEnv();
 });
 
+// The prompt anchors to the page's browser; without one (browserFor found none, as after a
+// process switch) the add-on is reported failed and the step still goes on, rather than handing
+// Firefox a null anchor.
+add_task(async function install_without_the_pages_browser_fails_and_finishes() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["vimma.setup.amoApi", AMO_LOCAL],
+      ["xpinstall.signatures.required", false],
+    ],
+  });
+  const stub = await stubInstall();
+  const realInstall = SetupHost.install;
+  SetupHost.install = (_browser, guid) => realInstall.call(SetupHost, null, guid);
+  registerCleanupFunction(() => (SetupHost.install = realInstall));
+  const { tab, doc } = await openFlow();
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "content_blocker");
+  await TestUtils.waitForCondition(() =>
+    doc.querySelector(`#v2-addons li[data-guid="${UBLOCK}"]:not(.disabled)`),
+  );
+  await press(doc, " ");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "search_engine");
+  SetupHost.install = realInstall;
+  Assert.ok(
+    found(doc.getElementById("v2-last")).textContent.includes("uBlock Origin failed"),
+    "reported failed",
+  );
+  Assert.deepEqual(stub.asked, [], "AMO never asked: install fails before AddonManager");
+  Assert.strictEqual(await AddonManager.getAddonByID(UBLOCK), null, "nothing installed");
+  stub.restore();
+  await closeFlow(tab);
+  await SpecialPowers.popPrefEnv();
+});
+
 add_task(async function esc_in_the_search_field_leaves_the_field_first() {
   const { tab, doc } = await openFlow();
   await press(doc, "KEY_Enter");

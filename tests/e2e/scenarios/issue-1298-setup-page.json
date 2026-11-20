@@ -1,8 +1,11 @@
 {
   "name": "issue-1298-setup-page",
   "issue": 1298,
-  "description": "docs/specs/setup-v2.md, e2e: the setup page in Vimma's built-in palette, light (the profile's system theme is light). `:setup` opens the welcome screen with the optional-setup lines and the chapter list (setup-welcome.png); enter opens the first step, the content blocker, with its choices, the line it writes and the footer (setup-step.png); `s s s` skips the essentials to their stop screen, which saved nothing and names the next chapter (setup-stop.png); `q` closes the page. `:setup` again and `3` open the window chapter's address bar step with its key hints and window drawing (setup-address-bar.png). Each screenshot waits for `state.setup.screen`, the screen the page draws.",
+  "description": "docs/specs/setup-v2.md, e2e: the setup page in Vimma's built-in palette, light (the profile's system theme is light). `:setup` opens the welcome screen with the optional-setup lines and the chapter list (setup-welcome.png); enter opens the first step, the content blocker, with its choices, the line it writes and the footer (setup-step.png); `s s s` skips the essentials to their stop screen, which saved nothing and names the next chapter (setup-stop.png); `q` closes the page. `:setup` again and `3` open the window chapter's address bar step with its key hints and window drawing (setup-address-bar.png). Each screenshot waits for `state.setup.screen`, the screen the page draws. AMO is pointed at a closed local port (vimma.setup.amoApi), so the content blocker shows the curated list offline, with its offline line, and nothing leaves the runner; the step is reported once that list has been read.",
   "timeoutSeconds": 90,
+  "prefs": {
+    "vimma.setup.amoApi": "http://127.0.0.1:1/"
+  },
   "steps": [
     {
       "wait-for-state": {
