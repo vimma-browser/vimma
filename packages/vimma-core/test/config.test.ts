@@ -413,7 +413,7 @@ describe("mergeWithDefaults", () => {
         toolbar: "hidden",
         bookmarksToolbar: null,
         pdfOutline: "shown",
-        tabline: "off",
+        tabline: "auto",
         tablineWidth: 14,
       },
       statusbar: { tab: true },

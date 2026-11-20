@@ -559,7 +559,9 @@ export const DEFAULT_CONFIG = Object.freeze({
     // the site and its security cues (decision 12). branding's vimma.ui.toolbar.hidden agrees.
     toolbar: /** @type {const} */ ("hidden"),
     pdf_outline: /** @type {const} */ ("shown"),
-    tabline: /** @type {const} */ ("off"),
+    // "auto" since 20 Nov 2026 (docs/specs/tab-line.md decision 3): a lone tab's window keeps
+    // its row, and a second tab shows the line. ui/tabline.mjs falls back to it too.
+    tabline: /** @type {const} */ ("auto"),
     tabline_width: TABLINE_WIDTH.default,
   },
   statusbar: { tab: true },
@@ -714,9 +716,9 @@ export function formatDefaultsToml() {
     '# Vimma\'s outline beside a PDF that has one (Tab focuses it): "shown" when a PDF opens, or',
     '# "hidden" until you press Tab.',
     `pdf_outline = ${tomlString(DEFAULT_CONFIG.ui?.pdf_outline ?? "shown")}`,
-    '# A row at the top of the window listing this workspace\'s tabs: "off", "always", or',
-    '# "auto" (only with 2 or more tabs). :tabline shows or hides it until restart.',
-    `tabline = ${tomlString(DEFAULT_CONFIG.ui?.tabline ?? "off")}`,
+    '# A row at the top of the window listing this workspace\'s tabs: "auto" (only with 2 or',
+    '# more tabs), "always" or "off". :tabline shows or hides it until restart.',
+    `tabline = ${tomlString(DEFAULT_CONFIG.ui?.tabline ?? "auto")}`,
     "# The columns of each tab's name in the tab line, 4 to 60.",
     `tabline_width = ${DEFAULT_CONFIG.ui?.tabline_width ?? TABLINE_WIDTH.default}`,
     "",

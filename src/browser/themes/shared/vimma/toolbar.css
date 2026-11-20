@@ -40,6 +40,13 @@
     anchor-name: --vimma-nav-bar;
   }
 
+  /* Under the tab line while it is drawn (tab-line behaviour 3). The toolbox is a flex box, and
+   * an absolutely positioned child of one takes the static position of a sole item, the box's
+   * top edge, whatever comes before it: without a `top`, the revealed bar covers the line. */
+  &[vimma-tabline] #nav-bar {
+    top: anchor(--vimma-tabline bottom);
+  }
+
   #PersonalToolbar {
     position: absolute;
     inset-inline: 0;

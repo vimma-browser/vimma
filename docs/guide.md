@@ -38,9 +38,9 @@ What works today, each with the section that explains it:
 - **[Search engines](#search-engines)** and `@aliases` from `config.toml`, such as `@gh vimma`.
 - **[No toolbar](#hiding-the-toolbar)** by default: the page reaches the top of the window, the
   address bar comes back when you need it, and `ctrl+b u` shows the whole toolbar.
-- **[Tab line](#tab-line):** an optional row of text at the top of the window that lists this
-  workspace's tabs with their numbers; `gb` labels them and one more key goes there, `12gb`
-  goes to tab 12.
+- **[Tab line](#tab-line):** a row of text at the top of the window that lists this
+  workspace's tabs with their numbers once there are two or more; `gb` labels them and one more
+  key goes there, `12gb` goes to tab 12.
 - **[Downloads from the keyboard](#downloads):** `ctrl+b d` lists them with live progress, and
   one key opens a file, shows it in its folder, pauses, retries, removes or deletes it, or allows
   a blocked one through Firefox's own warning; the status bar shows `↓ 42%` while they run and
@@ -490,7 +490,7 @@ What the steps do:
 - **Address bar.** Shown or hidden. The step names the keys that reach the address bar while it
   is hidden (`ctrl+l`, `alt+d`, `I` and `ctrl+b u` with the default keys; `cmd+l` instead of
   `alt+d` on macOS, written `meta+l` in config.toml).
-- **Tab line.** Off, always, or only with two or more tabs ([Tab line](#tab-line)).
+- **Tab line.** Off, always, or only with two or more tabs, the default ([Tab line](#tab-line)).
 - **Prefix key.** `ctrl+b`, or **Choose your own**: press `enter` on it, then the key
   combination you want (`ctrl+a` as in tmux, `alt+w`, …). The step shows the line it will write
   and the key that will list every key (`ctrl+a ?`); `enter` saves it and `esc` goes back to the
@@ -1245,14 +1245,15 @@ cancels the download. `y` waits until the OK button is enabled.
 
 ### Tab line
 
-The tab line is an optional row of text at the top of the window that lists the current
-workspace's tabs, as Vim's tabline lists its tab pages, so you see what is open and the number
-each tab has for `alt+4`, `ctrl+b 4` or `4gt` without opening anything. It is off by default;
-turn it on in `config.toml`:
+The tab line is a row of text at the top of the window that lists the current workspace's
+tabs, as Vim's tabline lists its tab pages, so you see what is open and the number each tab has
+for `alt+4`, `ctrl+b 4` or `4gt` without opening anything. It shows by default once the
+workspace has two or more tabs, and a window with one tab has no line. Set it in `config.toml`;
+`tabline = "off"` keeps every window without it:
 
 ```toml
 [ui]
-tabline = "always"   # "off" (the default), "always", or "auto": only with 2 or more tabs
+tabline = "always"   # "auto" (the default): only with 2 or more tabs; "always"; or "off"
 tabline_width = 14   # columns of each tab's name, 4 to 60
 
 [statusbar]
@@ -4863,7 +4864,9 @@ accent = "#ff9e64"
   `download_dir`, `download_max_mb` and `clamav_max_age_days`, [above](#downloads-from-the-agent-workspace)); `[search]`
   (the default engine and `@aliases`, [below](#search-engines)); `[ui] toolbar` (`"hidden"`, the
   default, or `"shown"`: [Firefox's toolbar](#hiding-the-toolbar) in every window; applied at
-  startup and when the line changes, so `ctrl+b u` lasts until then); `[ui] bookmarks_toolbar`
+  startup and when the line changes, so `ctrl+b u` lasts until then); `[ui] tabline` (`"auto"`,
+  the default, `"always"` or `"off"`: the [tab line](#tab-line); applied at startup and when the
+  line changes, so `:tabline` lasts until then); `[ui] bookmarks_toolbar`
   (`"shown"`, `"hidden"` or `"newtab"`, unset by default: [Firefox's Bookmarks
   Toolbar](#firefoxs-bookmarks-toolbar), hidden unless you show it); `[ui] pdf_outline`
   (`"shown"`, the default, or `"hidden"`: the [PDF viewer](#pdf-viewer)'s outline when a PDF

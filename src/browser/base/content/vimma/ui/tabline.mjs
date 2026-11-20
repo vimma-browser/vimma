@@ -8,7 +8,7 @@
 // the render path: the row's width and its font's column come from a ResizeObserver, as the
 // status bar's do. It has no tab stop and no key or pointer handler (decision 17).
 
-import { TABLINE_SETTINGS, TABLINE_WIDTH } from "../core/defaults.mjs";
+import { DEFAULT_CONFIG, TABLINE_SETTINGS, TABLINE_WIDTH } from "../core/defaults.mjs";
 import {
   fitTabLine,
   nextTabLineSetting,
@@ -81,12 +81,17 @@ export class TabLine {
     return null;
   }
 
-  /** @returns {TabLineSetting} */
+  /**
+   * The pref, else `[ui] tabline`'s default ("auto", decision 3), so a window drawn before the
+   * config is read agrees with it, as the toolbar's pref does (toolbar-toggle decision 3).
+   * @returns {TabLineSetting}
+   */
   static get setting() {
-    const v = Services.prefs.getStringPref(TABLINE_PREF, "off");
+    const fallback = DEFAULT_CONFIG.ui?.tabline ?? "auto";
+    const v = Services.prefs.getStringPref(TABLINE_PREF, fallback);
     return /** @type {readonly string[]} */ (TABLINE_SETTINGS).includes(v)
       ? /** @type {TabLineSetting} */ (v)
-      : "off";
+      : fallback;
   }
 
   /** @param {TabLineSetting} setting */

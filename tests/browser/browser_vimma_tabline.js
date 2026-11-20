@@ -208,6 +208,19 @@ add_task(async function line_sits_above_the_address_bar() {
     1,
     "the page starts right under it",
   );
+  // Behaviour 3: the address bar revealed by focus (ctrl+l, I) shows under the line, not over it.
+  gURLBar.focus();
+  await until(() => navBar.checkVisibility({ visibilityProperty: true }), "focus reveals it");
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  Assert.ok(drawn(), "the line stays drawn");
+  Assert.equal(rect(line()).top, top, "the line stays where it was");
+  Assert.lessOrEqual(
+    Math.abs(rect(navBar).top - rect(line()).bottom),
+    0.5,
+    "the revealed address bar starts right under the line",
+  );
+  await focusPage();
+  await until(() => !navBar.checkVisibility({ visibilityProperty: true }), "hidden again");
   Services.prefs.setBoolPref(TOOLBAR_PREF, false);
   await until(() => navBar.checkVisibility({ visibilityProperty: true }), "shown again");
   Assert.equal(rect(line()).top, top, "and the line never moved");
@@ -227,6 +240,27 @@ add_task(async function auto_needs_two_tabs() {
   BrowserTestUtils.removeTab(tab);
   await until(() => !drawn(), "closing it hides it again");
   await SpecialPowers.popPrefEnv();
+});
+
+// Decision 3 (changed 20 Nov 2026, #1403): with no config.toml and no pref set, the line is
+// "auto": a fresh profile draws it with two tabs and not with one.
+add_task(async function the_default_is_auto() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["vimma.config.path", PathUtils.join(dir, "missing.toml")]],
+  });
+  await ConfigHost.reload();
+  Assert.equal(ConfigHost.config?.ui.tabline, "auto", "no config.toml: [ui] tabline is auto");
+  Services.prefs.clearUserPref(PREF);
+  closeOthers();
+  await until(() => panelRows().length === 1, "one tab");
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  Assert.ok(!drawn(), "a fresh profile with one tab: not drawn");
+  const tab = await openPage("second");
+  await until(drawn, "a fresh profile with two tabs: drawn");
+  BrowserTestUtils.removeTab(tab);
+  await until(() => !drawn(), "back to one tab: hidden again");
+  await SpecialPowers.popPrefEnv();
+  await ConfigHost.reload();
 });
 
 add_task(async function config_reload_applies() {
@@ -258,7 +292,7 @@ add_task(async function config_reload_applies() {
   await IOUtils.remove(configFile);
   await SpecialPowers.popPrefEnv();
   await ConfigHost.reload();
-  await until(() => ConfigHost.config?.ui.tabline === "off", "no config: the defaults");
+  await until(() => ConfigHost.config?.ui.tabline === "auto", "no config: the defaults");
   closeOthers();
 });
 

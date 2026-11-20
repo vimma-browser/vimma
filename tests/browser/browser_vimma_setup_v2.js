@@ -1970,9 +1970,17 @@ add_task(async function tab_line_step_writes_tabline_and_applies_live() {
     [...doc.querySelectorAll("#v2-text code")].some((c) => c.textContent === ":tabline"),
     "toggle_tabline has no default key: named by its command",
   );
-  Assert.equal(current(doc), "Off", "off is in force without the key");
+  // tab-line decision 3 (changed 20 Nov 2026, #1403): auto is the default, in force without the
+  // key, and enter on it writes nothing. Two tabs are open, so the line is drawn already.
+  Assert.equal(current(doc), "Only with two or more tabs", "auto is in force without the key");
   Assert.equal(writes(doc), "Writes nothing");
-  Assert.ok(!tabLineShown(), "no tab line yet");
+  await TestUtils.waitForCondition(tabLineShown, "the default draws the line over two tabs");
+  const fresh = await IOUtils.readUTF8(configFile()).catch(() => null);
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.equal(await IOUtils.readUTF8(configFile()).catch(() => null), fresh, "nothing written");
+  await press(doc, "h");
+  await atStep(doc, "tab_line");
   const { setConfigKeysText } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/core/config.mjs",
   );
@@ -1999,9 +2007,10 @@ add_task(async function tab_line_step_writes_tabline_and_applies_live() {
     await press(doc, "h");
     await atStep(doc, "tab_line");
   };
-  await choose(["j"], "always");
+  await choose(["k"], "always");
   Assert.equal(current(doc), "Always", "back opens on the value in force");
-  await choose(["j"], "auto");
+  await choose(["k"], "off");
+  await choose(["j", "j"], "auto");
   await choose(["k", "k"], "off");
   // Off is in force now: enter on it writes nothing.
   Assert.equal(current(doc), "Off");
