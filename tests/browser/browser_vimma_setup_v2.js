@@ -118,8 +118,14 @@ function shellAnswers(state = {}) {
 
 // XDG_CONFIG_HOME first: the vimma.config.path change reloads the config at once, and would
 // otherwise read the developer's own ~/.config/vimma/config.toml.
+// The folder XDG_CONFIG_HOME points at while this file runs. configFile() reads it here, not
+// from the variable: the cleanup below puts the variable back first (empty on macOS), and the
+// tasks' own cleanups, which run after it, still remove the right file (#1396).
+let configHome = "";
+
 add_task(async () => {
   const xdg = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-setup");
+  configHome = xdg;
   const before = Services.env.exists("XDG_CONFIG_HOME") ? Services.env.get("XDG_CONFIG_HOME") : "";
   Services.env.set("XDG_CONFIG_HOME", xdg);
   await SpecialPowers.pushPrefEnv({
@@ -139,8 +145,7 @@ add_task(async () => {
   });
 });
 
-const configFile = () =>
-  PathUtils.join(Services.env.get("XDG_CONFIG_HOME"), "vimma", "config.toml");
+const configFile = () => PathUtils.join(configHome, "vimma", "config.toml");
 
 /**
  * Removes config.toml and reads the config now, so Vimma undoes the `[search] default` a summary
