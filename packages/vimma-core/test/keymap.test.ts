@@ -755,3 +755,39 @@ describe("compileKeymap: overrides, unbinding and Firefox's keys", () => {
     expect(compileKeymap().fallback("normal", "ctrl+t")).toBeNull();
   });
 });
+
+// docs/specs/setup-v2.md decision 21: the chords the prefix cannot also be.
+describe("keysOutsidePrefix", () => {
+  const outside = (user = {}) => compileKeymap(user).keysOutsidePrefix();
+
+  test("the first key of each binding with its action; the prefix's bindings are left out", () => {
+    const m = outside();
+    expect(m.get("ctrl+l")).toBe("focus_urlbar");
+    expect(m.has("ctrl+b")).toBe(false);
+  });
+
+  test("a sequence counts by its first key", () => {
+    const m = outside({ keys: { new_tab: ["ctrl+alt+x ctrl+alt+e"] } });
+    expect(m.get("ctrl+alt+x")).toBe("new_tab");
+    expect(m.has("ctrl+alt+e")).toBe(false);
+  });
+
+  test("a [modal.*] binding unbound in every mode it had is free", () => {
+    const bound = { modal: { normal: { "ctrl+alt+k": "scroll_down" } } };
+    expect(outside(bound).get("ctrl+alt+k")).toBe("scroll_down");
+    expect(outside({ ...bound, unbind: { normal: ["ctrl+alt+k"] } }).has("ctrl+alt+k")).toBe(false);
+  });
+
+  test("a [keys] binding a modal one shadows in some modes is still taken", () => {
+    const m = outside({
+      keys: { close_tab: ["ctrl+alt+j"] },
+      modal: { normal: { "ctrl+alt+j": "scroll_down" } },
+    });
+    expect(m.has("ctrl+alt+j")).toBe(true);
+  });
+
+  test("a chord [firefox] enable gives back to Firefox is no Vimma binding", () => {
+    expect(outside().get("ctrl+t")).toBeDefined();
+    expect(outside({ firefox: { enable: ["ctrl+t"] } }).has("ctrl+t")).toBe(false);
+  });
+});

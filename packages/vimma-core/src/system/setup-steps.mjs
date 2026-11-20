@@ -13,6 +13,8 @@
 import { COMMANDS } from "../keys/cmdline.mjs";
 import { getAction } from "../keys/actions.mjs";
 import { displayBinding, formatKey, parseKey } from "../keys/keys.mjs";
+import { firefoxShortcuts } from "../keys/firefox-keys.mjs";
+import { INSERT_ENTER, insertEditChords } from "../keys/editable.mjs";
 import { tomlLiteral } from "../config/toml.mjs";
 import { DEFAULT_THEME_NAME } from "../config/theme.mjs";
 import { mcpAdoptedWarning, mcpState } from "../agent/agent.mjs";
@@ -31,6 +33,9 @@ import { parseConfig } from "../config/config.mjs";
  * @property {true} [keep]  Keep: the value in force, which is none of the step's choices
  * @property {true} [run]  an action step's choice that runs the step's action
  * @property {ActionResult} [result]  an action step's choice that runs nothing: what it means
+ * @property {true} [record]  the prefix step's own key (decision 21): `enter` waits for a key
+ *   combination when its edits are empty, else (a prefix of the user's own in force) writes
+ *   nothing as the value in force does
  */
 
 /**
@@ -238,10 +243,9 @@ const TABLE = [
           actions: ["show_keybinds"],
         },
         { table: "keys", key: "prefix" },
-        [
-          ["ctrl+b", "ctrl+b"],
-          ["ctrl+a", "ctrl+a"],
-        ],
+        // The built-in prefix; the second row, a key the user presses, is added by stepChoices
+        // (decision 21).
+        [["ctrl+b", "ctrl+b"]],
       ),
       setting(
         {
@@ -479,7 +483,10 @@ export function prefixHints(step, keymap, choices = step.choices) {
   const name = step.actions[0] ?? "";
   return choices.map((c) => {
     if (c.keep) return stepKeys(keymap, name);
-    const prefix = parseKey(String(c.edits[0]?.value ?? ""));
+    const value = c.edits[0]?.value;
+    // "Choose your own" before a key is pressed: no prefix to draw yet.
+    if (value === undefined) return [];
+    const prefix = parseKey(String(value));
     return keymap
       .bindingsFor(name)
       .filter(fromPage)
@@ -642,6 +649,202 @@ function colourChoices(step, inForce, omarchy) {
 }
 
 /**
+ * The prefix step's two rows (decision 21): the built-in `ctrl+b`, and a key the user presses.
+ * A prefix of the user's own in force is that second row, selected, and planned as Keep: `enter`
+ * on it writes nothing, even when another program changed the file meanwhile (behaviour 14).
+ * @param {SetupStep} step @param {InForce} inForce
+ * @returns {{ choices: SetupChoice[], selected: number }}
+ */
+function prefixChoices(step, inForce) {
+  const now = String(inForce["keys.prefix"] ?? "");
+  const builtIn = step.choices.filter((c) => !c.keep);
+  const at = builtIn.findIndex((c) => c.edits[0]?.value === now);
+  /** @type {SetupChoice} */
+  const own =
+    at >= 0
+      ? { label: "Choose your own", edits: [], record: true }
+      : { label: `Your own: ${now}`, edits: [], keep: true, record: true };
+  return { choices: [...builtIn, own], selected: at >= 0 ? at : builtIn.length };
+}
+
+/**
+ * What the page needs to judge a key pressed on the prefix step without sending it anywhere
+ * (decision 21), as plain data: the keymap's own rules, read by the host from the keymap in
+ * force, and by the host again from config.toml at `enter`.
+ * @typedef {object} PrefixRules
+ * @property {string} inForce  the prefix in force, canonical
+ * @property {string} leader  `[modal] leader`, canonical
+ * @property {string[]} lists  the bindings of `show_keybinds` that work from a page, as written
+ *   (`prefix+?`), to draw the key that lists every key under a pressed prefix
+ * @property {Record<string, string>} taken  the first key of each binding not written with
+ *   `prefix`, with its action (Keymap.keysOutsidePrefix)
+ * @property {string[]} firefox  the chords `[firefox] enable` gives back to Firefox
+ * @property {Record<string, string>} fields  Vim's text-field keys while `[modal]
+ *   insert_editing` is on, with what each does there: the prefix would not work in a field
+ * @property {Record<string, string>} kept  the keys of Firefox's main keyset that it and the
+ *   system keep (the inventory's fate d: copy, paste, cut, undo, redo, and macOS's quit, hide,
+ *   minimize and settings), with what each does, except select all
+ * @property {Record<string, string>} shared  what Firefox does with a key of fate d the prefix may
+ *   take from it (select all, a menu, an address bar key)
+ */
+
+/** What Vim's text-field keys do in a field, by editor command (editable.mjs). */
+const FIELD_KEYS = /** @type {Record<string, string>} */ ({
+  cmd_deleteWordBackward: "deletes a word",
+  cmd_deleteToBeginningOfLine: "deletes to the start of the line",
+  cmd_deleteCharBackward: "deletes a character",
+  [INSERT_ENTER]: "is enter",
+});
+
+/** @param {Keymap} keymap @returns {PrefixRules} */
+export function prefixRules(keymap) {
+  const { user, mac } = keymap.source;
+  /** @type {string[]} */
+  const firefox = [];
+  const enable = /** @type {unknown} */ (user.firefox?.enable);
+  const enabled = typeof enable === "string" ? [enable] : Array.isArray(enable) ? enable : [];
+  for (const text of enabled) {
+    try {
+      firefox.push(formatKey(parseKey(String(text))));
+    } catch {
+      // compileKeymap refused it already; a keymap in force has none.
+    }
+  }
+  /** @type {Record<string, string>} */
+  const kept = {};
+  /** @type {Record<string, string>} */
+  const shared = {};
+  for (const r of firefoxShortcuts({ mac })) {
+    if (r.fate !== "d" || r.chord in kept || r.chord in shared) continue;
+    // Select all stays takeable: ctrl+a is tmux's prefix, which the step offered before.
+    if (r.source === "main" && r.does !== "select all") kept[r.chord] = r.does;
+    else shared[r.chord] = r.does;
+  }
+  /** @type {Record<string, string>} */
+  const fields = {};
+  if (/** @type {Record<string, unknown>} */ (user.modal ?? {}).insert_editing !== false) {
+    for (const [chord, command] of insertEditChords({ mac })) {
+      fields[chord] = FIELD_KEYS[command] ?? "is a key";
+    }
+  }
+  return {
+    inForce: formatKey(keymap.prefix),
+    leader: formatKey(keymap.leader),
+    lists: keymap.bindingsFor("show_keybinds").filter(fromPage),
+    taken: Object.fromEntries(keymap.keysOutsidePrefix()),
+    firefox,
+    fields,
+    kept,
+    shared,
+  };
+}
+
+/** Keys that are never the prefix whatever the modifiers (decision 21). */
+const NEVER_PREFIX = new Set(["esc", "enter", "tab"]);
+
+/**
+ * Why `chord` cannot be the prefix, or null when it can (decision 21). The prefix in force is
+ * never refused: pressed again, it writes nothing.
+ * @param {string} chord  canonical (formatKey)
+ * @param {PrefixRules} rules
+ * @returns {string | null}
+ */
+export function prefixRefusal(chord, rules) {
+  if (chord === rules.inForce) return null;
+  /** @type {import("../keys/keys.mjs").Chord} */
+  let c;
+  try {
+    c = parseKey(chord);
+  } catch {
+    return `${chord} is no key Vimma can bind.`;
+  }
+  if (NEVER_PREFIX.has(c.key)) {
+    return `${chord}: esc, enter and tab stay with Vimma, pages and forms, so none of them can be the prefix.`;
+  }
+  // ctrl, alt or meta, function keys included: one rule a user can remember (decision 21).
+  if (!c.ctrl && !c.alt && !c.meta) {
+    return `${chord} alone is a key you type: the prefix needs ctrl, alt or meta with it, such as ctrl+a.`;
+  }
+  if (chord === rules.leader) return `${chord} is the leader key ([modal] leader).`;
+  if (rules.firefox.includes(chord)) {
+    return `${chord} is Firefox's own: [firefox] enable in config.toml gives it back to Firefox.`;
+  }
+  const kept = rules.kept[chord];
+  if (kept) return `${chord} is ${kept}, which Vimma leaves to Firefox and the system.`;
+  const field = rules.fields[chord];
+  if (field) {
+    return `${chord} ${field} in text fields, where the prefix would not work. Choose another key.`;
+  }
+  const action = rules.taken[chord];
+  if (action) {
+    return `${chord} already runs ${action}; as the prefix it no longer would. Choose another key, or unbind it in config.toml first.`;
+  }
+  return null;
+}
+
+/**
+ * What Firefox no longer does once `chord` is the prefix, for a key it keeps for fields and
+ * menus (`ctrl+a`, select all), or null.
+ * @param {string} chord  canonical @param {PrefixRules} rules
+ * @returns {string | null}
+ */
+export function prefixNote(chord, rules) {
+  if (chord === rules.inForce) return null;
+  const does = rules.shared[chord];
+  return does ? `${chord} is also Firefox's ${does}; as the prefix, it no longer does that.` : null;
+}
+
+/**
+ * The keys that would list every key with `chord` as the prefix (behaviour 25).
+ * @param {string} chord  canonical @param {PrefixRules} rules
+ * @returns {string[]}
+ */
+export function prefixListKeys(chord, rules) {
+  const prefix = parseKey(chord);
+  const leader = parseKey(rules.leader);
+  return rules.lists.map((text) => displayBinding(text, { prefix, leader }));
+}
+
+/**
+ * Why a key pressed on the page is not the chord its keys name, or null: Option on macOS (AltGr
+ * elsewhere) composes a character, so option+w reaches Vimma as `∑`, never as `alt+w`
+ * (chordFromEvent), and a prefix recorded as either would mislead (decision 21).
+ * @param {{ key: string, code?: string, altKey: boolean }} e  the keydown
+ * @param {string} chord  what chordFromEvent made of it, canonical
+ * @returns {string | null}
+ */
+export function composedRefusal(e, chord) {
+  const letter = /^Key([A-Z])$/.exec(e.code ?? "")?.[1]?.toLowerCase();
+  if (!e.altKey || !letter || /^[a-z]$/i.test(e.key)) return null;
+  return `alt+${letter} types ${e.key} on this keyboard, so Vimma sees ${chord}, not alt+${letter}. Choose a key with ctrl or meta.`;
+}
+
+/**
+ * A chord the page proposes, read as one chord in Vimma's notation and written back in its
+ * canonical form, or null: the host writes nothing else (decision 21, Security and privacy).
+ * @param {unknown} text
+ * @returns {string | null}
+ */
+export function readPrefix(text) {
+  if (typeof text !== "string" || !text || /\s/.test(text)) return null;
+  try {
+    return formatKey(parseKey(text));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * What `enter` on a key pressed on the prefix step writes: `[keys] prefix`, or nothing for the
+ * prefix in force (behaviour 8).
+ * @param {string} chord  canonical @param {InForce} inForce
+ * @returns {TomlEdit[]}
+ */
+export function planPrefix(chord, inForce) {
+  return chord === inForce["keys.prefix"] ? [] : [{ table: "keys", key: "prefix", value: chord }];
+}
+
+/**
  * A step's choices with the one in force selected (behaviour 9). When the value in force is
  * none of them, **Keep** comes first, with that value, and is selected. The search engine's
  * choices are `engines`, the installed engines the host lists; the colours step's follow the
@@ -652,6 +855,7 @@ function colourChoices(step, inForce, omarchy) {
  */
 export function stepChoices(step, inForce, { engines = [], omarchy = false } = {}) {
   if (step.id === "colours") return colourChoices(step, inForce, omarchy);
+  if (step.id === "prefix_key") return prefixChoices(step, inForce);
   /** @type {SetupChoice[]} */
   const choices =
     step.id === "search_engine"

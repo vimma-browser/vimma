@@ -463,8 +463,9 @@ saved so far:
 
 Each step opens with the value in force selected: the one in `config.toml`, else Vimma's default.
 Choosing it writes nothing, so pressing `enter` through every step leaves `config.toml` as it
-was. When the value in force is none of the step's choices (a prefix of your own, an engine that
-is not installed), the step lists **Keep** first and selects it; **Keep** writes nothing either.
+was. When the value in force is none of the step's choices (hint letters of your own, an engine
+that is not installed), the step lists **Keep** first and selects it; **Keep** writes nothing
+either.
 A step changes only its own key and keeps your comments, the order of the file and any edit made
 to it while the step was open. A `config.toml` that does not parse is never written: the welcome
 screen names the file and the line, and the setting steps can then only be skipped. In a private
@@ -490,7 +491,18 @@ What the steps do:
   is hidden (`ctrl+l`, `alt+d`, `I` and `ctrl+b u` with the default keys; `cmd+l` instead of
   `alt+d` on macOS, written `meta+l` in config.toml).
 - **Tab line.** Off, always, or only with two or more tabs, the default ([Tab line](#tab-line)).
-- **Prefix key.** `ctrl+b` or `ctrl+a`, each shown with the key that opens the list of keys.
+- **Prefix key.** `ctrl+b`, or **Choose your own**: press `enter` on it, then the key
+  combination you want (`ctrl+a` as in tmux, `alt+w`, …). The step shows the line it will write
+  and the key that will list every key (`ctrl+a ?`); `enter` saves it and `esc` goes back to the
+  list. While the step waits for your key, `q`, `s` and `h` are keys like any other, and Vimma's
+  own prefix reaches the page. Refused, with the reason: a key without `ctrl`, `alt` or `meta`
+  (function keys included), `esc`, `enter` and `tab`, the leader, copy, paste, cut, undo and
+  redo (and on macOS `cmd+q`, `cmd+m`, `cmd+h` and `cmd+,`), Vim's text-field keys (`ctrl+w`,
+  `ctrl+u`, `ctrl+h`, `ctrl+j`, `ctrl+m`), a key your keymap already uses outside the prefix
+  (`ctrl+l`, `ctrl+t`, …), and on macOS an Option key that types a character (option+w types
+  `∑`). Select all (`ctrl+a`) is taken, with a note that it no longer selects all. A prefix of
+  your own already in force is the second row, selected; `enter` keeps it and `space` records
+  another.
 - **Hint letters.** The home row of QWERTY, Colemak or Dvorak. The layout you type on is
   selected first, guessed from the keys you already pressed on the page, which are kept in the
   page only.

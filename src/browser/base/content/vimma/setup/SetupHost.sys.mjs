@@ -36,7 +36,11 @@ import {
   fillStepText,
   inForceOf,
   planAtEnter,
+  planPrefix,
   prefixHints,
+  prefixRefusal,
+  prefixRules,
+  readPrefix,
   stepChoices,
   textParts,
   windowSketch,
@@ -428,6 +432,7 @@ export const SetupHost = {
           note: null,
           window: null,
           run: !!c.run,
+          record: false,
         })),
         selected,
         blocked: null,
@@ -466,6 +471,9 @@ export const SetupHost = {
       // (behaviour 25), and the hint step's letters, which the page's layout guess matches
       // (behaviour 26): the keys pressed stay in the page (decision 10).
       prefixKeys: keymap && step.id === "prefix_key" ? prefixHints(step, keymap, choices) : null,
+      // What the page judges a key pressed on the prefix step by, so that the keys pressed
+      // there stay in the page (decision 21); saveStep judges the chord saved again.
+      prefixRules: keymap && step.id === "prefix_key" ? prefixRules(keymap) : null,
       layouts:
         step.id === "hint_letters"
           ? choices.map((c) => (c.keep ? null : String(c.edits[0]?.value)))
@@ -478,6 +486,7 @@ export const SetupHost = {
         // The window this choice leaves, for the step's drawing; null outside chapter 3.
         window: windowSketch(step, c, inForce),
         run: false,
+        record: !!c.record,
       })),
       selected,
       blocked,
@@ -532,11 +541,14 @@ export const SetupHost = {
    * is not the list the host sent last, or the choice is no longer offered at `enter`.
    * @param {MozBrowser | null} browser @param {string} id @param {number} index
    * @param {number} [serial]  the serial of the list the page drew (stepView)
+   * @param {string} [chord]  the key combination pressed on the prefix step's own row
+   *   (decision 21): read as one chord, judged against the keymap of config.toml as it is at
+   *   `enter`, and written only as its canonical text, or refused with nothing written
    * The agents step's "on" while agents are off is the user's consent, checked and applied as a
    * yes to `:mcp on` is (behaviour 28, docs/security/12-agents-mcp.md M65): `turnedOn` then.
    * @returns {Promise<{ written: string[], turnedOn?: true } | { error: string } | { stale: true }>}
    */
-  async saveStep(browser, id, index, serial) {
+  async saveStep(browser, id, index, serial, chord) {
     const step = builtStep(id);
     if (!step || step.kind !== "setting" || !browser) return { error: "not a step that saves" };
     if (isPrivate(browser)) return { error: "a private window saves nothing" };
@@ -544,6 +556,11 @@ export const SetupHost = {
     const choice = Number.isInteger(index) && index >= 0 ? list?.choices[index] : undefined;
     if (!list || !choice) return { error: "no such choice" };
     if (serial !== list.serial) return { stale: true };
+    // A chord only for the row that records one, and only one chord in Vimma's notation.
+    const pressed = chord === undefined ? null : readPrefix(chord);
+    if (chord !== undefined && (!choice.record || pressed === null)) {
+      return { error: "not a key the prefix step takes" };
+    }
     if (step.id === "search_engine" && !choice.keep) {
       const name = choice.edits[0]?.value;
       if (!(await this.engines()).names.includes(String(name))) return { stale: true };
@@ -560,6 +577,14 @@ export const SetupHost = {
       }
       // The hold read now, inside the queue with the file: `:mcp off` may have run meanwhile.
       const now = inForceOf(parsed.config, { ...rt, mcp: McpHost.switchState });
+      if (pressed !== null) {
+        // The page only proposes: the chord is judged again by the keymap of the file as it is
+        // now, and the edited file must load (setConfigKeys) before anything is written.
+        const refused = parsed.keymap ? prefixRefusal(pressed, prefixRules(parsed.keymap)) : null;
+        if (refused) return { error: refused };
+        written = planPrefix(pressed, now);
+        return written;
+      }
       turnsOn = agentsTurnOn(step, choice, now);
       // `enter` on "on" is the consent `:mcp on`'s yes is (behaviour 28): refused where that
       // yes would be, before anything is written.

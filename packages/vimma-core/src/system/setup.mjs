@@ -223,6 +223,16 @@ export function flowChapters(built = BUILT_STEPS) {
  * @property {FlowSaved[]} saved
  * @property {boolean} blocked  setting steps can only skip (a parse error, a private window)
  * @property {boolean} done     the stop screen is the last one
+ * @property {FlowRecording | null} recording  the prefix step waits for a key (decision 21)
+ */
+
+/**
+ * The prefix step's wait for a key combination (decision 21): the chord pressed last, in
+ * canonical notation, and why it cannot be the prefix. Kept in the page only: nothing of it
+ * reaches the host but the chord saved at `enter`.
+ * @typedef {object} FlowRecording
+ * @property {string | null} chord
+ * @property {string | null} refused
  */
 
 /**
@@ -234,11 +244,14 @@ export function flowChapters(built = BUILT_STEPS) {
  * @property {readonly AddonEntry[]} addons
  * @property {boolean} ready  the open step's list, as the host sent it, is drawn: until then
  *   `enter` names no row, since an index would point into a list the user has not seen
+ * @property {(row: number) => "new" | "in-force" | null} [recordRow]  whether a row is the
+ *   prefix step's own key: "new" waits for a key at `enter`, "in-force" (a prefix of the user's
+ *   own) writes nothing at `enter`; `space` waits for a key on either
  */
 
 /**
  * @typedef {{ type: "close" } | { type: "search" } | { type: "blur" } | { type: "run-search" }
- *   | { type: "save", step: string, index: number }
+ *   | { type: "save", step: string, index: number, chord?: string }
  *   | { type: "action", step: string, index: number }
  *   | { type: "install", addons: AddonEntry[] }
  *   | { type: "chapter-done", chapter: string }} FlowEffect
@@ -260,6 +273,7 @@ export function initialFlow({ chapters, blocked = false }) {
     saved: [],
     blocked,
     done: false,
+    recording: null,
   };
 }
 
@@ -281,6 +295,7 @@ function openStep(s, chapter, step, ctx) {
       cursor: ctx.selected(chapter, step),
       searching: false,
       done: false,
+      recording: null,
     },
     effect: null,
   };
@@ -302,6 +317,7 @@ function openStop(s, chapter) {
       cursor: 0,
       searching: false,
       done: chapter === s.chapters.length - 1,
+      recording: null,
     },
     effect: { type: "chapter-done", chapter: id },
   };
@@ -341,6 +357,19 @@ export function flowAdvance(s, ctx, lines = []) {
 }
 
 /**
+ * A key combination pressed while the prefix step waits for one (decision 21): shown with why
+ * it cannot be the prefix, if it cannot; `enter` then saves it. The same state when the page is
+ * not waiting.
+ * @param {FlowState} s @param {string} chord  canonical
+ * @param {string | null} refused  prefixRefusal's answer
+ * @returns {FlowState}
+ */
+export function flowRecord(s, chord, refused) {
+  if (!s.recording) return s;
+  return { ...s, recording: { chord, refused } };
+}
+
+/**
  * One key on the page (behaviours 3-11), in Vimma's key notation; in the search field only
  * `enter` and `esc` reach here. `enter` on a step returns what to do, and the page calls
  * flowAdvance once it is done; a failed save keeps the step open.
@@ -352,6 +381,18 @@ export function flowKey(s, key, ctx) {
   /** @type {{ state: FlowState, effect: FlowEffect }} */
   const close = { state: { ...s, screen: "closed", searching: false }, effect: { type: "close" } };
   if (s.screen === "closed") return stay;
+  // Waiting for a key (decision 21): every other key is the chord itself, which the page hands
+  // to flowRecord; only esc, back to the list, and enter, which saves a chord taken, are ours.
+  if (s.recording) {
+    if (key === "esc") return { state: { ...s, recording: null }, effect: null };
+    const r = s.recording;
+    const step = flowStep(s);
+    if (key !== "enter" || !step || !r.chord || r.refused) return stay;
+    return {
+      state: s,
+      effect: { type: "save", step: step.id, index: s.cursor, chord: r.chord },
+    };
+  }
   if (s.searching) {
     if (key === "esc") return { state: { ...s, searching: false }, effect: { type: "blur" } };
     if (key === "enter")
@@ -409,6 +450,10 @@ export function flowKey(s, key, ctx) {
         : flowAdvance(s, ctx);
     }
     return stay;
+  }
+  const own = ctx.ready && !s.blocked ? ctx.recordRow?.(s.cursor) : null;
+  if (own && (key === "space" || (key === "enter" && own === "new"))) {
+    return { state: { ...s, recording: { chord: null, refused: null } }, effect: null };
   }
   if (key !== "enter" || !ctx.ready) return stay;
   if (step.kind === "action") {
