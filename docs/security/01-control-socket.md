@@ -1,7 +1,7 @@
 ## 1. Control socket (`ctl/VimmaControl.sys.mjs`)
 
 Lets `vimma-ctl` and scripts drive Vimma: send keys, read state, open a URL, reload the theme.
-Since protocol 2 it also lets local AI agents use the agent workspace (the `agent` role, §12).
+Since protocol 2 it also lets AI agents use the agent workspace (the `agent` role, §12).
 Specs: [m0-control-server](../specs/m0-control-server.md),
 [m0-control-protocol-and-vimma-ctl](../specs/m0-control-protocol-and-vimma-ctl.md),
 [vimma-mcp](../specs/vimma-mcp.md), [ADR-007](../adr/007-control-socket.md),

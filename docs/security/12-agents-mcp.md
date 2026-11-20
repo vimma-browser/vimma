@@ -1,6 +1,6 @@
 ## 12. Agents (MCP) (`host/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`, `ctl/agent-tabs.mjs`, `actors/agent-page.mjs`)
 
-Lets local AI agents (Claude Code, Codex, opencode, Copilot) use the MCP tools in one workspace,
+Lets AI agents (Claude Code, Codex, opencode, Copilot) use the MCP tools in one workspace,
 **agent**, through the control socket's `agent` role: list, read, open and close its tabs, and
 the tools the specs below add. Spec:
 [vimma-mcp](../specs/vimma-mcp.md), [ADR-019](../adr/019-agents-over-mcp.md).
@@ -768,7 +768,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`agent-keys: a link list inside the untrusted delimiters, and how many were dropped`](../../packages/vimma-core/test/control-v2.test.ts),
   [`keys_list_links_as_untrusted_content`](../../tools/vimma-ctl/src/mcp/render.rs)
 - M22. While MCP is on, `:control on`'s question **must** say that full control reaches every
-  workspace and tab, not only the agent workspace, and that any local AI agent with a shell can
+  workspace and tab, not only the agent workspace, and that any AI agent with a shell on this machine can
   use it, and a yes given after MCP went on or off **never** turns it on; each new full
   connection's question (S13) **must** say `wants full control (every workspace, not only
 "agent")` in its text and accessible name, naming the agent workspace, and its desktop

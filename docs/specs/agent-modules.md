@@ -31,7 +31,7 @@ add-ons today). This spec's decisions are "D1", "D2" and so on. Engine paths are
 
 Vimma lets its users build small tools for themselves as easily as they can describe them. The
 user presses one key and writes what they miss ("dim everything except the article"); their own
-local coding agent writes it as a module, tests it on the live page in a throwaway Vimma
+coding agent writes it as a module, tests it on the live page in a throwaway Vimma
 instance, and Vimma shows the change, the permissions in plain words and the test result on one
 screen. One `y` loads it, with no restart; "change it to …" refines the same module and shows a
 new diff; every version is kept, so a module can be rolled back, switched off or edited by hand.

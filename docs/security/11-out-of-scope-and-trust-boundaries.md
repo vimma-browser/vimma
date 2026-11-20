@@ -12,7 +12,7 @@
   config.toml, and drive any app you run. Vimma does not defend against it; file modes keep out
   other local users, not your own processes.
 - **Root and physical access** are out of scope.
-- **What agents do outside Vimma.** Vimma bounds what a local AI agent can do _through Vimma_
+- **What agents do outside Vimma.** Vimma bounds what an AI agent can do _through Vimma_
   (§12): the agent workspace only, each request asked. It cannot bound what the agent does with
   its own shell, files and network, or what its host lets it do unasked; that is the agent
   host's matter. A prompt-injected agent with a shell can also read the control token like any
