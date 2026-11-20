@@ -3496,7 +3496,7 @@ prints `full control refused` and exits 4. With agents off, nothing asks.
 `y/N`, and then off again, even across a restart; `:control off` turns it off now, and `:control`
 says whether it is on and how long is left. Turning it on in `about:config` sets no end time.
 While agents are on, its question says what a yes gives away: `Turn on full control for 15 min?
-It reaches every workspace and tab, not only "agent", and any AI agent with a shell on this computer can use
+It reaches every workspace and tab, not only "agent", and any AI agent with a shell on this machine can use
 it. y/N`. Agents do not need full control, and `vimma-ctl mcp` tells them never to ask for it;
 an agent that asks you to turn it on, or to run `vimma-ctl send-keys`, is asking for keys in
 every workspace.

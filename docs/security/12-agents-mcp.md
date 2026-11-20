@@ -768,7 +768,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`agent-keys: a link list inside the untrusted delimiters, and how many were dropped`](../../packages/vimma-core/test/control-v2.test.ts),
   [`keys_list_links_as_untrusted_content`](../../tools/vimma-ctl/src/mcp/render.rs)
 - M22. While MCP is on, `:control on`'s question **must** say that full control reaches every
-  workspace and tab, not only the agent workspace, and that any AI agent with a shell on this computer can
+  workspace and tab, not only the agent workspace, and that any AI agent with a shell on this machine can
   use it, and a yes given after MCP went on or off **never** turns it on; each new full
   connection's question (S13) **must** say `wants full control (every workspace, not only
 "agent")` in its text and accessible name, naming the agent workspace, and its desktop
