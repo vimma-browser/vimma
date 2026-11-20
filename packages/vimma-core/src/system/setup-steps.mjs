@@ -14,7 +14,7 @@ import { COMMANDS } from "../keys/cmdline.mjs";
 import { getAction } from "../keys/actions.mjs";
 import { displayBinding, formatKey, parseKey } from "../keys/keys.mjs";
 import { firefoxShortcuts } from "../keys/firefox-keys.mjs";
-import { INSERT_ENTER, insertEditChords } from "../keys/editable.mjs";
+import { INSERT_EDIT_DOES, insertEditChords } from "../keys/editable.mjs";
 import { tomlLiteral } from "../config/toml.mjs";
 import { DEFAULT_THEME_NAME } from "../config/theme.mjs";
 import { mcpAdoptedWarning, mcpState } from "../agent/agent.mjs";
@@ -688,14 +688,6 @@ function prefixChoices(step, inForce) {
  *   take from it (select all, a menu, an address bar key)
  */
 
-/** What Vim's text-field keys do in a field, by editor command (editable.mjs). */
-const FIELD_KEYS = /** @type {Record<string, string>} */ ({
-  cmd_deleteWordBackward: "deletes a word",
-  cmd_deleteToBeginningOfLine: "deletes to the start of the line",
-  cmd_deleteCharBackward: "deletes a character",
-  [INSERT_ENTER]: "is enter",
-});
-
 /** @param {Keymap} keymap @returns {PrefixRules} */
 export function prefixRules(keymap) {
   const { user, mac } = keymap.source;
@@ -724,7 +716,7 @@ export function prefixRules(keymap) {
   const fields = {};
   if (/** @type {Record<string, unknown>} */ (user.modal ?? {}).insert_editing !== false) {
     for (const [chord, command] of insertEditChords({ mac })) {
-      fields[chord] = FIELD_KEYS[command] ?? "is a key";
+      fields[chord] = INSERT_EDIT_DOES[command] ?? "is a key";
     }
   }
   return {

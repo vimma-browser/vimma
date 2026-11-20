@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Changed
+
+- **keys:** a `[keys] prefix` on one of Vim's text-field keys (`ctrl+w`, `ctrl+u`, `ctrl+j`, `ctrl+m`, and `ctrl+h` except on macOS) is now a config.toml error while `[modal] insert_editing` is on, because that prefix did nothing in text fields; the error names the key and what it does there: pick another prefix, such as the default `ctrl+b`, or set `insert_editing = false` (#1367)
+
 ## [0.1.22](https://github.com/vimma-browser/vimma/compare/v0.1.21...v0.1.22) · Firefox 160.0.1 (2026-11-20)
 
 
