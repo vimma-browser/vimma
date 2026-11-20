@@ -383,6 +383,12 @@ describe("a prefix the user presses (decision 21)", () => {
       "ctrl+a is also Firefox's select all; as the prefix, it no longer does that.",
     );
     expect(prefixNote("alt+w", rules())).toBeNull();
+    // macOS's inventory: select all is cmd+a there, so ctrl+a gives nothing up.
+    const mac = prefixRules(compileKeymap({}, { mac: true }));
+    expect(prefixNote("ctrl+a", mac)).toBeNull();
+    expect(prefixNote("meta+a", mac)).toBe(
+      "meta+a is also Firefox's select all; as the prefix, it no longer does that.",
+    );
   });
 
   test("the key that lists every key is drawn with the chord pressed", () => {

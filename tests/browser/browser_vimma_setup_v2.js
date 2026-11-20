@@ -1268,7 +1268,10 @@ add_task(async function prefix_step_records_a_key_and_esc_goes_back_to_the_list(
   Assert.equal(recordedKey(doc), "ctrl+a");
   Assert.equal(writes(doc), 'Writes [keys] prefix = "ctrl+a"');
   Assert.equal(recordLists(doc), "ctrl+a ? lists every key");
-  Assert.ok(choiceNote(doc).includes("select all"), choiceNote(doc));
+  // The note follows the platform's inventory of Firefox's keys: select all is ctrl+a on Linux
+  // and cmd+a on macOS, where ctrl+a gives nothing up.
+  if (Services.appinfo.OS === "Darwin") Assert.equal(choiceNote(doc), "", "no note on macOS");
+  else Assert.ok(choiceNote(doc).includes("select all"), choiceNote(doc));
   Assert.ok(footerKeys(doc).includes("enter save and go on"), footerKeys(doc));
   // q, s and h are keys being chosen now: refused, and the page stays.
   await press(doc, "q");
