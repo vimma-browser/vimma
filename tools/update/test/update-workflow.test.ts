@@ -274,7 +274,7 @@ describe("update-publish.yml", () => {
     const nodeLines = block.split("\n").filter((l) => /\bnode\b/.test(l) && !/^\s*#/.test(l));
     for (const line of nodeLines) {
       expect(line).toMatch(
-        /node-version-file: \.nvmrc|node=\$\(command -v node\)|\$node node \$root\/\$SIGNER sign |^ *node "\$SIGNER" sign |setup-node@|for word in "\$node" "\$root" "\$KEY_VERSION"; do$/,
+        /node-version-file: \.nvmrc|node=\$\(command -v node\)|\/usr\/bin\/env env \$node \$root\/\$SIGNER sign |^ *node "\$SIGNER" sign |setup-node@|for word in "\$node" "\$root" "\$KEY_VERSION"; do$/,
       );
     }
     expect(block).toContain("SIGNER: tools/package/openpgp-kms.ts");
@@ -285,10 +285,12 @@ describe("update-publish.yml", () => {
       block.indexOf("name: packages-unsigned"),
     );
     const sign = runOf(block, "Sign the .rpm and the pacman package with Cloud KMS");
-    expect(sign).toContain('rpmsign --addsign --define "_gpg_name Vimma packages"');
+    expect(sign).toContain('(cd "$work" && rpmsign --addsign --define "_gpg_name Vimma packages"');
+    // One definition for rpm 4.18 (an exec'd word list) and rpm 6.0 (a parametric macro).
     expect(sign).toContain(
-      '--define "__gpg_sign_cmd $node node $root/$SIGNER sign --key-version $KEY_VERSION --cert $root/$CERT --format binary --in - --out %{__signature_filename}"',
+      '--define "__gpg_sign_cmd() /usr/bin/env env $node $root/$SIGNER sign --key-version $KEY_VERSION --cert $root/$CERT --format binary --in %{?1:%{shescape:%{1}}}%{!?1:-} --out %{?2:%{shescape:%{2}}}%{!?2:%{shescape:%{__signature_filename}}}"',
     );
+    expect(sign).toContain('[ "$(ls -A "$work")" = "$RPM" ]');
     expect(sign).toContain(
       'node "$SIGNER" sign --key-version "$KEY_VERSION" --cert "$CERT" --format binary \\\n  --in "in/$PKG" --out "out/$PKG.sig"',
     );

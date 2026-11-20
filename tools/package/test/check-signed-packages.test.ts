@@ -19,7 +19,11 @@ const RPM = "vimma-0.3.1-1.x86_64.rpm";
 const PKG = "vimma-bin-0.3.1-1-x86_64.pkg.tar.zst";
 const sum = (s: string | Buffer) => createHash("sha256").update(s).digest("hex");
 
-/** rpm and rpmkeys stand-ins: the first line is the header, a signed one says `signed`. */
+/**
+ * rpm, rpm2cpio and rpmkeys stand-ins: the first line is the header, a signed one says `signed`,
+ * one that says `corrupt` gives its payload and then fails, as a read cut short would. Like rpm 6.0, the rpm stand-in knows only some tags:
+ * for an unknown one it prints an error and nothing else, and still exits 0.
+ */
 function shims(dir: string) {
   const bin = join(dir, "bin");
   mkdirSync(bin);
@@ -38,7 +42,19 @@ esac
     join(bin, "rpm"),
     `#!/bin/bash
 f=\${!#}
-printf '%s vimma-0.3.1-1.x86_64' "$(tail -n +2 "$f" | sha256sum | cut -c1-64)"
+case " $* " in
+  *" %{NEVRA} "*) printf 'vimma-0.3.1-1.x86_64' ;;
+  *) echo 'error: incorrect format: unknown tag' >&2 ;;
+esac
+`,
+    { mode: 0o755 },
+  );
+  writeFileSync(
+    join(bin, "rpm2cpio"),
+    `#!/bin/bash
+tail -n +2 "$1"
+head -n 1 "$1" | grep -q corrupt && { echo "rpm2cpio: corrupt" >&2; exit 1; }
+exit 0
 `,
     { mode: 0o755 },
   );
@@ -154,6 +170,21 @@ describe.skipIf(process.platform !== "linux" || !has("gpg") || !has("gpgv"))(
       expect(run(dir, signer.cert).stderr).toMatch(/no valid signature by the package key/);
       writeFileSync(join(signed, RPM), "header signed\nother payload\n");
       expect(run(dir, signer.cert).stderr).toMatch(/payload or name is not the built one's/);
+    });
+
+    // A query that reads nothing on both sides must not count as equal payloads.
+    it("refuses an .rpm whose payload cannot be read", () => {
+      const { dir, signer, signed } = setup();
+      const corrupt = "header signed corrupt\npayload\n";
+      writeFileSync(join(signed, RPM), corrupt);
+      const sums = readFileSync(join(signed, "SHA256SUMS"), "utf8");
+      writeFileSync(
+        join(signed, "SHA256SUMS"),
+        sums.replace(sum("header signed\npayload\n"), sum(corrupt)),
+      );
+      const r = run(dir, signer.cert);
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toMatch(/rpm2cpio: corrupt/);
     });
 
     it("refuses a SHA256SUMS that is not package's with the signed packages", () => {

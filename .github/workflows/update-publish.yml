@@ -789,10 +789,14 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           project_id: ${{ steps.key.outputs.project }}
 
-      # rpmsign runs %__gpg_sign_cmd with the header on standard input and the signature's path
-      # in %{__signature_filename} (rpm 4.18.2, sign/rpmgensig.c); its first word is the program
-      # and the second that program's argv[0]. rpmsign refuses to start without %_gpg_name, which
-      # the signer does not read. The signer refuses a certificate whose key is not KMS's.
+      # rpmsign runs %__gpg_sign_cmd for the signature. rpm 4.18 (this runner's) expands it once
+      # and execs its first word with the rest as argv, the second word being argv[0], with the
+      # header on standard input and the output in %{__signature_filename} (sign/rpmgensig.c);
+      # rpm 6.0 calls it as a parametric macro with the input and output as %1 and %2 and runs
+      # its words as written. `/usr/bin/env env` and the %{?1:...} fallbacks give both the same
+      # command. rpmsign refuses to start without %_gpg_name, which the signer does not read. It
+      # runs in a directory of its own, so a macro that went wrong cannot write into the
+      # workspace. The signer refuses a certificate whose key is not KMS's.
       - name: Sign the .rpm and the pacman package with Cloud KMS
         run: |
           KMS_ACCESS_TOKEN=$(gcloud auth print-access-token)
@@ -805,21 +809,29 @@ jobs:
             [[ $word =~ ^[A-Za-z0-9/._-]+$ ]] || { echo "::error::'$word' cannot go into an rpm macro"; exit 1; }
           done
           mkdir -p out
-          cp "in/$RPM" "out/$RPM"
-          rpmsign --addsign --define "_gpg_name Vimma packages" \
-            --define "__gpg_sign_cmd $node node $root/$SIGNER sign --key-version $KEY_VERSION --cert $root/$CERT --format binary --in - --out %{__signature_filename}" \
-            "out/$RPM"
+          work=$(mktemp -d)
+          cp "in/$RPM" "$work/$RPM"
+          (cd "$work" && rpmsign --addsign --define "_gpg_name Vimma packages" \
+            --define "__gpg_sign_cmd() /usr/bin/env env $node $root/$SIGNER sign --key-version $KEY_VERSION --cert $root/$CERT --format binary --in %{?1:%{shescape:%{1}}}%{!?1:-} --out %{?2:%{shescape:%{2}}}%{!?2:%{shescape:%{__signature_filename}}}" \
+            "$RPM")
+          [ "$(ls -A "$work")" = "$RPM" ] || { echo "::error::rpmsign left $(ls -A "$work" | tr '\n' ' ')"; exit 1; }
+          mv "$work/$RPM" "out/$RPM"
           node "$SIGNER" sign --key-version "$KEY_VERSION" --cert "$CERT" --format binary \
             --in "in/$PKG" --out "out/$PKG.sig"
 
-      # Signing changed only the .rpm's header: its payload digest and name are the built ones.
+      # Signing changed only the .rpm's header: its payload and name are the built ones.
       - name: Check the signatures against the committed certificate
         run: |
           db=$(mktemp -d)
           rpmkeys --dbpath "$db" --import "$CERT"
           rpmkeys --dbpath "$db" --define '_pkgverify_level all' --checksig "out/$RPM"
-          payload() { rpm -qp --nosignature --qf '%{PAYLOADDIGEST} %{NEVRA}' "$1"; }
-          [ "$(payload "in/$RPM")" = "$(payload "out/$RPM")" ] \
+          # The payload's bytes, not a header tag: rpm 6.0 renamed PAYLOADDIGEST, and an unknown
+          # tag prints nothing and exits 0. Each assignment stops the step if its read fails.
+          built=$(rpm2cpio "in/$RPM" | sha256sum | cut -c1-64)
+          signed=$(rpm2cpio "out/$RPM" | sha256sum | cut -c1-64)
+          built_name=$(rpm -qp --nosignature --qf '%{NEVRA}' "in/$RPM")
+          signed_name=$(rpm -qp --nosignature --qf '%{NEVRA}' "out/$RPM")
+          [ -n "$built_name" ] && [ "$built $built_name" = "$signed $signed_name" ] \
             || { echo "::error::signing changed $RPM's payload or name"; exit 1; }
           gpg --batch --quiet --dearmor < "$CERT" > "$db/keyring.gpg"
           gpgv --keyring "$db/keyring.gpg" "out/$PKG.sig" "in/$PKG"
