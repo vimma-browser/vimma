@@ -317,7 +317,7 @@ describe("sign", () => {
 describe("KMS", () => {
   const NAME =
     "projects/vimma-test/locations/europe-north1/keyRings/vimma-packages/cryptoKeys/package-signing/cryptoKeyVersions/1";
-  const TOKEN = "ya29.s3cret-t0ken-for-the-test";
+  const TOKEN = "fake-kms-token-for-the-test";
 
   /** What the fake KMS answers, each field a way a real or a forged answer could be wrong. */
   interface Fake {
