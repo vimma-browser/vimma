@@ -754,11 +754,11 @@ jobs:
           rpm="vimma-$v-1.x86_64.rpm"
           pkg="vimma-bin-$v-1-x86_64.pkg.tar.zst"
           want=$(printf '%s\n' "$rpm" "$pkg" SHA256SUMS | LC_ALL=C sort)
-          have=$(cd in && find . -mindepth 1 -printf '%P\n' | LC_ALL=C sort)
+          have=$(ls -A in | LC_ALL=C sort)
           [ "$have" = "$want" ] || { echo "::error::packages-unsigned holds $(echo "$have" | tr '\n' ' ')"; exit 1; }
           for f in "$rpm" "$pkg" SHA256SUMS; do
             [ -f "in/$f" ] && [ ! -L "in/$f" ] || { echo "::error::in/$f is not a regular file"; exit 1; }
-            size=$(stat -c %s "in/$f")
+            size=$(wc -c < "in/$f" | tr -d ' ')
             [ "$size" -le 524288000 ] || { echo "::error::$f: $size bytes"; exit 1; }
           done
           [ "$(od -An -tx1 -N 4 "in/$rpm" | tr -d ' \n')" = edabeedb ] || { echo "::error::$rpm is not an rpm"; exit 1; }
