@@ -322,7 +322,7 @@ add_task(async function tab_completes_and_cycles() {
 add_task(async function setup_is_listed_once() {
   // #1414: the :setup command and the setup action run the same thing, so one row.
   typeCommand("setup");
-  const rows = options().filter((o) => o.dataset.value === "setup");
+  const rows = options().filter((o) => o.getAttribute("data-value") === "setup");
   Assert.equal(rows.length, 1, "setup shows once in the list");
   EventUtils.synthesizeKey("KEY_Escape");
   Assert.ok(!isOpen(), "Esc closes it");
