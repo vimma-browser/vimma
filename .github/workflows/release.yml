@@ -14,8 +14,8 @@
 # package also builds vimma-bin-X.Y.Z-1-x86_64.pkg.tar.zst, the pacman repository's package;
 # package-sign has update-publish.yml's job of that name sign it and the .rpm with the Cloud KMS
 # package key and write SHA256SUMS again, and packages checks both signatures against the
-# committed certificate before mar, sign and publish build on its output. Unset, a release is
-# what it was before: no pacman package, an unsigned .rpm.
+# committed certificate before mar, sign and publish build on its output. Unset, a release's
+# assets are what they were before: no pacman package, an unsigned .rpm.
 #
 # Trigger: workflow_dispatch only. A draft fires no `release` event, and a tag pushed with
 # GITHUB_TOKEN starts no workflow, but GITHUB_TOKEN may dispatch one: release-please.yml's
@@ -489,16 +489,17 @@ jobs:
       # package.ts's pacman/PKGBUILD in the same pinned Arch image with the release tarball beside
       # it (makepkg checks its pinned SHA-256 and downloads nothing), then installed with
       # pacman -U and started. It goes to package-sign with the .rpm and the SHA256SUMS that
-      # lists the .rpm; SHA256SUMS lists the package once both are signed and checked (packages).
+      # lists the .rpm, and never into dist/: only packages adds it to the release, once both are
+      # signed and checked, so a re-run with PACKAGE_REPOS_ENABLED unset cannot ship it unsigned.
       - name: Build the pacman package and install it on Arch Linux
         id: pacman
         if: vars.PACKAGE_REPOS_ENABLED == 'true'
         run: |
-          tools/package/arch-smoke.sh --pacman dist "$(node tools/release/version-line.ts)"
-          pkg="vimma-bin-${TAG#v}-1-x86_64.pkg.tar.zst"
-          [ -f "dist/$pkg" ] || { echo "::error::arch-smoke.sh left no dist/$pkg"; exit 1; }
           mkdir -p packages-unsigned
-          cp "dist/vimma-${TAG#v}-1.x86_64.rpm" "dist/$pkg" dist/SHA256SUMS packages-unsigned/
+          tools/package/arch-smoke.sh --pacman dist "$(node tools/release/version-line.ts)" packages-unsigned
+          pkg="vimma-bin-${TAG#v}-1-x86_64.pkg.tar.zst"
+          [ -f "packages-unsigned/$pkg" ] || { echo "::error::arch-smoke.sh left no packages-unsigned/$pkg"; exit 1; }
+          cp "dist/vimma-${TAG#v}-1.x86_64.rpm" dist/SHA256SUMS packages-unsigned/
           echo "pkg=$pkg" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -508,6 +509,14 @@ jobs:
           path: packages-unsigned/
           retention-days: 7
           if-no-files-found: error
+
+      # sign and publish take dist/vimma*, so a pacman package here would ship without the
+      # signature and SHA256SUMS line that packages gives it.
+      - name: No pacman package in the release artifact
+        run: |
+          for f in dist/*.pkg.tar.zst*; do
+            [ ! -e "$f" ] || { echo "::error::$f is in dist/: the pacman package joins the release only in packages"; exit 1; }
+          done
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -554,6 +563,10 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+    # `shell: bash` runs each step with -eo pipefail; GitHub's default bash -e has no pipefail.
+    defaults:
+      run:
+        shell: bash
     env:
       PACKAGE_SIGN: ${{ needs.package-sign.result }}
       CERT: configs/package-signing/vimma-packages.asc
@@ -575,6 +588,11 @@ jobs:
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
+          name: packages-unsigned
+          path: unsigned
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
           name: packages-signed
           path: signed
 
@@ -582,14 +600,16 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q rpm gpgv
-          tools/package/check-signed-packages.sh "$TAG" dist signed "$CERT"
+          tools/package/check-signed-packages.sh "$TAG" dist unsigned signed "$CERT"
 
-      # package-sign's SHA256SUMS, checked above, over package's, with the signed .rpm and the
-      # pacman package's signature.
+      # package-sign's SHA256SUMS, checked above, over package's, with the signed .rpm, the pacman
+      # package (from packages-unsigned, the bytes its signature was checked against) and its
+      # signature.
       - name: Add the signed packages to SHA256SUMS
         run: |
           mkdir -p release-packages
           cp signed/* release-packages/
+          cp "unsigned/vimma-bin-${TAG#v}-1-x86_64.pkg.tar.zst" release-packages/
           cp release-packages/* dist/
           (cd dist && sha256sum -c SHA256SUMS)
 

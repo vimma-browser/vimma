@@ -72,6 +72,17 @@ function permissionsOf(block: string) {
     .filter(Boolean);
 }
 
+/**
+ * The flags GitHub runs a job's `run:` steps with: `shell: bash` gives
+ * `bash --noprofile --norc -eo pipefail {0}`, and no shell gives `bash -e {0}`, without pipefail.
+ */
+function githubShell(block: string) {
+  return /^ {4}defaults:\n {6}run:\n {8}shell: bash$/m.test(block)
+    ? ["--noprofile", "--norc", "-eo", "pipefail"]
+    : ["-e"];
+}
+const has = (cmd: string) => spawnSync("sh", ["-c", `command -v ${cmd}`]).status === 0;
+
 const GUARD =
   "github.event_name == 'workflow_dispatch' && github.repository == 'vimma-browser/vimma' && " +
   "github.ref == 'refs/heads/main'";
@@ -304,40 +315,111 @@ describe("update-publish.yml", () => {
     );
   });
 
-  it("package-sign signs only the caller's tag's .rpm and pacman package", () => {
-    const run = runOf(job("package-sign"), "Check the files to sign");
-    const rpm = "vimma-0.3.1-1.x86_64.rpm";
-    const pkg = "vimma-bin-0.3.1-1-x86_64.pkg.tar.zst";
-    const attempt = (files: Record<string, Buffer | string>, tag = "v0.3.1") => {
-      const dir = tempDir("vimma-package-sign-");
-      mkdirSync(join(dir, "in"));
-      for (const [f, c] of Object.entries(files)) writeFileSync(join(dir, "in", f), c);
-      return spawnSync("bash", ["-e", "-o", "pipefail", "-c", run], {
+  describe.skipIf(!has("zstd"))("with zstd", () => {
+    it("package-sign signs only the caller's tag's .rpm and pacman package", () => {
+      const run = runOf(job("package-sign"), "Check the files to sign");
+      const rpm = "vimma-0.3.1-1.x86_64.rpm";
+      const pkg = "vimma-bin-0.3.1-1-x86_64.pkg.tar.zst";
+      const attempt = (files: Record<string, Buffer | string>, tag = "v0.3.1") => {
+        const dir = tempDir("vimma-package-sign-");
+        mkdirSync(join(dir, "in"));
+        for (const [f, c] of Object.entries(files)) writeFileSync(join(dir, "in", f), c);
+        return spawnSync("bash", [...githubShell(job("package-sign")), "-c", run], {
+          cwd: dir,
+          encoding: "utf8",
+          env: { ...process.env, CALLER_TAG: tag, GITHUB_ENV: join(dir, "env") },
+        });
+      };
+      /** A zstd tar of these entries, in this order, as makepkg writes a package. */
+      const pacman = (entries: string[]) => {
+        const dir = tempDir("vimma-pkg-");
+        for (const e of entries) {
+          mkdirSync(join(dir, e, ".."), { recursive: true });
+          writeFileSync(join(dir, e), e);
+        }
+        return execFileSync("sh", ["-c", `tar -cf - ${entries.join(" ")} | zstd -q -c`], {
+          cwd: dir,
+        });
+      };
+      const rpmBytes = Buffer.from([0xed, 0xab, 0xee, 0xdb, 1, 2]);
+      const pkgBytes = pacman([".BUILDINFO", ".MTREE", ".PKGINFO", "opt/vimma/vimma"]);
+      const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+      const good = {
+        [rpm]: rpmBytes,
+        [pkg]: pkgBytes,
+        SHA256SUMS: `${sha(rpmBytes)}  ${rpm}\n`,
+      };
+      const ok = attempt(good);
+      expect(ok.status, ok.stderr + ok.stdout).toBe(0);
+      expect(attempt(good, "v0.3.1-rc1").stdout).toContain("is not a vX.Y.Z release tag");
+      expect(attempt(good, "v0.3.2").stdout).toContain("packages-unsigned holds");
+      expect(attempt({ ...good, extra: "x" }).stdout).toContain("packages-unsigned holds");
+      expect(attempt({ ...good, [rpm]: Buffer.from("not an rpm") }).stdout).toContain(
+        "is not an rpm",
+      );
+      expect(attempt({ ...good, [pkg]: Buffer.from("not zstd") }).stdout).toContain("is not zstd");
+      // A zstd file that is not a pacman package: .PKGINFO missing, or after the package's files.
+      for (const entries of [
+        [".BUILDINFO", ".MTREE", "opt/vimma/vimma"],
+        ["opt/vimma/vimma", ".PKGINFO"],
+      ]) {
+        expect(attempt({ ...good, [pkg]: pacman(entries) }).stdout, entries.join(" ")).toContain(
+          "is not a pacman package",
+        );
+      }
+      expect(attempt({ ...good, SHA256SUMS: `${"0".repeat(64)}  ${rpm}\n` }).stdout).toContain(
+        "does not list",
+      );
+    });
+  });
+
+  // Spec package-repositories, decision 9: signing rewrites only the .rpm's signature header.
+  it("package-sign's check stops on an unreadable payload or a changed header, with pipefail", () => {
+    const block = job("package-sign");
+    expect(githubShell(block)).toContain("pipefail");
+    const run = runOf(block, "Check the signatures against the committed certificate");
+    const attempt = (signed: string) => {
+      const dir = tempDir("vimma-package-check-");
+      const bin = join(dir, "bin");
+      for (const d of ["in", "out", bin]) mkdirSync(d.startsWith("/") ? d : join(dir, d));
+      writeFileSync(join(dir, "in", "p.rpm"), "header\npayload\n");
+      writeFileSync(join(dir, "out", "p.rpm"), signed);
+      writeFileSync(join(dir, "cert.asc"), "certificate");
+      const stub = (name: string, body: string) =>
+        writeFileSync(join(bin, name), `#!/bin/bash\n${body}\n`, { mode: 0o755 });
+      stub("rpmkeys", "exit 0");
+      stub("gpg", "cat > /dev/null");
+      stub("gpgv", "exit 0");
+      // rpm2cpio gives the payload, then fails on a file marked corrupt, as a cut-short read.
+      stub("rpm2cpio", 'tail -n +2 "$1"; head -n 1 "$1" | grep -q corrupt && exit 1; exit 0');
+      // SHA256HEADER: the header line without its signature; an unknown tag prints nothing.
+      stub(
+        "rpm",
+        [
+          'f=${!#}; h=$(head -n 1 "$f" | sed "s/ signed//; s/ corrupt//")',
+          'q=$(printf "%s" "$*" | sed -n "s/.*--qf \\([^ ]*\\).*/\\1/p")',
+          'out=${q//"%{NEVRA}"/vimma-0.3.1-1.x86_64}',
+          'out=${out//"%{SHA256HEADER}"/$(printf %s "$h" | sha256sum | cut -c1-64)}',
+          'case $out in *"%{"*) echo "error: unknown tag" >&2 ;; *) printf "%s" "$out" ;; esac',
+        ].join("\n"),
+      );
+      return spawnSync("bash", [...githubShell(block), "-c", run], {
         cwd: dir,
         encoding: "utf8",
-        env: { ...process.env, CALLER_TAG: tag, GITHUB_ENV: join(dir, "env") },
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          RPM: "p.rpm",
+          PKG: "p.pkg",
+          CERT: "cert.asc",
+        },
       });
     };
-    const rpmBytes = Buffer.from([0xed, 0xab, 0xee, 0xdb, 1, 2]);
-    const pkgBytes = Buffer.from([0x28, 0xb5, 0x2f, 0xfd, 3]);
-    const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
-    const good = {
-      [rpm]: rpmBytes,
-      [pkg]: pkgBytes,
-      SHA256SUMS: `${sha(rpmBytes)}  ${rpm}\n`,
-    };
-    const ok = attempt(good);
+    const ok = attempt("header signed\npayload\n");
     expect(ok.status, ok.stderr + ok.stdout).toBe(0);
-    expect(attempt(good, "v0.3.1-rc1").stdout).toContain("is not a vX.Y.Z release tag");
-    expect(attempt(good, "v0.3.2").stdout).toContain("packages-unsigned holds");
-    expect(attempt({ ...good, extra: "x" }).stdout).toContain("packages-unsigned holds");
-    expect(attempt({ ...good, [rpm]: Buffer.from("not an rpm") }).stdout).toContain(
-      "is not an rpm",
-    );
-    expect(attempt({ ...good, [pkg]: Buffer.from("not zstd") }).stdout).toContain("is not zstd");
-    expect(attempt({ ...good, SHA256SUMS: `${"0".repeat(64)}  ${rpm}\n` }).stdout).toContain(
-      "does not list",
-    );
+    expect(attempt("header signed corrupt\npayload\n").status).not.toBe(0);
+    expect(attempt("header signed\nother payload\n").stdout).toContain("payload or name");
+    expect(attempt("another header signed\npayload\n").stdout).toContain("header");
   });
 
   it("package-sign writes SHA256SUMS: package's, the signed .rpm's line, the two new files", () => {
@@ -355,7 +437,7 @@ describe("update-publish.yml", () => {
     );
     writeFileSync(join(dir, "out", rpm), "signed");
     writeFileSync(join(dir, "out", `${pkg}.sig`), "sig");
-    const r = spawnSync("bash", ["-e", "-o", "pipefail", "-c", run], {
+    const r = spawnSync("bash", [...githubShell(job("package-sign")), "-c", run], {
       cwd: dir,
       encoding: "utf8",
       env: { ...process.env, RPM: rpm, PKG: pkg },

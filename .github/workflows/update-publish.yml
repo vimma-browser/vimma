@@ -712,6 +712,11 @@ jobs:
     permissions:
       id-token: write # GitHub OIDC for Google Cloud Workload Identity Federation
     environment: package-signing
+    # `shell: bash` runs each step with -eo pipefail; GitHub's default bash -e has no pipefail, so
+    # a failed rpm2cpio or tar would go unnoticed inside a pipeline.
+    defaults:
+      run:
+        shell: bash
     env:
       KEY_VERSION: ${{ vars.GCP_PACKAGE_KEY_VERSION }}
       CALLER_TAG: ${{ github.event.inputs.tag }}
@@ -763,6 +768,14 @@ jobs:
           done
           [ "$(od -An -tx1 -N 4 "in/$rpm" | tr -d ' \n')" = edabeedb ] || { echo "::error::$rpm is not an rpm"; exit 1; }
           [ "$(od -An -tx1 -N 4 "in/$pkg" | tr -d ' \n')" = 28b52ffd ] || { echo "::error::$pkg is not zstd"; exit 1; }
+          # makepkg puts its metadata files first, in name order, .PKGINFO among them: a zstd
+          # file without it there is not a package pacman would install. awk reads every entry,
+          # so tar never stops on a closed pipe.
+          zstd -dc "in/$pkg" | tar -tf - | awk '
+            !done && /^\.(BUILDINFO|CHANGELOG|INSTALL|MTREE)$/ { next }
+            !done { done = 1; first = $0 }
+            END { exit first != ".PKGINFO" }' \
+            || { echo "::error::$pkg is not a pacman package (no leading .PKGINFO)"; exit 1; }
           [ "$(awk -v f="$rpm" '$2 == f' in/SHA256SUMS)" = "$(cd in && sha256sum "$rpm")" ] \
             || { echo "::error::SHA256SUMS does not list $rpm as built"; exit 1; }
           { echo "RPM=$rpm"; echo "PKG=$pkg"; } >> "$GITHUB_ENV"
@@ -771,11 +784,12 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false # nothing is installed, and a cache is no input to trust
 
-      - name: Tools (rpmsign, rpmkeys, gpgv)
+      - name: Tools (rpmsign, rpmkeys, gpgv, zstd)
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q rpm gpgv
+          sudo apt-get install -y -q rpm gpgv zstd
 
       - name: The project of the key
         id: key
@@ -825,14 +839,20 @@ jobs:
           db=$(mktemp -d)
           rpmkeys --dbpath "$db" --import "$CERT"
           rpmkeys --dbpath "$db" --define '_pkgverify_level all' --checksig "out/$RPM"
-          # The payload's bytes, not a header tag: rpm 6.0 renamed PAYLOADDIGEST, and an unknown
-          # tag prints nothing and exits 0. Each assignment stops the step if its read fails.
+          # The payload's bytes, not a payload tag: rpm 6.0 renamed PAYLOADDIGEST, and an unknown
+          # tag prints nothing and exits 0. SHA256HEADER, the main header's digest, which signing
+          # leaves alone (rpm 4.18 and 6.0), must be the built one's and not empty. Each
+          # assignment stops the step if its read fails (pipefail).
           built=$(rpm2cpio "in/$RPM" | sha256sum | cut -c1-64)
           signed=$(rpm2cpio "out/$RPM" | sha256sum | cut -c1-64)
           built_name=$(rpm -qp --nosignature --qf '%{NEVRA}' "in/$RPM")
           signed_name=$(rpm -qp --nosignature --qf '%{NEVRA}' "out/$RPM")
           [ -n "$built_name" ] && [ "$built $built_name" = "$signed $signed_name" ] \
             || { echo "::error::signing changed $RPM's payload or name"; exit 1; }
+          built_header=$(rpm -qp --nosignature --qf '%{SHA256HEADER}' "in/$RPM")
+          signed_header=$(rpm -qp --nosignature --qf '%{SHA256HEADER}' "out/$RPM")
+          [ -n "$built_header" ] && [ "$built_header" = "$signed_header" ] \
+            || { echo "::error::signing changed $RPM's header"; exit 1; }
           gpg --batch --quiet --dearmor < "$CERT" > "$db/keyring.gpg"
           gpgv --keyring "$db/keyring.gpg" "out/$PKG.sig" "in/$PKG"
 

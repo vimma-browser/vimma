@@ -8,13 +8,14 @@
 #   tools/package/arch-smoke.sh <dist-dir> <expected `vimma --version` line>
 #       dist-dir holds package.ts's output: PKGBUILD, SRCINFO and vimma-X.Y.Z-linux-x86_64.tar.xz.
 #       release.yml's package job runs this on the release build.
-#   tools/package/arch-smoke.sh --pacman <dist-dir> <expected `vimma --version` line>
+#   tools/package/arch-smoke.sh --pacman <dist-dir> <expected `vimma --version` line> <pkg-dir>
 #       builds the pacman repository's binary package (spec package-repositories, decision 10),
-#       vimma-bin-X.Y.Z-1-x86_64.pkg.tar.zst, into dist-dir from package.ts's pacman/PKGBUILD,
+#       vimma-bin-X.Y.Z-1-x86_64.pkg.tar.zst, into pkg-dir from package.ts's pacman/PKGBUILD,
 #       with the release tarball placed beside it and every download agent replaced by `false`,
 #       so makepkg takes the tarball's bytes from dist-dir and checks its pinned SHA-256; then
 #       installs it with pacman -U and runs the checks below with the marker vimma-package=pacman.
-#       release.yml's package job runs this while PACKAGE_REPOS_ENABLED is `true`.
+#       release.yml's package job runs this while PACKAGE_REPOS_ENABLED is `true`, with pkg-dir
+#       outside dist-dir: the package joins the release only once it is signed and checked.
 #   tools/package/arch-smoke.sh --stub
 #       packages a stub tarball (shell scripts for `vimma` and `vimma-ctl`) first, then runs both
 #       of the above on it; pkgbuild.yml runs this on pull requests, so a broken PKGBUILD or
@@ -129,7 +130,7 @@ if [ "${1:-}" = "--inside-pacman" ]; then
 fi
 
 engine=${CONTAINER_ENGINE:-docker}
-usage="usage: arch-smoke.sh [--pacman] <dist-dir> <version line> | --stub"
+usage="usage: arch-smoke.sh <dist-dir> <version line> | --pacman <dist-dir> <version line> <pkg-dir> | --stub"
 work=""
 out=""
 server=""
@@ -163,11 +164,14 @@ if [ "${1:-}" = "--stub" ]; then
   dist="$work/dist"
   real=0
   run_pacman=1
+  pkg_dir="$work/pacman-package"
+  mkdir "$pkg_dir"
 else
   if [ "${1:-}" = "--pacman" ]; then
     shift
     run_pkgbuild=0
     run_pacman=1
+    pkg_dir=$(cd "${3:?$usage}" && pwd)
   fi
   dist=$(cd "${1:?$usage}" && pwd)
   expected=${2:?$usage}
@@ -193,7 +197,7 @@ if [ "$run_pacman" = 1 ]; then
   "$engine" run --rm -v "$dist:/dist:ro" -v "$out:/out" -v "$repo:/repo:ro" "$IMAGE" \
     bash /repo/tools/package/arch-smoke.sh --inside-pacman "$expected" "$real" "$pkg"
   # cp, not mv: the container's root owns what it wrote.
-  cp "$out/$pkg" "$dist/$pkg"
-  chmod 644 "$dist/$pkg"
-  echo "arch-smoke: built $dist/$pkg"
+  cp "$out/$pkg" "$pkg_dir/$pkg"
+  chmod 644 "$pkg_dir/$pkg"
+  echo "arch-smoke: built $pkg_dir/$pkg"
 fi

@@ -282,16 +282,20 @@ of the same commit read it too, so a tree without it could not be released anywa
   `vimma-bin-X.Y.Z-1-x86_64.pkg.tar.zst` and its detached signature: `package` builds the
   package from the `PKGBUILD` variant whose marker is `vimma-package=pacman`, in the pinned Arch
   image, with every `makepkg` download agent replaced by `false`, so the bytes are the release
-  tarball's under its pinned SHA-256, and installs it with `pacman -U`; `package-sign`, a job of
+  tarball's under its pinned SHA-256, and installs it with `pacman -U`. The package goes into
+  the `packages-unsigned` artifact, never the `release` artifact, which a step checks just before
+  its upload, so a re-run with the variable unset cannot ship it unsigned; `package-sign`, a job of
   `update-publish.yml` that `release.yml` calls, holding only `id-token: write` in the
   `package-signing` environment, checks that the files are the caller's tag's `.rpm` and pacman
   package before it signs, signs them with the Cloud KMS package key through
   `tools/package/openpgp-kms.ts` (the only repository file it runs, checked out alone from
   `main` with the certificate and `.nvmrc`), checks both signatures against the committed
   certificate and writes `SHA256SUMS` again; and `packages`, with no secret, checks that result
-  again (`tools/package/check-signed-packages.sh`: the `.rpm`'s payload unchanged, both
-  signatures under the committed certificate, `SHA256SUMS` exactly package's with the signed
-  files) before `mar`, `sign` and `publish` use it. A skipped or failed `package-sign` stops the
+  again (`tools/package/check-signed-packages.sh`: the `.rpm`'s payload, name and main header
+  digest unchanged, both signatures under the committed certificate, `SHA256SUMS` exactly
+  package's with the signed files) and only then adds the pacman package to the release, before
+  `mar`, `sign` and `publish` use it. Both jobs run their steps with `pipefail`, so a failed read
+  inside a pipeline stops them. A skipped or failed `package-sign` stops the
   release. Without the variable, none of these jobs or steps runs and the release is as
   described above. **⚠ setting:**
   signatures exist only while the repository variable `SIGNING_ENABLED` is `true`; without it
@@ -345,7 +349,12 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`package-sign signs only the caller's tag's .rpm and pacman package`](../../tools/update/test/update-workflow.test.ts),
   [`refuses a pacman package signed by another key`](../../tools/package/test/check-signed-packages.test.ts),
   [`refuses an unsigned .rpm, and one whose payload changed`](../../tools/package/test/check-signed-packages.test.ts),
-  [`refuses a SHA256SUMS that is not package's with the signed packages`](../../tools/package/test/check-signed-packages.test.ts)
+  [`refuses a SHA256SUMS that is not package's with the signed packages`](../../tools/package/test/check-signed-packages.test.ts),
+  [`refuses an .rpm whose main header changed`](../../tools/package/test/check-signed-packages.test.ts),
+  [`refuses a release artifact that already holds a pacman package`](../../tools/package/test/check-signed-packages.test.ts),
+  [`accepts a real .rpm signed by the key, and refuses one signed by another`](../../tools/package/test/check-signed-packages.test.ts),
+  [`the release artifact never holds a pacman package`](../../tools/package/test/release-workflow.test.ts),
+  [`package-sign's check stops on an unreadable payload or a changed header, with pipefail`](../../tools/update/test/update-workflow.test.ts)
 
 - B10. A release **must** be signed only by `release.yml` run from `main` through
   `workflow_dispatch`: `release-please.yml`'s `release-build` job dispatches it with

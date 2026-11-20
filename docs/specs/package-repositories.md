@@ -292,7 +292,10 @@ pages, not run; the smoke test of sub-PR 1 runs each of them.
    the SHA-256 in the signed `Packages` and has no per-package signature that `apt` verifies.
    `package` hands `package-sign` a `packages-unsigned` artifact with only the `.rpm`, the pacman
    package and `SHA256SUMS`, not the whole `release` artifact, because the signing job then
-   holds nothing but what it signs. A `packages` job in `release.yml` checks `package-sign`'s
+   holds nothing but what it signs. The pacman package is never in the `release` artifact, and
+   `packages` adds it to the release only after checking its signature, because `sign` and
+   `publish` take every `dist/vimma*` file, and a run re-run with `PACKAGE_REPOS_ENABLED` unset
+   would otherwise ship it unsigned. A `packages` job in `release.yml` checks `package-sign`'s
    output again with no secret (`tools/package/check-signed-packages.sh`), as `mar` checks the
    signed MAR, because it is the job that `mar`, `sign` and `publish` wait for, and it fails a
    release whose `package-sign` was skipped or failed, where a called workflow whose job was

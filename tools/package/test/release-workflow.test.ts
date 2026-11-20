@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1149,8 +1157,13 @@ esac
   // and the cosign bundles, and only while PACKAGE_REPOS_ENABLED is `true`.
   describe("the pacman package and the package signatures", () => {
     const ENABLED = "vars.PACKAGE_REPOS_ENABLED == 'true'";
+    const GUARD =
+      "vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' && " +
+      "github.ref == 'refs/heads/main'";
     const PACKAGES_DONE =
       "(needs.packages.result == 'success' || (needs.packages.result == 'skipped' && vars.PACKAGE_REPOS_ENABLED != 'true'))";
+    const MAR_DONE =
+      "(needs.mar.result == 'success' || (needs.mar.result == 'skipped' && vars.UPDATES_ENABLED != 'true'))";
     const job = (id: string) => all.get(id) ?? "";
     /** The artifact names a job downloads, in order. */
     const downloads = (block: string) =>
@@ -1159,14 +1172,25 @@ esac
           /uses: actions\/download-artifact@\S+.*\n(?: {8}.*\n)*? {10}name: (\S+)\n/g,
         ),
       ].map((m) => m[1]);
+    /**
+     * The flags GitHub runs a job's `run:` steps with: `shell: bash` gives
+     * `bash --noprofile --norc -eo pipefail {0}`, and no shell gives `bash -e {0}`.
+     */
+    const githubShell = (block: string) =>
+      /^ {4}defaults:\n {6}run:\n {8}shell: bash$/m.test(block)
+        ? ["--noprofile", "--norc", "-eo", "pipefail"]
+        : ["-e"];
+    /** A step's own `if:` line, whole. */
+    const stepIf = (block: string, marker: string) => {
+      const at = block.indexOf(marker);
+      expect(at, marker).toBeGreaterThan(-1);
+      return /^ {8}if: (.*)$/m.exec(block.slice(at, block.indexOf("\n      - ", at + 1)))?.[1];
+    };
 
     it("release.yml calls update-publish.yml's package-sign", () => {
       const block = job("package-sign");
       expect(block).toMatch(/^ {4}needs: package$/m);
-      expect(condition(block)).toBe(
-        "vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' && " +
-          `github.ref == 'refs/heads/main' && ${ENABLED} && needs.package.outputs.pacman != ''`,
-      );
+      expect(condition(block)).toBe(`${GUARD} && ${ENABLED} && needs.package.outputs.pacman != ''`);
       expect(block).toMatch(/^ {4}uses: \.\/\.github\/workflows\/update-publish\.yml$/m);
       expect(block).toMatch(/^ {4}with:\n {6}packages: true\n/m);
       expect(block).not.toMatch(/secrets|environment:/);
@@ -1184,11 +1208,11 @@ esac
       expect(step).toMatch(/^ {8}id: pacman\n {8}if: vars\.PACKAGE_REPOS_ENABLED == 'true'\n/m);
       const run = runOf(pkg, "Build the pacman package and install it on Arch Linux");
       expect(run).toContain(
-        'tools/package/arch-smoke.sh --pacman dist "$(node tools/release/version-line.ts)"',
+        'tools/package/arch-smoke.sh --pacman dist "$(node tools/release/version-line.ts)" packages-unsigned',
       );
       expect(run).toContain('pkg="vimma-bin-${TAG#v}-1-x86_64.pkg.tar.zst"');
       expect(run).toContain(
-        'cp "dist/vimma-${TAG#v}-1.x86_64.rpm" "dist/$pkg" dist/SHA256SUMS packages-unsigned/',
+        'cp "dist/vimma-${TAG#v}-1.x86_64.rpm" dist/SHA256SUMS packages-unsigned/',
       );
       // After the PKGBUILD's own smoke test, before the release artifact.
       expect(pkg.indexOf("Smoke test the PKGBUILD on Arch Linux")).toBeLessThan(
@@ -1202,14 +1226,45 @@ esac
       expect(smoke).toMatch(/DLAGENTS=\('file::\/usr\/bin\/false' .*'https::\/usr\/bin\/false'/);
     });
 
+    // A run re-run after PACKAGE_REPOS_ENABLED was unset skips packages but keeps package's
+    // artifacts, and sign and publish take dist/vimma*: an unsigned pacman package in the release
+    // artifact would ship without its signature or a SHA256SUMS line.
+    it("the release artifact never holds a pacman package", () => {
+      const pkg = job("package");
+      const run = runOf(pkg, "Build the pacman package and install it on Arch Linux");
+      expect(run).not.toMatch(/dist\/\$pkg|dist\/vimma-bin/);
+      // arch-smoke.sh copies the package to the directory it is given, never into dist-dir.
+      const smoke = readFileSync(new URL("../arch-smoke.sh", import.meta.url), "utf8");
+      expect(smoke).toContain('cp "$out/$pkg" "$pkg_dir/$pkg"');
+      expect(smoke).not.toMatch(/"\$dist\/\$pkg"/);
+      // And a guard just before the upload refuses one, whatever put it there.
+      const guard = "No pacman package in the release artifact";
+      expect(stepIf(pkg, `- name: ${guard}`)).toBeUndefined();
+      const after = pkg.slice(pkg.indexOf(`- name: ${guard}`));
+      expect(after.indexOf("name: release\n")).toBeGreaterThan(-1);
+      expect(after.slice(0, after.indexOf("name: release\n"))).not.toMatch(/- name: (?!No pacman)/);
+      const attempt = (files: string[]) => {
+        const dir = tempDir("vimma-release-artifact-");
+        mkdirSync(join(dir, "dist"));
+        for (const f of files) writeFileSync(join(dir, "dist", f), "x");
+        return spawnSync("bash", [...githubShell(pkg), "-c", runOf(pkg, guard)], {
+          cwd: dir,
+          encoding: "utf8",
+        }).status;
+      };
+      expect(attempt(["vimma-0.3.1-1.x86_64.rpm", "SHA256SUMS"])).toBe(0);
+      expect(attempt(["vimma-bin-0.3.1-1-x86_64.pkg.tar.zst"])).not.toBe(0);
+      expect(attempt(["vimma-bin-0.3.1-1-x86_64.pkg.tar.zst.sig"])).not.toBe(0);
+    });
+
     it("signs the .rpm and the pacman package before mar and sign", () => {
       const block = job("packages");
       expect(block).toMatch(/^ {4}needs: \[build, package, package-sign\]$/m);
       expect(condition(block)).toBe(
-        "always() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' && " +
-          `github.ref == 'refs/heads/main' && ${ENABLED} && needs.package.result == 'success'`,
+        `always() && ${GUARD} && ${ENABLED} && needs.package.result == 'success'`,
       );
       expect(block).not.toMatch(/environment:|secrets\.|id-token/);
+      expect(githubShell(block)).toContain("pipefail");
       expect(block).toContain("PACKAGE_SIGN: ${{ needs.package-sign.result }}");
       const signedRun = runOf(block, "The packages were signed");
       for (const [result, status] of [
@@ -1217,16 +1272,16 @@ esac
         ["skipped", 1],
         ["failure", 1],
       ] as const) {
-        const r = spawnSync("bash", ["-e", "-c", signedRun], {
+        const r = spawnSync("bash", [...githubShell(block), "-c", signedRun], {
           env: { ...process.env, PACKAGE_SIGN: result },
         });
         expect(r.status, result).toBe(status);
       }
       expect(runOf(block, "Check the signed packages")).toContain(
-        'tools/package/check-signed-packages.sh "$TAG" dist signed "$CERT"',
+        'tools/package/check-signed-packages.sh "$TAG" dist unsigned signed "$CERT"',
       );
       expect(block).toContain("CERT: configs/package-signing/vimma-packages.asc");
-      expect(downloads(block)).toEqual(["release", "packages-signed"]);
+      expect(downloads(block)).toEqual(["release", "packages-unsigned", "packages-signed"]);
       expect(block).toContain("name: release-packages\n");
       // mar's SHA256SUMS, cosign's bundles and the upload all build on release-packages.
       expect(job("mar")).toMatch(/^ {4}needs: \[build, package, packages, mar-sign\]$/m);
@@ -1241,9 +1296,9 @@ esac
         "signatures",
       ]);
       for (const id of ["mar", "sign", "publish"]) {
-        expect(condition(job(id)), id).toContain(PACKAGES_DONE);
         const at = job(id).indexOf("name: release-packages\n");
-        expect(job(id).slice(at - 120, at), id).toContain("if: needs.packages.result == 'success'");
+        const step = job(id).slice(job(id).lastIndexOf("- uses:", at), at);
+        expect(/^ {8}if: (.*)$/m.exec(step)?.[1], id).toBe("needs.packages.result == 'success'");
       }
       const failure = /^ {4}needs:\n((?: {6}- .*\n)+)/m.exec(job("failure"))?.[1] ?? "";
       expect(failure).toContain("      - package-sign\n");
@@ -1251,16 +1306,18 @@ esac
     });
 
     it("the pacman package is in SHA256SUMS and gets a cosign bundle", () => {
-      const run = runOf(job("packages"), "Add the signed packages to SHA256SUMS");
+      const block = job("packages");
+      const run = runOf(block, "Add the signed packages to SHA256SUMS");
       const dir = tempDir("vimma-packages-sums-");
       const rpm = "vimma-0.3.1-1.x86_64.rpm";
       const pkg = "vimma-bin-0.3.1-1-x86_64.pkg.tar.zst";
       const sum = (c: string) => createHash("sha256").update(c).digest("hex");
-      mkdirSync(join(dir, "dist"));
-      mkdirSync(join(dir, "signed"));
+      for (const d of ["dist", "unsigned", "signed"]) mkdirSync(join(dir, d));
       writeFileSync(join(dir, "dist", rpm), "unsigned");
-      writeFileSync(join(dir, "dist", pkg), "pacman");
       writeFileSync(join(dir, "dist", "SHA256SUMS"), `${sum("unsigned")}  ${rpm}\n`);
+      writeFileSync(join(dir, "unsigned", rpm), "unsigned");
+      writeFileSync(join(dir, "unsigned", pkg), "pacman");
+      writeFileSync(join(dir, "unsigned", "SHA256SUMS"), `${sum("unsigned")}  ${rpm}\n`);
       writeFileSync(join(dir, "signed", rpm), "signed");
       writeFileSync(join(dir, "signed", `${pkg}.sig`), "sig");
       const sums = [
@@ -1269,14 +1326,19 @@ esac
         `${sum("sig")}  ${pkg}.sig\n`,
       ].join("");
       writeFileSync(join(dir, "signed", "SHA256SUMS"), sums);
-      const r = spawnSync("bash", ["-e", "-o", "pipefail", "-c", run], {
+      const r = spawnSync("bash", [...githubShell(block), "-c", run], {
         cwd: dir,
         encoding: "utf8",
+        env: { ...process.env, TAG: "v0.3.1" },
       });
       expect(r.status, r.stderr).toBe(0);
       expect(readFileSync(join(dir, "dist", "SHA256SUMS"), "utf8")).toBe(sums);
       expect(readFileSync(join(dir, "dist", rpm), "utf8")).toBe("signed");
-      expect(readFileSync(join(dir, "release-packages", `${pkg}.sig`), "utf8")).toBe("sig");
+      // The pacman package joins dist/ here, from packages-unsigned, after its signature check.
+      expect(readFileSync(join(dir, "dist", pkg), "utf8")).toBe("pacman");
+      expect(readdirSync(join(dir, "release-packages")).sort()).toEqual(
+        ["SHA256SUMS", pkg, `${pkg}.sig`, rpm].sort(),
+      );
       // dist/vimma* takes in both pacman files for cosign and the upload.
       expect(runOf(job("sign"), "Sign every asset")).toContain("for f in dist/vimma* ");
       expect(job("publish")).toContain('gh release upload "$TAG" dist/vimma* ');
@@ -1284,34 +1346,39 @@ esac
     });
 
     it("nothing is signed while PACKAGE_REPOS_ENABLED is not true", () => {
-      for (const id of ["package-sign", "packages"]) {
-        expect(condition(job(id)), id).toContain(ENABLED);
-      }
+      expect(condition(job("package-sign"))).toBe(
+        `${GUARD} && ${ENABLED} && needs.package.outputs.pacman != ''`,
+      );
+      expect(condition(job("packages"))).toBe(
+        `always() && ${GUARD} && ${ENABLED} && needs.package.result == 'success'`,
+      );
       const pkg = job("package");
-      const gated = (marker: string) => {
-        const at = pkg.indexOf(marker);
-        expect(at, marker).toBeGreaterThan(-1);
-        return pkg.slice(at, at + 400);
-      };
-      expect(gated("- name: Build the pacman package")).toContain(
-        "if: vars.PACKAGE_REPOS_ENABLED == 'true'",
-      );
+      expect(stepIf(pkg, "- name: Build the pacman package")).toBe(ENABLED);
       const upload = pkg.slice(0, pkg.indexOf("name: packages-unsigned"));
-      expect(upload.slice(upload.lastIndexOf("- uses:"))).toContain(
-        "if: vars.PACKAGE_REPOS_ENABLED == 'true'",
-      );
+      expect(stepIf(upload, upload.slice(upload.lastIndexOf("- uses:")))).toBe(ENABLED);
       // Off, the jobs after it run as before: packages skipped stands for done.
-      for (const id of ["mar", "sign", "publish"]) {
-        expect(condition(job(id)), id).toContain(
-          "needs.packages.result == 'skipped' && vars.PACKAGE_REPOS_ENABLED != 'true'",
-        );
-      }
+      expect(condition(job("mar"))).toBe(
+        `always() && ${GUARD} && vars.UPDATES_ENABLED == 'true' && ` +
+          `needs.package.result == 'success' && ${PACKAGES_DONE}`,
+      );
+      expect(condition(job("sign"))).toBe(
+        `always() && ${GUARD} && vars.SIGNING_ENABLED == 'true' && ` +
+          `needs.package.result == 'success' && ${PACKAGES_DONE} && ${MAR_DONE}`,
+      );
+      expect(condition(job("publish"))).toBe(
+        `always() && ${GUARD} && needs.package.result == 'success' && ${PACKAGES_DONE} && ` +
+          `${MAR_DONE} && (needs.sign.result == 'success' || needs.sign.result == 'skipped')`,
+      );
       const called = readFileSync(
         new URL("../../../.github/workflows/update-publish.yml", import.meta.url),
         "utf8",
       );
       const sign = called.slice(called.indexOf("\n  package-sign:\n"));
-      expect(sign.slice(0, sign.indexOf("runs-on:"))).toContain(ENABLED);
+      expect(condition(sign)).toBe(
+        "inputs.packages && !inputs.mar && github.repository == 'vimma-browser/vimma' && " +
+          `github.ref == 'refs/heads/main' && ${ENABLED} && ` +
+          "github.workflow_ref == 'vimma-browser/vimma/.github/workflows/release.yml@refs/heads/main'",
+      );
     });
   });
 

@@ -46,13 +46,14 @@ container with `tools/package/arch-smoke.sh`; checks the release tarball's updat
 `tools/update/check-build.ts`, and while `UPDATES_ENABLED` is `true` builds the complete MAR
 from it with a zeroed signature placeholder, `tools/update/mar.ts build`; while
 `PACKAGE_REPOS_ENABLED` is `true`, also builds the pacman package
-`vimma-bin-X.Y.Z-1-x86_64.pkg.tar.zst` from `dist/pacman/PKGBUILD` and installs it with
-`pacman -U`, `tools/package/arch-smoke.sh --pacman`) → `package-sign` (with
+`vimma-bin-X.Y.Z-1-x86_64.pkg.tar.zst` from `dist/pacman/PKGBUILD` into the
+`packages-unsigned` artifact, never `dist/`, and installs it with `pacman -U`,
+`tools/package/arch-smoke.sh --pacman`) → `package-sign` (with
 `PACKAGE_REPOS_ENABLED`: calls `update-publish.yml`, whose job of that name signs the `.rpm`
 and the pacman package with the Cloud KMS package key, spec package-repositories, and writes
 `SHA256SUMS` again) → `packages` (no secret: both signatures verify under the committed
 certificate and `SHA256SUMS` is package's with the signed files,
-`tools/package/check-signed-packages.sh`) → `mar-sign` (calls
+`tools/package/check-signed-packages.sh`; then adds the pacman package to the release) → `mar-sign` (calls
 `update-publish.yml`, whose job of that name signs the MAR with the Cloud KMS update key; see
 "Update signing keys and the update host", step 8) → `mar` (no secret: the signed MAR differs
 from package's only in its signature, verifies under `configs/updater/` with `mar.ts` and with
