@@ -3,10 +3,10 @@
 // gpg and gpgv are real, with a throwaway key; rpm and rpmkeys are stand-ins whose "package" is a
 // header line and a payload, so the script's own logic is what is tested (release.yml runs it on
 // the real .rpm, with Ubuntu's rpm).
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.ts";
@@ -45,10 +45,18 @@ printf '%s vimma-0.3.1-1.x86_64' "$(tail -n +2 "$f" | sha256sum | cut -c1-64)"
   return bin;
 }
 
-/** A throwaway key in its own GNUPGHOME, and its armoured certificate. */
-function key(dir: string, name: string) {
-  const home = join(dir, `gnupg-${name}`);
-  mkdirSync(home, { mode: 0o700 });
+/**
+ * A throwaway key in its own GNUPGHOME, and its armoured certificate. The home is a short path
+ * under /tmp, since gpg-agent's socket lives in it and a Unix socket path is limited to about 100
+ * bytes; its agent is stopped when the test ends.
+ */
+function key(name: string) {
+  const home = mkdtempSync(`/tmp/vg-${name.slice(0, 3)}-`);
+  chmodSync(home, 0o700);
+  onTestFinished(() => {
+    spawnSync("gpgconf", ["--homedir", home, "--kill", "gpg-agent"]);
+    rmSync(home, { recursive: true, force: true });
+  });
   const gpg = (args: string[], input?: string) =>
     execFileSync("gpg", ["--homedir", home, "--batch", "--quiet", ...args], {
       input,
@@ -63,7 +71,7 @@ function key(dir: string, name: string) {
     "sign",
     "never",
   ]);
-  const cert = join(dir, `${name}.asc`);
+  const cert = join(home, `${name}.asc`);
   writeFileSync(cert, gpg(["--armor", "--export"]));
   const sign = (file: string, out: string) =>
     gpg(["--yes", "--detach-sign", "--output", out, file]);
@@ -105,72 +113,76 @@ function release(dir: string, signer: ReturnType<typeof key>) {
   return { dist, signed };
 }
 
-describe.skipIf(!has("gpg") || !has("gpgv"))("check-signed-packages.sh", () => {
-  const run = (dir: string, cert: string, tag = TAG) =>
-    spawnSync(SCRIPT, [tag, join(dir, "dist"), join(dir, "signed"), cert], {
-      encoding: "utf8",
-      env: { ...process.env, PATH: `${join(dir, "bin")}:${process.env.PATH}` },
+// Linux only: release.yml runs the script on ubuntu-24.04, and it uses GNU find and sha256sum.
+describe.skipIf(process.platform !== "linux" || !has("gpg") || !has("gpgv"))(
+  "check-signed-packages.sh",
+  () => {
+    const run = (dir: string, cert: string, tag = TAG) =>
+      spawnSync(SCRIPT, [tag, join(dir, "dist"), join(dir, "signed"), cert], {
+        encoding: "utf8",
+        env: { ...process.env, PATH: `${join(dir, "bin")}:${process.env.PATH}` },
+      });
+    const setup = () => {
+      const dir = tempDir("vimma-signed-packages-");
+      shims(dir);
+      const signer = key("packages");
+      return { dir, signer, ...release(dir, signer) };
+    };
+
+    it("accepts package-sign's output: both signatures and the new SHA256SUMS", () => {
+      const { dir, signer } = setup();
+      const r = run(dir, signer.cert);
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).toContain(`${RPM} and ${PKG} are signed by the package key`);
     });
-  const setup = () => {
-    const dir = tempDir("vimma-signed-packages-");
-    shims(dir);
-    const signer = key(dir, "packages");
-    return { dir, signer, ...release(dir, signer) };
-  };
 
-  it("accepts package-sign's output: both signatures and the new SHA256SUMS", () => {
-    const { dir, signer } = setup();
-    const r = run(dir, signer.cert);
-    expect(r.status, r.stderr).toBe(0);
-    expect(r.stdout).toContain(`${RPM} and ${PKG} are signed by the package key`);
-  });
+    it("refuses a pacman package signed by another key", () => {
+      const { dir, signer, signed, dist } = setup();
+      key("other").sign(join(dist, PKG), join(signed, `${PKG}.sig`));
+      expect(run(dir, signer.cert).stderr).toMatch(/\.sig: no valid signature by the package key/);
+    });
 
-  it("refuses a pacman package signed by another key", () => {
-    const { dir, signer, signed, dist } = setup();
-    key(dir, "other").sign(join(dist, PKG), join(signed, `${PKG}.sig`));
-    expect(run(dir, signer.cert).stderr).toMatch(/\.sig: no valid signature by the package key/);
-  });
+    it("refuses a pacman package that changed after it was signed", () => {
+      const { dir, signer, dist } = setup();
+      writeFileSync(join(dist, PKG), "another pacman package");
+      expect(run(dir, signer.cert).stderr).toMatch(/\.sig: no valid signature/);
+    });
 
-  it("refuses a pacman package that changed after it was signed", () => {
-    const { dir, signer, dist } = setup();
-    writeFileSync(join(dist, PKG), "another pacman package");
-    expect(run(dir, signer.cert).stderr).toMatch(/\.sig: no valid signature/);
-  });
+    it("refuses an unsigned .rpm, and one whose payload changed", () => {
+      const { dir, signer, signed } = setup();
+      writeFileSync(join(signed, RPM), "header\npayload\n");
+      expect(run(dir, signer.cert).stderr).toMatch(/no valid signature by the package key/);
+      writeFileSync(join(signed, RPM), "header signed\nother payload\n");
+      expect(run(dir, signer.cert).stderr).toMatch(/payload or name is not the built one's/);
+    });
 
-  it("refuses an unsigned .rpm, and one whose payload changed", () => {
-    const { dir, signer, signed } = setup();
-    writeFileSync(join(signed, RPM), "header\npayload\n");
-    expect(run(dir, signer.cert).stderr).toMatch(/no valid signature by the package key/);
-    writeFileSync(join(signed, RPM), "header signed\nother payload\n");
-    expect(run(dir, signer.cert).stderr).toMatch(/payload or name is not the built one's/);
-  });
+    it("refuses a SHA256SUMS that is not package's with the signed packages", () => {
+      const { dir, signer, signed } = setup();
+      const sums = readFileSync(join(signed, "SHA256SUMS"), "utf8");
+      // A line dropped, a line added, the old .rpm's line kept.
+      for (const bad of [
+        sums.split("\n").slice(1).join("\n"),
+        `${sums}${sum("x")}  vimma-extra\n`,
+        sums.replace(sum("header signed\npayload\n"), sum("header\npayload\n")),
+      ]) {
+        writeFileSync(join(signed, "SHA256SUMS"), bad);
+        expect(run(dir, signer.cert).stderr).toMatch(/SHA256SUMS is not package's/);
+      }
+    });
 
-  it("refuses a SHA256SUMS that is not package's with the signed packages", () => {
-    const { dir, signer, signed } = setup();
-    const sums = readFileSync(join(signed, "SHA256SUMS"), "utf8");
-    // A line dropped, a line added, the old .rpm's line kept.
-    for (const bad of [
-      sums.split("\n").slice(1).join("\n"),
-      `${sums}${sum("x")}  vimma-extra\n`,
-      sums.replace(sum("header signed\npayload\n"), sum("header\npayload\n")),
-    ]) {
-      writeFileSync(join(signed, "SHA256SUMS"), bad);
-      expect(run(dir, signer.cert).stderr).toMatch(/SHA256SUMS is not package's/);
-    }
-  });
+    it("refuses an extra or missing file, and a tag that is not vX.Y.Z", () => {
+      const { dir, signer, signed } = setup();
+      expect(run(dir, signer.cert, "v0.3.1-rc1").stderr).toMatch(/not a vX\.Y\.Z release tag/);
+      writeFileSync(join(signed, "extra"), "x");
+      expect(run(dir, signer.cert).stderr).toMatch(/package-sign returned/);
+      rmSync(join(signed, "extra"));
+      rmSync(join(signed, `${PKG}.sig`));
+      expect(run(dir, signer.cert).stderr).toMatch(/package-sign returned/);
+    });
 
-  it("refuses an extra or missing file, and a tag that is not vX.Y.Z", () => {
-    const { dir, signer, signed } = setup();
-    expect(run(dir, signer.cert, "v0.3.1-rc1").stderr).toMatch(/not a vX\.Y\.Z release tag/);
-    writeFileSync(join(signed, "extra"), "x");
-    expect(run(dir, signer.cert).stderr).toMatch(/package-sign returned/);
-    rmSync(join(signed, "extra"));
-    rmSync(join(signed, `${PKG}.sig`));
-    expect(run(dir, signer.cert).stderr).toMatch(/package-sign returned/);
-  });
-
-  it("refuses to run without the committed certificate", () => {
-    const { dir } = setup();
-    expect(run(dir, join(dir, "missing.asc")).stderr).toMatch(/no certificate/);
-  });
-});
+    it("refuses to run without the committed certificate", () => {
+      const { dir } = setup();
+      expect(run(dir, join(dir, "missing.asc")).stderr).toMatch(/no certificate/);
+    });
+  },
+);
