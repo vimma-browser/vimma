@@ -488,7 +488,7 @@ What the steps do:
   comes over with Firefox Sync ([Moving over](#moving-over-from-firefox-or-chrome)).
 - **Address bar.** Shown or hidden. The step names the keys that reach the address bar while it
   is hidden (`ctrl+l`, `alt+d`, `I` and `ctrl+b u` with the default keys; `cmd+l` instead of
-  `alt+d` on macOS).
+  `alt+d` on macOS, written `meta+l` in config.toml).
 - **Tab line.** Off, always, or only with two or more tabs ([Tab line](#tab-line)).
 - **Prefix key.** `ctrl+b` or `ctrl+a`, each shown with the key that opens the list of keys.
 - **Hint letters.** The home row of QWERTY, Colemak or Dvorak. The layout you type on is
