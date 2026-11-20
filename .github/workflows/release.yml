@@ -10,6 +10,13 @@
 # builds it with a zeroed signature placeholder, mar-sign has update-publish.yml's job of that
 # name sign it with the Cloud KMS update key, and mar checks it before SHA256SUMS lists it.
 #
+# Spec package-repositories: while the repository variable PACKAGE_REPOS_ENABLED is `true`,
+# package also builds vimma-bin-X.Y.Z-1-x86_64.pkg.tar.zst, the pacman repository's package;
+# package-sign has update-publish.yml's job of that name sign it and the .rpm with the Cloud KMS
+# package key and write SHA256SUMS again, and packages checks both signatures against the
+# committed certificate before mar, sign and publish build on its output. Unset, a release is
+# what it was before: no pacman package, an unsigned .rpm.
+#
 # Trigger: workflow_dispatch only. A draft fires no `release` event, and a tag pushed with
 # GITHUB_TOKEN starts no workflow, but GITHUB_TOKEN may dispatch one: release-please.yml's
 # release-build job runs `workflow_dispatch` on main with the new tag, and a retry is the same
@@ -340,6 +347,7 @@ jobs:
       MAINTAINER: ${{ vars.PACKAGE_MAINTAINER }}
     outputs:
       mar: ${{ steps.mar.outputs.mar }}
+      pacman: ${{ steps.pacman.outputs.pkg }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -477,11 +485,118 @@ jobs:
       - name: Smoke test the PKGBUILD on Arch Linux
         run: tools/package/arch-smoke.sh dist "$(node tools/release/version-line.ts)"
 
+      # Spec package-repositories, decision 10: the pacman repository's vimma-bin, built from
+      # package.ts's pacman/PKGBUILD in the same pinned Arch image with the release tarball beside
+      # it (makepkg checks its pinned SHA-256 and downloads nothing), then installed with
+      # pacman -U and started. It goes to package-sign with the .rpm and the SHA256SUMS that
+      # lists the .rpm; SHA256SUMS lists the package once both are signed and checked (packages).
+      - name: Build the pacman package and install it on Arch Linux
+        id: pacman
+        if: vars.PACKAGE_REPOS_ENABLED == 'true'
+        run: |
+          tools/package/arch-smoke.sh --pacman dist "$(node tools/release/version-line.ts)"
+          pkg="vimma-bin-${TAG#v}-1-x86_64.pkg.tar.zst"
+          [ -f "dist/$pkg" ] || { echo "::error::arch-smoke.sh left no dist/$pkg"; exit 1; }
+          mkdir -p packages-unsigned
+          cp "dist/vimma-${TAG#v}-1.x86_64.rpm" "dist/$pkg" dist/SHA256SUMS packages-unsigned/
+          echo "pkg=$pkg" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: vars.PACKAGE_REPOS_ENABLED == 'true'
+        with:
+          name: packages-unsigned
+          path: packages-unsigned/
+          retention-days: 7
+          if-no-files-found: error
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release
           path: dist/
           include-hidden-files: true # dist/aur/.SRCINFO; dist/notes/ goes into the release notes
+          retention-days: 7
+          if-no-files-found: error
+
+  # The package key signs the .rpm and the pacman package in update-publish.yml's package-sign
+  # job, called here as mar-sign is (spec package-repositories, decisions 3 and 9): its token
+  # names update-publish.yml at refs/heads/main, and the key's IAM binding admits only its
+  # package-signing environment. It reads packages-unsigned and uploads packages-signed in this
+  # run. The permissions are the same ceiling as mar-sign's, for the same reason (below); the one
+  # job that runs, package-sign, asks only for its OIDC token.
+  package-sign:
+    needs: package
+    if: >-
+      vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' && vars.PACKAGE_REPOS_ENABLED == 'true' &&
+      needs.package.outputs.pacman != ''
+    permissions:
+      id-token: write # GitHub OIDC for Cloud KMS, in update-publish.yml's package-sign job
+      actions: write # ceiling only: update-publish.yml's start, which never runs in a call
+      contents: read # ceiling only: its prepare and publish
+      pull-requests: read # ceiling only: its prepare
+      issues: write # ceiling only: its failure
+    uses: ./.github/workflows/update-publish.yml
+    with:
+      packages: true
+
+  # The signed packages, checked with no secret before anything lists them: the .rpm's signature
+  # verifies under the committed certificate and its payload is the one package built; the pacman
+  # package's detached signature verifies with gpgv; and package-sign's SHA256SUMS is package's
+  # with the signed .rpm's line and the two new files, nothing else. As mar does for the MAR, it
+  # runs whenever package succeeded, so a package-sign that was skipped or failed fails here.
+  packages:
+    needs: [build, package, package-sign]
+    if: >-
+      always() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' && vars.PACKAGE_REPOS_ENABLED == 'true' &&
+      needs.package.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      PACKAGE_SIGN: ${{ needs.package-sign.result }}
+      CERT: configs/package-signing/vimma-packages.asc
+    steps:
+      - name: The packages were signed
+        run: |
+          [ "$PACKAGE_SIGN" = success ] \
+            || { echo "::error::package-sign ended '$PACKAGE_SIGN', so the packages are not signed and the release is not uploaded"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.build.outputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: dist
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: packages-signed
+          path: signed
+
+      - name: Check the signed packages
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q rpm gpgv
+          tools/package/check-signed-packages.sh "$TAG" dist signed "$CERT"
+
+      # package-sign's SHA256SUMS, checked above, over package's, with the signed .rpm and the
+      # pacman package's signature.
+      - name: Add the signed packages to SHA256SUMS
+        run: |
+          mkdir -p release-packages
+          cp signed/* release-packages/
+          cp release-packages/* dist/
+          (cd dist && sha256sum -c SHA256SUMS)
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-packages
+          path: release-packages/
           retention-days: 7
           if-no-files-found: error
 
@@ -521,11 +636,12 @@ jobs:
   # loudly, rather than leaving a release that uploads nothing. A call whose own mar-sign job was
   # skipped ends as success but leaves no mar-signed artifact, which stops this job too.
   mar:
-    needs: [build, package, mar-sign]
+    needs: [build, package, packages, mar-sign]
     if: >-
       always() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main' && vars.UPDATES_ENABLED == 'true' &&
-      needs.package.result == 'success'
+      needs.package.result == 'success' &&
+      (needs.packages.result == 'success' || (needs.packages.result == 'skipped' && vars.PACKAGE_REPOS_ENABLED != 'true'))
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -551,6 +667,13 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release
+          path: dist
+
+      # The signed packages and the SHA256SUMS that lists them, over package's.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.packages.result == 'success'
+        with:
+          name: release-packages
           path: dist
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -633,11 +756,12 @@ jobs:
   # the checked MAR and signs it and the SHA256SUMS that lists it; a failed MAR stops it, so a
   # release never goes out signed without the MAR its manifest would offer.
   sign:
-    needs: [package, mar]
+    needs: [package, packages, mar]
     if: >-
       always() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main' &&
       vars.SIGNING_ENABLED == 'true' && needs.package.result == 'success' &&
+      (needs.packages.result == 'success' || (needs.packages.result == 'skipped' && vars.PACKAGE_REPOS_ENABLED != 'true')) &&
       (needs.mar.result == 'success' || (needs.mar.result == 'skipped' && vars.UPDATES_ENABLED != 'true'))
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -647,6 +771,14 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release
+          path: dist
+
+      # The signed packages and the SHA256SUMS that lists them, over package's; release-mar's
+      # SHA256SUMS, over that, lists them too.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.packages.result == 'success'
+        with:
+          name: release-packages
           path: dist
 
       # The MAR and the SHA256SUMS that lists it, over package's.
@@ -672,7 +804,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [build, package, mar, sign]
+    needs: [build, package, packages, mar, sign]
     # sign is skipped while SIGNING_ENABLED is unset; publish then uploads unsigned assets. The
     # MAR must be in while UPDATES_ENABLED is `true`: a release without it would leave tarball
     # installs on their version.
@@ -680,6 +812,7 @@ jobs:
       always() && vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main' &&
       needs.package.result == 'success' &&
+      (needs.packages.result == 'success' || (needs.packages.result == 'skipped' && vars.PACKAGE_REPOS_ENABLED != 'true')) &&
       (needs.mar.result == 'success' || (needs.mar.result == 'skipped' && vars.UPDATES_ENABLED != 'true')) &&
       (needs.sign.result == 'success' || needs.sign.result == 'skipped')
     runs-on: ubuntu-24.04
@@ -694,6 +827,14 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release
+          path: dist
+
+      # The signed packages and the SHA256SUMS that lists them, over package's; release-mar's
+      # SHA256SUMS, over that, lists them too.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.packages.result == 'success'
+        with:
+          name: release-packages
           path: dist
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -1552,6 +1693,8 @@ jobs:
       - build
       - ctl
       - package
+      - package-sign
+      - packages
       - mar-sign
       - mar
       - sign

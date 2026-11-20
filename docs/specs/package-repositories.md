@@ -290,6 +290,13 @@ pages, not run; the smoke test of sub-PR 1 runs each of them.
    `SHA256SUMS`, the cosign bundles or the update manifest would leave them naming a file the
    release no longer has. The `.deb` stays unsigned as a file, because apt checks it through
    the SHA-256 in the signed `Packages` and has no per-package signature that `apt` verifies.
+   `package` hands `package-sign` a `packages-unsigned` artifact with only the `.rpm`, the pacman
+   package and `SHA256SUMS`, not the whole `release` artifact, because the signing job then
+   holds nothing but what it signs. A `packages` job in `release.yml` checks `package-sign`'s
+   output again with no secret (`tools/package/check-signed-packages.sh`), as `mar` checks the
+   signed MAR, because it is the job that `mar`, `sign` and `publish` wait for, and it fails a
+   release whose `package-sign` was skipped or failed, where a called workflow whose job was
+   skipped would end as a success.
 10. **pacman: a binary package built in `release.yml`, signed, in a `vimma` database.** The
     `package` job builds `vimma-bin-X.Y.Z-1-x86_64.pkg.tar.zst` from the release's `PKGBUILD` in
     the `archlinux` image that `arch-smoke.sh` already pins, with the release tarball placed in

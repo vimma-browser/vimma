@@ -8,49 +8,49 @@
 #   tools/package/arch-smoke.sh <dist-dir> <expected `vimma --version` line>
 #       dist-dir holds package.ts's output: PKGBUILD, SRCINFO and vimma-X.Y.Z-linux-x86_64.tar.xz.
 #       release.yml's package job runs this on the release build.
+#   tools/package/arch-smoke.sh --pacman <dist-dir> <expected `vimma --version` line>
+#       builds the pacman repository's binary package (spec package-repositories, decision 10),
+#       vimma-bin-X.Y.Z-1-x86_64.pkg.tar.zst, into dist-dir from package.ts's pacman/PKGBUILD,
+#       with the release tarball placed beside it and every download agent replaced by `false`,
+#       so makepkg takes the tarball's bytes from dist-dir and checks its pinned SHA-256; then
+#       installs it with pacman -U and runs the checks below with the marker vimma-package=pacman.
+#       release.yml's package job runs this while PACKAGE_REPOS_ENABLED is `true`.
 #   tools/package/arch-smoke.sh --stub
-#       packages a stub tarball (shell scripts for `vimma` and `vimma-ctl`) first; pkgbuild.yml
-#       runs this on pull requests, so a broken PKGBUILD fails before a release.
+#       packages a stub tarball (shell scripts for `vimma` and `vimma-ctl`) first, then runs both
+#       of the above on it; pkgbuild.yml runs this on pull requests, so a broken PKGBUILD or
+#       pacman package fails before a release.
 #
-# Needs docker and python3 on the host. Checks: makepkg --printsrcinfo equals SRCINFO; makepkg -si
-# downloads the tarball, verifies its SHA-256 and installs; `vimma --version` prints the expected
-# line; vimma-ctl on PATH names the same Vimma version; /opt/vimma/is-packaged-app says
-# vimma-package=pkgbuild-release; vimma-open is the repository's launcher byte for byte; the
-# desktop file passes desktop-file-validate and runs /opt/vimma/vimma-open by that path; and,
-# for a real build (not --stub), Vimma starts headless and takes a screenshot, so the PKGBUILD's
-# depends are enough.
+# Needs docker (or the engine named by CONTAINER_ENGINE, such as podman) and python3 on the
+# host. Checks: makepkg --printsrcinfo equals SRCINFO; makepkg -si downloads the tarball,
+# verifies its SHA-256 and installs; `vimma --version` prints the expected line; vimma-ctl on
+# PATH names the same Vimma version; /opt/vimma/is-packaged-app says
+# vimma-package=pkgbuild-release (pacman for --pacman); vimma-open is the repository's launcher
+# byte for byte; the desktop file passes desktop-file-validate and runs /opt/vimma/vimma-open by
+# that path; and, for a real build (not --stub), Vimma starts headless and takes a screenshot, so
+# the PKGBUILD's depends are enough.
 set -euo pipefail
 
 # archlinux:base-devel as published on 2026-10-12. The run updates the system with pacman first,
 # so an older digest still tests against current Arch packages.
-IMAGE=archlinux@sha256:061679925e5d5028f2df9395d441ce6c4b9accf0157ff3486c06b6962e014ef1
+IMAGE=docker.io/library/archlinux@sha256:061679925e5d5028f2df9395d441ce6c4b9accf0157ff3486c06b6962e014ef1
 PORT=${ARCH_SMOKE_PORT:-18765}
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 
-if [ "${1:-}" = "--inside" ]; then
-  expected=$2
-  real=$3
+# Inside the container: the system brought up to date, a user to build as, and the checks of an
+# installed vimma-bin.
+setup() {
   pacman -Sy --noconfirm --needed archlinux-keyring > /dev/null
   pacman -Su --noconfirm --needed desktop-file-utils > /dev/null
   useradd -m builder
   echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
   build=/home/builder/build
   install -d -o builder "$build"
-  install -o builder -m 644 /dist/PKGBUILD "$build/PKGBUILD"
+}
 
-  cd "$build"
-  sudo -u builder makepkg --printsrcinfo > srcinfo.printed
-  diff -u /dist/SRCINFO srcinfo.printed || { echo "arch-smoke: SRCINFO differs from makepkg --printsrcinfo"; exit 1; }
-
-  # Only the download URL changes; the pinned SHA-256 stays, so makepkg still verifies the bytes.
-  # shellcheck disable=SC2016 # ${pkgver} is the PKGBUILD's own, matched literally
-  pattern='https://github\.com/[^/]*/[^/]*/releases/download/v\${pkgver}/'
-  [ "$(grep -c "$pattern" PKGBUILD)" = 1 ] || { echo "arch-smoke: no single release URL in PKGBUILD"; exit 1; }
-  sed -i "s|$pattern|http://127.0.0.1:$PORT/|" PKGBUILD
-
-  sudo -u builder makepkg -si --noconfirm
-
+# $1 the expected version line, $2 the install source in is-packaged-app, $3 1 for a real build
+check_installed() {
+  local expected=$1 source=$2 real=$3 version release ctl marker
   pacman -Qi vimma-bin
   version=$(vimma --version)
   [ "$version" = "$expected" ] || { echo "arch-smoke: vimma --version is '$version', want '$expected'"; exit 1; }
@@ -61,7 +61,7 @@ if [ "${1:-}" = "--inside" ]; then
   case "$ctl" in "vimma-ctl $release "*) ;; *) echo "arch-smoke: vimma-ctl --version is '$ctl', want vimma-ctl $release"; exit 1 ;; esac
   test -s /opt/vimma/vimma-ctl-licenses/musl-COPYRIGHT
   marker=$(cat /opt/vimma/is-packaged-app)
-  [ "$marker" = "vimma-package=pkgbuild-release" ] || { echo "arch-smoke: is-packaged-app says '$marker'"; exit 1; }
+  [ "$marker" = "vimma-package=$source" ] || { echo "arch-smoke: is-packaged-app says '$marker'"; exit 1; }
   test -x /usr/bin/vimma-open
   cmp /opt/vimma/vimma-open /repo/tools/package/vimma-open.sh
   desktop-file-validate /usr/share/applications/vimma-vimma.desktop
@@ -78,14 +78,67 @@ if [ "${1:-}" = "--inside" ]; then
     test -s /home/builder/shot.png
   fi
   echo "arch-smoke: OK: $version, $marker"
+}
+
+if [ "${1:-}" = "--inside" ]; then
+  setup
+  install -o builder -m 644 /dist/PKGBUILD "$build/PKGBUILD"
+
+  cd "$build"
+  sudo -u builder makepkg --printsrcinfo > srcinfo.printed
+  diff -u /dist/SRCINFO srcinfo.printed || { echo "arch-smoke: SRCINFO differs from makepkg --printsrcinfo"; exit 1; }
+
+  # Only the download URL changes; the pinned SHA-256 stays, so makepkg still verifies the bytes.
+  # shellcheck disable=SC2016 # ${pkgver} is the PKGBUILD's own, matched literally
+  pattern='https://github\.com/[^/]*/[^/]*/releases/download/v\${pkgver}/'
+  [ "$(grep -c "$pattern" PKGBUILD)" = 1 ] || { echo "arch-smoke: no single release URL in PKGBUILD"; exit 1; }
+  sed -i "s|$pattern|http://127.0.0.1:$PORT/|" PKGBUILD
+
+  sudo -u builder makepkg -si --noconfirm
+
+  check_installed "$2" pkgbuild-release "$3"
   exit 0
 fi
 
+if [ "${1:-}" = "--inside-pacman" ]; then
+  setup
+  tarball=$(basename "$(echo /dist/vimma-*-linux-x86_64.tar.xz)")
+  install -o builder -m 644 /dist/pacman/PKGBUILD "$build/PKGBUILD"
+  install -o builder -m 644 "/dist/$tarball" "$build/$tarball"
+  cd "$build"
+  # The PKGBUILD's one source is that tarball, which makepkg takes from the build directory; a
+  # download agent that always fails makes any attempt to fetch it, or anything else, an error.
+  grep -qx "source=(\"vimma-\${pkgver}-linux-x86_64.tar.xz::https://[^\"]*\")" PKGBUILD \
+    || { echo "arch-smoke: pacman/PKGBUILD has not the one release tarball source"; exit 1; }
+  {
+    echo "DLAGENTS=('file::/usr/bin/false' 'ftp::/usr/bin/false' 'http::/usr/bin/false' 'https::/usr/bin/false' 'rsync::/usr/bin/false' 'scp::/usr/bin/false')"
+    echo "PKGEXT='.pkg.tar.zst'"
+  } >> /etc/makepkg.conf
+  # --nodeps: a repackaged binary needs none of its depends to build; pacman -U installs them.
+  sudo -u builder makepkg --nodeps --noconfirm
+  pkg=$(sudo -u builder makepkg --packagelist)
+  pkg=$(basename "$pkg")
+  [ "$pkg" = "$4" ] || { echo "arch-smoke: makepkg built $pkg, want $4"; exit 1; }
+  info=$(pacman -Qip "$pkg")
+  grep -qx 'Name *: vimma-bin' <<< "$info" || { echo "arch-smoke: $pkg is not vimma-bin"; exit 1; }
+  grep -qx 'Architecture *: x86_64' <<< "$info" || { echo "arch-smoke: $pkg is not x86_64"; exit 1; }
+  pacman -U --noconfirm "$pkg"
+  cp "$pkg" "/out/$pkg"
+  check_installed "$2" pacman "$3"
+  exit 0
+fi
+
+engine=${CONTAINER_ENGINE:-docker}
+usage="usage: arch-smoke.sh [--pacman] <dist-dir> <version line> | --stub"
 work=""
+out=""
+server=""
 real=1
+run_pkgbuild=1
+run_pacman=0
+trap '[ -z "$server" ] || kill "$server" 2> /dev/null || true; [ -z "$work" ] || rm -rf "$work"; [ -z "$out" ] || rm -rf "$out"' EXIT
 if [ "${1:-}" = "--stub" ]; then
   work=$(mktemp -d)
-  trap 'rm -rf "$work"' EXIT
   expected=$(node "$repo/tools/release/version-line.ts")
   app="$work/stub/vimma"
   mkdir -p "$app/browser/chrome/icons/default"
@@ -109,16 +162,38 @@ if [ "${1:-}" = "--stub" ]; then
     --maintainer 'Vimma CI <ci@example.invalid>' --no-deb --no-rpm
   dist="$work/dist"
   real=0
+  run_pacman=1
 else
-  dist=$(cd "${1:?usage: arch-smoke.sh <dist-dir> <version line> | --stub}" && pwd)
-  expected=${2:?usage: arch-smoke.sh <dist-dir> <version line>}
+  if [ "${1:-}" = "--pacman" ]; then
+    shift
+    run_pkgbuild=0
+    run_pacman=1
+  fi
+  dist=$(cd "${1:?$usage}" && pwd)
+  expected=${2:?$usage}
 fi
 [ -f "$dist/PKGBUILD" ] || { echo "arch-smoke: $dist has no PKGBUILD (a pre-release?)"; exit 1; }
 
-python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$dist" > /dev/null 2>&1 &
-server=$!
-trap 'kill "$server" 2> /dev/null || true; [ -z "$work" ] || rm -rf "$work"' EXIT
+if [ "$run_pkgbuild" = 1 ]; then
+  python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$dist" > /dev/null 2>&1 &
+  server=$!
+  "$engine" run --rm --network host -e ARCH_SMOKE_PORT="$PORT" \
+    -v "$dist:/dist:ro" -v "$repo:/repo:ro" "$IMAGE" \
+    bash /repo/tools/package/arch-smoke.sh --inside "$expected" "$real"
+  kill "$server" 2> /dev/null || true
+  server=""
+fi
 
-docker run --rm --network host -e ARCH_SMOKE_PORT="$PORT" \
-  -v "$dist:/dist:ro" -v "$repo:/repo:ro" "$IMAGE" \
-  bash /repo/tools/package/arch-smoke.sh --inside "$expected" "$real"
+if [ "$run_pacman" = 1 ]; then
+  [ -f "$dist/pacman/PKGBUILD" ] || { echo "arch-smoke: $dist has no pacman/PKGBUILD"; exit 1; }
+  pkgver=$(sed -n 's/^pkgver=//p' "$dist/pacman/PKGBUILD")
+  [[ $pkgver =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "arch-smoke: pkgver '$pkgver'"; exit 1; }
+  pkg="vimma-bin-$pkgver-1-x86_64.pkg.tar.zst"
+  out=$(mktemp -d)
+  "$engine" run --rm -v "$dist:/dist:ro" -v "$out:/out" -v "$repo:/repo:ro" "$IMAGE" \
+    bash /repo/tools/package/arch-smoke.sh --inside-pacman "$expected" "$real" "$pkg"
+  # cp, not mv: the container's root owns what it wrote.
+  cp "$out/$pkg" "$dist/$pkg"
+  chmod 644 "$dist/$pkg"
+  echo "arch-smoke: built $dist/$pkg"
+fi

@@ -275,7 +275,25 @@ of the same commit read it too, so a tree without it could not be released anywa
   bundled library names and a maintainer line without `%`, the values it places in a shell
   command or in text rpm expands as macros. It is built by `rpmbuild`
   from Ubuntu's archive on the hosted runner and installed with dnf and zypper in Fedora and
-  openSUSE containers pinned by digest, before anything is signed. **⚠ setting:**
+  openSUSE containers pinned by digest, before anything is signed. While the repository
+  variable `PACKAGE_REPOS_ENABLED` is `true` (spec
+  [package-repositories](../specs/package-repositories.md), decisions 9 and 10), the `.rpm` does
+  carry an OpenPGP signature, and the release adds the pacman package
+  `vimma-bin-X.Y.Z-1-x86_64.pkg.tar.zst` and its detached signature: `package` builds the
+  package from the `PKGBUILD` variant whose marker is `vimma-package=pacman`, in the pinned Arch
+  image, with every `makepkg` download agent replaced by `false`, so the bytes are the release
+  tarball's under its pinned SHA-256, and installs it with `pacman -U`; `package-sign`, a job of
+  `update-publish.yml` that `release.yml` calls, holding only `id-token: write` in the
+  `package-signing` environment, checks that the files are the caller's tag's `.rpm` and pacman
+  package before it signs, signs them with the Cloud KMS package key through
+  `tools/package/openpgp-kms.ts` (the only repository file it runs, checked out alone from
+  `main` with the certificate and `.nvmrc`), checks both signatures against the committed
+  certificate and writes `SHA256SUMS` again; and `packages`, with no secret, checks that result
+  again (`tools/package/check-signed-packages.sh`: the `.rpm`'s payload unchanged, both
+  signatures under the committed certificate, `SHA256SUMS` exactly package's with the signed
+  files) before `mar`, `sign` and `publish` use it. A skipped or failed `package-sign` stops the
+  release. Without the variable, none of these jobs or steps runs and the release is as
+  described above. **⚠ setting:**
   signatures exist only while the repository variable `SIGNING_ENABLED` is `true`; without it
   `publish` uploads the assets and `SHA256SUMS` unsigned. The macOS `.dmg` and its Homebrew cask
   `vimma.rb` are listed in their own `SHA256SUMS-macos`, so `SHA256SUMS`, which `aur.yml` and the
@@ -316,7 +334,18 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`an output dir rpm's macro expander would change, before rpmbuild runs`](../../tools/package/test/package.test.ts),
   [`needs nothing but itself: the tarball is its only source`](../../tools/package/test/package.test.ts),
   [`refuses repo %j`](../../tools/package/test/package.test.ts),
-  [`refuses desktop id %j`](../../tools/package/test/package.test.ts)
+  [`refuses desktop id %j`](../../tools/package/test/package.test.ts),
+  [`release.yml calls update-publish.yml's package-sign`](../../tools/package/test/release-workflow.test.ts),
+  [`signs the .rpm and the pacman package before mar and sign`](../../tools/package/test/release-workflow.test.ts),
+  [`the pacman package is in SHA256SUMS and gets a cosign bundle`](../../tools/package/test/release-workflow.test.ts),
+  [`nothing is signed while PACKAGE_REPOS_ENABLED is not true`](../../tools/package/test/release-workflow.test.ts),
+  [`package builds the pacman package from pacman/PKGBUILD and installs it with pacman -U`](../../tools/package/test/release-workflow.test.ts),
+  [`package-sign uses the package-signing environment and runs only the signer`](../../tools/update/test/update-workflow.test.ts),
+  [`no job in update-signing names the package key, and no job in package-signing names the update key`](../../tools/update/test/update-workflow.test.ts),
+  [`package-sign signs only the caller's tag's .rpm and pacman package`](../../tools/update/test/update-workflow.test.ts),
+  [`refuses a pacman package signed by another key`](../../tools/package/test/check-signed-packages.test.ts),
+  [`refuses an unsigned .rpm, and one whose payload changed`](../../tools/package/test/check-signed-packages.test.ts),
+  [`refuses a SHA256SUMS that is not package's with the signed packages`](../../tools/package/test/check-signed-packages.test.ts)
 
 - B10. A release **must** be signed only by `release.yml` run from `main` through
   `workflow_dispatch`: `release-please.yml`'s `release-build` job dispatches it with
