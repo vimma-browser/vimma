@@ -14,7 +14,14 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   file that has the file's mode before any text goes in, renamed over the target of a symlinked
   config.toml. A setup step names only a step and the index of a choice the host sent that
   page; the host plans the keys from its own step table against the file as it is at `enter`,
-  and writes only those that change the value in force, so an edit made meanwhile is kept.
+  and writes only those that change the value in force, so an edit made meanwhile is kept. The
+  one value a page proposes is the prefix step's own key: the host reads it as one chord in
+  Vimma's key notation, judges it again by the keymap of the file at `enter` (a key with ctrl,
+  alt or meta, not esc, enter or tab, not the leader, not a key `[firefox] enable` gives back,
+  not the first key of a binding outside the prefix), and writes only `[keys] prefix` with that
+  chord's canonical text, so the page can neither name another key nor put text of its own in
+  the file. The keys pressed while the step waits for one stay in the page's memory: Vimma does
+  not keep them among its recent keys, and only the chord saved reaches the host.
   [`a_missing_folder_is_created_private`](../../tests/browser/browser_vimma_config_first_run.js),
   [`an_existing_file_is_never_touched`](../../tests/browser/browser_vimma_config_first_run.js),
   [`route_add_creates_a_private_config_toml`](../../tests/browser/browser_vimma_security_invariants.js),
@@ -25,6 +32,9 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`a_symlinked_config_toml_stays_a_link`](../../tests/browser/browser_vimma_setup_v2.js),
   [`a_private_window_saves_nothing`](../../tests/browser/browser_vimma_setup_v2.js),
   [`the_page_cannot_name_a_key_or_value`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`the_host_judges_the_pressed_prefix_again`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`prefix_step_records_a_key_and_esc_goes_back_to_the_list`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`the host reads only one chord in Vimma's notation`](../../packages/vimma-core/test/setup-steps.test.ts),
   [`an edit the file would not load with is refused, with the reason`](../../packages/vimma-core/test/config-set-keys.test.ts),
   [`adds [theme] before [theme.colors] when only the sub-table exists`](../../packages/vimma-core/test/toml.test.ts),
   [`route_add_waits_for_a_running_rewrite`](../../tests/browser/browser_vimma_workspace_routes.js)

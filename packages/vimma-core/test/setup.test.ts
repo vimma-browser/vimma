@@ -9,6 +9,7 @@ import {
   flowAdvance,
   flowChapters,
   flowKey,
+  flowRecord,
   formatUsers,
   initialFlow,
 } from "../src/system/setup.mjs";
@@ -478,5 +479,108 @@ describe("setup v2 flow", () => {
       [y.guid, y],
     ]);
     expect(run({ ...both, marked }, ["enter"], c).effect).toEqual({ type: "install", addons: [y] });
+  });
+
+  describe("the prefix step's own key (decision 21)", () => {
+    const keys = flowChapters(["prefix_key", "hint_letters"]);
+    const own = (over: Partial<FlowContext> = {}) =>
+      ctx({ count: 2, recordRow: (i: number) => (i === 1 ? "new" : null), ...over });
+    const onPrefix = (c = own()) => {
+      const r = flowKey(initialFlow({ chapters: keys }), "enter", c);
+      expect(r.state.chapters[r.state.chapter]?.steps[r.state.step]?.id).toBe("prefix_key");
+      return r.state;
+    };
+    const go = (s: FlowState, ks: string[], c = own()) => {
+      let r: ReturnType<typeof flowKey> = { state: s, effect: null };
+      for (const k of ks) r = flowKey(r.state, k, c);
+      return r;
+    };
+
+    test("enter on choose your own waits for a key; nothing is saved yet", () => {
+      const r = go(onPrefix(), ["j", "enter"]);
+      expect(r.effect).toBeNull();
+      expect(r.state.recording).toEqual({ chord: null, refused: null });
+      // enter with no key pressed yet does nothing.
+      expect(go(r.state, ["enter"]).effect).toBeNull();
+    });
+
+    test("a key pressed is shown; enter saves it at that row", () => {
+      const waiting = go(onPrefix(), ["j", "enter"]).state;
+      const pressed = flowRecord(waiting, "ctrl+a", null);
+      expect(pressed.recording).toEqual({ chord: "ctrl+a", refused: null });
+      expect(go(pressed, ["enter"]).effect).toEqual({
+        type: "save",
+        step: "prefix_key",
+        index: 1,
+        chord: "ctrl+a",
+      });
+      // Another key replaces it.
+      expect(flowRecord(pressed, "alt+w", null).recording?.chord).toBe("alt+w");
+    });
+
+    test("a refused key is shown with why, and enter does not save it", () => {
+      const waiting = go(onPrefix(), ["j", "enter"]).state;
+      const no = flowRecord(waiting, "ctrl+l", "ctrl+l already runs focus_urlbar");
+      expect(no.recording).toEqual({
+        chord: "ctrl+l",
+        refused: "ctrl+l already runs focus_urlbar",
+      });
+      expect(go(no, ["enter"]).effect).toBeNull();
+    });
+
+    test("while waiting, the page's keys are not the page's: only esc and enter are", () => {
+      const waiting = go(onPrefix(), ["j", "enter"]).state;
+      for (const k of ["q", "s", "h", "j", "k", "1", "space", "/"]) {
+        const r = go(waiting, [k]);
+        expect(r.effect, k).toBeNull();
+        expect(r.state, k).toEqual(waiting);
+      }
+    });
+
+    test("esc goes back to the list, on the same row; a second esc leaves", () => {
+      const waiting = flowRecord(go(onPrefix(), ["j", "enter"]).state, "ctrl+a", null);
+      const back = go(waiting, ["esc"]);
+      expect(back.effect).toBeNull();
+      expect(back.state.recording).toBeNull();
+      expect(back.state.cursor).toBe(1);
+      expect(go(back.state, ["esc"]).effect).toEqual({ type: "close" });
+    });
+
+    test("flowRecord does nothing unless the page is waiting for a key", () => {
+      const s = onPrefix();
+      expect(flowRecord(s, "ctrl+a", null)).toBe(s);
+    });
+
+    test("enter on ctrl+b saves that row; space there does nothing", () => {
+      expect(go(onPrefix(), ["enter"]).effect).toEqual({
+        type: "save",
+        step: "prefix_key",
+        index: 0,
+      });
+      expect(go(onPrefix(), ["space"]).state.recording).toBeNull();
+    });
+
+    test("a prefix of one's own in force: enter writes nothing, space records another", () => {
+      const c = own({ recordRow: (i: number) => (i === 1 ? "in-force" : null) });
+      const s = { ...onPrefix(c), cursor: 1 };
+      expect(go(s, ["enter"], c).effect).toEqual({ type: "save", step: "prefix_key", index: 1 });
+      expect(go(s, ["space"], c).state.recording).toEqual({ chord: null, refused: null });
+      // space on a new row records too.
+      expect(go({ ...onPrefix(), cursor: 1 }, ["space"]).state.recording).not.toBeNull();
+    });
+
+    test("a step that cannot save, or a list not drawn yet, never waits for a key", () => {
+      const blocked = { ...onPrefix(), blocked: true, cursor: 1 };
+      expect(go(blocked, ["enter"]).state.recording).toBeNull();
+      expect(go(blocked, ["space"]).state.recording).toBeNull();
+      const notReady = own({ ready: false });
+      expect(go({ ...onPrefix(), cursor: 1 }, ["enter"], notReady).state.recording).toBeNull();
+    });
+
+    test("leaving the step ends the wait: a saved key opens the next step without it", () => {
+      const waiting = flowRecord(go(onPrefix(), ["j", "enter"]).state, "ctrl+a", null);
+      const next = flowAdvance(waiting, own(), ['[keys] prefix = "ctrl+a"']);
+      expect(next.state.recording).toBeNull();
+    });
   });
 });

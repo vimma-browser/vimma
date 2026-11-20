@@ -17,7 +17,9 @@ Issues: [#1290](https://github.com/vimma-browser/vimma/issues/1290) (tracking); 
 [#1296](https://github.com/vimma-browser/vimma/issues/1296),
 [#1297](https://github.com/vimma-browser/vimma/issues/1297),
 [#1298](https://github.com/vimma-browser/vimma/issues/1298),
-[#1299](https://github.com/vimma-browser/vimma/issues/1299)
+[#1299](https://github.com/vimma-browser/vimma/issues/1299); later
+[#1402](https://github.com/vimma-browser/vimma/issues/1402) (the prefix step's own key,
+decision 21)
 
 ## Summary
 
@@ -72,7 +74,8 @@ engine, and applies nothing until its summary is confirmed. That leaves three ga
 7. `q` or `esc` on any step or stop screen closes the page. Steps already saved stay saved;
    nothing is undone, and nothing for the open step is written. Closing the tab or the window
    does the same. In the content blocker step's search field, the first `esc` leaves the field
-   and a second one leaves the page; `q` there is typed.
+   and a second one leaves the page; `q` there is typed. (Since changed: while the prefix step
+   waits for a key, `esc` goes back to its list and `q` is a key being chosen, decision 21.)
 8. Choosing the value already in force **must** write nothing, so that `enter` through every
    step leaves `config.toml` unchanged. The comparison is made at `enter`, against the file as
    it is then (decision 4). The one exception is the hint letters step's layout guess: with the
@@ -85,6 +88,8 @@ engine, and applies nothing until its summary is confirmed. That leaves three ga
    appearance the window shows (decision 12). When the value in force is none of the step's
    choices (a custom prefix or `hint_chars`, a search engine that is not installed), the step
    lists **Keep** with that value as its first choice and selects it; **Keep** writes nothing.
+   (Since changed: the prefix step has no **Keep**; a prefix of the user's own is its second
+   row, selected, decision 21.)
 10. After the last step of each chapter, a stop screen lists what was saved in that chapter
     and names the next chapter. `enter` goes on; `q` or `esc` closes the page. After the last
     chapter, the stop screen says the setup is done, lists everything this run saved, and
@@ -167,6 +172,8 @@ none of its choices (behaviour 9).
     step opens on **Hidden**, in force and selected, and `enter` on it writes nothing.
 25. **Prefix key.** With each candidate prefix, the step shows the key that opens the list of
     keys (`show_keybinds`, `ctrl+b ?` with `ctrl+b`), drawn with that candidate (decision 8).
+    (Since changed: the choices are `ctrl+b` and **Choose your own**, a key combination the user
+    presses on the page; `ctrl+a` is no longer a row of its own, decision 21.)
 26. **Hint letters.** The layout the user types on is selected first (decision 10).
 27. **Updates.** Says what the check sends (the update channel and the platform) and that
     "never check" stops every request to `updates.vimma.dev`.
@@ -249,7 +256,17 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
   `key` (the character), so the page can tell the layout from the keys the user already pressed
   on it: `j` is on `KeyJ` on QWERTY, `KeyY` on Colemak and `KeyC` on Dvorak.
 - **`ctrl+space`** is the usual input-method toggle of ibus and fcitx on Linux, so it is not
-  offered as a prefix.
+  offered as a prefix. (Since changed: it is no row of its own, and a user whose input method
+  leaves it to the page can press it on the prefix step's own row, decision 21.)
+- **What the keymap checks of a prefix.** `compileKeymap` reads `[keys] prefix` as one chord
+  (`oneChord`, `parseKey`) and refuses one that a `[modal.pdf]` default binds
+  (`packages/vimma-core/src/keys/keymap.mjs`, `compileKeymap`). It does not refuse a prefix that
+  is also the first key of another binding: with `prefix = "ctrl+l"`, `ctrl+l` both runs
+  `focus_urlbar` and starts the prefix's keys. `isShortcutChord`
+  (`packages/vimma-core/src/keys/firefox-keys.mjs`) is the keymap's own rule for a key that works
+  in every mode (ctrl, alt or meta, or a function key), and the inventory of Firefox's keys gives
+  each key Firefox keeps for fields and menus (fate d: `ctrl+a` select all, `ctrl+c` copy, `alt+f`
+  a menu).
 - **Private windows** do not save `:siteunbind` keys (spec
   [site-unbind-command](site-unbind-command.md), decision 12), because a private window leaves
   no trace on disk.
@@ -300,6 +317,8 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
    step id and a choice index, never a key or a value, so that the page cannot write an
    arbitrary key to `config.toml`. For the search engine, the host resolves the index against
    the list it sent the page, and checks that the engine is still installed (behaviour 20).
+   (Since changed: the prefix step's own row also sends the chord the user pressed, which the
+   host reads and judges again before it writes `[keys] prefix`, decision 21.)
 8. **Steps are data, and key hints come from the keymap in force.** `setup-steps.mjs` lists the
    chapters, their steps, each step's kind (`setting` or `action`), its choices, the actions
    its text may name, and its text with placeholders such as `{keys:focus_urlbar}`, so that a
@@ -434,6 +453,48 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
       writing `enabled = true` anyway, because the step would then turn agents on in a way
       `:mcp on` cannot.
 
+21. **The prefix step offers `ctrl+b` or a key the user presses.** The step has two rows: the
+    built-in `ctrl+b`, and **Choose your own**. `enter` on the second waits for the next key
+    combination, shows it as the line it will write (`[keys] prefix = "ctrl+a"`) with the key
+    that will list every key under it (`ctrl+a ?`), and `enter` saves it; `esc` goes back to the
+    list on the same row, and another combination replaces the one shown. While it waits, every
+    key but `esc` and `enter` is the key being chosen, so `q`, `s`, `h` and the prefix in force
+    reach the page as keys (VimmaHost leaves every chord to the page then), and a key the page
+    refuses stays on screen with the reason. A prefix of the user's own already in force is the
+    second row, labelled with that chord, selected and in force: `enter` on it writes nothing, as
+    on any value in force (behaviour 8), and `space` waits for another key. Reason: a list of
+    candidates can only guess at the chord someone prefers (tmux's `ctrl+a`, `alt+w`, a key their
+    window manager leaves free), while a key pressed is exactly the chord the keymap will see.
+    Refused, each with the reason on the page, by the keymap's own rules rather than a list of
+    the setup's own:
+    - **a key without ctrl, alt or meta** (a letter, a digit, `space`, shift with a letter;
+      `isShortcutChord`, which also lets a function key through), because the prefix works in
+      every mode and would take a key the user types;
+    - **`esc`, `enter` and `tab`, with any modifier**, because `esc` is the way back to normal
+      mode and out of a pending key (site-unbind decision 3), and `enter` and `tab` are what
+      forms, fields and focus need;
+    - **the leader** (`[modal] leader`), because one key cannot start both layers;
+    - **a key `[firefox] enable` gives back to Firefox**, because the user gave it to Firefox;
+    - **the first key of a binding not written with `prefix`, in any mode**
+      (`Keymap.keysOutsidePrefix`, after `[unbind]` and the user's `[keys]`): `ctrl+l` runs
+      `focus_urlbar`, and Firefox's tab and window keys (`ctrl+w`, `ctrl+t`, `ctrl+n`, `ctrl+q`)
+      are Vimma bindings by default, so the prefix would take them from their action. A key the
+      user unbound is free, and bindings written with `prefix` move with it.
+
+    Taken, with a note on what it no longer does: a key Firefox keeps for text fields or menus
+    (fate d of the inventory, such as `ctrl+a`, select all), because `ctrl+a` is tmux's prefix
+    and the setup offered it before; the note says what the user gives up. The prefix in force,
+    pressed again, writes nothing. The page judges each key by rules the host sends with the step
+    (`prefixRules`: the prefix in force, the leader, the bindings of `show_keybinds`, the keys
+    outside the prefix, the keys given to Firefox and those of fate d), as plain data, so that
+    the keys pressed stay in the page; on `enter` it sends the step, the row and the chord. The
+    host reads the chord as one chord in Vimma's notation (`readPrefix`), judges it again by the
+    keymap of config.toml as it is at `enter`, writes only `[keys] prefix` with the chord's
+    canonical text, and that edit, as every setup write, is refused when the file would not load
+    with it (decision 5). Rejected: refusing every key of fate d, because it refuses `ctrl+a`;
+    adding the "first key of another binding" rule to `compileKeymap`, because a file that loads
+    today would then stop loading; and a third row for `ctrl+a`, because a pressed key covers it.
+
 ### Page layout
 
 - **Welcome screen.** The logo as today, the heading "Set up Vimma", the promise of behaviour 2
@@ -476,7 +537,9 @@ agent workspace; the first agent request does.
   and never when the file does not parse, would not load with the edit, or changed during the
   write itself. An edit made while a step is open is kept, not overwritten (decision 4). The
   page can only name a step and a choice (decision 7); the search engine name is written as one
-  escaped TOML string by `tomlLiteral`. `docs/security/08-config-toml.md` F1 becomes: Vimma
+  escaped TOML string by `tomlLiteral`. (Since changed: the prefix step's own row also sends a
+  chord, which the host reads as one chord, judges again and writes only as `[keys] prefix`
+  with its canonical text, decision 21.) `docs/security/08-config-toml.md` F1 becomes: Vimma
   changes an existing `config.toml` only from `:route add`, `:siteunbind --save`,
   `:sitebind --delete`, the built-in agent's setup and the setup page's setting steps, each
   through `rewriteConfig`; `:route add` stays an append, run inside the `rewriteConfig` queue
@@ -511,6 +574,9 @@ agent workspace; the first agent request does.
   pressed on it, in its own memory, for the hint letters step (decision 10). They are never
   sent to the host, written, logged or kept after the page closes; only the index of the
   choice under the cursor reaches the host, on `enter`.
+- **Keys for the prefix.** While the prefix step waits for a key (decision 21), the keys pressed
+  stay in the page's memory: VimmaHost leaves them to the page and does not keep them among its
+  recent keys, and only the chord saved with `enter` reaches the host, which writes nothing else.
 - **Private windows.** No setting step writes from a private window, and the layout guess and
   the chapter pref are not kept there.
 
@@ -541,6 +607,16 @@ vitest, `packages/vimma-core/test/setup-steps.test.ts`:
 - `colours: a removed palette's name is vimma: no Keep, no name written`
 - `colours: another name in force is kept, and a choice also writes name = "vimma"`
 - `each setting step's shown line is the edit it plans`
+- `the list is ctrl+b and choose your own; a key pressed writes [keys] prefix` (decision 21)
+- `a custom prefix in force is the second row, selected, drawn with its own key`
+- `tmux's and other chords with ctrl or alt are taken`
+- `a key without ctrl, alt or meta is refused: it is typed`
+- `esc, enter and tab are refused, with or without a modifier`
+- `a chord the keymap binds outside the prefix is refused with its action`
+- `the leader and a key given back to Firefox are refused`
+- `a key Firefox keeps for fields is taken, with a note on what it no longer does`
+- `the key that lists every key is drawn with the chord pressed`
+- `the host reads only one chord in Vimma's notation`
 
 vitest, `packages/vimma-core/test/setup.test.ts` (state machine):
 
@@ -554,6 +630,9 @@ vitest, `packages/vimma-core/test/setup.test.ts` (state machine):
 - `the last stop screen closes on enter, q and esc`
 - `a digit on the welcome screen opens that chapter`
 - `with a config parse error, setting steps can only skip`
+- the prefix step's own key (decision 21): waiting for a key, a key shown and saved, a refused
+  key, the page's keys while waiting, `esc` back to the list, `space` on a prefix of one's own,
+  and no wait on a step that cannot save
 
 Mochitest, `tests/browser/browser_vimma_setup_v2.js` (with `vimma.feature.setupV2` on until the
 last slice; a file apart from the summary flow's `browser_vimma_setup.js`, because both together
@@ -580,7 +659,12 @@ through the search engine step and `agent_role_cannot_open_setup`):
 - `address_bar_step_names_the_keys_in_force` (default keys, a rebound `focus_urlbar`, an unbound
   `alt+d`)
 - `tab_line_step_writes_tabline_and_applies_live` (off, always and only with two or more tabs)
-- `prefix_step_changes_later_steps_hints`
+- `prefix_step_changes_later_steps_hints` (since #1402:
+  `a_pressed_prefix_writes_one_line_and_later_steps_name_it`)
+- `prefix_step_offers_ctrl_b_and_a_key_of_your_own` (decision 21)
+- `prefix_step_records_a_key_and_esc_goes_back_to_the_list`
+- `prefix_step_refuses_a_key_the_keymap_uses`
+- `the_host_judges_the_pressed_prefix_again`
 - `default_browser_step_calls_the_shell_service`
 - `default_browser_step_says_when_vimma_already_is_the_default`
 - `default_browser_step_says_why_it_cannot_make_vimma_the_default`

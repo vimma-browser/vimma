@@ -442,9 +442,37 @@ code {
 }
 
 /* The prefix step's key under each prefix (setup-v2 behaviour 25). */
-.list .hint {
+.list .hint,
+.record .hint {
   color: var(--vimma-fg-dim, #9197b2);
   font-size: 0.85rem;
+}
+
+/* The prefix step waiting for a key (setup-v2 decision 21): the key pressed, large, in a box
+   drawn as the list's rows are, with the key that lists every key under it. */
+.record {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.record .lede {
+  margin: 0;
+}
+
+.record-chord {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 0;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--vimma-text-accent, #2cf5d2);
+  background: var(--vimma-bg-dark, #05080a);
+}
+
+.record-chord > kbd {
+  font-size: 1.6rem;
 }
 
 /* Square corners on every surface of the page, Firefox's own widgets included: the search
@@ -456,6 +484,7 @@ code {
 .choice-note,
 .chapters li,
 .saved-lines li,
+.record-chord,
 kbd,
 code,
 input {

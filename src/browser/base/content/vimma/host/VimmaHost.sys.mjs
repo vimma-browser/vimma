@@ -1567,14 +1567,14 @@ export const VimmaHost = {
       state.element.leave();
     }
     // The setup page draws its own j/k/space/enter/esc (first-run-setup behaviour 3): the scroll,
-    // hint and mode bindings would take them first. Chords with a modifier stay ours.
-    if (
-      !chord.ctrl &&
-      !chord.alt &&
-      !chord.meta &&
-      this._focusedBrowser(win)?.currentURI?.spec === "about:vimma-setup"
-    ) {
-      return;
+    // hint and mode bindings would take them first. Chords with a modifier stay ours, except
+    // while its prefix step waits for a key (setup-v2 decision 21): then every chord, the prefix
+    // included, is the key being chosen, and none is kept in the recent keys below. The page
+    // runs in this process, and only its own script sets `recording`.
+    const setupPage = this._focusedBrowser(win);
+    if (setupPage?.currentURI?.spec === "about:vimma-setup") {
+      if (!chord.ctrl && !chord.alt && !chord.meta) return;
+      if (setupPage.contentDocument?.documentElement?.dataset.recording === "true") return;
     }
     const mode = this._mode(state);
     // Keys typed in a private window are never kept (private-workspace decision 8b), nor those

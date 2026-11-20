@@ -9,7 +9,7 @@
 // a row of the step table, its id in BUILT_STEPS and, when it needs more, a renderer here.
 
 /** @import { AddonEntry, FlowContext, FlowEffect, FlowState } from "../core/setup.mjs" */
-/** @import { WindowSketch } from "../core/setup-steps.mjs" */
+/** @import { PrefixRules, WindowSketch } from "../core/setup-steps.mjs" */
 
 const { ThemeHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ui/theme-host.mjs",
@@ -17,10 +17,21 @@ const { ThemeHost } = ChromeUtils.importESModule(
 const { SetupHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/setup/SetupHost.sys.mjs",
 );
-const { flowAdvance, flowChapters, flowKey, flowStep, formatUsers, initialFlow } =
+const { flowAdvance, flowChapters, flowKey, flowRecord, flowStep, formatUsers, initialFlow } =
   ChromeUtils.importESModule("chrome://browser/content/vimma/core/setup.mjs");
-const { HINT_LAYOUTS, actionOutcome, hintRow, rememberKey } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/core/setup-steps.mjs",
+const {
+  HINT_LAYOUTS,
+  actionOutcome,
+  editLines,
+  hintRow,
+  planPrefix,
+  prefixListKeys,
+  prefixNote,
+  prefixRefusal,
+  rememberKey,
+} = ChromeUtils.importESModule("chrome://browser/content/vimma/core/setup-steps.mjs");
+const { chordFromEvent, formatKey } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/keys.mjs",
 );
 
 const root = document.documentElement;
@@ -37,10 +48,11 @@ const browser = () => SetupHost.browserFor(window);
  * @property {string} question
  * @property {{ tag: "kbd" | "code" | null, text: string }[]} text
  * @property {{ label: string, keep: boolean, lines: string[], note: string | null,
- *   window: WindowSketch | null, run: boolean }[]} choices  `run`: an action step's choice that
- *   acts at `enter`
+ *   window: WindowSketch | null, run: boolean, record: boolean }[]} choices  `run`: an action
+ *   step's choice that acts at `enter`; `record`: the prefix step's own key (decision 21)
  * @property {number} selected
  * @property {string[][] | null} prefixKeys  the prefix step's, per choice
+ * @property {PrefixRules | null} prefixRules  what a key pressed on the prefix step is judged by
  * @property {(string | null)[] | null} layouts  the hint step's letters per choice, null for Keep
  * @property {string | null} blocked
  * @property {string} status  what an action step found (Vimma is the default browser now)
@@ -130,6 +142,13 @@ const ctx = {
   get ready() {
     return !loading && view !== null && view.id === flowStep(state)?.id;
   },
+  // The prefix step's own row (decision 21): `enter` waits for a key, or, with a prefix of the
+  // user's own in force, writes nothing.
+  recordRow(row) {
+    const c = view?.id === flowStep(state)?.id ? view?.choices[row] : undefined;
+    if (!c?.record) return null;
+    return row === view?.selected ? "in-force" : "new";
+  },
 };
 
 /** The footer's place in the chapter (behaviour 11). */
@@ -198,8 +217,14 @@ function drawFooter() {
     add(["enter"], state.done ? "close" : "go on");
     add(["h"], "back");
     add(["q"], "leave");
+  } else if (state.recording) {
+    // Waiting for a key (decision 21): any combination is the key; enter and esc stay the page's.
+    keys.push("Press a key combination");
+    if (state.recording.chord && !state.recording.refused) add(["enter"], "save and go on");
+    add(["esc"], "back to the list");
   } else {
     add(["j", "k"], "choose");
+    const own = ctx.recordRow?.(state.cursor);
     if (step?.id === "content_blocker") {
       add(["space"], "mark");
       add(["/"], "search");
@@ -208,8 +233,11 @@ function drawFooter() {
       add(["enter"], "cannot save here");
     } else if (step?.kind === "action") {
       add(["enter"], view?.choices[state.cursor]?.run ? "do it and go on" : "go on");
+    } else if (own === "new") {
+      add(["enter"], "press your key");
     } else {
       add(["enter"], "save and go on");
+      if (own === "in-force") add(["space"], "press another");
     }
     add(["s"], "skip");
     add(["h"], "back");
@@ -369,9 +397,17 @@ const RENDERERS = {
     $("v2-writes-row").hidden = true;
     drawAddons();
   },
-  // Each prefix with the key that lists every key under it (behaviour 25).
+  // Each prefix with the key that lists every key under it (behaviour 25); the own row waits
+  // for a key combination (decision 21).
   prefix_key(v) {
+    if (state.recording) {
+      drawRecording(v);
+      return;
+    }
     drawChoices(v);
+    if (ctx.recordRow?.(state.cursor) === "new") {
+      $("v2-writes").replaceChildren("Press enter, then the key combination you want");
+    }
     for (const li of $("v2-choices").children) {
       const keys = v.prefixKeys?.[Number(li.getAttribute("data-index"))] ?? [];
       if (!keys.length) continue;
@@ -407,6 +443,77 @@ const RENDERERS = {
 };
 
 /**
+ * The prefix step waiting for a key (decision 21): what was pressed, as the line it would write
+ * and with the key that would list every key under it, or why it cannot be the prefix.
+ * @param {StepView} v
+ */
+function drawRecording(v) {
+  const r = state.recording;
+  if (!r) return;
+  $("v2-choices").hidden = true;
+  $("v2-record").hidden = false;
+  const chord = r.chord;
+  $("v2-record-ask").textContent = !chord
+    ? "Press the key combination you want, such as ctrl+a or alt+w."
+    : r.refused
+      ? "Press another key combination."
+      : "Press enter to save it, or another key combination instead.";
+  $("v2-record-chord").hidden = !chord;
+  $("v2-record-key").textContent = chord ?? "";
+  const rules = v.prefixRules;
+  const lists = chord && !r.refused && rules ? prefixListKeys(chord, rules) : [];
+  $("v2-record-lists").replaceChildren(
+    ...(lists.length
+      ? [...lists.flatMap((k, i) => [...(i ? [" or "] : []), el("kbd", {}, k)]), " lists every key"]
+      : []),
+  );
+  const refused = $("v2-record-refused");
+  refused.hidden = !r.refused;
+  refused.textContent = r.refused ?? "";
+  const lines =
+    chord && !r.refused && rules
+      ? editLines(planPrefix(chord, { "keys.prefix": rules.inForce }))
+      : [];
+  $("v2-writes-row").hidden = !chord;
+  $("v2-writes").replaceChildren(
+    ...(lines.length && lines[0] !== "Writes nothing"
+      ? ["Writes ", el("code", {}, /** @type {string} */ (lines[0]))]
+      : ["Writes nothing"]),
+  );
+  const note = $("v2-choice-note");
+  const said = chord && !r.refused && rules ? prefixNote(chord, rules) : null;
+  note.hidden = !said;
+  note.textContent = said ?? "";
+}
+
+/**
+ * A key pressed while the prefix step waits for one (decision 21): judged in the page by the
+ * rules the host sent, and kept only in this page's memory; only the chord saved with `enter`
+ * reaches the host.
+ * @param {KeyboardEvent} e
+ */
+function onRecordKey(e) {
+  const chord = chordFromEvent(e);
+  // A modifier alone: the combination is not complete yet.
+  if (!chord) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const text = formatKey(chord);
+  if (text === "esc" || text === "enter") {
+    onKey(text);
+    return;
+  }
+  if (busy) return;
+  const rules = view?.prefixRules;
+  state = flowRecord(
+    state,
+    text,
+    rules ? prefixRefusal(text, rules) : "The keys are not known yet.",
+  );
+  draw();
+}
+
+/**
  * The letters of the layout typed on when the hint step's guess moves its cursor off the value
  * in force (hintRow), else null. @param {StepView} v
  */
@@ -425,6 +532,7 @@ function drawStep() {
   $("v2-question").textContent = step.question;
   root.dataset.stepId = step.id;
   $("v2-blocker").hidden = true;
+  $("v2-record").hidden = true;
   $("v2-guess").hidden = true;
   $("v2-choices").hidden = false;
   $("v2-choice-note").hidden = true;
@@ -471,6 +579,9 @@ let drawn = "";
 
 function draw() {
   root.dataset.screen = state.screen;
+  // VimmaHost leaves every key to the page while it waits for one (decision 21).
+  if (state.recording) root.dataset.recording = "true";
+  else delete root.dataset.recording;
   const shown = state.screen === "step" ? (flowStep(state)?.id ?? "") : state.screen;
   // The boxes are the same on every screen: a new one opens at its top (Page layout).
   const key = `${state.chapter} ${shown}`;
@@ -520,6 +631,12 @@ async function loadView(select = true) {
     select = true;
   }
   state = { ...state, blocked: !!v?.blocked };
+  // A key pressed before config.toml was read again is judged by the keymap now in force.
+  const r = state.recording;
+  if (r?.chord && v?.prefixRules) {
+    state = flowRecord(state, r.chord, prefixRefusal(r.chord, v.prefixRules));
+  }
+  if (state.recording && (select || v?.blocked)) state = { ...state, recording: null };
   if (v && step.id !== "content_blocker") {
     const kept = select ? -1 : v.choices.findIndex((c) => c.label === under);
     if (select) guessed = guessFor(v);
@@ -683,8 +800,21 @@ async function runEnter(effect) {
     await settle(flowAdvance(state, ctx, saved));
     return;
   }
-  const r = await SetupHost.saveStep(browser(), effect.step, effect.index, view?.serial);
+  const r = await SetupHost.saveStep(
+    browser(),
+    effect.step,
+    effect.index,
+    view?.serial,
+    ...(effect.chord === undefined ? [] : [effect.chord]),
+  );
+  if ("error" in r && state.recording && effect.chord !== undefined) {
+    // The host judged the chord again and refused it: shown where the page shows its own refusal.
+    state = flowRecord(state, effect.chord, r.error);
+    draw();
+    return;
+  }
   if ("stale" in r) {
+    state = { ...state, recording: null };
     // The list changed since it was drawn: the engine went away (behaviour 20), the file was
     // read again, or the Omarchy theme is gone. Nothing was written; draw the list as it is now.
     await loadView();
@@ -746,6 +876,10 @@ function start() {
   document.addEventListener("keydown", (e) => {
     // Only the user's own keys drive the page (behaviour 29, Security "Trusted input only").
     if (!e.isTrusted) return;
+    if (state.recording) {
+      onRecordKey(e);
+      return;
+    }
     pressed = rememberKey(
       pressed,
       { code: e.code, key: e.key },

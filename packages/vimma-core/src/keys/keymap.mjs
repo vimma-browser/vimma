@@ -640,6 +640,24 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
      */
     bindingsFor: (name) => listBindings(name, (text) => text),
     /**
+     * The first key of every binding not written with `prefix`, in any mode, with the action
+     * it runs (the first found): a chord the prefix cannot also be, since the prefix would take
+     * it from that action (docs/specs/setup-v2.md decision 21). Bindings written with `prefix`
+     * move with it, and an unbound one is no longer the action's.
+     * @returns {Map<string, string>}
+     */
+    keysOutsidePrefix: () => {
+      /** @type {Map<string, string>} */
+      const out = new Map();
+      for (const e of entries) {
+        const first = e.chords[0];
+        if (!first || e.modes.size === 0 || e.labels[0] === "prefix") continue;
+        const key = formatKey(first);
+        if (!out.has(key)) out.set(key, e.action.name);
+      }
+      return out;
+    },
+    /**
      * The keys a user presses for each binding, for help and listings: `prefix+b` shows as
      * `ctrl+b b` with this keymap's prefix and leader (displayBinding). Modal bindings outside
      * normal mode carry their mode: `esc [panel]`.

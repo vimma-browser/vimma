@@ -19,6 +19,10 @@ const { SetupHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/setup/SetupHost.sys.mjs",
 );
 
+const { VimmaHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
+);
+
 const { ConfigHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
 );
@@ -161,10 +165,18 @@ async function removeConfig() {
   );
 }
 
-/** @param {Document} doc @param {...string} keys  EventUtils key names */
+/**
+ * @param {Document} doc
+ * @param {...(string | { ctrlKey?: boolean, altKey?: boolean, shiftKey?: boolean })} keys
+ *   EventUtils key names, each followed by its modifiers when it has any
+ */
 async function press(doc, ...keys) {
-  for (const k of keys) {
-    EventUtils.synthesizeKey(k, {}, found(doc.defaultView));
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    if (typeof k !== "string") continue;
+    // A key followed by its modifiers: `press(doc, "a", { ctrlKey: true })`.
+    const next = keys[i + 1];
+    EventUtils.synthesizeKey(k, typeof next === "object" ? next : {}, found(doc.defaultView));
     await TestUtils.waitForTick();
   }
 }
@@ -1188,6 +1200,21 @@ add_task(async function a_redraw_with_no_ticket_takes_none() {
 /** @param {Document} doc @returns {string} the step's text as the page shows it */
 const stepText = (doc) => found(doc.getElementById("v2-text")).textContent ?? "";
 
+/** @param {Document} doc @returns {string[]} the labels of the step's choices, in list order */
+const rowLabels = (doc) =>
+  [...doc.querySelectorAll("#v2-choices li .name")].map((n) => n.textContent ?? "");
+/** @param {Document} doc @returns {string} the footer's keys */
+const footerKeys = (doc) => found(doc.getElementById("v2-keys")).textContent ?? "";
+/** @param {Document} doc @returns {string} the key the prefix step shows as pressed */
+const recordedKey = (doc) => found(doc.getElementById("v2-record-key")).textContent ?? "";
+/** @param {Document} doc @returns {string} the key that lists every key under it */
+const recordLists = (doc) => found(doc.getElementById("v2-record-lists")).textContent ?? "";
+/** @param {Document} doc @returns {string} why the key pressed cannot be the prefix */
+const refusal = (doc) => {
+  const p = found(doc.getElementById("v2-record-refused"));
+  return p.hidden ? "" : (p.textContent ?? "");
+};
+
 /** @param {Document} doc @returns {string[]} the keys drawn under each prefix, in list order */
 const prefixRows = (doc) =>
   [...doc.querySelectorAll("#v2-choices li")].map(
@@ -1205,35 +1232,111 @@ async function typeOn(doc, keys) {
   }
 }
 
-add_task(async function prefix_step_draws_show_keybinds_with_each_prefix() {
+add_task(async function prefix_step_offers_ctrl_b_and_a_key_of_your_own() {
   const { tab, doc } = await openFlow();
   await press(doc, "4");
   await atStep(doc, "prefix_key");
   Assert.equal(current(doc), "ctrl+b", "the prefix in force first");
-  Assert.deepEqual(prefixRows(doc), ["ctrl+b ? lists every key", "ctrl+a ? lists every key"]);
+  Assert.deepEqual(rowLabels(doc), ["ctrl+b", "Choose your own"]);
+  Assert.deepEqual(prefixRows(doc), ["ctrl+b ? lists every key", ""]);
   Assert.ok(stepText(doc).includes("ctrl+b ? lists them now"), stepText(doc));
   Assert.equal(writes(doc), "Writes nothing");
   await press(doc, "j");
-  Assert.equal(writes(doc), 'Writes [keys] prefix = "ctrl+a"');
+  Assert.equal(writes(doc), "Press enter, then the key combination you want");
+  Assert.ok(footerKeys(doc).includes("enter press your key"), footerKeys(doc));
   await closeFlow(tab);
 });
 
-add_task(async function prefix_step_changes_later_steps_hints() {
+add_task(async function prefix_step_records_a_key_and_esc_goes_back_to_the_list() {
   const { tab, doc } = await openFlow();
   await press(doc, "4");
   await atStep(doc, "prefix_key");
   await press(doc, "j", "KEY_Enter");
-  await atStep(doc, "hint_letters");
-  Assert.ok(
-    (await IOUtils.readUTF8(configFile())).includes('[keys]\nprefix = "ctrl+a"'),
-    "[keys] prefix written at enter",
+  Assert.equal(doc.documentElement.dataset.recording, "true", "waiting for a key");
+  Assert.ok(found(doc.getElementById("v2-choices")).hidden, "the list makes way");
+  Assert.ok(!found(doc.getElementById("v2-record")).hidden);
+  Assert.ok(footerKeys(doc).includes("esc back to the list"), footerKeys(doc));
+  Assert.ok(!footerKeys(doc).includes("enter"), "nothing to save yet");
+  const recent = VimmaHost._lastChords.length;
+  // The prefix in force reaches the page as a key, not as Vimma's prefix.
+  await press(doc, "b", { ctrlKey: true });
+  Assert.equal(recordedKey(doc), "ctrl+b");
+  Assert.deepEqual(found(VimmaHost._state(window)).dispatcher.pending(), [], "no prefix pending");
+  Assert.equal(writes(doc), "Writes nothing", "the prefix in force writes nothing");
+  // tmux's prefix: the line, the key that lists every key, and what Firefox no longer does.
+  await press(doc, "a", { ctrlKey: true });
+  Assert.equal(recordedKey(doc), "ctrl+a");
+  Assert.equal(writes(doc), 'Writes [keys] prefix = "ctrl+a"');
+  Assert.equal(recordLists(doc), "ctrl+a ? lists every key");
+  Assert.ok(choiceNote(doc).includes("select all"), choiceNote(doc));
+  Assert.ok(footerKeys(doc).includes("enter save and go on"), footerKeys(doc));
+  // q, s and h are keys being chosen now: refused, and the page stays.
+  await press(doc, "q");
+  Assert.equal(recordedKey(doc), "q");
+  Assert.ok(refusal(doc).includes("needs ctrl, alt or meta"), refusal(doc));
+  Assert.equal(step(doc), "prefix_key", "q did not leave");
+  Assert.equal(VimmaHost._lastChords.length, recent, "the keys pressed are not kept by Vimma");
+  await press(doc, "KEY_Escape");
+  Assert.ok(!doc.documentElement.dataset.recording, "back to the list");
+  Assert.equal(current(doc), "Choose your own", "on the same row");
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
+  // The prefix is Vimma's again once the page no longer waits.
+  await press(doc, "b", { ctrlKey: true });
+  Assert.deepEqual(found(VimmaHost._state(window)).dispatcher.pending(), ["prefix"]);
+  await press(doc, "KEY_Escape");
+  await closeFlow(tab);
+});
+
+add_task(async function prefix_step_refuses_a_key_the_keymap_uses() {
+  const { tab, doc } = await openFlow();
+  await press(doc, "4");
+  await atStep(doc, "prefix_key");
+  await press(doc, "j", "KEY_Enter");
+  await press(doc, "l", { ctrlKey: true });
+  Assert.equal(recordedKey(doc), "ctrl+l");
+  Assert.ok(refusal(doc).includes("already runs focus_urlbar"), refusal(doc));
+  Assert.equal(
+    found(doc.getElementById("v2-record-ask")).textContent,
+    "Press another key combination.",
   );
-  Assert.ok(found(ConfigHost.keymap).keysFor("show_keybinds").includes("ctrl+a ?"), "applied live");
-  // Back on the prefix step, its text and the value in force follow the new prefix.
+  Assert.equal(writes(doc), "Writes nothing");
+  Assert.ok(!footerKeys(doc).includes("enter save"), footerKeys(doc));
+  await press(doc, "KEY_Enter");
+  Assert.equal(doc.documentElement.dataset.recording, "true", "enter saves no refused key");
+  await press(doc, "KEY_Tab", { altKey: true });
+  Assert.ok(refusal(doc).includes("esc, enter and tab"), refusal(doc));
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
+  await press(doc, "KEY_Escape");
+  await closeFlow(tab);
+});
+
+add_task(async function a_pressed_prefix_writes_one_line_and_later_steps_name_it() {
+  const text = "# mine\nschema = 2\n";
+  await IOUtils.writeUTF8(configFile(), text);
+  await ConfigHost.reload();
+  const { tab, doc } = await openFlow();
+  await press(doc, "4");
+  await atStep(doc, "prefix_key");
+  await press(doc, "j", "KEY_Enter");
+  await press(doc, "w", { altKey: true });
+  Assert.equal(writes(doc), 'Writes [keys] prefix = "alt+w"');
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "hint_letters");
+  const after = await IOUtils.readUTF8(configFile());
+  Assert.ok(after.startsWith(text), after);
+  Assert.deepEqual(
+    after.slice(text.length).split("\n").filter(Boolean),
+    ["[keys]", 'prefix = "alt+w"'],
+    "one key, under its table",
+  );
+  Assert.ok(found(ConfigHost.keymap).keysFor("show_keybinds").includes("alt+w ?"), "applied live");
+  Assert.ok(found(doc.getElementById("v2-last")).textContent.includes('prefix = "alt+w"'));
+  // Back on the prefix step, the prefix just saved is the second row, in force.
   await press(doc, "h");
   await atStep(doc, "prefix_key");
-  Assert.equal(current(doc), "ctrl+a", "the prefix just saved is in force");
-  Assert.ok(stepText(doc).includes("ctrl+a ? lists them now"), stepText(doc));
+  Assert.equal(current(doc), "Your own: alt+w", "the prefix just saved is in force");
+  Assert.deepEqual(prefixRows(doc), ["ctrl+b ? lists every key", "alt+w ? lists every key"]);
+  Assert.ok(stepText(doc).includes("alt+w ? lists them now"), stepText(doc));
   // Every step drawn from now on names its keys with the new prefix.
   /** @type {string[]} */
   const kbds = [];
@@ -1241,9 +1344,42 @@ add_task(async function prefix_step_changes_later_steps_hints() {
     const view = await SetupHost.stepView(tab.linkedBrowser, id);
     for (const part of view?.text ?? []) if (part.tag === "kbd") kbds.push(part.text);
   }
-  Assert.ok(kbds.includes("ctrl+a ?"), kbds.join(", "));
+  Assert.ok(kbds.includes("alt+w ?"), kbds.join(", "));
   Assert.ok(!kbds.some((k) => k.startsWith("ctrl+b ")), `no old prefix: ${kbds.join(", ")}`);
   await closeFlow(tab);
+  await removeConfig();
+});
+
+add_task(async function the_host_judges_the_pressed_prefix_again() {
+  const { tab, doc } = await openFlow();
+  await press(doc, "4");
+  await atStep(doc, "prefix_key");
+  const browser = tab.linkedBrowser;
+  const view = found(await SetupHost.stepView(browser, "prefix_key"));
+  const save = (/** @type {number} */ index, /** @type {string} */ chord) =>
+    SetupHost.saveStep(browser, "prefix_key", index, view.serial, chord);
+  // What the page would refuse, the host refuses too: the page only proposes.
+  for (const chord of ["ctrl+l", "a", "ctrl+enter", "ctrl+t"]) {
+    const r = await save(1, chord);
+    Assert.ok("error" in r, `${chord}: ${JSON.stringify(r)}`);
+  }
+  // Only one chord in Vimma's notation, and only on the row that records one.
+  for (const [index, chord] of /** @type {[number, string][]} */ ([
+    [1, "ctrl+b ctrl+b"],
+    [1, 'ctrl+a"\n[mcp]\nenabled = true'],
+    [1, "ctrl+nope"],
+    [0, "ctrl+a"],
+  ])) {
+    const r = await save(index, chord);
+    Assert.deepEqual(r, { error: "not a key the prefix step takes" }, JSON.stringify(chord));
+  }
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
+  // The chord is written as Vimma writes it.
+  const r = await save(1, "control+a");
+  Assert.deepEqual(r, { written: ['[keys] prefix = "ctrl+a"'] });
+  await closeFlow(tab);
+  await removeConfig();
+  await ConfigHost.reload();
 });
 
 add_task(async function a_custom_prefix_and_hint_letters_offer_keep_and_write_nothing() {
@@ -1254,14 +1390,23 @@ add_task(async function a_custom_prefix_and_hint_letters_offer_keep_and_write_no
   const { tab, doc } = await openFlow();
   await press(doc, "4");
   await atStep(doc, "prefix_key");
-  Assert.equal(current(doc), 'Keep "ctrl+space"', "Keep first and selected");
-  Assert.equal(prefixRows(doc)[0], "ctrl+space ? lists every key", "drawn with the prefix kept");
+  Assert.equal(current(doc), "Your own: ctrl+space", "the second row, selected");
+  Assert.deepEqual(rowLabels(doc), ["ctrl+b", "Your own: ctrl+space"], "no Keep");
+  Assert.equal(prefixRows(doc)[1], "ctrl+space ? lists every key", "drawn with its own key");
   Assert.equal(writes(doc), "Writes nothing");
-  // j and k as typed on Colemak: Keep stays selected for a value the user set.
+  Assert.ok(footerKeys(doc).includes("space press another"), footerKeys(doc));
+  // space waits for another key; esc keeps the one in force.
+  await press(doc, " ");
+  Assert.equal(doc.documentElement.dataset.recording, "true");
+  await press(doc, "KEY_Escape");
+  Assert.equal(current(doc), "Your own: ctrl+space");
+  // k and j as typed on Colemak, back on the second row: Keep stays selected on the next step
+  // for a value the user set.
   await typeOn(doc, [
-    ["j", "KeyY"],
     ["k", "KeyN"],
+    ["j", "KeyY"],
   ]);
+  Assert.equal(current(doc), "Your own: ctrl+space");
   await press(doc, "KEY_Enter");
   await atStep(doc, "hint_letters");
   Assert.equal(current(doc), 'Keep "fjdksla"', "Keep first and selected");
