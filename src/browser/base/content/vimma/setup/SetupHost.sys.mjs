@@ -251,13 +251,13 @@ async function runtime() {
 
 /**
  * The values in force for `text`, the file now (null: missing, the defaults): its own when it
- * loads, else the config in force, which the broken file did not replace.
+ * loads, else the config in force, which the broken file did not replace, else the defaults.
  * @param {string | null} text @param {SetupRuntime} rt
  */
 function inForceFor(text, rt) {
   const parsed = parseConfig(text ?? "", { mac: Services.appinfo.OS === "Darwin" });
   const config = parsed.errors.length ? ConfigHost.config : parsed.config;
-  return config ? inForceOf(config, rt) : {};
+  return inForceOf(config ?? null, rt);
 }
 
 async function readConfigText() {

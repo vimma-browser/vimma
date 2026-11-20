@@ -847,39 +847,49 @@ add_task(async function every_entry_of_an_open_dropdown_menu_gets_a_label() {
 // viewport has its size, as Floating UI does, or the entries sit above the viewport (#605).
 // Pausing the chrome refresh driver holds that layout back, as a busy macOS runner did.
 add_task(async function a_menu_opened_in_a_tab_not_sized_yet_gets_its_labels() {
-  const utils = window.windowUtils;
-  registerCleanupFunction(() => utils.restoreNormalRefresh());
-  utils.advanceTimeAndRefresh(0);
-  const tab = gBrowser.addTab(MENU, {
-    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
-  });
-  gBrowser.selectedTab = tab;
-  const browser = tab.linkedBrowser;
+  // With Firefox's toolbar shown: with it hidden, the default (toolbar-toggle decision 3), the
+  // window is laid out before the new tab's page loads even with the refresh driver paused, so
+  // the page loads with its size and the race this reproduces does not happen.
+  /** @type {MozTabbrowserTab | undefined} */
+  let tab;
   try {
-    await BrowserTestUtils.browserLoaded(browser, false, MENU);
-    const size = await SpecialPowers.spawn(browser, [], () => content.innerHeight);
-    Assert.equal(size, 0, "the page loaded before the parent sized it");
-  } finally {
-    utils.restoreNormalRefresh();
-  }
-  try {
-    await TestUtils.waitForCondition(
-      () => SpecialPowers.spawn(browser, [], () => content.innerHeight > 0),
-      "the page gets its size",
-    );
-    await SpecialPowers.spawn(browser, [], async () => {
-      const menu = /** @type {HTMLElement} */ (content.document.getElementById("menu"));
-      await Promise.all(menu.getAnimations().map((a) => a.finished));
+    await SpecialPowers.pushPrefEnv({ set: [["vimma.ui.toolbar.hidden", false]] });
+    const utils = window.windowUtils;
+    registerCleanupFunction(() => utils.restoreNormalRefresh());
+    utils.advanceTimeAndRefresh(0);
+    tab = gBrowser.addTab(MENU, {
+      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
     });
-    await focusContent(browser);
-    await waitForMode(browser, "normal");
-    const hints = await startHints();
-    const at = await pageCentres(browser, MENU_ENTRIES);
-    for (const id of MENU_ENTRIES) Assert.ok(labelAt(hints, at[id]), `${id} has a label`);
-    Assert.equal(hints.hints.length, MENU_ENTRIES.length, "one label per entry");
+    gBrowser.selectedTab = tab;
+    const browser = tab.linkedBrowser;
+    try {
+      await BrowserTestUtils.browserLoaded(browser, false, MENU);
+      const size = await SpecialPowers.spawn(browser, [], () => content.innerHeight);
+      Assert.equal(size, 0, "the page loaded before the parent sized it");
+    } finally {
+      utils.restoreNormalRefresh();
+    }
+    try {
+      await TestUtils.waitForCondition(
+        () => SpecialPowers.spawn(browser, [], () => content.innerHeight > 0),
+        "the page gets its size",
+      );
+      await SpecialPowers.spawn(browser, [], async () => {
+        const menu = /** @type {HTMLElement} */ (content.document.getElementById("menu"));
+        await Promise.all(menu.getAnimations().map((a) => a.finished));
+      });
+      await focusContent(browser);
+      await waitForMode(browser, "normal");
+      const hints = await startHints();
+      const at = await pageCentres(browser, MENU_ENTRIES);
+      for (const id of MENU_ENTRIES) Assert.ok(labelAt(hints, at[id]), `${id} has a label`);
+      Assert.equal(hints.hints.length, MENU_ENTRIES.length, "one label per entry");
+    } finally {
+      if (VimmaHost._hints(window)) EventUtils.synthesizeKey("KEY_Escape");
+      if (tab) BrowserTestUtils.removeTab(tab);
+    }
   } finally {
-    if (VimmaHost._hints(window)) EventUtils.synthesizeKey("KEY_Escape");
-    BrowserTestUtils.removeTab(tab);
+    await SpecialPowers.popPrefEnv();
   }
 });
 

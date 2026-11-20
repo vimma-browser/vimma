@@ -186,13 +186,17 @@ add_task(async function other_enters_and_paste_and_go_only_fill_the_command_line
     gURLBar.focus();
   }
 
-  // The go button: a click, not an Enter.
+  // The go button: a click, not an Enter. It is in the shown toolbar only: the minimal bar of
+  // the hidden one, the default (toolbar-toggle decisions 3 and 7a), has none to click.
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.ui.toolbar.hidden", false]] });
+  gURLBar.focus();
   await typeInBar(":tabnew");
   EventUtils.synthesizeMouseAtCenter(gURLBar.goButton, {});
   await TestUtils.waitForCondition(cmdlineOpen, "the go button opens the command line");
   Assert.equal(cmdlineText(), "tabnew", "with the line on it");
   Assert.equal(gBrowser.tabs.length, tabs, "and does not run it");
   await closeCmdline();
+  await SpecialPowers.popPrefEnv();
   gURLBar.focus();
 
   // Paste & Go (the address bar's context menu): what it runs after pasting, with no event,

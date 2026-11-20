@@ -11,6 +11,7 @@
 // (decision 13). Recently closed tabs and windows have no page text; their titles and URLs are
 // matched in a worker of this process, as a page's text is in its own.
 
+import { focusOpener } from "../ui/toolbar.mjs";
 import {
   GREP_CAPS,
   closedPreview,
@@ -831,7 +832,7 @@ export class GrepSession {
     this.opener = null;
     if (!keepFrames) {
       if (tabChanged || !opener?.isConnected) gBrowserOf(this.win).selectedBrowser.focus();
-      else /** @type {HTMLElement} */ (opener).focus();
+      else focusOpener(this.win, opener);
     }
     this.host.emit();
   }

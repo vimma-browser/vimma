@@ -184,7 +184,13 @@ const isRemoteBrowserTarget = (target) =>
  *   their key alone (core page-first.mjs)
  * @property {FirefoxKeys | null} firefoxKeys  Firefox's own shortcuts off (key-handling-batch)
  * @property {() => void} onTabSelect
- * @property {() => void} onDialogClose  focus left on nothing by a closed dialog goes to the page
+ * @property {Element | null} focusNow  the element focus last went to in this window
+ * @property {Element | null} focusBefore  the one before it
+ * @property {(e: FocusEvent) => void} onFocusIn  keeps focusNow and focusBefore
+ * @property {Element | null} dialogOpener  what had focus when the last dialog opened
+ * @property {() => void} onDialogOpen  records dialogOpener
+ * @property {() => void} onDialogClose  focus left on nothing by a closed dialog goes back to the
+ *   hidden address bar it was opened from, else to the page
  * @property {ReturnType<typeof createDispatcher>} dispatcher
  * @property {HelpOverlay} help
  * @property {Notice} notice  "<action>: not implemented yet" (m2-tab-keys)
@@ -779,6 +785,8 @@ export const VimmaHost = {
     win.addEventListener("keypress", state.onKeyPressAfter, SYSTEM_GROUP);
     win.addEventListener("TabSelect", state.onTabSelect, true);
     // Bubbles from the dialog's overlay (SubDialog.sys.mjs, close).
+    win.addEventListener("focusin", state.onFocusIn, true);
+    win.addEventListener("dialogopen", state.onDialogOpen, true);
     win.addEventListener("dialogclose", state.onDialogClose, true);
     // After the keys too: Firefox's shortcuts that overlap ours, off (key-handling-batch § 1).
     try {
@@ -906,6 +914,8 @@ export const VimmaHost = {
     win.removeEventListener("keypress", state.onKeyPress, SYSTEM_GROUP_CAPTURE);
     win.removeEventListener("keypress", state.onKeyPressAfter, SYSTEM_GROUP);
     win.removeEventListener("TabSelect", state.onTabSelect, true);
+    win.removeEventListener("focusin", state.onFocusIn, true);
+    win.removeEventListener("dialogopen", state.onDialogOpen, true);
     win.removeEventListener("dialogclose", state.onDialogClose, true);
     state.firefoxKeys?.destroy();
     win.removeEventListener("resize", state.onCancelHints);

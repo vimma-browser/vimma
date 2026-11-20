@@ -127,7 +127,7 @@ none of its choices (behaviour 9).
 |                       | Colours         | the Omarchy theme (only where found); "Vimma light", "Vimma dark", "Vimma, following the system"      | `[theme] appearance`, and `source` or `name` when needed (decision 12)     |
 | 2. Moving in          | Default browser | make Vimma the default browser, or not now                                                            | action: the system's default browser                                       |
 |                       | Bring your data | open the import wizard (Chrome, Chromium, Brave, Edge, Opera, Vivaldi); from Firefox, how to use Sync | action: Firefox's import wizard                                            |
-| 3. The window         | Address bar     | shown, hidden                                                                                         | `[ui] toolbar`                                                             |
+| 3. The window         | Address bar     | shown, hidden (the default)                                                                           | `[ui] toolbar`                                                             |
 |                       | Tab line        | off, always, only with two or more tabs                                                               | `[ui] tabline` (decision 15)                                               |
 | 4. Your keys          | Prefix key      | `ctrl+b`, `ctrl+a`                                                                                    | `[keys] prefix`                                                            |
 |                       | Hint letters    | the home row of QWERTY (`asdfghjkl`), Colemak (`arstdhneio`), Dvorak (`aoeuidhtns`)                   | `[modal] hint_chars`                                                       |
@@ -157,7 +157,9 @@ none of its choices (behaviour 9).
     (`:settings sync`).
 24. **Address bar.** The step names every key bound to `focus_urlbar` and `toggle_toolbar` that
     works from a page (`ctrl+l`, `alt+d`, `I` and `ctrl+b u` with the default keymap), so that
-    the user knows how to reach the address bar once it is hidden.
+    the user knows how to reach the address bar once it is hidden. Hidden is the default
+    (toolbar-toggle decision 3, changed 19 Nov 2026): with no `[ui] toolbar` in config.toml the
+    step opens on **Hidden**, in force and selected, and `enter` on it writes nothing.
 25. **Prefix key.** With each candidate prefix, the step shows the key that opens the list of
     keys (`show_keybinds`, `ctrl+b ?` with `ctrl+b`), drawn with that candidate (decision 8).
 26. **Hint letters.** The layout the user types on is selected first (decision 10).
@@ -215,7 +217,7 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
 - **Keys and values in `defaults.toml`** (`packages/vimma-core/defaults.toml`): prefix
   `ctrl+b`, `toggle_toolbar = ["prefix+u"]`, `focus_urlbar = ["ctrl+l", "alt+d"]` plus `I` in
   `[modal.normal]`, hint characters `asdfghjkl`, theme
-  `source = "omarchy"` and `name = "vimma"` with `appearance` left out, `toolbar = "shown"`,
+  `source = "omarchy"` and `name = "vimma"` with `appearance` left out, `toolbar = "hidden"` (`"shown"` before 19 Nov 2026),
   update `check = true`, and `[mcp] enabled` left out.
 - **File versus command.** `[theme] appearance` and `[mcp] enabled` set in the file win over
   `:theme` and `:mcp on|off`, which then change nothing and say so (`docs/guide.md`, "Colours
