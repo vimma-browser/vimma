@@ -1304,8 +1304,9 @@ add_task(async function waiting_for_a_key_holds_only_on_the_setup_tab() {
   EventUtils.synthesizeKey("KEY_Escape", {}, window);
   await TestUtils.waitForTick();
   Assert.equal(recordedKey(doc), "", "nothing reached the setup page");
+  // Closing it selects the setup tab again (its opener).
   BrowserTestUtils.removeTab(other);
-  await BrowserTestUtils.switchTab(gBrowser, tab);
+  if (gBrowser.selectedTab !== tab) await BrowserTestUtils.switchTab(gBrowser, tab);
   await press(doc, "KEY_Escape");
   Assert.ok(!doc.documentElement.dataset.recording, "back to the list");
   await closeFlow(tab);
