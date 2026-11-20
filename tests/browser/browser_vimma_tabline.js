@@ -229,6 +229,27 @@ add_task(async function auto_needs_two_tabs() {
   await SpecialPowers.popPrefEnv();
 });
 
+// Decision 3 (changed 20 Nov 2026, #1403): with no config.toml and no pref set, the line is
+// "auto": a fresh profile draws it with two tabs and not with one.
+add_task(async function the_default_is_auto() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["vimma.config.path", PathUtils.join(dir, "missing.toml")]],
+  });
+  await ConfigHost.reload();
+  Assert.equal(ConfigHost.config?.ui.tabline, "auto", "no config.toml: [ui] tabline is auto");
+  Services.prefs.clearUserPref(PREF);
+  closeOthers();
+  await until(() => panelRows().length === 1, "one tab");
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  Assert.ok(!drawn(), "a fresh profile with one tab: not drawn");
+  const tab = await openPage("second");
+  await until(drawn, "a fresh profile with two tabs: drawn");
+  BrowserTestUtils.removeTab(tab);
+  await until(() => !drawn(), "back to one tab: hidden again");
+  await SpecialPowers.popPrefEnv();
+  await ConfigHost.reload();
+});
+
 add_task(async function config_reload_applies() {
   await SpecialPowers.pushPrefEnv({
     set: [
@@ -258,7 +279,7 @@ add_task(async function config_reload_applies() {
   await IOUtils.remove(configFile);
   await SpecialPowers.popPrefEnv();
   await ConfigHost.reload();
-  await until(() => ConfigHost.config?.ui.tabline === "off", "no config: the defaults");
+  await until(() => ConfigHost.config?.ui.tabline === "auto", "no config: the defaults");
   closeOthers();
 });
 

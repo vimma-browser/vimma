@@ -646,13 +646,13 @@ describe("[ui] toolbar", () => {
       toolbar: "hidden",
       bookmarksToolbar: null,
       pdfOutline: "shown",
-      tabline: "off",
+      tabline: "auto",
       tablineWidth: 14,
     });
     expect(DEFAULT_CONFIG.ui).toEqual({
       toolbar: "hidden",
       pdf_outline: "shown",
-      tabline: "off",
+      tabline: "auto",
       tabline_width: 14,
     });
     expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n)*toolbar = "hidden"$/m);
@@ -728,7 +728,7 @@ describe("[ui] bookmarks_toolbar", () => {
       toolbar: "hidden",
       bookmarksToolbar: v,
       pdfOutline: "shown",
-      tabline: "off",
+      tabline: "auto",
       tablineWidth: 14,
     });
   });
@@ -962,13 +962,14 @@ describe("[mcp]", () => {
 
 // docs/specs/tab-line.md decisions 3, 4 and 16: [ui] tabline, [ui] tabline_width, [statusbar] tab.
 describe("[ui] tabline", () => {
-  test('defaults: tabline "off", 14 columns a name, the status bar keeps its tab', () => {
+  // tab-line decision 3 (changed 20 Nov 2026, #1403): "auto" by default.
+  test('defaults: tabline "auto", 14 columns a name, the status bar keeps its tab', () => {
     const c = ok(cfg());
-    expect(c.ui.tabline).toBe("off");
+    expect(c.ui.tabline).toBe("auto");
     expect(c.ui.tablineWidth).toBe(14);
     expect(c.statusbar).toEqual({ tab: true });
-    expect(DEFAULT_CONFIG.ui).toMatchObject({ tabline: "off", tabline_width: 14 });
-    expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n|\w+ = .*\n)*tabline = "off"$/m);
+    expect(DEFAULT_CONFIG.ui).toMatchObject({ tabline: "auto", tabline_width: 14 });
+    expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n|\w+ = .*\n)*tabline = "auto"$/m);
     expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n|\w+ = .*\n)*tabline_width = 14$/m);
     expect(formatDefaultsToml()).toMatch(/^\[statusbar\]\n(#.*\n)*tab = true$/m);
   });
