@@ -1,13 +1,12 @@
 # Spec: tab-sleep
 
-Status: draft · Area: core (`packages/vimma-core/src/workspaces/tabsleep.mjs` (new),
+Status: accepted · Area: core (`packages/vimma-core/src/workspaces/tabsleep.mjs` (new),
 `packages/vimma-core/src/config/config.mjs`, `packages/vimma-core/defaults.toml`,
 `packages/vimma-core/src/keys/actions.mjs`, `packages/vimma-core/src/keys/cmdline.mjs`,
 `packages/vimma-core/src/ui/tabline.mjs`, `packages/vimma-core/src/ui/sidepanel.mjs`), chrome
 (`services/TabSleep.sys.mjs` (new), `split/PaneView.mjs`, `ctl/VimmaControl.sys.mjs`,
 `config/ConfigHost.sys.mjs`), theme (`src/browser/themes/shared/vimma/tabline.css`,
-`side-panel.css`), prefs (`src/browser/branding/vimma/pref/firefox-branding.js`) · Upstream
-patches: none · ADR: none
+`side-panel.css`) · Upstream patches: none · ADR: none
 
 Issue: [#1404](https://github.com/vimma-browser/vimma/issues/1404)
 
@@ -18,7 +17,8 @@ in its workspace, the tab line and the side panel with its title, and selecting 
 again where it was. The time is `[tabs] sleep_after` in `config.toml`, a site can be kept awake
 with `[sites."<host>"] sleep = false`, and `:sleep` puts tabs to sleep at once. Tabs on screen,
 tabs playing sound or sharing a camera, microphone or screen, pinned tabs, private tabs and the
-agent workspace's tabs while an agent is connected never sleep on their own.
+agent workspace's tabs while an agent is connected never sleep on their own. Firefox's
+low-memory unloader is turned on for Linux too, within the same protections.
 
 ## Problem
 
@@ -94,7 +94,7 @@ it was last selected, or at the last check that found it on screen, whichever is
     `Tab 2 is on screen` and does nothing.
 12. The action `tab.sleep` (config name `sleep_tabs`) runs `:sleep` and has no default key. In
     the side panel, `panel.sleep` puts the highlighted tab, or the marked tabs, to sleep as
-    `:sleep N` does for each (default key: Open questions, 3).
+    `:sleep N` does for each; its default key is `z`.
 13. In a private window, `:sleep` says `Private tabs do not sleep` and does nothing.
 
 ### Showing it
@@ -110,9 +110,13 @@ it was last selected, or at the last check that found it on screen, whichever is
 
 ### Firefox's low-memory unloading
 
-16. Low-memory unloading is decided in Open questions, 2. If it is turned on, Firefox's unloader
-    **must not** unload a tab that behaviour 2 keeps awake for being on screen or in the agent
-    workspace while an agent is connected.
+16. On Linux, Firefox's low-memory unloader is on: when the machine is nearly out of memory
+    (Research), it unloads the least recently used tab, one per signal. It **must not** unload a
+    tab that behaviour 2 keeps awake for being on screen or in the agent workspace while an
+    agent is connected.
+17. `[tabs] sleep_on_low_memory = false` turns the low-memory unloader off; the default is
+    `true`. It applies at the next config read, like `sleep_after`, and is independent of it:
+    `sleep_after = 0` with the default still unloads tabs when memory runs out.
 
 ## Research
 
@@ -258,7 +262,10 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
    `webrtcUI.browserHasStreams`, `hasActivePeerConnections`) instead of importing Firefox's
    method table, which the module does not export. Pinned tabs never sleep on their own,
    because a pinned tab is a page kept open on purpose, usually mail or chat that should keep
-   notifying (Open questions, 4).
+   notifying; `:sleep N` can still put one to sleep (decision 14). Rejected: sleeping them
+   like other tabs with `sleep = false` per site for the ones that must stay, because pinning is
+   already the user's way of saying "keep this", and a second rule for the same wish is one
+   more thing to set.
 7. **Private tabs never sleep.** The private workspace follows Firefox's unloader, which never
    unloads a private tab (`TabUnloader.sys.mjs:39`), so that a private page is never reloaded
    behind the user's back, and because the private workspace is meant to be short-lived.
@@ -306,9 +313,11 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     The name follows the issue's wording and Vimma's "asleep"; Vim's `:sleep` (wait N seconds)
     has no use in a browser. Rejected: `:unload` and `:discard`, because the guide calls the
     state "asleep" and one word should name it.
-15. **No default key in normal mode.** `tab.sleep` has a config name and no key, because putting
-    tabs to sleep by hand is occasional and every free prefix key is worth more elsewhere; the
-    side panel, where the user already picks tabs, gets one (Open questions, 3).
+15. **No default key in normal mode; `z` in the side panel.** `tab.sleep` has a config name and
+    no key, because putting tabs to sleep by hand is occasional and every free prefix key is
+    worth more elsewhere. `panel.sleep` gets `z` in `[modal.panel]`, because the side panel is
+    where several tabs are marked at once, `z` is free there, and it reads as "zzz". Rejected:
+    no panel key, because marking tabs and then typing `:sleep N` for each defeats the marks.
 16. **Asleep means "no loaded page", whoever unloaded it.** The tab line, the side panel and
     `vimma-ctl state` show every lazy tab as asleep, whether a restart, Vimma or Firefox's
     unloader left it so, because for the user they are the same: no memory used, a reload on
@@ -332,6 +341,24 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     requests and `main` must stay releasable (`CONTRIBUTING.md`, "Unfinished features"). The
     tests set it, and set `vimma.tabs.sleepCheckMs` (default 300000) to run checks in
     milliseconds; the host also exposes `TabSleep._check(now)` so a test can move the clock.
+21. **Firefox's low-memory unloader is on, and respects Vimma's rules.** Vimma sets
+    `browser.tabs.unloadOnLowMemory` from `[tabs] sleep_on_low_memory` (default `true`) in
+    `TabSleep`, because the time limit protects against slow growth while only the low-memory
+    signal protects a machine about to swap, and Linux already has the detection (Research).
+    `TabUnloader` reads the pref at each signal (`TabUnloader.sys.mjs:184`), so a config change
+    applies without a restart. Since the unloader knows nothing of panes or agents, `TabSleep`
+    keeps the `undiscardable` attribute (`content/tab.mjs:315-325`), which the unloader honours
+    (lines 53-59), on every pane of each window's current split and, while an agent is
+    connected, on the agent workspace's tabs, updated at each check and when the split shown or
+    the agent connections change; otherwise it would unload a pane that PaneView reloads at once,
+    or an agent's tab under its id. Its other rules (sound, Picture-in-Picture, WebRTC, private)
+    already match decision 6. Rejected: leaving it off as Firefox does on Linux, because no
+    reason for that default was found and a sleep limit counted in hours cannot help a sudden
+    spike; setting it in `firefox-branding.js`, because the config key could then not turn it
+    off.
+22. **The default time is 120 minutes.** Decision 11's value, kept after weighing 60 and 240,
+    because 60 reloads tabs a user returns to after a long meeting, and 240 leaves most of a
+    working day's tabs loaded.
 
 ## Security and privacy
 
@@ -367,6 +394,7 @@ vitest, `packages/vimma-core/test/tabsleep.test.ts` (`planSleep`):
 vitest, `packages/vimma-core/test/config.test.ts`:
 
 - `[tabs] sleep_after accepts 0 and 5 to 10080, and rejects other numbers and types`
+- `[tabs] sleep_on_low_memory accepts a boolean and rejects other types`
 - `[sites."<host>"] sleep accepts a boolean and rejects other types`
 - `defaults.toml sets [tabs] sleep_after = 120`
 
@@ -417,22 +445,24 @@ e2e, `tests/e2e/scenarios/issue-1404-tab-sleep.json`: the tab line (`[ui] tablin
 and the side panel with one sleeping and two loaded tabs, in the Vimma theme and an Omarchy
 theme; baselines in `tests/e2e/baselines/`.
 
-If low-memory unloading is turned on (Open questions, 2), mochitest
-`browser_vimma_low_memory.js` uses `nsIAvailableMemoryWatcherTestingLinux`
+mochitest, `tests/browser/browser_vimma_low_memory.js` uses `nsIAvailableMemoryWatcherTestingLinux`
 (`xpcom/base/nsIAvailableMemoryWatcherTestingLinux.idl`) to signal low memory and checks that a
-pane on screen and a connected agent's tab are not unloaded.
+pane on screen and a connected agent's tab are not unloaded, that another tab is, and that
+`[tabs] sleep_on_low_memory = false` sets `browser.tabs.unloadOnLowMemory` to false.
 
 ## Docs and changelog
 
 The implementing pull requests add:
 
 - `docs/guide.md`: a "Sleeping tabs" section under the tabs chapter (what sleeps, what never
-  does, what is kept and lost, `[tabs] sleep_after`, `sleep = false` per site, `:sleep` and its
+  does, what is kept and lost, `[tabs] sleep_after`, `sleep_on_low_memory`, `sleep = false` per site, `:sleep` and its
   forms, the muted rows); `:sleep` in the command table; `sleep` in the `[sites]` key list; the
   `asleep` field in the `vimma-ctl state` section.
-- `packages/vimma-core/defaults.toml`: a commented `[tabs]` table with `sleep_after = 120`, and
+- `packages/vimma-core/defaults.toml`: a commented `[tabs]` table with `sleep_after = 120` and
+  `sleep_on_low_memory = true`, and
   `sleep = false` in the commented `[sites]` example.
-- `docs/bindings.md` and `docs/bindings.json` (generated): `sleep_tabs` and `panel.sleep`.
+- `docs/bindings.md` and `docs/bindings.json` (generated): `sleep_tabs`, and `z` for
+  `panel.sleep`.
 - [vimma-mcp](vimma-mcp.md) B2 and [m3-workspaces](m3-workspaces.md) "Memory": a "Since changed"
   note pointing here.
 - Changelog, from the last slice's commit subject: "feat(tabs): put tabs to sleep after two hours
@@ -440,37 +470,27 @@ The implementing pull requests add:
 
 ## Delivery
 
-Slices 1 to 3 merge when green and verified, behind `vimma.feature.tabSleep`. Slice 4 turns the
-feature on for every user and stops at ready for the maintainer, with notes on how to try it.
+Slices 1, 3 and 5 merge when green and verified, behind `vimma.feature.tabSleep`. Slice 2 stops
+at ready for the maintainer, because it adds a default key, and slice 4 does too, because it
+turns the feature on for every user; both with notes on how to try them. Slice 5 merges before
+slice 4.
 
 1. **Core rules and the check.** `planSleep`, `[tabs] sleep_after` and `[sites] sleep` in the
    config validator and `defaults.toml` (commented), `services/TabSleep.sys.mjs` with the
    interval, the last-seen map and the protections, the PaneView rename (decision 19), the test
    prefs and `browser_vimma_tab_sleep.js` and `browser_vimma_agent_tab_sleep.js`.
-2. **By hand.** `:sleep` and its forms, `tab.sleep`, `panel.sleep` and its key if one is chosen,
+2. **By hand.** `:sleep` and its forms, `tab.sleep`, `panel.sleep` on `z`,
    the messages, `browser_vimma_tab_sleep_command.js`.
 3. **Showing it.** The muted rows in the tab line and the side panel with their accessible
    description, `state.tabs[].asleep` with its contract fixture, the e2e scenario and baselines.
 4. **Turn it on.** Remove `vimma.feature.tabSleep`, uncomment `[tabs] sleep_after = 120` in
    `defaults.toml`, the guide section, the "Since changed" notes, status `implemented`.
-5. **Low-memory unloading**, only if Open questions, 2 says yes: `browser.tabs.unloadOnLowMemory`
-   in `firefox-branding.js` on Linux, `undiscardable` kept on the tabs decision 5 and 8 protect,
-   its mochitest. It can merge before or after slice 4.
+5. **Low-memory unloading.** `[tabs] sleep_on_low_memory` in the config validator and
+   `defaults.toml`, `TabSleep` setting `browser.tabs.unloadOnLowMemory` from it and keeping
+   `undiscardable` on the tabs decisions 5 and 8 protect (decision 21),
+   `browser_vimma_low_memory.js`.
 
 ## Open questions
 
-1. **Default time.** Options: 60, 120 or 240 minutes. A shorter time frees more memory and
-   reloads more tabs the user comes back to. Recommendation: 120, generous enough that a tab
-   left for a meeting is still loaded afterwards.
-2. **Firefox's low-memory unloading on Linux.** Options: leave it off, as Firefox does; or turn
-   it on (slice 5), with Vimma setting `undiscardable` on panes on screen and on the agent
-   workspace's tabs while an agent is connected, and a `[tabs] sleep_on_low_memory = true` key
-   to turn it off. It unloads one tab per signal when under 5 % or 200 MB of memory is
-   available, which helps a machine about to swap, but it is a second unloader to keep in step
-   with the rules here. Recommendation: turn it on, in slice 5.
-3. **A key in the side panel.** Options: none (`:sleep N` only); `z` for `panel.sleep`, free in
-   `[modal.panel]`. Recommendation: `z`, because the side panel is where several tabs are marked
-   at once.
-4. **Pinned tabs.** Options: never sleep on their own (decision 6); or sleep like other tabs,
-   with `sleep = false` per site for the ones that must stay. Recommendation: never, because a
-   pinned tab is the user's way of saying "keep this".
+None. Decisions 6 (pinned tabs), 15 (the side panel's `z`), 21 (low-memory unloading on) and 22
+(120 minutes) record the answers to the four questions asked on #1404.
