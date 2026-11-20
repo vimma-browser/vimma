@@ -272,7 +272,7 @@ describe("the value in force at enter (decision 4)", () => {
       "theme.name": "vimma",
       "theme.appearance": "dark",
       "ui.toolbar": "hidden",
-      "ui.tabline": "off",
+      "ui.tabline": "auto",
     });
     const set = inForce(
       'schema = 2\n[search]\ndefault = "Bing"\n[theme]\nappearance = "light"\n' +
@@ -740,8 +740,30 @@ describe("the window chapter (behaviours 9, 17 and 24, Page layout)", () => {
     // Without a [ui] table: the built-in defaults.
     expect(windowSketch(bar, r.choices[1]!, inForce("schema = 2\n"))).toEqual({
       toolbar: "hidden",
-      tabline: "off",
+      tabline: "auto",
     });
+  });
+
+  // tab-line decision 3 (changed 20 Nov 2026, #1403): "auto" by default.
+  test("the tab line step opens on the tab line in force: auto by default, else the file's", () => {
+    const tabs = step("tab_line");
+    for (const fresh of [inForce(""), inForceOf(null)]) {
+      const first = stepChoices(tabs, fresh);
+      expect(first.choices.map((c) => c.label)).toEqual([
+        "Off",
+        "Always",
+        "Only with two or more tabs",
+      ]);
+      expect(first.selected).toBe(2);
+      expect(planAtEnter(tabs, first.choices[2]!, fresh)).toEqual([]);
+    }
+    const off = inForce('[ui]\ntabline = "off"\n');
+    const r = stepChoices(tabs, off);
+    expect(r.selected).toBe(0);
+    expect(planAtEnter(tabs, r.choices[0]!, off)).toEqual([]);
+    expect(planAtEnter(tabs, r.choices[2]!, off)).toEqual([
+      { table: "ui", key: "tabline", value: "auto" },
+    ]);
   });
 
   test("the tab line step draws its choices over the same window", () => {

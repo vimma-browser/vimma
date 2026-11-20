@@ -447,9 +447,9 @@ toolbar = "hidden"
 # Vimma's outline beside a PDF that has one (Tab focuses it): "shown" when a PDF opens, or
 # "hidden" until you press Tab.
 pdf_outline = "shown"
-# A row at the top of the window listing this workspace's tabs: "off", "always", or
-# "auto" (only with 2 or more tabs). :tabline shows or hides it until restart.
-tabline = "off"
+# A row at the top of the window listing this workspace's tabs: "auto" (only with 2 or
+# more tabs), "always" or "off". :tabline shows or hides it until restart.
+tabline = "auto"
 # The columns of each tab's name in the tab line, 4 to 60.
 tabline_width = 14
 

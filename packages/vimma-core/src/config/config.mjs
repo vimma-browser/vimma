@@ -1277,7 +1277,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
       toolbar: user.ui?.toolbar ?? "hidden",
       bookmarksToolbar: user.ui?.bookmarks_toolbar ?? null,
       pdfOutline: user.ui?.pdf_outline ?? "shown",
-      tabline: user.ui?.tabline ?? "off",
+      tabline: user.ui?.tabline ?? "auto",
       tablineWidth: user.ui?.tabline_width ?? TABLINE_WIDTH.default,
     },
     statusbar: { tab: user.statusbar?.tab ?? true },

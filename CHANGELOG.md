@@ -13,6 +13,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 ### Changed
 
 - **ui:** Firefox's toolbar is hidden by default, in existing profiles too, and the Bookmarks Toolbar with it: the page reaches the top of the window and the status bar names the site and says `not secure` for a page without TLS. `ctrl+l` still opens the address bar and `ctrl+b u` shows the toolbar until restart; `[ui] toolbar = "shown"` in config.toml keeps the old look (#1387)
+- **ui:** the tab line is on by default, in existing profiles too: a workspace with two or more tabs shows them in a row at the top of the window, with their numbers for `gb`, `alt+4` or `4gt`, and a window with one tab has no line. `:tabline` hides it until restart; `[ui] tabline = "off"` in config.toml keeps the old look (#1403)
 
 ## [0.1.21](https://github.com/vimma-browser/vimma/compare/v0.1.20...v0.1.21) · Firefox 160.0 (2026-11-17)
 

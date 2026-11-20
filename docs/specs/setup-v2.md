@@ -133,7 +133,7 @@ none of its choices (behaviour 9).
 | 2. Moving in          | Default browser | make Vimma the default browser, or not now                                                            | action: the system's default browser                                       |
 |                       | Bring your data | open the import wizard (Chrome, Chromium, Brave, Edge, Opera, Vivaldi); from Firefox, how to use Sync | action: Firefox's import wizard                                            |
 | 3. The window         | Address bar     | shown, hidden (the default)                                                                           | `[ui] toolbar`                                                             |
-|                       | Tab line        | off, always, only with two or more tabs                                                               | `[ui] tabline` (decision 15)                                               |
+|                       | Tab line        | off, always, only with two or more tabs (the default)                                                 | `[ui] tabline` (decision 15)                                               |
 | 4. Your keys          | Prefix key      | `ctrl+b`, `ctrl+a`                                                                                    | `[keys] prefix`                                                            |
 |                       | Hint letters    | the home row of QWERTY (`asdfghjkl`), Colemak (`arstdhneio`), Dvorak (`aoeuidhtns`)                   | `[modal] hint_chars`                                                       |
 | 5. Privacy and agents | Updates         | tell me when a release is out, or never check                                                         | `[updates] check`                                                          |
@@ -164,7 +164,10 @@ none of its choices (behaviour 9).
     works from a page (`ctrl+l`, `alt+d`, `I` and `ctrl+b u` with the default keymap), so that
     the user knows how to reach the address bar once it is hidden. Hidden is the default
     (toolbar-toggle decision 3, changed 19 Nov 2026): with no `[ui] toolbar` in config.toml the
-    step opens on **Hidden**, in force and selected, and `enter` on it writes nothing.
+    step opens on **Hidden**, in force and selected, and `enter` on it writes nothing. The tab
+    line step works the same way: "only with two or more tabs" (`"auto"`) is the default
+    (tab-line decision 3, changed 20 Nov 2026), so with no `[ui] tabline` in config.toml the
+    step opens on it, in force and selected, and `enter` on it writes nothing.
 25. **Prefix key.** With each candidate prefix, the step shows the key that opens the list of
     keys (`show_keybinds`, `ctrl+b ?` with `ctrl+b`), drawn with that candidate (decision 8).
 26. **Hint letters.** The layout the user types on is selected first (decision 10).
@@ -223,7 +226,7 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
   `ctrl+b`, `toggle_toolbar = ["prefix+u"]`, `focus_urlbar = ["ctrl+l", "alt+d"]` plus `I` in
   `[modal.normal]`, hint characters `asdfghjkl`, theme
   `source = "omarchy"` and `name = "vimma"` with `appearance` left out, `toolbar = "hidden"` (`"shown"` before 19 Nov 2026),
-  update `check = true`, and `[mcp] enabled` left out.
+  `tabline = "auto"` (`"off"` before 20 Nov 2026), update `check = true`, and `[mcp] enabled` left out.
 - **File versus command.** `[theme] appearance` and `[mcp] enabled` set in the file win over
   `:theme` and `:mcp on|off`, which then change nothing and say so (`docs/guide.md`, "Colours
   and themes" and the `:mcp` table). `:mcp on` asks `y/N` before it turns agents on.
@@ -253,7 +256,8 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
 - **Private windows** do not save `:siteunbind` keys (spec
   [site-unbind-command](site-unbind-command.md), decision 12), because a private window leaves
   no trace on disk.
-- **The tab line** (`[ui] tabline = "off" | "always" | "auto"`, default `"off"`) is on `main`
+- **The tab line** (`[ui] tabline = "off" | "always" | "auto"`, default `"auto"`, `"off"` before
+  20 Nov 2026) is on `main`
   since [#1314](https://github.com/vimma-browser/vimma/pull/1314)
   ([#1289](https://github.com/vimma-browser/vimma/issues/1289)).
 
