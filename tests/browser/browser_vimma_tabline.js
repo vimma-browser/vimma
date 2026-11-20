@@ -208,6 +208,19 @@ add_task(async function line_sits_above_the_address_bar() {
     1,
     "the page starts right under it",
   );
+  // Behaviour 3: the address bar revealed by focus (ctrl+l, I) shows under the line, not over it.
+  gURLBar.focus();
+  await until(() => navBar.checkVisibility({ visibilityProperty: true }), "focus reveals it");
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  Assert.ok(drawn(), "the line stays drawn");
+  Assert.equal(rect(line()).top, top, "the line stays where it was");
+  Assert.lessOrEqual(
+    Math.abs(rect(navBar).top - rect(line()).bottom),
+    0.5,
+    "the revealed address bar starts right under the line",
+  );
+  await focusPage();
+  await until(() => !navBar.checkVisibility({ visibilityProperty: true }), "hidden again");
   Services.prefs.setBoolPref(TOOLBAR_PREF, false);
   await until(() => navBar.checkVisibility({ visibilityProperty: true }), "shown again");
   Assert.equal(rect(line()).top, top, "and the line never moved");

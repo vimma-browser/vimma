@@ -1,6 +1,6 @@
 {
   "name": "m3-crash-restore",
-  "description": "M3 gate 2 after a crash, not a quit: three workspaces, a split in one and a long page scrolled to the bottom in another; once SessionStore's recovery file has settled (save interval 500 ms here, 15 s by default) the browser is SIGKILLed (no quit observers, no final save), and a start on the same profile brings back the workspaces in order, the active one, each one's tabs, the split and the scroll position. Crash recovery is the build's default (resume_from_crash on); Vimma's browser.startup.page = 3 would restore the session even without it. With both off it fails at the first check after the start.",
+  "description": "M3 gate 2 after a crash, not a quit: three workspaces, a split in one and a long page scrolled to the bottom in another; once SessionStore's recovery file has settled (save interval 500 ms here, 15 s by default) the browser is SIGKILLed (no quit observers, no final save), and a start on the same profile brings back the workspaces in order, the active one, each one's tabs, the split and the scroll position. Crash recovery is the build's default (resume_from_crash on); Vimma's browser.startup.page = 3 would restore the session even without it. With both off it fails at the first check after the start. Back in main, G scrolls the long page to its bottom again before the kill: the personal workspace has one tab, so it draws no tab line (docs/specs/tab-line.md decision 3, \"auto\" by default since 20 Nov 2026), and the page, a row taller there, is a row short of its bottom when the line comes back.",
   "timeoutSeconds": 120,
   "prefs": {
     "browser.startup.page": null,
@@ -44,6 +44,7 @@
     { "keys": "p e r s o n a l enter" },
     { "wait-for-state": { "workspace": "personal", "tabs": [{ "selected": true }] } },
     { "keys": "ctrl+b )" },
+    { "keys": "shift+g" },
     {
       "wait-for-state": {
         "workspace": "main",

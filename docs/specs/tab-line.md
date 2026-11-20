@@ -393,7 +393,11 @@ mochitest (`tests/browser/browser_vimma_tabline.js`):
 - `off_draws_nothing`, `always_draws_the_workspace_tabs`: entries, numbers and order match the
   side panel's rows.
 - `line_sits_above_the_address_bar`: with the toolbar shown the line's bottom is the nav bar's
-  top; after `ctrl+b u` the line keeps its top and the page starts at its bottom.
+  top; after `ctrl+b u` the line keeps its top and the page starts at its bottom, and the
+  address bar revealed by focus starts at the line's bottom (behaviour 3): the hidden toolbar's
+  bar is out of the toolbox's flex flow, so `toolbar.css` anchors its top to the line, added
+  with the `"auto"` default (#1403), which made a drawn line under a hidden toolbar the usual
+  window.
 - `auto_needs_two_tabs`: one tab hidden, a second tab shows it, closing it hides it.
 - `the_default_is_auto`: with no config.toml and no pref set, one tab draws no line and two
   tabs draw it (decision 3, changed 20 Nov 2026).
