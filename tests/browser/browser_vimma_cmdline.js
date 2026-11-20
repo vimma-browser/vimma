@@ -319,6 +319,15 @@ add_task(async function tab_completes_and_cycles() {
   closeTabs(tabs);
 });
 
+add_task(async function setup_is_listed_once() {
+  // #1414: the :setup command and the setup action run the same thing, so one row.
+  typeCommand("setup");
+  const rows = options().filter((o) => o.dataset.value === "setup");
+  Assert.equal(rows.length, 1, "setup shows once in the list");
+  EventUtils.synthesizeKey("KEY_Escape");
+  Assert.ok(!isOpen(), "Esc closes it");
+});
+
 add_task(async function up_recalls_the_previous_command() {
   const tabs = await openTabs(1);
   runCommand("scroll_top");
