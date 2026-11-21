@@ -11,9 +11,10 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.ts";
+import { haveTool, missingRequired } from "./have-tool.ts";
 
 const SCRIPT = fileURLToPath(new URL("../check-signed-packages.sh", import.meta.url));
-const has = (cmd: string) => spawnSync("sh", ["-c", `command -v ${cmd}`]).status === 0;
+const has = haveTool;
 
 const TAG = "v0.3.1";
 const RPM = "vimma-0.3.1-1.x86_64.rpm";
@@ -137,6 +138,11 @@ function release(dir: string, signer: ReturnType<typeof key>) {
   );
   return { dist, unsigned, signed };
 }
+
+// pkgbuild.yml's repos job installs these and names them, so the real-rpm case runs there.
+it("has every tool VIMMA_REQUIRE_TOOLS names", () => {
+  expect(missingRequired(["gpg", "gpgv", "rpm", "rpmbuild", "rpmsign"])).toEqual([]);
+});
 
 // Linux only: release.yml runs the script on ubuntu-24.04, and it uses GNU find and sha256sum.
 describe.skipIf(process.platform !== "linux" || !has("gpg") || !has("gpgv"))(
