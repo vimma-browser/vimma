@@ -36,6 +36,17 @@
 #             openssl and writes it in. The caller then checks the result with Mozilla's signmar
 #             and the committed certificates before it lists the MAR in SHA256SUMS.
 #
+# The release's packages (spec package-repositories, decisions 3, 5, 9 and 10): release.yml calls
+# this workflow (workflow_call, `packages: true`) while PACKAGE_REPOS_ENABLED is `true`.
+#
+#   package-sign  environment package-signing, id-token: write and nothing else; runs only the
+#                 signer, tools/package/openpgp-kms.ts, from main, and the system's rpmsign,
+#                 rpmkeys and gpgv: checks that the files are release.yml's .rpm and pacman
+#                 package for the caller's tag, signs the .rpm (rpmsign through the signer) and
+#                 the pacman package (a detached signature) with the Cloud KMS package key,
+#                 checks both against the committed certificate, and writes SHA256SUMS again.
+#                 The caller checks the result with no secret before it lists anything.
+#
 # The nightly channel's manifest (spec m6a-updater, decisions 42 and 43): nightly.yml calls this
 # workflow again with the build ID once the rolling `nightly` pre-release has the build's files,
 # and on a scheduled day when main did not change, with the build the release already has, which
@@ -100,6 +111,11 @@ on:
         required: false
         type: string
         default: ""
+      packages:
+        description: "release.yml: sign the .rpm and the pacman package in the run's packages-unsigned artifact"
+        required: false
+        type: boolean
+        default: false
     # A called job reads an environment secret only when the caller passes it by name, though it
     # exists only in the environment; nightly-publish, the one job of a call in update-publish,
     # then gets its value. nightly.yml's manifest call passes it; the mar-sign calls pass nothing.
@@ -118,7 +134,7 @@ permissions: {}
 # caller's (workflow_dispatch), and a release must never wait behind, or replace, a manifest run.
 # workflow_ref is the caller's in a call, so it tells a call apart whatever its inputs.
 concurrency:
-  group: ${{ !startsWith(github.workflow_ref, 'vimma-browser/vimma/.github/workflows/update-publish.yml@') && format('update-publish-call-{0}', github.run_id) || format('update-publish-{0}-{1}', github.event_name, inputs.target || 'linux') }}
+  group: ${{ !startsWith(github.workflow_ref, 'vimma-browser/vimma/.github/workflows/update-publish.yml@') && format('update-publish-call-{0}{1}', github.run_id, inputs.packages && '-packages' || '') || format('update-publish-{0}-{1}', github.event_name, inputs.target || 'linux') }}
   cancel-in-progress: false
 
 env:
@@ -678,6 +694,201 @@ jobs:
         with:
           name: mar-signed
           path: out/${{ inputs.mar }}
+          retention-days: 7 # as release.yml's artifacts, so a re-run of its later jobs finds it
+          if-no-files-found: error
+
+  # release.yml's call: sign the .rpm and the pacman package with the package key (spec
+  # package-repositories, decisions 3, 5, 9 and 10). Only release.yml on main may call it, and
+  # the file names come from the caller's tag, never from an input. Its environment is the one
+  # the package key's IAM binding names; it never names the update key or its environment, and
+  # the update key's jobs never name this key or this environment.
+  package-sign:
+    if: >-
+      inputs.packages && !inputs.mar && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' && vars.PACKAGE_REPOS_ENABLED == 'true' &&
+      github.workflow_ref == 'vimma-browser/vimma/.github/workflows/release.yml@refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      id-token: write # GitHub OIDC for Google Cloud Workload Identity Federation
+    environment: package-signing
+    # `shell: bash` runs each step with -eo pipefail; GitHub's default bash -e has no pipefail, so
+    # a failed rpm2cpio or tar would go unnoticed inside a pipeline.
+    defaults:
+      run:
+        shell: bash
+    env:
+      KEY_VERSION: ${{ vars.GCP_PACKAGE_KEY_VERSION }}
+      CALLER_TAG: ${{ github.event.inputs.tag }}
+      CERT: configs/package-signing/vimma-packages.asc
+      SIGNER: tools/package/openpgp-kms.ts
+    steps:
+      # The signer and the certificate from main, and nothing else of the repository (decision
+      # 5); .nvmrc for the Node that runs it. First, since a checkout cleans the workspace.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.nvmrc
+            /tools/package/openpgp-kms.ts
+            /configs/package-signing/vimma-packages.asc
+
+      - name: The signer and the certificate are main's
+        run: |
+          [ -f "$SIGNER" ] || { echo "::error::main has no $SIGNER"; exit 1; }
+          [ -f "$CERT" ] || { echo "::error::main has no committed certificate, $CERT"; exit 1; }
+          # The working tree, not git ls-files, which lists the files sparse checkout left out too.
+          files=$(find . -path ./.git -prune -o -type f -printf '%P\n' | LC_ALL=C sort | tr '\n' ' ')
+          [ "$files" = ".nvmrc configs/package-signing/vimma-packages.asc tools/package/openpgp-kms.ts " ] \
+            || { echo "::error::the checkout holds $files"; exit 1; }
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: packages-unsigned
+          path: in
+
+      # Before the input check, which lists the pacman package with both tar readers.
+      - name: Tools (rpmsign, rpmkeys, gpgv, zstd, bsdtar)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q rpm gpgv zstd libarchive-tools
+
+      # The files come from a job with no secret; before KMS signs anything, the shell alone
+      # checks that they are the caller's tag's .rpm and pacman package, by name and by their
+      # first bytes, and that the .rpm is the one package's SHA256SUMS lists.
+      - name: Check the files to sign
+        run: |
+          [[ $CALLER_TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || { echo "::error::'$CALLER_TAG' is not a vX.Y.Z release tag"; exit 1; }
+          v=${CALLER_TAG#v}
+          rpm="vimma-$v-1.x86_64.rpm"
+          pkg="vimma-bin-$v-1-x86_64.pkg.tar.zst"
+          want=$(printf '%s\n' "$rpm" "$pkg" SHA256SUMS | LC_ALL=C sort)
+          have=$(ls -A in | LC_ALL=C sort)
+          [ "$have" = "$want" ] || { echo "::error::packages-unsigned holds $(echo "$have" | tr '\n' ' ')"; exit 1; }
+          for f in "$rpm" "$pkg" SHA256SUMS; do
+            [ -f "in/$f" ] && [ ! -L "in/$f" ] || { echo "::error::in/$f is not a regular file"; exit 1; }
+            size=$(wc -c < "in/$f" | tr -d ' ')
+            [ "$size" -le 524288000 ] || { echo "::error::$f: $size bytes"; exit 1; }
+          done
+          [ "$(od -An -tx1 -N 4 "in/$rpm" | tr -d ' \n')" = edabeedb ] || { echo "::error::$rpm is not an rpm"; exit 1; }
+          [ "$(od -An -tx1 -N 4 "in/$pkg" | tr -d ' \n')" = 28b52ffd ] || { echo "::error::$pkg is not zstd"; exit 1; }
+          # The archive as pacman's reader (libarchive, bsdtar) and as GNU tar list it: tar
+          # readers differ on malformed pax records, and a pax size that overrides an entry's
+          # ustar size can hide entries from one of them, so both must give the same list.
+          bsd=$(zstd -dc "in/$pkg" | bsdtar -tf -) || { echo "::error::libarchive cannot list $pkg"; exit 1; }
+          gnu=$(zstd -dc "in/$pkg" | tar -tf -) || { echo "::error::GNU tar cannot list $pkg"; exit 1; }
+          [ "$bsd" = "$gnu" ] || { echo "::error::GNU tar and libarchive list $pkg differently"; exit 1; }
+          # Only files, directories and symlinks (the first column of a long listing), and no
+          # name twice.
+          types=$({ zstd -dc "in/$pkg" | bsdtar -tvf -; zstd -dc "in/$pkg" | tar -tvf -; } | cut -c1 | LC_ALL=C sort -u | tr -d '\n')
+          [[ $types =~ ^[-dl]+$ ]] || { echo "::error::$pkg has entry types '$types', not only files, directories and symlinks"; exit 1; }
+          [ -z "$(printf '%s\n' "$bsd" | LC_ALL=C sort | uniq -d)" ] || { echo "::error::$pkg lists a name twice"; exit 1; }
+          # makepkg puts its metadata files first, in name order: .PKGINFO must be among them,
+          # and no top-level dotfile may come after the package's own files (pacman runs an
+          # .INSTALL wherever it is).
+          printf '%s\n' "$bsd" | awk '
+            /^\.[^\/]*$/ {
+              if (body || $0 !~ /^\.(BUILDINFO|CHANGELOG|INSTALL|MTREE|PKGINFO)$/) bad = 1
+              if ($0 == ".PKGINFO") info = 1
+              next
+            }
+            { body = 1 }
+            END { exit bad || !info }' \
+            || { echo "::error::$pkg is not a pacman package (.PKGINFO, .INSTALL or other metadata out of place)"; exit 1; }
+          [ "$(awk -v f="$rpm" '$2 == f' in/SHA256SUMS)" = "$(cd in && sha256sum "$rpm")" ] \
+            || { echo "::error::SHA256SUMS does not list $rpm as built"; exit 1; }
+          { echo "RPM=$rpm"; echo "PKG=$pkg"; } >> "$GITHUB_ENV"
+          echo "signing $rpm and $pkg"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false # nothing is installed, and a cache is no input to trust
+
+      - name: The project of the key
+        id: key
+        run: |
+          project=$(printf '%s' "$KEY_VERSION" | sed -n 's|^projects/\([a-z][a-z0-9-]*\)/locations/[a-z0-9-]*/keyRings/vimma-packages/cryptoKeys/package-signing/cryptoKeyVersions/[0-9]*$|\1|p')
+          [ -n "$project" ] || { echo "::error::GCP_PACKAGE_KEY_VERSION is not a version of the vimma-packages/package-signing key"; exit 1; }
+          echo "project=$project" >> "$GITHUB_OUTPUT"
+
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          project_id: ${{ steps.key.outputs.project }}
+
+      # rpmsign runs %__gpg_sign_cmd for the signature. rpm 4.18 (this runner's) expands it once
+      # and execs its first word with the rest as argv, the second word being argv[0], with the
+      # header on standard input and the output in %{__signature_filename} (sign/rpmgensig.c);
+      # rpm 6.0 calls it as a parametric macro with the input and output as %1 and %2 and runs
+      # its words as written. `/usr/bin/env env` and the %{?1:...} fallbacks give both the same
+      # command. rpmsign refuses to start without %_gpg_name, which the signer does not read. It
+      # runs in a directory of its own, so a macro that went wrong cannot write into the
+      # workspace. The signer refuses a certificate whose key is not KMS's.
+      - name: Sign the .rpm and the pacman package with Cloud KMS
+        run: |
+          KMS_ACCESS_TOKEN=$(gcloud auth print-access-token)
+          echo "::add-mask::$KMS_ACCESS_TOKEN"
+          export KMS_ACCESS_TOKEN
+          node=$(command -v node)
+          root=$PWD
+          # Macro text: no % or space may reach it from a path or the key's name.
+          for word in "$node" "$root" "$KEY_VERSION"; do
+            [[ $word =~ ^[A-Za-z0-9/._-]+$ ]] || { echo "::error::'$word' cannot go into an rpm macro"; exit 1; }
+          done
+          mkdir -p out
+          work=$(mktemp -d)
+          cp "in/$RPM" "$work/$RPM"
+          (cd "$work" && rpmsign --addsign --define "_gpg_name Vimma packages" \
+            --define "__gpg_sign_cmd() /usr/bin/env env $node $root/$SIGNER sign --key-version $KEY_VERSION --cert $root/$CERT --format binary --in %{?1:%{shescape:%{1}}}%{!?1:-} --out %{?2:%{shescape:%{2}}}%{!?2:%{shescape:%{__signature_filename}}}" \
+            "$RPM")
+          [ "$(ls -A "$work")" = "$RPM" ] || { echo "::error::rpmsign left $(ls -A "$work" | tr '\n' ' ')"; exit 1; }
+          mv "$work/$RPM" "out/$RPM"
+          node "$SIGNER" sign --key-version "$KEY_VERSION" --cert "$CERT" --format binary \
+            --in "in/$PKG" --out "out/$PKG.sig"
+
+      # Signing changed only the .rpm's header: its payload and name are the built ones.
+      - name: Check the signatures against the committed certificate
+        run: |
+          db=$(mktemp -d)
+          rpmkeys --dbpath "$db" --import "$CERT"
+          rpmkeys --dbpath "$db" --define '_pkgverify_level all' --checksig "out/$RPM"
+          # The payload's bytes, not a payload tag: rpm 6.0 renamed PAYLOADDIGEST, and an unknown
+          # tag prints nothing and exits 0. SHA256HEADER, the main header's digest, which signing
+          # leaves alone (rpm 4.18 and 6.0), must be the built one's and not empty. Each
+          # assignment stops the step if its read fails (pipefail).
+          built=$(rpm2cpio "in/$RPM" | sha256sum | cut -c1-64)
+          signed=$(rpm2cpio "out/$RPM" | sha256sum | cut -c1-64)
+          built_name=$(rpm -qp --nosignature --qf '%{NEVRA}' "in/$RPM")
+          signed_name=$(rpm -qp --nosignature --qf '%{NEVRA}' "out/$RPM")
+          [ -n "$built_name" ] && [ "$built $built_name" = "$signed $signed_name" ] \
+            || { echo "::error::signing changed $RPM's payload or name"; exit 1; }
+          built_header=$(rpm -qp --nosignature --qf '%{SHA256HEADER}' "in/$RPM")
+          signed_header=$(rpm -qp --nosignature --qf '%{SHA256HEADER}' "out/$RPM")
+          [ -n "$built_header" ] && [ "$built_header" = "$signed_header" ] \
+            || { echo "::error::signing changed $RPM's header"; exit 1; }
+          gpg --batch --quiet --dearmor < "$CERT" > "$db/keyring.gpg"
+          gpgv --keyring "$db/keyring.gpg" "out/$PKG.sig" "in/$PKG"
+
+      # package's SHA256SUMS, with the signed .rpm's line and the two new files, by name.
+      - name: Write SHA256SUMS
+        run: |
+          {
+            awk -v f="$RPM" '$2 != f' in/SHA256SUMS
+            (cd out && sha256sum "$RPM" "$PKG.sig")
+            (cd in && sha256sum "$PKG")
+          } | LC_ALL=C sort -k 2 > out/SHA256SUMS
+          cat out/SHA256SUMS
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packages-signed
+          path: |
+            out/${{ env.RPM }}
+            out/${{ env.PKG }}.sig
+            out/SHA256SUMS
           retention-days: 7 # as release.yml's artifacts, so a re-run of its later jobs finds it
           if-no-files-found: error
 

@@ -47,6 +47,7 @@ import {
   rpmVersion,
   sha256sums,
   srcinfo,
+  type InstallSource,
 } from "../package.ts";
 import { defined } from "../../test/defined.ts";
 import { tempDir } from "../../test/temp-dir.ts";
@@ -579,7 +580,7 @@ describe("PKGBUILD and .SRCINFO", () => {
     desktop,
     desktopId: "vimma-vimma",
     launcher,
-    installSource: "pkgbuild-release" as "pkgbuild-release" | "aur",
+    installSource: "pkgbuild-release" as InstallSource,
   };
   const build = pkgbuild(input);
   const info = srcinfo(input);
@@ -681,6 +682,16 @@ describe("PKGBUILD and .SRCINFO", () => {
     expect(() => pkgbuild({ ...input, installSource: "deb" as unknown as "aur" })).toThrow(
       /install source/,
     );
+  });
+
+  // Spec package-repositories, decision 10: release.yml builds the binary vimma-bin of the pacman
+  // repository from this variant, whose marker gives the update check the install type pacman.
+  it("the pacman variant marks vimma-package=pacman and differs only there", () => {
+    const pacman = pkgbuild({ ...input, installSource: "pacman" });
+    expect(pacman).toContain(
+      `printf '%s\\n' 'vimma-package=pacman' > "$pkgdir/opt/vimma/is-packaged-app"`,
+    );
+    expect(pacman.replace("=pacman'", "=pkgbuild-release'")).toBe(build);
   });
 
   it("refuses inline content that would end its here-document early", () => {
@@ -1135,6 +1146,17 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     );
   });
 
+  // Not a release asset: release.yml's package job builds the pacman repository's package from it.
+  it("writes the pacman variant, which differs only in its install source", () => {
+    expect(readdirSync(join(out, "pacman"))).toEqual(["PKGBUILD"]);
+    const build = readFileSync(join(out, "pacman/PKGBUILD"), "utf8");
+    expect(build).toContain("'vimma-package=pacman'");
+    expect(build.replace("=pacman'", "=pkgbuild-release'")).toBe(
+      readFileSync(join(out, "PKGBUILD"), "utf8"),
+    );
+    expect(readFileSync(join(out, "SHA256SUMS"), "utf8")).not.toContain("pacman");
+  });
+
   it("writes SHA256SUMS that sha256sum -c accepts, for every release file", () => {
     const sums = readFileSync(join(out, "SHA256SUMS"), "utf8");
     const names = sums
@@ -1156,9 +1178,9 @@ describe("packageRelease on a fake ./mach package tarball", () => {
   it("leaves only release files in the output dir", () => {
     const files = readdirSync(out).sort();
     expect(files).toContain("SHA256SUMS");
-    expect(files.every((f) => /^(vimma|SHA256SUMS|PKGBUILD$|SRCINFO$|aur$|notes$)/.test(f))).toBe(
-      true,
-    );
+    expect(
+      files.every((f) => /^(vimma|SHA256SUMS|PKGBUILD$|SRCINFO$|aur$|pacman$|notes$)/.test(f)),
+    ).toBe(true);
   });
 });
 
