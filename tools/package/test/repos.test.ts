@@ -1142,15 +1142,14 @@ describe("strict reading, further cases", () => {
 
   // What may follow a gzip member: another member (which libarchive and apt read on), an empty
   // one, zeros, garbage, or garbage that starts like a member.
-  const tails: [string, Buffer][] = [
+  it.each<[string, Buffer]>([
     ["a second member", gzipSync("BBBB\n")],
     ["a NUL and a member", Buffer.concat([Buffer.from([0]), gzipSync("BBBB\n")])],
     ["zeros", Buffer.alloc(16)],
     ["garbage", Buffer.from("xyz")],
     ["a member's magic and garbage", Buffer.from([0x1f, 0x8b, 0x08, 0, 0, 0])],
     ["an empty member and a member", Buffer.concat([gzipSync(""), gzipSync("BBBB\n")])],
-  ];
-  it.each(tails)("refuses a pacman database whose gzip member is followed by %s", (_, tail) => {
+  ])("refuses a pacman database whose gzip member is followed by %s", (_, tail) => {
     const desc =
       "%FILENAME%\nvimma-bin-1.2.3-1-x86_64.pkg.tar.zst\n\n%NAME%\nvimma-bin\n\n%BASE%\nvimma-bin\n\n" +
       `%VERSION%\n1.2.3-1\n\n%CSIZE%\n10\n\n%SHA256SUM%\n${"a".repeat(64)}\n\n%ARCH%\nx86_64\n\n`;
