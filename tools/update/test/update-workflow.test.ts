@@ -71,16 +71,37 @@ function permissionsOf(block: string) {
     .filter(Boolean);
 }
 
+/**
+ * The flags GitHub runs a job's `run:` steps with: `shell: bash` gives
+ * `bash --noprofile --norc -eo pipefail {0}`, and no shell gives `bash -e {0}`, without pipefail.
+ */
+function githubShell(block: string) {
+  return /^ {4}defaults:\n {6}run:\n {8}shell: bash$/m.test(block)
+    ? ["--noprofile", "--norc", "-eo", "pipefail"]
+    : ["-e"];
+}
+
+/** The step of `block` that uses the action `prefix`, up to the next step. */
+function stepOfUses(block: string, prefix: string) {
+  const start = block.indexOf(`- uses: ${prefix}`);
+  expect(start, prefix).toBeGreaterThan(-1);
+  const rest = block.slice(start + 1);
+  const end = rest.search(/\n {6}- (?:name|uses):/);
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
 const GUARD =
   "github.event_name == 'workflow_dispatch' && github.repository == 'vimma-browser/vimma' && " +
   "github.ref == 'refs/heads/main'";
 
 describe("update-publish.yml", () => {
-  it("has the jobs: the release manifest's, mar-sign, the nightly manifest's, failure", () => {
+  it("has the jobs: the release manifest's and repositories', mar-sign, the nightly manifest's, failure", () => {
     expect([...all.keys()]).toEqual([
       "start",
       "prepare",
       "sign",
+      "repo-prepare",
+      "repo-sign",
       "publish",
       "mar-sign",
       "nightly-prepare",
@@ -185,6 +206,8 @@ describe("update-publish.yml", () => {
     expect(permissionsOf(job("start"))).toEqual(["actions: write", "contents: read"]);
     expect(permissionsOf(job("prepare"))).toEqual(["contents: read", "pull-requests: read"]);
     expect(permissionsOf(job("sign"))).toEqual(["id-token: write"]);
+    expect(permissionsOf(job("repo-prepare"))).toEqual(["contents: read"]);
+    expect(permissionsOf(job("repo-sign"))).toEqual(["id-token: write"]);
     expect(permissionsOf(job("publish"))).toEqual(["contents: read"]);
     expect(permissionsOf(job("mar-sign"))).toEqual(["id-token: write"]);
     expect(permissionsOf(job("nightly-prepare"))).toEqual(["contents: read"]);
@@ -199,11 +222,376 @@ describe("update-publish.yml", () => {
   it("only sign, mar-sign and nightly-sign mint an OIDC token or name the signing environment", () => {
     const signers = ["sign", "mar-sign", "nightly-sign"];
     for (const [id, block] of all) {
+      // The package key's job, with its own environment: the tests below.
+      if (id === "repo-sign") continue;
       expect(block.includes("id-token"), id).toBe(signers.includes(id));
       expect(block.includes("update-signing"), id).toBe(signers.includes(id));
       expect(block.includes("GCP_"), id).toBe(signers.includes(id));
     }
     for (const id of signers) expect(job(id)).toMatch(/^ {4}environment: update-signing$/m);
+  });
+
+  // Spec package-repositories, decisions 15 and 16: the repositories' jobs run in the run on
+  // main that signs the Linux release's manifest, and only while PACKAGE_REPOS_ENABLED is true.
+  it("repo-prepare and repo-sign run in the Linux release's run on main, only with PACKAGE_REPOS_ENABLED", () => {
+    const want =
+      `${GUARD} && (vars.UPDATES_ENABLED == 'true' || inputs.dry_run) && ` +
+      "vars.PACKAGE_REPOS_ENABLED == 'true' && inputs.target != 'macos' && inputs.offer != 'nothing' && " +
+      "!inputs.mar && startsWith(github.workflow_ref, 'vimma-browser/vimma/.github/workflows/update-publish.yml@')";
+    expect(condition(job("repo-prepare"))).toBe(want);
+    expect(condition(job("repo-sign"))).toBe(want);
+    expect(job("repo-prepare")).toMatch(/^ {4}needs: prepare$/m);
+    expect(job("repo-sign")).toMatch(/^ {4}needs: repo-prepare$/m);
+    // The metadata comes from this run's repo-prepare, never another run's.
+    const download = stepOfUses(job("repo-sign"), "actions/download-artifact@");
+    expect(download).toContain("name: repos-unsigned");
+    expect(download).not.toMatch(/run-id|github-token|repository:/);
+  });
+
+  it("nothing is signed while PACKAGE_REPOS_ENABLED is not true", () => {
+    for (const [id, block] of all) {
+      if (block.includes("environment: package-signing")) {
+        expect(condition(block), id).toContain("vars.PACKAGE_REPOS_ENABLED == 'true'");
+      }
+    }
+    expect(condition(job("repo-prepare"))).toContain("vars.PACKAGE_REPOS_ENABLED == 'true'");
+  });
+
+  it("repo-prepare stops with what to do while the certificate is not committed", () => {
+    const run = runOf(job("repo-prepare"), "The committed certificate");
+    const dir = tempDir("vimma-repo-cert-");
+    const attempt = () =>
+      spawnSync("bash", [...githubShell(job("repo-prepare")), "-c", run], {
+        cwd: dir,
+        encoding: "utf8",
+        env: { ...process.env, CERT: "configs/package-signing/vimma-packages.asc" },
+      });
+    const missing = attempt();
+    expect(missing.status).toBe(1);
+    expect(missing.stdout).toMatch(
+      /^::error::configs\/package-signing\/vimma-packages\.asc is missing: .*docs\/runbook\/ci-update-keys-and-update-host\.md.*PACKAGE_REPOS_ENABLED/m,
+    );
+    mkdirSync(join(dir, "configs/package-signing"), { recursive: true });
+    writeFileSync(join(dir, "configs/package-signing/vimma-packages.asc"), "not a key\n");
+    expect(attempt().stdout).toContain("is not an armoured OpenPGP certificate");
+    writeFileSync(
+      join(dir, "configs/package-signing/vimma-packages.asc"),
+      "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nAAAA\n-----END PGP PUBLIC KEY BLOCK-----\n",
+    );
+    expect(attempt().status).toBe(0);
+    // Before anything else of the job, and before repo-sign could start.
+    expect(job("repo-prepare").indexOf("- name: The committed certificate")).toBeLessThan(
+      job("repo-prepare").indexOf("- name: The releases the repositories keep"),
+    );
+  });
+
+  it("repo-prepare checks each kept release against its cosign-signed SHA256SUMS and the packages' signatures", () => {
+    const block = job("repo-prepare");
+    const keep = runOf(block, "The releases the repositories keep");
+    expect(keep).toContain(
+      'gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > releases.json',
+    );
+    expect(keep).toContain(
+      'node tools/package/repos.ts select --releases releases.json --tag "$TAG" > tags',
+    );
+    expect(keep).toContain("compare/$sha...refs/heads/main");
+    const sums = runOf(block, "Check the files against each release's signed SHA256SUMS");
+    expect(sums).toContain(
+      "--certificate-identity-regexp '^https://github\\.com/vimma-browser/vimma/\\.github/workflows/release\\.yml@refs/heads/main$'",
+    );
+    const sigs = runOf(block, "Check the packages' signatures against the committed certificate");
+    expect(sigs).toContain(`rpmkeys --dbpath "$db" --define '_pkgverify_level all' --checksig`);
+    expect(sigs).toContain('gpgv --keyring "$db/keyring.gpg"');
+    const build = runOf(block, "Build the metadata");
+    expect(build).toContain('node tools/package/repos.ts build --out repos --cert "$CERT"');
+    expect(build).toContain(
+      'node tools/package/repos.ts verify --tree repos --cert "$CERT" --releases releases.json',
+    );
+    expect(block.indexOf("Check the files against each release's signed SHA256SUMS")).toBeLessThan(
+      block.indexOf("- name: Build the metadata"),
+    );
+    expect(block).not.toMatch(/id-token|environment:|secrets\./);
+  });
+
+  it("repo-sign uses the package-signing environment and runs only the signer and repos.ts's checks", () => {
+    const block = job("repo-sign");
+    expect(block).toMatch(/^ {4}environment: package-signing$/m);
+    expect(block).not.toMatch(/update-signing|GCP_KMS_KEY_VERSION|update-primary|vimma-updates/);
+    expect(block).toContain("KEY_VERSION: ${{ vars.GCP_PACKAGE_KEY_VERSION }}");
+    // One checkout: the signer, repos.ts, the certificate and .nvmrc from main, nothing else.
+    const checkout = stepOfUses(block, "actions/checkout@");
+    expect(checkout).toMatch(
+      / {8}with:\n {10}persist-credentials: false\n {10}sparse-checkout-cone-mode: false\n {10}sparse-checkout: \|\n {12}\/\.nvmrc\n {12}\/tools\/package\/openpgp-kms\.ts\n {12}\/tools\/package\/repos\.ts\n {12}\/configs\/package-signing\/vimma-packages\.asc\n?$/,
+    );
+    expect(block.split("actions/checkout@").length - 1).toBe(1);
+    expect(runOf(block, "The signer, the checks and the certificate are main's")).toContain(
+      '[ "$files" = ".nvmrc configs/package-signing/vimma-packages.asc tools/package/openpgp-kms.ts tools/package/repos.ts " ]',
+    );
+    // Node runs the signer and repos.ts's select and verify, and nothing else.
+    expect(block).not.toMatch(/\bnpm\b|\bnpx\b/);
+    const nodeLines = block.split("\n").filter((l) => /\bnode\b/.test(l) && !/^\s*#/.test(l));
+    expect(nodeLines.length).toBeGreaterThan(0);
+    for (const line of nodeLines) {
+      expect(line).toMatch(
+        /node-version-file: \.nvmrc|setup-node@|^ *node "\$REPOS" (?:select|verify) |^ *sign\(\) \{ node "\$SIGNER" sign /,
+      );
+    }
+    expect(block).toContain("SIGNER: tools/package/openpgp-kms.ts");
+    expect(block).toContain("REPOS: tools/package/repos.ts");
+    expect(block).toContain("CERT: configs/package-signing/vimma-packages.asc");
+    expect(block.indexOf("uses: actions/checkout@")).toBeLessThan(
+      block.indexOf("name: repos-unsigned"),
+    );
+  });
+
+  it("repo-sign checks the metadata against the releases it chooses itself before KMS signs", () => {
+    const block = job("repo-sign");
+    const check = runOf(block, "Check the metadata against the releases");
+    // The releases from GitHub's list and their SHA256SUMS from GitHub, never from repo-prepare.
+    expect(check).toContain(
+      'gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > releases.json',
+    );
+    expect(check).toContain('node "$REPOS" select --releases releases.json --tag "$TAG" > tags');
+    expect(check).toContain(
+      'curl -fsSL --proto =https --retry 3 -o "sums/$tag" "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/SHA256SUMS"',
+    );
+    expect(check).toContain(
+      'node "$REPOS" verify --tree tree --cert "$CERT" --releases releases.json --regzip-pacman "${args[@]}"',
+    );
+    expect(block.indexOf("- name: Check the metadata against the releases")).toBeLessThan(
+      block.indexOf("uses: google-github-actions/auth@"),
+    );
+    // Each SHA256SUMS this job reads is release.yml's: anyone with contents: write could
+    // replace a release file, but not sign it as release.yml on main (B10).
+    expect(check).toContain(
+      'curl -fsSL --proto =https --retry 3 -o "sums/$tag.sigstore.json" "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/SHA256SUMS.sigstore.json"',
+    );
+    expect(check).toContain('cosign verify-blob --bundle "sums/$tag.sigstore.json"');
+    expect(check).toContain(
+      "--certificate-identity-regexp '^https://github\\.com/vimma-browser/vimma/\\.github/workflows/release\\.yml@refs/heads/main$'",
+    );
+    expect(check.indexOf("cosign verify-blob")).toBeLessThan(check.indexOf('node "$REPOS" verify'));
+    expect(block.indexOf("uses: sigstore/cosign-installer@")).toBeGreaterThan(-1);
+    expect(block.indexOf("uses: sigstore/cosign-installer@")).toBeLessThan(
+      block.indexOf("- name: Check the metadata against the releases"),
+    );
+    const sign = runOf(block, "Sign the metadata with Cloud KMS");
+    expect(sign).toContain(
+      'sign() { node "$SIGNER" sign --key-version "$KEY_VERSION" --cert "$CERT" --format "$1" --in "tree/$2" --out "tree/$3"; }',
+    );
+    for (const line of [
+      "sign cleartext apt/Release apt/InRelease",
+      "sign armor rpm/repodata/repomd.xml rpm/repodata/repomd.xml.asc",
+      "sign binary arch/x86_64/vimma.db arch/x86_64/vimma.db.sig",
+      "sign binary arch/x86_64/vimma.files arch/x86_64/vimma.files.sig",
+    ]) {
+      expect(sign.split("\n")).toContain(line);
+    }
+    const after = runOf(block, "Check the signatures against the committed certificate");
+    expect(after).toContain('gpgv --keyring "$db/keyring.gpg" tree/apt/InRelease');
+    expect(after).toContain(
+      'gpgv --keyring "$db/keyring.gpg" tree/rpm/repodata/repomd.xml.asc tree/rpm/repodata/repomd.xml',
+    );
+    expect(after).toContain(
+      'gpgv --keyring "$db/keyring.gpg" tree/arch/x86_64/vimma.db.sig tree/arch/x86_64/vimma.db',
+    );
+    expect(after).toContain(
+      'gpgv --keyring "$db/keyring.gpg" tree/arch/x86_64/vimma.files.sig tree/arch/x86_64/vimma.files',
+    );
+    expect(after).toContain(
+      'node "$REPOS" verify --signed --tree tree --cert "$CERT" --releases releases.json "${args[@]}"',
+    );
+    const upload = block.slice(block.indexOf("name: repos-signed"));
+    expect(upload).toMatch(/^name: repos-signed\n {10}path: tree\n {10}retention-days: 1/);
+  });
+
+  // Spec package-repositories, decision 3: the package key is used only through its own
+  // environment, and its key version names its own ring and key.
+  it("repo-sign takes only a version of the vimma-packages/package-signing key", () => {
+    const run = runOf(job("repo-sign"), "The project of the key");
+    const project = (version: string) =>
+      spawnSync("bash", ["-e", "-c", run], {
+        encoding: "utf8",
+        env: { ...process.env, KEY_VERSION: version, GITHUB_OUTPUT: "/dev/null" },
+      }).status;
+    expect(
+      project(
+        "projects/vimma-p/locations/europe-north1/keyRings/vimma-packages/cryptoKeys/package-signing/cryptoKeyVersions/1",
+      ),
+    ).toBe(0);
+    expect(
+      project(
+        "projects/vimma-p/locations/europe-north1/keyRings/vimma-updates/cryptoKeys/update-primary/cryptoKeyVersions/1",
+      ),
+    ).toBe(1);
+  });
+
+  // The signer talks to a fake KMS only in its own tests (openpgp-kms.test.ts); here it must
+  // reach Cloud KMS itself.
+  it("no job sets KMS_ENDPOINT", () => {
+    expect(text).not.toContain("KMS_ENDPOINT");
+  });
+
+  it("the repositories' jobs, and publish's steps for them, run with pipefail", () => {
+    for (const id of ["repo-prepare", "repo-sign"]) {
+      expect(githubShell(job(id)), id).toContain("pipefail");
+    }
+    for (const name of [
+      "Check the signed package repositories",
+      "Push to vimma-updates",
+      "Wait until the update host serves the package repositories",
+    ]) {
+      expect(stepOf(job("publish"), name), name).toMatch(/^ {8}shell: bash$/m);
+    }
+  });
+
+  it("publish waits for repo-sign while the repositories are on, and runs without it otherwise", () => {
+    const block = job("publish");
+    expect(block).toMatch(/^ {4}needs: \[sign, repo-sign\]$/m);
+    expect(condition(block)).toMatch(
+      new RegExp(
+        "^!cancelled\\(\\) && needs\\.sign\\.result == 'success' && " +
+          "\\(needs\\.repo-sign\\.result == 'success' \\|\\| vars\\.PACKAGE_REPOS_ENABLED != 'true' \\|\\| " +
+          "inputs\\.target == 'macos' \\|\\| inputs\\.offer == 'nothing'\\) && " +
+          GUARD.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      ),
+    );
+    expect(job("failure")).toMatch(
+      /^ {4}needs: \[start, prepare, sign, repo-prepare, repo-sign, publish\]$/m,
+    );
+  });
+
+  // Spec package-repositories, decision 6: what the host serves as the key is the committed one.
+  it("the host's key equals the committed key", () => {
+    const block = job("publish");
+    const check = runOf(block, "Check the signed package repositories");
+    // repos.ts verify compares vimma-packages.asc, the .sources file's inline key and
+    // repomd.xml.key with the committed certificate, byte for byte.
+    expect(check).toContain(
+      'node tools/package/repos.ts verify --signed --tree repos --cert "$CERT" --releases releases.json "${args[@]}"',
+    );
+    // As repo-sign: GitHub's SHA256SUMS only under release.yml's cosign signature.
+    expect(check).toContain('cosign verify-blob --bundle "sums/$tag.sigstore.json"');
+    expect(check.indexOf("cosign verify-blob")).toBeLessThan(check.indexOf("repos.ts verify"));
+    expect(block.indexOf("uses: sigstore/cosign-installer@")).toBeLessThan(
+      block.indexOf("- name: Check the signed package repositories"),
+    );
+    for (const sig of [
+      "repos/apt/InRelease",
+      "repos/rpm/repodata/repomd.xml.asc repos/rpm/repodata/repomd.xml",
+      "repos/arch/x86_64/vimma.db.sig repos/arch/x86_64/vimma.db",
+      "repos/arch/x86_64/vimma.files.sig repos/arch/x86_64/vimma.files",
+    ]) {
+      expect(check).toContain(`gpgv --keyring "$db/keyring.gpg" ${sig}`);
+    }
+    expect(block.indexOf("- name: Check the signed package repositories")).toBeLessThan(
+      block.indexOf("- name: Push to vimma-updates"),
+    );
+    const served = runOf(block, "Wait until the update host serves the package repositories");
+    expect(served).toContain("host=https://updates.vimma.dev\n");
+    expect(served).toContain('-o served-key.asc "$host/vimma-packages.asc"');
+    expect(served).toContain('cmp -s "$CERT" served-key.asc');
+    // Every kind of package path redirects to its release file: the newest .deb and .rpm, the
+    // pacman package and its .sig.
+    for (const path of [
+      '"apt/pool/$tag/vimma_${v}_amd64.deb"',
+      '"rpm/packages/$tag/vimma-$v-1.x86_64.rpm"',
+      '"arch/x86_64/vimma-bin-$v-1-x86_64.pkg.tar.zst"',
+      '"arch/x86_64/vimma-bin-$v-1-x86_64.pkg.tar.zst.sig"',
+    ]) {
+      expect(served).toContain(path);
+    }
+    expect(served).toContain(
+      '[ "$to" = "302 https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/${path##*/}" ]',
+    );
+  });
+
+  it("publish pushes the metadata in the manifest's commit", () => {
+    const run = runOf(job("publish"), "Push to vimma-updates");
+    const part = run.slice(run.indexOf('if [ "$PACKAGE_REPOS" = true ]; then\n'));
+    expect(part.length).toBeLessThan(run.length);
+    const dir = tempDir("vimma-push-repos-");
+    const git = (args: string[], cwd: string) =>
+      execFileSync("git", args, {
+        cwd,
+        stdio: "pipe",
+        env: {
+          PATH: process.env.PATH ?? "",
+          HOME: dir,
+          GIT_CONFIG_NOSYSTEM: "1",
+          GIT_CONFIG_GLOBAL: "/dev/null",
+          GIT_AUTHOR_NAME: "t",
+          GIT_AUTHOR_EMAIL: "t@example.invalid",
+          GIT_COMMITTER_NAME: "t",
+          GIT_COMMITTER_EMAIL: "t@example.invalid",
+        },
+      }).toString();
+    git(["init", "-q", "--bare", "-b", "main", "origin.git"], dir);
+    git(["clone", "-q", "origin.git", "updates"], dir);
+    const put = (path: string, content: string) => {
+      mkdirSync(join(path, ".."), { recursive: true });
+      writeFileSync(path, content);
+    };
+    // What the host has: an older release's repodata, under names this build no longer writes.
+    const u = join(dir, "updates/public");
+    put(join(u, "_headers"), "/updates/*\n  Cache-Control: no-cache\n");
+    put(join(u, "rpm/repodata/old-primary.xml.gz"), "old");
+    put(join(u, "apt/InRelease"), "old");
+    git(["add", "-A"], join(dir, "updates"));
+    git(["commit", "-q", "-m", "seed"], join(dir, "updates"));
+    git(["push", "-q", "origin", "HEAD:main"], join(dir, "updates"));
+    // This run's manifest, copied in before this part, and the signed tree.
+    const manifest = "public/updates/browser/Linux_x86_64-gcc3/vimma/update.xml";
+    put(join(dir, "updates", manifest), "<updates/>\n");
+    const r = join(dir, "repos");
+    for (const f of [
+      "apt/InRelease",
+      "apt/Release",
+      "rpm/repodata/new-primary.xml.gz",
+      "arch/x86_64/vimma.db",
+      "vimma-packages.asc",
+      "_redirects",
+      "_headers",
+    ]) {
+      put(join(r, f), `new ${f}\n`);
+    }
+    const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", part], {
+      cwd: dir,
+      encoding: "utf8",
+      env: {
+        PATH: process.env.PATH ?? "",
+        HOME: dir,
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_CONFIG_GLOBAL: "/dev/null",
+        GIT_AUTHOR_NAME: "t",
+        GIT_AUTHOR_EMAIL: "t@example.invalid",
+        GIT_COMMITTER_NAME: "t",
+        GIT_COMMITTER_EMAIL: "t@example.invalid",
+        PACKAGE_REPOS: "true",
+        BUILD_TARGET: "Linux_x86_64-gcc3",
+        message: "vimma 0.3.1: update manifest, serial 1",
+      },
+    });
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    const log = git(["log", "--format=%s", "main"], join(dir, "origin.git")).trim().split("\n");
+    expect(log).toEqual(["vimma 0.3.1: update manifest, serial 1; package repositories", "seed"]);
+    const files = git(["ls-tree", "-r", "--name-only", "main"], join(dir, "origin.git"))
+      .trim()
+      .split("\n")
+      .sort();
+    expect(files).toEqual(
+      [
+        manifest,
+        "public/_headers",
+        "public/_redirects",
+        "public/apt/InRelease",
+        "public/apt/Release",
+        "public/arch/x86_64/vimma.db",
+        "public/rpm/repodata/new-primary.xml.gz",
+        "public/vimma-packages.asc",
+      ].sort(),
+    );
+    expect(git(["show", "main:public/_headers"], join(dir, "origin.git"))).toBe("new _headers\n");
   });
 
   it("a call receives the deploy key only by name, optional, and only nightly.yml's manifest passes it", () => {
@@ -241,10 +629,32 @@ describe("update-publish.yml", () => {
     }
   });
 
+  // Spec package-repositories, decisions 2 and 3: the update key and the package key each have
+  // an environment that their IAM binding names, and a job reaches only its own.
+  it("no job in update-signing names the package key, and no job in package-signing names the update key", () => {
+    let update = 0;
+    let packages = 0;
+    for (const [id, block] of all) {
+      if (block.includes("environment: update-signing")) {
+        update += 1;
+        expect(block, id).not.toMatch(/GCP_PACKAGE_KEY_VERSION|vimma-packages|package-signing/);
+        expect(block, id).toContain("vars.GCP_KMS_KEY_VERSION");
+      }
+      if (block.includes("environment: package-signing")) {
+        packages += 1;
+        expect(block, id).not.toMatch(/GCP_KMS_KEY_VERSION|update-primary|update-signing/);
+        expect(block, id).toContain("KEY_VERSION: ${{ vars.GCP_PACKAGE_KEY_VERSION }}");
+      }
+    }
+    expect(update).toBeGreaterThanOrEqual(3);
+    expect(packages).toBeGreaterThanOrEqual(1);
+  });
+
   it.each(["sign", "mar-sign", "nightly-sign"])(
     "the signing job %s runs no repository code: no checkout, no node, no npm",
     (id) => {
       const sign = job(id);
+      expect(sign).not.toMatch(/GCP_PACKAGE_KEY_VERSION|package-signing|vimma-packages/);
       expect(sign).not.toContain("actions/checkout");
       expect(sign).not.toMatch(/\bnode\b|\bnpm\b|\bnpx\b|setup-node/);
     },
@@ -253,8 +663,9 @@ describe("update-publish.yml", () => {
   it("no job installs dependencies, and no checkout keeps a token in .git/config", () => {
     expect(text).not.toMatch(/npm (?:ci|install)|npx /);
     const checkouts = text.split("uses: actions/checkout@").slice(1);
-    // prepare and publish, nightly-prepare and nightly-publish.
-    expect(checkouts.length).toBe(4);
+    // prepare and publish, repo-prepare and repo-sign's signer, nightly-prepare and
+    // nightly-publish.
+    expect(checkouts.length).toBe(6);
     for (const c of checkouts) {
       expect(c).toMatch(
         /^\S+ # v[\d.]+\n {8}with:\n(?: {10}.*\n)*? {10}persist-credentials: false\n/,
@@ -281,7 +692,7 @@ describe("update-publish.yml", () => {
     expect(start).not.toContain("actions/checkout");
   });
 
-  it.each(["prepare", "sign", "publish"])(
+  it.each(["prepare", "sign", "repo-prepare", "repo-sign", "publish"])(
     "%s runs only by hand on main, here, and with UPDATES_ENABLED or as a dry run",
     (id) => {
       const cond = condition(job(id));

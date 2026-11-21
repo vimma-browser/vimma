@@ -19,6 +19,24 @@
 #            only): downloads the files again, checks the signed file with the verifier and the
 #            key the browser pins and with openssl, then commits it and pushes, never forced.
 #
+# The apt, rpm and pacman repositories (spec package-repositories, decisions 13 to 17), in the
+# Linux release's run, while the repository variable PACKAGE_REPOS_ENABLED is `true`:
+#
+#   repo-prepare  no secret; reads only public data: chooses the releases the repositories keep
+#                 (tools/package/repos.ts select), downloads their packages, checks them against
+#                 each release's SHA256SUMS and its cosign signature and each package's own
+#                 signature against the committed certificate, configs/package-signing/, and
+#                 builds the unsigned metadata (repos.ts build). Stops while that certificate
+#                 is not committed.
+#   repo-sign     environment package-signing, id-token: write and nothing else; runs only the
+#                 signer, tools/package/openpgp-kms.ts, and repos.ts's checks, both from main:
+#                 chooses the releases again from GitHub's list, checks the metadata against
+#                 their SHA256SUMS (repos.ts verify), signs Release, repomd.xml, vimma.db and
+#                 vimma.files with the Cloud KMS package key, and checks each signature with gpgv
+#                 against the committed certificate.
+#   publish       checks the signed tree once more and commits it with the manifest, in one
+#                 commit, so the update check and the repositories announce a release together.
+#
 # One manifest per build target (spec macos-homebrew, decision 16): `target` linux (the tarball,
 # AppImage, .deb and .rpm, SHA256SUMS) or macos (the .dmg, SHA256SUMS-macos; prepare runs on macOS,
 # where hdiutil reads the build ID of the app inside it). The Linux run starts when the release
@@ -416,9 +434,293 @@ jobs:
           retention-days: 1 # a dry run's signature is real; keep it no longer than needed
           if-no-files-found: error
 
-  publish:
-    needs: sign
+  # The repositories' metadata, with no secret: public data only, as prepare. After prepare,
+  # which has checked that the tag is a published release on main.
+  repo-prepare:
+    needs: prepare
     if: >-
+      github.event_name == 'workflow_dispatch' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' && (vars.UPDATES_ENABLED == 'true' || inputs.dry_run) &&
+      vars.PACKAGE_REPOS_ENABLED == 'true' && inputs.target != 'macos' && inputs.offer != 'nothing' &&
+      !inputs.mar && startsWith(github.workflow_ref, 'vimma-browser/vimma/.github/workflows/update-publish.yml@')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    # `shell: bash` runs each step with -eo pipefail; GitHub's default bash -e has no pipefail, so
+    # a failed read inside a pipeline would go unnoticed.
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CERT: configs/package-signing/vimma-packages.asc
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The maintainer makes the certificate once, with KMS, and commits it; until then nothing
+      # can be signed, so the run stops here and says what to do.
+      - name: The committed certificate
+        run: |
+          [ -s "$CERT" ] || { echo "::error::$CERT is missing: the maintainer makes it with Cloud KMS and commits it before the package repositories can be published (docs/runbook/ci-update-keys-and-update-host.md, step 9). Until then, unset PACKAGE_REPOS_ENABLED."; exit 1; }
+          [ "$(head -n 1 "$CERT")" = "-----BEGIN PGP PUBLIC KEY BLOCK-----" ] \
+            || { echo "::error::$CERT is not an armoured OpenPGP certificate"; exit 1; }
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      # The newest published releases that carry the repositories' packages, at most five, newest
+      # first; the newest release must be one of them, and so must the tag. Each must be on main,
+      # as prepare checks for the tag.
+      - name: The releases the repositories keep
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > releases.json
+          node tools/package/repos.ts select --releases releases.json --tag "$TAG" > tags
+          mapfile -t tags < tags
+          for tag in "${tags[@]}"; do
+            sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$tag" --jq .sha)
+            echo "$sha" | grep -Eqx '[0-9a-f]{40}' || { echo "::error::$tag: no commit"; exit 1; }
+            status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$sha...refs/heads/main" --jq .status)
+            case "$status" in
+              ahead|identical) ;;
+              *) echo "::error::$tag ($sha) is not on main (compare: $status)"; exit 1 ;;
+            esac
+          done
+          echo "keeping: ${tags[*]}"
+
+      # The .deb and .rpm of every kept release, and the newest one's pacman package and its
+      # signature, which the pacman database lists alone (decision 20).
+      - name: Download the kept releases' files
+        run: |
+          mapfile -t tags < tags
+          for tag in "${tags[@]}"; do
+            v=${tag#v}
+            base="https://github.com/$GITHUB_REPOSITORY/releases/download/$tag"
+            files=(SHA256SUMS SHA256SUMS.sigstore.json "vimma_${v}_amd64.deb" "vimma-$v-1.x86_64.rpm")
+            if [ "$tag" = "${tags[0]}" ]; then
+              files+=("vimma-bin-$v-1-x86_64.pkg.tar.zst" "vimma-bin-$v-1-x86_64.pkg.tar.zst.sig")
+            fi
+            mkdir -p "releases/$tag"
+            for f in "${files[@]}"; do
+              curl -fsSL --proto =https --retry 3 -o "releases/$tag/$f" "$base/$f" \
+                || { echo "::error::$base/$f: not found"; exit 1; }
+            done
+          done
+
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+
+      # Each SHA256SUMS is release.yml's, as prepare checks the tag's, and each downloaded file
+      # is the one line it lists for that name.
+      - name: Check the files against each release's signed SHA256SUMS
+        run: |
+          mapfile -t tags < tags
+          for tag in "${tags[@]}"; do
+            d=releases/$tag
+            cosign verify-blob --bundle "$d/SHA256SUMS.sigstore.json" \
+              --certificate-identity-regexp '^https://github\.com/vimma-browser/vimma/\.github/workflows/release\.yml@refs/heads/main$' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              "$d/SHA256SUMS"
+            for f in "$d"/*; do
+              name=${f##*/}
+              case "$name" in SHA256SUMS|SHA256SUMS.sigstore.json) continue ;; esac
+              line=$(awk -v f="$name" '$2 == f' "$d/SHA256SUMS")
+              [ -n "$line" ] && [ "$line" = "$(cd "$d" && sha256sum "$name")" ] \
+                || { echo "::error::$tag: $name is not the file its SHA256SUMS lists"; exit 1; }
+            done
+          done
+
+      - name: Tools (apt-ftparchive, createrepo_c, repo-add, rpmkeys, gpgv)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends apt-utils createrepo-c \
+            pacman-package-manager makepkg libarchive-tools rpm gpgv
+
+      # release.yml's package-sign signed them and its packages job checked them. Again here,
+      # because dnf, zypper and pacman refuse a package the key did not sign, and the metadata
+      # must list none.
+      - name: Check the packages' signatures against the committed certificate
+        run: |
+          db=$(mktemp -d)
+          rpmkeys --dbpath "$db" --import "$CERT"
+          gpg --batch --quiet --dearmor < "$CERT" > "$db/keyring.gpg"
+          mapfile -t tags < tags
+          for tag in "${tags[@]}"; do
+            rpmkeys --dbpath "$db" --define '_pkgverify_level all' --checksig \
+              "releases/$tag/vimma-${tag#v}-1.x86_64.rpm"
+          done
+          pkg="releases/${tags[0]}/vimma-bin-${tags[0]#v}-1-x86_64.pkg.tar.zst"
+          gpgv --keyring "$db/keyring.gpg" "$pkg.sig" "$pkg"
+
+      # The metadata from these files alone, then the check repo-sign runs before it signs.
+      - name: Build the metadata
+        run: |
+          mapfile -t tags < tags
+          dirs=()
+          sums=()
+          for tag in "${tags[@]}"; do
+            dirs+=(--release "$tag=releases/$tag")
+            sums+=(--release "$tag=releases/$tag/SHA256SUMS")
+          done
+          node tools/package/repos.ts build --out repos --cert "$CERT" "${dirs[@]}"
+          node tools/package/repos.ts verify --tree repos --cert "$CERT" --releases releases.json "${sums[@]}"
+          find repos -type f | LC_ALL=C sort
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: repos-unsigned
+          path: repos
+          retention-days: 1
+          if-no-files-found: error
+
+  # The repositories' signatures with the package key (spec package-repositories, decisions 3,
+  # 5 and 15). Its environment is the one the package key's IAM binding names; it never names the
+  # update key or its environment, and the update key's jobs never name this key or this
+  # environment. The metadata comes from repo-prepare, a job with no secret that runs the build
+  # tools, so before KMS signs anything this job chooses the releases itself from GitHub's list,
+  # reads their SHA256SUMS from GitHub, and checks the metadata against them.
+  repo-sign:
+    needs: repo-prepare
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' && (vars.UPDATES_ENABLED == 'true' || inputs.dry_run) &&
+      vars.PACKAGE_REPOS_ENABLED == 'true' && inputs.target != 'macos' && inputs.offer != 'nothing' &&
+      !inputs.mar && startsWith(github.workflow_ref, 'vimma-browser/vimma/.github/workflows/update-publish.yml@')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      id-token: write # GitHub OIDC for Google Cloud Workload Identity Federation
+    environment: package-signing
+    # -eo pipefail, as repo-prepare.
+    defaults:
+      run:
+        shell: bash
+    env:
+      # The releases' list, public data; the token's permissions are id-token alone.
+      GH_TOKEN: ${{ github.token }}
+      KEY_VERSION: ${{ vars.GCP_PACKAGE_KEY_VERSION }}
+      CERT: configs/package-signing/vimma-packages.asc
+      SIGNER: tools/package/openpgp-kms.ts
+      REPOS: tools/package/repos.ts
+    steps:
+      # The signer, repos.ts (whose select and verify run no other program) and the certificate
+      # from main, and nothing else of the repository (decision 5); .nvmrc for the Node that runs
+      # them. First, since a checkout cleans the workspace.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.nvmrc
+            /tools/package/openpgp-kms.ts
+            /tools/package/repos.ts
+            /configs/package-signing/vimma-packages.asc
+
+      - name: The signer, the checks and the certificate are main's
+        run: |
+          for f in "$SIGNER" "$REPOS" "$CERT"; do
+            [ -f "$f" ] || { echo "::error::main has no $f"; exit 1; }
+          done
+          # The working tree, not git ls-files, which lists the files sparse checkout left out too.
+          files=$(find . -path ./.git -prune -o -type f -printf '%P\n' | LC_ALL=C sort | tr '\n' ' ')
+          [ "$files" = ".nvmrc configs/package-signing/vimma-packages.asc tools/package/openpgp-kms.ts tools/package/repos.ts " ] \
+            || { echo "::error::the checkout holds $files"; exit 1; }
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false # nothing is installed, and a cache is no input to trust
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: repos-unsigned
+          path: tree
+
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+
+      # Exactly the metadata for the releases GitHub lists now, read as apt, libsolv and
+      # libarchive read it: each package under the SHA-256 of its release's SHA256SUMS and the
+      # size GitHub lists, the key in its three places the committed one, and the redirects only
+      # to those packages (repos.ts verify). The SHA256SUMS files are GitHub's copies, read here,
+      # each under release.yml's cosign signature (B10), since anyone who can write the
+      # repository's contents could replace a release file, but not sign it as release.yml.
+      # Then it writes the pacman databases' gzip itself around the tar it checked, so what is
+      # signed is this job's own output.
+      - name: Check the metadata against the releases
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > releases.json
+          node "$REPOS" select --releases releases.json --tag "$TAG" > tags
+          mapfile -t tags < tags
+          mkdir -p sums
+          args=()
+          for tag in "${tags[@]}"; do
+            curl -fsSL --proto =https --retry 3 -o "sums/$tag" "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/SHA256SUMS" \
+              || { echo "::error::$tag: no SHA256SUMS"; exit 1; }
+            curl -fsSL --proto =https --retry 3 -o "sums/$tag.sigstore.json" "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/SHA256SUMS.sigstore.json" \
+              || { echo "::error::$tag: no SHA256SUMS.sigstore.json"; exit 1; }
+            cosign verify-blob --bundle "sums/$tag.sigstore.json" \
+              --certificate-identity-regexp '^https://github\.com/vimma-browser/vimma/\.github/workflows/release\.yml@refs/heads/main$' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com "sums/$tag"
+            args+=(--release "$tag=sums/$tag")
+          done
+          node "$REPOS" verify --tree tree --cert "$CERT" --releases releases.json --regzip-pacman "${args[@]}"
+
+      - name: The project of the key
+        id: key
+        run: |
+          project=$(printf '%s' "$KEY_VERSION" | sed -n 's|^projects/\([a-z][a-z0-9-]*\)/locations/[a-z0-9-]*/keyRings/vimma-packages/cryptoKeys/package-signing/cryptoKeyVersions/[0-9]*$|\1|p')
+          [ -n "$project" ] || { echo "::error::GCP_PACKAGE_KEY_VERSION is not a version of the vimma-packages/package-signing key"; exit 1; }
+          echo "project=$project" >> "$GITHUB_OUTPUT"
+
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          project_id: ${{ steps.key.outputs.project }}
+
+      # apt's InRelease (cleartext), repomd.xml.asc (armoured) and the pacman database's two
+      # detached signatures. The signer refuses a KMS key that is not the certificate's.
+      - name: Sign the metadata with Cloud KMS
+        run: |
+          KMS_ACCESS_TOKEN=$(gcloud auth print-access-token)
+          echo "::add-mask::$KMS_ACCESS_TOKEN"
+          export KMS_ACCESS_TOKEN
+          sign() { node "$SIGNER" sign --key-version "$KEY_VERSION" --cert "$CERT" --format "$1" --in "tree/$2" --out "tree/$3"; }
+          sign cleartext apt/Release apt/InRelease
+          sign armor rpm/repodata/repomd.xml rpm/repodata/repomd.xml.asc
+          sign binary arch/x86_64/vimma.db arch/x86_64/vimma.db.sig
+          sign binary arch/x86_64/vimma.files arch/x86_64/vimma.files.sig
+
+      # gpgv, as apt 2.x and pacman check them, and the tree again with its signatures.
+      - name: Check the signatures against the committed certificate
+        run: |
+          db=$(mktemp -d)
+          gpg --batch --quiet --dearmor < "$CERT" > "$db/keyring.gpg"
+          gpgv --keyring "$db/keyring.gpg" tree/apt/InRelease
+          gpgv --keyring "$db/keyring.gpg" tree/rpm/repodata/repomd.xml.asc tree/rpm/repodata/repomd.xml
+          gpgv --keyring "$db/keyring.gpg" tree/arch/x86_64/vimma.db.sig tree/arch/x86_64/vimma.db
+          gpgv --keyring "$db/keyring.gpg" tree/arch/x86_64/vimma.files.sig tree/arch/x86_64/vimma.files
+          mapfile -t tags < tags
+          args=()
+          for tag in "${tags[@]}"; do args+=(--release "$tag=sums/$tag"); done
+          node "$REPOS" verify --signed --tree tree --cert "$CERT" --releases releases.json "${args[@]}"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: repos-signed
+          path: tree
+          retention-days: 1 # a dry run's signatures are real; keep them no longer than needed
+          if-no-files-found: error
+
+  # With the repositories on, it waits for repo-sign and pushes nothing without it; otherwise
+  # repo-sign is skipped and the manifest goes alone.
+  publish:
+    needs: [sign, repo-sign]
+    if: >-
+      !cancelled() && needs.sign.result == 'success' &&
+      (needs.repo-sign.result == 'success' || vars.PACKAGE_REPOS_ENABLED != 'true' ||
+      inputs.target == 'macos' || inputs.offer == 'nothing') &&
       github.event_name == 'workflow_dispatch' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main' && (vars.UPDATES_ENABLED == 'true' || inputs.dry_run) &&
       !inputs.mar && startsWith(github.workflow_ref, 'vimma-browser/vimma/.github/workflows/update-publish.yml@')
@@ -486,6 +788,50 @@ jobs:
             | base64 -d > sig.bin
           openssl dgst -sha384 -verify pinned.pem -signature sig.bin signed.bin
 
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.repo-sign.result == 'success'
+        with:
+          name: repos-signed
+          path: repos
+
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        if: needs.repo-sign.result == 'success'
+
+      # As repo-sign's last check, by this job, before anything is pushed (spec
+      # package-repositories, decision 6): each signature under the committed certificate, the
+      # metadata against the releases' cosign-signed SHA256SUMS, and the key in
+      # vimma-packages.asc, the .sources file and repomd.xml.key byte for byte the committed one.
+      - name: Check the signed package repositories
+        if: needs.repo-sign.result == 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CERT: configs/package-signing/vimma-packages.asc
+        run: |
+          db=$(mktemp -d)
+          gpg --batch --quiet --dearmor < "$CERT" > "$db/keyring.gpg"
+          gpgv --keyring "$db/keyring.gpg" repos/apt/InRelease
+          gpgv --keyring "$db/keyring.gpg" repos/rpm/repodata/repomd.xml.asc repos/rpm/repodata/repomd.xml
+          gpgv --keyring "$db/keyring.gpg" repos/arch/x86_64/vimma.db.sig repos/arch/x86_64/vimma.db
+          gpgv --keyring "$db/keyring.gpg" repos/arch/x86_64/vimma.files.sig repos/arch/x86_64/vimma.files
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > releases.json
+          node tools/package/repos.ts select --releases releases.json --tag "$TAG" > repo-tags
+          mapfile -t tags < repo-tags
+          mkdir -p sums
+          args=()
+          for tag in "${tags[@]}"; do
+            curl -fsSL --proto =https --retry 3 -o "sums/$tag" "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/SHA256SUMS" \
+              || { echo "::error::$tag: no SHA256SUMS"; exit 1; }
+            curl -fsSL --proto =https --retry 3 -o "sums/$tag.sigstore.json" "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/SHA256SUMS.sigstore.json" \
+              || { echo "::error::$tag: no SHA256SUMS.sigstore.json"; exit 1; }
+            cosign verify-blob --bundle "sums/$tag.sigstore.json" \
+              --certificate-identity-regexp '^https://github\.com/vimma-browser/vimma/\.github/workflows/release\.yml@refs/heads/main$' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com "sums/$tag"
+            args+=(--release "$tag=sums/$tag")
+          done
+          node tools/package/repos.ts verify --signed --tree repos --cert "$CERT" --releases releases.json "${args[@]}"
+          echo "PACKAGE_REPOS=true" >> "$GITHUB_ENV"
+
       - name: Without UPDATES_ENABLED, or in a dry run, push nothing
         if: vars.UPDATES_ENABLED != 'true' || inputs.dry_run
         run: |
@@ -506,6 +852,7 @@ jobs:
       # the floor the serial is checked against once more, so two runs can never step back.
       - name: Push to vimma-updates
         if: env.UPDATES_DEPLOY_KEY_SET == 'true' && vars.UPDATES_ENABLED == 'true' && !inputs.dry_run
+        shell: bash
         env:
           DEPLOY_KEY: ${{ secrets.UPDATES_DEPLOY_KEY }}
           SERIAL: ${{ steps.verify.outputs.serial }}
@@ -538,6 +885,17 @@ jobs:
           else
             message="vimma $version: update manifest, serial $serial"
           fi
+          # The repositories in the manifest's commit (spec package-repositories, decision 15).
+          # Rebuilt each run, so the old tree goes: repodata's file names change with their
+          # content. _headers is repos.ts's, which keeps the manifest's own rule.
+          if [ "$PACKAGE_REPOS" = true ]; then
+            rm -rf updates/public/apt updates/public/rpm updates/public/arch
+            cp -R repos/apt repos/rpm repos/arch updates/public/
+            cp repos/vimma-packages.asc repos/_redirects repos/_headers updates/public/
+            message="$message; package repositories"
+            git -C updates add -A public/apt public/rpm public/arch public/vimma-packages.asc \
+              public/_redirects public/_headers
+          fi
           cd updates
           git add public/updates/browser/$BUILD_TARGET/vimma/update.xml
           git commit -q -m "$message"
@@ -565,6 +923,38 @@ jobs:
             sleep 10
           done
           echo "::error::pushed, but $url does not serve serial $SERIAL after 10 minutes (Cloudflare Workers Builds)"
+          exit 1
+
+      # The same commit, so served by now or soon: InRelease as pushed, the key the committed
+      # one, and each kind of package path (the newest .deb and .rpm, the pacman package and its
+      # .sig) redirected to its GitHub Release file.
+      - name: Wait until the update host serves the package repositories
+        if: env.PACKAGE_REPOS == 'true' && env.UPDATES_DEPLOY_KEY_SET == 'true' && vars.UPDATES_ENABLED == 'true' && !inputs.dry_run
+        shell: bash
+        env:
+          CERT: configs/package-signing/vimma-packages.asc
+        run: |
+          host=https://updates.vimma.dev
+          for _ in $(seq 60); do
+            if curl -fsS --proto =https -o served-InRelease "$host/apt/InRelease" 2> /dev/null \
+              && cmp -s served-InRelease repos/apt/InRelease; then
+              curl -fsS --proto =https --retry 3 -o served-key.asc "$host/vimma-packages.asc"
+              cmp -s "$CERT" served-key.asc \
+                || { echo "::error::$host/vimma-packages.asc is not $CERT"; exit 1; }
+              tag=$(head -n 1 repo-tags)
+              v=${tag#v}
+              for path in "apt/pool/$tag/vimma_${v}_amd64.deb" "rpm/packages/$tag/vimma-$v-1.x86_64.rpm" \
+                "arch/x86_64/vimma-bin-$v-1-x86_64.pkg.tar.zst" "arch/x86_64/vimma-bin-$v-1-x86_64.pkg.tar.zst.sig"; do
+                to=$(curl -sS --proto =https -o /dev/null -w '%{http_code} %{redirect_url}' "$host/$path")
+                [ "$to" = "302 https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/${path##*/}" ] \
+                  || { echo "::error::$host/$path answers '$to', not a redirect to the release"; exit 1; }
+              done
+              echo "updates.vimma.dev serves the package repositories for ${tag}"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::pushed, but $host/apt/InRelease is not the pushed one after 10 minutes (Cloudflare Workers Builds)"
           exit 1
 
   # release.yml's and nightly.yml's call: sign the complete MAR. Only those two on main may call
@@ -998,7 +1388,7 @@ jobs:
   # The release manifest's failures; a failed mar-sign or nightly manifest job fails the calling
   # release.yml or nightly.yml run, whose own failure or report job reports it.
   failure:
-    needs: [start, prepare, sign, publish]
+    needs: [start, prepare, sign, repo-prepare, repo-sign, publish]
     if: >-
       failure() && github.repository == 'vimma-browser/vimma' && !inputs.mar &&
       startsWith(github.workflow_ref, 'vimma-browser/vimma/.github/workflows/update-publish.yml@')
