@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
+## [0.1.23](https://github.com/vimma-browser/vimma/compare/v0.1.22...v0.1.23) (2026-11-21)
+
+
+### Fixed
+
+* **agent:** call MCP clients AI agents, not local AI agents ([#1416](https://github.com/vimma-browser/vimma/issues/1416)) ([89d8f51](https://github.com/vimma-browser/vimma/commit/89d8f51f9a642402069727bb5f2cc06239f829d1))
+* **cmdline:** list a command and its same-named action once in completion ([#1415](https://github.com/vimma-browser/vimma/issues/1415)) ([97b36f4](https://github.com/vimma-browser/vimma/commit/97b36f497b3a9075f22553566e6eac3f1b660a13)), closes [#1414](https://github.com/vimma-browser/vimma/issues/1414)
+* **keys:** refuse a prefix on a text-field key while insert_editing is on ([#1412](https://github.com/vimma-browser/vimma/issues/1412)) ([83f58e9](https://github.com/vimma-browser/vimma/commit/83f58e90846baac7cba2091db01aea1e3fdab809)), closes [#1367](https://github.com/vimma-browser/vimma/issues/1367)
+* **pdf:** read the outline once pdf.js has fetched every page ([#1427](https://github.com/vimma-browser/vimma/issues/1427)) ([4a5e912](https://github.com/vimma-browser/vimma/commit/4a5e912b31b057bd6493f8d002d1ca200af748b4)), closes [#1424](https://github.com/vimma-browser/vimma/issues/1424)
+
 ## [Unreleased]
 
 ### Changed
