@@ -24,7 +24,9 @@ ChromeUtils.defineESModuleGetters(lazy, {
  */
 const SMOOTH_MAX_MS = 1000;
 /** A scroll that sent no scroll event for this long has ended (a wheel at the page's end). */
-const SETTLE_QUIET_MS = 150;
+const SETTLE_QUIET_MS = 200;
+/** How long to wait for a wheel scroll to start before deciding it moved nothing (issue #1430). */
+const SETTLE_START_MS = 400;
 /** At most this long a collection waits for a scroll to end (the parent gives the top 2 s). */
 const SETTLE_MAX_MS = 1000;
 
@@ -257,11 +259,12 @@ export class PageScroll {
   /**
    * Resolves once a scroll of one of `scrollers` (where their scroll events are fired: the
    * document for the page) has ended: at its scrollend, once no scroll event came for
-   * SETTLE_QUIET_MS (a wheel at the page's end scrolls nothing), and at the latest after
-   * SETTLE_MAX_MS. Another scroller's events, such as a carousel the page's script turns every
-   * frame, neither end the wait nor hold it open (issue #1337). Only the browser's own scroll
-   * events count: the page can dispatch untrusted ones, which a chrome listener on content
-   * receives too, but they neither end the wait nor prolong it.
+   * SETTLE_QUIET_MS, once SETTLE_START_MS elapse before any scroll starts (a wheel at the
+   * page's end scrolls nothing; issues #1337, #1430), and at the latest after SETTLE_MAX_MS.
+   * Another scroller's events, such as a carousel the page's script turns every frame, neither
+   * end the wait nor hold it open (issue #1337). Only the browser's own scroll events count:
+   * the page can dispatch untrusted ones, which a chrome listener on content receives too, but
+   * they neither end the wait nor prolong it.
    * @param {Set<EventTarget>} scrollers
    * @returns {Promise<void>}
    */
@@ -279,9 +282,9 @@ export class PageScroll {
         win.removeEventListener("scrollend", onEnd, opts);
         resolve();
       };
-      const wait = () => {
+      const wait = (ms = SETTLE_QUIET_MS) => {
         lazy.clearTimeout(quiet);
-        quiet = lazy.setTimeout(done, SETTLE_QUIET_MS);
+        quiet = lazy.setTimeout(done, ms);
       };
       const ours = (/** @type {Event} */ e) => e.isTrusted && !!e.target && scrollers.has(e.target);
       const onScroll = (/** @type {Event} */ e) => {
@@ -293,7 +296,7 @@ export class PageScroll {
       const cap = lazy.setTimeout(done, SETTLE_MAX_MS);
       win.addEventListener("scroll", onScroll, opts);
       win.addEventListener("scrollend", onEnd, opts);
-      wait();
+      wait(SETTLE_START_MS);
     });
   }
 

@@ -217,7 +217,7 @@ href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. (
   they were hidden, which were aimed at labels that now name other targets. A wheel while the
   labels are being collected is looked at once they arrive. A scroller inside a shadow root
   fires its scroll events only within that tree, so a wait for it ends on the quiet timer and
-  can collect while it still moves. Issue #1337; described in `actors/page-scroll.mjs`,
+  can collect while it still moves. Issues #1337 and #1430; described in `actors/page-scroll.mjs`,
   `finish`, `settled` and `scrollersUnder`, and in `host/VimmaHost.sys.mjs`, `_wheelCheck`.)
 - Delegated click handlers on elements with no role, tabindex or listener of their own (some
   React apps) get no hint; no `cursor: pointer` heuristic.
