@@ -412,6 +412,8 @@ describe("update-publish.yml", () => {
           RPM: "p.rpm",
           PKG: "p.pkg",
           CERT: "cert.asc",
+          // The step's mktemp -d, inside the test's own dir, which is removed with it.
+          TMPDIR: dir,
         },
       });
     };
