@@ -1162,7 +1162,7 @@ checked by the updater against two embedded keys (§6). Each compromise and what
 **Local surface.** `app.restart` and `app.update_check` are ordinary actions: the control
 socket's full role can run them, as it can `app.quit`. The agent role of control protocol 2 (spec
 vimma-mcp) has a closed list of agent commands (`AGENT_COMMANDS` in
-`packages/vimma-core/src/control.mjs`) and reaches no action, so a local AI agent cannot
+`packages/vimma-core/src/control.mjs`) and reaches no action, so an AI agent cannot
 restart Vimma or trigger an update check.
 
 ## Tests

@@ -1,6 +1,7 @@
 # Spec: package-repositories
 
-Status: accepted · Area: `tools/package/repos.ts` (new), `tools/package/repos-smoke.sh` (new),
+Status: accepted (sub-PR 1, the signer, the repository tool and the smoke test, implemented) ·
+Area: `tools/package/repos.ts` (new), `tools/package/repos-smoke.sh` (new),
 `tools/package/package.ts`, `.github/workflows/release.yml`,
 `.github/workflows/update-publish.yml`, `.github/workflows/pkgbuild.yml`,
 `packages/vimma-core/src/updates/updates.mjs`, `vimma-browser/vimma-updates` (`public/`),
@@ -55,7 +56,8 @@ alpha audience on Linux distributions, one signing system for all three is worth
 2. **dnf.** `sudo dnf config-manager addrepo --from-repofile=https://updates.vimma.dev/rpm/vimma.repo`,
    then `sudo dnf install vimma`; `sudo dnf upgrade` installs each newer release. dnf shows the
    key's fingerprint and asks once before trusting it.
-3. **zypper.** `sudo zypper addrepo https://updates.vimma.dev/rpm/vimma.repo`, then
+3. **zypper.** `sudo zypper addrepo --refresh --gpgcheck-strict https://updates.vimma.dev/rpm/vimma.repo`
+   (decision 8), then
    `sudo zypper refresh && sudo zypper install vimma`, without `--allow-unsigned-rpm`;
    `sudo zypper up` installs each newer release. zypper shows the fingerprint and asks once.
 4. **pacman.** The user imports the key with
@@ -90,8 +92,9 @@ alpha audience on Linux distributions, one signing system for all three is worth
 ## Research
 
 Facts this design depends on, with how each was checked. No container runtime was available
-where this research ran, so apt, dnf and zypper were checked in their source code and manual
-pages, not run; the smoke test of sub-PR 1 runs each of them.
+where this research first ran, so apt, dnf and zypper were checked in their source code and
+manual pages, not run; the smoke test of sub-PR 1 ran each of them afterwards ("Checked in the
+smoke test", the last item below).
 
 - **pacman follows redirects, to HTTPS too.** pacman 7.1.0 (libalpm 16.0.1) on Arch Linux,
   checked by building a stub `vimma-bin` with `makepkg --sign` and a throwaway key, building a
@@ -182,6 +185,59 @@ pages, not run; the smoke test of sub-PR 1 runs each of them.
   with two independent OpenPGP implementations.
 - **Sizes.** In release 0.1.22 the `.deb` is 89,779,500 bytes and the `.rpm` 89,175,241
   (`gh release view v0.1.22 --json assets`).
+- **Checked in the smoke test.** `tools/package/repos-smoke.sh` (sub-PR 1, run with rootless
+  podman 6.1.4 on 2026-11-20) built each repository with a throwaway key, served it over local
+  HTTP with the host's `_redirects` and a second redirect standing in for GitHub's, and used it
+  from containers:
+  - apt 3.0.4 (Debian 13) and apt 2.8.4 (Ubuntu 24.04) read the deb822 file with the key inline
+    in `Signed-By` and the flat repository, installed the older stub, upgraded to the newer one
+    and followed both redirects. apt 3.0 checks `InRelease` with `sqv` (it splits the
+    cleartext message itself) and refused a changed `InRelease` with "Message has been
+    manipulated" and one signed by another key with "Missing key"; apt 2.8 checks with `gpgv`
+    and said `BADSIG` and `NO_PUBKEY`. Both refused a `.deb` with one bit changed: "Hash Sum
+    mismatch". For `Suites: ./` apt asks for `/apt/./InRelease` with the dot segment as
+    written, so the host must answer that path as `/apt/InRelease`. The smoke test's server
+    removes dot segments, as the update host does: with `curl --path-as-is`,
+    `https://updates.vimma.dev/./robots.txt` answers 200 like `/robots.txt` (2026-11-20).
+  - dnf5 5.4.3 with rpm 6.0.2 (Fedora 44): `dnf config-manager addrepo --from-repofile` refuses
+    a `.repo` file with an option dnf5 does not know ("Cannot set repository option
+    \"autorefresh=1\": Option \"autorefresh\" not found"). With `gpgcheck=1` and
+    `repo_gpgcheck=1` it imported the key from `gpgkey` once, installed and upgraded through two
+    redirects, and refused a changed `repomd.xml` ("Bad PGP signature"), one signed by another
+    key ("Signing key not found"), a changed `.rpm` ("checksum doesn't match") and an `.rpm`
+    signed by another key ("Signature verification failed"). When a host that the user already
+    trusted switched to another key, `dnf upgrade` (answering no to the key) reported "Signing
+    key not found", skipped the repository and exited 0 ("Nothing to do"), leaving the
+    installed version; zypper refused the same case ("Signature verification failed").
+  - zypper 1.14.101 with rpm 4.20.1 (openSUSE Leap 16.0): with `gpgcheck=1` and
+    `repo_gpgcheck=1` from the `.repo` file and the metadata signature verified, it installed an
+    `.rpm` signed by another key, because libzypp then trusts the checksum in the signed
+    metadata and checks a package's own signature only with `pkg_gpgcheck` on. `zypper addrepo
+--gpgcheck-strict` on the `.repo` URL sets `pkg_gpgcheck=1` (and `--refresh` sets
+    `autorefresh=1`, without which `zypper up` reads the metadata of the last refresh); with them
+    it refused that package ("NOKEY"), a changed `repomd.xml` ("Signature verification
+    failed"), one signed by another key ("signed with an unknown key") and a changed `.rpm`
+    ("Digest verification failed").
+  - pacman 7.1.0 (Arch Linux): installed from the database and upgraded with `pacman -Syu`.
+    Through GitHub-like redirects, whose last URL does not end in the package's name, it asked
+    the repository's `Server` for the package's `.sig`, so the static `.sig` rule is used. It
+    refused a changed `vimma.db` ("signature … is invalid"), one signed by another key ("key …
+    is unknown"), a changed package ("invalid or corrupted package (checksum)") and a package
+    signed by another key (after trying to look the key up on a keyserver). Under the default
+    `SigLevel` (`Required DatabaseOptional`) it accepted a `vimma.db` served without its `.sig`;
+    the packages' signatures were still required.
+  - `rpmsign` 4.18.0 (Debian 12) signed through the signer by `%__gpg_sign_cmd` with the header
+    on standard input, and needs `%_gpg_name` defined (any value) before it runs the command;
+    `rpm -K` accepted the result. rpm 6.0.1 (Ubuntu 26.04, the `ubuntu-latest` runner) changed
+    the command: `%__gpg_sign_cmd` is a parametric macro whose arguments `%1` and `%2` are the
+    header file and the signature file (no `%__signature_filename`), and rpm runs its words as
+    written, where rpm 4.18 drops the second word (its own macro is `<gpg path> gpg <options>`).
+    One parametric definition serves both: it runs `/usr/bin/env env <node>`, reads `%1` or
+    else standard input, and writes `%2` or else `%__signature_filename`
+    (`tools/package/test/openpgp-kms.test.ts`, checked with rpm 4.18.0 and 6.0.1). `repo-add`
+    6.0.2 from Debian's `pacman-package-manager` needs the `makepkg` package for the libraries
+    it sources, and pacman 7.1.0 reads its database.
+    Sequoia's `sqv` 1.1.0 verifies detached signatures only.
 - **Install type.** `installTypeFrom` (`packages/vimma-core/src/updates/updates.mjs`) reads
   `vimma-package=<type>` from `/usr/lib/vimma/is-packaged-app` (or `/opt/vimma/` for the
   `PKGBUILD`); the `.deb` and `.rpm` from a release and from a repository are the same file, so
@@ -239,11 +295,16 @@ pages, not run; the smoke test of sub-PR 1 runs each of them.
    signature (the pacman package and database), an ASCII-armoured detached signature
    (`repomd.xml.asc`), and a cleartext-signed message (apt's `InRelease`, signature type
    `0x01` over the canonical text). rpm signs through it by setting `%__gpg_sign_cmd`, which
-   rpmsign runs with the header on standard input (`__plaintext_filename` is `-`) and the
-   output path in `__signature_filename`; the macro has that form in rpm 4.18.2, 4.19.1 and
-   4.20.1, and rpmsign parses the packet the command writes (Research). The file imports only
-   Node's built-ins and reaches KMS over HTTPS with the job's OIDC access token, so the signing
-   job adds no dependency. The signing jobs run this one file from `main` and nothing else from
+   rpmsign 4.18 to 4.20 runs with the header on standard input (`__plaintext_filename` is `-`)
+   and the output path in `__signature_filename`, and rpm 6.0 runs as a parametric macro with
+   the header file and the output path as `%1` and `%2`; one parametric definition serves both
+   (Research, "Checked in the smoke test"), and rpmsign parses the packet the command writes.
+   The file imports only Node's built-ins and reaches KMS over HTTPS with the job's OIDC access
+   token, so the signing job adds no dependency. It sends the token only to Cloud KMS's global
+   or regional endpoint (a test's fake on a literal loopback address aside), and refuses a key
+   version that is not `RSA_SIGN_PKCS1_4096_SHA256` at the `HSM` level, a reply whose CRC32Cs
+   or key version name do not match, and a public key or signature that is not the
+   certificate's. The signing jobs run this one file from `main` and nothing else from
    the repository. Rejected: `gpg` through Google's PKCS#11 library for Cloud KMS (`kmsp11`)
    and `gnupg-pkcs11-scd`, because `gnupg-pkcs11-scd` needs a certificate object beside each
    private key, which `kmsp11` provides only by generating X.509 certificates at start-up, an
@@ -265,7 +326,8 @@ pages, not run; the smoke test of sub-PR 1 runs each of them.
 ### Repositories
 
 7. **apt: a flat repository built with `apt-ftparchive`.** `apt-ftparchive packages` writes
-   `Packages` (and `Packages.xz`) with `Filename: pool/vX.Y.Z/vimma_X.Y.Z_amd64.deb`,
+   `Packages` (and `Packages.gz`, which Node's zlib writes, so no compressor is installed) with
+   `Filename: pool/vX.Y.Z/vimma_X.Y.Z_amd64.deb`,
    `apt-ftparchive release` writes `Release`, and the signer (decision 5) makes `InRelease`.
    Users point a deb822 `.sources` file at `https://updates.vimma.dev/apt/` with `Suites: ./`.
    Reason: one architecture and one package need no suites or components, and a flat
@@ -277,7 +339,11 @@ pages, not run; the smoke test of sub-PR 1 runs each of them.
    `createrepo_c` writes `repodata/` with `location href="packages/vX.Y.Z/vimma-X.Y.Z-1.x86_64.rpm"`,
    the signer writes `repodata/repomd.xml.asc`, and `repodata/repomd.xml.key`
    is the public key, which zypper reads. `vimma.repo` sets `gpgcheck=1`, `repo_gpgcheck=1` and
-   `gpgkey=https://updates.vimma.dev/vimma-packages.asc`. Reason: the `.rpm` is already one
+   `gpgkey=https://updates.vimma.dev/vimma-packages.asc`, and no option that only zypper reads,
+   because dnf5's `config-manager addrepo` refuses the file over one. zypper's setup command
+   adds `--refresh` and `--gpgcheck-strict` instead, because without `pkg_gpgcheck` zypper
+   installs a package signed by any key once the metadata signature checks out (Research,
+   "Checked in the smoke test"). Reason: the `.rpm` is already one
    package for both distributions (rpm-package, decision 2), and both read the same
    `repodata`. Package signatures protect a package downloaded alone; the metadata signature
    protects the list of packages, so both are checked.
@@ -316,10 +382,14 @@ pages, not run; the smoke test of sub-PR 1 runs each of them.
 11. **Metadata only on the update host; package requests redirect to the GitHub Release.** The
     host serves `/apt/`, `/rpm/` and `/arch/x86_64/` metadata, `vimma-packages.asc` and the setup
     files. Its `_redirects` file sends package requests to
-    `https://github.com/vimma-browser/vimma/releases/download/<tag>/<file>`: one dynamic rule
-    each for `/apt/pool/:tag/:file` and `/rpm/packages/:tag/:file`, which carry the tag in the
-    path for that purpose, and two static rules per published pacman version (the package and
-    its `.sig`), because pacman asks for a bare file name next to the database. Reason: a
+    `https://github.com/vimma-browser/vimma/releases/download/<tag>/<file>`: one static rule
+    per package file the metadata lists, `/apt/pool/<tag>/<file>` and
+    `/rpm/packages/<tag>/<file>` for each kept release and the pacman package and its `.sig`
+    next to the database, where pacman asks for them, built from names checked against
+    `[A-Za-z0-9._~+-]`. No placeholder, because a rule such as `/apt/pool/:tag/:file` would
+    redirect to any file of any release, not only to the packages the signed metadata names;
+    at 5 kept releases that is 12 rules, far under the 2,000 static rules a file may hold.
+    Reason: a
     release's packages are about 270 MB, which the host's git repository would grow by on every
     release, and GitHub already serves them; integrity does not depend on the host or GitHub,
     because the signed metadata pins each package's checksum. Every client checked follows
@@ -368,7 +438,10 @@ pages, not run; the smoke test of sub-PR 1 runs each of them.
     `.deb` and `.rpm`, which are the same file from a release and from the repository, the
     update check looks for the repository's file (`/etc/apt/sources.list.d/vimma.sources`,
     `/etc/yum.repos.d/vimma.repo`, or `/etc/zypp/repos.d/vimma.repo`) and shows the package
-    manager's upgrade command when it exists. Reason: the hint must be a command that works;
+    manager's upgrade command when it exists. dnf keeps the name of the `.repo` URL's file,
+    while `zypper addrepo` names the file after the section id inside it, so the `.repo`
+    file's only section id is exactly `[vimma]` (`repos.ts` tests it, and the smoke test checks
+    both paths). Reason: the hint must be a command that works;
     the upgrade command does nothing without the repository, and the download command works
     either way. Rejected: a second marker for repository installs, because the package file is
     identical. The check reads only whether those paths exist, never their content.
@@ -450,13 +523,17 @@ before it merges.
 verifies with gpgv and sqv`, `a cleartext-signed InRelease verifies with gpgv and sqv and
 apt-style dash-escaping`, `the certificate's self-signature verifies and its fingerprint is
 the committed one`, `rpmsign through %__gpg_sign_cmd gives a package rpm -K accepts` (where
-  rpm is installed), `imports only node: built-ins`.
+  rpm is installed), `imports only node: built-ins`, each way a KMS reply can be wrong refused
+  against a local fake (nothing written, the token never printed), and `talks only to Cloud
+KMS, or to a fake on a literal loopback address`.
 - vitest, `tools/package/test/repos.test.ts`: `writes a flat apt repository whose Filename
 carries the tag`, `writes repodata whose locations carry the tag`, `keeps the last N versions
-in apt and rpm metadata and the latest only for pacman`, `writes one redirect per pacman file
-and one dynamic rule each for apt and rpm`, `refuses a tag or file name outside
-[A-Za-z0-9._~+-]`, `the .sources file carries the committed key inline`, `the .repo file sets
-gpgcheck and repo_gpgcheck`.
+in apt and rpm metadata and the latest only for pacman`, `writes one static redirect per kept
+package file, and no placeholder`, `refuses a tag or file name outside [A-Za-z0-9._~+-]`,
+  `the .sources file carries the committed key inline`, `the .repo file sets gpgcheck and
+repo_gpgcheck`, `the .repo file's only section id is [vimma]`, and `refuses metadata that does
+not match the release` (a `.deb`, `.rpm` or pacman package whose own name or version differs
+  from its release's).
 - vitest, `tools/package/test/release-workflow.test.ts`: `release.yml calls
 update-publish.yml's package-sign`, `signs the .rpm and the pacman package before mar and
 sign`, `the pacman package is in SHA256SUMS and gets a cosign bundle`,

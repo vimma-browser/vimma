@@ -197,7 +197,7 @@ export const COMMANDS = Object.freeze([
   cmd("rotate", "none", "pdf.rotate", "PDF viewer: rotate the pages 90 degrees clockwise"),
   cmd("dual", "none", "pdf.dual_page", "PDF viewer: two pages side by side, or one"),
   cmd("present", "none", "pdf.presentation", "PDF viewer: presentation mode, or leave it"),
-  // docs/specs/vimma-mcp.md: local AI agents and the agent workspace (on, off, revoke, forget);
+  // docs/specs/vimma-mcp.md: AI agents and the agent workspace (on, off, revoke, forget);
   // log: docs/specs/mcp-drive.md D14.
   cmd(
     "mcp",
@@ -537,13 +537,17 @@ const CANDIDATES = [
       description: `${c.description} (short for :${c.name})`,
     })),
   ]),
-  ...ACTION_NAMES.map((name) => ({
-    value: name,
-    kind: /** @type {const} */ ("action"),
-    description: /** @type {import("./actions.mjs").ActionDef} */ (
-      ACTIONS.find((a) => a.name === name)
-    ).description,
-  })),
+  // An action whose name is a command running that same action would only repeat its row (#1414).
+  // Stryker disable next-line OptionalChaining: every ACTION_NAMES entry resolves
+  ...ACTION_NAMES.filter((name) => byWord.get(name)?.action !== resolveActionName(name)?.id).map(
+    (name) => ({
+      value: name,
+      kind: /** @type {const} */ ("action"),
+      description: /** @type {import("./actions.mjs").ActionDef} */ (
+        ACTIONS.find((a) => a.name === name)
+      ).description,
+    }),
+  ),
 ].map((c) => Object.freeze(c));
 
 /**

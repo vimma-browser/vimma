@@ -30,7 +30,7 @@ paths are relative to `engine/` (Firefox 157.0.1). Vimma paths are under
 
 ## Summary
 
-Local AI tools (Claude Code, Codex, opencode, Copilot) use Vimma through `vimma-ctl mcp`, an MCP
+AI coding tools (Claude Code, Codex, opencode, Copilot) use Vimma through `vimma-ctl mcp`, an MCP
 server over stdio inside the `vimma-ctl` binary. Its tools list, read, open and close tabs of one
 workspace only, **agent**, which has its own container and so its own cookies and logins. Vimma
 asks the user in the browser before every request: `y` allows it once, a count and `a` allow
@@ -40,7 +40,7 @@ stop nothing.
 
 ## Problem
 
-Local AI agents can read files and run commands, but they cannot see or use a web page in the
+AI agents can read files and run commands, but they cannot see or use a web page in the
 user's browser. Vimma's control socket (protocol 1) treats whoever holds its token as the user:
 `send-keys` presses keys wherever focus is, `state` lists the focused window's tabs and URLs,
 and `open` loads into the active workspace. Handing that to an agent would hand it the user's
@@ -53,7 +53,7 @@ answer for the user, and that never disturbs what the user is doing.
 1. Every profile has an empty `agent` workspace from the start. It loads nothing and is not in
    the `ctrl+b (` / `ctrl+b )` cycle; the user reaches it from the picker or with `:ws agent`.
 2. The user runs `:mcp on` once and answers `y` to
-   `Let local AI agents ask to use the "agent" workspace? Every request asks you first. y/N`.
+   `Let AI agents ask to use the "agent" workspace? Every request asks you first. y/N`.
    (Since changed: the question ends `Nothing runs until you allow it. y/N`, since a bare `a`
    lets an agent work until it quits; [mcp-session-grants](mcp-session-grants.md).)
    Vimma then serves the control socket's `agent` role, and `vimma-ctl mcp` works from Claude
@@ -1156,7 +1156,7 @@ m7-a11y.
 - `docs/guide.md`: "Agents (MCP)" (the agent workspace, the question line and its keys, grants,
   full control, downloads, `[mcp]`, the status bar's segments, how to set up each agent tool);
   "Scripting with vimma-ctl" names `vimma-ctl mcp`.
-- `README.md` feature list: local AI agents through MCP, confined to an agent workspace, every
+- `README.md` feature list: AI agents through MCP, confined to an agent workspace, every
   request confirmed.
 - `docs/bindings.md` and `defaults.toml` via `npm run gen-docs` (`agent_prompt`,
   `mcp_command`, `control_command`); `docs/limits.md` (sub-PR 4): no keys, clicks or

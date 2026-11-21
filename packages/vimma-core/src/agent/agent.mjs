@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Local AI agents and the agent workspace (docs/specs/vimma-mcp.md). Pure: `:mcp on|off|forget`
+ * AI agents and the agent workspace (docs/specs/vimma-mcp.md). Pure: `:mcp on|off|forget`
  * and their questions (decisions 8 and 26), and the agent workspace's glyph. The agent role's
  * gate: the queue of questions, the mute and the grants (decisions 12-22, `AgentQueue`), and the
  * untrusted-content delimiters of page text ("Marking content untrusted").
@@ -94,7 +94,7 @@ export function planMcpSwitch(word, state) {
  */
 export function mcpOnQuestion(name, adopted) {
   if (!adopted) {
-    return `Let local AI agents ask to use the "${name}" workspace? Nothing runs until you allow it. y/N`;
+    return `Let AI agents ask to use the "${name}" workspace? Nothing runs until you allow it. y/N`;
   }
   return `${mcpAdoptedWarning(name, adopted)} y/N`;
 }

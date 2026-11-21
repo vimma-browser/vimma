@@ -287,6 +287,16 @@ describe("completeCommandLine", () => {
     expect(completeCommandLine(":tab").candidates[6]?.kind).toBe("action");
   });
 
+  test("a command and an action of one word that run the same action show once (#1414)", () => {
+    for (const word of ["setup", "restart", "settings"]) {
+      const rows = completeCommandLine(`:${word}`).candidates.filter((c) => c.value === word);
+      expect(rows.map((c) => c.kind)).toEqual(["command"]);
+    }
+    // Different actions keep both rows: :quit closes a pane, the quit action quits Vimma.
+    const quit = completeCommandLine(":quit").candidates.filter((c) => c.value === "quit");
+    expect(quit.map((c) => c.kind)).toEqual(["command", "action"]);
+  });
+
   test("wsp → wsprev", () => {
     expect(values("wsp")[0]).toBe("wsprev");
     expect(values("::wsp")[0]).toBe("wsprev");
@@ -308,7 +318,8 @@ describe("completeCommandLine", () => {
   test("an empty word lists commands then actions, cut at limit", () => {
     const all = completeCommandLine(":", { limit: 1000 }).candidates;
     const commandCount = COMMANDS.reduce((n, c) => n + 1 + c.aliases.length, 0);
-    expect(all).toHaveLength(commandCount + new Set(ACTIONS.map((a) => a.name)).size);
+    // setup, restart and settings: their command runs the action of that name (#1414).
+    expect(all).toHaveLength(commandCount + new Set(ACTIONS.map((a) => a.name)).size - 3);
     expect(all.slice(0, commandCount).every((c) => c.kind === "command")).toBe(true);
     expect(values("")).toHaveLength(20);
     expect(values("", { limit: 3 })).toEqual(["open", "tabnew", "tabrename"]);

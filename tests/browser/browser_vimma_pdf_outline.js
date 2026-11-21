@@ -551,6 +551,104 @@ add_task(async function a_read_under_way_does_not_outlive_its_document() {
   });
 });
 
+/**
+ * The viewer's window with what stillFetching puts on it: a function that lets pdf.js's pages
+ * finish loading, and the count of outline reads asked of pdf.js.
+ * @typedef {PdfJsWindow & { vimmaPagesLoaded: () => void, vimmaOutlineReads: number }} LoadingWindow
+ */
+
+/**
+ * Puts `browser`'s viewer back to before pdf.js had fetched its pages: it knows only the first
+ * page's reference, and its `pagesPromise` is pending until `vimmaPagesLoaded`. Installed once
+ * the real pages are in, so that giving them back gives every page.
+ * @param {XULBrowserElement} browser
+ */
+function stillFetching(browser) {
+  return SpecialPowers.spawn(browser, [], async () => {
+    /** @type {LoadingWindow} */
+    const w = content.wrappedJSObject;
+    const app = w.PDFViewerApplication;
+    const doc = /** @type {PdfJsDocument} */ (app.pdfDocument);
+    const viewer = /** @type {PdfJsViewer} */ (app.pdfViewer);
+    await viewer.pagesPromise;
+    w.vimmaOutlineReads = 0;
+    const getOutline = doc.getOutline.bind(doc);
+    doc.getOutline = Cu.exportFunction(() => {
+      w.vimmaOutlineReads++;
+      return getOutline();
+    }, content);
+    const real = doc.cachedPageNumber.bind(doc);
+    doc.cachedPageNumber = Cu.exportFunction(
+      (/** @type {object} */ ref) => (real(ref) === 1 ? 1 : null),
+      content,
+    );
+    /** @type {(value?: unknown) => void} */
+    let loaded = () => {};
+    const pages = new w.Promise(
+      Cu.exportFunction((/** @type {(value?: unknown) => void} */ resolve) => {
+        loaded = resolve;
+      }, content),
+    );
+    // Own properties over pdf.js's prototype members, removed to give them back.
+    Object.defineProperty(viewer, "pagesPromise", { value: pages, configurable: true });
+    w.vimmaPagesLoaded = Cu.exportFunction(() => {
+      Reflect.deleteProperty(doc, "cachedPageNumber");
+      Reflect.deleteProperty(viewer, "pagesPromise");
+      loaded();
+    }, content);
+  });
+}
+
+/** @param {unknown} message  an outline message as the parent got it */
+const pagesOf = (message) =>
+  /** @type {{ entries: { page: number }[] }} */ (message).entries.map((e) => e.page);
+
+// #1424: pdf.js resolves a destination's page reference only for a page it has fetched, and
+// fetches the pages after the first one draws. The outline read as the PDF opens (decision 19)
+// waits for them all, or the entries past the first page would have no page and the selection
+// could not follow the page.
+add_task(async function the_outline_read_as_a_pdf_opens_waits_for_its_pages() {
+  await withPdf(async (browser) => {
+    await stillFetching(browser);
+    await recordingOutline(async (seen) => {
+      // What showOutlineBeside asks as the PDF opens.
+      PdfOps.askOutline(browser, true);
+      // The viewer has had the ask: it waits for the pages before reading the outline.
+      const reads = await SpecialPowers.spawn(
+        browser,
+        [],
+        () => /** @type {LoadingWindow} */ (content.wrappedJSObject).vimmaOutlineReads,
+      );
+      Assert.equal(reads, 0, "no outline read before the pages are in");
+      await SpecialPowers.spawn(browser, [], () =>
+        /** @type {LoadingWindow} */ (content.wrappedJSObject).vimmaPagesLoaded(),
+      );
+      await TestUtils.waitForCondition(() => seen.length === 1, "the outline");
+      Assert.deepEqual(pagesOf(seen[0]), [1, 3, 4, 5, 6], "each entry has its page");
+    });
+  });
+});
+
+// Tab's read waits for the pages only as long as Tab waits for the reply (OUTLINE_WAIT_MS): a
+// long PDF still opening its pages opens its outline.
+add_task(async function tab_does_not_wait_for_every_page() {
+  await withPdf(async (browser) => {
+    await stillFetching(browser);
+    await openOutline();
+    Assert.deepEqual(rows(), ["Preface", "Chapter 1", "Section 1.1", "Section 1.2", "Chapter 2"]);
+  });
+});
+
+// Tab while the read as the PDF opens still waits for the pages: Tab's own bound applies.
+add_task(async function tab_while_the_opening_read_waits() {
+  await withPdf(async (browser) => {
+    await stillFetching(browser);
+    PdfOps.askOutline(browser, true);
+    await openOutline();
+    Assert.equal(selected(), "Preface", "the entry for page 1 is selected");
+  });
+});
+
 add_task(async function a_hostile_outline_gets_only_primitives_through() {
   await withPdf(async (browser) => {
     await recordingOutline(async (seen) => {

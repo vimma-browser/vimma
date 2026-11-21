@@ -287,7 +287,7 @@ const TABLE = [
         {
           id: "agents",
           title: "Agents",
-          question: "Let local AI agents ask to use Vimma through vimma-ctl mcp?",
+          question: "Let AI agents ask to use Vimma through vimma-ctl mcp?",
           // Two lines (behaviour 28), then the kill switch: the page shows each line apart.
           text:
             "Agents reach only the agent workspace.\n" +

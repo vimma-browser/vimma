@@ -869,11 +869,11 @@ describe(":control (decision 29 D)", () => {
     // The name is set apart as its own bidi run (security.md M4), as in the question line.
     expect(controlOnQuestion(15, "agent")).toBe(
       'Turn on full control for 15 min? It reaches every workspace and tab, not only "\u2068agent\u2069", ' +
-        "and any local AI agent with a shell can use it. y/N",
+        "and any AI agent with a shell on this machine can use it. y/N",
     );
     expect(controlOnQuestion(1, "bots\n\u202e")).toBe(
       'Turn on full control for 1 min? It reaches every workspace and tab, not only "\u2068bots\u2069", ' +
-        "and any local AI agent with a shell can use it. y/N",
+        "and any AI agent with a shell on this machine can use it. y/N",
     );
   });
   test("the question and the status", () => {

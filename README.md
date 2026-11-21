@@ -32,7 +32,7 @@ The docs, every key and the install page are at **[vimma.dev](https://vimma.dev)
 - **Every key is yours:** every binding, the prefix and the leader can be remapped in
   `config.toml`, Firefox's own keys too: every Firefox shortcut is a Vimma binding with
   Firefox's meaning, listed in `ctrl+b ?`, and `:firefox <id>` runs any other Firefox command.
-- **Local AI agents, kept apart:** Claude Code, Codex, opencode and Copilot reach Vimma through MCP
+- **AI agents, kept apart:** Claude Code, Codex, opencode and Copilot reach Vimma through MCP
   (`vimma-ctl mcp`), only in an agent workspace with its own cookies. An agent asks you first, and
   one answer (`a`) lets an agent work through its task until it quits. There they read and open
   pages, scroll, search and follow links with Vimma's own keys, click buttons and fill forms by hint

@@ -10,7 +10,7 @@
 | `release-please.yml`       | push to `main`, manual                             | `ubuntu-latest`           | Actions may open PRs; optional token       |
 | `release.yml`              | release published, manual                          | `ubuntu-24.04`            | see "Release packages" (gated off)         |
 | `homebrew.yml`             | release published, `macos-tap`, manual (`main`)    | `ubuntu-24.04`            | see "Release packages" (gated off)         |
-| `pkgbuild.yml`             | `tools/package/` on PRs and `main` (once per tree) | `ubuntu-24.04` + macOS    | nothing (Arch Linux in docker; brew)       |
+| `pkgbuild.yml`             | `tools/package/` on PRs and `main` (once per tree) | `ubuntu-24.04` + macOS    | nothing (containers in docker; brew)       |
 | `mutation.yml`             | Sundays 04:23 UTC, manual                          | `ubuntu-latest`           | nothing (creates its `mutation` label)     |
 | `semgrep.yml`              | push to `main` (once per tree), PRs, Mon, manual   | `ubuntu-latest`           | nothing                                    |
 | `codeql.yml`               | push to `main`, PRs, Mon, manual                   | `ubuntu-latest`           | nothing; skipped while the repo is private |
