@@ -10,10 +10,12 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { gunzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
+import { rmSync, symlinkSync } from "node:fs";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { tempDir } from "../../test/temp-dir.ts";
 import { haveTool, missingRequired } from "./have-tool.ts";
-import { certify, localSigner } from "../openpgp-kms.ts";
+import { certify, localSigner, sign } from "../openpgp-kms.ts";
 import {
   aptSources,
   build,
@@ -22,6 +24,8 @@ import {
   readRelease,
   redirectsFile,
   rpmRepo,
+  selectReleases,
+  verify,
 } from "../repos.ts";
 import type { Release } from "../repos.ts";
 
@@ -35,11 +39,16 @@ const hasRpm = haveTool("rpmbuild") && haveTool("createrepo_c");
 const hasPacman = haveTool("repo-add") && haveTool("zstd") && haveTool("bsdtar");
 
 let certText: string | undefined;
+let certPem: string | Buffer = "";
 async function cert(): Promise<string> {
   if (!certText) {
     const pair = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const pem = pair.privateKey.export({ type: "pkcs8", format: "pem" });
-    certText = await certify(localSigner(pem), 1790000000, "Vimma packages <packages@vimma.dev>");
+    certPem = pair.privateKey.export({ type: "pkcs8", format: "pem" });
+    certText = await certify(
+      localSigner(certPem),
+      1790000000,
+      "Vimma packages <packages@vimma.dev>",
+    );
   }
   return certText;
 }
@@ -419,3 +428,282 @@ describe("build", () => {
     ).rejects.toThrow(/not empty/);
   });
 });
+
+/** A GitHub API release, as `GET /repos/{owner}/{repo}/releases` lists it. */
+function apiRelease(
+  version: string,
+  { draft = false, prerelease = false, pacman = true, tag = `v${version}` } = {},
+) {
+  const names = [
+    "SHA256SUMS",
+    "SHA256SUMS.sigstore.json",
+    `vimma_${version}_amd64.deb`,
+    `vimma-${version}-1.x86_64.rpm`,
+    `vimma-${version}-linux-x86_64.tar.xz`,
+    ...(pacman
+      ? [
+          `vimma-bin-${version}-1-x86_64.pkg.tar.zst`,
+          `vimma-bin-${version}-1-x86_64.pkg.tar.zst.sig`,
+        ]
+      : []),
+  ];
+  return {
+    tag_name: tag,
+    draft,
+    prerelease,
+    assets: names.map((name) => ({ name, state: "uploaded" })),
+  };
+}
+
+// Spec package-repositories, decisions 13, 17 and 20: the releases the repositories list are
+// chosen from GitHub's list of releases, by the job that builds the metadata and again by the
+// job that signs it, so the signing job never takes the list from the job before it.
+describe("selectReleases", () => {
+  it("keeps the newest published releases that carry the repository packages, newest first", () => {
+    const list = [
+      apiRelease("0.1.9", { pacman: false }),
+      apiRelease("0.1.10"),
+      apiRelease("0.2.0"),
+      apiRelease("0.2.1", { prerelease: true }),
+      apiRelease("0.3.0", { draft: true }),
+      apiRelease("0.1.11"),
+      apiRelease("0.1.12", { tag: "nightly" }),
+      apiRelease("0.2.0-rc.1", { prerelease: true }),
+    ];
+    expect(selectReleases(list, 5, "v0.2.0")).toEqual(["v0.2.0", "v0.1.11", "v0.1.10"]);
+    expect(selectReleases(list, 2, "v0.2.0")).toEqual(["v0.2.0", "v0.1.11"]);
+  });
+
+  it("refuses a newest release without the pacman package, and a tag it does not keep", () => {
+    const list = [apiRelease("0.1.0"), apiRelease("0.2.0", { pacman: false })];
+    expect(() => selectReleases(list, 5, "v0.2.0")).toThrow(/v0\.2\.0.*pacman/);
+    const ok = [apiRelease("0.1.0"), apiRelease("0.2.0"), apiRelease("0.3.0")];
+    expect(() => selectReleases(ok, 2, "v0.1.0")).toThrow(/v0\.1\.0 is not among/);
+    // an asset still uploading is not there yet
+    const uploading = apiRelease("0.4.0");
+    uploading.assets[0] = { name: "SHA256SUMS", state: "starter" };
+    expect(() => selectReleases([...ok, uploading], 5, "v0.4.0")).toThrow(/v0\.4\.0/);
+  });
+
+  it("refuses an answer that is not a list of releases", () => {
+    expect(() => selectReleases({ message: "Bad credentials" }, 5, "v0.1.0")).toThrow(
+      /unexpected response/,
+    );
+    expect(() => selectReleases([{ tag_name: "v0.1.0" }], 5, "v0.1.0")).toThrow(
+      /unexpected response/,
+    );
+    expect(() => selectReleases([], 5, "v0.1.0")).toThrow(/no published release/);
+  });
+});
+
+/** sha256sum's output for every file in `dir`, as a release's SHA256SUMS lists them. */
+function sumsOf(dir: string): string {
+  return readdirSync(dir)
+    .sort()
+    .map(
+      (f) =>
+        `${createHash("sha256")
+          .update(readFileSync(join(dir, f)))
+          .digest("hex")}  ${f}\n`,
+    )
+    .join("");
+}
+
+/**
+ * Three stub releases, the metadata build() writes for the newest two, and a SHA256SUMS per
+ * release, as repo-sign has them: the tree from the job before, the sums from GitHub.
+ */
+async function builtTree() {
+  const root = tempDir("vimma-repos-verify-");
+  const dirs = ["0.1.0", "0.2.0", "0.3.0"].map((v) =>
+    stubRelease(root, v, { deb: true, rpm: true, pacman: true }),
+  );
+  const certFile = join(root, "cert.asc");
+  writeFileSync(certFile, await cert());
+  const tree = join(root, "public");
+  await build({
+    releases: dirs.slice(1).map((d) => ({ tag: d.slice(d.lastIndexOf("/") + 1), dir: d })),
+    out: tree,
+    cert: certFile,
+    keep: 5,
+    baseUrl: HOST,
+    downloadBase: GITHUB,
+  });
+  const sums: Record<string, string> = {};
+  for (const d of dirs) {
+    const tag = d.slice(d.lastIndexOf("/") + 1);
+    sums[tag] = join(root, `${tag}.SHA256SUMS`);
+    writeFileSync(sums[tag], sumsOf(d));
+  }
+  const check = (tags = ["v0.3.0", "v0.2.0"], signed = false) =>
+    verify({
+      tree,
+      cert: certFile,
+      releases: tags.map((tag) => ({ tag, sums: sums[tag] as string })),
+      baseUrl: HOST,
+      downloadBase: GITHUB,
+      signed,
+    });
+  return { root, tree, sums, certFile, check, dirs };
+}
+
+/** The tree's four signatures, as repo-sign makes them, with the local key. */
+async function signTree(tree: string) {
+  const c = Buffer.from(await cert());
+  const signer = localSigner(certPem);
+  const at = 1790000100;
+  const put = async (from: string, to: string, format: "binary" | "armor" | "cleartext") =>
+    writeFileSync(
+      join(tree, to),
+      await sign(signer, c, format, readFileSync(join(tree, from)), at),
+    );
+  await put("apt/Release", "apt/InRelease", "cleartext");
+  await put("rpm/repodata/repomd.xml", "rpm/repodata/repomd.xml.asc", "armor");
+  await put("arch/x86_64/vimma.db", "arch/x86_64/vimma.db.sig", "binary");
+  await put("arch/x86_64/vimma.files", "arch/x86_64/vimma.files.sig", "binary");
+}
+
+describe.skipIf(!hasDeb || !hasRpm || !hasPacman)(
+  "verify (repo-sign's check before it signs, and publish's before it pushes)",
+  () => {
+    it("accepts the metadata build wrote for the releases' own files, and SHA-256 alone in apt's", async () => {
+      const t = await builtTree();
+      t.check();
+      // One hash per file in Packages and Release, the one SHA256SUMS can vouch for: apt checks
+      // the strongest it finds, which must then be one this check compared.
+      const packages = readFileSync(join(t.tree, "apt/Packages"), "utf8");
+      expect(packages).not.toMatch(/^(MD5sum|SHA1|SHA512):/m);
+      const release = readFileSync(join(t.tree, "apt/Release"), "utf8");
+      expect(release).not.toMatch(/^(MD5Sum|SHA1|SHA512):/m);
+      expect(release).toMatch(/^SHA256:$/m);
+    }, 120_000);
+
+    it.each([
+      ["deb", "vimma_0.3.0_amd64.deb", /Packages.*vimma_0\.3\.0_amd64\.deb/s],
+      ["rpm", "vimma-0.3.0-1.x86_64.rpm", /primary\.xml.*vimma-0\.3\.0-1\.x86_64\.rpm/s],
+      ["pacman", "vimma-bin-0.3.0-1-x86_64.pkg.tar.zst", /vimma\.db.*vimma-bin-0\.3\.0/s],
+    ])(
+      "refuses metadata whose %s checksum is not the one the release's SHA256SUMS lists",
+      async (_, file, why) => {
+        const t = await builtTree();
+        const sums = t.sums["v0.3.0"] as string;
+        writeFileSync(
+          sums,
+          readFileSync(sums, "utf8").replace(
+            new RegExp(`^[0-9a-f]{64}(  ${file.replaceAll(".", "\\.")})$`, "m"),
+            `${"0".repeat(64)}$1`,
+          ),
+        );
+        expect(() => t.check()).toThrow(why);
+      },
+      120_000,
+    );
+
+    it("refuses metadata for other releases than the ones chosen, such as an older set", async () => {
+      const t = await builtTree();
+      expect(() => t.check(["v0.2.0", "v0.1.0"])).toThrow(/v0\.1\.0|v0\.2\.0/);
+      expect(() => t.check(["v0.3.0"])).toThrow(/stanzas|packages|v0\.3\.0/);
+    }, 120_000);
+
+    it("refuses an extra file, a symlink, and a setup file, key, _redirects or _headers that is not repos.ts's", async () => {
+      const t = await builtTree();
+      const keep = (f: string) => readFileSync(join(t.tree, f));
+      const cases: [string, () => void, RegExp][] = [
+        ["an extra file", () => writeFileSync(join(t.tree, "apt/extra"), "x"), /apt\/extra/],
+        [
+          "a symlink",
+          () => {
+            rmSync(join(t.tree, "arch/x86_64/vimma.files"));
+            symlinkSync("vimma.db", join(t.tree, "arch/x86_64/vimma.files"));
+          },
+          /vimma\.files/,
+        ],
+        [
+          "a signature before signing",
+          () => writeFileSync(join(t.tree, "apt/InRelease"), "x"),
+          /InRelease/,
+        ],
+      ];
+      for (const f of [
+        "apt/vimma.sources",
+        "rpm/vimma.repo",
+        "rpm/repodata/repomd.xml.key",
+        "vimma-packages.asc",
+        "_redirects",
+        "_headers",
+      ]) {
+        cases.push([
+          f,
+          () => writeFileSync(join(t.tree, f), `${keep(f)}# more\n`),
+          new RegExp(f.replaceAll(".", "\\.")),
+        ]);
+      }
+      for (const [what, change, why] of cases) {
+        const saved = new Map<string, Buffer>();
+        for (const f of [
+          "apt/vimma.sources",
+          "rpm/vimma.repo",
+          "rpm/repodata/repomd.xml.key",
+          "vimma-packages.asc",
+          "_redirects",
+          "_headers",
+          "arch/x86_64/vimma.files",
+        ]) {
+          saved.set(f, keep(f));
+        }
+        change();
+        expect(() => t.check(), what).toThrow(why);
+        rmSync(join(t.tree, "apt/extra"), { force: true });
+        rmSync(join(t.tree, "apt/InRelease"), { force: true });
+        for (const [f, b] of saved) {
+          rmSync(join(t.tree, f), { force: true });
+          writeFileSync(join(t.tree, f), b);
+        }
+        t.check();
+      }
+    }, 120_000);
+
+    it("refuses a second hash in Packages, and Packages.gz or Release that does not match Packages", async () => {
+      const t = await builtTree();
+      const p = join(t.tree, "apt/Packages");
+      const packages = readFileSync(p, "utf8");
+      writeFileSync(p, packages.replace(/^SHA256: /m, `MD5sum: ${"0".repeat(32)}\nSHA256: `));
+      expect(() => t.check()).toThrow(/MD5sum/);
+      writeFileSync(p, packages);
+      writeFileSync(join(t.tree, "apt/Packages.gz"), gzipSync(`${packages}\n`));
+      expect(() => t.check()).toThrow(/Packages\.gz/);
+      writeFileSync(join(t.tree, "apt/Packages.gz"), gzipSync(packages));
+      const r = join(t.tree, "apt/Release");
+      const release = readFileSync(r, "utf8");
+      writeFileSync(r, `${release}Valid-Until: Sat, 01 Jan 2050 00:00:00 UTC\n`);
+      expect(() => t.check()).toThrow(/Valid-Until/);
+      writeFileSync(r, release.replace(/^ [0-9a-f]{64}( +\d+ Packages)$/m, ` ${"0".repeat(64)}$1`));
+      expect(() => t.check()).toThrow(/Release.*Packages/s);
+    }, 120_000);
+
+    it("refuses repodata whose repomd.xml does not match its files", async () => {
+      const t = await builtTree();
+      const r = join(t.tree, "rpm/repodata/repomd.xml");
+      const repomd = readFileSync(r, "utf8");
+      writeFileSync(
+        r,
+        repomd.replace(
+          /(<data type="filelists">\s*<checksum type="sha256">)[0-9a-f]{64}/,
+          `$1${"0".repeat(64)}`,
+        ),
+      );
+      expect(() => t.check()).toThrow(/repomd\.xml.*filelists/s);
+    }, 120_000);
+
+    it("signed: wants the four signatures, and an InRelease whose text is Release's", async () => {
+      const t = await builtTree();
+      expect(() => t.check(undefined, true)).toThrow(/InRelease/);
+      await signTree(t.tree);
+      t.check(undefined, true);
+      // signatures are checked by gpgv in the jobs; here only that InRelease says what Release says
+      const ir = join(t.tree, "apt/InRelease");
+      writeFileSync(ir, readFileSync(ir, "utf8").replace("Label: Vimma", "Label: Vimmb"));
+      expect(() => t.check(undefined, true)).toThrow(/InRelease/);
+    }, 120_000);
+  },
+);
