@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.ts";
+import { haveTool, missingRequired } from "../../package/test/have-tool.ts";
 import { testKey } from "../../test/test-keys.ts";
 import { IDENTITY_REGEXP } from "../../package/package.ts";
 import {
@@ -81,7 +82,10 @@ function githubShell(block: string) {
     ? ["--noprofile", "--norc", "-eo", "pipefail"]
     : ["-e"];
 }
-const has = (cmd: string) => spawnSync("sh", ["-c", `command -v ${cmd}`]).status === 0;
+const has = haveTool;
+/** GNU tar, which package-sign compares with libarchive's bsdtar. */
+const hasGnuTar =
+  has("tar") && /GNU tar/.test(spawnSync("tar", ["--version"], { encoding: "utf8" }).stdout ?? "");
 
 const GUARD =
   "github.event_name == 'workflow_dispatch' && github.repository == 'vimma-browser/vimma' && " +
@@ -315,63 +319,179 @@ describe("update-publish.yml", () => {
     );
   });
 
-  describe.skipIf(!has("zstd"))("with zstd", () => {
-    it("package-sign signs only the caller's tag's .rpm and pacman package", () => {
-      const run = runOf(job("package-sign"), "Check the files to sign");
-      const rpm = "vimma-0.3.1-1.x86_64.rpm";
-      const pkg = "vimma-bin-0.3.1-1-x86_64.pkg.tar.zst";
-      const attempt = (files: Record<string, Buffer | string>, tag = "v0.3.1") => {
-        const dir = tempDir("vimma-package-sign-");
-        mkdirSync(join(dir, "in"));
-        for (const [f, c] of Object.entries(files)) writeFileSync(join(dir, "in", f), c);
-        return spawnSync("bash", [...githubShell(job("package-sign")), "-c", run], {
-          cwd: dir,
-          encoding: "utf8",
-          env: { ...process.env, CALLER_TAG: tag, GITHUB_ENV: join(dir, "env") },
-        });
-      };
-      /** A zstd tar of these entries, in this order, as makepkg writes a package. */
-      const pacman = (entries: string[]) => {
-        const dir = tempDir("vimma-pkg-");
-        for (const e of entries) {
-          mkdirSync(join(dir, e, ".."), { recursive: true });
-          writeFileSync(join(dir, e), e);
-        }
-        return execFileSync("sh", ["-c", `tar -cf - ${entries.join(" ")} | zstd -q -c`], {
-          cwd: dir,
-        });
-      };
-      const rpmBytes = Buffer.from([0xed, 0xab, 0xee, 0xdb, 1, 2]);
-      const pkgBytes = pacman([".BUILDINFO", ".MTREE", ".PKGINFO", "opt/vimma/vimma"]);
-      const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
-      const good = {
-        [rpm]: rpmBytes,
-        [pkg]: pkgBytes,
-        SHA256SUMS: `${sha(rpmBytes)}  ${rpm}\n`,
-      };
-      const ok = attempt(good);
-      expect(ok.status, ok.stderr + ok.stdout).toBe(0);
-      expect(attempt(good, "v0.3.1-rc1").stdout).toContain("is not a vX.Y.Z release tag");
-      expect(attempt(good, "v0.3.2").stdout).toContain("packages-unsigned holds");
-      expect(attempt({ ...good, extra: "x" }).stdout).toContain("packages-unsigned holds");
-      expect(attempt({ ...good, [rpm]: Buffer.from("not an rpm") }).stdout).toContain(
-        "is not an rpm",
-      );
-      expect(attempt({ ...good, [pkg]: Buffer.from("not zstd") }).stdout).toContain("is not zstd");
-      // A zstd file that is not a pacman package: .PKGINFO missing, or after the package's files.
-      for (const entries of [
-        [".BUILDINFO", ".MTREE", "opt/vimma/vimma"],
-        ["opt/vimma/vimma", ".PKGINFO"],
-      ]) {
-        expect(attempt({ ...good, [pkg]: pacman(entries) }).stdout, entries.join(" ")).toContain(
-          "is not a pacman package",
-        );
-      }
-      expect(attempt({ ...good, SHA256SUMS: `${"0".repeat(64)}  ${rpm}\n` }).stdout).toContain(
-        "does not list",
-      );
-    });
+  // pkgbuild.yml's repos job installs these and requires them, so the archive checks run there.
+  it("has every tool VIMMA_REQUIRE_TOOLS names", () => {
+    expect(missingRequired(["zstd", "bsdtar"])).toEqual([]);
   });
+
+  describe.skipIf(!has("zstd") || !has("bsdtar") || !hasGnuTar)(
+    "with zstd, bsdtar and GNU tar",
+    () => {
+      it("package-sign signs only the caller's tag's .rpm and pacman package", () => {
+        const run = runOf(job("package-sign"), "Check the files to sign");
+        const rpm = "vimma-0.3.1-1.x86_64.rpm";
+        const pkg = "vimma-bin-0.3.1-1-x86_64.pkg.tar.zst";
+        const attempt = (files: Record<string, Buffer | string>, tag = "v0.3.1") => {
+          const dir = tempDir("vimma-package-sign-");
+          mkdirSync(join(dir, "in"));
+          for (const [f, c] of Object.entries(files)) writeFileSync(join(dir, "in", f), c);
+          return spawnSync("bash", [...githubShell(job("package-sign")), "-c", run], {
+            cwd: dir,
+            encoding: "utf8",
+            env: { ...process.env, CALLER_TAG: tag, GITHUB_ENV: join(dir, "env") },
+          });
+        };
+        /** A zstd tar of these entries, in this order, as makepkg writes a package. */
+        const pacman = (entries: string[]) => {
+          const dir = tempDir("vimma-pkg-");
+          for (const e of entries) {
+            mkdirSync(join(dir, e, ".."), { recursive: true });
+            writeFileSync(join(dir, e), e);
+          }
+          return execFileSync("sh", ["-c", `tar -cf - ${entries.join(" ")} | zstd -q -c`], {
+            cwd: dir,
+          });
+        };
+        const rpmBytes = Buffer.from([0xed, 0xab, 0xee, 0xdb, 1, 2]);
+        const pkgBytes = pacman([".BUILDINFO", ".MTREE", ".PKGINFO", "opt/vimma/vimma"]);
+        const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+        const good = {
+          [rpm]: rpmBytes,
+          [pkg]: pkgBytes,
+          SHA256SUMS: `${sha(rpmBytes)}  ${rpm}\n`,
+        };
+        const ok = attempt(good);
+        expect(ok.status, ok.stderr + ok.stdout).toBe(0);
+        expect(attempt(good, "v0.3.1-rc1").stdout).toContain("is not a vX.Y.Z release tag");
+        expect(attempt(good, "v0.3.2").stdout).toContain("packages-unsigned holds");
+        expect(attempt({ ...good, extra: "x" }).stdout).toContain("packages-unsigned holds");
+        expect(attempt({ ...good, [rpm]: Buffer.from("not an rpm") }).stdout).toContain(
+          "is not an rpm",
+        );
+        expect(attempt({ ...good, [pkg]: Buffer.from("not zstd") }).stdout).toContain(
+          "is not zstd",
+        );
+        // A zstd file that is not a pacman package: .PKGINFO missing, or after the package's files.
+        for (const entries of [
+          [".BUILDINFO", ".MTREE", "opt/vimma/vimma"],
+          ["opt/vimma/vimma", ".PKGINFO"],
+        ]) {
+          expect(attempt({ ...good, [pkg]: pacman(entries) }).stdout, entries.join(" ")).toContain(
+            "is not a pacman package",
+          );
+        }
+        expect(attempt({ ...good, SHA256SUMS: `${"0".repeat(64)}  ${rpm}\n` }).stdout).toContain(
+          "does not list",
+        );
+      });
+
+      // A tar header for `name`, and a pax extended header: enough to write the archives a
+      // compromised build could send, which GNU tar and libarchive (pacman's reader) may list
+      // differently, or which hide entries behind an entry whose size the pax header overrides.
+      const tarHeader = (name: string, size: number, type: string) => {
+        const h = Buffer.alloc(512);
+        h.write(name, 0, "utf8");
+        h.write("0000644\0", 100);
+        h.write("0000000\0", 108);
+        h.write("0000000\0", 116);
+        h.write(`${size.toString(8).padStart(11, "0")}\0`, 124);
+        h.write("00000000000\0", 136);
+        h.write("        ", 148);
+        h.write(type, 156);
+        h.write("ustar\0", 257);
+        h.write("00", 263);
+        let sum = 0;
+        for (const b of h) sum += b;
+        h.write(`${sum.toString(8).padStart(6, "0")}\0 `, 148);
+        return h;
+      };
+      const pad = (b: Buffer) => Buffer.concat([b, Buffer.alloc((512 - (b.length % 512)) % 512)]);
+      const entry = (name: string, content: string, type = "0") =>
+        Buffer.concat([
+          tarHeader(name, Buffer.byteLength(content), type),
+          pad(Buffer.from(content)),
+        ]);
+      const paxHeader = (size: string) => {
+        const rec = ` size=${size}\n`;
+        let len = rec.length + 1;
+        while (String(len).length + rec.length !== len) len = String(len).length + rec.length;
+        const body = Buffer.from(`${len}${rec}`);
+        return Buffer.concat([tarHeader("PaxHeader", body.length, "x"), pad(body)]);
+      };
+      const zstd = (tar: Buffer) => execFileSync("zstd", ["-q", "-c"], { input: tar });
+      const lead = Buffer.concat([
+        entry(".BUILDINFO", "b\n"),
+        entry(".MTREE", "m\n"),
+        entry(".PKGINFO", "pkgname = vimma-bin\n"),
+      ]);
+      const end = Buffer.alloc(1024);
+
+      it("package-sign refuses a pacman package whose tar readers could disagree", () => {
+        const run = runOf(job("package-sign"), "Check the files to sign");
+        const rpm = "vimma-0.3.1-1.x86_64.rpm";
+        const pkg = "vimma-bin-0.3.1-1-x86_64.pkg.tar.zst";
+        const rpmBytes = Buffer.from([0xed, 0xab, 0xee, 0xdb, 1, 2]);
+        const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+        const attempt = (tar: Buffer) => {
+          const dir = tempDir("vimma-package-sign-tar-");
+          mkdirSync(join(dir, "in"));
+          writeFileSync(join(dir, "in", rpm), rpmBytes);
+          writeFileSync(join(dir, "in", pkg), zstd(tar));
+          writeFileSync(join(dir, "in", "SHA256SUMS"), `${sha(rpmBytes)}  ${rpm}\n`);
+          return spawnSync("bash", [...githubShell(job("package-sign")), "-c", run], {
+            cwd: dir,
+            encoding: "utf8",
+            env: { ...process.env, CALLER_TAG: "v0.3.1", GITHUB_ENV: join(dir, "env") },
+          });
+        };
+        const ok = attempt(Buffer.concat([lead, entry("opt/vimma/vimma", "vimma\n"), end]));
+        expect(ok.status, ok.stderr + ok.stdout).toBe(0);
+        // A pax size record before a ustar entry whose own size covers a second .PKGINFO and an
+        // .INSTALL: a reader that trusts the ustar size never sees them, pacman does.
+        const data = Buffer.from("vimma\n");
+        const hidden = Buffer.concat([
+          entry(".PKGINFO", "pkgname = evil\n"),
+          entry(".INSTALL", "post_install() { id; }\n"),
+        ]);
+        const smuggled = Buffer.concat([
+          lead,
+          paxHeader(String(data.length)),
+          tarHeader("opt/vimma/vimma", 512 + hidden.length, "0"),
+          pad(data),
+          hidden,
+          end,
+        ]);
+        const r = attempt(smuggled);
+        expect(r.status).not.toBe(0);
+        expect(r.stdout).toContain("lists a name twice");
+        // The same with an .INSTALL alone hidden: a metadata file after the package's files.
+        const installOnly = Buffer.concat([
+          lead,
+          paxHeader(String(data.length)),
+          tarHeader("opt/vimma/vimma", 512 + 1024, "0"),
+          pad(data),
+          entry(".INSTALL", "post_install() { id; }\n"),
+          end,
+        ]);
+        expect(attempt(installOnly).stdout).toContain("is not a pacman package");
+        // A pax size GNU tar refuses and libarchive reads: the two lists differ.
+        const malformed = Buffer.concat([
+          lead,
+          paxHeader(` ${data.length}`),
+          tarHeader("opt/vimma/vimma", 512 + hidden.length, "0"),
+          pad(data),
+          hidden,
+          end,
+        ]);
+        expect(attempt(malformed).stdout).toMatch(/GNU tar|libarchive/);
+        // Entry types other than a file, a directory or a symlink: a hard link and a FIFO.
+        for (const type of ["1", "6"]) {
+          const odd = Buffer.concat([lead, entry("opt/vimma/x", "", type), end]);
+          expect(attempt(odd).stdout, type).toContain("entry types");
+        }
+      });
+    },
+  );
 
   // Spec package-repositories, decision 9: signing rewrites only the .rpm's signature header.
   it("package-sign's check stops on an unreadable payload or a changed header, with pipefail", () => {

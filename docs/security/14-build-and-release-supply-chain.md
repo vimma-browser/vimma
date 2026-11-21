@@ -287,7 +287,9 @@ of the same commit read it too, so a tree without it could not be released anywa
   its upload, so a re-run with the variable unset cannot ship it unsigned; `package-sign`, a job of
   `update-publish.yml` that `release.yml` calls, holding only `id-token: write` in the
   `package-signing` environment, checks that the files are the caller's tag's `.rpm` and pacman
-  package before it signs, signs them with the Cloud KMS package key through
+  package before it signs (the package as libarchive, pacman's reader, and GNU tar both list it,
+  the same list, with only files, directories and symlinks, no name twice and makepkg's metadata
+  entries first, so a crafted pax header cannot hide an `.INSTALL` from the check), signs them with the Cloud KMS package key through
   `tools/package/openpgp-kms.ts` (the only repository file it runs, checked out alone from
   `main` with the certificate and `.nvmrc`), checks both signatures against the committed
   certificate and writes `SHA256SUMS` again; and `packages`, with no secret, checks that result
@@ -354,7 +356,8 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`refuses a release artifact that already holds a pacman package`](../../tools/package/test/check-signed-packages.test.ts),
   [`accepts a real .rpm signed by the key, and refuses one signed by another`](../../tools/package/test/check-signed-packages.test.ts),
   [`the release artifact never holds a pacman package`](../../tools/package/test/release-workflow.test.ts),
-  [`package-sign's check stops on an unreadable payload or a changed header, with pipefail`](../../tools/update/test/update-workflow.test.ts)
+  [`package-sign's check stops on an unreadable payload or a changed header, with pipefail`](../../tools/update/test/update-workflow.test.ts),
+  [`package-sign refuses a pacman package whose tar readers could disagree`](../../tools/update/test/update-workflow.test.ts)
 
 - B10. A release **must** be signed only by `release.yml` run from `main` through
   `workflow_dispatch`: `release-please.yml`'s `release-build` job dispatches it with

@@ -748,6 +748,12 @@ jobs:
           name: packages-unsigned
           path: in
 
+      # Before the input check, which lists the pacman package with both tar readers.
+      - name: Tools (rpmsign, rpmkeys, gpgv, zstd, bsdtar)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q rpm gpgv zstd libarchive-tools
+
       # The files come from a job with no secret; before KMS signs anything, the shell alone
       # checks that they are the caller's tag's .rpm and pacman package, by name and by their
       # first bytes, and that the .rpm is the one package's SHA256SUMS lists.
@@ -768,14 +774,29 @@ jobs:
           done
           [ "$(od -An -tx1 -N 4 "in/$rpm" | tr -d ' \n')" = edabeedb ] || { echo "::error::$rpm is not an rpm"; exit 1; }
           [ "$(od -An -tx1 -N 4 "in/$pkg" | tr -d ' \n')" = 28b52ffd ] || { echo "::error::$pkg is not zstd"; exit 1; }
-          # makepkg puts its metadata files first, in name order, .PKGINFO among them: a zstd
-          # file without it there is not a package pacman would install. awk reads every entry,
-          # so tar never stops on a closed pipe.
-          zstd -dc "in/$pkg" | tar -tf - | awk '
-            !done && /^\.(BUILDINFO|CHANGELOG|INSTALL|MTREE)$/ { next }
-            !done { done = 1; first = $0 }
-            END { exit first != ".PKGINFO" }' \
-            || { echo "::error::$pkg is not a pacman package (no leading .PKGINFO)"; exit 1; }
+          # The archive as pacman's reader (libarchive, bsdtar) and as GNU tar list it: tar
+          # readers differ on malformed pax records, and a pax size that overrides an entry's
+          # ustar size can hide entries from one of them, so both must give the same list.
+          bsd=$(zstd -dc "in/$pkg" | bsdtar -tf -) || { echo "::error::libarchive cannot list $pkg"; exit 1; }
+          gnu=$(zstd -dc "in/$pkg" | tar -tf -) || { echo "::error::GNU tar cannot list $pkg"; exit 1; }
+          [ "$bsd" = "$gnu" ] || { echo "::error::GNU tar and libarchive list $pkg differently"; exit 1; }
+          # Only files, directories and symlinks (the first column of a long listing), and no
+          # name twice.
+          types=$({ zstd -dc "in/$pkg" | bsdtar -tvf -; zstd -dc "in/$pkg" | tar -tvf -; } | cut -c1 | LC_ALL=C sort -u | tr -d '\n')
+          [[ $types =~ ^[-dl]+$ ]] || { echo "::error::$pkg has entry types '$types', not only files, directories and symlinks"; exit 1; }
+          [ -z "$(printf '%s\n' "$bsd" | LC_ALL=C sort | uniq -d)" ] || { echo "::error::$pkg lists a name twice"; exit 1; }
+          # makepkg puts its metadata files first, in name order: .PKGINFO must be among them,
+          # and no top-level dotfile may come after the package's own files (pacman runs an
+          # .INSTALL wherever it is).
+          printf '%s\n' "$bsd" | awk '
+            /^\.[^\/]*$/ {
+              if (body || $0 !~ /^\.(BUILDINFO|CHANGELOG|INSTALL|MTREE|PKGINFO)$/) bad = 1
+              if ($0 == ".PKGINFO") info = 1
+              next
+            }
+            { body = 1 }
+            END { exit bad || !info }' \
+            || { echo "::error::$pkg is not a pacman package (.PKGINFO, .INSTALL or other metadata out of place)"; exit 1; }
           [ "$(awk -v f="$rpm" '$2 == f' in/SHA256SUMS)" = "$(cd in && sha256sum "$rpm")" ] \
             || { echo "::error::SHA256SUMS does not list $rpm as built"; exit 1; }
           { echo "RPM=$rpm"; echo "PKG=$pkg"; } >> "$GITHUB_ENV"
@@ -785,11 +806,6 @@ jobs:
         with:
           node-version-file: .nvmrc
           package-manager-cache: false # nothing is installed, and a cache is no input to trust
-
-      - name: Tools (rpmsign, rpmkeys, gpgv, zstd)
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q rpm gpgv zstd
 
       - name: The project of the key
         id: key
