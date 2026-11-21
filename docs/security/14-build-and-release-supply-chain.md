@@ -809,7 +809,7 @@ of the same commit read it too, so a tree without it could not be released anywa
   bytes, so no client can read in it something the check did not: `Packages` and `Release`
   only with the fields Vimma's packages have, each once, compared without case as apt compares
   them, LF only, no control character, BOM or U+FFFD, and `Release`'s `Date` in
-  apt-ftparchive's own form; the rpm XML without comments, CDATA, DOCTYPE, processing
+  apt-ftparchive's own form, a real day with its weekday; the rpm XML without comments, CDATA, DOCTYPE, processing
   instructions, other entities, `xml:` attributes, characters XML forbids or `]]>`, each
   package's elements and `<format>`'s children in createrepo_c's order, and each index file
   named after its own checksum and type with the sizes `repomd.xml` gives; every gzip file one
@@ -817,15 +817,21 @@ of the same commit read it too, so a tree without it could not be released anywa
   from repo-add's entries (ustar directory and files, no pax header, nothing after the end),
   compared decompressed, after which `repo-sign` writes their gzip itself, so it signs its own
   output. The relations are pinned to the ones `tools/package/package.ts` gives Vimma's
-  packages (`RELATIONS` in `repos.ts`, which a test keeps equal to package.ts's): apt's
-  `Depends`, `Recommends` and `Provides`; the `.rpm`'s requires (its declared ones and the
-  sonames rpmbuild's ELF scan finds in Firefox's binaries), its one recommends
-  (`libpulse.so.0()(64bit)`) and its provides (the desktop file's `mimehandler()` ones among
-  them); and pacman's `%DEPENDS%`, `%OPTDEPENDS%`, `%PROVIDES%` and `%CONFLICTS%`. Anything
-  else, such as `Conflicts`, `Breaks`, `Replaces`, `Pre-Depends`, `rpm:obsoletes`,
+  packages, and to those a kept release built by an earlier package.ts still declares, recorded
+  from its own packages in `tools/package/test/fixtures/relations-<tag>.json` (`RELATIONS` in
+  `repos.ts`; a test checks package.ts ⊆ `RELATIONS` ⊆ package.ts ∪ the recorded releases):
+  apt's `Depends`, `Recommends` and `Provides`; the `.rpm`'s requires (its declared ones and
+  the exact sonames and symbol versions rpmbuild's ELF scan found in 0.1.22), its one
+  recommends (`libpulse.so.0()(64bit)`) and its provides (the desktop file's `mimehandler()`
+  ones among them); and pacman's `%DEPENDS%`, `%OPTDEPENDS%`, `%PROVIDES%` and `%CONFLICTS%`.
+  An rpm relation carries no flags or version, but `vimma` and `vimma(x86-64)` provided at
+  exactly the release's own version, since a version Vimma's `.rpm` does not declare can make
+  an upgrade unsatisfiable, which dnf skips silently and so keeps users on the old release.
+  Anything else, such as `Conflicts`, `Breaks`, `Replaces`, `Pre-Depends`, `rpm:obsoletes`,
   `rpm:conflicts`, `rpm:suggests`, `rpm:supplements`, `%REPLACES%`, or a dependency on any
-  other package, is refused, and the `.rpm`'s file lists may name only Vimma's own paths
-  (`/usr/lib/vimma`, `/usr/bin/vimma*`, its desktop file, icons and documentation). It then checks each signature with `gpgv` against
+  other package, is refused, and the file lists may name only Vimma's own paths: for the
+  `.rpm`, `/usr/lib/vimma`, `/usr/bin/vimma*`, its desktop file, icons and documentation; for
+  `vimma.files`, `opt/vimma`, its launchers in `usr/bin`, its desktop file and icons. It then checks each signature with `gpgv` against
   the committed certificate, and `publish` checks all of it again, the cosign signatures too,
   before it commits the tree in the manifest's commit to `vimma-updates`. The commit replaces
   the old repodata, whose file names change with their content, so a dnf or zypper that read
@@ -867,7 +873,9 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`refuses a tag or file name outside [A-Za-z0-9._~+-]`](../../tools/package/test/repos.test.ts),
   [`no job in update-signing names the package key, and no job in package-signing names the update key`](../../tools/update/test/update-workflow.test.ts),
   [`refuses %s`](../../tools/package/test/repos.test.ts),
-  [`the lists equal what package.ts declares`](../../tools/package/test/repos.test.ts),
+  [`RELATIONS holds what package.ts declares and what recorded releases declare, nothing more`](../../tools/package/test/repos.test.ts),
+  [`refuses an entry that %s`](../../tools/package/test/repos.test.ts),
+  [`refuses an attribute on a text element`](../../tools/package/test/repos.test.ts),
   [`refuses a Packages that %s`](../../tools/package/test/repos.test.ts),
   [`refuses a primary.xml that %s`](../../tools/package/test/repos.test.ts),
   [`refuses a pacman database that %s`](../../tools/package/test/repos.test.ts),

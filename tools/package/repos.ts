@@ -181,13 +181,14 @@ export function redirectsFile(p: Plan, downloadBase: string): string {
 // unless that is byte for byte the input: nothing it skipped can reach a client.
 
 /**
- * The relations Vimma's packages may declare, per format: what package.ts gives them (its
- * test, "the lists equal what package.ts declares", keeps the two in step) and, for the .rpm,
- * what rpmbuild adds: the desktop file's application() and mimehandler() provides, and the
- * sonames its ELF scan finds in the binaries (release 0.1.22's, by soname; the symbol versions
- * in parentheses vary). A relation outside these lets signed metadata pull in another package
- * or stand in for one. When package.ts drops a relation, it stays here while a kept release
- * still declares it.
+ * The relations Vimma's packages may declare, per format: what package.ts gives them and, for
+ * the .rpm, what rpmbuild adds (the desktop file's application() and mimehandler() provides,
+ * and the exact sonames and symbol versions its ELF scan found). A relation package.ts no
+ * longer declares stays here only while a kept release still declares it, recorded from that
+ * release's packages in tools/package/test/fixtures/relations-<tag>.json; the test "RELATIONS
+ * holds what package.ts declares and what recorded releases declare, nothing more" keeps both
+ * directions. A relation outside these lets signed metadata pull in another package or stand
+ * in for one, and a version on one can make an upgrade unsatisfiable (decision 15).
  */
 export const RELATIONS = {
   deb: {
@@ -224,10 +225,98 @@ export const RELATIONS = {
   },
   rpm: {
     requires: ["hicolor-icon-theme", "/bin/sh", "rtld(GNU_HASH)"],
+    /** The sonames and symbol versions rpmbuild's ELF scan found in 0.1.22's binaries. */
+    elf: [
+      "ld-linux-x86-64.so.2()(64bit)",
+      "ld-linux-x86-64.so.2(GLIBC_2.3)(64bit)",
+      "libX11-xcb.so.1()(64bit)",
+      "libX11.so.6()(64bit)",
+      "libXcomposite.so.1()(64bit)",
+      "libXcursor.so.1()(64bit)",
+      "libXdamage.so.1()(64bit)",
+      "libXext.so.6()(64bit)",
+      "libXfixes.so.3()(64bit)",
+      "libXi.so.6()(64bit)",
+      "libXrandr.so.2()(64bit)",
+      "libXrender.so.1()(64bit)",
+      "libasound.so.2()(64bit)",
+      "libasound.so.2(ALSA_0.9)(64bit)",
+      "libatk-1.0.so.0()(64bit)",
+      "libc.so.6()(64bit)",
+      "libc.so.6(GLIBC_2.10)(64bit)",
+      "libc.so.6(GLIBC_2.11)(64bit)",
+      "libc.so.6(GLIBC_2.12)(64bit)",
+      "libc.so.6(GLIBC_2.14)(64bit)",
+      "libc.so.6(GLIBC_2.15)(64bit)",
+      "libc.so.6(GLIBC_2.16)(64bit)",
+      "libc.so.6(GLIBC_2.17)(64bit)",
+      "libc.so.6(GLIBC_2.18)(64bit)",
+      "libc.so.6(GLIBC_2.2.5)(64bit)",
+      "libc.so.6(GLIBC_2.3)(64bit)",
+      "libc.so.6(GLIBC_2.3.2)(64bit)",
+      "libc.so.6(GLIBC_2.3.3)(64bit)",
+      "libc.so.6(GLIBC_2.3.4)(64bit)",
+      "libc.so.6(GLIBC_2.4)(64bit)",
+      "libc.so.6(GLIBC_2.6)(64bit)",
+      "libc.so.6(GLIBC_2.7)(64bit)",
+      "libc.so.6(GLIBC_2.9)(64bit)",
+      "libcairo-gobject.so.2()(64bit)",
+      "libcairo.so.2()(64bit)",
+      "libdbus-1.so.3()(64bit)",
+      "libdl.so.2()(64bit)",
+      "libdl.so.2(GLIBC_2.2.5)(64bit)",
+      "libfontconfig.so.1()(64bit)",
+      "libfreetype.so.6()(64bit)",
+      "libgcc_s.so.1()(64bit)",
+      "libgcc_s.so.1(GCC_3.0)(64bit)",
+      "libgcc_s.so.1(GCC_3.3)(64bit)",
+      "libgcc_s.so.1(GCC_3.4)(64bit)",
+      "libgcc_s.so.1(GCC_4.0.0)(64bit)",
+      "libgcc_s.so.1(GCC_4.2.0)(64bit)",
+      "libgdk-3.so.0()(64bit)",
+      "libgdk_pixbuf-2.0.so.0()(64bit)",
+      "libgio-2.0.so.0()(64bit)",
+      "libglib-2.0.so.0()(64bit)",
+      "libgobject-2.0.so.0()(64bit)",
+      "libgtk-3.so.0()(64bit)",
+      "libm.so.6()(64bit)",
+      "libm.so.6(GLIBC_2.2.5)(64bit)",
+      "libpango-1.0.so.0()(64bit)",
+      "libpangocairo-1.0.so.0()(64bit)",
+      "libpthread.so.0()(64bit)",
+      "libpthread.so.0(GLIBC_2.12)(64bit)",
+      "libpthread.so.0(GLIBC_2.2.5)(64bit)",
+      "libpthread.so.0(GLIBC_2.3.2)(64bit)",
+      "libpthread.so.0(GLIBC_2.3.3)(64bit)",
+      "libpthread.so.0(GLIBC_2.3.4)(64bit)",
+      "libresolv.so.2()(64bit)",
+      "libresolv.so.2(GLIBC_2.2.5)(64bit)",
+      "librt.so.1()(64bit)",
+      "librt.so.1(GLIBC_2.2.5)(64bit)",
+      "libstdc++.so.6()(64bit)",
+      "libstdc++.so.6(CXXABI_1.3)(64bit)",
+      "libstdc++.so.6(CXXABI_1.3.2)(64bit)",
+      "libstdc++.so.6(CXXABI_1.3.5)(64bit)",
+      "libstdc++.so.6(CXXABI_1.3.7)(64bit)",
+      "libstdc++.so.6(GLIBCXX_3.4)(64bit)",
+      "libstdc++.so.6(GLIBCXX_3.4.11)(64bit)",
+      "libstdc++.so.6(GLIBCXX_3.4.15)(64bit)",
+      "libstdc++.so.6(GLIBCXX_3.4.17)(64bit)",
+      "libstdc++.so.6(GLIBCXX_3.4.18)(64bit)",
+      "libstdc++.so.6(GLIBCXX_3.4.19)(64bit)",
+      "libstdc++.so.6(GLIBCXX_3.4.20)(64bit)",
+      "libstdc++.so.6(GLIBCXX_3.4.21)(64bit)",
+      "libstdc++.so.6(GLIBCXX_3.4.22)(64bit)",
+      "libstdc++.so.6(GLIBCXX_3.4.26)(64bit)",
+      "libstdc++.so.6(GLIBCXX_3.4.29)(64bit)",
+      "libstdc++.so.6(GLIBCXX_3.4.9)(64bit)",
+      "libxcb-shm.so.0()(64bit)",
+      "libxcb.so.1()(64bit)",
+    ],
     recommends: ["libpulse.so.0()(64bit)"],
+    /** Provided at exactly the release's own version: `= X.Y.Z-1`. */
+    versioned: ["vimma", "vimma(x86-64)"],
     provides: [
-      "vimma",
-      "vimma(x86-64)",
       "webclient",
       "application()",
       "application(vimma-vimma.desktop)",
@@ -256,45 +345,6 @@ export const RELATIONS = {
         "x-scheme-handler/https",
       ].map((m) => `mimehandler(${m})`),
     ],
-    sonames: [
-      "ld-linux-x86-64.so.2",
-      "libX11-xcb.so.1",
-      "libX11.so.6",
-      "libXcomposite.so.1",
-      "libXcursor.so.1",
-      "libXdamage.so.1",
-      "libXext.so.6",
-      "libXfixes.so.3",
-      "libXi.so.6",
-      "libXrandr.so.2",
-      "libXrender.so.1",
-      "libXtst.so.6",
-      "libasound.so.2",
-      "libatk-1.0.so.0",
-      "libc.so.6",
-      "libcairo-gobject.so.2",
-      "libcairo.so.2",
-      "libdbus-1.so.3",
-      "libdl.so.2",
-      "libfontconfig.so.1",
-      "libfreetype.so.6",
-      "libgcc_s.so.1",
-      "libgdk-3.so.0",
-      "libgdk_pixbuf-2.0.so.0",
-      "libgio-2.0.so.0",
-      "libglib-2.0.so.0",
-      "libgobject-2.0.so.0",
-      "libgtk-3.so.0",
-      "libm.so.6",
-      "libpango-1.0.so.0",
-      "libpangocairo-1.0.so.0",
-      "libpthread.so.0",
-      "libresolv.so.2",
-      "librt.so.1",
-      "libstdc++.so.6",
-      "libxcb-shm.so.0",
-      "libxcb.so.1",
-    ],
   },
   pacman: {
     DEPENDS: ["alsa-lib", "dbus", "gtk3", "hicolor-icon-theme", "libxt", "mime-types", "ttf-font"],
@@ -308,13 +358,52 @@ export const RELATIONS = {
   },
 };
 
-/** Whether an rpm relation name is one Vimma's .rpm may declare in `kind`. */
-function rpmRelation(kind: "requires" | "recommends" | "provides", name: string): boolean {
-  if (RELATIONS.rpm[kind].includes(name)) return true;
-  if (kind !== "requires") return false;
-  // a soname, bare or with a symbol version: libc.so.6()(64bit), libc.so.6(GLIBC_2.17)(64bit)
-  const m = /^(.+?)\((?:[A-Za-z0-9_.]*)\)\(64bit\)$/.exec(name);
-  return !!m?.[1] && RELATIONS.rpm.sonames.includes(m[1]);
+/**
+ * Refuses an rpm:entry unless it is one Vimma's .rpm declares, in the form it declares it: no
+ * flags or version, but for vimma's own provides at exactly the release's version, and `pre`
+ * only on /bin/sh, which the scriptlets need before the install.
+ */
+function rpmEntry(
+  kind: "requires" | "recommends" | "provides",
+  e: { attrs: [string, string][] },
+  version: string,
+  fail: (m: string) => never,
+): void {
+  const a = Object.fromEntries(e.attrs.map(([k, v]) => [k, unescapeXml(v)]));
+  const keys = e.attrs.map(([k]) => k).join(" ");
+  const name = a.name ?? "";
+  if (kind === "provides" && RELATIONS.rpm.versioned.includes(name)) {
+    if (
+      keys !== "name flags epoch ver rel" ||
+      a.flags !== "EQ" ||
+      a.epoch !== "0" ||
+      a.ver !== version ||
+      a.rel !== "1"
+    ) {
+      fail(`provides ${JSON.stringify(name)} is not at exactly ${version}-1`);
+    }
+    return;
+  }
+  const allowed =
+    kind === "requires"
+      ? [...RELATIONS.rpm.requires, ...RELATIONS.rpm.elf]
+      : kind === "recommends"
+        ? RELATIONS.rpm.recommends
+        : RELATIONS.rpm.provides;
+  if (!allowed.includes(name)) fail(`${kind} ${JSON.stringify(name)} is not one of Vimma's`);
+  const pre = kind === "requires" && name === "/bin/sh" && keys === "name pre" && a.pre === "1";
+  if (keys !== "name" && !pre) fail(`${kind} ${JSON.stringify(name)} carries ${keys}`);
+}
+
+/**
+ * The paths the PKGBUILD installs, relative as vimma.files lists them, directories with a
+ * trailing slash: /opt/vimma, its launchers in /usr/bin, its desktop file and icons, and the
+ * directories above them.
+ */
+const PACMAN_PATH =
+  /^(?:opt\/|opt\/vimma\/(?:[^/]+\/)*(?:[^/]+)?|usr\/|usr\/bin\/|usr\/bin\/vimma(?:-open|-ctl)?|usr\/share\/|usr\/share\/applications\/|usr\/share\/applications\/vimma-vimma\.desktop|usr\/share\/icons\/|usr\/share\/icons\/hicolor\/|usr\/share\/icons\/hicolor\/[0-9]+x[0-9]+\/(?:apps\/(?:vimma\.png)?)?)$/;
+function pacmanPath(path: string): boolean {
+  return PACMAN_PATH.test(path) && !path.split("/").some((seg) => seg === "." || seg === "..");
 }
 
 /** The paths Vimma's .rpm installs, in primary.xml and filelists.xml. */
@@ -726,7 +815,10 @@ export function checkPrimary(
     ) {
       fail(`${href}: no sha256 checksum`);
     }
-    for (const leaf of [summary, description, packager, url]) textOf(leaf as XmlElement, what);
+    for (const leaf of [name, arch, summary, description, packager, url]) {
+      attrsOf(leaf as XmlElement, [], what);
+      textOf(leaf as XmlElement, what);
+    }
     attrsOf(time as XmlElement, ["file", "build"], what);
     const sz = attrsOf(size as XmlElement, ["package", "installed", "archive"], what);
     for (const n of Object.values(sz))
@@ -745,13 +837,7 @@ export function checkPrimary(
         const kind = f.name.slice(4) as "provides" | "requires" | "recommends";
         for (const e of elementsOf(f, what)) {
           if (e.name !== "rpm:entry" || !e.empty) fail(`${href}: ${f.name} holds ${e.name}`);
-          for (const [k] of e.attrs) {
-            if (!["name", "flags", "epoch", "ver", "rel", "pre"].includes(k))
-              fail(`${href}: an entry with ${k}`);
-          }
-          const name = unescapeXml(e.attrs.find(([k]) => k === "name")?.[1] ?? "");
-          if (!rpmRelation(kind, name))
-            fail(`${href}: ${kind} ${JSON.stringify(name)} is not one of Vimma's`);
+          rpmEntry(kind, e, v.ver ?? "", (m) => fail(`${href}: ${m}`));
         }
       } else if (f.name === "rpm:header-range") {
         attrsOf(f, ["start", "end"], what);
@@ -1116,6 +1202,10 @@ function readPacmanDb(
     files = entries[2]?.data.toString("utf8") ?? "";
     if (!/^%FILES%\n(?:[^\0\r\n%][^\0\r\n]*\n)*\n?$/.test(files))
       throw new Error("repos: vimma.files: a malformed file list");
+    for (const path of files.split("\n").slice(1).filter(Boolean)) {
+      if (!pacmanPath(path))
+        throw new Error(`repos: vimma.files: ${JSON.stringify(path)} is not in Vimma's paths`);
+    }
   }
   if (!pacmanTar(r, desc, files).equals(tar))
     throw new Error(`repos: ${what} is not the tar repos.ts writes`);
@@ -1159,6 +1249,11 @@ export function untar(data: Buffer): Map<string, Buffer> {
  */
 export function checkPacmanDb(tarGz: Buffer, r: Release): void {
   readPacmanDb(tarGz, r, "vimma.db");
+}
+
+/** Refuses vimma.files unless it is exactly what `pacmanDatabase` writes for the release. */
+export function readPacmanFiles(tarGz: Buffer, r: Release): void {
+  readPacmanDb(tarGz, r, "vimma.files");
 }
 
 /**
@@ -1599,17 +1694,21 @@ export function verify(opts: VerifyOptions): void {
     if (one(release, key) !== value) fail(`Release's ${key} is not ${value}`);
   }
   if (!opts.signed) {
-    // apt-ftparchive's form alone (apt 2.6 and later end it in +0000, older ones in UTC), since
-    // Date.parse also reads other forms, asctime's in local time
+    // apt-ftparchive's form alone (apt 2.6 and later end it in +0000, older ones in UTC), a real
+    // day, and the weekday it falls on: apt warns and skips its own Date checks on any other,
+    // and Date.parse reads other forms too, asctime's in local time.
     const stamp = one(release, "Date") ?? "";
-    if (
-      !/^[A-Z][a-z]{2}, [0-9]{2} [A-Z][a-z]{2} [0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} (?:UTC|\+0000)$/.test(
-        stamp,
-      )
-    ) {
+    const form =
+      /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), (0[1-9]|[12][0-9]|3[01]) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([0-9]{4}) ([01][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9]) (?:UTC|\+0000)$/;
+    if (!form.test(stamp))
       fail(`Release's Date ${JSON.stringify(stamp)} is not in apt-ftparchive's form`);
+    const date = Date.parse(stamp.replace(/ (?:UTC|\+0000)$/, " GMT"));
+    if (
+      Number.isNaN(date) ||
+      new Date(date).toUTCString() !== stamp.replace(/ (?:UTC|\+0000)$/, " GMT")
+    ) {
+      fail(`Release's Date ${JSON.stringify(stamp)} is not a real day and its weekday`);
     }
-    const date = Date.parse(stamp.replace(/ UTC$/, " +0000"));
     const age = (opts.now ?? Date.now()) - date;
     if (!(age >= -300_000 && age <= 3_600_000)) fail("Release's Date is not within the last hour");
   }

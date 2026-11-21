@@ -25,6 +25,7 @@ import {
   checkPrimary,
   headersFile,
   pacmanDatabase,
+  readPacmanFiles,
   RELATIONS,
   plan,
   readRelease,
@@ -112,8 +113,8 @@ function stubRelease(
   }
   if (formats.pacman) {
     const r = join(root, `pkg-${version}`);
-    mkdirSync(join(r, "usr/lib/vimma"), { recursive: true });
-    writeFileSync(join(r, "usr/lib/vimma/version"), version);
+    mkdirSync(join(r, "opt/vimma"), { recursive: true });
+    writeFileSync(join(r, "opt/vimma/version"), version);
     writeFileSync(
       join(r, ".PKGINFO"),
       `pkgname = ${name}-bin\npkgbase = ${name}-bin\npkgver = ${said}-1\npkgdesc = stub\n` +
@@ -121,7 +122,7 @@ function stubRelease(
         "size = 6\narch = x86_64\nlicense = MPL-2.0\n",
     );
     const file = join(dir, `vimma-bin-${version}-1-x86_64.pkg.tar.zst`);
-    ok("bsdtar", ["--zstd", "-cf", file, "-C", r, ".PKGINFO", "usr"]);
+    ok("bsdtar", ["--zstd", "-cf", file, "-C", r, ".PKGINFO", "opt"]);
     writeFileSync(`${file}.sig`, "stub signature");
   }
   return dir;
@@ -348,7 +349,7 @@ describe("build", () => {
       expect(desc).not.toContain("%PGPSIG%");
       expect(
         ok("bsdtar", ["-xOf", join(arch, "vimma.files"), "vimma-bin-0.3.0-1/files"]),
-      ).toContain("usr/lib/vimma/version");
+      ).toContain("opt/vimma/version");
 
       // the host's files
       expect(readFileSync(join(out, "vimma-packages.asc"), "utf8")).toBe(await cert());
@@ -956,7 +957,22 @@ describe("relations", () => {
   const withFields = (fields: string) =>
     `${stanza.replace("Description", `${fields}\nDescription`)}\n`;
 
-  it("the lists equal what package.ts declares", () => {
+  // RELATIONS holds what package.ts declares now, and what a kept release built by an earlier
+  // package.ts still declares, recorded in tests/fixtures/relations-<tag>.json from the
+  // release's own packages (rpm -qp --requires/--provides/--recommends, dpkg-deb -f), and
+  // nothing else: package.ts ⊆ RELATIONS ⊆ package.ts ∪ the recorded releases.
+  it("RELATIONS holds what package.ts declares and what recorded releases declare, nothing more", () => {
+    const recorded = readdirSync(new URL("./fixtures/", import.meta.url))
+      .filter((f) => /^relations-v[0-9.]+\.json$/.test(f))
+      .map(
+        (f) =>
+          JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url), "utf8")) as {
+            deb: Record<"Depends" | "Recommends" | "Provides", string[]>;
+            rpm: Record<"requires" | "recommends" | "provides", string[]>;
+            pacman: Record<"DEPENDS" | "OPTDEPENDS" | "PROVIDES" | "CONFLICTS", string[]> | null;
+          },
+      );
+    expect(recorded.length).toBeGreaterThan(0);
     const control = debControl({
       version: "1.2.3",
       maintainer: "x <x@example.invalid>",
@@ -964,9 +980,6 @@ describe("relations", () => {
     });
     const field = (k: string) =>
       (new RegExp(`^${k}: (.*)$`, "m").exec(control)?.[1] ?? "").split(", ");
-    expect(RELATIONS.deb.Depends).toEqual(field("Depends"));
-    expect(RELATIONS.deb.Recommends).toEqual(field("Recommends"));
-    expect(RELATIONS.deb.Provides).toEqual(field("Provides"));
     const spec = rpmSpec({
       version: "1.2.3",
       maintainer: "x <x@example.invalid>",
@@ -974,16 +987,10 @@ describe("relations", () => {
       bundled: [],
     });
     const tags = (k: string) =>
-      [...spec.matchAll(new RegExp(`^${k}: (.*)$`, "gm"))].map((m) => m[1]);
-    for (const r of tags("Requires")) expect(RELATIONS.rpm.requires).toContain(r);
-    expect(RELATIONS.rpm.recommends).toEqual(tags("Recommends"));
-    for (const r of tags("Provides")) expect(RELATIONS.rpm.provides).toContain(r);
+      [...spec.matchAll(new RegExp(`^${k}: (.*)$`, "gm"))].map((m) => m[1] as string);
     // rpm's desktop-file generator provides a mimehandler() per MimeType of the desktop entry
     const desktop = desktopEntry({ wmClass: "vimma-vimma", launcher: "/opt/vimma/vimma-open" });
     const mimes = (/^MimeType=(.*)$/m.exec(desktop)?.[1] ?? "").split(";").filter(Boolean);
-    expect(RELATIONS.rpm.provides.filter((p) => p.startsWith("mimehandler(")).sort()).toEqual(
-      mimes.map((m) => `mimehandler(${m})`).sort(),
-    );
     const build = pkgbuild({
       version: "1.2.3",
       maintainer: "x <x@example.invalid>",
@@ -999,11 +1006,62 @@ describe("relations", () => {
         ...(new RegExp(`^${k}=\\(((?:'[^']*'\\s*)*)\\)`, "m").exec(build)?.[1] ?? "").matchAll(
           /'([^']*)'/g,
         ),
-      ].map((m) => m[1]);
-    expect(RELATIONS.pacman.DEPENDS).toEqual(arr("depends"));
-    expect(RELATIONS.pacman.OPTDEPENDS).toEqual(arr("optdepends"));
-    expect(RELATIONS.pacman.PROVIDES).toEqual(arr("provides"));
-    expect(RELATIONS.pacman.CONFLICTS).toEqual(arr("conflicts"));
+      ].map((m) => m[1] as string);
+    const declared = {
+      deb: {
+        Depends: field("Depends"),
+        Recommends: field("Recommends"),
+        Provides: field("Provides"),
+      },
+      rpm: {
+        requires: tags("Requires"),
+        recommends: tags("Recommends"),
+        provides: [...tags("Provides"), ...mimes.map((m) => `mimehandler(${m})`)],
+      },
+      pacman: {
+        DEPENDS: arr("depends"),
+        OPTDEPENDS: arr("optdepends"),
+        PROVIDES: arr("provides"),
+        CONFLICTS: arr("conflicts"),
+      },
+    };
+    const rpmRelations = {
+      requires: [...RELATIONS.rpm.requires, ...RELATIONS.rpm.elf],
+      recommends: RELATIONS.rpm.recommends,
+      provides: [...RELATIONS.rpm.provides, ...RELATIONS.rpm.versioned],
+    };
+    const check = (have: string[], now: string[], before: string[][], what: string) => {
+      for (const r of now) expect(have, `${what}: package.ts declares ${r}`).toContain(r);
+      for (const r of have) {
+        expect([...now, ...before.flat()], `${what}: ${r} is declared by no one`).toContain(r);
+      }
+    };
+    for (const k of ["Depends", "Recommends", "Provides"] as const) {
+      check(
+        RELATIONS.deb[k],
+        declared.deb[k],
+        recorded.map((x) => x.deb[k]),
+        `deb ${k}`,
+      );
+    }
+    for (const k of ["requires", "recommends", "provides"] as const) {
+      check(
+        rpmRelations[k],
+        declared.rpm[k],
+        recorded.map((x) => x.rpm[k]),
+        `rpm ${k}`,
+      );
+      // a recorded release's own .rpm must pass
+      for (const x of recorded) for (const r of x.rpm[k]) expect(rpmRelations[k]).toContain(r);
+    }
+    for (const k of ["DEPENDS", "OPTDEPENDS", "PROVIDES", "CONFLICTS"] as const) {
+      check(
+        RELATIONS.pacman[k],
+        declared.pacman[k],
+        recorded.map((x) => x.pacman?.[k] ?? []),
+        `pacman ${k}`,
+      );
+    }
   });
 
   it("accepts Vimma's own relations in Packages", () => {
@@ -1227,4 +1285,144 @@ describe.skipIf(!hasDeb || !hasRpm || !hasPacman)("verify, further cases", () =>
     });
     expect(readFileSync(f)).toEqual(gzipSync(tar, { level: 9 }));
   }, 120_000);
+});
+
+// A relation with a version Vimma's .rpm does not declare can make the next upgrade's
+// dependencies unsatisfiable: dnf 5.4.3 then skips the package ("Skipping packages with broken
+// dependencies") and leaves users on the old release, so the metadata must not carry one.
+describe("rpm relations carry no version but Vimma's own", () => {
+  const pkg = (format: string, summary = "<summary>s</summary>") =>
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<metadata xmlns="http://linux.duke.edu/metadata/common" xmlns:rpm="http://linux.duke.edu/metadata/rpm" packages="1">\n' +
+    '<package type="rpm">\n  <name>vimma</name>\n  <arch>x86_64</arch>\n  <version epoch="0" ver="1.2.3" rel="1"/>\n' +
+    `  <checksum type="sha256" pkgid="YES">${"a".repeat(64)}</checksum>\n` +
+    `  ${summary}\n  <description>d</description>\n  <packager></packager>\n  <url></url>\n` +
+    '  <time file="1" build="1"/>\n  <size package="10" installed="1" archive="1"/>\n' +
+    '  <location href="packages/v1.2.3/vimma-1.2.3-1.x86_64.rpm"/>\n' +
+    `  <format>\n${format}  </format>\n</package>\n</metadata>`;
+  const rel = (kind: string, entry: string) =>
+    `    <rpm:${kind}>\n      ${entry}\n    </rpm:${kind}>\n`;
+
+  it("accepts vimma's own versioned provides at the release's version", () => {
+    checkPrimary(
+      pkg(
+        rel(
+          "provides",
+          '<rpm:entry name="vimma" flags="EQ" epoch="0" ver="1.2.3" rel="1"/>\n      <rpm:entry name="vimma(x86-64)" flags="EQ" epoch="0" ver="1.2.3" rel="1"/>',
+        ),
+      ),
+      [R123],
+    );
+  });
+
+  it.each([
+    [
+      "requires hicolor-icon-theme >= 999 (dnf 5.4.3 kept the old release)",
+      rel("requires", '<rpm:entry name="hicolor-icon-theme" flags="GE" epoch="0" ver="999"/>'),
+    ],
+    [
+      "requires a glibc symbol version 0.1.22 does not (dnf 5.4.3 kept the old release)",
+      rel("requires", '<rpm:entry name="libc.so.6(GLIBC_9.99)(64bit)"/>'),
+    ],
+    [
+      "requires hicolor-icon-theme < 0",
+      rel("requires", '<rpm:entry name="hicolor-icon-theme" flags="LT" epoch="0" ver="0"/>'),
+    ],
+    [
+      "pre on a requirement other than /bin/sh",
+      rel("requires", '<rpm:entry name="hicolor-icon-theme" pre="1"/>'),
+    ],
+    [
+      "recommends libpulse at a version",
+      rel("recommends", '<rpm:entry name="libpulse.so.0()(64bit)" flags="GE" epoch="0" ver="99"/>'),
+    ],
+    [
+      "provides webclient at a version",
+      rel("provides", '<rpm:entry name="webclient" flags="EQ" epoch="99" ver="99"/>'),
+    ],
+    [
+      "provides vimma at another version",
+      rel("provides", '<rpm:entry name="vimma" flags="EQ" epoch="0" ver="9.9.9" rel="1"/>'),
+    ],
+    ["provides vimma without its version", rel("provides", '<rpm:entry name="vimma"/>')],
+  ])("refuses an entry that %s", (_, format) => {
+    expect(() => checkPrimary(pkg(format), [R123])).toThrow(/primary\.xml/);
+  });
+
+  it("refuses an attribute on a text element", () => {
+    expect(() => checkPrimary(pkg("", '<summary foo="bar">s</summary>'), [R123])).toThrow(
+      /primary\.xml/,
+    );
+  });
+});
+
+describe("vimma.files lists Vimma's own paths alone", () => {
+  const desc =
+    "%FILENAME%\nvimma-bin-1.2.3-1-x86_64.pkg.tar.zst\n\n%NAME%\nvimma-bin\n\n%BASE%\nvimma-bin\n\n" +
+    `%VERSION%\n1.2.3-1\n\n%CSIZE%\n10\n\n%SHA256SUM%\n${"a".repeat(64)}\n\n%ARCH%\nx86_64\n\n`;
+  const files = (paths: string[]) => `%FILES%\n${paths.join("\n")}\n\n`;
+  const own = [
+    "opt/",
+    "opt/vimma/",
+    "opt/vimma/vimma",
+    "opt/vimma/browser/",
+    "opt/vimma/browser/omni.ja",
+    "usr/",
+    "usr/bin/",
+    "usr/bin/vimma",
+    "usr/bin/vimma-ctl",
+    "usr/bin/vimma-open",
+    "usr/share/",
+    "usr/share/applications/",
+    "usr/share/applications/vimma-vimma.desktop",
+    "usr/share/icons/",
+    "usr/share/icons/hicolor/",
+    "usr/share/icons/hicolor/16x16/",
+    "usr/share/icons/hicolor/16x16/apps/",
+    "usr/share/icons/hicolor/16x16/apps/vimma.png",
+  ];
+
+  it("accepts the paths the PKGBUILD installs", () => {
+    expect(readPacmanFiles(pacmanDatabase(R123, desc, files(own)), R123)).toBeUndefined();
+  });
+
+  it.each([
+    ["usr/bin/sudo"],
+    ["etc/sudoers.d/vimma"],
+    ["opt/vimma/../../usr/bin/sudo"],
+    ["/opt/vimma/vimma"],
+  ])("refuses %s", (path) => {
+    expect(() => readPacmanFiles(pacmanDatabase(R123, desc, files([...own, path])), R123)).toThrow(
+      /vimma\.files/,
+    );
+  });
+});
+
+describe.skipIf(!hasDeb || !hasRpm || !hasPacman)("Release's Date, as apt checks it", () => {
+  const stamp = (d: Date) => d.toUTCString().replace(/GMT$/, "+0000");
+  it.each([
+    ["a weekday that does not exist", (d: Date) => stamp(d).replace(/^[A-Z][a-z]{2}/, "Xyz")],
+    [
+      "the wrong weekday",
+      (d: Date) => stamp(d).replace(/^[A-Z][a-z]{2}/, (w) => (w === "Mon" ? "Tue" : "Mon")),
+    ],
+    [
+      "24:00:00",
+      (d: Date) =>
+        stamp(new Date(d.getTime() - 86_400_000)).replace(/[0-9]{2}:[0-9]{2}:[0-9]{2}/, "24:00:00"),
+    ],
+    [
+      "a day the month does not have",
+      (d: Date) => stamp(d).replace(/^\w+, [0-9]{2} \w+/, "Sat, 31 Nov"),
+    ],
+  ])(
+    "refuses %s",
+    async (_, form) => {
+      const t = await builtTree();
+      const r = join(t.tree, "apt/Release");
+      writeFileSync(r, readFileSync(r, "utf8").replace(/^Date: .*$/m, `Date: ${form(new Date())}`));
+      expect(() => t.check()).toThrow(/Date/);
+    },
+    120_000,
+  );
 });

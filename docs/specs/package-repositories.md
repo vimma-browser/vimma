@@ -430,10 +430,13 @@ smoke test", the last item below).
     compares them decompressed, and `repo-sign` writes their gzip itself before signing,
     because two runners' zlib may compress the same tar differently. The relations the
     metadata may declare are pinned to those `tools/package/package.ts` gives Vimma's
-    packages (and, for the `.rpm`, the sonames rpmbuild's ELF scan finds and the desktop
-    file's provides), and its file lists to Vimma's own paths, because signed metadata with
-    another dependency or provide would let a package manager install or replace any other
-    package as root. The
+    packages (and, for the `.rpm`, the exact sonames and symbol versions rpmbuild's ELF scan
+    found and the desktop file's provides; and what a kept release built by an earlier
+    package.ts still declares, recorded from its packages), with no version on an rpm relation
+    but Vimma's own provides at the release's version, and its file lists to Vimma's own paths,
+    because signed metadata with another dependency or provide would let a package manager
+    install or replace any other package as root, and a version Vimma does not declare can make
+    an upgrade unsatisfiable, which dnf skips silently. The
     check is in the signing job, because `repo-prepare` runs the build tools and their packages, and a fault
     there must not be able to get other packages or older releases signed; `publish` commits
     the metadata, the signatures, `_redirects` and `_headers` to `vimma-updates` in the same commit as the manifest. Reason: one commit makes the update
