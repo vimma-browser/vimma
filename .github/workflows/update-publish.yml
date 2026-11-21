@@ -646,6 +646,8 @@ jobs:
       # to those packages (repos.ts verify). The SHA256SUMS files are GitHub's copies, read here,
       # each under release.yml's cosign signature (B10), since anyone who can write the
       # repository's contents could replace a release file, but not sign it as release.yml.
+      # Then it writes the pacman databases' gzip itself around the tar it checked, so what is
+      # signed is this job's own output.
       - name: Check the metadata against the releases
         run: |
           gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > releases.json
@@ -663,7 +665,7 @@ jobs:
               --certificate-oidc-issuer https://token.actions.githubusercontent.com "sums/$tag"
             args+=(--release "$tag=sums/$tag")
           done
-          node "$REPOS" verify --tree tree --cert "$CERT" --releases releases.json "${args[@]}"
+          node "$REPOS" verify --tree tree --cert "$CERT" --releases releases.json --regzip-pacman "${args[@]}"
 
       - name: The project of the key
         id: key

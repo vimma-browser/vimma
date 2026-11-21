@@ -356,7 +356,7 @@ describe("update-publish.yml", () => {
       'curl -fsSL --proto =https --retry 3 -o "sums/$tag" "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/SHA256SUMS"',
     );
     expect(check).toContain(
-      'node "$REPOS" verify --tree tree --cert "$CERT" --releases releases.json "${args[@]}"',
+      'node "$REPOS" verify --tree tree --cert "$CERT" --releases releases.json --regzip-pacman "${args[@]}"',
     );
     expect(block.indexOf("- name: Check the metadata against the releases")).toBeLessThan(
       block.indexOf("uses: google-github-actions/auth@"),

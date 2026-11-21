@@ -54,7 +54,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { gunzipSync, gzipSync } from "node:zlib";
+import { crc32, gunzipSync, gzipSync, inflateRawSync } from "node:zlib";
 
 export const DEFAULT_BASE_URL = "https://updates.vimma.dev";
 export const DEFAULT_DOWNLOAD_BASE = "https://github.com/vimma-browser/vimma/releases/download";
@@ -180,6 +180,186 @@ export function redirectsFile(p: Plan, downloadBase: string): string {
 // repository's build writes, puts the file back together from what it read, and refuses it
 // unless that is byte for byte the input: nothing it skipped can reach a client.
 
+/**
+ * The relations Vimma's packages may declare, per format: what package.ts gives them (its
+ * test, "the lists equal what package.ts declares", keeps the two in step) and, for the .rpm,
+ * what rpmbuild adds: the desktop file's application() and mimehandler() provides, and the
+ * sonames its ELF scan finds in the binaries (release 0.1.22's, by soname; the symbol versions
+ * in parentheses vary). A relation outside these lets signed metadata pull in another package
+ * or stand in for one. When package.ts drops a relation, it stays here while a kept release
+ * still declares it.
+ */
+export const RELATIONS = {
+  deb: {
+    Depends: [
+      "libc6 (>= 2.31)",
+      "libasound2t64 | libasound2",
+      "libatk1.0-0t64 | libatk1.0-0",
+      "libcairo-gobject2",
+      "libcairo2",
+      "libdbus-1-3",
+      "libfontconfig1",
+      "libfreetype6",
+      "libgdk-pixbuf-2.0-0",
+      "libglib2.0-0t64 | libglib2.0-0",
+      "libgtk-3-0t64 | libgtk-3-0",
+      "libpango-1.0-0",
+      "libpangocairo-1.0-0",
+      "libx11-6",
+      "libx11-xcb1",
+      "libxcb-shm0",
+      "libxcb1",
+      "libxcomposite1",
+      "libxcursor1",
+      "libxdamage1",
+      "libxext6",
+      "libxfixes3",
+      "libxi6",
+      "libxrandr2",
+      "libxrender1",
+      "libxtst6",
+    ],
+    Recommends: ["libpulse0"],
+    Provides: ["gnome-www-browser", "www-browser"],
+  },
+  rpm: {
+    requires: ["hicolor-icon-theme", "/bin/sh", "rtld(GNU_HASH)"],
+    recommends: ["libpulse.so.0()(64bit)"],
+    provides: [
+      "vimma",
+      "vimma(x86-64)",
+      "webclient",
+      "application()",
+      "application(vimma-vimma.desktop)",
+      ...[
+        "application/json",
+        "application/pdf",
+        "application/rdf+xml",
+        "application/rss+xml",
+        "application/x-xpinstall",
+        "application/xhtml+xml",
+        "application/xml",
+        "audio/flac",
+        "audio/ogg",
+        "audio/webm",
+        "image/avif",
+        "image/gif",
+        "image/jpeg",
+        "image/png",
+        "image/svg+xml",
+        "image/webp",
+        "text/html",
+        "text/xml",
+        "video/ogg",
+        "video/webm",
+        "x-scheme-handler/http",
+        "x-scheme-handler/https",
+      ].map((m) => `mimehandler(${m})`),
+    ],
+    sonames: [
+      "ld-linux-x86-64.so.2",
+      "libX11-xcb.so.1",
+      "libX11.so.6",
+      "libXcomposite.so.1",
+      "libXcursor.so.1",
+      "libXdamage.so.1",
+      "libXext.so.6",
+      "libXfixes.so.3",
+      "libXi.so.6",
+      "libXrandr.so.2",
+      "libXrender.so.1",
+      "libXtst.so.6",
+      "libasound.so.2",
+      "libatk-1.0.so.0",
+      "libc.so.6",
+      "libcairo-gobject.so.2",
+      "libcairo.so.2",
+      "libdbus-1.so.3",
+      "libdl.so.2",
+      "libfontconfig.so.1",
+      "libfreetype.so.6",
+      "libgcc_s.so.1",
+      "libgdk-3.so.0",
+      "libgdk_pixbuf-2.0.so.0",
+      "libgio-2.0.so.0",
+      "libglib-2.0.so.0",
+      "libgobject-2.0.so.0",
+      "libgtk-3.so.0",
+      "libm.so.6",
+      "libpango-1.0.so.0",
+      "libpangocairo-1.0.so.0",
+      "libpthread.so.0",
+      "libresolv.so.2",
+      "librt.so.1",
+      "libstdc++.so.6",
+      "libxcb-shm.so.0",
+      "libxcb.so.1",
+    ],
+  },
+  pacman: {
+    DEPENDS: ["alsa-lib", "dbus", "gtk3", "hicolor-icon-theme", "libxt", "mime-types", "ttf-font"],
+    OPTDEPENDS: [
+      "ffmpeg: H.264, AAC and MP3 playback",
+      "libpulse: PulseAudio audio (also via pipewire-pulse)",
+      "networkmanager: location detection via available Wi-Fi networks",
+    ],
+    PROVIDES: ["vimma"],
+    CONFLICTS: ["vimma"],
+  },
+};
+
+/** Whether an rpm relation name is one Vimma's .rpm may declare in `kind`. */
+function rpmRelation(kind: "requires" | "recommends" | "provides", name: string): boolean {
+  if (RELATIONS.rpm[kind].includes(name)) return true;
+  if (kind !== "requires") return false;
+  // a soname, bare or with a symbol version: libc.so.6()(64bit), libc.so.6(GLIBC_2.17)(64bit)
+  const m = /^(.+?)\((?:[A-Za-z0-9_.]*)\)\(64bit\)$/.exec(name);
+  return !!m?.[1] && RELATIONS.rpm.sonames.includes(m[1]);
+}
+
+/** The paths Vimma's .rpm installs, in primary.xml and filelists.xml. */
+const RPM_PATH =
+  /^\/usr\/(?:lib\/vimma(?:\/[^/]+)*|bin\/vimma(?:-open|-ctl)?|share\/applications\/vimma-vimma\.desktop|share\/doc\/vimma(?:\/[^/]+)*|share\/icons\/hicolor\/(?:[0-9]+x[0-9]+|scalable)\/apps\/vimma\.(?:png|svg))$/;
+function rpmPath(path: string): boolean {
+  return RPM_PATH.test(path) && !path.split("/").some((seg) => seg === "." || seg === "..");
+}
+
+/**
+ * One gzip member, as Node's zlib and createrepo_c write it (no optional header fields), and
+ * nothing after it: apt, librepo and libarchive read on into a second member or past trailing
+ * bytes in ways that differ from each other, so any of them is refused.
+ */
+function gunzipOne(gz: Buffer, what: string): Buffer {
+  const fail = (m: string): never => {
+    throw new Error(`repos: ${what}: ${m}`);
+  };
+  if (gz.length < 18 || gz[0] !== 0x1f || gz[1] !== 0x8b || gz[2] !== 8 || gz[3] !== 0) {
+    fail("is not one plain gzip member");
+  }
+  let out: { buffer: Buffer; engine: { bytesWritten: number } };
+  try {
+    out = inflateRawSync(gz.subarray(10), { info: true }) as unknown as typeof out;
+  } catch {
+    return fail("is not gzip");
+  }
+  const end = 10 + out.engine.bytesWritten;
+  if (gz.length !== end + 8) fail("has something after its gzip member");
+  if (
+    gz.readUInt32LE(end) !== crc32(out.buffer) ||
+    gz.readUInt32LE(end + 4) !== out.buffer.length % 2 ** 32
+  ) {
+    fail("has a wrong gzip checksum or size");
+  }
+  return out.buffer;
+}
+
+/**
+ * Text no reader may see differently: no C0 or C1 control (but LF), no BOM, no U+FFFD (what an
+ * invalid UTF-8 byte decodes to) and no noncharacter.
+ */
+// eslint-disable-next-line no-control-regex -- matching control characters is the point
+const BAD_CHARS = /[\x00-\x09\x0B-\x1F\x7F-\x9F\uFEFF\uFFFD\uFFFE\uFFFF]/;
+
 /** The fields a stanza of Packages may have: what package.ts writes and apt-ftparchive adds. */
 const PACKAGES_FIELDS = [
   "Package",
@@ -215,7 +395,7 @@ function deb822(
   const fail = (m: string): never => {
     throw new Error(`repos: ${what}: ${m}`);
   };
-  if (/[\r\0\t]/.test(text)) fail("has a carriage return, NUL or tab");
+  if (BAD_CHARS.test(text)) fail("has a control character, BOM, U+FFFD or noncharacter");
   if (!text.endsWith(`\n${trailer}`)) fail("does not end as the build writes it");
   const body = text.slice(0, text.length - 1 - trailer.length);
   const out = body.split("\n\n").map((block) => {
@@ -307,6 +487,19 @@ export function checkPackages(
       );
     }
   }
+  for (const f of found) {
+    for (const key of ["Depends", "Recommends", "Provides"] as const) {
+      const value = one(f, key);
+      if (value === undefined) continue;
+      for (const clause of value.split(", ")) {
+        if (!RELATIONS.deb[key].includes(clause)) {
+          throw new Error(
+            `repos: Packages: ${key} ${JSON.stringify(clause)} is not one of Vimma's`,
+          );
+        }
+      }
+    }
+  }
   if (found.length !== releases.length) {
     throw new Error(`repos: Packages has ${found.length} stanzas, want ${releases.length}`);
   }
@@ -334,7 +527,8 @@ function readXml(text: string, what: string): XmlElement {
     throw new Error(`repos: ${what}: ${m}`);
   };
   if (!text.startsWith(XML_DECL)) fail("does not start with the XML declaration");
-  if (/[\0\r]/.test(text)) fail("has a NUL or carriage return");
+  if (BAD_CHARS.test(text)) fail("has a character XML forbids, or a control character");
+  if (text.includes("]]>")) fail("has ]]> in its text");
   if (text.includes("<!")) fail("has a comment, CDATA or DOCTYPE");
   if (text.indexOf("<?", 1) !== -1) fail("has a processing instruction");
   if (/&(?!(?:amp|lt|gt|quot|apos);)/.test(text)) fail("has an entity that is not predefined");
@@ -352,7 +546,8 @@ function readXml(text: string, what: string): XmlElement {
     if (text[at] !== "<") fail(`no element at ${at}`);
     at += 1;
     const el: XmlElement = { name: name(), attrs: [], empty: false, children: [] };
-    const ATTR = / ([A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_.-]*)?)="([^"<]*)"/y;
+    // No tab or newline in a value: XML turns each into a space when it reads the attribute.
+    const ATTR = / ([A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_.-]*)?)="([^"<\t\n]*)"/y;
     for (;;) {
       ATTR.lastIndex = at;
       const m = ATTR.exec(text);
@@ -407,7 +602,9 @@ const unescapeXml = (s: string) =>
 /** The element children of `e`; text between them must be white space only. */
 function elementsOf(e: XmlElement, what: string): XmlElement[] {
   for (const c of e.children) {
-    if (typeof c === "string" && c.trim()) throw new Error(`repos: ${what}: text in ${e.name}`);
+    if (typeof c === "string" && !/^[ \n]*$/.test(c)) {
+      throw new Error(`repos: ${what}: text in ${e.name}`);
+    }
   }
   return e.children.filter((c): c is XmlElement => typeof c !== "string");
 }
@@ -534,21 +731,36 @@ export function checkPrimary(
     const sz = attrsOf(size as XmlElement, ["package", "installed", "archive"], what);
     for (const n of Object.values(sz))
       if (!/^[0-9]+$/.test(n)) fail(`${href}: a size that is no number`);
+    attrsOf(format as XmlElement, [], what);
+    let last = -1;
     for (const f of elementsOf(format as XmlElement, what)) {
-      if (!FORMAT_CHILDREN.includes(f.name)) fail(`${href} has ${f.name}`);
+      const at = FORMAT_CHILDREN.indexOf(f.name);
+      if (at === -1) fail(`${href} has ${f.name}`);
+      // createrepo_c's order, each once; only <file> repeats, at the end
+      if (at < last || (at === last && f.name !== "file"))
+        fail(`${href}: ${f.name} out of order or twice`);
+      last = at;
       if (["rpm:provides", "rpm:requires", "rpm:recommends"].includes(f.name)) {
+        attrsOf(f, [], what);
+        const kind = f.name.slice(4) as "provides" | "requires" | "recommends";
         for (const e of elementsOf(f, what)) {
           if (e.name !== "rpm:entry" || !e.empty) fail(`${href}: ${f.name} holds ${e.name}`);
           for (const [k] of e.attrs) {
             if (!["name", "flags", "epoch", "ver", "rel", "pre"].includes(k))
               fail(`${href}: an entry with ${k}`);
           }
+          const name = unescapeXml(e.attrs.find(([k]) => k === "name")?.[1] ?? "");
+          if (!rpmRelation(kind, name))
+            fail(`${href}: ${kind} ${JSON.stringify(name)} is not one of Vimma's`);
         }
       } else if (f.name === "rpm:header-range") {
         attrsOf(f, ["start", "end"], what);
       } else if (f.name === "file") {
-        if (f.attrs.some(([k]) => k !== "type")) fail(`${href}: a file with other attributes`);
-        textOf(f, what);
+        if (f.attrs.some(([k, v]) => k !== "type" || !["dir", "ghost"].includes(v))) {
+          fail(`${href}: a file with other attributes`);
+        }
+        if (!rpmPath(textOf(f, what)))
+          fail(`${href}: the file ${JSON.stringify(textOf(f, what))} is not in Vimma's paths`);
       } else {
         attrsOf(f, [], what);
         textOf(f, what);
@@ -599,7 +811,14 @@ function checkFilelists(xml: string, type: "filelists" | "other", pkgids: string
     attrsOf(version as XmlElement, ["epoch", "ver", "rel"], what);
     for (const e of rest) {
       if (type === "filelists") {
-        if (e.name !== "file" || e.attrs.some(([k]) => k !== "type")) fail(`has ${e.name}`);
+        if (
+          e.name !== "file" ||
+          e.attrs.some(([k, v]) => k !== "type" || !["dir", "ghost"].includes(v))
+        ) {
+          fail(`has ${e.name}`);
+        }
+        if (!rpmPath(textOf(e, what)))
+          fail(`the file ${JSON.stringify(textOf(e, what))} is not in Vimma's paths`);
       } else if (e.name !== "changelog") fail(`has ${e.name}`);
       else attrsOf(e, ["author", "date"], what);
       textOf(e, what);
@@ -612,7 +831,14 @@ function checkFilelists(xml: string, type: "filelists" | "other", pkgids: string
 }
 
 /** repomd.xml's three index files, in the shape createrepo_c writes it. */
-function readRepomd(xml: string): { type: string; href: string; checksum: string; open: string }[] {
+function readRepomd(xml: string): {
+  type: string;
+  href: string;
+  checksum: string;
+  open: string;
+  size: number;
+  openSize: number;
+}[] {
   const what = "repomd.xml";
   const fail = (m: string): never => {
     throw new Error(`repos: ${what}: ${m}`);
@@ -642,12 +868,17 @@ function readRepomd(xml: string): { type: string; href: string; checksum: string
       if (!/^[0-9]+$/.test(textOf(n, what))) fail(`${type}: ${n.name} is no number`);
     }
     const href = attrsOf(location as XmlElement, ["href"], what).href ?? "";
-    if (!/^repodata\/[A-Za-z0-9._-]+$/.test(href)) fail(`${type} has location ${href}`);
+    // createrepo_c's name, the file's own checksum and type: nothing else may be fetched
+    if (href !== `repodata/${textOf(checksum as XmlElement, what)}-${type}.xml.gz`) {
+      fail(`${type} has location ${href}`);
+    }
     return {
       type,
       href,
       checksum: textOf(checksum as XmlElement, what),
       open: textOf(open as XmlElement, what),
+      size: Number(textOf(size as XmlElement, what)),
+      openSize: Number(textOf(openSize as XmlElement, what)),
     };
   });
   if (
@@ -733,7 +964,7 @@ const DESC_KEYS = [
 
 /** A desc as `%KEY%` blocks, each its value lines and an empty line. */
 function descBlocks(text: string): [string, string[]][] {
-  if (/[\0\r]/.test(text)) throw new Error("repos: vimma.db: desc has a NUL or carriage return");
+  if (BAD_CHARS.test(text)) throw new Error("repos: vimma.db: desc has a control character");
   const blocks: [string, string[]][] = [];
   if (!text.endsWith("\n\n"))
     throw new Error("repos: vimma.db: desc does not end in an empty line");
@@ -782,9 +1013,11 @@ function canonicalDesc(text: string, r: Release, sha?: string, size?: number): s
   ) {
     fail(`does not list exactly vimma-bin ${r.version}-1 for ${r.tag}`);
   }
-  for (const k of ["CONFLICTS", "PROVIDES"]) {
-    const v = get(k);
-    if (v && v.join(" ") !== "vimma") fail(`%${k}% is ${v.join(", ")}, not vimma`);
+  for (const k of ["DEPENDS", "OPTDEPENDS", "PROVIDES", "CONFLICTS"] as const) {
+    for (const v of get(k) ?? []) {
+      if (!RELATIONS.pacman[k].includes(v))
+        fail(`%${k}% ${JSON.stringify(v)} is not one of Vimma's`);
+    }
   }
   if (
     !/^[0-9a-f]{64}$/.test(single("SHA256SUM") ?? "") ||
@@ -802,14 +1035,19 @@ function canonicalDesc(text: string, r: Release, sha?: string, size?: number): s
 }
 
 /** vimma.db (desc alone) or vimma.files (desc and the file list), gzipped. */
-function pacmanDb(r: Release, desc: string, files?: string): Buffer {
+export function pacmanDatabase(r: Release, desc: string, files?: string): Buffer {
+  return gzipSync(pacmanTar(r, desc, files), { level: 9 });
+}
+
+/** The tar inside vimma.db or vimma.files. */
+function pacmanTar(r: Release, desc: string, files?: string): Buffer {
   const dir = `vimma-bin-${r.version}-1/`;
   const entries: TarEntry[] = [
     { name: dir, data: Buffer.alloc(0) },
     { name: `${dir}desc`, data: Buffer.from(desc, "utf8") },
   ];
   if (files !== undefined) entries.push({ name: `${dir}files`, data: Buffer.from(files, "utf8") });
-  return gzipSync(writeTar(entries), { level: 9 });
+  return writeTar(entries);
 }
 
 /**
@@ -817,16 +1055,10 @@ function pacmanDb(r: Release, desc: string, files?: string): Buffer {
  * checksum right, no pax or GNU header, the two end blocks and nothing after. Then the caller
  * writes the same entries again and demands the same bytes.
  */
-function readTar(gz: Buffer, what: string): TarEntry[] {
+function readTar(data: Buffer, what: string): TarEntry[] {
   const fail = (m: string): never => {
     throw new Error(`repos: ${what}: ${m}`);
   };
-  let data: Buffer;
-  try {
-    data = gunzipSync(gz);
-  } catch {
-    return fail("is not gzip");
-  }
   const entries: TarEntry[] = [];
   let at = 0;
   for (;;) {
@@ -866,9 +1098,12 @@ function readPacmanDb(
   what: "vimma.db" | "vimma.files",
   sha?: string,
   size?: number,
-): string {
+): { desc: string; files: string | undefined } {
   const dir = `vimma-bin-${r.version}-1/`;
-  const entries = readTar(gz, what);
+  // Compared decompressed: two runners' zlib may compress the same tar differently, and the
+  // signing job writes the gzip it signs itself (verify's regzip).
+  const tar = gunzipOne(gz, what);
+  const entries = readTar(tar, what);
   const names = entries.map((e) => e.name).join(" ");
   const want = what === "vimma.db" ? `${dir} ${dir}desc` : `${dir} ${dir}desc ${dir}files`;
   if (names !== want)
@@ -882,9 +1117,9 @@ function readPacmanDb(
     if (!/^%FILES%\n(?:[^\0\r\n%][^\0\r\n]*\n)*\n?$/.test(files))
       throw new Error("repos: vimma.files: a malformed file list");
   }
-  if (!pacmanDb(r, desc, files).equals(gz))
-    throw new Error(`repos: ${what} is not the bytes repos.ts writes`);
-  return desc;
+  if (!pacmanTar(r, desc, files).equals(tar))
+    throw new Error(`repos: ${what} is not the tar repos.ts writes`);
+  return { desc, files };
 }
 
 /** The files of a tar archive by name (ustar and pax, as bsdtar writes them). */
@@ -1098,8 +1333,11 @@ export async function build(opts: BuildOptions): Promise<void> {
       );
     }
     const desc = canonicalDesc(rawDesc.toString("utf8"), p.pacman);
-    writeFileSync(join(arch, "vimma.db"), pacmanDb(p.pacman, desc));
-    writeFileSync(join(arch, "vimma.files"), pacmanDb(p.pacman, desc, files.toString("utf8")));
+    writeFileSync(join(arch, "vimma.db"), pacmanDatabase(p.pacman, desc));
+    writeFileSync(
+      join(arch, "vimma.files"),
+      pacmanDatabase(p.pacman, desc, files.toString("utf8")),
+    );
     checkPacmanDb(readFileSync(join(arch, "vimma.db")), p.pacman);
 
     writeFileSync(join(out, "vimma-packages.asc"), cert);
@@ -1238,6 +1476,8 @@ export interface VerifyOptions {
   signed: boolean;
   /** The time Date is checked against, in milliseconds; now by default. */
   now?: number;
+  /** After the checks, write vimma.db and vimma.files again with this file's own gzip. */
+  regzip?: boolean;
 }
 
 /**
@@ -1336,7 +1576,7 @@ export function verify(opts: VerifyOptions): void {
   // size and no other hash.
   const packagesBytes = readFileSync(path("apt/Packages"));
   checkPackages(packagesBytes.toString("utf8"), p.apt, listed, sized);
-  if (!gunzipSync(readFileSync(path("apt/Packages.gz"))).equals(packagesBytes)) {
+  if (!gunzipOne(readFileSync(path("apt/Packages.gz")), "Packages.gz").equals(packagesBytes)) {
     fail("Packages.gz is not Packages");
   }
   const releaseText = readFileSync(path("apt/Release"), "utf8");
@@ -1359,7 +1599,17 @@ export function verify(opts: VerifyOptions): void {
     if (one(release, key) !== value) fail(`Release's ${key} is not ${value}`);
   }
   if (!opts.signed) {
-    const date = Date.parse(one(release, "Date") ?? "");
+    // apt-ftparchive's form alone (apt 2.6 and later end it in +0000, older ones in UTC), since
+    // Date.parse also reads other forms, asctime's in local time
+    const stamp = one(release, "Date") ?? "";
+    if (
+      !/^[A-Z][a-z]{2}, [0-9]{2} [A-Z][a-z]{2} [0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} (?:UTC|\+0000)$/.test(
+        stamp,
+      )
+    ) {
+      fail(`Release's Date ${JSON.stringify(stamp)} is not in apt-ftparchive's form`);
+    }
+    const date = Date.parse(stamp.replace(/ UTC$/, " +0000"));
     const age = (opts.now ?? Date.now()) - date;
     if (!(age >= -300_000 && age <= 3_600_000)) fail("Release's Date is not within the last hour");
   }
@@ -1387,7 +1637,9 @@ export function verify(opts: VerifyOptions): void {
     const file = readFileSync(path(`rpm/${d.href}`));
     if (sha256(file) !== d.checksum)
       fail(`repomd.xml's ${d.type} checksum does not match ${d.href}`);
-    const plain = gunzipSync(file);
+    if (file.length !== d.size) fail(`repomd.xml's ${d.type} size is not ${d.href}'s`);
+    const plain = gunzipOne(file, d.href);
+    if (plain.length !== d.openSize) fail(`repomd.xml's ${d.type} open-size is not ${d.href}'s`);
     if (sha256(plain) !== d.open)
       fail(`repomd.xml's ${d.type} open-checksum does not match ${d.href}`);
     opened.set(d.type, plain.toString("utf8"));
@@ -1400,21 +1652,21 @@ export function verify(opts: VerifyOptions): void {
   // pacman: both databases exactly the bytes this tool writes for the newest release, under its
   // package's SHA-256 and size.
   const pkg = p.pacman.pacman as string;
-  const desc = readPacmanDb(
+  const db = readPacmanDb(
     readFileSync(path("arch/x86_64/vimma.db")),
     p.pacman,
     "vimma.db",
     listed(p.pacman, pkg),
     sized(p.pacman, pkg),
   );
-  const filesDesc = readPacmanDb(
+  const filesDb = readPacmanDb(
     readFileSync(path("arch/x86_64/vimma.files")),
     p.pacman,
     "vimma.files",
     listed(p.pacman, pkg),
     sized(p.pacman, pkg),
   );
-  if (filesDesc !== desc) fail("vimma.files's desc is not vimma.db's");
+  if (filesDb.desc !== db.desc) fail("vimma.files's desc is not vimma.db's");
 
   // The files this tool writes itself, byte for byte: the key in its three places is the
   // committed one (decision 6), and the redirects name only the kept packages.
@@ -1437,6 +1689,16 @@ export function verify(opts: VerifyOptions): void {
     const body = cleartextBody(readFileSync(path("apt/InRelease"), "utf8"));
     if (body === undefined || `${body}\n` !== releaseText) fail("InRelease's text is not Release");
   }
+
+  // The signing job signs gzip it wrote itself around the tar it just checked, never another
+  // job's compression of it.
+  if (opts.regzip) {
+    writeFileSync(path("arch/x86_64/vimma.db"), pacmanDatabase(p.pacman, db.desc));
+    writeFileSync(
+      path("arch/x86_64/vimma.files"),
+      pacmanDatabase(p.pacman, filesDb.desc, filesDb.files),
+    );
+  }
 }
 
 const USAGE =
@@ -1444,7 +1706,7 @@ const USAGE =
   "  [--base-url URL] [--download-base URL]\n" +
   "       repos.ts select --releases FILE --tag TAG [--keep N]\n" +
   "       repos.ts verify --tree DIR --cert FILE --releases FILE --release TAG=SUMS [--release TAG=SUMS …]\n" +
-  "  [--signed] [--base-url URL] [--download-base URL]";
+  "  [--signed] [--regzip-pacman] [--base-url URL] [--download-base URL]";
 
 export async function main(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
@@ -1462,6 +1724,7 @@ export async function main(argv: string[]): Promise<void> {
       tag: { type: "string" },
       tree: { type: "string" },
       signed: { type: "boolean" },
+      "regzip-pacman": { type: "boolean" },
     },
   });
   if (positionals.length) throw new Error(USAGE);
@@ -1486,6 +1749,7 @@ export async function main(argv: string[]): Promise<void> {
       baseUrl: values["base-url"] ?? DEFAULT_BASE_URL,
       downloadBase: values["download-base"] ?? DEFAULT_DOWNLOAD_BASE,
       signed: values.signed ?? false,
+      regzip: values["regzip-pacman"] ?? false,
     });
     process.stdout.write(
       `repos: ${values.tree} is the metadata for ${pairs("SUMS")

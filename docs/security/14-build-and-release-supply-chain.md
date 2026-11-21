@@ -806,14 +806,26 @@ of the same commit read it too, so a tree without it could not be released anywa
   not within the last hour (a later one would make apt refuse every later `Release`), or a
   setup file, key, `_redirects` or `_headers` that differs. It reads each file in the shape the
   build writes and no other, and refuses it unless writing back what it read gives the same
-  bytes, so no client can read in it something the check did not: `Packages` and `Release` only
-  with the fields Vimma's packages have, each once, compared without case as apt compares them
-  (no `Conflicts`, `Breaks`, `Replaces` or `Pre-Depends`), LF only; the rpm XML without
-  comments, CDATA, DOCTYPE, processing instructions, other entities or `xml:` attributes, and
-  without `rpm:obsoletes`, `rpm:conflicts` or the weak relations; and pacman's databases only
-  as `repos.ts` writes them itself from repo-add's entries (ustar directory and files, no pax
-  header, nothing after the end), without `%REPLACES%` and with `%CONFLICTS%` and `%PROVIDES%`
-  only `vimma`. It then checks each signature with `gpgv` against
+  bytes, so no client can read in it something the check did not: `Packages` and `Release`
+  only with the fields Vimma's packages have, each once, compared without case as apt compares
+  them, LF only, no control character, BOM or U+FFFD, and `Release`'s `Date` in
+  apt-ftparchive's own form; the rpm XML without comments, CDATA, DOCTYPE, processing
+  instructions, other entities, `xml:` attributes, characters XML forbids or `]]>`, each
+  package's elements and `<format>`'s children in createrepo_c's order, and each index file
+  named after its own checksum and type with the sizes `repomd.xml` gives; every gzip file one
+  member and nothing after it; and pacman's databases only as `repos.ts` writes them itself
+  from repo-add's entries (ustar directory and files, no pax header, nothing after the end),
+  compared decompressed, after which `repo-sign` writes their gzip itself, so it signs its own
+  output. The relations are pinned to the ones `tools/package/package.ts` gives Vimma's
+  packages (`RELATIONS` in `repos.ts`, which a test keeps equal to package.ts's): apt's
+  `Depends`, `Recommends` and `Provides`; the `.rpm`'s requires (its declared ones and the
+  sonames rpmbuild's ELF scan finds in Firefox's binaries), its one recommends
+  (`libpulse.so.0()(64bit)`) and its provides (the desktop file's `mimehandler()` ones among
+  them); and pacman's `%DEPENDS%`, `%OPTDEPENDS%`, `%PROVIDES%` and `%CONFLICTS%`. Anything
+  else, such as `Conflicts`, `Breaks`, `Replaces`, `Pre-Depends`, `rpm:obsoletes`,
+  `rpm:conflicts`, `rpm:suggests`, `rpm:supplements`, `%REPLACES%`, or a dependency on any
+  other package, is refused, and the `.rpm`'s file lists may name only Vimma's own paths
+  (`/usr/lib/vimma`, `/usr/bin/vimma*`, its desktop file, icons and documentation). It then checks each signature with `gpgv` against
   the committed certificate, and `publish` checks all of it again, the cosign signatures too,
   before it commits the tree in the manifest's commit to `vimma-updates`. The commit replaces
   the old repodata, whose file names change with their content, so a dnf or zypper that read
@@ -855,6 +867,15 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`refuses a tag or file name outside [A-Za-z0-9._~+-]`](../../tools/package/test/repos.test.ts),
   [`no job in update-signing names the package key, and no job in package-signing names the update key`](../../tools/update/test/update-workflow.test.ts),
   [`refuses %s`](../../tools/package/test/repos.test.ts),
+  [`the lists equal what package.ts declares`](../../tools/package/test/repos.test.ts),
+  [`refuses a Packages that %s`](../../tools/package/test/repos.test.ts),
+  [`refuses a primary.xml that %s`](../../tools/package/test/repos.test.ts),
+  [`refuses a pacman database that %s`](../../tools/package/test/repos.test.ts),
+  [`refuses %s in primary.xml`](../../tools/package/test/repos.test.ts),
+  [`refuses a pacman database whose gzip member is followed by %s`](../../tools/package/test/repos.test.ts),
+  [`refuses a Release Date in another form: %s`](../../tools/package/test/repos.test.ts),
+  [`refuses repodata whose file name is not its checksum and type, or whose sizes differ`](../../tools/package/test/repos.test.ts),
+  [`compares pacman's databases decompressed, and re-gzips them itself when asked`](../../tools/package/test/repos.test.ts),
   [`refuses a pax size that hides entries behind desc`](../../tools/package/test/repos.test.ts),
   [`refuses a Release whose Date is not within the last hour, before signing`](../../tools/package/test/repos.test.ts),
   [`refuses package sizes that are not the release assets' sizes`](../../tools/package/test/repos.test.ts),

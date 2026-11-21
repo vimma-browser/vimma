@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
 import { rmSync, symlinkSync } from "node:fs";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { tempDir } from "../../test/temp-dir.ts";
+import { LAUNCHER, debControl, desktopEntry, pkgbuild, rpmSpec } from "../package.ts";
 import { haveTool, missingRequired } from "./have-tool.ts";
 import { certify, localSigner, sign } from "../openpgp-kms.ts";
 import {
@@ -23,6 +24,8 @@ import {
   checkPacmanDb,
   checkPrimary,
   headersFile,
+  pacmanDatabase,
+  RELATIONS,
   plan,
   readRelease,
   redirectsFile,
@@ -77,8 +80,8 @@ function stubRelease(
   if (formats.deb) {
     const r = join(root, `deb-${version}`);
     mkdirSync(join(r, "DEBIAN"), { recursive: true });
-    mkdirSync(join(r, "usr/share/vimma"), { recursive: true });
-    writeFileSync(join(r, "usr/share/vimma/version"), version);
+    mkdirSync(join(r, "usr/lib/vimma"), { recursive: true });
+    writeFileSync(join(r, "usr/lib/vimma/version"), version);
     writeFileSync(
       join(r, "DEBIAN/control"),
       `Package: ${name}\nVersion: ${said}\nArchitecture: amd64\nMaintainer: Vimma CI <ci@example.invalid>\nDescription: stub\n`,
@@ -91,8 +94,8 @@ function stubRelease(
     writeFileSync(
       join(top, "SPECS/vimma.spec"),
       `Name: ${name}\nVersion: ${said}\nRelease: 1\nSummary: stub\nLicense: MPL-2.0\n` +
-        "%description\nstub\n%install\nmkdir -p %{buildroot}/usr/share/vimma\n" +
-        `echo ${version} > %{buildroot}/usr/share/vimma/version\n%files\n/usr/share/vimma/version\n`,
+        "%description\nstub\n%install\nmkdir -p %{buildroot}/usr/lib/vimma\n" +
+        `echo ${version} > %{buildroot}/usr/lib/vimma/version\n%files\n/usr/lib/vimma/version\n`,
     );
     ok("rpmbuild", [
       "--define",
@@ -109,8 +112,8 @@ function stubRelease(
   }
   if (formats.pacman) {
     const r = join(root, `pkg-${version}`);
-    mkdirSync(join(r, "usr/share/vimma"), { recursive: true });
-    writeFileSync(join(r, "usr/share/vimma/version"), version);
+    mkdirSync(join(r, "usr/lib/vimma"), { recursive: true });
+    writeFileSync(join(r, "usr/lib/vimma/version"), version);
     writeFileSync(
       join(r, ".PKGINFO"),
       `pkgname = ${name}-bin\npkgbase = ${name}-bin\npkgver = ${said}-1\npkgdesc = stub\n` +
@@ -345,7 +348,7 @@ describe("build", () => {
       expect(desc).not.toContain("%PGPSIG%");
       expect(
         ok("bsdtar", ["-xOf", join(arch, "vimma.files"), "vimma-bin-0.3.0-1/files"]),
-      ).toContain("usr/share/vimma/version");
+      ).toContain("usr/lib/vimma/version");
 
       // the host's files
       expect(readFileSync(join(out, "vimma-packages.asc"), "utf8")).toBe(await cert());
@@ -939,5 +942,290 @@ describe.skipIf(!hasDeb || !hasRpm || !hasPacman)("verify, before signing and pu
     const text = gunzipSync(db).toString("latin1");
     expect(text).not.toContain("%MD5SUM%");
     expect(text).not.toContain("PaxHeader");
+  }, 120_000);
+});
+
+// The relations the signed metadata may declare are the ones package.ts gives Vimma's packages:
+// a dependency, recommendation or provide beyond them would let the metadata pull in, or stand
+// in for, any other package.
+describe("relations", () => {
+  const stanza =
+    "Package: vimma\nVersion: 1.2.3\nArchitecture: amd64\nMaintainer: x <x@example.invalid>\n" +
+    `Filename: pool/v1.2.3/vimma_1.2.3_amd64.deb\nSize: 10\nSHA256: ${"a".repeat(64)}\n` +
+    "Description: test\n";
+  const withFields = (fields: string) =>
+    `${stanza.replace("Description", `${fields}\nDescription`)}\n`;
+
+  it("the lists equal what package.ts declares", () => {
+    const control = debControl({
+      version: "1.2.3",
+      maintainer: "x <x@example.invalid>",
+      installedKiB: 1,
+    });
+    const field = (k: string) =>
+      (new RegExp(`^${k}: (.*)$`, "m").exec(control)?.[1] ?? "").split(", ");
+    expect(RELATIONS.deb.Depends).toEqual(field("Depends"));
+    expect(RELATIONS.deb.Recommends).toEqual(field("Recommends"));
+    expect(RELATIONS.deb.Provides).toEqual(field("Provides"));
+    const spec = rpmSpec({
+      version: "1.2.3",
+      maintainer: "x <x@example.invalid>",
+      stage: "/tmp/s",
+      bundled: [],
+    });
+    const tags = (k: string) =>
+      [...spec.matchAll(new RegExp(`^${k}: (.*)$`, "gm"))].map((m) => m[1]);
+    for (const r of tags("Requires")) expect(RELATIONS.rpm.requires).toContain(r);
+    expect(RELATIONS.rpm.recommends).toEqual(tags("Recommends"));
+    for (const r of tags("Provides")) expect(RELATIONS.rpm.provides).toContain(r);
+    // rpm's desktop-file generator provides a mimehandler() per MimeType of the desktop entry
+    const desktop = desktopEntry({ wmClass: "vimma-vimma", launcher: "/opt/vimma/vimma-open" });
+    const mimes = (/^MimeType=(.*)$/m.exec(desktop)?.[1] ?? "").split(";").filter(Boolean);
+    expect(RELATIONS.rpm.provides.filter((p) => p.startsWith("mimehandler(")).sort()).toEqual(
+      mimes.map((m) => `mimehandler(${m})`).sort(),
+    );
+    const build = pkgbuild({
+      version: "1.2.3",
+      maintainer: "x <x@example.invalid>",
+      repo: "vimma-browser/vimma",
+      tarballSha256: "a".repeat(64),
+      desktop,
+      desktopId: "vimma-vimma",
+      launcher: readFileSync(LAUNCHER, "utf8"),
+      installSource: "aur",
+    });
+    const arr = (k: string) =>
+      [
+        ...(new RegExp(`^${k}=\\(((?:'[^']*'\\s*)*)\\)`, "m").exec(build)?.[1] ?? "").matchAll(
+          /'([^']*)'/g,
+        ),
+      ].map((m) => m[1]);
+    expect(RELATIONS.pacman.DEPENDS).toEqual(arr("depends"));
+    expect(RELATIONS.pacman.OPTDEPENDS).toEqual(arr("optdepends"));
+    expect(RELATIONS.pacman.PROVIDES).toEqual(arr("provides"));
+    expect(RELATIONS.pacman.CONFLICTS).toEqual(arr("conflicts"));
+  });
+
+  it("accepts Vimma's own relations in Packages", () => {
+    checkPackages(
+      withFields(
+        `Depends: ${RELATIONS.deb.Depends.join(", ")}\nRecommends: libpulse0\nProvides: gnome-www-browser, www-browser`,
+      ),
+      [R123],
+    );
+  });
+
+  it.each([
+    ["Depends on another package", "Depends: libc6 (>= 2.31), openssh-server"],
+    ["Recommends another package", "Recommends: cowsay"],
+    ["Provides sudo", "Provides: sudo, libc6 (= 99)"],
+    ["a changed version constraint", "Depends: libc6 (>= 2.99)"],
+  ])("refuses a Packages that %s", (_, fields) => {
+    expect(() => checkPackages(withFields(fields), [R123])).toThrow(/Packages/);
+  });
+
+  const pkg = (format: string) =>
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<metadata xmlns="http://linux.duke.edu/metadata/common" xmlns:rpm="http://linux.duke.edu/metadata/rpm" packages="1">\n' +
+    '<package type="rpm">\n  <name>vimma</name>\n  <arch>x86_64</arch>\n  <version epoch="0" ver="1.2.3" rel="1"/>\n' +
+    `  <checksum type="sha256" pkgid="YES">${"a".repeat(64)}</checksum>\n` +
+    "  <summary>s</summary>\n  <description>d</description>\n  <packager></packager>\n  <url></url>\n" +
+    '  <time file="1" build="1"/>\n  <size package="10" installed="1" archive="1"/>\n' +
+    '  <location href="packages/v1.2.3/vimma-1.2.3-1.x86_64.rpm"/>\n' +
+    `  <format>\n    <rpm:license>MPL-2.0</rpm:license>\n${format}  </format>\n</package>\n</metadata>`;
+
+  it("accepts Vimma's own relations and files in primary.xml", () => {
+    checkPrimary(
+      pkg(
+        '    <rpm:provides>\n      <rpm:entry name="vimma" flags="EQ" epoch="0" ver="1.2.3" rel="1"/>\n' +
+          '      <rpm:entry name="mimehandler(text/html)"/>\n    </rpm:provides>\n' +
+          '    <rpm:requires>\n      <rpm:entry name="libc.so.6(GLIBC_2.17)(64bit)"/>\n' +
+          '      <rpm:entry name="/bin/sh" pre="1"/>\n    </rpm:requires>\n' +
+          '    <rpm:recommends>\n      <rpm:entry name="libpulse.so.0()(64bit)"/>\n    </rpm:recommends>\n' +
+          "    <file>/usr/bin/vimma</file>\n",
+      ),
+      [R123],
+    );
+  });
+
+  it.each([
+    [
+      "requires another package",
+      '    <rpm:requires>\n      <rpm:entry name="openssh-server"/>\n    </rpm:requires>\n',
+    ],
+    [
+      "requires a library Vimma does not link",
+      '    <rpm:requires>\n      <rpm:entry name="libssh.so.4()(64bit)"/>\n    </rpm:requires>\n',
+    ],
+    [
+      "recommends another package",
+      '    <rpm:recommends>\n      <rpm:entry name="cowsay"/>\n    </rpm:recommends>\n',
+    ],
+    [
+      "provides sudo",
+      '    <rpm:provides>\n      <rpm:entry name="sudo" flags="EQ" epoch="99" ver="99" rel="1"/>\n    </rpm:provides>\n',
+    ],
+    ["lists a file outside Vimma's paths", "    <file>/usr/bin/sudo</file>\n"],
+    ["lists a path with ..", "    <file>/usr/lib/vimma/../../bin/sudo</file>\n"],
+  ])("refuses a primary.xml that %s", (_, format) => {
+    expect(() => checkPrimary(pkg(format), [R123])).toThrow(/primary\.xml/);
+  });
+
+  const db = (extra: string) =>
+    pacmanDatabase(
+      R123,
+      "%FILENAME%\nvimma-bin-1.2.3-1-x86_64.pkg.tar.zst\n\n%NAME%\nvimma-bin\n\n%BASE%\nvimma-bin\n\n" +
+        `%VERSION%\n1.2.3-1\n\n%CSIZE%\n10\n\n%SHA256SUM%\n${"a".repeat(64)}\n\n%ARCH%\nx86_64\n\n${extra}`,
+    );
+
+  it("accepts Vimma's own relations in the pacman database", () => {
+    checkPacmanDb(
+      db("%CONFLICTS%\nvimma\n\n%PROVIDES%\nvimma\n\n%DEPENDS%\ngtk3\nalsa-lib\n\n"),
+      R123,
+    );
+  });
+
+  it.each([
+    ["DEPENDS on another package", "%DEPENDS%\ngtk3\nopenssh\n\n"],
+    ["OPTDEPENDS on another package", "%OPTDEPENDS%\ncowsay: moo\n\n"],
+    ["PROVIDES sudo", "%PROVIDES%\nsudo\n\n"],
+  ])("refuses a pacman database that %s", (_, extra) => {
+    expect(() => checkPacmanDb(db(extra), R123)).toThrow(/vimma\.db/);
+  });
+});
+
+describe("strict reading, further cases", () => {
+  const stanza =
+    "Package: vimma\nVersion: 1.2.3\nArchitecture: amd64\nMaintainer: x <x@example.invalid>\n" +
+    `Filename: pool/v1.2.3/vimma_1.2.3_amd64.deb\nSize: 10\nSHA256: ${"a".repeat(64)}\n` +
+    "Description: test\n";
+  it.each([
+    ["U+0085", "\u0085"],
+    ["a vertical tab", "\v"],
+    ["a replacement character (invalid UTF-8)", "\uFFFD"],
+    ["a byte order mark", "\uFEFF"],
+  ])("refuses %s in Packages", (_, c) => {
+    expect(() => checkPackages(`${stanza.replace("x <", `x${c}<`)}\n`, [R123])).toThrow(/Packages/);
+  });
+
+  const good =
+    "  <name>vimma</name>\n  <arch>x86_64</arch>\n" +
+    '  <version epoch="0" ver="1.2.3" rel="1"/>\n' +
+    `  <checksum type="sha256" pkgid="YES">${"a".repeat(64)}</checksum>\n` +
+    "  <summary>s</summary>\n  <description>d</description>\n  <packager></packager>\n  <url></url>\n" +
+    '  <time file="1" build="1"/>\n  <size package="10" installed="1" archive="1"/>\n' +
+    '  <location href="packages/v1.2.3/vimma-1.2.3-1.x86_64.rpm"/>\n' +
+    "  <format>\n    <rpm:license>MPL-2.0</rpm:license>\n  </format>\n";
+  const pkg = (inner: string) =>
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<metadata xmlns="http://linux.duke.edu/metadata/common" xmlns:rpm="http://linux.duke.edu/metadata/rpm" packages="1">\n' +
+    `<package type="rpm">\n${inner}</package>\n</metadata>`;
+  const fmt = (x: string) => pkg(good.replace("  </format>", `${x}  </format>`));
+  it.each([
+    [
+      "format children out of order or twice",
+      fmt("<rpm:requires></rpm:requires><rpm:license>x</rpm:license><rpm:requires/>"),
+    ],
+    [
+      "xmlns:rpm redeclared on a relation",
+      fmt('<rpm:requires xmlns:rpm="urn:x"><rpm:entry name="/bin/sh"/></rpm:requires>'),
+    ],
+    ["an attribute on format", pkg(good.replace("<format>", '<format xmlns:rpm="urn:x">'))],
+    ["a no-break space between elements", pkg(good.replace("  <arch>", "\u00a0<arch>"))],
+    ["a control character", pkg(good.replace("<summary>s", "<summary>s\x01"))],
+    ["]]> in text", pkg(good.replace("<description>d", "<description>]]>"))],
+    ["a tab in an attribute", fmt('<rpm:requires><rpm:entry name="a\tb"/></rpm:requires>')],
+    ["U+FFFE", pkg(good.replace("<summary>s", "<summary>s\uFFFE"))],
+  ])("refuses %s in primary.xml", (_, xml) => {
+    expect(() => checkPrimary(xml, [R123])).toThrow(/primary\.xml/);
+  });
+
+  // What may follow a gzip member: another member (which libarchive and apt read on), an empty
+  // one, zeros, garbage, or garbage that starts like a member.
+  const tails: [string, Buffer][] = [
+    ["a second member", gzipSync("BBBB\n")],
+    ["a NUL and a member", Buffer.concat([Buffer.from([0]), gzipSync("BBBB\n")])],
+    ["zeros", Buffer.alloc(16)],
+    ["garbage", Buffer.from("xyz")],
+    ["a member's magic and garbage", Buffer.from([0x1f, 0x8b, 0x08, 0, 0, 0])],
+    ["an empty member and a member", Buffer.concat([gzipSync(""), gzipSync("BBBB\n")])],
+  ];
+  it.each(tails)("refuses a pacman database whose gzip member is followed by %s", (_, tail) => {
+    const desc =
+      "%FILENAME%\nvimma-bin-1.2.3-1-x86_64.pkg.tar.zst\n\n%NAME%\nvimma-bin\n\n%BASE%\nvimma-bin\n\n" +
+      `%VERSION%\n1.2.3-1\n\n%CSIZE%\n10\n\n%SHA256SUM%\n${"a".repeat(64)}\n\n%ARCH%\nx86_64\n\n`;
+    const good = pacmanDatabase(R123, desc);
+    checkPacmanDb(good, R123);
+    expect(() => checkPacmanDb(Buffer.concat([good, tail]), R123)).toThrow(/vimma\.db/);
+  });
+});
+
+describe.skipIf(!hasDeb || !hasRpm || !hasPacman)("verify, further cases", () => {
+  it.each([
+    [
+      "asctime, which Date.parse reads in local time",
+      (d: Date) =>
+        d.toUTCString().replace(/^(\w+), (\d+) (\w+) (\d+) (\S+) GMT$/, "$1 $3 $2 $5 $4"),
+    ],
+    ["a +1400 offset", (d: Date) => d.toUTCString().replace("GMT", "+1400")],
+    ["GMT for UTC", (d: Date) => d.toUTCString()],
+  ])(
+    "refuses a Release Date in another form: %s",
+    async (_, form) => {
+      const t = await builtTree();
+      const r = join(t.tree, "apt/Release");
+      writeFileSync(r, readFileSync(r, "utf8").replace(/^Date: .*$/m, `Date: ${form(new Date())}`));
+      expect(() => t.check()).toThrow(/Date/);
+    },
+    120_000,
+  );
+
+  it("refuses Packages.gz with a second gzip member", async () => {
+    const t = await builtTree();
+    const gz = join(t.tree, "apt/Packages.gz");
+    writeFileSync(gz, Buffer.concat([readFileSync(gz), gzipSync("Package: evil\n")]));
+    expect(() => t.check()).toThrow(/Packages\.gz/);
+  }, 120_000);
+
+  it("refuses repodata whose file name is not its checksum and type, or whose sizes differ", async () => {
+    const t = await builtTree();
+    const r = join(t.tree, "rpm/repodata/repomd.xml");
+    const repomd = readFileSync(r, "utf8");
+    writeFileSync(
+      r,
+      repomd.replace(
+        /(<data type="other">[\s\S]*?<size>)(\d+)/,
+        (_, a: string, n: string) => `${a}${Number(n) + 1}`,
+      ),
+    );
+    expect(() => t.check()).toThrow(/repomd\.xml.*other.*size/s);
+    writeFileSync(r, repomd);
+    const href = /<data type="other">[\s\S]*?<location href="repodata\/([^"]+)"/.exec(
+      repomd,
+    )?.[1] as string;
+    const renamed = href.replace("-other.xml.gz", "-primary.xml.gz").replace(/^[0-9a-f]/, "0");
+    const { renameSync } = await import("node:fs");
+    renameSync(join(t.tree, "rpm/repodata", href), join(t.tree, "rpm/repodata", renamed));
+    writeFileSync(r, repomd.replace(href, renamed));
+    expect(() => t.check()).toThrow(/repomd\.xml.*other/s);
+  }, 120_000);
+
+  it("compares pacman's databases decompressed, and re-gzips them itself when asked", async () => {
+    const t = await builtTree();
+    const f = join(t.tree, "arch/x86_64/vimma.db");
+    const tar = gunzipSync(readFileSync(f));
+    writeFileSync(f, gzipSync(tar, { level: 1 }));
+    t.check();
+    verify({
+      tree: t.tree,
+      cert: t.certFile,
+      releases: ["v0.3.0", "v0.2.0"].map((tag) => ({ tag, sums: t.sums[tag] as string })),
+      releaseList: t.releaseList,
+      baseUrl: HOST,
+      downloadBase: GITHUB,
+      signed: false,
+      regzip: true,
+    });
+    expect(readFileSync(f)).toEqual(gzipSync(tar, { level: 9 }));
   }, 120_000);
 });

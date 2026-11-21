@@ -426,7 +426,14 @@ smoke test", the last item below).
     check that reads a file more leniently than apt, libsolv or libarchive can be shown one
     thing while they read another (a field repeated in other case, an entry in an XML comment,
     a tar entry behind a pax size). For the same reason `repos.ts` writes the pacman databases
-    itself from repo-add's entries, without `%MD5SUM%`, rather than signing repo-add's tar. The
+    itself from repo-add's entries, without `%MD5SUM%`, rather than signing repo-add's tar,
+    compares them decompressed, and `repo-sign` writes their gzip itself before signing,
+    because two runners' zlib may compress the same tar differently. The relations the
+    metadata may declare are pinned to those `tools/package/package.ts` gives Vimma's
+    packages (and, for the `.rpm`, the sonames rpmbuild's ELF scan finds and the desktop
+    file's provides), and its file lists to Vimma's own paths, because signed metadata with
+    another dependency or provide would let a package manager install or replace any other
+    package as root. The
     check is in the signing job, because `repo-prepare` runs the build tools and their packages, and a fault
     there must not be able to get other packages or older releases signed; `publish` commits
     the metadata, the signatures, `_redirects` and `_headers` to `vimma-updates` in the same commit as the manifest. Reason: one commit makes the update
