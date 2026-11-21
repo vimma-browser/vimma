@@ -78,7 +78,7 @@ export function showOutlineBeside(s, host) {
   }
   if (outlineAsked.get(browser) === key) return;
   outlineAsked.set(browser, key);
-  PdfOps.askOutline(browser);
+  PdfOps.askOutline(browser, true);
 }
 
 /**

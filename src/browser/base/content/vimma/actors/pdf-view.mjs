@@ -137,6 +137,12 @@ const OUTLINE_ACTIONS = new Set([
 /** A read the viewer never answers is given up after this long, so Tab works again. */
 const OUTLINE_READ_MS = 5000;
 
+/**
+ * How long Tab's outline read waits for pdf.js to fetch every page: under the 2 s the parent
+ * gives the reply (OUTLINE_WAIT_MS), so that a long PDF still opens its outline on Tab.
+ */
+const OUTLINE_PAGES_MS = 1000;
+
 /** A link's page the viewer does not resolve in this long is shown as its URL. */
 const LINK_PAGE_MS = 2000;
 
@@ -250,6 +256,8 @@ export class PdfView {
    */
   #outline = null;
   #readingOutline = false;
+  /** @type {(() => void) | null} the read waiting for pdf.js's pages, which a Tab hurries */
+  #waitingRead = null;
   /** Counts the documents pdf.js opens in this viewer, so the parent drops an old outline. */
   #generation = 0;
   /** @type {number | null} */
@@ -541,8 +549,9 @@ export class PdfView {
           return true;
         }
         case "outline":
-          // Only for the user's Tab in the PDF viewer (V8): the parent sends it for that key.
-          this.#readOutline();
+          // Only for the user's Tab in the PDF viewer, or once as the PDF opens (V8); n is 1 for
+          // the read that waits for every page.
+          this.#readOutline(n === 1);
           return true;
         case "follow":
           return this.#follow(n);
@@ -601,13 +610,25 @@ export class PdfView {
    * Reads the outline and sends it to the parent (decision 10, V8). pdf.js's promises come back
    * only through exported callbacks passed to their `then` through Xrays, never awaited (V4); a
    * second Tab sends the outline already read.
+   *
+   * pdf.js gives a destination's page (cachedPageNumber) only for a page it has fetched, and it
+   * fetches the pages after the first one draws: read before that, every entry past the first
+   * page has no page, and the selection of an outline shown beside the document cannot follow
+   * the page (#1424). The read waits for pdf.js's `pagesPromise`, all the way with `allPages`,
+   * else at most OUTLINE_PAGES_MS.
+   * @param {boolean} allPages
    */
-  #readOutline() {
+  #readOutline(allPages) {
     if (this.#outline) {
       this.#sendOutline(this.#outline.message);
       return;
     }
-    if (this.#readingOutline) return;
+    if (this.#readingOutline) {
+      // Tab while the read as the PDF opens waits for every page: Tab's own bound applies.
+      const waiting = this.#waitingRead;
+      if (!allPages && waiting) lazy.setTimeout(waiting, OUTLINE_PAGES_MS);
+      return;
+    }
     this.#readingOutline = true;
     lazy.setTimeout(() => {
       this.#readingOutline = false;
@@ -621,20 +642,24 @@ export class PdfView {
     const failed = Cu.exportFunction(() => {
       this.#readingOutline = false;
     }, this.#win);
+    let started = false;
     const read = () => {
-      if (!this.#then(() => invoke(this.#part("pdfDocument"), "getOutline"), done, failed)) {
+      if (started) return;
+      started = true;
+      if (this.#waitingRead === read) this.#waitingRead = null;
+      if (generation !== this.#generation) {
+        this.#readingOutline = false;
+      } else if (this.#outline) {
+        // Another read, begun after OUTLINE_READ_MS gave this one up, has finished.
+        this.#sendOutline(this.#outline.message);
+      } else if (!this.#then(() => invoke(this.#part("pdfDocument"), "getOutline"), done, failed)) {
         this.#readingOutline = false;
       }
     };
-    // pdf.js resolves a destination's page reference (cachedPageNumber) only for a page it has
-    // fetched, and fetches the pages after the first one draws: read once they all are, as its
-    // own outline view waits for `pagesloaded` (PDFOutlineViewer._currentOutlineItem), or the
-    // outline read as the PDF opens (decision 19) has no page for the entries past the first.
-    const loaded = Cu.exportFunction(() => {
-      if (generation === this.#generation) read();
-      else this.#readingOutline = false;
-    }, this.#win);
+    const loaded = Cu.exportFunction(read, this.#win);
+    this.#waitingRead = read;
     if (!this.#then(() => this.#part("pdfViewer").pagesPromise, loaded, loaded)) read();
+    else if (!allPages) lazy.setTimeout(read, OUTLINE_PAGES_MS);
   }
 
   /**
