@@ -19,6 +19,9 @@ import { certify, localSigner, sign } from "../openpgp-kms.ts";
 import {
   aptSources,
   build,
+  checkPackages,
+  checkPacmanDb,
+  checkPrimary,
   headersFile,
   plan,
   readRelease,
@@ -535,16 +538,28 @@ async function builtTree() {
     sums[tag] = join(root, `${tag}.SHA256SUMS`);
     writeFileSync(sums[tag], sumsOf(d));
   }
-  const check = (tags = ["v0.3.0", "v0.2.0"], signed = false) =>
+  // GitHub's list of releases, whose asset sizes the metadata's sizes must match.
+  const releaseList = dirs.map((d) => ({
+    tag_name: d.slice(d.lastIndexOf("/") + 1),
+    draft: false,
+    prerelease: false,
+    assets: readdirSync(d).map((name) => ({
+      name,
+      state: "uploaded",
+      size: readFileSync(join(d, name)).length,
+    })),
+  }));
+  const check = (tags = ["v0.3.0", "v0.2.0"], signed = false, list: unknown = releaseList) =>
     verify({
       tree,
       cert: certFile,
       releases: tags.map((tag) => ({ tag, sums: sums[tag] as string })),
+      releaseList: list,
       baseUrl: HOST,
       downloadBase: GITHUB,
       signed,
     });
-  return { root, tree, sums, certFile, check, dirs };
+  return { root, tree, sums, certFile, check, dirs, releaseList };
 }
 
 /** The tree's four signatures, as repo-sign makes them, with the local key. */
@@ -707,3 +722,222 @@ describe.skipIf(!hasDeb || !hasRpm || !hasPacman)(
     }, 120_000);
   },
 );
+
+// verify must read each file as its client does, so nothing it accepts can mean something else
+// to apt, libsolv or libarchive. Each case below is a known way to make them disagree, or a
+// neighbour of one.
+const R123: Release = {
+  tag: "v1.2.3",
+  version: "1.2.3",
+  dir: "",
+  deb: "vimma_1.2.3_amd64.deb",
+  rpm: "vimma-1.2.3-1.x86_64.rpm",
+  pacman: "vimma-bin-1.2.3-1-x86_64.pkg.tar.zst",
+};
+
+describe("apt's Packages, read as apt reads it", () => {
+  const stanza =
+    "Package: vimma\nVersion: 1.2.3\nArchitecture: amd64\nMaintainer: x <x@example.invalid>\n" +
+    `Filename: pool/v1.2.3/vimma_1.2.3_amd64.deb\nSize: 10\nSHA256: ${"a".repeat(64)}\n` +
+    "Description: test\n";
+
+  it("accepts the stanza apt-ftparchive writes", () => {
+    checkPackages(`${stanza}\n`, [R123]);
+  });
+
+  it.each([
+    // apt reads field names without case, and the last one wins: an old .deb offered as 99.0.0
+    [
+      "a field again in other case, which apt reads as the same field",
+      `${stanza}version: 99.0.0\nfilename: pool/v1.0.0/vimma_1.0.0_amd64.deb\nsha256: ${"b".repeat(64)}\n\n`,
+    ],
+    ["a field twice", `${stanza}Version: 99.0.0\n\n`],
+    ["a carriage return", `${stanza.replace("Version: 1.2.3\n", "Version: 1.2.3\r\n")}\n`],
+    ["a field Vimma's packages never have", `${stanza}Conflicts: sudo\n\n`],
+    ["Pre-Depends", `${stanza}Pre-Depends: evil\n\n`],
+    [
+      "a continuation line under another field",
+      `${stanza.replace("Size: 10\n", "Size: 10\n more\n")}\n`,
+    ],
+    ["a line that is no field", `${stanza}garbage\n\n`],
+    ["a field with no value", `${stanza}Homepage:\n\n`],
+    ["a NUL", `${stanza.replace("test", "te\0st")}\n`],
+  ])("refuses %s", (_, text) => {
+    expect(() => checkPackages(text, [R123])).toThrow(/Packages/);
+  });
+});
+
+/** A ustar header, as the review's tarpoc.ts writes one. */
+function tarHeader(name: string, size: number, type: string): Buffer {
+  const h = Buffer.alloc(512);
+  h.write(name, 0, "utf8");
+  h.write("0000644\0", 100);
+  h.write("0000000\0", 108);
+  h.write("0000000\0", 116);
+  h.write(`${size.toString(8).padStart(11, "0")}\0`, 124);
+  h.write("00000000000\0", 136);
+  h.write("        ", 148);
+  h.write(type, 156);
+  h.write("ustar\0", 257);
+  h.write("00", 263);
+  let sum = 0;
+  for (const b of h) sum += b;
+  h.write(`${sum.toString(8).padStart(6, "0")}\0 `, 148);
+  return h;
+}
+const tarPad = (b: Buffer) => Buffer.concat([b, Buffer.alloc((512 - (b.length % 512)) % 512)]);
+function paxHeader(records: Record<string, string>): Buffer {
+  let body = "";
+  for (const [k, v] of Object.entries(records)) {
+    const rec = ` ${k}=${v}\n`;
+    let len = rec.length + 1;
+    while (String(len).length + rec.length !== len) len = String(len).length + rec.length;
+    body += `${len}${rec}`;
+  }
+  const b = Buffer.from(body);
+  return Buffer.concat([tarHeader("PaxHeader", b.length, "x"), tarPad(b)]);
+}
+
+describe("pacman's database, read as libarchive reads it", () => {
+  const desc = Buffer.from(
+    "%FILENAME%\nvimma-bin-1.2.3-1-x86_64.pkg.tar.zst\n\n%NAME%\nvimma-bin\n\n" +
+      `%VERSION%\n1.2.3-1\n\n%SHA256SUM%\n${"a".repeat(64)}\n\n`,
+  );
+
+  it("refuses a pax size that hides entries behind desc", () => {
+    const pkginfo = Buffer.from("pkgname = evil\npkgver = 9.9.9-1\narch = x86_64\n");
+    const install = Buffer.from("post_install() { id > /tmp/pwned; }\n");
+    const hidden = Buffer.concat([
+      tarHeader(".PKGINFO", pkginfo.length, "0"),
+      tarPad(pkginfo),
+      tarHeader(".INSTALL", install.length, "0"),
+      tarPad(install),
+    ]);
+    const tar = Buffer.concat([
+      paxHeader({ size: String(desc.length) }),
+      tarHeader("vimma-bin-1.2.3-1/desc", 512 + hidden.length, "0"),
+      tarPad(desc),
+      hidden,
+      Buffer.alloc(1024),
+    ]);
+    expect(() => checkPacmanDb(gzipSync(tar), R123)).toThrow(/vimma\.db/);
+  });
+
+  it.each([
+    [
+      "a pax header at all",
+      [
+        paxHeader({ path: "vimma-bin-1.2.3-1/desc" }),
+        tarHeader("x", desc.length, "0"),
+        tarPad(desc),
+      ],
+    ],
+    ["a symlink entry", [tarHeader("vimma-bin-1.2.3-1/desc", 0, "2")]],
+    [
+      "data after the end blocks",
+      [
+        tarHeader("vimma-bin-1.2.3-1/desc", desc.length, "0"),
+        tarPad(desc),
+        Buffer.alloc(1024),
+        Buffer.from("x".repeat(512)),
+      ],
+    ],
+  ])("refuses %s", (_, parts) => {
+    const tar = Buffer.concat([...(parts as Buffer[]), Buffer.alloc(1024)]);
+    expect(() => checkPacmanDb(gzipSync(tar), R123)).toThrow(/vimma\.db/);
+  });
+});
+
+describe("rpm's primary.xml, read as libsolv reads it", () => {
+  const v = "1.2.3";
+  const legit = "a".repeat(64);
+  const pkg = (inner: string) =>
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<metadata xmlns="http://linux.duke.edu/metadata/common" xmlns:rpm="http://linux.duke.edu/metadata/rpm" packages="1">\n' +
+    `<package type="rpm">\n${inner}</package>\n</metadata>`;
+  const good =
+    "  <name>vimma</name>\n  <arch>x86_64</arch>\n" +
+    `  <version epoch="0" ver="${v}" rel="1"/>\n` +
+    `  <checksum type="sha256" pkgid="YES">${legit}</checksum>\n` +
+    "  <summary>s</summary>\n  <description>d</description>\n  <packager></packager>\n  <url></url>\n" +
+    '  <time file="1" build="1"/>\n  <size package="10" installed="1" archive="1"/>\n' +
+    `  <location href="packages/v${v}/vimma-${v}-1.x86_64.rpm"/>\n` +
+    "  <format>\n    <rpm:license>MPL-2.0</rpm:license>\n  </format>\n";
+
+  it("accepts the entry createrepo_c writes", () => {
+    checkPrimary(pkg(good), [R123]);
+  });
+
+  it.each([
+    [
+      "the real entry inside a comment, another after it",
+      pkg(
+        `<!--${good}-->\n  <name>vimma</name><arch>x86_64</arch><version epoch="0" ver="99.0.0" rel="1"/>\n` +
+          `  <checksum type="sha256" pkgid="YES">${"b".repeat(64)}</checksum>\n` +
+          '  <format><rpm:obsoletes><rpm:entry name="sudo"/></rpm:obsoletes></format>\n' +
+          '  <location xml:base="https://example.invalid/" href="vimma-1.0.0-1.x86_64.rpm"/>\n',
+      ),
+    ],
+    [
+      "a DOCTYPE with an entity",
+      pkg(good).replace("<metadata", '<!DOCTYPE m [<!ENTITY v "99.0.0">]>\n<metadata'),
+    ],
+    ["CDATA", pkg(good.replace("<summary>s</summary>", "<summary><![CDATA[s]]></summary>"))],
+    [
+      "xml:base",
+      pkg(good.replace("<location href", '<location xml:base="https://example.invalid/" href')),
+    ],
+    ["a processing instruction", pkg(good).replace("<metadata", "<?evil x?>\n<metadata")],
+    [
+      "an entity that is not predefined",
+      pkg(good.replace("<summary>s</summary>", "<summary>&ver;</summary>")),
+    ],
+    [
+      "rpm:obsoletes",
+      pkg(
+        good.replace(
+          "  </format>",
+          '    <rpm:obsoletes><rpm:entry name="sudo"/></rpm:obsoletes>\n  </format>',
+        ),
+      ),
+    ],
+    [
+      "rpm:conflicts",
+      pkg(
+        good.replace(
+          "  </format>",
+          '    <rpm:conflicts><rpm:entry name="sudo"/></rpm:conflicts>\n  </format>',
+        ),
+      ),
+    ],
+    ["a second name", pkg(good.replace("<arch>", "<name>sudo</name><arch>"))],
+    ["single-quoted attributes", pkg(good.replace('rel="1"', "rel='1'"))],
+  ])("refuses %s", (_, xml) => {
+    expect(() => checkPrimary(xml, [R123])).toThrow(/primary\.xml/);
+  });
+});
+
+describe.skipIf(!hasDeb || !hasRpm || !hasPacman)("verify, before signing and publishing", () => {
+  it("refuses a Release whose Date is not within the last hour, before signing", async () => {
+    const t = await builtTree();
+    const r = join(t.tree, "apt/Release");
+    const release = readFileSync(r, "utf8");
+    writeFileSync(r, release.replace(/^Date: .*$/m, "Date: Sat, 01 Jan 2050 00:00:00 +0000"));
+    expect(() => t.check()).toThrow(/Date/);
+  }, 120_000);
+
+  it("refuses package sizes that are not the release assets' sizes", async () => {
+    const t = await builtTree();
+    const list = structuredClone(t.releaseList);
+    for (const r of list) for (const a of r.assets) a.size += 1;
+    expect(() => t.check(undefined, false, list)).toThrow(/[Ss]ize/);
+  }, 120_000);
+
+  it("writes pacman's database itself: no MD5SUM, and the same bytes from the same desc", async () => {
+    const t = await builtTree();
+    const db = readFileSync(join(t.tree, "arch/x86_64/vimma.db"));
+    const text = gunzipSync(db).toString("latin1");
+    expect(text).not.toContain("%MD5SUM%");
+    expect(text).not.toContain("PaxHeader");
+  }, 120_000);
+});

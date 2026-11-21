@@ -304,7 +304,9 @@ describe("update-publish.yml", () => {
     expect(sigs).toContain('gpgv --keyring "$db/keyring.gpg"');
     const build = runOf(block, "Build the metadata");
     expect(build).toContain('node tools/package/repos.ts build --out repos --cert "$CERT"');
-    expect(build).toContain('node tools/package/repos.ts verify --tree repos --cert "$CERT"');
+    expect(build).toContain(
+      'node tools/package/repos.ts verify --tree repos --cert "$CERT" --releases releases.json',
+    );
     expect(block.indexOf("Check the files against each release's signed SHA256SUMS")).toBeLessThan(
       block.indexOf("- name: Build the metadata"),
     );
@@ -353,9 +355,25 @@ describe("update-publish.yml", () => {
     expect(check).toContain(
       'curl -fsSL --proto =https --retry 3 -o "sums/$tag" "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/SHA256SUMS"',
     );
-    expect(check).toContain('node "$REPOS" verify --tree tree --cert "$CERT" "${args[@]}"');
+    expect(check).toContain(
+      'node "$REPOS" verify --tree tree --cert "$CERT" --releases releases.json "${args[@]}"',
+    );
     expect(block.indexOf("- name: Check the metadata against the releases")).toBeLessThan(
       block.indexOf("uses: google-github-actions/auth@"),
+    );
+    // Each SHA256SUMS this job reads is release.yml's: anyone with contents: write could
+    // replace a release file, but not sign it as release.yml on main (B10).
+    expect(check).toContain(
+      'curl -fsSL --proto =https --retry 3 -o "sums/$tag.sigstore.json" "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/SHA256SUMS.sigstore.json"',
+    );
+    expect(check).toContain('cosign verify-blob --bundle "sums/$tag.sigstore.json"');
+    expect(check).toContain(
+      "--certificate-identity-regexp '^https://github\\.com/vimma-browser/vimma/\\.github/workflows/release\\.yml@refs/heads/main$'",
+    );
+    expect(check.indexOf("cosign verify-blob")).toBeLessThan(check.indexOf('node "$REPOS" verify'));
+    expect(block.indexOf("uses: sigstore/cosign-installer@")).toBeGreaterThan(-1);
+    expect(block.indexOf("uses: sigstore/cosign-installer@")).toBeLessThan(
+      block.indexOf("- name: Check the metadata against the releases"),
     );
     const sign = runOf(block, "Sign the metadata with Cloud KMS");
     expect(sign).toContain(
@@ -381,7 +399,7 @@ describe("update-publish.yml", () => {
       'gpgv --keyring "$db/keyring.gpg" tree/arch/x86_64/vimma.files.sig tree/arch/x86_64/vimma.files',
     );
     expect(after).toContain(
-      'node "$REPOS" verify --signed --tree tree --cert "$CERT" "${args[@]}"',
+      'node "$REPOS" verify --signed --tree tree --cert "$CERT" --releases releases.json "${args[@]}"',
     );
     const upload = block.slice(block.indexOf("name: repos-signed"));
     expect(upload).toMatch(/^name: repos-signed\n {10}path: tree\n {10}retention-days: 1/);
@@ -450,7 +468,13 @@ describe("update-publish.yml", () => {
     // repos.ts verify compares vimma-packages.asc, the .sources file's inline key and
     // repomd.xml.key with the committed certificate, byte for byte.
     expect(check).toContain(
-      'node tools/package/repos.ts verify --signed --tree repos --cert "$CERT" "${args[@]}"',
+      'node tools/package/repos.ts verify --signed --tree repos --cert "$CERT" --releases releases.json "${args[@]}"',
+    );
+    // As repo-sign: GitHub's SHA256SUMS only under release.yml's cosign signature.
+    expect(check).toContain('cosign verify-blob --bundle "sums/$tag.sigstore.json"');
+    expect(check.indexOf("cosign verify-blob")).toBeLessThan(check.indexOf("repos.ts verify"));
+    expect(block.indexOf("uses: sigstore/cosign-installer@")).toBeLessThan(
+      block.indexOf("- name: Check the signed package repositories"),
     );
     for (const sig of [
       "repos/apt/InRelease",
@@ -467,6 +491,19 @@ describe("update-publish.yml", () => {
     expect(served).toContain("host=https://updates.vimma.dev\n");
     expect(served).toContain('-o served-key.asc "$host/vimma-packages.asc"');
     expect(served).toContain('cmp -s "$CERT" served-key.asc');
+    // Every kind of package path redirects to its release file: the newest .deb and .rpm, the
+    // pacman package and its .sig.
+    for (const path of [
+      '"apt/pool/$tag/vimma_${v}_amd64.deb"',
+      '"rpm/packages/$tag/vimma-$v-1.x86_64.rpm"',
+      '"arch/x86_64/vimma-bin-$v-1-x86_64.pkg.tar.zst"',
+      '"arch/x86_64/vimma-bin-$v-1-x86_64.pkg.tar.zst.sig"',
+    ]) {
+      expect(served).toContain(path);
+    }
+    expect(served).toContain(
+      '[ "$to" = "302 https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/${path##*/}" ]',
+    );
   });
 
   it("publish pushes the metadata in the manifest's commit", () => {
@@ -592,10 +629,32 @@ describe("update-publish.yml", () => {
     }
   });
 
+  // Spec package-repositories, decisions 2 and 3: the update key and the package key each have
+  // an environment that their IAM binding names, and a job reaches only its own.
+  it("no job in update-signing names the package key, and no job in package-signing names the update key", () => {
+    let update = 0;
+    let packages = 0;
+    for (const [id, block] of all) {
+      if (block.includes("environment: update-signing")) {
+        update += 1;
+        expect(block, id).not.toMatch(/GCP_PACKAGE_KEY_VERSION|vimma-packages|package-signing/);
+        expect(block, id).toContain("vars.GCP_KMS_KEY_VERSION");
+      }
+      if (block.includes("environment: package-signing")) {
+        packages += 1;
+        expect(block, id).not.toMatch(/GCP_KMS_KEY_VERSION|update-primary|update-signing/);
+        expect(block, id).toContain("KEY_VERSION: ${{ vars.GCP_PACKAGE_KEY_VERSION }}");
+      }
+    }
+    expect(update).toBeGreaterThanOrEqual(3);
+    expect(packages).toBeGreaterThanOrEqual(1);
+  });
+
   it.each(["sign", "mar-sign", "nightly-sign"])(
     "the signing job %s runs no repository code: no checkout, no node, no npm",
     (id) => {
       const sign = job(id);
+      expect(sign).not.toMatch(/GCP_PACKAGE_KEY_VERSION|package-signing|vimma-packages/);
       expect(sign).not.toContain("actions/checkout");
       expect(sign).not.toMatch(/\bnode\b|\bnpm\b|\bnpx\b|setup-node/);
     },

@@ -797,16 +797,32 @@ of the same commit read it too, so a tree without it could not be released anywa
   signature (B10), each downloaded package against it and each `.rpm` and pacman package
   against the committed certificate, builds the metadata and stops while the certificate is
   not committed. Before KMS signs anything, `repo-sign` chooses the releases again from
-  GitHub's list, reads their `SHA256SUMS` from GitHub, never from the job before, and refuses
-  metadata that is not exactly `repos.ts`'s for them: a file more or less, a symlink, a package
-  under another SHA-256 or under a second hash, an index whose checksum in `Release` or
-  `repomd.xml` does not match, other releases than the chosen ones, or a setup file, key,
-  `_redirects` or `_headers` that differs. It then checks each signature with `gpgv` against
-  the committed certificate, and `publish` checks all of it again before it commits the tree in
-  the manifest's commit to `vimma-updates`. The public key's three copies, `vimma-packages.asc`
+  GitHub's list, reads their `SHA256SUMS` from GitHub, never from the job before, checks each
+  against `release.yml`'s cosign signature (anyone who can write the repository's contents could
+  replace a release file, but not sign it as `release.yml` on `main`), and refuses metadata
+  that is not exactly `repos.ts`'s for them: a file more or less, a symlink, a package under
+  another SHA-256, size or under a second hash, an index whose checksum in `Release` or
+  `repomd.xml` does not match, other releases than the chosen ones, a `Release` whose `Date` is
+  not within the last hour (a later one would make apt refuse every later `Release`), or a
+  setup file, key, `_redirects` or `_headers` that differs. It reads each file in the shape the
+  build writes and no other, and refuses it unless writing back what it read gives the same
+  bytes, so no client can read in it something the check did not: `Packages` and `Release` only
+  with the fields Vimma's packages have, each once, compared without case as apt compares them
+  (no `Conflicts`, `Breaks`, `Replaces` or `Pre-Depends`), LF only; the rpm XML without
+  comments, CDATA, DOCTYPE, processing instructions, other entities or `xml:` attributes, and
+  without `rpm:obsoletes`, `rpm:conflicts` or the weak relations; and pacman's databases only
+  as `repos.ts` writes them itself from repo-add's entries (ustar directory and files, no pax
+  header, nothing after the end), without `%REPLACES%` and with `%CONFLICTS%` and `%PROVIDES%`
+  only `vimma`. It then checks each signature with `gpgv` against
+  the committed certificate, and `publish` checks all of it again, the cosign signatures too,
+  before it commits the tree in the manifest's commit to `vimma-updates`. The commit replaces
+  the old repodata, whose file names change with their content, so a dnf or zypper that read
+  the old `repomd.xml` a moment before the deploy can get a 404 for an index file once; its next
+  refresh reads the new one. The public key's three copies, `vimma-packages.asc`
   and `repomd.xml.key` on the host and the key inline in `apt/vimma.sources`, must equal the
   committed certificate byte for byte before anything is pushed, and `publish` checks the copy
-  `updates.vimma.dev` serves after it deploys. The host serves metadata only: `_redirects` sends
+  `updates.vimma.dev` serves after it deploys, with a 302 to the release for the newest `.deb`,
+  `.rpm`, pacman package and its `.sig`. The host serves metadata only: `_redirects` sends
   each package that the metadata lists to
   `https://github.com/vimma-browser/vimma/releases/download/<tag>/<file>` with one static rule
   per file, built from names in `[A-Za-z0-9._~+-]`, and no placeholder. apt's `Release` has no
@@ -837,5 +853,11 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`signed: wants the four signatures, and an InRelease whose text is Release's`](../../tools/package/test/repos.test.ts),
   [`writes one static redirect per kept package file, and no placeholder`](../../tools/package/test/repos.test.ts),
   [`refuses a tag or file name outside [A-Za-z0-9._~+-]`](../../tools/package/test/repos.test.ts),
+  [`no job in update-signing names the package key, and no job in package-signing names the update key`](../../tools/update/test/update-workflow.test.ts),
+  [`refuses %s`](../../tools/package/test/repos.test.ts),
+  [`refuses a pax size that hides entries behind desc`](../../tools/package/test/repos.test.ts),
+  [`refuses a Release whose Date is not within the last hour, before signing`](../../tools/package/test/repos.test.ts),
+  [`refuses package sizes that are not the release assets' sizes`](../../tools/package/test/repos.test.ts),
+  [`writes pacman's database itself: no MD5SUM, and the same bytes from the same desc`](../../tools/package/test/repos.test.ts),
   [`talks only to Cloud KMS, or to a fake on a literal loopback address`](../../tools/package/test/openpgp-kms.test.ts),
   [`refuses a key that is not the certificate's`](../../tools/package/test/openpgp-kms.test.ts)

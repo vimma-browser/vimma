@@ -392,10 +392,10 @@ smoke test", the last item below).
     release, and GitHub already serves them; integrity does not depend on the host or GitHub,
     because the signed metadata pins each package's checksum. Every client checked follows
     redirects to HTTPS (Research).
-12. **The host serves files, never symlinks.** The publish step copies `repo-add`'s
-    `vimma.db.tar.gz` to `vimma.db` (and the same for `vimma.files` and the signatures), because
-    how a symlink committed to `vimma-updates` reaches Cloudflare's asset upload was not
-    checked, and copies leave nothing to check.
+12. **The host serves files, never symlinks.** `repos.ts` writes `vimma.db` and `vimma.files` as
+    plain files (from `repo-add`'s entries, decision 15), and the signatures beside them,
+    because how a symlink committed to `vimma-updates` reaches Cloudflare's asset upload was not
+    checked, and plain files leave nothing to check.
 13. **Metadata is rebuilt from the release files each time.** For every version the metadata
     keeps (decision 20), `update-publish.yml` downloads that release's packages, checks them
     against its `SHA256SUMS` and that file's cosign bundle, as `prepare` does for the manifest,
@@ -420,8 +420,14 @@ smoke test", the last item below).
     for them (`repos.ts verify`: every package under its release's SHA-256, every index under
     the checksum its parent lists, no other release, file or hash, and the key in its three
     places the committed one), then signs `Release`, `repomd.xml`, `vimma.db` and `vimma.files`,
-    and checks each signature with `gpgv` against the committed key. The check is in the
-    signing job, because `repo-prepare` runs the build tools and their packages, and a fault
+    and checks each signature with `gpgv` against the committed key. It reads `SHA256SUMS` only
+    under `release.yml`'s cosign signature, and reads each metadata file in the exact shape the
+    build writes, refusing it unless writing back what it read gives the same bytes, because a
+    check that reads a file more leniently than apt, libsolv or libarchive can be shown one
+    thing while they read another (a field repeated in other case, an entry in an XML comment,
+    a tar entry behind a pax size). For the same reason `repos.ts` writes the pacman databases
+    itself from repo-add's entries, without `%MD5SUM%`, rather than signing repo-add's tar. The
+    check is in the signing job, because `repo-prepare` runs the build tools and their packages, and a fault
     there must not be able to get other packages or older releases signed; `publish` commits
     the metadata, the signatures, `_redirects` and `_headers` to `vimma-updates` in the same commit as the manifest. Reason: one commit makes the update
     check and the repositories announce a release at the same moment, and the job that holds

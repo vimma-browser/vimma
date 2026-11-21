@@ -488,6 +488,10 @@ The host's paths, all written by `publish` (`vimma-updates` needs no change by h
 | `_redirects`                                                       | each package path to its file on the GitHub Release                 |
 | `_headers`                                                         | `no-cache` for `/updates/*`, `/apt/*`, `/rpm/*`, `/arch/*`, the key |
 
+Each run replaces `public/rpm/repodata/` whole, and its index files' names change with their
+content, so a dnf or zypper that read the previous `repomd.xml` just before the deploy can get
+a 404 for an index file once; its next refresh reads the new one. Nothing needs doing.
+
 Packages are never on the host: `/apt/pool/<tag>/<file>`, `/rpm/packages/<tag>/<file>` and
 `/arch/x86_64/<file>` answer 302 to the release's download URL. `_headers` replaces the file of
 step 1 and keeps its rule for `/updates/*`.

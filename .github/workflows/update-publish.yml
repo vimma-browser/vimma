@@ -565,7 +565,7 @@ jobs:
             sums+=(--release "$tag=releases/$tag/SHA256SUMS")
           done
           node tools/package/repos.ts build --out repos --cert "$CERT" "${dirs[@]}"
-          node tools/package/repos.ts verify --tree repos --cert "$CERT" "${sums[@]}"
+          node tools/package/repos.ts verify --tree repos --cert "$CERT" --releases releases.json "${sums[@]}"
           find repos -type f | LC_ALL=C sort
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -638,11 +638,14 @@ jobs:
           name: repos-unsigned
           path: tree
 
-      # Exactly the metadata for the releases GitHub lists now, each package under the SHA-256
-      # of its release's SHA256SUMS, the key in its three places the committed one, and the
-      # redirects only to those packages (repos.ts verify). repo-prepare checked the SHA256SUMS
-      # files' cosign signatures; these are GitHub's copies, which a job with no secret cannot
-      # change.
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+
+      # Exactly the metadata for the releases GitHub lists now, read as apt, libsolv and
+      # libarchive read it: each package under the SHA-256 of its release's SHA256SUMS and the
+      # size GitHub lists, the key in its three places the committed one, and the redirects only
+      # to those packages (repos.ts verify). The SHA256SUMS files are GitHub's copies, read here,
+      # each under release.yml's cosign signature (B10), since anyone who can write the
+      # repository's contents could replace a release file, but not sign it as release.yml.
       - name: Check the metadata against the releases
         run: |
           gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > releases.json
@@ -653,9 +656,14 @@ jobs:
           for tag in "${tags[@]}"; do
             curl -fsSL --proto =https --retry 3 -o "sums/$tag" "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/SHA256SUMS" \
               || { echo "::error::$tag: no SHA256SUMS"; exit 1; }
+            curl -fsSL --proto =https --retry 3 -o "sums/$tag.sigstore.json" "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/SHA256SUMS.sigstore.json" \
+              || { echo "::error::$tag: no SHA256SUMS.sigstore.json"; exit 1; }
+            cosign verify-blob --bundle "sums/$tag.sigstore.json" \
+              --certificate-identity-regexp '^https://github\.com/vimma-browser/vimma/\.github/workflows/release\.yml@refs/heads/main$' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com "sums/$tag"
             args+=(--release "$tag=sums/$tag")
           done
-          node "$REPOS" verify --tree tree --cert "$CERT" "${args[@]}"
+          node "$REPOS" verify --tree tree --cert "$CERT" --releases releases.json "${args[@]}"
 
       - name: The project of the key
         id: key
@@ -694,7 +702,7 @@ jobs:
           mapfile -t tags < tags
           args=()
           for tag in "${tags[@]}"; do args+=(--release "$tag=sums/$tag"); done
-          node "$REPOS" verify --signed --tree tree --cert "$CERT" "${args[@]}"
+          node "$REPOS" verify --signed --tree tree --cert "$CERT" --releases releases.json "${args[@]}"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -784,10 +792,13 @@ jobs:
           name: repos-signed
           path: repos
 
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        if: needs.repo-sign.result == 'success'
+
       # As repo-sign's last check, by this job, before anything is pushed (spec
       # package-repositories, decision 6): each signature under the committed certificate, the
-      # metadata against the releases' SHA256SUMS, and the key in vimma-packages.asc, the
-      # .sources file and repomd.xml.key byte for byte the committed one.
+      # metadata against the releases' cosign-signed SHA256SUMS, and the key in
+      # vimma-packages.asc, the .sources file and repomd.xml.key byte for byte the committed one.
       - name: Check the signed package repositories
         if: needs.repo-sign.result == 'success'
         shell: bash
@@ -809,9 +820,14 @@ jobs:
           for tag in "${tags[@]}"; do
             curl -fsSL --proto =https --retry 3 -o "sums/$tag" "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/SHA256SUMS" \
               || { echo "::error::$tag: no SHA256SUMS"; exit 1; }
+            curl -fsSL --proto =https --retry 3 -o "sums/$tag.sigstore.json" "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/SHA256SUMS.sigstore.json" \
+              || { echo "::error::$tag: no SHA256SUMS.sigstore.json"; exit 1; }
+            cosign verify-blob --bundle "sums/$tag.sigstore.json" \
+              --certificate-identity-regexp '^https://github\.com/vimma-browser/vimma/\.github/workflows/release\.yml@refs/heads/main$' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com "sums/$tag"
             args+=(--release "$tag=sums/$tag")
           done
-          node tools/package/repos.ts verify --signed --tree repos --cert "$CERT" "${args[@]}"
+          node tools/package/repos.ts verify --signed --tree repos --cert "$CERT" --releases releases.json "${args[@]}"
           echo "PACKAGE_REPOS=true" >> "$GITHUB_ENV"
 
       - name: Without UPDATES_ENABLED, or in a dry run, push nothing
@@ -908,7 +924,8 @@ jobs:
           exit 1
 
       # The same commit, so served by now or soon: InRelease as pushed, the key the committed
-      # one, and the newest .deb's request redirected to its GitHub Release file.
+      # one, and each kind of package path (the newest .deb and .rpm, the pacman package and its
+      # .sig) redirected to its GitHub Release file.
       - name: Wait until the update host serves the package repositories
         if: env.PACKAGE_REPOS == 'true' && env.UPDATES_DEPLOY_KEY_SET == 'true' && vars.UPDATES_ENABLED == 'true' && !inputs.dry_run
         shell: bash
@@ -923,10 +940,13 @@ jobs:
               cmp -s "$CERT" served-key.asc \
                 || { echo "::error::$host/vimma-packages.asc is not $CERT"; exit 1; }
               tag=$(head -n 1 repo-tags)
-              deb="vimma_${tag#v}_amd64.deb"
-              to=$(curl -sS --proto =https -o /dev/null -w '%{http_code} %{redirect_url}' "$host/apt/pool/$tag/$deb")
-              [ "$to" = "302 https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/$deb" ] \
-                || { echo "::error::$host/apt/pool/$tag/$deb answers '$to', not a redirect to the release"; exit 1; }
+              v=${tag#v}
+              for path in "apt/pool/$tag/vimma_${v}_amd64.deb" "rpm/packages/$tag/vimma-$v-1.x86_64.rpm" \
+                "arch/x86_64/vimma-bin-$v-1-x86_64.pkg.tar.zst" "arch/x86_64/vimma-bin-$v-1-x86_64.pkg.tar.zst.sig"; do
+                to=$(curl -sS --proto =https -o /dev/null -w '%{http_code} %{redirect_url}' "$host/$path")
+                [ "$to" = "302 https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/${path##*/}" ] \
+                  || { echo "::error::$host/$path answers '$to', not a redirect to the release"; exit 1; }
+              done
               echo "updates.vimma.dev serves the package repositories for ${tag}"
               exit 0
             fi

@@ -18,9 +18,10 @@
  *   repos.ts select --releases FILE --tag TAG [--keep N]
  *       prints the tags the repositories keep, newest first, from GitHub's list of releases
  *       (`GET /repos/{owner}/{repo}/releases`, saved in FILE)
- *   repos.ts verify --tree DIR --cert FILE --release TAG=SUMS [--release TAG=SUMS …] [--signed]
- *       [--base-url URL] [--download-base URL]
- *       checks a tree build wrote against the releases' SHA256SUMS files, before it is signed
+ *   repos.ts verify --tree DIR --cert FILE --releases FILE --release TAG=SUMS [--release …]
+ *       [--signed] [--base-url URL] [--download-base URL]
+ *       checks a tree build wrote against the releases' SHA256SUMS files and GitHub's list of
+ *       releases (each file's size), before it is signed
  *       and (with --signed, its signatures then present) before it is published
  *
  * Each TAG=DIR is a release's tag and a directory with its files: vimma_X.Y.Z_amd64.deb,
@@ -170,32 +171,140 @@ export function redirectsFile(p: Plan, downloadBase: string): string {
   return `${lines.join("\n")}\n`;
 }
 
-/** The stanzas of a Debian control-style file, each as its fields. */
-function stanzas(text: string): Map<string, string>[] {
-  return text
-    .split(/\n\n+/)
-    .filter((b) => b.trim())
-    .map((b) => {
-      const fields = new Map<string, string>();
-      for (const line of b.split("\n")) {
-        const m = /^([A-Za-z0-9-]+):\s*(.*)$/.exec(line);
-        if (m?.[1] && m[2] !== undefined) fields.set(m[1], m[2]);
+// --- Strict readers -------------------------------------------------------------------------
+//
+// What repo-sign signs is read by apt, libsolv (dnf, zypper) and libarchive (pacman), each with
+// its own parser. A check that reads a file more leniently than they do can be shown one thing
+// while they read another: a field repeated in other case, an entry inside an XML comment, a
+// tar entry hidden behind a pax size. So each reader below accepts only the shape this
+// repository's build writes, puts the file back together from what it read, and refuses it
+// unless that is byte for byte the input: nothing it skipped can reach a client.
+
+/** The fields a stanza of Packages may have: what package.ts writes and apt-ftparchive adds. */
+const PACKAGES_FIELDS = [
+  "Package",
+  "Version",
+  "Architecture",
+  "Maintainer",
+  "Installed-Size",
+  "Depends",
+  "Recommends",
+  "Provides",
+  "Section",
+  "Priority",
+  "Homepage",
+  "Description",
+  "Filename",
+  "Size",
+  "SHA256",
+];
+
+/**
+ * A deb822 file of `allowed` fields only, in their exact spelling: each line `Key: value`, or a
+ * continuation (` text`) under a field of `multiline`, which alone may have an empty first
+ * line; no field twice, compared without case as apt compares them; stanzas apart by one empty
+ * line; LF only.
+ */
+function deb822(
+  text: string,
+  what: string,
+  allowed: string[],
+  multiline: string[],
+  trailer: string,
+): Map<string, string[]>[] {
+  const fail = (m: string): never => {
+    throw new Error(`repos: ${what}: ${m}`);
+  };
+  if (/[\r\0\t]/.test(text)) fail("has a carriage return, NUL or tab");
+  if (!text.endsWith(`\n${trailer}`)) fail("does not end as the build writes it");
+  const body = text.slice(0, text.length - 1 - trailer.length);
+  const out = body.split("\n\n").map((block) => {
+    const fields = new Map<string, string[]>();
+    const seen = new Set<string>();
+    let current: string[] | undefined;
+    let key = "";
+    for (const line of block.split("\n")) {
+      const cont = /^ (\S(?:.*\S)?)$/.exec(line);
+      if (cont?.[1] !== undefined) {
+        if (!current || !multiline.includes(key))
+          fail(`a continuation line under ${key || "nothing"}`);
+        (current as string[]).push(cont[1]);
+        continue;
       }
-      return fields;
-    });
+      const m = /^([A-Za-z][A-Za-z0-9-]*):(?: (\S(?:.*\S)?))?$/.exec(line);
+      if (!m?.[1]) fail(`line ${JSON.stringify(line)} is no field`);
+      key = (m as RegExpExecArray)[1] as string;
+      const value = (m as RegExpExecArray)[2];
+      if (!allowed.includes(key)) fail(`${key} is not a field it may have`);
+      if (seen.has(key.toLowerCase())) fail(`${key} is there twice`);
+      seen.add(key.toLowerCase());
+      if (value === undefined && !multiline.includes(key)) fail(`${key} has no value`);
+      current = [value ?? ""];
+      fields.set(key, current);
+    }
+    return fields;
+  });
+  const again =
+    out
+      .map((f) =>
+        [...f]
+          .map(([k, v]) => {
+            const [first, ...rest] = v;
+            const head = first === "" ? `${k}:` : `${k}: ${first}`;
+            return [head, ...rest.map((l) => ` ${l}`)].join("\n");
+          })
+          .join("\n"),
+      )
+      .join("\n\n") + `\n${trailer}`;
+  if (again !== text) fail("is not in the form the build writes");
+  return out;
 }
+
+const one = (f: Map<string, string[]>, key: string) => {
+  const v = f.get(key);
+  return v?.length === 1 ? v[0] : undefined;
+};
 
 /**
  * Refuses apt's Packages unless it has exactly one stanza per kept release, each the package
- * `vimma` at the release's version, at the release's path: the signature will vouch for what
+ * `vimma` at the release's version, at the release's path (and, with `sums` and `sizes`, under
+ * the SHA-256 and size of that release's file): the signature will vouch for what
  * apt-ftparchive read from the files, so a file that is not the release it claims stops here.
  */
-export function checkPackages(text: string, releases: Release[]): void {
-  const found = stanzas(text);
+export function checkPackages(
+  text: string,
+  releases: Release[],
+  sums?: (r: Release, file: string) => string,
+  sizes?: (r: Release, file: string) => number,
+): void {
+  const found = deb822(text, "Packages", PACKAGES_FIELDS, ["Description"], "\n");
   for (const r of releases) {
-    const s = found.filter((f) => f.get("Filename") === `pool/${r.tag}/${r.deb}`);
-    if (s.length !== 1 || s[0]?.get("Package") !== "vimma" || s[0]?.get("Version") !== r.version) {
+    const s = found.filter((f) => one(f, "Filename") === `pool/${r.tag}/${r.deb}`);
+    const f = s[0];
+    if (
+      s.length !== 1 ||
+      !f ||
+      one(f, "Package") !== "vimma" ||
+      one(f, "Version") !== r.version ||
+      one(f, "Architecture") !== "amd64"
+    ) {
       throw new Error(`repos: Packages does not list vimma ${r.version} for ${r.tag}`);
+    }
+    if (
+      !/^[1-9][0-9]*$/.test(one(f, "Size") ?? "") ||
+      !/^[0-9a-f]{64}$/.test(one(f, "SHA256") ?? "")
+    ) {
+      throw new Error(`repos: Packages: pool/${r.tag}/${r.deb} has no Size or SHA256`);
+    }
+    if (sums && one(f, "SHA256") !== sums(r, r.deb)) {
+      throw new Error(
+        `repos: Packages: the SHA256 of pool/${r.tag}/${r.deb} is not the one ${r.tag}'s SHA256SUMS lists`,
+      );
+    }
+    if (sizes && one(f, "Size") !== String(sizes(r, r.deb))) {
+      throw new Error(
+        `repos: Packages: the Size of pool/${r.tag}/${r.deb} is not the release file's`,
+      );
     }
   }
   if (found.length !== releases.length) {
@@ -203,29 +312,579 @@ export function checkPackages(text: string, releases: Release[]): void {
   }
 }
 
-/** Refuses primary.xml unless it lists exactly vimma X.Y.Z-1 for each kept release. */
-export function checkPrimary(xml: string, releases: Release[]): void {
-  const packages = [...xml.matchAll(/<package type="rpm">([\s\S]*?)<\/package>/g)].map(
-    (m) => m[1] ?? "",
+/** An XML element as the strict reader keeps it: enough to write it back byte for byte. */
+interface XmlElement {
+  name: string;
+  attrs: [string, string][];
+  /** Written `<x/>`, not `<x></x>`. */
+  empty: boolean;
+  children: (XmlElement | string)[];
+}
+
+const XML_DECL = '<?xml version="1.0" encoding="UTF-8"?>\n';
+
+/**
+ * The subset of XML that createrepo_c writes: the declaration, elements, attributes in double
+ * quotes, text, and the five predefined entities. No comment, CDATA, DOCTYPE, processing
+ * instruction, other entity or xml: attribute (xml:base would move a package's location), each
+ * of which libsolv reads in a way a check by pattern would not.
+ */
+function readXml(text: string, what: string): XmlElement {
+  const fail = (m: string): never => {
+    throw new Error(`repos: ${what}: ${m}`);
+  };
+  if (!text.startsWith(XML_DECL)) fail("does not start with the XML declaration");
+  if (/[\0\r]/.test(text)) fail("has a NUL or carriage return");
+  if (text.includes("<!")) fail("has a comment, CDATA or DOCTYPE");
+  if (text.indexOf("<?", 1) !== -1) fail("has a processing instruction");
+  if (/&(?!(?:amp|lt|gt|quot|apos);)/.test(text)) fail("has an entity that is not predefined");
+  let at = XML_DECL.length;
+  const NAME = /[A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_.-]*)?/y;
+  const name = () => {
+    NAME.lastIndex = at;
+    const m = NAME.exec(text);
+    if (!m) fail(`no name at ${at}`);
+    at += (m as RegExpExecArray)[0].length;
+    return (m as RegExpExecArray)[0];
+  };
+  const element = (depth: number): XmlElement => {
+    if (depth > 32) fail("nests too deep");
+    if (text[at] !== "<") fail(`no element at ${at}`);
+    at += 1;
+    const el: XmlElement = { name: name(), attrs: [], empty: false, children: [] };
+    const ATTR = / ([A-Za-z_][A-Za-z0-9_.-]*(?::[A-Za-z_][A-Za-z0-9_.-]*)?)="([^"<]*)"/y;
+    for (;;) {
+      ATTR.lastIndex = at;
+      const m = ATTR.exec(text);
+      if (!m) break;
+      const [, k, v] = m as unknown as [string, string, string];
+      if (k.startsWith("xml:")) fail(`${el.name} has ${k}`);
+      if (el.attrs.some(([a]) => a === k)) fail(`${el.name} has ${k} twice`);
+      el.attrs.push([k, v]);
+      at += m[0].length;
+    }
+    if (text.startsWith("/>", at)) {
+      at += 2;
+      el.empty = true;
+      return el;
+    }
+    if (text[at] !== ">") fail(`${el.name}: a malformed tag at ${at}`);
+    at += 1;
+    for (;;) {
+      if (text.startsWith("</", at)) {
+        at += 2;
+        if (name() !== el.name || text[at] !== ">") fail(`${el.name} is not closed`);
+        at += 1;
+        return el;
+      }
+      if (text[at] === "<") el.children.push(element(depth + 1));
+      else {
+        const end = text.indexOf("<", at);
+        if (end === -1) fail(`${el.name} is not closed`);
+        el.children.push(text.slice(at, end));
+        at = end;
+      }
+    }
+  };
+  const root = element(0);
+  const rest = text.slice(at);
+  if (rest !== "" && rest !== "\n") fail("has more after its root element");
+  const write = (e: XmlElement): string =>
+    `<${e.name}${e.attrs.map(([k, v]) => ` ${k}="${v}"`).join("")}` +
+    (e.empty
+      ? "/>"
+      : `>${e.children.map((c) => (typeof c === "string" ? c : write(c))).join("")}</${e.name}>`);
+  if (`${XML_DECL}${write(root)}${rest}` !== text) fail("is not in the form createrepo_c writes");
+  return root;
+}
+
+const unescapeXml = (s: string) =>
+  s.replace(
+    /&(amp|lt|gt|quot|apos);/g,
+    (_, e: string) => ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" })[e] ?? "",
   );
-  for (const r of releases) {
-    const href = `packages/${r.tag}/${r.rpm}`;
-    const own = packages.filter((p) => p.includes(`<location href="${href}"/>`));
-    const p = own[0] ?? "";
-    const version = /<version epoch="0" ver="([^"]*)" rel="([^"]*)"\/>/.exec(p);
+
+/** The element children of `e`; text between them must be white space only. */
+function elementsOf(e: XmlElement, what: string): XmlElement[] {
+  for (const c of e.children) {
+    if (typeof c === "string" && c.trim()) throw new Error(`repos: ${what}: text in ${e.name}`);
+  }
+  return e.children.filter((c): c is XmlElement => typeof c !== "string");
+}
+
+/** The text of a leaf element (no element inside), entities decoded. */
+function textOf(e: XmlElement, what: string): string {
+  if (e.children.some((c) => typeof c !== "string")) {
+    throw new Error(`repos: ${what}: ${e.name} holds an element`);
+  }
+  return unescapeXml(e.children.join(""));
+}
+
+/** The attributes of `e`, which must be exactly `names`, in that order. */
+function attrsOf(e: XmlElement, names: string[], what: string): Record<string, string> {
+  if (e.attrs.map(([k]) => k).join(" ") !== names.join(" ")) {
+    throw new Error(
+      `repos: ${what}: ${e.name} has attributes ${e.attrs.map(([k]) => k).join(" ") || "none"}`,
+    );
+  }
+  return Object.fromEntries(e.attrs.map(([k, v]) => [k, unescapeXml(v)]));
+}
+
+const PRIMARY_CHILDREN = [
+  "name",
+  "arch",
+  "version",
+  "checksum",
+  "summary",
+  "description",
+  "packager",
+  "url",
+  "time",
+  "size",
+  "location",
+  "format",
+];
+/**
+ * What a package's <format> may hold: the relations Vimma's .rpm declares (requires,
+ * recommends, provides) and descriptive fields; never obsoletes, conflicts or the weak
+ * relations that would let it replace or remove another package.
+ */
+const FORMAT_CHILDREN = [
+  "rpm:license",
+  "rpm:vendor",
+  "rpm:group",
+  "rpm:buildhost",
+  "rpm:sourcerpm",
+  "rpm:header-range",
+  "rpm:provides",
+  "rpm:requires",
+  "rpm:recommends",
+  "file",
+];
+const RPM_NS = {
+  common: "http://linux.duke.edu/metadata/common",
+  filelists: "http://linux.duke.edu/metadata/filelists",
+  other: "http://linux.duke.edu/metadata/other",
+  repo: "http://linux.duke.edu/metadata/repo",
+  rpm: "http://linux.duke.edu/metadata/rpm",
+};
+
+/**
+ * Refuses primary.xml unless it lists exactly vimma X.Y.Z-1 for each kept release, at its path,
+ * in the shape createrepo_c writes, with nothing that would make it replace another package
+ * (and, with `sums` and `sizes`, under its release file's SHA-256 and size).
+ */
+export function checkPrimary(
+  xml: string,
+  releases: Release[],
+  sums?: (r: Release, file: string) => string,
+  sizes?: (r: Release, file: string) => number,
+): void {
+  const what = "primary.xml";
+  const fail = (m: string): never => {
+    throw new Error(`repos: ${what}: ${m}`);
+  };
+  const root = readXml(xml, what);
+  if (root.name !== "metadata") fail("its root is not metadata");
+  const top = attrsOf(root, ["xmlns", "xmlns:rpm", "packages"], what);
+  if (top.xmlns !== RPM_NS.common || top["xmlns:rpm"] !== RPM_NS.rpm) fail("wrong namespaces");
+  const packages = elementsOf(root, what);
+  const listed = new Map<string, XmlElement>();
+  for (const p of packages) {
+    if (p.name !== "package" || attrsOf(p, ["type"], what).type !== "rpm")
+      fail("an entry that is not an rpm package");
+    const kids = elementsOf(p, what);
+    if (kids.map((k) => k.name).join(" ") !== PRIMARY_CHILDREN.join(" ")) {
+      fail(`a package of ${kids.map((k) => k.name).join(", ")}`);
+    }
+    const [
+      name,
+      arch,
+      version,
+      checksum,
+      summary,
+      description,
+      packager,
+      url,
+      time,
+      size,
+      location,
+      format,
+    ] = kids as XmlElement[] & { length: 12 };
+    const v = attrsOf(version as XmlElement, ["epoch", "ver", "rel"], what);
+    const href = attrsOf(location as XmlElement, ["href"], what).href ?? "";
     if (
-      own.length !== 1 ||
-      /<name>([^<]*)<\/name>/.exec(p)?.[1] !== "vimma" ||
-      /<arch>([^<]*)<\/arch>/.exec(p)?.[1] !== "x86_64" ||
-      version?.[1] !== r.version ||
-      version?.[2] !== "1"
+      textOf(name as XmlElement, what) !== "vimma" ||
+      textOf(arch as XmlElement, what) !== "x86_64" ||
+      v.epoch !== "0" ||
+      v.rel !== "1"
     ) {
+      fail(`a package that is not vimma for x86_64 at release 1: ${href}`);
+    }
+    const c = attrsOf(checksum as XmlElement, ["type", "pkgid"], what);
+    if (
+      c.type !== "sha256" ||
+      c.pkgid !== "YES" ||
+      !/^[0-9a-f]{64}$/.test(textOf(checksum as XmlElement, what))
+    ) {
+      fail(`${href}: no sha256 checksum`);
+    }
+    for (const leaf of [summary, description, packager, url]) textOf(leaf as XmlElement, what);
+    attrsOf(time as XmlElement, ["file", "build"], what);
+    const sz = attrsOf(size as XmlElement, ["package", "installed", "archive"], what);
+    for (const n of Object.values(sz))
+      if (!/^[0-9]+$/.test(n)) fail(`${href}: a size that is no number`);
+    for (const f of elementsOf(format as XmlElement, what)) {
+      if (!FORMAT_CHILDREN.includes(f.name)) fail(`${href} has ${f.name}`);
+      if (["rpm:provides", "rpm:requires", "rpm:recommends"].includes(f.name)) {
+        for (const e of elementsOf(f, what)) {
+          if (e.name !== "rpm:entry" || !e.empty) fail(`${href}: ${f.name} holds ${e.name}`);
+          for (const [k] of e.attrs) {
+            if (!["name", "flags", "epoch", "ver", "rel", "pre"].includes(k))
+              fail(`${href}: an entry with ${k}`);
+          }
+        }
+      } else if (f.name === "rpm:header-range") {
+        attrsOf(f, ["start", "end"], what);
+      } else if (f.name === "file") {
+        if (f.attrs.some(([k]) => k !== "type")) fail(`${href}: a file with other attributes`);
+        textOf(f, what);
+      } else {
+        attrsOf(f, [], what);
+        textOf(f, what);
+      }
+    }
+    if (listed.has(href)) fail(`${href} twice`);
+    listed.set(href, p);
+    const r = releases.find((x) => href === `packages/${x.tag}/${x.rpm}`);
+    if (!r || v.ver !== r.version) continue;
+    if (sums && textOf(checksum as XmlElement, what) !== sums(r, r.rpm)) {
+      fail(`the checksum of packages/${r.tag}/${r.rpm} is not the one ${r.tag}'s SHA256SUMS lists`);
+    }
+    if (sizes && sz.package !== String(sizes(r, r.rpm))) {
+      fail(`the size of packages/${r.tag}/${r.rpm} is not the release file's`);
+    }
+  }
+  for (const r of releases) {
+    const p = listed.get(`packages/${r.tag}/${r.rpm}`);
+    const ver = p
+      ? attrsOf(elementsOf(p, what)[2] as XmlElement, ["epoch", "ver", "rel"], what).ver
+      : undefined;
+    if (ver !== r.version) {
       throw new Error(`repos: primary.xml does not list vimma ${r.version}-1 for ${r.tag}`);
     }
   }
-  if (packages.length !== releases.length) {
-    throw new Error(`repos: primary.xml has ${packages.length} packages, want ${releases.length}`);
+  if (packages.length !== releases.length || top.packages !== String(releases.length)) {
+    fail(`has ${packages.length} packages, want ${releases.length}`);
   }
+}
+
+/** Refuses filelists.xml or other.xml unless it lists exactly the packages `pkgids` names. */
+function checkFilelists(xml: string, type: "filelists" | "other", pkgids: string[]): void {
+  const what = `${type}.xml`;
+  const fail = (m: string): never => {
+    throw new Error(`repos: ${what}: ${m}`);
+  };
+  const root = readXml(xml, what);
+  if (root.name !== (type === "other" ? "otherdata" : "filelists")) fail("wrong root");
+  const top = attrsOf(root, ["xmlns", "packages"], what);
+  if (top.xmlns !== RPM_NS[type] || top.packages !== String(pkgids.length))
+    fail("wrong namespace or count");
+  const ids = elementsOf(root, what).map((p) => {
+    if (p.name !== "package") fail(`has ${p.name}`);
+    const a = attrsOf(p, ["pkgid", "name", "arch"], what);
+    if (a.name !== "vimma" || a.arch !== "x86_64") fail("a package that is not vimma for x86_64");
+    const [version, ...rest] = elementsOf(p, what);
+    if (version?.name !== "version") fail("a package without its version first");
+    attrsOf(version as XmlElement, ["epoch", "ver", "rel"], what);
+    for (const e of rest) {
+      if (type === "filelists") {
+        if (e.name !== "file" || e.attrs.some(([k]) => k !== "type")) fail(`has ${e.name}`);
+      } else if (e.name !== "changelog") fail(`has ${e.name}`);
+      else attrsOf(e, ["author", "date"], what);
+      textOf(e, what);
+    }
+    return a.pkgid ?? "";
+  });
+  if ([...ids].sort().join(" ") !== [...pkgids].sort().join(" ")) {
+    fail("does not list exactly the releases' .rpm files");
+  }
+}
+
+/** repomd.xml's three index files, in the shape createrepo_c writes it. */
+function readRepomd(xml: string): { type: string; href: string; checksum: string; open: string }[] {
+  const what = "repomd.xml";
+  const fail = (m: string): never => {
+    throw new Error(`repos: ${what}: ${m}`);
+  };
+  const root = readXml(xml, what);
+  if (root.name !== "repomd") fail("wrong root");
+  const top = attrsOf(root, ["xmlns", "xmlns:rpm"], what);
+  if (top.xmlns !== RPM_NS.repo || top["xmlns:rpm"] !== RPM_NS.rpm) fail("wrong namespaces");
+  const [revision, ...data] = elementsOf(root, what);
+  if (revision?.name !== "revision" || !/^[0-9]+$/.test(textOf(revision, what)))
+    fail("no revision first");
+  const out = data.map((d) => {
+    if (d.name !== "data") fail(`has ${d.name}`);
+    const type = attrsOf(d, ["type"], what).type ?? "";
+    const kids = elementsOf(d, what);
+    const names = "checksum open-checksum location timestamp size open-size";
+    if (kids.map((k) => k.name).join(" ") !== names)
+      fail(`${type} holds ${kids.map((k) => k.name).join(", ")}`);
+    const [checksum, open, location, timestamp, size, openSize] = kids as XmlElement[];
+    for (const c of [checksum, open] as XmlElement[]) {
+      if (attrsOf(c, ["type"], what).type !== "sha256" || !/^[0-9a-f]{64}$/.test(textOf(c, what))) {
+        fail(`repomd.xml's ${type} has no sha256 checksum`);
+      }
+    }
+    for (const n of [timestamp, size, openSize] as XmlElement[]) {
+      attrsOf(n, [], what);
+      if (!/^[0-9]+$/.test(textOf(n, what))) fail(`${type}: ${n.name} is no number`);
+    }
+    const href = attrsOf(location as XmlElement, ["href"], what).href ?? "";
+    if (!/^repodata\/[A-Za-z0-9._-]+$/.test(href)) fail(`${type} has location ${href}`);
+    return {
+      type,
+      href,
+      checksum: textOf(checksum as XmlElement, what),
+      open: textOf(open as XmlElement, what),
+    };
+  });
+  if (
+    out
+      .map((d) => d.type)
+      .sort()
+      .join(" ") !== "filelists other primary"
+  ) {
+    fail("repomd.xml does not list exactly primary, filelists and other");
+  }
+  return out;
+}
+
+/** A tar entry the strict reader keeps: a directory or a regular file. */
+interface TarEntry {
+  name: string;
+  data: Buffer;
+}
+
+const TAR_BLOCK = 512;
+
+/**
+ * pacman's databases as this tool writes them (`pacmanDb`), never repo-add's own bytes: ustar
+ * headers of a directory and regular files, uid and gid 0, mtime 0, then gzip. One writer, so
+ * `readPacmanDb` can demand those exact bytes back.
+ */
+function tarHeader(name: string, size: number, dir: boolean): Buffer {
+  if (Buffer.byteLength(name) > 99 || /[^A-Za-z0-9._+/-]/.test(name)) {
+    throw new Error(`repos: tar: bad entry name ${JSON.stringify(name)}`);
+  }
+  const h = Buffer.alloc(TAR_BLOCK);
+  h.write(name, 0, "latin1");
+  h.write(dir ? "0000755\0" : "0000644\0", 100, "latin1");
+  h.write("0000000\0", 108, "latin1");
+  h.write("0000000\0", 116, "latin1");
+  h.write(`${size.toString(8).padStart(11, "0")}\0`, 124, "latin1");
+  h.write("00000000000\0", 136, "latin1");
+  h.write("        ", 148, "latin1");
+  h.write(dir ? "5" : "0", 156, "latin1");
+  h.write("ustar\0", 257, "latin1");
+  h.write("00", 263, "latin1");
+  h.write("root", 265, "latin1");
+  h.write("root", 297, "latin1");
+  let sum = 0;
+  for (const b of h) sum += b;
+  h.write(`${sum.toString(8).padStart(6, "0")}\0 `, 148, "latin1");
+  return h;
+}
+
+function writeTar(entries: TarEntry[]): Buffer {
+  const parts: Buffer[] = [];
+  for (const e of entries) {
+    const dir = e.name.endsWith("/");
+    parts.push(tarHeader(e.name, dir ? 0 : e.data.length, dir));
+    if (!dir) {
+      parts.push(e.data, Buffer.alloc((TAR_BLOCK - (e.data.length % TAR_BLOCK)) % TAR_BLOCK));
+    }
+  }
+  parts.push(Buffer.alloc(2 * TAR_BLOCK));
+  return Buffer.concat(parts);
+}
+
+/** The keys a database's desc may have, in repo-add's order; MD5SUM and PGPSIG are dropped. */
+const DESC_KEYS = [
+  "FILENAME",
+  "NAME",
+  "BASE",
+  "VERSION",
+  "DESC",
+  "CSIZE",
+  "ISIZE",
+  "SHA256SUM",
+  "URL",
+  "LICENSE",
+  "ARCH",
+  "BUILDDATE",
+  "PACKAGER",
+  "CONFLICTS",
+  "PROVIDES",
+  "DEPENDS",
+  "OPTDEPENDS",
+];
+
+/** A desc as `%KEY%` blocks, each its value lines and an empty line. */
+function descBlocks(text: string): [string, string[]][] {
+  if (/[\0\r]/.test(text)) throw new Error("repos: vimma.db: desc has a NUL or carriage return");
+  const blocks: [string, string[]][] = [];
+  if (!text.endsWith("\n\n"))
+    throw new Error("repos: vimma.db: desc does not end in an empty line");
+  for (const block of text.slice(0, -2).split("\n\n")) {
+    const [head, ...values] = block.split("\n");
+    const m = /^%([A-Z0-9]+)%$/.exec(head ?? "");
+    if (!m?.[1] || !values.length || values.some((v) => !v || v.startsWith("%"))) {
+      throw new Error(`repos: vimma.db: desc has a malformed block ${JSON.stringify(head)}`);
+    }
+    blocks.push([m[1], values]);
+  }
+  return blocks;
+}
+
+const descText = (blocks: [string, string[]][]) =>
+  blocks.map(([k, v]) => `%${k}%\n${v.join("\n")}\n\n`).join("");
+
+/**
+ * The database's desc for the release, as Vimma publishes it: repo-add's, without MD5SUM (the
+ * SHA-256 is there) or PGPSIG (pacman fetches the .sig), and refused when it has a key pacman
+ * would act on beyond installing this package, such as REPLACES.
+ */
+function canonicalDesc(text: string, r: Release, sha?: string, size?: number): string {
+  const fail = (m: string): never => {
+    throw new Error(`repos: vimma.db: ${m}`);
+  };
+  const blocks = descBlocks(text).filter(([k]) => k !== "MD5SUM" && k !== "PGPSIG");
+  let last = -1;
+  for (const [k] of blocks) {
+    const i = DESC_KEYS.indexOf(k);
+    if (i === -1) fail(`desc has %${k}%`);
+    if (i <= last) fail(`desc has %${k}% out of order or twice`);
+    last = i;
+  }
+  const get = (k: string) => blocks.find(([key]) => key === k)?.[1];
+  const single = (k: string) => {
+    const v = get(k);
+    return v?.length === 1 ? v[0] : undefined;
+  };
+  if (
+    single("NAME") !== "vimma-bin" ||
+    single("BASE") !== "vimma-bin" ||
+    single("VERSION") !== `${r.version}-1` ||
+    single("FILENAME") !== r.pacman ||
+    single("ARCH") !== "x86_64"
+  ) {
+    fail(`does not list exactly vimma-bin ${r.version}-1 for ${r.tag}`);
+  }
+  for (const k of ["CONFLICTS", "PROVIDES"]) {
+    const v = get(k);
+    if (v && v.join(" ") !== "vimma") fail(`%${k}% is ${v.join(", ")}, not vimma`);
+  }
+  if (
+    !/^[0-9a-f]{64}$/.test(single("SHA256SUM") ?? "") ||
+    !/^[0-9]+$/.test(single("CSIZE") ?? "")
+  ) {
+    fail(`${r.pacman} has no SHA256SUM or CSIZE`);
+  }
+  if (sha !== undefined && single("SHA256SUM") !== sha) {
+    fail(`the SHA256SUM of ${r.pacman} is not the one ${r.tag}'s SHA256SUMS lists`);
+  }
+  if (size !== undefined && single("CSIZE") !== String(size)) {
+    fail(`the CSIZE of ${r.pacman} is not the release file's size`);
+  }
+  return descText(blocks);
+}
+
+/** vimma.db (desc alone) or vimma.files (desc and the file list), gzipped. */
+function pacmanDb(r: Release, desc: string, files?: string): Buffer {
+  const dir = `vimma-bin-${r.version}-1/`;
+  const entries: TarEntry[] = [
+    { name: dir, data: Buffer.alloc(0) },
+    { name: `${dir}desc`, data: Buffer.from(desc, "utf8") },
+  ];
+  if (files !== undefined) entries.push({ name: `${dir}files`, data: Buffer.from(files, "utf8") });
+  return gzipSync(writeTar(entries), { level: 9 });
+}
+
+/**
+ * The entries of a database this tool wrote: only ustar directories and regular files, every
+ * checksum right, no pax or GNU header, the two end blocks and nothing after. Then the caller
+ * writes the same entries again and demands the same bytes.
+ */
+function readTar(gz: Buffer, what: string): TarEntry[] {
+  const fail = (m: string): never => {
+    throw new Error(`repos: ${what}: ${m}`);
+  };
+  let data: Buffer;
+  try {
+    data = gunzipSync(gz);
+  } catch {
+    return fail("is not gzip");
+  }
+  const entries: TarEntry[] = [];
+  let at = 0;
+  for (;;) {
+    if (at + TAR_BLOCK > data.length) fail("ends inside a header");
+    const h = data.subarray(at, at + TAR_BLOCK);
+    if (h.every((b) => b === 0)) {
+      if (data.length !== at + 2 * TAR_BLOCK || !data.subarray(at).every((b) => b === 0)) {
+        fail("has something after its end");
+      }
+      return entries;
+    }
+    const field = (from: number, len: number) => h.subarray(from, from + len).toString("latin1");
+    if (field(257, 8) !== "ustar\x0000") fail("an entry that is not ustar");
+    const type = field(156, 1);
+    if (type !== "0" && type !== "5")
+      fail(`an entry of type ${JSON.stringify(type)}, not a file or directory`);
+    const sizeField = field(124, 12);
+    if (!/^[0-7]{11}\0$/.test(sizeField)) fail("a malformed size");
+    const size = parseInt(sizeField.slice(0, 11), 8);
+    const name = field(0, 100).replace(/\0+$/, "");
+    if (name.includes("\0") || !/^\0*$/.test(field(345, 155))) fail("a malformed name");
+    if ((type === "5") !== name.endsWith("/") || (type === "5" && size !== 0))
+      fail(`${name}: type and name disagree`);
+    if (at + TAR_BLOCK + size > data.length) fail(`${name} runs past the end`);
+    entries.push({ name, data: Buffer.from(data.subarray(at + TAR_BLOCK, at + TAR_BLOCK + size)) });
+    at += TAR_BLOCK + Math.ceil(size / TAR_BLOCK) * TAR_BLOCK;
+  }
+}
+
+/**
+ * Refuses a pacman database unless it is exactly what `pacmanDb` writes for the release: its
+ * directory and desc (and for vimma.files its file list), in those bytes. Returns the desc.
+ */
+function readPacmanDb(
+  gz: Buffer,
+  r: Release,
+  what: "vimma.db" | "vimma.files",
+  sha?: string,
+  size?: number,
+): string {
+  const dir = `vimma-bin-${r.version}-1/`;
+  const entries = readTar(gz, what);
+  const names = entries.map((e) => e.name).join(" ");
+  const want = what === "vimma.db" ? `${dir} ${dir}desc` : `${dir} ${dir}desc ${dir}files`;
+  if (names !== want)
+    throw new Error(`repos: ${what} does not list exactly vimma-bin ${r.version}-1 for ${r.tag}`);
+  const desc = entries[1]?.data.toString("utf8") ?? "";
+  if (canonicalDesc(desc, r, sha, size) !== desc)
+    throw new Error(`repos: ${what}: desc is not in canonical form`);
+  let files: string | undefined;
+  if (what === "vimma.files") {
+    files = entries[2]?.data.toString("utf8") ?? "";
+    if (!/^%FILES%\n(?:[^\0\r\n%][^\0\r\n]*\n)*\n?$/.test(files))
+      throw new Error("repos: vimma.files: a malformed file list");
+  }
+  if (!pacmanDb(r, desc, files).equals(gz))
+    throw new Error(`repos: ${what} is not the bytes repos.ts writes`);
+  return desc;
 }
 
 /** The files of a tar archive by name (ustar and pax, as bsdtar writes them). */
@@ -260,22 +919,11 @@ export function untar(data: Buffer): Map<string, Buffer> {
 }
 
 /**
- * Refuses the pacman database unless it holds exactly vimma-bin X.Y.Z-1 of the release, from
- * the release's package file.
+ * Refuses the pacman database unless it holds exactly vimma-bin X.Y.Z-1 of the release, in the
+ * form this tool writes it.
  */
 export function checkPacmanDb(tarGz: Buffer, r: Release): void {
-  const entries = [...untar(gunzipSync(tarGz)).entries()].filter(([n]) => !n.endsWith("/"));
-  const dir = `vimma-bin-${r.version}-1`;
-  const desc = entries.length === 1 && entries[0]?.[0] === `${dir}/desc` ? entries[0][1] : null;
-  const text = desc?.toString("utf8") ?? "";
-  const value = (key: string) => new RegExp(`(?:^|\\n)%${key}%\\n([^\\n]*)\\n`).exec(text)?.[1];
-  if (
-    value("NAME") !== "vimma-bin" ||
-    value("VERSION") !== `${r.version}-1` ||
-    value("FILENAME") !== r.pacman
-  ) {
-    throw new Error(`repos: vimma.db does not list exactly vimma-bin ${r.version}-1 for ${r.tag}`);
-  }
+  readPacmanDb(tarGz, r, "vimma.db");
 }
 
 /**
@@ -436,9 +1084,23 @@ export async function build(opts: BuildOptions): Promise<void> {
     tool("repo-add", ["--quiet", "vimma.db.tar.gz", pkg], archWork);
     const arch = join(out, "arch", "x86_64");
     mkdirSync(arch, { recursive: true });
-    checkPacmanDb(readFileSync(join(archWork, "vimma.db.tar.gz")), p.pacman);
-    copyFileSync(join(archWork, "vimma.db.tar.gz"), join(arch, "vimma.db"));
-    copyFileSync(join(archWork, "vimma.files.tar.gz"), join(arch, "vimma.files"));
+    // repo-add's entries, written again by this file's own tar writer, so what is signed is a
+    // form verify can demand byte for byte: libarchive could otherwise read in repo-add's tar
+    // entries that a lenient check does not see.
+    const dir = `vimma-bin-${p.pacman.version}-1`;
+    const added = untar(gunzipSync(readFileSync(join(archWork, "vimma.db.tar.gz"))));
+    const addedFiles = untar(gunzipSync(readFileSync(join(archWork, "vimma.files.tar.gz"))));
+    const rawDesc = added.get(`${dir}/desc`);
+    const files = addedFiles.get(`${dir}/files`);
+    if (!rawDesc || !files) {
+      throw new Error(
+        `repos: vimma.db does not list exactly vimma-bin ${p.pacman.version}-1 for ${p.pacman.tag}`,
+      );
+    }
+    const desc = canonicalDesc(rawDesc.toString("utf8"), p.pacman);
+    writeFileSync(join(arch, "vimma.db"), pacmanDb(p.pacman, desc));
+    writeFileSync(join(arch, "vimma.files"), pacmanDb(p.pacman, desc, files.toString("utf8")));
+    checkPacmanDb(readFileSync(join(arch, "vimma.db")), p.pacman);
 
     writeFileSync(join(out, "vimma-packages.asc"), cert);
     writeFileSync(join(out, "_redirects"), redirects);
@@ -547,25 +1209,6 @@ function listTree(dir: string, prefix = ""): string[] {
   return out;
 }
 
-/** The fields of a Release file: `Key: value`, and a hash list's indented lines under its key. */
-function releaseFields(text: string): Map<string, string[]> {
-  const fields = new Map<string, string[]>();
-  let current: string[] | undefined;
-  for (const line of text.replace(/\n$/, "").split("\n")) {
-    const m = /^([A-Za-z0-9-]+):(?: (.*))?$/.exec(line);
-    if (m?.[1]) {
-      if (fields.has(m[1])) throw new Error(`repos: Release has ${m[1]} twice`);
-      current = m[2] === undefined ? [] : [m[2]];
-      fields.set(m[1], current);
-    } else if (line.startsWith(" ") && current) {
-      current.push(line.slice(1));
-    } else {
-      throw new Error(`repos: Release: bad line ${JSON.stringify(line)}`);
-    }
-  }
-  return fields;
-}
-
 /** The signed text of a cleartext-signed message, dash-escaping undone (RFC 4880, 7.1). */
 function cleartextBody(text: string): string | undefined {
   const head = "-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\n";
@@ -583,10 +1226,18 @@ export interface VerifyOptions {
   cert: string;
   /** Each kept release's tag and its SHA256SUMS file. */
   releases: { tag: string; sums: string }[];
+  /** GitHub's list of releases (`GET /repos/{owner}/{repo}/releases`): each file's size. */
+  releaseList: unknown;
   baseUrl: string;
   downloadBase: string;
-  /** The tree's four signatures are there (after repo-sign), not yet (before). */
+  /**
+   * The tree's four signatures are there (after repo-sign), not yet (before). Before, Release's
+   * Date must also be within the last hour: a Date ahead of the clock makes apt refuse every
+   * later Release as older.
+   */
   signed: boolean;
+  /** The time Date is checked against, in milliseconds; now by default. */
+  now?: number;
 }
 
 /**
@@ -628,23 +1279,25 @@ export function verify(opts: VerifyOptions): void {
   const path = (rel: string) => join(opts.tree, rel);
 
   // rpm's index names its own files, so it comes first: the set of files depends on it.
-  const repomd = readFileSync(path("rpm/repodata/repomd.xml"), "utf8");
-  const data = [...repomd.matchAll(/<data type="([a-z_]+)">([\s\S]*?)<\/data>/g)].map((m) => {
-    const body = m[2] ?? "";
-    const href = /<location href="(repodata\/[A-Za-z0-9._-]+)"\/>/.exec(body)?.[1];
-    const checksum = /<checksum type="sha256">([0-9a-f]{64})<\/checksum>/.exec(body)?.[1];
-    if (!href || !checksum) fail(`repomd.xml's ${m[1]} has no sha256 checksum or location`);
-    return { type: m[1] ?? "", href: href as string, checksum: checksum as string };
-  });
-  if (
-    (repomd.match(/<data /g) ?? []).length !== data.length ||
-    data
-      .map((d) => d.type)
-      .sort()
-      .join(" ") !== "filelists other primary"
-  ) {
-    fail("repomd.xml does not list exactly primary, filelists and other");
+  // Each file's size as GitHub lists it, which the metadata's sizes must equal.
+  const assetSizes = new Map<string, number>();
+  if (!Array.isArray(opts.releaseList)) fail("unexpected response: not a list of releases");
+  for (const item of opts.releaseList as unknown[]) {
+    const r = item as { tag_name?: unknown; assets?: unknown };
+    if (typeof r?.tag_name !== "string" || !Array.isArray(r.assets)) {
+      fail("unexpected response: not a list of releases");
+    }
+    for (const a of r.assets as { name?: unknown; size?: unknown }[]) {
+      if (typeof a?.name === "string" && typeof a.size === "number") {
+        assetSizes.set(`${r.tag_name as string}/${a.name}`, a.size);
+      }
+    }
   }
+  const sized = (r: Release, file: string) =>
+    assetSizes.get(`${r.tag}/${file}`) ?? fail(`GitHub lists no size for ${r.tag}/${file}`);
+
+  // rpm's index names its own files, so it comes first: the set of files depends on it.
+  const data = readRepomd(readFileSync(path("rpm/repodata/repomd.xml"), "utf8"));
 
   const signatures = [
     "apt/InRelease",
@@ -679,110 +1332,89 @@ export function verify(opts: VerifyOptions): void {
     );
   }
 
-  // apt: one stanza per release, at its path, under its release's SHA-256 and no other hash.
+  // apt: one stanza per release, read as apt reads it, under its release file's SHA-256 and
+  // size and no other hash.
   const packagesBytes = readFileSync(path("apt/Packages"));
-  const packages = packagesBytes.toString("utf8");
-  checkPackages(packages, p.apt);
-  const found = stanzas(packages);
-  for (const hash of ["MD5sum", "SHA1", "SHA512"]) {
-    if (found.some((s) => s.has(hash)))
-      fail(`Packages has ${hash}; SHA256 is the one hash it may list`);
-  }
-  if ((packages.match(/^SHA256:/gm) ?? []).length !== p.apt.length) {
-    fail("Packages does not have one SHA256 per package");
-  }
-  for (const r of p.apt) {
-    const s = found.find((f) => f.get("Filename") === `pool/${r.tag}/${r.deb}`);
-    if (s?.get("SHA256") !== listed(r, r.deb)) {
-      fail(
-        `Packages: the SHA256 of pool/${r.tag}/${r.deb} is not the one ${r.tag}'s SHA256SUMS lists`,
-      );
-    }
-  }
+  checkPackages(packagesBytes.toString("utf8"), p.apt, listed, sized);
   if (!gunzipSync(readFileSync(path("apt/Packages.gz"))).equals(packagesBytes)) {
     fail("Packages.gz is not Packages");
   }
   const releaseText = readFileSync(path("apt/Release"), "utf8");
-  const fields = releaseFields(releaseText);
-  for (const key of fields.keys()) {
-    if (!["Origin", "Label", "Architectures", "Description", "Date", "SHA256"].includes(key)) {
-      fail(`Release has ${key}`);
-    }
+  const [fields] = deb822(
+    releaseText,
+    "Release",
+    ["Architectures", "Date", "Description", "Label", "Origin", "SHA256"],
+    ["SHA256"],
+    "",
+  );
+  const release = fields ?? new Map<string, string[]>();
+  if ([...release.keys()].join(" ") !== "Architectures Date Description Label Origin SHA256") {
+    fail(`Release has ${[...release.keys()].join(", ")}`);
   }
   for (const [key, value] of [
     ["Origin", "Vimma"],
     ["Label", "Vimma"],
     ["Architectures", "amd64"],
-  ]) {
-    if (fields.get(key as string)?.join("\n") !== value) fail(`Release's ${key} is not ${value}`);
+  ] as const) {
+    if (one(release, key) !== value) fail(`Release's ${key} is not ${value}`);
   }
-  const indexed = (fields.get("SHA256") ?? []).map((l) => l.trim().split(/\s+/));
-  const names = indexed.map((e) => e[2]).sort();
-  if (names.join(" ") !== "Packages Packages.gz")
+  if (!opts.signed) {
+    const date = Date.parse(one(release, "Date") ?? "");
+    const age = (opts.now ?? Date.now()) - date;
+    if (!(age >= -300_000 && age <= 3_600_000)) fail("Release's Date is not within the last hour");
+  }
+  const indexed = (release.get("SHA256") ?? []).slice(1).map((l) => {
+    const m = /^([0-9a-f]{64}) +([0-9]+) (Packages|Packages\.gz)$/.exec(l);
+    if (!m) return fail(`Release: a malformed SHA256 line ${JSON.stringify(l)}`);
+    return [m[1], m[2], m[3]] as [string, string, string];
+  });
+  if (
+    release.get("SHA256")?.[0] !== "" ||
+    indexed.map((e) => e[2]).join(" ") !== "Packages Packages.gz"
+  ) {
     fail("Release does not list Packages and Packages.gz alone");
+  }
   for (const [hash, size, name] of indexed) {
     const file = readFileSync(path(`apt/${name}`));
     if (hash !== sha256(file) || size !== String(file.length))
       fail(`Release does not match ${name}`);
   }
 
-  // rpm: each index file under the checksum repomd.xml gives it; each package under its
-  // release's SHA-256.
+  // rpm: each index file under the checksums repomd.xml gives it; each package read as libsolv
+  // reads it, under its release file's SHA-256 and size.
   const opened = new Map<string, string>();
   for (const d of data) {
     const file = readFileSync(path(`rpm/${d.href}`));
     if (sha256(file) !== d.checksum)
       fail(`repomd.xml's ${d.type} checksum does not match ${d.href}`);
-    opened.set(d.type, gunzipSync(file).toString("utf8"));
+    const plain = gunzipSync(file);
+    if (sha256(plain) !== d.open)
+      fail(`repomd.xml's ${d.type} open-checksum does not match ${d.href}`);
+    opened.set(d.type, plain.toString("utf8"));
   }
-  const primary = opened.get("primary") ?? "";
-  checkPrimary(primary, p.rpm);
+  checkPrimary(opened.get("primary") ?? "", p.rpm, listed, sized);
   const rpmSums = p.rpm.map((r) => listed(r, r.rpm));
-  for (const [i, r] of p.rpm.entries()) {
-    const block = [...primary.matchAll(/<package type="rpm">([\s\S]*?)<\/package>/g)]
-      .map((m) => m[1] ?? "")
-      .find((b) => b.includes(`<location href="packages/${r.tag}/${r.rpm}"/>`));
-    const pkgid = /<checksum type="sha256" pkgid="YES">([0-9a-f]{64})<\/checksum>/.exec(
-      block ?? "",
-    )?.[1];
-    if (pkgid !== rpmSums[i]) {
-      fail(
-        `primary.xml: the checksum of packages/${r.tag}/${r.rpm} is not the one ${r.tag}'s SHA256SUMS lists`,
-      );
-    }
-  }
-  for (const type of ["filelists", "other"]) {
-    const ids = [...(opened.get(type) ?? "").matchAll(/<package pkgid="([^"]*)"/g)].map(
-      (m) => m[1],
-    );
-    if (ids.sort().join(" ") !== [...rpmSums].sort().join(" ")) {
-      fail(`${type}.xml does not list exactly the releases' .rpm files`);
-    }
-  }
+  checkFilelists(opened.get("filelists") ?? "", "filelists", rpmSums);
+  checkFilelists(opened.get("other") ?? "", "other", rpmSums);
 
-  // pacman: the newest release's package under its SHA-256, and vimma.files saying the same.
-  const db = readFileSync(path("arch/x86_64/vimma.db"));
-  checkPacmanDb(db, p.pacman);
+  // pacman: both databases exactly the bytes this tool writes for the newest release, under its
+  // package's SHA-256 and size.
   const pkg = p.pacman.pacman as string;
-  const dir = `vimma-bin-${p.pacman.version}-1`;
-  const desc = untar(gunzipSync(db)).get(`${dir}/desc`) ?? Buffer.alloc(0);
-  const sha = /(?:^|\n)%SHA256SUM%\n([^\n]*)\n/.exec(desc.toString("utf8"))?.[1];
-  if (sha !== listed(p.pacman, pkg)) {
-    fail(`vimma.db: the SHA256SUM of ${pkg} is not the one ${p.pacman.tag}'s SHA256SUMS lists`);
-  }
-  if (desc.toString("utf8").includes("%PGPSIG%")) fail("vimma.db carries the package's signature");
-  const files = [
-    ...untar(gunzipSync(readFileSync(path("arch/x86_64/vimma.files")))).entries(),
-  ].filter(([n]) => !n.endsWith("/"));
-  if (
-    files
-      .map(([n]) => n)
-      .sort()
-      .join(" ") !== `${dir}/desc ${dir}/files` ||
-    !files.find(([n]) => n === `${dir}/desc`)?.[1].equals(desc)
-  ) {
-    fail(`vimma.files does not hold exactly ${dir}'s desc, as vimma.db has it, and its files`);
-  }
+  const desc = readPacmanDb(
+    readFileSync(path("arch/x86_64/vimma.db")),
+    p.pacman,
+    "vimma.db",
+    listed(p.pacman, pkg),
+    sized(p.pacman, pkg),
+  );
+  const filesDesc = readPacmanDb(
+    readFileSync(path("arch/x86_64/vimma.files")),
+    p.pacman,
+    "vimma.files",
+    listed(p.pacman, pkg),
+    sized(p.pacman, pkg),
+  );
+  if (filesDesc !== desc) fail("vimma.files's desc is not vimma.db's");
 
   // The files this tool writes itself, byte for byte: the key in its three places is the
   // committed one (decision 6), and the redirects name only the kept packages.
@@ -811,8 +1443,8 @@ const USAGE =
   "usage: repos.ts build --out DIR --cert FILE --release TAG=DIR [--release TAG=DIR …] [--keep N]\n" +
   "  [--base-url URL] [--download-base URL]\n" +
   "       repos.ts select --releases FILE --tag TAG [--keep N]\n" +
-  "       repos.ts verify --tree DIR --cert FILE --release TAG=SUMS [--release TAG=SUMS …] [--signed]\n" +
-  "  [--base-url URL] [--download-base URL]";
+  "       repos.ts verify --tree DIR --cert FILE --releases FILE --release TAG=SUMS [--release TAG=SUMS …]\n" +
+  "  [--signed] [--base-url URL] [--download-base URL]";
 
 export async function main(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
@@ -845,11 +1477,12 @@ export async function main(argv: string[]): Promise<void> {
     process.stdout.write(`${selectReleases(list, keep, values.tag).join("\n")}\n`);
     return;
   }
-  if (command === "verify" && values.tree && values.cert && values.release) {
+  if (command === "verify" && values.tree && values.cert && values.release && values.releases) {
     verify({
       tree: values.tree,
       cert: values.cert,
       releases: pairs("SUMS").map((r) => ({ tag: r.tag, sums: r.path })),
+      releaseList: JSON.parse(readFileSync(values.releases, "utf8")) as unknown,
       baseUrl: values["base-url"] ?? DEFAULT_BASE_URL,
       downloadBase: values["download-base"] ?? DEFAULT_DOWNLOAD_BASE,
       signed: values.signed ?? false,
