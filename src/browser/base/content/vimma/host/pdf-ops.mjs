@@ -503,13 +503,16 @@ export const PdfOps = {
    * Asks the viewer in `browser` for its outline, on the user's key (V8); the answer comes to
    * the outline listeners. An outline already read is not asked for again.
    * @param {MozBrowser} browser
+   * @param {boolean} [allPages]  wait for every page, so that each entry has its page: for the
+   *   outline shown as the PDF opens, which no key waits for (decision 19); Tab's read waits at
+   *   most a second, inside the time Tab gives the reply
    * @returns {boolean} false when `browser` does not show the PDF viewer
    */
-  askOutline(browser) {
+  askOutline(browser, allPages = false) {
     const wg = viewerGlobal(browser);
     if (!wg) return false;
     asked.set(browser, wg.innerWindowId);
-    return this.run(browser, "outline");
+    return this.run(browser, "outline", allPages ? 1 : 0);
   },
 
   /**
