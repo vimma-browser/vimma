@@ -335,6 +335,33 @@ add_task(async function the_submit_check_test_hook_is_read_only_in_automation() 
   );
 });
 
+// security.md UP6: the update check's test-only prefs (a forced install type, and a root that
+// moves the package repositories' setup files) are read only behind inAutomation(), so a
+// release ignores them whoever sets them. Comments are left out: they may name the prefs.
+add_task(async function the_update_checks_test_prefs_are_read_only_in_automation() {
+  const file = "chrome://browser/content/vimma/updates/VimmaUpdates.sys.mjs";
+  const source = await (await fetch(file)).text();
+  Assert.greater(source.length, 0, "VimmaUpdates.sys.mjs is read");
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+  const uses = [...code.matchAll(/^.*\b(TEST_TYPE_PREF|TEST_REPO_ROOT_PREF)\b.*$/gm)].map((m) =>
+    m[0].trim(),
+  );
+  Assert.deepEqual(
+    uses,
+    [
+      'const TEST_TYPE_PREF = "vimma.update.installType";',
+      'const TEST_REPO_ROOT_PREF = "vimma.update.testRepoRoot";',
+      'const forced = inAutomation() ? Services.prefs.getStringPref(TEST_TYPE_PREF, "") : "";',
+      'const root = inAutomation() ? Services.prefs.getStringPref(TEST_REPO_ROOT_PREF, "") : "";',
+    ],
+    "each pref is declared, and read once, behind inAutomation()",
+  );
+  Assert.ok(
+    /function inAutomation\(\) \{\s*return Cu\.isInAutomation === true;\s*\}/.test(code),
+    "inAutomation() is Cu.isInAutomation",
+  );
+});
+
 // security.md section 13: content-process messages enter the parent only through Vimma's parent
 // actor, which Firefox loads from the URL VimmaActors.register() is given. A wrong URL fails in
 // silence (no parent actor, so every page report is dropped and no tab leaves normal mode), so

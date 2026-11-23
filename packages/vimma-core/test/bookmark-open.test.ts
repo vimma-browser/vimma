@@ -120,6 +120,17 @@ describe("bookmarkOpenTarget: what the typed title does", () => {
     expect(bookmarkOpenTarget(items(), "redd")).toEqual({ kind: "pick", query: "redd" });
   });
 
+  test("a quoted trailing space stays in the query, so the next key starts a new word", () => {
+    const line = parseCommandLine("bookmarkopen 'goo '");
+    expect(line).toMatchObject({ kind: "run", text: "goo " });
+    const text = line.kind === "run" ? line.text : undefined;
+    expect(bookmarkOpenTarget(items(), text)).toEqual({ kind: "pick", query: "goo " });
+    let s = openPicker(items(), { typeFirst: true, query: "goo " });
+    s = pickerKey(s, "s").state;
+    expect(s.query).toBe("goo s");
+    expect(s.matches.map((m) => m.item.display).sort()).toEqual(["Google Shopping", "goodshows"]);
+  });
+
   test("two bookmarks with the same title: the picker, so the user chooses", () => {
     expect(bookmarkOpenTarget(items(), "twin")).toEqual({ kind: "pick", query: "twin" });
   });

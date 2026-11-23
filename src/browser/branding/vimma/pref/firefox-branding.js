@@ -291,3 +291,9 @@ pref("pdfjs.sidebarViewOnLoad", 0);
 // until the feature is finished (CONTRIBUTING.md, "Unfinished features"); set to true in
 // about:config to try it.
 pref("vimma.feature.bookmarksFile", false);
+
+// docs/specs/package-repositories.md, decisions 22 and 25: a .deb or .rpm installed without
+// Vimma's package repository gets one line in its update steps pointing at the guide's
+// repository section. Off until the repositories and that section are published
+// (CONTRIBUTING.md, "Unfinished features"); set to true in about:config to try it.
+pref("vimma.feature.packageRepos", false);

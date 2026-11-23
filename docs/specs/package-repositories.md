@@ -1,7 +1,8 @@
 # Spec: package-repositories
 
-Status: accepted (sub-PR 1, the signer, the repository tool and the smoke test, and sub-PR 3,
-publishing, implemented) ·
+Status: accepted (sub-PR 1, the signer, the repository tool and the smoke test, sub-PR 2,
+package signing, and sub-PR 3, publishing, implemented; sub-PR 4, the browser's hints, built;
+the repositories are not published yet) ·
 Area: `tools/package/repos.ts` (new), `tools/package/repos-smoke.sh` (new),
 `tools/package/package.ts`, `.github/workflows/release.yml`,
 `.github/workflows/update-publish.yml`, `.github/workflows/pkgbuild.yml`,
@@ -361,6 +362,16 @@ smoke test", the last item below).
    `SHA256SUMS`, the cosign bundles or the update manifest would leave them naming a file the
    release no longer has. The `.deb` stays unsigned as a file, because apt checks it through
    the SHA-256 in the signed `Packages` and has no per-package signature that `apt` verifies.
+   `package` hands `package-sign` a `packages-unsigned` artifact with only the `.rpm`, the pacman
+   package and `SHA256SUMS`, not the whole `release` artifact, because the signing job then
+   holds nothing but what it signs. The pacman package is never in the `release` artifact, and
+   `packages` adds it to the release only after checking its signature, because `sign` and
+   `publish` take every `dist/vimma*` file, and a run re-run with `PACKAGE_REPOS_ENABLED` unset
+   would otherwise ship it unsigned. A `packages` job in `release.yml` checks `package-sign`'s
+   output again with no secret (`tools/package/check-signed-packages.sh`), as `mar` checks the
+   signed MAR, because it is the job that `mar`, `sign` and `publish` wait for, and it fails a
+   release whose `package-sign` was skipped or failed, where a called workflow whose job was
+   skipped would end as a success.
 10. **pacman: a binary package built in `release.yml`, signed, in a `vimma` database.** The
     `package` job builds `vimma-bin-X.Y.Z-1-x86_64.pkg.tar.zst` from the release's `PKGBUILD` in
     the `archlinux` image that `arch-smoke.sh` already pins, with the release tarball placed in
@@ -501,6 +512,23 @@ smoke test", the last item below).
     newer release from its own signed manifest, while a 30-day `Valid-Until` would put the key
     in a scheduled re-signing job and break `apt update` whenever a re-sign failed.
 
+### Before the repositories are published
+
+25. **The browser's hints ship before the repositories; the line of decision 22 and the guide's
+    setup sections wait for them.** The `pacman` install type and the repository detection
+    need no switch: a `vimma-package=pacman` marker exists only in the repository's package,
+    and a repository file only after its setup, so neither can show before the repositories
+    exist. The line of decision 22 sits behind `vimma.feature.packageRepos` (default `false`,
+    `CONTRIBUTING.md`, "Unfinished features"), and the guide's repository sections, the
+    README's and `docs/limits.md`'s lines wait for the pull request of Delivery step 5. Reason:
+    `PACKAGE_REPOS_ENABLED` is a repository variable that a browser build cannot read, and until
+    the maintainer sets it, the line and the setup commands would point users at a repository
+    that does not exist; a build released in between still shows a command that works.
+26. **An `.rpm` hint names only the package managers whose repository file exists.** With
+    `/etc/yum.repos.d/vimma.repo` alone the hint is `sudo dnf upgrade vimma`, with
+    `/etc/zypp/repos.d/vimma.repo` alone `sudo zypper up vimma`, and with both, both. Reason: a
+    command for a package manager whose repository is not set up finds nothing to upgrade.
+
 ## Security and privacy
 
 New surface:
@@ -576,7 +604,11 @@ key`.
 - vitest, `packages/vimma-core/test/updates.test.ts`: `install type pacman from
 vimma-package=pacman`, `a .deb with the repository set up gets apt's upgrade command`, `a .rpm
 with the repository set up gets dnf's and zypper's`, `a .deb without it keeps the download
-command`.
+command`, `without the repository, the download command and, when asked, one line to the
+guide`.
+- mochitest, `tests/browser/browser_vimma_update_check.js`:
+  `package_repositories_get_the_upgrade_command` (repository files under a test root, the
+  feature pref off and on).
 - CI, `pkgbuild.yml` job `repos` (`tools/package/repos-smoke.sh`), on every pull request that
   changes `tools/package/` or the workflows: with a throwaway local key in the signer, build two stub versions of
   each package, build and sign each repository with `repos.ts`, serve them over local HTTP with
@@ -622,9 +654,14 @@ Each sub-PR is mergeable on its own; nothing reaches users until the maintainer 
    the host's paths;
    `docs/security/14-build-and-release-supply-chain.md` (B21); the runbook. Security review.
 4. **Browser and docs.** The `pacman` install type, repository detection and hints in
-   `updates.mjs`; `docs/guide.md`, `README.md`, `docs/limits.md`,
-   `docs/security/16-update-check.md`; the `Since changed` notes. Sets this spec to
-   `implemented`.
+   `updates.mjs`, the line of decision 22 behind `vimma.feature.packageRepos`;
+   `docs/guide.md`'s update-hint table, `docs/security/16-update-check.md`; the
+   `Since changed` notes of m6a-updater decision 20 and limit 4 and rpm-package decision 8.
+5. **Turning on.** After the maintainer sets `PACKAGE_REPOS_ENABLED` and a release reaches the
+   repositories (decision 25): `docs/guide.md`'s repository sections, `README.md`,
+   `docs/limits.md`; removes `vimma.feature.packageRepos` and every read of it; the
+   `Since changed` notes of rpm-package decision 6 and m6-packaging decision 1, if sub-PR 2 has
+   not added them. Sets this spec to `implemented`.
 
 Only the maintainer can:
 
