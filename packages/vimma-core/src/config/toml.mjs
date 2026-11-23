@@ -92,6 +92,9 @@ export function parseToml(text, { integersAsBigInt = false } = {}) {
         ` "${name}.")`;
     } else if (redefined) {
       message += ` ([${redefined.name}] is already at line ${redefined.line}: put these lines under it)`;
+    } else {
+      const twice = redefinedKey(text, e.line, message);
+      if (twice) message += ` (${twice.name} is already set at line ${twice.line})`;
     }
     return { ok: false, error: { line: e.line, column: e.column, message } };
   }
@@ -120,6 +123,29 @@ function redefinedHeader(text, line, message) {
     if (headerOf(l) === name) return { name, line: i + 1, dotted: false };
     if (/^[ \t]*\[/.test(l)) inHeader = true;
     else if (!inHeader && dotted.test(l)) return { name, line: i + 1, dotted: true };
+  }
+  return undefined;
+}
+
+/**
+ * For a redefinition reported at a `key = …` line: the earlier line of the same table that set
+ * that key, so the message names it. A rough scan, only used to word a hint: back to the
+ * table's header, bare and dotted keys only.
+ * @param {string} text
+ * @param {number} line  1-based, where the parser stopped
+ * @param {string} message
+ * @returns {{ name: string, line: number } | undefined}
+ */
+function redefinedKey(text, line, message) {
+  if (!message.startsWith("trying to redefine")) return undefined;
+  const keyOf = (/** @type {string} */ l) => /^[ \t]*([A-Za-z0-9_.-]+)[ \t]*=/.exec(l)?.[1];
+  const lines = text.split("\n");
+  const name = keyOf(lines[line - 1] ?? "");
+  if (!name) return undefined;
+  for (let n = line - 2; n >= 0; n--) {
+    const l = /** @type {string} */ (lines[n]);
+    if (/^[ \t]*\[/.test(l)) return undefined;
+    if (keyOf(l) === name) return { name, line: n + 1 };
   }
   return undefined;
 }
@@ -524,6 +550,64 @@ function subTableHeader(line, table) {
 }
 
 /**
+ * setKey for a `table` with no `[table]` header that the file has all the same: made by
+ * `table.key = …` lines before the first header, whose line is edited, or after whose last one
+ * the new key goes, as `table.key`; or by an inline `table = { … }`, which a line edit cannot
+ * change safely, so the message says what to set by hand. setTomlKeys checks the result.
+ * @param {string[]} lines
+ * @param {(path: Path) => number | undefined} where
+ * @param {{ table: string, key: string, literal: string, sub: unknown, plain: boolean,
+ *   eol: string }} edit
+ * @returns {{ ok: true, text: string } | { ok: false, error: TomlSyntaxError }}
+ */
+function dottedKey(lines, where, { table, key, literal, sub, plain, eol }) {
+  const fail = (/** @type {number} */ line, /** @type {string} */ message) => ({
+    ok: /** @type {const} */ (false),
+    error: { line, column: 1, message },
+  });
+  const at = where([table]) ?? 1;
+  // A quoted `["table"]` header, which headerName does not take: not edited.
+  if (!plain || /^[ \t]*\[/.test(lines[at - 1] ?? "")) {
+    return fail(at, `${table} is not a plain [${table}] table`);
+  }
+  if (new RegExp(`^[ \\t]*${table}[ \\t]*=`).test(lines[at - 1] ?? "")) {
+    return fail(
+      at,
+      `${table} is an inline table ({ … }); set ${key} = ${literal} in it by hand, or write it as a [${table}] table`,
+    );
+  }
+  // The parser's own positions, not a scan of the text: a `[` row of an array or a line in a
+  // multi-line string is neither a header nor one of the table's keys.
+  const keyRe = new RegExp(`^([ \\t]*${table}[ \\t]*\\.[ \\t]*${key}[ \\t]*=[ \\t]*)`);
+  // where() answers a missing key with its table's line: the key's own line only when it is set.
+  const own = key in /** @type {Record<string, unknown>} */ (sub) ? where([table, key]) : undefined;
+  if (own !== undefined) {
+    const line = lines[own - 1] ?? "";
+    const m = keyRe.exec(line);
+    if (!m) return fail(own, `${table}.${key} is not a plain key = value line`);
+    const stop = valueEnd(line, m[0].length);
+    if (stop < 0) return fail(own, `${table}.${key} is not a one-line value`);
+    lines[own - 1] = `${m[0]}${literal}${line.slice(stop)}`;
+    return { ok: true, text: lines.join("\n") };
+  }
+  const dotted = new RegExp(`^[ \\t]*${table}[ \\t]*\\.`);
+  // A sub-table with a header of its own (`[theme.colors]`) is no line of the dotted part.
+  const rows = Object.keys(/** @type {Record<string, unknown>} */ (sub))
+    .map((k) => where([table, k]))
+    .filter((n) => n === undefined || !/^[ \t]*\[/.test(lines[n - 1] ?? ""));
+  if (!rows.length || rows.some((n) => n === undefined || !dotted.test(lines[n - 1] ?? ""))) {
+    return fail(at, `${table} is not a plain [${table}] table`);
+  }
+  const last = Math.max(...rows.map(Number)) - 1;
+  // A CRLF file's last line may have no line end: it gets one, and the new line none.
+  const cr = eol === "\r\n" ? "\r" : "";
+  const ended = (lines[last] ?? "").endsWith("\r") || last < lines.length - 1;
+  if (cr && !ended) lines[last] += cr;
+  lines.splice(last + 1, 0, `${table}.${key} = ${literal}${cr && ended ? cr : ""}`);
+  return { ok: true, text: lines.join("\n") };
+}
+
+/**
  * One edit on parsed `text`.
  * @param {string} text @param {Record<string, unknown>} doc  `text`, parsed @param {TomlEdit} edit
  * @returns {{ ok: true, text: string } | { ok: false, error: TomlSyntaxError }}
@@ -551,7 +635,7 @@ function setKey(text, doc, { table, key, value }) {
       lines.splice(at, 0, `[${table}]${cr}`, `${key} = ${literal}${cr}`, cr);
       return { ok: true, text: lines.join("\n") };
     }
-    if (table in doc) return fail(where([table]) ?? 1, `${table} is not a plain [${table}] table`);
+    if (table in doc) return dottedKey(lines, where, { table, key, literal, sub, plain, eol });
     const body = `[${table}]${eol}${key} = ${literal}${eol}`;
     if (text === "") return { ok: true, text: body };
     return { ok: true, text: `${text}${text.endsWith("\n") ? "" : eol}${eol}${body}` };

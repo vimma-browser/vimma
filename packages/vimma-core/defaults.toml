@@ -383,7 +383,6 @@ enable = []        # Firefox's shortcuts given back as Firefox runs them, such a
 # color = "gray"                # the container's colour, from the list above
 # icon = "circle"               # the container's icon, from the list above
 # home = "https://intra.example"  # opens when you go to the workspace and it has no tab
-# autofill = true               # reserved for a later release; it changes nothing yet
 
 [theme]
 source = "omarchy"       # "omarchy" follows Omarchy where installed; "file" always uses name

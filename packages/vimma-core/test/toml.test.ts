@@ -283,10 +283,13 @@ describe("setTomlKeys", () => {
     expect(!r.ok && r.error.line).toBe(1);
   });
 
-  test("a dotted key, inline table or multi-line value is an error", () => {
+  test("an inline table or multi-line value is an error; a dotted key line is edited", () => {
     const edit = [{ table: "search", key: "default", value: "X" }];
+    expect(setTomlKeys('search.default = "Google"\n', edit)).toEqual({
+      ok: true,
+      text: 'search.default = "X"\n',
+    });
     for (const text of [
-      'search.default = "Google"\n',
       'search = { default = "Google" }\n',
       '[search]\ndefault = """\nGoogle"""\n',
       '[search]\ndefault.name = "Google"\n',
@@ -506,8 +509,11 @@ describe("setTomlKeys: what a line edit may change", () => {
   });
 
   test.each([
-    ['search.default = "Google"\n', 1, "search is not a plain [search] table"],
-    ['x = 1\nsearch = { default = "Google" }\n', 2, "search is not a plain [search] table"],
+    [
+      'x = 1\nsearch = { default = "Google" }\n',
+      2,
+      'search is an inline table ({ … }); set default = "X" in it by hand, or write it as a [search] table',
+    ],
     ["x = 1\n[[search]]\nx = 1\n", 2, "search is not a plain [search] table"],
     ['x = 1\n["search"]\nx = 1\n', 2, "search is not a plain [search] table"],
     ['x = 1\n[search]\ndefault = """\nGoogle"""\n', 3, "search.default is not a one-line value"],
@@ -743,15 +749,16 @@ describe("setTomlKeys: a table made by its sub-tables alone (setup-v2 decision 6
   });
 
   test.each([
-    // The table is made by a dotted key, or a sub-table header first appears after one.
+    // The table is made by a dotted key (#1474: the new key goes on a dotted line after it), or
+    // a sub-table header first appears after one.
     ['theme.name = "vimma"\n[theme.colors]\na = "#000000"\n', 1],
     ["[x]\na = 1\n[theme.colors.more]\nb = 1\n", 3],
   ])("%j: a sub-table header is added only where the table has no other key", (text, line) => {
     const r = set(text, "theme", "appearance", "dark");
     if (line === 1) {
       expect(r).toEqual({
-        ok: false,
-        error: { line: 1, column: 1, message: "theme is not a plain [theme] table" },
+        ok: true,
+        text: 'theme.name = "vimma"\ntheme.appearance = "dark"\n[theme.colors]\na = "#000000"\n',
       });
     } else {
       expect(r).toEqual({

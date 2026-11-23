@@ -38,7 +38,7 @@ import {
 import { formatConfigTemplate } from "../core/defaults.mjs";
 import { editSiteUnbindText } from "../core/site-edit.mjs";
 import { updatesCheckAfterRead } from "../core/updates.mjs";
-import { locateKeys } from "../core/toml.mjs";
+import { locateKeys, tomlLiteral } from "../core/toml.mjs";
 import { routeBlockFor } from "../core/routes.mjs";
 import {
   CONFIG_EDIT_TOPIC,
@@ -862,12 +862,22 @@ function onPref(_subject, _topic, pref) {
 }
 
 /**
- * @param {unknown} _subject
+ * `:source`: the file read, then a word on it in the window it was typed in, since a file that
+ * applies changes nothing visible at once. Errors and warnings are in the status bar already.
+ * @param {unknown} subject  that window (null from an older caller)
  * @param {string} _topic
  * @param {string | null} data  `:source`'s path as typed, "" or null without one
  */
-const reloadObserver = (_subject, _topic, data) => {
-  ConfigHost.reload(data ?? "");
+const reloadObserver = (subject, _topic, data) => {
+  ConfigHost.reload(data ?? "")
+    .then(() => {
+      const win = /** @type {BrowserWindow | null} */ (subject);
+      if (!win || errors.length) return;
+      const name = PathUtils.filename(ConfigHost.path);
+      const missing = !sourced && signature === "missing";
+      VimmaHost.say(win, missing ? `${name} missing; using the defaults` : `sourced ${name}`);
+    })
+    .catch((e) => console.error("vimma: :source failed", e));
 };
 
 /** @param {unknown} subject  the window `:config` was typed in */
@@ -1058,6 +1068,21 @@ async function writeRoute(rule) {
   return { error: `cannot write ${name} (read-only?); add by hand: ${lines}` };
 }
 
+/**
+ * An edit's error as the user should read it: a config.toml that cannot be written (a link into
+ * a read-only store such as Nix's, a read-only folder, or a full disk) is said so, with the lines
+ * to add by hand, as `:route add` says it (writeRoute).
+ * @param {string} error
+ * @param {string[]} lines
+ */
+function readOnly(error, lines) {
+  if (!error.startsWith("cannot write") || !lines.length) return error;
+  // A URL's user and password are not shown: the status bar may be on a shared screen.
+  const shown = lines.map((l) => l.replace(/(:\/\/)[^/@\s"]*@/, "$1…@"));
+  const name = PathUtils.filename(configPath());
+  return `cannot write ${name} (read-only?); add by hand: ${shown.join(" / ")}`;
+}
+
 export const ConfigHost = {
   /**
    * Test-only (browser_vimma_routes_file.js): run, with the file's path, while `:route add`
@@ -1189,13 +1214,32 @@ export const ConfigHost = {
    * @returns {Promise<string | null>} why not, or null once written (or already so) and read
    */
   async setConfigKeys(keys) {
+    /** @type {readonly import("../core/toml.mjs").TomlEdit[]} */
+    let planned = [];
+    /** Tables the file writes as `table.key = …` lines only (bare names: setTomlKeys's rule). */
+    const dottedTables = new Set();
     const r = await rewriteConfig((text) => {
       const edits = typeof keys === "function" ? keys(text) : keys;
       if ("error" in edits) return edits;
       if (!edits.length) return { text: null };
+      planned = edits;
+      for (const e of edits) {
+        const header = new RegExp(`^[ \\t]*\\[[ \\t]*${e.table}[ \\t]*\\]`, "m");
+        const dotted = new RegExp(`^[ \\t]*${e.table}[ \\t]*\\.`, "m");
+        if (!header.test(text ?? "") && dotted.test(text ?? "")) dottedTables.add(e.table);
+      }
       return setConfigKeysText(text, edits, { mac: Services.appinfo.OS === "Darwin" });
     });
-    return "error" in r ? r.error : null;
+    if (!("error" in r)) return null;
+    return readOnly(
+      r.error,
+      planned.map((e) =>
+        // As the file writes the table: a `scroll.step = …` file takes a dotted line.
+        dottedTables.has(e.table)
+          ? `${e.table}.${e.key} = ${tomlLiteral(e.value)}`
+          : `[${e.table}] ${e.key} = ${tomlLiteral(e.value)}`,
+      ),
+    );
   },
 
   /**
@@ -1211,13 +1255,17 @@ export const ConfigHost = {
    * @returns {Promise<{ name: string } | { error: string }>} the name it has in the file
    */
   async addAgentProvider(provider, { makeDefault }) {
-    const r = await rewriteConfig((text) =>
-      addAgentProviderText(text, provider, {
+    /** @type {string[]} */
+    let added = [];
+    const r = await rewriteConfig((text) => {
+      const out = addAgentProviderText(text, provider, {
         makeDefault,
         mac: Services.appinfo.OS === "Darwin",
-      }),
-    );
-    return "error" in r ? r : { name: r.name };
+      });
+      if (!("error" in out)) added = out.added;
+      return out;
+    });
+    return "error" in r ? { error: readOnly(r.error, added) } : { name: r.name };
   },
 
   /**

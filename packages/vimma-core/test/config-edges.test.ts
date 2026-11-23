@@ -227,6 +227,7 @@ describe("addAgentProviderText", () => {
 
   test("appends the provider after a final newline with one blank line", () => {
     expect(addAgentProviderText(cfg(), local, { makeDefault: false })).toEqual({
+      added: expect.any(Array),
       text: cfg(
         "",
         "[[agent.providers]]",
@@ -287,6 +288,7 @@ describe("addAgentProviderText", () => {
   test("[agent] goes before the first providers header, not a comment that names one", () => {
     const text = cfg("# [[agent.providers]] are below", ...existing);
     expect(addAgentProviderText(text, local, { makeDefault: true })).toEqual({
+      added: expect.any(Array),
       text: cfg(
         "# [[agent.providers]] are below",
         "[agent]",
@@ -343,6 +345,7 @@ describe("addAgentProviderText", () => {
       ];
       const r = addAgentProviderText(cfg(...fake, ...existing), local, { makeDefault: true });
       expect(r).toEqual({
+        added: expect.any(Array),
         name: "l",
         text: cfg(
           ...fake,

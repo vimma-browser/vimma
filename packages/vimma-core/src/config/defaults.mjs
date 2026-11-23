@@ -827,10 +827,6 @@ export function configTables({ brief = false } = {}) {
             'home = "https://intra.example"',
             "opens when you go to the workspace and it has no tab",
           ),
-          example(
-            `autofill = ${WORKSPACE_DEFAULTS.autofill}`,
-            "reserved for a later release; it changes nothing yet",
-          ),
         ]),
       ],
     },
@@ -1243,7 +1239,7 @@ export function formatConfigTemplate() {
     "# To uncomment a setting, remove the first `# ` of its line (and of its [table] if commented).",
     "# A save reloads this file within 2 seconds, :source at once; :config opens this file.",
     "# ctrl+b ? lists every key.",
-    "# Reference: the user guide's config.toml section (docs/guide.md).",
+    "# Reference: https://vimma.dev/docs/config/",
     ...body,
   ].join("\n");
 }
