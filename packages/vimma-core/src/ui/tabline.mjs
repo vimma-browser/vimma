@@ -15,16 +15,18 @@ import { truncate } from "./statusbar.mjs";
 /** @import { TabLineSetting } from "../config/defaults.mjs" */
 
 /**
- * One tab of the line, before it is fitted.
+ * One tab of the line, before it is fitted. `asleep`: drawn muted, in the same columns
+ * (docs/specs/tab-sleep.md, behaviour 14).
  * @typedef {{ readonly tabId: string, readonly number: number, readonly name: string,
- *   readonly current: boolean, readonly playing: boolean, readonly pane: boolean }} TabLineEntry
+ *   readonly current: boolean, readonly playing: boolean, readonly pane: boolean,
+ *   readonly asleep: boolean }} TabLineEntry
  */
 /**
  * One drawn entry: `name` cut to fit ("" for none); while gb's labels show, `label` the whole
  * label and `rest` the letters still to type, which are what is drawn.
  * @typedef {{ readonly tabId: string, readonly number: number, readonly name: string,
  *   readonly current: boolean, readonly playing: boolean, readonly pane: boolean,
- *   readonly label: string | null, readonly rest?: string }} TabLineItem
+ *   readonly asleep: boolean, readonly label: string | null, readonly rest?: string }} TabLineItem
  */
 /**
  * What the line draws: the entries in view and how many tabs are hidden on each side.
@@ -67,7 +69,7 @@ export function nextTabLineSetting(drawn) {
  * The line's entries from the side panel's rows (core sidepanel.mjs openPanel), so the numbers,
  * names and tabs are the panel's (decision 7).
  * @param {readonly { tabId: string, number: number, display: string, active: boolean,
- *   playing: boolean }[]} rows
+ *   playing: boolean, asleep?: boolean }[]} rows
  * @param {readonly string[]} panes  the shown split's tabs
  * @returns {TabLineEntry[]}
  */
@@ -81,6 +83,7 @@ export function tabLineEntries(rows, panes) {
       current: r.active,
       playing: r.playing,
       pane: inPane.has(r.tabId),
+      asleep: !!r.asleep,
     }),
   );
 }

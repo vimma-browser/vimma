@@ -1,7 +1,7 @@
 # Spec: tab-sleep
 
-Status: accepted (slice 1, the rules and the check behind `vimma.feature.tabSleep`,
-implemented) · Area: core (`packages/vimma-core/src/workspaces/tabsleep.mjs` (new),
+Status: accepted (slices 1, the rules and the check, and 3, showing it, implemented behind
+`vimma.feature.tabSleep`) · Area: core (`packages/vimma-core/src/workspaces/tabsleep.mjs` (new),
 `packages/vimma-core/src/config/config.mjs`, `packages/vimma-core/defaults.toml`,
 `packages/vimma-core/src/keys/actions.mjs`, `packages/vimma-core/src/keys/cmdline.mjs`,
 `packages/vimma-core/src/ui/tabline.mjs`, `packages/vimma-core/src/ui/sidepanel.mjs`), chrome
@@ -101,7 +101,7 @@ it was last selected, or at the last check that found it on screen, whichever is
 ### Showing it
 
 14. In the tab line and the side panel, a sleeping tab's row **must** be drawn in the theme's
-    muted colour (`--vimma-muted`), with nothing else changed, so the layout does not move when a
+    muted text colour (`--vimma-fg-dim`, decision 17), with nothing else changed, so the layout does not move when a
     tab wakes. The row's accessible description says `asleep`, so the state is not shown by
     colour alone. This holds for every tab without a loaded page, including tabs a restart left
     lazy.
@@ -325,8 +325,13 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     select. Firefox's `discarded` attribute is not used, because it is set only by a forced
     discard (Research).
 17. **Muted colour, no icon.** A sleeping row keeps its text and width and only takes
-    `--vimma-muted`, so that the line does not reflow when a tab wakes and the look follows the
-    theme, as every other Vimma surface does. The accessible description carries the state for
+    `--vimma-fg-dim`, so that the line does not reflow when a tab wakes and the look follows the
+    theme, as every other Vimma surface does. `--vimma-fg-dim` is the theme's muted text: it is
+    made readable on every surface Vimma draws text on, the selected row included
+    (`packages/vimma-core/src/config/theme.mjs`, `readable`). Rejected: `--vimma-muted`, the
+    theme's border colour, because it is not a text colour (Vimma's dark palette draws it
+    `#234040` on `#050c0d`, far under WCAG's 4.5:1) and the chrome's CSS may colour text only
+    with the text tokens (`tools/test/chrome-css.test.ts`, [m7-a11y](m7-a11y.md)). The accessible description carries the state for
     screen readers (WCAG 1.4.1, [m7-a11y](m7-a11y.md)). Rejected: a `z` marker, because it
     takes a column from every title in the narrow tab line.
 18. **`state` gains `asleep`, without a version bump.** `vimma-ctl state` adds `asleep: true` to a
@@ -338,7 +343,7 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     docshell, are renamed `#deactivate` and `#keepInactive` in the first slice, so that "asleep"
     in the code means what it means in the guide.
 20. **Behind a feature pref until the last slice.** `vimma.feature.tabSleep` (default `false`)
-    gates the check, `:sleep` and the panel key, because the feature lands over several pull
+    gates the check, `:sleep`, the panel key, the muted rows and `state.tabs[].asleep`, because the feature lands over several pull
     requests and `main` must stay releasable (`CONTRIBUTING.md`, "Unfinished features"). The
     tests set it, and set `vimma.tabs.sleepCheckMs` (default 300000) to run checks in
     milliseconds; the host also exposes `TabSleep._check(now)` so a test can move the clock.

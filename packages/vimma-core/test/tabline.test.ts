@@ -4,6 +4,7 @@ import fc from "fast-check";
 import { TABLINE_SETTINGS, TABLINE_WIDTH } from "../src/config/defaults.mjs";
 import {
   fitTabLine,
+  itemWidth,
   lineWidth,
   nextTabLineSetting,
   startTabLabels,
@@ -24,6 +25,7 @@ type Row = {
   display: string;
   active: boolean;
   playing: boolean;
+  asleep?: boolean;
 };
 
 const row = (n: number, display: string, extra: Partial<Row> = {}): Row => ({
@@ -88,10 +90,45 @@ describe("tabLineEntries", () => {
       [],
     );
     expect(entries).toEqual([
-      { tabId: "t1", number: 1, name: "mail", current: false, playing: false, pane: false },
-      { tabId: "t2", number: 2, name: "vimma pulls", current: true, playing: false, pane: false },
-      { tabId: "t3", number: 3, name: "docs", current: false, playing: true, pane: false },
+      {
+        tabId: "t1",
+        number: 1,
+        name: "mail",
+        current: false,
+        playing: false,
+        pane: false,
+        asleep: false,
+      },
+      {
+        tabId: "t2",
+        number: 2,
+        name: "vimma pulls",
+        current: true,
+        playing: false,
+        pane: false,
+        asleep: false,
+      },
+      {
+        tabId: "t3",
+        number: 3,
+        name: "docs",
+        current: false,
+        playing: true,
+        pane: false,
+        asleep: false,
+      },
     ]);
+  });
+
+  test("a sleeping tab's item is marked asleep and keeps its width (tab-sleep, behaviour 14)", () => {
+    const awake = [row(1, "mail"), row(2, "news", { active: true }), row(3, "docs")];
+    const sleepy = awake.map((r) => (r.number === 3 ? { ...r, asleep: true } : r));
+    const before = fitTabLine(tabLineEntries(awake, []), { width: 80, nameWidth: 14 });
+    const after = fitTabLine(tabLineEntries(sleepy, []), { width: 80, nameWidth: 14 });
+    expect(after.items.map((i) => i.asleep)).toEqual([false, false, true]);
+    expect(after.items.map(itemWidth)).toEqual(before.items.map(itemWidth));
+    expect(lineWidth(after)).toBe(lineWidth(before));
+    expect(text(after)).toBe(text(before));
   });
 
   test("tabs shown in a pane of the shown split are marked (decision 11)", () => {

@@ -50,3 +50,44 @@ add_task(async function state_leaves_a_stale_resize_mode_as_it_found_it() {
     c.close();
   }
 });
+
+// docs/specs/tab-sleep.md, behaviour 15 and decision 18: a sleeping tab is listed asleep, read
+// without loading it.
+add_task(async function state_lists_asleep_true_for_a_sleeping_tab_and_does_not_load_it() {
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.feature.tabSleep", true]] });
+  Services.prefs.setBoolPref(ENABLED_PREF, true);
+  await VimmaControl.settled();
+  const url = "https://example.com/?asleep";
+  const tab = BrowserTestUtils.addTab(gBrowser, url);
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, url);
+  await TestUtils.waitForCondition(() => !tab.hasAttribute("busy"), "the tab is done loading");
+  const c = new Client(/** @type {number} */ (VimmaControl.port));
+  try {
+    Assert.equal((await c.handshake({ protocol: 1 }))?.type, "welcome", "a full connection");
+    /** @returns {Promise<{ url: string | null, asleep?: boolean }[]>} */
+    const tabs = async () => (await c.call("state")).result.tabs;
+    const awake = (await tabs()).find((t) => t.url === url);
+    Assert.ok(awake, "the tab is listed");
+    Assert.ok(!("asleep" in /** @type {object} */ (awake)), "an awake tab has no asleep field");
+
+    await gBrowser.prepareDiscardBrowser(tab);
+    Assert.ok(gBrowser.discardBrowser(tab, false), "Firefox discards the tab");
+    const listed = await tabs();
+    const sleeping = listed.find((t) => t.url === url);
+    Assert.strictEqual(sleeping?.asleep, true, "the sleeping tab is listed asleep: true");
+    Assert.ok(
+      listed.filter((t) => t !== sleeping).every((t) => !("asleep" in t)),
+      "no other tab is",
+    );
+    Assert.ok(!tab.linkedPanel, "reading state left the tab asleep");
+
+    await SpecialPowers.pushPrefEnv({ set: [["vimma.feature.tabSleep", false]] });
+    const off = (await tabs()).find((t) => t.url === url);
+    Assert.ok(!("asleep" in /** @type {object} */ (off)), "with the feature off, no field");
+    await SpecialPowers.popPrefEnv();
+  } finally {
+    c.close();
+    gBrowser.removeTab(tab);
+    await SpecialPowers.popPrefEnv();
+  }
+});

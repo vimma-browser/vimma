@@ -320,6 +320,21 @@ describe("validateMessage: state", () => {
     );
   });
 
+  test("a sleeping tab is listed asleep: true; the field is true or left out (tab-sleep, 15)", () => {
+    const tab = { id: "{uuid}", url: "https://example.com/", title: "Example", selected: false };
+    const with_ = (extra: Record<string, unknown>) => ({
+      ...state,
+      tabs: [...state.tabs, { ...tab, ...extra }],
+    });
+    expect(errorsOf(ok(with_({})), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok(with_({ asleep: true })), { command: "state" })).toEqual([]);
+    for (const asleep of [false, "yes", 1, null]) {
+      expect(errorsOf(ok(with_({ asleep })), { command: "state" })).toEqual([
+        "result.tabs[1].asleep must be true when present",
+      ]);
+    }
+  });
+
   test("reports each broken field", () => {
     const broken = {
       mode: 1,

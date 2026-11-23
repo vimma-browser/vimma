@@ -156,6 +156,13 @@
     color: var(--vimma-fg-dim, GrayText);
   }
 
+  /* A sleeping tab (docs/specs/tab-sleep.md, decision 17): its title in the theme's readable
+     muted text, highlighted or not, with nothing else changed, so the row does not move when it
+     wakes. */
+  & .vimma-panel-row[asleep] .vimma-panel-title {
+    color: var(--vimma-fg-dim, GrayText);
+  }
+
   /* A pane that leaves the split on Enter: a hollow ○, dim (docs/specs/side-panel-unsplit.md). */
   & .vimma-panel-leaving .vimma-panel-mark {
     color: var(--vimma-fg-dim, GrayText);

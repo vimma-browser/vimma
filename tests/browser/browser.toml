@@ -672,5 +672,7 @@ support-files = [
   "file_vimma_downloads.sjs",
 ]
 
+["browser_vimma_tab_sleep_rows.js"]
+
 ["browser_vimma_agent_tab_sleep.js"]
 support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
