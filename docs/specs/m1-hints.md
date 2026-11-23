@@ -219,6 +219,12 @@ href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. (
   fires its scroll events only within that tree, so a wait for it ends on the quiet timer and
   can collect while it still moves. Issue #1337; described in `actors/page-scroll.mjs`,
   `finish`, `settled` and `scrollersUnder`, and in `host/VimmaHost.sys.mjs`, `_wheelCheck`.)
+  (Since changed: the wait for a smooth scroll Vimma started on a scroll-snap container that
+  has not moved yet lets the quiet time count only from its first scroll event, because APZ
+  runs that scroll and the page sees no scroll event until APZ has learnt of it at the next
+  paint and moved the page, which on a busy machine took longer than the quiet time and had
+  the labels collected where the scroll started. Such a scroll that goes nowhere (the snap
+  point it goes to is where it is) ends the wait at its 1 s limit. Issue #1400.)
 - Delegated click handlers on elements with no role, tabindex or listener of their own (some
   React apps) get no hint; no `cursor: pointer` heuristic.
 - Canvas and WebGL apps (Google Docs, Figma, maps, games) draw their own controls: there are no

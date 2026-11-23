@@ -977,7 +977,7 @@ export class VimmaChild extends JSWindowActorChild {
     // is waited for.
     const running = this.#scroll.finish();
     if (running) {
-      await this.#scroll.settled(new Set([running]));
+      await this.#scroll.settled(new Set([running.target]), running.starting);
       if (overtaken() || !this.contentWindow) return null;
     }
     const t0 = ChromeUtils.now();
