@@ -7,6 +7,7 @@ import {
   addAgentProviderText,
   appendRouteText,
   parseConfig,
+  rawUpdatesCheck,
   setConfigKeysText,
 } from "../src/config/config.mjs";
 import { editSiteUnbindText } from "../src/config/site-edit.mjs";
@@ -81,10 +82,29 @@ describe("what stays an error", () => {
   test("a program, command or secret in a CLI provider (M60)", () => {
     for (const line of ['command = "x"', 'path = "/bin/x"', 'api_key = "k"']) {
       const r = parseConfig(
-        toml("[[agent.providers]]", 'name = "c"', 'kind = "cli"', 'cli = "claude"', line),
+        toml("[[agent.providers]]", 'name = "c"', 'kind = "cli"', 'cli = "claude-code"', line),
       );
       expect(r.errors, line).toHaveLength(1);
     }
+  });
+});
+
+describe("secrets and update checks", () => {
+  test("a secret-like name in [agent], a provider or [mcp] stays an error", () => {
+    const cases: [string, string][] = [
+      ["[agent]", 'access_token = "t"'],
+      ["[mcp]", 'auth_header = "Bearer t"'],
+      ["[[agent.providers]]", 'api-key = "k"'],
+    ];
+    for (const [table, line] of cases) {
+      const r = parseConfig(toml(table, line));
+      expect(r.errors.map((e) => e.message).join(), line).toMatch(/login storage|keyring|secret/i);
+    }
+  });
+
+  test("a newer table no longer makes another error hold update checks", () => {
+    expect(rawUpdatesCheck(toml("[hologram]", "x = 1", "[scroll]", 'step = "x"'))).toBe("missing");
+    expect(rawUpdatesCheck(toml("[updatez]", "check = false"))).toBeNull();
   });
 });
 

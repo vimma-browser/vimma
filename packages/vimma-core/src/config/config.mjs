@@ -346,6 +346,8 @@ const PROVIDER_KINDS = ["openai", "anthropic", "cli"];
 const SECRET_KEYS = new Set(["key", "api_key", "apikey", "token", "password", "secret"]);
 const SECRET_IN_CONFIG =
   "an API key must not be in config.toml: Vimma keeps it in login storage, set in the agent's setup";
+/** An unknown key of `[agent]`, a provider or `[mcp]` named like a credential (#1474). */
+const SECRET_LIKE = /key|token|secret|passw|auth|bearer|credential/i;
 const MAX_PROVIDER_NAME = 32;
 const MAX_PRICE = 1_000_000;
 
@@ -469,6 +471,10 @@ function validate(raw, warnings = []) {
     const near = closest(key, known);
     if (path.length > 1 && TOP_KEYS.includes(key) && isTable(v) && !near) {
       fail(path, `unknown key "${key}": a ${key}.… line belongs under [${key}], without "${key}."`);
+    } else if ((path[0] === "agent" || path[0] === "mcp") && SECRET_LIKE.test(key)) {
+      // A credential-looking name where a provider's settings live keeps B8's nudge: the key
+      // belongs in login storage, not in a file that may be shared.
+      fail(path, SECRET_IN_CONFIG);
     } else if (
       near ||
       (path.length > 1 && TOP_KEYS.includes(key)) ||
@@ -1491,7 +1497,10 @@ export function rawUpdatesCheck(text) {
   const parsed = parseToml(text, { integersAsBigInt: true });
   if (!parsed.ok) return null;
   const { updates, ...rest } = parsed.value;
-  const unknown = (/** @type {string} */ key) => key !== SCHEMA_KEY && !TOP_KEYS.includes(key);
+  // As parseConfig judges them: a table no section is named that is a near miss of one may be a
+  // misspelt `[updates]`; any other is skipped there, so it holds nothing here either (#1474).
+  const unknown = (/** @type {string} */ key) =>
+    key !== SCHEMA_KEY && !TOP_KEYS.includes(key) && closest(key, TOP_KEYS) !== undefined;
   if (Object.keys(rest).some(unknown) || strayCheck(rest)) return null;
   if (updates === undefined) return "missing";
   if (!isTable(updates)) return null;

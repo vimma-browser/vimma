@@ -57,8 +57,13 @@ error with the suggestion, because it is far more likely a typo than a key from 
 Three more cases stay errors: a top-level table's name under another table (a misplaced line,
 #1270); any unknown key in `[updates]`, and a boolean `check` in any other table, because the
 file may mean an opt-out of update checks and so fails closed (m6a-updater decision 31); and the
-program, command and secret keys of an agent CLI provider (M60). Type errors and bad values stay
-errors. The writers (`:route add`, the setup's steps, the built-in agent's setup,
+program, command and secret keys of an agent CLI provider (M60), with any credential-looking name
+in `[agent]`, a provider or `[mcp]`, which keeps pointing a secret to login storage. Type errors
+and bad values stay errors. The rule covers the settings tables that `validate` checks; an unknown
+action in `[keys]` (compileKeymap), an unknown mode in `[unbind]`, an unknown colour in
+`[theme.colors]` (resolveTheme) and an unknown key in a `[[routes]]` rule (routes.mjs) are still
+errors, as each names something this build cannot act on. `rawUpdatesCheck` follows the same
+line: only a top-level table that is a near miss of one may be a misspelt `[updates]`. The writers (`:route add`, the setup's steps, the built-in agent's setup,
 `:siteunbind --save`) refuse only a file with errors, so a file with a skipped key is written to
 like any other. Tests: `config-unknown-keys.test.ts`.
 

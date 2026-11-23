@@ -46,11 +46,16 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   value (such as a `javascript:` home page) is an error. An unknown key with no close match
   is left out with a warning and never reaches the resolved config (a key from a newer build);
   in `[updates]`, a boolean `check` elsewhere, a table's name under another table, and an agent
-  CLI provider's program, command and secret keys, it stays an error, so a misplaced update
-  opt-out fails closed.
+  CLI provider's program, command and secret keys, and a credential-looking name in `[agent]`,
+  a provider or `[mcp]`, it stays an error, so a misplaced update opt-out fails closed and a
+  secret is still pointed to login storage. Accepted risk: a key a newer build added to tighten
+  something (in `[mcp]` or `[agent]`, say) is dropped by an older build while the rest of the
+  same file applies, loosenings included; before, the older build refused the file and kept its
+  previous config, which lacked that key too, so neither way enforced it.
   [`in a known table is a warning; the rest of the file applies`](../../packages/vimma-core/test/config-unknown-keys.test.ts),
   [`a program, command or secret in a CLI provider (M60)`](../../packages/vimma-core/test/config-unknown-keys.test.ts),
-  [`an opt-out under a misspelt or misplaced table may mean check = false`](../../packages/vimma-core/test/updates.test.ts), A broken routes.toml keeps the last
+  [`an opt-out under a misspelt or misplaced table may mean check = false`](../../packages/vimma-core/test/updates.test.ts).
+  A broken routes.toml keeps the last
   good routes while the rest of config.toml applies, and one never read well (a syntax error,
   a FIFO, a link to nothing) applies no rule and no `default_workspace` rather than
   config.toml's (routes-file decisions 3 and 5), unless the rules cached at the last change
