@@ -36,14 +36,27 @@
 // The status bar names its keys (popupHint) and VimmaHost redraws it when they come to count; the
 // bar names them too, in the prompt's keys line beside its button, hidden while the keys wait.
 //
+// Firefox's other notification bars over the page (a private window's "Site looks broken?
+// Reload", a crashed plugin's; docs/specs/notification-bars.md, issue #1473) take `Tab`, which
+// moves focus onto their buttons, and `Esc`, which closes them, with the pop-up bar's guards and
+// clock. Their buttons are whatever the feature behind the bar chose, so no letter answers them.
+// The bar names its keys in the same line; the status bar does not, as the bar says what it is.
+//
 // Firefox's dialogs over a tab or the window ("Leave page?", a page's confirm) take the same keys
 // with the same guards (docs/specs/firefox-dialogs.md, host/dialog-keys.mjs); a key typed in one
 // is the dialog's alone.
 
-import { doorhangerHint, doorhangerKey, popupBarHint, popupBarKey } from "../core/prompt-keys.mjs";
+import {
+  barHint,
+  barKey,
+  doorhangerHint,
+  doorhangerKey,
+  popupBarHint,
+  popupBarKey,
+} from "../core/prompt-keys.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { DialogKeys } from "./dialog-keys.mjs";
-import { answerPopupBar, inAgentTab, popupBar, popupLocked } from "./popup-ops.mjs";
+import { answerPopupBar, inAgentTab, isPopupBar, pageBar, popupLocked } from "./popup-ops.mjs";
 
 /** @import { Chord } from "../core/keys.mjs" */
 
@@ -404,12 +417,12 @@ export class PromptKeys {
   }
 
   /**
-   * The selected page's pop-up blocked bar, stamped with when it was first seen; null while a
-   * permission prompt is open, whose keys come first.
+   * The selected page's bar the keys answer (pageBar), stamped with when it was first seen; null
+   * while a permission prompt is open, whose keys come first.
    * @returns {MozNotificationMessage | null}
    */
   bar() {
-    const bar = this.current ? null : popupBar(this.win);
+    const bar = this.current ? null : pageBar(this.win);
     if (this.barSeen?.bar !== bar) {
       this.barSeen = bar ? { bar, at: ChromeUtils.now() } : null;
       this.watchBar(bar);
@@ -444,28 +457,31 @@ export class PromptKeys {
   }
 
   /**
-   * The bar's keys line for the status bar once its keys count, else null (no bar, a prompt
-   * open, or still waiting: the status bar is redrawn when the wait ends). The line in the bar
-   * follows: armed with the same text, hidden while the keys wait, and gone in the agent
-   * workspace, where no key answers the bar.
+   * The pop-up blocked bar's keys line for the status bar once its keys count, else null (no
+   * bar, another bar, a prompt open, or still waiting: the status bar is redrawn when the wait
+   * ends). The line in the bar follows: armed with the same text, hidden while the keys wait,
+   * and gone in the agent workspace, where no key answers the bar. Another bar has the line
+   * alone.
    * @returns {string | null}
    */
   popupHint() {
     const bar = this.bar();
     if (!bar) {
-      // An open permission prompt takes y and n first: the bar's line must not offer them.
-      popupBar(this.win)?.querySelector(`.${HINT_CLASS}`)?.removeAttribute(ARMED_ATTR);
+      // An open permission prompt takes the keys first: the bar's line must not offer them.
+      pageBar(this.win)?.querySelector(`.${HINT_CLASS}`)?.removeAttribute(ARMED_ATTR);
       return null;
     }
     if (inAgentTab(this.win)) {
       bar.querySelector(`.${HINT_CLASS}`)?.remove();
       return null;
     }
-    // Hint, copy and element mode, a picker and the command line keep y and n as well.
-    const text = popupBarHint({
-      inField: this.host.inField() || this.host.modeKeys() || this.host.otherOpen(),
-      locked: popupLocked(),
-    });
+    // Hint, copy and element mode, a picker and the command line keep the keys as well.
+    const inField = this.host.inField() || this.host.modeKeys() || this.host.otherOpen();
+    const popup = isPopupBar(bar);
+    const text = popup
+      ? popupBarHint({ inField, locked: popupLocked() })
+      : barHint({ inField, dismissable: bar.dismissable, inBar: this.inBar(bar) });
+    if (!popup && !bar.buttonContainer?.querySelector("button") && !bar.dismissable) return null;
     const hint = this.barHintFor(bar, text);
     const left = this.barArmedAt() - ChromeUtils.now();
     if (left > 0) {
@@ -475,11 +491,11 @@ export class PromptKeys {
       return null;
     }
     hint?.setAttribute(ARMED_ATTR, "");
-    return text;
+    return popup ? text : null;
   }
 
   /**
-   * The keys line in the pop-up blocked bar, made beside its button if need be. The bar's
+   * The keys line in the bar, made beside its buttons if need be. The bar's
    * buttons live in its light DOM, in the `actions` slot's container (notificationbox.js,
    * NotificationMessage.connectedCallback); null until the bar has made it.
    * @param {MozNotificationMessage} bar
@@ -502,7 +518,7 @@ export class PromptKeys {
   }
 
   /**
-   * A keydown while no prompt is open: the bar's y, n or Esc.
+   * A keydown while no prompt is open: the pop-up bar's y, n or Esc, another bar's Tab or Esc.
    * @param {KeyboardEvent} e
    * @param {Chord} chord
    * @returns {boolean} whether it was the bar's key (consumed)
@@ -517,6 +533,7 @@ export class PromptKeys {
     if (!bar) return false;
     if (armed) this.host.changed();
     if (this.host.otherOpen()) return false;
+    if (!isPopupBar(bar)) return this.onOtherBarKey(e, chord, bar, armed);
     const result = popupBarKey(formatKey(chord), {
       open: true,
       armed,
@@ -534,6 +551,47 @@ export class PromptKeys {
       // Closing the bar fires no event the status bar hears.
       this.host.changed();
     }
+    return true;
+  }
+
+  /**
+   * Whether focus is on `bar`: one of its buttons, or its close button in its shadow root.
+   * @param {MozNotificationMessage} bar
+   */
+  inBar(bar) {
+    return hostChain(this.win.document.activeElement).includes(bar);
+  }
+
+  /**
+   * A keydown while a bar other than the pop-up blocked bar shows: Tab or Esc.
+   * @param {KeyboardEvent} e
+   * @param {Chord} chord
+   * @param {MozNotificationMessage} bar
+   * @param {boolean} armed
+   * @returns {boolean} whether it was the bar's key (consumed)
+   */
+  onOtherBarKey(e, chord, bar, armed) {
+    const first = bar.buttonContainer?.querySelector("button") ?? null;
+    const result = barKey(formatKey(chord), {
+      open: true,
+      armed,
+      // Focus on the bar's own buttons is insert mode: Firefox's Tab and Enter work there.
+      inField: this.host.inField(),
+      inBar: this.inBar(bar),
+      pending: this.host.pending(),
+      repeat: e.repeat,
+      agent: inAgentTab(this.win),
+      buttons: !!first,
+      dismissable: bar.dismissable,
+    });
+    if (result.kind === "pass") return false;
+    e.preventDefault();
+    e.stopPropagation();
+    if (result.kind === "close") {
+      bar.dismiss();
+      // Closing the bar fires no event the status bar hears.
+      this.host.changed();
+    } else (first ?? bar.closeButton)?.focus();
     return true;
   }
 

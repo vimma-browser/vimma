@@ -3,6 +3,8 @@
 // armed; `Tab` moves focus into the prompt; nothing typed in a field ever answers it.
 import { describe, test, expect } from "vitest";
 import {
+  barHint,
+  barKey,
   dialogHint,
   dialogKey,
   doorhangerHint,
@@ -204,6 +206,89 @@ describe("popupBarHint", () => {
   test("with the pop-up pref locked, only the way to close is named", () => {
     expect(popupBarHint({ locked: true })).toBe("Esc close");
     expect(popupBarHint({ inField: true, locked: true })).toBe("Esc, then Esc close");
+  });
+});
+
+// docs/specs/notification-bars.md: Firefox's other notification bars over a page (the private
+// window's "Site looks broken? Reload", a crashed plugin's, a blocked redirect's) take Tab, which
+// moves focus onto their buttons, and Esc, which closes them, with the pop-up bar's guards.
+describe("barKey", () => {
+  const bar = { open: true, armed: true, inField: false, pending: false, buttons: true };
+  const closable = { ...bar, dismissable: true };
+
+  test("Tab moves focus onto an armed bar's buttons, and Esc closes it", () => {
+    expect(barKey("tab", closable)).toEqual({ kind: "focus" });
+    expect(barKey("esc", closable)).toEqual({ kind: "close" });
+  });
+
+  test("before the bar is armed, or held down, Tab and Esc stay the page's", () => {
+    for (const s of [
+      { ...closable, armed: false },
+      { ...closable, repeat: true },
+    ]) {
+      for (const key of ["tab", "esc"]) expect(barKey(key, s)).toEqual({ kind: "pass" });
+    }
+  });
+
+  test("keys typed in a field, during a key sequence, with no bar or in the agent workspace pass", () => {
+    for (const s of [
+      { ...closable, inField: true },
+      { ...closable, pending: true },
+      { ...closable, open: false },
+      { ...closable, agent: true },
+    ]) {
+      for (const key of ["tab", "esc"]) expect(barKey(key, s)).toEqual({ kind: "pass" });
+    }
+  });
+
+  test("Esc leaves a bar without a close button alone; Tab still reaches its buttons", () => {
+    expect(barKey("esc", bar)).toEqual({ kind: "pass" });
+    expect(barKey("tab", bar)).toEqual({ kind: "focus" });
+  });
+
+  test("a bar with neither buttons nor a close button takes no key", () => {
+    const bare = { ...bar, buttons: false };
+    for (const key of ["tab", "esc"]) expect(barKey(key, bare)).toEqual({ kind: "pass" });
+  });
+
+  test("Tab reaches the close button of a bar with no other button", () => {
+    expect(barKey("tab", { ...closable, buttons: false })).toEqual({ kind: "focus" });
+  });
+
+  test("with focus on the bar, Esc closes it and Firefox keeps Tab, Enter and Space", () => {
+    const inBar = { ...closable, inField: true, inBar: true };
+    expect(barKey("esc", inBar)).toEqual({ kind: "close" });
+    for (const key of ["tab", "shift+tab", "enter", "space"]) {
+      expect(barKey(key, inBar)).toEqual({ kind: "pass" });
+    }
+    expect(barKey("esc", { ...bar, inField: true, inBar: true })).toEqual({ kind: "pass" });
+  });
+
+  test("other keys pass: y and n stay the page's", () => {
+    for (const key of ["shift+tab", "y", "n", "enter", "space", "j"]) {
+      expect(barKey(key, closable)).toEqual({ kind: "pass" });
+    }
+  });
+});
+
+describe("barHint", () => {
+  test("names Tab for the buttons and Esc to close", () => {
+    expect(barHint({ dismissable: true })).toBe("Tab buttons · Esc close");
+  });
+
+  test("a bar without a close button names only Tab", () => {
+    expect(barHint({})).toBe("Tab buttons");
+  });
+
+  test("from a field (or hint, copy and element mode) it starts with the way out", () => {
+    expect(barHint({ dismissable: true, inField: true })).toBe("Esc, then Tab buttons");
+  });
+
+  test("with focus on the bar it names Firefox's Enter and the way to close", () => {
+    expect(barHint({ dismissable: true, inField: true, inBar: true })).toBe(
+      "Enter press · Esc close",
+    );
+    expect(barHint({ inField: true, inBar: true })).toBe("Enter press");
   });
 });
 

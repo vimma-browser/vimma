@@ -216,6 +216,26 @@ export function popupBar(win) {
 }
 
 /**
+ * The selected browser's notification bar the keys answer, or null: its pop-up blocked bar,
+ * else the bar Firefox shows on top (the box's highest priority, `currentNotification`), such as
+ * a private window's "Site looks broken? Reload" (docs/specs/notification-bars.md).
+ * @param {BrowserWindow} win
+ * @returns {MozNotificationMessage | null}
+ */
+export function pageBar(win) {
+  const gBrowser = gBrowserOf(win);
+  const box = gBrowser?.readNotificationBox?.(gBrowser.selectedBrowser);
+  const bar = box?.getNotificationWithValue(BAR) ?? box?.currentNotification ?? null;
+  return bar?.isConnected ? bar : null;
+}
+
+/**
+ * Whether `bar` is the pop-up blocked bar, with keys of its own (popupBarKey).
+ * @param {MozNotificationMessage} bar
+ */
+export const isPopupBar = (bar) => bar.getAttribute("value") === BAR;
+
+/**
  * Answers the selected page's bar as its own controls do. `allow` is the options menu's "Allow
  * pop-ups for <site>", which also opens what was blocked and closes the bar. `block` records the
  * block in the site's permission, then closes the bar; it is written as the pickers' block rows

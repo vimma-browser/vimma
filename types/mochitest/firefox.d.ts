@@ -601,7 +601,7 @@ interface MozNotificationBox {
   /** Resolves with the <notification-message> it shows. */
   appendNotification(
     type: string,
-    notification: { label: string; priority: number },
+    notification: { label: string; priority: number; eventCallback?: (event: string) => void },
     buttons?: NotificationButton[],
     disableClickJackingDelay?: boolean,
     dismissable?: boolean,

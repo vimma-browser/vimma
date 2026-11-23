@@ -1604,11 +1604,17 @@ interface PopupAndRedirectBlockerObserver {
 interface MozNotificationBox {
   /** The last notification with that `value` attribute, or null. */
   getNotificationWithValue(value: string): MozNotificationMessage | null;
+  /** The notification of the highest priority, the one on top; null without one. */
+  readonly currentNotification: MozNotificationMessage | null;
 }
 // notificationbox.js (NotificationMessage): a notification bar.
 interface MozNotificationMessage extends HTMLElement {
   /** Its buttons' container, made in connectedCallback: unset before. */
   readonly buttonContainer?: HTMLElement;
+  /** It shows a close button (moz-message-bar.mjs). */
+  readonly dismissable: boolean;
+  /** The close button, in its shadow root; null while it has none. */
+  readonly closeButton: HTMLElement | null;
   dismiss(): void;
 }
 // engine/toolkit/content/widgets/popupnotification.js (MozPopupNotification): a prompt in the
