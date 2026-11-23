@@ -1143,9 +1143,9 @@ before any version of it applied, the toolbar is hidden.
 
 - **Typing an address:** `I`, `ctrl+l`, `alt+d`, `F6`, `t`, `ctrl+t`, `ctrl+b c` and a new pane
   all still focus the address bar. A minimal bar then shows over the top of the page: only the URL
-  field, with Firefox's suggestions below it. No site identity or buttons around it (the status
-  bar names the site), no bookmarks toolbar, no window controls. The page does not move or
-  resize.
+  field, as a box of its own with the page still visible on both sides, and Firefox's suggestions
+  below it. No site identity or buttons around it (the status bar names the site), no bookmarks
+  toolbar, no window controls. The page does not move or resize.
 - **Leaving it:** `Enter` loads the page, puts focus in it and hides the bar. `Esc` works as in
   Firefox (it closes the suggestions, then undoes what you typed), and one more `Esc` puts focus
   back in the page and hides the bar.

@@ -504,6 +504,12 @@ Numbered decisions, each with its reason and the alternatives rejected.
       broken bar.
 - **Look:** the nav bar's own height, in the theme's colours (decision 21). It spans the window's
   full width, as the toolbar does.
+  (Since changed, issue #1446: the minimal and prompt bars paint only the address bar field, a box
+  of its own over the page. `#nav-bar` keeps its full width and place for the layout above, but
+  its row has no background or border and lets the pointer through, so the page shows and takes
+  clicks on both sides of the field. A band across the window covered the top of the page for no
+  gain, between the tab line and the page when the line is drawn. The full toolbar keeps its
+  band.)
   - Not the status bar's height: shrinking the field would shrink the prompt bar's identity and
     permission icons, which are the prompts' anchors and the site's attribution.
 - **Place: the top**, where the URL bar always is. Not at the bottom by the status bar, like the
@@ -721,6 +727,7 @@ buttons`), shows once the prompt is armed and hides while it is not, as the agen
     stays in a hidden element.
 15. **Split panes:** the URL bar is the selected tab's, which is the focused pane's, as today.
     - The overlay, minimal or full, spans the window's width, as the bar does.
+      (Since changed, issue #1446: the minimal and prompt bars paint only the field, decision 7a.)
     - The focused pane's accent outline says which pane it belongs to.
     - A new pane (`ctrl+b v`, `ctrl+b enter`) focuses the URL bar through `gURLBar.select()`, so
       reason (a) covers it.

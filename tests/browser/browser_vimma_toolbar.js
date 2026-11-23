@@ -198,6 +198,55 @@ function assertMinimal(what) {
   }
 }
 
+/**
+ * The colour painted at (x, y) of this window, page included: what shows, whatever set it.
+ * @param {number} x
+ * @param {number} y
+ */
+async function pixel(x, y) {
+  const global = found(window.browsingContext.currentWindowGlobal);
+  const bitmap = await global.drawSnapshot(new DOMRect(x, y, 1, 1), 1, "rgb(255, 0, 255)");
+  const canvas = /** @type {HTMLCanvasElement} */ (
+    document.createElementNS("http://www.w3.org/1999/xhtml", "canvas")
+  );
+  canvas.width = 1;
+  canvas.height = 1;
+  const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext("2d"));
+  ctx.drawImage(bitmap, 0, 0);
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+/** The page's own colour, which shows wherever nothing of the chrome covers it. */
+const PAGE_COLOUR = "rgb(0, 128, 0)";
+
+/**
+ * The revealed address bar is its field alone (issue #1446): beside the field, on its row, the
+ * page shows and takes the pointer, at both ends of the row, as it does with nothing revealed.
+ * @param {string} what
+ */
+async function assertOnlyTheField(what) {
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const field = known("urlbar-container").getBoundingClientRect();
+  const page = gBrowser.selectedBrowser;
+  const y = Math.round(field.top + field.height / 2);
+  const sides = /** @type {const} */ ([
+    ["left", Math.round(field.left / 2)],
+    ["right", Math.round((field.right + window.innerWidth) / 2)],
+  ]);
+  for (const [side, x] of sides) {
+    Assert.ok(x < field.left || x > field.right, `${what}: ${side} of the field is off it`);
+    Assert.equal(await pixel(x, y), PAGE_COLOUR, `${what}: the page shows ${side} of the field`);
+    const hit = document.elementFromPoint(x, y);
+    Assert.ok(
+      !!hit && (hit === page || page.contains(hit) || hit.contains(page)),
+      `${what}: the pointer ${side} of the field reaches the page, not ${hit?.id || hit?.localName}`,
+    );
+  }
+  const inField = await pixel(Math.round(field.left + field.width / 2), y);
+  Assert.notEqual(inField, PAGE_COLOUR, `${what}: the field itself covers the page`);
+}
+
 add_task(async function setup() {
   await SpecialPowers.pushPrefEnv({
     set: [
@@ -432,6 +481,33 @@ add_task(async function focusing_the_url_bar_shows_the_minimal_bar() {
   await loaded;
   await until(() => barCollapsed(), "Enter on a row loads it and hides the bar");
 
+  await show();
+  gBrowser.removeTab(tab);
+});
+
+// 2, tab-line behaviour 3 (issue #1446): the minimal bar is the URL field as a box of its own,
+// not a band across the window: the page shows on both sides of it, with the tab line drawn and
+// without it.
+add_task(async function the_minimal_bar_is_the_field_alone() {
+  const tab = await openPage();
+  await SpecialPowers.spawn(tab.linkedBrowser, [PAGE_COLOUR], (colour) => {
+    content.document.documentElement.style.background = colour;
+    content.document.body.style.background = colour;
+  });
+  await hide();
+  for (const line of ["off", "always"]) {
+    await SpecialPowers.pushPrefEnv({ set: [["vimma.ui.tabline", line]] });
+    const drawn = () => !!$("vimma-tabline")?.checkVisibility();
+    await until(() => drawn() === (line === "always"), `tab line ${line}`);
+    await focusContent(tab.linkedBrowser);
+    EventUtils.synthesizeKey("l", { ctrlKey: true });
+    await until(() => gURLBar.focused, `tab line ${line}: ctrl+l focuses the URL bar`);
+    assertMinimal(`tab line ${line}`);
+    await assertOnlyTheField(`tab line ${line}`);
+    await escapeUrlbar();
+    await until(() => barCollapsed(), "leaving the URL bar hides it");
+    await SpecialPowers.popPrefEnv();
+  }
   await show();
   gBrowser.removeTab(tab);
 });
