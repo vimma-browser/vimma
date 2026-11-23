@@ -923,6 +923,7 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`publish pushes the metadata in the manifest's commit`](../../tools/update/test/update-workflow.test.ts),
   [`publish refuses to replace a _headers or _redirects it did not write`](../../tools/update/test/update-workflow.test.ts),
   [`replaces only host files it wrote, or the manifest's rule alone`](../../tools/package/test/repos.test.ts),
+  [`accepts each _headers an earlier repos.ts wrote, as recorded`](../../tools/package/test/repos.test.ts),
   [`takes no homepage but Vimma's own, in each format`](../../tools/package/test/repos.test.ts),
   [`keeps the newest published releases that carry the repository packages, newest first`](../../tools/package/test/repos.test.ts),
   [`refuses a newest release without the pacman package, and a tag it does not keep`](../../tools/package/test/repos.test.ts),

@@ -24,6 +24,7 @@ import {
   checkPackages,
   checkPacmanDb,
   checkPrimary,
+  HOST_HEADERS_BEFORE,
   headersFile,
   pacmanDatabase,
   readPacmanFiles,
@@ -119,7 +120,7 @@ function stubRelease(
     writeFileSync(
       join(r, ".PKGINFO"),
       `pkgname = ${name}-bin\npkgbase = ${name}-bin\npkgver = ${said}-1\npkgdesc = stub\n` +
-        "url = https://vimma.dev\nbuilddate = 1790000000\npackager = Vimma CI <ci@example.invalid>\n" +
+        "url = https://github.com/vimma-browser/vimma\nbuilddate = 1790000000\npackager = Vimma CI <ci@example.invalid>\n" +
         "size = 6\narch = x86_64\nlicense = MPL-2.0\n",
     );
     const file = join(dir, `vimma-bin-${version}-1-x86_64.pkg.tar.zst`);
@@ -273,6 +274,8 @@ describe("host files", () => {
       `/apt/pool/v0.2.0/vimma_0.2.0_amd64.deb ${GITHUB}/v0.2.0/vimma_0.2.0_amd64.deb 301\n`,
       `/apt/pool/v0.2.0/x.deb https://evil.example/v0.2.0/x.deb 302\n`,
       `/apt/pool/v0.2.0/:file ${GITHUB}/v0.2.0/:file 302\n`,
+      `/apt/pool/v0.2.0/.. ${GITHUB}/v0.2.0/.. 302\n`,
+      `/arch/x86_64/. ${GITHUB}/v0.2.0/. 302\n`,
       "\n",
     ]) {
       writeFileSync(
@@ -283,6 +286,18 @@ describe("host files", () => {
     }
     writeFileSync(join(dir, "_redirects"), "");
     expect(check).toThrow(/_redirects/);
+  });
+
+  // The host's _headers was written by the repos.ts of the last release. A change to
+  // headersFile() records the output it replaces, so the first publish after it still accepts
+  // the host's copy.
+  it("accepts each _headers an earlier repos.ts wrote, as recorded", () => {
+    const dir = tempDir("vimma-repos-host-before-");
+    expect(HOST_HEADERS_BEFORE.length).toBeGreaterThan(0);
+    for (const before of HOST_HEADERS_BEFORE) {
+      writeFileSync(join(dir, "_headers"), before);
+      expect(() => checkHostFiles(dir, GITHUB)).not.toThrow();
+    }
   });
 
   it("the .sources file carries the committed key inline", async () => {

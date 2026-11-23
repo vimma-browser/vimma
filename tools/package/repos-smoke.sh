@@ -224,7 +224,7 @@ pkgver=$v
 pkgrel=1
 pkgdesc='repository smoke-test stub'
 arch=(x86_64)
-url=https://vimma.dev
+url=https://github.com/vimma-browser/vimma
 license=(MPL-2.0)
 options=(!debug !strip)
 package() {

@@ -577,14 +577,17 @@ release was published is GitHub's list of releases lagging behind it, as for the
 newest release was built while `PACKAGE_REPOS_ENABLED` was not `true`; ship a new release with it
 on, or turn it off until then. `_headers is not one repos.ts writes` (or `_redirects`) means
 a rule was added to `vimma-updates` by hand: move it into `headersFile()` or `redirectsFile()`
-in `tools/package/repos.ts`, which then writes it every release, and run again.
+in `tools/package/repos.ts`, which then writes it every release (a change to `headersFile()`
+appends its previous output to `HOST_HEADERS_BEFORE`), and run again.
 
 While the repositories are on, a failed `repo-prepare` or `repo-sign` holds back the release's
 update manifest as well, since both are published in one commit. When the manifest cannot wait
 (a security release, or a KMS outage), ship it alone: `gh variable delete
 PACKAGE_REPOS_ENABLED`, then `gh workflow run update-publish.yml -f tag=vX.Y.Z` (the repository
-jobs are skipped and `publish` pushes the manifest only). Set the variable again once the cause
-is fixed; the next release's run brings the repositories up to date.
+jobs are skipped and `publish` pushes the manifest only). Set it again with
+`gh variable set PACKAGE_REPOS_ENABLED --body true` before the next release is built: a release
+built while it is unset has no pacman package, and the repository jobs refuse a newest release
+without one. That release's run then brings the repositories up to date.
 
 Turning them off: `gh variable delete PACKAGE_REPOS_ENABLED`. Releases are then made as before
 (unsigned `.rpm`, no pacman package) and no run signs or pushes repository metadata; the host

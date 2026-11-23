@@ -1276,6 +1276,7 @@ export function readPacmanFiles(tarGz: Buffer, r: Release): void {
 /**
  * The host's _headers: the update manifest's rule, which the host already has, and the same for
  * the repositories and the key, so clients and Cloudflare see a release at once (decision 14).
+ * A change here appends the previous output to HOST_HEADERS_BEFORE.
  */
 export function headersFile(): string {
   return ["/updates/*", "/apt/*", "/rpm/*", "/arch/*", "/vimma-packages.asc"]
@@ -1286,6 +1287,13 @@ export function headersFile(): string {
 /** The host's _headers before the repositories: the update manifest's rule alone. */
 const MANIFEST_HEADERS =
   "/updates/*\n  Cache-Control: no-cache\n  X-Content-Type-Options: nosniff\n";
+
+/**
+ * Every _headers the host may have from before this repos.ts: the manifest's rule alone, then
+ * each earlier headersFile() output. A change to headersFile() appends the output it replaces
+ * here, or the first publish after it refuses the host's copy.
+ */
+export const HOST_HEADERS_BEFORE: readonly string[] = [MANIFEST_HEADERS];
 
 /**
  * Before publish replaces the host's _headers and _redirects: each must be absent, or one this
@@ -1299,7 +1307,11 @@ export function checkHostFiles(publicDir: string, downloadBase: string): void {
     return existsSync(path) ? readFileSync(path, "utf8") : undefined;
   };
   const headers = read("_headers");
-  if (headers !== undefined && headers !== MANIFEST_HEADERS && headers !== headersFile()) {
+  if (
+    headers !== undefined &&
+    headers !== headersFile() &&
+    !HOST_HEADERS_BEFORE.includes(headers)
+  ) {
     throw new Error(
       `repos: ${publicDir}/_headers is not one repos.ts writes; move its rules there`,
     );
@@ -1307,13 +1319,15 @@ export function checkHostFiles(publicDir: string, downloadBase: string): void {
   const redirects = read("_redirects");
   if (redirects === undefined) return;
   const base = baseUrl(downloadBase, "download base");
-  const name = "[A-Za-z0-9._~+-]+";
+  // As safeName: never . or .., which a path or URL would read as a directory.
+  const name = "(?!\\.\\.?(?: |$))[A-Za-z0-9._~+-]+";
   const tag = "v[0-9]+\\.[0-9]+\\.[0-9]+";
   const esc = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const line = new RegExp(
     `^(?:/(?:apt/pool|rpm/packages)/(${tag})/(${name}) ${esc}/\\1/\\2 302` +
       `|/arch/x86_64/(${name}) ${esc}/${tag}/\\3 302)$`,
   );
+  // An empty file is refused too: repos.ts never writes one.
   const lines = redirects.split("\n");
   if (lines.pop() !== "" || lines.length === 0 || !lines.every((l) => line.test(l))) {
     throw new Error(

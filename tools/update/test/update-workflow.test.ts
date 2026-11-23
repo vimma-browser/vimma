@@ -515,7 +515,7 @@ describe("update-publish.yml", () => {
   });
 
   /** The push step's repositories part, run against a host whose _headers is `hostHeaders`. */
-  function pushRepos(hostHeaders: string) {
+  function pushRepos(hostHeaders: string, hostRedirects?: string) {
     const run = runOf(job("publish"), "Push to vimma-updates");
     const part = run.slice(run.indexOf('if [ "$PACKAGE_REPOS" = true ]; then\n'));
     expect(part.length).toBeLessThan(run.length);
@@ -550,6 +550,7 @@ describe("update-publish.yml", () => {
     // What the host has: an older release's repodata, under names this build no longer writes.
     const u = join(dir, "updates/public");
     put(join(u, "_headers"), hostHeaders);
+    if (hostRedirects !== undefined) put(join(u, "_redirects"), hostRedirects);
     put(join(u, "rpm/repodata/old-primary.xml.gz"), "old");
     put(join(u, "apt/InRelease"), "old");
     git(["add", "-A"], join(dir, "updates"));
@@ -625,6 +626,15 @@ describe("update-publish.yml", () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toMatch(/_headers is not one repos\.ts writes/);
     expect(git(["log", "--format=%s", "main"], join(dir, "origin.git")).trim()).toBe("seed");
+    const redirected = pushRepos(
+      "/updates/*\n  Cache-Control: no-cache\n  X-Content-Type-Options: nosniff\n",
+      "/docs https://vimma.dev/docs 301\n",
+    );
+    expect(redirected.result.status).not.toBe(0);
+    expect(redirected.result.stderr).toMatch(/_redirects is not one repos\.ts writes/);
+    expect(
+      redirected.git(["log", "--format=%s", "main"], join(redirected.dir, "origin.git")).trim(),
+    ).toBe("seed");
   });
 
   it("package-sign and repo-sign alone name the package-signing environment, with an OIDC token", () => {
