@@ -89,7 +89,12 @@ signed_header=$(header "$signed/$rpm")
 [ "$built_header" = "$signed_header" ] \
   || fail "$rpm: the signed package's main header is not the built one's"
 
-# The pacman package's detached signature.
+# The pacman package's detached signature. pacman reads only a binary one (a signature packet,
+# old format 0x88-0x8a or new format 0xc2); an armored one passes gpgv and fails at install.
+case $(od -An -tx1 -N 1 "$signed/$pkg.sig" | tr -d ' \n') in
+  88 | 89 | 8a | c2) ;;
+  *) fail "$pkg.sig: not a binary OpenPGP signature" ;;
+esac
 gpg --batch --quiet --dearmor < "$cert" > "$work/keyring.gpg"
 gpgv --keyring "$work/keyring.gpg" "$signed/$pkg.sig" "$unsigned/$pkg" \
   || fail "$pkg.sig: no valid signature by the package key"

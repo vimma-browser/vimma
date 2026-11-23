@@ -94,8 +94,8 @@ function key(name: string) {
   ]);
   const cert = join(home, `${name}.asc`);
   writeFileSync(cert, gpg(["--armor", "--export"]));
-  const sign = (file: string, out: string) =>
-    gpg(["--yes", "--detach-sign", "--output", out, file]);
+  const sign = (file: string, out: string, armor = false) =>
+    gpg(["--yes", ...(armor ? ["--armor"] : []), "--detach-sign", "--output", out, file]);
   return { cert, sign, home, name };
 }
 
@@ -171,6 +171,14 @@ describe.skipIf(process.platform !== "linux" || !has("gpg") || !has("gpgv"))(
       const { dir, signer, signed, unsigned } = setup();
       key("other").sign(join(unsigned, PKG), join(signed, `${PKG}.sig`));
       expect(run(dir, signer.cert).stderr).toMatch(/\.sig: no valid signature by the package key/);
+    });
+
+    // pacman reads only a binary detached signature; an armored one passes gpgv and then fails
+    // at install time on every user's machine.
+    it("refuses an armored signature of the pacman package, which pacman cannot read", () => {
+      const { dir, signer, signed, unsigned } = setup();
+      signer.sign(join(unsigned, PKG), join(signed, `${PKG}.sig`), true);
+      expect(run(dir, signer.cert).stderr).toMatch(/\.sig: not a binary OpenPGP signature/);
     });
 
     it("refuses a pacman package that changed after it was signed", () => {

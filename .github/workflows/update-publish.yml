@@ -759,6 +759,8 @@ jobs:
       # first bytes, and that the .rpm is the one package's SHA256SUMS lists.
       - name: Check the files to sign
         run: |
+          # A failed read inside $(...) stops the step too, not only the last command's.
+          shopt -s inherit_errexit
           [[ $CALLER_TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
             || { echo "::error::'$CALLER_TAG' is not a vX.Y.Z release tag"; exit 1; }
           v=${CALLER_TAG#v}
@@ -826,7 +828,10 @@ jobs:
       # its words as written. `/usr/bin/env env` and the %{?1:...} fallbacks give both the same
       # command. rpmsign refuses to start without %_gpg_name, which the signer does not read. It
       # runs in a directory of its own, so a macro that went wrong cannot write into the
-      # workspace. The signer refuses a certificate whose key is not KMS's.
+      # workspace. The signer refuses a certificate whose key is not KMS's. The access token is
+      # exported for the step, so rpmsign sees it too: the signer runs as rpmsign's child, and the
+      # only other way in is the macro's text, which rpmsign would show in its process list.
+      # The token lives for an hour and can only use the package key.
       - name: Sign the .rpm and the pacman package with Cloud KMS
         run: |
           KMS_ACCESS_TOKEN=$(gcloud auth print-access-token)

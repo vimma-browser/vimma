@@ -289,7 +289,8 @@ of the same commit read it too, so a tree without it could not be released anywa
   `package-signing` environment, checks that the files are the caller's tag's `.rpm` and pacman
   package before it signs (the package as libarchive, pacman's reader, and GNU tar both list it,
   the same list, with only files, directories and symlinks, no name twice and makepkg's metadata
-  entries first, so a crafted pax header cannot hide an `.INSTALL` from the check), signs them with the Cloud KMS package key through
+  entries first, so a crafted pax header cannot hide an `.INSTALL` from the check), signs them
+  with the Cloud KMS package key through
   `tools/package/openpgp-kms.ts` (the only repository file it runs, checked out alone from
   `main` with the certificate and `.nvmrc`), checks both signatures against the committed
   certificate and writes `SHA256SUMS` again; and `packages`, with no secret, checks that result
@@ -298,8 +299,17 @@ of the same commit read it too, so a tree without it could not be released anywa
   package's with the signed files) and only then adds the pacman package to the release, before
   `mar`, `sign` and `publish` use it. Both jobs run their steps with `pipefail`, so a failed read
   inside a pipeline stops them. A skipped or failed `package-sign` stops the
-  release. Without the variable, none of these jobs or steps runs and the release is as
-  described above. **⚠ setting:**
+  release. `package-sign` trusts what the secret-free `package` job built, which runs `npm ci`
+  and the tag's own code: its checks catch a malformed file or a wrong name, not a package a
+  compromised build made on purpose, which the package key then signs and dnf, zypper and
+  pacman trust as root. That is the same accepted risk as a compromised build signing what it
+  builds anyway (B14), only with a stronger signal at the user's end. The
+  `package-signing` environment, with a `main`-only deployment branch policy, and the KMS
+  binding's `job_workflow_ref` condition are what bind the key to this job: GitHub creates an
+  unprotected environment the first time a job names it, so `PACKAGE_REPOS_ENABLED` is set only
+  after both exist (spec Delivery, and the runbook's one-time setup). Without the variable,
+  none of these jobs runs, a step checks that no pacman package is in `dist/`, and the release
+  is as described above. **⚠ setting:**
   signatures exist only while the repository variable `SIGNING_ENABLED` is `true`; without it
   `publish` uploads the assets and `SHA256SUMS` unsigned. The macOS `.dmg` and its Homebrew cask
   `vimma.rb` are listed in their own `SHA256SUMS-macos`, so `SHA256SUMS`, which `aur.yml` and the
