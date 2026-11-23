@@ -14,7 +14,7 @@ import { COMMANDS } from "../keys/cmdline.mjs";
 import { getAction } from "../keys/actions.mjs";
 import { displayBinding, formatKey, parseKey } from "../keys/keys.mjs";
 import { firefoxShortcuts } from "../keys/firefox-keys.mjs";
-import { INSERT_EDIT_DOES, insertEditChords } from "../keys/editable.mjs";
+import { INSERT_EDIT_DOES, insertEditChords, nativeFieldKeys } from "../keys/editable.mjs";
 import { tomlLiteral } from "../config/toml.mjs";
 import { DEFAULT_THEME_NAME } from "../config/theme.mjs";
 import { mcpAdoptedWarning, mcpState } from "../agent/agent.mjs";
@@ -686,6 +686,9 @@ function prefixChoices(step, inForce) {
  *   minimize and settings), with what each does, except select all
  * @property {Record<string, string>} shared  what Firefox does with a key of fate d the prefix may
  *   take from it (select all, a menu, an address bar key)
+ * @property {Record<string, string>} native  what the system's own text-field keys do in a field
+ *   (nativeFieldKeys), which the prefix may take, with a note
+ * @property {boolean} mac  macOS, where Option composes a character with alt held
  */
 
 /** @param {Keymap} keymap @returns {PrefixRules} */
@@ -728,6 +731,8 @@ export function prefixRules(keymap) {
     fields,
     kept,
     shared,
+    native: nativeFieldKeys({ mac }),
+    mac,
   };
 }
 
@@ -755,7 +760,10 @@ export function prefixRefusal(chord, rules) {
   }
   // ctrl, alt or meta, function keys included: one rule a user can remember (decision 21).
   if (!c.ctrl && !c.alt && !c.meta) {
-    return `${chord} alone is a key you type: the prefix needs ctrl, alt or meta with it, such as ctrl+a.`;
+    if ([...c.key].length === 1 || c.key === "space") {
+      return `${chord} alone is a key you type: the prefix needs ctrl, alt or meta with it, such as ctrl+a.`;
+    }
+    return `${chord}: the prefix works in every mode, so it needs ctrl, alt or meta with it, such as ctrl+a.`;
   }
   if (chord === rules.leader) return `${chord} is the leader key ([modal] leader).`;
   if (rules.firefox.includes(chord)) {
@@ -783,7 +791,11 @@ export function prefixRefusal(chord, rules) {
 export function prefixNote(chord, rules) {
   if (chord === rules.inForce) return null;
   const does = rules.shared[chord];
-  return does ? `${chord} is also Firefox's ${does}; as the prefix, it no longer does that.` : null;
+  if (does) return `${chord} is also Firefox's ${does}; as the prefix, it no longer does that.`;
+  const edits = rules.native[chord];
+  return edits
+    ? `${chord} also ${edits} in text fields; as the prefix, it no longer does that.`
+    : null;
 }
 
 /**
@@ -803,11 +815,15 @@ export function prefixListKeys(chord, rules) {
  * (chordFromEvent), and a prefix recorded as either would mislead (decision 21).
  * @param {{ key: string, code?: string, altKey: boolean }} e  the keydown
  * @param {string} chord  what chordFromEvent made of it, canonical
+ * @param {{ mac?: boolean }} [options]
  * @returns {string | null}
  */
-export function composedRefusal(e, chord) {
+export function composedRefusal(e, chord, { mac = false } = {}) {
   const letter = /^Key([A-Z])$/.exec(e.code ?? "")?.[1]?.toLowerCase();
   if (!e.altKey || !letter || /^[a-z]$/i.test(e.key)) return null;
+  // Elsewhere alt held with AltGraph up is a real alt chord: a non-Latin layout's alt+w is
+  // alt+ц every time, and that works as a prefix (#1410).
+  if (!mac && /(^|\+)alt\+/.test(chord)) return null;
   return `alt+${letter} types ${e.key} on this keyboard, so Vimma sees ${chord}, not alt+${letter}. Choose a key with ctrl or meta.`;
 }
 

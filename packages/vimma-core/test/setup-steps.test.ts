@@ -358,6 +358,15 @@ describe("a prefix the user presses (decision 21)", () => {
     for (const chord of ["a", "A", "1", "space", "/", "left", "f2", "shift+f2"]) {
       expect(refused(chord), chord).toMatch(/needs ctrl, alt or meta/);
     }
+    expect(refused("a")).toBe(
+      "a alone is a key you type: the prefix needs ctrl, alt or meta with it, such as ctrl+a.",
+    );
+    // A key nobody types gets a reason that fits it (#1410).
+    for (const chord of ["f2", "shift+insert", "left"]) {
+      expect(refused(chord), chord).toBe(
+        `${chord}: the prefix works in every mode, so it needs ctrl, alt or meta with it, such as ctrl+a.`,
+      );
+    }
   });
 
   test("esc, enter and tab are refused, with or without a modifier", () => {
@@ -435,12 +444,39 @@ describe("a prefix the user presses (decision 21)", () => {
       getModifierState: () => false,
     };
     const chord = formatKey(chordFromEvent(e)!);
-    expect(composedRefusal(e, chord)).toBe(
+    expect(composedRefusal(e, chord, { mac: true })).toBe(
       `alt+w types ∑ on this keyboard, so Vimma sees ${chord}, not alt+w. Choose a key with ctrl or meta.`,
     );
     // Linux: alt+w is alt+w.
     expect(composedRefusal({ ...e, key: "w" }, "alt+w")).toBeNull();
     expect(composedRefusal({ ...e, key: "a", altKey: false }, "ctrl+a")).toBeNull();
+  });
+
+  test("alt with a non-Latin layout's letter is taken: the keymap sees that chord (#1410)", () => {
+    // Linux, Cyrillic layout: alt+w types ц with alt held and AltGraph up, so the keymap sees
+    // alt+ц every time, and that works as a prefix.
+    const e = {
+      key: "ц",
+      code: "KeyW",
+      altKey: true,
+      ctrlKey: false,
+      shiftKey: false,
+      metaKey: false,
+      getModifierState: () => false,
+    };
+    const chord = formatKey(chordFromEvent(e)!);
+    expect(chord).toBe("alt+ц");
+    expect(composedRefusal(e, chord, { mac: false })).toBeNull();
+    expect(prefixRefusal(chord, rules())).toBeNull();
+    // AltGr composes a character on any platform: the keymap sees the character alone.
+    const altGr = {
+      ...e,
+      key: "€",
+      code: "KeyE",
+      getModifierState: (k: string) => k === "AltGraph",
+    };
+    const composed = formatKey(chordFromEvent(altGr)!);
+    expect(composedRefusal(altGr, composed, { mac: false })).toMatch(/so Vimma sees €, not alt\+e/);
   });
 
   test("the leader and a key given back to Firefox are refused", () => {
@@ -455,10 +491,38 @@ describe("a prefix the user presses (decision 21)", () => {
     expect(prefixNote("alt+w", rules())).toBeNull();
     // macOS's inventory: select all is cmd+a there, so ctrl+a gives nothing up.
     const mac = prefixRules(compileKeymap({}, { mac: true }));
-    expect(prefixNote("ctrl+a", mac)).toBeNull();
     expect(prefixNote("meta+a", mac)).toBe(
       "meta+a is also Firefox's select all; as the prefix, it no longer does that.",
     );
+  });
+
+  test("a key the system edits text fields with is taken, with a note (#1410)", () => {
+    const linux: [string, string][] = [
+      ["ctrl+backspace", "deletes a word"],
+      ["ctrl+delete", "deletes the next word"],
+      ["ctrl+insert", "is copy"],
+    ];
+    for (const [chord, does] of linux) {
+      expect(refused(chord), chord).toBeNull();
+      expect(prefixNote(chord, rules()), chord).toBe(
+        `${chord} also ${does} in text fields; as the prefix, it no longer does that.`,
+      );
+    }
+    // macOS: Cocoa's Emacs keys in every text field; ctrl+a is not select all there.
+    const mac = prefixRules(compileKeymap({}, { mac: true }));
+    expect(prefixNote("ctrl+a", mac)).toBe(
+      "ctrl+a also moves to the start of the line in text fields; as the prefix, it no longer does that.",
+    );
+    expect(prefixRefusal("ctrl+h", mac)).toBeNull();
+    expect(prefixNote("ctrl+h", mac)).toBe(
+      "ctrl+h also deletes a character in text fields; as the prefix, it no longer does that.",
+    );
+    for (const chord of ["ctrl+e", "ctrl+k", "ctrl+d"]) {
+      expect(prefixNote(chord, mac), chord).toMatch(/in text fields; as the prefix/);
+    }
+    // Each platform's own: Linux's word keys are no Cocoa key, and the reverse.
+    expect(prefixNote("ctrl+e", rules())).toBeNull();
+    expect(prefixNote("ctrl+insert", mac)).toBeNull();
   });
 
   test("the key that lists every key is drawn with the chord pressed", () => {

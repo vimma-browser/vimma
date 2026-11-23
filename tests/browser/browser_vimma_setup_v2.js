@@ -1270,8 +1270,10 @@ add_task(async function prefix_step_records_a_key_and_esc_goes_back_to_the_list(
   Assert.equal(recordLists(doc), "ctrl+a ? lists every key");
   // The note follows the platform's inventory of Firefox's keys: select all is ctrl+a on Linux
   // and cmd+a on macOS, where ctrl+a gives nothing up.
-  if (Services.appinfo.OS === "Darwin") Assert.equal(choiceNote(doc), "", "no note on macOS");
-  else Assert.ok(choiceNote(doc).includes("select all"), choiceNote(doc));
+  if (Services.appinfo.OS === "Darwin") {
+    // Cocoa's own ctrl+a in text fields instead (#1410).
+    Assert.ok(choiceNote(doc).includes("start of the line"), choiceNote(doc));
+  } else Assert.ok(choiceNote(doc).includes("select all"), choiceNote(doc));
   Assert.ok(footerKeys(doc).includes("enter save and go on"), footerKeys(doc));
   // q, s and h are keys being chosen now: refused, and the page stays.
   await press(doc, "q");
@@ -1332,6 +1334,32 @@ add_task(async function prefix_step_refuses_a_key_the_keymap_uses() {
   Assert.ok(refusal(doc).includes("esc, enter and tab"), refusal(doc));
   Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
   await press(doc, "KEY_Escape");
+  await closeFlow(tab);
+});
+
+add_task(async function a_non_latin_alt_key_is_taken_and_keys_nobody_types_say_why() {
+  const { tab, doc } = await openFlow();
+  await press(doc, "4");
+  await atStep(doc, "prefix_key");
+  await press(doc, "j", "KEY_Enter");
+  if (Services.appinfo.OS !== "Darwin") {
+    // A Cyrillic layout's alt+w: alt held, AltGraph up, the key types ц (#1410).
+    EventUtils.synthesizeKey("ц", { altKey: true, code: "KeyW" }, found(doc.defaultView));
+    await TestUtils.waitForTick();
+    Assert.equal(recordedKey(doc), "alt+ц");
+    Assert.equal(refusal(doc), "", "the keymap sees alt+ц, so it works as the prefix");
+    Assert.equal(writes(doc), 'Writes [keys] prefix = "alt+ц"');
+    await press(doc, "KEY_Backspace", { ctrlKey: true });
+    Assert.equal(refusal(doc), "");
+    Assert.ok(choiceNote(doc).includes("also deletes a word in text fields"), choiceNote(doc));
+  }
+  await press(doc, "KEY_F2");
+  Assert.equal(
+    refusal(doc),
+    "f2: the prefix works in every mode, so it needs ctrl, alt or meta with it, such as ctrl+a.",
+  );
+  await press(doc, "KEY_Escape");
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
   await closeFlow(tab);
 });
 

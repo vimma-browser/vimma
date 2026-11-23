@@ -517,6 +517,15 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     recording a composed Option key by its physical key, because the keymap would never see it;
     adding the "first key of another binding" rule to `compileKeymap`, because a file that loads
     today would then stop loading; and a third row for `ctrl+a`, because a pressed key covers it.
+    (Since changed, #1410: a composed character is refused on macOS, and elsewhere only when
+    AltGr dropped the alt; a non-Latin layout's `alt+w` reaches the keymap as `alt+ц` every
+    time, so it is taken. A key without ctrl, alt or meta that nobody types, such as `f2` or
+    `shift+insert`, is refused because the prefix works in every mode, not as a key the user
+    types. The keys the system edits text fields with, which Vimma takes first as the prefix,
+    are taken with a note like select all's: `ctrl+backspace`, `ctrl+delete` and `ctrl+insert`
+    on Linux, Cocoa's Emacs keys on macOS (`ctrl+a`, `ctrl+e`, `ctrl+h`, `ctrl+k`, …,
+    `nativeFieldKeys`). Rejected: refusing them, because Cocoa's keys include `ctrl+a` and the
+    built-in `ctrl+b`. GTK binds no `alt+backspace`, so it gets no note.)
 
 ### Page layout
 
