@@ -14,6 +14,9 @@
 const { NativeSwap } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/native-swap.mjs",
 );
+const { PrivateSwap } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/host/private-swap.mjs",
+);
 const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 );
@@ -27,7 +30,7 @@ const PLAIN = ROOT + "file_vimma_plain.html";
 const FRAME = { x: 40, y: 60, width: 900, height: 700 };
 const SMALL = { x: 120, y: 100, width: 700, height: 560 };
 /** How long the page takes to paint after its resize: far more than a swap takes without it. */
-const SLOW_PAINT_MS = 1500;
+const SLOW_PAINT_MS = 600;
 
 /** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
@@ -70,10 +73,17 @@ async function place(win, f) {
 /** When each window was shown, by the clock content uses too. */
 /** @type {Map<Window, number>} */
 const shownAt = new Map();
-/** @type {{ win: BrowserWindow, visible: boolean }[]} */
+/**
+ * Each visibility write. Ordered out, a window on macOS is fully occluded, so its browsing
+ * context goes inactive (AppWindow::OcclusionStateChanged) and its pages stop painting; headless
+ * has no occlusion, so each hidden window is deactivated here as macOS does. Only the swap's
+ * forceAppWindowActive then lets its pages paint before it is shown.
+ * @type {{ win: BrowserWindow, visible: boolean }[]}
+ */
 const log = [];
 log.push = function (/** @type {{ win: BrowserWindow, visible: boolean }} */ e) {
   if (e.visible) shownAt.set(e.win, Date.now());
+  else e.win.browsingContext.isActive = false;
   return Array.prototype.push.call(this, e);
 };
 
@@ -85,6 +95,7 @@ async function teardown() {
   NativeSwap._resetForTests({ force: true, log: [] });
   for (const w of privateWindows()) await BrowserTestUtils.closeWindow(w);
   NativeSwap._resetForTests();
+  window.browsingContext.isActive = true;
   await SimpleTest.promiseFocus(window);
 }
 
@@ -211,6 +222,31 @@ add_task(async function a_window_shown_at_its_own_size_does_not_wait() {
     togglePrivate(priv);
     Assert.ok(hidden(priv) && !hidden(window), "back to the normal window at once");
   } finally {
+    await teardown();
+  }
+});
+
+add_task(async function a_switch_begun_during_the_wait_leaves_the_window_hidden_and_inactive() {
+  // Going back starts waiting for the normal window's slow page; going to private again before
+  // it has painted drops that swap. The normal window stays hidden, and nothing keeps it active.
+  const { tab, priv } = await enterThenShrink();
+  try {
+    await slowNextPaint(tab.linkedBrowser);
+    shownAt.clear();
+    await SimpleTest.promiseFocus(priv);
+    togglePrivate(priv);
+    Assert.ok(hidden(window), "the normal window is still hidden while its page paints");
+    Assert.ok(
+      window.browsingContext.forceAppWindowActive,
+      "and kept active meanwhile, so that its page can paint",
+    );
+    PrivateSwap.enter(window, priv, false);
+    await paintedAt(tab.linkedBrowser);
+    await until(() => !window.browsingContext.forceAppWindowActive, "the normal window let go");
+    Assert.ok(hidden(window) && !hidden(priv), "the private window stays in the normal place");
+    Assert.ok(!shownAt.has(window), "the normal window was never shown");
+  } finally {
+    BrowserTestUtils.removeTab(tab);
     await teardown();
   }
 });

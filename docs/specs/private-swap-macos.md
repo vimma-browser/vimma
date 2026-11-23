@@ -277,20 +277,22 @@ it is shown.)
 (Since changed: when X will be shown at another size than it has, steps 2 to 4 run while X is
 still hidden, and step 5 waits until the page in each tab X shows has painted at the new size, or
 at most 300 ms. Reason: a remote page learns its new size only in X's next refresh, after X's own
-paint (`nsRefreshDriver::Tick` calls `UpdateRemoteFrameEffects`; `nsSubDocumentFrame::
-ReflowFinished` leaves a remote frame that was sized before alone), so with the active window and
-the flushed layout above X still showed its page at the old size until the content process
-painted: one frame most of the time, about 200 ms once under load
-([#773](https://github.com/vimma-browser/vimma/issues/773)). Each page answers a
-`Vimma:Painted` query from its content actor once its next paint has reached the compositor
-(its transaction's `MozAfterPaint`); the query goes after X's next refresh, over the channel that
-carried the new size, so that paint is at the new size. The wait applies to entering and leaving
-and to `ctrl+b shift+d`. A swap that must not wait stays synchronous: a closing window (its
-replacement must be on screen before it goes), an activation from the Window menu, the
-Dock or `` cmd+` `` (it answers AppKit's own activation) and a link from another app (before
-Firefox's own `focus()`), and a swap at the same size
-needs no new paint. A switch begun during the wait drops the earlier one. The timeout bounds what
-a busy or hung content process costs: the window is then shown as before.)
+paint (`nsRefreshDriver::Tick` calls `UpdateRemoteFrameEffects`;
+`nsSubDocumentFrame::ReflowFinished` leaves a remote frame that was sized before alone), so with
+the active window and the flushed layout above, X still showed its page at the old size until the
+content process painted: one frame most of the time, about 200 ms once under load
+([#773](https://github.com/vimma-browser/vimma/issues/773)). Vimma sends the new size at once
+with `document.synchronouslyUpdateRemoteBrowserDimensions()` (layout flush, then
+`UpdateRemoteFrameEffects`), and then asks each page through its content actor
+(`Vimma:Painted`), over the channel that carried the size, after it. The page answers once a paint
+after the question has reached the compositor (its transaction's `MozAfterPaint`). The wait applies
+to entering and leaving and to `ctrl+b shift+d`. A swap that must not wait stays synchronous: a
+closing window (its replacement must be on screen before it goes), an activation from the Window
+menu, the Dock or `` cmd+` `` (it answers AppKit's own activation), and a link from another app
+(before Firefox's own `focus()`). A swap at the same size needs no new paint and stays synchronous
+too. A switch begun during the wait drops the earlier one, and the window it resized stays hidden
+and is no longer kept active. The timeout bounds what a busy or hung content process costs: the
+window is then shown as before.)
 
 ### Decisions
 

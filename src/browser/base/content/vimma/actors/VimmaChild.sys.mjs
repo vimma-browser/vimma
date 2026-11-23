@@ -60,10 +60,13 @@ import { dispatchAsPage } from "./page-events.mjs";
 /** @import { BlockMessage } from "./block.mjs" */
 /** @import { PdfOutlineMessage, PdfStateMessage } from "./pdf-view.mjs" */
 
-const lazy = /** @type {Lazy<"setTimeout">} */ ({});
+const lazy = /** @type {Lazy<"clearTimeout" | "setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
+  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
+/** The longest a page's "Vimma:Painted" waits for its paint (the parent waits 300 ms). */
+const PAINTED_MAX_MS = 1000;
 /** Focus on these moves into another document, whose own child reports. */
 const FRAMES = new Set(["iframe", "frame", "browser"]);
 
@@ -748,11 +751,12 @@ export class VimmaChild extends JSWindowActorChild {
   }
 
   /**
-   * Resolves once this page's next paint has reached the screen, or once nothing it painted
-   * waits for the screen any more. The parent sent its new size before this message, over the
-   * same channel, so that paint is at the new size. A paint is on screen when the MozAfterPaint
-   * of its transaction fires (nsPresContext::NotifyDidPaintForSubtree, on the compositor's
-   * DidComposite); the event goes to the chrome event handler, which the page cannot reach.
+   * Resolves once this page has painted since this message came, and that paint has reached the
+   * screen, or after PAINTED_MAX_MS (a page whose refresh does not run). The parent sent the page its new size
+   * before this message, over the same channel, so the next paint is at the new size. A paint
+   * is on screen when the MozAfterPaint of its transaction fires
+   * (nsPresContext::NotifyDidPaintForSubtree, on the compositor's DidComposite); the event goes
+   * to the chrome event handler, which the page cannot reach.
    * @returns {Promise<void>}
    */
   #painted() {
@@ -760,33 +764,33 @@ export class VimmaChild extends JSWindowActorChild {
     const handler = this.docShell?.chromeEventHandler;
     if (!win || !handler) return Promise.resolve();
     const utils = win.windowUtils;
-    /** The refresh paints right after its animation frame callbacks. */
-    const afterRefresh = (/** @type {() => void} */ fn) =>
-      win.requestAnimationFrame(() => Services.tm.dispatchToMainThread(fn));
+    const before = utils.lastTransactionId;
     return new Promise((resolve) => {
-      let id = 0;
       let over = false;
-      /** @param {Event} e */
-      const onPaint = (e) => {
-        if (/** @type {Event & { transactionId: number }} */ (e).transactionId >= id) done();
-      };
       const done = () => {
+        if (over) return;
         over = true;
+        lazy.clearTimeout(timer);
         handler.removeEventListener("MozAfterPaint", onPaint);
         resolve();
       };
-      // A transaction without invalidations fires no MozAfterPaint, so each refresh checks
-      // again whether one is still pending; the parent's timeout bounds the wait.
+      // The parent stops waiting long before this; it only ends a wait nothing else ends, such
+      // as that of a page that is not drawn, whose refresh never runs.
+      const timer = lazy.setTimeout(done, PAINTED_MAX_MS);
+      /** @param {Event} e */
+      const onPaint = (e) => {
+        const id = /** @type {Event & { transactionId: number }} */ (e).transactionId;
+        if (e.isTrusted && id > before) done();
+      };
+      // A transaction without invalidations fires no MozAfterPaint: each refresh checks whether
+      // one was painted since and none waits for the screen any more.
       const check = () => {
         if (over) return;
-        if (!utils.isMozAfterPaintPending) done();
-        else afterRefresh(check);
+        if (utils.lastTransactionId > before && !utils.isMozAfterPaintPending) done();
+        else win.requestAnimationFrame(() => Services.tm.dispatchToMainThread(check));
       };
-      afterRefresh(() => {
-        id = utils.lastTransactionId;
-        handler.addEventListener("MozAfterPaint", onPaint);
-        check();
-      });
+      handler.addEventListener("MozAfterPaint", onPaint);
+      win.requestAnimationFrame(() => Services.tm.dispatchToMainThread(check));
     });
   }
 

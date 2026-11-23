@@ -410,27 +410,19 @@ function shownBrowsers(win) {
 }
 
 /**
- * Resolves once `win`'s pages have painted at the size its window was just given, or after
- * `paintTimeout`. A remote page learns its new size only in the window's next refresh, after
- * the window's own paint (nsRefreshDriver::Tick, UpdateRemoteFrameEffects; ReflowFinished
- * leaves a remote frame that was sized before alone), so the pages are asked after that
- * refresh, and each answers once it has painted (VimmaChild, "Vimma:Painted").
+ * Resolves once `win`'s pages have painted at the size its window was just given (prepare sent
+ * it), or after `paintTimeout`. Each page answers once it has painted (VimmaChild,
+ * "Vimma:Painted"); the query goes over the channel that carried the new size, after it.
  * @param {BrowserWindow} win
  * @returns {Promise<void>}
  */
 function pagesPainted(win) {
   return new Promise((resolve) => {
     const timer = lazy.setTimeout(resolve, paintTimeout);
-    const finish = () => {
+    Promise.all(shownBrowsers(win).map((b) => lazy.VimmaActors.painted(b))).then(() => {
       lazy.clearTimeout(timer);
       resolve();
-    };
-    win.requestAnimationFrame(() =>
-      Services.tm.dispatchToMainThread(() => {
-        if (win.closed) return finish();
-        Promise.all(shownBrowsers(win).map((b) => lazy.VimmaActors.painted(b))).then(finish);
-      }),
-    );
+    });
   });
 }
 
@@ -451,16 +443,25 @@ function prepare(op) {
   const before = `${x.innerWidth}x${x.innerHeight}`;
   // Active, so that it lays out, paints and composites while hidden (holdActive).
   holdActive(x);
+  // Activations and new tabs these calls cause are the swap's own, as in showInPlace.
+  running++;
   for (const w of [x, y]) suppress(w, true);
   try {
     if (plan.restoreFirst) x.restore();
     x.moveTo(plan.frame.x, plan.frame.y);
     x.resizeTo(plan.frame.width, plan.frame.height);
     if (plan.zoom) x.maximize();
-    x.windowUtils.flushLayoutWithoutThrottledAnimations();
+    // A remote page learns its new size only in the window's next refresh, after the window's
+    // own paint (nsRefreshDriver::Tick, UpdateRemoteFrameEffects; ReflowFinished leaves a
+    // remote frame that was sized before alone). This flushes layout and sends it now, as
+    // WebDriver BiDi's setViewport does, without waiting on a hidden window's refresh driver.
+    x.document.synchronouslyUpdateRemoteBrowserDimensions();
   } finally {
     for (const w of [x, y]) suppress(w, false);
+    running--;
   }
+  // CSS pixels: a move to a screen of another scale at the same CSS size, or a zoom AppKit
+  // applies later, counts as no new size, and that swap stays synchronous as before.
   if (`${x.innerWidth}x${x.innerHeight}` === before) return null;
   preparing.set(x, (preparing.get(x) ?? 0) + 1);
   return pagesPainted(x).finally(() => {

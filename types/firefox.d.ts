@@ -527,6 +527,8 @@ interface Event {
 // Element.webidl
 interface Document {
   readonly fullscreenKeyboardLock: "none" | "browser";
+  /** Flushes layout and sends each remote frame its size now, not at the next refresh. */
+  synchronouslyUpdateRemoteBrowserDimensions(includeInactive?: boolean): void;
   // engine/dom/interfaces/xul/nsIDOMXULCommandDispatcher.idl (chrome documents)
   readonly commandDispatcher: {
     readonly focusedElement: Element | null;

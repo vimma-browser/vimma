@@ -4041,6 +4041,9 @@ about the swap is written to disk.
 - **How:** no window manager is involved. Vimma's browser process owns both windows and hides
   and shows them itself, with the same call Firefox uses to hide its windows while it quits.
   Other normal windows stay on screen: the private workspace replaces one window, not the app.
+- **A window that comes back at another size** (you resized the other one meanwhile) appears
+  once its page has been drawn at that size, so it never shows the page at its old size first.
+  That takes a frame or two, and never more than 0.3 seconds, even if the page is busy.
 - **Full screen:** a window in full screen (its own Space) is never hidden. From a fullscreen
   window, the private workspace opens in a fullscreen Space of its own, and switching moves
   between the two Spaces, with macOS's animation.
