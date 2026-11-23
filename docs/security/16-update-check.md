@@ -166,7 +166,7 @@ _Pages_ and _extensions_ cannot reach it.
   repository section. The test-only pref `vimma.update.testRepoRoot`, which moves the three paths
   under a test directory, is read **only** in automation (the module's `inAutomation()`,
   `Cu.isInAutomation`), as `vimma.update.installType` is.
-  [`the update check's test prefs are read only in automation`](../../tests/browser/browser_vimma_security_invariants.js),
+  [`the_update_checks_test_prefs_are_read_only_in_automation`](../../tests/browser/browser_vimma_security_invariants.js),
   [`install type pacman from vimma-package=pacman`](../../packages/vimma-core/test/updates.test.ts),
   [`the repository files are the fixed paths each setup writes`](../../packages/vimma-core/test/updates.test.ts),
   [`a .deb with the repository set up gets apt's upgrade command`](../../packages/vimma-core/test/updates.test.ts),
