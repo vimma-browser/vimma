@@ -54,7 +54,7 @@ describe("defaults.toml as the config.toml reference (#1443)", () => {
         "workspaces.<name>.color",
         "workspaces.<name>.icon",
         "workspaces.<name>.home",
-        "workspaces.<name>.autofill",
+        // autofill is accepted and does nothing yet: no line invites setting it (#1474).
         "theme.source",
         "theme.name",
         "theme.appearance",

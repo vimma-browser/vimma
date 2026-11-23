@@ -4864,7 +4864,13 @@ One plain file holds your settings and keys; every key, the prefix and the leade
 - **Where:** `~/.config/vimma/config.toml` (`$XDG_CONFIG_HOME/vimma/` when set).
 - **Start:** the first run and `:config` write it with every setting commented out.
 - **Change:** uncomment a line and edit its value; saving applies it within 2 seconds.
-- **Reload by hand:** `:source` reads it at once; `:source work.toml` applies another file.
+- **Reload by hand:** `:source` reads it at once and says `sourced config.toml`; `:source work.toml`
+  applies another file.
+- **Vimma's own edits:** the setup, `:route add` and the built-in agent's setup change only their
+  own lines and keep your comments and line endings. The setup and the agent's setup edit
+  `scroll.step = …` style lines in place. A table written inline (`scroll = { step = 5 }`), or a
+  file Vimma cannot write (a link into a read-only store such as Nix's), is left as it is, and the
+  message gives the lines to add by hand.
 - **Mistakes:** the status bar shows the error and its line, and the config in force keeps
   working: the last file that loaded, or the defaults when none has since Vimma started. A file
   Vimma cannot read (not UTF-8, no read permission, a link to a missing file, over 1 MiB) is
@@ -4987,7 +4993,6 @@ file](#bookmarks-in-a-file), [Updates](#updates).
 # color = "gray"                # the container's colour, from the list above
 # icon = "circle"               # the container's icon, from the list above
 # home = "https://intra.example"  # opens when you go to the workspace and it has no tab
-# autofill = true               # reserved for a later release; it changes nothing yet
 
 # Which workspace a link opens in: the first rule that matches wins. None by default.
 # A routes.toml beside this file, when it exists, holds them (and [routing]) instead.

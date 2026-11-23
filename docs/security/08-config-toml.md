@@ -7,8 +7,11 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   routes.toml (F9). Vimma changes an existing file only from `:route add` (an append to the
   routes file: routes.toml when it exists, else config.toml), the setup page's setting steps
   (each step's own keys on its `enter`, never from a private window), the built-in agent's
-  setup, and `:siteunbind --save` / `:sitebind --delete`, each run one at a time in the one
-  queue of config.toml and routes.toml edits, so that no two edits race. Every edit goes through
+  setup, `:siteunbind --save` / `:sitebind --delete`, and the bookmarks write-back into
+  config.toml's inline `[bookmarks.<name>]` tables (F7), each run one at a time in the one
+  queue of config.toml, routes.toml and bookmarks.toml edits, so that no two edits race. A
+  table the line edit cannot change safely (an inline `table = { … }`) is refused with the line
+  to set by hand; one written as dotted `table.key = …` lines is edited on those lines. Every edit goes through
   `ConfigHost`'s atomic writer (`writeFileNow`; `rewriteConfig`; the setup's keys through
   `setConfigKeys` and `setTomlKeys`), never on a parse error, when the file would not load with
   the edit (checked with `parseConfig` or `parseRoutesFile` before the rename) or when it

@@ -1588,7 +1588,8 @@ const withoutAgent = (raw) => JSON.stringify({ ...raw, agent: undefined });
  * @param {{ name: string, kind: string, endpoint: string, model: string, vision?: boolean,
  *   priceIn?: number, priceOut?: number, cli?: string, maxMinutes?: number }} provider
  * @param {{ makeDefault: boolean, mac?: boolean }} opts
- * @returns {{ text: string, name: string } | { error: string }}
+ * @returns {{ text: string, name: string, added: string[] } | { error: string }}
+ *   `added`: the lines the edit adds, as one would type them, for a file that cannot be written
  */
 export function addAgentProviderText(text, provider, { makeDefault, mac = false }) {
   // What the file could not read back as given; said before the guard below would (#1284).
@@ -1621,7 +1622,10 @@ export function addAgentProviderText(text, provider, { makeDefault, mac = false 
     for (let n = 2; taken.has(name); n++) name = `${provider.name}-${n}`;
   }
   let out = base;
+  /** @type {string[]} the lines to add by hand when the file cannot be written */
+  const added = [];
   if (makeDefault && before.config.agent.default !== name) {
+    added.push(`[agent] default = ${tomlLiteral(name)}`);
     // With `agent` made only by `[[agent.providers]]`, setTomlKeys puts `[agent]` before them.
     const r = setTomlKeys(out, [{ table: "agent", key: "default", value: name }]);
     if (!r.ok) return { error: `config.toml cannot take [agent] default: ${r.error.message}` };
@@ -1655,8 +1659,11 @@ export function addAgentProviderText(text, provider, { makeDefault, mac = false 
               ? [`price_in = ${provider.priceIn}`, `price_out = ${provider.priceOut}`]
               : []),
           ];
-    const glue = out === "" ? "" : out.endsWith("\n") ? "\n" : "\n\n";
-    out = `${out}${glue}${block.join("\n")}\n`;
+    // In the file's line endings: a CRLF file stays CRLF.
+    added.push(...block);
+    const eol = base.includes("\r\n") ? "\r\n" : "\n";
+    const glue = out === "" ? "" : out.endsWith("\n") ? eol : eol + eol;
+    out = `${out}${glue}${block.join(eol)}${eol}`;
   }
   const after = parseConfig(out, { mac });
   const first = after.errors[0];
@@ -1666,15 +1673,15 @@ export function addAgentProviderText(text, provider, { makeDefault, mac = false 
     return { error: `config.toml does not parse with the provider added: ${why}` };
   }
   const agent = after.config.agent;
-  const added = agent.providers.find((p) => p.name === name);
+  const read = agent.providers.find((p) => p.name === name);
   const rawBefore = parseToml(base);
   const rawAfter = parseToml(out);
   if (
-    !added ||
-    added.endpoint !== provider.endpoint ||
-    added.model !== provider.model ||
+    !read ||
+    read.endpoint !== provider.endpoint ||
+    read.model !== provider.model ||
     // Stryker disable next-line ConditionalExpression: a new kind reads back as written, a known one matched by kind
-    added.kind !== provider.kind ||
+    read.kind !== provider.kind ||
     (makeDefault && agent.default !== name) ||
     !rawBefore.ok ||
     !rawAfter.ok ||
@@ -1682,7 +1689,7 @@ export function addAgentProviderText(text, provider, { makeDefault, mac = false 
   ) {
     return { error: "the edit would change other keys of config.toml; nothing written" };
   }
-  return { text: out, name };
+  return { text: out, name, added };
 }
 
 /**

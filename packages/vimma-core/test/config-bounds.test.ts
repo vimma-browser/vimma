@@ -399,6 +399,7 @@ describe("addAgentProviderText: what is written", () => {
         { makeDefault: false },
       ),
     ).toEqual({
+      added: expect.any(Array),
       text: `schema = 2\n\n${block("o", "openai", o.endpoint, "vision = false", "price_in = 1", "price_out = 2.5")}`,
       name: "o",
     });
@@ -409,6 +410,7 @@ describe("addAgentProviderText: what is written", () => {
         { makeDefault: false },
       ),
     ).toEqual({
+      added: expect.any(Array),
       text: `schema = 2\n\n${block("o", "openai", o.endpoint, "vision = true")}`,
       name: "o",
     });
@@ -417,10 +419,12 @@ describe("addAgentProviderText: what is written", () => {
   test("a provider is the same only by kind, endpoint and model; a new one is numbered", () => {
     const endpoint = "http://127.0.0.1:9/v1";
     expect(addAgentProviderText(two, { ...o, endpoint }, { makeDefault: false })).toEqual({
+      added: expect.any(Array),
       text: `${two}\n${block("o-3", "openai", endpoint, "vision = false")}`,
       name: "o-3",
     });
     expect(addAgentProviderText(two, { ...o, kind: "anthropic" }, { makeDefault: false })).toEqual({
+      added: expect.any(Array),
       text: two,
       name: "o-2",
     });
@@ -428,13 +432,18 @@ describe("addAgentProviderText: what is written", () => {
 
   test("a default already naming the provider is left as it is, quotes and all", () => {
     const text = `schema = 2\n[agent]\ndefault = 'o'\n${block("o")}`;
-    expect(addAgentProviderText(text, o, { makeDefault: true })).toEqual({ text, name: "o" });
+    expect(addAgentProviderText(text, o, { makeDefault: true })).toEqual({
+      added: expect.any(Array),
+      text,
+      name: "o",
+    });
   });
 
   test("[agent] goes before the first providers header, however it is spaced", () => {
     const text = `schema = 2\n${block("z", "openai", "http://127.0.0.1:1/v1").replace("[[agent.providers]]", "  [[ agent . providers ]]")}`;
     const r = addAgentProviderText(text, o, { makeDefault: true });
     expect(r).toEqual({
+      added: expect.any(Array),
       text: `schema = 2\n[agent]\ndefault = "o"\n\n${text.slice("schema = 2\n".length)}\n${block("o", "openai", o.endpoint, "vision = false")}`,
       name: "o",
     });
@@ -444,7 +453,8 @@ describe("addAgentProviderText: what is written", () => {
     expect(
       addAgentProviderText("schema = 2\nagent = { max_steps = 5 }\n", o, { makeDefault: true }),
     ).toEqual({
-      error: "config.toml cannot take [agent] default: agent is not a plain [agent] table",
+      error:
+        'config.toml cannot take [agent] default: agent is an inline table ({ … }); set default = "o" in it by hand, or write it as a [agent] table',
     });
   });
 });
@@ -517,6 +527,7 @@ describe("config edges", () => {
     const cc = 'schema = 2\n\n[[agent.providers]]\nname = "c"\nkind = "cli"\ncli = "claude-code"\n';
     const codex = { name: "c", kind: "cli", cli: "codex", endpoint: "", model: "", vision: false };
     expect(addAgentProviderText(cc, codex, { makeDefault: false })).toEqual({
+      added: expect.any(Array),
       text: `${cc}\n[[agent.providers]]\nname = "c-2"\nkind = "cli"\ncli = "codex"\n`,
       name: "c-2",
     });
