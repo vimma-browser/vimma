@@ -6,12 +6,17 @@ import { describe, test, expect } from "vitest";
 import {
   MAX_MANIFEST_CHARS,
   MAX_SIGNATURES,
+  OFF_NOTICE_MS,
   appBundleOf,
+  appImageOwnership,
   base64Decode,
   installTypeFrom,
   judgeManifest,
+  offNotice,
   offerAssets,
   parseManifest,
+  savedKey,
+  savedOffer,
   signatureComment,
   spkiKeyId,
   splitManifest,
@@ -537,5 +542,140 @@ describe("the AppImage steps name only the AppImage this Vimma owns (#1196)", ()
     expect(command({ ...own, marker: null, appDir: null, forced: true })).toMatch(
       new RegExp(` && mv ${file}\\.new ${file}$`),
     );
+  });
+});
+
+// Edges the mutation run of updates.mjs found unpinned (#1119): a saved value that is a function
+// (an object to `!value`, not to typeof), a saved offer's advisory list as a whole, the reason an
+// install that is not an AppImage gives, and the words for one rpm repository.
+describe("saved values, AppImage ownership and rpm words at their edges", () => {
+  const offer: Offer = {
+    appVersion: "158.0.1",
+    buildId: "20261028031500",
+    displayVersion: "0.3.1",
+    detailsUrl: "https://github.com/vimma-browser/vimma/releases/tag/v0.3.1",
+    urgent: false,
+    advisories: ["MFSA 2026-01"],
+    assets: {},
+    marUrl: null,
+  };
+  const H = (c: string) => c.repeat(128);
+  const fn = <T extends object>(fields: T) => Object.assign(() => {}, fields);
+
+  test("a function carrying a saved value's fields is not a saved value", () => {
+    expect(offerAssets(fn({ deb: { size: 1, sha512: H("d") } }))).toEqual({});
+    expect(savedOffer(fn(offer))).toBeNull();
+    expect(savedKey(fn({ id: "k", slot: "primary" }))).toBeNull();
+  });
+
+  test("a saved offer keeps its advisories only when every one is an MFSA ID", () => {
+    expect(savedOffer({ ...offer, advisories: [] })).toEqual({ ...offer, advisories: [] });
+    expect(savedOffer({ ...offer, advisories: ["MFSA 2026-01", "x"] })).toBeNull();
+    expect(savedOffer({ ...offer, advisories: ["x", "MFSA 2026-01"] })).toBeNull();
+  });
+
+  test("an install that is not an AppImage is never one, and says so", () => {
+    const where = {
+      marker: "vimma-package=appimage\n",
+      appImage: "/home/u/vimma.AppImage",
+      appDir: "/tmp/.mount_v",
+      greDir: "/tmp/.mount_v/usr/lib/vimma",
+      forced: false,
+    };
+    expect(appImageOwnership({ ...where, installType: "appimage" })).toEqual({
+      ok: true,
+      path: "/home/u/vimma.AppImage",
+    });
+    for (const installType of ["tarball", "deb", "source"] as const) {
+      for (const forced of [false, true]) {
+        expect(appImageOwnership({ ...where, installType, forced })).toEqual({
+          ok: false,
+          why: "not an AppImage install",
+        });
+      }
+    }
+  });
+
+  test("an AppDir given with trailing slashes still holds its GRE directory", () => {
+    const where = {
+      installType: "appimage" as const,
+      marker: "vimma-package=appimage\n",
+      appImage: "/home/u/vimma.AppImage",
+      greDir: "/tmp/.mount_v/usr/lib/vimma",
+      forced: false,
+    };
+    for (const appDir of ["/tmp/.mount_v", "/tmp/.mount_v/", "/tmp/.mount_v///"]) {
+      expect(appImageOwnership({ ...where, appDir }).ok, appDir).toBe(true);
+    }
+    expect(appImageOwnership({ ...where, appDir: "/" }).ok).toBe(true);
+    expect(appImageOwnership({ ...where, appDir: "/tmp/.mount_w/" }).ok).toBe(false);
+  });
+
+  test("an rpm with one repository names that package manager alone", () => {
+    const where = { installDir: "/usr/lib/vimma", appImage: null };
+    const rpm = (repos: { dnf?: boolean; zypper?: boolean }) =>
+      updateSteps("rpm", offer, { ...where, repos }).text;
+    expect(rpm({ dnf: true })).toBe(
+      "Upgrade Vimma with the rest of the system from its rpm repository, with dnf:",
+    );
+    expect(rpm({ zypper: true })).toBe(
+      "Upgrade Vimma with the rest of the system from its rpm repository, with zypper:",
+    );
+    expect(rpm({ dnf: true, zypper: true })).toBe(
+      "Upgrade Vimma with the rest of the system from its rpm repository, " +
+        "with dnf on Fedora or zypper on openSUSE:",
+    );
+  });
+
+  test("the updates: off notice starts when checks are first seen off, and lasts its time", () => {
+    expect(offNotice({ enabled: false, installType: "tarball", since: null, now: 9e12 })).toEqual({
+      since: 9e12,
+      shown: true,
+    });
+    const later = { enabled: false, installType: "tarball" as const, since: 9e12 };
+    expect(offNotice({ ...later, now: 9e12 + OFF_NOTICE_MS - 1 }).shown).toBe(true);
+    expect(offNotice({ ...later, now: 9e12 + OFF_NOTICE_MS }).shown).toBe(false);
+    expect(offNotice({ enabled: true, installType: "tarball", since: null, now: 9e12 })).toEqual({
+      since: null,
+      shown: false,
+    });
+    expect(offNotice({ enabled: false, installType: "source", since: null, now: 9e12 })).toEqual({
+      since: null,
+      shown: false,
+    });
+  });
+});
+
+// A missing attribute is refused with the reason a malformed one gets: the reads below take an
+// absent attribute as no text at all, never as some default.
+describe("parseManifest: an attribute left out", () => {
+  const ASSET =
+    `<vimmaTarball size="1" hashFunction="sha512" hashValue="${"a".repeat(128)}" ` +
+    'URL="https://github.com/vimma-browser/vimma/releases/download/v0.3.1/v.tar.xz"/>';
+  const without = (text: string, name: string) =>
+    text.replace(new RegExp(`\\b${name}="[^"]*" ?`), "");
+
+  test.each([
+    ["appVersion", "manifest: appVersion is not a Firefox version"],
+    ["buildID", "manifest: buildID is not a build ID"],
+    ["displayVersion", "manifest: displayVersion is not a Vimma version"],
+    ["detailsURL", "manifest: detailsURL is not https"],
+  ])("an <update> without %s", (name, why) => {
+    expect(reason(update(undefined, without(UPDATE, name)))).toBe(why);
+  });
+
+  test("a <patch> without its URL", () => {
+    expect(reason(update(`  ${without(PATCH, "URL")}\n`))).toBe(
+      "manifest: <patch> URL is not https",
+    );
+  });
+
+  test.each([
+    ["size", "manifest: <vimmaTarball> size is not a whole number"],
+    ["hashValue", "manifest: <vimmaTarball> hashValue is not SHA-512"],
+    ["URL", "manifest: <vimmaTarball> URL is not https"],
+  ])("an asset without %s", (name, why) => {
+    expect(reason(update(`  ${PATCH}\n  ${ASSET}\n`))).toBeUndefined();
+    expect(reason(update(`  ${PATCH}\n  ${without(ASSET, name)}\n`))).toBe(why);
   });
 });
