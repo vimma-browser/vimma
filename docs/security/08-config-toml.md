@@ -69,9 +69,8 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`a prototype member name is never a key or a modifier: constructor, toString, __proto__`](../../packages/vimma-core/test/fuzz/keys.fuzz.test.ts),
   [`nesting deeper than MAX_DEPTH, by dotted keys, headers or values, is refused at its line`](../../packages/vimma-core/test/toml.test.ts)
 - F6. `bookmarks.toml` beside `config.toml` (spec: [bookmarks-file](../specs/bookmarks-file.md),
-  mirrored into Places and written back as F7 says, behind `vimma.feature.bookmarksFile`, off by
-  default) is a file that may come from someone else's repository, and it drives writes to
-  Places from the parent's main thread.
+  mirrored into Places and written back as F7 says, on by default) is a file that may come from
+  someone else's repository, and it drives writes to Places from the parent's main thread.
   Its values are URLs, never evaluated, and only `http`, `https`, `file`, `about`, and
   `javascript:` behind the gate below; every other scheme (`data:`, `chrome:`, `resource:`,
   `view-source:`, `blob:`, `jar:`, `place:`, …) is an error at its line. It **cannot** hold a
@@ -121,9 +120,9 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`a base folder outside the toolbar's top that is not the workspace's is not trusted`](../../packages/vimma-core/test/bookmarks-file.test.ts),
   [`outside additions put back count toward the large-deletion question`](../../packages/vimma-core/test/bookmarks-file.test.ts),
   [`the_question_waits_for_the_command_line_and_ignores_an_early_key`](../../tests/browser/browser_vimma_bookmarks_file.js),
-  [`with_the_feature_pref_off_nothing_is_read_or_refused`](../../tests/browser/browser_vimma_bookmarks_file.js)
+  [`bookmarks_toml_is_read_with_no_pref_set`](../../tests/browser/browser_vimma_bookmarks_file.js)
 - F7. Vimma writes the bookmarks file (spec: [bookmarks-file](../specs/bookmarks-file.md),
-  Delivery slices 2 and 3, behind the same pref): its own bookmark keys in a mirrored folder edit
+  Delivery slices 2 and 3): its own bookmark keys in a mirrored folder edit
   `bookmarks.toml` (or `config.toml`'s inline tables) first and Places after it, under
   `[bookmarks] write_back = "all"` (the default) or `"vimma"`, and under `"all"` a change made
   to a mirrored folder outside Vimma's keys (the Library, the star, an add-on, an import, Sync)
@@ -234,8 +233,7 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`a_mixed_sync_batch_answered_n_or_not_at_all_keeps_its_additions`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
   [`keepRemovals puts removals back and still writes the batch's additions, renames and moves`](../../packages/vimma-core/test/bookmarks-merge.test.ts)
 - F8. `:bookmarks export` writes Places' workspace folders to a new `bookmarks.toml` (spec:
-  [bookmarks-file](../specs/bookmarks-file.md) Behaviour 17, Delivery slice 4, behind the same
-  pref). It writes through the same writer and queue as F7 (D11): a new file is created mode
+  [bookmarks-file](../specs/bookmarks-file.md) Behaviour 17, Delivery slice 4). It writes through the same writer and queue as F7 (D11): a new file is created mode
   0600 in a 0700 folder, never over a link to nothing or a file that is not a regular file. An
   existing file is replaced only by `:bookmarks export!`, after a y/N that says what the file
   holds, after a 1 s key settle, and only while it still holds the text the question

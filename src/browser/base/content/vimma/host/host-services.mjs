@@ -68,8 +68,7 @@
  *   Places' workspace folders to bookmarks.toml (docs/specs/bookmarks-file.md Behaviour 17);
  *   what to say
  * @property {() => string[]} bookmarksFileWords  config/ConfigHost.sys.mjs's: the words
- *   `:bookmarks` takes, `export`, `export!` and `forget` while `vimma.feature.bookmarksFile` is
- *   on
+ *   `:bookmarks` takes, `export`, `export!` and `forget` while the bookmarks.toml mirror runs
  */
 
 /** @typedef {keyof Services} ServiceName */

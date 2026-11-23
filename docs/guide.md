@@ -36,6 +36,10 @@ What works today, each with the section that explains it:
   in [config.toml](#configtoml), which applies on save; Firefox's own shortcuts are Vimma
   bindings too ([Firefox's own shortcuts](#firefoxs-own-shortcuts)).
 - **[Search engines](#search-engines)** and `@aliases` from `config.toml`, such as `@gh vimma`.
+- **[Bookmarks in a file](#bookmarks-in-a-file):** each workspace's bookmarks in
+  `bookmarks.toml` beside `config.toml`, mirrored into Firefox's bookmarks and reloaded on save;
+  changes made in Firefox's Library or by Sync are written back, keeping your comments, and
+  `:bookmarks export` writes the file from the bookmarks you already have.
 - **[No toolbar](#hiding-the-toolbar)** by default: the page reaches the top of the window, the
   address bar comes back when you need it, and `ctrl+b u` shows the whole toolbar.
 - **[Tab line](#tab-line):** a row of text at the top of the window that lists this
@@ -4191,10 +4195,6 @@ carry tokens (`?token=`, a session id, `user:pass@`), so keep `bookmarks.toml` i
 repository, or list it and its backups in `.gitignore` (`bookmarks.toml` and
 `bookmarks.toml.bak*`) while you publish `config.toml`. Vimma does not strip
 anything from a URL: a bookmark is the address you saved.
-
-**Not yet on by default.** Bookmarks in a file arrive over several releases. To try it now,
-set `vimma.feature.bookmarksFile` to `true` in `about:config`; while it is `false`, Vimma reads
-no `bookmarks.toml` and changes no bookmark because of one.
 
 **From Firefox's bookmarks to the file.** Your workspaces' bookmarks are already in Firefox
 (imported from another browser, or saved with `ctrl+b a`). To move them into the file:

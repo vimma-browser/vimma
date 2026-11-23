@@ -1,6 +1,6 @@
 # Spec: bookmarks-file
 
-Status: accepted, Delivery slices 1 to 4 implemented · Area: `packages/vimma-core/src/` (new `config/bookmarks-file.mjs`: parse, validate,
+Status: implemented · Area: `packages/vimma-core/src/` (new `config/bookmarks-file.mjs`: parse, validate,
 model, three-way diff and line edits of `bookmarks.toml`; new `config/bookmarks-export.mjs`: the export; `config/config.mjs` for
 `[bookmarks] write_back` and the inline tables; `config/defaults.mjs` for the template line;
 `ui/bookmarks.mjs` for the panel's write path); `src/browser/base/content/vimma/` (new
@@ -710,6 +710,8 @@ Slice 1 landed with these departures from the text above, each for the reason gi
 - **Feature pref.** The feature sits behind `vimma.feature.bookmarksFile`, off by default,
   because it lands over four pull requests (CONTRIBUTING.md, "Unfinished features"); while it
   is off nothing reads either file. The slice that finishes the feature removes the pref.
+  (Since changed: the pref is removed and the feature is on by default, once the four slices
+  and the review fixes after them had landed.)
 - **`:bookmarks forget` in slice 1.** Without it a missing file's pause (D9) has no way out
   but restoring the file, and the keys refuse in those folders until then; so it ships with
   the pause, and `Tab` completes it while the feature is on. The base keeps the hash of the

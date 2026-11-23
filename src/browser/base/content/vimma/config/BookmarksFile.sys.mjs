@@ -3,9 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // bookmarks.toml, mirrored into Places (docs/specs/bookmarks-file.md, Delivery slices 1 to 4:
-// the mirror, Vimma's write-back, the outside write-back and `:bookmarks export`), behind
-// `vimma.feature.bookmarksFile` until the feature is finished: while the pref is off nothing here
-// reads a file, listens to Places or refuses a key. One per app,
+// the mirror, Vimma's write-back, the outside write-back and `:bookmarks export`). One per app,
 // started and fed by ConfigHost: it hands over config.toml's text after each read (inline tables,
 // D2) and calls `tick` on each of its polls. The file is read beside config.toml's path (D1),
 // settled (D15), checked by core's bookmarks-file.mjs, and applied to each table's workspace
@@ -71,8 +69,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
-/** The unfinished feature's switch (CONTRIBUTING.md, "Unfinished features"). */
-export const FEATURE_PREF = "vimma.feature.bookmarksFile";
 /** Prefs for tests: the settle (D15), the burst (D15) and the question's time (Behaviour 7). */
 const SETTLE_PREF = "vimma.bookmarks.settleMs";
 const BURST_PREF = "vimma.bookmarks.burstMs";
@@ -189,7 +185,7 @@ function contentHash(r, fileText) {
 
 export class BookmarksFileImpl {
   /**
-   * @param {{ configPath: () => string, basePath?: string, enabled?: () => boolean,
+   * @param {{ configPath: () => string, basePath?: string,
    *   initComplete?: () => Promise<void>, say?: (text: string) => void,
    *   ask?: (win: BrowserWindow | null, question: string, yes: () => void, no: () => void) =>
    *     (() => void) | null,
@@ -203,8 +199,7 @@ export class BookmarksFileImpl {
    *   confirm?: (win: BrowserWindow | null, question: string, yes: () => void, no: () => void) =>
    *     (() => void) | null,
    *   open?: (win: BrowserWindow, path: string) => void }} options
-   *   `configPath`: config.toml's path, not its symlink's target (D1); `enabled`: the feature
-   *   pref; `queue`: the one edit queue (D11); `writeFile`: an atomic write of a file in it,
+   *   `configPath`: config.toml's path, not its symlink's target (D1); `queue`: the one edit queue (D11); `writeFile`: an atomic write of a file in it,
    *   without which nothing is written back; `reloadConfig`: config.toml is read again after
    *   an edit of its inline tables; `newDatabase`: Places made a new database at this start
    *   (D17); `privateNow`: the change came from a private window (Behaviour 12); `confirm`: the y/N
@@ -215,7 +210,6 @@ export class BookmarksFileImpl {
   constructor(options) {
     this.configPath = options.configPath;
     this.basePath = options.basePath ?? PathUtils.join(PathUtils.profileDir, BASE_FILE);
-    this.enabled = options.enabled ?? (() => Services.prefs.getBoolPref(FEATURE_PREF, false));
     this.initComplete = options.initComplete ?? placesInitComplete;
     this.say = options.say ?? sayInRecentWindow;
     this.ask = options.ask ?? askInWindow;
@@ -277,7 +271,7 @@ export class BookmarksFileImpl {
     this.placesReady = false;
     /** The first run has been asked for; runs before it are not. */
     this.ready = false;
-    /** Running: the feature is on and start() was called. */
+    /** Running: start() was called and stop() was not. */
     this.active = false;
     /** start() was called (ConfigHost's first window). */
     this.started = false;
@@ -310,26 +304,17 @@ export class BookmarksFileImpl {
     this.errors = [];
     /** @type {BookmarksFileError[]} */
     this.warnings = [];
-    this.onFeature = () => this.feature();
   }
 
   get path() {
     return PathUtils.join(PathUtils.parent(this.configPath()) ?? "/", BOOKMARKS_FILE);
   }
 
-  /** Once, with ConfigHost's first window: runs while the feature pref is on. */
+  /** Once, with ConfigHost's first window. */
   start() {
     if (this.started) return;
     this.started = true;
-    Services.prefs.addObserver(FEATURE_PREF, this.onFeature);
-    this.feature();
-  }
-
-  /** The feature pref changed (or start): turns the mirror on or off. */
-  feature() {
-    if (!this.started) return;
-    if (this.enabled()) this.activate();
-    else this.deactivate();
+    this.activate();
   }
 
   activate() {
@@ -381,7 +366,6 @@ export class BookmarksFileImpl {
   }
 
   stop() {
-    if (this.started) Services.prefs.removeObserver(FEATURE_PREF, this.onFeature);
     this.started = false;
     this.deactivate();
   }
@@ -417,7 +401,7 @@ export class BookmarksFileImpl {
     return run;
   }
 
-  /** The words `:bookmarks` takes while the feature is on, for Tab. */
+  /** The words `:bookmarks` takes while the mirror runs, for Tab. */
   words() {
     return this.active ? ["export", "export!", "forget"] : [];
   }
@@ -1971,7 +1955,7 @@ export class BookmarksFileImpl {
   /**
    * A y/N question outside the run (D11), in the most recent window once it is free. `no` runs
    * on `n`, Esc, a closed prompt or no answer in time; a newer question, `:bookmarks forget` or
-   * the feature turned off cancel it, which is a `no` only when `cancelIsNo`.
+   * the mirror stopping cancel it, which is a `no` only when `cancelIsNo`.
    * @param {string} text
    * @param {() => void} yes
    * @param {() => void} no
