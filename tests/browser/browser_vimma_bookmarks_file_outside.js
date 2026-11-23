@@ -762,6 +762,53 @@ add_task(async function a_private_window_change_is_not_written() {
     "still kept",
   );
   Assert.ok(!(await IOUtils.readUTF8(bookmarksFile)).includes("private.example"), "never written");
+  // Renamed later from a normal window: an ordinary bookmark now, written to the file.
+  await PlacesUtils.bookmarks.update({
+    guid: await guidOf("https://private.example/"),
+    title: "public",
+  });
+  await untilText(
+    `${FILE}"public" = "https://private.example/"\n"News" = "https://news.example/"\n`,
+    "a later change from a normal window writes it, where Places has it",
+  );
+  await reset();
+});
+
+add_task(async function a_library_change_from_a_normal_window_is_written_beside_a_private_one() {
+  await IOUtils.writeUTF8(bookmarksFile, FILE);
+  await untilFolder("work", LOADED, "loaded");
+  const work = /** @type {Node} */ (await topFolder("work")).guid;
+  const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  await SimpleTest.promiseFocus(priv);
+  // The Library, opened from this normal window after the private one was used: the most
+  // recent browser window is still the private one.
+  const opened = BrowserTestUtils.domWindowOpenedAndLoaded();
+  const hook = /** @type {{ showPlacesOrganizer(item: string): void }} */ (
+    /** @type {any} */ (window).PlacesCommandHook
+  );
+  hook.showPlacesOrganizer("BookmarksToolbar");
+  const library = await opened;
+  try {
+    await SimpleTest.promiseFocus(library);
+    Assert.equal(
+      Services.wm.getMostRecentWindow("navigator:browser"),
+      priv,
+      "the private window is the most recent browser window",
+    );
+    await PlacesUtils.bookmarks.insert({
+      parentGuid: work,
+      url: "https://library.example/",
+      title: "Library add",
+    });
+    await untilText(
+      `${FILE}"Library add" = "https://library.example/"\n`,
+      "the Library's change is written",
+    );
+  } finally {
+    await BrowserTestUtils.closeWindow(library);
+    await BrowserTestUtils.closeWindow(priv);
+    await SimpleTest.promiseFocus(window);
+  }
   await reset();
 });
 

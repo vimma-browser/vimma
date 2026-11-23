@@ -207,7 +207,7 @@ export class BookmarksFileImpl {
    *   pref; `queue`: the one edit queue (D11); `writeFile`: an atomic write of a file in it,
    *   without which nothing is written back; `reloadConfig`: config.toml is read again after
    *   an edit of its inline tables; `newDatabase`: Places made a new database at this start
-   *   (D17); `privateNow`: the most recent window is private (Behaviour 12); `confirm`: the y/N
+   *   (D17); `privateNow`: the change came from a private window (Behaviour 12); `confirm`: the y/N
    *   of a command the user typed (`:bookmarks export!`), in its window; `open`: shows the file
    *   in a tab; the rest default to
    *   the profile, Places and the most recent window, and are replaced by tests
@@ -227,7 +227,7 @@ export class BookmarksFileImpl {
     this.writeFile = options.writeFile ?? null;
     this.reloadConfig = options.reloadConfig ?? (() => {});
     this.newDatabase = options.newDatabase ?? placesDatabaseIsNew;
-    this.privateNow = options.privateNow ?? recentWindowIsPrivate;
+    this.privateNow = options.privateNow ?? changeWindowIsPrivate;
     this.confirm = options.confirm ?? confirmInWindow;
     this.open = options.open ?? openInTab;
     /**
@@ -241,6 +241,8 @@ export class BookmarksFileImpl {
     this.privateAdded = new Set();
     /** @type {Set<string>} items changed there from a private window: put back, never written */
     this.privateChanged = new Set();
+    /** @type {Set<string>} items changed from a normal window: taken off the base's `local` */
+    this.publicChanged = new Set();
     /** @type {Set<string>} items the file cannot hold that a notice already named */
     this.keptSaid = new Set();
     /** @type {Set<string>} tables paused both ways by the put-back loop guard */
@@ -366,6 +368,7 @@ export class BookmarksFileImpl {
     this.putBacks.clear();
     this.privateAdded.clear();
     this.privateChanged.clear();
+    this.publicChanged.clear();
     this.report([], []);
     this.signature = "";
     this.lastInput = "";
@@ -825,12 +828,21 @@ export class BookmarksFileImpl {
       if (this.applying || this.paused) this.burst.clear();
       return;
     }
-    // Behaviour 12: what is added or changed while a private window is the most recent one is
-    // never written; an addition stays in Places only, a change is put back. The event names no
-    // window, so a Library opened from that window counts too.
-    if (this.writeBack === "all" && mine.some((e) => e.source === S.DEFAULT) && this.privateNow()) {
+    // Behaviour 12: what is added or changed from a private window is never written; an addition
+    // stays in Places only, a change is put back. The event names no window, so the window it
+    // came from is the focused one, or the browser window that opened it (the Library, a
+    // bookmark dialog). A later change from a normal window makes the item an ordinary one.
+    if (this.writeBack === "all" && mine.some((e) => e.source === S.DEFAULT)) {
+      const isPrivate = this.privateNow();
       for (const e of mine) {
         if (e.source !== S.DEFAULT || e.type === "bookmark-removed") continue;
+        if (!isPrivate) {
+          this.publicChanged.add(e.guid);
+          this.privateAdded.delete(e.guid);
+          this.privateChanged.delete(e.guid);
+          continue;
+        }
+        this.publicChanged.delete(e.guid);
         if (e.type === "bookmark-added") this.privateAdded.add(e.guid);
         else if (!this.privateAdded.has(e.guid)) this.privateChanged.add(e.guid);
       }
@@ -938,7 +950,7 @@ export class BookmarksFileImpl {
     const eventTables = new Map(this.eventTables);
     this.eventTables.clear();
     // What a private window touched until now: cleared once this run has handled it.
-    const privateSeen = [...this.privateAdded, ...this.privateChanged];
+    const privateSeen = [...this.privateAdded, ...this.privateChanged, ...this.publicChanged];
     let base = await this.loadBase();
     let { text: fileText, problem } = await this.readFile();
     let configText = this.configText ?? null;
@@ -1174,6 +1186,7 @@ export class BookmarksFileImpl {
     for (const g of privateSeen) {
       this.privateAdded.delete(g);
       this.privateChanged.delete(g);
+      this.publicChanged.delete(g);
     }
     for (const link of p.links) this.link(link.name, link.folder);
     const loaded = this.lastInput !== input;
@@ -1217,7 +1230,9 @@ export class BookmarksFileImpl {
       places: tree,
       bookmarklets: this.bookmarklets,
       hold: this.held,
-      local: new Set([...(base.local ?? []), ...this.privateAdded]),
+      local: new Set(
+        [...(base.local ?? []), ...this.privateAdded].filter((g) => !this.publicChanged.has(g)),
+      ),
       putBackGuids: new Set(this.privateChanged),
       keepRemovals: !!how.keepRemovals,
     };
@@ -2124,10 +2139,23 @@ function placesDatabaseIsNew() {
   return status === 1 || status === 2;
 }
 
-/** Whether the most recently used browser window is private (Behaviour 12). */
-function recentWindowIsPrivate() {
-  const win = recentWindow();
-  return !!win && isPrivate(win);
+/**
+ * Whether a Places change came from a private window (Behaviour 12): the focused window, else the
+ * most recent of any type, and up its openers to the browser window that opened it. The Library
+ * and the bookmark dialogs are windows of their own (PlacesCommandHook.showPlacesOrganizer opens
+ * the Library with openDialog), so the most recent browser window would name a private window
+ * that is merely behind them.
+ */
+function changeWindowIsPrivate() {
+  let win = Services.focus.activeWindow ?? Services.wm.getMostRecentWindow(null);
+  for (let hops = 0; win && hops < 8; hops++) {
+    if (isPrivate(/** @type {BrowserWindow} */ (win))) return true;
+    if (win.document?.documentElement?.getAttribute("windowtype") === "navigator:browser") {
+      return false;
+    }
+    win = /** @type {Window | null} */ (win.opener);
+  }
+  return false;
 }
 
 /** @param {BrowserWindow} win */

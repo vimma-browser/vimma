@@ -852,7 +852,11 @@ Slice 3 landed with these departures and particulars, each for the reason given:
   private window's when the most recent browser window is private at the time (also a Library
   opened from it). Under "all" its additions stay in Places only, remembered in the base's
   `local` list across restarts, and its changes are put back; removals are written, because they
-  add nothing to the file.
+  add nothing to the file. (Since changed: the window is the focused one, followed up its openers to a browser
+  window, because the most recent browser window counted a Library edit from a normal window as
+  private whenever a private window had been used last; and a later change from a normal window
+  takes an item off `local` and writes it, so an addition is not kept out of the file for
+  good.)
 - **The removal question.** `n`, `Esc` or no answer to Behaviour 13's question puts the
   removed bookmarks back from the file and still writes the rest of the change (additions,
   renames, moves), where the file direction's question pauses instead: a paused merge would ask

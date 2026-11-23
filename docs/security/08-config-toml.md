@@ -69,7 +69,8 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`a prototype member name is never a key or a modifier: constructor, toString, __proto__`](../../packages/vimma-core/test/fuzz/keys.fuzz.test.ts),
   [`nesting deeper than MAX_DEPTH, by dotted keys, headers or values, is refused at its line`](../../packages/vimma-core/test/toml.test.ts)
 - F6. `bookmarks.toml` beside `config.toml` (spec: [bookmarks-file](../specs/bookmarks-file.md),
-  read-only mirror, behind `vimma.feature.bookmarksFile`, off by default) is a file that may come
+  mirrored into Places and written back as F7 says, behind `vimma.feature.bookmarksFile`, off by
+  default) is a file that may come
   from someone else's repository, and it drives writes to Places from the parent's main thread.
   Its values are URLs, never evaluated, and only `http`, `https`, `file`, `about`, and
   `javascript:` behind the gate below; every other scheme (`data:`, `chrome:`, `resource:`,
@@ -129,10 +130,15 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   is written too, merged three ways with the file and the base. The setting is read only from
   `config.toml` (D12), so a pulled file cannot turn writing on; with `"none"` the keys refuse,
   and in a private window they always refuse, so nothing done in private browsing reaches a file
-  that may be committed. Outside changes carry no window: under `"all"`, an addition or change
-  made while the most recent browser window is private is never written (an addition stays in
-  Places only, listed in the base's `local` list; a change is put back), which also covers the
-  Library opened from that window; removals are written, as they add nothing to the file.
+  that may be committed. Outside changes carry no window, so the window a change came from is
+  the focused one, followed up its openers to a browser window (the Library and the bookmark
+  dialogs are windows of their own): under `"all"`, an addition or change from a private window,
+  or from a Library or dialog a private window opened, is never written (an addition stays in
+  Places only, listed in the base's `local` list; a change is put back); removals are written, as
+  they add nothing to the file. A later change to that item from a normal window takes it off
+  the `local` list and writes it. An add-on's write carries no window either and counts as the
+  focused window's; a Library a normal window opened counts as normal when a private window
+  brings it forward again.
   What an outside change can put into the file is what Places holds in the mirrored folders,
   where the user, Sync or an add-on put it: the merge writes it through the same line writer and
   checks below, so a URL the file refuses (`data:`, `place:`, `chrome:`, a bookmarklet while
@@ -150,7 +156,9 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   is taken for a base item whose guid Sync's dedupe replaced only when no table of the base
   holds its guid and the base guid is gone from Places, so a bookmark moved from another table, or a
   new one where a moved one was, is never taken for a base item that a removal in the file then
-  deletes (#1434). When Places
+  deletes (#1434); likewise a table whose folder is gone is read from a top-level folder of its
+  name only when no table of the base holds that folder's guid, so another table's subfolder
+  moved to the toolbar's top never becomes the deleted table. When Places
   made a new database at start-up (a restored backup), the first run writes nothing back
   (D17). Writes: only the
   bookmarks file in `config.toml`'s folder (or the file its symlink points to, as for
@@ -208,11 +216,13 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`a Places-only item (made in a private window) stays out of the file and is kept`](../../packages/vimma-core/test/bookmarks-merge.test.ts),
   [`a new item where a base item was is not that item when its guid moved to another table`](../../packages/vimma-core/test/bookmarks-merge.test.ts),
   [`an item moved from another table into a removed item's place is moved, not that item`](../../packages/vimma-core/test/bookmarks-merge.test.ts),
+  [`a deleted table is not read from another table's subfolder of its name moved to the top`](../../packages/vimma-core/test/bookmarks-merge.test.ts),
   [`merging then parsing never loses an item present in either side, and settles`](../../packages/vimma-core/test/fuzz/bookmarks-merge.fuzz.test.ts),
   [`write_back_all_is_the_default_and_writes_a_library_change_after_a_burst`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
   [`a_sync_removal_of_many_asks_and_n_puts_them_back`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
   [`a_url_the_file_cannot_hold_stays_in_places_only`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
   [`a_private_window_change_is_not_written`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
+  [`a_library_change_from_a_normal_window_is_written_beside_a_private_one`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
   [`the_loop_guard_holds_across_two_simulated_devices`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
   [`a_move_out_whose_places_step_fails_and_whose_line_cannot_go_back_loses_nothing`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
   [`a_base_that_cannot_be_saved_after_a_move_out_loses_nothing`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),

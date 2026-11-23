@@ -445,6 +445,7 @@ export function mergeOutside(input) {
           c.typeCode === TYPE_FOLDER &&
           c.guid &&
           !baseFolders.has(c.guid) &&
+          !everyBaseGuid.has(c.guid) &&
           !taken.has(c.guid) &&
           placesTitle(c) === t.name,
       );

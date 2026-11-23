@@ -4290,12 +4290,12 @@ URL.
   set it, so a file you pulled cannot turn writing on.
 - **Private windows.** Nothing done in private browsing reaches the file. In a private window
   the keys never write it (`bookmarks.toml is not written from a private window`), and under
-  `"all"` a bookmark added to a mirrored folder from Firefox's star or Library while a private
-  window is the last one you used stays in Firefox only, and a change to a mirrored bookmark is
-  put back, with a notice. Removals are written. Firefox does not say which window a change
-  came from, so an edit in the Library counts as made in the last browser window you used:
-  after a private one, the Library's changes are put back too, even when you opened it from a
-  normal window.
+  `"all"` a bookmark added to a mirrored folder from a private window (the star, or a Library
+  a private window opened) stays in Firefox only, and a change to a mirrored bookmark is put
+  back, with a notice. Removals are written. Changing such a bookmark later from a normal window
+  writes it to the file. Firefox does not say which window a change came from, so Vimma goes by
+  the window in front: the Library counts as the window that first opened it, and a change an
+  add-on makes counts as the window you are in.
 - **Two devices.** With Firefox Sync on two machines, each machine writes what Sync brings
   into its own file under `"all"`. Under `"vimma"` or `"none"`, or when both machines change one
   bookmark at once, one puts the other's change back. When one bookmark has been put back three
