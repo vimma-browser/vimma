@@ -19,7 +19,7 @@ const { VimmaHost } = ChromeUtils.importESModule(
 const { ConfigHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
 );
-const { BookmarksToolbar, MIGRATED_PREF } = ChromeUtils.importESModule(
+const { BookmarksToolbar, MIGRATED_PREF, TOOLBAR_NOTICED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ui/bookmarks-toolbar.mjs",
 );
 const { MigrationUtils } = ChromeUtils.importESModule(
@@ -34,6 +34,10 @@ const VISIBLE = { visibilityProperty: true };
 const MIGRATION_NOTICE =
   "bookmarks toolbar hidden: ctrl+b shift+b opens your bookmarks; " +
   ":bookmarkstoolbar show brings it back";
+
+const TOOLBAR_NOTICE =
+  "bookmarks toolbar hidden with the toolbar: :toolbar show shows both; " +
+  '[ui] toolbar = "shown" in config.toml keeps them';
 
 const dir = PathUtils.join(PathUtils.tempDir, `vimma-bookmarks-toolbar-${Date.now()}`);
 const configFile = PathUtils.join(dir, "config.toml");
@@ -110,6 +114,7 @@ add_task(async function setup() {
   registerCleanupFunction(async () => {
     Services.prefs.clearUserPref(TOOLBAR_PREF);
     Services.prefs.clearUserPref(PREF);
+    Services.prefs.clearUserPref(TOOLBAR_NOTICED_PREF);
     CustomizableUI.setToolbarVisibility("PersonalToolbar", "never");
     while (gBrowser.tabs.length > 1) {
       gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
@@ -408,6 +413,56 @@ add_task(async function hidden_with_the_nav_bar() {
   await new Promise((r) => requestAnimationFrame(r));
   Assert.ok(!shown(), "then the full reveal does not show it");
   toolbar.release("test");
+  Services.prefs.setBoolPref(TOOLBAR_PREF, false);
+  BrowserTestUtils.removeTab(tab);
+  await reset();
+});
+
+// 12 (decision 8, issue #1399): config.toml shows it but leaves [ui] toolbar out, so the hidden
+// default hides it too: a notice says so, once; never with [ui] toolbar set.
+add_task(async function a_config_that_shows_it_under_the_hidden_toolbar_says_so_once() {
+  Services.prefs.clearUserPref(TOOLBAR_NOTICED_PREF);
+  // The hidden default, which setup turned off for the tasks above.
+  Services.prefs.setBoolPref(TOOLBAR_PREF, true);
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["vimma.config.path", configFile],
+      ["vimma.config.pollMs", 100],
+    ],
+  });
+  let n = 0;
+  const write = (/** @type {string} */ text) =>
+    IOUtils.writeUTF8(configFile, `${text}\n${"#".repeat(++n)}\n`);
+  const tab = await openPage();
+
+  // [ui] toolbar set, even to the default, is a choice: nothing to say.
+  await write(`[ui]\ntoolbar = "hidden"\nbookmarks_toolbar = "shown"`);
+  await until(() => ConfigHost.config?.ui.toolbarSet === true, "the poll reads it");
+  Assert.notEqual(noticeText(), TOOLBAR_NOTICE, "toolbar set: no notice");
+  Assert.ok(!Services.prefs.getBoolPref(TOOLBAR_NOTICED_PREF, false), "and nothing recorded");
+
+  await write(`[ui]\nbookmarks_toolbar = "shown"`);
+  await until(() => noticeText() === TOOLBAR_NOTICE, "toolbar unset: the notice");
+  Assert.ok(Services.prefs.getBoolPref(TOOLBAR_NOTICED_PREF), "recorded");
+  Assert.ok(!shown(), "the bookmarks toolbar is hidden with the toolbar");
+  // Said once, at a busy startup: it stays past the usual 1.5 s, until the next key.
+  const toast = () => !!$("vimma-notice")?.matches(":popover-open");
+  await new Promise((r) => setTimeout(r, 2500));
+  Assert.ok(toast(), "still shown after 2.5 s");
+  EventUtils.synthesizeKey("KEY_Escape", {}, window);
+  await until(() => !toast(), "the next key hides it");
+
+  // The next start, or a later edit: said once only.
+  /** @type {string[]} */
+  const said = [];
+  BookmarksToolbar.noticeHiddenToolbar("shown", false, (text) => said.push(text));
+  BookmarksToolbar.noticeHiddenToolbar("newtab", false, (text) => said.push(text));
+  Assert.deepEqual(said, [], "not again");
+
+  await IOUtils.remove(configFile);
+  await SpecialPowers.popPrefEnv();
+  await ConfigHost.reload();
+  Services.prefs.clearUserPref(TOOLBAR_NOTICED_PREF);
   Services.prefs.setBoolPref(TOOLBAR_PREF, false);
   BrowserTestUtils.removeTab(tab);
   await reset();

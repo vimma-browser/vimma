@@ -9,7 +9,13 @@
 // what config.toml sets, for the notices. Every change goes through
 // CustomizableUI.setToolbarVisibility: open windows read the pref only on a location change.
 
-import { MIGRATION_NOTICE, needsMigration, visibilityFor } from "../core/bookmarks-toolbar.mjs";
+import {
+  MIGRATION_NOTICE,
+  TOOLBAR_NOTICE,
+  needsMigration,
+  needsToolbarNotice,
+  visibilityFor,
+} from "../core/bookmarks-toolbar.mjs";
 
 /** @import { BookmarksToolbarSetting } from "../core/bookmarks-toolbar.mjs" */
 
@@ -21,6 +27,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
 export const VISIBILITY_PREF = "browser.toolbars.bookmarks.visibility";
 /** Decision 7: set once the upgrade check has run, so a later choice stands. */
 export const MIGRATED_PREF = "vimma.ui.bookmarksToolbar.migrated";
+/** Decision 8, changed for issue #1399: set once the hidden-toolbar notice was said. */
+export const TOOLBAR_NOTICED_PREF = "vimma.ui.bookmarksToolbar.toolbarNoticed";
 const TOOLBAR_ID = "PersonalToolbar";
 
 /** @type {BookmarksToolbarSetting | null} `[ui] bookmarks_toolbar` in force; null when unset */
@@ -80,5 +88,20 @@ export const BookmarksToolbar = {
     if (!needsMigration({ migrated, configured: setting, userValue })) return;
     this.set("hidden");
     say(MIGRATION_NOTICE);
+  },
+
+  /**
+   * Decision 8, changed for issue #1399: config.toml shows it, but the hidden default toolbar
+   * hides it too, as it does after an upgrade from the shown default. Said once; the pref
+   * records it, so a later start or edit says nothing.
+   * @param {BookmarksToolbarSetting | null} setting  `[ui] bookmarks_toolbar`
+   * @param {boolean} toolbarSet  config.toml has a `[ui] toolbar` line
+   * @param {(text: string) => void} say
+   */
+  noticeHiddenToolbar(setting, toolbarSet, say) {
+    const noticed = Services.prefs.getBoolPref(TOOLBAR_NOTICED_PREF, false);
+    if (!needsToolbarNotice({ noticed, configured: setting, toolbarSet })) return;
+    Services.prefs.setBoolPref(TOOLBAR_NOTICED_PREF, true);
+    say(TOOLBAR_NOTICE);
   },
 };

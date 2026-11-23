@@ -4376,6 +4376,12 @@ before this default has it hidden once, with a notice that says how to bring it 
   `:bookmarkstoolbar hide` hides it again.
 - With the [toolbar hidden](#hiding-the-toolbar), the default, the bookmarks toolbar hides with
   it, and the notice that shows it adds `the toolbar is hidden: :toolbar show`.
+- **Kept your `bookmarks_toolbar = "shown"` from before the toolbar was hidden by default?** If
+  config.toml shows the bookmarks toolbar (`"shown"` or `"newtab"`) and has no `[ui] toolbar`
+  line, Vimma says once, at the next start and until you press a key, that the hidden toolbar
+  hides it too: `:toolbar show` (or `ctrl+b u`) shows both, and `[ui] toolbar = "shown"` in
+  config.toml keeps them shown. Writing either `toolbar` value means you have chosen, so there is
+  no notice.
 
 ## Tab search and tab rename
 

@@ -1,10 +1,13 @@
-// docs/specs/bookmarks-toolbar-hidden.md: the words, the notices and the one-time migration.
+// docs/specs/bookmarks-toolbar-hidden.md: the words, the notices, the one-time migration and the
+// one-time notice that the hidden toolbar hides it too.
 import { describe, expect, test } from "vitest";
 import {
   BOOKMARKS_TOOLBAR_SETTINGS,
   MIGRATION_NOTICE,
+  TOOLBAR_NOTICE,
   bookmarksToolbarNotice,
   needsMigration,
+  needsToolbarNotice,
   settingFor,
   visibilityFor,
 } from "../src/ui/bookmarks-toolbar.mjs";
@@ -81,5 +84,28 @@ describe("needsMigration (decision 7)", () => {
     expect(needsMigration({ ...base, configured: "shown" })).toBe(false);
     expect(needsMigration({ ...base, userValue: "never" })).toBe(false);
     expect(needsMigration({ ...base, userValue: null })).toBe(false);
+  });
+});
+
+describe("needsToolbarNotice (decision 8, changed for issue #1399)", () => {
+  const base = { noticed: false, configured: "shown" as const, toolbarSet: false };
+
+  test("config.toml shows it, leaves [ui] toolbar out, and nothing said it yet: say it", () => {
+    expect(needsToolbarNotice(base)).toBe(true);
+    expect(needsToolbarNotice({ ...base, configured: "newtab" })).toBe(true);
+  });
+
+  test("not again, not with [ui] toolbar set, not when config.toml does not show it", () => {
+    expect(needsToolbarNotice({ ...base, noticed: true })).toBe(false);
+    expect(needsToolbarNotice({ ...base, toolbarSet: true })).toBe(false);
+    expect(needsToolbarNotice({ ...base, configured: "hidden" })).toBe(false);
+    expect(needsToolbarNotice({ ...base, configured: null })).toBe(false);
+  });
+
+  test("the notice names both ways to see it", () => {
+    expect(TOOLBAR_NOTICE).toBe(
+      "bookmarks toolbar hidden with the toolbar: :toolbar show shows both; " +
+        '[ui] toolbar = "shown" in config.toml keeps them',
+    );
   });
 });
