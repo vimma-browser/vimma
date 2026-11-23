@@ -82,6 +82,21 @@ async function symlink(target, link) {
 }
 
 /**
+ * A FIFO at `path`, which blocks whoever opens it for reading until a writer comes.
+ * @param {string} path
+ */
+async function mkfifo(path) {
+  await new Promise((resolve) => {
+    const proc = Cc["@mozilla.org/process/util;1"].createInstance(Ci.nsIProcess);
+    const py = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+    py.initWithPath("/usr/bin/python3");
+    proc.init(py);
+    const args = ["-c", "import os,sys; os.mkfifo(sys.argv[1], 0o600)", path];
+    proc.runAsync(args, args.length, { observe: resolve });
+  });
+}
+
+/**
  * `:line` Enter in `win`'s selected page, in normal mode.
  * @param {string} line
  * @param {BrowserWindow} [win]
@@ -173,6 +188,25 @@ add_task(async function a_routes_toml_never_read_well_applies_no_rule() {
       Assert.deepEqual(domains(), [], "no rule, and never config.toml's in its place");
     },
   );
+});
+
+// A FIFO would block the read, and with it every later read of config.toml; a link to nothing
+// is still the user's routes file. Both are errors of routes.toml, never config.toml's rules.
+add_task(async function a_fifo_or_a_dangling_link_named_routes_toml_is_an_error() {
+  const config = `schema = 2\n${RULE("a.example", "w")}`;
+  for (const make of ["fifo", "dangling link"]) {
+    await withConfig({ config }, async (paths) => {
+      if (make === "fifo") await mkfifo(paths.routes);
+      else await symlink(PathUtils.join(paths.dir, "nowhere.toml"), paths.routes);
+      await IOUtils.writeUTF8(paths.config, `${config}[panel]\nnumbers = "relative"\n`);
+      const read = ConfigHost.reload().then(() => "read");
+      const late = new Promise((resolve) => setTimeout(() => resolve("blocked"), 3000));
+      Assert.equal(await Promise.race([read, late]), "read", `${make}: the read ends`);
+      Assert.deepEqual(domains(), [], `${make}: no rule, never config.toml's`);
+      Assert.equal(ConfigHost.routesProblems[0]?.file, "routes.toml", `${make}: an error`);
+      Assert.equal(ConfigHost.config?.panel.numbers, "relative", `${make}: config.toml applies`);
+    });
+  }
 });
 
 add_task(async function deleting_routes_toml_brings_back_config_toml_rules() {

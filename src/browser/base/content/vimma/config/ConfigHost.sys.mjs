@@ -410,6 +410,45 @@ function applyRoutes() {
 }
 
 /**
+ * Whether `path` is a symbolic link, to something or to nothing (lstat).
+ * @param {string} path
+ */
+function isLink(path) {
+  const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  file.initWithPath(path);
+  try {
+    return file.isSymlink();
+  } catch {
+    return false;
+  }
+}
+
+/** A failed read of routes.toml: no rule from it, never config.toml's in its place. */
+const unreadRoutes = (/** @type {string} */ message) => ({
+  routes: null,
+  defaultWorkspace: null,
+  lines: [],
+  errors: [{ file: ROUTES_FILE, path: "", message }],
+});
+
+/**
+ * routes.toml's stat signature: "missing" only when nothing is there; "unreadable" for a link to
+ * nothing, which is still the user's routes file, and for a stat that fails otherwise, so that
+ * routes.toml's trouble never keeps config.toml from loading.
+ * @param {string} path
+ * @returns {Promise<string>}
+ */
+async function routesStat(path) {
+  try {
+    const now = await stat(path);
+    return now === "missing" && isLink(path) ? "unreadable" : now;
+  } catch (e) {
+    console.error(`vimma: cannot stat ${path}`, e);
+    return "unreadable";
+  }
+}
+
+/**
  * Reads routes.toml (its stat `now`): a file with errors keeps the last good read in force
  * (routes-file Behaviour 5); a missing one makes config.toml the routes file again (Behaviour 6).
  * @param {string} now
@@ -424,26 +463,24 @@ async function readRoutes(now) {
     routesFileErrors = [];
     return;
   }
-  try {
-    const info = await IOUtils.stat(path);
-    // Never read a file that would be refused anyway (decision 4's bound), nor a folder.
-    r =
-      (info.size ?? 0) > MAX_ROUTES_FILE_BYTES
-        ? {
-            routes: null,
-            defaultWorkspace: null,
-            lines: [],
-            errors: [{ file: ROUTES_FILE, path: "", message: "larger than 1 MiB; not read" }],
-          }
-        : parseRoutesFile(await IOUtils.readUTF8(path));
-  } catch (e) {
-    if (notFound(e)) {
-      routesSignature = "missing";
-      return readRoutes("missing");
+  if (now === "unreadable") r = unreadRoutes("cannot be read (a link to nothing, or no access)");
+  else {
+    try {
+      const info = await IOUtils.stat(path);
+      // Only a regular file is read: a FIFO would block this read and every later one of
+      // config.toml. Nor a file that would be refused anyway (decision 4's bound).
+      if (info.type !== "regular") r = unreadRoutes("not a regular file; not read");
+      else if ((info.size ?? 0) > MAX_ROUTES_FILE_BYTES) {
+        r = unreadRoutes("larger than 1 MiB; not read");
+      } else r = parseRoutesFile(await IOUtils.readUTF8(path));
+    } catch (e) {
+      if (notFound(e) && !isLink(path)) {
+        routesSignature = "missing";
+        return readRoutes("missing");
+      }
+      console.error(`vimma: cannot read ${path}`, e);
+      r = unreadRoutes("cannot be read");
     }
-    console.error(`vimma: cannot read ${path}`, e);
-    r = { routes: null, defaultWorkspace: null, lines: [], errors: [] };
-    r.errors.push({ file: ROUTES_FILE, path: "", message: "cannot be read" });
   }
   routesPresent = true;
   routesFileErrors = r.errors;
@@ -461,7 +498,7 @@ async function readRoutes(now) {
 async function check(force) {
   const path = configPath();
   const now = await stat(path);
-  const routesNow = await stat(routesPath());
+  const routesNow = await routesStat(routesPath());
   const routesChanged = force || routesNow !== routesSignature;
   if (routesChanged) {
     const wasPresent = routesPresent;
@@ -512,7 +549,7 @@ async function check(force) {
 async function source(path) {
   // routes.toml stays the routes file under a sourced config, and is read now too
   // (docs/specs/routes-file.md Behaviour 7, decision 12).
-  routesSignature = await stat(routesPath());
+  routesSignature = await routesStat(routesPath());
   await readRoutes(routesSignature);
   let text;
   try {
@@ -916,6 +953,9 @@ async function createNew(path, text) {
   }
   await beforeRoutesRename();
   try {
+    // noOverwrite follows links and moves into a folder: anything there, even a link to nothing,
+    // is the user's, so refuse it first (the window left is the rename itself).
+    if (isLink(path) || (await IOUtils.exists(path))) throw new Error("exists");
     await IOUtils.move(tmp, path, { noOverwrite: true });
   } catch {
     await IOUtils.remove(tmp, { ignoreAbsent: true }).catch(() => {});
@@ -977,6 +1017,7 @@ async function moveRoutes(rule, { text, target, before }) {
     }
     await beforeRoutesRename();
     try {
+      if (isLink(routes) || (await IOUtils.exists(routes))) throw new Error("exists");
       await IOUtils.move(/** @type {string} */ (temps[0]), routes, { noOverwrite: true });
     } catch {
       await cleanup();

@@ -45,8 +45,10 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`route_add_waits_for_a_running_rewrite`](../../tests/browser/browser_vimma_workspace_routes.js)
 - F2. Every value **must** be validated; a broken file keeps the last good config and a bad
   value (such as a `javascript:` home page) is an error. A broken routes.toml keeps the last
-  good routes while the rest of config.toml applies, and one never read well applies no rule
-  rather than config.toml's (routes-file decision 5).
+  good routes while the rest of config.toml applies, and one never read well (a syntax error,
+  a FIFO, a link to nothing) applies no rule rather than config.toml's (routes-file decision 5);
+  config.toml's `default_workspace` still applies then, as R9 limits it. A routes.toml that is
+  not a regular file is never opened, so it cannot block the reads of config.toml.
   [`broken text keeps the previous config active, unchanged`](../../packages/vimma-core/test/config.test.ts),
   [`a_broken_routes_toml_keeps_the_last_good_routes_and_config_toml_applies`](../../tests/browser/browser_vimma_routes_file.js),
   [`a_routes_toml_never_read_well_applies_no_rule`](../../tests/browser/browser_vimma_routes_file.js),
@@ -59,9 +61,13 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
 - F4. `:route add` **must** write each value as one escaped TOML string to routes.toml, and
   write nothing when the result would not parse. Its first use with rules in config.toml moves
   them: both files are written or neither (temporary files, a check that config.toml did not
-  change, routes.toml renamed in with `noOverwrite` so a file made meanwhile is never replaced,
-  then config.toml; if that fails, the new routes.toml is removed), and the result is checked to
-  hold exactly config.toml's rules plus the new one, in order. It is reachable only from Vimma's
+  change, routes.toml renamed in with `noOverwrite` after a check that nothing, not even a link
+  to nothing, is there, then config.toml; if that fails, the new routes.toml is removed), and
+  the result is checked to hold exactly config.toml's rules plus the new one, in order. What is
+  left is local: a file made in the instant between that check and the rename, which only
+  someone who can write the config folder can do, and a crash between the two renames, which
+  leaves routes.toml with every rule beside an unchanged config.toml (the same rules in force,
+  with the warning) and may leave a 0600 temporary file in the folder. It is reachable only from Vimma's
   own command line in a window with workspaces, never a private window, the agent role or a
   page. The host reaches `ConfigHost.addRoute` only through `host/host-services.mjs`, which
   `vimma.js` fills (§21, D4); asked before that, it writes nothing.
@@ -280,11 +286,13 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   workspace, and so which cookies, a site or another program's link opens in. It carries
   exactly `config.toml`'s trust: a local file you edit or pull from a repository of your own,
   located beside `config.toml`'s path (not a symlink's target). It holds only `[[routes]]` and
-  `[routing]`, every other key is an error at its line, it is read only up to 1 MiB, and its
+  `[routing]`, every other key is an error at its line, it is read only when it is a regular
+  file of up to 1 MiB, and its
   rules are checked by the same `validateRoutes` as `config.toml`'s, so every routing
   guarantee (02 R6 to R10, 12 M24) holds whichever file holds them. Nothing in it is executed.
   [`parseRoutesFile reads [[routes]] and [routing] as config.toml does`](../../packages/vimma-core/test/routes-file.test.ts),
   [`parseRoutesFile refuses another top-level key at its line`](../../packages/vimma-core/test/routes-file.test.ts),
   [`parseRoutesFile refuses a file over 1 MiB`](../../packages/vimma-core/test/routes-file.test.ts),
   [`routes_toml_rules_apply_and_config_toml_rules_are_ignored_with_a_warning`](../../tests/browser/browser_vimma_routes_file.js),
-  [`routes_toml_is_found_beside_a_symlinked_config_toml`](../../tests/browser/browser_vimma_routes_file.js)
+  [`routes_toml_is_found_beside_a_symlinked_config_toml`](../../tests/browser/browser_vimma_routes_file.js),
+  [`a_fifo_or_a_dangling_link_named_routes_toml_is_an_error`](../../tests/browser/browser_vimma_routes_file.js)
