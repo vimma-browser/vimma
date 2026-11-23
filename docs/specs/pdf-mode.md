@@ -490,10 +490,14 @@ find: { current, total } }`), sent to the parent on the viewer's events.
       (Research), or 0 when it does not resolve; `kind` is `dest`, `url`, `action`, `attachment`,
       `ocg` or `none` (an entry pdf.js gives no target, such as a `javascript:` link it refuses,
       which follows nothing); `collapsed` is the entry's negative `count`. Named destinations
-      resolve through one `pdfDocument.getDestinations()` call rather than one promise per entry. Destinations themselves (names and
-      page references) never leave the content process, because the parent needs only a page
-      number to select the current entry, and following an entry by its index keeps the parent's
-      messages to operation names and numbers (V7).
+      resolve through one `pdfDocument.getDestinations()` call rather than one promise per entry.
+      (Since changed: each distinct name resolves through its own
+      `pdfDocument.getDestination(name)` call, as pdf.js's own viewer resolves one, within 500 ms,
+      because `getDestinations()` gives a `Map`, which the lookup by own key never matched, so no
+      named entry had a page, #1433.) Destinations themselves (names and page references) never
+      leave the content process, because the parent needs only a page number to select the
+      current entry, and following an entry by its index keeps the parent's messages to operation
+      names and numbers (V7).
     - **Bounds.** The child stops at 5000 entries, the hint reply's target limit
       (`HINT_REPLY_MAX_TARGETS`, `core/hints.mjs:255`), and at a nesting depth of 32, and marks
       the message truncated. Core's `parsePdfOutline` drops the whole message when any bound

@@ -324,6 +324,11 @@ add_task(async function each_kind_of_entry() {
       "Print action",
       "Deep",
     ]);
+    // A named destination's page is resolved as the outline is read (#1433): the row shows it,
+    // and the selection of an outline shown beside the document can follow to it.
+    const named = found(PdfOps.outline(browser)).entries[0];
+    Assert.equal(named.kind, "dest", "a destination");
+    Assert.equal(named.page, 2, "a named destination's page");
     // Only pdf.js's navigation actions are followed.
     Assert.equal(found(PdfOps.outline(browser)).entries[6].kind, "none", "Print follows nothing");
     // outline_titles_with_html_stay_text
@@ -712,6 +717,68 @@ add_task(async function a_hostile_outline_gets_only_primitives_through() {
       Assert.equal(msg.entries[0].collapsed, false, "a count behind a getter is not taken");
       Assert.equal(msg.entries[1].title.length, 512, "a huge title is cut in the child");
       Assert.equal(msg.entries[1].page, 2, "a page index");
+    });
+  });
+});
+
+add_task(async function hostile_named_destinations_are_bounded() {
+  await withPdf(async (browser) => {
+    await recordingOutline(async (seen) => {
+      await SpecialPowers.spawn(browser, [], () => {
+        /** @type {PdfJsWindow} */
+        const w = content.wrappedJSObject;
+        /** An outline entry of the page's own, its destination a name. */
+        const entry = (/** @type {string} */ title, /** @type {string} */ dest) => {
+          const item = /** @type {{ title: string, dest: string, items: object[] }} */ (
+            new w.Object()
+          );
+          item.title = title;
+          item.dest = dest;
+          item.items = new w.Array();
+          return item;
+        };
+        /** @type {object[]} */
+        const list = new w.Array();
+        list.push(
+          entry("never", "never"),
+          entry("rejects", "rejects"),
+          entry("thenable", "thenable"),
+          entry("found", "found"),
+          entry("found again", "found"),
+        );
+        // Not a promise, which is the point: the cast says only that pdf.js is handed it.
+        const thenable = /** @type {Promise<unknown[]>} */ (
+          /** @type {unknown} */ (
+            Cu.cloneInto({ then: (/** @type {(dest: unknown) => void} */ r) => r([1]) }, content, {
+              cloneFunctions: true,
+            })
+          )
+        );
+        const doc = /** @type {PdfJsDocument} */ (w.PDFViewerApplication.pdfDocument);
+        doc.getOutline = Cu.exportFunction(() => w.Promise.resolve(list), content);
+        doc.getDestination = Cu.exportFunction((/** @type {string} */ name) => {
+          if (name === "never") return new w.Promise(() => {});
+          if (name === "rejects") return w.Promise.reject(new w.Error("no"));
+          if (name === "thenable") return thenable;
+          return w.Promise.resolve(Cu.cloneInto([1], content));
+        }, content);
+      });
+      // A name that never answers holds the outline back for at most 500 ms, inside the 2 s
+      // Tab waits for it.
+      await openOutline();
+      Assert.equal(seen.length, 1, "one message");
+      const msg = /** @type {{ entries: { title: string, page: number }[] }} */ (seen[0]);
+      Assert.deepEqual(
+        msg.entries.map((e) => [e.title, e.page]),
+        [
+          ["never", 0],
+          ["rejects", 0],
+          ["thenable", 0],
+          ["found", 2],
+          ["found again", 2],
+        ],
+        "only a name pdf.js resolves has a page, each entry with that name",
+      );
     });
   });
 });

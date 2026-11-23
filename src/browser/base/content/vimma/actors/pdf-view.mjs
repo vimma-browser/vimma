@@ -72,7 +72,6 @@ export const PDFJS_CONTRACT = Object.freeze({
   // Delivery PR 4: the outline, read and followed as pdf.js's own outline view does.
   pdfDocument: "object",
   "pdfDocument.getOutline": "function",
-  "pdfDocument.getDestinations": "function",
   "pdfDocument.cachedPageNumber": "function",
   // Settles once pdf.js has fetched every page, so that cachedPageNumber knows them all (#1424).
   "pdfViewer.pagesPromise": "object",
@@ -142,6 +141,12 @@ const OUTLINE_READ_MS = 5000;
  * gives the reply (OUTLINE_WAIT_MS), so that a long PDF still opens its outline on Tab.
  */
 const OUTLINE_PAGES_MS = 1000;
+
+/**
+ * How long the outline read waits for its named destinations' pages, after the outline: with
+ * OUTLINE_PAGES_MS, still under the parent's 2 s (OUTLINE_WAIT_MS).
+ */
+const OUTLINE_NAMES_MS = 500;
 
 /** A link's page the viewer does not resolve in this long is shown as its URL. */
 const LINK_PAGE_MS = 2000;
@@ -752,23 +757,46 @@ export class PdfView {
       finish();
       return;
     }
-    // Named destinations resolve to pages through the document's table, in one call.
-    const resolved = Cu.exportFunction((/** @type {unknown} */ value) => {
-      const dests = /** @type {{ readonly [name: string]: unknown } | null} */ (objectOr(value));
-      for (const [index, name] of named) {
-        try {
-          const dest = dests && Object.hasOwn(dests, name) ? dests[name] : null;
-          const entry = entries[index];
-          if (entry) entry.page = this.#pageOf(dest, pages);
-        } catch {
-          // stays 0: not resolved
-        }
-      }
+    // Each name resolves through getDestination, as linkPage resolves a link's and pdf.js's own
+    // viewer resolves a name (#1433): getDestinations gives a Map, which no own-key lookup
+    // matches. Names are asked once each, all at once; one not answered within
+    // OUTLINE_NAMES_MS stays 0.
+    /** @type {Map<string, number[]>} */
+    const byName = new Map();
+    for (const [index, name] of named) {
+      const indexes = byName.get(name);
+      if (indexes) indexes.push(index);
+      else byName.set(name, [index]);
+    }
+    let pending = byName.size;
+    let finished = false;
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    let timer = null;
+    const settle = () => {
+      if (finished) return;
+      finished = true;
+      if (timer !== null) lazy.clearTimeout(timer);
       finish();
-    }, this.#win);
-    const failed = Cu.exportFunction(finish, this.#win);
-    const read = () => invoke(this.#part("pdfDocument"), "getDestinations");
-    if (!this.#then(read, resolved, failed)) finish();
+    };
+    const answered = () => {
+      if (--pending <= 0) settle();
+    };
+    timer = lazy.setTimeout(settle, OUTLINE_NAMES_MS);
+    for (const [name, indexes] of byName) {
+      const resolved = Cu.exportFunction((/** @type {unknown} */ dest) => {
+        if (!finished) {
+          const page = this.#pageOf(dest, pages);
+          for (const index of indexes) {
+            const entry = entries[index];
+            if (entry) entry.page = page;
+          }
+        }
+        answered();
+      }, this.#win);
+      const failed = Cu.exportFunction(answered, this.#win);
+      const read = () => invoke(this.#part("pdfDocument"), "getDestination", name);
+      if (!this.#then(read, resolved, failed)) answered();
+    }
   }
 
   /**

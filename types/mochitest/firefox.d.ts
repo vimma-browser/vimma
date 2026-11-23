@@ -897,10 +897,12 @@ interface PdfJsViewer {
  * `class PDFDocumentProxy` (engine/toolkit/components/pdfjs/content/build/pdf.mjs, line 15353):
  * `getOutline` (15421) resolves with the outline's top entries, null for a document without one;
  * `getData` (15441) with the document's bytes; `cachedPageNumber` (15456) gives a page reference's
- * number once pdf.js has fetched that page, null before.
+ * number once pdf.js has fetched that page, null before; `getDestination` (15391) resolves a
+ * named destination to its explicit one, null when the name is not in the document.
  */
 interface PdfJsDocument {
   getOutline(): Promise<object[] | null>;
+  getDestination(name: string): Promise<unknown[] | null>;
   getData(): Promise<Uint8Array>;
   cachedPageNumber(ref: object): number | null;
 }
