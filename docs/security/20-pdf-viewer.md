@@ -51,11 +51,14 @@ bindings, so it is accepted here.
   asynchronous result (the outline, the named destinations, the page of a link's named
   destination, and pdf.js's `pagesPromise`, which the outline read waits for so that every
   entry's page reference resolves: as the PDF opens until it settles, for `Tab` at most 1 s, inside
-  the 2 s `Tab` waits for the reply) **must** come back only through a
-  `Cu.exportFunction` callback passed to the promise's own `then` seen through Xrays, so that a
-  viewer's object with a `then` of its own is never called; the result is read by the same rules.
+  the 2 s `Tab` waits for the reply; an outline's named destinations, one `getDestination` per
+  distinct name, at most 5000, answered within 500 ms or left at page 0) **must** come back only
+  through a `Cu.exportFunction` callback passed to the promise's own `then` seen through Xrays, so
+  that a viewer's object with a `then` of its own is never called; the result is read by the same
+  rules.
   [`a_hostile_viewer_gets_only_primitives_through`](../../tests/browser/browser_vimma_pdf_status.js),
-  [`a_hostile_outline_gets_only_primitives_through`](../../tests/browser/browser_vimma_pdf_outline.js)
+  [`a_hostile_outline_gets_only_primitives_through`](../../tests/browser/browser_vimma_pdf_outline.js),
+  [`hostile_named_destinations_are_bounded`](../../tests/browser/browser_vimma_pdf_outline.js)
 - V5. Bursts of pdf.js callbacks and of chrome-only events (`pagesloaded`, which the viewer can
   fire at will through `FirefoxCom.request("dispatchGlobalEvent")`) **must** be coalesced to at
   most one state message per 100 ms per document.

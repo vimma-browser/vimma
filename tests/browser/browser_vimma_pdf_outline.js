@@ -721,6 +721,68 @@ add_task(async function a_hostile_outline_gets_only_primitives_through() {
   });
 });
 
+add_task(async function hostile_named_destinations_are_bounded() {
+  await withPdf(async (browser) => {
+    await recordingOutline(async (seen) => {
+      await SpecialPowers.spawn(browser, [], () => {
+        /** @type {PdfJsWindow} */
+        const w = content.wrappedJSObject;
+        /** An outline entry of the page's own, its destination a name. */
+        const entry = (/** @type {string} */ title, /** @type {string} */ dest) => {
+          const item = /** @type {{ title: string, dest: string, items: object[] }} */ (
+            new w.Object()
+          );
+          item.title = title;
+          item.dest = dest;
+          item.items = new w.Array();
+          return item;
+        };
+        /** @type {object[]} */
+        const list = new w.Array();
+        list.push(
+          entry("never", "never"),
+          entry("rejects", "rejects"),
+          entry("thenable", "thenable"),
+          entry("found", "found"),
+          entry("found again", "found"),
+        );
+        // Not a promise, which is the point: the cast says only that pdf.js is handed it.
+        const thenable = /** @type {Promise<unknown[]>} */ (
+          /** @type {unknown} */ (
+            Cu.cloneInto({ then: (/** @type {(dest: unknown) => void} */ r) => r([1]) }, content, {
+              cloneFunctions: true,
+            })
+          )
+        );
+        const doc = /** @type {PdfJsDocument} */ (w.PDFViewerApplication.pdfDocument);
+        doc.getOutline = Cu.exportFunction(() => w.Promise.resolve(list), content);
+        doc.getDestination = Cu.exportFunction((/** @type {string} */ name) => {
+          if (name === "never") return new w.Promise(() => {});
+          if (name === "rejects") return w.Promise.reject(new w.Error("no"));
+          if (name === "thenable") return thenable;
+          return w.Promise.resolve(Cu.cloneInto([1], content));
+        }, content);
+      });
+      // A name that never answers holds the outline back for at most 500 ms, inside the 2 s
+      // Tab waits for it.
+      await openOutline();
+      Assert.equal(seen.length, 1, "one message");
+      const msg = /** @type {{ entries: { title: string, page: number }[] }} */ (seen[0]);
+      Assert.deepEqual(
+        msg.entries.map((e) => [e.title, e.page]),
+        [
+          ["never", 0],
+          ["rejects", 0],
+          ["thenable", 0],
+          ["found", 2],
+          ["found again", 2],
+        ],
+        "only a name pdf.js resolves has a page, each entry with that name",
+      );
+    });
+  });
+});
+
 add_task(async function a_late_outline_opens_nothing() {
   await withPdf(async (browser) => {
     await recordingOutline(async (seen) => {

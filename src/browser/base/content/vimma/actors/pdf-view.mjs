@@ -142,6 +142,12 @@ const OUTLINE_READ_MS = 5000;
  */
 const OUTLINE_PAGES_MS = 1000;
 
+/**
+ * How long the outline read waits for its named destinations' pages, after the outline: with
+ * OUTLINE_PAGES_MS, still under the parent's 2 s (OUTLINE_WAIT_MS).
+ */
+const OUTLINE_NAMES_MS = 500;
+
 /** A link's page the viewer does not resolve in this long is shown as its URL. */
 const LINK_PAGE_MS = 2000;
 
@@ -751,23 +757,31 @@ export class PdfView {
       finish();
       return;
     }
-    // Each name resolves through getDestination, as linkPage resolves a link's (#1433): the
-    // table getDestinations gives has no own keys seen through Xrays, so no name resolved there.
-    // Names are asked once each, all at once; one not answered within OUTLINE_PAGES_MS stays 0.
+    // Each name resolves through getDestination, as linkPage resolves a link's and pdf.js's own
+    // viewer resolves a name (#1433): getDestinations gives a Map, which no own-key lookup
+    // matches. Names are asked once each, all at once; one not answered within
+    // OUTLINE_NAMES_MS stays 0.
     /** @type {Map<string, number[]>} */
     const byName = new Map();
-    for (const [index, name] of named) byName.set(name, [...(byName.get(name) ?? []), index]);
+    for (const [index, name] of named) {
+      const indexes = byName.get(name);
+      if (indexes) indexes.push(index);
+      else byName.set(name, [index]);
+    }
     let pending = byName.size;
     let finished = false;
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    let timer = null;
     const settle = () => {
       if (finished) return;
       finished = true;
+      if (timer !== null) lazy.clearTimeout(timer);
       finish();
     };
     const answered = () => {
       if (--pending <= 0) settle();
     };
-    lazy.setTimeout(settle, OUTLINE_PAGES_MS);
+    timer = lazy.setTimeout(settle, OUTLINE_NAMES_MS);
     for (const [name, indexes] of byName) {
       const resolved = Cu.exportFunction((/** @type {unknown} */ dest) => {
         if (!finished) {
