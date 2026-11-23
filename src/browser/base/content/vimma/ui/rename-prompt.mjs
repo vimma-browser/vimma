@@ -9,6 +9,7 @@
 // yes, any other key no. And it asks for free text (`prompt`, docs/specs/bookmarks.md: add,
 // rename, move a bookmark), with Tab completion of the text before the caret.
 
+import { focusOpener } from "./toolbar.mjs";
 import { loadCmdlineSheet } from "./cmdline.mjs";
 
 export const RENAME_ID = "vimma-rename";
@@ -176,7 +177,7 @@ export class RenamePrompt {
         /** @type {unknown} */ (this.win)
       ).gBrowser?.selectedBrowser.focus();
     } else if (restoreFocus) {
-      /** @type {HTMLElement} */ (opener).focus();
+      focusOpener(this.win, /** @type {Element} */ (opener));
     }
     /** @type {HTMLElement} */ (this.el).hidden = true;
     this.changed();

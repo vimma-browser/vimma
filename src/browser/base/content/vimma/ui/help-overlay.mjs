@@ -6,6 +6,7 @@
 // chrome document, so it sits above every page: about:preferences, pdf.js, remote content.
 // Keys reach it only through VimmaHost; it owns no key handling of its own.
 
+import { focusOpener } from "./toolbar.mjs";
 import { bindingTable, filterBindings, keyLegend } from "../core/help.mjs";
 
 /** @import { Keymap } from "../core/keymap.mjs" */
@@ -109,6 +110,9 @@ export class HelpOverlay {
       /** @type {{ gBrowser?: { selectedBrowser: HTMLElement } }} */ (
         /** @type {unknown} */ (this.win)
       ).gBrowser?.selectedBrowser.focus();
+    } else {
+      // close() gave focus back to the opener directly, which the hidden address bar refuses.
+      focusOpener(this.win, opener);
     }
   }
 

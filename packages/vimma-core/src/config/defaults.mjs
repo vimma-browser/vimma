@@ -8,10 +8,11 @@
  */
 
 import { DEFAULT_HINT_CHARS } from "../page/hints.mjs";
-import { PANES_MAX_DEFAULT } from "../panes/panes.mjs";
+import { PANES_MAX_DEFAULT, PANES_MAX_LIMIT } from "../panes/panes.mjs";
+import { MAX_SPLITS_DEFAULT, MAX_SPLITS_LIMIT } from "../panes/splits.mjs";
 import { MAIN_SIZE_DEFAULT } from "../panes/layouts.mjs";
 import { DEFAULT_THEME_NAME } from "./theme.mjs";
-import { SCROLL_STEP_DEFAULT } from "../page/scroll.mjs";
+import { SCROLL_STEP_DEFAULT, SCROLL_STEP_MAX, SCROLL_STEP_MIN } from "../page/scroll.mjs";
 
 /** @typedef {"off" | "always" | "auto"} TabLineSetting */
 
@@ -28,11 +29,11 @@ export const TABLINE_WIDTH = Object.freeze({ min: 4, max: 60, default: 14 });
  * @property {Record<string, string | string[]>} [keys]
  * @property {{ leader?: string, timeout_ms?: number } & Record<string, unknown>} [modal]
  * @property {Record<string, string[]>} [unbind]
- * @property {number} [schema]
+ * @property {unknown} [schema]  ignored: older files carry it (spec m5-core-config-and-theme)
  * @property {Record<string, WorkspaceInput>} [workspaces]
  * @property {ThemeInput} [theme]
- * @property {{ max?: number, layout?: "dwindle" | "manual", main_size?: number,
- *   new_tab?: "alone" | "pane" }} [panes]
+ * @property {{ max?: number, max_splits?: number, layout?: "dwindle" | "manual",
+ *   main_size?: number, new_tab?: "alone" | "pane" }} [panes]
  * @property {Record<string, { insert?: import("../keys/editable.mjs").InsertSiteMode,
  *   unbind?: string[] }>} [sites]  per-site insert mode and keys the page keeps
  *   (docs/specs/site-unbind.md)
@@ -64,7 +65,7 @@ export const TABLINE_WIDTH = Object.freeze({ min: 4, max: 60, default: 14 });
  * @property {{ enabled?: boolean, workspace?: string, ask_timeout?: number,
  *   grant_minutes?: number, grant_max_minutes?: number, max_read_chars?: number,
  *   notify?: boolean, download_dir?: string, download_max_mb?: number,
- *   clamav_max_age_days?: number }} [mcp]  local AI agents and the agent workspace (docs/specs/vimma-mcp.md)
+ *   clamav_max_age_days?: number }} [mcp]  AI agents and the agent workspace (docs/specs/vimma-mcp.md)
  * @property {{ default?: string, aliases?: Record<string, string> }} [search]  the default
  *   search engine and `@alias` keywords (docs/specs/search-engines.md)
  * @property {Record<string, unknown>} [agent]  the built-in agent (docs/specs/builtin-agent.md),
@@ -82,8 +83,8 @@ export const TABLINE_WIDTH = Object.freeze({ min: 4, max: 60, default: 14 });
 /**
  * @typedef {object} ThemeInput
  * @property {"omarchy" | "file"} [source]
- * @property {string} [name]   a built-in palette: "vimma" or "tokyo-night" (schema 2)
- * @property {"system" | "dark" | "light"} [appearance]  the built-in palette's variant (schema 2)
+ * @property {string} [name]   the built-in palette: "vimma"
+ * @property {"system" | "dark" | "light"} [appearance]  the built-in palette's variant
  * @property {string} [font]
  * @property {Record<string, string>} [colors]
  */
@@ -541,6 +542,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   theme,
   panes: {
     max: PANES_MAX_DEFAULT,
+    max_splits: MAX_SPLITS_DEFAULT,
     layout: /** @type {const} */ ("dwindle"),
     main_size: MAIN_SIZE_DEFAULT * 100,
     new_tab: /** @type {const} */ ("alone"),
@@ -550,14 +552,19 @@ export const DEFAULT_CONFIG = Object.freeze({
   bookmarks: {
     root: /** @type {const} */ ("workspace"),
     bookmarklets: /** @type {const} */ ("none"),
+    write_back: /** @type {const} */ ("all"),
   },
   panel: { numbers: /** @type {const} */ ("absolute") },
   scroll: { step: SCROLL_STEP_DEFAULT },
   private: { placement: /** @type {const} */ ("swap") },
   ui: {
-    toolbar: /** @type {const} */ ("shown"),
+    // Hidden since 19 Nov 2026 (docs/specs/toolbar-toggle.md decision 3): the status bar carries
+    // the site and its security cues (decision 12). branding's vimma.ui.toolbar.hidden agrees.
+    toolbar: /** @type {const} */ ("hidden"),
     pdf_outline: /** @type {const} */ ("shown"),
-    tabline: /** @type {const} */ ("off"),
+    // "auto" since 20 Nov 2026 (docs/specs/tab-line.md decision 3): a lone tab's window keeps
+    // its row, and a second tab shows the line. ui/tabline.mjs falls back to it too.
+    tabline: /** @type {const} */ ("auto"),
     tabline_width: TABLINE_WIDTH.default,
   },
   statusbar: { tab: true },
@@ -582,216 +589,614 @@ const tomlString = (s) => JSON.stringify(s);
 /** @param {string} k */
 const tomlKey = (k) => (/^[A-Za-z0-9_-]+$/.test(k) ? k : tomlString(k));
 
+/** @param {unknown} v @returns {string} */
+function tomlValue(v) {
+  if (Array.isArray(v)) return `[${v.map(tomlValue).join(", ")}]`;
+  if (typeof v === "string") return tomlString(v);
+  return String(v);
+}
+
+/**
+ * One line of the annotated file: a setting written as its default (`code`) with a note on what
+ * it takes and what changing it does; a commented example (`example`) for a key with no default;
+ * or a note alone (no `code`).
+ * @typedef {{ code?: string, note?: string, example?: boolean }} RefLine
+ */
+
+/** formatConfigTemplate comments every setting out, so a line of this file may take 98 columns. */
+const REF_WIDTH = 98;
+/** Notes start here at the latest, so that one long value does not push a table's notes right. */
+const NOTE_COLUMN_MAX = 32;
+
+/**
+ * `text` in lines of at most `width` characters, broken between words.
+ * @param {string} text @param {number} width
+ * @returns {string[]}
+ */
+function wrap(text, width) {
+  /** @type {string[]} */
+  const lines = [];
+  let line = "";
+  for (const word of text.split(" ")) {
+    if (line && line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = word;
+    } else line = line ? `${line} ${word}` : word;
+  }
+  return [...lines, line];
+}
+
+/**
+ * Lines with their notes after the values, lined up, as people write a config file.
+ * @param {RefLine[]} entries
+ * @returns {string[]}
+ */
+function annotate(entries) {
+  /** @param {RefLine} e */
+  const code = (e) => (e.example ? `# ${e.code}` : `${e.code}`);
+  // A setting counts 2 columns more: the template comments it out, and its note keeps its column.
+  const widths = entries
+    .filter((e) => e.code !== undefined && e.note)
+    .map((e) => code(e).length + (e.example ? 0 : 2));
+  const column = Math.min(NOTE_COLUMN_MAX, Math.max(0, ...widths) + 2);
+  return entries.flatMap((e) => {
+    if (e.code === undefined) return wrap(e.note ?? "", REF_WIDTH - 2).map((l) => `# ${l}`);
+    if (!e.note) return [code(e)];
+    const line = `${code(e).padEnd(Math.max(column, code(e).length + 2))}# ${e.note}`;
+    // One short line per setting: a longer note is a mistake here, not something to wrap.
+    if (line.length > REF_WIDTH)
+      throw new Error(`defaults.toml: over ${REF_WIDTH} columns: ${line}`);
+    return [line];
+  });
+}
+
+/**
+ * A setting at its default.
+ * @param {string} key @param {unknown} value @param {string} note
+ * @returns {RefLine}
+ */
+const set = (key, value, note) => ({ code: `${key} = ${tomlValue(value)}`, note });
+
+/**
+ * A commented example: a key without a default, or a table that is not there by default.
+ * @param {string} code @param {string} [note]
+ * @returns {RefLine}
+ */
+const example = (code, note) => ({ code, note, example: true });
+
+/** @param {string} note @returns {RefLine} */
+const say = (note) => ({ note });
+
+/**
+ * `[keys]` and `[modal]` with every default binding (`full`), or with one of each for the guide.
+ * @param {boolean} full
+ * @returns {{ keys: string[], modal: string[] }}
+ */
+function keymapLines(full) {
+  const keyLines = [
+    "[keys]",
+    ...annotate([
+      set("prefix", keys.prefix, "the tmux-style prefix: prefix+c means ctrl+b, then c"),
+      full
+        ? say("Each action's keys, in place of its defaults; ctrl+b ? lists every action by name.")
+        : set(
+            "new_tab",
+            keys.new_tab,
+            "an action's keys, in place of its defaults; ctrl+b ? lists all",
+          ),
+    ]),
+  ];
+  if (full) {
+    for (const [name, value] of Object.entries(keys)) {
+      if (name !== "prefix") keyLines.push(`${tomlKey(name)} = ${tomlValue(value)}`);
+    }
+    keyLines.push(
+      "# On macOS these default to Firefox's macOS keys instead, since Option types characters:",
+    );
+    for (const [name, value] of Object.entries(MAC_KEYS)) {
+      keyLines.push(`# ${tomlKey(name)} = ${tomlValue(value)}`);
+    }
+  }
+  const modalLines = [
+    "[modal]",
+    ...annotate([
+      set(
+        "leader",
+        modal.leader,
+        'what <leader> means in bindings such as "<leader>ff" (" " is space)',
+      ),
+      set(
+        "timeout_ms",
+        modal.timeout_ms,
+        "how long a sequence like gg waits for its next key (0–10000 ms)",
+      ),
+      set(
+        "hint_chars",
+        modal.hint_chars,
+        "link-hint letters, the first ones most used (2 or more, no capitals)",
+      ),
+      set(
+        "insert_editing",
+        modal.insert_editing,
+        "in text fields ctrl+w, ctrl+u, ctrl+h delete; ctrl+j, ctrl+m: Enter",
+      ),
+    ]),
+    "",
+    "# Bindings by mode, in Vim notation (<C-d> is ctrl+d): normal, insert, visual, command, hint,",
+    "# element, help, panel, index, resize and pdf (the PDF viewer).",
+  ];
+  if (!full) {
+    modalLines.push(
+      "[modal.normal]",
+      ...annotate([
+        { code: `"gt" = "tab.next"`, note: "a default: g t goes to the next tab" },
+        example(`"<leader>ff" = "goto.picker"`, "one of yours: leader f f opens the goto picker"),
+      ]),
+    );
+    return { keys: keyLines, modal: modalLines };
+  }
+  let first = true;
+  for (const [mode, table] of Object.entries(modal)) {
+    if (typeof table !== "object") continue;
+    if (!first) modalLines.push("");
+    first = false;
+    modalLines.push(`[modal.${mode}]`);
+    for (const [seq, action] of Object.entries(table)) {
+      modalLines.push(`${tomlString(seq)} = ${tomlString(action)}`);
+    }
+    if (mode === "pdf") {
+      modalLines.push(
+        "# PDF actions in place of Vimma's d, r, H, L, P, F, ctrl+f and F5, for the PDF viewer:",
+      );
+      for (const [seq, action] of Object.entries(ZATHURA_PDF_KEYS)) {
+        modalLines.push(`# ${tomlString(seq)} = ${tomlString(action)}`);
+      }
+    }
+  }
+  return { keys: keyLines, modal: modalLines };
+}
+
+/**
+ * Every table of defaults.toml, in order, as its lines. The file :config writes and the
+ * config.toml reference in docs/guide.md (npm run gen-docs) are both made of these, so they
+ * agree: every key config.toml takes, at its default or as a commented example when it has none,
+ * with a note on what it takes and what changing it does.
+ * @param {{ brief?: boolean }} [opts]  brief: `[keys]` and `[modal.normal]` with one binding each
+ * @returns {{ name: string, lines: string[] }[]}
+ */
+export function configTables({ brief = false } = {}) {
+  const c = /** @type {Required<UserConfig>} */ (DEFAULT_CONFIG);
+  const panes = /** @type {Required<NonNullable<UserConfig["panes"]>>} */ (c.panes);
+  const bookmarks = /** @type {Required<NonNullable<UserConfig["bookmarks"]>>} */ (c.bookmarks);
+  const ui = /** @type {Required<NonNullable<UserConfig["ui"]>>} */ (c.ui);
+  const m = /** @type {Required<NonNullable<UserConfig["mcp"]>>} */ (c.mcp);
+  const keymap = keymapLines(!brief);
+  return [
+    { name: "keys", lines: keymap.keys },
+    { name: "modal", lines: keymap.modal },
+    {
+      name: "unbind",
+      lines: [
+        "[unbind]",
+        ...annotate([
+          set("normal", [], "default bindings removed in normal mode; one such line per mode"),
+        ]),
+      ],
+    },
+    {
+      name: "firefox",
+      lines: [
+        "[firefox]",
+        ...annotate([
+          set(
+            "disable",
+            c.firefox.disable,
+            'Firefox\'s own shortcuts that are off: "all", or a list of keys',
+          ),
+          set(
+            "enable",
+            c.firefox.enable,
+            'Firefox\'s shortcuts given back as Firefox runs them, such as ["ctrl+j"]',
+          ),
+        ]),
+      ],
+    },
+    {
+      name: "workspaces",
+      lines: [
+        "# Workspaces in ctrl+b ) order, each a Firefox container. None by default.",
+        "# Colours: gray, yellow, orange, red, pink, purple, violet, blue, cyan, green.",
+        "# Icons: circle, fingerprint, briefcase, dollar, cart, vacation, gift, food, fruit, pet,",
+        "# tree, chill, fence.",
+        "[workspaces]",
+        ...annotate([
+          example("[workspaces.work]", "a workspace named work (1 to 32 characters)"),
+          example(
+            `color = ${tomlString(WORKSPACE_DEFAULTS.color)}`,
+            "the container's colour, from the list above",
+          ),
+          example(
+            `icon = ${tomlString(WORKSPACE_DEFAULTS.icon)}`,
+            "the container's icon, from the list above",
+          ),
+          example(
+            'home = "https://intra.example"',
+            "opens when you go to the workspace and it has no tab",
+          ),
+          example(
+            `autofill = ${WORKSPACE_DEFAULTS.autofill}`,
+            "reserved for a later release; it changes nothing yet",
+          ),
+        ]),
+      ],
+    },
+    {
+      name: "theme",
+      lines: [
+        "[theme]",
+        ...annotate([
+          set(
+            "source",
+            theme.source,
+            '"omarchy" follows Omarchy where installed; "file" always uses name',
+          ),
+          set(
+            "name",
+            theme.name,
+            'the built-in palette: "vimma", vimma.dev\'s colours, dark and light',
+          ),
+          example(
+            'appearance = "system"',
+            '"system", "dark" or "light" variant; unset, :theme sets it',
+          ),
+          set(
+            "font",
+            theme.font,
+            "the font of Vimma's bars, pickers and overlays (a CSS font list)",
+          ),
+        ]),
+      ],
+    },
+    {
+      name: "theme.colors",
+      lines: [
+        "[theme.colors]",
+        ...annotate([
+          example(
+            'accent = "#7aa2f7"',
+            "one colour over the theme: a colors.toml key, or split_1 to split_9",
+          ),
+        ]),
+      ],
+    },
+    {
+      name: "panes",
+      lines: [
+        "[panes]",
+        ...annotate([
+          set(
+            "max",
+            panes.max,
+            `most panes a workspace shows (1–${PANES_MAX_LIMIT}); past it a new split is refused`,
+          ),
+          set(
+            "max_splits",
+            panes.max_splits,
+            `most splits a workspace keeps (1–${MAX_SPLITS_LIMIT})`,
+          ),
+          set(
+            "layout",
+            panes.layout,
+            'where ctrl+b enter splits: "dwindle" (longer side) or "manual" (right)',
+          ),
+          set(
+            "main_size",
+            panes.main_size,
+            "the main pane's share in the main-* layouts, in percent (20–80)",
+          ),
+          set(
+            "new_tab",
+            panes.new_tab,
+            'a tab opened in a split: "alone" beside it, or "pane" in the focused pane',
+          ),
+        ]),
+      ],
+    },
+    {
+      name: "bookmarks",
+      lines: [
+        "[bookmarks]",
+        ...annotate([
+          set(
+            "root",
+            bookmarks.root,
+            'where the bookmarks panel starts: "workspace", "toolbar" or "all"',
+          ),
+          set(
+            "bookmarklets",
+            bookmarks.bookmarklets,
+            'who may run bookmarklets: "none", "user" (you) or "agent" (asks you)',
+          ),
+          set(
+            "write_back",
+            bookmarks.write_back,
+            'changes saved to bookmarks.toml: "all", "vimma" (Vimma\'s own), "none"',
+          ),
+        ]),
+      ],
+    },
+    {
+      name: "panel",
+      lines: [
+        "[panel]",
+        ...annotate([
+          set(
+            "numbers",
+            c.panel.numbers,
+            'side panel rows: "absolute" (tab numbers), "relative" (for 4j), "hybrid"',
+          ),
+        ]),
+      ],
+    },
+    {
+      name: "scroll",
+      lines: [
+        "[scroll]",
+        ...annotate([
+          set(
+            "step",
+            c.scroll.step,
+            `how far j, k, h and l scroll, in CSS pixels (${SCROLL_STEP_MIN}–${SCROLL_STEP_MAX})`,
+          ),
+        ]),
+      ],
+    },
+    {
+      name: "private",
+      lines: [
+        "[private]",
+        ...annotate([
+          set(
+            "placement",
+            c.private.placement,
+            '"swap" takes this window\'s place (Hyprland, macOS); "window": beside it',
+          ),
+        ]),
+      ],
+    },
+    {
+      name: "ui",
+      lines: [
+        "# toolbar, bookmarks_toolbar, pdf_outline and tabline apply at startup and when their line",
+        "# changes, so ctrl+b u, ctrl+shift+b and :tabline last until then.",
+        "[ui]",
+        ...annotate([
+          set(
+            "toolbar",
+            ui.toolbar,
+            'Firefox\'s toolbar, address bar included: "hidden" or "shown"',
+          ),
+          example(
+            'bookmarks_toolbar = "shown"',
+            '"shown", "hidden" or "newtab"; unset, hidden until ctrl+shift+b',
+          ),
+          set(
+            "pdf_outline",
+            ui.pdf_outline,
+            'a PDF\'s outline as it opens: "shown", or "hidden" until Tab',
+          ),
+          set(
+            "tabline",
+            ui.tabline,
+            'the tab line: "auto" (with 2 or more tabs), "always" or "off"',
+          ),
+          set(
+            "tabline_width",
+            ui.tabline_width,
+            `the width of each tab's name in the tab line, in columns (${TABLINE_WIDTH.min}–${TABLINE_WIDTH.max})`,
+          ),
+        ]),
+      ],
+    },
+    {
+      name: "statusbar",
+      lines: [
+        "[statusbar]",
+        ...annotate([
+          set(
+            "tab",
+            c.statusbar.tab,
+            "false drops the status bar's tab number and title while the tab line shows them",
+          ),
+        ]),
+      ],
+    },
+    {
+      name: "updates",
+      lines: [
+        "# Every 12 hours Vimma asks updates.vimma.dev for a newer version, naming only the update",
+        "# channel and the platform.",
+        "[updates]",
+        ...annotate([
+          set(
+            "check",
+            c.updates.check,
+            "false stops every update check, even when this file has a mistake",
+          ),
+        ]),
+      ],
+    },
+    {
+      name: "mcp",
+      lines: [
+        "# AI agents over MCP (Claude Code, Codex, opencode, Copilot), only in the agent workspace.",
+        "[mcp]",
+        ...annotate([
+          example(
+            "enabled = false",
+            "unset: :mcp on and :mcp off set it; set here, it always wins",
+          ),
+          set("workspace", m.workspace, 'the agent workspace\'s name; not "private"'),
+          set(
+            "ask_timeout",
+            m.ask_timeout,
+            "seconds a request waits for your answer, then is denied (10–300)",
+          ),
+          set(
+            "grant_minutes",
+            m.grant_minutes,
+            "a bare a: 0 grants until the agent quits, else that many minutes",
+          ),
+          set(
+            "grant_max_minutes",
+            m.grant_max_minutes,
+            "the longest grant a count before a gives, in minutes (1–1440)",
+          ),
+          set(
+            "max_read_chars",
+            m.max_read_chars,
+            "the most text one page read returns, in characters (1000–500000)",
+          ),
+          set(
+            "notify",
+            m.notify,
+            "a desktop notification when an agent asks while Vimma is hidden",
+          ),
+          set("download_dir", m.download_dir, "where agent downloads are saved; never opened"),
+          set(
+            "download_max_mb",
+            m.download_max_mb,
+            "agent downloads larger than this are refused, in MB (1–4096)",
+          ),
+          set(
+            "clamav_max_age_days",
+            m.clamav_max_age_days,
+            "days before ClamAV definitions stop counting a file clean (1–90)",
+          ),
+        ]),
+      ],
+    },
+    {
+      name: "agent",
+      lines: annotate([
+        say(
+          "Vimma's own agent (ctrl+b i). A model you pick in its window is added here, never a key.",
+        ),
+        example("[agent]"),
+        example(
+          'default = "local"',
+          "the provider new conversations use (unset: the first one picked)",
+        ),
+        example("local_only = false", "true refuses every model that is not on this machine"),
+        example(`max_running = 3`, "how many tasks run at once (1–10)"),
+        example(`max_steps = 100`, "a task stops after this many tool calls (1–1000)"),
+        example(`max_tokens = 2000000`, "a task stops after this many tokens (1000–100000000)"),
+        example(`max_cost = 2`, "a task stops at this cost, with prices set (above 0, up to 1000)"),
+        example(
+          "keep_days = 30",
+          "delete conversations unused this long (1–3650 days); unset, kept",
+        ),
+        example("keep_results = 6", "tool results kept whole (0: all); unset, 20 local, 6 hosted"),
+        example("[[agent.providers]]", "a model behind an API, one table each; never its key"),
+        example('name = "local"', "what default and the model picker call it (1–32 characters)"),
+        example(
+          'kind = "openai"',
+          '"openai" (OpenAI-compatible API) or "anthropic" (Messages API)',
+        ),
+        example('endpoint = "http://127.0.0.1:11434/v1"', "https://, or http:// on this machine"),
+        example('model = "qwen3:14b-ctx32768"', "the model's name at that endpoint"),
+        example("vision = false", "true: the model reads images, so the agent gets screenshots"),
+        example("price_in = 3", "the price per million input tokens, for max_cost; with price_out"),
+        example("price_out = 15", "the price per million output tokens"),
+        example(
+          "[[agent.providers]]",
+          "an agent CLI (Claude Code, Codex, Gemini CLI) on its own login",
+        ),
+        example('name = "claude"', "the provider's name"),
+        example('kind = "cli"', "an agent CLI: no endpoint, the CLI decides where requests go"),
+        example('cli = "claude-code"', 'which CLI: "claude-code", "codex" or "gemini"'),
+        example('model = "sonnet"', "the CLI's own model option; unset, its default"),
+        example("max_minutes = 30", "the longest one task may run, in minutes (1–1440)"),
+      ]),
+    },
+    {
+      name: "sites",
+      lines: annotate([
+        say(
+          "Per site: a host covers its subdomains; the most specific table wins. None by default.",
+        ),
+        example('[sites."docs.google.com"]'),
+        example(
+          'insert = "always"',
+          'text fields take insert mode: "auto" (when detected), "never" or "always"',
+        ),
+        example(
+          'unbind = ["t"]',
+          "keys the page gets instead of Vimma; esc and the prefix stay Vimma's",
+        ),
+      ]),
+    },
+    {
+      name: "routes",
+      lines: annotate([
+        say("Which workspace a link opens in: the first rule that matches wins. None by default."),
+        example("[[routes]]"),
+        example(
+          'domain = "github.com"',
+          'github.com and its subdomains; "*.corp.example": subdomains only',
+        ),
+        example('app = "slack"', "links that program opens (Linux); with domain, both must match"),
+        example('workspace = "work"', "the workspace the link opens in"),
+        example("[[routes]]"),
+        example(
+          'url = "file:///home/me/notes/"',
+          "a URL prefix in place of a domain, for file: and about: pages",
+        ),
+        example('workspace = "work"', "the workspace those pages open in"),
+      ]),
+    },
+    {
+      name: "routing",
+      lines: annotate([
+        example("[routing]"),
+        example(
+          'default_workspace = "work"',
+          "links from programs that no rule matches; unset, Firefox guesses",
+        ),
+      ]),
+    },
+    {
+      name: "search",
+      lines: annotate([
+        say("Search engines. None by default."),
+        example("[search]"),
+        example(
+          'default = "DuckDuckGo"',
+          'an installed engine\'s name or "@gh" (below); wins at every start',
+        ),
+        example("[search.aliases]", "typed as @gh before the words: address bar, :open, :tabnew"),
+        example('gh = "https://github.com/search?q=%s"', "a URL with one %s becomes an engine"),
+        example('w = "Wikipedia (en)"', "an installed engine's name gets this alias"),
+      ]),
+    },
+  ];
+}
+
 /**
  * Render DEFAULT_CONFIG as defaults.toml.
  * @returns {string}
  */
 export function formatDefaultsToml() {
-  const lines = [
+  return [
     "# vimma default configuration.",
     "# Generated from packages/vimma-core/src/config/defaults.mjs by `npm run gen-docs`; do not edit.",
     "# Copy any line into ~/.config/vimma/config.toml to change it.",
-    "schema = 2",
     "",
-    "[keys]",
-  ];
-  for (const [name, value] of Object.entries(keys)) {
-    const v = Array.isArray(value) ? `[${value.map(tomlString).join(", ")}]` : tomlString(value);
-    lines.push(`${tomlKey(name)} = ${v}`);
-  }
-  lines.push(
-    "# On macOS these default to Firefox's macOS keys instead, since Option types characters:",
-  );
-  for (const [name, value] of Object.entries(MAC_KEYS)) {
-    lines.push(`# ${tomlKey(name)} = [${value.map(tomlString).join(", ")}]`);
-  }
-  lines.push(
+    configTables()
+      .map((t) => t.lines.join("\n"))
+      .join("\n\n"),
     "",
-    "[modal]",
-    `leader = ${tomlString(modal.leader)}`,
-    `timeout_ms = ${modal.timeout_ms}`,
-    "# Hint labels are made of these characters, the first ones most often.",
-    `hint_chars = ${tomlString(modal.hint_chars)}`,
-    "# In text fields ctrl+w deletes a word, ctrl+u to the line's start, ctrl+h a character,",
-    "# and ctrl+j and ctrl+m are Enter.",
-    `insert_editing = ${modal.insert_editing}`,
-  );
-  for (const [mode, table] of Object.entries(modal)) {
-    if (typeof table !== "object") continue;
-    lines.push("", `[modal.${mode}]`);
-    for (const [seq, action] of Object.entries(table)) {
-      lines.push(`${tomlString(seq)} = ${tomlString(action)}`);
-    }
-    if (mode === "pdf") {
-      lines.push(
-        "# PDF actions in place of Vimma's d, r, H, L, P, F, ctrl+f and F5, for the PDF viewer:",
-      );
-      for (const [seq, action] of Object.entries(ZATHURA_PDF_KEYS)) {
-        lines.push(`# ${tomlString(seq)} = ${tomlString(action)}`);
-      }
-    }
-  }
-  lines.push(
-    "",
-    "[unbind]",
-    "normal = []",
-    "",
-    "# Firefox's own shortcuts are off; Vimma binds them on the same keys (ctrl+b ? lists them).",
-    '# enable = ["ctrl+j"] gives one back exactly as Firefox runs it.',
-    "[firefox]",
-    'disable = "all"',
-    "enable = []",
-    "",
-    "# Order here is the order ctrl+b ) goes in; each workspace is a Firefox container. None by default.",
-    `# Left-out keys: color = ${tomlString(WORKSPACE_DEFAULTS.color)}, icon = ${tomlString(WORKSPACE_DEFAULTS.icon)}, autofill = ${WORKSPACE_DEFAULTS.autofill}.`,
-    "[workspaces]",
-    '# work = { color = "blue", icon = "briefcase", home = "https://intranet.example" }',
-    "",
-    '# The built-in palette `name`: "vimma" (vimma.dev\'s colours, dark or light) or "tokyo-night"',
-    '# (dark). "omarchy" follows your Omarchy theme where Omarchy is installed and uses `name`',
-    '# elsewhere; "file" always uses `name`.',
-    "[theme]",
-    `source = ${tomlString(theme.source)}`,
-    `name = ${tomlString(theme.name)}`,
-    '# The built-in palette "dark", "light", or "system" (as the system or Firefox is, live).',
-    "# Left out, :theme dark|light|system sets it and remembers it; set here, it always wins.",
-    '# appearance = "system"',
-    `font = ${tomlString(theme.font)}`,
-    "",
-    "# Overrides on top of the palette, with the keys of Omarchy's colors.toml.",
-    "[theme.colors]",
-    '# accent = "#7aa2f7"',
-    "",
-    "# The most panes (live pages) one workspace shows at once, 1 to 16.",
-    "[panes]",
-    `max = ${PANES_MAX_DEFAULT}`,
-    '# Where ctrl+b enter puts a new pane: "dwindle" splits the focused pane along its longer side,',
-    '# "manual" splits right as ctrl+b v. ctrl+b v and ctrl+b - always keep their direction.',
-    'layout = "dwindle"',
-    "# The main pane's size in the main-vertical and main-horizontal layouts, 20 to 80 percent.",
-    `main_size = ${MAIN_SIZE_DEFAULT * 100}`,
-    '# A new tab opened while a split shows (ctrl+t, a link in a new tab): "alone" shows it by',
-    '# itself next to the split, which waits hidden (]s brings it back); "pane" opens it in the',
-    "# focused pane instead.",
-    `new_tab = ${tomlString(DEFAULT_CONFIG.panes?.new_tab ?? "alone")}`,
-    "",
-    '# The bookmarks panel (ctrl+b shift+b) and ctrl+b a: "workspace" is the current workspace\'s',
-    '# folder in the Bookmarks Toolbar; "toolbar" the whole toolbar; "all" every bookmark.',
-    "[bookmarks]",
-    `root = ${tomlString(DEFAULT_CONFIG.bookmarks?.root ?? "workspace")}`,
-    '# Bookmarklets (javascript: bookmarks) run their code with the page\'s rights: "none" lists',
-    '# them but never runs one; "user" runs one in this page with Enter in the bookmarks panel;',
-    '# "agent" also lets an agent run one by its title, asking you every time.',
-    `bookmarklets = ${tomlString(DEFAULT_CONFIG.bookmarks?.bookmarklets ?? "none")}`,
-    "",
-    '# Row numbers in the side panel (ctrl+b b): "absolute" is the tab number (alt+N, {N}gt);',
-    '# "relative" the distance from the highlighted row, for 4j and 3k; "hybrid" both: the',
-    "# highlighted row its own number, the others their distance. The bookmarks panel shows",
-    '# distances with "relative" and "hybrid", and no numbers with "absolute".',
-    "[panel]",
-    `numbers = ${tomlString(DEFAULT_CONFIG.panel?.numbers ?? "absolute")}`,
-    "",
-    "# How far j, k, h and l scroll a page, in CSS pixels, 1 to 2000 (3j: three steps).",
-    "[scroll]",
-    `step = ${DEFAULT_CONFIG.scroll?.step ?? SCROLL_STEP_DEFAULT}`,
-    "",
-    '# The private workspace (ctrl+b shift+p): "swap" shows it in place of the Vimma window on',
-    '# Hyprland and macOS, which hide the other one until you switch back; "window" opens it as',
-    "# a window of its own beside it, as on every other system.",
-    "[private]",
-    `placement = ${tomlString(DEFAULT_CONFIG.private?.placement ?? "swap")}`,
-    "",
-    '# Firefox\'s toolbar (the URL bar and add-on buttons) in every window: "shown" or "hidden".',
-    "# Hidden, focusing the address bar shows it; ctrl+b u and :toolbar toggle it until restart.",
-    "[ui]",
-    `toolbar = ${tomlString(DEFAULT_CONFIG.ui?.toolbar ?? "shown")}`,
-    "# Firefox's Bookmarks Toolbar, hidden by default (your bookmarks: ctrl+b shift+b):",
-    '# "shown", "hidden" or "newtab" (on the start page and new tabs only). Left out,',
-    "# ctrl+shift+b, :bookmarkstoolbar and Firefox's View > Toolbars menu set it for good.",
-    '# bookmarks_toolbar = "shown"',
-    '# Vimma\'s outline beside a PDF that has one (Tab focuses it): "shown" when a PDF opens, or',
-    '# "hidden" until you press Tab.',
-    `pdf_outline = ${tomlString(DEFAULT_CONFIG.ui?.pdf_outline ?? "shown")}`,
-    '# A row at the top of the window listing this workspace\'s tabs: "off", "always", or',
-    '# "auto" (only with 2 or more tabs). :tabline shows or hides it until restart.',
-    `tabline = ${tomlString(DEFAULT_CONFIG.ui?.tabline ?? "off")}`,
-    "# The columns of each tab's name in the tab line, 4 to 60.",
-    `tabline_width = ${DEFAULT_CONFIG.ui?.tabline_width ?? TABLINE_WIDTH.default}`,
-    "",
-    "# false drops the status bar's tab number and title while the tab line shows them.",
-    "[statusbar]",
-    `tab = ${DEFAULT_CONFIG.statusbar?.tab === false ? "false" : "true"}`,
-    "",
-    "# Every 12 hours Vimma asks updates.vimma.dev whether a newer version exists. The request",
-    "# names only the update channel and the platform. false stops every check.",
-    "[updates]",
-    `check = ${DEFAULT_CONFIG.updates?.check === false ? "false" : "true"}`,
-    "",
-    ...mcpLines(),
-    "",
-    "# Per-site insert mode: auto (detect text fields), never (keys stay vimma's), always.",
-    "# unbind: keys the page gets instead of vimma there, in normal and insert mode; a key that",
-    "# starts sequences (g) takes them all. esc and the prefix stay vimma's.",
-    "# A host also covers its subdomains; the most specific table wins. None by default.",
-    '# [sites."docs.google.com"]',
-    '# insert = "always"',
-    '# [sites."github.com"]',
-    '# unbind = ["t"]',
-    "",
-    "# Which workspace a link opens in: by domain (and its subdomains), url prefix, or the",
-    "# programs that opened it (vimma-open). The first matching rule wins, except that among the",
-    "# app rules above it, the one naming the nearest program wins. None by default.",
-    "# [[routes]]",
-    '# domain = "github.com"',
-    '# workspace = "work"',
-    "",
-    "# Where a link from another program opens when no rule matches. Left out, it opens where",
-    "# Firefox guesses from your open tabs, else in the window's workspace.",
-    "# [routing]",
-    '# default_workspace = "work"',
-    "",
-    "# Search engines. default: an installed engine's name (as in Settings > Search), or",
-    '# "@alias" of a URL below. Each alias is typed as @alias before the words, in the URL bar',
-    "# and in :open and :tabnew. A URL with one %s becomes an engine; a name gives that engine",
-    "# the alias. Set here, the default wins at every start; delete the line to choose it in",
-    "# Settings. None by default.",
-    "# [search]",
-    '# default = "DuckDuckGo"',
-    "# [search.aliases]",
-    '# gh = "https://github.com/search?q=%s"',
-    '# w = "Wikipedia (en)"',
-    "",
-  );
-  return lines.join("\n");
-}
-
-/** `[mcp]` in defaults.toml (docs/specs/vimma-mcp.md, decision 26). */
-function mcpLines() {
-  const m = /** @type {Required<NonNullable<UserConfig["mcp"]>>} */ (DEFAULT_CONFIG.mcp);
-  return [
-    "# Local AI agents (Claude Code, Codex, opencode, Copilot) reach only the agent workspace, and",
-    "# nothing runs until you allow it. Left out, :mcp on|off sets enabled and remembers it; set",
-    "# here, it always wins. ask_timeout: seconds a request waits for you (10 to 300). A bare `a`",
-    "# allows the agent until it quits (grant_minutes = 0), or for grant_minutes; a count before",
-    "# it allows that many minutes, up to grant_max_minutes (at most 1440).",
-    "[mcp]",
-    "# enabled = false",
-    `workspace = ${tomlString(m.workspace)}`,
-    `ask_timeout = ${m.ask_timeout}`,
-    `grant_minutes = ${m.grant_minutes}`,
-    `grant_max_minutes = ${m.grant_max_minutes}`,
-    `max_read_chars = ${m.max_read_chars}`,
-    `notify = ${m.notify}`,
-    "# Downloads from the agent workspace ask unless a grant covers them (a dangerous file, a",
-    "# page's own download and a file ClamAV could not fully scan always ask), are saved only here",
-    "# (never your Downloads folder itself), never opened, and refused over download_max_mb",
-    "# (1 to 4096).",
-    `download_dir = ${tomlString(m.download_dir)}`,
-    `download_max_mb = ${m.download_max_mb}`,
-    "# A ClamAV scan with definitions older than this many days (1 to 90) is never reported",
-    "# clean: keeping the file is asked, as for one ClamAV could not fully scan.",
-    `clamav_max_age_days = ${m.clamav_max_age_days}`,
-  ];
+  ].join("\n");
 }
 
 /** The lines of defaults.toml's header, which the template replaces. */
@@ -800,7 +1205,8 @@ const DEFAULTS_HEADER = 3;
 /**
  * What `:config` writes when config.toml does not exist yet (spec m5-config-load): defaults.toml
  * with every setting commented out, so the file means exactly the defaults until a line is
- * uncommented. Table headers stay, so an uncommented line lands in its table.
+ * uncommented. Table headers stay, so an uncommented line lands in its table. A setting keeps its
+ * note's column: the `# ` it gains comes out of the spaces before the note.
  * @returns {string}
  */
 export function formatConfigTemplate() {
@@ -808,16 +1214,15 @@ export function formatConfigTemplate() {
     .split("\n")
     .slice(DEFAULTS_HEADER)
     .map((line) =>
-      line === "" || line.startsWith("#") || line.startsWith("[") || line.startsWith("schema =")
+      line === "" || /^\s*#/.test(line) || line.startsWith("[")
         ? line
-        : `# ${line}`,
+        : `# ${line.replace(/ {2}( {2,}# )/, "$1")}`,
     );
   return [
-    "# Vimma config. Every line below is a default, commented out, so this file changes nothing.",
-    "# To change a setting, uncomment its line (remove the `# `) and edit the value; the table",
-    "# header above it ([keys], [modal], ...) stays as it is. Delete lines you do not need.",
-    "# Vimma reloads this file within 2 seconds of a save, in every window; :source reads it at",
-    "# once. In Vimma, :config opens this file, and ctrl+b ? lists every key with its name here.",
+    "# Vimma config. Every setting is commented out: its default, or an example where it has none.",
+    "# To uncomment a setting, remove the first `# ` of its line (and of its [table] if commented).",
+    "# A save reloads this file within 2 seconds, :source at once; :config opens this file.",
+    "# ctrl+b ? lists every key.",
     "# Reference: the user guide's config.toml section (docs/guide.md).",
     ...body,
   ].join("\n");

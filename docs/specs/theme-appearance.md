@@ -65,7 +65,7 @@ Decisions:
 2. **How it relates to `[theme.colors] mode`:** `mode` is a palette override and applies to any
    source (an Omarchy palette too); when set it wins over `appearance`. `appearance` only picks
    the built-in palette's variant; it never changes an Omarchy theme, which decides its own
-   (its `mode` key or `light.mode`). Tokyo Night has no light variant: it stays dark.
+   (its `mode` key or `light.mode`).
 3. **`:theme`** (action `theme_appearance`, id `theme.appearance`, group Config, no default key):
    `:theme dark`, `:theme light`, `:theme system`; Tab completes the three. Bare `:theme` switches
    to the other of what shows now (dark ↔ light), the easiest first step. Applies at once in every
@@ -91,8 +91,7 @@ Decisions:
 - **Vitest** (`theme.test.mjs`, `config-v2.test.mjs`, `cmdline.test.mjs`):
   - without an Omarchy file there is no warning (was "Omarchy theme not found");
   - `appearance = "dark"` with `scheme: "light"` gives the dark tokens and the reverse; `"system"`
-    (and absent) follows `scheme`; `[theme.colors] mode` wins over `appearance`; Tokyo Night with
-    `"light"` stays dark; an Omarchy palette ignores `appearance`;
+    (and absent) follows `scheme`; `[theme.colors] mode` wins over `appearance`; an Omarchy palette ignores `appearance`;
   - `themeStylesheet` with `"dark"` or `"light"` is one block, no `@media`;
   - an invalid `appearance` from a caller is an error at `theme.appearance` and `"system"` applies;
   - config: `appearance = "light"` parses and resolves to `"light"`; absent stays absent;

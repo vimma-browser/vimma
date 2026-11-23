@@ -8,6 +8,7 @@ import {
   parseGeometry,
   parseProbeTitle,
   promoConfig,
+  promoLook,
   promoPrefs,
   proxyRoute,
   servedModule,
@@ -99,6 +100,23 @@ describe("promoConfig", () => {
     );
     expect(parseConfig(text).errors).toEqual([]);
   });
+  it("draws the tab line in the same [ui] table as the toolbar", () => {
+    const text = promoConfig({
+      source: "file",
+      name: "vimma",
+      toolbar: "hidden",
+      tabline: "always",
+    });
+    expect(text).toBe(
+      'schema = 2\n\n[theme]\nsource = "file"\nname = "vimma"\n\n[ui]\ntoolbar = "hidden"\n' +
+        'tabline = "always"\n',
+    );
+    expect(parseConfig(text).errors).toEqual([]);
+    expect(parseConfig(text).config?.ui.tabline).toBe("always");
+    expect(promoConfig({ source: "file", name: "vimma", tabline: "always" })).toBe(
+      'schema = 2\n\n[theme]\nsource = "file"\nname = "vimma"\n\n[ui]\ntabline = "always"\n',
+    );
+  });
   it("lists the agent's provider when given: a local OpenAI-compatible endpoint, no key", () => {
     const text = promoConfig({
       source: "file",
@@ -118,12 +136,12 @@ describe("promoConfig", () => {
     ).toEqual([]);
     const text = promoConfig({
       source: "file",
-      name: "tokyo-night",
+      name: "vimma",
       colors: { accent: "#ff9e64" },
       toolbar: "hidden",
     });
     expect(text).toBe(
-      'schema = 2\n\n[theme]\nsource = "file"\nname = "tokyo-night"\n\n[theme.colors]\n' +
+      'schema = 2\n\n[theme]\nsource = "file"\nname = "vimma"\n\n[theme.colors]\n' +
         'accent = "#ff9e64"\n\n[ui]\ntoolbar = "hidden"\n',
     );
     expect(parseConfig(text).errors).toEqual([]);
@@ -208,6 +226,31 @@ describe("servedModule", () => {
       text: "export const x = 1;\n",
       imports: [],
     });
+  });
+});
+
+describe("promoLook", () => {
+  it("with vimma-core's own parser: the vimma palette, dark, the toolbar and the tab line", () => {
+    expect(promoLook(parseConfig, { toolbar: "hidden", tabline: "always" })).toEqual({
+      name: "vimma",
+      appearance: "dark",
+      toolbar: "hidden",
+      tabline: "always",
+    });
+  });
+  it("leaves out [ui] tabline for a build that does not know it, and keeps the rest", () => {
+    const older = (text: string) => ({
+      errors: text.includes("tabline") ? [{ path: "ui.tabline", message: "unknown key" }] : [],
+    });
+    expect(promoLook(older, { toolbar: "shown", tabline: "always" })).toEqual({
+      name: "vimma",
+      appearance: "dark",
+      toolbar: "shown",
+    });
+  });
+  it("gives a build without [theme] name none of the keys", () => {
+    const oldest = () => ({ errors: [{ path: "theme.name", message: "unknown key" }] });
+    expect(promoLook(oldest, { toolbar: "hidden", tabline: "always" })).toEqual({ name: null });
   });
 });
 

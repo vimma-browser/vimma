@@ -4,14 +4,42 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
 [ADR-008](../adr/008-config-toml.md).
 
 - F1. A config.toml Vimma creates **must** be mode 0600 in a 0700 folder. Vimma changes an
-  existing file only from `:route add` (an append) and the setup summary (`[search] default`,
-  edited in place by `setTomlKeys`), never on a parse error, atomically through a renamed
-  temporary file, keeping the file's mode.
+  existing file only from `:route add` (an append), the setup page's setting steps (each step's
+  own keys on its `enter`, never from a private window), the built-in agent's setup, and
+  `:siteunbind --save` / `:sitebind --delete`, each run one at a time
+  in the one queue of config.toml edits, so that an append never races a rewrite. Every edit but
+  the append goes through `ConfigHost`'s one writer (`rewriteConfig`; the setup's keys through
+  `setConfigKeys` and `setTomlKeys`), never on a parse error or when the file would not load with
+  the edit (checked with `parseConfig` before the rename), atomically through a renamed temporary
+  file that has the file's mode before any text goes in, renamed over the target of a symlinked
+  config.toml. A setup step names only a step and the index of a choice the host sent that
+  page; the host plans the keys from its own step table against the file as it is at `enter`,
+  and writes only those that change the value in force, so an edit made meanwhile is kept. The
+  one value a page proposes is the prefix step's own key: the host reads it as one chord in
+  Vimma's key notation, judges it again by the keymap of the file at `enter` (a key with ctrl,
+  alt or meta, not esc, enter or tab, not the leader, not a key `[firefox] enable` gives back,
+  not copy, paste, cut, undo, redo or macOS's quit, hide, minimize and settings, not a
+  text-field key while insert editing is on, not the first key of a binding outside the prefix),
+  and writes only `[keys] prefix` with that
+  chord's canonical text, so the page can neither name another key nor put text of its own in
+  the file. The keys pressed while the step waits for one stay in the page's memory: Vimma does
+  not keep them among its recent keys, and only the chord saved reaches the host.
   [`a_missing_folder_is_created_private`](../../tests/browser/browser_vimma_config_first_run.js),
   [`an_existing_file_is_never_touched`](../../tests/browser/browser_vimma_config_first_run.js),
   [`route_add_creates_a_private_config_toml`](../../tests/browser/browser_vimma_security_invariants.js),
-  [`summary_keeps_comments_and_mode_of_config_toml`](../../tests/browser/browser_vimma_setup.js),
-  [`summary_writes_nothing_on_a_parse_error`](../../tests/browser/browser_vimma_setup.js)
+  [`a_step_creates_a_private_config_toml_when_absent`](../../tests/browser/browser_vimma_setup.js),
+  [`a_step_keeps_comments_and_mode_of_config_toml`](../../tests/browser/browser_vimma_setup.js),
+  [`a_parse_error_writes_nothing_and_action_steps_still_work`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`an_edit_made_while_a_step_is_open_is_kept`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`a_symlinked_config_toml_stays_a_link`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`a_private_window_saves_nothing`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`the_page_cannot_name_a_key_or_value`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`the_host_judges_the_pressed_prefix_again`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`prefix_step_records_a_key_and_esc_goes_back_to_the_list`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`the host reads only one chord in Vimma's notation`](../../packages/vimma-core/test/setup-steps.test.ts),
+  [`an edit the file would not load with is refused, with the reason`](../../packages/vimma-core/test/config-set-keys.test.ts),
+  [`adds [theme] before [theme.colors] when only the sub-table exists`](../../packages/vimma-core/test/toml.test.ts),
+  [`route_add_waits_for_a_running_rewrite`](../../tests/browser/browser_vimma_workspace_routes.js)
 - F2. Every value **must** be validated; a broken file keeps the last good config and a bad
   value (such as a `javascript:` home page) is an error.
   [`broken text keeps the previous config active, unchanged`](../../packages/vimma-core/test/config.test.ts),

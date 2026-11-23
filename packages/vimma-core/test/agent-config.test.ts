@@ -147,8 +147,9 @@ describe("addAgentProviderText", () => {
     const r = addAgentProviderText(null, claude, { makeDefault: true });
     if (!("text" in r)) throw new Error(r.error);
     expect(r.text).not.toContain("/home/u");
-    expect(r.text).not.toContain("endpoint");
-    expect(r.text.split("[[agent.providers]]")[1]).toBe(
+    // The template names `endpoint` only in its commented [agent] example (#1443).
+    expect(r.text.slice(formatConfigTemplate().length)).not.toContain("endpoint");
+    expect(r.text.split("\n[[agent.providers]]")[1]).toBe(
       '\nname = "claude"\nkind = "cli"\ncli = "claude-code"\n',
     );
     const agent = agentOf(r.text);

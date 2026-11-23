@@ -518,7 +518,8 @@ const COMMANDS = {
     const hidden = lazy.PrivateBrowsingUtils.isWindowPrivate(win);
     // Named one by one: the validator lets unknown top-level fields through, so a field the host
     // added to screen() later would otherwise reach the socket unchecked (security.md S9).
-    const { notice, prompt, chat, agent, downloads, grep, urlbar, pdf } = VimmaHost.screen(win);
+    const { notice, prompt, chat, agent, downloads, grep, urlbar, pdf, setup } =
+      VimmaHost.screen(win);
     return {
       mode: host.mode,
       pending: host.pending.length ? host.pending.join(" ") : null,
@@ -554,6 +555,8 @@ const COMMANDS = {
       // Whether the selected tab's PDF viewer has drawn the pages in view; a private window's
       // documents are its browsing too (security.md S9).
       pdf: hidden ? null : pdf,
+      // The setup page's screen as drawn, a fixed word (#1298); null in a private window too.
+      setup: hidden ? null : setup,
     };
   },
 

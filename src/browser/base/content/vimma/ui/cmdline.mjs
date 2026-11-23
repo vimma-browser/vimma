@@ -9,6 +9,7 @@
 // Up / Down walk history, or the completion list once Down enters it
 // (docs/specs/cmdline-arrow-completion.md).
 
+import { focusOpener } from "./toolbar.mjs";
 import {
   cmdlineArrow,
   completeCommandLine,
@@ -178,7 +179,7 @@ export class CommandLine {
         /** @type {unknown} */ (this.win)
       ).gBrowser?.selectedBrowser.focus();
     } else if (restoreFocus) {
-      /** @type {HTMLElement} */ (opener).focus();
+      focusOpener(this.win, /** @type {Element} */ (opener));
     }
     /** @type {HTMLElement} */ (this.el).hidden = true;
     this.win.document.documentElement.removeAttribute(OPEN_ATTR);

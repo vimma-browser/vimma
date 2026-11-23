@@ -1222,34 +1222,29 @@ describe("the version line", () => {
   });
 });
 
-describe("[updates] check (config.toml, schema 2) and the pref", () => {
-  const v2 = (...lines: string[]) => ["schema = 2", ...lines].join("\n") + "\n";
+describe("[updates] check (config.toml) and the pref", () => {
+  // A config.toml whose first line is a comment, so errors are on the lines they always were.
+  const cfg = (...lines: string[]) => ["# config.toml", ...lines].join("\n") + "\n";
 
   test("defaults to on; false turns it off", () => {
-    expect(parseConfig(v2()).config?.updates).toEqual({ check: true });
-    expect(parseConfig(v2("[updates]", "check = false")).config?.updates).toEqual({
+    expect(parseConfig(cfg()).config?.updates).toEqual({ check: true });
+    expect(parseConfig(cfg("[updates]", "check = false")).config?.updates).toEqual({
       check: false,
     });
     expect(DEFAULT_CONFIG.updates).toEqual({ check: true });
-    expect(formatDefaultsToml()).toMatch(/^\[updates\]\n(#.*\n)*check = true$/m);
+    expect(formatDefaultsToml()).toMatch(/^\[updates\]\n(#.*\n)*check = true(?: +#.*)?$/m);
   });
 
-  test("a wrong type, an unknown key and schema 1 are errors", () => {
+  test("a wrong type and an unknown key are errors; a schema-1 file may have [updates]", () => {
     const errs = (t: string) =>
       parseConfig(t).errors.map((e) => ({ line: e.line, path: e.path, message: e.message }));
-    expect(errs(v2("[updates]", 'check = "no"'))).toEqual([
+    expect(errs(cfg("[updates]", 'check = "no"'))).toEqual([
       { line: 3, path: "updates.check", message: "expected a boolean, got a string" },
     ]);
-    expect(errs(v2("[updates]", "chekc = false"))).toEqual([
+    expect(errs(cfg("[updates]", "chekc = false"))).toEqual([
       { line: 3, path: "updates.chekc", message: 'unknown key "chekc"' },
     ]);
-    expect(errs("schema = 1\n[updates]\ncheck = false\n")).toEqual([
-      {
-        line: 2,
-        path: "updates",
-        message: "is new in schema 2: put schema = 2 at the top of the file",
-      },
-    ]);
+    expect(errs("schema = 1\n[updates]\ncheck = false\n")).toEqual([]);
   });
 
   test("a file with errors: a readable check = false holds; else the config in force, or held", () => {

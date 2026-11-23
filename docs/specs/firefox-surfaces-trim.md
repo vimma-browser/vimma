@@ -309,7 +309,8 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
    (`firefox-toolbar.css`, `cmdline.css`), so Settings no longer reads as a different app inside
    Vimma. Colours stay as [firefox-surfaces-theme](firefox-surfaces-theme.md) set them.
    `--border-radius-circle` stays, because toggles and radio buttons are told apart by their round
-   shape.
+   shape. (Since changed: Firefox's import wizard gets the same corners and font, in Settings and
+   over the setup page, [setup-v2](setup-v2.md) decision 17.)
 9. **Images are replaced, not hidden one by one.** A chrome `override` line per logo or mascot
    points it at Vimma's logo (where the layout needs an image, such as the About Vimma
    navigation button) or an empty SVG (illustrations), because one line covers every page that

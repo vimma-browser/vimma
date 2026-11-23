@@ -9,6 +9,7 @@
 
 "use strict";
 
+/* global unloadTab -- from head.js */
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
 // Six tasks, most with two restarts: past the default timeout on a busy runner.
 requestLongerTimeout(2);
@@ -447,7 +448,7 @@ add_task(async function an_off_screen_splits_lazy_tabs_close_leave_and_unload_by
   await until(() => !SessionStore.isTabRestoring(r("na")), "na has restored");
   w2.gBrowser.selectedTab = r("nd");
   await until(() => view(w2).splits.shown === 2, "selecting nd shows S2");
-  Assert.ok(w2.gBrowser.discardBrowser(r("na"), true), "na is unloaded");
+  Assert.ok(await unloadTab(r("na")), "na is unloaded");
   Assert.ok(!r("na").linkedPanel, "na has no panel");
   Assert.equal(namedSplits(w2, uuids), "S1:na,nb S2:nd,ne", "S1 still has na");
   const second = await saved(w2, `${PAGE}?nd`);
@@ -663,7 +664,7 @@ add_task(async function a_tab_loaded_before_the_view_started_keeps_its_split_whe
   const fresh = view(w1);
   Object.assign(fresh, { adoption, accepts, onChange });
   fresh.restore(new Map([[V.id, splits]]), V.id);
-  Assert.ok(w1.gBrowser.discardBrowser(t("va"), true), "va is unloaded");
+  Assert.ok(await unloadTab(t("va")), "va is unloaded");
   Assert.equal(namedSplits(w1, uuids), "S1:va,vb S2:vc,vd", "S1 still has va");
   Assert.equal(
     leaves(/** @type {Panes} */ (fresh.splits.splits[0]))[0]?.tab,

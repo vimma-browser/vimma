@@ -16,7 +16,8 @@ import { DEFAULT_CONFIG, formatDefaultsToml } from "../src/config/defaults.mjs";
 import type { ResolvedConfig } from "../src/config/config.mjs";
 import type { PlacesItem } from "../src/ui/bookmarks.mjs";
 
-const v2 = (...lines: string[]) => ["schema = 2", ...lines].join("\n") + "\n";
+// A config.toml whose first line is a comment, so errors are on the lines they always were.
+const cfg = (...lines: string[]) => ["# config.toml", ...lines].join("\n") + "\n";
 
 function ok(text: string) {
   const r = parseConfig(text);
@@ -181,15 +182,15 @@ describe("the panel's keys follow the level (B7)", () => {
 
 describe("[bookmarks] bookmarklets (B1-B3)", () => {
   test('defaults to "none"', () => {
-    expect(ok(v2()).bookmarks.bookmarklets).toBe("none");
+    expect(ok(cfg()).bookmarks.bookmarklets).toBe("none");
     expect(DEFAULT_CONFIG.bookmarks).toMatchObject({ bookmarklets: "none" });
     expect(formatDefaultsToml()).toMatch(
-      /^\[bookmarks\]\n(#.*\n|\w+ = .*\n)*bookmarklets = "none"$/m,
+      /^\[bookmarks\]\n(#.*\n|\w+ = .*\n)*bookmarklets = "none"(?: +#.*)?$/m,
     );
   });
 
   test.each([["none"], ["user"], ["agent"]])('bookmarklets = "%s" is accepted', (value) => {
-    expect(ok(v2("[bookmarks]", `bookmarklets = "${value}"`)).bookmarks).toEqual({
+    expect(ok(cfg("[bookmarks]", `bookmarklets = "${value}"`)).bookmarks).toEqual({
       root: "workspace",
       bookmarklets: value,
       writeBack: "all",
@@ -197,10 +198,10 @@ describe("[bookmarks] bookmarklets (B1-B3)", () => {
   });
 
   test("another value is an error, with the nearest name when one is close", () => {
-    expect(errors(v2("[bookmarks]", 'bookmarklets = "both"'))).toEqual([
+    expect(errors(cfg("[bookmarks]", 'bookmarklets = "both"'))).toEqual([
       { line: 3, path: "bookmarks.bookmarklets", message: 'must be "none", "user" or "agent"' },
     ]);
-    expect(errors(v2("[bookmarks]", 'bookmarklets = "agnet"'))).toEqual([
+    expect(errors(cfg("[bookmarks]", 'bookmarklets = "agnet"'))).toEqual([
       {
         line: 3,
         path: "bookmarks.bookmarklets",
@@ -208,13 +209,13 @@ describe("[bookmarks] bookmarklets (B1-B3)", () => {
         suggestion: "agent",
       },
     ]);
-    expect(errors(v2("[bookmarks]", "bookmarklets = true"))).toEqual([
+    expect(errors(cfg("[bookmarks]", "bookmarklets = true"))).toEqual([
       { line: 3, path: "bookmarks.bookmarklets", message: "expected a string, got a boolean" },
     ]);
   });
 
   test("an unknown key suggests bookmarklets when it is close", () => {
-    expect(errors(v2("[bookmarks]", 'bookmarklet = "user"'))).toEqual([
+    expect(errors(cfg("[bookmarks]", 'bookmarklet = "user"'))).toEqual([
       {
         line: 3,
         path: "bookmarks.bookmarklet",

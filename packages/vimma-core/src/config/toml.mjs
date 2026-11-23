@@ -507,6 +507,23 @@ function headerName(line) {
 }
 
 /**
+ * Whether `line` is the header of a sub-table of `table`: `[table.sub]` or `[[table.sub]]`.
+ * A quoted name holding a `]` may be missed; setTomlKeys then refuses the edit as before.
+ * @param {string} line @param {string} table
+ */
+function subTableHeader(line, table) {
+  const s = trimBlank(line.endsWith("\r") ? line.slice(0, -1) : line);
+  if (s[0] !== "[") return false;
+  const array = s.startsWith("[[");
+  const close = s.indexOf(array ? "]]" : "]");
+  if (close < 0) return false;
+  const path = parsePath(s.slice(array ? 2 : 1, close)).map((seg) =>
+    typeof seg === "string" ? trimBlank(seg) : seg,
+  );
+  return path.length > 1 && path[0] === table;
+}
+
+/**
  * One edit on parsed `text`.
  * @param {string} text @param {Record<string, unknown>} doc  `text`, parsed @param {TomlEdit} edit
  * @returns {{ ok: true, text: string } | { ok: false, error: TomlSyntaxError }}
@@ -523,6 +540,17 @@ function setKey(text, doc, { table, key, value }) {
   const literal = tomlLiteral(value);
   const headerAt = lines.findIndex((l) => headerName(l) === table);
   if (headerAt < 0) {
+    const at = (where([table]) ?? 0) - 1;
+    const sub = doc[table];
+    const plain = typeof sub === "object" && sub !== null && !Array.isArray(sub);
+    // Made by sub-table headers alone (`[theme.colors]` without `[theme]`, setup-v2 decision 6):
+    // TOML 1.0 allows the `[table]` header after them too, but before the first one is where a
+    // reader looks for it.
+    if (plain && at >= 0 && subTableHeader(/** @type {string} */ (lines[at]), table)) {
+      const cr = eol === "\r\n" ? "\r" : "";
+      lines.splice(at, 0, `[${table}]${cr}`, `${key} = ${literal}${cr}`, cr);
+      return { ok: true, text: lines.join("\n") };
+    }
     if (table in doc) return fail(where([table]) ?? 1, `${table} is not a plain [${table}] table`);
     const body = `[${table}]${eol}${key} = ${literal}${eol}`;
     if (text === "") return { ok: true, text: body };
@@ -569,7 +597,7 @@ function setKey(text, doc, { table, key, value }) {
  * keeps comments, hence the line edit; the result is parsed again and must equal the old file
  * plus the new values, so an edit the line scan got wrong is an error, never a changed file.
  * @param {string} text  the file; "" for a new one
- * @param {TomlEdit[]} edits
+ * @param {readonly TomlEdit[]} edits
  * @returns {{ ok: true, text: string } | { ok: false, error: TomlSyntaxError }}
  */
 export function setTomlKeys(text, edits) {

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Local AI agents and the agent workspace (docs/specs/vimma-mcp.md). Pure: `:mcp on|off|forget`
+ * AI agents and the agent workspace (docs/specs/vimma-mcp.md). Pure: `:mcp on|off|forget`
  * and their questions (decisions 8 and 26), and the agent workspace's glyph. The agent role's
  * gate: the queue of questions, the mute and the grants (decisions 12-22, `AgentQueue`), and the
  * untrusted-content delimiters of page text ("Marking content untrusted").
@@ -36,25 +36,54 @@ export function parseMcpCommand(text) {
 }
 
 /**
- * What `:mcp on|off` does (decision 26): with `[mcp] enabled` in config.toml (`config`), nothing
- * but say so; `on` asks first (the pref is the command's, and so is the question); `off` sets
- * the pref at once.
- * @param {"on" | "off"} word
- * @param {{ pref: boolean, config?: boolean }} state  the pref, and the file's value if it sets one
- * @returns {{ kind: "say", text: string } | { kind: "ask" }
- *   | { kind: "set", value: boolean, text: string }}
+ * @typedef {object} McpSwitchState
+ * @property {boolean} pref     `vimma.mcp.enabled`, which `:mcp on` sets
+ * @property {boolean} [config] `[mcp] enabled` when config.toml sets it
+ * @property {boolean} off      `:mcp off` this session: held in memory, never cleared by a read
+ *   of config.toml, only by `:mcp on` or a restart (docs/specs/setup-v2.md decision 16)
  */
-export function planMcpSwitch(word, { pref, config }) {
-  if (config !== undefined) {
-    return {
-      kind: "say",
-      text: `mcp: config.toml sets [mcp] enabled = ${config}; change it there`,
-    };
+
+/**
+ * Whether agents may connect, and what decides it: `:mcp off` this session wins over the file,
+ * which wins over the pref. Reason: a kill switch that the next read of config.toml undoes is
+ * no kill switch (setup-v2 decision 16).
+ * @param {McpSwitchState} state
+ * @returns {{ enabled: boolean, from: "session" | "config" | "pref" }}
+ */
+export function mcpState({ pref, config, off }) {
+  const under =
+    config === undefined
+      ? { enabled: pref, from: /** @type {const} */ ("pref") }
+      : { enabled: config, from: /** @type {const} */ ("config") };
+  return off && under.enabled ? { enabled: false, from: "session" } : under;
+}
+
+/**
+ * What `:mcp on|off` does (decision 26, setup-v2 decision 16). `off` always turns agents off for
+ * the session, whatever the file says, and clears the pref when it is set (`pref: true`), so
+ * that taking `enabled` out of the file later keeps them off. `on` asks first, as the pref's
+ * question is the user's consent; with `[mcp] enabled = false` in the file it only says so.
+ * @param {"on" | "off"} word
+ * @param {McpSwitchState} state
+ * @returns {{ kind: "say", text: string } | { kind: "ask" }
+ *   | { kind: "off", pref: boolean, text: string }}
+ */
+export function planMcpSwitch(word, state) {
+  const now = mcpState(state);
+  if (word === "off") {
+    if (!now.enabled) return { kind: "off", pref: state.pref, text: "mcp is already off" };
+    const text =
+      state.config === true
+        ? "mcp off until :mcp on or a restart; config.toml's [mcp] enabled = true turns agents " +
+          "on again at the next start"
+        : "mcp off: agents cannot reach Vimma";
+    return { kind: "off", pref: state.pref, text };
   }
-  const on = word === "on";
-  if (pref === on) return { kind: "say", text: `mcp is already ${word}` };
-  if (on) return { kind: "ask" };
-  return { kind: "set", value: false, text: "mcp off: agents cannot reach Vimma" };
+  if (state.config === false) {
+    return { kind: "say", text: "mcp: config.toml sets [mcp] enabled = false; change it there" };
+  }
+  if (now.enabled) return { kind: "say", text: "mcp is already on" };
+  return { kind: "ask" };
 }
 
 /**
@@ -65,21 +94,32 @@ export function planMcpSwitch(word, { pref, config }) {
  */
 export function mcpOnQuestion(name, adopted) {
   if (!adopted) {
-    return `Let local AI agents ask to use the "${name}" workspace? Nothing runs until you allow it. y/N`;
+    return `Let AI agents ask to use the "${name}" workspace? Nothing runs until you allow it. y/N`;
   }
-  const tabs = `${adopted.tabs} tab${adopted.tabs === 1 ? "" : "s"}`;
-  return (
-    `"${name}" is your own workspace (${tabs}, its own logins). Agents will be able to read ` +
-    "it. y/N"
-  );
+  return `${mcpAdoptedWarning(name, adopted)} y/N`;
+}
+
+/**
+ * What `:mcp on`'s question, and the setup's agents step, say of an agent workspace Vimma did
+ * not make (decision 8).
+ * @param {string} name @param {{ tabs: number }} adopted
+ */
+export function mcpAdoptedWarning(name, { tabs }) {
+  const n = `${tabs} tab${tabs === 1 ? "" : "s"}`;
+  return `"${name}" is your own workspace (${n}, its own logins). Agents will be able to read it.`;
 }
 
 /**
  * `:mcp` without a word: on or off (and whether config.toml says so), and the workspace.
- * @param {{ enabled: boolean, from: "config" | "pref", workspace: string }} state
+ * @param {{ enabled: boolean, from: "session" | "config" | "pref", workspace: string }} state
  */
 export function mcpStatus({ enabled, from, workspace }) {
-  const where = from === "config" ? " (config.toml)" : "";
+  const where =
+    from === "config"
+      ? " (config.toml)"
+      : from === "session"
+        ? " (until :mcp on or a restart)"
+        : "";
   const what = enabled ? "nothing runs until you allow it" : ":mcp on lets agents ask to use it";
   return `mcp ${enabled ? "on" : "off"}${where} · agent workspace "${workspace}" · ${what}`;
 }

@@ -238,6 +238,8 @@ add_task(async function the_toolbar_follows_the_theme() {
     Services.prefs.clearUserPref(APPEARANCE_PREF);
     await IOUtils.remove(themeDir, { recursive: true, ignoreAbsent: true });
   });
+  // Each theme starts from the toolbar shown; it is hidden by default (toolbar-toggle decision 3).
+  Services.prefs.setBoolPref(PREF, false);
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PLAIN);
   await focusContent(tab.linkedBrowser);
   await until(() => VimmaHost.status(window).mode === "normal", "the page is in normal mode");

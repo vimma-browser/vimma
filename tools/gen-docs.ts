@@ -1,6 +1,8 @@
 // Regenerates packages/vimma-core/defaults.toml, docs/bindings.md and docs/bindings.json (which
-// vimma.dev mirrors: docs/specs/site-keys-mirror.md) from vimma-core.
-import { writeFileSync } from "node:fs";
+// vimma.dev mirrors: docs/specs/site-keys-mirror.md) from vimma-core, and the config.toml
+// reference in docs/guide.md from the same annotated lines as defaults.toml.
+import { readFileSync, writeFileSync } from "node:fs";
+import { spliceConfigReference } from "./config-reference/config-reference.ts";
 import {
   FIREFOX_SHORTCUTS,
   INSERT_ENTER,
@@ -15,6 +17,8 @@ import {
 
 const root = new URL("../", import.meta.url);
 writeFileSync(new URL("packages/vimma-core/defaults.toml", root), formatDefaultsToml());
+const guide = new URL("docs/guide.md", root);
+writeFileSync(guide, spliceConfigReference(readFileSync(guide, "utf8")));
 
 const keymap = compileKeymap();
 const rows = bindingTable(keymap);
@@ -112,4 +116,6 @@ writeFileSync(
   new URL("docs/bindings.json", root),
   JSON.stringify(bindingsJson(keymap), null, 2) + "\n",
 );
-console.log("wrote packages/vimma-core/defaults.toml, docs/bindings.md, docs/bindings.json");
+console.log(
+  "wrote packages/vimma-core/defaults.toml, docs/guide.md's config.toml reference, docs/bindings.md, docs/bindings.json",
+);

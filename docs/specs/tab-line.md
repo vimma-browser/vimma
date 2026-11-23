@@ -6,7 +6,7 @@ Status: implemented · Area: `packages/vimma-core/src/ui/tabline.mjs` (new), `st
 `config/ConfigHost.sys.mjs`, `browser/themes/shared/vimma/tabline.css` (new) · Upstream patches:
 none · ADR: none
 
-Issue: [#1289](https://github.com/vimma-browser/vimma/issues/1289)
+Issues: [#1289](https://github.com/vimma-browser/vimma/issues/1289), [#1403](https://github.com/vimma-browser/vimma/issues/1403) (the `"auto"` default)
 
 Builds on the status bar of [m2-statusbar-whichkey](m2-statusbar-whichkey.md), the hidden tab
 strip of [m0-tabstrip-hidden](m0-tabstrip-hidden.md), the hidden toolbar of
@@ -21,6 +21,8 @@ workspace's tabs, as Vim's `tabline` lists its tab pages. `gb` puts a hint label
 the line, and one more key goes to that tab. The line is a picture of the tabs, not a panel: it
 never takes focus or keys, so the page keeps every key it had. It is off by default and turned on
 with `[ui] tabline` in `config.toml` or `:tabline`.
+(Since changed: the line is `"auto"` by default, decision 3: it shows once a workspace has two
+tabs, and `[ui] tabline = "off"` keeps the window without it.)
 
 ## Problem
 
@@ -36,6 +38,9 @@ with `[ui] tabline` in `config.toml` or `:tabline`.
 1. `[ui] tabline` in `config.toml` sets the line: `"off"` (the default) draws nothing,
    `"always"` draws it in every browser window, `"auto"` draws it only while the current
    workspace has two tabs or more. A change of that line in the file applies at the next read.
+   (Changed 20 Nov 2026, issue #1403: `"auto"` is the default, in new and existing profiles,
+   so a window with two tabs or more draws the line without a `[ui]` line, and
+   `tabline = "off"` keeps the old look.)
 2. `:tabline` shows the line if the window does not draw it, and hides it if it does, in every
    window, until restart or until the `[ui] tabline` line changes in `config.toml`.
 3. The line is the top row of the window. With the toolbar shown the window reads, top to
@@ -184,6 +189,15 @@ the status bar's way of measuring and drawing. The host hands the line the side 
    (only with two tabs or more), as Vim's `showtabline` takes 0, 2 and 1, and it is `"off"`
    until use shows whether it should be on, since it costs every page one row (20 px). Rejected:
    a boolean, because `"auto"` keeps a lone tab's window free of an empty-looking line.
+   - (Changed 20 Nov 2026, issue #1403: the default is `"auto"`, for new and existing profiles,
+     as the hidden toolbar became the default ([toolbar-toggle](toolbar-toggle.md) decision 3).
+     Use showed the line worth its row once there is a second tab: with the tab strip and the
+     toolbar hidden, it is the only picture of the open tabs that costs no key, and `"auto"`
+     keeps a lone tab's window as it was. A missing config.toml, or a broken one with no last
+     good config, means the defaults, so `"auto"`. `vimma.ui.tabline` has no build default:
+     with no value set, `TabLine.setting` falls back to the config's default, so a window drawn
+     before the config is read agrees with it. `tabline = "off"` keeps the window without the
+     line. `the_default_is_auto` in `browser_vimma_tabline.js`.)
 4. **The setting lives in `[ui]`, beside `toolbar`.** `[ui]` holds the window's rows of chrome
    (`toolbar`, `bookmarks_toolbar`), and the line is one, so `tabline` goes there. The width of
    a name is `[ui] tabline_width` rather than `tab_width`, because every key in `[ui]` names the
@@ -264,7 +278,8 @@ hint_chars)` in tab order, and the host reports mode `hint` while the session la
     tab while labelling, because it could hide the tabs one letter away.
 14. **`gb` shows a hidden line for the session.** With the line off, `gb` draws it while its
     labels show and removes it after, so the key works under the default `"off"` and costs no
-    row until used. Rejected: refusing with a notice, because `gb` would then do nothing out of
+    row until used. (Since changed: the default is `"auto"`, decision 3; this holds under
+    `"off"` and under `"auto"` with one tab.) Rejected: refusing with a notice, because `gb` would then do nothing out of
     the box.
 15. **`{N}gb` goes straight there.** With a count, `gb` runs `tab.goto` with that number, as
     `{N}gt` does (core `tabTarget`), because a user who reads the number in the line has no
@@ -378,8 +393,14 @@ mochitest (`tests/browser/browser_vimma_tabline.js`):
 - `off_draws_nothing`, `always_draws_the_workspace_tabs`: entries, numbers and order match the
   side panel's rows.
 - `line_sits_above_the_address_bar`: with the toolbar shown the line's bottom is the nav bar's
-  top; after `ctrl+b u` the line keeps its top and the page starts at its bottom.
+  top; after `ctrl+b u` the line keeps its top and the page starts at its bottom, and the
+  address bar revealed by focus starts at the line's bottom (behaviour 3): the hidden toolbar's
+  bar is out of the toolbox's flex flow, so `toolbar.css` anchors its top to the line, added
+  with the `"auto"` default (#1403), which made a drawn line under a hidden toolbar the usual
+  window.
 - `auto_needs_two_tabs`: one tab hidden, a second tab shows it, closing it hides it.
+- `the_default_is_auto`: with no config.toml and no pref set, one tab draws no line and two
+  tabs draw it (decision 3, changed 20 Nov 2026).
 - `config_reload_applies`: writing `[ui] tabline` turns the line on and off; `tabline_width`
   changes the cut; `[statusbar] tab = false` drops the status bar's tab segment.
 - `tabline_command_toggles`: `:tabline` hides a drawn line in every window and shows it again.

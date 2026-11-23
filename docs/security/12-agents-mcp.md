@@ -1,6 +1,6 @@
 ## 12. Agents (MCP) (`host/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`, `ctl/agent-tabs.mjs`, `actors/agent-page.mjs`)
 
-Lets local AI agents (Claude Code, Codex, opencode, Copilot) use the MCP tools in one workspace,
+Lets AI agents (Claude Code, Codex, opencode, Copilot) use the MCP tools in one workspace,
 **agent**, through the control socket's `agent` role: list, read, open and close its tabs, and
 the tools the specs below add. Spec:
 [vimma-mcp](../specs/vimma-mcp.md), [ADR-019](../adr/019-agents-over-mcp.md).
@@ -722,16 +722,22 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   it (no scheme, no `www.`; core's `agentTabTitle`). A Reader View tab is named by its article's
   URL, whose user name and password its `about:reader?url=` address carries percent-encoded
   (M30, #1324). A link's href, a form's action and the page's URL lose them also from a URL
-  percent-encoded in their query or hash, a site's redirect parameter (M30, #1348). A page's own
+  percent-encoded in their query or hash, a site's redirect parameter (M30, #1348), and from
+  a URL written unencoded in their path, an archive's or a redirect service's (M30, #1372). A page's own
   title that is a URL with a scheme loses them too (core's `agentTitle`), as given and as shown:
   a fullwidth slash in the user name, which NFKC makes a slash, does not hide them, and neither
-  does a URL percent-encoded in its query. Any other title, and the page's text, are the
+  does a URL percent-encoded in its query, nor invisible characters that fill the part of a
+  long title that is read (a title read only in part is given as `agentUrl` gives it when that
+  part, as shown, is empty or may still begin a scheme; #1372). Any other title, and the page's text, are the
   page's own: a page that writes its address into them is not changed. A link nested in another
   link's text, which some search pages have, comes out of Firefox's extractor escaped
   (`\[a\]\(https://...\)`); its target loses them too (#1217). Only link targets are read: text
   shaped like one (`](scheme://user:password@host)`, white space-free) is rewritten as a target,
   and any other code, email address or URL in the page's text is left byte for byte.
   [`a link's href loses its user name and password`](../../packages/vimma-core/test/agent-keys.test.ts),
+  [`a link's href loses the user name and password of a URL in its path`](../../packages/vimma-core/test/agent-path-userinfo.test.ts),
+  [`a page's markdown link target loses them`](../../packages/vimma-core/test/agent-path-userinfo.test.ts),
+  [`a title whose first 32,768 code units are invisible still loses them`](../../packages/vimma-core/test/agent-path-userinfo.test.ts),
   [`a user name and password longer than the cut are dropped before it`](../../packages/vimma-core/test/agent-keys.test.ts),
   [`a link's href and a form's action lose their user name and password`](../../packages/vimma-core/test/agent-act.test.ts),
   [`a user name and password longer than the cut are dropped before it`](../../packages/vimma-core/test/agent-act.test.ts),
@@ -762,7 +768,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`agent-keys: a link list inside the untrusted delimiters, and how many were dropped`](../../packages/vimma-core/test/control-v2.test.ts),
   [`keys_list_links_as_untrusted_content`](../../tools/vimma-ctl/src/mcp/render.rs)
 - M22. While MCP is on, `:control on`'s question **must** say that full control reaches every
-  workspace and tab, not only the agent workspace, and that any local AI agent with a shell can
+  workspace and tab, not only the agent workspace, and that any AI agent with a shell on this machine can
   use it, and a yes given after MCP went on or off **never** turns it on; each new full
   connection's question (S13) **must** say `wants full control (every workspace, not only
 "agent")` in its text and accessible name, naming the agent workspace, and its desktop
@@ -1207,10 +1213,21 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   changed. That reading is bounded: one URL reads at most about four times its read length of
   query text, all of a read page's link targets together 256 Ki code units, each target only as
   far as a link's href is read, and a title longer than a page URL's read is read as `agentUrl`
-  reads it; a query or hash past that is dropped. A URL inside a path segment
-  (`https://web.archive.org/web/2020/https://user:password@host/`, `/r/https%3A%2F%2F…`) is not
-  read: reading paths as URLs would rewrite ordinary addresses and change which page the agent
-  is told it is on, so it is a known limit. `vimma_open`'s reply names the URL the agent passed,
+  reads it; a query or hash past that is dropped. A URL written unencoded in another URL's path,
+  as archive and redirect services write it
+  (`https://web.archive.org/web/2020/https://user:password@host/`), loses them too (#1372): each
+  URL in the path, from its scheme to the end of the path, is stripped as a URL nested one level
+  deeper, and the next is looked for right after its scheme, so an authority that ends later
+  (`foo://a\https://user@host`) hides none; past the fourth URL in a path, or the fourth level,
+  the rest of the URL is dropped, query and hash too. A path without one (`/@ada/posts`,
+  `/mailto:ada@host`, a MediaWiki `/wiki/File:Logo@2x.png`, since a `file:` URL without slashes
+  has no user name) is left byte for byte; a segment in a special scheme's colon form
+  (`/go/http:ada@host`) is a URL to a parser and loses everything up to its `@`. Two known
+  limits: a URL right after a letter, digit, `+`, `-` or `.` (`/web/2020-https://…`) is not read,
+  so that no run of scheme characters is searched from each of its characters, and a URL
+  percent-encoded in a path segment (`/r/https%3A%2F%2F…`) is not decoded: reading every path
+  segment as an encoded URL would rewrite ordinary addresses and change which page the agent is
+  told it is on. `vimma_open`'s reply names the URL the agent passed,
   as the agent wrote it: it tells the agent nothing it did not send, and the loaded page's URL
   goes through `agentUrl` in every later reply. A Reader View address that was read whole is then given as its
   article's URL, as the status bar shows it (core's `readerOriginalUrl`), so a reader tab is
@@ -1493,3 +1510,58 @@ the page's own and can carry tokens it put there; they come only from the agent'
   [`test_an_older_vimma_ctl_gets_a_notice_and_still_works`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`says older for a client that names no version: it predates the check`](../../packages/vimma-core/test/ctl-version.test.ts),
   [`is optional, and refused with the whole hello when it is not a version`](../../packages/vimma-core/test/ctl-version.test.ts)
+- M64. `:mcp off` **must** turn MCP off for the rest of the session, whatever config.toml says
+  and however often it is read again. It sets a hold kept in memory that wins over
+  `[mcp] enabled = true`, and only `:mcp on` (after its `y/N`) or a restart clears it, never a
+  read of the file (the watcher, `:source`, or a write by `:route add`, the built-in agent's
+  setup or the setup page). A yes to an `:mcp on` question asked before a later `:mcp off` is
+  refused. `:mcp off` also clears the pref `vimma.mcp.enabled`, so that taking `enabled` out of
+  the file later keeps agents off. Reason: a kill switch that depends on editing a file, or that
+  the next read of the file undoes, is no kill switch ([setup-v2](../specs/setup-v2.md)
+  decision 16). `[mcp] enabled = false` still wins over `:mcp on`.
+  [`with [mcp] enabled = true in config.toml, :mcp off turns agents off until restart`](../../packages/vimma-core/test/agent.test.ts),
+  [`the state: :mcp off first, then the file, then the pref`](../../packages/vimma-core/test/agent.test.ts),
+  [`mcp_off_survives_a_config_reload`](../../tests/browser/browser_vimma_mcp.js),
+  [`mcp_on_after_off_starts_the_agent_role_when_the_pref_was_on`](../../tests/browser/browser_vimma_mcp.js),
+  [`a_yes_to_an_older_mcp_on_question_does_not_undo_a_newer_mcp_off`](../../tests/browser/browser_vimma_mcp.js)
+- M65. The setup page (about:vimma-setup, [setup-v2](../specs/setup-v2.md) behaviour 28 and decision 20) **must** turn MCP on only from a trusted `enter` on its agents step's "On", which is the
+  user's consent as a yes to `:mcp on` is, and is checked as that yes is: it **must** be refused,
+  with nothing written, when there is no agent workspace, when the agent workspace changed, or when
+  `:mcp off` ran after the user arrived at the step. The host takes what it checks against
+  (`McpHost.consentTicket`) when the user arrives at the step, with the cursor on the value in
+  force, and keeps it when the step is drawn again (a read of config.toml, `:mcp on|off` elsewhere),
+  so a redraw **never** stands for a consent given after an `:mcp off`; each `enter` on the step
+  spends it, and a redraw after that takes none, so "On" is refused until the user arrives at the
+  step again. A redraw that changes the row in force moves the cursor to it, and a refusal draws the
+  step anew with the cursor on the row in force, so turning agents on always takes `j` and `enter`
+  on a screen that shows the hold. Only after its `[mcp] enabled = true` is written and read, or
+  when the file says so already, does it end `:mcp off`'s hold, checking again first, as the yes
+  does; the write alone **never** ends the hold (M64). Refused at that second check (the workspace
+  changed or went away during the write), it holds agents off as `:mcp off` does, until `:mcp on` or
+  a restart, so the file just written does not turn them on in this session; it does at the next
+  start, as any `enabled = true` does. "Off" is selected first unless agents are on, so a plain
+  `enter` never turns them on and, under the hold, writes nothing; "On" says that it also ends `:mcp
+off` and, for a workspace Vimma did not make, shows `:mcp on`'s warning too; without an agent
+  workspace it shows that it writes nothing. The page names only a step and a choice index (section
+  8, F1); no other step and no other choice turns agents on, and only the setup host calls
+  `consentTicket`, `consentRefusal` and `consentFromSetup`, although `ctl/` and `agent/` code import
+  `McpHost`. Neither the control socket's agent role nor an MCP agent can open or drive the page:
+  the socket has no command for it, the agent role's `open` refuses it, and the page acts only on
+  trusted events. Full control (`vimma-ctl send-keys`, S13) presses trusted keys in the focused
+  window and so can drive the page, as it can type `:mcp on` and `y`; that is accepted under M22,
+  whose question says that full control reaches every workspace and tab.
+  [`on writes enabled = true and is the consent; off for the session ends with it`](../../packages/vimma-core/test/setup-steps.test.ts),
+  [`off writes enabled = false only while agents are on`](../../packages/vimma-core/test/setup-steps.test.ts),
+  [`the notes say what the hold and an adopted workspace mean`](../../packages/vimma-core/test/setup-steps.test.ts),
+  [`on without an agent workspace shows that it writes nothing: it is refused`](../../packages/vimma-core/test/setup-steps.test.ts),
+  [`ends :mcp off's hold from a consent only in the setup host`](../../tools/security/test/chrome-source.test.ts),
+  [`agents_step_selects_off_first_and_writes_enabled_on_enter`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`agents_on_ends_mcp_off_as_mcp_on_does`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`an_mcp_off_after_the_step_was_drawn_wins_over_its_enter`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`an_mcp_off_the_page_hears_keeps_the_ticket_and_moves_the_cursor`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`a_config_read_redraw_keeps_the_ticket`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`a_workspace_gone_during_the_write_holds_agents_off`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`a_redraw_during_the_load_after_a_refusal_keeps_the_cursor_on_off`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`a_redraw_with_no_ticket_takes_none`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`the_page_cannot_name_a_key_or_value`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`agent_role_cannot_open_setup`](../../tests/browser/browser_vimma_setup.js)

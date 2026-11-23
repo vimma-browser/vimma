@@ -78,7 +78,7 @@ The user is asked once, for minutes, and after that nothing confines what the ke
    the whitelist is refused before anything is asked, with a tool error that names the key and
    says why. Nothing is ever typed into a page.
 8. While MCP is on, `:control on 15` asks
-   `Turn on full control for 15 min? It reaches every workspace and tab, not only "agent", and any local AI agent with a shell can use it. y/N`,
+   `Turn on full control for 15 min? It reaches every workspace and tab, not only "agent", and any AI agent with a shell on this machine can use it. y/N`,
    and each new full-control connection's question says
    `◇ vimma-ctl with code 7F3K wants full control (every workspace, not only "agent") — y/N`.
 9. Under a grant, each `vimma_keys` call shows a notice such as
@@ -472,7 +472,7 @@ site` and loads nothing; same site by construction still holds.)
 22. **`:control on` says what it gives away.** While MCP is on (`[mcp] enabled`, else the pref
     `vimma.mcp.enabled`), its
     question becomes
-    `Turn on full control for <N> min? It reaches every workspace and tab, not only "agent", and any local AI agent with a shell can use it. y/N`.
+    `Turn on full control for <N> min? It reaches every workspace and tab, not only "agent", and any AI agent with a shell on this machine can use it. y/N`.
     With MCP off it stays as it is. A yes given after MCP went on or off while the question was
     open turns nothing on, because it answered a question that no longer says what full control
     reaches. The arming of an ordinary y/N applies; the question line's

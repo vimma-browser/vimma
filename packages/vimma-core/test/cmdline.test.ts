@@ -287,6 +287,16 @@ describe("completeCommandLine", () => {
     expect(completeCommandLine(":tab").candidates[6]?.kind).toBe("action");
   });
 
+  test("a command and an action of one word that run the same action show once (#1414)", () => {
+    for (const word of ["setup", "restart", "settings"]) {
+      const rows = completeCommandLine(`:${word}`).candidates.filter((c) => c.value === word);
+      expect(rows.map((c) => c.kind)).toEqual(["command"]);
+    }
+    // Different actions keep both rows: :quit closes a pane, the quit action quits Vimma.
+    const quit = completeCommandLine(":quit").candidates.filter((c) => c.value === "quit");
+    expect(quit.map((c) => c.kind)).toEqual(["command", "action"]);
+  });
+
   test("wsp → wsprev", () => {
     expect(values("wsp")[0]).toBe("wsprev");
     expect(values("::wsp")[0]).toBe("wsprev");
@@ -308,7 +318,8 @@ describe("completeCommandLine", () => {
   test("an empty word lists commands then actions, cut at limit", () => {
     const all = completeCommandLine(":", { limit: 1000 }).candidates;
     const commandCount = COMMANDS.reduce((n, c) => n + 1 + c.aliases.length, 0);
-    expect(all).toHaveLength(commandCount + new Set(ACTIONS.map((a) => a.name)).size);
+    // setup, restart and settings: their command runs the action of that name (#1414).
+    expect(all).toHaveLength(commandCount + new Set(ACTIONS.map((a) => a.name)).size - 3);
     expect(all.slice(0, commandCount).every((c) => c.kind === "command")).toBe(true);
     expect(values("")).toHaveLength(20);
     expect(values("", { limit: 3 })).toEqual(["open", "tabnew", "tabrename"]);
@@ -805,6 +816,12 @@ describe("completeCommandLine: order and limits", () => {
     expect(values("open @g x", { args: { search } })).toEqual([]);
   });
 
+  test("an alias with a space in it is not completed past the first word", () => {
+    // Firefox's own engines' aliases come as they are; one could hold a space.
+    const spaced = [{ name: "@a b@c", description: "Spaced" }];
+    expect(values("open @a b@", { args: { search: spaced } })).toEqual([]);
+  });
+
   test("a hidden action's name is left out while its command stays", () => {
     const kinds = completeCommandLine("downloads", { hidden: ["browser.downloads"] })
       .candidates.filter((c) => c.value === "downloads")
@@ -873,6 +890,17 @@ describe("Up / Down: the completion list or history", () => {
   test("in the list, Up moves back, and from the first leaves it for the typed text", () => {
     expect(cmdlineArrow(at("x", 4, 2), -1)).toEqual({ kind: "select", index: 1 });
     expect(cmdlineArrow(at("x", 4, 0), -1)).toEqual({ kind: "leave" });
+  });
+
+  test("a line of colons and blanks is empty: Down browses history, even with a list", () => {
+    expect(cmdlineArrow(at("", 5), 1)).toEqual({ kind: "history" });
+    expect(cmdlineArrow(at("::", 5), 1)).toEqual({ kind: "history" });
+    expect(cmdlineArrow(at(" :", 5), 1)).toEqual({ kind: "history" });
+  });
+
+  test("a selected row in a list that has emptied browses history", () => {
+    expect(cmdlineArrow(at("x", 0, 0), 1)).toEqual({ kind: "history" });
+    expect(cmdlineArrow(at("x", 0, 0), -1)).toEqual({ kind: "history" });
   });
 
   test("a one-row list: Down stays on it, Up leaves", () => {
@@ -967,5 +995,38 @@ describe(":tab N and :tabnext N (#1302)", () => {
     expect(
       completeCommandLine(":tab 1", { args: { tab: many } }).candidates.map((c) => c.value),
     ).toEqual(["tab 1", "tab 10", "tab 11", "tab 12"]);
+  });
+
+  test("tabs whose titles match rank best first, whatever their order", () => {
+    const ranked = ["the docs", "docs list", "docs"];
+    expect(
+      completeCommandLine(":tab docs", { args: { tab: ranked } }).candidates.map((c) => c.value),
+    ).toEqual(["tab 3", "tab 2", "tab 1"]);
+  });
+
+  test("only digits alone are a number; digits with letters match titles", () => {
+    const named = ["x2 notes", "2x speed", "Inbox"];
+    const of = (line: string) =>
+      completeCommandLine(line, { args: { tab: named } }).candidates.map((c) => c.value);
+    expect(of(":tab x2")).toEqual(["tab 1"]);
+    expect(of(":tab 2x")).toEqual(["tab 2"]);
+    const pages = Array.from({ length: 12 }, () => "page");
+    expect(
+      completeCommandLine(":tab 12", { args: { tab: pages } }).candidates.map((c) => c.value),
+    ).toEqual(["tab 12"]);
+  });
+
+  test("blanks around a typed number are ignored", () => {
+    expect(complete(":tab 2 ").map((c) => c.value)).toEqual(["tab 2"]);
+    expect(complete(":tab  3").map((c) => c.value)).toEqual(["tab 3"]);
+  });
+
+  test("without the host's titles there are no tabs to offer; the limit applies", () => {
+    expect(completeCommandLine(":tab ").candidates).toEqual([]);
+    expect(
+      completeCommandLine(":tab ", { args: { tab: titles }, limit: 2 }).candidates.map(
+        (c) => c.value,
+      ),
+    ).toEqual(["tab 1", "tab 2"]);
   });
 });

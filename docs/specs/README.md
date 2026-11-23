@@ -71,6 +71,9 @@ written against.
 - A change that moves paths named in many implemented specs is noted here once rather than at
   each place. Since #937, `packages/vimma-core/src/<name>.mjs` in a spec means the module of that
   name in one of the folders that `ARCHITECTURE.md`'s "Module map" lists.
+- Since #1379, config.toml has no schema: a key an implemented spec calls "schema 2" or "new in
+  schema 2" is valid in every file, and a `schema` line, with any value, is ignored
+  ([m5-core-config-and-theme](m5-core-config-and-theme.md), under its status line).
 - Since #1114, `packages/vimma-core/test/<name>.test.mjs` in a spec is now `<name>.test.ts`, and
   the helpers there (`budget.mjs`, `fuzz/harness.mjs`, `fuzz/toml-arb.mjs`) are `.ts` too
   ([ADR-025](../adr/025-typescript-for-tools.md) decision 6).

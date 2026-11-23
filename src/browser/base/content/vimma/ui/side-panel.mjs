@@ -7,6 +7,7 @@
 // workspace's tabs; keys reach it only through VimmaHost (`action`) in `panel` mode. The logic
 // is core sidepanel.mjs, this only renders it.
 
+import { focusOpener } from "./toolbar.mjs";
 import { WORKSPACE_COLOR_TOKENS } from "../core/statusbar.mjs";
 import {
   gutterOf,
@@ -399,7 +400,7 @@ export function giveFocusBack(win, box, opener) {
   const tabs = tabsOf(win);
   const back = opener?.el;
   if (back?.isConnected && !box.contains(back) && opener?.tab === tabs?.selectedTab) {
-    /** @type {HTMLElement} */ (back).focus();
+    focusOpener(win, back);
   } else {
     tabs?.selectedBrowser.focus();
   }

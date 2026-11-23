@@ -4,6 +4,11 @@ Status: implemented · Milestone: M5 · Area: `src/browser/base/content/vimma/co
 (new), `host/VimmaHost.sys.mjs`, `ui/theme-host.mjs`, `ui/help-overlay.mjs`, `ui/statusbar.mjs`,
 `vimma.js`
 
+Since changed (2026-11-19, #1379): config.toml has no schema; a `schema` line, with any value, is
+accepted and ignored, and every key is valid in every file. The decision, its reasons and its
+one compatibility cost (an older build refuses a newer key without `schema = 2`) are recorded in
+[m5-core-config-and-theme](m5-core-config-and-theme.md), under its status line.
+
 The host half of M5's config, on top of core's `reloadConfig` and `formatConfigError`
 ([m5-core-config-and-theme](m5-core-config-and-theme.md), schema 2 in
 [m3-m4-core-prep](m3-m4-core-prep.md)). Plan §6 M5 gate: "a broken config line shows file:line in
@@ -69,7 +74,7 @@ window after `VimmaHost` and `PaneViews`:
 - `schema = 2`, `[panes] max = 2`: the third split is refused (`at most 2 panes`), no tab opened;
   without the file the maximum is 4 again. (Since changed: 8 again, the new default (#691).)
 - With an Omarchy fixture followed, `[theme] source = "file"` switches the status bar to the
-  built-in Vimma palette (Tokyo Night with `name = "tokyo-night"`),
+  built-in Vimma palette (a removed palette's `name` gives it too, with a warning; #1383),
   `[theme.colors] dark_background` overrides it, and removing the file brings Omarchy back.
 
 Red: the run before `ConfigHost.sys.mjs` existed crashed on `Missing chrome or resource URLs:
@@ -130,8 +135,8 @@ poll's read fails "config.toml is the file in force again"; reverted.
 Issue #66 (`browser_vimma_theme.js` flaked in CI): a real race in `theme-host.mjs`. A check
 reading the old Omarchy path when the path pref changed went on to record and apply that
 theme and set `loaded`; the recheck then found the new path missing and, `loaded` being true,
-kept the old theme for good (the CI failure: `no_omarchy_dir_means_tokyo_night`, now
-`no_omarchy_dir_means_the_builtin_vimma`, timed out, then the poll timer was left running).
+kept the old theme for good (the CI failure: the test now named
+`no_omarchy_dir_means_the_builtin_vimma` timed out, then the poll timer was left running).
 Fixed with a generation counter: a check started before `recheck()` drops what it read. New test
 `a_path_change_during_a_check_is_not_undone_by_it` reproduces it deterministically (red with
 the same three failures as CI, green after).

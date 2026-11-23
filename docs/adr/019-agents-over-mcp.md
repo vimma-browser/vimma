@@ -5,7 +5,7 @@
 
 ## Context
 
-Local AI tools (Claude Code, Codex, opencode, Copilot) should be able to use Vimma, under two
+AI coding tools (Claude Code, Codex, opencode, Copilot) should be able to use Vimma, under two
 conditions: every use is confirmed by the user in Vimma, and every use goes through the agent
 workspace, never the user's other workspaces. These tools speak MCP, the Model Context
 Protocol, to servers they start themselves, usually over stdio.

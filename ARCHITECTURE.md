@@ -10,7 +10,7 @@ one flow each through the code, step by step.
 
 ## What Vimma adds to Firefox
 
-Vimma is Firefox with a keyboard layer, workspaces, split panes, a status bar and local AI agent
+Vimma is Firefox with a keyboard layer, workspaces, split panes, a status bar and AI agent
 access added to its browser window. Gecko (page rendering, networking, the sandbox) is Firefox's,
 unchanged. Firefox's browser window is itself written in JavaScript, CSS and XHTML, so nearly
 everything Vimma adds is front-end code that runs in the browser's own privileged ("chrome")
@@ -176,7 +176,7 @@ they test.
 | `packages/vimma-core/src/panes/`      | The pane tree, several splits per workspace, tiling layouts, the split reconcile planner.                                                                                                                                                    |
 | `packages/vimma-core/src/page/`       | What Vimma does in a page: hints, text blocks, copy-mode motions, find, page URLs, the PDF viewer's state.                                                                                                                                   |
 | `packages/vimma-core/src/ui/`         | Vimma's own surfaces as plain data: the status bar, the pickers (goto, tab search, add-ons, downloads, pop-ups, site permissions, PDF outline, live grep), the side panel, bookmarks, the help table, `about:vimma`'s report.                |
-| `packages/vimma-core/src/agent/`      | Local AI agents: the agent gate's queue and grants, checkpoints, the question line, page actions, `vimma_keys`, agent downloads, and the built-in agent's tools, providers, loop, chat, CLIs and stored conversations.                       |
+| `packages/vimma-core/src/agent/`      | AI agents: the agent gate's queue and grants, checkpoints, the question line, page actions, `vimma_keys`, agent downloads, and the built-in agent's tools, providers, loop, chat, CLIs and stored conversations.                             |
 | `packages/vimma-core/src/control/`    | The control protocol validator (versions 1 and 2) and vimma-ctl's version check.                                                                                                                                                             |
 | `packages/vimma-core/src/updates/`    | The update manifest's checks, the pinned update keys, update notices, the AppImage's self-update, restart.                                                                                                                                   |
 | `packages/vimma-core/src/system/`     | Vimma on the desktop: the first-run setup's pure parts, whether Vimma is the default browser.                                                                                                                                                |
@@ -217,7 +217,7 @@ they test.
 | `tools/lanes/`              | Parallel browser lanes: a worktree with its own copy of `engine/`.                                          |
 | `tools/upstream/`           | The upstream autopilot and Beta canary: detecting Firefox releases, verifying source, bumping, patch audit. |
 | `tools/release/`            | Release notes, the version line, build ids, and the self-releasing security bump.                           |
-| `tools/package/`            | Release packages: tarball, AppImage, `.deb`, `.rpm`, PKGBUILD, Flatpak, macOS app and dmg, SBOM.            |
+| `tools/package/`            | Release packages (tarball, AppImage, `.deb`, `.rpm`, PKGBUILD, Flatpak, dmg, SBOM), repositories.           |
 | `tools/update/`             | The update manifest, MAR files and signing certificates.                                                    |
 | `tools/version-files/`      | The app version files the build reads.                                                                      |
 | `tools/branding/`           | Generated brand strings and icon rendering.                                                                 |
@@ -235,6 +235,7 @@ they test.
 | `tools/deps/`               | Which npm packages the release build runs, so their updates wait for a person.                              |
 | `tools/commitlint/`         | The commitlint rule that a feature or fix commit has a body.                                                |
 | `tools/ci/`                 | CI helpers: docs-only pull requests, trees a pull request already passed, the release-key guard.            |
+| `tools/config-reference/`   | The config.toml reference in docs/guide.md, written by gen-docs from the lines of defaults.toml.            |
 | `tools/test/`               | Tests of the workflows, the build scripts and repository-wide rules.                                        |
 | `tools/omarchy/`            | Tests of the Omarchy theme-set hook script.                                                                 |
 | `tools/stats/`              | Daily release download counts.                                                                              |
@@ -371,7 +372,7 @@ hold secrets are in security.md §10 and §14.
 | `ci.yml`                   | Pull requests, `main`       | Lint, typecheck, Vitest with coverage, the bench gate, commitlint, licences, vimma-ctl tests.                                         |
 | `e2e.yml`                  | Pull requests               | Artifact build, mochitests (Linux and macOS), e2e scenarios, the recorded-site gate.                                                  |
 | `key-guard.yml`            | Pull requests               | Holds a change to Mozilla's pinned release key until a maintainer labels it.                                                          |
-| `pkgbuild.yml`             | Packaging changes           | Builds and installs the Arch package, the `.rpm` and the Homebrew cask from a stub.                                                   |
+| `pkgbuild.yml`             | Packaging changes           | Installs the Arch package, `.rpm` and Homebrew cask from a stub; tests the package repositories.                                      |
 | `flatpak.yml`              | Packaging changes, releases | Builds and runs the Flatpak.                                                                                                          |
 | `macos.yml`                | Weekly, macOS changes       | Cross-compiles the macOS build on Linux and smoke-tests it on a Mac.                                                                  |
 | `semgrep.yml`              | Pull requests, weekly       | Static analysis.                                                                                                                      |

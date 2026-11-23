@@ -16,6 +16,7 @@
 
 "use strict";
 
+/* global unloadTab -- from head.js */
 /* global Client, tidyTask -- from head_vimma_control.js */
 /* global requests, held, PORT, PROVIDER, script, openStep -- from head_vimma_agent_model.js */
 /* global add_setup -- the browser-chrome harness (browser-test.js) */
@@ -394,7 +395,7 @@ addTidyTask(async function test_an_unloaded_tab_stays_its_conversations() {
   await AgentChat.send(c.id, script([openStep(`${PAGE}?owned`), { reply: "ok" }]));
   await AgentChat.done(c.id);
   const [tab] = agentTabs();
-  gBrowser.discardBrowser(tab, true);
+  Assert.ok(await unloadTab(tab), "sanity: the tab could be unloaded");
   await until(() => !tab.linkedPanel, "the tab was unloaded");
   Assert.deepEqual(await mcpTabs(), [], "an MCP agent does not see the unloaded owned tab");
   await AgentChat.send(c.id, script([{ call: "vimma_tabs", args: {} }, { reply: "ok" }]));

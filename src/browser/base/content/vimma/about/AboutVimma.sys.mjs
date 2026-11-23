@@ -53,8 +53,8 @@ const CONTRACT = "@mozilla.org/network/protocol/about;1?what=vimma";
  * @property {{ patches: { path: string, hunks: number }[], hunks: number } | null} patches
  * @property {{ window: number, current: boolean, mode: string }[]} modes
  * @property {import("../host/key-log.mjs").KeyEvent[]} keys
- * @property {{ path: string, file: "pending" | "missing" | "read", schema: number | null,
- *   errors: string[], warnings: string[] }} config  `warnings`: what a loaded file left out
+ * @property {{ path: string, file: "pending" | "missing" | "read", errors: string[],
+ *   warnings: string[] }} config  `warnings`: what a loaded file left out
  * @property {{ name: string, group: string, bindings: string[], overridden: boolean }[]} bindings
  * @property {{ default: string | null, fromConfig: boolean, template: string | null,
  *   aliases: { alias: string, engine: string, unencrypted: boolean }[], errors: string[] }} search
@@ -72,7 +72,7 @@ const CONTRACT = "@mozilla.org/network/protocol/about;1?what=vimma";
  *   without workspaces), beside the model's; the rest from WindowWorkspaces.health
  * @property {{ enabled: boolean, port: number | null, status: string }} control  `status`:
  *   full control's state with the minutes `:control on` left (docs/specs/vimma-mcp.md 29 D)
- * @property {{ enabled: boolean, from: "config" | "pref", workspace: string | null,
+ * @property {{ enabled: boolean, from: "session" | "config" | "pref", workspace: string | null,
  *   adopted: boolean, tabs: number }} mcp  agents (docs/specs/vimma-mcp.md): the switch and the
  *   agent workspace, with its tab count; never its URLs or titles
  * @property {string} windowManager  Hyprland, or none needed on macOS, and the private placement
@@ -322,7 +322,6 @@ export const AboutVimma = {
       config: {
         path: configPath,
         file: ConfigHost.file,
-        schema: ConfigHost.config?.schema ?? null,
         errors: ConfigHost.errors.map((e) => formatConfigError(e, ConfigHost.errorsPath)),
         warnings: ConfigHost.warnings.map((e) => formatConfigError(e, ConfigHost.errorsPath)),
       },
@@ -386,7 +385,7 @@ export const AboutVimma = {
       ...(data.patches?.patches ?? []).map((p) => `  ${p.path} (${p.hunks})`),
       `Modes: ${data.modes.map((m) => `window ${m.window} ${m.mode}`).join(", ")}`,
       `Last keys: ${data.keys.map((k) => `${k.key}→${k.outcome}`).join(" ") || "none"}`,
-      `Config: ${data.config.path} (${data.config.file}, schema ${data.config.schema ?? "-"})`,
+      `Config: ${data.config.path} (${data.config.file})`,
       ...data.config.errors.map((e) => `  error: ${e}`),
       ...data.config.warnings.map((e) => `  warning: ${e}`),
       `Overrides: ${

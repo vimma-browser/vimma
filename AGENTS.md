@@ -6,7 +6,7 @@ longer guide for people.
 
 Vimma is a keyboard-first Firefox fork built with Surfer: a Neovim-style modal layer, a tmux-style
 prefix (`ctrl+b`), workspaces as containers, an on-demand side panel, an always-visible status
-bar, Omarchy theming, and local AI agents over MCP confined to an agent workspace. Linux first,
+bar, Omarchy theming, and AI agents over MCP confined to an agent workspace. Linux first,
 macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browser/vimma-site`.
 
 ## Read first
@@ -168,7 +168,21 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
 - Start a fresh session after a merge, before a review, after three failed attempts at the same
   problem, and when switching area. Before stopping mid-task, commit (or push a draft) and write
   the state of the work into the pull request description.
-- Reviews, security reviews above all, run in a fresh session that did not write the change.
+- Reviews, security reviews above all, run in a fresh session that did not write the change,
+  except for `lane:light` items (below).
+- **Light lane.** A small change carries the label `lane:light` on its issue and its pull
+  request, so it is clear at a glance that it skips the separate review. It fits only when all
+  of these hold: about 50 changed lines or fewer, not counting tests and re-recorded baselines;
+  nothing `docs/security/` covers (control socket, agents and MCP, updater, workflows, release,
+  add-on installs, config writes from a page); no new dependency, pref or feature flag; no
+  upstream patch; and a default key or default value only when the issue already states the
+  new default. One session does it from start to merge, without a separate
+  implementer or reviewer: it reads its own full diff against `docs/review-checklist.md` before
+  merging and says so in the pull request body ("Light lane: diff self-reviewed against the
+  checklist"). Everything else in "Landing a pull request" still applies: red and green tests,
+  the check in a real build, screenshots for UI, and green CI. A change that grows past these
+  limits, or turns out to touch a security area, leaves the lane: remove the label and get the
+  fresh review.
 - **Owner labels.** Agents on more than one machine work on the same repository, so each item
   says which machine works on it: `owner:linux` or `owner:mac`. Before starting on an issue or
   a pull request, check its labels (`gh issue view N --json labels`, `gh pr view N --json

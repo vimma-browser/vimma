@@ -382,6 +382,13 @@ add_task(async function test_agent_hints_leave_the_users_hint_mode_alone() {
   await mcp(false);
 });
 
+// The four tasks below hold a new tab's layout back with the chrome refresh driver paused. With
+// Firefox's toolbar hidden, the default (toolbar-toggle decision 3), the window is laid out before
+// the new tab's page loads even then, so they run with it shown, where the race still happens.
+add_task(async function tabs_not_sized_yet_with_the_toolbar_shown() {
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.ui.toolbar.hidden", false]] });
+});
+
 // A new tab's page has no viewport size until the parent lays out its <browser> and sends the
 // size, which on a busy chrome (the macOS runner's software compositing) can come after the page
 // loaded. An agent's f there waits for the size instead of listing nothing (#605). Pausing the
@@ -513,6 +520,11 @@ add_task(async function test_a_page_that_goes_away_ends_the_wait() {
   Assert.less(ms, HINT_SIZE_WAIT_MS, `its wait ended before it ran out (${ms} ms)`);
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
+});
+
+// The toolbar goes back to its default for the tasks below.
+add_task(async function the_toolbar_back_to_its_default() {
+  await SpecialPowers.popPrefEnv();
 });
 
 add_task(async function test_cross_site_follow_asks_as_vimma_open() {

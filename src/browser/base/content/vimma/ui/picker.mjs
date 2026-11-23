@@ -8,6 +8,7 @@
 // document, as the help overlay. Keys reach it only through VimmaHost (`key`), which consumes
 // every one while it is open; the logic is core picker.mjs, this only renders it.
 
+import { focusOpener } from "./toolbar.mjs";
 import { addonRowText } from "../core/addons.mjs";
 import { AGENT_GLYPH } from "../core/agent.mjs";
 import { itemId, openPicker, pickerKey, sectionOf, setPickerItems } from "../core/picker.mjs";
@@ -343,6 +344,9 @@ export class GotoPicker {
       /** @type {{ gBrowser?: { selectedBrowser: HTMLElement } }} */ (
         /** @type {unknown} */ (this.win)
       ).gBrowser?.selectedBrowser.focus();
+    } else {
+      // close() gave focus back to the opener directly, which the hidden address bar refuses.
+      focusOpener(this.win, opener);
     }
   }
 

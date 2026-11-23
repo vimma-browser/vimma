@@ -190,6 +190,10 @@ add_task(async function line_sits_above_the_address_bar() {
   await until(drawn, "drawn");
   const navBar = /** @type {Element} */ (document.getElementById("nav-bar"));
   const browser = /** @type {Element} */ (document.getElementById("browser"));
+  // The toolbar is hidden by default (toolbar-toggle decision 3): ctrl+b u shows it first.
+  Services.prefs.setBoolPref(TOOLBAR_PREF, false);
+  await until(() => navBar.checkVisibility({ visibilityProperty: true }), "ctrl+b u shows it");
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   const top = rect(line()).top;
   Assert.lessOrEqual(rect(line()).bottom, rect(navBar).top + 0.5, "above the address bar");
   Assert.lessOrEqual(rect(navBar).bottom, rect(browser).top + 0.5, "the page under both");
@@ -204,9 +208,23 @@ add_task(async function line_sits_above_the_address_bar() {
     1,
     "the page starts right under it",
   );
+  // Behaviour 3: the address bar revealed by focus (ctrl+l, I) shows under the line, not over it.
+  gURLBar.focus();
+  await until(() => navBar.checkVisibility({ visibilityProperty: true }), "focus reveals it");
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  Assert.ok(drawn(), "the line stays drawn");
+  Assert.equal(rect(line()).top, top, "the line stays where it was");
+  Assert.lessOrEqual(
+    Math.abs(rect(navBar).top - rect(line()).bottom),
+    0.5,
+    "the revealed address bar starts right under the line",
+  );
+  await focusPage();
+  await until(() => !navBar.checkVisibility({ visibilityProperty: true }), "hidden again");
   Services.prefs.setBoolPref(TOOLBAR_PREF, false);
   await until(() => navBar.checkVisibility({ visibilityProperty: true }), "shown again");
   Assert.equal(rect(line()).top, top, "and the line never moved");
+  Services.prefs.clearUserPref(TOOLBAR_PREF);
   await SpecialPowers.popPrefEnv();
   closeOthers();
 });
@@ -224,6 +242,27 @@ add_task(async function auto_needs_two_tabs() {
   await SpecialPowers.popPrefEnv();
 });
 
+// Decision 3 (changed 20 Nov 2026, #1403): with no config.toml and no pref set, the line is
+// "auto": a fresh profile draws it with two tabs and not with one.
+add_task(async function the_default_is_auto() {
+  await SpecialPowers.pushPrefEnv({
+    set: [["vimma.config.path", PathUtils.join(dir, "missing.toml")]],
+  });
+  await ConfigHost.reload();
+  Assert.equal(ConfigHost.config?.ui.tabline, "auto", "no config.toml: [ui] tabline is auto");
+  Services.prefs.clearUserPref(PREF);
+  closeOthers();
+  await until(() => panelRows().length === 1, "one tab");
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  Assert.ok(!drawn(), "a fresh profile with one tab: not drawn");
+  const tab = await openPage("second");
+  await until(drawn, "a fresh profile with two tabs: drawn");
+  BrowserTestUtils.removeTab(tab);
+  await until(() => !drawn(), "back to one tab: hidden again");
+  await SpecialPowers.popPrefEnv();
+  await ConfigHost.reload();
+});
+
 add_task(async function config_reload_applies() {
   await SpecialPowers.pushPrefEnv({
     set: [
@@ -233,7 +272,7 @@ add_task(async function config_reload_applies() {
   });
   let n = 0;
   const write = (/** @type {string} */ text) =>
-    IOUtils.writeUTF8(configFile, `schema = 2\n${text}\n${"#".repeat(++n)}\n`);
+    IOUtils.writeUTF8(configFile, `${text}\n${"#".repeat(++n)}\n`);
   await openPage("a long title for the cut");
   await write(`[ui]\ntabline = "always"\ntabline_width = 6`);
   await until(() => ConfigHost.config?.ui.tabline === "always", "the poll reads the file");
@@ -253,7 +292,7 @@ add_task(async function config_reload_applies() {
   await IOUtils.remove(configFile);
   await SpecialPowers.popPrefEnv();
   await ConfigHost.reload();
-  await until(() => ConfigHost.config?.ui.tabline === "off", "no config: the defaults");
+  await until(() => ConfigHost.config?.ui.tabline === "auto", "no config: the defaults");
   closeOthers();
 });
 

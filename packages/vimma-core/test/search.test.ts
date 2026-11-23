@@ -16,7 +16,8 @@ import {
 import type { ResolvedConfig } from "../src/config/config.mjs";
 import type { InstalledEngine } from "../src/config/search.mjs";
 
-const v2 = (...lines: string[]) => ["schema = 2", ...lines].join("\n") + "\n";
+// A config.toml whose first line is a comment, so errors are on the lines they always were.
+const cfg = (...lines: string[]) => ["# config.toml", ...lines].join("\n") + "\n";
 
 function ok(text: string) {
   const r = parseConfig(text);
@@ -40,13 +41,13 @@ const TEMPLATE_ERROR =
 
 describe("[search] in config.toml", () => {
   test("left out, the config has no search section and the defaults none either", () => {
-    expect(ok(v2()).search).toBeNull();
+    expect(ok(cfg()).search).toBeNull();
     expect(ok("").search).toBeNull();
   });
 
   test("default and aliases resolve, sorted by alias, templates with their host", () => {
     const c = ok(
-      v2(
+      cfg(
         "[search]",
         'default = "DuckDuckGo"',
         "[search.aliases]",
@@ -69,12 +70,12 @@ describe("[search] in config.toml", () => {
   });
 
   test("an empty [search] resolves to nothing to do", () => {
-    expect(ok(v2("[search]")).search).toEqual({ default: null, aliases: [] });
+    expect(ok(cfg("[search]")).search).toEqual({ default: null, aliases: [] });
   });
 
   test("alias keys: one leading @ dropped, lowercased", () => {
     const c = ok(
-      v2("[search.aliases]", '"@GH" = "https://github.com/search?q=%s"', 'Wp = "Wikipedia (en)"'),
+      cfg("[search.aliases]", '"@GH" = "https://github.com/search?q=%s"', 'Wp = "Wikipedia (en)"'),
     );
     expect(c.search?.aliases.map((a) => a.alias)).toEqual(["gh", "wp"]);
   });
@@ -82,7 +83,7 @@ describe("[search] in config.toml", () => {
   test("two keys equal after normalising are an error", () => {
     expect(
       errors(
-        v2(
+        cfg(
           "[search.aliases]",
           'gh = "https://github.com/search?q=%s"',
           '"@GH" = "https://github.com/issues?q=%s"',
@@ -93,18 +94,18 @@ describe("[search] in config.toml", () => {
 
   test("alias keys with bad characters or over 32 characters are errors", () => {
     const message = "an alias is a letter or digit, then up to 31 of a-z 0-9 . _ -";
-    expect(errors(v2("[search.aliases]", '"g h" = "Google"'))).toEqual([
+    expect(errors(cfg("[search.aliases]", '"g h" = "Google"'))).toEqual([
       { line: 3, path: 'search.aliases."g h"', message },
     ]);
-    expect(errors(v2("[search.aliases]", '"@@g" = "Google"'))).toEqual([
+    expect(errors(cfg("[search.aliases]", '"@@g" = "Google"'))).toEqual([
       { line: 3, path: 'search.aliases."@@g"', message },
     ]);
-    expect(errors(v2("[search.aliases]", `${"a".repeat(33)} = "Google"`))).toEqual([
+    expect(errors(cfg("[search.aliases]", `${"a".repeat(33)} = "Google"`))).toEqual([
       { line: 3, path: `search.aliases.${"a".repeat(33)}`, message },
     ]);
-    expect(ok(v2("[search.aliases]", `${"a".repeat(32)} = "Google"`)).search?.aliases).toHaveLength(
-      1,
-    );
+    expect(
+      ok(cfg("[search.aliases]", `${"a".repeat(32)} = "Google"`)).search?.aliases,
+    ).toHaveLength(1);
   });
 
   test.each([
@@ -116,13 +117,13 @@ describe("[search] in config.toml", () => {
     ["data:text/html,%s", "data:"],
     ["https://exa mple.com/?q=%s", "unparsable"],
   ])("template %s (%s) is an error", (value) => {
-    expect(errors(v2("[search.aliases]", `t = ${JSON.stringify(value)}`))).toEqual([
+    expect(errors(cfg("[search.aliases]", `t = ${JSON.stringify(value)}`))).toEqual([
       { line: 3, path: "search.aliases.t", message: TEMPLATE_ERROR },
     ]);
   });
 
   test("an http:// template is accepted; %s becomes {searchTerms}", () => {
-    const c = ok(v2("[search.aliases]", 'sx = "http://searx.lan:8080/search?q=%s"'));
+    const c = ok(cfg("[search.aliases]", 'sx = "http://searx.lan:8080/search?q=%s"'));
     expect(c.search?.aliases).toEqual([
       {
         alias: "sx",
@@ -138,47 +139,47 @@ describe("[search] in config.toml", () => {
 
   test("engine names: 1 to 100 characters, no control characters, strings only", () => {
     const message = "an engine name is 1 to 100 characters without control characters";
-    expect(errors(v2("[search.aliases]", 'e = ""'))).toEqual([
+    expect(errors(cfg("[search.aliases]", 'e = ""'))).toEqual([
       { line: 3, path: "search.aliases.e", message },
     ]);
-    expect(errors(v2("[search.aliases]", `e = "${"x".repeat(101)}"`))).toEqual([
+    expect(errors(cfg("[search.aliases]", `e = "${"x".repeat(101)}"`))).toEqual([
       { line: 3, path: "search.aliases.e", message },
     ]);
-    expect(errors(v2("[search.aliases]", 'e = "Bad\\u0007Name"'))).toEqual([
+    expect(errors(cfg("[search.aliases]", 'e = "Bad\\u0007Name"'))).toEqual([
       { line: 3, path: "search.aliases.e", message },
     ]);
-    expect(errors(v2("[search.aliases]", "e = 3"))).toEqual([
+    expect(errors(cfg("[search.aliases]", "e = 3"))).toEqual([
       { line: 3, path: "search.aliases.e", message: "expected a string, got an integer" },
     ]);
-    expect(ok(v2("[search.aliases]", `e = "${"x".repeat(100)}"`)).search?.aliases).toHaveLength(1);
+    expect(ok(cfg("[search.aliases]", `e = "${"x".repeat(100)}"`)).search?.aliases).toHaveLength(1);
   });
 
   test("two aliases naming the same engine, case-insensitively, is an error", () => {
-    expect(errors(v2("[search.aliases]", 'w = "Wikipedia (en)"', 'wp = "wikipedia (EN)"'))).toEqual(
-      [
-        {
-          line: 4,
-          path: "search.aliases.wp",
-          message: 'names the same engine as "w": an engine has one alias',
-        },
-      ],
-    );
+    expect(
+      errors(cfg("[search.aliases]", 'w = "Wikipedia (en)"', 'wp = "wikipedia (EN)"')),
+    ).toEqual([
+      {
+        line: 4,
+        path: "search.aliases.wp",
+        message: 'names the same engine as "w": an engine has one alias',
+      },
+    ]);
   });
 
   test("default names an engine, or @key of a template alias", () => {
-    expect(ok(v2("[search]", 'default = "Bing"')).search?.default).toEqual({
+    expect(ok(cfg("[search]", 'default = "Bing"')).search?.default).toEqual({
       kind: "engine",
       name: "Bing",
     });
     const c = ok(
-      v2("[search]", 'default = "@SX"', "[search.aliases]", 'sx = "https://searx.example/?q=%s"'),
+      cfg("[search]", 'default = "@SX"', "[search.aliases]", 'sx = "https://searx.example/?q=%s"'),
     );
     expect(c.search?.default).toEqual({ kind: "template", alias: "sx" });
   });
 
   test("default as @key of an engine alias or of an unknown alias is an error", () => {
     expect(
-      errors(v2("[search]", 'default = "@w"', "[search.aliases]", 'w = "Wikipedia (en)"')),
+      errors(cfg("[search]", 'default = "@w"', "[search.aliases]", 'w = "Wikipedia (en)"')),
     ).toEqual([
       {
         line: 3,
@@ -187,7 +188,7 @@ describe("[search] in config.toml", () => {
       },
     ]);
     expect(
-      errors(v2("[search]", 'default = "@gj"', "[search.aliases]", 'gh = "https://g.example/%s"')),
+      errors(cfg("[search]", 'default = "@gj"', "[search.aliases]", 'gh = "https://g.example/%s"')),
     ).toEqual([
       {
         line: 3,
@@ -196,33 +197,29 @@ describe("[search] in config.toml", () => {
         suggestion: "@gh",
       },
     ]);
-    expect(errors(v2("[search]", "default = 1"))).toEqual([
+    expect(errors(cfg("[search]", "default = 1"))).toEqual([
       { line: 3, path: "search.default", message: "expected a string, got an integer" },
     ]);
   });
 
   test("unknown [search] keys get a suggestion; aliases must be a table", () => {
-    expect(errors(v2("[search]", 'defualt = "Bing"'))).toEqual([
+    expect(errors(cfg("[search]", 'defualt = "Bing"'))).toEqual([
       { line: 3, path: "search.defualt", message: 'unknown key "defualt"', suggestion: "default" },
     ]);
-    expect(errors(v2("[search]", 'aliases = "gh"'))).toEqual([
+    expect(errors(cfg("[search]", 'aliases = "gh"'))).toEqual([
       { line: 3, path: "search.aliases", message: "expected a table, got a string" },
     ]);
   });
 
-  test("a schema 1 file with [search] is told it is new in schema 2", () => {
-    expect(errors('schema = 1\n[search]\ndefault = "Bing"\n')).toEqual([
-      {
-        line: 2,
-        path: "search",
-        message: "is new in schema 2: put schema = 2 at the top of the file",
-      },
-    ]);
+  test("a schema 1 file may have [search]", () => {
+    expect(parseConfig('schema = 1\n[search]\ndefault = "Bing"\n').errors).toEqual([]);
   });
 
   test("the template carries a commented [search] block; defaults.toml means no [search]", () => {
     expect(formatDefaultsToml()).toMatch(/^# \[search\]$/m);
-    expect(formatDefaultsToml()).toMatch(/^# gh = "https:\/\/github\.com\/search\?q=%s"$/m);
+    expect(formatDefaultsToml()).toMatch(
+      /^# gh = "https:\/\/github\.com\/search\?q=%s"(?: +#.*)?$/m,
+    );
     expect(ok(formatDefaultsToml()).search).toBeNull();
     expect(ok(formatConfigTemplate()).search).toBeNull();
   });
@@ -246,7 +243,7 @@ const DDG = engine({ id: "ddg", name: "DuckDuckGo", aliases: ["@duckduckgo", "@d
 const WIKI = engine({ id: "wiki", name: "Wikipedia (en)", aliases: ["@wikipedia"] });
 const INSTALLED = [GOOGLE, DDG, WIKI];
 
-const searchOf = (...lines: string[]) => ok(v2(...lines)).search as any;
+const searchOf = (...lines: string[]) => ok(cfg(...lines)).search as any;
 
 const GH = "https://github.com/search?q={searchTerms}";
 
@@ -643,23 +640,23 @@ describe("[search] values at their edges", () => {
     // A template's scheme is at the start; %s in the host is a host of its own.
     ['x = "xhttps://a.example/?q=%s"', TEMPLATE_ERROR],
   ])("[search.aliases] %s: %s", (line, message) => {
-    expect(errors(v2("[search.aliases]", line))).toEqual([
+    expect(errors(cfg("[search.aliases]", line))).toEqual([
       { line: 3, path: "search.aliases.x", message },
     ]);
   });
 
   test("aliases must be a table, named with its type", () => {
-    expect(errors(v2("[search]", "aliases = 1"))).toEqual([
+    expect(errors(cfg("[search]", "aliases = 1"))).toEqual([
       { line: 3, path: "search.aliases", message: "expected a table, got an integer" },
     ]);
   });
 
   test("a one-character engine name is a name; a control character is not", () => {
-    expect(ok(v2("[search]", 'default = "G"')).search?.default).toEqual({
+    expect(ok(cfg("[search]", 'default = "G"')).search?.default).toEqual({
       kind: "engine",
       name: "G",
     });
-    expect(errors(v2("[search]", 'default = "G\\u0001"'))).toEqual([
+    expect(errors(cfg("[search]", 'default = "G\\u0001"'))).toEqual([
       {
         line: 3,
         path: "search.default",

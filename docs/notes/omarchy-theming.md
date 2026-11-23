@@ -14,7 +14,7 @@ Input for the M5 theme spec. Re-check the scripts before relying on details; Oma
 
 ## `colors.toml`
 
-Every theme ships one. Hex `#rrggbb` only. Keys (Tokyo Night shown):
+Every theme ships one. Hex `#rrggbb` only. Keys (a stock dark theme shown):
 
 ```toml
 mode = "dark"            # or "light"; light themes may also ship an empty light.mode file

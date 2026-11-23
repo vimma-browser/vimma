@@ -100,6 +100,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/core/routes.mjs": typeof import("../src/browser/base/content/vimma/core/routes.mjs");
   "chrome://browser/content/vimma/core/scroll.mjs": typeof import("../src/browser/base/content/vimma/core/scroll.mjs");
   "chrome://browser/content/vimma/core/search.mjs": typeof import("../src/browser/base/content/vimma/core/search.mjs");
+  "chrome://browser/content/vimma/core/setup-steps.mjs": typeof import("../src/browser/base/content/vimma/core/setup-steps.mjs");
   "chrome://browser/content/vimma/core/setup.mjs": typeof import("../src/browser/base/content/vimma/core/setup.mjs");
   "chrome://browser/content/vimma/core/sidepanel.mjs": typeof import("../src/browser/base/content/vimma/core/sidepanel.mjs");
   "chrome://browser/content/vimma/core/site-edit.mjs": typeof import("../src/browser/base/content/vimma/core/site-edit.mjs");
@@ -191,7 +192,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/services/ViewedDownloads.sys.mjs": typeof import("../src/browser/base/content/vimma/services/ViewedDownloads.sys.mjs");
   "chrome://browser/content/vimma/services/WakeLock.sys.mjs": typeof import("../src/browser/base/content/vimma/services/WakeLock.sys.mjs");
   "chrome://browser/content/vimma/setup/SetupHost.sys.mjs": typeof import("../src/browser/base/content/vimma/setup/SetupHost.sys.mjs");
-  "chrome://browser/content/vimma/setup/setup.mjs": typeof import("../src/browser/base/content/vimma/setup/setup.mjs");
+  "chrome://browser/content/vimma/setup/flow.mjs": typeof import("../src/browser/base/content/vimma/setup/flow.mjs");
   "chrome://browser/content/vimma/split/PaneView.mjs": typeof import("../src/browser/base/content/vimma/split/PaneView.mjs");
   "chrome://browser/content/vimma/split/layout.mjs": typeof import("../src/browser/base/content/vimma/split/layout.mjs");
   "chrome://browser/content/vimma/start/StartPage.sys.mjs": typeof import("../src/browser/base/content/vimma/start/StartPage.sys.mjs");

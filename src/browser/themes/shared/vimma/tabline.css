@@ -21,6 +21,8 @@
   background-color: var(--vimma-statusbar-bg);
   color: var(--vimma-statusbar-fg);
   user-select: none;
+  /* toolbar.css puts the hidden toolbar's revealed bar under it. */
+  anchor-name: --vimma-tabline;
   /* The row never wraps or spills, even if a font draws a character wider than its columns. */
   overflow: clip;
 

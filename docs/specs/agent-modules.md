@@ -31,7 +31,7 @@ add-ons today). This spec's decisions are "D1", "D2" and so on. Engine paths are
 
 Vimma lets its users build small tools for themselves as easily as they can describe them. The
 user presses one key and writes what they miss ("dim everything except the article"); their own
-local coding agent writes it as a module, tests it on the live page in a throwaway Vimma
+coding agent writes it as a module, tests it on the live page in a throwaway Vimma
 instance, and Vimma shows the change, the permissions in plain words and the test result on one
 screen. One `y` loads it, with no restart; "change it to …" refines the same module and shows a
 new diff; every version is kept, so a module can be rolled back, switched off or edited by hand.
@@ -160,8 +160,8 @@ none)`. By default the address is sent without its query and fragment, which can
 11. **Its effect is the page's until it reloads.** A module changes the page it ran on; turning
     the module off or rolling it back stops it from running again but does not undo what it
     already changed in an open page. The notice of `:module off` says `reload pages to undo`.
-12. **Theme.** A module with `theme = true` gets the current theme's colours (Tokyo Night,
-    an Omarchy theme or `[theme.colors]`) as `#rrggbb` values in `palette.json`, read from its
+12. **Theme.** A module with `theme = true` gets the current theme's colours (the built-in
+    vimma palette, an Omarchy theme or `[theme.colors]`) as `#rrggbb` values in `palette.json`, read from its
     own package, and is reloaded when the theme changes.
 
 ### The agent loop

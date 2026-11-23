@@ -116,6 +116,18 @@ const INSERT_EDIT_KEYS = Object.freeze({
 });
 
 /**
+ * What each text-field key does in a field, by editor command, for the reason a prefix on one is
+ * refused (the config's and the setup's prefix step: docs/specs/setup-v2.md decision 21).
+ * @type {Readonly<Record<string, string>>}
+ */
+export const INSERT_EDIT_DOES = Object.freeze({
+  cmd_deleteWordBackward: "deletes a word",
+  cmd_deleteToBeginningOfLine: "deletes to the start of the line",
+  cmd_deleteCharBackward: "deletes a character",
+  [INSERT_ENTER]: "is enter",
+});
+
+/**
  * The editor commands a text-field key may run; the content actor takes no other. INSERT_ENTER
  * is not one: the parent presses Enter itself (actors/enter-key.mjs).
  */
@@ -133,6 +145,20 @@ export const INSERT_EDIT_COMMANDS = Object.freeze(
 export function insertEditCommand(chord, { mac = false } = {}) {
   if (mac && chord === "ctrl+h") return null;
   return INSERT_EDIT_KEYS[chord] ?? null;
+}
+
+/**
+ * Every chord of Vim's text-field keys on this platform, with what it runs (insertEditCommand),
+ * for the prefix, which cannot be one of them (config: key-handling-batch.md; setup: setup-v2.md
+ * decision 21).
+ * @param {{ mac?: boolean }} [options]
+ * @returns {[chord: string, command: string][]}
+ */
+export function insertEditChords({ mac = false } = {}) {
+  return Object.keys(INSERT_EDIT_KEYS).flatMap((chord) => {
+    const command = insertEditCommand(chord, { mac });
+    return command ? [[chord, command]] : [];
+  });
 }
 
 /**

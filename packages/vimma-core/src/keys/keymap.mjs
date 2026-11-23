@@ -9,7 +9,12 @@
 import { removedAction, resolveActionName, suggestAction } from "./actions.mjs";
 import { parseCommandLine } from "./cmdline.mjs";
 import { DEFAULT_CONFIG, defaultKeys } from "../config/defaults.mjs";
-import { insertEditCommand, matchSiteRule } from "./editable.mjs";
+import {
+  INSERT_EDIT_DOES,
+  insertEditChords,
+  insertEditCommand,
+  matchSiteRule,
+} from "./editable.mjs";
 import { SUGGESTION_ACTIONS } from "./suggestions.mjs";
 import { firefoxShortcuts } from "./firefox-keys.mjs";
 import {
@@ -253,6 +258,20 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
   const prefixText = /** @type {string} */ (userKeys.prefix ?? defKeys.prefix);
   oneChord(prefixText, "keys.prefix", 'the prefix is one chord, such as "ctrl+b"');
   const prefix = notation(() => parseKey(prefixText), "keys.prefix");
+  // Stryker disable next-line LogicalOperator: the default is true, so for an unset, true or false user value && gives the same on or off as ??
+  const insertEditing = userModal.insert_editing ?? defModal.insert_editing;
+  // The prefix must work in every mode (pdf-mode decision 5), and a text-field key is the
+  // field's in insert, command and help mode: refused, as the setup's prefix step does (#1367).
+  const field =
+    insertEditing !== false &&
+    insertEditChords({ mac }).find(([chord]) => chord === formatKey(prefix));
+  if (field) {
+    throw new KeymapError(
+      `${field[0]} ${INSERT_EDIT_DOES[field[1]]} in text fields ([modal] insert_editing), where` +
+        ` the prefix would not work: pick another chord, such as ${defKeys.prefix}`,
+      "keys.prefix",
+    );
+  }
   const leaderText = /** @type {string} */ (userModal.leader ?? defModal.leader);
   oneChord(leaderText, "modal.leader", 'the leader is one key, such as "space"');
   const leader = notation(() => parseKey(leaderText), "modal.leader");
@@ -263,14 +282,14 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
 
   /**
    * @param {BindingElement[]} els
-   * @returns {{ chords: Chord[], labels: string[] }}
+   * @returns {{ chords: Chord[], labels: string[], seq: string }}
    */
   const concretise = (els) => {
     const chords = els.map((e) =>
       "special" in e ? (e.special === "prefix" ? prefix : leader) : e,
     );
     const labels = els.map((e) => ("special" in e ? e.special : formatKey(e)));
-    return { chords, labels };
+    return { chords, labels, seq: chords.map(formatKey).join(" ") };
   };
 
   /** @type {Entry[]} */
@@ -307,11 +326,11 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
       const leader = !!first && "special" in first && first.special === "leader";
       /** @type {KeymapTarget[]} */
       const modes = global ? [...TARGETS] : leader ? ["normal", "panel", "pdf"] : ["normal", "pdf"];
-      const { chords, labels } = concretise(els);
+      const { chords, labels, seq } = concretise(els);
       entries.push({
         text,
         action,
-        seq: chords.map(formatKey).join(" "),
+        seq,
         chords,
         labels,
         layer: "keys",
@@ -346,7 +365,7 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
         const action = value.startsWith(":")
           ? commandOrThrow(value, path, commandDefs)
           : resolveOrThrow(value, path);
-        const { chords, labels } = concretise(notation(() => parseBinding(text), path));
+        const { chords, labels, seq } = concretise(notation(() => parseBinding(text), path));
         // The prefix layer must work in every mode and context (pdf-mode decision 5).
         if (mode === "pdf" && chords[0] && formatKey(chords[0]) === formatKey(prefix)) {
           // A built-in key the user never wrote: the mistake is the prefix (#1273).
@@ -359,7 +378,6 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
           }
           throw new KeymapError("[modal.pdf] cannot bind the prefix", path);
         }
-        const seq = chords.map(formatKey).join(" ");
         const prev = bySeq.get(seq);
         if (isUser) {
           overridden.add(action.name);
@@ -402,15 +420,15 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
   // carry Firefox's meaning, is not bound in the modes that type into a text field, so the key
   // is the field's there, as in Vim. A binding the user added stays and wins, as for ctrl+w; one
   // that repeats the default (a config.toml copied from defaults.toml) is still the default.
-  const insertEditing = userModal.insert_editing ?? defModal.insert_editing;
   if (insertEditing !== false) {
     /** @type {Set<string>} action name and sequence of each default [keys] binding */
     const defaults = new Set();
     for (const [name, value] of Object.entries(defKeys)) {
+      // Stryker disable next-line StringLiteral: no action is named prefix, so reading its chord as a binding adds an entry no binding matches
       if (name === "prefix") continue;
+      // Stryker disable next-line ArrayDeclaration,StringLiteral: the path only names an error, and the built-in defaults always parse
       for (const text of asList(value, formatPath(["keys", name]))) {
-        const { chords } = concretise(notation(() => parseBinding(text), name));
-        defaults.add(`${name} ${chords.map(formatKey).join(" ")}`);
+        defaults.add(`${name} ${concretise(notation(() => parseBinding(text), name)).seq}`);
       }
     }
     for (const e of entries) {
@@ -430,7 +448,7 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
     if (!isKeymapTable(mode)) throw new KeymapError(`unknown mode "${mode}"`, path);
     asList(list, path).forEach((text, i) => {
       const els = notation(() => parseBinding(text), formatPath(["unbind", mode, i]));
-      const seq = concretise(els).chords.map(formatKey).join(" ");
+      const { seq } = concretise(els);
       for (const e of entries) {
         if (e.seq !== seq || !e.modes.delete(mode)) continue;
         // Unbound in normal mode is unbound in its pdf context too.
@@ -600,6 +618,7 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
      * @returns {string | null}
      */
     site: (host) => {
+      // Stryker disable next-line LogicalOperator: a shortcut only; with no keys unbound, or no host (matchSiteRule skips an empty table name), no rule with keys matches
       if (!anyUnbound || !host) return null;
       const rule = matchSiteRule(host, rules);
       return rule && rule.keys.size > 0 ? rule.match : null;
@@ -624,6 +643,7 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
      * @param {Mode} mode
      * @param {Context} [context]
      */
+    // Stryker disable next-line StringLiteral: only "pdf" picks another trie (target), so any other default reads the page's
     sequences: (mode, context = "page") =>
       /** @type {Entry[]} */ (perMode[target(mode, context)]).map((e) => ({
         seq: e.seq,
@@ -634,6 +654,24 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
      * @param {string} name
      */
     bindingsFor: (name) => listBindings(name, (text) => text),
+    /**
+     * The first key of every binding not written with `prefix`, in any mode, with the action
+     * it runs (the first found): a chord the prefix cannot also be, since the prefix would take
+     * it from that action (docs/specs/setup-v2.md decision 21). Bindings written with `prefix`
+     * move with it, and an unbound one is no longer the action's.
+     * @returns {Map<string, string>}
+     */
+    keysOutsidePrefix: () => {
+      /** @type {Map<string, string>} */
+      const out = new Map();
+      for (const e of entries) {
+        const first = e.chords[0];
+        if (!first || e.modes.size === 0 || e.labels[0] === "prefix") continue;
+        const key = formatKey(first);
+        if (!out.has(key)) out.set(key, e.action.name);
+      }
+      return out;
+    },
     /**
      * The keys a user presses for each binding, for help and listings: `prefix+b` shows as
      * `ctrl+b b` with this keymap's prefix and leader (displayBinding). Modal bindings outside

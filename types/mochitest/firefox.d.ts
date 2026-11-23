@@ -15,6 +15,7 @@ interface nsIPrefBranch {
   unlockPref(name: string): void;
   prefHasDefaultValue(name: string): boolean;
   getChildList(startingAt: string): string[];
+  deleteBranch(startingAt: string): void;
 }
 interface nsIPrefDefaultBranch extends nsIPrefBranch {}
 
@@ -291,9 +292,6 @@ interface Tabbrowser {
       fromExternal?: boolean;
     },
   ): MozTabbrowserTab[];
-  // A browser's TabDialogBox (engine/browser/base/content/browser-tabdialogs.js), untyped here:
-  // one test counts its content dialogs.
-  getTabDialogBox(browser: MozBrowser): any;
 }
 
 // engine/netwerk/base/nsIPermissionManager.idl: permissions scoped to one tab's browser.
@@ -502,6 +500,12 @@ interface MozDialogElement extends Element {
 // engine/toolkit/content/widgets/radio.js (MozRadiogroup): the selected <radio>, null for none.
 interface MozRadiogroupElement extends Element {
   selectedItem: Element | null;
+}
+
+// engine/browser/base/content/browser.js (TabDialogBox): its content dialogs, untyped here: the
+// tests wait for one to be ready and read its frame's document and arguments.
+interface TabDialogBox {
+  getContentDialogManager(): { readonly dialogs: any[] };
 }
 
 // engine/toolkit/modules/SubDialog.sys.mjs: a sub-dialog, as its "dialogopen" event's
@@ -886,15 +890,19 @@ interface PdfJsViewer {
   scrollMode: number;
   /** 14797 and 14800: SpreadMode (NONE 0, ODD 1, EVEN 2). */
   spreadMode: number;
+  /** 13636: settles once every page is fetched; null while no document is open. */
+  readonly pagesPromise: Promise<void> | null;
 }
 /**
  * `class PDFDocumentProxy` (engine/toolkit/components/pdfjs/content/build/pdf.mjs, line 15353):
  * `getOutline` (15421) resolves with the outline's top entries, null for a document without one;
- * `getData` (15441) with the document's bytes.
+ * `getData` (15441) with the document's bytes; `cachedPageNumber` (15456) gives a page reference's
+ * number once pdf.js has fetched that page, null before.
  */
 interface PdfJsDocument {
   getOutline(): Promise<object[] | null>;
   getData(): Promise<Uint8Array>;
+  cachedPageNumber(ref: object): number | null;
 }
 /** `class ViewsManager` (line 17218), pdf.js's sidebar: `isOpen` is its own field (17255). */
 interface PdfJsViewsManager {

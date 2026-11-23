@@ -8,6 +8,7 @@ import {
   mcpStatus,
   parseMcpCommand,
   planMcpSwitch,
+  mcpState,
 } from "../src/agent/agent.mjs";
 import { workspaceItems } from "../src/ui/picker.mjs";
 import { parseCommandLine as parseCommand } from "../src/keys/cmdline.mjs";
@@ -31,35 +32,90 @@ describe(":mcp words", () => {
   });
 });
 
-describe(":mcp on|off (decision 26: config wins; the question only for the command)", () => {
-  test("on asks first; off sets at once; the same state says so", () => {
-    expect(planMcpSwitch("on", { pref: false })).toEqual({ kind: "ask" });
-    expect(planMcpSwitch("off", { pref: true })).toEqual({
-      kind: "set",
-      value: false,
+describe(":mcp on|off (decision 26; setup-v2 decision 16: :mcp off wins over the file)", () => {
+  test("on asks first; off turns agents off at once; the same state says so", () => {
+    expect(planMcpSwitch("on", { pref: false, off: false })).toEqual({ kind: "ask" });
+    expect(planMcpSwitch("off", { pref: true, off: false })).toEqual({
+      kind: "off",
+      pref: true,
       text: "mcp off: agents cannot reach Vimma",
     });
-    expect(planMcpSwitch("on", { pref: true })).toEqual({ kind: "say", text: "mcp is already on" });
-    expect(planMcpSwitch("off", { pref: false })).toEqual({
+    expect(planMcpSwitch("on", { pref: true, off: false })).toEqual({
       kind: "say",
+      text: "mcp is already on",
+    });
+    expect(planMcpSwitch("off", { pref: false, off: false })).toEqual({
+      kind: "off",
+      pref: false,
       text: "mcp is already off",
     });
   });
 
-  test("with [mcp] enabled in config.toml, :mcp on|off changes nothing and says to edit it", () => {
-    for (const word of ["on", "off"] as const) {
-      for (const config of [true, false]) {
-        expect(planMcpSwitch(word, { pref: false, config })).toEqual({
-          kind: "say",
-          text: `mcp: config.toml sets [mcp] enabled = ${config}; change it there`,
-        });
-      }
+  test("with [mcp] enabled = true in config.toml, :mcp off turns agents off until restart", () => {
+    expect(planMcpSwitch("off", { pref: false, config: true, off: false })).toEqual({
+      kind: "off",
+      pref: false,
+      text:
+        "mcp off until :mcp on or a restart; config.toml's [mcp] enabled = true turns agents " +
+        "on again at the next start",
+    });
+    // The pref goes off too, so that taking the line out of the file later keeps agents off.
+    expect(planMcpSwitch("off", { pref: true, config: true, off: true })).toEqual({
+      kind: "off",
+      pref: true,
+      text: "mcp is already off",
+    });
+  });
+
+  test(":mcp on after :mcp off asks again, whatever the file says", () => {
+    expect(planMcpSwitch("on", { pref: false, config: true, off: true })).toEqual({ kind: "ask" });
+    expect(planMcpSwitch("on", { pref: true, off: true })).toEqual({ kind: "ask" });
+    expect(planMcpSwitch("on", { pref: false, config: true, off: false })).toEqual({
+      kind: "say",
+      text: "mcp is already on",
+    });
+  });
+
+  test("with [mcp] enabled = false in config.toml, :mcp on changes nothing and says to edit it", () => {
+    for (const off of [true, false]) {
+      expect(planMcpSwitch("on", { pref: true, config: false, off })).toEqual({
+        kind: "say",
+        text: "mcp: config.toml sets [mcp] enabled = false; change it there",
+      });
     }
+    expect(planMcpSwitch("off", { pref: true, config: false, off: false })).toEqual({
+      kind: "off",
+      pref: true,
+      text: "mcp is already off",
+    });
+  });
+
+  test("the state: :mcp off first, then the file, then the pref", () => {
+    expect(mcpState({ pref: true, off: false })).toEqual({ enabled: true, from: "pref" });
+    expect(mcpState({ pref: false, config: true, off: false })).toEqual({
+      enabled: true,
+      from: "config",
+    });
+    expect(mcpState({ pref: true, config: false, off: false })).toEqual({
+      enabled: false,
+      from: "config",
+    });
+    expect(mcpState({ pref: false, config: true, off: true })).toEqual({
+      enabled: false,
+      from: "session",
+    });
+    expect(mcpState({ pref: true, off: true })).toEqual({ enabled: false, from: "session" });
+    // Off either way: the file or the pref says why.
+    expect(mcpState({ pref: false, config: false, off: true })).toEqual({
+      enabled: false,
+      from: "config",
+    });
+    expect(mcpState({ pref: false, off: true })).toEqual({ enabled: false, from: "pref" });
   });
 
   test("the question names the workspace; an adopted one of your own is warned about", () => {
     expect(mcpOnQuestion("agent", null)).toBe(
-      'Let local AI agents ask to use the "agent" workspace? Nothing runs until you allow it. y/N',
+      'Let AI agents ask to use the "agent" workspace? Nothing runs until you allow it. y/N',
     );
     expect(mcpOnQuestion("agent", { tabs: 3 })).toBe(
       '"agent" is your own workspace (3 tabs, its own logins). Agents will be able to read it. y/N',
@@ -84,6 +140,9 @@ describe(":mcp on|off (decision 26: config wins; the question only for the comma
     );
     expect(mcpStatus({ enabled: true, from: "config", workspace: "bots" })).toBe(
       'mcp on (config.toml) · agent workspace "bots" · nothing runs until you allow it',
+    );
+    expect(mcpStatus({ enabled: false, from: "session", workspace: "agent" })).toBe(
+      'mcp off (until :mcp on or a restart) · agent workspace "agent" · :mcp on lets agents ask to use it',
     );
   });
 });

@@ -11,6 +11,7 @@
 
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { createDispatcher } from "../core/dispatcher.mjs";
+import { SETUP_SCREENS } from "../core/control.mjs";
 import { resolveEscape } from "../core/escape.mjs";
 import {
   insertEditCommand,
@@ -184,7 +185,13 @@ const isRemoteBrowserTarget = (target) =>
  *   their key alone (core page-first.mjs)
  * @property {FirefoxKeys | null} firefoxKeys  Firefox's own shortcuts off (key-handling-batch)
  * @property {() => void} onTabSelect
- * @property {() => void} onDialogClose  focus left on nothing by a closed dialog goes to the page
+ * @property {Element | null} focusNow  the element focus last went to in this window
+ * @property {Element | null} focusBefore  the one before it
+ * @property {(e: FocusEvent) => void} onFocusIn  keeps focusNow and focusBefore
+ * @property {Element | null} dialogOpener  what had focus when the last dialog opened
+ * @property {() => void} onDialogOpen  records dialogOpener
+ * @property {() => void} onDialogClose  focus left on nothing by a closed dialog goes back to the
+ *   hidden address bar it was opened from, else to the page
  * @property {ReturnType<typeof createDispatcher>} dispatcher
  * @property {HelpOverlay} help
  * @property {Notice} notice  "<action>: not implemented yet" (m2-tab-keys)
@@ -779,6 +786,8 @@ export const VimmaHost = {
     win.addEventListener("keypress", state.onKeyPressAfter, SYSTEM_GROUP);
     win.addEventListener("TabSelect", state.onTabSelect, true);
     // Bubbles from the dialog's overlay (SubDialog.sys.mjs, close).
+    win.addEventListener("focusin", state.onFocusIn, true);
+    win.addEventListener("dialogopen", state.onDialogOpen, true);
     win.addEventListener("dialogclose", state.onDialogClose, true);
     // After the keys too: Firefox's shortcuts that overlap ours, off (key-handling-batch § 1).
     try {
@@ -906,6 +915,8 @@ export const VimmaHost = {
     win.removeEventListener("keypress", state.onKeyPress, SYSTEM_GROUP_CAPTURE);
     win.removeEventListener("keypress", state.onKeyPressAfter, SYSTEM_GROUP);
     win.removeEventListener("TabSelect", state.onTabSelect, true);
+    win.removeEventListener("focusin", state.onFocusIn, true);
+    win.removeEventListener("dialogopen", state.onDialogOpen, true);
     win.removeEventListener("dialogclose", state.onDialogClose, true);
     state.firefoxKeys?.destroy();
     win.removeEventListener("resize", state.onCancelHints);
@@ -1051,7 +1062,7 @@ export const VimmaHost = {
    *   agent: { waiting: number, ran: boolean, armed: boolean } | null,
    *   downloads: import("../core/downloads.mjs").DownloadSegment["kind"] | null,
    *   grep: { busy: boolean } | null, urlbar: { settled: boolean } | null,
-   *   pdf: { drawn: boolean } | null }}
+   *   pdf: { drawn: boolean } | null, setup: { screen: string } | null }}
    */
   screen(win) {
     const state = states.get(win);
@@ -1065,6 +1076,7 @@ export const VimmaHost = {
         grep: null,
         urlbar: null,
         pdf: null,
+        setup: null,
       };
     }
     // As the bar last drew it, not as AgentUi.status() says it will next: the ran dot is
@@ -1092,7 +1104,19 @@ export const VimmaHost = {
     const urlbar = state.urlbarQueries?.drawn() ?? null;
     const browser = win.gBrowser?.selectedBrowser;
     const pdf = browser ? PdfOps.drawn(browser) : null;
-    return { notice, prompt, chat, agent, downloads, grep, urlbar, pdf };
+    // The setup page runs in this process: its screen as draw() last set it (welcome, a step's
+    // id, stop), a fixed word, so an e2e scenario waits for the screen it photographs (#1298).
+    const page =
+      browser?.currentURI?.spec === "about:vimma-setup"
+        ? browser.contentDocument?.documentElement?.dataset
+        : undefined;
+    // A step is named once its view has loaded and its choices are drawn; `loading` before.
+    const word = page?.step;
+    const ready = word === "welcome" || word === "stop" || page?.viewReady === "true";
+    const screen = word && !ready ? "loading" : word;
+    // Checked here too: the server sends only a word from the closed list (security.md S9).
+    const setup = screen && SETUP_SCREENS.includes(screen) ? { screen } : null;
+    return { notice, prompt, chat, agent, downloads, grep, urlbar, pdf, setup };
   },
 
   /**
@@ -1543,14 +1567,14 @@ export const VimmaHost = {
       state.element.leave();
     }
     // The setup page draws its own j/k/space/enter/esc (first-run-setup behaviour 3): the scroll,
-    // hint and mode bindings would take them first. Chords with a modifier stay ours.
-    if (
-      !chord.ctrl &&
-      !chord.alt &&
-      !chord.meta &&
-      this._focusedBrowser(win)?.currentURI?.spec === "about:vimma-setup"
-    ) {
-      return;
+    // hint and mode bindings would take them first. Chords with a modifier stay ours, except
+    // while its prefix step waits for a key (setup-v2 decision 21): then every chord, the prefix
+    // included, is the key being chosen, and none is kept in the recent keys below. The page
+    // runs in this process, and only its own script sets `recording`.
+    const setupPage = this._focusedBrowser(win);
+    if (setupPage?.currentURI?.spec === "about:vimma-setup") {
+      if (!chord.ctrl && !chord.alt && !chord.meta) return;
+      if (setupPage.contentDocument?.documentElement?.dataset.recording === "true") return;
     }
     const mode = this._mode(state);
     // Keys typed in a private window are never kept (private-workspace decision 8b), nor those

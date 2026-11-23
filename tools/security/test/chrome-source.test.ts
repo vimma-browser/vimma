@@ -290,6 +290,29 @@ describe("chrome code", () => {
   });
 
   // Only the setup page's summary installs, through Firefox's AMO path (security.md A1).
+  // security.md M65: the setup's agents step is the one caller that may end `:mcp off`'s hold
+  // besides `:mcp on`'s own yes; McpHost is imported by ctl/ and agent/ code too.
+  test("ends :mcp off's hold from a consent only in the setup host", () => {
+    const SETUP = "src/browser/base/content/vimma/setup/SetupHost.sys.mjs";
+    const MCP = "src/browser/base/content/vimma/host/mcp-ops.mjs";
+    const all = hits(/\b(consentFromSetup|consentRefusal|consentTicket)\b/);
+    expect(all.filter((h) => !h.startsWith(`${SETUP}:`) && !h.startsWith(`${MCP}:`))).toEqual([]);
+    const setup = readFileSync(join(ROOT, SETUP), "utf8");
+    expect(setup.match(/McpHost\.consent\w+\(/g)).toEqual([
+      "McpHost.consentTicket(",
+      "McpHost.consentRefusal(",
+      "McpHost.consentFromSetup(",
+    ]);
+    // In mcp-ops: the three definitions, and consentFromSetup's own re-check.
+    const mcp = readFileSync(join(ROOT, MCP), "utf8");
+    expect(mcp.match(/\b(consentFromSetup|consentRefusal|consentTicket)\(/g)).toEqual([
+      "consentTicket(",
+      "consentRefusal(",
+      "consentFromSetup(",
+      "consentRefusal(",
+    ]);
+  });
+
   test("installs an add-on only from the setup page", () => {
     const SETUP = "src/browser/base/content/vimma/setup/SetupHost.sys.mjs";
     const all = hits(
@@ -300,6 +323,31 @@ describe("chrome code", () => {
     expect(text.match(/getInstallForURL|installAddonFrom\w+/g)).toEqual([
       "getInstallForURL",
       "installAddonFromAOM",
+    ]);
+  });
+
+  // security.md O11 and P9: Make default and the import wizard are asked for only by the setup
+  // host, through Firefox's own shell service and dialog, and only the setup page and the
+  // window script that registers it import the host.
+  test("asks for Make default and the import wizard only from the setup host", () => {
+    const SETUP = "src/browser/base/content/vimma/setup/SetupHost.sys.mjs";
+    const all = hits(/\.setDefaultBrowser\(|migration-dialog-window|showMigrationWizard\(/);
+    expect(all.filter((h) => !h.startsWith(`${SETUP}:`))).toEqual([]);
+    expect(all.map((h) => h.slice(h.indexOf(": ") + 2))).toEqual([
+      'const WIZARD_URL = "chrome://browser/content/migration/migration-dialog-window.html";',
+      // The step's `enter` (runAction), through the host's own method below.
+      'if (id === "default_browser") return { result: await this.setDefaultBrowser() };',
+      "await shell().setDefaultBrowser(false);",
+    ]);
+    // Every importer, by name: a new one anywhere (host/, actors/, ctl/, agent/) fails here and
+    // needs a review of what it lets reach the setup host.
+    const importers = sources().filter(
+      ({ path, text }) => path !== SETUP && /SetupHost\.sys\.mjs/.test(text),
+    );
+    expect(importers.map((s) => s.path).sort()).toEqual([
+      // The setup page's own script (about:vimma-setup).
+      "src/browser/base/content/vimma/setup/flow.mjs",
+      "src/browser/base/content/vimma/vimma.js",
     ]);
   });
 

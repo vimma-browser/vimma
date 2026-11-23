@@ -1,0 +1,2024 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+// Setup v2's chapters on the setup page (docs/specs/setup-v2.md); the page's offering and its
+// config.toml file checks are in browser_vimma_setup.js. AMO is pointed at
+// a closed local port, so the content blocker shows the curated list offline and nothing leaves
+// the machine; XDG_CONFIG_HOME is a temporary folder, so config.toml writes never reach the real
+// ~/.config. A later slice adds its steps' tasks here.
+
+"use strict";
+
+// Every chapter of the setup in one file: about 30 s on an idle developer machine and over 80 s
+// on a loaded one, against the harness's 45 s for a file.
+/* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
+requestLongerTimeout(3);
+
+const { SetupHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/setup/SetupHost.sys.mjs",
+);
+
+const { VimmaHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
+);
+
+const { ConfigHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
+);
+
+const { SearchService } = ChromeUtils.importESModule(
+  "moz-src:///toolkit/components/search/SearchService.sys.mjs",
+);
+
+const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
+const { ExtensionTestCommon } = ChromeUtils.importESModule(
+  "resource://testing-common/ExtensionTestCommon.sys.mjs",
+);
+
+// AMO answered by a local .sjs; the page appends `search/?…`, which the .sjs ignores.
+const AMO_LOCAL =
+  getRootDirectory(gTestPath).replace("chrome://mochitests/content", "https://example.com") +
+  "file_vimma_setup_amo.sjs?";
+const UBLOCK = "uBlock0@raymondhill.net";
+
+const SETUP_URL = "about:vimma-setup";
+const OFFERED = "vimma.setup.offered";
+
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+/**
+ * The setup page's document. about:vimma-setup loads in the parent process (SetupHost.sys.mjs's
+ * getURIFlags has no URI_MUST_LOAD_IN_CHILD), so the browser has it; contentDocument is null only
+ * for a remote page, where a read through it throws.
+ * @param {MozTabbrowserTab} tab
+ */
+const docOf = (tab) => found(tab.linkedBrowser.contentDocument);
+
+const { ShellService } = ChromeUtils.importESModule(
+  "moz-src:///browser/components/shell/ShellService.sys.mjs",
+);
+const { MigrationUtils } = ChromeUtils.importESModule(
+  "moz-src:///browser/components/migration/MigrationUtils.sys.mjs",
+);
+const { InternalTestingProfileMigrator } = ChromeUtils.importESModule(
+  "moz-src:///browser/components/migration/InternalTestingProfileMigrator.sys.mjs",
+);
+const { sinon } = ChromeUtils.importESModule("resource://testing-common/Sinon.sys.mjs");
+const { AppLauncher } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/services/AppLauncher.sys.mjs",
+);
+
+/**
+ * What the replaced shell service answers, for every task (Moving in, behaviour 22), and the
+ * arguments of each Make Default it was asked. No task changes this machine's default browser.
+ */
+const shell = {
+  isDefault: false,
+  setFails: false,
+  flatpak: false,
+  /** @type {unknown[][]} */
+  calls: [],
+};
+
+// The shell service's two methods are replaced on its internal object, where AppLauncher's
+// wrapper also lives (browser_vimma_setup_moving_in.js), and the import wizard lists only
+// Firefox's test migrator, so it never reads the browsers installed on this machine.
+add_task(async () => {
+  await SpecialPowers.pushPrefEnv({ set: [["browser.migrate.internal-testing.enabled", true]] });
+  const sandbox = sinon.createSandbox();
+  sandbox
+    .stub(MigrationUtils, "availableMigratorKeys")
+    .get(() => [InternalTestingProfileMigrator.key]);
+  sandbox.stub(AppLauncher, "underFlatpak").callsFake(() => shell.flatpak);
+  const isDefault = ShellService.isDefaultBrowser;
+  const setDefault = ShellService.setDefaultBrowser;
+  ShellService.isDefaultBrowser = () => shell.isDefault;
+  ShellService.setDefaultBrowser = async (/** @type {unknown[]} */ ...args) => {
+    shell.calls.push(args);
+    if (shell.setFails) throw new Error("no handler database");
+    shell.isDefault = true;
+  };
+  registerCleanupFunction(async () => {
+    ShellService.isDefaultBrowser = isDefault;
+    ShellService.setDefaultBrowser = setDefault;
+    sandbox.restore();
+    await SpecialPowers.popPrefEnv();
+  });
+});
+
+/** @param {Partial<typeof shell>} state  for one task; the rest back to another default */
+function shellAnswers(state = {}) {
+  Object.assign(shell, { isDefault: false, setFails: false, flatpak: false, calls: [] }, state);
+}
+
+// XDG_CONFIG_HOME first: the vimma.config.path change reloads the config at once, and would
+// otherwise read the developer's own ~/.config/vimma/config.toml.
+// The folder XDG_CONFIG_HOME points at while this file runs. configFile() reads it here, not
+// from the variable: the cleanup below puts the variable back first (empty on macOS), and the
+// tasks' own cleanups, which run after it, still remove the right file (#1396).
+let configHome = "";
+
+add_task(async () => {
+  const xdg = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-setup");
+  configHome = xdg;
+  const before = Services.env.exists("XDG_CONFIG_HOME") ? Services.env.get("XDG_CONFIG_HOME") : "";
+  Services.env.set("XDG_CONFIG_HOME", xdg);
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["vimma.setup.amoApi", "http://127.0.0.1:1/"],
+      ["vimma.config.path", ""],
+    ],
+  });
+  await ConfigHost.reload();
+  registerCleanupFunction(async () => {
+    await removeConfig();
+    await SpecialPowers.popPrefEnv();
+    Services.env.set("XDG_CONFIG_HOME", before);
+    await ConfigHost.reload();
+    Services.prefs.clearUserPref(OFFERED);
+    await IOUtils.remove(xdg, { recursive: true, ignoreAbsent: true });
+  });
+});
+
+const configFile = () => PathUtils.join(configHome, "vimma", "config.toml");
+
+/**
+ * Removes config.toml and reads the config now, so Vimma undoes the `[search] default` a summary
+ * applied before the next task starts. Left to the 2 s poll, the undo lands in whichever task is
+ * running then and changes the default engine under it.
+ */
+async function removeConfig() {
+  await IOUtils.remove(configFile(), { ignoreAbsent: true });
+  await ConfigHost.reload();
+  await TestUtils.waitForCondition(
+    () => !Services.prefs.prefHasUserValue("vimma.search.applied"),
+    "the [search] default the summary applied is undone",
+  );
+}
+
+/**
+ * @param {Document} doc
+ * @param {...(string | { ctrlKey?: boolean, altKey?: boolean, shiftKey?: boolean })} keys
+ *   EventUtils key names, each followed by its modifiers when it has any
+ */
+async function press(doc, ...keys) {
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    if (typeof k !== "string") continue;
+    // A key followed by its modifiers: `press(doc, "a", { ctrlKey: true })`.
+    const next = keys[i + 1];
+    EventUtils.synthesizeKey(k, typeof next === "object" ? next : {}, found(doc.defaultView));
+    await TestUtils.waitForTick();
+  }
+}
+
+/** @param {Document} doc */
+const step = (doc) => doc.documentElement.dataset.step;
+
+/**
+ * Replaces SetupHost.installFor with an install of a local unsigned XPI that has
+ * uBlock Origin's GUID, because the AMO file URL cannot be fetched under test. Everything after
+ * it (installAddonFromAOM, the prompt) is Firefox's own path. Returns the URLs it was asked for.
+ */
+async function stubInstall() {
+  const xpi = ExtensionTestCommon.generateXPI({
+    manifest: {
+      name: "uBlock Origin (test)",
+      browser_specific_settings: { gecko: { id: UBLOCK } },
+      permissions: ["tabs"],
+    },
+  });
+  registerCleanupFunction(() => IOUtils.remove(xpi.path, { ignoreAbsent: true }));
+  const real = SetupHost.installFor;
+  /** @type {string[]} */
+  const asked = [];
+  SetupHost.installFor = async (entry) => {
+    asked.push(entry.url);
+    return AddonManager.getInstallForFile(xpi);
+  };
+  registerCleanupFunction(() => (SetupHost.installFor = real));
+  return { asked, restore: () => (SetupHost.installFor = real) };
+}
+
+// browser.toml sets vimma.theme.source=builtin, so no Omarchy theme is found unless a task
+// points the theme at a folder of its own.
+
+const { ThemeHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ui/theme-host.mjs",
+);
+const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
+const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
+
+const { BUILT_STEPS } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/setup.mjs");
+
+const CHAPTERS_PREF = "vimma.setup.chapters";
+
+/** @param {BrowserWindow} [win] */
+async function openFlow(win = window) {
+  const tab = await BrowserTestUtils.openNewForegroundTab(win.gBrowser, SETUP_URL);
+  const doc = docOf(tab);
+  await TestUtils.waitForCondition(() => doc.documentElement.dataset.ready === "true", "ready");
+  tab.linkedBrowser.focus();
+  return { tab, doc };
+}
+
+/** @param {MozTabbrowserTab} tab */
+async function closeFlow(tab) {
+  if (tab.linkedBrowser && !tab.closing) BrowserTestUtils.removeTab(tab);
+  await removeConfig();
+}
+
+/**
+ * Waits for the page to show `id`: a step id with its view drawn, "welcome" or "stop".
+ * @param {Document} doc @param {string} id
+ */
+function atStep(doc, id) {
+  const root = doc.documentElement;
+  return TestUtils.waitForCondition(
+    () =>
+      root.dataset.step === id &&
+      (id === "welcome" || id === "stop" || root.dataset.viewReady === "true"),
+    `at ${id}`,
+  );
+}
+
+/** @param {Document} doc @returns {string} the choice under the cursor */
+const current = (doc) =>
+  found(doc.querySelector("#v2-choices li[aria-current] .name")).textContent ?? "";
+/** @param {Document} doc */
+const writes = (doc) => found(doc.getElementById("v2-writes")).textContent;
+/** @param {Document} doc */
+const notice = (doc) => found(doc.getElementById("v2-notice"));
+
+/** From the welcome screen to the search engine step, past the content blocker with nothing marked. */
+async function toEngines(/** @type {Document} */ doc) {
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "content_blocker");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "search_engine");
+}
+
+add_task(async function welcome_says_q_leaves_and_finished_steps_are_saved() {
+  const { tab, doc } = await openFlow();
+  Assert.equal(step(doc), "welcome");
+  const promise = found(doc.getElementById("v2-promise")).textContent.replace(/\s+/g, " ");
+  for (const words of ["optional", "q", "esc", "saved to config.toml", ":setup"]) {
+    Assert.ok(promise.includes(words), `the promise says ${words}`);
+  }
+  const chapter = found(doc.querySelector('#v2-chapters li[data-chapter="essentials"]'));
+  Assert.ok(chapter.textContent.includes("Content blocker, Search engine, Colours"), "its steps");
+  Assert.ok(!doc.getElementById("summary"), "and no summary flow");
+  const closed = BrowserTestUtils.waitForTabClosing(tab);
+  await press(doc, "q");
+  await closed;
+  Assert.ok(!(await IOUtils.exists(configFile())), "q changed nothing");
+  await closeFlow(tab);
+});
+
+add_task(async function a_step_shows_the_line_it_will_write() {
+  const { tab, doc } = await openFlow();
+  await toEngines(doc);
+  const inForce = current(doc);
+  Assert.equal(inForce, (await SearchService.getDefault()).name, "the engine in force first");
+  Assert.equal(writes(doc), "Writes nothing", "the value in force writes nothing");
+  await press(doc, "j");
+  Assert.equal(writes(doc), `Writes [search] default = ${JSON.stringify(current(doc))}`);
+  const keys = found(doc.getElementById("v2-keys")).textContent;
+  for (const k of ["save and go on", "skip", "back", "leave"]) Assert.ok(keys.includes(k), k);
+  Assert.ok(found(doc.getElementById("v2-place")).textContent.includes("step 2 of 3"));
+  await closeFlow(tab);
+});
+
+add_task(async function enter_on_a_step_writes_its_key_and_applies_live() {
+  const { tab, doc } = await openFlow();
+  await toEngines(doc);
+  await press(doc, "j");
+  const name = current(doc);
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "colours");
+  Assert.ok(
+    (await IOUtils.readUTF8(configFile())).includes(`[search]\ndefault = ${JSON.stringify(name)}`),
+    "[search] default written at enter",
+  );
+  await TestUtils.waitForCondition(async () => (await SearchService.getDefault()).name === name);
+  Assert.ok(found(doc.getElementById("v2-last")).textContent.includes("[search] default"));
+  // No Omarchy theme: light, dark, follow the system; the last is in force.
+  Assert.equal(current(doc), "Vimma, following the system");
+  await press(doc, "k", "k");
+  Assert.equal(writes(doc), 'Writes [theme] appearance = "light"');
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.ok((await IOUtils.readUTF8(configFile())).includes('appearance = "light"'));
+  Assert.equal(ThemeHost.status.appearance.value, "light", "the colours apply at once");
+  const saved = found(doc.getElementById("v2-stop-saved")).textContent;
+  Assert.ok(saved.includes("[search] default") && saved.includes("[theme] appearance"));
+  await closeFlow(tab);
+});
+
+add_task(async function skip_writes_nothing() {
+  const { tab, doc } = await openFlow();
+  await toEngines(doc);
+  await press(doc, "j", "s");
+  await atStep(doc, "colours");
+  await press(doc, "k", "s");
+  await atStep(doc, "stop");
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
+  await closeFlow(tab);
+});
+
+add_task(async function leaving_mid_chapter_keeps_finished_steps() {
+  const { tab, doc } = await openFlow();
+  await toEngines(doc);
+  await press(doc, "j");
+  const name = current(doc);
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "colours");
+  const saved = await IOUtils.readUTF8(configFile());
+  await press(doc, "k");
+  const closed = BrowserTestUtils.waitForTabClosing(tab);
+  await press(doc, "KEY_Escape");
+  await closed;
+  const text = await IOUtils.readUTF8(configFile());
+  Assert.ok(text.includes(`default = ${JSON.stringify(name)}`), "the saved step stays saved");
+  Assert.equal(text, saved, "nothing for the open step");
+  await closeFlow(tab);
+});
+
+add_task(async function closing_the_tab_keeps_finished_steps_and_writes_nothing_else() {
+  const { tab, doc } = await openFlow();
+  await toEngines(doc);
+  await press(doc, "j", "KEY_Enter");
+  await atStep(doc, "colours");
+  const before = await IOUtils.readUTF8(configFile());
+  await press(doc, "k");
+  BrowserTestUtils.removeTab(tab);
+  await TestUtils.waitForTick();
+  Assert.equal(await IOUtils.readUTF8(configFile()), before, "only the finished step");
+  await closeFlow(tab);
+});
+
+/** Enter on the steps of Your keys, from the stop screen before them, to the last stop screen. */
+async function enterThroughKeys(/** @type {Document} */ doc) {
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "prefix_key");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "hint_letters");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+}
+
+/** Enter on every step, then on the last stop screen, which closes the page. */
+async function enterThrough(/** @type {Document} */ doc, /** @type {MozTabbrowserTab} */ tab) {
+  await toEngines(doc);
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "colours");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  // Moving in acts and saves nothing: "not now" on both of its steps.
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "default_browser");
+  await press(doc, "j", "KEY_Enter");
+  await atStep(doc, "bring_your_data");
+  await press(doc, "j", "KEY_Enter");
+  await atStep(doc, "stop");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "address_bar");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "tab_line");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  await enterThroughKeys(doc);
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "updates");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "agents");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.ok(!McpHost.state.enabled, "plain enter never turns agents on");
+  const closed = BrowserTestUtils.waitForTabClosing(tab);
+  await press(doc, "KEY_Enter");
+  await closed;
+}
+
+add_task(async function enter_through_every_step_leaves_config_toml_unchanged() {
+  // No file: none is created.
+  let { tab, doc } = await openFlow();
+  await enterThrough(doc, tab);
+  Assert.ok(!(await IOUtils.exists(configFile())), "no file created");
+  await closeFlow(tab);
+  // A file of the user's, without an Omarchy theme and then with one.
+  const text = '# mine\nschema = 2\n\n[ui]\ntoolbar = "shown" # why\ntabline = "auto"\n';
+  const omarchy = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-omarchy");
+  /** @type {[string, string][][]} */
+  const runs = [
+    [],
+    [
+      ["vimma.theme.source", "omarchy"],
+      ["vimma.theme.omarchyPath", omarchy],
+    ],
+  ];
+  for (const prefs of runs) {
+    await IOUtils.writeUTF8(configFile(), text);
+    await ConfigHost.reload();
+    await SpecialPowers.pushPrefEnv({ set: prefs });
+    ({ tab, doc } = await openFlow());
+    await toEngines(doc);
+    await press(doc, "KEY_Enter");
+    await atStep(doc, "colours");
+    Assert.equal(
+      current(doc),
+      prefs.length ? "The Omarchy theme" : "Vimma, following the system",
+      "the effect in force is selected",
+    );
+    await press(doc, "KEY_Enter");
+    await atStep(doc, "stop");
+    await press(doc, "3");
+    await atStep(doc, "address_bar");
+    Assert.equal(current(doc), "Shown", "the toolbar in force is selected");
+    await press(doc, "KEY_Enter");
+    await atStep(doc, "tab_line");
+    Assert.equal(current(doc), "Only with two or more tabs", "the tab line in force is selected");
+    await press(doc, "KEY_Enter");
+    await atStep(doc, "stop");
+    await enterThroughKeys(doc);
+    Assert.equal(await IOUtils.readUTF8(configFile()), text, "byte for byte");
+    Assert.ok(
+      found(doc.getElementById("v2-stop-saved")).textContent.includes("Nothing was written"),
+    );
+    await closeFlow(tab);
+    await SpecialPowers.popPrefEnv();
+  }
+  await IOUtils.remove(omarchy, { recursive: true });
+});
+
+add_task(async function back_overwrites_one_key() {
+  const { tab, doc } = await openFlow();
+  await toEngines(doc);
+  await press(doc, "j");
+  const first = current(doc);
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "colours");
+  await press(doc, "h");
+  await atStep(doc, "search_engine");
+  Assert.equal(current(doc), first, "back opens on the value in force, the one just saved");
+  await press(doc, "j");
+  const second = current(doc);
+  Assert.notEqual(second, first);
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "colours");
+  const text = await IOUtils.readUTF8(configFile());
+  Assert.equal(text.match(/^default = /gm)?.length, 1, "one key");
+  Assert.ok(text.includes(`default = ${JSON.stringify(second)}`), "overwritten");
+  await closeFlow(tab);
+});
+
+add_task(async function an_edit_made_while_a_step_is_open_is_kept() {
+  await IOUtils.writeUTF8(configFile(), "schema = 2\n");
+  await ConfigHost.reload();
+  const { tab, doc } = await openFlow();
+  await toEngines(doc);
+  // Another program edits the file while the step is open.
+  await IOUtils.writeUTF8(configFile(), "schema = 2\n\n[statusbar]\ntab = false\n");
+  await press(doc, "j");
+  const name = current(doc);
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "colours");
+  const text = await IOUtils.readUTF8(configFile());
+  Assert.ok(text.includes("[statusbar]\ntab = false"), "the other edit is kept");
+  Assert.ok(text.includes(`default = ${JSON.stringify(name)}`), "and the step's key set");
+  await closeFlow(tab);
+});
+
+add_task(async function a_failed_write_keeps_the_file_and_the_step_open() {
+  const text = "schema = 2\n";
+  await IOUtils.writeUTF8(configFile(), text);
+  await ConfigHost.reload();
+  const dir = found(PathUtils.parent(configFile()));
+  const { tab, doc } = await openFlow();
+  await toEngines(doc);
+  // No temporary file can be made beside config.toml now.
+  await IOUtils.setPermissions(dir, 0o500);
+  registerCleanupFunction(() => IOUtils.setPermissions(dir, 0o700).catch(() => {}));
+  await press(doc, "j", "KEY_Enter");
+  await TestUtils.waitForCondition(() => !notice(doc).hidden, "the reason is shown");
+  Assert.ok(notice(doc).textContent.startsWith("Not saved:"), notice(doc).textContent);
+  Assert.equal(step(doc), "search_engine", "the step stays open");
+  await IOUtils.setPermissions(dir, 0o700);
+  Assert.equal(await IOUtils.readUTF8(configFile()), text, "the file as it was");
+  await closeFlow(tab);
+});
+
+add_task(async function a_parse_error_writes_nothing_and_action_steps_still_work() {
+  await IOUtils.writeUTF8(configFile(), "[search\n");
+  await ConfigHost.reload();
+  const { tab, doc } = await openFlow();
+  const error = found(doc.getElementById("v2-config-error"));
+  Assert.ok(!error.hidden && error.textContent.includes("config.toml:1"), error.textContent);
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "content_blocker");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "search_engine");
+  Assert.ok(!notice(doc).hidden && notice(doc).textContent.includes(":1"), "the step says why");
+  await press(doc, "j", "KEY_Enter");
+  await TestUtils.waitForTick();
+  Assert.equal(step(doc), "search_engine", "enter cannot save");
+  await press(doc, "s");
+  await atStep(doc, "colours");
+  Assert.equal(await IOUtils.readUTF8(configFile()), "[search\n", "untouched");
+  await closeFlow(tab);
+});
+
+add_task(async function a_symlinked_config_toml_stays_a_link() {
+  if (AppConstants.platform !== "linux") return;
+  const real = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-dotfiles");
+  const target = PathUtils.join(real, "config.toml");
+  await IOUtils.writeUTF8(target, "schema = 2\n");
+  await IOUtils.remove(configFile(), { ignoreAbsent: true });
+  await IOUtils.makeDirectory(found(PathUtils.parent(configFile())), { ignoreExisting: true });
+  const ln = await Subprocess.call({
+    command: "/usr/bin/ln",
+    arguments: ["-s", target, configFile()],
+  });
+  Assert.equal((await ln.wait()).exitCode, 0, "symlink made");
+  await ConfigHost.reload();
+  const { tab, doc } = await openFlow();
+  await toEngines(doc);
+  await press(doc, "j");
+  const name = current(doc);
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "colours");
+  const link = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  link.initWithPath(configFile());
+  Assert.ok(link.isSymlink(), "still a link");
+  Assert.ok((await IOUtils.readUTF8(target)).includes(`default = ${JSON.stringify(name)}`));
+  await closeFlow(tab);
+  await IOUtils.remove(real, { recursive: true });
+});
+
+add_task(async function a_private_window_saves_nothing() {
+  Services.prefs.clearUserPref(CHAPTERS_PREF);
+  const win = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  const { tab, doc } = await openFlow(win);
+  const error = found(doc.getElementById("v2-config-error"));
+  Assert.ok(!error.hidden && error.textContent.includes("private window"), error.textContent);
+  await toEngines(doc);
+  Assert.ok(notice(doc).textContent.includes("private window"), "the step says so");
+  await press(doc, "j", "KEY_Enter");
+  await TestUtils.waitForTick();
+  Assert.equal(step(doc), "search_engine", "enter cannot save");
+  Assert.deepEqual(
+    await SetupHost.saveStep(tab.linkedBrowser, "search_engine", 1),
+    { error: "a private window saves nothing" },
+    "nor can the host be asked",
+  );
+  await press(doc, "s");
+  await atStep(doc, "colours");
+  await press(doc, "s");
+  await atStep(doc, "stop");
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
+  Assert.ok(!Services.prefs.prefHasUserValue(CHAPTERS_PREF), "the chapter is not recorded");
+  await BrowserTestUtils.closeWindow(win);
+});
+
+add_task(async function the_page_cannot_name_a_key_or_value() {
+  const { tab, doc } = await openFlow();
+  const b = tab.linkedBrowser;
+  Assert.deepEqual(
+    await SetupHost.saveStep(b, "search_engine", 0),
+    { error: "no such choice" },
+    "no step's choices were sent yet",
+  );
+  await toEngines(doc);
+  // A step whose slice has not landed is refused, whichever steps are still to come.
+  const unbuilt = STEPS.filter((s) => s.kind === "setting" && !BUILT_STEPS.includes(s.id));
+  for (const [id, index] of /** @type {[string, number][]} */ ([
+    ...unbuilt.map((s) => [s.id, 0]),
+    ["content_blocker", 0],
+    ["no_such_step", 0],
+  ])) {
+    Assert.deepEqual(
+      await SetupHost.saveStep(b, id, index),
+      { error: "not a step that saves" },
+      id,
+    );
+  }
+  for (const index of [999, -1, 1.5, "length", "0"]) {
+    Assert.deepEqual(
+      await SetupHost.saveStep(
+        b,
+        "search_engine",
+        /** @type {number} */ (/** @type {unknown} */ (index)),
+      ),
+      { error: "no such choice" },
+      `index ${JSON.stringify(index)}`,
+    );
+  }
+  Assert.deepEqual(await SetupHost.saveStep(null, "search_engine", 1), {
+    error: "not a step that saves",
+  });
+  // The agents step's "on" before the page was shown that step: no list, so no consent.
+  Assert.deepEqual(await SetupHost.saveStep(b, "agents", 1), { error: "no such choice" });
+  Assert.ok(!McpHost.state.enabled, "agents stay off");
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
+  await closeFlow(tab);
+});
+
+add_task(async function an_engine_removed_before_enter_is_not_written() {
+  const real = SetupHost.engines;
+  const gone = "Vimma Test Engine That Went Away";
+  SetupHost.engines = async () => {
+    const r = await real.call(SetupHost);
+    return { ...r, names: [...r.names, gone] };
+  };
+  registerCleanupFunction(() => (SetupHost.engines = real));
+  const { tab, doc } = await openFlow();
+  await toEngines(doc);
+  const rows = doc.querySelectorAll("#v2-choices li").length;
+  await press(doc, ...Array(rows).fill("j"));
+  Assert.equal(current(doc), gone);
+  SetupHost.engines = real;
+  await press(doc, "KEY_Enter");
+  await TestUtils.waitForCondition(
+    () => notice(doc).textContent.includes("no longer installed"),
+    "says so",
+  );
+  Assert.equal(step(doc), "search_engine");
+  Assert.ok(
+    ![...doc.querySelectorAll("#v2-choices .name")].some((n) => n.textContent === gone),
+    "drawn with the current list",
+  );
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
+  await closeFlow(tab);
+});
+
+add_task(async function content_blocker_installs_on_enter_with_the_permission_prompt() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["vimma.setup.amoApi", AMO_LOCAL],
+      ["xpinstall.signatures.required", false],
+    ],
+  });
+  const stub = await stubInstall();
+  const { tab, doc } = await openFlow();
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "content_blocker");
+  await TestUtils.waitForCondition(() =>
+    doc.querySelector(`#v2-addons li[data-guid="${UBLOCK}"]:not(.disabled)`),
+  );
+  await press(doc, " ");
+  const shown = BrowserTestUtils.waitForEvent(window.PopupNotifications.panel, "popupshown");
+  await press(doc, "KEY_Enter");
+  await shown;
+  Assert.deepEqual(stub.asked, ["https://addons.mozilla.org/f/ublock.xpi"], "installs on enter");
+  Assert.ok(
+    window.PopupNotifications.getNotification("addon-webext-permissions", tab.linkedBrowser),
+    "Firefox's permission prompt, on the setup page's tab",
+  );
+  Assert.equal(step(doc), "content_blocker", "the step waits for the answer");
+  found(
+    /** @type {MozPopupNotification | null} */ (window.PopupNotifications.panel.firstElementChild),
+  ).secondaryButton.click();
+  await atStep(doc, "search_engine");
+  Assert.ok(
+    found(doc.getElementById("v2-last")).textContent.includes("uBlock Origin declined"),
+    "the result is reported",
+  );
+  Assert.strictEqual(await AddonManager.getAddonByID(UBLOCK), null, "declining installs nothing");
+  stub.restore();
+  await closeFlow(tab);
+  await SpecialPowers.popPrefEnv();
+});
+
+// The prompt anchors to the page's browser; without one (browserFor found none, as after a
+// process switch) the add-on is reported failed and the step still goes on, rather than handing
+// Firefox a null anchor.
+add_task(async function install_without_the_pages_browser_fails_and_finishes() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["vimma.setup.amoApi", AMO_LOCAL],
+      ["xpinstall.signatures.required", false],
+    ],
+  });
+  const stub = await stubInstall();
+  const realInstall = SetupHost.install;
+  SetupHost.install = (_browser, guid) => realInstall.call(SetupHost, null, guid);
+  registerCleanupFunction(() => (SetupHost.install = realInstall));
+  const { tab, doc } = await openFlow();
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "content_blocker");
+  await TestUtils.waitForCondition(() =>
+    doc.querySelector(`#v2-addons li[data-guid="${UBLOCK}"]:not(.disabled)`),
+  );
+  await press(doc, " ");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "search_engine");
+  SetupHost.install = realInstall;
+  Assert.ok(
+    found(doc.getElementById("v2-last")).textContent.includes("uBlock Origin failed"),
+    "reported failed",
+  );
+  Assert.deepEqual(stub.asked, [], "AMO never asked: install fails before AddonManager");
+  Assert.strictEqual(await AddonManager.getAddonByID(UBLOCK), null, "nothing installed");
+  stub.restore();
+  await closeFlow(tab);
+  await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function esc_in_the_search_field_leaves_the_field_first() {
+  const { tab, doc } = await openFlow();
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "content_blocker");
+  await press(doc, "/");
+  const field = found(doc.getElementById("v2-search"));
+  Assert.equal(doc.activeElement, field, "/ focuses the search field");
+  await press(doc, "q");
+  Assert.equal(/** @type {HTMLInputElement} */ (field).value, "q", "q is typed there");
+  await press(doc, "KEY_Escape");
+  Assert.notEqual(doc.activeElement, field, "the first esc leaves the field");
+  Assert.equal(step(doc), "content_blocker", "and keeps the page");
+  const closed = BrowserTestUtils.waitForTabClosing(tab);
+  await press(doc, "KEY_Escape");
+  await closed;
+  await closeFlow(tab);
+});
+
+add_task(async function finished_chapters_are_ticked_on_the_next_run() {
+  Services.prefs.clearUserPref(CHAPTERS_PREF);
+  registerCleanupFunction(() => Services.prefs.clearUserPref(CHAPTERS_PREF));
+  let { tab, doc } = await openFlow();
+  Assert.ok(!doc.querySelector("#v2-chapters li[data-finished]"), "nothing ticked yet");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "content_blocker");
+  await press(doc, "s");
+  await atStep(doc, "search_engine");
+  await press(doc, "s");
+  await atStep(doc, "colours");
+  await press(doc, "s");
+  await atStep(doc, "stop");
+  Assert.equal(Services.prefs.getStringPref(CHAPTERS_PREF), "essentials");
+  await closeFlow(tab);
+  ({ tab, doc } = await openFlow());
+  Assert.ok(doc.querySelector('#v2-chapters li[data-chapter="essentials"][data-finished]'));
+  await closeFlow(tab);
+});
+
+add_task(async function enter_before_a_step_is_drawn_writes_nothing() {
+  const { tab, doc } = await openFlow();
+  await toEngines(doc);
+  await press(doc, "s");
+  await atStep(doc, "colours");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  // Back to the colours step and enter at once, before its list is drawn again: the list the
+  // page was sent on the first visit must not stand in for it.
+  const real = SetupHost.saveStep;
+  /** @type {unknown[][]} */
+  const asked = [];
+  SetupHost.saveStep = (...args) => {
+    asked.push(args.slice(1));
+    return real.apply(SetupHost, args);
+  };
+  registerCleanupFunction(() => (SetupHost.saveStep = real));
+  const win = found(doc.defaultView);
+  EventUtils.synthesizeKey("h", {}, win);
+  EventUtils.synthesizeKey("KEY_Enter", {}, win);
+  await atStep(doc, "colours");
+  await TestUtils.waitForTick();
+  SetupHost.saveStep = real;
+  Assert.deepEqual(asked, [], "the page asked for no save");
+  Assert.equal(step(doc), "colours", "enter did not save");
+  Assert.ok(!doc.documentElement.dataset.failed, "and reported no failure");
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
+  await closeFlow(tab);
+});
+
+add_task(async function a_list_drawn_again_keeps_the_row_and_an_old_index_is_stale() {
+  await IOUtils.writeUTF8(configFile(), "schema = 2\n");
+  await ConfigHost.reload();
+  const { tab, doc } = await openFlow();
+  await toEngines(doc);
+  const row = current(doc);
+  Assert.ok(row, "the cursor is on an engine");
+  const before = /** @type {{ serial: number }} */ (
+    await SetupHost.stepView(tab.linkedBrowser, "search_engine")
+  ).serial;
+  // Another program names an engine that is not installed: the list gains Keep, first.
+  const gone = 'schema = 2\n[search]\ndefault = "Gone"\n';
+  await IOUtils.writeUTF8(configFile(), gone);
+  await ConfigHost.reload();
+  await TestUtils.waitForCondition(
+    () => doc.querySelector('#v2-choices li[data-keep="true"]'),
+    "drawn again with Keep",
+  );
+  Assert.equal(current(doc), row, "the cursor stays on its row, not its index");
+  Assert.deepEqual(
+    await SetupHost.saveStep(tab.linkedBrowser, "search_engine", 1, before),
+    { stale: true },
+    "an index into the list drawn before is refused",
+  );
+  Assert.equal(await IOUtils.readUTF8(configFile()), gone, "nothing written");
+  await closeFlow(tab);
+});
+
+add_task(async function an_engine_named_in_another_case_is_the_one_in_force() {
+  const engines = (await SearchService.getVisibleEngines()).map((e) => e.name);
+  const name = found(engines.find((n) => n !== n.toLowerCase()));
+  const text = `schema = 2\n[search]\ndefault = ${JSON.stringify(name.toLowerCase())}\n`;
+  await IOUtils.writeUTF8(configFile(), text);
+  await ConfigHost.reload();
+  const { tab, doc } = await openFlow();
+  await toEngines(doc);
+  Assert.equal(current(doc), name, "selected as the installed engine");
+  Assert.ok(!doc.querySelector('#v2-choices li[data-keep="true"]'), "no Keep row");
+  Assert.equal(writes(doc), "Writes nothing");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "colours");
+  Assert.equal(await IOUtils.readUTF8(configFile()), text, "enter wrote nothing");
+  await closeFlow(tab);
+});
+
+// Chapter 5, Privacy and agents (behaviours 27 and 28, decisions 14 and 16).
+
+const { McpHost, MCP_ENABLED_PREF } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/host/mcp-ops.mjs",
+);
+const { VimmaUpdates } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/updates/VimmaUpdates.sys.mjs",
+);
+const { STEPS } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/setup-steps.mjs");
+const { WorkspaceStore } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
+);
+
+registerCleanupFunction(() => {
+  McpHost._clearHoldForTests();
+  Services.prefs.clearUserPref(MCP_ENABLED_PREF);
+});
+
+/** `:mcp off`, as typed: its notice's text. */
+const mcpOff = () =>
+  McpHost.run(
+    "off",
+    () => {},
+    () => {},
+  );
+
+/** From the welcome screen to chapter 5's first step, by its digit. */
+async function toUpdates(/** @type {Document} */ doc) {
+  await press(doc, "5");
+  await atStep(doc, "updates");
+}
+
+/** @param {Document} doc */
+const choiceNote = (doc) => {
+  const note = found(doc.getElementById("v2-choice-note"));
+  return note.hidden ? "" : note.textContent;
+};
+
+add_task(async function updates_step_says_what_the_check_sends() {
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  const text = found(doc.getElementById("v2-text")).textContent;
+  Assert.ok(text.includes("the update channel and the platform"), "what the check sends");
+  Assert.ok(text.includes("Never check stops every request to updates.vimma.dev"), text);
+  Assert.equal(current(doc), "Tell me when a release is out", "the default in force");
+  Assert.equal(writes(doc), "Writes nothing");
+  await press(doc, "j");
+  Assert.equal(writes(doc), "Writes [updates] check = false");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "agents");
+  Assert.ok(
+    (await IOUtils.readUTF8(configFile())).includes("[updates]\ncheck = false"),
+    "[updates] check = false written at enter",
+  );
+  Assert.ok(!VimmaUpdates.status().enabled, "checks are off at once");
+  // `:update` too: the check stops before any request.
+  Assert.equal((await VimmaUpdates.check({ asked: true })).outcome, "off", "no request");
+  await closeFlow(tab);
+  await TestUtils.waitForCondition(() => VimmaUpdates.status().enabled, "on again");
+});
+
+add_task(async function agents_step_selects_off_first_and_writes_enabled_on_enter() {
+  Assert.ok(!McpHost.state.enabled, "agents are off");
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  const text = found(doc.getElementById("v2-text"));
+  Assert.equal(text.querySelectorAll("br").length, 2, "two lines, then :mcp off");
+  Assert.ok(text.textContent.startsWith("Agents reach only the agent workspace."));
+  Assert.ok(
+    text.textContent.includes("Sending a form, paying and showing you a page always ask you"),
+  );
+  Assert.ok(text.textContent.includes(":mcp off turns agents off until :mcp on or a restart"));
+  Assert.equal(current(doc), "Off", "off is selected first");
+  Assert.equal(writes(doc), "Writes nothing");
+  await press(doc, "j");
+  Assert.equal(current(doc), "On");
+  Assert.equal(writes(doc), "Writes [mcp] enabled = true");
+  Assert.equal(choiceNote(doc), "", "no hold to end, the workspace is Vimma's");
+  const changed = TestUtils.topicObserved("vimma-mcp-changed");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  await changed;
+  Assert.ok((await IOUtils.readUTF8(configFile())).includes("[mcp]\nenabled = true"));
+  Assert.deepEqual(McpHost.state, { enabled: true, from: "config" }, "agents are on");
+  Assert.ok(found(doc.getElementById("v2-last")).textContent.includes("agents are on"));
+  Assert.ok(found(doc.getElementById("v2-stop-title")).textContent.includes("done"));
+  await closeFlow(tab);
+  Assert.ok(!McpHost.state.enabled, "off again without the file");
+});
+
+add_task(async function agents_on_ends_mcp_off_as_mcp_on_does() {
+  const text = "schema = 2\n[mcp]\nenabled = true\n";
+  await IOUtils.writeUTF8(configFile(), text);
+  await ConfigHost.reload();
+  Assert.ok(McpHost.state.enabled, "the file turns agents on");
+  mcpOff();
+  Assert.deepEqual(McpHost.state, { enabled: false, from: "session" }, ":mcp off holds");
+  let { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  Assert.equal(current(doc), "Off", "off is in force under the hold");
+  Assert.equal(writes(doc), "Writes nothing");
+  Assert.equal(
+    choiceNote(doc),
+    "config.toml's [mcp] enabled = true turns agents on again at the next start.",
+  );
+  // Plain enter on off keeps the file and the hold (behaviour 8).
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.equal(await IOUtils.readUTF8(configFile()), text, "byte for byte");
+  Assert.ok(!McpHost.state.enabled, "still held off");
+  await press(doc, "h");
+  await atStep(doc, "agents");
+  await press(doc, "j");
+  Assert.equal(writes(doc), "Writes nothing", "the file says on already");
+  Assert.equal(choiceNote(doc), "Also ends :mcp off for this session.");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.equal(await IOUtils.readUTF8(configFile()), text, "nothing written");
+  Assert.deepEqual(McpHost.state, { enabled: true, from: "config" }, "the hold ended, as y does");
+  Assert.ok(found(doc.getElementById("v2-last")).textContent.includes("agents are on"));
+  BrowserTestUtils.removeTab(tab);
+
+  // Held without the key: on writes it, and ends the hold.
+  await IOUtils.writeUTF8(configFile(), "schema = 2\n");
+  await ConfigHost.reload();
+  mcpOff();
+  ({ tab, doc } = await openFlow());
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  await press(doc, "j");
+  Assert.equal(writes(doc), "Writes [mcp] enabled = true");
+  Assert.equal(choiceNote(doc), "Also ends :mcp off for this session.");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.deepEqual(McpHost.state, { enabled: true, from: "config" });
+  await closeFlow(tab);
+});
+
+add_task(async function an_mcp_off_after_the_step_was_drawn_wins_over_its_enter() {
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  await press(doc, "j");
+  Assert.equal(current(doc), "On");
+  // Agents are off already, so `:mcp off` changes no state the page hears of: only the count
+  // of `:mcp off`s, which the enter is checked against, as a yes to `:mcp on` is.
+  mcpOff();
+  await press(doc, "KEY_Enter");
+  await TestUtils.waitForCondition(() => doc.documentElement.dataset.failed === "true", "refused");
+  Assert.equal(
+    notice(doc).textContent,
+    "Not saved: :mcp off ran since this step was drawn; nothing written",
+  );
+  Assert.equal(step(doc), "agents", "the step stays open");
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
+  Assert.ok(!McpHost.state.enabled, "agents stay off");
+  // Drawn again after the refusal with the cursor on off, the row in force: a second enter at
+  // once turns nothing on, as a refused yes needs `:mcp on` and `y` again.
+  await atStep(doc, "agents");
+  Assert.equal(current(doc), "Off", "the cursor is back on the row in force");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.ok(!McpHost.state.enabled, "a second enter turns nothing on");
+  Assert.ok(!(await IOUtils.exists(configFile())), "and writes nothing");
+  // Back, `j` and enter, on a screen drawn after the `:mcp off`: a new consent.
+  await press(doc, "h");
+  await atStep(doc, "agents");
+  await press(doc, "j", "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.ok(McpHost.state.enabled, "the newer consent turns agents on");
+  await closeFlow(tab);
+});
+
+/** Resolves once the open step was drawn again after now. @param {Document} doc */
+function redrawn(doc) {
+  const real = SetupHost.stepView;
+  return new Promise((resolve) => {
+    SetupHost.stepView = async (...args) => {
+      SetupHost.stepView = real;
+      const v = await real.apply(SetupHost, args);
+      // The page draws the view after this resolves; viewReady is set once it has.
+      TestUtils.waitForCondition(() => doc.documentElement.dataset.viewReady === "true").then(() =>
+        resolve(v),
+      );
+      return v;
+    };
+  });
+}
+
+add_task(async function an_mcp_off_the_page_hears_keeps_the_ticket_and_moves_the_cursor() {
+  await IOUtils.writeUTF8(configFile(), "schema = 2\n[mcp]\nenabled = true\n");
+  await ConfigHost.reload();
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  Assert.equal(current(doc), "On", "on is in force, the cursor on it");
+  // `:mcp off` in another window: agents were on, so the page hears of it and draws again.
+  const again = redrawn(doc);
+  mcpOff();
+  await again;
+  Assert.equal(current(doc), "Off", "the cursor follows the row in force");
+  await press(doc, "j");
+  Assert.equal(current(doc), "On");
+  await press(doc, "KEY_Enter");
+  await TestUtils.waitForCondition(() => doc.documentElement.dataset.failed === "true", "refused");
+  Assert.equal(
+    notice(doc).textContent,
+    "Not saved: :mcp off ran since this step was drawn; nothing written",
+    "the redraw did not take a new consent",
+  );
+  Assert.deepEqual(McpHost.state, { enabled: false, from: "session" }, "the hold stands");
+  await closeFlow(tab);
+  McpHost._clearHoldForTests();
+});
+
+add_task(async function a_config_read_redraw_keeps_the_ticket() {
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  await press(doc, "j");
+  Assert.equal(current(doc), "On");
+  // Agents are off already: `:mcp off` tells the page nothing, but a config read draws it again.
+  mcpOff();
+  const again = redrawn(doc);
+  await IOUtils.writeUTF8(configFile(), 'schema = 2\n[ui]\ntoolbar = "shown"\n');
+  await ConfigHost.reload();
+  await again;
+  Assert.equal(current(doc), "On", "the row in force did not change: the cursor stays");
+  await press(doc, "KEY_Enter");
+  await TestUtils.waitForCondition(() => doc.documentElement.dataset.failed === "true", "refused");
+  Assert.ok(notice(doc).textContent.includes(":mcp off ran since this step was drawn"));
+  Assert.ok(!McpHost.state.enabled, "agents stay off");
+  Assert.ok(!(await IOUtils.readUTF8(configFile())).includes("[mcp]"), "nothing written");
+  await closeFlow(tab);
+  McpHost._clearHoldForTests();
+});
+
+add_task(async function a_workspace_gone_during_the_write_holds_agents_off() {
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  await press(doc, "j");
+  // The agent workspace goes away after the write was planned, before the hold is ended.
+  const realSet = ConfigHost.setConfigKeys;
+  ConfigHost.setConfigKeys = async (...args) => {
+    const r = await realSet.apply(ConfigHost, args);
+    Object.defineProperty(WorkspaceStore, "agent", { value: null, configurable: true });
+    return r;
+  };
+  try {
+    await press(doc, "KEY_Enter");
+    await TestUtils.waitForCondition(
+      () => doc.documentElement.dataset.failed === "true",
+      "refused",
+    );
+  } finally {
+    ConfigHost.setConfigKeys = realSet;
+    delete (/** @type {{ agent?: unknown }} */ (WorkspaceStore).agent);
+  }
+  Assert.ok(
+    notice(doc).textContent.includes("config.toml was written, agents stay off"),
+    notice(doc).textContent,
+  );
+  Assert.ok((await IOUtils.readUTF8(configFile())).includes("[mcp]\nenabled = true"), "written");
+  Assert.deepEqual(
+    McpHost.state,
+    { enabled: false, from: "session" },
+    "held off, so the page's words are true",
+  );
+  await closeFlow(tab);
+  McpHost._clearHoldForTests();
+});
+
+add_task(async function a_redraw_during_the_load_after_a_refusal_keeps_the_cursor_on_off() {
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  await press(doc, "j");
+  mcpOff();
+  // The load the refusal asks for waits; a config read's redraw arrives and finishes first.
+  const real = SetupHost.stepView;
+  /** @type {() => void} */
+  let release = () => {};
+  const held = new Promise((resolve) => (release = () => resolve(undefined)));
+  let freshAsked = false;
+  SetupHost.stepView = async (b, id, options) => {
+    if (options?.fresh && !freshAsked) {
+      freshAsked = true;
+      // Superseded by the redraw: the page drops whatever it answers, so it answers nothing,
+      // and the list the redraw was sent stays the host's last.
+      await held;
+      return null;
+    }
+    return real.call(SetupHost, b, id, options);
+  };
+  try {
+    await press(doc, "KEY_Enter");
+    await TestUtils.waitForCondition(() => freshAsked, "the load after the refusal started");
+    await IOUtils.writeUTF8(configFile(), 'schema = 2\n[ui]\ntoolbar = "shown"\n');
+    await ConfigHost.reload();
+    await TestUtils.waitForCondition(
+      () => doc.documentElement.dataset.viewReady === "true",
+      "drawn again",
+    );
+  } finally {
+    release();
+    SetupHost.stepView = real;
+  }
+  // The refused enter finishes once the held load returns (dropped, as superseded).
+  await TestUtils.waitForCondition(
+    () => doc.documentElement.dataset.failed === "true" && !doc.documentElement.dataset.busy,
+    "the refusal is shown",
+  );
+  Assert.equal(current(doc), "Off", "the redraw kept the load fresh: the cursor is on off");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.ok(!McpHost.state.enabled, "a second enter turns nothing on");
+  await closeFlow(tab);
+  McpHost._clearHoldForTests();
+});
+
+add_task(async function a_redraw_with_no_ticket_takes_none() {
+  const { tab, doc } = await openFlow();
+  await toUpdates(doc);
+  await press(doc, "s");
+  await atStep(doc, "agents");
+  const b = tab.linkedBrowser;
+  // An enter spends the ticket; a redraw that is not an arrival at the step takes no new one.
+  const first = found(await SetupHost.stepView(b, "agents", { fresh: true }));
+  Assert.ok("written" in (await SetupHost.saveStep(b, "agents", 0, first.serial)), "off saved");
+  const v = found(await SetupHost.stepView(b, "agents"));
+  Assert.deepEqual(await SetupHost.saveStep(b, "agents", 1, v.serial), {
+    error: "no consent asked; nothing written",
+  });
+  Assert.ok(!McpHost.state.enabled, "agents stay off");
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
+  await closeFlow(tab);
+});
+
+// Your keys (chapter 4): the prefix and the hint letters (behaviours 9, 18, 25 and 26).
+
+/** @param {Document} doc @returns {string} the step's text as the page shows it */
+const stepText = (doc) => found(doc.getElementById("v2-text")).textContent ?? "";
+
+/** @param {Document} doc @returns {string[]} the labels of the step's choices, in list order */
+const rowLabels = (doc) =>
+  [...doc.querySelectorAll("#v2-choices li .name")].map((n) => n.textContent ?? "");
+/** @param {Document} doc @returns {string} the footer's keys */
+const footerKeys = (doc) => found(doc.getElementById("v2-keys")).textContent ?? "";
+/** @param {Document} doc @returns {string} the key the prefix step shows as pressed */
+const recordedKey = (doc) => found(doc.getElementById("v2-record-key")).textContent ?? "";
+/** @param {Document} doc @returns {string} the key that lists every key under it */
+const recordLists = (doc) => found(doc.getElementById("v2-record-lists")).textContent ?? "";
+/** @param {Document} doc @returns {string} why the key pressed cannot be the prefix */
+const refusal = (doc) => {
+  const p = found(doc.getElementById("v2-record-refused"));
+  return p.hidden ? "" : (p.textContent ?? "");
+};
+
+/** @param {Document} doc @returns {string[]} the keys drawn under each prefix, in list order */
+const prefixRows = (doc) =>
+  [...doc.querySelectorAll("#v2-choices li")].map(
+    (li) => li.querySelector(".hint")?.textContent ?? "",
+  );
+
+/**
+ * Keys as a Colemak keyboard sends them: the character with the physical key it sits on.
+ * @param {Document} doc @param {[key: string, code: string][]} keys
+ */
+async function typeOn(doc, keys) {
+  for (const [key, code] of keys) {
+    EventUtils.synthesizeKey(key, { code }, found(doc.defaultView));
+    await TestUtils.waitForTick();
+  }
+}
+
+add_task(async function prefix_step_offers_ctrl_b_and_a_key_of_your_own() {
+  const { tab, doc } = await openFlow();
+  await press(doc, "4");
+  await atStep(doc, "prefix_key");
+  Assert.equal(current(doc), "ctrl+b", "the prefix in force first");
+  Assert.deepEqual(rowLabels(doc), ["ctrl+b", "Choose your own"]);
+  Assert.deepEqual(prefixRows(doc), ["ctrl+b ? lists every key", ""]);
+  Assert.ok(stepText(doc).includes("ctrl+b ? lists them now"), stepText(doc));
+  Assert.equal(writes(doc), "Writes nothing");
+  await press(doc, "j");
+  Assert.equal(writes(doc), "Press enter, then the key combination you want");
+  Assert.ok(footerKeys(doc).includes("enter press your key"), footerKeys(doc));
+  await closeFlow(tab);
+});
+
+add_task(async function prefix_step_records_a_key_and_esc_goes_back_to_the_list() {
+  const { tab, doc } = await openFlow();
+  await press(doc, "4");
+  await atStep(doc, "prefix_key");
+  await press(doc, "j", "KEY_Enter");
+  Assert.equal(doc.documentElement.dataset.recording, "true", "waiting for a key");
+  Assert.ok(found(doc.getElementById("v2-choices")).hidden, "the list makes way");
+  Assert.ok(!found(doc.getElementById("v2-record")).hidden);
+  Assert.ok(footerKeys(doc).includes("esc back to the list"), footerKeys(doc));
+  Assert.ok(!footerKeys(doc).includes("enter"), "nothing to save yet");
+  const recent = VimmaHost._lastChords.length;
+  // The prefix in force reaches the page as a key, not as Vimma's prefix.
+  await press(doc, "b", { ctrlKey: true });
+  Assert.equal(recordedKey(doc), "ctrl+b");
+  Assert.deepEqual(found(VimmaHost._state(window)).dispatcher.pending(), [], "no prefix pending");
+  Assert.equal(writes(doc), "Writes nothing", "the prefix in force writes nothing");
+  // tmux's prefix: the line, the key that lists every key, and what Firefox no longer does.
+  await press(doc, "a", { ctrlKey: true });
+  Assert.equal(recordedKey(doc), "ctrl+a");
+  Assert.equal(writes(doc), 'Writes [keys] prefix = "ctrl+a"');
+  Assert.equal(recordLists(doc), "ctrl+a ? lists every key");
+  // The note follows the platform's inventory of Firefox's keys: select all is ctrl+a on Linux
+  // and cmd+a on macOS, where ctrl+a gives nothing up.
+  if (Services.appinfo.OS === "Darwin") Assert.equal(choiceNote(doc), "", "no note on macOS");
+  else Assert.ok(choiceNote(doc).includes("select all"), choiceNote(doc));
+  Assert.ok(footerKeys(doc).includes("enter save and go on"), footerKeys(doc));
+  // q, s and h are keys being chosen now: refused, and the page stays.
+  await press(doc, "q");
+  Assert.equal(recordedKey(doc), "q");
+  Assert.ok(refusal(doc).includes("needs ctrl, alt or meta"), refusal(doc));
+  Assert.equal(step(doc), "prefix_key", "q did not leave");
+  Assert.equal(VimmaHost._lastChords.length, recent, "the keys pressed are not kept by Vimma");
+  await press(doc, "KEY_Escape");
+  Assert.ok(!doc.documentElement.dataset.recording, "back to the list");
+  Assert.equal(current(doc), "Choose your own", "on the same row");
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
+  // The prefix is Vimma's again once the page no longer waits.
+  await press(doc, "b", { ctrlKey: true });
+  Assert.deepEqual(found(VimmaHost._state(window)).dispatcher.pending(), ["prefix"]);
+  await press(doc, "KEY_Escape");
+  await closeFlow(tab);
+});
+
+add_task(async function waiting_for_a_key_holds_only_on_the_setup_tab() {
+  const { tab, doc } = await openFlow();
+  await press(doc, "4");
+  await atStep(doc, "prefix_key");
+  await press(doc, "j", "KEY_Enter");
+  Assert.equal(doc.documentElement.dataset.recording, "true");
+  // Another tab: the prefix is Vimma's there, while the setup page still waits.
+  const other = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:blank");
+  EventUtils.synthesizeKey("b", { ctrlKey: true }, window);
+  await TestUtils.waitForTick();
+  Assert.deepEqual(found(VimmaHost._state(window)).dispatcher.pending(), ["prefix"]);
+  EventUtils.synthesizeKey("KEY_Escape", {}, window);
+  await TestUtils.waitForTick();
+  Assert.equal(recordedKey(doc), "", "nothing reached the setup page");
+  // Closing it selects the setup tab again (its opener).
+  BrowserTestUtils.removeTab(other);
+  if (gBrowser.selectedTab !== tab) await BrowserTestUtils.switchTab(gBrowser, tab);
+  await press(doc, "KEY_Escape");
+  Assert.ok(!doc.documentElement.dataset.recording, "back to the list");
+  await closeFlow(tab);
+});
+
+add_task(async function prefix_step_refuses_a_key_the_keymap_uses() {
+  const { tab, doc } = await openFlow();
+  await press(doc, "4");
+  await atStep(doc, "prefix_key");
+  await press(doc, "j", "KEY_Enter");
+  await press(doc, "l", { ctrlKey: true });
+  Assert.equal(recordedKey(doc), "ctrl+l");
+  Assert.ok(refusal(doc).includes("already runs focus_urlbar"), refusal(doc));
+  Assert.equal(
+    found(doc.getElementById("v2-record-ask")).textContent,
+    "Press another key combination.",
+  );
+  Assert.equal(writes(doc), "Writes nothing");
+  Assert.ok(!footerKeys(doc).includes("enter save"), footerKeys(doc));
+  await press(doc, "KEY_Enter");
+  Assert.equal(doc.documentElement.dataset.recording, "true", "enter saves no refused key");
+  await press(doc, "KEY_Tab", { altKey: true });
+  Assert.ok(refusal(doc).includes("esc, enter and tab"), refusal(doc));
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
+  await press(doc, "KEY_Escape");
+  await closeFlow(tab);
+});
+
+add_task(async function a_pressed_prefix_writes_one_line_and_later_steps_name_it() {
+  const text = "# mine\nschema = 2\n";
+  await IOUtils.writeUTF8(configFile(), text);
+  await ConfigHost.reload();
+  const { tab, doc } = await openFlow();
+  await press(doc, "4");
+  await atStep(doc, "prefix_key");
+  await press(doc, "j", "KEY_Enter");
+  await press(doc, "w", { altKey: true });
+  Assert.equal(writes(doc), 'Writes [keys] prefix = "alt+w"');
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "hint_letters");
+  const after = await IOUtils.readUTF8(configFile());
+  Assert.ok(after.startsWith(text), after);
+  Assert.deepEqual(
+    after.slice(text.length).split("\n").filter(Boolean),
+    ["[keys]", 'prefix = "alt+w"'],
+    "one key, under its table",
+  );
+  Assert.ok(found(ConfigHost.keymap).keysFor("show_keybinds").includes("alt+w ?"), "applied live");
+  Assert.ok(found(doc.getElementById("v2-last")).textContent.includes('prefix = "alt+w"'));
+  // Back on the prefix step, the prefix just saved is the second row, in force.
+  await press(doc, "h");
+  await atStep(doc, "prefix_key");
+  Assert.equal(current(doc), "Your own: alt+w", "the prefix just saved is in force");
+  Assert.deepEqual(prefixRows(doc), ["ctrl+b ? lists every key", "alt+w ? lists every key"]);
+  Assert.ok(stepText(doc).includes("alt+w ? lists them now"), stepText(doc));
+  // Every step drawn from now on names its keys with the new prefix.
+  /** @type {string[]} */
+  const kbds = [];
+  for (const id of BUILT_STEPS) {
+    const view = await SetupHost.stepView(tab.linkedBrowser, id);
+    for (const part of view?.text ?? []) if (part.tag === "kbd") kbds.push(part.text);
+  }
+  Assert.ok(kbds.includes("alt+w ?"), kbds.join(", "));
+  Assert.ok(!kbds.some((k) => k.startsWith("ctrl+b ")), `no old prefix: ${kbds.join(", ")}`);
+  await closeFlow(tab);
+  await removeConfig();
+});
+
+add_task(async function the_host_judges_the_pressed_prefix_again() {
+  // No poll reads config.toml while this task edits it: a read would draw the step again and
+  // make the list this task holds stale.
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.config.pollMs", 3_600_000]] });
+  const { tab, doc } = await openFlow();
+  await press(doc, "4");
+  await atStep(doc, "prefix_key");
+  const browser = tab.linkedBrowser;
+  const view = found(await SetupHost.stepView(browser, "prefix_key"));
+  const save = (/** @type {number} */ index, /** @type {string} */ chord) =>
+    SetupHost.saveStep(browser, "prefix_key", index, view.serial, chord);
+  // What the page would refuse, the host refuses too: the page only proposes.
+  for (const chord of ["ctrl+l", "a", "ctrl+enter", "ctrl+t"]) {
+    const r = await save(1, chord);
+    Assert.ok("error" in r, `${chord}: ${JSON.stringify(r)}`);
+  }
+  // Only one chord in Vimma's notation, and only on the row that records one.
+  for (const [index, chord] of /** @type {[number, string][]} */ ([
+    [1, "ctrl+b ctrl+b"],
+    [1, 'ctrl+a"\n[mcp]\nenabled = true'],
+    [1, "ctrl+nope"],
+    [0, "ctrl+a"],
+  ])) {
+    const r = await save(index, chord);
+    Assert.deepEqual(r, { error: "not a key the prefix step takes" }, JSON.stringify(chord));
+  }
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written");
+  // Judged against the file as it is at enter: a binding added after the step was drawn wins.
+  const bound = 'schema = 2\n\n[keys]\nclose_tab = ["ctrl+alt+y"]\n';
+  await IOUtils.writeUTF8(configFile(), bound);
+  const late = await save(1, "ctrl+alt+y");
+  Assert.ok("error" in late && late.error.includes("already runs close_tab"), JSON.stringify(late));
+  Assert.equal(await IOUtils.readUTF8(configFile()), bound, "the file is as it was");
+  // Not read again: the list this task holds stays the page's.
+  await IOUtils.remove(configFile());
+  // The chord is written as Vimma writes it.
+  const r = await save(1, "control+a");
+  Assert.deepEqual(r, { written: ['[keys] prefix = "ctrl+a"'] });
+  await closeFlow(tab);
+  await removeConfig();
+  await ConfigHost.reload();
+  await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function a_custom_prefix_and_hint_letters_offer_keep_and_write_nothing() {
+  const text =
+    '# mine\nschema = 2\n\n[keys]\nprefix = "ctrl+space"\n\n[modal]\nhint_chars = "fjdksla"\n';
+  await IOUtils.writeUTF8(configFile(), text);
+  await ConfigHost.reload();
+  const { tab, doc } = await openFlow();
+  await press(doc, "4");
+  await atStep(doc, "prefix_key");
+  Assert.equal(current(doc), "Your own: ctrl+space", "the second row, selected");
+  Assert.deepEqual(rowLabels(doc), ["ctrl+b", "Your own: ctrl+space"], "no Keep");
+  Assert.equal(prefixRows(doc)[1], "ctrl+space ? lists every key", "drawn with its own key");
+  Assert.equal(writes(doc), "Writes nothing");
+  Assert.ok(footerKeys(doc).includes("space press another"), footerKeys(doc));
+  // space waits for another key; esc keeps the one in force.
+  await press(doc, " ");
+  Assert.equal(doc.documentElement.dataset.recording, "true");
+  await press(doc, "KEY_Escape");
+  Assert.equal(current(doc), "Your own: ctrl+space");
+  // k and j as typed on Colemak, back on the second row: Keep stays selected on the next step
+  // for a value the user set.
+  await typeOn(doc, [
+    ["k", "KeyN"],
+    ["j", "KeyY"],
+  ]);
+  Assert.equal(current(doc), "Your own: ctrl+space");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "hint_letters");
+  Assert.equal(current(doc), 'Keep "fjdksla"', "Keep first and selected");
+  Assert.equal(writes(doc), "Writes nothing");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.equal(await IOUtils.readUTF8(configFile()), text, "byte for byte");
+  await closeFlow(tab);
+});
+
+add_task(async function hint_step_selects_the_layout_typed_on() {
+  const { tab, doc } = await openFlow();
+  await press(doc, "4");
+  await atStep(doc, "prefix_key");
+  // j, k and s on Colemak: KeyY, KeyN and KeyD.
+  await typeOn(doc, [
+    ["j", "KeyY"],
+    ["k", "KeyN"],
+    ["s", "KeyD"],
+  ]);
+  await atStep(doc, "hint_letters");
+  Assert.equal(current(doc), "Colemak: arstdhneio", "the layout typed on first");
+  Assert.ok(
+    found(doc.querySelector('#v2-choices li[data-index="0"] .meta')).textContent === "in force",
+    "QWERTY, the default, is still the one in force",
+  );
+  const guess = found(doc.getElementById("v2-guess"));
+  Assert.ok(!guess.hidden && guess.textContent.includes("Colemak"), guess.textContent);
+  Assert.equal(writes(doc), 'Writes [modal] hint_chars = "arstdhneio"');
+  Assert.ok(stepText(doc).includes("f labels the links"), stepText(doc));
+  // j on the step moves the cursor; the guess, its label and the note stay as they were.
+  const note = guess.textContent;
+  await typeOn(doc, [["j", "KeyY"]]);
+  Assert.equal(current(doc), "Dvorak: aoeuidhtns");
+  Assert.equal(guess.textContent, note, "the note is unchanged");
+  Assert.ok(doc.querySelector('#v2-choices li[data-index="1"][data-guessed]'), "Colemak's label");
+  await typeOn(doc, [["k", "KeyN"]]);
+  Assert.equal(current(doc), "Colemak: arstdhneio");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.ok((await IOUtils.readUTF8(configFile())).includes('hint_chars = "arstdhneio"'));
+  Assert.equal(ConfigHost.config?.hintChars, "arstdhneio", "applied live");
+  await closeFlow(tab);
+  // Nothing of what was typed outlives the page: a new one opens on QWERTY.
+  const again = await openFlow();
+  await press(again.doc, "4");
+  await atStep(again.doc, "prefix_key");
+  await press(again.doc, "s");
+  await atStep(again.doc, "hint_letters");
+  Assert.equal(current(again.doc), "QWERTY: asdfghjkl", "QWERTY without a guess");
+  await closeFlow(again.tab);
+});
+
+/** @param {Document} doc @returns {string[]} the keys the step's text names */
+const textKeys = (doc) => [...doc.querySelectorAll("#v2-text kbd")].map((k) => k.textContent ?? "");
+/** @param {Document} doc @returns {(string | undefined)[]} each choice's drawing: its toolbar */
+const drawnToolbars = (doc) =>
+  [...doc.querySelectorAll("#v2-choices li")].map(
+    (li) => /** @type {HTMLElement | null} */ (li.querySelector(".window"))?.dataset.toolbar,
+  );
+
+/** @param {Document} doc @returns {[string | undefined, number][]} each drawing's tab line */
+const drawnTabLines = (doc) =>
+  [...doc.querySelectorAll("#v2-choices li .window")].map((w) => [
+    /** @type {HTMLElement} */ (w).dataset.tabline,
+    w.querySelectorAll(".w-tab").length,
+  ]);
+
+/** From the welcome screen straight to the window chapter (behaviour 3). */
+async function toAddressBar(/** @type {Document} */ doc) {
+  await press(doc, "3");
+  await atStep(doc, "address_bar");
+}
+
+add_task(async function address_bar_step_names_the_keys_in_force() {
+  // A failed assertion must not leave the rebound keys to the tasks after it.
+  registerCleanupFunction(removeConfig);
+  const { tab, doc } = await openFlow();
+  await toAddressBar(doc);
+  Assert.ok(found(doc.getElementById("v2-progress")).textContent.includes("The window"));
+  // macOS binds meta+l where Linux binds alt+d (defaults.mjs, the mac keymap).
+  const second = AppConstants.platform === "macosx" ? "meta+l" : "alt+d";
+  Assert.deepEqual(textKeys(doc), ["ctrl+l", second, "I", "ctrl+b u"], "the default keymap");
+  Assert.deepEqual(drawnToolbars(doc), ["shown", "hidden"], "a drawing of the window per choice");
+  // focus_urlbar rebound without alt+d, toggle_toolbar left without a key: the step, open, draws
+  // its text again when the file is read (behaviour 12).
+  await IOUtils.writeUTF8(
+    configFile(),
+    'schema = 2\n[ui]\ntabline = "always"\n[keys]\nfocus_urlbar = ["ctrl+k", "ctrl+l"]\n' +
+      "toggle_toolbar = []\n",
+  );
+  await ConfigHost.reload();
+  await TestUtils.waitForCondition(() => textKeys(doc).includes("ctrl+k"), "the rebound key");
+  Assert.deepEqual(
+    drawnTabLines(doc),
+    [
+      ["always", 1],
+      ["always", 1],
+    ],
+    "the tab line in force",
+  );
+  Assert.deepEqual(textKeys(doc), ["ctrl+k", "ctrl+l", "I"], "alt+d unbound is left out");
+  Assert.ok(
+    [...doc.querySelectorAll("#v2-text code")].some((c) => c.textContent === ":toolbar"),
+    "an action with no key is named by its command",
+  );
+  await closeFlow(tab);
+});
+
+// toolbar-toggle decision 3 (changed 19 Nov 2026): a fresh profile, with no config.toml, opens
+// the step on Hidden, in force and selected, and enter on it writes nothing.
+add_task(async function a_fresh_profile_opens_the_address_bar_step_on_hidden() {
+  registerCleanupFunction(removeConfig);
+  Assert.ok(!(await IOUtils.exists(configFile())), "no config.toml");
+  const { tab, doc } = await openFlow();
+  await toAddressBar(doc);
+  Assert.equal(current(doc), "Hidden", "hidden is in force and selected without the key");
+  Assert.equal(writes(doc), "Writes nothing");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "tab_line");
+  Assert.ok(!(await IOUtils.exists(configFile())), "nothing written, no file created");
+  Assert.ok(
+    Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", false),
+    "the toolbar stays hidden",
+  );
+  await closeFlow(tab);
+});
+
+add_task(async function address_bar_step_writes_toolbar_and_applies_live() {
+  // A failed assertion must not leave the toolbar shown for the tasks after it.
+  registerCleanupFunction(removeConfig);
+  const { tab, doc } = await openFlow();
+  await toAddressBar(doc);
+  Assert.equal(current(doc), "Hidden", "hidden is in force without the key");
+  Assert.equal(writes(doc), "Writes nothing");
+  await press(doc, "k");
+  Assert.equal(writes(doc), 'Writes [ui] toolbar = "shown"');
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "tab_line");
+  // A missing file is written as the commented template with the one key set, and nothing else.
+  const { setConfigKeysText } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/core/config.mjs",
+  );
+  const only = setConfigKeysText(null, [{ table: "ui", key: "toolbar", value: "shown" }], {
+    mac: AppConstants.platform === "macosx",
+  });
+  Assert.ok("text" in only, "the edit applies to the template");
+  Assert.equal(
+    await IOUtils.readUTF8(configFile()),
+    ("text" in only && only.text) || "",
+    "[ui] toolbar only",
+  );
+  await TestUtils.waitForCondition(
+    () => !Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", true),
+    "the toolbar shows at once",
+  );
+  Assert.ok(!document.documentElement.hasAttribute("vimma-toolbar-hidden"), "in this window too");
+  // Back: shown is in force now, and enter on it writes nothing.
+  await press(doc, "h");
+  await atStep(doc, "address_bar");
+  Assert.equal(current(doc), "Shown", "back opens on the value in force");
+  Assert.equal(writes(doc), "Writes nothing");
+  const before = await IOUtils.readUTF8(configFile());
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "tab_line");
+  Assert.equal(await IOUtils.readUTF8(configFile()), before, "nothing written");
+  await closeFlow(tab);
+  await TestUtils.waitForCondition(
+    () => Services.prefs.getBoolPref("vimma.ui.toolbar.hidden", false),
+    "the toolbar is hidden again once the file is gone",
+  );
+});
+
+/** @param {Element | null} e */
+const rectOf = (e) => found(e).getBoundingClientRect();
+
+/**
+ * Resizes the window to `w`×`h` and waits for the page to see a new size.
+ * @param {Document} doc @param {number} w @param {number} h
+ */
+async function resizeWindow(doc, w, h) {
+  const view = found(doc.defaultView);
+  const was = `${view.innerWidth}x${view.innerHeight}`;
+  window.resizeTo(w, h);
+  await TestUtils.waitForCondition(
+    () => `${view.innerWidth}x${view.innerHeight}` !== was,
+    `the page is resized to ${w}x${h}`,
+  );
+  await TestUtils.waitForTick();
+}
+
+/**
+ * The page's footer stays below the list it follows and inside the window (setup-v2 "Page
+ * layout"); a window too short for the step scrolls the step, not under the footer.
+ * @param {Document} doc @param {string} list  the list's id @param {string} what
+ */
+function assertFooterClear(doc, list, what) {
+  const footer = rectOf(doc.getElementById("v2-footer"));
+  const items = rectOf(doc.getElementById(list));
+  Assert.greaterOrEqual(
+    Math.round(footer.top),
+    Math.round(items.bottom),
+    `${what}: the footer (top ${footer.top}) does not overlap the list (bottom ${items.bottom})`,
+  );
+  Assert.lessOrEqual(
+    Math.round(footer.bottom),
+    found(doc.defaultView).innerHeight,
+    `${what}: the footer is inside the window`,
+  );
+}
+
+add_task(async function every_step_and_stop_screen_starts_at_the_same_height() {
+  const { tab, doc } = await openFlow();
+  const startSize = [window.outerWidth, window.outerHeight];
+  registerCleanupFunction(() => window.resizeTo(startSize[0], startSize[1]));
+  const progress = () => rectOf(doc.getElementById("v2-progress")).top;
+  const question = () => rectOf(doc.getElementById("v2-question")).top;
+  /** How tall the step's content is, its lists unscrolled. */
+  const length = () =>
+    found(doc.getElementById("v2-step")).scrollHeight +
+    found(doc.getElementById("v2-choices")).scrollHeight +
+    found(doc.getElementById("v2-addons")).scrollHeight;
+
+  // The welcome screen stays centred.
+  const welcome = rectOf(doc.getElementById("v2-welcome"));
+  Assert.lessOrEqual(
+    Math.abs((welcome.top + welcome.bottom) / 2 - found(doc.defaultView).innerHeight / 2),
+    4,
+    `the welcome screen is centred (${welcome.top}..${welcome.bottom})`,
+  );
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "content_blocker");
+  const top = progress();
+  const asked = question();
+  const lengths = [length()];
+  assertFooterClear(doc, "v2-addons", "content blocker");
+  await press(doc, "s");
+  await atStep(doc, "search_engine");
+  const engines = doc.querySelectorAll("#v2-choices li").length;
+  lengths.push(length());
+  Assert.equal(progress(), top, "the search engine step starts where the content blocker does");
+  Assert.equal(question(), asked, "and asks its question at the same height");
+  assertFooterClear(doc, "v2-choices", "search engine");
+  await press(doc, "s");
+  await atStep(doc, "colours");
+  lengths.push(length());
+  Assert.greater(new Set(lengths).size, 1, `the steps differ in length (${lengths})`);
+  Assert.equal(progress(), top, "the colours step starts there too");
+  Assert.equal(question(), asked);
+  assertFooterClear(doc, "v2-choices", "colours");
+  await press(doc, "s");
+  await atStep(doc, "stop");
+  Assert.equal(
+    rectOf(doc.querySelector("#v2-stop header")).top,
+    top,
+    "the stop screen's heading starts at the steps' progress line",
+  );
+  assertFooterClear(doc, "v2-stop-saved", "stop screen");
+
+  // A small window: the list scrolls under a header that stays put, clear of the footer.
+  await resizeWindow(doc, 800, 600);
+  await press(doc, "h");
+  await atStep(doc, "colours");
+  const small = progress();
+  assertFooterClear(doc, "v2-choices", "colours, small window");
+  await press(doc, "h");
+  await atStep(doc, "search_engine");
+  Assert.equal(progress(), small, "the search engine step starts there in a small window too");
+  assertFooterClear(doc, "v2-choices", "search engine, small window");
+  // A short window keeps about two and a half add-ons in view, not one, even with the notice
+  // that addons.mozilla.org is not answering, and without scrolling the step under the list.
+  await press(doc, "h");
+  await atStep(doc, "content_blocker");
+  const offline = found(doc.getElementById("v2-offline"));
+  await TestUtils.waitForCondition(() => !offline.hidden, "the not answering notice is shown");
+  const stepBox = found(doc.getElementById("v2-step"));
+  const addons = found(doc.getElementById("v2-addons"));
+  const row = rectOf(addons.querySelector("li")).height;
+  const box = rectOf(addons);
+  const seen = Math.min(box.bottom, rectOf(stepBox).bottom) - box.top;
+  Assert.greaterOrEqual(
+    seen + 1,
+    Math.min(addons.scrollHeight, 2.5 * row),
+    `the add-on list shows two and a half rows at 800x600 (${seen} px seen, rows ${row})`,
+  );
+  Assert.lessOrEqual(
+    stepBox.scrollHeight,
+    stepBox.clientHeight + 1,
+    "the step itself does not scroll, so the list is the only scrolling box",
+  );
+  // Smaller still, the engines overflow: the list scrolls under a header that stays put.
+  await resizeWindow(doc, 800, 480);
+  await press(doc, "s");
+  await atStep(doc, "search_engine");
+  Assert.equal(progress(), small, "the search engine step starts there in a smaller window too");
+  const engineList = found(doc.getElementById("v2-choices"));
+  Assert.greater(
+    engineList.scrollHeight,
+    engineList.clientHeight,
+    "the engine list overflows its box at 800x480",
+  );
+  for (let i = 1; i < engines; i++) await press(doc, "j");
+  Assert.equal(progress(), small, "moving down the list leaves the header where it is");
+  const cursor = rectOf(doc.querySelector("#v2-choices li[aria-current]"));
+  const list = rectOf(doc.getElementById("v2-choices"));
+  Assert.ok(
+    cursor.top >= list.top - 1 && cursor.bottom <= list.bottom + 1,
+    `the last engine is scrolled into view (${cursor.top}..${cursor.bottom} in ${list.top}..${list.bottom})`,
+  );
+  assertFooterClear(doc, "v2-choices", "search engine at its last row, smaller window");
+  window.resizeTo(startSize[0], startSize[1]);
+  await closeFlow(tab);
+});
+
+/** @param {Document} doc @returns {string[]} the labels of the open step's choices */
+const choices = (doc) =>
+  [...doc.querySelectorAll("#v2-choices li .name")].map((n) => n.textContent ?? "");
+/** @param {Document} doc */
+const statusLine = (doc) => found(doc.getElementById("v2-status"));
+/** @param {Document} doc */
+const keysText = (doc) => found(doc.getElementById("v2-keys")).textContent;
+
+/** @param {Document} doc */
+const footerText = (doc) =>
+  `${found(doc.getElementById("v2-last")).textContent} | ${found(doc.getElementById("v2-saved")).textContent}`;
+
+/** From the welcome screen straight to Moving in (behaviour 3). */
+async function toDefaultBrowser(/** @type {Document} */ doc) {
+  await press(doc, "2");
+  await atStep(doc, "default_browser");
+}
+
+add_task(async function default_browser_step_calls_the_shell_service() {
+  shellAnswers();
+  const { tab, doc } = await openFlow();
+  await toDefaultBrowser(doc);
+  Assert.ok(found(doc.getElementById("v2-progress")).textContent.includes("Moving in"));
+  Assert.ok(
+    statusLine(doc).textContent.includes("not your default browser"),
+    "says it is not, now",
+  );
+  Assert.deepEqual(choices(doc), ["Make Vimma the default browser", "Not now"]);
+  Assert.equal(current(doc), "Make Vimma the default browser");
+  Assert.ok(
+    !found(doc.getElementById("v2-choices")).textContent.includes("in force"),
+    "an action has no value in force",
+  );
+  Assert.ok(found(doc.getElementById("v2-writes-row")).hidden, "an action writes no line");
+  Assert.ok(keysText(doc).includes("enter do it and go on"), keysText(doc));
+  await press(doc, "j");
+  Assert.ok(keysText(doc).includes("enter go on"), `not now does nothing: ${keysText(doc)}`);
+  await press(doc, "k", "KEY_Enter");
+  await atStep(doc, "bring_your_data");
+  Assert.deepEqual(shell.calls, [[false]], "Make Default for this user, as Settings asks");
+  const footer = footerText(doc);
+  Assert.ok(footer.includes("Vimma is now the default browser"), footer);
+  Assert.ok(footer.includes("made the default browser"), `saved this run: ${footer}`);
+  Assert.ok(!footer.includes("nothing written"), footer);
+  // Back, and on with "Go on": what Make Default did cannot be undone, so it stays listed.
+  await press(doc, "h");
+  await atStep(doc, "default_browser");
+  Assert.deepEqual(choices(doc), ["Go on"], "Vimma is the default now");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "bring_your_data");
+  Assert.ok(footerText(doc).includes("made the default browser"), footerText(doc));
+  await press(doc, "s");
+  await atStep(doc, "stop");
+  const saved = found(doc.getElementById("v2-stop-saved")).textContent;
+  Assert.ok(saved.includes("made the default browser"), saved);
+  Assert.ok(!(await IOUtils.exists(configFile())), "config.toml is not written");
+  await closeFlow(tab);
+});
+
+add_task(async function default_browser_step_says_when_vimma_already_is_the_default() {
+  shellAnswers({ isDefault: true });
+  const { tab, doc } = await openFlow();
+  await toDefaultBrowser(doc);
+  Assert.ok(statusLine(doc).textContent.includes("already your default browser"));
+  Assert.deepEqual(choices(doc), ["Go on"], "nothing to ask");
+  Assert.ok(keysText(doc).includes("enter go on"), keysText(doc));
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "bring_your_data");
+  Assert.deepEqual(shell.calls, [], "the shell service is not asked");
+  Assert.ok(footerText(doc).includes("already the default browser"), footerText(doc));
+  await closeFlow(tab);
+});
+
+add_task(async function default_browser_step_says_why_it_cannot_make_vimma_the_default() {
+  shellAnswers({ flatpak: true });
+  const { tab, doc } = await openFlow();
+  await toDefaultBrowser(doc);
+  Assert.ok(statusLine(doc).textContent.includes("Flatpak"), statusLine(doc).textContent);
+  Assert.deepEqual(choices(doc), ["Go on"], "only moves on");
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "bring_your_data");
+  Assert.deepEqual(shell.calls, [], "Flatpak can neither set nor detect the default browser");
+  await closeFlow(tab);
+});
+
+add_task(async function default_browser_step_says_when_a_locked_pref_hides_make_default() {
+  shellAnswers();
+  const pref = "pref.general.disable_button.default_browser";
+  await SpecialPowers.pushPrefEnv({ set: [[pref, false]] });
+  Services.prefs.lockPref(pref);
+  try {
+    const { tab, doc } = await openFlow();
+    await toDefaultBrowser(doc);
+    Assert.ok(
+      statusLine(doc).textContent.includes("locked preference"),
+      statusLine(doc).textContent,
+    );
+    Assert.deepEqual(choices(doc), ["Go on"], "only moves on");
+    await press(doc, "KEY_Enter");
+    await atStep(doc, "bring_your_data");
+    Assert.deepEqual(shell.calls, [], "the shell service is not asked");
+    Assert.ok(footerText(doc).includes("left as it is"), footerText(doc));
+    await closeFlow(tab);
+  } finally {
+    Services.prefs.unlockPref(pref);
+    await SpecialPowers.popPrefEnv();
+  }
+});
+
+add_task(async function a_failed_make_default_keeps_the_step_open() {
+  shellAnswers({ setFails: true });
+  const { tab, doc } = await openFlow();
+  await toDefaultBrowser(doc);
+  await press(doc, "KEY_Enter");
+  await TestUtils.waitForCondition(() => !notice(doc).hidden, "the step says so");
+  Assert.ok(notice(doc).textContent.includes("did not make Vimma"), notice(doc).textContent);
+  Assert.equal(step(doc), "default_browser", "the step stays open");
+  Assert.equal(shell.calls.length, 1);
+  await press(doc, "s");
+  await atStep(doc, "bring_your_data");
+  await closeFlow(tab);
+});
+
+add_task(async function import_step_names_sync_for_firefox() {
+  shellAnswers();
+  const { tab, doc } = await openFlow();
+  await toDefaultBrowser(doc);
+  await press(doc, "s");
+  await atStep(doc, "bring_your_data");
+  const text = found(doc.getElementById("v2-text")).textContent;
+  Assert.ok(text.includes("A Firefox profile is not in it") && text.includes("Firefox Sync"));
+  Assert.ok(
+    [...doc.querySelectorAll("#v2-text code")].some((c) => c.textContent === ":settings sync"),
+  );
+  Assert.deepEqual(choices(doc), ["Open the import wizard", "Not now"]);
+  await press(doc, "j", "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.ok(footerText(doc).includes("not now"), footerText(doc));
+  await closeFlow(tab);
+});
+
+add_task(
+  async function import_step_opens_the_wizard_over_the_setup_tab_and_moves_on_when_it_closes() {
+    shellAnswers();
+    const { tab, doc } = await openFlow();
+    const browser = tab.linkedBrowser;
+    await toDefaultBrowser(doc);
+    await press(doc, "s");
+    await atStep(doc, "bring_your_data");
+    // The wizard fills its list after it opens; closed before then, its actor writes to a dead
+    // window (browser_vimma_setup_moving_in.js).
+    const ready = BrowserTestUtils.waitForEvent(window, "MigrationWizard:Ready");
+    await press(doc, "KEY_Enter");
+    const dialogs = () => gBrowser.getTabDialogBox(browser).getContentDialogManager().dialogs;
+    await TestUtils.waitForCondition(() => dialogs().length === 1, "the wizard opens");
+    const dialog = dialogs()[0];
+    await dialog._dialogReady;
+    await ready;
+    Assert.ok(gBrowser.selectedTab === tab, "over the setup tab");
+    // Square corners and the theme's font, as Settings (firefox-pages.css).
+    const wizardDoc = dialog._frame.contentDocument;
+    const wizard = found(wizardDoc.querySelector("migration-wizard"));
+    // A button of the page the wizard shows: the others are not rendered and have no style.
+    const button = found(
+      [...found(wizard.shadowRoot).querySelectorAll("button.cancel-close")].find((b) =>
+        b.checkVisibility(),
+      ),
+    );
+    const style = found(wizardDoc.defaultView).getComputedStyle(button);
+    Assert.equal(style.borderTopLeftRadius, "0px", "a square button");
+    const font = found(wizardDoc.defaultView)
+      .getComputedStyle(wizardDoc.documentElement)
+      .getPropertyValue("--vimma-font")
+      .trim();
+    Assert.ok(font, "the theme's font is set");
+    Assert.equal(style.fontFamily, font, "the theme's font");
+    Assert.equal(step(doc), "bring_your_data", "the step waits for the wizard");
+    dialog._frame.contentWindow.close();
+    await atStep(doc, "stop");
+    Assert.equal(dialogs().length, 0);
+    const saved = found(doc.getElementById("v2-stop-saved")).textContent;
+    Assert.ok(saved.includes("import wizard closed"), saved);
+    await TestUtils.waitForCondition(() => doc.hasFocus(), "the setup page has the focus back");
+    Assert.ok(Services.focus.focusedWindow === doc.defaultView, "its own window");
+    await closeFlow(tab);
+  },
+);
+
+/** Whether this window draws the tab line now. */
+const tabLineShown = () => document.documentElement.hasAttribute("vimma-tabline");
+
+add_task(async function tab_line_step_writes_tabline_and_applies_live() {
+  // A failed assertion must not leave the tab line drawn for the tasks after it.
+  registerCleanupFunction(removeConfig);
+  const { tab, doc } = await openFlow();
+  await toAddressBar(doc);
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "tab_line");
+  Assert.ok(found(doc.getElementById("v2-place")).textContent.includes("step 2 of 2"));
+  Assert.deepEqual(
+    [...doc.querySelectorAll("#v2-choices li .name")].map((n) => n.textContent),
+    ["Off", "Always", "Only with two or more tabs"],
+  );
+  // Always draws the line over a single tab, the third choice only once there are two.
+  Assert.deepEqual(drawnTabLines(doc), [
+    ["off", 0],
+    ["always", 1],
+    ["auto", 2],
+  ]);
+  Assert.ok(
+    [...doc.querySelectorAll("#v2-text code")].some((c) => c.textContent === ":tabline"),
+    "toggle_tabline has no default key: named by its command",
+  );
+  // tab-line decision 3 (changed 20 Nov 2026, #1403): auto is the default, in force without the
+  // key, and enter on it writes nothing. Two tabs are open, so the line is drawn already.
+  Assert.equal(current(doc), "Only with two or more tabs", "auto is in force without the key");
+  Assert.equal(writes(doc), "Writes nothing");
+  await TestUtils.waitForCondition(tabLineShown, "the default draws the line over two tabs");
+  const fresh = await IOUtils.readUTF8(configFile()).catch(() => null);
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.equal(await IOUtils.readUTF8(configFile()).catch(() => null), fresh, "nothing written");
+  await press(doc, "h");
+  await atStep(doc, "tab_line");
+  const { setConfigKeysText } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/core/config.mjs",
+  );
+  /** Picks the choice `keys` reach, enters it, and checks the whole file and the window. */
+  const choose = async (/** @type {string[]} */ keys, /** @type {string} */ value) => {
+    await press(doc, ...keys);
+    Assert.equal(writes(doc), `Writes [ui] tabline = ${JSON.stringify(value)}`);
+    await press(doc, "KEY_Enter");
+    await atStep(doc, "stop");
+    // The commented template with only [ui] tabline set, whatever the earlier choice wrote.
+    const only = setConfigKeysText(null, [{ table: "ui", key: "tabline", value }], {
+      mac: AppConstants.platform === "macosx",
+    });
+    Assert.equal(
+      await IOUtils.readUTF8(configFile()),
+      ("text" in only && only.text) || "",
+      `[ui] tabline = ${value} only`,
+    );
+    // Two tabs are open (the first one and the setup page), so auto draws the line too.
+    await TestUtils.waitForCondition(
+      () => tabLineShown() === (value !== "off"),
+      `the tab line follows ${value} at once`,
+    );
+    await press(doc, "h");
+    await atStep(doc, "tab_line");
+  };
+  await choose(["k"], "always");
+  Assert.equal(current(doc), "Always", "back opens on the value in force");
+  await choose(["k"], "off");
+  await choose(["j", "j"], "auto");
+  await choose(["k", "k"], "off");
+  // Off is in force now: enter on it writes nothing.
+  Assert.equal(current(doc), "Off");
+  Assert.equal(writes(doc), "Writes nothing");
+  const before = await IOUtils.readUTF8(configFile());
+  await press(doc, "KEY_Enter");
+  await atStep(doc, "stop");
+  Assert.equal(await IOUtils.readUTF8(configFile()), before, "nothing written");
+  await closeFlow(tab);
+});

@@ -1162,7 +1162,7 @@ checked by the updater against two embedded keys (§6). Each compromise and what
 **Local surface.** `app.restart` and `app.update_check` are ordinary actions: the control
 socket's full role can run them, as it can `app.quit`. The agent role of control protocol 2 (spec
 vimma-mcp) has a closed list of agent commands (`AGENT_COMMANDS` in
-`packages/vimma-core/src/control.mjs`) and reaches no action, so a local AI agent cannot
+`packages/vimma-core/src/control.mjs`) and reaches no action, so an AI agent cannot
 restart Vimma or trigger an update check.
 
 ## Tests
@@ -1177,7 +1177,8 @@ Written first and seen to fail.
   build-ID order; the running Vimma version with a newer build ID); freeze thresholds per channel, and no stale warning with checks off; `updateNotice` for every row of the §5 table;
   the `y/N` prompt once per session and its 24 h re-ask; install-type detection; the version line
   (`Vimma 0.3.1 · Firefox 158.0.1`, `0.3.1-nightly.20261028031500`).
-  `config.test.mjs`: `[updates] check`, wrong type, schema 1 → "is new in schema 2";
+  `config.test.mjs`: `[updates] check`, wrong type, schema 1 → "is new in schema 2" (since
+  changed: a schema-1 file may have `[updates]`, #1379);
   `cmdline.test.mjs`: `:update`, `:restart`; `actions.test.mjs`: both actions have no default key
   and appear in help. Snapshots (`defaults.toml`, help) are re-recorded with a changelog line.
 - **Tools** `tools/update/test/manifest.test.ts`: XML from fixtures (attributes, sizes, hashes,

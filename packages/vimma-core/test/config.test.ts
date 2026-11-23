@@ -1,10 +1,7 @@
 import { describe, test, expect } from "vitest";
 import {
-  CONFIG_SCHEMA_VERSION,
-  MIGRATIONS,
   formatConfigError,
   mergeWithDefaults,
-  migrate,
   parseConfig,
   reloadConfig,
 } from "../src/config/config.mjs";
@@ -33,19 +30,16 @@ describe("parseConfig: valid input", () => {
   test("the generated defaults.toml parses without errors to the default keymap", () => {
     const r = parseConfig(formatDefaultsToml());
     expect(r.errors).toEqual([]);
-    expect(r.migratedFrom).toBeNull();
     const km = compileKeymap();
     for (const mode of MODES) {
       expect(r.keymap?.sequences(mode)).toEqual(km.sequences(mode));
     }
   });
 
-  test("an empty file is the defaults, migrated from schema 0", () => {
+  test("an empty file is the defaults", () => {
     const r = parseConfig("");
     expect(r.errors).toEqual([]);
-    expect(r.migratedFrom).toBe(0);
     expect(r.config).toEqual(mergeWithDefaults({}));
-    expect(r.config?.schema).toBe(CONFIG_SCHEMA_VERSION);
   });
 
   test("[keys] overrides reach the keymap and are marked overridden", () => {
@@ -199,16 +193,6 @@ describe("parseConfig: errors carry line numbers", () => {
     expect(formatConfigError(e, "config.toml")).toMatch(/^config\.toml:4:\d+: \S/);
   });
 
-  test("a schema from a newer vimma is an error", () => {
-    const e = oneError(toml("# hi", `schema = ${CONFIG_SCHEMA_VERSION + 1}`));
-    expect(e).toMatchObject({ line: 2, path: "schema" });
-    expect(e.message).toMatch(/newer vimma/);
-  });
-
-  test.each([["-1"], ["1.5"], ['"1"']])("schema = %s is an error", (v) => {
-    expect(oneError(toml(`schema = ${v}`)).path).toBe("schema");
-  });
-
   test.each([
     ["-5", /0 and 10000/],
     ["20000", /0 and 10000/],
@@ -231,7 +215,6 @@ describe("parseConfig: errors carry line numbers", () => {
   });
 
   test.each([
-    ["schema = 1.0", "schema", /must be an integer, got a float/],
     ["[modal]\ntimeout_ms = 1e3", "modal.timeout_ms", /expected an integer, got a float/],
     ["[modal]\ntimeout_ms = 800.0", "modal.timeout_ms", /expected an integer, got a float/],
   ])("%j: TOML floats are not integers", (text, path, msg) => {
@@ -396,7 +379,6 @@ describe("parseConfig: errors carry line numbers", () => {
 describe("mergeWithDefaults", () => {
   test("fills every section", () => {
     expect(mergeWithDefaults({})).toEqual({
-      schema: 2,
       keys: {},
       modal: {},
       unbind: {},
@@ -428,10 +410,10 @@ describe("mergeWithDefaults", () => {
         clamavMaxAgeDays: 7,
       },
       ui: {
-        toolbar: "shown",
+        toolbar: "hidden",
         bookmarksToolbar: null,
         pdfOutline: "shown",
-        tabline: "off",
+        tabline: "auto",
         tablineWidth: 14,
       },
       statusbar: { tab: true },
@@ -449,43 +431,6 @@ describe("mergeWithDefaults", () => {
         providers: [],
       },
     });
-  });
-});
-
-describe("migrate", () => {
-  test("v0 → v1 adds schema = 1 and keeps everything else", () => {
-    const raw = { keys: { new_tab: ["prefix+c"] } };
-    const r = migrate(raw, 0, 1);
-    expect(r.applied).toEqual(["0→1"]);
-    expect(r.config).toEqual({ schema: 1, keys: { new_tab: ["prefix+c"] } });
-    expect(raw).toEqual({ keys: { new_tab: ["prefix+c"] } });
-  });
-
-  test("the current version needs no step", () => {
-    const current = { schema: CONFIG_SCHEMA_VERSION };
-    expect(migrate(current, CONFIG_SCHEMA_VERSION)).toEqual({ config: current, applied: [] });
-  });
-
-  test("a chain of steps runs in order", () => {
-    const registry: Record<number, (c: Record<string, unknown>) => Record<string, unknown>> = {
-      0: (c) => ({ ...c, schema: 1, trail: [0] }),
-      1: (c) => ({ ...c, schema: 2, trail: [...(c.trail as number[]), 1] }),
-    };
-    const r = migrate({}, 0, 2, registry);
-    expect(r.applied).toEqual(["0→1", "1→2"]);
-    expect(r.config).toEqual({ schema: 2, trail: [0, 1] });
-  });
-
-  test("a gap in the registry throws", () => {
-    expect(() => migrate({}, 0, 2, { 0: (c) => c })).toThrow(/no migration from schema 1/);
-  });
-
-  test("migrating backwards throws", () => {
-    expect(() => migrate({}, 2, 1)).toThrow(/newer/);
-  });
-
-  test("every version below the current one has a registered step", () => {
-    for (let v = 0; v < CONFIG_SCHEMA_VERSION; v++) expect(MIGRATIONS[v]).toBeTypeOf("function");
   });
 });
 
