@@ -490,7 +490,10 @@ find: { current, total } }`), sent to the parent on the viewer's events.
       (Research), or 0 when it does not resolve; `kind` is `dest`, `url`, `action`, `attachment`,
       `ocg` or `none` (an entry pdf.js gives no target, such as a `javascript:` link it refuses,
       which follows nothing); `collapsed` is the entry's negative `count`. Named destinations
-      resolve through one `pdfDocument.getDestinations()` call rather than one promise per entry. Destinations themselves (names and
+      resolve through one `pdfDocument.getDestinations()` call rather than one promise per entry. (Since changed: each
+      name resolves through its own `pdfDocument.getDestination(name)` call, once per name, because
+      the table `getDestinations()` gives has no own keys seen through Xrays, so no name resolved,
+      #1433.) Destinations themselves (names and
       page references) never leave the content process, because the parent needs only a page
       number to select the current entry, and following an entry by its index keeps the parent's
       messages to operation names and numbers (V7).

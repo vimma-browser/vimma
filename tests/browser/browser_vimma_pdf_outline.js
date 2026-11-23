@@ -324,6 +324,11 @@ add_task(async function each_kind_of_entry() {
       "Print action",
       "Deep",
     ]);
+    // A named destination's page is resolved as the outline is read (#1433): the row shows it,
+    // and the selection of an outline shown beside the document can follow to it.
+    const named = found(PdfOps.outline(browser)).entries[0];
+    Assert.equal(named.kind, "dest", "a destination");
+    Assert.equal(named.page, 2, "a named destination's page");
     // Only pdf.js's navigation actions are followed.
     Assert.equal(found(PdfOps.outline(browser)).entries[6].kind, "none", "Print follows nothing");
     // outline_titles_with_html_stay_text

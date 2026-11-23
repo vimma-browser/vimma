@@ -72,7 +72,6 @@ export const PDFJS_CONTRACT = Object.freeze({
   // Delivery PR 4: the outline, read and followed as pdf.js's own outline view does.
   pdfDocument: "object",
   "pdfDocument.getOutline": "function",
-  "pdfDocument.getDestinations": "function",
   "pdfDocument.cachedPageNumber": "function",
   // Settles once pdf.js has fetched every page, so that cachedPageNumber knows them all (#1424).
   "pdfViewer.pagesPromise": "object",
@@ -752,23 +751,38 @@ export class PdfView {
       finish();
       return;
     }
-    // Named destinations resolve to pages through the document's table, in one call.
-    const resolved = Cu.exportFunction((/** @type {unknown} */ value) => {
-      const dests = /** @type {{ readonly [name: string]: unknown } | null} */ (objectOr(value));
-      for (const [index, name] of named) {
-        try {
-          const dest = dests && Object.hasOwn(dests, name) ? dests[name] : null;
-          const entry = entries[index];
-          if (entry) entry.page = this.#pageOf(dest, pages);
-        } catch {
-          // stays 0: not resolved
-        }
-      }
+    // Each name resolves through getDestination, as linkPage resolves a link's (#1433): the
+    // table getDestinations gives has no own keys seen through Xrays, so no name resolved there.
+    // Names are asked once each, all at once; one not answered within OUTLINE_PAGES_MS stays 0.
+    /** @type {Map<string, number[]>} */
+    const byName = new Map();
+    for (const [index, name] of named) byName.set(name, [...(byName.get(name) ?? []), index]);
+    let pending = byName.size;
+    let finished = false;
+    const settle = () => {
+      if (finished) return;
+      finished = true;
       finish();
-    }, this.#win);
-    const failed = Cu.exportFunction(finish, this.#win);
-    const read = () => invoke(this.#part("pdfDocument"), "getDestinations");
-    if (!this.#then(read, resolved, failed)) finish();
+    };
+    const answered = () => {
+      if (--pending <= 0) settle();
+    };
+    lazy.setTimeout(settle, OUTLINE_PAGES_MS);
+    for (const [name, indexes] of byName) {
+      const resolved = Cu.exportFunction((/** @type {unknown} */ dest) => {
+        if (!finished) {
+          const page = this.#pageOf(dest, pages);
+          for (const index of indexes) {
+            const entry = entries[index];
+            if (entry) entry.page = page;
+          }
+        }
+        answered();
+      }, this.#win);
+      const failed = Cu.exportFunction(answered, this.#win);
+      const read = () => invoke(this.#part("pdfDocument"), "getDestination", name);
+      if (!this.#then(read, resolved, failed)) answered();
+    }
   }
 
   /**
