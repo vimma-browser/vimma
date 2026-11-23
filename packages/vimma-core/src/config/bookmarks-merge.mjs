@@ -388,6 +388,7 @@ export function mergeOutside(input) {
   const all = indexPlaces(places);
   const toolbar = all.get(PLACES_ROOTS.toolbar)?.node;
   const baseFolders = new Set(base.tables.map((t) => t.folder));
+  const everyBaseGuid = new Set(base.tables.flatMap((t) => t.entries.map((e) => e.guid)));
   const fileTables = new Map(s.tables.map((t) => [t.name, t]));
 
   /** @type {{ table: string, count: number, had: number }[]} */
@@ -656,16 +657,20 @@ export function mergeOutside(input) {
     };
 
     // A base item whose guid Sync's dedupe changed is the Places item of the same kind, path and
-    // URL that the base does not know.
+    // URL that no table of the base knows. Dedupe gives a guid the base has never seen, so an item
+    // moved in from another table is a move, and a base guid still anywhere in Places (moved to
+    // another table, or out of every table) is that item, and a new one in its old place is an
+    // addition.
     /** @type {Map<string, string>} new guid → base guid */
     const aliasOf = new Map();
     /** @type {Map<string, string>} */
     const unknown = new Map();
     for (const [g, p] of byReal) {
-      if (!baseGuids.has(g)) unknown.set(`${keyOf(p.kind, placesPath(g))}\u0001${p.url ?? ""}`, g);
+      if (!everyBaseGuid.has(g))
+        unknown.set(`${keyOf(p.kind, placesPath(g))}\u0001${p.url ?? ""}`, g);
     }
     for (const e of t.entries) {
-      if (byReal.has(e.guid)) continue;
+      if (all.has(e.guid)) continue;
       const g = unknown.get(`${keyOf(e.kind, e.path)}\u0001${e.kind === "bookmark" ? e.url : ""}`);
       if (g && !aliasOf.has(g)) aliasOf.set(g, e.guid);
     }

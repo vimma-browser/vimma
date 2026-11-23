@@ -406,6 +406,61 @@ describe("bookmarks.toml: outside changes written to the file (three-way merge)"
     expect(work?.entries.find((e) => e.path.join("/") === "docs")?.guid).toBe("docsNEW0001");
   });
 
+  test("a new item where a base item was is not that item when its guid moved to another table", () => {
+    // Fuzzing seed 191335876 (#1434): Places moves Mail into home and adds a new Mail where it
+    // was while the file drops the Mail line. The base guid is still in Places, so the new item is
+    // an addition, not Sync's dedupe of the moved one, and the file's removal cannot take it.
+    const two = `${FILE}\n[bookmarks.home]\n"h" = "https://h.example/"\n`;
+    const { base, tree } = agreed(two);
+    const changed = edit(tree, (t, find) => {
+      move(t, find("work", "Mail"), topFolder(t, "home") as Item);
+      (find("work").children as Item[]).push(
+        bm("mailNEW0001", "Mail", "https://mail.example.com/"),
+      );
+    });
+    const dropped = two.replace('"Mail" = "https://mail.example.com/"\n', "");
+    const r = settle({ text: dropped, base, places: changed });
+    expect(r.m.ok && r.m.keep).toEqual([]);
+    expect(tables(r.text)).toEqual({
+      work: [
+        { "docs/": ["Guide https://vimma.dev/docs", "Source https://searchfox.org/"] },
+        "Calendar https://calendar.example.com/",
+        "Mail https://mail.example.com/",
+      ],
+      home: ["h https://h.example/", "Mail https://mail.example.com/"],
+    });
+    const work = r.base.tables.find((t) => t.name === "work");
+    expect(work?.entries.find((e) => e.path.join("/") === "Mail")?.guid).toBe("mailNEW0001");
+  });
+
+  test("an item moved from another table into a removed item's place is moved, not that item", () => {
+    // Fuzzing seed 2532540693 (#1434): Places removes home's Mail and moves work's Mail into its
+    // place while the file drops home's Mail line. The moved item has a base guid (work's), so it
+    // is not Sync's dedupe of the removed one, and the file's removal cannot take it.
+    const two = `${FILE}\n[bookmarks.home]\n"Mail" = "https://mail.example.com/"\n"h" = "https://h.example/"\n`;
+    const { base, tree } = agreed(two);
+    const workMail = at(tree, "work", "Mail").guid;
+    const changed = edit(tree, (t, find) => {
+      remove(t, find("home", "Mail"));
+      move(t, find("work", "Mail"), topFolder(t, "home") as Item, 0);
+    });
+    const dropped = two.replace(
+      '[bookmarks.home]\n"Mail" = "https://mail.example.com/"\n',
+      "[bookmarks.home]\n",
+    );
+    const r = settle({ text: dropped, base, places: changed });
+    expect(r.m.ok && r.m.keep).toEqual([]);
+    expect(tables(r.text)).toEqual({
+      work: [
+        { "docs/": ["Guide https://vimma.dev/docs", "Source https://searchfox.org/"] },
+        "Calendar https://calendar.example.com/",
+      ],
+      home: ["Mail https://mail.example.com/", "h https://h.example/"],
+    });
+    const home = r.base.tables.find((t) => t.name === "home");
+    expect(home?.entries.find((e) => e.path.join("/") === "Mail")?.guid).toBe(workMail);
+  });
+
   test("a workspace folder renamed renames the table; moved or deleted removes it", () => {
     const two = `${FILE}\n[bookmarks.home]\n"h" = "https://h.example/"\n`;
     const { base, tree } = agreed(two);
