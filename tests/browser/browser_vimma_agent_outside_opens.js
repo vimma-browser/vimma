@@ -353,6 +353,58 @@ add_task(async function a_default_workspace_naming_the_agent_workspace_is_passed
   }
 });
 
+/**
+ * A routes.toml with `text` beside a throwaway config.toml, read, for `task`
+ * (docs/specs/routes-file.md: the agent guarantees hold whichever file holds the rules).
+ * @param {string} text
+ * @param {() => Promise<void>} task
+ */
+async function withRoutesToml(text, task) {
+  const dir = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-oo-routes");
+  await IOUtils.writeUTF8(PathUtils.join(dir, "config.toml"), "schema = 2\n");
+  await IOUtils.writeUTF8(PathUtils.join(dir, "routes.toml"), text);
+  await SpecialPowers.pushPrefEnv({
+    set: [["vimma.config.path", PathUtils.join(dir, "config.toml")]],
+  });
+  try {
+    await ConfigHost.reload();
+    Assert.equal(WorkspaceRouter.routesSource.file, "routes.toml", "routes.toml is in force");
+    await task();
+  } finally {
+    await SpecialPowers.popPrefEnv();
+    await ConfigHost.reload();
+    await IOUtils.remove(dir, { recursive: true });
+    WorkspaceRouter.setRoutes([]);
+    WorkspaceRouter.setDefaultWorkspace(null);
+    tidy();
+  }
+}
+
+add_task(
+  async function a_routes_toml_rule_naming_the_agent_workspace_is_not_followed_from_outside() {
+    const rules = `[[routes]]\ndomain = "example.com"\nworkspace = ${JSON.stringify(agent().name)}\n`;
+    await withRoutesToml(rules, async () => {
+      Assert.equal(WorkspaceRouter.routes[0]?.workspace, agent().name, "the rule is in force");
+      await inAgentAfterHome();
+      const tab = await fromPrograms("slack", LOGIN);
+      Assert.equal(tab.userContextId, home.userContextId, "a link from another app: oo-home");
+      Assert.notEqual(tab.userContextId, agent().userContextId, "never the agent's container");
+    });
+  },
+);
+
+add_task(
+  async function a_routes_toml_default_workspace_naming_the_agent_workspace_is_passed_over() {
+    const text = `[routing]\ndefault_workspace = ${JSON.stringify(agent().name)}\n`;
+    await withRoutesToml(text, async () => {
+      Assert.equal(WorkspaceRouter.defaultWorkspace, agent().name, "the default is in force");
+      await inAgentAfterHome();
+      const tab = await fromPrograms("slack", LOGIN);
+      Assert.equal(tab.userContextId, home.userContextId, "never the agent's: oo-home");
+    });
+  },
+);
+
 // docs/specs/app-routes.md, decision 14 (docs/security/02-workspace-routing.md R10): a tab's
 // recorded names never pick a rule naming the agent workspace, for the hint, :route move or
 // about:vimma.

@@ -61,6 +61,13 @@ const DEFAULT_PREF = "vimma.routes.defaultWorkspace";
 
 /** @type {Route[]} */
 let routes = readCache();
+/**
+ * The file the rules came from and each one's line, for about:vimma and `:route add`'s message
+ * (docs/specs/routes-file.md Behaviour 13). Memory only: before the first read, the cached rules
+ * have no known file.
+ * @type {{ file: string, lines: readonly number[] }}
+ */
+let source = { file: "config.toml", lines: [] };
 /** @type {string | null} */
 let defaultWorkspace = Services.prefs.getStringPref(DEFAULT_PREF, "") || null;
 /** The programs of the command line being handled, until the current task ends. */
@@ -248,16 +255,23 @@ export const WorkspaceRouter = {
     Services.catMan.addCategoryEntry("command-line-handler", CATEGORY_ENTRY, CONTRACT, false, true);
   },
 
-  /** The rules in force (ConfigHost sets them from config.toml). */
+  /** The rules in force (ConfigHost sets them from routes.toml or config.toml). */
   get routes() {
     return routes;
   },
 
+  /** The file the rules in force came from, and each rule's line (0: not known). */
+  get routesSource() {
+    return source;
+  },
+
   /**
-   * @param {Route[]} next  core `parseConfig(...).config.routes`
+   * @param {Route[]} next  core `routesInForce(...).routes`
+   * @param {{ file: string, lines: readonly number[] }} [from]  where they are written
    */
-  setRoutes(next) {
+  setRoutes(next, from = { file: "config.toml", lines: [] }) {
     routes = next;
+    source = from;
     try {
       Services.prefs.setStringPref(CACHE_PREF, JSON.stringify(next));
     } catch (e) {

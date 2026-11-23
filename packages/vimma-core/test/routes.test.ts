@@ -1,8 +1,7 @@
 // Workspace routing rules (spec workspace-routing): `[[routes]]` in config.toml, matched by
 // domain, URL prefix or the application that opened the link; the first match wins.
 import { describe, expect, test } from "vitest";
-import { appendRouteText, parseConfig } from "../src/config/config.mjs";
-import { formatConfigTemplate } from "../src/config/defaults.mjs";
+import { parseConfig } from "../src/config/config.mjs";
 import {
   defaultWorkspaceFor,
   describeRoute,
@@ -363,65 +362,6 @@ describe("describing and adding rules", () => {
     expect(routeDomainFor("about:newtab")).toBeNull();
     expect(routeDomainFor("file:///etc/hosts")).toBeNull();
     expect(routeDomainFor("garbage")).toBeNull();
-  });
-
-  test("appendRouteText adds a [[routes]] table that parses", () => {
-    const before = cfg("[panes]", "max = 2");
-    const r = appendRouteText(before, { domain: "github.com", workspace: "work" });
-    expect(r).toEqual({
-      append: '\n[[routes]]\ndomain = "github.com"\nworkspace = "work"\n',
-    });
-    const after = config(before + (r as { append: string }).append);
-    expect(after.routes).toEqual([
-      { index: 1, workspace: "work", domain: { host: "github.com", sub: false, ip: false } },
-    ]);
-    expect(after.panes.max).toBe(2);
-  });
-
-  test("appendRouteText checks the file with the platform's keymap (#386)", () => {
-    const rule = { domain: "a.com", workspace: "w" };
-    // alt+d is focus_urlbar on Linux only; meta+l is focus_urlbar on macOS only.
-    const altD = cfg("[keys]", 'reload = ["alt+d"]');
-    const metaL = cfg("[keys]", 'reload = ["meta+l"]');
-    expect(appendRouteText(altD, rule)).toHaveProperty("error");
-    expect(appendRouteText(altD, rule, { mac: true })).toHaveProperty("append");
-    expect(appendRouteText(metaL, rule)).toHaveProperty("append");
-    expect(appendRouteText(metaL, rule, { mac: true })).toHaveProperty("error");
-  });
-
-  test("appendRouteText quotes a workspace name as a TOML string", () => {
-    const r = appendRouteText(cfg(), { domain: "a.com", workspace: 'say "hi"' });
-    expect(r).toMatchObject({ append: expect.stringContaining('workspace = "say \\"hi\\""') });
-  });
-
-  test("appendRouteText adds a newline to a file that lacks one", () => {
-    expect(appendRouteText("schema = 2", { domain: "a.com", workspace: "w" })).toEqual({
-      append: '\n\n[[routes]]\ndomain = "a.com"\nworkspace = "w"\n',
-    });
-  });
-
-  test("appendRouteText to a missing file: the template plus the rule", () => {
-    const r = appendRouteText(null, { domain: "a.com", workspace: "w" }) as { create: string };
-    expect(r.create.startsWith(formatConfigTemplate())).toBe(true);
-    expect(config(r.create).routes).toHaveLength(1);
-  });
-
-  test("appendRouteText refuses what would not parse, and says why", () => {
-    expect(appendRouteText("schema = 2\n[keys\n", { domain: "a.com", workspace: "w" })).toEqual({
-      error: expect.stringMatching(/does not parse.*fix it first/),
-    });
-    expect(
-      appendRouteText('[keys]\nnew_tab = "prefix+c"\n', { domain: "a.com", workspace: "w" }),
-    ).toEqual({ append: '\n[[routes]]\ndomain = "a.com"\nworkspace = "w"\n' });
-    expect(
-      appendRouteText(cfg('routes = [{ domain = "b.com", workspace = "w" }]'), {
-        domain: "a.com",
-        workspace: "w",
-      }),
-    ).toEqual({ error: expect.stringMatching(/does not parse/) });
-    expect(appendRouteText(cfg(), { domain: "a b", workspace: "w" })).toEqual({
-      error: expect.stringMatching(/hostname/),
-    });
   });
 });
 

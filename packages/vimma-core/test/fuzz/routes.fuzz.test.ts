@@ -13,6 +13,8 @@ import {
   routeDomainFor,
   validateRoutes,
 } from "../../src/config/routes.mjs";
+import { parseConfig } from "../../src/config/config.mjs";
+import { moveRoutesText, parseRoutesFile } from "../../src/config/routes-file.mjs";
 import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.ts";
 
 /** The one route a valid rule resolves to; throws when it resolves to none. */
@@ -282,6 +284,60 @@ describe("routing rule fuzzing", () => {
           expect(matchRoute([route], { url })).not.toBeNull();
         }),
         { weight: 5 },
+      ),
+    FUZZ_TIMEOUT,
+  );
+
+  test(
+    "a moved routes.toml resolves to the old rules plus the new one",
+    () =>
+      fuzz(
+        "routes-file-move",
+        fc.property(
+          fc.array(
+            fc.record({
+              rule: fc.oneof(
+                ruleDomain.map((d) => ({ key: "domain", value: d })),
+                fc.stringMatching(/^[a-z][a-z0-9.-]{0,10}$/).map((a) => ({ key: "app", value: a })),
+              ),
+              workspace: fc
+                .string({ minLength: 1, maxLength: 12 })
+                .filter((w) => ![...w].some((c) => c < " " || c === "\x7f")),
+              above: fc.constantFrom("", "# above\n", "# a\n# b\n", "\n# loose\n\n"),
+              inside: fc.boolean(),
+              after: fc.constantFrom("", "\n", '[panel]\nnumbers = "relative"\n\n'),
+            }),
+            { maxLength: 6 },
+          ),
+          fc.option(fc.constantFrom("work", "a b", 'q"uote'), { nil: undefined }),
+          (rules, dw) => {
+            let text = "schema = 2\n";
+            if (dw !== undefined)
+              text += `[routing]\ndefault_workspace = ${JSON.stringify(dw)}\n\n`;
+            const seen = new Set<string>();
+            for (const r of rules) {
+              text += `${r.above}[[routes]]\n${r.rule.key} = ${JSON.stringify(r.rule.value)}\n`;
+              if (r.inside) text += "# inside\n";
+              text += `workspace = ${JSON.stringify(r.workspace)}\n\n`;
+              // [panel] twice would not parse: only the first stays.
+              if (!seen.has(r.after)) text += r.after;
+              seen.add(r.after);
+            }
+            const before = parseConfig(text);
+            if (before.errors.length) return;
+            const moved = moveRoutesText(text, { domain: "new.example", workspace: "w" });
+            if ("error" in moved) throw new Error(`${moved.error}\n${text}`);
+            const file = parseRoutesFile(moved.routes);
+            expect(file.errors).toEqual([]);
+            expect(file.routes?.slice(0, -1)).toEqual(before.config?.routes);
+            expect(file.routes?.at(-1)?.workspace).toBe("w");
+            expect(file.defaultWorkspace).toBe(dw ?? null);
+            const after = parseConfig(moved.config);
+            expect(after.errors).toEqual([]);
+            expect(after.config?.routes).toEqual([]);
+            expect(after.config?.routing.defaultWorkspace).toBeNull();
+          },
+        ),
       ),
     FUZZ_TIMEOUT,
   );

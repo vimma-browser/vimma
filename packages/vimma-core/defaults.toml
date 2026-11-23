@@ -476,6 +476,7 @@ clamav_max_age_days = 7         # days before ClamAV definitions stop counting a
 # unbind = ["t"]     # keys the page gets instead of Vimma; esc and the prefix stay Vimma's
 
 # Which workspace a link opens in: the first rule that matches wins. None by default.
+# A routes.toml beside this file, when it exists, holds them (and [routing]) instead.
 # [[routes]]
 # domain = "github.com"         # github.com and its subdomains; "*.corp.example": subdomains only
 # app = "slack"                 # links that program opens (Linux); with domain, both must match

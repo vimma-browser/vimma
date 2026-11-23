@@ -268,7 +268,8 @@ interface IOUtilsNamespace {
   computeHexDigest(path: string, method: "sha256" | "sha384" | "sha512"): Promise<string>;
   getChildren(path: string): Promise<string[]>;
   copy(from: string, to: string): Promise<void>;
-  move(from: string, to: string): Promise<void>;
+  // `noOverwrite`: fail when `to` exists (dom/chrome-webidl/IOUtils.webidl MoveOptions).
+  move(from: string, to: string, options?: { noOverwrite?: boolean }): Promise<void>;
   remove(path: string, options?: { ignoreAbsent?: boolean; recursive?: boolean }): Promise<void>;
 }
 declare const IOUtils: IOUtilsNamespace;

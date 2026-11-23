@@ -1296,10 +1296,14 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
 
 /**
  * @param {string} text  contents of config.toml
- * @param {{ mac?: boolean }} [options]  compile over macOS's default keys (compileKeymap)
+ * @param {{ mac?: boolean, routesFile?: boolean }} [options]  `mac`: compile over macOS's
+ *   default keys (compileKeymap); `routesFile`: routes.toml is the routes file, so the text's
+ *   `routes` are left out before validation, and a stale rule there can neither apply nor keep
+ *   the rest from applying (docs/specs/routes-file.md Behaviour 3). `[routing]` is still read:
+ *   it applies when routes.toml does not set `default_workspace` (Behaviour 4).
  * @returns {ParseResult}
  */
-export function parseConfig(text, { mac = false } = {}) {
+export function parseConfig(text, { mac = false, routesFile = false } = {}) {
   /** @param {ConfigError[]} errors @returns {ParseResult} */
   const failed = (errors) => ({
     config: null,
@@ -1311,6 +1315,7 @@ export function parseConfig(text, { mac = false } = {}) {
   const parsed = parseToml(text, { integersAsBigInt: true });
   if (!parsed.ok) return failed([{ path: "", ...parsed.error }]);
   const raw = parsed.value;
+  if (routesFile) delete raw.routes;
   const lineOf = locateKeys(text);
   /** @param {Problem[]} problems @returns {ConfigError[]} */
   const located = (problems) =>
@@ -1379,14 +1384,14 @@ export function parseConfig(text, { mac = false } = {}) {
  * Apply new config text atomically: on any error the previous config stays active (plan M5).
  * @param {ActiveConfig | null} active  the config in use, null before the first load
  * @param {string} text
- * @param {{ mac?: boolean }} [options]  macOS's default keys (compileKeymap)
+ * @param {{ mac?: boolean, routesFile?: boolean }} [options]  as parseConfig takes them
  * @returns {{ active: ActiveConfig, errors: ConfigError[], warnings: ConfigError[],
  *   kept: boolean }}
  *   kept: the text was not applied; `active` is the previous config, or the defaults.
  *   warnings: what an applied text left out (parseConfig)
  */
-export function reloadConfig(active, text, { mac = false } = {}) {
-  const r = parseConfig(text, { mac });
+export function reloadConfig(active, text, { mac = false, routesFile = false } = {}) {
+  const r = parseConfig(text, { mac, routesFile });
   // Stryker disable next-line LogicalOperator: parseConfig returns a config and a keymap together or neither
   if (r.config && r.keymap) {
     return {
@@ -1438,34 +1443,6 @@ export function rawUpdatesCheck(text) {
   if (!isTable(updates)) return null;
   if (updates.check === undefined) return Object.keys(updates).length ? null : "missing";
   return typeof updates.check === "boolean" ? updates.check : null;
-}
-
-/**
- * `:route add` (spec workspace-routing): the text to append to config.toml for a `domain` rule,
- * or the whole file to create when it is missing (`text` null: the template plus the rule).
- * The result must parse: a file with errors now or an inline `routes = [...]`
- * is refused with the reason, and nothing is written.
- * @param {string | null} text  config.toml as it is, null when missing
- * @param {{ domain: string, workspace: string }} rule
- * @param {{ mac?: boolean }} [options]  check it with macOS's default keys (compileKeymap)
- * @returns {{ append: string } | { create: string } | { error: string }}
- */
-export function appendRouteText(text, { domain, workspace }, { mac = false } = {}) {
-  const block = `[[routes]]\ndomain = ${JSON.stringify(domain)}\nworkspace = ${JSON.stringify(workspace)}\n`;
-  const base = text ?? formatConfigTemplate();
-  if (text !== null && parseConfig(text, { mac }).errors.length) {
-    return { error: "config.toml does not parse now; fix it first (:config shows it)" };
-  }
-  const glue = base === "" ? "" : base.endsWith("\n") ? "\n" : "\n\n";
-  const added = `${glue}${block}`;
-  const after = parseConfig(base + added, { mac });
-  const first = after.errors[0];
-  if (first) {
-    return {
-      error: `config.toml does not parse with the rule added: ${first.path ? `${first.path}: ` : ""}${first.message}`,
-    };
-  }
-  return text === null ? { create: base + added } : { append: added };
 }
 
 /**

@@ -215,6 +215,35 @@ export function validateRoutes(value) {
 }
 
 /**
+ * Every problem of a `[routing]` table, paths relative to it, as config.toml's are checked
+ * (config.mjs `validate`), for routes.toml (docs/specs/routes-file.md decision 4).
+ * @param {unknown} value
+ * @returns {RouteProblem[]}
+ */
+export function validateRouting(value) {
+  if (!isTable(value)) return [{ path: [], message: `expected a table, got ${typeName(value)}` }];
+  /** @type {RouteProblem[]} */
+  const problems = [];
+  for (const [key, v] of Object.entries(value)) {
+    if (key !== "default_workspace") {
+      const suggestion = closest(key, ["default_workspace"]);
+      problems.push({
+        path: [key],
+        message: `unknown key "${key}"`,
+        ...(suggestion ? { suggestion } : {}),
+      });
+    } else if (typeof v !== "string") {
+      problems.push({ path: [key], message: `expected a string, got ${typeName(v)}` });
+    } else if ([...v].length < 1 || [...v].length > MAX_NAME) {
+      problems.push({ path: [key], message: `workspace name must be 1 to ${MAX_NAME} characters` });
+    } else if (hasControl(v)) {
+      problems.push({ path: [key], message: "workspace name must not contain control characters" });
+    }
+  }
+  return problems;
+}
+
+/**
  * The rules of a valid `routes` value, as matching uses them.
  * @param {readonly Record<string, string>[]} value  validated by validateRoutes
  * @returns {Route[]}

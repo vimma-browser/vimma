@@ -97,6 +97,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/core/prompt-keys.mjs": typeof import("../src/browser/base/content/vimma/core/prompt-keys.mjs");
   "chrome://browser/content/vimma/core/report.mjs": typeof import("../src/browser/base/content/vimma/core/report.mjs");
   "chrome://browser/content/vimma/core/restart.mjs": typeof import("../src/browser/base/content/vimma/core/restart.mjs");
+  "chrome://browser/content/vimma/core/routes-file.mjs": typeof import("../src/browser/base/content/vimma/core/routes-file.mjs");
   "chrome://browser/content/vimma/core/routes.mjs": typeof import("../src/browser/base/content/vimma/core/routes.mjs");
   "chrome://browser/content/vimma/core/scroll.mjs": typeof import("../src/browser/base/content/vimma/core/scroll.mjs");
   "chrome://browser/content/vimma/core/search.mjs": typeof import("../src/browser/base/content/vimma/core/search.mjs");

@@ -3,16 +3,18 @@
 A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.md),
 [ADR-008](../adr/008-config-toml.md).
 
-- F1. A config.toml Vimma creates **must** be mode 0600 in a 0700 folder. Vimma changes an
-  existing file only from `:route add` (an append), the setup page's setting steps (each step's
-  own keys on its `enter`, never from a private window), the built-in agent's setup, and
-  `:siteunbind --save` / `:sitebind --delete`, each run one at a time
-  in the one queue of config.toml edits, so that an append never races a rewrite. Every edit but
-  the append goes through `ConfigHost`'s one writer (`rewriteConfig`; the setup's keys through
-  `setConfigKeys` and `setTomlKeys`), never on a parse error or when the file would not load with
-  the edit (checked with `parseConfig` before the rename), atomically through a renamed temporary
-  file that has the file's mode before any text goes in, renamed over the target of a symlinked
-  config.toml. A setup step names only a step and the index of a choice the host sent that
+- F1. A config.toml or routes.toml Vimma creates **must** be mode 0600 in a 0700 folder. Vimma
+  changes an existing config.toml only from `:route add` (its first use when config.toml has
+  rules, which comments them out as it moves them into a new routes.toml, F9), the setup page's
+  setting steps (each step's own keys on its `enter`, never from a private window), the built-in
+  agent's setup, and `:siteunbind --save` / `:sitebind --delete`, each run one at a time in the
+  one queue of config.toml and routes.toml edits, so that no two edits race. Every edit goes
+  through `ConfigHost`'s atomic writer (`rewriteConfig`; the setup's keys through `setConfigKeys`
+  and `setTomlKeys`; `:route add` through `writeFileNow` and, for the move, the same temporary
+  files and renames), never on a parse error or when the file would not load with the edit
+  (checked with `parseConfig` or `parseRoutesFile` before the rename), atomically through a
+  renamed temporary file that has the file's mode before any text goes in, renamed over the
+  target of a symlinked file. A setup step names only a step and the index of a choice the host sent that
   page; the host plans the keys from its own step table against the file as it is at `enter`,
   and writes only those that change the value in force, so an edit made meanwhile is kept. The
   one value a page proposes is the prefix step's own key: the host reads it as one chord in
@@ -26,7 +28,8 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   not keep them among its recent keys, and only the chord saved reaches the host.
   [`a_missing_folder_is_created_private`](../../tests/browser/browser_vimma_config_first_run.js),
   [`an_existing_file_is_never_touched`](../../tests/browser/browser_vimma_config_first_run.js),
-  [`route_add_creates_a_private_config_toml`](../../tests/browser/browser_vimma_security_invariants.js),
+  [`route_add_creates_a_private_routes_toml`](../../tests/browser/browser_vimma_security_invariants.js),
+  [`route_add_moves_config_toml_rules_and_comments_them_out`](../../tests/browser/browser_vimma_routes_file.js),
   [`a_step_creates_a_private_config_toml_when_absent`](../../tests/browser/browser_vimma_setup.js),
   [`a_step_keeps_comments_and_mode_of_config_toml`](../../tests/browser/browser_vimma_setup.js),
   [`a_parse_error_writes_nothing_and_action_steps_still_work`](../../tests/browser/browser_vimma_setup_v2_flow.js),
@@ -41,21 +44,34 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`adds [theme] before [theme.colors] when only the sub-table exists`](../../packages/vimma-core/test/toml.test.ts),
   [`route_add_waits_for_a_running_rewrite`](../../tests/browser/browser_vimma_workspace_routes.js)
 - F2. Every value **must** be validated; a broken file keeps the last good config and a bad
-  value (such as a `javascript:` home page) is an error.
+  value (such as a `javascript:` home page) is an error. A broken routes.toml keeps the last
+  good routes while the rest of config.toml applies, and one never read well applies no rule
+  rather than config.toml's (routes-file decision 5).
   [`broken text keeps the previous config active, unchanged`](../../packages/vimma-core/test/config.test.ts),
+  [`a_broken_routes_toml_keeps_the_last_good_routes_and_config_toml_applies`](../../tests/browser/browser_vimma_routes_file.js),
+  [`a_routes_toml_never_read_well_applies_no_rule`](../../tests/browser/browser_vimma_routes_file.js),
   [`workspace %s is an error`](../../packages/vimma-core/test/config.test.ts)
 - F3. The config is **never** executed: no value is evaluated as code or run as a command. An
   agent CLI provider names only which supported CLI it is and its model; a `command`, `path`,
   `args` or `env` key in one is an error (M60).
   [`never builds code from text: no eval, Function or sandbox evaluation`](../../tools/security/test/chrome-source.test.ts),
   [`command, path, args and env in a cli provider are errors with their line`](../../packages/vimma-core/test/config-agent.test.ts)
-- F4. `:route add` **must** write each value as one escaped TOML string, and write nothing when
-  the result would not parse. The host reaches `ConfigHost.addRoute` only through
-  `host/host-services.mjs`, which `vimma.js` fills (§21, D4); asked before that, it writes
-  nothing.
-  [`appendRouteText quotes a workspace name as a TOML string`](../../packages/vimma-core/test/routes.test.ts),
-  [`appendRouteText refuses what would not parse, and says why`](../../packages/vimma-core/test/routes.test.ts),
-  [`route_add_creates_a_private_config_toml`](../../tests/browser/browser_vimma_security_invariants.js),
+- F4. `:route add` **must** write each value as one escaped TOML string to routes.toml, and
+  write nothing when the result would not parse. Its first use with rules in config.toml moves
+  them: both files are written or neither (temporary files, a check that config.toml did not
+  change, routes.toml renamed in with `noOverwrite` so a file made meanwhile is never replaced,
+  then config.toml; if that fails, the new routes.toml is removed), and the result is checked to
+  hold exactly config.toml's rules plus the new one, in order. It is reachable only from Vimma's
+  own command line in a window with workspaces, never a private window, the agent role or a
+  page. The host reaches `ConfigHost.addRoute` only through `host/host-services.mjs`, which
+  `vimma.js` fills (§21, D4); asked before that, it writes nothing.
+  [`appendRouteFileText appends a quoted block, creates a missing file, refuses a broken one`](../../packages/vimma-core/test/routes-file.test.ts),
+  [`:route add writes the domain and workspace as given, or refuses (security.md F4)`](../../packages/vimma-core/test/fuzz/config.fuzz.test.ts),
+  [`a moved routes.toml resolves to the old rules plus the new one`](../../packages/vimma-core/test/fuzz/routes.fuzz.test.ts),
+  [`route_add_creates_a_private_routes_toml`](../../tests/browser/browser_vimma_security_invariants.js),
+  [`route_add_writes_neither_file_when_config_toml_cannot_be_written`](../../tests/browser/browser_vimma_routes_file.js),
+  [`route_add_never_replaces_a_routes_toml_made_meanwhile`](../../tests/browser/browser_vimma_routes_file.js),
+  [`route_add_in_a_private_window_writes_nothing`](../../tests/browser/browser_vimma_routes_file.js),
   [`route_add_says_why_config_toml_refused_the_rule`](../../tests/browser/browser_vimma_workspace_routes.js),
   [`test_before_it_is_provided_each_service_does_the_least`](../../tests/browser/browser_vimma_host_services.js)
 - F5. Reading `config.toml` **never** throws, hangs or changes a built-in prototype; nesting
@@ -259,3 +275,16 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`the_export_bang_question_ignores_a_key_typed_as_it_appears`](../../tests/browser/browser_vimma_bookmarks_export.js),
   [`export: the base's folder wins over the workspace's link, as at the mirror's first load`](../../packages/vimma-core/test/bookmarks-export.test.ts),
   [`export: many items of one name are named in linear time`](../../packages/vimma-core/test/bookmarks-export.test.ts)
+- F9. `routes.toml` beside `config.toml` (spec: [routes-file](../specs/routes-file.md)) holds the
+  `[[routes]]` rules and `[routing] default_workspace` when it exists, so it decides which
+  workspace, and so which cookies, a site or another program's link opens in. It carries
+  exactly `config.toml`'s trust: a local file you edit or pull from a repository of your own,
+  located beside `config.toml`'s path (not a symlink's target). It holds only `[[routes]]` and
+  `[routing]`, every other key is an error at its line, it is read only up to 1 MiB, and its
+  rules are checked by the same `validateRoutes` as `config.toml`'s, so every routing
+  guarantee (02 R6 to R10, 12 M24) holds whichever file holds them. Nothing in it is executed.
+  [`parseRoutesFile reads [[routes]] and [routing] as config.toml does`](../../packages/vimma-core/test/routes-file.test.ts),
+  [`parseRoutesFile refuses another top-level key at its line`](../../packages/vimma-core/test/routes-file.test.ts),
+  [`parseRoutesFile refuses a file over 1 MiB`](../../packages/vimma-core/test/routes-file.test.ts),
+  [`routes_toml_rules_apply_and_config_toml_rules_are_ignored_with_a_warning`](../../tests/browser/browser_vimma_routes_file.js),
+  [`routes_toml_is_found_beside_a_symlinked_config_toml`](../../tests/browser/browser_vimma_routes_file.js)

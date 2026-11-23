@@ -1,7 +1,8 @@
 ## 2. Workspace routing (`workspaces/WorkspaceRouter.sys.mjs`)
 
-Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule names. Spec:
-[workspace-routing](../specs/workspace-routing.md).
+Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule names, from
+routes.toml when it exists, else config.toml. Specs:
+[workspace-routing](../specs/workspace-routing.md), [routes-file](../specs/routes-file.md).
 
 **Reach:** you (URL bar, `:open`, bookmarks, `p`); local apps (links they open through
 `vimma-open`); pages try to (link clicks, `window.open`) and must fail.
@@ -19,7 +20,8 @@ Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule na
   [`private_windows_are_never_routed`](../../tests/browser/browser_vimma_workspace_routes_external.js),
   [`private_windows_are_untouched`](../../tests/browser/browser_vimma_workspace_routing.js)
 - R4. The names (`-vimma-from`, `VIMMA_FROM`) are at most eight tokens of at most 64 characters
-  each, and **must** only select a workspace that a rule in config.toml names and that exists;
+  each, and **must** only select a workspace that a rule in the routes file (routes.toml when it
+  exists, else config.toml) names and that exists;
   a name that is not a token once lower-cased is dropped. Spec: [app-routes](../specs/app-routes.md).
   [`a hint that is not a token never matches`](../../packages/vimma-core/test/routes.test.ts),
   [`a rule naming a workspace that does not exist is skipped`](../../packages/vimma-core/test/routes.test.ts),
@@ -38,17 +40,21 @@ Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule na
   next rule does), and when its `app` equals one of the link's names, no rule with `app` applies
   to that link, so a prompt-injected agent CLI's link cannot reach the terminal's sign-in rules.
   [`a_rule_after_one_naming_the_agent_workspace_applies`](../../tests/browser/browser_vimma_agent_outside_opens.js),
+  [`a_routes_toml_rule_naming_the_agent_workspace_is_not_followed_from_outside`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`an_agent_cli_link_skips_every_app_rule_after_an_agent_rule`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`a_child_named_after_the_terminal_under_an_agent_cli_never_reaches_the_terminals_rule`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`an agent workspace rule drops every name: claude,zsh,ghostty never reaches the ghostty rule`](../../packages/vimma-core/test/routes.test.ts),
   [`the agent cut applies below the first rule without app too`](../../packages/vimma-core/test/routes.test.ts)
-- R9. `[routing] default_workspace` applies **only** to links from other programs that no rule
-  matches (a remote command line, or a window opened for one), never to what you type, never to
-  the agent workspace, and never in a private window.
+- R9. `[routing] default_workspace`, from routes.toml when it sets one, else config.toml, applies
+  **only** to links from other programs that no rule matches (a remote command line, or a window
+  opened for one), never to what you type, never to the agent workspace, and never in a private
+  window.
   [`the_default_workspace_never_applies_to_the_url_bar`](../../tests/browser/browser_vimma_workspace_routes_windows.js),
   [`a_cold_start_link_with_no_rule_opens_in_the_default_workspace`](../../tests/browser/browser_vimma_workspace_routes_windows.js),
   [`the_default_workspace_never_applies_in_a_private_window`](../../tests/browser/browser_vimma_workspace_routes_external.js),
-  [`a_default_workspace_naming_the_agent_workspace_is_passed_over`](../../tests/browser/browser_vimma_agent_outside_opens.js)
+  [`a_default_workspace_naming_the_agent_workspace_is_passed_over`](../../tests/browser/browser_vimma_agent_outside_opens.js),
+  [`a_routes_toml_default_workspace_naming_the_agent_workspace_is_passed_over`](../../tests/browser/browser_vimma_agent_outside_opens.js),
+  [`routes.toml's default_workspace wins; config.toml's applies when routes.toml has none`](../../packages/vimma-core/test/routes-file.test.ts)
 - R10. The names of the last link from another program, and of each tab an app rule placed, are
   kept **in memory only**, are shown only in about:vimma and **never** with the link's URL, and
   the `:bug` report keeps only the rule count, because they tell which programs you run. A

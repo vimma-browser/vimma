@@ -516,6 +516,56 @@ add_task(async function mcp_off_survives_a_config_reload() {
   }
 });
 
+// docs/specs/routes-file.md (security 12 M64): `:route add` rewriting config.toml to move its
+// rules into routes.toml, and the reads that follow, never end `:mcp off`'s hold.
+add_task(async function mcp_off_survives_a_route_add_that_moves_the_rules() {
+  ww().switchTo({ id: def("main").id });
+  if (McpHost.state.from === "session" || !McpHost.state.enabled) {
+    await runCommand("mcp on");
+    await until(promptOpen, ":mcp on asks");
+    EventUtils.synthesizeKey("y");
+    await until(() => McpHost.state.enabled, "y clears the hold");
+  }
+  Services.prefs.clearUserPref(MCP_ENABLED_PREF);
+  const dir = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-mcp-route");
+  const file = PathUtils.join(dir, "config.toml");
+  await IOUtils.writeUTF8(
+    file,
+    'schema = 2\n[mcp]\nenabled = true\n\n[[routes]]\ndomain = "example.net"\nworkspace = "main"\n',
+  );
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.config.path", file]] });
+  try {
+    await ConfigHost.reload();
+    Assert.deepEqual(McpHost.state, { enabled: true, from: "config" }, "the file turns agents on");
+    await runCommand("mcp off");
+    await until(() => !McpHost.state.enabled, ":mcp off turns them off");
+
+    const r = await ConfigHost.addRoute({ domain: "example.org", workspace: "main" });
+    Assert.deepEqual(r, { added: "routes.toml; 1 rule moved from config.toml" }, "moved");
+    Assert.ok(
+      (await IOUtils.readUTF8(file)).includes('# domain = "example.net"'),
+      "config.toml was rewritten",
+    );
+    Assert.equal(McpHost.config?.enabled, true, "the rewritten file is in force");
+    Assert.deepEqual(McpHost.state, { enabled: false, from: "session" }, "agents stay off");
+    await ConfigHost.addRoute({ domain: "example.com", workspace: "main" });
+    Assert.deepEqual(
+      McpHost.state,
+      { enabled: false, from: "session" },
+      "and after an append to routes.toml",
+    );
+    await runCommand("mcp on");
+    await until(promptOpen, ":mcp on asks");
+    EventUtils.synthesizeKey("y");
+    await until(() => McpHost.state.enabled, "only y ends the hold");
+  } finally {
+    await SpecialPowers.popPrefEnv();
+    await ConfigHost.reload();
+    await IOUtils.remove(dir, { recursive: true });
+    McpHost.configure(null);
+  }
+});
+
 // With the pref already on under the hold, `y` changes no pref, so the
 // agent role hears of the cleared hold only through MCP_CHANGED_TOPIC.
 add_task(async function mcp_on_after_off_starts_the_agent_role_when_the_pref_was_on() {

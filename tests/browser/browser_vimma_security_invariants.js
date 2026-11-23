@@ -115,23 +115,25 @@ add_task(async function page_titles_with_html_stay_text() {
   BrowserTestUtils.removeTab(tab);
 });
 
-add_task(async function route_add_creates_a_private_config_toml() {
+add_task(async function route_add_creates_a_private_routes_toml() {
   const dir = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-security");
   const file = PathUtils.join(dir, "vimma", "config.toml");
+  const routes = PathUtils.join(dir, "vimma", "routes.toml");
   await SpecialPowers.pushPrefEnv({ set: [["vimma.config.path", file]] });
   await ConfigHost.reload();
 
-  const why = await ConfigHost.addRoute({ domain: "example.org", workspace: 'x" [keys] y = "z' });
-  Assert.equal(why, null, "the rule is written");
-  Assert.equal((await IOUtils.stat(file)).permissions, 0o600, "a new config.toml is 0600");
+  const r = await ConfigHost.addRoute({ domain: "example.org", workspace: 'x" [keys] y = "z' });
+  Assert.deepEqual(r, { added: "routes.toml" }, "the rule is written to routes.toml");
+  Assert.equal((await IOUtils.stat(routes)).permissions, 0o600, "a new routes.toml is 0600");
   Assert.equal(
-    (await IOUtils.stat(/** @type {string} */ (PathUtils.parent(file)))).permissions,
+    (await IOUtils.stat(/** @type {string} */ (PathUtils.parent(routes)))).permissions,
     0o700,
     "its folder 0700",
   );
-  const text = await IOUtils.readUTF8(file);
-  Assert.ok(
-    text.endsWith('[[routes]]\ndomain = "example.org"\nworkspace = "x\\" [keys] y = \\"z"\n'),
+  Assert.ok(!(await IOUtils.exists(file)), "config.toml is not created for it");
+  Assert.equal(
+    await IOUtils.readUTF8(routes),
+    '[[routes]]\ndomain = "example.org"\nworkspace = "x\\" [keys] y = \\"z"\n',
     "the workspace name is one escaped TOML string, never a new table",
   );
 

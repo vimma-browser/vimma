@@ -89,7 +89,9 @@ const CONTRACT = "@mozilla.org/network/protocol/about;1?what=vimma";
  * the page's `?tab=`): its host only, never its URL.
  * @typedef {object} RoutesData
  * @property {{ index: number, match: string, workspace: string, skipped: string | null,
- *   shadowedBy: number | null, agent: boolean }[]} rules
+ *   shadowedBy: number | null, agent: boolean, line: number }[]} rules  `line`: in `file`, 0
+ *   when not known
+ * @property {string} file  the routes file the rules came from (docs/specs/routes-file.md)
  * @property {{ host: string, workspace: string, rule: number | null, target: string | null }
  *   | null} tab
  * @property {{ names: readonly string[], rule: number | null, workspace: string | null,
@@ -181,8 +183,10 @@ async function omarchyThemeName(dir) {
 function routesOf(win, tabId) {
   const names = WorkspaceStore.definitions.workspaces.map((d) => d.name);
   const marks = WorkspaceRouter.ruleMarks();
+  const { file, lines } = WorkspaceRouter.routesSource;
   const rules = WorkspaceRouter.routes.map((r, i) => ({
     index: r.index,
+    line: lines[i] ?? 0,
     match: describeRoute(r),
     workspace: r.workspace,
     skipped: names.includes(r.workspace) ? null : "no such workspace",
@@ -193,7 +197,7 @@ function routesOf(win, tabId) {
   const defaultWorkspace = WorkspaceRouter.defaultWorkspaceState();
   const ww = WindowWorkspaces.get(win);
   const tab = tabId && ww?.model ? ww.tabOf(tabId) : null;
-  if (!tab) return { rules, tab: null, last, defaultWorkspace };
+  if (!tab) return { rules, file, tab: null, last, defaultWorkspace };
   const uri = tab.linkedBrowser.currentURI;
   /** @type {string} */
   let host;
@@ -208,6 +212,7 @@ function routesOf(win, tabId) {
   );
   return {
     rules,
+    file,
     last,
     defaultWorkspace,
     tab: {

@@ -6,7 +6,6 @@ import {
   CONTAINER_COLORS,
   CONTAINER_ICONS,
   MAX_WORKSPACE_NAME,
-  appendRouteText,
   parseConfig,
   reloadConfig,
 } from "../../src/config/config.mjs";
@@ -16,6 +15,7 @@ import { PALETTE_KEYS } from "../../src/config/theme.mjs";
 import { INSERT_SITE_MODES } from "../../src/keys/editable.mjs";
 import { PANES_MAX_LIMIT } from "../../src/panes/panes.mjs";
 import { resolveDownloadDir } from "../../src/agent/agent-downloads.mjs";
+import { appendRouteFileText, parseRoutesFile } from "../../src/config/routes-file.mjs";
 import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.ts";
 import { configText } from "./toml-arb.ts";
 
@@ -333,16 +333,16 @@ describe("config.toml fuzzing", () => {
         fc.property(
           fc.oneof(fc.constantFrom("github.com", "*.corp.example"), nastyString),
           fc.oneof(fc.constantFrom("work", ...PROTO_NAMES), nastyString),
-          fc.constantFrom("schema = 2\n", "schema = 2\n[workspaces.work]\n", ""),
+          fc.constantFrom("", "# mine\n", '[routing]\ndefault_workspace = "w"\n', null),
           (domain, workspace, before) => {
-            const out = appendRouteText(before, { domain, workspace });
-            if (!("append" in out)) return;
-            const r = parseConfig(before + out.append);
+            const out = appendRouteFileText(before, { domain, workspace });
+            if ("error" in out) return;
+            const r = parseRoutesFile((before ?? "") + ("append" in out ? out.append : out.create));
             expect(r.errors).toEqual([]);
-            const route = r.config?.routes.at(-1);
-            expect(route?.workspace).toBe(workspace);
+            expect(r.routes?.at(-1)?.workspace).toBe(workspace);
             // One rule added, nothing else: the text cannot have smuggled in a second key.
-            expect(r.config?.routes.length).toBe(1);
+            expect(r.routes?.length).toBe(1);
+            expect(r.defaultWorkspace).toBe(before?.includes("default_workspace") ? "w" : null);
           },
         ),
         { weight: 5 },
