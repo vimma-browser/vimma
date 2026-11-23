@@ -84,6 +84,7 @@ introduced the feature ([roadmap.md](roadmap.md)).
   [side-panel-unsplit](specs/side-panel-unsplit.md).
 - **Workspaces:** [m3-workspaces](specs/m3-workspaces.md),
   [workspace-routing](specs/workspace-routing.md), [app-routes](specs/app-routes.md),
+  [routes-file](specs/routes-file.md),
   [private-workspace](specs/private-workspace.md), [private-swap](specs/private-swap.md),
   [private-swap-macos](specs/private-swap-macos.md).
 - **Config, theme and Firefox's own surfaces:** [m5-config-load](specs/m5-config-load.md),
