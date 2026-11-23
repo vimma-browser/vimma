@@ -146,7 +146,11 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   that every URL in a mirrored folder, Sync's included, goes into the file and every commit of
   it. A merge whose edit does not read back as merged, or a write that fails, writes nothing and
   pauses until the file changes, keeping Places' change; when both sides changed one bookmark
-  the file wins; a removal on one side and a change on the other keeps the item. When Places
+  the file wins; a removal on one side and a change on the other keeps the item. A Places item
+  is taken for a base item whose guid Sync's dedupe replaced only when its guid is one the base
+  never held and the base guid is gone from Places, so a bookmark moved from another table, or a
+  new one where a moved one was, is never taken for a base item that a removal in the file then
+  deletes (#1434). When Places
   made a new database at start-up (a restored backup), the first run writes nothing back
   (D17). Writes: only the
   bookmarks file in `config.toml`'s folder (or the file its symlink points to, as for
@@ -202,6 +206,8 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`the file wins when both changed one bookmark; removed and changed keeps it`](../../packages/vimma-core/test/bookmarks-merge.test.ts),
   [`Places items the file cannot hold are kept in Places, never written or removed`](../../packages/vimma-core/test/bookmarks-merge.test.ts),
   [`a Places-only item (made in a private window) stays out of the file and is kept`](../../packages/vimma-core/test/bookmarks-merge.test.ts),
+  [`a new item where a base item was is not that item when its guid moved to another table`](../../packages/vimma-core/test/bookmarks-merge.test.ts),
+  [`an item moved from another table into a removed item's place is moved, not that item`](../../packages/vimma-core/test/bookmarks-merge.test.ts),
   [`merging then parsing never loses an item present in either side, and settles`](../../packages/vimma-core/test/fuzz/bookmarks-merge.fuzz.test.ts),
   [`write_back_all_is_the_default_and_writes_a_library_change_after_a_burst`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
   [`a_sync_removal_of_many_asks_and_n_puts_them_back`](../../tests/browser/browser_vimma_bookmarks_file_outside.js),
