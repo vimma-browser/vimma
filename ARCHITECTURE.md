@@ -235,6 +235,7 @@ they test.
 | `tools/deps/`               | Which npm packages the release build runs, so their updates wait for a person.                              |
 | `tools/commitlint/`         | The commitlint rule that a feature or fix commit has a body.                                                |
 | `tools/ci/`                 | CI helpers: docs-only pull requests, trees a pull request already passed, the release-key guard.            |
+| `tools/config-reference/`   | The config.toml reference in docs/guide.md, written by gen-docs from the lines of defaults.toml.            |
 | `tools/test/`               | Tests of the workflows, the build scripts and repository-wide rules.                                        |
 | `tools/omarchy/`            | Tests of the Omarchy theme-set hook script.                                                                 |
 | `tools/stats/`              | Daily release download counts.                                                                              |
