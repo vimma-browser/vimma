@@ -244,7 +244,8 @@ add_task(async function test_hover_runs_script_menus() {
     );
     for (const e of log) {
       Assert.ok(e.trusted, `${e.type} is trusted, as the user's`);
-      Assert.equal(e.x, Math.round(centre.x), `${e.type} at the element's centre`);
+      // A MouseEvent keeps whole pixels only (Gecko drops the fraction), a PointerEvent keeps it.
+      Assert.less(Math.abs(e.x - centre.x), 1, `${e.type} at the element's centre`);
       if (e.type.startsWith("pointer")) {
         Assert.equal(e.pointerType, "mouse", `${e.type} is a mouse pointer's`);
         Assert.ok(e.isPrimary, `${e.type} is the primary pointer's`);
