@@ -123,7 +123,7 @@ function sha256(text) {
 /**
  * A PlacesBookmark event: the fields read here (PlacesEvent.webidl).
  * @typedef {{ type: string, guid: string, parentGuid?: string, oldParentGuid?: string,
- *   source: number, isTagging?: boolean }} BookmarkEvent
+ *   source: number, isTagging?: boolean, itemType?: number }} BookmarkEvent
  */
 
 /**
@@ -243,6 +243,10 @@ export class BookmarksFileImpl {
     this.privateChanged = new Set();
     /** @type {Set<string>} items changed from a normal window: taken off the base's `local` */
     this.publicChanged = new Set();
+    /** Counts the events above, so that a run forgets only what no event touched during it. */
+    this.windowSeq = 0;
+    /** @type {Map<string, number>} each guid's last event in those sets, by `windowSeq` */
+    this.windowSeen = new Map();
     /** @type {Set<string>} items the file cannot hold that a notice already named */
     this.keptSaid = new Set();
     /** @type {Set<string>} tables paused both ways by the put-back loop guard */
@@ -331,6 +335,7 @@ export class BookmarksFileImpl {
   activate() {
     if (this.active) return;
     this.active = true;
+    trackLibraryOpeners();
     this.initComplete()
       .then(async () => {
         if (!this.active) return;
@@ -369,6 +374,7 @@ export class BookmarksFileImpl {
     this.privateAdded.clear();
     this.privateChanged.clear();
     this.publicChanged.clear();
+    this.windowSeen.clear();
     this.report([], []);
     this.signature = "";
     this.lastInput = "";
@@ -837,11 +843,19 @@ export class BookmarksFileImpl {
       for (const e of mine) {
         if (e.source !== S.DEFAULT || e.type === "bookmark-removed") continue;
         if (!isPrivate) {
+          // Only a change to the item itself: a sort moves every bookmark of the folder, and a
+          // folder made in a private window holds bookmarks no normal window touched.
+          const own =
+            e.itemType === places().bookmarks.TYPE_BOOKMARK &&
+            (e.type !== "bookmark-moved" || e.parentGuid !== e.oldParentGuid);
+          if (!own) continue;
+          this.windowSeen.set(e.guid, ++this.windowSeq);
           this.publicChanged.add(e.guid);
           this.privateAdded.delete(e.guid);
           this.privateChanged.delete(e.guid);
           continue;
         }
+        this.windowSeen.set(e.guid, ++this.windowSeq);
         this.publicChanged.delete(e.guid);
         if (e.type === "bookmark-added") this.privateAdded.add(e.guid);
         else if (!this.privateAdded.has(e.guid)) this.privateChanged.add(e.guid);
@@ -951,6 +965,7 @@ export class BookmarksFileImpl {
     this.eventTables.clear();
     // What a private window touched until now: cleared once this run has handled it.
     const privateSeen = [...this.privateAdded, ...this.privateChanged, ...this.publicChanged];
+    const seenBefore = this.windowSeq;
     let base = await this.loadBase();
     let { text: fileText, problem } = await this.readFile();
     let configText = this.configText ?? null;
@@ -1183,10 +1198,13 @@ export class BookmarksFileImpl {
     }
     await this.saveBase(source === null && !saved?.tables.length ? null : saved);
     // What a private window touched is now in the base's `local` list, or put back.
+    // A guid an event touched during this run is left for the next one, which reads it again.
     for (const g of privateSeen) {
+      if ((this.windowSeen.get(g) ?? 0) > seenBefore) continue;
       this.privateAdded.delete(g);
       this.privateChanged.delete(g);
       this.publicChanged.delete(g);
+      this.windowSeen.delete(g);
     }
     for (const link of p.links) this.link(link.name, link.folder);
     const loaded = this.lastInput !== input;
@@ -2140,22 +2158,67 @@ function placesDatabaseIsNew() {
 }
 
 /**
+ * @typedef {{ showPlacesOrganizer: (...args: unknown[]) => unknown, vimmaTracked?: boolean }}
+ *   LibraryCommands
+ */
+
+/** @type {WeakRef<Window> | null} the browser window that last opened or raised the Library */
+let libraryFrom = null;
+
+/**
+ * Notes which browser window last opened or brought forward the Library: there is one Library
+ * window, and PlacesCommandHook.showPlacesOrganizer only focuses it when it is open, so its
+ * `opener` stays the window that first opened it (browser-places.js). Every way Firefox opens
+ * the Library (its key, menus and the bookmarks button) goes through that function.
+ */
+function trackLibraryOpeners() {
+  if (trackLibraryOpeners.done) return;
+  trackLibraryOpeners.done = true;
+  /** @param {Window} win */
+  const hook = (win) => {
+    const commands = /** @type {{ PlacesCommandHook?: LibraryCommands }} */ (
+      /** @type {unknown} */ (win)
+    ).PlacesCommandHook;
+    if (!commands || commands.vimmaTracked) return;
+    const show = commands.showPlacesOrganizer;
+    commands.showPlacesOrganizer = function (/** @type {unknown[]} */ ...args) {
+      libraryFrom = new WeakRef(win);
+      return show.apply(this, args);
+    };
+    commands.vimmaTracked = true;
+  };
+  for (const win of Services.wm.getEnumerator("navigator:browser")) hook(win);
+  Services.obs.addObserver(
+    (win) => hook(/** @type {Window} */ (/** @type {unknown} */ (win))),
+    "browser-delayed-startup-finished",
+  );
+}
+trackLibraryOpeners.done = false;
+
+/**
  * Whether a Places change came from a private window (Behaviour 12): the focused window, else the
- * most recent of any type, and up its openers to the browser window that opened it. The Library
- * and the bookmark dialogs are windows of their own (PlacesCommandHook.showPlacesOrganizer opens
- * the Library with openDialog), so the most recent browser window would name a private window
- * that is merely behind them.
+ * most recent of any type, and up its openers to a browser window. The Library and the bookmark
+ * dialogs are windows of their own, so the most recent browser window would name a private
+ * window that is merely behind them; the Library counts as the browser window that last opened
+ * or raised it. When no browser window is found this way, or a check throws, the change counts
+ * as private when the most recent browser window is, so that it fails closed.
  */
 function changeWindowIsPrivate() {
-  let win = Services.focus.activeWindow ?? Services.wm.getMostRecentWindow(null);
-  for (let hops = 0; win && hops < 8; hops++) {
-    if (isPrivate(/** @type {BrowserWindow} */ (win))) return true;
-    if (win.document?.documentElement?.getAttribute("windowtype") === "navigator:browser") {
-      return false;
+  try {
+    let win = Services.focus.activeWindow ?? Services.wm.getMostRecentWindow(null);
+    for (let hops = 0; win && hops < 8; hops++) {
+      if (isPrivate(/** @type {BrowserWindow} */ (win))) return true;
+      const type = win.document?.documentElement?.getAttribute("windowtype");
+      if (type === "navigator:browser") return false;
+      const from = type === "Places:Organizer" ? libraryFrom?.deref() : undefined;
+      win = /** @type {Window | null} */ (from && !from.closed ? from : win.opener);
     }
-    win = /** @type {Window | null} */ (win.opener);
+    const recent = recentWindow();
+    return !!recent && isPrivate(recent);
+  } catch (e) {
+    console.warn("vimma: the window of a bookmark change is unknown, so counted private", e);
+    return true;
   }
-  return false;
 }
 
 /** @param {BrowserWindow} win */

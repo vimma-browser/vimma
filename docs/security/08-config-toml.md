@@ -70,8 +70,8 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`nesting deeper than MAX_DEPTH, by dotted keys, headers or values, is refused at its line`](../../packages/vimma-core/test/toml.test.ts)
 - F6. `bookmarks.toml` beside `config.toml` (spec: [bookmarks-file](../specs/bookmarks-file.md),
   mirrored into Places and written back as F7 says, behind `vimma.feature.bookmarksFile`, off by
-  default) is a file that may come
-  from someone else's repository, and it drives writes to Places from the parent's main thread.
+  default) is a file that may come from someone else's repository, and it drives writes to
+  Places from the parent's main thread.
   Its values are URLs, never evaluated, and only `http`, `https`, `file`, `about`, and
   `javascript:` behind the gate below; every other scheme (`data:`, `chrome:`, `resource:`,
   `view-source:`, `blob:`, `jar:`, `place:`, …) is an error at its line. It **cannot** hold a
@@ -132,13 +132,18 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   and in a private window they always refuse, so nothing done in private browsing reaches a file
   that may be committed. Outside changes carry no window, so the window a change came from is
   the focused one, followed up its openers to a browser window (the Library and the bookmark
-  dialogs are windows of their own): under `"all"`, an addition or change from a private window,
-  or from a Library or dialog a private window opened, is never written (an addition stays in
-  Places only, listed in the base's `local` list; a change is put back); removals are written, as
-  they add nothing to the file. A later change to that item from a normal window takes it off
-  the `local` list and writes it. An add-on's write carries no window either and counts as the
-  focused window's; a Library a normal window opened counts as normal when a private window
-  brings it forward again.
+  dialogs are windows of their own), the Library counting as the browser window that last opened
+  or raised it (`PlacesCommandHook.showPlacesOrganizer`, which only focuses a Library already
+  open, so its `opener` is not enough); when no browser window is found, or the check throws,
+  the most recent browser window decides, so the check fails closed. Under `"all"`, an addition
+  or change from a private window, or from a Library or dialog a private window opened or
+  raised, is never written (an addition stays in Places only, listed in the base's `local`
+  list; a change is put back); removals are written, as they add nothing to the file. A later
+  change to that bookmark itself from a normal window (its title, URL or folder; not a sort,
+  which moves every bookmark of the folder) takes it off the `local` list and writes it; a
+  folder made in a private window stays local with its contents. A run forgets only the window
+  marks no event touched while it ran. An add-on's write carries no window either and counts as
+  the focused window's.
   What an outside change can put into the file is what Places holds in the mirrored folders,
   where the user, Sync or an add-on put it: the merge writes it through the same line writer and
   checks below, so a URL the file refuses (`data:`, `place:`, `chrome:`, a bookmarklet while

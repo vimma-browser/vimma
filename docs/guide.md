@@ -4292,10 +4292,13 @@ URL.
   the keys never write it (`bookmarks.toml is not written from a private window`), and under
   `"all"` a bookmark added to a mirrored folder from a private window (the star, or a Library
   a private window opened) stays in Firefox only, and a change to a mirrored bookmark is put
-  back, with a notice. Removals are written. Changing such a bookmark later from a normal window
-  writes it to the file. Firefox does not say which window a change came from, so Vimma goes by
-  the window in front: the Library counts as the window that first opened it, and a change an
-  add-on makes counts as the window you are in.
+  back, with a notice. Removals are written. Renaming such a bookmark later from a normal
+  window, changing its address or moving it to another folder writes it to the file; a sort
+  does not, and a folder made in a private window stays out with everything in it. Firefox does
+  not say which window a change came from, so Vimma goes by the window in front: the Library
+  counts as the window that last opened or raised it (with its key, a menu or the bookmarks
+  button), a bookmark dialog as the window that opened it, and a change an add-on makes as the
+  window you are in.
 - **Two devices.** With Firefox Sync on two machines, each machine writes what Sync brings
   into its own file under `"all"`. Under `"vimma"` or `"none"`, or when both machines change one
   bookmark at once, one puts the other's change back. When one bookmark has been put back three
