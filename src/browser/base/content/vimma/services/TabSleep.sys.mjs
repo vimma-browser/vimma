@@ -51,7 +51,8 @@ export const UNLOAD_PREF = "browser.tabs.unloadOnLowMemory";
 /** @param {TabSleepDeps} d @param {Tab} tab  in the agent workspace's container */
 function isAgentTab(d, tab) {
   const id = d.workspaces.agent?.userContextId;
-  return id !== null && id !== undefined && tab.userContextId === id;
+  // 0 is the default container, never the agent workspace's (AgentConsole checks the same).
+  return typeof id === "number" && id > 0 && tab.userContextId === id;
 }
 
 /** @param {TabSleepDeps} d @param {BrowserWindow} win */
@@ -82,9 +83,17 @@ let firefoxUnloads = false;
  */
 const marked = new WeakSet();
 
-/** Whether Firefox's low-memory unloader runs under Vimma's rules (decision 21). */
-function lowMemoryOn() {
+/** Whether `[tabs] sleep_on_low_memory` asks for Firefox's low-memory unloader (decision 21). */
+function configUnloads() {
   return !!deps && enabled() && (deps.configHost.config?.tabs.sleepOnLowMemory ?? true);
+}
+
+/**
+ * Whether the unloader runs, whoever turned it on: a value set in about:config beats the
+ * config's default-branch one, and the marks must follow the unloader that runs.
+ */
+function lowMemoryOn() {
+  return !!deps && enabled() && Services.prefs.getBoolPref(UNLOAD_PREF, false);
 }
 
 /**
@@ -93,7 +102,7 @@ function lowMemoryOn() {
  * comes back with the feature pref off.
  */
 function applyUnloadPref() {
-  const value = enabled() ? lowMemoryOn() : firefoxUnloads;
+  const value = enabled() ? configUnloads() : firefoxUnloads;
   const defaults = Services.prefs.getDefaultBranch("");
   if (defaults.getBoolPref(UNLOAD_PREF, false) !== value) defaults.setBoolPref(UNLOAD_PREF, value);
 }
@@ -230,6 +239,7 @@ export const TabSleep = {
     firefoxUnloads = Services.prefs.getDefaultBranch("").getBoolPref(UNLOAD_PREF, false);
     Services.prefs.addObserver(FEATURE_PREF, refresh);
     Services.prefs.addObserver(CHECK_PREF, restart);
+    Services.prefs.addObserver(UNLOAD_PREF, markAll);
     Services.obs.addObserver(refresh, d.configTopic);
     d.mcp.watchAgentConnected(markAll);
     refresh();

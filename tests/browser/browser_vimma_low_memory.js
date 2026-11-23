@@ -206,6 +206,12 @@ add_task(async function the_mark_follows_the_split_the_agent_and_the_config() {
   );
   await config("[tabs]\nsleep_on_low_memory = false\n");
   Assert.ok(!marked(/** @type {Tab} */ (b)), "with the unloader off, nothing is marked");
+  // A value set in about:config beats the config (decision 21): the marks follow the unloader
+  // that runs, not the config key.
+  Services.prefs.setBoolPref(UNLOAD_PREF, true);
+  Assert.ok(marked(/** @type {Tab} */ (b)), "turned on in about:config: marked");
+  Services.prefs.clearUserPref(UNLOAD_PREF);
+  Assert.ok(!marked(/** @type {Tab} */ (b)), "the about:config value gone: not marked");
   await config("");
   Assert.ok(marked(/** @type {Tab} */ (b)), "on again: marked again");
   await SpecialPowers.pushPrefEnv({ set: [[FEATURE, false]] });

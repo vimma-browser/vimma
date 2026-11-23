@@ -364,7 +364,12 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     Firefox's own default comes back when `vimma.feature.tabSleep` is off. `TabSleep` clears only
     the marks it set, remembered by each browser's permanent key, because an add-on can set the
     same attribute (`autoDiscardable: false`) and Firefox moves the key and the attribute together
-    when a tab changes window. Its other rules (sound, Picture-in-Picture, WebRTC, private)
+    when a tab changes window; an add-on's mark set while Vimma's is already there is cleared with
+    it, which loses nothing an add-on could not already do with `tabs.discard`. The marks follow
+    the pref in force, not the config key, because a value set in `about:config` turns the
+    unloader on all the same. An enterprise policy that locks the pref wins, since Firefox does
+    not change the default of a locked pref; an unlocked policy default is replaced by the
+    config's value. Its other rules (sound, Picture-in-Picture, WebRTC, private)
     already match decision 6. Rejected: leaving it off as Firefox does on Linux, because no
     reason for that default was found and a sleep limit counted in hours cannot help a sudden
     spike; setting it in `firefox-branding.js`, because the config key could then not turn it
