@@ -79,6 +79,7 @@ describe("openPanel", () => {
         foreign: false,
         playing: false,
         pinned: false,
+        asleep: false,
         split: null,
       },
       {
@@ -90,6 +91,7 @@ describe("openPanel", () => {
         foreign: false,
         playing: true,
         pinned: false,
+        asleep: false,
         split: null,
       },
       {
@@ -101,9 +103,19 @@ describe("openPanel", () => {
         foreign: true,
         playing: false,
         pinned: false,
+        asleep: false,
         split: null,
       },
     ]);
+  });
+
+  test("a sleeping tab's item is marked asleep and keeps its width (tab-sleep, behaviour 14)", () => {
+    const sleepy = (id: string) => (id === "t4" ? { ...tabs.t4, asleep: true } : tabs[id]);
+    const rows = openPanel(model, sleepy).rows;
+    expect(rows.map((r) => r.asleep)).toEqual([false, false, true]);
+    const awake = openPanel(model, info).rows;
+    // Only the flag differs: number, label and host, which the row's columns hold, stay.
+    expect({ ...rows[2], asleep: false }).toEqual(awake[2]);
   });
 
   test("Given no selection asked for, then the active tab's row is highlighted", () => {

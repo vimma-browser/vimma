@@ -31,7 +31,18 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 /** @type {WeakSet<BrowserWindow>} windows our stylesheet is loaded into (once: a second load throws) */
 const styled = new WeakSet();
 /** Tab events that change a row: re-render while open. */
-const TAB_EVENTS = ["TabOpen", "TabClose", "TabSelect", "TabAttrModified", "TabMove"];
+const TAB_EVENTS = [
+  "TabOpen",
+  "TabClose",
+  "TabSelect",
+  "TabAttrModified",
+  "TabMove",
+  // A tab put to sleep, and one woken: its row is muted while it has no loaded page
+  // (docs/specs/tab-sleep.md, behaviour 14).
+  "TabBrowserDiscarded",
+  "TabBrowserInserted",
+  "SSTabRestored",
+];
 
 /**
  * `[panel] numbers` from config.toml (docs/specs/side-panel-counts.md decision 6), for the side
@@ -305,6 +316,12 @@ export class SidePanel {
         row.setAttribute("aria-selected", String(i === state.selected));
         row.dataset.tabId = r.tabId;
         if (r.active) row.classList.add("vimma-panel-active");
+        // Muted by CSS with nothing else changed, and described, so the state is not shown by
+        // colour alone (tab-sleep, decision 17).
+        if (r.asleep) {
+          row.setAttribute("asleep", "");
+          row.setAttribute("aria-description", "asleep");
+        }
         const isMarked = marked.has(r.tabId);
         const ranged = inRange(state, i);
         if (checkable) row.setAttribute("aria-checked", String(isMarked));

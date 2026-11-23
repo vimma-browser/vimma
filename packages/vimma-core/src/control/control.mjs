@@ -1178,6 +1178,10 @@ function checkStateResult(result, errors) {
       if ("loading" in tab && typeof tab.loading !== "boolean") {
         errors.push(`result.tabs[${i}].loading must be a boolean`);
       }
+      // A sleeping tab (docs/specs/tab-sleep.md, behaviour 15): listed only when true.
+      if ("asleep" in tab && tab.asleep !== true) {
+        errors.push(`result.tabs[${i}].asleep must be true when present`);
+      }
     });
     if (selected > 1) errors.push("result.tabs must have at most one selected tab");
   }

@@ -64,6 +64,21 @@ const seenOnScreen = new WeakMap();
 
 const enabled = () => Services.prefs.getBoolPref(FEATURE_PREF, false);
 
+/**
+ * Whether the tab has no loaded page: Firefox's lazy tab, with no browser or one still to
+ * restore, whoever left it so (a restart, this module or Firefox's unloader; decision 16).
+ * Reads attributes only, so it never inserts the browser.
+ * @param {Tab} tab
+ */
+export const tabAsleep = (tab) => !tab.linkedPanel || tab.hasAttribute("pending");
+
+/**
+ * Whether the tab line, the side panel and `state` show the tab asleep (behaviours 14 and 15):
+ * only behind the feature pref until the feature is finished (decision 20).
+ * @param {Tab} tab
+ */
+export const shownAsleep = (tab) => enabled() && tabAsleep(tab);
+
 /** The limit in force, in ms; 0 when the check is off or nothing is known yet. */
 function sleepAfterMs() {
   if (!deps || !enabled()) return 0;
@@ -173,7 +188,7 @@ export const TabSleep = {
         if (onScreen) seenOnScreen.set(tab, now);
         const id = String(byId.size);
         byId.set(id, { win, tab });
-        const asleep = !tab.linkedPanel || tab.hasAttribute("pending");
+        const asleep = tabAsleep(tab);
         facts.push({
           id,
           lastSeen: Math.max(tab.lastAccessed, seenOnScreen.get(tab) ?? 0),
