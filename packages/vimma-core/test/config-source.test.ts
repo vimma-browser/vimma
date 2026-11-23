@@ -88,16 +88,16 @@ describe("formatConfigTemplate", () => {
     expect(said).toMatch(/save/i);
     expect(said).toMatch(/:config\b.*opens this file/);
     expect(said).toContain("ctrl+b ?");
-    expect(said).toMatch(/remove the `# `/);
+    expect(said).toMatch(/remove the first `# `/);
   });
 });
 
 describe("formatConfigTemplate, line by line", () => {
   test("defaults.toml after its header, each setting commented out, blank lines and headers kept", () => {
     const template = formatConfigTemplate().split("\n");
-    const header = 6;
+    const header = 5;
     expect(template[0]).toBe(
-      "# Vimma config. Every line below is a default, commented out, so this file changes nothing.",
+      "# Vimma config. Every setting is commented out: its default, or an example where it has none.",
     );
     expect(template[header - 1]).toBe(
       "# Reference: the user guide's config.toml section (docs/guide.md).",
@@ -105,8 +105,15 @@ describe("formatConfigTemplate, line by line", () => {
     const defaults = formatDefaultsToml().split("\n").slice(3);
     expect(template.slice(header)).toHaveLength(defaults.length);
     defaults.forEach((line, i) => {
-      const kept = line === "" || /^(#|\[)/.test(line);
-      expect(template[header + i], line).toBe(kept ? line : `# ${line}`);
+      const kept = line === "" || /^(\s*#|\[)/.test(line);
+      const t = template[header + i] ?? "";
+      // A setting with a note (#1443) keeps the note where it was: `# ` takes two of its spaces.
+      const noted = / {4,}# /.test(line);
+      if (kept || !noted) expect(t, line).toBe(kept ? line : `# ${line}`);
+      else {
+        expect(t, line).toBe(`# ${line.replace(/ {2}( {2,}# )/, "$1")}`);
+        expect(t.indexOf(" # "), line).toBe(line.indexOf(" # "));
+      }
     });
     expect(defaults).toContain("");
     expect(defaults.some((l) => l.startsWith("["))).toBe(true);
