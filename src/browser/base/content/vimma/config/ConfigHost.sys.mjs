@@ -532,39 +532,48 @@ async function readRoutes(now) {
 /** @param {boolean} force  read even when the stat is unchanged (`:source`) */
 async function check(force) {
   const path = configPath();
-  const now = await stat(path);
-  const routesNow = await routesStat(routesPath());
+  // Both files at once, so that the first read is no later than config.toml's alone: a config
+  // that arrives before WorkspaceStore is ready is the one its init reads (its first workspace
+  // shown at the start), and a later one only adds to the workspaces init made.
+  const [now, routesNow] = await Promise.all([stat(path), routesStat(routesPath())]);
   const routesChanged = force || routesNow !== routesSignature;
+  const configChanged = force || now !== signature;
+  if (!routesChanged && !configChanged) return;
+  /** @type {Promise<{ text: string } | { error: unknown }> | null} */
+  const reading =
+    configChanged && now !== "missing"
+      ? IOUtils.readUTF8(path).then(
+          (text) => ({ text }),
+          (error) => ({ error }),
+        )
+      : null;
+  const wasPresent = routesPresent;
   if (routesChanged) {
-    const wasPresent = routesPresent;
     routesSignature = routesNow;
     await readRoutes(routesNow);
-    if (!force && now === signature) {
-      // Only routes.toml changed. Its arrival or removal decides whether the config's rules are
-      // checked, so the config is read again; otherwise only the routes change.
-      if (wasPresent !== routesPresent && lastUse) {
-        use(lastUse.path, lastUse.text, lastUse.left);
-      } else applyRoutes();
-      showErrors();
-      return;
-    }
   }
-  if (!force && now === signature) return;
+  if (!configChanged) {
+    // Only routes.toml changed. Its arrival or removal decides whether the config's rules are
+    // checked, so the config is read again; otherwise only the routes change.
+    if (wasPresent !== routesPresent && lastUse) {
+      use(lastUse.path, lastUse.text, lastUse.left);
+    } else applyRoutes();
+    showErrors();
+    return;
+  }
   signature = now;
   sourced = null; // config.toml changed (or a plain :source): it is the file in force again
   let text = "";
-  if (now !== "missing") {
-    try {
-      text = await IOUtils.readUTF8(path);
-    } catch (e) {
-      if (!notFound(e)) {
-        // An unreadable config.toml may say `[updates] check = false`: hold checks off.
-        updates = { check: false, held: true };
-        VimmaUpdates.configure(updates);
-        throw e;
-      }
-      signature = "missing"; // removed between stat and read: the defaults, silently
+  const read = reading ? await reading : null;
+  if (read && "text" in read) text = read.text;
+  else if (read) {
+    if (!notFound(read.error)) {
+      // An unreadable config.toml may say `[updates] check = false`: hold checks off.
+      updates = { check: false, held: true };
+      VimmaUpdates.configure(updates);
+      throw read.error;
     }
+    signature = "missing"; // removed between stat and read: the defaults, silently
   }
   const applied = use(path, text);
   // Bookmarklets as the last config.toml that applied says (bookmarks-file D12, D13): a file
