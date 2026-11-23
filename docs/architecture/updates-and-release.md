@@ -77,7 +77,15 @@ tag whose commit is on main").
    files say `vimma`, and it embeds Vimma's certificates and none of Mozilla's. With
    `UPDATES_ENABLED`, `tools/update/mar.ts build` makes the complete MAR from the release tarball
    with Mozilla's `make_full_update.sh` and a zeroed signature placeholder
-   (`addSignaturePlaceholder`).
+   (`addSignaturePlaceholder`). With `PACKAGE_REPOS_ENABLED`, it also builds the pacman
+   repository's `vimma-bin` package from the PKGBUILD variant marked `vimma-package=pacman` and
+   installs it with `pacman -U` in the pinned Arch image
+   ([package-repositories](../specs/package-repositories.md), decision 10).
+   **`package-sign`** then calls `update-publish.yml`'s job of that name, which runs only the
+   OpenPGP signer from `main`: it signs the `.rpm` (through `rpmsign`) and the pacman package with
+   the package key in Cloud KMS, in the `package-signing` environment, checks both against the
+   committed certificate and writes `SHA256SUMS` again. **`packages`** checks that with no secret
+   (`tools/package/check-signed-packages.sh`) before `mar`, `sign` and `publish` build on it.
 4. **`mar-sign`** calls `update-publish.yml`'s job of that name. It runs no repository code: it
    checks the file is this caller's MAR for the `vimma` channel with one zeroed SHA-384
    placeholder, signs the bytes around it with the update key in Google Cloud KMS through GitHub's

@@ -65,6 +65,9 @@ const GUARD =
 /** A job after the MAR's: it runs when the MAR is in, or when update notices are off. */
 const MAR_DONE =
   "(needs.mar.result == 'success' || (needs.mar.result == 'skipped' && vars.UPDATES_ENABLED != 'true'))";
+/** Likewise for the signed packages (spec package-repositories, decision 16). */
+const PACKAGES_DONE =
+  "(needs.packages.result == 'success' || (needs.packages.result == 'skipped' && vars.PACKAGE_REPOS_ENABLED != 'true'))";
 
 describe("release.yml: the updater and the complete MAR", () => {
   const all = jobsOf(workflow("release.yml"));
@@ -148,10 +151,17 @@ describe("release.yml: the updater and the complete MAR", () => {
     ]);
   });
 
+  // Spec package-repositories, decision 3: the same call, for the package key.
+  it("package-sign's permissions are the same ceiling, and its called job asks for its token alone", () => {
+    const called = jobsOf(workflow("update-publish.yml"));
+    expect(permissionsOf(job("package-sign"))).toEqual(permissionsOf(job("mar-sign")));
+    expect(permissionsOf(called.get("package-sign") ?? "")).toEqual(["id-token: write"]);
+  });
+
   it("mar fails, loudly, when the MAR was not signed, so a release never stops silently", () => {
     const block = job("mar");
     expect(condition(block)).toBe(
-      `always() && ${GUARD} && vars.UPDATES_ENABLED == 'true' && needs.package.result == 'success'`,
+      `always() && ${GUARD} && vars.UPDATES_ENABLED == 'true' && needs.package.result == 'success' && ${PACKAGES_DONE}`,
     );
     expect(block).toContain("MAR_SIGN: ${{ needs.mar-sign.result }}");
     const run = runOf(block, "The MAR was signed");
@@ -174,7 +184,7 @@ describe("release.yml: the updater and the complete MAR", () => {
 
   it("mar checks the signed MAR with no secret: same content, the certificates, signmar", () => {
     const block = job("mar");
-    expect(block).toMatch(/^ {4}needs: \[build, package, mar-sign\]$/m);
+    expect(block).toMatch(/^ {4}needs: \[build, package, packages, mar-sign\]$/m);
     expect(permissionsOf(block)).toEqual(["contents: read"]);
     expect(block).not.toMatch(/environment:|secrets\.|id-token/);
     expect(block).toContain("ref: ${{ needs.build.outputs.sha }}");
@@ -247,7 +257,7 @@ describe("release.yml: the updater and the complete MAR", () => {
 
   it("cosign signs the MAR with the other assets, after it is checked", () => {
     const block = job("sign");
-    expect(block).toMatch(/^ {4}needs: \[package, mar\]$/m);
+    expect(block).toMatch(/^ {4}needs: \[package, packages, mar\]$/m);
     const cond = condition(block);
     expect(cond).toContain("always() && ");
     expect(cond).toContain(GUARD);
@@ -262,7 +272,7 @@ describe("release.yml: the updater and the complete MAR", () => {
 
   it("publish uploads the MAR and the new SHA256SUMS, never a release that lost its MAR", () => {
     const block = job("publish");
-    expect(block).toMatch(/^ {4}needs: \[build, package, mar, sign\]$/m);
+    expect(block).toMatch(/^ {4}needs: \[build, package, packages, mar, sign\]$/m);
     expect(condition(block)).toContain(MAR_DONE);
     const download = block.slice(block.indexOf("name: release-mar") - 200);
     expect(download).toContain("if: needs.mar.result == 'success'");

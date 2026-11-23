@@ -2,7 +2,8 @@
 /**
  * Release packages from a `./mach package` tarball (spec m6-packaging): the release tarball, the
  * AppImage, the .deb, the .rpm (spec rpm-package), the vimma-bin PKGBUILD + SRCINFO (a release
- * asset, and an AUR variant in aur/), and SHA256SUMS. Each carries vimma-ctl next to the vimma
+ * asset, an AUR variant in aur/ and a pacman-repository variant in pacman/), and SHA256SUMS.
+ * Each carries vimma-ctl next to the vimma
  * binary (spec ship-vimma-ctl), so whatever updates the browser updates the client with it.
  *
  * Usage:
@@ -579,12 +580,13 @@ function sharedLibraries(dir: string): string[] {
 /**
  * How the package was installed, written to /opt/vimma/is-packaged-app as `vimma-package=<it>`
  * so the updater can show the matching hint (spec m6a-updater, section 3): `pkgbuild-release`
- * for the PKGBUILD downloaded from the release, `aur` for the copy pushed to the AUR. The .deb,
- * the .rpm and the AppImage carry `deb`, `rpm` and `appimage` (packageMarker); the tarball
- * carries none.
+ * for the PKGBUILD downloaded from the release, `aur` for the copy pushed to the AUR, `pacman`
+ * for the binary vimma-bin release.yml builds for the pacman repository (spec
+ * package-repositories, decision 10). The .deb, the .rpm and the AppImage carry `deb`, `rpm` and
+ * `appimage` (packageMarker); the tarball carries none.
  */
-export type InstallSource = "pkgbuild-release" | "aur";
-const INSTALL_SOURCES = ["pkgbuild-release", "aur"];
+export type InstallSource = "pkgbuild-release" | "aur" | "pacman";
+const INSTALL_SOURCES = ["pkgbuild-release", "aur", "pacman"];
 
 /**
  * The file Firefox tests for to treat an install as owned by a package manager
@@ -1093,9 +1095,12 @@ function packageIn(work: string, options: PackageOptions): PackageResult {
   }
 
   // vimma-bin (releases only): the PKGBUILD and SRCINFO are release assets; aur/ holds the
-  // variant release.yml pushes to the AUR, which differs only in its install source.
+  // variant aur.yml pushes to the AUR, and pacman/ the one release.yml builds the pacman
+  // repository's package from. Each differs only in its install source.
   const aurDir = join(out, "aur");
+  const pacmanDir = join(out, "pacman");
   rmSync(aurDir, { recursive: true, force: true });
+  rmSync(pacmanDir, { recursive: true, force: true });
   if (!version.includes("-")) {
     const aur: Omit<AurInput, "installSource"> = {
       version,
@@ -1112,6 +1117,7 @@ function packageIn(work: string, options: PackageOptions): PackageResult {
     files.push(join(out, names.pkgbuild), join(out, names.srcinfo));
     writeFile(join(aurDir, "PKGBUILD"), pkgbuild({ ...aur, installSource: "aur" }));
     writeFile(join(aurDir, ".SRCINFO"), info);
+    writeFile(join(pacmanDir, "PKGBUILD"), pkgbuild({ ...aur, installSource: "pacman" }));
   }
 
   // Not assets either: release.yml puts them at the top and the end of the release notes.

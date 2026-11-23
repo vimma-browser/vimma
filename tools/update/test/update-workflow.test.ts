@@ -6,9 +6,11 @@
 // does, so the bytes it writes are checked by the verifier the browser runs.
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.ts";
+import { haveTool, missingRequired } from "../../package/test/have-tool.ts";
 import { testKey } from "../../test/test-keys.ts";
 import { IDENTITY_REGEXP } from "../../package/package.ts";
 import {
@@ -71,18 +73,33 @@ function permissionsOf(block: string) {
     .filter(Boolean);
 }
 
+/**
+ * The flags GitHub runs a job's `run:` steps with: `shell: bash` gives
+ * `bash --noprofile --norc -eo pipefail {0}`, and no shell gives `bash -e {0}`, without pipefail.
+ */
+function githubShell(block: string) {
+  return /^ {4}defaults:\n {6}run:\n {8}shell: bash$/m.test(block)
+    ? ["--noprofile", "--norc", "-eo", "pipefail"]
+    : ["-e"];
+}
+const has = haveTool;
+/** GNU tar, which package-sign compares with libarchive's bsdtar. */
+const hasGnuTar =
+  has("tar") && /GNU tar/.test(spawnSync("tar", ["--version"], { encoding: "utf8" }).stdout ?? "");
+
 const GUARD =
   "github.event_name == 'workflow_dispatch' && github.repository == 'vimma-browser/vimma' && " +
   "github.ref == 'refs/heads/main'";
 
 describe("update-publish.yml", () => {
-  it("has the jobs: the release manifest's, mar-sign, the nightly manifest's, failure", () => {
+  it("has the jobs: the release manifest's, mar-sign, package-sign, the nightly manifest's, failure", () => {
     expect([...all.keys()]).toEqual([
       "start",
       "prepare",
       "sign",
       "publish",
       "mar-sign",
+      "package-sign",
       "nightly-prepare",
       "nightly-sign",
       "nightly-publish",
@@ -187,6 +204,7 @@ describe("update-publish.yml", () => {
     expect(permissionsOf(job("sign"))).toEqual(["id-token: write"]);
     expect(permissionsOf(job("publish"))).toEqual(["contents: read"]);
     expect(permissionsOf(job("mar-sign"))).toEqual(["id-token: write"]);
+    expect(permissionsOf(job("package-sign"))).toEqual(["id-token: write"]);
     expect(permissionsOf(job("nightly-prepare"))).toEqual(["contents: read"]);
     expect(permissionsOf(job("nightly-sign"))).toEqual(["id-token: write"]);
     expect(permissionsOf(job("nightly-publish"))).toEqual(["contents: read"]);
@@ -199,11 +217,361 @@ describe("update-publish.yml", () => {
   it("only sign, mar-sign and nightly-sign mint an OIDC token or name the signing environment", () => {
     const signers = ["sign", "mar-sign", "nightly-sign"];
     for (const [id, block] of all) {
+      // The package key's job, with its own environment: the tests below.
+      if (id === "package-sign") continue;
       expect(block.includes("id-token"), id).toBe(signers.includes(id));
       expect(block.includes("update-signing"), id).toBe(signers.includes(id));
       expect(block.includes("GCP_"), id).toBe(signers.includes(id));
     }
     for (const id of signers) expect(job(id)).toMatch(/^ {4}environment: update-signing$/m);
+  });
+
+  it("package-sign alone names the package-signing environment, with an OIDC token", () => {
+    for (const [id, block] of all) {
+      expect(block.includes("package-signing"), id).toBe(id === "package-sign");
+    }
+    expect(job("package-sign")).toMatch(/^ {4}environment: package-signing$/m);
+    expect(job("package-sign")).toContain("id-token: write");
+    expect(job("package-sign")).not.toContain("update-signing");
+  });
+
+  // Spec package-repositories, decisions 2 and 3: the update key and the package key each have
+  // an environment that their IAM binding names, and a job reaches only its own.
+  it("no job in update-signing names the package key, and no job in package-signing names the update key", () => {
+    for (const [id, block] of all) {
+      if (block.includes("environment: update-signing")) {
+        expect(block, id).not.toMatch(/GCP_PACKAGE_KEY_VERSION|vimma-packages|package-signing/);
+        expect(block, id).toContain("vars.GCP_KMS_KEY_VERSION");
+      }
+      if (block.includes("environment: package-signing")) {
+        expect(block, id).not.toMatch(/GCP_KMS_KEY_VERSION|update-primary|update-signing/);
+        expect(block, id).toContain("KEY_VERSION: ${{ vars.GCP_PACKAGE_KEY_VERSION }}");
+      }
+    }
+    // The key version must name the package key's ring and key, so a variable that names the
+    // update key fails before any signing.
+    const run = runOf(job("package-sign"), "The project of the key");
+    const project = (version: string) =>
+      spawnSync("bash", ["-e", "-c", run], {
+        encoding: "utf8",
+        env: { ...process.env, KEY_VERSION: version, GITHUB_OUTPUT: "/dev/null" },
+      }).status;
+    expect(
+      project(
+        "projects/vimma-p/locations/europe-north1/keyRings/vimma-packages/cryptoKeys/package-signing/cryptoKeyVersions/1",
+      ),
+    ).toBe(0);
+    expect(
+      project(
+        "projects/vimma-p/locations/europe-north1/keyRings/vimma-updates/cryptoKeys/update-primary/cryptoKeyVersions/1",
+      ),
+    ).toBe(1);
+  });
+
+  it("package-sign uses the package-signing environment and runs only the signer", () => {
+    const block = job("package-sign");
+    expect(condition(block)).toBe(
+      "inputs.packages && !inputs.mar && github.repository == 'vimma-browser/vimma' && " +
+        "github.ref == 'refs/heads/main' && vars.PACKAGE_REPOS_ENABLED == 'true' && " +
+        "github.workflow_ref == 'vimma-browser/vimma/.github/workflows/release.yml@refs/heads/main'",
+    );
+    // One checkout: the signer, the certificate and .nvmrc from main, nothing else.
+    const checkout = block.slice(block.indexOf("uses: actions/checkout@"));
+    expect(checkout.slice(0, checkout.indexOf("\n      - "))).toMatch(
+      / {8}with:\n {10}persist-credentials: false\n {10}sparse-checkout-cone-mode: false\n {10}sparse-checkout: \|\n {12}\/\.nvmrc\n {12}\/tools\/package\/openpgp-kms\.ts\n {12}\/configs\/package-signing\/vimma-packages\.asc\n$/,
+    );
+    expect(block.split("actions/checkout@").length - 1).toBe(1);
+    expect(runOf(block, "The signer and the certificate are main's")).toContain(
+      '[ "$files" = ".nvmrc configs/package-signing/vimma-packages.asc tools/package/openpgp-kms.ts " ]',
+    );
+    // Node runs the signer and nothing else: every node command line is the signer's.
+    expect(block).not.toMatch(/\bnpm\b|\bnpx\b/);
+    const nodeLines = block.split("\n").filter((l) => /\bnode\b/.test(l) && !/^\s*#/.test(l));
+    for (const line of nodeLines) {
+      expect(line).toMatch(
+        /node-version-file: \.nvmrc|node=\$\(command -v node\)|\/usr\/bin\/env env \$node \$root\/\$SIGNER sign |^ *node "\$SIGNER" sign |setup-node@|for word in "\$node" "\$root" "\$KEY_VERSION"; do$/,
+      );
+    }
+    expect(block).toContain("SIGNER: tools/package/openpgp-kms.ts");
+    expect(block).toContain("CERT: configs/package-signing/vimma-packages.asc");
+    // The checkout runs first: it cleans the workspace, which then holds only main's three
+    // files when the signer's check runs, and the artifact after it.
+    expect(block.indexOf("uses: actions/checkout@")).toBeLessThan(
+      block.indexOf("name: packages-unsigned"),
+    );
+    const sign = runOf(block, "Sign the .rpm and the pacman package with Cloud KMS");
+    expect(sign).toContain('(cd "$work" && rpmsign --addsign --define "_gpg_name Vimma packages"');
+    // One definition for rpm 4.18 (an exec'd word list) and rpm 6.0 (a parametric macro).
+    expect(sign).toContain(
+      '--define "__gpg_sign_cmd() /usr/bin/env env $node $root/$SIGNER sign --key-version $KEY_VERSION --cert $root/$CERT --format binary --in %{?1:%{shescape:%{1}}}%{!?1:-} --out %{?2:%{shescape:%{2}}}%{!?2:%{shescape:%{__signature_filename}}}"',
+    );
+    expect(sign).toContain('[ "$(ls -A "$work")" = "$RPM" ]');
+    expect(sign).toContain(
+      'node "$SIGNER" sign --key-version "$KEY_VERSION" --cert "$CERT" --format binary \\\n  --in "in/$PKG" --out "out/$PKG.sig"',
+    );
+    const check = runOf(block, "Check the signatures against the committed certificate");
+    expect(check).toContain(
+      `rpmkeys --dbpath "$db" --define '_pkgverify_level all' --checksig "out/$RPM"`,
+    );
+    expect(check).toContain('gpgv --keyring "$db/keyring.gpg" "out/$PKG.sig" "in/$PKG"');
+    expect(block.indexOf("- name: Check the files to sign")).toBeLessThan(
+      block.indexOf("uses: google-github-actions/auth@"),
+    );
+  });
+
+  // pkgbuild.yml's repos job installs these and requires them, so the archive checks run there.
+  it("has every tool VIMMA_REQUIRE_TOOLS names", () => {
+    expect(missingRequired(["zstd", "bsdtar"])).toEqual([]);
+  });
+
+  describe.skipIf(!has("zstd") || !has("bsdtar") || !hasGnuTar)(
+    "with zstd, bsdtar and GNU tar",
+    () => {
+      it("package-sign signs only the caller's tag's .rpm and pacman package", () => {
+        const run = runOf(job("package-sign"), "Check the files to sign");
+        const rpm = "vimma-0.3.1-1.x86_64.rpm";
+        const pkg = "vimma-bin-0.3.1-1-x86_64.pkg.tar.zst";
+        const attempt = (files: Record<string, Buffer | string>, tag = "v0.3.1") => {
+          const dir = tempDir("vimma-package-sign-");
+          mkdirSync(join(dir, "in"));
+          for (const [f, c] of Object.entries(files)) writeFileSync(join(dir, "in", f), c);
+          return spawnSync("bash", [...githubShell(job("package-sign")), "-c", run], {
+            cwd: dir,
+            encoding: "utf8",
+            env: { ...process.env, CALLER_TAG: tag, GITHUB_ENV: join(dir, "env") },
+          });
+        };
+        /** A zstd tar of these entries, in this order, as makepkg writes a package. */
+        const pacman = (entries: string[]) => {
+          const dir = tempDir("vimma-pkg-");
+          for (const e of entries) {
+            mkdirSync(join(dir, e, ".."), { recursive: true });
+            writeFileSync(join(dir, e), e);
+          }
+          return execFileSync("sh", ["-c", `tar -cf - ${entries.join(" ")} | zstd -q -c`], {
+            cwd: dir,
+          });
+        };
+        const rpmBytes = Buffer.from([0xed, 0xab, 0xee, 0xdb, 1, 2]);
+        const pkgBytes = pacman([".BUILDINFO", ".MTREE", ".PKGINFO", "opt/vimma/vimma"]);
+        const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+        const good = {
+          [rpm]: rpmBytes,
+          [pkg]: pkgBytes,
+          SHA256SUMS: `${sha(rpmBytes)}  ${rpm}\n`,
+        };
+        const ok = attempt(good);
+        expect(ok.status, ok.stderr + ok.stdout).toBe(0);
+        expect(attempt(good, "v0.3.1-rc1").stdout).toContain("is not a vX.Y.Z release tag");
+        expect(attempt(good, "v0.3.2").stdout).toContain("packages-unsigned holds");
+        expect(attempt({ ...good, extra: "x" }).stdout).toContain("packages-unsigned holds");
+        expect(attempt({ ...good, [rpm]: Buffer.from("not an rpm") }).stdout).toContain(
+          "is not an rpm",
+        );
+        expect(attempt({ ...good, [pkg]: Buffer.from("not zstd") }).stdout).toContain(
+          "is not zstd",
+        );
+        // A zstd file that is not a pacman package: .PKGINFO missing, or after the package's files.
+        for (const entries of [
+          [".BUILDINFO", ".MTREE", "opt/vimma/vimma"],
+          ["opt/vimma/vimma", ".PKGINFO"],
+        ]) {
+          expect(attempt({ ...good, [pkg]: pacman(entries) }).stdout, entries.join(" ")).toContain(
+            "is not a pacman package",
+          );
+        }
+        expect(attempt({ ...good, SHA256SUMS: `${"0".repeat(64)}  ${rpm}\n` }).stdout).toContain(
+          "does not list",
+        );
+      });
+
+      // A tar header for `name`, and a pax extended header: enough to write the archives a
+      // compromised build could send, which GNU tar and libarchive (pacman's reader) may list
+      // differently, or which hide entries behind an entry whose size the pax header overrides.
+      const tarHeader = (name: string, size: number, type: string) => {
+        const h = Buffer.alloc(512);
+        h.write(name, 0, "utf8");
+        h.write("0000644\0", 100);
+        h.write("0000000\0", 108);
+        h.write("0000000\0", 116);
+        h.write(`${size.toString(8).padStart(11, "0")}\0`, 124);
+        h.write("00000000000\0", 136);
+        h.write("        ", 148);
+        h.write(type, 156);
+        h.write("ustar\0", 257);
+        h.write("00", 263);
+        let sum = 0;
+        for (const b of h) sum += b;
+        h.write(`${sum.toString(8).padStart(6, "0")}\0 `, 148);
+        return h;
+      };
+      const pad = (b: Buffer) => Buffer.concat([b, Buffer.alloc((512 - (b.length % 512)) % 512)]);
+      const entry = (name: string, content: string, type = "0") =>
+        Buffer.concat([
+          tarHeader(name, Buffer.byteLength(content), type),
+          pad(Buffer.from(content)),
+        ]);
+      const paxHeader = (size: string) => {
+        const rec = ` size=${size}\n`;
+        let len = rec.length + 1;
+        while (String(len).length + rec.length !== len) len = String(len).length + rec.length;
+        const body = Buffer.from(`${len}${rec}`);
+        return Buffer.concat([tarHeader("PaxHeader", body.length, "x"), pad(body)]);
+      };
+      const zstd = (tar: Buffer) => execFileSync("zstd", ["-q", "-c"], { input: tar });
+      const lead = Buffer.concat([
+        entry(".BUILDINFO", "b\n"),
+        entry(".MTREE", "m\n"),
+        entry(".PKGINFO", "pkgname = vimma-bin\n"),
+      ]);
+      const end = Buffer.alloc(1024);
+
+      it("package-sign refuses a pacman package whose tar readers could disagree", () => {
+        const run = runOf(job("package-sign"), "Check the files to sign");
+        const rpm = "vimma-0.3.1-1.x86_64.rpm";
+        const pkg = "vimma-bin-0.3.1-1-x86_64.pkg.tar.zst";
+        const rpmBytes = Buffer.from([0xed, 0xab, 0xee, 0xdb, 1, 2]);
+        const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+        const attempt = (tar: Buffer) => {
+          const dir = tempDir("vimma-package-sign-tar-");
+          mkdirSync(join(dir, "in"));
+          writeFileSync(join(dir, "in", rpm), rpmBytes);
+          writeFileSync(join(dir, "in", pkg), zstd(tar));
+          writeFileSync(join(dir, "in", "SHA256SUMS"), `${sha(rpmBytes)}  ${rpm}\n`);
+          return spawnSync("bash", [...githubShell(job("package-sign")), "-c", run], {
+            cwd: dir,
+            encoding: "utf8",
+            env: { ...process.env, CALLER_TAG: "v0.3.1", GITHUB_ENV: join(dir, "env") },
+          });
+        };
+        const ok = attempt(Buffer.concat([lead, entry("opt/vimma/vimma", "vimma\n"), end]));
+        expect(ok.status, ok.stderr + ok.stdout).toBe(0);
+        // A pax size record before a ustar entry whose own size covers a second .PKGINFO and an
+        // .INSTALL: a reader that trusts the ustar size never sees them, pacman does.
+        const data = Buffer.from("vimma\n");
+        const hidden = Buffer.concat([
+          entry(".PKGINFO", "pkgname = evil\n"),
+          entry(".INSTALL", "post_install() { id; }\n"),
+        ]);
+        const smuggled = Buffer.concat([
+          lead,
+          paxHeader(String(data.length)),
+          tarHeader("opt/vimma/vimma", 512 + hidden.length, "0"),
+          pad(data),
+          hidden,
+          end,
+        ]);
+        const r = attempt(smuggled);
+        expect(r.status).not.toBe(0);
+        expect(r.stdout).toContain("lists a name twice");
+        // The same with an .INSTALL alone hidden: a metadata file after the package's files.
+        const installOnly = Buffer.concat([
+          lead,
+          paxHeader(String(data.length)),
+          tarHeader("opt/vimma/vimma", 512 + 1024, "0"),
+          pad(data),
+          entry(".INSTALL", "post_install() { id; }\n"),
+          end,
+        ]);
+        expect(attempt(installOnly).stdout).toContain("is not a pacman package");
+        // A pax size GNU tar refuses and libarchive reads: the two lists differ.
+        const malformed = Buffer.concat([
+          lead,
+          paxHeader(` ${data.length}`),
+          tarHeader("opt/vimma/vimma", 512 + hidden.length, "0"),
+          pad(data),
+          hidden,
+          end,
+        ]);
+        expect(attempt(malformed).stdout).toMatch(/GNU tar|libarchive/);
+        // Entry types other than a file, a directory or a symlink: a hard link and a FIFO.
+        for (const type of ["1", "6"]) {
+          const odd = Buffer.concat([lead, entry("opt/vimma/x", "", type), end]);
+          expect(attempt(odd).stdout, type).toContain("entry types");
+        }
+      });
+    },
+  );
+
+  // Spec package-repositories, decision 9: signing rewrites only the .rpm's signature header.
+  it("package-sign's check stops on an unreadable payload or a changed header, with pipefail", () => {
+    const block = job("package-sign");
+    expect(githubShell(block)).toContain("pipefail");
+    const run = runOf(block, "Check the signatures against the committed certificate");
+    const attempt = (signed: string) => {
+      const dir = tempDir("vimma-package-check-");
+      const bin = join(dir, "bin");
+      for (const d of ["in", "out", bin]) mkdirSync(d.startsWith("/") ? d : join(dir, d));
+      writeFileSync(join(dir, "in", "p.rpm"), "header\npayload\n");
+      writeFileSync(join(dir, "out", "p.rpm"), signed);
+      writeFileSync(join(dir, "cert.asc"), "certificate");
+      const stub = (name: string, body: string) =>
+        writeFileSync(join(bin, name), `#!/bin/bash\n${body}\n`, { mode: 0o755 });
+      stub("rpmkeys", "exit 0");
+      stub("gpg", "cat > /dev/null");
+      stub("gpgv", "exit 0");
+      // rpm2cpio gives the payload, then fails on a file marked corrupt, as a cut-short read.
+      stub("rpm2cpio", 'tail -n +2 "$1"; head -n 1 "$1" | grep -q corrupt && exit 1; exit 0');
+      // SHA256HEADER: the header line without its signature; an unknown tag prints nothing.
+      stub(
+        "rpm",
+        [
+          'f=${!#}; h=$(head -n 1 "$f" | sed "s/ signed//; s/ corrupt//")',
+          'q=$(printf "%s" "$*" | sed -n "s/.*--qf \\([^ ]*\\).*/\\1/p")',
+          'out=${q//"%{NEVRA}"/vimma-0.3.1-1.x86_64}',
+          'out=${out//"%{SHA256HEADER}"/$(printf %s "$h" | sha256sum | cut -c1-64)}',
+          'case $out in *"%{"*) echo "error: unknown tag" >&2 ;; *) printf "%s" "$out" ;; esac',
+        ].join("\n"),
+      );
+      return spawnSync("bash", [...githubShell(block), "-c", run], {
+        cwd: dir,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          RPM: "p.rpm",
+          PKG: "p.pkg",
+          CERT: "cert.asc",
+          // The step's mktemp -d, inside the test's own dir, which is removed with it.
+          TMPDIR: dir,
+        },
+      });
+    };
+    const ok = attempt("header signed\npayload\n");
+    expect(ok.status, ok.stderr + ok.stdout).toBe(0);
+    expect(attempt("header signed corrupt\npayload\n").status).not.toBe(0);
+    expect(attempt("header signed\nother payload\n").stdout).toContain("payload or name");
+    expect(attempt("another header signed\npayload\n").stdout).toContain("header");
+  });
+
+  it("package-sign writes SHA256SUMS: package's, the signed .rpm's line, the two new files", () => {
+    const run = runOf(job("package-sign"), "Write SHA256SUMS");
+    const dir = tempDir("vimma-package-sums-");
+    const rpm = "vimma-0.3.1-1.x86_64.rpm";
+    const pkg = "vimma-bin-0.3.1-1-x86_64.pkg.tar.zst";
+    const sum = (c: string) => createHash("sha256").update(c).digest("hex");
+    mkdirSync(join(dir, "in"));
+    mkdirSync(join(dir, "out"));
+    writeFileSync(join(dir, "in", pkg), "pacman");
+    writeFileSync(
+      join(dir, "in", "SHA256SUMS"),
+      `${sum("unsigned")}  ${rpm}\n${sum("t")}  vimma-0.3.1-linux-x86_64.tar.xz\n`,
+    );
+    writeFileSync(join(dir, "out", rpm), "signed");
+    writeFileSync(join(dir, "out", `${pkg}.sig`), "sig");
+    const r = spawnSync("bash", [...githubShell(job("package-sign")), "-c", run], {
+      cwd: dir,
+      encoding: "utf8",
+      env: { ...process.env, RPM: rpm, PKG: pkg },
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(readFileSync(join(dir, "out", "SHA256SUMS"), "utf8")).toBe(
+      `${sum("signed")}  ${rpm}\n${sum("t")}  vimma-0.3.1-linux-x86_64.tar.xz\n` +
+        `${sum("pacman")}  ${pkg}\n${sum("sig")}  ${pkg}.sig\n`,
+    );
+    expect(job("package-sign")).toMatch(
+      / {10}name: packages-signed\n {10}path: \|\n {12}out\/\$\{\{ env\.RPM \}\}\n {12}out\/\$\{\{ env\.PKG \}\}\.sig\n {12}out\/SHA256SUMS\n/,
+    );
   });
 
   it("a call receives the deploy key only by name, optional, and only nightly.yml's manifest passes it", () => {
@@ -253,8 +621,8 @@ describe("update-publish.yml", () => {
   it("no job installs dependencies, and no checkout keeps a token in .git/config", () => {
     expect(text).not.toMatch(/npm (?:ci|install)|npx /);
     const checkouts = text.split("uses: actions/checkout@").slice(1);
-    // prepare and publish, nightly-prepare and nightly-publish.
-    expect(checkouts.length).toBe(4);
+    // prepare and publish, nightly-prepare and nightly-publish, and package-sign's signer.
+    expect(checkouts.length).toBe(5);
     for (const c of checkouts) {
       expect(c).toMatch(
         /^\S+ # v[\d.]+\n {8}with:\n(?: {10}.*\n)*? {10}persist-credentials: false\n/,
@@ -299,7 +667,7 @@ describe("update-publish.yml", () => {
   it("is called by release.yml and nightly.yml alone, and mar-sign signs only for those two", () => {
     const on = text.slice(text.indexOf("\non:\n"), text.indexOf("\npermissions:"));
     expect(on).toMatch(
-      /^ {2}workflow_call:\n {4}inputs:\n {6}mar:\n {8}description: .+\n {8}required: false\n {8}type: string\n {8}default: ""\n {6}nightly:\n {8}description: .+\n {8}required: false\n {8}type: string\n {8}default: ""\n(?: {4}#.*\n)* {4}secrets:\n/m,
+      /^ {2}workflow_call:\n {4}inputs:\n {6}mar:\n {8}description: .+\n {8}required: false\n {8}type: string\n {8}default: ""\n {6}nightly:\n {8}description: .+\n {8}required: false\n {8}type: string\n {8}default: ""\n {6}packages:\n {8}description: .+\n {8}required: false\n {8}type: boolean\n {8}default: false\n(?: {4}#.*\n)* {4}secrets:\n/m,
     );
     // The nightly's call needs NIGHTLY_RELEASE_ENABLED too: until public nightly releases, no
     // nightly MAR is signed (spec m6a-updater, decision 42).
@@ -487,7 +855,7 @@ describe("update-publish.yml", () => {
     // replaces, a manifest run; a manifest run's group is the same as before the call existed.
     expect(text).toContain(
       "\nconcurrency:\n  group: ${{ !startsWith(github.workflow_ref, 'vimma-browser/vimma/.github/workflows/update-publish.yml@') && " +
-        "format('update-publish-call-{0}', github.run_id) || " +
+        "format('update-publish-call-{0}{1}', github.run_id, inputs.packages && '-packages' || '') || " +
         "format('update-publish-{0}-{1}', github.event_name, inputs.target || 'linux') }}\n" +
         "  cancel-in-progress: false\n",
     );

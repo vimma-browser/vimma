@@ -162,7 +162,8 @@ jobs:
             gpg,gpgv,sqv,rpm,rpmbuild,rpmsign,dpkg-deb,apt-ftparchive,createrepo_c,repo-add,zstd,bsdtar
         run: >-
           npx --no -- vitest run tools/package/test/openpgp-kms.test.ts tools/package/test/repos.test.ts
-          tools/package/test/repos-serve.test.ts
+          tools/package/test/repos-serve.test.ts tools/package/test/check-signed-packages.test.ts
+          tools/update/test/update-workflow.test.ts
 
       - name: Install, upgrade and tamper with each repository in containers
         run: tools/package/repos-smoke.sh
