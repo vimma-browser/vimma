@@ -170,7 +170,6 @@ add_task(async function setup() {
       ["vimma.config.pollMs", 100],
       ["vimma.bookmarks.settleMs", 50],
       ["vimma.bookmarks.burstMs", 200],
-      ["vimma.feature.bookmarksFile", true],
     ],
   });
   registerCleanupFunction(async () => {

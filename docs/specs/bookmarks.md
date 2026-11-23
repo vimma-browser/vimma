@@ -19,7 +19,7 @@ As a Vimma user I open my bookmarks the way I open the side panel, with a keybin
    (Since changed: each workspace's bookmarks can also live in `bookmarks.toml` beside
    `config.toml`, mirrored into its Places folder and written back from it; Places stays the
    store Firefox, the Library and Sync use. See [bookmarks-file](bookmarks-file.md), delivered
-   in #1313, #1343, #1354 and #1349.)
+   in #1313, #1343, #1354 and #1349, and on by default with #1286 closed.)
 2. **One tree, rooted at the Bookmarks Toolbar** (`[bookmarks] root = "toolbar"`; the default
    until decision 11). Its top level is the toolbar folder's own children, at depth 0
    (`aria-level` 1); no row stands for the toolbar itself, and the header says "Bookmarks

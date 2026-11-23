@@ -218,7 +218,6 @@ add_task(async function setup() {
       ["vimma.config.pollMs", 100],
       ["vimma.bookmarks.settleMs", 50],
       ["vimma.bookmarks.burstMs", 200],
-      ["vimma.feature.bookmarksFile", true],
     ],
   });
   const second = WorkspaceStore.newWorkspace(SECOND);
@@ -411,14 +410,6 @@ add_task(async function tab_completes_export_and_forget_while_the_feature_is_on(
   Assert.equal(cmdInput().value, "bookmarks export", "Tab completes the first");
   EventUtils.synthesizeKey("KEY_Escape");
 
-  await SpecialPowers.pushPrefEnv({ set: [["vimma.feature.bookmarksFile", false]] });
-  await typeCommand("bookmarks ");
-  Assert.equal(options().length, 0, "nothing while the feature is off");
-  EventUtils.synthesizeKey("KEY_Escape");
-  await runCommand("bookmarks export");
-  await until(() => noticeText().includes("takes no argument"), "and export is no command");
-  Assert.ok(!(await IOUtils.exists(bookmarksFile)), "no file");
-  await SpecialPowers.popPrefEnv();
   await reset();
 });
 
