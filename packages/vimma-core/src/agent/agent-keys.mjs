@@ -295,7 +295,7 @@ export function parseAgentKeys(text) {
     if (action.id === "hint.follow" && action.count !== undefined) {
       return refusal(keys, "a count does not apply to f");
     }
-    if (action.count !== undefined && action.count > AGENT_KEY_LIMITS.count) {
+    if ((action.count ?? 0) > AGENT_KEY_LIMITS.count) {
       return refusal(keys, `a count must be at most ${AGENT_KEY_LIMITS.count}`);
     }
     if (steps.length >= AGENT_KEY_LIMITS.actions) {
@@ -364,8 +364,9 @@ export function parseAgentKeys(text) {
     while (i < end) {
       /** @type {BindingElement} */
       let el;
-      if (text[i] === "<" && text.indexOf(">", i + 1) !== -1 && text.indexOf(">", i + 1) < end) {
-        const close = text.indexOf(">", i + 1);
+      // The `>` that closes a `<...>` key is in the same word.
+      const close = text[i] === "<" ? text.slice(0, end).indexOf(">", i + 1) : -1;
+      if (close !== -1) {
         const token = text.slice(i, close + 1);
         try {
           el = /** @type {BindingElement} */ (parseBinding(token)[0]);
@@ -390,7 +391,8 @@ export function parseAgentKeys(text) {
         const step = /** @type {AgentStep} */ (wantsLabel);
         wantsLabel = null;
         let label = "";
-        while (i < end && LABEL_CHARS.has(/** @type {string} */ (text[i]))) label += text[i++];
+        // The word ends at white space or at the text's end, neither of them a label character.
+        while (LABEL_CHARS.has(/** @type {string} */ (text[i]))) label += text[i++];
         if (label) {
           if (label.length > AGENT_LINKS.label) {
             const why = `a label is at most ${AGENT_LINKS.label} characters`;
@@ -584,8 +586,11 @@ function withoutUserinfo(text, cut, depth, work, path = true) {
       : `${m[0]}…`;
   }
   const special = SPECIAL_SCHEMES.has(name);
-  // Stryker disable next-line OptionalChaining: a pattern that matches the empty string never fails, so exec never returns null
-  const lead = special ? (/^[/\\]*/.exec(rest)?.[0] ?? "") : rest.startsWith("//") ? "//" : null;
+  const lead = special
+    ? rest.slice(0, rest.search(/[^/\\]|$/))
+    : rest.startsWith("//")
+      ? "//"
+      : null;
   // No authority (about:, data:, and file: without slashes, whose rest a URL parser reads as a
   // path, so a MediaWiki `File:Logo@2x.png` keeps its name): only its path and query may hold one.
   if (lead === null || (name === "file" && !lead))
@@ -622,8 +627,9 @@ function pathWithoutUserinfo(s, at, cut, depth, work) {
   let out = s;
   for (let n = 0, from = at; ; n++) {
     EMBEDDED_URL.lastIndex = from;
-    const nested = EMBEDDED_URL.exec(out.slice(0, end))?.index ?? -1;
-    if (nested < 0) return queryWithoutUserinfo(out, end, cut, depth, work);
+    const found = EMBEDDED_URL.exec(out.slice(0, end));
+    if (!found) return queryWithoutUserinfo(out, end, cut, depth, work);
+    const nested = found.index;
     if (n >= NESTED_MAX || depth >= NESTED_MAX) return `${out.slice(0, nested)}\u2026`;
     const inner = withoutUserinfo(out.slice(nested, end), last, depth + 1, work, false);
     out = out.slice(0, nested) + inner + out.slice(end);
@@ -654,8 +660,9 @@ function anywhereWithoutUserinfo(text, cut, depth, work) {
   let out = withoutUserinfo(text, cut, depth, work);
   for (let n = 0, from = 1; ; n++) {
     EMBEDDED_URL.lastIndex = from;
-    const at = EMBEDDED_URL.exec(out)?.index ?? -1;
-    if (at < 0) return out;
+    const found = EMBEDDED_URL.exec(out);
+    if (!found) return out;
+    const at = found.index;
     if (n >= NESTED_MAX) return `${out.slice(0, at)}…`;
     out = out.slice(0, at) + withoutUserinfo(out.slice(at), cut, depth, work);
     from = at + 1;
@@ -694,18 +701,16 @@ function bothPasses(text, cut, depth, work, show, strip = withoutUserinfo) {
  */
 function queryWithoutUserinfo(s, at, cut, depth, work) {
   const h = s.indexOf("#", at);
-  const q = s.indexOf("?", at);
-  const end = h < 0 ? s.length : h;
-  const query = q >= 0 && q < end ? q + 1 : -1;
-  if (query < 0 && h < 0) return s;
+  const main = h === -1 ? s : s.slice(0, h);
+  const q = main.indexOf("?", at);
+  // Up to and with the `?`.
+  const head = q === -1 ? main : main.slice(0, q + 1);
   if (depth >= NESTED_MAX || work.left < 0) {
-    const kept = s.slice(0, query < 0 ? end : query);
-    return `${kept}${query < 0 ? "" : "…"}${h < 0 ? "" : "#…"}`;
+    return `${head}${q === -1 ? "" : "…"}${h === -1 ? "" : "#…"}`;
   }
-  const head = query < 0 ? s.slice(0, end) : s.slice(0, query);
   const search =
-    query < 0 ? "" : paramsWithoutUserinfo(s.slice(query, end), cut && h < 0, depth, work);
-  const hash = h < 0 ? "" : `#${paramsWithoutUserinfo(s.slice(h + 1), cut, depth, work)}`;
+    q === -1 ? "" : paramsWithoutUserinfo(main.slice(q + 1), cut && h === -1, depth, work);
+  const hash = h === -1 ? "" : `#${paramsWithoutUserinfo(s.slice(h + 1), cut, depth, work)}`;
   return head + search + hash;
 }
 
@@ -733,22 +738,19 @@ function paramsWithoutUserinfo(text, cut, depth, work) {
  */
 function splitWithoutUserinfo(text, separator, cut, depth, work) {
   const pieces = text.split(separator);
-  // Stryker disable next-line BooleanLiteral: joining the pieces again with nothing changed gives the text itself
-  let changed = false;
-  const out = pieces.map((piece, i) => {
-    if (i % 2) return piece;
-    const eq = piece.indexOf("=");
-    const parts = eq < 0 ? [piece] : [piece.slice(0, eq), piece.slice(eq + 1)];
-    const last = cut && i === pieces.length - 1;
-    return parts
-      .map((raw, j) => {
-        const kept = paramWithoutUserinfo(raw, last && j === parts.length - 1, depth + 1, work);
-        if (kept !== raw) changed = true;
-        return kept;
-      })
-      .join("=");
-  });
-  return changed ? out.join("") : text;
+  // Joined again, pieces that lost nothing give `text` itself, separators and `=` included.
+  return pieces
+    .map((piece, i) => {
+      // Stryker disable next-line ConditionalExpression: a separator (`&` or `;`) holds no URL, so reading it as a parameter gives it back as it is
+      if (i % 2) return piece;
+      const eq = piece.indexOf("=");
+      const parts = eq < 0 ? [piece] : [piece.slice(0, eq), piece.slice(eq + 1)];
+      const last = cut && i === pieces.length - 1;
+      return parts
+        .map((raw, j) => paramWithoutUserinfo(raw, last && j === parts.length - 1, depth + 1, work))
+        .join("=");
+    })
+    .join("");
 }
 
 /**
@@ -789,11 +791,11 @@ function paramWithoutUserinfo(raw, cut, depth, work) {
  * @param {string} raw
  */
 function paramValue(raw) {
-  if (!/[%+]/.test(raw)) return raw;
   try {
     return decodeURIComponent(raw.replace(/\+/g, " "));
   } catch {
-    return new URLSearchParams(`v=${raw}`).get("v") ?? "";
+    // `v` is the parameter just written, so get never returns null.
+    return /** @type {string} */ (new URLSearchParams(`v=${raw}`).get("v"));
   }
 }
 

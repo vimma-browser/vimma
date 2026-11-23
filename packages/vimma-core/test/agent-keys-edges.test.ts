@@ -86,6 +86,38 @@ describe("URLs without user names and passwords: authorities (M21)", () => {
     expect(markdownWithoutUserinfo(text)).toBe(text);
   });
 
+  test("an authority's own characters are never read as a URL in its path", () => {
+    // `a:` is the host and an empty port; the path that follows holds no URL of its own.
+    expect(agentUrl("foo://a://u@h/p", 2048)).toBe("foo://a://u@h/p");
+  });
+
+  test("a URL in a path loses them; it runs to the path's end only when the text was cut", () => {
+    expect(agentUrl("https://h/go/https://u@x", 2048)).toBe("https://h/go/https://x");
+    // Cut in its query, the path before it is whole: its last URL keeps its host.
+    expect(agentUrl(`https://h/go/https://u@x?q=${"b".repeat(300)}`, 60)).toBe(
+      `https://h/go/https://x?q=${"b".repeat(34)}…`,
+    );
+  });
+
+  test("past four nested URLs a URL in a path is dropped, and one level deeper than its own", () => {
+    expect(agentUrl("view-source:jar:blob:view-source:https://h/go/https://u@x/", 2048)).toBe(
+      // The second pass shows each ellipsis as NFKC writes it.
+      "view-source:jar:blob:view-source:https://h/go/...",
+    );
+    // Three levels down, a URL in the path is the fourth, so a nested scheme in it is not read.
+    expect(agentUrl("view-source:jar:blob:https://h/go/jar:/x", 2048)).toBe(
+      "view-source:jar:blob:https://h/go/jar:...",
+    );
+  });
+
+  test("past four URLs in a parameter's text, each after the last, the rest is dropped", () => {
+    const urls = ["a", "b", "c", "d", "e", "f"].map((h) => `https://u:p@${h}/`).join(" ");
+    expect(agentUrl(`https://h/?x=${encodeURIComponent(`z ${urls}`)}`, 2048)).toBe(
+      "https://h/?x=z+https%3A%2F%2Fa%2F+https%3A%2F%2Fb%2F+https%3A%2F%2Fc%2F" +
+        "+https%3A%2F%2Fd%2F+%E2%80%A6",
+    );
+  });
+
   test("past four URLs inside one parameter the rest is dropped", () => {
     const value = ["a", "b", "c", "d", "e", "f"].map((h) => `https://u:p@${h}/`).join("");
     expect(agentUrl(`https://h/?x=${value}`, 2048)).toBe(
@@ -132,6 +164,13 @@ describe("URLs without user names and passwords: queries (M21)", () => {
     // The hash is what was cut, so the query before it is whole.
     expect(agentUrl(`https://h/?n=https%3A%2F%2Fexample.com#${b}`, 60)).toBe(
       `https://h/?n=https%3A%2F%2Fexample.com#${"b".repeat(20)}…`,
+    );
+  });
+
+  test("a cut parameter whose URL ends in its scheme's slashes has its authority cut off", () => {
+    // Its host may have been in what the cut left out, so it is written again as read.
+    expect(agentUrl(`https://h/?x=https:${"/".repeat(300)}`, 60)).toBe(
+      `https://h/?x=https%3A${"%2F".repeat(12)}%2…`,
     );
   });
 
@@ -222,6 +261,12 @@ describe("titles (M21, #1209)", () => {
   test("a longer URL title is given as agentUrl gives it, cut, user name or not", () => {
     const title = `https://example.com/${"a".repeat(32769 - 20)}`;
     expect(agentTitle(title)).toBe(`${title.slice(0, 8191)}…`);
+  });
+
+  test("a longer title cut inside a character is read without its half", () => {
+    // The head is letters alone, which may still begin a scheme, once the half is dropped.
+    const title = `${"a".repeat(32767)}\u{1F600}b`;
+    expect(agentTitle(title)).toBe(`${"a".repeat(8191)}…`);
   });
 
   test("a URL title whose queries cost more than its budget is given as agentUrl gives it", () => {
