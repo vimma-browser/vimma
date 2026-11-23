@@ -17,6 +17,7 @@ import {
   formatConfigTemplate,
 } from "./defaults.mjs";
 import { INSERT_SITE_MODES } from "../keys/editable.mjs";
+import { SLEEP_AFTER } from "../workspaces/tabsleep.mjs";
 import { DEFAULT_HINT_CHARS, hintLabels } from "../page/hints.mjs";
 import { KeymapError, compileKeymap } from "../keys/keymap.mjs";
 import { MODES, isKeymapTable } from "../keys/modes.mjs";
@@ -61,6 +62,11 @@ import { hasControl } from "../text/strings.mjs";
 /** @import { ThemeConfig } from "./theme.mjs" */
 /** @import { InsertSiteMode, InsertSiteRule } from "../keys/editable.mjs" */
 /** @import { Route } from "./routes.mjs" */
+/**
+ * A `[sites."<host>"]` table: its insert mode, and whether its tabs may sleep
+ * (docs/specs/tab-sleep.md, decision 12).
+ * @typedef {InsertSiteRule & { sleep: boolean }} SiteRule
+ */
 /** @import { BookmarkletsSetting, BookmarksRoot } from "../ui/bookmarks.mjs" */
 /** @import { WriteBack } from "./bookmarks-file.mjs" */
 /** @import { PanelNumbers } from "../ui/sidepanel.mjs" */
@@ -98,7 +104,7 @@ import { hasControl } from "../text/strings.mjs";
  *   (0.6), docs/specs/tiling-layouts.md; `maxSplits` is `max_splits`,
  *   docs/specs/multiple-splits.md; `newTab` is `new_tab`, docs/specs/new-tab-in-split.md
  * @property {string} hintChars                          `[modal] hint_chars`
- * @property {InsertSiteRule[]} sites                    `[sites."<host>"]` in file order
+ * @property {SiteRule[]} sites                          `[sites."<host>"]` in file order
  * @property {Route[]} routes                            `[[routes]]` in file order
  * @property {{ defaultWorkspace: string | null }} routing  `[routing]`, app-routes
  * @property {FirefoxKeySetting} firefox                 `[firefox]`, chords canonical
@@ -120,6 +126,8 @@ import { hasControl } from "../text/strings.mjs";
  *   `tabline` and `tablineWidth`, the tab line (docs/specs/tab-line.md decisions 3 and 4)
  * @property {{ tab: boolean }} statusbar  `[statusbar]`: whether the status bar keeps
  *   its tab and title while the tab line is drawn (docs/specs/tab-line.md decision 16)
+ * @property {{ sleepAfter: number }} tabs  `[tabs]`: `sleepAfter` is `sleep_after`, minutes a tab
+ *   stays loaded unseen, 0 never (docs/specs/tab-sleep.md)
  * @property {ResolvedSearch | null} search              `[search]`, null without it;
  *   docs/specs/search-engines.md
  * @property {{ check: boolean }} updates                `[updates]`,
@@ -216,6 +224,7 @@ const TOP_KEYS = [
   "panel",
   "scroll",
   "statusbar",
+  "tabs",
 ];
 const KEYMAP_SECTIONS = new Set(["keys", "modal", "unbind", "firefox", "sites"]);
 const WORKSPACE_KEYS = ["color", "icon", "home", "autofill"];
@@ -238,7 +247,9 @@ export const PANES_NEW_TAB_MODES = Object.freeze(["alone", "pane"]);
 /** `[panes] main_size` bounds, in percent. */
 export const MAIN_SIZE_MIN = 20;
 export const MAIN_SIZE_MAX = 80;
-const SITE_KEYS = ["insert", "unbind"];
+const SITE_KEYS = ["insert", "unbind", "sleep"];
+/** `[tabs]` (docs/specs/tab-sleep.md, decision 11). */
+const TABS_KEYS = ["sleep_after"];
 const MODAL_KEYS = ["leader", "timeout_ms", "hint_chars", "insert_editing"];
 const FIREFOX_KEYS = ["disable", "enable"];
 const FIREFOX_DISABLE = 'must be "all" or a list of keys like "ctrl+w"';
@@ -728,6 +739,20 @@ function validate(raw, warnings = []) {
     }
   }
 
+  if (isTable(raw.tabs)) {
+    for (const [key, v] of Object.entries(raw.tabs)) {
+      const path = ["tabs", key];
+      if (key !== "sleep_after") unknownKey(path, key, TABS_KEYS);
+      else if (typeof v !== "bigint") typeError(path, v, "an integer");
+      else if (v !== 0n && (v < BigInt(SLEEP_AFTER.min) || v > BigInt(SLEEP_AFTER.max))) {
+        fail(
+          path,
+          `must be 0 (never) or an integer between ${SLEEP_AFTER.min} and ${SLEEP_AFTER.max} (minutes)`,
+        );
+      }
+    }
+  }
+
   if (isTable(raw.updates)) {
     for (const [key, v] of Object.entries(raw.updates)) {
       const path = ["updates", key];
@@ -768,6 +793,9 @@ function validate(raw, warnings = []) {
           // (docs/specs/site-unbind.md behaviour 4 and 5).
           if (!Array.isArray(v)) typeError(at, v, "a list of keys");
           else v.forEach((k, i) => typeof k !== "string" && typeError([...at, i], k, "a string"));
+        } else if (key === "sleep") {
+          // docs/specs/tab-sleep.md, decision 12.
+          if (typeof v !== "boolean") typeError(at, v, "a boolean");
         } else if (key !== "insert") unknownKey(at, key, SITE_KEYS);
         else if (typeof v !== "string") typeError(at, v, "a string");
         else if (!INSERT_SITE_MODES.includes(/** @type {InsertSiteMode} */ (v))) {
@@ -1258,6 +1286,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     sites: (siteOrder ?? Object.keys(user.sites ?? {})).map((match) => ({
       match,
       insert: /** @type {NonNullable<UserConfig["sites"]>} */ (user.sites)[match]?.insert ?? "auto",
+      sleep: /** @type {NonNullable<UserConfig["sites"]>} */ (user.sites)[match]?.sleep ?? true,
     })),
     routes: resolveRoutes(/** @type {Record<string, string>[]} */ (user.routes ?? [])),
     routing: { defaultWorkspace: user.routing?.default_workspace ?? null },
@@ -1281,6 +1310,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
       tablineWidth: user.ui?.tabline_width ?? TABLINE_WIDTH.default,
     },
     statusbar: { tab: user.statusbar?.tab ?? true },
+    tabs: { sleepAfter: user.tabs?.sleep_after ?? SLEEP_AFTER.default },
     search: resolveSearch(user.search),
     updates: { check: user.updates?.check ?? true },
     // validateAgent checked `[agent]` field by field; UserConfig keeps it as it was parsed.

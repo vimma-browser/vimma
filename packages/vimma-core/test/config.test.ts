@@ -418,6 +418,7 @@ describe("mergeWithDefaults", () => {
         tablineWidth: 14,
       },
       statusbar: { tab: true },
+      tabs: { sleepAfter: 120 },
       updates: { check: true },
       search: null,
       agent: {
@@ -479,5 +480,60 @@ describe("reloadConfig keeps the last good config", () => {
     expect(r.kept).toBe(false);
     expect(r.active).not.toBe(first);
     expect(r.active.keymap.bindingsFor("new_tab")).toContain("prefix+c");
+  });
+});
+
+// docs/specs/tab-sleep.md decisions 11 and 12, Behaviour 6.
+describe("[tabs] and [sites] sleep", () => {
+  test("[tabs] sleep_after accepts 0 and 5 to 10080, and rejects other numbers and types", () => {
+    expect(parseConfig(toml()).config?.tabs).toEqual({ sleepAfter: 120 });
+    for (const v of [0, 5, 120, 10080]) {
+      expect(parseConfig(toml("[tabs]", `sleep_after = ${v}`)).config?.tabs).toEqual({
+        sleepAfter: v,
+      });
+    }
+    for (const v of ["1", "4", "10081", "-5"]) {
+      expect(oneError(toml("[tabs]", `sleep_after = ${v}`))).toEqual({
+        line: 2,
+        path: "tabs.sleep_after",
+        message: "must be 0 (never) or an integer between 5 and 10080 (minutes)",
+      });
+    }
+    expect(oneError(toml("[tabs]", "sleep_after = 2.5"))).toMatchObject({
+      path: "tabs.sleep_after",
+      message: "expected an integer, got a float",
+    });
+    expect(oneError(toml("[tabs]", 'sleep_after = "120"'))).toMatchObject({
+      path: "tabs.sleep_after",
+      message: "expected an integer, got a string",
+    });
+    expect(oneError(toml("[tabs]", "sleep = 120"))).toMatchObject({
+      path: "tabs.sleep",
+      message: 'unknown key "sleep"',
+    });
+  });
+
+  test('[sites."<host>"] sleep accepts a boolean and rejects other types', () => {
+    const c = parseConfig(
+      toml('[sites."example.com"]', "sleep = false", '[sites."a.example.com"]', "sleep = true"),
+    ).config;
+    expect(c?.sites).toEqual([
+      { match: "example.com", insert: "auto", sleep: false },
+      { match: "a.example.com", insert: "auto", sleep: true },
+    ]);
+    expect(parseConfig(toml('[sites."b.com"]', 'insert = "never"')).config?.sites).toEqual([
+      { match: "b.com", insert: "never", sleep: true },
+    ]);
+    expect(oneError(toml('[sites."example.com"]', 'sleep = "no"'))).toEqual({
+      line: 2,
+      path: 'sites."example.com".sleep',
+      message: "expected a boolean, got a string",
+    });
+  });
+
+  test("defaults.toml sets [tabs] sleep_after = 120", () => {
+    // Commented while vimma.feature.tabSleep is off (spec, Delivery slice 1).
+    expect(formatDefaultsToml()).toMatch(/^# \[tabs\]\n(#.*\n)*# sleep_after = 120 .*$/m);
+    expect(formatDefaultsToml()).toMatch(/^# sleep = false +# .*$/m);
   });
 });

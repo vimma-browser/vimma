@@ -664,3 +664,13 @@ support-files = ["file_vimma_site_unbind.html"]
 
 ["browser_vimma_site_unbind_command.js"]
 support-files = ["file_vimma_site_unbind.html"]
+
+["browser_vimma_tab_sleep.js"]
+support-files = [
+  "file_vimma_insert_scroll.html",
+  "file_vimma_tab_sleep_unload.html",
+  "file_vimma_downloads.sjs",
+]
+
+["browser_vimma_agent_tab_sleep.js"]
+support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]

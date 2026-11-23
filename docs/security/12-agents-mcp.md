@@ -1565,3 +1565,18 @@ off` and, for a workspace Vimma did not make, shows `:mcp on`'s warning too; wit
   [`a_redraw_with_no_ticket_takes_none`](../../tests/browser/browser_vimma_setup_v2_privacy.js),
   [`the_page_cannot_name_a_key_or_value`](../../tests/browser/browser_vimma_setup_v2_flow.js),
   [`agent_role_cannot_open_setup`](../../tests/browser/browser_vimma_setup.js)
+- M66. Tab sleep ([tab-sleep](../specs/tab-sleep.md) decision 8) **must not** unload an agent
+  workspace tab while an agent connection is open, so that a tab id an agent was given never
+  vanishes between two of its calls; it looks again just before each discard, since an agent
+  may connect while the check flushes a tab. With none open, those tabs sleep as others do,
+  including in the gap before a dropped `vimma-ctl mcp` link reconnects (mcp-session-grants
+  S3), where the agent's next call finds its old ids gone and lists the tabs again; only an
+  agent command that already wakes a lazy tab wakes one (vimma-mcp B2).
+  `services/TabSleep.sys.mjs` learns only whether a connection is open, from
+  `McpHost.agentConnected`, which reads whether the gate lists any; it does not import the
+  gate, reads only a tab's URL and state flags, and acts on a tab only through Firefox's own
+  discard.
+  [`agent_tabs_stay_loaded_while_an_agent_is_connected_and_sleep_after`](../../tests/browser/browser_vimma_agent_tab_sleep.js),
+  [`an_agent_listing_a_sleeping_agent_tab_wakes_it_with_a_new_id`](../../tests/browser/browser_vimma_agent_tab_sleep.js),
+  [`an_agent_connecting_during_a_check_keeps_its_tabs_loaded`](../../tests/browser/browser_vimma_agent_tab_sleep.js),
+  [`agent workspace tabs stay awake only while an agent is connected`](../../packages/vimma-core/test/tabsleep.test.ts)

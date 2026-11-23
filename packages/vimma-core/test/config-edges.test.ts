@@ -153,7 +153,7 @@ describe("the resolved config", () => {
   test("a site in the order but not in [sites] gets the default insert mode", () => {
     // parseConfig never passes such an order; this is the exported function's own fallback.
     expect(mergeWithDefaults({ sites: {} }, undefined, ["a.com"]).sites).toEqual([
-      { match: "a.com", insert: "auto" },
+      { match: "a.com", insert: "auto", sleep: true },
     ]);
   });
 });

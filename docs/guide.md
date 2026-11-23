@@ -4845,6 +4845,7 @@ enable = []        # Firefox's shortcuts given back as Firefox runs them, such a
 # [sites."docs.google.com"]
 # insert = "always"  # text fields take insert mode: "auto" (when detected), "never" or "always"
 # unbind = ["t"]     # keys the page gets instead of Vimma; esc and the prefix stay Vimma's
+# sleep = false      # its tabs never go to sleep on their own
 ```
 
 See also: [Every key is yours](#every-key-is-yours), [Default bindings](bindings.md), [Normal and
