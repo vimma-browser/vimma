@@ -1142,10 +1142,7 @@ function checkAgentResult(result, command, errors) {
 
 /** @param {Obj} result @param {string[]} errors */
 function checkStateResult(result, errors) {
-  if (
-    typeof result.mode !== "string" ||
-    !(/** @type {readonly unknown[]} */ (MODES).includes(result.mode))
-  ) {
+  if (!(/** @type {readonly unknown[]} */ (MODES).includes(result.mode))) {
     errors.push(`result.mode must be one of ${MODES.join(", ")}`);
   }
   for (const key of ["pending", "workspace"]) {
@@ -1235,7 +1232,7 @@ function checkSetup(value, hidden, errors) {
     return;
   }
   noExtraFields(value, ["screen"], errors, "result.setup.");
-  if (typeof value.screen !== "string" || !SETUP_SCREENS.includes(value.screen)) {
+  if (!(/** @type {readonly unknown[]} */ (SETUP_SCREENS).includes(value.screen))) {
     errors.push(`result.setup.screen must be one of ${SETUP_SCREENS.join(", ")}`);
   }
   if (hidden) errors.push("result.setup must be null in a private window");
@@ -1312,7 +1309,7 @@ export const DOWNLOAD_SEGMENTS = Object.freeze(["progress", "paused", "done", "f
  */
 function checkDownloads(downloads, hidden, errors) {
   if (downloads === null) return;
-  if (typeof downloads !== "string" || !DOWNLOAD_SEGMENTS.includes(downloads)) {
+  if (!(/** @type {readonly unknown[]} */ (DOWNLOAD_SEGMENTS).includes(downloads))) {
     errors.push(`result.downloads must be null or one of ${DOWNLOAD_SEGMENTS.join(", ")}`);
   } else if (hidden) {
     errors.push("result.downloads must be null in a private window");
@@ -1481,7 +1478,7 @@ function checkResponse(m, command, errors) {
     return;
   }
   noExtraFields(error, ["code", "message", "reason", "retryAfter"], errors, "error.");
-  if (typeof error.code !== "string" || !ERROR_CODES.includes(error.code)) {
+  if (!(/** @type {readonly unknown[]} */ (ERROR_CODES).includes(error.code))) {
     errors.push(`error.code must be one of ${ERROR_CODES.join(", ")}`);
   }
   if (typeof error.message !== "string") errors.push("error.message must be a string");
