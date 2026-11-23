@@ -127,13 +127,18 @@ export function base64Decode(text) {
   const pad = text.endsWith("==") ? 2 : text.endsWith("=") ? 1 : 0;
   const out = new Uint8Array((text.length / 4) * 3 - pad);
   let o = 0;
+  // Stryker disable next-line EqualityOperator: one more pass reads only "" (charAt past the end)
+  // and writes nothing, since o has reached out.length.
   for (let i = 0; i < text.length; i += 4) {
+    // The pattern above leaves only B64's characters and a final "=" or "==", which index -1.
     const n =
-      (B64.indexOf(text[i] ?? "A") << 18) |
-      (B64.indexOf(text[i + 1] ?? "A") << 12) |
-      (Math.max(0, B64.indexOf(text[i + 2] ?? "A")) << 6) |
-      Math.max(0, B64.indexOf(text[i + 3] ?? "A"));
+      (B64.indexOf(text.charAt(i)) << 18) |
+      (B64.indexOf(text.charAt(i + 1)) << 12) |
+      (Math.max(0, B64.indexOf(text.charAt(i + 2))) << 6) |
+      Math.max(0, B64.indexOf(text.charAt(i + 3)));
     for (const byte of [(n >> 16) & 255, (n >> 8) & 255, n & 255]) {
+      // Stryker disable next-line ConditionalExpression,EqualityOperator: a Uint8Array ignores a
+      // write past its end, so the padding's bytes are dropped either way; the check states the bound.
       if (o < out.length) out[o++] = byte;
     }
   }
@@ -181,6 +186,7 @@ const COMMENT = /^<!-- vimma-signature v1((?: key=[0-9a-f]{8} sig=[A-Za-z0-9+/]+
 export function splitManifest(text) {
   const at = text.indexOf(COMMENT_START);
   if (at < 0) return { ok: false, reason: "unsigned: no vimma-signature comment" };
+  // Stryker disable next-line EqualityOperator: a second comment starts past at, never at 0.
   if (text.indexOf(COMMENT_START, at + 1) >= 0) {
     return { ok: false, reason: "unsigned: more than one signature comment" };
   }
@@ -233,7 +239,7 @@ export async function verifyManifest(text, keys, subtle) {
         return { ok: true, body: split.body, key: { id: pin.id, slot: pin.slot } };
       }
     } catch {
-      continue;
+      // Try the next signature.
     }
   }
   return {
@@ -267,14 +273,16 @@ function attributes(text) {
   let at = 0;
   while (at < rest.length) {
     const spaceAt = at;
-    while (SPACE.test(rest[at] ?? "")) at++;
-    if (at === spaceAt || !NAME_START.test(rest[at] ?? "")) return null;
+    while (SPACE.test(rest.charAt(at))) at++;
+    if (at === spaceAt || !NAME_START.test(rest.charAt(at))) return null;
     const nameAt = at;
     do at++;
-    while (NAME_CHAR.test(rest[at] ?? ""));
+    while (NAME_CHAR.test(rest.charAt(at)));
     const name = rest.slice(nameAt, at);
     if (!rest.startsWith('="', at)) return null;
     const close = rest.indexOf('"', at + 2);
+    // Stryker disable next-line ConditionalExpression,EqualityOperator: close is past `="`, never
+    // 0; without the check the scan starts over at 0 and refuses the name it has already read.
     if (close < 0) return null;
     const raw = rest.slice(at + 2, close);
     if (raw.includes("<")) return null;
@@ -284,7 +292,7 @@ function attributes(text) {
     if (/&(?!(?:amp|lt|gt|quot|apos);)/.test(raw)) return null;
     map.set(
       name,
-      raw.replace(/&(amp|lt|gt|quot|apos);/g, (_, e) => ENTITIES[e] ?? ""),
+      raw.replace(/&(amp|lt|gt|quot|apos);/g, (_, e) => /** @type {string} */ (ENTITIES[e])),
     );
   }
   return map;
@@ -305,6 +313,7 @@ function startTags(text, name) {
     const next = text[at + open.length] ?? "";
     if (!/[\s/>]/.test(next)) continue; // <updates>, <updateX>
     const end = text.indexOf(">", at);
+    // Stryker disable next-line EqualityOperator: text[at] is "<", so end is never at, nor 0.
     if (end < 0 || text.slice(at + 1, end).includes("<")) return null;
     out.push(text.slice(at + open.length, end));
   }
@@ -321,6 +330,7 @@ function withoutComments(text) {
   let at = 0;
   for (let open = text.indexOf("<!--"); open >= 0; open = text.indexOf("<!--", at)) {
     const close = text.indexOf("-->", open + 4);
+    // Stryker disable next-line EqualityOperator: close is past "<!--", never 0.
     if (close < 0) return null;
     out += text.slice(at, open);
     at = close + 3;
@@ -363,15 +373,16 @@ function readAssets(content) {
     if (tags.length > 1) return { ok: false, why: `more than one <${element}>` };
     const attrs = attributes(/** @type {string} */ (tags[0]));
     if (!attrs) return { ok: false, why: `<${element}> has malformed attributes` };
-    const size = attrs.get("size") ?? "";
-    const hash = attrs.get("hashValue") ?? "";
-    if (!SIZE.test(size)) return { ok: false, why: `<${element}> size is not a whole number` };
+    const size = attrs.get("size");
+    const hash = attrs.get("hashValue");
+    if (!textOf(size, SIZE)) return { ok: false, why: `<${element}> size is not a whole number` };
     if (attrs.get("hashFunction") !== "sha512") {
       return { ok: false, why: `<${element}> hashFunction is not sha512` };
     }
-    if (!SHA512_HEX.test(hash)) return { ok: false, why: `<${element}> hashValue is not SHA-512` };
-    const url = attrs.get("URL") ?? "";
-    if (!url.startsWith("https://")) {
+    if (!textOf(hash, SHA512_HEX))
+      return { ok: false, why: `<${element}> hashValue is not SHA-512` };
+    const url = attrs.get("URL");
+    if (!url?.startsWith("https://")) {
       return { ok: false, why: `<${element}> URL is not https` };
     }
     assets[/** @type {keyof Assets} */ (key)] = { size: Number(size), sha512: hash, url };
@@ -395,8 +406,8 @@ function readPatch(content) {
   const attrs = attributes(/** @type {string} */ (tags[0]));
   if (!attrs) return { ok: false, why: "<patch> has malformed attributes" };
   if (attrs.get("type") !== "complete") return { ok: false, why: "<patch> is not complete" };
-  const url = attrs.get("URL") ?? "";
-  if (!url.startsWith("https://")) return { ok: false, why: "<patch> URL is not https" };
+  const url = attrs.get("URL");
+  if (!url?.startsWith("https://")) return { ok: false, why: "<patch> URL is not https" };
   return { ok: true, url };
 }
 
@@ -516,7 +527,7 @@ export function parseManifest(body) {
   if (/<\/?[A-Za-z][\w.-]*:/.test(body)) return bad("prefixed element names are not allowed");
   const text = withoutComments(body.replace(/^<\?xml[^>]*\?>/, ""));
   if (text === null) return bad("a comment is not closed");
-  const root = /^\s*<updates(\s[^>]*?)?(\/?)>([\s\S]*)$/.exec(text);
+  const root = /^\s*<updates(\s[^>]*?)?(\/?)>([\s\S]*)/.exec(text);
   if (!root) return bad("no <updates> element");
   const rootAttrs = attributes(root[1] ?? "");
   if (!rootAttrs) return bad("<updates> has malformed attributes");
@@ -525,7 +536,7 @@ export function parseManifest(body) {
   const serial = rootAttrs.get("vimmaSerial");
   if (!channel || !target) return bad("no vimmaChannel or vimmaTarget");
   if (!serial || !SERIAL.test(serial)) return bad("vimmaSerial is not a UTC time (YYYYMMDDhhmmss)");
-  const rest = root[3] ?? "";
+  const rest = /** @type {string} */ (root[3]);
   if (root[2] === "/") {
     // The pipeline writes nothing after a self-closing root, not even a second <update> (#1185).
     if (rest.trim()) return bad("content after a self-closing <updates/>");
@@ -547,19 +558,19 @@ export function parseManifest(body) {
   if (!patch.ok) return bad(patch.why);
   const attrs = attributes(/** @type {string} */ (updates[0]));
   if (!attrs) return bad("<update> has malformed attributes");
-  const appVersion = attrs.get("appVersion") ?? "";
-  const buildId = attrs.get("buildID") ?? "";
-  const displayVersion = attrs.get("displayVersion") ?? "";
-  const detailsUrl = attrs.get("detailsURL") ?? "";
+  const appVersion = attrs.get("appVersion");
+  const buildId = attrs.get("buildID");
+  const displayVersion = attrs.get("displayVersion");
+  const detailsUrl = attrs.get("detailsURL");
   const urgency = attrs.get("vimmaUrgency") ?? "normal";
   const advisories = (attrs.get("vimmaAdvisories") ?? "")
     .split(",")
     .map((a) => a.trim())
     .filter(Boolean);
-  if (!FIREFOX_VERSION.test(appVersion)) return bad("appVersion is not a Firefox version");
-  if (!BUILD_ID.test(buildId)) return bad("buildID is not a build ID");
-  if (!SEMVER.test(displayVersion)) return bad("displayVersion is not a Vimma version");
-  if (!detailsUrl.startsWith("https://")) return bad("detailsURL is not https");
+  if (!textOf(appVersion, FIREFOX_VERSION)) return bad("appVersion is not a Firefox version");
+  if (!textOf(buildId, BUILD_ID)) return bad("buildID is not a build ID");
+  if (!textOf(displayVersion, SEMVER)) return bad("displayVersion is not a Vimma version");
+  if (!detailsUrl?.startsWith("https://")) return bad("detailsURL is not https");
   if (urgency !== "normal" && urgency !== "security") return bad("unknown vimmaUrgency");
   if (!advisories.every((a) => ADVISORY.test(a))) return bad("vimmaAdvisories is not MFSA IDs");
   return {
@@ -628,6 +639,7 @@ export function judgeManifest(manifest, running, compare) {
     };
   }
   const u = manifest.update;
+  // Stryker disable next-line UnaryOperator: order is read only when there is an update.
   const order = u ? compare(u.appVersion, running.appVersion) : -1;
   const newer =
     !!u &&
@@ -681,6 +693,8 @@ export function offNotice({ enabled, installType, since, now }) {
   const start = since ?? (!enabled && checks ? now : null);
   return {
     since: start,
+    // Stryker disable next-line ConditionalExpression: start is set whenever checks are off on an
+    // install that checks; the test keeps it a number for the subtraction.
     shown: !enabled && checks && start !== null && now - start < OFF_NOTICE_MS,
   };
 }
@@ -791,7 +805,8 @@ function plainFilePath(path) {
  */
 function trimTrailingSlashes(path) {
   let end = path.length;
-  while (end > 0 && path.charCodeAt(end - 1) === 47) end--;
+  // charCodeAt(-1) is NaN, which ends the loop at 0.
+  while (path.charCodeAt(end - 1) === 47) end--;
   return path.slice(0, end);
 }
 
@@ -807,6 +822,7 @@ function trimTrailingSlashes(path) {
 export function appImageOwnership({ installType, marker, appImage, appDir, greDir, forced }) {
   if (installType !== "appimage") return { ok: false, why: "not an AppImage install" };
   if (!forced) {
+    // Stryker disable next-line ConditionalExpression: test(null) reads "null", which fails too.
     if (marker === null || !APPIMAGE_MARKER.test(marker)) {
       return {
         ok: false,
