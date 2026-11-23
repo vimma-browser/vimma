@@ -162,6 +162,36 @@ export function insertEditChords({ mac = false } = {}) {
 }
 
 /**
+ * The keys the system itself edits text fields with, by what each does, which Vimma takes first
+ * when one is the prefix (setup-v2.md decision 21, #1410). Linux: GTK's word keys and Firefox's
+ * ctrl+insert (dom/events/ShortcutKeyDefinitions.cpp); macOS: Cocoa's Emacs keys
+ * (StandardKeyBinding.dict).
+ * @param {{ mac?: boolean }} [options]
+ * @returns {Record<string, string>}
+ */
+export function nativeFieldKeys({ mac = false } = {}) {
+  if (!mac) {
+    return {
+      "ctrl+backspace": "deletes a word",
+      "ctrl+delete": "deletes the next word",
+      "ctrl+insert": "is copy",
+    };
+  }
+  return {
+    "ctrl+a": "moves to the start of the line",
+    "ctrl+e": "moves to the end of the line",
+    "ctrl+b": "moves back a character",
+    "ctrl+f": "moves forward a character",
+    "ctrl+n": "moves down a line",
+    "ctrl+p": "moves up a line",
+    "ctrl+h": "deletes a character",
+    "ctrl+d": "deletes the next character",
+    "ctrl+k": "deletes to the end of the line",
+    "ctrl+t": "swaps two characters",
+  };
+}
+
+/**
  * @param {boolean} editable
  * @param {string} reason
  * @returns {EditableResult}

@@ -512,7 +512,7 @@ function onRecordKey(e) {
   }
   if (busy) return;
   const rules = view?.prefixRules;
-  composed = composedRefusal(e, text);
+  composed = composedRefusal(e, text, { mac: rules?.mac });
   const refused = rules ? (composed ?? prefixRefusal(text, rules)) : "The keys are not known yet.";
   state = flowRecord(state, text, refused);
   draw();

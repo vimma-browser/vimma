@@ -500,7 +500,10 @@ What the steps do:
   redo (and on macOS `cmd+q`, `cmd+m`, `cmd+h` and `cmd+,`), Vim's text-field keys (`ctrl+w`,
   `ctrl+u`, `ctrl+h`, `ctrl+j`, `ctrl+m`), a key your keymap already uses outside the prefix
   (`ctrl+l`, `ctrl+t`, …), and on macOS an Option key that types a character (option+w types
-  `∑`). Select all (`ctrl+a`) is taken, with a note that it no longer selects all. A prefix of
+  `∑`; elsewhere `alt` with a letter of a non-Latin layout, such as `alt+ц`, is taken). Select
+  all (`ctrl+a`) and the keys the system edits text fields with (`ctrl+backspace`, `ctrl+delete`,
+  `ctrl+insert`; Cocoa's `ctrl+a`, `ctrl+e`, `ctrl+k`, … on macOS) are taken, with a note on what
+  they no longer do. A prefix of
   your own already in force is the second row, selected; `enter` keeps it and `space` records
   another.
 - **Hint letters.** The home row of QWERTY, Colemak or Dvorak. The layout you type on is
