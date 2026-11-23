@@ -168,9 +168,10 @@ describe("URLs without user names and passwords: queries (M21)", () => {
   });
 
   test("a cut parameter whose URL ends in its scheme's slashes has its authority cut off", () => {
-    // Its host may have been in what the cut left out, so it is written again as read.
-    expect(agentUrl(`https://h/?x=https:${"/".repeat(300)}`, 60)).toBe(
-      `https://h/?x=https%3A${"%2F".repeat(12)}%2…`,
+    // Its host may have been in what the cut left out: the authority is dropped, marked `…`.
+    const target = `https://h/?x=https:${"/".repeat(9000)}`;
+    expect(markdownWithoutUserinfo(`[a](${target})`)).toBe(
+      `[a](https://h/?x=https%3A${"%2F".repeat(8192 - 19)}%E2%80%A6…)`,
     );
   });
 
@@ -264,7 +265,8 @@ describe("titles (M21, #1209)", () => {
   });
 
   test("a longer title cut inside a character is read without its half", () => {
-    // The head is letters alone, which may still begin a scheme, once the half is dropped.
+    // The 32,768th code unit read is a high surrogate: dropped, the rest is letters alone, which
+    // may still begin a scheme.
     const title = `${"a".repeat(32767)}\u{1F600}b`;
     expect(agentTitle(title)).toBe(`${"a".repeat(8191)}…`);
   });

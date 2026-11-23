@@ -703,7 +703,7 @@ function queryWithoutUserinfo(s, at, cut, depth, work) {
   const h = s.indexOf("#", at);
   const main = h === -1 ? s : s.slice(0, h);
   const q = main.indexOf("?", at);
-  // Up to and with the `?`.
+  // The `?` stays in the head, so that a query dropped past the limits still shows it had one.
   const head = q === -1 ? main : main.slice(0, q + 1);
   if (depth >= NESTED_MAX || work.left < 0) {
     return `${head}${q === -1 ? "" : "…"}${h === -1 ? "" : "#…"}`;
@@ -791,6 +791,8 @@ function paramWithoutUserinfo(raw, cut, depth, work) {
  * @param {string} raw
  */
 function paramValue(raw) {
+  // Stryker disable next-line ConditionalExpression: decodeURIComponent returns a text without `%` or `+` as it is; this skips it for the plain parameters, read uncharged by QueryWork
+  if (!/[%+]/.test(raw)) return raw;
   try {
     return decodeURIComponent(raw.replace(/\+/g, " "));
   } catch {
