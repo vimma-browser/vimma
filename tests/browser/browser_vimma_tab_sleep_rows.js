@@ -101,7 +101,14 @@ add_task(async function a_sleeping_tab_is_muted_and_described_asleep_until_it_wa
   const a = await background("alpha");
   const b = await background("bravo");
   Assert.ok(panel().open(), "the side panel opens");
-  await until(() => entry(numberOf(b)) && row(b), "both lists show the tab");
+  // Both lists drawn with the page's own title, so that the sizes compared below are the same
+  // text's (the title the page sets lands after its load).
+  await until(
+    () =>
+      entry(numberOf(b))?.querySelector(".vimma-tabline-name")?.textContent === "bravo" &&
+      row(b)?.querySelector(".vimma-panel-title")?.textContent === "bravo",
+    "both lists show the tab by its title",
+  );
   const awake = {
     line: box(entry(numberOf(b))),
     row: box(row(b)),
@@ -112,8 +119,11 @@ add_task(async function a_sleeping_tab_is_muted_and_described_asleep_until_it_wa
 
   await sleep(b);
   await until(
-    () => entry(numberOf(b))?.hasAttribute("asleep") && row(b)?.hasAttribute("asleep"),
-    "the tab line and the side panel mark the sleeping tab",
+    () =>
+      entry(numberOf(b))?.hasAttribute("asleep") &&
+      row(b)?.hasAttribute("asleep") &&
+      entry(numberOf(b))?.querySelector(".vimma-tabline-name")?.textContent === "bravo",
+    "the tab line and the side panel mark the sleeping tab, still by its title",
   );
   const lineEntry = /** @type {HTMLElement} */ (entry(numberOf(b)));
   const panelRow = /** @type {HTMLElement} */ (row(b));
