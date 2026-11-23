@@ -143,10 +143,32 @@ export async function fileSignature(path, maxBytes) {
     if (notFound(e)) return "missing";
     throw e;
   }
-  const head = `${resolved(path)}|${info.type}|${info.lastModified}|${info.size}`;
+  const head = signatureHead(path, info);
   if (info.type !== "regular" || (info.size ?? 0) > maxBytes) return head;
   const digest = await IOUtils.computeHexDigest(path, "sha256").catch(() => "unreadable");
   return `${head}|${digest}`;
+}
+
+/**
+ * fileSignature's part from the stat: the file a link resolves to, its type, time and size.
+ * @param {string} path
+ * @param {{ type?: string, lastModified?: number, size?: number }} info
+ */
+export function signatureHead(path, info) {
+  return `${resolved(path)}|${info.type}|${info.lastModified}|${info.size}`;
+}
+
+/**
+ * The SHA-256 of bytes already read, in hex, for a signature made from the read itself.
+ * @param {Uint8Array} bytes
+ */
+export function hexDigest(bytes) {
+  const hash = Cc["@mozilla.org/security/hash;1"].createInstance(Ci.nsICryptoHash);
+  hash.init(Ci.nsICryptoHash.SHA256);
+  hash.update(bytes, bytes.length);
+  return Array.from(hash.finish(false), (c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 /** @param {string} text */

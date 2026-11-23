@@ -60,7 +60,12 @@ import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
 import { WorkspaceRouter } from "../workspaces/WorkspaceRouter.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
-import { BookmarksFileImpl, fileSignature } from "./BookmarksFile.sys.mjs";
+import {
+  BookmarksFileImpl,
+  fileSignature,
+  hexDigest,
+  signatureHead,
+} from "./BookmarksFile.sys.mjs";
 
 /** @import { ActiveConfig, ConfigError, ResolvedConfig } from "../core/config.mjs" */
 /** @import { RoutesFile } from "../core/routes-file.mjs" */
@@ -522,31 +527,42 @@ async function readRoutes(now) {
 }
 
 /**
- * Reads config.toml (or routes.toml) for a poll: its text, or why it was not read. Only a
+ * Reads config.toml (or routes.toml) for a poll: its text, or why it was not read, with its
+ * signature as fileSignature makes it, but from this one read: hashing the file first and then
+ * reading it took a second pass over it, which made the first config arrive after
+ * WorkspaceStore's init, so its first workspace was not the one shown at the start. Only a
  * regular file is read (a FIFO would block this read and every later one), never more than the
  * limit, even if it grows meanwhile, and as strict UTF-8.
  * @param {string} path
  * @param {number} [maxBytes]
- * @returns {Promise<{ text: string } | { problem: string } | { missing: true }>}
+ * @returns {Promise<({ text: string } | { problem: string } | { missing: true }) &
+ *   { signature: string }>}
  */
 async function readConfig(path, maxBytes = MAX_CONFIG_FILE_BYTES) {
+  let signature = "unreadable";
   try {
     const info = await IOUtils.stat(path);
-    if (info.type !== "regular") return { problem: "not a regular file; not read" };
-    const tooLarge = { problem: `larger than ${maxBytes / (1024 * 1024)} MiB; not read` };
+    signature = signatureHead(path, info);
+    if (info.type !== "regular") return { problem: "not a regular file; not read", signature };
+    const tooLarge = {
+      problem: `larger than ${maxBytes / (1024 * 1024)} MiB; not read`,
+      signature,
+    };
     if ((info.size ?? 0) > maxBytes) return tooLarge;
+    signature += "|unreadable";
     const bytes = await IOUtils.read(path, { maxBytes: maxBytes + 1 });
     if (bytes.length > maxBytes) return tooLarge;
+    signature = `${signatureHead(path, info)}|${hexDigest(bytes)}`;
     try {
-      return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
+      return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes), signature };
     } catch {
-      return { problem: "not UTF-8 text; not read" };
+      return { problem: "not UTF-8 text; not read", signature };
     }
   } catch (e) {
-    if (notFound(e)) return { missing: true };
+    if (notFound(e)) return { missing: true, signature: "missing" };
     // Logged by report() once, not at every poll's retry.
     const denied = /** @type {Thrown} */ (e)?.name === "NotAllowedError";
-    return { problem: `cannot be read${denied ? " (no permission)" : ""}; not read` };
+    return { problem: `cannot be read${denied ? " (no permission)" : ""}; not read`, signature };
   }
 }
 
@@ -580,11 +596,8 @@ async function check(force) {
   // Both files at once, so that the first read is no later than config.toml's alone: a config
   // that arrives before WorkspaceStore is ready is the one its init reads (its first workspace
   // shown at the start), and a later one only adds to the workspaces init made.
-  const [seen, routesNow] = await Promise.all([
-    // A folder without search permission: readConfig says so, rather than the poll failing.
-    fileSignature(path, MAX_CONFIG_FILE_BYTES).catch(() => "unreadable"),
-    routesStat(routesPath()),
-  ]);
+  const [got, routesNow] = await Promise.all([readConfig(path), routesStat(routesPath())]);
+  const seen = got.signature;
   // A link to nothing is the user's config.toml all the same: said, never the defaults.
   const now = seen === "missing" && isLink(path) ? "dangling" : seen;
   const routesChanged = force || routesNow !== routesSignature;
@@ -596,8 +609,7 @@ async function check(force) {
   const readable = now !== "missing" && now !== "dangling";
   const retry = !configChanged && failed !== null && readable && sourced === null;
   if (!routesChanged && !configChanged && !retry) return;
-  /** @type {Promise<{ text: string } | { problem: string } | { missing: true }> | null} */
-  const reading = (configChanged || retry) && readable ? readConfig(path) : null;
+  const read = (configChanged || retry) && readable ? got : null;
   const wasPresent = routesPresent;
   if (routesChanged) {
     routesSignature = routesNow;
@@ -613,7 +625,6 @@ async function check(force) {
     } else applyRoutes();
     showErrors();
   };
-  const read = reading ? await reading : null;
   if (!configChanged && !(retry && read && "text" in read)) {
     routesOnly();
     // routesOnly may have read the config's last text again: config.toml still cannot be read,
