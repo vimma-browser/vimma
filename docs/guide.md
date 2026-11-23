@@ -4784,129 +4784,188 @@ Vimma's main preferences (a few more are described with the feature they belong 
 
 ## config.toml
 
-One plain file holds your keys, workspaces, theme and other settings, so they live in your
-dotfiles. Every key, the prefix and the leader can be remapped here.
+One plain file holds your settings and keys; every key, the prefix and the leader can be remapped.
 
-- **Where:** `~/.config/vimma/config.toml` (`$XDG_CONFIG_HOME/vimma/` when set), beside
-  [`bookmarks.toml`](#bookmarks-in-a-file). No file means the defaults.
-- **The template:** on a profile's first run, and on `:config` (which opens it in a tab), Vimma
-  writes the file with every default commented out, as in
-  [`defaults.toml`](../packages/vimma-core/defaults.toml), except `[panes] max_splits`,
-  `[bookmarks] write_back` and `[agent]`. The folder is mode 0700 and the file 0600, since it can
-  name intranet hosts. An existing file is never rewritten; `:route add` only appends to it.
-- **Reload:** save, and every window applies the file within 2 seconds; `:source` reads it at
-  once. Every setting applies then, except where ¹ marks it.
-- **Another file:** `:source work.toml` applies that file instead, whole, until `config.toml`
-  changes or you type a plain `:source`. A relative path is beside `config.toml`; a leading `~`,
-  `$HOME` or `$XDG_CONFIG_HOME` expands.
-- **Mistakes:** a file with a mistake is not applied at all, so the config you had keeps
-  working. The status bar shows the first one in red with its line
-  (`config.toml:3: keys.new_tabb: unknown action "new_tabb" (did you mean "new_tab"?)`), and the
-  Browser Console (`ctrl+shift+j`) lists them all. A dotted key (`keys.prefix = …`) belongs under
-  its own table's header (`[keys]`), as the message says.
-- **No schema line:** Vimma ignores the `schema = …` line older files start with. Keep
-  `schema = 2` only to go back to Vimma 0.1.21 or older.
-
-```toml
-[keys]
-new_tab = ["prefix+t"]        # replaces ctrl+b c
-
-[modal.normal]
-"<leader>ff" = "goto.picker"  # leader f f opens the goto picker
-
-[theme.colors]
-accent = "#ff9e64"            # one colour over the theme
-```
+- **Where:** `~/.config/vimma/config.toml` (`$XDG_CONFIG_HOME/vimma/` when set).
+- **Start:** the first run and `:config` write it with every setting commented out.
+- **Change:** uncomment a line and edit its value; saving applies it within 2 seconds.
+- **Reload by hand:** `:source` reads it at once; `:source work.toml` applies another file.
+- **Mistakes:** the old config keeps working, and the status bar shows the error and its line.
+- **Old files:** a `schema = …` line is ignored.
 
 ### Keys and modes
 
-`prefix+t` is the prefix, then `t`; `<leader>ff` is the leader, then `f f`. The `ctrl+b ?`
-overlay, `:map` and `about:vimma` show each binding as the keys you press.
+```toml
+[keys]
+prefix = "ctrl+b"               # the tmux-style prefix: prefix+c means ctrl+b, then c
+new_tab = ["prefix+c", "ctrl+t"]  # an action's keys, in place of its defaults; ctrl+b ? lists all
 
-| Key                       | Values                                                                | Effect                                                                                                                                                |
-| ------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `[keys] prefix`           | a key, `"ctrl+b"` (default)                                           | The tmux-style prefix that starts every `prefix+…` binding.                                                                                           |
-| `[keys] <action>`         | a list of keys                                                        | The keys for that action, in place of its defaults ([Every key is yours](#every-key-is-yours)).                                                       |
-| `[modal] leader`          | a key, `" "` (space, default)                                         | What `<leader>` stands for in `[modal.<mode>]` bindings.                                                                                              |
-| `[modal] timeout_ms`      | 0 to 10000, default 800                                               | How long a sequence such as `gg` waits for its next key.                                                                                              |
-| `[modal] hint_chars`      | 2 or more distinct characters, no upper case; `"asdfghjkl"` (default) | The letters of [link hints](#link-hints), the first ones most often.                                                                                  |
-| `[modal] insert_editing`  | `true` (default), `false`                                             | `ctrl+w`, `ctrl+u` and `ctrl+h` delete in text fields, and `ctrl+j` and `ctrl+m` are `Enter` ([more](#normal-and-insert-mode)).                       |
-| `[modal.<mode>]`          | `"keys" = "action"`                                                   | Bindings in `normal`, `insert`, `visual`, `command`, `hint`, `element`, `help`, `panel`, `index`, `resize`, or `pdf` (the [PDF viewer](#pdf-viewer)). |
-| `[unbind] <mode>`         | a list of keys, `[]` (default)                                        | Removes those default bindings in that mode.                                                                                                          |
-| `[firefox] disable`       | `"all"` (default), or a list of keys                                  | Which of [Firefox's own shortcuts](#firefoxs-own-shortcuts) are off; Vimma binds their keys to the same actions.                                      |
-| `[firefox] enable`        | a list of keys, `[]` (default)                                        | Firefox's shortcuts given back exactly as Firefox runs them.                                                                                          |
-| `[sites."<host>"] insert` | `"auto"` (default), `"never"`, `"always"`                             | Whether text fields on that host and its subdomains take insert mode: when detected, never, or always.                                                |
-| `[sites."<host>"] unbind` | a list of keys                                                        | Keys the page gets there instead of Vimma ([Keys a site keeps](#keys-a-site-keeps)).                                                                  |
+[modal]
+leader = " "                # what <leader> means in bindings such as "<leader>ff" (" " is space)
+timeout_ms = 800            # how long a sequence like gg waits for its next key (0–10000 ms)
+hint_chars = "asdfghjkl"    # link-hint letters, the first ones most used (2 or more, no capitals)
+insert_editing = true       # in text fields ctrl+w, ctrl+u, ctrl+h delete; ctrl+j, ctrl+m: Enter
 
-While `insert_editing` is on, the prefix cannot be one of those keys (`ctrl+h` except on macOS):
-a text field would take it, so the file is refused with that reason.
+# Bindings by mode, in Vim notation (<C-d> is ctrl+d): normal, insert, visual, command, hint,
+# element, help, panel, index, resize and pdf (the PDF viewer).
+[modal.normal]
+"gt" = "tab.next"               # a default: g t goes to the next tab
+# "<leader>ff" = "goto.picker"  # one of yours: leader f f opens the goto picker
+
+[unbind]
+normal = []    # default bindings removed in normal mode; one such line per mode
+
+[firefox]
+disable = "all"    # Firefox's own shortcuts that are off: "all", or a list of keys
+enable = []        # Firefox's shortcuts given back as Firefox runs them, such as ["ctrl+j"]
+
+# Per site: a host covers its subdomains; the most specific table wins. None by default.
+# [sites."docs.google.com"]
+# insert = "always"  # text fields take insert mode: "auto" (when detected), "never" or "always"
+# unbind = ["t"]     # keys the page gets instead of Vimma; esc and the prefix stay Vimma's
+```
+
+See also: [Every key is yours](#every-key-is-yours), [Default bindings](bindings.md), [Normal and
+insert mode](#normal-and-insert-mode), [Link hints](#link-hints), [PDF viewer](#pdf-viewer),
+[Firefox's own shortcuts](#firefoxs-own-shortcuts), [Keys a site keeps](#keys-a-site-keeps).
 
 ### Panes, look and browsing
 
-| Key                        | Values                                             | Effect                                                                                                                              |
-| -------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `[panes] max`              | 1 to 16, default 8                                 | The most panes a workspace shows; past it, a new split is refused.                                                                  |
-| `[panes] max_splits`       | 1 to 9, default 9                                  | How many [splits](#several-splits) a workspace keeps.                                                                               |
-| `[panes] layout`           | `"dwindle"` (default), `"manual"`                  | Where `ctrl+b enter` puts a pane: along the focused pane's longer side, or right as `ctrl+b v` ([Layouts](#layouts)).               |
-| `[panes] main_size`        | 20 to 80 percent, default 60                       | The main pane's size in the main-vertical and main-horizontal layouts.                                                              |
-| `[panes] new_tab`          | `"alone"` (default), `"pane"`                      | A tab opened during a split shows alone while the split waits, or in the focused pane ([more](#picking-a-tab-during-a-split)).      |
-| `[theme] source`           | `"omarchy"` (default), `"file"`                    | Follow your Omarchy theme where Omarchy is installed, or always the built-in palette ([Colours and themes](#colours-and-themes)).   |
-| `[theme] name`             | `"vimma"` (default)                                | The built-in palette: vimma.dev's colours, dark and light.                                                                          |
-| `[theme] appearance`       | `"system"`, `"dark"`, `"light"`; unset (default)   | The built-in palette's variant. Unset, `:theme` sets and remembers it.                                                              |
-| `[theme] font`             | a font list, `"monospace"` (default)               | The font of Vimma's bars, pickers and overlays.                                                                                     |
-| `[theme.colors] <key>`     | a hex colour such as `"#7aa2f7"`                   | One colour over either source: Omarchy's `colors.toml` keys (`accent`, `background`, …) and `split_1` to `split_9`.                 |
-| `[ui] toolbar` ¹           | `"hidden"` (default), `"shown"`                    | [Firefox's toolbar](#hiding-the-toolbar) (address bar, add-on buttons) in every window.                                             |
-| `[ui] tabline` ¹           | `"auto"` (default), `"always"`, `"off"`            | The [tab line](#tab-line): with 2 or more tabs, always, or never.                                                                   |
-| `[ui] tabline_width`       | 4 to 60 columns, default 14                        | The width of each tab's name in the tab line.                                                                                       |
-| `[statusbar] tab`          | `true` (default), `false`                          | `false` drops the status bar's tab number and title while the tab line shows them.                                                  |
-| `[ui] bookmarks_toolbar` ¹ | `"shown"`, `"hidden"`, `"newtab"`; unset (default) | [Firefox's Bookmarks Toolbar](#firefoxs-bookmarks-toolbar); `"newtab"`: on new tabs only. Unset, it stays hidden until you show it. |
-| `[ui] pdf_outline` ¹       | `"shown"` (default), `"hidden"`                    | The [PDF viewer](#pdf-viewer)'s outline as a PDF opens; hidden, `Tab` shows it.                                                     |
-| `[panel] numbers`          | `"absolute"` (default), `"relative"`, `"hybrid"`   | The [side panel](#side-panel)'s row numbers: tab numbers, distances for `4j`, or both.                                              |
-| `[scroll] step`            | 1 to 2000 CSS pixels, default 60                   | How far `j`, `k`, `h` and `l` scroll.                                                                                               |
-| `[private] placement`      | `"swap"` (default), `"window"`                     | The [private workspace](#private-workspace) takes the Vimma window's place on Hyprland and macOS, or opens in a window beside it.   |
-| `[search]`                 | `default`, `[search.aliases]`                      | The default search engine and `@aliases` ([below](#search-engines)).                                                                |
-| `[bookmarks] root`         | `"workspace"` (default), `"toolbar"`, `"all"`      | Where the [bookmarks panel](#bookmarks) starts: the workspace's folder, the whole toolbar, or every bookmark.                       |
-| `[bookmarks] bookmarklets` | `"none"` (default), `"user"`, `"agent"`            | Who may run a bookmarklet: nobody, you, or an agent too (asked every time).                                                         |
-| `[bookmarks] write_back`   | `"all"` (default), `"vimma"`, `"none"`             | Which changes reach [`bookmarks.toml`](#bookmarks-in-a-file): all, only Vimma's own, or none.                                       |
-| `[updates] check`          | `true` (default), `false`                          | `false` stops the [update check](#updates), even in a file with a mistake.                                                          |
+```toml
+[panes]
+max = 8               # most panes a workspace shows (1–16); past it a new split is refused
+max_splits = 9        # most splits a workspace keeps (1–9)
+layout = "dwindle"    # where ctrl+b enter splits: "dwindle" (longer side) or "manual" (right)
+main_size = 60        # the main pane's share in the main-* layouts, in percent (20–80)
+new_tab = "alone"     # a tab opened in a split: "alone" beside it, or "pane" in the focused pane
 
-¹ Applied at startup and when that line changes, so `ctrl+b u`, `:tabline` and `ctrl+shift+b`
-last until then.
+[theme]
+source = "omarchy"       # "omarchy" follows Omarchy where installed; "file" always uses name
+name = "vimma"           # the built-in palette: "vimma", vimma.dev's colours, dark and light
+# appearance = "system"  # "system", "dark" or "light" variant; unset, :theme sets it
+font = "monospace"       # the font of Vimma's bars, pickers and overlays (a CSS font list)
+
+[theme.colors]
+# accent = "#7aa2f7"  # one colour over the theme: a colors.toml key, or split_1 to split_9
+
+# toolbar, bookmarks_toolbar, pdf_outline and tabline apply at startup and when their line
+# changes, so ctrl+b u, ctrl+shift+b and :tabline last until then.
+[ui]
+toolbar = "hidden"             # Firefox's toolbar, address bar included: "hidden" or "shown"
+# bookmarks_toolbar = "shown"  # "shown", "hidden" or "newtab"; unset, hidden until ctrl+shift+b
+pdf_outline = "shown"          # a PDF's outline as it opens: "shown", or "hidden" until Tab
+tabline = "auto"               # the tab line: "auto" (with 2 or more tabs), "always" or "off"
+tabline_width = 14             # the width of each tab's name in the tab line, in columns (4–60)
+
+[statusbar]
+tab = true    # false drops the status bar's tab number and title while the tab line shows them
+
+[panel]
+numbers = "absolute"    # side panel rows: "absolute" (tab numbers), "relative" (for 4j), "hybrid"
+
+[scroll]
+step = 60    # how far j, k, h and l scroll, in CSS pixels (1–2000)
+
+[private]
+placement = "swap"    # "swap" takes this window's place (Hyprland, macOS); "window": beside it
+
+[bookmarks]
+root = "workspace"       # where the bookmarks panel starts: "workspace", "toolbar" or "all"
+bookmarklets = "none"    # who may run bookmarklets: "none", "user" (you) or "agent" (asks you)
+write_back = "all"       # changes saved to bookmarks.toml: "all", "vimma" (Vimma's own), "none"
+
+# Every 12 hours Vimma asks updates.vimma.dev for a newer version, naming only the update
+# channel and the platform.
+[updates]
+check = true    # false stops every update check, even when this file has a mistake
+```
+
+See also: [Several splits](#several-splits), [Layouts](#layouts), [Picking a tab during a
+split](#picking-a-tab-during-a-split), [Colours and themes](#colours-and-themes), [Hiding the
+toolbar](#hiding-the-toolbar), [Tab line](#tab-line), [Firefox's Bookmarks
+Toolbar](#firefoxs-bookmarks-toolbar), [Side panel](#side-panel), [Private
+workspace](#private-workspace), [Bookmarks](#bookmarks), [Bookmarks in a
+file](#bookmarks-in-a-file), [Updates](#updates).
 
 ### Workspaces and routing
 
-| Key                           | Values                                                                                                                                 | Effect                                                                                                                      |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `[workspaces.<name>]`         | the keys below                                                                                                                         | A [workspace](#workspaces) with its own container, in `ctrl+b )` order. Removed from the file, it stays until you close it. |
-| `… color`                     | `gray` (default), `yellow`, `orange`, `red`, `pink`, `purple`, `violet`, `blue`, `cyan`, `green`                                       | The container's colour.                                                                                                     |
-| `… icon`                      | `circle` (default), `fingerprint`, `briefcase`, `dollar`, `cart`, `vacation`, `gift`, `food`, `fruit`, `pet`, `tree`, `chill`, `fence` | The container's icon.                                                                                                       |
-| `… home`                      | an `https://`, `http://` or `about:` URL                                                                                               | The page that opens when you go to the workspace and it has no tab.                                                         |
-| `… autofill`                  | `true` (default), `false`                                                                                                              | Reserved for a later release; it changes nothing yet.                                                                       |
-| `[[routes]]`                  | `domain`, `url`, `app`, `workspace`                                                                                                    | Which workspace a link opens in ([Routing](#routing-which-workspace-a-link-opens-in)).                                      |
-| `[routing] default_workspace` | a workspace name                                                                                                                       | Where a link from another program goes when no rule matches.                                                                |
+```toml
+# Workspaces in ctrl+b ) order, each a Firefox container. None by default.
+# Colours: gray, yellow, orange, red, pink, purple, violet, blue, cyan, green.
+# Icons: circle, fingerprint, briefcase, dollar, cart, vacation, gift, food, fruit, pet,
+# tree, chill, fence.
+[workspaces]
+# [workspaces.work]             # a workspace named work (1 to 32 characters)
+# color = "gray"                # the container's colour, from the list above
+# icon = "circle"               # the container's icon, from the list above
+# home = "https://intra.example"  # opens when you go to the workspace and it has no tab
+# autofill = true               # reserved for a later release; it changes nothing yet
+
+# Which workspace a link opens in: the first rule that matches wins. None by default.
+# [[routes]]
+# domain = "github.com"         # github.com and its subdomains; "*.corp.example": subdomains only
+# app = "slack"                 # links that program opens (Linux); with domain, both must match
+# workspace = "work"            # the workspace the link opens in
+# [[routes]]
+# url = "file:///home/me/notes/"  # a URL prefix in place of a domain, for file: and about: pages
+# workspace = "work"            # the workspace those pages open in
+
+# [routing]
+# default_workspace = "work"  # links from programs that no rule matches; unset, Firefox guesses
+```
+
+See also: [Workspaces](#workspaces), [Routing](#routing-which-workspace-a-link-opens-in).
 
 ### AI agents
 
-`[agent]` sets up [Vimma's own agent](#vimmas-own-agent), described there. `[mcp]` sets how
-agents reach the [agent workspace](#agent-workspace):
+```toml
+# AI agents over MCP (Claude Code, Codex, opencode, Copilot), only in the agent workspace.
+[mcp]
+# enabled = false               # unset: :mcp on and :mcp off set it; set here, it always wins
+workspace = "agent"             # the agent workspace's name; not "private"
+ask_timeout = 50                # seconds a request waits for your answer, then is denied (10–300)
+grant_minutes = 0               # a bare a: 0 grants until the agent quits, else that many minutes
+grant_max_minutes = 480         # the longest grant a count before a gives, in minutes (1–1440)
+max_read_chars = 200000         # the most text one page read returns, in characters (1000–500000)
+notify = true                   # a desktop notification when an agent asks while Vimma is hidden
+download_dir = "~/Downloads/vimma-agent"  # where agent downloads are saved; never opened
+download_max_mb = 200           # agent downloads larger than this are refused, in MB (1–4096)
+clamav_max_age_days = 7         # days before ClamAV definitions stop counting a file clean (1–90)
 
-| Key                         | Values                                          | Effect                                                                           |
-| --------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------- |
-| `[mcp] enabled`             | `true`, `false`; unset (default, off)           | Whether agents may connect. Unset, `:mcp on` and `:mcp off` set and remember it. |
-| `[mcp] workspace`           | a name, not `"private"`; `"agent"` (default)    | The agent workspace's name.                                                      |
-| `[mcp] ask_timeout`         | 10 to 300 seconds, default 50                   | How long a request waits for your answer before it is denied.                    |
-| `[mcp] grant_minutes`       | 0 to `grant_max_minutes`, default 0             | What a bare `a` allows: 0, until the agent quits; else that many minutes.        |
-| `[mcp] grant_max_minutes`   | 1 to 1440, default 480                          | The longest grant a count before `a` gives.                                      |
-| `[mcp] max_read_chars`      | 1000 to 500000, default 200000                  | The most text one page read returns.                                             |
-| `[mcp] notify`              | `true` (default), `false`                       | A desktop notification when an agent asks while Vimma is not in front.           |
-| `[mcp] download_dir`        | a folder, `"~/Downloads/vimma-agent"` (default) | Where [agent downloads](#downloads-from-the-agent-workspace) are saved.          |
-| `[mcp] download_max_mb`     | 1 to 4096, default 200                          | Larger agent downloads are refused.                                              |
-| `[mcp] clamav_max_age_days` | 1 to 90, default 7                              | ClamAV definitions older than this never report a file clean.                    |
+# Vimma's own agent (ctrl+b i). A model you pick in its window is added here, never a key.
+# [agent]
+# default = "local"             # the provider new conversations use (unset: the first one picked)
+# local_only = false            # true refuses every model that is not on this machine
+# max_running = 3               # how many tasks run at once (1–10)
+# max_steps = 100               # a task stops after this many tool calls (1–1000)
+# max_tokens = 2000000          # a task stops after this many tokens (1000–100000000)
+# max_cost = 2                  # a task stops at this cost, with prices set (above 0, up to 1000)
+# keep_days = 30                # delete conversations unused this long (1–3650 days); unset, kept
+# keep_results = 6              # tool results kept whole (0: all); unset, 20 local, 6 hosted
+# [[agent.providers]]           # a model behind an API, one table each; never its key
+# name = "local"                # what default and the model picker call it (1–32 characters)
+# kind = "openai"               # "openai" (OpenAI-compatible API) or "anthropic" (Messages API)
+# endpoint = "http://127.0.0.1:11434/v1"  # https://, or http:// on this machine
+# model = "qwen3:14b-ctx32768"  # the model's name at that endpoint
+# vision = false                # true: the model reads images, so the agent gets screenshots
+# price_in = 3                  # the price per million input tokens, for max_cost; with price_out
+# price_out = 15                # the price per million output tokens
+# [[agent.providers]]           # an agent CLI (Claude Code, Codex, Gemini CLI) on its own login
+# name = "claude"               # the provider's name
+# kind = "cli"                  # an agent CLI: no endpoint, the CLI decides where requests go
+# cli = "claude-code"           # which CLI: "claude-code", "codex" or "gemini"
+# model = "sonnet"              # the CLI's own model option; unset, its default
+# max_minutes = 30              # the longest one task may run, in minutes (1–1440)
+```
+
+See also: [Agent workspace](#agent-workspace), [Downloads from the agent
+workspace](#downloads-from-the-agent-workspace), [Vimma's own agent](#vimmas-own-agent), [Choosing a
+model for the agent chat](#choosing-a-model-for-the-agent-chat), [Using an agent CLI in the chat
+window](#using-an-agent-cli-in-the-chat-window).
 
 ### Search engines
 
-`[search]` sets the default search engine and gives engines short `@aliases`, so the file holds
-what Firefox otherwise keeps in Settings → Search:
+`[search]` sets the default engine and gives engines `@aliases`, in place of Settings → Search:
 
 ```toml
 [search]
@@ -4917,29 +4976,12 @@ gh = "https://github.com/search?q=%s"     # a URL with one %s becomes an engine
 w = "Wikipedia (en)"                      # an installed engine gets this alias
 ```
 
-- **Using an alias:** type `@gh vimma` in the address bar, or `:open @gh vimma` (`:tabnew` too), and
-  the words go to that engine. Firefox's own aliases (`@google`, `@ddg`, `@wikipedia`) and your
-  bookmark keywords work in `:open` the same way. To search the default engine for text that
-  starts with `@`, put `? ` before it: `:open ? @gh vimma`.
-- **Aliases:** a key is the alias without its `@` (a leading `@` in the key is dropped): a letter
-  or digit, then up to 31 of `a-z 0-9 . _ -`, case-insensitive. A URL value must be `https://`
-  or `http://` with exactly one `%s`, where the words go; Vimma adds it to Firefox as an engine
-  named after its host (`github.com`), with no search suggestions, so nothing is sent before
-  `Enter`. An `http://` URL sends your searches unencrypted, and `about:vimma` says so. Any other
-  value is an installed engine's name, as Settings → Search lists it; that engine gets the alias,
-  and its own keeps working.
-- **The default:** `default` names an installed engine, or `"@sx"` for an alias with a URL (a
-  SearXNG of your own, say). It applies to the address bar, `:open`, `:tabnew` and `p`/`P`, in
-  private windows too unless Firefox's separate private default is on. The file wins: at every
-  start and every save Vimma sets it again, so a default chosen in Settings lasts until then.
-  Delete the `default` line to choose it in Settings instead.
-- **Removing lines** puts back what was there: without `default`, the engine you had before
-  becomes the default again (unless you have chosen another one in Settings since); an engine
-  Vimma made from a URL is removed, and an installed engine gets its old alias back.
-- **Mistakes:** a name that is not installed, or an alias another engine already has, shows in
-  the status bar and `about:vimma` like any config error, with its line and a suggestion
-  (`config.toml:3: search.default: no search engine named "DuckDuckGoo" (did you mean
-"DuckDuckGo"?)`). The rest of the file still applies; only that entry is skipped.
+- **Use:** `@gh vimma` in the address bar, `:open` or `:tabnew` searches that engine.
+- **Alias keys:** a letter or digit, then up to 31 of `a-z 0-9 . _ -`.
+- **URL engines:** `https://` or `http://` with exactly one `%s`; no suggestions are sent.
+- **The default wins:** set here, it applies at every start; delete the line to choose in Settings.
+- **Removing lines** puts back the engines and aliases you had before.
+- **Mistakes:** an unknown engine or a taken alias shows in the status bar; the rest still applies.
 
 ## Scripting with vimma-ctl
 

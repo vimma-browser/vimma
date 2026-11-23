@@ -185,7 +185,7 @@ describe("[bookmarks] bookmarklets (B1-B3)", () => {
     expect(ok(cfg()).bookmarks.bookmarklets).toBe("none");
     expect(DEFAULT_CONFIG.bookmarks).toMatchObject({ bookmarklets: "none" });
     expect(formatDefaultsToml()).toMatch(
-      /^\[bookmarks\]\n(#.*\n|\w+ = .*\n)*bookmarklets = "none"$/m,
+      /^\[bookmarks\]\n(#.*\n|\w+ = .*\n)*bookmarklets = "none"(?: +#.*)?$/m,
     );
   });
 

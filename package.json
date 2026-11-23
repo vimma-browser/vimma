@@ -24,7 +24,7 @@
     "diagrams:check": "node tools/diagrams/module-graph.ts --check && node tools/diagrams/render.ts --check",
     "spec-status": "node tools/spec-lint/spec-status.ts",
     "format": "prettier --write .",
-    "gen-docs": "node tools/gen-docs.ts && prettier --log-level warn --write docs/bindings.md docs/bindings.json",
+    "gen-docs": "node tools/gen-docs.ts && prettier --log-level warn --write docs/bindings.md docs/bindings.json docs/guide.md",
     "sync-core": "node tools/sync-core.ts",
     "version-files": "node tools/version-files/version-files.ts",
     "import": "tools/upstream/verify-source.sh --require && npm run sync-core && npm run version-files && node tools/import/restore-patched.ts && surfer config brand vimma && surfer import && node tools/import/link-update-certs.ts && SURFER_MOZCONFIG_ONLY=1 surfer build",
