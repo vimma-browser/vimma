@@ -32,7 +32,7 @@ import {
   isHexColor,
   normalizeHex,
 } from "./theme.mjs";
-import { resolveRoutes, validateRoutes } from "./routes.mjs";
+import { resolveRoutes, routeBlockFor, validateRoutes } from "./routes.mjs";
 import { formatPath, locateKeys, parsePath, parseToml, setTomlKeys, tomlLiteral } from "./toml.mjs";
 import { canonicalChord, isShortcutChord } from "../keys/firefox-keys.mjs";
 import { KeyNotationError, formatKey, parseKey } from "../keys/keys.mjs";
@@ -1329,10 +1329,13 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
 
 /**
  * @param {string} text  contents of config.toml
- * @param {{ mac?: boolean }} [options]  compile over macOS's default keys (compileKeymap)
+ * @param {{ mac?: boolean, routesFile?: boolean }} [options]  `mac`: compile over macOS's
+ *   default keys (compileKeymap); `routesFile`: routes.toml is the routes file, so the text's
+ *   `routes` and `[routing]` are left out before validation, and a stale rule there can neither
+ *   apply nor keep the rest from applying (docs/specs/routes-file.md Behaviours 3 and 4).
  * @returns {ParseResult}
  */
-export function parseConfig(text, { mac = false } = {}) {
+export function parseConfig(text, { mac = false, routesFile = false } = {}) {
   /** @param {ConfigError[]} errors @returns {ParseResult} */
   const failed = (errors) => ({
     config: null,
@@ -1344,6 +1347,10 @@ export function parseConfig(text, { mac = false } = {}) {
   const parsed = parseToml(text, { integersAsBigInt: true });
   if (!parsed.ok) return failed([{ path: "", ...parsed.error }]);
   const raw = parsed.value;
+  if (routesFile) {
+    delete raw.routes;
+    delete raw.routing;
+  }
   const lineOf = locateKeys(text);
   /** @param {Problem[]} problems @returns {ConfigError[]} */
   const located = (problems) =>
@@ -1412,14 +1419,14 @@ export function parseConfig(text, { mac = false } = {}) {
  * Apply new config text atomically: on any error the previous config stays active (plan M5).
  * @param {ActiveConfig | null} active  the config in use, null before the first load
  * @param {string} text
- * @param {{ mac?: boolean }} [options]  macOS's default keys (compileKeymap)
+ * @param {{ mac?: boolean, routesFile?: boolean }} [options]  as parseConfig takes them
  * @returns {{ active: ActiveConfig, errors: ConfigError[], warnings: ConfigError[],
  *   kept: boolean }}
  *   kept: the text was not applied; `active` is the previous config, or the defaults.
  *   warnings: what an applied text left out (parseConfig)
  */
-export function reloadConfig(active, text, { mac = false } = {}) {
-  const r = parseConfig(text, { mac });
+export function reloadConfig(active, text, { mac = false, routesFile = false } = {}) {
+  const r = parseConfig(text, { mac, routesFile });
   // Stryker disable next-line LogicalOperator: parseConfig returns a config and a keymap together or neither
   if (r.config && r.keymap) {
     return {
@@ -1474,8 +1481,9 @@ export function rawUpdatesCheck(text) {
 }
 
 /**
- * `:route add` (spec workspace-routing): the text to append to config.toml for a `domain` rule,
- * or the whole file to create when it is missing (`text` null: the template plus the rule).
+ * `:route add` (spec workspace-routing) while config.toml is the routes file (routes-file): the
+ * text to append to config.toml for a `domain` rule, in the file's line endings, or the whole
+ * file to create when it is missing (`text` null: the template plus the rule).
  * The result must parse: a file with errors now or an inline `routes = [...]`
  * is refused with the reason, and nothing is written.
  * @param {string | null} text  config.toml as it is, null when missing
@@ -1483,14 +1491,12 @@ export function rawUpdatesCheck(text) {
  * @param {{ mac?: boolean }} [options]  check it with macOS's default keys (compileKeymap)
  * @returns {{ append: string } | { create: string } | { error: string }}
  */
-export function appendRouteText(text, { domain, workspace }, { mac = false } = {}) {
-  const block = `[[routes]]\ndomain = ${JSON.stringify(domain)}\nworkspace = ${JSON.stringify(workspace)}\n`;
+export function appendRouteText(text, rule, { mac = false } = {}) {
   const base = text ?? formatConfigTemplate();
   if (text !== null && parseConfig(text, { mac }).errors.length) {
     return { error: "config.toml does not parse now; fix it first (:config shows it)" };
   }
-  const glue = base === "" ? "" : base.endsWith("\n") ? "\n" : "\n\n";
-  const added = `${glue}${block}`;
+  const added = routeBlockFor(base, rule);
   const after = parseConfig(base + added, { mac });
   const first = after.errors[0];
   if (first) {

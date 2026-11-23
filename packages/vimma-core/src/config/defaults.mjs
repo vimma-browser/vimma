@@ -1154,6 +1154,7 @@ export function configTables({ brief = false } = {}) {
       name: "routes",
       lines: annotate([
         say("Which workspace a link opens in: the first rule that matches wins. None by default."),
+        say("A routes.toml beside this file, when it exists, holds them (and [routing]) instead."),
         example("[[routes]]"),
         example(
           'domain = "github.com"',

@@ -13,6 +13,7 @@ import {
   routeDomainFor,
   validateRoutes,
 } from "../../src/config/routes.mjs";
+import { appendRouteFileText, parseRoutesFile } from "../../src/config/routes-file.mjs";
 import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.ts";
 
 /** The one route a valid rule resolves to; throws when it resolves to none. */
@@ -281,6 +282,31 @@ describe("routing rule fuzzing", () => {
           const route = onlyRoute({ domain, workspace: "w" });
           expect(matchRoute([route], { url })).not.toBeNull();
         }),
+        { weight: 5 },
+      ),
+    FUZZ_TIMEOUT,
+  );
+
+  test(
+    ":route add into routes.toml writes the domain and workspace as given, or refuses (F4)",
+    () =>
+      fuzz(
+        "routes-file-add",
+        fc.property(
+          fc.oneof(fc.constantFrom("github.com", "*.corp.example"), nastyString),
+          fc.oneof(fc.constantFrom("work", ...PROTO_NAMES), nastyString),
+          fc.constantFrom("", "# mine\n", "# crlf\r\n", '[routing]\ndefault_workspace = "w"\n'),
+          (domain, workspace, before) => {
+            const out = appendRouteFileText(before, { domain, workspace });
+            if ("error" in out) return;
+            const r = parseRoutesFile(before + out.append);
+            expect(r.errors).toEqual([]);
+            expect(r.routes?.at(-1)?.workspace).toBe(workspace);
+            // One rule added, nothing else: the text cannot have smuggled in a second key.
+            expect(r.routes?.length).toBe(1);
+            expect(r.defaultWorkspace).toBe(before.includes("default_workspace") ? "w" : null);
+          },
+        ),
         { weight: 5 },
       ),
     FUZZ_TIMEOUT,

@@ -230,6 +230,8 @@ support-files = ["file_vimma_urlbar_suggest.sjs"]
 
 ["browser_vimma_workspace_routes_windows.js"]
 
+["browser_vimma_routes_file.js"]
+
 ["browser_vimma_workspace_routing.js"]
 support-files = ["file_vimma_cookie.html"]
 
