@@ -512,6 +512,8 @@ its Rust toolchain and the GitHub Actions current:
 - **Security fixes come at once.** A Dependabot alert gets its fix PR as soon as there is one,
   outside the schedule. When a parent package pins the vulnerable version, add an `overrides`
   entry to the root `package.json` instead (as for `sharp` and `qs`) and say why in the PR.
+  An `overrides` entry also replaces a dependency a package names by git with its registry
+  release (as for `is-apple-silicon`), so every lockfile entry has a registry hash.
 - **Auto-merge when green.** [dependabot-automerge.yml](.github/workflows/dependabot-automerge.yml)
   turns on auto-merge for security, patch and minor updates. They merge only once every
   required check above passes, licences included: a new licence or a new version of a package

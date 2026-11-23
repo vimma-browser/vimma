@@ -793,9 +793,9 @@ of the same commit read it too, so a tree without it could not be released anywa
   command a workflow runs passes `--locked`. Every `uses:` of a workflow or composite action is a
   file of this repository, an action at a full 40-character commit or a Docker image by digest,
   and so is every job's container and service image. `package-lock.json` is version 3 and every
-  entry is resolved from `registry.npmjs.org` with a `sha512` integrity, but one: Surfer's
-  dependency `is-apple-silicon`, a git dependency pinned to commit `5f75501` without a hash (spec,
-  R5), which nothing in Surfer's `dist/` loads; the test fails if it moves off that commit. No
+  entry is resolved from `registry.npmjs.org` with a `sha512` integrity, with no exception:
+  Surfer's dependency `is-apple-silicon`, which Surfer names by git, is taken from the registry by
+  a root `overrides` entry, so npm fetches no package from git (spec, R5). No
   `package.json` names a dependency by git, URL, path, tag or a range wider than a caret, and the
   repository holds one lockfile and one `.npmrc`, which sets nothing but `ignore-scripts`. The
   test reads every file git tracks, so a new file is held to this without being listed. Its
@@ -816,8 +816,7 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`every cargo command a workflow runs keeps to Cargo.lock`](../../tools/test/supply-chain.test.ts),
   [`every action, reusable workflow and composite action step is pinned by full commit`](../../tools/test/supply-chain.test.ts),
   [`every job's container and service image is pinned by digest`](../../tools/test/supply-chain.test.ts),
-  [`every package comes from registry.npmjs.org with a sha512 integrity, but the one listed`](../../tools/test/supply-chain.test.ts),
+  [`every package comes from registry.npmjs.org with a sha512 integrity`](../../tools/test/supply-chain.test.ts),
   [`refuses an entry with %s`](../../tools/test/supply-chain.test.ts),
-  [`the git exception holds only while it stays at its commit`](../../tools/test/supply-chain.test.ts),
   [`no package.json names a dependency by git, URL, path, tag or bundle`](../../tools/test/supply-chain.test.ts),
   [`one lockfile and one .npmrc, which sets no other registry`](../../tools/test/supply-chain.test.ts)

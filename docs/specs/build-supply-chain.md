@@ -213,7 +213,12 @@ for most of the 12.5 minutes `docs/runbook/` records for `surfer download`; with
   `ignore-scripts=true` in `.npmrc`, `npm run <script>` still ran the script.
 - `is-apple-silicon` resolves to `git+ssh://git@github.com/trickypr/is-apple-silicon.git#5f75501…`,
   pinned by commit but without an `integrity` hash, and has no scripts. Nothing in Surfer's
-  `dist/` requires it.
+  `dist/` requires it. (Since changed: a root `overrides` entry takes `is-apple-silicon` 1.0.1
+  from the registry with a `sha512` integrity, because npm 12 refuses a git dependency without
+  `--allow-git`. The registry release is published by the package's original author, of whose
+  repository the pinned commit is a fork, and its `index.js` and `LICENSE` are identical to the
+  commit's; the commit only adds type declarations (`index.d.ts` and a `types` field). Every
+  lockfile entry now comes from the registry.)
 
 Conclusion: no package in the release path needs an install script.
 

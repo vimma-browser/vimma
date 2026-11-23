@@ -516,12 +516,6 @@ export function pinned(uses: string): boolean {
   return /^[\w.-]+\/[\w.-]+(?:\/[\w./-]+)?@[0-9a-f]{40}$/.test(uses);
 }
 
-/** The one lockfile entry outside the registry: a dependency of Surfer, pinned by commit. */
-const GIT_EXCEPTION = {
-  "node_modules/is-apple-silicon":
-    "git+ssh://git@github.com/trickypr/is-apple-silicon.git#5f75501a1d7566ba9f94174b6825d7bd9d302b6a",
-};
-
 type LockEntry = { resolved?: string; integrity?: string; link?: boolean; version?: string };
 
 /** @returns each lockfile entry that npm ci would not take from the registry by its hash */
@@ -531,17 +525,12 @@ export function lockFaults(lock: {
 }): string[] {
   const faults: string[] = [];
   if (lock.lockfileVersion !== 3) faults.push(`lockfileVersion ${lock.lockfileVersion}`);
-  const exceptions: Record<string, string> = GIT_EXCEPTION;
   for (const [key, e] of Object.entries(lock.packages ?? {})) {
     if (key === "") continue;
     if (/^packages\/[\w-]+$/.test(key) && !e.resolved) continue; // a workspace's own entry
     if (e.link) {
       if (!/^packages\/[\w-]+$/.test(e.resolved ?? ""))
         faults.push(`${key}: link to ${e.resolved}`);
-      continue;
-    }
-    if (key in exceptions) {
-      if (e.resolved !== exceptions[key]) faults.push(`${key}: resolved ${e.resolved}`);
       continue;
     }
     const name = key.slice(key.lastIndexOf("node_modules/") + "node_modules/".length);
@@ -906,7 +895,7 @@ describe("supply chain: GitHub Actions", () => {
 });
 
 describe("supply chain: the npm lockfile", () => {
-  it("every package comes from registry.npmjs.org with a sha512 integrity, but the one listed", () => {
+  it("every package comes from registry.npmjs.org with a sha512 integrity", () => {
     expect(lockFaults(JSON.parse(read("package-lock.json")))).toEqual([]);
   });
 
@@ -936,15 +925,6 @@ describe("supply chain: the npm lockfile", () => {
   ])("refuses an entry with %s", (_, entry) => {
     const lock = { lockfileVersion: 3, packages: { "": {}, "node_modules/a": entry } };
     expect(lockFaults(lock)).not.toEqual([]);
-  });
-
-  it("the git exception holds only while it stays at its commit", () => {
-    const lock = JSON.parse(read("package-lock.json"));
-    lock.packages["node_modules/is-apple-silicon"].resolved =
-      "git+ssh://git@github.com/trickypr/is-apple-silicon.git#main";
-    expect(lockFaults(lock)).toEqual([
-      "node_modules/is-apple-silicon: resolved git+ssh://git@github.com/trickypr/is-apple-silicon.git#main",
-    ]);
   });
 
   it("no package.json names a dependency by git, URL, path, tag or bundle", () => {
