@@ -1578,8 +1578,26 @@ off` and, for a workspace Vimma did not make, shows `:mcp on`'s warning too; wit
   `services/TabSleep.sys.mjs` learns only whether a connection is open, from
   `McpHost.agentConnected`, which reads whether the gate lists any; it does not import the
   gate, reads only a tab's URL and state flags, and acts on a tab only through Firefox's own
-  discard.
+  discard and Firefox's `undiscardable` attribute. Firefox's low-memory unloader, which Vimma
+  turns on (decision 21), is held to the same rule: whenever the unloader runs (from the config
+  or from a value set in `about:config`) and a connection is open, `TabSleep` sets
+  `undiscardable` on the agent workspace's tabs, including one as it opens, and clears it when
+  the last connection closes. It learns of the change from `McpHost.watchAgentConnected`, which
+  calls it with no argument when the answer to `agentConnected` changes, so no connection, peer
+  or grant detail reaches it. Residual risks, each bounded by the wake rule above (the agent
+  lists its tabs again): the unloader weighs the marks before it awaits and discards
+  (`TabUnloader.sys.mjs`, `unloadLeastRecentlyUsedTab`), so a mark set in that gap loses to a
+  discard already under way, which only an upstream patch could close; a change of the agent
+  workspace in `config.toml` reaches the marks at the next pane change, connection change or
+  check, because the workspace store settles after the config topic; and an add-on that clears
+  the attribute (`autoDiscardable`) undoes the mark until the next of those. The attribute
+  changes reach add-ons with tab access as `tabs.onUpdated` with `autoDiscardable`
+  (`ext-tabs.js`), so such an add-on can tell when an agent connects; it already sees the agent
+  workspace's tabs and their loads. A page in the agent workspace that opens many tabs keeps
+  them all loaded while an agent is connected: memory pressure, not access.
   [`agent_tabs_stay_loaded_while_an_agent_is_connected_and_sleep_after`](../../tests/browser/browser_vimma_agent_tab_sleep.js),
   [`an_agent_listing_a_sleeping_agent_tab_wakes_it_with_a_new_id`](../../tests/browser/browser_vimma_agent_tab_sleep.js),
   [`an_agent_connecting_during_a_check_keeps_its_tabs_loaded`](../../tests/browser/browser_vimma_agent_tab_sleep.js),
-  [`agent workspace tabs stay awake only while an agent is connected`](../../packages/vimma-core/test/tabsleep.test.ts)
+  [`agent workspace tabs stay awake only while an agent is connected`](../../packages/vimma-core/test/tabsleep.test.ts),
+  [`low_memory_unloads_other_tabs_but_never_a_shown_pane_or_an_agents_tab`](../../tests/browser/browser_vimma_low_memory.js),
+  [`the_mark_follows_the_split_the_agent_and_the_config`](../../tests/browser/browser_vimma_low_memory.js)
