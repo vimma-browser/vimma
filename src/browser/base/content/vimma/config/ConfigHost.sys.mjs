@@ -157,11 +157,13 @@ let sourced = null;
 /** What the file looked like at the last read (fileSignature); "" forces one. */
 let signature = "";
 /**
- * The last read of config.toml failed (not UTF-8, no permission, …): it is read again at each
- * poll until it reads, since a `chmod` changes nothing fileSignature compares, but without
- * counting as a change of the file (`:source <file>` stays in force, nothing is said again).
+ * Why the last read of config.toml failed (not UTF-8, no permission, …), null when it read. It
+ * is read again at each poll until it reads, as a failure may pass without a change the
+ * signature sees (a folder's permissions, a transient I/O error), but without counting as a
+ * change of the file: `:source <file>` stays in force, and nothing is said again.
+ * @type {string | null}
  */
-let failed = false;
+let failed = null;
 /**
  * A poll found config.toml gone after a read of it: the next poll that finds it gone too applies
  * the defaults (an editor's save, or a `git checkout`, can leave it gone for a moment).
@@ -542,7 +544,7 @@ async function readConfig(path, maxBytes = MAX_CONFIG_FILE_BYTES) {
     }
   } catch (e) {
     if (notFound(e)) return { missing: true };
-    console.error(`vimma: cannot read ${path}`, e);
+    // Logged by report() once, not at every poll's retry.
     const denied = /** @type {Thrown} */ (e)?.name === "NotAllowedError";
     return { problem: `cannot be read${denied ? " (no permission)" : ""}; not read` };
   }
@@ -580,10 +582,7 @@ async function check(force) {
   // shown at the start), and a later one only adds to the workspaces init made.
   const [seen, routesNow] = await Promise.all([
     // A folder without search permission: readConfig says so, rather than the poll failing.
-    fileSignature(path, MAX_CONFIG_FILE_BYTES).catch((e) => {
-      console.error(`vimma: cannot stat ${path}`, e);
-      return "unreadable";
-    }),
+    fileSignature(path, MAX_CONFIG_FILE_BYTES).catch(() => "unreadable"),
     routesStat(routesPath()),
   ]);
   // A link to nothing is the user's config.toml all the same: said, never the defaults.
@@ -595,7 +594,7 @@ async function check(force) {
     goneOnce = !goneOnce;
   } else goneOnce = false;
   const readable = now !== "missing" && now !== "dangling";
-  const retry = !configChanged && failed && readable && sourced === null;
+  const retry = !configChanged && failed !== null && readable && sourced === null;
   if (!routesChanged && !configChanged && !retry) return;
   /** @type {Promise<{ text: string } | { problem: string } | { missing: true }> | null} */
   const reading = (configChanged || retry) && readable ? readConfig(path) : null;
@@ -617,14 +616,20 @@ async function check(force) {
   const read = reading ? await reading : null;
   if (!configChanged && !(retry && read && "text" in read)) {
     routesOnly();
+    // routesOnly may have read the config's last text again: config.toml still cannot be read,
+    // which is said again (its update hold too), now with the retry's reason when it changed.
+    if (failed !== null && sourced === null) {
+      if (read && "problem" in read) failed = read.problem;
+      refuse(path, failed);
+    }
     return;
   }
-  sourced = null; // config.toml changed (or a plain :source): it is the file in force again
   if (now === "dangling" || (read && "problem" in read)) {
+    sourced = null; // config.toml changed: it is the file in force again
     signature = now;
-    failed = true;
+    failed = read && "problem" in read ? read.problem : "a link to a missing file; not read";
     routesOnly();
-    refuse(path, read && "problem" in read ? read.problem : "a link to a missing file; not read");
+    refuse(path, failed);
     return;
   }
   if (read && "missing" in read && active !== null) {
@@ -634,7 +639,8 @@ async function check(force) {
     routesOnly();
     return;
   }
-  failed = false;
+  sourced = null; // config.toml changed (or a plain :source): it is the file in force again
+  failed = null;
   const missing = now === "missing" || (read !== null && "missing" in read);
   const gone = missing && active !== null && signature !== "missing";
   signature = missing ? "missing" : now;

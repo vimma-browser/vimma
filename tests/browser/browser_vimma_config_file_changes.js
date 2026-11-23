@@ -337,6 +337,11 @@ add_task(async function an_unreadable_file_neither_undoes_source_nor_holds_route
       ["example.org"],
       "routes.toml's rule is in force",
     );
+    Assert.equal(
+      ConfigHost.errors[0]?.message,
+      "cannot be read (no permission); not read",
+      "and config.toml is still said to be unreadable",
+    );
 
     // :source <file> stays in force while config.toml, unchanged, still cannot be read.
     const work = PathUtils.join(dir, "work.toml");
@@ -347,6 +352,33 @@ add_task(async function an_unreadable_file_neither_undoes_source_nor_holds_route
     await ConfigHost.poll();
     Assert.equal(ConfigHost.path, work, "and stays so across polls");
     Assert.equal(newTab(), "prefix+y", "with its keys");
+  });
+});
+
+add_task(async function a_folder_without_search_permission_is_said_and_read_once_it_can_be() {
+  if (Services.env.get("USER") === "root") return;
+  await withConfig(async ({ dir, config }) => {
+    await IOUtils.writeUTF8(config, A);
+    await ConfigHost.poll();
+    Assert.equal(newTab(), "prefix+t", "sanity: the file applies");
+
+    await IOUtils.setPermissions(dir, 0o600);
+    try {
+      await ConfigHost.poll();
+      await until(
+        () => ConfigHost.errors[0]?.message === "cannot be read (no permission); not read",
+        "config.toml is said to be unreadable (routes.toml beside it too: it cannot be told apart)",
+      );
+      Assert.equal(newTab(), "prefix+t", "the config in force stays");
+    } finally {
+      await IOUtils.setPermissions(dir, 0o700);
+    }
+    await ConfigHost.poll();
+    await until(
+      () => !ConfigHost.errors.length && !ConfigHost.routesProblems.length,
+      "searchable again: the errors are gone",
+    );
+    Assert.equal(newTab(), "prefix+t", "and the file applies");
   });
 });
 
