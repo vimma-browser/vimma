@@ -62,7 +62,9 @@ const DELETED_TOPIC = "contextual-identity-deleted";
  * (#1221). A page's own principal never has an add-on policy, so a page cannot ask for this.
  * An about: URL from `tabs.create`, and `windows.create` with no URL (the start page), get a
  * content principal of that page instead (setContentTriggeringPrincipal), so they take the
- * workspace's container as ctrl+t and ctrl+n do: nothing an extension signs in to opens there.
+ * workspace's container as ctrl+t and ctrl+n do; `tabs.create` with no URL is told apart by its
+ * URL (defaultUserContextId). Only a page's principal, never what loads in the tab later, picks
+ * the container.
  * @param {unknown} principal
  */
 function openedByExtension(principal) {
@@ -589,12 +591,18 @@ export class WorkspaceStoreImpl {
    * Before init has loaded the file it reads it synchronously (as ContextualIdentityService does).
    * `fromExternal` (addTab's flag: the command line's URLs) gives nonAgentUserContextId's. A tab
    * an extension opens (`triggeringPrincipal` is its own) gets null: no container, as in Firefox.
+   * Except the new tab page (`tabs.create` with no URL): Firefox gives about:newtab its own
+   * principal, but Vimma's is a chrome: page, which keeps the extension's, so it is told apart
+   * by its `url` and takes the workspace's container, as ctrl+t's does.
    * @param {Window | null} win
-   * @param {{ fromExternal?: boolean, triggeringPrincipal?: nsIPrincipal | null }} [options]
+   * @param {{ fromExternal?: boolean, triggeringPrincipal?: nsIPrincipal | null, url?: string }}
+   *   [options]
    * @returns {number | null}
    */
-  defaultUserContextId(win, { fromExternal = false, triggeringPrincipal = null } = {}) {
-    if (openedByExtension(triggeringPrincipal)) return null;
+  defaultUserContextId(win, { fromExternal = false, triggeringPrincipal = null, url } = {}) {
+    const newTabPage =
+      url !== undefined && url === /** @type {BrowserWindow | null} */ (win)?.BROWSER_NEW_TAB_URL;
+    if (openedByExtension(triggeringPrincipal) && !newTabPage) return null;
     if (fromExternal) return this.nonAgentUserContextId(win);
     if (this.disabled || !this.#enabled()) return null;
     if (win && (lazy.PrivateBrowsingUtils.isWindowPrivate(win) || win.toolbar?.visible === false)) {

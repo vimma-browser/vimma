@@ -76,8 +76,12 @@ async function signInExtension() {
       permissions: ["cookies", "https://example.com/*"],
       background: { scripts: ["background.js"] },
       browser_specific_settings: { gecko: { id: "signin@vimma.test" } },
+      web_accessible_resources: ["framed.html"],
     },
     files: {
+      // A page a web page may frame: its principal is the extension's, with an add-on policy.
+      "framed.html": `<!doctype html><meta charset=utf-8><title>framed</title>
+        <a id="out" href="${PAGE}?from=framed" target="_blank">open</a>`,
       "page.html": `<!doctype html><meta charset=utf-8><title>extension page</title>
         <a id="out" href="${PAGE}?from=extension-page" target="_blank">open</a>`,
       // Each answer is a string: a tab's cookieStoreId, the active tab's id, a page's text, a URL.
@@ -237,8 +241,73 @@ add_task(async function an_extensions_own_pages_and_windows_are_in_no_container(
     "a window an extension opens with no URL: the workspace's, as ctrl+n's",
   );
   await BrowserTestUtils.closeWindow(home);
+
+  // Several URLs: Firefox passes the system principal (bug 1780583), so the workspace's.
+  const manyOpened = BrowserTestUtils.waitForNewWindow({ url: `${PAGE}?one` });
+  await ask("window", { url: [`${PAGE}?one`, `${PAGE}?two`] });
+  const many = await manyOpened;
+  Assert.deepEqual(
+    many.gBrowser.tabs.map((t) => t.userContextId),
+    [work.userContextId, work.userContextId],
+    "a window an extension opens with several URLs: the workspace's",
+  );
+  await BrowserTestUtils.closeWindow(many);
+
+  // No URL: the new tab page, with that page's principal, so the workspace's, as ctrl+t's.
+  const tabOpened = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "TabOpen");
+  await ask("tab", {});
+  const newTab = /** @type {MozTabbrowserTab} */ ((await tabOpened).target);
+  Assert.equal(newTab.userContextId, work.userContextId, "a tab an extension opens with no URL");
+  BrowserTestUtils.removeTab(newTab);
+
   await ext.unload();
   Services.cookies.removeAll();
+});
+
+add_task(async function a_page_never_opens_in_no_container_through_an_extension() {
+  const work = workspace("ext-page-guard");
+  WorkspaceStore.setActive(window, work.id);
+  const { ext, ask } = await signInExtension();
+  const framedUrl = await ask("url", "framed.html");
+
+  // A workspace page frames the extension's web-accessible page, whose principal has an add-on
+  // policy: a link clicked in that frame still opens in the page's container, because a page's
+  // opens carry their origin attributes (BrowserDOMWindow) and never reach the patched default.
+  const host = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?host`);
+  Assert.equal(host.userContextId, work.userContextId, "sanity: the host page is the workspace's");
+  await SpecialPowers.spawn(host.linkedBrowser, [framedUrl], async (url) => {
+    const frame = content.document.createElement("iframe");
+    frame.src = url;
+    const loaded = new Promise((resolve) =>
+      frame.addEventListener("load", resolve, { once: true }),
+    );
+    content.document.body.append(frame);
+    await loaded;
+  });
+  const frameContext = /** @type {BrowsingContext} */ (
+    host.linkedBrowser.browsingContext?.children[0]
+  );
+  const fromFrame = BrowserTestUtils.waitForNewTab(gBrowser, `${PAGE}?from=framed`, true);
+  await BrowserTestUtils.synthesizeMouseAtCenter("#out", {}, frameContext);
+  const framedTab = await fromFrame;
+  Assert.equal(framedTab.userContextId, work.userContextId, "a framed extension page's link");
+
+  // A page's window.open with features (a popup window): the page's container.
+  const popupOpened = BrowserTestUtils.waitForNewWindow({ url: `${PAGE}?popup` });
+  await SpecialPowers.spawn(host.linkedBrowser, [`${PAGE}?popup`], (url) => {
+    content.window.open(url, "_blank", "width=400,height=300");
+  });
+  const popup = await popupOpened;
+  Assert.equal(
+    popup.gBrowser.selectedTab.userContextId,
+    work.userContextId,
+    "a page's window.open popup: the page's",
+  );
+  await BrowserTestUtils.closeWindow(popup);
+
+  BrowserTestUtils.removeTab(framedTab);
+  BrowserTestUtils.removeTab(host);
+  await ext.unload();
 });
 
 add_task(

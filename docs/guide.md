@@ -1891,7 +1891,9 @@ more as you need them (see [Managing workspaces](#managing-workspaces)).
   sign-in page and then reads the session from its own background, which only ever sees "no
   container". Shown in the agent workspace, such a tab stays out of the agent's container and
   agents cannot list or read it. A link you click in an extension's popup or page opens with
-  "no container" too, the container of the page it is on.
+  "no container" too, the container of the page it is on. "No container" is shared by every
+  workspace, so a site an extension opens for you there is not kept apart by workspace; a new,
+  empty tab an extension opens takes the workspace's container, as `ctrl+t` does.
 - **Site permissions are per workspace**, like logins: a camera, microphone, location or
   notification permission you give a site in `work` does not apply to the same site in `main`
   or any other workspace (Vimma sets `permissions.isolateBy.userContext`). A permission stored
