@@ -93,15 +93,15 @@ export const BookmarksToolbar = {
   /**
    * Decision 8, changed for issue #1399: config.toml shows it, but the hidden default toolbar
    * hides it too, as it does after an upgrade from the shown default. Said once; the pref
-   * records it, so a later start or edit says nothing.
+   * records it once it was shown, so a later start or edit says nothing.
    * @param {BookmarksToolbarSetting | null} setting  `[ui] bookmarks_toolbar`
-   * @param {boolean} toolbarSet  config.toml has a `[ui] toolbar` line
-   * @param {(text: string) => void} say
+   * @param {{ toolbarSet: boolean, toolbarHidden: boolean }} toolbar  config.toml has a
+   *   `[ui] toolbar` line; Firefox's toolbar is hidden now
+   * @param {(text: string) => boolean} say  whether the notice showed
    */
-  noticeHiddenToolbar(setting, toolbarSet, say) {
+  noticeHiddenToolbar(setting, { toolbarSet, toolbarHidden }, say) {
     const noticed = Services.prefs.getBoolPref(TOOLBAR_NOTICED_PREF, false);
-    if (!needsToolbarNotice({ noticed, configured: setting, toolbarSet })) return;
-    Services.prefs.setBoolPref(TOOLBAR_NOTICED_PREF, true);
-    say(TOOLBAR_NOTICE);
+    if (!needsToolbarNotice({ noticed, configured: setting, toolbarSet, toolbarHidden })) return;
+    if (say(TOOLBAR_NOTICE)) Services.prefs.setBoolPref(TOOLBAR_NOTICED_PREF, true);
   },
 };

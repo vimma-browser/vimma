@@ -447,17 +447,28 @@ add_task(async function a_config_that_shows_it_under_the_hidden_toolbar_says_so_
   Assert.ok(!shown(), "the bookmarks toolbar is hidden with the toolbar");
   // Said once, at a busy startup: it stays past the usual 1.5 s, until the next key.
   const toast = () => !!$("vimma-notice")?.matches(":popover-open");
-  await new Promise((r) => setTimeout(r, 2500));
-  Assert.ok(toast(), "still shown after 2.5 s");
+  // VimmaHost started this window and made its notice; without one this throws, as before.
+  const notice = /** @type {HostState} */ (VimmaHost._state(window)).notice;
+  Assert.ok(toast(), "shown");
+  Assert.ok(notice.untilKey && notice.timer === null, "with no timer: until the next key");
   EventUtils.synthesizeKey("KEY_Escape", {}, window);
   await until(() => !toast(), "the next key hides it");
 
   // The next start, or a later edit: said once only.
   /** @type {string[]} */
   const said = [];
-  BookmarksToolbar.noticeHiddenToolbar("shown", false, (text) => said.push(text));
-  BookmarksToolbar.noticeHiddenToolbar("newtab", false, (text) => said.push(text));
+  const sayIt = (/** @type {string} */ text) => !!said.push(text);
+  const unset = { toolbarSet: false, toolbarHidden: true };
+  BookmarksToolbar.noticeHiddenToolbar("shown", unset, sayIt);
+  BookmarksToolbar.noticeHiddenToolbar("newtab", unset, sayIt);
   Assert.deepEqual(said, [], "not again");
+  // A notice that did not show (no window state yet) is not recorded, so a later read says it.
+  Services.prefs.clearUserPref(TOOLBAR_NOTICED_PREF);
+  BookmarksToolbar.noticeHiddenToolbar("shown", unset, () => false);
+  Assert.ok(!Services.prefs.getBoolPref(TOOLBAR_NOTICED_PREF, false), "not shown: not recorded");
+  // The toolbar shown (:toolbar show earlier): both show, so nothing to say.
+  BookmarksToolbar.noticeHiddenToolbar("shown", { ...unset, toolbarHidden: false }, sayIt);
+  Assert.deepEqual(said, [], "toolbar shown: no notice");
 
   await IOUtils.remove(configFile);
   await SpecialPowers.popPrefEnv();

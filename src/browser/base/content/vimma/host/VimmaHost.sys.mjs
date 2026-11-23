@@ -1169,9 +1169,10 @@ export const VimmaHost = {
    * @param {BrowserWindow} win
    * @param {string} text
    * @param {{ untilKey?: boolean }} [options]  as Notice.show's
+   * @returns {boolean} whether it is shown
    */
   say(win, text, options) {
-    states.get(win)?.notice.show(text, options);
+    return states.get(win)?.notice.show(text, options) ?? false;
   },
 
   /**

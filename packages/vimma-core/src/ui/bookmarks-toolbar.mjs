@@ -82,10 +82,13 @@ export const TOOLBAR_NOTICE =
 /**
  * Decision 8, changed for issue #1399: config.toml shows the bookmarks toolbar but leaves
  * `[ui] toolbar` out, so the hidden default (toolbar-toggle decision 3) hides it too. Said once:
- * a `[ui] toolbar` line, either value, is a choice made knowing both.
+ * a `[ui] toolbar` line, either value, is a choice made knowing both. Not while the toolbar is
+ * shown (`:toolbar show` earlier in the session), where it would be wrong.
  * @param {{ noticed: boolean, configured: BookmarksToolbarSetting | null,
- *   toolbarSet: boolean }} state  `configured`: `[ui] bookmarks_toolbar`, null when unset
+ *   toolbarSet: boolean, toolbarHidden: boolean }} state  `configured`:
+ *   `[ui] bookmarks_toolbar`, null when unset
  */
-export function needsToolbarNotice({ noticed, configured, toolbarSet }) {
-  return !noticed && !toolbarSet && (configured === "shown" || configured === "newtab");
+export function needsToolbarNotice({ noticed, configured, toolbarSet, toolbarHidden }) {
+  const shows = configured === "shown" || configured === "newtab";
+  return !noticed && !toolbarSet && toolbarHidden && shows;
 }

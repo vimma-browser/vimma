@@ -88,7 +88,12 @@ describe("needsMigration (decision 7)", () => {
 });
 
 describe("needsToolbarNotice (decision 8, changed for issue #1399)", () => {
-  const base = { noticed: false, configured: "shown" as const, toolbarSet: false };
+  const base = {
+    noticed: false,
+    configured: "shown" as const,
+    toolbarSet: false,
+    toolbarHidden: true,
+  };
 
   test("config.toml shows it, leaves [ui] toolbar out, and nothing said it yet: say it", () => {
     expect(needsToolbarNotice(base)).toBe(true);
@@ -100,6 +105,8 @@ describe("needsToolbarNotice (decision 8, changed for issue #1399)", () => {
     expect(needsToolbarNotice({ ...base, toolbarSet: true })).toBe(false);
     expect(needsToolbarNotice({ ...base, configured: "hidden" })).toBe(false);
     expect(needsToolbarNotice({ ...base, configured: null })).toBe(false);
+    // `:toolbar show` earlier in the session: both show, so the notice would be wrong.
+    expect(needsToolbarNotice({ ...base, toolbarHidden: false })).toBe(false);
   });
 
   test("the notice names both ways to see it", () => {

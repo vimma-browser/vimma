@@ -245,10 +245,14 @@ function apply(next, text) {
     if (win) VimmaHost.say(win, text);
   });
   // Said once, usually at startup, where 1.5 s is easily missed: it stays until the next key.
-  BookmarksToolbar.noticeHiddenToolbar(config.ui.bookmarksToolbar, config.ui.toolbarSet, (text) => {
-    const [win] = windows;
-    if (win) VimmaHost.say(win, text, { untilKey: true });
-  });
+  BookmarksToolbar.noticeHiddenToolbar(
+    config.ui.bookmarksToolbar,
+    { toolbarSet: config.ui.toolbarSet, toolbarHidden: Toolbar.hidden },
+    (text) => {
+      const [win] = windows;
+      return !!win && VimmaHost.say(win, text, { untilKey: true });
+    },
+  );
   // docs/specs/search-engines.md: its problems arrive later and join the file's (showErrors).
   SearchHost.setConfig(config.search, locateKeys(text)).catch((e) =>
     console.error("vimma: [search] not applied", e),
