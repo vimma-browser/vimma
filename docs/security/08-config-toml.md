@@ -134,7 +134,7 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   the focused one, followed up its openers to a browser window (the Library and the bookmark
   dialogs are windows of their own), the Library counting as the browser window that last opened
   or raised it (`PlacesCommandHook.showPlacesOrganizer`, which only focuses a Library already
-  open, so its `opener` is not enough); when no browser window is found, or the check throws,
+  open, so its `opener` is not enough; a Library brought forward by clicking it keeps that window); when no browser window is found, or the check throws,
   the most recent browser window decides, so the check fails closed. Under `"all"`, an addition
   or change from a private window, or from a Library or dialog a private window opened or
   raised, is never written (an addition stays in Places only, listed in the base's `local`
