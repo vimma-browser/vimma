@@ -257,9 +257,11 @@ describe("addAgentProviderText", () => {
   });
 
   test("a file that does not parse is refused before anything is added", () => {
-    expect(addAgentProviderText(cfg("[ui]", "x = 1"), local, { makeDefault: false })).toEqual({
-      error: "config.toml does not parse now; fix it first (:config shows it)",
-    });
+    expect(addAgentProviderText(cfg("[ui]", "toolbar = 1"), local, { makeDefault: false })).toEqual(
+      {
+        error: "config.toml does not parse now; fix it first (:config shows it)",
+      },
+    );
   });
 
   test("a provider the TOML cannot take is refused with the parser's message", () => {

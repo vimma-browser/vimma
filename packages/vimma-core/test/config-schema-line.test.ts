@@ -88,8 +88,9 @@ describe("config.toml without a schema line", () => {
   });
 
   test("a misspelt key is not pointed at schema, which does nothing", () => {
-    expect(parseConfig(toml("schme = 2")).errors).toEqual([
-      { line: 1, path: "schme", message: 'unknown key "schme"' },
+    // No near miss of a key: skipped with a warning (#1474).
+    expect(parseConfig(toml("schme = 2")).warnings).toEqual([
+      { line: 1, path: "schme", message: 'unknown key "schme"; skipped' },
     ]);
   });
 

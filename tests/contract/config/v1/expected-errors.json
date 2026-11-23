@@ -8,7 +8,7 @@
     { "line": 14, "path": "theme.colors.acent", "suggestion": "accent" },
     { "line": 15, "path": "theme.colors.background", "suggestion": null },
     { "line": 18, "path": "unbind.insrt", "suggestion": "insert" },
-    { "line": 20, "path": "sidebar", "suggestion": null }
+    { "line": 20, "path": "scrol", "suggestion": "scroll" }
   ],
   "invalid-keymap.toml": [{ "line": 6, "path": "keys.new_tabb", "suggestion": "new_tab" }],
   "invalid-syntax.toml": [{ "line": 5, "path": "", "suggestion": null }]

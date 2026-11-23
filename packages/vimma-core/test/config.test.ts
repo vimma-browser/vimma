@@ -508,10 +508,10 @@ describe("[tabs] and [sites] sleep", () => {
       path: "tabs.sleep_after",
       message: "expected an integer, got a string",
     });
-    expect(oneError(toml("[tabs]", "sleep = 120"))).toMatchObject({
-      path: "tabs.sleep",
-      message: 'unknown key "sleep"',
-    });
+    // Not a near miss of sleep_after: skipped with a warning (#1474).
+    expect(parseConfig(toml("[tabs]", "sleep = 120")).warnings).toEqual([
+      { line: 2, path: "tabs.sleep", message: 'unknown key "sleep"; skipped' },
+    ]);
   });
 
   // Decision 21, Behaviour 17.
