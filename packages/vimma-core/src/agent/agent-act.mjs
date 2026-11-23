@@ -184,7 +184,7 @@ export function agentElementList(elements, maxBytes, seen) {
   const encoder = new TextEncoder();
   /** The cost of one more line in the JSON string, with its \n. @param {string} s */
   const cost = (s) => encoder.encode(JSON.stringify(s)).length - 2 + 2;
-  /** @type {Map<string, { n: number, line: string }>} */
+  /** @type {Map<string, { key: string, n: number, line: string }>} */
   const forms = new Map();
   /** @type {string[]} the lines written */
   const shownLines = [];
@@ -676,7 +676,7 @@ export function screenshotScale(width, dpr, height = 1, maxWidth = AGENT_SCREENS
  * corner (top-frame CSS pixels, scaled), kept inside the image; a label whose element is not on
  * the image is left out.
  * @param {Map<string, { rect: { x: number, y: number, width: number, height: number } }>} labels
- * @param {number} scale
+ * @param {number} scale  positive: AgentShot passes screenshotScale times the zoom
  * @param {{ width: number, height: number }} size  the image's, in pixels
  * @returns {{ label: string, x: number, y: number }[]}
  */
