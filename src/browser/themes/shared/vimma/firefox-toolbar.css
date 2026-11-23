@@ -5,11 +5,12 @@
 /* Firefox's navigation toolbar, its URL field and suggestions, the site's identity and the
  * panels that hang from the bar (permission prompts, the identity and add-on panels) in the
  * theme's colours (docs/specs/toolbar-toggle.md decision 21), loaded by ui/theme-host.mjs into
- * every window next to the token sheet. Shown, minimal or full, the bar is one surface with the
- * status bar and the command line: --vimma-bg-dark, its text --vimma-fg; the URL field and the
- * suggestions are --vimma-bg; a selected suggestion is a selected row (side-panel.css). Firefox
- * paints all of it from its own tokens, so pointing those at Vimma's is enough, and the bar keeps
- * Firefox's layout and icons. Under prefers-contrast and forced colours, Firefox's own
+ * every window next to the token sheet. The bar, shown or revealed in full, is one surface with
+ * the status bar and the command line: --vimma-bg-dark, its text --vimma-fg (the minimal and
+ * prompt bars paint only their field, toolbar.css); the URL field and the suggestions are
+ * --vimma-bg; a selected suggestion is a selected row (side-panel.css). Firefox paints all of it
+ * from its own tokens, so pointing those at Vimma's is enough, and the bar keeps Firefox's layout
+ * and icons. Under prefers-contrast and forced colours, Firefox's own
  * high-contrast tokens stay.
  * !important: Firefox sets these for a Firefox theme (the built-in dark one too) inline on the
  * root (LightweightThemeConsumer) and on more specific selectors (browser-colors.css,

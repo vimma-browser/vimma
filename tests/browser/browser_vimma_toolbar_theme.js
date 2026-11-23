@@ -153,7 +153,12 @@ async function assertToolbarFollowsTheTheme(label, tab) {
       !!gURLBar.querySelector(".urlbarView-row:not([selected], [stale])"),
     `${label}: the suggestions open, the first selected, more under it`,
   );
-  Assert.equal(backdrop(navBar), surface, `${label}: the minimal bar is on --vimma-bg-dark`);
+  // The minimal bar is the field alone over the page (issue #1446): its row paints nothing.
+  Assert.equal(
+    style(navBar).backgroundColor,
+    "rgba(0, 0, 0, 0)",
+    `${label}: the minimal bar paints no band around the field`,
+  );
   Assert.equal(style(fieldBox).backgroundColor, field, `${label}: the open field is --vimma-bg`);
   const rows = gURLBar.querySelectorAll(".urlbarView-row");
   const plain = /** @type {Element} */ (

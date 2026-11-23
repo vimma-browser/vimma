@@ -76,6 +76,19 @@
       visibility: collapse;
     }
 
+    /* The address bar as a box of its own over the page, not a band across the window (issue
+     * #1446): the bar keeps its full width for the layout above, but its row is not painted and
+     * lets the pointer through to the page on both sides of the field. */
+    #nav-bar {
+      background: none !important;
+      border-color: transparent !important;
+      pointer-events: none;
+    }
+
+    #urlbar-container {
+      pointer-events: auto;
+    }
+
     :is(
       #nav-bar > :not(#nav-bar-customization-target),
       #nav-bar-customization-target > :not(#urlbar-container)
