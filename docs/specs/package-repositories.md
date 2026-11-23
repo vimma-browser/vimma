@@ -1,7 +1,8 @@
 # Spec: package-repositories
 
-Status: accepted (sub-PR 1, the signer, the repository tool and the smoke test, implemented;
-sub-PR 4, the browser's hints, built; the repositories are not published yet) ·
+Status: accepted (sub-PR 1, the signer, the repository tool and the smoke test, sub-PR 2,
+package signing, and sub-PR 3, publishing, implemented; sub-PR 4, the browser's hints, built;
+the repositories are not published yet) ·
 Area: `tools/package/repos.ts` (new), `tools/package/repos-smoke.sh` (new),
 `tools/package/package.ts`, `.github/workflows/release.yml`,
 `.github/workflows/update-publish.yml`, `.github/workflows/pkgbuild.yml`,
@@ -306,8 +307,10 @@ smoke test", the last item below).
    version that is not `RSA_SIGN_PKCS1_4096_SHA256` at the `HSM` level, a reply whose CRC32Cs
    or key version name do not match, and a public key or signature that is not the
    certificate's. The signing jobs run this one file from `main` and nothing else from
-   the repository. Rejected: `gpg` through Google's PKCS#11 library for Cloud KMS (`kmsp11`)
-   and `gnupg-pkcs11-scd`, because `gnupg-pkcs11-scd` needs a certificate object beside each
+   the repository, but for `repo-sign`'s check of the metadata (decision 15), `repos.ts select`
+   and `repos.ts verify`, which import only Node's built-ins and start no other program.
+   Rejected: `gpg` through Google's PKCS#11 library for Cloud KMS (`kmsp11`) and
+   `gnupg-pkcs11-scd`, because `gnupg-pkcs11-scd` needs a certificate object beside each
    private key, which `kmsp11` provides only by generating X.509 certificates at start-up, an
    option its guide reserves for Java; `kmsp11` is not in Ubuntu's archive; and making the
    OpenPGP binding through the bridge, and `rpmsign`, `repo-add --sign` and `--clearsign`
@@ -328,7 +331,9 @@ smoke test", the last item below).
 
 7. **apt: a flat repository built with `apt-ftparchive`.** `apt-ftparchive packages` writes
    `Packages` (and `Packages.gz`, which Node's zlib writes, so no compressor is installed) with
-   `Filename: pool/vX.Y.Z/vimma_X.Y.Z_amd64.deb`,
+   `Filename: pool/vX.Y.Z/vimma_X.Y.Z_amd64.deb` and SHA-256 as its only hash, because apt
+   checks the strongest hash a file lists and SHA-256 is the one a release's `SHA256SUMS` lets
+   `repo-sign` compare (decision 15),
    `apt-ftparchive release` writes `Release`, and the signer (decision 5) makes `InRelease`.
    Users point a deb822 `.sources` file at `https://updates.vimma.dev/apt/` with `Suites: ./`.
    Reason: one architecture and one package need no suites or components, and a flat
@@ -374,9 +379,12 @@ smoke test", the last item below).
     `vimma-package=pacman`. `package-sign` adds its detached signature
     (`vimma-bin-X.Y.Z-1-x86_64.pkg.tar.zst.sig`), and both are release files that `SHA256SUMS`
     lists and `sign` gives cosign bundles. `update-publish.yml` builds the database with
-    `repo-add`, without `--sign`, in the same image, and the signer writes the detached
-    signatures of `vimma.db` and `vimma.files`. Reason: a prebuilt package spares each user the
-    build and its 450 MB, and a signed database lets pacman's default `SigLevel` check it. The package is named
+    `repo-add`, without `--sign`, from Ubuntu 24.04's `pacman-package-manager` 6.0.2 on the
+    runner, and the signer writes the detached signatures of `vimma.db` and `vimma.files`.
+    Ubuntu's `repo-add` rather than the Arch image, because the job then runs all three
+    repository tools on the runner with no container, and the same version from Debian 12
+    builds the database that pacman 7.1.0 reads in the smoke test (Research). Reason: a
+    prebuilt package spares each user the build and its 450 MB, and a signed database lets pacman's default `SigLevel` check it. The package is named
     `vimma-bin`, the AUR's name, so a `PKGBUILD` install moves to the repository on its next
     `pacman -Syu` without removing anything. Rejected: building in the user's `makepkg` from a
     repository of `PKGBUILD`s, because pacman has no such repository type.
@@ -395,13 +403,14 @@ smoke test", the last item below).
     release, and GitHub already serves them; integrity does not depend on the host or GitHub,
     because the signed metadata pins each package's checksum. Every client checked follows
     redirects to HTTPS (Research).
-12. **The host serves files, never symlinks.** The publish step copies `repo-add`'s
-    `vimma.db.tar.gz` to `vimma.db` (and the same for `vimma.files` and the signatures), because
-    how a symlink committed to `vimma-updates` reaches Cloudflare's asset upload was not
-    checked, and copies leave nothing to check.
+12. **The host serves files, never symlinks.** `repos.ts` writes `vimma.db` and `vimma.files` as
+    plain files (from `repo-add`'s entries, decision 15), and the signatures beside them,
+    because how a symlink committed to `vimma-updates` reaches Cloudflare's asset upload was not
+    checked, and plain files leave nothing to check.
 13. **Metadata is rebuilt from the release files each time.** For every version the metadata
     keeps (decision 20), `update-publish.yml` downloads that release's packages, checks them
     against its `SHA256SUMS` and that file's cosign bundle, as `prepare` does for the manifest,
+    checks each `.rpm` and pacman package's own signature against the committed certificate,
     and builds the metadata from them in an empty directory. Reason: the result depends only on
     signed release files, never on what the host published before, so a tampered host cannot
     carry an entry into the next build; and it is the same build every run. Cost: about 90 MB
@@ -417,9 +426,31 @@ smoke test", the last item below).
 15. **`update-publish.yml` publishes the repositories with the manifest.** A `repo-prepare` job
     (no secret) downloads and checks the release files and builds the unsigned metadata with
     `tools/package/repos.ts`; a `repo-sign` job (environment `package-signing`, running only
-    the signer) signs `Release`, `repomd.xml`, `vimma.db` and `vimma.files`, and checks each
-    signature with `gpgv` against the committed key; `publish` commits the metadata, the
-    signatures, `_redirects` and `_headers` to `vimma-updates` in the same commit as the manifest. Reason: one commit makes the update
+    the signer and `repos.ts`'s checks) chooses the releases again from GitHub's list, reads
+    their `SHA256SUMS` from GitHub, refuses metadata that is not exactly what `repos.ts` writes
+    for them (`repos.ts verify`: every package under its release's SHA-256, every index under
+    the checksum its parent lists, no other release, file or hash, and the key in its three
+    places the committed one), then signs `Release`, `repomd.xml`, `vimma.db` and `vimma.files`,
+    and checks each signature with `gpgv` against the committed key. It reads `SHA256SUMS` only
+    under `release.yml`'s cosign signature, and reads each metadata file in the exact shape the
+    build writes, refusing it unless writing back what it read gives the same bytes, because a
+    check that reads a file more leniently than apt, libsolv or libarchive can be shown one
+    thing while they read another (a field repeated in other case, an entry in an XML comment,
+    a tar entry behind a pax size). For the same reason `repos.ts` writes the pacman databases
+    itself from repo-add's entries, without `%MD5SUM%`, rather than signing repo-add's tar,
+    compares them decompressed, and `repo-sign` writes their gzip itself before signing,
+    because two runners' zlib may compress the same tar differently. The relations the
+    metadata may declare are pinned to those `tools/package/package.ts` gives Vimma's
+    packages (and, for the `.rpm`, the exact sonames and symbol versions rpmbuild's ELF scan
+    found and the desktop file's provides; and what a kept release built by an earlier
+    package.ts still declares, recorded from its packages), with no version on an rpm relation
+    but Vimma's own provides at the release's version, and its file lists to Vimma's own paths,
+    because signed metadata with another dependency or provide would let a package manager
+    install or replace any other package as root, and a version Vimma does not declare can make
+    an upgrade unsatisfiable, which dnf skips silently. The
+    check is in the signing job, because `repo-prepare` runs the build tools and their packages, and a fault
+    there must not be able to get other packages or older releases signed; `publish` commits
+    the metadata, the signatures, `_redirects` and `_headers` to `vimma-updates` in the same commit as the manifest. Reason: one commit makes the update
     check and the repositories announce a release at the same moment, and the job that holds
     the deploy key already exists (`update-publish` environment). Rejected: a separate
     workflow, because it would need a second deploy key or a second run of every check.
@@ -455,8 +486,12 @@ smoke test", the last item below).
     Rejected: a separate host, which would separate package traffic and could move later
     without touching the update check, but at that cost.
 20. **apt and rpm metadata keep the last 5 releases; pacman's database keeps the latest only.**
-    Reason: older versions let a user go back after a bad release
-    (`sudo apt install vimma=X.Y.Z`, `sudo dnf downgrade vimma`), at about 90 MB more download
+    The releases kept are the newest published releases that carry the pacman package and its
+    signature, and the newest published release must be one of them (`repos.ts select`),
+    because a release built while `PACKAGE_REPOS_ENABLED` was not `true` has an unsigned `.rpm`,
+    which dnf and zypper refuse, and the repositories must never stop at an older version while
+    a newer one is out. Reason for keeping 5: older versions let a user go back after a bad
+    release (`sudo apt install vimma=X.Y.Z`, `sudo dnf downgrade vimma`), at about 90 MB more download
     per version in `repo-prepare`; pacman databases normally carry one version of a package.
 21. **The `.deb` and `.rpm` do not add their own repository or key on install.** Users set the
     repository up once with the guide's commands. Reason: a package that edits the package
@@ -527,7 +562,7 @@ New surface:
   package manager's sources themselves (decision 21).
 - **Repository detection** reads whether three fixed paths exist; it sends nothing anywhere.
 
-`docs/security/14-build-and-release-supply-chain.md` gains a rule (B20) for the
+`docs/security/14-build-and-release-supply-chain.md` gains a rule (B21) for the
 `package-signing` environment, the KMS key and its IAM binding, the jobs that may use it and
 what they run, the redirect targets, and the public key's three copies; `docs/security/16-update-check.md` covers
 the new hints and the repository detection. Each implementing pull request that touches
@@ -551,14 +586,19 @@ package file, and no placeholder`, `refuses a tag or file name outside [A-Za-z0-
   `the .sources file carries the committed key inline`, `the .repo file sets gpgcheck and
 repo_gpgcheck`, `the .repo file's only section id is [vimma]`, and `refuses metadata that does
 not match the release` (a `.deb`, `.rpm` or pacman package whose own name or version differs
-  from its release's).
+  from its release's), `keeps the newest published releases that carry the repository packages,
+newest first`, `refuses metadata whose %s checksum is not the one the release's SHA256SUMS
+lists`, `refuses metadata for other releases than the ones chosen, such as an older set` and
+  the other `verify` cases.
 - vitest, `tools/package/test/release-workflow.test.ts`: `release.yml calls
 update-publish.yml's package-sign`, `signs the .rpm and the pacman package before mar and
 sign`, `the pacman package is in SHA256SUMS and gets a cosign bundle`,
   `nothing is signed while PACKAGE_REPOS_ENABLED is not true`.
 - vitest, `tools/update/test/update-workflow.test.ts`: `package-sign and repo-sign use the
-package-signing environment and run only the signer`, `no job in update-signing names the
-package key, and no job in package-signing names the update key`,
+package-signing environment and run only the signer` (for `repo-sign`: `repo-sign uses the
+package-signing environment and runs only the signer and repos.ts's checks`), `repo-sign checks
+the metadata against the releases it chooses itself before KMS signs`, `no job in
+update-signing names the package key, and no job in package-signing names the update key`,
   `publish pushes the metadata in the manifest's commit`, `the host's key equals the committed
 key`.
 - vitest, `packages/vimma-core/test/updates.test.ts`: `install type pacman from
@@ -589,7 +629,7 @@ guide`.
 - `docs/runbook/`: the KMS key, its IAM binding and the environment (the commands under
   Delivery), making the certificate, replacing the key, turning the repositories on and off,
   and the host's new paths.
-- `docs/security/14-build-and-release-supply-chain.md` (B20) and
+- `docs/security/14-build-and-release-supply-chain.md` (B21) and
   `docs/security/16-update-check.md`.
 - Implemented specs get `(Since changed: …)` notes where this replaces their decision:
   [m6a-updater](m6a-updater.md) decision 20 and limit 4, [rpm-package](rpm-package.md)
@@ -609,8 +649,10 @@ Each sub-PR is mergeable on its own; nothing reaches users until the maintainer 
    `update-publish.yml`'s new `package-sign` job (`.rpm` and pacman signatures, `SHA256SUMS`);
    the pacman marker in `package.ts`. Security review.
 3. **Publishing.** `update-publish.yml`'s `repo-prepare` and `repo-sign` and the extended
-   `publish`; `configs/package-signing/vimma-packages.asc`; the host's paths;
-   `docs/security/14-build-and-release-supply-chain.md` (B20); the runbook. Security review.
+   `publish`; `configs/package-signing/vimma-packages.asc`, which the maintainer makes and
+   commits (below; until then `repo-prepare` stops with an error that names the runbook step);
+   the host's paths;
+   `docs/security/14-build-and-release-supply-chain.md` (B21); the runbook. Security review.
 4. **Browser and docs.** The `pacman` install type, repository detection and hints in
    `updates.mjs`, the line of decision 22 behind `vimma.feature.packageRepos`;
    `docs/guide.md`'s update-hint table, `docs/security/16-update-check.md`; the
@@ -661,7 +703,8 @@ gh variable set GCP_PACKAGE_KEY_VERSION --body \
 ```
 
 Then the certificate: `node tools/package/openpgp-kms.ts certify --key-version
-"$GCP_PACKAGE_KEY_VERSION" --created <time> --user-id 'Vimma packages <packages@vimma.dev>'`
+"$GCP_PACKAGE_KEY_VERSION" --created <time> --user-id 'Vimma packages <packages@vimma.dev>'
+--out configs/package-signing/vimma-packages.asc`
 run with the maintainer's own Google Cloud credentials, which writes
 `configs/package-signing/vimma-packages.asc` for a pull request. The binding names the
 `package-signing` subject only; `update-primary`'s binding is not changed, so neither

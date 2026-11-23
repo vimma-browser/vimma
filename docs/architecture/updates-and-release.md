@@ -136,6 +136,17 @@ also starts `aur.yml` and `homebrew.yml`.
    `public/updates/browser/Linux_x86_64-gcc3/vimma/update.xml` (never forced), and waits until
    `updates.vimma.dev` serves it. Without `UPDATES_ENABLED`, or in a dry run, it signs and checks
    everything and pushes nothing.
+4. **The package repositories** ([package-repositories](../specs/package-repositories.md)),
+   while `PACKAGE_REPOS_ENABLED` is `true` and only in the Linux release's run: `repo-prepare`
+   (no secret) chooses the releases to keep (`tools/package/repos.ts select`), checks their
+   packages against each `SHA256SUMS`, its cosign bundle and the committed certificate
+   (`configs/package-signing/`), and builds the apt, rpm and pacman metadata (`repos.ts build`).
+   `repo-sign` (environment `package-signing`, the signer and `repos.ts` from `main` alone)
+   chooses the releases again, checks the metadata against their `SHA256SUMS` from GitHub
+   (`repos.ts verify`), and signs it with the Cloud KMS package key through
+   `tools/package/openpgp-kms.ts`. `publish` then waits for it, checks the signed tree again
+   and commits it with the manifest in one commit; the host serves only metadata and redirects
+   each package to its GitHub Release file.
 
 `-f offer=nothing` publishes a signed manifest that offers no update, which pulls a bad release
 back. The macOS `.dmg` gets its own manifest under `Darwin_aarch64-gcc3`. Tests:

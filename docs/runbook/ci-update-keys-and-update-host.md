@@ -8,7 +8,8 @@ All steps but 4 (the offline secondary key) are done. Step 7 sets up `update-pub
 signs and publishes a manifest for every published release; nothing is published while the
 repository variable `UPDATES_ENABLED` is not `true`. It is `true`, so update notices are on for
 every install of 0.1.2 or later (0.1.1 pins no key and never shows one). Step 8, the MAR that
-`release.yml` signs through the same workflow, needs no setup of its own.
+`release.yml` signs through the same workflow, needs no setup of its own. Step 9, the signed
+apt, rpm and pacman repositories on the same host, is not done yet: they stay off until it is.
 
 **1. The manifest repository** (decision 18): it holds only manifests.
 
@@ -448,3 +449,159 @@ PID across the update, while the AppImage's relaunch script starts a new process
 profile's `lock` link names. Done for 0.1.17 to 0.1.18 (Firefox 159.0.1 to 160.0) on
 2026-11-12: both installs took the update and kept the profile
 ([#456](https://github.com/vimma-browser/vimma/issues/456)).
+
+**9. The package repositories** (spec package-repositories). `updates.vimma.dev` also serves
+signed apt, rpm (dnf and zypper) and pacman repositories, so that a system's own upgrade
+command updates Vimma. They have their own key, a Cloud KMS key in its own key ring, which only
+the `package-signing` environment can use; the update key and `update-signing` are not changed
+by any of this. Nothing is signed or published for them while the repository variable
+`PACKAGE_REPOS_ENABLED` is not `true`, and `update-publish.yml`'s `repo-prepare` stops with an
+error naming this step while `configs/package-signing/vimma-packages.asc` is not committed.
+
+The jobs, in the Linux release's run of `update-publish.yml` (step 7), after `prepare`:
+`repo-prepare` (no secret) chooses the releases the repositories keep, the newest published
+releases whose files include the pacman package (which a release has only when it was built
+with `PACKAGE_REPOS_ENABLED`), at most five, the newest published release among them; checks
+each one's `SHA256SUMS` against its cosign bundle, its `.deb`, `.rpm` and pacman package against
+those sums, and the packages' own signatures against the committed certificate; and builds the
+metadata with `tools/package/repos.ts`. `repo-sign` (environment `package-signing`,
+`id-token: write` only, the signer and `repos.ts` from `main` and nothing else) chooses the
+releases again, checks the metadata against their `SHA256SUMS` from GitHub with
+`repos.ts verify`, signs `apt/Release` (as `InRelease`), `repomd.xml`, `vimma.db` and
+`vimma.files` with KMS, and checks each signature with `gpgv`. `publish` checks it all again
+and commits it with the manifest, in one commit (`vimma X.Y.Z: update manifest, serial S;
+package repositories`), then waits until the host serves the new `InRelease`, the committed key
+and a redirect for the newest `.deb`. Each run builds the metadata from the release files
+alone, so a re-run of the manifest (`gh workflow run update-publish.yml -f tag=vX.Y.Z`) also
+rebuilds and re-signs the repositories; an `offer=nothing` or macOS run leaves them as they are.
+
+The host's paths, all written by `publish` (`vimma-updates` needs no change by hand):
+
+| Path under `public/`                                               | What it is                                                          |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `apt/Packages`, `Packages.gz`, `Release`, `InRelease`              | a flat apt repository (`Suites: ./`)                                |
+| `apt/vimma.sources`                                                | apt's setup file, the key inline in `Signed-By`                     |
+| `rpm/repodata/` (`repomd.xml`, `.asc`, `.key` and the index files) | the repository dnf and zypper read                                  |
+| `rpm/vimma.repo`                                                   | the setup file for dnf and zypper                                   |
+| `arch/x86_64/vimma.db`, `vimma.files` and their `.sig`             | pacman's database, the newest release only                          |
+| `vimma-packages.asc`                                               | the public key, as committed                                        |
+| `_redirects`                                                       | each package path to its file on the GitHub Release                 |
+| `_headers`                                                         | `no-cache` for `/updates/*`, `/apt/*`, `/rpm/*`, `/arch/*`, the key |
+
+Each run replaces `public/rpm/repodata/` whole, and its index files' names change with their
+content, so a dnf or zypper that read the previous `repomd.xml` just before the deploy can get
+a 404 for an index file once; its next refresh reads the new one. Nothing needs doing.
+
+Packages are never on the host: `/apt/pool/<tag>/<file>`, `/rpm/packages/<tag>/<file>` and
+`/arch/x86_64/<file>` answer 302 to the release's download URL. `_headers` replaces the file of
+step 1 and keeps its rule for `/updates/*`.
+
+One-time setup, in the project and location of the update key (step 3, whose workload
+identity pool and provider it reuses; the provider's condition from step 7b already admits
+`update-publish.yml` on `main` and needs no change). About 2.50 USD a month for the HSM key
+version.
+
+```sh
+PROJECT=<the update key's project> LOCATION=<its location>
+gcloud kms keyrings create vimma-packages --location "$LOCATION"
+gcloud kms keys create package-signing --keyring vimma-packages --location "$LOCATION" \
+  --purpose asymmetric-signing --default-algorithm rsa-sign-pkcs1-4096-sha256 \
+  --protection-level hsm
+
+# The binding names the package-signing environment alone; update-primary's is not changed.
+NUMBER=$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')
+read OWNER_ID REPO_ID < <(gh api repos/vimma-browser/vimma --jq '"\(.owner.id) \(.id)"')
+SUBJECT="repo:vimma-browser@$OWNER_ID/vimma@$REPO_ID:environment:package-signing"
+gcloud kms keys add-iam-policy-binding package-signing --keyring vimma-packages \
+  --location "$LOCATION" --role roles/cloudkms.signerVerifier \
+  --member "principal://iam.googleapis.com/projects/$NUMBER/locations/global/workloadIdentityPools/github/subject/$SUBJECT"
+gcloud kms keys get-iam-policy package-signing --keyring vimma-packages --location "$LOCATION"   # that member alone
+
+# The environment, main alone, before any run uses it, and the key version.
+R=repos/vimma-browser/vimma
+gh api -X PUT $R/environments/package-signing --input - <<'JSON'
+{ "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true } }
+JSON
+gh api -X POST $R/environments/package-signing/deployment-branch-policies -f name=main -f type=branch
+gh variable set GCP_PACKAGE_KEY_VERSION --body \
+  "projects/$PROJECT/locations/$LOCATION/keyRings/vimma-packages/cryptoKeys/package-signing/cryptoKeyVersions/1"
+```
+
+Data Access audit logs for Cloud KMS (step 3) cover the new key ring when they are on for the
+project; check IAM & Admin → Audit Logs.
+
+The certificate: the OpenPGP key that users import, built around the KMS key with one KMS
+signature (spec, decision 4). Its creation time is part of the fingerprint, so pick it once
+(the current UTC time) and never change it. With the maintainer's own `gcloud` credentials:
+
+```sh
+KMS_ACCESS_TOKEN=$(gcloud auth print-access-token) node tools/package/openpgp-kms.ts certify \
+  --key-version "$(gh variable get GCP_PACKAGE_KEY_VERSION)" --created 2026-11-21T12:00:00Z \
+  --user-id 'Vimma packages <packages@vimma.dev>' --out configs/package-signing/vimma-packages.asc
+node tools/package/openpgp-kms.ts fingerprint --cert configs/package-signing/vimma-packages.asc
+gpg --show-keys configs/package-signing/vimma-packages.asc   # the same fingerprint, RSA 4096, [SC]
+```
+
+Commit the certificate in a pull request of its own and record its fingerprint here; the guide
+prints it next to each setup command.
+
+| Key                                                        | Fingerprint  |
+| ---------------------------------------------------------- | ------------ |
+| `vimma-packages/package-signing`, version 1, HSM, RSA-4096 | not made yet |
+
+Turning the repositories on: `release.yml` signs the `.rpm` and builds the pacman package only
+while the variable is `true`, and the repositories list only releases that have it, so set it
+before the release that should be the first in them, then check with a dry run once that
+release is published (it signs with KMS and pushes nothing; the signatures stay a day in the
+run's artifacts):
+
+```sh
+gh variable set PACKAGE_REPOS_ENABLED --body true
+gh workflow run update-publish.yml -f tag=vX.Y.Z -f dry_run=true
+```
+
+After the first real run, check what users will fetch:
+
+```sh
+curl -fsS https://updates.vimma.dev/apt/InRelease | gpg --verify   # with the key imported
+curl -sI https://updates.vimma.dev/apt/pool/vX.Y.Z/vimma_X.Y.Z_amd64.deb   # 302 to the release
+curl -fsS https://updates.vimma.dev/vimma-packages.asc | cmp - configs/package-signing/vimma-packages.asc
+```
+
+Then try each setup command of the guide on a real Debian or Ubuntu, Fedora, openSUSE and Arch
+install. `tools/package/repos-smoke.sh` runs the same steps in containers with a throwaway key.
+
+When a run fails: `vX.Y.Z is not among the releases the repositories keep` seconds after a
+release was published is GitHub's list of releases lagging behind it, as for the manifest
+(step 7): re-run the failed jobs. `the newest release, vX.Y.Z, has no vimma-bin-…` means the
+newest release was built while `PACKAGE_REPOS_ENABLED` was not `true`; ship a new release with it
+on, or turn it off until then. `_headers is not one repos.ts writes` (or `_redirects`) means
+a rule was added to `vimma-updates` by hand: move it into `headersFile()` or `redirectsFile()`
+in `tools/package/repos.ts`, which then writes it every release (a change to `headersFile()`
+appends its previous output to `HOST_HEADERS_BEFORE`), and run again.
+
+While the repositories are on, a failed `repo-prepare` or `repo-sign` holds back the release's
+update manifest as well, since both are published in one commit. When the manifest cannot wait
+(a security release, or a KMS outage), ship it alone: `gh variable delete
+PACKAGE_REPOS_ENABLED`, then `gh workflow run update-publish.yml -f tag=vX.Y.Z` (the repository
+jobs are skipped and `publish` pushes the manifest only). Set it again with
+`gh variable set PACKAGE_REPOS_ENABLED --body true` before the next release is built: a release
+built while it is unset has no pacman package, and the repository jobs refuse a newest release
+without one. That release's run then brings the repositories up to date.
+
+Turning them off: `gh variable delete PACKAGE_REPOS_ENABLED`. Releases are then made as before
+(unsigned `.rpm`, no pacman package) and no run signs or pushes repository metadata; the host
+keeps the last published metadata, so users of the repositories stay on that version until it
+comes back. To withdraw the repositories as well, remove `public/apt`, `public/rpm` and
+`public/arch` from `vimma-updates` in a commit there.
+
+Replacing the key (a lost KMS key, a leak, or a move): there is no subkey to swap behind a
+stable primary, so a new key version or key is a new OpenPGP key every user imports again. Make
+the new version (`gcloud kms keys versions create --key package-signing --keyring
+vimma-packages --location "$LOCATION"`), point `GCP_PACKAGE_KEY_VERSION` at it, make and commit
+its certificate as above, record the new fingerprint, then disable the old version
+(`gcloud kms keys versions disable <n> …`). Tell users in the release notes: apt users fetch
+`vimma.sources` again; dnf and zypper users remove the old key (`sudo rpm -e gpg-pubkey-<id>`)
+and accept the new one at the next upgrade; pacman users run the guide's `pacman-key --add` and
+`--lsign-key` with the new fingerprint. To stop all signing at once, disable the key version or
+remove its IAM binding.
