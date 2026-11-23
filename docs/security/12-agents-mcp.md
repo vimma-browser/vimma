@@ -1055,9 +1055,11 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   showed. A fill allows its submission only after its last field is set, so a form the page
   submits while it is being filled is cancelled like any other.
   Before every click and every fill the tab is marked in the parent (`AgentActors.agentMark`; the
-  marks and the `http-on-modify-request` observer are in `actors/submit-marks.mjs`, one instance
-  per parent process), after the page's transient user activation is consumed in every frame,
-  and from then on, while its top document is the same,
+  marks and the `http-on-opening-request` observer are in `actors/submit-marks.mjs`, one instance
+  per parent process; the request is checked as the parent opens it, in the order the page's
+  process started its submissions, so a page's submission started before a fill's last field
+  can never take the allowance of the asked one, issue #1484), after the page's transient user
+  activation is consumed in every frame, and from then on, while its top document is the same,
   the request of every navigating form submission in it (any frame, a submit button,
   `requestSubmit()` or a later `submit()`, whatever the page cached) **must** be cancelled
   before it is sent when it carries no transient user activation, unless it is the one
@@ -1145,6 +1147,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_page_script_submit_after_a_fill_is_cancelled`](../../tests/browser/browser_vimma_mcp_fill.js),
   [`the_submit_check_test_hook_is_read_only_in_automation`](../../tests/browser/browser_vimma_security_invariants.js),
   [`test_a_page_submit_during_a_fill_is_not_the_asked_one`](../../tests/browser/browser_vimma_mcp_fill.js),
+  [`test_a_page_submit_that_reaches_the_network_late_is_not_the_asked_one`](../../tests/browser/browser_vimma_mcp_fill.js),
   [`test_selects_ranges_and_a_submit_button_of_another_form`](../../tests/browser/browser_vimma_mcp_fill.js),
   [`a fill that submits: the destination, then the fields, y or n only`](../../packages/vimma-core/test/agent-prompt.test.ts),
   [`test_submit_question_lists_the_fields_it_sends`](../../tests/browser/browser_vimma_mcp_submit.js),

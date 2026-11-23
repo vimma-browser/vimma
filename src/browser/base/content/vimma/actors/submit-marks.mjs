@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // The agent's submission blocker and step counts (docs/specs/mcp-forms.md F16; security.md M28;
-// issue #1028): the marks of the tabs an agent stepped in, and the http-on-modify-request
+// issue #1028): the marks of the tabs an agent stepped in, and the http-on-opening-request
 // observer that cancels a submission the user was not asked about. One instance per parent
 // process: import this module only by its relative path, so that every importer shares the
 // marks with the one observer.
@@ -75,6 +75,10 @@ export const whereOf = (uri) => `${uri.prePath}${uri.filePath}`;
  * cancelled unless it is the one the question allowed, to the method and destination it named.
  * The request carries its document's transient user activation, which an agent's click never
  * gives, so a submission with it is the user's, and it ends the mark.
+ * Checked as the parent opens the request, in the order the page's process started the
+ * submissions (issue #1484): `http-on-modify-request` comes only after the proxy lookup and
+ * other checks off the main thread, so a page's submission started before the last field could
+ * reach it after the allowance for the asked one opened, and be sent in its place.
  * @param {unknown} subject  an nsISupports
  */
 function onRequest(subject) {
@@ -130,7 +134,7 @@ export function markOf(browser) {
 export function forgetMark(id) {
   submitMarks.delete(id);
   if (!submitMarks.size && submitObserver) {
-    Services.obs.removeObserver(submitObserver, "http-on-modify-request");
+    Services.obs.removeObserver(submitObserver, "http-on-opening-request");
     submitObserver = null;
   }
 }
@@ -150,7 +154,7 @@ export function setMark(top, doc, allowed) {
   }
   if (!submitObserver) {
     submitObserver = onRequest;
-    Services.obs.addObserver(submitObserver, "http-on-modify-request");
+    Services.obs.addObserver(submitObserver, "http-on-opening-request");
   }
   let where = null;
   if (allowed) {
