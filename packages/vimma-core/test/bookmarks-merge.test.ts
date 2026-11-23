@@ -439,6 +439,7 @@ describe("bookmarks.toml: outside changes written to the file (three-way merge)"
     // is not Sync's dedupe of the removed one, and the file's removal cannot take it.
     const two = `${FILE}\n[bookmarks.home]\n"Mail" = "https://mail.example.com/"\n"h" = "https://h.example/"\n`;
     const { base, tree } = agreed(two);
+    const workMail = at(tree, "work", "Mail").guid;
     const changed = edit(tree, (t, find) => {
       remove(t, find("home", "Mail"));
       move(t, find("work", "Mail"), topFolder(t, "home") as Item, 0);
@@ -456,6 +457,8 @@ describe("bookmarks.toml: outside changes written to the file (three-way merge)"
       ],
       home: ["Mail https://mail.example.com/", "h https://h.example/"],
     });
+    const home = r.base.tables.find((t) => t.name === "home");
+    expect(home?.entries.find((e) => e.path.join("/") === "Mail")?.guid).toBe(workMail);
   });
 
   test("a workspace folder renamed renames the table; moved or deleted removes it", () => {

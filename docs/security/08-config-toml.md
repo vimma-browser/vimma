@@ -147,8 +147,8 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   it. A merge whose edit does not read back as merged, or a write that fails, writes nothing and
   pauses until the file changes, keeping Places' change; when both sides changed one bookmark
   the file wins; a removal on one side and a change on the other keeps the item. A Places item
-  is taken for a base item whose guid Sync's dedupe replaced only when its guid is one the base
-  never held and the base guid is gone from Places, so a bookmark moved from another table, or a
+  is taken for a base item whose guid Sync's dedupe replaced only when no table of the base
+  holds its guid and the base guid is gone from Places, so a bookmark moved from another table, or a
   new one where a moved one was, is never taken for a base item that a removal in the file then
   deletes (#1434). When Places
   made a new database at start-up (a restored backup), the first run writes nothing back
