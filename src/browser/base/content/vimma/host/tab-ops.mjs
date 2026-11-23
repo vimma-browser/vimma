@@ -8,6 +8,7 @@
 
 import { refusedScheme } from "../core/pageurl.mjs";
 import { tabTarget } from "../core/tabs.mjs";
+import { PaneViews } from "../split/PaneView.mjs";
 import { getTabLabel, setTabLabel } from "../workspaces/tab-labels.mjs";
 import { xulElementById } from "./browser-ops.mjs";
 
@@ -78,11 +79,7 @@ export function closeTab(win) {
     }
     return;
   }
-  const { TabMetrics } = gBrowser;
-  gBrowser.removeCurrentTab({
-    animate: true,
-    metricsContext: TabMetrics.userTriggeredContext(TabMetrics.METRIC_SOURCE.KEYBOARD),
-  });
+  removeTab(win, gBrowser.selectedTab);
 }
 
 /**
@@ -93,12 +90,30 @@ export function closeTab(win) {
  */
 export function closeTabById(win, tab) {
   if (tab.pinned) return;
+  removeTab(win, tab);
+}
+
+/**
+ * Closes `tab` as the keyboard would. The selected tab of a shown split's pane is succeeded by
+ * the pane core focuses next, so the split stays on screen (docs/specs/m4-split-panes.md, "Close
+ * tab in a pane"; issue #1426): Firefox would select the next tab in the strip, which may be a
+ * lone tab beside the split. A successor is read when the tab starts closing
+ * (`_beginRemoveTab`), before any TabClose a listener could act on.
+ * @param {BrowserWindow} win
+ * @param {MozTabbrowserTab} tab
+ */
+function removeTab(win, tab) {
   const gBrowser = gBrowserOf(win);
   const { TabMetrics } = gBrowser;
+  const next = PaneViews.get(win)?.successorOf(tab);
+  const before = next ? gBrowser.getSuccessor(tab) : null;
+  if (next) gBrowser.setSuccessor(tab, next);
   gBrowser.removeTab(tab, {
     animate: true,
     metricsContext: TabMetrics.userTriggeredContext(TabMetrics.METRIC_SOURCE.KEYBOARD),
   });
+  // A beforeunload prompt answered "stay" keeps the tab: its successor goes back as it was.
+  if (next && !tab.closing) gBrowser.setSuccessor(tab, before);
 }
 
 /**

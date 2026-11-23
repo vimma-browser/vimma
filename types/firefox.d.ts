@@ -986,6 +986,9 @@ interface Tabbrowser {
   unpinTab(tab: MozTabbrowserTab): void;
   removeTab(tab: MozTabbrowserTab, options?: TabbrowserRemoveOptions): void;
   removeCurrentTab(options?: TabbrowserRemoveOptions): void;
+  /** The tab Firefox selects when `tab` closes or hides while selected; null: its own pick. */
+  getSuccessor(tab: MozTabbrowserTab): MozTabbrowserTab | null;
+  setSuccessor(tab: MozTabbrowserTab, successor: MozTabbrowserTab | null): void;
   addTab(url: string, options?: TabbrowserAddOptions): MozTabbrowserTab;
   addTrustedTab(url: string, options?: TabbrowserAddOptions): MozTabbrowserTab;
   addProgressListener(listener: object): void;

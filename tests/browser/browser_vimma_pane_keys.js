@@ -292,6 +292,37 @@ add_task(async function x_closes_the_pane_then_the_last_pane_closes_the_tab() {
   await reset();
 });
 
+// Issue #1426: tab.close on a pane's tab selects the pane core focuses next, never the tab right
+// of the split in the strip, which Firefox would pick and which would hide the split.
+add_task(async function x_on_a_panes_tab_keeps_the_split_on_screen() {
+  const a = /** @type {SplitTab} */ (await openPage("a"));
+  const b = /** @type {SplitTab} */ (await openPage("b"));
+  const c = /** @type {SplitTab} */ (await openPage("c"));
+  const d = await openPage("d");
+  Assert.ok(view().showTabs([a, b, c], c).ok, "a | b | c, c focused, d alone to the right");
+  await focusContent(c.linkedBrowser);
+  await until(() => VimmaHost.status(window).mode === "normal", "c's page is in normal mode");
+
+  let closing = BrowserTestUtils.waitForTabClosing(c);
+  EventUtils.synthesizeKey("x");
+  await closing;
+  await until(() => paneCount() === 2, "the split shrinks to two panes");
+  Assert.ok(!view().hidden, "the split stays on screen");
+  Assert.deepEqual(paneTabs(), [a, b], "a and b remain");
+  Assert.equal(gBrowser.selectedTab, b, "the absorbing pane's tab is selected, not d");
+  Assert.equal(focusedTab(), b, "and its pane has focus");
+
+  await focusContent(b.linkedBrowser);
+  closing = BrowserTestUtils.waitForTabClosing(b);
+  EventUtils.synthesizeKey("x");
+  await closing;
+  await until(() => !view().panes, "the last two panes: the split ends");
+  Assert.equal(gBrowser.selectedTab, a, "the pane left shows its tab, not d");
+  await until(() => !a.splitview, "a leaves the split's wrapper");
+  Assert.ok(d.isConnected && !d.closing, "d stays open");
+  await reset();
+});
+
 add_task(async function x_on_the_last_pane_of_a_pinned_tab_follows_tab_close() {
   const a = await openPage("a");
   const pinned = await openPage("pinned");
