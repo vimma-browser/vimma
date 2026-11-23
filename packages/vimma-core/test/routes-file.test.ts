@@ -8,8 +8,10 @@ import {
   MAX_ROUTES_FILE_BYTES,
   ROUTES_FILE,
   appendRouteFileText,
+  formatRoutesCache,
   inlineRoutes,
   moveRoutesText,
+  parseRoutesCache,
   parseRoutesFile,
   routesInForce,
 } from "../src/config/routes-file.mjs";
@@ -355,11 +357,68 @@ describe("moveRoutesText", () => {
     ]);
   });
 
+  test("the comments directly above the next non-routes header stay with it", () => {
+    const text = [
+      "[[routes]]",
+      'domain = "a.example"',
+      'workspace = "w"',
+      "# Theme: mine",
+      "[theme]",
+      'font = "monospace"',
+      "",
+    ].join("\n");
+    const r = moveRoutesText(text, rule);
+    if ("error" in r) throw new Error(r.error);
+    expect(r.routes).toBe(`[[routes]]\ndomain = "a.example"\nworkspace = "w"\n\n${block}`);
+    expect(r.config.split("\n").slice(-4)).toEqual([
+      "# Theme: mine",
+      "[theme]",
+      'font = "monospace"',
+      "",
+    ]);
+  });
+
+  test("a top-level dotted routing.default_workspace is refused; a commented [routing] is text", () => {
+    expect(moveRoutesText('routing.default_workspace = "w"\n', rule)).toEqual({
+      error:
+        "config.toml's default_workspace is not under a [routing] header; move them to routes.toml by hand",
+    });
+    const commented =
+      '# [routing]\n# default_workspace = "w"\n\n[[routes]]\ndomain = "a.example"\nworkspace = "w"\n';
+    const r = moveRoutesText(commented, rule);
+    if ("error" in r) throw new Error(r.error);
+    expect(r.moved).toEqual({ rules: 1, defaultWorkspace: false });
+    expect(r.config.startsWith('# [routing]\n# default_workspace = "w"\n\n# Moved to')).toBe(true);
+  });
+
   test("a multi-line string in a rule is moved whole", () => {
     const text = '[[routes]]\ndomain = "a.example"\nworkspace = """\nw"""\n';
     const r = moveRoutesText(text, rule);
     if ("error" in r) throw new Error(r.error);
     expect(parseRoutesFile(r.routes).routes?.[0]?.workspace).toBe("w");
     expect(parseConfig(r.config).config?.routes).toEqual([]);
+  });
+});
+
+describe("the routes cache (vimma.routes.cache)", () => {
+  const routes = resolveRoutes([{ domain: "a.example", workspace: "w" }]);
+
+  test("it records which file its rules came from", () => {
+    const text = formatRoutesCache(routes, "routes.toml");
+    expect(parseRoutesCache(text)).toEqual({ file: "routes.toml", routes });
+    expect(parseRoutesCache(formatRoutesCache([], "config.toml"))).toEqual({
+      file: "config.toml",
+      routes: [],
+    });
+  });
+
+  test("an older cache, a bare array, holds config.toml's rules", () => {
+    expect(parseRoutesCache(JSON.stringify(routes))).toEqual({ file: "config.toml", routes });
+  });
+
+  test("anything else is no rule from config.toml", () => {
+    for (const text of ["", "{", "3", '{"file":"x.toml","routes":[]}', '{"routes":{}}']) {
+      expect(parseRoutesCache(text)).toEqual({ file: "config.toml", routes: [] });
+    }
   });
 });

@@ -209,6 +209,58 @@ add_task(async function a_fifo_or_a_dangling_link_named_routes_toml_is_an_error(
   }
 });
 
+// routes-file Behaviour 5: at a cold start the rules cached from routes.toml are its last good
+// read, so a routes.toml broken since the last session keeps them, never config.toml's.
+add_task(async function a_broken_routes_toml_at_start_keeps_the_cached_routes_toml_rules() {
+  const { resolveRoutes } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/core/routes.mjs",
+  );
+  await withConfig({ routes: RULE("b.example", "w") }, async (paths) => {
+    const cache = Services.prefs.getStringPref("vimma.routes.cache", "");
+    Assert.equal(JSON.parse(cache).file, "routes.toml", "the cache names its file");
+    // As the router starts: the cached rules, with no read of routes.toml yet this session.
+    await IOUtils.remove(paths.routes);
+    await ConfigHost.reload();
+    WorkspaceRouter.setRoutes(resolveRoutes([{ domain: "cached.example", workspace: "w" }]), {
+      file: "routes.toml",
+      lines: [],
+    });
+    await IOUtils.writeUTF8(paths.routes, "[[routes]\n");
+    await ConfigHost.reload();
+    Assert.deepEqual(domains(), ["cached.example"], "the cached routes.toml rules stay");
+  });
+  await withConfig({ config: `schema = 2\n${RULE("a.example", "w")}` }, async (paths) => {
+    Assert.equal(WorkspaceRouter.routesSource.file, "config.toml", "sanity: config.toml's");
+    await IOUtils.writeUTF8(paths.routes, "[[routes]\n");
+    await ConfigHost.reload();
+    Assert.deepEqual(domains(), [], "config.toml's cached rules are never taken in its place");
+  });
+});
+
+add_task(async function a_symlinked_routes_toml_is_followed_and_a_large_one_refused() {
+  const elsewhere = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-dotfiles");
+  const real = PathUtils.join(elsewhere, "routes.toml");
+  await IOUtils.writeUTF8(real, RULE("linked.example", "w"));
+  try {
+    await withConfig({}, async (paths) => {
+      await symlink(real, paths.routes);
+      await ConfigHost.reload();
+      Assert.deepEqual(domains(), ["linked.example"], "a link to a regular file is read");
+      await IOUtils.remove(paths.routes);
+      await IOUtils.writeUTF8(paths.routes, `# ${"x".repeat(1024 * 1024)}\n`);
+      await ConfigHost.reload();
+      Assert.deepEqual(domains(), ["linked.example"], "over 1 MiB: the last good rules stay");
+      Assert.equal(
+        ConfigHost.routesProblems[0]?.message,
+        "larger than 1 MiB; not read",
+        "and it is not read",
+      );
+    });
+  } finally {
+    await IOUtils.remove(elsewhere, { recursive: true });
+  }
+});
+
 add_task(async function deleting_routes_toml_brings_back_config_toml_rules() {
   const config = `schema = 2\n${RULE("a.example", "w")}`;
   await withConfig({ config, routes: RULE("b.example", "w") }, async (paths) => {

@@ -167,6 +167,39 @@ export function routesInForce({ config, configText, file, configFile = "config.t
   };
 }
 
+/**
+ * `vimma.routes.cache`'s text: the rules in force and the file they came from, so that a cold
+ * start routes before the files are read, and a routes.toml broken since the last session keeps
+ * its own last good rules, never config.toml's (Behaviour 5). Any file but routes.toml is
+ * recorded as config.toml (a `:source <file>` one included).
+ * @param {readonly Route[]} routes
+ * @param {string} file
+ */
+export function formatRoutesCache(routes, file) {
+  return JSON.stringify({ file: file === ROUTES_FILE ? ROUTES_FILE : "config.toml", routes });
+}
+
+/**
+ * The cache formatRoutesCache wrote; an older one, a bare array, holds config.toml's rules;
+ * anything else is no rule.
+ * @param {string} text
+ * @returns {{ file: string, routes: Route[] }}
+ */
+export function parseRoutesCache(text) {
+  const none = { file: "config.toml", routes: [] };
+  /** @type {unknown} */
+  let v;
+  try {
+    v = JSON.parse(text);
+  } catch {
+    return none;
+  }
+  if (Array.isArray(v)) return { file: "config.toml", routes: v };
+  if (!isTable(v) || !Array.isArray(v.routes)) return none;
+  if (v.file !== ROUTES_FILE && v.file !== "config.toml") return none;
+  return { file: v.file, routes: v.routes };
+}
+
 /** @param {{ domain: string, workspace: string }} rule */
 const ruleBlock = ({ domain, workspace }) =>
   `[[routes]]\ndomain = ${JSON.stringify(domain)}\nworkspace = ${JSON.stringify(workspace)}\n`;

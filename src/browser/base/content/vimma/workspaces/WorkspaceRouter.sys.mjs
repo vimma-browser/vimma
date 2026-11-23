@@ -29,6 +29,7 @@ import {
   parseAppList,
   shadowedBy,
 } from "../core/routes.mjs";
+import { formatRoutesCache, parseRoutesCache } from "../core/routes-file.mjs";
 import { WorkspaceStore } from "./WorkspaceStore.sys.mjs";
 
 /** @import { Route } from "../core/routes.mjs" */
@@ -59,15 +60,16 @@ const CACHE_PREF = "vimma.routes.cache";
 /** `[routing] default_workspace` at the last change, for a cold start too. */
 const DEFAULT_PREF = "vimma.routes.defaultWorkspace";
 
+const cached = parseRoutesCache(Services.prefs.getStringPref(CACHE_PREF, "[]"));
 /** @type {Route[]} */
-let routes = readCache();
+let routes = cached.routes;
 /**
- * The file the rules came from and each one's line, for about:vimma and `:route add`'s message
- * (docs/specs/routes-file.md Behaviour 13). Memory only: before the first read, the cached rules
- * have no known file.
+ * The file the rules came from and each one's line, for about:vimma, `:route add`'s message and
+ * ConfigHost's last good routes.toml rules at a cold start (docs/specs/routes-file.md Behaviours
+ * 5 and 13). Before the first read: the cache's file, lines unknown.
  * @type {{ file: string, lines: readonly number[] }}
  */
-let source = { file: "config.toml", lines: [] };
+let source = { file: cached.file, lines: [] };
 /** @type {string | null} */
 let defaultWorkspace = Services.prefs.getStringPref(DEFAULT_PREF, "") || null;
 /** The programs of the command line being handled, until the current task ends. */
@@ -161,16 +163,6 @@ function armStartupDrop() {
   Services.obs.addObserver(done, "browser-delayed-startup-finished");
 }
 let registered = false;
-
-/** @returns {Route[]} */
-function readCache() {
-  try {
-    const cached = JSON.parse(Services.prefs.getStringPref(CACHE_PREF, "[]"));
-    return Array.isArray(cached) ? cached : [];
-  } catch {
-    return [];
-  }
-}
 
 /** @param {Window | null | undefined} win */
 function unroutable(win) {
@@ -273,7 +265,7 @@ export const WorkspaceRouter = {
     routes = next;
     source = from;
     try {
-      Services.prefs.setStringPref(CACHE_PREF, JSON.stringify(next));
+      Services.prefs.setStringPref(CACHE_PREF, formatRoutesCache(next, from.file));
     } catch (e) {
       console.warn("vimma: routes not cached", e);
     }

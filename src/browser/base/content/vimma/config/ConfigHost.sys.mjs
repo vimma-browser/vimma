@@ -387,11 +387,20 @@ function use(path, text, left = []) {
  */
 function applyRoutes() {
   if (!active) return;
+  // routes.toml never read well since it appeared: its last good rules are those in force when
+  // they came from it, as the cache holds them at a cold start; never config.toml's (B5).
+  const { file, lines } = WorkspaceRouter.routesSource;
+  const kept = file === ROUTES_FILE ? { routes: WorkspaceRouter.routes, lines } : null;
   const r = routesInForce({
     config: active.config,
     configText: appliedText,
     file: routesPresent
-      ? (routesGood ?? { routes: null, defaultWorkspace: null, lines: [], errors: [] })
+      ? (routesGood ?? {
+          routes: kept?.routes ?? null,
+          defaultWorkspace: null,
+          lines: kept ? [...kept.lines] : [],
+          errors: [],
+        })
       : null,
     configFile: PathUtils.filename(appliedPath || configPath()),
   });
