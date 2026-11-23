@@ -209,11 +209,13 @@ describe("the committed certificate", () => {
     expect(pub[3]).toBe("1"); // RSA
     expect(pub[2]).toBe("4096");
     expect(pub[11]).toBe("scSC");
+    expect(pub[6]).toBe(""); // no expiry (spec package-repositories, decision 23)
     expect(lines.find((l) => l.startsWith("fpr:"))?.split(":")[9]).toBe(stdout.trim());
     expect(lines.filter((l) => l.startsWith("uid:")).map((l) => l.split(":")[9])).toEqual([UID]);
     const sigs = lines.filter((l) => l.startsWith("sig:"));
     expect(sigs).toHaveLength(1);
     expect(sigs[0]).toMatch(/^sig:!:/);
+    expect(sigs[0]?.split(":")[15]).toBe("8"); // SHA-256
     // no subkeys (spec package-repositories, decision 4)
     expect(lines.filter((l) => l.startsWith("sub:"))).toEqual([]);
   });
