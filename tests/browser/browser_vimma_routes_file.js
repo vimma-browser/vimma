@@ -5,8 +5,8 @@
 // Spec: docs/specs/routes-file.md. routes.toml beside config.toml holds the `[[routes]]` rules
 // when it exists: config.toml's are then ignored with a warning, a broken file keeps the last
 // good rules, a deleted one gives config.toml's back, an edit applies on the poll and on
-// `:source`. `:route add` writes there, creating the file and moving config.toml's rules into it
-// on the first use, both files or neither.
+// `:source`. `:route add` writes there when it exists (it never creates it), and to config.toml
+// is the routes file then; otherwise it appends to config.toml, as before.
 
 "use strict";
 
@@ -56,7 +56,7 @@ async function withConfig({ config = "schema = 2\n", routes = null }, task) {
     await ConfigHost.reload();
     await task(paths);
   } finally {
-    ConfigHost._beforeRoutesRenameForTests = null;
+    ConfigHost._duringRouteWriteForTests = null;
     await SpecialPowers.popPrefEnv();
     await ConfigHost.reload();
     await IOUtils.setPermissions(dir, 0o700).catch(() => {});
@@ -132,13 +132,17 @@ add_task(async function setup() {
 });
 
 add_task(async function routes_toml_rules_apply_and_config_toml_rules_are_ignored_with_a_warning() {
-  const config = `schema = 2\n\n${RULE("a.example", "w")}`;
+  const config = `schema = 2\n\n${RULE("a.example", "w")}\n[routing]\ndefault_workspace = "w"\n`;
   await withConfig({ config, routes: RULE("b.example", "w") }, async () => {
     Assert.deepEqual(domains(), ["b.example"], "routes.toml's rule is in force, alone");
+    Assert.equal(WorkspaceRouter.defaultWorkspace, null, "and config.toml's default is not");
     Assert.deepEqual(
       ConfigHost.routesProblems.map((e) => [e.line, e.message]),
-      [[3, "routes ignored: routes.toml is the routes file"]],
-      "config.toml's rules draw one warning at their first line",
+      [
+        [3, "routes ignored: routes.toml is the routes file"],
+        [8, "routing.default_workspace ignored: routes.toml is the routes file"],
+      ],
+      "config.toml's rules and default draw a warning at their first line",
     );
     Assert.deepEqual(ConfigHost.errors, [], "and the rest of config.toml applies");
     Assert.equal(WorkspaceRouter.routesSource.file, "routes.toml", "the rules' file is named");
@@ -308,28 +312,37 @@ add_task(async function source_file_keeps_routes_toml() {
   });
 });
 
-add_task(async function route_add_creates_routes_toml_and_names_it() {
+add_task(async function route_add_appends_to_the_routes_file_and_names_it() {
   await withConfig({}, async (paths) => {
     await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
     await runCommand(`route add ${workspace}`);
     await until(
-      () => noticeText() === `added: example.org → "${workspace}" (routes.toml)`,
-      "the notice names routes.toml",
+      () => noticeText() === `added: example.org → "${workspace}" (config.toml)`,
+      "without routes.toml, config.toml is the routes file",
     );
-    Assert.equal(await IOUtils.readUTF8(paths.routes), RULE("example.org", workspace));
-    Assert.equal((await IOUtils.stat(paths.routes)).permissions, 0o600, "0600");
-    Assert.equal(await IOUtils.readUTF8(paths.config), "schema = 2\n", "config.toml untouched");
-    Assert.deepEqual(domains(), ["example.org"], "the rule is in force at once");
+    Assert.equal(
+      await IOUtils.readUTF8(paths.config),
+      `schema = 2\n\n${RULE("example.org", workspace)}`,
+      "appended to config.toml",
+    );
+    Assert.ok(!(await exists(paths.routes)), "routes.toml is never created");
 
-    await IOUtils.writeUTF8(paths.routes, `${RULE("example.net", workspace)}`);
+    await IOUtils.writeUTF8(paths.routes, RULE("example.net", workspace));
+    await ConfigHost.reload();
+    await IOUtils.writeUTF8(paths.config, "schema = 2\n");
     await ConfigHost.reload();
     await runCommand(`route add ${workspace}`);
-    await until(() => domains().length === 2, "a second rule is appended");
+    await until(
+      () => noticeText() === `added: example.org → "${workspace}" (routes.toml)`,
+      "with routes.toml, the notice names it",
+    );
     Assert.equal(
       await IOUtils.readUTF8(paths.routes),
       `${RULE("example.net", workspace)}\n${RULE("example.org", workspace)}`,
-      "after a blank line",
+      "appended to routes.toml after a blank line",
     );
+    Assert.equal(await IOUtils.readUTF8(paths.config), "schema = 2\n", "config.toml untouched");
+    Assert.deepEqual(domains(), ["example.net", "example.org"], "in force at once");
     BrowserTestUtils.removeTab(gBrowser.selectedTab);
   });
 });
@@ -342,74 +355,41 @@ add_task(async function route_add_refuses_a_broken_routes_toml() {
   });
 });
 
-add_task(async function route_add_moves_config_toml_rules_and_comments_them_out() {
-  const config = [
-    "schema = 2",
-    "",
-    "[routing]",
-    'default_workspace = "main"',
-    "",
-    "# sign-ins",
-    RULE("a.example", "main"),
-    RULE("b.example", "main"),
-  ].join("\n");
-  await withConfig({ config }, async (paths) => {
-    await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
-    await runCommand(`route add ${workspace}`);
-    await until(
-      () =>
-        noticeText() ===
-        `added: example.org → "${workspace}" (routes.toml; 2 rules and default_workspace moved from config.toml)`,
-      "the notice says what moved",
-    );
-    Assert.equal(
-      await IOUtils.readUTF8(paths.routes),
-      [
-        "[routing]",
-        'default_workspace = "main"',
-        "",
-        "# sign-ins",
-        RULE("a.example", "main"),
-        RULE("b.example", "main"),
-        RULE("example.org", workspace),
-      ].join("\n"),
-      "routes.toml has the default, the rules with their comment, then the new one",
-    );
-    Assert.equal(
-      await IOUtils.readUTF8(paths.config),
-      [
-        "schema = 2",
-        "",
-        "# Moved to routes.toml by :route add; routes.toml is the routes file now.",
-        "# [routing]",
-        '# default_workspace = "main"',
-        "",
-        "# # sign-ins",
-        "# [[routes]]",
-        '# domain = "a.example"',
-        '# workspace = "main"',
-        "",
-        "# [[routes]]",
-        '# domain = "b.example"',
-        '# workspace = "main"',
-        "",
-      ].join("\n"),
-      "config.toml keeps every other line, the moved ones commented out",
-    );
-    Assert.equal((await IOUtils.stat(paths.routes)).permissions, 0o600, "routes.toml is 0600");
-    Assert.deepEqual(domains(), ["a.example", "b.example", "example.org"], "all in force");
-    Assert.equal(WorkspaceRouter.defaultWorkspace, "main", "and the default");
-    Assert.deepEqual(ConfigHost.routesProblems, [], "nothing ignored is left");
-    BrowserTestUtils.removeTab(gBrowser.selectedTab);
-  });
+// The write goes through writeFileNow: a file an editor saved while the rule was computed is
+// never written over, and nothing of the rule is half-appended.
+add_task(async function route_add_writes_nothing_over_a_file_changed_meanwhile() {
+  for (const routes of [null, RULE("example.net", workspace)]) {
+    await withConfig({ routes }, async (paths) => {
+      const file = routes === null ? paths.config : paths.routes;
+      const before = await IOUtils.readUTF8(file);
+      ConfigHost._duringRouteWriteForTests = (path) => {
+        Assert.equal(path, file, "the routes file is the one written");
+        const f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+        f.initWithPath(path);
+        const out = Cc["@mozilla.org/network/file-output-stream;1"].createInstance(
+          Ci.nsIFileOutputStream,
+        );
+        out.init(f, 0x02 | 0x10, 0o600, 0); // PR_WRONLY | PR_APPEND, as an editor saving
+        out.write("# saved meanwhile\n", 18);
+        out.close();
+      };
+      const r = await ConfigHost.addRoute({ domain: "example.org", workspace });
+      Assert.ok(
+        "error" in r && r.error.includes("changed meanwhile"),
+        `refused: ${JSON.stringify(r)}`,
+      );
+      Assert.equal(await IOUtils.readUTF8(file), `${before}# saved meanwhile\n`, "the save kept");
+    });
+  }
 });
 
-add_task(async function route_add_writes_neither_file_when_config_toml_cannot_be_written() {
+// routes-file decision 7: a config.toml linked into a read-only store (Nix, Home Manager) is said
+// so, with the lines to add by hand.
+add_task(async function route_add_to_a_read_only_config_toml_says_what_to_add_by_hand() {
   const store = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-store");
   const real = PathUtils.join(store, "config.toml");
-  const config = `schema = 2\n${RULE("a.example", "main")}`;
-  await IOUtils.writeUTF8(real, config);
-  // A generated, read-only store, as a Nix or Home Manager link points into.
+  await IOUtils.writeUTF8(real, "schema = 2\n");
+  await IOUtils.setPermissions(real, 0o400);
   await IOUtils.setPermissions(store, 0o500);
   try {
     await withConfig({ config: null }, async (paths) => {
@@ -417,31 +397,14 @@ add_task(async function route_add_writes_neither_file_when_config_toml_cannot_be
       await ConfigHost.reload();
       const r = await ConfigHost.addRoute({ domain: "example.org", workspace });
       Assert.deepEqual(r, {
-        error: `cannot write config.toml; nothing written (the guide's "Routes in a file" moves them by hand)`,
+        error: `cannot write config.toml (read-only?); add by hand: [[routes]] / domain = "example.org" / workspace = "${workspace}"`,
       });
-      Assert.ok(!(await exists(paths.routes)), "no routes.toml");
-      Assert.equal(await IOUtils.readUTF8(real), config, "config.toml as it was");
-      const left = (await IOUtils.getChildren(paths.dir)).map((p) => PathUtils.filename(p));
-      Assert.deepEqual(left, ["config.toml"], "no temporary file left behind");
+      Assert.equal(await IOUtils.readUTF8(real), "schema = 2\n", "config.toml as it was");
+      Assert.ok(!(await exists(paths.routes)), "and no routes.toml");
     });
   } finally {
     await IOUtils.setPermissions(store, 0o700);
     await IOUtils.remove(store, { recursive: true });
-  }
-});
-
-add_task(async function route_add_never_replaces_a_routes_toml_made_meanwhile() {
-  for (const config of ["schema = 2\n", `schema = 2\n${RULE("a.example", "main")}`]) {
-    await withConfig({ config }, async (paths) => {
-      const mine = RULE("mine.example", "main");
-      ConfigHost._beforeRoutesRenameForTests = async () => {
-        await IOUtils.writeUTF8(paths.routes, mine);
-      };
-      const r = await ConfigHost.addRoute({ domain: "example.org", workspace });
-      Assert.deepEqual(r, { error: "routes.toml appeared meanwhile; nothing written" });
-      Assert.equal(await IOUtils.readUTF8(paths.routes), mine, "the user's routes.toml stays");
-      Assert.equal(await IOUtils.readUTF8(paths.config), config, "config.toml as it was");
-    });
   }
 });
 

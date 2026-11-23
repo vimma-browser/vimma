@@ -1524,7 +1524,7 @@ the page's own and can carry tokens it put there; they come only from the agent'
   [`with [mcp] enabled = true in config.toml, :mcp off turns agents off until restart`](../../packages/vimma-core/test/agent.test.ts),
   [`the state: :mcp off first, then the file, then the pref`](../../packages/vimma-core/test/agent.test.ts),
   [`mcp_off_survives_a_config_reload`](../../tests/browser/browser_vimma_mcp.js),
-  [`mcp_off_survives_a_route_add_that_moves_the_rules`](../../tests/browser/browser_vimma_mcp.js),
+  [`mcp_off_survives_a_route_add_to_either_file`](../../tests/browser/browser_vimma_mcp.js),
   [`mcp_on_after_off_starts_the_agent_role_when_the_pref_was_on`](../../tests/browser/browser_vimma_mcp.js),
   [`a_yes_to_an_older_mcp_on_question_does_not_undo_a_newer_mcp_off`](../../tests/browser/browser_vimma_mcp.js)
 - M65. The setup page (about:vimma-setup, [setup-v2](../specs/setup-v2.md) behaviour 28 and decision 20) **must** turn MCP on only from a trusted `enter` on its agents step's "On", which is the

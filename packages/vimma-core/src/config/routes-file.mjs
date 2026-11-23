@@ -4,16 +4,14 @@
 
 /**
  * routes.toml, the routes file beside config.toml (spec: docs/specs/routes-file.md). When it
- * exists, its `[[routes]]` are the rules in force and config.toml's are ignored with a warning;
- * its `[routing] default_workspace` wins over config.toml's. Rules are checked by the same
- * validateRoutes and resolveRoutes as config.toml's, so moving a rule never changes what it
- * means (decision 4). `:route add` appends here, and its first use moves config.toml's rules
- * into a new file (moveRoutesText, decision 8). Pure: the host reads and writes the files.
+ * exists, its `[[routes]]` and `[routing]` are the ones in force and config.toml's are ignored
+ * with a warning. Rules are checked by the same validateRoutes and resolveRoutes as
+ * config.toml's, so moving a rule never changes what it means (decision 4). `:route add`
+ * appends to whichever file is the routes file. Pure: the host reads and writes the files.
  */
-import { parseConfig } from "./config.mjs";
 import { utf8Over } from "./bookmarks-file.mjs";
-import { formatPath, locateKeys, parseToml, sameTomlValue } from "./toml.mjs";
-import { resolveRoutes, validateRouting, validateRoutes } from "./routes.mjs";
+import { formatPath, locateKeys, parseToml } from "./toml.mjs";
+import { resolveRoutes, routeBlockFor, validateRouting, validateRoutes } from "./routes.mjs";
 
 /** @import { ConfigError, ResolvedConfig } from "./config.mjs" */
 /** @import { Route } from "./routes.mjs" */
@@ -22,9 +20,6 @@ import { resolveRoutes, validateRouting, validateRoutes } from "./routes.mjs";
 export const ROUTES_FILE = "routes.toml";
 /** Bounds the parse on the main thread; a thousand rules are under 100 KiB (decision 4). */
 export const MAX_ROUTES_FILE_BYTES = 1024 * 1024;
-
-const MOVED_NOTE = "# Moved to routes.toml by :route add; routes.toml is the routes file now.";
-const BY_HAND = "move them to routes.toml by hand";
 
 /**
  * @typedef {object} RoutesFile
@@ -121,7 +116,8 @@ export function inlineRoutes(text) {
 /**
  * The rules and default workspace in force (Behaviours 3 to 6). `file` is routes.toml as last
  * read well (its `routes` null when no read has succeeded yet: then no rule applies, never
- * config.toml's, Behaviour 5), or null when routes.toml does not exist.
+ * config.toml's, Behaviour 5), or null when routes.toml does not exist. routes.toml owns all of
+ * `[routing]`: config.toml's `default_workspace` never stands in for it (decision 3).
  * @param {{ config: ResolvedConfig, configText: string, file: RoutesFile | null,
  *   configFile?: string }} input  `configText`: the text `config` was read from; `configFile`:
  *   its name (a `:source <file>` one), for about:vimma
@@ -150,11 +146,11 @@ export function routesInForce({ config, configText, file, configFile = "config.t
       message: "routes ignored: routes.toml is the routes file",
     });
   }
-  if (file.defaultWorkspace !== null && inline.defaultWorkspace !== null) {
+  if (inline.defaultWorkspace !== null) {
     warnings.push({
       line: inline.defaultWorkspace,
       path: "",
-      message: "routing.default_workspace ignored: routes.toml sets it",
+      message: "routing.default_workspace ignored: routes.toml is the routes file",
     });
   }
   warnings.sort((a, b) => (a.line ?? 0) - (b.line ?? 0));
@@ -162,7 +158,7 @@ export function routesInForce({ config, configText, file, configFile = "config.t
     file: ROUTES_FILE,
     routes: file.routes ?? [],
     lines: file.routes ? file.lines : [],
-    defaultWorkspace: file.defaultWorkspace ?? config.routing.defaultWorkspace,
+    defaultWorkspace: file.defaultWorkspace,
     warnings,
   };
 }
@@ -200,180 +196,24 @@ export function parseRoutesCache(text) {
   return { file: v.file, routes: v.routes };
 }
 
-/** @param {{ domain: string, workspace: string }} rule */
-const ruleBlock = ({ domain, workspace }) =>
-  `[[routes]]\ndomain = ${JSON.stringify(domain)}\nworkspace = ${JSON.stringify(workspace)}\n`;
-
 /**
- * `:route add` into routes.toml (Behaviour 8): the block to append, or the file to create when
- * it is missing (`text` null). Refused with the reason, nothing to write, when the file does not
- * parse now or would not with the rule. JSON's quoting is TOML's for these values, so a name
- * stays one string.
- * @param {string | null} text
+ * `:route add` while routes.toml is the routes file (Behaviour 8): the block to append, in the
+ * file's line endings. Refused with the reason, nothing to write, when the file does not parse
+ * now or would not with the rule.
+ * @param {string} text  routes.toml as it is
  * @param {{ domain: string, workspace: string }} rule
- * @returns {{ append: string } | { create: string } | { error: string }}
+ * @returns {{ append: string } | { error: string }}
  */
 export function appendRouteFileText(text, rule) {
-  const block = ruleBlock(rule);
-  if (text !== null && parseRoutesFile(text).errors.length) {
+  if (parseRoutesFile(text).errors.length) {
     return { error: `${ROUTES_FILE} does not parse now; fix it first` };
   }
-  const base = text ?? "";
-  const glue = base === "" ? "" : base.endsWith("\n") ? "\n" : "\n\n";
-  const added = `${glue}${block}`;
-  const first = parseRoutesFile(base + added).errors[0];
+  const added = routeBlockFor(text, rule);
+  const first = parseRoutesFile(text + added).errors[0];
   if (first) {
     return {
       error: `${ROUTES_FILE} does not parse with the rule added: ${first.path ? `${first.path}: ` : ""}${first.message}`,
     };
   }
-  return text === null ? { create: added } : { append: added };
-}
-
-/**
- * The table headers of a TOML text that parsed: their 0-based line and name. Lines inside a
- * multi-line string are skipped. The caller checks its result by parsing, so a text this scan
- * misreads is refused, never written.
- * @param {string[]} lines
- * @returns {{ at: number, name: string, array: boolean }[]}
- */
-function headers(lines) {
-  /** @type {{ at: number, name: string, array: boolean }[]} */
-  const out = [];
-  /** @type {string | null} */
-  let open = null;
-  lines.forEach((line, at) => {
-    if (open === null) {
-      const m = /^\s*(\[\[?)\s*([^\]#]+?)\s*\]\]?\s*(?:#.*)?$/.exec(line);
-      if (m) out.push({ at, name: /** @type {string} */ (m[2]), array: m[1] === "[[" });
-    }
-    for (const delim of line.match(/"""|'''/g) ?? []) {
-      if (open === null) open = delim;
-      else if (open === delim) open = null;
-    }
-  });
-  return out;
-}
-
-/** @param {string} line */
-const isComment = (line) => line.trimStart().startsWith("#");
-/** @param {string} line */
-const isBlank = (line) => line.trim() === "";
-
-/**
- * The first `:route add` with config.toml's rules and no routes.toml (Behaviour 9, decision 8):
- * the new routes.toml (config.toml's `default_workspace` under `[routing]`, then each
- * `[[routes]]` table as written, with the comments inside it and directly above its header,
- * then the new rule) and config.toml with every moved line commented out under one note.
- * Checked before it is returned: routes.toml resolves to config.toml's rules plus the new one,
- * in order, with the same default, and config.toml loads with nothing else changed.
- * @param {string} configText
- * @param {{ domain: string, workspace: string }} rule
- * @param {{ mac?: boolean }} [options]  check config.toml with macOS's default keys
- * @returns {{ routes: string, config: string, moved: { rules: number, defaultWorkspace: boolean } }
- *   | { error: string }}
- */
-export function moveRoutesText(configText, rule, { mac = false } = {}) {
-  const before = parseConfig(configText, { mac });
-  const parsed = parseToml(configText, { integersAsBigInt: true });
-  if (before.errors.length || !before.config || !parsed.ok) {
-    return { error: "config.toml does not parse now; fix it first (:config shows it)" };
-  }
-  const raw = parsed.value;
-  const lines = configText.split("\n");
-  const heads = headers(lines);
-  const ruleCount = Array.isArray(raw.routes) ? raw.routes.length : 0;
-  const routeHeads = heads.filter((h) => h.array && h.name === "routes");
-  if (raw.routes !== undefined && routeHeads.length === 0) {
-    return { error: `config.toml's routes are an inline array; ${BY_HAND}` };
-  }
-  const unsafe = { error: `config.toml's routes could not be moved safely; ${BY_HAND}` };
-  if (routeHeads.length !== ruleCount) return unsafe;
-
-  /** 0-based lines to comment out in config.toml. @type {Set<number>} */
-  const out = new Set();
-  /** @type {string[]} */
-  const parts = [];
-
-  const routing = isTable(raw.routing) ? raw.routing : null;
-  const hasDefault = routing?.default_workspace !== undefined;
-  if (hasDefault) {
-    const head = heads.find((h) => !h.array && h.name === "routing");
-    if (!head) {
-      return {
-        error: `config.toml's default_workspace is not under a [routing] header; ${BY_HAND}`,
-      };
-    }
-    const at = (locateKeys(configText)(["routing", "default_workspace"]) ?? 0) - 1;
-    const next = heads.find((h) => h.at > head.at)?.at ?? lines.length;
-    const line = lines[at] ?? "";
-    if (at <= head.at || at >= next || !/^\s*default_workspace\s*=/.test(line)) return unsafe;
-    parts.push(`[routing]\n${line}\n`);
-    out.add(at);
-    if (Object.keys(/** @type {Record<string, unknown>} */ (routing)).length === 1) {
-      out.add(head.at);
-    }
-  }
-
-  let floor = 0;
-  for (const head of routeHeads) {
-    const next = heads.find((h) => h.at > head.at)?.at ?? lines.length;
-    let end = next - 1;
-    while (end > head.at && (isBlank(lines[end] ?? "") || isComment(lines[end] ?? ""))) end--;
-    let start = head.at;
-    while (start - 1 >= floor && isComment(lines[start - 1] ?? "")) start--;
-    floor = end + 1;
-    parts.push(`${lines.slice(start, end + 1).join("\n")}\n`);
-    for (let i = start; i <= end; i++) if (!isBlank(lines[i] ?? "")) out.add(i);
-  }
-  parts.push(ruleBlock(rule));
-  const routesText = parts.join("\n");
-
-  const first = Math.min(...out);
-  const configOut = lines.flatMap((line, i) => {
-    const kept = out.has(i) ? `# ${line}` : line;
-    return i === first ? [MOVED_NOTE, kept] : [kept];
-  });
-  const newConfig = out.size ? configOut.join("\n") : configText;
-
-  // The check of decision 8: nothing dropped, reordered or changed, in either file.
-  const file = parseRoutesFile(routesText);
-  const expected = [...before.config.routes, ...resolveRoutes([rule])].map((r, i) => ({
-    ...r,
-    index: i + 1,
-  }));
-  if (
-    !file.routes ||
-    JSON.stringify(file.routes) !== JSON.stringify(expected) ||
-    file.defaultWorkspace !== before.config.routing.defaultWorkspace
-  ) {
-    return unsafe;
-  }
-  const after = parseConfig(newConfig, { mac });
-  const rawAfter = parseToml(newConfig, { integersAsBigInt: true });
-  if (after.errors.length || !rawAfter.ok || !sameTomlValue(rest(raw), rest(rawAfter.value))) {
-    return unsafe;
-  }
-  return {
-    routes: routesText,
-    config: newConfig,
-    moved: { rules: ruleCount, defaultWorkspace: hasDefault },
-  };
-}
-
-/**
- * A parsed config.toml without its routes and default workspace (and a `[routing]` left
- * empty), to compare what a move leaves.
- * @param {Record<string, unknown>} raw
- */
-function rest(raw) {
-  const out = { ...raw };
-  delete out.routes;
-  if (isTable(out.routing)) {
-    const routing = { ...out.routing };
-    delete routing.default_workspace;
-    if (Object.keys(routing).length) out.routing = routing;
-    else delete out.routing;
-  }
-  return out;
+  return { append: added };
 }

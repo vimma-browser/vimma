@@ -516,9 +516,9 @@ add_task(async function mcp_off_survives_a_config_reload() {
   }
 });
 
-// docs/specs/routes-file.md (security 12 M64): `:route add` rewriting config.toml to move its
-// rules into routes.toml, and the reads that follow, never end `:mcp off`'s hold.
-add_task(async function mcp_off_survives_a_route_add_that_moves_the_rules() {
+// docs/specs/routes-file.md (security 12 M64): `:route add` writing config.toml or routes.toml,
+// and the reads that follow, never end `:mcp off`'s hold.
+add_task(async function mcp_off_survives_a_route_add_to_either_file() {
   ww().switchTo({ id: def("main").id });
   if (McpHost.state.from === "session" || !McpHost.state.enabled) {
     await runCommand("mcp on");
@@ -541,14 +541,12 @@ add_task(async function mcp_off_survives_a_route_add_that_moves_the_rules() {
     await until(() => !McpHost.state.enabled, ":mcp off turns them off");
 
     const r = await ConfigHost.addRoute({ domain: "example.org", workspace: "main" });
-    Assert.deepEqual(r, { added: "routes.toml; 1 rule moved from config.toml" }, "moved");
-    Assert.ok(
-      (await IOUtils.readUTF8(file)).includes('# domain = "example.net"'),
-      "config.toml was rewritten",
-    );
+    Assert.deepEqual(r, { added: "config.toml" }, "written to config.toml");
     Assert.equal(McpHost.config?.enabled, true, "the rewritten file is in force");
     Assert.deepEqual(McpHost.state, { enabled: false, from: "session" }, "agents stay off");
-    await ConfigHost.addRoute({ domain: "example.com", workspace: "main" });
+    await IOUtils.writeUTF8(PathUtils.join(dir, "routes.toml"), "");
+    const r2 = await ConfigHost.addRoute({ domain: "example.com", workspace: "main" });
+    Assert.deepEqual(r2, { added: "routes.toml" }, "written to routes.toml");
     Assert.deepEqual(
       McpHost.state,
       { enabled: false, from: "session" },

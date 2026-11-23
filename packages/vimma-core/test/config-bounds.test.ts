@@ -4,6 +4,7 @@
 import { describe, test, expect } from "vitest";
 import {
   addAgentProviderText,
+  appendRouteText,
   parseConfig,
   rawUpdatesCheck,
   reloadConfig,
@@ -343,6 +344,20 @@ describe("rawUpdatesCheck: a stray check", () => {
     ["[updates]\ncheck = false\n", false],
   ])("%j reads as %j", (text, expected) => {
     expect(rawUpdatesCheck(`schema = 2\n${text}`)).toBe(expected);
+  });
+});
+
+describe("appendRouteText", () => {
+  const rule = { domain: "a.com", workspace: "w" };
+  const block = '[[routes]]\ndomain = "a.com"\nworkspace = "w"\n';
+
+  test("a file without a final newline gets a blank line before the rule", () => {
+    expect(appendRouteText("schema = 2", rule)).toEqual({ append: `\n\n${block}` });
+    expect(appendRouteText("schema = 2\n", rule)).toEqual({ append: `\n${block}` });
+  });
+
+  test("a schema-1 file takes the rule too", () => {
+    expect(appendRouteText("schema = 1\n", rule)).toEqual({ append: `\n${block}` });
   });
 });
 

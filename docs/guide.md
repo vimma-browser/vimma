@@ -3922,15 +3922,17 @@ claims a name opens nothing but the sign-in host there.
 
 **Commands.**
 
-| Command                         | What it does                                                                                                               |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `:route`                        | Opens `about:vimma`'s Routing section: every rule in force, its file and line, and which one matches the tab you were on.  |
-| `:route add`, `:route add work` | Adds a `domain` rule for this site (its host without `www.`) to the end of `routes.toml`, for this or the named workspace. |
-| `:route move`                   | Moves this tab to the workspace its rule names.                                                                            |
+| Command                         | What it does                                                                                                                 |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `:route`                        | Opens `about:vimma`'s Routing section: every rule in force, its file and line, and which one matches the tab you were on.    |
+| `:route add`, `:route add work` | Adds a `domain` rule for this site (its host without `www.`) to the end of the routes file, for this or the named workspace. |
+| `:route move`                   | Moves this tab to the workspace its rule names.                                                                              |
 
-`:route add` refuses a site an earlier rule already routes (it names the rule), and a
-`routes.toml` (or, before a move, a `config.toml`) that has errors. It only appends to
-`routes.toml`, and creates it the first time.
+The routes file is `routes.toml` when it exists, otherwise `config.toml`. `:route add` refuses a
+site an earlier rule already routes (it names the rule), a routes file that has errors, and a
+file changed while it was writing. It only ever appends, and never creates `routes.toml`. When
+the file cannot be written (a `config.toml` linked into a read-only store, for example), it says
+so and shows the lines to add by hand.
 
 #### Routes in a file
 
@@ -3941,22 +3943,19 @@ share `config.toml` while the routes stay private (in `.gitignore`, or a private
 
 - **It holds** `[[routes]]` tables and, optionally, `[routing] default_workspace`, written and
   checked exactly as in `config.toml`; any other key is an error.
-- **When it exists, it is the routes file.** Its rules replace `config.toml`'s as a whole:
-  rules left in `config.toml` are ignored, and the status bar says so at their first line.
-  A `default_workspace` in `routes.toml` wins over `config.toml`'s; without one there,
-  `config.toml`'s applies.
-- **`:route add` creates it.** The first `:route add` writes `routes.toml` (readable only by
-  you). If `config.toml` has rules or a `default_workspace` then, they move with it, in their
-  order and with the comments above and inside each rule, and are commented out in
-  `config.toml` under a note. Both files change, or, if either cannot be written (a
-  `config.toml` linked into a read-only store), neither does, and the message says so.
+- **When it exists, it is the routes file.** Its rules and `[routing]` replace `config.toml`'s
+  as a whole: rules or a `default_workspace` left in `config.toml` are ignored, and the status
+  bar says so at their first line. `:route add` then appends to `routes.toml`.
 - **Edits apply within two seconds**, as `config.toml`'s do, and `:source` reads it at once. A
   `routes.toml` with an error keeps the last rules that read well while the rest of
-  `config.toml` applies; the status bar shows `routes.toml:<line>: …`.
-- **Moving by hand:** create `routes.toml` beside `config.toml`, cut the `[[routes]]` tables (and
-  `[routing] default_workspace`) out of `config.toml` and paste them into it in the same order,
-  and save both. The status bar names any rule left behind in `config.toml`. **Back:** delete
-  `routes.toml` and uncomment the rules in `config.toml`.
+  `config.toml` applies; the status bar shows `routes.toml:<line>: …`. Only a regular file (or a
+  link to one) of up to 1 MiB is read.
+- **Deleting it** makes `config.toml` the routes file again at the next check. A `git checkout`
+  that removes it for a moment can apply `config.toml`'s rules until it is back.
+- **Moving your rules:** create `routes.toml` beside `config.toml` (`touch` it, then
+  `chmod 600` it), cut the `[[routes]]` tables and the `[routing]` table out of `config.toml` and
+  paste them into it in the same order, and save both. The status bar names anything left
+  behind in `config.toml`. **Back:** move them into `config.toml` again and delete `routes.toml`.
 - **Trust.** A `routes.toml` you pull from a repository decides which workspace, and so which
   logins, a site opens with, just as a pulled `config.toml` does: pull it only from a repository
   you control.

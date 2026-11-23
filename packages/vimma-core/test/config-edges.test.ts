@@ -5,6 +5,7 @@
 import { describe, test, expect } from "vitest";
 import {
   addAgentProviderText,
+  appendRouteText,
   mergeWithDefaults,
   parseConfig,
   rawUpdatesCheck,
@@ -194,6 +195,23 @@ describe("rawUpdatesCheck", () => {
     expect(
       rawUpdatesCheck(cfg("[ui]", "x = 9223372036854775807", "[updates]", "check = false")),
     ).toBe(false);
+  });
+});
+
+describe("appendRouteText", () => {
+  const rule = { domain: "a.com", workspace: "w" };
+
+  test("appends after a final newline with one blank line", () => {
+    expect(appendRouteText(cfg(), rule)).toEqual({
+      append: '\n[[routes]]\ndomain = "a.com"\nworkspace = "w"\n',
+    });
+  });
+
+  test("a rule the TOML cannot take is refused with the parser's message", () => {
+    expect(appendRouteText(cfg("routes = []"), rule)).toEqual({
+      error:
+        "config.toml does not parse with the rule added: trying to redefine an already defined table or value",
+    });
   });
 });
 

@@ -31,7 +31,7 @@ import {
   isHexColor,
   normalizeHex,
 } from "./theme.mjs";
-import { resolveRoutes, validateRoutes } from "./routes.mjs";
+import { resolveRoutes, routeBlockFor, validateRoutes } from "./routes.mjs";
 import { formatPath, locateKeys, parsePath, parseToml, setTomlKeys, tomlLiteral } from "./toml.mjs";
 import { canonicalChord, isShortcutChord } from "../keys/firefox-keys.mjs";
 import { KeyNotationError, formatKey, parseKey } from "../keys/keys.mjs";
@@ -1298,9 +1298,8 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
  * @param {string} text  contents of config.toml
  * @param {{ mac?: boolean, routesFile?: boolean }} [options]  `mac`: compile over macOS's
  *   default keys (compileKeymap); `routesFile`: routes.toml is the routes file, so the text's
- *   `routes` are left out before validation, and a stale rule there can neither apply nor keep
- *   the rest from applying (docs/specs/routes-file.md Behaviour 3). `[routing]` is still read:
- *   it applies when routes.toml does not set `default_workspace` (Behaviour 4).
+ *   `routes` and `[routing]` are left out before validation, and a stale rule there can neither
+ *   apply nor keep the rest from applying (docs/specs/routes-file.md Behaviours 3 and 4).
  * @returns {ParseResult}
  */
 export function parseConfig(text, { mac = false, routesFile = false } = {}) {
@@ -1315,7 +1314,10 @@ export function parseConfig(text, { mac = false, routesFile = false } = {}) {
   const parsed = parseToml(text, { integersAsBigInt: true });
   if (!parsed.ok) return failed([{ path: "", ...parsed.error }]);
   const raw = parsed.value;
-  if (routesFile) delete raw.routes;
+  if (routesFile) {
+    delete raw.routes;
+    delete raw.routing;
+  }
   const lineOf = locateKeys(text);
   /** @param {Problem[]} problems @returns {ConfigError[]} */
   const located = (problems) =>
@@ -1443,6 +1445,33 @@ export function rawUpdatesCheck(text) {
   if (!isTable(updates)) return null;
   if (updates.check === undefined) return Object.keys(updates).length ? null : "missing";
   return typeof updates.check === "boolean" ? updates.check : null;
+}
+
+/**
+ * `:route add` (spec workspace-routing) while config.toml is the routes file (routes-file): the
+ * text to append to config.toml for a `domain` rule, in the file's line endings, or the whole
+ * file to create when it is missing (`text` null: the template plus the rule).
+ * The result must parse: a file with errors now or an inline `routes = [...]`
+ * is refused with the reason, and nothing is written.
+ * @param {string | null} text  config.toml as it is, null when missing
+ * @param {{ domain: string, workspace: string }} rule
+ * @param {{ mac?: boolean }} [options]  check it with macOS's default keys (compileKeymap)
+ * @returns {{ append: string } | { create: string } | { error: string }}
+ */
+export function appendRouteText(text, rule, { mac = false } = {}) {
+  const base = text ?? formatConfigTemplate();
+  if (text !== null && parseConfig(text, { mac }).errors.length) {
+    return { error: "config.toml does not parse now; fix it first (:config shows it)" };
+  }
+  const added = routeBlockFor(base, rule);
+  const after = parseConfig(base + added, { mac });
+  const first = after.errors[0];
+  if (first) {
+    return {
+      error: `config.toml does not parse with the rule added: ${first.path ? `${first.path}: ` : ""}${first.message}`,
+    };
+  }
+  return text === null ? { create: base + added } : { append: added };
 }
 
 /**

@@ -10,15 +10,15 @@
 // the I/O and hands each part to the module that uses it. `:source <path>` puts another file in
 // force the same way, until config.toml changes or a plain `:source`. Writes: the first run and
 // `:config` create a missing config.toml from the commented template, never touching an existing
-// one; `:route add` appends one `[[routes]]` table to routes.toml, creating it, and moving
-// config.toml's rules into it on the first use (routes-file decisions 7 to 9), checked to parse
-// first; the built-in agent's setup, `:siteunbind --save` / `:sitebind --delete` and the setup's
+// one; `:route add` appends one `[[routes]]` table to the routes file (routes.toml when it
+// exists, else config.toml; routes-file decision 7), checked to parse first; the built-in agent's setup, `:siteunbind --save` / `:sitebind --delete` and the setup's
 // keys (setConfigKeys, docs/specs/setup-v2.md decision 5) edit their own lines (rewriteConfig).
 // Every edit of config.toml and of bookmarks.toml, and every apply of bookmarks.toml to Places,
 // runs in one queue (docs/specs/bookmarks-file.md D11).
 
 import {
   addAgentProviderText,
+  appendRouteText,
   formatConfigError,
   rawUpdatesCheck,
   reloadConfig,
@@ -31,15 +31,14 @@ import {
   MAX_ROUTES_FILE_BYTES,
   ROUTES_FILE,
   appendRouteFileText,
-  inlineRoutes,
-  moveRoutesText,
   parseRoutesFile,
   routesInForce,
 } from "../core/routes-file.mjs";
 import { formatConfigTemplate } from "../core/defaults.mjs";
 import { editSiteUnbindText } from "../core/site-edit.mjs";
 import { updatesCheckAfterRead } from "../core/updates.mjs";
-import { locateKeys, parseToml } from "../core/toml.mjs";
+import { locateKeys } from "../core/toml.mjs";
+import { routeBlockFor } from "../core/routes.mjs";
 import {
   CONFIG_EDIT_TOPIC,
   CONFIG_RELOAD_TOPIC,
@@ -390,14 +389,21 @@ function applyRoutes() {
   // routes.toml never read well since it appeared: its last good rules are those in force when
   // they came from it, as the cache holds them at a cold start; never config.toml's (B5).
   const { file, lines } = WorkspaceRouter.routesSource;
-  const kept = file === ROUTES_FILE ? { routes: WorkspaceRouter.routes, lines } : null;
+  const kept =
+    file === ROUTES_FILE
+      ? {
+          routes: WorkspaceRouter.routes,
+          lines,
+          defaultWorkspace: WorkspaceRouter.defaultWorkspace,
+        }
+      : null;
   const r = routesInForce({
     config: active.config,
     configText: appliedText,
     file: routesPresent
       ? (routesGood ?? {
           routes: kept?.routes ?? null,
-          defaultWorkspace: null,
+          defaultWorkspace: kept?.defaultWorkspace ?? null,
           lines: kept ? [...kept.lines] : [],
           errors: [],
         })
@@ -834,31 +840,6 @@ async function readForEdit(path, maxBytes = Infinity) {
 }
 
 /**
- * A temporary file in `dir` holding `text`, made empty with `mode` before the text goes in, so
- * that a 0600 file is never readable more widely, even for a moment.
- * @param {string} dir
- * @param {string} name  the file it stands in for
- * @param {string} text
- * @param {number} mode
- * @returns {Promise<string>} its path
- */
-async function writeTemp(dir, name, text, mode) {
-  const tmp = PathUtils.join(
-    dir,
-    `.${name}.${Services.uuid.generateUUID().toString().slice(1, 9)}`,
-  );
-  await IOUtils.writeUTF8(tmp, "", { mode: "create" });
-  try {
-    await IOUtils.setPermissions(tmp, mode, false);
-    await IOUtils.writeUTF8(tmp, text, { mode: "overwrite" });
-  } catch (e) {
-    await IOUtils.remove(tmp, { ignoreAbsent: true }).catch(() => {});
-    throw e;
-  }
-  return tmp;
-}
-
-/**
  * One edit of `path` (config.toml, or bookmarks.toml beside it), run inside the edit queue: the
  * new text goes through a 0600 temporary file in the same folder, given the file's permissions
  * and renamed over the file, or over the file a symlink points to, so a dotfile link stays a link
@@ -907,196 +888,51 @@ async function writeFileNow(path, compute, maxBytes = Infinity) {
   return r;
 }
 
-/** Where the refusal of a move sends the user (routes-file Behaviour 10). */
-const BY_HAND = `nothing written (the guide's "Routes in a file" moves them by hand)`;
-
-/**
- * Runs `task` once no read is running, and holds polls off until it ends, so that no read sees
- * one file of a two-file write without the other.
- * @template T
- * @param {() => Promise<T>} task
- * @returns {Promise<T>}
- */
-async function holdingPolls(task) {
-  while (running) await running;
-  const result = task();
-  running = result.then(
-    () => {},
-    () => {},
-  );
-  try {
-    return await result;
-  } finally {
-    running = null;
-  }
-}
-
-/**
- * The test's hook before routes.toml is renamed into place (`_beforeRoutesRenameForTests`), so
- * that a test can make the file appear in between; only in automation, never in a release.
- */
-async function beforeRoutesRename() {
-  const hook = Cu.isInAutomation ? ConfigHost._beforeRoutesRenameForTests : null;
-  if (hook) await hook();
-}
-
-/**
- * Creates `path` with `text` (0600, its folder 0700 when missing), never replacing a file that
- * appeared meanwhile (IOUtils.move's noOverwrite).
- * @param {string} path
- * @param {string} text
- * @returns {Promise<string | null>} why not, or null once written
- */
-async function createNew(path, text) {
-  const dir = PathUtils.parent(path) ?? "/";
-  /** @type {string} */
-  let tmp;
-  try {
-    if (!(await IOUtils.exists(dir))) {
-      await IOUtils.makeDirectory(dir, { createAncestors: true, permissions: DIR_MODE });
-    }
-    tmp = await writeTemp(dir, PathUtils.filename(path), text, FILE_MODE);
-  } catch (e) {
-    console.error(`vimma: cannot write ${path}`, e);
-    return `cannot write ${PathUtils.filename(path)}; nothing written`;
-  }
-  await beforeRoutesRename();
-  try {
-    // noOverwrite follows links and moves into a folder: anything there, even a link to nothing,
-    // is the user's, so refuse it first (the window left is the rename itself).
-    if (isLink(path) || (await IOUtils.exists(path))) throw new Error("exists");
-    await IOUtils.move(tmp, path, { noOverwrite: true });
-  } catch {
-    await IOUtils.remove(tmp, { ignoreAbsent: true }).catch(() => {});
-    return `${PathUtils.filename(path)} appeared meanwhile; nothing written`;
-  }
-  return null;
-}
-
-/**
- * The first `:route add` with rules in config.toml (routes-file decision 9): both texts go to
- * temporary files, then, if config.toml did not change and routes.toml still does not exist,
- * routes.toml is renamed into place (noOverwrite) and config.toml's text over its target. If the
- * second rename fails, the new routes.toml is removed, so both files stay as they were. Run in
- * the edit queue with polls held off.
- * @param {{ domain: string, workspace: string }} rule
- * @param {{ text: string, target: string,
- *   before: Awaited<ReturnType<IOUtilsNamespace["stat"]>> }} config  config.toml as read
- * @returns {Promise<{ error: string } | { added: string }>}
- */
-async function moveRoutes(rule, { text, target, before }) {
-  const m = moveRoutesText(text, rule, { mac: Services.appinfo.OS === "Darwin" });
-  if ("error" in m) return m;
-  const routes = routesPath();
-  /** @type {string[]} */
-  const temps = [];
-  const cleanup = () =>
-    Promise.all(temps.map((t) => IOUtils.remove(t, { ignoreAbsent: true }).catch(() => {})));
-  return holdingPolls(async () => {
-    try {
-      temps.push(
-        await writeTemp(PathUtils.parent(routes) ?? "/", ROUTES_FILE, m.routes, FILE_MODE),
-      );
-    } catch (e) {
-      console.error(`vimma: cannot write ${routes}`, e);
-      await cleanup();
-      return { error: `cannot write ${ROUTES_FILE}; ${BY_HAND}` };
-    }
-    /** @type {string} */
-    let configTemp;
-    try {
-      configTemp = await writeTemp(
-        PathUtils.parent(target) ?? "/",
-        PathUtils.filename(target),
-        m.config,
-        before.permissions,
-      );
-      temps.push(configTemp);
-    } catch (e) {
-      console.error(`vimma: cannot write ${target}`, e);
-      await cleanup();
-      return { error: `cannot write config.toml; ${BY_HAND}` };
-    }
-    // The text as well as the time: an edit within the time's resolution changes the text.
-    const now = await IOUtils.readUTF8(target).catch(() => null);
-    const stat = await IOUtils.stat(target).catch(() => null);
-    if (now !== text || stat?.lastModified !== before.lastModified) {
-      await cleanup();
-      return { error: "config.toml changed meanwhile; nothing written" };
-    }
-    await beforeRoutesRename();
-    try {
-      if (isLink(routes) || (await IOUtils.exists(routes))) throw new Error("exists");
-      await IOUtils.move(/** @type {string} */ (temps[0]), routes, { noOverwrite: true });
-    } catch {
-      await cleanup();
-      return { error: `${ROUTES_FILE} appeared meanwhile; nothing written` };
-    }
-    try {
-      await IOUtils.move(configTemp, target);
-    } catch (e) {
-      console.error(`vimma: cannot write ${target}`, e);
-      await IOUtils.remove(routes, { ignoreAbsent: true }).catch(() => {});
-      await cleanup();
-      return { error: `cannot write config.toml; ${BY_HAND}` };
-    }
-    const { rules, defaultWorkspace } = m.moved;
-    const what = [
-      ...(rules ? [`${rules} rule${rules === 1 ? "" : "s"}`] : []),
-      ...(defaultWorkspace ? ["default_workspace"] : []),
-    ].join(" and ");
-    return { added: `${ROUTES_FILE}; ${what} moved from config.toml` };
-  });
-}
-
 /**
  * `:route add`'s write (ConfigHost.addRoute), run inside the edit queue (routes-file
- * Behaviours 8 to 11): appended to routes.toml when it exists; else routes.toml is created, with
- * config.toml's rules moved into it when it has any.
+ * Behaviour 8, decision 7): appended to the routes file, routes.toml when it exists, else
+ * config.toml (created from the template when missing), through writeFileNow, so that a file
+ * changed meanwhile is never written over and a symlinked file stays a link. It never creates
+ * routes.toml. A file that cannot be written (a read-only link into a generated store) is said
+ * so, with the lines to add by hand.
  * @param {{ domain: string, workspace: string }} rule
- * @returns {Promise<{ error: string } | { added: string }>}  `added`: the file, and what moved
+ * @returns {Promise<{ error: string } | { added: string }>}  `added`: the file written
  */
 async function writeRoute(rule) {
   const routes = routesPath();
-  const read = await readForEdit(routes, MAX_ROUTES_FILE_BYTES);
-  if ("error" in read) return read;
-  if (read.text !== null) {
-    const r = await writeFileNow(
-      routes,
-      (text) => {
-        if (text === null) return { error: `${ROUTES_FILE} went away meanwhile; nothing written` };
-        const a = appendRouteFileText(text, rule);
-        return "error" in a ? a : { text: text + ("append" in a ? a.append : a.create) };
-      },
-      MAX_ROUTES_FILE_BYTES,
-    );
-    return "error" in r ? { error: r.error } : { added: ROUTES_FILE };
-  }
-  const config = await readForEdit(configPath());
-  if ("error" in config) return config;
-  if (config.text !== null && config.before) {
-    const inline = inlineRoutes(config.text);
-    // A config.toml that does not parse may hold rules that a new routes.toml would hide.
-    if (!parseToml(config.text).ok) {
-      return { error: "config.toml does not parse now; fix it first (:config shows it)" };
-    }
-    if (inline.routes !== null || inline.defaultWorkspace !== null) {
-      return moveRoutes(rule, { text: config.text, target: config.target, before: config.before });
-    }
-  }
-  const a = appendRouteFileText(null, rule);
-  if ("error" in a) return a;
-  const why = await createNew(routes, "create" in a ? a.create : a.append);
-  return why === null ? { added: ROUTES_FILE } : { error: why };
+  const inRoutes = isLink(routes) || (await IOUtils.exists(routes));
+  const path = inRoutes ? routes : configPath();
+  const name = inRoutes ? ROUTES_FILE : "config.toml";
+  const r = await writeFileNow(
+    path,
+    (text) => {
+      const hook = Cu.isInAutomation ? ConfigHost._duringRouteWriteForTests : null;
+      hook?.(path);
+      if (!inRoutes) {
+        const a = appendRouteText(text, rule, { mac: Services.appinfo.OS === "Darwin" });
+        if ("error" in a) return a;
+        return { text: "create" in a ? a.create : text + a.append };
+      }
+      if (text === null) return { error: `${ROUTES_FILE} went away meanwhile; nothing written` };
+      const a = appendRouteFileText(text, rule);
+      return "error" in a ? a : { text: text + a.append };
+    },
+    inRoutes ? MAX_ROUTES_FILE_BYTES : Infinity,
+  );
+  if (!("error" in r)) return { added: name };
+  if (!r.error.startsWith("cannot write")) return { error: r.error };
+  const lines = routeBlockFor("", rule).trimEnd().split("\n").join(" / ");
+  return { error: `cannot write ${name} (read-only?); add by hand: ${lines}` };
 }
 
 export const ConfigHost = {
   /**
-   * Test-only (browser_vimma_routes_file.js): run just before `:route add` renames a new
-   * routes.toml into place; read only in automation (`Cu.isInAutomation`).
-   * @type {(() => Promise<void>) | null}
+   * Test-only (browser_vimma_routes_file.js): run, with the file's path, while `:route add`
+   * computes the new text, so that a test can change the file meanwhile; read only in
+   * automation (`Cu.isInAutomation`).
+   * @type {((path: string) => void) | null}
    */
-  _beforeRoutesRenameForTests: null,
+  _duringRouteWriteForTests: null,
 
   /**
    * routes.toml's errors, and config.toml's routes it leaves out (docs/specs/routes-file.md
@@ -1191,14 +1027,13 @@ export const ConfigHost = {
   },
 
   /**
-   * `:route add`: a `domain` rule appended to routes.toml, which is created when missing (0600,
-   * its folder 0700), with config.toml's rules moved into it on the first use (routes-file
-   * decisions 7 to 9), then the files read. Refused, with nothing written, when a file would
-   * not parse with the rule. Run in the one edit queue (setup-v2 decision 5), so that a rewrite
-   * of config.toml never races it.
+   * `:route add`: a `domain` rule appended to the routes file (routes.toml when it exists, else
+   * config.toml, created from the template when missing; routes-file decision 7), then the files
+   * read. Refused, with nothing written, when the file would not parse with the rule or changed
+   * meanwhile. Run in the one edit queue (setup-v2 decision 5), so that a rewrite of config.toml
+   * never races it.
    * @param {{ domain: string, workspace: string }} rule
-   * @returns {Promise<{ error: string } | { added: string }>}  `added`: where it went, and what
-   *   moved, for the notice
+   * @returns {Promise<{ error: string } | { added: string }>}  `added`: the file, for the notice
    */
   async addRoute(rule) {
     const r = await edits.run(() => writeRoute(rule));

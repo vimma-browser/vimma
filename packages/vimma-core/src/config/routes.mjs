@@ -421,6 +421,22 @@ export function defaultWorkspaceFor(name, { workspaces, skip = [] }) {
 }
 
 /**
+ * The `[[routes]]` table `:route add` appends for a `domain` rule, and what goes before it, in
+ * the line endings of `text` (a file with CRLF keeps CRLF): JSON's quoting is TOML's for these
+ * values, so each stays one string.
+ * @param {string} text  the file as it is ("" for a new one)
+ * @param {{ domain: string, workspace: string }} rule
+ * @returns {string}
+ */
+export function routeBlockFor(text, { domain, workspace }) {
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const glue = text === "" ? "" : text.endsWith("\n") ? eol : eol + eol;
+  const lines = ["[[routes]]", `domain = ${JSON.stringify(domain)}`];
+  lines.push(`workspace = ${JSON.stringify(workspace)}`);
+  return `${glue}${lines.join(eol)}${eol}`;
+}
+
+/**
  * What a rule matches, for `:route` and about:vimma: `app discord, domain youtube.com`.
  * @param {Route} route
  */

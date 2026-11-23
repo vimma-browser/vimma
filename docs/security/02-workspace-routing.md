@@ -45,7 +45,8 @@ routes.toml when it exists, else config.toml. Specs:
   [`a_child_named_after_the_terminal_under_an_agent_cli_never_reaches_the_terminals_rule`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`an agent workspace rule drops every name: claude,zsh,ghostty never reaches the ghostty rule`](../../packages/vimma-core/test/routes.test.ts),
   [`the agent cut applies below the first rule without app too`](../../packages/vimma-core/test/routes.test.ts)
-- R9. `[routing] default_workspace`, from routes.toml when it sets one, else config.toml, applies
+- R9. `[routing] default_workspace`, from the routes file (routes.toml when it exists, else
+  config.toml), applies
   **only** to links from other programs that no rule matches (a remote command line, or a window
   opened for one), never to what you type, never to the agent workspace, and never in a private
   window.
@@ -54,7 +55,7 @@ routes.toml when it exists, else config.toml. Specs:
   [`the_default_workspace_never_applies_in_a_private_window`](../../tests/browser/browser_vimma_workspace_routes_external.js),
   [`a_default_workspace_naming_the_agent_workspace_is_passed_over`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`a_routes_toml_default_workspace_naming_the_agent_workspace_is_passed_over`](../../tests/browser/browser_vimma_agent_outside_opens.js),
-  [`routes.toml's default_workspace wins; config.toml's applies when routes.toml has none`](../../packages/vimma-core/test/routes-file.test.ts)
+  [`routes.toml owns [routing]: config.toml's default_workspace never applies`](../../packages/vimma-core/test/routes-file.test.ts)
 - R10. The names of the last link from another program, and of each tab an app rule placed, are
   kept **in memory only**, are shown only in about:vimma and **never** with the link's URL, and
   the `:bug` report keeps only the rule count, because they tell which programs you run. A

@@ -10,7 +10,6 @@ import {
   appendRouteFileText,
   formatRoutesCache,
   inlineRoutes,
-  moveRoutesText,
   parseRoutesCache,
   parseRoutesFile,
   routesInForce,
@@ -132,12 +131,12 @@ describe("parseConfig with routesFile", () => {
     expect(inline.config?.routes).toEqual([]);
   });
 
-  test("it still validates and applies config.toml's [routing]", () => {
-    const text = '[routing]\ndefault_workspace = "work"\n';
-    expect(parseConfig(text, { routesFile: true }).config?.routing.defaultWorkspace).toBe("work");
-    expect(
-      parseConfig("[routing]\ndefault_workspace = 1\n", { routesFile: true }).errors,
-    ).toHaveLength(1);
+  test("it leaves out config.toml's [routing] too, even an invalid one", () => {
+    const text = "[routing]\ndefault_workspace = 1\n";
+    expect(parseConfig(text).errors).toHaveLength(1);
+    const r = parseConfig(text, { routesFile: true });
+    expect(r.errors).toEqual([]);
+    expect(r.config?.routing.defaultWorkspace).toBeNull();
   });
 });
 
@@ -186,44 +185,54 @@ describe("routesInForce", () => {
     expect(r.routes).toEqual(file.routes);
     expect(r.lines).toEqual([1]);
     expect(r.warnings).toEqual([
+      {
+        line: 3,
+        path: "",
+        message: "routing.default_workspace ignored: routes.toml is the routes file",
+      },
       { line: 5, path: "", message: "routes ignored: routes.toml is the routes file" },
     ]);
   });
 
-  test("routes.toml's default_workspace wins; config.toml's applies when routes.toml has none", () => {
-    const without = parseRoutesFile("");
-    expect(routesInForce({ config, configText, file: without }).defaultWorkspace).toBe("cfg");
-    const withDefault = parseRoutesFile('[routing]\ndefault_workspace = "rt"\n');
-    const r = routesInForce({ config, configText, file: withDefault });
-    expect(r.defaultWorkspace).toBe("rt");
-    expect(r.warnings).toContainEqual({
+  test("routes.toml owns [routing]: config.toml's default_workspace never applies", () => {
+    const without = routesInForce({ config, configText, file: parseRoutesFile("") });
+    expect(without.defaultWorkspace).toBeNull();
+    expect(without.warnings).toContainEqual({
       line: 3,
       path: "",
-      message: "routing.default_workspace ignored: routes.toml sets it",
+      message: "routing.default_workspace ignored: routes.toml is the routes file",
     });
+    const withDefault = parseRoutesFile('[routing]\ndefault_workspace = "rt"\n');
+    expect(routesInForce({ config, configText, file: withDefault }).defaultWorkspace).toBe("rt");
   });
 
   test("a routes.toml never read well yet applies no rule, never config.toml's", () => {
     const broken = parseRoutesFile("[[routes]\n");
     const r = routesInForce({ config, configText, file: broken });
     expect(r.routes).toEqual([]);
-    expect(r.defaultWorkspace).toBe("cfg");
+    expect(r.defaultWorkspace).toBeNull();
   });
 });
 
 describe("appendRouteFileText", () => {
-  test("appendRouteFileText appends a quoted block, creates a missing file, refuses a broken one", () => {
-    expect(appendRouteFileText(null, rule)).toEqual({ create: block });
+  test("appendRouteFileText appends a quoted block and refuses a broken file", () => {
     expect(appendRouteFileText("", rule)).toEqual({ append: block });
     expect(appendRouteFileText("# mine\n", rule)).toEqual({ append: `\n${block}` });
     expect(appendRouteFileText("# mine", rule)).toEqual({ append: `\n\n${block}` });
     expect(appendRouteFileText("[[routes]\n", rule)).toEqual({
       error: "routes.toml does not parse now; fix it first",
     });
-    const odd = appendRouteFileText(null, { domain: "a.example", workspace: 'x" [keys] y = "z' });
-    expect("create" in odd && parseRoutesFile(odd.create).routes).toEqual(
+    const odd = appendRouteFileText("", { domain: "a.example", workspace: 'x" [keys] y = "z' });
+    expect("append" in odd && parseRoutesFile(odd.append).routes).toEqual(
       resolveRoutes([{ domain: "a.example", workspace: 'x" [keys] y = "z' }]),
     );
+  });
+
+  test("appendRouteFileText keeps a CRLF file's line endings", () => {
+    const crlf = '[[routes]]\r\ndomain = "b.example"\r\nworkspace = "w"\r\n';
+    const r = appendRouteFileText(crlf, rule);
+    expect(r).toEqual({ append: `\r\n${block.replaceAll("\n", "\r\n")}` });
+    expect(parseRoutesFile(crlf + ("append" in r ? r.append : "")).routes).toHaveLength(2);
   });
 
   test("a rule the file would refuse is refused with the reason", () => {
@@ -231,172 +240,6 @@ describe("appendRouteFileText", () => {
       error:
         "routes.toml does not parse with the rule added: routes[0].workspace: workspace name must be 1 to 32 characters",
     });
-  });
-});
-
-describe("moveRoutesText", () => {
-  const config = [
-    "schema = 2",
-    "",
-    "[keys]",
-    'new_tab = "t"',
-    "",
-    "# Work sites",
-    "[[routes]]",
-    'domain = "github.com"',
-    "# the company's",
-    'workspace = "work"',
-    "",
-    "# not about routes",
-    "",
-    "[theme]",
-    'font = "monospace"',
-    "",
-    "[[routes]]   # chat",
-    'app = "slack"',
-    'workspace = "work"',
-    "",
-  ].join("\n");
-
-  test("moveRoutesText keeps order, the comments inside and above each rule, and every other line", () => {
-    const r = moveRoutesText(config, rule);
-    if ("error" in r) throw new Error(r.error);
-    expect(r.moved).toEqual({ rules: 2, defaultWorkspace: false });
-    expect(r.routes).toBe(
-      [
-        "# Work sites",
-        "[[routes]]",
-        'domain = "github.com"',
-        "# the company's",
-        'workspace = "work"',
-        "",
-        "[[routes]]   # chat",
-        'app = "slack"',
-        'workspace = "work"',
-        "",
-        block,
-      ].join("\n"),
-    );
-    expect(r.config).toBe(
-      [
-        "schema = 2",
-        "",
-        "[keys]",
-        'new_tab = "t"',
-        "",
-        "# Moved to routes.toml by :route add; routes.toml is the routes file now.",
-        "# # Work sites",
-        "# [[routes]]",
-        '# domain = "github.com"',
-        "# # the company's",
-        '# workspace = "work"',
-        "",
-        "# not about routes",
-        "",
-        "[theme]",
-        'font = "monospace"',
-        "",
-        "# [[routes]]   # chat",
-        '# app = "slack"',
-        '# workspace = "work"',
-        "",
-      ].join("\n"),
-    );
-    const before = parseConfig(config).config;
-    const after = parseConfig(r.config).config;
-    expect(after?.routes).toEqual([]);
-    expect({ ...after, routes: [] }).toEqual({ ...before, routes: [] });
-  });
-
-  test("moveRoutesText comments out [routing] only when default_workspace was its only key", () => {
-    const only = moveRoutesText('[routing]\ndefault_workspace = "w"\n', rule);
-    if ("error" in only) throw new Error(only.error);
-    expect(only.moved).toEqual({ rules: 0, defaultWorkspace: true });
-    expect(only.config).toBe(
-      '# Moved to routes.toml by :route add; routes.toml is the routes file now.\n# [routing]\n# default_workspace = "w"\n',
-    );
-    expect(only.routes).toBe(`[routing]\ndefault_workspace = "w"\n\n${block}`);
-    expect(parseRoutesFile(only.routes).defaultWorkspace).toBe("w");
-  });
-
-  test("default_workspace goes first, under its own header, then the rules", () => {
-    const r = moveRoutesText(
-      '[routing]\ndefault_workspace = "w"\n\n[[routes]]\ndomain = "a.example"\nworkspace = "w"\n',
-      rule,
-    );
-    if ("error" in r) throw new Error(r.error);
-    expect(r.config.split("\n").slice(0, 3)).toEqual([
-      "# Moved to routes.toml by :route add; routes.toml is the routes file now.",
-      "# [routing]",
-      '# default_workspace = "w"',
-    ]);
-    expect(r.routes.startsWith('[routing]\ndefault_workspace = "w"\n\n[[routes]]\n')).toBe(true);
-    expect(r.moved).toEqual({ rules: 1, defaultWorkspace: true });
-  });
-
-  test("moveRoutesText refuses an inline routes array and a config.toml that does not parse", () => {
-    expect(moveRoutesText('routes = [{ domain = "a.b", workspace = "w" }]\n', rule)).toEqual({
-      error: "config.toml's routes are an inline array; move them to routes.toml by hand",
-    });
-    expect(moveRoutesText("[[routes]\n", rule)).toEqual({
-      error: "config.toml does not parse now; fix it first (:config shows it)",
-    });
-    expect(moveRoutesText('routing = { default_workspace = "w" }\n', rule)).toEqual({
-      error:
-        "config.toml's default_workspace is not under a [routing] header; move them to routes.toml by hand",
-    });
-  });
-
-  test("a moved routes.toml resolves to the old rules plus the new one", () => {
-    const r = moveRoutesText(config, rule);
-    if ("error" in r) throw new Error(r.error);
-    const old = parseConfig(config).config?.routes ?? [];
-    expect(parseRoutesFile(r.routes).routes).toEqual([
-      ...old,
-      ...resolveRoutes([rule]).map((x) => ({ ...x, index: old.length + 1 })),
-    ]);
-  });
-
-  test("the comments directly above the next non-routes header stay with it", () => {
-    const text = [
-      "[[routes]]",
-      'domain = "a.example"',
-      'workspace = "w"',
-      "# Theme: mine",
-      "[theme]",
-      'font = "monospace"',
-      "",
-    ].join("\n");
-    const r = moveRoutesText(text, rule);
-    if ("error" in r) throw new Error(r.error);
-    expect(r.routes).toBe(`[[routes]]\ndomain = "a.example"\nworkspace = "w"\n\n${block}`);
-    expect(r.config.split("\n").slice(-4)).toEqual([
-      "# Theme: mine",
-      "[theme]",
-      'font = "monospace"',
-      "",
-    ]);
-  });
-
-  test("a top-level dotted routing.default_workspace is refused; a commented [routing] is text", () => {
-    expect(moveRoutesText('routing.default_workspace = "w"\n', rule)).toEqual({
-      error:
-        "config.toml's default_workspace is not under a [routing] header; move them to routes.toml by hand",
-    });
-    const commented =
-      '# [routing]\n# default_workspace = "w"\n\n[[routes]]\ndomain = "a.example"\nworkspace = "w"\n';
-    const r = moveRoutesText(commented, rule);
-    if ("error" in r) throw new Error(r.error);
-    expect(r.moved).toEqual({ rules: 1, defaultWorkspace: false });
-    expect(r.config.startsWith('# [routing]\n# default_workspace = "w"\n\n# Moved to')).toBe(true);
-  });
-
-  test("a multi-line string in a rule is moved whole", () => {
-    const text = '[[routes]]\ndomain = "a.example"\nworkspace = """\nw"""\n';
-    const r = moveRoutesText(text, rule);
-    if ("error" in r) throw new Error(r.error);
-    expect(parseRoutesFile(r.routes).routes?.[0]?.workspace).toBe("w");
-    expect(parseConfig(r.config).config?.routes).toEqual([]);
   });
 });
 
