@@ -574,7 +574,10 @@ export class PromptKeys {
     const first = bar.buttonContainer?.querySelector("button") ?? null;
     const result = barKey(formatKey(chord), {
       open: true,
-      armed,
+      // Firefox disables the bar's buttons again whenever the window regains focus
+      // (notificationbox.js, _startClickJackingDelay), on a clock Vimma does not see: a disabled
+      // button takes no focus, so a Tab then would be lost.
+      armed: armed && !first?.disabled,
       // Focus on the bar's own buttons is insert mode: Firefox's Tab and Enter work there.
       inField: this.host.inField(),
       inBar: this.inBar(bar),

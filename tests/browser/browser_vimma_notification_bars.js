@@ -12,6 +12,9 @@
 "use strict";
 
 const PAGE = "https://example.com/";
+const BLOCKING =
+  getRootDirectory(gTestPath).replace("chrome://mochitests/content", "https://example.com") +
+  "file_vimma_popups.html";
 const DELAY = 400;
 const VALUE = "vimma-test-bar";
 const LINE = "Tab buttons · Esc close";
@@ -84,7 +87,11 @@ async function pageTab() {
 add_task(async function setup() {
   await SpecialPowers.pushPrefEnv({
     // The test profile turns the delay off; the keys' wait is under test.
-    set: [["security.notification_enable_delay", DELAY]],
+    set: [
+      ["security.notification_enable_delay", DELAY],
+      ["dom.disable_open_during_load", true],
+      ["privacy.popups.showBrowserMessage", true],
+    ],
   });
   registerCleanupFunction(() => {
     while (gBrowser.tabs.length > 1) {
@@ -170,5 +177,56 @@ add_task(async function a_bar_without_a_close_button_takes_only_tab() {
   await wait(DELAY + 100);
   EventUtils.synthesizeKey("KEY_Tab");
   await until(() => document.activeElement === buttons()[0], "Tab still reaches its buttons");
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function tab_waits_while_firefox_restarts_the_bars_own_delay() {
+  const tab = await pageTab();
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    const input = content.document.createElement("input");
+    input.id = "first";
+    content.document.body.prepend(input);
+  });
+  await showBar();
+  await until(() => lineShows(LINE), "armed");
+  // Firefox disables the bar's buttons again when the window regains focus
+  // (notificationbox.js, _startClickJackingDelay); a disabled button takes no focus.
+  window.dispatchEvent(new FocusEvent("focus"));
+  Assert.ok(buttons()[0].disabled, "Firefox restarted the bar's delay");
+  EventUtils.synthesizeKey("KEY_Tab");
+  await until(() => gBrowser.selectedBrowser === document.activeElement, "focus stays in the page");
+  const focused = await SpecialPowers.spawn(
+    tab.linkedBrowser,
+    [],
+    () => content.document.activeElement?.id,
+  );
+  Assert.equal(focused, "first", "so the Tab is the page's, not lost");
+  await until(() => !buttons()[0].disabled, "Firefox's delay ends");
+  gBrowser.selectedBrowser.focus();
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    /** @type {HTMLElement} */ (content.document.activeElement).blur();
+  });
+  await wait(DELAY + 100);
+  EventUtils.synthesizeKey("KEY_Tab");
+  await until(() => document.activeElement === buttons()[0], "then Tab reaches the buttons");
+  BrowserTestUtils.removeTab(tab);
+});
+
+add_task(async function the_popup_blocked_bar_keeps_its_keys_beside_another_bar() {
+  const tab = BrowserTestUtils.addTab(gBrowser, BLOCKING);
+  gBrowser.selectedTab = tab;
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  const popup = () => box().getNotificationWithValue("popup-blocked");
+  await until(() => !!popup(), "Firefox shows the pop-up blocked bar");
+  gBrowser.selectedBrowser.focus();
+  await showBar();
+  await until(
+    () => popup()?.querySelector(".vimma-prompt-keys")?.hasAttribute("armed") ?? false,
+    "the pop-up bar's line arms",
+  );
+  Assert.ok(!line(), "the other bar gets no line");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !popup(), "Esc closes the pop-up blocked bar first");
+  Assert.ok(bar(), "and leaves the other bar");
   BrowserTestUtils.removeTab(tab);
 });

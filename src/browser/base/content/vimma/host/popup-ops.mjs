@@ -217,7 +217,7 @@ export function popupBar(win) {
 
 /**
  * The selected browser's notification bar the keys answer, or null: its pop-up blocked bar,
- * else the bar Firefox shows on top (the box's highest priority, `currentNotification`), such as
+ * else the one shown last, on top of the others (the box's `currentNotification`), such as
  * a private window's "Site looks broken? Reload" (docs/specs/notification-bars.md).
  * @param {BrowserWindow} win
  * @returns {MozNotificationMessage | null}

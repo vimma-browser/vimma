@@ -264,6 +264,11 @@ describe("barKey", () => {
     expect(barKey("esc", { ...bar, inField: true, inBar: true })).toEqual({ kind: "pass" });
   });
 
+  test("in the agent workspace Esc leaves the bar alone with focus on it too", () => {
+    const inBar = { ...closable, inField: true, inBar: true, agent: true };
+    expect(barKey("esc", inBar)).toEqual({ kind: "pass" });
+  });
+
   test("other keys pass: y and n stay the page's", () => {
     for (const key of ["shift+tab", "y", "n", "enter", "space", "j"]) {
       expect(barKey(key, closable)).toEqual({ kind: "pass" });

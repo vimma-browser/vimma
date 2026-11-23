@@ -4695,7 +4695,9 @@ The bar names its keys beside its buttons, `Tab buttons · Esc close`, and `Ente
 close` once focus is on a button. While you type in a page
 field, and in link hints, copy mode and element mode, the keys are theirs and the line says
 `Esc, then Tab buttons`. A bar without a close button takes only `Tab`, and in the
-[agent workspace](#agent-workspace) no key answers a bar.
+[agent workspace](#agent-workspace) no key answers a bar. While a bar is up, `Esc` closes it before it
+stops a loading page or reaches the page, and `Tab` moves onto the bar instead of through the
+page; once the bar is closed both are as before.
 
 ## The command line
 

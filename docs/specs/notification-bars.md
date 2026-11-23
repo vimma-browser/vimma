@@ -1,6 +1,6 @@
 # Spec: notification-bars
 
-Status: implemented · Area: core (`packages/vimma-core/src/prompt-keys.mjs`), host
+Status: implemented · Area: core (`packages/vimma-core/src/keys/prompt-keys.mjs`), host
 (`host/prompt-keys.mjs`, `host/popup-ops.mjs`) · Upstream patches: none · ADR: none
 
 Issue: [#1473](https://github.com/vimma-browser/vimma/issues/1473)
@@ -33,18 +33,24 @@ on ordinary sites and stays until it is clicked.
    at once. A bar without a close button leaves `Esc` alone.
 3. Both keys have the pop-up blocked bar's guards: they count only once the bar has been up for
    `security.notification_enable_delay` (500 ms by default) with no key pressed in between, and
-   any key restarts the wait; a held key never answers. A key that does not count stays the
-   page's.
-4. While typing in a page field, the address bar, a Vimma picker, the command line or a search,
+   any key restarts the wait; a held key never answers. They also wait while Firefox's own delay
+   on the bar's buttons runs again after the window regains focus. A key that does not count
+   stays the page's.
+4. An armed bar takes `Esc` before the page and before `stop_loading`, and `Tab` before the
+   page's focus navigation, until the bar is closed. The reduced-protection bar comes up right
+   after a reload, so an `Esc` meant to stop that load closes the bar instead; a second `Esc`
+   reaches the page.
+5. While typing in a page field, the address bar, a Vimma picker, the command line or a search,
    and in hint, copy and element modes, the keys are theirs. With focus on the bar, every key but
    `Esc` is Firefox's.
-5. The bar names its keys in the permission prompt's keys line beside its buttons:
+6. The bar names its keys in the permission prompt's keys line beside its buttons:
    `Tab buttons · Esc close`, `Tab buttons` for a bar without a close button, and
-   `Esc, then Tab buttons` from a field or a mode that keeps the keys, and `Enter press · Esc
-close` with focus on the bar. It shows once the keys count and is hidden, keeping its place,
-   while they wait.
-6. In the agent workspace no key answers a bar, as for the pop-up blocked bar.
-7. The pop-up blocked bar keeps its own keys; with both bars on a page, it is the one answered.
+   `Esc, then Tab buttons` from a field or a mode that keeps the keys, and
+   `Enter press · Esc close` with focus on the bar. It shows once the keys count and is hidden,
+   keeping its place, while they wait.
+7. In the agent workspace no key answers a bar, as for the pop-up blocked bar, also with focus
+   on the bar.
+8. The pop-up blocked bar keeps its own keys; with both bars on a page, it is the one answered.
 
 ## Research
 
@@ -58,9 +64,12 @@ Checked against Firefox 160 (`surfer.json`).
 - `appendNotification` (`engine/toolkit/content/widgets/notificationbox.js:145`) takes a
   `dismissable` argument, true by default, that gives the bar its close button; `dismiss()`
   (`:628`) runs the bar's `eventCallback("dismissed")` and closes it. The box's
-  `currentNotification` (`:296`) is the bar of the highest priority, the one on top.
-- The bar's buttons are `<button>`s in its light DOM, in `buttonContainer`; their clickjacking
-  delay (`handleEvent`, `:506-522`) refuses only mouse clicks, so a focused button takes `Enter` at once.
+  `currentNotification` is the bar shown last, on top of the others (set at `:369`, and after a
+  close the last of `allNotifications`, `:381-383`).
+- The bar's buttons are `<button>`s in its light DOM, in `buttonContainer`. Its clickjacking
+  delay disables them for `security.notification_enable_delay` when the bar shows and again
+  whenever the window regains focus (`_startClickJackingDelay`, `:652-700`); a disabled button
+  takes no focus, so `Tab` waits while any button is disabled.
 - Focus on a bar button is outside any `<browser>`, so `VimmaHost._mode` reports insert mode and
   Firefox's own `Tab`, `Enter` and `Space` reach the button.
 - In a test build, `ctrl+l` and then `Tab` reached the bar's buttons and its close button;
@@ -105,8 +114,10 @@ pop-up blocked bar, so no key from that workspace's pages acts on a bar.
   pass) and `barHint`.
 - mochitest, `tests/browser/browser_vimma_notification_bars.js`:
   `tab_moves_focus_onto_the_buttons_where_enter_runs_one`,
-  `esc_on_a_focused_button_closes_the_bar`, `esc_closes_the_bar_only_once_it_is_armed`, `keys_typed_in_a_field_are_the_fields`,
-  `a_bar_without_a_close_button_takes_only_tab`.
+  `esc_on_a_focused_button_closes_the_bar`, `esc_closes_the_bar_only_once_it_is_armed`,
+  `tab_waits_while_firefox_restarts_the_bars_own_delay`,
+  `the_popup_blocked_bar_keeps_its_keys_beside_another_bar`,
+  `keys_typed_in_a_field_are_the_fields`, `a_bar_without_a_close_button_takes_only_tab`.
 - `tests/browser/browser_vimma_popups.js` keeps the pop-up blocked bar's keys unchanged.
 
 ## Docs and changelog

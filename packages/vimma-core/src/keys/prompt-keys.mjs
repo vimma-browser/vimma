@@ -150,7 +150,7 @@ export function popupBarHint({ inField = false, locked = false }) {
  */
 export function barKey(key, s) {
   if (s.inBar) {
-    const close = s.open && !s.pending && !s.repeat && key === "esc" && s.dismissable;
+    const close = s.open && !s.pending && !s.repeat && !s.agent && key === "esc" && s.dismissable;
     return { kind: close ? "close" : "pass" };
   }
   if (!s.open || s.pending || s.inField || s.agent || !s.armed || s.repeat) {
