@@ -59,7 +59,9 @@ const DELETED_TOPIC = "contextual-identity-deleted";
  * (browser/components/extensions/parent/ext-tabs.js, ext-windows.js). Such an open with no
  * `cookieStoreId` stays in no container, as in Firefox: an extension's sign-in page must share
  * the cookies its background's requests carry, and a workspace's container would hide them
- * (#1221). A page's own principal never has an add-on policy, so a page cannot ask for this.
+ * (#1221). A page cannot ask for this: what a page opens carries its origin attributes (even an
+ * extension page a web page frames, whose principal has an add-on policy), so its container is
+ * set before Vimma's default is asked.
  * An about: URL from `tabs.create`, and `windows.create` with no URL (the start page), get a
  * content principal of that page instead (setContentTriggeringPrincipal), so they take the
  * workspace's container as ctrl+t and ctrl+n do; `tabs.create` with no URL is told apart by its
