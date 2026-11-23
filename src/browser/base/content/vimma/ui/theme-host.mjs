@@ -229,16 +229,21 @@ function apply(next) {
 }
 
 /**
- * The file's stat, cheap enough for every poll. It describes the file the path resolves to
- * now, so omarchy-theme-set's swap (a new current/theme directory or symlink) changes it too.
+ * The file's stat and digest, cheap enough for every poll (a file of about 1 KB, hashed off the
+ * main thread). It describes the file the path resolves to now, so omarchy-theme-set's swap (a
+ * new current/theme directory or symlink) changes it too. The stat alone misses a swap between
+ * two themes of the same size and mtime (#1432): Linux reports no creation time
+ * (nsLocalFileUnix.cpp's GetCreationTimeImpl), and the path is the same symlink before and after.
  * @param {string} dir
  * @returns {Promise<string | null>} null: no colors.toml
  */
 async function stat(dir) {
   try {
-    const info = await IOUtils.stat(PathUtils.join(dir, "colors.toml"));
+    const file = PathUtils.join(dir, "colors.toml");
+    const info = await IOUtils.stat(file);
+    const digest = await IOUtils.computeHexDigest(file, "sha256");
     const light = await IOUtils.exists(PathUtils.join(dir, "light.mode"));
-    return `${dir}|${info.lastModified}|${info.creationTime ?? ""}|${info.size}|${light}`;
+    return `${dir}|${info.lastModified}|${info.creationTime ?? ""}|${info.size}|${digest}|${light}`;
   } catch (e) {
     if (notFound(e)) return null;
     throw e;

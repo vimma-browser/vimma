@@ -38,7 +38,10 @@ colors: {} }, omarchy, omarchyLightMode })` and `tokensToCss` (strict validation
   describes the file the path resolves to now, so `omarchy-theme-set`'s swap of `current/theme`
   (Omarchy 4 replaces the directory with `mv`; older setups use a symlink) changes it: no sync
   `realpath` on the main thread. One check at a time; a tick during a check is skipped. The
-  timer stops when the last window closes.
+  timer stops when the last window closes. (Since changed: the signature also carries a SHA-256
+  digest of `colors.toml` from `IOUtils.computeHexDigest`, off the main thread, because Linux
+  reports no `creationTime` and a swap between two themes of the same size and mtime left the
+  stat unchanged and was missed, #1432.)
 - **Errors:** a file `resolveTheme` rejects keeps the last good theme; one `console.warn` listing
   each error with its line, and `vimma-theme-error` is notified. The signature is kept, so the
   same broken file is not re-read or re-logged. Contrast warnings go to `console.info`.
