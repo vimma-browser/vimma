@@ -581,7 +581,8 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     `SANDBOXED_FORMS` on agent tabs, because it would stop the user's own logins and searches in
     the agent workspace too.
     (Since changed: the observer is `http-on-opening-request`, which the parent notifies as it
-    opens the request, in the order the page's process started its submissions, because
+    opens the request, for an ordinary submission in the order the page's process started it,
+    because
     `http-on-modify-request` comes only after the proxy lookup off the main thread: a page's
     submission started before a fill's last field could reach it after the allowance for the
     asked one opened, take that allowance and be sent in its place; issue #1484.)

@@ -1056,11 +1056,14 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   submits while it is being filled is cancelled like any other.
   Before every click and every fill the tab is marked in the parent (`AgentActors.agentMark`; the
   marks and the `http-on-opening-request` observer are in `actors/submit-marks.mjs`, one instance
-  per parent process; the request is checked as the parent opens it, in the order the page's
-  process started its submissions, so a page's submission started before a fill's last field
-  can never take the allowance of the asked one, issue #1484), after the page's transient user
-  activation is consumed in every frame, and from then on, while its top document is the same,
-  the request of every navigating form submission in it (any frame, a submit button,
+  per parent process; the request is checked as the parent opens it, which for an ordinary
+  submission of the page's own frame is in the order its process started them, so that a page's
+  submission started before a fill's last field does not take the asked one's allowance, issue
+  #1484; a request whose opening Firefox puts off, such as a POST whose upload stream it copies
+  first, a submission while a prefetch of its address is in flight, or one aimed at a frame in
+  another process, can still come late and take it, to the method and destination the user
+  allowed alone), after the page's transient user activation is consumed in every frame, and
+  from then on, while its top document is the same, the request of every navigating form submission in it (any frame, a submit button,
   `requestSubmit()` or a later `submit()`, whatever the page cached) **must** be cancelled
   before it is sent when it carries no transient user activation, unless it is the one
   submission the question allowed, during that call, with the method and destination (scheme,

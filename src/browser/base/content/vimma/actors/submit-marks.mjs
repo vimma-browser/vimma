@@ -75,10 +75,14 @@ export const whereOf = (uri) => `${uri.prePath}${uri.filePath}`;
  * cancelled unless it is the one the question allowed, to the method and destination it named.
  * The request carries its document's transient user activation, which an agent's click never
  * gives, so a submission with it is the user's, and it ends the mark.
- * Checked as the parent opens the request, in the order the page's process started the
- * submissions (issue #1484): `http-on-modify-request` comes only after the proxy lookup and
- * other checks off the main thread, so a page's submission started before the last field could
- * reach it after the allowance for the asked one opened, and be sent in its place.
+ * Checked as the parent opens the request (issue #1484), which for an ordinary submission of
+ * the page's own frame is in the order its process started them: `http-on-modify-request` comes
+ * only after the proxy lookup and other checks off the main thread, so a page's submission
+ * started before the last field could reach it after the allowance for the asked one opened,
+ * and be sent in its place. A request whose opening Firefox puts off (an upload stream it must
+ * copy first, a prefetch of the same address in flight, a form aimed at a frame in another
+ * process) can still come late; it takes the allowance only to the method and destination the
+ * user allowed, as a page's own `formdata` listener could anyway (security.md M28).
  * @param {unknown} subject  an nsISupports
  */
 function onRequest(subject) {
