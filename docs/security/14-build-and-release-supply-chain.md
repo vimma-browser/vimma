@@ -86,7 +86,7 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`every verify-sha512.py call passes a signature`](../../tools/test/upstream-workflow.test.ts),
   [`refuses a surfer.json with a version.candidate, before anything is fetched`](../../tools/upstream/test/firefox-source.test.ts),
   [`fails a changed key file without the label`](../../tools/ci/test/key-guard.test.mjs),
-  [`fails a change to any of the guard's own files without the label, and passes it with`](../../tools/ci/test/key-guard.test.mjs),
+  [`fails a change to %s without the label, and passes it with`](../../tools/ci/test/key-guard.test.mjs),
   [`passes the pull request that first adds the guard to a base without one`](../../tools/ci/test/key-guard.test.mjs),
   [`fails a changed fingerprint without the label, and passes it with`](../../tools/ci/test/key-guard.test.mjs),
   [`passes event values to run: through env only`](../../tools/ci/test/key-guard.test.mjs),
