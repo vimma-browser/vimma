@@ -675,7 +675,11 @@ Mochitest, `tests/browser/browser_vimma_setup_v2.js` (with `vimma.feature.setupV
 last slice; a file apart from the summary flow's `browser_vimma_setup.js`, because both together
 outgrow the harness's time limit for one file; the last slice drops the summary flow's tasks
 from `browser_vimma_setup.js`, which keeps the page's offering, its config.toml file checks
-through the search engine step and `agent_role_cannot_open_setup`):
+through the search engine step and `agent_role_cannot_open_setup`; since changed, #1398: one
+file per chapter, `browser_vimma_setup_v2_essentials.js`, `_moving_in.js`, `_window.js`,
+`_keys.js` and `_privacy.js`, with the walk and the layout tasks in `_flow.js` and the shared
+helpers in `head_vimma_setup_chapters.js`, so each file stays inside the harness's time limit
+and a failure names its chapter):
 
 - `welcome_says_q_leaves_and_finished_steps_are_saved`
 - `enter_on_a_step_writes_its_key_and_applies_live`

@@ -410,3 +410,105 @@ declare function clearQuery(): void;
 declare function resultsSettle(n: number, win?: BrowserWindow): Promise<void>;
 /** A second workspace, for the scopes past `workspace`; the cleanup deletes it. */
 declare function setupSecondWorkspace(): Promise<void>;
+
+// tests/browser/head_vimma_setup_chapters.js
+
+/** @type {VimmaModules["chrome://browser/content/vimma/setup/SetupHost.sys.mjs"]["SetupHost"]} */
+declare const SetupHost: VimmaModules["chrome://browser/content/vimma/setup/SetupHost.sys.mjs"]["SetupHost"];
+/** @type {VimmaModules["chrome://browser/content/vimma/config/ConfigHost.sys.mjs"]["ConfigHost"]} */
+declare const ConfigHost: VimmaModules["chrome://browser/content/vimma/config/ConfigHost.sys.mjs"]["ConfigHost"];
+/** @type {VimmaModules["moz-src:///toolkit/components/search/SearchService.sys.mjs"]["SearchService"]} */
+declare const SearchService: VimmaModules["moz-src:///toolkit/components/search/SearchService.sys.mjs"]["SearchService"];
+/** @type {VimmaModules["resource://gre/modules/AppConstants.sys.mjs"]["AppConstants"]} */
+declare const AppConstants: VimmaModules["resource://gre/modules/AppConstants.sys.mjs"]["AppConstants"];
+/** @type {VimmaModules["chrome://browser/content/vimma/core/setup.mjs"]["BUILT_STEPS"]} */
+declare const BUILT_STEPS: VimmaModules["chrome://browser/content/vimma/core/setup.mjs"]["BUILT_STEPS"];
+/** @type {VimmaModules["chrome://browser/content/vimma/host/mcp-ops.mjs"]["McpHost"]} */
+declare const McpHost: VimmaModules["chrome://browser/content/vimma/host/mcp-ops.mjs"]["McpHost"];
+/** @type {VimmaModules["moz-src:///browser/components/shell/ShellService.sys.mjs"]["ShellService"]} */
+declare const ShellService: VimmaModules["moz-src:///browser/components/shell/ShellService.sys.mjs"]["ShellService"];
+/** @type {VimmaModules["moz-src:///browser/components/migration/MigrationUtils.sys.mjs"]["MigrationUtils"]} */
+declare const MigrationUtils: VimmaModules["moz-src:///browser/components/migration/MigrationUtils.sys.mjs"]["MigrationUtils"];
+/** @type {VimmaModules["moz-src:///browser/components/migration/InternalTestingProfileMigrator.sys.mjs"]["InternalTestingProfileMigrator"]} */
+declare const InternalTestingProfileMigrator: VimmaModules["moz-src:///browser/components/migration/InternalTestingProfileMigrator.sys.mjs"]["InternalTestingProfileMigrator"];
+/** @type {VimmaModules["resource://testing-common/Sinon.sys.mjs"]["sinon"]} */
+declare const sinon: VimmaModules["resource://testing-common/Sinon.sys.mjs"]["sinon"];
+/** @type {VimmaModules["chrome://browser/content/vimma/services/AppLauncher.sys.mjs"]["AppLauncher"]} */
+declare const AppLauncher: VimmaModules["chrome://browser/content/vimma/services/AppLauncher.sys.mjs"]["AppLauncher"];
+declare const SETUP_URL = "about:vimma-setup";
+declare const OFFERED = "vimma.setup.offered";
+/** The chapters finished on an earlier run, which every file's walks record. */
+declare const CHAPTERS_PREF = "vimma.setup.chapters";
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+declare function found<T>(value: T | null | undefined): T;
+/**
+ * The setup page's document. about:vimma-setup loads in the parent process (SetupHost.sys.mjs's
+ * getURIFlags has no URI_MUST_LOAD_IN_CHILD), so the browser has it; contentDocument is null only
+ * for a remote page, where a read through it throws.
+ * @param {MozTabbrowserTab} tab
+ */
+declare const docOf: (tab: MozTabbrowserTab) => Document;
+/**
+ * What the replaced shell service answers, for every task (Moving in, behaviour 22), and the
+ * arguments of each Make Default it was asked. No task changes this machine's default browser.
+ */
+declare const shell: {
+  isDefault: boolean;
+  setFails: boolean;
+  flatpak: boolean;
+  /** @type {unknown[][]} */
+  calls: unknown[][];
+};
+declare let configHome: string;
+declare const configFile: () => string;
+/**
+ * Removes config.toml and reads the config now, so Vimma undoes the `[search] default` a summary
+ * applied before the next task starts. Left to the 2 s poll, the undo lands in whichever task is
+ * running then and changes the default engine under it.
+ */
+declare function removeConfig(): Promise<void>;
+/**
+ * @param {Document} doc
+ * @param {...(string | { ctrlKey?: boolean, altKey?: boolean, shiftKey?: boolean })} keys
+ *   EventUtils key names, each followed by its modifiers when it has any
+ */
+declare function press(
+  doc: Document,
+  ...keys: (
+    | string
+    | {
+        ctrlKey?: boolean;
+        altKey?: boolean;
+        shiftKey?: boolean;
+      }
+  )[]
+): Promise<void>;
+/** @param {Document} doc */
+declare const step: (doc: Document) => string | undefined;
+/** @param {BrowserWindow} [win] */
+declare function openFlow(win?: BrowserWindow): Promise<{
+  tab: MozTabbrowserTab;
+  doc: Document;
+}>;
+/** @param {MozTabbrowserTab} tab */
+declare function closeFlow(tab: MozTabbrowserTab): Promise<void>;
+/**
+ * Waits for the page to show `id`: a step id with its view drawn, "welcome" or "stop".
+ * @param {Document} doc @param {string} id
+ */
+declare function atStep(doc: Document, id: string): Promise<boolean>;
+/** @param {Document} doc @returns {string} the choice under the cursor */
+declare const current: (doc: Document) => string;
+/** @param {Document} doc */
+declare const writes: (doc: Document) => string;
+/** @param {Document} doc */
+declare const notice: (doc: Document) => HTMLElement;
+/** From the welcome screen to the search engine step, past the content blocker with nothing marked. */
+declare function toEngines(/** @type {Document} */ doc: Document): Promise<void>;
+/** @param {Document} doc */
+declare const choiceNote: (doc: Document) => string;

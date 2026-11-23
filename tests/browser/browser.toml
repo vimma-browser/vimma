@@ -500,8 +500,23 @@ support-files = ["head_vimma_control.js"]
 ["browser_vimma_setup_moving_in.js"]
 support-files = ["head_vimma_control.js"]
 
-["browser_vimma_setup_v2.js"]
-support-files = ["file_vimma_setup_amo.sjs"]
+["browser_vimma_setup_v2_essentials.js"]
+support-files = ["file_vimma_setup_amo.sjs", "head_vimma_setup_chapters.js"]
+
+["browser_vimma_setup_v2_flow.js"]
+support-files = ["head_vimma_setup_chapters.js"]
+
+["browser_vimma_setup_v2_keys.js"]
+support-files = ["head_vimma_setup_chapters.js"]
+
+["browser_vimma_setup_v2_moving_in.js"]
+support-files = ["head_vimma_setup_chapters.js"]
+
+["browser_vimma_setup_v2_privacy.js"]
+support-files = ["head_vimma_setup_chapters.js"]
+
+["browser_vimma_setup_v2_window.js"]
+support-files = ["head_vimma_setup_chapters.js"]
 
 ["browser_vimma_theme.js"]
 run-if = ["os == 'linux'"] # ln -s for the omarchy-theme-set symlink swap

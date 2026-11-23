@@ -4,9 +4,10 @@
 
 // The setup page around its chapters (docs/specs/first-run-setup.md, docs/specs/setup-v2.md):
 // when it is offered, how it opens, what reaches it, and the config.toml file a step writes.
-// The chapters' own tasks are in browser_vimma_setup_v2.js. AMO is pointed at a closed local
-// port, so the content blocker shows the curated list offline and nothing leaves the machine;
-// XDG_CONFIG_HOME is a temporary folder, so config.toml writes never reach the real ~/.config.
+// The chapters' own tasks are in the browser_vimma_setup_v2_*.js files. AMO is pointed at a
+// closed local port, so the content blocker shows the curated list offline and nothing leaves
+// the machine; XDG_CONFIG_HOME is a temporary folder, so config.toml writes never reach the real
+// ~/.config.
 
 "use strict";
 
