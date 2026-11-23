@@ -107,6 +107,70 @@ function places() {
 /** IOUtils rejects with a DOMException named NotFoundError for a missing file. */
 const notFound = (/** @type {unknown} */ e) => /** @type {Thrown} */ (e)?.name === "NotFoundError";
 
+/**
+ * The file a path names after its symbolic links (nsIFile's target follows the chain, also to
+ * nothing), or the path itself when it is no link.
+ * @param {string} path
+ */
+function resolved(path) {
+  const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  file.initWithPath(path);
+  try {
+    return file.isSymlink() ? file.target : path;
+  } catch {
+    return path;
+  }
+}
+
+/**
+ * What a polled file (config.toml, routes.toml, bookmarks.toml) looks like now: "missing" when
+ * nothing is at the path, else the file a link resolves to, its type, time and size, and for a
+ * regular file within `maxBytes` the digest of its text (hashed off the main thread). The time
+ * and size alone miss a change that keeps both: the Nix store gives every file the time 1, so a
+ * `home-manager switch` that repoints the link at a file of the same size looked unchanged, as
+ * did `cp -p` and `rsync -t` (#1474; the Omarchy theme poll had the same gap, #1455). Only a
+ * regular file is hashed (a FIFO would block); a digest that fails, as for a file without read
+ * permission, says "unreadable", so that the reader is asked and says why.
+ * @param {string} path
+ * @param {number} maxBytes
+ * @returns {Promise<string>}
+ */
+export async function fileSignature(path, maxBytes) {
+  let info;
+  try {
+    info = await IOUtils.stat(path);
+  } catch (e) {
+    if (notFound(e)) return "missing";
+    throw e;
+  }
+  const head = signatureHead(path, info);
+  if (info.type !== "regular" || (info.size ?? 0) > maxBytes) return head;
+  const digest = await IOUtils.computeHexDigest(path, "sha256").catch(() => "unreadable");
+  return `${head}|${digest}`;
+}
+
+/**
+ * fileSignature's part from the stat: the file a link resolves to, its type, time and size.
+ * @param {string} path
+ * @param {{ type?: string, lastModified?: number, size?: number }} info
+ */
+export function signatureHead(path, info) {
+  return `${resolved(path)}|${info.type}|${info.lastModified}|${info.size}`;
+}
+
+/**
+ * The SHA-256 of bytes already read, in hex, for a signature made from the read itself.
+ * @param {Uint8Array} bytes
+ */
+export function hexDigest(bytes) {
+  const hash = Cc["@mozilla.org/security/hash;1"].createInstance(Ci.nsICryptoHash);
+  hash.init(Ci.nsICryptoHash.SHA256);
+  hash.update(bytes, bytes.length);
+  return Array.from(hash.finish(false), (c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
+
 /** @param {string} text */
 function sha256(text) {
   const bytes = new TextEncoder().encode(text);
@@ -671,14 +735,8 @@ export class BookmarksFileImpl {
     return this.enqueue({ trigger: "file" });
   }
 
-  async stat() {
-    try {
-      const info = await IOUtils.stat(this.path);
-      return `${info.lastModified}|${info.size}|${info.type}`;
-    } catch (e) {
-      if (notFound(e)) return "missing";
-      throw e;
-    }
+  stat() {
+    return fileSignature(this.path, MAX_BOOKMARKS_FILE_BYTES);
   }
 
   /**

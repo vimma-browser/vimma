@@ -4865,7 +4865,13 @@ One plain file holds your settings and keys; every key, the prefix and the leade
 - **Start:** the first run and `:config` write it with every setting commented out.
 - **Change:** uncomment a line and edit its value; saving applies it within 2 seconds.
 - **Reload by hand:** `:source` reads it at once; `:source work.toml` applies another file.
-- **Mistakes:** the old config keeps working, and the status bar shows the error and its line.
+- **Mistakes:** the status bar shows the error and its line, and the config in force keeps
+  working: the last file that loaded, or the defaults when none has since Vimma started. A file
+  Vimma cannot read (not UTF-8, no read permission, a link to a missing file, over 1 MiB) is
+  said the same way.
+- **Missing file:** when `config.toml` is gone for two checks in a row (within about 4 seconds),
+  the defaults apply and a notice says `config.toml missing; using the defaults`; an editor that
+  saves by replacing the file never triggers it.
 - **Old files:** a `schema = …` line is ignored.
 - **Newer files:** a setting this version does not know, such as one a newer Vimma added, is
   skipped and named in the status bar (`unknown key "…"; skipped`), and the rest of the file

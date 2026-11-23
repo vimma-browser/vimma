@@ -9,6 +9,16 @@ accepted and ignored, and every key is valid in every file. The decision, its re
 one compatibility cost (an older build refuses a newer key without `schema = 2`) are recorded in
 [m5-core-config-and-theme](m5-core-config-and-theme.md), under its status line.
 
+Since changed (#1474): the poll compares the file a link resolves to, its type, time, size and,
+for a regular file of at most 1 MiB, the SHA-256 of its text, because a Nix store link repointed
+at a file of the same size (every store file has the time 1), `cp -p` and `rsync -t` keep the
+time and size. A file that cannot be read (not UTF-8, no read permission, a link to nothing,
+not a regular file, over 1 MiB) is an error in the status bar, as a parse error is, and the
+config in force stays; the read is tried again at every poll, since a `chmod` changes nothing
+the poll compares. A file gone after a read waits for a second poll that finds it gone before
+the defaults apply, because an editor's save or a `git checkout` can leave it gone for a moment;
+then `config.toml missing; using the defaults` is said once.
+
 The host half of M5's config, on top of core's `reloadConfig` and `formatConfigError`
 ([m5-core-config-and-theme](m5-core-config-and-theme.md), schema 2 in
 [m3-m4-core-prep](m3-m4-core-prep.md)). Plan §6 M5 gate: "a broken config line shows file:line in
