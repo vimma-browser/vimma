@@ -4849,9 +4849,9 @@ One plain file holds your settings and keys; every key, the prefix and the leade
   working: the last file that loaded, or the defaults when none has since Vimma started. A file
   Vimma cannot read (not UTF-8, no read permission, a link to a missing file, over 1 MiB) is
   said the same way.
-- **Missing file:** when `config.toml` is gone for two checks in a row (about 4 seconds), the
-  defaults apply and the status bar says `config.toml missing; using the defaults`; an editor
-  that saves by replacing the file never triggers it.
+- **Missing file:** when `config.toml` is gone for two checks in a row (within about 4 seconds),
+  the defaults apply and a notice says `config.toml missing; using the defaults`; an editor that
+  saves by replacing the file never triggers it.
 - **Old files:** a `schema = …` line is ignored.
 
 ### Keys and modes

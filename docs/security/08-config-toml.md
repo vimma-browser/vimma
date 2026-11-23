@@ -81,9 +81,13 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   its schema allows. `ConfigHost` reads only a regular file (a FIFO would block every later
   read), of at most 1 MiB, with a byte cap in case it grows meanwhile, and as strict UTF-8; a
   file it does not read is an error in the status bar and the config in force stays. The poll
-  hashes only a regular file within that limit. Edits of config.toml read it under the same
-  limit.
+  hashes only what its stat found to be a regular file within that limit. Edits of config.toml
+  read it under the same limit. Accepted risk: a file swapped between the stat and the read or
+  the hash (for a FIFO, or a link to a device) can still block or run long, on IOUtils' one
+  background queue; only someone who can already write the config folder can do that.
   [`a_file_over_1_mib_is_not_read`](../../tests/browser/browser_vimma_config_file_changes.js),
+  [`a_fifo_is_not_read_and_the_poll_goes_on`](../../tests/browser/browser_vimma_config_file_changes.js),
+  [`a_link_to_nothing_is_said_and_the_config_in_force_stays`](../../tests/browser/browser_vimma_config_file_changes.js),
   [`a_file_that_is_not_utf8_is_said_and_the_config_in_force_stays`](../../tests/browser/browser_vimma_config_file_changes.js),
   [`parseConfig never throws, on any text, and its result is well-formed`](../../packages/vimma-core/test/fuzz/config.fuzz.test.ts),
   [`an accepted config holds only what the schema allows`](../../packages/vimma-core/test/fuzz/config.fuzz.test.ts),

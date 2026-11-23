@@ -51,14 +51,16 @@ const newTab = () => ConfigHost.config?.keys.new_tab;
  * @param {string[]} args
  */
 async function python(code, ...args) {
-  await new Promise((resolve) => {
-    const proc = Cc["@mozilla.org/process/util;1"].createInstance(Ci.nsIProcess);
-    const py = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
-    py.initWithPath("/usr/bin/python3");
-    proc.init(py);
-    const argv = ["-c", code, ...args];
-    proc.runAsync(argv, argv.length, { observe: resolve });
-  });
+  const proc = Cc["@mozilla.org/process/util;1"].createInstance(Ci.nsIProcess);
+  const py = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  py.initWithPath("/usr/bin/python3");
+  proc.init(py);
+  const argv = ["-c", code, ...args];
+  // nsIProcess notifies "process-failed" for a non-zero exit.
+  const topic = await new Promise((resolve) =>
+    proc.runAsync(argv, argv.length, { observe: (_s, t) => resolve(t) }),
+  );
+  Assert.equal(topic, "process-finished", `python3 ${args.join(" ")}`);
 }
 
 /** `link` pointing at `target`, replaced in one rename when it is there, as home-manager does. */
@@ -68,6 +70,10 @@ const pointLink = (/** @type {string} */ target, /** @type {string} */ link) =>
     target,
     link,
   );
+
+/** A FIFO at `path`, which blocks whoever opens it for reading. */
+const mkfifo = (/** @type {string} */ path) =>
+  python("import os,sys; os.mkfifo(sys.argv[1], 0o600)", path);
 
 /**
  * A throwaway folder whose config.toml is in force for `task`, with the timer's poll held off:
@@ -139,6 +145,8 @@ add_task(async function a_file_that_is_not_utf8_is_said_and_the_config_in_force_
 });
 
 add_task(async function an_unreadable_file_is_said_and_read_once_it_can_be() {
+  // root reads a file whatever its mode.
+  if (Services.env.get("USER") === "root") return;
   await withConfig(async ({ config }) => {
     await IOUtils.writeUTF8(config, A);
     await ConfigHost.poll();
@@ -283,6 +291,62 @@ add_task(async function a_file_over_1_mib_is_not_read() {
       "the status bar says the file is too large",
     );
     Assert.equal(newTab(), "prefix+t", "the config in force stays");
+  });
+});
+
+add_task(async function a_fifo_is_not_read_and_the_poll_goes_on() {
+  await withConfig(async ({ config }) => {
+    await IOUtils.writeUTF8(config, A);
+    await ConfigHost.poll();
+    Assert.equal(newTab(), "prefix+t", "sanity: the file applies");
+
+    await IOUtils.remove(config);
+    await mkfifo(config);
+    await ConfigHost.poll();
+    await until(
+      () => segText("error") === "config.toml: not a regular file; not read",
+      "the status bar says the FIFO is not read",
+    );
+    Assert.equal(newTab(), "prefix+t", "the config in force stays");
+    // A poll that opened the FIFO would never end, nor would any later one.
+    await ConfigHost.poll();
+    await IOUtils.remove(config);
+    await IOUtils.writeUTF8(config, B);
+    await ConfigHost.poll();
+    Assert.equal(newTab(), "prefix+y", "a file in its place applies");
+  });
+});
+
+add_task(async function an_unreadable_file_neither_undoes_source_nor_holds_routes_toml() {
+  if (Services.env.get("USER") === "root") return;
+  await withConfig(async ({ dir, config }) => {
+    const { WorkspaceRouter } = ChromeUtils.importESModule(
+      "chrome://browser/content/vimma/workspaces/WorkspaceRouter.sys.mjs",
+    );
+    await IOUtils.writeUTF8(config, A);
+    await IOUtils.setPermissions(config, 0o000);
+    await ConfigHost.poll();
+    await until(() => segText("error")?.includes("cannot be read"), "the file cannot be read");
+
+    // routes.toml beside it still applies while config.toml cannot be read.
+    const routes = PathUtils.join(dir, "routes.toml");
+    await IOUtils.writeUTF8(routes, `[[routes]]\ndomain = "example.org"\nworkspace = "work"\n`);
+    await ConfigHost.poll();
+    Assert.deepEqual(
+      WorkspaceRouter.routes.map((r) => r.domain?.host),
+      ["example.org"],
+      "routes.toml's rule is in force",
+    );
+
+    // :source <file> stays in force while config.toml, unchanged, still cannot be read.
+    const work = PathUtils.join(dir, "work.toml");
+    await IOUtils.writeUTF8(work, B);
+    await ConfigHost.reload(work);
+    Assert.equal(ConfigHost.path, work, "the sourced file is in force");
+    await ConfigHost.poll();
+    await ConfigHost.poll();
+    Assert.equal(ConfigHost.path, work, "and stays so across polls");
+    Assert.equal(newTab(), "prefix+y", "with its keys");
   });
 });
 

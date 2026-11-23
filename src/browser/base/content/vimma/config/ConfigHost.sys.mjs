@@ -154,11 +154,14 @@ let warnings = [];
 let errorsPath = "";
 /** @type {string | null} the file `:source <path>` put in force; null: config.toml */
 let sourced = null;
-/**
- * What the file looked like at the last read (fileSignature); "" forces one, and stays after a
- * read that failed, so that the file is read again at each poll until it reads.
- */
+/** What the file looked like at the last read (fileSignature); "" forces one. */
 let signature = "";
+/**
+ * The last read of config.toml failed (not UTF-8, no permission, …): it is read again at each
+ * poll until it reads, since a `chmod` changes nothing fileSignature compares, but without
+ * counting as a change of the file (`:source <file>` stays in force, nothing is said again).
+ */
+let failed = false;
 /**
  * A poll found config.toml gone after a read of it: the next poll that finds it gone too applies
  * the defaults (an editor's save, or a `git checkout`, can leave it gone for a moment).
@@ -495,22 +498,14 @@ async function readRoutes(now) {
   }
   if (now === "unreadable") r = unreadRoutes("cannot be read (a link to nothing, or no access)");
   else {
-    try {
-      const info = await IOUtils.stat(path);
-      // Only a regular file is read: a FIFO would block this read and every later one of
-      // config.toml. Nor a file that would be refused anyway (decision 4's bound).
-      if (info.type !== "regular") r = unreadRoutes("not a regular file; not read");
-      else if ((info.size ?? 0) > MAX_ROUTES_FILE_BYTES) {
-        r = unreadRoutes("larger than 1 MiB; not read");
-      } else r = parseRoutesFile(await IOUtils.readUTF8(path));
-    } catch (e) {
-      if (notFound(e) && !isLink(path)) {
-        routesSignature = "missing";
-        return readRoutes("missing");
-      }
-      console.error(`vimma: cannot read ${path}`, e);
-      r = unreadRoutes("cannot be read");
+    // As config.toml is read: a regular file only, within decision 4's bound.
+    const got = await readConfig(path, MAX_ROUTES_FILE_BYTES);
+    if ("missing" in got && !isLink(path)) {
+      routesSignature = "missing";
+      return readRoutes("missing");
     }
+    if ("text" in got) r = parseRoutesFile(got.text);
+    else r = unreadRoutes("problem" in got ? got.problem : "cannot be read");
   }
   routesPresent = true;
   routesFileErrors = r.errors;
@@ -525,20 +520,21 @@ async function readRoutes(now) {
 }
 
 /**
- * Reads config.toml for check(): its text, or why it was not read. Only a regular file is
- * read (a FIFO would block this read and every later one), never more than the limit, even if
- * it grows meanwhile, and as strict UTF-8.
+ * Reads config.toml (or routes.toml) for a poll: its text, or why it was not read. Only a
+ * regular file is read (a FIFO would block this read and every later one), never more than the
+ * limit, even if it grows meanwhile, and as strict UTF-8.
  * @param {string} path
+ * @param {number} [maxBytes]
  * @returns {Promise<{ text: string } | { problem: string } | { missing: true }>}
  */
-async function readConfig(path) {
+async function readConfig(path, maxBytes = MAX_CONFIG_FILE_BYTES) {
   try {
     const info = await IOUtils.stat(path);
     if (info.type !== "regular") return { problem: "not a regular file; not read" };
-    const tooLarge = { problem: "larger than 1 MiB; not read" };
-    if ((info.size ?? 0) > MAX_CONFIG_FILE_BYTES) return tooLarge;
-    const bytes = await IOUtils.read(path, { maxBytes: MAX_CONFIG_FILE_BYTES + 1 });
-    if (bytes.length > MAX_CONFIG_FILE_BYTES) return tooLarge;
+    const tooLarge = { problem: `larger than ${maxBytes / (1024 * 1024)} MiB; not read` };
+    if ((info.size ?? 0) > maxBytes) return tooLarge;
+    const bytes = await IOUtils.read(path, { maxBytes: maxBytes + 1 });
+    if (bytes.length > maxBytes) return tooLarge;
     try {
       return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
     } catch {
@@ -583,7 +579,11 @@ async function check(force) {
   // that arrives before WorkspaceStore is ready is the one its init reads (its first workspace
   // shown at the start), and a later one only adds to the workspaces init made.
   const [seen, routesNow] = await Promise.all([
-    fileSignature(path, MAX_CONFIG_FILE_BYTES),
+    // A folder without search permission: readConfig says so, rather than the poll failing.
+    fileSignature(path, MAX_CONFIG_FILE_BYTES).catch((e) => {
+      console.error(`vimma: cannot stat ${path}`, e);
+      return "unreadable";
+    }),
     routesStat(routesPath()),
   ]);
   // A link to nothing is the user's config.toml all the same: said, never the defaults.
@@ -594,39 +594,51 @@ async function check(force) {
     configChanged = goneOnce;
     goneOnce = !goneOnce;
   } else goneOnce = false;
-  if (!routesChanged && !configChanged) return;
+  const readable = now !== "missing" && now !== "dangling";
+  const retry = !configChanged && failed && readable && sourced === null;
+  if (!routesChanged && !configChanged && !retry) return;
   /** @type {Promise<{ text: string } | { problem: string } | { missing: true }> | null} */
-  const reading =
-    configChanged && now !== "missing" && now !== "dangling" ? readConfig(path) : null;
+  const reading = (configChanged || retry) && readable ? readConfig(path) : null;
   const wasPresent = routesPresent;
   if (routesChanged) {
     routesSignature = routesNow;
     await readRoutes(routesNow);
   }
-  if (!configChanged) {
-    // Only routes.toml changed. Its arrival or removal decides whether the config's rules are
-    // checked, so the config is read again; otherwise only the routes change.
+  /** routes.toml changed while config.toml is not read now: its rules apply all the same. */
+  const routesOnly = () => {
+    if (!routesChanged) return;
+    // Its arrival or removal decides whether the config's rules are checked, so the config is
+    // read again; otherwise only the routes change.
     if (wasPresent !== routesPresent && lastUse) {
       use(lastUse.path, lastUse.text, lastUse.left);
     } else applyRoutes();
     showErrors();
+  };
+  const read = reading ? await reading : null;
+  if (!configChanged && !(retry && read && "text" in read)) {
+    routesOnly();
     return;
   }
   sourced = null; // config.toml changed (or a plain :source): it is the file in force again
-  const read = reading ? await reading : null;
   if (now === "dangling" || (read && "problem" in read)) {
-    signature = "";
+    signature = now;
+    failed = true;
+    routesOnly();
     refuse(path, read && "problem" in read ? read.problem : "a link to a missing file; not read");
     return;
   }
-  if (read && "missing" in read) {
-    // Removed between the stat and the read: seen as gone at the next poll.
+  if (read && "missing" in read && active !== null) {
+    // Removed between the stat and the read: seen as gone at the next poll. Before the first
+    // read the defaults apply at once, as for a file that is not there.
     signature = "";
+    routesOnly();
     return;
   }
-  const gone = now === "missing" && active !== null && signature !== "missing";
-  signature = now;
-  const text = read ? read.text : "";
+  failed = false;
+  const missing = now === "missing" || (read !== null && "missing" in read);
+  const gone = missing && active !== null && signature !== "missing";
+  signature = missing ? "missing" : now;
+  const text = read && "text" in read ? read.text : "";
   const applied = use(path, text);
   if (gone && !force) {
     // Said once, when a poll finds the file gone; `:source` and a reset say nothing more.
@@ -639,7 +651,7 @@ async function check(force) {
     appliedBookmarklets = active?.config.bookmarks.bookmarklets ?? "none";
     appliedWriteBack = active?.config.bookmarks.writeBack ?? "all";
   }
-  bookmarksFile.configRead(now === "missing" ? null : text, appliedBookmarklets, appliedWriteBack);
+  bookmarksFile.configRead(missing ? null : text, appliedBookmarklets, appliedWriteBack);
 }
 
 /**
