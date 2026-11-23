@@ -116,7 +116,7 @@ class FakeHypr {
   /**
    * @param {{ mode?: "lua" | "silent" | "errors" | "hangup" | "open-on-nonce" | "nameless",
    *   delayMoves?: number, delayNames?: number, dropNames?: number, listAfter?: number,
-   *   holdNames?: number, slowClients?: number }}
+   *   holdNames?: number, slowClients?: number, listenFirst?: boolean }}
    *   [options]  hangup: closes every request unanswered; open-on-nonce: a window is announced
    *   only by openwindow, with its nonce title, and j/clients never shows that title (unless
    *   listAfter); nameless: a nonce title never reaches Hyprland (its events and j/clients show
@@ -126,7 +126,9 @@ class FakeHypr {
    *   been the window's title this many ms, as Hyprland does once the title reaches it;
    *   holdNames: open-on-nonce's openwindow is sent only while a j/clients request is being
    *   answered, once the title has been set this many ms, and that reply then comes 300 ms
-   *   late (the event arrives during the request); slowClients: j/clients replies this late
+   *   late (the event arrives during the request); slowClients: j/clients replies this late;
+   *   listenFirst: a title reaches the fake only once a listener is on its event socket, so
+   *   that the title's event cannot go to no one (#890)
    */
   constructor({
     mode = "lua",
@@ -136,6 +138,7 @@ class FakeHypr {
     listAfter = 0,
     holdNames = 0,
     slowClients = 0,
+    listenFirst = false,
   } = {}) {
     this.mode = mode;
     this.delayMoves = delayMoves;
@@ -144,6 +147,7 @@ class FakeHypr {
     this.listAfter = listAfter;
     this.holdNames = holdNames;
     this.slowClients = slowClients;
+    this.listenFirst = listenFirst;
     /** holdNames' lines not sent yet. @type {{ a: string, line: string }[]} */
     this.held = [];
     /** How late the reply being written comes, in ms. */
@@ -345,6 +349,9 @@ class FakeHypr {
         }
       }
       open.add(a);
+      // Vimma sets the nonce right after it starts connecting, and the accept comes later on
+      // the main thread: a poll in between would send the openwindow to no one (#890).
+      if (this.listenFirst && this.events.length === 0) continue;
       const real = win.document.title;
       const nameless = this.mode === "nameless" && /^vimma-[0-9a-f]{32}$/.test(real);
       const title = nameless ? "Vimma" : real;
@@ -1260,10 +1267,15 @@ add_task(async function a_dropped_switch_does_not_shorten_later_waits() {
 
 /**
  * The start names the normal window (open-on-nonce), so a switch names only the private one.
+ * Its title reaches the fake only once Vimma listens: socket2 does not replay, so an openwindow
+ * sent before the accept is lost and the naming would fall back to j/clients, which in
+ * open-on-nonce never shows the nonce (#890).
  * @param {FakeOptions} [options]
  */
 async function startNamed(options) {
-  const f = await start({ mode: "open-on-nonce", ...options }, undefined, { configured: false });
+  const f = await start({ mode: "open-on-nonce", listenFirst: true, ...options }, undefined, {
+    configured: false,
+  });
   PrivateSwap.configure("swap");
   await until(() => f.evAccepts >= 1, "Vimma listens to the event socket");
   // A named window's track() reads j/clients once; a naming that falls back reads it itself.
