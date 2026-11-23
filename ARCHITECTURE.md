@@ -193,7 +193,8 @@ they test.
 - `src/browser/branding/vimma/`: default prefs (`firefox-branding.js`, where unfinished features'
   `vimma.feature.*` prefs live), brand strings. `configs/branding/` holds the icons.
 - `src/**/*.patch`: the upstream edits, each listed in ADR-003.
-- `configs/`: mozconfigs per platform and the updater's certificates.
+- `configs/`: mozconfigs per platform, the updater's certificates and the package repositories'
+  OpenPGP certificate (`package-signing/`).
 
 ### `tests/`
 

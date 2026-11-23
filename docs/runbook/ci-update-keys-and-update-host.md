@@ -543,11 +543,12 @@ gpg --show-keys configs/package-signing/vimma-packages.asc   # the same fingerpr
 ```
 
 Commit the certificate in a pull request of its own and record its fingerprint here; the guide
-prints it next to each setup command.
+prints it next to each setup command. `npm test` fails when the committed certificate's
+fingerprint is not the one in this table, or its self-signature does not verify.
 
-| Key                                                        | Fingerprint  |
-| ---------------------------------------------------------- | ------------ |
-| `vimma-packages/package-signing`, version 1, HSM, RSA-4096 | not made yet |
+| Key                                                        | Created              | Fingerprint                                |
+| ---------------------------------------------------------- | -------------------- | ------------------------------------------ |
+| `vimma-packages/package-signing`, version 1, HSM, RSA-4096 | 2026-11-23T19:12:57Z | `110649CB2BC11400828DD0D497FD3D2B24AD4390` |
 
 Turning the repositories on: `release.yml` signs the `.rpm` and builds the pacman package only
 while the variable is `true`, and the repositories list only releases that have it, so set it
