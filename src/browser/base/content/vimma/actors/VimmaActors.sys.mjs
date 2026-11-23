@@ -278,6 +278,21 @@ export const VimmaActors = {
   },
 
   /**
+   * Resolves once the page in `browser` has painted since its last resize reached it, or at
+   * once when it has no actor (docs/specs/private-swap-macos.md, #773). Nothing comes back but
+   * the reply itself, and the caller bounds the wait.
+   * @param {MozBrowser} browser
+   * @returns {Promise<void>}
+   */
+  async painted(browser) {
+    try {
+      await actorFor(browser.browsingContext)?.sendQuery("Vimma:Painted");
+    } catch {
+      // The page went away or navigated: nothing of it is left to wait for.
+    }
+  },
+
+  /**
    * How far the top frame is scrolled down, from 0 to 1 (docs/specs/mcp-drive.md D16). The
    * page's child answers, so the number is checked here.
    * @param {MozBrowser} browser

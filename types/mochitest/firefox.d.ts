@@ -526,15 +526,6 @@ interface Window {
 interface WindowGlobalChild {
   getActor(name: string): JSWindowActorChild;
 }
-// engine/dom/chrome-webidl/BrowsingContext.webidl: shown, or kept rendering (the tests set it).
-interface BrowsingContext {
-  isActive: boolean;
-}
-// engine/docshell/base/nsIDocShell.idl: the element the docshell's events go up to, null for a
-// top-level window's.
-interface nsIDocShell {
-  readonly chromeEventHandler: EventTarget | null;
-}
 
 // engine/dom/webidl/Document.webidl (chrome-only): a XUL element, as chrome code makes one.
 interface Document {

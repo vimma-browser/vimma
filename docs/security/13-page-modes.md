@@ -154,3 +154,11 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   [`a_bad_argument_is_refused_and_nothing_changes`](../../tests/browser/browser_vimma_site_unbind_command.js),
   [`a_config_toml_with_errors_is_never_written`](../../tests/browser/browser_vimma_site_unbind_command.js),
   [`a_private_window_does_not_save`](../../tests/browser/browser_vimma_site_unbind_command.js)
+- K14. Before the macOS private swap shows a window at a new size, it asks the page in each tab
+  that window shows whether it has painted at that size (`Vimma:Painted`,
+  [private-swap-macos](../specs/private-swap-macos.md)). The message carries no data and the
+  parent reads nothing from the reply but its arrival, so a page **must not** be able to do more
+  than delay that swap, and by no more than 300 ms: past that the window is shown anyway. A page
+  learns nothing it could not already see, its own resize and paint, and never which window is
+  being shown or that the private workspace is involved.
+  [`a_page_that_does_not_paint_in_time_does_not_hold_the_swap`](../../tests/browser/browser_vimma_private_swap_paint.js)
