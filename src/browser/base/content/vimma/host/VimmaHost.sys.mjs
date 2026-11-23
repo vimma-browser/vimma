@@ -1168,9 +1168,11 @@ export const VimmaHost = {
    * Shows `text` as the window's notice (ConfigHost's `:config` when it cannot create the file).
    * @param {BrowserWindow} win
    * @param {string} text
+   * @param {{ untilKey?: boolean }} [options]  as Notice.show's
+   * @returns {boolean} whether it is shown
    */
-  say(win, text) {
-    states.get(win)?.notice.show(text);
+  say(win, text, options) {
+    return states.get(win)?.notice.show(text, options) ?? false;
   },
 
   /**

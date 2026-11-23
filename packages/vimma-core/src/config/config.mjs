@@ -110,9 +110,11 @@ import { hasControl } from "../text/strings.mjs";
  *   pixels, docs/specs/m1-actor-insert-scroll.md "Follow-up: scroll step"
  * @property {{ placement: PrivatePlacement }} private    `[private]`, private-swap
  * @property {McpConfig} mcp                             `[mcp]`, docs/specs/vimma-mcp.md
- * @property {{ toolbar: ToolbarSetting, bookmarksToolbar: BookmarksToolbarSetting | null,
- *   pdfOutline: ToolbarSetting, tabline: TabLineSetting, tablineWidth: number }} ui
- *   `[ui]`: toolbar-toggle; `bookmarksToolbar` is null when unset
+ * @property {{ toolbar: ToolbarSetting, toolbarSet: boolean,
+ *   bookmarksToolbar: BookmarksToolbarSetting | null, pdfOutline: ToolbarSetting,
+ *   tabline: TabLineSetting, tablineWidth: number }} ui
+ *   `[ui]`: toolbar-toggle; `toolbarSet`, the file has a `toolbar` line (bookmarks-toolbar-hidden
+ *   decision 8, changed for issue #1399); `bookmarksToolbar` is null when unset
  *   (docs/specs/bookmarks-toolbar-hidden.md decision 3: Firefox's pref decides); `pdfOutline`,
  *   whether the PDF viewer opens with Vimma's outline shown (docs/specs/pdf-mode.md decision 19);
  *   `tabline` and `tablineWidth`, the tab line (docs/specs/tab-line.md decisions 3 and 4)
@@ -1272,6 +1274,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     mcp: resolveMcp(user.mcp),
     ui: {
       toolbar: user.ui?.toolbar ?? "hidden",
+      toolbarSet: user.ui?.toolbar !== undefined,
       bookmarksToolbar: user.ui?.bookmarks_toolbar ?? null,
       pdfOutline: user.ui?.pdf_outline ?? "shown",
       tabline: user.ui?.tabline ?? "auto",

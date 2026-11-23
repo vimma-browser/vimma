@@ -182,26 +182,32 @@ export function newWindowState(host, win, keymap, env) {
     // background tab's dialog opened) is hidden and takes no focus: focus is then nowhere, the
     // mode insert with no field and every binding dead (#1304). The selected page gets it. The
     // hidden toolbar's address bar refuses that direct focus too; focusOpener reveals it first.
+    // A window that is not the active one when its dialog closes (another window in front, or a
+    // window manager slow to give the activation back) is looked at once it is active again,
+    // after the focus manager has given its focused element the focus back (#1423).
     onDialogClose: () => {
       win.setTimeout(() => {
         const opener = state.dialogOpener;
         state.dialogOpener = null;
         const doc = win.document;
-        if (!doc.hasFocus()) return;
-        const lost = () => {
-          const el = doc.activeElement;
-          return (
-            !el ||
-            el === doc.documentElement ||
-            el === doc.body ||
-            !el.isConnected ||
-            !el.checkVisibility()
-          );
+        const check = () => {
+          const lost = () => {
+            const el = doc.activeElement;
+            return (
+              !el ||
+              el === doc.documentElement ||
+              el === doc.body ||
+              !el.isConnected ||
+              !el.checkVisibility()
+            );
+          };
+          if (!lost()) return;
+          // SubDialog's own focus() on it failed; focusOpener reveals a hidden address bar.
+          if (opener?.isConnected) focusOpener(win, opener);
+          if (lost()) win.gBrowser?.selectedBrowser.focus();
         };
-        if (!lost()) return;
-        // SubDialog's own focus() on it failed; focusOpener reveals a hidden address bar.
-        if (opener?.isConnected) focusOpener(win, opener);
-        if (lost()) win.gBrowser?.selectedBrowser.focus();
+        if (doc.hasFocus()) check();
+        else win.addEventListener("activate", () => win.setTimeout(check, 0), { once: true });
       }, 0);
     },
     dispatcher: createDispatcher(keymap),

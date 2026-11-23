@@ -504,6 +504,19 @@ describe("responses and errors", () => {
     expect(error).toMatch(/^error\.code must be one of bad-request, unauthorized, /);
   });
 
+  test("an error code that is no string is refused as an unknown one is", () => {
+    for (const code of [7, null, true, ["failed"], { code: "failed" }]) {
+      const [error, ...rest] = errorsOf({
+        type: "response",
+        id: 1,
+        ok: false,
+        error: { code, message: "no" },
+      });
+      expect(error).toMatch(/^error\.code must be one of bad-request, unauthorized, /);
+      expect(rest).toEqual([]);
+    }
+  });
+
   test("retryAfter is refused on a code other than denied, whatever its reason", () => {
     const error = { code: "failed", message: "no", reason: "busy", retryAfter: 5 };
     expect(errorsOf({ type: "response", id: 1, ok: false, error })).toEqual([

@@ -411,6 +411,7 @@ describe("mergeWithDefaults", () => {
       },
       ui: {
         toolbar: "hidden",
+        toolbarSet: false,
         bookmarksToolbar: null,
         pdfOutline: "shown",
         tabline: "auto",
