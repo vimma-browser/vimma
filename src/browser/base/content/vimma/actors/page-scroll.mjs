@@ -225,13 +225,14 @@ export class PageScroll {
    * destination is the user's too. A scrollend before the scroll moved is either an earlier
    * scroll's or the end of this one, cancelled before it moved (the page's own instant scroll
    * to where it is): which one is not known, so the caller waits rather than jump.
-   * A snapped scroll that has not moved yet has not started: APZ runs it, and the page sees its
-   * first scroll event only after APZ has learnt of it at the next paint and moved it, which
-   * on a busy machine takes longer than SETTLE_QUIET_MS (issue #1400). So `starting` tells the
-   * caller to let the quiet time count only from its first scroll event. It moves unless the
-   * snap point it goes to is where it is (scrollBy goes to the next snap point its way, and
-   * #started noted none for a scroller already at the end of its range); then nothing ends the
-   * wait but SETTLE_MAX_MS.
+   * A snapped scroll that has not moved yet may not have reached the page: APZ runs it, and the
+   * page sees its first scroll event only after APZ has learnt of it at the next paint and
+   * moved it, which on a busy machine takes longer than SETTLE_QUIET_MS (issue #1400). So
+   * `starting` tells the caller to let the quiet time count only from its first scroll event.
+   * On a mandatory snap container whose snap point that way is where it is (none further on
+   * for j or d, or already at the first or last one for gg or G), the scroll does not move,
+   * and only SETTLE_MAX_MS ends the wait. A scrollend that came before the scroll moved still
+   * gives `starting: false` (above): it may be a cancelled scroll's, which nothing follows.
    * @returns {{ target: EventTarget, starting: boolean } | null} for a scroll still running,
    *   whose end is not known, where its scroll events are fired: wait for it (settled()); null
    *   when there is none

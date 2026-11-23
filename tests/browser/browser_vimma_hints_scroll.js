@@ -342,17 +342,21 @@ add_task(async function a_snapped_scroll_slow_to_start_is_waited_for() {
     // a busy runner did for longer than the wait's quiet time (issue #1400). The labels must
     // wait for the snapped scroll, not take the page where it is before the scroll starts.
     await SpecialPowers.spawn(browser, [], () => content.windowUtils.advanceTimeAndRefresh(0));
-    EventUtils.synthesizeKey("j");
     const runs = VimmaHost._hintRuns;
-    EventUtils.synthesizeKey("f");
-    // Held past the quiet time (SETTLE_QUIET_MS) and well within the wait's limit
-    // (SETTLE_MAX_MS), so that the scroll has time to run once it is let go.
-    await SpecialPowers.spawn(
-      browser,
-      [],
-      () => new Promise((resolve) => content.setTimeout(resolve, 400)),
-    );
-    await SpecialPowers.spawn(browser, [], () => content.windowUtils.restoreNormalRefresh());
+    try {
+      EventUtils.synthesizeKey("j");
+      EventUtils.synthesizeKey("f");
+      // Held past the quiet time (SETTLE_QUIET_MS, 150 ms). The hold and the whole scroll
+      // (about half a second on the shipped spring) must fit within the wait's limit
+      // (SETTLE_MAX_MS, 1 s), which counts from the hold's start.
+      await SpecialPowers.spawn(
+        browser,
+        [],
+        () => new Promise((resolve) => content.setTimeout(resolve, 250)),
+      );
+    } finally {
+      await SpecialPowers.spawn(browser, [], () => content.windowUtils.restoreNormalRefresh());
+    }
     await TestUtils.waitForCondition(
       () => VimmaHost._hintRuns > runs && drawnLabels().size > 0,
       "labels are drawn",

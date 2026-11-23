@@ -973,8 +973,8 @@ export class VimmaChild extends JSWindowActorChild {
       if (!(await this.#sized(win)) || overtaken()) return null;
     }
     // Labels go where the targets are once a scroll ends, not where it is passing (#1308): a
-    // smooth scroll this frame started is finished at once; one that something else took over
-    // is waited for.
+    // smooth scroll this frame started is finished at once; one that something else took over,
+    // or a snapped one, is waited for, a snapped one also before it has moved (#1400).
     const running = this.#scroll.finish();
     if (running) {
       await this.#scroll.settled(new Set([running.target]), running.starting);

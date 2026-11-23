@@ -223,8 +223,10 @@ href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. (
   has not moved yet lets the quiet time count only from its first scroll event, because APZ
   runs that scroll and the page sees no scroll event until APZ has learnt of it at the next
   paint and moved the page, which on a busy machine took longer than the quiet time and had
-  the labels collected where the scroll started. Such a scroll that goes nowhere (the snap
-  point it goes to is where it is) ends the wait at its 1 s limit. Issue #1400.)
+  the labels collected where the scroll started. On a mandatory snap container whose snap
+  point that way is where the page is (none further on for `j` or `d`, or already at the first
+  or last one for `gg` or `G`), the scroll does not move and the wait ends at its 1 s limit.
+  Issue #1400.)
 - Delegated click handlers on elements with no role, tabindex or listener of their own (some
   React apps) get no hint; no `cursor: pointer` heuristic.
 - Canvas and WebGL apps (Google Docs, Figma, maps, games) draw their own controls: there are no
