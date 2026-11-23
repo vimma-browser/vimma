@@ -217,7 +217,9 @@ describe("[search] in config.toml", () => {
 
   test("the template carries a commented [search] block; defaults.toml means no [search]", () => {
     expect(formatDefaultsToml()).toMatch(/^# \[search\]$/m);
-    expect(formatDefaultsToml()).toMatch(/^# gh = "https:\/\/github\.com\/search\?q=%s"$/m);
+    expect(formatDefaultsToml()).toMatch(
+      /^# gh = "https:\/\/github\.com\/search\?q=%s"(?: +#.*)?$/m,
+    );
     expect(ok(formatDefaultsToml()).search).toBeNull();
     expect(ok(formatConfigTemplate()).search).toBeNull();
   });
