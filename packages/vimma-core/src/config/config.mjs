@@ -460,13 +460,32 @@ function validate(raw, warnings = []) {
   const unknownKey = (path, key, known) => {
     // A `keys.prefix = …` line pasted below another table's header lands in that table as a
     // table of its own (#1270); a plain value or a near miss is an ordinary unknown key.
-    /** @type {unknown} */
-    let v = raw;
-    for (const seg of path) v = /** @type {Record<string | number, unknown>} */ (v)[seg];
+    /** @type {Record<string | number, unknown>} */
+    let parent = raw;
+    for (const seg of path.slice(0, -1)) {
+      parent = /** @type {Record<string | number, unknown>} */ (parent[seg]);
+    }
+    const v = parent[key];
     const near = closest(key, known);
     if (path.length > 1 && TOP_KEYS.includes(key) && isTable(v) && !near) {
       fail(path, `unknown key "${key}": a ${key}.… line belongs under [${key}], without "${key}."`);
-    } else fail(path, `unknown key "${key}"`, near);
+    } else if (
+      near ||
+      (path.length > 1 && TOP_KEYS.includes(key)) ||
+      path[0] === "updates" ||
+      strayCheck({ [key]: v })
+    ) {
+      // A table's name under another table is a misplaced line, not a newer key. `[updates]`,
+      // and a boolean `check` anywhere, fail closed: the file may mean an opt-out of update
+      // checks (docs/specs/m6a-updater.md decision 31).
+      fail(path, `unknown key "${key}"`, near);
+    } else {
+      // Most likely a key a newer Vimma added, in a file shared between versions: only it is
+      // left out, so that the older build still loads the rest (#1474). A near miss of a key
+      // this build knows is a typo, and stays an error.
+      warnings.push({ path, message: `unknown key "${key}"; skipped` });
+      delete parent[key];
+    }
   };
 
   for (const [key, v] of Object.entries(raw)) {
@@ -768,7 +787,7 @@ function validate(raw, warnings = []) {
   }
 
   // docs/specs/search-engines.md, decision 2.
-  if (isTable(raw.search)) problems.push(...validateSearch(raw.search));
+  if (isTable(raw.search)) problems.push(...validateSearch(raw.search, unknownKey));
 
   if (isTable(raw.sites)) {
     /** @type {Map<string, string>} */

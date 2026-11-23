@@ -43,7 +43,14 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
   [`adds [theme] before [theme.colors] when only the sub-table exists`](../../packages/vimma-core/test/toml.test.ts),
   [`route_add_waits_for_a_running_rewrite`](../../tests/browser/browser_vimma_workspace_routes.js)
 - F2. Every value **must** be validated; a broken file keeps the last good config and a bad
-  value (such as a `javascript:` home page) is an error. A broken routes.toml keeps the last
+  value (such as a `javascript:` home page) is an error. An unknown key with no close match
+  is left out with a warning and never reaches the resolved config (a key from a newer build);
+  in `[updates]`, a boolean `check` elsewhere, a table's name under another table, and an agent
+  CLI provider's program, command and secret keys, it stays an error, so a misplaced update
+  opt-out fails closed.
+  [`in a known table is a warning; the rest of the file applies`](../../packages/vimma-core/test/config-unknown-keys.test.ts),
+  [`a program, command or secret in a CLI provider (M60)`](../../packages/vimma-core/test/config-unknown-keys.test.ts),
+  [`an opt-out under a misspelt or misplaced table may mean check = false`](../../packages/vimma-core/test/updates.test.ts), A broken routes.toml keeps the last
   good routes while the rest of config.toml applies, and one never read well (a syntax error,
   a FIFO, a link to nothing) applies no rule and no `default_workspace` rather than
   config.toml's (routes-file decisions 3 and 5), unless the rules cached at the last change

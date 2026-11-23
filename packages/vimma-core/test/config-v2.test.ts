@@ -684,12 +684,12 @@ describe("[ui] toolbar", () => {
     ]);
   });
 
-  test("an unknown key is an error; [ui] is a table, valid in any file", () => {
+  test("a near miss is an error, another unknown key a warning; [ui] is a table", () => {
     expect(errors(cfg("[ui]", 'tolbar = "hidden"'))).toEqual([
       { line: 3, path: "ui.tolbar", message: 'unknown key "tolbar"', suggestion: "toolbar" },
     ]);
-    expect(errors(cfg("[ui]", "tabstrip = true"))).toMatchObject([
-      { line: 3, path: "ui.tabstrip", message: 'unknown key "tabstrip"' },
+    expect(parseConfig(cfg("[ui]", "tabstrip = true")).warnings).toEqual([
+      { line: 3, path: "ui.tabstrip", message: 'unknown key "tabstrip"; skipped' },
     ]);
     expect(errors(cfg("ui = 1"))).toEqual([
       { line: 2, path: "ui", message: "expected a table, got an integer" },

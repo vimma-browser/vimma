@@ -41,18 +41,28 @@ const NEWER_TABLES = [
   "scroll",
 ];
 
+/** [line, path, message] for each warning of a file that applies. */
+function warned(text: string) {
+  const r = parseConfig(text);
+  expect(r.errors).toEqual([]);
+  return r.warnings.map((e) => [e.line, e.path, e.message]);
+}
+
 describe("tables added after M5, in a schema-1 file", () => {
+  // An unknown key is skipped with a warning (#1474), except in [updates], which fails closed;
+  // [sites] holds a table per host, so its `bogus` is a host, not a key.
   test.each(NEWER_TABLES)("[%s] has its keys checked", (table) => {
-    // [sites] holds a table per host, so its `bogus` is a host, not a key.
-    const message = table === "sites" ? "expected a table, got an integer" : 'unknown key "bogus"';
-    expect(problems(`schema = 1\n[${table}]\nbogus = 1\n`)).toEqual([
-      [3, `${table}.bogus`, message],
-    ]);
+    const text = `schema = 1\n[${table}]\nbogus = 1\n`;
+    if (table === "sites") {
+      expect(problems(text)).toEqual([[3, "sites.bogus", "expected a table, got an integer"]]);
+    } else if (table === "updates") {
+      expect(problems(text)).toEqual([[3, "updates.bogus", 'unknown key "bogus"']]);
+    } else expect(warned(text)).toEqual([[3, `${table}.bogus`, 'unknown key "bogus"; skipped']]);
   });
 
   test("the same table in a file without a schema line has its keys checked", () => {
-    expect(problems(cfg("[firefox]", "bogus = 1"))).toEqual([
-      [3, "firefox.bogus", 'unknown key "bogus"'],
+    expect(warned(cfg("[firefox]", "bogus = 1"))).toEqual([
+      [3, "firefox.bogus", 'unknown key "bogus"; skipped'],
     ]);
   });
 });
@@ -280,7 +290,8 @@ describe("[agent]", () => {
       cli("max_minutes = 0"),
       [[6, "agent.providers[0].max_minutes", "must be an integer between 1 and 1440 (minutes)"]],
     ],
-    [cli("bogus = 1"), [[6, "agent.providers[0].bogus", 'unknown key "bogus"']]],
+    // An unknown key is skipped with a warning (#1474): the provider applies.
+    [cli("bogus = 1"), "ok"],
     [cli("SECRET = 1"), [[6, "agent.providers[0].SECRET", SECRET]]],
   ])("%j", (lines, expected) => {
     expect(problems(cfg(...lines))).toEqual(expected);

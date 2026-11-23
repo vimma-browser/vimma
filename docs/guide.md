@@ -4847,6 +4847,9 @@ One plain file holds your settings and keys; every key, the prefix and the leade
 - **Reload by hand:** `:source` reads it at once; `:source work.toml` applies another file.
 - **Mistakes:** the old config keeps working, and the status bar shows the error and its line.
 - **Old files:** a `schema = …` line is ignored.
+- **Newer files:** a key this version does not know, such as one a newer Vimma added, is skipped
+  and named in the status bar (`unknown key "…"; skipped`), and the rest of the file applies. A
+  key close to a real one (`steps` for `step`) is an error with the suggestion.
 
 ### Keys and modes
 
