@@ -706,7 +706,9 @@ export class PaneView {
     const notify = (/** @type {string} */ text) => this.adoption?.notify(text);
     for (const wrapper of [...(gBrowser.splitViews ?? [])]) {
       const tabs = wrapper.tabs.filter((t) => !t.closing);
-      if (!wrapper.isConnected || !tabs.length) continue;
+      // One tab is no split: the wrapper of a split whose other pane's tab just closed, which
+      // the reconcile dissolves (a tree has two panes or more).
+      if (!wrapper.isConnected || tabs.length < 2) continue;
       if (tabs.some((t) => ours.has(this.#idOf(t)))) continue;
       const ids = tabs.map((t) => this.adoption?.workspaceOf(t) ?? (this.adoption ? "" : "-"));
       if (ids.includes("")) continue;
@@ -920,6 +922,24 @@ export class PaneView {
     if (!this.#panes) return { ok: false, reason: "cannot close the last pane" };
     this.#set(closePane(this.#panes, this.#panes.focus));
     return { ok: true };
+  }
+
+  /**
+   * The tab to select when `tab`, the selected tab of a pane of the shown split, closes: the
+   * tab of the pane core's `closePane` focuses next (the absorbing sibling). Firefox picks the
+   * next tab in the strip instead (`_findTabToBlurTo`), which may be a lone tab beside the split
+   * and would hide it (issue #1426). Null for any other tab.
+   * @param {MozTabbrowserTab} tab
+   * @returns {Tab | null}
+   */
+  successorOf(tab) {
+    const panes = this.#panes;
+    const id = this.#idOf(tab);
+    const pane = panes && !isHiddenView(panes) && tab.selected && id && paneOfTab(panes, id);
+    if (!panes || !pane) return null;
+    const next = closePane(focusPane(panes, pane), pane);
+    const leaf = leaves(next).find((l) => l.pane === next.focus);
+    return (leaf && this.#tab(leaf.tab)) ?? null;
   }
 
   /**

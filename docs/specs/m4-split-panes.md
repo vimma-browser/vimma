@@ -114,7 +114,11 @@ layout(state, rect) ──rects──▶      1 membership → wrapper          
     it after.
   - **Close tab in a pane** (`ctrl+b shift+x`): select the tab that core's `closeTab` focuses
     next, then remove the closed tab, as `replaceTab` does (`tabsplitview.mjs:420-433`). The
-    split never briefly suspends to show a non-member.
+    split never briefly suspends to show a non-member. (Since changed: the keyboard's closes,
+    `tab.close` and the side panel's `x`, set that tab as Firefox's successor of the closed one
+    (`gBrowser.setSuccessor`), because Firefox otherwise picks the next tab in the strip, which
+    may be a lone tab beside the split and hides it; a split's wrapper left with one tab is not
+    adopted as a split. Issue #1426.)
   - **Replace** (another tab in the focused pane, `setPaneTab`): add the new tab, then select
     it, then rebuild without the old tab. In that order, the `TabSelect` for the new tab finds it
     already in the active wrapper, so Firefox never suspends the split to show the tab alone.
