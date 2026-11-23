@@ -351,6 +351,9 @@ Numbered decisions, each with its reason and the alternatives rejected.
      the permissions given to the site, are one `ctrl+b u` away; and a permission prompt still
      hangs from its icon beside the site's identity (decision 11);
      `the_default_hidden_toolbar_keeps_the_security_cues` in `browser_vimma_toolbar.js`.)
+     (Since changed, issue #1399: a config.toml that shows the bookmarks toolbar and has no
+     `[ui] toolbar` line gets a one-time notice that the hidden toolbar hides it too;
+     bookmarks-toolbar-hidden decision 8.)
 4. **One state for all windows, held in a pref.**
    - `vimma.ui.toolbar.hidden` (bool, default `true`, as the config's default) is observed live
      in every window, as the tab strip pref is. The two defaults agree, so no window shows the

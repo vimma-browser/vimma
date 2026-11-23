@@ -651,6 +651,7 @@ describe("[ui] toolbar", () => {
   test('defaults to "hidden" (decision 3, changed 19 Nov 2026)', () => {
     expect(ok(cfg()).ui).toEqual({
       toolbar: "hidden",
+      toolbarSet: false,
       bookmarksToolbar: null,
       pdfOutline: "shown",
       tabline: "auto",
@@ -667,6 +668,8 @@ describe("[ui] toolbar", () => {
 
   test.each([["shown"], ["hidden"]])('toolbar = "%s" is accepted', (toolbar) => {
     expect(ok(cfg("[ui]", `toolbar = "${toolbar}"`)).ui.toolbar).toBe(toolbar);
+    // bookmarks-toolbar-hidden decision 8 (issue #1399): set, even to the default, is a choice.
+    expect(ok(cfg("[ui]", `toolbar = "${toolbar}"`)).ui.toolbarSet).toBe(true);
   });
 
   test("any other value is an error, with the nearest one when it is close", () => {
@@ -735,6 +738,7 @@ describe("[ui] bookmarks_toolbar", () => {
   test.each([["shown"], ["hidden"], ["newtab"]])('bookmarks_toolbar = "%s" is accepted', (v) => {
     expect(ok(cfg("[ui]", `bookmarks_toolbar = "${v}"`)).ui).toEqual({
       toolbar: "hidden",
+      toolbarSet: false,
       bookmarksToolbar: v,
       pdfOutline: "shown",
       tabline: "auto",

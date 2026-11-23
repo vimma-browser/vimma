@@ -271,6 +271,21 @@ import's forced reveal.
    3), so showing the bookmarks toolbar alone shows nothing until the nav bar is shown. A notice
    that shows it (`shown` or `shown on new tabs`) while the nav bar is hidden adds
    `; the toolbar is hidden: :toolbar show`; the two settings still never write each other.)
+   (Since changed, issue #1399: a config.toml that shows it (`"shown"` or `"newtab"`) and has no
+   `[ui] toolbar` line lost it on the upgrade to the hidden default, silently, so the first
+   config applied that way while the toolbar is hidden says once, in the polite region,
+   "bookmarks toolbar hidden with the toolbar: :toolbar show shows both; [ui] toolbar = "shown"
+   in config.toml keeps them". It stays until the next key rather than the usual 1.5 s, because
+   it comes at startup and is said once only; a later notice may replace it, as any notice is.
+   The bool pref `vimma.ui.bookmarksToolbar.toolbarNoticed` records that it showed, as decision
+   7's pref does, so no later start or edit repeats it. While the toolbar is shown
+   (`:toolbar show` earlier in the session) both bars show, so there is nothing to say yet. A `[ui] toolbar` line, either value, is a choice
+   made knowing both, so it gets no notice. A notice was chosen over keeping the bookmarks
+   toolbar visible on its own, because that would show a row above the page in a window whose
+   toolbar is hidden, and would make one setting override the other, which this decision rules
+   out. Tests: `bookmarks-toolbar.test.ts` "needsToolbarNotice", `config-v2.test.ts`
+   "toolbar = … is accepted" (`toolbarSet`), and mochitest
+   `a_config_that_shows_it_under_the_hidden_toolbar_says_so_once`.)
 9. **Private workspace.** The pref is per profile, so private windows follow it. With `"newtab"`,
    a private window's `about:privatebrowsing` counts as a new tab (Firefox's rule). A private
    window's bookmarks panel shows the toolbar folder (bookmarks decision 11); nothing else
