@@ -37,7 +37,9 @@ route than the panel either.
 2. With a title that only part of a title matches, or that several bookmarks share, a picker
    titled "Bookmarks" opens with the title as its query. Typing narrows it from the first key,
    `ctrl+n` / `ctrl+p` and the arrows move, `Enter` opens the selected bookmark as in 1, `Esc`
-   closes.
+   closes. (Since changed: the query keeps a quoted trailing space, so
+   `:bookmarkopen 'work '` followed by `s` searches `work s`, two words, rather than `works`;
+   outer spaces still do not count for the exact title in 1.)
 3. Without a title, the picker opens over every bookmark.
 4. A title nothing matches says `bookmark: none matches "<title>"`; with no bookmarks at all,
    `bookmark: none saved yet`.
