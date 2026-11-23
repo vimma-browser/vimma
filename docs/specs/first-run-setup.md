@@ -10,7 +10,7 @@ ADR: none
 [setup-v2](setup-v2.md) on and removed this spec's summary flow: `setup/setup.mjs` is gone, the
 page is `setup/flow.mjs` with `packages/vimma-core/src/system/setup.mjs` and `setup-steps.mjs`,
 and the `summary_*` and install tasks below became the chapter flow's tasks in
-`browser_vimma_setup.js` and `browser_vimma_setup_v2.js`, listed in setup-v2.)
+`browser_vimma_setup.js` and the `browser_vimma_setup_v2_*.js` files, listed in setup-v2.)
 
 Issue: [#378](https://github.com/vimma-browser/vimma/issues/378)
 
