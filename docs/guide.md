@@ -4160,6 +4160,9 @@ with spaces:
 "<M-j>" = ":bookmarkopen 'Dark mode'"    # a bookmarklet, with bookmarklets = "user"
 ```
 
+A quoted trailing space stays in the picker's query: `":bookmarkopen 'work '"` opens the picker
+with `work ` typed, so the next word you type narrows those matches instead of joining `work`.
+
 Counts work as in the [side panel](#side-panel), except that a folder tree has no fixed row
 numbers: the rows shift as folders open and close. So the bookmarks panel shows no numbers by
 default, and `4G` and `4 Enter` ignore the count. With `[panel] numbers = "relative"` or

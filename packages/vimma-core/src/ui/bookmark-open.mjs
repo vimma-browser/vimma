@@ -112,8 +112,8 @@ const fold = (text) => text.normalize("NFC").trim().toLowerCase();
  * What `:bookmarkopen` does with its text: without one, the picker over every bookmark; with
  * one that exactly one bookmark is titled (case and outer spaces aside; an untitled bookmark is
  * never chosen this way, so neither its URL nor a placeholder opens it), that bookmark; with one
- * any bookmark matches, the picker with the text as its query, so the user chooses; else a
- * refusal.
+ * any bookmark matches, the picker with the text as its query (a trailing space kept), so the
+ * user chooses; else a refusal.
  * @param {readonly BookmarkItem[]} items
  * @param {string | undefined} text
  * @returns {{ kind: "open", id: string } | { kind: "pick", query: string }
@@ -128,7 +128,10 @@ export function bookmarkOpenTarget(items, text) {
   if (exact.length === 1) {
     return { kind: "open", id: /** @type {BookmarkItem} */ (exact[0]).bookmarkId };
   }
-  if (exact.length > 1 || filterItems(items, typed).length) return { kind: "pick", query: typed };
+  // The query keeps a trailing space (quoted in a binding, `:bookmarkopen 'work '`), so the
+  // first key typed in the picker starts a new word instead of joining the last one.
+  const query = (text ?? "").trimStart();
+  if (exact.length > 1 || filterItems(items, typed).length) return { kind: "pick", query };
   return {
     kind: "refuse",
     text: `bookmark: none matches "${cut(typed, BOOKMARK_OPEN_QUOTE_MAX)}"`,
