@@ -334,6 +334,38 @@ add_task(async function j_then_f_on_a_snapping_page_keeps_the_snapped_scroll() {
   });
 });
 
+add_task(async function a_snapped_scroll_slow_to_start_is_waited_for() {
+  await shippedSmoothScroll();
+  await withPage(SNAP, async (browser) => {
+    // APZ runs a smooth scroll: it learns of it at the page's next paint, and the page sees its
+    // first scroll event only after APZ has moved it. Holding the refresh driver holds both, as
+    // a busy runner did for longer than the wait's quiet time (issue #1400). The labels must
+    // wait for the snapped scroll, not take the page where it is before the scroll starts.
+    await SpecialPowers.spawn(browser, [], () => content.windowUtils.advanceTimeAndRefresh(0));
+    const runs = VimmaHost._hintRuns;
+    try {
+      EventUtils.synthesizeKey("j");
+      EventUtils.synthesizeKey("f");
+      // Held past the quiet time (SETTLE_QUIET_MS, 150 ms). The hold and the whole scroll
+      // (about half a second on the shipped spring) must fit within the wait's limit
+      // (SETTLE_MAX_MS, 1 s), which counts from the hold's start.
+      await SpecialPowers.spawn(
+        browser,
+        [],
+        () => new Promise((resolve) => content.setTimeout(resolve, 250)),
+      );
+    } finally {
+      await SpecialPowers.spawn(browser, [], () => content.windowUtils.restoreNormalRefresh());
+    }
+    await TestUtils.waitForCondition(
+      () => VimmaHost._hintRuns > runs && drawnLabels().size > 0,
+      "labels are drawn",
+    );
+    Assert.equal(await settledScroll(browser), 500, "the page is at the next snap point");
+    await assertLabelsOnTargets(browser);
+  });
+});
+
 add_task(async function a_wheel_back_during_d_is_not_undone_by_f() {
   await shippedSmoothScroll();
   await withPage(LONG, async (browser) => {

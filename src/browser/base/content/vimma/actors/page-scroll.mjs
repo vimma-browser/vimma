@@ -225,8 +225,17 @@ export class PageScroll {
    * destination is the user's too. A scrollend before the scroll moved is either an earlier
    * scroll's or the end of this one, cancelled before it moved (the page's own instant scroll
    * to where it is): which one is not known, so the caller waits rather than jump.
-   * @returns {EventTarget | null} where the scroll events of a scroll still running, whose end
-   *   is not known, are fired: wait for it (settled()); null when there is none
+   * A snapped scroll that has not moved yet may not have reached the page: APZ runs it, and the
+   * page sees its first scroll event only after APZ has learnt of it at the next paint and
+   * moved it, which on a busy machine takes longer than SETTLE_QUIET_MS (issue #1400). So
+   * `starting` tells the caller to let the quiet time count only from its first scroll event.
+   * On a mandatory snap container whose snap point that way is where it is (none further on
+   * for j or d, or already at the first or last one for gg or G), the scroll does not move,
+   * and only SETTLE_MAX_MS ends the wait. A scrollend that came before the scroll moved still
+   * gives `starting: false` (above): it may be a cancelled scroll's, which nothing follows.
+   * @returns {{ target: EventTarget, starting: boolean } | null} for a scroll still running,
+   *   whose end is not known, where its scroll events are fired: wait for it (settled()); null
+   *   when there is none
    */
   finish() {
     const run = this.#running;
@@ -241,7 +250,9 @@ export class PageScroll {
     const within = (/** @type {number} */ v, /** @type {number} */ a, /** @type {number} */ b) =>
       v >= Math.min(a, b) - 1 && v <= Math.max(a, b) + 1;
     const taken = run.over || (run.idleEnd && !run.moving);
-    if (taken || !within(x, run.x, run.left) || !within(y, run.y, run.top)) return run.target;
+    if (taken || !within(x, run.x, run.left) || !within(y, run.y, run.top)) {
+      return { target: run.target, starting: false };
+    }
     // A scroll-snap container ends the scroll at a snap point that only layout knows; a jump to
     // the unsnapped destination would snap to the nearest point instead, back where the scroll
     // started. Nor does a relative jump (scrollBy) work: APZ shifts its running animation by
@@ -249,7 +260,7 @@ export class PageScroll {
     const doc = el.ownerDocument;
     const snapper = el === doc.scrollingElement ? doc.documentElement : el;
     const snap = doc.defaultView?.getComputedStyle(snapper)?.scrollSnapType ?? "none";
-    if (snap !== "none") return run.target;
+    if (snap !== "none") return { target: run.target, starting: !run.moving };
     el.scrollTo({ left: run.left, top: run.top, behavior: "instant" });
     return null;
   }
@@ -263,9 +274,11 @@ export class PageScroll {
    * events count: the page can dispatch untrusted ones, which a chrome listener on content
    * receives too, but they neither end the wait nor prolong it.
    * @param {Set<EventTarget>} scrollers
+   * @param {boolean} [starting]  a scroll is on its way that has not moved yet (finish()): the
+   *   quiet time counts from its first scroll event, not from now
    * @returns {Promise<void>}
    */
-  settled(scrollers) {
+  settled(scrollers, starting = false) {
     const win = this.#actor.contentWindow;
     if (!win) return Promise.resolve();
     return new Promise((resolve) => {
@@ -293,7 +306,7 @@ export class PageScroll {
       const cap = lazy.setTimeout(done, SETTLE_MAX_MS);
       win.addEventListener("scroll", onScroll, opts);
       win.addEventListener("scrollend", onEnd, opts);
-      wait();
+      if (!starting) wait();
     });
   }
 
