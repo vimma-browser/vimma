@@ -265,6 +265,7 @@ interface IOUtilsNamespace {
     type: "regular" | "directory" | "other";
   }>;
   exists(path: string): Promise<boolean>;
+  computeHexDigest(path: string, method: "sha256" | "sha384" | "sha512"): Promise<string>;
   getChildren(path: string): Promise<string[]>;
   copy(from: string, to: string): Promise<void>;
   move(from: string, to: string): Promise<void>;

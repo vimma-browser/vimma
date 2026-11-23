@@ -423,6 +423,12 @@ add_task(async function setup() {
     await IOUtils.makeDirectory(dir(name), { createAncestors: true });
     await IOUtils.writeUTF8(PathUtils.join(dir(name), "colors.toml"), colorsToml(colours));
   }
+  // Themes one and two are the same size; writes in the same millisecond also give them the same
+  // mtime, as files installed together can have (#1432). Pinned, so the swap is told by content.
+  const mtime = Date.now() - 60_000;
+  for (const [name] of themes) {
+    await IOUtils.setModificationTime(PathUtils.join(dir(name), "colors.toml"), mtime);
+  }
   await IOUtils.writeUTF8(PathUtils.join(dir("light"), "light.mode"), "");
   await IOUtils.makeDirectory(PathUtils.join(root, "current"), { createAncestors: true });
   await ln(dir("one"), currentTheme);
