@@ -1578,8 +1578,15 @@ off` and, for a workspace Vimma did not make, shows `:mcp on`'s warning too; wit
   `services/TabSleep.sys.mjs` learns only whether a connection is open, from
   `McpHost.agentConnected`, which reads whether the gate lists any; it does not import the
   gate, reads only a tab's URL and state flags, and acts on a tab only through Firefox's own
-  discard.
+  discard. Firefox's low-memory unloader, which Vimma turns on (decision 21), is held to the
+  same rule: while a connection is open, `TabSleep` sets Firefox's `undiscardable` attribute on
+  the agent workspace's tabs, including one as it opens, and clears it when the last connection
+  closes. It learns of the change from `McpHost.watchAgentConnected`, which calls it with no
+  argument when the answer to `agentConnected` changes, so no connection, peer or grant detail
+  reaches it.
   [`agent_tabs_stay_loaded_while_an_agent_is_connected_and_sleep_after`](../../tests/browser/browser_vimma_agent_tab_sleep.js),
   [`an_agent_listing_a_sleeping_agent_tab_wakes_it_with_a_new_id`](../../tests/browser/browser_vimma_agent_tab_sleep.js),
   [`an_agent_connecting_during_a_check_keeps_its_tabs_loaded`](../../tests/browser/browser_vimma_agent_tab_sleep.js),
-  [`agent workspace tabs stay awake only while an agent is connected`](../../packages/vimma-core/test/tabsleep.test.ts)
+  [`agent workspace tabs stay awake only while an agent is connected`](../../packages/vimma-core/test/tabsleep.test.ts),
+  [`low_memory_unloads_other_tabs_but_never_a_shown_pane_or_an_agents_tab`](../../tests/browser/browser_vimma_low_memory.js),
+  [`the_mark_follows_the_split_the_agent_and_the_config`](../../tests/browser/browser_vimma_low_memory.js)

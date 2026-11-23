@@ -861,6 +861,8 @@ interface OverflowableToolbarElement extends XULElement {
 // closing this one selects again; null without one, or once the owner is closing.
 interface MozTabbrowserTab {
   owner: MozTabbrowserTab | null;
+  /** Sets `lastAccessed`, now when no time is given (tab.mjs). */
+  updateLastAccessed(aDate?: number): void;
 }
 
 // The pdf.js viewer's own objects, which a test reads past the Xray wrapper

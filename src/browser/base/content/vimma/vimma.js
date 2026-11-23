@@ -157,6 +157,7 @@
     workspaces: WorkspaceStore,
     panes: PaneViews,
   });
+  TabSleep.watch(win);
 
   // The first-run setup (docs/specs/first-run-setup.md): about:vimma-setup once per process, and
   // the welcome screen in front on a profile's first start, after the window's own first tab.

@@ -126,8 +126,9 @@ import { hasControl } from "../text/strings.mjs";
  *   `tabline` and `tablineWidth`, the tab line (docs/specs/tab-line.md decisions 3 and 4)
  * @property {{ tab: boolean }} statusbar  `[statusbar]`: whether the status bar keeps
  *   its tab and title while the tab line is drawn (docs/specs/tab-line.md decision 16)
- * @property {{ sleepAfter: number }} tabs  `[tabs]`: `sleepAfter` is `sleep_after`, minutes a tab
- *   stays loaded unseen, 0 never (docs/specs/tab-sleep.md)
+ * @property {{ sleepAfter: number, sleepOnLowMemory: boolean }} tabs  `[tabs]`: `sleepAfter` is
+ *   `sleep_after`, minutes a tab stays loaded unseen, 0 never; `sleepOnLowMemory` is
+ *   `sleep_on_low_memory`, whether Firefox's low-memory unloader runs (docs/specs/tab-sleep.md)
  * @property {ResolvedSearch | null} search              `[search]`, null without it;
  *   docs/specs/search-engines.md
  * @property {{ check: boolean }} updates                `[updates]`,
@@ -249,7 +250,7 @@ export const MAIN_SIZE_MIN = 20;
 export const MAIN_SIZE_MAX = 80;
 const SITE_KEYS = ["insert", "unbind", "sleep"];
 /** `[tabs]` (docs/specs/tab-sleep.md, decision 11). */
-const TABS_KEYS = ["sleep_after"];
+const TABS_KEYS = ["sleep_after", "sleep_on_low_memory"];
 const MODAL_KEYS = ["leader", "timeout_ms", "hint_chars", "insert_editing"];
 const FIREFOX_KEYS = ["disable", "enable"];
 const FIREFOX_DISABLE = 'must be "all" or a list of keys like "ctrl+w"';
@@ -742,7 +743,10 @@ function validate(raw, warnings = []) {
   if (isTable(raw.tabs)) {
     for (const [key, v] of Object.entries(raw.tabs)) {
       const path = ["tabs", key];
-      if (key !== "sleep_after") unknownKey(path, key, TABS_KEYS);
+      if (key === "sleep_on_low_memory") {
+        // Decision 21: Firefox's low-memory unloader, on by default.
+        if (typeof v !== "boolean") typeError(path, v, "a boolean");
+      } else if (key !== "sleep_after") unknownKey(path, key, TABS_KEYS);
       else if (typeof v !== "bigint") typeError(path, v, "an integer");
       else if (v !== 0n && (v < BigInt(SLEEP_AFTER.min) || v > BigInt(SLEEP_AFTER.max))) {
         fail(
@@ -1310,7 +1314,10 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
       tablineWidth: user.ui?.tabline_width ?? TABLINE_WIDTH.default,
     },
     statusbar: { tab: user.statusbar?.tab ?? true },
-    tabs: { sleepAfter: user.tabs?.sleep_after ?? SLEEP_AFTER.default },
+    tabs: {
+      sleepAfter: user.tabs?.sleep_after ?? SLEEP_AFTER.default,
+      sleepOnLowMemory: user.tabs?.sleep_on_low_memory ?? true,
+    },
     search: resolveSearch(user.search),
     updates: { check: user.updates?.check ?? true },
     // validateAgent checked `[agent]` field by field; UserConfig keeps it as it was parsed.

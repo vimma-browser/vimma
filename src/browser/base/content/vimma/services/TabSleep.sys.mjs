@@ -4,8 +4,10 @@
 
 // Tabs nobody has looked at for `[tabs] sleep_after` minutes go to sleep through Firefox's own
 // discard (docs/specs/tab-sleep.md). One check every few minutes walks every tab; core's
-// planSleep decides, this module gathers the facts and calls Firefox. Behind
-// vimma.feature.tabSleep until the feature is finished (decision 20).
+// planSleep decides, this module gathers the facts and calls Firefox. It also runs Firefox's
+// own low-memory unloader from `[tabs] sleep_on_low_memory` and keeps it off the tabs the check
+// protects that it does not know about (decision 21). Behind vimma.feature.tabSleep until the
+// feature is finished (decision 20).
 
 import { SLEEP_CHECK_MS, planSleep } from "../core/tabsleep.mjs";
 
@@ -23,6 +25,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
 export const FEATURE_PREF = "vimma.feature.tabSleep";
 /** How often the check runs, in ms; tests shorten it (decision 20). */
 export const CHECK_PREF = "vimma.tabs.sleepCheckMs";
+/** Firefox's low-memory unloader, read at each low-memory signal (TabUnloader.sys.mjs). */
+export const UNLOAD_PREF = "browser.tabs.unloadOnLowMemory";
 
 /** @typedef {MozTabbrowserTab} Tab */
 
@@ -30,15 +34,18 @@ export const CHECK_PREF = "vimma.tabs.sleepCheckMs";
  * What TabSleep reads of higher layers, which services/ does not import (ADR-026): vimma.js
  * hands over their module singletons once.
  * @typedef {object} TabSleepDeps
- * @property {{ readonly config: { tabs: { sleepAfter: number },
+ * @property {{ readonly config: { tabs: { sleepAfter: number, sleepOnLowMemory: boolean },
  *   sites: readonly { match: string, sleep: boolean }[] } | null }} configHost  the config in
  *   force (null before the first read)
  * @property {string} configTopic  notified after each config read
- * @property {{ readonly agentConnected: boolean }} mcp  an agent connection is open
+ * @property {{ readonly agentConnected: boolean,
+ *   watchAgentConnected(fn: () => void): () => void }} mcp  whether an agent connection is open,
+ *   and a call when that changes
  * @property {{ readonly agent: { userContextId?: number | null } | null }} workspaces  the
  *   agent workspace, by its container
- * @property {{ get(win: BrowserWindow): { readonly shownTabs: Tab[] } | undefined }} panes  the
- *   panes of the split each window shows
+ * @property {{ get(win: BrowserWindow): { readonly shownTabs: Tab[] } | undefined,
+ *   watch(win: BrowserWindow, fn: () => void): () => void }} panes  the panes of the split each
+ *   window shows, and a call after each change of them
  */
 
 /** @param {TabSleepDeps} d @param {Tab} tab  in the agent workspace's container */
@@ -63,6 +70,80 @@ let checks = 0;
 const seenOnScreen = new WeakMap();
 
 const enabled = () => Services.prefs.getBoolPref(FEATURE_PREF, false);
+
+/** Firefox's default for UNLOAD_PREF, read before this module changes it (off on Linux). */
+let firefoxUnloads = false;
+/**
+ * The browsers' permanent keys of the tabs this module marked `undiscardable`, so that it never
+ * clears a mark an add-on set (`autoDiscardable: false`, ext-tabs.js). The key, not the tab:
+ * Firefox moves both the key and the attribute to the new tab when a tab changes window
+ * (Tabbrowser.sys.mjs, swapBrowsersAndCloseOther), and keeps the key through a discard.
+ * @type {WeakSet<object>}
+ */
+const marked = new WeakSet();
+
+/** Whether Firefox's low-memory unloader runs under Vimma's rules (decision 21). */
+function lowMemoryOn() {
+  return !!deps && enabled() && (deps.configHost.config?.tabs.sleepOnLowMemory ?? true);
+}
+
+/**
+ * Sets Firefox's unloader pref from `[tabs] sleep_on_low_memory`, on the default branch: nothing
+ * is written to prefs.js, a value set in about:config still wins, and Firefox's own default
+ * comes back with the feature pref off.
+ */
+function applyUnloadPref() {
+  const value = enabled() ? lowMemoryOn() : firefoxUnloads;
+  const defaults = Services.prefs.getDefaultBranch("");
+  if (defaults.getBoolPref(UNLOAD_PREF, false) !== value) defaults.setBoolPref(UNLOAD_PREF, value);
+}
+
+/**
+ * Sets or clears this module's `undiscardable` mark on `tab`; a mark it did not set stays.
+ * @param {Tab} tab
+ * @param {boolean} want
+ */
+function mark(tab, want) {
+  const key = tab.permanentKey;
+  if (!key) return;
+  if (want && !tab.undiscardable) {
+    tab.undiscardable = true;
+    marked.add(key);
+  } else if (!want && marked.has(key)) {
+    marked.delete(key);
+    tab.undiscardable = false;
+  }
+}
+
+/**
+ * Keeps `undiscardable`, which Firefox's unloader honours (TabUnloader.sys.mjs,
+ * isNonDiscardable), on the tabs of `win` that the unloader would otherwise take: every pane of
+ * the split on screen, which PaneView would reload at once, and the agent workspace's tabs
+ * while an agent is connected, whose ids the agent holds (decisions 5, 8 and 21). The selected
+ * tab needs no mark; the unloader skips it.
+ * @param {BrowserWindow} win
+ */
+function markWindow(win) {
+  const d = deps;
+  if (!d || win.closed || !win.gBrowser) return;
+  const on = lowMemoryOn();
+  const shown = new Set(on ? shownTabs(d, win) : []);
+  const agents = on && d.mcp.agentConnected;
+  for (const tab of /** @type {Tab[]} */ (win.gBrowser.tabs)) {
+    mark(tab, shown.has(tab) || (agents && isAgentTab(d, tab)));
+  }
+}
+
+function markAll() {
+  for (const win of Services.wm.getEnumerator("navigator:browser")) markWindow(win);
+}
+
+/** The feature pref or the config changed: the check's interval, the pref and the marks. */
+function refresh() {
+  update();
+  applyUnloadPref();
+  markAll();
+}
 
 /**
  * Whether the tab has no loaded page: Firefox's lazy tab, with no browser or one still to
@@ -146,10 +227,39 @@ export const TabSleep = {
   init(d) {
     if (deps) return;
     deps = d;
-    Services.prefs.addObserver(FEATURE_PREF, update);
+    firefoxUnloads = Services.prefs.getDefaultBranch("").getBoolPref(UNLOAD_PREF, false);
+    Services.prefs.addObserver(FEATURE_PREF, refresh);
     Services.prefs.addObserver(CHECK_PREF, restart);
-    Services.obs.addObserver(update, d.configTopic);
-    update();
+    Services.obs.addObserver(refresh, d.configTopic);
+    d.mcp.watchAgentConnected(markAll);
+    refresh();
+  },
+
+  /**
+   * Keeps the marks of `win`'s tabs current (vimma.js, once per window): after each change of
+   * its panes, and for each tab it opens, which may be an agent's.
+   * @param {BrowserWindow} win
+   */
+  watch(win) {
+    const d = deps;
+    if (!d) return;
+    const stop = d.panes.watch(win, () => markWindow(win));
+    // The new tab itself: an agent's, opened while it is connected, is marked before its page
+    // loads.
+    const onOpen = (/** @type {Event} */ e) => {
+      const tab = /** @type {Tab} */ (e.target);
+      if (lowMemoryOn() && d.mcp.agentConnected && isAgentTab(d, tab)) mark(tab, true);
+    };
+    win.addEventListener("TabOpen", onOpen);
+    win.addEventListener(
+      "unload",
+      () => {
+        stop();
+        win.removeEventListener("TabOpen", onOpen);
+      },
+      { once: true },
+    );
+    markWindow(win);
   },
 
   /** Whether the interval runs (tests). */
@@ -172,6 +282,7 @@ export const TabSleep = {
     const d = deps;
     const limit = sleepAfterMs();
     const config = d?.configHost.config;
+    if (d) markAll();
     if (!d || !config || limit <= 0) return [];
     checks++;
     /** @type {SleepTab[]} */

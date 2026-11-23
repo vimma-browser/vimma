@@ -418,7 +418,7 @@ describe("mergeWithDefaults", () => {
         tablineWidth: 14,
       },
       statusbar: { tab: true },
-      tabs: { sleepAfter: 120 },
+      tabs: { sleepAfter: 120, sleepOnLowMemory: true },
       updates: { check: true },
       search: null,
       agent: {
@@ -486,10 +486,11 @@ describe("reloadConfig keeps the last good config", () => {
 // docs/specs/tab-sleep.md decisions 11 and 12, Behaviour 6.
 describe("[tabs] and [sites] sleep", () => {
   test("[tabs] sleep_after accepts 0 and 5 to 10080, and rejects other numbers and types", () => {
-    expect(parseConfig(toml()).config?.tabs).toEqual({ sleepAfter: 120 });
+    expect(parseConfig(toml()).config?.tabs).toEqual({ sleepAfter: 120, sleepOnLowMemory: true });
     for (const v of [0, 5, 120, 10080]) {
       expect(parseConfig(toml("[tabs]", `sleep_after = ${v}`)).config?.tabs).toEqual({
         sleepAfter: v,
+        sleepOnLowMemory: true,
       });
     }
     for (const v of ["1", "4", "10081", "-5"]) {
@@ -510,6 +511,25 @@ describe("[tabs] and [sites] sleep", () => {
     expect(oneError(toml("[tabs]", "sleep = 120"))).toMatchObject({
       path: "tabs.sleep",
       message: 'unknown key "sleep"',
+    });
+  });
+
+  // Decision 21, Behaviour 17.
+  test("[tabs] sleep_on_low_memory accepts a boolean and rejects other types", () => {
+    expect(parseConfig(toml()).config?.tabs.sleepOnLowMemory).toBe(true);
+    for (const v of [true, false]) {
+      expect(parseConfig(toml("[tabs]", `sleep_on_low_memory = ${v}`)).config?.tabs).toEqual({
+        sleepAfter: 120,
+        sleepOnLowMemory: v,
+      });
+    }
+    expect(
+      parseConfig(toml("[tabs]", "sleep_after = 0", "sleep_on_low_memory = true")).config?.tabs,
+    ).toEqual({ sleepAfter: 0, sleepOnLowMemory: true });
+    expect(oneError(toml("[tabs]", 'sleep_on_low_memory = "no"'))).toEqual({
+      line: 2,
+      path: "tabs.sleep_on_low_memory",
+      message: "expected a boolean, got a string",
     });
   });
 

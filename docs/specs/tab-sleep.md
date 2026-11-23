@@ -1,7 +1,7 @@
 # Spec: tab-sleep
 
-Status: accepted (slices 1, the rules and the check, and 3, showing it, implemented behind
-`vimma.feature.tabSleep`) · Area: core (`packages/vimma-core/src/workspaces/tabsleep.mjs` (new),
+Status: accepted (slices 1, the rules and the check, 3, showing it, and 5, low-memory
+unloading, implemented behind `vimma.feature.tabSleep`) · Area: core (`packages/vimma-core/src/workspaces/tabsleep.mjs` (new),
 `packages/vimma-core/src/config/config.mjs`, `packages/vimma-core/defaults.toml`,
 `packages/vimma-core/src/keys/actions.mjs`, `packages/vimma-core/src/keys/cmdline.mjs`,
 `packages/vimma-core/src/ui/tabline.mjs`, `packages/vimma-core/src/ui/sidepanel.mjs`), chrome
@@ -357,8 +357,14 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     keeps the `undiscardable` attribute (`content/tab.mjs:315-325`), which the unloader honours
     (lines 53-59), on every pane of each window's current split and, while an agent is
     connected, on the agent workspace's tabs, updated at each check and when the split shown or
-    the agent connections change; otherwise it would unload a pane that PaneView reloads at once,
-    or an agent's tab under its id. Its other rules (sound, Picture-in-Picture, WebRTC, private)
+    the agent connections change, and on an agent's tab as it opens; otherwise it would unload a
+    pane that PaneView reloads at once (seen in the test: a loop of unload and reload every few
+    milliseconds), or an agent's tab under its id. The pref is set on the default branch, because
+    then nothing is written to `prefs.js`, a value the user sets in `about:config` still wins, and
+    Firefox's own default comes back when `vimma.feature.tabSleep` is off. `TabSleep` clears only
+    the marks it set, remembered by each browser's permanent key, because an add-on can set the
+    same attribute (`autoDiscardable: false`) and Firefox moves the key and the attribute together
+    when a tab changes window. Its other rules (sound, Picture-in-Picture, WebRTC, private)
     already match decision 6. Rejected: leaving it off as Firefox does on Linux, because no
     reason for that default was found and a sleep limit counted in hours cannot help a sudden
     spike; setting it in `firefox-branding.js`, because the config key could then not turn it
@@ -452,10 +458,17 @@ e2e, `tests/e2e/scenarios/issue-1404-tab-sleep.json`: the tab line (`[ui] tablin
 and the side panel with one sleeping and two loaded tabs, in the Vimma theme and an Omarchy
 theme; baselines in `tests/e2e/baselines/`.
 
-mochitest, `tests/browser/browser_vimma_low_memory.js` uses `nsIAvailableMemoryWatcherTestingLinux`
-(`xpcom/base/nsIAvailableMemoryWatcherTestingLinux.idl`) to signal low memory and checks that a
-pane on screen and a connected agent's tab are not unloaded, that another tab is, and that
-`[tabs] sleep_on_low_memory = false` sets `browser.tabs.unloadOnLowMemory` to false.
+mochitest, `tests/browser/browser_vimma_low_memory.js` (Linux) brings Firefox's own memory watcher
+to low memory by raising `browser.low_commit_space_threshold_percent` to 100, with
+`nsIAvailableMemoryWatcherTestingLinux` (`xpcom/base/nsIAvailableMemoryWatcherTestingLinux.idl`)
+for the pressure file, so the real `TabUnloader` runs:
+
+- `sleep_on_low_memory_turns_firefoxs_unloader_on_and_off`: on by default, off with
+  `sleep_on_low_memory = false`, independent of `sleep_after`, never in `prefs.js`, and Firefox's
+  default with the feature pref off
+- `low_memory_unloads_other_tabs_but_never_a_shown_pane_or_an_agents_tab`
+- `the_mark_follows_the_split_the_agent_and_the_config`: a hidden split's tabs and a disconnected
+  agent's are unmarked, an add-on's mark stays
 
 ## Docs and changelog
 

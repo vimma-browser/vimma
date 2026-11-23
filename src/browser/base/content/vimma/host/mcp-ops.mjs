@@ -80,6 +80,25 @@ export const McpHost = {
   },
 
   /**
+   * Calls `fn` whenever `agentConnected` changes, and tells it nothing else: tab sleep marks the
+   * agent workspace's tabs for Firefox's low-memory unloader meanwhile (docs/specs/tab-sleep.md
+   * decision 21). Returns the call that stops it.
+   * @param {() => void} fn
+   * @returns {() => void}
+   */
+  watchAgentConnected(fn) {
+    let was = this.agentConnected;
+    const listener = () => {
+      const now = this.agentConnected;
+      if (now === was) return;
+      was = now;
+      fn();
+    };
+    lazy.AgentGate.addListener(listener);
+    return () => lazy.AgentGate.removeListener(listener);
+  },
+
+  /**
    * `[agent]` from config.toml (ConfigHost, at every read): the built-in agent's providers and
    * limits.
    * @param {AgentConfig | null} agent  null: the defaults (tests)

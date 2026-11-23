@@ -92,6 +92,7 @@ declare const Services: FirefoxServices;
 
 // The members Vimma's code calls on a default branch.
 interface nsIPrefDefaultBranch {
+  getBoolPref(name: string, defaultValue?: boolean): boolean;
   setBoolPref(name: string, value: boolean): void;
 }
 
@@ -940,6 +941,11 @@ interface MozTabbrowserTab extends Element {
   /** The tab it was opened from, null when none (Tabbrowser addTab's `openerTab`); undefined
    * for a tab addTab did not make, as the window's first. */
   readonly openerTab: MozTabbrowserTab | null | undefined;
+  /** The object the session store and the unloader know the tab's browser by; Firefox moves it
+   * with the browser when a tab changes window (Tabbrowser `swapBrowsersAndCloseOther`). */
+  readonly permanentKey: object | undefined;
+  /** Its `undiscardable` attribute, which TabUnloader honours (tab.mjs). */
+  undiscardable: boolean;
   toggleMuteAudio(muteReason?: string | null): void;
 }
 

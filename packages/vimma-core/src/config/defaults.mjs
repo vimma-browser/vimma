@@ -38,7 +38,8 @@ export const TABLINE_WIDTH = Object.freeze({ min: 4, max: 60, default: 14 });
  * @property {Record<string, { insert?: import("../keys/editable.mjs").InsertSiteMode,
  *   unbind?: string[], sleep?: boolean }>} [sites]  per-site insert mode, keys the page keeps
  *   (docs/specs/site-unbind.md) and whether its tabs may sleep (docs/specs/tab-sleep.md)
- * @property {{ sleep_after?: number }} [tabs]  minutes a tab stays loaded unseen
+ * @property {{ sleep_after?: number, sleep_on_low_memory?: boolean }} [tabs]  minutes a tab
+ *   stays loaded unseen, and whether Firefox unloads tabs when memory runs low
  *   (docs/specs/tab-sleep.md)
  * @property {Record<string, string>[]} [routes]  `[[routes]]` (workspace-routing)
  * @property {{ default_workspace?: string }} [routing]  where links from other programs that no
@@ -1021,6 +1022,10 @@ export function configTables({ brief = false } = {}) {
         example(
           `sleep_after = ${SLEEP_AFTER.default}`,
           `minutes unseen before a tab sleeps (${SLEEP_AFTER.min}–${SLEEP_AFTER.max}); 0: never`,
+        ),
+        example(
+          "sleep_on_low_memory = true",
+          "false: Firefox never unloads tabs when memory runs low",
         ),
       ]),
     },
