@@ -52,6 +52,31 @@ const CONTAINERS_PREF = "privacy.userContext.enabled";
 export const CONTAINERS_OFF_ALERT =
   "workspaces off: containers are disabled (set privacy.userContext.enabled to true, restart)";
 const DELETED_TOPIC = "contextual-identity-deleted";
+
+/**
+ * Whether an extension opened this tab or window: `tabs.create` and `windows.create` pass the
+ * extension's principal, or for its own pages a moz-extension: one, as the triggering principal
+ * (browser/components/extensions/parent/ext-tabs.js, ext-windows.js). Such an open with no
+ * `cookieStoreId` stays in no container, as in Firefox: an extension's sign-in page must share
+ * the cookies its background's requests carry, and a workspace's container would hide them
+ * (#1221). A page cannot ask for this: what a page opens carries its origin attributes (even an
+ * extension page a web page frames, whose principal has an add-on policy), so its container is
+ * set before Vimma's default is asked.
+ * An about: URL from `tabs.create`, and `windows.create` with no URL (the start page), get a
+ * content principal of that page instead (setContentTriggeringPrincipal), so they take the
+ * workspace's container as ctrl+t and ctrl+n do; `tabs.create` with no URL is told apart by its
+ * URL (defaultUserContextId). Only a page's principal, never what loads in the tab later, picks
+ * the container.
+ * @param {unknown} principal
+ */
+function openedByExtension(principal) {
+  try {
+    return principal instanceof Ci.nsIPrincipal && !!principal.addonPolicy;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The container of the last workspace used that is not the agent's, so a start routes its first
  * tab without reading the file (never the agent's: docs/specs/vimma-mcp.md, decision 42).
@@ -566,12 +591,20 @@ export class WorkspaceStoreImpl {
    * workspace's, else the most recent browser window's, else `lastActive`'s. Null for private
    * windows and popups, and when workspaces are disabled, so upstream behaviour stays there.
    * Before init has loaded the file it reads it synchronously (as ContextualIdentityService does).
-   * `fromExternal` (addTab's flag: the command line's URLs) gives nonAgentUserContextId's.
+   * `fromExternal` (addTab's flag: the command line's URLs) gives nonAgentUserContextId's. A tab
+   * an extension opens (`triggeringPrincipal` is its own) gets null: no container, as in Firefox.
+   * Except the new tab page (`tabs.create` with no URL): Firefox gives about:newtab its own
+   * principal, but Vimma's is a chrome: page, which keeps the extension's, so it is told apart
+   * by its `url` and takes the workspace's container, as ctrl+t's does.
    * @param {Window | null} win
-   * @param {{ fromExternal?: boolean }} [options]
+   * @param {{ fromExternal?: boolean, triggeringPrincipal?: nsIPrincipal | null, url?: string }}
+   *   [options]
    * @returns {number | null}
    */
-  defaultUserContextId(win, { fromExternal = false } = {}) {
+  defaultUserContextId(win, { fromExternal = false, triggeringPrincipal = null, url } = {}) {
+    const newTabPage =
+      url !== undefined && url === /** @type {BrowserWindow | null} */ (win)?.BROWSER_NEW_TAB_URL;
+    if (openedByExtension(triggeringPrincipal) && !newTabPage) return null;
     if (fromExternal) return this.nonAgentUserContextId(win);
     if (this.disabled || !this.#enabled()) return null;
     if (win && (lazy.PrivateBrowsingUtils.isWindowPrivate(win) || win.toolbar?.visible === false)) {
@@ -666,11 +699,13 @@ export class WorkspaceStoreImpl {
    * A new window's first tab (Tabbrowser-sys-mjs.patch, hunk 2): the container a `[[routes]]`
    * rule gives the window's URL (spec workspace-routing), else nonAgentUserContextId's: a new
    * window never starts in the agent workspace. Null where that is null (private windows,
-   * popups, containers off).
+   * popups, containers off), and for a window an extension opens (`windows.create`, whose
+   * triggering principal is `arguments[8]`): no container, as in Firefox.
    * @param {BrowserWindow | null} win  the window being set up
    * @returns {number | null}
    */
   firstTabUserContextId(win) {
+    if (openedByExtension(win?.arguments?.[8])) return null;
     const fallback = this.nonAgentUserContextId(win);
     if (fallback === null || this !== WorkspaceStore) return fallback;
     return lazy.WorkspaceRouter.firstTab(win) ?? fallback;
