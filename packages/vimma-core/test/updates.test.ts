@@ -18,6 +18,7 @@ import {
   OFF_NOTICE_MS,
   offerAssets,
   parseManifest,
+  REPOSITORY_FILES,
   savedKey,
   savedOffer,
   savedSerial,
@@ -921,6 +922,7 @@ describe("install type (§3)", () => {
     [{ packaged: true, marker: "vimma-package=pkgbuild-release\n" }, "pkgbuild-release"],
     [{ packaged: true, marker: "vimma-package=appimage\n" }, "appimage"],
     [{ packaged: true, marker: "vimma-package=flatpak\n" }, "flatpak"],
+    [{ packaged: true, marker: "vimma-package=pacman\n" }, "pacman"],
     [{ packaged: true, marker: "" }, "packaged"],
     [{ packaged: true, marker: "vimma-package=snap\n" }, "packaged"],
   ])("%j → %s", (input, type) => {
@@ -1170,6 +1172,89 @@ describe("updateSteps (:update and about:vimma)", () => {
     expect(s.commands).toEqual(["brew upgrade --cask vimma"]);
     expect(s.text).toMatch(/Homebrew/);
     expect(s.link).toBe(offer.detailsUrl);
+  });
+
+  // Spec package-repositories, decision 18: the package from Vimma's pacman repository upgrades
+  // with the system; a fixed command with nothing taken from the manifest.
+  test("install type pacman from vimma-package=pacman", () => {
+    const type = installTypeFrom({ packaged: true, marker: "vimma-package=pacman\n" });
+    expect(type).toBe("pacman");
+    const s = updateSteps(type, hashed, where);
+    expect(s.commands).toEqual(["sudo pacman -Syu"]);
+    expect(s.text).toMatch(/pacman repository/);
+    expect(s.text).not.toMatch(/curl|makepkg/);
+    expect(s.note).toBeUndefined();
+    expect(s.link).toBe(offer.detailsUrl);
+  });
+
+  // The .deb and .rpm are the same file from a release and from a repository, so the repository's
+  // own file, which only its setup writes, says which command works (decision 18).
+  test("the repository files are the fixed paths each setup writes", () => {
+    expect(REPOSITORY_FILES).toEqual({
+      apt: "/etc/apt/sources.list.d/vimma.sources",
+      dnf: "/etc/yum.repos.d/vimma.repo",
+      zypper: "/etc/zypp/repos.d/vimma.repo",
+    });
+    expect(Object.isFrozen(REPOSITORY_FILES)).toBe(true);
+  });
+
+  test("a .deb with the repository set up gets apt's upgrade command", () => {
+    const s = updateSteps("deb", hashed, { ...where, repos: { apt: true } });
+    expect(s.commands).toEqual(["sudo apt update && sudo apt upgrade"]);
+    expect(s.text).toMatch(/apt repository/);
+    expect(s.note).toBeUndefined();
+    // Only apt's own file counts for a .deb.
+    const other = updateSteps("deb", hashed, { ...where, repos: { dnf: true, zypper: true } });
+    expect(other.commands[0]).toMatch(/^curl .* && sudo apt install \.\/vimma_0\.3\.1_amd64\.deb$/);
+  });
+
+  test("a .rpm with the repository set up gets dnf's and zypper's", () => {
+    const both = updateSteps("rpm", hashed, { ...where, repos: { dnf: true, zypper: true } });
+    expect(both.commands).toEqual(["sudo dnf upgrade vimma", "sudo zypper up vimma"]);
+    expect(both.text).toMatch(/dnf.*Fedora.*zypper.*openSUSE/);
+    expect(both.note).toBeUndefined();
+    const dnf = updateSteps("rpm", hashed, { ...where, repos: { dnf: true } });
+    expect(dnf.commands).toEqual(["sudo dnf upgrade vimma"]);
+    expect(dnf.text).not.toMatch(/zypper/);
+    const zypper = updateSteps("rpm", hashed, { ...where, repos: { zypper: true } });
+    expect(zypper.commands).toEqual(["sudo zypper up vimma"]);
+    expect(zypper.text).not.toMatch(/dnf/);
+    // apt's file says nothing about an .rpm.
+    const apt = updateSteps("rpm", hashed, { ...where, repos: { apt: true } });
+    expect(apt.commands).toEqual(updateSteps("rpm", hashed, where).commands);
+  });
+
+  test("a .deb without it keeps the download command", () => {
+    const none = updateSteps("deb", hashed, { ...where, repos: {} });
+    expect(none).toEqual(updateSteps("deb", hashed, where));
+    expect(none.commands[0]).toMatch(
+      /sha512sum -c - && sudo apt install \.\/vimma_0\.3\.1_amd64\.deb$/,
+    );
+    expect(none.note).toBeUndefined();
+  });
+
+  // Decision 22: one line pointing at the guide's repository section, shown only once that
+  // section exists (decision 25: vimma.feature.packageRepos, until the repositories are live).
+  test("without the repository, the download command and, when asked, one line to the guide", () => {
+    for (const type of ["deb", "rpm"] as const) {
+      const plain = updateSteps(type, hashed, where);
+      const hinted = updateSteps(type, hashed, { ...where, repoHint: true });
+      expect(hinted.commands).toEqual(plain.commands);
+      expect(hinted.text).toBe(plain.text);
+      expect(hinted.note).toMatch(/the guide's “Package repositories”/);
+      expect(hinted.note).not.toMatch(/\n/);
+      expect(plain.note).toBeUndefined();
+      // With the repository set up there is nothing to point at.
+      const set = { apt: true, dnf: true, zypper: true };
+      expect(updateSteps(type, hashed, { ...where, repos: set, repoHint: true }).note).toBe(
+        undefined,
+      );
+    }
+    expect(updateSteps("deb", hashed, { ...where, repoHint: true }).note).toMatch(/\bapt\b/);
+    expect(updateSteps("rpm", hashed, { ...where, repoHint: true }).note).toMatch(/dnf.*zypper/);
+    for (const type of ["tarball", "appimage", "pacman", "aur", "flatpak"] as const) {
+      expect(updateSteps(type, hashed, { ...where, repoHint: true }).note).toBeUndefined();
+    }
   });
 
   test("flatpak: flatpak update, with no download (spec flatpak, decision 10)", () => {

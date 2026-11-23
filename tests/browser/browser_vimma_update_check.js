@@ -479,6 +479,87 @@ add_task(async function flatpak_gets_flatpak_update() {
   VimmaUpdates._reset();
 });
 
+/**
+ * `:update` with an offer, then the Updates section's text once about:vimma has rendered.
+ * @returns {Promise<string>}
+ */
+async function updateStepsText() {
+  /** @type {string} */
+  let text = "";
+  await BrowserTestUtils.withNewTab("https://example.com/", async () => {
+    const opened = BrowserTestUtils.waitForNewTab(gBrowser, "about:vimma#updates", true);
+    runCommand("update");
+    const tab = await opened;
+    const browser = tab.linkedBrowser;
+    await until(
+      () => browser.contentDocument?.documentElement?.dataset.ready === "true",
+      "rendered",
+    );
+    text = /** @type {Element} */ (
+      /** @type {Document} */ (browser.contentDocument).getElementById("updates")
+    ).textContent;
+    BrowserTestUtils.removeTab(tab);
+  });
+  return text;
+}
+
+// Spec package-repositories, decision 18: the pacman package upgrades with the system, and a
+// .deb or .rpm whose repository file exists gets its package manager's upgrade command; without
+// it, the download command, plus one line to the guide once vimma.feature.packageRepos is on.
+add_task(async function package_repositories_get_the_upgrade_command() {
+  const root = PathUtils.join(dir, "root");
+  /** @param {string} path */
+  const make = async (path) => {
+    await IOUtils.makeDirectory(PathUtils.parent(root + path) ?? root, { createAncestors: true });
+    await IOUtils.writeUTF8(root + path, "");
+  };
+  /**
+   * @param {string} type
+   * @param {[string, string | boolean][]} [prefs]
+   */
+  const stepsFor = async (type, prefs = []) => {
+    await SpecialPowers.pushPrefEnv({
+      set: [["vimma.update.installType", type], ["vimma.update.testRepoRoot", root], ...prefs],
+    });
+    VimmaUpdates._reset();
+    await serve(await manifest({}));
+    const text = await updateStepsText();
+    await SpecialPowers.popPrefEnv();
+    VimmaUpdates._reset();
+    return text;
+  };
+  const guide = "the guide's “Package repositories”";
+
+  let text = await stepsFor("pacman");
+  Assert.ok(text.includes("Vimma's pacman repository"), "pacman: the install type");
+  Assert.ok(text.includes("sudo pacman -Syu"), "pacman: its upgrade command");
+  Assert.ok(!text.includes("curl "), "pacman: no download command");
+
+  text = await stepsFor("deb");
+  Assert.ok(text.includes("sudo apt install ./vimma_9.9.9_amd64.deb"), "deb: the download");
+  Assert.ok(!text.includes(guide), "deb: no line to the guide while the feature is off");
+  text = await stepsFor("deb", [["vimma.feature.packageRepos", true]]);
+  Assert.ok(text.includes("sudo apt install ./vimma_9.9.9_amd64.deb"), "deb: still the download");
+  Assert.ok(text.includes(guide), "deb: one line to the guide's repository section");
+
+  await make("/etc/apt/sources.list.d/vimma.sources");
+  text = await stepsFor("deb", [["vimma.feature.packageRepos", true]]);
+  Assert.ok(text.includes("sudo apt update && sudo apt upgrade"), "deb: apt's upgrade");
+  Assert.ok(!text.includes("curl "), "deb with its repository: no download command");
+  Assert.ok(!text.includes(guide), "deb with its repository: no line to the guide");
+
+  text = await stepsFor("rpm");
+  Assert.ok(text.includes("sudo dnf install ./vimma-9.9.9-1.x86_64.rpm"), "rpm: the download");
+  await make("/etc/yum.repos.d/vimma.repo");
+  text = await stepsFor("rpm");
+  Assert.ok(text.includes("sudo dnf upgrade vimma"), "rpm: dnf's upgrade");
+  Assert.ok(!text.includes("zypper"), "rpm with dnf's repository only: no zypper command");
+  await make("/etc/zypp/repos.d/vimma.repo");
+  text = await stepsFor("rpm");
+  Assert.ok(text.includes("sudo zypper up vimma"), "rpm: zypper's upgrade");
+  Assert.ok(!text.includes("curl "), "rpm with its repository: no download command");
+});
+
 add_task(async function update_command_says_up_to_date() {
   await serve(await manifest({ update: null }));
   await BrowserTestUtils.withNewTab("https://example.com/", async () => {

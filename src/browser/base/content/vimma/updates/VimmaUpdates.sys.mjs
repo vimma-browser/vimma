@@ -30,6 +30,7 @@ import {
   OFF_NOTICE_MS,
   offNotice,
   parseManifest,
+  REPOSITORY_FILES,
   savedKey,
   savedOffer,
   savedSerial,
@@ -51,7 +52,9 @@ import { checkDue } from "../core/update-notices.mjs";
 // The control socket's `state.update` names the same outcomes (m6a-updater, decision 41).
 import { UPDATE_OUTCOMES as OUTCOMES } from "../core/control.mjs";
 
-/** @import { InstallType, Offer, PinnedKey, UpdateNotice } from "../core/updates.mjs" */
+/**
+ * @import { InstallType, Offer, PinnedKey, Repositories, UpdateNotice } from "../core/updates.mjs"
+ */
 /** @import { Stage } from "../core/update-notices.mjs" */
 
 /**
@@ -80,6 +83,14 @@ const INTERVAL_PREF = "app.update.interval";
 /** Test-only, honoured only in automation: extra pinned keys, and the install type. */
 const TEST_KEYS_PREF = "vimma.update.testKeys";
 const TEST_TYPE_PREF = "vimma.update.installType";
+/** Test-only, honoured only in automation: a directory standing in for `/` (REPOSITORY_FILES). */
+const TEST_REPO_ROOT_PREF = "vimma.update.testRepoRoot";
+/**
+ * The `.deb` and `.rpm` hint's line pointing at the guide's repository section (spec
+ * package-repositories, decisions 22 and 25), off until the repositories and that section are
+ * published: until then the line would point at nothing.
+ */
+const REPO_HINT_PREF = "vimma.feature.packageRepos";
 /**
  * After the first window's delayed startup (`browser-delayed-startup-finished`): late enough not
  * to compete with session restore, early enough that a due check is not hours away.
@@ -279,6 +290,26 @@ async function detectInstall() {
   const caskroom = mac ? await IOUtils.exists(HOMEBREW_CASKROOM).catch(() => false) : false;
   const type = installTypeFrom({ packaged, marker, platform, appPath, caskroom });
   return { type, installDir: gre, appImage, appDir, marker, forced: false };
+}
+
+/**
+ * Which package repositories are set up (spec package-repositories, decision 18), for a `.deb`
+ * or `.rpm` only: whether each fixed file exists, never what it holds. Read at each look, so a
+ * repository set up while Vimma runs counts at the next `:update`.
+ * @param {InstallType} type
+ * @returns {Promise<Repositories>}
+ */
+async function repositories(type) {
+  if (type !== "deb" && type !== "rpm") return {};
+  const root = inAutomation() ? Services.prefs.getStringPref(TEST_REPO_ROOT_PREF, "") : "";
+  /** @param {string} path */
+  const exists = (path) => IOUtils.exists(`${root}${path}`).catch(() => false);
+  const [apt, dnf, zypper] = await Promise.all([
+    exists(REPOSITORY_FILES.apt),
+    exists(REPOSITORY_FILES.dnf),
+    exists(REPOSITORY_FILES.zypper),
+  ]);
+  return { apt, dnf, zypper };
 }
 
 /** @returns {PinnedKey[]} */
@@ -1166,6 +1197,7 @@ export const VimmaUpdates = {
   async describe() {
     const where = await installInfo();
     const { offer } = state;
+    const repos = offer ? await repositories(where.type) : {};
     return {
       enabled: enabled(),
       from: offFrom(),
@@ -1186,6 +1218,8 @@ export const VimmaUpdates = {
                 : updateSteps(where.type, offer, {
                     ...where,
                     writable: firefoxMode() ? firefox().canApply : undefined,
+                    repos,
+                    repoHint: Services.prefs.getBoolPref(REPO_HINT_PREF, false),
                   }),
           }
         : null,
