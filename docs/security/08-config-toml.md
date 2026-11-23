@@ -78,7 +78,13 @@ A local file you trust and edit. Spec: [m5-config-load](../specs/m5-config-load.
 - F5. Reading `config.toml` **never** throws, hangs or changes a built-in prototype; nesting
   deeper than 32 levels is refused; a key, colour or modifier named like an `Object` member
   (`constructor`, `__proto__`) is unknown, never looked up; an accepted config holds only values
-  its schema allows.
+  its schema allows. `ConfigHost` reads only a regular file (a FIFO would block every later
+  read), of at most 1 MiB, with a byte cap in case it grows meanwhile, and as strict UTF-8; a
+  file it does not read is an error in the status bar and the config in force stays. The poll
+  hashes only a regular file within that limit. Edits of config.toml read it under the same
+  limit.
+  [`a_file_over_1_mib_is_not_read`](../../tests/browser/browser_vimma_config_file_changes.js),
+  [`a_file_that_is_not_utf8_is_said_and_the_config_in_force_stays`](../../tests/browser/browser_vimma_config_file_changes.js),
   [`parseConfig never throws, on any text, and its result is well-formed`](../../packages/vimma-core/test/fuzz/config.fuzz.test.ts),
   [`an accepted config holds only what the schema allows`](../../packages/vimma-core/test/fuzz/config.fuzz.test.ts),
   [`huge and deeply nested files are refused or read in bounded time`](../../packages/vimma-core/test/fuzz/config.fuzz.test.ts),

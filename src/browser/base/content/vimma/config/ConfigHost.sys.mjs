@@ -4,8 +4,8 @@
 
 // config.toml for every window (spec: docs/specs/m5-config-load.md). One per app. Reads
 // `$XDG_CONFIG_HOME/vimma/config.toml` (default `~/.config/vimma/config.toml`), and routes.toml
-// beside it (docs/specs/routes-file.md), polls their mtime and size every 2 s (Firefox has no
-// portable file watcher), and reads them at once on `:source`. vimma-core parses and validates (reloadConfig:
+// beside it (docs/specs/routes-file.md), polls them every 2 s (Firefox has no portable file
+// watcher; fileSignature compares their time, size and text), and reads them at once on `:source`. vimma-core parses and validates (reloadConfig:
 // a file is applied whole or not at all, else the last good config stays); this module does
 // the I/O and hands each part to the module that uses it. `:source <path>` puts another file in
 // force the same way, until config.toml changes or a plain `:source`. Writes: the first run and
@@ -17,6 +17,7 @@
 // runs in one queue (docs/specs/bookmarks-file.md D11).
 
 import {
+  MAX_CONFIG_FILE_BYTES,
   addAgentProviderText,
   appendRouteText,
   formatConfigError,
@@ -59,7 +60,7 @@ import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
 import { WorkspaceRouter } from "../workspaces/WorkspaceRouter.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
-import { BookmarksFileImpl } from "./BookmarksFile.sys.mjs";
+import { BookmarksFileImpl, fileSignature } from "./BookmarksFile.sys.mjs";
 
 /** @import { ActiveConfig, ConfigError, ResolvedConfig } from "../core/config.mjs" */
 /** @import { RoutesFile } from "../core/routes-file.mjs" */
@@ -153,8 +154,16 @@ let warnings = [];
 let errorsPath = "";
 /** @type {string | null} the file `:source <path>` put in force; null: config.toml */
 let sourced = null;
-/** What the file looked like at the last read; "" forces one. */
+/**
+ * What the file looked like at the last read (fileSignature); "" forces one, and stays after a
+ * read that failed, so that the file is read again at each poll until it reads.
+ */
 let signature = "";
+/**
+ * A poll found config.toml gone after a read of it: the next poll that finds it gone too applies
+ * the defaults (an editor's save, or a `git checkout`, can leave it gone for a moment).
+ */
+let goneOnce = false;
 /** @type {Promise<void> | null} */
 let running = null;
 /** Another read was asked for while one ran (`:source` during a poll). */
@@ -214,20 +223,6 @@ const bookmarksFile = new BookmarksFileImpl({
 });
 /** `[ui] tabline` of the last config applied, null before the first (tab-line decision 5). */
 let appliedTabline = /** @type {string | null} */ (null);
-
-/**
- * @param {string} path
- * @returns {Promise<string>} "missing", or the file's mtime and size
- */
-async function stat(path) {
-  try {
-    const info = await IOUtils.stat(path);
-    return `${info.lastModified}|${info.size}`;
-  } catch (e) {
-    if (notFound(e)) return "missing";
-    throw e;
-  }
-}
 
 /** @param {BrowserWindow} win @param {ResolvedConfig} config */
 function applyToWindow(win, config) {
@@ -475,7 +470,7 @@ const unreadRoutes = (/** @type {string} */ message) => ({
  */
 async function routesStat(path) {
   try {
-    const now = await stat(path);
+    const now = await fileSignature(path, MAX_ROUTES_FILE_BYTES);
     return now === "missing" && isLink(path) ? "unreadable" : now;
   } catch (e) {
     console.error(`vimma: cannot stat ${path}`, e);
@@ -529,24 +524,80 @@ async function readRoutes(now) {
   } else routesGood = r;
 }
 
+/**
+ * Reads config.toml for check(): its text, or why it was not read. Only a regular file is
+ * read (a FIFO would block this read and every later one), never more than the limit, even if
+ * it grows meanwhile, and as strict UTF-8.
+ * @param {string} path
+ * @returns {Promise<{ text: string } | { problem: string } | { missing: true }>}
+ */
+async function readConfig(path) {
+  try {
+    const info = await IOUtils.stat(path);
+    if (info.type !== "regular") return { problem: "not a regular file; not read" };
+    const tooLarge = { problem: "larger than 1 MiB; not read" };
+    if ((info.size ?? 0) > MAX_CONFIG_FILE_BYTES) return tooLarge;
+    const bytes = await IOUtils.read(path, { maxBytes: MAX_CONFIG_FILE_BYTES + 1 });
+    if (bytes.length > MAX_CONFIG_FILE_BYTES) return tooLarge;
+    try {
+      return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
+    } catch {
+      return { problem: "not UTF-8 text; not read" };
+    }
+  } catch (e) {
+    if (notFound(e)) return { missing: true };
+    console.error(`vimma: cannot read ${path}`, e);
+    const denied = /** @type {Thrown} */ (e)?.name === "NotAllowedError";
+    return { problem: `cannot be read${denied ? " (no permission)" : ""}; not read` };
+  }
+}
+
+/**
+ * config.toml could not be read: said in the status bar, as an error in the file is, and the
+ * config in force stays (the defaults, before any read). A read that fails the same way again,
+ * at the next poll, is not said again.
+ * @param {string} path
+ * @param {string} message
+ */
+function refuse(path, message) {
+  /** @type {ConfigError[]} */
+  const list = [{ path: "", message }];
+  if (active && errorsPath === path && JSON.stringify(errors) === JSON.stringify(list)) return;
+  const previous = active;
+  if (!active) {
+    active = reloadConfig(null, "", { mac: Services.appinfo.OS === "Darwin" }).active;
+    fallback = true;
+    apply(active, "");
+    applyRoutes();
+  }
+  // An unreadable config.toml may say `[updates] check = false`: hold checks off.
+  updates = { check: false, held: true };
+  VimmaUpdates.configure(updates);
+  report(path, list, previous !== null);
+}
+
 /** @param {boolean} force  read even when the stat is unchanged (`:source`) */
 async function check(force) {
   const path = configPath();
   // Both files at once, so that the first read is no later than config.toml's alone: a config
   // that arrives before WorkspaceStore is ready is the one its init reads (its first workspace
   // shown at the start), and a later one only adds to the workspaces init made.
-  const [now, routesNow] = await Promise.all([stat(path), routesStat(routesPath())]);
+  const [seen, routesNow] = await Promise.all([
+    fileSignature(path, MAX_CONFIG_FILE_BYTES),
+    routesStat(routesPath()),
+  ]);
+  // A link to nothing is the user's config.toml all the same: said, never the defaults.
+  const now = seen === "missing" && isLink(path) ? "dangling" : seen;
   const routesChanged = force || routesNow !== routesSignature;
-  const configChanged = force || now !== signature;
+  let configChanged = force || now !== signature;
+  if (configChanged && !force && now === "missing" && active && signature !== "missing") {
+    configChanged = goneOnce;
+    goneOnce = !goneOnce;
+  } else goneOnce = false;
   if (!routesChanged && !configChanged) return;
-  /** @type {Promise<{ text: string } | { error: unknown }> | null} */
+  /** @type {Promise<{ text: string } | { problem: string } | { missing: true }> | null} */
   const reading =
-    configChanged && now !== "missing"
-      ? IOUtils.readUTF8(path).then(
-          (text) => ({ text }),
-          (error) => ({ error }),
-        )
-      : null;
+    configChanged && now !== "missing" && now !== "dangling" ? readConfig(path) : null;
   const wasPresent = routesPresent;
   if (routesChanged) {
     routesSignature = routesNow;
@@ -561,21 +612,27 @@ async function check(force) {
     showErrors();
     return;
   }
-  signature = now;
   sourced = null; // config.toml changed (or a plain :source): it is the file in force again
-  let text = "";
   const read = reading ? await reading : null;
-  if (read && "text" in read) text = read.text;
-  else if (read) {
-    if (!notFound(read.error)) {
-      // An unreadable config.toml may say `[updates] check = false`: hold checks off.
-      updates = { check: false, held: true };
-      VimmaUpdates.configure(updates);
-      throw read.error;
-    }
-    signature = "missing"; // removed between stat and read: the defaults, silently
+  if (now === "dangling" || (read && "problem" in read)) {
+    signature = "";
+    refuse(path, read && "problem" in read ? read.problem : "a link to a missing file; not read");
+    return;
   }
+  if (read && "missing" in read) {
+    // Removed between the stat and the read: seen as gone at the next poll.
+    signature = "";
+    return;
+  }
+  const gone = now === "missing" && active !== null && signature !== "missing";
+  signature = now;
+  const text = read ? read.text : "";
   const applied = use(path, text);
+  if (gone && !force) {
+    // Said once, when a poll finds the file gone; `:source` and a reset say nothing more.
+    const [win] = windows;
+    if (win) VimmaHost.say(win, `${PathUtils.filename(path)} missing; using the defaults`);
+  }
   // Bookmarklets as the last config.toml that applied says (bookmarks-file D12, D13): a file
   // with errors keeps the previous value, and `:source <file>` never reaches here.
   if (applied) {
@@ -729,6 +786,15 @@ function firstRunBlocked() {
  */
 async function edit(win) {
   const path = configPath();
+  // A link to nothing: "create" would fail on the link, and the user's link is not ours to
+  // replace or follow with a new file.
+  if (isLink(path) && !existsNow(path)) {
+    const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+    file.initWithPath(path);
+    const name = PathUtils.filename(path);
+    VimmaHost.say(win, `:config: ${name} is a link to ${tilde(file.target)}, which does not exist`);
+    return;
+  }
   try {
     await createFromTemplate(path);
   } catch (e) {
@@ -820,7 +886,7 @@ function stop() {
 async function rewriteConfig(compute) {
   // One edit at a time: two that read the same text would both pass writeFileNow's check, and
   // the second rename would drop the first edit after both said they were written.
-  const r = await edits.run(() => writeFileNow(configPath(), compute));
+  const r = await edits.run(() => writeFileNow(configPath(), compute, MAX_CONFIG_FILE_BYTES));
   if (!("error" in r) && r.text !== null) await ConfigHost.reload();
   return r;
 }
@@ -955,7 +1021,7 @@ async function writeRoute(rule) {
       const a = appendRouteFileText(text, rule);
       return "error" in a ? a : { text: text + a.append };
     },
-    inRoutes ? MAX_ROUTES_FILE_BYTES : Infinity,
+    inRoutes ? MAX_ROUTES_FILE_BYTES : MAX_CONFIG_FILE_BYTES,
   );
   if (!("error" in r)) return { added: name };
   if (!r.error.startsWith("cannot write")) return { error: r.error };
@@ -1145,6 +1211,16 @@ export const ConfigHost = {
     });
     if ("error" in r) return r;
     return { added: r.added, already: r.already, removed: r.removed };
+  },
+
+  /**
+   * One poll of the files, as the timer runs it: read only what changed (tests hold the timer
+   * off with a long `vimma.config.pollMs` and poll by hand).
+   * @returns {Promise<void>}
+   */
+  async poll() {
+    await poll();
+    while (running) await running;
   },
 
   firstRun,

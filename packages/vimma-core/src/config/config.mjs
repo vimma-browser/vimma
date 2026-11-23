@@ -174,6 +174,12 @@ import { hasControl } from "../text/strings.mjs";
 /** @typedef {{ config: ResolvedConfig, keymap: Keymap }} ActiveConfig */
 
 // Firefox container colours and icons (ContextualIdentityService.sys.mjs); workspacedefs.mjs too.
+/**
+ * config.toml is not read past this size: it bounds the parse on the main thread, as routes.toml's
+ * limit does; the template with every line set is under 40 KiB.
+ */
+export const MAX_CONFIG_FILE_BYTES = 1024 * 1024;
+
 export const CONTAINER_COLORS = [
   "gray",
   "yellow",
