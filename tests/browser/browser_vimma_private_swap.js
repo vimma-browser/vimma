@@ -127,8 +127,9 @@ class FakeHypr {
    *   holdNames: open-on-nonce's openwindow is sent only while a j/clients request is being
    *   answered, once the title has been set this many ms, and that reply then comes 300 ms
    *   late (the event arrives during the request); slowClients: j/clients replies this late;
-   *   listenFirst: a title reaches the fake only once a listener is on its event socket, so
-   *   that the title's event cannot go to no one (#890)
+   *   listenFirst: a title (for j/clients and events alike) reaches the fake only once it has
+   *   accepted a listener on its event socket since its last dropEvents(), so that the title's
+   *   event cannot go to no one (#890)
    */
   constructor({
     mode = "lua",
