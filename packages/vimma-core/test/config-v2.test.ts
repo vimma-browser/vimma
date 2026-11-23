@@ -49,12 +49,13 @@ describe("the newer keys", () => {
       layout: "dwindle",
       main_size: 60,
       new_tab: "alone",
+      max_splits: 9,
     });
     const text = formatDefaultsToml();
     expect(text).toMatch(
-      /^\[panes\]\nmax = 8\n(#.*\n)*layout = "dwindle"\n(#.*\n)*main_size = 60\n(#.*\n)*new_tab = "alone"$/m,
+      /^\[panes\]\nmax = 8(?: +#.*)?\n(#.*\n|max_splits = .*\n)*layout = "dwindle"(?: +#.*)?\n(#.*\n)*main_size = 60(?: +#.*)?\n(#.*\n)*new_tab = "alone"(?: +#.*)?$/m,
     );
-    expect(text).toMatch(/^hint_chars = "asdfghjkl"$/m);
+    expect(text).toMatch(/^hint_chars = "asdfghjkl"(?: +#.*)?$/m);
     expect(text).toMatch(/^# \[sites\."docs\.google\.com"\]$/m);
     expect(parseConfig(text).errors).toEqual([]);
   });
@@ -351,7 +352,7 @@ describe("[firefox] disable and enable", () => {
   test('the default is disable = "all" and enables none', () => {
     expect(ok(cfg()).firefox).toEqual({ disable: "all", enable: [] });
     const text = formatDefaultsToml();
-    expect(text).toMatch(/^\[firefox\]\ndisable = "all"\nenable = \[\]$/m);
+    expect(text).toMatch(/^\[firefox\]\ndisable = "all"(?: +#.*)?\nenable = \[\](?: +#.*)?$/m);
     expect(ok(text).firefox).toEqual({ disable: "all", enable: [] });
   });
 
@@ -418,7 +419,7 @@ describe("[firefox] disable and enable", () => {
 describe("[modal] insert_editing", () => {
   test("is on by default and can be turned off; the keymap ignores it", () => {
     expect(ok(cfg()).insertEditing).toBe(true);
-    expect(formatDefaultsToml()).toMatch(/^insert_editing = true$/m);
+    expect(formatDefaultsToml()).toMatch(/^insert_editing = true(?: +#.*)?$/m);
     const r = parseConfig(cfg("[modal]", "insert_editing = false"));
     expect(r.errors).toEqual([]);
     expect(r.config?.insertEditing).toBe(false);
@@ -441,8 +442,12 @@ describe("[bookmarks] root", () => {
       bookmarklets: "none",
       writeBack: "all",
     });
-    expect(DEFAULT_CONFIG.bookmarks).toEqual({ root: "workspace", bookmarklets: "none" });
-    expect(formatDefaultsToml()).toMatch(/^\[bookmarks\]\n(#.*\n)*root = "workspace"$/m);
+    expect(DEFAULT_CONFIG.bookmarks).toEqual({
+      root: "workspace",
+      bookmarklets: "none",
+      write_back: "all",
+    });
+    expect(formatDefaultsToml()).toMatch(/^\[bookmarks\]\n(#.*\n)*root = "workspace"(?: +#.*)?$/m);
   });
 
   test.each([["workspace"], ["toolbar"], ["all"]])('root = "%s" is accepted', (root) => {
@@ -482,7 +487,7 @@ describe("[panel] numbers", () => {
   test('defaults to "absolute"', () => {
     expect(ok(cfg()).panel).toEqual({ numbers: "absolute" });
     expect(DEFAULT_CONFIG.panel).toEqual({ numbers: "absolute" });
-    expect(formatDefaultsToml()).toMatch(/^\[panel\]\n(#.*\n)*numbers = "absolute"$/m);
+    expect(formatDefaultsToml()).toMatch(/^\[panel\]\n(#.*\n)*numbers = "absolute"(?: +#.*)?$/m);
   });
 
   test.each([["absolute"], ["relative"], ["hybrid"]])('numbers = "%s" is accepted', (n) => {
@@ -515,7 +520,9 @@ describe("[theme] name", () => {
   test('defaults to "vimma"', () => {
     expect(ok(cfg()).theme.name).toBe("vimma");
     expect(DEFAULT_CONFIG.theme?.name).toBe("vimma");
-    expect(formatDefaultsToml()).toMatch(/^\[theme\]\nsource = "omarchy"\nname = "vimma"$/m);
+    expect(formatDefaultsToml()).toMatch(
+      /^\[theme\]\nsource = "omarchy"(?: +#.*)?\nname = "vimma"(?: +#.*)?$/m,
+    );
   });
 
   test('name = "vimma" is accepted', () => {
@@ -588,7 +595,7 @@ describe("[theme] appearance", () => {
   });
 
   test("defaults.toml documents it as a comment, so the file does not pin it", () => {
-    expect(formatDefaultsToml()).toMatch(/^# appearance = "system"$/m);
+    expect(formatDefaultsToml()).toMatch(/^# appearance = "system"(?: +#.*)?$/m);
     expect(formatDefaultsToml()).not.toMatch(/^appearance =/m);
     expect(ok(formatDefaultsToml()).theme.appearance).toBeUndefined();
   });
@@ -599,7 +606,7 @@ describe("[private] placement", () => {
   test('defaults to "swap"', () => {
     expect(ok(cfg()).private).toEqual({ placement: "swap" });
     expect(DEFAULT_CONFIG.private).toEqual({ placement: "swap" });
-    expect(formatDefaultsToml()).toMatch(/^\[private\]\n(#.*\n)*placement = "swap"$/m);
+    expect(formatDefaultsToml()).toMatch(/^\[private\]\n(#.*\n)*placement = "swap"(?: +#.*)?$/m);
   });
 
   test.each([["swap"], ["window"]])('placement = "%s" is accepted', (placement) => {
@@ -655,7 +662,7 @@ describe("[ui] toolbar", () => {
       tabline: "auto",
       tabline_width: 14,
     });
-    expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n)*toolbar = "hidden"$/m);
+    expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n)*toolbar = "hidden"(?: +#.*)?$/m);
   });
 
   test.each([["shown"], ["hidden"]])('toolbar = "%s" is accepted', (toolbar) => {
@@ -692,7 +699,9 @@ describe("[ui] toolbar", () => {
 describe("[ui] pdf_outline", () => {
   test('defaults to "shown", written in the template', () => {
     expect(ok(cfg()).ui.pdfOutline).toBe("shown");
-    expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n|\w+ = .*\n)*pdf_outline = "shown"$/m);
+    expect(formatDefaultsToml()).toMatch(
+      /^\[ui\]\n(#.*\n|\w+ = .*\n)*pdf_outline = "shown"(?: +#.*)?$/m,
+    );
   });
 
   test.each([["shown"], ["hidden"]])('pdf_outline = "%s" is accepted', (v) => {
@@ -719,7 +728,7 @@ describe("[ui] bookmarks_toolbar", () => {
   test("left out, the config has none: Firefox's pref decides; the template only comments it", () => {
     expect(ok(cfg()).ui.bookmarksToolbar).toBeNull();
     expect(DEFAULT_CONFIG.ui).not.toHaveProperty("bookmarks_toolbar");
-    expect(formatDefaultsToml()).toMatch(/^# bookmarks_toolbar = "shown"$/m);
+    expect(formatDefaultsToml()).toMatch(/^# bookmarks_toolbar = "shown"(?: +#.*)?$/m);
     expect(formatDefaultsToml()).not.toMatch(/^bookmarks_toolbar/m);
   });
 
@@ -794,12 +803,16 @@ describe("[mcp]", () => {
       clamav_max_age_days: 7,
     });
     const text = formatDefaultsToml();
-    expect(text).toMatch(/^\[mcp\]\n# enabled = false\nworkspace = "agent"\nask_timeout = 50$/m);
     expect(text).toMatch(
-      /^grant_minutes = 0\ngrant_max_minutes = 480\nmax_read_chars = 200000\nnotify = true$/m,
+      /^\[mcp\]\n# enabled = false(?: +#.*)?\nworkspace = "agent"(?: +#.*)?\nask_timeout = 50(?: +#.*)?$/m,
     );
-    expect(text).toMatch(/^download_dir = "~\/Downloads\/vimma-agent"\ndownload_max_mb = 200$/m);
-    expect(text).toMatch(/^clamav_max_age_days = 7$/m);
+    expect(text).toMatch(
+      /^grant_minutes = 0(?: +#.*)?\ngrant_max_minutes = 480(?: +#.*)?\nmax_read_chars = 200000(?: +#.*)?\nnotify = true(?: +#.*)?$/m,
+    );
+    expect(text).toMatch(
+      /^download_dir = "~\/Downloads\/vimma-agent"(?: +#.*)?\ndownload_max_mb = 200(?: +#.*)?$/m,
+    );
+    expect(text).toMatch(/^clamav_max_age_days = 7(?: +#.*)?$/m);
   });
 
   test("every key as written; enabled only when the file sets it", () => {
@@ -969,9 +982,13 @@ describe("[ui] tabline", () => {
     expect(c.ui.tablineWidth).toBe(14);
     expect(c.statusbar).toEqual({ tab: true });
     expect(DEFAULT_CONFIG.ui).toMatchObject({ tabline: "auto", tabline_width: 14 });
-    expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n|\w+ = .*\n)*tabline = "auto"$/m);
-    expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n|\w+ = .*\n)*tabline_width = 14$/m);
-    expect(formatDefaultsToml()).toMatch(/^\[statusbar\]\n(#.*\n)*tab = true$/m);
+    expect(formatDefaultsToml()).toMatch(
+      /^\[ui\]\n(#.*\n|\w+ = .*\n)*tabline = "auto"(?: +#.*)?$/m,
+    );
+    expect(formatDefaultsToml()).toMatch(
+      /^\[ui\]\n(#.*\n|\w+ = .*\n)*tabline_width = 14(?: +#.*)?$/m,
+    );
+    expect(formatDefaultsToml()).toMatch(/^\[statusbar\]\n(#.*\n)*tab = true(?: +#.*)?$/m);
   });
 
   test.each([["off"], ["always"], ["auto"]])('tabline = "%s" is accepted', (v) => {

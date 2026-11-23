@@ -4,6 +4,7 @@
 // that let a viewer follow (a multiple of --pace). `theme` is the shot's `[theme] source`:
 // "file" (the default) shows the built-in palette, "omarchy" the recorder's temp theme
 // directory, which starts empty, so the built-in palette shows there too until a shot sets one.
+import { hintLabels } from "../../packages/vimma-core/src/page/hints.mjs";
 import { PROMO_TASK } from "./agent.ts";
 import { HOSTS } from "./promo.ts";
 import type { Director } from "./record.ts";
@@ -116,20 +117,18 @@ async function openHere(d: Director, url: string, title: string) {
 }
 
 /**
- * The team's tabs for tab search and live grep (off camera): four in main, the standup notes
- * selected; a postmortem and the news in a second workspace, "reading"; and, with `closed`, the
- * rollback drill opened and closed again, so it is under Recently closed.
+ * The team's tabs for tab search (off camera): four in main, the standup notes selected; a
+ * postmortem and the news in a second workspace, "reading"; and the rollback drill opened and
+ * closed again, so it is under Recently closed.
  */
-async function teamTabs(d: Director, { closed }: { closed: boolean }) {
+async function teamTabs(d: Director) {
   await only(d, RUNBOOK, RUNBOOK_TITLE);
   await also(d, CHECKLIST, CHECKLIST_TITLE);
   await also(d, INCIDENT, INCIDENT_TITLE);
-  if (closed) {
-    await also(d, DRILL, DRILL_TITLE);
-    const count = (await d.state()).tabs.length;
-    await d.send("ctrl+b shift+x");
-    await d.until((s) => s.tabs.length === count - 1, "the drill tab closed");
-  }
+  await also(d, DRILL, DRILL_TITLE);
+  const count = (await d.state()).tabs.length;
+  await d.send("ctrl+b shift+x");
+  await d.until((s) => s.tabs.length === count - 1, "the drill tab closed");
   await also(d, STANDUP, STANDUP_TITLE);
   await newWorkspace(d, "reading");
   await openHere(d, POSTMORTEM, POSTMORTEM_TITLE);
@@ -234,7 +233,7 @@ const tiling: Shot = {
 const marks: Shot = {
   name: "marks",
   async setup(d) {
-    // the team's pages that tab search and live grep search later in the video
+    // the team's pages that tab search searches later in the video
     await only(d, RUNBOOK, RUNBOOK_TITLE);
     await also(d, CHECKLIST, CHECKLIST_TITLE);
     await also(d, INCIDENT, INCIDENT_TITLE);
@@ -346,11 +345,14 @@ const theme: Shot = {
   },
 };
 
-/** tab search: every workspace's tabs and the recently closed; one reopened */
+/**
+ * tab search: every workspace's tabs and the recently closed; one reopened. Then gb: hint
+ * labels on the tab line, one more key to the incident
+ */
 const tabs: Shot = {
   name: "tabs",
   async setup(d) {
-    await teamTabs(d, { closed: true });
+    await teamTabs(d);
   },
   async run(d) {
     await d.hold(0.8);
@@ -367,40 +369,20 @@ const tabs: Shot = {
       "the closed drill page reopened",
     );
     await d.hold(1.4);
-  },
-};
-
-/**
- * live grep: "rollback" across the tabs, ctrl+s widening the scope to the window,
- * ctrl+p and the preview, Enter to that match
- */
-const grep: Shot = {
-  name: "grep",
-  async setup(d) {
-    await teamTabs(d, { closed: false });
-  },
-  async run(d) {
-    await d.hold(0.8);
-    d.mark("grep");
-    await d.key("ctrl+b", 0.5);
-    await d.key("f", 0.25);
-    await d.key("g", 0);
-    await d.until((s) => s.mode === "help", "live grep");
-    await d.hold(0.6);
-    await d.type("rollback", 0.22);
-    await d.hold(1.2);
-    // widen the scope from this workspace to the window: every open tab, the reading
-    // workspace's too
-    d.mark("scope");
-    await d.key("ctrl+s", 1.6);
-    d.mark("browse");
-    await d.key("ctrl+p", 0.8);
-    await d.key("ctrl+p", 1.3);
-    d.mark("jump");
-    await d.key("enter", 0);
+    d.mark("tabline");
+    await d.key("g b", 0);
+    await d.until((s) => s.mode === "hint", "the tab line's labels");
+    await d.hold(1.8);
+    // the line labels the workspace's tabs in their order, with the link hints' labels over
+    // the default [modal] hint_chars, which the recorder's config.toml leaves as they are
+    const { tabs: open } = await d.state();
+    const at = open.findIndex((t: any) => t.title === INCIDENT_TITLE);
+    const label = hintLabels(open.length)[at] ?? "";
+    for (const c of label.slice(0, -1)) await d.key(c, 0.6);
+    await d.key(label.slice(-1), 0);
     await d.until(
-      (s) => s.mode === "normal" && selected(s)?.title === CHECKLIST_TITLE,
-      "the selected match, in the release checklist",
+      (s) => s.mode === "normal" && selected(s)?.title === INCIDENT_TITLE,
+      "the incident, by its label",
     );
     await d.hold(1.6);
   },
@@ -461,7 +443,6 @@ export const SHOTS: readonly Shot[] = Object.freeze([
   flip,
   marks,
   tabs,
-  grep,
   agent,
   theme,
   help,

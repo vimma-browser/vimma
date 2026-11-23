@@ -1249,10 +1249,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
       max: user.panes?.max ?? PANES_MAX_DEFAULT,
       layout: user.panes?.layout ?? "dwindle",
       mainSize: (user.panes?.main_size ?? MAIN_SIZE_DEFAULT * 100) / 100,
-      // Not in defaults.mjs' UserConfig yet: the key joins defaults.toml when several splits
-      // ship (docs/specs/multiple-splits.md, Delivery 6).
-      maxSplits:
-        /** @type {{ max_splits?: number }} */ (user.panes ?? {}).max_splits ?? MAX_SPLITS_DEFAULT,
+      maxSplits: user.panes?.max_splits ?? MAX_SPLITS_DEFAULT,
       newTab: user.panes?.new_tab ?? "alone",
     },
     hintChars: /** @type {string | undefined} */ (user.modal?.hint_chars) ?? DEFAULT_HINT_CHARS,
