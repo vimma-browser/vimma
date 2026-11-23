@@ -110,7 +110,9 @@ function elementObject(label, t, form) {
   for (const key of /** @type {const} */ (["required", "disabled", "readonly"])) {
     if (i[key]) o[key] = true;
   }
-  if (i.checked !== undefined) o.checked = i.checked;
+  // JSON.stringify leaves out a key whose value is undefined: no `checked` or `form` is written
+  // when there is none.
+  o.checked = i.checked;
   if (i.sensitive) {
     // F6: never a value or which option is chosen.
     o.sensitive = true;
@@ -123,7 +125,7 @@ function elementObject(label, t, form) {
       .map((op) => ({ value: line(op.value, max.text), text: line(op.text, max.text) }));
   }
   if (!i.sensitive && i.selected !== undefined) o.selected = line(i.selected, max.text);
-  if (form !== undefined) o.form = form;
+  o.form = form;
   return o;
 }
 
@@ -131,7 +133,7 @@ function elementObject(label, t, form) {
  * The words of a `query`: NFKC, case-folded, split on white space (builtin-agent B2).
  * @param {string} s
  */
-const words = (s) => s.normalize("NFKC").toLowerCase().split(/\s+/).filter(Boolean);
+const words = (s) => s.normalize("NFKC").toLowerCase().match(/\S+/g) ?? [];
 
 /**
  * The elements a list's filters keep (builtin-agent B2, agent-speed Behaviour 4): with `kinds`,
@@ -198,23 +200,24 @@ export function agentElementList(elements, maxBytes, seen) {
     const { label, target } = element;
     const f = target.form;
     let form = f ? forms.get(f.key) : undefined;
-    let formLine = null;
+    /** @type {{ key: string, n: number, line: string } | null} a form this element names first */
+    let fresh = null;
     if (f && !form && forms.size < AGENT_ELEMENTS.forms) {
       const n = forms.size + 1;
-      formLine = jsonLine({
+      const formLine = jsonLine({
         form: n,
         method: line(f.method, 8),
         action: agentUrl(f.action, AGENT_ELEMENTS.href),
       });
-      form = { n, line: formLine };
+      fresh = { key: f.key, n, line: formLine };
+      form = fresh;
     }
     const own = jsonLine(elementObject(label, target, form?.n));
     const again = seen?.has(own) ?? false;
-    const more = (again ? 0 : cost(own)) + (formLine ? cost(formLine) : 0);
+    const more = (again ? 0 : cost(own)) + (fresh ? cost(fresh.line) : 0);
     if (bytes + more > maxBytes) break;
     bytes += more;
-    // Stryker disable next-line LogicalOperator: a form line is written only with f and form set, and setting a form already kept again changes nothing
-    if (f && formLine && form) forms.set(f.key, form);
+    if (fresh) forms.set(fresh.key, fresh);
     if (again) repeated.push(label);
     else shownLines.push(own);
     given.push(element);
@@ -277,7 +280,7 @@ export function isAgentLabel(label) {
  * or a file field, the element itself or the control of the `<label>` it is in. */
 const ACT_FIELDS = Object.freeze(["text", "select", "editable", "file"]);
 /** Form methods a submission can have. */
-const SUBMIT_METHODS = new Set(["get", "post"]);
+const SUBMIT_METHODS = Object.freeze(["get", "post"]);
 
 /**
  * @typedef {{ method: string, action: string, fields: number }} ActSubmit
@@ -296,6 +299,14 @@ const SUBMIT_METHODS = new Set(["get", "post"]);
 const isText = (v, max) => typeof v === "string" && v.length <= max;
 
 /**
+ * Whether `v` is one of `words`: `includes` compares without coercion, so anything that is no
+ * string is refused without a `typeof` check of its own.
+ * @param {readonly string[]} words @param {unknown} v
+ * @returns {v is string}
+ */
+const isOneOf = (words, v) => /** @type {readonly unknown[]} */ (words).includes(v);
+
+/**
  * A child's account of an element before a click, checked like any reply from a content
  * process: a fresh copy with only the known fields, or null when anything is wrong.
  * @param {unknown} value
@@ -307,7 +318,7 @@ export function parseActTarget(value) {
     const v = /** @type {Record<string, unknown>} */ (value);
     if (typeof v.alive !== "boolean") return null;
     if (!v.alive) return { alive: false };
-    if (typeof v.kind !== "string" || !ELEMENT_KINDS.includes(v.kind)) return null;
+    if (!isOneOf(ELEMENT_KINDS, v.kind)) return null;
     if (!isText(v.text, ELEMENT_REPLY_CAPS.text)) return null;
     /** @type {ActTarget} */
     const out = { alive: true, kind: v.kind, text: /** @type {string} */ (v.text) };
@@ -320,7 +331,7 @@ export function parseActTarget(value) {
       if (v.disabled) out.disabled = true;
     }
     if (v.field !== undefined) {
-      if (typeof v.field !== "string" || !ACT_FIELDS.includes(v.field)) return null;
+      if (!isOneOf(ACT_FIELDS, v.field)) return null;
       out.field = v.field;
     }
     if (v.href !== undefined) {
@@ -331,7 +342,7 @@ export function parseActTarget(value) {
       const f = v.submit;
       if (typeof f !== "object" || f === null || Array.isArray(f)) return null;
       const { method, action, fields } = /** @type {Record<string, unknown>} */ (f);
-      if (typeof method !== "string" || !SUBMIT_METHODS.has(method)) return null;
+      if (!isOneOf(SUBMIT_METHODS, method)) return null;
       if (!isText(action, ELEMENT_REPLY_CAPS.action)) return null;
       if (!Number.isSafeInteger(fields) || /** @type {number} */ (fields) < 0) return null;
       out.submit = {
@@ -489,8 +500,8 @@ export function parseFillTarget(value) {
     const v = /** @type {Record<string, unknown>} */ (value);
     if (typeof v.alive !== "boolean") return null;
     if (!v.alive) return { alive: false };
-    if (typeof v.kind !== "string" || !ELEMENT_KINDS.includes(v.kind)) return null;
-    if (typeof v.field !== "string" || !FILL_FIELDS.includes(v.field)) return null;
+    if (!isOneOf(ELEMENT_KINDS, v.kind)) return null;
+    if (!isOneOf(FILL_FIELDS, v.field)) return null;
     /** @type {Record<string, unknown>} */
     const out = { alive: true, kind: v.kind, field: v.field };
     for (const [key, max] of /** @type {const} */ ([
@@ -514,10 +525,11 @@ export function parseFillTarget(value) {
     }
     if (v.submit !== undefined) {
       // Stryker disable next-line StringLiteral: only the submit of this check is read, never its text
-      const parsed = parseActTarget({ alive: true, kind: v.kind, text: "", submit: v.submit });
-      // Stryker disable next-line OptionalChaining: a null parsed throws here, and the catch below returns null too
-      if (!parsed?.submit) return null;
-      out.submit = parsed.submit;
+      const asClick = { alive: true, kind: v.kind, text: "", submit: v.submit };
+      // Stryker disable next-line OptionalChaining: a null reading throws here, and the catch below returns null too
+      const submit = parseActTarget(asClick)?.submit;
+      if (!submit) return null;
+      out.submit = submit;
     }
     return /** @type {FillTarget} */ (out);
   } catch {
@@ -673,8 +685,10 @@ export function screenshotLabels(labels, scale, size) {
   for (const [label, { rect }] of labels) {
     const x = rect.x * scale;
     const y = rect.y * scale;
-    const right = (rect.x + rect.width) * scale;
-    const bottom = (rect.y + rect.height) * scale;
+    // The scale is positive, so an element ends left of or above the image exactly when it does
+    // unscaled.
+    const right = rect.x + rect.width;
+    const bottom = rect.y + rect.height;
     if (right <= 0 || bottom <= 0 || x >= size.width || y >= size.height) continue;
     out.push({ label, x: Math.max(0, x), y: Math.max(0, y) });
   }
@@ -721,9 +735,11 @@ const INFO_FLAG = 0x8;
  * @returns {"error" | "warn" | null}
  */
 export function scriptErrorLevel(flags) {
-  if (typeof flags !== "number" || !Number.isInteger(flags) || flags < 0) return null;
-  if (flags & WARNING_FLAG) return "warn";
-  if (flags & INFO_FLAG) return null;
+  // Number.isInteger refuses anything that is no number.
+  if (!Number.isInteger(flags) || /** @type {number} */ (flags) < 0) return null;
+  const word = /** @type {number} */ (flags);
+  if (word & WARNING_FLAG) return "warn";
+  if (word & INFO_FLAG) return null;
   return "error";
 }
 
@@ -734,12 +750,13 @@ export function scriptErrorLevel(flags) {
  * @returns {typeof CONSOLE_SOURCES[number]}
  */
 export function scriptErrorSource(category) {
-  const c = typeof category === "string" ? category : "";
-  if (/\bCSP\b/.test(c)) return "csp";
-  if (/mixed content/i.test(c)) return "mixed-content";
-  if (/\bCORS\b/.test(c)) return "cors";
-  if (/javascript/i.test(c)) return "script";
-  if (/\b(SSL|Security|HTTPS|SRI|Network|Cookie)/i.test(c)) return "network";
+  // Never coerced: an object's toString is the page's code.
+  if (typeof category !== "string") return "other";
+  if (/\bCSP\b/.test(category)) return "csp";
+  if (/mixed content/i.test(category)) return "mixed-content";
+  if (/\bCORS\b/.test(category)) return "cors";
+  if (/javascript/i.test(category)) return "script";
+  if (/\b(SSL|Security|HTTPS|SRI|Network|Cookie)/i.test(category)) return "network";
   return "other";
 }
 
@@ -810,7 +827,7 @@ export function requestFailure(status, error) {
  */
 
 /** @param {unknown} n */
-const isCountOf = (n) => typeof n === "number" && Number.isSafeInteger(n) && n >= 0;
+const isCountOf = (n) => Number.isSafeInteger(n) && /** @type {number} */ (n) >= 0;
 
 /**
  * An error entry from a frame's child (F22), checked like any reply from a content process: the
@@ -869,7 +886,8 @@ const requestLine = (r) =>
   jsonLine({
     method: line(r.method, 16),
     url: agentUrl(r.url, AGENT_CONSOLE.url),
-    ...(r.status !== undefined ? { status: r.status } : {}),
+    // JSON.stringify leaves out an undefined status.
+    status: r.status,
     ...(r.error !== undefined ? { error: line(r.error, 64) } : {}),
     type: line(r.type, 32),
     time: r.time,
