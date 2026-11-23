@@ -12,13 +12,15 @@
 /** @import { AgentElementInfo, AgentForm } from "../agent/agent-element.mjs" */
 
 import { BLOCK_KINDS } from "./blocks.mjs";
+import { stripInvisible } from "./pdf.mjs";
 import { parseAgentElement, parseAgentForms } from "../agent/agent-element.mjs";
+import { clusterWidth, graphemes, textWidth } from "../text/textwidth.mjs";
 
 /** @typedef {{ x: number, y: number, width: number, height: number }} Rect */
 /** @typedef {{ rect: Rect }} Target */
 /**
  * @typedef {"hint.follow" | "hint.follow_new_tab" | "hint.follow_new_tab_fg" | "hint.element"
- *   | "hint.show_target" | "hint.copy_target"} HintAction
+ *   | "hint.show_target" | "hint.copy_target" | "hint.hover"} HintAction
  */
 /**
  * @template {Target} [T=Target]
@@ -60,6 +62,7 @@ export const HINT_ACTIONS = Object.freeze([
   "hint.element",
   "hint.show_target",
   "hint.copy_target",
+  "hint.hover",
 ]);
 
 /** @param {string} chars */
@@ -297,18 +300,100 @@ export const HINT_REPLY_MAX_TEXT = 512;
 /** Coordinates beyond this are not on any screen. */
 const MAX_COORD = 1e6;
 /** @type {ReadonlySet<string>} */
-const TARGET_KINDS = new Set(["link", "input", "click", "block"]);
+const TARGET_KINDS = new Set(["link", "input", "click", "block", "hover"]);
 /** @type {ReadonlySet<string>} */
 const BLOCK_KIND_SET = new Set(BLOCK_KINDS);
 
-/** @typedef {"link" | "input" | "click" | "block"} TargetKind */
+/** @typedef {"link" | "input" | "click" | "block" | "hover"} TargetKind */
+/**
+ * What made an element a hover target (docs/specs/hover.md decision 4): one of `f`'s kinds, a
+ * hover listener or attribute, or a text block.
+ * @typedef {"link" | "click" | "input" | "listener" | "block"} HoverKind
+ */
+/** @type {readonly HoverKind[]} */
+export const HOVER_KINDS = Object.freeze(["link", "click", "input", "listener", "block"]);
+/** @type {ReadonlySet<string>} */
+const HOVER_KIND_SET = new Set(HOVER_KINDS);
+/** The kinds that yield to a hover target inside them ("innermost wins", decision 4). */
+const YIELDING = new Set(["listener", "block"]);
+
+/**
+ * Which hover candidates get a label (docs/specs/hover.md decision 4, "innermost wins"): a text
+ * block or a listener element that holds another candidate gets none, so a paragraph with a link
+ * is labelled on the link alone; `f`'s own targets (links, buttons, fields) keep theirs, as `f`
+ * labels them. Each candidate names the nearest candidate around it by index (-1: none).
+ * @param {readonly { kind: HoverKind, parent: number }[]} candidates
+ * @returns {boolean[]} whether each keeps its label
+ */
+export function innermostHover(candidates) {
+  const holds = candidates.map(() => false);
+  candidates.forEach((c, i) => {
+    // Every candidate around this one holds it; a loop in what a child sent stops at a repeat.
+    const seen = new Set([i]);
+    for (let p = c.parent; Number.isInteger(p) && p >= 0 && p < candidates.length;) {
+      if (seen.has(p)) break;
+      seen.add(p);
+      holds[p] = true;
+      p = /** @type {{ parent: number }} */ (candidates[p]).parent;
+    }
+  });
+  return candidates.map((c, i) => !(YIELDING.has(c.kind) && holds[i]));
+}
+
+/** The widest the status bar shows a hovered element's text (decision 8), in columns. */
+export const HOVER_TEXT_COLUMNS = 40;
+
+/**
+ * A hovered element's text as the status bar shows it (decision 8): untrusted page text, with
+ * runs of white space made one space and control and format characters dropped, so no markup
+ * and nothing that reorders the bar reaches it; cut at HOVER_TEXT_COLUMNS with an ellipsis.
+ * @param {string} text
+ */
+export function hoverStatusText(text) {
+  const flat = stripInvisible(text.replace(/\s+/g, " ")).trim();
+  if (textWidth(flat) <= HOVER_TEXT_COLUMNS) return flat;
+  let out = "";
+  let used = 0;
+  for (const { segment } of graphemes(flat)) {
+    const w = clusterWidth(segment);
+    if (used + w > HOVER_TEXT_COLUMNS - 1) break;
+    out += segment;
+    used += w;
+  }
+  return `${out}…`;
+}
+
+/** Longest text a hover reply may carry, before hoverStatusText cuts it. */
+export const HOVER_REPLY_MAX_TEXT = 4096;
+
+/**
+ * A `Vimma:Hover` reply (docs/specs/hover.md) from a content process, which may be compromised:
+ * whether the element is hovered now, and its text for the status bar, cleaned and cut
+ * (hoverStatusText); null for anything malformed. Never throws.
+ * @param {unknown} value
+ * @returns {{ hovered: boolean, text: string } | null}
+ */
+export function parseHoverReply(value) {
+  try {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    const { hovered, text } = /** @type {Record<string, unknown>} */ (value);
+    if (typeof hovered !== "boolean") return null;
+    if (!hovered) return { hovered, text: "" };
+    if (typeof text !== "string" || text.length > HOVER_REPLY_MAX_TEXT) return null;
+    return { hovered, text: hoverStatusText(text) };
+  } catch {
+    return null;
+  }
+}
 /**
  * `rect` is where the label goes (for a text block, its first visible line); a block also
  * carries its kind and its whole border box, for the outline (docs/specs/element-focus.md). An
  * agent's collection (docs/specs/mcp-drive.md D12) is of links only, each with its text; an
  * agent's `vimma_elements` (docs/specs/mcp-forms.md F5) is of every kind but blocks, each with the
  * child's description of it (`agent`), and the frame's forms.
- * @typedef {{ id: number, rect: Rect, kind: TargetKind, href?: string, text?: string, blockKind?: BlockKind, box?: Rect, agent?: AgentElementInfo }} ReplyTarget
+ * A hover collection's targets (docs/specs/hover.md) are all of kind `hover`, each with what made
+ * it one (`hoverKind`), and carry nothing else.
+ * @typedef {{ id: number, rect: Rect, kind: TargetKind, href?: string, text?: string, blockKind?: BlockKind, box?: Rect, agent?: AgentElementInfo, hoverKind?: HoverKind }} ReplyTarget
  */
 /** @typedef {{ id: number, rect: Rect }} ReplyFrame */
 /** @typedef {{ targets: ReplyTarget[], frames: ReplyFrame[], ms: number, forms?: AgentForm[] }} HintReply */
@@ -359,12 +444,15 @@ export function hintCollectReason({ queried, raw, reply, live }) {
  * collection (`texts`) only links, with their text; an agent's `vimma_elements` (`elements`) every
  * kind but blocks, each with its description, checked by parseAgentElement, and the frame's forms.
  * @param {unknown} value
- * @param {{ blocks?: boolean, texts?: boolean, elements?: boolean }} [options]  the collection
- *   asked for text blocks, for links with their text (an agent's `f`), or for every element with
- *   its description (`vimma_elements`)
+ * @param {{ blocks?: boolean, texts?: boolean, elements?: boolean, hover?: boolean }} [options]
+ *   the collection asked for text blocks, for links with their text (an agent's `f`), for every
+ *   element with its description (`vimma_elements`), or for hover targets (`gh`)
  * @returns {HintReply | null}
  */
-export function parseHintReply(value, { blocks = false, texts = false, elements = false } = {}) {
+export function parseHintReply(
+  value,
+  { blocks = false, texts = false, elements = false, hover = false } = {},
+) {
   try {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
     const { targets, frames, ms } = /** @type {Record<string, unknown>} */ (value);
@@ -380,14 +468,28 @@ export function parseHintReply(value, { blocks = false, texts = false, elements 
     const ids = new Set();
     for (const t of [...targets]) {
       if (typeof t !== "object" || t === null) return null;
-      const { id, rect, kind, href, text, blockKind, box, agent } =
+      const { id, rect, kind, href, text, blockKind, box, agent, hoverKind } =
         /** @type {Record<string, unknown>} */ (t);
       if (!isIndex(id) || ids.has(id)) return null;
       ids.add(id);
       const r = parseRect(rect);
       if (!r || typeof kind !== "string" || !TARGET_KINDS.has(kind)) return null;
       if ((kind === "block") !== blocks) return null;
+      if ((kind === "hover") !== hover) return null;
       if (texts && kind !== "link") return null;
+      if (kind === "hover") {
+        if (typeof hoverKind !== "string" || !HOVER_KIND_SET.has(hoverKind)) return null;
+        if (href !== undefined || text !== undefined || agent !== undefined) return null;
+        if (blockKind !== undefined || box !== undefined) return null;
+        outTargets.push({
+          id: /** @type {number} */ (id),
+          rect: r,
+          kind: "hover",
+          hoverKind: /** @type {HoverKind} */ (hoverKind),
+        });
+        continue;
+      }
+      if (hoverKind !== undefined) return null;
       /** @type {ReplyTarget} */
       const out = {
         id: /** @type {number} */ (id),

@@ -156,6 +156,7 @@ insert_editing = true       # in text fields ctrl+w, ctrl+u, ctrl+h delete; ctrl
 "f" = "hint.follow"
 "F" = "hint.element"
 "gF" = "hint.follow_new_tab"
+"gh" = "hint.hover"
 "/" = "find.forward"
 "?" = "find.backward"
 "n" = "find.next"

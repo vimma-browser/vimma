@@ -9,6 +9,7 @@
 // every runner calls the host only when it runs.
 
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
+import { HoverOps } from "./hover-ops.mjs";
 import { describeAction } from "../core/actions.mjs";
 import {
   noTabText,
@@ -783,6 +784,9 @@ export function contentRunners(host, page) {
     "hint.element": (b, a) => host._startHints(b, a),
     "hint.show_target": (b, a) => host._startHints(b, a),
     "hint.copy_target": (b, a) => host._startHints(b, a),
+    // docs/specs/hover.md: hover with a label, and let the hover go.
+    "hint.hover": (b, a) => host._startHints(b, a),
+    "hover.release": (b) => HoverOps.release(b),
     // The ELEMENT mode's keys (docs/specs/element-focus.md decision 7).
     "element.visual": (b) => page.elementOf(b)?.visual(false),
     "element.visual_line": (b) => page.elementOf(b)?.visual(true),

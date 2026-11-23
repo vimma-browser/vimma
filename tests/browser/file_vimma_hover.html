@@ -1,0 +1,144 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_hover.js (docs/specs/hover.md): rows whose controls a CSS :hover
+   - rule reveals, script menus, a link, a label, a shadow root and a frame. -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>hover</title>
+    <style>
+      body {
+        font: 16px sans-serif;
+        margin: 8px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        width: 400px;
+        height: 32px;
+        border: 1px solid #888;
+        margin: 4px 0;
+      }
+      .row .gear {
+        display: none;
+      }
+      .row:hover .gear {
+        display: inline;
+      }
+      .row:hover {
+        background: #ffd;
+      }
+      #menu,
+      #react-menu,
+      #sub {
+        display: none;
+      }
+      iframe {
+        width: 420px;
+        height: 90px;
+        border: 1px solid #888;
+      }
+      #spacer {
+        height: 3000px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="row" id="row1">
+      <span id="name1">General</span><button class="gear" id="gear1">Settings</button>
+    </div>
+    <div class="row" id="row2">
+      <span id="name2">Random</span><button class="gear" id="gear2">Settings two</button>
+    </div>
+    <div id="trigger">Menu on mouseenter</div>
+    <ul id="menu">
+      <li><button id="item">Item</button></li>
+    </ul>
+    <div id="react">React-style menu</div>
+    <div id="react-menu">opened</div>
+    <div id="nested">Pointer menu</div>
+    <div id="sub">sub-menu</div>
+    <p id="para">
+      A paragraph with <a id="link" href="https://example.com/docs">a link</a> inside.
+    </p>
+    <p id="plain">A paragraph with nothing else inside.</p>
+    <label id="lab" for="field">Name</label> <input id="field" />
+    <div id="host"></div>
+    <iframe id="frame" src="file_vimma_hover_frame.html"></iframe>
+    <div id="spacer"></div>
+    <script>
+      const log = [];
+      window.vimmaLog = log;
+      window.vimmaClicks = [];
+      const TYPES = [
+        "pointerover",
+        "pointerenter",
+        "pointermove",
+        "mouseover",
+        "mouseenter",
+        "mousemove",
+        "pointerout",
+        "pointerleave",
+        "mouseout",
+        "mouseleave",
+      ];
+      for (const id of ["row1", "name1", "row2", "name2"]) {
+        const el = document.getElementById(id);
+        for (const type of TYPES) {
+          el.addEventListener(type, (e) => {
+            if (e.target !== el && !type.endsWith("enter") && !type.endsWith("leave")) return;
+            log.push({
+              type,
+              id,
+              trusted: e.isTrusted,
+              x: Math.round(e.clientX),
+              y: Math.round(e.clientY),
+              pointerType: e.pointerType ?? null,
+              isPrimary: e.isPrimary ?? null,
+              related: e.relatedTarget?.id ?? null,
+            });
+          });
+        }
+      }
+      // A page that holds the hover's message up: its mouseover spins this many ms.
+      window.vimmaSpin = 0;
+      document.getElementById("name1").addEventListener("mouseover", () => {
+        const end = Date.now() + window.vimmaSpin;
+        while (Date.now() < end);
+      });
+      for (const id of ["gear1", "gear2", "item"]) {
+        document.getElementById(id).addEventListener("click", () => window.vimmaClicks.push(id));
+      }
+      const trigger = document.getElementById("trigger");
+      trigger.addEventListener("mouseenter", () => {
+        document.getElementById("menu").style.display = "block";
+      });
+      trigger.addEventListener("mouseleave", () => {
+        document.getElementById("menu").style.display = "none";
+      });
+      // React derives onMouseEnter from mouseover's relatedTarget.
+      document.getElementById("react").addEventListener("mouseover", (e) => {
+        if (!e.relatedTarget || !e.currentTarget.contains(e.relatedTarget)) {
+          document.getElementById("react-menu").style.display = "block";
+        }
+      });
+      // Menu libraries ignore pointer events of other types.
+      document.getElementById("nested").addEventListener("pointermove", (e) => {
+        if (e.pointerType === "mouse" && e.isPrimary) {
+          document.getElementById("sub").style.display = "block";
+        }
+      });
+      // A page that takes Esc itself while asked to (a menu that closes on it).
+      window.vimmaEatEsc = false;
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && window.vimmaEatEsc) e.preventDefault();
+      });
+      const root = document.getElementById("host").attachShadow({ mode: "open" });
+      root.innerHTML =
+        "<style>:host(:hover) { outline: 2px solid red; }</style><p id='inner'>Shadow text</p>";
+    </script>
+  </body>
+</html>

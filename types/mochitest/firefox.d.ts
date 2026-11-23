@@ -1144,14 +1144,15 @@ interface nsIHttpServer {
 }
 
 // engine/dom/chrome-webidl/InspectorUtils.webidl: a node's children, with its anonymous content
-// (a password field's reveal button) when `showingAnonymousContent` is true.
-declare var InspectorUtils: {
+// (a password field's reveal button) when `showingAnonymousContent` is true. The pseudo-class
+// locks are in types/firefox.d.ts, which the product uses.
+interface InspectorUtilsNamespace {
   getChildrenForNode(
     node: Node,
     showingAnonymousContent: boolean,
     includeAssignedNodes: boolean,
   ): Node[];
-};
+}
 
 // engine/toolkit/content/globalOverlay.js, loaded in the browser window: runs `command` on the
 // focused element's controller, if it has one that is enabled.

@@ -53,6 +53,12 @@ export class VimmaParent extends JSWindowActorParent {
       VimmaHost.onBlockReport(/** @type {"moved" | "gone"} */ (report), bc, wg, data.gen);
       return undefined;
     }
+    if (msg.name === "Vimma:HoverEnded") {
+      // The user's hover ended in this frame by itself (docs/specs/hover.md decisions 5 and 13).
+      // Taken only from the frame that holds it: a forged one ends that frame's own hover.
+      VimmaHost.onHoverEnded(wg);
+      return undefined;
+    }
     if (msg.name === "Vimma:PdfState") {
       // PdfOps takes it only from the top viewer's current document (security.md section 20).
       PdfOps.onState(this, msg.data);
