@@ -1212,7 +1212,8 @@ reads `y ok · p pin extension to toolbar · Tab buttons`. `Tab` moves focus ont
 where `Space` toggles it. The same half-second wait applies. `n` keeps its usual meaning while
 the notice is open, since the notice has nothing to decline.
 Firefox's pop-up blocked bar takes `y`, `n` and `Esc` with the same rules
-([Blocked pop-ups](#blocked-pop-ups)).
+([Blocked pop-ups](#blocked-pop-ups)), and its other bars over a page take `Tab` and `Esc`
+([Other notification bars](#other-notification-bars)).
 
 A site whose login keeps you on the same page leaves focus in its password field, so the "Save
 password?" prompt opens with the `Esc, then` line. In the prompt's own username and password
@@ -4678,6 +4679,25 @@ In the [agent workspace](#agent-workspace),
 pages get no permissions: no key answers the bar there, and `:popups` says `pop-ups stay blocked
 in the agent workspace`. `:popups` has no default key; bind one in `config.toml`
 (`[keys] popup_picker`).
+
+### Other notification bars
+
+Firefox shows other bars over a page too, such as "Site looks broken? Reload the page to
+temporarily lower your tracking protection" after a reload in a private window. You reach them
+from the keyboard with the same half-second wait:
+
+| Key   | What it does                                                                                                       |
+| ----- | ------------------------------------------------------------------------------------------------------------------ |
+| `Tab` | Moves focus onto the bar's first button. `Tab` then moves between its buttons, and `Enter` or `Space` presses one. |
+| `Esc` | Closes the bar, as its close button does, without pressing any of its buttons, also with focus on a button.        |
+
+The bar names its keys beside its buttons, `Tab buttons · Esc close`, and `Enter press · Esc
+close` once focus is on a button. While you type in a page
+field, and in link hints, copy mode and element mode, the keys are theirs and the line says
+`Esc, then Tab buttons`. A bar without a close button takes only `Tab`, and in the
+[agent workspace](#agent-workspace) no key answers a bar. While a bar is up, `Esc` closes it before it
+stops a loading page or reaches the page, and `Tab` moves onto the bar instead of through the
+page; once the bar is closed both are as before.
 
 ## The command line
 
