@@ -849,10 +849,16 @@ Slice 3 landed with these departures and particulars, each for the reason given:
   is written as `(untitled)`. A slice-1 bug this exposed is fixed with it: a folder holding a kept
   bookmarklet could not be claimed by its own line, so the run made a second folder of its name.
 - **Private windows (Behaviour 12).** A Places event names no window, so a change counts as a
-  private window's when the most recent browser window is private at the time (also a Library
-  opened from it). Under "all" its additions stay in Places only, remembered in the base's
-  `local` list across restarts, and its changes are put back; removals are written, because they
-  add nothing to the file.
+  private window's when the most recent browser window is private at the time (also a Library opened
+  from it). Under "all" its additions stay in Places only, remembered in the base's `local` list
+  across restarts, and its changes are put back; removals are written, because they add nothing to
+  the file. (Since changed: the window is the focused one, followed up its openers to a browser
+  window, the Library counting as the window that last opened or raised it, because the most recent
+  browser window counted a Library edit from a normal window as private whenever a private window
+  had been used last; with no browser window found it falls back to the most recent one. A later
+  change to the bookmark itself from a normal window (title, URL or folder, not a sort) takes it off
+  `local` and writes it, so an addition is not kept out of the file for good; a private folder stays
+  local with its contents.)
 - **The removal question.** `n`, `Esc` or no answer to Behaviour 13's question puts the
   removed bookmarks back from the file and still writes the rest of the change (additions,
   renames, moves), where the file direction's question pauses instead: a paused merge would ask
