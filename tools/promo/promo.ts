@@ -130,9 +130,10 @@ export function promoPrefs({
  * Omarchy theme the recording machine has; "omarchy": the theme directory the prefs name),
  * when the build knows the key, `name` (which built-in palette), and `appearance` when given:
  * "dark" pins the built-in palette's dark variant, whatever light or dark the system reports;
- * and `[ui] toolbar` when given: "hidden" records the page up to the window's top edge, with
- * only the status bar around it. Without `name` the build's default built-in shows. `schema = 2`: `[theme] name` is a
- * schema-2 key. With `agent`, the chat window's provider: one OpenAI-compatible endpoint on this
+ * `[ui] toolbar` when given: "hidden" records the page up to the window's top edge, with
+ * only the status bar around it; and `[ui] tabline` when given: "always" draws the tab line
+ * from a shot's first frame, where the default "auto" waits for a second tab. Without `name`
+ * the build's default built-in shows. `schema = 2`: `[theme] name` is a schema-2 key. With `agent`, the chat window's provider: one OpenAI-compatible endpoint on this
  * machine, as a user lists a local server, and the default for new conversations. `colors` is
  * `[theme.colors]`: single colours over the palette, as the theme shot's config card types. With
  * `search`, a fixture search URL as the default engine: an engine made from a URL is not one of
@@ -144,6 +145,7 @@ export function promoConfig({
   appearance,
   colors,
   toolbar,
+  tabline,
   agent,
   search,
 }: {
@@ -152,6 +154,7 @@ export function promoConfig({
   appearance?: "dark" | "light";
   colors?: Record<string, string>;
   toolbar?: "hidden" | "shown";
+  tabline?: TabLine;
   agent?: { endpoint: string; model: string };
   search?: boolean;
 }) {
@@ -162,7 +165,9 @@ export function promoConfig({
     lines.push("", "[theme.colors]");
     for (const [k, v] of Object.entries(colors)) lines.push(`${k} = "${v}"`);
   }
-  if (toolbar) lines.push("", "[ui]", `toolbar = "${toolbar}"`);
+  if (toolbar || tabline) lines.push("", "[ui]");
+  if (toolbar) lines.push(`toolbar = "${toolbar}"`);
+  if (tabline) lines.push(`tabline = "${tabline}"`);
   if (search) {
     lines.push("", "[search]", 'default = "@s"', "", "[search.aliases]");
     lines.push(`s = "${HOSTS.search}?q=%s"`);
@@ -172,6 +177,44 @@ export function promoConfig({
     lines.push('kind = "openai"', `endpoint = "${agent.endpoint}"`, `model = "${agent.model}"`);
   }
   return `${lines.join("\n")}\n`;
+}
+
+export type TabLine = "always" | "auto" | "off";
+
+/** The keys config.toml gives every shot, as far as the recording build reads them. */
+export type Look = {
+  name: string | null;
+  appearance?: "dark";
+  toolbar?: "hidden" | "shown";
+  tabline?: TabLine;
+};
+
+/**
+ * The look config.toml gives every shot, worked out with the build's own vimma-core
+ * `parseConfig`: the "vimma" built-in palette in `[theme] name` when the build takes the key,
+ * else none, and the build's default built-in shows (an older palette before the vimma one
+ * landed); "dark" when it also takes `[theme] appearance`, so the palette is dark whatever the
+ * system reports; `toolbar` and `tabline` (from --toolbar and --tabline) when it takes those
+ * `[ui]` keys. Each key is kept only if the build reads the config with it and without an
+ * error, since a config.toml with an error is not applied at all.
+ */
+export function promoLook(
+  parseConfig: (text: string) => { errors: unknown[] },
+  { toolbar, tabline }: { toolbar: "hidden" | "shown"; tabline: TabLine },
+): Look {
+  if (!supportsThemeName(parseConfig, "vimma")) return { name: null };
+  const look: Look = { name: "vimma" };
+  const reads = (more: Partial<Look>) => {
+    try {
+      return parseConfig(promoConfig({ source: "file", ...look, ...more })).errors.length === 0;
+    } catch {
+      return false;
+    }
+  };
+  if (reads({ appearance: "dark" })) look.appearance = "dark";
+  if (reads({ toolbar })) look.toolbar = toolbar;
+  if (reads({ tabline })) look.tabline = tabline;
+  return look;
 }
 
 /**
