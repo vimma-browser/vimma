@@ -259,6 +259,23 @@ describe("the routes cache (vimma.routes.cache)", () => {
     expect(parseRoutesCache(JSON.stringify(routes))).toEqual({ file: "config.toml", routes });
   });
 
+  test("a cached entry that is not a rule's shape is dropped", () => {
+    const text = JSON.stringify({
+      file: "routes.toml",
+      routes: [
+        null,
+        3,
+        { index: 1, workspace: 5 },
+        { index: 2, workspace: "w", domain: 5 },
+        ...routes,
+      ],
+    });
+    expect(parseRoutesCache(text)).toEqual({ file: "routes.toml", routes });
+    expect(parseRoutesCache(JSON.stringify([{ workspace: "w" }, ...routes])).routes).toEqual(
+      routes,
+    );
+  });
+
   test("anything else is no rule from config.toml", () => {
     for (const text of ["", "{", "3", '{"file":"x.toml","routes":[]}', '{"routes":{}}']) {
       expect(parseRoutesCache(text)).toEqual({ file: "config.toml", routes: [] });

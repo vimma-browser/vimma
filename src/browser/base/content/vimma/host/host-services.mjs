@@ -45,8 +45,9 @@
  *   opens, retries, unblocks and follows none
  * @property {(rule: { domain: string, workspace: string }) =>
  *   Promise<{ error: string } | { added: string }>} addRoute
- *   config/ConfigHost.sys.mjs's: appends a `[[routes]]` rule to routes.toml and reads the files
- *   again; why not, or where it went (docs/specs/routes-file.md)
+ *   config/ConfigHost.sys.mjs's: appends a `[[routes]]` rule to the routes file (routes.toml,
+ *   else config.toml) and reads the files again; why not, or where it went
+ *   (docs/specs/routes-file.md)
  * @property {ChatClis} agentCli  agent/AgentCli.sys.mjs's `AgentCli`, served as its `enabled`,
  *   `find`, `noneFound` and `use` only, for the chat window
  * @property {ChatKeys} agentKeys  agent/AgentKeys.sys.mjs's `AgentKeys`, served as its `hint`,
@@ -148,7 +149,7 @@ const UNPROVIDED = Object.freeze({
     placeLocal: async () => null,
   }),
   isAgentDownload: () => true,
-  addRoute: async () => ({ error: "routes.toml cannot be written before Vimma has started" }),
+  addRoute: async () => ({ error: "the routes file cannot be written before Vimma has started" }),
   agentCli: Object.freeze({
     enabled: false,
     find: async () => [],

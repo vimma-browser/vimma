@@ -4,7 +4,7 @@
 
 // `:route` (spec docs/specs/workspace-routing.md, decision 7): without text, the rules and the
 // one matching this tab, in about:vimma; `:route add [workspace]` writes a `domain` rule for
-// the tab's site into routes.toml (docs/specs/routes-file.md); `:route move` moves the tab to the workspace its rule names.
+// the tab's site into the routes file, routes.toml or else config.toml (docs/specs/routes-file.md); `:route move` moves the tab to the workspace its rule names.
 
 import { describeRoute, matchRoute, routeDomainFor } from "../core/routes.mjs";
 import { findWorkspace, workspaceRefFor } from "../core/workspaces.mjs";

@@ -164,6 +164,22 @@ export function routesInForce({ config, configText, file, configFile = "config.t
 }
 
 /**
+ * A cached rule as resolveRoutes made it: `index` and `workspace`, a `domain` table, and
+ * string `url` and `app` when present.
+ * @param {unknown} r
+ * @returns {r is Route}
+ */
+function isCachedRoute(r) {
+  if (!isTable(r) || typeof r.index !== "number" || typeof r.workspace !== "string") return false;
+  const d = r.domain;
+  if (d !== undefined) {
+    if (!isTable(d) || typeof d.host !== "string") return false;
+    if (typeof d.sub !== "boolean" || typeof d.ip !== "boolean") return false;
+  }
+  return [r.url, r.app].every((x) => x === undefined || typeof x === "string");
+}
+
+/**
  * `vimma.routes.cache`'s text: the rules in force and the file they came from, so that a cold
  * start routes before the files are read, and a routes.toml broken since the last session keeps
  * its own last good rules, never config.toml's (Behaviour 5). Any file but routes.toml is
@@ -177,7 +193,8 @@ export function formatRoutesCache(routes, file) {
 
 /**
  * The cache formatRoutesCache wrote; an older one, a bare array, holds config.toml's rules;
- * anything else is no rule.
+ * anything else is no rule. An entry that is not a rule's shape is dropped, so that a damaged
+ * pref never reaches matching.
  * @param {string} text
  * @returns {{ file: string, routes: Route[] }}
  */
@@ -190,10 +207,10 @@ export function parseRoutesCache(text) {
   } catch {
     return none;
   }
-  if (Array.isArray(v)) return { file: "config.toml", routes: v };
+  if (Array.isArray(v)) return { file: "config.toml", routes: v.filter(isCachedRoute) };
   if (!isTable(v) || !Array.isArray(v.routes)) return none;
   if (v.file !== ROUTES_FILE && v.file !== "config.toml") return none;
-  return { file: v.file, routes: v.routes };
+  return { file: v.file, routes: v.routes.filter(isCachedRoute) };
 }
 
 /**

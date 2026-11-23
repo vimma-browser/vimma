@@ -438,6 +438,17 @@ function isLink(path) {
   }
 }
 
+/**
+ * Whether something is at `path`, following links (a synchronous stat, for a check inside an
+ * edit's compute).
+ * @param {string} path
+ */
+function existsNow(path) {
+  const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  file.initWithPath(path);
+  return file.exists();
+}
+
 /** A failed read of routes.toml: no rule from it, never config.toml's in its place. */
 const unreadRoutes = (/** @type {string} */ message) => ({
   routes: null,
@@ -872,9 +883,13 @@ async function writeFileNow(path, compute, maxBytes = Infinity) {
     await IOUtils.writeUTF8(tmp, "", { mode: "create" });
     await IOUtils.setPermissions(tmp, before ? before.permissions : FILE_MODE, false);
     await IOUtils.writeUTF8(tmp, r.text, { mode: "overwrite" });
-    // The file's text as well as its time: an edit within the time's resolution changes it.
-    const now = await IOUtils.readUTF8(target).catch(() => null);
+    // The file's text as well as its time: an edit within the time's resolution changes it. The
+    // type first: a file swapped for a FIFO would block the read, and the edit queue with it.
     const stat = await IOUtils.stat(target).catch(() => null);
+    const now =
+      stat === null || stat.type === "regular"
+        ? await IOUtils.readUTF8(target).catch(() => null)
+        : null;
     if (now !== text || (stat?.lastModified ?? null) !== (before?.lastModified ?? null)) {
       await IOUtils.remove(tmp);
       return { error: `${path} changed meanwhile; nothing written`, changed: true };
@@ -909,6 +924,11 @@ async function writeRoute(rule) {
       const hook = Cu.isInAutomation ? ConfigHost._duringRouteWriteForTests : null;
       hook?.(path);
       if (!inRoutes) {
+        // Decided again now: a routes.toml made meanwhile (a `git pull`) would leave the rule in
+        // config.toml, where it no longer applies.
+        if (isLink(routes) || existsNow(routes)) {
+          return { error: `${ROUTES_FILE} appeared meanwhile; nothing written` };
+        }
         const a = appendRouteText(text, rule, { mac: Services.appinfo.OS === "Darwin" });
         if ("error" in a) return a;
         return { text: "create" in a ? a.create : text + a.append };

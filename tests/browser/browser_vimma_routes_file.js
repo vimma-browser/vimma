@@ -383,6 +383,21 @@ add_task(async function route_add_writes_nothing_over_a_file_changed_meanwhile()
   }
 });
 
+// The routes file is decided again as the rule is written: a routes.toml that a `git pull` made
+// meanwhile would leave the rule in config.toml, where it no longer applies.
+add_task(async function route_add_refuses_when_routes_toml_appears_meanwhile() {
+  await withConfig({}, async (paths) => {
+    ConfigHost._duringRouteWriteForTests = () => {
+      const f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+      f.initWithPath(paths.routes);
+      f.create(Ci.nsIFile.NORMAL_FILE_TYPE, 0o600);
+    };
+    const r = await ConfigHost.addRoute({ domain: "example.org", workspace });
+    Assert.deepEqual(r, { error: "routes.toml appeared meanwhile; nothing written" });
+    Assert.equal(await IOUtils.readUTF8(paths.config), "schema = 2\n", "config.toml as it was");
+  });
+});
+
 // routes-file decision 7: a config.toml linked into a read-only store (Nix, Home Manager) is said
 // so, with the lines to add by hand.
 add_task(async function route_add_to_a_read_only_config_toml_says_what_to_add_by_hand() {

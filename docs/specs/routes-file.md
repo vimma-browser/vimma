@@ -115,8 +115,9 @@ force** are the `[[routes]]` rules routing uses (`WorkspaceRouter.routes`).
 9. The rule is written through `ConfigHost`'s atomic writer (`writeFileNow`): a temporary file
    with the file's mode, renamed over the file or over the target of a symlinked file. Nothing
    is written when the file changed while the rule was computed
-   (`<path> changed meanwhile; nothing written`). The appended block uses the file's line
-   endings: a file with CRLF gets CRLF.
+   (`<path> changed meanwhile; nothing written`), or when `routes.toml` appeared while the rule
+   was going to `config.toml` (`routes.toml appeared meanwhile; nothing written`), where it would
+   not apply. The appended block uses the file's line endings: a file with CRLF gets CRLF.
 10. `:route add` refuses, with nothing written, when the routes file does not load now
     (`routes.toml does not parse now; fix it first`, or
     `config.toml does not parse now; fix it first (:config shows it)`) or would not with the
@@ -326,7 +327,8 @@ Written first and seen to fail.
 - `a routes.toml never read well yet applies no rule, never config.toml's` (B5)
 - `appendRouteFileText appends a quoted block and refuses a broken file` (B8, B10)
 - `appendRouteFileText keeps a CRLF file's line endings` (B9, D8)
-- `the routes cache (vimma.routes.cache)`: its file, an older bare array, anything else (B5, D5)
+- `the routes cache (vimma.routes.cache)`: its file, an older bare array, an entry not shaped as
+  a rule, anything else (B5, D5)
 
 `packages/vimma-core/test/routes.test.ts`: `appendRouteText keeps a CRLF file's line endings`
 (B9, D8). `fuzz/routes.fuzz.test.ts`:
@@ -349,6 +351,7 @@ In `tests/browser/browser_vimma_routes_file.js`:
 - `route_add_appends_to_the_routes_file_and_names_it` (B8)
 - `route_add_refuses_a_broken_routes_toml` (B10)
 - `route_add_writes_nothing_over_a_file_changed_meanwhile` (B9, D8)
+- `route_add_refuses_when_routes_toml_appears_meanwhile` (B9)
 - `route_add_to_a_read_only_config_toml_says_what_to_add_by_hand` (B10, D7)
 - `route_add_in_a_private_window_writes_nothing` (B11)
 - `about_vimma_shows_each_rules_file_and_line` (B12)

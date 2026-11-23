@@ -319,7 +319,7 @@ add_task(async function test_before_it_is_provided_each_service_does_the_least()
 
   Assert.deepEqual(
     await services.addRoute({ domain: "example.org", workspace: "main" }),
-    { error: "routes.toml cannot be written before Vimma has started" },
+    { error: "the routes file cannot be written before Vimma has started" },
     ":route add writes nothing and says why",
   );
 
