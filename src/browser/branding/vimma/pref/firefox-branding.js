@@ -297,3 +297,8 @@ pref("vimma.feature.bookmarksFile", false);
 // repository section. Off until the repositories and that section are published
 // (CONTRIBUTING.md, "Unfinished features"); set to true in about:config to try it.
 pref("vimma.feature.packageRepos", false);
+
+// docs/specs/tab-sleep.md, decision 20: tabs unseen for `[tabs] sleep_after` minutes go to
+// sleep. Off until the feature is finished (CONTRIBUTING.md, "Unfinished features"); set to true
+// in about:config to try it.
+pref("vimma.feature.tabSleep", false);

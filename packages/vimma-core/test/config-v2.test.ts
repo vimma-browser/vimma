@@ -276,11 +276,11 @@ describe('[sites."<host>"]', () => {
       ),
     );
     expect(config.sites).toEqual([
-      { match: "docs.google.com", insert: "always" },
-      { match: "Example.COM.", insert: "auto" },
-      { match: "10.0.0.1", insert: "never" },
-      { match: "[::1]", insert: "auto" },
-      { match: "localhost", insert: "never" },
+      { match: "docs.google.com", insert: "always", sleep: true },
+      { match: "Example.COM.", insert: "auto", sleep: true },
+      { match: "10.0.0.1", insert: "never", sleep: true },
+      { match: "[::1]", insert: "auto", sleep: true },
+      { match: "localhost", insert: "never", sleep: true },
     ]);
   });
 

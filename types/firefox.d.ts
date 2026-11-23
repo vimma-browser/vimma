@@ -572,6 +572,9 @@ interface LazyModules {
   setInterval(callback: () => unknown, ms?: number): number;
   clearTimeout(id: number | null | undefined): void;
   clearInterval(id: number | null | undefined): void;
+  // engine/browser/modules/webrtcUI.sys.mjs: whether a browser holds a camera, microphone or
+  // screen stream (tab sleep asks as Firefox's TabUnloader does).
+  webrtcUI: { browserHasStreams(browser: MozBrowser): boolean };
   // engine/toolkit/modules/PrivateBrowsingUtils.sys.mjs
   PrivateBrowsingUtils: {
     isWindowPrivate(win: Window): boolean;
@@ -926,6 +929,10 @@ interface MozTabbrowserTab extends Element {
   readonly selected: boolean;
   readonly userContextId: number;
   readonly soundPlaying: boolean;
+  /** Shown in Picture-in-Picture (its `pictureinpicture` attribute). */
+  readonly pictureinpicture: boolean;
+  /** When it was last selected, in ms; the selected tab of each window says now. */
+  readonly lastAccessed: number;
   readonly muted: boolean;
   readonly muteReason: string | null | undefined;
   readonly splitview: MozTabSplitViewWrapper | null;
@@ -982,6 +989,10 @@ interface Tabbrowser {
   readonly tabbox: Element;
   getTabForBrowser(browser: MozBrowser): MozTabbrowserTab | undefined;
   insertBrowser(tab: MozTabbrowserTab): void;
+  /** Flushes the tab's session state, so a restore after a discard has its latest data. */
+  prepareDiscardBrowser(tab: MozTabbrowserTab): Promise<void>;
+  /** Unloads the tab, keeping it lazy in the strip; false when Firefox refuses. */
+  discardBrowser(tab: MozTabbrowserTab, force?: boolean): boolean;
   hideTab(tab: MozTabbrowserTab, source?: string): void;
   showTab(tab: MozTabbrowserTab): void;
   unpinTab(tab: MozTabbrowserTab): void;
@@ -1217,6 +1228,8 @@ interface CanonicalBrowsingContext extends BrowsingContext {
 // members). The principals are never null (webidl `Principal`, not nullable).
 interface WindowGlobalParent {
   readonly innerWindowId: number;
+  /** A WebRTC peer connection is open in the page (set on the top window only). */
+  hasActivePeerConnections(): boolean;
   /** The document's window has closed: it no longer shows in its frame. */
   readonly isClosed: boolean;
   readonly isInProcess: boolean;

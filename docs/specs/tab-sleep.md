@@ -1,6 +1,7 @@
 # Spec: tab-sleep
 
-Status: accepted · Area: core (`packages/vimma-core/src/workspaces/tabsleep.mjs` (new),
+Status: accepted (slice 1, the rules and the check behind `vimma.feature.tabSleep`,
+implemented) · Area: core (`packages/vimma-core/src/workspaces/tabsleep.mjs` (new),
 `packages/vimma-core/src/config/config.mjs`, `packages/vimma-core/defaults.toml`,
 `packages/vimma-core/src/keys/actions.mjs`, `packages/vimma-core/src/keys/cmdline.mjs`,
 `packages/vimma-core/src/ui/tabline.mjs`, `packages/vimma-core/src/ui/sidepanel.mjs`), chrome

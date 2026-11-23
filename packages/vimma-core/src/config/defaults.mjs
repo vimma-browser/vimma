@@ -13,6 +13,7 @@ import { MAX_SPLITS_DEFAULT, MAX_SPLITS_LIMIT } from "../panes/splits.mjs";
 import { MAIN_SIZE_DEFAULT } from "../panes/layouts.mjs";
 import { DEFAULT_THEME_NAME } from "./theme.mjs";
 import { SCROLL_STEP_DEFAULT, SCROLL_STEP_MAX, SCROLL_STEP_MIN } from "../page/scroll.mjs";
+import { SLEEP_AFTER } from "../workspaces/tabsleep.mjs";
 
 /** @typedef {"off" | "always" | "auto"} TabLineSetting */
 
@@ -35,8 +36,10 @@ export const TABLINE_WIDTH = Object.freeze({ min: 4, max: 60, default: 14 });
  * @property {{ max?: number, max_splits?: number, layout?: "dwindle" | "manual",
  *   main_size?: number, new_tab?: "alone" | "pane" }} [panes]
  * @property {Record<string, { insert?: import("../keys/editable.mjs").InsertSiteMode,
- *   unbind?: string[] }>} [sites]  per-site insert mode and keys the page keeps
- *   (docs/specs/site-unbind.md)
+ *   unbind?: string[], sleep?: boolean }>} [sites]  per-site insert mode, keys the page keeps
+ *   (docs/specs/site-unbind.md) and whether its tabs may sleep (docs/specs/tab-sleep.md)
+ * @property {{ sleep_after?: number }} [tabs]  minutes a tab stays loaded unseen
+ *   (docs/specs/tab-sleep.md)
  * @property {Record<string, string>[]} [routes]  `[[routes]]` (workspace-routing)
  * @property {{ default_workspace?: string }} [routing]  where links from other programs that no
  *   rule matches open (docs/specs/app-routes.md)
@@ -1012,6 +1015,16 @@ export function configTables({ brief = false } = {}) {
       ],
     },
     {
+      name: "tabs",
+      lines: annotate([
+        example("[tabs]"),
+        example(
+          `sleep_after = ${SLEEP_AFTER.default}`,
+          `minutes unseen before a tab sleeps (${SLEEP_AFTER.min}–${SLEEP_AFTER.max}); 0: never`,
+        ),
+      ]),
+    },
+    {
       name: "updates",
       lines: [
         "# Every 12 hours Vimma asks updates.vimma.dev for a newer version, naming only the update",
@@ -1134,6 +1147,7 @@ export function configTables({ brief = false } = {}) {
           'unbind = ["t"]',
           "keys the page gets instead of Vimma; esc and the prefix stay Vimma's",
         ),
+        example("sleep = false", "its tabs never go to sleep on their own"),
       ]),
     },
     {

@@ -71,6 +71,15 @@ export const McpHost = {
   },
 
   /**
+   * Whether an agent connection is open, as `:mcp` counts them: tab sleep keeps the agent
+   * workspace's tabs loaded meanwhile, so that the ids agents name them by stay valid
+   * (docs/specs/tab-sleep.md decision 8). Only the count leaves the gate.
+   */
+  get agentConnected() {
+    return lazy.AgentGate.connections.length > 0;
+  },
+
+  /**
    * `[agent]` from config.toml (ConfigHost, at every read): the built-in agent's providers and
    * limits.
    * @param {AgentConfig | null} agent  null: the defaults (tests)

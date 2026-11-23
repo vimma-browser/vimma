@@ -117,6 +117,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/core/tabline.mjs": typeof import("../src/browser/base/content/vimma/core/tabline.mjs");
   "chrome://browser/content/vimma/core/tabs.mjs": typeof import("../src/browser/base/content/vimma/core/tabs.mjs");
   "chrome://browser/content/vimma/core/tabsearch.mjs": typeof import("../src/browser/base/content/vimma/core/tabsearch.mjs");
+  "chrome://browser/content/vimma/core/tabsleep.mjs": typeof import("../src/browser/base/content/vimma/core/tabsleep.mjs");
   "chrome://browser/content/vimma/core/textwidth.mjs": typeof import("../src/browser/base/content/vimma/core/textwidth.mjs");
   "chrome://browser/content/vimma/core/theme.mjs": typeof import("../src/browser/base/content/vimma/core/theme.mjs");
   "chrome://browser/content/vimma/core/toml.mjs": typeof import("../src/browser/base/content/vimma/core/toml.mjs");
@@ -189,6 +190,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/search/UrlbarRows.sys.mjs": typeof import("../src/browser/base/content/vimma/search/UrlbarRows.sys.mjs");
   "chrome://browser/content/vimma/services/AppLauncher.sys.mjs": typeof import("../src/browser/base/content/vimma/services/AppLauncher.sys.mjs");
   "chrome://browser/content/vimma/services/MozillaServices.sys.mjs": typeof import("../src/browser/base/content/vimma/services/MozillaServices.sys.mjs");
+  "chrome://browser/content/vimma/services/TabSleep.sys.mjs": typeof import("../src/browser/base/content/vimma/services/TabSleep.sys.mjs");
   "chrome://browser/content/vimma/services/ViewedDownloads.sys.mjs": typeof import("../src/browser/base/content/vimma/services/ViewedDownloads.sys.mjs");
   "chrome://browser/content/vimma/services/WakeLock.sys.mjs": typeof import("../src/browser/base/content/vimma/services/WakeLock.sys.mjs");
   "chrome://browser/content/vimma/setup/SetupHost.sys.mjs": typeof import("../src/browser/base/content/vimma/setup/SetupHost.sys.mjs");
