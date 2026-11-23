@@ -158,8 +158,9 @@
 
   /* A sleeping tab (docs/specs/tab-sleep.md, decision 17): its title in the theme's readable
      muted text, highlighted or not, with nothing else changed, so the row does not move when it
-     wakes. */
-  & .vimma-panel-row[asleep] .vimma-panel-title {
+     wakes. Not the active tab's: a lazy tab just selected keeps `pending` until its restore
+     ends, and should not flash dim. */
+  & .vimma-panel-row[asleep]:not(.vimma-panel-active) .vimma-panel-title {
     color: var(--vimma-fg-dim, GrayText);
   }
 
