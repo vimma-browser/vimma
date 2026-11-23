@@ -1317,7 +1317,7 @@ describe("[updates] check (config.toml) and the pref", () => {
       check: false,
     });
     expect(DEFAULT_CONFIG.updates).toEqual({ check: true });
-    expect(formatDefaultsToml()).toMatch(/^\[updates\]\n(#.*\n)*check = true$/m);
+    expect(formatDefaultsToml()).toMatch(/^\[updates\]\n(#.*\n)*check = true(?: +#.*)?$/m);
   });
 
   test("a wrong type and an unknown key are errors; a schema-1 file may have [updates]", () => {

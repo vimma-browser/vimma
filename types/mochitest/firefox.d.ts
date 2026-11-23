@@ -890,15 +890,19 @@ interface PdfJsViewer {
   scrollMode: number;
   /** 14797 and 14800: SpreadMode (NONE 0, ODD 1, EVEN 2). */
   spreadMode: number;
+  /** 13636: settles once every page is fetched; null while no document is open. */
+  readonly pagesPromise: Promise<void> | null;
 }
 /**
  * `class PDFDocumentProxy` (engine/toolkit/components/pdfjs/content/build/pdf.mjs, line 15353):
  * `getOutline` (15421) resolves with the outline's top entries, null for a document without one;
- * `getData` (15441) with the document's bytes.
+ * `getData` (15441) with the document's bytes; `cachedPageNumber` (15456) gives a page reference's
+ * number once pdf.js has fetched that page, null before.
  */
 interface PdfJsDocument {
   getOutline(): Promise<object[] | null>;
   getData(): Promise<Uint8Array>;
+  cachedPageNumber(ref: object): number | null;
 }
 /** `class ViewsManager` (line 17218), pdf.js's sidebar: `isOpen` is its own field (17255). */
 interface PdfJsViewsManager {

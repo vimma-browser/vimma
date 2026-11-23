@@ -537,13 +537,17 @@ const CANDIDATES = [
       description: `${c.description} (short for :${c.name})`,
     })),
   ]),
-  ...ACTION_NAMES.map((name) => ({
-    value: name,
-    kind: /** @type {const} */ ("action"),
-    description: /** @type {import("./actions.mjs").ActionDef} */ (
-      ACTIONS.find((a) => a.name === name)
-    ).description,
-  })),
+  // An action whose name is a command running that same action would only repeat its row (#1414).
+  // Stryker disable next-line OptionalChaining: every ACTION_NAMES entry resolves
+  ...ACTION_NAMES.filter((name) => byWord.get(name)?.action !== resolveActionName(name)?.id).map(
+    (name) => ({
+      value: name,
+      kind: /** @type {const} */ ("action"),
+      description: /** @type {import("./actions.mjs").ActionDef} */ (
+        ACTIONS.find((a) => a.name === name)
+      ).description,
+    }),
+  ),
 ].map((c) => Object.freeze(c));
 
 /**

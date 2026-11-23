@@ -39,6 +39,7 @@ declare namespace PdfJs {
     | "update"
     | "_location"
     | "scrollPageIntoView"
+    | "pagesPromise"
   >;
   /** `app.pdfViewer._location`, waived: pdf.js's record of where the view is. */
   type Location = Members<"pageNumber" | "left" | "top">;

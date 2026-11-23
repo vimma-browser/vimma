@@ -39,7 +39,7 @@ describe("[scroll] step", () => {
     expect([SCROLL_STEP_DEFAULT, SCROLL_STEP_MIN, SCROLL_STEP_MAX]).toEqual([60, 1, 2000]);
     expect(ok(cfg()).scroll).toEqual({ step: 60 });
     expect(DEFAULT_CONFIG.scroll).toEqual({ step: 60 });
-    expect(formatDefaultsToml()).toMatch(/^\[scroll\]\n(#.*\n)*step = 60$/m);
+    expect(formatDefaultsToml()).toMatch(/^\[scroll\]\n(#.*\n)*step = 60(?: +#.*)?$/m);
   });
 
   test.each([[1], [120], [2000]])("step = %i is accepted", (n) => {

@@ -19,7 +19,9 @@
  *   node tools/promo/record.ts --out DIR --pace 800            # slower: ms per beat
  *
  * Options: --scale (device pixels per CSS pixel, default 1.5), --fps (default 30), --toolbar
- * (`[ui] toolbar` for every shot: hidden, the default, or shown), --build
+ * (`[ui] toolbar` for every shot: hidden, the default, or shown), --tabline (`[ui] tabline`
+ * for every shot: always, the default, so the tab line shows from a shot's first frame, auto
+ * or off), --build
  * and --vimma-ctl (as npm run e2e; VIMMA_E2E_BUILD and VIMMA_CTL work too), --keep (keep the
  * profiles). Needs Xvfb and ffmpeg (with x11grab and libx264).
  *
@@ -67,11 +69,13 @@ import {
   cssWindow,
   parseGeometry,
   parseProbeTitle,
+  type Look,
+  type TabLine,
   promoConfig,
+  promoLook,
   promoPrefs,
   proxyRoute,
   servedModule,
-  supportsThemeName,
 } from "./promo.ts";
 import { SHOTS } from "./shots.ts";
 
@@ -87,6 +91,7 @@ const OPTIONS = {
   scale: { type: "string", default: "1.5" },
   pace: { type: "string", default: "700" },
   toolbar: { type: "string", default: "hidden" },
+  tabline: { type: "string", default: "always" },
   fps: { type: "string", default: "30" },
   "model-port": { type: "string", default: "8800" },
   shots: { type: "string" },
@@ -151,33 +156,20 @@ function buildCheckout(binary: string) {
 }
 
 /**
- * The look config.toml gives every shot: which built-in palette to name in `[theme] name`,
- * whether to pin its dark appearance, and `[ui] toolbar`. "vimma" when the build's own
- * vimma-core (the copy its chrome files use, synced into its checkout's src/) takes the key,
- * else null, and the build's default built-in shows (an older palette before the vimma one
- * landed); "dark" when it also takes `[theme] appearance`, so the palette is dark whatever the
- * system reports; `toolbar` (from --toolbar) when it takes `[ui] toolbar`. Each key is kept
- * only if the build reads the config with it and without an error, since a config.toml with an
- * error is not applied at all. A build whose checkout cannot be found gets none of them.
+ * The look config.toml gives every shot (promoLook in promo.ts), read with the build's own
+ * vimma-core: the copy its chrome files use, synced into its checkout's src/. A build whose
+ * checkout cannot be found gets none of the keys.
  */
-async function promoLook(
+async function buildLook(
   binary: string,
-  toolbar: "hidden" | "shown",
-): Promise<{ name: string | null; appearance?: "dark"; toolbar?: "hidden" | "shown" }> {
+  wanted: { toolbar: "hidden" | "shown"; tabline: TabLine },
+): Promise<Look> {
   const checkout = buildCheckout(binary);
   const config = checkout && join(checkout, "src/browser/base/content/vimma/core/config.mjs");
   if (!config || !existsSync(config)) return { name: null };
   try {
     const { parseConfig } = await import(pathToFileURL(config).href);
-    if (!supportsThemeName(parseConfig, "vimma")) return { name: null };
-    const look: { name: string; appearance?: "dark"; toolbar?: "hidden" | "shown" } = {
-      name: "vimma",
-    };
-    const reads = (more: object) =>
-      parseConfig(promoConfig({ source: "file", ...look, ...more })).errors.length === 0;
-    if (reads({ appearance: "dark" })) look.appearance = "dark";
-    if (reads({ toolbar })) look.toolbar = toolbar;
-    return look;
+    return promoLook(parseConfig, wanted);
   } catch {
     return { name: null };
   }
@@ -361,6 +353,7 @@ export class Director {
   declare themeName: string | null;
   declare appearance: "dark" | undefined;
   declare toolbar: "hidden" | "shown" | undefined;
+  declare tabline: TabLine | undefined;
   /** hint labels worked out in setup */
   declare labels: Record<string, string>;
   /** screen points for the video's zoom */
@@ -376,6 +369,7 @@ export class Director {
     themeName = null,
     appearance,
     toolbar,
+    tabline,
   }: {
     ctl: Ctl;
     pace: number;
@@ -385,6 +379,7 @@ export class Director {
     themeName?: string | null;
     appearance?: "dark";
     toolbar?: "hidden" | "shown";
+    tabline?: TabLine;
   }) {
     this.ctl = ctl;
     this.pace = pace;
@@ -394,6 +389,7 @@ export class Director {
     this.themeName = themeName;
     this.appearance = appearance;
     this.toolbar = toolbar;
+    this.tabline = tabline;
     this.labels = {};
     this.points = {};
     this.agentReplies = null;
@@ -533,6 +529,7 @@ export class Director {
         appearance: this.appearance,
         colors,
         toolbar: this.toolbar,
+        tabline: this.tabline,
         search: true,
       }),
     );
@@ -580,6 +577,9 @@ async function main() {
   const toolbarFlag = values.toolbar;
   if (toolbarFlag !== "hidden" && toolbarFlag !== "shown")
     return usage("--toolbar is hidden or shown");
+  const tablineFlag = values.tabline;
+  if (tablineFlag !== "always" && tablineFlag !== "auto" && tablineFlag !== "off")
+    return usage("--tabline is always, auto or off");
   const names = values.shots ? values.shots.split(",") : SHOTS.map((s) => s.name);
   const shots = names.map((n) => {
     const shot = SHOTS.find((s) => s.name === n);
@@ -628,11 +628,17 @@ async function main() {
     const configDir = mkdtempSync(join(tmpdir(), "vimma-promo-config-"));
     cleanups.push(async () => rmSync(configDir, { recursive: true, force: true }));
     const configPath = join(configDir, "config.toml");
-    const { name: themeName, appearance, toolbar } = await promoLook(build.binary, toolbarFlag);
+    const {
+      name: themeName,
+      appearance,
+      toolbar,
+      tabline,
+    } = await buildLook(build.binary, { toolbar: toolbarFlag, tabline: tablineFlag });
     console.log(
       themeName
         ? `promo: built-in palette "${themeName}" ([theme] name), ${appearance ?? "system"}` +
-            `, toolbar ${toolbar ?? "as the build starts"}`
+            `, toolbar ${toolbar ?? "as the build starts"}` +
+            `, tab line ${tabline ?? "as the build starts"}`
         : "promo: this build has no [theme] name: its default built-in palette",
     );
     // our own Xvfb at the full screen size, with the window in CSS pixels: launch()'s own
@@ -682,6 +688,7 @@ async function main() {
           name: themeName,
           appearance,
           toolbar,
+          tabline,
           agent,
           search: true,
         }),
@@ -715,6 +722,7 @@ async function main() {
         themeName,
         appearance,
         toolbar,
+        tabline,
       });
       director.agentReplies = agentReplies;
       await director.until((s) => s.workspace === "main", "the first window", 20_000);
