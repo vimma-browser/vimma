@@ -1,6 +1,6 @@
 {
   "name": "m3-crash-restore",
-  "description": "M3 gate 2 after a crash, not a quit: three workspaces, a split in one and a long page scrolled to the bottom in another; once SessionStore's recovery file has settled (save interval 500 ms here, 15 s by default) the browser is SIGKILLed (no quit observers, no final save), and a start on the same profile brings back the workspaces in order, the active one, each one's tabs, the split and the scroll position. Crash recovery is the build's default (resume_from_crash on); Vimma's browser.startup.page = 3 would restore the session even without it. With both off it fails at the first check after the start. Back in main, G scrolls the long page to its bottom again before the kill: the personal workspace has one tab, so it draws no tab line (docs/specs/tab-line.md decision 3, \"auto\" by default since 20 Nov 2026), and the page, a row taller there, is a row short of its bottom when the line comes back.",
+  "description": "M3 gate 2 after a crash, not a quit: three workspaces, a split in one and a long page scrolled to the bottom in another; once SessionStore's recovery file has settled (save interval 500 ms here, 15 s by default) the browser is SIGKILLed (no quit observers, no final save), and a start on the same profile brings back the workspaces in order, the active one, each one's tabs, the split and the scroll position. Crash recovery is the build's default (resume_from_crash on); Vimma's browser.startup.page = 3 would restore the session even without it. With both off it fails at the first check after the start. The long page is opened and scrolled last, back in main once every workspace exists: a new workspace starts with one tab and draws no tab line (docs/specs/tab-line.md decision 3, \"auto\" by default since 20 Nov 2026), so main's page, a row taller in the background meanwhile, would come back a row short of its bottom. Its title carries innerHeight (long.html#main.height), and G waits for the height under the line (759): the line is drawn a frame after the tab that brings it, and a page scrolled to its bottom before then is left a row short too (#140).",
   "timeoutSeconds": 120,
   "prefs": {
     "browser.startup.page": null,
@@ -9,15 +9,6 @@
   },
   "steps": [
     { "wait-for-state": { "workspace": "main" }, "timeoutSeconds": 20 },
-    { "open": "fixture:long.html#main" },
-    {
-      "wait-for-state": {
-        "workspace": "main",
-        "tabs": [{}, { "title": "long top navigate", "selected": true }]
-      }
-    },
-    { "keys": "shift+g" },
-    { "wait-for-state": { "tabs": [{}, { "title": "long bottom navigate" }] } },
 
     { "keys": "ctrl+b shift+n" },
     { "wait-for-state": { "mode": "command" } },
@@ -43,14 +34,26 @@
     { "wait-for-state": { "mode": "command" } },
     { "keys": "p e r s o n a l enter" },
     { "wait-for-state": { "workspace": "personal", "tabs": [{ "selected": true }] } },
+    { "open": "fixture:cookie.html#personal" },
+    {
+      "wait-for-state": {
+        "workspace": "personal",
+        "tabs": [{}, { "title": "cookie ws=personal", "selected": true }]
+      }
+    },
+
     { "keys": "ctrl+b )" },
-    { "keys": "shift+g" },
+    { "wait-for-state": { "workspace": "main", "tabs": [{ "selected": true }], "panes": null } },
+    { "open": "fixture:long.html#main.height" },
     {
       "wait-for-state": {
         "workspace": "main",
-        "tabs": [{}, { "title": "long bottom navigate", "selected": true }],
-        "panes": null
+        "tabs": [{}, { "title": "long top navigate 759", "selected": true }]
       }
+    },
+    { "keys": "shift+g" },
+    {
+      "wait-for-state": { "tabs": [{}, { "title": "long bottom navigate 759", "selected": true }] }
     },
 
     { "restart": "kill" },
@@ -58,7 +61,7 @@
     {
       "wait-for-state": {
         "workspace": "main",
-        "tabs": [{}, { "title": "long bottom back_forward", "selected": true }],
+        "tabs": [{}, { "title": "long bottom back_forward 759", "selected": true }],
         "panes": null
       },
       "timeoutSeconds": 20
@@ -72,7 +75,13 @@
       }
     },
     { "keys": "ctrl+b )" },
-    { "wait-for-state": { "workspace": "personal", "tabs": [{}], "panes": null } },
+    {
+      "wait-for-state": {
+        "workspace": "personal",
+        "tabs": [{}, { "title": "cookie ws=personal" }],
+        "panes": null
+      }
+    },
     { "keys": "ctrl+b )" },
     { "wait-for-state": { "workspace": "main" } }
   ]
