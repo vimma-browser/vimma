@@ -6,8 +6,7 @@
 // discard (docs/specs/tab-sleep.md). One check every few minutes walks every tab; core's
 // planSleep decides, this module gathers the facts and calls Firefox. It also runs Firefox's
 // own low-memory unloader from `[tabs] sleep_on_low_memory` and keeps it off the tabs the check
-// protects that it does not know about (decision 21). Behind vimma.feature.tabSleep until the
-// feature is finished (decision 20).
+// protects that it does not know about (decision 21).
 
 import { SLEEP_CHECK_MS, planSleep } from "../core/tabsleep.mjs";
 
@@ -22,7 +21,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
   clearInterval: "resource://gre/modules/Timer.sys.mjs",
 });
 
-export const FEATURE_PREF = "vimma.feature.tabSleep";
 /** How often the check runs, in ms; tests shorten it (decision 20). */
 export const CHECK_PREF = "vimma.tabs.sleepCheckMs";
 /** Firefox's low-memory unloader, read at each low-memory signal (TabUnloader.sys.mjs). */
@@ -70,10 +68,6 @@ let checks = 0;
  */
 const seenOnScreen = new WeakMap();
 
-const enabled = () => Services.prefs.getBoolPref(FEATURE_PREF, false);
-
-/** Firefox's default for UNLOAD_PREF, read before this module changes it (off on Linux). */
-let firefoxUnloads = false;
 /**
  * The browsers' permanent keys of the tabs this module marked `undiscardable`, so that it never
  * clears a mark an add-on set (`autoDiscardable: false`, ext-tabs.js). The key, not the tab:
@@ -85,7 +79,7 @@ const marked = new WeakSet();
 
 /** Whether `[tabs] sleep_on_low_memory` asks for Firefox's low-memory unloader (decision 21). */
 function configUnloads() {
-  return !!deps && enabled() && (deps.configHost.config?.tabs.sleepOnLowMemory ?? true);
+  return !!deps && (deps.configHost.config?.tabs.sleepOnLowMemory ?? true);
 }
 
 /**
@@ -93,16 +87,15 @@ function configUnloads() {
  * config's default-branch one, and the marks must follow the unloader that runs.
  */
 function lowMemoryOn() {
-  return !!deps && enabled() && Services.prefs.getBoolPref(UNLOAD_PREF, false);
+  return !!deps && Services.prefs.getBoolPref(UNLOAD_PREF, false);
 }
 
 /**
  * Sets Firefox's unloader pref from `[tabs] sleep_on_low_memory`, on the default branch: nothing
- * is written to prefs.js, a value set in about:config still wins, and Firefox's own default
- * comes back with the feature pref off.
+ * is written to prefs.js, and a value set in about:config still wins.
  */
 function applyUnloadPref() {
-  const value = enabled() ? configUnloads() : firefoxUnloads;
+  const value = configUnloads();
   const defaults = Services.prefs.getDefaultBranch("");
   if (defaults.getBoolPref(UNLOAD_PREF, false) !== value) defaults.setBoolPref(UNLOAD_PREF, value);
 }
@@ -147,7 +140,7 @@ function markAll() {
   for (const win of Services.wm.getEnumerator("navigator:browser")) markWindow(win);
 }
 
-/** The feature pref or the config changed: the check's interval, the pref and the marks. */
+/** The config changed: the check's interval, the pref and the marks. */
 function refresh() {
   update();
   applyUnloadPref();
@@ -162,21 +155,14 @@ function refresh() {
  */
 export const tabAsleep = (tab) => !tab.linkedPanel || tab.hasAttribute("pending");
 
-/**
- * Whether the tab line, the side panel and `state` show the tab asleep (behaviours 14 and 15):
- * only behind the feature pref until the feature is finished (decision 20).
- * @param {Tab} tab
- */
-export const shownAsleep = (tab) => enabled() && tabAsleep(tab);
-
 /** The limit in force, in ms; 0 when the check is off or nothing is known yet. */
 function sleepAfterMs() {
-  if (!deps || !enabled()) return 0;
+  if (!deps) return 0;
   const minutes = deps.configHost.config?.tabs.sleepAfter ?? 0;
   return minutes * 60_000;
 }
 
-/** Starts or stops the interval to match the feature pref and `sleep_after` (decision 13). */
+/** Starts or stops the interval to match `sleep_after` (decision 13). */
 function update() {
   const want = sleepAfterMs() > 0;
   if (!want && timer !== null) {
@@ -236,8 +222,6 @@ export const TabSleep = {
   init(d) {
     if (deps) return;
     deps = d;
-    firefoxUnloads = Services.prefs.getDefaultBranch("").getBoolPref(UNLOAD_PREF, false);
-    Services.prefs.addObserver(FEATURE_PREF, refresh);
     Services.prefs.addObserver(CHECK_PREF, restart);
     Services.prefs.addObserver(UNLOAD_PREF, markAll);
     Services.obs.addObserver(refresh, d.configTopic);

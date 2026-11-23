@@ -426,9 +426,9 @@ tabline_width = 14             # the width of each tab's name in the tab line, i
 [statusbar]
 tab = true    # false drops the status bar's tab number and title while the tab line shows them
 
-# [tabs]
-# sleep_after = 120           # minutes unseen before a tab sleeps (5–10080); 0: never
-# sleep_on_low_memory = true  # false: Firefox never unloads tabs when memory runs low
+[tabs]
+sleep_after = 120             # minutes unseen before a tab sleeps (5–10080); 0: never
+sleep_on_low_memory = true    # false: Firefox never unloads tabs when memory runs low
 
 # Every 12 hours Vimma asks updates.vimma.dev for a newer version, naming only the update
 # channel and the platform.

@@ -25,9 +25,7 @@ const { ConfigHost } = ChromeUtils.importESModule(
 const { AgentGate } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
-const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
 
-const FEATURE = "vimma.feature.tabSleep";
 const UNLOAD_PREF = "browser.tabs.unloadOnLowMemory";
 const HOUR = 60 * 60_000;
 const PAGE = "https://example.com/";
@@ -102,10 +100,7 @@ function polls(n) {
 add_task(async function setup() {
   await IOUtils.makeDirectory(dir);
   await SpecialPowers.pushPrefEnv({
-    set: [
-      [FEATURE, true],
-      ["vimma.config.path", configFile],
-    ],
+    set: [["vimma.config.path", configFile]],
     // The test profile turns the unloader off as a user value (testing/profiles/common/user.js);
     // a user's profile has none.
     clear: [[UNLOAD_PREF]],
@@ -125,14 +120,6 @@ add_task(async function sleep_on_low_memory_turns_firefoxs_unloader_on_and_off()
     "independent of sleep_after: 0 leaves it on",
   );
   Assert.ok(!Services.prefs.prefHasUserValue(UNLOAD_PREF), "nothing is written to prefs.js");
-  await SpecialPowers.pushPrefEnv({ set: [[FEATURE, false]] });
-  Assert.equal(
-    Services.prefs.getBoolPref(UNLOAD_PREF),
-    AppConstants.platform !== "linux",
-    "with the feature off, Firefox's own default",
-  );
-  await SpecialPowers.popPrefEnv();
-  Assert.equal(Services.prefs.getBoolPref(UNLOAD_PREF), true, "back on with the feature");
 });
 
 add_task(async function low_memory_unloads_other_tabs_but_never_a_shown_pane_or_an_agents_tab() {
@@ -214,8 +201,8 @@ add_task(async function the_mark_follows_the_split_the_agent_and_the_config() {
   Assert.ok(!marked(/** @type {Tab} */ (b)), "the about:config value gone: not marked");
   await config("");
   Assert.ok(marked(/** @type {Tab} */ (b)), "on again: marked again");
-  await SpecialPowers.pushPrefEnv({ set: [[FEATURE, false]] });
-  Assert.ok(!marked(/** @type {Tab} */ (b)), "with the feature off, nothing is marked");
+  await config("[tabs]\nsleep_on_low_memory = false\n");
+  Assert.ok(!marked(/** @type {Tab} */ (b)), "off again: nothing is marked");
   Assert.ok(marked(other), "an add-on's mark stays throughout");
-  await SpecialPowers.popPrefEnv();
+  await config("");
 });

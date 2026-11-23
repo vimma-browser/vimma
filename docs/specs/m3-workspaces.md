@@ -162,7 +162,9 @@ a permission granted in one is granted in all. These go to `docs/limits.md`.
   (`SessionStore.sys.mjs:5880-5882, 6459-6477`; `browser.sessionstore.restore_on_demand`).
   `TabUnloader` has no preference for hidden tabs (`browser/components/tabbrowser/TabUnloader.sys.mjs:32-40`)
   and is off on Linux (`browser.tabs.unloadOnLowMemory`, `firefox.js:1213-1217`). Nothing unloads
-  hidden tabs automatically.
+  hidden tabs automatically. (Since changed: tabs unseen for `[tabs] sleep_after` minutes, two
+  hours by default, hidden ones included, go to sleep, and the low-memory unloader is on for
+  Linux too; [tab-sleep](tab-sleep.md).)
 - **Audio:** hiding does not mute; the tab container tracks hidden tabs playing sound
   (`hiddensoundplaying`, `content/tabs.js:287-316`).
 - **Moving a tab to another window** (`adoptTab`) does not carry `hidden` but carries custom tab

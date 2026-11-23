@@ -431,7 +431,10 @@ other lines are from each tool's documentation; sub-PR 4 runs them against real 
   needs it. A **lazy tab** (restored, never loaded) has no browser: `agent-tabs` gives it one
   (a lazy browser has no `browserId` to name it by) and `agent-read` loads it in the background
   from its session history's URL first. A tab **Firefox unloaded** under memory pressure
-  (`browser.tabs.unloadOnLowMemory`) is lazy again and handled the same way.
+  (`browser.tabs.unloadOnLowMemory`) is lazy again and handled the same way. (Since changed:
+  tabs unseen for `[tabs] sleep_after` minutes are unloaded the same way, and the low-memory
+  unloader is on for Linux too; neither touches an agent workspace tab while an agent is
+  connected. [tab-sleep](tab-sleep.md), decisions 8 and 21.)
 - **The question appears over whatever workspace the user is in**, under decision 14's guards,
   and answering leaves them where they were: the line closes and focus goes back to what had it.
 - **Nothing an agent does closes or moves the user's tabs.** `agent-close` takes only agent tab
