@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.ts";
 import { haveTool, missingRequired } from "../../package/test/have-tool.ts";
@@ -514,11 +514,18 @@ describe("update-publish.yml", () => {
     );
   });
 
-  it("publish pushes the metadata in the manifest's commit", () => {
+  /** The push step's repositories part, run against a host whose _headers is `hostHeaders`. */
+  function pushRepos(hostHeaders: string) {
     const run = runOf(job("publish"), "Push to vimma-updates");
     const part = run.slice(run.indexOf('if [ "$PACKAGE_REPOS" = true ]; then\n'));
     expect(part.length).toBeLessThan(run.length);
     const dir = tempDir("vimma-push-repos-");
+    // The step runs repos.ts from the checkout (Node's built-ins only, so the file alone).
+    mkdirSync(join(dir, "tools/package"), { recursive: true });
+    copyFileSync(
+      join(import.meta.dirname, "../../package/repos.ts"),
+      join(dir, "tools/package/repos.ts"),
+    );
     const git = (args: string[], cwd: string) =>
       execFileSync("git", args, {
         cwd,
@@ -542,7 +549,7 @@ describe("update-publish.yml", () => {
     };
     // What the host has: an older release's repodata, under names this build no longer writes.
     const u = join(dir, "updates/public");
-    put(join(u, "_headers"), "/updates/*\n  Cache-Control: no-cache\n");
+    put(join(u, "_headers"), hostHeaders);
     put(join(u, "rpm/repodata/old-primary.xml.gz"), "old");
     put(join(u, "apt/InRelease"), "old");
     git(["add", "-A"], join(dir, "updates"));
@@ -580,6 +587,13 @@ describe("update-publish.yml", () => {
         message: "vimma 0.3.1: update manifest, serial 1",
       },
     });
+    return { result, git, dir, manifest };
+  }
+
+  it("publish pushes the metadata in the manifest's commit", () => {
+    const { result, git, dir, manifest } = pushRepos(
+      "/updates/*\n  Cache-Control: no-cache\n  X-Content-Type-Options: nosniff\n",
+    );
     expect(result.status, result.stderr + result.stdout).toBe(0);
     const log = git(["log", "--format=%s", "main"], join(dir, "origin.git")).trim().split("\n");
     expect(log).toEqual(["vimma 0.3.1: update manifest, serial 1; package repositories", "seed"]);
@@ -600,6 +614,17 @@ describe("update-publish.yml", () => {
       ].sort(),
     );
     expect(git(["show", "main:public/_headers"], join(dir, "origin.git"))).toBe("new _headers\n");
+  });
+
+  // A rule added to the host's _headers by hand would be dropped by the copy: publish stops
+  // before it, and nothing is pushed.
+  it("publish refuses to replace a _headers or _redirects it did not write", () => {
+    const { result, git, dir } = pushRepos(
+      "/updates/*\n  Cache-Control: no-cache\n  X-Content-Type-Options: nosniff\n/*\n  X-Frame-Options: DENY\n",
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/_headers is not one repos\.ts writes/);
+    expect(git(["log", "--format=%s", "main"], join(dir, "origin.git")).trim()).toBe("seed");
   });
 
   it("package-sign and repo-sign alone name the package-signing environment, with an OIDC token", () => {

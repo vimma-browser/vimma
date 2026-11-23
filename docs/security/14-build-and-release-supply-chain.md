@@ -894,7 +894,18 @@ of the same commit read it too, so a tree without it could not be released anywa
   `.rpm`, pacman package and its `.sig`. The host serves metadata only: `_redirects` sends
   each package that the metadata lists to
   `https://github.com/vimma-browser/vimma/releases/download/<tag>/<file>` with one static rule
-  per file, built from names in `[A-Za-z0-9._~+-]`, and no placeholder. apt's `Release` has no
+  per file, built from names in `[A-Za-z0-9._~+-]`, and no placeholder. `publish` replaces the
+  host's `_redirects` and `_headers` only when each is absent, one `repos.ts` writes, or (for
+  `_headers`) the manifest's rule alone, so a rule added there by hand stops the push instead of
+  being dropped in silence. The homepage each package manager shows (apt's `Homepage`, the
+  rpm entry's `url`, pacman's `%URL%`) must be absent or Vimma's own GitHub page, so metadata
+  from a compromised `repo-prepare` cannot get a link of its choosing signed; the other free text
+  (the packager line, the summary and the description) is not pinned, changes nothing that is installed, and is
+  left to that risk. While the repositories are on, a failed `repo-prepare` or
+  `repo-sign` (a KMS outage, a lagging release list, a repository tool whose output changed)
+  holds back the release's update manifest too, because the two announce a release together
+  (decision 15); for a security release that cannot wait, the runbook's step 9 ships the
+  manifest alone by unsetting `PACKAGE_REPOS_ENABLED` and running the manifest again. apt's `Release` has no
   `Valid-Until`, so the host can keep a user on older signed metadata (a freeze); Vimma's own
   update check still reports the newer release. Disabling the key version or removing its IAM
   binding stops every signature at once; KMS's Data Access audit log records each one.
@@ -910,6 +921,9 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`publish waits for repo-sign while the repositories are on, and runs without it otherwise`](../../tools/update/test/update-workflow.test.ts),
   [`the host's key equals the committed key`](../../tools/update/test/update-workflow.test.ts),
   [`publish pushes the metadata in the manifest's commit`](../../tools/update/test/update-workflow.test.ts),
+  [`publish refuses to replace a _headers or _redirects it did not write`](../../tools/update/test/update-workflow.test.ts),
+  [`replaces only host files it wrote, or the manifest's rule alone`](../../tools/package/test/repos.test.ts),
+  [`takes no homepage but Vimma's own, in each format`](../../tools/package/test/repos.test.ts),
   [`keeps the newest published releases that carry the repository packages, newest first`](../../tools/package/test/repos.test.ts),
   [`refuses a newest release without the pacman package, and a tag it does not keep`](../../tools/package/test/repos.test.ts),
   [`refuses an answer that is not a list of releases`](../../tools/package/test/repos.test.ts),

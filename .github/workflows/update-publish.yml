@@ -487,6 +487,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false # nothing is installed, and a cache is no input to trust
 
       # The newest published releases that carry the repositories' packages, at most five, newest
       # first; the newest release must be one of them, and so must the tag. Each must be on main,
@@ -903,8 +904,11 @@ jobs:
           fi
           # The repositories in the manifest's commit (spec package-repositories, decision 15).
           # Rebuilt each run, so the old tree goes: repodata's file names change with their
-          # content. _headers is repos.ts's, which keeps the manifest's own rule.
+          # content. _headers is repos.ts's, which keeps the manifest's own rule; the host's
+          # _headers and _redirects must be ones repos.ts writes (or the manifest's rule alone),
+          # so a rule added there by hand stops the step instead of being dropped.
           if [ "$PACKAGE_REPOS" = true ]; then
+            node tools/package/repos.ts host-files --public updates/public
             rm -rf updates/public/apt updates/public/rpm updates/public/arch
             cp -R repos/apt repos/rpm repos/arch updates/public/
             cp repos/vimma-packages.asc repos/_redirects repos/_headers updates/public/

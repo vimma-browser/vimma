@@ -58,6 +58,11 @@ import { crc32, gunzipSync, gzipSync, inflateRawSync } from "node:zlib";
 
 export const DEFAULT_BASE_URL = "https://updates.vimma.dev";
 export const DEFAULT_DOWNLOAD_BASE = "https://github.com/vimma-browser/vimma/releases/download";
+/**
+ * The homepage package.ts gives each package. Package managers show it, so signed metadata may
+ * carry this one or none: never a link that a compromised repo-prepare chose.
+ */
+const HOMEPAGE = "https://github.com/vimma-browser/vimma";
 export const DEFAULT_KEEP = 5;
 
 /** What a path segment of a redirect may hold: a placeholder fills exactly one (decision 11). */
@@ -577,6 +582,10 @@ export function checkPackages(
     }
   }
   for (const f of found) {
+    const homepage = one(f, "Homepage");
+    if (homepage !== undefined && homepage !== HOMEPAGE) {
+      throw new Error(`repos: Packages: Homepage ${JSON.stringify(homepage)} is not Vimma's`);
+    }
     for (const key of ["Depends", "Recommends", "Provides"] as const) {
       const value = one(f, key);
       if (value === undefined) continue;
@@ -818,6 +827,10 @@ export function checkPrimary(
     for (const leaf of [name, arch, summary, description, packager, url]) {
       attrsOf(leaf as XmlElement, [], what);
       textOf(leaf as XmlElement, what);
+    }
+    const homepage = textOf(url as XmlElement, what);
+    if (homepage !== "" && homepage !== HOMEPAGE) {
+      fail(`${href}: the url ${JSON.stringify(homepage)} is not Vimma's`);
     }
     attrsOf(time as XmlElement, ["file", "build"], what);
     const sz = attrsOf(size as XmlElement, ["package", "installed", "archive"], what);
@@ -1099,6 +1112,10 @@ function canonicalDesc(text: string, r: Release, sha?: string, size?: number): s
   ) {
     fail(`does not list exactly vimma-bin ${r.version}-1 for ${r.tag}`);
   }
+  const url = get("URL");
+  if (url !== undefined && (url.length !== 1 || url[0] !== HOMEPAGE)) {
+    fail(`%URL% ${JSON.stringify(url.join("\n"))} is not Vimma's`);
+  }
   for (const k of ["DEPENDS", "OPTDEPENDS", "PROVIDES", "CONFLICTS"] as const) {
     for (const v of get(k) ?? []) {
       if (!RELATIONS.pacman[k].includes(v))
@@ -1264,6 +1281,45 @@ export function headersFile(): string {
   return ["/updates/*", "/apt/*", "/rpm/*", "/arch/*", "/vimma-packages.asc"]
     .map((p) => `${p}\n  Cache-Control: no-cache\n  X-Content-Type-Options: nosniff\n`)
     .join("");
+}
+
+/** The host's _headers before the repositories: the update manifest's rule alone. */
+const MANIFEST_HEADERS =
+  "/updates/*\n  Cache-Control: no-cache\n  X-Content-Type-Options: nosniff\n";
+
+/**
+ * Before publish replaces the host's _headers and _redirects: each must be absent, or one this
+ * tool writes (any set of releases, for _redirects), or for _headers the manifest's rule alone,
+ * which the host had before the repositories. A rule added to the host by hand would otherwise
+ * be dropped in silence at the next release; it belongs in headersFile() or redirectsFile().
+ */
+export function checkHostFiles(publicDir: string, downloadBase: string): void {
+  const read = (name: string) => {
+    const path = join(publicDir, name);
+    return existsSync(path) ? readFileSync(path, "utf8") : undefined;
+  };
+  const headers = read("_headers");
+  if (headers !== undefined && headers !== MANIFEST_HEADERS && headers !== headersFile()) {
+    throw new Error(
+      `repos: ${publicDir}/_headers is not one repos.ts writes; move its rules there`,
+    );
+  }
+  const redirects = read("_redirects");
+  if (redirects === undefined) return;
+  const base = baseUrl(downloadBase, "download base");
+  const name = "[A-Za-z0-9._~+-]+";
+  const tag = "v[0-9]+\\.[0-9]+\\.[0-9]+";
+  const esc = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const line = new RegExp(
+    `^(?:/(?:apt/pool|rpm/packages)/(${tag})/(${name}) ${esc}/\\1/\\2 302` +
+      `|/arch/x86_64/(${name}) ${esc}/${tag}/\\3 302)$`,
+  );
+  const lines = redirects.split("\n");
+  if (lines.pop() !== "" || lines.length === 0 || !lines.every((l) => line.test(l))) {
+    throw new Error(
+      `repos: ${publicDir}/_redirects is not one repos.ts writes; move its rules there`,
+    );
+  }
 }
 
 /**
@@ -1805,7 +1861,8 @@ const USAGE =
   "  [--base-url URL] [--download-base URL]\n" +
   "       repos.ts select --releases FILE --tag TAG [--keep N]\n" +
   "       repos.ts verify --tree DIR --cert FILE --releases FILE --release TAG=SUMS [--release TAG=SUMS …]\n" +
-  "  [--signed] [--regzip-pacman] [--base-url URL] [--download-base URL]";
+  "  [--signed] [--regzip-pacman] [--base-url URL] [--download-base URL]\n" +
+  "       repos.ts host-files --public DIR [--download-base URL]";
 
 export async function main(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
@@ -1822,6 +1879,7 @@ export async function main(argv: string[]): Promise<void> {
       releases: { type: "string" },
       tag: { type: "string" },
       tree: { type: "string" },
+      public: { type: "string" },
       signed: { type: "boolean" },
       "regzip-pacman": { type: "boolean" },
     },
@@ -1834,6 +1892,10 @@ export async function main(argv: string[]): Promise<void> {
       if (i < 1) throw new Error(`repos: --release wants TAG=${what}: ${r}`);
       return { tag: r.slice(0, i), path: r.slice(i + 1) };
     });
+  if (command === "host-files" && values.public) {
+    checkHostFiles(values.public, values["download-base"] ?? DEFAULT_DOWNLOAD_BASE);
+    return;
+  }
   if (command === "select" && values.releases && values.tag) {
     const list: unknown = JSON.parse(readFileSync(values.releases, "utf8"));
     process.stdout.write(`${selectReleases(list, keep, values.tag).join("\n")}\n`);

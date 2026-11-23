@@ -20,6 +20,7 @@ import { certify, localSigner, sign } from "../openpgp-kms.ts";
 import {
   aptSources,
   build,
+  checkHostFiles,
   checkPackages,
   checkPacmanDb,
   checkPrimary,
@@ -240,6 +241,48 @@ describe("host files", () => {
         `${path}\n  Cache-Control: no-cache\n  X-Content-Type-Options: nosniff\n`,
       );
     }
+  });
+
+  // Review of sub-PR 3: publish replaces the host's _headers and _redirects, so a rule added
+  // there by hand would be dropped in silence at the next release. Only what this tool writes,
+  // or the manifest's own rule the host had before the repositories, may be replaced.
+  it("replaces only host files it wrote, or the manifest's rule alone", () => {
+    const dir = tempDir("vimma-repos-host-");
+    const check = () => checkHostFiles(dir, GITHUB);
+    expect(check).not.toThrow();
+    const manifestRule =
+      "/updates/*\n  Cache-Control: no-cache\n  X-Content-Type-Options: nosniff\n";
+    writeFileSync(join(dir, "_headers"), manifestRule);
+    expect(check).not.toThrow();
+    writeFileSync(join(dir, "_headers"), headersFile());
+    expect(check).not.toThrow();
+    writeFileSync(
+      join(dir, "_headers"),
+      `${headersFile()}/*\n  Strict-Transport-Security: max-age=1\n`,
+    );
+    expect(check).toThrow(/_headers is not one repos\.ts writes/);
+    writeFileSync(join(dir, "_headers"), headersFile());
+
+    writeFileSync(
+      join(dir, "_redirects"),
+      redirectsFile(plan([rel("0.1.0"), rel("0.2.0")], 5), GITHUB),
+    );
+    expect(check).not.toThrow();
+    for (const extra of [
+      "/docs https://vimma.dev/docs 301\n",
+      `/apt/pool/v0.2.0/vimma_0.2.0_amd64.deb ${GITHUB}/v0.2.0/vimma_0.2.0_amd64.deb 301\n`,
+      `/apt/pool/v0.2.0/x.deb https://evil.example/v0.2.0/x.deb 302\n`,
+      `/apt/pool/v0.2.0/:file ${GITHUB}/v0.2.0/:file 302\n`,
+      "\n",
+    ]) {
+      writeFileSync(
+        join(dir, "_redirects"),
+        redirectsFile(plan([rel("0.2.0")], 5), GITHUB) + extra,
+      );
+      expect(check, extra).toThrow(/_redirects is not one repos\.ts writes/);
+    }
+    writeFileSync(join(dir, "_redirects"), "");
+    expect(check).toThrow(/_redirects/);
   });
 
   it("the .sources file carries the committed key inline", async () => {
@@ -1149,6 +1192,32 @@ describe("relations", () => {
     ["PROVIDES sudo", "%PROVIDES%\nsudo\n\n"],
   ])("refuses a pacman database that %s", (_, extra) => {
     expect(() => checkPacmanDb(db(extra), R123)).toThrow(/vimma\.db/);
+  });
+
+  // Review of sub-PR 3: the package managers show the homepage, so metadata from a compromised
+  // repo-prepare must not get a link of its choosing signed. Empty or Vimma's own.
+  it("takes no homepage but Vimma's own, in each format", () => {
+    const home = "https://github.com/vimma-browser/vimma";
+    const evil = "https://vimma-browser.example/download";
+    const stanza =
+      "Package: vimma\nVersion: 1.2.3\nArchitecture: amd64\nMaintainer: x <x@example.invalid>\n" +
+      `Filename: pool/v1.2.3/vimma_1.2.3_amd64.deb\nSize: 10\nSHA256: ${"a".repeat(64)}\n`;
+    const deb = (url: string) => `${stanza}Homepage: ${url}\nDescription: test\n\n`;
+    checkPackages(deb(home), [R123]);
+    expect(() => checkPackages(deb(evil), [R123])).toThrow(/Packages: Homepage/);
+
+    const rpm = (url: string) => pkg("").replace("<url></url>", `<url>${url}</url>`);
+    checkPrimary(rpm(home), [R123]);
+    expect(() => checkPrimary(rpm(evil), [R123])).toThrow(/primary\.xml.*url/);
+
+    const desc = (url: string) =>
+      pacmanDatabase(
+        R123,
+        "%FILENAME%\nvimma-bin-1.2.3-1-x86_64.pkg.tar.zst\n\n%NAME%\nvimma-bin\n\n%BASE%\nvimma-bin\n\n" +
+          `%VERSION%\n1.2.3-1\n\n%CSIZE%\n10\n\n%SHA256SUM%\n${"a".repeat(64)}\n\n%URL%\n${url}\n\n%ARCH%\nx86_64\n\n`,
+      );
+    checkPacmanDb(desc(home), R123);
+    expect(() => checkPacmanDb(desc(evil), R123)).toThrow(/vimma\.db: %URL%/);
   });
 });
 
