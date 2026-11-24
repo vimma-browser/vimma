@@ -214,6 +214,12 @@ function scrollsOn(el, vertical) {
   return overflow === "auto" || overflow === "scroll" || overflow === "overlay";
 }
 
+/**
+ * How long the page waits for a wheel the parent asks about (wheelSeen). It is sent right after
+ * the question, on the same channel: this only bounds a wheel whose point the page reads
+ * otherwise, which then waits for quiet as before.
+ */
+export const WHEEL_WAIT_MS = 500;
 /** Wheels seen by this frame and not yet looked at (wheelSeen); a few are kept. */
 const WHEELS_KEPT = 8;
 /** A wheel the parent names is this frame's when its point is within this, in CSS pixels. */
@@ -386,6 +392,11 @@ export class PageScroll {
     this.#wheels.push({ x: e.clientX, y: e.clientY, prevented: e.defaultPrevented });
     if (this.#wheels.length > WHEELS_KEPT) this.#wheels.shift();
     this.#onWheel?.();
+  }
+
+  /** Forgets the wheels seen so far: they answer for no later question (wheelSeen). */
+  forgetWheels() {
+    this.#wheels = [];
   }
 
   /**

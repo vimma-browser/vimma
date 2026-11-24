@@ -17,7 +17,13 @@ import { describeAgentElements } from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
 import { BlockFocus } from "./block.mjs";
 import { PdfView } from "./pdf-view.mjs";
-import { PageScroll, SETTLE_MAX_MS, scrollersUnder, wheelCanScroll } from "./page-scroll.mjs";
+import {
+  PageScroll,
+  SETTLE_MAX_MS,
+  WHEEL_WAIT_MS,
+  scrollersUnder,
+  wheelCanScroll,
+} from "./page-scroll.mjs";
 import { GrepPage } from "./grep-page.mjs";
 import { AgentPage } from "./agent-page.mjs";
 import { asUserGesture } from "./user-gesture.mjs";
@@ -999,6 +1005,8 @@ export class VimmaChild extends JSWindowActorChild {
     if (!isIndex(gen) || !win) return null;
     const elements = data.elements === true;
     const texts = data.texts === true && !elements;
+    // A wheel before these labels answers for none of them (PageScroll.wheelSeen).
+    if (!elements && !texts) this.#scroll.forgetWheels();
     // Collections that wait can end out of order. Generations only grow, so a stored newer
     // generation means a newer collection of the same kind answered meanwhile; the elements it
     // stored are the ones the parent acts on, and they stay.
@@ -1071,13 +1079,12 @@ export class VimmaChild extends JSWindowActorChild {
    * page's end, or the page took it for itself (a map, a canvas app). True when the wheel was
    * over a subframe, whose scroll this frame does not see, or when `gen` is not this frame's
    * last collection.
-   * Whether to wait, and from when, is known before the wait (issues #1375 and #1430): a wheel
-   * the page cancelled, or one that nothing under the point can scroll its way (`dx`, `dy`,
-   * `shift`), is answered once the page has got it. A wheel that can scroll is waited for from
-   * its first scroll event: the page hands its smooth scroll to APZ, which learns of it at the
-   * next paint, and on a busy machine that came after the quiet time, which had the labels
-   * kept where the page had been. A wheel with ctrl, alt or meta (`other`: zoom, history)
-   * or over a subframe is waited for as before, from now.
+   * The wait starts once the wheel has reached the page (issues #1375 and #1430), and a wheel
+   * that can scroll its way (`dx`, `dy`, `shift`) is waited for from its first scroll event:
+   * the page hands its smooth scroll to APZ, which learns of it at the next paint, and on a busy
+   * machine that came after the quiet time, which had the labels kept where the page had been.
+   * A wheel with ctrl, alt or meta (`other`: zoom, history) or over a subframe is waited for as
+   * before, from now.
    * @param {{ gen?: unknown, x?: unknown, y?: unknown, dx?: unknown, dy?: unknown,
    *   shift?: unknown, other?: unknown } | undefined} data
    * @returns {Promise<boolean>}
@@ -1102,22 +1109,21 @@ export class VimmaChild extends JSWindowActorChild {
       await this.#scroll.settled(under.targets);
     } else {
       const until = ChromeUtils.now() + SETTLE_MAX_MS;
-      const seen = await this.#scroll.wheelSeen(point, SETTLE_MAX_MS);
+      const seen = await this.#scroll.wheelSeen(point, WHEEL_WAIT_MS);
       if (gen !== this.#hints.gen) return true;
-      const left = until - ChromeUtils.now();
-      if (!seen) {
-        // Not seen in time (a point this frame reads otherwise, such as under a pinch zoom):
-        // whatever is left of the limit, from now.
-        await this.#scroll.settled(under.targets, false, left);
-      } else if (!seen.prevented) {
-        const wheel = { dx, dy, shift: data?.shift === true };
-        // Already under way (the page got the wheel a while ago), or still to start.
-        if (this.#targetsMoved(win)) await this.#scroll.settled(under.targets, false, left);
-        else if (wheelCanScroll(win, under.targets, wheel)) {
-          await this.#scroll.settled(under.targets, true, left);
-        }
-      }
+      // Only a wheel that can scroll and has not moved anything yet waits for its first
+      // scroll event. One the page cancelled may still be scrolled by its script a frame later
+      // (a smooth-scrolling library), one under way or that cannot scroll has nothing to wait
+      // for, and one not seen in time (its point read otherwise, as under a pinch zoom) is
+      // unknown: those wait for quiet from now, after the wheel has reached the page.
+      const starting =
+        !!seen &&
+        !seen.prevented &&
+        !this.#targetsMoved(win) &&
+        wheelCanScroll(win, under.targets, { dx, dy, shift: data?.shift === true });
+      await this.#scroll.settled(under.targets, starting, until - ChromeUtils.now());
     }
+    this.#scroll.forgetWheels();
     if (under.frame || gen !== this.#hints.gen) return true;
     return this.#targetsMoved(win);
   }

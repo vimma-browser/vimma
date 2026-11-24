@@ -33,6 +33,10 @@ const CAROUSEL = DIR + "file_vimma_hints_scroll.html?carousel";
 const SNAP_CAROUSEL = DIR + "file_vimma_hints_scroll.html?snap&carousel";
 /** 600 links down a page that takes every wheel for itself (a map, a canvas app). */
 const CONSUME = DIR + "file_vimma_hints_scroll.html?consume";
+/** 600 links down a page that takes every wheel and scrolls itself on the next frame. */
+const JACK = DIR + "file_vimma_hints_scroll.html?jack";
+/** 600 links down a page that takes only the first wheel. */
+const PREVENT_FIRST = DIR + "file_vimma_hints_scroll.html?preventfirst";
 /** 40 links in a frame that the page moves up by 100 px for each wheel down, never scrolling. */
 const GLIDE = DIR + "file_vimma_hints_scroll.html?glide";
 
@@ -460,6 +464,43 @@ add_task(async function a_wheel_that_cannot_scroll_keeps_the_labels() {
     );
     Assert.equal(VimmaHost._hintRuns, runs, "the labels were not collected again");
     Assert.equal(await settledScroll(browser), 0, "the page did not scroll");
+    await assertLabelsOnTargets(browser);
+  });
+});
+
+add_task(async function a_page_that_scrolls_itself_for_a_wheel_gets_new_labels() {
+  await shippedSmoothScroll();
+  await withPage(JACK, async (browser) => {
+    await pressFAndWait();
+    const runs = VimmaHost._hintRuns;
+    // The page cancels the wheel and scrolls itself a frame later, as smooth-scrolling
+    // libraries do: a cancelled wheel can still move the targets.
+    wheel(browser, 300);
+    await TestUtils.waitForCondition(
+      () => VimmaHost._hintRuns > runs && drawnLabels().size > 0,
+      "labels are drawn again after the wheel",
+    );
+    Assert.greater(await settledScroll(browser), 0, "the page scrolled itself");
+    await assertLabelsOnTargets(browser);
+  });
+});
+
+add_task(async function a_wheel_from_before_the_labels_does_not_answer_for_a_later_one() {
+  await shippedSmoothScroll();
+  await withPage(PREVENT_FIRST, async (browser) => {
+    // At the point the next wheel comes to: the page takes this one.
+    const wheeled = BrowserTestUtils.waitForEvent(window, "wheel", true);
+    wheel(browser, 300);
+    await wheeled;
+    Assert.equal(await settledScroll(browser), 0, "the page took the first wheel");
+    await pressFAndWait();
+    const runs = VimmaHost._hintRuns;
+    wheel(browser, 300);
+    await TestUtils.waitForCondition(
+      () => VimmaHost._hintRuns > runs && drawnLabels().size > 0,
+      "labels are drawn again after the wheel",
+    );
+    Assert.greater(await settledScroll(browser), 0, "the second wheel scrolled the page");
     await assertLabelsOnTargets(browser);
   });
 });
