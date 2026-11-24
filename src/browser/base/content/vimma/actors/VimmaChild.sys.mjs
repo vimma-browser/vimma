@@ -487,9 +487,12 @@ export class VimmaChild extends JSWindowActorChild {
       // Registered for trusted events only; checked again, as a forged one could skip a step.
       if (!event.isTrusted) return;
       this.#agent.pageHidden();
-      // A new document starts from the default rule (docs/specs/scroll-area.md, behaviour 4);
-      // the parent forgets this document's choice when it goes away or another is shown.
-      this.#scroll.clearArea();
+      // A new document starts from the default rule (docs/specs/scroll-area.md, behaviour 4).
+      // The parent hears of it here: a document kept in the back-forward cache is not destroyed,
+      // so its frame-gone report never comes.
+      if (this.#scroll.clearArea()) {
+        this.sendAsyncMessage("Vimma:ScrollAreaChosen", { chosen: false });
+      }
       // Also into the back-forward cache, which keeps the elements and so their locks
       // (docs/specs/hover.md decision 5, experiment X1).
       if (this.#hover.pageHidden()) this.#hoverEnded();

@@ -41,8 +41,8 @@ function setChosen(browser, wg) {
     if (![...marked].some((r) => r.deref() === browser)) marked.add(new WeakRef(browser));
   } else {
     chosen.delete(browser);
-    for (const r of marked) if (!r.deref() || r.deref() === browser) marked.delete(r);
   }
+  for (const r of marked) if (!r.deref() || (!wg && r.deref() === browser)) marked.delete(r);
   if (before !== wg) changed(browser);
 }
 
@@ -149,6 +149,8 @@ export const ScrollAreaOps = {
    * @param {MozBrowser | null | undefined} browser
    */
   status(browser) {
-    return !!browser && chosen.has(browser);
+    const wg = browser && chosen.get(browser);
+    // Only while that document is still shown: one in the back-forward cache is not.
+    return !!wg && wg.browsingContext?.currentWindowGlobal === wg;
   },
 };

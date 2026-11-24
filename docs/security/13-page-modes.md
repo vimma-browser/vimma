@@ -172,11 +172,14 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   change only through the user: `gs` and `gS`, or a trusted `mousedown` (a real click, or the
   user's `f`, which the actor dispatches from system code). An agent's press is untrusted and
   **must not** move it. Each frame's `Vimma:ScrollAreas` reply **must** be parsed in the parent
-  (`parseScrollAreasReply`: finite rects, at most 32 areas and 16 subframes per frame, a subframe
-  only among the frame's own children) and a malformed one drops that frame;
-  `Vimma:ScrollAreaChosen` carries one boolean and **must** change only its own tab's status bar
-  marker, from that frame's current document. The marker is a fixed text, so no page text
-  reaches the status bar through it.
+  (`parseScrollAreasReply`: finite rects, at most 32 areas and 16 subframes per frame) and a
+  malformed one drops that frame; each frame's answer, to `gs`'s pick too, is bounded in time,
+  so a frame that does not answer **must not** hold the tab's scroll keys. `Vimma:ScrollAreaChosen`
+  carries one boolean and **must** act only on its own tab: its status bar marker, and the
+  choice held in the tab's other frames, which a click in any frame ends. A compromised content
+  process can therefore end the user's choice in its own tab, as a click there would. The marker
+  is a fixed text, so no page text reaches the status bar through it.
+  [`an_agents_click_in_a_panel_does_not_move_the_target`](../../tests/browser/browser_vimma_scroll_area.js),
   [`a_click_the_page_dispatches_does_not_move_the_target`](../../tests/browser/browser_vimma_scroll_area.js),
   [`anything malformed drops the reply`](../../packages/vimma-core/test/scroll-areas.test.ts),
   [`at most a frame's share of areas and subframes is kept`](../../packages/vimma-core/test/scroll-areas.test.ts)

@@ -10,8 +10,8 @@
 
 /** @import { Rect } from "./hints.mjs" */
 /**
- * One frame's areas, in its viewport's CSS pixels (`viewport`: its size): `current` is the one the scroll keys move in
- * that frame now, `chosen` the one `gs` or a click chose there. `frames`: its visible subframes,
+ * One frame's areas, in its viewport's CSS pixels (`viewport`: its size): `current` is the one
+ * the scroll keys move in that frame now, `chosen` the one `gs` or a click chose there. `frames`: its visible subframes,
  * by browsing context id, with their viewports.
  * @typedef {{ viewport: Rect, areas: { rect: Rect, current: boolean, chosen: boolean }[],
  *   frames: { id: number, rect: Rect }[] }} ScrollAreasReply

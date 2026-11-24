@@ -38,13 +38,16 @@ focus.
    `ctrl+e`, `ctrl+y`, `gg` and `G`. On an axis the area cannot scroll, the nearest scroller
    around it that can takes the key, else the default rule.
 3. A user's click, and a link followed with `f`, make the scroll area under that point the
-   target. An agent's click (MCP `vimma_activate`, the built-in agent) does not.
+   target: the nearest area around it (decision 2), else the page. A click in a smaller
+   scroller, such as a code block, leaves the keys on the area around it. An agent's click (MCP
+   `vimma_activate`, the built-in agent) does not move the target.
 4. The chosen area stays the target until another `gs` or `gS`, a click elsewhere, a new
    document, or the area leaving the page; then the default rule applies again.
 5. The chosen area gets a two-pixel outline in the theme's accent for 600 ms, drawn in chrome
    over the page.
 6. The status bar shows `scroll area`, in the theme's accent, while the scroll keys move an area
-   that `gs` or a click chose and that is not the one the default rule would pick.
+   that `gs` or a click chose and that is not the one the default rule would pick in the top
+   document. An area in a frame always shows it.
 7. An area inside a frame, same-origin or cross-origin, is cycled too, and choosing it moves
    focus into that frame; choosing an area of the top document takes focus back there.
 8. `gs` and `gS` are normal-mode bindings, remappable in `config.toml` like every key.
@@ -92,19 +95,29 @@ focus.
    takes only a trusted `mousedown` (`VimmaChild`, `mousedown`): a real click, and `f`, whose
    press this actor dispatches from system code. An agent's press is dispatched as the page's own
    script would and is untrusted (`#press`), so an agent never changes where the user's keys
-   scroll. A click on the area the default rule picks clears the choice, so that the default
-   rule (with its focused-element and layer steps) applies again.
+   scroll. The area is the nearest one around the click by decision 2, not the nearest scroller,
+   so that a click in a code block or a tab strip does not leave the keys there. It is decided
+   after the mousedown's own focus change, since the default rule starts from the focused
+   element. A click on the area the default rule picks in the top document clears the choice,
+   so that the default rule (with its focused-element and layer steps) applies again; every
+   such click is reported to the parent, so that it also ends a choice held in another frame.
 6. **The choice lives in the frame's `PageScroll`, and the parent keeps only whether there is
    one.** `PageScroll.target` tries the chosen area first; it holds the element weakly and drops
-   it once it leaves the document, so nothing in the parent goes stale with the page. The parent
-   (`host/scroll-area-ops.mjs`) keeps, per tab, which document holds a choice, for the status
-   bar marker, and clears it when that document goes away.
+   it once it leaves the document, so nothing in the parent goes stale with the page; an area
+   that left the page is noticed at the next scroll key or `gs`, so the marker may show until
+   then. The parent (`host/scroll-area-ops.mjs`) keeps, per tab, which document holds a choice,
+   for the status bar marker, and forgets it when that document is hidden (`pagehide`, which
+   also covers a document kept in the back-forward cache) or goes away. The scroll keys typed
+   after `gs` wait for it, and every frame's answer is bounded by the hint collection's
+   timeouts, so a frame that does not answer cannot hold them.
 7. **Frames through each frame's actor.** The parent asks each frame's actor for its areas and
    its visible subframes (`Vimma:ScrollAreas`), offsets and clips them by the frame rects their
    embedders report, as the link hints do, and orders all of them in the top frame's pixels.
    Choosing an area of a subframe focuses that frame's window, so that the scroll keys, which go
    to the focused frame first, reach it; choosing one of the top document blurs the frame
-   element that holds focus. Cross-origin frames work the same, since every step is the frame's
+   element that holds focus. An area in a frame always counts as chosen and shows the marker,
+   because the keys reach it only through that frame's focus, which the page or a click can
+   move, and the marker says why `j` moves the frame. Cross-origin frames work the same, since every step is the frame's
    own actor.
 8. **The outline and the marker are drawn in chrome, in the theme's accent.** The outline is a
    layer beside the hint labels (`ui/hint-overlay.mjs`), so the page can neither see nor restyle
@@ -118,7 +131,8 @@ focus.
 Two new content-actor messages carry data to the parent, and both are checked there (security
 [13](../security/13-page-modes.md), K15). `Vimma:ScrollAreas` replies with rects and booleans
 that core `parseScrollAreasReply` copies and caps; a malformed reply drops that frame's areas.
-`Vimma:ScrollAreaChosen` carries one boolean and changes only its own tab's status bar marker. A
+`Vimma:ScrollAreaChosen` carries one boolean and changes only its own tab: its status bar
+marker, and the choice held in the tab's other frames, which a click in any frame ends. A
 compromised content process can at most move where the scroll keys scroll in its own tab, which
 it could already do by moving focus. An agent's click never moves the target (decision 5). No
 page content reaches the status bar: the marker is a fixed text.
@@ -132,13 +146,16 @@ page content reaches the status bar: the marker is a fixed text.
   Confluence's (`file_vimma_scroll_area.html`): `j_scrolls_the_larger_panel_and_gs_moves_it_to_the_other`,
   `gS_goes_back_and_a_count_picks_the_nth_area`, `every_scroll_key_follows_the_chosen_area`,
   `a_click_in_a_panel_makes_it_the_target`,
+  `a_click_in_a_scroller_too_small_to_be_an_area_keeps_the_page`,
   `a_click_the_page_dispatches_does_not_move_the_target`,
+  `an_agents_click_in_a_panel_does_not_move_the_target`, `leaving_the_page_ends_the_marker`,
   `a_new_document_starts_from_the_default_rule`, `gs_outlines_the_chosen_area_briefly_in_chrome`,
   `gs_reaches_a_cross_origin_frames_document_and_focuses_it`.
 
 ## Docs and changelog
 
-`docs/guide.md`, "Scrolling", gets the keys and the click rule; "Features at a glance" names
+`docs/guide.md` gets a section, "Pages with several scrolling panels", with the keys and the
+click rule; "Features at a glance" names
 them. `docs/bindings.md`, `docs/bindings.json` and `defaults.toml` are regenerated. The changelog
 line comes from the commit (`feat(scroll): ...`).
 

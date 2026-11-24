@@ -380,11 +380,25 @@ export const VimmaActors = {
    */
   async pickScrollArea(bc, wg, index) {
     if (bc.currentWindowGlobal !== wg) return null;
+    // Bounded like the areas' query: the scroll keys after `gs` wait for this answer, so a
+    // frame that never gives one must not hold them (scroll-area-ops.mjs).
+    const ms = bc.parent
+      ? Services.prefs.getIntPref(FRAME_TIMEOUT_PREF, FRAME_TIMEOUT_DEFAULT)
+      : HINT_TOP_TIMEOUT_MS;
+    /** @type {number | undefined} */
+    let timer;
     try {
-      const reply = await actorFor(bc)?.sendQuery("Vimma:ScrollAreaPick", { index });
+      /** @type {Promise<null>} */
+      const late = new Promise((resolve) => {
+        timer = setTimeout(resolve, ms, null);
+      });
+      const query = actorFor(bc)?.sendQuery("Vimma:ScrollAreaPick", { index });
+      const reply = await Promise.race([query, late]);
       return typeof reply === "boolean" ? reply : null;
     } catch {
       return null;
+    } finally {
+      clearTimeout(timer);
     }
   },
 

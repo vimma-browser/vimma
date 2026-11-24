@@ -350,15 +350,14 @@ export class PageScroll {
     const root = doc.scrollingElement;
     if (root && scrollsEither(root))
       out.push({ el: root, rect: { x: 0, y: 0, width: vw, height: vh } });
-    const min = SCROLL_AREA_MIN_SHARE * vw * vh;
     const all = doc.getElementsByTagName("*");
     for (let i = 0; i < Math.min(all.length, SEARCH_LIMIT); i++) {
       if (out.length >= SCROLL_AREA_MAX_PER_FRAME) break;
       const el = /** @type {Element} */ (all[i]);
-      if (el === root || !scrollsEither(el)) continue;
-      if (!el.checkVisibility({ visibilityProperty: true })) continue;
-      const rect = inView(el.getBoundingClientRect(), vw, vh);
-      if (!rect || rect.width * rect.height < min) continue;
+      if (el === root || !this.#isArea(el, vw, vh)) continue;
+      const rect = /** @type {{ x: number, y: number, width: number, height: number }} */ (
+        inView(el.getBoundingClientRect(), vw, vh)
+      );
       if (out.some((a) => a.el.contains(el) && sameBox(a.rect, rect))) continue;
       out.push({ el, rect });
     }
@@ -440,35 +439,59 @@ export class PageScroll {
     return this.#choose(area.el);
   }
 
-  /** Another frame's area was chosen (`Vimma:ScrollAreaClear`), or this document is hidden. */
+  /**
+   * Another frame's area was chosen (`Vimma:ScrollAreaClear`), or this document is hidden.
+   * @returns {boolean} whether a choice was held here
+   */
   clearArea() {
+    const held = !!this.#chosen;
     this.#chosen = null;
+    return held;
   }
 
   /**
-   * The user pressed the mouse (or `f` pressed for them) on `node`: the area around it becomes
-   * the target (docs/specs/scroll-area.md decision 5), as a wheel there would find it
-   * (EventStateManager::ComputeScrollTargetAndMayAdjustWheelEvent): the nearest element around
-   * it that scrolls, through shadow hosts, else the document's scroller.
+   * The user pressed the mouse (or `f` pressed for them) on `node`: the scroll area around it
+   * becomes the target (docs/specs/scroll-area.md decision 5), found the way a wheel there finds
+   * what it scrolls (EventStateManager::ComputeScrollTargetAndMayAdjustWheelEvent): the nearest
+   * element around it, through shadow hosts, that is an area by decision 2, else the document's
+   * scroller. A smaller scroller (a code block, a tab strip) is passed over, so that a click in
+   * one does not leave the keys there. Decided after the mousedown's own focus change, since
+   * the default rule starts from the focused element. Every such click is reported, also one
+   * that keeps the default rule here, so that it ends a choice held in another frame.
    * @param {EventTarget | null} node
    */
   clicked(node) {
-    const doc = this.#actor.document;
-    if (!doc) return;
-    const was = this.#chosen?.deref() ?? null;
-    /** @type {Element | null} */
-    let el =
-      node && /** @type {Node} */ (node).nodeType === 1 ? /** @type {Element} */ (node) : null;
-    if (!el && node && /** @type {Node} */ (node).nodeType === 3)
-      el = /** @type {Node} */ (node).parentElement;
-    for (; el; el = /** @type {Element | null} */ (el.assignedSlot) ?? parentOf(el)) {
-      if (scrollsEither(el)) break;
-    }
-    const root = doc.scrollingElement;
-    const area = el ?? (root && scrollsEither(root) ? root : null);
-    const chosen = this.#choose(area);
-    const now = this.#chosen?.deref() ?? null;
-    if (now !== was) this.#onChoice(chosen);
+    lazy.setTimeout(() => {
+      const doc = this.#actor.document;
+      const win = this.#actor.contentWindow;
+      if (!doc || !win) return;
+      let el =
+        node && /** @type {Node} */ (node).nodeType === 1 ? /** @type {Element} */ (node) : null;
+      if (!el && node && /** @type {Node} */ (node).nodeType === 3) {
+        el = /** @type {Node} */ (node).parentElement;
+      }
+      if (el && !el.isConnected) return;
+      const { vw, vh } = viewportSize(win);
+      for (; el; el = /** @type {Element | null} */ (el.assignedSlot) ?? parentOf(el)) {
+        if (el !== doc.scrollingElement && this.#isArea(el, vw, vh)) break;
+      }
+      const root = doc.scrollingElement;
+      const area = el ?? (root && scrollsEither(root) ? root : null);
+      this.#onChoice(this.#choose(area));
+    }, 0);
+  }
+
+  /**
+   * Whether `el` is a scroll area by decision 2: it scrolls, is visible, and shows at least
+   * SCROLL_AREA_MIN_SHARE of the viewport.
+   * @param {Element} el
+   * @param {number} vw
+   * @param {number} vh
+   */
+  #isArea(el, vw, vh) {
+    if (!scrollsEither(el) || !el.checkVisibility({ visibilityProperty: true })) return false;
+    const rect = inView(el.getBoundingClientRect(), vw, vh);
+    return !!rect && rect.width * rect.height >= SCROLL_AREA_MIN_SHARE * vw * vh;
   }
 
   /**
@@ -678,7 +701,11 @@ export class PageScroll {
    * @returns {Element | null}
    */
   target(vertical) {
-    for (let el = this.#chosenArea(); el; el = parentOf(el)) {
+    for (
+      let el = this.#chosenArea();
+      el;
+      el = /** @type {Element | null} */ (el.assignedSlot) ?? parentOf(el)
+    ) {
       if (canScroll(el, vertical)) return el;
     }
     return this.#defaultTarget(vertical);

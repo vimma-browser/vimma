@@ -13,6 +13,12 @@
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
 );
+const { VimmaActors } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs",
+);
+const { AgentActors } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/actors/AgentActors.sys.mjs",
+);
 
 const ROOT = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -149,6 +155,15 @@ add_task(async function a_click_in_a_panel_makes_it_the_target() {
   });
 });
 
+add_task(async function a_click_in_a_scroller_too_small_to_be_an_area_keeps_the_page() {
+  await withPage(async (browser) => {
+    await BrowserTestUtils.synthesizeMouseAtCenter("#code", {}, browser);
+    press("j");
+    await waitForPanels(browser, { tree: 0, main: STEP }, "j scrolls the page panel around it");
+    Assert.ok(!marked(), "no marker for a code block");
+  });
+});
+
 add_task(async function a_click_the_page_dispatches_does_not_move_the_target() {
   await withPage(async (browser) => {
     // An agent's press is dispatched as the page's own script would (VimmaChild #press), so
@@ -159,6 +174,33 @@ add_task(async function a_click_the_page_dispatches_does_not_move_the_target() {
         /** @type {unknown} */ (content.wrappedJSObject)
       ).pageClick("tree-text");
     });
+    press("j");
+    await waitForPanels(browser, { tree: 0, main: STEP }, "j still scrolls the page");
+    Assert.ok(!marked(), "no marker");
+  });
+});
+
+add_task(async function an_agents_click_in_a_panel_does_not_move_the_target() {
+  await withPage(async (browser) => {
+    // The agent's own path (vimma_activate): its element list, then its press.
+    const targets = await VimmaActors.collectHints(browser, "hint.follow", {
+      agent: true,
+      elements: true,
+    });
+    const row = targets.find((t) => t.rect.x < 300 && t.rect.y > 40);
+    Assert.ok(row, "the agent's list has the tree's row");
+    const sent = await AgentActors.agentActivate(/** @type {any} */ (row), {
+      submit: null,
+      href: null,
+      until: Date.now() + 10000,
+    });
+    Assert.equal(sent, "ok", "the agent's click ran");
+    await SpecialPowers.spawn(browser, [], () =>
+      ContentTaskUtils.waitForCondition(
+        () => content.document.body.dataset.rowClicked === "yes",
+        "the row got the agent's click",
+      ),
+    );
     press("j");
     await waitForPanels(browser, { tree: 0, main: STEP }, "j still scrolls the page");
     Assert.ok(!marked(), "no marker");
@@ -176,6 +218,18 @@ add_task(async function a_new_document_starts_from_the_default_rule() {
     await TestUtils.waitForCondition(() => !marked(), "no marker on the new document");
     press("j");
     await waitForPanels(browser, { tree: 0, main: STEP }, "j scrolls the page panel again");
+  });
+});
+
+add_task(async function leaving_the_page_ends_the_marker() {
+  await withPage(async (browser) => {
+    press("g", "s");
+    await TestUtils.waitForCondition(marked, "the tree is chosen");
+    // A link followed: the old document may stay in the back-forward cache, alive.
+    const loaded = BrowserTestUtils.browserLoaded(browser);
+    BrowserTestUtils.startLoadingURIString(browser, ROOT + "file_vimma_scroll_area_inner.html");
+    await loaded;
+    await TestUtils.waitForCondition(() => !marked(), "no marker on the next page");
   });
 });
 
@@ -232,10 +286,13 @@ add_task(async function gs_reaches_a_cross_origin_frames_document_and_focuses_it
     press("j");
     await TestUtils.waitForCondition(async () => (await frameY()) === STEP, "j scrolls the frame");
     Assert.equal(await treeY(), STEP, "the tree stays");
-    press("g", "s");
+    // A click on the top document's own area ends the frame's choice and its marker.
+    await TestUtils.waitForCondition(marked, "the frame's area is marked");
+    await BrowserTestUtils.synthesizeMouseAtCenter("#tree-text", {}, browser);
+    await TestUtils.waitForCondition(() => !marked(), "a click in the tree ends the marker");
     await TestUtils.waitForCondition(
       () => Services.focus.focusedContentBrowsingContext === top,
-      "gs again takes focus back to the top document",
+      "the click takes focus back to the top document",
     );
     press("j");
     await TestUtils.waitForCondition(
@@ -243,5 +300,10 @@ add_task(async function gs_reaches_a_cross_origin_frames_document_and_focuses_it
       "j scrolls the tree again",
     );
     Assert.equal(await frameY(), STEP, "the frame stays");
+    press("g", "s");
+    await TestUtils.waitForCondition(
+      () => Services.focus.focusedContentBrowsingContext === frame,
+      "gs after the click goes to the frame again, not to the tree it is on",
+    );
   }, PAGE + "?frame");
 });

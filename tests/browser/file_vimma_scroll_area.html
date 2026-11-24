@@ -53,10 +53,17 @@
     <header>Space</header>
     <div id="tree">
       <p id="tree-text">Page tree</p>
+      <!-- A row an agent can click (a hint target); not focusable. -->
+      <span id="tree-row" role="button" onclick="document.body.dataset.rowClicked = 'yes'"
+        >Child page</span
+      >
       <div class="tall"></div>
     </div>
     <div id="main">
       <p id="main-text">The page</p>
+      <!-- A code block that scrolls sideways: a scroller, but too small to be an area. -->
+      <pre id="code" style="overflow-x: auto; width: 200px">
+const aVeryLongLineThatDoesNotFitInTwoHundredPixelsOfWidthAtAll = "and keeps going on";</pre>
       <div class="tall"></div>
     </div>
     <script>
