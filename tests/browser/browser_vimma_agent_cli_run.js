@@ -38,7 +38,7 @@ const { AGENT_DEFAULTS } = ChromeUtils.importESModule(
 const { providerKey } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/agent-setup.mjs",
 );
-const { CLIS, claudeArguments } = ChromeUtils.importESModule(
+const { CLIS, claudeArguments, searchFolders } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/agent-cli.mjs",
 );
 const { chatHeader, sendNotice: windowNotice } = ChromeUtils.importESModule(
@@ -180,8 +180,8 @@ async function installFake() {
 /**
  * What the fake CLI wrote of its run (fake_vimma_agent_cli.py): its arguments, folder and
  * environment's names, the lines on its input, each vimma-ctl call it made, its MCP
- * configuration, and the times it ignored SIGTERM and saw its input close.
- * @typedef {{ args: string[], cwd: string, env: string[],
+ * configuration, its PATH, and the times it ignored SIGTERM and saw its input close.
+ * @typedef {{ args: string[], cwd: string, env: string[], path: string | null,
  *   lines: { message: { content: string } }[],
  *   calls: { name: string, isError: boolean, text: string, at: number }[],
  *   mcp_config_mode: string | null, dir_mode: string | null, mcp_servers: string[],
@@ -250,6 +250,9 @@ add_setup(async () => {
   registerCleanupFunction(() => OSKeyStoreTestUtils.cleanup());
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, false);
   Services.prefs.setBoolPref(ENABLED_PREF, false);
+  // The machine's own login shell and install folders stay out of every test but those that
+  // stand in for them (installLoginShell), on macOS too.
+  AgentCli._macOS = false;
   fake = await installFake();
   const ctl = await vimmaCtl();
   if (ctl) Services.prefs.setStringPref(VIMMA_CTL_PREF, ctl);
@@ -260,6 +263,7 @@ add_setup(async () => {
     Services.prefs.clearUserPref(pathPref("claude-code"));
     Services.prefs.clearUserPref(VIMMA_CTL_PREF);
     Services.env.set("FAKE_CLI_REPORT", "");
+    AgentCli._macOS = null;
     await IOUtils.remove(fake.dir, { recursive: true, ignoreAbsent: true });
   });
   await VimmaControl.settled();
@@ -697,6 +701,137 @@ addTidyTask(async function test_a_shim_runs_as_the_cli_it_is_named_after() {
     Assert.ok(!(await IOUtils.exists(fake.report)), "and it never ran");
   } finally {
     await IOUtils.remove(shim.dir, { recursive: true });
+  }
+});
+
+/** launchd's PATH: what a macOS app started from the Dock, Finder or `open` gets. */
+const LAUNCHD_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
+
+/**
+ * A home-like folder whose `bin/claude` is the fake, found only on the login shell's PATH, and a
+ * login shell, `sh`, that prints a banner as an rc file may, then runs the command it is given
+ * with that PATH (C4, Since changed: issue #1518). It touches `ran` when it runs.
+ * @param {number} [mode]  the shell file's
+ */
+async function installLoginShell(mode = 0o700) {
+  const dir = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-login", 0o700);
+  const bin = PathUtils.join(dir, "bin");
+  await IOUtils.makeDirectory(bin, { permissions: 0o700 });
+  const cli = PathUtils.join(bin, "claude");
+  await IOUtils.copy(fake.bin, cli);
+  await IOUtils.setPermissions(cli, 0o700);
+  const ran = PathUtils.join(dir, "ran");
+  const shell = PathUtils.join(dir, "sh");
+  await IOUtils.writeUTF8(
+    shell,
+    [
+      "#!/bin/sh",
+      `/usr/bin/touch '${ran}'`,
+      'echo "Welcome: a banner an rc file prints"',
+      '[ "$1 $2 $3" = "-l -i -c" ] || exit 3',
+      `PATH='${bin}:/usr/bin:/bin'; export PATH`,
+      'exec /bin/sh -c "$4"',
+      "",
+    ].join("\n"),
+  );
+  await IOUtils.setPermissions(shell, mode, false);
+  return { dir, bin, cli, shell, ran, login: [bin, "/usr/bin", "/bin"] };
+}
+
+/**
+ * Runs `task` as macOS Vimma started from the Dock: launchd's PATH, `SHELL` the given one.
+ * @param {string} shell @param {() => Promise<void>} task
+ */
+async function asDockApp(shell, task) {
+  const saved = { PATH: Services.env.get("PATH"), SHELL: Services.env.get("SHELL") };
+  Services.env.set("PATH", LAUNCHD_PATH);
+  Services.env.set("SHELL", shell);
+  AgentCli._macOS = true;
+  try {
+    await task();
+  } finally {
+    AgentCli._macOS = false;
+    Services.env.set("PATH", saved.PATH);
+    Services.env.set("SHELL", saved.SHELL);
+  }
+}
+
+addTidyTask(async function test_on_macos_setup_searches_the_login_shells_path() {
+  const login = await installLoginShell();
+  try {
+    await asDockApp(login.shell, async () => {
+      const found = await AgentCli.find();
+      const claude = found.find((f) => f.cli === "claude-code");
+      Assert.equal(claude?.path, login.cli, "the CLI on the login shell's PATH is listed");
+      Assert.equal(claude?.label, `claude 2.1.303 · ${login.cli}`, "with its version and path");
+      Assert.strictEqual(claude?.problem, null, "and nothing wrong with its file");
+    });
+  } finally {
+    await IOUtils.remove(login.dir, { recursive: true });
+  }
+});
+
+addTidyTask(async function test_on_macos_the_cli_runs_with_the_login_shells_path() {
+  if (!(await needCtl())) return;
+  const login = await installLoginShell();
+  try {
+    await asDockApp(login.shell, async () => {
+      AgentCli.use("claude-code", login.cli);
+      const result = await run(conversation().id, "hello");
+      Assert.equal(result.outcome, "done", `done: ${result.error}`);
+      const home = Services.dirsvc.get("Home", Ci.nsIFile).path;
+      Assert.equal(
+        (await readReport(fake.report)).path,
+        searchFolders({ login: login.login, env: LAUNCHD_PATH, home }).join(":"),
+        "its PATH is the one it was found on, so a script's interpreter is found as in a terminal",
+      );
+    });
+  } finally {
+    await IOUtils.remove(login.dir, { recursive: true });
+  }
+});
+
+addTidyTask(async function test_on_macos_a_login_shell_others_can_write_is_not_run() {
+  const login = await installLoginShell(0o722);
+  try {
+    await asDockApp(login.shell, async () => {
+      const found = await AgentCli.find();
+      Assert.ok(!(await IOUtils.exists(login.ran)), "the shell never ran");
+      Assert.ok(
+        !found.some((f) => f.path === login.cli),
+        "and nothing on its PATH is listed; the install folders still are searched",
+      );
+    });
+  } finally {
+    await IOUtils.remove(login.dir, { recursive: true });
+  }
+});
+
+addTidyTask(async function test_elsewhere_the_login_shell_is_never_run() {
+  const login = await installLoginShell();
+  const saved = Services.env.get("SHELL");
+  const savedPath = Services.env.get("PATH");
+  try {
+    Services.env.set("SHELL", login.shell);
+    AgentCli._macOS = false;
+    await AgentCli.find();
+    Assert.ok(!(await IOUtils.exists(login.ran)), "Linux's PATH is the session's own");
+    // A macOS Vimma started from a terminal has that terminal's PATH, and an interactive shell
+    // it started would share the terminal.
+    Services.env.set("PATH", `${fake.dir}:/usr/bin:/bin`);
+    AgentCli._macOS = true;
+    const found = await AgentCli.find();
+    Assert.ok(!(await IOUtils.exists(login.ran)), "nor on macOS when a terminal gave the PATH");
+    Assert.equal(
+      found.find((f) => f.cli === "claude-code")?.path,
+      fake.bin,
+      "which is searched as it is",
+    );
+  } finally {
+    AgentCli._macOS = false;
+    Services.env.set("PATH", savedPath);
+    Services.env.set("SHELL", saved);
+    await IOUtils.remove(login.dir, { recursive: true });
   }
 });
 

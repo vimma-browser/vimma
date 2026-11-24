@@ -18,6 +18,11 @@ import {
   CLI_IDS,
   CLI_STREAM_LIMITS,
   KILL_GRACE_MS,
+  launchdPath,
+  LOGIN_PATH_LIMIT,
+  LOGIN_PATH_MS,
+  loginPathArgs,
+  loginPathFrom,
   MAX_MINUTES,
   besideBinary,
   cliEnvironment,
@@ -28,6 +33,7 @@ import {
   geminiProjects,
   pathProblem,
   refusedText,
+  searchFolders,
   shimText,
   taskPrompt,
   VERSION_MS,
@@ -252,16 +258,118 @@ async function inspect(path, { trusted = null, cli } = {}) {
   }
 }
 
+/** Test-only: null follows the platform; true or false stands in for macOS or for Linux. */
+let macOverride = /** @type {boolean | null} */ (null);
 /**
- * Every `bin` on PATH, in PATH's order, once each: setup lists one of them (Behaviour 1).
+ * The login shell's PATH for this session (C4, Since changed): asked once, its answer or its
+ * lack kept until Vimma restarts, so a slow shell delays one search, not every task.
+ * @type {Promise<string[] | null> | null}
+ */
+let loginPath = null;
+
+/** What the login shell's time limit resolves to, apart from any answer. */
+const LATE = Symbol("late");
+
+const onMac = () => macOverride ?? Services.appinfo.OS === "Darwin";
+
+/**
+ * The PATH the login shell prints (C4, Since changed: issue #1518), or null: `$SHELL`, checked as
+ * the CLI's program is, run with `-l -i -c` and a fixed command (`loginPathArgs`), the CLI's
+ * environment, no input, in the home folder, and killed after LOGIN_PATH_MS. Its output is read
+ * only until the closing mark, so a daemon a startup file leaves holding it does not hold this.
+ * @returns {Promise<string[] | null>}
+ */
+async function askLoginShell() {
+  const shell = Services.env.get("SHELL");
+  if (!shell) return null;
+  const checked = await inspect(shell);
+  if (!("path" in checked)) return null;
+  const mark = Services.uuid
+    .generateUUID()
+    .toString()
+    .replace(/[^0-9a-f]/g, "");
+  /** @type {number | undefined} */
+  let timer;
+  try {
+    const proc = await lazy.Subprocess.call({
+      command: checked.path,
+      arguments: loginPathArgs(mark),
+      environment: cliEnvironment(lazy.Subprocess.getEnvironment()),
+      workdir: Services.dirsvc.get("Home", Ci.nsIFile).path,
+      stderr: "pipe",
+    });
+    proc.stdin.close().catch(() => {});
+    tail(proc.stderr).catch(() => {});
+    let exited = false;
+    proc.wait().then(
+      () => (exited = true),
+      () => (exited = true),
+    );
+    const out = /** @type {SubprocessInputPipe} */ (proc.stdout);
+    const read = (async () => {
+      let text = "";
+      for (let s; (s = await out.readString());) {
+        // Twice the longest PATH, for the marks and a banner's end around it.
+        text = (text + s).slice(-2 * LOGIN_PATH_LIMIT);
+        // Both marks are in: the shell's answer is whole.
+        if (text.split(`${mark}\n`).length > 2) break;
+      }
+      return loginPathFrom(text, mark);
+    })();
+    const late = new Promise((resolve) => {
+      timer = lazy.setTimeout(() => resolve(LATE), LOGIN_PATH_MS);
+    });
+    const got = await Promise.race([read.catch(() => null), late]);
+    // Read no more: a shell that keeps printing would block on a full pipe, and a child that
+    // holds the pipe open would keep the read waiting.
+    out.close().catch(() => {});
+    if (got !== LATE) return /** @type {string[] | null} */ (got);
+    // Only a shell still running is signalled: Subprocess rejects, uncaught, a kill of one
+    // that has exited and been reaped.
+    if (!exited) proc.kill().catch(() => {});
+    return null;
+  } catch {
+    return null;
+  } finally {
+    lazy.clearTimeout(timer);
+  }
+}
+
+/**
+ * The folders setup searches, in order, which are the CLI's PATH too: Vimma's own PATH, and on
+ * macOS the login shell's first and the usual install folders after (`searchFolders`).
+ * @returns {Promise<string[]>}
+ */
+async function searchPath() {
+  const env = Services.env.get("PATH");
+  if (!onMac()) return env.split(":");
+  const home = Services.dirsvc.get("Home", Ci.nsIFile).path;
+  if (!launchdPath(env)) return searchFolders({ login: null, env, home });
+  loginPath ??= askLoginShell();
+  return searchFolders({ login: await loginPath, env, home });
+}
+
+/**
+ * The environment a CLI and its version call run with (C5): Vimma's own without the browser's
+ * variables, and on macOS the PATH setup searched, so a script's interpreter is found as it is
+ * in a terminal.
+ */
+async function runEnvironment() {
+  const env = cliEnvironment(lazy.Subprocess.getEnvironment());
+  if (onMac()) env.PATH = (await searchPath()).join(":");
+  return env;
+}
+
+/**
+ * Every `bin` on the search path, in its order, once each: setup lists one of them
+ * (Behaviour 1).
  * @param {string} bin
  * @returns {Promise<string[]>}
  */
 async function onPath(bin) {
-  const PATH = Services.env.get("PATH");
   /** @type {string[]} */
   const out = [];
-  for (const dir of PATH.split(":")) {
+  for (const dir of await searchPath()) {
     if (!PathUtils.isAbsolute(dir)) continue;
     const path = PathUtils.join(dir, bin);
     if (out.includes(path)) continue;
@@ -439,7 +547,7 @@ async function runFixed(path, args, { workdir, keep, ms = VERSION_MS }) {
     proc = await lazy.Subprocess.call({
       command: path,
       arguments: [...args],
-      environment: cliEnvironment(lazy.Subprocess.getEnvironment()),
+      environment: await runEnvironment(),
       workdir,
       stderr: "pipe",
     });
@@ -573,6 +681,15 @@ export const AgentCli = {
 
   /** Test-only: run folders of this Vimma's that are going. */
   _liveRuns: liveRuns,
+
+  /** Test-only: true or false stands in for macOS or not, null follows the platform. */
+  get _macOS() {
+    return macOverride;
+  },
+  set _macOS(value) {
+    macOverride = value;
+    loginPath = null;
+  },
 
   get enabled() {
     return Services.prefs.getBoolPref(CLI_ENABLED_PREF, false);
@@ -831,7 +948,7 @@ export const AgentCli = {
           arguments: cli.args(run),
           // A CLI whose server takes no file has the ticket in its own environment (C3).
           environment: {
-            ...cliEnvironment(lazy.Subprocess.getEnvironment()),
+            ...(await runEnvironment()),
             ...cli.env({ ticket: issued.ticket, port: issued.port, dir }),
           },
           workdir: dir,

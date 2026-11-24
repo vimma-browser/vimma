@@ -2530,8 +2530,9 @@ to each, are under [Supported CLIs](#supported-clis); everything else here holds
    `claude` and `/login`; for Codex, `codex login`; for Gemini CLI, `gemini` and its sign-in). Vimma runs the same program with the same login.
 2. Press `ctrl+b i` (or type `:agent`): the chat window opens beside the page.
 3. Press `Esc`, then `m`, for the model picker, move to `add: agent CLI (…)` with `j` and press
-   `Enter`. Vimma looks for each supported CLI's program on your `PATH`, only now, and lists what
-   it finds with its version and full path, such as `claude 2.1.303 · /home/you/.local/bin/claude`.
+   `Enter`. Vimma looks for each supported CLI's program on your `PATH` (on macOS, the one your
+   terminal has), only now, and lists what it finds with its version and full path, such as
+   `claude 2.1.303 · /home/you/.local/bin/claude`.
    A CLI slow to start, as on its first start after an install, is listed as
    `codex gave no version in 5 s · <path>` and can still be picked. Press `Enter` on it.
 4. The prompt line asks `agent model:` with the CLI's suggested model filled in (`sonnet` for
@@ -2584,6 +2585,18 @@ kept in the pref `vimma.agent.cli.<cli>.path` (`vimma.agent.cli.claude-code.path
 `config.toml`, and is checked before every task (see "Its program is refused" below). The
 provider is added to `config.toml` with its model, and becomes `[agent] default` when you had
 none.
+
+On macOS, an app started from the Dock, Finder, Spotlight or `open` does not get the `PATH` your
+terminal has, only `/usr/bin:/bin:/usr/sbin:/sbin`. So that setup finds the CLI where your
+terminal does, Vimma asks your login shell (the one `$SHELL` names: zsh, bash, sh or fish) for
+its `PATH`, once per session, the first time setup looks or a task starts: it reads `.zprofile` and
+`.zshrc` as a new terminal does, so the folders nvm, mise, asdf or an installer added there are
+searched. It then searches Vimma's own `PATH`, `~/.local/bin`, `/opt/homebrew/bin` and
+`/usr/local/bin`, and the CLI runs with that same `PATH`, so a CLI that needs `node` finds it as in
+your terminal. When the shell takes longer than 10 s to answer, or other users could change its
+file, Vimma searches the rest without its answer until it restarts. A Vimma started from a
+terminal already has that terminal's `PATH`, so it uses it as it is and asks no shell. On Linux,
+Vimma uses its own `PATH`, which a desktop session takes from your login.
 
 **Choosing the model.** Once a CLI is set up, `Esc`, then `m`, lists one row for each model Vimma
 knows the CLI takes, under the provider's name (`claude · opus`), a row for the CLI's own default
@@ -2685,7 +2698,8 @@ list finds it again` (the row reads `not available`): the program Vimma stored w
   updated to another path or fails a check below. Pick `add: agent CLI (…)` again.
 - `no agent CLI found on PATH (looked for …); install one and log in to it first`: install the
   CLI, or start Vimma from a shell whose `PATH` has it (a version manager such as mise may add it
-  only in your shell).
+  only in your shell). On macOS, check that `$SHELL -l -i -c 'printenv PATH'` in a terminal
+  prints, within 10 s, a `PATH` that holds the CLI's folder.
 - `stopped: <cli> is not set up: m in the window finds it`: `config.toml` names the provider, but
   its program was never picked in the window on this profile. `Esc`, `m`, then
   `add: agent CLI (…)`.

@@ -28,7 +28,12 @@ text that pages, add-ons and bookmarks choose.
   chat window; its `--version` is the only other call, with that fixed argument, while setup
   lists what a search of `PATH` found, and, for a CLI that has no flag to leave out its other
   MCP servers (Codex), one fixed listing of them (`codex mcp list --json`) right before the
-  run, from the same checked path, with no shell and no standard input. Opening a download or
+  run, from the same checked path, with no shell and no standard input. On macOS, where an app
+  the Dock starts gets launchd's `PATH`, the one shell this exception allows is the login shell
+  `$SHELL` names, checked as the CLI's program is, run at most once per session when setup
+  searches or a task starts and Vimma's `PATH` is launchd's own, with `-l -i -c` and one fixed command that prints `PATH` between
+  two random marks, no standard input and a 10 s limit; nothing of a page, a task or a config
+  value reaches its command line. Opening a download or
   showing it in its folder hands a file to the OS too: chrome code **must** ask Firefox for it
   only through `DownloadsCommon.openDownload` and `Download.showContainingDirectory`, only from
   `host/download-ops.mjs`, and only on a key the user pressed in the downloads picker (§21), so

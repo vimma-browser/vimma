@@ -190,6 +190,8 @@ add_setup(async () => {
   registerCleanupFunction(() => OSKeyStoreTestUtils.cleanup());
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, false);
   Services.prefs.setBoolPref(ENABLED_PREF, false);
+  // The machine's own login shell and install folders stay out of these tests, on macOS too.
+  AgentCli._macOS = false;
   const dir = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-fake-codex", 0o700);
   const bin = PathUtils.join(dir, "codex");
   await IOUtils.copy(repoFile("tests", "browser", "fake_vimma_agent_codex.py"), bin);
@@ -203,6 +205,7 @@ add_setup(async () => {
   savedConfig = McpHost.agentConfig;
   McpHost.configureAgent(agentConfig({ default: "codex", providers: [CODEX] }));
   registerCleanupFunction(async () => {
+    AgentCli._macOS = null;
     McpHost.configureAgent(savedConfig);
     Services.prefs.clearUserPref(pathPref("codex"));
     Services.prefs.clearUserPref(VIMMA_CTL_PREF);
