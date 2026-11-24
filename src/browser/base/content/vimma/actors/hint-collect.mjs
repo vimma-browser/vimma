@@ -534,7 +534,11 @@ function withHoverOnly(win, clickable) {
   const listed = new Set(clickable.targets.map((t) => t.el));
   const extra = collectHover(win)
     .targets.filter(
-      (t) => (t.hoverKind === "listener" || t.hoverKind === "block") && !listed.has(t.el),
+      (t) =>
+        (t.hoverKind === "listener" || t.hoverKind === "block") &&
+        !listed.has(t.el) &&
+        // A rich text editor's text is what the user wrote: never listed (security.md M31).
+        !(/** @type {HTMLElement} */ (t.el).isContentEditable),
     )
     .map((t) => ({
       el: t.el,

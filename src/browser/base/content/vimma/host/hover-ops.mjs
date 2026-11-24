@@ -62,6 +62,21 @@ const runs = new WeakMap();
 /** @type {(browser: MozBrowser) => void} */
 let changed = () => {};
 
+/**
+ * Each tab's agent releases, by connection: a hover call that began before the count it read
+ * changed was released before it ran, and must not hover (security.md M67).
+ * @type {WeakMap<MozBrowser, Map<ConnId, number>>}
+ */
+const releases = new WeakMap();
+/** Connections that ended: a hover of theirs still on its way must not run. */
+/** @type {Set<ConnId>} */
+const ended = new Set();
+
+/** @param {MozBrowser} browser @param {ConnId} conn */
+function releaseCount(browser, conn) {
+  return releases.get(browser)?.get(conn) ?? 0;
+}
+
 /** @param {MozBrowser} browser */
 function forget(browser) {
   held.delete(browser);
@@ -159,13 +174,21 @@ export const HoverOps = {
    * @param {ConnId} conn @param {boolean} ran @param {string} text
    */
   agentRan(browser, run, target, conn, ran, text) {
-    if (runs.get(browser) !== run) return false;
+    if (runs.get(browser) !== run) {
+      // Released or replaced while it was on its way: a hover that ran anyway is let go, unless
+      // a newer one holds that document (it replaced this one there).
+      const now = held.get(browser) ?? pending.get(browser);
+      if (ran && now?.wg !== target.wg) {
+        AgentActors.agentHoverRelease(target.bc, target.wg).catch(() => {});
+      }
+      return false;
+    }
     pending.delete(browser);
     if (!ran || target.bc.currentWindowGlobal !== target.wg) {
-      // A hover the frame held in that document before is let go too, so that none stays
-      // without chrome knowing of it.
+      // A hover of this connection's the frame held in that document before is let go too,
+      // so that none stays without chrome knowing of it; never the user's.
       const h = held.get(browser);
-      if (h?.wg === target.wg) letGo(h);
+      if (h?.wg === target.wg && h.conn === conn) letGo(h);
       forget(browser);
       changed(browser);
       return false;
@@ -189,8 +212,31 @@ export const HoverOps = {
    * @returns {boolean} whether it had one
    */
   agentRelease(browser, conn) {
+    let counts = releases.get(browser);
+    if (!counts) releases.set(browser, (counts = new Map()));
+    counts.set(conn, releaseCount(browser, conn) + 1);
     const mine = held.get(browser)?.conn === conn || pending.get(browser)?.conn === conn;
     return mine ? this.release(browser) : false;
+  },
+
+  /**
+   * A token for an agent's hover call in `browser`, taken when the call starts: `stillWanted`
+   * says whether it may still hover, false once the connection released in that tab or ended
+   * since, so that a release or an end that overtakes a hover on its way ends it too.
+   * @param {MozBrowser} browser @param {ConnId} conn
+   */
+  agentCall(browser, conn) {
+    const at = releaseCount(browser, conn);
+    return { stillWanted: () => !ended.has(conn) && releaseCount(browser, conn) === at };
+  },
+
+  /**
+   * Whether the user holds or is asking a hover in `browser`: an agent's hover there would
+   * replace it, so it is denied as the tab being in use.
+   * @param {MozBrowser} browser
+   */
+  userHovering(browser) {
+    return held.get(browser)?.conn === null || pending.get(browser)?.conn === null;
   },
 
   /**
@@ -198,6 +244,7 @@ export const HoverOps = {
    * @param {ConnId} conn
    */
   forgetConn(conn) {
+    ended.add(conn);
     for (const ref of [...holders]) {
       const b = ref.deref();
       if (b) this.agentRelease(b, conn);

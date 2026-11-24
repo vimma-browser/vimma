@@ -452,3 +452,91 @@ addTidyTask(async function test_agent_hover_rate() {
   const release = await call(c, "agent-hover", { tab: idOf(tab), release: true });
   Assert.ok(release.ok, "a release runs past the rate");
 });
+
+// security.md M67: a release or the connection's end while a hover is still on its way
+// to the page ends it too; no lock stays that chrome does not know of.
+addTidyTask(async function test_agent_hover_released_while_pending() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await listed(c, tab, GRANT);
+  const hovering = c.request("agent-hover", { tab: idOf(tab), label: by.General.label });
+  const released = await c.call("agent-hover", { tab: idOf(tab), release: true });
+  Assert.ok(released.ok, "the release runs");
+  await c.response(hovering);
+  await TestUtils.waitForTick();
+  Assert.deepEqual(
+    await hovered(tab, "row1"),
+    { matches: false, locked: false },
+    "a hover released before it ran leaves no lock",
+  );
+  Assert.equal(HoverOps.status(tab.linkedBrowser), null, "and chrome holds none");
+  // The connection ends while its hover is on its way.
+  const c2 = await agentClient();
+  const by2 = await listed(c2, tab, GRANT);
+  c2.request("agent-hover", { tab: idOf(tab), label: by2.Random.label });
+  c2.close();
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+  Assert.deepEqual(
+    await hovered(tab, "row2"),
+    { matches: false, locked: false },
+    "a hover whose connection ended leaves no lock",
+  );
+  Assert.equal(HoverOps.status(tab.linkedBrowser), null, "and chrome holds none");
+});
+
+// security.md M67: the user's own hover in a tab is the user's: an agent's hover there
+// is denied as the tab being in use, and its release never ends the user's.
+addTidyTask(async function test_agent_hover_leaves_the_users_hover() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await listed(c, tab, GRANT);
+  const targets = await VimmaActors.collectHints(tab.linkedBrowser, "hint.hover");
+  const row = await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    const r = /** @type {Element} */ (
+      content.document.getElementById("name2")
+    ).getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  const target = targets.find(
+    (t) =>
+      t.rect.x <= row.x &&
+      row.x <= t.rect.x + t.rect.width &&
+      t.rect.y <= row.y &&
+      row.y <= t.rect.y + t.rect.height,
+  );
+  Assert.ok(target, "the user's hint for the second row");
+  await HoverOps.hover(tab.linkedBrowser, /** @type {HintTarget} */ (target));
+  Assert.equal(HoverOps.status(tab.linkedBrowser)?.agent, false, "the user holds a hover");
+  const r = await c.call("agent-hover", { tab: idOf(tab), label: by.General.label });
+  Assert.equal(r.error?.reason, "in-use", "an agent's hover is denied while the user hovers");
+  const release = await call(c, "agent-hover", { tab: idOf(tab), release: true });
+  Assert.equal(release.result?.released, false, "an agent's release has nothing of its own");
+  Assert.equal(HoverOps.status(tab.linkedBrowser)?.agent, false, "the user's hover holds");
+  Assert.equal((await hovered(tab, "row2")).locked, true, "with its lock");
+  HoverOps.release(tab.linkedBrowser);
+});
+
+// security.md M31, M67: a rich text editor's content is never listed, also not as a
+// hover target.
+addTidyTask(async function test_agent_hover_lists_nothing_inside_an_editor() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    const doc = content.document;
+    const editor = doc.createElement("div");
+    editor.contentEditable = "true";
+    editor.innerHTML = '<p><span title="a note">Private draft words</span></p>';
+    doc.body.prepend(editor);
+  });
+  const r = await call(
+    c,
+    "agent-elements",
+    { tab: idOf(tab), kinds: ["hover"], full: true },
+    GRANT,
+  );
+  Assert.ok(r.ok, "vimma_elements runs");
+  Assert.ok(!r.result.elements.includes("Private draft"), "the editor's text is not listed");
+});

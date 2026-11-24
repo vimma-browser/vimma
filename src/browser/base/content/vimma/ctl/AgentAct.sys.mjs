@@ -492,8 +492,9 @@ export const AgentAct = {
    * changed in place (`changed`).
    * @param {MozTabBrowser} browser @param {HintTarget} target
    * @param {{ submit: { method: string, action: string } | null, href: string | null,
-   *   inUse: () => boolean, hover?: boolean }} asked  `submit`: the submission the question
-   *   named; `hover`: hover the element instead (docs/specs/hover.md decision 9)
+   *   inUse: () => boolean, hover?: boolean, still?: () => boolean }} asked  `submit`: the
+   *   submission the question named; `hover`: hover the element instead (docs/specs/hover.md
+   *   decision 9); `still`: whether it may still run
    * @returns {Promise<{ refused: string, blocked?: string } | { navigated: boolean,
    *   loading: boolean, dialog?: { type: string, text: string }, blocked?: string,
    *   stopped?: "in-use", changed?: string[] }>}
@@ -512,17 +513,21 @@ export const AgentAct = {
    * `activate`, once no other click runs on the tab.
    * @param {MozTabBrowser} browser @param {HintTarget} target
    * @param {{ submit: { method: string, action: string } | null, href: string | null,
-   *   inUse: () => boolean, hover?: boolean }} asked  `hover`: an agent's hover of the element
-   *   (docs/specs/hover.md decision 9) in place of the click, waited for and reported the same way
+   *   inUse: () => boolean, hover?: boolean, still?: () => boolean }} asked  `hover`: an
+   *   agent's hover of the element (docs/specs/hover.md decision 9) in place of the click, waited
+   *   for and reported the same way; `still`: whether it may still run, checked just before
    * @returns {Promise<{ refused: string, blocked?: string } | { navigated: boolean,
    *   loading: boolean, dialog?: { type: string, text: string }, blocked?: string,
    *   stopped?: "in-use", changed?: string[] }>}
    */
-  async activateNow(browser, target, { submit, href, inUse, hover = false }) {
+  async activateNow(browser, target, { submit, href, inUse, hover = false, still = () => true }) {
     const before = pageOf(browser);
     // A hover is marked too, with no submission allowed: one its handlers try is stopped (M67).
     const marked = await bounded(AgentActors.agentMark(browser, submit), false, COLLECT_TIMEOUT_MS);
     if (!marked) return { refused: "the page did not answer in time" };
+    // Checked again just before the step is sent: it may have waited behind another step.
+    if (!still()) return { refused: "the hover was released before it ran; nothing was hovered" };
+    if (hover && inUse()) return { refused: "the user started using the tab; nothing was hovered" };
     const dialogs = watchDialogs(browser);
     try {
       // The child clicks nothing once this call has stopped waiting for its answer.

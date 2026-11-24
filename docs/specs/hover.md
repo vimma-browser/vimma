@@ -466,6 +466,9 @@ listeners for `mousemove`, `pointermove` and `mouseover`:
      only ends the hover the same connection began, which was asked and logged: asking would
      make an agent answer a question to undo its own step, and a rate refusal would leave a
      hover held. It runs page code (the untrusted leave events) only while that hover is held;
+   - it is denied with `in-use` also while the user holds their own hover (`gh`) in the tab,
+     because the agent's would replace it; a release or the connection's end that overtakes a
+     hover still on its way ends it too, so no lock is left that chrome does not know of;
    - the user starts to use the tab with a key of theirs while it is selected, or a real mouse
      move over its page (decision 5), because that is when their input reaches the page;
      bringing the tab to the front alone keeps the hover, so that `vimma_show` shows what it
@@ -486,7 +489,9 @@ listeners for `mousemove`, `pointermove` and `mouseover`:
     agent's context, and the agent asks for hover targets when its task needs a hover.
     Rejected: always listing them (text pages would flood the list) and listing none (a CSS-only
     row could not be hovered by an agent). A list asked with `hover` labels more elements than
-    one without, so their labels differ; as with every list, the newest is the connection's.
+    one without, so their labels differ; as with every list, the newest is the connection's. An
+    element inside a rich text editor is never listed as a hover target, because its text is
+    what the user wrote (security.md M31).
     `vimma_hover` accepts a label of either kind.
 
 11. **No new Firefox patch.** `InspectorUtils` and `flattenedTreeParentNode` are available to

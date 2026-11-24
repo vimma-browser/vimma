@@ -1276,6 +1276,10 @@ const COMMANDS = {
       };
     }
     const { label, elements = false, query, kinds } = args;
+    // A release or the connection's end that overtakes this call ends it (M67).
+    const call = HoverOps.agentCall(browser, conn);
+    /** The user's own hover in the tab is theirs: an agent's would replace it. */
+    const usersTab = (/** @type {MozBrowser} */ b) => inUse(b) || HoverOps.userHovering(b);
     const base = {
       ...describeTab(asked.tab),
       index: asked.index,
@@ -1296,7 +1300,7 @@ const COMMANDS = {
       throw refuse("busy", rateDenied(actCalls, conn, ACT_CALLS));
     }
     if (elements) takeListSlot(conn, "vimma_hover", base);
-    if (inUse(browser)) throw refuse("in-use", denied("in-use"));
+    if (usersTab(browser)) throw refuse("in-use", denied("in-use"));
     const found = AgentDrive.element(conn, browser, label);
     if ("refused" in found) throw refuse("failed", new AgentError("failed", found.refused));
     let checked;
@@ -1325,14 +1329,22 @@ const COMMANDS = {
       throw refuse("changed", e, what);
     }
     const { win, tab } = found2;
-    if (inUse(tab.linkedBrowser)) throw refuse("in-use", denied("in-use"), what);
+    if (usersTab(tab.linkedBrowser)) throw refuse("in-use", denied("in-use"), what);
+    if (!call.stillWanted()) {
+      throw refuse(
+        "stopped",
+        new AgentError("failed", "the hover was released before it ran"),
+        what,
+      );
+    }
     const run = HoverOps.agentBegin(tab.linkedBrowser, found.target, conn);
     const result = await AgentShot.acting(tab.linkedBrowser, () =>
       AgentAct.activate(tab.linkedBrowser, found.target, {
         submit: null,
         href: null,
-        inUse: () => inUse(tab.linkedBrowser),
+        inUse: () => usersTab(tab.linkedBrowser),
         hover: true,
+        still: call.stillWanted,
       }),
     );
     const hovered = HoverOps.agentRan(

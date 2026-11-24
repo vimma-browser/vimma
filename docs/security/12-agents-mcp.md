@@ -1654,18 +1654,26 @@ off` and, for a workspace Vimma did not make, shows `:mcp on`'s warning too; wit
   adds to a click's untrusted `mouseover` (M26) is the other pointer and mouse events, which the
   page's own script can dispatch on itself, and the lock, which changes only style; every
   control a hover reveals is still reached only through `vimma_elements`, `vimma_activate` and
-  `vimma_fill`, with all their checks. A hover **must** be asked, granted, logged with its
-  element and denied `in-use` (before the question, after the yes and before it runs) as a
-  click is, and counted with clicks and fills in their 30 a minute (M32); the page's handlers may
+  `vimma_fill`, with all their checks. A list asked with `kinds` `hover` adds elements that
+  only hovering does something with (a hover listener, a `title`, a text block), never one
+  inside a rich text editor (M31); `vimma_activate` on one of them is checked as any click (its
+  closest button or link decides what it submits or follows, M28, M29). A hover **must** be
+  asked, granted, logged with its element and denied `in-use` as a click is (before the
+  question, after the yes, and again just before its step is sent, since it may have waited
+  behind another step on the tab), also while you hold your own hover (`gh`) in the tab, which
+  it would replace; and counted with clicks and fills in their 30 a minute (M32); the page's handlers may
   load a page, which counts as an open (M3), and a form submission they try is stopped as after
   a click (M28). An existing grant covers it (mcp-grants G1), accepted because it does a subset
   of what a click's events already do. It **must** end on every `pagehide` of its document (the
   back-forward cache included, since a cached document keeps its locks), on the element leaving
   its place, on the connection's next hover in the tab, its `release: true`, its end, the tab
-  leaving the agent workspace, closing or moving to another window, your key in the tab and a
-  real mouse move over its page. A release is neither asked, counted nor logged: it only ends a
-  hover the same connection began, which was asked and logged, and it runs page code (the
-  untrusted leave events) only when that hover is still held. Residual: a page can tell that an
+  leaving the agent workspace (a change of the workspaces, and each call's own check of the
+  tab), closing or moving to another window, your key in the tab and a real mouse move over its
+  page. A release or the connection's end that overtakes a hover still on its way ends it too:
+  the hover is not sent, or, if it ran, its frame lets it go, so no lock stays that chrome does
+  not know of. A release is neither asked, counted nor logged: it only ends a hover the same
+  connection began, which was asked and logged, never yours or another connection's, and it
+  runs page code (the untrusted leave events) only when that hover is still held. Residual: a page can tell that an
   element matches `:hover` with no pointer over it, and that hover events are untrusted, which
   together say an agent is acting, as it could already tell from an agent's click (M26).
   [`test_agent_hover_reveals_and_lists`](../../tests/browser/browser_vimma_mcp_hover.js),
@@ -1676,6 +1684,9 @@ off` and, for a workspace Vimma did not make, shows `:mcp on`'s warning too; wit
   [`test_agent_hover_only_agent_tabs_and_listed_elements`](../../tests/browser/browser_vimma_mcp_hover.js),
   [`test_agent_hover_release`](../../tests/browser/browser_vimma_mcp_hover.js),
   [`test_agent_hover_rate`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_released_while_pending`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_leaves_the_users_hover`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_lists_nothing_inside_an_editor`](../../tests/browser/browser_vimma_mcp_hover.js),
   [`agent-hover: a tab with a label or release: true, never both, never neither`](../../packages/vimma-core/test/control-v2.test.ts),
   [`vimma_hover: the element in the question, what it hovered in the notice`](../../packages/vimma-core/test/agent-prompt.test.ts),
   [`each asking agent command is one MCP tool; hello and ping are not`](../../packages/vimma-core/test/agent-gate.test.ts)
