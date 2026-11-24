@@ -244,13 +244,11 @@ export class CallRate {
    */
   take(conn, now) {
     const { max, ms } = this.limit;
-    const recent = (this.times.get(conn) ?? []).filter((t) => t > now - ms);
-    if (recent.length >= max) {
-      this.times.set(conn, recent);
-      return false;
-    }
-    recent.push(now);
+    const recent = this.#recent(conn, now, ms);
+    // Stored before the count is checked: a refused call drops the old times too.
     this.times.set(conn, recent);
+    if (recent.length >= max) return false;
+    recent.push(now);
     return true;
   }
 
@@ -261,7 +259,7 @@ export class CallRate {
    */
   can(conn, now) {
     const { max, ms } = this.limit;
-    return (this.times.get(conn) ?? []).filter((t) => t > now - ms).length < max;
+    return this.#recent(conn, now, ms).length < max;
   }
 
   /**
@@ -271,7 +269,7 @@ export class CallRate {
    */
   retryAfter(conn, now) {
     const { max, ms } = this.limit;
-    const recent = (this.times.get(conn) ?? []).filter((t) => t > now - ms);
+    const recent = this.#recent(conn, now, ms);
     if (recent.length < max) return 0;
     // At most the window: a clock set back leaves calls stamped in the future.
     return Math.min(ms, Math.min(...recent) + ms - now);
@@ -293,6 +291,14 @@ export class CallRate {
   /** @param {string | number} conn  closed */
   forget(conn) {
     this.times.delete(conn);
+  }
+
+  /**
+   * Connection `conn`'s calls in the window that ends at `now`, as a new array.
+   * @param {string | number} conn @param {number} now @param {number} ms
+   */
+  #recent(conn, now, ms) {
+    return this.times.get(conn)?.filter((t) => t > now - ms) ?? [];
   }
 }
 
@@ -380,7 +386,7 @@ export function frozenCopy(value) {
       }
       out = o;
     }
-    open.delete(v);
+    // `v` stays in `open`: from here on `done`, checked first, answers for it.
     Object.freeze(out);
     frozenCopies.add(/** @type {object} */ (out));
     done.set(v, out);
@@ -404,7 +410,8 @@ export class AgentLog {
   add(entry) {
     // Its own frozen row: neither the caller's object nor a reader's can change it (M62).
     this.rows.push(frozenCopy(entry));
-    if (this.rows.length > LOG_SIZE) this.rows.splice(0, this.rows.length - LOG_SIZE);
+    // A count of 0 or less removes nothing.
+    this.rows.splice(0, this.rows.length - LOG_SIZE);
   }
 
   /**
@@ -533,8 +540,7 @@ export class AgentQueue {
     /** @type {{ denials: number, mutedUntil: number, grant: number, session?: string }} */
     const c = { denials: 0, mutedUntil: 0, grant: 0 };
     // A session held by an open connection is not this one's: a second claim gets nothing.
-    const live =
-      session !== undefined && [...this.conns.values()].some((o) => o.session === session);
+    const live = [...this.conns.values()].some((o) => o.session === session);
     if (this.sessions && session !== undefined && !live) {
       c.session = session;
       const parked = this.parked.get(session);
