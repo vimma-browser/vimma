@@ -248,15 +248,19 @@ describe("the command line", () => {
     }
   }
 
-  it("fails a change to any of the guard's own files without the label, and passes it with", () => {
-    for (const path of GUARD_PATHS) {
+  // One test per guarded file, not a loop over them all: each case starts about 40 processes (git,
+  // and two runs of the guard), and the loop took three times that, which timed out at Vitest's
+  // 5 s default on the macOS runner (#1409).
+  it.each([...GUARD_PATHS])(
+    "fails a change to %s without the label, and passes it with",
+    (path) => {
       const r = repo((dir) => writeFileSync(join(dir, path), "weakened\n"));
       const res = run(r);
       expect(res.status, path).toBe(1);
       expect(res.out).toContain(path);
       expect(run(r, JSON.stringify([APPROVAL_LABEL])).status, path).toBe(0);
-    }
-  });
+    },
+  );
 
   it("fails a deleted guard file without the label", () => {
     const r = repo((dir) => rmSync(join(dir, GUARD_PATHS[0])));
@@ -328,11 +332,12 @@ describe("the command line", () => {
     expect(run(r, "[]", "--output=/tmp/x").status).toBe(2);
   });
 
-  it("fails a renamed key file or verifier", () => {
-    const key = repo((dir) => git(dir, "mv", KEY_PATH, KEY_PATH + ".old"));
-    expect(run(key).status).toBe(1);
-    const verifier = repo((dir) => git(dir, "mv", VERIFIER_PATH, "tools/upstream/verify.py"));
-    expect(run(verifier).status).toBe(1);
+  it.each([
+    ["key file", KEY_PATH, KEY_PATH + ".old"],
+    ["verifier", VERIFIER_PATH, "tools/upstream/verify.py"],
+  ])("fails a renamed %s", (_, from, to) => {
+    const r = repo((dir) => git(dir, "mv", from, to));
+    expect(run(r).status).toBe(1);
   });
 
   it("fails a key file replaced by a symlink to another key", () => {
