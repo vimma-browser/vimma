@@ -87,8 +87,12 @@
     pointer-events: none;
   }
 
+  /* Firefox's footer in each unfocused panel (the page's address and a menu button) is
+   * split-view-footer up to Firefox 161 and address-footer from 162; the status bar shows the
+   * focused pane's address instead. */
   & > .split-view-splitter,
-  & split-view-footer {
+  & split-view-footer,
+  & address-footer {
     display: none !important;
   }
 }

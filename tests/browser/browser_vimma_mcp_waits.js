@@ -162,10 +162,10 @@ function requestStatus(prefix) {
     const observe = (/** @type {nsISupports} */ subject) => {
       const channel = subject.QueryInterface(Ci.nsIHttpChannel);
       if (!channel.URI.spec.startsWith(prefix)) return;
-      Services.obs.removeObserver(observe, "http-on-modify-request");
+      Services.obs.removeObserver(observe, "http-on-opening-request");
       Services.tm.dispatchToMainThread(() => resolve(channel.status));
     };
-    Services.obs.addObserver(observe, "http-on-modify-request");
+    Services.obs.addObserver(observe, "http-on-opening-request");
   });
 }
 

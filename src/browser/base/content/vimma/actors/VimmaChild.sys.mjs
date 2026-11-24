@@ -22,6 +22,7 @@ import { GrepPage } from "./grep-page.mjs";
 import { AgentPage } from "./agent-page.mjs";
 import { asUserGesture } from "./user-gesture.mjs";
 import { dispatchAsPage } from "./page-events.mjs";
+import { DocumentHover } from "./hover.mjs";
 
 /** @import { EditableDescriptor } from "../core/editable.mjs" */
 
@@ -43,9 +44,11 @@ import { dispatchAsPage } from "./page-events.mjs";
  *   | { name: "Vimma:GrepPreview", data: Parameters<GrepPage["preview"]>[0] }
  *   | { name: "Vimma:GrepJump", data: Parameters<GrepPage["jump"]>[0] }
  *   | { name: "Vimma:CollectHints", data: { gen: number, linksOnly: boolean, blocks?: boolean,
- *       texts?: boolean, elements?: boolean } }
+ *       texts?: boolean, elements?: boolean, hover?: boolean } }
  *   | { name: "Vimma:HintsMoved", data: { gen?: unknown, x?: unknown, y?: unknown } | undefined }
  *   | { name: "Vimma:ActivateHint", data: { gen: number, id: number } }
+ *   | { name: "Vimma:Hover", data: { op?: unknown, gen?: unknown, id?: unknown } | undefined }
+ *   | { name: "Vimma:HoverEmbedder", data: { op?: unknown, frame?: unknown } | undefined }
  *   | { name: "Vimma:AgentElement", data: Parameters<AgentPage["element"]>[0] }
  *   | { name: "Vimma:AgentQuiet", data: Parameters<AgentPage["quiet"]>[0] }
  *   | { name: "Vimma:AgentConsole", data: Parameters<AgentPage["consoleEntries"]>[0] }
@@ -280,6 +283,10 @@ export class VimmaChild extends JSWindowActorChild {
     asAgent: (fn) => this.#asAgent(fn),
     beforeSubmitCheck: () => this.#beforeSubmitCheck(),
   });
+  /** The user's hover in this document, and its `<iframe>` locks (docs/specs/hover.md). */
+  #hover = new DocumentHover();
+  /** The hovered element is in a link: its release clears the link preview its hover set. */
+  #hoverInLink = false;
   /** Copy mode in this document (m1-copy-mode). */
   #caret = new Caret();
   /** Element focus in this document (docs/specs/element-focus.md). */
@@ -363,6 +370,12 @@ export class VimmaChild extends JSWindowActorChild {
   }
 
   didDestroy() {
+    // No events: the document is going away (docs/specs/hover.md decision 5).
+    try {
+      this.#hover.pageHidden();
+    } catch {
+      // A dead wrapper: the document and its locks are gone; the rest of the cleanup still runs.
+    }
     this.#pdf?.destroy();
     this.#pdf = null;
     this.#grep.end();
@@ -451,7 +464,11 @@ export class VimmaChild extends JSWindowActorChild {
   handleEvent(event) {
     if (event.type === "pagehide") {
       // Registered for trusted events only; checked again, as a forged one could skip a step.
-      if (event.isTrusted) this.#agent.pageHidden();
+      if (!event.isTrusted) return;
+      this.#agent.pageHidden();
+      // Also into the back-forward cache, which keeps the elements and so their locks
+      // (docs/specs/hover.md decision 5, experiment X1).
+      if (this.#hover.pageHidden()) this.#hoverEnded();
       return;
     }
     const doc = this.document;
@@ -900,6 +917,11 @@ export class VimmaChild extends JSWindowActorChild {
         return this.#hintsMoved(msg.data);
       case "Vimma:ActivateHint":
         return this.#activateHint(msg.data);
+      case "Vimma:Hover":
+        return this.#hoverMessage(msg.data);
+      case "Vimma:HoverEmbedder":
+        this.#hoverEmbedder(msg.data);
+        return undefined;
       case "Vimma:AgentElement":
         return this.#agent.element(msg.data);
       case "Vimma:AgentQuiet":
@@ -1005,7 +1027,7 @@ export class VimmaChild extends JSWindowActorChild {
    * A smooth scroll this frame started is finished first; one taken over since is waited for
    * (m1-hints, issues #1308 and #1337).
    * @param {{ gen: number, linksOnly: boolean, blocks?: boolean, texts?: boolean,
-   *   elements?: boolean }} data
+   *   elements?: boolean, hover?: boolean }} data
    */
   async #collectHints(data) {
     const gen = data?.gen;
@@ -1024,11 +1046,11 @@ export class VimmaChild extends JSWindowActorChild {
       if (!(await this.#sized(win)) || overtaken()) return null;
     }
     // Labels go where the targets are once a scroll ends, not where it is passing (#1308): a
-    // smooth scroll this frame started is finished at once; one that something else took over
-    // is waited for.
+    // smooth scroll this frame started is finished at once; one that something else took over,
+    // or a snapped one, is waited for, a snapped one also before it has moved (#1400).
     const running = this.#scroll.finish();
     if (running) {
-      await this.#scroll.settled(new Set([running]));
+      await this.#scroll.settled(new Set([running.target]), running.starting);
       if (overtaken() || !this.contentWindow) return null;
     }
     const t0 = ChromeUtils.now();
@@ -1036,6 +1058,7 @@ export class VimmaChild extends JSWindowActorChild {
       linksOnly: data.linksOnly === true && !elements,
       blocks: data.blocks === true && !elements,
       disabled: elements,
+      hover: data.hover === true && !elements && !texts,
     });
     // An agent's collection is never followed through the user's targets: the user's targets of
     // this frame stay as they were, and an agent's elements are kept apart.
@@ -1061,6 +1084,7 @@ export class VimmaChild extends JSWindowActorChild {
         text: texts ? linkText(t.el) : undefined,
         blockKind: t.blockKind,
         box: t.box,
+        hoverKind: t.hoverKind,
         agent: described?.elements[id],
       })),
       frames: frames.map((f) => ({ id: f.bc.id, rect: f.rect })),
@@ -1208,6 +1232,70 @@ export class VimmaChild extends JSWindowActorChild {
       return true;
     }
     return asUserGesture(win, () => this.#press(el));
+  }
+
+  /**
+   * The user's hover (docs/specs/hover.md decision 3): `hover` a target of the last collection,
+   * or `release` it. Only the parent sends this, for a label the user typed in chrome, for
+   * `hover.release` and for the release triggers, so the events are dispatched by this actor and
+   * reach the page trusted, as a real pointer's do. An agent's hover never comes through here.
+   * @param {{ op?: unknown, gen?: unknown, id?: unknown } | undefined} data
+   * @returns {{ hovered: boolean, text?: string }}
+   */
+  #hoverMessage(data) {
+    if (data?.op === "release") {
+      if (this.#hover.release()) this.#afterHoverLink();
+      return { hovered: false };
+    }
+    if (data?.op !== "hover" || !isIndex(data.gen) || !isIndex(data.id)) return { hovered: false };
+    if (data.gen !== this.#hints.gen) return { hovered: false };
+    const el = this.#hints.els[data.id]?.deref();
+    // Not on a page this process has replaced since the labels were drawn (issue #1028).
+    if (!this.contentWindow || !this.#onPage(el)) return { hovered: false };
+    const wasLink = this.#hoverInLink;
+    this.#hoverInLink = inLink(el);
+    // Moving off a link onto something else: the preview its hover set goes, as a mouse's would.
+    const reply = this.#hover.hover(el, {
+      dispatch: (target, event) => target.dispatchEvent(event),
+      onEnd: () => this.#hoverEnded(),
+    });
+    if (wasLink && !this.#hoverInLink) this.#leaveLink();
+    return reply;
+  }
+
+  /** The hover ended in this document by itself: the parent clears its status. */
+  #hoverEnded() {
+    this.#afterHoverLink();
+    try {
+      this.sendAsyncMessage("Vimma:HoverEnded");
+    } catch {
+      // the actor is being destroyed: the parent hears of it from didDestroy
+    }
+  }
+
+  /** A hover over a link put its URL in the link preview (a trusted mouseover): it goes. */
+  #afterHoverLink() {
+    if (this.#hoverInLink) this.#leaveLink();
+    this.#hoverInLink = false;
+  }
+
+  /**
+   * Locks (or releases) the `<iframe>` element's chain of a hovered subframe (docs/specs/hover.md
+   * decision 12). The parent names the subframe by the browsing context it asked to hover; it is
+   * taken only when it is this frame's own child, embedded in this frame's document.
+   * @param {{ op?: unknown, frame?: unknown } | undefined} data
+   */
+  #hoverEmbedder(data) {
+    if (data?.op === "release") {
+      this.#hover.releaseEmbedder();
+      return;
+    }
+    if (data?.op !== "lock" || !isIndex(data.frame)) return;
+    const child = BrowsingContext.get(/** @type {number} */ (data.frame));
+    const frame = child?.embedderElement;
+    if (!child || child.parent !== this.browsingContext || !frame) return;
+    if (frame.ownerDocument !== this.document || !this.#onPage(frame)) return;
+    this.#hover.lockEmbedder(frame);
   }
 
   /**

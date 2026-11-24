@@ -156,6 +156,7 @@ insert_editing = true       # in text fields ctrl+w, ctrl+u, ctrl+h delete; ctrl
 "f" = "hint.follow"
 "F" = "hint.element"
 "gF" = "hint.follow_new_tab"
+"gh" = "hint.hover"
 "/" = "find.forward"
 "?" = "find.backward"
 "n" = "find.next"
@@ -386,7 +387,6 @@ enable = []        # Firefox's shortcuts given back as Firefox runs them, such a
 # color = "gray"                # the container's colour, from the list above
 # icon = "circle"               # the container's icon, from the list above
 # home = "https://intra.example"  # opens when you go to the workspace and it has no tab
-# autofill = true               # reserved for a later release; it changes nothing yet
 
 [theme]
 source = "omarchy"       # "omarchy" follows Omarchy where installed; "file" always uses name
@@ -429,6 +429,10 @@ tabline_width = 14             # the width of each tab's name in the tab line, i
 
 [statusbar]
 tab = true    # false drops the status bar's tab number and title while the tab line shows them
+
+[tabs]
+sleep_after = 120             # minutes unseen before a tab sleeps (5–10080); 0: never
+sleep_on_low_memory = true    # false: Firefox never unloads tabs when memory runs low
 
 # Every 12 hours Vimma asks updates.vimma.dev for a newer version, naming only the update
 # channel and the platform.
@@ -477,8 +481,10 @@ clamav_max_age_days = 7         # days before ClamAV definitions stop counting a
 # [sites."docs.google.com"]
 # insert = "always"  # text fields take insert mode: "auto" (when detected), "never" or "always"
 # unbind = ["t"]     # keys the page gets instead of Vimma; esc and the prefix stay Vimma's
+# sleep = false      # its tabs never go to sleep on their own
 
 # Which workspace a link opens in: the first rule that matches wins. None by default.
+# A routes.toml beside this file, when it exists, holds them (and [routing]) instead.
 # [[routes]]
 # domain = "github.com"         # github.com and its subdomains; "*.corp.example": subdomains only
 # app = "slack"                 # links that program opens (Linux); with domain, both must match

@@ -41,6 +41,8 @@ interface VimmaModules {
       isBrowserPrivate(browser: MozBrowser): boolean;
     };
   };
+  // engine/browser/modules/webrtcUI.sys.mjs
+  "resource:///modules/webrtcUI.sys.mjs": { webrtcUI: LazyModules["webrtcUI"] };
   // engine/toolkit/modules/Timer.sys.mjs
   "resource://gre/modules/Timer.sys.mjs": Pick<
     LazyModules,

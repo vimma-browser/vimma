@@ -1,0 +1,27 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_hover.js, loaded in an iframe: a row revealed on :hover. -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      .row {
+        display: flex;
+        gap: 8px;
+      }
+      .row .gear {
+        display: none;
+      }
+      .row:hover .gear {
+        display: inline;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="row" id="frow">
+      <span id="fname">Framed row</span><button class="gear" id="fgear">Framed settings</button>
+    </div>
+  </body>
+</html>

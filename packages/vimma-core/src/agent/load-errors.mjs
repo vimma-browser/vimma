@@ -79,7 +79,10 @@ export function loadErrorOf(documentUri) {
   const page = ERROR_PAGES.exec(documentUri)?.[1];
   if (!page) return null;
   if (page === "httpsonlyerror") return "httpsOnly";
-  const query = documentUri.slice(`about:${page}`.length).replace(/^\?/, "").replace(/#.*$/s, "");
-  const code = new URLSearchParams(query).get("e") ?? "";
-  return Object.hasOwn(LOAD_ERRORS, code) && code !== "other" ? code : "other";
+  // The rest starts with `?`, `#` or nothing, and a `#` goes with its fragment; a missing `e`
+  // reads as "null", which is no code.
+  // Stryker disable next-line Regex: `/\?/`: the first `?` leads the query or is in the fragment
+  const query = documentUri.slice(`about:${page}`.length).replace(/^\?/, "").replace(/#.*/s, "");
+  const code = String(new URLSearchParams(query).get("e"));
+  return Object.hasOwn(LOAD_ERRORS, code) ? code : "other";
 }

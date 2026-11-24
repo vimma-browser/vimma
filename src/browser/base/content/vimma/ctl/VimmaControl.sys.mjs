@@ -39,6 +39,7 @@ import { isCtlVersion } from "../core/ctl-version.mjs";
 import { parseKey } from "../core/keys.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
 import { PaneViews } from "../split/PaneView.mjs";
+import { tabAsleep } from "../services/TabSleep.sys.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { MCP_CHANGED_TOPIC, MCP_ENABLED_PREF, McpHost } from "../host/mcp-ops.mjs";
@@ -533,6 +534,10 @@ const COMMANDS = {
         selected: tab.selected,
         pinned: tab.pinned,
         loading: tabLoading(win, tab),
+        // Read from the tab's attributes as `loading` is, so a sleeping tab stays asleep; left
+        // out for an awake tab (docs/specs/tab-sleep.md, behaviour 15). It names no page, so a
+        // private window keeps it.
+        ...(tabAsleep(tab) ? { asleep: true } : {}),
       })),
       panes: paneState(win, visible),
       ...splitsState(win, visible),

@@ -258,7 +258,9 @@ add_task(async function a_step_names_a_key_the_file_cannot_take_before_enter() {
   const notice = found(doc.getElementById("v2-notice"));
   Assert.ok(
     !notice.hidden &&
-      notice.textContent.includes("config.toml:1: search is not a plain [search] table"),
+      notice.textContent.includes(
+        'config.toml:1: search is an inline table ({ … }); set default = "x" in it by hand',
+      ),
     notice.textContent,
   );
   await press(doc, "j", "KEY_Enter", "s");

@@ -350,12 +350,7 @@ export function codexArguments({ vimmaCtl, dir, model, others }) {
  */
 export function codexServers(stdout) {
   const problem = { problem: "codex listed its MCP servers in a form Vimma does not read" };
-  let list;
-  try {
-    list = JSON.parse(stdout);
-  } catch {
-    return problem;
-  }
+  const list = parseJson(stdout);
   if (
     !Array.isArray(list) ||
     list.length > MAX_SERVERS ||
@@ -440,12 +435,7 @@ export function geminiLeftover(path, bases) {
  */
 export function geminiProjects(text, ours) {
   const none = { text: null, removed: [] };
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    return none;
-  }
+  const data = parseJson(text);
   if (!isObject(data) || !isObject(data.projects)) return none;
   const entries = Object.entries(data.projects);
   if (!entries.every(([, v]) => typeof v === "string")) return none;
@@ -663,7 +653,8 @@ const SUBJECT = Object.freeze({
  * @param {CliInfo} cli @param {unknown} name @param {unknown} input
  */
 export function ownToolText(cli, name, input) {
-  const tool = plain(name).replace(/\s+/g, " ").trim();
+  // The whole line's white space is collapsed below; no SUBJECT key holds any.
+  const tool = plain(name).trim();
   const field = Object.hasOwn(SUBJECT, tool)
     ? /** @type {Record<string, string>} */ (SUBJECT)[tool]
     : undefined;
@@ -781,10 +772,26 @@ export function besideBinary(walk, trusted) {
 
 const CLAUDE = /** @type {CliInfo} */ (CLIS["claude-code"]);
 
+/**
+ * `text` as JSON, or undefined when it is not JSON: JSON itself has no undefined, and every
+ * caller refuses what is not an object or an array.
+ * @param {string} text @returns {unknown}
+ */
+function parseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Every caller refuses undefined as it refuses JSON of the wrong shape.
+  }
+}
 /** @param {unknown} v @returns {v is Record<string, unknown>} */
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 /** @param {unknown} v */
-const count = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+const count = (v) => {
+  // Number.isFinite is false for anything that is not a number.
+  const n = /** @type {number} */ (v);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
 /**
  * A usage block's input tokens, cache creation and reads included, as the Messages API
  * provider counts them: Claude Code caches its prompt, so most of a call's input is cached.
@@ -849,8 +856,8 @@ class JsonLines {
 
   /** @protected @param {string} error @returns {CliEvent[]} */
   fail(error) {
+    // The buffer is left as it is: nothing reads it once the stream failed.
     this.failed = true;
-    this.buffer = "";
     return [{ type: "fail", error }];
   }
 
@@ -869,12 +876,7 @@ class JsonLines {
   /** @private @param {string} line @returns {CliEvent[]} */
   line(line) {
     if (!line.trim()) return [];
-    let m;
-    try {
-      m = JSON.parse(line);
-    } catch {
-      return this.skip();
-    }
+    const m = parseJson(line);
     return isObject(m) ? this.event(m) : this.skip();
   }
 
@@ -882,7 +884,9 @@ class JsonLines {
    * One JSON object of the stream, read by each CLI's class.
    * @protected @abstract @param {Record<string, unknown>} m @returns {CliEvent[]}
    */
+  // Stryker disable next-line BlockStatement: every class overrides it; JsonLines is not exported
   event(m) {
+    // Stryker disable next-line all: as above, never called
     throw new Error(`${this.cli.id}: no reader for ${typeof m}`);
   }
 }
@@ -1114,7 +1118,8 @@ export class CodexStream extends JsonLines {
           : null;
     // Reasoning, todo lists, warnings (an `error` item), unknown kinds.
     if (own === null || (id && this.shown.has(id))) return this.skip();
-    if (id) this.shown.add(id);
+    // "" is never looked up: an item without an id is shown each time.
+    this.shown.add(id);
     return [{ type: "own-tool", id, text: own }];
   }
 }
@@ -1229,6 +1234,8 @@ export class GeminiStream extends JsonLines {
 
   /** @private @param {Record<string, unknown>} m @returns {CliEvent[]} */
   toolResult(m) {
+    // `use` keys `calls` and `open` by non-empty strings only, so "" finds no call.
+    // Stryker disable next-line ConditionalExpression,StringLiteral: "" is never a call's id
     const id = typeof m.tool_id === "string" ? m.tool_id : "";
     this.open.delete(id);
     const name = this.calls.get(id);

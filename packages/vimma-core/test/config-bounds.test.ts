@@ -41,18 +41,28 @@ const NEWER_TABLES = [
   "scroll",
 ];
 
+/** [line, path, message] for each warning of a file that applies. */
+function warned(text: string) {
+  const r = parseConfig(text);
+  expect(r.errors).toEqual([]);
+  return r.warnings.map((e) => [e.line, e.path, e.message]);
+}
+
 describe("tables added after M5, in a schema-1 file", () => {
+  // An unknown key is skipped with a warning (#1474), except in [updates], which fails closed;
+  // [sites] holds a table per host, so its `bogus` is a host, not a key.
   test.each(NEWER_TABLES)("[%s] has its keys checked", (table) => {
-    // [sites] holds a table per host, so its `bogus` is a host, not a key.
-    const message = table === "sites" ? "expected a table, got an integer" : 'unknown key "bogus"';
-    expect(problems(`schema = 1\n[${table}]\nbogus = 1\n`)).toEqual([
-      [3, `${table}.bogus`, message],
-    ]);
+    const text = `schema = 1\n[${table}]\nbogus = 1\n`;
+    if (table === "sites") {
+      expect(problems(text)).toEqual([[3, "sites.bogus", "expected a table, got an integer"]]);
+    } else if (table === "updates") {
+      expect(problems(text)).toEqual([[3, "updates.bogus", 'unknown key "bogus"']]);
+    } else expect(warned(text)).toEqual([[3, `${table}.bogus`, 'unknown key "bogus"; skipped']]);
   });
 
   test("the same table in a file without a schema line has its keys checked", () => {
-    expect(problems(cfg("[firefox]", "bogus = 1"))).toEqual([
-      [3, "firefox.bogus", 'unknown key "bogus"'],
+    expect(warned(cfg("[firefox]", "bogus = 1"))).toEqual([
+      [3, "firefox.bogus", 'unknown key "bogus"; skipped'],
     ]);
   });
 });
@@ -280,7 +290,8 @@ describe("[agent]", () => {
       cli("max_minutes = 0"),
       [[6, "agent.providers[0].max_minutes", "must be an integer between 1 and 1440 (minutes)"]],
     ],
-    [cli("bogus = 1"), [[6, "agent.providers[0].bogus", 'unknown key "bogus"']]],
+    // An unknown key is skipped with a warning (#1474): the provider applies.
+    [cli("bogus = 1"), "ok"],
     [cli("SECRET = 1"), [[6, "agent.providers[0].SECRET", SECRET]]],
   ])("%j", (lines, expected) => {
     expect(problems(cfg(...lines))).toEqual(expected);
@@ -388,6 +399,7 @@ describe("addAgentProviderText: what is written", () => {
         { makeDefault: false },
       ),
     ).toEqual({
+      added: expect.any(Array),
       text: `schema = 2\n\n${block("o", "openai", o.endpoint, "vision = false", "price_in = 1", "price_out = 2.5")}`,
       name: "o",
     });
@@ -398,6 +410,7 @@ describe("addAgentProviderText: what is written", () => {
         { makeDefault: false },
       ),
     ).toEqual({
+      added: expect.any(Array),
       text: `schema = 2\n\n${block("o", "openai", o.endpoint, "vision = true")}`,
       name: "o",
     });
@@ -406,10 +419,12 @@ describe("addAgentProviderText: what is written", () => {
   test("a provider is the same only by kind, endpoint and model; a new one is numbered", () => {
     const endpoint = "http://127.0.0.1:9/v1";
     expect(addAgentProviderText(two, { ...o, endpoint }, { makeDefault: false })).toEqual({
+      added: expect.any(Array),
       text: `${two}\n${block("o-3", "openai", endpoint, "vision = false")}`,
       name: "o-3",
     });
     expect(addAgentProviderText(two, { ...o, kind: "anthropic" }, { makeDefault: false })).toEqual({
+      added: expect.any(Array),
       text: two,
       name: "o-2",
     });
@@ -417,13 +432,18 @@ describe("addAgentProviderText: what is written", () => {
 
   test("a default already naming the provider is left as it is, quotes and all", () => {
     const text = `schema = 2\n[agent]\ndefault = 'o'\n${block("o")}`;
-    expect(addAgentProviderText(text, o, { makeDefault: true })).toEqual({ text, name: "o" });
+    expect(addAgentProviderText(text, o, { makeDefault: true })).toEqual({
+      added: expect.any(Array),
+      text,
+      name: "o",
+    });
   });
 
   test("[agent] goes before the first providers header, however it is spaced", () => {
     const text = `schema = 2\n${block("z", "openai", "http://127.0.0.1:1/v1").replace("[[agent.providers]]", "  [[ agent . providers ]]")}`;
     const r = addAgentProviderText(text, o, { makeDefault: true });
     expect(r).toEqual({
+      added: expect.any(Array),
       text: `schema = 2\n[agent]\ndefault = "o"\n\n${text.slice("schema = 2\n".length)}\n${block("o", "openai", o.endpoint, "vision = false")}`,
       name: "o",
     });
@@ -433,7 +453,8 @@ describe("addAgentProviderText: what is written", () => {
     expect(
       addAgentProviderText("schema = 2\nagent = { max_steps = 5 }\n", o, { makeDefault: true }),
     ).toEqual({
-      error: "config.toml cannot take [agent] default: agent is not a plain [agent] table",
+      error:
+        'config.toml cannot take [agent] default: agent is an inline table ({ … }); set default = "o" in it by hand, or write it as a [agent] table',
     });
   });
 });
@@ -506,6 +527,7 @@ describe("config edges", () => {
     const cc = 'schema = 2\n\n[[agent.providers]]\nname = "c"\nkind = "cli"\ncli = "claude-code"\n';
     const codex = { name: "c", kind: "cli", cli: "codex", endpoint: "", model: "", vision: false };
     expect(addAgentProviderText(cc, codex, { makeDefault: false })).toEqual({
+      added: expect.any(Array),
       text: `${cc}\n[[agent.providers]]\nname = "c-2"\nkind = "cli"\ncli = "codex"\n`,
       name: "c-2",
     });

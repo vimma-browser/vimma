@@ -31,7 +31,18 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 /** @type {WeakSet<BrowserWindow>} windows our stylesheet is loaded into (once: a second load throws) */
 const styled = new WeakSet();
 /** Tab events that change a row: re-render while open. */
-const TAB_EVENTS = ["TabOpen", "TabClose", "TabSelect", "TabAttrModified", "TabMove"];
+const TAB_EVENTS = [
+  "TabOpen",
+  "TabClose",
+  "TabSelect",
+  "TabAttrModified",
+  "TabMove",
+  // A tab put to sleep, and one woken: its row is muted while it has no loaded page
+  // (docs/specs/tab-sleep.md, behaviour 14).
+  "TabBrowserDiscarded",
+  "TabBrowserInserted",
+  "SSTabRestored",
+];
 
 /**
  * `[panel] numbers` from config.toml (docs/specs/side-panel-counts.md decision 6), for the side
@@ -111,6 +122,9 @@ export class SidePanel {
       const el = this.win.document.activeElement;
       if (this.isOpen && el?.localName === "browser") this.list?.focus();
     };
+    this.onFocusIn = () => {
+      if (this.isOpen && addressBarFocused(this.win)) this.close();
+    };
   }
 
   get isOpen() {
@@ -130,6 +144,7 @@ export class SidePanel {
     const tabs = this.#tabContainer();
     for (const type of TAB_EVENTS) tabs?.addEventListener(type, this.onTabEvent);
     this.win.addEventListener("TabSwitchDone", this.onSwitchDone);
+    this.win.addEventListener("focusin", this.onFocusIn);
     // The list, which carries aria-activedescendant (m7-a11y).
     /** @type {HTMLElement} */ (this.list).focus();
     return true;
@@ -150,6 +165,7 @@ export class SidePanel {
     const tabs = this.#tabContainer();
     for (const type of TAB_EVENTS) tabs?.removeEventListener(type, this.onTabEvent);
     this.win.removeEventListener("TabSwitchDone", this.onSwitchDone);
+    this.win.removeEventListener("focusin", this.onFocusIn);
     const box = /** @type {HTMLElement} */ (this.box);
     // Focus first, then hide: hiding the focused list would drop focus to the body.
     giveFocusBack(this.win, box, this.opener);
@@ -305,6 +321,12 @@ export class SidePanel {
         row.setAttribute("aria-selected", String(i === state.selected));
         row.dataset.tabId = r.tabId;
         if (r.active) row.classList.add("vimma-panel-active");
+        // Muted by CSS with nothing else changed, and described, so the state is not shown by
+        // colour alone (tab-sleep, decision 17).
+        if (r.asleep) {
+          row.setAttribute("asleep", "");
+          row.setAttribute("aria-description", "asleep");
+        }
         const isMarked = marked.has(r.tabId);
         const ranged = inRange(state, i);
         if (checkable) row.setAttribute("aria-checked", String(isMarked));
@@ -383,6 +405,18 @@ function tabsOf(win) {
  */
 export function rememberFocus(win) {
   return { el: Services.focus.focusedElement, tab: tabsOf(win)?.selectedTab ?? null };
+}
+
+/**
+ * Whether the address bar has focus: a panel open then closes (#1481). A new tab (ctrl+t, Vimma's
+ * new tab, the + button) focuses it on the new tab page, as does a click into it; left open, the
+ * modal `panel` mode kept every key typed there, and `m` opened the workspace picker.
+ * @param {BrowserWindow} win
+ */
+export function addressBarFocused(win) {
+  const urlbar = /** @type {{ gURLBar?: { focused: boolean } }} */ (/** @type {unknown} */ (win))
+    .gURLBar;
+  return !!urlbar?.focused;
 }
 
 /**

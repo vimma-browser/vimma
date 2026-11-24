@@ -163,6 +163,8 @@ Hints
   focus_element             F, F [element]                                       Focus a text block: v selects it, y copies it
   show_link_target          (unbound)                                            Show a link's target without following it
   copy_link_target          c [pdf]                                              Copy a link's target
+  hover_element             gh                                                   Hover an element: show what the page shows under the mouse
+  hover_release             (unbound)                                            End the hover
   hint_cancel               esc [hint]                                           Leave hint mode
 
 Element focus
@@ -496,6 +498,8 @@ Hints
   focus_element             F, F [element]                                       Focus a text block: v selects it, y copies it
   show_link_target          (unbound)                                            Show a link's target without following it
   copy_link_target          c [pdf]                                              Copy a link's target
+  hover_element             gh                                                   Hover an element: show what the page shows under the mouse
+  hover_release             (unbound)                                            End the hover
   hint_cancel               esc [hint]                                           Leave hint mode
 
 Element focus

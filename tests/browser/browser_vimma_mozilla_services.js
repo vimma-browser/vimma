@@ -137,21 +137,52 @@ add_task(async function test_sponsored_suggestions_survive_suggest_migrations() 
   Assert.strictEqual(Services.prefs.getBoolPref(SPONSORED), false, "sponsored Suggest is off");
 });
 
-add_task(async function test_normandy_and_nimbus_do_not_run() {
-  const { RecipeRunner } = ChromeUtils.importESModule(
-    "resource://normandy/lib/RecipeRunner.sys.mjs",
+/**
+ * Whether the app ships the file behind a resource URL, without loading it: under the test
+ * harness, loading a missing one crashes the browser on purpose ("Missing chrome or
+ * resource URLs", CheckForBrokenChromeURL in netwerk/base/nsNetUtil.cpp).
+ * @param {string} url
+ */
+function shipsFile(url) {
+  const handler = Cc["@mozilla.org/network/protocol;1?name=resource"].getService(
+    Ci.nsIResProtocolHandler,
   );
+  const resolved = Services.io.newURI(handler.resolveURI(Services.io.newURI(url)));
+  if (resolved.schemeIs("file")) return resolved.QueryInterface(Ci.nsIFileURL).file.exists();
+  // A packaged build: jar:file:///…/omni.ja!/modules/…
+  const jar = resolved.QueryInterface(Ci.nsIJARURI);
+  const zip = Cc["@mozilla.org/libjar/zip-reader;1"].createInstance(Ci.nsIZipReader);
+  zip.open(jar.JARFile.QueryInterface(Ci.nsIFileURL).file);
+  try {
+    return zip.hasEntry(jar.JAREntry);
+  } finally {
+    zip.close();
+  }
+}
+
+add_task(async function test_normandy_and_nimbus_do_not_run() {
+  const recipeRunnerUrl = "resource://normandy/lib/RecipeRunner.sys.mjs";
+  // Firefox 162 removes Normandy's recipe runner (Mozilla bug 2059780): nothing is left to run.
+  if (!shipsFile(recipeRunnerUrl)) {
+    Assert.ok(true, "Firefox has no Normandy recipe runner");
+    checkNimbusIsOff();
+    return;
+  }
+  const { RecipeRunner } = ChromeUtils.importESModule(recipeRunnerUrl);
   // Normandy initialises RecipeRunner after the UI is available; wait for its verdict.
   await TestUtils.waitForCondition(
     () => RecipeRunner.enabled !== null,
     "RecipeRunner has checked its prefs",
   );
   Assert.strictEqual(RecipeRunner.enabled, false, "Normandy's recipe runner is disabled");
+  checkNimbusIsOff();
+});
 
+function checkNimbusIsOff() {
   const { ExperimentAPI } = ChromeUtils.importESModule("resource://nimbus/ExperimentAPI.sys.mjs");
   Assert.strictEqual(ExperimentAPI.studiesEnabled, false, "Nimbus studies are disabled");
   Assert.strictEqual(ExperimentAPI.rolloutsEnabled, false, "Nimbus rollouts are disabled");
-});
+}
 
 // The crash-reporter flag is compiled into libxul: browser_vimma_crash_reporter.js, which artifact
 // builds skip (ADR-010).

@@ -1,6 +1,7 @@
 # Spec: tab-sleep
 
-Status: accepted · Area: core (`packages/vimma-core/src/workspaces/tabsleep.mjs` (new),
+Status: accepted (slices 1, the rules and the check, 3, showing it, 4, turning it on, and 5,
+low-memory unloading, implemented; slice 2, `:sleep` and the side panel's `z`, to come) · Area: core (`packages/vimma-core/src/workspaces/tabsleep.mjs` (new),
 `packages/vimma-core/src/config/config.mjs`, `packages/vimma-core/defaults.toml`,
 `packages/vimma-core/src/keys/actions.mjs`, `packages/vimma-core/src/keys/cmdline.mjs`,
 `packages/vimma-core/src/ui/tabline.mjs`, `packages/vimma-core/src/ui/sidepanel.mjs`), chrome
@@ -100,9 +101,9 @@ it was last selected, or at the last check that found it on screen, whichever is
 ### Showing it
 
 14. In the tab line and the side panel, a sleeping tab's row **must** be drawn in the theme's
-    muted colour (`--vimma-muted`), with nothing else changed, so the layout does not move when a
-    tab wakes. The row's accessible description says `asleep`, so the state is not shown by
-    colour alone. This holds for every tab without a loaded page, including tabs a restart left
+    muted text colour (`--vimma-fg-dim`, decision 17), with nothing else changed, so the layout
+    does not move when a tab wakes. The row's accessible description says `asleep`, so the
+    state is not shown by colour alone. This holds for every tab without a loaded page, including tabs a restart left
     lazy.
 15. `vimma-ctl state` lists `asleep: true` for each sleeping tab, and leaves the field out for
     others. Its `id` already changes while a tab is asleep (Research, Vimma); this spec does not
@@ -324,9 +325,15 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     select. Firefox's `discarded` attribute is not used, because it is set only by a forced
     discard (Research).
 17. **Muted colour, no icon.** A sleeping row keeps its text and width and only takes
-    `--vimma-muted`, so that the line does not reflow when a tab wakes and the look follows the
-    theme, as every other Vimma surface does. The accessible description carries the state for
-    screen readers (WCAG 1.4.1, [m7-a11y](m7-a11y.md)). Rejected: a `z` marker, because it
+    `--vimma-fg-dim`, so that the line does not reflow when a tab wakes and the look follows the
+    theme, as every other Vimma surface does. `--vimma-fg-dim` is the theme's muted text: it is
+    made readable on every surface Vimma draws text on, the selected row included
+    (`packages/vimma-core/src/config/theme.mjs`, `readable`). Rejected: `--vimma-muted`, the
+    theme's border colour, because it is not a text colour (Vimma's dark palette draws it
+    `#234040` on `#050c0d`, far under WCAG's 4.5:1) and the chrome's CSS may colour text only
+    with the text tokens (`tools/test/chrome-css.test.ts`, [m7-a11y](m7-a11y.md)). The
+    accessible description carries the state for screen readers (WCAG 1.4.1,
+    [m7-a11y](m7-a11y.md)). Rejected: a `z` marker, because it
     takes a column from every title in the narrow tab line.
 18. **`state` gains `asleep`, without a version bump.** `vimma-ctl state` adds `asleep: true` to a
     sleeping tab, read without touching the browser as `loading` is, because clients ignore
@@ -337,10 +344,13 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     docshell, are renamed `#deactivate` and `#keepInactive` in the first slice, so that "asleep"
     in the code means what it means in the guide.
 20. **Behind a feature pref until the last slice.** `vimma.feature.tabSleep` (default `false`)
-    gates the check, `:sleep` and the panel key, because the feature lands over several pull
-    requests and `main` must stay releasable (`CONTRIBUTING.md`, "Unfinished features"). The
-    tests set it, and set `vimma.tabs.sleepCheckMs` (default 300000) to run checks in
-    milliseconds; the host also exposes `TabSleep._check(now)` so a test can move the clock.
+    gates the check, `:sleep`, the panel key, the muted rows and `state.tabs[].asleep`, because
+    the feature lands over several pull requests and `main` must stay releasable
+    (`CONTRIBUTING.md`, "Unfinished features"). The tests set it, and set
+    `vimma.tabs.sleepCheckMs` (default 300000) to run checks in milliseconds; the host also exposes `TabSleep._check(now)` so a test can move the clock.
+    Slice 4 removes the pref before slice 2 lands, because the time limit, the muted rows and
+    low-memory unloading are whole without `:sleep`, which only adds a way to do the same by
+    hand; slice 2 then lands without a pref and stops at ready for its default key.
 21. **Firefox's low-memory unloader is on, and respects Vimma's rules.** Vimma sets
     `browser.tabs.unloadOnLowMemory` from `[tabs] sleep_on_low_memory` (default `true`) in
     `TabSleep`, because the time limit protects against slow growth while only the low-memory
@@ -350,8 +360,19 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     keeps the `undiscardable` attribute (`content/tab.mjs:315-325`), which the unloader honours
     (lines 53-59), on every pane of each window's current split and, while an agent is
     connected, on the agent workspace's tabs, updated at each check and when the split shown or
-    the agent connections change; otherwise it would unload a pane that PaneView reloads at once,
-    or an agent's tab under its id. Its other rules (sound, Picture-in-Picture, WebRTC, private)
+    the agent connections change, and on an agent's tab as it opens; otherwise it would unload a
+    pane that PaneView reloads at once (seen in the test: a loop of unload and reload every few
+    milliseconds), or an agent's tab under its id. The pref is set on the default branch, because
+    then nothing is written to `prefs.js`, a value the user sets in `about:config` still wins, and
+    Firefox's own default comes back when `vimma.feature.tabSleep` is off. `TabSleep` clears only
+    the marks it set, remembered by each browser's permanent key, because an add-on can set the
+    same attribute (`autoDiscardable: false`) and Firefox moves the key and the attribute together
+    when a tab changes window; an add-on's mark set while Vimma's is already there is cleared with
+    it, which loses nothing an add-on could not already do with `tabs.discard`. The marks follow
+    the pref in force, not the config key, because a value set in `about:config` turns the
+    unloader on all the same. An enterprise policy that locks the pref wins, since Firefox does
+    not change the default of a locked pref; an unlocked policy default is replaced by the
+    config's value. Its other rules (sound, Picture-in-Picture, WebRTC, private)
     already match decision 6. Rejected: leaving it off as Firefox does on Linux, because no
     reason for that default was found and a sleep limit counted in hours cannot help a sudden
     spike; setting it in `firefox-branding.js`, because the config key could then not turn it
@@ -445,10 +466,17 @@ e2e, `tests/e2e/scenarios/issue-1404-tab-sleep.json`: the tab line (`[ui] tablin
 and the side panel with one sleeping and two loaded tabs, in the Vimma theme and an Omarchy
 theme; baselines in `tests/e2e/baselines/`.
 
-mochitest, `tests/browser/browser_vimma_low_memory.js` uses `nsIAvailableMemoryWatcherTestingLinux`
-(`xpcom/base/nsIAvailableMemoryWatcherTestingLinux.idl`) to signal low memory and checks that a
-pane on screen and a connected agent's tab are not unloaded, that another tab is, and that
-`[tabs] sleep_on_low_memory = false` sets `browser.tabs.unloadOnLowMemory` to false.
+mochitest, `tests/browser/browser_vimma_low_memory.js` (Linux) brings Firefox's own memory watcher
+to low memory by raising `browser.low_commit_space_threshold_percent` to 100, with
+`nsIAvailableMemoryWatcherTestingLinux` (`xpcom/base/nsIAvailableMemoryWatcherTestingLinux.idl`)
+for the pressure file, so the real `TabUnloader` runs:
+
+- `sleep_on_low_memory_turns_firefoxs_unloader_on_and_off`: on by default, off with
+  `sleep_on_low_memory = false`, independent of `sleep_after`, never in `prefs.js`, and Firefox's
+  default with the feature pref off
+- `low_memory_unloads_other_tabs_but_never_a_shown_pane_or_an_agents_tab`
+- `the_mark_follows_the_split_the_agent_and_the_config`: a hidden split's tabs and a disconnected
+  agent's are unmarked, an add-on's mark stays
 
 ## Docs and changelog
 
@@ -473,7 +501,7 @@ The implementing pull requests add:
 Slices 1, 3 and 5 merge when green and verified, behind `vimma.feature.tabSleep`. Slice 2 stops
 at ready for the maintainer, because it adds a default key, and slice 4 does too, because it
 turns the feature on for every user; both with notes on how to try them. Slice 5 merges before
-slice 4.
+slice 4. Slice 4 may land before slice 2 (decision 20).
 
 1. **Core rules and the check.** `planSleep`, `[tabs] sleep_after` and `[sites] sleep` in the
    config validator and `defaults.toml` (commented), `services/TabSleep.sys.mjs` with the
@@ -484,7 +512,7 @@ slice 4.
 3. **Showing it.** The muted rows in the tab line and the side panel with their accessible
    description, `state.tabs[].asleep` with its contract fixture, the e2e scenario and baselines.
 4. **Turn it on.** Remove `vimma.feature.tabSleep`, uncomment `[tabs] sleep_after = 120` in
-   `defaults.toml`, the guide section, the "Since changed" notes, status `implemented`.
+   `defaults.toml`, the guide section, the "Since changed" notes, status `implemented` (landed before slice 2, the status note names slice 2 instead).
 5. **Low-memory unloading.** `[tabs] sleep_on_low_memory` in the config validator and
    `defaults.toml`, `TabSleep` setting `browser.tabs.unloadOnLowMemory` from it and keeping
    `undiscardable` on the tabs decisions 5 and 8 protect (decision 21),

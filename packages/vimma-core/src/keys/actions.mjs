@@ -263,6 +263,9 @@ group("Hints", [
   // docs/specs/pdf-mode.md decisions 16 and 21: zathura's F and c; c is bound in the PDF viewer.
   ["show_link_target", "hint.show_target", "Show a link's target without following it"],
   ["copy_link_target", "hint.copy_target", "Copy a link's target"],
+  // docs/specs/hover.md decisions 1 and 5: the page shows what it shows under the mouse.
+  ["hover_element", "hint.hover", "Hover an element: show what the page shows under the mouse"],
+  ["hover_release", "hover.release", "End the hover"],
   ["hint_cancel", "hint.cancel", "Leave hint mode"],
 ]);
 

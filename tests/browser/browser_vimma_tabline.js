@@ -395,14 +395,32 @@ add_task(async function gb_with_the_line_off() {
 });
 
 /**
- * Fills the workspace up to `n` tabs, fast (unloaded pages).
+ * Fills the workspace up to `n` tabs of `about:blank?<number>`, and waits until each has its own
+ * document. A new tab starts on the initial about:blank, and its page then replaces that document
+ * with a new window global, after the tab is in the side panel and with no load in progress that
+ * webProgress reports. A focus wait (SpecialPowers' EnsureFocus) on a tab whose document is
+ * replaced under it fails with "Actor 'SpecialPowers' destroyed", as it did on the slower macOS
+ * runner (issue #1350).
  * @param {number} n
  */
 async function fillTo(n) {
+  /** @type {{ browser: XULBrowserElement, url: string }[]} */
+  const added = [];
   for (let i = gBrowser.visibleTabs.length + 1; i <= n; i++) {
-    BrowserTestUtils.addTab(gBrowser, `about:blank?${i}`, { skipAnimation: true });
+    const url = `about:blank?${i}`;
+    const tab = BrowserTestUtils.addTab(gBrowser, url, { skipAnimation: true });
+    added.push({ browser: tab.linkedBrowser, url });
   }
   await until(() => panelRows().length === n, `${n} tabs`);
+  await until(
+    () =>
+      added.every(
+        ({ browser, url }) =>
+          browser.browsingContext?.currentWindowGlobal?.documentURI?.spec === url,
+      ),
+    `each of the ${n} tabs has its page's document`,
+    400,
+  );
 }
 
 // Ten tabs and more: two- and three-digit numbers in the line and its overflow, {N}gb past 9,
@@ -411,6 +429,15 @@ for (const n of [30, 120]) {
   add_task(async function overflow_keeps_the_current_tab() {
     await SpecialPowers.pushPrefEnv({ set: [[PREF, "always"]] });
     await fillTo(n);
+    // The focus waits below (focusPage) fail if a tab's document is replaced under them.
+    Assert.deepEqual(
+      gBrowser.visibleTabs
+        .slice(1)
+        .map((t) => t.linkedBrowser.browsingContext?.currentWindowGlobal?.documentURI?.spec)
+        .filter((spec, i) => spec !== `about:blank?${i + 2}`),
+      [],
+      "each new tab has its own page's document, not the initial about:blank",
+    );
     gBrowser.selectedTab = /** @type {MozTabbrowserTab} */ (gBrowser.visibleTabs[14]);
     await until(() => current()?.dataset.number === "15", `${n}: the current tab is in view`);
     Assert.equal(hidden("before") + entries().length + hidden("after"), n, "the counts add up");

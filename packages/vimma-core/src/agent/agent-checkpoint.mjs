@@ -360,6 +360,7 @@ export function isConsequential({ pay, sent }) {
       f.opaque ||
       f.identity ||
       f.cut ||
+      // Stryker disable next-line StringLiteral: reached only when pageText(f.value) is not empty, so f.value is not null or undefined
       (f.text && !!pageText(f.value) && !NUMBER_ONLY.test(String(f.value ?? "").trim())),
   );
 }

@@ -13,6 +13,7 @@ import {
   hintCollectReason,
   parseBlockReply,
   parseHintReply,
+  parseHoverReply,
 } from "../core/hints.mjs";
 import { INSERT_ENTER } from "../core/editable.mjs";
 import { parseScrollPosition } from "../core/find.mjs";
@@ -46,7 +47,7 @@ const START_PAGE_MATCH = "chrome://browser/content/vimma/start/start.html";
  * A hint target in the parent: where to draw it and how to reach its element again.
  * @typedef {object} HintTarget
  * @property {Rect} rect  in the top frame's CSS pixels
- * @property {"link" | "input" | "click" | "block"} kind
+ * @property {"link" | "input" | "click" | "block" | "hover"} kind
  * @property {string} [href]  links only
  * @property {string} [text]  an agent's links only: what the link says (mcp-drive D12)
  * @property {import("../core/blocks.mjs").BlockKind} [blockKind]  text blocks only
@@ -432,7 +433,8 @@ export const VimmaActors = {
    *   (text blocks, docs/specs/element-focus.md)
    * @param {{ agent?: boolean, elements?: boolean }} [options]  `agent`: an
    *   agent's `f` in its tab (docs/specs/mcp-drive.md D12): links only, each with its text, live
-   *   per tab, not per window; with `elements`, an agent's `vimma_elements`
+   *   per tab, not per window; `hint.hover` collects what can be hovered (docs/specs/hover.md);
+   *   with `elements`, an agent's `vimma_elements`
    *   (docs/specs/mcp-forms.md F2): every kind but blocks, disabled controls too, each
    *   described, kept apart from the user's
    * @returns {Promise<HintTarget[]>}
@@ -460,6 +462,7 @@ export const VimmaActors = {
       action === "hint.show_target" ||
       action === "hint.copy_target";
     const blocks = !agent && action === "hint.element";
+    const hover = !agent && action === "hint.hover";
     const texts = agent && !elements;
     /** @type {HintTarget[]} */
     const out = [];
@@ -492,6 +495,7 @@ export const VimmaActors = {
           blocks,
           texts,
           elements: agent && elements,
+          hover,
         });
         raw = await Promise.race([query, late]);
       } catch {
@@ -501,7 +505,7 @@ export const VimmaActors = {
         clearTimeout(timer);
       }
       // From a content process, which may be compromised: a fresh, checked copy or nothing.
-      const reply = parseHintReply(raw, { blocks, texts, elements: agent && elements });
+      const reply = parseHintReply(raw, { blocks, texts, elements: agent && elements, hover });
       if (depth === 0) {
         lastReasons.set(browser, hintCollectReason({ queried, raw, reply, live: live() }));
       }
@@ -591,6 +595,62 @@ export const VimmaActors = {
     actorFor(target.bc)
       ?.sendQuery("Vimma:ActivateHint", { gen: target.gen, id: target.id })
       .catch(() => {});
+  },
+
+  /**
+   * Hovers a target of the user's `gh` collection (docs/specs/hover.md): its frame locks `:hover`
+   * on it and sends the pointer's events, trusted, as the user's. HoverOps then has the frames
+   * around it lock their `<iframe>` chains (hoverEmbedders, decision 12). Resolves the
+   * element's text for the status bar, or null when the frame did not hover it.
+   * @param {HintTarget} target
+   * @returns {Promise<{ text: string } | null>}
+   */
+  async hover(target) {
+    if (target.bc.currentWindowGlobal !== target.wg) return null;
+    const actor = actorFor(target.bc);
+    if (!actor) return null;
+    /** @type {unknown} */
+    let raw;
+    try {
+      raw = await actor.sendQuery("Vimma:Hover", { op: "hover", gen: target.gen, id: target.id });
+    } catch {
+      return null; // the frame navigated or its process went away
+    }
+    // From a content process, which may be compromised: a checked copy, its text cleaned.
+    const reply = parseHoverReply(raw);
+    if (!reply?.hovered || target.bc.currentWindowGlobal !== target.wg) return null;
+    return { text: reply.text };
+  },
+
+  /**
+   * Ends the hover the user's `gh` began in frame `bc` while it shows document `wg`, and the
+   * locks of the frames around it. A frame showing another document by now has no hover of ours.
+   * @param {CanonicalBrowsingContext} bc
+   * @param {WindowGlobalParent} wg
+   */
+  releaseHover(bc, wg) {
+    if (bc.currentWindowGlobal === wg) {
+      actorFor(bc)
+        ?.sendQuery("Vimma:Hover", { op: "release" })
+        .catch(() => {});
+    }
+    this.hoverEmbedders(bc, "release");
+  },
+
+  /**
+   * Has each frame around `bc` lock (or release) its `<iframe>` element's chain for the hover in
+   * `bc` (docs/specs/hover.md decision 12).
+   * @param {CanonicalBrowsingContext} bc
+   * @param {"lock" | "release"} op
+   */
+  hoverEmbedders(bc, op) {
+    for (let child = bc, parent = bc.parent; parent; child = parent, parent = parent.parent) {
+      try {
+        actorFor(parent)?.sendAsyncMessage("Vimma:HoverEmbedder", { op, frame: child.id });
+      } catch {
+        // That frame's document went away, and its locks with it.
+      }
+    }
   },
 
   /**

@@ -288,6 +288,7 @@ add_task(async function colon_source_reloads_at_once() {
   EventUtils.sendString("source");
   EventUtils.synthesizeKey("KEY_Enter");
   await until(() => ConfigHost.config?.keys.new_tab === "prefix+t", ":source loads the file");
+  await until(() => noticeText() === "sourced config.toml", "and says so (#1474)");
   BrowserTestUtils.removeTab(tab);
   await SpecialPowers.popPrefEnv();
   await resetConfig();
@@ -314,6 +315,7 @@ add_task(async function colon_source_a_path_replaces_the_config_and_reports_that
   await IOUtils.writeUTF8(PathUtils.join(dir, "work.toml"), `[keys]\nclose_tab = "prefix+q"\n`);
   command("source work.toml");
   await until(() => ConfigHost.config?.keys.close_tab === "prefix+q", ":source work.toml loads");
+  await until(() => noticeText() === "sourced work.toml", "and says which file it read");
   Assert.ok(!Object.hasOwn(config().keys, "new_tab"), "config.toml's binding is gone");
   Assert.equal(ConfigHost.path, PathUtils.join(dir, "work.toml"), "the file in force");
   await focusContent(tab.linkedBrowser);
@@ -378,6 +380,43 @@ add_task(async function colon_config_opens_the_file_and_creates_it_from_the_temp
   BrowserTestUtils.removeTab(tab);
   await SpecialPowers.popPrefEnv();
   await resetConfig();
+});
+
+// #1474: a config.toml the setup cannot write (a read-only folder or store) is said so, with the
+// lines to add by hand, as `:route add` does.
+add_task(async function a_read_only_config_toml_says_what_to_add_by_hand() {
+  const ro = PathUtils.join(dir, "ro");
+  const roFile = PathUtils.join(ro, "config.toml");
+  await IOUtils.makeDirectory(ro);
+  await IOUtils.writeUTF8(roFile, "[ui]\n");
+  await IOUtils.setPermissions(ro, 0o500);
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.config.path", roFile]] });
+  try {
+    await ConfigHost.reload();
+    Assert.equal(
+      await ConfigHost.setConfigKeys([{ table: "scroll", key: "step", value: 7 }]),
+      "cannot write config.toml (read-only?); add by hand: [scroll] step = 7",
+    );
+    const r = await ConfigHost.addAgentProvider(
+      {
+        name: "local",
+        kind: "openai",
+        endpoint: "http://127.0.0.1:8080/v1",
+        model: "m",
+        vision: false,
+      },
+      { makeDefault: true },
+    );
+    Assert.deepEqual(r, {
+      error:
+        'cannot write config.toml (read-only?); add by hand: [agent] default = "local" / [[agent.providers]] / name = "local" / kind = "openai" / endpoint = "http://127.0.0.1:8080/v1" / model = "m" / vision = false',
+    });
+    Assert.equal(await IOUtils.readUTF8(roFile), "[ui]\n", "config.toml as it was");
+  } finally {
+    await IOUtils.setPermissions(ro, 0o700);
+    await SpecialPowers.popPrefEnv();
+    await ConfigHost.reload();
+  }
 });
 
 add_task(async function panes_max_refuses_a_third_split() {

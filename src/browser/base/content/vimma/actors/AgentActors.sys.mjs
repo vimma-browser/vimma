@@ -10,7 +10,16 @@ import { parseActTarget, parseFillTarget } from "../core/agent-act.mjs";
 import { parsePayInfo, parseSentFields } from "../core/agent-checkpoint.mjs";
 import { ACTIVATE_CHANGES } from "../core/control.mjs";
 import { actorFor } from "./actor-for.mjs";
-import { markOf, nextStep, noteSkipped, saidSkipped, setMark, whereOf } from "./submit-marks.mjs";
+import {
+  markOf,
+  newAllowed,
+  nextStep,
+  noteSkipped,
+  noteSubmitting,
+  saidSkipped,
+  setMark,
+  whereOf,
+} from "./submit-marks.mjs";
 
 /** @import { HintTarget } from "./VimmaActors.sys.mjs" */
 
@@ -137,7 +146,7 @@ export const AgentActors = {
     const top = browser.browsingContext;
     if (!top || !mark || top.currentWindowGlobal?.innerWindowId !== mark.doc) return false;
     try {
-      mark.allowed = { method: allowed.method, where: whereOf(Services.io.newURI(allowed.action)) };
+      mark.allowed = newAllowed(allowed.method, whereOf(Services.io.newURI(allowed.action)));
     } catch {
       return false;
     }
@@ -157,6 +166,18 @@ export const AgentActors = {
    */
   agentSkipped(bc, wg, data) {
     noteSkipped(bc, wg, data);
+  },
+
+  /**
+   * The child names the request of the agent's submission it just started (VimmaParent,
+   * `Vimma:AgentSubmitting`): the tab's allowed submission is that request alone (security.md
+   * M28). A forged one from another frame of the tab is ignored, as it names no step sent there.
+   * @param {CanonicalBrowsingContext | null | undefined} bc  the frame that started it
+   * @param {WindowGlobalParent | null} wg  its window global, the sender's own
+   * @param {unknown} data  `{ step, channel }`: the step's number and the request's channel id
+   */
+  agentSubmitting(bc, wg, data) {
+    noteSubmitting(bc, wg, data);
   },
 
   /**

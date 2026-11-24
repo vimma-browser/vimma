@@ -14,7 +14,8 @@ What works today, each with the section that explains it:
 
 - **Vim on the page** ([the two layers](#the-two-layers)): `j`/`k`/`h`/`l` scroll, `d`/`u`
   half a page, `gg`/`G` top and bottom, `H`/`L` back and forward; `f` link hints (`gF` in a
-  new tab: in the background, or with an upper-case last key, switching to it); `F` [element focus](#copying-a-paragraph-element-focus) to copy a paragraph,
+  new tab: in the background, or with an upper-case last key, switching to it); `gh`
+  [hovers](#hovering-an-element) what a page shows only under the mouse; `F` [element focus](#copying-a-paragraph-element-focus) to copy a paragraph,
   list item or code block with `y`; `/` find as you type, in frames and PDFs too; `v` copy mode
   with Vim motions and `y`; insert mode in text fields, `Esc` to leave; `:` a
   [command line](#the-command-line) with completion and history.
@@ -36,11 +37,18 @@ What works today, each with the section that explains it:
   in [config.toml](#configtoml), which applies on save; Firefox's own shortcuts are Vimma
   bindings too ([Firefox's own shortcuts](#firefoxs-own-shortcuts)).
 - **[Search engines](#search-engines)** and `@aliases` from `config.toml`, such as `@gh vimma`.
+- **[Bookmarks in a file](#bookmarks-in-a-file):** each workspace's bookmarks in
+  `bookmarks.toml` beside `config.toml`, mirrored into Firefox's bookmarks and reloaded on save;
+  changes made in Firefox's Library or by Sync are written back, keeping your comments, and
+  `:bookmarks export` writes the file from the bookmarks you already have.
 - **[No toolbar](#hiding-the-toolbar)** by default: the page reaches the top of the window, the
   address bar comes back when you need it, and `ctrl+b u` shows the whole toolbar.
 - **[Tab line](#tab-line):** a row of text at the top of the window that lists this
   workspace's tabs with their numbers once there are two or more; `gb` labels them and one more
   key goes there, `12gb` goes to tab 12.
+- **[Sleeping tabs](#sleeping-tabs):** a tab you have not looked at for two hours unloads its
+  page and keeps its place, history and scroll position; selecting it loads it again. Tabs on
+  screen, playing sound or sharing a camera stay loaded, and `[tabs] sleep_after` sets the time.
 - **[Downloads from the keyboard](#downloads):** `ctrl+b d` lists them with live progress, and
   one key opens a file, shows it in its folder, pauses, retries, removes or deletes it, or allows
   a blocked one through Firefox's own warning; the status bar shows `↓ 42%` while they run and
@@ -802,6 +810,39 @@ and `F` labels its paragraphs so you can [copy them](#copying-a-paragraph-elemen
 banner kind sets its categories with a slider instead of switches; [Known limits](limits.md)
 says how to move it.
 
+### Hovering an element
+
+Many pages show some controls only while the mouse rests over part of the page: a chat message's
+actions, a channel's settings gear, a table row's buttons, a navigation bar's sub-menu. `gh`
+reaches them without the mouse. It puts a label on everything on screen that can be hovered: what
+`f` labels, elements that react to the mouse resting on them (a menu that opens, an element with
+a tooltip title), and text, so a row whose buttons appear only under the mouse can be hovered
+through its text. A block that holds something else to hover gets no label of its own: a
+paragraph with a link is labelled on the link. Typing, `Backspace` and `Esc` work as they do for
+link hints.
+
+Typing a label **hovers** its element: the page shows what it shows when the mouse rests there,
+and the status bar says `hover · ` and the element's text. The tab stays in normal mode, so `f`
+then labels the controls the hover revealed and follows one, `j` and `k` scroll to read a menu
+that opened, and `F` copies from it. The hover holds through a click, so a menu that a revealed
+button opens stays open.
+
+The hover holds while you scroll and the page changes, and ends with:
+
+- `Esc` in normal mode (a second `Esc` stops a loading page, as before);
+- another `gh` label, which moves the hover;
+- leaving the page, switching to another tab, workspace or split pane;
+- the page replacing or moving the hovered element;
+- moving the real mouse;
+- `:hover_release`, which you can bind to a key.
+
+A hover clicks nothing, focuses nothing and selects nothing. Hovering a link shows its address in
+the link preview, as the mouse would. Firefox's own tooltip and the mouse pointer's shape do not
+change, since the real pointer stays where it is.
+
+Hovering is `gh` in normal mode and `:hover_element` on the command line; bind `hover_element`
+and `hover_release` to other keys in [config.toml](#configtoml) under `[modal.normal]`.
+
 ### Copying a paragraph (element focus)
 
 `F` (element focus) puts the same labels as link hints on the text on screen instead of on what
@@ -1208,7 +1249,8 @@ reads `y ok · p pin extension to toolbar · Tab buttons`. `Tab` moves focus ont
 where `Space` toggles it. The same half-second wait applies. `n` keeps its usual meaning while
 the notice is open, since the notice has nothing to decline.
 Firefox's pop-up blocked bar takes `y`, `n` and `Esc` with the same rules
-([Blocked pop-ups](#blocked-pop-ups)).
+([Blocked pop-ups](#blocked-pop-ups)), and its other bars over a page take `Tab` and `Esc`
+([Other notification bars](#other-notification-bars)).
 
 A site whose login keeps you on the same page leaves focus in its password field, so the "Save
 password?" prompt opens with the `Esc, then` line. In the prompt's own username and password
@@ -3660,6 +3702,9 @@ highlighted and its number coloured; a tab playing sound shows `♪`, one from a
 | `Esc`                   | End a range; else clear the marks (with a split: put its marks back); else close the panel, and the page has the keys again.                                                                               |
 | `ctrl+b b`              | Close the panel.                                                                                                                                                                                           |
 
+A new tab (`ctrl+t`, `ctrl+b c` or the `+` button) closes the panel and you type in its
+address bar, as does a click into the address bar; the bookmarks panel does the same.
+
 A window with workspaces has no pinned tabs: they are unpinned at once
 ([Managing workspaces](#managing-workspaces)). A private window keeps them: the panel lists them,
 but `x` does not close one (`pinned tab: unpin it to close it`), `m` does not move one
@@ -3787,7 +3832,8 @@ No page reloads.
 
 ### Routing: which workspace a link opens in
 
-`[[routes]]` rules in `config.toml` send a site, or every link an app opens, to a workspace
+`[[routes]]` rules in `config.toml`, or in a `routes.toml` beside it
+([Routes in a file](#routes-in-a-file)), send a site, or every link an app opens, to a workspace
 (and its container), as Zen's Space Routing does. Each rule names a `workspace` and what it
 matches; the first rule that matches, top to bottom, wins.
 
@@ -3921,14 +3967,43 @@ claims a name opens nothing but the sign-in host there.
 
 **Commands.**
 
-| Command                         | What it does                                                                                                               |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `:route`                        | Opens `about:vimma`'s Routing section: every rule in force, and which one matches the tab you were on.                     |
-| `:route add`, `:route add work` | Adds a `domain` rule for this site (its host without `www.`) to the end of `config.toml`, for this or the named workspace. |
-| `:route move`                   | Moves this tab to the workspace its rule names.                                                                            |
+| Command                         | What it does                                                                                                                 |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `:route`                        | Opens `about:vimma`'s Routing section: every rule in force, its file and line, and which one matches the tab you were on.    |
+| `:route add`, `:route add work` | Adds a `domain` rule for this site (its host without `www.`) to the end of the routes file, for this or the named workspace. |
+| `:route move`                   | Moves this tab to the workspace its rule names.                                                                              |
 
-`:route add` refuses a site an earlier rule already routes (it names the rule), a `config.toml`
-that has errors. It only ever appends to the file.
+The routes file is `routes.toml` when it exists, otherwise `config.toml`. `:route add` refuses a
+site an earlier rule already routes (it names the rule), a routes file that has errors, and a
+file changed while it was writing. It only ever appends, and never creates `routes.toml`. When
+the file cannot be written (a `config.toml` linked into a read-only store, for example), it says
+so and shows the lines to add by hand.
+
+#### Routes in a file
+
+The rules you route say which sites you sign in to for work and which programs you run, and
+they grow with every `:route add`, while the rest of `config.toml` changes rarely. Keep them in
+`routes.toml`, beside `config.toml` (`~/.config/vimma/routes.toml`), and you can publish or
+share `config.toml` while the routes stay private (in `.gitignore`, or a private repository).
+
+- **It holds** `[[routes]]` tables and, optionally, `[routing] default_workspace`, written and
+  checked exactly as in `config.toml`; any other key is an error.
+- **When it exists, it is the routes file.** Its rules and `[routing]` replace `config.toml`'s
+  as a whole: rules or a `default_workspace` left in `config.toml` are ignored, and the status
+  bar says so at their first line. `:route add` then appends to `routes.toml`.
+- **Edits apply within two seconds**, as `config.toml`'s do, and `:source` reads it at once. A
+  `routes.toml` with an error keeps the last rules that read well while the rest of
+  `config.toml` applies; the status bar shows `routes.toml:<line>: …`. Only a regular file (or a
+  link to one) of up to 1 MiB is read.
+- **Deleting it** makes `config.toml` the routes file again at the next check. A `git checkout`
+  that removes it for a moment can apply `config.toml`'s rules until it is back.
+- **Moving your rules:** create `routes.toml` beside `config.toml` (`touch` it, then
+  `chmod 600` it), cut the `[[routes]]` tables and the `[routing]` table out of `config.toml` and
+  paste them into it in the same order, and save both. The status bar names anything left
+  behind in `config.toml`. **Back:** move them into `config.toml` again and delete `routes.toml`.
+- **Trust.** A `routes.toml` you pull from a repository decides which workspace, and so which
+  logins, a site opens with, just as a pulled `config.toml` does: pull it only from a repository
+  you control.
 
 ### Private workspace
 
@@ -4195,10 +4270,6 @@ repository, or list it and its backups in `.gitignore` (`bookmarks.toml` and
 `bookmarks.toml.bak*`) while you publish `config.toml`. Vimma does not strip
 anything from a URL: a bookmark is the address you saved.
 
-**Not yet on by default.** Bookmarks in a file arrive over several releases. To try it now,
-set `vimma.feature.bookmarksFile` to `true` in `about:config`; while it is `false`, Vimma reads
-no `bookmarks.toml` and changes no bookmark because of one.
-
 **From Firefox's bookmarks to the file.** Your workspaces' bookmarks are already in Firefox
 (imported from another browser, or saved with `ctrl+b a`). To move them into the file:
 
@@ -4293,12 +4364,15 @@ URL.
   set it, so a file you pulled cannot turn writing on.
 - **Private windows.** Nothing done in private browsing reaches the file. In a private window
   the keys never write it (`bookmarks.toml is not written from a private window`), and under
-  `"all"` a bookmark added to a mirrored folder from Firefox's star or Library while a private
-  window is the last one you used stays in Firefox only, and a change to a mirrored bookmark is
-  put back, with a notice. Removals are written. Firefox does not say which window a change
-  came from, so an edit in the Library counts as made in the last browser window you used:
-  after a private one, the Library's changes are put back too, even when you opened it from a
-  normal window.
+  `"all"` a bookmark added to a mirrored folder from a private window (the star, or a Library
+  a private window opened) stays in Firefox only, and a change to a mirrored bookmark is put
+  back, with a notice. Removals are written. Renaming such a bookmark later from a normal
+  window, changing its address or moving it to another folder writes it to the file; a sort
+  does not, and a folder made in a private window stays out with everything in it. Firefox does
+  not say which window a change came from, so Vimma goes by the window in front: the Library
+  counts as the window that last opened or raised it (with its key, a menu or the bookmarks
+  button), a bookmark dialog as the window that opened it, and a change an add-on makes as the
+  window you are in.
 - **Two devices.** With Firefox Sync on two machines, each machine writes what Sync brings
   into its own file under `"all"`. Under `"vimma"` or `"none"`, or when both machines change one
   bookmark at once, one puts the other's change back. When one bookmark has been put back three
@@ -4438,6 +4512,46 @@ The name replaces the title in the status bar and in tab search and is saved wit
 it survives a restart (with Firefox's "Open previous windows and tabs") and undoing a closed tab.
 Invisible and direction-changing characters are removed, runs of spaces become one, and a name
 is cut at 100 characters.
+
+## Sleeping tabs
+
+Tabs you have not looked at for two hours go to sleep: Firefox unloads the page, which frees its
+memory and stops its scripts, while the tab keeps its place in its workspace, the tab line and
+the side panel. Selecting a sleeping tab loads it again with its back and forward history, its
+scroll position and the text typed into its form fields. This keeps a day of a hundred tabs, spread
+over workspaces and splits, from holding a hundred loaded pages.
+
+- **Counts as looked at:** selecting a tab, or having it on screen as a pane of the split shown.
+  A tab opened in the background counts as seen when it opens. Vimma checks every 5 minutes.
+- **Never sleeps on its own:** a tab on screen (every pane of the split shown, zoomed-away panes
+  included), a pinned tab, a tab playing sound, in Picture-in-Picture or using the camera,
+  microphone or screen sharing, a private tab, the [agent workspace](#agent-workspace)'s tabs
+  while an agent is connected, a tab still loading, a page that would ask before you leave it
+  (unsaved changes), and pages that are not web pages (`about:` pages such as the start page and
+  Settings). Only `http:`, `https:` and `file:` pages sleep.
+- **Shown:** a sleeping tab is drawn in the theme's muted text in the [tab line](#tab-line) and
+  the [side panel](#side-panel), and a screen reader hears `asleep`. Tabs a restart left unloaded
+  look the same. The tab line, the side panel, tab search and `vimma-ctl state` list a sleeping
+  tab without loading it.
+- **Lost on sleep:** what only the running page held: a paused video's position, an open
+  connection, text in an editor that is not a form field. Password fields are not kept either. A
+  download started from the tab carries on.
+- **Low memory:** when the machine is nearly out of memory, Firefox unloads the tab you used
+  least recently, one at a time, on Linux too. It never takes a tab on screen or the agent
+  workspace's tabs while an agent is connected.
+
+Change it in [config.toml](#configtoml):
+
+```toml
+[tabs]
+sleep_after = 120             # minutes unseen before a tab sleeps (5–10080); 0: never
+sleep_on_low_memory = true    # false: Firefox never unloads tabs when memory runs low
+
+[sites."music.example.com"]
+sleep = false                 # this site's tabs, its subdomains' too, never sleep on their own
+```
+
+A change applies at the next check after the file is read, and never wakes a tab.
 
 ## Add-ons
 
@@ -4649,6 +4763,25 @@ pages get no permissions: no key answers the bar there, and `:popups` says `pop-
 in the agent workspace`. `:popups` has no default key; bind one in `config.toml`
 (`[keys] popup_picker`).
 
+### Other notification bars
+
+Firefox shows other bars over a page too, such as "Site looks broken? Reload the page to
+temporarily lower your tracking protection" after a reload in a private window. You reach them
+from the keyboard with the same half-second wait:
+
+| Key   | What it does                                                                                                       |
+| ----- | ------------------------------------------------------------------------------------------------------------------ |
+| `Tab` | Moves focus onto the bar's first button. `Tab` then moves between its buttons, and `Enter` or `Space` presses one. |
+| `Esc` | Closes the bar, as its close button does, without pressing any of its buttons, also with focus on a button.        |
+
+The bar names its keys beside its buttons, `Tab buttons · Esc close`, and `Enter press · Esc
+close` once focus is on a button. While you type in a page
+field, and in link hints, copy mode and element mode, the keys are theirs and the line says
+`Esc, then Tab buttons`. A bar without a close button takes only `Tab`, and in the
+[agent workspace](#agent-workspace) no key answers a bar. While a bar is up, `Esc` closes it before it
+stops a loading page or reaches the page, and `Tab` moves onto the bar instead of through the
+page; once the bar is closed both are as before.
+
 ## The command line
 
 `:` in normal mode opens a Vim-style command line just above the status bar, for everything
@@ -4814,9 +4947,27 @@ One plain file holds your settings and keys; every key, the prefix and the leade
 - **Where:** `~/.config/vimma/config.toml` (`$XDG_CONFIG_HOME/vimma/` when set).
 - **Start:** the first run and `:config` write it with every setting commented out.
 - **Change:** uncomment a line and edit its value; saving applies it within 2 seconds.
-- **Reload by hand:** `:source` reads it at once; `:source work.toml` applies another file.
-- **Mistakes:** the old config keeps working, and the status bar shows the error and its line.
+- **Reload by hand:** `:source` reads it at once and says `sourced config.toml`; `:source work.toml`
+  applies another file.
+- **Vimma's own edits:** the setup, `:route add` and the built-in agent's setup change only their
+  own lines and keep your comments and line endings. The setup and the agent's setup edit
+  `scroll.step = …` style lines in place. A table written inline (`scroll = { step = 5 }`), or a
+  file Vimma cannot write (a link into a read-only store such as Nix's), is left as it is, and the
+  message gives the lines to add by hand.
+- **Mistakes:** the status bar shows the error and its line, and the config in force keeps
+  working: the last file that loaded, or the defaults when none has since Vimma started. A file
+  Vimma cannot read (not UTF-8, no read permission, a link to a missing file, over 1 MiB) is
+  said the same way.
+- **Missing file:** when `config.toml` is gone for two checks in a row (within about 4 seconds),
+  the defaults apply and a notice says `config.toml missing; using the defaults`; an editor that
+  saves by replacing the file never triggers it.
 - **Old files:** a `schema = …` line is ignored.
+- **Newer files:** a setting this version does not know, such as one a newer Vimma added, is
+  skipped and named in the status bar (`unknown key "…"; skipped`), and the rest of the file
+  applies. A key close to a real one (`steps` for `step`) is an error with the suggestion, and so
+  are, as before, an unknown action in `[keys]` or a mode in `[unbind]`, an unknown colour in
+  `[theme.colors]`, an unknown key in a `[[routes]]` rule, and a value only a newer version
+  accepts.
 
 ### Keys and modes
 
@@ -4848,6 +4999,7 @@ enable = []        # Firefox's shortcuts given back as Firefox runs them, such a
 # [sites."docs.google.com"]
 # insert = "always"  # text fields take insert mode: "auto" (when detected), "never" or "always"
 # unbind = ["t"]     # keys the page gets instead of Vimma; esc and the prefix stay Vimma's
+# sleep = false      # its tabs never go to sleep on their own
 ```
 
 See also: [Every key is yours](#every-key-is-yours), [Default bindings](bindings.md), [Normal and
@@ -4899,6 +5051,10 @@ root = "workspace"       # where the bookmarks panel starts: "workspace", "toolb
 bookmarklets = "none"    # who may run bookmarklets: "none", "user" (you) or "agent" (asks you)
 write_back = "all"       # changes saved to bookmarks.toml: "all", "vimma" (Vimma's own), "none"
 
+[tabs]
+sleep_after = 120             # minutes unseen before a tab sleeps (5–10080); 0: never
+sleep_on_low_memory = true    # false: Firefox never unloads tabs when memory runs low
+
 # Every 12 hours Vimma asks updates.vimma.dev for a newer version, naming only the update
 # channel and the platform.
 [updates]
@@ -4910,7 +5066,7 @@ split](#picking-a-tab-during-a-split), [Colours and themes](#colours-and-themes)
 toolbar](#hiding-the-toolbar), [Tab line](#tab-line), [Firefox's Bookmarks
 Toolbar](#firefoxs-bookmarks-toolbar), [Side panel](#side-panel), [Private
 workspace](#private-workspace), [Bookmarks](#bookmarks), [Bookmarks in a
-file](#bookmarks-in-a-file), [Updates](#updates).
+file](#bookmarks-in-a-file), [Sleeping tabs](#sleeping-tabs), [Updates](#updates).
 
 ### Workspaces and routing
 
@@ -4924,9 +5080,9 @@ file](#bookmarks-in-a-file), [Updates](#updates).
 # color = "gray"                # the container's colour, from the list above
 # icon = "circle"               # the container's icon, from the list above
 # home = "https://intra.example"  # opens when you go to the workspace and it has no tab
-# autofill = true               # reserved for a later release; it changes nothing yet
 
 # Which workspace a link opens in: the first rule that matches wins. None by default.
+# A routes.toml beside this file, when it exists, holds them (and [routing]) instead.
 # [[routes]]
 # domain = "github.com"         # github.com and its subdomains; "*.corp.example": subdomains only
 # app = "slack"                 # links that program opens (Linux); with domain, both must match
@@ -5042,6 +5198,9 @@ is **off by default**.
    `vimma.control.enabled` too (or `:control on <minutes>`). With both on, each `vimma-ctl` run
    asks you first in Vimma ([full control while agents are on](#full-control-while-agents-are-on)).
    An older `vimma-ctl` still works with this Vimma.
+
+   In `vimma-ctl state --json`, a [sleeping tab](#sleeping-tabs) has `"asleep": true`, and
+   reading the state does not load it.
 
 `send-keys` presses the keys in the most recently focused Vimma window, exactly as typing them
 would: Vimma's bindings, Firefox's shortcuts (`ctrl+t`, `ctrl+q`) and the page all see them. Keys

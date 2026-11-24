@@ -53,6 +53,7 @@ browser.jar:
         content/browser/vimma/host/element-focus.mjs      (host/element-focus.mjs)
         content/browser/vimma/host/page-ops.mjs           (host/page-ops.mjs)
         content/browser/vimma/host/browser-ops.mjs        (host/browser-ops.mjs)
+        content/browser/vimma/host/hover-ops.mjs          (host/hover-ops.mjs)
         content/browser/vimma/host/bookmark-ops.mjs       (host/bookmark-ops.mjs)
         content/browser/vimma/host/bookmark-actions.mjs   (host/bookmark-actions.mjs)
         content/browser/vimma/actors/VimmaActors.sys.mjs  (actors/VimmaActors.sys.mjs)
@@ -73,6 +74,7 @@ browser.jar:
         content/browser/vimma/actors/agent-page.mjs       (actors/agent-page.mjs)
         content/browser/vimma/actors/user-gesture.mjs     (actors/user-gesture.mjs)
         content/browser/vimma/actors/page-events.mjs      (actors/page-events.mjs)
+        content/browser/vimma/actors/hover.mjs            (actors/hover.mjs)
         content/browser/vimma/actors/pdf-view.mjs         (actors/pdf-view.mjs)
         content/browser/vimma/actors/page-scroll.mjs      (actors/page-scroll.mjs)
         content/browser/vimma/host/pdf-ops.mjs            (host/pdf-ops.mjs)
@@ -85,6 +87,7 @@ browser.jar:
         content/browser/vimma/services/AppLauncher.sys.mjs (services/AppLauncher.sys.mjs)
 % category browser-before-ui-startup chrome://browser/content/vimma/services/AppLauncher.sys.mjs AppLauncher.beforeUIStartup
         content/browser/vimma/services/ViewedDownloads.sys.mjs (services/ViewedDownloads.sys.mjs)
+        content/browser/vimma/services/TabSleep.sys.mjs (services/TabSleep.sys.mjs)
         content/browser/vimma/workspaces/WorkspaceStore.sys.mjs (workspaces/WorkspaceStore.sys.mjs)
         content/browser/vimma/workspaces/WindowWorkspaces.sys.mjs (workspaces/WindowWorkspaces.sys.mjs)
         content/browser/vimma/workspaces/WorkspaceRouter.sys.mjs (workspaces/WorkspaceRouter.sys.mjs)

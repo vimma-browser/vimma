@@ -11,6 +11,7 @@
 // `init` builds it and hands it in: only the modules tools/layering's RESTRICTED lists import
 // the gate.
 
+import { HoverOps } from "./hover-ops.mjs";
 import { createDispatcher } from "../core/dispatcher.mjs";
 import { PageFirstQueue } from "../core/page-first.mjs";
 import { CommandLine } from "../ui/cmdline.mjs";
@@ -37,6 +38,7 @@ import { AgentPrompt } from "../ui/agent-prompt.mjs";
 import { getTabLabel, setTabLabel } from "../workspaces/tab-labels.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { PaneViews } from "../split/PaneView.mjs";
+import { tabAsleep } from "../services/TabSleep.sys.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
 import { DownloadRows, DownloadWatch, downloadPickerKey } from "./download-ops.mjs";
 import { HostServices } from "./host-services.mjs";
@@ -141,6 +143,7 @@ export function newWindowState(host, win, keymap, env) {
       host._cancelHints(state);
       state.find.onTabSelect();
       state.element.leave();
+      HoverOps.onTabSelect(win);
       state.help.close({ tabChanged: true });
       state.cmdline.close({ tabChanged: true });
       state.picker.close({ tabChanged: true });
@@ -457,6 +460,7 @@ export function newWindowState(host, win, keymap, env) {
           foreign: !!WindowWorkspaces.get(win)?.isForeign(tab),
           playing: !!tab.soundPlaying,
           pinned: !!tab.pinned,
+          asleep: tabAsleep(tab),
         };
       },
       closeTab: (tabId) => {

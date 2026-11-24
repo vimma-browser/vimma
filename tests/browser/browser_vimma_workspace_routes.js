@@ -487,7 +487,7 @@ add_task(async function route_add_waits_for_a_running_rewrite() {
     const append = ConfigHost.addRoute({ domain: "example.org", workspace: "rt-work" });
     const [edited, appended] = await Promise.all([rewrite, append]);
     Assert.ok(!("error" in edited), `the rewrite is written: ${JSON.stringify(edited)}`);
-    Assert.equal(appended, null, "the rule is written");
+    Assert.deepEqual(appended, { added: "config.toml" }, "the rule is written");
     const text = await IOUtils.readUTF8(file);
     Assert.ok(
       text.includes('[sites."example.net"]'),

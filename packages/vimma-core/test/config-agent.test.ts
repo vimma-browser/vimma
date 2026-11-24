@@ -119,11 +119,14 @@ describe("[agent]", () => {
     expect(JSON.stringify(e)).not.toContain("sk-ant-secret");
   });
 
-  test("task_grant_minutes is not a key of [agent]", () => {
-    expect(errors(cfg("[agent]", "task_grant_minutes = 30"))[0]).toMatchObject({
-      path: "agent.task_grant_minutes",
-      message: 'unknown key "task_grant_minutes"',
-    });
+  test("task_grant_minutes is not a key of [agent]: skipped with a warning (#1474)", () => {
+    expect(parseConfig(cfg("[agent]", "task_grant_minutes = 30")).warnings).toEqual([
+      {
+        line: 3,
+        path: "agent.task_grant_minutes",
+        message: 'unknown key "task_grant_minutes"; skipped',
+      },
+    ]);
   });
 
   test("local_only refuses a remote endpoint", () => {
@@ -335,8 +338,9 @@ describe("[[agent.providers]] of kind cli (docs/specs/builtin-agent-cli.md C4, C
         "agent.providers[0].max_minutes",
       );
     }
-    // Only a CLI's: a model provider's task is bounded by its steps and tokens.
-    expect(errors(cfg(...LOCAL, "max_minutes = 5"))[0]?.path).toBe(
+    // Only a CLI's: a model provider's task is bounded by its steps and tokens. Not a near
+    // miss of a key of its own, so it is skipped with a warning (#1474).
+    expect(parseConfig(cfg(...LOCAL, "max_minutes = 5")).warnings[0]?.path).toBe(
       "agent.providers[0].max_minutes",
     );
   });
