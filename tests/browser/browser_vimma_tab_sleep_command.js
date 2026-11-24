@@ -225,6 +225,11 @@ add_task(async function panel_sleep_sleeps_the_highlighted_or_the_marked_tabs() 
   Assert.ok(asleep(a), "z puts the highlighted tab to sleep");
   Assert.ok(panel.isOpen, "the panel stays open");
   await until(() => rowOf(a)?.asleep, "its row is drawn asleep");
+  Assert.equal(
+    panel.state?.rows[panel.state.selected]?.display,
+    a.label,
+    "the highlight stays on it",
+  );
 
   await highlight(b);
   EventUtils.synthesizeKey(" ");

@@ -386,7 +386,10 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     marks are spent, as `Enter` spends them, and go back to the panes; the highlight stays on
     its row, which turns muted in place, and the panel stays open, as after `x`. Each tab is
     said by its row number, the one `4 Enter` uses. Rejected: moving the highlight down after
-    `z`, as `x` does, because the row stays where it was and moving would hide the result.
+    `z`, as `x` does, because the row stays where it was and moving would hide the result. A
+    row's id is its browser's panel, which the discard takes away, so a refresh that finds the
+    highlighted id gone with as many rows as before keeps the highlight's place instead of going
+    back to the active tab.
 24. **The messages name what happened to each tab.** `:sleep N` and a lone `z` say `Tab 4
 asleep`, `Tab 4 is asleep already`, `Tab 2 is on screen` or `Tab 4 stays awake: <reason>`;
     several tabs (`:sleep`, `:sleep all`, `z` on marks) are reported as `N tabs asleep; M stay
@@ -451,6 +454,8 @@ vitest, `packages/vimma-core/test/tabsleep.test.ts` ("sleep messages") and `side
 - `:sleep N says the tab is asleep, on screen, asleep already, or what keeps it awake`
 - `without marks, the highlighted row's tab; the highlight stays`
 - `with a split and its panes still the marks, the highlighted row's tab`
+- `Given the highlighted tab is listed under a new id in the same place, then the highlight stays
+on its row`
 
 vitest, `packages/vimma-core/test/tabline.test.ts` and `sidepanel.test.ts`:
 
