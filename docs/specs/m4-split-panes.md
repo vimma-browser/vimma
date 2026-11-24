@@ -144,7 +144,8 @@ layout(state, rect) ──rects──▶      1 membership → wrapper          
     with `!important` on `width`, `max-width`, `min-width`, `margin` and `order` to override
     `content-area.css`'s two-column rules; a small gap token comes from M5's theme;
   - Firefox's `.split-view-splitter`, `split-view-footer` and `#split-view-button` are
-    `display: none`. Dividers are drawn by our own elements in a later sub-spec; mouse-drag
+    `display: none`. (Since changed: Firefox 162 renames the footer `address-footer`, which is
+    hidden too.) Dividers are drawn by our own elements in a later sub-spec; mouse-drag
     resize is out of scope (limits);
   - the focused pane is Firefox's `.deck-selected`, which already draws `--focus-outline`; M5
     maps that colour to the theme;
