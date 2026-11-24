@@ -465,6 +465,24 @@ describe("config.toml", () => {
     );
   });
 
+  test("a table named __proto__ never reaches Object.prototype", () => {
+    // A page at http://__proto__/ gives its host as the table (docs/security/08-config-toml.md F5).
+    for (const text of [cfg('[sites."github.com"]', 'insert = "never"'), ""]) {
+      const r = edit(text, "__proto__", { add: ["t"] });
+      expect(Object.hasOwn(Object.prototype, "unbind")).toBe(false);
+      expect(r).toEqual({
+        text: `${text}${text ? "\n" : ""}[sites."__proto__"]\nunbind = ["t"]\n`,
+        added: ["t"],
+        already: [],
+        removed: [],
+      });
+      expect(unbindOf(written(r).text, "__proto__")).toEqual(["t"]);
+      const back = edit(written(r).text, "__proto__", { remove: ["t"] });
+      expect(ok(back).text).toBe(`${text}${text ? "\n" : ""}`);
+      expect(Object.hasOwn(Object.prototype, "unbind")).toBe(false);
+    }
+  });
+
   test("a host that needs escaping is written as a TOML string", () => {
     const r = ok(edit(cfg(), "::1", { add: ["t"] }));
     expect(r.text).toContain('[sites."::1"]');

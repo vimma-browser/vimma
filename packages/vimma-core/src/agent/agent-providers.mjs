@@ -335,6 +335,7 @@ function openaiReply(reply, requestBody) {
   );
   // A reply with a message is an object.
   const u = /** @type {OpenaiReply} */ (json).usage;
+  // Stryker disable next-line ArrayDeclaration: an extra count that is not a valid count adds 0
   const usage = usageOf(u?.prompt_tokens, u?.completion_tokens, [], requestBody, msg);
   return {
     message: {
