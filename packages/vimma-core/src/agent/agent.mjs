@@ -245,10 +245,13 @@ export class CallRate {
   take(conn, now) {
     const { max, ms } = this.limit;
     const recent = this.#recent(conn, now, ms);
-    // Stored before the count is checked: a refused call drops the old times too.
-    this.times.set(conn, recent);
-    if (recent.length >= max) return false;
+    if (recent.length >= max) {
+      // Stryker disable next-line CallExpression: every read filters the old times out again
+      this.times.set(conn, recent);
+      return false;
+    }
     recent.push(now);
+    this.times.set(conn, recent);
     return true;
   }
 
@@ -355,7 +358,10 @@ const frozenCopies = new WeakSet();
  * @returns {Readonly<T>}
  */
 export function frozenCopy(value) {
-  /** Objects being copied: met again, they are a cycle. @type {WeakSet<object>} */
+  /**
+   * Objects whose copy began: met again before `done` has them, they are a cycle.
+   * @type {WeakSet<object>}
+   */
   const open = new WeakSet();
   /** Objects already copied: met again, they share their copy. @type {WeakMap<object, unknown>} */
   const done = new WeakMap();
@@ -540,6 +546,7 @@ export class AgentQueue {
     /** @type {{ denials: number, mutedUntil: number, grant: number, session?: string }} */
     const c = { denials: 0, mutedUntil: 0, grant: 0 };
     // A session held by an open connection is not this one's: a second claim gets nothing.
+    // Read only with a session: the test below checks `session !== undefined` first.
     const live = [...this.conns.values()].some((o) => o.session === session);
     if (this.sessions && session !== undefined && !live) {
       c.session = session;
