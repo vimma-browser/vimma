@@ -87,14 +87,15 @@ function marked() {
 
 /**
  * Changes how a frame's Vimma actor answers: `hang` leaves the named messages unanswered for
- * good (a busy or hostile frame); `count` counts them on the actor (`counted`).
+ * good (a busy or hostile frame); `late` handles them at once but answers only after 1 s (a
+ * frame too busy to reply in time); `count` counts them on the actor (`counted`).
  * @param {BrowsingContext} bc
  * @param {string[]} names
- * @param {"hang" | "count"} how
+ * @param {"hang" | "late" | "count"} how
  */
 function stubChild(bc, names, how) {
   return SpecialPowers.spawn(bc, [names, how], (names, how) => {
-    const actor = /** @type {VimmaChildActor & { counted?: number }} */ (
+    const actor = /** @type {VimmaChildActor & { counted?: number, answered?: boolean }} */ (
       /** @type {WindowGlobalChild} */ (content.windowGlobalChild).getActor("Vimma")
     );
     const receive = actor.receiveMessage;
@@ -102,6 +103,15 @@ function stubChild(bc, names, how) {
     actor.receiveMessage = (msg) => {
       if (!names.includes(msg.name)) return receive.call(actor, msg);
       if (how === "hang") return new Promise(() => {});
+      if (how === "late") {
+        const answer = receive.call(actor, msg);
+        return new Promise((resolve) =>
+          content.setTimeout(() => {
+            actor.answered = true;
+            resolve(answer);
+          }, 1000),
+        );
+      }
       actor.counted = (actor.counted ?? 0) + 1;
       return receive.call(actor, msg);
     };
@@ -241,7 +251,13 @@ add_task(async function a_click_that_focuses_a_small_scroller_keeps_the_keys_on_
           () => /** @type {HTMLElement} */ (content.document.getElementById("widget")).scrollTop,
         ).then((y) => y === STEP),
       "j scrolls the focused widget",
-    ).catch(() => {});
+    );
+    const widgetY = await SpecialPowers.spawn(
+      browser,
+      [],
+      () => /** @type {HTMLElement} */ (content.document.getElementById("widget")).scrollTop,
+    );
+    Assert.equal(widgetY, STEP, "the widget moved one step");
     Assert.deepEqual(await panels(browser), { tree: 0, main: 0 }, "the panels stay");
     Assert.ok(!marked(), "no marker on an ordinary focused scroller");
   });
@@ -255,6 +271,15 @@ add_task(async function a_click_messages_no_frame_but_the_one_holding_a_choice()
     // Nothing is chosen: these clicks end nothing, so no frame hears of them.
     await BrowserTestUtils.synthesizeMouseAtCenter("#tree-text", {}, browser);
     await BrowserTestUtils.synthesizeMouseAtCenter("#tree-text", {}, browser);
+    // j after the clicks: the top frame's click reports reach the parent before j's reply.
+    press("j");
+    await TestUtils.waitForCondition(async () => (await treeY(browser)) === STEP, "j scrolls");
+    const other = /** @type {CanonicalBrowsingContext} */ (top.children[1]);
+    Assert.equal(
+      /** @type {WindowGlobalParent} */ (other.currentWindowGlobal).getExistingActor("Vimma"),
+      null,
+      "a frame never focused got no actor from the clicks",
+    );
     press("g", "s");
     await TestUtils.waitForCondition(marked, "gs chose the frame's area");
     // Now the frame holds the choice: a click in the tree ends it there.
@@ -292,6 +317,32 @@ add_task(async function a_frame_that_never_answers_the_pick_does_not_hold_the_sc
       "gs j: the pick times out and j scrolls the tree",
     );
     Assert.ok(!marked(), "nothing was chosen");
+  }, PAGE + "?frame");
+});
+
+add_task(async function a_pick_answered_too_late_leaves_no_hidden_choice() {
+  await withPage(async (browser) => {
+    const { frame } = await frameOf(browser);
+    await stubChild(frame, ["Vimma:ScrollAreaPick"], "late");
+    press("g", "s");
+    // The parent gives up on the pick after the frame timeout; the frame has made it anyway
+    // (and taken focus, which the default rule then follows like any focus).
+    // The frame did make the late pick: the parent's clear, sent when it gave up and so before
+    // the late answer, must end it there too.
+    const held = await SpecialPowers.spawn(frame, [], async () => {
+      const actor = /** @type {VimmaChildActor & { answered?: boolean }} */ (
+        /** @type {WindowGlobalChild} */ (content.windowGlobalChild).getActor("Vimma")
+      );
+      await ContentTaskUtils.waitForCondition(() => actor.answered, "the late answer went out");
+      const reply = /** @type {{ areas: { chosen: boolean }[] }} */ (
+        await actor.receiveMessage(
+          /** @type {VimmaChildMessage} */ ({ name: "Vimma:ScrollAreas", data: undefined }),
+        )
+      );
+      return reply.areas.some((a) => a.chosen);
+    });
+    Assert.ok(!held, "the frame holds no choice the parent does not know of");
+    Assert.ok(!marked(), "no marker: the parent recorded no choice");
   }, PAGE + "?frame");
 });
 
@@ -361,6 +412,20 @@ add_task(async function leaving_the_page_ends_the_marker() {
     BrowserTestUtils.startLoadingURIString(browser, ROOT + "file_vimma_scroll_area_inner.html");
     await loaded;
     await TestUtils.waitForCondition(() => !marked(), "no marker on the next page");
+    // Back: the page may come out of the back-forward cache, with no choice in it any more.
+    const shown = BrowserTestUtils.waitForContentEvent(browser, "pageshow");
+    browser.goBack();
+    await shown;
+    await SpecialPowers.spawn(browser, [], () =>
+      ContentTaskUtils.waitForCondition(
+        () => !!content.document.getElementById("tree"),
+        "the panels are back",
+      ),
+    );
+    Assert.ok(!marked(), "no marker after Back");
+    await focusContent(browser);
+    press("j");
+    await waitForPanels(browser, { tree: 0, main: STEP }, "j scrolls the page panel again");
   });
 });
 

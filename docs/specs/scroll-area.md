@@ -136,8 +136,10 @@ focus.
 Two new content-actor messages carry data to the parent, and both are checked there (security
 [13](../security/13-page-modes.md), K15). `Vimma:ScrollAreas` replies with rects and booleans
 that core `parseScrollAreasReply` copies and caps; a malformed reply drops that frame's areas.
-Areas with the same box count once, and which area is chosen is the parent's own record, so a
-frame can neither stack copies of a box in the cycle nor claim a choice it does not hold.
+A frame's exact copies of one box count once, and at most 32 of its areas are taken, so a
+frame cannot take over the cycle; which area is chosen is the parent's own record, so a frame
+cannot claim a choice it does not hold. A pick that comes back too late is cleared in that frame,
+so it holds no choice the parent does not know of.
 `Vimma:ScrollAreaChosen` carries one boolean and changes only its own tab: its status bar
 marker, and the choice another document of the tab holds, which a click in any frame ends; only
 that document's existing actor is told, so a click messages no other frame. A compromised content

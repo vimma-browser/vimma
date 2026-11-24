@@ -76,10 +76,12 @@ export function parseScrollAreasReply(raw) {
 
 /**
  * The areas that count, in reading order: left to right, then top to bottom, and an area before
- * the ones inside it; of several with the same box, the first. An area counts when the part of it inside the viewport covers at least
- * SCROLL_AREA_MIN_SHARE of the viewport, so a short list or a code block in the text is passed
- * over. Rects are in the top frame's CSS pixels.
- * @template {{ rect: Rect }} T
+ * the ones inside it; of a frame's areas with the same box, the first. An area counts when the
+ * part of it inside the viewport covers at least SCROLL_AREA_MIN_SHARE of the viewport, so a
+ * short list or a code block in the text is passed over. Rects are in the top frame's CSS
+ * pixels; `frame` tells which frame an area is from (areas of different frames may share a box:
+ * a page that scrolls under a frame covering it).
+ * @template {{ rect: Rect, frame?: unknown }} T
  * @param {readonly T[]} areas
  * @param {{ width: number, height: number }} viewport
  * @returns {T[]}
@@ -92,25 +94,28 @@ export function orderScrollAreas(areas, viewport) {
     const h = Math.min(r.y + r.height, viewport.height) - Math.max(r.y, 0);
     return w > 0 && h > 0 ? w * h : 0;
   };
-  /** @type {Rect[]} */
+  /** @type {{ rect: Rect, frame?: unknown }[]} */
   const kept = [];
-  /** @param {Rect} r */
-  const fresh = (r) => {
+  /** @param {{ rect: Rect, frame?: unknown }} a */
+  const fresh = (a) => {
+    const r = a.rect;
     const same = kept.some(
-      (k) =>
+      ({ rect: k, frame }) =>
+        frame === a.frame &&
         Math.abs(k.x - r.x) <= 1 &&
         Math.abs(k.y - r.y) <= 1 &&
         Math.abs(k.width - r.width) <= 1 &&
         Math.abs(k.height - r.height) <= 1,
     );
-    if (!same) kept.push(r);
+    if (!same) kept.push(a);
     return !same;
   };
   return (
     areas
       .filter((a) => whole > 0 && shown(a.rect) >= SCROLL_AREA_MIN_SHARE * whole)
-      // One box, one area: a frame cannot stack copies of a box to take more of the cycle.
-      .filter((a) => fresh(a.rect))
+      // A frame's exact copies of one box count once. Boxes that differ by more than a pixel
+      // all count: SCROLL_AREA_MAX_PER_FRAME is what bounds a frame's share of the cycle.
+      .filter((a) => fresh(a))
       .map((a, i) => ({ a, i }))
       .sort(
         (p, q) =>

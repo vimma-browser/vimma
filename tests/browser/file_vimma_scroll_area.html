@@ -87,6 +87,12 @@ const aVeryLongLineThatDoesNotFitInTwoHundredPixelsOfWidthAtAll = "and keeps goi
           .replace("https://example.com", "https://example.org")
           .replace("file_vimma_scroll_area.html?frame", "file_vimma_scroll_area_inner.html");
         document.getElementById("main").replaceWith(frame);
+        // A small frame nobody focuses: no click on the page may give it an actor.
+        const other = document.createElement("iframe");
+        other.id = "other";
+        other.src = frame.src;
+        other.style.cssText = "position: absolute; top: 0; right: 0; width: 80px; height: 30px";
+        document.body.append(other);
       }
     </script>
   </body>

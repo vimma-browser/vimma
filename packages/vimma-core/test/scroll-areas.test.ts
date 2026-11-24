@@ -111,11 +111,18 @@ describe("orderScrollAreas: the areas that count, in reading order", () => {
     ]);
   });
 
-  test("areas with the same box count once, so a frame cannot stack copies of one", () => {
+  test("a frame's exact copies of one box count once", () => {
     const a = { rect: rect(300, 40, 700, 760), key: "first" };
     const b = { rect: rect(300.4, 40, 700, 760), key: "copy" };
     const c = { rect: rect(0, 40, 300, 760), key: "tree" };
     expect(orderScrollAreas([a, b, b, c], viewport).map((x) => x.key)).toEqual(["tree", "first"]);
+  });
+
+  test("a frame's area with the same box as another frame's is kept", () => {
+    // The top document scrolls, and a frame covering the viewport scrolls too.
+    const page = { rect: rect(0, 0, 1000, 800), frame: 1, key: "page" };
+    const framed = { rect: rect(0, 0, 1000, 800), frame: 2, key: "frame" };
+    expect(orderScrollAreas([page, framed], viewport).map((x) => x.key)).toEqual(["page", "frame"]);
   });
 
   test("an area that shows less than a tenth of the viewport is left out", () => {

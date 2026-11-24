@@ -80,7 +80,13 @@ async function cycleNow(browser, direction, count, flash) {
   const area = next === null ? null : ordered[next];
   if (!area) return;
   const picked = await VimmaActors.pickScrollArea(area.bc, area.wg, area.index);
-  if (picked === null || runs.get(browser) !== run) return;
+  if (picked === null) {
+    // No answer in time, but the frame may still make the pick: a clear sent now reaches its
+    // actor after the pick, so no choice is left there that the parent does not know of.
+    VimmaActors.clearScrollArea(area.wg);
+    return;
+  }
+  if (runs.get(browser) !== run) return;
   const before = chosen.get(browser);
   if (before && before !== area.wg) VimmaActors.clearScrollArea(before);
   setChosen(browser, picked ? area.wg : null);
@@ -134,7 +140,13 @@ export const ScrollAreaOps = {
    */
   onReport(bc, wg, isChosen) {
     const browser = browserOf(bc);
-    if (!browser || bc.currentWindowGlobal !== wg) return;
+    if (!browser) return;
+    if (bc.currentWindowGlobal !== wg) {
+      // The holder's own end, sent at its pagehide, can come after another document is shown
+      // (Back into the back-forward cache and out again): it still ends that choice.
+      if (!isChosen && chosen.get(browser) === wg) setChosen(browser, null);
+      return;
+    }
     // A click anywhere ends a choice another document of the tab holds; only that document is
     // told, and nothing is sent when none holds one.
     const before = chosen.get(browser);

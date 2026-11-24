@@ -173,7 +173,8 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   user's `f`, which the actor dispatches from system code). An agent's press is untrusted and
   **must not** move it. Each frame's `Vimma:ScrollAreas` reply **must** be parsed in the parent
   (`parseScrollAreasReply`: finite rects, at most 32 areas and 16 subframes per frame) and a
-  malformed one drops that frame; areas with the same box count once, and which area is chosen
+  malformed one drops that frame; a frame's exact copies of one box count once (`SCROLL_AREA_MAX_PER_FRAME` bounds its
+  share of the cycle), and which area is chosen
   is the parent's own record, never a frame's claim. Each frame's answer, to `gs`'s pick too, is
   bounded in time, so a frame that does not answer **must not** hold the tab's scroll keys.
   `Vimma:ScrollAreaChosen` carries one boolean and **must** act only on its own tab: its status
@@ -186,7 +187,7 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   [`a_click_messages_no_frame_but_the_one_holding_a_choice`](../../tests/browser/browser_vimma_scroll_area.js),
   [`a_frame_that_never_answers_does_not_hold_the_scroll_keys`](../../tests/browser/browser_vimma_scroll_area.js),
   [`a_frame_that_never_answers_the_pick_does_not_hold_the_scroll_keys`](../../tests/browser/browser_vimma_scroll_area.js),
-  [`areas with the same box count once, so a frame cannot stack copies of one`](../../packages/vimma-core/test/scroll-areas.test.ts),
+  [`a frame's exact copies of one box count once`](../../packages/vimma-core/test/scroll-areas.test.ts),
   [`an_agents_click_in_a_panel_does_not_move_the_target`](../../tests/browser/browser_vimma_scroll_area.js),
   [`a_click_the_page_dispatches_does_not_move_the_target`](../../tests/browser/browser_vimma_scroll_area.js),
   [`anything malformed drops the reply`](../../packages/vimma-core/test/scroll-areas.test.ts),
