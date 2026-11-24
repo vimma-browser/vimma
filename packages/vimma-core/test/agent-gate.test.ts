@@ -1457,3 +1457,60 @@ describe("the gate's edges", () => {
     expect(mcpClientName("xbuilt-in")).toBe("xbuilt-in");
   });
 });
+
+describe("the gate at its mutation edges", () => {
+  const ACT = "vimma_activate";
+  const S = "s".repeat(64);
+
+  test("an allowance key that is not a string never covers a form, even once `a` made it", () => {
+    const q = queue();
+    q.answer(waiting(q.ask(1, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
+    const key = 5 as unknown as string;
+    const form = { always: true, covered: key };
+    q.answer(waiting(q.ask(1, ACT, 0, form)).id, { kind: "here", key }, 0);
+    expect(q.ask(1, ACT, 1, form).kind).toBe("wait");
+  });
+
+  test("a connection without a session holds no session key", () => {
+    const q = new AgentQueue();
+    q.connect(1);
+    expect(q.conns.get(1)).toStrictEqual({ denials: 0, mutedUntil: 0, grant: 0 });
+  });
+
+  test("a parked grant that ended by the reconnect is not taken back", () => {
+    const q = new AgentQueue();
+    q.connect(1, { session: S, now: 0 });
+    q.answer(waiting(q.ask(1, READ, 0)).id, { kind: "grant", minutes: 1 }, 0);
+    q.disconnect(1, 0);
+    q.connect(2, { session: S, now: MIN });
+    expect(q.endGrant(2)).toBe(false);
+  });
+
+  test("request ids count up from 1, so none is 0", () => {
+    const q = queue();
+    const ids = [1, 2, 1].map((conn) => waiting(q.ask(conn, READ, 0)).id);
+    expect(ids).toEqual([1, 2, 3]);
+  });
+
+  test("a request that always asks, with no form, carries no covered key", () => {
+    const q = queue();
+    q.ask(1, READ, 0, { always: true });
+    expect(q.waiting).toStrictEqual([{ id: 1, conn: 1, tool: READ, always: true }]);
+  });
+
+  test("a timeout for a request whose connection is gone resolves nothing", () => {
+    const q = queue();
+    const { id } = waiting(q.ask(1, READ, 0));
+    q.conns.delete(1);
+    expect(q.expire(id, 0)).toEqual({ resolved: [] });
+  });
+
+  test("a conversation grant lifts only a mute in force: one that ended stays as it was", () => {
+    const q = queue();
+    for (let i = 0; i < 3; i++) q.expire(waiting(q.ask(1, READ, 0)).id, 0);
+    expect(q.ask(1, READ, 0)).toEqual({ kind: "deny", reason: "muted" });
+    q.grantConnection(1, MUTE_MS);
+    // A clock set back shows whether the ended mute was cleared or left.
+    expect(q.ask(1, READ, MUTE_MS - 1)).toEqual({ kind: "deny", reason: "muted" });
+  });
+});
