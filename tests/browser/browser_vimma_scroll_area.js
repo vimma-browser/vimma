@@ -189,7 +189,7 @@ add_task(async function an_agents_click_in_a_panel_does_not_move_the_target() {
     });
     const row = targets.find((t) => t.rect.x < 300 && t.rect.y > 40);
     Assert.ok(row, "the agent's list has the tree's row");
-    const sent = await AgentActors.agentActivate(/** @type {any} */ (row), {
+    const sent = await AgentActors.agentActivate(/** @type {NonNullable<typeof row>} */ (row), {
       submit: null,
       href: null,
       until: Date.now() + 10000,
