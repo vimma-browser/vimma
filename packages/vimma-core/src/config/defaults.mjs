@@ -1015,17 +1015,22 @@ export function configTables({ brief = false } = {}) {
     },
     {
       name: "tabs",
-      lines: annotate([
-        example("[tabs]"),
-        example(
-          `sleep_after = ${SLEEP_AFTER.default}`,
-          `minutes unseen before a tab sleeps (${SLEEP_AFTER.min}–${SLEEP_AFTER.max}); 0: never`,
-        ),
-        example(
-          "sleep_on_low_memory = true",
-          "false: Firefox never unloads tabs when memory runs low",
-        ),
-      ]),
+      // On for everyone since docs/specs/tab-sleep.md's Delivery slice 4.
+      lines: [
+        "[tabs]",
+        ...annotate([
+          set(
+            "sleep_after",
+            SLEEP_AFTER.default,
+            `minutes unseen before a tab sleeps (${SLEEP_AFTER.min}–${SLEEP_AFTER.max}); 0: never`,
+          ),
+          set(
+            "sleep_on_low_memory",
+            true,
+            "false: Firefox never unloads tabs when memory runs low",
+          ),
+        ]),
+      ],
     },
     {
       name: "updates",

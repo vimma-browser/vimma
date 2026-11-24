@@ -46,6 +46,9 @@ What works today, each with the section that explains it:
 - **[Tab line](#tab-line):** a row of text at the top of the window that lists this
   workspace's tabs with their numbers once there are two or more; `gb` labels them and one more
   key goes there, `12gb` goes to tab 12.
+- **[Sleeping tabs](#sleeping-tabs):** a tab you have not looked at for two hours unloads its
+  page and keeps its place, history and scroll position; selecting it loads it again. Tabs on
+  screen, playing sound or sharing a camera stay loaded, and `[tabs] sleep_after` sets the time.
 - **[Downloads from the keyboard](#downloads):** `ctrl+b d` lists them with live progress, and
   one key opens a file, shows it in its folder, pauses, retries, removes or deletes it, or allows
   a blocked one through Firefox's own warning; the status bar shows `↓ 42%` while they run and
@@ -4507,6 +4510,46 @@ it survives a restart (with Firefox's "Open previous windows and tabs") and undo
 Invisible and direction-changing characters are removed, runs of spaces become one, and a name
 is cut at 100 characters.
 
+## Sleeping tabs
+
+Tabs you have not looked at for two hours go to sleep: Firefox unloads the page, which frees its
+memory and stops its scripts, while the tab keeps its place in its workspace, the tab line and
+the side panel. Selecting a sleeping tab loads it again with its back and forward history, its
+scroll position and the text typed into its form fields. This keeps a day of a hundred tabs, spread
+over workspaces and splits, from holding a hundred loaded pages.
+
+- **Counts as looked at:** selecting a tab, or having it on screen as a pane of the split shown.
+  A tab opened in the background counts as seen when it opens. Vimma checks every 5 minutes.
+- **Never sleeps on its own:** a tab on screen (every pane of the split shown, zoomed-away panes
+  included), a pinned tab, a tab playing sound, in Picture-in-Picture or using the camera,
+  microphone or screen sharing, a private tab, the [agent workspace](#agent-workspace)'s tabs
+  while an agent is connected, a tab still loading, a page that would ask before you leave it
+  (unsaved changes), and pages that are not web pages (`about:` pages such as the start page and
+  Settings). Only `http:`, `https:` and `file:` pages sleep.
+- **Shown:** a sleeping tab is drawn in the theme's muted text in the [tab line](#tab-line) and
+  the [side panel](#side-panel), and a screen reader hears `asleep`. Tabs a restart left unloaded
+  look the same. The tab line, the side panel, tab search and `vimma-ctl state` list a sleeping
+  tab without loading it.
+- **Lost on sleep:** what only the running page held: a paused video's position, an open
+  connection, text in an editor that is not a form field. Password fields are not kept either. A
+  download started from the tab carries on.
+- **Low memory:** when the machine is nearly out of memory, Firefox unloads the tab you used
+  least recently, one at a time, on Linux too. It never takes a tab on screen or the agent
+  workspace's tabs while an agent is connected.
+
+Change it in [config.toml](#configtoml):
+
+```toml
+[tabs]
+sleep_after = 120             # minutes unseen before a tab sleeps (5–10080); 0: never
+sleep_on_low_memory = true    # false: Firefox never unloads tabs when memory runs low
+
+[sites."music.example.com"]
+sleep = false                 # this site's tabs, its subdomains' too, never sleep on their own
+```
+
+A change applies at the next check after the file is read, and never wakes a tab.
+
 ## Add-ons
 
 Add-ons work as in Firefox. Install them from [addons.mozilla.org](https://addons.mozilla.org)
@@ -5005,6 +5048,10 @@ root = "workspace"       # where the bookmarks panel starts: "workspace", "toolb
 bookmarklets = "none"    # who may run bookmarklets: "none", "user" (you) or "agent" (asks you)
 write_back = "all"       # changes saved to bookmarks.toml: "all", "vimma" (Vimma's own), "none"
 
+[tabs]
+sleep_after = 120             # minutes unseen before a tab sleeps (5–10080); 0: never
+sleep_on_low_memory = true    # false: Firefox never unloads tabs when memory runs low
+
 # Every 12 hours Vimma asks updates.vimma.dev for a newer version, naming only the update
 # channel and the platform.
 [updates]
@@ -5016,7 +5063,7 @@ split](#picking-a-tab-during-a-split), [Colours and themes](#colours-and-themes)
 toolbar](#hiding-the-toolbar), [Tab line](#tab-line), [Firefox's Bookmarks
 Toolbar](#firefoxs-bookmarks-toolbar), [Side panel](#side-panel), [Private
 workspace](#private-workspace), [Bookmarks](#bookmarks), [Bookmarks in a
-file](#bookmarks-in-a-file), [Updates](#updates).
+file](#bookmarks-in-a-file), [Sleeping tabs](#sleeping-tabs), [Updates](#updates).
 
 ### Workspaces and routing
 
@@ -5148,6 +5195,9 @@ is **off by default**.
    `vimma.control.enabled` too (or `:control on <minutes>`). With both on, each `vimma-ctl` run
    asks you first in Vimma ([full control while agents are on](#full-control-while-agents-are-on)).
    An older `vimma-ctl` still works with this Vimma.
+
+   In `vimma-ctl state --json`, a [sleeping tab](#sleeping-tabs) has `"asleep": true`, and
+   reading the state does not load it.
 
 `send-keys` presses the keys in the most recently focused Vimma window, exactly as typing them
 would: Vimma's bindings, Firefox's shortcuts (`ctrl+t`, `ctrl+q`) and the page all see them. Keys

@@ -1,7 +1,7 @@
 # Spec: tab-sleep
 
-Status: accepted (slices 1, the rules and the check, 3, showing it, and 5, low-memory
-unloading, implemented behind `vimma.feature.tabSleep`) · Area: core (`packages/vimma-core/src/workspaces/tabsleep.mjs` (new),
+Status: accepted (slices 1, the rules and the check, 3, showing it, 4, turning it on, and 5,
+low-memory unloading, implemented; slice 2, `:sleep` and the side panel's `z`, to come) · Area: core (`packages/vimma-core/src/workspaces/tabsleep.mjs` (new),
 `packages/vimma-core/src/config/config.mjs`, `packages/vimma-core/defaults.toml`,
 `packages/vimma-core/src/keys/actions.mjs`, `packages/vimma-core/src/keys/cmdline.mjs`,
 `packages/vimma-core/src/ui/tabline.mjs`, `packages/vimma-core/src/ui/sidepanel.mjs`), chrome
@@ -348,6 +348,9 @@ Firefox paths are in Vimma's engine tree at Firefox 160.0.1 (`surfer.json`,
     the feature lands over several pull requests and `main` must stay releasable
     (`CONTRIBUTING.md`, "Unfinished features"). The tests set it, and set
     `vimma.tabs.sleepCheckMs` (default 300000) to run checks in milliseconds; the host also exposes `TabSleep._check(now)` so a test can move the clock.
+    Slice 4 removes the pref before slice 2 lands, because the time limit, the muted rows and
+    low-memory unloading are whole without `:sleep`, which only adds a way to do the same by
+    hand; slice 2 then lands without a pref and stops at ready for its default key.
 21. **Firefox's low-memory unloader is on, and respects Vimma's rules.** Vimma sets
     `browser.tabs.unloadOnLowMemory` from `[tabs] sleep_on_low_memory` (default `true`) in
     `TabSleep`, because the time limit protects against slow growth while only the low-memory
@@ -498,7 +501,7 @@ The implementing pull requests add:
 Slices 1, 3 and 5 merge when green and verified, behind `vimma.feature.tabSleep`. Slice 2 stops
 at ready for the maintainer, because it adds a default key, and slice 4 does too, because it
 turns the feature on for every user; both with notes on how to try them. Slice 5 merges before
-slice 4.
+slice 4. Slice 4 may land before slice 2 (decision 20).
 
 1. **Core rules and the check.** `planSleep`, `[tabs] sleep_after` and `[sites] sleep` in the
    config validator and `defaults.toml` (commented), `services/TabSleep.sys.mjs` with the
@@ -509,7 +512,7 @@ slice 4.
 3. **Showing it.** The muted rows in the tab line and the side panel with their accessible
    description, `state.tabs[].asleep` with its contract fixture, the e2e scenario and baselines.
 4. **Turn it on.** Remove `vimma.feature.tabSleep`, uncomment `[tabs] sleep_after = 120` in
-   `defaults.toml`, the guide section, the "Since changed" notes, status `implemented`.
+   `defaults.toml`, the guide section, the "Since changed" notes, status `implemented` (landed before slice 2, the status note names slice 2 instead).
 5. **Low-memory unloading.** `[tabs] sleep_on_low_memory` in the config validator and
    `defaults.toml`, `TabSleep` setting `browser.tabs.unloadOnLowMemory` from it and keeping
    `undiscardable` on the tabs decisions 5 and 8 protect (decision 21),

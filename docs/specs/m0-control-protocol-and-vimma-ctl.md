@@ -248,7 +248,7 @@ such a result, and nothing otherwise.)
   (Since changed: a tab without a loaded page is listed with `asleep: true`, and the field is
   left out for every other tab; read from the tab's attributes, like `loading`, so `state` never
   loads it. It names no page, so a private window keeps it. Added without a version bump, like
-  `loading`; behind `vimma.feature.tabSleep` until that feature is on.
+  `loading`.
   [tab-sleep](tab-sleep.md), behaviour 15 and decision 18.)
 - `panes`: the pane tree once split view exists (M3), `null` before. Its shape is that spec's to
   define; it is added without a version bump because clients ignore what they do not know.

@@ -17,7 +17,6 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
 
-const FEATURE = "vimma.feature.tabSleep";
 const TABLINE = "vimma.ui.tabline";
 const PAGE = "https://example.com/";
 
@@ -97,7 +96,6 @@ add_setup(async function () {
 });
 
 add_task(async function a_sleeping_tab_is_muted_and_described_asleep_until_it_wakes() {
-  await SpecialPowers.pushPrefEnv({ set: [[FEATURE, true]] });
   const a = await background("alpha");
   const b = await background("bravo");
   Assert.ok(panel().open(), "the side panel opens");
@@ -153,16 +151,16 @@ add_task(async function a_sleeping_tab_is_muted_and_described_asleep_until_it_wa
   panel().close();
   gBrowser.removeTab(a);
   gBrowser.removeTab(b);
-  await SpecialPowers.popPrefEnv();
 });
 
-add_task(async function with_the_feature_pref_off_no_row_is_marked() {
+// Delivery slice 4: on for everyone, with no pref to set.
+add_task(async function with_no_pref_set_a_sleeping_tab_is_marked() {
   const t = await background("charlie");
   await sleep(t);
   Assert.ok(panel().open(), "the side panel opens");
   await until(() => entry(numberOf(t)) && row(t), "both lists show the tab");
-  Assert.ok(!entry(numberOf(t))?.hasAttribute("asleep"), "the tab line marks nothing");
-  Assert.ok(!row(t)?.hasAttribute("asleep"), "nor does the side panel");
+  await until(() => entry(numberOf(t))?.hasAttribute("asleep"), "the tab line marks it");
+  await until(() => row(t)?.hasAttribute("asleep"), "and so does the side panel");
   panel().close();
   gBrowser.removeTab(t);
 });

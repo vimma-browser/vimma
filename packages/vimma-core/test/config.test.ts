@@ -552,8 +552,10 @@ describe("[tabs] and [sites] sleep", () => {
   });
 
   test("defaults.toml sets [tabs] sleep_after = 120", () => {
-    // Commented while vimma.feature.tabSleep is off (spec, Delivery slice 1).
-    expect(formatDefaultsToml()).toMatch(/^# \[tabs\]\n(#.*\n)*# sleep_after = 120 .*$/m);
+    // On for everyone (spec, Delivery slice 4): the table is set, not a commented example.
+    expect(formatDefaultsToml()).toMatch(
+      /^\[tabs\]\nsleep_after = 120 .*\nsleep_on_low_memory = true .*$/m,
+    );
     expect(formatDefaultsToml()).toMatch(/^# sleep = false +# .*$/m);
   });
 });

@@ -5,7 +5,6 @@
   "timeoutSeconds": 120,
   "prefs": {
     "browser.startup.page": null,
-    "vimma.feature.tabSleep": true,
     "vimma.ui.tabline": "always"
   },
   "steps": [

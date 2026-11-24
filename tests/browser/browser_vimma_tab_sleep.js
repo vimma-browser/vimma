@@ -30,7 +30,6 @@ const { SessionStore } = ChromeUtils.importESModule(
 );
 const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs");
 
-const FEATURE = "vimma.feature.tabSleep";
 const CHECK_MS = "vimma.tabs.sleepCheckMs";
 const HOUR = 60 * 60_000;
 const ROOT = getRootDirectory(gTestPath).replace(
@@ -150,7 +149,6 @@ add_task(async function setup() {
   await IOUtils.makeDirectory(saveDir);
   await SpecialPowers.pushPrefEnv({
     set: [
-      [FEATURE, true],
       ["vimma.config.path", configFile],
       ["browser.download.dir", saveDir],
       ["browser.download.folderList", 2],
@@ -350,9 +348,6 @@ add_task(async function the_interval_set_by_vimma_tabs_sleepCheckMs_runs_a_check
   const before = TabSleep.checks;
   await SpecialPowers.pushPrefEnv({ set: [[CHECK_MS, 100]] });
   await until(() => TabSleep.checks >= before + 2, "the check runs on its own, more than once");
-  await SpecialPowers.pushPrefEnv({ set: [[FEATURE, false]] });
-  Assert.ok(!TabSleep.running, "the feature pref off stops it");
-  await SpecialPowers.popPrefEnv();
   await SpecialPowers.popPrefEnv();
 });
 
@@ -390,12 +385,15 @@ add_task(async function a_download_started_from_a_tab_continues_while_the_tab_sl
   closeOpened();
 });
 
-add_task(async function with_the_feature_pref_off_nothing_sleeps() {
-  await SpecialPowers.pushPrefEnv({ set: [[FEATURE, false]] });
-  const t = await background(`${PAGE}?flag`);
-  Assert.deepEqual(await check(3), [], "the feature is off");
+// Delivery slice 4: on for everyone, with no pref to set, at the default two hours.
+add_task(async function by_default_a_tab_unseen_for_two_hours_sleeps() {
+  await config("");
+  Assert.ok(TabSleep.running, "the check runs with an empty config.toml");
+  const t = await background(`${PAGE}?default`);
+  Assert.deepEqual(await check(1.9), [], "not yet at 1 h 54 min");
   Assert.ok(!asleep(t), "the tab stays loaded");
-  await SpecialPowers.popPrefEnv();
+  Assert.deepEqual(await check(2.1), [t], "asleep past two hours");
+  Assert.ok(asleep(t), "the tab has no loaded page");
   closeOpened();
   await focusContent(gBrowser.selectedBrowser);
 });
