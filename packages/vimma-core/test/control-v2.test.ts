@@ -90,6 +90,7 @@ describe("protocol 2 constants", () => {
       "agent-screenshot",
       "agent-console",
       "agent-bookmarklet",
+      "agent-hover",
     ]);
     expect(AGENT_COMMANDS.some((c) => CONTROL_COMMANDS.includes(c))).toBe(false);
     expect(ERROR_CODES).toContain("role-off");
@@ -350,6 +351,50 @@ describe("agent commands: args", () => {
     ]);
   });
 
+  // docs/specs/hover.md decision 9: a hover names one tab and a label from vimma_elements, or
+  // releases the connection's hover there; never both, never neither.
+  test("agent-hover: a tab with a label or release: true, never both, never neither", () => {
+    const hover = (args: Record<string, unknown>) => errorsOf(req("agent-hover", args));
+    expect(hover({ tab: "12", label: "sd" })).toEqual([]);
+    expect(hover({ tab: "12", release: true })).toEqual([]);
+    const one = "agent-hover takes a label or release: true, not both";
+    expect(hover({ tab: "12" })).toEqual([one]);
+    expect(hover({ tab: "12", label: "sd", release: true })).toEqual([one]);
+    expect(hover({ tab: "12", release: false })).toEqual(["release must be true when present"]);
+    expect(hover({ tab: "12", release: "yes" })).toEqual(["release must be true when present"]);
+    for (const label of ["", "x", "SD", "asdf", 3]) {
+      expect(hover({ tab: "12", label }), String(label)).toEqual([
+        "label must be 1 to 3 of the hint characters asdfghjkl",
+      ]);
+    }
+    expect(hover({ label: "sd" })).toEqual(["tab must be a tab id (digits)"]);
+    expect(hover({ tab: "12", label: "sd", x: 1 })).toEqual(['unknown field "args.x"']);
+    // The list after it, as after a click (issue #584); the hover kind is one of its kinds.
+    expect(
+      hover({ tab: "12", label: "sd", elements: true, query: "gear", kinds: ["button", "hover"] }),
+    ).toEqual([]);
+    expect(hover({ tab: "12", label: "sd", query: "gear" })).toEqual([
+      "query and kinds come only with elements: true",
+    ]);
+    // A release lists nothing: it only ends what the connection began.
+    expect(hover({ tab: "12", release: true, elements: true })).toEqual([
+      "a release takes no elements, query or kinds",
+    ]);
+    expect(parseAgentRequest("agent-hover", { tab: "12", label: "sd", elements: true })).toEqual({
+      command: "agent-hover",
+      args: { tab: "12", label: "sd", elements: true },
+    });
+    expect(parseAgentRequest("agent-hover", { tab: "12", release: true })).toEqual({
+      command: "agent-hover",
+      args: { tab: "12", release: true },
+    });
+  });
+
+  // docs/specs/hover.md decision 10: vimma_elements lists hover-only targets when asked.
+  test("agent-elements takes the kind hover", () => {
+    expect(errorsOf(req("agent-elements", { tab: "12", kinds: ["hover"] }))).toEqual([]);
+  });
+
   // docs/specs/mcp-forms.md F12, F14, F15: a fill names one tab, 1 to 32 fields by label with a
   // text or a true or false, and an optional submit: true or a submit button's label.
   test("agent-fill: a tab, fields by label and value, an optional submit", () => {
@@ -588,6 +633,27 @@ describe("agent commands: results and errors", () => {
     expect(errorsOf(ok({ ...result, steps: [] }), cmd)).toEqual(['unknown field "result.steps"']);
   });
 
+  // docs/specs/hover.md decision 9: the page after the hover as after a click, and whether the
+  // hover still holds; a release says whether there was one to end.
+  test("agent-hover: the page after it, whether it holds; a release says released", () => {
+    const cmd = { command: "agent-hover" };
+    const after = { url: "https://a/", title: "A", loading: false, navigated: false };
+    expect(errorsOf(ok({ ...after, hovered: true, changed: ["text"] }), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...after, hovered: false }), cmd)).toEqual([]);
+    expect(errorsOf(ok({ ...after, hovered: "yes" }), cmd)).toEqual([
+      "result.hovered must be a boolean",
+    ]);
+    expect(errorsOf(ok(after), cmd)).toEqual(["result.hovered must be a boolean"]);
+    expect(errorsOf(ok({ url: "https://a/", title: "A", released: true }), cmd)).toEqual([]);
+    expect(errorsOf(ok({ url: "https://a/", title: "A", released: false }), cmd)).toEqual([]);
+    expect(errorsOf(ok({ url: "https://a/", title: "A", released: 1 }), cmd)).toEqual([
+      "result.released must be a boolean",
+    ]);
+    expect(errorsOf(ok({ ...after, hovered: true, released: true }), cmd)).toEqual([
+      "result.hovered and result.released do not come together",
+    ]);
+  });
+
   // #510: after a click that loaded no page, which parts of it changed in place, as fixed words
   // only, never the page's text.
   test("agent-activate: what changed in place, from a fixed list", () => {
@@ -765,7 +831,7 @@ describe("element list filters and compact lists (agent-speed S4)", () => {
     expect(els({ query: "oat\ndrink" })).toEqual(["query must be 1 to 200 characters of one line"]);
     for (const kinds of [[], ["menu"], "button", ["button", "button"], [1]]) {
       expect(els({ kinds }), JSON.stringify(kinds)).toEqual([
-        "kinds must be distinct kinds of link, button, field, checkbox, radio, select, click",
+        "kinds must be distinct kinds of link, button, field, checkbox, radio, select, click, hover",
       ]);
     }
   });

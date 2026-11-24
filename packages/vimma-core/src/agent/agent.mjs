@@ -166,6 +166,7 @@ export const AGENT_TOOLS = Object.freeze({
   "agent-screenshot": "vimma_screenshot",
   "agent-console": "vimma_console",
   "agent-bookmarklet": "vimma_bookmarklet",
+  "agent-hover": "vimma_hover",
 });
 /**
  * Tools that ask every time, under any grant, and whose answer never makes a grant: showing a
@@ -212,7 +213,8 @@ export const ELEMENTS_RATE = Object.freeze({ max: 30, ms: 60_000 });
 
 /**
  * `agent-activate` requests per connection in any window of `ms` (mcp-forms F26, security.md
- * M32), counted when asked, and shared with `agent-fill`: a grant runs clicks unasked and must
+ * M32), counted when asked, and shared with `agent-fill` and `agent-hover` (docs/specs/hover.md
+ * decision 9, M67): a grant runs clicks unasked and must
  * not flood a page, and a refused call must not loop.
  */
 export const ACT_RATE = Object.freeze({ max: 30, ms: 60_000 });

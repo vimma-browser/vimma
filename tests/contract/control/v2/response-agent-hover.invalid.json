@@ -1,0 +1,16 @@
+{
+  "description": "A hover's result that does not say whether the hover holds",
+  "kind": "response",
+  "command": "agent-hover",
+  "message": {
+    "type": "response",
+    "id": 14,
+    "ok": true,
+    "result": {
+      "url": "https://example.com/channels",
+      "title": "Channels · Example",
+      "loading": false,
+      "navigated": false
+    }
+  }
+}

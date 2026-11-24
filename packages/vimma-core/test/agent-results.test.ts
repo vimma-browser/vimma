@@ -192,6 +192,77 @@ describe("results as the model reads them", () => {
     ]);
   });
 
+  // docs/specs/hover.md decision 9: what the hover did, that it holds, and how to go on.
+  test("vimma_hover says it holds, what changed, and how to reach what it revealed", () => {
+    const r = toolResult(
+      "vimma_hover",
+      { tab: "9", label: "sd" },
+      { ...page, loading: false, navigated: false, hovered: true, changed: ["text"] },
+    );
+    expect(texts(r)).toEqual([
+      HEADER,
+      "Hovered sd in tab 9 of Vimma's agent workspace, in the background. It stays hovered " +
+        "until you hover another element there or call vimma_hover with release: true; a " +
+        "click does not end it.\n" +
+        "No new page loaded, but the page changed in place after the hover: the page's text " +
+        "changed. Call vimma_elements to find what the hover revealed, then click it with " +
+        "vimma_activate.",
+    ]);
+    const quiet = toolResult(
+      "vimma_hover",
+      { tab: "9", label: "sd", elements: true },
+      {
+        ...page,
+        loading: false,
+        navigated: false,
+        hovered: true,
+        changed: [],
+        elements: wrapUntrusted('{"label":"a","kind":"button","text":"Settings"}'),
+        dropped: 0,
+      },
+    );
+    expect(texts(quiet)[1]).toContain(
+      "No new page loaded, and nothing Vimma watches changed within 2 seconds of the hover. " +
+        "A control a hover reveals often shows without changing the page's text: look for it " +
+        "in the element list below, or see the page with vimma_screenshot.",
+    );
+    const ended = toolResult(
+      "vimma_hover",
+      { tab: "9", label: "sd" },
+      { ...page, loading: false, navigated: true, hovered: false },
+    );
+    expect(texts(ended)[1]).toBe(
+      "Hovered sd in tab 9 of Vimma's agent workspace, in the background. The hover has " +
+        "already ended: the page went to another page or replaced the element.\n" +
+        "A new page loaded. Labels of the old page are gone: call vimma_elements again.",
+    );
+    const released = toolResult(
+      "vimma_hover",
+      { tab: "9", release: true },
+      { ...page, released: true },
+    );
+    expect(texts(released)).toEqual([
+      HEADER,
+      "Released your hover in tab 9 of Vimma's agent workspace.",
+    ]);
+    const none = toolResult(
+      "vimma_hover",
+      { tab: "9", release: true },
+      { ...page, released: false },
+    );
+    expect(texts(none)[1]).toBe(
+      "You held no hover in tab 9 of Vimma's agent workspace; nothing changed.",
+    );
+    const broken = toolResult(
+      "vimma_hover",
+      { tab: "9", label: "sd" },
+      { ...page, loading: false, navigated: false },
+    );
+    expect(texts(broken)).toEqual([
+      "Vimma's answer broke the control protocol: Vimma's result has no boolean hovered.",
+    ]);
+  });
+
   test("vimma_fill counts the fields and names those the page put back", () => {
     const r = toolResult(
       "vimma_fill",
@@ -454,6 +525,13 @@ describe("the same words as vimma-ctl", () => {
     ": it may react to key presses only, which Vimma does not send; tell the user.",
     "No new page loaded, and nothing on the page changed within 2 seconds of the click. Its effect may come later or not at all: check with",
     "to see whether the click did what you meant before clicking it again.",
+    " It stays hovered until you hover another element there or call vimma_hover with release: true; a click does not end it.",
+    " The hover has already ended: the page went to another page or replaced the element.",
+    "No new page loaded, and nothing Vimma watches changed within 2 seconds of the hover. A control a hover reveals often shows without changing the page's text: look for it in",
+    " to find what the hover revealed, then click it with vimma_activate.",
+    "Released your hover in tab ",
+    "You held no hover in tab ",
+    "; nothing changed.",
     "Labels of the old page are gone; the new page's are listed below.",
     "Labels of the old page are gone: call vimma_elements again.",
     " of Vimma's agent workspace: Firefox showed its error page, ",

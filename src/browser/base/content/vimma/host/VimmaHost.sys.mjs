@@ -1539,6 +1539,8 @@ export const VimmaHost = {
     // A notice shown until the next key goes on any key but a bare modifier, before the key's
     // own action can show another (docs/specs/multiple-splits.md, decision 4).
     if (chordFromEvent(e)) state.notice.keyPressed();
+    // The user's key in a tab ends an agent's hover there (docs/specs/hover.md decision 9).
+    if (e.isTrusted) HoverOps.userActs(win.gBrowser?.selectedBrowser);
     // The agent question takes its keys first, and only while it shows (vimma-mcp 13-14).
     if (AgentUi.onKey(win, e)) {
       this._emit(state);

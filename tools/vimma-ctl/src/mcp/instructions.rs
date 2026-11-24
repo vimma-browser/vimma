@@ -21,7 +21,10 @@ button or a link on a page, call vimma_elements, then vimma_activate with its la
 page with payment card fields, or a button that says pay, buy, place order or the like) and \
 sending a form with text or personal details are asked every time, also under a grant. To type into a page's fields, call vimma_elements, then \
 vimma_fill with their labels; it never fills passwords, payment card or one-time-code fields, \
-or file fields. Pass elements: true to vimma_open, vimma_activate or vimma_fill to get the page's \
+or file fields. A button or menu that shows only under the mouse is revealed with vimma_hover and \
+its label, then listed with vimma_elements and clicked with vimma_activate; pass kinds with hover \
+to vimma_elements to list rows and other elements that only react to hovering. Pass elements: \
+true to vimma_open, vimma_activate or vimma_fill to get the page's \
 new element list in the same result, instead of calling vimma_elements after them. To search a \
 site, open its search results by URL with elements: true (the search form's address with your \
 words as its search field's value, such as https://shop.example/search?q=oat+drink) rather than \
@@ -141,6 +144,18 @@ mod tests {
             "Steps that do not depend on each other's results go as several tool calls in one \
              turn, such as opening each item's search in its own tab, then clicking each item's \
              basket button; each call is still asked and limited as if it came alone."
+        ));
+    }
+
+    /// docs/specs/hover.md: a control that shows only under the mouse is revealed, then listed
+    /// and clicked.
+    #[test]
+    fn the_instructions_say_how_to_reach_a_control_that_shows_on_hover() {
+        assert!(INSTRUCTIONS.contains(
+            "A button or menu that shows only under the mouse is revealed with vimma_hover and \
+             its label, then listed with vimma_elements and clicked with vimma_activate; pass \
+             kinds with hover to vimma_elements to list rows and other elements that only react \
+             to hovering."
         ));
     }
 }

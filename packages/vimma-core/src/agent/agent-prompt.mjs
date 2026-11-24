@@ -517,7 +517,7 @@ export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE
       hint = "y run it · n deny";
     } else if (q.tool === "vimma_fill") {
       parts = [...head, ...tabParts(w), ...fillParts(w, "  ")];
-    } else if (q.tool === "vimma_activate") {
+    } else if (q.tool === "vimma_activate" || q.tool === "vimma_hover") {
       parts = [...head, ...tabParts(w), ...elementParts(w)];
     } else if (q.tool === "vimma_tabs") {
       parts = [...head, { text: `the list of agent tabs (${Number(w.count) || 0})` }];
@@ -637,17 +637,19 @@ export function stepText(q) {
                   ? `listed the buttons and fields of "${cutTitle(w.title)}"`
                   : q.tool === "vimma_activate"
                     ? `clicked ${clean(w.kind)} "${cutTitle(w.text)}" in "${cutTitle(w.title)}"${sentTo(w)}`
-                    : q.tool === "vimma_fill"
-                      ? `filled ${fieldCount(w.fields)} in "${cutTitle(w.title)}"`
-                      : q.tool === "vimma_screenshot"
-                        ? `took a screenshot of "${cutTitle(w.title)}"`
-                        : q.tool === "vimma_console"
-                          ? `read the errors of "${cutTitle(w.title)}"`
-                          : q.tool === DOWNLOAD_TOOL
-                            ? `downloads "${cutTitle(w.name)}"`
-                            : q.tool === BOOKMARKLET_TOOL
-                              ? `ran the bookmarklet "${cutTitle(w.bookmarklet)}" in "${cutTitle(w.title)}"`
-                              : `used ${q.tool}`;
+                    : q.tool === "vimma_hover"
+                      ? `hovered ${clean(w.kind)} "${cutTitle(w.text)}" in "${cutTitle(w.title)}"`
+                      : q.tool === "vimma_fill"
+                        ? `filled ${fieldCount(w.fields)} in "${cutTitle(w.title)}"`
+                        : q.tool === "vimma_screenshot"
+                          ? `took a screenshot of "${cutTitle(w.title)}"`
+                          : q.tool === "vimma_console"
+                            ? `read the errors of "${cutTitle(w.title)}"`
+                            : q.tool === DOWNLOAD_TOOL
+                              ? `downloads "${cutTitle(w.name)}"`
+                              : q.tool === BOOKMARKLET_TOOL
+                                ? `ran the bookmarklet "${cutTitle(w.bookmarklet)}" in "${cutTitle(w.title)}"`
+                                : `used ${q.tool}`;
   const listed = w.elements === true ? " and listed the buttons and fields after it" : "";
   return `${did}${listed}`;
 }
@@ -748,6 +750,7 @@ const ASKS = Object.freeze({
   [BOOKMARKLET_TOOL]: "run one of your bookmarklets",
   vimma_elements: "list a page's buttons and fields",
   vimma_activate: "click on a page",
+  vimma_hover: "hover over an element of a page",
   vimma_fill: "fill in a form",
   vimma_screenshot: "take a screenshot of a page",
   vimma_console: "read a page's errors and failed requests",

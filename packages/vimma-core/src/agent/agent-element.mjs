@@ -10,7 +10,11 @@
  * check a collection's reply with it; agent-act.mjs builds the list from what passes.
  */
 
-/** The kinds an element is listed as (F5). */
+/**
+ * The kinds an element is listed as (F5). `hover`: an element only hovering does something with
+ * (a hover listener, a `title`, a text block), listed only when a list's `kinds` asks for it
+ * (docs/specs/hover.md decision 10).
+ */
 export const ELEMENT_KINDS = Object.freeze([
   "link",
   "button",
@@ -19,6 +23,7 @@ export const ELEMENT_KINDS = Object.freeze([
   "radio",
   "select",
   "click",
+  "hover",
 ]);
 
 /** Caps on what a child may send, in UTF-16 code units: the list cuts them further (F5). */
