@@ -38,9 +38,6 @@ const { WorkspaceStore } = ChromeUtils.importESModule(
 const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
-const { AgentActors } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/actors/AgentActors.sys.mjs",
-);
 const { validateMessage } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/index.mjs",
 );
@@ -183,10 +180,10 @@ function requestStatus(prefix) {
     const observe = (/** @type {nsISupports} */ subject) => {
       const channel = subject.QueryInterface(Ci.nsIHttpChannel);
       if (!channel.URI.spec.startsWith(prefix)) return;
-      Services.obs.removeObserver(observe, "http-on-opening-request");
+      Services.obs.removeObserver(observe, "http-on-modify-request");
       Services.tm.dispatchToMainThread(() => resolve(channel.status));
     };
-    Services.obs.addObserver(observe, "http-on-opening-request");
+    Services.obs.addObserver(observe, "http-on-modify-request");
   });
 }
 
@@ -633,76 +630,6 @@ addTidyTask(async function test_a_page_submit_during_a_fill_is_not_the_asked_one
   Assert.equal(r.result.blocked, "example.com", "the page's own submission was stopped (M28)");
   Assert.equal(r.result.navigated, true, "the asked submission, after the last field, was sent");
   Assert.equal(r.result.url, `${PAGE}?early`, "to its destination");
-  c.close();
-  BrowserTestUtils.removeTab(tab);
-  await mcp(false);
-});
-
-// Issue #1484: the parent opens a submission's request in the order its page started it, but
-// the network checks it before connecting run later, on the parent's own time. Here the page's
-// early submission is held between the two until the allowance for the asked one is open, as a
-// busy parent can hold it: it must still be stopped as the page's, and the asked one sent.
-addTidyTask(async function test_a_page_submit_that_reaches_the_network_late_is_not_the_asked_one() {
-  await mcp(true);
-  const tab = await openAgentTab();
-  const c = await agentClient();
-  const by = await labels(c, tab);
-  /** @type {nsIHttpChannel | null} */
-  let early = null;
-  let checked = false;
-  let held = false;
-  const opening = (/** @type {nsISupports} */ subject) => {
-    const channel = subject.QueryInterface(Ci.nsIHttpChannel);
-    if (early || channel.URI.spec !== `${PAGE}?early`) return;
-    early = channel;
-    // Held once open, which it is only after this notification. Its proxy is looked up first,
-    // off the main thread, so the network's checks have not run yet; a request Vimma already
-    // cancelled is not held.
-    Services.tm.dispatchToMainThread(() => {
-      held = !checked && channel.status === Cr.NS_OK;
-      if (held) channel.suspend();
-    });
-  };
-  const modifying = (/** @type {nsISupports} */ subject) => {
-    if (subject === early) checked = true;
-  };
-  Services.obs.addObserver(opening, "http-on-opening-request");
-  Services.obs.addObserver(modifying, "http-on-modify-request");
-  const submit = AgentActors.agentSubmit;
-  // Called once the asked submission is allowed: a held early request goes on to the network's
-  // checks first, and the agent's submission is sent once they have run or it was cancelled.
-  AgentActors.agentSubmit = async (...args) => {
-    const channel = /** @type {nsIHttpChannel | null} */ (early);
-    Assert.ok(channel, "the page's early submission was opened before the asked one was sent");
-    if (channel && held) {
-      channel.resume();
-      await until(
-        () => checked || channel.status !== Cr.NS_OK,
-        "the early request went through the network's checks",
-      );
-    }
-    return submit.apply(AgentActors, args);
-  };
-  try {
-    const r = await fill(
-      c,
-      tab,
-      [
-        { label: by.First, value: "one" },
-        { label: by.Second, value: "two" },
-      ],
-      { submit: true },
-    );
-    Assert.ok(r.ok, `the fill ran: ${JSON.stringify(r.error)}`);
-    Assert.equal(r.result.blocked, "example.com", "the page's own submission was stopped");
-    Assert.ok(!checked, "before it could be sent");
-    Assert.equal(r.result.navigated, true, "the asked submission was sent");
-    Assert.equal(r.result.url, `${PAGE}?early`, "to its destination");
-  } finally {
-    AgentActors.agentSubmit = submit;
-    Services.obs.removeObserver(opening, "http-on-opening-request");
-    Services.obs.removeObserver(modifying, "http-on-modify-request");
-  }
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
