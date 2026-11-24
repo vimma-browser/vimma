@@ -894,7 +894,15 @@ export class VimmaChild extends JSWindowActorChild {
     const handler = this.docShell?.chromeEventHandler;
     if (!win || !handler) return Promise.resolve();
     const utils = win.windowUtils;
-    const before = utils.lastTransactionId;
+    /** @type {number} */
+    let before;
+    try {
+      before = utils.lastTransactionId;
+    } catch {
+      // No docshell or pres context any more (nsDOMWindowUtils::GetLastTransactionId throws
+      // NS_ERROR_UNEXPECTED): the window is going away, and nothing of it will paint.
+      return Promise.resolve();
+    }
     return new Promise((resolve) => {
       let over = false;
       const done = () => {
@@ -916,8 +924,14 @@ export class VimmaChild extends JSWindowActorChild {
       // one was painted since and none waits for the screen any more.
       const check = () => {
         if (over) return;
-        if (utils.lastTransactionId > before && !utils.isMozAfterPaintPending) done();
-        else win.requestAnimationFrame(() => Services.tm.dispatchToMainThread(check));
+        try {
+          if (utils.lastTransactionId > before && !utils.isMozAfterPaintPending) done();
+          else win.requestAnimationFrame(() => Services.tm.dispatchToMainThread(check));
+        } catch {
+          // The window was torn down since the last refresh (its tab closed, #1521): no paint
+          // of it is coming, so the wait ends here rather than by its timer.
+          done();
+        }
       };
       handler.addEventListener("MozAfterPaint", onPaint);
       win.requestAnimationFrame(() => Services.tm.dispatchToMainThread(check));
