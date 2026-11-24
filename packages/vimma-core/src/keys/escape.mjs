@@ -33,21 +33,23 @@ const EXITS = {
 };
 
 /**
- * @param {{ mode: Mode, pending?: boolean, previous?: Mode }} state
+ * @param {{ mode: Mode, pending?: boolean, previous?: Mode, hovering?: boolean }} state
  *   `pending`: a prefix, key sequence or count is pending; `previous`: the mode an overlay
- *   (help, panel, resize) was opened from
+ *   (help, panel, resize) was opened from; `hovering`: the selected tab holds a hover
+ *   (docs/specs/hover.md decision 5)
  * @returns {EscapeResult}
  */
-export function resolveEscape({ mode, pending = false, previous = "normal" }) {
+export function resolveEscape({ mode, pending = false, previous = "normal", hovering = false }) {
   for (const m of [mode, previous]) if (!isMode(m)) throw new Error(`unknown mode "${m}"`);
   if (pending) return Object.freeze({ kind: "cancel", mode });
   // Firefox's stop, once the page has had Esc and left it alone (docs/specs/firefox-keys.md
   // decisions 6 and 7). The blur takes away the focus a Tab or a click left on a link or button,
   // and its ring, as Esc in insert takes it out of a field (m1-core-logic.md, § Esc).
+  // A held hover ends first, and the next Esc stops the page (docs/specs/hover.md decision 5).
   if (mode === "normal") {
     return Object.freeze({
       kind: "action",
-      action: Object.freeze({ id: "page.stop" }),
+      action: Object.freeze({ id: hovering ? "hover.release" : "page.stop" }),
       mode,
       afterPage: true,
       blur: true,

@@ -830,6 +830,7 @@ interface Window {
   readonly ResizeObserver: typeof ResizeObserver;
   readonly KeyboardEvent: typeof KeyboardEvent;
   readonly MouseEvent: typeof MouseEvent;
+  readonly PointerEvent: typeof PointerEvent;
   readonly Event: typeof Event;
   readonly OffscreenCanvas: typeof OffscreenCanvas;
   readonly CSS: typeof CSS;
@@ -2696,3 +2697,13 @@ interface nsIGIOMimeApp {
   setAsDefaultForMimeType(mimeType: string): void;
   setAsDefaultForFileExtensions(extensions: string): void;
 }
+
+// engine/dom/chrome-webidl/InspectorUtils.webidl (chrome only): DevTools' "force element state",
+// a pseudo-class lock on one element (docs/specs/hover.md).
+interface InspectorUtilsNamespace {
+  addPseudoClassLock(element: Element, pseudoClass: string, enabled?: boolean): void;
+  removePseudoClassLock(element: Element, pseudoClass: string): void;
+  hasPseudoClassLock(element: Element, pseudoClass: string): boolean;
+  clearPseudoClassLocks(element: Element): void;
+}
+declare var InspectorUtils: InspectorUtilsNamespace;

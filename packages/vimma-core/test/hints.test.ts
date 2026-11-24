@@ -233,6 +233,7 @@ describe("hint mode", () => {
       "hint.element",
       "hint.show_target",
       "hint.copy_target",
+      "hint.hover",
     ]);
     for (const id of HINT_ACTIONS) expect(ids.has(id)).toBe(true);
   });

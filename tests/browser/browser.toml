@@ -67,6 +67,13 @@ support-files = [
   "file_vimma_test.pdf",
 ]
 
+["browser_vimma_hover.js"]
+support-files = [
+  "file_vimma_hover.html",
+  "file_vimma_hover_frame.html",
+  "file_vimma_hover_other.html",
+]
+
 ["browser_vimma_copy_mode.js"]
 support-files = ["file_vimma_copy.html", "file_vimma_copy_frame.html"]
 
