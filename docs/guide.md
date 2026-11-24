@@ -5007,7 +5007,9 @@ One plain file holds your settings and keys; every key, the prefix and the leade
 - **Newer files:** a setting this version does not know, such as one a newer Vimma added, is
   skipped and named in the status bar (`unknown key "…"; skipped`), and the rest of the file
   applies. So is a binding to an action this version does not have, in `[keys]` or a
-  `[modal.<mode>]` table (`unknown action "…"; skipped`): your other keys still work. A name
+  `[modal.<mode>]` table (`unknown action "…"; skipped`): your other keys still work. With more
+  than one, the status bar counts them as warnings (`2 warnings: …`), apart from errors, which it
+  shows first (`1 error, 2 warnings: …`). A name
   close to a real one (`steps` for `step`, `new_tabb` for `new_tab`) is an error with the
   suggestion, and so are malformed keys for a known action, an unknown mode in `[unbind]`, an unknown colour
   in `[theme.colors]`, an unknown key in a `[[routes]]` rule, and a value only a newer version
