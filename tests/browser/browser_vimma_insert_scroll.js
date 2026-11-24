@@ -94,7 +94,12 @@ function focusIn(target, how) {
         /** @type {ShadowRoot} */ (host.shadowRoot).getElementById("shadow")
       ).focus(opts);
     } else if (h === "closed") {
-      content.wrappedJSObject.closedRoot.getElementById("closed").focus(opts);
+      // Through the Xray, not the page's closedRoot: a waived call gets `opts` behind an opaque
+      // wrapper that reads preventScroll as undefined (AccessCheck.cpp, OpaqueWithSilentFailing).
+      const host = /** @type {HTMLElement} */ (doc.getElementById("closed-host"));
+      /** @type {HTMLElement} */ (
+        /** @type {ShadowRoot} */ (host.openOrClosedShadowRoot).getElementById("closed")
+      ).focus(opts);
     } else /** @type {HTMLElement} */ (doc.getElementById(h)).focus(opts);
   });
 }
