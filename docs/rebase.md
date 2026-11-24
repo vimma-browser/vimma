@@ -278,7 +278,7 @@ npm run mochitest -- tests/browser/
 
 These are the nightly's own smoke checks. Expect the same pass count as on `main` and zero
 failures. Tests marked `skip-if = ["artifact"]` (crash reporter, updater) run only here.
-Our patches change upstream behaviour (e.g. `tab-bar-visibility-js.patch`), and so do the
+Our patches change upstream behaviour (e.g. `tab-bar-visibility-mjs.patch`), and so do the
 prefs, so a green import alone is not enough: run the whole directory, not a subset.
 
 When a bump fails here, read `tests/browser/browser_vimma_firefox_coverage.js` first: it compares

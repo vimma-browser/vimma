@@ -29,6 +29,9 @@ back from about:config without restarting.
   (one hunk): `TabBarVisibility.update()` treats the root attribute like its own hidden cases for
   `tabs-hidden` on `#navigator-toolbox` and the nav bar's `browser-titlebar` class, so Firefox's
   titlebar handling applies (see Settled). `TabsToolbar.collapsed` and the File menu are untouched.
+  (Since changed: Firefox 162 turned `tab-bar-visibility.js` into the module
+  `tab-bar-visibility.mjs` (Mozilla bug 2080285), so the patch is now
+  `tab-bar-visibility-mjs.patch`, with the same hunk.)
 - **"List all tabs" is unavailable while the strip is hidden** (until M2's picker): Firefox opens
   it only when `#alltabs-button` (inside the strip) has a size, and itself hides View > List All
   Tabs and the ctrl+tab "show all" button when it cannot.

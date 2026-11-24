@@ -1,8 +1,8 @@
 diff --git a/browser/components/tabbrowser/Tabbrowser.sys.mjs b/browser/components/tabbrowser/Tabbrowser.sys.mjs
-index 241875edde94e674713d6651704e19a142c40b5d..8a157b4aac84a293881fb8b47bf28c7fe41e50d4 100644
+index 6787ab6028bebbf2df58f41134e91ecc600d2852..2cb941db6ea5b829f9fb0f734750a29d56231321 100644
 --- a/browser/components/tabbrowser/Tabbrowser.sys.mjs
 +++ b/browser/components/tabbrowser/Tabbrowser.sys.mjs
-@@ -701,6 +701,10 @@ export class Tabbrowser {
+@@ -748,6 +748,10 @@ export class Tabbrowser {
      if (openWindowInfo) {
        userContextId = openWindowInfo.originAttributes.userContextId;
      }
@@ -13,7 +13,7 @@ index 241875edde94e674713d6651704e19a142c40b5d..8a157b4aac84a293881fb8b47bf28c7f
  
      let remoteTypeOptions = { window: this.documentGlobal, userContextId };
      if (triggeringRemoteType) {
-@@ -3769,6 +3773,18 @@ export class Tabbrowser {
+@@ -3913,6 +3917,18 @@ export class Tabbrowser {
        (openerBrowser && this.getTabForBrowser(openerBrowser)) ||
        (relatedToCurrent && this.selectedTab) ||
        null;
@@ -31,4 +31,4 @@ index 241875edde94e674713d6651704e19a142c40b5d..8a157b4aac84a293881fb8b47bf28c7f
 +    }
  
      // When overflowing, new tabs are scrolled into view smoothly, which
-     // doesn't go well together with the width transition. So we skip the
+     // doesn't go well together with the width and height transitions. So we

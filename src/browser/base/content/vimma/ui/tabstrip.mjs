@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Hides Firefox's tab strip (spec: docs/specs/m0-tabstrip-hidden.md). tabstrip.css hides it,
-// keyed on a root attribute that follows the pref live. tab-bar-visibility-js.patch reads the
+// keyed on a root attribute that follows the pref live. tab-bar-visibility-mjs.patch reads the
 // same attribute, so Firefox lays out the window as with the strip hidden (window controls in
 // the nav bar); this module only has to re-run TabBarVisibility.update() when the pref flips.
 

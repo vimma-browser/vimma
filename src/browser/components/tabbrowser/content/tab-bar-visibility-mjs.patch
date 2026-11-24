@@ -1,10 +1,10 @@
-diff --git a/browser/components/tabbrowser/content/tab-bar-visibility.js b/browser/components/tabbrowser/content/tab-bar-visibility.js
-index e21d3b673a593bfed6d8f83d4636e0467dfe63f4..3ac57ea1b9936d94f2e8dc7c2d629330f0a524ab 100644
---- a/browser/components/tabbrowser/content/tab-bar-visibility.js
-+++ b/browser/components/tabbrowser/content/tab-bar-visibility.js
-@@ -32,11 +32,13 @@ var TabBarVisibility = {
- 
-     let tabsToolbar = document.getElementById("TabsToolbar");
+diff --git a/browser/components/tabbrowser/content/tab-bar-visibility.mjs b/browser/components/tabbrowser/content/tab-bar-visibility.mjs
+index 90ac20cfa23d2704a5bf3d15339d34fea6cf1c6d..be95c0a6b71560865a2c7ae3cc1cdc86e1148617 100644
+--- a/browser/components/tabbrowser/content/tab-bar-visibility.mjs
++++ b/browser/components/tabbrowser/content/tab-bar-visibility.mjs
+@@ -37,11 +37,13 @@ export const TabBarVisibility = {
+       document.getElementById("TabsToolbar")
+     );
  
 -    gNavToolbox.toggleAttribute("tabs-hidden", hideTabsToolbar);
 +    // Vimma (vimma/ui/tabstrip.mjs): its CSS hides the strip; lay out the rest as if hidden.
