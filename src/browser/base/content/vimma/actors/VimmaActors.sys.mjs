@@ -416,15 +416,16 @@ export const VimmaActors = {
    * @param {string} action "hint.follow", "hint.follow_new_tab" or "hint.follow_new_tab_fg"
    *   (links only) or "hint.element"
    *   (text blocks, docs/specs/element-focus.md)
-   * @param {{ agent?: boolean, elements?: boolean }} [options]  `agent`: an
+   * @param {{ agent?: boolean, elements?: boolean, hoverToo?: boolean }} [options]  `agent`: an
    *   agent's `f` in its tab (docs/specs/mcp-drive.md D12): links only, each with its text, live
    *   per tab, not per window; `hint.hover` collects what can be hovered (docs/specs/hover.md);
    *   with `elements`, an agent's `vimma_elements`
    *   (docs/specs/mcp-forms.md F2): every kind but blocks, disabled controls too, each
-   *   described, kept apart from the user's
+   *   described, kept apart from the user's; with `hoverToo` also what only hovering does
+   *   something with (docs/specs/hover.md decision 10)
    * @returns {Promise<HintTarget[]>}
    */
-  async collectHints(browser, action, { agent = false, elements = false } = {}) {
+  async collectHints(browser, action, { agent = false, elements = false, hoverToo = false } = {}) {
     const gen = ++hintGen;
     // A <browser>'s document has no view only once its window has closed, where liveGen.set
     // throws: the collection fails, as before the type said so.
@@ -481,6 +482,7 @@ export const VimmaActors = {
           texts,
           elements: agent && elements,
           hover,
+          ...(agent && elements && hoverToo ? { hoverToo: true } : {}),
         });
         raw = await Promise.race([query, late]);
       } catch {

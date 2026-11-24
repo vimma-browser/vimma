@@ -58,9 +58,10 @@ import {
   runBookmarklet,
 } from "../host/bookmark-ops.mjs";
 import { McpHost } from "../host/mcp-ops.mjs";
+import { HoverOps } from "../host/hover-ops.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
-import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
+import { CHANGED_TOPIC, WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { AgentAct } from "./AgentAct.sys.mjs";
 import { AgentConsole } from "./AgentConsole.sys.mjs";
 import { AgentDownloads } from "./AgentDownloads.sys.mjs";
@@ -142,10 +143,12 @@ const bookmarkletCalls = new CallRate(BOOKMARKLET_RATE);
 /** Each connection's `agent-elements`: at most ELEMENTS_RATE a minute, counted when asked (F26). */
 const elementCalls = new CallRate(ELEMENTS_RATE);
 /**
- * Each connection's `agent-activate` and `agent-fill`: at most ACT_RATE a minute together,
- * counted when asked (F26).
+ * Each connection's `agent-activate`, `agent-fill` and `agent-hover`: at most ACT_RATE a minute
+ * together, counted when asked (F26; docs/specs/hover.md decision 9, security.md M67).
  */
 const actCalls = new CallRate(ACT_RATE);
+/** What the shared rate's refusal names. */
+const ACT_CALLS = "vimma_activate, vimma_fill and vimma_hover calls";
 /** Each connection's `agent-screenshot`: at most SCREENSHOT_RATE a minute, counted when asked (F21). */
 const shotCalls = new CallRate(SCREENSHOT_RATE);
 /** Each connection's `agent-console`: at most CONSOLE_RATE a minute, counted when asked (F26). */
@@ -1107,7 +1110,7 @@ const COMMANDS = {
     };
     // Counted when asked, before anything else is learnt, so a refused call cannot loop (F26).
     if (!actCalls.take(conn, Date.now())) {
-      throw refuse("busy", rateDenied(actCalls, conn, "vimma_activate and vimma_fill calls"));
+      throw refuse("busy", rateDenied(actCalls, conn, ACT_CALLS));
     }
     if (elements) takeListSlot(conn, "vimma_activate", base);
     if (inUse(browser)) throw refuse("in-use", denied("in-use"));
@@ -1248,6 +1251,142 @@ const COMMANDS = {
   },
 
   /**
+   * Hovers one element of an agent tab, by its label from the connection's last
+   * `vimma_elements` there, as a mouse resting on it would (docs/specs/hover.md decision 9;
+   * security.md M67); or, with `release`, ends the connection's hover in the tab. A hover is
+   * asked, granted, rate-limited with clicks and logged as a click is, refused only for a
+   * label that names nothing on an http or https page, and denied while the user uses the tab
+   * (F27). It runs in the background through `Vimma:AgentElement`, so the page sees untrusted
+   * events, and holds until released. A release is neither asked nor counted: it ends only the
+   * hover this connection began, which was asked, and runs page code only when there is one.
+   * @param {ConnId} conn @param {AgentConn} state @param {AgentArgs["agent-hover"]} args
+   * @param {number | undefined} rid
+   */
+  async "agent-hover"(conn, state, args, rid) {
+    const { tab: id } = args;
+    const agent = agentWorkspace();
+    const asked = findAgentTab(agent, id, conn);
+    const browser = asked.tab.linkedBrowser;
+    if (args.release === true) {
+      const released = HoverOps.agentRelease(browser, conn);
+      return {
+        url: pageUrl(tabUrl(asked.tab)),
+        title: pageTitle(asked.tab, ELEMENTS_TITLE_MAX),
+        released,
+      };
+    }
+    const { label, elements = false, query, kinds } = args;
+    const base = {
+      ...describeTab(asked.tab),
+      index: asked.index,
+      label,
+      detail: label,
+      ...(elements ? { elements: true } : {}),
+    };
+    /**
+     * A refusal outside the gate goes into `:mcp log` too (M23, M32).
+     * @param {LogOutcome} outcome @param {unknown} error @param {GateWhat} [what]
+     */
+    const refuse = (outcome, error, what = base) => {
+      AgentGate.note(conn, "vimma_hover", what, outcome);
+      return error;
+    };
+    // Counted when asked, before anything else is learnt, so a refused call cannot loop (F26).
+    if (!actCalls.take(conn, Date.now())) {
+      throw refuse("busy", rateDenied(actCalls, conn, ACT_CALLS));
+    }
+    if (elements) takeListSlot(conn, "vimma_hover", base);
+    if (inUse(browser)) throw refuse("in-use", denied("in-use"));
+    const found = AgentDrive.element(conn, browser, label);
+    if ("refused" in found) throw refuse("failed", new AgentError("failed", found.refused));
+    let checked;
+    try {
+      checked = await AgentAct.hoverable(browser, found.target);
+    } catch (e) {
+      // Fixed text: an error's message could carry the page's words past the untrusted header.
+      console.error("vimma agent-hover:", e);
+      checked = { refused: "Vimma could not check this element" };
+    }
+    if ("refused" in checked) throw refuse("failed", new AgentError("failed", checked.refused));
+    // A hover's handlers may load a page, which is an open (F11).
+    if (!opens.can(conn, Date.now())) throw refuse("busy", rateDenied(opens, conn, "loads"));
+    const { element } = checked;
+    const what = {
+      ...base,
+      kind: wf(element.kind),
+      text: wf(element.text),
+      detail: wf(`${label} ${element.kind} "${element.text}"`),
+    };
+    await ask(conn, "agent-hover", what, state, rid);
+    let found2;
+    try {
+      found2 = stillAsAsked(agent, id, what.url, conn);
+    } catch (e) {
+      throw refuse("changed", e, what);
+    }
+    const { win, tab } = found2;
+    if (inUse(tab.linkedBrowser)) throw refuse("in-use", denied("in-use"), what);
+    const run = HoverOps.agentBegin(tab.linkedBrowser, found.target, conn);
+    const result = await AgentShot.acting(tab.linkedBrowser, () =>
+      AgentAct.activate(tab.linkedBrowser, found.target, {
+        submit: null,
+        href: null,
+        inUse: () => inUse(tab.linkedBrowser),
+        hover: true,
+      }),
+    );
+    const hovered = HoverOps.agentRan(
+      tab.linkedBrowser,
+      run,
+      found.target,
+      conn,
+      !("refused" in result) && !result.navigated,
+      element.text,
+    );
+    if ("refused" in result) {
+      if (result.blocked) {
+        const stopped = { ...what, detail: `${what.detail} · stopped a form to ${result.blocked}` };
+        AgentGate.note(conn, "vimma_hover", stopped, "stopped", "unasked submission");
+      }
+      throw refuse("failed", new AgentError("failed", result.refused), what);
+    }
+    if (result.navigated) {
+      // The page the labels named is gone, and the load was an open of this connection's.
+      AgentDrive.drop(conn, tab.linkedBrowser);
+      opens.take(conn, Date.now());
+    }
+    const now = WorkspaceStore.agent;
+    if (!now || now.id !== agent.id || win.closed || !isAgentTab(win, tab, agent, conn)) {
+      HoverOps.agentRelease(tab.linkedBrowser, conn);
+      AgentGate.note(conn, "vimma_hover", what, "stopped", "changed");
+      throw new AgentError("failed", "the tab left the agent workspace after the hover");
+    }
+    if (result.blocked) {
+      const stopped = { ...what, detail: `${what.detail} · stopped a form to ${result.blocked}` };
+      AgentGate.note(conn, "vimma_hover", stopped, "stopped", "unasked submission");
+    }
+    if (result.stopped) AgentGate.note(conn, "vimma_hover", what, "stopped", result.stopped);
+    const list = elements
+      ? await stepList(conn, "vimma_hover", what, agent, win, tab, async () => notLoading(tab), {
+          query,
+          kinds,
+        })
+      : null;
+    return {
+      url: pageUrl(tabUrl(tab)),
+      title: pageTitle(tab, ELEMENTS_TITLE_MAX),
+      ...list,
+      loading: result.loading,
+      navigated: result.navigated,
+      hovered: hovered && HoverOps.status(tab.linkedBrowser) !== null,
+      ...(result.dialog ? { dialog: result.dialog } : {}),
+      ...(result.blocked ? { blocked: result.blocked } : {}),
+      ...(result.stopped ? { stopped: result.stopped } : {}),
+      ...(result.changed ? { changed: result.changed } : {}),
+    };
+  },
+
+  /**
    * Fills fields of an agent tab, by their labels from the connection's last `vimma_elements`
    * there (mcp-forms F12-F14; security.md M27): every field is checked before the question and
    * any refused one refuses the call; a fill that submits asks every time (F15, M28); the fields
@@ -1283,7 +1422,7 @@ const COMMANDS = {
     };
     // Counted when asked, before anything else is learnt, so a refused call cannot loop (F26).
     if (!actCalls.take(conn, Date.now())) {
-      throw refuse("busy", rateDenied(actCalls, conn, "vimma_activate and vimma_fill calls"));
+      throw refuse("busy", rateDenied(actCalls, conn, ACT_CALLS));
     }
     if (elements) takeListSlot(conn, "vimma_fill", base);
     if (inUse(browser)) throw refuse("in-use", denied("in-use"));
@@ -1530,7 +1669,28 @@ export function forgetAgentConnection(conn) {
   consoleCalls.forget(conn);
   currentCtl.delete(conn);
   AgentDrive.forget(conn);
+  // docs/specs/hover.md decision 9: a connection's hovers end with it.
+  HoverOps.forgetConn(conn);
 }
+
+// docs/specs/hover.md decision 9: an agent's hover ends when its tab leaves the agent workspace
+// (the workspace renamed away, deleted, or the agent workspace changed).
+Services.obs.addObserver(() => {
+  /** @type {AgentWorkspace | null} */
+  let agent = null;
+  try {
+    agent = agentWorkspace();
+  } catch {
+    // no agent workspace any more: every agent's hover ends
+  }
+  HoverOps.recheckAgents((browser, conn) => {
+    const win = /** @type {Win | null} */ (
+      /** @type {unknown} */ (browser.ownerDocument?.defaultView)
+    );
+    const tab = win?.gBrowser?.getTabForBrowser(browser);
+    return !!agent && !!win && !!tab && !win.closed && isAgentTab(win, tab, agent, conn);
+  });
+}, CHANGED_TOPIC);
 
 /**
  * A built-in conversation's own hello (docs/specs/builtin-agent.md B4): the connection is

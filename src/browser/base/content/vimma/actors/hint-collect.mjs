@@ -30,6 +30,8 @@ import { needsBlockText, pickBlocks } from "../core/blocks.mjs";
  * @property {BlockKind} [blockKind]  blocks only
  * @property {Rect} [box]  blocks only: the border box, viewport-clipped, for the outline
  * @property {HoverKind} [hoverKind]  hover targets only: what made the element one
+ * @property {true} [hoverOnly]  an agent's list asked with the kind hover: an element only
+ *   hovering does something with (docs/specs/hover.md decision 10), listed as kind hover
  */
 /** @typedef {{ bc: BrowsingContext, el: Element, rect: Rect }} FoundFrame */
 
@@ -365,17 +367,21 @@ export function viewportSize(win) {
  * The hint targets of one frame, in no particular order (core orders them), and its visible
  * subframes.
  * @param {Window} win  the frame's content window
- * @param {{ linksOnly: boolean, blocks?: boolean, disabled?: boolean, hover?: boolean }} options
+ * @param {{ linksOnly: boolean, blocks?: boolean, disabled?: boolean, hover?: boolean,
+ *   hoverToo?: boolean }} options
  *   `F` hints links only; `blocks` hints text blocks instead of what can be clicked (element
  *   focus); `disabled` keeps disabled controls (an agent's `vimma_elements`,
- *   docs/specs/mcp-forms.md F5); `hover` hints what can be hovered (docs/specs/hover.md)
+ *   docs/specs/mcp-forms.md F5); `hover` hints what can be hovered (docs/specs/hover.md);
+ *   `hoverToo` adds to what can be clicked what only hovering does something with (an agent's
+ *   list asked with the kind hover, hover.md decision 10)
  * @returns {{ targets: Found[], frames: FoundFrame[] }}
  */
 export function collectTargets(
   win,
-  { linksOnly, blocks = false, disabled = false, hover = false },
+  { linksOnly, blocks = false, disabled = false, hover = false, hoverToo = false },
 ) {
   if (hover) return collectHover(win);
+  if (hoverToo) return withHoverOnly(win, collectTargets(win, { linksOnly: false, disabled }));
   const { vw, vh } = viewportSize(win);
   if (blocks) {
     const onScreen = onScreenElements(win, vw, vh);
@@ -513,6 +519,30 @@ function collectHover(win) {
   });
   const keep = innermostHover(candidates);
   const targets = list.filter((_, i) => keep[i]).slice(0, MAX_TARGETS);
+  return { targets, frames: clickable.frames };
+}
+
+/**
+ * What can be clicked, with what only hovering does something with (a hover listener, a `title`
+ * or `aria-haspopup`, a text block) after it, by the hover collection's own rules (innermost
+ * wins), each marked `hoverOnly` (docs/specs/hover.md decision 10). Their kind for the overlay
+ * is `click`: the agent's list says `hover` (agent-fields describeAgentElements).
+ * @param {Window} win @param {{ targets: Found[], frames: FoundFrame[] }} clickable
+ * @returns {{ targets: Found[], frames: FoundFrame[] }}
+ */
+function withHoverOnly(win, clickable) {
+  const listed = new Set(clickable.targets.map((t) => t.el));
+  const extra = collectHover(win)
+    .targets.filter(
+      (t) => (t.hoverKind === "listener" || t.hoverKind === "block") && !listed.has(t.el),
+    )
+    .map((t) => ({
+      el: t.el,
+      rect: t.rect,
+      kind: /** @type {TargetKind} */ ("click"),
+      hoverOnly: /** @type {true} */ (true),
+    }));
+  const targets = [...clickable.targets, ...extra].slice(0, MAX_TARGETS);
   return { targets, frames: clickable.frames };
 }
 

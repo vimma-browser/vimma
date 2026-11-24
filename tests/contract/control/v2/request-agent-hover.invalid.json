@@ -1,0 +1,14 @@
+{
+  "description": "A hover names a label or releases, never both",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 14,
+    "command": "agent-hover",
+    "args": {
+      "tab": "12",
+      "label": "sd",
+      "release": true
+    }
+  }
+}

@@ -75,6 +75,7 @@ describe("the tools", () => {
       "agent-screenshot": "vimma_screenshot",
       "agent-console": "vimma_console",
       "agent-bookmarklet": "vimma_bookmarklet",
+      "agent-hover": "vimma_hover",
     });
   });
 });

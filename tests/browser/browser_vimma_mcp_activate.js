@@ -547,7 +547,8 @@ addTidyTask(async function test_activate_under_a_grant_notice_log_and_rate() {
   // Issue #592: it names the limit and when the next call is allowed.
   Assert.equal(
     busy?.x.error?.message,
-    "too many vimma_activate and vimma_fill calls from this agent in the last minute (at most 30)",
+    "too many vimma_activate, vimma_fill and vimma_hover calls from this agent in the last " +
+      "minute (at most 30)",
     "naming the limit it hit",
   );
   const wait = busy?.x.error?.retryAfter ?? 0;
@@ -605,6 +606,8 @@ add_task(async function the_agent_page_helper_acts_on_the_document_it_is_given()
         },
         asAgent: (fn) => fn(),
         beforeSubmitCheck: () => null,
+        hover: () => false,
+        releaseHover: () => false,
       });
       agent.listed = { gen: 4, els: [new WeakRef(button), new WeakRef(field)] };
       const tick = () =>

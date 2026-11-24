@@ -458,13 +458,42 @@ export const AgentAct = {
   },
 
   /**
+   * The element a label names, as it is now, if an agent may hover it (docs/specs/hover.md
+   * decision 9; security.md M67): only on an http or https page, and only while it is still the
+   * element listed; nothing else about it is refused, since a hover does none of what makes
+   * clicking a field, a file input, a disabled control or a link to another site dangerous.
+   * What the question shows. Nothing on the page changes.
+   * @param {MozTabBrowser} browser @param {HintTarget} target
+   * @returns {Promise<{ element: { kind: string, text: string } } | { refused: string }>}
+   */
+  async hoverable(browser, target) {
+    if (!onTheWeb(target.wg?.documentPrincipal) || !onTheWeb(browser.contentPrincipal)) {
+      return { refused: "elements are hovered only on http and https pages" };
+    }
+    const element = await bounded(AgentActors.agentInspect(target), null, COLLECT_TIMEOUT_MS);
+    if (!element) return { refused: "the page did not answer in time" };
+    if (!element.alive) return { refused: "that element is gone: call vimma_elements again" };
+    // The list's kind (hover for what only hovering does something with); its text as now, as
+    // the list shows page strings (security.md M31).
+    const kind = target.info?.kind ?? element.kind ?? "click";
+    const text = cutTo(
+      shown(element.text ?? "")
+        .replace(/\s+/g, " ")
+        .trim(),
+      AGENT_ELEMENTS.text,
+    );
+    return { element: { kind, text } };
+  },
+
+  /**
    * Clicks `target`'s element in the background (F8, F11, F16; security.md M26, M28), once
    * `clickable` said it may be and the user allowed it, then waits for a page the click started
    * (up to 20 s), a dialog it opened, or the user starting to use the tab; when none came, what
    * changed in place (`changed`).
    * @param {MozTabBrowser} browser @param {HintTarget} target
    * @param {{ submit: { method: string, action: string } | null, href: string | null,
-   *   inUse: () => boolean }} asked  `submit`: the submission the question named
+   *   inUse: () => boolean, hover?: boolean }} asked  `submit`: the submission the question
+   *   named; `hover`: hover the element instead (docs/specs/hover.md decision 9)
    * @returns {Promise<{ refused: string, blocked?: string } | { navigated: boolean,
    *   loading: boolean, dialog?: { type: string, text: string }, blocked?: string,
    *   stopped?: "in-use", changed?: string[] }>}
@@ -483,13 +512,15 @@ export const AgentAct = {
    * `activate`, once no other click runs on the tab.
    * @param {MozTabBrowser} browser @param {HintTarget} target
    * @param {{ submit: { method: string, action: string } | null, href: string | null,
-   *   inUse: () => boolean }} asked
+   *   inUse: () => boolean, hover?: boolean }} asked  `hover`: an agent's hover of the element
+   *   (docs/specs/hover.md decision 9) in place of the click, waited for and reported the same way
    * @returns {Promise<{ refused: string, blocked?: string } | { navigated: boolean,
    *   loading: boolean, dialog?: { type: string, text: string }, blocked?: string,
    *   stopped?: "in-use", changed?: string[] }>}
    */
-  async activateNow(browser, target, { submit, href, inUse }) {
+  async activateNow(browser, target, { submit, href, inUse, hover = false }) {
     const before = pageOf(browser);
+    // A hover is marked too, with no submission allowed: one its handlers try is stopped (M67).
     const marked = await bounded(AgentActors.agentMark(browser, submit), false, COLLECT_TIMEOUT_MS);
     if (!marked) return { refused: "the page did not answer in time" };
     const dialogs = watchDialogs(browser);
@@ -497,7 +528,9 @@ export const AgentAct = {
       // The child clicks nothing once this call has stopped waiting for its answer.
       const until = Date.now() + COLLECT_TIMEOUT_MS - 1000;
       const reply = await bounded(
-        AgentActors.agentActivate(target, { submit, href, until }),
+        hover
+          ? AgentActors.agentHover(target, { until })
+          : AgentActors.agentActivate(target, { submit, href, until }),
         "gone",
         COLLECT_TIMEOUT_MS,
       );
@@ -514,7 +547,9 @@ export const AgentAct = {
       if (stopped === "skipped" || outcome === "skipped") {
         // The page's handlers of the mouse events ran: what they tried to submit is still said.
         return {
-          refused: "the element changed as it was clicked; nothing was clicked",
+          refused: hover
+            ? "the element went away before it was hovered; nothing was hovered"
+            : "the element changed as it was clicked; nothing was clicked",
           ...(blocked.length ? { blocked: blocked[0] } : {}),
         };
       }
@@ -912,7 +947,12 @@ export const AgentAct = {
     }
     const late = new Promise((resolve) => lazy.setTimeout(resolve, COLLECT_TIMEOUT_MS, null));
     const collected = await Promise.race([
-      VimmaActors.collectHints(browser, "hint.follow", { agent: true, elements: true }),
+      VimmaActors.collectHints(browser, "hint.follow", {
+        agent: true,
+        elements: true,
+        // docs/specs/hover.md decision 10: only a list that asks for them has hover targets.
+        hoverToo: !!kinds?.includes("hover"),
+      }),
       late,
     ]);
     if (!collected) return { refused: "the page did not answer in time" };

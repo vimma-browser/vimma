@@ -147,6 +147,7 @@ fn success(tool: &ToolCall, result: &Value) -> Result<Value, String> {
             tool.filtered(),
             result,
         )?),
+        ToolCall::Hover { .. } => ok(hover_items(tool, result)?),
         ToolCall::Screenshot { tab, labels, .. } => ok(screenshot_items(tab, *labels, result)?),
         ToolCall::Console { tab, .. } => ok(console_text(tab, result)?),
         ToolCall::Bookmarklet { tab, name } => {
@@ -508,7 +509,9 @@ fn with_load_error(tool: &ToolCall, result: &Value, out: Value) -> Result<Value,
     }
     .ok_or("Vimma's result has an unknown load error")?;
     let tab = match tool {
-        ToolCall::Activate { tab, .. } | ToolCall::Fill { tab, .. } => tab.as_str(),
+        ToolCall::Activate { tab, .. }
+        | ToolCall::Fill { tab, .. }
+        | ToolCall::Hover { tab, .. } => tab.as_str(),
         _ => field(result, "tab")?,
     };
     let said = format!(
@@ -753,6 +756,51 @@ fn activate_text(
     after_step(tab, elements, filtered, result, lines)
 }
 
+/// `vimma_hover`'s result (docs/specs/hover.md decision 9): a release says whether there was a
+/// hover to end; a hover, that it holds and how it ends, then the page after it, what changed
+/// in place in a hover's words.
+fn hover_items(tool: &ToolCall, result: &Value) -> Result<Vec<Value>, String> {
+    let ToolCall::Hover {
+        tab,
+        label,
+        elements,
+        ..
+    } = tool
+    else {
+        return Err("not a hover".into());
+    };
+    let Some(label) = label else {
+        if result.get("hovered").is_some() {
+            return Err("Vimma's result has hovered for a release".into());
+        }
+        let said = if flag(result, "released")? {
+            format!("Released your hover in tab {tab} of Vimma's agent workspace.")
+        } else {
+            format!("You held no hover in tab {tab} of Vimma's agent workspace; nothing changed.")
+        };
+        return Ok(vec![
+            text_item(&untrusted_header(
+                field(result, "url")?,
+                field(result, "title")?,
+            )),
+            text_item(&said),
+        ]);
+    };
+    if result.get("released").is_some() {
+        return Err("Vimma's result has released for a hover".into());
+    }
+    let holds = if flag(result, "hovered")? {
+        " It stays hovered until you hover another element there or call vimma_hover with \
+         release: true; a click does not end it."
+    } else {
+        " The hover has already ended: the page went to another page or replaced the element."
+    };
+    let lines = vec![format!(
+        "Hovered {label} in tab {tab} of Vimma's agent workspace, in the background.{holds}"
+    )];
+    step_after(tab, *elements, tool.filtered(), result, lines, Step::Hover)
+}
+
 /// `vimma_fill`'s result (mcp-forms F12, F16; security.md M27, M28): how many of the fields
 /// were filled, the labels of those whose value the page put back, then the page as after a
 /// click.
@@ -805,9 +853,17 @@ fn fill_text(
     after_step(tab, elements, filtered, result, lines)
 }
 
+/// Which step's words say what changed in place: a hover's say what it may have revealed rather
+/// than what a click did (docs/specs/hover.md decision 9).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Step {
+    Click,
+    Hover,
+}
+
 /// What a step that loaded no page changed in place (#510), from Vimma's fixed words; a fill
 /// says none. An agent told nothing changed would click again, which on a shop adds twice.
-fn in_place(changed: Option<&Value>, listed: bool) -> Result<String, String> {
+fn in_place(changed: Option<&Value>, listed: bool, step: Step) -> Result<String, String> {
     let Some(changed) = changed else {
         return Ok("No new page loaded.".to_string());
     };
@@ -817,6 +873,9 @@ fn in_place(changed: Option<&Value>, listed: bool) -> Result<String, String> {
     let mut said: Vec<&str> = Vec::new();
     for word in words {
         let what = match word {
+            Value::String(w) if w == "element" && step == Step::Hover => {
+                "the hovered element changed"
+            }
             Value::String(w) if w == "element" => "the clicked element changed",
             Value::String(w) if w == "elements" => "other listed elements changed or went away",
             Value::String(w) if w == "text" => "the page's text changed",
@@ -834,6 +893,21 @@ fn in_place(changed: Option<&Value>, listed: bool) -> Result<String, String> {
     } else {
         ("vimma_elements", "Call vimma_elements")
     };
+    if step == Step::Hover {
+        return Ok(if said.is_empty() {
+            format!(
+                "No new page loaded, and nothing Vimma watches changed within 2 seconds of the \
+                 hover. A control a hover reveals often shows without changing the page's text: \
+                 look for it in {check}, or see the page with vimma_screenshot."
+            )
+        } else {
+            format!(
+                "No new page loaded, but the page changed in place after the hover: {}. {see} to \
+                 find what the hover revealed, then click it with vimma_activate.",
+                said.join("; ")
+            )
+        });
+    }
     Ok(if said.is_empty() {
         format!(
             "No new page loaded, and nothing on the page changed within 2 seconds of the click. \
@@ -858,7 +932,19 @@ fn after_step(
     elements: bool,
     filtered: bool,
     result: &Value,
+    lines: Vec<String>,
+) -> Result<Vec<Value>, String> {
+    step_after(tab, elements, filtered, result, lines, Step::Click)
+}
+
+/// `after_step`, in the words of `step`.
+fn step_after(
+    tab: &str,
+    elements: bool,
+    filtered: bool,
+    result: &Value,
     mut lines: Vec<String>,
+    step: Step,
 ) -> Result<Vec<Value>, String> {
     let url = field(result, "url")?;
     let title = field(result, "title")?;
@@ -875,7 +961,7 @@ fn after_step(
         (true, true) => format!("A new page loaded; it is still loading. {gone}"),
         (true, false) => format!("A new page loaded. {gone}"),
         (false, true) => "The page is loading.".to_string(),
-        (false, false) => in_place(result.get("changed"), listed)?,
+        (false, false) => in_place(result.get("changed"), listed, step)?,
     });
     if let Some(blocked) = result.get("blocked") {
         let host = match blocked {
@@ -1561,6 +1647,128 @@ mod tests {
             Ok(&parse(r#"{"url":"https://a/","title":"A","loading":false}"#).unwrap()),
         );
         assert!(tool_error_text(&r).contains("protocol"), "{r}");
+    }
+
+    fn hover_call(label: Option<&str>, elements: bool) -> Call {
+        legacy_call(ToolCall::Hover {
+            tab: "12".into(),
+            label: label.map(Into::into),
+            elements,
+            filters: ListFilters::default(),
+        })
+    }
+
+    // docs/specs/hover.md decision 9: the page after the hover under the untrusted header, that
+    // it holds and how it ends, what changed in place in a hover's words, and how to reach what
+    // it revealed; a result that does not say whether it holds is a protocol error.
+    #[test]
+    fn hover_says_it_holds_and_how_to_reach_what_it_revealed() {
+        let call = hover_call(Some("sd"), false);
+        let result = |extra: &str| {
+            parse(&format!(
+                r#"{{"url":"https://example.com/channels","title":"Channels","loading":false,
+                "navigated":false{extra}}}"#
+            ))
+            .unwrap()
+        };
+        let r = tool_result(
+            &call,
+            Ok(&result(r#","hovered":true,"changed":["element","text"]"#)),
+        );
+        assert!(r.get("result").unwrap().get("isError").is_none(), "{r}");
+        let t = texts(&r);
+        assert!(t[0].starts_with("Untrusted web content from https://example.com/channels"));
+        assert_eq!(
+            t[1],
+            "Hovered sd in tab 12 of Vimma's agent workspace, in the background. It stays \
+             hovered until you hover another element there or call vimma_hover with release: \
+             true; a click does not end it.\nNo new page loaded, but the page changed in place \
+             after the hover: the hovered element changed; the page's text changed. Call \
+             vimma_elements to find what the hover revealed, then click it with vimma_activate."
+        );
+        let quiet = texts(&tool_result(
+            &call,
+            Ok(&result(r#","hovered":true,"changed":[]"#)),
+        ));
+        assert!(
+            quiet[1].contains(
+                "No new page loaded, and nothing Vimma watches changed within 2 seconds of the \
+                 hover. A control a hover reveals often shows without changing the page's text: \
+                 look for it in vimma_elements, or see the page with vimma_screenshot."
+            ),
+            "{quiet:?}"
+        );
+        let ended = texts(&tool_result(
+            &call,
+            Ok(&parse(
+                r#"{"url":"https://example.com/next","title":"Next","loading":false,
+                "navigated":true,"hovered":false}"#,
+            )
+            .unwrap()),
+        ));
+        assert_eq!(
+            ended[1],
+            "Hovered sd in tab 12 of Vimma's agent workspace, in the background. The hover has \
+             already ended: the page went to another page or replaced the element.\nA new page \
+             loaded. Labels of the old page are gone: call vimma_elements again."
+        );
+        for bad in [
+            "",
+            r#","hovered":"yes""#,
+            r#","hovered":true,"released":true"#,
+        ] {
+            let r = tool_result(&call, Ok(&result(bad)));
+            assert!(tool_error_text(&r).contains("protocol"), "{bad}: {r}");
+        }
+    }
+
+    // docs/specs/hover.md decision 9: a release says whether there was a hover to end.
+    #[test]
+    fn hover_release_says_whether_it_ended_one() {
+        let call = hover_call(None, false);
+        let said = |released: bool| {
+            texts(&tool_result(
+                &call,
+                Ok(&parse(&format!(
+                    r#"{{"url":"https://example.com/","title":"Ex","released":{released}}}"#
+                ))
+                .unwrap()),
+            ))
+        };
+        let yes = said(true);
+        assert!(yes[0].starts_with("Untrusted web content from https://example.com/"));
+        assert_eq!(
+            yes[1],
+            "Released your hover in tab 12 of Vimma's agent workspace."
+        );
+        assert_eq!(
+            said(false)[1],
+            "You held no hover in tab 12 of Vimma's agent workspace; nothing changed."
+        );
+        let r = tool_result(
+            &call,
+            Ok(&parse(r#"{"url":"https://example.com/","title":"Ex"}"#).unwrap()),
+        );
+        assert!(tool_error_text(&r).contains("protocol"), "{r}");
+    }
+
+    // docs/specs/hover.md: a Vimma older than vimma_hover answers unknown-command, which says to
+    // update Vimma rather than retry.
+    #[test]
+    fn hover_on_an_older_vimma_says_to_update_it() {
+        let call = hover_call(Some("sd"), false);
+        let r = tool_result(
+            &call,
+            Err(&Failure::Refused {
+                code: "unknown-command".into(),
+                message: "unknown command agent-hover".into(),
+            }),
+        );
+        assert_eq!(
+            tool_error_text(&r),
+            "This Vimma does not know the command (unknown command agent-hover); update Vimma \
+             to match this vimma-ctl."
+        );
     }
 
     // #510: a click that loaded no page says which parts of it changed in place, in fixed
