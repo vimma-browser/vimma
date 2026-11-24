@@ -172,7 +172,7 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   treat that list as untrusted: it reads only an object with an array of at most 100 strings and
   two counts, drops a string over 8,192 characters, removes control and format characters,
   keeps only what `URL.parse` accepts and writes it as the parser serialises it, and drops a
-  `javascript:` URL again after the child did. Nothing else from the reply reaches the clipboard
+  `javascript:` or `vbscript:` URL again after the child did. Nothing else from the reply reaches the clipboard
   or the status bar. The clipboard is written in the parent, only on the user's key; a page can
   neither start the action nor learn that it ran. `Vimma:LinkUrls` is answered only by a frame
   that has focus, and for copy mode's caret only while copy mode is on there; the element focus

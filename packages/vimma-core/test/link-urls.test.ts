@@ -53,6 +53,7 @@ describe("linkYank", () => {
       notice: NOT_A_SCRIPT,
     });
     expect(NOT_A_SCRIPT).toBe("link runs a script: not copied");
+    expect(linkYank(reply(["vbscript:msgbox(1)"]))).toEqual({ text: null, notice: NOT_A_SCRIPT });
     expect(linkYank(reply(["java​script:alert(1)"]))?.text).toBeNull();
   });
 
@@ -154,6 +155,7 @@ describe("isScriptUrl", () => {
   test("only the javascript: scheme, in any case", () => {
     expect(isScriptUrl("javascript:void(0)")).toBe(true);
     expect(isScriptUrl("JAVASCRIPT:x")).toBe(true);
+    expect(isScriptUrl("vbscript:msgbox(1)")).toBe(true);
     expect(isScriptUrl("https://example.org/javascript:")).toBe(false);
     expect(isScriptUrl("data:text/html,<script>")).toBe(false);
     expect(isScriptUrl("not a url")).toBe(false);

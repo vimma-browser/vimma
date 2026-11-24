@@ -27,11 +27,18 @@ export const TOO_LONG = "link too long to copy";
  */
 
 /**
- * Whether `url` runs a script when opened: the `javascript:` scheme (decision 5).
+ * The schemes whose URL is a script to run, not an address (decision 5): `javascript:`, and
+ * `vbscript:`, which no current browser runs but which is a script all the same. `data:` is
+ * not here on purpose: it is an address the link points at, copied within the cap (decision 6).
+ */
+const SCRIPT_SCHEMES = new Set(["javascript:", "vbscript:"]);
+
+/**
+ * Whether `url` runs a script when opened (decision 5).
  * @param {string} url
  */
 export function isScriptUrl(url) {
-  return URL.parse(url)?.protocol === "javascript:";
+  return SCRIPT_SCHEMES.has(URL.parse(url)?.protocol ?? "");
 }
 
 /** @param {unknown} n */
@@ -79,7 +86,7 @@ export function linkYank(reply) {
     }
     const url = URL.parse(stripInvisible(raw));
     if (!url) continue;
-    if (url.protocol === "javascript:") {
+    if (SCRIPT_SCHEMES.has(url.protocol)) {
       script = true;
       continue;
     }

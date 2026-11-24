@@ -144,7 +144,8 @@ Checked against the engine tree of Firefox 160.0.1 (`surfer.json`), and Vimma's 
 5. **`javascript:` is not copied.** A `javascript:` link is dropped from the result. Reason: it is
    a script, not an address; Firefox's address bar strips the scheme on paste (Research), and
    pasted anywhere else it hands over the page's script under a link's name. Rejected: copying
-   it as `c` does today, because the action promises an address the user can open.
+   it as `c` does today, because the action promises an address the user can open. A `vbscript:` link is dropped the same way: no current browser
+   runs it, but it is a script, not an address.
 6. **`data:` and other schemes are copied within the cap.** `data:`, `blob:`, `mailto:`, `tel:`,
    `about:` and `file:` URLs are copied as the URL parser writes them, and one longer than 8192
    characters is skipped. Reason: they are what the link points at, and a user who selected them
