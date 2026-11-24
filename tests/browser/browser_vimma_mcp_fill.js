@@ -38,6 +38,9 @@ const { WorkspaceStore } = ChromeUtils.importESModule(
 const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
+const { AgentActors } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/actors/AgentActors.sys.mjs",
+);
 const { validateMessage } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/index.mjs",
 );
@@ -180,10 +183,10 @@ function requestStatus(prefix) {
     const observe = (/** @type {nsISupports} */ subject) => {
       const channel = subject.QueryInterface(Ci.nsIHttpChannel);
       if (!channel.URI.spec.startsWith(prefix)) return;
-      Services.obs.removeObserver(observe, "http-on-modify-request");
+      Services.obs.removeObserver(observe, "http-on-opening-request");
       Services.tm.dispatchToMainThread(() => resolve(channel.status));
     };
-    Services.obs.addObserver(observe, "http-on-modify-request");
+    Services.obs.addObserver(observe, "http-on-opening-request");
   });
 }
 
@@ -630,6 +633,190 @@ addTidyTask(async function test_a_page_submit_during_a_fill_is_not_the_asked_one
   Assert.equal(r.result.blocked, "example.com", "the page's own submission was stopped (M28)");
   Assert.equal(r.result.navigated, true, "the asked submission, after the last field, was sent");
   Assert.equal(r.result.url, `${PAGE}?early`, "to its destination");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+// Issue #1484: the parent opens a submission's request in the order its page started it, but
+// the network checks it before connecting run later, on the parent's own time. Here the page's
+// early submission is held between the two until the allowance for the asked one is open, as a
+// busy parent can hold it: it must still be stopped as the page's, and the asked one sent.
+addTidyTask(async function test_a_page_submit_that_reaches_the_network_late_is_not_the_asked_one() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  /** @type {nsIHttpChannel | null} */
+  let early = null;
+  let checked = false;
+  let held = false;
+  const opening = (/** @type {nsISupports} */ subject) => {
+    const channel = subject.QueryInterface(Ci.nsIHttpChannel);
+    if (early || channel.URI.spec !== `${PAGE}?early`) return;
+    early = channel;
+    // Held once open, which it is only after this notification. Its proxy is looked up first,
+    // off the main thread, so the network's checks have not run yet; a request Vimma already
+    // cancelled is not held.
+    Services.tm.dispatchToMainThread(() => {
+      held = !checked && channel.status === Cr.NS_OK;
+      if (held) channel.suspend();
+    });
+  };
+  const modifying = (/** @type {nsISupports} */ subject) => {
+    if (subject === early) checked = true;
+  };
+  Services.obs.addObserver(opening, "http-on-opening-request");
+  Services.obs.addObserver(modifying, "http-on-modify-request");
+  const submit = AgentActors.agentSubmit;
+  // Called once the asked submission is allowed: a held early request goes on to the network's
+  // checks first, and the agent's submission is sent once they have run or it was cancelled.
+  AgentActors.agentSubmit = async (...args) => {
+    const channel = /** @type {nsIHttpChannel | null} */ (early);
+    Assert.ok(channel, "the page's early submission was opened before the asked one was sent");
+    if (channel && held) {
+      channel.resume();
+      await until(
+        () => checked || channel.status !== Cr.NS_OK,
+        "the early request went through the network's checks",
+      );
+    }
+    return submit.apply(AgentActors, args);
+  };
+  try {
+    const r = await fill(
+      c,
+      tab,
+      [
+        { label: by.First, value: "one" },
+        { label: by.Second, value: "two" },
+      ],
+      { submit: true },
+    );
+    Assert.ok(r.ok, `the fill ran: ${JSON.stringify(r.error)}`);
+    Assert.equal(r.result.blocked, "example.com", "the page's own submission was stopped");
+    Assert.ok(!checked, "before it could be sent");
+    Assert.equal(r.result.navigated, true, "the asked submission was sent");
+    Assert.equal(r.result.url, `${PAGE}?early`, "to its destination");
+  } finally {
+    AgentActors.agentSubmit = submit;
+    Services.obs.removeObserver(opening, "http-on-opening-request");
+    Services.obs.removeObserver(modifying, "http-on-modify-request");
+  }
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+// The allowance is the agent's own submission's alone: a page's submission to the same method and
+// destination, opened after the question allowed it and before the child sends the asked one, is
+// stopped as the page's, and the asked one is sent.
+addTidyTask(async function test_a_page_submit_opened_before_the_asked_one_cannot_take_its_place() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  const submit = AgentActors.agentSubmit;
+  /** The status of the other submission's request as it was opened. */
+  const pageStatus = { code: /** @type {number | null} */ (null) };
+  // Called once the asked submission is allowed: the page sends a form of its own, with the
+  // same method and destination, and its request is opened before the agent's is sent.
+  AgentActors.agentSubmit = async (...args) => {
+    const opened = requestStatus(`${PAGE}?signup`);
+    await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+      const d = content.document;
+      const form = d.createElement("form");
+      form.method = "post";
+      form.action = "file_vimma_agent_page.html?signup";
+      const field = d.createElement("input");
+      field.name = "page";
+      field.value = "own";
+      form.append(field);
+      d.body.append(form);
+      form.submit();
+    });
+    pageStatus.code = await opened;
+    // Its load has ended in the tab before the agent's starts, stopped or not, so that the
+    // fill's wait for the page sees only the agent's.
+    await until(
+      () => !tab.linkedBrowser.webProgress?.isLoadingDocument,
+      "the page's own load has ended",
+    );
+    return submit.apply(AgentActors, args);
+  };
+  try {
+    const r = await fill(c, tab, [{ label: by.Name, value: "Ada" }], { submit: true });
+    Assert.ok(r.ok, `the fill ran: ${JSON.stringify(r.error)}`);
+    Assert.equal(pageStatus.code, Cr.NS_BINDING_ABORTED, "the page's own submission was stopped");
+    Assert.equal(r.result.blocked, "example.com", "the result says Vimma stopped it");
+    Assert.equal(r.result.navigated, true, "the asked submission was sent");
+    Assert.equal(r.result.url, `${PAGE}?signup`, "to its destination");
+  } finally {
+    AgentActors.agentSubmit = submit;
+  }
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+// The same from a frame of another site, in another process, whose form is aimed at the tab's
+// page: Firefox opens such a request late (security.md M28), and it is still not the asked one.
+addTidyTask(async function test_a_submit_of_a_frame_in_another_process_cannot_take_its_place() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  const other = PAGE.replace("https://example.com", "https://example.org");
+  await SpecialPowers.spawn(tab.linkedBrowser, [other], async (src) => {
+    const frame = content.document.createElement("iframe");
+    frame.src = src;
+    const loaded = new Promise((resolve) =>
+      frame.addEventListener("load", resolve, { once: true }),
+    );
+    content.document.body.append(frame);
+    await loaded;
+  });
+  const top = /** @type {CanonicalBrowsingContext} */ (tab.linkedBrowser.browsingContext);
+  const frame = top.children[0];
+  Assert.notEqual(
+    frame.currentWindowGlobal?.osPid,
+    top.currentWindowGlobal?.osPid,
+    "the frame is in another process",
+  );
+  const submit = AgentActors.agentSubmit;
+  /** The status of the other submission's request as it was opened. */
+  const frameStatus = { code: /** @type {number | null} */ (null) };
+  AgentActors.agentSubmit = async (...args) => {
+    const opened = requestStatus(`${PAGE}?signup`);
+    await SpecialPowers.spawn(frame, [`${PAGE}?signup`], (action) => {
+      const d = content.document;
+      const form = d.createElement("form");
+      form.method = "post";
+      form.action = action;
+      form.target = "_top";
+      const field = d.createElement("input");
+      field.name = "frame";
+      field.value = "own";
+      form.append(field);
+      d.body.append(form);
+      form.submit();
+    });
+    frameStatus.code = await opened;
+    await until(
+      () => !tab.linkedBrowser.webProgress?.isLoadingDocument,
+      "the frame's load of the page has ended",
+    );
+    return submit.apply(AgentActors, args);
+  };
+  try {
+    const r = await fill(c, tab, [{ label: by.Name, value: "Ada" }], { submit: true });
+    Assert.ok(r.ok, `the fill ran: ${JSON.stringify(r.error)}`);
+    Assert.equal(frameStatus.code, Cr.NS_BINDING_ABORTED, "the frame's submission was stopped");
+    Assert.equal(r.result.navigated, true, "the asked submission was sent");
+    Assert.equal(r.result.url, `${PAGE}?signup`, "to its destination");
+  } finally {
+    AgentActors.agentSubmit = submit;
+  }
   c.close();
   BrowserTestUtils.removeTab(tab);
   await mcp(false);

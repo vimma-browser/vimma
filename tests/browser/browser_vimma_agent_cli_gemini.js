@@ -232,6 +232,8 @@ add_setup(async () => {
   registerCleanupFunction(() => OSKeyStoreTestUtils.cleanup());
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, false);
   Services.prefs.setBoolPref(ENABLED_PREF, false);
+  // The machine's own login shell and install folders stay out of these tests, on macOS too.
+  AgentCli._macOS = false;
   const dir = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-fake-gemini", 0o700);
   const bin = PathUtils.join(dir, "gemini");
   await IOUtils.copy(repoFile("tests", "browser", "fake_vimma_agent_gemini.py"), bin);
@@ -249,6 +251,7 @@ add_setup(async () => {
   savedConfig = McpHost.agentConfig;
   McpHost.configureAgent(agentConfig({ default: "gemini", providers: [GEMINI] }));
   registerCleanupFunction(async () => {
+    AgentCli._macOS = null;
     McpHost.configureAgent(savedConfig);
     Services.prefs.clearUserPref(pathPref("gemini"));
     Services.prefs.clearUserPref(VIMMA_CTL_PREF);

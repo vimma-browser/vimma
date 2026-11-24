@@ -15,14 +15,15 @@ import { splitLabel } from "../panes/splits.mjs";
 /**
  * What the host knows of a tab; undefined for one it no longer has.
  * @typedef {{ title?: string, url?: string, label?: string | null, foreign?: boolean,
- *   playing?: boolean, pinned?: boolean }} PanelTabInfo
+ *   playing?: boolean, pinned?: boolean, asleep?: boolean }} PanelTabInfo
  */
 /**
  * `split`: the number of the split showing the tab, null in none (docs/specs/multiple-splits.md
- * decision 10).
+ * decision 10). `asleep`: the tab has no loaded page (docs/specs/tab-sleep.md, behaviour 14).
  * @typedef {{ readonly tabId: string, readonly number: number, readonly display: string,
  *   readonly host: string, readonly active: boolean, readonly foreign: boolean,
- *   readonly playing: boolean, readonly pinned: boolean, readonly split: number | null }} PanelRow
+ *   readonly playing: boolean, readonly pinned: boolean, readonly asleep: boolean,
+ *   readonly split: number | null }} PanelRow
  */
 /**
  * One split of the workspace as the panel shows it: its number and its tabs.
@@ -141,6 +142,7 @@ export function openPanel(
       foreign: !!t.foreign,
       playing: !!t.playing,
       pinned: !!t.pinned,
+      asleep: !!t.asleep,
       split: splitOf.get(tabId) ?? null,
     });
   });

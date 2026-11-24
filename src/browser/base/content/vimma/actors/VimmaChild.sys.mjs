@@ -17,11 +17,18 @@ import { describeAgentElements } from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
 import { BlockFocus } from "./block.mjs";
 import { PdfView } from "./pdf-view.mjs";
-import { PageScroll, scrollersUnder } from "./page-scroll.mjs";
+import {
+  PageScroll,
+  SETTLE_MAX_MS,
+  WHEEL_WAIT_MS,
+  scrollersUnder,
+  wheelCanScroll,
+} from "./page-scroll.mjs";
 import { GrepPage } from "./grep-page.mjs";
 import { AgentPage } from "./agent-page.mjs";
 import { asUserGesture } from "./user-gesture.mjs";
 import { dispatchAsPage } from "./page-events.mjs";
+import { DocumentHover } from "./hover.mjs";
 
 /** @import { EditableDescriptor } from "../core/editable.mjs" */
 
@@ -43,9 +50,12 @@ import { dispatchAsPage } from "./page-events.mjs";
  *   | { name: "Vimma:GrepPreview", data: Parameters<GrepPage["preview"]>[0] }
  *   | { name: "Vimma:GrepJump", data: Parameters<GrepPage["jump"]>[0] }
  *   | { name: "Vimma:CollectHints", data: { gen: number, linksOnly: boolean, blocks?: boolean,
- *       texts?: boolean, elements?: boolean } }
- *   | { name: "Vimma:HintsMoved", data: { gen?: unknown, x?: unknown, y?: unknown } | undefined }
+ *       texts?: boolean, elements?: boolean, hover?: boolean, hoverToo?: boolean } }
+ *   | { name: "Vimma:HintsMoved", data: { gen?: unknown, x?: unknown, y?: unknown,
+ *       dx?: unknown, dy?: unknown, shift?: unknown, other?: unknown } | undefined }
  *   | { name: "Vimma:ActivateHint", data: { gen: number, id: number } }
+ *   | { name: "Vimma:Hover", data: { op?: unknown, gen?: unknown, id?: unknown } | undefined }
+ *   | { name: "Vimma:HoverEmbedder", data: { op?: unknown, frame?: unknown } | undefined }
  *   | { name: "Vimma:AgentElement", data: Parameters<AgentPage["element"]>[0] }
  *   | { name: "Vimma:AgentQuiet", data: Parameters<AgentPage["quiet"]>[0] }
  *   | { name: "Vimma:AgentConsole", data: Parameters<AgentPage["consoleEntries"]>[0] }
@@ -54,15 +64,19 @@ import { dispatchAsPage } from "./page-events.mjs";
  *   | { name: "Vimma:PdfZoom" | "Vimma:PdfWhere" | "Vimma:ScrollFraction" | "Vimma:FocusLast"
  *       | "Vimma:SuggestionsOpen" | "Vimma:ScrollPosition" | "Vimma:FindAnchor"
  *       | "Vimma:FindClosed" | "Vimma:FindStep" | "Vimma:GrepEnd" | "Vimma:AgentCards"
- *       | "Vimma:AgentTotal" | "Vimma:AgentSensitiveShown", data?: unknown }} ChildMessage
+ *       | "Vimma:AgentTotal" | "Vimma:AgentSensitiveShown" | "Vimma:Painted", data?: unknown }}
+ *   ChildMessage
  */
 /** @import { BlockMessage } from "./block.mjs" */
 /** @import { PdfOutlineMessage, PdfStateMessage } from "./pdf-view.mjs" */
 
-const lazy = /** @type {Lazy<"setTimeout">} */ ({});
+const lazy = /** @type {Lazy<"clearTimeout" | "setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
+  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
+/** The longest a page's "Vimma:Painted" waits for its paint (the parent waits 300 ms). */
+const PAINTED_MAX_MS = 1000;
 /** Focus on these moves into another document, whose own child reports. */
 const FRAMES = new Set(["iframe", "frame", "browser"]);
 
@@ -275,7 +289,18 @@ export class VimmaChild extends JSWindowActorChild {
     press: (el, still) => this.#press(el, still, { agent: true }),
     asAgent: (fn) => this.#asAgent(fn),
     beforeSubmitCheck: () => this.#beforeSubmitCheck(),
+    hover: (el) => this.#agentHover(el),
+    releaseHover: () => this.#agentHoverRelease(),
   });
+  /**
+   * This document's hover, the user's or an agent's (one at a time, docs/specs/hover.md decision
+   * 7), and its `<iframe>` locks.
+   */
+  #hover = new DocumentHover();
+  /** The hovered element is in a link: its release clears the link preview its hover set. */
+  #hoverInLink = false;
+  /** The hover held is an agent's (`vimma_hover`): only its own release ends it. */
+  #hoverByAgent = false;
   /** Copy mode in this document (m1-copy-mode). */
   #caret = new Caret();
   /** Element focus in this document (docs/specs/element-focus.md). */
@@ -359,6 +384,12 @@ export class VimmaChild extends JSWindowActorChild {
   }
 
   didDestroy() {
+    // No events: the document is going away (docs/specs/hover.md decision 5).
+    try {
+      this.#hover.pageHidden();
+    } catch {
+      // A dead wrapper: the document and its locks are gone; the rest of the cleanup still runs.
+    }
     this.#pdf?.destroy();
     this.#pdf = null;
     this.#grep.end();
@@ -447,7 +478,16 @@ export class VimmaChild extends JSWindowActorChild {
   handleEvent(event) {
     if (event.type === "pagehide") {
       // Registered for trusted events only; checked again, as a forged one could skip a step.
-      if (event.isTrusted) this.#agent.pageHidden();
+      if (!event.isTrusted) return;
+      this.#agent.pageHidden();
+      // Also into the back-forward cache, which keeps the elements and so their locks
+      // (docs/specs/hover.md decision 5, experiment X1).
+      if (this.#hover.pageHidden()) this.#hoverEnded();
+      this.#hoverByAgent = false;
+      return;
+    }
+    if (event.type === "wheel") {
+      this.#scroll.wheeled(/** @type {WheelEvent} */ (event));
       return;
     }
     const doc = this.document;
@@ -746,6 +786,50 @@ export class VimmaChild extends JSWindowActorChild {
     });
   }
 
+  /**
+   * Resolves once this page has painted since this message came, and that paint has reached the
+   * screen, or after PAINTED_MAX_MS (a page whose refresh does not run). The parent sent the page its new size
+   * before this message, over the same channel, so the next paint is at the new size. A paint
+   * is on screen when the MozAfterPaint of its transaction fires
+   * (nsPresContext::NotifyDidPaintForSubtree, on the compositor's DidComposite); the event goes
+   * to the chrome event handler, which the page cannot reach.
+   * @returns {Promise<void>}
+   */
+  #painted() {
+    const win = this.contentWindow;
+    const handler = this.docShell?.chromeEventHandler;
+    if (!win || !handler) return Promise.resolve();
+    const utils = win.windowUtils;
+    const before = utils.lastTransactionId;
+    return new Promise((resolve) => {
+      let over = false;
+      const done = () => {
+        if (over) return;
+        over = true;
+        lazy.clearTimeout(timer);
+        handler.removeEventListener("MozAfterPaint", onPaint);
+        resolve();
+      };
+      // The parent stops waiting long before this; it only ends a wait nothing else ends, such
+      // as that of a page that is not drawn, whose refresh never runs.
+      const timer = lazy.setTimeout(done, PAINTED_MAX_MS);
+      /** @param {Event} e */
+      const onPaint = (e) => {
+        const id = /** @type {Event & { transactionId: number }} */ (e).transactionId;
+        if (e.isTrusted && id > before) done();
+      };
+      // A transaction without invalidations fires no MozAfterPaint: each refresh checks whether
+      // one was painted since and none waits for the screen any more.
+      const check = () => {
+        if (over) return;
+        if (utils.lastTransactionId > before && !utils.isMozAfterPaintPending) done();
+        else win.requestAnimationFrame(() => Services.tm.dispatchToMainThread(check));
+      };
+      handler.addEventListener("MozAfterPaint", onPaint);
+      win.requestAnimationFrame(() => Services.tm.dispatchToMainThread(check));
+    });
+  }
+
   /** @param {ChildMessage} msg */
   receiveMessage(msg) {
     switch (msg.name) {
@@ -786,6 +870,9 @@ export class VimmaChild extends JSWindowActorChild {
         const pdf = this.#pdf;
         return el?.isConnected ? new Promise((resolve) => pdf.linkPage(el, resolve)) : 0;
       }
+      case "Vimma:Painted":
+        // A hidden window is about to be shown at a new size (private-swap-macos, #773).
+        return this.#painted();
       case "Vimma:ScrollFraction":
         // Where an agent tab is scrolled to (docs/specs/mcp-drive.md D16).
         return this.#scroll.fraction();
@@ -849,6 +936,11 @@ export class VimmaChild extends JSWindowActorChild {
         return this.#hintsMoved(msg.data);
       case "Vimma:ActivateHint":
         return this.#activateHint(msg.data);
+      case "Vimma:Hover":
+        return this.#hoverMessage(msg.data);
+      case "Vimma:HoverEmbedder":
+        this.#hoverEmbedder(msg.data);
+        return undefined;
       case "Vimma:AgentElement":
         return this.#agent.element(msg.data);
       case "Vimma:AgentQuiet":
@@ -954,7 +1046,9 @@ export class VimmaChild extends JSWindowActorChild {
    * A smooth scroll this frame started is finished first; one taken over since is waited for
    * (m1-hints, issues #1308 and #1337).
    * @param {{ gen: number, linksOnly: boolean, blocks?: boolean, texts?: boolean,
-   *   elements?: boolean }} data
+   *   elements?: boolean, hover?: boolean, hoverToo?: boolean }} data  `hoverToo`: an agent's
+   *   list asked with the kind hover also lists what only hovering does something with
+   *   (docs/specs/hover.md decision 10)
    */
   async #collectHints(data) {
     const gen = data?.gen;
@@ -962,6 +1056,8 @@ export class VimmaChild extends JSWindowActorChild {
     if (!isIndex(gen) || !win) return null;
     const elements = data.elements === true;
     const texts = data.texts === true && !elements;
+    // A wheel before these labels answers for none of them (PageScroll.wheelSeen).
+    if (!elements && !texts) this.#scroll.forgetWheels();
     // Collections that wait can end out of order. Generations only grow, so a stored newer
     // generation means a newer collection of the same kind answered meanwhile; the elements it
     // stored are the ones the parent acts on, and they stay.
@@ -973,11 +1069,11 @@ export class VimmaChild extends JSWindowActorChild {
       if (!(await this.#sized(win)) || overtaken()) return null;
     }
     // Labels go where the targets are once a scroll ends, not where it is passing (#1308): a
-    // smooth scroll this frame started is finished at once; one that something else took over
-    // is waited for.
+    // smooth scroll this frame started is finished at once; one that something else took over,
+    // or a snapped one, is waited for, a snapped one also before it has moved (#1400).
     const running = this.#scroll.finish();
     if (running) {
-      await this.#scroll.settled(new Set([running]));
+      await this.#scroll.settled(new Set([running.target]), running.starting);
       if (overtaken() || !this.contentWindow) return null;
     }
     const t0 = ChromeUtils.now();
@@ -985,6 +1081,8 @@ export class VimmaChild extends JSWindowActorChild {
       linksOnly: data.linksOnly === true && !elements,
       blocks: data.blocks === true && !elements,
       disabled: elements,
+      hover: data.hover === true && !elements && !texts,
+      hoverToo: data.hoverToo === true && elements,
     });
     // An agent's collection is never followed through the user's targets: the user's targets of
     // this frame stay as they were, and an agent's elements are kept apart.
@@ -1000,7 +1098,12 @@ export class VimmaChild extends JSWindowActorChild {
         page: { x: win.scrollX, y: win.scrollY },
       };
     }
-    const described = elements ? describeAgentElements(targets.map((t) => t.el)) : null;
+    const described = elements
+      ? describeAgentElements(
+          targets.map((t) => t.el),
+          new Set(targets.filter((t) => t.hoverOnly).map((t) => t.el)),
+        )
+      : null;
     return {
       targets: targets.map((t, id) => ({
         id,
@@ -1010,6 +1113,7 @@ export class VimmaChild extends JSWindowActorChild {
         text: texts ? linkText(t.el) : undefined,
         blockKind: t.blockKind,
         box: t.box,
+        hoverKind: t.hoverKind,
         agent: described?.elements[id],
       })),
       frames: frames.map((f) => ({ id: f.bc.id, rect: f.rect })),
@@ -1026,7 +1130,14 @@ export class VimmaChild extends JSWindowActorChild {
    * page's end, or the page took it for itself (a map, a canvas app). True when the wheel was
    * over a subframe, whose scroll this frame does not see, or when `gen` is not this frame's
    * last collection.
-   * @param {{ gen?: unknown, x?: unknown, y?: unknown } | undefined} data
+   * The wait starts once the wheel has reached the page (issues #1375 and #1430), and a wheel
+   * that can scroll its way (`dx`, `dy`, `shift`) is waited for from its first scroll event:
+   * the page hands its smooth scroll to APZ, which learns of it at the next paint, and on a busy
+   * machine that came after the quiet time, which had the labels kept where the page had been.
+   * A wheel with ctrl, alt or meta (`other`: zoom, history) or over a subframe is waited for as
+   * before, from now.
+   * @param {{ gen?: unknown, x?: unknown, y?: unknown, dx?: unknown, dy?: unknown,
+   *   shift?: unknown, other?: unknown } | undefined} data
    * @returns {Promise<boolean>}
    */
   async #hintsMoved(data) {
@@ -1036,9 +1147,44 @@ export class VimmaChild extends JSWindowActorChild {
     const x = Number(data?.x);
     const y = Number(data?.y);
     const point = Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+    const dx = Number(data?.dx);
+    const dy = Number(data?.dy);
     const under = scrollersUnder(win, point);
-    await this.#scroll.settled(under.targets);
+    const scrolling =
+      !!point &&
+      !under.frame &&
+      Number.isFinite(dx) &&
+      Number.isFinite(dy) &&
+      data?.other === false;
+    if (!scrolling) {
+      await this.#scroll.settled(under.targets);
+    } else {
+      const until = ChromeUtils.now() + SETTLE_MAX_MS;
+      const seen = await this.#scroll.wheelSeen(point, WHEEL_WAIT_MS);
+      if (gen !== this.#hints.gen) return true;
+      // Only a wheel that can scroll and has not moved anything yet waits for its first
+      // scroll event. One the page cancelled may still be scrolled by its script a frame later
+      // (a smooth-scrolling library), one under way or that cannot scroll has nothing to wait
+      // for, and one not seen in time (its point read otherwise, as under a pinch zoom) is
+      // unknown: those wait for quiet from now, after the wheel has reached the page.
+      const starting =
+        !!seen &&
+        !seen.prevented &&
+        !this.#targetsMoved(win) &&
+        wheelCanScroll(win, under.targets, { dx, dy, shift: data?.shift === true });
+      await this.#scroll.settled(under.targets, starting, until - ChromeUtils.now());
+    }
+    this.#scroll.forgetWheels();
     if (under.frame || gen !== this.#hints.gen) return true;
+    return this.#targetsMoved(win);
+  }
+
+  /**
+   * Whether any target of this frame's last collection, or the page, is no longer where it was
+   * collected.
+   * @param {Window} win
+   */
+  #targetsMoved(win) {
     const { els, at, frames, page } = this.#hints;
     const moved = (
       /** @type {{ x: number, y: number }} */ a,
@@ -1157,6 +1303,101 @@ export class VimmaChild extends JSWindowActorChild {
       return true;
     }
     return asUserGesture(win, () => this.#press(el));
+  }
+
+  /**
+   * The user's hover (docs/specs/hover.md decision 3): `hover` a target of the last collection,
+   * or `release` it. Only the parent sends this, for a label the user typed in chrome, for
+   * `hover.release` and for the release triggers, so the events are dispatched by this actor and
+   * reach the page trusted, as a real pointer's do. An agent's hover never comes through here.
+   * @param {{ op?: unknown, gen?: unknown, id?: unknown } | undefined} data
+   * @returns {{ hovered: boolean, text?: string }}
+   */
+  #hoverMessage(data) {
+    if (data?.op === "release") {
+      if (this.#hover.release()) this.#afterHoverLink();
+      this.#hoverByAgent = false;
+      return { hovered: false };
+    }
+    if (data?.op !== "hover" || !isIndex(data.gen) || !isIndex(data.id)) return { hovered: false };
+    if (data.gen !== this.#hints.gen) return { hovered: false };
+    const el = this.#hints.els[data.id]?.deref();
+    // Not on a page this process has replaced since the labels were drawn (issue #1028).
+    if (!this.contentWindow || !this.#onPage(el)) return { hovered: false };
+    const wasLink = this.#hoverInLink;
+    this.#hoverInLink = inLink(el);
+    // Moving off a link onto something else: the preview its hover set goes, as a mouse's would.
+    const reply = this.#hover.hover(el, {
+      dispatch: (target, event) => target.dispatchEvent(event),
+      onEnd: () => this.#hoverEnded(),
+    });
+    this.#hoverByAgent = false;
+    if (wasLink && !this.#hoverInLink) this.#leaveLink();
+    return reply;
+  }
+
+  /**
+   * An agent's hover (docs/specs/hover.md decision 3, security.md M67), from AgentPage for the
+   * `hover` op of `Vimma:AgentElement`, which the parent sends only from `agent-hover` after the
+   * gate: the events are dispatched as the page's own, untrusted, as an agent's click's mouse
+   * events are (M26), and never set the link preview. A user's hover of a link it replaces lets
+   * the preview go, as a mouse moving off the link would.
+   * @param {Element} el  an element of the agent's current list, on this page
+   */
+  #agentHover(el) {
+    const wasLink = this.#hoverInLink;
+    this.#hoverInLink = false;
+    this.#hover.hover(el, {
+      dispatch: (target, event) => dispatchAsPage(target, [event]),
+      onEnd: () => this.#hoverEnded(),
+    });
+    this.#hoverByAgent = true;
+    if (wasLink) this.#leaveLink();
+    return true;
+  }
+
+  /** An agent's release: only an agent's hover, never the user's. */
+  #agentHoverRelease() {
+    if (!this.#hoverByAgent || !this.#hover.held) return false;
+    this.#hoverByAgent = false;
+    this.#hover.release();
+    return true;
+  }
+
+  /** The hover ended in this document by itself: the parent clears its status. */
+  #hoverEnded() {
+    this.#afterHoverLink();
+    this.#hoverByAgent = false;
+    try {
+      this.sendAsyncMessage("Vimma:HoverEnded");
+    } catch {
+      // the actor is being destroyed: the parent hears of it from didDestroy
+    }
+  }
+
+  /** A hover over a link put its URL in the link preview (a trusted mouseover): it goes. */
+  #afterHoverLink() {
+    if (this.#hoverInLink) this.#leaveLink();
+    this.#hoverInLink = false;
+  }
+
+  /**
+   * Locks (or releases) the `<iframe>` element's chain of a hovered subframe (docs/specs/hover.md
+   * decision 12). The parent names the subframe by the browsing context it asked to hover; it is
+   * taken only when it is this frame's own child, embedded in this frame's document.
+   * @param {{ op?: unknown, frame?: unknown } | undefined} data
+   */
+  #hoverEmbedder(data) {
+    if (data?.op === "release") {
+      this.#hover.releaseEmbedder();
+      return;
+    }
+    if (data?.op !== "lock" || !isIndex(data.frame)) return;
+    const child = BrowsingContext.get(/** @type {number} */ (data.frame));
+    const frame = child?.embedderElement;
+    if (!child || child.parent !== this.browsingContext || !frame) return;
+    if (frame.ownerDocument !== this.document || !this.#onPage(frame)) return;
+    this.#hover.lockEmbedder(frame);
   }
 
   /**

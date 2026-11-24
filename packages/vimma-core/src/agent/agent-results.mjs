@@ -39,10 +39,11 @@ export const TOOL_COMMANDS = Object.freeze({
   vimma_screenshot: "agent-screenshot",
   vimma_console: "agent-console",
   vimma_bookmarklet: "agent-bookmarklet",
+  vimma_hover: "agent-hover",
 });
 
 /** Flags left out of the command when false, as mcp/command.rs's `flag_into` does. */
-const FLAGS = new Set(["elements", "labels", "full"]);
+const FLAGS = new Set(["elements", "labels", "full", "release"]);
 
 /**
  * The agent command for a tool call, or null for a tool that is not an agent tool. The
@@ -223,6 +224,8 @@ function success(name, args, result) {
       return afterStep(tab, elements, filtered, result, [
         `Clicked ${args.label} in tab ${tab} of Vimma's agent workspace, in the background.`,
       ]);
+    case "vimma_hover":
+      return hoverText(tab, String(args.label ?? ""), elements, filtered, result);
     case "vimma_fill":
       return fillText(
         tab,
@@ -590,6 +593,39 @@ function fillText(tab, asked, elements, filtered, result) {
   return afterStep(tab, elements, filtered, result, lines);
 }
 
+/**
+ * `vimma_hover`'s result (mcp/render.rs, `hover_text`; docs/specs/hover.md decision 9): a
+ * release says whether there was a hover to end; a hover, that it holds, then the page after it.
+ * @param {string} tab @param {string} label @param {boolean} elements @param {boolean} filtered
+ * @param {AgentResult} result
+ * @returns {ToolContent[]}
+ */
+function hoverText(tab, label, elements, filtered, result) {
+  if (result?.released !== undefined) {
+    const header = untrustedHeader(field(result, "url"), field(result, "title"));
+    return [
+      item(header),
+      item(
+        flag(result, "released")
+          ? `Released your hover in tab ${tab} of Vimma's agent workspace.`
+          : `You held no hover in tab ${tab} of Vimma's agent workspace; nothing changed.`,
+      ),
+    ];
+  }
+  const holds = flag(result, "hovered")
+    ? " It stays hovered until you hover another element there or call vimma_hover with " +
+      "release: true; a click does not end it."
+    : " The hover has already ended: the page went to another page or replaced the element.";
+  return afterStep(
+    tab,
+    elements,
+    filtered,
+    result,
+    [`Hovered ${label} in tab ${tab} of Vimma's agent workspace, in the background.${holds}`],
+    true,
+  );
+}
+
 const CHANGES = Object.freeze({
   element: "the clicked element changed",
   elements: "other listed elements changed or went away",
@@ -597,17 +633,23 @@ const CHANGES = Object.freeze({
   dialog: "a dialog appeared on the page",
 });
 
-/** What a step that loaded no page changed in place (#510). @param {unknown} changed @param {boolean} listed */
-function inPlace(changed, listed) {
+/**
+ * What a step that loaded no page changed in place (#510); a hover's words say what it may have
+ * revealed rather than what a click did (docs/specs/hover.md decision 9).
+ * @param {unknown} changed @param {boolean} listed @param {boolean} [hover]
+ */
+function inPlace(changed, listed, hover = false) {
   if (changed === undefined) return "No new page loaded.";
   if (!Array.isArray(changed)) throw new Broken("Vimma's result has a bad list of changes");
   /** @type {string[]} */
   const said = [];
   for (const word of changed) {
     const what =
-      typeof word === "string" && Object.hasOwn(CHANGES, word)
-        ? /** @type {Record<string, string>} */ (CHANGES)[word]
-        : null;
+      hover && word === "element"
+        ? "the hovered element changed"
+        : typeof word === "string" && Object.hasOwn(CHANGES, word)
+          ? /** @type {Record<string, string>} */ (CHANGES)[word]
+          : null;
     if (!what) throw new Broken("Vimma's result has an unknown change");
     if (said.includes(what)) throw new Broken("Vimma's result names a change twice");
     said.push(what);
@@ -615,6 +657,15 @@ function inPlace(changed, listed) {
   const [check, see] = listed
     ? ["the element list below", "Check the element list below"]
     : ["vimma_elements", "Call vimma_elements"];
+  if (hover) {
+    return said.length === 0
+      ? "No new page loaded, and nothing Vimma watches changed within 2 seconds of the hover. " +
+          "A control a hover reveals often shows without changing the page's text: look for " +
+          `it in ${listed ? "the element list below" : "vimma_elements"}, or see the page with ` +
+          "vimma_screenshot."
+      : `No new page loaded, but the page changed in place after the hover: ${said.join("; ")}. ` +
+          `${see} to find what the hover revealed, then click it with vimma_activate.`;
+  }
   return said.length === 0
     ? "No new page loaded, and nothing on the page changed within 2 seconds of the click. Its " +
         `effect may come later or not at all: check with ${check} or vimma_read_page before ` +
@@ -628,10 +679,10 @@ const HOST = /^[A-Za-z0-9.\-[\]:]{1,253}$/;
 /**
  * The page after a click or a fill (mcp/render.rs, `after_step`).
  * @param {string} tab @param {boolean} elements @param {boolean} filtered @param {AgentResult} result
- * @param {string[]} lines
+ * @param {string[]} lines @param {boolean} [hover]  a hover's words for what changed in place
  * @returns {ToolContent[]}
  */
-function afterStep(tab, elements, filtered, result, lines) {
+function afterStep(tab, elements, filtered, result, lines, hover = false) {
   const url = field(result, "url");
   const title = field(result, "title");
   const loading = flag(result, "loading");
@@ -648,7 +699,7 @@ function afterStep(tab, elements, filtered, result, lines) {
         ? `A new page loaded. ${gone}`
         : loading
           ? "The page is loading."
-          : inPlace(result.changed, listed),
+          : inPlace(result.changed, listed, hover),
   );
   if (result.blocked !== undefined) {
     if (typeof result.blocked !== "string" || !HOST.test(result.blocked)) {

@@ -450,6 +450,52 @@ profile's `lock` link names. Done for 0.1.17 to 0.1.18 (Firefox 159.0.1 to 160.0
 2026-11-12: both installs took the update and kept the profile
 ([#456](https://github.com/vimma-browser/vimma/issues/456)).
 
+**The update rehearsal** (`update-rehearsal.yml`, spec m6a-updater, Tests, "Security
+rehearsal"). The tarball half of that check runs by itself once a day (08:37 UTC) and by hand
+(`gh workflow run update-rehearsal.yml`), while `UPDATES_ENABLED` is `true`.
+`tools/update/rehearsal.ts` reads the manifest at `updates.vimma.dev` and checks it as the
+browser does (a pinned key, the channel `vimma`, the Linux target); takes the release it offers
+and the published release before it; downloads that release's tarball and `SHA256SUMS` from
+its GitHub Release and checks one against the other; unpacks it into a new directory; and
+starts it under a new Xvfb, with `HOME`, every `XDG_*` directory, the session bus and the
+profile new as well, and `vimma.control.enabled` the only pref. It then reads the update state
+through the release's own `vimma-ctl` until the offer is staged, checks
+`updates/0/update.status` (`applied`), the updater's `last-update.log` (which ends in `applied`
+only when the shipped `updater` accepted the MAR's signature, channel and version) and the build
+ID in the staged `updated/application.ini`, quits the browser and starts it again, and checks
+that `application.ini`, the profile's `compatibility.ini` and `last-update.log` (`succeeded`)
+name the offered build. The job summary lists each step with its time; the run's
+`update-rehearsal-logs` artifact keeps the browser's output and the updater's logs.
+
+What each result means:
+
+- **Passed**: the previous release took the offered one, with the real key, the real host and
+  the GitHub downloads.
+- **Nothing to rehearse** (passes): the manifest offers nothing (an update pulled: spec
+  m6a-updater, decision 22), no older release exists, the older release predates Firefox's
+  updater (before 0.1.17), or a release was published less than 6 hours ago and its manifest
+  is not served yet (`update-publish.yml` runs on the publish and takes minutes).
+- **Failed**: the host serves no manifest (404) 6 hours after a release was published; the
+  served manifest fails the browser's checks; it offers a version that is not a published
+  release, or one with no MAR; it still offers an older release 6 hours after a newer one was
+  published (look at that release's `update-publish.yml` run); the tarball does not match its
+  `SHA256SUMS`, or a release from 0.1.17 on has no `updater`; the browser refuses the manifest,
+  does not stage within 15 minutes, or stages something else; or the restart does not apply it.
+  GitHub mails a failed scheduled run to whoever last changed the workflow's schedule.
+
+The release list is read by `gh` in a step of its own (`--releases <file>`), so the step that
+runs the downloaded browser holds no token. The tarball is checked against its release's
+`SHA256SUMS` only, not against the cosign bundle that signs that file.
+
+To run it on this machine, against the real host: `node tools/update/rehearsal.ts plan --repo
+vimma-browser/vimma` prints what it would rehearse, and `node tools/update/rehearsal.ts run
+--repo vimma-browser/vimma --out <new dir>` does it (without `--releases` it lists the releases with `gh`; Xvfb and dbus-daemon on `PATH`; it reaches
+no running Vimma and no installed profile, and kills only the processes it started). Each run
+downloads the previous release's tarball and the offered MAR once, which `downloads.yml` counts
+like any download. It covers the install side of the security rehearsal only: the chain from a
+Firefox advisory to a published release with no person acting is still checked when it first
+runs.
+
 **9. The package repositories** (spec package-repositories). `updates.vimma.dev` also serves
 signed apt, rpm (dnf and zypper) and pacman repositories, so that a system's own upgrade
 command updates Vimma. They have their own key, a Cloud KMS key in its own key ring, which only
@@ -532,22 +578,26 @@ project; check IAM & Admin → Audit Logs.
 
 The certificate: the OpenPGP key that users import, built around the KMS key with one KMS
 signature (spec, decision 4). Its creation time is part of the fingerprint, so pick it once
-(the current UTC time) and never change it. With the maintainer's own `gcloud` credentials:
+(the current UTC time) and never change it; the command below, with the recorded time, makes
+the committed file again. With the maintainer's own `gcloud` credentials:
 
 ```sh
 KMS_ACCESS_TOKEN=$(gcloud auth print-access-token) node tools/package/openpgp-kms.ts certify \
-  --key-version "$(gh variable get GCP_PACKAGE_KEY_VERSION)" --created 2026-11-21T12:00:00Z \
+  --key-version "$(gh variable get GCP_PACKAGE_KEY_VERSION)" --created 2026-11-23T19:12:57Z \
   --user-id 'Vimma packages <packages@vimma.dev>' --out configs/package-signing/vimma-packages.asc
 node tools/package/openpgp-kms.ts fingerprint --cert configs/package-signing/vimma-packages.asc
 gpg --show-keys configs/package-signing/vimma-packages.asc   # the same fingerprint, RSA 4096, [SC]
+gcloud kms keys versions get-public-key 1 --key package-signing --keyring vimma-packages \
+  --location "$LOCATION" --output-file package-signing.pem   # the certificate's RSA key
 ```
 
 Commit the certificate in a pull request of its own and record its fingerprint here; the guide
-prints it next to each setup command.
+prints it next to each setup command. `npm test` fails when the committed certificate's
+fingerprint is not the one in this table, or its self-signature does not verify.
 
-| Key                                                        | Fingerprint  |
-| ---------------------------------------------------------- | ------------ |
-| `vimma-packages/package-signing`, version 1, HSM, RSA-4096 | not made yet |
+| Key                                                        | Created              | Fingerprint                                |
+| ---------------------------------------------------------- | -------------------- | ------------------------------------------ |
+| `vimma-packages/package-signing`, version 1, HSM, RSA-4096 | 2026-11-23T19:12:57Z | `110649CB2BC11400828DD0D497FD3D2B24AD4390` |
 
 Turning the repositories on: `release.yml` signs the `.rpm` and builds the pacman package only
 while the variable is `true`, and the repositories list only releases that have it, so set it

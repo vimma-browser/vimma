@@ -3,9 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // bookmarks.toml, mirrored into Places (docs/specs/bookmarks-file.md, Delivery slices 1 to 4:
-// the mirror, Vimma's write-back, the outside write-back and `:bookmarks export`), behind
-// `vimma.feature.bookmarksFile` until the feature is finished: while the pref is off nothing here
-// reads a file, listens to Places or refuses a key. One per app,
+// the mirror, Vimma's write-back, the outside write-back and `:bookmarks export`). One per app,
 // started and fed by ConfigHost: it hands over config.toml's text after each read (inline tables,
 // D2) and calls `tick` on each of its polls. The file is read beside config.toml's path (D1),
 // settled (D15), checked by core's bookmarks-file.mjs, and applied to each table's workspace
@@ -71,8 +69,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
-/** The unfinished feature's switch (CONTRIBUTING.md, "Unfinished features"). */
-export const FEATURE_PREF = "vimma.feature.bookmarksFile";
 /** Prefs for tests: the settle (D15), the burst (D15) and the question's time (Behaviour 7). */
 const SETTLE_PREF = "vimma.bookmarks.settleMs";
 const BURST_PREF = "vimma.bookmarks.burstMs";
@@ -111,6 +107,70 @@ function places() {
 /** IOUtils rejects with a DOMException named NotFoundError for a missing file. */
 const notFound = (/** @type {unknown} */ e) => /** @type {Thrown} */ (e)?.name === "NotFoundError";
 
+/**
+ * The file a path names after its symbolic links (nsIFile's target follows the chain, also to
+ * nothing), or the path itself when it is no link.
+ * @param {string} path
+ */
+function resolved(path) {
+  const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  file.initWithPath(path);
+  try {
+    return file.isSymlink() ? file.target : path;
+  } catch {
+    return path;
+  }
+}
+
+/**
+ * What a polled file (config.toml, routes.toml, bookmarks.toml) looks like now: "missing" when
+ * nothing is at the path, else the file a link resolves to, its type, time and size, and for a
+ * regular file within `maxBytes` the digest of its text (hashed off the main thread). The time
+ * and size alone miss a change that keeps both: the Nix store gives every file the time 1, so a
+ * `home-manager switch` that repoints the link at a file of the same size looked unchanged, as
+ * did `cp -p` and `rsync -t` (#1474; the Omarchy theme poll had the same gap, #1455). Only a
+ * regular file is hashed (a FIFO would block); a digest that fails, as for a file without read
+ * permission, says "unreadable", so that the reader is asked and says why.
+ * @param {string} path
+ * @param {number} maxBytes
+ * @returns {Promise<string>}
+ */
+export async function fileSignature(path, maxBytes) {
+  let info;
+  try {
+    info = await IOUtils.stat(path);
+  } catch (e) {
+    if (notFound(e)) return "missing";
+    throw e;
+  }
+  const head = signatureHead(path, info);
+  if (info.type !== "regular" || (info.size ?? 0) > maxBytes) return head;
+  const digest = await IOUtils.computeHexDigest(path, "sha256").catch(() => "unreadable");
+  return `${head}|${digest}`;
+}
+
+/**
+ * fileSignature's part from the stat: the file a link resolves to, its type, time and size.
+ * @param {string} path
+ * @param {{ type?: string, lastModified?: number, size?: number }} info
+ */
+export function signatureHead(path, info) {
+  return `${resolved(path)}|${info.type}|${info.lastModified}|${info.size}`;
+}
+
+/**
+ * The SHA-256 of bytes already read, in hex, for a signature made from the read itself.
+ * @param {Uint8Array} bytes
+ */
+export function hexDigest(bytes) {
+  const hash = Cc["@mozilla.org/security/hash;1"].createInstance(Ci.nsICryptoHash);
+  hash.init(Ci.nsICryptoHash.SHA256);
+  hash.update(bytes, bytes.length);
+  return Array.from(hash.finish(false), (c) => c.charCodeAt(0).toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
+
 /** @param {string} text */
 function sha256(text) {
   const bytes = new TextEncoder().encode(text);
@@ -123,7 +183,7 @@ function sha256(text) {
 /**
  * A PlacesBookmark event: the fields read here (PlacesEvent.webidl).
  * @typedef {{ type: string, guid: string, parentGuid?: string, oldParentGuid?: string,
- *   source: number, isTagging?: boolean }} BookmarkEvent
+ *   source: number, isTagging?: boolean, itemType?: number }} BookmarkEvent
  */
 
 /**
@@ -189,7 +249,7 @@ function contentHash(r, fileText) {
 
 export class BookmarksFileImpl {
   /**
-   * @param {{ configPath: () => string, basePath?: string, enabled?: () => boolean,
+   * @param {{ configPath: () => string, basePath?: string,
    *   initComplete?: () => Promise<void>, say?: (text: string) => void,
    *   ask?: (win: BrowserWindow | null, question: string, yes: () => void, no: () => void) =>
    *     (() => void) | null,
@@ -203,11 +263,10 @@ export class BookmarksFileImpl {
    *   confirm?: (win: BrowserWindow | null, question: string, yes: () => void, no: () => void) =>
    *     (() => void) | null,
    *   open?: (win: BrowserWindow, path: string) => void }} options
-   *   `configPath`: config.toml's path, not its symlink's target (D1); `enabled`: the feature
-   *   pref; `queue`: the one edit queue (D11); `writeFile`: an atomic write of a file in it,
+   *   `configPath`: config.toml's path, not its symlink's target (D1); `queue`: the one edit queue (D11); `writeFile`: an atomic write of a file in it,
    *   without which nothing is written back; `reloadConfig`: config.toml is read again after
    *   an edit of its inline tables; `newDatabase`: Places made a new database at this start
-   *   (D17); `privateNow`: the most recent window is private (Behaviour 12); `confirm`: the y/N
+   *   (D17); `privateNow`: the change came from a private window (Behaviour 12); `confirm`: the y/N
    *   of a command the user typed (`:bookmarks export!`), in its window; `open`: shows the file
    *   in a tab; the rest default to
    *   the profile, Places and the most recent window, and are replaced by tests
@@ -215,7 +274,6 @@ export class BookmarksFileImpl {
   constructor(options) {
     this.configPath = options.configPath;
     this.basePath = options.basePath ?? PathUtils.join(PathUtils.profileDir, BASE_FILE);
-    this.enabled = options.enabled ?? (() => Services.prefs.getBoolPref(FEATURE_PREF, false));
     this.initComplete = options.initComplete ?? placesInitComplete;
     this.say = options.say ?? sayInRecentWindow;
     this.ask = options.ask ?? askInWindow;
@@ -227,7 +285,7 @@ export class BookmarksFileImpl {
     this.writeFile = options.writeFile ?? null;
     this.reloadConfig = options.reloadConfig ?? (() => {});
     this.newDatabase = options.newDatabase ?? placesDatabaseIsNew;
-    this.privateNow = options.privateNow ?? recentWindowIsPrivate;
+    this.privateNow = options.privateNow ?? changeWindowIsPrivate;
     this.confirm = options.confirm ?? confirmInWindow;
     this.open = options.open ?? openInTab;
     /**
@@ -241,6 +299,12 @@ export class BookmarksFileImpl {
     this.privateAdded = new Set();
     /** @type {Set<string>} items changed there from a private window: put back, never written */
     this.privateChanged = new Set();
+    /** @type {Set<string>} items changed from a normal window: taken off the base's `local` */
+    this.publicChanged = new Set();
+    /** Counts the events above, so that a run forgets only what no event touched during it. */
+    this.windowSeq = 0;
+    /** @type {Map<string, number>} each guid's last event in those sets, by `windowSeq` */
+    this.windowSeen = new Map();
     /** @type {Set<string>} items the file cannot hold that a notice already named */
     this.keptSaid = new Set();
     /** @type {Set<string>} tables paused both ways by the put-back loop guard */
@@ -271,7 +335,7 @@ export class BookmarksFileImpl {
     this.placesReady = false;
     /** The first run has been asked for; runs before it are not. */
     this.ready = false;
-    /** Running: the feature is on and start() was called. */
+    /** Running: start() was called and stop() was not. */
     this.active = false;
     /** start() was called (ConfigHost's first window). */
     this.started = false;
@@ -304,31 +368,23 @@ export class BookmarksFileImpl {
     this.errors = [];
     /** @type {BookmarksFileError[]} */
     this.warnings = [];
-    this.onFeature = () => this.feature();
   }
 
   get path() {
     return PathUtils.join(PathUtils.parent(this.configPath()) ?? "/", BOOKMARKS_FILE);
   }
 
-  /** Once, with ConfigHost's first window: runs while the feature pref is on. */
+  /** Once, with ConfigHost's first window. */
   start() {
     if (this.started) return;
     this.started = true;
-    Services.prefs.addObserver(FEATURE_PREF, this.onFeature);
-    this.feature();
-  }
-
-  /** The feature pref changed (or start): turns the mirror on or off. */
-  feature() {
-    if (!this.started) return;
-    if (this.enabled()) this.activate();
-    else this.deactivate();
+    this.activate();
   }
 
   activate() {
     if (this.active) return;
     this.active = true;
+    trackLibraryOpeners();
     this.initComplete()
       .then(async () => {
         if (!this.active) return;
@@ -366,13 +422,14 @@ export class BookmarksFileImpl {
     this.putBacks.clear();
     this.privateAdded.clear();
     this.privateChanged.clear();
+    this.publicChanged.clear();
+    this.windowSeen.clear();
     this.report([], []);
     this.signature = "";
     this.lastInput = "";
   }
 
   stop() {
-    if (this.started) Services.prefs.removeObserver(FEATURE_PREF, this.onFeature);
     this.started = false;
     this.deactivate();
   }
@@ -408,7 +465,7 @@ export class BookmarksFileImpl {
     return run;
   }
 
-  /** The words `:bookmarks` takes while the feature is on, for Tab. */
+  /** The words `:bookmarks` takes while the mirror runs, for Tab. */
   words() {
     return this.active ? ["export", "export!", "forget"] : [];
   }
@@ -678,14 +735,8 @@ export class BookmarksFileImpl {
     return this.enqueue({ trigger: "file" });
   }
 
-  async stat() {
-    try {
-      const info = await IOUtils.stat(this.path);
-      return `${info.lastModified}|${info.size}|${info.type}`;
-    } catch (e) {
-      if (notFound(e)) return "missing";
-      throw e;
-    }
+  stat() {
+    return fileSignature(this.path, MAX_BOOKMARKS_FILE_BYTES);
   }
 
   /**
@@ -825,12 +876,29 @@ export class BookmarksFileImpl {
       if (this.applying || this.paused) this.burst.clear();
       return;
     }
-    // Behaviour 12: what is added or changed while a private window is the most recent one is
-    // never written; an addition stays in Places only, a change is put back. The event names no
-    // window, so a Library opened from that window counts too.
-    if (this.writeBack === "all" && mine.some((e) => e.source === S.DEFAULT) && this.privateNow()) {
+    // Behaviour 12: what is added or changed from a private window is never written; an addition
+    // stays in Places only, a change is put back. The event names no window, so the window it
+    // came from is the focused one, or the browser window that opened it (the Library, a
+    // bookmark dialog). A later change from a normal window makes the item an ordinary one.
+    if (this.writeBack === "all" && mine.some((e) => e.source === S.DEFAULT)) {
+      const isPrivate = this.privateNow();
       for (const e of mine) {
         if (e.source !== S.DEFAULT || e.type === "bookmark-removed") continue;
+        if (!isPrivate) {
+          // Only a change to the item itself: a sort moves every bookmark of the folder, and a
+          // folder made in a private window holds bookmarks no normal window touched.
+          const own =
+            e.itemType === places().bookmarks.TYPE_BOOKMARK &&
+            (e.type !== "bookmark-moved" || e.parentGuid !== e.oldParentGuid);
+          if (!own) continue;
+          this.windowSeen.set(e.guid, ++this.windowSeq);
+          this.publicChanged.add(e.guid);
+          this.privateAdded.delete(e.guid);
+          this.privateChanged.delete(e.guid);
+          continue;
+        }
+        this.windowSeen.set(e.guid, ++this.windowSeq);
+        this.publicChanged.delete(e.guid);
         if (e.type === "bookmark-added") this.privateAdded.add(e.guid);
         else if (!this.privateAdded.has(e.guid)) this.privateChanged.add(e.guid);
       }
@@ -938,7 +1006,8 @@ export class BookmarksFileImpl {
     const eventTables = new Map(this.eventTables);
     this.eventTables.clear();
     // What a private window touched until now: cleared once this run has handled it.
-    const privateSeen = [...this.privateAdded, ...this.privateChanged];
+    const privateSeen = [...this.privateAdded, ...this.privateChanged, ...this.publicChanged];
+    const seenBefore = this.windowSeq;
     let base = await this.loadBase();
     let { text: fileText, problem } = await this.readFile();
     let configText = this.configText ?? null;
@@ -1171,9 +1240,13 @@ export class BookmarksFileImpl {
     }
     await this.saveBase(source === null && !saved?.tables.length ? null : saved);
     // What a private window touched is now in the base's `local` list, or put back.
+    // A guid an event touched during this run is left for the next one, which reads it again.
     for (const g of privateSeen) {
+      if ((this.windowSeen.get(g) ?? 0) > seenBefore) continue;
       this.privateAdded.delete(g);
       this.privateChanged.delete(g);
+      this.publicChanged.delete(g);
+      this.windowSeen.delete(g);
     }
     for (const link of p.links) this.link(link.name, link.folder);
     const loaded = this.lastInput !== input;
@@ -1217,7 +1290,9 @@ export class BookmarksFileImpl {
       places: tree,
       bookmarklets: this.bookmarklets,
       hold: this.held,
-      local: new Set([...(base.local ?? []), ...this.privateAdded]),
+      local: new Set(
+        [...(base.local ?? []), ...this.privateAdded].filter((g) => !this.publicChanged.has(g)),
+      ),
       putBackGuids: new Set(this.privateChanged),
       keepRemovals: !!how.keepRemovals,
     };
@@ -1938,7 +2013,7 @@ export class BookmarksFileImpl {
   /**
    * A y/N question outside the run (D11), in the most recent window once it is free. `no` runs
    * on `n`, Esc, a closed prompt or no answer in time; a newer question, `:bookmarks forget` or
-   * the feature turned off cancel it, which is a `no` only when `cancelIsNo`.
+   * the mirror stopping cancel it, which is a `no` only when `cancelIsNo`.
    * @param {string} text
    * @param {() => void} yes
    * @param {() => void} no
@@ -2124,10 +2199,68 @@ function placesDatabaseIsNew() {
   return status === 1 || status === 2;
 }
 
-/** Whether the most recently used browser window is private (Behaviour 12). */
-function recentWindowIsPrivate() {
-  const win = recentWindow();
-  return !!win && isPrivate(win);
+/**
+ * @typedef {{ showPlacesOrganizer: (...args: unknown[]) => unknown, vimmaTracked?: boolean }}
+ *   LibraryCommands
+ */
+
+/** @type {WeakRef<Window> | null} the browser window that last opened or raised the Library */
+let libraryFrom = null;
+
+/**
+ * Notes which browser window last opened or brought forward the Library: there is one Library
+ * window, and PlacesCommandHook.showPlacesOrganizer only focuses it when it is open, so its
+ * `opener` stays the window that first opened it (browser-places.js). Every way Firefox opens
+ * the Library (its key, menus and the bookmarks button) goes through that function.
+ */
+function trackLibraryOpeners() {
+  if (trackLibraryOpeners.done) return;
+  trackLibraryOpeners.done = true;
+  /** @param {Window} win */
+  const hook = (win) => {
+    const commands = /** @type {{ PlacesCommandHook?: LibraryCommands }} */ (
+      /** @type {unknown} */ (win)
+    ).PlacesCommandHook;
+    if (!commands || commands.vimmaTracked) return;
+    const show = commands.showPlacesOrganizer;
+    commands.showPlacesOrganizer = function (/** @type {unknown[]} */ ...args) {
+      libraryFrom = new WeakRef(win);
+      return show.apply(this, args);
+    };
+    commands.vimmaTracked = true;
+  };
+  for (const win of Services.wm.getEnumerator("navigator:browser")) hook(win);
+  Services.obs.addObserver(
+    (win) => hook(/** @type {Window} */ (/** @type {unknown} */ (win))),
+    "browser-delayed-startup-finished",
+  );
+}
+trackLibraryOpeners.done = false;
+
+/**
+ * Whether a Places change came from a private window (Behaviour 12): the focused window, else the
+ * most recent of any type, and up its openers to a browser window. The Library and the bookmark
+ * dialogs are windows of their own, so the most recent browser window would name a private
+ * window that is merely behind them; the Library counts as the browser window that last opened
+ * or raised it. When no browser window is found this way, or a check throws, the change counts
+ * as private when the most recent browser window is, so that it fails closed.
+ */
+function changeWindowIsPrivate() {
+  try {
+    let win = Services.focus.activeWindow ?? Services.wm.getMostRecentWindow(null);
+    for (let hops = 0; win && hops < 8; hops++) {
+      if (isPrivate(/** @type {BrowserWindow} */ (win))) return true;
+      const type = win.document?.documentElement?.getAttribute("windowtype");
+      if (type === "navigator:browser") return false;
+      const from = type === "Places:Organizer" ? libraryFrom?.deref() : undefined;
+      win = /** @type {Window | null} */ (from && !from.closed ? from : win.opener);
+    }
+    const recent = recentWindow();
+    return !!recent && isPrivate(recent);
+  } catch (e) {
+    console.warn("vimma: the window of a bookmark change is unknown, so counted private", e);
+    return true;
+  }
 }
 
 /** @param {BrowserWindow} win */

@@ -406,6 +406,18 @@ describe("describing and adding rules", () => {
     expect(config(r.create).routes).toHaveLength(1);
   });
 
+  test("appendRouteText keeps a CRLF file's line endings", () => {
+    const text = 'schema = 2\r\n[keys]\r\nnew_tab = "t"\r\n';
+    const r = appendRouteText(text, { domain: "a.com", workspace: "w" });
+    expect(r).toEqual({
+      append: '\r\n[[routes]]\r\ndomain = "a.com"\r\nworkspace = "w"\r\n',
+    });
+    expect(config(text + (r as { append: string }).append).routes).toHaveLength(1);
+    expect(appendRouteText("schema = 2\r\n", { domain: "a.com", workspace: "w" })).toEqual({
+      append: '\r\n[[routes]]\r\ndomain = "a.com"\r\nworkspace = "w"\r\n',
+    });
+  });
+
   test("appendRouteText refuses what would not parse, and says why", () => {
     expect(appendRouteText("schema = 2\n[keys\n", { domain: "a.com", workspace: "w" })).toEqual({
       error: expect.stringMatching(/does not parse.*fix it first/),

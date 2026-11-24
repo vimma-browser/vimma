@@ -1,0 +1,13 @@
+{
+  "description": "End the connection's hover in an agent tab (docs/specs/hover.md decision 9)",
+  "kind": "request",
+  "message": {
+    "type": "request",
+    "id": 15,
+    "command": "agent-hover",
+    "args": {
+      "tab": "12",
+      "release": true
+    }
+  }
+}

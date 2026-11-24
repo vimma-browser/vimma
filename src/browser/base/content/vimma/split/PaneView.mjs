@@ -318,7 +318,7 @@ export class PaneView {
     if (e.type === "TabOpen") this.#onTabOpen(/** @type {Tab} */ (e.target));
     else if (e.type === "TabClose") this.#onTabClose(/** @type {Tab} */ (e.target));
     else if (e.type === "TabSelect") this.#onTabSelect(/** @type {CustomEvent} */ (e));
-    else if (e.type === "visibilitychange") this.#keepAsleep();
+    else if (e.type === "visibilitychange") this.#keepInactive();
     else if (e.type === "TabBrowserInserted")
       this.#onBrowserInserted(/** @type {Tab} */ (e.target));
     else if (e.type === "TabBrowserDiscarded")
@@ -342,6 +342,20 @@ export class PaneView {
    */
   get hidden() {
     return !!this.#panes && isHiddenView(this.#panes);
+  }
+
+  /**
+   * The tabs of the split on screen, zoomed-away panes included; none with a single pane or a
+   * hidden view. Firefox gives such a tab its browser back as soon as it is discarded
+   * (#onBrowserDiscarded), so tab sleep leaves them alone (docs/specs/tab-sleep.md decision 5).
+   * @returns {MozTabbrowserTab[]}
+   */
+  get shownTabs() {
+    const panes = this.#panes;
+    if (!panes || isHiddenView(panes)) return [];
+    return leaves(panes)
+      .map((l) => this.#tab(l.tab))
+      .filter((t) => !!t);
   }
 
   /**
@@ -1443,7 +1457,7 @@ export class PaneView {
     // was already selected (the side panel's Enter) missed that TabSelect, so suspend it here
     // the same way (tabbox.js suspendSplitViewPanels: the panels keep their split-view class).
     gBrowserOf(this.#win).tabpanels?.suspendSplitViewPanels?.(tabs);
-    this.#asleep(tabs);
+    this.#deactivate(tabs);
   }
 
   /**
@@ -1456,7 +1470,7 @@ export class PaneView {
    * blank (#605).
    * @param {Tab[]} tabs
    */
-  #asleep(tabs) {
+  #deactivate(tabs) {
     for (const t of tabs) {
       if (!t.linkedBrowser || t.selected) continue;
       if (!this.#unloadLoading(t)) t.linkedBrowser.docShellIsActive = false;
@@ -1483,17 +1497,17 @@ export class PaneView {
   }
 
   /**
-   * Puts back to sleep the panes the current tree keeps inactive, a zoom's zoomed-away panes or
+   * Deactivates again the panes the current tree keeps inactive, a zoom's zoomed-away panes or
    * a hidden view's, after Firefox woke them; never wakes anything (reconcile does that).
    */
-  #keepAsleep() {
+  #keepInactive() {
     const panes = this.#panes;
     if (!panes || this.#reconciling) return;
     const hidden = isHiddenView(panes);
     for (const leaf of leaves(panes)) {
       if (!hidden && (!panes.zoom || leaf.pane === panes.zoom)) continue;
       const t = this.#tab(leaf.tab);
-      if (t?.linkedBrowser?.docShellIsActive) this.#asleep([t]);
+      if (t?.linkedBrowser?.docShellIsActive) this.#deactivate([t]);
     }
   }
 
@@ -1572,7 +1586,9 @@ export class PaneView {
       if (t?.linkedBrowser) t.linkedBrowser.docShellIsActive = true;
     }
     // Firefox leaves a tab that left a split, or a zoomed-away one, active (sub-spec 1).
-    this.#asleep(/** @type {Tab[]} */ (plan.deactivate.map((id) => this.#tab(id)).filter(Boolean)));
+    this.#deactivate(
+      /** @type {Tab[]} */ (plan.deactivate.map((id) => this.#tab(id)).filter(Boolean)),
+    );
   }
 
   /** Writes each pane's rectangle; also the ResizeObserver's callback. */

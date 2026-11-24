@@ -174,15 +174,22 @@ describe("parseConfig: errors carry line numbers", () => {
 
   // Regression (found by the fuzzer, seed 1027517388, issue #134): an action name with a `[`
   // made parseConfig throw "RangeError: Invalid array length" instead of reporting it.
-  test("an unknown action whose name is not a bare key is an error, not a throw", () => {
-    const e = oneError(toml("schema = 1", "[keys]", '"c[mmand" = "/"'));
-    expect(e).toMatchObject({ line: 3, path: 'keys."c[mmand"' });
+  // Since #1474's follow-up, an unknown action with no close match is a skipped binding.
+  test("an unknown action whose name is not a bare key is a warning, not a throw", () => {
+    const r = parseConfig(toml("schema = 1", "[keys]", '"c[mmand" = "/"'));
+    expect(r.errors).toEqual([]);
+    expect(r.warnings).toEqual([
+      { line: 3, path: 'keys."c[mmand"', message: 'unknown action "c[mmand"; skipped' },
+    ]);
   });
 
   // The same crash from the issue's own seed (2487349044): the name reached through dotted keys.
-  test("an unknown action named through dotted keys with a `[` is an error, not a throw", () => {
+  test("an unknown action named through dotted keys with a `[` is a warning, not a throw", () => {
     const r = parseConfig(toml("schema = 1", `'keys'.'mod['."github.com" = "github.com"`));
-    expect(r.errors).toEqual([{ line: 2, path: 'keys."mod["', message: 'unknown action "mod["' }]);
+    expect(r.errors).toEqual([]);
+    expect(r.warnings).toEqual([
+      { line: 2, path: 'keys."mod["', message: 'unknown action "mod["; skipped' },
+    ]);
   });
 
   test("a TOML syntax error has line and column, and no config", () => {
@@ -411,12 +418,14 @@ describe("mergeWithDefaults", () => {
       },
       ui: {
         toolbar: "hidden",
+        toolbarSet: false,
         bookmarksToolbar: null,
         pdfOutline: "shown",
         tabline: "auto",
         tablineWidth: 14,
       },
       statusbar: { tab: true },
+      tabs: { sleepAfter: 120, sleepOnLowMemory: true },
       updates: { check: true },
       search: null,
       agent: {
@@ -478,5 +487,82 @@ describe("reloadConfig keeps the last good config", () => {
     expect(r.kept).toBe(false);
     expect(r.active).not.toBe(first);
     expect(r.active.keymap.bindingsFor("new_tab")).toContain("prefix+c");
+  });
+});
+
+// docs/specs/tab-sleep.md decisions 11 and 12, Behaviour 6.
+describe("[tabs] and [sites] sleep", () => {
+  test("[tabs] sleep_after accepts 0 and 5 to 10080, and rejects other numbers and types", () => {
+    expect(parseConfig(toml()).config?.tabs).toEqual({ sleepAfter: 120, sleepOnLowMemory: true });
+    for (const v of [0, 5, 120, 10080]) {
+      expect(parseConfig(toml("[tabs]", `sleep_after = ${v}`)).config?.tabs).toEqual({
+        sleepAfter: v,
+        sleepOnLowMemory: true,
+      });
+    }
+    for (const v of ["1", "4", "10081", "-5"]) {
+      expect(oneError(toml("[tabs]", `sleep_after = ${v}`))).toEqual({
+        line: 2,
+        path: "tabs.sleep_after",
+        message: "must be 0 (never) or an integer between 5 and 10080 (minutes)",
+      });
+    }
+    expect(oneError(toml("[tabs]", "sleep_after = 2.5"))).toMatchObject({
+      path: "tabs.sleep_after",
+      message: "expected an integer, got a float",
+    });
+    expect(oneError(toml("[tabs]", 'sleep_after = "120"'))).toMatchObject({
+      path: "tabs.sleep_after",
+      message: "expected an integer, got a string",
+    });
+    // Not a near miss of sleep_after: skipped with a warning (#1474).
+    expect(parseConfig(toml("[tabs]", "sleep = 120")).warnings).toEqual([
+      { line: 2, path: "tabs.sleep", message: 'unknown key "sleep"; skipped' },
+    ]);
+  });
+
+  // Decision 21, Behaviour 17.
+  test("[tabs] sleep_on_low_memory accepts a boolean and rejects other types", () => {
+    expect(parseConfig(toml()).config?.tabs.sleepOnLowMemory).toBe(true);
+    for (const v of [true, false]) {
+      expect(parseConfig(toml("[tabs]", `sleep_on_low_memory = ${v}`)).config?.tabs).toEqual({
+        sleepAfter: 120,
+        sleepOnLowMemory: v,
+      });
+    }
+    expect(
+      parseConfig(toml("[tabs]", "sleep_after = 0", "sleep_on_low_memory = true")).config?.tabs,
+    ).toEqual({ sleepAfter: 0, sleepOnLowMemory: true });
+    expect(oneError(toml("[tabs]", 'sleep_on_low_memory = "no"'))).toEqual({
+      line: 2,
+      path: "tabs.sleep_on_low_memory",
+      message: "expected a boolean, got a string",
+    });
+  });
+
+  test('[sites."<host>"] sleep accepts a boolean and rejects other types', () => {
+    const c = parseConfig(
+      toml('[sites."example.com"]', "sleep = false", '[sites."a.example.com"]', "sleep = true"),
+    ).config;
+    expect(c?.sites).toEqual([
+      { match: "example.com", insert: "auto", sleep: false },
+      { match: "a.example.com", insert: "auto", sleep: true },
+    ]);
+    expect(parseConfig(toml('[sites."b.com"]', 'insert = "never"')).config?.sites).toEqual([
+      { match: "b.com", insert: "never", sleep: true },
+    ]);
+    expect(oneError(toml('[sites."example.com"]', 'sleep = "no"'))).toEqual({
+      line: 2,
+      path: 'sites."example.com".sleep',
+      message: "expected a boolean, got a string",
+    });
+  });
+
+  test("defaults.toml sets [tabs] sleep_after = 120", () => {
+    // On for everyone (spec, Delivery slice 4): the table is set, not a commented example.
+    expect(formatDefaultsToml()).toMatch(
+      /^\[tabs\]\nsleep_after = 120 .*\nsleep_on_low_memory = true .*$/m,
+    );
+    expect(formatDefaultsToml()).toMatch(/^# sleep = false +# .*$/m);
   });
 });

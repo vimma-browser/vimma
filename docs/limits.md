@@ -24,6 +24,21 @@ the [user guide](guide.md); planned work is on the
 - A focused block's outline follows scrolls and resizes, in the page and in the frames around
   it. When the page moves the block some other way (content loading above it, an animation), the
   outline stays where it was until the next `+`, `-`, `j` or `k`.
+- A hover (`gh`) is shown by the page as under the mouse, but Firefox's own tooltip (an
+  element's `title`) and the mouse pointer's shape do not change; a page that follows the mouse's
+  position over time (a canvas app, a drag to reveal) sees one move to the element's centre. One
+  element is hovered at a time: nested menus are one `gh` per level, and a sub-menu stays open
+  while its item is inside the hovered parent.
+- While the real mouse rests over the page, both the element under it and the hovered one show
+  their hover until the mouse moves, which ends Vimma's hover. A hovered element the page
+  replaces, moves or recycles (a long list that reuses its rows as you scroll) ends the hover.
+- A hovered element inside a frame hovers the frame's `<iframe>` element too, without the mouse
+  events a real pointer would send it.
+- DevTools' "force element state" for `:hover`, set on an element after `gh` hovered it, is
+  cleared when the hover ends; one set before is kept.
+- An agent's hover (`vimma_hover`) sends the page untrusted events, so a page that acts only on a
+  real pointer's events (`isTrusted`) ignores them; what the page's style shows on hover still
+  appears. A page that reads the pointer's path over time sees one move at the element's centre.
 - The command line has no `:set`, ranges or counts, and does not complete URLs. Its history lasts
   until Vimma quits.
 - Firefox's shortcuts on keys Vimma uses (`ctrl+w`, `ctrl+u`, `ctrl+h`, `ctrl+d`, `ctrl+o`,

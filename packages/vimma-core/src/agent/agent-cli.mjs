@@ -350,12 +350,7 @@ export function codexArguments({ vimmaCtl, dir, model, others }) {
  */
 export function codexServers(stdout) {
   const problem = { problem: "codex listed its MCP servers in a form Vimma does not read" };
-  let list;
-  try {
-    list = JSON.parse(stdout);
-  } catch {
-    return problem;
-  }
+  const list = parseJson(stdout);
   if (
     !Array.isArray(list) ||
     list.length > MAX_SERVERS ||
@@ -440,12 +435,7 @@ export function geminiLeftover(path, bases) {
  */
 export function geminiProjects(text, ours) {
   const none = { text: null, removed: [] };
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    return none;
-  }
+  const data = parseJson(text);
   if (!isObject(data) || !isObject(data.projects)) return none;
   const entries = Object.entries(data.projects);
   if (!entries.every(([, v]) => typeof v === "string")) return none;
@@ -495,6 +485,80 @@ export function cliEnvironment(env) {
     if (!/^(MOZ_|VIMMA_|XRE_|XUL_)/.test(k)) out[k] = v;
   }
   return out;
+}
+
+/**
+ * How long the login shell may take to print its PATH (C4, Since changed: issue #1518): startup
+ * files that load a version manager (nvm, conda) can take seconds, and VS Code allows the same.
+ */
+export const LOGIN_PATH_MS = 10_000;
+/** The longest PATH line taken from the login shell; a longer one is not a PATH. */
+export const LOGIN_PATH_LIMIT = 32 * 1024;
+/**
+ * Where the CLIs install on macOS besides `~/.local/bin` (Claude Code's native installer):
+ * Homebrew's folders on Apple silicon and on Intel. Searched after PATH, so setup finds a CLI
+ * there even when the login shell gave no answer.
+ */
+export const MAC_FOLDERS = Object.freeze(["/opt/homebrew/bin", "/usr/local/bin"]);
+
+/** The folders launchd's PATH holds: what an app the Dock, Finder or `open` starts gets. */
+const LAUNCHD_FOLDERS = Object.freeze(["/usr/bin", "/bin", "/usr/sbin", "/sbin"]);
+
+/**
+ * Whether Vimma's PATH is launchd's (C4, Since changed): only then is the login shell asked. A
+ * PATH with any other folder came from a shell already, a terminal's, and a Vimma started from
+ * a terminal shares that terminal, which an interactive shell would try to take over.
+ * @param {string} env  Vimma's PATH
+ */
+export function launchdPath(env) {
+  return env.split(":").every((d) => d === "" || LAUNCHD_FOLDERS.includes(d));
+}
+
+/**
+ * The login shell's arguments that print its PATH between two marks (C4, Since changed): `-l`
+ * and `-i` read the files a terminal's shell reads, `.zprofile` and `.zshrc` among them, where
+ * installers and version managers add their folders. `echo` and `;` mean the same in sh, bash,
+ * zsh and fish, and `printenv` prints PATH as the environment holds it, whatever the shell's own
+ * syntax for lists.
+ * @param {string} mark  random hex, so nothing an rc file prints is taken for the answer
+ */
+export function loginPathArgs(mark) {
+  if (!/^[0-9a-f]{16,64}$/.test(mark)) throw new Error("the mark is not hex");
+  return ["-l", "-i", "-c", `echo ${mark}; /usr/bin/printenv PATH; echo ${mark}`];
+}
+
+/**
+ * The PATH the login shell printed (`loginPathArgs`): the one line between the last two marks,
+ * its absolute entries in order. Null when there is no such line, it holds a control character
+ * or is longer than LOGIN_PATH_LIMIT, or no entry is absolute, so that a broken or noisy shell
+ * gives no answer rather than a wrong one.
+ * @param {string} stdout @param {string} mark
+ * @returns {string[] | null}
+ */
+export function loginPathFrom(stdout, mark) {
+  const end = stdout.lastIndexOf(`\n${mark}`);
+  if (end < 0) return null;
+  const start = stdout.lastIndexOf(`${mark}\n`, end - 1);
+  if (start < 0) return null;
+  const line = stdout.slice(start + mark.length + 1, end);
+  // eslint-disable-next-line no-control-regex -- a PATH holds no control character
+  if (line.length > LOGIN_PATH_LIMIT || /[\u0000-\u001f\u007f]/.test(line)) return null;
+  const dirs = line.split(":").filter((d) => d.startsWith("/"));
+  return dirs.length ? dirs : null;
+}
+
+/**
+ * The folders setup searches on macOS, and the CLI's PATH there (C4, Since changed): the login
+ * shell's PATH (null when it gave none), then Vimma's own, then `~/.local/bin` and MAC_FOLDERS,
+ * each once, absolute ones only. An app started from the Dock, Finder or `open` has launchd's
+ * PATH (`/usr/bin:/bin:/usr/sbin:/sbin`), which holds none of the folders the CLIs install to.
+ * @param {{ login: string[] | null, env: string, home: string }} o
+ * @returns {string[]}
+ */
+export function searchFolders({ login, env, home }) {
+  const local = home.startsWith("/") ? [`${home.replace(/\/+$/, "")}/.local/bin`] : [];
+  const all = [...(login ?? []), ...env.split(":"), ...local, ...MAC_FOLDERS];
+  return [...new Set(all.filter((d) => d.startsWith("/")))];
 }
 
 /**
@@ -663,7 +727,8 @@ const SUBJECT = Object.freeze({
  * @param {CliInfo} cli @param {unknown} name @param {unknown} input
  */
 export function ownToolText(cli, name, input) {
-  const tool = plain(name).replace(/\s+/g, " ").trim();
+  // The whole line's white space is collapsed below; no SUBJECT key holds any.
+  const tool = plain(name).trim();
   const field = Object.hasOwn(SUBJECT, tool)
     ? /** @type {Record<string, string>} */ (SUBJECT)[tool]
     : undefined;
@@ -781,10 +846,26 @@ export function besideBinary(walk, trusted) {
 
 const CLAUDE = /** @type {CliInfo} */ (CLIS["claude-code"]);
 
+/**
+ * `text` as JSON, or undefined when it is not JSON: JSON itself has no undefined, and every
+ * caller refuses what is not an object or an array.
+ * @param {string} text @returns {unknown}
+ */
+function parseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Every caller refuses undefined as it refuses JSON of the wrong shape.
+  }
+}
 /** @param {unknown} v @returns {v is Record<string, unknown>} */
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 /** @param {unknown} v */
-const count = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+const count = (v) => {
+  // Number.isFinite is false for anything that is not a number.
+  const n = /** @type {number} */ (v);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
 /**
  * A usage block's input tokens, cache creation and reads included, as the Messages API
  * provider counts them: Claude Code caches its prompt, so most of a call's input is cached.
@@ -849,8 +930,8 @@ class JsonLines {
 
   /** @protected @param {string} error @returns {CliEvent[]} */
   fail(error) {
+    // The buffer is left as it is: nothing reads it once the stream failed.
     this.failed = true;
-    this.buffer = "";
     return [{ type: "fail", error }];
   }
 
@@ -869,12 +950,7 @@ class JsonLines {
   /** @private @param {string} line @returns {CliEvent[]} */
   line(line) {
     if (!line.trim()) return [];
-    let m;
-    try {
-      m = JSON.parse(line);
-    } catch {
-      return this.skip();
-    }
+    const m = parseJson(line);
     return isObject(m) ? this.event(m) : this.skip();
   }
 
@@ -882,7 +958,9 @@ class JsonLines {
    * One JSON object of the stream, read by each CLI's class.
    * @protected @abstract @param {Record<string, unknown>} m @returns {CliEvent[]}
    */
+  // Stryker disable next-line BlockStatement: every class overrides it; JsonLines is not exported
   event(m) {
+    // Stryker disable next-line all: as above, never called
     throw new Error(`${this.cli.id}: no reader for ${typeof m}`);
   }
 }
@@ -1114,7 +1192,8 @@ export class CodexStream extends JsonLines {
           : null;
     // Reasoning, todo lists, warnings (an `error` item), unknown kinds.
     if (own === null || (id && this.shown.has(id))) return this.skip();
-    if (id) this.shown.add(id);
+    // "" is never looked up: an item without an id is shown each time.
+    this.shown.add(id);
     return [{ type: "own-tool", id, text: own }];
   }
 }
@@ -1229,6 +1308,8 @@ export class GeminiStream extends JsonLines {
 
   /** @private @param {Record<string, unknown>} m @returns {CliEvent[]} */
   toolResult(m) {
+    // `use` keys `calls` and `open` by non-empty strings only, so "" finds no call.
+    // Stryker disable next-line ConditionalExpression,StringLiteral: "" is never a call's id
     const id = typeof m.tool_id === "string" ? m.tool_id : "";
     this.open.delete(id);
     const name = this.calls.get(id);

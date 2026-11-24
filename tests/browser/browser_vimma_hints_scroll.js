@@ -33,6 +33,10 @@ const CAROUSEL = DIR + "file_vimma_hints_scroll.html?carousel";
 const SNAP_CAROUSEL = DIR + "file_vimma_hints_scroll.html?snap&carousel";
 /** 600 links down a page that takes every wheel for itself (a map, a canvas app). */
 const CONSUME = DIR + "file_vimma_hints_scroll.html?consume";
+/** 600 links down a page that takes every wheel and scrolls itself on the next frame. */
+const JACK = DIR + "file_vimma_hints_scroll.html?jack";
+/** 600 links down a page that takes only the first wheel. */
+const PREVENT_FIRST = DIR + "file_vimma_hints_scroll.html?preventfirst";
 /** 40 links in a frame that the page moves up by 100 px for each wheel down, never scrolling. */
 const GLIDE = DIR + "file_vimma_hints_scroll.html?glide";
 
@@ -334,6 +338,38 @@ add_task(async function j_then_f_on_a_snapping_page_keeps_the_snapped_scroll() {
   });
 });
 
+add_task(async function a_snapped_scroll_slow_to_start_is_waited_for() {
+  await shippedSmoothScroll();
+  await withPage(SNAP, async (browser) => {
+    // APZ runs a smooth scroll: it learns of it at the page's next paint, and the page sees its
+    // first scroll event only after APZ has moved it. Holding the refresh driver holds both, as
+    // a busy runner did for longer than the wait's quiet time (issue #1400). The labels must
+    // wait for the snapped scroll, not take the page where it is before the scroll starts.
+    await SpecialPowers.spawn(browser, [], () => content.windowUtils.advanceTimeAndRefresh(0));
+    const runs = VimmaHost._hintRuns;
+    try {
+      EventUtils.synthesizeKey("j");
+      EventUtils.synthesizeKey("f");
+      // Held past the quiet time (SETTLE_QUIET_MS, 150 ms). The hold and the whole scroll
+      // (about half a second on the shipped spring) must fit within the wait's limit
+      // (SETTLE_MAX_MS, 1 s), which counts from the hold's start.
+      await SpecialPowers.spawn(
+        browser,
+        [],
+        () => new Promise((resolve) => content.setTimeout(resolve, 250)),
+      );
+    } finally {
+      await SpecialPowers.spawn(browser, [], () => content.windowUtils.restoreNormalRefresh());
+    }
+    await TestUtils.waitForCondition(
+      () => VimmaHost._hintRuns > runs && drawnLabels().size > 0,
+      "labels are drawn",
+    );
+    Assert.equal(await settledScroll(browser), 500, "the page is at the next snap point");
+    await assertLabelsOnTargets(browser);
+  });
+});
+
 add_task(async function a_wheel_back_during_d_is_not_undone_by_f() {
   await shippedSmoothScroll();
   await withPage(LONG, async (browser) => {
@@ -375,6 +411,96 @@ add_task(async function a_wheel_while_labels_show_draws_them_where_the_scroll_en
     Assert.ok(VimmaHost._hints(window), "still in hint mode");
     const y = await settledScroll(browser);
     Assert.greater(y, 0, "the wheel scrolled the page");
+    await assertLabelsOnTargets(browser);
+  });
+});
+
+add_task(async function a_wheel_s_scroll_slow_to_start_is_waited_for() {
+  await shippedSmoothScroll();
+  await withPage(LONG, async (browser) => {
+    await pressFAndWait();
+    const runs = VimmaHost._hintRuns;
+    // The page hands a wheel's smooth scroll to APZ, which learns of it at the page's next
+    // paint, and the page sees its first scroll event only after APZ has moved it. Holding the
+    // refresh driver holds both, as a busy runner did for longer than the wait's quiet time
+    // (issues #1375 and #1430). The labels must wait for that scroll, not come back where the
+    // page was before it.
+    await SpecialPowers.spawn(browser, [], () => content.windowUtils.advanceTimeAndRefresh(0));
+    try {
+      const wheeled = BrowserTestUtils.waitForEvent(window, "wheel", true);
+      wheel(browser, 300);
+      await wheeled;
+      // Held past the quiet time (SETTLE_QUIET_MS, 150 ms), and well within the wait's limit
+      // (SETTLE_MAX_MS, 1 s) with the shipped wheel animation after it.
+      await SpecialPowers.spawn(
+        browser,
+        [],
+        () => new Promise((resolve) => content.setTimeout(resolve, 250)),
+      );
+    } finally {
+      await SpecialPowers.spawn(browser, [], () => content.windowUtils.restoreNormalRefresh());
+    }
+    await TestUtils.waitForCondition(
+      () => VimmaHost._hintRuns > runs && drawnLabels().size > 0,
+      "labels are drawn again after the wheel",
+    );
+    Assert.greater(await settledScroll(browser), 0, "the wheel scrolled the page");
+    await assertLabelsOnTargets(browser);
+  });
+});
+
+add_task(async function a_wheel_that_cannot_scroll_keeps_the_labels() {
+  await shippedSmoothScroll();
+  await withPage(LONG, async (browser) => {
+    await pressFAndWait();
+    const runs = VimmaHost._hintRuns;
+    const wheels = VimmaHost._hintWheels ?? 0;
+    // Up at the top of the page: nothing under the point can scroll that way, so the page
+    // answers once it has the wheel, with no scroll to wait for.
+    wheel(browser, -300);
+    await TestUtils.waitForCondition(
+      () => (VimmaHost._hintWheels ?? 0) > wheels && drawnLabels().size > 0,
+      "the labels are back after the wheel",
+    );
+    Assert.equal(VimmaHost._hintRuns, runs, "the labels were not collected again");
+    Assert.equal(await settledScroll(browser), 0, "the page did not scroll");
+    await assertLabelsOnTargets(browser);
+  });
+});
+
+add_task(async function a_page_that_scrolls_itself_for_a_wheel_gets_new_labels() {
+  await shippedSmoothScroll();
+  await withPage(JACK, async (browser) => {
+    await pressFAndWait();
+    const runs = VimmaHost._hintRuns;
+    // The page cancels the wheel and scrolls itself a frame later, as smooth-scrolling
+    // libraries do: a cancelled wheel can still move the targets.
+    wheel(browser, 300);
+    await TestUtils.waitForCondition(
+      () => VimmaHost._hintRuns > runs && drawnLabels().size > 0,
+      "labels are drawn again after the wheel",
+    );
+    Assert.greater(await settledScroll(browser), 0, "the page scrolled itself");
+    await assertLabelsOnTargets(browser);
+  });
+});
+
+add_task(async function a_wheel_from_before_the_labels_does_not_answer_for_a_later_one() {
+  await shippedSmoothScroll();
+  await withPage(PREVENT_FIRST, async (browser) => {
+    // At the point the next wheel comes to: the page takes this one.
+    const wheeled = BrowserTestUtils.waitForEvent(window, "wheel", true);
+    wheel(browser, 300);
+    await wheeled;
+    Assert.equal(await settledScroll(browser), 0, "the page took the first wheel");
+    await pressFAndWait();
+    const runs = VimmaHost._hintRuns;
+    wheel(browser, 300);
+    await TestUtils.waitForCondition(
+      () => VimmaHost._hintRuns > runs && drawnLabels().size > 0,
+      "labels are drawn again after the wheel",
+    );
+    Assert.greater(await settledScroll(browser), 0, "the second wheel scrolled the page");
     await assertLabelsOnTargets(browser);
   });
 });
@@ -562,11 +688,16 @@ add_task(async function a_wheel_before_the_first_labels_draws_them_where_the_scr
   await slowSmoothScroll();
   await withPage(LONG, async (browser) => {
     await warmUp();
-    // Hold the page busy so that the collection `f` asks for waits behind the wheel.
+    // Hold the page busy so that the collection `f` asks for waits behind the wheel. A spawn
+    // reaches the page one main-thread task later than it is called (SpecialPowers passes it
+    // to its parent actor in this process first, JSActor::SendRawMessageInProcess), while `f`
+    // sends its collection at once: without that task the collection could reach the page
+    // first and be answered before the wheel (issue #1375).
     const busy = SpecialPowers.spawn(browser, [], () => {
       const end = Date.now() + 300;
       while (Date.now() < end);
     });
+    await new Promise((resolve) => Services.tm.dispatchToMainThread(() => resolve(undefined)));
     EventUtils.synthesizeKey("f");
     const wheeled = BrowserTestUtils.waitForEvent(window, "wheel", true);
     wheel(browser, 300);

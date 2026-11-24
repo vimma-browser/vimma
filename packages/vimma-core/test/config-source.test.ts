@@ -99,9 +99,7 @@ describe("formatConfigTemplate, line by line", () => {
     expect(template[0]).toBe(
       "# Vimma config. Every setting is commented out: its default, or an example where it has none.",
     );
-    expect(template[header - 1]).toBe(
-      "# Reference: the user guide's config.toml section (docs/guide.md).",
-    );
+    expect(template[header - 1]).toBe("# Reference: https://vimma.dev/docs/config/");
     const defaults = formatDefaultsToml().split("\n").slice(3);
     expect(template.slice(header)).toHaveLength(defaults.length);
     defaults.forEach((line, i) => {

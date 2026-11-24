@@ -276,11 +276,11 @@ describe('[sites."<host>"]', () => {
       ),
     );
     expect(config.sites).toEqual([
-      { match: "docs.google.com", insert: "always" },
-      { match: "Example.COM.", insert: "auto" },
-      { match: "10.0.0.1", insert: "never" },
-      { match: "[::1]", insert: "auto" },
-      { match: "localhost", insert: "never" },
+      { match: "docs.google.com", insert: "always", sleep: true },
+      { match: "Example.COM.", insert: "auto", sleep: true },
+      { match: "10.0.0.1", insert: "never", sleep: true },
+      { match: "[::1]", insert: "auto", sleep: true },
+      { match: "localhost", insert: "never", sleep: true },
     ]);
   });
 
@@ -651,6 +651,7 @@ describe("[ui] toolbar", () => {
   test('defaults to "hidden" (decision 3, changed 19 Nov 2026)', () => {
     expect(ok(cfg()).ui).toEqual({
       toolbar: "hidden",
+      toolbarSet: false,
       bookmarksToolbar: null,
       pdfOutline: "shown",
       tabline: "auto",
@@ -667,6 +668,8 @@ describe("[ui] toolbar", () => {
 
   test.each([["shown"], ["hidden"]])('toolbar = "%s" is accepted', (toolbar) => {
     expect(ok(cfg("[ui]", `toolbar = "${toolbar}"`)).ui.toolbar).toBe(toolbar);
+    // bookmarks-toolbar-hidden decision 8 (issue #1399): set, even to the default, is a choice.
+    expect(ok(cfg("[ui]", `toolbar = "${toolbar}"`)).ui.toolbarSet).toBe(true);
   });
 
   test("any other value is an error, with the nearest one when it is close", () => {
@@ -681,12 +684,12 @@ describe("[ui] toolbar", () => {
     ]);
   });
 
-  test("an unknown key is an error; [ui] is a table, valid in any file", () => {
+  test("a near miss is an error, another unknown key a warning; [ui] is a table", () => {
     expect(errors(cfg("[ui]", 'tolbar = "hidden"'))).toEqual([
       { line: 3, path: "ui.tolbar", message: 'unknown key "tolbar"', suggestion: "toolbar" },
     ]);
-    expect(errors(cfg("[ui]", "tabstrip = true"))).toMatchObject([
-      { line: 3, path: "ui.tabstrip", message: 'unknown key "tabstrip"' },
+    expect(parseConfig(cfg("[ui]", "tabstrip = true")).warnings).toEqual([
+      { line: 3, path: "ui.tabstrip", message: 'unknown key "tabstrip"; skipped' },
     ]);
     expect(errors(cfg("ui = 1"))).toEqual([
       { line: 2, path: "ui", message: "expected a table, got an integer" },
@@ -735,6 +738,7 @@ describe("[ui] bookmarks_toolbar", () => {
   test.each([["shown"], ["hidden"], ["newtab"]])('bookmarks_toolbar = "%s" is accepted', (v) => {
     expect(ok(cfg("[ui]", `bookmarks_toolbar = "${v}"`)).ui).toEqual({
       toolbar: "hidden",
+      toolbarSet: false,
       bookmarksToolbar: v,
       pdfOutline: "shown",
       tabline: "auto",

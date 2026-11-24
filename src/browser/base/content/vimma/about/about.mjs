@@ -394,7 +394,7 @@ function render(d) {
               el(
                 "tr",
                 r.skipped ? { class: "error" } : {},
-                el("td", {}, String(r.index)),
+                el("td", {}, r.line ? `${r.index} · ${routes.file}:${r.line}` : String(r.index)),
                 el("td", {}, r.match),
                 el("td", {}, r.workspace),
                 el(
@@ -411,7 +411,7 @@ function render(d) {
             ),
           ),
         )
-      : el("p", { class: "muted" }, "No [[routes]] in config.toml."),
+      : el("p", { class: "muted" }, `No [[routes]] in ${routes.file}.`),
     el("p", { id: "route-default" }, `[routing] default_workspace: ${dwText}`),
     el(
       "p",

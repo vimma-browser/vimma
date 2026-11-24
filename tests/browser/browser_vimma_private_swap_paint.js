@@ -1,0 +1,293 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+// Spec: docs/specs/private-swap-macos.md, the mechanism's (Since changed) note on #773. A window
+// the macOS swap shows at another size than it was hidden at is shown only once the page in it
+// has painted at the new size, or after a short timeout. The page's resize reaches its content
+// process after the window's own layout, so a window shown at once drew its page at the old
+// size until the content process painted. Headless, so the backend is forced by a test hook,
+// and the test slows the page's paint after a resize to tell the two orders apart.
+
+"use strict";
+
+const { NativeSwap } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/host/native-swap.mjs",
+);
+const { PrivateSwap } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/host/private-swap.mjs",
+);
+const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
+  "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+);
+
+const ROOT = getRootDirectory(gTestPath).replace(
+  "chrome://mochitests/content",
+  "https://example.com",
+);
+const PLAIN = ROOT + "file_vimma_plain.html";
+/** The normal window's frame before any switch, and the private window's smaller one. */
+const FRAME = { x: 40, y: 60, width: 900, height: 700 };
+const SMALL = { x: 120, y: 100, width: 700, height: 560 };
+/** How long the page takes to paint after its resize: far more than a swap takes without it. */
+const SLOW_PAINT_MS = 300;
+
+/** @param {() => unknown} cond @param {string} msg */
+function until(cond, msg) {
+  return TestUtils.waitForCondition(cond, msg, 25, 400);
+}
+
+function privateWindows() {
+  return [...Services.wm.getEnumerator("navigator:browser")].filter(
+    (w) => !w.closed && PrivateBrowsingUtils.isWindowPrivate(w),
+  );
+}
+
+/** ctrl+b, then shift+p, in `win`. @param {Window} win */
+function togglePrivate(win) {
+  EventUtils.synthesizeKey("b", { ctrlKey: true }, win);
+  EventUtils.synthesizeKey("P", { shiftKey: true }, win);
+}
+
+/** @param {Window} win */
+const frameOf = (win) => ({
+  x: win.screenX,
+  y: win.screenY,
+  width: win.outerWidth,
+  height: win.outerHeight,
+});
+
+/** @param {BrowserWindow} win */
+const hidden = (win) => NativeSwap._windowForTests(win).hidden;
+
+/** Two turns of the event loop: past the swap's frame check, a turn after its show. */
+async function settled() {
+  for (let i = 0; i < 2; i++) {
+    await new Promise((r) => Services.tm.dispatchToMainThread(() => r(undefined)));
+  }
+}
+
+/** @param {Window} win @param {{ x: number, y: number, width: number, height: number }} f */
+async function place(win, f) {
+  win.moveTo(f.x, f.y);
+  win.resizeTo(f.width, f.height);
+  await until(
+    () => JSON.stringify(frameOf(win)) === JSON.stringify(f),
+    `the window is at ${JSON.stringify(f)}`,
+  );
+}
+
+/** When each window was shown, by the clock content uses too. */
+/** @type {Map<Window, number>} */
+const shownAt = new Map();
+/**
+ * Each visibility write. Ordered out, a window on macOS is fully occluded, so its browsing
+ * context goes inactive (AppWindow::OcclusionStateChanged) and its pages stop painting; headless
+ * has no occlusion, so each hidden window is deactivated here as macOS does. Only the swap's
+ * forceAppWindowActive then lets its pages paint before it is shown.
+ * @type {{ win: BrowserWindow, visible: boolean }[]}
+ */
+const log = [];
+log.push = function (/** @type {{ win: BrowserWindow, visible: boolean }} */ e) {
+  if (e.visible) shownAt.set(e.win, Date.now());
+  else e.win.browsingContext.isActive = false;
+  return Array.prototype.push.call(this, e);
+};
+
+const startFrame = frameOf(window);
+const FRAME_ATTRS = ["screenX", "screenY", "width", "height"];
+const startAttrs = FRAME_ATTRS.map((a) => document.documentElement.getAttribute(a));
+
+async function teardown() {
+  NativeSwap._resetForTests({ force: true, log: [] });
+  for (const w of privateWindows()) await BrowserTestUtils.closeWindow(w);
+  NativeSwap._resetForTests();
+  window.browsingContext.isActive = true;
+  await SimpleTest.promiseFocus(window);
+}
+
+registerCleanupFunction(async () => {
+  await teardown();
+  await place(window, startFrame);
+  FRAME_ATTRS.forEach((a, i) => {
+    const v = startAttrs[i];
+    if (v === null) document.documentElement.removeAttribute(a);
+    else document.documentElement.setAttribute(a, v);
+  });
+});
+
+/**
+ * From the next resize on, `browser`'s page paints only `SLOW_PAINT_MS` later, and records when
+ * it first painted at a new size, as `data-painted` on its root.
+ * @param {MozBrowser} browser
+ */
+function slowNextPaint(browser) {
+  return SpecialPowers.spawn(browser, [SLOW_PAINT_MS], (ms) => {
+    const root = content.document.documentElement;
+    const width = content.innerWidth;
+    delete root.dataset.painted;
+    content.addEventListener(
+      "resize",
+      () => {
+        // The resize event runs in the refresh tick before its paint: the paint waits for it.
+        const t = Date.now();
+        while (Date.now() - t < ms);
+      },
+      { once: true },
+    );
+    content.addEventListener("MozAfterPaint", function onPaint() {
+      if (content.innerWidth === width) return;
+      root.dataset.painted = String(Date.now());
+      content.removeEventListener("MozAfterPaint", onPaint);
+    });
+  });
+}
+
+/** When `browser`'s page first painted at its new size. @param {MozBrowser} browser */
+function paintedAt(browser) {
+  return SpecialPowers.spawn(browser, [], async () => {
+    const root = content.document.documentElement;
+    await ContentTaskUtils.waitForCondition(() => root.dataset.painted, "painted", 25, 400);
+    return Number(root.dataset.painted);
+  });
+}
+
+/**
+ * The normal window with `PLAIN` selected, in the private workspace, hidden at FRAME while the
+ * private window shows at SMALL; a swap waits at most `paintTimeout` ms for a page to paint.
+ */
+async function enterThenShrink(paintTimeout = 30_000) {
+  NativeSwap._resetForTests({ force: true, log, paintTimeout });
+  await place(window, FRAME);
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PLAIN);
+  await SimpleTest.promiseFocus(window);
+  const opened = BrowserTestUtils.waitForNewWindow();
+  togglePrivate(window);
+  const priv = await opened;
+  await until(() => hidden(window) && !hidden(priv), "private is shown in the normal place");
+  await settled();
+  await place(priv, SMALL);
+  return { tab, priv };
+}
+
+add_task(async function setup() {
+  // MozAfterPaint reaches the page's own listeners, where the test times the page's paints.
+  await SpecialPowers.pushPrefEnv({ set: [["dom.send_after_paint_to_content", true]] });
+});
+
+add_task(async function a_window_shown_at_a_new_size_waits_for_its_page_to_paint_there() {
+  const { tab, priv } = await enterThenShrink();
+  try {
+    await slowNextPaint(tab.linkedBrowser);
+    shownAt.clear();
+    await SimpleTest.promiseFocus(priv);
+    togglePrivate(priv);
+    await until(() => hidden(priv) && !hidden(window), "back to the normal window");
+    await settled();
+    Assert.deepEqual(frameOf(window), SMALL, "the normal window is at the private window's frame");
+    const painted = await paintedAt(tab.linkedBrowser);
+    const shown = shownAt.get(window) ?? 0;
+    Assert.greaterOrEqual(
+      shown,
+      painted,
+      `the normal window is shown after its page painted at its new size (shown ${
+        shown - painted
+      } ms after it)`,
+    );
+  } finally {
+    BrowserTestUtils.removeTab(tab);
+    await teardown();
+  }
+});
+
+add_task(async function a_page_that_does_not_paint_does_not_hold_the_swap() {
+  // The page's process is busy for 3 s, so its actor cannot answer at all: the swap shows the
+  // window anyway once its own timeout (100 ms here) has passed.
+  const { tab, priv } = await enterThenShrink(100);
+  /** @type {Promise<unknown> | null} */
+  let busy = null;
+  try {
+    await SimpleTest.promiseFocus(priv);
+    busy = SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+      const t = Date.now();
+      while (Date.now() - t < 3000);
+    });
+    shownAt.clear();
+    const toggled = Date.now();
+    togglePrivate(priv);
+    Assert.ok(hidden(window), "the normal window waits for its page first");
+    await until(() => hidden(priv) && !hidden(window), "back to the normal window");
+    await settled();
+    const after = (shownAt.get(window) ?? Infinity) - toggled;
+    Assert.less(after, 1000, `shown after the timeout, while the page is still busy (${after} ms)`);
+  } finally {
+    await busy;
+    BrowserTestUtils.removeTab(tab);
+    await teardown();
+  }
+});
+
+add_task(async function a_second_switch_during_the_wait_waits_for_the_same_paint() {
+  // Going back twice in a row: the second switch finds the window already resized, and still
+  // shows it only once its page has painted there.
+  const { tab, priv } = await enterThenShrink();
+  try {
+    await slowNextPaint(tab.linkedBrowser);
+    shownAt.clear();
+    await SimpleTest.promiseFocus(priv);
+    togglePrivate(priv);
+    togglePrivate(priv);
+    Assert.ok(hidden(window), "still hidden while its page paints");
+    await until(() => hidden(priv) && !hidden(window), "back to the normal window");
+    await settled();
+    const painted = await paintedAt(tab.linkedBrowser);
+    const shown = shownAt.get(window) ?? 0;
+    Assert.greaterOrEqual(shown, painted, `shown after its page painted (${shown - painted} ms)`);
+  } finally {
+    BrowserTestUtils.removeTab(tab);
+    await teardown();
+  }
+});
+
+add_task(async function a_window_shown_at_its_own_size_does_not_wait() {
+  // Same size: the page needs no new paint, and the swap stays synchronous.
+  NativeSwap._resetForTests({ force: true, log, paintTimeout: 30_000 });
+  await place(window, FRAME);
+  await SimpleTest.promiseFocus(window);
+  const opened = BrowserTestUtils.waitForNewWindow();
+  togglePrivate(window);
+  const priv = await opened;
+  try {
+    await until(() => hidden(window) && !hidden(priv), "private is shown in the normal place");
+    await SimpleTest.promiseFocus(priv);
+    togglePrivate(priv);
+    Assert.ok(hidden(priv) && !hidden(window), "back to the normal window at once");
+  } finally {
+    await teardown();
+  }
+});
+
+add_task(async function a_switch_begun_during_the_wait_leaves_the_window_hidden_and_inactive() {
+  // Going back starts waiting for the normal window's slow page; going to private again before
+  // it has painted drops that swap. The normal window stays hidden, and nothing keeps it active.
+  const { tab, priv } = await enterThenShrink();
+  try {
+    await slowNextPaint(tab.linkedBrowser);
+    shownAt.clear();
+    await SimpleTest.promiseFocus(priv);
+    togglePrivate(priv);
+    Assert.ok(hidden(window), "the normal window is still hidden while its page paints");
+    Assert.ok(
+      window.browsingContext.forceAppWindowActive,
+      "and kept active meanwhile, so that its page can paint",
+    );
+    PrivateSwap.enter(window, priv, false);
+    await paintedAt(tab.linkedBrowser);
+    await until(() => !window.browsingContext.forceAppWindowActive, "the normal window let go");
+    Assert.ok(hidden(window) && !hidden(priv), "the private window stays in the normal place");
+    Assert.ok(!shownAt.has(window), "the normal window was never shown");
+  } finally {
+    BrowserTestUtils.removeTab(tab);
+    await teardown();
+  }
+});

@@ -121,8 +121,8 @@ add_task(async function route_add_creates_a_private_config_toml() {
   await SpecialPowers.pushPrefEnv({ set: [["vimma.config.path", file]] });
   await ConfigHost.reload();
 
-  const why = await ConfigHost.addRoute({ domain: "example.org", workspace: 'x" [keys] y = "z' });
-  Assert.equal(why, null, "the rule is written");
+  const r = await ConfigHost.addRoute({ domain: "example.org", workspace: 'x" [keys] y = "z' });
+  Assert.deepEqual(r, { added: "config.toml" }, "the rule is written");
   Assert.equal((await IOUtils.stat(file)).permissions, 0o600, "a new config.toml is 0600");
   Assert.equal(
     (await IOUtils.stat(/** @type {string} */ (PathUtils.parent(file)))).permissions,

@@ -67,6 +67,13 @@ support-files = [
   "file_vimma_test.pdf",
 ]
 
+["browser_vimma_hover.js"]
+support-files = [
+  "file_vimma_hover.html",
+  "file_vimma_hover_frame.html",
+  "file_vimma_hover_other.html",
+]
+
 ["browser_vimma_copy_mode.js"]
 support-files = ["file_vimma_copy.html", "file_vimma_copy_frame.html"]
 
@@ -230,6 +237,8 @@ support-files = ["file_vimma_urlbar_suggest.sjs"]
 
 ["browser_vimma_workspace_routes_windows.js"]
 
+["browser_vimma_routes_file.js"]
+
 ["browser_vimma_workspace_routing.js"]
 support-files = ["file_vimma_cookie.html"]
 
@@ -298,6 +307,14 @@ support-files = [
   "file_vimma_agent_click.html",
   "file_vimma_agent_page.html",
   "file_vimma_agent_press.html",
+  "head_vimma_control.js",
+]
+
+["browser_vimma_mcp_hover.js"]
+support-files = [
+  "file_vimma_hover.html",
+  "file_vimma_hover_frame.html",
+  "file_vimma_hover_other.html",
   "head_vimma_control.js",
 ]
 
@@ -425,6 +442,9 @@ support-files = ["file_vimma_title.html"]
 
 ["browser_vimma_private_swap_native.js"]
 
+["browser_vimma_private_swap_paint.js"]
+support-files = ["file_vimma_plain.html"]
+
 ["browser_vimma_side_panel.js"]
 
 ["browser_vimma_close_active_tab.js"]
@@ -494,14 +514,32 @@ support-files = ["file_vimma_insert_scroll.html"]
 
 ["browser_vimma_config_first_run.js"]
 
+["browser_vimma_config_file_changes.js"]
+run-if = ["os == 'linux'"] # python3 for links, chmod for an unreadable file
+
 ["browser_vimma_setup.js"]
 support-files = ["head_vimma_control.js"]
 
 ["browser_vimma_setup_moving_in.js"]
 support-files = ["head_vimma_control.js"]
 
-["browser_vimma_setup_v2.js"]
-support-files = ["file_vimma_setup_amo.sjs"]
+["browser_vimma_setup_v2_essentials.js"]
+support-files = ["file_vimma_setup_amo.sjs", "head_vimma_setup_chapters.js"]
+
+["browser_vimma_setup_v2_flow.js"]
+support-files = ["head_vimma_setup_chapters.js"]
+
+["browser_vimma_setup_v2_keys.js"]
+support-files = ["head_vimma_setup_chapters.js"]
+
+["browser_vimma_setup_v2_moving_in.js"]
+support-files = ["head_vimma_setup_chapters.js"]
+
+["browser_vimma_setup_v2_privacy.js"]
+support-files = ["head_vimma_setup_chapters.js"]
+
+["browser_vimma_setup_v2_window.js"]
+support-files = ["head_vimma_setup_chapters.js"]
 
 ["browser_vimma_theme.js"]
 run-if = ["os == 'linux'"] # ln -s for the omarchy-theme-set symlink swap
@@ -533,6 +571,9 @@ support-files = ["file_vimma_addon_updates.json"]
 support-files = ["file_vimma_leave_page.html"]
 
 ["browser_vimma_popups.js"]
+support-files = ["file_vimma_popups.html"]
+
+["browser_vimma_notification_bars.js"]
 support-files = ["file_vimma_popups.html"]
 
 ["browser_vimma_security_invariants.js"]
@@ -649,3 +690,19 @@ support-files = ["file_vimma_site_unbind.html"]
 
 ["browser_vimma_site_unbind_command.js"]
 support-files = ["file_vimma_site_unbind.html"]
+
+["browser_vimma_tab_sleep.js"]
+support-files = [
+  "file_vimma_insert_scroll.html",
+  "file_vimma_tab_sleep_unload.html",
+  "file_vimma_downloads.sjs",
+]
+
+["browser_vimma_tab_sleep_rows.js"]
+
+["browser_vimma_agent_tab_sleep.js"]
+support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
+
+["browser_vimma_low_memory.js"]
+run-if = ["os == 'linux'"]
+support-files = ["file_vimma_agent_page.html"]

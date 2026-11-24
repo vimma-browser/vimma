@@ -7,7 +7,7 @@
  * See docs/specs/m5-core-config-and-theme.md (v1) and docs/specs/m3-m4-core-prep.md (v2).
  * Core does no I/O: the host passes file contents.
  */
-import { closest, resolveActionName } from "../keys/actions.mjs";
+import { closest, removedAction, resolveActionName, suggestAction } from "../keys/actions.mjs";
 import { BOOKMARKS_TOOLBAR_SETTINGS } from "../ui/bookmarks-toolbar.mjs";
 import {
   DEFAULT_CONFIG,
@@ -17,6 +17,7 @@ import {
   formatConfigTemplate,
 } from "./defaults.mjs";
 import { INSERT_SITE_MODES } from "../keys/editable.mjs";
+import { SLEEP_AFTER } from "../workspaces/tabsleep.mjs";
 import { DEFAULT_HINT_CHARS, hintLabels } from "../page/hints.mjs";
 import { KeymapError, compileKeymap } from "../keys/keymap.mjs";
 import { MODES, isKeymapTable } from "../keys/modes.mjs";
@@ -31,7 +32,7 @@ import {
   isHexColor,
   normalizeHex,
 } from "./theme.mjs";
-import { resolveRoutes, validateRoutes } from "./routes.mjs";
+import { resolveRoutes, routeBlockFor, validateRoutes } from "./routes.mjs";
 import { formatPath, locateKeys, parsePath, parseToml, setTomlKeys, tomlLiteral } from "./toml.mjs";
 import { canonicalChord, isShortcutChord } from "../keys/firefox-keys.mjs";
 import { KeyNotationError, formatKey, parseKey } from "../keys/keys.mjs";
@@ -61,6 +62,11 @@ import { hasControl } from "../text/strings.mjs";
 /** @import { ThemeConfig } from "./theme.mjs" */
 /** @import { InsertSiteMode, InsertSiteRule } from "../keys/editable.mjs" */
 /** @import { Route } from "./routes.mjs" */
+/**
+ * A `[sites."<host>"]` table: its insert mode, and whether its tabs may sleep
+ * (docs/specs/tab-sleep.md, decision 12).
+ * @typedef {InsertSiteRule & { sleep: boolean }} SiteRule
+ */
 /** @import { BookmarkletsSetting, BookmarksRoot } from "../ui/bookmarks.mjs" */
 /** @import { WriteBack } from "./bookmarks-file.mjs" */
 /** @import { PanelNumbers } from "../ui/sidepanel.mjs" */
@@ -75,6 +81,7 @@ import { hasControl } from "../text/strings.mjs";
  * @property {string} [suggestion]
  * @property {string} [file]         the file it is in, when not the config file the list is about
  *   (bookmarks.toml's errors, docs/specs/bookmarks-file.md)
+ * @property {boolean} [warning]     left out of a file that applies, not a reason it was refused
  */
 
 /**
@@ -98,7 +105,7 @@ import { hasControl } from "../text/strings.mjs";
  *   (0.6), docs/specs/tiling-layouts.md; `maxSplits` is `max_splits`,
  *   docs/specs/multiple-splits.md; `newTab` is `new_tab`, docs/specs/new-tab-in-split.md
  * @property {string} hintChars                          `[modal] hint_chars`
- * @property {InsertSiteRule[]} sites                    `[sites."<host>"]` in file order
+ * @property {SiteRule[]} sites                          `[sites."<host>"]` in file order
  * @property {Route[]} routes                            `[[routes]]` in file order
  * @property {{ defaultWorkspace: string | null }} routing  `[routing]`, app-routes
  * @property {FirefoxKeySetting} firefox                 `[firefox]`, chords canonical
@@ -110,14 +117,19 @@ import { hasControl } from "../text/strings.mjs";
  *   pixels, docs/specs/m1-actor-insert-scroll.md "Follow-up: scroll step"
  * @property {{ placement: PrivatePlacement }} private    `[private]`, private-swap
  * @property {McpConfig} mcp                             `[mcp]`, docs/specs/vimma-mcp.md
- * @property {{ toolbar: ToolbarSetting, bookmarksToolbar: BookmarksToolbarSetting | null,
- *   pdfOutline: ToolbarSetting, tabline: TabLineSetting, tablineWidth: number }} ui
- *   `[ui]`: toolbar-toggle; `bookmarksToolbar` is null when unset
+ * @property {{ toolbar: ToolbarSetting, toolbarSet: boolean,
+ *   bookmarksToolbar: BookmarksToolbarSetting | null, pdfOutline: ToolbarSetting,
+ *   tabline: TabLineSetting, tablineWidth: number }} ui
+ *   `[ui]`: toolbar-toggle; `toolbarSet`, the file has a `toolbar` line (bookmarks-toolbar-hidden
+ *   decision 8, changed for issue #1399); `bookmarksToolbar` is null when unset
  *   (docs/specs/bookmarks-toolbar-hidden.md decision 3: Firefox's pref decides); `pdfOutline`,
  *   whether the PDF viewer opens with Vimma's outline shown (docs/specs/pdf-mode.md decision 19);
  *   `tabline` and `tablineWidth`, the tab line (docs/specs/tab-line.md decisions 3 and 4)
  * @property {{ tab: boolean }} statusbar  `[statusbar]`: whether the status bar keeps
  *   its tab and title while the tab line is drawn (docs/specs/tab-line.md decision 16)
+ * @property {{ sleepAfter: number, sleepOnLowMemory: boolean }} tabs  `[tabs]`: `sleepAfter` is
+ *   `sleep_after`, minutes a tab stays loaded unseen, 0 never; `sleepOnLowMemory` is
+ *   `sleep_on_low_memory`, whether Firefox's low-memory unloader runs (docs/specs/tab-sleep.md)
  * @property {ResolvedSearch | null} search              `[search]`, null without it;
  *   docs/specs/search-engines.md
  * @property {{ check: boolean }} updates                `[updates]`,
@@ -162,6 +174,12 @@ import { hasControl } from "../text/strings.mjs";
  */
 
 /** @typedef {{ config: ResolvedConfig, keymap: Keymap }} ActiveConfig */
+
+/**
+ * config.toml is not read past this size: it bounds the parse on the main thread, as routes.toml's
+ * limit does; the template with every line set is under 40 KiB.
+ */
+export const MAX_CONFIG_FILE_BYTES = 1024 * 1024;
 
 // Firefox container colours and icons (ContextualIdentityService.sys.mjs); workspacedefs.mjs too.
 export const CONTAINER_COLORS = [
@@ -214,6 +232,7 @@ const TOP_KEYS = [
   "panel",
   "scroll",
   "statusbar",
+  "tabs",
 ];
 const KEYMAP_SECTIONS = new Set(["keys", "modal", "unbind", "firefox", "sites"]);
 const WORKSPACE_KEYS = ["color", "icon", "home", "autofill"];
@@ -236,7 +255,9 @@ export const PANES_NEW_TAB_MODES = Object.freeze(["alone", "pane"]);
 /** `[panes] main_size` bounds, in percent. */
 export const MAIN_SIZE_MIN = 20;
 export const MAIN_SIZE_MAX = 80;
-const SITE_KEYS = ["insert", "unbind"];
+const SITE_KEYS = ["insert", "unbind", "sleep"];
+/** `[tabs]` (docs/specs/tab-sleep.md, decision 11). */
+const TABS_KEYS = ["sleep_after", "sleep_on_low_memory"];
 const MODAL_KEYS = ["leader", "timeout_ms", "hint_chars", "insert_editing"];
 const FIREFOX_KEYS = ["disable", "enable"];
 const FIREFOX_DISABLE = 'must be "all" or a list of keys like "ctrl+w"';
@@ -333,6 +354,8 @@ const PROVIDER_KINDS = ["openai", "anthropic", "cli"];
 const SECRET_KEYS = new Set(["key", "api_key", "apikey", "token", "password", "secret"]);
 const SECRET_IN_CONFIG =
   "an API key must not be in config.toml: Vimma keeps it in login storage, set in the agent's setup";
+/** An unknown key of `[agent]`, a provider or `[mcp]` named like a credential (#1474). */
+const SECRET_LIKE = /key|token|secret|passw|auth|bearer|credential/i;
 const MAX_PROVIDER_NAME = 32;
 const MAX_PRICE = 1_000_000;
 
@@ -447,13 +470,36 @@ function validate(raw, warnings = []) {
   const unknownKey = (path, key, known) => {
     // A `keys.prefix = …` line pasted below another table's header lands in that table as a
     // table of its own (#1270); a plain value or a near miss is an ordinary unknown key.
-    /** @type {unknown} */
-    let v = raw;
-    for (const seg of path) v = /** @type {Record<string | number, unknown>} */ (v)[seg];
+    /** @type {Record<string | number, unknown>} */
+    let parent = raw;
+    for (const seg of path.slice(0, -1)) {
+      parent = /** @type {Record<string | number, unknown>} */ (parent[seg]);
+    }
+    const v = parent[key];
     const near = closest(key, known);
     if (path.length > 1 && TOP_KEYS.includes(key) && isTable(v) && !near) {
       fail(path, `unknown key "${key}": a ${key}.… line belongs under [${key}], without "${key}."`);
-    } else fail(path, `unknown key "${key}"`, near);
+    } else if ((path[0] === "agent" || path[0] === "mcp") && SECRET_LIKE.test(key)) {
+      // A credential-looking name where a provider's settings live keeps B8's nudge: the key
+      // belongs in login storage, not in a file that may be shared.
+      fail(path, SECRET_IN_CONFIG);
+    } else if (
+      near ||
+      (path.length > 1 && TOP_KEYS.includes(key)) ||
+      path[0] === "updates" ||
+      strayCheck({ [key]: v })
+    ) {
+      // A table's name under another table is a misplaced line, not a newer key. `[updates]`,
+      // and a boolean `check` anywhere, fail closed: the file may mean an opt-out of update
+      // checks (docs/specs/m6a-updater.md decision 31).
+      fail(path, `unknown key "${key}"`, near);
+    } else {
+      // Most likely a key a newer Vimma added, in a file shared between versions: only it is
+      // left out, so that the older build still loads the rest (#1474). A near miss of a key
+      // this build knows is a typo, and stays an error.
+      warnings.push({ path, message: `unknown key "${key}"; skipped` });
+      delete parent[key];
+    }
   };
 
   for (const [key, v] of Object.entries(raw)) {
@@ -487,6 +533,38 @@ function validate(raw, warnings = []) {
         table(path, v);
       } else {
         unknownKey(path, key, [...MODES, "pdf", ...MODAL_KEYS]);
+      }
+    }
+  }
+
+  // An action this build does not know, with no close match, is most likely one a newer Vimma
+  // added: only that binding is left out, as for an unknown key (#1474). A near miss of a real
+  // action and a removed action stay errors (compileKeymap gives the suggestion or the reason),
+  // and so does malformed key notation, a bad value like any other.
+  /** @param {string} name */
+  const newerAction = (name) =>
+    !resolveActionName(name) && !removedAction(name) && !suggestAction(name);
+  if (isTable(raw.keys)) {
+    for (const [name, v] of Object.entries(raw.keys)) {
+      if (name === "prefix" || resolveActionName(name)) continue;
+      const path = ["keys", name];
+      if ((TOP_KEYS.includes(name) && isTable(v)) || strayCheck({ [name]: v })) {
+        // A misplaced table's line (#1270) or an update opt-out: unknownKey's errors.
+        unknownKey(path, name, []);
+        continue;
+      }
+      if (!newerAction(name)) continue;
+      warnings.push({ path, message: `unknown action "${name}"; skipped` });
+      delete raw.keys[name];
+    }
+  }
+  if (isTable(raw.modal)) {
+    for (const [mode, t] of Object.entries(raw.modal)) {
+      if (!isKeymapTable(mode) || !isTable(t)) continue;
+      for (const [text, v] of Object.entries(t)) {
+        if (typeof v !== "string" || v.startsWith(":") || !newerAction(v)) continue;
+        warnings.push({ path: ["modal", mode, text], message: `unknown action "${v}"; skipped` });
+        delete t[text];
       }
     }
   }
@@ -726,6 +804,23 @@ function validate(raw, warnings = []) {
     }
   }
 
+  if (isTable(raw.tabs)) {
+    for (const [key, v] of Object.entries(raw.tabs)) {
+      const path = ["tabs", key];
+      if (key === "sleep_on_low_memory") {
+        // Decision 21: Firefox's low-memory unloader, on by default.
+        if (typeof v !== "boolean") typeError(path, v, "a boolean");
+      } else if (key !== "sleep_after") unknownKey(path, key, TABS_KEYS);
+      else if (typeof v !== "bigint") typeError(path, v, "an integer");
+      else if (v !== 0n && (v < BigInt(SLEEP_AFTER.min) || v > BigInt(SLEEP_AFTER.max))) {
+        fail(
+          path,
+          `must be 0 (never) or an integer between ${SLEEP_AFTER.min} and ${SLEEP_AFTER.max} (minutes)`,
+        );
+      }
+    }
+  }
+
   if (isTable(raw.updates)) {
     for (const [key, v] of Object.entries(raw.updates)) {
       const path = ["updates", key];
@@ -741,7 +836,7 @@ function validate(raw, warnings = []) {
   }
 
   // docs/specs/search-engines.md, decision 2.
-  if (isTable(raw.search)) problems.push(...validateSearch(raw.search));
+  if (isTable(raw.search)) problems.push(...validateSearch(raw.search, unknownKey));
 
   if (isTable(raw.sites)) {
     /** @type {Map<string, string>} */
@@ -766,6 +861,9 @@ function validate(raw, warnings = []) {
           // (docs/specs/site-unbind.md behaviour 4 and 5).
           if (!Array.isArray(v)) typeError(at, v, "a list of keys");
           else v.forEach((k, i) => typeof k !== "string" && typeError([...at, i], k, "a string"));
+        } else if (key === "sleep") {
+          // docs/specs/tab-sleep.md, decision 12.
+          if (typeof v !== "boolean") typeError(at, v, "a boolean");
         } else if (key !== "insert") unknownKey(at, key, SITE_KEYS);
         else if (typeof v !== "string") typeError(at, v, "a string");
         else if (!INSERT_SITE_MODES.includes(/** @type {InsertSiteMode} */ (v))) {
@@ -1256,6 +1354,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     sites: (siteOrder ?? Object.keys(user.sites ?? {})).map((match) => ({
       match,
       insert: /** @type {NonNullable<UserConfig["sites"]>} */ (user.sites)[match]?.insert ?? "auto",
+      sleep: /** @type {NonNullable<UserConfig["sites"]>} */ (user.sites)[match]?.sleep ?? true,
     })),
     routes: resolveRoutes(/** @type {Record<string, string>[]} */ (user.routes ?? [])),
     routing: { defaultWorkspace: user.routing?.default_workspace ?? null },
@@ -1272,12 +1371,17 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     mcp: resolveMcp(user.mcp),
     ui: {
       toolbar: user.ui?.toolbar ?? "hidden",
+      toolbarSet: user.ui?.toolbar !== undefined,
       bookmarksToolbar: user.ui?.bookmarks_toolbar ?? null,
       pdfOutline: user.ui?.pdf_outline ?? "shown",
       tabline: user.ui?.tabline ?? "auto",
       tablineWidth: user.ui?.tabline_width ?? TABLINE_WIDTH.default,
     },
     statusbar: { tab: user.statusbar?.tab ?? true },
+    tabs: {
+      sleepAfter: user.tabs?.sleep_after ?? SLEEP_AFTER.default,
+      sleepOnLowMemory: user.tabs?.sleep_on_low_memory ?? true,
+    },
     search: resolveSearch(user.search),
     updates: { check: user.updates?.check ?? true },
     // validateAgent checked `[agent]` field by field; UserConfig keeps it as it was parsed.
@@ -1296,10 +1400,13 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
 
 /**
  * @param {string} text  contents of config.toml
- * @param {{ mac?: boolean }} [options]  compile over macOS's default keys (compileKeymap)
+ * @param {{ mac?: boolean, routesFile?: boolean }} [options]  `mac`: compile over macOS's
+ *   default keys (compileKeymap); `routesFile`: routes.toml is the routes file, so the text's
+ *   `routes` and `[routing]` are left out before validation, and a stale rule there can neither
+ *   apply nor keep the rest from applying (docs/specs/routes-file.md Behaviours 3 and 4).
  * @returns {ParseResult}
  */
-export function parseConfig(text, { mac = false } = {}) {
+export function parseConfig(text, { mac = false, routesFile = false } = {}) {
   /** @param {ConfigError[]} errors @returns {ParseResult} */
   const failed = (errors) => ({
     config: null,
@@ -1311,6 +1418,10 @@ export function parseConfig(text, { mac = false } = {}) {
   const parsed = parseToml(text, { integersAsBigInt: true });
   if (!parsed.ok) return failed([{ path: "", ...parsed.error }]);
   const raw = parsed.value;
+  if (routesFile) {
+    delete raw.routes;
+    delete raw.routing;
+  }
   const lineOf = locateKeys(text);
   /** @param {Problem[]} problems @returns {ConfigError[]} */
   const located = (problems) =>
@@ -1379,14 +1490,14 @@ export function parseConfig(text, { mac = false } = {}) {
  * Apply new config text atomically: on any error the previous config stays active (plan M5).
  * @param {ActiveConfig | null} active  the config in use, null before the first load
  * @param {string} text
- * @param {{ mac?: boolean }} [options]  macOS's default keys (compileKeymap)
+ * @param {{ mac?: boolean, routesFile?: boolean }} [options]  as parseConfig takes them
  * @returns {{ active: ActiveConfig, errors: ConfigError[], warnings: ConfigError[],
  *   kept: boolean }}
  *   kept: the text was not applied; `active` is the previous config, or the defaults.
  *   warnings: what an applied text left out (parseConfig)
  */
-export function reloadConfig(active, text, { mac = false } = {}) {
-  const r = parseConfig(text, { mac });
+export function reloadConfig(active, text, { mac = false, routesFile = false } = {}) {
+  const r = parseConfig(text, { mac, routesFile });
   // Stryker disable next-line LogicalOperator: parseConfig returns a config and a keymap together or neither
   if (r.config && r.keymap) {
     return {
@@ -1432,7 +1543,10 @@ export function rawUpdatesCheck(text) {
   const parsed = parseToml(text, { integersAsBigInt: true });
   if (!parsed.ok) return null;
   const { updates, ...rest } = parsed.value;
-  const unknown = (/** @type {string} */ key) => key !== SCHEMA_KEY && !TOP_KEYS.includes(key);
+  // As parseConfig judges them: a table no section is named that is a near miss of one may be a
+  // misspelt `[updates]`; any other is skipped there, so it holds nothing here either (#1474).
+  const unknown = (/** @type {string} */ key) =>
+    key !== SCHEMA_KEY && !TOP_KEYS.includes(key) && closest(key, TOP_KEYS) !== undefined;
   if (Object.keys(rest).some(unknown) || strayCheck(rest)) return null;
   if (updates === undefined) return "missing";
   if (!isTable(updates)) return null;
@@ -1441,8 +1555,9 @@ export function rawUpdatesCheck(text) {
 }
 
 /**
- * `:route add` (spec workspace-routing): the text to append to config.toml for a `domain` rule,
- * or the whole file to create when it is missing (`text` null: the template plus the rule).
+ * `:route add` (spec workspace-routing) while config.toml is the routes file (routes-file): the
+ * text to append to config.toml for a `domain` rule, in the file's line endings, or the whole
+ * file to create when it is missing (`text` null: the template plus the rule).
  * The result must parse: a file with errors now or an inline `routes = [...]`
  * is refused with the reason, and nothing is written.
  * @param {string | null} text  config.toml as it is, null when missing
@@ -1450,14 +1565,12 @@ export function rawUpdatesCheck(text) {
  * @param {{ mac?: boolean }} [options]  check it with macOS's default keys (compileKeymap)
  * @returns {{ append: string } | { create: string } | { error: string }}
  */
-export function appendRouteText(text, { domain, workspace }, { mac = false } = {}) {
-  const block = `[[routes]]\ndomain = ${JSON.stringify(domain)}\nworkspace = ${JSON.stringify(workspace)}\n`;
+export function appendRouteText(text, rule, { mac = false } = {}) {
   const base = text ?? formatConfigTemplate();
   if (text !== null && parseConfig(text, { mac }).errors.length) {
     return { error: "config.toml does not parse now; fix it first (:config shows it)" };
   }
-  const glue = base === "" ? "" : base.endsWith("\n") ? "\n" : "\n\n";
-  const added = `${glue}${block}`;
+  const added = routeBlockFor(base, rule);
   const after = parseConfig(base + added, { mac });
   const first = after.errors[0];
   if (first) {
@@ -1508,7 +1621,8 @@ const withoutAgent = (raw) => JSON.stringify({ ...raw, agent: undefined });
  * @param {{ name: string, kind: string, endpoint: string, model: string, vision?: boolean,
  *   priceIn?: number, priceOut?: number, cli?: string, maxMinutes?: number }} provider
  * @param {{ makeDefault: boolean, mac?: boolean }} opts
- * @returns {{ text: string, name: string } | { error: string }}
+ * @returns {{ text: string, name: string, added: string[] } | { error: string }}
+ *   `added`: the lines the edit adds, as one would type them, for a file that cannot be written
  */
 export function addAgentProviderText(text, provider, { makeDefault, mac = false }) {
   // What the file could not read back as given; said before the guard below would (#1284).
@@ -1541,7 +1655,10 @@ export function addAgentProviderText(text, provider, { makeDefault, mac = false 
     for (let n = 2; taken.has(name); n++) name = `${provider.name}-${n}`;
   }
   let out = base;
+  /** @type {string[]} the lines to add by hand when the file cannot be written */
+  const added = [];
   if (makeDefault && before.config.agent.default !== name) {
+    added.push(`[agent] default = ${tomlLiteral(name)}`);
     // With `agent` made only by `[[agent.providers]]`, setTomlKeys puts `[agent]` before them.
     const r = setTomlKeys(out, [{ table: "agent", key: "default", value: name }]);
     if (!r.ok) return { error: `config.toml cannot take [agent] default: ${r.error.message}` };
@@ -1575,8 +1692,11 @@ export function addAgentProviderText(text, provider, { makeDefault, mac = false 
               ? [`price_in = ${provider.priceIn}`, `price_out = ${provider.priceOut}`]
               : []),
           ];
-    const glue = out === "" ? "" : out.endsWith("\n") ? "\n" : "\n\n";
-    out = `${out}${glue}${block.join("\n")}\n`;
+    // In the file's line endings: a CRLF file stays CRLF.
+    added.push(...block);
+    const eol = base.includes("\r\n") ? "\r\n" : "\n";
+    const glue = out === "" ? "" : out.endsWith("\n") ? eol : eol + eol;
+    out = `${out}${glue}${block.join(eol)}${eol}`;
   }
   const after = parseConfig(out, { mac });
   const first = after.errors[0];
@@ -1586,15 +1706,15 @@ export function addAgentProviderText(text, provider, { makeDefault, mac = false 
     return { error: `config.toml does not parse with the provider added: ${why}` };
   }
   const agent = after.config.agent;
-  const added = agent.providers.find((p) => p.name === name);
+  const read = agent.providers.find((p) => p.name === name);
   const rawBefore = parseToml(base);
   const rawAfter = parseToml(out);
   if (
-    !added ||
-    added.endpoint !== provider.endpoint ||
-    added.model !== provider.model ||
+    !read ||
+    read.endpoint !== provider.endpoint ||
+    read.model !== provider.model ||
     // Stryker disable next-line ConditionalExpression: a new kind reads back as written, a known one matched by kind
-    added.kind !== provider.kind ||
+    read.kind !== provider.kind ||
     (makeDefault && agent.default !== name) ||
     !rawBefore.ok ||
     !rawAfter.ok ||
@@ -1602,7 +1722,7 @@ export function addAgentProviderText(text, provider, { makeDefault, mac = false 
   ) {
     return { error: "the edit would change other keys of config.toml; nothing written" };
   }
-  return { text: out, name };
+  return { text: out, name, added };
 }
 
 /**

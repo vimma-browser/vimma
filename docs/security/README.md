@@ -38,13 +38,13 @@ S9 or M62), so a citation that gives only those ("security.md M62", "§12") find
 | §5      | [Add-ons](05-add-ons.md)                                                        | A1 to A3              |
 | §6      | [Chrome UI rendering](06-chrome-ui-rendering.md)                                | C1 to C4              |
 | §7      | [Omarchy hook and the `vimma-open` launcher](07-omarchy-hook-and-vimma-open.md) | O1 to O11             |
-| §8      | [config.toml](08-config-toml.md)                                                | F1 to F8              |
+| §8      | [config.toml](08-config-toml.md)                                                | F1 to F9              |
 | §9      | [Privacy defaults](09-privacy-defaults.md)                                      | P1 to P9              |
 | §10     | [Firefox updates](10-firefox-updates.md)                                        | G1 to G15             |
 | §11     | [Out of scope and trust boundaries](11-out-of-scope-and-trust-boundaries.md)    | none                  |
-| §12     | [Agents (MCP)](12-agents-mcp.md)                                                | M1 to M34, M62 to M65 |
+| §12     | [Agents (MCP)](12-agents-mcp.md)                                                | M1 to M34, M62 to M67 |
 | §12     | [Agents (MCP): the built-in agent](12-agents-mcp-built-in-agent.md)             | M35 to M61            |
-| §13     | [Page modes](13-page-modes.md)                                                  | K1 to K13             |
+| §13     | [Page modes](13-page-modes.md)                                                  | K1 to K14             |
 | §14     | [Build and release supply chain](14-build-and-release-supply-chain.md)          | B1 to B21             |
 | §15     | [Live grep](15-live-grep.md)                                                    | L1 to L8              |
 | §16     | [Update check](16-update-check.md)                                              | UP1 to UP14           |

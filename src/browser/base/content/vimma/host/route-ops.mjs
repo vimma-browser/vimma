@@ -4,7 +4,7 @@
 
 // `:route` (spec docs/specs/workspace-routing.md, decision 7): without text, the rules and the
 // one matching this tab, in about:vimma; `:route add [workspace]` writes a `domain` rule for
-// the tab's site into config.toml; `:route move` moves the tab to the workspace its rule names.
+// the tab's site into the routes file, routes.toml or else config.toml (docs/specs/routes-file.md); `:route move` moves the tab to the workspace its rule names.
 
 import { describeRoute, matchRoute, routeDomainFor } from "../core/routes.mjs";
 import { findWorkspace, workspaceRefFor } from "../core/workspaces.mjs";
@@ -60,12 +60,14 @@ function addRoute(model, tab, name, say) {
     return earlier.workspace === workspace
       ? `:route add: ${domain} already goes to "${workspace}" (route ${earlier.index})`
       : `:route add: route ${earlier.index} already sends ${domain} to "${earlier.workspace}" ` +
-          `(${describeRoute(earlier)}); edit it in config.toml (:config)`;
+          `(${describeRoute(earlier)}); edit it in ${WorkspaceRouter.routesSource.file}`;
   }
   // ConfigHost's, which vimma.js provides: config/ sits above the host (ADR-026).
   HostServices.addRoute({ domain, workspace }).then(
-    (/** @type {string | null} */ refused) =>
-      say(refused ? `:route add: ${refused}` : `added: ${domain} → "${workspace}" (config.toml)`),
+    (/** @type {{ error: string } | { added: string }} */ r) =>
+      say(
+        "error" in r ? `:route add: ${r.error}` : `added: ${domain} → "${workspace}" (${r.added})`,
+      ),
     (/** @type {unknown} */ e) => say(`:route add: ${/** @type {Error} */ (e).message}`),
   );
   return null;

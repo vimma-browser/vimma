@@ -122,6 +122,63 @@ export function popupBarHint({ inField = false, locked = false }) {
 }
 
 /**
+ * @typedef {object} BarState
+ * @property {boolean} open  the selected page shows a notification bar other than the pop-up
+ *   blocked bar
+ * @property {boolean} armed  it has shown for the arming delay with no key in between
+ * @property {boolean} inField  focus is in an editable field (insert mode), or on the bar itself
+ * @property {boolean} pending  a key sequence is under way (after ctrl+b)
+ * @property {boolean} [repeat]  the key is held down
+ * @property {boolean} [agent]  the page is in the agent workspace
+ * @property {boolean} [buttons]  the bar has buttons of its own
+ * @property {boolean} [dismissable]  the bar has a close button
+ * @property {boolean} [inBar]  focus is on the bar itself, its buttons or its close button
+ * @property {boolean} [onButton]  focus is on one of the bar's own buttons (not its close
+ *   button), and the button is enabled
+ */
+
+/**
+ * What `key` does while another of Firefox's notification bars shows over the page
+ * (docs/specs/notification-bars.md). Such a bar has no answer Vimma could name for `y` and `n`
+ * (its buttons are whatever the feature behind it chose), so `Tab` moves focus onto its buttons,
+ * where Firefox's own Tab, Enter and Space work, and `Esc` closes it as its close button does.
+ * Both have the pop-up bar's guards: only once armed, never held, from a field or during a key
+ * sequence, and an early key stays the page's: a page can raise a bar just as it is pressed.
+ * With focus on the bar, Esc closes the bar at once, since the user moved focus there, and Enter
+ * on one of its buttons presses it: Firefox does that on Linux, but on macOS it leaves Enter on a
+ * focused XUL button to the window's default button (XULButtonElement::PostHandleEvent), and a
+ * bar has none. Every other key stays Firefox's.
+ * @param {string} key
+ * @param {BarState} s
+ * @returns {{ kind: "pass" | "focus" | "close" | "press" }}
+ */
+export function barKey(key, s) {
+  if (s.inBar) {
+    if (!s.open || s.pending || s.repeat || s.agent) return { kind: "pass" };
+    if (key === "esc" && s.dismissable) return { kind: "close" };
+    if (key === "enter" && s.onButton) return { kind: "press" };
+    return { kind: "pass" };
+  }
+  if (!s.open || s.pending || s.inField || s.agent || !s.armed || s.repeat) {
+    return { kind: "pass" };
+  }
+  if (key === "esc" && s.dismissable) return { kind: "close" };
+  if (key === "tab" && (s.buttons || s.dismissable)) return { kind: "focus" };
+  return { kind: "pass" };
+}
+
+/**
+ * The keys line of a bar barKey answers. From a field, or in hint, copy and element mode, it
+ * starts with the way out, as the pop-up bar's does; on the bar itself it names Firefox's Enter.
+ * @param {{ inField?: boolean, dismissable?: boolean, inBar?: boolean }} s
+ */
+export function barHint({ inField = false, dismissable = false, inBar = false }) {
+  if (inBar) return dismissable ? "Enter press · Esc close" : "Enter press";
+  if (inField) return "Esc, then Tab buttons";
+  return dismissable ? "Tab buttons · Esc close" : "Tab buttons";
+}
+
+/**
  * @typedef {object} DialogState
  * @property {boolean} armed  it has shown for the arming delay with no key in between
  * @property {boolean} inField  focus is in one of the dialog's text fields

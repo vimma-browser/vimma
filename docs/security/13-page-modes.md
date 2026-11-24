@@ -148,9 +148,22 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   and compared before it is written, through a temporary file renamed over it. A private window
   **must not** save a site to the file; `:sitebind --delete` there may only remove keys from a
   table the file already has, so no host it visits reaches the disk. Keys given until restart
-  from a private window stay in memory and apply in every window until restart.
+  from a private window stay in memory and apply in every window until restart. The table is
+  named after the page's host, which a link chooses, so keys given until restart **must** apply
+  to a table of any name, one named like an Object member (`__proto__`, a page at
+  `http://__proto__/`) included, and **must not** change a prototype.
   [`neither action is a vimma_keys action, and the : line is refused`](../../packages/vimma-core/test/site-keys.test.ts),
   [`a file with errors is refused, never rewritten`](../../packages/vimma-core/test/site-keys.test.ts),
   [`a_bad_argument_is_refused_and_nothing_changes`](../../tests/browser/browser_vimma_site_unbind_command.js),
   [`a_config_toml_with_errors_is_never_written`](../../tests/browser/browser_vimma_site_unbind_command.js),
-  [`a_private_window_does_not_save`](../../tests/browser/browser_vimma_site_unbind_command.js)
+  [`a_private_window_does_not_save`](../../tests/browser/browser_vimma_site_unbind_command.js),
+  [`a table named __proto__, constructor or toString gets its keys until restart`](../../packages/vimma-core/test/keymap-edges.test.ts)
+- K14. Before the macOS private swap shows a window at a new size, it asks the page in each tab
+  that window shows whether it has painted at that size (`Vimma:Painted`,
+  [private-swap-macos](../specs/private-swap-macos.md)). The message carries no data and the
+  parent reads nothing from the reply but its arrival, so a page **must not** be able to do more
+  than delay that swap, and by no more than 300 ms: past that the window is shown anyway. A page
+  learns nothing it could not already see (its own resize, its window turning active, and its
+  paint; a switch dropped during the wait leaves it resized while hidden), and never which window
+  is being shown or that the private workspace is involved.
+  [`a_page_that_does_not_paint_does_not_hold_the_swap`](../../tests/browser/browser_vimma_private_swap_paint.js)

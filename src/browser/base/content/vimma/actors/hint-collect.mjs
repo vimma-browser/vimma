@@ -12,13 +12,15 @@ import {
   HINT_REPLY_MAX_HREF,
   HINT_REPLY_MAX_TARGETS,
   HINT_REPLY_MAX_TEXT,
+  innermostHover,
 } from "../core/hints.mjs";
 import { needsBlockText, pickBlocks } from "../core/blocks.mjs";
 
 /** @import { BlockDescriptor, BlockKind } from "../core/blocks.mjs" */
+/** @import { HoverKind } from "../core/hints.mjs" */
 
 /** @typedef {{ x: number, y: number, width: number, height: number }} Rect */
-/** @typedef {"link" | "input" | "click" | "block"} TargetKind */
+/** @typedef {"link" | "input" | "click" | "block" | "hover"} TargetKind */
 /**
  * @typedef {object} Found
  * @property {Element} el
@@ -27,6 +29,9 @@ import { needsBlockText, pickBlocks } from "../core/blocks.mjs";
  * @property {string} [href]  links only
  * @property {BlockKind} [blockKind]  blocks only
  * @property {Rect} [box]  blocks only: the border box, viewport-clipped, for the outline
+ * @property {HoverKind} [hoverKind]  hover targets only: what made the element one
+ * @property {true} [hoverOnly]  an agent's list asked with the kind hover: an element only
+ *   hovering does something with (docs/specs/hover.md decision 10), listed as kind hover
  */
 /** @typedef {{ bc: BrowsingContext, el: Element, rect: Rect }} FoundFrame */
 
@@ -92,6 +97,21 @@ const LINKS = "a[href]";
 
 /** Listener types that make an element clickable (Tridactyl watches addEventListener for these). */
 const LISTENER_TYPES = ["click", "mousedown"];
+
+/**
+ * Listener types that say hovering an element does something (docs/specs/hover.md decision 4),
+ * read as LISTENER_TYPES are; with the attributes that declare it.
+ */
+const HOVER_LISTENER_TYPES = [
+  "mouseover",
+  "mouseenter",
+  "pointerover",
+  "pointerenter",
+  "pointermove",
+  "mousemove",
+];
+// A label too, which `f` drops beside its control: a real pointer over it hovers the control.
+const HOVER_DECLARED = "[title], [aria-haspopup]:not([aria-haspopup=false]), label";
 
 /** Elements a listener never makes a target: delegation roots (React, jQuery `on`). */
 const NEVER = new Set(["html", "body", "head", "script", "style", "iframe", "frame"]);
@@ -347,12 +367,21 @@ export function viewportSize(win) {
  * The hint targets of one frame, in no particular order (core orders them), and its visible
  * subframes.
  * @param {Window} win  the frame's content window
- * @param {{ linksOnly: boolean, blocks?: boolean, disabled?: boolean }} options  `F` hints
- *   links only; `blocks` hints text blocks instead of what can be clicked (element focus);
- *   `disabled` keeps disabled controls (an agent's `vimma_elements`, docs/specs/mcp-forms.md F5)
+ * @param {{ linksOnly: boolean, blocks?: boolean, disabled?: boolean, hover?: boolean,
+ *   hoverToo?: boolean }} options
+ *   `F` hints links only; `blocks` hints text blocks instead of what can be clicked (element
+ *   focus); `disabled` keeps disabled controls (an agent's `vimma_elements`,
+ *   docs/specs/mcp-forms.md F5); `hover` hints what can be hovered (docs/specs/hover.md);
+ *   `hoverToo` adds to what can be clicked what only hovering does something with (an agent's
+ *   list asked with the kind hover, hover.md decision 10)
  * @returns {{ targets: Found[], frames: FoundFrame[] }}
  */
-export function collectTargets(win, { linksOnly, blocks = false, disabled = false }) {
+export function collectTargets(
+  win,
+  { linksOnly, blocks = false, disabled = false, hover = false, hoverToo = false },
+) {
+  if (hover) return collectHover(win);
+  if (hoverToo) return withHoverOnly(win, collectTargets(win, { linksOnly: false, disabled }));
   const { vw, vh } = viewportSize(win);
   if (blocks) {
     const onScreen = onScreenElements(win, vw, vh);
@@ -442,6 +471,86 @@ export function collectTargets(win, { linksOnly, blocks = false, disabled = fals
 
   return { targets: kept, frames: visibleFrames(win, frameEls) };
 }
+
+/**
+ * What can be hovered in one frame (docs/specs/hover.md decision 4): every target `f` labels,
+ * elements with a hover listener, a `title` or `aria-haspopup`, and text blocks as `F` finds
+ * them, so that a row whose controls a CSS `:hover` rule reveals is reached through its text.
+ * Innermost wins (core innermostHover): a block or a listener element holding another candidate
+ * gets no label of its own.
+ * @param {Window} win
+ * @returns {{ targets: Found[], frames: FoundFrame[] }}
+ */
+function collectHover(win) {
+  const { vw, vh } = viewportSize(win);
+  const clickable = collectTargets(win, { linksOnly: false });
+  const onScreen = onScreenElements(win, vw, vh);
+  /** @type {Map<Element, Found & { hoverKind: HoverKind }>} */
+  const found = new Map();
+  for (const t of clickable.targets) {
+    found.set(t.el, {
+      el: t.el,
+      rect: t.rect,
+      kind: "hover",
+      hoverKind: /** @type {HoverKind} */ (kindOf(t.el)),
+    });
+  }
+  const els = Services.els;
+  for (const el of onScreen) {
+    if (found.has(el) || NEVER.has(el.localName) || FRAMES_SET.has(el.localName)) continue;
+    const listens =
+      el.matches(HOVER_DECLARED) || HOVER_LISTENER_TYPES.some((t) => els.hasListenersFor(el, t));
+    if (!listens) continue;
+    const rect = visibleRect(el, vw, vh);
+    if (!rect || !unoccluded(el, rect)) continue;
+    found.set(el, { el, rect, kind: "hover", hoverKind: "listener" });
+  }
+  for (const b of collectBlocks(onScreen, win, vw, vh)) {
+    if (found.has(b.el)) continue;
+    found.set(b.el, { el: b.el, rect: b.rect, kind: "hover", hoverKind: "block" });
+  }
+  const list = [...found.values()];
+  /** @type {Map<Element, number>} */
+  const index = new Map(list.map((t, i) => [t.el, i]));
+  const candidates = list.map((t) => {
+    let parent = -1;
+    for (let p = parentOf(t.el); p && parent < 0; p = parentOf(p)) parent = index.get(p) ?? -1;
+    return { kind: t.hoverKind, parent };
+  });
+  const keep = innermostHover(candidates);
+  const targets = list.filter((_, i) => keep[i]).slice(0, MAX_TARGETS);
+  return { targets, frames: clickable.frames };
+}
+
+/**
+ * What can be clicked, with what only hovering does something with (a hover listener, a `title`
+ * or `aria-haspopup`, a text block) after it, by the hover collection's own rules (innermost
+ * wins), each marked `hoverOnly` (docs/specs/hover.md decision 10). Their kind for the overlay
+ * is `click`: the agent's list says `hover` (agent-fields describeAgentElements).
+ * @param {Window} win @param {{ targets: Found[], frames: FoundFrame[] }} clickable
+ * @returns {{ targets: Found[], frames: FoundFrame[] }}
+ */
+function withHoverOnly(win, clickable) {
+  const listed = new Set(clickable.targets.map((t) => t.el));
+  const extra = collectHover(win)
+    .targets.filter(
+      (t) =>
+        (t.hoverKind === "listener" || t.hoverKind === "block") &&
+        !listed.has(t.el) &&
+        // A rich text editor's text is what the user wrote: never listed (security.md M31).
+        !(/** @type {HTMLElement} */ (t.el).isContentEditable),
+    )
+    .map((t) => ({
+      el: t.el,
+      rect: t.rect,
+      kind: /** @type {TargetKind} */ ("click"),
+      hoverOnly: /** @type {true} */ (true),
+    }));
+  const targets = [...clickable.targets, ...extra].slice(0, MAX_TARGETS);
+  return { targets, frames: clickable.frames };
+}
+
+const FRAMES_SET = new Set(["iframe", "frame"]);
 
 /**
  * The subframes among `candidates`, with their viewports in this frame's CSS pixels.

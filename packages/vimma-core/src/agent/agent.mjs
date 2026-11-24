@@ -166,6 +166,7 @@ export const AGENT_TOOLS = Object.freeze({
   "agent-screenshot": "vimma_screenshot",
   "agent-console": "vimma_console",
   "agent-bookmarklet": "vimma_bookmarklet",
+  "agent-hover": "vimma_hover",
 });
 /**
  * Tools that ask every time, under any grant, and whose answer never makes a grant: showing a
@@ -212,7 +213,8 @@ export const ELEMENTS_RATE = Object.freeze({ max: 30, ms: 60_000 });
 
 /**
  * `agent-activate` requests per connection in any window of `ms` (mcp-forms F26, security.md
- * M32), counted when asked, and shared with `agent-fill`: a grant runs clicks unasked and must
+ * M32), counted when asked, and shared with `agent-fill` and `agent-hover` (docs/specs/hover.md
+ * decision 9, M67): a grant runs clicks unasked and must
  * not flood a page, and a refused call must not loop.
  */
 export const ACT_RATE = Object.freeze({ max: 30, ms: 60_000 });
@@ -244,8 +246,9 @@ export class CallRate {
    */
   take(conn, now) {
     const { max, ms } = this.limit;
-    const recent = (this.times.get(conn) ?? []).filter((t) => t > now - ms);
+    const recent = this.#recent(conn, now, ms);
     if (recent.length >= max) {
+      // Stryker disable next-line CallExpression: every read filters the old times out again
       this.times.set(conn, recent);
       return false;
     }
@@ -261,7 +264,7 @@ export class CallRate {
    */
   can(conn, now) {
     const { max, ms } = this.limit;
-    return (this.times.get(conn) ?? []).filter((t) => t > now - ms).length < max;
+    return this.#recent(conn, now, ms).length < max;
   }
 
   /**
@@ -271,7 +274,7 @@ export class CallRate {
    */
   retryAfter(conn, now) {
     const { max, ms } = this.limit;
-    const recent = (this.times.get(conn) ?? []).filter((t) => t > now - ms);
+    const recent = this.#recent(conn, now, ms);
     if (recent.length < max) return 0;
     // At most the window: a clock set back leaves calls stamped in the future.
     return Math.min(ms, Math.min(...recent) + ms - now);
@@ -293,6 +296,14 @@ export class CallRate {
   /** @param {string | number} conn  closed */
   forget(conn) {
     this.times.delete(conn);
+  }
+
+  /**
+   * Connection `conn`'s calls in the window that ends at `now`, as a new array.
+   * @param {string | number} conn @param {number} now @param {number} ms
+   */
+  #recent(conn, now, ms) {
+    return this.times.get(conn)?.filter((t) => t > now - ms) ?? [];
   }
 }
 
@@ -349,7 +360,10 @@ const frozenCopies = new WeakSet();
  * @returns {Readonly<T>}
  */
 export function frozenCopy(value) {
-  /** Objects being copied: met again, they are a cycle. @type {WeakSet<object>} */
+  /**
+   * Objects whose copy began: met again before `done` has them, they are a cycle.
+   * @type {WeakSet<object>}
+   */
   const open = new WeakSet();
   /** Objects already copied: met again, they share their copy. @type {WeakMap<object, unknown>} */
   const done = new WeakMap();
@@ -380,7 +394,7 @@ export function frozenCopy(value) {
       }
       out = o;
     }
-    open.delete(v);
+    // `v` stays in `open`: from here on `done`, checked first, answers for it.
     Object.freeze(out);
     frozenCopies.add(/** @type {object} */ (out));
     done.set(v, out);
@@ -404,7 +418,8 @@ export class AgentLog {
   add(entry) {
     // Its own frozen row: neither the caller's object nor a reader's can change it (M62).
     this.rows.push(frozenCopy(entry));
-    if (this.rows.length > LOG_SIZE) this.rows.splice(0, this.rows.length - LOG_SIZE);
+    // A count of 0 or less removes nothing.
+    this.rows.splice(0, this.rows.length - LOG_SIZE);
   }
 
   /**
@@ -533,8 +548,8 @@ export class AgentQueue {
     /** @type {{ denials: number, mutedUntil: number, grant: number, session?: string }} */
     const c = { denials: 0, mutedUntil: 0, grant: 0 };
     // A session held by an open connection is not this one's: a second claim gets nothing.
-    const live =
-      session !== undefined && [...this.conns.values()].some((o) => o.session === session);
+    // Read only with a session: the test below checks `session !== undefined` first.
+    const live = [...this.conns.values()].some((o) => o.session === session);
     if (this.sessions && session !== undefined && !live) {
       c.session = session;
       const parked = this.parked.get(session);
@@ -723,15 +738,15 @@ export class AgentQueue {
    * A grant for the whole of `conn`'s connection, made by the user's own action rather than an
    * answer: a task sent with `Enter` in Vimma's chat window (docs/specs/builtin-agent.md B18).
    * It lifts a mute, since the user just asked the agent to go on.
-   * @param {ConnId} conn @param {number} now
+   * @param {ConnId} conn
    * @returns {boolean} false for a connection that is not open
    */
-  grantConnection(conn, now) {
+  grantConnection(conn) {
     const c = this.conns.get(conn);
     if (!c) return false;
     setGrant(c, Infinity);
     c.denials = 0;
-    if (c.mutedUntil > now) c.mutedUntil = 0;
+    c.mutedUntil = 0;
     return true;
   }
 
@@ -749,10 +764,11 @@ export class AgentQueue {
 
   /**
    * End every grant (`:mcp revoke`, `ctrl+b shift+a`: decision 22, mcp-grants G4).
-   * @param {number} [now]  grants that ended before it are not counted
+   * @param {number} [now]  grants that ended before it are not counted; without it, every grant
+   *   is (0 is no grant, so it never counts)
    * @returns {number} how many there were
    */
-  revoke(now = -Infinity) {
+  revoke(now = 0) {
     let n = 0;
     for (const c of this.conns.values()) {
       if (c.grant > now) n++;

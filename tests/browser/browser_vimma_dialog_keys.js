@@ -370,6 +370,34 @@ add_task(async function a_dialog_closed_gives_focus_back_to_the_hidden_address_b
   gBrowser.selectedBrowser.focus();
 });
 
+// The window may not be the active one when its dialog closes (another window in front, or the
+// window manager slow to give the activation back, as on a loaded macOS runner): the address bar
+// still has the focus once the window is in front again (#1423).
+add_task(async function a_dialog_closed_behind_another_window_gives_the_address_bar_focus_later() {
+  gURLBar.focus();
+  await until(() => gURLBar.focused, "the address bar has focus");
+  const shown = nextDialog();
+  /** @type {boolean | undefined} */
+  let answer;
+  setTimeout(() => (answer = Services.prompt.confirm(window, "Vimma", "Turn it on?")), 0);
+  const w = await shown;
+  await until(() => lineShows(w, "y ok · n cancel"), "a window dialog names the keys");
+  const other = await BrowserTestUtils.openNewBrowserWindow();
+  await SimpleTest.promiseFocus(other);
+  Assert.ok(!document.hasFocus(), "another window is in front");
+  w.document.getElementById("commonDialog").getButton("cancel").click();
+  await until(() => answer !== undefined, "the dialog answered");
+  await BrowserTestUtils.closeWindow(other);
+  await SimpleTest.promiseFocus(window);
+  await until(() => gURLBar.focused, "the address bar has focus once the window is in front");
+  Assert.ok(
+    gURLBar.inputField.checkVisibility({ visibilityProperty: true }),
+    "in the minimal bar, visible",
+  );
+  EventUtils.synthesizeKey("KEY_Escape");
+  gBrowser.selectedBrowser.focus();
+});
+
 // The external protocol questions (permissionDialog.xhtml, "Allow this site to open the link
 // with ...?", and appChooser.xhtml, the application list) open in the tab's SubDialog as the
 // page's dialogs do, and take the same keys: `y` opens the link, `n` cancels.

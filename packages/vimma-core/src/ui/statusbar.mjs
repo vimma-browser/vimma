@@ -90,6 +90,7 @@ function paneText({ index, count, hidden, split, splits = 1 }) {
  *   (docs/specs/m6a-updater.md §5, updateNotice)
  * @property {ElementStatus | null} [element]  the focused text block in ELEMENT mode
  * @property {HintStatus | null} [hint]  the hint session (hints.mjs hintStatus)
+ * @property {HoverStatus | null} [hover]  the selected tab's hover (docs/specs/hover.md)
  * @property {import("../page/pdf.mjs").PdfState | null} [pdf]  the PDF viewer's state, when the
  *   selected tab shows it (docs/specs/pdf-mode.md decision 13)
  * @property {string | null} [popups]  the selected page has Firefox's pop-up blocked bar: the cue
@@ -104,6 +105,12 @@ function paneText({ index, count, hidden, split, splits = 1 }) {
  * A hint session (docs/specs/follow-link-switch.md decision 8): its action, and the first label
  * still on screen, null until the targets are collected.
  * @typedef {{ action: import("../page/hints.mjs").HintAction, label: string | null }} HintStatus
+ */
+/**
+ * The selected tab's hover (docs/specs/hover.md decision 8): the element's text, cleaned and cut
+ * by hints.mjs hoverStatusText, whether an agent holds it, and `seq`, which changes on every
+ * hover, so that each is spoken.
+ * @typedef {{ text: string, agent: boolean, seq?: number }} HoverStatus
  */
 /**
  * The focused text block (docs/specs/element-focus.md decision 5): its kind, its length in
@@ -345,6 +352,19 @@ export function displayUrl(url, { keepHttp = false } = {}) {
 const chars = (n) => `${n} ${n === 1 ? "char" : "chars"}`;
 
 /**
+ * "2 errors", "2 warnings", or for a mix both ("1 error, 2 warnings"): a warning's file still
+ * applied, so a count of errors alone would claim more went wrong than did.
+ * @param {readonly ConfigError[]} list
+ */
+function problemCount(list) {
+  const w = list.filter((e) => e.warning).length;
+  const n = list.length - w;
+  const errs = `${n} ${n === 1 ? "error" : "errors"}`;
+  const warns = `${w} ${w === 1 ? "warning" : "warnings"}`;
+  return w === 0 ? errs : n === 0 ? warns : `${errs}, ${warns}`;
+}
+
+/**
  * @param {Partial<Segment> & { id: string, text: string, fg: string, priority: number }} s
  * @returns {Segment}
  */
@@ -378,6 +398,7 @@ export function statusSegments(input) {
     update = null,
     element = null,
     hint = null,
+    hover = null,
     popups = null,
     pdf = null,
     downloads = null,
@@ -420,6 +441,19 @@ export function statusSegments(input) {
         fg: "--vimma-fg-bright",
         priority: 1,
         min: 4,
+        cut: "end",
+      }),
+    );
+  }
+  if (hover) {
+    // Gives way before the title and the URL (decision 8): it repeats what the page shows.
+    left.push(
+      seg({
+        id: "hover",
+        text: `${hover.agent ? "agent hover" : "hover"} · ${hover.text}`,
+        fg: "--vimma-fg-bright",
+        priority: 8.5,
+        min: 8,
         cut: "end",
       }),
     );
@@ -499,13 +533,13 @@ export function statusSegments(input) {
     right.push(seg({ id: "loading", text, fg: "--vimma-fg-dim", side: "right", priority: 6 }));
   }
   if (configErrors.length) {
-    const e = /** @type {ConfigError} */ (configErrors[0]);
+    // An error first when there is one: it is what kept something from applying.
+    const e = /** @type {ConfigError} */ (configErrors.find((x) => !x.warning) ?? configErrors[0]);
     const first = formatConfigError(e, e.file ?? configFile);
-    const n = configErrors.length;
     right.push(
       seg({
         id: "error",
-        text: n > 1 ? `${n} errors: ${first}` : first,
+        text: configErrors.length > 1 ? `${problemCount(configErrors)}: ${first}` : first,
         fg: "--vimma-text-error",
         side: "right",
         priority: 2,
@@ -872,7 +906,7 @@ const SELF_ANNOUNCING = new Set(["help", "command", "panel", "index"]);
  * agent questions were waiting, the focused text block's `seq`, and whether this hint session's
  * outcomes were said.
  * @typedef {{ mode: Mode | null, notFound: string | null, agentWaiting?: number,
- *   element?: number | null, hintTold?: boolean }} Announced
+ *   element?: number | null, hintTold?: boolean, hover?: number | null }} Announced
  */
 
 /**
@@ -886,13 +920,15 @@ const SELF_ANNOUNCING = new Set(["help", "command", "panel", "index"]);
  * A focused text block (docs/specs/element-focus.md decision 16) is said on each focus and
  * move: its kind and length, as "paragraph, 412 characters". A new-tab hint session
  * (docs/specs/follow-link-switch.md decision 9) says how to choose its outcome, once.
+ * A hover (docs/specs/hover.md decision 8) is said once per hover, as "hovering <text>"; its
+ * release is not said.
  * @param {{ mode: Mode, find?: FindStatus | null, url?: string | null, agentWaiting?: number,
- *   element?: ElementStatus | null, hint?: HintStatus | null }} input
+ *   element?: ElementStatus | null, hint?: HintStatus | null, hover?: HoverStatus | null }} input
  * @returns {{ text: string | null, last: Announced }}
  */
 export function statusAnnouncement(
   last,
-  { mode, find = null, url = null, agentWaiting = 0, element = null, hint = null },
+  { mode, find = null, url = null, agentWaiting = 0, element = null, hint = null, hover = null },
 ) {
   const parts = [];
   let { mode: lastMode, notFound } = last;
@@ -920,6 +956,8 @@ export function statusAnnouncement(
     parts.push(outcomes);
     hintTold = true;
   }
+  const hovered = hover ? (hover.seq ?? 0) : null;
+  if (hover && hovered !== (last.hover ?? null)) parts.push(`hovering ${hover.text}`);
   if (agentWaiting > (last.agentWaiting ?? 0)) {
     parts.push(
       agentWaiting === 1
@@ -929,6 +967,6 @@ export function statusAnnouncement(
   }
   return {
     text: parts.length ? parts.join(". ") : null,
-    last: { mode: lastMode, notFound, agentWaiting, element: focused, hintTold },
+    last: { mode: lastMode, notFound, agentWaiting, element: focused, hintTold, hover: hovered },
   };
 }

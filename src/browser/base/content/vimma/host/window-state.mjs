@@ -11,6 +11,7 @@
 // `init` builds it and hands it in: only the modules tools/layering's RESTRICTED lists import
 // the gate.
 
+import { HoverOps } from "./hover-ops.mjs";
 import { createDispatcher } from "../core/dispatcher.mjs";
 import { PageFirstQueue } from "../core/page-first.mjs";
 import { CommandLine } from "../ui/cmdline.mjs";
@@ -37,6 +38,7 @@ import { AgentPrompt } from "../ui/agent-prompt.mjs";
 import { getTabLabel, setTabLabel } from "../workspaces/tab-labels.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { PaneViews } from "../split/PaneView.mjs";
+import { tabAsleep } from "../services/TabSleep.sys.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
 import { DownloadRows, DownloadWatch, downloadPickerKey } from "./download-ops.mjs";
 import { HostServices } from "./host-services.mjs";
@@ -141,6 +143,7 @@ export function newWindowState(host, win, keymap, env) {
       host._cancelHints(state);
       state.find.onTabSelect();
       state.element.leave();
+      HoverOps.onTabSelect(win);
       state.help.close({ tabChanged: true });
       state.cmdline.close({ tabChanged: true });
       state.picker.close({ tabChanged: true });
@@ -182,26 +185,32 @@ export function newWindowState(host, win, keymap, env) {
     // background tab's dialog opened) is hidden and takes no focus: focus is then nowhere, the
     // mode insert with no field and every binding dead (#1304). The selected page gets it. The
     // hidden toolbar's address bar refuses that direct focus too; focusOpener reveals it first.
+    // A window that is not the active one when its dialog closes (another window in front, or a
+    // window manager slow to give the activation back) is looked at once it is active again,
+    // after the focus manager has given its focused element the focus back (#1423).
     onDialogClose: () => {
       win.setTimeout(() => {
         const opener = state.dialogOpener;
         state.dialogOpener = null;
         const doc = win.document;
-        if (!doc.hasFocus()) return;
-        const lost = () => {
-          const el = doc.activeElement;
-          return (
-            !el ||
-            el === doc.documentElement ||
-            el === doc.body ||
-            !el.isConnected ||
-            !el.checkVisibility()
-          );
+        const check = () => {
+          const lost = () => {
+            const el = doc.activeElement;
+            return (
+              !el ||
+              el === doc.documentElement ||
+              el === doc.body ||
+              !el.isConnected ||
+              !el.checkVisibility()
+            );
+          };
+          if (!lost()) return;
+          // SubDialog's own focus() on it failed; focusOpener reveals a hidden address bar.
+          if (opener?.isConnected) focusOpener(win, opener);
+          if (lost()) win.gBrowser?.selectedBrowser.focus();
         };
-        if (!lost()) return;
-        // SubDialog's own focus() on it failed; focusOpener reveals a hidden address bar.
-        if (opener?.isConnected) focusOpener(win, opener);
-        if (lost()) win.gBrowser?.selectedBrowser.focus();
+        if (doc.hasFocus()) check();
+        else win.addEventListener("activate", () => win.setTimeout(check, 0), { once: true });
       }, 0);
     },
     dispatcher: createDispatcher(keymap),
@@ -451,6 +460,7 @@ export function newWindowState(host, win, keymap, env) {
           foreign: !!WindowWorkspaces.get(win)?.isForeign(tab),
           playing: !!tab.soundPlaying,
           pinned: !!tab.pinned,
+          asleep: tabAsleep(tab),
         };
       },
       closeTab: (tabId) => {

@@ -1,0 +1,153 @@
+{
+  "name": "issue-1404-tab-sleep-omarchy",
+  "issue": 1404,
+  "description": "docs/specs/tab-sleep.md, behaviour 14 and 15 (Delivery slice 3): pages a, b and c in main, the start tab closed, and a restart on the same profile with Vimma's own browser.startup.page (3): a comes back selected and loaded, b and c lazy, which state lists asleep: true. gt selects b, which loads and is listed without the field; c stays asleep. With the tab line always drawn and the side panel open, c's entry and row are in the theme's muted text and a's and b's are not, in the same columns. In a dark Omarchy theme (tests/e2e/fixtures/omarchy-theme), so the muted text is the theme's.",
+  "timeoutSeconds": 120,
+  "prefs": {
+    "browser.startup.page": null,
+    "vimma.ui.tabline": "always",
+    "vimma.theme.source": "omarchy",
+    "vimma.theme.omarchyPath": "checkout:tests/e2e/fixtures/omarchy-theme"
+  },
+  "steps": [
+    {
+      "wait-for-state": {
+        "workspace": "main"
+      },
+      "timeoutSeconds": 20
+    },
+    {
+      "open": "fixture:pane.html#a"
+    },
+    {
+      "open": "fixture:pane.html#b"
+    },
+    {
+      "open": "fixture:pane.html#c"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "title": "a 1280"
+          },
+          {
+            "title": "b 1280"
+          },
+          {
+            "title": "c 1280",
+            "selected": true
+          }
+        ]
+      }
+    },
+    {
+      "keys": "1 g t"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {
+            "selected": true
+          },
+          {},
+          {},
+          {}
+        ]
+      }
+    },
+    {
+      "keys": "escape"
+    },
+    {
+      "wait-for-state": {
+        "mode": "normal",
+        "tabs": [
+          {
+            "selected": true
+          },
+          {},
+          {},
+          {}
+        ]
+      }
+    },
+    {
+      "keys": "x"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {
+            "title": "a 1280",
+            "selected": true
+          },
+          {
+            "title": "b 1280"
+          },
+          {
+            "title": "c 1280"
+          }
+        ]
+      }
+    },
+    {
+      "restart": "quit"
+    },
+    {
+      "wait-for-state": {
+        "workspace": "main",
+        "tabs": [
+          {
+            "title": "a 1280",
+            "selected": true,
+            "loading": false
+          },
+          {
+            "title": "b 1280",
+            "asleep": true
+          },
+          {
+            "title": "c 1280",
+            "asleep": true
+          }
+        ]
+      },
+      "timeoutSeconds": 20
+    },
+    {
+      "keys": "g t"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {
+            "title": "a 1280"
+          },
+          {
+            "title": "b 1280",
+            "selected": true,
+            "loading": false
+          },
+          {
+            "title": "c 1280",
+            "asleep": true
+          }
+        ]
+      },
+      "timeoutSeconds": 10
+    },
+    {
+      "keys": "ctrl+b b"
+    },
+    {
+      "wait-for-state": {
+        "mode": "panel"
+      }
+    },
+    {
+      "screenshot": "tab-sleep-rows-omarchy"
+    }
+  ]
+}

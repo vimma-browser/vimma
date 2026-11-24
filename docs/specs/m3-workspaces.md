@@ -162,7 +162,9 @@ a permission granted in one is granted in all. These go to `docs/limits.md`.
   (`SessionStore.sys.mjs:5880-5882, 6459-6477`; `browser.sessionstore.restore_on_demand`).
   `TabUnloader` has no preference for hidden tabs (`browser/components/tabbrowser/TabUnloader.sys.mjs:32-40`)
   and is off on Linux (`browser.tabs.unloadOnLowMemory`, `firefox.js:1213-1217`). Nothing unloads
-  hidden tabs automatically.
+  hidden tabs automatically. (Since changed: tabs unseen for `[tabs] sleep_after` minutes, two
+  hours by default, hidden ones included, go to sleep, and the low-memory unloader is on for
+  Linux too; [tab-sleep](tab-sleep.md).)
 - **Audio:** hiding does not mute; the tab container tracks hidden tabs playing sound
   (`hiddensoundplaying`, `content/tabs.js:287-316`).
 - **Moving a tab to another window** (`adoptTab`) does not carry `hidden` but carries custom tab
@@ -1041,6 +1043,10 @@ dependency for 4b, 5 and parts of 4a.
   panel. Firefox moves focus to the page at the end of every tab switch
   (`_adjustFocusBeforeTabSwitch` blurs chrome, `AsyncTabSwitcher` focuses the browser), so the
   panel takes focus back on `TabSwitchDone` while open (prefix+), prefix+c from the panel).
+  (Since changed: the address bar taking focus closes the panel, so a new tab from it (`ctrl+t`,
+  `prefix+c`, the `+` button, all of which focus the new tab page's address bar) and a click into
+  the address bar type there instead of running panel keys; the bookmarks panel does the same,
+  issue #1481.)
 - **Not-yet examples:** with `ctrl+b b` built, no default binding under the prefix and no `:`
   command is unbuilt. `head.js` `bindUnbuiltPrefixKey()` binds `history_back` to `ctrl+b o` for
   the notice tests in `browser_vimma_tab_keys.js`, `_statusbar.js`, `_cmdline.js` and

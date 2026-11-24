@@ -92,6 +92,7 @@ declare const Services: FirefoxServices;
 
 // The members Vimma's code calls on a default branch.
 interface nsIPrefDefaultBranch {
+  getBoolPref(name: string, defaultValue?: boolean): boolean;
   setBoolPref(name: string, value: boolean): void;
 }
 
@@ -265,9 +266,11 @@ interface IOUtilsNamespace {
     type: "regular" | "directory" | "other";
   }>;
   exists(path: string): Promise<boolean>;
+  computeHexDigest(path: string, method: "sha256" | "sha384" | "sha512"): Promise<string>;
   getChildren(path: string): Promise<string[]>;
   copy(from: string, to: string): Promise<void>;
-  move(from: string, to: string): Promise<void>;
+  // `noOverwrite`: fail when `to` exists (dom/chrome-webidl/IOUtils.webidl MoveOptions).
+  move(from: string, to: string, options?: { noOverwrite?: boolean }): Promise<void>;
   remove(path: string, options?: { ignoreAbsent?: boolean; recursive?: boolean }): Promise<void>;
 }
 declare const IOUtils: IOUtilsNamespace;
@@ -434,6 +437,9 @@ interface nsIDocShell extends nsISupports {
   /** Null once the docshell is destroyed (nsIDocShellTreeItem.idl). */
   readonly treeOwner: nsISupports | null;
   readonly isLoadingDocument: boolean;
+  /** The element its events go up to (a tab's message manager in a content process), null for
+   * a top-level window's. */
+  readonly chromeEventHandler: EventTarget | null;
   doCommand(command: string): void;
 }
 
@@ -473,6 +479,10 @@ interface nsIDOMWindowUtils {
   removeSheetUsingURIString(sheetURI: string, type: number): void;
   suppressAnimation(suppress: boolean): void;
   flushLayoutWithoutThrottledAnimations(): void;
+  /** A paint waits for the compositor: its MozAfterPaint is still to fire. */
+  readonly isMozAfterPaintPending: boolean;
+  /** The last layer transaction of the window's refresh driver (MozAfterPaint's transactionId). */
+  readonly lastTransactionId: number;
   /** True while an event the user caused (a key, a click) is being handled. */
   readonly isHandlingUserInput: boolean;
   /**
@@ -500,6 +510,8 @@ interface Element {
   /** The slot it is assigned to, in an open or a closed shadow tree. */
   readonly openOrClosedAssignedSlot: HTMLSlotElement | null;
   readonly scrollTopMax: number;
+  /** Negative where the scroll origin is at the bottom, as in a column-reverse flex box. */
+  readonly scrollTopMin: number;
   readonly scrollLeftMax: number;
   /** Negative in a right-to-left scroller, whose scrollLeft runs from it up to 0. */
   readonly scrollLeftMin: number;
@@ -571,6 +583,9 @@ interface LazyModules {
   setInterval(callback: () => unknown, ms?: number): number;
   clearTimeout(id: number | null | undefined): void;
   clearInterval(id: number | null | undefined): void;
+  // engine/browser/modules/webrtcUI.sys.mjs: whether a browser holds a camera, microphone or
+  // screen stream (tab sleep asks as Firefox's TabUnloader does).
+  webrtcUI: { browserHasStreams(browser: MozBrowser): boolean };
   // engine/toolkit/modules/PrivateBrowsingUtils.sys.mjs
   PrivateBrowsingUtils: {
     isWindowPrivate(win: Window): boolean;
@@ -706,6 +721,7 @@ interface LazyModules {
   ThemeHost: typeof import("../src/browser/base/content/vimma/ui/theme-host.mjs").ThemeHost;
   VimmaControl: typeof import("../src/browser/base/content/vimma/ctl/VimmaControl.sys.mjs").VimmaControl;
   VimmaHost: typeof import("../src/browser/base/content/vimma/host/VimmaHost.sys.mjs").VimmaHost;
+  VimmaActors: typeof import("../src/browser/base/content/vimma/actors/VimmaActors.sys.mjs").VimmaActors;
   WorkspaceRouter: typeof import("../src/browser/base/content/vimma/workspaces/WorkspaceRouter.sys.mjs").WorkspaceRouter;
 }
 
@@ -790,6 +806,8 @@ interface nsIHttpChannel {
   readonly URI: nsIURI;
   readonly loadInfo: nsILoadInfo;
   readonly requestMethod: string;
+  /** nsIIdentChannel's: a document load's is the one its DocumentChannel had in the child. */
+  readonly channelId: number;
   /** nsIRequest's: the request's result so far, a failure code once it failed. */
   readonly status: number;
   /** Throws while there is no response yet (a request that failed before one). */
@@ -802,6 +820,8 @@ interface nsIHttpChannel {
 // engine/netwerk/base/nsILoadInfo.idl
 interface nsILoadInfo {
   readonly isFormSubmission: boolean;
+  /** The remote type of the process that started the load, set by the parent from the sender. */
+  readonly triggeringRemoteType: string;
   readonly hasValidUserGestureActivation: boolean;
   /** The frame the load is for; null once it is gone. In the parent, canonical. */
   readonly browsingContext: CanonicalBrowsingContext | null;
@@ -820,6 +840,7 @@ interface Window {
   readonly ResizeObserver: typeof ResizeObserver;
   readonly KeyboardEvent: typeof KeyboardEvent;
   readonly MouseEvent: typeof MouseEvent;
+  readonly PointerEvent: typeof PointerEvent;
   readonly Event: typeof Event;
   readonly OffscreenCanvas: typeof OffscreenCanvas;
   readonly CSS: typeof CSS;
@@ -925,12 +946,21 @@ interface MozTabbrowserTab extends Element {
   readonly selected: boolean;
   readonly userContextId: number;
   readonly soundPlaying: boolean;
+  /** Shown in Picture-in-Picture (its `pictureinpicture` attribute). */
+  readonly pictureinpicture: boolean;
+  /** When it was last selected, in ms; the selected tab of each window says now. */
+  readonly lastAccessed: number;
   readonly muted: boolean;
   readonly muteReason: string | null | undefined;
   readonly splitview: MozTabSplitViewWrapper | null;
   /** The tab it was opened from, null when none (Tabbrowser addTab's `openerTab`); undefined
    * for a tab addTab did not make, as the window's first. */
   readonly openerTab: MozTabbrowserTab | null | undefined;
+  /** The object the session store and the unloader know the tab's browser by; Firefox moves it
+   * with the browser when a tab changes window (Tabbrowser `swapBrowsersAndCloseOther`). */
+  readonly permanentKey: object | undefined;
+  /** Its `undiscardable` attribute, which TabUnloader honours (tab.mjs). */
+  undiscardable: boolean;
   toggleMuteAudio(muteReason?: string | null): void;
 }
 
@@ -981,6 +1011,10 @@ interface Tabbrowser {
   readonly tabbox: Element;
   getTabForBrowser(browser: MozBrowser): MozTabbrowserTab | undefined;
   insertBrowser(tab: MozTabbrowserTab): void;
+  /** Flushes the tab's session state, so a restore after a discard has its latest data. */
+  prepareDiscardBrowser(tab: MozTabbrowserTab): Promise<void>;
+  /** Unloads the tab, keeping it lazy in the strip; false when Firefox refuses. */
+  discardBrowser(tab: MozTabbrowserTab, force?: boolean): boolean;
   hideTab(tab: MozTabbrowserTab, source?: string): void;
   showTab(tab: MozTabbrowserTab): void;
   unpinTab(tab: MozTabbrowserTab): void;
@@ -1177,6 +1211,8 @@ interface BrowsingContext {
   readonly isDiscarded: boolean;
   readonly browserId: number;
   readonly isContent: boolean;
+  /** Shown, or kept rendering: its window is active and, in a tab, the tab is drawn. */
+  isActive: boolean;
   /** engine/dom/base/nsSandboxFlags.h; the setter throws on a discarded context. */
   sandboxFlags: number;
   /**
@@ -1216,6 +1252,8 @@ interface CanonicalBrowsingContext extends BrowsingContext {
 // members). The principals are never null (webidl `Principal`, not nullable).
 interface WindowGlobalParent {
   readonly innerWindowId: number;
+  /** A WebRTC peer connection is open in the page (set on the top window only). */
+  hasActivePeerConnections(): boolean;
   /** The document's window has closed: it no longer shows in its frame. */
   readonly isClosed: boolean;
   readonly isInProcess: boolean;
@@ -1320,10 +1358,32 @@ interface nsITypeAheadFind {
   find(searchString: string, linksOnly: boolean, mode: number, dontIterateFrames: boolean): number;
 }
 
-// engine/uriloader/base/nsIWebProgress.idl (the members Vimma reads)
+// engine/uriloader/base/nsIWebProgress.idl (the members Vimma reads). A listener is held weakly.
 interface nsIWebProgress {
   readonly isTopLevel: boolean;
   readonly isLoadingDocument: boolean;
+  /** The frame whose loads it reports; null once it is gone. */
+  readonly browsingContext: BrowsingContext | null;
+  addProgressListener(listener: nsIWebProgressListener, notifyMask: number): void;
+  removeProgressListener(listener: nsIWebProgressListener): void;
+}
+// engine/uriloader/base/nsIWebProgressListener.idl, a JS implementation's members.
+interface nsIWebProgressListener extends nsISupports {
+  onStateChange(
+    progress: nsIWebProgress | null,
+    request: nsIRequest,
+    flags: number,
+    status: number,
+  ): void;
+  onProgressChange(): void;
+  onLocationChange(): void;
+  onStatusChange(): void;
+  onSecurityChange(): void;
+  onContentBlockingEvent(): void;
+}
+// engine/netwerk/base/nsIIdentChannel.idl: a channel with its id (a DocumentChannel too).
+interface nsIIdentChannel extends nsIChannel {
+  readonly channelId: number;
 }
 
 // engine/docshell/shistory/nsISHistory.idl and nsISHEntry.idl (the members Vimma reads).
@@ -1589,11 +1649,17 @@ interface PopupAndRedirectBlockerObserver {
 interface MozNotificationBox {
   /** The last notification with that `value` attribute, or null. */
   getNotificationWithValue(value: string): MozNotificationMessage | null;
+  /** The notification of the highest priority, the one on top; null without one. */
+  readonly currentNotification: MozNotificationMessage | null;
 }
 // notificationbox.js (NotificationMessage): a notification bar.
 interface MozNotificationMessage extends HTMLElement {
   /** Its buttons' container, made in connectedCallback: unset before. */
   readonly buttonContainer?: HTMLElement;
+  /** It shows a close button (moz-message-bar.mjs). */
+  readonly dismissable: boolean;
+  /** The close button, in its shadow root; null while it has none. */
+  readonly closeButton: HTMLElement | null;
   dismiss(): void;
 }
 // engine/toolkit/content/widgets/popupnotification.js (MozPopupNotification): a prompt in the
@@ -2296,6 +2362,15 @@ interface XPCOMInterfaces {
     readonly LOAD_FLAGS_NONE: number;
     readonly LOAD_FLAGS_ALLOW_POPUPS: number;
   };
+  nsIChannel: nsIJSIID<nsIChannel> & {
+    readonly LOAD_DOCUMENT_URI: number;
+  };
+  nsIIdentChannel: nsIJSIID<nsIIdentChannel>;
+  nsISupportsWeakReference: nsIJSIID<nsISupports>;
+  nsIWebProgress: nsIJSIID<nsIWebProgress> & {
+    readonly NOTIFY_STATE_DOCUMENT: number;
+    readonly NOTIFY_STATE_REQUEST: number;
+  };
   nsIWebProgressListener: nsIJSIID<nsISupports> & {
     readonly LOCATION_CHANGE_SAME_DOCUMENT: number;
     readonly STATE_CERT_USER_OVERRIDDEN: number;
@@ -2634,3 +2709,13 @@ interface nsIGIOMimeApp {
   setAsDefaultForMimeType(mimeType: string): void;
   setAsDefaultForFileExtensions(extensions: string): void;
 }
+
+// engine/dom/chrome-webidl/InspectorUtils.webidl (chrome only): DevTools' "force element state",
+// a pseudo-class lock on one element (docs/specs/hover.md).
+interface InspectorUtilsNamespace {
+  addPseudoClassLock(element: Element, pseudoClass: string, enabled?: boolean): void;
+  removePseudoClassLock(element: Element, pseudoClass: string): void;
+  hasPseudoClassLock(element: Element, pseudoClass: string): boolean;
+  clearPseudoClassLocks(element: Element): void;
+}
+declare var InspectorUtils: InspectorUtilsNamespace;

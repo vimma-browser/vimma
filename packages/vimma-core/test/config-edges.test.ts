@@ -153,15 +153,16 @@ describe("the resolved config", () => {
   test("a site in the order but not in [sites] gets the default insert mode", () => {
     // parseConfig never passes such an order; this is the exported function's own fallback.
     expect(mergeWithDefaults({ sites: {} }, undefined, ["a.com"]).sites).toEqual([
-      { match: "a.com", insert: "auto" },
+      { match: "a.com", insert: "auto", sleep: true },
     ]);
   });
 });
 
 describe("a keymap error names actions as the file wrote them", () => {
   test("a key that is no action does not rename anything", () => {
-    expect(problems(cfg("[keys]", 'undefined = "x"', 'foo = "y"'))).toEqual([
-      [3, "keys.undefined", 'unknown action "undefined"'],
+    // `undefined` has no close match and is skipped (#1474); the near miss is the error.
+    expect(problems(cfg("[keys]", 'undefined = "x"', 'new_tabb = "y"'))).toEqual([
+      [4, "keys.new_tabb", 'unknown action "new_tabb"', "new_tab"],
     ]);
   });
 
@@ -227,6 +228,7 @@ describe("addAgentProviderText", () => {
 
   test("appends the provider after a final newline with one blank line", () => {
     expect(addAgentProviderText(cfg(), local, { makeDefault: false })).toEqual({
+      added: expect.any(Array),
       text: cfg(
         "",
         "[[agent.providers]]",
@@ -257,9 +259,11 @@ describe("addAgentProviderText", () => {
   });
 
   test("a file that does not parse is refused before anything is added", () => {
-    expect(addAgentProviderText(cfg("[ui]", "x = 1"), local, { makeDefault: false })).toEqual({
-      error: "config.toml does not parse now; fix it first (:config shows it)",
-    });
+    expect(addAgentProviderText(cfg("[ui]", "toolbar = 1"), local, { makeDefault: false })).toEqual(
+      {
+        error: "config.toml does not parse now; fix it first (:config shows it)",
+      },
+    );
   });
 
   test("a provider the TOML cannot take is refused with the parser's message", () => {
@@ -285,6 +289,7 @@ describe("addAgentProviderText", () => {
   test("[agent] goes before the first providers header, not a comment that names one", () => {
     const text = cfg("# [[agent.providers]] are below", ...existing);
     expect(addAgentProviderText(text, local, { makeDefault: true })).toEqual({
+      added: expect.any(Array),
       text: cfg(
         "# [[agent.providers]] are below",
         "[agent]",
@@ -341,6 +346,7 @@ describe("addAgentProviderText", () => {
       ];
       const r = addAgentProviderText(cfg(...fake, ...existing), local, { makeDefault: true });
       expect(r).toEqual({
+        added: expect.any(Array),
         name: "l",
         text: cfg(
           ...fake,

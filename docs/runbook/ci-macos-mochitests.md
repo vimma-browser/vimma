@@ -66,6 +66,18 @@ what a test waits for:
 - The toolbar's overflow menu was compared after a fixed 300 ms while CustomizableUI was still
   moving buttons, one layout flush per button. The test now waits for
   `overflowable.isHandlingOverflow()` to end, as Firefox's own tests do.
+- A focus wait lost its target in a tab opened a moment before. A new tab starts on the initial
+  `about:blank`, and its page then replaces that document with a new window global, after the
+  tab shows in the side panel and while `webProgress` reports no load. SpecialPowers'
+  `EnsureFocus`, sent to the first document, failed with "Actor 'SpecialPowers' destroyed".
+  `browser_vimma_tabline.js` now waits until each tab it opens has its page's document
+  ([#1350](https://github.com/vimma-browser/vimma/issues/1350)).
+- A wait for a reload ended on the document the reload was about to replace. pdf.js sends
+  `textlayerrendered` once for each page it draws, page 2 a few milliseconds after page 1; a wait
+  for that event, set for the next reload before the previous load had drawn page 2, took page 2's
+  event, and the focus wait that followed failed with "Actor 'SpecialPowers' destroyed" when the reload replaced the
+  document. `browser_vimma_pdf_keys.js` now waits until the window global is replaced and the new
+  document has drawn a text layer ([#1511](https://github.com/vimma-browser/vimma/issues/1511)).
 - The harness lists repeating timers once as the run starts, and a repeating timer is out of
   that list while it fires: ConfigHost's poll firing at that moment was reported as left by the
   first file (`browser_vimma_a11y.js`). The poll is now a one-shot timer set again at each tick.

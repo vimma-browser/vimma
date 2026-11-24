@@ -102,7 +102,8 @@ ships.
   `RecipeRunner.enabled` is false; `ExperimentAPI.studiesEnabled` and `rolloutsEnabled` are
   false. (Service state; under the harness these hold before the change too, because
   `unittest-required/user.js` empties `app.normandy.api_url` and turns studies and rollouts off.
-  The default-branch checks are what go red.)
+  The default-branch checks are what go red.) (Since changed: Firefox 162 removes
+  `RecipeRunner` (Mozilla bug 2059780); where it is gone, only the Nimbus checks run.)
 - Given the running browser, then `browser.urlbar.suggest.quicksuggest.sponsored` is false
   (the harness region turns it on by default); given a user value true,
   `MozillaServices.applyUserDefaults()` keeps it; given no user value, it sets false again.

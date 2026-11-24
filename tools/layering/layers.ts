@@ -114,6 +114,15 @@ export const RESTRICTED: Record<string, Restricted> = {
       "a new caller of the page's own dispatch needs a security review (docs/security/12-agents-mcp.md section 12, M26)",
   },
   /**
+   * The `:hover` locks and pointer events of a hover (docs/specs/hover.md): its caller chooses
+   * the events' trust by the dispatch it passes, so each caller is reviewed.
+   */
+  "actors/hover.mjs": {
+    importers: ["actors/VimmaChild.sys.mjs"],
+    review:
+      "a new caller of the hover's locks and events needs a security review (docs/specs/hover.md decision 3)",
+  },
+  /**
    * The chat window's API key entry (docs/security/12-agents-mcp-built-in-agent.md M46): the
    * masked key field that never reveals the key, and the calls that store, clear and delete it.
    * The chat window and its view, which builds the field, are its only callers.

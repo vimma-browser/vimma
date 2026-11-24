@@ -415,3 +415,26 @@ describe("lastUseText", () => {
     expect(lastUseText(now - 86_400_000, now)).toBe("1 day ago");
   });
 });
+
+// Issue #1119: the edges the weekly mutation run left unpinned.
+describe("storedRecord at its edges", () => {
+  test("an entry that is not a plain object is dropped, even a function with the fields", () => {
+    const fn = Object.assign(() => {}, { kind: "user", text: "from a function" });
+    expect(storedRecord({ ...conversation, stored: [fn, ...stored] }).entries).toEqual(stored);
+  });
+
+  test("a record too long without any entry is stored as it is", () => {
+    const title = "t".repeat(MAX_RECORD_BYTES);
+    const record = storedRecord({ ...conversation, title, stored: [] });
+    expect(record.title).toBe(title);
+    expect(record.entries).toEqual([]);
+  });
+
+  test("one cut fits an entry whose characters JSON escapes into several bytes", () => {
+    const text = `${"x".repeat(MAX_RECORD_BYTES - 2000)}${"\u0001é\u{1F95B}".repeat(1000)}`;
+    const record = storedRecord({ ...conversation, stored: [{ kind: "user", text }] });
+    const bytes = new TextEncoder().encode(JSON.stringify(record)).length;
+    expect(bytes).toBeLessThanOrEqual(MAX_RECORD_BYTES);
+    expect(record.entries[0]?.text.startsWith("xxx")).toBe(true);
+  });
+});

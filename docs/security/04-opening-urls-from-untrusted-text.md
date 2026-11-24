@@ -72,11 +72,35 @@ link targets for hints, which chrome must treat as untrusted.
   [`%s: a kind from the closed list, a length and a box`](../../packages/vimma-core/test/hints.test.ts),
   [`yank: the text, and whether the page marks it unselectable`](../../packages/vimma-core/test/hints.test.ts),
   [`malformed_block_messages_are_refused`](../../tests/browser/browser_vimma_element.js)
+  A hover target ([hover](../specs/hover.md), `gh`) **must** be of kind `hover` with a sub-kind
+  from the closed list and carry nothing else; a hover target in any other collection, or another
+  kind in a hover collection, refuses the whole reply. The answer to `Vimma:Hover` **must** be
+  checked before chrome uses it: a boolean, and at most 4,096 characters of text, which the status
+  bar shows cleaned of control and format characters and cut to 40 columns. `Vimma:Hover` is sent
+  only for a label typed in chrome, `hover.release` and the release triggers; the child hovers only
+  an element of its last collection and dispatches the events itself, trusted as the user's `f`
+  is, and no message data chooses their trust. `Vimma:HoverEmbedder` names a subframe by the
+  browsing context the parent asked to hover, and the embedding child locks only the `<iframe>`
+  element of its own child frame, in its own document, with no events. A hover locks `:hover`
+  only on the element, its flattened-tree ancestors and the controls of `<label>`s among them,
+  removes only the locks it added, and removes them on every `pagehide`, the back-forward cache
+  included, so no hover outlives its page.
+  [`refuses an unknown or missing sub-kind, another kind, and extra fields`](../../packages/vimma-core/test/hover.test.ts),
+  [`a hover target is refused in every other collection`](../../packages/vimma-core/test/hover.test.ts),
+  [`refuses anything else`](../../packages/vimma-core/test/hover.test.ts),
+  [`test_hover_malformed_messages`](../../tests/browser/browser_vimma_hover.js),
+  [`test_hover_bfcache`](../../tests/browser/browser_vimma_hover.js),
+  [`test_hover_keeps_devtools_locks`](../../tests/browser/browser_vimma_hover.js)
   A page's answer to `Vimma:HintsMoved` (whether a wheel moved the labelled targets) **must**
   only choose between keeping the labels drawn and collecting them again: only `false` keeps
   them, and any other answer, none within 2 s, or an error collects them again through the
   checks above. Keeping them gives a page nothing it lacks already: it can move its elements
-  under the labels at any time.
+  under the labels at any time. The question, always sent to the top frame, tells it the
+  wheel's point, its deltas and whether shift, ctrl, alt or meta was down. For a wheel over the
+  top document its own `wheel` event carries these already; for one over a cross-origin
+  subframe the top frame's process learns a scroll direction and those keys' state, which
+  only a compromised content process could read. Whether the page cancelled the wheel, read
+  in the system group, likewise only chooses between the two outcomes (issue #1375).
   [`a_wheel_the_page_takes_keeps_the_labels_and_the_keys_typed`](../../tests/browser/browser_vimma_hints_scroll.js)
 - U7. Text pasted on the command line **must** be read in bounded time: a megabyte never
   freezes the window.

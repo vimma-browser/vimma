@@ -149,6 +149,32 @@ interface XPCOMClasses {
   readonly [contract: string]: any;
   // Firefox's own about:home module, which the start page stands in for.
   "@mozilla.org/network/protocol/about;1?what=home": nsIJSCID;
+  "@mozilla.org/network/protocol;1?name=resource": nsIJSCID;
+  "@mozilla.org/libjar/zip-reader;1": nsIJSCID;
+}
+// Where a resource: URL's file is, without loading it (browser_vimma_mozilla_services.js):
+// engine/netwerk/protocol/res/nsIResProtocolHandler.idl (via nsISubstitutingProtocolHandler),
+// engine/netwerk/base/nsIFileURL.idl, engine/modules/libjar/nsIJARURI.idl and nsIZipReader.idl.
+interface XPCOMInterfaces {
+  nsIResProtocolHandler: nsIJSIID<nsIResProtocolHandler>;
+  nsIFileURL: nsIJSIID<nsIFileURL>;
+  nsIJARURI: nsIJSIID<nsIJARURI>;
+  nsIZipReader: nsIJSIID<nsIZipReader>;
+}
+interface nsIResProtocolHandler extends nsISupports {
+  resolveURI(uri: nsIURI): string;
+}
+interface nsIFileURL extends nsIURI {
+  readonly file: nsIFile;
+}
+interface nsIJARURI extends nsIURI {
+  readonly JARFile: nsIURI;
+  readonly JAREntry: string;
+}
+interface nsIZipReader extends nsISupports {
+  open(file: nsIFile): void;
+  hasEntry(entry: string): boolean;
+  close(): void;
 }
 // The members of the product's XPCOM interfaces that only the tests use (the IDL files are named
 // in types/firefox.d.ts). An update check's result has the updates it found; runAsync calls
@@ -526,15 +552,6 @@ interface Window {
 interface WindowGlobalChild {
   getActor(name: string): JSWindowActorChild;
 }
-// engine/dom/chrome-webidl/BrowsingContext.webidl: shown, or kept rendering (the tests set it).
-interface BrowsingContext {
-  isActive: boolean;
-}
-// engine/docshell/base/nsIDocShell.idl: the element the docshell's events go up to, null for a
-// top-level window's.
-interface nsIDocShell {
-  readonly chromeEventHandler: EventTarget | null;
-}
 
 // engine/dom/webidl/Document.webidl (chrome-only): a XUL element, as chrome code makes one.
 interface Document {
@@ -601,7 +618,7 @@ interface MozNotificationBox {
   /** Resolves with the <notification-message> it shows. */
   appendNotification(
     type: string,
-    notification: { label: string; priority: number },
+    notification: { label: string; priority: number; eventCallback?: (event: string) => void },
     buttons?: NotificationButton[],
     disableClickJackingDelay?: boolean,
     dismissable?: boolean,
@@ -861,6 +878,8 @@ interface OverflowableToolbarElement extends XULElement {
 // closing this one selects again; null without one, or once the owner is closing.
 interface MozTabbrowserTab {
   owner: MozTabbrowserTab | null;
+  /** Sets `lastAccessed`, now when no time is given (tab.mjs). */
+  updateLastAccessed(aDate?: number): void;
 }
 
 // The pdf.js viewer's own objects, which a test reads past the Xray wrapper
@@ -1144,14 +1163,15 @@ interface nsIHttpServer {
 }
 
 // engine/dom/chrome-webidl/InspectorUtils.webidl: a node's children, with its anonymous content
-// (a password field's reveal button) when `showingAnonymousContent` is true.
-declare var InspectorUtils: {
+// (a password field's reveal button) when `showingAnonymousContent` is true. The pseudo-class
+// locks are in types/firefox.d.ts, which the product uses.
+interface InspectorUtilsNamespace {
   getChildrenForNode(
     node: Node,
     showingAnonymousContent: boolean,
     includeAssignedNodes: boolean,
   ): Node[];
-};
+}
 
 // engine/toolkit/content/globalOverlay.js, loaded in the browser window: runs `command` on the
 // focused element's controller, if it has one that is enabled.

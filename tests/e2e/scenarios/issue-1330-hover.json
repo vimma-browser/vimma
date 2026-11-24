@@ -1,0 +1,93 @@
+{
+  "name": "issue-1330-hover",
+  "issue": 1330,
+  "description": "Spec hover, e2e: gh labels what can be hovered on fixture:hover.html (hover-hints); the label of the first channel row's text hovers it, so the row's CSS :hover rule shows its Settings button and the status bar says 'hover \u00b7 # general' (hover). f then labels the revealed button and clicking it keeps the hover; Esc releases it and the row gets its mouseleave. The page's title says each step.",
+  "timeoutSeconds": 60,
+  "steps": [
+    {
+      "wait-for-state": {
+        "workspace": "main"
+      },
+      "timeoutSeconds": 20
+    },
+    {
+      "open": "fixture:hover.html"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "title": "hover",
+            "selected": true
+          }
+        ]
+      }
+    },
+    {
+      "keys": "g h"
+    },
+    {
+      "wait-for-state": {
+        "mode": "hint"
+      }
+    },
+    {
+      "screenshot": "hover-hints"
+    },
+    {
+      "keys": "d"
+    },
+    {
+      "wait-for-state": {
+        "mode": "normal",
+        "tabs": [
+          {},
+          {
+            "title": "hovered general",
+            "selected": true
+          }
+        ]
+      }
+    },
+    {
+      "screenshot": "hover"
+    },
+    {
+      "keys": "f"
+    },
+    {
+      "wait-for-state": {
+        "mode": "hint"
+      }
+    },
+    {
+      "keys": "s"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "title": "clicked general settings",
+            "selected": true
+          }
+        ]
+      }
+    },
+    {
+      "keys": "esc"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "title": "left general",
+            "selected": true
+          }
+        ]
+      }
+    }
+  ]
+}

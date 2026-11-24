@@ -17,5 +17,5 @@ background = "navy"
 [unbind]
 insrt = ["j"]
 
-[sidebar]
-width = 30
+[scrol]
+step = 30

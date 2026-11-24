@@ -1,6 +1,6 @@
 # Spec: bookmarks-file
 
-Status: accepted, Delivery slices 1 to 4 implemented · Area: `packages/vimma-core/src/` (new `config/bookmarks-file.mjs`: parse, validate,
+Status: implemented · Area: `packages/vimma-core/src/` (new `config/bookmarks-file.mjs`: parse, validate,
 model, three-way diff and line edits of `bookmarks.toml`; new `config/bookmarks-export.mjs`: the export; `config/config.mjs` for
 `[bookmarks] write_back` and the inline tables; `config/defaults.mjs` for the template line;
 `ui/bookmarks.mjs` for the panel's write path); `src/browser/base/content/vimma/` (new
@@ -710,6 +710,8 @@ Slice 1 landed with these departures from the text above, each for the reason gi
 - **Feature pref.** The feature sits behind `vimma.feature.bookmarksFile`, off by default,
   because it lands over four pull requests (CONTRIBUTING.md, "Unfinished features"); while it
   is off nothing reads either file. The slice that finishes the feature removes the pref.
+  (Since changed: the pref is removed and the feature is on by default, once the four slices
+  and the review fixes after them had landed.)
 - **`:bookmarks forget` in slice 1.** Without it a missing file's pause (D9) has no way out
   but restoring the file, and the keys refuse in those folders until then; so it ships with
   the pause, and `Tab` completes it while the feature is on. The base keeps the hash of the
@@ -849,10 +851,16 @@ Slice 3 landed with these departures and particulars, each for the reason given:
   is written as `(untitled)`. A slice-1 bug this exposed is fixed with it: a folder holding a kept
   bookmarklet could not be claimed by its own line, so the run made a second folder of its name.
 - **Private windows (Behaviour 12).** A Places event names no window, so a change counts as a
-  private window's when the most recent browser window is private at the time (also a Library
-  opened from it). Under "all" its additions stay in Places only, remembered in the base's
-  `local` list across restarts, and its changes are put back; removals are written, because they
-  add nothing to the file.
+  private window's when the most recent browser window is private at the time (also a Library opened
+  from it). Under "all" its additions stay in Places only, remembered in the base's `local` list
+  across restarts, and its changes are put back; removals are written, because they add nothing to
+  the file. (Since changed: the window is the focused one, followed up its openers to a browser
+  window, the Library counting as the window that last opened or raised it, because the most recent
+  browser window counted a Library edit from a normal window as private whenever a private window
+  had been used last; with no browser window found it falls back to the most recent one. A later
+  change to the bookmark itself from a normal window (title, URL or folder, not a sort) takes it off
+  `local` and writes it, so an addition is not kept out of the file for good; a private folder stays
+  local with its contents.)
 - **The removal question.** `n`, `Esc` or no answer to Behaviour 13's question puts the
   removed bookmarks back from the file and still writes the rest of the change (additions,
   renames, moves), where the file direction's question pauses instead: a paused merge would ask

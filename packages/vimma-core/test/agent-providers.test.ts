@@ -574,6 +574,22 @@ describe("edge shapes", () => {
       expect(fromLocal.estimated).toBe(true);
     },
   );
+
+  test("a count of 0 is a count, and an output count of null is a missing one, so 0", () => {
+    const none = { input: 0, output: 0, estimated: false };
+    expect(localUsage('{"prompt_tokens":0,"completion_tokens":0}').usage).toEqual(none);
+    expect(anthropicUsage('{"input_tokens":0,"output_tokens":0}').usage).toEqual(none);
+    expect(localUsage('{"prompt_tokens":4,"completion_tokens":null}').usage).toEqual({
+      input: 4,
+      output: 0,
+      estimated: false,
+    });
+    expect(anthropicUsage('{"input_tokens":4,"output_tokens":null}').usage).toEqual({
+      input: 4,
+      output: 0,
+      estimated: false,
+    });
+  });
 });
 
 // Issue #1119: what the weekly mutation run left unpinned.
@@ -689,6 +705,14 @@ describe("edges the mutation run found", () => {
       "",
     );
     expect(reply.message.toolCalls.map((c) => c.id)).toEqual(["call_1", "call_2"]);
+  });
+
+  test("a maxOutput of 0 sends an OpenAI-compatible server no max_tokens", () => {
+    const req = buildRequest(
+      { ...local, maxOutput: 0 },
+      { key: "", system: "S", tools: [], messages: [] },
+    );
+    expect(JSON.parse(req.body)).not.toHaveProperty("max_tokens");
   });
 
   test("an error of exactly ERROR_CHARS characters is not cut", () => {

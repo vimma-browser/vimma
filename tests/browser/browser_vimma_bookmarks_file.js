@@ -213,7 +213,6 @@ add_task(async function setup() {
       ["vimma.config.pollMs", 100],
       ["vimma.bookmarks.settleMs", 50],
       ["vimma.bookmarks.burstMs", 200],
-      ["vimma.feature.bookmarksFile", true],
     ],
   });
   registerCleanupFunction(async () => {
@@ -477,15 +476,12 @@ add_task(async function a_missing_config_toml_holding_the_inline_tables_pauses()
   await reset();
 });
 
-add_task(async function with_the_feature_pref_off_nothing_is_read_or_refused() {
-  await SpecialPowers.pushPrefEnv({ set: [["vimma.feature.bookmarksFile", false]] });
-  await writeFile('[bookmarks.off]\n"a" = "https://example.com/a"');
-  await new Promise((r) => setTimeout(r, 800));
-  await mirror.settledRuns();
-  Assert.equal(await topFolder("off"), null, "bookmarks.toml is not read");
-  Assert.deepEqual(mirror.words(), [], ":bookmarks completes to nothing");
-  await SpecialPowers.popPrefEnv();
-  await untilFolder("off", ["a https://example.com/a"], "turned on, it is read");
+add_task(async function bookmarks_toml_is_read_with_no_pref_set() {
+  // On by default: the feature pref that kept it off while it was built is gone.
+  Assert.ok(!Services.prefs.prefHasDefaultValue("vimma.feature.bookmarksFile"), "no such pref");
+  await writeFile('[bookmarks.on]\n"a" = "https://example.com/a"');
+  await untilFolder("on", ["a https://example.com/a"], "bookmarks.toml is read");
+  Assert.deepEqual(mirror.words(), ["export", "export!", "forget"], ":bookmarks completes");
   await reset();
 });
 
@@ -699,7 +695,6 @@ add_task(async function a_library_change_during_an_apply_is_handled_by_the_closi
   const race = new BookmarksFileImpl({
     configPath: () => PathUtils.join(own, "config.toml"),
     basePath: base,
-    enabled: () => true,
     initComplete: () => Promise.resolve(),
     say: () => {},
     mirrored: () => {},
@@ -763,7 +758,6 @@ add_task(
     const boot = new BookmarksFileImpl({
       configPath: () => PathUtils.join(own, "config.toml"),
       basePath: base,
-      enabled: () => true,
       initComplete: () => new Promise((r) => (done = () => r(undefined))),
       say: () => {},
       ask: (/** @type {BrowserWindow | null} */ _win, /** @type {string} */ q) => {
@@ -1113,7 +1107,6 @@ add_task(async function bookmarks_forget_lasts_across_a_restart_until_the_file_c
     new BookmarksFileImpl({
       configPath: () => PathUtils.join(own, "config.toml"),
       basePath: base,
-      enabled: () => true,
       initComplete: () => Promise.resolve(),
       say: () => {},
       ask: (/** @type {BrowserWindow | null} */ _win, /** @type {string} */ q) => {

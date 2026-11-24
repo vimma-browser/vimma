@@ -48,6 +48,41 @@ Contract fixtures: `tests/contract/config/v1/` and `tests/contract/theme/`, run 
 
 ## Schema v1
 
+Since changed (#1474): an unknown key with no close match is a warning, `unknown key "<key>";
+skipped`, and only that key is left out; the rest of the file applies. The #1379 note above says
+an older Vimma names a newer key as an unknown key; it also refused the whole file for it, so a
+file shared between machines or synced dotfiles kept an older build on its previous config or the
+defaults for one new line. A key that has a close match among the keys of its table stays an
+error with the suggestion, because it is far more likely a typo than a key from a newer build.
+Three more cases stay errors: a top-level table's name under another table (a misplaced line,
+#1270); any unknown key in `[updates]`, and a boolean `check` in any other table, because the
+file may mean an opt-out of update checks and so fails closed (m6a-updater decision 31); and the
+program, command and secret keys of an agent CLI provider (M60), with any credential-looking name
+in `[agent]`, a provider or `[mcp]`, which keeps pointing a secret to login storage. Type errors
+and bad values stay errors. The rule covers the settings tables that `validate` checks; an unknown
+action in `[keys]` (compileKeymap), an unknown mode in `[unbind]`, an unknown colour in
+`[theme.colors]` (resolveTheme) and an unknown key in a `[[routes]]` rule (routes.mjs) are still
+errors, as each names something this build cannot act on. `rawUpdatesCheck` follows the same
+line: only a top-level table that is a near miss of one may be a misspelt `[updates]`. The writers (`:route add`, the setup's steps, the built-in agent's setup,
+`:siteunbind --save`) refuse only a file with errors, so a file with a skipped key is written to
+like any other. Tests: `config-unknown-keys.test.ts`.
+
+Since changed (#1474 follow-up): an unknown action with no close match, as the name of a `[keys]`
+binding or the value of a `[modal.<mode>]` binding, is a warning, `unknown action "<name>";
+skipped`, and only that binding is left out; the rest of the keymap and of the file applies. The
+note above kept it an error, but a binding to an action a newer Vimma added is the line a shared
+config most likely gains, and it is no more harmful to skip than a newer setting: this build
+could not run that action either way. The rule follows the one for keys. A near miss of a real
+action (`new_tabb`) stays an error with the suggestion, because it is far more likely a typo, and
+a removed action stays an error that says why it went. Malformed key notation for a known action
+stays an error, as a bad value does: the binding's name is known, so the text is a mistake to fix
+rather than a line from a newer build (a binding to an unknown action is skipped whatever its
+keys, since none of it applies), and refusing the file keeps the previous keymap instead of dropping a key the
+user meant to have. In `[keys]`, a boolean `check` and a top-level table's name with a table
+value keep the errors the note above gives them (an update opt-out fails closed; a misplaced
+line, #1270). Since `validate` removes the skipped binding from the file's tables, the keymap's
+source never holds it, and a site unbind that compiles the keymap again does not trip on it.
+
 Schema 2 (identity migration, adds `[panes]`, `[sites."<host>"]` and `[modal] hint_chars`) is
 specified in [m3-m4-core-prep](m3-m4-core-prep.md).
 

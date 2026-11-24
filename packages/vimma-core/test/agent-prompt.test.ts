@@ -393,6 +393,34 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
     expect(text(questionLine(long, { grantMinutes: 10 }))).toMatch(/ sg button "x{59}…"$/);
   });
 
+  // docs/specs/hover.md decision 9: a hover asks as a click does, with the element, and its
+  // notice says it hovered; a grant covers it.
+  test("vimma_hover: the element in the question, what it hovered in the notice", () => {
+    const hover = {
+      tool: "vimma_hover",
+      label: { client: "claude-code" },
+      what: {
+        tab: "7",
+        index: 2,
+        title: "Channels · Example",
+        url: "https://example.com/channels",
+        label: "sg",
+        kind: "hover",
+        text: "general",
+      },
+    };
+    expect(text(questionLine(hover, { grantMinutes: 10 }))).toBe(
+      '◇ claude-code wants vimma_hover: 2 "Channels · Example" example.com/channels  sg hover "general"',
+    );
+    expect(noGrant(hover)).toBe(false);
+    expect(ranNotice(hover, 12 * MIN, 0)).toBe(
+      'claude-code hovered hover "general" in "Channels · Example" (grant, 12m left)',
+    );
+    expect(agentAlertText(hover)).toBe(
+      "claude-code asks to use Vimma's agent workspace (hover over an element of a page)",
+    );
+  });
+
   // Issue #584: a step that also returns the page's element list says so in its question and
   // its notice, since a yes to it is a yes to vimma_elements on the page it leaves.
   test("a step that returns the element list says so in the question and the notice", () => {
@@ -1600,6 +1628,18 @@ describe("every chosen text is its own bidi run (mutation-tested)", () => {
     expect(text(questionLine(form, { grantMinutes: 10 }))).toBe(
       '▲ example-agent wants to send a form: "Shop" → POST a.example (2 fields)',
     );
+  });
+
+  test("a bookmarklet's folder path is its own bidi run in the question (security.md M4)", () => {
+    const run = {
+      tool: "vimma_bookmarklet",
+      label,
+      what: { title: "T", url: "https://a.example/", bookmarklet: "Tools/Dark" },
+    };
+    expect(questionLine(run, { grantMinutes: 10 }).parts).toContainEqual({
+      text: "Tools/Dark",
+      isolate: "auto",
+    });
   });
 
   test("a step that followed no link is named as itself; :control on needs on first", () => {

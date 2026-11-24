@@ -70,7 +70,7 @@ _Pages_ and _extensions_ cannot reach it.
   `:update`, an attempt that got no answer is **never** repeated within 10 minutes, so restarts
   send no burst of requests.
   [`off_by_pref_or_config_sends_nothing`](../../tests/browser/browser_vimma_update_check.js),
-  [`updates_step_says_what_the_check_sends`](../../tests/browser/browser_vimma_setup_v2.js),
+  [`updates_step_says_what_the_check_sends`](../../tests/browser/browser_vimma_setup_v2_privacy.js),
   [`nothing_at_all_with_checks_off`](../../tests/browser/browser_vimma_update_notices.js),
   [`checks off or a source build: never due`](../../packages/vimma-core/test/update-notices.test.ts),
   [`a failed attempt does not count as a check, but is not retried within 10 minutes`](../../packages/vimma-core/test/update-notices.test.ts),
@@ -445,6 +445,11 @@ _Pages_ and _extensions_ cannot reach it.
   `updater` carries Vimma's certificates and none of Mozilla's): `release.yml`'s `package` job
   on the release tarball, and `nightly.yml` on its tarball once it is set to the
   `vimma-nightly` channel (UP14). Firefox's check runs Vimma's verifier first (UP13).
+  `update-rehearsal.yml` checks the published chain once a day: the previous release's
+  tarball, from its GitHub Release, must stage the MAR the served manifest offers (its shipped
+  `updater` checks the signature) and run it after a restart; it holds no secret, runs only while
+  `UPDATES_ENABLED` is true, fails when no manifest is served, and runs the downloaded release
+  in a step without the job token.
   **⚠ limit:** Artifact builds (ADR-010) run Mozilla's prebuilt updater, which trusts only
   Mozilla's keys, and keep `aus5.mozilla.org`; they are never shipped.
   [`is not built without VIMMA_UPDATES (source and dev builds)`](../../tools/test/mozconfig-updater.test.ts),
@@ -465,7 +470,12 @@ _Pages_ and _extensions_ cannot reach it.
   [`CLI: request, then assemble with a KMS signature, refusing a key other than the pinned primary`](../../tools/update/test/update-cert.test.ts),
   [`package checks the release tarball's updater, whether or not updates are on`](../../tools/update/test/pipeline-workflows.test.ts),
   [`packages for the nightly channel and checks the updater before the upload`](../../tools/update/test/pipeline-workflows.test.ts),
-  [`rewrites both channel files, and nothing else in them`](../../tools/update/test/channel.test.ts)
+  [`rewrites both channel files, and nothing else in them`](../../tools/update/test/channel.test.ts),
+  [`fails on a manifest no pinned key signed, as the browser would refuse it`](../../tools/update/test/rehearsal.test.ts),
+  [`names each part that did not stage`](../../tools/update/test/rehearsal.test.ts),
+  [`runs only in this repository and only while UPDATES_ENABLED is true`](../../tools/update/test/rehearsal-workflow.test.ts),
+  [`fails when the host serves no manifest although releases are published`](../../tools/update/test/rehearsal.test.ts),
+  [`runs the downloaded browser in a step without the job token`](../../tools/update/test/rehearsal-workflow.test.ts)
 
 - UP13. Firefox's update check **never** hands Firefox's update parser (`#parseUpdates`) or its
   choice of an update a manifest that Vimma's rules (UP1, UP2) have not accepted:

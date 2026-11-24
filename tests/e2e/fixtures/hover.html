@@ -1,0 +1,91 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- issue-1330-hover (docs/specs/hover.md): a channel list whose settings buttons a CSS :hover
+     rule shows only on the hovered row, as chat apps draw them, and a navigation bar whose
+     sub-menu opens on mouseenter. The title says what happened, so a scenario can wait on it:
+     "hovered <row>" on a row's mouseover, "clicked <button>" on a click, "left <row>" when the
+     pointer leaves the row. The page is tall enough to scroll with the hover held. -->
+<meta charset="utf-8" />
+<title>hover</title>
+<style>
+  body {
+    margin: 24px 48px;
+    font: 16px/1.5 sans-serif;
+    color: #222;
+    background: #fafafa;
+  }
+  nav {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+  .menu {
+    position: relative;
+  }
+  .menu ul {
+    display: none;
+    position: absolute;
+    margin: 0;
+    padding: 4px 0;
+    list-style: none;
+    background: #fff;
+    border: 1px solid #bbb;
+    min-width: 140px;
+  }
+  .menu ul a {
+    display: block;
+    padding: 2px 12px;
+  }
+  .channels {
+    width: 320px;
+    border: 1px solid #ccc;
+    background: #fff;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+  }
+  .row:hover {
+    background: #e8eefc;
+  }
+  .row button {
+    visibility: hidden;
+  }
+  .row:hover button {
+    visibility: visible;
+  }
+</style>
+<nav>
+  <div class="menu" id="products">
+    <span>Products</span>
+    <ul>
+      <li><a href="#browser">Browser</a></li>
+      <li><a href="#docs">Docs</a></li>
+    </ul>
+  </div>
+  <a href="#about">About</a>
+</nav>
+<div class="channels">
+  <div class="row" id="general"><span># general</span><button>Settings</button></div>
+  <div class="row" id="random"><span># random</span><button>Settings</button></div>
+  <div class="row" id="help"><span># help</span><button>Settings</button></div>
+</div>
+<p>Below the channels, room to scroll.</p>
+<div style="height: 2000px"></div>
+<script>
+  for (const row of document.querySelectorAll(".row")) {
+    const name = row.id;
+    row.addEventListener("mouseenter", () => (document.title = `hovered ${name}`));
+    row.addEventListener("mouseleave", () => (document.title = `left ${name}`));
+    row.querySelector("button").addEventListener("click", () => {
+      document.title = `clicked ${name} settings`;
+    });
+  }
+  const menu = document.getElementById("products");
+  menu.addEventListener("mouseenter", () => (menu.querySelector("ul").style.display = "block"));
+  menu.addEventListener("mouseleave", () => (menu.querySelector("ul").style.display = "none"));
+</script>
