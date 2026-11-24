@@ -10,7 +10,7 @@
 
 import { SLEEP_CHECK_MS, planSleep } from "../core/tabsleep.mjs";
 
-/** @import { AwakeReason, SleepMode, SleepTab } from "../core/tabsleep.mjs" */
+/** @import { SleepMode, SleepOutcome, SleepTab } from "../core/tabsleep.mjs" */
 
 /** @typedef {"PrivateBrowsingUtils" | "webrtcUI" | "setInterval" | "clearInterval"} LazyName */
 const lazy = /** @type {Lazy<LazyName>} */ ({});
@@ -202,15 +202,17 @@ function sharing(tab) {
  * the latest scroll and form data, then unforced, so a page that would ask before leaving, or
  * has a dialog open, stays (decisions 1 and 10). Checked again after the flush, which yields:
  * the user may have selected the tab or shown its split meanwhile, or an agent connected and
- * been given the tab's id (decision 8). Resolves to null once asleep, else why it stayed.
+ * been given the tab's id (decision 8), or it closed, or something else (the check, Firefox's
+ * unloader) put it to sleep. Resolves to null once asleep, else what became of it.
  * @param {BrowserWindow} win
  * @param {Tab} tab
  * @param {TabSleepDeps} d
- * @returns {Promise<AwakeReason | null>}
+ * @returns {Promise<SleepOutcome>}
  */
 async function discard(win, tab, d) {
   await win.gBrowser.prepareDiscardBrowser(tab);
-  if (win.closed || tab.closing) return "unload";
+  if (win.closed || tab.closing || !tab.parentNode) return "closed";
+  if (tabAsleep(tab)) return "asleep";
   if (tab.selected || shownTabs(d, win).includes(tab)) return "onScreen";
   if (d.mcp.agentConnected && isAgentTab(d, tab)) return "agent";
   return win.gBrowser.discardBrowser(tab, false) ? null : "unload";
@@ -343,15 +345,18 @@ export const TabSleep = {
    * `:sleep` and its forms, and the side panel's `z` (docs/specs/tab-sleep.md Behaviour 9-12):
    * `tabs` put to sleep at once under the check's rules without its time limit, "named" also
    * without the pin and site rules (decision 14). Resolves to each tab's outcome, in order:
-   * null once put to sleep, "asleep" when it had no loaded page already, else why it stayed.
+   * null once put to sleep, "asleep" when it had no loaded page already, "closed" when it closed
+   * meanwhile, else why it stayed.
    * The flushes run together, so that `:sleep all` over many tabs takes about one flush.
    * @param {readonly { win: BrowserWindow, tab: Tab }[]} tabs  each with the window it is in
    * @param {Exclude<SleepMode, "time">} mode
-   * @returns {Promise<(AwakeReason | "asleep" | null)[]>}
+   * @returns {Promise<SleepOutcome[]>}
    */
   async sleepTabs(tabs, mode) {
     const d = deps;
-    if (!d) return tabs.map(() => /** @type {const} */ ("unload"));
+    // vimma.js starts TabSleep before any window's keys run; without it nothing knows the panes
+    // on screen or the agent, so nothing is put to sleep.
+    if (!d) throw new Error("TabSleep has not started");
     const now = Date.now();
     /** @type {Map<BrowserWindow, { isPrivate: boolean, shown: Set<Tab> }>} */
     const windows = new Map();
@@ -374,7 +379,7 @@ export const TabSleep = {
       agentConnected: d.mcp.agentConnected,
       mode,
     });
-    /** @type {(AwakeReason | "asleep" | null)[]} */
+    /** @type {SleepOutcome[]} */
     const out = facts.map((f) => (f.asleep ? "asleep" : null));
     for (const k of plan.keep) out[Number(k.id)] = k.reason;
     await Promise.all(

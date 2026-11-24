@@ -18,6 +18,12 @@ const { VimmaHost } = ChromeUtils.importESModule(
 const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
+const { TabSleep } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/services/TabSleep.sys.mjs",
+);
+const { PaneViews } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/split/PaneView.mjs",
+);
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
 );
@@ -246,6 +252,53 @@ add_task(async function panel_sleep_sleeps_the_highlighted_or_the_marked_tabs() 
   Assert.ok(!asleep(shown), "the marked tab on screen stays");
   Assert.deepEqual(panel.state?.marked, [], "the marks are spent");
   panel.close();
+  closeOpened();
+});
+
+add_task(async function sleep_keeps_the_shown_splits_panes_awake() {
+  const left = await background("pane-left");
+  await BrowserTestUtils.switchTab(gBrowser, left);
+  const right = await background("pane-right");
+  const other = await background("pane-other");
+  const panel = /** @type {HostState} */ (VimmaHost._state(window)).panel;
+  Assert.ok(panel.open(), "the side panel opens");
+  await until(() => VimmaHost.status(window).mode === "panel", "panel mode");
+  const rows = () => panel.state?.rows ?? [];
+  for (const t of [left, right]) {
+    const at = rows().findIndex((r) => r.display === t.label);
+    EventUtils.synthesizeKey("g");
+    EventUtils.synthesizeKey("g");
+    if (at > 0) EventUtils.synthesizeKey(`${at}`);
+    if (at > 0) EventUtils.synthesizeKey("j");
+    await until(() => panel.state?.selected === at, `the highlight on ${t.label}`);
+    EventUtils.synthesizeKey(" ");
+  }
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(
+    () => PaneViews.get(window)?.shownTabs.length === 2,
+    "the two marked tabs are the split on screen",
+  );
+  await run("sleep", `1 tab asleep; ${gBrowser.visibleTabs.length - 1} stay awake: on screen`);
+  Assert.ok(!asleep(left) && !asleep(right), "both panes stay loaded");
+  Assert.ok(asleep(other), "the tab off screen sleeps");
+  closeOpened();
+  await until(() => !PaneViews.get(window)?.shownTabs.length, "the split is gone");
+});
+
+// tab-sleep decision 24: a tab that closes, or that something else puts to sleep, while its
+// session state is flushed is not said to stay awake for its page.
+add_task(async function a_tab_closed_or_put_to_sleep_during_the_flush_is_not_blamed_on_its_page() {
+  const shown = await background("flush-shown");
+  await BrowserTestUtils.switchTab(gBrowser, shown);
+  const gone = await background("flush-gone");
+  const closing = TabSleep.sleepTabs([{ win: window, tab: gone }], "named");
+  gBrowser.removeTab(gone);
+  Assert.deepEqual(await closing, ["closed"], "a tab closed meanwhile is closed");
+
+  const other = await background("flush-other");
+  const racing = TabSleep.sleepTabs([{ win: window, tab: other }], "named");
+  Assert.ok(gBrowser.discardBrowser(other, true), "something else unloads it meanwhile");
+  Assert.deepEqual(await racing, ["asleep"], "a tab unloaded meanwhile is asleep");
   closeOpened();
 });
 

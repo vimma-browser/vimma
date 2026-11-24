@@ -204,10 +204,22 @@ export function refreshPanel(state, model, info, options = {}) {
   if (!same) return next;
   const listed = new Set(next.rows.map((r) => r.tabId));
   // A row's id is its browser's panel, which a discard takes away (docs/specs/tab-sleep.md
-  // decision 23): the highlighted tab gone with as many rows as before is that row under a new
-  // id, so the highlight stays on it rather than going back to the active tab.
+  // decision 23): the highlighted tab gone, and in its place a row new to the list, asleep now,
+  // awake before and with the same name, is that tab under its new id, so the highlight stays
+  // on it rather than going back to the active tab.
+  const was = state.rows[state.selected];
+  const now = next.rows[state.selected];
+  const before = new Set(state.rows.map((r) => r.tabId));
   const renamed =
-    selectedId !== null && !listed.has(selectedId) && next.rows.length === state.rows.length;
+    selectedId !== null &&
+    !listed.has(selectedId) &&
+    next.rows.length === state.rows.length &&
+    !!was &&
+    !!now &&
+    !before.has(now.tabId) &&
+    now.asleep &&
+    !was.asleep &&
+    now.display === was.display;
   return Object.freeze({
     ...next,
     ...(renamed ? { selected: state.selected } : {}),

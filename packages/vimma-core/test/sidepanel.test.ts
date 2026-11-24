@@ -397,8 +397,25 @@ describe("refreshPanel", () => {
         w.id === "w2" ? { ...w, tabs: ["t2", "t3", "t4b"] } : w,
       ),
     };
-    const next = refreshPanel(s, slept, (id) => info(id === "t4b" ? "t4" : id));
+    const asleep = (id: string) => (id === "t4b" ? { ...tabs.t4, asleep: true } : info(id));
+    const next = refreshPanel(s, slept, asleep);
     expect(next.rows[next.selected]?.tabId).toBe("t4b");
+  });
+
+  test("Given the highlighted tab closed as another opened, then the highlight goes to the active tab", () => {
+    const s = press(openPanel(model, info), [{ id: "panel.down" }]).state;
+    expect(s.rows[s.selected]?.tabId).toBe("t4");
+    const swapped = {
+      ...model,
+      workspaces: model.workspaces.map((w) =>
+        w.id === "w2" ? { ...w, tabs: ["t3", "t2", "t5"] } : w,
+      ),
+    };
+    // Even asleep (a tab restored lazily), the new row is another tab: its name differs.
+    const next = refreshPanel(s, swapped, (id) =>
+      id === "t5" ? { ...tabs.t1, asleep: true } : info(id),
+    );
+    expect(next.rows[next.selected]?.tabId).toBe("t3");
   });
 
   test("Given the highlighted tab closed, then the highlight goes to the active tab, as before", () => {

@@ -158,10 +158,16 @@ export function sleepReport({ slept, keep }) {
 }
 
 /**
+ * What happened to one tab put to sleep by hand: null once asleep, "asleep" when it had no
+ * loaded page already (a restart's lazy tab, or the timed check's during the flush), "closed"
+ * when it closed meanwhile, else why it stayed awake.
+ * @typedef {AwakeReason | "asleep" | "closed" | null} SleepOutcome
+ */
+
+/**
  * What `:sleep N`, or `z` in the side panel, says (Behaviour 11): one tab by its number, or
- * several as `:sleep` reports them, leaving out the tabs that were asleep already.
- * @param {readonly { number: number, reason: AwakeReason | "asleep" | null }[]} named
- *   `reason` null: put to sleep
+ * several as `:sleep` reports them, leaving out the tabs that were asleep already or closed.
+ * @param {readonly { number: number, reason: SleepOutcome }[]} named
  */
 export function namedSleepText(named) {
   const [only] = named;
@@ -169,16 +175,27 @@ export function namedSleepText(named) {
     const n = only.number;
     if (only.reason === null) return `Tab ${n} asleep`;
     if (only.reason === "asleep") return `Tab ${n} is asleep already`;
+    if (only.reason === "closed") return `Tab ${n} closed`;
     if (only.reason === "onScreen") return `Tab ${n} is on screen`;
     const why = REASON_TEXT[only.reason];
     return `Tab ${n} stays awake: ${OWN_SENTENCE.has(only.reason) ? why : `it is ${why}`}`;
   }
+  return sleepReport(outcomeReport(named.map((t) => t.reason)));
+}
+
+/**
+ * The counts `sleepReport` takes from tabs' outcomes: the tabs asleep already and the tabs
+ * closed meanwhile are in neither.
+ * @param {readonly SleepOutcome[]} outcomes
+ * @returns {{ slept: number, keep: AwakeReason[] }}
+ */
+export function outcomeReport(outcomes) {
   /** @type {AwakeReason[]} */
   const keep = [];
   let slept = 0;
-  for (const { reason } of named) {
-    if (reason === null) slept++;
-    else if (reason !== "asleep") keep.push(reason);
+  for (const o of outcomes) {
+    if (o === null) slept++;
+    else if (o !== "asleep" && o !== "closed") keep.push(o);
   }
-  return sleepReport({ slept, keep });
+  return { slept, keep };
 }

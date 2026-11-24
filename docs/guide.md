@@ -4567,7 +4567,8 @@ sound or sharing a camera, the agent workspace's tabs while an agent is connecte
 would ask before you leave it (`Tab 4 stays awake: it would ask before leaving`). In a private
 window they say `Private tabs do not sleep`. The action is `sleep_tabs`, with no key of its own:
 bind one in `[keys]` of `config.toml`, and change `z` under `[modal.panel]`, as every key, the
-prefix and the leader can be remapped.
+prefix and the leader can be remapped. A key bound to `sleep_tabs` takes a count as `{N}gt`
+does: `3` and the key is `:sleep 3`.
 
 ## Add-ons
 

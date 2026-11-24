@@ -7,12 +7,17 @@
 // and words the outcome for the notice.
 
 import { noTabText } from "../core/cmdline.mjs";
-import { PRIVATE_SLEEP_TEXT, namedSleepText, sleepReport } from "../core/tabsleep.mjs";
+import {
+  PRIVATE_SLEEP_TEXT,
+  namedSleepText,
+  outcomeReport,
+  sleepReport,
+} from "../core/tabsleep.mjs";
 import { TabSleep } from "../services/TabSleep.sys.mjs";
 import { selectableTabs } from "./tab-ops.mjs";
 
 /** @import { Action } from "../core/dispatcher.mjs" */
-/** @import { AwakeReason } from "../core/tabsleep.mjs" */
+/** @import { SleepOutcome } from "../core/tabsleep.mjs" */
 
 const lazy = /** @type {Lazy<"PrivateBrowsingUtils">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -24,17 +29,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
 /** @param {BrowserWindow} win */
 const isPrivate = (win) => lazy.PrivateBrowsingUtils.isWindowPrivate(win);
 
-/**
- * `:sleep`'s report of `outcomes`: the tabs put to sleep and why the others stayed awake, the
- * tabs that were asleep already left out.
- * @param {readonly (AwakeReason | "asleep" | null)[]} outcomes
- */
-function report(outcomes) {
-  /** @type {AwakeReason[]} */
-  const keep = [];
-  for (const o of outcomes) if (o !== null && o !== "asleep") keep.push(o);
-  return sleepReport({ slept: outcomes.filter((o) => o === null).length, keep });
-}
+/** `:sleep`'s report of `outcomes`. @param {readonly SleepOutcome[]} outcomes */
+const report = (outcomes) => sleepReport(outcomeReport(outcomes));
 
 /**
  * `tab.sleep`: this workspace's tabs, `all` (every normal window's), or tab N by the number

@@ -270,6 +270,17 @@ describe("sleep messages", () => {
     expect(namedSleepText([])).toBe("0 tabs asleep");
   });
 
+  test("a tab closed while it was being put to sleep is named as closed, and left out of a report", () => {
+    expect(namedSleepText([{ number: 4, reason: "closed" }])).toBe("Tab 4 closed");
+    expect(
+      namedSleepText([
+        { number: 1, reason: null },
+        { number: 2, reason: "closed" },
+        { number: 3, reason: "sound" },
+      ]),
+    ).toBe("1 tab asleep; 1 stays awake: playing sound");
+  });
+
   test("a private window's :sleep says private tabs do not sleep", () => {
     expect(PRIVATE_SLEEP_TEXT).toBe("Private tabs do not sleep");
   });
