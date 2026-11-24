@@ -1093,7 +1093,9 @@ describe("bookmarks.toml: review fixes", () => {
     const p2 = plan({ tables: tablesOf(flat), places: places() });
     expect(p2.ops.length).toBe(20_001);
     expect(performance.now() - t0).toBeLessThan(budget(10_000));
-  });
+    // The budgets above decide, not the root config's 5 s timeout: under coverage in CI the three
+    // steps together took just over 5 s (issue #1496).
+  }, 60_000);
 
   test("the cap counts the folders paths make: 15,500 lines of distinct 31-folder paths are refused fast", () => {
     let text = "[bookmarks.w]\n";
