@@ -15,7 +15,9 @@ import {
 import { buildManifest, digestInfo } from "../manifest.ts";
 import {
   MANIFEST_URL,
+  FIRST_UPDATER_RELEASE,
   appliedProblems,
+  missingUpdater,
   planRehearsal,
   progress,
   publishedReleases,
@@ -153,10 +155,22 @@ describe("planRehearsal", () => {
     });
   });
 
-  it("has nothing to rehearse while the host serves no manifest", async () => {
-    expect(await plan(null)).toEqual({
+  // The job runs only while UPDATES_ENABLED is true, so a missing manifest is an outage or a
+  // broken publish that leaves every install behind, not "updates are off".
+  it("fails when the host serves no manifest although releases are published", async () => {
+    await expect(plan(null)).rejects.toThrow(
+      `${MANIFEST_URL} serves no manifest, but v0.1.22 was published 88 h ago`,
+    );
+  });
+
+  it("has nothing to rehearse without a manifest when no release is past the grace hours", async () => {
+    expect(await plan(null, [{ tag: "v0.1.1", publishedAt: "2026-11-24T06:00:00Z" }])).toEqual({
       kind: "nothing",
-      reason: `${MANIFEST_URL} serves no manifest (updates are not published yet)`,
+      reason: `${MANIFEST_URL} serves no manifest and v0.1.1 was published 2 h ago`,
+    });
+    expect(await plan(null, [])).toEqual({
+      kind: "nothing",
+      reason: `${MANIFEST_URL} serves no manifest and no release is published`,
     });
   });
 
@@ -209,6 +223,24 @@ describe("planRehearsal", () => {
     await expect(plan(served(), stale)).rejects.toThrow(
       "v0.1.23 was published 12 h ago, but the manifest still offers 0.1.22",
     );
+  });
+});
+
+describe("missingUpdater", () => {
+  it("has nothing to rehearse for a release from before Firefox's updater shipped", () => {
+    expect(FIRST_UPDATER_RELEASE).toBe("v0.1.17");
+    expect(missingUpdater("v0.1.16")).toEqual({
+      kind: "nothing",
+      reason: "v0.1.16's tarball predates Firefox's updater (first in v0.1.17)",
+    });
+  });
+
+  it("fails for a later release whose tarball lacks the updater: a regression in release.yml", () => {
+    expect(missingUpdater("v0.1.21")).toEqual({
+      kind: "failed",
+      from: "v0.1.21",
+      problem: "v0.1.21's tarball has no updater or update-settings.ini",
+    });
   });
 });
 

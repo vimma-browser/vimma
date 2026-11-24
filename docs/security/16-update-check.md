@@ -447,8 +447,9 @@ _Pages_ and _extensions_ cannot reach it.
   `vimma-nightly` channel (UP14). Firefox's check runs Vimma's verifier first (UP13).
   `update-rehearsal.yml` checks the published chain once a day: the previous release's
   tarball, from its GitHub Release, must stage the MAR the served manifest offers (its shipped
-  `updater` checks the signature) and run it after a restart; it holds no secret and passes with
-  nothing to rehearse while no manifest offers an update.
+  `updater` checks the signature) and run it after a restart; it holds no secret, runs only while
+  `UPDATES_ENABLED` is true, fails when no manifest is served, and runs the downloaded release
+  in a step without the job token.
   **⚠ limit:** Artifact builds (ADR-010) run Mozilla's prebuilt updater, which trusts only
   Mozilla's keys, and keep `aus5.mozilla.org`; they are never shipped.
   [`is not built without VIMMA_UPDATES (source and dev builds)`](../../tools/test/mozconfig-updater.test.ts),
@@ -472,7 +473,9 @@ _Pages_ and _extensions_ cannot reach it.
   [`rewrites both channel files, and nothing else in them`](../../tools/update/test/channel.test.ts),
   [`fails on a manifest no pinned key signed, as the browser would refuse it`](../../tools/update/test/rehearsal.test.ts),
   [`names each part that did not stage`](../../tools/update/test/rehearsal.test.ts),
-  [`runs only in this repository and only while UPDATES_ENABLED is true`](../../tools/update/test/rehearsal-workflow.test.ts)
+  [`runs only in this repository and only while UPDATES_ENABLED is true`](../../tools/update/test/rehearsal-workflow.test.ts),
+  [`fails when the host serves no manifest although releases are published`](../../tools/update/test/rehearsal.test.ts),
+  [`runs the downloaded browser in a step without the job token`](../../tools/update/test/rehearsal-workflow.test.ts)
 
 - UP13. Firefox's update check **never** hands Firefox's update parser (`#parseUpdates`) or its
   choice of an update a manifest that Vimma's rules (UP1, UP2) have not accepted:

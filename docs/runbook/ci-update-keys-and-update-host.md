@@ -471,22 +471,25 @@ What each result means:
 
 - **Passed**: the previous release took the offered one, with the real key, the real host and
   the GitHub downloads.
-- **Nothing to rehearse** (passes): the host serves no manifest (404), the manifest offers
-  nothing (an update pulled: spec m6a-updater,
-  decision 22), no older release exists, the older
-  release was built without Firefox's updater, or a release was published less than 6 hours ago
-  and its manifest is not served yet (`update-publish.yml` runs on the publish and takes
-  minutes).
-- **Failed**: the served manifest fails the browser's checks; it offers a version that is not a
-  published release, or one with no MAR; it still offers an older release 6 hours after a newer
-  one was published (look at that release's `update-publish.yml` run); the tarball does not
-  match its `SHA256SUMS`; the browser refuses the manifest, does not stage within 15 minutes, or
-  stages something else; or the restart does not apply it. GitHub mails a failed scheduled run
-  to whoever last changed the workflow's schedule.
+- **Nothing to rehearse** (passes): the manifest offers nothing (an update pulled: spec
+  m6a-updater, decision 22), no older release exists, the older release predates Firefox's
+  updater (before 0.1.17), or a release was published less than 6 hours ago and its manifest
+  is not served yet (`update-publish.yml` runs on the publish and takes minutes).
+- **Failed**: the host serves no manifest (404) 6 hours after a release was published; the
+  served manifest fails the browser's checks; it offers a version that is not a published
+  release, or one with no MAR; it still offers an older release 6 hours after a newer one was
+  published (look at that release's `update-publish.yml` run); the tarball does not match its
+  `SHA256SUMS`, or a release from 0.1.17 on has no `updater`; the browser refuses the manifest,
+  does not stage within 15 minutes, or stages something else; or the restart does not apply it.
+  GitHub mails a failed scheduled run to whoever last changed the workflow's schedule.
+
+The release list is read by `gh` in a step of its own (`--releases <file>`), so the step that
+runs the downloaded browser holds no token. The tarball is checked against its release's
+`SHA256SUMS` only, not against the cosign bundle that signs that file.
 
 To run it on this machine, against the real host: `node tools/update/rehearsal.ts plan --repo
 vimma-browser/vimma` prints what it would rehearse, and `node tools/update/rehearsal.ts run
---repo vimma-browser/vimma --out <new dir>` does it (Xvfb and dbus-daemon on `PATH`; it reaches
+--repo vimma-browser/vimma --out <new dir>` does it (without `--releases` it lists the releases with `gh`; Xvfb and dbus-daemon on `PATH`; it reaches
 no running Vimma and no installed profile, and kills only the processes it started). Each run
 downloads the previous release's tarball and the offered MAR once, which `downloads.yml` counts
 like any download. It covers the install side of the security rehearsal only: the chain from a

@@ -39,10 +39,21 @@ describe("update rehearsal workflow", () => {
     for (const u of uses) expect(u).toMatch(/@[0-9a-f]{40}$/);
   });
 
+  // The downloaded release runs as the job's user and could read its parent's environment.
+  it("runs the downloaded browser in a step without the job token", () => {
+    const steps = text.split(/^ {6}- /m);
+    const list = steps.find((s) => s.startsWith("name: List the releases")) ?? "";
+    const rehearse = steps.find((s) => s.startsWith("name: Rehearse the update")) ?? "";
+    expect(list).toContain("GH_TOKEN: ${{ github.token }}");
+    expect(list).toContain('gh api "repos/$REPO/releases" --paginate --slurp');
+    expect(rehearse).toContain("node tools/update/rehearsal.ts run");
+    expect(rehearse).toContain('--releases "$RUNNER_TEMP/releases.json"');
+    expect(rehearse).not.toMatch(/TOKEN|github\.token/);
+    expect(text.match(/github\.token/g)).toHaveLength(1);
+  });
+
   it("runs the rehearsal script and keeps its logs", () => {
-    expect(text).toContain(
-      'node tools/update/rehearsal.ts run --repo "$REPO" --out "$RUNNER_TEMP/rehearsal"',
-    );
+    expect(text).toContain('--out "$RUNNER_TEMP/rehearsal"');
     expect(text).toContain("path: ${{ runner.temp }}/rehearsal/logs");
   });
 });

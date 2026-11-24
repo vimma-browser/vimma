@@ -11,18 +11,20 @@
  * for 0.1.17 to 0.1.18 (docs/runbook/ci-update-keys-and-update-host.md, "Checking an update on
  * real installs"), with no person acting.
  *
- *   rehearsal.ts plan --repo owner/name
+ *   rehearsal.ts plan --repo owner/name [--releases FILE]
  *       what a run would rehearse, from the served manifest and the published releases
- *   rehearsal.ts run --repo owner/name --out DIR [--timeout-minutes N]
+ *   rehearsal.ts run --repo owner/name --out DIR [--releases FILE] [--timeout-minutes N]
  *       downloads the previous release's tarball into DIR, checks it against its SHA256SUMS,
  *       starts it under a new Xvfb with a new profile, HOME and session bus, and waits for the
  *       update; DIR/logs keeps the browser's output and the updater's log
+ *   --releases FILE: the output of `gh api repos/R/releases --paginate --slurp`, read instead of
+ *   running gh, so that the job token is not in the environment of the downloaded browser
  *
- * Both exit 0 with "nothing to rehearse" while no update is served (the host serves no manifest,
- * or a manifest that offers nothing), so the job is harmless before updates are published and
- * after an update is pulled (decision 22); anything else that keeps the install from taking the
- * offered release exits 1. It reads only public files and needs no secret: the GitHub token gh
- * uses lists the releases. Node built-ins and this repository's files only, so the job installs
+ * Both exit 0 with "nothing to rehearse" when the manifest offers nothing (an update pulled,
+ * decision 22) or a release was published too recently for its manifest; the workflow runs only
+ * while UPDATES_ENABLED is true, so a host that serves no manifest fails. Anything else that
+ * keeps the install from taking the offered release exits 1. It reads only public files and
+ * needs no secret: the GitHub token gh uses lists the releases. Node built-ins and this repository's files only, so the job installs
  * nothing.
  */
 
@@ -77,6 +79,9 @@ export const MANIFEST_URL = `https://updates.vimma.dev/${MANIFEST_PATH.replace(/
 export const GRACE_HOURS = 6;
 
 const TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
+
+/** The first release whose tarball carries Firefox's updater (spec m6a-updater, sub-PR 4). */
+export const FIRST_UPDATER_RELEASE = "v0.1.17";
 
 export type PublishedRelease = { tag: string; publishedAt: string };
 
@@ -160,11 +165,27 @@ export async function planRehearsal({
   keys: readonly PinnedKey[];
   now: Date;
 }): Promise<Plan> {
+  const newest = [...releases].sort((a, b) => tagOrder(b.tag, a.tag))[0];
+  const hoursSince = (r: PublishedRelease) =>
+    Math.floor((now.getTime() - Date.parse(r.publishedAt)) / 3_600_000);
   if (manifest === null) {
-    return {
-      kind: "nothing",
-      reason: `${MANIFEST_URL} serves no manifest (updates are not published yet)`,
-    };
+    // The job runs only while UPDATES_ENABLED is true, so no manifest past the grace hours is an
+    // outage or a broken publish that leaves every install behind.
+    if (!newest) {
+      return {
+        kind: "nothing",
+        reason: `${MANIFEST_URL} serves no manifest and no release is published`,
+      };
+    }
+    if (hoursSince(newest) < GRACE_HOURS) {
+      return {
+        kind: "nothing",
+        reason: `${MANIFEST_URL} serves no manifest and ${newest.tag} was published ${hoursSince(newest)} h ago`,
+      };
+    }
+    throw new Error(
+      `${MANIFEST_URL} serves no manifest, but ${newest.tag} was published ${hoursSince(newest)} h ago`,
+    );
   }
   const verified = await verifyManifest(manifest, keys, globalThis.crypto.subtle);
   need(
@@ -181,14 +202,13 @@ export async function planRehearsal({
   const u = m.update;
   if (!u) return { kind: "nothing", reason: `the manifest offers no update (serial ${m.serial})` };
   const tags = releases.map((r) => r.tag);
-  const newest = [...releases].sort((a, b) => tagOrder(b.tag, a.tag))[0];
   const offered = `v${u.displayVersion}`;
   need(
     tags.includes(offered),
     `the manifest offers ${u.displayVersion}, which is not a published release (the newest is ${newest?.tag ?? "none"})`,
   );
   if (newest && tagOrder(newest.tag, offered) > 0) {
-    const hours = Math.floor((now.getTime() - Date.parse(newest.publishedAt)) / 3_600_000);
+    const hours = hoursSince(newest);
     if (hours < GRACE_HOURS) {
       return {
         kind: "nothing",
@@ -219,6 +239,24 @@ export async function planRehearsal({
     },
     serial: m.serial,
     key: verified.key.id,
+  };
+}
+
+/**
+ * The result for a tarball without Firefox's updater: nothing to rehearse for a release from
+ * before it shipped, a failure for any later one, whose release.yml build lost it.
+ */
+export function missingUpdater(from: string): Result {
+  if (tagOrder(from, FIRST_UPDATER_RELEASE) < 0) {
+    return {
+      kind: "nothing",
+      reason: `${from}'s tarball predates Firefox's updater (first in ${FIRST_UPDATER_RELEASE})`,
+    };
+  }
+  return {
+    kind: "failed",
+    from,
+    problem: `${from}'s tarball has no updater or update-settings.ini`,
   };
 }
 
@@ -341,11 +379,11 @@ export function summary(result: Result) {
 }
 
 /** Fetches with a few tries for a network failure or a 5xx; a 404 is not retried. */
-async function fetchWithRetry(url: string, init: RequestInit = {}) {
+async function fetchWithRetry(url: string, init: RequestInit, timeoutMs: number) {
   const waits = [2000, 4000, 8000];
   for (let attempt = 0; ; attempt++) {
     try {
-      const res = await fetch(url, init);
+      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
       if (res.status < 500) return res;
       if (attempt >= waits.length) return res;
     } catch (e) {
@@ -360,11 +398,15 @@ async function fetchWithRetry(url: string, init: RequestInit = {}) {
  * redirects, no cookies, and at most MAX_MANIFEST_CHARS.
  */
 async function fetchManifest(url = MANIFEST_URL) {
-  const res = await fetchWithRetry(url, {
-    redirect: "error",
-    credentials: "omit",
-    cache: "no-store",
-  });
+  const res = await fetchWithRetry(
+    url,
+    {
+      redirect: "error",
+      credentials: "omit",
+      cache: "no-store",
+    },
+    30_000,
+  );
   if (res.status === 404) return null;
   need(res.ok, `${url} answered ${res.status}`);
   const text = await res.text();
@@ -373,14 +415,21 @@ async function fetchManifest(url = MANIFEST_URL) {
 }
 
 async function download(url: string, path: string) {
-  const res = await fetchWithRetry(url);
+  // The body is read within the same timeout; a release file is about 100 MB.
+  const res = await fetchWithRetry(url, {}, 600_000);
   need(res.ok, `${url} answered ${res.status}`);
   writeFileSync(path, Buffer.from(await res.arrayBuffer()));
 }
 
 const sha256 = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-async function releasesOf(repo: string) {
+/**
+ * The published releases: from `file` (the output of `gh api repos/R/releases --paginate
+ * --slurp`), so the step that runs the downloaded browser need not hold the job token, or else
+ * from gh.
+ */
+async function releasesOf(repo: string, file?: string) {
+  if (file) return publishedReleases(JSON.parse(readFileSync(file, "utf8")));
   return ghRead(
     ["api", `repos/${repo}/releases`, "--paginate", "--slurp"],
     "the published releases",
@@ -388,8 +437,11 @@ async function releasesOf(repo: string) {
   );
 }
 
-export async function plan(repo: string, now = new Date()) {
-  const [manifest, releases] = await Promise.all([fetchManifest(), releasesOf(repo)]);
+export async function plan(
+  repo: string,
+  { releasesFile, now = new Date() }: { releasesFile?: string; now?: Date } = {},
+) {
+  const [manifest, releases] = await Promise.all([fetchManifest(), releasesOf(repo, releasesFile)]);
   return planRehearsal({ manifest, releases, keys: UPDATE_KEYS, now });
 }
 
@@ -429,7 +481,8 @@ async function install(
   await run("tar", ["-xJf", join(dirs.download, tarball), "-C", dirs.install]);
   const app = join(dirs.install, "vimma");
   if (!existsSync(join(app, "updater")) || !existsSync(join(app, "update-settings.ini"))) {
-    return { kind: "nothing", reason: `${from}'s tarball was built without Firefox's updater` };
+    const r = missingUpdater(from);
+    return r.kind === "failed" ? fail(r.problem) : r;
   }
   // The only pref: the control socket, which this run reads the update state through. No
   // automation or test prefs, so the browser checks and updates as a user's install does.
@@ -559,6 +612,7 @@ async function main() {
     args: rest,
     options: {
       repo: { type: "string" },
+      releases: { type: "string" },
       out: { type: "string" },
       "timeout-minutes": { type: "string", default: "15" },
     },
@@ -568,7 +622,7 @@ async function main() {
   let result: Result;
   let rehearsal: Plan | null = null;
   try {
-    rehearsal = await plan(repo);
+    rehearsal = await plan(repo, { releasesFile: values.releases });
     if (command === "plan") {
       process.stdout.write(`${JSON.stringify(rehearsal, null, 1)}\n`);
       return;

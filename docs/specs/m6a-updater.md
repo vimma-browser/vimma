@@ -1288,9 +1288,10 @@ Written first and seen to fail.
   `tools/update/rehearsal.ts`. It installs the release before the one the served manifest
   offers, from its GitHub Release, and checks that it offers, stages and, after a restart, runs
   the offered build, because the apply is the step a user sees and costs seconds more. It runs
-  only while `UPDATES_ENABLED` is true and passes with "nothing to rehearse" when the host serves
-  no manifest or one that offers nothing, because before updates are published there is nothing
-  to check, and a pulled update (decision 22) is a choice rather than a failure. A manifest still
+  only while `UPDATES_ENABLED` is true, because before updates are published there is nothing to
+  check, and there a host that serves no manifest fails it; it passes with "nothing to rehearse"
+  when the manifest offers nothing, because a pulled update (decision 22) is a choice rather
+  than a failure. A manifest still
   offering an older release 6 hours after a newer one was published fails it, because
   `update-publish.yml` takes minutes and a missing manifest leaves every install behind. The
   chain from advisory to release with no person acting is still to be run.)
