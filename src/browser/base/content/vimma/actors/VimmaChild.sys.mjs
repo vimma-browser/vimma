@@ -17,7 +17,7 @@ import { describeAgentElements } from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
 import { BlockFocus } from "./block.mjs";
 import { PdfView } from "./pdf-view.mjs";
-import { PageScroll, scrollersUnder } from "./page-scroll.mjs";
+import { PageScroll, SETTLE_MAX_MS, scrollersUnder, wheelCanScroll } from "./page-scroll.mjs";
 import { GrepPage } from "./grep-page.mjs";
 import { AgentPage } from "./agent-page.mjs";
 import { asUserGesture } from "./user-gesture.mjs";
@@ -45,7 +45,8 @@ import { DocumentHover } from "./hover.mjs";
  *   | { name: "Vimma:GrepJump", data: Parameters<GrepPage["jump"]>[0] }
  *   | { name: "Vimma:CollectHints", data: { gen: number, linksOnly: boolean, blocks?: boolean,
  *       texts?: boolean, elements?: boolean, hover?: boolean } }
- *   | { name: "Vimma:HintsMoved", data: { gen?: unknown, x?: unknown, y?: unknown } | undefined }
+ *   | { name: "Vimma:HintsMoved", data: { gen?: unknown, x?: unknown, y?: unknown,
+ *       dx?: unknown, dy?: unknown, shift?: unknown, other?: unknown } | undefined }
  *   | { name: "Vimma:ActivateHint", data: { gen: number, id: number } }
  *   | { name: "Vimma:Hover", data: { op?: unknown, gen?: unknown, id?: unknown } | undefined }
  *   | { name: "Vimma:HoverEmbedder", data: { op?: unknown, frame?: unknown } | undefined }
@@ -465,6 +466,10 @@ export class VimmaChild extends JSWindowActorChild {
       // Also into the back-forward cache, which keeps the elements and so their locks
       // (docs/specs/hover.md decision 5, experiment X1).
       if (this.#hover.pageHidden()) this.#hoverEnded();
+      return;
+    }
+    if (event.type === "wheel") {
+      this.#scroll.wheeled(/** @type {WheelEvent} */ (event));
       return;
     }
     const doc = this.document;
@@ -1050,7 +1055,15 @@ export class VimmaChild extends JSWindowActorChild {
    * page's end, or the page took it for itself (a map, a canvas app). True when the wheel was
    * over a subframe, whose scroll this frame does not see, or when `gen` is not this frame's
    * last collection.
-   * @param {{ gen?: unknown, x?: unknown, y?: unknown } | undefined} data
+   * Whether to wait, and from when, is known before the wait (issues #1375 and #1430): a wheel
+   * the page cancelled, or one that nothing under the point can scroll its way (`dx`, `dy`,
+   * `shift`), is answered once the page has got it. A wheel that can scroll is waited for from
+   * its first scroll event: the page hands its smooth scroll to APZ, which learns of it at the
+   * next paint, and on a busy machine that came after the quiet time, which had the labels
+   * kept where the page had been. A wheel with ctrl, alt or meta (`other`: zoom, history)
+   * or over a subframe is waited for as before, from now.
+   * @param {{ gen?: unknown, x?: unknown, y?: unknown, dx?: unknown, dy?: unknown,
+   *   shift?: unknown, other?: unknown } | undefined} data
    * @returns {Promise<boolean>}
    */
   async #hintsMoved(data) {
@@ -1060,9 +1073,45 @@ export class VimmaChild extends JSWindowActorChild {
     const x = Number(data?.x);
     const y = Number(data?.y);
     const point = Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+    const dx = Number(data?.dx);
+    const dy = Number(data?.dy);
     const under = scrollersUnder(win, point);
-    await this.#scroll.settled(under.targets);
+    const scrolling =
+      !!point &&
+      !under.frame &&
+      Number.isFinite(dx) &&
+      Number.isFinite(dy) &&
+      data?.other === false;
+    if (!scrolling) {
+      await this.#scroll.settled(under.targets);
+    } else {
+      const until = ChromeUtils.now() + SETTLE_MAX_MS;
+      const seen = await this.#scroll.wheelSeen(point, SETTLE_MAX_MS);
+      if (gen !== this.#hints.gen) return true;
+      const left = until - ChromeUtils.now();
+      if (!seen) {
+        // Not seen in time (a point this frame reads otherwise, such as under a pinch zoom):
+        // whatever is left of the limit, from now.
+        await this.#scroll.settled(under.targets, false, left);
+      } else if (!seen.prevented) {
+        const wheel = { dx, dy, shift: data?.shift === true };
+        // Already under way (the page got the wheel a while ago), or still to start.
+        if (this.#targetsMoved(win)) await this.#scroll.settled(under.targets, false, left);
+        else if (wheelCanScroll(win, under.targets, wheel)) {
+          await this.#scroll.settled(under.targets, true, left);
+        }
+      }
+    }
     if (under.frame || gen !== this.#hints.gen) return true;
+    return this.#targetsMoved(win);
+  }
+
+  /**
+   * Whether any target of this frame's last collection, or the page, is no longer where it was
+   * collected.
+   * @param {Window} win
+   */
+  #targetsMoved(win) {
     const { els, at, frames, page } = this.#hints;
     const moved = (
       /** @type {{ x: number, y: number }} */ a,

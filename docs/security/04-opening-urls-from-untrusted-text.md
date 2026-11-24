@@ -95,7 +95,10 @@ link targets for hints, which chrome must treat as untrusted.
   only choose between keeping the labels drawn and collecting them again: only `false` keeps
   them, and any other answer, none within 2 s, or an error collects them again through the
   checks above. Keeping them gives a page nothing it lacks already: it can move its elements
-  under the labels at any time.
+  under the labels at any time. The question tells the page the wheel's point, its deltas and
+  whether shift, ctrl, alt or meta was down, which the page's own `wheel` event carries
+  already; whether the page cancelled that event, read in the system group, likewise only
+  chooses between those two outcomes (issue #1375).
   [`a_wheel_the_page_takes_keeps_the_labels_and_the_keys_typed`](../../tests/browser/browser_vimma_hints_scroll.js)
 - U7. Text pasted on the command line **must** be read in bounded time: a megabyte never
   freezes the window.

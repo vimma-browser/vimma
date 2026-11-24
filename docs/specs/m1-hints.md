@@ -227,6 +227,19 @@ href? }], frames: [{ id, rect }], ms }`, and `Vimma:ActivateHint { gen, id }`. (
   point that way is where the page is (none further on for `j` or `d`, or already at the first
   or last one for `gg` or `G`), the scroll does not move and the wait ends at its 1 s limit.
   Issue #1400.)
+  (Since changed: after a wheel while labels show, the page first waits for that wheel to
+  reach it, and then decides whether to wait for a scroll, rather than counting the quiet time
+  from when the parent asks. Firefox sends a wheel on to the page only after the browser
+  window's own listeners have run, so the question can arrive first. The page then hands the
+  wheel's smooth scroll to APZ, which starts it at the next paint, and on a busy machine the
+  quiet time ran out before the first scroll event: the labels came back where the page had
+  been. Now a wheel the page cancelled, or one that nothing under the pointer can scroll its
+  way, gets its answer at once. A wheel that can scroll is waited for from its first scroll
+  event, at most 1 s. A wheel with ctrl, alt or meta, or one over a subframe, is waited for as
+  before. A scroller that can move but does not pass the wheel on (`overscroll-behavior` on an
+  inner scroller at its end) keeps the labels hidden until the 1 s limit. Issues #1375 and
+  #1430; described in `actors/page-scroll.mjs`, `wheelSeen` and `wheelCanScroll`, and in
+  `actors/VimmaChild.sys.mjs`, `#hintsMoved`.)
 - Delegated click handlers on elements with no role, tabindex or listener of their own (some
   React apps) get no hint; no `cursor: pointer` heuristic.
 - Canvas and WebGL apps (Google Docs, Figma, maps, games) draw their own controls: there are no
