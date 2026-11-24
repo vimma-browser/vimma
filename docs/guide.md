@@ -5009,7 +5009,7 @@ One plain file holds your settings and keys; every key, the prefix and the leade
   applies. So is a binding to an action this version does not have, in `[keys]` or a
   `[modal.<mode>]` table (`unknown action "…"; skipped`): your other keys still work. A name
   close to a real one (`steps` for `step`, `new_tabb` for `new_tab`) is an error with the
-  suggestion, and so are malformed key notation, an unknown mode in `[unbind]`, an unknown colour
+  suggestion, and so are malformed keys for a known action, an unknown mode in `[unbind]`, an unknown colour
   in `[theme.colors]`, an unknown key in a `[[routes]]` rule, and a value only a newer version
   accepts.
 

@@ -74,9 +74,10 @@ note above kept it an error, but a binding to an action a newer Vimma added is t
 config most likely gains, and it is no more harmful to skip than a newer setting: this build
 could not run that action either way. The rule follows the one for keys. A near miss of a real
 action (`new_tabb`) stays an error with the suggestion, because it is far more likely a typo, and
-a removed action stays an error that says why it went. Malformed key notation stays an error, as
-a bad value does: the binding's name is known, so the text is a mistake to fix rather than a line
-from a newer build, and refusing the file keeps the previous keymap instead of dropping a key the
+a removed action stays an error that says why it went. Malformed key notation for a known action
+stays an error, as a bad value does: the binding's name is known, so the text is a mistake to fix
+rather than a line from a newer build (a binding to an unknown action is skipped whatever its
+keys, since none of it applies), and refusing the file keeps the previous keymap instead of dropping a key the
 user meant to have. In `[keys]`, a boolean `check` and a top-level table's name with a table
 value keep the errors the note above gives them (an update opt-out fails closed; a misplaced
 line, #1270). Since `validate` removes the skipped binding from the file's tables, the keymap's

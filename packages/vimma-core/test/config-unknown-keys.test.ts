@@ -12,6 +12,7 @@ import {
 } from "../src/config/config.mjs";
 import { editSiteUnbindText } from "../src/config/site-edit.mjs";
 import { withSiteUnbinds } from "../src/keys/keymap.mjs";
+import { resolveActionName } from "../src/keys/actions.mjs";
 
 const toml = (...lines: string[]) => lines.join("\n") + "\n";
 
@@ -145,6 +146,36 @@ describe("an unknown action with no close match", () => {
   });
 });
 
+describe("a skipped binding, further", () => {
+  test("named like an Object.prototype member is skipped; the prototype stays clean", () => {
+    const r = parseConfig(
+      toml(
+        "[keys]",
+        '__proto__ = "prefix+h"',
+        'constructor = "prefix+j"',
+        "[modal.normal]",
+        '"__proto__" = "toString"',
+      ),
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.warnings.map((w) => w.message)).toEqual([
+      'unknown action "__proto__"; skipped',
+      'unknown action "constructor"; skipped',
+      'unknown action "toString"; skipped',
+    ]);
+    expect(Object.prototype).not.toHaveProperty("prefix");
+  });
+
+  test("on a default [modal] sequence leaves the default action there (F2's accepted risk)", () => {
+    // `d` is scroll.half_down in normal mode by default (defaults.mjs).
+    const name = resolveActionName("scroll.half_down")!.name;
+    const r = parseConfig(toml("[modal.normal]", '"d" = "summon_hologram"'));
+    expect(r.warnings).toHaveLength(1);
+    expect(r.keymap?.keysFor(name)).toEqual(parseConfig("").keymap?.keysFor(name));
+    expect(r.keymap?.keysFor(name)).toContain("d");
+  });
+});
+
 describe("a binding that stays an error", () => {
   test.each([
     // A near miss of a real action is a typo.
@@ -154,6 +185,8 @@ describe("a binding that stays an error", () => {
     [["[keys]", 'new_tab = "ctrl+bogus+t"'], 'unknown modifier "bogus"'],
     // A boolean check fails closed (m6a-updater decision 31).
     [["[keys]", "check = false"], 'unknown key "check"'],
+    [["[keys.newer]", "updates = { check = false }"], 'unknown key "newer"'],
+    [["[keys.newer.deep]", "check = false"], 'unknown key "newer"'],
     // A top-level table's dotted line under [keys] is misplaced (#1270).
     [["[keys]", 'ui.toolbar = "shown"'], "belongs under [ui]"],
   ])("%j", (lines, message) => {
