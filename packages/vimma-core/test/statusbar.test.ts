@@ -283,6 +283,31 @@ describe("status bar segments", () => {
     expect(seg?.fg).toBe("--vimma-text-error");
   });
 
+  test("the count says warnings when every entry is one, and both counts for a mix", () => {
+    const skip = (name: string, line: number) => ({
+      line,
+      path: `keys.${name}`,
+      message: `unknown action "${name}"; skipped`,
+      warning: true,
+    });
+    const hologram = skip("summon_hologram", 2);
+    const warnings = [hologram, skip("teleport_tab", 3)];
+    expect(texts(statusSegments({ mode: "normal", configErrors: warnings })).error).toBe(
+      '2 warnings: config.toml:2: keys.summon_hologram: unknown action "summon_hologram"; skipped',
+    );
+    expect(texts(statusSegments({ mode: "normal", configErrors: [hologram] })).error).toBe(
+      'config.toml:2: keys.summon_hologram: unknown action "summon_hologram"; skipped',
+    );
+    // A mix names both, and shows an error first: it is what keeps something from applying.
+    const error = { line: 9, path: "search.x", message: "bad" };
+    expect(
+      texts(statusSegments({ mode: "normal", configErrors: [...warnings, error] })).error,
+    ).toBe("1 error, 2 warnings: config.toml:9: search.x: bad");
+    expect(
+      texts(statusSegments({ mode: "normal", configErrors: [hologram, error, error] })).error,
+    ).toBe("2 errors, 1 warning: config.toml:9: search.x: bad");
+  });
+
   test("alerts (workspaces off) show as a persistent error, after config errors", () => {
     const text = "workspaces off: containers are disabled";
     const seg = statusSegments({ mode: "normal", alerts: [text] }).find((s) => s.id === "alert");

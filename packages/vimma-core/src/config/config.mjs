@@ -81,6 +81,7 @@ import { hasControl } from "../text/strings.mjs";
  * @property {string} [suggestion]
  * @property {string} [file]         the file it is in, when not the config file the list is about
  *   (bookmarks.toml's errors, docs/specs/bookmarks-file.md)
+ * @property {boolean} [warning]     left out of a file that applies, not a reason it was refused
  */
 
 /**

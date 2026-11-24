@@ -340,14 +340,16 @@ function report(path, list, kept, left = []) {
  * the profile's engines reveal once the file is applied (search-engines decision 9).
  */
 function showErrors() {
+  /** @param {ConfigError} e */
+  const warning = (e) => ({ ...e, warning: true });
   VimmaHost.configure({
     configErrors: [
       ...errors,
-      ...warnings,
+      ...warnings.map(warning),
       ...SearchHost.errors,
       ...bookmarksErrors,
       ...routesFileErrors,
-      ...routesWarnings,
+      ...routesWarnings.map(warning),
     ],
     configFile: PathUtils.filename(errorsPath || configPath()),
   });
