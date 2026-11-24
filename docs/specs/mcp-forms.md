@@ -586,6 +586,12 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
     `http-on-modify-request` comes only after the proxy lookup off the main thread: a page's
     submission started before a fill's last field could reach it after the allowance for the
     asked one opened, take that allowance and be sent in its place; issue #1484.)
+    (Since changed: the allowance is the step's own request alone. The child names the request
+    its submission or click started by its channel id, and the parent lets through only that
+    request, triggered from that child's process, because a page's submission to the same method
+    and destination, opened after the question allowed it and before the step ran, or opened late
+    by Firefox (a copied upload stream, a prefetch in flight, a form of a frame in another
+    process aimed at this one), could otherwise take the allowance.)
 17. **What cannot be caught.** A page that sends data with `fetch` from a button's click
     listener, without a form submission, cannot be told apart from any other button. Such a click
     is an ordinary `vimma_activate`, whose question names the element's text; the guide says

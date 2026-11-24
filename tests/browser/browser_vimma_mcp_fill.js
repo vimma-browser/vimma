@@ -708,6 +708,120 @@ addTidyTask(async function test_a_page_submit_that_reaches_the_network_late_is_n
   await mcp(false);
 });
 
+// The allowance is the agent's own submission's alone: a page's submission to the same method and
+// destination, opened after the question allowed it and before the child sends the asked one, is
+// stopped as the page's, and the asked one is sent.
+addTidyTask(async function test_a_page_submit_opened_before_the_asked_one_cannot_take_its_place() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  const submit = AgentActors.agentSubmit;
+  /** The status of the other submission's request as it was opened. */
+  const pageStatus = { code: /** @type {number | null} */ (null) };
+  // Called once the asked submission is allowed: the page sends a form of its own, with the
+  // same method and destination, and its request is opened before the agent's is sent.
+  AgentActors.agentSubmit = async (...args) => {
+    const opened = requestStatus(`${PAGE}?signup`);
+    await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+      const d = content.document;
+      const form = d.createElement("form");
+      form.method = "post";
+      form.action = "file_vimma_agent_page.html?signup";
+      const field = d.createElement("input");
+      field.name = "page";
+      field.value = "own";
+      form.append(field);
+      d.body.append(form);
+      form.submit();
+    });
+    pageStatus.code = await opened;
+    // Its load has ended in the tab before the agent's starts, stopped or not, so that the
+    // fill's wait for the page sees only the agent's.
+    await until(
+      () => !tab.linkedBrowser.webProgress?.isLoadingDocument,
+      "the page's own load has ended",
+    );
+    return submit.apply(AgentActors, args);
+  };
+  try {
+    const r = await fill(c, tab, [{ label: by.Name, value: "Ada" }], { submit: true });
+    Assert.ok(r.ok, `the fill ran: ${JSON.stringify(r.error)}`);
+    Assert.equal(pageStatus.code, Cr.NS_BINDING_ABORTED, "the page's own submission was stopped");
+    Assert.equal(r.result.blocked, "example.com", "the result says Vimma stopped it");
+    Assert.equal(r.result.navigated, true, "the asked submission was sent");
+    Assert.equal(r.result.url, `${PAGE}?signup`, "to its destination");
+  } finally {
+    AgentActors.agentSubmit = submit;
+  }
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+// The same from a frame of another site, in another process, whose form is aimed at the tab's
+// page: Firefox opens such a request late (security.md M28), and it is still not the asked one.
+addTidyTask(async function test_a_submit_of_a_frame_in_another_process_cannot_take_its_place() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  const other = PAGE.replace("https://example.com", "https://example.org");
+  await SpecialPowers.spawn(tab.linkedBrowser, [other], async (src) => {
+    const frame = content.document.createElement("iframe");
+    frame.src = src;
+    const loaded = new Promise((resolve) =>
+      frame.addEventListener("load", resolve, { once: true }),
+    );
+    content.document.body.append(frame);
+    await loaded;
+  });
+  const top = /** @type {CanonicalBrowsingContext} */ (tab.linkedBrowser.browsingContext);
+  const frame = top.children[0];
+  Assert.notEqual(
+    frame.currentWindowGlobal?.osPid,
+    top.currentWindowGlobal?.osPid,
+    "the frame is in another process",
+  );
+  const submit = AgentActors.agentSubmit;
+  /** The status of the other submission's request as it was opened. */
+  const frameStatus = { code: /** @type {number | null} */ (null) };
+  AgentActors.agentSubmit = async (...args) => {
+    const opened = requestStatus(`${PAGE}?signup`);
+    await SpecialPowers.spawn(frame, [`${PAGE}?signup`], (action) => {
+      const d = content.document;
+      const form = d.createElement("form");
+      form.method = "post";
+      form.action = action;
+      form.target = "_top";
+      const field = d.createElement("input");
+      field.name = "frame";
+      field.value = "own";
+      form.append(field);
+      d.body.append(form);
+      form.submit();
+    });
+    frameStatus.code = await opened;
+    await until(
+      () => !tab.linkedBrowser.webProgress?.isLoadingDocument,
+      "the frame's load of the page has ended",
+    );
+    return submit.apply(AgentActors, args);
+  };
+  try {
+    const r = await fill(c, tab, [{ label: by.Name, value: "Ada" }], { submit: true });
+    Assert.ok(r.ok, `the fill ran: ${JSON.stringify(r.error)}`);
+    Assert.equal(frameStatus.code, Cr.NS_BINDING_ABORTED, "the frame's submission was stopped");
+    Assert.equal(r.result.navigated, true, "the asked submission was sent");
+    Assert.equal(r.result.url, `${PAGE}?signup`, "to its destination");
+  } finally {
+    AgentActors.agentSubmit = submit;
+  }
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
 addTidyTask(async function test_selects_ranges_and_a_submit_button_of_another_form() {
   await mcp(true);
   const tab = await openAgentTab();

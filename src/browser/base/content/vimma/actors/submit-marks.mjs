@@ -11,12 +11,19 @@
 /** @import { HintTarget } from "./VimmaActors.sys.mjs" */
 
 /**
+ * The one submission a question allowed: `channel` is 0 until the child of the step names the
+ * request it started (`Vimma:AgentSubmitting`), and nothing is let through before that; `from`
+ * is the remote type of that child's process.
+ * @typedef {{ method: string, where: string, channel: number, from?: string }} Allowed
+ */
+
+/**
  * Agent tabs an agent just stepped in (docs/specs/mcp-forms.md F16; security.md M28), by their
  * browserId, which survives a move to another window: the top document of the step, the one
  * submission a question allowed during the running call (its method and destination without
- * query), and the hosts of the submissions stopped since the step began.
- * @type {Map<number, { doc: number, allowed: { method: string, where: string } | null,
- *   blocked: string[] }>}
+ * query, and the channel id of the request the agent's step started, once its child names it),
+ * and the hosts of the submissions stopped since the step began.
+ * @type {Map<number, { doc: number, allowed: Allowed | null, blocked: string[] }>}
  */
 const submitMarks = new Map();
 /** @type {typeof onRequest | null} */
@@ -75,14 +82,13 @@ export const whereOf = (uri) => `${uri.prePath}${uri.filePath}`;
  * cancelled unless it is the one the question allowed, to the method and destination it named.
  * The request carries its document's transient user activation, which an agent's click never
  * gives, so a submission with it is the user's, and it ends the mark.
- * Checked as the parent opens the request (issue #1484), which for an ordinary submission of
- * the page's own frame is in the order its process started them: `http-on-modify-request` comes
- * only after the proxy lookup and other checks off the main thread, so a page's submission
- * started before the last field could reach it after the allowance for the asked one opened,
- * and be sent in its place. A request whose opening Firefox puts off (an upload stream it must
- * copy first, a prefetch of the same address in flight, a form aimed at a frame in another
- * process) can still come late; it takes the allowance only to the method and destination the
- * user allowed, as a page's own `formdata` listener could anyway (security.md M28).
+ * The allowed one is known by its channel id, which the child of the step names before the
+ * parent opens the request (agent-page.mjs `#claimSubmission`) and Firefox gives the parent's
+ * request too (`DocumentLoadListener::Open`): a page's submission to the same method and
+ * destination, whenever its request is opened, is not it. It must also have been triggered from
+ * that child's process (`triggeringRemoteType`, which the parent sets from the sender), so that a
+ * form of a frame in another process, aimed at this one, is not it either. Checked as the parent
+ * opens the request (issue #1484), before anything is sent.
  * @param {unknown} subject  an nsISupports
  */
 function onRequest(subject) {
@@ -112,6 +118,9 @@ function onRequest(subject) {
   const allowed = mark.allowed;
   if (
     allowed &&
+    allowed.channel &&
+    allowed.channel === channel.channelId &&
+    allowed.from === info.triggeringRemoteType &&
     allowed.method === String(channel.requestMethod).toLowerCase() &&
     allowed.where === whereOf(uri)
   ) {
@@ -170,9 +179,32 @@ export function setMark(top, doc, allowed) {
   }
   submitMarks.set(top.browserId, {
     doc,
-    allowed: allowed && where ? { method: allowed.method, where } : null,
+    allowed: allowed && where ? { method: allowed.method, where, channel: 0 } : null,
     blocked: [],
   });
+}
+
+/**
+ * The child of `wg` names the request of the agent's submission it started (AgentActors.
+ * agentSubmitting, `Vimma:AgentSubmitting`): the allowed submission of its tab is that request
+ * alone. Taken only for the last step sent to that document, and once: a later claim, or one
+ * from another frame, changes nothing.
+ * @param {CanonicalBrowsingContext | null | undefined} bc
+ * @param {WindowGlobalParent | null} wg
+ * @param {unknown} data  `{ step, channel }`
+ */
+export function noteSubmitting(bc, wg, data) {
+  const id = bc?.top?.browserId;
+  const mark = id ? submitMarks.get(id) : undefined;
+  if (!mark?.allowed || mark.allowed.channel || !wg) return;
+  if (!data || typeof data !== "object" || !("step" in data) || !("channel" in data)) return;
+  const { step, channel } = data;
+  if (typeof step !== "number" || step !== sentSteps.get(wg)?.step) return;
+  if (typeof channel !== "number" || !Number.isSafeInteger(channel) || channel <= 0) return;
+  const from = wg.domProcess?.remoteType;
+  if (!from) return;
+  mark.allowed.channel = channel;
+  mark.allowed.from = from;
 }
 
 /**

@@ -45,6 +45,12 @@ export class VimmaParent extends JSWindowActorParent {
     const bc = this.browsingContext;
     const wg = this.manager;
     if (!bc || !wg) return undefined;
+    if (msg.name === "Vimma:AgentSubmitting") {
+      // The agent's submission this frame started (security.md M28): the tab's allowance becomes
+      // that request alone, and only for the last step sent to this document.
+      AgentActors.agentSubmitting(bc, wg, msg.data);
+      return undefined;
+    }
     const data = fieldsOf(msg.data);
     // A focused block's frame need not have focus (a block in a frame of the focused page):
     // the host hears only the frames of its block, with the documents they had (ElementFocus).
