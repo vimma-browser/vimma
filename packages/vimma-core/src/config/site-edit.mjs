@@ -20,7 +20,11 @@ import { locateKeys, parseToml, sameTomlValue, tomlLiteral } from "./toml.mjs";
  */
 
 /** @param {unknown} v @returns {v is Record<string, unknown>} */
-const isTable = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+const isTable = (v) =>
+  typeof v === "object" &&
+  // Stryker disable next-line ConditionalExpression: TOML has no null, and every value here is parseToml's
+  v !== null &&
+  !Array.isArray(v);
 
 /**
  * Whether `line` is the header `[sites."<table>"]`, however it is quoted and spaced: the line
@@ -32,54 +36,66 @@ function isHeaderOf(line, table) {
   const r = parseToml(line.endsWith("\r") ? line.slice(0, -1) : line);
   if (!r.ok) return false;
   const sites = r.value.sites;
+  // A line that parses alone and starts with one `[` is a table header, which makes exactly one
+  // table: one top-level key, and one key under `sites`. The key counts are guards, never false.
+  // Stryker disable next-line ConditionalExpression: see above
   if (Object.keys(r.value).length !== 1 || !isTable(sites)) return false;
   const keys = Object.keys(sites);
+  // `keys[0] === table` refuses a table name that is not a string; a lookup would coerce it.
+  // Stryker disable next-line ConditionalExpression: see above
   return keys.length === 1 && keys[0] === table && isTable(sites[table]);
 }
 
 /**
  * An array value starting at `text[start]` (its `[`): each element's span and the comma after
- * it, the offset after the last thing that is not blank or a comment before `]`, and the offset
- * after `]`. Null for anything but a flat array of strings, which `unbind` is once it loads.
+ * it, and the offset after `]`. Null for anything but a flat array of strings, which `unbind` is
+ * once it loads. `text` parsed (the file, or the file with keys removed from this list), so the
+ * nulls for an unclosed list, string or a misplaced comma are guards, never reached.
  * @param {string} text @param {number} start
- * @returns {{ elements: { start: number, end: number, comma: number }[], last: number,
- *   end: number } | null}
+ * @returns {{ elements: { start: number, end: number, comma: number }[], end: number } | null}
  */
 function scanArray(text, start) {
   /** @type {{ start: number, end: number, comma: number }[]} */
   const elements = [];
-  let last = start + 1;
   let i = start + 1;
-  while (i < text.length) {
+  // Past the end, c is undefined, and the last branch ends the scan.
+  for (;;) {
     const c = text[i];
     if (c === " " || c === "\t" || c === "\r" || c === "\n") i++;
-    else if (c === "#") {
-      while (i < text.length && text[i] !== "\n") i++;
-    } else if (c === "]") return { elements, last, end: i + 1 };
+    // A comment runs to its line break, which a list that parsed has (with none, i is -1).
+    else if (c === "#") i = text.indexOf("\n", i);
+    else if (c === "]") return { elements, end: i + 1 };
     else if (c === ",") {
       const e = elements[elements.length - 1];
-      if (!e || e.comma >= 0) return null;
-      e.comma = i;
-      last = ++i;
+      // Stryker disable next-line ConditionalExpression,LogicalOperator: a guard: the text parsed
+      if (!e || e.comma !== -1) return null;
+      e.comma = i++;
     } else if (c === '"' || c === "'") {
       const triple = text.startsWith(c.repeat(3), i);
       const quote = triple ? c.repeat(3) : c;
       let j = i + quote.length;
       for (;;) {
-        if (j >= text.length) return null;
+        // Guards, as is the line break in a one-line string: the text parsed.
+        // Stryker disable next-line ConditionalExpression: see above
+        if (text[j] === undefined) return null;
         if (c === '"' && text[j] === "\\") j += 2;
         else if (text.startsWith(quote, j)) break;
-        else if (!triple && text[j] === "\n") return null;
+        else if (
+          // Stryker disable next-line ConditionalExpression: see above
+          !triple &&
+          // Stryker disable next-line StringLiteral: see above
+          text[j] === "\n"
+        )
+          return null;
         else j++;
       }
       // A triple-quoted string may end in more quotes than three ("""a"""").
       j += quote.length;
       while (triple && text[j] === c) j++;
       elements.push({ start: i, end: j, comma: -1 });
-      last = i = j;
+      i = j;
     } else return null;
   }
-  return null;
 }
 
 /**
@@ -99,8 +115,10 @@ function lineStart(text, n) {
 function dropBlankLine(text, at) {
   const from = text.lastIndexOf("\n", at - 1) + 1;
   const nl = text.indexOf("\n", at);
-  const to = nl < 0 ? text.length : nl + 1;
-  return /^[ \t]*\r?\n?$/.test(text.slice(from, to)) ? text.slice(0, from) + text.slice(to) : text;
+  // The list's ] is after at: a line holding at with no line break after it holds the ] too.
+  return nl !== -1 && /^[ \t]*\r?$/.test(text.slice(from, nl))
+    ? text.slice(0, from) + text.slice(nl + 1)
+    : text;
 }
 
 /**
@@ -118,17 +136,38 @@ function dropBlankLine(text, at) {
  * @param {{ mac?: boolean }} [options]
  * @returns {SiteEdit}
  */
-export function editSiteUnbindText(text, table, { add = [], remove = [] }, { mac = false } = {}) {
-  if (text === null && add.length === 0) return { text, added: [], already: [], removed: [] };
+export function editSiteUnbindText(
+  text,
+  table,
+  {
+    add = [],
+    // Stryker disable next-line ArrayDeclaration: the default removes nothing whatever it holds
+    remove = [],
+  },
+  { mac = false } = {},
+) {
+  if (
+    // Stryker disable next-line ConditionalExpression: the template has no [sites], so the edit below writes nothing either
+    text === null &&
+    add.length === 0
+  )
+    return { text, added: [], already: [], removed: [] };
   const base = text ?? formatConfigTemplate();
   const now = parseConfig(base, { mac });
   const first = now.errors[0];
-  if (first || !now.keymap) {
-    const where = first?.line === undefined ? "" : `line ${first.line}: `;
-    const what = first ? `${first.path ? `${first.path}: ` : ""}${first.message}` : "";
+  if (first) {
+    // For an error without a line, which parseConfig has none of today.
+    const where =
+      // Stryker disable next-line ConditionalExpression: see above
+      first.line === undefined
+        ? // Stryker disable next-line StringLiteral: see above
+          ""
+        : `line ${first.line}: `;
+    const what = `${first.path ? `${first.path}: ` : ""}${first.message}`;
     return { error: `config.toml has errors; fix them first (:config): ${where}${what}` };
   }
-  const keymap = now.keymap;
+  // parseConfig gives a keymap whenever it gives no error.
+  const keymap = /** @type {NonNullable<typeof now.keymap>} */ (now.keymap);
   // parseToml's tables have no prototype, so a table named `__proto__` (a page at
   // http://__proto__/) is an own key like any other, never Object.prototype; so are the tables
   // made here that a table's name is looked up in or written to.
@@ -161,7 +200,9 @@ export function editSiteUnbindText(text, table, { add = [], remove = [] }, { mac
   const lines = base.split("\n");
   const headers = lines.flatMap((l, i) => (isHeaderOf(l, table) ? [i] : []));
   if (!own) {
-    if (sites[table] !== undefined || headers.length) return leftAlone;
+    // A site that loads is a table, so the file has no other form of it; but a header line in a
+    // multi-line string cannot be told from the table's own.
+    if (headers.length) return leftAlone;
     const glue =
       base === "" || base.endsWith("\n\n") || base.endsWith("\r\n\r\n")
         ? ""
@@ -180,29 +221,40 @@ export function editSiteUnbindText(text, table, { add = [], remove = [] }, { mac
       lines.splice(after + 1, 0, `unbind = [${literals.join(", ")}]${cr}`);
       out = lines.join("\n");
     } else {
+      // A header line inside a multi-line string counts as the table's one header, and the key
+      // can then sit in an inline table above it: leave that file to the user. `unbind` is in the
+      // table, so locateKeys finds its line (never undefined), and a header line holds no key, so
+      // `n - 1` never equals `header`.
       const n = where(["sites", table, "unbind"]);
+      // Stryker disable next-line ConditionalExpression,EqualityOperator: see above
       if (n === undefined || n - 1 <= header) return leftAlone;
       const at = lineStart(base, n);
-      const m = /^[ \t]*(?:unbind|"unbind"|'unbind')[ \t]*=[ \t]*\[/.exec(base.slice(at));
+      const key = /[ \t]*(?:unbind|"unbind"|'unbind')[ \t]*=[ \t]*\[/y;
+      key.lastIndex = at;
+      const m = key.exec(base);
       if (!m) return leftAlone;
       const open = at + m[0].length - 1;
       // Removals first, one at a time from the end, scanning again after each.
+      // Stryker disable next-line ArithmeticOperator: listed[list.length] is undefined, never removed
       for (let i = list.length - 1; i >= 0; i--) {
         if (!removed.includes(/** @type {string} */ (listed[i]))) continue;
         const scan = scanArray(out, open);
+        // A guard: the scan finds the list it parsed to, key for key.
+        // Stryker disable next-line OptionalChaining: see above
         const e = scan?.elements[i];
+        // Stryker disable next-line ConditionalExpression,LogicalOperator: see above
         if (!scan || !e) return leftAlone;
         if (scan.elements.length === 1) {
           // The last key: the whole `unbind = [...]` line goes.
           const nl = out.indexOf("\n", scan.end);
-          out = out.slice(0, at) + out.slice(nl < 0 ? out.length : nl + 1);
+          out = out.slice(0, at) + out.slice(nl === -1 ? out.length : nl + 1);
           continue;
         }
         /** @type {number} */
         let from = e.start;
         /** @type {number} */
         let to = e.end;
-        if (e.comma >= 0) {
+        if (e.comma !== -1) {
           to = e.comma + 1;
           while (out[to] === " " || out[to] === "\t") to++;
         } else {
@@ -217,8 +269,9 @@ export function editSiteUnbindText(text, table, { add = [], remove = [] }, { mac
           let end = header + 1;
           while (end < rest.length - 1 && /^[ \t]*\r?$/.test(/** @type {string} */ (rest[end])))
             end++;
-          const next = rest[end];
-          if (end >= rest.length - 1 || (next !== undefined && /^[ \t]*\[/.test(next))) {
+          // Defined whenever it is read: the test before it stops at the last line.
+          const next = /** @type {string} */ (rest[end]);
+          if (end >= rest.length - 1 || /^[ \t]*\[/.test(next)) {
             rest.splice(header, end - header);
             out = rest.join("\n");
           }
@@ -234,18 +287,20 @@ export function editSiteUnbindText(text, table, { add = [], remove = [] }, { mac
           // end of the last key's line so that a comment there stays on its key; a trailing
           // comma is kept or left out as the list has it.
           const from = out.lastIndexOf("\n", lastEl.start) + 1;
-          const indent = /^[ \t]*/.exec(out.slice(from))?.[0] ?? "";
-          const trailing = lastEl.comma >= 0;
+          // The blanks the line starts with: a match of [ \t]* is at 0, empty or not.
+          const indent = /** @type {RegExpExecArray} */ (/[ \t]*/.exec(out.slice(from)))[0];
+          const trailing = lastEl.comma !== -1;
           const tail = trailing ? lastEl.comma + 1 : lastEl.end;
-          let at = out.indexOf("\n", tail);
           const close = scan.end - 1;
-          if (at < 0 || at > close) at = close;
-          else if (out[at - 1] === "\r") at--;
+          const nl = out.indexOf("\n", tail);
+          // Before the line break, or the ] when that comes first (no CR is just before a ]).
+          let at = nl === -1 ? close : Math.min(nl, close);
+          if (out[at - 1] === "\r") at--;
           const more = literals.map((l) => `${eol}${indent}${l}`).join(",");
           const lead = trailing ? "" : ",";
           const end = trailing ? "," : "";
           out = `${out.slice(0, tail)}${lead}${out.slice(tail, at)}${more}${end}${out.slice(at)}`;
-        } else if (lastEl.comma < 0) {
+        } else if (lastEl.comma === -1) {
           out = `${out.slice(0, lastEl.end)}, ${literals.join(", ")}${out.slice(lastEl.end)}`;
         } else {
           const more = literals.map((l) => ` ${l},`).join("");
@@ -266,14 +321,21 @@ export function editSiteUnbindText(text, table, { add = [], remove = [] }, { mac
   if (want.length) expTable.unbind = want;
   else delete expTable.unbind;
   const after = parseToml(out);
+  // A guard: the edits above put whole keys, commas and lines between the list's tokens, and a
+  // line put inside a multi-line string still parses (the comparison refuses it).
+  // Stryker disable next-line ConditionalExpression: see above
   if (!after.ok) return leftAlone;
   // The table may be gone only when this edit emptied it; any other loss fails the comparison.
+  // (The edit above drops a header only then, so this test is a guard too.)
+  // Stryker disable next-line ConditionalExpression,LogicalOperator: see above
   const emptied = want.length === 0 && Object.keys(expTable).length === 0;
   if (emptied && !Object.hasOwn(after.value.sites ?? {}, table)) {
     delete expSites[table];
+    // Stryker disable next-line ConditionalExpression: a guard: the edit drops no other site's table
     if (Object.keys(expSites).length === 0 && !("sites" in after.value)) delete expected.sites;
   }
   if (!sameTomlValue(after.value, expected)) return leftAlone;
+  // Stryker disable next-line ObjectLiteral: a site's keys read the same with macOS's keys, and the file loaded with them before
   const loads = parseConfig(out, { mac }).errors[0];
   if (loads) {
     return { error: `config.toml would not load with the change: ${loads.path}: ${loads.message}` };
