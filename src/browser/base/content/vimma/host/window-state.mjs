@@ -56,6 +56,7 @@ import { pickerWorkspaces, selectedTabId, tabById } from "./goto.mjs";
 import { goToTab, reopenClosed, tabSearchList } from "./tab-search.mjs";
 import { GrepSession } from "./grep.mjs";
 import { closeTabById, selectableTabs } from "./tab-ops.mjs";
+import { sleepRows } from "./sleep-ops.mjs";
 import { firefoxIds } from "./browser-ops.mjs";
 import {
   hasPanes,
@@ -466,6 +467,18 @@ export function newWindowState(host, win, keymap, env) {
       closeTab: (tabId) => {
         const tab = tabById(win, tabId);
         if (tab) closeTabById(win, tab);
+      },
+      sleep: (rows) => {
+        /** @type {{ tab: MozTabbrowserTab, number: number }[]} */
+        const named = [];
+        for (const { id, number } of rows) {
+          const tab = tabById(win, id);
+          if (tab) named.push({ tab, number });
+        }
+        sleepRows(win, named).then(
+          (said) => state.notice.show(said),
+          (e) => console.error("vimma: z in the side panel", e),
+        );
       },
       move: (tabId) => {
         const tab = tabById(win, tabId);

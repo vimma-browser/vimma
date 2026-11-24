@@ -311,6 +311,7 @@ insert_editing = true       # in text fields ctrl+w, ctrl+u, ctrl+h delete; ctrl
 "<Space>" = "panel.mark"
 "V" = "panel.visual"
 "m" = "panel.move"
+"z" = "panel.sleep"
 "I" = "urlbar.focus"
 "h" = "bookmarks.collapse"
 "l" = "bookmarks.expand"

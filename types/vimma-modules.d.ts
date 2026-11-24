@@ -180,6 +180,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/host/route-ops.mjs": typeof import("../src/browser/base/content/vimma/host/route-ops.mjs");
   "chrome://browser/content/vimma/host/runners.mjs": typeof import("../src/browser/base/content/vimma/host/runners.mjs");
   "chrome://browser/content/vimma/host/site-keys-ops.mjs": typeof import("../src/browser/base/content/vimma/host/site-keys-ops.mjs");
+  "chrome://browser/content/vimma/host/sleep-ops.mjs": typeof import("../src/browser/base/content/vimma/host/sleep-ops.mjs");
   "chrome://browser/content/vimma/host/tab-ops.mjs": typeof import("../src/browser/base/content/vimma/host/tab-ops.mjs");
   "chrome://browser/content/vimma/host/tab-search.mjs": typeof import("../src/browser/base/content/vimma/host/tab-search.mjs");
   "chrome://browser/content/vimma/host/toolbar-ops.mjs": typeof import("../src/browser/base/content/vimma/host/toolbar-ops.mjs");

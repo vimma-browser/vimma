@@ -459,6 +459,9 @@ const modal = {
     // The row's tab to a workspace chosen in the workspace picker, as `m` there moves the
     // selected tab (m3-workspaces); in the bookmarks panel the bookmark to a folder.
     m: "panel.move",
+    // The highlighted tab, or the marked ones, to sleep (docs/specs/tab-sleep.md decision 15):
+    // it reads as "zzz". Nothing in the bookmarks panel.
+    z: "panel.sleep",
     // Closes the panel, then focuses the address bar (as I does in normal mode).
     I: "urlbar.focus",
     // The bookmarks panel (docs/specs/bookmarks.md), neo-tree's keys; nothing in the tabs panel.

@@ -128,6 +128,13 @@ export const COMMANDS = Object.freeze([
     "firefox.command",
     "Run a Firefox command or key by id (Tab completes)",
   ),
+  // docs/specs/tab-sleep.md Behaviour 9-11: this workspace, `all` of them, or tab N.
+  cmd(
+    "sleep",
+    "optional",
+    "tab.sleep",
+    "Put this workspace's tabs to sleep (all: every one; N: tab N)",
+  ),
   cmd("ls", "none", "goto.picker", "Tab search: every tab, every window, recently closed"),
   // docs/specs/tab-search.md decision 2: the same picker, the text as its query.
   cmd("tabsearch", "optional", "goto.picker", "Tab search, with the text as its query", {
@@ -310,6 +317,24 @@ function tabCommand(text) {
   if (/^[1-9]\d{0,5}$/.test(text))
     return runResult("tab", { id: "tab.next", count: Number(text) }, text);
   return fail("invalid-argument", TAB_REFUSAL);
+}
+
+/** What `:sleep` says to an argument it does not take. */
+const SLEEP_REFUSAL = ":sleep takes all or a tab number (1, 2, …)";
+
+/**
+ * `:sleep [all|N]` (docs/specs/tab-sleep.md Behaviour 9-11): the workspace's tabs, every
+ * workspace's with `all`, or tab N as `{N}gt` numbers it, which goes along as typed for the
+ * host's "no tab N".
+ * @param {string} text  the argument, trimmed
+ * @returns {CommandResult}
+ */
+function sleepCommand(text) {
+  if (!text) return runResult("sleep", { id: "tab.sleep" });
+  if (text.toLowerCase() === "all") return runResult("sleep", { id: "tab.sleep" }, "all");
+  if (/^[1-9]\d{0,5}$/.test(text))
+    return runResult("sleep", { id: "tab.sleep", count: Number(text) }, text);
+  return fail("invalid-argument", SLEEP_REFUSAL);
 }
 
 /**
@@ -498,6 +523,7 @@ export function parseCommandLine(line, { hidden = [] } = {}) {
     return fail("missing-argument", `:${command.name} needs an argument`);
   }
   if (command.name === "tab") return tabCommand(raw);
+  if (command.name === "sleep") return sleepCommand(raw);
   const id = text && command.textAction ? command.textAction : command.action;
   return runResult(command.name, { id }, command.text ?? text);
 }
@@ -562,6 +588,7 @@ const ARGUMENT_KINDS = Object.freeze({
   open: { names: "search", kind: "search engine" },
   tabnew: { names: "search", kind: "search engine" },
   layout: { names: "layout", kind: "layout", fixed: LAYOUTS },
+  sleep: { names: "sleep", kind: "every workspace", fixed: ["all"] },
   private: { names: "private", kind: "private workspace", fixed: ["close"] },
   // Only the words the host offers: export, export! and forget while bookmarks.toml is on.
   bookmarks: { names: "bookmarksfile", kind: "bookmarks file" },

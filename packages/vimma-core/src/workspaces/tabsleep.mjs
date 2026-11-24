@@ -103,3 +103,82 @@ export function planSleep({ now, sleepAfterMs, tabs, sites, agentConnected, mode
   }
   return { sleep, keep };
 }
+
+/**
+ * Why a tab stayed awake by hand: a rule of `planSleep`, or "unload", Firefox's own refusal
+ * after the plan (a page that would ask before leaving, or a dialog over it; decision 10).
+ * @typedef {SleepReason | "unload"} AwakeReason
+ */
+
+/** What `:sleep` says in a private window (Behaviour 13). */
+export const PRIVATE_SLEEP_TEXT = "Private tabs do not sleep";
+
+/**
+ * Each reason as `:sleep`'s report names it, in Behaviour 2's order, which breaks a tie: with
+ * the start page and the tab on screen, "on screen" is the one the user is looking at.
+ * @type {Readonly<Record<AwakeReason, string>>}
+ */
+const REASON_TEXT = Object.freeze({
+  onScreen: "on screen",
+  pinned: "pinned",
+  sound: "playing sound",
+  pip: "in Picture-in-Picture",
+  sharing: "sharing a camera, microphone or screen",
+  private: "private",
+  agent: "an agent is connected",
+  page: "not a web page",
+  site: "its site has sleep = false",
+  loading: "loading",
+  recent: "seen recently",
+  unload: "it would ask before leaving",
+});
+
+/** The reasons that read as a sentence alone; the others follow "it is". */
+const OWN_SENTENCE = new Set(["agent", "site", "unload"]);
+
+/**
+ * `:sleep`'s report (Behaviour 9): `2 tabs asleep; 3 stay awake: on screen`, the most common
+ * reason named, on a tie the one Behaviour 2 lists first.
+ * @param {{ slept: number, keep: readonly AwakeReason[] }} report
+ */
+export function sleepReport({ slept, keep }) {
+  const head = `${slept} ${slept === 1 ? "tab" : "tabs"} asleep`;
+  if (!keep.length) return head;
+  /** @type {Map<AwakeReason, number>} */
+  const counts = new Map();
+  for (const r of keep) counts.set(r, (counts.get(r) ?? 0) + 1);
+  let top = /** @type {AwakeReason} */ (keep[0]);
+  let most = 0;
+  for (const r of /** @type {AwakeReason[]} */ (Object.keys(REASON_TEXT))) {
+    const n = counts.get(r) ?? 0;
+    if (n > most) [top, most] = [r, n];
+  }
+  const stay = keep.length === 1 ? "stays" : "stay";
+  return `${head}; ${keep.length} ${stay} awake: ${REASON_TEXT[top]}`;
+}
+
+/**
+ * What `:sleep N`, or `z` in the side panel, says (Behaviour 11): one tab by its number, or
+ * several as `:sleep` reports them, leaving out the tabs that were asleep already.
+ * @param {readonly { number: number, reason: AwakeReason | "asleep" | null }[]} named
+ *   `reason` null: put to sleep
+ */
+export function namedSleepText(named) {
+  const [only] = named;
+  if (named.length === 1 && only) {
+    const n = only.number;
+    if (only.reason === null) return `Tab ${n} asleep`;
+    if (only.reason === "asleep") return `Tab ${n} is asleep already`;
+    if (only.reason === "onScreen") return `Tab ${n} is on screen`;
+    const why = REASON_TEXT[only.reason];
+    return `Tab ${n} stays awake: ${OWN_SENTENCE.has(only.reason) ? why : `it is ${why}`}`;
+  }
+  /** @type {AwakeReason[]} */
+  const keep = [];
+  let slept = 0;
+  for (const { reason } of named) {
+    if (reason === null) slept++;
+    else if (reason !== "asleep") keep.push(reason);
+  }
+  return sleepReport({ slept, keep });
+}

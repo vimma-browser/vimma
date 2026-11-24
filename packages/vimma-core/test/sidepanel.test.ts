@@ -386,6 +386,31 @@ describe("refreshPanel", () => {
     expect(next.rows[next.selected]?.tabId).toBe("t4");
   });
 
+  // docs/specs/tab-sleep.md decision 23: a tab's row id is its browser's panel, which a discard
+  // takes away, so after `z` the row is listed under a new id in the same place.
+  test("Given the highlighted tab is listed under a new id in the same place, then the highlight stays on its row", () => {
+    const s = press(openPanel(model, info), [{ id: "panel.down" }]).state;
+    expect(s.rows[s.selected]?.tabId).toBe("t4");
+    const slept = {
+      ...model,
+      workspaces: model.workspaces.map((w) =>
+        w.id === "w2" ? { ...w, tabs: ["t2", "t3", "t4b"] } : w,
+      ),
+    };
+    const next = refreshPanel(s, slept, (id) => info(id === "t4b" ? "t4" : id));
+    expect(next.rows[next.selected]?.tabId).toBe("t4b");
+  });
+
+  test("Given the highlighted tab closed, then the highlight goes to the active tab, as before", () => {
+    const s = press(openPanel(model, info), [{ id: "panel.down" }]).state;
+    const closed = {
+      ...model,
+      workspaces: model.workspaces.map((w) => (w.id === "w2" ? { ...w, tabs: ["t2", "t3"] } : w)),
+    };
+    const next = refreshPanel(s, closed, info);
+    expect(next.rows[next.selected]?.tabId).toBe("t3");
+  });
+
   test("Given another workspace (ctrl+i), then it lists that one, its active tab highlighted", () => {
     const s = press(openPanel(model, info), [{ id: "panel.down" }]).state;
     const next = refreshPanel(s, { ...model, active: "w1" }, info, { color: "blue" });
@@ -415,6 +440,10 @@ describe("panel keys in the keymap", () => {
 
   test("prefix b toggles it from panel mode", () => {
     expect(feed("panel", "ctrl+b b").at(-1)).toMatchObject({ action: { id: "sidebar.toggle" } });
+  });
+
+  test("z puts the highlighted or marked tabs to sleep (tab-sleep decision 15)", () => {
+    expect(feed("panel", "z")[0]).toEqual({ kind: "action", action: { id: "panel.sleep" } });
   });
 
   test("x closes the tab and ctrl+shift+t reopens one in panel mode", () => {
@@ -1125,5 +1154,94 @@ describe("edge cases of the panel's state", () => {
     for (const id of ["panel.mark", "panel.visual", "panel.close_tab", "panel.move"]) {
       expect(panelKey(s, { id }), id).toEqual({ state: s, effect: null });
     }
+  });
+});
+
+// docs/specs/tab-sleep.md, Behaviour 12: `z` puts the highlighted tab, or the marked ones, to sleep.
+describe("panel.sleep", () => {
+  const five: Workspaces = {
+    ...model,
+    workspaces: model.workspaces.map((w) =>
+      w.id === "w2" ? { ...w, tabs: ["t2", "t3", "t4", "t5", "t6"], activeTab: "t2" } : w,
+    ),
+  };
+  const more: Record<string, PanelTabInfo> = {
+    ...tabs,
+    t5: { title: "Docs" },
+    t6: { title: "Pinned", pinned: true },
+  };
+  const info5 = (id: string) => more[id];
+  const Z = { id: "panel.sleep" };
+  const SPACE = { id: "panel.mark" };
+  const V = { id: "panel.visual" };
+  const J = { id: "panel.down" };
+
+  test("without marks, the highlighted row's tab; the highlight stays", () => {
+    const { state, effect } = press(openPanel(five, info5), [J, Z]);
+    expect(effect).toEqual({ type: "sleep", tabs: [{ id: "t3", number: 2 }] });
+    expect(state.selected).toBe(1);
+  });
+
+  test("a pinned row is named, so core leaves the refusal to the rules (decision 14)", () => {
+    const { effect } = press(openPanel(five, info5), [J, J, J, J, Z]);
+    expect(effect).toEqual({ type: "sleep", tabs: [{ id: "t6", number: 5 }] });
+  });
+
+  test("with marks, the marked tabs in row order, and the marks are cleared", () => {
+    const { state, effect } = press(openPanel(five, info5), [J, J, SPACE, J, SPACE, Z]);
+    expect(effect).toEqual({
+      type: "sleep",
+      tabs: [
+        { id: "t4", number: 3 },
+        { id: "t5", number: 4 },
+      ],
+    });
+    expect(state.marked).toEqual([]);
+  });
+
+  test("an open range is marked first, then its tabs sleep", () => {
+    const { state, effect } = press(openPanel(five, info5), [V, J, J, Z]);
+    expect(effect).toEqual({
+      type: "sleep",
+      tabs: [
+        { id: "t2", number: 1 },
+        { id: "t3", number: 2 },
+        { id: "t4", number: 3 },
+      ],
+    });
+    expect(state.anchor).toBeNull();
+    expect(state.marked).toEqual([]);
+  });
+
+  test("with a split and its panes still the marks, the highlighted row's tab", () => {
+    const split = openPanel(five, info5, { panes: ["t2", "t3"], paneFocus: "t2" });
+    const { state, effect } = press(split, [J, J, Z]);
+    expect(effect).toEqual({ type: "sleep", tabs: [{ id: "t4", number: 3 }] });
+    expect(state.marked).toEqual(["t2", "t3"]);
+  });
+
+  test("with a split and changed marks, the marked tabs; the marks go back to the panes", () => {
+    const split = openPanel(five, info5, { panes: ["t2", "t3"], paneFocus: "t2" });
+    const { state, effect } = press(split, [J, J, J, SPACE, Z]);
+    expect(effect).toEqual({
+      type: "sleep",
+      tabs: [
+        { id: "t2", number: 1 },
+        { id: "t3", number: 2 },
+        { id: "t5", number: 4 },
+      ],
+    });
+    expect(state.marked).toEqual(["t2", "t3"]);
+  });
+
+  test("a count does not repeat it, as for x", () => {
+    const { effect } = press(openPanel(five, info5), [{ ...Z, count: 3 }]);
+    expect(effect).toEqual({ type: "sleep", tabs: [{ id: "t2", number: 1 }] });
+  });
+
+  test("an empty workspace has nothing to put to sleep", () => {
+    const empty: Workspaces = { ...model, active: "w3" };
+    const s = openPanel(empty, info);
+    expect(panelKey(s, Z)).toEqual({ state: s, effect: null });
   });
 });
