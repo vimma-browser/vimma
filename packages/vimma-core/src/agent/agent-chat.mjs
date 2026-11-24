@@ -75,6 +75,13 @@ const ANSWERS = Object.freeze({
   mute: "denied (muted)",
 });
 
+/**
+ * What the gate's answer makes of a step; none is "denied".
+ * @param {string | undefined} answer
+ */
+// Stryker disable next-line StringLiteral: no answer is named "Stryker was here!" either
+const answerText = (answer) => ANSWERS[answer ?? ""] ?? "denied";
+
 /** Columns a tool's name keeps in a step's line. */
 const NAME_COLUMNS = 40;
 
@@ -159,6 +166,7 @@ export class Transcript {
    * @param {TaskEvent} e
    */
   task(e) {
+    // `usage` shows in the header and the status bar; `steer` was shown when it was sent.
     switch (e.type) {
       case "reply":
         this.push({ kind: "agent", text: chatText(e.text) });
@@ -182,6 +190,7 @@ export class Transcript {
         if (
           step.outcome === "…" ||
           step.outcome === "asking you" ||
+          // Stryker disable next-line OptionalChaining: a running step always has an outcome
           step.outcome?.endsWith("(rate limit)")
         ) {
           step.outcome = e.result.isError ? "refused" : "done";
@@ -191,10 +200,6 @@ export class Transcript {
       }
       case "server-error":
         this.notice(`the model server failed (${e.error}); it is asked again`);
-        return;
-      default:
-        // `usage` shows in the header and the status bar; `steer` was shown when it was sent.
-        return;
     }
   }
 
@@ -226,7 +231,7 @@ export class Transcript {
             ? "ran under grant"
             : e.kind === "timeout"
               ? "denied (no answer)"
-              : (ANSWERS[e.answer ?? ""] ?? "denied");
+              : answerText(e.answer);
     }
     this.version++;
   }
@@ -238,10 +243,10 @@ export class Transcript {
    * @param {ConvGateEvent} e
    */
   cliGate(e) {
+    // gate() gives the step its outcome, and does nothing without a step.
     if (e.kind === "asked" || e.kind === "ran") {
       this.step = this.push({ kind: "step", text: toolName(e.tool), outcome: "…" });
     }
-    if (!this.step) return;
     this.gate(e);
     if (e.kind !== "asked") this.step = null;
   }
@@ -257,6 +262,7 @@ export class Transcript {
       running &&
       (running.outcome === "…" ||
         running.outcome === "asking you" ||
+        // Stryker disable next-line OptionalChaining: a running step always has an outcome
         running.outcome?.endsWith("(rate limit)"))
     ) {
       running.outcome = "withdrawn";
@@ -338,11 +344,14 @@ const PROBED_PORTS = new Set(LOCAL_SERVERS.map((s) => String(s.port)));
 
 /** @param {string} endpoint @returns {URL | null} */
 function parse(endpoint) {
+  /** @type {URL | null} */
+  let url = null;
   try {
-    return new URL(endpoint);
+    url = new URL(endpoint);
   } catch {
-    return null;
+    // not a URL: null
   }
+  return url;
 }
 
 /**
@@ -364,8 +373,15 @@ export function isLocalEndpoint(endpoint) {
 export const needsKey = (p) =>
   p.kind !== "cli" && (p.kind === "anthropic" || !isLocalEndpoint(p.endpoint));
 
+/**
+ * A supported agent CLI's entry by its id, or null.
+ * @param {string | undefined} id
+ */
+// Stryker disable next-line StringLiteral: no CLI is named "Stryker was here!" either
+const cliEntry = (id) => CLIS[id ?? ""] ?? null;
+
 /** @param {{ kind: string, cli?: string }} p */
-const cliOf = (p) => (p.kind === "cli" ? (CLIS[p.cli ?? ""] ?? null) : null);
+const cliOf = (p) => (p.kind === "cli" ? cliEntry(p.cli) : null);
 
 /**
  * What a y to the notice before the first task covers: the endpoint, or for an agent CLI the
@@ -499,7 +515,7 @@ export function chatHeader({
   cli = null,
 }) {
   const approval = granted ? ["granted"] : asking ? ["asks every step"] : [];
-  const info = provider?.kind === "cli" ? (CLIS[provider.cli ?? ""] ?? null) : null;
+  const info = provider?.kind === "cli" ? cliEntry(provider.cli) : null;
   if (provider && info) {
     // docs/specs/builtin-agent-cli.md Behaviour 5: the CLI, the model it reported (else the
     // one the provider names), and that the CLI decides where data goes; then its own tools.
@@ -531,6 +547,8 @@ export function chatHeader({
 function tokens(n) {
   if (n < 1000) return String(n);
   if (n < 1_000_000) return `${Math.round(n / 1000)}k`;
+  // Below 1e27 tokens, where toFixed turns to exponents, it writes one dot, so ".0" ends it.
+  // Stryker disable next-line Regex: the `/\.0/` case, as above
   return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
 }
 
@@ -570,7 +588,8 @@ const WORDS = Object.freeze(["stop", "new", "model", "list", "clear", "give", "f
  *   | { kind: "refuse", text: string }}
  */
 export function parseAgentCommand(text) {
-  const words = (text ?? "").trim().toLowerCase().split(/\s+/).filter(Boolean).join(" ");
+  // trim() and \s know the same white space, so no word is empty unless the text is.
+  const words = (text ?? "").trim().toLowerCase().split(/\s+/).join(" ");
   if (!words) return { kind: "open" };
   if (words === "forget all") return { kind: "forget" };
   if (WORDS.includes(words)) {
