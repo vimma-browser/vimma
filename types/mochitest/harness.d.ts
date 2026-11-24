@@ -331,6 +331,13 @@ declare const ContentTaskUtils: {
     interval?: number,
     maxTries?: number,
   ): Promise<T>;
+  waitForEvent(
+    subject: EventTarget,
+    eventName: string,
+    capture?: boolean,
+    checkFn?: ((event: Event) => boolean) | null,
+    wantsUntrusted?: boolean,
+  ): Promise<Event>;
 };
 
 // --- The browser window a browser-chrome test runs in (its scope's prototype) ---

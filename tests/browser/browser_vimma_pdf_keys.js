@@ -58,6 +58,33 @@ function loadPdf(browser, url) {
   return rendered;
 }
 
+/**
+ * Runs `press`, which reloads the PDF, and waits until the new document has drawn a text layer.
+ * pdf.js sends `textlayerrendered` once for each page it draws, page 2 a few milliseconds after
+ * page 1, so a wait for the next such event, set while the old document is still drawing, can end
+ * on the old document's page 2. A focus wait (SpecialPowers' EnsureFocus) sent to that document
+ * then fails with "Actor 'SpecialPowers' destroyed" when the reload replaces it (issue #1511).
+ * @param {XULBrowserElement} browser
+ * @param {() => void} press
+ */
+async function reloadBy(browser, press) {
+  const old = browser.browsingContext?.currentWindowGlobal;
+  // Without the old document's window global, the waits below could pass on the old document.
+  Assert.ok(old, "the PDF being reloaded has a window global");
+  press();
+  await TestUtils.waitForCondition(() => {
+    const now = browser.browsingContext?.currentWindowGlobal;
+    return !!now && now !== old;
+  }, "the reload replaces the document");
+  // In the new document: pdf.js appends .endOfContent to a text layer once it has rendered, just
+  // before it sends textlayerrendered (TextLayerBuilder.render). The check and the listener run in
+  // one task, so the event cannot fall between them.
+  await SpecialPowers.spawn(browser, [], async () => {
+    if (content.document.querySelector("#viewer .textLayer .endOfContent")) return;
+    await ContentTaskUtils.waitForEvent(content.document, "textlayerrendered", false, null, true);
+  });
+}
+
 /** @param {XULBrowserElement} browser */
 async function focusNormal(browser) {
   await SimpleTest.promiseFocus(browser);
@@ -220,16 +247,10 @@ add_task(async function vimmas_keys_keep_their_meaning_in_the_pdf_viewer() {
     EventUtils.synthesizeKey("KEY_Escape");
     await focusNormal(browser);
     for (const key of ["r", "KEY_F5"]) {
-      const reloaded = BrowserTestUtils.waitForContentEvent(
-        browser,
-        "textlayerrendered",
-        false,
-        null,
-        true,
-      );
-      if (key.startsWith("KEY_")) EventUtils.synthesizeKey(key);
-      else type(key);
-      await reloaded;
+      await reloadBy(browser, () => {
+        if (key.startsWith("KEY_")) EventUtils.synthesizeKey(key);
+        else type(key);
+      });
       const after = await view(browser);
       Assert.equal(after.rotation, 0, `${key} reloads, and rotates nothing`);
       Assert.equal(after.presenting, false, `${key} starts no presentation`);
