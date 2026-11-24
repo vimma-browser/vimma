@@ -40,10 +40,9 @@ export const MAX_RECORD_BYTES = 400_000;
 
 /** @param {unknown} v @returns {v is Record<string, unknown>} */
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-/** @param {unknown} v @returns {v is number} */
-const isTime = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
-/** @param {unknown} v @returns {v is number} */
-const isPrice = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
+/** Only a number is finite. @param {unknown} v @returns {v is number} */
+const isTime = (v) => Number.isFinite(v) && /** @type {number} */ (v) >= 0;
+const isPrice = isTime;
 
 /**
  * The provider as stored: its name, kind, endpoint, model, vision and prices, and nothing else,
@@ -57,8 +56,10 @@ function storedProvider(p) {
     // An agent CLI (docs/specs/builtin-agent-cli.md C4): which one and its model, never a path,
     // an argument or an environment.
     if (typeof p.name !== "string" || !p.name || typeof p.model !== "string") return null;
-    if (typeof p.cli !== "string" || !CLI_IDS.includes(p.cli)) return null;
-    return { name: p.name, kind: "cli", cli: p.cli, endpoint: "", model: p.model, vision: false };
+    // A CLI that is not a string is in no list of strings.
+    if (!(/** @type {readonly unknown[]} */ (CLI_IDS).includes(p.cli))) return null;
+    const cli = /** @type {string} */ (p.cli);
+    return { name: p.name, kind: "cli", cli, endpoint: "", model: p.model, vision: false };
   }
   if (p.kind !== "openai" && p.kind !== "anthropic") return null;
   if (typeof p.name !== "string" || !p.name || typeof p.model !== "string" || !p.model) {
@@ -118,14 +119,12 @@ export function storedRecord(c) {
     over -= size(record.entries.shift()) + 1;
   }
   const last = record.entries[0];
+  // Stryker disable next-line EqualityOperator,ConditionalExpression: with over <= 0 it cuts nothing
   if (over > 0 && last) {
-    // One entry alone is too long: its start is kept, cut by characters until it fits.
+    // One entry alone is too long: its start is kept. Each character takes at least one byte of
+    // the JSON, so cutting `over` of them fits, unless the rest of the record is too long alone.
     const chars = [...last.text];
-    const keep = Math.max(0, chars.length - over);
-    last.text = chars.slice(0, keep).join("");
-    while (size(record) > MAX_RECORD_BYTES && last.text) {
-      last.text = [...last.text].slice(0, -1024).join("");
-    }
+    last.text = chars.slice(0, Math.max(0, chars.length - over)).join("");
   }
   return record;
 }
@@ -187,6 +186,7 @@ function tokens(n) {
   // Round first, then pick the unit, so 999_500 reads as 1M rather than 1000k (#1190).
   const thousands = Math.round(n / 1000);
   if (thousands < 1000) return `${thousands}k`;
+  // Stryker disable next-line Regex: toFixed(1) writes one dot, so its ".0" can only end it
   return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
 }
 

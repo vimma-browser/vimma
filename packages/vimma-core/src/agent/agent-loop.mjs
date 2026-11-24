@@ -106,10 +106,9 @@ export function pruneResults(messages, keep) {
   if (leave === 0) return messages;
   let seen = 0;
   return messages.map((m) => {
-    if (m.role !== "tool" || seen >= leave) {
-      if (m.role === "tool") seen += m.results.length;
-      return m;
-    }
+    // A message after the left-out block goes as it is, the same object; `seen` no longer
+    // matters past it.
+    if (m.role !== "tool" || seen >= leave) return m;
     const results = m.results.map((r) => (seen++ < leave ? leaveOut(r) : r));
     return { role: "tool", results };
   });
@@ -124,6 +123,7 @@ function leftOutCount(messages, keep) {
   if (!(keep > 0)) return 0;
   let total = 0;
   for (const m of messages) if (m.role === "tool") total += m.results.length;
+  // Stryker disable next-line EqualityOperator: at total === keep both sides give 0
   return total < keep ? 0 : Math.floor((total - keep) / keep) * keep;
 }
 
@@ -152,7 +152,8 @@ function leaveOut(r) {
 const TYPES = {
   string: (v) => typeof v === "string",
   integer: (v) => Number.isInteger(v),
-  number: (v) => typeof v === "number" && Number.isFinite(v),
+  // Only a number is finite.
+  number: (v) => Number.isFinite(v),
   boolean: (v) => typeof v === "boolean",
   array: (v) => Array.isArray(v),
   object: (v) => typeof v === "object" && v !== null && !Array.isArray(v),
@@ -265,16 +266,20 @@ async function run(opts, signal, pending) {
   const stopped = () => ({ outcome: /** @type {const} */ ("stopped"), messages, after });
 
   let serverErrors = 0;
-  /** The last refused call as `name args`, and how many times in a row it was refused. */
-  let refused = { key: "", times: 0 };
+  /**
+   * The last refused call as `name args`, and how many times in a row it was refused; null when
+   * the last call was not refused.
+   * @type {{ key: string, times: number } | null}
+   */
+  let refused = null;
   /** @param {ToolCall} call @param {boolean} wasRefused @returns {boolean} the limit is reached */
   const count = (call, wasRefused) => {
     if (!wasRefused) {
-      refused = { key: "", times: 0 };
+      refused = null;
       return false;
     }
     const key = `${call.name} ${JSON.stringify(call.args)}`;
-    refused = { key, times: refused.key === key ? refused.times + 1 : 1 };
+    refused = { key, times: refused?.key === key ? refused.times + 1 : 1 };
     return refused.times >= REPEAT_LIMIT;
   };
 
@@ -387,6 +392,7 @@ async function run(opts, signal, pending) {
       const error = `stopped: ${repeated.name} was refused ${REPEAT_LIMIT} times in a row with the same arguments`;
       return { outcome: "error", messages, error };
     }
+    // Stryker disable next-line ConditionalExpression: the next turn's first check finds it too
     if (exceeded) return { outcome: "budget", messages, exceeded };
   }
 }

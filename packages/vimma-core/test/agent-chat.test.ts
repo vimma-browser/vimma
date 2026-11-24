@@ -796,3 +796,16 @@ describe(":agent's words: edges", () => {
     });
   });
 });
+
+// Issue #1119: the edges the weekly mutation run left unpinned.
+describe("the transcript at its edges", () => {
+  test("a refused own tool is looked for among own tools only, whatever id it names", () => {
+    const t = new Transcript();
+    t.user("Buy milk");
+    t.notice("granted");
+    const version = t.version;
+    t.ownToolRefused(undefined as unknown as string);
+    expect(t.version).toBe(version);
+    expect(texts(t)).toEqual(["user: Buy milk", "notice: granted"]);
+  });
+});

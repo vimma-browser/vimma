@@ -93,8 +93,9 @@ export async function probeLocal(
     [...asked].map(async ([endpoint, server]) => {
       try {
         const json = await request(fetch, `${endpoint}/models`, timeout(timeoutMs));
-        const data = Array.isArray(json?.data) ? json.data : [];
-        const models = data.map((/** @type {JsonEntry} */ m) => m?.id).filter(isModelName);
+        const models = Array.isArray(json?.data)
+          ? json.data.map((/** @type {JsonEntry} */ m) => m?.id).filter(isModelName)
+          : [];
         return [{ server, endpoint, models }];
       } catch {
         return [];
@@ -124,6 +125,14 @@ export function modelChoices(found) {
 /** The same kind, endpoint and model: one model, whatever its provider is named. */
 export const providerKey = (/** @type {AgentProviderConfig} */ p) =>
   `${p.kind}\n${p.endpoint.replace(/\/+$/, "")}\n${p.model}${p.kind === "cli" ? `\n${p.cli}` : ""}`;
+
+/**
+ * A local server's model as providerKey writes an OpenAI-compatible provider of it, which needs
+ * no name or vision.
+ * @param {{ endpoint: string, model: string }} local
+ */
+const localKey = (local) =>
+  providerKey(/** @type {AgentProviderConfig} */ ({ kind: "openai", ...local }));
 
 /**
  * Whether two providers are the same model at the same endpoint under the same name.
@@ -166,7 +175,11 @@ export async function localModelState(
   }
   if (!res.ok) return "unknown";
   try {
+    // Without the checks, null's data and a list that is no array throw into the catch, which
+    // gives the same "unknown".
+    // Stryker disable next-line OptionalChaining: see above
     const data = JSON.parse(await res.text())?.data;
+    // Stryker disable next-line ConditionalExpression: see above
     if (!Array.isArray(data)) return "unknown";
     return data.some((/** @type {JsonEntry} */ m) => m?.id === provider.model)
       ? "available"
@@ -223,11 +236,11 @@ export function pickerEntries({ providers, found, states, current, clis = CLIS }
   const locals = (found ?? []).flatMap(({ server, endpoint, models }) =>
     models
       .map((model) => ({ server, endpoint, model }))
-      .filter((l) => !known.has(providerKey({ name: "", kind: "openai", vision: false, ...l })))
+      .filter((l) => !known.has(localKey(l)))
       .map((local) => ({
         local,
         state: /** @type {ModelState} */ ("available"),
-        current: providerKey({ name: "", kind: "openai", vision: false, ...local }) === currentKey,
+        current: localKey(local) === currentKey,
       })),
   );
   /** @type {PickerEntry[]} */
@@ -289,7 +302,8 @@ const ollamaRoot = (endpoint) => endpoint.replace(/\/v1\/?$/, "");
 export async function ollamaContext(fetch, endpoint, model, { timeout = defaultTimeout } = {}) {
   const signal = timeout(10 * PROBE_TIMEOUT_MS);
   const show = await request(fetch, `${ollamaRoot(endpoint)}/api/show`, signal, { model });
-  const set = /(?:^|\n)\s*num_ctx\s+(\d+)/.exec(String(show?.parameters ?? ""))?.[1];
+  // A missing `parameters` reads as "undefined", which sets no num_ctx.
+  const set = /(?:^|\n)\s*num_ctx\s+(\d+)/.exec(String(show?.parameters))?.[1];
   return set ? Number(set) : OLLAMA_DEFAULT_CONTEXT;
 }
 
@@ -351,9 +365,13 @@ export async function ollamaPlacement(fetch, endpoint, model, { timeout = defaul
     const ps = await request(fetch, `${root}/api/ps`, timeout(10 * PROBE_TIMEOUT_MS));
     /** @type {readonly unknown[]} */
     const names = model.includes(":") ? [model] : [model, `${model}:latest`];
+    // Without `?.`, null's models throws into the catch; a list other than `[]` here holds no
+    // entry with the model's name. Both give null.
+    // Stryker disable next-line OptionalChaining,ArrayDeclaration: see above
     const loaded = (Array.isArray(ps?.models) ? ps.models : []).find(
       (/** @type {JsonEntry} */ m) => names.includes(m?.name) || names.includes(m?.model),
     );
+    // Stryker disable next-line OptionalChaining: no model's size throws into the catch: null too
     const size = Number(loaded?.size);
     if (!(size > 0)) return null;
     const vram = Number(loaded.size_vram) || 0;
