@@ -205,7 +205,7 @@ can keep today's behaviour.
 2. **Does "nothing happens" mean today's new tab, or a refused close?** Options: `"new_tab"`
    only (the tab closes and a new tab replaces it); add `"keep"`, which refuses the close and
    says `last tab: close_last keeps it`; or both. Recommendation: `"new_tab"` only, because a
-   refused close leaves a page on screen that the user asked to close, and the new tab already
+   refused close keeps on screen the page the close key was pressed on, and the new tab already
    guarantees that nothing quits; `"keep"` can be added later as a fourth value without breaking
    any file.
 3. **With `"ask"` and other workspaces' tabs, what does the user see?** Options: the y/N question
