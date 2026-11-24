@@ -2,7 +2,9 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.23](https://github.com/vimma-browser/vimma/compare/v0.1.22...v0.1.23) (2026-11-24)
+## [Unreleased]
+
+## [0.1.23](https://github.com/vimma-browser/vimma/compare/v0.1.22...v0.1.23) · Firefox 160.0.1 (2026-11-24)
 
 
 ### Added
@@ -61,7 +63,6 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 * **upstream:** the source check never waits for ever on its tarball hasher ([#1525](https://github.com/vimma-browser/vimma/issues/1525)) ([a612ccd](https://github.com/vimma-browser/vimma/commit/a612ccdbc2fb628fa59a64edfde3a3cc379a7a5d)), closes [#1523](https://github.com/vimma-browser/vimma/issues/1523)
 * **workspaces:** an extension's tabs and windows open in no container, so its sign-in works ([#1356](https://github.com/vimma-browser/vimma/issues/1356)) ([4bf0aa9](https://github.com/vimma-browser/vimma/commit/4bf0aa90f0d76c47dde5728690d79a2c23948bcd)), closes [#1221](https://github.com/vimma-browser/vimma/issues/1221)
 
-## [Unreleased]
 
 ### Changed
 
