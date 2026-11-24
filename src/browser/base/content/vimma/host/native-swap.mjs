@@ -74,7 +74,11 @@ let swaps = 0;
  */
 const PAINT_TIMEOUT_MS = 300;
 let paintTimeout = PAINT_TIMEOUT_MS;
-/** @type {Map<BrowserWindow, number>} the swaps resizing each hidden window before it is shown */
+/**
+ * Each hidden window resized for a swap whose pages have not painted yet, and that paint: a
+ * second swap to it meanwhile waits for the same paint.
+ * @type {Map<BrowserWindow, Promise<void>>}
+ */
 const preparing = new Map();
 /** Whether Vimma is quitting: SessionStore hides every window then, and no swap may run. */
 let quitting = () => Services.startup.shuttingDown;
@@ -473,13 +477,13 @@ function prepare(op) {
   }
   // CSS pixels: a move to a screen of another scale at the same CSS size, or a zoom AppKit
   // applies later, counts as no new size, and that swap stays synchronous as before.
-  if (`${x.innerWidth}x${x.innerHeight}` === before) return null;
-  preparing.set(x, (preparing.get(x) ?? 0) + 1);
-  return pagesPainted(x).finally(() => {
-    const left = (preparing.get(x) ?? 1) - 1;
-    if (left) preparing.set(x, left);
-    else preparing.delete(x);
+  // A swap dropped meanwhile already gave it this size: its paint is still the one to wait for.
+  if (`${x.innerWidth}x${x.innerHeight}` === before) return preparing.get(x) ?? null;
+  const painted = pagesPainted(x).finally(() => {
+    if (preparing.get(x) === painted) preparing.delete(x);
   });
+  preparing.set(x, painted);
+  return painted;
 }
 
 /**
@@ -670,9 +674,11 @@ export const NativeSwap = {
       }
       const event = /** @type {PairEvent} */ ({ type: "enter", normal: idOf(from), private: p });
       const current = () => mine === switches && wanted() && !from.closed && !priv.closed;
-      stepPainted(event, current).then((ok) => {
-        if (!ok && current() && !priv.closed) priv.focus();
-      });
+      stepPainted(event, current)
+        .then((ok) => {
+          if (!ok && current() && !priv.closed) priv.focus();
+        })
+        .catch((e) => console.error("vimma: native swap: entering", e));
     };
     if (!fresh) {
       go();
@@ -697,9 +703,11 @@ export const NativeSwap = {
     if (pair?.parked !== "normal") return false;
     const back = pair.normal;
     const current = () => mine === switches;
-    stepPainted({ type: "leave" }, current).then((ok) => {
-      if (current() && (!ok || ids.get(win) !== back) && !win.closed) win.focus();
-    });
+    stepPainted({ type: "leave" }, current)
+      .then((ok) => {
+        if (current() && (!ok || ids.get(win) !== back) && !win.closed) win.focus();
+      })
+      .catch((e) => console.error("vimma: native swap: leaving", e));
     return true;
   },
 
@@ -710,7 +718,10 @@ export const NativeSwap = {
    */
   async beforeClose() {
     if (pair?.parked !== "normal") return;
-    await stepPainted({ type: "closing", window: pair.private }, () => true);
+    // The private workspace closes whatever happened here: the caller closes it after this.
+    await stepPainted({ type: "closing", window: pair.private }, () => true).catch((e) =>
+      console.error("vimma: native swap: closing", e),
+    );
   },
 
   /** about:vimma's line (decision 11): no frame, title or window identifier. */

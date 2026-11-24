@@ -201,30 +201,49 @@ add_task(async function a_window_shown_at_a_new_size_waits_for_its_page_to_paint
 });
 
 add_task(async function a_page_that_does_not_paint_does_not_hold_the_swap() {
-  // The page's refresh driver is held, so it neither resizes nor paints: the swap shows the
-  // window anyway once its timeout has passed.
+  // The page's process is busy for 3 s, so its actor cannot answer at all: the swap shows the
+  // window anyway once its own timeout (100 ms here) has passed.
   const { tab, priv } = await enterThenShrink(100);
-  const held = () =>
-    SpecialPowers.spawn(tab.linkedBrowser, [], () => content.windowUtils.advanceTimeAndRefresh(0));
-  const release = () =>
-    SpecialPowers.spawn(tab.linkedBrowser, [], () => content.windowUtils.restoreNormalRefresh());
+  /** @type {Promise<unknown> | null} */
+  let busy = null;
   try {
-    await held();
     await SimpleTest.promiseFocus(priv);
+    busy = SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+      const t = Date.now();
+      while (Date.now() - t < 3000);
+    });
+    shownAt.clear();
+    const toggled = Date.now();
     togglePrivate(priv);
     Assert.ok(hidden(window), "the normal window waits for its page first");
     await until(() => hidden(priv) && !hidden(window), "back to the normal window");
     await settled();
-    Assert.ok(
-      await SpecialPowers.spawn(
-        tab.linkedBrowser,
-        [],
-        () => content.windowUtils.isTestControllingRefreshes,
-      ),
-      "shown while the page still could not paint",
-    );
+    const after = (shownAt.get(window) ?? Infinity) - toggled;
+    Assert.less(after, 1000, `shown after the timeout, while the page is still busy (${after} ms)`);
   } finally {
-    await release();
+    await busy;
+    BrowserTestUtils.removeTab(tab);
+    await teardown();
+  }
+});
+
+add_task(async function a_second_switch_during_the_wait_waits_for_the_same_paint() {
+  // Going back twice in a row: the second switch finds the window already resized, and still
+  // shows it only once its page has painted there.
+  const { tab, priv } = await enterThenShrink();
+  try {
+    await slowNextPaint(tab.linkedBrowser);
+    shownAt.clear();
+    await SimpleTest.promiseFocus(priv);
+    togglePrivate(priv);
+    togglePrivate(priv);
+    Assert.ok(hidden(window), "still hidden while its page paints");
+    await until(() => hidden(priv) && !hidden(window), "back to the normal window");
+    await settled();
+    const painted = await paintedAt(tab.linkedBrowser);
+    const shown = shownAt.get(window) ?? 0;
+    Assert.greaterOrEqual(shown, painted, `shown after its page painted (${shown - painted} ms)`);
+  } finally {
     BrowserTestUtils.removeTab(tab);
     await teardown();
   }

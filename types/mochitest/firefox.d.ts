@@ -138,8 +138,6 @@ interface IOUtilsNamespace {
 interface nsIDOMWindowUtils {
   advanceTimeAndRefresh(milliseconds: number): void;
   restoreNormalRefresh(): void;
-  /** advanceTimeAndRefresh holds the refresh driver until restoreNormalRefresh. */
-  readonly isTestControllingRefreshes: boolean;
 }
 
 // XPCOM (types/firefox.d.ts types the interfaces and classes the product uses): the tests name
