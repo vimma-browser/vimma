@@ -881,7 +881,7 @@ describe("the conversation grant (builtin-agent B18)", () => {
   test("a conversation grant has no expiry and ends on stop", () => {
     const q = new AgentQueue();
     q.connect("builtin:1");
-    expect(q.grantConnection("builtin:1", 0)).toBe(true);
+    expect(q.grantConnection("builtin:1")).toBe(true);
     expect(q.grants(0)).toEqual([{ conn: "builtin:1", until: Infinity }]);
     expect(q.ask("builtin:1", READ, 365 * 24 * 60 * MIN).kind).toBe("run");
     expect(q.endGrant("builtin:1")).toBe(true);
@@ -894,7 +894,7 @@ describe("the conversation grant (builtin-agent B18)", () => {
     q.connect("builtin:1");
     q.connect("builtin:2");
     q.connect(7);
-    q.grantConnection("builtin:1", 0);
+    q.grantConnection("builtin:1");
     expect(q.ask("builtin:2", READ, 0).kind).toBe("wait");
     expect(q.ask(7, READ, 0).kind).toBe("wait");
   });
@@ -902,7 +902,7 @@ describe("the conversation grant (builtin-agent B18)", () => {
   test("a conversation grant leaves checkpoints asking", () => {
     const q = new AgentQueue();
     q.connect("builtin:1");
-    q.grantConnection("builtin:1", 0);
+    q.grantConnection("builtin:1");
     expect(q.ask("builtin:1", "vimma_activate", 0, { always: true }).kind).toBe("wait");
     expect(q.ask("builtin:1", "vimma_show", 0).kind).toBe("wait");
   });
@@ -914,15 +914,15 @@ describe("the conversation grant (builtin-agent B18)", () => {
       q.answer(waiting(q.ask("builtin:1", READ, i)).id, { kind: "deny" }, i);
     }
     expect(q.ask("builtin:1", READ, 10).kind).toBe("deny");
-    q.grantConnection("builtin:1", 10);
+    q.grantConnection("builtin:1");
     expect(q.ask("builtin:1", READ, 11).kind).toBe("run");
-    expect(q.grantConnection("builtin:9", 0)).toBe(false);
+    expect(q.grantConnection("builtin:9")).toBe(false);
   });
 
   test(":mcp revoke ends a conversation grant as any other", () => {
     const q = new AgentQueue();
     q.connect("builtin:1");
-    q.grantConnection("builtin:1", 0);
+    q.grantConnection("builtin:1");
     expect(q.revoke(0)).toBe(1);
     expect(q.grants(0)).toEqual([]);
   });
@@ -964,7 +964,7 @@ describe("the built-in agent and :mcp off (builtin-agent Behaviour 33)", () => {
     const q = new AgentQueue();
     q.connect("builtin:1");
     q.connect(7);
-    q.grantConnection("builtin:1", 0);
+    q.grantConnection("builtin:1");
     q.answer(waiting(q.ask(7, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
     q.forgetSessions();
     expect(q.grants(1)).toEqual([{ conn: "builtin:1", until: Infinity }]);
@@ -1298,7 +1298,7 @@ describe("the gate's edges", () => {
   test("a connection that keeps its grant through :mcp off parks nothing while it is off", () => {
     const q = new AgentQueue();
     q.connect("builtin:1", { session: S, now: 0 });
-    expect(q.grantConnection("builtin:1", 0)).toBe(true);
+    expect(q.grantConnection("builtin:1")).toBe(true);
     q.forgetSessions();
     q.disconnect("builtin:1", 0);
     expect(q.parked.size).toBe(0);
@@ -1505,12 +1505,20 @@ describe("the gate at its mutation edges", () => {
     expect(q.expire(id, 0)).toEqual({ resolved: [] });
   });
 
-  test("a conversation grant lifts only a mute in force: one that ended stays as it was", () => {
+  test("a conversation grant clears the mute for its whole length", () => {
     const q = queue();
     for (let i = 0; i < 3; i++) q.expire(waiting(q.ask(1, READ, 0)).id, 0);
     expect(q.ask(1, READ, 0)).toEqual({ kind: "deny", reason: "muted" });
-    q.grantConnection(1, MUTE_MS);
-    // A clock set back shows whether the ended mute was cleared or left.
-    expect(q.ask(1, READ, MUTE_MS - 1)).toEqual({ kind: "deny", reason: "muted" });
+    q.grantConnection(1);
+    expect(q.ask(1, READ, MUTE_MS - 1)).toEqual({
+      kind: "run",
+      grant: { conn: 1, until: Infinity },
+    });
+  });
+
+  test("revoke without a time counts only connections that have a grant", () => {
+    const q = queue();
+    q.grantConnection(1);
+    expect(q.revoke()).toBe(1);
   });
 });
