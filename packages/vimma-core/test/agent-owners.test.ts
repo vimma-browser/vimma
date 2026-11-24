@@ -72,3 +72,13 @@ describe("TabOwners", () => {
     expect(o.visible(50, null)).toBe(true);
   });
 });
+
+// Issue #1119: a tab no conversation owns leaves no entry behind, so the map holds only owned
+// tabs however many tabs pages open.
+test("a tab opened from a tab no conversation owns keeps no entry", () => {
+  const o = new TabOwners();
+  o.opened(60, "builtin:1");
+  o.openedBy(60, 61);
+  o.openedBy(62, 61);
+  expect([...o.owners.keys()]).toEqual([]);
+});

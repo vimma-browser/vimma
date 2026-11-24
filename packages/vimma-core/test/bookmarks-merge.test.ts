@@ -498,6 +498,21 @@ describe("bookmarks.toml: outside changes written to the file (three-way merge)"
     expect(kept.ok && kept.conflicts).toEqual([{ table: "work", path: [], what: "removal" }]);
   });
 
+  test("a deleted table is not read from another table's subfolder of its name moved to the top", () => {
+    // Every base guid, not only the tables' folders, is excluded from the dedupe search (D6): a
+    // subfolder of another table moved to the toolbar's top is that table's item, not this one.
+    const two = `${FILE}\n[bookmarks.home]\n"h" = "https://h.example/"\n"work/x" = "https://x.example/"\n`;
+    const { base, tree } = agreed(two);
+    const changed = edit(tree, (t, find) => {
+      const sub = find("home", "work");
+      remove(t, topFolder(t, "work") as Item);
+      move(t, sub, toolbarOf(t), 0);
+    });
+    const r = merge({ text: two, base, places: changed });
+    expect(r.ok && tables(r.text as string)).toEqual({ home: ["h https://h.example/"] });
+    expect(r.ok && r.base.tables.map((t) => t.name)).toEqual(["home"]);
+  });
+
   test("a folder moved into another table's folder moves its lines into that table", () => {
     const two = `${FILE}\n[bookmarks.home]\n"h" = "https://h.example/"\n`;
     const { base, tree } = agreed(two);

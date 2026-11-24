@@ -87,7 +87,9 @@ only the agent workspace, and each request waits for your yes or runs under a gr
   (its drawing, size or zoom) changes when a script's wait ends, nothing else. Its `setup` field
   is the screen the setup page draws, a word from a closed list (`welcome`, a step's id, `loading`, `stop`),
   and `null` unless the selected tab shows that page; it **never** carries a choice, a search, a
-  line a step writes or what was saved, and is `null` in a private window. Reading the mode
+  line a step writes or what was saved, and is `null` in a private window. A tab's `asleep` is
+  one flag, `true` or left out, read from the tab's attributes so that it never loads a sleeping
+  tab; it names no page, so a private window keeps it. Reading the mode
   writes nothing: a resize mode left with no panes is reported as the mode it would be without
   resize, and its flag is cleared where the panes change (the last pane closes, the split hides),
   never by a read; the status bar's own bookkeeping (the update segment's timer) does not run for
@@ -103,6 +105,7 @@ only the agent workspace, and each request waits for your yes or runs under a gr
   [`controlUpdateState keeps only the fields the protocol names (m6a-updater 41)`](../../packages/vimma-core/test/control.test.ts),
   [`the_private_workspace_keeps_two_splits_and_state_names_no_page`](../../tests/browser/browser_vimma_private_workspace.js),
   [`control_state_never_inserts_a_lazy_tab`](../../tests/browser/browser_vimma_security_invariants.js),
+  [`state_lists_asleep_true_for_a_sleeping_tab_and_does_not_load_it`](../../tests/browser/browser_vimma_control_state_read.js),
   [`vimma_ctl_state_withholds_private_urls_and_titles`](../../tests/browser/browser_vimma_private_workspace.js),
   [`vimma_ctl_state_says_whether_a_private_tab_is_loading`](../../tests/browser/browser_vimma_private_workspace.js),
   [`notice, prompt, chat and agent, when present, are flags and counts only`](../../packages/vimma-core/test/control.test.ts),

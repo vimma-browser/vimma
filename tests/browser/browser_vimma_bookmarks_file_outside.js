@@ -170,7 +170,6 @@ add_task(async function setup() {
       ["vimma.config.pollMs", 100],
       ["vimma.bookmarks.settleMs", 50],
       ["vimma.bookmarks.burstMs", 200],
-      ["vimma.feature.bookmarksFile", true],
     ],
   });
   registerCleanupFunction(async () => {
@@ -745,23 +744,128 @@ add_task(async function a_private_window_change_is_not_written() {
     guid: await guidOf("https://mail.example.com/"),
     title: "secret title",
   });
+  const secretFolder = await PlacesUtils.bookmarks.insert({
+    parentGuid: work,
+    type: PlacesUtils.bookmarks.TYPE_FOLDER,
+    title: "hidden",
+  });
+  await PlacesUtils.bookmarks.insert({
+    parentGuid: secretFolder.guid,
+    url: "https://inner.example/",
+    title: "inner",
+  });
   await quiet();
   await BrowserTestUtils.closeWindow(priv);
   await SimpleTest.promiseFocus(window);
   Assert.equal(await IOUtils.readUTF8(bookmarksFile), FILE, "nothing written");
   await untilFolder(
     "work",
-    [...LOADED, "secret https://private.example/"],
-    "the rename put back; the new bookmark kept in Places only",
+    [...LOADED, "secret https://private.example/", { "hidden/": ["inner https://inner.example/"] }],
+    "the rename put back; the new bookmark and folder kept in Places only",
   );
-  // A later edit of the file, and a change from a normal window, still leave it out.
+  // A later edit of the file still leaves them out.
   await IOUtils.writeUTF8(bookmarksFile, `${FILE}"News" = "https://news.example/"\n`);
   await untilFolder(
     "work",
-    [...LOADED, "secret https://private.example/", "News https://news.example/"],
+    [
+      ...LOADED,
+      "secret https://private.example/",
+      { "hidden/": ["inner https://inner.example/"] },
+      "News https://news.example/",
+    ],
     "still kept",
   );
-  Assert.ok(!(await IOUtils.readUTF8(bookmarksFile)).includes("private.example"), "never written");
+  // A sort from a normal window moves every bookmark of the folder, and renaming the folder
+  // changes none of the bookmarks in it: neither is a change to the private items themselves.
+  const order = /** @type {Node} */ (await PlacesUtils.promiseBookmarksTree(work)).children ?? [];
+  await PlacesUtils.bookmarks.reorder(work, order.map((c) => c.guid).reverse());
+  await PlacesUtils.bookmarks.update({ guid: secretFolder.guid, title: "renamed" });
+  await quiet();
+  const text = await IOUtils.readUTF8(bookmarksFile);
+  Assert.ok(text.indexOf("News") < text.indexOf("Calendar"), "the sort is written");
+  for (const url of ["private.example", "inner.example", "renamed", "hidden"]) {
+    Assert.ok(!text.includes(url), `${url} never written`);
+  }
+  await PlacesUtils.bookmarks.reorder(
+    work,
+    order.map((c) => c.guid),
+  );
+  await IOUtils.writeUTF8(bookmarksFile, `${FILE}"News" = "https://news.example/"\n`);
+  await untilFolder(
+    "work",
+    [
+      ...LOADED,
+      "secret https://private.example/",
+      { "renamed/": ["inner https://inner.example/"] },
+      "News https://news.example/",
+    ],
+    "back in the file's order",
+  );
+  // Renamed later from a normal window: an ordinary bookmark now, written to the file.
+  await PlacesUtils.bookmarks.update({
+    guid: await guidOf("https://private.example/"),
+    title: "public",
+  });
+  await untilText(
+    `${FILE}"News" = "https://news.example/"\n"public" = "https://private.example/"\n`,
+    "a later change from a normal window writes it, the folder still left out",
+  );
+  await reset();
+});
+
+add_task(async function a_library_change_from_a_normal_window_is_written_beside_a_private_one() {
+  await IOUtils.writeUTF8(bookmarksFile, FILE);
+  await untilFolder("work", LOADED, "loaded");
+  const work = /** @type {Node} */ (await topFolder("work")).guid;
+  const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  await SimpleTest.promiseFocus(priv);
+  // The Library, opened from this normal window after the private one was used: the most
+  // recent browser window is still the private one.
+  const opened = BrowserTestUtils.domWindowOpenedAndLoaded();
+  const hook = /** @type {{ PlacesCommandHook: { showPlacesOrganizer(item: string): void } }} */ (
+    /** @type {unknown} */ (window)
+  ).PlacesCommandHook;
+  hook.showPlacesOrganizer("BookmarksToolbar");
+  const library = await opened;
+  try {
+    await SimpleTest.promiseFocus(library);
+    Assert.equal(
+      Services.wm.getMostRecentWindow("navigator:browser"),
+      priv,
+      "the private window is the most recent browser window",
+    );
+    await PlacesUtils.bookmarks.insert({
+      parentGuid: work,
+      url: "https://library.example/",
+      title: "Library add",
+    });
+    await untilText(
+      `${FILE}"Library add" = "https://library.example/"\n`,
+      "the Library's change is written",
+    );
+    // Brought forward from the private window: its changes count as that window's.
+    const privHook =
+      /** @type {{ PlacesCommandHook: { showPlacesOrganizer(item: string): void } }} */ (
+        /** @type {unknown} */ (priv)
+      ).PlacesCommandHook;
+    privHook.showPlacesOrganizer("BookmarksToolbar");
+    await SimpleTest.promiseFocus(library);
+    await PlacesUtils.bookmarks.insert({
+      parentGuid: work,
+      url: "https://raised.example/",
+      title: "raised",
+    });
+    await quiet();
+    Assert.equal(
+      await IOUtils.readUTF8(bookmarksFile),
+      `${FILE}"Library add" = "https://library.example/"\n`,
+      "a change in the Library a private window raised is not written",
+    );
+  } finally {
+    await BrowserTestUtils.closeWindow(library);
+    await BrowserTestUtils.closeWindow(priv);
+    await SimpleTest.promiseFocus(window);
+  }
   await reset();
 });
 

@@ -71,6 +71,34 @@ export const McpHost = {
   },
 
   /**
+   * Whether an agent connection is open, as `:mcp` counts them: tab sleep keeps the agent
+   * workspace's tabs loaded meanwhile, so that the ids agents name them by stay valid
+   * (docs/specs/tab-sleep.md decision 8). Only the count leaves the gate.
+   */
+  get agentConnected() {
+    return lazy.AgentGate.connections.length > 0;
+  },
+
+  /**
+   * Calls `fn` whenever `agentConnected` changes, and tells it nothing else: tab sleep marks the
+   * agent workspace's tabs for Firefox's low-memory unloader meanwhile (docs/specs/tab-sleep.md
+   * decision 21). Returns the call that stops it.
+   * @param {() => void} fn
+   * @returns {() => void}
+   */
+  watchAgentConnected(fn) {
+    let was = this.agentConnected;
+    const listener = () => {
+      const now = this.agentConnected;
+      if (now === was) return;
+      was = now;
+      fn();
+    };
+    lazy.AgentGate.addListener(listener);
+    return () => lazy.AgentGate.removeListener(listener);
+  },
+
+  /**
    * `[agent]` from config.toml (ConfigHost, at every read): the built-in agent's providers and
    * limits.
    * @param {AgentConfig | null} agent  null: the defaults (tests)

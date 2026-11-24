@@ -694,8 +694,9 @@ export function hostRunners(host, page) {
     },
     // `:source` (m5-config-load): ConfigHost reads config.toml now instead of at the next poll;
     // `:source <path>` passes the path as typed, which ConfigHost expands.
-    "config.reload": (_s, _a, /** @type {string | undefined} */ text) =>
-      Services.obs.notifyObservers(null, CONFIG_RELOAD_TOPIC, text ?? ""),
+    // The window goes along, for ConfigHost's word that the file was read.
+    "config.reload": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) =>
+      Services.obs.notifyObservers(s.win, CONFIG_RELOAD_TOPIC, text ?? ""),
     // `:setup` (first-run-setup decision 14): the setup page in a new tab, at the welcome screen.
     "setup.open": (/** @type {WindowState} */ s) => openOrSay(s, "about:vimma-setup", "tab"),
     // `:config`: ConfigHost opens config.toml in a tab of this window (creating it if missing).

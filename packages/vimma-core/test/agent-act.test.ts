@@ -2124,3 +2124,73 @@ describe("element lists without user names and passwords (security.md M31; #1209
     expect(agentUrl).toBe(keysAgentUrl);
   });
 });
+
+describe("element filters, reply checks and console reads, at their edges (mutation-tested, #1119)", () => {
+  const el = (label: string, info: AgentElementInfo) => ({
+    label,
+    target: { rect, kind: "click", info },
+  });
+  const page = [
+    el("aa", { kind: "link", text: "Dairy" }),
+    el("as", { kind: "button", text: "Oat drink" }),
+  ];
+
+  test("a query of white space only holds no word, so it keeps every element", () => {
+    for (const query of ["", " ", " \t\n "]) {
+      expect(filterAgentElements(page, { query }).map((e) => e.label)).toEqual(["aa", "as"]);
+    }
+  });
+
+  test("a kind, field or form method that is no string is refused, whatever it would read as", () => {
+    const click = { alive: true, kind: "button", text: "Go" };
+    const submit = { method: "post", action: "https://shop.example/", fields: 1 };
+    const fill = { alive: true, kind: "field", field: "text" };
+    for (const bad of [7, null, true, ["button"], { toString: () => "button" }]) {
+      expect(parseActTarget({ ...click, kind: bad })).toBe(null);
+      expect(parseActTarget({ ...click, field: bad })).toBe(null);
+      expect(parseActTarget({ ...click, submit: { ...submit, method: bad } })).toBe(null);
+      expect(parseFillTarget({ ...fill, kind: bad })).toBe(null);
+      expect(parseFillTarget({ ...fill, field: bad })).toBe(null);
+      expect(parseFillTarget({ ...fill, submit: { ...submit, method: bad } })).toBe(null);
+    }
+    for (const bad of [["text"], ["file"], ["get"], ["post"]]) {
+      expect(parseActTarget({ ...click, field: bad })).toBe(null);
+      expect(parseActTarget({ ...click, submit: { ...submit, method: bad } })).toBe(null);
+    }
+    expect(parseActTarget({ ...click, submit })?.submit).toEqual(submit);
+    expect(parseFillTarget({ ...fill, submit })?.submit).toEqual(submit);
+  });
+
+  test("a console call's arguments are not read past the first that fills the message", () => {
+    const read: PropertyKey[] = [];
+    const args = new Proxy(["x".repeat(2 * AGENT_CONSOLE.message), "never read"], {
+      get(target, key, receiver) {
+        read.push(key);
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    expect(consoleArgsText(args)).toBe("x".repeat(2 * AGENT_CONSOLE.message));
+    expect(read).toContain("0");
+    expect(read).not.toContain("1");
+  });
+
+  test("an nsIScriptError's level reads no flags that are no whole number of zero or more", () => {
+    for (const bad of [
+      -1,
+      0.5,
+      1.5,
+      Number.NaN,
+      Infinity,
+      "1",
+      null,
+      undefined,
+      [1],
+      { valueOf: () => 1 },
+    ]) {
+      expect(scriptErrorLevel(bad)).toBe(null);
+    }
+    expect(scriptErrorLevel(2)).toBe("error");
+    expect(scriptErrorLevel(0x9)).toBe("warn");
+    expect(scriptErrorLevel(0x8)).toBe(null);
+  });
+});

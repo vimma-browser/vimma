@@ -38,6 +38,7 @@ import { AgentPrompt } from "../ui/agent-prompt.mjs";
 import { getTabLabel, setTabLabel } from "../workspaces/tab-labels.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { PaneViews } from "../split/PaneView.mjs";
+import { shownAsleep } from "../services/TabSleep.sys.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
 import { DownloadRows, DownloadWatch, downloadPickerKey } from "./download-ops.mjs";
 import { HostServices } from "./host-services.mjs";
@@ -459,6 +460,7 @@ export function newWindowState(host, win, keymap, env) {
           foreign: !!WindowWorkspaces.get(win)?.isForeign(tab),
           playing: !!tab.soundPlaying,
           pinned: !!tab.pinned,
+          asleep: shownAsleep(tab),
         };
       },
       closeTab: (tabId) => {

@@ -2,7 +2,7 @@
 
 Status: accepted (sub-PR 1, the signer, the repository tool and the smoke test, sub-PR 2,
 package signing, and sub-PR 3, publishing, implemented; sub-PR 4, the browser's hints, built;
-the repositories are not published yet) ·
+the certificate committed; the repositories are not published yet) ·
 Area: `tools/package/repos.ts` (new), `tools/package/repos-smoke.sh` (new),
 `tools/package/package.ts`, `.github/workflows/release.yml`,
 `.github/workflows/update-publish.yml`, `.github/workflows/pkgbuild.yml`,

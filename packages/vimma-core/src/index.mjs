@@ -29,6 +29,7 @@ export * from "./panes/splitplan.mjs";
 export * from "./workspaces/switchplan.mjs";
 export * from "./text/textwidth.mjs";
 export * from "./workspaces/tablabels.mjs";
+export * from "./workspaces/tabsleep.mjs";
 export * from "./page/find.mjs";
 export * from "./ui/statusbar.mjs";
 export * from "./ui/picker.mjs";

@@ -15,6 +15,7 @@ import {
   UPDATE_STAGES,
   CHAT_VIEWS,
   DOWNLOAD_SEGMENTS,
+  SETUP_SCREENS,
   controlUpdateState,
 } from "../src/control/control.mjs";
 import type { ValidateOptions } from "../src/control/control.mjs";
@@ -319,6 +320,21 @@ describe("validateMessage: state", () => {
     );
   });
 
+  test("a sleeping tab is listed asleep: true; the field is true or left out (tab-sleep, 15)", () => {
+    const tab = { id: "{uuid}", url: "https://example.com/", title: "Example", selected: false };
+    const with_ = (extra: Record<string, unknown>) => ({
+      ...state,
+      tabs: [...state.tabs, { ...tab, ...extra }],
+    });
+    expect(errorsOf(ok(with_({})), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok(with_({ asleep: true })), { command: "state" })).toEqual([]);
+    for (const asleep of [false, "yes", 1, null]) {
+      expect(errorsOf(ok(with_({ asleep })), { command: "state" })).toEqual([
+        "result.tabs[1].asleep must be true when present",
+      ]);
+    }
+  });
+
   test("reports each broken field", () => {
     const broken = {
       mode: 1,
@@ -587,6 +603,21 @@ describe("validateMessage: state", () => {
     expect(errorsOf(ok({ ...hidden, setup: { screen: "welcome" } }), { command: "state" })).toEqual(
       ["result.setup must be null in a private window"],
     );
+  });
+
+  // A client reads the error to see what it sent wrong: a setup that is no object says so, rather
+  // than an unknown field for each of a string's characters, and a screen not in the list names
+  // the screens there are.
+  test("a setup that is no object, or names no screen, says what it must be", () => {
+    for (const setup of ["welcome", 3, true, []]) {
+      expect(errorsOf(ok({ ...state, setup }), { command: "state" })).toEqual([
+        "result.setup must be an object or null",
+      ]);
+    }
+    const screens = `result.setup.screen must be one of ${SETUP_SCREENS.join(", ")}`;
+    for (const setup of [{}, { screen: 1 }, { screen: "ublock origin" }]) {
+      expect(errorsOf(ok({ ...state, setup }), { command: "state" })).toEqual([screens]);
+    }
   });
 
   test("controlUpdateState keeps only the fields the protocol names (m6a-updater 41)", () => {

@@ -40,6 +40,11 @@ const TAB_EVENTS = [
   "TabShow",
   "TabHide",
   "SSTabRestoring",
+  // A tab put to sleep, and one woken (docs/specs/tab-sleep.md, behaviour 14): its entry is
+  // drawn muted while it has no loaded page.
+  "TabBrowserDiscarded",
+  "TabBrowserInserted",
+  "SSTabRestored",
 ];
 /** @type {WeakSet<Window>} windows our sheet is loaded into (loading one twice throws) */
 const styled = new WeakSet();
@@ -309,6 +314,8 @@ export class TabLine {
       const tab = el("vimma-tabline-tab");
       tab.dataset.number = String(item.number);
       if (item.current) tab.setAttribute("current", "");
+      // Muted by CSS, in the same columns, and said in words (tab-sleep, decision 17).
+      if (item.asleep) tab.setAttribute("asleep", "");
       if (item.label) {
         // The letters still to type: the typed ones narrowed the line already (decision 13).
         const label = el("vimma-tabline-label", item.rest ?? item.label);
@@ -319,6 +326,7 @@ export class TabLine {
       if (item.pane) tab.append(...glyph("▪", " in a pane"));
       if (item.name) tab.append(doc.createTextNode(" "), el("vimma-tabline-name", item.name));
       if (item.playing) tab.append(doc.createTextNode(" "), ...glyph("♪", "playing sound"));
+      if (item.asleep) tab.append(el("vimma-tabline-sr", " asleep"));
       out.push(tab);
     }
     if (fit.after) {

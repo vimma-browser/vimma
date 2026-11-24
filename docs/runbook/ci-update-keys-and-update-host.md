@@ -532,22 +532,26 @@ project; check IAM & Admin → Audit Logs.
 
 The certificate: the OpenPGP key that users import, built around the KMS key with one KMS
 signature (spec, decision 4). Its creation time is part of the fingerprint, so pick it once
-(the current UTC time) and never change it. With the maintainer's own `gcloud` credentials:
+(the current UTC time) and never change it; the command below, with the recorded time, makes
+the committed file again. With the maintainer's own `gcloud` credentials:
 
 ```sh
 KMS_ACCESS_TOKEN=$(gcloud auth print-access-token) node tools/package/openpgp-kms.ts certify \
-  --key-version "$(gh variable get GCP_PACKAGE_KEY_VERSION)" --created 2026-11-21T12:00:00Z \
+  --key-version "$(gh variable get GCP_PACKAGE_KEY_VERSION)" --created 2026-11-23T19:12:57Z \
   --user-id 'Vimma packages <packages@vimma.dev>' --out configs/package-signing/vimma-packages.asc
 node tools/package/openpgp-kms.ts fingerprint --cert configs/package-signing/vimma-packages.asc
 gpg --show-keys configs/package-signing/vimma-packages.asc   # the same fingerprint, RSA 4096, [SC]
+gcloud kms keys versions get-public-key 1 --key package-signing --keyring vimma-packages \
+  --location "$LOCATION" --output-file package-signing.pem   # the certificate's RSA key
 ```
 
 Commit the certificate in a pull request of its own and record its fingerprint here; the guide
-prints it next to each setup command.
+prints it next to each setup command. `npm test` fails when the committed certificate's
+fingerprint is not the one in this table, or its self-signature does not verify.
 
-| Key                                                        | Fingerprint  |
-| ---------------------------------------------------------- | ------------ |
-| `vimma-packages/package-signing`, version 1, HSM, RSA-4096 | not made yet |
+| Key                                                        | Created              | Fingerprint                                |
+| ---------------------------------------------------------- | -------------------- | ------------------------------------------ |
+| `vimma-packages/package-signing`, version 1, HSM, RSA-4096 | 2026-11-23T19:12:57Z | `110649CB2BC11400828DD0D497FD3D2B24AD4390` |
 
 Turning the repositories on: `release.yml` signs the `.rpm` and builds the pacman package only
 while the variable is `true`, and the repositories list only releases that have it, so set it

@@ -729,12 +729,14 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
 export function withSiteUnbinds(keymap, extra) {
   if (extra.size === 0) return keymap;
   const { user, mac } = keymap.source;
+  // Without a prototype, a table named after a page's host such as `__proto__` is an own key
+  // like any other: on a plain object, assigning it would set the copy's prototype instead.
   /** @type {NonNullable<UserConfig["sites"]>} */
-  const sites = { ...user.sites };
+  const sites = Object.assign(Object.create(null), user.sites);
   for (const [table, all] of extra) {
     const keys = all.filter((k) => keymap.siteKey(k).ok);
     if (keys.length === 0) continue;
-    const had = Object.hasOwn(sites, table) ? sites[table] : undefined;
+    const had = sites[table];
     sites[table] = { ...had, unbind: [...(had?.unbind ?? []), ...keys] };
   }
   return compileKeymap({ ...user, sites }, { mac });

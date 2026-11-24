@@ -61,6 +61,13 @@
   color: var(--vimma-fg-dim);
 }
 
+/* A sleeping tab (docs/specs/tab-sleep.md, decision 17): the theme's readable muted text, with
+   nothing else changed, so the line does not move when it wakes. Not the current tab: a lazy
+   tab just selected keeps `pending` until its restore ends, and should not flash dim. */
+.vimma-tabline-tab[asleep]:not([current]) {
+  color: var(--vimma-fg-dim);
+}
+
 .vimma-tabline-more {
   flex: none;
   color: var(--vimma-fg-dim);

@@ -276,11 +276,11 @@ describe('[sites."<host>"]', () => {
       ),
     );
     expect(config.sites).toEqual([
-      { match: "docs.google.com", insert: "always" },
-      { match: "Example.COM.", insert: "auto" },
-      { match: "10.0.0.1", insert: "never" },
-      { match: "[::1]", insert: "auto" },
-      { match: "localhost", insert: "never" },
+      { match: "docs.google.com", insert: "always", sleep: true },
+      { match: "Example.COM.", insert: "auto", sleep: true },
+      { match: "10.0.0.1", insert: "never", sleep: true },
+      { match: "[::1]", insert: "auto", sleep: true },
+      { match: "localhost", insert: "never", sleep: true },
     ]);
   });
 
@@ -684,12 +684,12 @@ describe("[ui] toolbar", () => {
     ]);
   });
 
-  test("an unknown key is an error; [ui] is a table, valid in any file", () => {
+  test("a near miss is an error, another unknown key a warning; [ui] is a table", () => {
     expect(errors(cfg("[ui]", 'tolbar = "hidden"'))).toEqual([
       { line: 3, path: "ui.tolbar", message: 'unknown key "tolbar"', suggestion: "toolbar" },
     ]);
-    expect(errors(cfg("[ui]", "tabstrip = true"))).toMatchObject([
-      { line: 3, path: "ui.tabstrip", message: 'unknown key "tabstrip"' },
+    expect(parseConfig(cfg("[ui]", "tabstrip = true")).warnings).toEqual([
+      { line: 3, path: "ui.tabstrip", message: 'unknown key "tabstrip"; skipped' },
     ]);
     expect(errors(cfg("ui = 1"))).toEqual([
       { line: 2, path: "ui", message: "expected a table, got an integer" },

@@ -796,7 +796,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`a call under a grant shows what it did and the time left`](../../packages/vimma-core/test/agent-prompt.test.ts)
 - M24. A tab you did not open inside the agent workspace **never** takes its container: a link from
   another app (the remote command line, `vimma-open`, Firefox's container guess, a `[[routes]]`
-  rule), the control socket's `open`, a tab sent from another device, a new window's first tab, the
+  rule in routes.toml or config.toml), the control socket's `open`, a tab sent from another device, a new window's first tab, the
   other URLs of its command line and the container cached for the next start. It opens in the last
   workspace used that is not the agent's (else the first one), and the window switches to it; "the
   current tab" on an agent tab becomes a new tab there. A login link clicked in a mail app is then
@@ -807,6 +807,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`tabs_loaded_from_outside_skip_the_agent_container`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`a_guess_for_another_workspace_still_counts`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`a_route_rule_naming_the_agent_workspace_is_not_followed_from_outside`](../../tests/browser/browser_vimma_agent_outside_opens.js),
+  [`a_routes_toml_rule_naming_the_agent_workspace_is_not_followed_from_outside`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`a_tab_sent_from_another_device_skips_the_agent_container`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`the_agent_workspace_is_known_before_config_toml_names_it`](../../tests/browser/browser_vimma_agent_outside_opens.js),
   [`config_toml_naming_the_agent_workspace_retires_the_recorded_one`](../../tests/browser/browser_vimma_agent_outside_opens.js),
@@ -1513,8 +1514,9 @@ the page's own and can carry tokens it put there; they come only from the agent'
 - M64. `:mcp off` **must** turn MCP off for the rest of the session, whatever config.toml says
   and however often it is read again. It sets a hold kept in memory that wins over
   `[mcp] enabled = true`, and only `:mcp on` (after its `y/N`) or a restart clears it, never a
-  read of the file (the watcher, `:source`, or a write by `:route add`, the built-in agent's
-  setup or the setup page). A yes to an `:mcp on` question asked before a later `:mcp off` is
+  read of the file (the watcher, `:source`, or a write by `:route add` to routes.toml or
+  config.toml, the built-in agent's setup or the setup page); routes.toml holds no `[mcp]`
+  setting, and the hold is tied to no file read. A yes to an `:mcp on` question asked before a later `:mcp off` is
   refused. `:mcp off` also clears the pref `vimma.mcp.enabled`, so that taking `enabled` out of
   the file later keeps agents off. Reason: a kill switch that depends on editing a file, or that
   the next read of the file undoes, is no kill switch ([setup-v2](../specs/setup-v2.md)
@@ -1522,6 +1524,7 @@ the page's own and can carry tokens it put there; they come only from the agent'
   [`with [mcp] enabled = true in config.toml, :mcp off turns agents off until restart`](../../packages/vimma-core/test/agent.test.ts),
   [`the state: :mcp off first, then the file, then the pref`](../../packages/vimma-core/test/agent.test.ts),
   [`mcp_off_survives_a_config_reload`](../../tests/browser/browser_vimma_mcp.js),
+  [`mcp_off_survives_a_route_add_to_either_file`](../../tests/browser/browser_vimma_mcp.js),
   [`mcp_on_after_off_starts_the_agent_role_when_the_pref_was_on`](../../tests/browser/browser_vimma_mcp.js),
   [`a_yes_to_an_older_mcp_on_question_does_not_undo_a_newer_mcp_off`](../../tests/browser/browser_vimma_mcp.js)
 - M65. The setup page (about:vimma-setup, [setup-v2](../specs/setup-v2.md) behaviour 28 and decision 20) **must** turn MCP on only from a trusted `enter` on its agents step's "On", which is the
@@ -1565,3 +1568,36 @@ off` and, for a workspace Vimma did not make, shows `:mcp on`'s warning too; wit
   [`a_redraw_with_no_ticket_takes_none`](../../tests/browser/browser_vimma_setup_v2_privacy.js),
   [`the_page_cannot_name_a_key_or_value`](../../tests/browser/browser_vimma_setup_v2_flow.js),
   [`agent_role_cannot_open_setup`](../../tests/browser/browser_vimma_setup.js)
+- M66. Tab sleep ([tab-sleep](../specs/tab-sleep.md) decision 8) **must not** unload an agent
+  workspace tab while an agent connection is open, so that a tab id an agent was given never
+  vanishes between two of its calls; it looks again just before each discard, since an agent
+  may connect while the check flushes a tab. With none open, those tabs sleep as others do,
+  including in the gap before a dropped `vimma-ctl mcp` link reconnects (mcp-session-grants
+  S3), where the agent's next call finds its old ids gone and lists the tabs again; only an
+  agent command that already wakes a lazy tab wakes one (vimma-mcp B2).
+  `services/TabSleep.sys.mjs` learns only whether a connection is open, from
+  `McpHost.agentConnected`, which reads whether the gate lists any; it does not import the
+  gate, reads only a tab's URL and state flags, and acts on a tab only through Firefox's own
+  discard and Firefox's `undiscardable` attribute. Firefox's low-memory unloader, which Vimma
+  turns on (decision 21), is held to the same rule: whenever the unloader runs (from the config
+  or from a value set in `about:config`) and a connection is open, `TabSleep` sets
+  `undiscardable` on the agent workspace's tabs, including one as it opens, and clears it when
+  the last connection closes. It learns of the change from `McpHost.watchAgentConnected`, which
+  calls it with no argument when the answer to `agentConnected` changes, so no connection, peer
+  or grant detail reaches it. Residual risks, each bounded by the wake rule above (the agent
+  lists its tabs again): the unloader weighs the marks before it awaits and discards
+  (`TabUnloader.sys.mjs`, `unloadLeastRecentlyUsedTab`), so a mark set in that gap loses to a
+  discard already under way, which only an upstream patch could close; a change of the agent
+  workspace in `config.toml` reaches the marks at the next pane change, connection change or
+  check, because the workspace store settles after the config topic; and an add-on that clears
+  the attribute (`autoDiscardable`) undoes the mark until the next of those. The attribute
+  changes reach add-ons with tab access as `tabs.onUpdated` with `autoDiscardable`
+  (`ext-tabs.js`), so such an add-on can tell when an agent connects; it already sees the agent
+  workspace's tabs and their loads. A page in the agent workspace that opens many tabs keeps
+  them all loaded while an agent is connected: memory pressure, not access.
+  [`agent_tabs_stay_loaded_while_an_agent_is_connected_and_sleep_after`](../../tests/browser/browser_vimma_agent_tab_sleep.js),
+  [`an_agent_listing_a_sleeping_agent_tab_wakes_it_with_a_new_id`](../../tests/browser/browser_vimma_agent_tab_sleep.js),
+  [`an_agent_connecting_during_a_check_keeps_its_tabs_loaded`](../../tests/browser/browser_vimma_agent_tab_sleep.js),
+  [`agent workspace tabs stay awake only while an agent is connected`](../../packages/vimma-core/test/tabsleep.test.ts),
+  [`low_memory_unloads_other_tabs_but_never_a_shown_pane_or_an_agents_tab`](../../tests/browser/browser_vimma_low_memory.js),
+  [`the_mark_follows_the_split_the_agent_and_the_config`](../../tests/browser/browser_vimma_low_memory.js)

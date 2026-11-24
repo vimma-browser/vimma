@@ -164,4 +164,28 @@ describe("withSiteUnbinds", () => {
     expect(km.source.mac).toBe(true);
     expect(km.siteKeys("a.com")).toEqual(["t"]);
   });
+
+  // A page's host names the table (`http://__proto__/` opens Firefox's error page with that URL),
+  // so a table named like an Object member is one more table, never the object's prototype.
+  test("a table named __proto__, constructor or toString gets its keys until restart", () => {
+    for (const table of ["__proto__", "constructor", "toString", "hasOwnProperty", "valueOf"]) {
+      const bases = [
+        compileKeymap(),
+        compileKeymap({ sites: { "a.com": { unbind: ["j"] } } }),
+        compileKeymap({ sites: Object.fromEntries([[table, { unbind: ["j"] }]]) }),
+      ];
+      for (const base of bases) {
+        const km = withSiteUnbinds(base, new Map([[table, ["t"]]]));
+        expect(km.siteTables(), table).toContain(table);
+        expect(km.siteKeys(table), table).toContain("t");
+        expect(km.site(table), table).toBe(table);
+        expect(km.unbinds(table, "t"), table).toBe(true);
+        expect(km.unbinds("a.com", "t"), table).toBe(false);
+        // The sites copy keeps a prototype of its own: no table became it.
+        expect([null, Object.prototype], table).toContain(
+          Object.getPrototypeOf(km.source.user.sites),
+        );
+      }
+    }
+  });
 });

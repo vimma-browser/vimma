@@ -320,6 +320,11 @@ describe("checkDue and shouldAskRestart at their boundaries", () => {
     expect(shouldAskRestart({ ...ask, offer: named, dismissed: {} })).toBe(true);
   });
 
+  test("a version listed with no answer time is not answered: ask", () => {
+    const noTime = { "0.1.3": undefined as unknown as number };
+    expect(shouldAskRestart({ ...ask, dismissed: noTime })).toBe(true);
+  });
+
   test("answered at this very moment: not again yet", () => {
     expect(shouldAskRestart({ ...ask, dismissed: { "0.1.3": NOW } })).toBe(false);
   });

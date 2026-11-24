@@ -106,9 +106,11 @@ const isEngineName = (name) => name.length >= 1 && name.length <= MAX_NAME && !C
 /**
  * Every problem in `[search]`, with config paths.
  * @param {Record<string, unknown>} search
+ * @param {(path: Path, key: string, known: readonly string[]) => void} unknownKey  what to do
+ *   with a key `[search]` does not have (config.mjs's: a warning, or an error for a near miss)
  * @returns {SearchProblem[]}
  */
-export function validateSearch(search) {
+export function validateSearch(search, unknownKey) {
   /** @type {SearchProblem[]} */
   const problems = [];
   /** @param {Path} path @param {string} message @param {string} [suggestion] */
@@ -116,8 +118,7 @@ export function validateSearch(search) {
     problems.push(suggestion ? { path, message, suggestion } : { path, message });
 
   for (const key of Object.keys(search)) {
-    if (!SEARCH_KEYS.includes(key))
-      fail(["search", key], `unknown key "${key}"`, closest(key, SEARCH_KEYS));
+    if (!SEARCH_KEYS.includes(key)) unknownKey(["search", key], key, SEARCH_KEYS);
   }
   /** @type {Map<string, { key: string, kind: "engine" | "template", name?: string }>} */
   const aliases = new Map();

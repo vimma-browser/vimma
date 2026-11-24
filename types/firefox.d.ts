@@ -92,6 +92,7 @@ declare const Services: FirefoxServices;
 
 // The members Vimma's code calls on a default branch.
 interface nsIPrefDefaultBranch {
+  getBoolPref(name: string, defaultValue?: boolean): boolean;
   setBoolPref(name: string, value: boolean): void;
 }
 
@@ -268,7 +269,8 @@ interface IOUtilsNamespace {
   computeHexDigest(path: string, method: "sha256" | "sha384" | "sha512"): Promise<string>;
   getChildren(path: string): Promise<string[]>;
   copy(from: string, to: string): Promise<void>;
-  move(from: string, to: string): Promise<void>;
+  // `noOverwrite`: fail when `to` exists (dom/chrome-webidl/IOUtils.webidl MoveOptions).
+  move(from: string, to: string, options?: { noOverwrite?: boolean }): Promise<void>;
   remove(path: string, options?: { ignoreAbsent?: boolean; recursive?: boolean }): Promise<void>;
 }
 declare const IOUtils: IOUtilsNamespace;
@@ -572,6 +574,9 @@ interface LazyModules {
   setInterval(callback: () => unknown, ms?: number): number;
   clearTimeout(id: number | null | undefined): void;
   clearInterval(id: number | null | undefined): void;
+  // engine/browser/modules/webrtcUI.sys.mjs: whether a browser holds a camera, microphone or
+  // screen stream (tab sleep asks as Firefox's TabUnloader does).
+  webrtcUI: { browserHasStreams(browser: MozBrowser): boolean };
   // engine/toolkit/modules/PrivateBrowsingUtils.sys.mjs
   PrivateBrowsingUtils: {
     isWindowPrivate(win: Window): boolean;
@@ -927,12 +932,21 @@ interface MozTabbrowserTab extends Element {
   readonly selected: boolean;
   readonly userContextId: number;
   readonly soundPlaying: boolean;
+  /** Shown in Picture-in-Picture (its `pictureinpicture` attribute). */
+  readonly pictureinpicture: boolean;
+  /** When it was last selected, in ms; the selected tab of each window says now. */
+  readonly lastAccessed: number;
   readonly muted: boolean;
   readonly muteReason: string | null | undefined;
   readonly splitview: MozTabSplitViewWrapper | null;
   /** The tab it was opened from, null when none (Tabbrowser addTab's `openerTab`); undefined
    * for a tab addTab did not make, as the window's first. */
   readonly openerTab: MozTabbrowserTab | null | undefined;
+  /** The object the session store and the unloader know the tab's browser by; Firefox moves it
+   * with the browser when a tab changes window (Tabbrowser `swapBrowsersAndCloseOther`). */
+  readonly permanentKey: object | undefined;
+  /** Its `undiscardable` attribute, which TabUnloader honours (tab.mjs). */
+  undiscardable: boolean;
   toggleMuteAudio(muteReason?: string | null): void;
 }
 
@@ -983,6 +997,10 @@ interface Tabbrowser {
   readonly tabbox: Element;
   getTabForBrowser(browser: MozBrowser): MozTabbrowserTab | undefined;
   insertBrowser(tab: MozTabbrowserTab): void;
+  /** Flushes the tab's session state, so a restore after a discard has its latest data. */
+  prepareDiscardBrowser(tab: MozTabbrowserTab): Promise<void>;
+  /** Unloads the tab, keeping it lazy in the strip; false when Firefox refuses. */
+  discardBrowser(tab: MozTabbrowserTab, force?: boolean): boolean;
   hideTab(tab: MozTabbrowserTab, source?: string): void;
   showTab(tab: MozTabbrowserTab): void;
   unpinTab(tab: MozTabbrowserTab): void;
@@ -1218,6 +1236,8 @@ interface CanonicalBrowsingContext extends BrowsingContext {
 // members). The principals are never null (webidl `Principal`, not nullable).
 interface WindowGlobalParent {
   readonly innerWindowId: number;
+  /** A WebRTC peer connection is open in the page (set on the top window only). */
+  hasActivePeerConnections(): boolean;
   /** The document's window has closed: it no longer shows in its frame. */
   readonly isClosed: boolean;
   readonly isInProcess: boolean;
@@ -1591,11 +1611,17 @@ interface PopupAndRedirectBlockerObserver {
 interface MozNotificationBox {
   /** The last notification with that `value` attribute, or null. */
   getNotificationWithValue(value: string): MozNotificationMessage | null;
+  /** The notification of the highest priority, the one on top; null without one. */
+  readonly currentNotification: MozNotificationMessage | null;
 }
 // notificationbox.js (NotificationMessage): a notification bar.
 interface MozNotificationMessage extends HTMLElement {
   /** Its buttons' container, made in connectedCallback: unset before. */
   readonly buttonContainer?: HTMLElement;
+  /** It shows a close button (moz-message-bar.mjs). */
+  readonly dismissable: boolean;
+  /** The close button, in its shadow root; null while it has none. */
+  readonly closeButton: HTMLElement | null;
   dismiss(): void;
 }
 // engine/toolkit/content/widgets/popupnotification.js (MozPopupNotification): a prompt in the

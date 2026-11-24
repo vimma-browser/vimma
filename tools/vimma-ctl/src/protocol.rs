@@ -547,6 +547,12 @@ fn decode_state(map: &BTreeMap<String, Value>, raw: &Value) -> Result<State, Dec
                 "result.tabs[{i}].selected must be a boolean"
             )));
         };
+        // A sleeping tab (docs/specs/tab-sleep.md, behaviour 15): listed only when true.
+        if !matches!(tab.get("asleep"), None | Some(Value::Bool(true))) {
+            return Err(fail(&format!(
+                "result.tabs[{i}].asleep must be true when present"
+            )));
+        }
         tabs.push(Tab {
             id: field("id")?,
             url: withheld("url")?,
@@ -1223,6 +1229,8 @@ mod tests {
             r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[{"id":"1","url":"u","title":"t","selected":1}],"panes":null}"#,
             r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[{"id":"1","url":null,"title":null,"selected":true}],"panes":null}"#,
             r#"{"mode":"normal","pending":null,"workspace":null,"private":true,"tabs":[{"id":"1","url":"u","title":null,"selected":true}],"panes":null}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[{"id":"1","url":"u","title":"t","selected":false,"asleep":false}],"panes":null}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[{"id":"1","url":"u","title":"t","selected":false,"asleep":"yes"}],"panes":null}"#,
             r#"{"pending":null,"workspace":null,"tabs":[],"panes":null}"#,
             r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":{}}"#,
             r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":[1]}"#,

@@ -176,6 +176,51 @@ describe("certify", () => {
   });
 });
 
+// The certificate users import (docs/runbook/ci-update-keys-and-update-host.md, step 9, "The
+// certificate"): made once around the KMS key, so this checks the committed file itself, and
+// that the fingerprint the runbook records, which the guide prints, is the file's.
+describe("the committed certificate", () => {
+  const COMMITTED = fileURLToPath(
+    new URL("../../../configs/package-signing/vimma-packages.asc", import.meta.url),
+  );
+  const RUNBOOK = fileURLToPath(
+    new URL("../../../docs/runbook/ci-update-keys-and-update-host.md", import.meta.url),
+  );
+
+  it("is the fingerprint the runbook records for the KMS key", async () => {
+    const { stdout } = await signer("fingerprint", "--cert", COMMITTED);
+    const fpr = stdout.trim();
+    expect(fpr).toMatch(/^[0-9A-F]{40}$/);
+    const row = readFileSync(RUNBOOK, "utf8")
+      .split("\n")
+      .find((l) => l.startsWith("| `vimma-packages/package-signing`, version 1,"));
+    expect(row).toContain(`| \`${fpr}\` |`);
+  });
+
+  it.skipIf(!hasGpg)("is RSA-4096, certify and sign, with a good self-signature", async () => {
+    const { stdout } = await signer("fingerprint", "--cert", COMMITTED);
+    const gpg = ["--batch", "--no-autostart", "--homedir", gnupgHome()];
+    const imported = sh("gpg", [...gpg, "--import", COMMITTED]);
+    expect(imported.status, imported.stderr).toBe(0);
+    const r = sh("gpg", [...gpg, "--with-colons", "--check-sigs"]);
+    expect(r.status, r.stderr).toBe(0);
+    const lines = r.stdout.split("\n");
+    const pub = lines.find((l) => l.startsWith("pub:"))?.split(":") ?? [];
+    expect(pub[3]).toBe("1"); // RSA
+    expect(pub[2]).toBe("4096");
+    expect(pub[11]).toBe("scSC");
+    expect(pub[6]).toBe(""); // no expiry (spec package-repositories, decision 23)
+    expect(lines.find((l) => l.startsWith("fpr:"))?.split(":")[9]).toBe(stdout.trim());
+    expect(lines.filter((l) => l.startsWith("uid:")).map((l) => l.split(":")[9])).toEqual([UID]);
+    const sigs = lines.filter((l) => l.startsWith("sig:"));
+    expect(sigs).toHaveLength(1);
+    expect(sigs[0]).toMatch(/^sig:!:/);
+    expect(sigs[0]?.split(":")[15]).toBe("8"); // SHA-256
+    // no subkeys (spec package-repositories, decision 4)
+    expect(lines.filter((l) => l.startsWith("sub:"))).toEqual([]);
+  });
+});
+
 describe("sign", () => {
   async function sig(format: string, input: string): Promise<string> {
     const out = `${input}.${format}.sig`;

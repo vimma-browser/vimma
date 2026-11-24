@@ -1446,7 +1446,9 @@ describe("[updates] check (config.toml) and the pref", () => {
   test("a file that parses but has errors checks as a valid file would (#741)", () => {
     // A key from a newer build must not lock the user out of the release that accepts it. (An
     // unknown provider cli, the case #741 met, is now only a warning: #742.)
-    const newer = "schema = 2\n[agent]\nfuture_key = 1\n";
+    // A newer build's key with no near miss is only a warning now (#1474); a value only a
+    // newer build accepts is still an error.
+    const newer = "schema = 2\n[agent]\nmax_steps = 100000\n";
     expect(parseConfig(newer).errors).toHaveLength(1);
     expect(rawUpdatesCheck(newer)).toBe("missing");
     expect(rawUpdatesCheck("schema = 2\n[updates]\n")).toBe("missing");

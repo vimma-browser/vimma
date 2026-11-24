@@ -317,9 +317,9 @@ add_task(async function test_before_it_is_provided_each_service_does_the_least()
     "no tab is given",
   );
 
-  Assert.equal(
+  Assert.deepEqual(
     await services.addRoute({ domain: "example.org", workspace: "main" }),
-    "config.toml cannot be written before Vimma has started",
+    { error: "the routes file cannot be written before Vimma has started" },
     ":route add writes nothing and says why",
   );
 
@@ -444,7 +444,11 @@ add_task(function test_each_service_is_provided_once() {
   );
   Assert.equal(services.isAgentDownload, first, "and the first stays");
   Assert.throws(
-    () => services.provide({ addRoute: async () => null, isAgentDownload: second }),
+    () =>
+      services.provide({
+        addRoute: async () => ({ added: "routes.toml" }),
+        isAgentDownload: second,
+      }),
     /already provided/,
     "a call with one refused service",
   );
