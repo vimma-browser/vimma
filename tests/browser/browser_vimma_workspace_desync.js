@@ -17,7 +17,7 @@
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
 );
-const { WindowWorkspaces } = ChromeUtils.importESModule(
+const { WindowWorkspaces, STUCK_RESTORE_MS } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
 const { AboutVimma } = ChromeUtils.importESModule(
@@ -319,10 +319,14 @@ add_task(async function a_window_reopened_after_the_last_one_closed_with_a_pinne
 
 // The test-only pref of another type (a string here) must not stop the bound: a throw at the
 // Busy, after the window entered pending and before its timer was set, would freeze it again.
+// The pref is ignored, so the bound in effect is the real one, STUCK_RESTORE_MS; the test checks
+// that its timer is set and ends the restore, without spending those 5 s of wall-clock time.
+// The timer then fires before the tabs open; tabs opened while pending, then reconciled by the
+// timer, are the next task's case.
 add_task(async function a_bound_pref_of_another_type_still_ends_a_stuck_restore() {
   await SpecialPowers.pushPrefEnv({ set: [["vimma.workspaces.stuckRestoreMs", "200"]] });
   try {
-    await throwingRestore();
+    await throwingRestore({ expectedBound: STUCK_RESTORE_MS });
   } finally {
     await SpecialPowers.popPrefEnv();
   }
@@ -338,8 +342,12 @@ add_task(async function a_restore_that_throws_partway_does_not_stop_the_model() 
   }
 });
 
-/** A restore that throws partway, then tabs opened; the calling task sets the bound. */
-async function throwingRestore() {
+/**
+ * A restore that throws partway, then tabs opened; the calling task sets the bound. With
+ * `expectedBound`, the stuck-restore timer must be set at that bound.
+ * @param {{ expectedBound?: number }} [options]
+ */
+async function throwingRestore({ expectedBound } = {}) {
   const win = await openWindow();
   const ww = /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(win));
   const gone = await BrowserTestUtils.openNewForegroundTab(win.gBrowser, `${PAGE}?undo`);
@@ -354,10 +362,33 @@ async function throwingRestore() {
   win.gBrowser.showTab = () => {
     throw new Error("injected failure inside restoreTab");
   };
+  // The bound's timer is set on the window (WindowWorkspaces' SSWindowStateBusy handler) inside
+  // this synchronous call. With `expectedBound`, a timer at that bound is recorded and run at
+  // once: waiting it out would only test the window's setTimeout, and at the real 5 s bound it was
+  // a third of this file's time (issue #1509).
+  const realSetTimeout = win.setTimeout;
+  /** @type {number[]} */
+  const delays = [];
+  if (expectedBound !== undefined) {
+    win.setTimeout = /** @type {typeof win.setTimeout} */ (
+      (/** @type {TimerHandler} */ fn, ms = 0, /** @type {unknown[]} */ ...args) => {
+        delays.push(ms);
+        return realSetTimeout.call(win, fn, ms === expectedBound ? 0 : ms, ...args);
+      }
+    );
+  }
   try {
     Assert.throws(() => SessionStore.undoCloseTab(win, 0), /injected/, "the restore threw");
   } finally {
     win.gBrowser.showTab = showTab;
+    win.setTimeout = realSetTimeout;
+  }
+  if (expectedBound !== undefined) {
+    Assert.equal(
+      delays.filter((ms) => ms === expectedBound).length,
+      1,
+      `the stuck-restore timer is set at ${expectedBound} ms`,
+    );
   }
 
   await useWindow(win);
@@ -368,6 +399,11 @@ async function throwingRestore() {
   const health = ww.health();
   Assert.equal(health.pending, false, "the window is no longer waiting for the restore");
   Assert.ok(health.recovered, "the stuck restore is on record");
+  if (expectedBound !== undefined) {
+    const recovered = /** @type {{ reason: string, afterMs: number }} */ (health.recovered);
+    Assert.equal(recovered.reason, "no SSWindowStateReady", "the bound's timer ended it");
+    Assert.less(recovered.afterMs, expectedBound, "without the bound's wall-clock wait");
+  }
   await BrowserTestUtils.closeWindow(win);
 }
 
