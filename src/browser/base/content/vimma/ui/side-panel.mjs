@@ -80,6 +80,9 @@ export function rowsShown(list) {
  * @property {(tabId: string) => void} select  a row was picked; the panel closes right after
  * @property {(text: string) => void} say  a refusal for the notice
  * @property {(tabId: string) => void} closeTab  `x`: close that tab; the panel stays open
+ * @property {(tabs: { id: string, number: number }[]) => void} sleep  `z`: put those tabs to
+ *   sleep, each said by its row number (docs/specs/tab-sleep.md Behaviour 12); the panel stays
+ *   open, and the discard's TabBrowserDiscarded redraws the rows muted
  * @property {(tabId: string) => void} [move]  `m`: ask which workspace gets that tab; the panel
  *   has closed already
  * @property {(tabIds: string[], focus: string, alone?: string) => string | null} together
@@ -176,7 +179,7 @@ export class SidePanel {
   /**
    * One `[modal.panel]` action (panel.down, panel.up, panel.first, panel.last, panel.half_down,
    * panel.half_up, panel.open, panel.select, panel.close, panel.close_tab,
-   * panel.close_active_tab, panel.mark, panel.visual, panel.move), with its count.
+   * panel.close_active_tab, panel.mark, panel.visual, panel.move, panel.sleep), with its count.
    * @param {{ id: string, arg?: number, count?: number, shown?: string | null }} action
    */
   action(action) {
@@ -191,6 +194,7 @@ export class SidePanel {
     if (effect?.type === "refuse") this.host.say(effect.text);
     // The highlight is on the next row already: the TabClose refresh keeps it there.
     if (effect?.type === "closeTab") this.host.closeTab(effect.id);
+    if (effect?.type === "sleep") this.host.sleep(effect.tabs);
     // Closed first, so the picker that asks where takes focus from the page, not the panel.
     if (effect?.type === "move") {
       this.close();
