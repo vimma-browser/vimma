@@ -2379,6 +2379,26 @@
               "mode": "visual"
             }
           ]
+        },
+        {
+          "name": "yank_link",
+          "description": "Copy the URL of the link at the caret, selection or focus",
+          "keys": [
+            {
+              "keys": "gy",
+              "chords": ["gy"]
+            },
+            {
+              "keys": "gy",
+              "chords": ["gy"],
+              "mode": "visual"
+            },
+            {
+              "keys": "gy",
+              "chords": ["gy"],
+              "mode": "element"
+            }
+          ]
         }
       ]
     },

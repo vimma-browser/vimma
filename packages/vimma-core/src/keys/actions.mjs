@@ -354,6 +354,8 @@ group("Copy mode", [
   ["select_a_block", "selection.a_block", "Select the block at the caret; again: its parent"],
   ["yank_selection", "selection.yank", "Copy selection and leave copy mode"],
   ["yank_lines", "selection.yank_lines", "Copy the selection's whole lines and leave"],
+  // docs/specs/copy-link-url.md decision 1: one action in copy, element and normal mode.
+  ["yank_link", "link.yank", "Copy the URL of the link at the caret, selection or focus"],
 ]);
 
 group("Side panel", [

@@ -67,6 +67,7 @@ browser.jar:
         content/browser/vimma/actors/caret.mjs            (actors/caret.mjs)
         content/browser/vimma/actors/enter-key.mjs        (actors/enter-key.mjs)
         content/browser/vimma/actors/block.mjs            (actors/block.mjs)
+        content/browser/vimma/actors/link-at.mjs          (actors/link-at.mjs)
         content/browser/vimma/actors/text-model.mjs       (actors/text-model.mjs)
         content/browser/vimma/actors/grep-worker.mjs      (actors/grep-worker.mjs)
         content/browser/vimma/actors/grep-matcher.mjs     (actors/grep-matcher.mjs)

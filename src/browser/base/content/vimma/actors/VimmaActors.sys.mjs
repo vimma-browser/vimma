@@ -977,6 +977,23 @@ export const VimmaActors = {
   },
 
   /**
+   * `gy` (docs/specs/copy-link-url.md): the focused frame's link URLs, from copy mode's caret or
+   * selection (`caret`) or from the focused link or the selection on screen (`focus`). The reply
+   * is from a content process and is returned unchecked, for core linkYank; null when the frame
+   * navigated or went away.
+   * @param {MozBrowser} browser
+   * @param {"caret" | "focus"} from
+   * @returns {Promise<unknown>}
+   */
+  async linkUrls(browser, from) {
+    try {
+      return await actorFor(framesFor(browser)[0])?.sendQuery("Vimma:LinkUrls", { from });
+    } catch {
+      return null; // the frame navigated or its process went away
+    }
+  },
+
+  /**
    * Copy mode (m1-copy-mode) in the focused frame: `enter`, a motion (caret.mjs), `toggle`,
    * a selection op, `yank`, `yank_lines` or `exit`. The reply is from a content process:
    * anything but the expected type counts as a failure (false, or "" for `yank`).

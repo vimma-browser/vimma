@@ -1,9 +1,10 @@
 # Spec: copy-link-url
 
-Status: accepted · Area: core (`packages/vimma-core/src/keys/actions.mjs`,
+Status: implemented · Area: core (`packages/vimma-core/src/keys/actions.mjs`,
 `packages/vimma-core/src/config/defaults.mjs`, `packages/vimma-core/src/agent/agent-keys.mjs`),
-actors (`actors/caret.mjs`, `actors/VimmaChild.sys.mjs`, `actors/VimmaActors.sys.mjs`, a new
-`actors/link-at.mjs`), chrome (`host/copy-mode.mjs`, `host/element-focus.mjs`) · Upstream
+actors (`actors/VimmaChild.sys.mjs`, `actors/VimmaActors.sys.mjs`, `actors/block.mjs`, a new
+`actors/link-at.mjs`), chrome (`host/copy-mode.mjs`, `host/element-focus.mjs`,
+`host/runners.mjs`), a new `packages/vimma-core/src/page/link-urls.mjs` for the parent's checks · Upstream
 patches: none · ADR: none
 
 Issue: [#1531](https://github.com/vimma-browser/vimma/issues/1531)
@@ -46,8 +47,9 @@ Examples:
    link around it when it is inside one, and otherwise every link inside the block.
 4. In normal mode, `yank_link` copies the URL of the focused link (after `/word` `Enter` on a
    link's text, Firefox's find has focused that link, see Research; or after `Tab`), else the
-   URLs of the links around or in the selection on screen, as in copy mode, else it says
-   `no link here`. It never starts hints. Copy mode entered with `v` after a find starts with the
+   URL of the one link that holds the whole selection on screen (a selection, not a bare caret,
+   since normal mode shows none), else it says `no link here`. A selection over several links
+   copies nothing in normal mode (decision 14). It never starts hints. Copy mode entered with `v` after a find starts with the
    match selected, so `v` `gy` copies the same link.
 5. The URL is the link's resolved, absolute `href`: a relative `href="/a?b=1"` on
    `https://example.org/x/` copies `https://example.org/a?b=1`, and a `<base href>` is applied.
@@ -123,12 +125,13 @@ Checked against the engine tree of Firefox 160.0.1 (`surfer.json`), and Vimma's 
    Rejected: one action per mode (`selection.yank_link`, `element.yank_link`), because the
    behaviour is the same and only the target differs, as it is for `y`'s two actions only
    because their text differs.
-2. **The child finds the links; the parent checks and copies.** A new `link_urls` copy-mode
-   operation in `actors/caret.mjs` (and an element-focus counterpart) returns the URLs, in
-   document order, from a shared `actors/link-at.mjs`: for a collapsed selection,
-   `closest(":any-link")` from the focus node (crossing out of a shadow root to its host); for a
-   range, that same ancestor of the common ancestor, then every `:any-link` element the range
-   intersects (`Range.intersectsNode`). An HTML link's URL is its `href` property, which the
+2. **The child finds the links; the parent checks and copies.** A `Vimma:LinkUrls` message to
+   the focused frame (`from: "caret"` in copy mode, `"focus"` in normal mode) and an element
+   focus `links` op return the URLs, in document order, from a shared `actors/link-at.mjs`: for
+   a collapsed selection, the link (`a[href]`, `area[href]` or an SVG `a`) around the focus node,
+   crossing out of a shadow root to its host; for a range, the link around the common ancestor,
+   then every link whose contents share text or an element with the range (`Range.intersectsNode`,
+   then a check that the link does not only touch an end of the range). An HTML link's URL is its `href` property, which the
    document has already resolved; an SVG link's is `new URL(attribute, node.baseURI)`. Reason:
    only the content process sees the DOM, and the parent already treats replies as untrusted
    (Security and privacy).
@@ -177,7 +180,10 @@ Checked against the engine tree of Firefox 160.0.1 (`surfer.json`), and Vimma's 
     drops the others without saying so, and hints over the selected links, which add a mode to
     a one-key action.
 14. **`gy` in normal mode too, with no hint fallback.** It copies the focused link, else the
-    links around or in the selection on screen, else says `no link here`. Reason: after `/word`
+    one link around the selection on screen, else says `no link here`. Only that one link,
+    because in normal mode the selection may be one the page made by itself, and a list of
+    links it chose, joined by line breaks, must not reach the clipboard on a key the user
+    pressed for one link; in copy mode the user made or adjusted the range. Reason: after `/word`
     `Enter` the link already has focus and one key should be enough, the same key in both modes
     is one thing to learn, and a key that sometimes copies and sometimes opens hints is harder to
     predict. A hint key for `copy_link_target` on web pages (Vimium's `yf`) is a separate change.
@@ -200,8 +206,10 @@ Checked against the engine tree of Firefox 160.0.1 (`surfer.json`), and Vimma's 
   (`agent-keys.mjs`, "the clipboard is the user's"), because an agent must not write the user's
   clipboard.
 - **What is copied.** A page chooses its links' addresses, and with several links the status bar
-  shows only their number. That is the same trust as `y` on page text: the range was selected by hand,
-  and the clipboard holds exactly the addresses of the links in it.
+  shows only their number. In copy mode that is the same trust as `y` on page text: the user
+  entered copy mode on the range and can see it, and the clipboard holds exactly the addresses
+  of the links in it. Normal mode copies one link at most (decision 14), because there the
+  selection can be the page's own, as can the focus (`el.focus()`).
 
 ## Tests
 

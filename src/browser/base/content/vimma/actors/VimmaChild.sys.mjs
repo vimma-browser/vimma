@@ -15,6 +15,7 @@ import { HINT_SIZE_WAIT_MS } from "../core/hints.mjs";
 import { collectTargets, linkText, viewportSize } from "./hint-collect.mjs";
 import { describeAgentElements } from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
+import { focusedLink, linkAroundSelection, linkUrls, linksOfSelection } from "./link-at.mjs";
 import { BlockFocus } from "./block.mjs";
 import { PdfView } from "./pdf-view.mjs";
 import {
@@ -60,6 +61,7 @@ import { DocumentHover } from "./hover.mjs";
  *   | { name: "Vimma:AgentQuiet", data: Parameters<AgentPage["quiet"]>[0] }
  *   | { name: "Vimma:AgentConsole", data: Parameters<AgentPage["consoleEntries"]>[0] }
  *   | { name: "Vimma:Caret", data: unknown }
+ *   | { name: "Vimma:LinkUrls", data: { from?: unknown } | null | undefined }
  *   | { name: "Vimma:Block", data: BlockMessage }
  *   | { name: "Vimma:PdfZoom" | "Vimma:PdfWhere" | "Vimma:ScrollFraction" | "Vimma:FocusLast"
  *       | "Vimma:SuggestionsOpen" | "Vimma:ScrollPosition" | "Vimma:FindAnchor"
@@ -961,6 +963,8 @@ export class VimmaChild extends JSWindowActorChild {
         if (!selCon) return false;
         return this.#caret.run(win, selCon, msg.data);
       }
+      case "Vimma:LinkUrls":
+        return this.#linkUrls(msg.data);
       case "Vimma:Block": {
         // Element focus (docs/specs/element-focus.md): the parent sends to the frame whose
         // block a label chose, and to the frames around it, which only report their scrolls.
@@ -986,6 +990,28 @@ export class VimmaChild extends JSWindowActorChild {
       }
     }
     return undefined;
+  }
+
+  /**
+   * `gy` (docs/specs/copy-link-url.md): the URLs of the links at copy mode's caret or selection
+   * (`caret`), or of the focused link, else of the one link around the selection on screen
+   * (`focus`, normal mode).
+   * Only the frame with focus answers, as for copy mode; null for a malformed message, an
+   * unfocused frame, or `caret` while copy mode is off here.
+   * @param {{ from?: unknown } | null | undefined} data
+   */
+  #linkUrls(data) {
+    const from = data && typeof data === "object" ? data.from : undefined;
+    if (from !== "caret" && from !== "focus") return null;
+    const win = this.contentWindow;
+    if (!win || !this.document.hasFocus()) return null;
+    const sel = win.getSelection();
+    if (from === "caret")
+      return this.#caret.on && sel ? linkUrls(linksOfSelection(win, sel)) : null;
+    const link =
+      focusedLink(this.document) ??
+      (sel && selectionOnScreen(sel, win) ? linkAroundSelection(win, sel) : null);
+    return linkUrls(link ? [link] : []);
   }
 
   /**

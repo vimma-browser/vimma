@@ -1775,8 +1775,10 @@ export const VimmaHost = {
         // Another binding in hint mode (a ctrl+b sequence) leaves hint mode first.
         if (mode === "hint" && result.action.id !== "hint.cancel") this._cancelHints(state);
         // So does one in ELEMENT mode; its Esc (mode.normal) only leaves, so it neither blurs
-        // the page nor stops it loading (element-focus decision 7).
-        if (mode === "element" && !result.action.id.startsWith("element.")) {
+        // the page nor stops it loading (element-focus decision 7). gy copies the block's links
+        // (copy-link-url decision 15) and leaves only when it copied.
+        const ownKey = result.action.id.startsWith("element.") || result.action.id === "link.yank";
+        if (mode === "element" && !ownKey) {
           state.element.leave();
           if (result.action.id === "mode.normal") return;
         }

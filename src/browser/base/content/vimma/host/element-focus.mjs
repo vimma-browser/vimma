@@ -10,6 +10,7 @@
 
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { NO_TEXT, NOTHING_TO_YANK, yankedText } from "./copy-mode.mjs";
+import { linkYank } from "../core/link-urls.mjs";
 
 /** @import { FrameRef, HintTarget } from "../actors/VimmaActors.sys.mjs" */
 /** @import { HintOverlay } from "../ui/hint-overlay.mjs" */
@@ -145,6 +146,31 @@ export class ElementFocus {
       .getService(Ci.nsIClipboardHelper)
       .copyString(reply.text, s.browser.browsingContext?.currentWindowContext);
     this.host.notify(yankedText(reply.text) + (reply.unselectable ? UNSELECTABLE : ""));
+  }
+
+  /**
+   * `gy` (docs/specs/copy-link-url.md decisions 12 and 15): the URL of the link the block is in,
+   * or of the links inside it, to the clipboard; ELEMENT mode ends when something was copied and
+   * stays otherwise.
+   */
+  async yankLink() {
+    const s = this.#live();
+    if (!s) return;
+    const turn = ++this.yanks;
+    const seq = s.seq;
+    const reply = await VimmaActors.block(s.chain[0], s.target.gen, "links");
+    // A frame that answers late must not overwrite what the user copied or chose since, nor
+    // copy from a block the focus has moved away from.
+    if (turn !== this.yanks || this.session !== s || s.seq !== seq) return;
+    const { text, notice } = linkYank(reply);
+    if (text !== null) {
+      this.#end(s);
+      this.#release(s);
+      Cc["@mozilla.org/widget/clipboardhelper;1"]
+        .getService(Ci.nsIClipboardHelper)
+        .copyString(text, s.browser.browsingContext?.currentWindowContext);
+    }
+    this.host.notify(notice);
   }
 
   /**

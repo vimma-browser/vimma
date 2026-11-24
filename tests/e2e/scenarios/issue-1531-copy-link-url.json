@@ -1,0 +1,66 @@
+{
+  "name": "issue-1531-copy-link-url",
+  "issue": 1531,
+  "description": "Spec copy-link-url: /pane Enter on fixture:article.html lands on the text of its link to pane.html#linked, v starts copy mode with the match selected, gy copies the link's absolute URL and leaves copy mode, and p opens the clipboard in the tab: the tab goes to pane.html#linked, so the clipboard held the link's address, not its text.",
+  "timeoutSeconds": 60,
+  "steps": [
+    {
+      "wait-for-state": {
+        "workspace": "main"
+      },
+      "timeoutSeconds": 20
+    },
+    {
+      "open": "fixture:article.html"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "title": "article",
+            "selected": true
+          }
+        ]
+      }
+    },
+    {
+      "keys": "/ p a n e enter"
+    },
+    {
+      "wait-for-state": {
+        "mode": "normal"
+      }
+    },
+    {
+      "keys": "v"
+    },
+    {
+      "wait-for-state": {
+        "mode": "visual"
+      }
+    },
+    {
+      "keys": "g y"
+    },
+    {
+      "wait-for-state": {
+        "mode": "normal"
+      }
+    },
+    {
+      "keys": "p"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "url": "http://127.0.0.1:28471/pane.html#linked",
+            "selected": true
+          }
+        ]
+      }
+    }
+  ]
+}
