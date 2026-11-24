@@ -833,7 +833,6 @@ add_task(async function gi_keeps_the_selection_a_page_makes_on_focus() {
 
 add_task(async function gi_scrolls_a_long_textarea_to_its_caret() {
   await withPage(async (browser) => {
-    const before = await pageScrollY(browser);
     countGi(7);
     await waitForMode(browser, "insert");
     await waitForActive(browser, "long");
@@ -847,7 +846,6 @@ add_task(async function gi_scrolls_a_long_textarea_to_its_caret() {
         }),
       "the textarea shows its last line",
     );
-    Assert.equal(await pageScrollY(browser), before, "the page did not scroll");
   }, CARET);
 });
 
@@ -880,44 +878,100 @@ add_task(async function a_hint_on_a_prefilled_field_puts_the_caret_at_the_end() 
 });
 
 /**
- * Clicks `#query` a little way into its text and returns the caret the click placed.
+ * Clicks `#query` at its left edge, before its text, and waits for the caret the click puts at 0.
  * @param {XULBrowserElement} browser
  */
-async function clickIntoQuery(browser) {
-  await BrowserTestUtils.synthesizeMouse("#query", 30, 8, {}, browser);
+async function clickBeforeQueryText(browser) {
+  await BrowserTestUtils.synthesizeMouse("#query", 2, 8, {}, browser);
   await waitForActive(browser, "query");
-  await TestUtils.waitForCondition(async () => {
-    const { start, length } = await fieldCaret(browser, "query");
-    return start > 0 && start < length;
-  }, "the click put the caret inside the text");
-  return (await fieldCaret(browser, "query")).start;
+  const { start, end } = await fieldCaret(browser, "query");
+  Assert.deepEqual([start, end], [0, 0], "the click put the caret before the text");
 }
 
-add_task(async function i_keeps_the_caret_a_click_into_the_field_placed() {
+/**
+ * Leaves insert, presses `i`, and asserts that `#query`'s caret is still at 0, where the user put
+ * it: a caret at 0 is the one `i` moves unless the field counts as been in.
+ * @param {XULBrowserElement} browser
+ */
+async function assertIKeepsCaretAtStart(browser) {
+  await leaveInsert(browser);
+  await waitForActive(browser, "");
+  EventUtils.synthesizeKey("i");
+  await waitForMode(browser, "insert");
+  await waitForActive(browser, "query");
+  const { start, end } = await fieldCaret(browser, "query");
+  Assert.deepEqual([start, end], [0, 0], "the caret is where the user put it");
+}
+
+add_task(async function i_keeps_a_caret_the_user_moved_to_the_start_with_keys() {
   await withPage(async (browser) => {
-    const at = await clickIntoQuery(browser);
-    await waitForMode(browser, "insert");
-    await leaveInsert(browser);
-    await waitForActive(browser, "");
     EventUtils.synthesizeKey("i");
     await waitForMode(browser, "insert");
     await waitForActive(browser, "query");
-    const { start, end } = await fieldCaret(browser, "query");
-    Assert.deepEqual([start, end], [at, at], "the caret is where the click put it");
+    await assertCaretAtEnd(browser, "query");
+    for (let n = 0; n < "vimma query".length; n++) EventUtils.synthesizeKey("KEY_ArrowLeft");
+    await TestUtils.waitForCondition(
+      async () => (await fieldCaret(browser, "query")).start === 0,
+      "the user's keys moved the caret to the start",
+    );
+    await assertIKeepsCaretAtStart(browser);
   }, CARET);
 });
 
-add_task(async function i_keeps_the_caret_a_click_placed_in_a_field_the_page_focused() {
+add_task(async function i_keeps_a_caret_a_click_into_the_field_put_at_the_start() {
+  await withPage(async (browser) => {
+    await clickBeforeQueryText(browser);
+    await waitForMode(browser, "insert");
+    await assertIKeepsCaretAtStart(browser);
+  }, CARET);
+});
+
+add_task(async function i_keeps_a_caret_a_click_put_at_the_start_of_a_field_the_page_focused() {
   await withPage(async (browser) => {
     await pageFocuses(browser, "query");
     await waitForMode(browser, "insert");
-    const at = await clickIntoQuery(browser);
-    await leaveInsert(browser);
-    await waitForActive(browser, "");
-    EventUtils.synthesizeKey("i");
+    await clickBeforeQueryText(browser);
+    await assertIKeepsCaretAtStart(browser);
+  }, CARET);
+});
+
+add_task(async function gi_puts_the_caret_after_a_non_editable_chip_at_an_editor_s_end() {
+  await withPage(async (browser) => {
+    countGi(8);
     await waitForMode(browser, "insert");
-    await waitForActive(browser, "query");
-    const { start, end } = await fieldCaret(browser, "query");
-    Assert.deepEqual([start, end], [at, at], "the caret is where the click put it");
+    await waitForActive(browser, "chip");
+    EventUtils.sendString("x");
+    await TestUtils.waitForCondition(
+      () =>
+        SpecialPowers.spawn(browser, [], () =>
+          content.document.getElementById("chip")?.textContent?.includes("x"),
+        ),
+      "the editor has the typed text",
+    );
+    const parts = await SpecialPowers.spawn(browser, [], () => {
+      const chip = /** @type {HTMLElement} */ (content.document.getElementById("chip"));
+      return [chip.textContent, chip.querySelector("span")?.textContent];
+    });
+    Assert.deepEqual(parts, ["Hi @alicex", "@alice"], "the text went after the chip");
+  }, CARET);
+});
+
+add_task(async function gi_scrolls_the_caret_at_the_end_of_a_tall_editor_into_view() {
+  await withPage(async (browser) => {
+    countGi(9);
+    await waitForMode(browser, "insert");
+    await waitForActive(browser, "tall");
+    await TestUtils.waitForCondition(
+      () =>
+        SpecialPowers.spawn(browser, [], () => {
+          const doc = content.document;
+          const sel = /** @type {Selection} */ (doc.getSelection());
+          if (!sel.isCollapsed || sel.focusNode?.textContent !== "paragraph 80") return false;
+          // The caret's own box: the line it is on is on screen.
+          const caret = sel.getRangeAt(0).getBoundingClientRect();
+          return caret.top >= 0 && caret.top < doc.documentElement.clientHeight;
+        }),
+      "the caret's line is in view",
+    );
   }, CARET);
 });

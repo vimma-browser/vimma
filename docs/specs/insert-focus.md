@@ -445,7 +445,9 @@ to the end first. A hint on the field (`f`) did the same.
    one of them focuses a text field (`input`, `textarea`) or an editor (`contenteditable`) that
    the user has not been in during this visit to the page, and the field's caret is still where
    a focus leaves it (collapsed at the start of the text), the caret goes to the end of the text:
-   in an editor, inside its last block, so typed text joins its last line. A field the user has
+   in an editor, inside its last block, so typed text joins its last line, and after a
+   non-editable element that ends it (a mention chip), never inside one. The caret is scrolled
+   into view. A field the user has
    been in keeps its caret: `i` back to the field the user left mid-text resumes there, as Vim's
    `gi` resumes where insert stopped. A field the page focused on its own counts as not been in
    until the user presses a key in it or clicks it. A field whose page moved the selection on
@@ -470,10 +472,20 @@ to the end first. A hint on the field (`f`) did the same.
   it otherwise (a `<br>`). A caret collapsed after an element's last block (what
   `Selection.collapseToEnd` after `selectAllChildren` gives) makes typed text a new line after
   that block (`gi_puts_the_caret_at_the_end_of_an_editor_s_last_block`).
-- **Firefox.** After `endOfDocument` in a focused textarea taller than its box, the textarea
-  scrolls to show the caret without a key typed, and the page does not move
-  (`gi_scrolls_a_long_textarea_to_its_caret`, which passed with and without an explicit
-  `scrollSelectionIntoView`).
+- **Firefox.** A focus not made with the mouse scrolls the element into view and then, for an
+  input or textarea, its selection, with its ancestors (`nsFocusManager::ScrollIntoView`,
+  `dom/base/nsFocusManager.cpp`, `ScrollSelectionIntoViewAsync(ScrollAncestors::Yes)`). That
+  scroll runs after `#focus` returns, so it shows the caret `endOfDocument` placed: a textarea
+  taller than its box shows its last line, and the page scrolls too when the caret is off screen,
+  as for any focus (`gi_scrolls_a_long_textarea_to_its_caret`). A field that already had focus
+  gets no such scroll. A `contenteditable` element gets only the first part: its box comes into
+  view, and in an editor taller than the view its end stays off screen
+  (`gi_scrolls_the_caret_at_the_end_of_a_tall_editor_into_view` failed without a scroll of its
+  own).
+- **Firefox.** `HTMLEditUtils::GetLastLeafContent` with `TreatNonEditableNodeAsLeafNode` takes a
+  non-editable element in an editor as a leaf (`editor/libeditor/HTMLEditUtils.h`). A caret
+  inside one, such as a mention chip (`contenteditable="false"`), is not editable
+  (`EditorBase::IsSelectionEditable`), and typing there does nothing.
 - **Vim.** `i` inserts before the cursor, and `gi` where insert last stopped (`:help gi`). A
   browser field has no cursor of its own until the user puts one there, so the end of the text,
   where Vim's `A` appends, is the useful place.
@@ -491,8 +503,12 @@ caret is collapsed at the start of the text (`atStart`), moves the caret to the 
 - `input`, `textarea`: the field's editor's `endOfDocument`, checked against the editor's own
   `selection`;
 - an element with `isContentEditable`: one `Selection.collapse` at the end of its last leaf
-  (`endOfLastLeaf`, after `HTMLEditor`'s rule above), skipping collapsible white space between
-  blocks; collapsible white space before the first block also counts as the start;
+  (`endOfLastLeaf`, after `HTMLEditor`'s rule above), then the document's selection controller
+  scrolls the caret into view. The walk skips collapsible white space between blocks, elements
+  that are not rendered (`checkVisibility`) and elements whose content is not the editor's text
+  (`script`, `style`, `template`, `textarea`, `select`, `iframe`, `object`, `svg`, `math`); it
+  stops at a non-editable element and puts the caret after it, and before a void leaf (`<br>`).
+  Collapsible white space before the first block also counts as the start;
 - anything else (a `select`, an embed): nothing.
 
 ### Decisions
@@ -526,8 +542,8 @@ it could not change itself.
 
 `tests/browser/browser_vimma_insert_focus.js`, fixture `file_vimma_insert_caret.html` (an input,
 a textarea, two contenteditable editors (inline text, and two paragraphs), an email input, an
-input whose page selects its text on focus, and a textarea taller than its box, each with text
-from markup):
+input whose page selects its text on focus, a textarea taller than its box, an editor ending in a
+non-editable chip and an editor taller than the window, each with text from markup):
 
 - Failed before the change: `i_puts_the_caret_at_the_end_of_a_prefilled_field` (typed text
   follows the field's text), `gi_puts_the_caret_at_the_end_of_a_prefilled_textarea`,
@@ -536,12 +552,16 @@ from markup):
   `gi_puts_the_caret_at_the_end_of_an_editor_s_last_block`,
   `a_hint_on_a_prefilled_field_puts_the_caret_at_the_end`,
   `gi_keeps_the_selection_a_page_makes_on_focus`.
+- Failed while the walk entered non-editable elements and the editor's caret got no scroll:
+  `gi_puts_the_caret_after_a_non_editable_chip_at_an_editor_s_end` (the caret went into the chip
+  and typing did nothing), `gi_scrolls_the_caret_at_the_end_of_a_tall_editor_into_view`.
+- The "been in" marks, each test failing when its mark is removed (checked by removing it):
+  `i_keeps_a_caret_the_user_moved_to_the_start_with_keys` (the `keydown` mark),
+  `i_keeps_a_caret_a_click_into_the_field_put_at_the_start` (the mark for a focus from the user's
+  input), `i_keeps_a_caret_a_click_put_at_the_start_of_a_field_the_page_focused` (the `mousedown`
+  mark). Each leaves the caret at 0, the only caret `i` would move.
 - Guards: `i_keeps_the_caret_the_user_left_in_the_last_field`,
-  `gi_puts_the_caret_at_the_end_of_an_email_field`, `gi_scrolls_a_long_textarea_to_its_caret`,
-  `i_keeps_the_caret_a_click_into_the_field_placed` (fails when a focus from the user's input
-  does not count as been in) and
-  `i_keeps_the_caret_a_click_placed_in_a_field_the_page_focused` (fails when a click in the
-  focused field does not).
+  `gi_puts_the_caret_at_the_end_of_an_email_field`, `gi_scrolls_a_long_textarea_to_its_caret`.
 
 ### Docs and changelog
 

@@ -107,11 +107,38 @@ function atStart(sel, root, html = false) {
   return html ? !NOT_COLLAPSIBLE.test(text) : text === "";
 }
 
+/** Elements whose content is no text of the editor: the caret never goes into them. */
+const NOT_EDITOR_TEXT = new Set([
+  "script",
+  "style",
+  "template",
+  "textarea",
+  "select",
+  "iframe",
+  "object",
+  "svg",
+  "math",
+  "head",
+]);
+
+/**
+ * Whether `node` holds text the caret can end at: an element that is rendered and not one of
+ * NOT_EDITOR_TEXT, or text beyond collapsible white space.
+ * @param {Node} node
+ */
+function holdsCaret(node) {
+  if (node.nodeType === 3) return NOT_COLLAPSIBLE.test(node.nodeValue ?? "");
+  if (node.nodeType !== 1) return false;
+  const el = /** @type {Element} */ (node);
+  return !NOT_EDITOR_TEXT.has(el.localName) && el.checkVisibility();
+}
+
 /**
  * The end of an editor's last leaf, where its text ends (HTMLEditor's
  * CollapseSelectionToEndOfLastLeafNodeOfDocument, which only acts on a whole editable document):
  * the end of the last text, inside the last block, not after it, so typed text joins that line.
- * Collapsible white space between blocks is no leaf.
+ * A non-editable element (a mention chip) is a leaf the caret goes after, as HTMLEditUtils'
+ * TreatNonEditableNodeAsLeafNode makes it: inside it, typing does nothing.
  * @param {Element} root
  * @returns {{ node: Node, offset: number }}
  */
@@ -120,20 +147,13 @@ function endOfLastLeaf(root) {
   let node = root;
   for (;;) {
     let child = node.lastChild;
-    while (
-      child &&
-      !(
-        child.nodeType === 1 ||
-        (child.nodeType === 3 && NOT_COLLAPSIBLE.test(child.nodeValue ?? ""))
-      )
-    ) {
-      child = child.previousSibling;
-    }
+    while (child && !holdsCaret(child)) child = child.previousSibling;
     if (!child) return { node, offset: node.childNodes.length };
     if (child.nodeType === 3) return { node: child, offset: /** @type {Text} */ (child).length };
-    if (VOID_LEAVES.has(/** @type {Element} */ (child).localName)) {
-      return { node, offset: Array.prototype.indexOf.call(node.childNodes, child) };
-    }
+    const el = /** @type {HTMLElement} */ (child);
+    const index = Array.prototype.indexOf.call(node.childNodes, child);
+    if (!el.isContentEditable) return { node, offset: index + 1 };
+    if (VOID_LEAVES.has(el.localName)) return { node, offset: index };
     node = child;
   }
 }
@@ -1604,6 +1624,13 @@ export class VimmaChild extends JSWindowActorChild {
         if (!sel || !atStart(sel, el, true)) return true;
         const end = endOfLastLeaf(el);
         sel.collapse(end.node, end.offset);
+        // A text field's focus scrolls its caret into view (nsFocusManager::ScrollIntoView), an
+        // editor's only its box: in an editor taller than the view, its end is off screen.
+        this.#selCon()?.scrollSelectionIntoView(
+          Ci.nsISelectionController.SELECTION_NORMAL,
+          Ci.nsISelectionController.SELECTION_FOCUS_REGION,
+          0,
+        );
       }
     } catch {
       // A field the page removed or made read-only while it took focus keeps its caret.
