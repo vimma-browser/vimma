@@ -736,15 +736,15 @@ export class AgentQueue {
    * A grant for the whole of `conn`'s connection, made by the user's own action rather than an
    * answer: a task sent with `Enter` in Vimma's chat window (docs/specs/builtin-agent.md B18).
    * It lifts a mute, since the user just asked the agent to go on.
-   * @param {ConnId} conn @param {number} now
+   * @param {ConnId} conn
    * @returns {boolean} false for a connection that is not open
    */
-  grantConnection(conn, now) {
+  grantConnection(conn) {
     const c = this.conns.get(conn);
     if (!c) return false;
     setGrant(c, Infinity);
     c.denials = 0;
-    if (c.mutedUntil > now) c.mutedUntil = 0;
+    c.mutedUntil = 0;
     return true;
   }
 
