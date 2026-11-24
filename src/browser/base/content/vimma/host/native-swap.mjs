@@ -16,10 +16,14 @@ import { pairStep, parkedWindow } from "../core/privatepair.mjs";
 /** @import { Pair, PairEvent, ShowOp } from "../core/privatepair.mjs" */
 /** @import { PrivatePlacement } from "../core/config.mjs" */
 
-const lazy = /** @type {Lazy<"PictureInPicture" | "VimmaHost">} */ ({});
+const lazy =
+  /** @type {Lazy<"PictureInPicture" | "VimmaActors" | "VimmaHost" | "clearTimeout" | "setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   VimmaHost: "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
+  VimmaActors: "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs",
   PictureInPicture: "moz-src:///toolkit/components/pictureinpicture/PictureInPicture.sys.mjs",
+  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
+  setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
 /** What a failed swap says, once (decision 9). */
@@ -63,6 +67,19 @@ let running = 0;
 let switches = 0;
 /** Bumped by every swap: only the latest one's frame check may update the slot. */
 let swaps = 0;
+/**
+ * How long a swap waits at most for the pages of a window it shows at a new size to paint
+ * there (#773): about the longest such paint seen under load, so that a page that does not
+ * paint (a busy or hung content process) delays the swap by no more than this.
+ */
+const PAINT_TIMEOUT_MS = 300;
+let paintTimeout = PAINT_TIMEOUT_MS;
+/**
+ * Each hidden window resized for a swap whose pages have not painted yet, and that paint: a
+ * second swap to it meanwhile waits for the same paint.
+ * @type {Map<BrowserWindow, Promise<void>>}
+ */
+const preparing = new Map();
 /** Whether Vimma is quitting: SessionStore hides every window then, and no swap may run. */
 let quitting = () => Services.startup.shuttingDown;
 
@@ -385,6 +402,124 @@ function checkFrame(op, plan, mine) {
 }
 
 /**
+ * The remote pages `win` shows: its selected browser and any other one drawn beside it (split
+ * panes), which are the ones whose browsing context is active. A page in the parent process
+ * (the start page) is resized with the window's own layout (nsSubDocumentFrame::ReflowFinished)
+ * and drawn in the window's own paint, so it never shows at the old size and is not waited for.
+ * @param {BrowserWindow} win
+ * @returns {MozBrowser[]}
+ */
+function shownBrowsers(win) {
+  const g = win.gBrowser;
+  if (!g) return [];
+  return g.browsers.filter(
+    (b) => b.isRemoteBrowser && (b === g.selectedBrowser || b.browsingContext?.isActive),
+  );
+}
+
+/**
+ * Resolves once `win`'s pages have painted at the size its window was just given, or after
+ * `paintTimeout`. A remote page learns its new size only in the window's next refresh, after
+ * the window's own paint (nsRefreshDriver::Tick, UpdateRemoteFrameEffects; ReflowFinished
+ * leaves a remote frame that was sized before alone), so the pages are asked after that
+ * refresh, over the channel that carried the size, and each answers once it has painted since
+ * (VimmaChild, "Vimma:Painted"). Sending the size at once instead
+ * (document.synchronouslyUpdateRemoteBrowserDimensions) was tried and rejected: recorded on
+ * macOS, a private window was then shown with its page at the old size in 3 swaps out of 12.
+ * @param {BrowserWindow} win
+ * @returns {Promise<void>}
+ */
+function pagesPainted(win) {
+  return new Promise((resolve) => {
+    const timer = lazy.setTimeout(resolve, paintTimeout);
+    const finish = () => {
+      lazy.clearTimeout(timer);
+      resolve();
+    };
+    win.requestAnimationFrame(() =>
+      Services.tm.dispatchToMainThread(() => {
+        if (win.closed) return finish();
+        Promise.all(shownBrowsers(win).map((b) => lazy.VimmaActors.painted(b))).then(finish);
+      }),
+    );
+  });
+}
+
+/**
+ * Before a swap shows the hidden window `op.show` at a size it does not have: resizes it while
+ * it is still hidden and returns a promise of its pages' paint at that size, so that it is never
+ * shown with a page at its old size (#773). Null when nothing needs a new paint: the swap then
+ * stays synchronous, and showInPlace places the window where it already is.
+ * @param {ShowOp} op
+ * @returns {Promise<void> | null}
+ */
+function prepare(op) {
+  const x = windowOf(op.show);
+  const y = windowOf(op.place);
+  if (!x || !y || !hidden.has(x)) return null;
+  const plan = planNativeShow(frameOf(x), frameOf(y));
+  if (plan.kind !== "swap") return null;
+  const before = `${x.innerWidth}x${x.innerHeight}`;
+  // Active, so that it lays out, paints and composites while hidden (holdActive).
+  holdActive(x);
+  // Activations and new tabs these calls cause are the swap's own, as in showInPlace.
+  running++;
+  for (const w of [x, y]) suppress(w, true);
+  try {
+    if (plan.restoreFirst) x.restore();
+    x.moveTo(plan.frame.x, plan.frame.y);
+    x.resizeTo(plan.frame.width, plan.frame.height);
+    if (plan.zoom) x.maximize();
+    x.windowUtils.flushLayoutWithoutThrottledAnimations();
+  } finally {
+    for (const w of [x, y]) suppress(w, false);
+    running--;
+  }
+  // CSS pixels: a move to a screen of another scale at the same CSS size, or a zoom AppKit
+  // applies later, counts as no new size, and that swap stays synchronous as before.
+  // A swap dropped meanwhile already gave it this size: its paint is still the one to wait for.
+  if (`${x.innerWidth}x${x.innerHeight}` === before) return preparing.get(x) ?? null;
+  const painted = pagesPainted(x).finally(() => {
+    if (preparing.get(x) === painted) preparing.delete(x);
+  });
+  preparing.set(x, painted);
+  return painted;
+}
+
+/**
+ * `event`'s swaps, once each window they show has painted at its new size (prepare), or at once
+ * when none needs to; dropped when `still()` is false after a wait, because another switch began
+ * meanwhile.
+ * @param {PairEvent} event
+ * @param {() => boolean} still
+ * @returns {Promise<boolean>} whether every swap was done
+ */
+function stepPainted(event, still) {
+  if (quitting()) return Promise.resolve(false);
+  const { ops } = pairStep(pair, event);
+  const shown = ops.map((op) => windowOf(op.show)).filter((w) => !!w);
+  /** @type {Promise<void>[]} */
+  const waits = [];
+  for (const op of ops) {
+    try {
+      const wait = prepare(op);
+      if (wait) waits.push(wait);
+    } catch (e) {
+      // The swap itself still runs, and fails as decision 9 says if the window cannot be placed.
+      console.error("vimma: native swap: preparing a window", e);
+    }
+  }
+  const run = () => {
+    const ok = still() && step(event);
+    // A window resized for nothing (the switch dropped, or the pair moved on) stays hidden:
+    // nothing keeps it active, unless another swap is preparing it.
+    for (const w of shown) if (hidden.has(w) && !preparing.has(w)) letGo(w);
+    return ok;
+  };
+  return waits.length ? Promise.all(waits).then(run) : Promise.resolve(run());
+}
+
+/**
  * Advances the pair and runs its swaps, in order, synchronously.
  * @param {PairEvent} event
  * @returns {boolean} whether every swap was done
@@ -537,7 +672,13 @@ export const NativeSwap = {
         priv.focus();
         return;
       }
-      if (!step({ type: "enter", normal: idOf(from), private: p }) && !priv.closed) priv.focus();
+      const event = /** @type {PairEvent} */ ({ type: "enter", normal: idOf(from), private: p });
+      const current = () => mine === switches && wanted() && !from.closed && !priv.closed;
+      stepPainted(event, current)
+        .then((ok) => {
+          if (!ok && current() && !priv.closed) priv.focus();
+        })
+        .catch((e) => console.error("vimma: native swap: entering", e));
     };
     if (!fresh) {
       go();
@@ -558,11 +699,15 @@ export const NativeSwap = {
    * @returns {boolean}
    */
   show(win) {
-    switches++;
+    const mine = ++switches;
     if (pair?.parked !== "normal") return false;
     const back = pair.normal;
-    const ok = step({ type: "leave" });
-    if ((!ok || ids.get(win) !== back) && !win.closed) win.focus();
+    const current = () => mine === switches;
+    stepPainted({ type: "leave" }, current)
+      .then((ok) => {
+        if (current() && (!ok || ids.get(win) !== back) && !win.closed) win.focus();
+      })
+      .catch((e) => console.error("vimma: native swap: leaving", e));
     return true;
   },
 
@@ -573,7 +718,10 @@ export const NativeSwap = {
    */
   async beforeClose() {
     if (pair?.parked !== "normal") return;
-    step({ type: "closing", window: pair.private });
+    // The private workspace closes whatever happened here: the caller closes it after this.
+    await stepPainted({ type: "closing", window: pair.private }, () => true).catch((e) =>
+      console.error("vimma: native swap: closing", e),
+    );
   },
 
   /** about:vimma's line (decision 11): no frame, title or window identifier. */
@@ -603,7 +751,7 @@ export const NativeSwap = {
    * (`force`) or not, and record visibility writes in `log`.
    * @param {{ force?: boolean, log?: { win: BrowserWindow, visible: boolean }[] | null,
    *   configured?: boolean, shuttingDown?: () => boolean,
-   *   occluded?: (win: BrowserWindow) => boolean }} [options]
+   *   occluded?: (win: BrowserWindow) => boolean, paintTimeout?: number }} [options]
    */
   _resetForTests({
     force = false,
@@ -611,8 +759,10 @@ export const NativeSwap = {
     configured: read = true,
     shuttingDown,
     occluded = (win) => win.isFullyOccluded,
+    paintTimeout: wait = PAINT_TIMEOUT_MS,
   } = {}) {
     occludedOf = occluded;
+    paintTimeout = wait;
     quitting = shuttingDown ?? (() => Services.startup.shuttingDown);
     revealAll();
     forced = force;

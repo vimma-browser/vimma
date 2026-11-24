@@ -2417,7 +2417,7 @@ so they are not set up by endpoint: see
 #### Connecting an agent's tool
 
 `vimma-ctl mcp` is the MCP server your agent's tool starts. It speaks MCP over its standard input
-and output, connects to Vimma as an agent (never with full control), and offers twelve tools:
+and output, connects to Vimma as an agent (never with full control), and offers thirteen tools:
 
 | Tool                | What the agent can do                                                                                    |
 | ------------------- | -------------------------------------------------------------------------------------------------------- |
@@ -2433,6 +2433,7 @@ and output, connects to Vimma as an agent (never with full control), and offers 
 | `vimma_screenshot`  | See what one of its tabs shows, as an image, with that list's labels drawn on it if it asks.             |
 | `vimma_console`     | Read one of its tabs' script errors, console errors and warnings, and failed requests.                   |
 | `vimma_bookmarklet` | Run one of your bookmarklets in one of its tabs, by title, only if you allow it; it asks every time.     |
+| `vimma_hover`       | Hover an element from that list, so the page shows what it shows only under the mouse.                   |
 
 1. Use the `vimma-ctl` that came with Vimma, so it is updated with it: it is on your `PATH`
    from the `.deb`, the `.rpm`, the Arch Linux package and Homebrew; for the tarball, the
@@ -2531,8 +2532,9 @@ to each, are under [Supported CLIs](#supported-clis); everything else here holds
    `claude` and `/login`; for Codex, `codex login`; for Gemini CLI, `gemini` and its sign-in). Vimma runs the same program with the same login.
 2. Press `ctrl+b i` (or type `:agent`): the chat window opens beside the page.
 3. Press `Esc`, then `m`, for the model picker, move to `add: agent CLI (…)` with `j` and press
-   `Enter`. Vimma looks for each supported CLI's program on your `PATH`, only now, and lists what
-   it finds with its version and full path, such as `claude 2.1.303 · /home/you/.local/bin/claude`.
+   `Enter`. Vimma looks for each supported CLI's program on your `PATH` (on macOS, the one your
+   terminal has), only now, and lists what it finds with its version and full path, such as
+   `claude 2.1.303 · /home/you/.local/bin/claude`.
    A CLI slow to start, as on its first start after an install, is listed as
    `codex gave no version in 5 s · <path>` and can still be picked. Press `Enter` on it.
 4. The prompt line asks `agent model:` with the CLI's suggested model filled in (`sonnet` for
@@ -2585,6 +2587,18 @@ kept in the pref `vimma.agent.cli.<cli>.path` (`vimma.agent.cli.claude-code.path
 `config.toml`, and is checked before every task (see "Its program is refused" below). The
 provider is added to `config.toml` with its model, and becomes `[agent] default` when you had
 none.
+
+On macOS, an app started from the Dock, Finder, Spotlight or `open` does not get the `PATH` your
+terminal has, only `/usr/bin:/bin:/usr/sbin:/sbin`. So that setup finds the CLI where your
+terminal does, Vimma asks your login shell (the one `$SHELL` names: zsh, bash, sh or fish) for
+its `PATH`, once per session, the first time setup looks or a task starts: it reads `.zprofile` and
+`.zshrc` as a new terminal does, so the folders nvm, mise, asdf or an installer added there are
+searched. It then searches Vimma's own `PATH`, `~/.local/bin`, `/opt/homebrew/bin` and
+`/usr/local/bin`, and the CLI runs with that same `PATH`, so a CLI that needs `node` finds it as in
+your terminal. When the shell takes longer than 10 s to answer, or other users could change its
+file, Vimma searches the rest without its answer until it restarts. A Vimma started from a
+terminal already has that terminal's `PATH`, so it uses it as it is and asks no shell. On Linux,
+Vimma uses its own `PATH`, which a desktop session takes from your login.
 
 **Choosing the model.** Once a CLI is set up, `Esc`, then `m`, lists one row for each model Vimma
 knows the CLI takes, under the provider's name (`claude · opus`), a row for the CLI's own default
@@ -2686,7 +2700,8 @@ list finds it again` (the row reads `not available`): the program Vimma stored w
   updated to another path or fails a check below. Pick `add: agent CLI (…)` again.
 - `no agent CLI found on PATH (looked for …); install one and log in to it first`: install the
   CLI, or start Vimma from a shell whose `PATH` has it (a version manager such as mise may add it
-  only in your shell).
+  only in your shell). On macOS, check that `$SHELL -l -i -c 'printenv PATH'` in a terminal
+  prints, within 10 s, a `PATH` that holds the CLI's folder.
 - `stopped: <cli> is not set up: m in the window finds it`: `config.toml` names the provider, but
   its program was never picked in the window on this profile. `Esc`, `m`, then
   `add: agent CLI (…)`.
@@ -3203,6 +3218,31 @@ button inside an embedded frame that updates the page around it reads as no chan
   loads a page counts as one of the 10 opens a minute, and no click is made while those are used
   up. At most 30 clicks a minute, none while you are typing in the tab, and each is in
   `:mcp log` with the element, a submission with its destination.
+
+#### Hovering on a page
+
+Some pages show a control only while the mouse rests over part of the page: a chat message's
+buttons, a channel's settings gear, a table row's actions, a menu that opens on hover.
+`vimma_hover` lets an agent reach them as your [`gh`](#hovering-an-element) does: it hovers an
+element of its `vimma_elements` list in the background, the page shows its hover state, and the
+agent lists what appeared with `vimma_elements` and clicks it with `vimma_activate`. A row whose
+controls appear only through the page's style is listed when the agent asks `vimma_elements` for
+the kind `hover`, which a plain list leaves out to keep it short. The question names the
+element, as a click's does:
+`◇ claude-code wants vimma_hover: 2 "Channels · Example" example.com/channels  sg hover "general"`.
+
+- **Asked as a click.** The first hover asks unless you allowed the session, a grant covers it,
+  each is a row in `:mcp log`, and hovers and clicks share the 30 a minute. A hover is never
+  asked while you are using the tab.
+- **Nothing is clicked.** The page gets the pointer's events as untrusted ones and no user
+  activation, nothing is focused and the tab stays in the background; your link preview never
+  shows an agent's hover. Every control a hover reveals still goes through `vimma_activate` and
+  `vimma_fill`, with their questions.
+- **It holds until it ends.** A hover stays until the agent hovers another element in the tab or
+  releases it, a click does not end it, and it ends when the page navigates or replaces the
+  element, when the agent disconnects, and when you start using the tab (a key in it or a mouse
+  move over it). With `vimma_show`, you see the hovered page and `agent hover · general` in the
+  status bar.
 
 #### Filling in a form
 
@@ -4119,6 +4159,11 @@ about the swap is written to disk.
 - **How:** no window manager is involved. Vimma's browser process owns both windows and hides
   and shows them itself, with the same call Firefox uses to hide its windows while it quits.
   Other normal windows stay on screen: the private workspace replaces one window, not the app.
+- **A window that comes back at another size** (you resized the other one meanwhile) appears
+  once its page has been drawn at that size, so it does not show the page at its old size
+  first. That takes a frame or two, and never more than 0.3 seconds, even if the page is busy.
+  A window that comes back zoomed, or moves to a screen with another scale, appears at once as
+  before.
 - **Full screen:** a window in full screen (its own Space) is never hidden. From a fullscreen
   window, the private workspace opens in a fullscreen Space of its own, and switching moves
   between the two Spaces, with macOS's animation.
@@ -4982,9 +5027,13 @@ One plain file holds your settings and keys; every key, the prefix and the leade
 - **Old files:** a `schema = …` line is ignored.
 - **Newer files:** a setting this version does not know, such as one a newer Vimma added, is
   skipped and named in the status bar (`unknown key "…"; skipped`), and the rest of the file
-  applies. A key close to a real one (`steps` for `step`) is an error with the suggestion, and so
-  are, as before, an unknown action in `[keys]` or a mode in `[unbind]`, an unknown colour in
-  `[theme.colors]`, an unknown key in a `[[routes]]` rule, and a value only a newer version
+  applies. So is a binding to an action this version does not have, in `[keys]` or a
+  `[modal.<mode>]` table (`unknown action "…"; skipped`): your other keys still work. With more
+  than one, the status bar counts them as warnings (`2 warnings: …`), apart from errors, which it
+  shows first (`1 error, 2 warnings: …`). A name
+  close to a real one (`steps` for `step`, `new_tabb` for `new_tab`) is an error with the
+  suggestion, and so are malformed keys for a known action, an unknown mode in `[unbind]`, an unknown colour
+  in `[theme.colors]`, an unknown key in a `[[routes]]` rule, and a value only a newer version
   accepts.
 
 ### Keys and modes

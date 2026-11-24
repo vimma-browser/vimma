@@ -69,6 +69,10 @@ const stepOf = (asked) => (isIndex(asked.step) ? asked.step : -1);
  *   makes in listeners it runs as "handling user input" (a checkbox's click()) is not the user's
  * @property {() => string | null} beforeSubmitCheck  the name of the page function the child's
  *   test hook names, read only in automation (M28); null otherwise
+ * @property {(el: Element) => boolean} hover  the child's hover as an agent's: the `:hover` lock
+ *   and the pointer's events, dispatched as the page's own (docs/specs/hover.md decision 3, M67)
+ * @property {() => boolean} releaseHover  ends an agent's hover in this document, never the
+ *   user's; whether there was one
  */
 
 /** Firefox's own pref: a form's navigation runs in a task of its own (nsDocShell::OnFormSubmit). */
@@ -227,6 +231,11 @@ export class AgentPage {
         return actTargetOf(el);
       case "activate":
         return this.#agentActivate(el, data);
+      case "hover":
+        return this.#agentHover(el, data);
+      case "hover-release":
+        // docs/specs/hover.md decision 9: only the agent's own hover in this document.
+        return this.#hooks.releaseHover();
       case "consume":
         // An agent is about to act here (mcp-forms F16): the user's activation from before its
         // step must not count as the user's for what the page does after it.
@@ -417,6 +426,39 @@ export class AgentPage {
         this.#hooks.press(el, () => this.#asAsked(el, asked));
       // Only a click the question named as a submission has one to name (M28).
       const ran = asked.submit ? this.#claimSubmission(click.step, press) : press();
+      return ran ? "clicked" : "skipped";
+    });
+    return "ok";
+  }
+
+  /**
+   * An agent's hover of its listed element (docs/specs/hover.md decision 9; security.md M67):
+   * nothing about the element is refused but its being the listed one, on this page. It runs
+   * after this reply, as a click does, so that a dialog a hover handler opens never holds the
+   * parent's call, and its outcome is kept as a click's (`outcome`), with the page as it was
+   * before it for `changes`.
+   * @param {Element | undefined} el
+   * @param {{ gen: number, id: number, until?: unknown, step?: unknown }} asked
+   * @returns {"ok" | "gone"}
+   */
+  #agentHover(el, asked) {
+    if (!this.#hooks.onPage(el)) return "gone";
+    if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
+    /** @type {AgentStep<"clicked">} */
+    const step = { gen: asked.gen, id: asked.id, step: stepOf(asked), outcome: "pending" };
+    this.#agentClick = step;
+    this.#agentWatch = null;
+    const until = asked.until;
+    this.#afterReply(step, true, () => {
+      try {
+        if (Date.now() <= until && this.#hooks.onPage(el)) {
+          this.#agentWatch = { gen: asked.gen, id: asked.id, before: this.#pageMarks(asked.id) };
+        }
+      } catch {
+        // The page's DOM broke the snapshot: the hover goes on without it.
+      }
+      this.#startStepWatch();
+      const ran = Date.now() <= until && this.#hooks.onPage(el) && this.#hooks.hover(el);
       return ran ? "clicked" : "skipped";
     });
     return "ok";

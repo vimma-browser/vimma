@@ -26,7 +26,7 @@ const SMOOTH_MAX_MS = 1000;
 /** A scroll that sent no scroll event for this long has ended (a wheel at the page's end). */
 const SETTLE_QUIET_MS = 150;
 /** At most this long a collection waits for a scroll to end (the parent gives the top 2 s). */
-const SETTLE_MAX_MS = 1000;
+export const SETTLE_MAX_MS = 1000;
 
 /** Overflow values that lock an axis: a site's modal sets one on <html> or <body>. */
 const LOCKED = new Set(["hidden", "clip"]);
@@ -164,6 +164,68 @@ export function scrollersUnder(win, point) {
 }
 
 /**
+ * Whether a wheel with these deltas can scroll one of `scrollers` (scrollersUnder) or the page:
+ * one that scrolls on an axis has room left the wheel's way on it. Shift can turn a vertical
+ * wheel horizontal (mousewheel.with_shift.action), so with shift either axis counts.
+ * @param {Window} win
+ * @param {Set<EventTarget>} scrollers
+ * @param {{ dx: number, dy: number, shift: boolean }} wheel
+ */
+export function wheelCanScroll(win, scrollers, wheel) {
+  const doc = win.document;
+  const ways = [
+    { vertical: true, sign: Math.sign(wheel.dy) },
+    { vertical: false, sign: Math.sign(wheel.dx) },
+  ];
+  if (wheel.shift) {
+    ways.push({ vertical: false, sign: Math.sign(wheel.dy) });
+    ways.push({ vertical: true, sign: Math.sign(wheel.dx) });
+  }
+  /** @type {Set<Element>} */
+  const els = new Set();
+  if (doc.scrollingElement) els.add(doc.scrollingElement);
+  for (const t of scrollers) {
+    if (/** @type {Node} */ (t).nodeType === 1) els.add(/** @type {Element} */ (t));
+  }
+  for (const el of els) {
+    for (const { vertical, sign } of ways) {
+      if (!sign) continue;
+      const pos = vertical ? el.scrollTop : el.scrollLeft;
+      // Min, not 0: a right-to-left scroller's scrollLeft runs from a negative min to 0.
+      const min = vertical ? el.scrollTopMin : el.scrollLeftMin;
+      const max = vertical ? el.scrollTopMax : el.scrollLeftMax;
+      if (!(max > min) || !scrollsOn(el, vertical)) continue;
+      if (sign > 0 ? pos < max - 0.5 : pos > min + 0.5) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether the user can scroll `el` on the axis, whatever its range: the page unless it is
+ * locked, another element when its overflow lets it.
+ * @param {Element} el
+ * @param {boolean} vertical
+ */
+function scrollsOn(el, vertical) {
+  const doc = el.ownerDocument;
+  if (el === doc.scrollingElement) return !documentLocked(doc, vertical);
+  const overflow = overflowOf(el, vertical);
+  return overflow === "auto" || overflow === "scroll" || overflow === "overlay";
+}
+
+/**
+ * How long the page waits for a wheel the parent asks about (wheelSeen). It is sent right after
+ * the question, on the same channel: this only bounds a wheel whose point the page reads
+ * otherwise, which then waits for quiet as before.
+ */
+export const WHEEL_WAIT_MS = 500;
+/** Wheels seen by this frame and not yet looked at (wheelSeen); a few are kept. */
+const WHEELS_KEPT = 8;
+/** A wheel the parent names is this frame's when its point is within this, in CSS pixels. */
+const WHEEL_POINT_SLACK = 2;
+
+/**
  * The parent element, stepping out of a shadow root to its host.
  * @param {Element} el
  * @returns {Element | null}
@@ -203,6 +265,15 @@ export class PageScroll {
    *   stop: () => void } | null}
    */
   #running = null;
+  /**
+   * The wheels this frame's document got lately, oldest first, each where it was (viewport CSS
+   * pixels) and whether the page cancelled it, until wheelSeen() takes them. `#onWheel` is a
+   * wheelSeen() waiting for the next one.
+   * @type {{ x: number, y: number, prevented: boolean }[]}
+   */
+  #wheels = [];
+  /** @type {(() => void) | null} */
+  #onWheel = null;
 
   /**
    * @param {JSWindowActorChild} actor  the VimmaChild: its document and window are read
@@ -274,11 +345,12 @@ export class PageScroll {
    * events count: the page can dispatch untrusted ones, which a chrome listener on content
    * receives too, but they neither end the wait nor prolong it.
    * @param {Set<EventTarget>} scrollers
-   * @param {boolean} [starting]  a scroll is on its way that has not moved yet (finish()): the
-   *   quiet time counts from its first scroll event, not from now
+   * @param {boolean} [starting]  a scroll is on its way that has not moved yet (finish(), or a
+   *   wheel that can scroll): the quiet time counts from its first scroll event, not from now
+   * @param {number} [maxMs]  the wait's limit, SETTLE_MAX_MS unless part of it went already
    * @returns {Promise<void>}
    */
-  settled(scrollers, starting = false) {
+  settled(scrollers, starting = false, maxMs = SETTLE_MAX_MS) {
     const win = this.#actor.contentWindow;
     if (!win) return Promise.resolve();
     return new Promise((resolve) => {
@@ -303,10 +375,69 @@ export class PageScroll {
       const onEnd = (/** @type {Event} */ e) => {
         if (ours(e)) done();
       };
-      const cap = lazy.setTimeout(done, SETTLE_MAX_MS);
+      const cap = lazy.setTimeout(done, Math.max(0, maxMs));
       win.addEventListener("scroll", onScroll, opts);
       win.addEventListener("scrollend", onEnd, opts);
       if (!starting) wait();
+    });
+  }
+
+  /**
+   * A wheel reached this frame's document (VimmaChild, a passive listener in the system group,
+   * so after the page's own listeners have had their say).
+   * @param {WheelEvent} e
+   */
+  wheeled(e) {
+    if (!e.isTrusted) return;
+    this.#wheels.push({ x: e.clientX, y: e.clientY, prevented: e.defaultPrevented });
+    if (this.#wheels.length > WHEELS_KEPT) this.#wheels.shift();
+    this.#onWheel?.();
+  }
+
+  /** Forgets the wheels seen so far: they answer for no later question (wheelSeen). */
+  forgetWheels() {
+    this.#wheels = [];
+  }
+
+  /**
+   * The wheel at `point` (viewport CSS pixels) that the parent saw, once this document has got
+   * it: whether the page cancelled it. The parent asks before the wheel has reached the page
+   * (it sends a wheel on to a content process only after its own listeners have run,
+   * EventStateManager::PostHandleEvent), and the page may handle the two in either order, so
+   * this waits for the wheel, at most `maxMs`. That wheel and those before it are taken.
+   * @param {{ x: number, y: number }} point
+   * @param {number} maxMs
+   * @returns {Promise<{ prevented: boolean } | null>} null when no such wheel came in time
+   */
+  wheelSeen(point, maxMs) {
+    const take = () => {
+      for (let i = this.#wheels.length - 1; i >= 0; i--) {
+        const w = /** @type {{ x: number, y: number, prevented: boolean }} */ (this.#wheels[i]);
+        if (
+          Math.abs(w.x - point.x) <= WHEEL_POINT_SLACK &&
+          Math.abs(w.y - point.y) <= WHEEL_POINT_SLACK
+        ) {
+          this.#wheels.splice(0, i + 1);
+          return { prevented: w.prevented };
+        }
+      }
+      return null;
+    };
+    const now = take();
+    if (now) return Promise.resolve(now);
+    return new Promise((resolve) => {
+      /** @param {{ prevented: boolean } | null} found */
+      const end = (found) => {
+        lazy.clearTimeout(timer);
+        if (this.#onWheel === check) this.#onWheel = null;
+        resolve(found);
+      };
+      const check = () => {
+        const found = take();
+        if (found) end(found);
+      };
+      const timer = lazy.setTimeout(() => end(null), Math.max(0, maxMs));
+      this.#onWheel = check;
     });
   }
 

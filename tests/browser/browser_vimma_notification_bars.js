@@ -46,11 +46,21 @@ const lineShows = (text) =>
   line()?.textContent === text &&
   found(line()).hasAttribute("armed") &&
   getComputedStyle(found(line())).visibility === "visible";
+/** The bar's buttons: XUL `<button>`s up to Firefox 161, `<moz-button>`s from 162. */
 const buttons = () => [
   .../** @type {NodeListOf<HTMLButtonElement>} */ (
-    bar()?.querySelectorAll("button.notification-button") ?? []
+    bar()?.querySelectorAll(".notification-button") ?? []
   ),
 ];
+
+/**
+ * Whether the bar was dismissed, as its close button does, with none of its buttons run. Firefox
+ * then also sends "removed" and "disconnected", at once when it closes the bar without its slide
+ * (prefers-reduced-motion, as on the macOS CI runners) and after the slide otherwise
+ * (notificationbox.js, _showNotification), so the check leaves those two out.
+ * @param {string[]} ran
+ */
+const dismissedOnly = (ran) => ran.filter((e) => e !== "removed" && e !== "disconnected");
 
 /**
  * Shows a bar such as Firefox's "Site looks broken?" (ReducedProtectionNotification) over the
@@ -114,6 +124,23 @@ add_task(async function tab_moves_focus_onto_the_buttons_where_enter_runs_one() 
   BrowserTestUtils.removeTab(tab);
 });
 
+add_task(async function enter_waits_while_firefox_restarts_the_bars_own_delay() {
+  const tab = await pageTab();
+  const ran = await showBar();
+  await until(() => lineShows(LINE), "armed");
+  EventUtils.synthesizeKey("KEY_Tab");
+  await until(() => document.activeElement === buttons()[0], "Tab focuses the first button");
+  // Firefox disables the bar's buttons again when the window regains focus
+  // (notificationbox.js, _startClickJackingDelay): Vimma's Enter must not press one then.
+  window.dispatchEvent(new FocusEvent("focus"));
+  Assert.ok(buttons()[0].disabled, "Firefox restarted the bar's delay");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await wait(100);
+  Assert.ok(bar(), "Enter left the bar up");
+  Assert.deepEqual(ran, [], "and pressed no button");
+  BrowserTestUtils.removeTab(tab);
+});
+
 add_task(async function esc_on_a_focused_button_closes_the_bar() {
   const tab = await pageTab();
   const ran = await showBar();
@@ -123,7 +150,7 @@ add_task(async function esc_on_a_focused_button_closes_the_bar() {
   await until(() => lineShows("Enter press · Esc close"), "the line names the keys there");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !bar(), "Esc closes the bar");
-  Assert.deepEqual(ran, ["dismissed"], "running no button");
+  Assert.deepEqual(dismissedOnly(ran), ["dismissed"], "running no button");
   BrowserTestUtils.removeTab(tab);
 });
 
@@ -136,7 +163,11 @@ add_task(async function esc_closes_the_bar_only_once_it_is_armed() {
   await until(() => lineShows(LINE), "armed");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !bar(), "Esc closes the armed bar");
-  Assert.deepEqual(ran, ["dismissed"], "as its close button does, running no button");
+  Assert.deepEqual(
+    dismissedOnly(ran),
+    ["dismissed"],
+    "as its close button does, running no button",
+  );
   BrowserTestUtils.removeTab(tab);
 });
 
@@ -153,10 +184,22 @@ add_task(async function keys_typed_in_a_field_are_the_fields() {
   await showBar();
   await until(() => lineShows("Esc, then Tab buttons"), "from a field the line starts with Esc");
   EventUtils.synthesizeKey("KEY_Tab");
-  const focused = await SpecialPowers.spawn(
-    tab.linkedBrowser,
-    [],
-    () => content.document.activeElement?.id,
+  // The page's process can run the spawn's read before the Tab: it handles input events in a
+  // queue of their own (input event prioritization), so the read waits for the key to land.
+  /** @type {string | undefined} */
+  let focused;
+  await TestUtils.waitForCondition(
+    async () => {
+      focused = await SpecialPowers.spawn(
+        tab.linkedBrowser,
+        [],
+        () => content.document.activeElement?.id,
+      );
+      return focused !== "a";
+    },
+    "the page took the Tab",
+    50,
+    100,
   );
   Assert.equal(focused, "b", "Tab moved through the page's fields");
   Assert.ok(!buttons().some((b) => b === document.activeElement), "not to the bar");

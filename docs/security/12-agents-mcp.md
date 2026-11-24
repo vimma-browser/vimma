@@ -161,7 +161,11 @@ console errors and warnings and failed requests, read without running page code:
 M32), in force. Since [#584](https://github.com/vimma-browser/vimma/issues/584), `vimma_open`,
 `vimma_activate` and `vimma_fill` can return the page's element list in their result, made and
 limited as a `vimma_elements` call (M31, M32), and a screenshot is smaller unless the agent asks for
-it at full size (M31).
+it at full size (M31). [hover](../specs/hover.md) adds `vimma_hover` (an element of the list
+hovered as a mouse resting on it would, with untrusted events and a `:hover` lock, asked and
+limited as a click, so that a control the page shows only under the mouse can be listed and
+clicked: M67), in force, and `vimma_elements` lists what only hovering does something with when
+its `kinds` ask for `hover`.
 
 [mcp-grants](../specs/mcp-grants.md) makes a grant cover every agent tool of its connection: a grant
 given in answer to any question, a read included, lets that agent open URLs, follow links, press
@@ -1465,8 +1469,8 @@ the page's own and can carry tokens it put there; they come only from the agent'
 [`agent-console: the page, its errors and requests inside the delimiters, the time`](../../packages/vimma-core/test/control-v2.test.ts),
 [`console_lists_as_untrusted_content`](../../tools/vimma-ctl/src/mcp/render.rs)
 
-- M32. More than 30 `agent-elements` calls, 30 `agent-activate` and `agent-fill` calls
-  together, 12 `agent-screenshot` calls, or 30 `agent-console` calls, of one connection a minute (mcp-forms F21, F26), counted when asked and before the
+- M32. More than 30 `agent-elements` calls, 30 `agent-activate`, `agent-fill` and `agent-hover`
+  calls together (M67), 12 `agent-screenshot` calls, or 30 `agent-console` calls, of one connection a minute (mcp-forms F21, F26), counted when asked and before the
   question, **must** be denied as `busy`, so a grant cannot flood a page and a refused call
   cannot loop; an `agent-open`, `agent-activate` or `agent-fill` asked with `elements` counts
   as an `agent-elements` call as well (issue #584), and with those used up it is denied as
@@ -1630,3 +1634,59 @@ off` and, for a workspace Vimma did not make, shows `:mcp on`'s warning too; wit
   [`agent workspace tabs stay awake only while an agent is connected`](../../packages/vimma-core/test/tabsleep.test.ts),
   [`low_memory_unloads_other_tabs_but_never_a_shown_pane_or_an_agents_tab`](../../tests/browser/browser_vimma_low_memory.js),
   [`the_mark_follows_the_split_the_agent_and_the_config`](../../tests/browser/browser_vimma_low_memory.js)
+- M67. An agent's hover (`agent-hover`, `vimma_hover`, [hover](../specs/hover.md) decisions 3 and 9) **must** be the `hover` op of `Vimma:AgentElement`, sent only from `agent-hover` after the
+  gate and handled by `AgentPage` (`actors/agent-page.mjs`), whose events the child dispatches
+  through `dispatchAsPage`, so the page sees every one untrusted, as an agent's click's mouse
+  events (M26); **never** the user's `Vimma:Hover`, whose events are trusted, **never** input
+  through `window.synthesizeMouseEvent`, `nsIDOMWindowUtils` or the widget, and **never**
+  wrapped in `setHandlingUserInput` or `asUserGesture`. Which path runs follows from which
+  message arrived, never from a flag in its data, and its release is the `hover-release` op of
+  the same message, which ends only an agent's hover in that document, never the user's. It locks
+  `:hover` (`InspectorUtils`, chrome-only) only on an element of the connection's current list on
+  an http or https page, its flattened-tree ancestors, the controls of `<label>`s among them and
+  the `<iframe>` chain around a subframe (locks only, no events: the parent names the subframe
+  by the browsing context it asked to hover, checked by the embedding child, and sends the lock
+  only once that frame holds the hover), only in an agent tab of the connection, and Vimma
+  removes only the locks it added. A hover gives the page no user activation and is not
+  "handling user input", so it can open no window, use no clipboard and start nothing that
+  needs a gesture; it never sets your link preview (an untrusted `mouseover` does not reach
+  `nsDocShell::OnOverLink`, which also keeps it from opening a speculative connection). What it
+  adds to a click's untrusted `mouseover` (M26) is the other pointer and mouse events, which the
+  page's own script can dispatch on itself, and the lock, which changes only style; every
+  control a hover reveals is still reached only through `vimma_elements`, `vimma_activate` and
+  `vimma_fill`, with all their checks. A list asked with `kinds` `hover` adds elements that
+  only hovering does something with (a hover listener, a `title`, a text block), never one
+  inside a rich text editor (M31); `vimma_activate` on one of them is checked as any click (its
+  closest button or link decides what it submits or follows, M28, M29). A hover **must** be
+  asked, granted, logged with its element and denied `in-use` as a click is (before the
+  question, after the yes, and again just before its step is sent, since it may have waited
+  behind another step on the tab), also while you hold your own hover (`gh`) in the tab, which
+  it would replace; and counted with clicks and fills in their 30 a minute (M32); the page's handlers may
+  load a page, which counts as an open (M3), and a form submission they try is stopped as after
+  a click (M28). An existing grant covers it (mcp-grants G1), accepted because it does a subset
+  of what a click's events already do. It **must** end on every `pagehide` of its document (the
+  back-forward cache included, since a cached document keeps its locks), on the element leaving
+  its place, on the connection's next hover in the tab, its `release: true`, its end, the tab
+  leaving the agent workspace (a change of the workspaces, and each call's own check of the
+  tab), closing or moving to another window, your key in the tab and a real mouse move over its
+  page. A release or the connection's end that overtakes a hover still on its way ends it too:
+  the hover is not sent, or, if it ran, its frame lets it go, so no lock stays that chrome does
+  not know of. A release is neither asked, counted nor logged: it only ends a hover the same
+  connection began, which was asked and logged, never yours or another connection's, and it
+  runs page code (the untrusted leave events) only when that hover is still held. Residual: a page can tell that an
+  element matches `:hover` with no pointer over it, and that hover events are untrusted, which
+  together say an agent is acting, as it could already tell from an agent's click (M26).
+  [`test_agent_hover_reveals_and_lists`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_asks_once_as_a_click`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_events_are_untrusted_and_change_nothing_else`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_is_a_separate_message`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_in_use`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_only_agent_tabs_and_listed_elements`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_release`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_rate`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_released_while_pending`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_leaves_the_users_hover`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`test_agent_hover_lists_nothing_inside_an_editor`](../../tests/browser/browser_vimma_mcp_hover.js),
+  [`agent-hover: a tab with a label or release: true, never both, never neither`](../../packages/vimma-core/test/control-v2.test.ts),
+  [`vimma_hover: the element in the question, what it hovered in the notice`](../../packages/vimma-core/test/agent-prompt.test.ts),
+  [`each asking agent command is one MCP tool; hello and ping are not`](../../packages/vimma-core/test/agent-gate.test.ts)

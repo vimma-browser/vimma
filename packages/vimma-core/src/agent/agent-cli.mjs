@@ -488,6 +488,80 @@ export function cliEnvironment(env) {
 }
 
 /**
+ * How long the login shell may take to print its PATH (C4, Since changed: issue #1518): startup
+ * files that load a version manager (nvm, conda) can take seconds, and VS Code allows the same.
+ */
+export const LOGIN_PATH_MS = 10_000;
+/** The longest PATH line taken from the login shell; a longer one is not a PATH. */
+export const LOGIN_PATH_LIMIT = 32 * 1024;
+/**
+ * Where the CLIs install on macOS besides `~/.local/bin` (Claude Code's native installer):
+ * Homebrew's folders on Apple silicon and on Intel. Searched after PATH, so setup finds a CLI
+ * there even when the login shell gave no answer.
+ */
+export const MAC_FOLDERS = Object.freeze(["/opt/homebrew/bin", "/usr/local/bin"]);
+
+/** The folders launchd's PATH holds: what an app the Dock, Finder or `open` starts gets. */
+const LAUNCHD_FOLDERS = Object.freeze(["/usr/bin", "/bin", "/usr/sbin", "/sbin"]);
+
+/**
+ * Whether Vimma's PATH is launchd's (C4, Since changed): only then is the login shell asked. A
+ * PATH with any other folder came from a shell already, a terminal's, and a Vimma started from
+ * a terminal shares that terminal, which an interactive shell would try to take over.
+ * @param {string} env  Vimma's PATH
+ */
+export function launchdPath(env) {
+  return env.split(":").every((d) => d === "" || LAUNCHD_FOLDERS.includes(d));
+}
+
+/**
+ * The login shell's arguments that print its PATH between two marks (C4, Since changed): `-l`
+ * and `-i` read the files a terminal's shell reads, `.zprofile` and `.zshrc` among them, where
+ * installers and version managers add their folders. `echo` and `;` mean the same in sh, bash,
+ * zsh and fish, and `printenv` prints PATH as the environment holds it, whatever the shell's own
+ * syntax for lists.
+ * @param {string} mark  random hex, so nothing an rc file prints is taken for the answer
+ */
+export function loginPathArgs(mark) {
+  if (!/^[0-9a-f]{16,64}$/.test(mark)) throw new Error("the mark is not hex");
+  return ["-l", "-i", "-c", `echo ${mark}; /usr/bin/printenv PATH; echo ${mark}`];
+}
+
+/**
+ * The PATH the login shell printed (`loginPathArgs`): the one line between the last two marks,
+ * its absolute entries in order. Null when there is no such line, it holds a control character
+ * or is longer than LOGIN_PATH_LIMIT, or no entry is absolute, so that a broken or noisy shell
+ * gives no answer rather than a wrong one.
+ * @param {string} stdout @param {string} mark
+ * @returns {string[] | null}
+ */
+export function loginPathFrom(stdout, mark) {
+  const end = stdout.lastIndexOf(`\n${mark}`);
+  if (end < 0) return null;
+  const start = stdout.lastIndexOf(`${mark}\n`, end - 1);
+  if (start < 0) return null;
+  const line = stdout.slice(start + mark.length + 1, end);
+  // eslint-disable-next-line no-control-regex -- a PATH holds no control character
+  if (line.length > LOGIN_PATH_LIMIT || /[\u0000-\u001f\u007f]/.test(line)) return null;
+  const dirs = line.split(":").filter((d) => d.startsWith("/"));
+  return dirs.length ? dirs : null;
+}
+
+/**
+ * The folders setup searches on macOS, and the CLI's PATH there (C4, Since changed): the login
+ * shell's PATH (null when it gave none), then Vimma's own, then `~/.local/bin` and MAC_FOLDERS,
+ * each once, absolute ones only. An app started from the Dock, Finder or `open` has launchd's
+ * PATH (`/usr/bin:/bin:/usr/sbin:/sbin`), which holds none of the folders the CLIs install to.
+ * @param {{ login: string[] | null, env: string, home: string }} o
+ * @returns {string[]}
+ */
+export function searchFolders({ login, env, home }) {
+  const local = home.startsWith("/") ? [`${home.replace(/\/+$/, "")}/.local/bin`] : [];
+  const all = [...(login ?? []), ...env.split(":"), ...local, ...MAC_FOLDERS];
+  return [...new Set(all.filter((d) => d.startsWith("/")))];
+}
+
+/**
  * One line of Claude Code's input: a user message, as JSON (C2). Its text is data, so a leading
  * `-` or a quote is plain text.
  * @param {string} text

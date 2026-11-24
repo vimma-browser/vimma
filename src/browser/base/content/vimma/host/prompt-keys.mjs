@@ -481,7 +481,7 @@ export class PromptKeys {
     const text = popup
       ? popupBarHint({ inField, locked: popupLocked() })
       : barHint({ inField, dismissable: bar.dismissable, inBar: this.inBar(bar) });
-    if (!popup && !bar.buttonContainer?.querySelector("button") && !bar.dismissable) return null;
+    if (!popup && !firstBarButton(bar) && !bar.dismissable) return null;
     const hint = this.barHintFor(bar, text);
     const left = this.barArmedAt() - ChromeUtils.now();
     if (left > 0) {
@@ -563,7 +563,25 @@ export class PromptKeys {
   }
 
   /**
-   * A keydown while a bar other than the pop-up blocked bar shows: Tab or Esc.
+   * The bar's own button that has focus, when it is enabled, else null (focus elsewhere, on the
+   * close button, or on a button Firefox's clickjacking delay disabled again). Its buttons carry
+   * the class `notification-button` (notificationbox.js, NotificationMessage.setButtons); a
+   * focused one is the active element itself, or the host of the button that has focus.
+   * @param {MozNotificationMessage} bar
+   * @returns {HTMLButtonElement | null}
+   */
+  focusedBarButton(bar) {
+    const chain = hostChain(this.win.document.activeElement);
+    const button = [...(bar.buttonContainer?.children ?? [])].find(
+      (b) => b.classList.contains("notification-button") && chain.includes(b),
+    );
+    const enabled = button && !(/** @type {HTMLButtonElement} */ (button).disabled);
+    return enabled ? /** @type {HTMLButtonElement} */ (button) : null;
+  }
+
+  /**
+   * A keydown while a bar other than the pop-up blocked bar shows: Tab, Esc, or Enter on one of
+   * its buttons.
    * @param {KeyboardEvent} e
    * @param {Chord} chord
    * @param {MozNotificationMessage} bar
@@ -571,16 +589,19 @@ export class PromptKeys {
    * @returns {boolean} whether it was the bar's key (consumed)
    */
   onOtherBarKey(e, chord, bar, armed) {
-    const first = bar.buttonContainer?.querySelector("button") ?? null;
+    const pressed = this.focusedBarButton(bar);
+    const first = firstBarButton(bar);
     const result = barKey(formatKey(chord), {
       open: true,
       // Firefox disables the bar's buttons again whenever the window regains focus
       // (notificationbox.js, _startClickJackingDelay), on a clock Vimma does not see: a disabled
       // button takes no focus, so a Tab then would be lost.
       armed: armed && !first?.disabled,
-      // Focus on the bar's own buttons is insert mode: Firefox's Tab and Enter work there.
+      // Focus on the bar's own buttons is insert mode: Firefox's Tab and Space work there, and
+      // Enter is barKey's.
       inField: this.host.inField(),
       inBar: this.inBar(bar),
+      onButton: !!pressed,
       pending: this.host.pending(),
       repeat: e.repeat,
       agent: inAgentTab(this.win),
@@ -593,6 +614,11 @@ export class PromptKeys {
     if (result.kind === "close") {
       bar.dismiss();
       // Closing the bar fires no event the status bar hears.
+      this.host.changed();
+    } else if (result.kind === "press") {
+      // A click runs the button's callback, as Linux's Enter does, and closes the bar unless
+      // the callback keeps it (notificationbox.js, NotificationMessage.handleEvent).
+      pressed?.click();
       this.host.changed();
     } else (first ?? bar.closeButton)?.focus();
     return true;
@@ -640,4 +666,19 @@ export class PromptKeys {
     else if (result.kind === "focus") (toggle ?? n.footerFocusableButtons?.[0])?.focus();
     return true;
   }
+}
+
+/**
+ * The bar's first button, or null for a bar without one. Firefox makes them in
+ * NotificationMessage.setButtons (notificationbox.js): XUL `<button>`s up to Firefox 161,
+ * `<moz-button>`s from 162, each with the class `notification-button`. Both take focus (a
+ * moz-button hands it to the button in its shadow root) and have `disabled`, which Firefox's
+ * clickjacking delay sets.
+ * @param {MozNotificationMessage} bar
+ * @returns {HTMLButtonElement | null}
+ */
+function firstBarButton(bar) {
+  return /** @type {HTMLButtonElement | null} */ (
+    bar.buttonContainer?.querySelector(".notification-button") ?? null
+  );
 }

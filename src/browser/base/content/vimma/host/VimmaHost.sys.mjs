@@ -124,8 +124,15 @@ export { NO_OUTLINE, OUTLINE_ATTACHMENT, PDF_OUTLINE_PREF } from "./outline-ops.
  * @property {Chord[]} buffered  keys typed while collecting, or while `wheel`
  * @property {boolean} [wheel]  a wheel over the page: its labels are hidden until it is known
  *   whether the wheel moved their targets (#1337)
- * @property {{ x: number, y: number }} [wheelAt]  a wheel came while collecting, here (the
- *   page's CSS pixels): the labels are looked at for it before they are shown
+ * @property {HintWheel} [wheelAt]  a wheel came while collecting: the labels are looked at
+ *   for it before they are shown
+ */
+
+/**
+ * A wheel over the page while hints are up: its point in the page's CSS pixels, its deltas,
+ * whether shift was down, and whether ctrl, alt or meta was (VimmaActors.hintsMoved).
+ * @typedef {{ x: number, y: number, dx: number, dy: number, shift: boolean, other: boolean }}
+ *   HintWheel
  */
 
 /** Element focus with no text block on screen, and in the PDF viewer (element-focus 14). */
@@ -1539,6 +1546,8 @@ export const VimmaHost = {
     // A notice shown until the next key goes on any key but a bare modifier, before the key's
     // own action can show another (docs/specs/multiple-splits.md, decision 4).
     if (chordFromEvent(e)) state.notice.keyPressed();
+    // The user's key in a tab ends an agent's hover there (docs/specs/hover.md decision 9).
+    if (e.isTrusted) HoverOps.userActs(win.gBrowser?.selectedBrowser);
     // The agent question takes its keys first, and only while it shows (vimma-mcp 13-14).
     if (AgentUi.onKey(win, e)) {
       this._emit(state);
@@ -2300,13 +2309,21 @@ export const VimmaHost = {
     // The wheel's point in the page's CSS pixels, as the labels' rects are.
     const box = browser.getBoundingClientRect();
     const zoom = Number(browser.fullZoom) || 1;
-    const point = { x: (e.clientX - box.left) / zoom, y: (e.clientY - box.top) / zoom };
-    if (session.hs) this._wheelCheck(state, session, point);
-    else session.wheelAt = point;
+    /** @type {HintWheel} */
+    const wheel = {
+      x: (e.clientX - box.left) / zoom,
+      y: (e.clientY - box.top) / zoom,
+      dx: e.deltaX,
+      dy: e.deltaY,
+      shift: e.shiftKey,
+      other: e.ctrlKey || e.altKey || e.metaKey,
+    };
+    if (session.hs) this._wheelCheck(state, session, wheel);
+    else session.wheelAt = wheel;
   },
 
   /**
-   * Hides the session's labels and asks the page whether a wheel at `point` moved their
+   * Hides the session's labels and asks the page whether `wheel` moved their
    * targets. If they moved, the labels are collected and drawn again where the scroll ended,
    * and the keys typed toward the old ones are dropped with them, also those typed while the
    * labels were hidden: they were aimed from memory at labels that now name other targets
@@ -2315,9 +2332,9 @@ export const VimmaHost = {
    * typed meanwhile.
    * @param {WindowState} state
    * @param {HintSession} session  with its labels collected
-   * @param {{ x: number, y: number }} point
+   * @param {HintWheel} wheel
    */
-  _wheelCheck(state, session, point) {
+  _wheelCheck(state, session, wheel) {
     const hs = session.hs;
     const gen = hs?.hints[0]?.target.gen;
     delete session.wheelAt;
@@ -2325,7 +2342,7 @@ export const VimmaHost = {
     const { browser } = session;
     session.wheel = true;
     state.hintOverlay.hide();
-    VimmaActors.hintsMoved(browser, gen, point)
+    VimmaActors.hintsMoved(browser, gen, wheel)
       .then((moved) => {
         if (state.hint !== session) return;
         this._hintWheels++;

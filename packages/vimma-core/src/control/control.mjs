@@ -45,7 +45,8 @@ export const RESERVED_COMMANDS = Object.freeze(["list-tabs", "screenshot", "relo
  * label (F8), `agent-fill` fills fields by their labels (F12), `agent-screenshot` returns an
  * image of an agent tab's viewport (F18), and `agent-console` its script errors and failed
  * requests (F22). `agent-bookmarklet` runs one of the user's bookmarklets, named by its title,
- * in an agent tab (docs/specs/bookmarklets.md B12).
+ * in an agent tab (docs/specs/bookmarklets.md B12). `agent-hover` hovers one element by its label,
+ * or releases the connection's hover (docs/specs/hover.md decision 9).
  */
 export const AGENT_COMMANDS = Object.freeze([
   "agent-hello",
@@ -63,6 +64,7 @@ export const AGENT_COMMANDS = Object.freeze([
   "agent-screenshot",
   "agent-console",
   "agent-bookmarklet",
+  "agent-hover",
 ]);
 /** The longest bookmark title `agent-bookmarklet` takes, in code points (bookmarklets B12). */
 export const MAX_BOOKMARKLET_NAME = 1024;
@@ -468,6 +470,34 @@ function checkAgentActivateArgs(args, errors) {
   }
 }
 
+/**
+ * `agent-hover` (docs/specs/hover.md decision 9): a label from the connection's list, with the
+ * list after it as after a click, or `release: true` alone; one of the two, never both.
+ * @param {Obj} args @param {string[]} errors
+ */
+function checkAgentHoverArgs(args, errors) {
+  noExtraFields(args, ["tab", "label", "release", ...STEP_LIST_ARGS], errors, "args.");
+  checkTabArg(args, errors);
+  if ("release" in args && args.release !== true) {
+    errors.push("release must be true when present");
+    return;
+  }
+  if ("label" in args === (args.release === true)) {
+    errors.push("agent-hover takes a label or release: true, not both");
+    return;
+  }
+  if (args.release === true) {
+    if (STEP_LIST_ARGS.some((k) => k in args)) {
+      errors.push("a release takes no elements, query or kinds");
+    }
+    return;
+  }
+  checkElementsFlag(args, errors);
+  if (!isAgentLabel(args.label)) {
+    errors.push(`label must be 1 to 3 of the hint characters ${DEFAULT_HINT_CHARS}`);
+  }
+}
+
 /** Control characters a fill's value must not hold: all but the line break (mcp-forms F14). */
 // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
 const FILL_CONTROL = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/;
@@ -537,6 +567,7 @@ function checkRequest(m, errors) {
   else if (command === "agent-keys") checkAgentKeysArgs(args, errors);
   else if (command === "agent-activate") checkAgentActivateArgs(args, errors);
   else if (command === "agent-fill") checkAgentFillArgs(args, errors);
+  else if (command === "agent-hover") checkAgentHoverArgs(args, errors);
   else if (command === "agent-screenshot") {
     // The viewport of one tab, never an area of the page or another tab (mcp-forms F18).
     noExtraFields(args, ["tab", "labels", "full"], errors, "args.");
@@ -603,6 +634,8 @@ function checkRequest(m, errors) {
  *   "agent-screenshot": TabArgs & { labels?: boolean, full?: boolean },
  *   "agent-console": TabArgs & { since?: number },
  *   "agent-bookmarklet": TabArgs & { name: string },
+ *   "agent-hover": TabArgs & StepListArgs & ({ label: string, release?: undefined }
+ *     | { release: true, label?: undefined }),
  * }} AgentArgs
  * @typedef {keyof AgentArgs} AgentCommand
  * @typedef {{ [C in AgentCommand]: { command: C, args: AgentArgs[C] } }[AgentCommand]} AgentRequest
@@ -711,6 +744,12 @@ export function parseAgentRequest(command, given) {
     };
   }
   if (command === "agent-activate") {
+    return typeof args.label === "string"
+      ? { command, args: { tab, label: args.label, ...list } }
+      : null;
+  }
+  if (command === "agent-hover") {
+    if (args.release === true) return { command, args: { tab, release: true } };
     return typeof args.label === "string"
       ? { command, args: { tab, label: args.label, ...list } }
       : null;
@@ -1014,6 +1053,25 @@ function checkActivateResult(result, errors, extra = /** @type {string[]} */ ([]
 }
 
 /**
+ * `agent-hover`'s result (docs/specs/hover.md decision 9): the page after the hover as after a
+ * click, and whether the hover still holds; or, for a release, whether there was one to end.
+ * @param {Obj} result @param {string[]} errors
+ */
+function checkHoverResult(result, errors) {
+  if ("released" in result) {
+    if ("hovered" in result) {
+      errors.push("result.hovered and result.released do not come together");
+      return;
+    }
+    noExtraFields(result, ["url", "title", "released"], errors, "result.");
+    checkFields(result, "result", { strings: ["url", "title"], flags: ["released"] }, errors);
+    return;
+  }
+  checkActivateResult(result, errors, ["hovered"]);
+  checkFields(result, "result", { flags: ["hovered"] }, errors);
+}
+
+/**
  * `agent-fill`'s result (mcp-forms F12): how many fields were set, the labels of those whose
  * value the page put back, then the page as after a click (F11, F16).
  * @param {Obj} result @param {string[]} errors
@@ -1133,6 +1191,8 @@ function checkAgentResult(result, command, errors) {
     checkActivateResult(result, errors);
   } else if (command === "agent-fill") {
     checkFillResult(result, errors);
+  } else if (command === "agent-hover") {
+    checkHoverResult(result, errors);
   } else if (command === "agent-screenshot") {
     checkScreenshotResult(result, errors);
   } else if (command === "agent-console") {

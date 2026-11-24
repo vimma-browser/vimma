@@ -88,6 +88,7 @@ describe("the child's description of an element (F5)", () => {
       "radio",
       "select",
       "click",
+      "hover",
     ]);
     const copy = parseAgentElement({ ...field, extra: "dropped" }, 1);
     expect(copy).toEqual(field);

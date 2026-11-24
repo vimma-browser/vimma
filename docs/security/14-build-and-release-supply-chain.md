@@ -41,7 +41,9 @@ of the same commit read it too, so a tree without it could not be released anywa
   never its exit status, which is 0 for the revoked, compromised subkey. Every verification goes
   through `tools/upstream/verify-sha512.py`, called by `firefox-source.sh` (every build, PR CI
   included) and `source-check.sh` (the autopilot and the Beta canary); a tarball already on disk
-  is verified like a downloaded one. On a contributor's machine, `npx surfer download` checks
+  is verified like a downloaded one. `source-check.sh` hashes the tarball as it streams it, and a
+  stream that does not reach the hash leaves the hash of fewer bytes, which fails the check
+  rather than stopping it. On a contributor's machine, `npx surfer download` checks
   nothing, so `npm run import`, the first step of every local build and lane, refuses an
   `engine/` until `npm run verify-source` has verified the tarball it came from for
   `surfer.json`'s version (a record in `engine/.git`, which `firefox-source.sh` writes too). That
@@ -79,6 +81,7 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`test_pinned_key_is_mozillas_primary_with_the_compromised_subkey_revoked`](../../tools/upstream/test_verify_sha512.py),
   [`a SHA512SUMS without a good signature fails before engine/ is touched`](../../tools/upstream/test/firefox-source.test.ts),
   [`the source check fails on a SHA512SUMS whose signature is not good`](../../tools/upstream/test/source-check.test.ts),
+  [`fails, never hangs, when the tarball does not reach the hasher`](../../tools/upstream/test/source-check.test.ts),
   [`test_a_signed_message_in_place_of_a_detached_signature_fails`](../../tools/upstream/test_verify_sha512.py),
   [`fails a tampered tarball`](../../tools/upstream/test/verify-source.test.ts),
   [`--require refuses an engine/ never verified, or verified for another version`](../../tools/upstream/test/verify-source.test.ts),

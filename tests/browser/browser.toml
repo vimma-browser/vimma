@@ -310,6 +310,14 @@ support-files = [
   "head_vimma_control.js",
 ]
 
+["browser_vimma_mcp_hover.js"]
+support-files = [
+  "file_vimma_hover.html",
+  "file_vimma_hover_frame.html",
+  "file_vimma_hover_other.html",
+  "head_vimma_control.js",
+]
+
 ["browser_vimma_mcp_activate_changes.js"]
 support-files = ["file_vimma_agent_basket.html", "head_vimma_control.js"]
 
@@ -433,6 +441,9 @@ support-files = [
 support-files = ["file_vimma_title.html"]
 
 ["browser_vimma_private_swap_native.js"]
+
+["browser_vimma_private_swap_paint.js"]
+support-files = ["file_vimma_plain.html"]
 
 ["browser_vimma_side_panel.js"]
 

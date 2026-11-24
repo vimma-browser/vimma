@@ -142,6 +142,8 @@ declare const BrowserTestUtils: {
     wantLoad?: WantLoad | null,
     maybeErrorPage?: boolean,
   ): Promise<string>;
+  /** The browser's next top-level STATE_STOP with STATE_IS_NETWORK; aborted ones only with checkAborts. */
+  browserStopped(browser: MozBrowser, expectedURI?: string, checkAborts?: boolean): Promise<void>;
   waitForErrorPage(browser: MozBrowser): Promise<string>;
   startLoadingURIString(browser: MozBrowser, uri: string, loadFlags?: number): void;
   waitForNewTab(
@@ -331,6 +333,13 @@ declare const ContentTaskUtils: {
     interval?: number,
     maxTries?: number,
   ): Promise<T>;
+  waitForEvent(
+    subject: EventTarget,
+    eventName: string,
+    capture?: boolean,
+    checkFn?: ((event: Event) => boolean) | null,
+    wantsUntrusted?: boolean,
+  ): Promise<Event>;
 };
 
 // --- The browser window a browser-chrome test runs in (its scope's prototype) ---

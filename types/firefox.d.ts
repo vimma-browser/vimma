@@ -437,6 +437,9 @@ interface nsIDocShell extends nsISupports {
   /** Null once the docshell is destroyed (nsIDocShellTreeItem.idl). */
   readonly treeOwner: nsISupports | null;
   readonly isLoadingDocument: boolean;
+  /** The element its events go up to (a tab's message manager in a content process), null for
+   * a top-level window's. */
+  readonly chromeEventHandler: EventTarget | null;
   doCommand(command: string): void;
 }
 
@@ -476,6 +479,10 @@ interface nsIDOMWindowUtils {
   removeSheetUsingURIString(sheetURI: string, type: number): void;
   suppressAnimation(suppress: boolean): void;
   flushLayoutWithoutThrottledAnimations(): void;
+  /** A paint waits for the compositor: its MozAfterPaint is still to fire. */
+  readonly isMozAfterPaintPending: boolean;
+  /** The last layer transaction of the window's refresh driver (MozAfterPaint's transactionId). */
+  readonly lastTransactionId: number;
   /** True while an event the user caused (a key, a click) is being handled. */
   readonly isHandlingUserInput: boolean;
   /**
@@ -503,6 +510,8 @@ interface Element {
   /** The slot it is assigned to, in an open or a closed shadow tree. */
   readonly openOrClosedAssignedSlot: HTMLSlotElement | null;
   readonly scrollTopMax: number;
+  /** Negative where the scroll origin is at the bottom, as in a column-reverse flex box. */
+  readonly scrollTopMin: number;
   readonly scrollLeftMax: number;
   /** Negative in a right-to-left scroller, whose scrollLeft runs from it up to 0. */
   readonly scrollLeftMin: number;
@@ -712,6 +721,7 @@ interface LazyModules {
   ThemeHost: typeof import("../src/browser/base/content/vimma/ui/theme-host.mjs").ThemeHost;
   VimmaControl: typeof import("../src/browser/base/content/vimma/ctl/VimmaControl.sys.mjs").VimmaControl;
   VimmaHost: typeof import("../src/browser/base/content/vimma/host/VimmaHost.sys.mjs").VimmaHost;
+  VimmaActors: typeof import("../src/browser/base/content/vimma/actors/VimmaActors.sys.mjs").VimmaActors;
   WorkspaceRouter: typeof import("../src/browser/base/content/vimma/workspaces/WorkspaceRouter.sys.mjs").WorkspaceRouter;
 }
 
@@ -1201,6 +1211,8 @@ interface BrowsingContext {
   readonly isDiscarded: boolean;
   readonly browserId: number;
   readonly isContent: boolean;
+  /** Shown, or kept rendering: its window is active and, in a tab, the tab is drawn. */
+  isActive: boolean;
   /** engine/dom/base/nsSandboxFlags.h; the setter throws on a discarded context. */
   sandboxFlags: number;
   /**
