@@ -84,6 +84,9 @@ async function cycleNow(browser, direction, count, flash) {
     // No answer in time, but the frame may still make the pick: a clear sent now reaches its
     // actor after the pick, so no choice is left there that the parent does not know of.
     VimmaActors.clearScrollArea(area.wg);
+    // That clear also ends a choice the frame held before (an earlier gs, a click meanwhile),
+    // and it reports nothing back: the record and its marker end here.
+    if (chosen.get(browser) === area.wg) setChosen(browser, null);
     return;
   }
   if (runs.get(browser) !== run) return;

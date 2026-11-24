@@ -173,17 +173,17 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   user's `f`, which the actor dispatches from system code). An agent's press is untrusted and
   **must not** move it. Each frame's `Vimma:ScrollAreas` reply **must** be parsed in the parent
   (`parseScrollAreasReply`: finite rects, at most 32 areas and 16 subframes per frame) and a
-  malformed one drops that frame; a frame's exact copies of one box count once (`SCROLL_AREA_MAX_PER_FRAME` bounds its
-  share of the cycle), and which area is chosen
-  is the parent's own record, never a frame's claim. Each frame's answer, to `gs`'s pick too, is
-  bounded in time, so a frame that does not answer **must not** hold the tab's scroll keys.
+  malformed one drops that frame; a frame's exact copies of one box count once
+  (`SCROLL_AREA_MAX_PER_FRAME` bounds its share of the cycle), and which area is chosen is the
+  parent's own record, never a frame's claim. Each frame's answer, to `gs`'s pick too, is bounded
+  in time, so a frame that does not answer **must not** hold the tab's scroll keys.
   `Vimma:ScrollAreaChosen` carries one boolean and **must** act only on its own tab: its status
   bar marker, and the choice another document of the tab holds, which a click in any frame ends;
   only that document's existing actor is told, and no other frame is messaged. A compromised
-  content process can therefore end the user's choice in its own tab, as a click there would,
-  and show the `scroll area` marker while nothing is chosen. A hostile frame can also put its
-  own areas, within its visible rect, in the `gs` cycle, and gets focus when the user's `gs`
-  lands on one. The marker is a fixed text, so no page text reaches the status bar through it.
+  content process can therefore end the user's choice in its own tab, as a click there would, and
+  show the `scroll area` marker while nothing is chosen. A hostile frame can also put its own
+  areas, within its visible rect, in the `gs` cycle, and gets focus when the user's `gs` lands on
+  one. The marker is a fixed text, so no page text reaches the status bar through it.
   [`a_click_messages_no_frame_but_the_one_holding_a_choice`](../../tests/browser/browser_vimma_scroll_area.js),
   [`a_frame_that_never_answers_does_not_hold_the_scroll_keys`](../../tests/browser/browser_vimma_scroll_area.js),
   [`a_frame_that_never_answers_the_pick_does_not_hold_the_scroll_keys`](../../tests/browser/browser_vimma_scroll_area.js),

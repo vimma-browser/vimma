@@ -346,6 +346,32 @@ add_task(async function a_pick_answered_too_late_leaves_no_hidden_choice() {
   }, PAGE + "?frame");
 });
 
+add_task(async function a_late_pick_in_the_frame_holding_the_choice_ends_its_marker() {
+  await withPage(async (browser) => {
+    const { frame } = await frameOf(browser);
+    press("g", "s");
+    await TestUtils.waitForCondition(marked, "gs chose the frame's area");
+    await stubChild(frame, ["Vimma:ScrollAreaPick"], "late");
+    // The frame's area again, by its number: the frame answers too late, and the parent clears
+    // its choice, so the marker must go too.
+    press("2", "g", "s");
+    const held = await SpecialPowers.spawn(frame, [], async () => {
+      const actor = /** @type {VimmaChildActor & { answered?: boolean }} */ (
+        /** @type {WindowGlobalChild} */ (content.windowGlobalChild).getActor("Vimma")
+      );
+      await ContentTaskUtils.waitForCondition(() => actor.answered, "the late answer went out");
+      const reply = /** @type {{ areas: { chosen: boolean }[] }} */ (
+        await actor.receiveMessage(
+          /** @type {VimmaChildMessage} */ ({ name: "Vimma:ScrollAreas", data: undefined }),
+        )
+      );
+      return reply.areas.some((a) => a.chosen);
+    });
+    Assert.ok(!held, "the frame's choice was cleared");
+    Assert.ok(!marked(), "no marker for a choice no frame holds");
+  }, PAGE + "?frame");
+});
+
 add_task(async function a_click_the_page_dispatches_does_not_move_the_target() {
   await withPage(async (browser) => {
     // An agent's press is dispatched as the page's own script would (VimmaChild #press), so
