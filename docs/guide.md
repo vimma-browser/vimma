@@ -2415,7 +2415,7 @@ so they are not set up by endpoint: see
 #### Connecting an agent's tool
 
 `vimma-ctl mcp` is the MCP server your agent's tool starts. It speaks MCP over its standard input
-and output, connects to Vimma as an agent (never with full control), and offers twelve tools:
+and output, connects to Vimma as an agent (never with full control), and offers thirteen tools:
 
 | Tool                | What the agent can do                                                                                    |
 | ------------------- | -------------------------------------------------------------------------------------------------------- |
@@ -2431,6 +2431,7 @@ and output, connects to Vimma as an agent (never with full control), and offers 
 | `vimma_screenshot`  | See what one of its tabs shows, as an image, with that list's labels drawn on it if it asks.             |
 | `vimma_console`     | Read one of its tabs' script errors, console errors and warnings, and failed requests.                   |
 | `vimma_bookmarklet` | Run one of your bookmarklets in one of its tabs, by title, only if you allow it; it asks every time.     |
+| `vimma_hover`       | Hover an element from that list, so the page shows what it shows only under the mouse.                   |
 
 1. Use the `vimma-ctl` that came with Vimma, so it is updated with it: it is on your `PATH`
    from the `.deb`, the `.rpm`, the Arch Linux package and Homebrew; for the tarball, the
@@ -3201,6 +3202,31 @@ button inside an embedded frame that updates the page around it reads as no chan
   loads a page counts as one of the 10 opens a minute, and no click is made while those are used
   up. At most 30 clicks a minute, none while you are typing in the tab, and each is in
   `:mcp log` with the element, a submission with its destination.
+
+#### Hovering on a page
+
+Some pages show a control only while the mouse rests over part of the page: a chat message's
+buttons, a channel's settings gear, a table row's actions, a menu that opens on hover.
+`vimma_hover` lets an agent reach them as your [`gh`](#hovering-an-element) does: it hovers an
+element of its `vimma_elements` list in the background, the page shows its hover state, and the
+agent lists what appeared with `vimma_elements` and clicks it with `vimma_activate`. A row whose
+controls appear only through the page's style is listed when the agent asks `vimma_elements` for
+the kind `hover`, which a plain list leaves out to keep it short. The question names the
+element, as a click's does:
+`◇ claude-code wants vimma_hover: 2 "Channels · Example" example.com/channels  sg hover "general"`.
+
+- **Asked as a click.** The first hover asks unless you allowed the session, a grant covers it,
+  each is a row in `:mcp log`, and hovers and clicks share the 30 a minute. A hover is never
+  asked while you are using the tab.
+- **Nothing is clicked.** The page gets the pointer's events as untrusted ones and no user
+  activation, nothing is focused and the tab stays in the background; your link preview never
+  shows an agent's hover. Every control a hover reveals still goes through `vimma_activate` and
+  `vimma_fill`, with their questions.
+- **It holds until it ends.** A hover stays until the agent hovers another element in the tab or
+  releases it, a click does not end it, and it ends when the page navigates or replaces the
+  element, when the agent disconnects, and when you start using the tab (a key in it or a mouse
+  move over it). With `vimma_show`, you see the hovered page and `agent hover · general` in the
+  status bar.
 
 #### Filling in a form
 

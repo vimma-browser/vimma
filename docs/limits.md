@@ -36,6 +36,9 @@ the [user guide](guide.md); planned work is on the
   events a real pointer would send it.
 - DevTools' "force element state" for `:hover`, set on an element after `gh` hovered it, is
   cleared when the hover ends; one set before is kept.
+- An agent's hover (`vimma_hover`) sends the page untrusted events, so a page that acts only on a
+  real pointer's events (`isTrusted`) ignores them; what the page's style shows on hover still
+  appears. A page that reads the pointer's path over time sees one move at the element's centre.
 - The command line has no `:set`, ranges or counts, and does not complete URLs. Its history lasts
   until Vimma quits.
 - Firefox's shortcuts on keys Vimma uses (`ctrl+w`, `ctrl+u`, `ctrl+h`, `ctrl+d`, `ctrl+o`,

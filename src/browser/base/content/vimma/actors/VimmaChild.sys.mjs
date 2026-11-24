@@ -44,7 +44,7 @@ import { DocumentHover } from "./hover.mjs";
  *   | { name: "Vimma:GrepPreview", data: Parameters<GrepPage["preview"]>[0] }
  *   | { name: "Vimma:GrepJump", data: Parameters<GrepPage["jump"]>[0] }
  *   | { name: "Vimma:CollectHints", data: { gen: number, linksOnly: boolean, blocks?: boolean,
- *       texts?: boolean, elements?: boolean, hover?: boolean } }
+ *       texts?: boolean, elements?: boolean, hover?: boolean, hoverToo?: boolean } }
  *   | { name: "Vimma:HintsMoved", data: { gen?: unknown, x?: unknown, y?: unknown,
  *       dx?: unknown, dy?: unknown, shift?: unknown, other?: unknown } | undefined }
  *   | { name: "Vimma:ActivateHint", data: { gen: number, id: number } }
@@ -279,11 +279,18 @@ export class VimmaChild extends JSWindowActorChild {
     press: (el, still) => this.#press(el, still, { agent: true }),
     asAgent: (fn) => this.#asAgent(fn),
     beforeSubmitCheck: () => this.#beforeSubmitCheck(),
+    hover: (el) => this.#agentHover(el),
+    releaseHover: () => this.#agentHoverRelease(),
   });
-  /** The user's hover in this document, and its `<iframe>` locks (docs/specs/hover.md). */
+  /**
+   * This document's hover, the user's or an agent's (one at a time, docs/specs/hover.md decision
+   * 7), and its `<iframe>` locks.
+   */
   #hover = new DocumentHover();
   /** The hovered element is in a link: its release clears the link preview its hover set. */
   #hoverInLink = false;
+  /** The hover held is an agent's (`vimma_hover`): only its own release ends it. */
+  #hoverByAgent = false;
   /** Copy mode in this document (m1-copy-mode). */
   #caret = new Caret();
   /** Element focus in this document (docs/specs/element-focus.md). */
@@ -466,6 +473,7 @@ export class VimmaChild extends JSWindowActorChild {
       // Also into the back-forward cache, which keeps the elements and so their locks
       // (docs/specs/hover.md decision 5, experiment X1).
       if (this.#hover.pageHidden()) this.#hoverEnded();
+      this.#hoverByAgent = false;
       return;
     }
     if (event.type === "wheel") {
@@ -981,7 +989,9 @@ export class VimmaChild extends JSWindowActorChild {
    * A smooth scroll this frame started is finished first; one taken over since is waited for
    * (m1-hints, issues #1308 and #1337).
    * @param {{ gen: number, linksOnly: boolean, blocks?: boolean, texts?: boolean,
-   *   elements?: boolean, hover?: boolean }} data
+   *   elements?: boolean, hover?: boolean, hoverToo?: boolean }} data  `hoverToo`: an agent's
+   *   list asked with the kind hover also lists what only hovering does something with
+   *   (docs/specs/hover.md decision 10)
    */
   async #collectHints(data) {
     const gen = data?.gen;
@@ -1013,6 +1023,7 @@ export class VimmaChild extends JSWindowActorChild {
       blocks: data.blocks === true && !elements,
       disabled: elements,
       hover: data.hover === true && !elements && !texts,
+      hoverToo: data.hoverToo === true && elements,
     });
     // An agent's collection is never followed through the user's targets: the user's targets of
     // this frame stay as they were, and an agent's elements are kept apart.
@@ -1028,7 +1039,12 @@ export class VimmaChild extends JSWindowActorChild {
         page: { x: win.scrollX, y: win.scrollY },
       };
     }
-    const described = elements ? describeAgentElements(targets.map((t) => t.el)) : null;
+    const described = elements
+      ? describeAgentElements(
+          targets.map((t) => t.el),
+          new Set(targets.filter((t) => t.hoverOnly).map((t) => t.el)),
+        )
+      : null;
     return {
       targets: targets.map((t, id) => ({
         id,
@@ -1243,6 +1259,7 @@ export class VimmaChild extends JSWindowActorChild {
   #hoverMessage(data) {
     if (data?.op === "release") {
       if (this.#hover.release()) this.#afterHoverLink();
+      this.#hoverByAgent = false;
       return { hovered: false };
     }
     if (data?.op !== "hover" || !isIndex(data.gen) || !isIndex(data.id)) return { hovered: false };
@@ -1257,13 +1274,43 @@ export class VimmaChild extends JSWindowActorChild {
       dispatch: (target, event) => target.dispatchEvent(event),
       onEnd: () => this.#hoverEnded(),
     });
+    this.#hoverByAgent = false;
     if (wasLink && !this.#hoverInLink) this.#leaveLink();
     return reply;
+  }
+
+  /**
+   * An agent's hover (docs/specs/hover.md decision 3, security.md M67), from AgentPage for the
+   * `hover` op of `Vimma:AgentElement`, which the parent sends only from `agent-hover` after the
+   * gate: the events are dispatched as the page's own, untrusted, as an agent's click's mouse
+   * events are (M26), and never set the link preview. A user's hover of a link it replaces lets
+   * the preview go, as a mouse moving off the link would.
+   * @param {Element} el  an element of the agent's current list, on this page
+   */
+  #agentHover(el) {
+    const wasLink = this.#hoverInLink;
+    this.#hoverInLink = false;
+    this.#hover.hover(el, {
+      dispatch: (target, event) => dispatchAsPage(target, [event]),
+      onEnd: () => this.#hoverEnded(),
+    });
+    this.#hoverByAgent = true;
+    if (wasLink) this.#leaveLink();
+    return true;
+  }
+
+  /** An agent's release: only an agent's hover, never the user's. */
+  #agentHoverRelease() {
+    if (!this.#hoverByAgent || !this.#hover.held) return false;
+    this.#hoverByAgent = false;
+    this.#hover.release();
+    return true;
   }
 
   /** The hover ended in this document by itself: the parent clears its status. */
   #hoverEnded() {
     this.#afterHoverLink();
+    this.#hoverByAgent = false;
     try {
       this.sendAsyncMessage("Vimma:HoverEnded");
     } catch {

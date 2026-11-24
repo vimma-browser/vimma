@@ -310,6 +310,14 @@ support-files = [
   "head_vimma_control.js",
 ]
 
+["browser_vimma_mcp_hover.js"]
+support-files = [
+  "file_vimma_hover.html",
+  "file_vimma_hover_frame.html",
+  "file_vimma_hover_other.html",
+  "head_vimma_control.js",
+]
+
 ["browser_vimma_mcp_activate_changes.js"]
 support-files = ["file_vimma_agent_basket.html", "head_vimma_control.js"]
 

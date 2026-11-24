@@ -1,0 +1,20 @@
+{
+  "description": "The page after the hover: it still holds, the page's text changed in place, and its new element list lists the control the hover revealed",
+  "kind": "response",
+  "command": "agent-hover",
+  "message": {
+    "type": "response",
+    "id": 14,
+    "ok": true,
+    "result": {
+      "url": "https://example.com/channels",
+      "title": "Channels · Example",
+      "loading": false,
+      "navigated": false,
+      "hovered": true,
+      "changed": ["text"],
+      "elements": "<untrusted-web-content>\n{\"label\":\"a\",\"kind\":\"button\",\"text\":\"Settings\"}\n</untrusted-web-content>",
+      "dropped": 0
+    }
+  }
+}

@@ -46,6 +46,21 @@ fn fill_command(
     Value::Object(args)
 }
 
+/// `agent-hover`'s arguments (docs/specs/hover.md decision 9): the label and the list asked for,
+/// or `release: true` alone.
+fn hover_command(tab: &str, label: Option<&str>, elements: bool, filters: &ListFilters) -> Value {
+    let mut args = BTreeMap::from([("tab".to_string(), text(tab))]);
+    match label {
+        Some(label) => {
+            args.insert("label".into(), text(label));
+            flag_into(&mut args, "elements", elements);
+            filters.insert_into(&mut args);
+        }
+        None => flag_into(&mut args, "release", true),
+    }
+    Value::Object(args)
+}
+
 impl ToolCall {
     /// The MCP tool's name.
     #[must_use]
@@ -63,6 +78,7 @@ impl ToolCall {
             ToolCall::Screenshot { .. } => "vimma_screenshot",
             ToolCall::Console { .. } => "vimma_console",
             ToolCall::Bookmarklet { .. } => "vimma_bookmarklet",
+            ToolCall::Hover { .. } => "vimma_hover",
         }
     }
 
@@ -72,7 +88,8 @@ impl ToolCall {
             ToolCall::Open { filters, .. }
             | ToolCall::Elements { filters, .. }
             | ToolCall::Activate { filters, .. }
-            | ToolCall::Fill { filters, .. } => filters.any(),
+            | ToolCall::Fill { filters, .. }
+            | ToolCall::Hover { filters, .. } => filters.any(),
             _ => false,
         }
     }
@@ -167,6 +184,15 @@ impl ToolCall {
             ToolCall::Bookmarklet { tab, name } => (
                 "agent-bookmarklet",
                 object([("tab", text(tab)), ("name", text(name))]),
+            ),
+            ToolCall::Hover {
+                tab,
+                label,
+                elements,
+                filters,
+            } => (
+                "agent-hover",
+                hover_command(tab, label.as_deref(), *elements, filters),
             ),
         }
     }
@@ -611,6 +637,7 @@ mod tests {
             ("agent-fill", "vimma_fill"),
             ("agent-screenshot", "vimma_screenshot"),
             ("agent-console", "vimma_console"),
+            ("agent-hover", "vimma_hover"),
         ] {
             let request = v2_fixture(&format!("request-{command}.valid.json"));
             let message = request.get("message").unwrap();
@@ -645,6 +672,8 @@ mod tests {
             // agent-speed S4: the filters, and a compact list naming the labels it left out.
             ("agent-elements-filters", "vimma_elements", true),
             ("agent-open-filters", "vimma_open", false),
+            // docs/specs/hover.md decision 9: a release, and whether there was a hover to end.
+            ("agent-hover-release", "vimma_hover", true),
         ] {
             let request = v2_fixture(&format!("request-{name}.valid.json"));
             let message = request.get("message").unwrap();
@@ -723,6 +752,8 @@ mod tests {
                 "agent-bookmarklet",
                 "vimma_bookmarklet",
             ),
+            ("agent-hover", "agent-hover", "vimma_hover"),
+            ("agent-hover-release", "agent-hover-release", "vimma_hover"),
         ] {
             let request = v2_fixture(&format!("request-{request}.valid.json"));
             let args = request.get("message").unwrap().get("args").unwrap();

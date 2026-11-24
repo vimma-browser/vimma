@@ -1,10 +1,11 @@
 # Spec: hover
 
-Status: accepted · Area: `packages/vimma-core/src/page/hints.mjs`, `keys/actions.mjs`,
+Status: implemented · Area: `packages/vimma-core/src/page/hints.mjs`, `keys/actions.mjs`,
 `keys/escape.mjs`, `config/defaults.mjs`, `ui/statusbar.mjs`, `control/control.mjs`,
 `agent/agent.mjs`; `actors/hint-collect.mjs`, `actors/hover.mjs` (new), `actors/page-events.mjs`,
 `actors/VimmaChild.sys.mjs`, `actors/VimmaActors.sys.mjs`, `actors/agent-page.mjs`;
-`host/VimmaHost.sys.mjs`, `host/runners.mjs`, `host/hover-ops.mjs` (new), `ui/statusbar.mjs`; `ctl/agent-commands.mjs`;
+`host/VimmaHost.sys.mjs`, `host/runners.mjs`, `host/hover-ops.mjs` (new), `ui/statusbar.mjs`;
+`actors/AgentActors.sys.mjs`, `actors/agent-fields.mjs`; `ctl/agent-commands.mjs`, `ctl/AgentAct.sys.mjs`;
 `tools/vimma-ctl/src/mcp/` · Upstream patches: none · ADR: none. Builds on
 [m1-hints](m1-hints.md), [element-focus](element-focus.md) (text blocks as hint targets) and
 [mcp-forms](mcp-forms.md) (`vimma_elements`, `vimma_activate`).
@@ -461,6 +462,20 @@ listeners for `mousemove`, `pointermove` and `mouseover`:
      element leaving its place (decision 13), the tab leaving the agent workspace, being
      discarded or closed, its content process ending, the user starting to use the tab, and the
      end of the connection. A later `vimma_activate` does not release it (decision 5);
+   - `release: true` is neither asked, counted in `ACT_RATE` nor a `:mcp log` row, because it
+     only ends the hover the same connection began, which was asked and logged: asking would
+     make an agent answer a question to undo its own step, and a rate refusal would leave a
+     hover held. It runs page code (the untrusted leave events) only while that hover is held;
+   - it is denied with `in-use` also while the user holds their own hover (`gh`) in the tab,
+     because the agent's would replace it; a release or the connection's end that overtakes a
+     hover still on its way ends it too, so no lock is left that chrome does not know of;
+   - the user starts to use the tab with a key of theirs while it is selected, or a real mouse
+     move over its page (decision 5), because that is when their input reaches the page;
+     bringing the tab to the front alone keeps the hover, so that `vimma_show` shows what it
+     revealed, with the `agent hover · <text>` segment;
+   - the result says whether the hover still holds when the call returns (`hovered`), since a
+     page's handlers may navigate or replace the element during the step; a release says
+     whether there was a hover to end (`released`);
    - existing grants cover it: since one grant covers every grantable tool of its connection
      (mcp-grants G1), a grant given before `vimma_hover` existed lets that connection hover
      without a new question once Vimma has the tool. This is accepted because a hover does a
@@ -473,7 +488,10 @@ listeners for `mousemove`, `pointermove` and `mouseover`:
     default list does not grow by every paragraph on screen for every task: every list costs the
     agent's context, and the agent asks for hover targets when its task needs a hover.
     Rejected: always listing them (text pages would flood the list) and listing none (a CSS-only
-    row could not be hovered by an agent).
+    row could not be hovered by an agent). A list asked with `hover` labels more elements than
+    one without, so their labels differ; as with every list, the newest is the connection's. An
+    element inside a rich text editor is never listed as a hover target, because its text is
+    what the user wrote (security.md M31).
     `vimma_hover` accepts a label of either kind.
 
 11. **No new Firefox patch.** `InspectorUtils` and `flattenedTreeParentNode` are available to
@@ -630,7 +648,7 @@ What a hover can do, and why nothing new becomes reachable:
   question, after the yes and before the hover (F27); the user's hover works in any tab.
 - **Read surface.** The element's text in the status bar and in the `:mcp log` row is page text
   already readable with `vimma_read_page`; it is shown as untrusted text.
-- **docs/security/12-agents-mcp.md** gains a rule (the next number, M64) with sub-PR 2:
+- **docs/security/12-agents-mcp.md** gains a rule (the next number, M67) with sub-PR 2:
   - an agent's hover **must** be the `hover` op of `Vimma:AgentElement`, handled by `AgentPage`
     with untrusted events through `dispatchAsPage`, never `Vimma:Hover`, never input through
     `window.synthesizeMouseEvent`, `nsIDOMWindowUtils` or the widget, and never wrapped in
@@ -751,7 +769,7 @@ Written first; red pasted, then green.
   hovered, `f` after a hover, what releases it, the status segment, the limits.
 - `docs/bindings.md`, `docs/bindings.json`, `defaults.toml`: `npm run gen-docs` (sub-PR 1).
 - `docs/limits.md`: the Limits above.
-- `docs/security/12-agents-mcp.md`: rule M64 and the tool's line in the tool summary (sub-PR 2).
+- `docs/security/12-agents-mcp.md`: rule M67 and the tool's line in the tool summary (sub-PR 2).
 - MCP server instructions (`tools/vimma-ctl/src/mcp/instructions.rs`), one sentence: a button
   that shows only under the mouse is revealed with `vimma_hover`, then listed and clicked; then
   `npm run gen-agent-tools`.
@@ -767,7 +785,7 @@ Written first; red pasted, then green.
 | #   | PR                                                      | Contents                                                                                                                                                                                                                                                                                             | Size     |
 | --- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | 1   | `feat(hints): gh hovers an element with a hint`         | `hint.hover` bound to `gh` and `hover.release` (unbound); `collectTargets` `hover` option; `actors/hover.mjs` (locks, events, frames, release); `Vimma:Hover`; `Esc`, status segment, release triggers; gen-docs, help snapshot, `defaults.toml`; e2e scenario and baseline; guide. Mochitests 1-13. | M (~950) |
-| 2   | `feat(mcp): vimma_hover hovers an element for an agent` | `agent-hover`, `vimma_hover`, `vimma_elements` kind `hover`, gate, rate, `in-use`, log; M64; instructions; agent mochitests 1-8. Fresh security review.                                                                                                                                              | M (~700) |
+| 2   | `feat(mcp): vimma_hover hovers an element for an agent` | `agent-hover`, `vimma_hover`, `vimma_elements` kind `hover`, gate, rate, `in-use`, log; M67; instructions; agent mochitests 1-8. Fresh security review.                                                                                                                                              | M (~700) |
 
 Sub-PR 1 needs no feature flag, because the user's hover is complete when it lands. It carries
 the default key (decision 14), so it is a keymap pull request: it lands alone, when no other
