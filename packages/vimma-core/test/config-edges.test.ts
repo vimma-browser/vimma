@@ -160,8 +160,9 @@ describe("the resolved config", () => {
 
 describe("a keymap error names actions as the file wrote them", () => {
   test("a key that is no action does not rename anything", () => {
-    expect(problems(cfg("[keys]", 'undefined = "x"', 'foo = "y"'))).toEqual([
-      [3, "keys.undefined", 'unknown action "undefined"'],
+    // `undefined` has no close match and is skipped (#1474); the near miss is the error.
+    expect(problems(cfg("[keys]", 'undefined = "x"', 'new_tabb = "y"'))).toEqual([
+      [4, "keys.new_tabb", 'unknown action "new_tabb"', "new_tab"],
     ]);
   });
 

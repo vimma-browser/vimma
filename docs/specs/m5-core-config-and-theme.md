@@ -67,6 +67,21 @@ line: only a top-level table that is a near miss of one may be a misspelt `[upda
 `:siteunbind --save`) refuse only a file with errors, so a file with a skipped key is written to
 like any other. Tests: `config-unknown-keys.test.ts`.
 
+Since changed (#1474 follow-up): an unknown action with no close match, as the name of a `[keys]`
+binding or the value of a `[modal.<mode>]` binding, is a warning, `unknown action "<name>";
+skipped`, and only that binding is left out; the rest of the keymap and of the file applies. The
+note above kept it an error, but a binding to an action a newer Vimma added is the line a shared
+config most likely gains, and it is no more harmful to skip than a newer setting: this build
+could not run that action either way. The rule follows the one for keys. A near miss of a real
+action (`new_tabb`) stays an error with the suggestion, because it is far more likely a typo, and
+a removed action stays an error that says why it went. Malformed key notation stays an error, as
+a bad value does: the binding's name is known, so the text is a mistake to fix rather than a line
+from a newer build, and refusing the file keeps the previous keymap instead of dropping a key the
+user meant to have. In `[keys]`, a boolean `check` and a top-level table's name with a table
+value keep the errors the note above gives them (an update opt-out fails closed; a misplaced
+line, #1270). Since `validate` removes the skipped binding from the file's tables, the keymap's
+source never holds it, and a site unbind that compiles the keymap again does not trip on it.
+
 Schema 2 (identity migration, adds `[panes]`, `[sites."<host>"]` and `[modal] hint_chars`) is
 specified in [m3-m4-core-prep](m3-m4-core-prep.md).
 
