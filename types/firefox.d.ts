@@ -2590,6 +2590,7 @@ interface nsIAppStartup extends nsISupports {
 // engine/widget/nsIBaseWindow.idl
 interface nsIBaseWindow extends nsISupports {
   visibility: boolean;
+  destroy(): void;
 }
 // engine/widget/nsIClipboardHelper.idl: `context` is the window context that copies, so a
 // private window's copy is marked private.

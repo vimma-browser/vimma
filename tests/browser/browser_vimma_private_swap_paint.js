@@ -291,3 +291,69 @@ add_task(async function a_switch_begun_during_the_wait_leaves_the_window_hidden_
     await teardown();
   }
 });
+
+add_task(async function a_page_whose_window_goes_away_during_the_wait_answers_at_once() {
+  // A same-origin frame, in the page's process, loses its docshell in the refresh after its
+  // "Vimma:Painted" came: its window has none when the wait next checks for a paint (#1521).
+  // The wait ends there with an answer, not by its 1 s timer, and logs no error.
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PLAIN);
+  try {
+    const result = await SpecialPowers.spawn(tab.linkedBrowser, [PLAIN], async (url) => {
+      const doc = content.document;
+      const frame = doc.createElement("iframe");
+      const loaded = new Promise((r) => frame.addEventListener("load", r, { once: true }));
+      // In view: the frame callbacks of a frame out of view run only about once a second.
+      frame.style = "position: fixed; top: 0; left: 0; width: 200px; height: 200px";
+      frame.src = url;
+      doc.body.append(frame);
+      await loaded;
+      const win = /** @type {Window} */ (frame.contentWindow);
+      // Painted and settled, so that no paint of the load ends the wait before its check.
+      for (let i = 0; i < 3; i++) await new Promise((r) => win.requestAnimationFrame(r));
+      await ContentTaskUtils.waitForCondition(
+        () => !content.windowUtils.isMozAfterPaintPending,
+        "the page's paints are on screen",
+      );
+      const actor = /** @type {VimmaChildActor} */ (
+        /** @type {WindowGlobalChild} */ (win.windowGlobalChild).getActor("Vimma")
+      );
+      /** @type {string[]} */
+      const errors = [];
+      const listener = {
+        /** @param {nsIConsoleMessage} m */
+        observe(m) {
+          if (/lastTransactionId|isMozAfterPaintPending|VimmaChild/.test(m.message)) {
+            errors.push(m.message);
+          }
+        },
+      };
+      Services.console.registerListener(listener);
+      try {
+        const asked = Date.now();
+        const answer = actor.receiveMessage(
+          /** @type {VimmaChildMessage} */ ({ name: "Vimma:Painted", data: undefined }),
+        );
+        // Registered after the actor's own frame callback, so it runs right after it in the same
+        // refresh, before the check that callback queues. Removing the frame destroys its
+        // docshell only later (nsFrameLoader::StartDestroy), so the test destroys it here, as a
+        // closing tab's does when its teardown comes between the callback and the check.
+        const shell = /** @type {nsIDocShell} */ (win.docShell);
+        win.requestAnimationFrame(() => {
+          shell.QueryInterface(Ci.nsIBaseWindow).destroy();
+          frame.remove();
+        });
+        await answer;
+        const after = Date.now() - asked;
+        // Errors from that check reach the console listener a turn later.
+        await new Promise((r) => content.setTimeout(r, 200));
+        return { after, errors };
+      } finally {
+        Services.console.unregisterListener(listener);
+      }
+    });
+    Assert.deepEqual(result.errors, [], "no error from the wait");
+    Assert.less(result.after, 500, `answered without its timer (${result.after} ms)`);
+  } finally {
+    BrowserTestUtils.removeTab(tab);
+  }
+});
