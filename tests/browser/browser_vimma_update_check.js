@@ -682,7 +682,8 @@ add_task(async function a_config_with_errors_still_turns_checks_off() {
   await fetch(`${HOST}?reset`);
   await serve(await manifest());
   const file = PathUtils.join(dir, "broken.toml");
-  await IOUtils.writeUTF8(file, "[updates]\ncheck = false\n[keys]\nnot_an_action = 1\n");
+  // A near miss of an action stays an error; an unknown name with no close match is skipped (#1474).
+  await IOUtils.writeUTF8(file, "[updates]\ncheck = false\n[keys]\nnew_tabb = 1\n");
   await ConfigHost.reload(file);
   Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
   await until(() => !VimmaUpdates.status().enabled, "check = false honoured from the broken file");
@@ -721,7 +722,8 @@ add_task(async function an_unreadable_check_never_undoes_an_opt_out_stated_in_a_
   await ConfigHost.reload(file);
   await until(() => VimmaUpdates.status().enabled, "on with a valid file");
   // 2. check = false beside an error elsewhere: off, the valid file stays in force.
-  await IOUtils.writeUTF8(file, "[updates]\ncheck = false\n[keys]\nnope = 1\n");
+  // A near miss of an action stays an error; an unknown name with no close match is skipped (#1474).
+  await IOUtils.writeUTF8(file, "[updates]\ncheck = false\n[keys]\nnew_tabb = 1\n");
   await ConfigHost.reload(file);
   Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
   await until(() => !VimmaUpdates.status().enabled, "check = false from the broken file");
