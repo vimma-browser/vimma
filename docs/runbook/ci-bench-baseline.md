@@ -92,8 +92,9 @@ since the upstream jobs took setup-node (#946); only the base-branch guards rema
 runner's Node, and none of them may reach a `.ts` file, run or imported by a `.mjs`. A Node bump
 is its own PR, by hand (Dependabot has no `.nvmrc` support); a new major also moves `@types/node`
 to it (`npm run typecheck` checks `tools/` against it). `.nvmrc` never
-leaves `engines` in `package.json` (`^22.18.0 || >=24.3.0`), the versions that run the `.ts` tools
-without a flag or a warning (ADR-025). The bench needs nothing for it: both sides of the
+leaves `engines` in `package.json` (`^22.18.0 || ^24.3.0`), the versions that run the `.ts` tools
+without a flag or a warning (ADR-025) and that surfer's branding patch works on (Node 26 does not,
+issue #1538). The bench needs nothing for it: both sides of the
 comparison run on the same Node.
 
 Moving the baseline, deliberately (like snapshots: never to make a red run green without saying
