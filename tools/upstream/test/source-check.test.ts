@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncOptionsWithStringEncoding } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { chmodSync, cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.ts";
 import { fakeSign, fakeSignature, withFakeGpgv } from "./fake-gpgv.ts";
@@ -60,12 +60,56 @@ function archive(
   return { base: `file://${join(root, "releases")}`, work };
 }
 
-function run(version: string, { base, work }: { base: string; work: string }) {
+// On macOS, the bash every Mac has (3.2), whichever bash comes first in PATH: the script must work
+// in it, and it differs (an empty array under `set -u` is an error before bash 4.4).
+const BASH = process.platform === "darwin" ? "/bin/bash" : "bash";
+
+/**
+ * Commands placed before the real ones in PATH, each a shell script given the real command's path
+ * as $REAL, so a test can slow a step down or make it fail.
+ */
+type Shims = Record<string, string>;
+
+function withShims(env: NodeJS.ProcessEnv, shims: Shims): NodeJS.ProcessEnv {
+  const bin = join(tempDir("source-check-shims-"), "bin");
+  mkdirSync(bin);
+  for (const [name, body] of Object.entries(shims)) {
+    const real = spawnSync("sh", ["-c", `command -v ${name}`], { env, encoding: "utf8" });
+    if (real.status !== 0) throw new Error(`no ${name} in PATH`);
+    writeFileSync(join(bin, name), `#!/bin/sh\nREAL=${real.stdout.trim()}\n${body}\n`);
+    chmodSync(join(bin, name), 0o755);
+  }
+  return { ...env, PATH: `${bin}${delimiter}${env.PATH ?? ""}` };
+}
+
+function run(version: string, { base, work }: { base: string; work: string }, shims: Shims = {}) {
   const output = join(work, "github-output");
   writeFileSync(output, "");
-  const env = withFakeGpgv({ ...process.env, MOZILLA_RELEASES: base, GITHUB_OUTPUT: output });
+  const env = withShims(
+    withFakeGpgv({ ...process.env, MOZILLA_RELEASES: base, GITHUB_OUTPUT: output }),
+    shims,
+  );
   delete env.GITHUB_STEP_SUMMARY;
-  const r = spawnSync("bash", [SCRIPT, version], { cwd: work, env, encoding: "utf8" });
+  // spawnSync blocks the worker, so the test's own timeout cannot end a script that hangs: this
+  // one does, and the test fails instead of blocking the run (#1523). The script leads its own
+  // process group, so a hang's children are killed with it rather than left behind. Node's
+  // spawnSync honours `detached` as spawn does; @types/node leaves it out of SpawnSyncOptions.
+  const options: SpawnSyncOptionsWithStringEncoding & { detached: boolean } = {
+    cwd: work,
+    env,
+    encoding: "utf8",
+    timeout: 45_000,
+    killSignal: "SIGKILL",
+    detached: true,
+  };
+  const r = spawnSync(BASH, [SCRIPT, version], options);
+  if (r.error && r.pid) {
+    try {
+      process.kill(-r.pid, "SIGKILL");
+    } catch {
+      // The group is already gone.
+    }
+  }
   return { ...r, output: readFileSync(output, "utf8") };
 }
 
@@ -149,6 +193,33 @@ describe("source-check.sh", () => {
     expect(r.status, r.stderr).toBe(0);
     expect(r.output).toContain("prefs=unresolved");
     expect(readFileSync(join(where.work, "prefs-refresh.patch"), "utf8")).toBe("");
+  }, 60_000);
+
+  it("finishes when patch-check lists no files and tee opens the FIFO late", () => {
+    // A python3 older than patch-check supports (macOS's 3.9) fails --list-files, so the list is
+    // empty; under bash 3.2 its expansion was an error in the pipeline's subshell, whose EXIT trap
+    // removed the scratch dir, FIFO included, before tee opened it. The hasher then waited in
+    // open() for a writer that never came, and the script in `wait` for the hasher.
+    const where = archive("158.0");
+    const r = run("158.0", where, {
+      python3: 'for a in "$@"; do [ "$a" = --list-files ] && exit 1; done\nexec "$REAL" "$@"',
+      tee: 'sleep 1\nexec "$REAL" "$@"',
+    });
+    expect(r.error, "the script hung").toBeUndefined();
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).not.toMatch(/unbound variable/);
+    expect(r.output).toContain("result=fail");
+  }, 60_000);
+
+  it("fails, never hangs, when the tarball does not reach the hasher", () => {
+    // A tee that copies stdin to stdout and writes nothing else: the hash is of no bytes, so it
+    // cannot match Mozilla's, and the check fails closed instead of waiting for the FIFO.
+    const where = archive("158.0");
+    const r = run("158.0", where, { tee: "exec cat" });
+    expect(r.error, "the script hung").toBeUndefined();
+    expect(r.status).toBe(1);
+    expect(r.stdout + r.stderr).toMatch(/SHA-512 .* does not match/);
+    expect(r.output).not.toContain("result=");
   }, 60_000);
 
   it.each(["", "158", "159.0a1", "158.0;id", "../158.0", "158.0 b1"])(
